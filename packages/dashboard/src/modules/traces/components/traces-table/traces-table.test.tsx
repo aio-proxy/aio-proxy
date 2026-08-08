@@ -152,7 +152,7 @@ describe('traces table', () => {
 
   test('keeps TanStack Table data stable across unrelated parent rerenders', () => {
     const data = { items: [trace] };
-    const useReactTable = rs.spyOn(ReactTable, 'useReactTable');
+    const useTable = rs.spyOn(ReactTable, 'useTable');
     const props = {
       data,
       isFetching: false,
@@ -163,11 +163,11 @@ describe('traces table', () => {
       onSelect: rs.fn(),
     };
     const view = render(<TracesTable {...props} />);
-    const firstTableData = useReactTable.mock.calls.at(-1)?.[0].data;
+    const firstTableData = useTable.mock.calls.at(-1)?.[0].data;
 
     view.rerender(<TracesTable {...props} />);
 
-    expect(useReactTable.mock.calls.at(-1)?.[0].data).toBe(firstTableData);
-    useReactTable.mockRestore();
+    expect(useTable.mock.calls.at(-1)?.[0].data).toBe(firstTableData);
+    useTable.mockRestore();
   });
 });

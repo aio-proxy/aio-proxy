@@ -1,7 +1,7 @@
 import { m } from '@aio-proxy/i18n';
 import { Field, FieldLabel } from '@aio-proxy/ui/components/field';
 import {
-  Pagination,
+  Pagination as PaginationRoot,
   PaginationContent,
   PaginationItem,
   PaginationNext,
@@ -17,7 +17,7 @@ import {
 } from '@aio-proxy/ui/components/select';
 import { useForm } from '@tanstack/react-form';
 
-interface PaginationControlsProps {
+interface PaginationProps {
   readonly pageSize: number;
   readonly pageSizeOptions?: readonly number[];
   readonly canPrevious: boolean;
@@ -27,7 +27,7 @@ interface PaginationControlsProps {
   readonly onNext: () => void;
 }
 
-export const PaginationControls: React.FC<PaginationControlsProps> = ({
+export const Pagination: React.FC<PaginationProps> = ({
   pageSize,
   pageSizeOptions = [10, 25, 50, 100],
   canPrevious,
@@ -71,7 +71,7 @@ export const PaginationControls: React.FC<PaginationControlsProps> = ({
           )}
         </form.Field>
       </Field>
-      <Pagination className="mx-0 w-auto">
+      <PaginationRoot className="mx-0 w-auto">
         <PaginationContent>
           <PaginationItem>
             <PaginationPrevious
@@ -94,7 +94,7 @@ export const PaginationControls: React.FC<PaginationControlsProps> = ({
             />
           </PaginationItem>
         </PaginationContent>
-      </Pagination>
+      </PaginationRoot>
     </div>
   );
 };

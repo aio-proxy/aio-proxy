@@ -2,10 +2,10 @@ import { m } from '@aio-proxy/i18n';
 import type { DashboardTraceSummary } from '@aio-proxy/types';
 import { ScrollArea, ScrollBar } from '@aio-proxy/ui/components/scroll-area';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@aio-proxy/ui/components/table';
-import { type CellContext, type ColumnDef, flexRender, getCoreRowModel, useReactTable } from '@tanstack/react-table';
+import { type ColumnDef, tableFeatures, useTable } from '@tanstack/react-table';
 import { useMemo } from 'react';
 
-import { PaginationControls } from '@/components/pagination-controls';
+import { Pagination } from '@/components/data-table/pagination';
 
 import { TRACE_PLACEHOLDER } from '../../lib/trace-display-constants';
 import { formatTraceCost } from '../../lib/trace-formatters';
@@ -30,35 +30,35 @@ interface TracesTableProps {
   readonly onSelect: (traceId: string) => void;
 }
 
-const columns: ColumnDef<DashboardTraceSummary>[] = [
+const tracesTableFeatures = tableFeatures({});
+
+const columns: ColumnDef<typeof tracesTableFeatures, DashboardTraceSummary>[] = [
   {
     accessorKey: 'startedAt',
     header: () => m['dashboard.traces.started_at'](),
-    cell: ({ row }: CellContext<DashboardTraceSummary, unknown>) => (
+    cell: ({ row }) => (
       <time dateTime={row.original.startedAt}>{new Date(row.original.startedAt).toLocaleString()}</time>
     ),
   },
   {
     accessorKey: 'traceId',
     header: () => m['dashboard.traces.trace_id'](),
-    cell: ({ row }: CellContext<DashboardTraceSummary, unknown>) => (
-      <span className="font-mono text-xs">{row.original.traceId}</span>
-    ),
+    cell: ({ row }) => <span className="font-mono text-xs">{row.original.traceId}</span>,
   },
   {
     id: 'requestStatus',
     header: () => m['dashboard.traces.status'](),
-    cell: ({ row }: CellContext<DashboardTraceSummary, unknown>) => <TraceStatus item={row.original} />,
+    cell: ({ row }) => <TraceStatus item={row.original} />,
   },
   {
     accessorKey: 'inboundProtocol',
     header: () => m['dashboard.traces.protocol'](),
-    cell: ({ row }: CellContext<DashboardTraceSummary, unknown>) => row.original.inboundProtocol,
+    cell: ({ row }) => row.original.inboundProtocol,
   },
   {
     accessorKey: 'requestedModelId',
     header: () => m['dashboard.traces.model'](),
-    cell: ({ row }: CellContext<DashboardTraceSummary, unknown>) => {
+    cell: ({ row }) => {
       const { requestedModelId, finalModelId } = row.original;
       const primaryModel = requestedModelId ?? finalModelId;
       if (primaryModel === undefined) return TRACE_PLACEHOLDER;
@@ -75,19 +75,19 @@ const columns: ColumnDef<DashboardTraceSummary>[] = [
   {
     accessorKey: 'finalProviderId',
     header: () => m['dashboard.traces.provider_id'](),
-    cell: ({ row }: CellContext<DashboardTraceSummary, unknown>) => (
+    cell: ({ row }) => (
       <span className="block max-w-16 truncate">{row.original.finalProviderId ?? TRACE_PLACEHOLDER}</span>
     ),
   },
   {
     accessorKey: 'finalHttpStatus',
     header: () => m['dashboard.traces.http_status'](),
-    cell: ({ row }: CellContext<DashboardTraceSummary, unknown>) => row.original.finalHttpStatus ?? TRACE_PLACEHOLDER,
+    cell: ({ row }) => row.original.finalHttpStatus ?? TRACE_PLACEHOLDER,
   },
   {
     id: 'latency',
     header: () => m['dashboard.traces.latency'](),
-    cell: ({ row }: CellContext<DashboardTraceSummary, unknown>) => (
+    cell: ({ row }) => (
       <TraceLatencyCell
         durationMs={row.original.durationMs}
         stream={row.original.stream}
@@ -98,13 +98,12 @@ const columns: ColumnDef<DashboardTraceSummary>[] = [
   {
     id: 'tokens',
     header: () => m['dashboard.traces.tokens'](),
-    cell: ({ row }: CellContext<DashboardTraceSummary, unknown>) => <TraceTokenCell usage={row.original.usage} />,
+    cell: ({ row }) => <TraceTokenCell usage={row.original.usage} />,
   },
   {
     id: 'cost',
     header: () => m['dashboard.traces.cost'](),
-    cell: ({ row }: CellContext<DashboardTraceSummary, unknown>) =>
-      formatTraceCost(row.original.usage?.estimatedCostUsd),
+    cell: ({ row }) => formatTraceCost(row.original.usage?.estimatedCostUsd),
   },
 ];
 
@@ -120,11 +119,11 @@ export const TracesTable: React.FC<TracesTableProps> = ({
   onSelect,
 }) => {
   const tableData = useMemo(() => [...data.items], [data.items]);
-  const table = useReactTable({
+  const table = useTable({
+    features: tracesTableFeatures,
     data: tableData,
     columns,
     getRowId: (row) => row.traceId,
-    getCoreRowModel: getCoreRowModel(),
   });
 
   return (
@@ -137,7 +136,7 @@ export const TracesTable: React.FC<TracesTableProps> = ({
                 <TableRow key={group.id}>
                   {group.headers.map((header) => (
                     <TableHead key={header.id}>
-                      {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+                      {header.isPlaceholder ? null : <table.FlexRender header={header} />}
                     </TableHead>
                   ))}
                 </TableRow>
@@ -162,8 +161,10 @@ export const TracesTable: React.FC<TracesTableProps> = ({
                     }
                   }}
                 >
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</TableCell>
+                  {row.getAllCells().map((cell) => (
+                    <TableCell key={cell.id}>
+                      <table.FlexRender cell={cell} />
+                    </TableCell>
                   ))}
                 </TableRow>
               ))}
@@ -176,7 +177,7 @@ export const TracesTable: React.FC<TracesTableProps> = ({
         />
       </ScrollArea>
       <div data-slot="traces-table-pagination" className="shrink-0 border-t px-3 pt-3 sm:px-4">
-        <PaginationControls
+        <Pagination
           pageSize={pageSize}
           pageSizeOptions={[10, 20, 50, 100]}
           canPrevious={!isFetching && data.prevPageToken !== undefined}

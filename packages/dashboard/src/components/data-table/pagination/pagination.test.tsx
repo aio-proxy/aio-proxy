@@ -1,7 +1,7 @@
 import { describe, expect, rs, test } from '@rstest/core';
 import { fireEvent, render, screen } from '@testing-library/react';
 
-import { PaginationControls } from './pagination-controls';
+import { Pagination } from '.';
 
 rs.mock('@aio-proxy/i18n', () => ({
   m: {
@@ -18,7 +18,7 @@ describe('pagination controls', () => {
     const onShowSizeChange = rs.fn();
 
     render(
-      <PaginationControls
+      <Pagination
         pageSize={25}
         pageSizeOptions={[10, 25, 50]}
         canPrevious={false}

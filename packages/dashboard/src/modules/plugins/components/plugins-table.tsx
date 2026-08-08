@@ -3,14 +3,14 @@ import type { DashboardPluginSummary } from '@aio-proxy/types';
 import { Badge } from '@aio-proxy/ui/components/badge';
 import { Button } from '@aio-proxy/ui/components/button';
 import { Empty } from '@aio-proxy/ui/components/empty';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@aio-proxy/ui/components/table';
-import { flexRender, type ColumnDef, type HeaderContext } from '@tanstack/react-table';
-import { ArrowDown, ArrowUp } from 'lucide-react';
+import { Table, TableBody, TableCell, TableHeader, TableRow } from '@aio-proxy/ui/components/table';
+import type { ColumnDef } from '@tanstack/react-table';
 import type React from 'react';
 import { Fragment, useMemo, useRef } from 'react';
 
-import { PaginationControls } from '@/components/pagination-controls';
-import { useDataTable } from '@/hooks/use-data-table';
+import { Pagination } from '@/components/data-table/pagination';
+import { tableHead } from '@/components/data-table/table-head';
+import { type DataTableFeatures, useDataTable } from '@/hooks/use-data-table';
 
 import { PluginOptionsDrawer, type PluginOptionsDrawerRef } from './plugin-options-drawer';
 import { PluginUninstallDialog, type PluginUninstallDialogRef } from './plugin-uninstall-dialog';
@@ -19,43 +19,14 @@ interface PluginsTableProps {
   readonly plugins: readonly DashboardPluginSummary[];
 }
 
-const sortableHeader =
-  (label: () => string) =>
-  ({ column }: HeaderContext<DashboardPluginSummary, unknown>) => {
-    const canSort = column.getCanSort();
-    const sortDirection = column.getIsSorted();
-    return (
-      <TableHead
-        aria-sort={
-          canSort
-            ? sortDirection === 'asc'
-              ? 'ascending'
-              : sortDirection === 'desc'
-                ? 'descending'
-                : 'none'
-            : undefined
-        }
-      >
-        {canSort ? (
-          <Button variant="ghost" size="sm" onClick={column.getToggleSortingHandler()}>
-            {label()}
-            {sortDirection === 'asc' ? <ArrowUp /> : sortDirection === 'desc' ? <ArrowDown /> : null}
-          </Button>
-        ) : (
-          label()
-        )}
-      </TableHead>
-    );
-  };
-
 const createPluginColumns = (
   optionsRef: React.RefObject<PluginOptionsDrawerRef | null>,
   uninstallRef: React.RefObject<PluginUninstallDialogRef | null>,
-): ColumnDef<DashboardPluginSummary>[] => [
+): ColumnDef<DataTableFeatures, DashboardPluginSummary>[] => [
   {
     id: 'packageName',
     accessorKey: 'packageName',
-    header: sortableHeader(() => m['dashboard.plugins.table_package']()),
+    header: tableHead(() => m['dashboard.plugins.table_package']()),
     cell: ({ row }) => (
       <div className="flex min-w-52 items-center gap-2">
         <span className="font-mono text-xs">{row.original.packageName}</span>
@@ -66,13 +37,13 @@ const createPluginColumns = (
   {
     id: 'version',
     accessorFn: (plugin) => plugin.version ?? '',
-    header: sortableHeader(() => m['dashboard.plugins.table_version']()),
+    header: tableHead(() => m['dashboard.plugins.table_version']()),
     cell: ({ row }) => row.original.version ?? 'N/A',
   },
   {
     id: 'status',
     accessorFn: (plugin) => plugin.state.status,
-    header: sortableHeader(() => m['dashboard.plugins.table_status']()),
+    header: tableHead(() => m['dashboard.plugins.table_status']()),
     cell: ({ row }) => (
       <div className="space-y-1">
         <Badge variant={row.original.state.status === 'failed' ? 'destructive' : 'outline'}>
@@ -89,7 +60,7 @@ const createPluginColumns = (
   {
     id: 'enabled',
     accessorFn: (plugin) => String(plugin.enabled),
-    header: sortableHeader(() => m['dashboard.plugins.table_enabled']()),
+    header: tableHead(() => m['dashboard.plugins.table_enabled']()),
     cell: ({ row }) => (
       <Badge variant="secondary">
         {row.original.enabled ? m['dashboard.plugins.enabled']() : m['dashboard.plugins.disabled']()}
@@ -99,7 +70,7 @@ const createPluginColumns = (
   {
     id: 'actions',
     enableSorting: false,
-    header: sortableHeader(() => m['dashboard.plugins.table_actions']()),
+    header: tableHead(() => m['dashboard.plugins.table_actions']()),
     cell: ({ row }) => (
       <div className="flex justify-end gap-2">
         {row.original.hasOptions ? (
@@ -140,7 +111,7 @@ export const PluginsTable: React.FC<PluginsTableProps> = ({ plugins }) => {
             <TableRow key={headerGroup.id}>
               {headerGroup.headers.map((header) => (
                 <Fragment key={header.id}>
-                  {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+                  {header.isPlaceholder ? null : <table.FlexRender header={header} />}
                 </Fragment>
               ))}
             </TableRow>
@@ -149,9 +120,9 @@ export const PluginsTable: React.FC<PluginsTableProps> = ({ plugins }) => {
         <TableBody>
           {table.getRowModel().rows.map((row) => (
             <TableRow key={row.id} data-testid={`plugin-row-${row.original.packageName}`}>
-              {row.getVisibleCells().map((cell) => (
+              {row.getAllCells().map((cell) => (
                 <TableCell key={cell.id} className={cell.column.id === 'actions' ? 'text-right' : undefined}>
-                  {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                  <table.FlexRender cell={cell} />
                 </TableCell>
               ))}
             </TableRow>
@@ -159,8 +130,8 @@ export const PluginsTable: React.FC<PluginsTableProps> = ({ plugins }) => {
         </TableBody>
       </Table>
       {table.getPageCount() > 1 ? (
-        <PaginationControls
-          pageSize={table.getState().pagination.pageSize}
+        <Pagination
+          pageSize={table.state.pagination.pageSize}
           canPrevious={table.getCanPreviousPage()}
           canNext={table.getCanNextPage()}
           onShowSizeChange={table.setPageSize}
