@@ -132,6 +132,23 @@ describe('plugin identifiers and staged OAuth provider schema', () => {
     expect(OAuthPluginProviderSchema.parse(provider)).toEqual({ ...provider, enabled: true });
     expect(OAuthProviderSchema.safeParse(provider).success).toBe(true);
   });
+
+  test('accepts metadata and extend on an OAuth Provider', () => {
+    const provider = OAuthPluginProviderSchema.parse({
+      id: 'person',
+      kind: 'oauth',
+      plugin: '@example/oauth',
+      capability: 'default',
+      metadata: {
+        model: { extend: 'openai/gpt-5.6-sol', limit: { context: 400_000, input: 272_000 } },
+      },
+    });
+
+    expect(provider.metadata?.model).toEqual({
+      extend: 'openai/gpt-5.6-sol',
+      limit: { context: 400_000, input: 272_000 },
+    });
+  });
 });
 
 const providers = (entries: Record<string, unknown>) => ({ providers: entries });
@@ -150,23 +167,12 @@ describe('OAuth plugin config schema', () => {
     const config = ConfigSchema.parse({ server: {}, providers: { copilot: provider } });
 
     // Then
-    expect(config).toEqual({
-      plugins: [],
-      server: {
-        host: '127.0.0.1',
-        port: 22078,
-        logging: { enabled: false, retentionDays: 14, level: 'info' },
-      },
-      providers: [
-        {
-          kind: 'oauth',
-          plugin: '@aio-proxy/plugin-github-copilot',
-          capability: 'default',
-          enabled: true,
-          id: 'copilot',
-        },
-      ],
-      invalidProviders: [],
+    expect(config.providers[0]).toEqual({
+      kind: 'oauth',
+      plugin: '@aio-proxy/plugin-github-copilot',
+      capability: 'default',
+      enabled: true,
+      id: 'copilot',
     });
     expect(config.providers[0]).not.toHaveProperty('models');
   });

@@ -1,12 +1,78 @@
+import { ModelContextAggregation, type CodexUpstreamModel, type ModelLimit } from '@aio-proxy/types';
+
 import type { ServerState } from '../../../server-state';
-import { resolveEnabledModels } from '../../model-resolution/index';
-import { assembleCodexModel, renderDefaultInstructions } from './codex-assembly';
+import {
+  type ResolvedModel,
+  resolveEnabledModels,
+  resolveModelCapabilities,
+  resolveModelField,
+} from '../../model-resolution/index';
+import { assembleCodexModel, projectCodexMetadata, renderDefaultInstructions } from './codex-assembly';
 import { readCodexModelsCache } from './codex-cache';
 
 type Options = { readonly fetchImpl?: typeof fetch; readonly signal?: AbortSignal };
 
 const nonEmpty = (value: unknown): string | undefined =>
   typeof value === 'string' && value.trim() !== '' ? value : undefined;
+
+type CodexWindows = {
+  readonly contextWindow: number;
+  readonly maxContextWindow: number;
+};
+
+const DEFAULT_CODEX_WINDOWS: CodexWindows = {
+  contextWindow: 272_000,
+  maxContextWindow: 272_000,
+};
+
+const positiveInteger = (value: unknown): number | undefined =>
+  typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : undefined;
+
+function projectGenericWindows(limit: ModelLimit | undefined): CodexWindows | undefined {
+  const input = positiveInteger(limit?.input);
+  const context = positiveInteger(limit?.context);
+  if (input === undefined && context === undefined) return undefined;
+  if (input !== undefined && context !== undefined && input > context) return undefined;
+  return {
+    contextWindow: input ?? context!,
+    maxContextWindow: context ?? input!,
+  };
+}
+
+function officialWindowOverrides(row: CodexUpstreamModel | undefined): Partial<CodexWindows> {
+  if (row === undefined) return {};
+  const context = positiveInteger(row['context_window']);
+  const maximum = positiveInteger(row['max_context_window']);
+  if (context !== undefined && maximum !== undefined && context > maximum) return {};
+  return {
+    ...(context === undefined ? {} : { contextWindow: context }),
+    ...(maximum === undefined ? {} : { maxContextWindow: maximum }),
+  };
+}
+
+function resolveCodexWindows(model: ResolvedModel, codexBySlug: ReadonlyMap<string, CodexUpstreamModel>): CodexWindows {
+  const candidates = model.candidates.map((candidate): CodexWindows => {
+    const configured = projectGenericWindows(candidate.configMetadata?.limit);
+    if (configured !== undefined) return configured;
+
+    const generic =
+      projectGenericWindows(candidate.upstreamMetadata?.limit) ??
+      projectGenericWindows(model.fallbackMetadata?.limit) ??
+      DEFAULT_CODEX_WINDOWS;
+    const official = officialWindowOverrides(codexBySlug.get(candidate.modelId));
+    const overlaid = {
+      contextWindow: official.contextWindow ?? generic.contextWindow,
+      maxContextWindow: official.maxContextWindow ?? generic.maxContextWindow,
+    };
+    return overlaid.contextWindow <= overlaid.maxContextWindow ? overlaid : generic;
+  });
+  const aggregate = model.aggregation === ModelContextAggregation.Max ? Math.max : Math.min;
+  const resolved = {
+    contextWindow: aggregate(...candidates.map(({ contextWindow }) => contextWindow)),
+    maxContextWindow: aggregate(...candidates.map(({ maxContextWindow }) => maxContextWindow)),
+  };
+  return resolved.contextWindow <= resolved.maxContextWindow ? resolved : DEFAULT_CODEX_WINDOWS;
+}
 
 // Codex client 0.146.0 imposes two constraints on each /v1/models row:
 //   1. base_instructions is a required String; a row missing it fails the whole
@@ -51,35 +117,62 @@ export async function codexClientModels(
   const synthesizedInputs: { slug: string; displayName: string; entry: Record<string, unknown> }[] = [];
 
   for (const model of resolved) {
+    const primary = model.candidates[0]!;
+    const windows = resolveCodexWindows(model, bySlug);
     const row = bySlug.get(model.modelId);
     if (row !== undefined) {
-      // Case A is verbatim: display_name comes from the upstream row, so it may
-      // differ from the alias-only name that listModels/Case B derive. Intentional.
-      // A config context override still wins over the row's advertised window.
-      const contextOverride =
-        model.contextWindow === undefined
-          ? {}
-          : { context_window: model.contextWindow, max_context_window: model.contextWindow };
+      const configPatch = projectCodexMetadata(primary.configMetadata, false);
+      const entry: Record<string, unknown> = {
+        ...projectCodexMetadata(undefined, true),
+        ...projectCodexMetadata(model.fallbackMetadata, false),
+        ...projectCodexMetadata(primary.upstreamMetadata, false),
+        ...row,
+        ...normalizeInstructions(row, model.slug),
+        ...configPatch,
+        slug: model.slug,
+        id: model.slug,
+        display_name:
+          primary.configMetadata?.name ??
+          row.display_name ??
+          primary.upstreamMetadata?.name ??
+          model.fallbackMetadata?.name ??
+          model.slug,
+        description:
+          primary.configMetadata?.description ??
+          row['description'] ??
+          primary.upstreamMetadata?.description ??
+          model.fallbackMetadata?.description ??
+          '',
+        context_window: windows.contextWindow,
+        max_context_window: windows.maxContextWindow,
+      };
+      const levels = entry['supported_reasoning_levels'];
+      if (Array.isArray(levels) && levels.length === 0) delete entry['default_reasoning_level'];
       templated.push({
-        entry: {
-          ...row,
-          ...normalizeInstructions(row, model.slug),
-          ...contextOverride,
-          slug: model.slug,
-          id: model.slug,
-        },
+        entry,
         priority: row.priority,
       });
       continue;
     }
+    const capabilities = resolveModelCapabilities(model);
+    const description = resolveModelField(model, (metadata) => metadata.description);
+    const metadata =
+      capabilities === undefined && description === undefined
+        ? undefined
+        : {
+            ...(description === undefined ? {} : { description }),
+            ...(capabilities === undefined ? {} : { capabilities }),
+          };
+    const displayName = resolveModelField(model, (metadata) => metadata.name) ?? model.slug;
     synthesizedInputs.push({
       slug: model.slug,
-      displayName: model.displayName,
+      displayName,
       entry: assembleCodexModel({
         slug: model.slug,
-        displayName: model.displayName,
-        metadata: model.effectiveMetadata,
-        contextWindow: model.contextWindow,
+        displayName,
+        metadata,
+        contextWindow: windows.contextWindow,
+        maxContextWindow: windows.maxContextWindow,
         template,
       }),
     });

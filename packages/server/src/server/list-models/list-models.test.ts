@@ -4,8 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { clearModelsCache, fileCacheStorage, type ModelsDevModel } from '@aio-proxy/core';
-import { ProviderKind } from '@aio-proxy/types';
-import type { ModelContextAggregation } from '@aio-proxy/types';
+import { ModelContextAggregation, ProviderKind } from '@aio-proxy/types';
 
 import type { RuntimeProviderInstance } from '../../runtime';
 import type { ServerState } from '../../server-state';
@@ -83,22 +82,28 @@ function fakeState(
   } as unknown as ServerState;
 }
 
-test('projects config capability and limit.output overrides, and max_input distinct from context', async () => {
-  // catalog: structured_output true, output 8k, input 500k, context 128k
+test('projects composite metadata fields from their resolved sources', async () => {
   await seedCatalog({
-    'gpt-x': modelsDevModel('gpt-x', 'gpt-x', {
+    'gpt-x': modelsDevModel('gpt-x', 'Fallback Name', {
+      release_date: '1970-01-04',
       structured_output: true,
-      limit: { context: 128_000, input: 500_000, output: 8_000 },
+      limit: { context: 1_050_000, input: 922_000, output: 64_000 },
     }),
   });
-  // config overrides: structuredOutput false, limit.output 4k, limit.input 272k
   const provider = {
     id: 'p1',
     kind: ProviderKind.Api,
     enabled: true,
     alias: { 'gpt-x': { model: 'up-x', preserve: false } },
-    metadata: {
-      'up-x': { capabilities: { structuredOutput: false }, limit: { input: 272_000, output: 4_000 } },
+    configMetadata: {
+      'up-x': {
+        name: 'Configured Name',
+        capabilities: { releaseDate: '1970-01-02', structuredOutput: false },
+        limit: { context: 400_000, input: 272_000, output: 128_000 },
+      },
+    },
+    upstreamMetadata: {
+      'up-x': { capabilities: { releaseDate: '1970-01-03' } },
     },
     model: { invoke: async function* () {} },
   } as unknown as RuntimeProviderInstance;
@@ -106,6 +111,26 @@ test('projects config capability and limit.output overrides, and max_input disti
   const result = await listModels(fakeState([provider]));
   const item = result.data[0]!;
   expect(item.capabilities?.structured_outputs).toEqual({ supported: false });
-  expect(item.max_tokens).toBe(4_000); // config limit.output wins
-  expect(item.max_input_tokens).toBe(272_000); // config limit.input, NOT context 128k or catalog 500k
+  expect(item.max_input_tokens).toBe(272_000);
+  expect(item.max_tokens).toBe(128_000);
+  expect(item.display_name).toBe('Configured Name');
+  expect(item.created).toBe(86_400);
+  expect(item.created_at).toBe('1970-01-02T00:00:00.000Z');
+});
+
+test('max_tokens follows the configured aggregation across candidates', async () => {
+  await seedCatalog({});
+  const provider = (id: string, model: string, output: number) =>
+    ({
+      id,
+      kind: ProviderKind.Api,
+      enabled: true,
+      alias: { shared: { model, preserve: false } },
+      configMetadata: { [model]: { limit: { output } } },
+      model: { invoke: async function* () {} },
+    }) as unknown as RuntimeProviderInstance;
+  const candidates = [provider('p1', 'up-first', 128_000), provider('p2', 'up-second', 64_000)];
+
+  expect((await listModels(fakeState(candidates, ModelContextAggregation.Min))).data[0]?.max_tokens).toBe(64_000);
+  expect((await listModels(fakeState(candidates, ModelContextAggregation.Max))).data[0]?.max_tokens).toBe(128_000);
 });

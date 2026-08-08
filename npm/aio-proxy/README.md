@@ -99,7 +99,7 @@ Editors that support `$schema` can provide completion and validation. Use `{{env
 
 ### Model metadata and pricing
 
-Each `api` or `ai-sdk` Provider may declare `metadata`, keyed by **upstream model id**, to override client-facing metadata and cost accounting for that Provider's models. User-supplied values take precedence over auto-discovered [models.dev](https://models.dev) data, which in turn wins over built-in defaults. Unknown fields are preserved and warned about rather than rejected, while invalid values (for example a negative price or a non-positive context limit) fail validation with a clear error.
+Each `api`, `ai-sdk`, or `oauth` Provider may declare `metadata`, keyed by **upstream model id**, to override client-facing metadata and cost accounting for that Provider's models. Metadata is resolved per field in this order: metadata config (including `extend`) > protocol/provider catalog > [models.dev](https://models.dev) > protocol default. Aliases only auto-discover catalog fallback by their public slug. Unknown fields are preserved and warned about rather than rejected, while invalid values (for example a negative price or a non-positive context limit) fail validation with a clear error.
 
 ```jsonc
 {
@@ -120,8 +120,8 @@ Each `api` or `ai-sdk` Provider may declare `metadata`, keyed by **upstream mode
           "name": "GPT-5", // client-facing display name
           "description": "Frontier model",
           "limit": {
-            "context": 1000000, // context window exposed to clients (e.g. Codex `/models`)
-            "input": 1000000,
+            "context": 400000,
+            "input": 272000,
             "output": 128000,
           },
           "capabilities": {
@@ -150,6 +150,8 @@ Each `api` or `ai-sdk` Provider may declare `metadata`, keyed by **upstream mode
   },
 }
 ```
+
+`limit.context` is the maximum total context, `limit.input` is the maximum input tokens, and `limit.output` is the maximum output tokens. Configured `input` and `output` cannot exceed configured `context`. For Codex, these distinct limits project to `context_window = input ?? context` and `max_context_window = context ?? input`; `output` is never used as a Codex context window.
 
 When a request is billed, the Provider that actually served it supplies the price: a configured `cost` wins over the models.dev catalog, and the recorded usage row notes whether the price came from `config`, `models-dev`, or a built-in default (`priceSource`).
 
