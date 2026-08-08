@@ -43,7 +43,7 @@ const providerColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
     if (provider === undefined) return null;
     const name = displayName(provider);
     return (
-      <div className={row.depth === 0 ? 'min-w-40' : 'min-w-40 pl-7'}>
+      <div className="max-w-48 min-w-16">
         {canEditProvider(provider) ? (
           <Link
             id={`provider-link-${provider.id}`}
@@ -105,7 +105,7 @@ const weightColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
   header: tableHead(() => m['dashboard.providers.table.col_weight'](), 'text-center'),
   cell: ({ row }) => {
     const provider = concreteProvider(row.original);
-    return provider === undefined ? null : (provider.weight ?? 'N/A');
+    return provider === undefined ? null : (provider.weight ?? 0);
   },
 };
 

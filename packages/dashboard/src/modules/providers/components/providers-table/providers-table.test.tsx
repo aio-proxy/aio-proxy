@@ -236,7 +236,7 @@ describe('providers table', () => {
     });
   });
 
-  test('distinguishes an unavailable Provider weight from an explicit zero', () => {
+  test('renders an omitted Provider weight as its effective zero default', () => {
     renderProvidersTable(
       <ProvidersTable
         providers={[
@@ -246,13 +246,13 @@ describe('providers table', () => {
       />,
     );
 
-    expect(within(screen.getByTestId('provider-row-weight-missing')).getByText('N/A')).toBeTruthy();
+    const missing = within(screen.getByTestId('provider-row-weight-missing'));
     const zero = within(screen.getByTestId('provider-row-weight-zero'));
     const weightColumnIndex = screen
       .getAllByRole('columnheader')
       .indexOf(screen.getByRole('columnheader', { name: /Weight|权重/u }));
+    expect(missing.getAllByRole('cell')[weightColumnIndex]).toHaveTextContent('0');
     expect(zero.getAllByRole('cell')[weightColumnIndex]).toHaveTextContent('0');
-    expect(zero.queryByText('N/A')).toBeNull();
   });
 
   test('sorts Provider rows without rendering table toolbar controls', () => {
