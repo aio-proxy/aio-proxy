@@ -18,6 +18,7 @@ export default defineConfig({
         },
       },
     ],
+    'unicorn/no-nested-ternary': 'error',
     'import/no-duplicates': 'error',
     'max-lines-per-function': [
       'warn',
