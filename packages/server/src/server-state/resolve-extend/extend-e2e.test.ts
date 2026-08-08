@@ -76,10 +76,10 @@ describe('metadata.extend end-to-end wiring', () => {
   it('surfaces inherited name/limit on the runtime provider for model-resolution to read', async () => {
     const provider = await resolveAndMaterialize();
     // model-resolution's resolveDisplayName / candidateContextWindow both read
-    // provider.metadata[modelId].{name,limit}. These are private helpers, so we
+    // provider.configMetadata[modelId].{name,limit}. These are private helpers, so we
     // assert on exactly the object they consume — this fails if extend→materialize
     // wiring stops delivering the merged metadata onto the runtime provider.
-    const entry = provider.metadata?.[modelId];
+    const entry = provider.configMetadata?.[modelId];
 
     // User field wins (name) — proves the merge preserved the explicit override.
     expect(entry?.name).toBe('My Aliased GPT');
@@ -90,7 +90,7 @@ describe('metadata.extend end-to-end wiring', () => {
 
   it('feeds inherited cost into candidateConfigPrice so billing tags priceSource:config', async () => {
     const provider = await resolveAndMaterialize();
-    // The billing consumer reads provider.metadata[modelId].cost via this exact
+    // The billing consumer reads provider.configMetadata[modelId].cost via this exact
     // helper; a defined price with the INHERITED cost.output present proves the
     // extend-inherited cost reached billing (any config cost => priceSource:'config').
     const price = candidateConfigPrice(provider, modelId);

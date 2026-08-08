@@ -44,6 +44,6 @@ export function candidateConfigPrice(
   provider: RuntimeProviderInstance,
   modelId: string,
 ): OpenRouterModelPrice | undefined {
-  const cost = provider.metadata?.[modelId]?.cost;
+  const cost = provider.configMetadata?.[modelId]?.cost;
   return cost === undefined ? undefined : configModelPrice(modelId, cost);
 }

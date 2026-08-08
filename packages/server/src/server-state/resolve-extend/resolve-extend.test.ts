@@ -57,6 +57,30 @@ function metadataOf(config: Config, providerId: string): Record<string, unknown>
 }
 
 describe('applyMetadataExtend', () => {
+  it('materializes metadata.extend for an OAuth Provider', async () => {
+    const config = ConfigSchema.parse({
+      providers: {
+        person: {
+          kind: 'oauth',
+          plugin: '@example/oauth',
+          capability: 'default',
+          metadata: { model: { extend: 'openai/gpt-5.5', name: 'Configured OAuth Name' } },
+        },
+      },
+    });
+    const resolved = await applyMetadataExtend(config, undefined, {
+      getModels: stubGetModels({ 'openai/gpt-5.5': catalogModel() }),
+    });
+    const provider = resolved.providers[0];
+    if (provider?.kind !== ProviderKind.OAuth) throw new Error('expected OAuth Provider');
+
+    expect(provider.metadata?.model).toMatchObject({
+      name: 'Configured OAuth Name',
+      limit: { context: 400_000, input: 300_000, output: 128_000 },
+    });
+    expect(provider.metadata?.model.extend).toBeUndefined();
+  });
+
   it('two-layer merges catalog base under user fields with array replacement', async () => {
     const config = makeConfig({
       'my-gpt': {

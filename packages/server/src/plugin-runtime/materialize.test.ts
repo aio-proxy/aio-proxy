@@ -196,7 +196,10 @@ test('disabling and re-enabling reuses the runtime while updating enabled and al
     onDiagnosticChanged: () => {},
   };
 
-  const enabled = await materializePluginProvider({ ...options, config: { ...base, enabled: true } });
+  const enabled = await materializePluginProvider({
+    ...options,
+    config: { ...base, enabled: true, metadata: { model: { name: 'Before' } } },
+  });
   const disabled = await materializePluginProvider({
     ...options,
     config: { ...base, enabled: false, alias: { client: { model: 'model', preserve: false } } },
@@ -204,7 +207,12 @@ test('disabling and re-enabling reuses the runtime while updating enabled and al
   });
   const reenabled = await materializePluginProvider({
     ...options,
-    config: { ...base, enabled: true, alias: { client: { model: 'model', preserve: false } } },
+    config: {
+      ...base,
+      enabled: true,
+      alias: { client: { model: 'model', preserve: false } },
+      metadata: { model: { name: 'After' } },
+    },
     previous: disabled.cacheEntry,
   });
 
@@ -212,6 +220,7 @@ test('disabling and re-enabling reuses the runtime while updating enabled and al
   expect(disabled.provider).toBeUndefined();
   expect(disabled.cacheEntry?.provider).toMatchObject({ enabled: false, alias: { client: { model: 'model' } } });
   expect(reenabled.provider).toMatchObject({ enabled: true, alias: { client: { model: 'model' } } });
+  expect(reenabled.provider?.configMetadata?.model?.name).toBe('After');
 });
 
 test('plugin descriptor import is cached while setup runs for every registry snapshot', async () => {

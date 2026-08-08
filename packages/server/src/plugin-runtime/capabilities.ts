@@ -58,11 +58,12 @@ function rawCapability(rawResolver: RawResolver | undefined, catalog: ModelCatal
 }
 
 export function withRoutingConfig(provider: RuntimeProviderInstance, config: OAuthProvider): RuntimeProviderInstance {
-  const { alias: _previousAlias, ...previousProvider } = provider;
+  const { alias: _previousAlias, configMetadata: _previousConfigMetadata, ...previousProvider } = provider;
   return {
     ...previousProvider,
     enabled: config.enabled,
     ...(config.alias === undefined ? {} : { alias: config.alias }),
+    ...(config.metadata === undefined ? {} : { configMetadata: config.metadata }),
   };
 }
 
@@ -88,14 +89,15 @@ export function createRuntimeProvider(
   const providerTools = providerToolCapability(Reflect.get(result, 'providerTools'));
   const supportedProviderTools = new Set(providerTools?.supported);
   const tokenCount = tokenCountCapability(Reflect.get(result, 'tokenCount'));
-  const metadata = modelMetadataRecord(catalog);
+  const upstreamMetadata = modelMetadataRecord(catalog);
   return {
     id: config.id,
     kind: ProviderKind.OAuth,
     enabled: config.enabled,
     models: catalog.language.map(({ id }) => id),
     ...(config.alias === undefined ? {} : { alias: config.alias }),
-    metadata,
+    ...(config.metadata === undefined ? {} : { configMetadata: config.metadata }),
+    upstreamMetadata,
     plugin: config.plugin,
     capability: config.capability,
     ...(raw === undefined ? {} : { raw }),
@@ -103,7 +105,7 @@ export function createRuntimeProvider(
     model: {
       invoke: createProviderV4Invoke(config.id, result.provider),
       supportsProviderTool: (type) => supportedProviderTools.has(type),
-      targetProtocol: (modelId) => metadata[modelId]?.protocol,
+      targetProtocol: (modelId) => upstreamMetadata[modelId]?.protocol,
     },
   };
 }
