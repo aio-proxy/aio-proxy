@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, rs, test } from '@rstest/core';
 
+import { queryKeys } from '@/lib/query-keys';
+
 import { getProviderUsage, providerUsageQueryOptions } from '.';
 
 const mocks = rs.hoisted(() => ({ usageGet: rs.fn() }));
@@ -50,21 +52,27 @@ describe('Provider usage service', () => {
         usageResponse('tokens', [{ 'dimension:openai%2Emain': '40' }, { 'dimension:openai%2Emain': '80' }]),
       )
       .mockResolvedValueOnce(
-        usageResponse('cost', [{ 'dimension:openai%2Emain': '3' }, { 'dimension:openai%2Emain': '6' }]),
+        usageResponse('cost', [
+          { 'dimension:openai%2Emain': '3', 'dimension:anthropic%2Ebackup': '7' },
+          { 'dimension:openai%2Emain': '6' },
+        ]),
       );
 
     expect(await getProviderUsage()).toEqual(
-      new Map([['openai.main', { requestCount: 3n, totalTokens: 120n, estimatedCostNanoUsd: 9n }]]),
+      new Map([
+        ['openai.main', { requestCount: 3n, totalTokens: 120n, estimatedCostNanoUsd: 9n }],
+        ['anthropic.backup', { requestCount: 0n, totalTokens: 0n, estimatedCostNanoUsd: 7n }],
+      ]),
     );
     expect(mocks.usageGet).toHaveBeenCalledWith({
       query: { range: '24h', metric: 'requests', groupBy: 'provider' },
     });
     expect(mocks.usageGet).toHaveBeenCalledTimes(3);
     expect(providerUsageQueryOptions()).toMatchObject({
-      queryKey: ['dashboard', 'usage', '24h', 'requests', 'provider', undefined],
       refetchInterval: 60_000,
       refetchIntervalInBackground: false,
     });
+    expect(providerUsageQueryOptions().queryKey).not.toEqual(queryKeys.usage('24h', 'requests', 'provider'));
   });
 
   test('rejects a failed usage response', async () => {

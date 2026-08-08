@@ -18,6 +18,7 @@ export const queryKeys = {
   providerEditView: (id: string) => ['providers', id, 'edit-view'],
   providerPackageStatus: (packageName: string) => ['providers', 'package-status', packageName],
   providerProbe: (id: string) => ['providers', id, 'probe'],
+  providerUsage: ['dashboard', 'providers', 'usage'],
   providers: ['providers'],
   settings: ['settings'],
   // Search shape stays structural: src/lib must not depend on a module's types.

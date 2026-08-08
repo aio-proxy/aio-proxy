@@ -63,7 +63,7 @@ export const getProviderUsage = async (): Promise<ReadonlyMap<string, ProviderUs
 
 export const providerUsageQueryOptions = () =>
   queryOptions({
-    queryKey: queryKeys.usage('24h', 'requests', 'provider'),
+    queryKey: queryKeys.providerUsage,
     queryFn: getProviderUsage,
     refetchInterval: 60_000,
     refetchIntervalInBackground: false,
