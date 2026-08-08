@@ -11,11 +11,10 @@ interface TraceLatencyCellProps {
   readonly ttftMs?: number | undefined;
 }
 
-const dotClassName = (milliseconds: number) =>
-  cn(
-    'size-1.5 rounded-full',
-    milliseconds < 1_000 ? 'bg-primary' : milliseconds < 3_000 ? 'bg-muted-foreground' : 'bg-destructive',
-  );
+const dotClassName = (milliseconds: number) => {
+  if (milliseconds < 1_000) return cn('size-1.5 rounded-full', 'bg-primary');
+  return cn('size-1.5 rounded-full', milliseconds < 3_000 ? 'bg-muted-foreground' : 'bg-destructive');
+};
 
 export const TraceLatencyCell: React.FC<TraceLatencyCellProps> = ({ durationMs, stream = false, ttftMs }) => (
   <div className="grid min-w-32 grid-cols-[0.375rem_minmax(0,1fr)] items-center gap-x-2 gap-y-1">

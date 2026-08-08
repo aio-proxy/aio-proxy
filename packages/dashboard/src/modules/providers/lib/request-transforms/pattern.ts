@@ -3,7 +3,8 @@ const REGEX_META = /[\\^$.*+?()[\]{}|]/u;
 export const patternToRegex = (pattern: string): string => {
   let source = '';
   for (const character of pattern) {
-    source += character === '*' ? '.*' : REGEX_META.test(character) ? `\\${character}` : character;
+    if (character === '*') source += '.*';
+    else source += REGEX_META.test(character) ? `\\${character}` : character;
   }
   return `^(?:${source})$`;
 };

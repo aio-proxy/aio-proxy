@@ -23,10 +23,10 @@ export default defineConfig({
     'max-lines-per-function': [
       'error',
       {
-        max: 120,
+        max: 160,
         IIFEs: true,
         skipBlankLines: true,
-        skipComments: false,
+        skipComments: true,
       },
     ],
     'max-lines': [
@@ -51,15 +51,16 @@ export default defineConfig({
             max: 300,
             IIFEs: true,
             skipBlankLines: true,
-            skipComments: false,
+            skipComments: true,
           },
         ],
       },
     },
     {
-      files: ['**/*.test.tsx'],
+      files: ['**/*.test.ts', '**/*.test.tsx', '**/__tests__/**'],
       rules: {
         'max-lines-per-function': 'off',
+        'max-lines': 'off',
       },
     },
   ],

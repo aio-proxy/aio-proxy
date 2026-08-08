@@ -27,17 +27,17 @@ const mocks = rs.hoisted(() => ({
 
 rs.mock('@tanstack/react-query', () => ({
   queryOptions: <T,>(options: T) => options,
-  useQuery: (options: { queryKey: readonly string[] }) => ({
-    data:
-      options.queryKey[0] === 'oauth-capabilities'
-        ? { capabilities: [capability] }
-        : mocks.session === undefined
-          ? undefined
-          : { session: mocks.session },
-    isError: options.queryKey[0] === 'oauth-session' && mocks.sessionError,
-    isLoading: false,
-    refetch: mocks.refetch,
-  }),
+  useQuery: (options: { queryKey: readonly string[] }) => {
+    let data: { capabilities: DashboardOAuthCapability[] } | { session: DashboardOAuthSession } | undefined;
+    if (options.queryKey[0] === 'oauth-capabilities') data = { capabilities: [capability] };
+    else if (mocks.session !== undefined) data = { session: mocks.session };
+    return {
+      data,
+      isError: options.queryKey[0] === 'oauth-session' && mocks.sessionError,
+      isLoading: false,
+      refetch: mocks.refetch,
+    };
+  },
   useQueryClient: () => ({ invalidateQueries: mocks.invalidate }),
   useMutation: () => ({ mutate: mocks.start, isPending: false }),
 }));

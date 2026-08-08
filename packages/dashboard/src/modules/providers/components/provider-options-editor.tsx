@@ -114,15 +114,13 @@ export const ProviderOptionsEditor: FC<Props> = ({ field, schemaState, onValidit
   }
 
   const hasSchemaError = validation.markers.some(({ severity }) => severity === 'error');
-  const error = !validation.syntaxValid
-    ? m['dashboard.providers.form.options_json_error']({})
-    : !rootValid
-      ? m['dashboard.providers.form.options_object_error']()
-      : hasSchemaError || requiredRootMissing
-        ? m['dashboard.providers.form.options_schema_error']()
-        : schemaState.phase === 'status_error' || schemaState.schemaResolution === 'error'
-          ? m['dashboard.providers.form.options_schema_load_error']()
-          : null;
+  let error: string | null = null;
+  if (!validation.syntaxValid) error = m['dashboard.providers.form.options_json_error']({});
+  else if (!rootValid) error = m['dashboard.providers.form.options_object_error']();
+  else if (hasSchemaError || requiredRootMissing) error = m['dashboard.providers.form.options_schema_error']();
+  else if (schemaState.phase === 'status_error' || schemaState.schemaResolution === 'error') {
+    error = m['dashboard.providers.form.options_schema_load_error']();
+  }
   const errorId = `${field.name}-error`;
   const dialogOpen =
     installDialogPackage !== null && installRequiredPackage !== null && installDialogPackage === installRequiredPackage;

@@ -37,36 +37,25 @@ export const OAuthProviderGroupRow: React.FC<OAuthProviderGroupRowProps> = ({
   const models = [...new Set(group.accounts.flatMap(({ provider }) => provider.clientModels))];
   const provider = group.accounts[0]?.provider;
   const pluginPresentation = provider?.plugin === undefined ? undefined : pluginPresentations.get(provider.plugin);
-  const pluginLabel =
-    provider?.plugin === undefined
-      ? group.groupKey
-      : pluginPresentation?.displayName === undefined
+  let pluginLabel = group.groupKey;
+  if (provider?.plugin !== undefined) {
+    pluginLabel =
+      pluginPresentation?.displayName === undefined
         ? provider.plugin
         : resolveDashboardText(pluginPresentation.displayName);
-  const groupLabel =
-    provider === undefined
-      ? group.groupKey
-      : provider.capability === 'default'
-        ? pluginLabel
-        : `${pluginLabel}/${provider.capability ?? ''}`;
+  }
+  let groupLabel = group.groupKey;
+  if (provider !== undefined) {
+    groupLabel = provider.capability === 'default' ? pluginLabel : `${pluginLabel}/${provider.capability ?? ''}`;
+  }
   const toggleExpanded = () => row.toggleExpanded();
   return (
     <Subscribe source={row.table.atoms.expanded} selector={() => row.getIsExpanded()}>
-      {(expanded) => (
-        <TableRow
-          tabIndex={0}
-          data-testid={`provider-group-${group.groupKey}`}
-          className="cursor-pointer focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:outline-none"
-          onClick={toggleExpanded}
-          onKeyDown={(event) => {
-            if (event.key !== 'Enter' && event.key !== ' ') return;
-            event.preventDefault();
-            toggleExpanded();
-          }}
-        >
-          {row.getAllCells().map((cell) => (
-            <ProviderTableCell key={cell.id} cell={cell}>
-              {cell.column.id === 'aggregate' ? (
+      {(expanded) => {
+        const renderCell = (cell: ReturnType<typeof row.getAllCells>[number]) => {
+          switch (cell.column.id) {
+            case 'aggregate':
+              return (
                 <Button
                   type="button"
                   variant="ghost"
@@ -85,24 +74,46 @@ export const OAuthProviderGroupRow: React.FC<OAuthProviderGroupRowProps> = ({
                 >
                   {expanded ? <ChevronDown aria-hidden="true" /> : <ChevronRight aria-hidden="true" />}
                 </Button>
-              ) : cell.column.id === 'provider' ? (
+              );
+            case 'provider':
+              return (
                 <div className="flex items-center gap-2 font-medium">
                   {pluginPresentation?.icon === undefined ? null : (
                     <PluginIcon icon={pluginPresentation.icon} size={16} className="shrink-0" />
                   )}
                   <span>{groupLabel}</span>
                 </div>
-              ) : cell.column.id === 'type' ? (
-                <span>OAuth</span>
-              ) : cell.column.id === 'models' ? (
-                <ProviderModelsCell models={models} />
-              ) : cell.column.id === 'usage' ? (
-                <span className="tabular-nums">{formatCompactTokenCount(requestCount)}</span>
-              ) : null}
-            </ProviderTableCell>
-          ))}
-        </TableRow>
-      )}
+              );
+            case 'type':
+              return <span>OAuth</span>;
+            case 'models':
+              return <ProviderModelsCell models={models} />;
+            case 'usage':
+              return <span className="tabular-nums">{formatCompactTokenCount(requestCount)}</span>;
+            default:
+              return null;
+          }
+        };
+        return (
+          <TableRow
+            tabIndex={0}
+            data-testid={`provider-group-${group.groupKey}`}
+            className="cursor-pointer focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:outline-none"
+            onClick={toggleExpanded}
+            onKeyDown={(event) => {
+              if (event.key !== 'Enter' && event.key !== ' ') return;
+              event.preventDefault();
+              toggleExpanded();
+            }}
+          >
+            {row.getAllCells().map((cell) => (
+              <ProviderTableCell key={cell.id} cell={cell}>
+                {renderCell(cell)}
+              </ProviderTableCell>
+            ))}
+          </TableRow>
+        );
+      }}
     </Subscribe>
   );
 };

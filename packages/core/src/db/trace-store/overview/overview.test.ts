@@ -76,17 +76,15 @@ function seedTrace(store: TraceStore, seed: TraceSeed): void {
     seed.usage === undefined || finalProviderId === undefined
       ? undefined
       : { providerId: finalProviderId, modelId: finalModelId, ...seed.usage };
+  let summary = finalProviderId === undefined ? { terminationReason: 'failure' as const } : { finalProviderId };
+  if (seed.terminationReason !== undefined) summary = { terminationReason: seed.terminationReason };
   store.complete(
     completion({
       traceId,
       rootSpanId: spanId,
       spans: [rootSpan({ traceId, spanId, startedAt, endedAt, attributes: rootAttributes }), ...attempts],
       summary: {
-        ...(seed.terminationReason !== undefined
-          ? { terminationReason: seed.terminationReason }
-          : finalProviderId === undefined
-            ? { terminationReason: 'failure' as const }
-            : { finalProviderId }),
+        ...summary,
         ...(finalProviderId === undefined ? {} : { finalModelId }),
         ...(usage === undefined ? {} : { usage }),
       },

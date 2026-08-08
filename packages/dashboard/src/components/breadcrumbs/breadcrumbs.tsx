@@ -24,17 +24,12 @@ export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({ items }) => (
     <BreadcrumbList>
       {items.map((item, index) => {
         const isCurrent = index === items.length - 1;
+        let content = <BreadcrumbLink render={<Link to={item.to} />}>{item.label}</BreadcrumbLink>;
+        if (item.to === undefined) content = <span>{item.label}</span>;
+        if (isCurrent && item.to === undefined) content = <BreadcrumbPage>{item.label}</BreadcrumbPage>;
         return (
           <Fragment key={`breadcrumb-${index}`}>
-            <BreadcrumbListItem>
-              {isCurrent && item.to === undefined ? (
-                <BreadcrumbPage>{item.label}</BreadcrumbPage>
-              ) : item.to === undefined ? (
-                <span>{item.label}</span>
-              ) : (
-                <BreadcrumbLink render={<Link to={item.to} />}>{item.label}</BreadcrumbLink>
-              )}
-            </BreadcrumbListItem>
+            <BreadcrumbListItem>{content}</BreadcrumbListItem>
             {isCurrent ? null : <BreadcrumbSeparator />}
           </Fragment>
         );

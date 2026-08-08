@@ -38,12 +38,10 @@ const parseValue = (value: unknown): Extract<RequestTransformStageDraft, { kind:
   return { kind: 'expression', expression: parseRequestTransformExpression(value) };
 };
 
-const bodyPath = (target: string): string | undefined =>
-  target === 'request.body'
-    ? ''
-    : target.startsWith('request.body.')
-      ? target.slice('request.body.'.length)
-      : undefined;
+const bodyPath = (target: string): string | undefined => {
+  if (target === 'request.body') return '';
+  return target.startsWith('request.body.') ? target.slice('request.body.'.length) : undefined;
+};
 
 export const parseRequestTransformStages = (
   stages: readonly ProviderRequestTransformStage[],

@@ -40,7 +40,7 @@ function stableJsonValue(value: unknown, seen = new Set<object>()): string | und
     const keys = Reflect.ownKeys(value);
     if (keys.some((key) => typeof key !== 'string')) return undefined;
     const fields: string[] = [];
-    for (const key of (keys as string[]).sort((left, right) => (left < right ? -1 : left > right ? 1 : 0))) {
+    for (const key of (keys as string[]).sort((left, right) => (left === right ? 0 : Number(left > right)))) {
       const descriptor = Object.getOwnPropertyDescriptor(value, key);
       if (descriptor === undefined || !descriptor.enumerable || !('value' in descriptor)) return undefined;
       const encoded = stableJsonValue(descriptor.value, seen);

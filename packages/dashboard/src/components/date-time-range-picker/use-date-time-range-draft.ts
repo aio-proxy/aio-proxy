@@ -39,8 +39,8 @@ export const useDateTimeRangeDraft = ({ value, pattern, locale, min, max, onChan
   const errors = validation.success ? [] : validation.error.issues;
   const from = parseDateTimeEndpoint(draft.from, 'from', pattern, locale);
   const to = parseDateTimeEndpoint(draft.to, 'to', pattern, locale);
-  const selected: DateRange | undefined =
-    from === undefined && to === undefined ? undefined : to === undefined ? { from } : { from, to };
+  let selected: DateRange | undefined;
+  if (from !== undefined || to !== undefined) selected = to === undefined ? { from } : { from, to };
   const minimum = cloneValidDate(min);
   const maximum = cloneValidDate(max);
   const disabledDates: Matcher[] = [

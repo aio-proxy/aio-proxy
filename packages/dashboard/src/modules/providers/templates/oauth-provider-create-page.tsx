@@ -136,21 +136,23 @@ export const OAuthProviderCreatePage: React.FC<OAuthProviderCreatePageProps> = (
               }}
             </form.Subscribe>
           </form>
-        ) : session === undefined ? null : (
-          <OAuthAuthorizationPanel
-            session={session}
-            isPending={callbackMutation.isPending || cancelMutation.isPending}
-            onSubmitCallback={(callbackUrl) =>
-              callbackMutation.mutate({ id: session.id, callbackUrl }, { onSuccess: () => sessionQuery.refetch() })
-            }
-            onCancel={() => {
-              if (session.status === 'failed' || session.status === 'cancelled') {
-                onSessionIdChange(undefined);
-                return;
+        ) : (
+          session !== undefined && (
+            <OAuthAuthorizationPanel
+              session={session}
+              isPending={callbackMutation.isPending || cancelMutation.isPending}
+              onSubmitCallback={(callbackUrl) =>
+                callbackMutation.mutate({ id: session.id, callbackUrl }, { onSuccess: () => sessionQuery.refetch() })
               }
-              cancelMutation.mutate(session.id);
-            }}
-          />
+              onCancel={() => {
+                if (session.status === 'failed' || session.status === 'cancelled') {
+                  onSessionIdChange(undefined);
+                  return;
+                }
+                cancelMutation.mutate(session.id);
+              }}
+            />
+          )
         )}
       </div>
     </PageContainer>

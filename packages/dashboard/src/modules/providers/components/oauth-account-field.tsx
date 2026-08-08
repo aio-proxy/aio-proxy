@@ -153,15 +153,11 @@ export const OAuthAccountField: React.FC<OAuthAccountFieldProps> = (props) => {
         type={field.type === 'number' ? 'number' : 'text'}
         value={typeof current === 'string' || typeof current === 'number' ? current : ''}
         placeholder={field.placeholder === undefined ? undefined : resolveDashboardText(field.placeholder)}
-        onChange={(event) =>
-          setPublic(
-            field.type === 'number'
-              ? event.target.value === ''
-                ? undefined
-                : Number(event.target.value)
-              : event.target.value,
-          )
-        }
+        onChange={(event) => {
+          let value: string | number | undefined = event.target.value;
+          if (field.type === 'number') value = value === '' ? undefined : Number(value);
+          setPublic(value);
+        }}
       />
       {description === undefined ? null : <p className="text-sm text-muted-foreground">{description}</p>}
     </Field>

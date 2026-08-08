@@ -113,13 +113,14 @@ export const TracesPage: React.FC<TracesPageProps> = ({ search, onSearchChange, 
                 <SidebarTrigger aria-label={m['dashboard.traces.filters']()} />
               </div>
               <div className="min-h-0 min-w-0 flex-1 pb-3 sm:pb-4">
-                {query.isLoading ? (
+                {query.isLoading && (
                   <div className="mx-3 space-y-2 sm:mx-4" role="status" aria-label={m['dashboard.traces.loading']()}>
                     {['a', 'b', 'c', 'd', 'e', 'f'].map((key) => (
                       <Skeleton className="h-12 w-full" key={key} />
                     ))}
                   </div>
-                ) : query.isError ? (
+                )}
+                {!query.isLoading && query.isError && (
                   <Empty>
                     <EmptyTitle>{m['dashboard.traces.error_title']()}</EmptyTitle>
                     <EmptyDescription>{m['dashboard.traces.error_description']()}</EmptyDescription>
@@ -138,7 +139,8 @@ export const TracesPage: React.FC<TracesPageProps> = ({ search, onSearchChange, 
                       <Button onClick={() => void query.refetch()}>{m['dashboard.traces.refresh']()}</Button>
                     )}
                   </Empty>
-                ) : query.data?.items.length === 0 ? (
+                )}
+                {!query.isLoading && !query.isError && query.data?.items.length === 0 && (
                   <Empty>
                     <EmptyTitle>{m['dashboard.traces.empty_title']()}</EmptyTitle>
                     <EmptyDescription>{m['dashboard.traces.empty_description']()}</EmptyDescription>
@@ -146,7 +148,8 @@ export const TracesPage: React.FC<TracesPageProps> = ({ search, onSearchChange, 
                       {m['dashboard.traces.reset']()}
                     </Button>
                   </Empty>
-                ) : visibleData ? (
+                )}
+                {!query.isLoading && !query.isError && query.data?.items.length !== 0 && visibleData && (
                   <TracesTable
                     data={visibleData}
                     isFetching={query.isFetching || query.isPlaceholderData}
@@ -168,9 +171,8 @@ export const TracesPage: React.FC<TracesPageProps> = ({ search, onSearchChange, 
                     onNext={(pageToken) => onSearchChange({ ...search, pageToken })}
                     onSelect={onTraceSelect}
                   />
-                ) : (
-                  <Empty />
                 )}
+                {!query.isLoading && !query.isError && query.data?.items.length !== 0 && !visibleData && <Empty />}
               </div>
             </div>
           </SidebarInset>

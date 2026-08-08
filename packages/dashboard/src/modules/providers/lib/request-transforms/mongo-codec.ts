@@ -67,12 +67,9 @@ const readGetField = (value: unknown): { scope: HeaderScope; name: string } | un
   if (!isDocument(value) || !exactKeys(value, ['$getField']) || !isDocument(value['$getField'])) return undefined;
   const operation = value['$getField'];
   if (!exactKeys(operation, ['field', 'input']) || typeof operation['field'] !== 'string') return undefined;
-  const scope =
-    operation['input'] === '$request.headers'
-      ? 'request'
-      : operation['input'] === '$original.headers'
-        ? 'original'
-        : undefined;
+  let scope: 'request' | 'original' | undefined;
+  if (operation['input'] === '$request.headers') scope = 'request';
+  else if (operation['input'] === '$original.headers') scope = 'original';
   return scope === undefined ? undefined : { scope, name: operation['field'] };
 };
 const toUiField = (field: string): string => {
@@ -93,12 +90,11 @@ const toMongoField = (field: string): string => {
   }
   return field;
 };
-const mapExpression = (node: ExpressionNode, field: (value: string) => string): ExpressionNode =>
-  node.kind === 'field'
-    ? { ...node, field: field(node.field) }
-    : node.kind === 'func'
-      ? { ...node, args: node.args.map((argument) => mapExpression(argument, field)) }
-      : node;
+const mapExpression = (node: ExpressionNode, field: (value: string) => string): ExpressionNode => {
+  if (node.kind === 'field') return { ...node, field: field(node.field) };
+  if (node.kind === 'func') return { ...node, args: node.args.map((argument) => mapExpression(argument, field)) };
+  return node;
+};
 const unwrapLiterals = (node: ExpressionNode, literals: Map<string, unknown>): ExpressionNode => {
   if (node.kind !== 'func') return node.kind === 'field' ? { ...node, field: toUiField(node.field) } : node;
   if (node.fn === '__literal' && node.args.length === 1 && node.args[0]?.kind === 'value') {
@@ -244,11 +240,15 @@ const mapQuery = (
     const rule = { ...item, field: field(item.field) };
     if (rule.lhs) rule.lhs = literals ? unwrapLiterals(rule.lhs, literals) : prepareExpressionForExport(rule.lhs);
     if (rule.valueSource === 'expression') {
-      rule.value = Array.isArray(rule.value)
-        ? rule.value.map((node) => (literals ? unwrapLiterals(node, literals) : prepareExpressionForExport(node)))
-        : literals
-          ? unwrapLiterals(rule.value, literals)
-          : prepareExpressionForExport(rule.value);
+      if (Array.isArray(rule.value)) {
+        rule.value = rule.value.map((node) =>
+          literals ? unwrapLiterals(node, literals) : prepareExpressionForExport(node),
+        );
+      } else if (literals) {
+        rule.value = unwrapLiterals(rule.value, literals);
+      } else {
+        rule.value = prepareExpressionForExport(rule.value);
+      }
     }
     return rule;
   }),

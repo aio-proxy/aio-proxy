@@ -64,10 +64,11 @@ export const UsageTrendChart: React.FC<UsageTrendChartProps> = ({ data }) => {
     data.series.map((series, index) => [series.key, { label: seriesLabel(series), color: seriesColor(series, index) }]),
   ) satisfies ChartConfig;
   const chartData = toUsageChartData(data);
-  const formatBucket = (value: string, tooltip: boolean) =>
-    format(parseISO(value), data.bucketUnit === 'hour' ? 'MMM d, HH:mm xxx' : tooltip ? 'PP' : 'MMM d', {
-      locale: dateLocale,
-    });
+  const formatBucket = (value: string, tooltip: boolean) => {
+    let pattern = tooltip ? 'PP' : 'MMM d';
+    if (data.bucketUnit === 'hour') pattern = 'MMM d, HH:mm xxx';
+    return format(parseISO(value), pattern, { locale: dateLocale });
+  };
   return (
     <Card>
       <UsageTrendTabs
