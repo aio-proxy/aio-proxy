@@ -85,6 +85,7 @@ function fakeState(
 test('projects composite metadata fields from their resolved sources', async () => {
   await seedCatalog({
     'gpt-x': modelsDevModel('gpt-x', 'Fallback Name', {
+      release_date: '1970-01-04',
       structured_output: true,
       limit: { context: 1_050_000, input: 922_000, output: 64_000 },
     }),
@@ -97,9 +98,12 @@ test('projects composite metadata fields from their resolved sources', async () 
     configMetadata: {
       'up-x': {
         name: 'Configured Name',
-        capabilities: { structuredOutput: false },
+        capabilities: { releaseDate: '1970-01-02', structuredOutput: false },
         limit: { context: 400_000, input: 272_000, output: 128_000 },
       },
+    },
+    upstreamMetadata: {
+      'up-x': { capabilities: { releaseDate: '1970-01-03' } },
     },
     model: { invoke: async function* () {} },
   } as unknown as RuntimeProviderInstance;
@@ -110,6 +114,8 @@ test('projects composite metadata fields from their resolved sources', async () 
   expect(item.max_input_tokens).toBe(272_000);
   expect(item.max_tokens).toBe(128_000);
   expect(item.display_name).toBe('Configured Name');
+  expect(item.created).toBe(86_400);
+  expect(item.created_at).toBe('1970-01-02T00:00:00.000Z');
 });
 
 test('max_tokens follows the configured aggregation across candidates', async () => {

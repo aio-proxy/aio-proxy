@@ -211,6 +211,38 @@ test('aggregates context, input, and output independently across candidates', as
   expect(resolveAggregatedLimit(max, 'output')).toBe(128_000);
 });
 
+test('uses only the first candidate for non-aggregated fields', async () => {
+  await seedCatalog({});
+  const provider = (id: string, modelId: string, name: string, structuredOutput: boolean, releaseDate: string) =>
+    ({
+      id,
+      kind: ProviderKind.Api,
+      enabled: true,
+      alias: { shared: { model: modelId, preserve: false } },
+      configMetadata: { [modelId]: { name, capabilities: { structuredOutput, releaseDate } } },
+      model: { invoke: async function* () {} },
+    }) as unknown as RuntimeProviderInstance;
+  const first = provider('p1', 'up-first', 'First', false, '1970-01-02');
+  const second = provider('p2', 'up-second', 'Second', true, '1970-01-03');
+
+  const model = (await resolveEnabledModels(fakeState([first, second])))[0]!;
+  expect(resolveModelField(model, (metadata) => metadata.name)).toBe('First');
+  expect(resolveModelField(model, (metadata) => metadata.capabilities?.releaseDate)).toBe('1970-01-02');
+  expect(resolveModelCapabilities(model)?.structuredOutput).toBe(false);
+});
+
+test('ignores missing candidate limits for both min and max aggregation', async () => {
+  await seedCatalog({});
+  const missing = slugProvider('p1', 'shared', 'up-missing');
+  const present = slugProvider('p2', 'shared', 'up-present', { output: 64_000 });
+
+  const min = (await resolveEnabledModels(fakeState([missing, present], ModelContextAggregation.Min)))[0]!;
+  expect(resolveAggregatedLimit(min, 'output')).toBe(64_000);
+
+  const max = (await resolveEnabledModels(fakeState([missing, present], ModelContextAggregation.Max)))[0]!;
+  expect(resolveAggregatedLimit(max, 'output')).toBe(64_000);
+});
+
 test('capability resolution preserves false and replaces arrays wholesale', async () => {
   await seedCatalog({
     shared: modelsDevModel('shared', 'Fallback', {
