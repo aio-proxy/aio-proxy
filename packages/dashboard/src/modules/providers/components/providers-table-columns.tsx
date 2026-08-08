@@ -1,7 +1,7 @@
 import { m } from '@aio-proxy/i18n';
 import type { DashboardProviderSummary } from '@aio-proxy/types';
 import { Link } from '@tanstack/react-router';
-import type { ColumnDef } from '@tanstack/react-table';
+import type { ColumnDef, RowData } from '@tanstack/react-table';
 import { startCase } from 'es-toolkit/string';
 import type React from 'react';
 
@@ -18,6 +18,12 @@ import { ProviderModelsCell } from './provider-models-cell';
 import { ProviderMoreMenu } from './provider-more-menu';
 import { ProviderStateCell } from './provider-state-cell';
 import type { ProviderTableRow } from './providers-table/provider-table-row';
+
+declare module '@tanstack/react-table' {
+  interface ColumnMeta<TData extends RowData, TValue> {
+    readonly tableCellClassName?: string;
+  }
+}
 
 const uneditableDiagnosticCodes = new Set(['PROVIDER_CONFIG_INVALID', 'LEGACY_OAUTH_CONFIG_UNSUPPORTED']);
 
@@ -73,6 +79,7 @@ const providerColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
 const typeColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
   id: 'type',
   enableSorting: false,
+  meta: { tableCellClassName: 'w-36 max-w-36 whitespace-normal' },
   accessorFn: (row) => {
     if (row.rowType === 'oauth-group') return `OAuth ${row.groupKey}`;
     return row.provider.kind === 'api'
@@ -106,6 +113,7 @@ const typeColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
 const modelsColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
   id: 'models',
   enableSorting: false,
+  meta: { tableCellClassName: 'w-20 text-center' },
   accessorFn: (row) =>
     row.rowType === 'oauth-group'
       ? row.accounts.flatMap(({ provider }) => provider.clientModels).join(' ')
@@ -146,6 +154,7 @@ const stateColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
 const aggregateColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
   id: 'aggregate',
   enableSorting: false,
+  meta: { tableCellClassName: 'w-12' },
   header: tableHead(() => ''),
   cell: () => null,
 };
@@ -164,6 +173,7 @@ const usageColumn = (
   providerUsage: ReadonlyMap<string, ProviderUsage>,
 ): ColumnDef<DataTableFeatures, ProviderTableRow> => ({
   id: 'usage',
+  meta: { tableCellClassName: 'w-24 text-right' },
   accessorFn: (row) => requestCount(row, providerUsage),
   header: tableHead(() => m['dashboard.providers.table.col_usage_24h']()),
   cell: ({ row }) => {
