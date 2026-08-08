@@ -21,6 +21,8 @@ export const LobeIcon: React.FC<LobeIconProps> = ({ slug, size, className }) => 
         height={size}
         className={className}
         alt=""
+        aria-hidden="true"
+        role="img"
       />
     </picture>
   );

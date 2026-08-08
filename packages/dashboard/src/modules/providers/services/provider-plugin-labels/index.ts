@@ -1,1 +1,1 @@
-export { providerPluginLabelsQueryOptions } from './provider-plugin-labels';
+export { providerPluginPresentationsQueryOptions } from './provider-plugin-labels';

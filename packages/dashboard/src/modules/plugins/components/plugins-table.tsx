@@ -30,8 +30,8 @@ const createPluginColumns = (
     header: tableHead(() => m['dashboard.plugins.table_package']()),
     cell: ({ row }) => (
       <div className="min-w-52">
-        {row.original.label === undefined ? null : (
-          <div className="font-medium">{resolveDashboardText(row.original.label)}</div>
+        {row.original.displayName === undefined ? null : (
+          <div className="font-medium">{resolveDashboardText(row.original.displayName)}</div>
         )}
         <div className="flex items-center gap-2">
           <span className="font-mono text-xs">{row.original.packageName}</span>

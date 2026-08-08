@@ -6,6 +6,7 @@ import type { ReactElement } from 'react';
 
 import { ProvidersTable } from '.';
 import { providerStub } from '../../lib/provider-fixtures';
+import { providerPluginPresentationsQueryOptions } from '../../services/provider-plugin-labels';
 import { providerUsageQueryOptions, type ProviderUsage } from '../../services/provider-usage-service';
 
 const mocks = rs.hoisted(() => ({
@@ -36,9 +37,11 @@ const oauthProvider = (id: string, accountLabel: string): DashboardProviderSumma
 const renderProvidersTable = (
   element: ReactElement,
   usage: ReadonlyMap<string, ProviderUsage> = new Map<string, ProviderUsage>(),
+  plugins = [] as DashboardPluginSummary[],
 ) => {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
   queryClient.setQueryData(providerUsageQueryOptions().queryKey, usage);
+  queryClient.setQueryData(providerPluginPresentationsQueryOptions().queryKey, { plugins });
   return render(<QueryClientProvider client={queryClient}>{element}</QueryClientProvider>);
 };
 
@@ -120,13 +123,26 @@ describe('providers table', () => {
         ['copilot-one', { requestCount: 1_000n, totalTokens: 1_000_000n, estimatedCostNanoUsd: 1_250_000_000n }],
         ['copilot-two', { requestCount: 234n, totalTokens: 500_000n, estimatedCostNanoUsd: 2_750_000_000n }],
       ]),
+      [
+        {
+          builtin: true,
+          displayName: 'GitHub Copilot',
+          enabled: true,
+          hasOptions: false,
+          icon: 'openai',
+          packageName: '@aio-proxy/plugin-github-copilot',
+          state: { status: 'ready' },
+        },
+      ],
     );
 
     const groupRow = screen.getByTestId('provider-group-@aio-proxy/plugin-github-copilot/default');
     const group = within(groupRow);
-    expect(group.getByText('@aio-proxy/plugin-github-copilot')).toBeTruthy();
+    expect(group.getByText('GitHub Copilot')).toBeTruthy();
     expect(group.queryByText('@aio-proxy/plugin-github-copilot/default')).toBeNull();
     const toggle = group.getByRole('button', { name: /Expand provider group|展开提供商分组/u });
+    expect(toggle).toContainElement(screen.getByRole('img', { hidden: true }));
+    expect(toggle.querySelector('svg')).not.toBeNull();
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
     expect(group.getByText('1.2K')).toBeTruthy();
     expect(group.queryByText('1.5M')).toBeNull();
@@ -140,10 +156,14 @@ describe('providers table', () => {
     fireEvent.click(groupRow);
 
     expect(screen.getByTestId('provider-row-copilot-one')).toBeTruthy();
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
     fireEvent.keyDown(toggle, { key: 'Enter' });
     expect(screen.queryByTestId('provider-row-copilot-one')).toBeNull();
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
 
     fireEvent.click(toggle);
+
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
 
     expect(screen.getAllByRole('columnheader', { name: /Provider|提供商/u })).toHaveLength(1);
     for (const id of ['copilot-one', 'copilot-two']) {

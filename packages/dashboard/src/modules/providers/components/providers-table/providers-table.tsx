@@ -10,7 +10,7 @@ import { Fragment, useEffect, useMemo, useRef } from 'react';
 import { Pagination } from '@/components/data-table/pagination';
 import { useDataTable } from '@/hooks/use-data-table';
 
-import { providerPluginLabelsQueryOptions } from '../../services/provider-plugin-labels';
+import { providerPluginPresentationsQueryOptions } from '../../services/provider-plugin-labels';
 import { providerUsageQueryOptions, type ProviderUsage } from '../../services/provider-usage-service';
 import { DeleteProviderDialog, type DeleteProviderDialogRef } from '../delete-provider-dialog';
 import { OAuthProviderGroupRow } from '../oauth-provider-group-row';
@@ -33,14 +33,8 @@ export const ProvidersTable: React.FC<ProvidersTableProps> = ({ providers, focus
   'use no memo';
 
   const deleteDialogRef = useRef<DeleteProviderDialogRef>(null);
-  const plugins = useQuery(providerPluginLabelsQueryOptions()).data?.plugins ?? [];
-  const pluginLabels = useMemo(
-    () =>
-      new Map(
-        plugins.flatMap((plugin) => (plugin.label === undefined ? [] : [[plugin.packageName, plugin.label] as const])),
-      ),
-    [plugins],
-  );
+  const plugins = useQuery(providerPluginPresentationsQueryOptions()).data?.plugins ?? [];
+  const pluginPresentations = useMemo(() => new Map(plugins.map((plugin) => [plugin.packageName, plugin])), [plugins]);
   const providerUsage = useQuery(providerUsageQueryOptions()).data ?? emptyProviderUsage;
   const rows = useMemo(() => groupProviderRows(providers), [providers]);
   const columns = useMemo(() => createProviderColumns(deleteDialogRef, providerUsage), [providerUsage]);
@@ -92,7 +86,7 @@ export const ProvidersTable: React.FC<ProvidersTableProps> = ({ providers, focus
               return (
                 <OAuthProviderGroupRow
                   key={row.id}
-                  pluginLabels={pluginLabels}
+                  pluginPresentations={pluginPresentations}
                   row={row}
                   providerUsage={providerUsage}
                 />
@@ -115,7 +109,7 @@ export const ProvidersTable: React.FC<ProvidersTableProps> = ({ providers, focus
                   <TableCell
                     key={cell.id}
                     className={cn(
-                      cell.column.id === 'aggregate' && 'w-10',
+                      cell.column.id === 'aggregate' && 'w-12',
                       cell.column.id === 'type' && 'w-36 max-w-36 whitespace-normal',
                       cell.column.id === 'models' && 'w-20 text-center',
                       cell.column.id === 'weight' && 'w-20 text-center',

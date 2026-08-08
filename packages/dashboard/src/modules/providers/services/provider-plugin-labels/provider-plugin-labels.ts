@@ -10,5 +10,5 @@ const getProviderPlugins = async (): Promise<{ plugins: readonly DashboardPlugin
   return response.json();
 };
 
-export const providerPluginLabelsQueryOptions = () =>
+export const providerPluginPresentationsQueryOptions = () =>
   queryOptions({ queryKey: queryKeys.plugins, queryFn: getProviderPlugins });

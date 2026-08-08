@@ -1,10 +1,12 @@
 import { m } from '@aio-proxy/i18n';
+import type { DashboardPluginSummary } from '@aio-proxy/types';
 import { Button } from '@aio-proxy/ui/components/button';
 import { TableCell, TableRow } from '@aio-proxy/ui/components/table';
 import { Subscribe, type Row } from '@tanstack/react-table';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import type React from 'react';
 
+import { PluginIcon } from '@/components/plugin-icon';
 import { formatCompactTokenCount } from '@/components/token-count';
 import type { DataTableFeatures } from '@/hooks/use-data-table';
 import { resolveDashboardText } from '@/lib/localized-text';
@@ -14,12 +16,16 @@ import { ProviderModelsCell } from '../provider-models-cell';
 import type { ProviderTableRow } from '../providers-table/provider-table-row';
 
 interface OAuthProviderGroupRowProps {
-  readonly pluginLabels: ReadonlyMap<string, string | Record<string, string>>;
+  readonly pluginPresentations: ReadonlyMap<string, Pick<DashboardPluginSummary, 'displayName' | 'icon'>>;
   readonly row: Row<DataTableFeatures, ProviderTableRow>;
   readonly providerUsage: ReadonlyMap<string, ProviderUsage>;
 }
 
-export const OAuthProviderGroupRow: React.FC<OAuthProviderGroupRowProps> = ({ pluginLabels, row, providerUsage }) => {
+export const OAuthProviderGroupRow: React.FC<OAuthProviderGroupRowProps> = ({
+  pluginPresentations,
+  row,
+  providerUsage,
+}) => {
   const group = row.original;
   if (group.rowType !== 'oauth-group') return null;
 
@@ -29,12 +35,13 @@ export const OAuthProviderGroupRow: React.FC<OAuthProviderGroupRowProps> = ({ pl
   );
   const models = [...new Set(group.accounts.flatMap(({ provider }) => provider.clientModels))];
   const provider = group.accounts[0]?.provider;
+  const pluginPresentation = provider?.plugin === undefined ? undefined : pluginPresentations.get(provider.plugin);
   const pluginLabel =
     provider?.plugin === undefined
       ? group.groupKey
-      : pluginLabels.get(provider.plugin) === undefined
+      : pluginPresentation?.displayName === undefined
         ? provider.plugin
-        : resolveDashboardText(pluginLabels.get(provider.plugin)!);
+        : resolveDashboardText(pluginPresentation.displayName);
   const groupLabel =
     provider === undefined
       ? group.groupKey
@@ -61,7 +68,7 @@ export const OAuthProviderGroupRow: React.FC<OAuthProviderGroupRowProps> = ({ pl
               key={cell.id}
               className={
                 cell.column.id === 'aggregate'
-                  ? 'w-10'
+                  ? 'w-12'
                   : cell.column.id === 'type'
                     ? 'w-36 max-w-36 whitespace-normal'
                     : cell.column.id === 'models'
@@ -76,6 +83,7 @@ export const OAuthProviderGroupRow: React.FC<OAuthProviderGroupRowProps> = ({ pl
                   type="button"
                   variant="ghost"
                   size="icon-sm"
+                  className="h-7 w-auto gap-1 px-1"
                   aria-label={
                     expanded
                       ? m['dashboard.providers.table.collapse_group']()
@@ -87,6 +95,9 @@ export const OAuthProviderGroupRow: React.FC<OAuthProviderGroupRowProps> = ({ pl
                     toggleExpanded();
                   }}
                 >
+                  {pluginPresentation?.icon === undefined ? null : (
+                    <PluginIcon icon={pluginPresentation.icon} size={16} />
+                  )}
                   {expanded ? <ChevronDown aria-hidden="true" /> : <ChevronRight aria-hidden="true" />}
                 </Button>
               ) : cell.column.id === 'provider' ? (
