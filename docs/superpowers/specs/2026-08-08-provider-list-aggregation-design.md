@@ -2,7 +2,7 @@
 
 ## Scope
 
-Adjust the dashboard Provider list presentation only. Keep existing OAuth grouping, sorting, pagination, focus behavior, edit links, switches, and action menus unchanged.
+Adjust the dashboard Provider list and its existing usage endpoint only. Keep existing OAuth grouping, sorting, pagination, focus behavior, edit links, switches, and action menus unchanged.
 
 ## Table layout
 
@@ -20,10 +20,11 @@ Adjust the dashboard Provider list presentation only. Keep existing OAuth groupi
 
 ## Usage data
 
-- Reuse the existing dashboard usage endpoint with its rolling `24h` range and `provider` grouping.
-- Query requests, tokens, and cost in parallel. This avoids a new dashboard API contract.
+- Extend the existing dashboard usage endpoint with an optional `maxResults` query parameter that limits retained grouped results. When omitted, all groups are returned; when set to `5`, the current top-five-plus-Other chart behavior remains.
+- The Usage page explicitly sends `maxResults=5`. The Provider list sends no limit with its rolling `24h` and `provider` grouping.
+- Query requests, tokens, and cost in parallel, then sum each metric across every returned time bucket by Provider ID.
 - Refresh with the existing 60-second usage-query interval. Missing Provider data renders as zero.
 
 ## Verification
 
-Update the Provider table tests to assert the combined type/protocol value, the aggregate marker column, row-click expansion and collapse, per-Provider usage values, and OAuth usage totals.
+Update core usage-overview tests for both limited and unlimited grouped responses. Update dashboard usage-query tests for the explicit limit. Update the Provider table tests to assert the combined type/protocol value, the aggregate marker column, row-click expansion and collapse, per-Provider usage values, and OAuth usage totals.
