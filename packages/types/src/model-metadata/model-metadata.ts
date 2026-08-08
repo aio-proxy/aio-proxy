@@ -54,7 +54,15 @@ export const ModelLimitSchema = z
     input: z.number().int().positive().optional().describe('Maximum input tokens.'),
     output: z.number().int().positive().optional().describe('Maximum output tokens.'),
   })
-  .loose();
+  .loose()
+  .superRefine((limit, context) => {
+    if (limit.context !== undefined && limit.input !== undefined && limit.input > limit.context) {
+      context.addIssue({ code: 'custom', path: ['input'], message: 'Input limit must not exceed context limit' });
+    }
+    if (limit.context !== undefined && limit.output !== undefined && limit.output > limit.context) {
+      context.addIssue({ code: 'custom', path: ['output'], message: 'Output limit must not exceed context limit' });
+    }
+  });
 
 /** Input/output data types a model supports, mirroring models.dev `modalities`. */
 export const ModalitySchema = z.enum(['text', 'audio', 'image', 'video', 'pdf']);

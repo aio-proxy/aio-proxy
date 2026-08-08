@@ -13,6 +13,7 @@ test('OAuth provider mutation accepts routing fields but rejects identity and ac
     name: 'Personal',
     enabled: false,
     weight: 4,
+    metadata: { model: { limit: { context: 400_000, input: 272_000, output: 128_000 } } },
     alias: { chat: { model: 'model-1', preserve: false } },
   };
 
