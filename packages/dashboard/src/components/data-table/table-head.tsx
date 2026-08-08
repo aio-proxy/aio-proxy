@@ -47,5 +47,10 @@ export const TableHead: React.FC<TableHeadProps> = ({ className, column, label, 
 export const tableHead =
   (label: () => string, className?: string) =>
   ({ column }: { readonly column: SortableTableColumn }) => (
-    <TableHead className={className} column={column} label={label()} sortDirection={column.getIsSorted()} />
+    <TableHead
+      {...(className === undefined ? {} : { className })}
+      column={column}
+      label={label()}
+      sortDirection={column.getIsSorted()}
+    />
   );
