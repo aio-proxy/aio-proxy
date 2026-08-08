@@ -56,7 +56,7 @@ export const usageQueryOptions = (input: UsageQueryInput) =>
 
 export const getUsage = async (input: UsageQueryInput): Promise<UsageOverviewData> => {
   const response = await dashboardClient.dashboard.api.usage.$get({
-    query: { range: input.range, metric: input.metric, groupBy: input.groupBy },
+    query: { range: input.range, metric: input.metric, groupBy: input.groupBy, maxResults: 5 },
   });
   if (!response.ok) {
     throw new DashboardUsageRequestError(response.status);

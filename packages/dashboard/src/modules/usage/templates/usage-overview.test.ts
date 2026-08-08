@@ -1,9 +1,15 @@
-import { describe, expect, test } from '@rstest/core';
+import { beforeEach, describe, expect, rs, test } from '@rstest/core';
 import { createStore } from 'jotai';
 
 import { toUsageChartData } from '../components/usage-trend-chart';
-import { decodeUsageOverview, usageQueryOptions } from '../services/usage-service';
+import { decodeUsageOverview, getUsage, usageQueryOptions } from '../services/usage-service';
 import { usageOverviewFiltersAtom } from '../stores/usage-overview-filters';
+
+const mocks = rs.hoisted(() => ({ usage: rs.fn() }));
+
+rs.mock('@/lib/dashboard-client', () => ({
+  dashboardClient: { dashboard: { api: { usage: { $get: mocks.usage } } } },
+}));
 
 const usageWire = {
   range: '24h' as const,
@@ -33,6 +39,11 @@ const usageWire = {
 };
 
 describe('usage overview', () => {
+  beforeEach(() => {
+    mocks.usage.mockReset();
+    mocks.usage.mockResolvedValue(Response.json(usageWire));
+  });
+
   test('decodes aggregate decimal strings as bigint without changing rate fields', () => {
     const decoded = decodeUsageOverview(usageWire);
 
@@ -66,6 +77,14 @@ describe('usage overview', () => {
     expect(options.queryKey).toEqual(['dashboard', 'usage', '7d', 'tokens', 'provider']);
     expect(options.refetchInterval).toBe(60_000);
     expect(options.refetchIntervalInBackground).toBe(false);
+  });
+
+  test('limits regular Usage requests to the top five dimensions', async () => {
+    await getUsage({ range: '7d', metric: 'tokens', groupBy: 'provider' });
+
+    expect(mocks.usage).toHaveBeenCalledWith({
+      query: { range: '7d', metric: 'tokens', groupBy: 'provider', maxResults: 5 },
+    });
   });
 
   test('stores all overview filters in one Jotai atom', () => {
