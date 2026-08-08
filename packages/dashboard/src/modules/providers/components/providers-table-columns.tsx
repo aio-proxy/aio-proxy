@@ -21,7 +21,7 @@ import type { ProviderTableRow } from './providers-table/provider-table-row';
 
 declare module '@tanstack/react-table' {
   interface ColumnMeta<TData extends RowData, TValue> {
-    readonly tableCellClassName?: string;
+    readonly cellClassName?: string;
   }
 }
 
@@ -79,7 +79,7 @@ const providerColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
 const typeColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
   id: 'type',
   enableSorting: false,
-  meta: { tableCellClassName: 'w-36 max-w-36 whitespace-normal' },
+  meta: { cellClassName: 'w-36 max-w-36 whitespace-normal' },
   accessorFn: (row) => {
     if (row.rowType === 'oauth-group') return `OAuth ${row.groupKey}`;
     return row.provider.kind === 'api'
@@ -113,7 +113,7 @@ const typeColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
 const modelsColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
   id: 'models',
   enableSorting: false,
-  meta: { tableCellClassName: 'w-20 text-center' },
+  meta: { cellClassName: 'w-20 text-center' },
   accessorFn: (row) =>
     row.rowType === 'oauth-group'
       ? row.accounts.flatMap(({ provider }) => provider.clientModels).join(' ')
@@ -154,7 +154,7 @@ const stateColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
 const aggregateColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
   id: 'aggregate',
   enableSorting: false,
-  meta: { tableCellClassName: 'w-12' },
+  meta: { cellClassName: 'w-12' },
   header: tableHead(() => ''),
   cell: () => null,
 };
@@ -173,7 +173,7 @@ const usageColumn = (
   providerUsage: ReadonlyMap<string, ProviderUsage>,
 ): ColumnDef<DataTableFeatures, ProviderTableRow> => ({
   id: 'usage',
-  meta: { tableCellClassName: 'w-24 text-right' },
+  meta: { cellClassName: 'w-24 text-right' },
   accessorFn: (row) => requestCount(row, providerUsage),
   header: tableHead(() => m['dashboard.providers.table.col_usage_24h']()),
   cell: ({ row }) => {

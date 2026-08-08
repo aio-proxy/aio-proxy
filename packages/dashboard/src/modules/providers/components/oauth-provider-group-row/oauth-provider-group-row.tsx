@@ -64,7 +64,7 @@ export const OAuthProviderGroupRow: React.FC<OAuthProviderGroupRowProps> = ({
           }}
         >
           {row.getAllCells().map((cell) => (
-            <TableCell key={cell.id} className={cell.column.columnDef.meta?.tableCellClassName}>
+            <TableCell key={cell.id} className={cell.column.columnDef.meta?.cellClassName}>
               {cell.column.id === 'aggregate' ? (
                 <Button
                   type="button"
