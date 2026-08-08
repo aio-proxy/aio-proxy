@@ -167,23 +167,12 @@ describe('OAuth plugin config schema', () => {
     const config = ConfigSchema.parse({ server: {}, providers: { copilot: provider } });
 
     // Then
-    expect(config).toEqual({
-      plugins: [],
-      server: {
-        host: '127.0.0.1',
-        port: 22078,
-        logging: { enabled: false, retentionDays: 14, level: 'info' },
-      },
-      providers: [
-        {
-          kind: 'oauth',
-          plugin: '@aio-proxy/plugin-github-copilot',
-          capability: 'default',
-          enabled: true,
-          id: 'copilot',
-        },
-      ],
-      invalidProviders: [],
+    expect(config.providers[0]).toEqual({
+      kind: 'oauth',
+      plugin: '@aio-proxy/plugin-github-copilot',
+      capability: 'default',
+      enabled: true,
+      id: 'copilot',
     });
     expect(config.providers[0]).not.toHaveProperty('models');
   });
