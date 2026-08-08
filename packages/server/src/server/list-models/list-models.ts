@@ -4,7 +4,12 @@ import type { Model as OpenAIModel } from 'openai/resources/models';
 
 import type { ServerState } from '../../server-state';
 import { type ModelCapabilitiesSubset, toAnthropicCapabilitiesFromMetadata } from '../model-capabilities';
-import { resolveEnabledModels } from '../model-resolution/index';
+import {
+  resolveAggregatedLimit,
+  resolveEnabledModels,
+  resolveModelCapabilities,
+  resolveModelField,
+} from '../model-resolution/index';
 
 const unknownCreatedAt = '1970-01-01T00:00:00Z';
 
@@ -15,20 +20,21 @@ type ModelListItem = OpenAIModel &
 
 export async function listModels(state: ServerState) {
   const resolved = await resolveEnabledModels(state);
-  const data = resolved.map(({ slug, provider, metadata, effectiveMetadata, displayName, maxInput }): ModelListItem => {
-    const timestamps = modelTimestamps(metadata?.release_date);
+  const data = resolved.map((model): ModelListItem => {
+    const capabilities = resolveModelCapabilities(model);
+    const displayName = resolveModelField(model, (metadata) => metadata.name) ?? model.slug;
+    const releaseDate = resolveModelField(model, (metadata) => metadata.capabilities?.releaseDate);
+    const timestamps = modelTimestamps(releaseDate);
     return {
-      capabilities: effectiveMetadata === undefined ? null : toAnthropicCapabilitiesFromMetadata(effectiveMetadata),
+      capabilities: capabilities === undefined ? null : toAnthropicCapabilitiesFromMetadata({ capabilities }),
       created: timestamps.created,
       created_at: timestamps.createdAt,
       display_name: displayName,
-      id: slug,
-      // Max input tokens (config limit.input ?? catalog limit.input); distinct
-      // from the total context window.
-      max_input_tokens: maxInput ?? null,
-      max_tokens: effectiveMetadata?.limit?.output ?? null,
+      id: model.slug,
+      max_input_tokens: resolveAggregatedLimit(model, 'input') ?? null,
+      max_tokens: resolveAggregatedLimit(model, 'output') ?? null,
       object: 'model',
-      owned_by: provider.id,
+      owned_by: model.provider.id,
       type: 'model',
     };
   });

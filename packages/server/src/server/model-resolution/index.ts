@@ -1,1 +1,8 @@
-export { type ResolvedModel, resolveEnabledModels } from './model-resolution';
+export {
+  type ResolvedModel,
+  type ResolvedModelCandidate,
+  resolveAggregatedLimit,
+  resolveEnabledModels,
+  resolveModelCapabilities,
+  resolveModelField,
+} from './model-resolution';
