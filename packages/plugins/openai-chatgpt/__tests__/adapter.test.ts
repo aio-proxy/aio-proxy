@@ -23,7 +23,7 @@ describe('OpenAI ChatGPT plugin', () => {
 
     expect(openAIChatGPTPlugin.apiVersion).toBe(2);
     expect(openAIChatGPTPlugin[PLUGIN_DESCRIPTOR_BRAND]).toBe(true);
-    expect(openAIChatGPTPlugin.metadata.icon).toBe('openai');
+    expect(openAIChatGPTPlugin.metadata.icon).toBe('codex-color');
     expect(adapter.id).toBe('default');
     expect(adapter.displayName).toBe('Login with ChatGPT (Plus/Pro)');
     expect(OPENAI_CHATGPT_PLUGIN_VERSION).toBe(packageJson.version);
