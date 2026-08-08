@@ -9,7 +9,7 @@ import type { GoogleAntigravityAccountOptions, GoogleAntigravityCredential } fro
 test('exports a versioned default descriptor', async () => {
   const adapter = await adapterFrom(googleAntigravityPlugin);
   expect(adapter.id).toBe('default');
-  expect(adapter.label).toBe('Login with Google Antigravity');
+  expect(adapter.displayName).toBe('Login with Google Antigravity');
   expect(GOOGLE_ANTIGRAVITY_PLUGIN_VERSION).toBe(packageJson.version);
 });
 
@@ -61,7 +61,7 @@ test('uses the fixed loopback callback and returns a complete stable account ide
   expect(result).toEqual({
     fingerprint: 'person@example.com',
     suggestedKey: 'antigravity-person@example.com',
-    label: 'person@example.com',
+    accountLabel: 'person@example.com',
     credentials: {
       accessToken: 'access-1',
       refreshToken: 'refresh-1',

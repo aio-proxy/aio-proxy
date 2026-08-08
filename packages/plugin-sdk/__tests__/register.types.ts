@@ -8,6 +8,8 @@ import {
   type ProviderExecutedTool,
   type ProviderToolCapability,
   type TokenCountCapability,
+  definePlugin,
+  zod,
 } from '../src';
 
 type MyOptions = {
@@ -29,6 +31,30 @@ const providerTool: ProviderExecutedTool = {
   allowedDomains: ['example.com'],
 };
 const providerTools: ProviderToolCapability = { supported: ['web-search'] };
+const descriptor = definePlugin(() => {}, { displayName: 'Example', icon: 'openai' });
+const presentationAdapter: OAuthAdapter = {
+  id: 'default',
+  displayName: 'Sign in',
+  account: { options: { schema: zod.object({}), form: [] } },
+  credentials: zod.object({}),
+  async login() {
+    return { fingerprint: 'account', suggestedKey: 'account', credentials: {} };
+  },
+  catalog: {
+    policy: { kind: 'static' },
+    async discover() {
+      return { language: [], image: [], embedding: [], speech: [], transcription: [], reranking: [] };
+    },
+  },
+  async createRuntime() {
+    return { provider: null as never };
+  },
+};
+
+// @ts-expect-error v1 label is removed
+definePlugin(() => {}, { label: 'Example' });
+// @ts-expect-error capability icons belong to plugin metadata
+const invalidAdapter: OAuthAdapter = { id: 'default', icon: 'openai' };
 
 const aliases: DefaultAliasSuggestions = {
   'gemini-3.5-flash': {
@@ -72,3 +98,6 @@ void retryableRefresh;
 void providerTool;
 void providerTools;
 void runtime;
+void descriptor;
+void presentationAdapter;
+void invalidAdapter;

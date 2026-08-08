@@ -36,7 +36,7 @@ api.oauth.register(adapter);
 
 const quotaAdapter: OAuthAdapter<MyOptions, MyCredential> = {
   id: 'quota',
-  label: 'Quota',
+  displayName: 'Quota',
   account: adapter.account,
   credentials: adapter.credentials,
   login: adapter.login,
@@ -46,7 +46,7 @@ const quotaAdapter: OAuthAdapter<MyOptions, MyCredential> = {
     async read(context) {
       const credential = await context.credentials.read();
       return {
-        items: [{ id: 'primary', label: 'Primary', remainingRatio: credential.value.accessToken.length / 100 }],
+        items: [{ id: 'primary', displayName: 'Primary', remainingRatio: credential.value.accessToken.length / 100 }],
         resetCredits: { availableCount: 1, items: [{ id: 'credit-1', expiresAt: 1_800_000_000_000 }] },
       };
     },
@@ -59,5 +59,5 @@ const quotaAdapter: OAuthAdapter<MyOptions, MyCredential> = {
 api.oauth.register(quotaAdapter);
 
 // @ts-expect-error quota timestamps are epoch milliseconds
-const invalidResetAt: OAuthQuotaItem = { id: 'primary', label: 'Primary', resetsAt: new Date() };
+const invalidResetAt: OAuthQuotaItem = { id: 'primary', displayName: 'Primary', resetsAt: new Date() };
 void invalidResetAt;

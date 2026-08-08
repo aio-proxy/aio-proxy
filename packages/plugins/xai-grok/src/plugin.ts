@@ -39,8 +39,7 @@ export function createXAIGrokPlugin(
   } as const satisfies ConfigSpec<Record<string, never>>;
   const adapter: OAuthAdapter<Record<string, never>, XAIGrokCredential> = {
     id: 'default',
-    label: presentationText.adapterLabel,
-    icon: 'xai',
+    displayName: presentationText.adapterLabel,
     account: { options: accountOptions },
     credentials: credentialSchema,
     login: async (context, options) => {
@@ -66,8 +65,9 @@ export function createXAIGrokPlugin(
       api.oauth.register(adapter);
     },
     {
-      label: presentationText.pluginLabel ?? 'xAI Grok',
+      displayName: presentationText.pluginLabel ?? 'xAI Grok',
       description: presentationText.pluginDescription ?? 'Use a SuperGrok or X Premium+ account to access Grok models',
+      icon: 'xai',
     },
   );
 }

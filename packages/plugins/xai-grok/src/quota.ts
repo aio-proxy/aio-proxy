@@ -61,7 +61,7 @@ function weeklyItem(config: BillingObject): OAuthQuotaItem | undefined {
   if (remainingRatio === undefined && resetsAt === undefined) return undefined;
   return {
     id: 'weekly',
-    label: { default: 'Weekly limit', 'zh-Hans': '周额度' },
+    displayName: { default: 'Weekly limit', 'zh-Hans': '周额度' },
     ...(remainingRatio === undefined ? {} : { remainingRatio }),
     ...(resetsAt === undefined ? {} : { resetsAt }),
   };
@@ -78,7 +78,7 @@ function monthlyItem(config: BillingObject): OAuthQuotaItem | undefined {
   if (remainingRatio === undefined && resetsAt === undefined) return undefined;
   return {
     id: 'monthly-credits',
-    label: { default: 'Monthly credits', 'zh-Hans': '月度额度' },
+    displayName: { default: 'Monthly credits', 'zh-Hans': '月度额度' },
     ...(remainingRatio === undefined ? {} : { remainingRatio }),
     ...(resetsAt === undefined ? {} : { resetsAt }),
   };

@@ -9,8 +9,8 @@ import type { XAIGrokCredential } from './schema';
 test('exports a versioned xAI Grok OAuth descriptor', async () => {
   const adapter = await adapterFrom(xaiGrokPlugin);
   expect(adapter.id).toBe('default');
-  expect(adapter.label).toBe('Login with xAI Grok');
-  expect(adapter.icon).toBe('xai');
+  expect(adapter.displayName).toBe('Login with xAI Grok');
+  expect(xaiGrokPlugin.metadata.icon).toBe('xai');
   expect(adapter.account.options.form).toEqual([]);
   expect(adapter.catalog.policy).toEqual({ kind: 'ttl', ttlMs: 6 * 60 * 60_000 });
   expect(adapter.quota?.read).toBeFunction();
@@ -28,7 +28,7 @@ test('accepts localized copy without adding account options', async () => {
       waitingForAuthorization: 'Autorisation xAI en attente',
     }),
   );
-  expect(adapter.label).toBe('Connexion Grok');
+  expect(adapter.displayName).toBe('Connexion Grok');
   await expect(adapter.account.options.schema.parseAsync({})).resolves.toEqual({});
 });
 
