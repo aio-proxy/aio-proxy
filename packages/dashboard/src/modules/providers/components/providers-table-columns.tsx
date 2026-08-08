@@ -138,6 +138,7 @@ export const createProviderColumns = (
   typeColumn,
   modelsColumn,
   weightColumn,
+  stateColumn,
   {
     id: 'usage',
     enableSorting: false,
@@ -159,7 +160,6 @@ export const createProviderColumns = (
       );
     },
   },
-  stateColumn,
   {
     id: 'enabled',
     accessorFn: (row) => String(concreteProvider(row)?.enabled ?? ''),
