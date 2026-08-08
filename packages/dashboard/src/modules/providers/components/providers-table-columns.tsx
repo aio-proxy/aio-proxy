@@ -163,7 +163,7 @@ export const createProviderColumns = (
   {
     id: 'enabled',
     accessorFn: (row) => String(concreteProvider(row)?.enabled ?? ''),
-    header: tableHead(() => m['dashboard.providers.table.col_enabled']()),
+    header: tableHead(() => m['dashboard.providers.table.col_enabled'](), 'text-center'),
     cell: ({ row }) => {
       const provider = concreteProvider(row.original);
       return provider === undefined || !canEditProvider(provider) ? null : (
