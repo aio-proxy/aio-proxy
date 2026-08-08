@@ -132,6 +132,8 @@ describe('providers table', () => {
 
     const groupRow = screen.getByTestId('provider-group-@aio-proxy/plugin-github-copilot/default');
     const group = within(groupRow);
+    expect(group.getByText('@aio-proxy/plugin-github-copilot')).toBeTruthy();
+    expect(group.queryByText('@aio-proxy/plugin-github-copilot/default')).toBeNull();
     const toggle = group.getByRole('button', { name: /Expand provider group|展开提供商分组/u });
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
     expect(group.getByText('1.2K')).toBeTruthy();

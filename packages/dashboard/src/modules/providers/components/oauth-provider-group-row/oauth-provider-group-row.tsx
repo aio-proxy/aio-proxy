@@ -39,10 +39,18 @@ export const OAuthProviderGroupRow: React.FC<OAuthProviderGroupRowProps> = ({ pl
   );
   const models = [...new Set(group.accounts.flatMap(({ provider }) => provider.clientModels))];
   const provider = group.accounts[0]?.provider;
+  const pluginLabel =
+    provider?.plugin === undefined
+      ? group.groupKey
+      : pluginLabels.get(provider.plugin) === undefined
+        ? provider.plugin
+        : resolveDashboardText(pluginLabels.get(provider.plugin)!);
   const groupLabel =
     provider === undefined
       ? group.groupKey
-      : `${provider.plugin === undefined ? group.groupKey : pluginLabels.get(provider.plugin) === undefined ? provider.plugin : resolveDashboardText(pluginLabels.get(provider.plugin)!)}/${provider.capability ?? ''}`;
+      : provider.capability === 'default'
+        ? pluginLabel
+        : `${pluginLabel}/${provider.capability ?? ''}`;
   const toggleExpanded = () => row.toggleExpanded();
   return (
     <Subscribe source={row.table.atoms.expanded} selector={() => row.getIsExpanded()}>
