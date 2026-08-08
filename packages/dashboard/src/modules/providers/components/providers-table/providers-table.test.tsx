@@ -69,13 +69,13 @@ describe('providers table', () => {
 
     const row = within(screen.getByTestId('provider-row-openai-main'));
     expect(screen.getAllByRole('columnheader')[0]).toBeEmptyDOMElement();
-    expect(screen.getByRole('columnheader', { name: /24h usage|24 小时用量/u })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: /24h requests|24 小时请求/u })).toBeInTheDocument();
     expect(row.getByText('OpenAI Main')).toBeTruthy();
     expect(row.getByText('openai-main')).toBeTruthy();
     expect(row.getByText('API · openai-response')).toBeTruthy();
     expect(row.getByText('12K')).toBeTruthy();
-    expect(row.getByText('1.2M')).toBeTruthy();
-    expect(row.getByText('$2.50')).toBeTruthy();
+    expect(row.queryByText('1.2M')).toBeNull();
+    expect(row.queryByText('$2.50')).toBeNull();
     expect(row.getByTestId('provider-models-count')).toHaveTextContent('2');
     expect(row.getByText('7')).toBeTruthy();
 
@@ -127,8 +127,8 @@ describe('providers table', () => {
     const toggle = group.getByRole('button', { name: /Expand provider group|展开提供商分组/u });
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
     expect(group.getByText('1.2K')).toBeTruthy();
-    expect(group.getByText('1.5M')).toBeTruthy();
-    expect(group.getByText('$4.00')).toBeTruthy();
+    expect(group.queryByText('1.5M')).toBeNull();
+    expect(group.queryByText('$4.00')).toBeNull();
     expect(group.getByTestId('provider-models-count')).toHaveTextContent('2');
     expect(group.queryByText('copilot-one')).toBeNull();
     expect(group.queryByRole('switch')).toBeNull();
@@ -260,7 +260,7 @@ describe('providers table', () => {
     );
 
     expect(screen.getByRole('columnheader', { name: /^Provider$|^提供商$/u })).not.toHaveAttribute('aria-sort');
-    fireEvent.click(screen.getByRole('button', { name: /24h usage|24 小时用量/u }));
+    fireEvent.click(screen.getByRole('button', { name: /24h requests|24 小时请求/u }));
     expect(screen.getByTestId('provider-row-alpha')).toBeInTheDocument();
     expect(screen.getAllByTestId(/^provider-row-/u).map((row) => row.getAttribute('data-testid'))).toEqual([
       'provider-row-alpha',

@@ -449,7 +449,7 @@
         "col_catalog": "目录",
         "col_models": "模型",
         "col_weight": "权重",
-        "col_usage_24h": "24 小时用量",
+        "col_usage_24h": "24 小时请求",
         "col_actions": "操作",
         "expand_group": "展开提供商分组",
         "collapse_group": "收起提供商分组",

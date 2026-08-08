@@ -1,4 +1,4 @@
-import { getLocale, m } from '@aio-proxy/i18n';
+import { m } from '@aio-proxy/i18n';
 import type { DashboardProviderSummary } from '@aio-proxy/types';
 import { Link } from '@tanstack/react-router';
 import type { ColumnDef } from '@tanstack/react-table';
@@ -8,7 +8,6 @@ import type React from 'react';
 import { tableHead } from '@/components/data-table/table-head';
 import { formatCompactTokenCount } from '@/components/token-count';
 import type { DataTableFeatures } from '@/hooks/use-data-table';
-import { formatNanoUsd } from '@/lib/nano-usd';
 
 import { PROVIDER_KIND_LABEL } from '../lib/constants';
 import type { ProviderUsage } from '../services/provider-usage-service';
@@ -64,7 +63,7 @@ const providerColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
         ) : (
           <div className="font-medium">{name}</div>
         )}
-        <div className="truncate text-xs text-muted-foreground">{provider.id}</div>
+        <div className="truncate text-muted-foreground">{provider.id}</div>
       </div>
     );
   },
@@ -160,17 +159,10 @@ const usageColumn = (
   cell: ({ row }) => {
     const provider = concreteProvider(row.original);
     if (provider === undefined) return null;
-    const usage = providerUsage.get(provider.id) ?? {
-      requestCount: 0n,
-      totalTokens: 0n,
-      estimatedCostNanoUsd: 0n,
-    };
     return (
-      <div className="flex flex-col items-end tabular-nums">
-        <span>{formatCompactTokenCount(usage.requestCount)}</span>
-        <span>{formatCompactTokenCount(usage.totalTokens)}</span>
-        <span>{formatNanoUsd(usage.estimatedCostNanoUsd, getLocale(), 'compact')}</span>
-      </div>
+      <span className="tabular-nums">
+        {formatCompactTokenCount(providerUsage.get(provider.id)?.requestCount ?? 0n)}
+      </span>
     );
   },
 });

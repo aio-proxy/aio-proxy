@@ -451,7 +451,7 @@
         "col_catalog": "目錄",
         "col_models": "模型",
         "col_weight": "權重",
-        "col_usage_24h": "24 小時用量",
+        "col_usage_24h": "24 小時請求",
         "col_actions": "操作",
         "expand_group": "展開提供商分組",
         "collapse_group": "收合提供商分組",

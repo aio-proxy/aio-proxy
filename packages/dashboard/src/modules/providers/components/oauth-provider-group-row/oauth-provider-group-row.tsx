@@ -1,4 +1,4 @@
-import { getLocale, m } from '@aio-proxy/i18n';
+import { m } from '@aio-proxy/i18n';
 import { Button } from '@aio-proxy/ui/components/button';
 import { TableCell, TableRow } from '@aio-proxy/ui/components/table';
 import { Subscribe, type Row } from '@tanstack/react-table';
@@ -8,7 +8,6 @@ import type React from 'react';
 import { formatCompactTokenCount } from '@/components/token-count';
 import type { DataTableFeatures } from '@/hooks/use-data-table';
 import { resolveDashboardText } from '@/lib/localized-text';
-import { formatNanoUsd } from '@/lib/nano-usd';
 
 import type { ProviderUsage } from '../../services/provider-usage-service';
 import { ProviderModelsCell } from '../provider-models-cell';
@@ -24,18 +23,9 @@ export const OAuthProviderGroupRow: React.FC<OAuthProviderGroupRowProps> = ({ pl
   const group = row.original;
   if (group.rowType !== 'oauth-group') return null;
 
-  const usage = group.accounts.reduce<ProviderUsage>(
-    (total, { provider }) => {
-      const account = providerUsage.get(provider.id);
-      return account === undefined
-        ? total
-        : {
-            requestCount: total.requestCount + account.requestCount,
-            totalTokens: total.totalTokens + account.totalTokens,
-            estimatedCostNanoUsd: total.estimatedCostNanoUsd + account.estimatedCostNanoUsd,
-          };
-    },
-    { requestCount: 0n, totalTokens: 0n, estimatedCostNanoUsd: 0n },
+  const requestCount = group.accounts.reduce(
+    (total, { provider }) => total + (providerUsage.get(provider.id)?.requestCount ?? 0n),
+    0n,
   );
   const models = [...new Set(group.accounts.flatMap(({ provider }) => provider.clientModels))];
   const provider = group.accounts[0]?.provider;
@@ -104,11 +94,7 @@ export const OAuthProviderGroupRow: React.FC<OAuthProviderGroupRowProps> = ({ pl
               ) : cell.column.id === 'models' ? (
                 <ProviderModelsCell models={models} />
               ) : cell.column.id === 'usage' ? (
-                <div className="flex flex-col items-end text-xs tabular-nums">
-                  <span>{formatCompactTokenCount(usage.requestCount)}</span>
-                  <span>{formatCompactTokenCount(usage.totalTokens)}</span>
-                  <span>{formatNanoUsd(usage.estimatedCostNanoUsd, getLocale(), 'compact')}</span>
-                </div>
+                <span className="tabular-nums">{formatCompactTokenCount(requestCount)}</span>
               ) : null}
             </TableCell>
           ))}
