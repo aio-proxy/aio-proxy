@@ -1,7 +1,7 @@
 import { m } from '@aio-proxy/i18n';
 import type { DashboardProviderSummary } from '@aio-proxy/types';
 import { Empty } from '@aio-proxy/ui/components/empty';
-import { Table, TableBody, TableCell, TableHeader, TableRow } from '@aio-proxy/ui/components/table';
+import { Table, TableBody, TableHeader, TableRow } from '@aio-proxy/ui/components/table';
 import { cn } from '@aio-proxy/ui/lib/utils';
 import { useQuery } from '@tanstack/react-query';
 import type React from 'react';
@@ -15,6 +15,7 @@ import { providerUsageQueryOptions, type ProviderUsage } from '../../services/pr
 import { DeleteProviderDialog, type DeleteProviderDialogRef } from '../delete-provider-dialog';
 import { OAuthProviderGroupRow } from '../oauth-provider-group-row';
 import { canEditProvider, createProviderColumns } from '../providers-table-columns';
+import { ProviderTableCell } from './provider-table-cell';
 import { groupProviderRows, providerTableRowId, type ProviderTableRow } from './provider-table-row';
 
 interface ProvidersTableProps {
@@ -106,21 +107,9 @@ export const ProvidersTable: React.FC<ProvidersTableProps> = ({ providers, focus
                 )}
               >
                 {row.getAllCells().map((cell) => (
-                  <TableCell
-                    key={cell.id}
-                    className={cn(
-                      cell.column.id === 'aggregate' && 'w-12',
-                      cell.column.id === 'type' && 'w-36 max-w-36 whitespace-normal',
-                      cell.column.id === 'models' && 'w-20 text-center',
-                      cell.column.id === 'weight' && 'w-20 text-center',
-                      cell.column.id === 'usage' && 'w-24 text-right',
-                      cell.column.id === 'state' && 'whitespace-normal',
-                      cell.column.id === 'enabled' && 'w-20 text-center',
-                      cell.column.id === 'actions' && 'w-20 text-right',
-                    )}
-                  >
+                  <ProviderTableCell key={cell.id} cell={cell}>
                     <table.FlexRender cell={cell} />
-                  </TableCell>
+                  </ProviderTableCell>
                 ))}
               </TableRow>
             );

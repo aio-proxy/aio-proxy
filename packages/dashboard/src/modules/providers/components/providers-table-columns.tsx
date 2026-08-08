@@ -127,6 +127,7 @@ const modelsColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
 
 const weightColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
   id: 'weight',
+  meta: { cellClassName: 'w-20 text-center' },
   accessorFn: (row) => concreteProvider(row)?.weight,
   header: tableHead(() => m['dashboard.providers.table.col_weight'](), 'text-center'),
   cell: ({ row }) => {
@@ -138,6 +139,7 @@ const weightColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
 const stateColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
   id: 'state',
   enableSorting: false,
+  meta: { cellClassName: 'whitespace-normal' },
   accessorFn: (row) => {
     const provider = concreteProvider(row);
     return provider === undefined
@@ -161,6 +163,7 @@ const aggregateColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
 
 const enabledColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
   id: 'enabled',
+  meta: { cellClassName: 'w-20 text-center' },
   accessorFn: (row) => String(concreteProvider(row)?.enabled ?? ''),
   header: tableHead(() => m['dashboard.providers.table.col_enabled'](), 'text-center'),
   cell: ({ row }) => {
@@ -192,6 +195,7 @@ const actionsColumn = (
 ): ColumnDef<DataTableFeatures, ProviderTableRow> => ({
   id: 'actions',
   enableSorting: false,
+  meta: { cellClassName: 'w-20 text-right' },
   header: tableHead(() => m['dashboard.providers.table.col_actions'](), 'text-right'),
   cell: ({ row }) => {
     const provider = concreteProvider(row.original);

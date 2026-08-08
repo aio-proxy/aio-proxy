@@ -172,6 +172,21 @@ describe('providers table', () => {
       expect(account.getByRole('button', { name: new RegExp(id, 'u') })).toBeTruthy();
     }
 
+    const headers = screen.getAllByRole('columnheader');
+    const weightColumnIndex = headers.indexOf(screen.getByRole('columnheader', { name: /Weight|权重/u }));
+    const enabledColumnIndex = headers.indexOf(screen.getByRole('columnheader', { name: /Enabled|启用/u }));
+    const actionsColumnIndex = headers.indexOf(screen.getByRole('columnheader', { name: /Actions|操作/u }));
+    const accountCells = within(screen.getByTestId('provider-row-copilot-one')).getAllByRole('cell');
+    const groupCells = group.getAllByRole('cell');
+    for (const [columnIndex, ...classNames] of [
+      [weightColumnIndex, 'w-20', 'text-center'],
+      [enabledColumnIndex, 'w-20', 'text-center'],
+      [actionsColumnIndex, 'w-20', 'text-right'],
+    ]) {
+      expect(groupCells[columnIndex]).toHaveClass(...classNames);
+      expect(accountCells[columnIndex]).toHaveClass(...classNames);
+    }
+
     groupRow.focus();
     fireEvent.keyDown(groupRow, { key: ' ' });
     expect(screen.queryByTestId('provider-row-copilot-one')).toBeNull();

@@ -1,7 +1,7 @@
 import { m } from '@aio-proxy/i18n';
 import type { DashboardPluginSummary } from '@aio-proxy/types';
 import { Button } from '@aio-proxy/ui/components/button';
-import { TableCell, TableRow } from '@aio-proxy/ui/components/table';
+import { TableRow } from '@aio-proxy/ui/components/table';
 import { Subscribe, type Row } from '@tanstack/react-table';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import type React from 'react';
@@ -13,6 +13,7 @@ import { resolveDashboardText } from '@/lib/localized-text';
 
 import type { ProviderUsage } from '../../services/provider-usage-service';
 import { ProviderModelsCell } from '../provider-models-cell';
+import { ProviderTableCell } from '../providers-table/provider-table-cell';
 import type { ProviderTableRow } from '../providers-table/provider-table-row';
 
 interface OAuthProviderGroupRowProps {
@@ -64,7 +65,7 @@ export const OAuthProviderGroupRow: React.FC<OAuthProviderGroupRowProps> = ({
           }}
         >
           {row.getAllCells().map((cell) => (
-            <TableCell key={cell.id} className={cell.column.columnDef.meta?.cellClassName}>
+            <ProviderTableCell key={cell.id} cell={cell}>
               {cell.column.id === 'aggregate' ? (
                 <Button
                   type="button"
@@ -98,7 +99,7 @@ export const OAuthProviderGroupRow: React.FC<OAuthProviderGroupRowProps> = ({
               ) : cell.column.id === 'usage' ? (
                 <span className="tabular-nums">{formatCompactTokenCount(requestCount)}</span>
               ) : null}
-            </TableCell>
+            </ProviderTableCell>
           ))}
         </TableRow>
       )}
