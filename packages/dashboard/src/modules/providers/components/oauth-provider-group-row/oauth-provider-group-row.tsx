@@ -7,6 +7,7 @@ import type React from 'react';
 
 import { formatCompactTokenCount } from '@/components/token-count';
 import type { DataTableFeatures } from '@/hooks/use-data-table';
+import { resolveDashboardText } from '@/lib/localized-text';
 import { formatNanoUsd } from '@/lib/nano-usd';
 
 import type { ProviderUsage } from '../../services/provider-usage-service';
@@ -14,11 +15,12 @@ import { ProviderModelsCell } from '../provider-models-cell';
 import type { ProviderTableRow } from '../providers-table/provider-table-row';
 
 interface OAuthProviderGroupRowProps {
+  readonly pluginLabels: ReadonlyMap<string, string | Record<string, string>>;
   readonly row: Row<DataTableFeatures, ProviderTableRow>;
   readonly providerUsage: ReadonlyMap<string, ProviderUsage>;
 }
 
-export const OAuthProviderGroupRow: React.FC<OAuthProviderGroupRowProps> = ({ row, providerUsage }) => {
+export const OAuthProviderGroupRow: React.FC<OAuthProviderGroupRowProps> = ({ pluginLabels, row, providerUsage }) => {
   const group = row.original;
   if (group.rowType !== 'oauth-group') return null;
 
@@ -36,6 +38,11 @@ export const OAuthProviderGroupRow: React.FC<OAuthProviderGroupRowProps> = ({ ro
     { requestCount: 0n, totalTokens: 0n, estimatedCostNanoUsd: 0n },
   );
   const models = [...new Set(group.accounts.flatMap(({ provider }) => provider.clientModels))];
+  const provider = group.accounts[0]?.provider;
+  const groupLabel =
+    provider === undefined
+      ? group.groupKey
+      : `${provider.plugin === undefined ? group.groupKey : pluginLabels.get(provider.plugin) === undefined ? provider.plugin : resolveDashboardText(pluginLabels.get(provider.plugin)!)}/${provider.capability ?? ''}`;
   const toggleExpanded = () => row.toggleExpanded();
   return (
     <Subscribe source={row.table.atoms.expanded} selector={() => row.getIsExpanded()}>
@@ -83,7 +90,7 @@ export const OAuthProviderGroupRow: React.FC<OAuthProviderGroupRowProps> = ({ ro
                   {expanded ? <ChevronDown aria-hidden="true" /> : <ChevronRight aria-hidden="true" />}
                 </Button>
               ) : cell.column.id === 'provider' ? (
-                <span className="font-medium">{group.groupKey}</span>
+                <span className="font-medium">{groupLabel}</span>
               ) : cell.column.id === 'type' ? (
                 <span>OAuth</span>
               ) : cell.column.id === 'models' ? (

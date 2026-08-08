@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { ServerConfigSchema, ServerLoggingSchema, ServerRetrySchema } from '../../config/index';
+import { DashboardLocalizedTextSchema } from '../../dashboard-localized-text';
 import { DashboardOAuthFormFieldSchema } from '../../dashboard-oauth';
 import { PluginPackageNameSchema, PluginStateSchema } from '../../plugin';
 import { ConfigTemplateStringSchema, HttpProxyUrlSchema } from '../../provider';
@@ -120,6 +121,7 @@ export const DashboardSettingsMutationResponseSchema = z.discriminatedUnion('ok'
 
 export const DashboardPluginSummarySchema = z.strictObject({
   packageName: PluginPackageNameSchema,
+  label: DashboardLocalizedTextSchema.optional(),
   version: z.string().min(1).optional(),
   builtin: z.boolean(),
   enabled: z.boolean(),

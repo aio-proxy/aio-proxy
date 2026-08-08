@@ -11,6 +11,7 @@ import { Fragment, useMemo, useRef } from 'react';
 import { Pagination } from '@/components/data-table/pagination';
 import { tableHead } from '@/components/data-table/table-head';
 import { type DataTableFeatures, useDataTable } from '@/hooks/use-data-table';
+import { resolveDashboardText } from '@/lib/localized-text';
 
 import { PluginOptionsDrawer, type PluginOptionsDrawerRef } from './plugin-options-drawer';
 import { PluginUninstallDialog, type PluginUninstallDialogRef } from './plugin-uninstall-dialog';
@@ -28,9 +29,14 @@ const createPluginColumns = (
     accessorKey: 'packageName',
     header: tableHead(() => m['dashboard.plugins.table_package']()),
     cell: ({ row }) => (
-      <div className="flex min-w-52 items-center gap-2">
-        <span className="font-mono text-xs">{row.original.packageName}</span>
-        {row.original.builtin ? <Badge variant="outline">{m['dashboard.plugins.builtin']()}</Badge> : null}
+      <div className="min-w-52">
+        {row.original.label === undefined ? null : (
+          <div className="font-medium">{resolveDashboardText(row.original.label)}</div>
+        )}
+        <div className="flex items-center gap-2">
+          <span className="font-mono text-xs">{row.original.packageName}</span>
+          {row.original.builtin ? <Badge variant="outline">{m['dashboard.plugins.builtin']()}</Badge> : null}
+        </div>
       </div>
     ),
   },
