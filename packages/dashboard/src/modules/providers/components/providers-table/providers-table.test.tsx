@@ -139,7 +139,9 @@ describe('providers table', () => {
     expect(group.getByText('GitHub Copilot')).toBeTruthy();
     expect(group.queryByText('@aio-proxy/plugin-github-copilot/default')).toBeNull();
     const toggle = group.getByRole('button', { name: /Expand provider group|展开提供商分组/u });
-    expect(toggle).toContainElement(screen.getByRole('img', { hidden: true }));
+    const pluginName = group.getByText('GitHub Copilot');
+    expect(pluginName.parentElement).toContainElement(screen.getByRole('img', { hidden: true }));
+    expect(within(toggle).queryByRole('img', { hidden: true })).toBeNull();
     expect(toggle.querySelector('svg')).not.toBeNull();
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
     expect(group.getByText('1.2K')).toBeTruthy();

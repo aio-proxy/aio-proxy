@@ -83,7 +83,7 @@ export const OAuthProviderGroupRow: React.FC<OAuthProviderGroupRowProps> = ({
                   type="button"
                   variant="ghost"
                   size="icon-sm"
-                  className="h-7 w-auto gap-1 px-1"
+                  className="h-7 w-7 p-0"
                   aria-label={
                     expanded
                       ? m['dashboard.providers.table.collapse_group']()
@@ -95,13 +95,15 @@ export const OAuthProviderGroupRow: React.FC<OAuthProviderGroupRowProps> = ({
                     toggleExpanded();
                   }}
                 >
-                  {pluginPresentation?.icon === undefined ? null : (
-                    <PluginIcon icon={pluginPresentation.icon} size={16} />
-                  )}
                   {expanded ? <ChevronDown aria-hidden="true" /> : <ChevronRight aria-hidden="true" />}
                 </Button>
               ) : cell.column.id === 'provider' ? (
-                <span className="font-medium">{groupLabel}</span>
+                <div className="flex items-center gap-2 font-medium">
+                  {pluginPresentation?.icon === undefined ? null : (
+                    <PluginIcon icon={pluginPresentation.icon} size={16} />
+                  )}
+                  <span>{groupLabel}</span>
+                </div>
               ) : cell.column.id === 'type' ? (
                 <span>OAuth</span>
               ) : cell.column.id === 'models' ? (
