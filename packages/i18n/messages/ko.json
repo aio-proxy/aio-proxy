@@ -451,7 +451,10 @@
         "col_catalog": "카탈로그",
         "col_models": "모델",
         "col_weight": "가중치",
+        "col_usage_24h": "24시간 사용량",
         "col_actions": "작업",
+        "expand_group": "프로바이더 그룹 펼치기",
+        "collapse_group": "프로바이더 그룹 접기",
         "filter": "프로바이더 필터링",
         "filter_placeholder": "이름 또는 Provider ID로 검색",
         "columns": "프로바이더 열"

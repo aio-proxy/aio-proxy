@@ -1,4 +1,4 @@
-import { m } from '@aio-proxy/i18n';
+import { getLocale, m } from '@aio-proxy/i18n';
 import type { DashboardProviderSummary } from '@aio-proxy/types';
 import { Link } from '@tanstack/react-router';
 import type { ColumnDef } from '@tanstack/react-table';
@@ -6,9 +6,12 @@ import { startCase } from 'es-toolkit/string';
 import type React from 'react';
 
 import { tableHead } from '@/components/data-table/table-head';
+import { formatCompactTokenCount } from '@/components/token-count';
 import type { DataTableFeatures } from '@/hooks/use-data-table';
+import { formatNanoUsd } from '@/lib/nano-usd';
 
 import { PROVIDER_KIND_LABEL } from '../lib/constants';
+import type { ProviderUsage } from '../services/provider-usage-service';
 import type { DeleteProviderDialogRef } from './delete-provider-dialog';
 import { ProviderEnabledSwitch } from './provider-enabled-switch';
 import { ProviderModelsCell } from './provider-models-cell';
@@ -64,29 +67,22 @@ const typeColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
   id: 'type',
   accessorFn: (row) => {
     if (row.rowType === 'oauth-group') return `OAuth ${row.groupKey}`;
-    return row.provider.kind === 'ai-sdk'
-      ? (row.provider.packageName ?? PROVIDER_KIND_LABEL['ai-sdk'])
-      : row.provider.kind === 'invalid'
-        ? m['dashboard.providers.kind_label.invalid']()
-        : PROVIDER_KIND_LABEL[row.provider.kind];
+    return row.provider.kind === 'api'
+      ? `${PROVIDER_KIND_LABEL.api} · ${row.provider.protocol ?? 'N/A'}`
+      : row.provider.kind === 'ai-sdk'
+        ? (row.provider.packageName ?? PROVIDER_KIND_LABEL['ai-sdk'])
+        : row.provider.kind === 'invalid'
+          ? m['dashboard.providers.kind_label.invalid']()
+          : PROVIDER_KIND_LABEL[row.provider.kind];
   },
   header: tableHead(() => m['dashboard.providers.table.col_type']()),
   cell: ({ row }) => {
     const provider = concreteProvider(row.original);
     if (provider === undefined) return null;
+    if (provider.kind === 'api') return `${PROVIDER_KIND_LABEL.api} · ${provider.protocol ?? 'N/A'}`;
     if (provider.kind === 'ai-sdk') return provider.packageName ?? PROVIDER_KIND_LABEL['ai-sdk'];
     if (provider.kind === 'invalid') return m['dashboard.providers.kind_label.invalid']();
     return PROVIDER_KIND_LABEL[provider.kind];
-  },
-};
-
-const protocolColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
-  id: 'protocol',
-  accessorFn: (row) => (row.rowType === 'provider' && row.provider.kind === 'api' ? (row.provider.protocol ?? '') : ''),
-  header: tableHead(() => m['dashboard.providers.table.col_protocol']()),
-  cell: ({ row }) => {
-    const provider = concreteProvider(row.original);
-    return provider?.kind === 'api' ? (provider.protocol ?? 'N/A') : 'N/A';
   },
 };
 
@@ -130,12 +126,39 @@ const stateColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
 
 export const createProviderColumns = (
   deleteDialogRef: React.RefObject<DeleteProviderDialogRef | null>,
+  providerUsage: ReadonlyMap<string, ProviderUsage>,
 ): ColumnDef<DataTableFeatures, ProviderTableRow>[] => [
+  {
+    id: 'aggregate',
+    enableSorting: false,
+    header: tableHead(() => ''),
+    cell: () => null,
+  },
   providerColumn,
   typeColumn,
-  protocolColumn,
   modelsColumn,
   weightColumn,
+  {
+    id: 'usage',
+    enableSorting: false,
+    header: tableHead(() => m['dashboard.providers.table.col_usage_24h']()),
+    cell: ({ row }) => {
+      const provider = concreteProvider(row.original);
+      if (provider === undefined) return null;
+      const usage = providerUsage.get(provider.id) ?? {
+        requestCount: 0n,
+        totalTokens: 0n,
+        estimatedCostNanoUsd: 0n,
+      };
+      return (
+        <div className="flex flex-col items-end text-xs tabular-nums">
+          <span>{formatCompactTokenCount(usage.requestCount)}</span>
+          <span>{formatCompactTokenCount(usage.totalTokens)}</span>
+          <span>{formatNanoUsd(usage.estimatedCostNanoUsd, getLocale(), 'compact')}</span>
+        </div>
+      );
+    },
+  },
   stateColumn,
   {
     id: 'enabled',

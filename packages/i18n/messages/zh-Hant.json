@@ -451,7 +451,10 @@
         "col_catalog": "目錄",
         "col_models": "模型",
         "col_weight": "權重",
+        "col_usage_24h": "24 小時用量",
         "col_actions": "操作",
+        "expand_group": "展開提供商分組",
+        "collapse_group": "收合提供商分組",
         "filter": "篩選提供商",
         "filter_placeholder": "依名稱或提供商 ID 搜尋",
         "columns": "提供商欄"

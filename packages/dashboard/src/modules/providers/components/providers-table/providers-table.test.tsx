@@ -1,9 +1,12 @@
 import type { DashboardProviderSummary } from '@aio-proxy/types';
 import { afterEach, describe, expect, rs, test } from '@rstest/core';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import type { ReactElement } from 'react';
 
 import { ProvidersTable } from '.';
 import { providerStub } from '../../lib/provider-fixtures';
+import { providerUsageQueryOptions, type ProviderUsage } from '../../services/provider-usage-service';
 
 const mocks = rs.hoisted(() => ({
   toggle: rs.fn(),
@@ -31,6 +34,15 @@ const oauthProvider = (id: string, accountLabel: string): DashboardProviderSumma
     weight: 2,
   });
 
+const renderProvidersTable = (
+  element: ReactElement,
+  usage: ReadonlyMap<string, ProviderUsage> = new Map<string, ProviderUsage>(),
+) => {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+  queryClient.setQueryData(providerUsageQueryOptions().queryKey, usage);
+  return render(<QueryClientProvider client={queryClient}>{element}</QueryClientProvider>);
+};
+
 afterEach(() => {
   mocks.toggle.mockReset();
   mocks.delete.mockReset();
@@ -43,7 +55,7 @@ describe('providers table', () => {
       configurable: true,
       value: { writeText: mocks.writeText },
     });
-    render(
+    renderProvidersTable(
       <ProvidersTable
         providers={[
           providerStub({
@@ -56,13 +68,20 @@ describe('providers table', () => {
           }),
         ]}
       />,
+      new Map([
+        ['openai-main', { requestCount: 12_000n, totalTokens: 1_200_000n, estimatedCostNanoUsd: 2_500_000_000n }],
+      ]),
     );
 
     const row = within(screen.getByTestId('provider-row-openai-main'));
+    expect(screen.getAllByRole('columnheader')[0]).toBeEmptyDOMElement();
+    expect(screen.getByRole('columnheader', { name: /24h usage|24 小时用量/u })).toBeInTheDocument();
     expect(row.getByText('OpenAI Main')).toBeTruthy();
     expect(row.getByText('openai-main')).toBeTruthy();
-    expect(row.getByText('API')).toBeTruthy();
-    expect(row.getByText('openai-response').closest('[data-slot="badge"]')).toBeNull();
+    expect(row.getByText('API · openai-response')).toBeTruthy();
+    expect(row.getByText('12K')).toBeTruthy();
+    expect(row.getByText('1.2M')).toBeTruthy();
+    expect(row.getByText('$2.50')).toBeTruthy();
     expect(row.getByTestId('provider-models-count')).toHaveTextContent('2');
     expect(row.getByText('7')).toBeTruthy();
 
@@ -79,7 +98,7 @@ describe('providers table', () => {
   });
 
   test('shows an AI SDK package identity and no fabricated protocol', () => {
-    render(
+    renderProvidersTable(
       <ProvidersTable
         providers={[
           providerStub({
@@ -95,21 +114,37 @@ describe('providers table', () => {
 
     const row = within(screen.getByTestId('provider-row-anthropic-sdk'));
     expect(row.getByText('@ai-sdk/anthropic')).toBeTruthy();
-    expect(row.getByText('N/A')).toBeTruthy();
-    expect(row.getByText('0')).toBeTruthy();
+    expect(row.queryByText('N/A')).toBeNull();
   });
 
-  test('expands accounts under a virtual OAuth plugin capability row', () => {
-    render(<ProvidersTable providers={[oauthProvider('copilot-one', 'One'), oauthProvider('copilot-two', 'Two')]} />);
+  test('expands accounts from the OAuth aggregate row and chevron with accessible keyboard controls', () => {
+    renderProvidersTable(
+      <ProvidersTable providers={[oauthProvider('copilot-one', 'One'), oauthProvider('copilot-two', 'Two')]} />,
+      new Map([
+        ['copilot-one', { requestCount: 1_000n, totalTokens: 1_000_000n, estimatedCostNanoUsd: 1_250_000_000n }],
+        ['copilot-two', { requestCount: 234n, totalTokens: 500_000n, estimatedCostNanoUsd: 2_750_000_000n }],
+      ]),
+    );
 
-    const group = within(screen.getByTestId('provider-group-@aio-proxy/plugin-github-copilot/default'));
-    expect(group.getByRole('button')).toHaveAttribute('aria-expanded', 'false');
+    const groupRow = screen.getByTestId('provider-group-@aio-proxy/plugin-github-copilot/default');
+    const group = within(groupRow);
+    const toggle = group.getByRole('button', { name: /Expand provider group|展开提供商分组/u });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(group.getByText('1.2K')).toBeTruthy();
+    expect(group.getByText('1.5M')).toBeTruthy();
+    expect(group.getByText('$4.00')).toBeTruthy();
     expect(group.queryByText('copilot-one')).toBeNull();
     expect(group.queryByRole('switch')).toBeNull();
     expect(group.queryByLabelText(/Open actions|操作菜单/u)).toBeNull();
     expect(screen.queryByTestId('provider-row-copilot-one')).toBeNull();
 
-    fireEvent.click(group.getByRole('button'));
+    fireEvent.click(groupRow);
+
+    expect(screen.getByTestId('provider-row-copilot-one')).toBeTruthy();
+    fireEvent.keyDown(toggle, { key: 'Enter' });
+    expect(screen.queryByTestId('provider-row-copilot-one')).toBeNull();
+
+    fireEvent.click(toggle);
 
     expect(screen.getAllByRole('columnheader', { name: /Provider|提供商/u })).toHaveLength(1);
     for (const id of ['copilot-one', 'copilot-two']) {
@@ -117,10 +152,16 @@ describe('providers table', () => {
       expect(account.getByRole('switch')).toBeTruthy();
       expect(account.getByRole('button', { name: new RegExp(id, 'u') })).toBeTruthy();
     }
+
+    groupRow.focus();
+    fireEvent.keyDown(groupRow, { key: ' ' });
+    expect(screen.queryByTestId('provider-row-copilot-one')).toBeNull();
   });
 
   test('collapses an expanded OAuth group', async () => {
-    render(<ProvidersTable providers={[oauthProvider('copilot-one', 'One'), oauthProvider('copilot-two', 'Two')]} />);
+    renderProvidersTable(
+      <ProvidersTable providers={[oauthProvider('copilot-one', 'One'), oauthProvider('copilot-two', 'Two')]} />,
+    );
 
     const group = screen.getByTestId('provider-group-@aio-proxy/plugin-github-copilot/default');
     fireEvent.click(within(group).getByRole('button'));
@@ -140,7 +181,7 @@ describe('providers table', () => {
       oauthProvider('copilot-focused', 'Focused'),
     ];
 
-    render(<ProvidersTable providers={providers} focusProviderId="copilot-focused" />);
+    renderProvidersTable(<ProvidersTable providers={providers} focusProviderId="copilot-focused" />);
 
     await waitFor(() => {
       expect(screen.getByTestId('provider-row-copilot-focused')).toHaveAttribute('data-focused', 'true');
@@ -157,7 +198,7 @@ describe('providers table', () => {
       oauthProvider('copilot-focused', 'Focused'),
     ];
 
-    render(<ProvidersTable providers={providers} focusProviderId="copilot-focused" />);
+    renderProvidersTable(<ProvidersTable providers={providers} focusProviderId="copilot-focused" />);
 
     await waitFor(() => {
       expect(screen.getByTestId('provider-row-copilot-focused')).toBeTruthy();
@@ -175,7 +216,7 @@ describe('providers table', () => {
       oauthProvider('copilot-focused', 'Focused'),
     ];
 
-    render(<ProvidersTable providers={providers} focusProviderId="copilot-focused" />);
+    renderProvidersTable(<ProvidersTable providers={providers} focusProviderId="copilot-focused" />);
 
     const group = screen.getByTestId('provider-group-@aio-proxy/plugin-github-copilot/default');
     await waitFor(() => {
@@ -189,7 +230,7 @@ describe('providers table', () => {
   });
 
   test('distinguishes an unavailable Provider weight from an explicit zero', () => {
-    render(
+    renderProvidersTable(
       <ProvidersTable
         providers={[
           providerStub({ id: 'weight-missing', kind: 'api', protocol: 'openai-response' }),
@@ -200,12 +241,15 @@ describe('providers table', () => {
 
     expect(within(screen.getByTestId('provider-row-weight-missing')).getByText('N/A')).toBeTruthy();
     const zero = within(screen.getByTestId('provider-row-weight-zero'));
-    expect(zero.getByText('0')).toBeTruthy();
+    const weightColumnIndex = screen
+      .getAllByRole('columnheader')
+      .indexOf(screen.getByRole('columnheader', { name: /Weight|权重/u }));
+    expect(zero.getAllByRole('cell')[weightColumnIndex]).toHaveTextContent('0');
     expect(zero.queryByText('N/A')).toBeNull();
   });
 
   test('sorts Provider rows without rendering table toolbar controls', () => {
-    render(
+    renderProvidersTable(
       <ProvidersTable
         providers={[
           providerStub({ id: 'zulu', kind: 'api', protocol: 'openai-response' }),
@@ -230,7 +274,7 @@ describe('providers table', () => {
 
 describe('invalid provider row', () => {
   test('keeps invalid rows diagnostic and non-actionable', () => {
-    render(
+    renderProvidersTable(
       <ProvidersTable
         providers={[
           providerStub({
