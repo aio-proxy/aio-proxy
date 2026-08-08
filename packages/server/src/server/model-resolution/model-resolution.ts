@@ -54,7 +54,7 @@ export function resolveAggregatedLimit(model: ResolvedModel, field: keyof ModelL
       candidate.configMetadata?.limit?.[field] ??
       candidate.upstreamMetadata?.limit?.[field] ??
       model.fallbackMetadata?.limit?.[field];
-    return value === undefined ? [] : [value];
+    return typeof value === 'number' ? [value] : [];
   });
   if (values.length === 0) return undefined;
   return model.aggregation === ModelContextAggregation.Max ? Math.max(...values) : Math.min(...values);
