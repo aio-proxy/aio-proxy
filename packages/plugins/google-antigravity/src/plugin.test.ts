@@ -8,7 +8,7 @@ import type { GoogleAntigravityAccountOptions, GoogleAntigravityCredential } fro
 
 test('exports a versioned default descriptor', async () => {
   const adapter = await adapterFrom(googleAntigravityPlugin);
-  expect(googleAntigravityPlugin.metadata.icon).toBe('google');
+  expect(googleAntigravityPlugin.metadata.icon).toBe('antigravity-color');
   expect(adapter.id).toBe('default');
   expect(adapter.displayName).toBe('Login with Google Antigravity');
   expect(GOOGLE_ANTIGRAVITY_PLUGIN_VERSION).toBe(packageJson.version);

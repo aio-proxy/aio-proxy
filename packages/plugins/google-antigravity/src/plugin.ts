@@ -122,7 +122,7 @@ export function createGoogleAntigravityPlugin(
     {
       displayName: presentationText.pluginLabel ?? 'Google Antigravity',
       description: presentationText.pluginDescription ?? 'Use a Google Antigravity account to access models',
-      icon: 'google',
+      icon: 'antigravity-color',
     },
   );
 }
