@@ -255,7 +255,7 @@ describe('providers table', () => {
     expect(zero.getAllByRole('cell')[weightColumnIndex]).toHaveTextContent('0');
   });
 
-  test('sorts Provider rows without rendering table toolbar controls', () => {
+  test('sorts Providers by 24h request count without making descriptive columns sortable', () => {
     renderProvidersTable(
       <ProvidersTable
         providers={[
@@ -263,13 +263,15 @@ describe('providers table', () => {
           providerStub({ id: 'alpha', kind: 'api', protocol: 'anthropic' }),
         ]}
       />,
+      new Map([
+        ['zulu', { requestCount: 1n, totalTokens: 0n, estimatedCostNanoUsd: 0n }],
+        ['alpha', { requestCount: 2n, totalTokens: 0n, estimatedCostNanoUsd: 0n }],
+      ]),
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /^Provider$|^提供商$/u }));
-    expect(screen.getByRole('columnheader', { name: /^Provider$|^提供商$/u })).toHaveAttribute(
-      'aria-sort',
-      'ascending',
-    );
+    expect(screen.getByRole('columnheader', { name: /^Provider$|^提供商$/u })).not.toHaveAttribute('aria-sort');
+    fireEvent.click(screen.getByRole('button', { name: /24h usage|24 小时用量/u }));
+    expect(screen.getByTestId('provider-row-alpha')).toBeInTheDocument();
     expect(screen.getAllByTestId(/^provider-row-/u).map((row) => row.getAttribute('data-testid'))).toEqual([
       'provider-row-alpha',
       'provider-row-zulu',

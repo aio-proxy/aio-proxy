@@ -31,8 +31,15 @@ const displayName = (provider: DashboardProviderSummary): string =>
 const concreteProvider = (row: ProviderTableRow): DashboardProviderSummary | undefined =>
   row.rowType === 'provider' ? row.provider : undefined;
 
+const requestCount = (row: ProviderTableRow, providerUsage: ReadonlyMap<string, ProviderUsage>): bigint =>
+  (row.rowType === 'provider' ? [row.provider] : row.accounts.map(({ provider }) => provider)).reduce(
+    (total, provider) => total + (providerUsage.get(provider.id)?.requestCount ?? 0n),
+    0n,
+  );
+
 const providerColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
   id: 'provider',
+  enableSorting: false,
   accessorFn: (row) =>
     row.rowType === 'oauth-group'
       ? [row.groupKey, ...row.accounts.flatMap(({ provider }) => [displayName(provider), provider.id])].join(' ')
@@ -43,7 +50,7 @@ const providerColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
     if (provider === undefined) return null;
     const name = displayName(provider);
     return (
-      <div className="max-w-48 min-w-16">
+      <div className="max-w-64 min-w-16 truncate">
         {canEditProvider(provider) ? (
           <Link
             id={`provider-link-${provider.id}`}
@@ -57,7 +64,7 @@ const providerColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
         ) : (
           <div className="font-medium">{name}</div>
         )}
-        <div className="text-xs text-muted-foreground">{provider.id}</div>
+        <div className="truncate text-xs text-muted-foreground">{provider.id}</div>
       </div>
     );
   },
@@ -65,6 +72,7 @@ const providerColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
 
 const typeColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
   id: 'type',
+  enableSorting: false,
   accessorFn: (row) => {
     if (row.rowType === 'oauth-group') return `OAuth ${row.groupKey}`;
     return row.provider.kind === 'api'
@@ -88,6 +96,7 @@ const typeColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
 
 const modelsColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
   id: 'models',
+  enableSorting: false,
   accessorFn: (row) =>
     row.rowType === 'oauth-group'
       ? row.accounts.flatMap(({ provider }) => provider.clientModels).join(' ')
@@ -111,6 +120,7 @@ const weightColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
 
 const stateColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
   id: 'state',
+  enableSorting: false,
   accessorFn: (row) => {
     const provider = concreteProvider(row);
     return provider === undefined
@@ -141,7 +151,7 @@ export const createProviderColumns = (
   stateColumn,
   {
     id: 'usage',
-    enableSorting: false,
+    accessorFn: (row) => requestCount(row, providerUsage),
     header: tableHead(() => m['dashboard.providers.table.col_usage_24h']()),
     cell: ({ row }) => {
       const provider = concreteProvider(row.original);
