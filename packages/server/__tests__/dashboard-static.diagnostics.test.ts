@@ -50,7 +50,7 @@ describe('dashboard static routes', () => {
         throw error;
       },
       {
-        label: { default: 'Broken plugin', 'zh-Hans': '损坏的插件' },
+        displayName: { default: 'Broken plugin', 'zh-Hans': '损坏的插件' },
         description: { default: 'Broken plugin description', 'zh-Hans': '损坏插件描述' },
         options: {
           schema: zod.object({ token: zod.string() }),

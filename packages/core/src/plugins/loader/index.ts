@@ -61,6 +61,7 @@ export async function loadPluginRegistry(options: LoadPluginRegistryOptions): Pr
     let version: string | undefined;
     let displayName: LocalizedText | undefined;
     let description: LocalizedText | undefined;
+    // oxlint-disable-next-line typescript/no-redundant-type-constituents -- PluginIcon contains a generated key union which is temporarily `any` during lint.
     let icon: PluginIcon | undefined;
     let hasOptions = false;
     try {

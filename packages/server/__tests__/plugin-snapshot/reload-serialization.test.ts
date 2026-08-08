@@ -43,7 +43,7 @@ test('overlapping slow and fast reloads commit in serialized file-read order', a
   const descriptor = definePlugin((api) => {
     api.oauth.register({
       id: 'default',
-      label: 'Example',
+      displayName: 'Example',
       account: {
         options: { schema: zod.object({ marker: zod.string() }), form: [] },
       },
@@ -156,7 +156,7 @@ test('a failed candidate preserves the prior snapshot and never starts its catal
   const descriptor = definePlugin((api) => {
     api.oauth.register({
       id: 'default',
-      label: 'Example',
+      displayName: 'Example',
       account: { options: { schema: zod.object({}), form: [] } },
       credentials: zod.object({ token: zod.string() }),
       async login() {

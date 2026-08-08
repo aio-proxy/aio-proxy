@@ -44,7 +44,8 @@ export async function pluginList(_options: PluginListOptions, injected?: PluginL
             : installed.has(packageName)
               ? m['cli.plugin.state_configured']()
               : m['cli.plugin.state_not_installed']();
-      const label = loaded?.label === undefined ? undefined : resolveLocalizedText(loaded.label, getLocale());
+      const label =
+        loaded?.displayName === undefined ? undefined : resolveLocalizedText(loaded.displayName, getLocale());
       const description =
         loaded?.description === undefined ? undefined : resolveLocalizedText(loaded.description, getLocale());
       const identity = label === undefined ? packageName : `${label} (${packageName})`;

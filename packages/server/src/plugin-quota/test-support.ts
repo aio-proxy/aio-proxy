@@ -132,7 +132,7 @@ function runtimeProvider(id: string): RuntimeProviderInstance {
 function buildQuotaAdapter(options: QuotaFixtureOptions, tracker: QuotaAdapterTracker): OAuthAdapter {
   return {
     id: CAPABILITY,
-    label: 'Example',
+    displayName: 'Example',
     account: {
       options: options.accountOptions ?? {
         schema: zod.object({ region: zod.string(), clientSecret: zod.string() }),
@@ -161,7 +161,7 @@ function buildQuotaAdapter(options: QuotaFixtureOptions, tracker: QuotaAdapterTr
               tracker.contexts.push(context);
               return (
                 options.read?.(context) ?? {
-                  items: [{ id: options.itemId ?? 'default', label: 'Default' }],
+                  items: [{ id: options.itemId ?? 'default', displayName: 'Default' }],
                 }
               );
             },
