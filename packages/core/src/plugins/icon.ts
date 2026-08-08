@@ -1,12 +1,12 @@
-import type { OAuthIcon } from '@aio-proxy/plugin-sdk';
+import type { PluginIcon } from '@aio-proxy/plugin-sdk';
 
-export const MAX_OAUTH_ICON_BYTES = 256 * 1024;
+export const MAX_PLUGIN_ICON_BYTES = 256 * 1024;
 const LOBE_ICON_SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 const DATA_MIME = new Set(['image/svg+xml', 'image/png', 'image/webp', 'image/gif', 'image/avif']);
 const MIME_PARAMETER =
   /^[!#$%&'*+.^_`|~0-9A-Za-z-]+=(?:[!#$%&'*+.^_`|~0-9A-Za-z-]+|"(?:[\x20\x21\x23-\x5B\x5D-\x7E]|\\[\x20-\x7E])*")$/u;
 
-export type OAuthIconValidationResult = { readonly ok: true; readonly value: OAuthIcon } | { readonly ok: false };
+export type PluginIconValidationResult = { readonly ok: true; readonly value: PluginIcon } | { readonly ok: false };
 
 function decodeDataUrlPayload(value: string): string | undefined {
   let decoded = '';
@@ -58,8 +58,8 @@ function validDataUrl(value: string): boolean {
   }
 }
 
-export function validateOAuthIcon(value: unknown): OAuthIconValidationResult {
-  if (typeof value !== 'string' || new TextEncoder().encode(value).byteLength > MAX_OAUTH_ICON_BYTES) {
+export function validatePluginIcon(value: unknown): PluginIconValidationResult {
+  if (typeof value !== 'string' || new TextEncoder().encode(value).byteLength > MAX_PLUGIN_ICON_BYTES) {
     return { ok: false };
   }
   if (value.startsWith('http://') || value.startsWith('https://')) {
@@ -67,12 +67,12 @@ export function validateOAuthIcon(value: unknown): OAuthIconValidationResult {
     try {
       const url = new URL(value);
       return url.hostname !== '' && (url.protocol === 'http:' || url.protocol === 'https:')
-        ? { ok: true, value: value as OAuthIcon }
+        ? { ok: true, value: value as PluginIcon }
         : { ok: false };
     } catch {
       return { ok: false };
     }
   }
-  if (value.startsWith('data:')) return validDataUrl(value) ? { ok: true, value: value as OAuthIcon } : { ok: false };
-  return LOBE_ICON_SLUG.test(value) ? { ok: true, value: value as OAuthIcon } : { ok: false };
+  if (value.startsWith('data:')) return validDataUrl(value) ? { ok: true, value: value as PluginIcon } : { ok: false };
+  return LOBE_ICON_SLUG.test(value) ? { ok: true, value: value as PluginIcon } : { ok: false };
 }

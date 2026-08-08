@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'bun:test';
 
-import { MAX_OAUTH_ICON_BYTES, validateOAuthIcon } from './icon';
+import { MAX_PLUGIN_ICON_BYTES, validatePluginIcon } from './icon';
 
-describe('validateOAuthIcon', () => {
+describe('validatePluginIcon', () => {
   test.each([
     'openai',
     'codex-color',
@@ -16,7 +16,7 @@ describe('validateOAuthIcon', () => {
     'data:image/gif;base64,R0lGODlh',
     'data:image/avif;base64,AAAA',
   ])('accepts %s', (icon) => {
-    expect(validateOAuthIcon(icon)).toEqual({ ok: true, value: icon });
+    expect(validatePluginIcon(icon)).toEqual({ ok: true, value: icon });
   });
 
   test.each([
@@ -35,9 +35,9 @@ describe('validateOAuthIcon', () => {
     'data:image/png,\t',
     'data:image/png,\x7f',
     'data:image/png,\u0085',
-    `data:image/png,${'a'.repeat(MAX_OAUTH_ICON_BYTES)}`,
+    `data:image/png,${'a'.repeat(MAX_PLUGIN_ICON_BYTES)}`,
   ])('rejects an invalid icon without returning it', (icon) => {
-    const result = validateOAuthIcon(icon);
+    const result = validatePluginIcon(icon);
     expect(result).toEqual({ ok: false });
     expect(result).not.toHaveProperty('value');
   });

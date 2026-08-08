@@ -1,4 +1,4 @@
-import type { LocalizedText, PluginDescriptor } from '@aio-proxy/plugin-sdk';
+import type { LocalizedText, PluginDescriptor, PluginIcon } from '@aio-proxy/plugin-sdk';
 import type { PluginEnablement, PluginState } from '@aio-proxy/types';
 
 import { findInstalledNpmPackage } from '../../npm';
@@ -30,8 +30,9 @@ export type PluginPackageImporter = (input: {
 }) => Promise<unknown>;
 export type LoadedPluginState = {
   readonly packageName: string;
-  readonly label?: LocalizedText;
+  readonly displayName?: LocalizedText;
   readonly description?: LocalizedText;
+  readonly icon?: PluginIcon;
   readonly version?: string;
   readonly builtIn: boolean;
   readonly hasOptions?: boolean;
@@ -53,13 +54,14 @@ export type LoadPluginRegistryOptions = {
 };
 
 export async function loadPluginRegistry(options: LoadPluginRegistryOptions): Promise<PluginRegistrySnapshot> {
-  const host = createPluginRegistryHost(options.logger, options.createPluginLogger);
+  const host = createPluginRegistryHost(options.createPluginLogger);
   const plugins = new Map<string, LoadedPluginState>();
   for (const candidate of candidates(options)) {
     let secretValues: readonly string[] = [];
     let version: string | undefined;
-    let label: LocalizedText | undefined;
+    let displayName: LocalizedText | undefined;
     let description: LocalizedText | undefined;
+    let icon: PluginIcon | undefined;
     let hasOptions = false;
     try {
       const secretOptions = options.secrets.readPluginSecret(candidate.packageName);
@@ -69,13 +71,22 @@ export async function loadPluginRegistry(options: LoadPluginRegistryOptions): Pr
         const installed = await findInstalledNpmPackage(candidate.packageName);
         if (installed === null) throw new PluginHostError('PLUGIN_NOT_INSTALLED');
         version = installed.version;
-        descriptor = await loadThirdPartyDescriptor(candidate.packageName, installed, options.importPackage);
+        descriptor = await loadThirdPartyDescriptor(
+          candidate.packageName,
+          installed,
+          options.importPackage,
+          options.logger,
+        );
       } else {
         version = candidate.builtIn.version;
-        descriptor = validateDescriptor(candidate.builtIn.descriptor);
+        descriptor = validateDescriptor(candidate.builtIn.descriptor, {
+          packageName: candidate.packageName,
+          logger: options.logger,
+        });
       }
-      label = descriptor.metadata.label;
+      displayName = descriptor.metadata.displayName;
       description = descriptor.metadata.description;
+      icon = descriptor.metadata.icon;
       hasOptions = descriptor.metadata.options !== undefined;
       const staging = host.stage(candidate.packageName, { redactSecretValues: secretValues });
       const setup = Promise.resolve().then(async () => {
@@ -96,8 +107,9 @@ export async function loadPluginRegistry(options: LoadPluginRegistryOptions): Pr
       staging.commit();
       plugins.set(candidate.packageName, {
         packageName: candidate.packageName,
-        ...(label === undefined ? {} : { label }),
+        ...(displayName === undefined ? {} : { displayName }),
         ...(description === undefined ? {} : { description }),
+        ...(icon === undefined ? {} : { icon }),
         ...(version === undefined ? {} : { version }),
         builtIn: candidate.builtIn !== undefined,
         hasOptions,
@@ -106,8 +118,9 @@ export async function loadPluginRegistry(options: LoadPluginRegistryOptions): Pr
     } catch (error) {
       plugins.set(candidate.packageName, {
         packageName: candidate.packageName,
-        ...(label === undefined ? {} : { label }),
+        ...(displayName === undefined ? {} : { displayName }),
         ...(description === undefined ? {} : { description }),
+        ...(icon === undefined ? {} : { icon }),
         ...(version === undefined ? {} : { version }),
         builtIn: candidate.builtIn !== undefined,
         hasOptions,

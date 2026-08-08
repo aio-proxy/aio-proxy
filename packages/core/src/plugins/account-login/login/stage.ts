@@ -34,7 +34,7 @@ export type StageContext = {
   readonly currentCredential: () => unknown;
   readonly fingerprint: string;
   readonly suggestedKey: string;
-  readonly metadata: { label?: string; expiresAt?: number };
+  readonly metadata: { accountLabel?: string; expiresAt?: number };
   readonly diagnostics: DiagnosticFactory;
   readonly signal: AbortSignal;
 };
@@ -164,7 +164,7 @@ function buildAccountWrite(ctx: StageContext, providerId: string, currentAccount
     options: ctx.publicValues,
     secrets: ctx.secrets,
     credential: ctx.currentCredential(),
-    ...(metadata.label === undefined ? {} : { label: metadata.label }),
+    ...(metadata.accountLabel === undefined ? {} : { label: metadata.accountLabel }),
     ...(metadata.expiresAt === undefined ? {} : { expiresAt: metadata.expiresAt }),
     catalog:
       discovered.kind === 'success'
