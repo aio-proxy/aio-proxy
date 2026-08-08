@@ -1,4 +1,13 @@
-import type { OAuthAdapter, OAuthQuotaItem, PluginApi, RuntimeContext, RuntimeFetch, RuntimeRequestInit } from '.';
+import type {
+  CredentialPort,
+  OAuthAdapter,
+  OAuthLoginResult,
+  OAuthQuotaItem,
+  PluginApi,
+  RuntimeContext,
+  RuntimeFetch,
+  RuntimeRequestInit,
+} from '.';
 
 declare const runtimeFetch: RuntimeFetch;
 
@@ -31,6 +40,7 @@ void runtimeContext.modelFetch;
 
 declare const api: PluginApi;
 declare const adapter: OAuthAdapter<MyOptions, MyCredential>;
+declare const credentials: CredentialPort<MyCredential>;
 
 api.oauth.register(adapter);
 
@@ -58,6 +68,27 @@ const quotaAdapter: OAuthAdapter<MyOptions, MyCredential> = {
 
 api.oauth.register(quotaAdapter);
 
+const loginResult: OAuthLoginResult<MyCredential> = {
+  fingerprint: 'account',
+  suggestedKey: 'account',
+  credentials: { accessToken: 'token' },
+};
+const quotaItem: OAuthQuotaItem = { id: 'primary', displayName: 'Primary' };
+
+// @ts-expect-error v1 adapter label is removed
+const invalidAdapterLabel: OAuthAdapter<MyOptions, MyCredential> = { ...quotaAdapter, label: 'Quota' };
+// @ts-expect-error v1 login-result label is removed
+const invalidLoginResult: OAuthLoginResult<MyCredential> = { ...loginResult, label: 'account' };
+const refreshMetadata: { readonly accountLabel?: string; readonly expiresAt?: number } = {
+  // @ts-expect-error v1 credential refresh label is removed
+  label: 'account',
+};
+void credentials.refresh(1, async (current) => ({ value: current.value, metadata: refreshMetadata }));
+// @ts-expect-error v1 quota label is removed
+const invalidQuotaItem: OAuthQuotaItem = { ...quotaItem, label: 'Primary' };
 // @ts-expect-error quota timestamps are epoch milliseconds
 const invalidResetAt: OAuthQuotaItem = { id: 'primary', displayName: 'Primary', resetsAt: new Date() };
+void invalidAdapterLabel;
+void invalidLoginResult;
+void invalidQuotaItem;
 void invalidResetAt;

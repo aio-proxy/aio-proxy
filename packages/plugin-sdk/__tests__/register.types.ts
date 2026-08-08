@@ -54,7 +54,7 @@ const presentationAdapter: OAuthAdapter = {
 // @ts-expect-error v1 label is removed
 definePlugin(() => {}, { label: 'Example' });
 // @ts-expect-error capability icons belong to plugin metadata
-const invalidAdapter: OAuthAdapter = { id: 'default', icon: 'openai' };
+const invalidAdapter: OAuthAdapter = { ...presentationAdapter, icon: 'openai' };
 
 const aliases: DefaultAliasSuggestions = {
   'gemini-3.5-flash': {
