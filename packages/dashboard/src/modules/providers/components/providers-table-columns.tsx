@@ -174,7 +174,7 @@ export const createProviderColumns = (
   {
     id: 'actions',
     enableSorting: false,
-    header: tableHead(() => m['dashboard.providers.table.col_actions']()),
+    header: tableHead(() => m['dashboard.providers.table.col_actions'](), 'text-right'),
     cell: ({ row }) => {
       const provider = concreteProvider(row.original);
       return provider === undefined || !canEditProvider(provider) ? null : (
