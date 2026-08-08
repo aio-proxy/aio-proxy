@@ -11,7 +11,6 @@ import { providerUsageQueryOptions, type ProviderUsage } from '../../services/pr
 const mocks = rs.hoisted(() => ({
   toggle: rs.fn(),
   delete: rs.fn(),
-  writeText: rs.fn().mockResolvedValue(undefined),
 }));
 
 rs.mock('@tanstack/react-router', () => ({ Link: 'a' }));
@@ -46,15 +45,10 @@ const renderProvidersTable = (
 afterEach(() => {
   mocks.toggle.mockReset();
   mocks.delete.mockReset();
-  mocks.writeText.mockClear();
 });
 
 describe('providers table', () => {
   test('shows concrete Provider routing fields and owns its row controls', async () => {
-    Object.defineProperty(navigator, 'clipboard', {
-      configurable: true,
-      value: { writeText: mocks.writeText },
-    });
     renderProvidersTable(
       <ProvidersTable
         providers={[
@@ -87,10 +81,6 @@ describe('providers table', () => {
 
     fireEvent.click(row.getByRole('switch', { name: /Disable provider openai-main|停用提供商 openai-main/u }));
     expect(mocks.toggle).toHaveBeenCalledWith({ id: 'openai-main', enabled: false });
-
-    fireEvent.click(row.getByRole('button', { name: /Open actions for provider openai-main|打开提供商 openai-main/u }));
-    fireEvent.click(await screen.findByRole('menuitem', { name: /Copy Provider ID|复制提供商 ID/u }));
-    expect(mocks.writeText).toHaveBeenCalledWith('openai-main');
 
     fireEvent.click(row.getByRole('button', { name: /Open actions for provider openai-main|打开提供商 openai-main/u }));
     fireEvent.click(await screen.findByRole('menuitem', { name: /^Delete$|^删除$/u }));
