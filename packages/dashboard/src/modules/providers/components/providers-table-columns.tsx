@@ -134,62 +134,72 @@ const stateColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
   },
 };
 
+const aggregateColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
+  id: 'aggregate',
+  enableSorting: false,
+  header: tableHead(() => ''),
+  cell: () => null,
+};
+
+const enabledColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
+  id: 'enabled',
+  accessorFn: (row) => String(concreteProvider(row)?.enabled ?? ''),
+  header: tableHead(() => m['dashboard.providers.table.col_enabled'](), 'text-center'),
+  cell: ({ row }) => {
+    const provider = concreteProvider(row.original);
+    return provider === undefined || !canEditProvider(provider) ? null : <ProviderEnabledSwitch provider={provider} />;
+  },
+};
+
+const usageColumn = (
+  providerUsage: ReadonlyMap<string, ProviderUsage>,
+): ColumnDef<DataTableFeatures, ProviderTableRow> => ({
+  id: 'usage',
+  accessorFn: (row) => requestCount(row, providerUsage),
+  header: tableHead(() => m['dashboard.providers.table.col_usage_24h']()),
+  cell: ({ row }) => {
+    const provider = concreteProvider(row.original);
+    if (provider === undefined) return null;
+    const usage = providerUsage.get(provider.id) ?? {
+      requestCount: 0n,
+      totalTokens: 0n,
+      estimatedCostNanoUsd: 0n,
+    };
+    return (
+      <div className="flex flex-col items-end tabular-nums">
+        <span>{formatCompactTokenCount(usage.requestCount)}</span>
+        <span>{formatCompactTokenCount(usage.totalTokens)}</span>
+        <span>{formatNanoUsd(usage.estimatedCostNanoUsd, getLocale(), 'compact')}</span>
+      </div>
+    );
+  },
+});
+
+const actionsColumn = (
+  deleteDialogRef: React.RefObject<DeleteProviderDialogRef | null>,
+): ColumnDef<DataTableFeatures, ProviderTableRow> => ({
+  id: 'actions',
+  enableSorting: false,
+  header: tableHead(() => m['dashboard.providers.table.col_actions'](), 'text-right'),
+  cell: ({ row }) => {
+    const provider = concreteProvider(row.original);
+    return provider === undefined || !canEditProvider(provider) ? null : (
+      <ProviderMoreMenu provider={provider} onDelete={(target) => deleteDialogRef.current?.open(target)} />
+    );
+  },
+});
+
 export const createProviderColumns = (
   deleteDialogRef: React.RefObject<DeleteProviderDialogRef | null>,
   providerUsage: ReadonlyMap<string, ProviderUsage>,
 ): ColumnDef<DataTableFeatures, ProviderTableRow>[] => [
-  {
-    id: 'aggregate',
-    enableSorting: false,
-    header: tableHead(() => ''),
-    cell: () => null,
-  },
+  aggregateColumn,
   providerColumn,
   typeColumn,
   modelsColumn,
   weightColumn,
   stateColumn,
-  {
-    id: 'usage',
-    accessorFn: (row) => requestCount(row, providerUsage),
-    header: tableHead(() => m['dashboard.providers.table.col_usage_24h']()),
-    cell: ({ row }) => {
-      const provider = concreteProvider(row.original);
-      if (provider === undefined) return null;
-      const usage = providerUsage.get(provider.id) ?? {
-        requestCount: 0n,
-        totalTokens: 0n,
-        estimatedCostNanoUsd: 0n,
-      };
-      return (
-        <div className="flex flex-col items-end text-xs tabular-nums">
-          <span>{formatCompactTokenCount(usage.requestCount)}</span>
-          <span>{formatCompactTokenCount(usage.totalTokens)}</span>
-          <span>{formatNanoUsd(usage.estimatedCostNanoUsd, getLocale(), 'compact')}</span>
-        </div>
-      );
-    },
-  },
-  {
-    id: 'enabled',
-    accessorFn: (row) => String(concreteProvider(row)?.enabled ?? ''),
-    header: tableHead(() => m['dashboard.providers.table.col_enabled'](), 'text-center'),
-    cell: ({ row }) => {
-      const provider = concreteProvider(row.original);
-      return provider === undefined || !canEditProvider(provider) ? null : (
-        <ProviderEnabledSwitch provider={provider} />
-      );
-    },
-  },
-  {
-    id: 'actions',
-    enableSorting: false,
-    header: tableHead(() => m['dashboard.providers.table.col_actions'](), 'text-right'),
-    cell: ({ row }) => {
-      const provider = concreteProvider(row.original);
-      return provider === undefined || !canEditProvider(provider) ? null : (
-        <ProviderMoreMenu provider={provider} onDelete={(target) => deleteDialogRef.current?.open(target)} />
-      );
-    },
-  },
+  usageColumn(providerUsage),
+  enabledColumn,
+  actionsColumn(deleteDialogRef),
 ];
