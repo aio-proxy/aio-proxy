@@ -1,37 +1,60 @@
 import { expect, test } from 'bun:test';
 
-import { type OAuthAdapter, zod } from '@aio-proxy/plugin-sdk';
+import { definePlugin } from '@aio-proxy/plugin-sdk';
 
-import { createPluginRegistryHost } from './registry';
+import { loadPluginRegistry } from './loader';
 
-test('a throwing icon warning sink still strips the icon and commits the capability', () => {
-  const host = createPluginRegistryHost(() => {
-    throw new Error('warning sink failed');
-  });
-  const staging = host.stage('@example/icons');
-  const adapter: OAuthAdapter = {
-    id: 'default',
-    label: 'Example',
-    icon: 'data:text/html,private-icon-payload' as never,
-    account: { options: { schema: zod.object({}), form: [] } },
-    credentials: zod.object({ token: zod.string() }),
-    async login() {
-      throw new Error('not called');
-    },
-    catalog: {
-      policy: { kind: 'static' },
-      async discover() {
-        return { language: [], image: [], embedding: [], speech: [], transcription: [], reranking: [] };
+test('invalid metadata icon logs a safe package-scoped warning', async () => {
+  const invalidIcon = 'data:text/html,private-icon-payload';
+  const logs: { readonly event: string; readonly context: Readonly<Record<string, unknown>> }[] = [];
+  await loadPluginRegistry({
+    enablements: [{ packageName: '@example/icons' }],
+    builtIns: [
+      {
+        packageName: '@example/icons',
+        version: '1.0.0',
+        descriptor: definePlugin(() => {}, { icon: invalidIcon as never }),
       },
-    },
-    async createRuntime() {
-      throw new Error('not called');
-    },
-  };
+    ],
+    diagnostics: (code, options) => ({
+      code,
+      retryable: options.retryable,
+      summary: code,
+      occurredAt: new Date(0).toISOString(),
+    }),
+    importPackage: async () => ({}),
+    logger: (entry) => logs.push(entry),
+    secrets: { readPluginSecret: () => undefined },
+  });
 
-  expect(() => staging.api.oauth.register(adapter)).not.toThrow();
-  staging.seal();
-  staging.commit();
+  expect(logs).toHaveLength(1);
+  expect(logs[0]).toMatchObject({ event: 'plugin.metadata.icon.invalid', context: { plugin: '@example/icons' } });
+  expect(JSON.stringify(logs[0])).not.toContain(invalidIcon);
+});
 
-  expect(host.registry.resolveOAuth('@example/icons', 'default')?.icon).toBeUndefined();
+test('a throwing metadata icon warning sink does not prevent the plugin becoming ready', async () => {
+  const snapshot = await loadPluginRegistry({
+    enablements: [{ packageName: '@example/icons' }],
+    builtIns: [
+      {
+        packageName: '@example/icons',
+        version: '1.0.0',
+        descriptor: definePlugin(() => {}, { icon: 'data:text/html,private-icon-payload' as never }),
+      },
+    ],
+    diagnostics: (code, options) => ({
+      code,
+      retryable: options.retryable,
+      summary: code,
+      occurredAt: new Date(0).toISOString(),
+    }),
+    importPackage: async () => ({}),
+    logger: () => {
+      throw new Error('warning sink failed');
+    },
+    secrets: { readPluginSecret: () => undefined },
+  });
+
+  expect(snapshot.plugins.get('@example/icons')).toMatchObject({ state: { status: 'ready' } });
+  expect(snapshot.plugins.get('@example/icons')?.icon).toBeUndefined();
 });

@@ -29,8 +29,8 @@ test('resolves the leased OAuth Provider ID and passes parsed account context wi
   let credential: unknown;
   const raw: OAuthQuotaSnapshot = {
     items: [
-      { id: 'weekly', label: 'Weekly' },
-      { id: 'five-hour', label: 'Five hour' },
+      { id: 'weekly', displayName: 'Weekly' },
+      { id: 'five-hour', displayName: 'Five hour' },
     ],
   };
   const fixture = createQuotaFixture({
@@ -181,7 +181,7 @@ test('holds the old snapshot lease through plugin settlement and ignores a concu
     read: async () => {
       started.resolve();
       await release.promise;
-      return { items: [{ id: 'old', label: 'Old' }] };
+      return { items: [{ id: 'old', displayName: 'Old' }] };
     },
   });
   const next = createQuotaFixture({ itemId: 'new', region: 'next-region' });
@@ -209,7 +209,7 @@ test('intentionally invokes the plugin twice for simultaneous reads of one Provi
   const fixture = createQuotaFixture({
     read: async () => {
       await release.promise;
-      return { items: [{ id: 'direct', label: 'Direct' }] };
+      return { items: [{ id: 'direct', displayName: 'Direct' }] };
     },
   });
   const reader = createOAuthQuotaReader(fixture.dependencies);

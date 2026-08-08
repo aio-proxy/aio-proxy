@@ -10,9 +10,8 @@ test('dashboard OAuth capability schema accepts safe form metadata and rejects s
   const capability = {
     plugin: '@example/oauth',
     capability: 'default',
-    label: { default: 'Example OAuth', 'zh-Hans': '示例 OAuth' },
+    displayName: { default: 'Example OAuth', 'zh-Hans': '示例 OAuth' },
     description: 'Example account',
-    icon: 'openai',
     defaults: { deploymentType: 'github.com' },
     form: [
       {
@@ -26,6 +25,8 @@ test('dashboard OAuth capability schema accepts safe form metadata and rejects s
   };
 
   expect(schema.parse(capability)).toEqual(capability);
+  expect(schema.safeParse({ ...capability, label: 'Example OAuth' }).success).toBe(false);
+  expect(schema.safeParse({ ...capability, icon: 'openai' }).success).toBe(false);
   expect(() =>
     schema.parse({
       ...capability,

@@ -38,8 +38,7 @@ export function createKimiCodePlugin(
   } as const satisfies ConfigSpec<Record<string, never>>;
   const adapter: OAuthAdapter<Record<string, never>, KimiCredential> = {
     id: 'default',
-    label: presentationText.adapterLabel,
-    icon: 'moonshot',
+    displayName: presentationText.adapterLabel,
     account: { options: accountOptions },
     credentials: zod.object({
       accessToken: zod.string().min(1),
@@ -69,7 +68,8 @@ export function createKimiCodePlugin(
   };
 
   return definePlugin((api) => api.oauth.register(adapter), {
-    label: presentationText.pluginLabel ?? 'Kimi Code',
+    displayName: presentationText.pluginLabel ?? 'Kimi Code',
     description: presentationText.pluginDescription ?? 'Use a Kimi Code account to access models',
+    icon: 'moonshot',
   });
 }

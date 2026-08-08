@@ -21,7 +21,7 @@ export async function loginToGitHubCopilot(
 ): Promise<{
   readonly fingerprint: string;
   readonly suggestedKey: string;
-  readonly label?: string;
+  readonly accountLabel?: string;
   readonly credentials: GitHubCopilotCredential;
   readonly expiresAt: number;
 }> {
@@ -44,7 +44,7 @@ export async function loginToGitHubCopilot(
   return {
     fingerprint: user.id,
     suggestedKey: `copilot-${user.id}`,
-    ...(user.login === undefined ? {} : { label: user.login }),
+    ...(user.login === undefined ? {} : { accountLabel: user.login }),
     credentials: {
       githubToken,
       copilotToken: copilot.access,

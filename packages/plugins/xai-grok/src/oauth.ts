@@ -220,7 +220,7 @@ function loginResult(body: zod.infer<typeof tokenSchema>, now: number) {
   return {
     fingerprint: `sha256:${digest}`,
     suggestedKey: `grok-${digest.slice(0, 12)}`,
-    label: email ?? subject ?? 'xAI Grok',
+    accountLabel: email ?? subject ?? 'xAI Grok',
     credentials,
     expiresAt,
   };

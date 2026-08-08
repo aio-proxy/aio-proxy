@@ -54,19 +54,19 @@ test('maps the weekly usage and every valid rolling limit', async () => {
     items: [
       {
         id: 'weekly',
-        label: { default: 'Weekly quota', 'zh-Hans': '周配额' },
+        displayName: { default: 'Weekly quota', 'zh-Hans': '周配额' },
         remainingRatio: 0.75,
         resetsAt: 1_767_972_193_000,
       },
       {
         id: '300-time-unit-minute',
-        label: { default: '300 minute quota', 'zh-Hans': '300 分钟配额' },
+        displayName: { default: '300 minute quota', 'zh-Hans': '300 分钟配额' },
         remainingRatio: 0.9,
         resetsAt: 1_767_713_582_000,
       },
       {
         id: '60-time-unit-minute',
-        label: { default: '60 minute quota', 'zh-Hans': '60 分钟配额' },
+        displayName: { default: '60 minute quota', 'zh-Hans': '60 分钟配额' },
         remainingRatio: 0.8,
       },
     ],
@@ -116,7 +116,7 @@ test('drops malformed rows while preserving valid limits', async () => {
   expect(snapshot.items).toEqual([
     {
       id: '3-time-unit-minute',
-      label: { default: '3 minute quota', 'zh-Hans': '3 分钟配额' },
+      displayName: { default: '3 minute quota', 'zh-Hans': '3 分钟配额' },
       remainingRatio: 0.25,
     },
   ]);

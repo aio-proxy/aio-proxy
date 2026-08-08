@@ -233,7 +233,7 @@ test('refresh changes only credential revision and notifies once when clearing a
 
     const result = await credentials.refresh(before.revision, async () => ({
       value: { token: 'valid-next' },
-      metadata: { label: 'Rotated', expiresAt: 2 },
+      metadata: { accountLabel: 'Rotated', expiresAt: 2 },
     }));
 
     expect(result.status).toBe('updated');

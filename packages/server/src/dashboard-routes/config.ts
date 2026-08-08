@@ -22,6 +22,7 @@ const UsageOverviewQuerySchema = z.object({
   range: UsageOverviewRangeSchema.default('24h'),
   metric: UsageOverviewMetricSchema.default('cost'),
   groupBy: UsageOverviewGroupBySchema.default('model'),
+  maxResults: z.coerce.number().int().positive().optional(),
 });
 
 const usageOverviewValidator = validator('query', (raw, context) => {
@@ -39,7 +40,8 @@ export const createDashboardRoutes = (state: ServerState, auth: DashboardAuthent
     .route('/', createDashboardProviderWriteRoutes(state))
     .get('/usage', usageOverviewValidator, (context) => {
       const query = context.req.valid('query');
-      return context.json(state.traceStore.overview(query));
+      const { maxResults, ...required } = query;
+      return context.json(state.traceStore.overview(maxResults === undefined ? required : { ...required, maxResults }));
     })
     .route('/overview', createDashboardOverviewRoute(state))
     .route('/plugins', createDashboardPluginRoutes(state))

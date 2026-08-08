@@ -17,7 +17,7 @@ function expectInvalid(value: unknown, path: readonly (string | number)[]): void
 describe('validateOAuthQuotaSnapshot', () => {
   test.each([
     ['snapshot', { items: [], extra: true }, ['extra']],
-    ['item', { items: [{ id: 'item', label: 'Item', extra: true }] }, ['items', 0, 'extra']],
+    ['item', { items: [{ id: 'item', displayName: 'Item', extra: true }] }, ['items', 0, 'extra']],
     ['reset inventory', { items: [], resetCredits: { availableCount: 0, extra: true } }, ['resetCredits', 'extra']],
     [
       'credit',

@@ -42,7 +42,7 @@ const diagnostics: DiagnosticFactory = (code, options) => ({
 function fakeAdapter(id: string, overrides: Record<string, unknown> = {}): OAuthAdapter {
   return {
     id,
-    label: 'Example',
+    displayName: 'Example',
     account: { options: { schema: zod.object({}), form: [] } },
     credentials: zod.object({ token: zod.string() }),
     async login() {
@@ -119,7 +119,7 @@ describe('PluginRegistry staging', () => {
 
     class Adapter {
       readonly id = 'class-adapter';
-      readonly label = { default: 'Class adapter', 'zh-Hans': '类适配器' } as const;
+      readonly displayName = { default: 'Class adapter', 'zh-Hans': '类适配器' } as const;
       readonly account = { options: { schema: zod.object({}), form: [] } };
       readonly credentials = zod.object({ token: zod.string() });
       readonly catalog = new Catalog();
@@ -127,7 +127,7 @@ describe('PluginRegistry staging', () => {
         #resetCount = 0;
 
         async read() {
-          return { items: [{ id: 'primary', label: 'Primary', remainingRatio: this.#resetCount }] };
+          return { items: [{ id: 'primary', displayName: 'Primary', remainingRatio: this.#resetCount }] };
         }
 
         async reset() {

@@ -66,7 +66,7 @@ async function createOAuthEditFixture() {
   const descriptor = definePlugin((api) => {
     api.oauth.register({
       id: 'default',
-      label: 'Example OAuth',
+      displayName: 'Example OAuth',
       account: {
         options: {
           schema: zod.object({ tenant: zod.string(), token: zod.string() }),

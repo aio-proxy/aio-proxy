@@ -7,7 +7,7 @@ import { OAuthProviderCreatePage } from './oauth-provider-create-page';
 const capability: DashboardOAuthCapability = {
   plugin: '@example/oauth',
   capability: 'default',
-  label: 'Example OAuth',
+  displayName: 'Example OAuth',
   description: 'Example account',
   defaults: {},
   form: [

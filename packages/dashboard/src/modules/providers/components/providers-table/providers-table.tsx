@@ -3,12 +3,15 @@ import type { DashboardProviderSummary } from '@aio-proxy/types';
 import { Empty } from '@aio-proxy/ui/components/empty';
 import { Table, TableBody, TableCell, TableHeader, TableRow } from '@aio-proxy/ui/components/table';
 import { cn } from '@aio-proxy/ui/lib/utils';
+import { useQuery } from '@tanstack/react-query';
 import type React from 'react';
 import { Fragment, useEffect, useMemo, useRef } from 'react';
 
 import { Pagination } from '@/components/data-table/pagination';
 import { useDataTable } from '@/hooks/use-data-table';
 
+import { providerPluginPresentationsQueryOptions } from '../../services/provider-plugin-labels';
+import { providerUsageQueryOptions, type ProviderUsage } from '../../services/provider-usage-service';
 import { DeleteProviderDialog, type DeleteProviderDialogRef } from '../delete-provider-dialog';
 import { OAuthProviderGroupRow } from '../oauth-provider-group-row';
 import { canEditProvider, createProviderColumns } from '../providers-table-columns';
@@ -24,12 +27,17 @@ const providerIdInRow = (row: ProviderTableRow, providerId: string): boolean =>
     ? row.provider.id === providerId
     : row.accounts.some(({ provider }) => provider.id === providerId);
 
+const emptyProviderUsage = new Map<string, ProviderUsage>();
+
 export const ProvidersTable: React.FC<ProvidersTableProps> = ({ providers, focusProviderId }) => {
   'use no memo';
 
   const deleteDialogRef = useRef<DeleteProviderDialogRef>(null);
+  const plugins = useQuery(providerPluginPresentationsQueryOptions()).data?.plugins ?? [];
+  const pluginPresentations = useMemo(() => new Map(plugins.map((plugin) => [plugin.packageName, plugin])), [plugins]);
+  const providerUsage = useQuery(providerUsageQueryOptions()).data ?? emptyProviderUsage;
   const rows = useMemo(() => groupProviderRows(providers), [providers]);
-  const columns = useMemo(() => createProviderColumns(deleteDialogRef), []);
+  const columns = useMemo(() => createProviderColumns(deleteDialogRef, providerUsage), [providerUsage]);
   const { table } = useDataTable(rows, columns, {
     getRowId: providerTableRowId,
     getSubRows: (row) => (row.rowType === 'oauth-group' ? row.accounts : undefined),
@@ -75,7 +83,14 @@ export const ProvidersTable: React.FC<ProvidersTableProps> = ({ providers, focus
         <TableBody>
           {table.getRowModel().rows.map((row) => {
             if (row.original.rowType === 'oauth-group') {
-              return <OAuthProviderGroupRow key={row.id} row={row} columnCount={row.getAllCells().length} />;
+              return (
+                <OAuthProviderGroupRow
+                  key={row.id}
+                  pluginPresentations={pluginPresentations}
+                  row={row}
+                  providerUsage={providerUsage}
+                />
+              );
             }
             const provider = row.original.provider;
             return (
@@ -94,8 +109,11 @@ export const ProvidersTable: React.FC<ProvidersTableProps> = ({ providers, focus
                   <TableCell
                     key={cell.id}
                     className={cn(
-                      cell.column.id === 'models' && 'w-20 text-right',
-                      cell.column.id === 'weight' && 'w-20 text-right',
+                      cell.column.id === 'aggregate' && 'w-12',
+                      cell.column.id === 'type' && 'w-36 max-w-36 whitespace-normal',
+                      cell.column.id === 'models' && 'w-20 text-center',
+                      cell.column.id === 'weight' && 'w-20 text-center',
+                      cell.column.id === 'usage' && 'w-24 text-right',
                       cell.column.id === 'state' && 'whitespace-normal',
                       cell.column.id === 'enabled' && 'w-20 text-center',
                       cell.column.id === 'actions' && 'w-20 text-right',

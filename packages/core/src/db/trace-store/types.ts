@@ -126,6 +126,7 @@ export type UsageOverviewQuery = {
   readonly range: UsageOverviewRange;
   readonly metric: UsageOverviewMetric;
   readonly groupBy: UsageOverviewGroupBy;
+  readonly maxResults?: number;
   readonly now?: Date;
 };
 

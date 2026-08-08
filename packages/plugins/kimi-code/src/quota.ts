@@ -18,7 +18,7 @@ const resetTime = (value: unknown): number | undefined => {
   return Number.isFinite(parsed) ? parsed : undefined;
 };
 
-function item(value: unknown, id: string, label: OAuthQuotaItem['label']): OAuthQuotaItem | undefined {
+function item(value: unknown, id: string, displayName: OAuthQuotaItem['displayName']): OAuthQuotaItem | undefined {
   if (typeof value !== 'object' || value === null) return undefined;
   const limit = numberValue(Reflect.get(value, 'limit'));
   if (limit === undefined || limit <= 0) return undefined;
@@ -31,7 +31,7 @@ function item(value: unknown, id: string, label: OAuthQuotaItem['label']): OAuth
   const resetsAt = resetTime(rawReset);
   return {
     id,
-    label,
+    displayName,
     ...(ratio === undefined ? {} : { remainingRatio: Math.min(1, Math.max(0, ratio)) }),
     ...(resetsAt === undefined ? {} : { resetsAt }),
   };

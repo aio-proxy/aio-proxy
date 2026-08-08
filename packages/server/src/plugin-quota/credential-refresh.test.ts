@@ -28,7 +28,7 @@ async function successfulRefresh(context: AccountContext<unknown, unknown>, toke
   const current = await context.credentials.read();
   await context.credentials.refresh(current.revision, async () => ({
     value: { token },
-    metadata: { label: `label-${token}`, expiresAt: 42 },
+    metadata: { accountLabel: `label-${token}`, expiresAt: 42 },
   }));
 }
 

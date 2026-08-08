@@ -39,8 +39,7 @@ export function createOpenAIChatGPTPlugin(
 
   const adapter: OAuthAdapter<Record<string, never>, ChatGPTCredential> = {
     id: 'default',
-    label: presentationText.adapterLabel,
-    icon: 'openai',
+    displayName: presentationText.adapterLabel,
     account: { options: accountOptions },
     credentials: zod.object({
       accessToken: zod.string(),
@@ -67,7 +66,7 @@ export function createOpenAIChatGPTPlugin(
       return {
         fingerprint: token.accountId,
         suggestedKey: `chatgpt-${token.accountId}`,
-        label: token.accountId,
+        accountLabel: token.accountId,
         credentials: token,
         expiresAt: token.expiresAt,
       };
@@ -91,8 +90,9 @@ export function createOpenAIChatGPTPlugin(
       api.oauth.register(adapter);
     },
     {
-      label: presentationText.pluginLabel ?? 'OpenAI ChatGPT',
+      displayName: presentationText.pluginLabel ?? 'OpenAI ChatGPT',
       description: presentationText.pluginDescription ?? 'Use a ChatGPT Plus or Pro account to access models',
+      icon: 'openai',
     },
   );
 }

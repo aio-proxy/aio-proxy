@@ -37,6 +37,8 @@ export function overview(db: BunSQLiteDatabase, query: UsageOverviewQuery): Dash
     overviewRows(db, query.groupBy, bucketUnit, start, rangeFilter),
     query.metric,
     bucketKeys(query.range, start, end),
+    query.maxResults,
+    query.metric === 'requests' && query.groupBy === 'provider' && query.maxResults === undefined,
   );
 
   const elapsedMinutes = Math.max(1, (end.getTime() - start.getTime()) / 60_000);

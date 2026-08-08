@@ -28,7 +28,8 @@ export function aggregateRows(
   rows: Iterable<OverviewRow>,
   metric: UsageOverviewMetric,
   chartBuckets: readonly ChartBucket[],
-  retainedDimensionCount = 5,
+  retainedDimensionCount?: number,
+  groupOutcomesByDimension = false,
 ) {
   const summary = emptySummary();
   const totals = new Map<string, bigint>();
@@ -39,8 +40,9 @@ export function aggregateRows(
 
     const value =
       metric === 'requests' ? (row.requestCount ?? 1n) : metric === 'cost' ? row.estimatedCostNanoUsd : row.totalTokens;
-    const kind =
-      row.terminationReason === 'failure' || row.terminationReason === 'interrupted'
+    const kind = groupOutcomesByDimension
+      ? 'dimension'
+      : row.terminationReason === 'failure' || row.terminationReason === 'interrupted'
         ? 'failed'
         : row.terminationReason === 'cancelled'
           ? 'cancelled'
@@ -54,7 +56,10 @@ export function aggregateRows(
     }
     valuesByBucket.set(row.bucket, bucket);
   }
-  return { summary, ...buildChart(totals, valuesByBucket, metric, chartBuckets, retainedDimensionCount) };
+  return {
+    summary,
+    ...buildChart(totals, valuesByBucket, metric, chartBuckets, retainedDimensionCount, groupOutcomesByDimension),
+  };
 }
 
 function emptySummary() {
@@ -92,19 +97,20 @@ function buildChart(
   valuesByBucket: ReadonlyMap<string | number, BucketValues>,
   metric: UsageOverviewMetric,
   chartBuckets: readonly ChartBucket[],
-  retainedDimensionCount: number,
+  retainedDimensionCount: number | undefined,
+  groupOutcomesByDimension: boolean,
 ) {
   const ranked = [...totals]
     .sort(
       ([leftKey, left], [rightKey, right]) => compareBigIntDescending(left, right) || leftKey.localeCompare(rightKey),
     )
     .map(([key]) => key);
-  const retained = ranked.slice(0, retainedDimensionCount);
+  const retained = retainedDimensionCount === undefined ? ranked : ranked.slice(0, retainedDimensionCount);
   const hasOther = ranked.length > retained.length;
   const series = [
     ...retained.map((dimension) => ({ key: chartDimensionKey(dimension), kind: 'dimension' as const })),
     ...(hasOther ? [{ key: '__other__', kind: 'other' as const }] : []),
-    ...(metric === 'requests'
+    ...(metric === 'requests' && !groupOutcomesByDimension
       ? [
           { key: '__failed__', kind: 'failed' as const },
           { key: '__cancelled__', kind: 'cancelled' as const },

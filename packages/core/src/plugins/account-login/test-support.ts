@@ -101,7 +101,7 @@ function registry(controls: AdapterControls = {}): PluginRegistry {
   const staging = host.stage('@example/oauth');
   staging.api.oauth.register({
     id: 'default',
-    label: 'Example OAuth',
+    displayName: 'Example OAuth',
     account: {
       options: {
         schema: controls.accountSchema ?? zod.object({ tenant: zod.string(), secret: zod.string() }),

@@ -6,11 +6,11 @@ const validSnapshot = () => ({
   items: [
     {
       id: 'five-hour',
-      label: { default: '5 hour', 'zh-Hans': '5 小时' },
+      displayName: { default: '5 hour', 'zh-Hans': '5 小时' },
       remainingRatio: 0.25,
       resetsAt: 1_800_000_000_000,
     },
-    { id: 'weekly', label: 'Weekly', remainingRatio: 1 },
+    { id: 'weekly', displayName: 'Weekly', remainingRatio: 1 },
   ],
   resetCredits: {
     availableCount: 2,
@@ -39,7 +39,7 @@ describe('validateOAuthQuotaSnapshot', () => {
     expect(result).not.toBe(input);
     expect(result.items).not.toBe(input.items);
     expect(result.items[0]).not.toBe(input.items[0]);
-    expect(result.items[0]?.label).not.toBe(input.items[0]?.label);
+    expect(result.items[0]?.displayName).not.toBe(input.items[0]?.displayName);
     expect(result.resetCredits).not.toBe(input.resetCredits);
     expect(result.resetCredits?.items).not.toBe(input.resetCredits.items);
     expect(result.resetCredits?.items?.[0]).not.toBe(input.resetCredits.items[0]);
@@ -47,15 +47,15 @@ describe('validateOAuthQuotaSnapshot', () => {
     expect(Object.getPrototypeOf(result)).toBe(Object.prototype);
     expect(Object.getPrototypeOf(result.items)).toBe(Array.prototype);
     expect(Object.getPrototypeOf(result.items[0])).toBe(Object.prototype);
-    expect(Object.getPrototypeOf(result.items[0]?.label)).toBe(Object.prototype);
+    expect(Object.getPrototypeOf(result.items[0]?.displayName)).toBe(Object.prototype);
   });
 
   test('accepts ratio bounds, omission, and reset count independent of inventory length', () => {
     const result = validateOAuthQuotaSnapshot({
       items: [
-        { id: 'empty', label: 'Empty', remainingRatio: 0 },
-        { id: 'full', label: 'Full', remainingRatio: 1 },
-        { id: 'unknown', label: 'Unknown' },
+        { id: 'empty', displayName: 'Empty', remainingRatio: 0 },
+        { id: 'full', displayName: 'Full', remainingRatio: 1 },
+        { id: 'unknown', displayName: 'Unknown' },
       ],
       resetCredits: { availableCount: 7, items: [{ id: 'empty' }] },
     });
@@ -65,7 +65,7 @@ describe('validateOAuthQuotaSnapshot', () => {
   });
 
   test('cleans up item record ancestors before checking duplicate IDs', () => {
-    const item = { id: 'same', label: 'Shared' };
+    const item = { id: 'same', displayName: 'Shared' };
     expectInvalid({ items: [item, item] }, ['items', 1, 'id']);
   });
 
@@ -77,7 +77,7 @@ describe('validateOAuthQuotaSnapshot', () => {
   });
 
   test('preserves nonblank item IDs including surrounding whitespace', () => {
-    const result = validateOAuthQuotaSnapshot({ items: [{ id: '  unchanged  ', label: 'Whitespace' }] });
+    const result = validateOAuthQuotaSnapshot({ items: [{ id: '  unchanged  ', displayName: 'Whitespace' }] });
     expect(result.items[0]?.id).toBe('  unchanged  ');
   });
 
@@ -88,13 +88,13 @@ describe('validateOAuthQuotaSnapshot', () => {
   });
 
   test.each([
-    ['blank item ID', { items: [{ id: ' ', label: 'Blank' }] }, ['items', 0, 'id']],
+    ['blank item ID', { items: [{ id: ' ', displayName: 'Blank' }] }, ['items', 0, 'id']],
     [
       'duplicate item ID',
       {
         items: [
-          { id: 'same', label: 'One' },
-          { id: 'same', label: 'Two' },
+          { id: 'same', displayName: 'One' },
+          { id: 'same', displayName: 'Two' },
         ],
       },
       ['items', 1, 'id'],
@@ -116,7 +116,7 @@ describe('validateOAuthQuotaSnapshot', () => {
   test.each([Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, -0.01, 1.01])(
     'rejects invalid ratio %p',
     (remainingRatio) => {
-      expectInvalid({ items: [{ id: 'ratio', label: 'Ratio', remainingRatio }] }, ['items', 0, 'remainingRatio']);
+      expectInvalid({ items: [{ id: 'ratio', displayName: 'Ratio', remainingRatio }] }, ['items', 0, 'remainingRatio']);
     },
   );
 
@@ -125,7 +125,7 @@ describe('validateOAuthQuotaSnapshot', () => {
     [Number.MAX_SAFE_INTEGER + 1, ['items', 0, 'resetsAt']],
     [1.5, ['items', 0, 'resetsAt']],
   ] as const)('rejects invalid item timestamp %p', (resetsAt, path) => {
-    expectInvalid({ items: [{ id: 'time', label: 'Time', resetsAt }] }, path);
+    expectInvalid({ items: [{ id: 'time', displayName: 'Time', resetsAt }] }, path);
   });
 
   test.each([new Date(), Number.MAX_SAFE_INTEGER + 1, 1.5])('rejects invalid credit timestamp %p', (expiresAt) => {

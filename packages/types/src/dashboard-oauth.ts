@@ -45,9 +45,8 @@ export const DashboardOAuthFormFieldSchema = z.discriminatedUnion('type', [
 export const DashboardOAuthCapabilitySchema = z.strictObject({
   plugin: z.string().min(1),
   capability: z.string().min(1),
-  label: DashboardLocalizedTextSchema,
+  displayName: DashboardLocalizedTextSchema,
   description: DashboardLocalizedTextSchema.optional(),
-  icon: z.string().min(1).optional(),
   form: z.array(DashboardOAuthFormFieldSchema),
   defaults: z.record(z.string(), z.json()),
 });

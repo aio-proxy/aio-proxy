@@ -116,7 +116,7 @@ export function runtimeFixture(
   const staging = host.stage('@example/oauth');
   staging.api.oauth.register({
     id: 'default',
-    label: 'Example',
+    displayName: 'Example',
     account: { options: { schema: overrides.accountOptionsSchema ?? zod.object({}), form: [] } },
     credentials: zod.object({ token: zod.string() }),
     async login() {
