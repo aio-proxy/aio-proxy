@@ -121,7 +121,8 @@ export const DashboardSettingsMutationResponseSchema = z.discriminatedUnion('ok'
 
 export const DashboardPluginSummarySchema = z.strictObject({
   packageName: PluginPackageNameSchema,
-  label: DashboardLocalizedTextSchema.optional(),
+  displayName: DashboardLocalizedTextSchema.optional(),
+  icon: z.string().min(1).optional(),
   version: z.string().min(1).optional(),
   builtin: z.boolean(),
   enabled: z.boolean(),

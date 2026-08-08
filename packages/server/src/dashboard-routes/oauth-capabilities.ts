@@ -15,9 +15,8 @@ export const dashboardOAuthCapabilities = (registry: PluginRegistry): readonly D
     DashboardOAuthCapabilitySchema.parse({
       plugin,
       capability,
-      label: adapter.label,
+      displayName: adapter.displayName,
       ...(adapter.description === undefined ? {} : { description: adapter.description }),
-      ...(adapter.icon === undefined ? {} : { icon: adapter.icon }),
       form: dashboardOAuthForm(adapter.account.options.form),
       defaults: Object.fromEntries(
         adapter.account.options.form.flatMap((field) => {

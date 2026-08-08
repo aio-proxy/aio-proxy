@@ -32,7 +32,8 @@ export function createPluginReads(options: {
           enabled: enabled.has(plugin.packageName),
           hasOptions: plugin.hasOptions === true,
           packageName: plugin.packageName,
-          ...(plugin.label === undefined ? {} : { label: plugin.label }),
+          ...(plugin.displayName === undefined ? {} : { displayName: plugin.displayName }),
+          ...(plugin.icon === undefined ? {} : { icon: plugin.icon }),
           state: plugin.state,
           ...(plugin.version === undefined ? {} : { version: plugin.version }),
         }))
