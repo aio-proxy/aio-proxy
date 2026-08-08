@@ -10,6 +10,7 @@ import type { DataTableFeatures } from '@/hooks/use-data-table';
 import { formatNanoUsd } from '@/lib/nano-usd';
 
 import type { ProviderUsage } from '../../services/provider-usage-service';
+import { ProviderModelsCell } from '../provider-models-cell';
 import type { ProviderTableRow } from '../providers-table/provider-table-row';
 
 interface OAuthProviderGroupRowProps {
@@ -34,6 +35,7 @@ export const OAuthProviderGroupRow: React.FC<OAuthProviderGroupRowProps> = ({ ro
     },
     { requestCount: 0n, totalTokens: 0n, estimatedCostNanoUsd: 0n },
   );
+  const models = [...new Set(group.accounts.flatMap(({ provider }) => provider.clientModels))];
   const toggleExpanded = () => row.toggleExpanded();
   return (
     <Subscribe source={row.table.atoms.expanded} selector={() => row.getIsExpanded()}>
@@ -78,6 +80,8 @@ export const OAuthProviderGroupRow: React.FC<OAuthProviderGroupRowProps> = ({ ro
                 <span className="font-medium">{group.groupKey}</span>
               ) : cell.column.id === 'type' ? (
                 <span>OAuth</span>
+              ) : cell.column.id === 'models' ? (
+                <ProviderModelsCell models={models} />
               ) : cell.column.id === 'usage' ? (
                 <div className="flex flex-col items-end text-xs tabular-nums">
                   <span>{formatCompactTokenCount(usage.requestCount)}</span>

@@ -118,8 +118,12 @@ describe('providers table', () => {
   });
 
   test('expands accounts from the OAuth aggregate row and chevron with accessible keyboard controls', () => {
+    const accounts = [
+      oauthProvider('copilot-one', 'One'),
+      { ...oauthProvider('copilot-two', 'Two'), clientModels: ['gpt-5-mini', 'gpt-5'] },
+    ];
     renderProvidersTable(
-      <ProvidersTable providers={[oauthProvider('copilot-one', 'One'), oauthProvider('copilot-two', 'Two')]} />,
+      <ProvidersTable providers={accounts} />,
       new Map([
         ['copilot-one', { requestCount: 1_000n, totalTokens: 1_000_000n, estimatedCostNanoUsd: 1_250_000_000n }],
         ['copilot-two', { requestCount: 234n, totalTokens: 500_000n, estimatedCostNanoUsd: 2_750_000_000n }],
@@ -133,6 +137,7 @@ describe('providers table', () => {
     expect(group.getByText('1.2K')).toBeTruthy();
     expect(group.getByText('1.5M')).toBeTruthy();
     expect(group.getByText('$4.00')).toBeTruthy();
+    expect(group.getByTestId('provider-models-count')).toHaveTextContent('2');
     expect(group.queryByText('copilot-one')).toBeNull();
     expect(group.queryByRole('switch')).toBeNull();
     expect(group.queryByLabelText(/Open actions|操作菜单/u)).toBeNull();
