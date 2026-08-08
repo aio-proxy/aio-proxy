@@ -1,5 +1,11 @@
 # @aio-proxy/types
 
+## 0.7.0
+
+### Minor Changes
+
+- [#171](https://github.com/aio-proxy/aio-proxy/pull/171) [`204d22b`](https://github.com/aio-proxy/aio-proxy/commit/204d22b8cfa7d4c913a7008efa6b98a69f014277) Thanks [@baranwang](https://github.com/baranwang)! - Resolve model metadata per source so configured limits override provider catalogs, official Codex limits override models.dev fallback, and OAuth Providers support metadata.
+
 ## 0.6.4
 
 ## 0.6.3

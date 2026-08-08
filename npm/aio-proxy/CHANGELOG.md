@@ -1,5 +1,15 @@
 # aio-proxy
 
+## 0.7.0
+
+### Minor Changes
+
+- [#171](https://github.com/aio-proxy/aio-proxy/pull/171) [`204d22b`](https://github.com/aio-proxy/aio-proxy/commit/204d22b8cfa7d4c913a7008efa6b98a69f014277) Thanks [@baranwang](https://github.com/baranwang)! - Resolve model metadata per source so configured limits override provider catalogs, official Codex limits override models.dev fallback, and OAuth Providers support metadata.
+
+### Patch Changes
+
+- [#166](https://github.com/aio-proxy/aio-proxy/pull/166) [`4fbe843`](https://github.com/aio-proxy/aio-proxy/commit/4fbe8439457a060a6c850e9fa661f61d7309bfdc) Thanks [@baranwang](https://github.com/baranwang)! - Accept Claude Code Anthropic requests that combine disabled thinking with output_config.effort by preserving disabled thinking and dropping the ineffective effort.
+
 ## 0.6.4
 
 ### Patch Changes

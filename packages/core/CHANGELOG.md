@@ -1,5 +1,21 @@
 # @aio-proxy/core
 
+## 0.7.0
+
+### Patch Changes
+
+- [#166](https://github.com/aio-proxy/aio-proxy/pull/166) [`4fbe843`](https://github.com/aio-proxy/aio-proxy/commit/4fbe8439457a060a6c850e9fa661f61d7309bfdc) Thanks [@baranwang](https://github.com/baranwang)! - Accept Claude Code Anthropic requests that combine disabled thinking with output_config.effort by preserving disabled thinking and dropping the ineffective effort.
+- Updated dependencies [[`204d22b`](https://github.com/aio-proxy/aio-proxy/commit/204d22b8cfa7d4c913a7008efa6b98a69f014277)]:
+  - @aio-proxy/types@0.7.0
+  - @aio-proxy/plugin-openai-chatgpt@0.7.0
+  - @aio-proxy/i18n@0.7.0
+  - @aio-proxy/logger@0.7.0
+  - @aio-proxy/plugin-github-copilot@0.7.0
+  - @aio-proxy/plugin-google-antigravity@0.7.0
+  - @aio-proxy/plugin-kimi-code@0.7.0
+  - @aio-proxy/plugin-sdk@0.7.0
+  - @aio-proxy/plugin-xai-grok@0.7.0
+
 ## 0.6.4
 
 ### Patch Changes

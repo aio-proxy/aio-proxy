@@ -1,5 +1,7 @@
 # @aio-proxy/cli-darwin-arm64
 
+## 0.7.0
+
 ## 0.6.4
 
 ## 0.6.3
