@@ -22,7 +22,7 @@ export const TableHead: React.FC<TableHeadProps> = ({ className, column, label, 
   const canSort = column.getCanSort();
   return (
     <TableHeadRoot
-      className={className}
+      {...(className === undefined ? {} : { className })}
       aria-sort={
         canSort ? (sortDirection === false ? 'none' : sortDirection === 'asc' ? 'ascending' : 'descending') : undefined
       }

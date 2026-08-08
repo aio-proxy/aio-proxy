@@ -10,10 +10,10 @@ rs.mock('@/lib/dashboard-client', () => ({
   dashboardClient: { dashboard: { api: { usage: { $get: mocks.usageGet } } } },
 }));
 
-const usageResponse = (metric: 'cost' | 'requests' | 'tokens', values: readonly Record<string, string>[] = [{}, {}]) =>
+const usageResponse = (values: readonly Record<string, string>[] = [{}, {}]) =>
   Response.json({
     range: '24h',
-    metric,
+    metric: 'requests',
     groupBy: 'provider',
     rangeStart: '2026-08-07T00:00:00.000Z',
     rangeEnd: '2026-08-08T00:00:00.000Z',
@@ -43,31 +43,24 @@ const usageResponse = (metric: 'cost' | 'requests' | 'tokens', values: readonly 
 describe('Provider usage service', () => {
   beforeEach(() => mocks.usageGet.mockReset());
 
-  test('totals decoded Provider dimensions across every metric bucket', async () => {
-    mocks.usageGet
-      .mockResolvedValueOnce(
-        usageResponse('requests', [{ 'dimension:openai%2Emain': '1' }, { 'dimension:openai%2Emain': '2' }]),
-      )
-      .mockResolvedValueOnce(
-        usageResponse('tokens', [{ 'dimension:openai%2Emain': '40' }, { 'dimension:openai%2Emain': '80' }]),
-      )
-      .mockResolvedValueOnce(
-        usageResponse('cost', [
-          { 'dimension:openai%2Emain': '3', 'dimension:anthropic%2Ebackup': '7' },
-          { 'dimension:openai%2Emain': '6' },
-        ]),
-      );
+  test('totals decoded Provider request dimensions across every bucket', async () => {
+    mocks.usageGet.mockResolvedValue(
+      usageResponse([
+        { 'dimension:openai%2Emain': '1', 'dimension:anthropic%2Ebackup': '7' },
+        { 'dimension:openai%2Emain': '2' },
+      ]),
+    );
 
     expect(await getProviderUsage()).toEqual(
       new Map([
-        ['openai.main', { requestCount: 3n, totalTokens: 120n, estimatedCostNanoUsd: 9n }],
-        ['anthropic.backup', { requestCount: 0n, totalTokens: 0n, estimatedCostNanoUsd: 7n }],
+        ['openai.main', { requestCount: 3n }],
+        ['anthropic.backup', { requestCount: 7n }],
       ]),
     );
     expect(mocks.usageGet).toHaveBeenCalledWith({
       query: { range: '24h', metric: 'requests', groupBy: 'provider' },
     });
-    expect(mocks.usageGet).toHaveBeenCalledTimes(3);
+    expect(mocks.usageGet).toHaveBeenCalledTimes(1);
     expect(providerUsageQueryOptions()).toMatchObject({
       refetchInterval: 60_000,
       refetchIntervalInBackground: false,

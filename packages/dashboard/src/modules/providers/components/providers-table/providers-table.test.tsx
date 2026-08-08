@@ -65,9 +65,7 @@ describe('providers table', () => {
           }),
         ]}
       />,
-      new Map([
-        ['openai-main', { requestCount: 12_000n, totalTokens: 1_200_000n, estimatedCostNanoUsd: 2_500_000_000n }],
-      ]),
+      new Map([['openai-main', { requestCount: 12_000n }]]),
     );
 
     const row = within(screen.getByTestId('provider-row-openai-main'));
@@ -120,8 +118,8 @@ describe('providers table', () => {
     renderProvidersTable(
       <ProvidersTable providers={accounts} />,
       new Map([
-        ['copilot-one', { requestCount: 1_000n, totalTokens: 1_000_000n, estimatedCostNanoUsd: 1_250_000_000n }],
-        ['copilot-two', { requestCount: 234n, totalTokens: 500_000n, estimatedCostNanoUsd: 2_750_000_000n }],
+        ['copilot-one', { requestCount: 1_000n }],
+        ['copilot-two', { requestCount: 234n }],
       ]),
       [
         {
@@ -276,8 +274,8 @@ describe('providers table', () => {
         ]}
       />,
       new Map([
-        ['zulu', { requestCount: 1n, totalTokens: 0n, estimatedCostNanoUsd: 0n }],
-        ['alpha', { requestCount: 2n, totalTokens: 0n, estimatedCostNanoUsd: 0n }],
+        ['zulu', { requestCount: 1n }],
+        ['alpha', { requestCount: 2n }],
       ]),
     );
 

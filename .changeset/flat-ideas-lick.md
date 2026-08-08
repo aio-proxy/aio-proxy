@@ -13,4 +13,4 @@
 'aio-proxy': major
 ---
 
-Move plugin display identity to descriptor metadata. Plugins must upgrade to descriptor API v2: use metadata.displayName and metadata.icon, OAuthAdapter.displayName, and OAuthLoginResult.accountLabel; old label and OAuth adapter icon fields are removed.
+Move plugin display identity to descriptor metadata. Plugins must upgrade to descriptor API v2: use metadata.displayName and metadata.icon, OAuthAdapter.displayName, and OAuthLoginResult.accountLabel; old label and OAuth adapter icon fields are removed. This is a breaking migration: OAuth adapter `label` becomes `displayName`; OAuth login and credential-refresh identity `label` becomes `accountLabel`; OAuth quota item `label` becomes `displayName`; Dashboard plugin summary and OAuth capability `label` become `displayName`; and the OAuth capability icon is removed. Put plugin icons in descriptor metadata presentation fields instead.
