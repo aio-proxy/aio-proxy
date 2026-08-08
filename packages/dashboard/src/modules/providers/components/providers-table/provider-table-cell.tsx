@@ -14,5 +14,5 @@ interface ProviderTableCellProps {
 }
 
 export const ProviderTableCell: React.FC<ProviderTableCellProps> = ({ cell, children }) => (
-  <TableCell className={cell.column.columnDef.meta?.cellClassName}>{children}</TableCell>
+  <TableCell className={cell.column.columnDef.meta?.className}>{children}</TableCell>
 );

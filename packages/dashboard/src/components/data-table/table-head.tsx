@@ -6,6 +6,7 @@ import { ArrowDown, ArrowUp } from 'lucide-react';
 import type React from 'react';
 
 interface SortableTableColumn {
+  readonly columnDef: { readonly meta?: { readonly className?: string } };
   readonly getCanSort: () => boolean;
   readonly getIsSorted: () => false | SortDirection;
   readonly getToggleSortingHandler: () => undefined | ((event: unknown) => void);
@@ -18,24 +19,27 @@ interface TableHeadProps {
   readonly sortDirection: false | SortDirection;
 }
 
+const ariaSort = (sortDirection: false | SortDirection): 'ascending' | 'descending' | 'none' => {
+  if (sortDirection === false) return 'none';
+  return sortDirection === 'asc' ? 'ascending' : 'descending';
+};
+
 export const TableHead: React.FC<TableHeadProps> = ({ className, column, label, sortDirection }) => {
   const canSort = column.getCanSort();
   return (
     <TableHeadRoot
       {...(className === undefined ? {} : { className })}
-      aria-sort={
-        canSort ? (sortDirection === false ? 'none' : sortDirection === 'asc' ? 'ascending' : 'descending') : undefined
-      }
+      aria-sort={canSort ? ariaSort(sortDirection) : undefined}
     >
       {canSort ? (
         <Button
-          className={cn('-mx-3', className === 'text-center' && 'justify-center')}
+          className={cn('-mx-3', className?.includes('text-center') && 'justify-center')}
           variant="ghost"
           size="sm"
           onClick={column.getToggleSortingHandler()}
         >
           {label}
-          {sortDirection === 'asc' ? <ArrowUp /> : sortDirection === 'desc' ? <ArrowDown /> : null}
+          {sortDirection === 'asc' ? <ArrowUp /> : (sortDirection === 'desc' ? <ArrowDown /> : null)}
         </Button>
       ) : (
         label
@@ -48,7 +52,7 @@ export const tableHead =
   (label: () => string, className?: string) =>
   ({ column }: { readonly column: SortableTableColumn }) => (
     <TableHead
-      {...(className === undefined ? {} : { className })}
+      className={className ?? column.columnDef.meta?.className}
       column={column}
       label={label()}
       sortDirection={column.getIsSorted()}

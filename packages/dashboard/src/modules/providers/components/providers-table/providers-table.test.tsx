@@ -183,6 +183,7 @@ describe('providers table', () => {
       [enabledColumnIndex, 'w-20', 'text-center'],
       [actionsColumnIndex, 'w-20', 'text-right'],
     ]) {
+      expect(headers[columnIndex]).toHaveClass(...classNames);
       expect(groupCells[columnIndex]).toHaveClass(...classNames);
       expect(accountCells[columnIndex]).toHaveClass(...classNames);
     }
