@@ -325,8 +325,8 @@ test('aggregates candidate windows only after each candidate resolves its own so
 
 test('config metadata overrides (description) flow into the synthesized case B entry', async () => {
   // Provider config overrides third-party-model's description and input modalities.
-  // The synthesized entry must reflect the merged (effective) metadata, not the raw
-  // catalog record, so these config overrides surface to Codex.
+  // The synthesized entry must reflect metadata projected on demand from config and
+  // fallback sources, not the raw catalog record, so these config overrides surface to Codex.
   const configured = {
     id: 'p1',
     kind: ProviderKind.OAuth,

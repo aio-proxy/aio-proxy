@@ -50,11 +50,15 @@ export function resolveModelCapabilities(model: ResolvedModel): ModelCapabilitie
 
 export function resolveAggregatedLimit(model: ResolvedModel, field: keyof ModelLimit): number | undefined {
   const values = model.candidates.flatMap((candidate) => {
-    const value =
-      candidate.configMetadata?.limit?.[field] ??
-      candidate.upstreamMetadata?.limit?.[field] ??
-      model.fallbackMetadata?.limit?.[field];
-    return typeof value === 'number' ? [value] : [];
+    const value = [
+      candidate.configMetadata?.limit?.[field],
+      candidate.upstreamMetadata?.limit?.[field],
+      model.fallbackMetadata?.limit?.[field],
+    ].find(
+      (candidate): candidate is number =>
+        typeof candidate === 'number' && Number.isSafeInteger(candidate) && candidate > 0,
+    );
+    return value === undefined ? [] : [value];
   });
   if (values.length === 0) return undefined;
   return model.aggregation === ModelContextAggregation.Max ? Math.max(...values) : Math.min(...values);
@@ -87,12 +91,16 @@ export async function resolveEnabledModels(state: ServerState): Promise<readonly
       const candidates = bySlug.get(slug)!;
       const primary = candidates[0]!;
       const fallback = metadataBySlug[slug];
+      let fallbackMetadata: ModelMetadata | undefined;
+      try {
+        fallbackMetadata = fallback === undefined ? undefined : catalogModelToMetadata(fallback);
+      } catch {}
       return {
         slug,
         modelId: primary.modelId,
         provider: primary.provider,
         candidates,
-        fallbackMetadata: fallback === undefined ? undefined : catalogModelToMetadata(fallback),
+        fallbackMetadata,
         aggregation,
       };
     });

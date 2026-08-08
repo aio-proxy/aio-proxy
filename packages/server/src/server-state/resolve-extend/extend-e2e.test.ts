@@ -75,16 +75,15 @@ describe('metadata.extend end-to-end wiring', () => {
 
   it('surfaces inherited name/limit on the runtime provider for model-resolution to read', async () => {
     const provider = await resolveAndMaterialize();
-    // model-resolution's resolveDisplayName / candidateContextWindow both read
-    // provider.configMetadata[modelId].{name,limit}. These are private helpers, so we
-    // assert on exactly the object they consume — this fails if extend→materialize
-    // wiring stops delivering the merged metadata onto the runtime provider.
+    // Model resolution reads name and limits on demand from
+    // provider.configMetadata[modelId]. Assert on that source object so this fails
+    // if extend→materialize wiring stops delivering config metadata to the runtime provider.
     const entry = provider.configMetadata?.[modelId];
 
     // User field wins (name) — proves the merge preserved the explicit override.
     expect(entry?.name).toBe('My Aliased GPT');
     // limit is inherited wholesale from the catalog base — proves the runtime
-    // provider carries the inherited context window candidateContextWindow returns.
+    // provider carries the context limit consumed by on-demand limit resolution.
     expect(entry?.limit?.context).toBe(400_000);
   });
 

@@ -191,9 +191,9 @@ test('writes distinct default and maximum Codex windows', () => {
 });
 
 test('config metadata overrides (description, modalities, reasoning) flow into the synthesized entry', () => {
-  // effectiveMetadata carries config-over-catalog values: a description, image
-  // modality, and an effort option the raw catalog never had. Reading the merged
-  // metadata (not the raw catalog) is what surfaces these to Codex.
+  // Projected metadata carries config-over-catalog values: a description, image
+  // modality, and an effort option the raw catalog never had. Reading that
+  // projection is what surfaces these to Codex.
   const entry = assembleCodexModel({
     slug: 'm',
     displayName: 'M',

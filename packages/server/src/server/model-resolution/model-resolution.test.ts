@@ -243,6 +243,39 @@ test('ignores missing candidate limits for both min and max aggregation', async 
   expect(resolveAggregatedLimit(max, 'output')).toBe(64_000);
 });
 
+test('invalid upstream limits fall through without poisoning aggregation', async () => {
+  await seedCatalog({ shared: modelsDevModel('shared', 'Fallback', { limit: { context: 128_000, output: 64_000 } }) });
+  const providers = [-1, 1.5, Number.NaN, Number.POSITIVE_INFINITY].map(
+    (output, index) =>
+      ({
+        id: `p${index}`,
+        kind: ProviderKind.OAuth,
+        enabled: true,
+        alias: { shared: { model: `up-${index}`, preserve: false } },
+        upstreamMetadata: { [`up-${index}`]: { limit: { output } } },
+        model: { invoke: async function* () {} },
+      }) as unknown as RuntimeProviderInstance,
+  );
+
+  const min = (await resolveEnabledModels(fakeState(providers, ModelContextAggregation.Min)))[0]!;
+  expect(resolveAggregatedLimit(min, 'output')).toBe(64_000);
+
+  const max = (await resolveEnabledModels(fakeState(providers, ModelContextAggregation.Max)))[0]!;
+  expect(resolveAggregatedLimit(max, 'output')).toBe(64_000);
+});
+
+test('treats a malformed cached models.dev row as missing metadata', async () => {
+  await fileCacheStorage.setItem('models-dev-providers', {
+    openrouter: { models: { broken: { id: 'broken' } } },
+  });
+  const provider = slugProvider('p1', 'broken', 'upstream');
+
+  const resolved = await resolveEnabledModels(fakeState([provider]));
+  expect(resolved).toHaveLength(1);
+  expect(resolved[0]?.slug).toBe('broken');
+  expect(resolved[0]?.fallbackMetadata).toBeUndefined();
+});
+
 test('capability resolution preserves false and replaces arrays wholesale', async () => {
   await seedCatalog({
     shared: modelsDevModel('shared', 'Fallback', {
