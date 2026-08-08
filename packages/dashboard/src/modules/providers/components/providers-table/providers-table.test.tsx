@@ -72,7 +72,9 @@ describe('providers table', () => {
     expect(screen.getByRole('columnheader', { name: /24h requests|24 小时请求/u })).toBeInTheDocument();
     expect(row.getByText('OpenAI Main')).toBeTruthy();
     expect(row.getByText('openai-main')).toBeTruthy();
-    expect(row.getByText('API · openai-response')).toBeTruthy();
+    expect(row.getByText('API')).toBeTruthy();
+    expect(row.getByText('OpenAI Response')).toBeTruthy();
+    expect(row.queryByText('API · openai-response')).toBeNull();
     expect(row.getByText('12K')).toBeTruthy();
     expect(row.queryByText('1.2M')).toBeNull();
     expect(row.queryByText('$2.50')).toBeNull();

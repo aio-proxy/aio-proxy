@@ -6,6 +6,7 @@ import { startCase } from 'es-toolkit/string';
 import type React from 'react';
 
 import { tableHead } from '@/components/data-table/table-head';
+import { ProtocolLabel } from '@/components/protocol-label';
 import { formatCompactTokenCount } from '@/components/token-count';
 import type { DataTableFeatures } from '@/hooks/use-data-table';
 
@@ -82,12 +83,23 @@ const typeColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
           ? m['dashboard.providers.kind_label.invalid']()
           : PROVIDER_KIND_LABEL[row.provider.kind];
   },
-  header: tableHead(() => m['dashboard.providers.table.col_type']()),
+  header: tableHead(() => m['dashboard.providers.table.col_type'](), 'w-36'),
   cell: ({ row }) => {
     const provider = concreteProvider(row.original);
     if (provider === undefined) return null;
-    if (provider.kind === 'api') return `${PROVIDER_KIND_LABEL.api} · ${provider.protocol ?? 'N/A'}`;
-    if (provider.kind === 'ai-sdk') return provider.packageName ?? PROVIDER_KIND_LABEL['ai-sdk'];
+    if (provider.kind === 'api') {
+      return (
+        <div className="leading-5">
+          <div className="text-muted-foreground">{PROVIDER_KIND_LABEL.api}</div>
+          <div className="truncate">
+            <ProtocolLabel protocol={provider.protocol ?? 'N/A'} />
+          </div>
+        </div>
+      );
+    }
+    if (provider.kind === 'ai-sdk') {
+      return <span className="block truncate">{provider.packageName ?? PROVIDER_KIND_LABEL['ai-sdk']}</span>;
+    }
     if (provider.kind === 'invalid') return m['dashboard.providers.kind_label.invalid']();
     return PROVIDER_KIND_LABEL[provider.kind];
   },
