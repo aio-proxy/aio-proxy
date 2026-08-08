@@ -1,5 +1,4 @@
 import { getLocale, m } from '@aio-proxy/i18n';
-import { Badge } from '@aio-proxy/ui/components/badge';
 import { Button } from '@aio-proxy/ui/components/button';
 import { TableCell, TableRow } from '@aio-proxy/ui/components/table';
 import { Subscribe, type Row } from '@tanstack/react-table';
@@ -10,7 +9,6 @@ import { formatCompactTokenCount } from '@/components/token-count';
 import type { DataTableFeatures } from '@/hooks/use-data-table';
 import { formatNanoUsd } from '@/lib/nano-usd';
 
-import { PROVIDER_KIND_LABEL } from '../../lib/constants';
 import type { ProviderUsage } from '../../services/provider-usage-service';
 import type { ProviderTableRow } from '../providers-table/provider-table-row';
 
@@ -79,7 +77,7 @@ export const OAuthProviderGroupRow: React.FC<OAuthProviderGroupRowProps> = ({ ro
               ) : cell.column.id === 'provider' ? (
                 <span className="font-medium">{group.groupKey}</span>
               ) : cell.column.id === 'type' ? (
-                <Badge variant="outline">{PROVIDER_KIND_LABEL.oauth}</Badge>
+                <span>OAuth</span>
               ) : cell.column.id === 'usage' ? (
                 <div className="flex flex-col items-end text-xs tabular-nums">
                   <span>{formatCompactTokenCount(usage.requestCount)}</span>
