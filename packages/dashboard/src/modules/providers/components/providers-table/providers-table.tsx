@@ -100,8 +100,8 @@ export const ProvidersTable: React.FC<ProvidersTableProps> = ({ providers, focus
                     key={cell.id}
                     className={cn(
                       cell.column.id === 'aggregate' && 'w-10',
-                      cell.column.id === 'models' && 'w-20 text-right',
-                      cell.column.id === 'weight' && 'w-20 text-right',
+                      cell.column.id === 'models' && 'w-20 text-center',
+                      cell.column.id === 'weight' && 'w-20 text-center',
                       cell.column.id === 'usage' && 'w-24 text-right',
                       cell.column.id === 'state' && 'whitespace-normal',
                       cell.column.id === 'enabled' && 'w-20 text-center',

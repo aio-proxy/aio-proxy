@@ -92,7 +92,7 @@ const modelsColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
     row.rowType === 'oauth-group'
       ? row.accounts.flatMap(({ provider }) => provider.clientModels).join(' ')
       : row.provider.clientModels.join(' '),
-  header: tableHead(() => m['dashboard.providers.table.col_models']()),
+  header: tableHead(() => m['dashboard.providers.table.col_models'](), 'text-center'),
   cell: ({ row }) => {
     const provider = concreteProvider(row.original);
     return provider === undefined ? null : <ProviderModelsCell models={provider.clientModels} />;
@@ -102,7 +102,7 @@ const modelsColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
 const weightColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
   id: 'weight',
   accessorFn: (row) => concreteProvider(row)?.weight,
-  header: tableHead(() => m['dashboard.providers.table.col_weight']()),
+  header: tableHead(() => m['dashboard.providers.table.col_weight'](), 'text-center'),
   cell: ({ row }) => {
     const provider = concreteProvider(row.original);
     return provider === undefined ? null : (provider.weight ?? 'N/A');
