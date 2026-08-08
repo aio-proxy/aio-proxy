@@ -100,7 +100,7 @@ export const OAuthProviderGroupRow: React.FC<OAuthProviderGroupRowProps> = ({
               ) : cell.column.id === 'provider' ? (
                 <div className="flex items-center gap-2 font-medium">
                   {pluginPresentation?.icon === undefined ? null : (
-                    <PluginIcon icon={pluginPresentation.icon} size={16} />
+                    <PluginIcon icon={pluginPresentation.icon} size={16} className="shrink-0" />
                   )}
                   <span>{groupLabel}</span>
                 </div>

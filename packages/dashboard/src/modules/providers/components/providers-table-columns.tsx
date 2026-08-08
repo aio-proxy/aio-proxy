@@ -90,10 +90,8 @@ const typeColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
     if (provider.kind === 'api') {
       return (
         <div className="leading-5">
-          <div className="text-muted-foreground">{PROVIDER_KIND_LABEL.api}</div>
-          <div className="truncate">
-            <ProtocolLabel protocol={provider.protocol ?? 'N/A'} />
-          </div>
+          <div className="">{PROVIDER_KIND_LABEL.api}</div>
+          <ProtocolLabel className="truncate text-muted-foreground" protocol={provider.protocol ?? 'N/A'} />
         </div>
       );
     }
