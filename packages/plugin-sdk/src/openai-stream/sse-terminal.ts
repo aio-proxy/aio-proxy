@@ -15,19 +15,19 @@ const responsesTerminalTypes = new Set([
 ]);
 
 const textDecoder = new TextDecoder();
+const textEncoder = new TextEncoder();
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
-function isResponsesTerminal(event: { readonly event?: string; readonly data: string }): boolean {
+function isResponsesTerminal(
+  event: { readonly event?: string; readonly data: string },
+  value?: Record<string, unknown>,
+): boolean {
   if (event.event !== undefined && responsesTerminalTypes.has(event.event)) return true;
-  try {
-    const value: unknown = JSON.parse(event.data);
-    return isRecord(value) && typeof value['type'] === 'string' && responsesTerminalTypes.has(value['type']);
-  } catch {
-    return false;
-  }
+  const parsed = value ?? parseObject(event.data);
+  return typeof parsed?.['type'] === 'string' && responsesTerminalTypes.has(parsed['type']);
 }
 
 function isCompatibleTerminal(event: { readonly data: string }): boolean {
@@ -37,8 +37,9 @@ function isCompatibleTerminal(event: { readonly data: string }): boolean {
 function isTerminal(
   event: { readonly event?: string; readonly data: string },
   protocol: OpenAIStreamProtocol,
+  responsesValue?: Record<string, unknown>,
 ): boolean {
-  return protocol === 'openai-response' ? isResponsesTerminal(event) : isCompatibleTerminal(event);
+  return protocol === 'openai-response' ? isResponsesTerminal(event, responsesValue) : isCompatibleTerminal(event);
 }
 
 function concatBytes(parts: readonly Uint8Array[]): Uint8Array {
@@ -96,6 +97,43 @@ function parseFrame(frameBytes: Uint8Array): { readonly event?: string; readonly
   return parsed;
 }
 
+function parseObject(data: string): Record<string, unknown> | undefined {
+  try {
+    const value: unknown = JSON.parse(data);
+    return isRecord(value) && !Array.isArray(value) ? value : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function responsesCreatedResponse(
+  event: {
+    readonly event?: string;
+    readonly data: string;
+  },
+  value: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+  const created = event.event === 'response.created' || value?.['type'] === 'response.created';
+  const response = value?.['response'];
+  return created && isRecord(response) && !Array.isArray(response) ? response : undefined;
+}
+
+function normalizedResponsesErrorFrame(
+  event: { readonly event?: string; readonly data: string },
+  value: Record<string, unknown> | undefined,
+  createdResponse: Record<string, unknown> | undefined,
+): Uint8Array | undefined {
+  const failed = event.event === 'error' || value?.['type'] === 'error';
+  if (!failed || value === undefined || createdResponse === undefined) return undefined;
+  const { sequence_number, ...error } = value;
+  const payload = {
+    type: 'response.failed',
+    ...(sequence_number === undefined ? {} : { sequence_number }),
+    response: { ...createdResponse, status: 'failed', error },
+  };
+  return textEncoder.encode(`event: response.failed\ndata: ${JSON.stringify(payload)}\n\n`);
+}
+
 function ignoreCancel(decoded: ContentDecodedReader, reason: unknown): void {
   // Consumer completion must not await cancel — a hung upstream cancel must not block close.
   void decoded.cancel(reason).catch(() => undefined);
@@ -108,6 +146,7 @@ export function createOpenAISseBody(
   let carry = new Uint8Array(0);
   let finished = false;
   let pendingError: unknown;
+  let createdResponse: Record<string, unknown> | undefined;
 
   return new ReadableStream<Uint8Array>({
     async pull(controller) {
@@ -139,10 +178,19 @@ export function createOpenAISseBody(
             break;
           }
           const frameBytes = remaining.subarray(0, frameEnd);
-          outbound.push(frameBytes);
           offset += frameEnd;
           const event = parseFrame(frameBytes);
-          if (event !== undefined && isTerminal(event, protocol)) {
+          const responsesValue =
+            protocol === 'openai-response' && event !== undefined ? parseObject(event.data) : undefined;
+          if (protocol === 'openai-response' && event !== undefined) {
+            createdResponse = responsesCreatedResponse(event, responsesValue) ?? createdResponse;
+          }
+          outbound.push(
+            protocol === 'openai-response' && event !== undefined
+              ? (normalizedResponsesErrorFrame(event, responsesValue, createdResponse) ?? frameBytes)
+              : frameBytes,
+          );
+          if (event !== undefined && isTerminal(event, protocol, responsesValue)) {
             terminalFound = true;
             carry = new Uint8Array(0);
             break;
