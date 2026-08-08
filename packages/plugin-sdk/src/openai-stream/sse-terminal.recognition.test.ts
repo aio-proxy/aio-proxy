@@ -5,6 +5,35 @@ import { createOpenAISseBody } from './sse-terminal';
 import { encoder, readBody, readBodyResult, sourceFromText } from './sse-terminal.test-support';
 
 describe('createOpenAISseBody terminals', () => {
+  test('normalizes a top-level Responses error after response.created into response.failed', async () => {
+    const created =
+      'event: response.created\ndata: {"type":"response.created","response":{"id":"resp_1","object":"response","status":"in_progress"}}\n\n';
+    const inProgress = 'event: response.in_progress\ndata: {"type":"response.in_progress"}\n\n';
+    const failed =
+      'event: error\ndata: {"type":"error","code":"context_too_large","message":"Your input exceeds the context window of this model.","param":null,"sequence_number":0}\n\n';
+
+    const text = await readBody(createOpenAISseBody(sourceFromText(created + inProgress + failed), 'openai-response'));
+    const frames = text.trim().split('\n\n');
+    const lines = frames.at(-1)!.split('\n');
+    expect(lines[0]).toBe('event: response.failed');
+    const payload = JSON.parse(lines[1]!.slice('data: '.length));
+    expect(payload).toEqual({
+      type: 'response.failed',
+      sequence_number: 0,
+      response: {
+        id: 'resp_1',
+        object: 'response',
+        status: 'failed',
+        error: {
+          type: 'error',
+          code: 'context_too_large',
+          message: 'Your input exceeds the context window of this model.',
+          param: null,
+        },
+      },
+    });
+  });
+
   test('recognizes every OpenAI Responses terminal type from event name or data.type', async () => {
     const terminals = [
       'response.completed',
