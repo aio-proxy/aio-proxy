@@ -21,7 +21,7 @@ export default defineConfig({
     'unicorn/no-nested-ternary': 'error',
     'import/no-duplicates': 'error',
     'max-lines-per-function': [
-      'warn',
+      'error',
       {
         max: 120,
         IIFEs: true,
@@ -30,9 +30,9 @@ export default defineConfig({
       },
     ],
     'max-lines': [
-      'warn',
+      'error',
       {
-        max: 300,
+        max: 500,
         skipBlankLines: true,
         skipComments: false,
       },
@@ -46,7 +46,7 @@ export default defineConfig({
       files: ['**/*.tsx'],
       rules: {
         'max-lines-per-function': [
-          'warn',
+          'error',
           {
             max: 300,
             IIFEs: true,
