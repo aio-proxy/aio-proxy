@@ -147,6 +147,26 @@ describe('applyMetadataExtend', () => {
     expect(call?.error.message).toContain('my-gpt');
   });
 
+  it('ignores inheritance when merged limits would be invalid', async () => {
+    const config = makeConfig({
+      'my-gpt': { extend: 'openai/gpt-5.5', name: 'Kept', limit: { input: 500_000 } },
+    });
+    const logger = mock<PluginLogSink>(() => {});
+
+    const resolved = await applyMetadataExtend(config, logger, {
+      getModels: stubGetModels({ 'openai/gpt-5.5': catalogModel() }),
+    });
+    const entry = metadataOf(resolved, 'p1')['my-gpt'];
+
+    expect(entry).toEqual({ name: 'Kept', limit: { input: 500_000 } });
+    expect(logger.mock.calls[0]?.[0]).toMatchObject({
+      event: 'metadata.extend.invalid',
+      code: 'PROVIDER_CONFIG_INVALID',
+      context: { providerId: 'p1' },
+      error: { name: 'MetadataExtendInvalid' },
+    });
+  });
+
   it('passes entries without extend through untouched and skips the catalog fetch', async () => {
     const config = makeConfig({
       'plain-model': { name: 'Plain', cost: { input: 1 } },
