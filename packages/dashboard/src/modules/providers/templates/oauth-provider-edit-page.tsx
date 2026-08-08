@@ -8,7 +8,7 @@ import { PageContainer } from '@/components/page-container';
 import { DeleteProviderDialog, type DeleteProviderDialogRef } from '../components/delete-provider-dialog';
 import { OAuthAuthorizationPanel } from '../components/oauth-authorization-panel';
 import { OAuthProviderEditFields } from '../components/oauth-provider-edit-fields';
-import { PROVIDER_KIND_LABEL } from '../constants';
+import { PROVIDER_KIND_LABEL } from '../lib/constants';
 import { useOAuthProviderEditPage } from './use-oauth-provider-edit-page';
 
 interface OAuthProviderEditPageProps {
@@ -46,7 +46,11 @@ export const OAuthProviderEditPage: React.FC<OAuthProviderEditPageProps> = ({
     <PageContainer
       title={m['dashboard.providers.edit_title']()}
       subtitle={`${provider.id} · ${PROVIDER_KIND_LABEL.oauth}`}
-      backTo="/providers"
+      breadcrumbs={[
+        { label: m['dashboard.menus.configuration']() },
+        { label: m['dashboard.providers.list_title'](), to: '/providers' },
+        { label: m['dashboard.providers.edit_title']() },
+      ]}
     >
       <div className="mx-auto max-w-4xl space-y-6 px-1 pb-4 sm:p-4">
         {sessionId === undefined ? (

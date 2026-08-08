@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, rs, test } from '@rstest/core';
+import { keepPreviousData } from '@tanstack/react-query';
 
-import { createDefaultTraceSearch } from '../../trace-search';
+import { createDefaultTraceSearch } from '../../lib/trace-search';
 import {
   DashboardTracesRequestError,
   getTrace,
@@ -25,7 +26,7 @@ rs.mock('@/lib/dashboard-client', () => ({
 }));
 
 const traceId = 'a'.repeat(32);
-const listBody = { items: [], page: 1, pageSize: 50, total: 0, pageCount: 0 };
+const listBody = { items: [], nextPageToken: 'next-page-token' };
 const detailBody = {
   trace: {
     traceId,
@@ -48,11 +49,11 @@ describe('trace service', () => {
     mocks.detail.mockResolvedValue(new Response(JSON.stringify(detailBody), { status: 200 }));
   });
 
-  test('sends start-time bounds and every active trace filter to the typed list route', async () => {
+  test('forwards the page token, date bounds, and every active filter to the typed list route', async () => {
     const search = {
       ...createDefaultTraceSearch(new Date('2026-07-12T12:00:00.000Z')),
-      page: 2,
       pageSize: 20 as const,
+      pageToken: 'next-page-token',
       traceId,
       requestId: 'request-a',
       sessionSource: 'openai-prompt-cache',
@@ -70,8 +71,8 @@ describe('trace service', () => {
 
     expect(mocks.list).toHaveBeenCalledWith({
       query: {
-        page: '2',
         pageSize: '20',
+        pageToken: 'next-page-token',
         startedAfter: search.startedAfter,
         startedBefore: search.startedBefore,
         traceId,
@@ -94,12 +95,13 @@ describe('trace service', () => {
     expect(mocks.detail).toHaveBeenCalledWith({ param: { traceId } });
   });
 
-  test('polls the first list page every five seconds but never polls detail', () => {
+  test('keeps the previous page and polls only searches without a page token', () => {
     const search = createDefaultTraceSearch(new Date('2026-07-12T12:00:00.000Z'));
 
     expect(tracesQueryOptions(search, true).queryKey).toEqual(['dashboard', 'traces', search]);
+    expect(tracesQueryOptions(search, true).placeholderData).toBe(keepPreviousData);
     expect(tracesQueryOptions(search, true).refetchInterval).toBe(5_000);
-    expect(tracesQueryOptions({ ...search, page: 2 }, true).refetchInterval).toBe(false);
+    expect(tracesQueryOptions({ ...search, pageToken: 'next-page-token' }, true).refetchInterval).toBe(false);
     expect(tracesQueryOptions(search, false).refetchInterval).toBe(false);
     expect(traceQueryOptions(traceId).queryKey).toEqual(['dashboard', 'traces', traceId]);
     expect(traceQueryOptions(traceId).refetchInterval).toBeUndefined();

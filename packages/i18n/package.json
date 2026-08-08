@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "@inlang/paraglide-js": "catalog:",
+    "date-fns": "catalog:",
     "hono": "catalog:",
     "zod": "catalog:"
   },

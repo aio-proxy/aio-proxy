@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 
+import type { TraceSearch } from '../lib/trace-search';
 import { tracesQueryOptions } from '../services/traces-service';
-import type { TraceSearch } from '../trace-search';
 
 export const useTracesQuery = (search: TraceSearch, autoRefresh: boolean) =>
   useQuery(tracesQueryOptions(search, autoRefresh));

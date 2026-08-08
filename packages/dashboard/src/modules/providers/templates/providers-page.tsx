@@ -15,7 +15,7 @@ import type React from 'react';
 import { PageContainer } from '@/components/page-container';
 
 import { ProvidersTable } from '../components/providers-table';
-import { PROVIDER_KIND_LABEL } from '../constants';
+import { PROVIDER_KIND_LABEL } from '../lib/constants';
 import { providersQueryOptions } from '../services/providers-service';
 
 interface ProvidersPageProps {
@@ -30,17 +30,18 @@ export const ProvidersPage: React.FC<ProvidersPageProps> = ({ focusProviderId, w
   return (
     <PageContainer
       title={m['dashboard.providers.list_title']()}
+      breadcrumbs={[{ label: m['dashboard.menus.configuration']() }, { label: m['dashboard.providers.list_title']() }]}
       extra={
         <DropdownMenu>
           <DropdownMenuTrigger render={<Button data-testid="new-provider-button" />}>
             {m['dashboard.providers.new_provider']()}
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem render={<Link preload="intent" to="/providers/new/$kind" params={{ kind: 'oauth' }} />}>
-              {PROVIDER_KIND_LABEL.oauth}
-            </DropdownMenuItem>
             <DropdownMenuItem render={<Link preload="intent" to="/providers/new/$kind" params={{ kind: 'api' }} />}>
               {PROVIDER_KIND_LABEL.api}
+            </DropdownMenuItem>
+            <DropdownMenuItem render={<Link preload="intent" to="/providers/new/$kind" params={{ kind: 'oauth' }} />}>
+              {PROVIDER_KIND_LABEL.oauth}
             </DropdownMenuItem>
             <DropdownMenuItem render={<Link preload="intent" to="/providers/new/$kind" params={{ kind: 'ai-sdk' }} />}>
               {PROVIDER_KIND_LABEL['ai-sdk']}

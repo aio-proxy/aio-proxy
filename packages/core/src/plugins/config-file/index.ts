@@ -12,6 +12,10 @@ export { digestProviderEntry } from './serialization';
 export type AtomicConfigTransactionOptions = {
   readonly validateCandidate?: (candidate: ConfigRecord) => void;
   readonly verify?: (candidate: ConfigRecord) => Promise<void>;
+  /** Runs under the recovery fence before cleanup; failures restore the original verified config. */
+  readonly beforeCommit?: (candidate: ConfigRecord, assertOwnership: () => Promise<void>) => Promise<void>;
+  /** Runs under the recovery fence after verification; failures do not roll back the verified config. */
+  readonly afterCommit?: (candidate: ConfigRecord) => Promise<void>;
   readonly signal?: AbortSignal;
 };
 
@@ -73,12 +77,11 @@ export class AtomicConfigFile {
     const lockPath = `${this.#path}.lock`;
     const lock = await acquireConfigLock(lockPath, options.signal);
     const tempPath = `${this.#path}.${process.pid}.${lock.owner}.tmp`;
-    let original: Awaited<ReturnType<typeof originalFile>> | undefined;
     let result: T;
     try {
       result = await lock.withOwnership(async (assertOwnership) => {
         options.signal?.throwIfAborted();
-        original = await originalFile(this.#path);
+        const original = await originalFile(this.#path);
         const current = parseConfig(original.bytes, this.#path);
         options.signal?.throwIfAborted();
         const { next, result } = await mutate(current);
@@ -96,6 +99,7 @@ export class AtomicConfigFile {
           lock.withOwnershipFence,
         );
         let candidateCommitted = true;
+        let commitVerified = false;
         try {
           await assertOwnership();
           try {
@@ -120,9 +124,49 @@ export class AtomicConfigFile {
             throw verifyError;
           }
           await assertOwnership();
+          const beforeCommit = options.beforeCommit;
+          const afterCommit = options.afterCommit;
+          if (beforeCommit === undefined && afterCommit === undefined) {
+            commitVerified = true;
+            return result;
+          }
+          try {
+            await lock.withOwnershipFence(async (assertFencedOwnership) => {
+              await beforeCommit?.(next, assertFencedOwnership);
+              await assertFencedOwnership();
+              commitVerified = true;
+              await afterCommit?.(next);
+            });
+          } catch (error) {
+            if (commitVerified) throw error;
+            try {
+              await lock.withOwnershipFence(async (assertFencedOwnership) => {
+                if (original.bytes === null) {
+                  try {
+                    await assertFencedOwnership();
+                    await unlink(this.#path);
+                  } catch (rollbackError) {
+                    if (!isNodeError(rollbackError, 'ENOENT')) throw rollbackError;
+                  }
+                } else {
+                  await writeAtomic(this.#path, original.bytes, original.mode, tempPath, async (renameCandidate) => {
+                    await assertFencedOwnership();
+                    await renameCandidate();
+                  });
+                }
+                await assertFencedOwnership();
+                candidateCommitted = false;
+                await options.verify?.(current);
+                await assertFencedOwnership();
+              });
+            } catch {
+              throw new AtomicConfigCommitUncertainError();
+            }
+            throw error;
+          }
           return result;
         } catch (error) {
-          if (candidateCommitted && !(error instanceof AtomicConfigCommitUncertainError)) {
+          if (candidateCommitted && !commitVerified && !(error instanceof AtomicConfigCommitUncertainError)) {
             throw new AtomicConfigCommitUncertainError();
           }
           throw error;

@@ -1,6 +1,5 @@
 import { queryClient } from '@/lib/query-client';
-
-export const dashboardAuthQueryKey = ['dashboard-auth'] as const;
+import { queryKeys } from '@/lib/query-keys';
 
 export type DashboardAuthSession = {
   readonly status: 'authenticated' | 'disabled' | 'unauthenticated' | 'unavailable';
@@ -8,14 +7,14 @@ export type DashboardAuthSession = {
 };
 
 export const isNotDashboardAuthQuery = (query: { readonly queryKey: readonly unknown[] }): boolean =>
-  query.queryKey[0] !== dashboardAuthQueryKey[0];
+  query.queryKey[0] !== queryKeys.auth[0];
 
 export function setDashboardAuthSession(session: DashboardAuthSession): void {
-  queryClient.setQueryData(dashboardAuthQueryKey, session);
+  queryClient.setQueryData(queryKeys.auth, session);
 }
 
 export function markDashboardSessionExpired(): void {
-  const current = queryClient.getQueryData<DashboardAuthSession>(dashboardAuthQueryKey);
+  const current = queryClient.getQueryData<DashboardAuthSession>(queryKeys.auth);
   if (current?.status !== 'authenticated' && current?.status !== 'disabled') return;
   queryClient.removeQueries({ predicate: isNotDashboardAuthQuery });
   setDashboardAuthSession(
@@ -26,7 +25,7 @@ export function markDashboardSessionExpired(): void {
 }
 
 export function markDashboardUnavailable(): void {
-  const current = queryClient.getQueryData<DashboardAuthSession>(dashboardAuthQueryKey);
+  const current = queryClient.getQueryData<DashboardAuthSession>(queryKeys.auth);
   if (current?.status !== 'authenticated' && current?.status !== 'disabled') return;
   queryClient.removeQueries({ predicate: isNotDashboardAuthQuery });
   setDashboardAuthSession({ status: 'unavailable' });

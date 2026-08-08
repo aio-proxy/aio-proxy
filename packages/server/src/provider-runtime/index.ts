@@ -2,6 +2,7 @@ export {
   materializeProviders,
   materializeRuntimeProvider,
   type MaterializeProvidersOptions,
+  effectiveProxy,
   providerDiff,
   type ProviderRuntime,
   providerSummary,

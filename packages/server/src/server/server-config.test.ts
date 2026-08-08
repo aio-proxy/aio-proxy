@@ -73,6 +73,14 @@ describe('server routes', () => {
     expect(response.status).toBe(403);
   });
 
+  test('PATCH /dashboard/api/providers rejects absent origin when requested', async () => {
+    const app = await createServer({ config });
+
+    const response = await app.request('/dashboard/api/providers/primary/enabled', { method: 'PATCH' }, loopbackServer);
+
+    expect(response.status).toBe(403);
+  });
+
   test('server defaults bind to localhost api port when inspected', () => {
     // Given / When / Then
     expect(serverDefaults).toEqual({ host: '127.0.0.1', port: 9_317 });

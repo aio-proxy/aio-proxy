@@ -2,6 +2,7 @@ import { dirname } from 'node:path';
 
 import {
   AtomicConfigFile,
+  createEmbeddedBuiltIns,
   createPluginDiagnosticFactory,
   createPluginRepository,
   type DiagnosticFactory,
@@ -14,10 +15,12 @@ import { createTraceStore, type OpenDbHandle, openDb } from '@aio-proxy/core/db'
 import type { AccountRemovalCoordinator } from '../account-removal';
 import { createAccountRemovalCoordinator } from '../account-removal';
 import { CatalogScheduler } from '../catalog-scheduler';
+import type { ConfigStore } from '../config-store';
 import { watchConfigFile } from '../config-watcher';
 import { createDashboardEventHub } from '../dashboard-events';
 import { createFifoQueue } from '../fifo-queue';
 import { LogicalSessionStore } from '../logical-session-store';
+import { createPluginControlPlane } from '../plugin-control-plane';
 import { createOAuthQuotaOperations } from '../plugin-quota';
 import type { SnapshotManager } from '../plugin-snapshot';
 import { createSnapshotManager } from '../plugin-snapshot';
@@ -82,15 +85,7 @@ export async function createServerState(options: ServerStateOptions): Promise<Se
     configFile,
   };
 
-  await recoverBeforeSnapshot({
-    configFile,
-    repository,
-    diagnostics,
-    logger: pluginLogger,
-    recoverAccounts,
-    scheduler: recoveryScheduler,
-    enqueue: queue,
-  });
+  await recoverBeforeInitialSnapshot(runtime, recoverAccounts, recoveryScheduler);
 
   const initial =
     options.providerInstances === undefined
@@ -147,11 +142,12 @@ export async function createServerState(options: ServerStateOptions): Promise<Se
     recoveryScheduler,
     reconciliationRetryMs: testHooks?.reconciliationRetryMs ?? RECOVERY_DRAIN_RETRY_MS,
   });
+  const pluginControlPlane = createStatePluginControlPlane(runtime, configStore);
 
   const providerSummaries = createProviderSummaries(manager);
 
   const reload = (): Promise<ConfigReloadResult> => queue(() => reloadNow(runtime));
-  const oauthLoginSessions = startLoginSessions(runtime, reload);
+  const oauthLoginSessions = startLoginSessions(runtime, configStore, reload);
   const watcher =
     options.configPath !== undefined && options.watchConfig !== false
       ? watchConfigFile(options.configPath, reload)
@@ -165,6 +161,7 @@ export async function createServerState(options: ServerStateOptions): Promise<Se
     cooldown,
     oauthQuota,
     oauthLoginSessions,
+    pluginControlPlane,
     providerSummaries,
     reload,
     traceStore,
@@ -172,6 +169,35 @@ export async function createServerState(options: ServerStateOptions): Promise<Se
     usageCapture,
     watcher,
     closeRecovery: () => runtime.recovery?.close(),
+  });
+}
+
+function createStatePluginControlPlane(runtime: ServerRuntime, configStore: ConfigStore) {
+  const { options, diagnostics, repository } = runtime;
+  return createPluginControlPlane({
+    acquireSnapshot: runtime.manager.acquire,
+    builtIns: options.builtIns ?? createEmbeddedBuiltIns(),
+    configStore,
+    diagnostics,
+    importPackage: options.importPlugin ?? (async ({ entrypoint }) => import(entrypoint)),
+    repository,
+    ...runtime.internalOptions.__test?.pluginControlPlane,
+  });
+}
+
+function recoverBeforeInitialSnapshot(
+  runtime: ServerRuntime,
+  recoverAccounts: typeof recoverPendingAccountOperations,
+  scheduler: ReturnType<typeof defaultRecoveryScheduler>,
+) {
+  return recoverBeforeSnapshot({
+    configFile: runtime.configFile,
+    repository: runtime.repository,
+    diagnostics: runtime.diagnostics,
+    logger: runtime.pluginLogger,
+    recoverAccounts,
+    scheduler,
+    enqueue: runtime.queue,
   });
 }
 

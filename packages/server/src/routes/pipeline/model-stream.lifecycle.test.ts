@@ -19,6 +19,7 @@ import {
   textStream,
   textThenErrorStream,
 } from '../../../__tests__/pipeline-helpers';
+import { attributeName, spanName } from '../../request-tracing';
 import { handleProtocolRequest } from './index';
 import { attemptsOf, pipeline } from './test-support';
 
@@ -76,6 +77,8 @@ describe('shared protocol routing pipeline model stream lifecycle', () => {
     await settleRecording(harness.recording);
 
     expect(harness.usage.capturedStreams[0]?.locked).toBe(false);
+    const root = harness.recording.spans.find((span) => span.name === spanName.request);
+    expect(root?.attributes[attributeName.diagnosticResponseContentType]).toBe('text/event-stream; charset=utf-8');
     expect(harness.recording.finals[0]).toEqual(
       expect.objectContaining({ finalProviderId: 'provider', outcome: 'success' }),
     );

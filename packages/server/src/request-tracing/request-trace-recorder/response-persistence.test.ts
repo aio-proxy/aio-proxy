@@ -112,7 +112,10 @@ function finishResponse(
   responseId: string,
   providerId: string,
 ): void {
-  const session = recorder.begin({ headers: new Headers(), inboundProtocol: 'openai-response' });
+  const session = recorder.begin({
+    inboundRequest: new Request('http://localhost'),
+    inboundProtocol: 'openai-response',
+  });
   session.identify({ requestedModelId: 'model-a', resolution: sessionResolution, mutateSessionState: true });
   session.finish({ outcome: 'success', responseId, finalProviderId: providerId, finalModelId: 'model-a' });
 }

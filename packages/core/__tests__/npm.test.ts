@@ -210,6 +210,34 @@ describe.serial('isolated npm cache lifecycle', () => {
     expect(await removeNpmPackageCache('removable-plugin')).toBe(false);
   });
 
+  test('cache removal coordinates filesystem deletion after its final guard', async () => {
+    sandboxHome();
+    const packageName = 'coordinated-removal-plugin';
+    writeCachedPackage(packageName, '1.0.0');
+    let coordinated = false;
+
+    const removed = await removeNpmPackageCache(
+      packageName,
+      async () => {
+        expect(coordinated).toBe(true);
+        return true;
+      },
+      async (remove) => {
+        coordinated = true;
+        try {
+          const result = await remove();
+          expect(existsSync(npmPackageCacheDir(packageName))).toBe(false);
+          return result;
+        } finally {
+          coordinated = false;
+        }
+      },
+    );
+
+    expect(removed).toBe(true);
+    expect(coordinated).toBe(false);
+  });
+
   test("an installed package stays locked through its caller's config commit", async () => {
     sandboxHome();
     writeCachedPackage('racing-plugin', '1.0.0');

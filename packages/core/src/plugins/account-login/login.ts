@@ -1,5 +1,5 @@
 import type { AuthorizationPort, ConfigSpec, LocalizedText } from '@aio-proxy/plugin-sdk';
-import type { ProviderAlias } from '@aio-proxy/types';
+import type { OAuthProviderMutationBody, ProviderAlias, ProviderTransforms } from '@aio-proxy/types';
 
 import { AtomicConfigCommitUncertainError, type AtomicConfigFile } from '../config-file';
 import { type DiagnosticFactory, type PluginLogSink } from '../diagnostic/index';
@@ -41,7 +41,9 @@ export type OAuthProviderPatch = {
   readonly name: string | undefined;
   readonly enabled: boolean;
   readonly weight: number | undefined;
+  readonly proxy?: OAuthProviderMutationBody['proxy'];
   readonly alias: ProviderAlias | undefined;
+  readonly transforms?: ProviderTransforms | undefined;
 };
 export type LoginOAuthAccountOptions = {
   readonly targetProviderId?: string;
@@ -54,6 +56,11 @@ export type LoginOAuthAccountOptions = {
   readonly createAuthorization: (signal: AbortSignal) => AuthorizationPort;
   readonly diagnostics: DiagnosticFactory;
   readonly logger: PluginLogSink;
+  readonly coordinateProviderCommit?: <T>(capability: OAuthCapabilityReference, commit: () => Promise<T>) => Promise<T>;
+  readonly validateProviderCommit?: (
+    capability: OAuthCapabilityReference,
+    current: Readonly<Record<string, unknown>>,
+  ) => Promise<void> | void;
   readonly progress?: (message: LocalizedText) => void;
   readonly onAuthorized?: () => void;
   readonly signal?: AbortSignal;
@@ -108,10 +115,11 @@ export async function loginOAuthAccount(options: LoginOAuthAccountOptions): Prom
     const state: StageState = {};
     let staged: PendingAccountOperation;
     try {
-      staged = await options.config.transaction(
-        (current) =>
-          Promise.resolve(
-            stageAccountWrite(
+      const commit = () =>
+        options.config.transaction(
+          async (current) => {
+            await options.validateProviderCommit?.(initial.capability, current);
+            return stageAccountWrite(
               current,
               {
                 options,
@@ -128,10 +136,13 @@ export async function loginOAuthAccount(options: LoginOAuthAccountOptions): Prom
                 signal: deadline.signal,
               },
               state,
-            ),
-          ),
-        { validateCandidate: validateStagedOAuthWrite, signal: deadline.signal },
-      );
+            );
+          },
+          { validateCandidate: validateStagedOAuthWrite, signal: deadline.signal },
+        );
+      staged = await (options.coordinateProviderCommit === undefined
+        ? commit()
+        : options.coordinateProviderCommit(initial.capability, commit));
     } catch (error) {
       if (state.operation !== undefined && !(error instanceof AtomicConfigCommitUncertainError)) {
         const status = options.repository.compensateAccountOperation(state.operation.operationId);

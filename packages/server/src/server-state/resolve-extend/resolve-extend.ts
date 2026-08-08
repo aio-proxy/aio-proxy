@@ -1,4 +1,10 @@
-import { catalogModelToMetadata, getModels, type ModelsDevModel, type PluginLogSink } from '@aio-proxy/core';
+import {
+  catalogModelToMetadata,
+  type getModels,
+  getModelsCachedOnly,
+  type ModelsDevModel,
+  type PluginLogSink,
+} from '@aio-proxy/core';
 import type { Config, ModelMetadata, Provider } from '@aio-proxy/types';
 import { mergeWith } from 'es-toolkit/object';
 
@@ -26,7 +32,7 @@ export async function applyMetadataExtend(
   const slugs = collectExtendSlugs(config.providers);
   if (slugs.size === 0) return config;
 
-  const catalog = await resolveCatalog([...slugs], deps?.getModels ?? getModels);
+  const catalog = await resolveCatalog([...slugs], deps?.getModels ?? getModelsCachedOnly);
 
   let changed = false;
   const providers = config.providers.map((provider) => {

@@ -24,14 +24,14 @@ const LoopbackHostSchema = z
   .string()
   .refine((host) => LOOPBACK_HOSTS.has(host), 'Remote binding requires an authenticated remote-mode design');
 
-const ServerLoggingSchema = z.object({
+export const ServerLoggingSchema = z.object({
   enabled: z.boolean().default(false),
   dir: z.string().min(1).optional(),
   retentionDays: z.number().int().min(1).max(365).default(14),
   level: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
 });
 
-const ServerRetrySchema = z.object({
+export const ServerRetrySchema = z.object({
   retryAfterCapMs: z
     .number()
     .int()

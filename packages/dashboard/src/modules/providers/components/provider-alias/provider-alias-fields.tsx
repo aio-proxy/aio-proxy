@@ -3,16 +3,16 @@ import { Button } from '@aio-proxy/ui/components/button';
 import { Field, FieldDescription, FieldError, FieldLabel } from '@aio-proxy/ui/components/field';
 import type { FC } from 'react';
 
+import type { useProviderForm } from '../../hooks/use-provider-form';
 import {
   aliasEditorIssues,
   aliasSummary,
   aliasTargetModels,
   type ProviderAlias,
   serializeAlias,
-} from '../../alias-editor';
-import { aliasSummaryMessage } from '../../alias-editor-copy';
-import { ProviderFormMode } from '../../constants';
-import type { useProviderForm } from '../../hooks/use-provider-form';
+} from '../../lib/alias-editor';
+import { aliasSummaryMessage } from '../../lib/alias-editor-copy';
+import { ProviderFormMode } from '../../lib/constants';
 import { ProviderAliasDrawer } from './provider-alias-drawer';
 
 type Props = {

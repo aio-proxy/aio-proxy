@@ -1,3 +1,4 @@
+export { dateFnsLocale } from './date-fns-locale';
 export {
   AliasCollisionError,
   AppError,

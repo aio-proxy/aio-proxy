@@ -39,11 +39,15 @@ const identityInput: RequestTraceIdentityInput = {
   } as unknown as LogicalSessionResolution,
 };
 
+function request(headers?: HeadersInit): Request {
+  return new Request('http://localhost', { headers });
+}
+
 describe('createRequestTraceRecorder', () => {
   test('startRoot is called synchronously before begin returns', () => {
     const { roots, store } = collector();
     const recorder = createRequestTraceRecorder({ store });
-    const session = recorder.begin({ headers: new Headers(), inboundProtocol: 'openai-chat' });
+    const session = recorder.begin({ inboundRequest: request(), inboundProtocol: 'openai-chat' });
 
     expect(roots).toHaveLength(1);
     expect(roots[0]?.traceId).toBe(session.traceId);
@@ -57,7 +61,7 @@ describe('createRequestTraceRecorder', () => {
     const incomingTraceId = '0af7651916cd43dd8448eb211c80319c';
     const headers = new Headers({ traceparent: `00-${incomingTraceId}-b7ad6b7169203331-01` });
 
-    const session = recorder.begin({ headers, inboundProtocol: 'openai-chat' });
+    const session = recorder.begin({ inboundRequest: request(headers), inboundProtocol: 'openai-chat' });
 
     expect(roots[0]?.links).toHaveLength(1);
     expect(roots[0]?.links[0]?.traceId).toBe(incomingTraceId);
@@ -68,7 +72,7 @@ describe('createRequestTraceRecorder', () => {
     const { roots, store } = collector();
     const recorder = createRequestTraceRecorder({ store });
     const session = recorder.begin({
-      headers: new Headers({ traceparent: 'not-a-valid-traceparent' }),
+      inboundRequest: request({ traceparent: 'not-a-valid-traceparent' }),
       inboundProtocol: 'openai-chat',
     });
 
@@ -80,7 +84,7 @@ describe('createRequestTraceRecorder', () => {
   test('root stays running until finishFrom settles, then persists success as UNSET', async () => {
     const { completions, store } = collector();
     const recorder = createRequestTraceRecorder({ store });
-    const session = recorder.begin({ headers: new Headers(), inboundProtocol: 'openai-chat' });
+    const session = recorder.begin({ inboundRequest: request(), inboundProtocol: 'openai-chat' });
 
     let resolve: (() => void) | undefined;
     session.finishFrom(
@@ -108,7 +112,7 @@ describe('createRequestTraceRecorder', () => {
   test('finishFrom rejection persists stable failure metadata', async () => {
     const { completions, store } = collector();
     const recorder = createRequestTraceRecorder({ store });
-    const session = recorder.begin({ headers: new Headers(), inboundProtocol: 'openai-chat' });
+    const session = recorder.begin({ inboundRequest: request(), inboundProtocol: 'openai-chat' });
 
     session.finishFrom(Promise.reject(new Error('stream failed')));
     await Promise.resolve();
@@ -120,7 +124,7 @@ describe('createRequestTraceRecorder', () => {
   test('failure sets ERROR status and failure termination reason', () => {
     const { completions, store } = collector();
     const recorder = createRequestTraceRecorder({ store });
-    const session = recorder.begin({ headers: new Headers(), inboundProtocol: 'openai-chat' });
+    const session = recorder.begin({ inboundRequest: request(), inboundProtocol: 'openai-chat' });
 
     expect(session.finish({ outcome: 'failure', errorType: 'UpstreamError', errorCode: 'bad_gateway' })).toBe(true);
 
@@ -133,7 +137,7 @@ describe('createRequestTraceRecorder', () => {
   test('cancelled sets ERROR status and cancelled termination reason', () => {
     const { completions, store } = collector();
     const recorder = createRequestTraceRecorder({ store });
-    const session = recorder.begin({ headers: new Headers(), inboundProtocol: 'openai-chat' });
+    const session = recorder.begin({ inboundRequest: request(), inboundProtocol: 'openai-chat' });
 
     session.finish({ outcome: 'cancelled' });
 
@@ -145,7 +149,7 @@ describe('createRequestTraceRecorder', () => {
   test('double finish is a no-op', () => {
     const { completions, store } = collector();
     const recorder = createRequestTraceRecorder({ store });
-    const session = recorder.begin({ headers: new Headers(), inboundProtocol: 'openai-chat' });
+    const session = recorder.begin({ inboundRequest: request(), inboundProtocol: 'openai-chat' });
 
     expect(session.finish({ outcome: 'success' })).toBe(true);
     expect(session.finish({ outcome: 'failure' })).toBe(false);
@@ -164,7 +168,7 @@ describe('createRequestTraceRecorder', () => {
     };
     const recorder = createRequestTraceRecorder({ store: throwingStore, logger: (e: ServerLog) => void logs.push(e) });
 
-    const session = recorder.begin({ headers: new Headers(), inboundProtocol: 'openai-chat' });
+    const session = recorder.begin({ inboundRequest: request(), inboundProtocol: 'openai-chat' });
 
     const failure = logs.find((entry) => entry.event === 'trace.persistence_failed');
     expect(failure).toBeDefined();
@@ -178,7 +182,7 @@ describe('createRequestTraceRecorder', () => {
   test('only controlled attributes reach the stored span snapshot', () => {
     const { completions, store } = collector();
     const recorder = createRequestTraceRecorder({ store });
-    const session = recorder.begin({ headers: new Headers(), inboundProtocol: 'openai-chat' });
+    const session = recorder.begin({ inboundRequest: request(), inboundProtocol: 'openai-chat' });
 
     const child = getTraceRuntime().tracer.startSpan(
       spanName.attempt,
@@ -199,10 +203,70 @@ describe('createRequestTraceRecorder', () => {
     expect(stored?.attributes).toEqual({ [attributeName.providerId]: 'provider-a' });
   });
 
+  test('persists only allowlisted scalar diagnostics from the inbound request and client response', () => {
+    const { completions, store } = collector();
+    const recorder = createRequestTraceRecorder({ store });
+    const inboundRequest = new Request('http://localhost/v1/responses', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer authorization-secret',
+        'api-key': 'api-key-secret',
+        'x-api-key': 'x-api-key-secret',
+        'x-goog-api-key': 'google-api-key-secret',
+        cookie: 'session=cookie-secret',
+        'content-type': 'application/json',
+        'content-length': '35',
+        'user-agent': 'diagnostics-test/1.0',
+      },
+      body: JSON.stringify({ input: 'prompt-secret-content' }),
+    });
+    const session = recorder.begin({
+      inboundRequest,
+      inboundProtocol: 'openai-response',
+    });
+    const clientResponse = new Response('generated-secret-content', {
+      status: 201,
+      headers: {
+        'content-type': 'application/json',
+        'content-length': '24',
+        'set-cookie': 'response=set-cookie-secret',
+        'x-api-key': 'response-api-key-secret',
+      },
+    });
+
+    session.finish({ outcome: 'success', clientResponse });
+
+    const root = completions[0]?.spans.find((span) => span.spanId === session.rootSpanId);
+    expect(root?.attributes).toMatchObject({
+      'aio_proxy.diagnostics.request.protocol': 'openai-response',
+      'aio_proxy.diagnostics.request.method': 'POST',
+      'aio_proxy.diagnostics.request.content_type': 'application/json',
+      'aio_proxy.diagnostics.request.content_length_bytes': 35,
+      'aio_proxy.diagnostics.request.user_agent': 'diagnostics-test/1.0',
+      'aio_proxy.diagnostics.response.status_code': 201,
+      'aio_proxy.diagnostics.response.content_type': 'application/json',
+      'aio_proxy.diagnostics.response.content_length_bytes': 24,
+    });
+    const persisted = JSON.stringify(completions[0]);
+    for (const rejected of [
+      'authorization-secret',
+      'api-key-secret',
+      'x-api-key-secret',
+      'google-api-key-secret',
+      'cookie-secret',
+      'set-cookie-secret',
+      'response-api-key-secret',
+      'prompt-secret-content',
+      'generated-secret-content',
+    ]) {
+      expect(persisted).not.toContain(rejected);
+    }
+  });
+
   test('identify projects session identity onto the completion', () => {
     const { completions, store } = collector();
     const recorder = createRequestTraceRecorder({ store });
-    const session = recorder.begin({ headers: new Headers(), inboundProtocol: 'openai-chat' });
+    const session = recorder.begin({ inboundRequest: request(), inboundProtocol: 'openai-chat' });
 
     session.identify(identityInput);
     session.finish({ outcome: 'success' });
@@ -217,7 +281,7 @@ describe('createRequestTraceRecorder', () => {
   test('projects stream intent and final TTFT onto the root span', () => {
     const { completions, store } = collector();
     const recorder = createRequestTraceRecorder({ store });
-    const session = recorder.begin({ headers: new Headers(), inboundProtocol: 'openai-chat' });
+    const session = recorder.begin({ inboundRequest: request(), inboundProtocol: 'openai-chat' });
 
     session.identify({ ...identityInput, streamRequested: true } as RequestTraceIdentityInput);
     session.finish({ outcome: 'success', ttftMs: 42 } as RequestTraceFinishInput);

@@ -1,6 +1,6 @@
 import { describe, expect, it, mock } from 'bun:test';
 
-import type { getModels, PluginLogSink } from '@aio-proxy/core';
+import { clearModelsCache, fileCacheStorage, type getModels, type PluginLogSink } from '@aio-proxy/core';
 import { type Config, ConfigSchema, ProviderKind, ProviderProtocol } from '@aio-proxy/types';
 import type { Model } from '@opencode-ai/models';
 
@@ -57,6 +57,26 @@ function metadataOf(config: Config, providerId: string): Record<string, unknown>
 }
 
 describe('applyMetadataExtend', () => {
+  it('does not wait for the network when the catalog cache is cold', async () => {
+    const config = makeConfig({
+      'my-gpt': { extend: 'openai/gpt-5.5', name: 'Kept' },
+    });
+    const nativeFetch = globalThis.fetch;
+    const timedOut = Symbol('timed out');
+
+    clearModelsCache();
+    await fileCacheStorage.removeItem('models-dev-providers');
+    globalThis.fetch = (() => new Promise<Response>(() => {})) as typeof fetch;
+
+    try {
+      const result = await Promise.race([applyMetadataExtend(config), Bun.sleep(500).then(() => timedOut)]);
+
+      expect(result).not.toBe(timedOut);
+    } finally {
+      globalThis.fetch = nativeFetch;
+    }
+  });
+
   it('two-layer merges catalog base under user fields with array replacement', async () => {
     const config = makeConfig({
       'my-gpt': {

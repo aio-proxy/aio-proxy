@@ -202,6 +202,12 @@ export async function materializePluginProvider(
     return catalogUnavailableMaterialization(options, unavailable, persistedSummary, catalogJobFor, createCredentials);
   }
 
+  const proxyIdentity =
+    options.effectiveProxy === undefined
+      ? config.proxy === false
+        ? null
+        : (config.proxy ?? null)
+      : options.effectiveProxy;
   const identity = runtimeIdentity({
     packageName: config.plugin,
     version: pluginVersion(plugins, config.plugin),
@@ -210,6 +216,7 @@ export async function materializePluginProvider(
     pluginOptionsDigest: options.pluginOptionsDigest,
     accountOptionsDigest,
     requestTransformsDigest: digest(config.transforms?.request ?? []),
+    proxyDigest: digest(proxyIdentity),
     runtimeRevision: account.runtimeRevision,
     catalogDigest: digest(storedCatalog.catalog),
     catalogRefreshedAt: storedCatalog.refreshedAt,

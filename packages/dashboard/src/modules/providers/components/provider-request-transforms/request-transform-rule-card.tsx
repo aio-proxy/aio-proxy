@@ -70,7 +70,9 @@ export const RequestTransformRuleCard: React.FC<RequestTransformRuleCardProps> =
   return (
     <Card data-testid={`request-transform-rule-${index}`}>
       <CardHeader>
-        <CardTitle>{m['dashboard.providers.transforms.rule.label']({ index: ruleIndex })}</CardTitle>
+        <CardTitle>
+          {value.name?.trim() || m['dashboard.providers.transforms.rule.label']({ index: ruleIndex })}
+        </CardTitle>
       </CardHeader>
       <CardContent className="space-y-5">
         <div className="space-y-2">
@@ -96,7 +98,7 @@ export const RequestTransformRuleCard: React.FC<RequestTransformRuleCardProps> =
         </div>
         <div className="space-y-2">
           <div className="flex items-center justify-between gap-3">
-            <Label>{m['dashboard.providers.transforms.rule.condition']()}</Label>
+            <Label>{m['dashboard.providers.transforms.rule.when']()}</Label>
             {value.when === undefined ? (
               <span className="text-xs text-muted-foreground">
                 {m['dashboard.providers.transforms.rule.match_all']()}
@@ -116,13 +118,16 @@ export const RequestTransformRuleCard: React.FC<RequestTransformRuleCardProps> =
             }}
           />
         </div>
-        <RequestTransformStageList
-          value={value.update}
-          structuralDisabled={structureBlocked}
-          {...(firstPathInputRef === undefined ? {} : { firstPathInputRef })}
-          onChange={(update) => commitRule({ ...value, update: [...update] }, setStagesValid)}
-          onValidityChange={setStagesValid}
-        />
+        <div className="space-y-3">
+          <Label>{m['dashboard.providers.transforms.rule.then']()}</Label>
+          <RequestTransformStageList
+            value={value.update}
+            structuralDisabled={structureBlocked}
+            {...(firstPathInputRef === undefined ? {} : { firstPathInputRef })}
+            onChange={(update) => commitRule({ ...value, update: [...update] }, setStagesValid)}
+            onValidityChange={setStagesValid}
+          />
+        </div>
       </CardContent>
       <CardFooter className="flex flex-wrap gap-2">
         <Button type="button" variant="destructive" disabled={structureBlocked} onClick={onRemove}>

@@ -33,6 +33,7 @@ export function summary(
     last_status: 'unknown',
     last_latency: null,
     name: config.name,
+    ...(config.weight === undefined ? {} : { weight: config.weight }),
     clientModels: provider === undefined ? [] : [...new Set(modelRoutes(provider).map((route) => route.alias))],
     plugin: config.plugin,
     capability: config.capability,

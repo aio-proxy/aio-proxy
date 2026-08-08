@@ -41,7 +41,7 @@ export async function handleTokenCount<TRequest, TContext>(
 ): Promise<Response> {
   const { adapter, rawRequest, source } = options;
   const session = source.requestRecorder.begin({
-    headers: rawRequest.headers,
+    inboundRequest: rawRequest,
     inboundProtocol: adapter.protocol,
     operation: 'token_count',
   });
@@ -156,7 +156,7 @@ async function handleTokenCountInContext<TRequest, TContext>(
 // return before any provider attempt. begin() already persisted a running root,
 // so finish it as a terminal failure instead of leaving it running forever.
 function finishRejected(session: RequestTraceSession, response: Response, errorCode: string): Response {
-  session.finish({ outcome: 'failure', finalHttpStatus: response.status, errorCode });
+  session.finish({ outcome: 'failure', finalHttpStatus: response.status, errorCode, clientResponse: response });
   return response;
 }
 
@@ -274,6 +274,7 @@ async function countCandidates<TRequest, TContext>({
       finalProviderId: provider.id,
       finalModelId: candidate.modelId,
       finalHttpStatus: 200,
+      clientResponse: response,
     });
     return response;
   }
@@ -282,7 +283,7 @@ async function countCandidates<TRequest, TContext>({
   recordLocalEstimate(session);
   const estimate = estimateInputTokens(adapter.protocol as ProtocolId, invocation);
   const response = Response.json(format(estimate));
-  session.finish({ outcome: 'success', finalHttpStatus: 200 });
+  session.finish({ outcome: 'success', finalHttpStatus: 200, clientResponse: response });
   return response;
 }
 

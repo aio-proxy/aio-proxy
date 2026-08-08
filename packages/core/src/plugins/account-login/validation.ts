@@ -152,6 +152,8 @@ export function providerEntry(
   const weight = patch === undefined ? existing?.['weight'] : patch.weight;
   const name = patch === undefined ? existing?.['name'] : patch.name;
   const alias = patch === undefined ? (existing?.['alias'] ?? defaults) : patch.alias;
+  const proxy = patch?.proxy === undefined ? existing?.['proxy'] : patch.proxy;
+  const transforms = patch?.transforms === undefined ? existing?.['transforms'] : patch.transforms;
   return {
     kind: 'oauth',
     plugin,
@@ -161,6 +163,8 @@ export function providerEntry(
     ...(weight === undefined ? {} : { weight }),
     ...(name === undefined ? {} : { name }),
     ...(alias === undefined ? {} : { alias }),
+    ...(proxy === undefined || proxy === null ? {} : { proxy }),
+    ...(transforms === undefined ? {} : { transforms }),
   };
 }
 export function validatedDefaultAliases(adapter: OAuthAdapter, catalog: ModelCatalog): ProviderAlias | undefined {

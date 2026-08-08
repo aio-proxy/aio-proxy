@@ -27,7 +27,7 @@ export async function handleProtocolRequest<TRequest, TContext>(
 ): Promise<Response> {
   const inboundProtocol = options.adapter.protocol;
   const session = options.source.requestRecorder.begin({
-    headers: options.rawRequest.headers,
+    inboundRequest: options.rawRequest,
     inboundProtocol,
   });
   return await context.with(session.rootContext, () =>
@@ -231,6 +231,7 @@ function rejectRequest(options: {
     outcome: 'failure',
     finalHttpStatus: response.status,
     errorCode: rejection.errorCode,
+    clientResponse: response,
   });
   logRequestRejected({ ...rejection, requestId: session.requestId, statusCode: response.status });
   return response;

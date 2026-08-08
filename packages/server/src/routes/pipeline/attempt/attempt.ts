@@ -96,7 +96,12 @@ export async function attemptCandidates<TRequest, TContext>(
     // Request-level finalization: no provider was attempted, so do NOT use finalFailure
     // (it requires/records a provider+model). Snapshot lease + body cleanup are handled
     // by the outer finally blocks in index.ts.
-    session.finish({ outcome: 'failure', finalHttpStatus: 429, errorCode: 'rate_limited' });
+    session.finish({
+      outcome: 'failure',
+      finalHttpStatus: 429,
+      errorCode: 'rate_limited',
+      clientResponse: response,
+    });
     return response;
   }
   const { live } = selection;
@@ -164,6 +169,7 @@ export async function attemptCandidates<TRequest, TContext>(
     }
   }
 
-  session.finish({ outcome: 'failure' });
-  return lastFailure ?? adapter.errors.unsupported('transform_dispatch');
+  const response = lastFailure ?? adapter.errors.unsupported('transform_dispatch');
+  session.finish({ outcome: 'failure', finalHttpStatus: response.status, clientResponse: response });
+  return response;
 }

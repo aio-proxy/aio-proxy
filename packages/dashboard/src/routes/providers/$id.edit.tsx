@@ -5,8 +5,8 @@ import { useQuery } from '@tanstack/react-query';
 import { createFileRoute, useNavigate, useParams, useSearch } from '@tanstack/react-router';
 
 import { PageContainer } from '@/components/page-container';
-import { ProviderFormMode } from '@/modules/providers/constants';
 import { parseProviderFormInitial } from '@/modules/providers/hooks/use-provider-form';
+import { ProviderFormMode } from '@/modules/providers/lib/constants';
 import { providerEditViewQueryOptions } from '@/modules/providers/services/providers-service';
 import { OAuthProviderEditPage } from '@/modules/providers/templates/oauth-provider-edit-page';
 import { ProviderFormPage } from '@/modules/providers/templates/provider-form-page';
@@ -16,10 +16,15 @@ const EditProviderPage: React.FC = () => {
   const { session } = useSearch({ from: '/providers/$id/edit' });
   const navigate = useNavigate({ from: '/providers/$id/edit' });
   const { data, isLoading } = useQuery(providerEditViewQueryOptions(id));
+  const breadcrumbs = [
+    { label: m['dashboard.menus.configuration']() },
+    { label: m['dashboard.providers.list_title'](), to: '/providers' },
+    { label: m['dashboard.providers.edit_title']() },
+  ] as const;
 
   if (isLoading) {
     return (
-      <PageContainer title={m['dashboard.providers.edit_title']()} backTo="/providers">
+      <PageContainer title={m['dashboard.providers.edit_title']()} breadcrumbs={breadcrumbs}>
         <div className="p-4 text-sm text-muted-foreground">{m['dashboard.providers.edit_loading']()}</div>
       </PageContainer>
     );
@@ -27,7 +32,7 @@ const EditProviderPage: React.FC = () => {
 
   if (!data || 'error' in data || !data.provider) {
     return (
-      <PageContainer title={m['dashboard.providers.edit_title']()} backTo="/providers">
+      <PageContainer title={m['dashboard.providers.edit_title']()} breadcrumbs={breadcrumbs}>
         <Empty data-testid="not-found">{m['dashboard.providers.edit_not_found']()}</Empty>
       </PageContainer>
     );
@@ -38,7 +43,7 @@ const EditProviderPage: React.FC = () => {
   if (provider.kind === 'oauth') {
     if (data.oauth === undefined) {
       return (
-        <PageContainer title={m['dashboard.providers.edit_title']()} backTo="/providers">
+        <PageContainer title={m['dashboard.providers.edit_title']()} breadcrumbs={breadcrumbs}>
           <Empty data-testid="not-found">{m['dashboard.providers.edit_not_found']()}</Empty>
         </PageContainer>
       );
@@ -58,7 +63,7 @@ const EditProviderPage: React.FC = () => {
   const initial = parseProviderFormInitial(provider);
   if (initial === undefined) {
     return (
-      <PageContainer title={m['dashboard.providers.edit_title']()} backTo="/providers">
+      <PageContainer title={m['dashboard.providers.edit_title']()} breadcrumbs={breadcrumbs}>
         <Empty data-testid="not-found">{m['dashboard.providers.edit_not_found']()}</Empty>
       </PageContainer>
     );

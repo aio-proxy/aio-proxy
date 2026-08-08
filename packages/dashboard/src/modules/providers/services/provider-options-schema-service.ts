@@ -1,6 +1,7 @@
 import { queryOptions } from '@tanstack/react-query';
 
 import { createDashboardClient } from '@/lib/dashboard-client';
+import { queryKeys } from '@/lib/query-keys';
 
 const dashboardClient = createDashboardClient();
 
@@ -33,7 +34,7 @@ export const providerInstallRequestBody = (packageName: string, confirmed: boole
 
 export const providerPackageStatusQueryOptions = (packageName: string) =>
   queryOptions({
-    queryKey: ['providers', 'package-status', packageName],
+    queryKey: queryKeys.providerPackageStatus(packageName),
     queryFn: async () => {
       const response = await dashboardClient.dashboard.api.providers['package-status'].$get({
         query: { npm: packageName },

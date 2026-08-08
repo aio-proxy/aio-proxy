@@ -3,8 +3,8 @@ import type { DashboardTraceSpan } from '@aio-proxy/types';
 import { Button } from '@aio-proxy/ui/components/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@aio-proxy/ui/components/card';
 
-import { formatTraceDuration } from '../../trace-formatters';
-import { layoutTraceSpans } from '../../trace-layout';
+import { formatTraceDuration } from '../../lib/trace-formatters';
+import { layoutTraceSpans } from '../../lib/trace-layout';
 import { TraceStatus } from '../trace-status';
 
 interface SpanWaterfallProps {

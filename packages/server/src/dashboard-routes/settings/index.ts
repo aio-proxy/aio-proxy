@@ -1,0 +1,1 @@
+export { createDashboardSettingsRoute } from './settings';
