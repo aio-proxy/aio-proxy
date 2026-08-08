@@ -14,7 +14,7 @@ const loadingMetricIds = ['cost', 'requests', 'tokens', 'rpm', 'tpm', 'success-r
 
 export const UsageOverview: React.FC = () => {
   const filters = useAtomValue(usageOverviewFiltersAtom);
-  const usage = useUsageQuery(filters);
+  const usage = useUsageQuery({ ...filters, maxResults: 5 });
   let content: React.ReactNode;
 
   if (usage.isLoading) {

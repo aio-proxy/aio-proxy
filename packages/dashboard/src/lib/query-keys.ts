@@ -23,5 +23,12 @@ export const queryKeys = {
   // Search shape stays structural: src/lib must not depend on a module's types.
   trace: (traceId: string) => ['dashboard', 'traces', traceId],
   traces: (search: object) => ['dashboard', 'traces', search],
-  usage: (range: string, metric: string, groupBy: string) => ['dashboard', 'usage', range, metric, groupBy],
+  usage: (range: string, metric: string, groupBy: string, maxResults?: number) => [
+    'dashboard',
+    'usage',
+    range,
+    metric,
+    groupBy,
+    maxResults,
+  ],
 } as const;

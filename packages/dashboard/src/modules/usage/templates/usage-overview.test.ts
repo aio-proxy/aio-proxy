@@ -1,14 +1,21 @@
 import { beforeEach, describe, expect, rs, test } from '@rstest/core';
+import { render } from '@testing-library/react';
 import { createStore } from 'jotai';
+import { createElement } from 'react';
 
 import { toUsageChartData } from '../components/usage-trend-chart';
 import { decodeUsageOverview, getUsage, usageQueryOptions } from '../services/usage-service';
 import { usageOverviewFiltersAtom } from '../stores/usage-overview-filters';
+import { UsageOverview } from './usage-overview';
 
-const mocks = rs.hoisted(() => ({ usage: rs.fn() }));
+const mocks = rs.hoisted(() => ({ usage: rs.fn(), useUsageQuery: rs.fn() }));
 
 rs.mock('@/lib/dashboard-client', () => ({
   dashboardClient: { dashboard: { api: { usage: { $get: mocks.usage } } } },
+}));
+
+rs.mock('../hooks/use-usage-query', () => ({
+  useUsageQuery: (input: unknown) => mocks.useUsageQuery(input),
 }));
 
 const usageWire = {
@@ -42,6 +49,8 @@ describe('usage overview', () => {
   beforeEach(() => {
     mocks.usage.mockReset();
     mocks.usage.mockResolvedValue(Response.json(usageWire));
+    mocks.useUsageQuery.mockReset();
+    mocks.useUsageQuery.mockReturnValue({ isLoading: true });
   });
 
   test('decodes aggregate decimal strings as bigint without changing rate fields', () => {
@@ -74,16 +83,33 @@ describe('usage overview', () => {
   test('keys cache and polling by all selected controls', () => {
     const options = usageQueryOptions({ range: '7d', metric: 'tokens', groupBy: 'provider' });
 
-    expect(options.queryKey).toEqual(['dashboard', 'usage', '7d', 'tokens', 'provider']);
+    expect(options.queryKey).toEqual(['dashboard', 'usage', '7d', 'tokens', 'provider', undefined]);
     expect(options.refetchInterval).toBe(60_000);
     expect(options.refetchIntervalInBackground).toBe(false);
   });
 
   test('limits regular Usage requests to the top five dimensions', async () => {
-    await getUsage({ range: '7d', metric: 'tokens', groupBy: 'provider' });
+    await getUsage({ range: '7d', metric: 'tokens', groupBy: 'provider', maxResults: 5 });
 
     expect(mocks.usage).toHaveBeenCalledWith({
       query: { range: '7d', metric: 'tokens', groupBy: 'provider', maxResults: 5 },
+    });
+  });
+
+  test('omits maxResults from unlimited Usage requests', async () => {
+    await getUsage({ range: '7d', metric: 'tokens', groupBy: 'provider' });
+
+    expect(mocks.usage.mock.calls[0]?.[0].query).not.toHaveProperty('maxResults');
+  });
+
+  test('limits the overview query to the top five dimensions', () => {
+    render(createElement(UsageOverview));
+
+    expect(mocks.useUsageQuery).toHaveBeenCalledWith({
+      range: '24h',
+      metric: 'cost',
+      groupBy: 'model',
+      maxResults: 5,
     });
   });
 
