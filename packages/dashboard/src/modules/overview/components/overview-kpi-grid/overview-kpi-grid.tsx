@@ -52,7 +52,7 @@ export const OverviewKpiGrid: React.FC<OverviewKpiGridProps> = ({ summary }) => 
   const kpis: readonly OverviewKpi[] = [
     {
       label: m['dashboard.overview.summary_requests'](),
-      value: <KpiNumber value={Number(current.requestCount)} format={{}} locales={locale} />,
+      value: <KpiNumber value={current.requestCount.toString()} format={{}} locales={locale} />,
       delta: deltaRatio(current.requestCount, previous.requestCount),
       note: m['dashboard.overview.summary_peak']({ value: numberFormatter.format(Math.round(summary.peakRpm)) }),
     },

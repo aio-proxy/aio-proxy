@@ -1,8 +1,12 @@
 import {
   type ColumnDef,
+  columnFilteringFeature,
+  columnVisibilityFeature,
   createExpandedRowModel,
+  createFilteredRowModel,
   createPaginatedRowModel,
   createSortedRowModel,
+  globalFilteringFeature,
   type PaginationState,
   type RowData,
   rowExpandingFeature,
@@ -15,6 +19,10 @@ import {
 import { useState } from 'react';
 
 export const dataTableFeatures = tableFeatures({
+  columnFilteringFeature,
+  columnVisibilityFeature,
+  globalFilteringFeature,
+  filteredRowModel: createFilteredRowModel(),
   rowSortingFeature,
   sortedRowModel: createSortedRowModel(),
   rowExpandingFeature,
@@ -37,14 +45,18 @@ export function useDataTable<TData extends RowData>(
 ) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 10 });
+  const [globalFilter, setGlobalFilter] = useState('');
+  const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>({});
 
   const table = useTable({
     features: dataTableFeatures,
     data: data as TData[],
     columns: columns as ColumnDef<DataTableFeatures, TData>[],
-    state: { sorting, pagination },
+    state: { sorting, pagination, globalFilter, columnVisibility },
     onSortingChange: setSorting,
     onPaginationChange: setPagination,
+    onGlobalFilterChange: setGlobalFilter,
+    onColumnVisibilityChange: setColumnVisibility,
     ...(options.getRowId === undefined ? {} : { getRowId: options.getRowId }),
     ...(options.getSubRows === undefined ? {} : { getSubRows: options.getSubRows }),
     paginateExpandedRows: options.getSubRows === undefined,

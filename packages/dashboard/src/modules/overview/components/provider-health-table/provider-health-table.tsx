@@ -4,6 +4,7 @@ import { Table, TableBody, TableCell, TableHeader, TableRow } from '@aio-proxy/u
 import type { ColumnDef } from '@tanstack/react-table';
 import { Fragment, useMemo } from 'react';
 
+import { DataTableControls } from '@/components/data-table/data-table-controls';
 import { Pagination } from '@/components/data-table/pagination';
 import { tableHead } from '@/components/data-table/table-head';
 import { type DataTableFeatures, useDataTable } from '@/hooks/use-data-table';
@@ -25,16 +26,20 @@ export const ProviderHealthTable: React.FC<ProviderHealthTableProps> = ({ rows }
     return [
       {
         accessorKey: 'providerId',
+        enableHiding: false,
+        meta: { label: () => m['dashboard.overview.provider_id']() },
         header: tableHead(() => m['dashboard.overview.provider_id']()),
         cell: ({ getValue }) => <span className="font-mono text-xs">{String(getValue())}</span>,
       },
       {
         accessorKey: 'successRate',
+        meta: { label: () => m['dashboard.overview.success_rate']() },
         header: tableHead(() => m['dashboard.overview.success_rate']()),
         cell: ({ getValue }) => <span className="tabular-nums">{percentFormatter.format(Number(getValue()))}</span>,
       },
       {
         accessorKey: 'p95LatencyMs',
+        meta: { label: () => m['dashboard.overview.p95_latency']() },
         header: tableHead(() => m['dashboard.overview.p95_latency']()),
         cell: ({ getValue }) => (
           <span className="tabular-nums">{m['dashboard.traces.duration_ms']({ value: Number(getValue()) })}</span>
@@ -52,6 +57,12 @@ export const ProviderHealthTable: React.FC<ProviderHealthTableProps> = ({ rows }
         </CardTitle>
       </CardHeader>
       <CardContent className="flex min-h-0 flex-col gap-3">
+        <DataTableControls
+          table={table}
+          filterLabel={m['dashboard.providers.table.filter']()}
+          filterPlaceholder={m['dashboard.providers.table.filter_placeholder']()}
+          columnsLabel={m['dashboard.providers.table.columns']()}
+        />
         <Table aria-label={m['dashboard.overview.provider_health_title']()}>
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
@@ -79,7 +90,7 @@ export const ProviderHealthTable: React.FC<ProviderHealthTableProps> = ({ rows }
             ) : (
               table.getRowModel().rows.map((row) => (
                 <TableRow key={row.id}>
-                  {row.getAllCells().map((cell) => (
+                  {row.getVisibleCells().map((cell) => (
                     <TableCell key={cell.id}>
                       <table.FlexRender cell={cell} />
                     </TableCell>

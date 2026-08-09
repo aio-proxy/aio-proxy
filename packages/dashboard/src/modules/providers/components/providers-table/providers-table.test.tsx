@@ -283,7 +283,7 @@ describe('providers table', () => {
     expect(zero.getAllByRole('cell')[weightColumnIndex]).toHaveTextContent('0');
   });
 
-  test('sorts Providers by 24h request count without making descriptive columns sortable', () => {
+  test('sorts Providers by 24h request count and exposes table controls', async () => {
     renderProvidersTable(
       <ProvidersTable
         providers={[
@@ -304,8 +304,14 @@ describe('providers table', () => {
       'provider-row-alpha',
       'provider-row-zulu',
     ]);
-    expect(screen.queryByRole('textbox', { name: /Filter providers|筛选提供商/u })).toBeNull();
-    expect(screen.queryByRole('button', { name: /Provider columns|提供商列/u })).toBeNull();
+    const filter = screen.getByRole('textbox', { name: /Filter providers|筛选提供商/u });
+    fireEvent.change(filter, { target: { value: 'alpha' } });
+    expect(screen.getByTestId('provider-row-alpha')).toBeInTheDocument();
+    expect(screen.queryByTestId('provider-row-zulu')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: /Provider columns|提供商列/u }));
+    fireEvent.click(await screen.findByRole('menuitemcheckbox', { name: /^Type$|^类型$/u }));
+    expect(screen.queryByRole('columnheader', { name: /^Type$|^类型$/u })).toBeNull();
   });
 });
 

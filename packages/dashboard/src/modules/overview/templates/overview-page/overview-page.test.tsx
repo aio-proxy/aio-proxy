@@ -135,6 +135,14 @@ describe('overview page', () => {
     expect(labels).toEqual(['Requests', 'Token', 'Cache hit rate', 'Cost', 'RPM', 'TPM']);
   });
 
+  test('renders request counts beyond the Number safe range exactly', () => {
+    overviewData.summary.current.requestCount = 9_007_199_254_740_993n;
+
+    render(<OverviewPage />);
+
+    expect(screen.getByRole('img', { name: '9,007,199,254,740,993' })).toBeInTheDocument();
+  });
+
   test('switches trend metrics locally without refetching or adding metric query input', () => {
     render(<OverviewPage />);
 

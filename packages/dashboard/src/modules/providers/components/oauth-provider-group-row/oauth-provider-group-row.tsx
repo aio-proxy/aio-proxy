@@ -106,7 +106,7 @@ export const OAuthProviderGroupRow: React.FC<OAuthProviderGroupRowProps> = ({
               toggleExpanded();
             }}
           >
-            {row.getAllCells().map((cell) => (
+            {row.getVisibleCells().map((cell) => (
               <ProviderTableCell key={cell.id} cell={cell}>
                 {renderCell(cell)}
               </ProviderTableCell>

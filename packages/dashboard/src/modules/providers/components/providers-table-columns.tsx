@@ -19,6 +19,7 @@ import type { ProviderTableRow } from './providers-table/provider-table-row';
 declare module '@tanstack/react-table' {
   interface ColumnMeta<TData extends RowData, TValue> {
     readonly className?: string;
+    readonly label?: () => string;
   }
 }
 
@@ -42,7 +43,9 @@ const requestCount = (row: ProviderTableRow, providerUsage: ReadonlyMap<string, 
 
 const providerColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
   id: 'provider',
+  enableHiding: false,
   enableSorting: false,
+  meta: { label: () => m['dashboard.providers.table.col_provider']() },
   accessorFn: (row) =>
     row.rowType === 'oauth-group'
       ? [row.groupKey, ...row.accounts.flatMap(({ provider }) => [displayName(provider), provider.id])].join(' ')
@@ -76,7 +79,7 @@ const providerColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
 const typeColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
   id: 'type',
   enableSorting: false,
-  meta: { className: 'w-36 max-w-36 whitespace-normal' },
+  meta: { className: 'w-36 max-w-36 whitespace-normal', label: () => m['dashboard.providers.table.col_type']() },
   accessorFn: (row) => {
     if (row.rowType === 'oauth-group') return `OAuth ${row.groupKey}`;
     if (row.provider.kind === 'api') return `${PROVIDER_KIND_LABEL.api} · ${row.provider.protocol ?? 'N/A'}`;
@@ -107,7 +110,7 @@ const typeColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
 const modelsColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
   id: 'models',
   enableSorting: false,
-  meta: { className: 'w-20 text-center' },
+  meta: { className: 'w-20 text-center', label: () => m['dashboard.providers.table.col_models']() },
   accessorFn: (row) =>
     row.rowType === 'oauth-group'
       ? row.accounts.flatMap(({ provider }) => provider.clientModels).join(' ')
@@ -121,7 +124,7 @@ const modelsColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
 
 const weightColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
   id: 'weight',
-  meta: { className: 'w-20 text-center' },
+  meta: { className: 'w-20 text-center', label: () => m['dashboard.providers.table.col_weight']() },
   accessorFn: (row) => concreteProvider(row)?.weight,
   header: tableHead(() => m['dashboard.providers.table.col_weight']()),
   cell: ({ row }) => {
@@ -133,7 +136,7 @@ const weightColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
 const stateColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
   id: 'state',
   enableSorting: false,
-  meta: { className: 'whitespace-normal' },
+  meta: { className: 'whitespace-normal', label: () => m['dashboard.providers.table.col_state']() },
   accessorFn: (row) => {
     const provider = concreteProvider(row);
     return provider === undefined
@@ -149,6 +152,7 @@ const stateColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
 
 const aggregateColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
   id: 'aggregate',
+  enableHiding: false,
   enableSorting: false,
   meta: { className: 'w-12' },
   header: tableHead(() => ''),
@@ -157,7 +161,7 @@ const aggregateColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
 
 const enabledColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
   id: 'enabled',
-  meta: { className: 'w-20 text-center' },
+  meta: { className: 'w-20 text-center', label: () => m['dashboard.providers.table.col_enabled']() },
   accessorFn: (row) => String(concreteProvider(row)?.enabled ?? ''),
   header: tableHead(() => m['dashboard.providers.table.col_enabled']()),
   cell: ({ row }) => {
@@ -170,7 +174,7 @@ const usageColumn = (
   providerUsage: ReadonlyMap<string, ProviderUsage>,
 ): ColumnDef<DataTableFeatures, ProviderTableRow> => ({
   id: 'usage',
-  meta: { className: 'w-24 text-right' },
+  meta: { className: 'w-24 text-right', label: () => m['dashboard.providers.table.col_usage_24h']() },
   accessorFn: (row) => requestCount(row, providerUsage),
   header: tableHead(() => m['dashboard.providers.table.col_usage_24h']()),
   cell: ({ row }) => {
@@ -187,7 +191,7 @@ const usageColumn = (
 const actionsColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
   id: 'actions',
   enableSorting: false,
-  meta: { className: 'w-20 text-right' },
+  meta: { className: 'w-20 text-right', label: () => m['dashboard.providers.table.col_actions']() },
   header: tableHead(() => m['dashboard.providers.table.col_actions']()),
   cell: ({ row }) => {
     const provider = concreteProvider(row.original);

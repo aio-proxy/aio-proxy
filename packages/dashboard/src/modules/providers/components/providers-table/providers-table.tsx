@@ -7,6 +7,7 @@ import { useQuery } from '@tanstack/react-query';
 import type React from 'react';
 import { Fragment, useEffect, useMemo, useRef } from 'react';
 
+import { DataTableControls } from '@/components/data-table/data-table-controls';
 import { Pagination } from '@/components/data-table/pagination';
 import { useDataTable } from '@/hooks/use-data-table';
 
@@ -71,6 +72,12 @@ export const ProvidersTable: React.FC<ProvidersTableProps> = ({ providers, focus
   return (
     <ProviderTableActionsContext.Provider value={{ deleteDialogRef }}>
       <div className="flex flex-col gap-4">
+        <DataTableControls
+          table={table}
+          filterLabel={m['dashboard.providers.table.filter']()}
+          filterPlaceholder={m['dashboard.providers.table.filter_placeholder']()}
+          columnsLabel={m['dashboard.providers.table.columns']()}
+        />
         <Table aria-label={m['dashboard.providers.table.label']()} data-testid="providers-table">
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
@@ -109,7 +116,7 @@ export const ProvidersTable: React.FC<ProvidersTableProps> = ({ providers, focus
                     provider.id === focusProviderId && 'bg-accent ring-2 ring-ring/40',
                   )}
                 >
-                  {row.getAllCells().map((cell) => (
+                  {row.getVisibleCells().map((cell) => (
                     <ProviderTableCell key={cell.id} cell={cell}>
                       <table.FlexRender cell={cell} />
                     </ProviderTableCell>
