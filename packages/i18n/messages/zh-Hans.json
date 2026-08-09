@@ -449,7 +449,10 @@
         "col_catalog": "目录",
         "col_models": "模型",
         "col_weight": "权重",
+        "col_usage_24h": "24 小时请求",
         "col_actions": "操作",
+        "expand_group": "展开提供商分组",
+        "collapse_group": "收起提供商分组",
         "filter": "筛选提供商",
         "filter_placeholder": "按名称或提供商 ID 搜索",
         "columns": "提供商列"

@@ -1,28 +1,22 @@
 import { m } from '@aio-proxy/i18n';
 import type { DashboardProviderSummary } from '@aio-proxy/types';
-import { Button } from '@aio-proxy/ui/components/button';
-import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
-} from '@aio-proxy/ui/components/dropdown-menu';
 import { Empty } from '@aio-proxy/ui/components/empty';
-import { Field, FieldLabel } from '@aio-proxy/ui/components/field';
-import { Input } from '@aio-proxy/ui/components/input';
-import { Table, TableBody, TableCell, TableHeader, TableRow } from '@aio-proxy/ui/components/table';
+import { Table, TableBody, TableHeader, TableRow } from '@aio-proxy/ui/components/table';
 import { cn } from '@aio-proxy/ui/lib/utils';
-import { useForm } from '@tanstack/react-form';
-import { flexRender } from '@tanstack/react-table';
+import { useQuery } from '@tanstack/react-query';
 import type React from 'react';
 import { Fragment, useEffect, useMemo, useRef } from 'react';
 
-import { PaginationControls } from '@/components/pagination-controls';
+import { Pagination } from '@/components/data-table/pagination';
 import { useDataTable } from '@/hooks/use-data-table';
 
+import { providerPluginPresentationsQueryOptions } from '../../services/provider-plugin-labels';
+import { providerUsageQueryOptions, type ProviderUsage } from '../../services/provider-usage-service';
 import { DeleteProviderDialog, type DeleteProviderDialogRef } from '../delete-provider-dialog';
 import { OAuthProviderGroupRow } from '../oauth-provider-group-row';
-import { canEditProvider, createProviderColumns, providerColumnLabel } from '../providers-table-columns';
+import { ProviderTableActionsContext } from '../provider-table-actions';
+import { canEditProvider, createProviderColumns } from '../providers-table-columns';
+import { ProviderTableCell } from './provider-table-cell';
 import { groupProviderRows, providerTableRowId, type ProviderTableRow } from './provider-table-row';
 
 interface ProvidersTableProps {
@@ -35,33 +29,32 @@ const providerIdInRow = (row: ProviderTableRow, providerId: string): boolean =>
     ? row.provider.id === providerId
     : row.accounts.some(({ provider }) => provider.id === providerId);
 
-const providerMatchesFilter = (provider: DashboardProviderSummary, filter: string): boolean => {
-  const query = filter.trim().toLowerCase();
-  return (
-    query !== '' &&
-    [provider.id, provider.name, provider.accountLabel].some((value) => value?.toLowerCase().includes(query) === true)
-  );
-};
+const emptyProviderUsage = new Map<string, ProviderUsage>();
 
 export const ProvidersTable: React.FC<ProvidersTableProps> = ({ providers, focusProviderId }) => {
   'use no memo';
 
   const deleteDialogRef = useRef<DeleteProviderDialogRef>(null);
+  const plugins = useQuery(providerPluginPresentationsQueryOptions()).data?.plugins ?? [];
+  const pluginPresentations = useMemo(() => new Map(plugins.map((plugin) => [plugin.packageName, plugin])), [plugins]);
+  const providerUsage = useQuery(providerUsageQueryOptions()).data ?? emptyProviderUsage;
   const rows = useMemo(() => groupProviderRows(providers), [providers]);
-  const columns = useMemo(() => createProviderColumns(deleteDialogRef), []);
-  const { table, columnVisibilityForm } = useDataTable(rows, columns, {
+  const columns = useMemo(() => createProviderColumns(providerUsage), [providerUsage]);
+  const { table } = useDataTable(rows, columns, {
     getRowId: providerTableRowId,
     getSubRows: (row) => (row.rowType === 'oauth-group' ? row.accounts : undefined),
   });
-  const filterForm = useForm({ defaultValues: { tableFilter: '' } });
-
   useEffect(() => {
     if (focusProviderId === undefined) return;
     const rootIndex = rows.findIndex((row) => providerIdInRow(row, focusProviderId));
     if (rootIndex < 0) return;
     const root = rows[rootIndex];
-    if (root?.rowType === 'oauth-group') table.getRow(providerTableRowId(root)).toggleExpanded(true);
-    table.setPageIndex(Math.floor(rootIndex / table.getState().pagination.pageSize));
+    if (root?.rowType === 'oauth-group') {
+      const tableRow = table.getRow(providerTableRowId(root));
+      if (!tableRow.getIsExpanded()) tableRow.toggleExpanded(true);
+    }
+    const pageIndex = Math.floor(rootIndex / table.state.pagination.pageSize);
+    if (table.state.pagination.pageIndex !== pageIndex) table.setPageIndex(pageIndex);
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         const row = document.getElementById(`provider-row-${focusProviderId}`);
@@ -69,120 +62,75 @@ export const ProvidersTable: React.FC<ProvidersTableProps> = ({ providers, focus
         (document.getElementById(`provider-link-${focusProviderId}`) ?? row)?.focus();
       });
     });
-  }, [focusProviderId, rows, table]);
+  }, [focusProviderId, rows]);
 
   if (providers.length === 0) {
     return <Empty>{m['dashboard.providers.empty_state']()}</Empty>;
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-end justify-between gap-2">
-        <filterForm.Field name="tableFilter">
-          {(field) => (
-            <Field className="max-w-xs">
-              <FieldLabel htmlFor="providers-table-filter">{m['dashboard.providers.table.filter']()}</FieldLabel>
-              <Input
-                id="providers-table-filter"
-                value={field.state.value}
-                onChange={(event) => {
-                  const filter = event.target.value;
-                  field.handleChange(filter);
-                  table.setGlobalFilter(filter);
-                  for (const row of rows) {
-                    if (
-                      row.rowType === 'oauth-group' &&
-                      row.accounts.some(({ provider }) => providerMatchesFilter(provider, filter))
-                    ) {
-                      table.getRow(providerTableRowId(row)).toggleExpanded(true);
-                    }
-                  }
-                }}
-              />
-            </Field>
-          )}
-        </filterForm.Field>
-        <DropdownMenu>
-          <DropdownMenuTrigger render={<Button variant="outline" />}>
-            {m['dashboard.providers.table.columns']()}
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <columnVisibilityForm.Field name="columnVisibility">
-              {(field) =>
-                table.getAllLeafColumns().map((column) => (
-                  <DropdownMenuCheckboxItem
-                    key={column.id}
-                    checked={field.state.value[column.id] !== false}
-                    onCheckedChange={(checked) => field.handleChange({ ...field.state.value, [column.id]: checked })}
-                  >
-                    {providerColumnLabel(column.id)}
-                  </DropdownMenuCheckboxItem>
-                ))
-              }
-            </columnVisibilityForm.Field>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-      <Table aria-label={m['dashboard.providers.table.label']()} data-testid="providers-table">
-        <TableHeader>
-          {table.getHeaderGroups().map((headerGroup) => (
-            <TableRow key={headerGroup.id}>
-              {headerGroup.headers.map((header) => (
-                <Fragment key={header.id}>
-                  {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
-                </Fragment>
-              ))}
-            </TableRow>
-          ))}
-        </TableHeader>
-        <TableBody>
-          {table.getRowModel().rows.map((row) => {
-            if (row.original.rowType === 'oauth-group') {
-              return <OAuthProviderGroupRow key={row.id} row={row} columnCount={row.getVisibleCells().length} />;
-            }
-            const provider = row.original.provider;
-            return (
-              <TableRow
-                key={row.id}
-                id={`provider-row-${provider.id}`}
-                tabIndex={-1}
-                data-testid={`provider-row-${provider.id}`}
-                data-focused={provider.id === focusProviderId ? 'true' : undefined}
-                className={cn(
-                  canEditProvider(provider) && 'focus-within:bg-muted/50 focus-within:ring-2 focus-within:ring-ring/40',
-                  provider.id === focusProviderId && 'bg-accent ring-2 ring-ring/40',
-                )}
-              >
-                {row.getVisibleCells().map((cell) => (
-                  <TableCell
-                    key={cell.id}
-                    className={cn(
-                      cell.column.id === 'models' && 'w-20 text-right',
-                      cell.column.id === 'weight' && 'w-20 text-right',
-                      cell.column.id === 'state' && 'whitespace-normal',
-                      cell.column.id === 'enabled' && 'w-20 text-center',
-                      cell.column.id === 'actions' && 'w-20 text-right',
-                    )}
-                  >
-                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                  </TableCell>
+    <ProviderTableActionsContext.Provider value={{ deleteDialogRef }}>
+      <div className="flex flex-col gap-4">
+        <Table aria-label={m['dashboard.providers.table.label']()} data-testid="providers-table">
+          <TableHeader>
+            {table.getHeaderGroups().map((headerGroup) => (
+              <TableRow key={headerGroup.id}>
+                {headerGroup.headers.map((header) => (
+                  <Fragment key={header.id}>
+                    {header.isPlaceholder ? null : <table.FlexRender header={header} />}
+                  </Fragment>
                 ))}
               </TableRow>
-            );
-          })}
-        </TableBody>
-      </Table>
-      {table.getPageCount() > 1 ? (
-        <PaginationControls
-          pageSize={table.getState().pagination.pageSize}
-          canPrevious={table.getCanPreviousPage()}
-          canNext={table.getCanNextPage()}
-          onShowSizeChange={table.setPageSize}
-          onPrevious={table.previousPage}
-          onNext={table.nextPage}
-        />
-      ) : null}
-      <DeleteProviderDialog ref={deleteDialogRef} />
-    </div>
+            ))}
+          </TableHeader>
+          <TableBody>
+            {table.getRowModel().rows.map((row) => {
+              if (row.original.rowType === 'oauth-group') {
+                return (
+                  <OAuthProviderGroupRow
+                    key={row.id}
+                    pluginPresentations={pluginPresentations}
+                    row={row}
+                    providerUsage={providerUsage}
+                  />
+                );
+              }
+              const provider = row.original.provider;
+              return (
+                <TableRow
+                  key={row.id}
+                  id={`provider-row-${provider.id}`}
+                  tabIndex={-1}
+                  data-testid={`provider-row-${provider.id}`}
+                  data-focused={provider.id === focusProviderId ? 'true' : undefined}
+                  className={cn(
+                    canEditProvider(provider) &&
+                      'focus-within:bg-muted/50 focus-within:ring-2 focus-within:ring-ring/40',
+                    provider.id === focusProviderId && 'bg-accent ring-2 ring-ring/40',
+                  )}
+                >
+                  {row.getAllCells().map((cell) => (
+                    <ProviderTableCell key={cell.id} cell={cell}>
+                      <table.FlexRender cell={cell} />
+                    </ProviderTableCell>
+                  ))}
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+        {table.getPageCount() > 1 ? (
+          <Pagination
+            pageSize={table.state.pagination.pageSize}
+            canPrevious={table.getCanPreviousPage()}
+            canNext={table.getCanNextPage()}
+            onShowSizeChange={table.setPageSize}
+            onPrevious={table.previousPage}
+            onNext={table.nextPage}
+          />
+        ) : null}
+        <DeleteProviderDialog ref={deleteDialogRef} />
+      </div>
+    </ProviderTableActionsContext.Provider>
   );
 };

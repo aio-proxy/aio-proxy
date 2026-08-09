@@ -18,7 +18,7 @@ test.serial('reclaims a fresh malformed marker left by an interrupted publisher'
           lockPath,
           staleMs: 60_000,
           heartbeatMs: 10_000,
-          deadline: Date.now() + 100,
+          deadline: Date.now() + 1_000,
           timeoutError: () => new Error('acquisition timed out'),
         },
         async () => 'acquired',

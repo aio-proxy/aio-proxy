@@ -105,7 +105,7 @@ test('polls pending and slow device authorization in request order', async () =>
   expect(presented[0]?.url).toBe('https://kimi.test/device');
   expect(result).toMatchObject({
     suggestedKey: expect.stringMatching(/^kimi-[0-9a-f]{12}$/u),
-    label: 'Kimi Code',
+    accountLabel: 'Kimi Code',
     credentials: { accessToken: 'access', refreshToken: 'refresh', deviceId: 'device-1' },
     expiresAt: 1_700_003_600_000,
   });

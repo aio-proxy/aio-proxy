@@ -90,7 +90,7 @@ async function refreshThroughPort(
   options.signal?.throwIfAborted();
   const refreshing = credentials.refresh(revision, async (current, signal) => {
     const value = await refreshGoogleCredential(current.value, { ...options, signal });
-    return { value, metadata: { label: value.email, expiresAt: value.expiresAt } };
+    return { value, metadata: { accountLabel: value.email, expiresAt: value.expiresAt } };
   });
   const result = await waitForCaller(refreshing, options.signal);
   return result.snapshot;

@@ -118,13 +118,11 @@ function normalizedCache(
   }
   const cachedTokens = cacheReadTokens + cacheWriteTokens;
   const inclusive = transport === 'raw' && attempt?.attributes[TARGET_PROTOCOL_ATTR] === 'anthropic';
+  let normalizedPromptTokens = inputTokens > cachedTokens ? inputTokens : cachedTokens;
+  if (inclusive) normalizedPromptTokens = inputTokens + cachedTokens;
   return {
     normalizedCacheReadTokens: cacheReadTokens,
-    normalizedPromptTokens: inclusive
-      ? inputTokens + cachedTokens
-      : inputTokens > cachedTokens
-        ? inputTokens
-        : cachedTokens,
+    normalizedPromptTokens,
   };
 }
 

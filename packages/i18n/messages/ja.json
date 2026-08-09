@@ -451,7 +451,10 @@
         "col_catalog": "カタログ",
         "col_models": "モデル",
         "col_weight": "ウェイト",
+        "col_usage_24h": "24時間のリクエスト",
         "col_actions": "操作",
+        "expand_group": "プロバイダーグループを展開",
+        "collapse_group": "プロバイダーグループを折りたたむ",
         "filter": "プロバイダーを絞り込む",
         "filter_placeholder": "名前または Provider ID で検索",
         "columns": "プロバイダーの列"

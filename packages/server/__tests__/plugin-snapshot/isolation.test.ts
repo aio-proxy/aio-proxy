@@ -34,7 +34,7 @@ test('plugin option identity survives nested in-place schema transforms across s
       setupValues.push((options as { nested: { value: unknown } }).nested.value);
       api.oauth.register({
         id: 'default',
-        label: 'Example',
+        displayName: 'Example',
         account: { options: { schema: zod.object({}), form: [] } },
         credentials: zod.object({ token: zod.string() }),
         async login() {
@@ -113,7 +113,7 @@ test('credential expiry metadata rebuilds summaries without recreating the runti
   const descriptor = definePlugin((api) => {
     api.oauth.register({
       id: 'default',
-      label: 'Example',
+      displayName: 'Example',
       account: { options: { schema: zod.object({}), form: [] } },
       credentials: zod.object({ token: zod.string() }),
       async login() {

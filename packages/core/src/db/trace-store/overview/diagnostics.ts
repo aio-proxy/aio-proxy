@@ -88,4 +88,4 @@ function iterate<T>(db: BunSQLiteDatabase, sql: string, params: readonly SQLQuer
   return (db as IterableDatabase).$client.query<T, SQLQueryBindings[]>(sql).iterate(...params);
 }
 
-const compareBigIntDescending = (left: bigint, right: bigint) => (left === right ? 0 : left > right ? -1 : 1);
+const compareBigIntDescending = (left: bigint, right: bigint) => (left === right ? 0 : Number(left < right) * 2 - 1);

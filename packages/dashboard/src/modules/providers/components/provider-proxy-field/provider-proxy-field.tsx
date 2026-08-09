@@ -4,7 +4,7 @@ import { Input } from '@aio-proxy/ui/components/input';
 import { Label } from '@aio-proxy/ui/components/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@aio-proxy/ui/components/select';
 import type { AnyFieldApi } from '@tanstack/react-form';
-import { useRef } from 'react';
+import { useState } from 'react';
 
 import { ProviderFormMode } from '../../lib/constants';
 
@@ -36,7 +36,7 @@ const selectedMode = (value: unknown): ProxyMode => {
 };
 
 export const ProviderProxyField: React.FC<ProviderProxyFieldProps> = ({ field, mode }) => {
-  const initiallyRedacted = useRef(field.state.value === '****').current;
+  const [initiallyRedacted] = useState(() => field.state.value === '****');
   const proxyMode = selectedMode(field.state.value);
   const modeId = `${field.name}-mode`;
   const urlId = `${field.name}-url`;

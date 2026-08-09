@@ -76,12 +76,12 @@ export async function validatedLoginResult<Credential>(
   signal: AbortSignal,
 ) {
   if (!isRecord(raw)) throw new OAuthLoginResultValidationError();
-  const { fingerprint, suggestedKey, label, expiresAt, credentials } = raw;
+  const { fingerprint, suggestedKey, accountLabel, expiresAt, credentials } = raw;
   if (
     typeof fingerprint !== 'string' ||
     fingerprint.trim().length === 0 ||
     typeof suggestedKey !== 'string' ||
-    (label !== undefined && typeof label !== 'string') ||
+    (accountLabel !== undefined && typeof accountLabel !== 'string') ||
     (expiresAt !== undefined &&
       (typeof expiresAt !== 'number' || !Number.isFinite(expiresAt) || !Number.isInteger(expiresAt)))
   )
@@ -91,7 +91,7 @@ export async function validatedLoginResult<Credential>(
   return {
     fingerprint: fingerprint.trim(),
     suggestedKey,
-    ...(label === undefined ? {} : { label }),
+    ...(accountLabel === undefined ? {} : { accountLabel }),
     ...(expiresAt === undefined ? {} : { expiresAt }),
     credential: parsed.value,
   };
@@ -100,7 +100,7 @@ export function inMemoryCredentialPort<Credential>(
   adapter: OAuthAdapter<unknown, Credential>,
   initial: Credential,
   signal: AbortSignal,
-  metadata: { label?: string; expiresAt?: number },
+  metadata: { accountLabel?: string; expiresAt?: number },
 ): { readonly port: CredentialPort<Credential>; readonly current: () => Credential } {
   let value = initial;
   let revision = 0;
@@ -118,7 +118,7 @@ export function inMemoryCredentialPort<Credential>(
           const exchanged = await exchange({ value, revision }, signal);
           const parsed = await withAbort(signal, () => parsePluginSchema(adapter.credentials, exchanged.value));
           if (!parsed.ok) throw new OAuthLoginResultValidationError();
-          if (exchanged.metadata?.label !== undefined) metadata.label = exchanged.metadata.label;
+          if (exchanged.metadata?.accountLabel !== undefined) metadata.accountLabel = exchanged.metadata.accountLabel;
           if (exchanged.metadata?.expiresAt !== undefined) {
             if (!Number.isFinite(exchanged.metadata.expiresAt) || !Number.isInteger(exchanged.metadata.expiresAt)) {
               throw new OAuthLoginResultValidationError();

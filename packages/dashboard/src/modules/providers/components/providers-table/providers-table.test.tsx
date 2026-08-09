@@ -1,14 +1,17 @@
 import type { DashboardProviderSummary } from '@aio-proxy/types';
 import { afterEach, describe, expect, rs, test } from '@rstest/core';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import type { ReactElement } from 'react';
 
 import { ProvidersTable } from '.';
 import { providerStub } from '../../lib/provider-fixtures';
+import { providerPluginPresentationsQueryOptions } from '../../services/provider-plugin-labels';
+import { providerUsageQueryOptions, type ProviderUsage } from '../../services/provider-usage-service';
 
 const mocks = rs.hoisted(() => ({
   toggle: rs.fn(),
   delete: rs.fn(),
-  writeText: rs.fn().mockResolvedValue(undefined),
 }));
 
 rs.mock('@tanstack/react-router', () => ({ Link: 'a' }));
@@ -31,19 +34,25 @@ const oauthProvider = (id: string, accountLabel: string): DashboardProviderSumma
     weight: 2,
   });
 
+const renderProvidersTable = (
+  element: ReactElement,
+  usage: ReadonlyMap<string, ProviderUsage> = new Map<string, ProviderUsage>(),
+  plugins = [] as DashboardPluginSummary[],
+) => {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+  queryClient.setQueryData(providerUsageQueryOptions().queryKey, usage);
+  queryClient.setQueryData(providerPluginPresentationsQueryOptions().queryKey, { plugins });
+  return render(<QueryClientProvider client={queryClient}>{element}</QueryClientProvider>);
+};
+
 afterEach(() => {
   mocks.toggle.mockReset();
   mocks.delete.mockReset();
-  mocks.writeText.mockClear();
 });
 
 describe('providers table', () => {
   test('shows concrete Provider routing fields and owns its row controls', async () => {
-    Object.defineProperty(navigator, 'clipboard', {
-      configurable: true,
-      value: { writeText: mocks.writeText },
-    });
-    render(
+    renderProvidersTable(
       <ProvidersTable
         providers={[
           providerStub({
@@ -56,13 +65,20 @@ describe('providers table', () => {
           }),
         ]}
       />,
+      new Map([['openai-main', { requestCount: 12_000n }]]),
     );
 
     const row = within(screen.getByTestId('provider-row-openai-main'));
+    expect(screen.getAllByRole('columnheader')[0]).toBeEmptyDOMElement();
+    expect(screen.getByRole('columnheader', { name: /24h requests|24 小时请求/u })).toBeInTheDocument();
     expect(row.getByText('OpenAI Main')).toBeTruthy();
     expect(row.getByText('openai-main')).toBeTruthy();
     expect(row.getByText('API')).toBeTruthy();
-    expect(row.getByText('openai-response').closest('[data-slot="badge"]')).toBeNull();
+    expect(row.getByText('OpenAI Response')).toBeTruthy();
+    expect(row.queryByText('API · openai-response')).toBeNull();
+    expect(row.getByText('12K')).toBeTruthy();
+    expect(row.queryByText('1.2M')).toBeNull();
+    expect(row.queryByText('$2.50')).toBeNull();
     expect(row.getByTestId('provider-models-count')).toHaveTextContent('2');
     expect(row.getByText('7')).toBeTruthy();
 
@@ -70,16 +86,12 @@ describe('providers table', () => {
     expect(mocks.toggle).toHaveBeenCalledWith({ id: 'openai-main', enabled: false });
 
     fireEvent.click(row.getByRole('button', { name: /Open actions for provider openai-main|打开提供商 openai-main/u }));
-    fireEvent.click(await screen.findByRole('menuitem', { name: /Copy Provider ID|复制提供商 ID/u }));
-    expect(mocks.writeText).toHaveBeenCalledWith('openai-main');
-
-    fireEvent.click(row.getByRole('button', { name: /Open actions for provider openai-main|打开提供商 openai-main/u }));
     fireEvent.click(await screen.findByRole('menuitem', { name: /^Delete$|^删除$/u }));
     expect(await screen.findByTestId('delete-provider-dialog')).toBeTruthy();
   });
 
   test('shows an AI SDK package identity and no fabricated protocol', () => {
-    render(
+    renderProvidersTable(
       <ProvidersTable
         providers={[
           providerStub({
@@ -95,21 +107,63 @@ describe('providers table', () => {
 
     const row = within(screen.getByTestId('provider-row-anthropic-sdk'));
     expect(row.getByText('@ai-sdk/anthropic')).toBeTruthy();
-    expect(row.getByText('N/A')).toBeTruthy();
-    expect(row.getByText('0')).toBeTruthy();
+    expect(row.queryByText('N/A')).toBeNull();
   });
 
-  test('expands accounts under a virtual OAuth plugin capability row', () => {
-    render(<ProvidersTable providers={[oauthProvider('copilot-one', 'One'), oauthProvider('copilot-two', 'Two')]} />);
+  test('expands accounts from the OAuth aggregate row and chevron with accessible keyboard controls', () => {
+    const accounts = [
+      oauthProvider('copilot-one', 'One'),
+      { ...oauthProvider('copilot-two', 'Two'), clientModels: ['gpt-5-mini', 'gpt-5'] },
+    ];
+    renderProvidersTable(
+      <ProvidersTable providers={accounts} />,
+      new Map([
+        ['copilot-one', { requestCount: 1_000n }],
+        ['copilot-two', { requestCount: 234n }],
+      ]),
+      [
+        {
+          builtin: true,
+          displayName: 'GitHub Copilot',
+          enabled: true,
+          hasOptions: false,
+          icon: 'openai',
+          packageName: '@aio-proxy/plugin-github-copilot',
+          state: { status: 'ready' },
+        },
+      ],
+    );
 
-    const group = within(screen.getByTestId('provider-group-@aio-proxy/plugin-github-copilot/default'));
-    expect(group.getByRole('button')).toHaveAttribute('aria-expanded', 'false');
+    const groupRow = screen.getByTestId('provider-group-@aio-proxy/plugin-github-copilot/default');
+    const group = within(groupRow);
+    expect(group.getByText('GitHub Copilot')).toBeTruthy();
+    expect(group.queryByText('@aio-proxy/plugin-github-copilot/default')).toBeNull();
+    const toggle = group.getByRole('button', { name: /Expand provider group|展开提供商分组/u });
+    const pluginName = group.getByText('GitHub Copilot');
+    expect(pluginName.parentElement).toContainElement(screen.getByRole('img', { hidden: true }));
+    expect(within(toggle).queryByRole('img', { hidden: true })).toBeNull();
+    expect(toggle.querySelector('svg')).not.toBeNull();
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(group.getByText('1.2K')).toBeTruthy();
+    expect(group.queryByText('1.5M')).toBeNull();
+    expect(group.queryByText('$4.00')).toBeNull();
+    expect(group.getByTestId('provider-models-count')).toHaveTextContent('2');
     expect(group.queryByText('copilot-one')).toBeNull();
     expect(group.queryByRole('switch')).toBeNull();
     expect(group.queryByLabelText(/Open actions|操作菜单/u)).toBeNull();
     expect(screen.queryByTestId('provider-row-copilot-one')).toBeNull();
 
-    fireEvent.click(group.getByRole('button'));
+    fireEvent.click(groupRow);
+
+    expect(screen.getByTestId('provider-row-copilot-one')).toBeTruthy();
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    fireEvent.keyDown(toggle, { key: 'Enter' });
+    expect(screen.queryByTestId('provider-row-copilot-one')).toBeNull();
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+
+    fireEvent.click(toggle);
+
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
 
     expect(screen.getAllByRole('columnheader', { name: /Provider|提供商/u })).toHaveLength(1);
     for (const id of ['copilot-one', 'copilot-two']) {
@@ -117,6 +171,43 @@ describe('providers table', () => {
       expect(account.getByRole('switch')).toBeTruthy();
       expect(account.getByRole('button', { name: new RegExp(id, 'u') })).toBeTruthy();
     }
+
+    const headers = screen.getAllByRole('columnheader');
+    const weightColumnIndex = headers.indexOf(screen.getByRole('columnheader', { name: /Weight|权重/u }));
+    const enabledColumnIndex = headers.indexOf(screen.getByRole('columnheader', { name: /Enabled|启用/u }));
+    const actionsColumnIndex = headers.indexOf(screen.getByRole('columnheader', { name: /Actions|操作/u }));
+    const accountCells = within(screen.getByTestId('provider-row-copilot-one')).getAllByRole('cell');
+    const groupCells = group.getAllByRole('cell');
+    for (const [columnIndex, ...classNames] of [
+      [weightColumnIndex, 'w-20', 'text-center'],
+      [enabledColumnIndex, 'w-20', 'text-center'],
+      [actionsColumnIndex, 'w-20', 'text-right'],
+    ]) {
+      expect(headers[columnIndex]).toHaveClass(...classNames);
+      expect(groupCells[columnIndex]).toHaveClass(...classNames);
+      expect(accountCells[columnIndex]).toHaveClass(...classNames);
+    }
+
+    groupRow.focus();
+    fireEvent.keyDown(groupRow, { key: ' ' });
+    expect(screen.queryByTestId('provider-row-copilot-one')).toBeNull();
+  });
+
+  test('collapses an expanded OAuth group', async () => {
+    renderProvidersTable(
+      <ProvidersTable providers={[oauthProvider('copilot-one', 'One'), oauthProvider('copilot-two', 'Two')]} />,
+    );
+
+    const group = screen.getByTestId('provider-group-@aio-proxy/plugin-github-copilot/default');
+    fireEvent.click(within(group).getByRole('button'));
+    await waitFor(() => {
+      expect(within(group).getByRole('button')).toHaveAttribute('aria-expanded', 'true');
+    });
+    fireEvent.click(within(group).getByRole('button'));
+
+    await waitFor(() => {
+      expect(within(group).getByRole('button')).toHaveAttribute('aria-expanded', 'false');
+    });
   });
 
   test('auto-expands and pages to a focused OAuth account', async () => {
@@ -125,7 +216,7 @@ describe('providers table', () => {
       oauthProvider('copilot-focused', 'Focused'),
     ];
 
-    render(<ProvidersTable providers={providers} focusProviderId="copilot-focused" />);
+    renderProvidersTable(<ProvidersTable providers={providers} focusProviderId="copilot-focused" />);
 
     await waitFor(() => {
       expect(screen.getByTestId('provider-row-copilot-focused')).toHaveAttribute('data-focused', 'true');
@@ -136,18 +227,45 @@ describe('providers table', () => {
     expect(screen.queryByTestId('provider-row-api-0')).toBeNull();
   });
 
-  test('expands an OAuth group when its child Provider ID matches the filter', () => {
-    render(<ProvidersTable providers={[oauthProvider('copilot-one', 'One'), oauthProvider('copilot-two', 'Two')]} />);
+  test('keeps a user-selected page after focusing a Provider', async () => {
+    const providers = [
+      ...Array.from({ length: 10 }, (_, index) => providerStub({ id: `api-${index}`, kind: 'api' })),
+      oauthProvider('copilot-focused', 'Focused'),
+    ];
 
-    fireEvent.change(screen.getByRole('textbox', { name: /Filter providers|筛选提供商/u }), {
-      target: { value: 'copilot-two' },
+    renderProvidersTable(<ProvidersTable providers={providers} focusProviderId="copilot-focused" />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('provider-row-copilot-focused')).toBeTruthy();
     });
+    fireEvent.click(screen.getByRole('button', { name: /Previous|上一页/u }));
 
-    expect(screen.getByTestId('provider-row-copilot-two')).toBeTruthy();
+    await waitFor(() => {
+      expect(screen.getByTestId('provider-row-api-0')).toBeTruthy();
+    });
   });
 
-  test('distinguishes an unavailable Provider weight from an explicit zero', () => {
-    render(
+  test('keeps a focused OAuth group collapsed after user interaction', async () => {
+    const providers = [
+      ...Array.from({ length: 10 }, (_, index) => providerStub({ id: `api-${index}`, kind: 'api' })),
+      oauthProvider('copilot-focused', 'Focused'),
+    ];
+
+    renderProvidersTable(<ProvidersTable providers={providers} focusProviderId="copilot-focused" />);
+
+    const group = screen.getByTestId('provider-group-@aio-proxy/plugin-github-copilot/default');
+    await waitFor(() => {
+      expect(within(group).getByRole('button')).toHaveAttribute('aria-expanded', 'true');
+    });
+    fireEvent.click(within(group).getByRole('button'));
+
+    await waitFor(() => {
+      expect(within(group).getByRole('button')).toHaveAttribute('aria-expanded', 'false');
+    });
+  });
+
+  test('renders an omitted Provider weight as its effective zero default', () => {
+    renderProvidersTable(
       <ProvidersTable
         providers={[
           providerStub({ id: 'weight-missing', kind: 'api', protocol: 'openai-response' }),
@@ -156,41 +274,44 @@ describe('providers table', () => {
       />,
     );
 
-    expect(within(screen.getByTestId('provider-row-weight-missing')).getByText('N/A')).toBeTruthy();
+    const missing = within(screen.getByTestId('provider-row-weight-missing'));
     const zero = within(screen.getByTestId('provider-row-weight-zero'));
-    expect(zero.getByText('0')).toBeTruthy();
-    expect(zero.queryByText('N/A')).toBeNull();
+    const weightColumnIndex = screen
+      .getAllByRole('columnheader')
+      .indexOf(screen.getByRole('columnheader', { name: /Weight|权重/u }));
+    expect(missing.getAllByRole('cell')[weightColumnIndex]).toHaveTextContent('0');
+    expect(zero.getAllByRole('cell')[weightColumnIndex]).toHaveTextContent('0');
   });
 
-  test('sorts Provider rows and hides a selected column', async () => {
-    render(
+  test('sorts Providers by 24h request count without making descriptive columns sortable', () => {
+    renderProvidersTable(
       <ProvidersTable
         providers={[
           providerStub({ id: 'zulu', kind: 'api', protocol: 'openai-response' }),
           providerStub({ id: 'alpha', kind: 'api', protocol: 'anthropic' }),
         ]}
       />,
+      new Map([
+        ['zulu', { requestCount: 1n }],
+        ['alpha', { requestCount: 2n }],
+      ]),
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /^Provider$|^提供商$/u }));
-    expect(screen.getByRole('columnheader', { name: /^Provider$|^提供商$/u })).toHaveAttribute(
-      'aria-sort',
-      'ascending',
-    );
+    expect(screen.getByRole('columnheader', { name: /^Provider$|^提供商$/u })).not.toHaveAttribute('aria-sort');
+    fireEvent.click(screen.getByRole('button', { name: /24h requests|24 小时请求/u }));
+    expect(screen.getByTestId('provider-row-alpha')).toBeInTheDocument();
     expect(screen.getAllByTestId(/^provider-row-/u).map((row) => row.getAttribute('data-testid'))).toEqual([
       'provider-row-alpha',
       'provider-row-zulu',
     ]);
-
-    fireEvent.click(screen.getByRole('button', { name: /Provider columns|提供商列/u }));
-    fireEvent.click(await screen.findByRole('menuitemcheckbox', { name: /^Protocol$|^协议$/u }));
-    expect(screen.queryByRole('columnheader', { name: /^Protocol$|^协议$/u })).toBeNull();
+    expect(screen.queryByRole('textbox', { name: /Filter providers|筛选提供商/u })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Provider columns|提供商列/u })).toBeNull();
   });
 });
 
 describe('invalid provider row', () => {
   test('keeps invalid rows diagnostic and non-actionable', () => {
-    render(
+    renderProvidersTable(
       <ProvidersTable
         providers={[
           providerStub({

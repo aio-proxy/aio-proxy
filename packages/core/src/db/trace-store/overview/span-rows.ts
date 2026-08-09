@@ -76,6 +76,12 @@ export function spanRows(db: BunSQLiteDatabase, range: ResolvedRange): readonly 
     const cacheWriteTokens = parseSqliteInteger(row.cacheWriteTokens);
     const capturesCache = row.transport === 'raw' || row.transport === 'ai_sdk';
     const cachedTokens = cacheReadTokens + cacheWriteTokens;
+    let normalizedPromptTokens = 0n;
+    if (row.transport === 'raw' && row.targetProtocol === 'anthropic') {
+      normalizedPromptTokens = inputTokens + cachedTokens;
+    } else if (capturesCache) {
+      normalizedPromptTokens = inputTokens > cachedTokens ? inputTokens : cachedTokens;
+    }
     return {
       bucket: row.bucket,
       dimension: row.dimension,
@@ -90,14 +96,7 @@ export function spanRows(db: BunSQLiteDatabase, range: ResolvedRange): readonly 
       cacheReadTokens,
       cacheWriteTokens,
       normalizedCacheReadTokens: capturesCache ? cacheReadTokens : 0n,
-      normalizedPromptTokens:
-        row.transport === 'raw' && row.targetProtocol === 'anthropic'
-          ? inputTokens + cachedTokens
-          : capturesCache
-            ? inputTokens > cachedTokens
-              ? inputTokens
-              : cachedTokens
-            : 0n,
+      normalizedPromptTokens,
     };
   });
 }

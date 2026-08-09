@@ -3,9 +3,21 @@ import type { LocalizedText } from '../localized-text';
 import type { Logger } from '../logger';
 import type { OAuthAdapter } from '../oauth';
 
-export const PLUGIN_API_VERSION = 1 as const;
-export const PLUGIN_API_VERSIONS_SUPPORTED = [1] as const;
-export const PLUGIN_DESCRIPTOR_BRAND = Symbol.for('@aio-proxy/plugin-sdk/descriptor/v1');
+export const PLUGIN_API_VERSION = 2 as const;
+export const PLUGIN_API_VERSIONS_SUPPORTED = [2] as const;
+export const PLUGIN_DESCRIPTOR_BRAND = Symbol.for('@aio-proxy/plugin-sdk/descriptor/v2');
+
+export type LobeIconKey = AioProxyLobeIconKey;
+
+// oxlint-disable-next-line typescript/no-redundant-type-constituents -- LobeIconKey is a literal-key union at build time (a `string` placeholder only during lint), so the URL/data-URI members are not redundant and are required to reject arbitrary strings.
+export type PluginIcon = LobeIconKey | `http://${string}` | `https://${string}` | `data:image/${string}`;
+
+export type PluginMetadata<Options = undefined> = {
+  readonly displayName?: LocalizedText;
+  readonly description?: LocalizedText;
+  readonly icon?: PluginIcon;
+  readonly options?: ConfigSpec<Options>;
+};
 
 export type PluginApi = {
   readonly oauth: {
@@ -17,11 +29,7 @@ export type PluginApi = {
 export type PluginDescriptor<Options = undefined> = {
   readonly [PLUGIN_DESCRIPTOR_BRAND]: true;
   readonly apiVersion: typeof PLUGIN_API_VERSION;
-  readonly metadata: {
-    readonly label?: LocalizedText;
-    readonly description?: LocalizedText;
-    readonly options?: ConfigSpec<Options>;
-  };
+  readonly metadata: PluginMetadata<Options>;
   readonly setup: (api: PluginApi, options: Options) => void | Promise<void>;
 };
 
@@ -29,8 +37,9 @@ export type PluginDescriptorShell = {
   readonly [PLUGIN_DESCRIPTOR_BRAND]: true;
   readonly apiVersion: (typeof PLUGIN_API_VERSIONS_SUPPORTED)[number];
   readonly metadata: {
-    readonly label?: unknown;
+    readonly displayName?: unknown;
     readonly description?: unknown;
+    readonly icon?: unknown;
     readonly options?: unknown;
   };
   readonly setup: unknown;
@@ -61,7 +70,7 @@ export function isPluginDescriptor(value: unknown): value is PluginDescriptorShe
   const metadata = Reflect.get(value, 'metadata');
   return (
     Reflect.get(value, PLUGIN_DESCRIPTOR_BRAND) === true &&
-    apiVersion === 1 &&
+    apiVersion === PLUGIN_API_VERSION &&
     isObject(metadata) &&
     typeof Reflect.get(value, 'setup') === 'function'
   );

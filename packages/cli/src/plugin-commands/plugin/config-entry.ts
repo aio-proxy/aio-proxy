@@ -9,7 +9,9 @@ export function entries(config: ConfigRecord): unknown[] {
 }
 
 export function packageNameOf(entry: unknown): string | null {
-  const candidate = typeof entry === 'string' ? entry : Array.isArray(entry) ? entry[0] : undefined;
+  let candidate: unknown;
+  if (typeof entry === 'string') candidate = entry;
+  else if (Array.isArray(entry)) candidate = entry[0];
   const parsed = PluginPackageNameSchema.safeParse(candidate);
   return parsed.success ? parsed.data : null;
 }

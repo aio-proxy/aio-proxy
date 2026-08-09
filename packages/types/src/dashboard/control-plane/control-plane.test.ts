@@ -99,6 +99,8 @@ describe('dashboard plugin control-plane contracts', () => {
     const summary = schema('DashboardPluginSummarySchema');
     const value = {
       packageName: '@example/plugin',
+      displayName: 'Example',
+      icon: 'openai',
       version: '1.2.3',
       builtin: false,
       enabled: true,
@@ -107,6 +109,7 @@ describe('dashboard plugin control-plane contracts', () => {
     } as const;
 
     expect(summary.parse(value)).toEqual(value);
+    expect(summary.safeParse({ ...value, label: 'Example' }).success).toBe(false);
     for (const field of ['options', 'config', 'setup', 'secrets']) {
       expect(summary.safeParse({ ...value, [field]: field === 'setup' ? () => {} : {} }).success).toBe(false);
     }

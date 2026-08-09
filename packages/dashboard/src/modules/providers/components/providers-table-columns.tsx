@@ -1,20 +1,26 @@
 import { m } from '@aio-proxy/i18n';
-import type { DashboardProviderSummary } from '@aio-proxy/types';
-import { Button } from '@aio-proxy/ui/components/button';
-import { TableHead } from '@aio-proxy/ui/components/table';
 import { Link } from '@tanstack/react-router';
-import type { ColumnDef, HeaderContext } from '@tanstack/react-table';
+import type { ColumnDef, RowData } from '@tanstack/react-table';
 import { startCase } from 'es-toolkit/string';
-import { ArrowDown, ArrowUp } from 'lucide-react';
-import type React from 'react';
+
+import { tableHead } from '@/components/data-table/table-head';
+import { ProtocolLabel } from '@/components/protocol-label';
+import { formatCompactTokenCount } from '@/components/token-count';
+import type { DataTableFeatures } from '@/hooks/use-data-table';
 
 import { PROVIDER_KIND_LABEL } from '../lib/constants';
-import type { DeleteProviderDialogRef } from './delete-provider-dialog';
+import type { ProviderUsage } from '../services/provider-usage-service';
 import { ProviderEnabledSwitch } from './provider-enabled-switch';
 import { ProviderModelsCell } from './provider-models-cell';
-import { ProviderMoreMenu } from './provider-more-menu';
 import { ProviderStateCell } from './provider-state-cell';
+import { ProviderTableActions } from './provider-table-actions';
 import type { ProviderTableRow } from './providers-table/provider-table-row';
+
+declare module '@tanstack/react-table' {
+  interface ColumnMeta<TData extends RowData, TValue> {
+    readonly className?: string;
+  }
+}
 
 const uneditableDiagnosticCodes = new Set(['PROVIDER_CONFIG_INVALID', 'LEGACY_OAUTH_CONFIG_UNSUPPORTED']);
 
@@ -28,60 +34,26 @@ const displayName = (provider: DashboardProviderSummary): string =>
 const concreteProvider = (row: ProviderTableRow): DashboardProviderSummary | undefined =>
   row.rowType === 'provider' ? row.provider : undefined;
 
-const sortableHeader =
-  (label: () => string) =>
-  ({ column }: HeaderContext<ProviderTableRow, unknown>) => {
-    const canSort = column.getCanSort();
-    const sortDirection = column.getIsSorted();
-    return (
-      <TableHead
-        aria-sort={
-          canSort
-            ? sortDirection === 'asc'
-              ? 'ascending'
-              : sortDirection === 'desc'
-                ? 'descending'
-                : 'none'
-            : undefined
-        }
-      >
-        {canSort ? (
-          <Button variant="ghost" size="sm" onClick={column.getToggleSortingHandler()}>
-            {label()}
-            {sortDirection === 'asc' ? <ArrowUp /> : sortDirection === 'desc' ? <ArrowDown /> : null}
-          </Button>
-        ) : (
-          label()
-        )}
-      </TableHead>
-    );
-  };
+const requestCount = (row: ProviderTableRow, providerUsage: ReadonlyMap<string, ProviderUsage>): bigint =>
+  (row.rowType === 'provider' ? [row.provider] : row.accounts.map(({ provider }) => provider)).reduce(
+    (total, provider) => total + (providerUsage.get(provider.id)?.requestCount ?? 0n),
+    0n,
+  );
 
-export const providerColumnLabel = (columnId: string): string => {
-  if (columnId === 'provider') return m['dashboard.providers.table.col_provider']();
-  if (columnId === 'type') return m['dashboard.providers.table.col_type']();
-  if (columnId === 'protocol') return m['dashboard.providers.table.col_protocol']();
-  if (columnId === 'models') return m['dashboard.providers.table.col_models']();
-  if (columnId === 'weight') return m['dashboard.providers.table.col_weight']();
-  if (columnId === 'state') return m['dashboard.providers.table.col_state']();
-  if (columnId === 'enabled') return m['dashboard.providers.table.col_enabled']();
-  if (columnId === 'actions') return m['dashboard.providers.table.col_actions']();
-  throw new Error(`Unknown Provider column: ${columnId}`);
-};
-
-const providerColumn: ColumnDef<ProviderTableRow> = {
+const providerColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
   id: 'provider',
+  enableSorting: false,
   accessorFn: (row) =>
     row.rowType === 'oauth-group'
       ? [row.groupKey, ...row.accounts.flatMap(({ provider }) => [displayName(provider), provider.id])].join(' ')
       : `${displayName(row.provider)} ${row.provider.id}`,
-  header: sortableHeader(() => m['dashboard.providers.table.col_provider']()),
+  header: tableHead(() => m['dashboard.providers.table.col_provider']()),
   cell: ({ row }) => {
     const provider = concreteProvider(row.original);
     if (provider === undefined) return null;
     const name = displayName(provider);
     return (
-      <div className={row.depth === 0 ? 'min-w-40' : 'min-w-40 pl-7'}>
+      <div className="max-w-64 min-w-16 truncate">
         {canEditProvider(provider) ? (
           <Link
             id={`provider-link-${provider.id}`}
@@ -95,109 +67,144 @@ const providerColumn: ColumnDef<ProviderTableRow> = {
         ) : (
           <div className="font-medium">{name}</div>
         )}
-        <div className="text-xs text-muted-foreground">{provider.id}</div>
+        <div className="truncate text-muted-foreground">{provider.id}</div>
       </div>
     );
   },
 };
 
-const typeColumn: ColumnDef<ProviderTableRow> = {
+const typeColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
   id: 'type',
+  enableSorting: false,
+  meta: { className: 'w-36 max-w-36 whitespace-normal' },
   accessorFn: (row) => {
     if (row.rowType === 'oauth-group') return `OAuth ${row.groupKey}`;
-    return row.provider.kind === 'ai-sdk'
-      ? (row.provider.packageName ?? PROVIDER_KIND_LABEL['ai-sdk'])
-      : row.provider.kind === 'invalid'
-        ? m['dashboard.providers.kind_label.invalid']()
-        : PROVIDER_KIND_LABEL[row.provider.kind];
+    if (row.provider.kind === 'api') return `${PROVIDER_KIND_LABEL.api} · ${row.provider.protocol ?? 'N/A'}`;
+    if (row.provider.kind === 'ai-sdk') return row.provider.packageName ?? PROVIDER_KIND_LABEL['ai-sdk'];
+    if (row.provider.kind === 'invalid') return m['dashboard.providers.kind_label.invalid']();
+    return PROVIDER_KIND_LABEL[row.provider.kind];
   },
-  header: sortableHeader(() => m['dashboard.providers.table.col_type']()),
+  header: tableHead(() => m['dashboard.providers.table.col_type']()),
   cell: ({ row }) => {
     const provider = concreteProvider(row.original);
     if (provider === undefined) return null;
-    if (provider.kind === 'ai-sdk') return provider.packageName ?? PROVIDER_KIND_LABEL['ai-sdk'];
+    if (provider.kind === 'api') {
+      return (
+        <div className="leading-5">
+          <div className="">{PROVIDER_KIND_LABEL.api}</div>
+          <ProtocolLabel className="truncate text-muted-foreground" protocol={provider.protocol ?? 'N/A'} />
+        </div>
+      );
+    }
+    if (provider.kind === 'ai-sdk') {
+      return <span className="block truncate">{provider.packageName ?? PROVIDER_KIND_LABEL['ai-sdk']}</span>;
+    }
     if (provider.kind === 'invalid') return m['dashboard.providers.kind_label.invalid']();
     return PROVIDER_KIND_LABEL[provider.kind];
   },
 };
 
-const protocolColumn: ColumnDef<ProviderTableRow> = {
-  id: 'protocol',
-  accessorFn: (row) => (row.rowType === 'provider' && row.provider.kind === 'api' ? (row.provider.protocol ?? '') : ''),
-  header: sortableHeader(() => m['dashboard.providers.table.col_protocol']()),
-  cell: ({ row }) => {
-    const provider = concreteProvider(row.original);
-    return provider?.kind === 'api' ? (provider.protocol ?? 'N/A') : 'N/A';
-  },
-};
-
-const modelsColumn: ColumnDef<ProviderTableRow> = {
+const modelsColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
   id: 'models',
+  enableSorting: false,
+  meta: { className: 'w-20 text-center' },
   accessorFn: (row) =>
     row.rowType === 'oauth-group'
       ? row.accounts.flatMap(({ provider }) => provider.clientModels).join(' ')
       : row.provider.clientModels.join(' '),
-  header: sortableHeader(() => m['dashboard.providers.table.col_models']()),
+  header: tableHead(() => m['dashboard.providers.table.col_models']()),
   cell: ({ row }) => {
     const provider = concreteProvider(row.original);
     return provider === undefined ? null : <ProviderModelsCell models={provider.clientModels} />;
   },
 };
 
-const weightColumn: ColumnDef<ProviderTableRow> = {
+const weightColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
   id: 'weight',
+  meta: { className: 'w-20 text-center' },
   accessorFn: (row) => concreteProvider(row)?.weight,
-  header: sortableHeader(() => m['dashboard.providers.table.col_weight']()),
+  header: tableHead(() => m['dashboard.providers.table.col_weight']()),
   cell: ({ row }) => {
     const provider = concreteProvider(row.original);
-    return provider === undefined ? null : (provider.weight ?? 'N/A');
+    return provider === undefined ? null : (provider.weight ?? 0);
   },
 };
 
-const stateColumn: ColumnDef<ProviderTableRow> = {
+const stateColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
   id: 'state',
+  enableSorting: false,
+  meta: { className: 'whitespace-normal' },
   accessorFn: (row) => {
     const provider = concreteProvider(row);
     return provider === undefined
       ? ''
       : `${provider.state.status} ${provider.state.diagnostic?.summary ?? ''} ${provider.state.diagnostic?.code ?? ''}`;
   },
-  header: sortableHeader(() => m['dashboard.providers.table.col_state']()),
+  header: tableHead(() => m['dashboard.providers.table.col_state']()),
   cell: ({ row }) => {
     const provider = concreteProvider(row.original);
     return provider === undefined ? null : <ProviderStateCell provider={provider} />;
   },
 };
 
+const aggregateColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
+  id: 'aggregate',
+  enableSorting: false,
+  meta: { className: 'w-12' },
+  header: tableHead(() => ''),
+  cell: () => null,
+};
+
+const enabledColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
+  id: 'enabled',
+  meta: { className: 'w-20 text-center' },
+  accessorFn: (row) => String(concreteProvider(row)?.enabled ?? ''),
+  header: tableHead(() => m['dashboard.providers.table.col_enabled']()),
+  cell: ({ row }) => {
+    const provider = concreteProvider(row.original);
+    return provider === undefined || !canEditProvider(provider) ? null : <ProviderEnabledSwitch provider={provider} />;
+  },
+};
+
+const usageColumn = (
+  providerUsage: ReadonlyMap<string, ProviderUsage>,
+): ColumnDef<DataTableFeatures, ProviderTableRow> => ({
+  id: 'usage',
+  meta: { className: 'w-24 text-right' },
+  accessorFn: (row) => requestCount(row, providerUsage),
+  header: tableHead(() => m['dashboard.providers.table.col_usage_24h']()),
+  cell: ({ row }) => {
+    const provider = concreteProvider(row.original);
+    if (provider === undefined) return null;
+    return (
+      <span className="tabular-nums">
+        {formatCompactTokenCount(providerUsage.get(provider.id)?.requestCount ?? 0n)}
+      </span>
+    );
+  },
+});
+
+const actionsColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
+  id: 'actions',
+  enableSorting: false,
+  meta: { className: 'w-20 text-right' },
+  header: tableHead(() => m['dashboard.providers.table.col_actions']()),
+  cell: ({ row }) => {
+    const provider = concreteProvider(row.original);
+    return provider === undefined || !canEditProvider(provider) ? null : <ProviderTableActions provider={provider} />;
+  },
+};
+
 export const createProviderColumns = (
-  deleteDialogRef: React.RefObject<DeleteProviderDialogRef | null>,
-): ColumnDef<ProviderTableRow>[] => [
+  providerUsage: ReadonlyMap<string, ProviderUsage>,
+): ColumnDef<DataTableFeatures, ProviderTableRow>[] => [
+  aggregateColumn,
   providerColumn,
   typeColumn,
-  protocolColumn,
   modelsColumn,
   weightColumn,
   stateColumn,
-  {
-    id: 'enabled',
-    accessorFn: (row) => String(concreteProvider(row)?.enabled ?? ''),
-    header: sortableHeader(() => m['dashboard.providers.table.col_enabled']()),
-    cell: ({ row }) => {
-      const provider = concreteProvider(row.original);
-      return provider === undefined || !canEditProvider(provider) ? null : (
-        <ProviderEnabledSwitch provider={provider} />
-      );
-    },
-  },
-  {
-    id: 'actions',
-    enableSorting: false,
-    header: sortableHeader(() => m['dashboard.providers.table.col_actions']()),
-    cell: ({ row }) => {
-      const provider = concreteProvider(row.original);
-      return provider === undefined || !canEditProvider(provider) ? null : (
-        <ProviderMoreMenu provider={provider} onDelete={(target) => deleteDialogRef.current?.open(target)} />
-      );
-    },
-  },
+  usageColumn(providerUsage),
+  enabledColumn,
+  actionsColumn,
 ];

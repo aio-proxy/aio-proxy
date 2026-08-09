@@ -15,9 +15,8 @@ test('GET /oauth/capabilities returns loaded OAuth adapters without schemas or s
   const descriptor = definePlugin((api) => {
     api.oauth.register({
       id: 'default',
-      label: { default: 'Example OAuth', 'zh-Hans': '示例 OAuth' },
+      displayName: { default: 'Example OAuth', 'zh-Hans': '示例 OAuth' },
       description: 'Example account',
-      icon: 'openai',
       account: {
         options: {
           schema: zod.object({ deployment: zod.string().default('public'), token: zod.string().optional() }),
@@ -57,9 +56,8 @@ test('GET /oauth/capabilities returns loaded OAuth adapters without schemas or s
         {
           plugin: '@example/oauth',
           capability: 'default',
-          label: { default: 'Example OAuth', 'zh-Hans': '示例 OAuth' },
+          displayName: { default: 'Example OAuth', 'zh-Hans': '示例 OAuth' },
           description: 'Example account',
-          icon: 'openai',
           defaults: {},
           form: [
             { type: 'text', key: 'deployment', label: 'Deployment' },
@@ -68,6 +66,10 @@ test('GET /oauth/capabilities returns loaded OAuth adapters without schemas or s
         },
       ],
     });
+    expect(payload.capabilities[0]).toMatchObject({
+      displayName: { default: 'Example OAuth', 'zh-Hans': '示例 OAuth' },
+    });
+    expect(payload.capabilities[0]).not.toHaveProperty('icon');
     expect(JSON.stringify(payload)).not.toMatch(/hidden|schema|accessToken/u);
   } finally {
     state.close();

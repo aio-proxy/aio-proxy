@@ -92,7 +92,7 @@ test('the provider config key and proxy override reach the materialized OAuth ru
   const descriptor = definePlugin<unknown>((api) => {
     api.oauth.register({
       id: 'default',
-      label: 'Example',
+      displayName: 'Example',
       account: { options: { schema: zod.object({}), form: [] } },
       credentials: zod.object({ token: zod.string() }),
       async login() {
@@ -177,7 +177,7 @@ test('a global proxy reload rebuilds an OAuth runtime that inherits the proxy', 
   const descriptor = definePlugin<unknown>((api) => {
     api.oauth.register({
       id: 'default',
-      label: 'Example',
+      displayName: 'Example',
       account: { options: { schema: zod.object({}), form: [] } },
       credentials: zod.object({ token: zod.string() }),
       async login() {

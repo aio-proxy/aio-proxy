@@ -18,10 +18,18 @@ export const queryKeys = {
   providerEditView: (id: string) => ['providers', id, 'edit-view'],
   providerPackageStatus: (packageName: string) => ['providers', 'package-status', packageName],
   providerProbe: (id: string) => ['providers', id, 'probe'],
+  providerUsage: ['dashboard', 'providers', 'usage'],
   providers: ['providers'],
   settings: ['settings'],
   // Search shape stays structural: src/lib must not depend on a module's types.
   trace: (traceId: string) => ['dashboard', 'traces', traceId],
   traces: (search: object) => ['dashboard', 'traces', search],
-  usage: (range: string, metric: string, groupBy: string) => ['dashboard', 'usage', range, metric, groupBy],
+  usage: (range: string, metric: string, groupBy: string, maxResults?: number) => [
+    'dashboard',
+    'usage',
+    range,
+    metric,
+    groupBy,
+    maxResults,
+  ],
 } as const;

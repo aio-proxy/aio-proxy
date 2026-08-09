@@ -31,7 +31,7 @@ test('built-in OAuth commits through the Dashboard session without an authored P
   const descriptor = definePlugin((api) => {
     api.oauth.register({
       id: 'default',
-      label: 'Built-in OAuth',
+      displayName: 'Built-in OAuth',
       account: { options: { schema: zod.object({}), form: [] } },
       credentials: zod.object({ token: zod.string() }),
       async login() {
@@ -93,7 +93,7 @@ test('dashboard device-code session can be resumed by id and creates an OAuth pr
   const descriptor = definePlugin((api) => {
     api.oauth.register({
       id: 'default',
-      label: 'Example OAuth',
+      displayName: 'Example OAuth',
       account: { options: { schema: zod.object({}), form: [] } },
       credentials: zod.object({ token: zod.string() }),
       async login({ authorization }) {
@@ -204,7 +204,7 @@ test('dashboard loopback session rejects a mismatched callback and accepts a val
   const descriptor = definePlugin((api) => {
     api.oauth.register({
       id: 'default',
-      label: 'Example Loopback',
+      displayName: 'Example Loopback',
       account: { options: { schema: zod.object({}), form: [] } },
       credentials: zod.object({ token: zod.string() }),
       async login({ authorization }) {

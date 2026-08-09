@@ -148,12 +148,9 @@ function openAIResponsesMessages(messages: readonly ModelMessage[]): readonly Mo
         if (part.type !== 'tool-call') return part;
         const metadata = readOpenAIResponsesWireMetadata(part.providerOptions);
         if (metadata?.wireToolType !== 'custom') return part;
-        const input =
-          typeof part.input === 'string'
-            ? part.input
-            : typeof part.input === 'object' && part.input !== null
-              ? Reflect.get(part.input, 'input')
-              : undefined;
+        let input: unknown;
+        if (typeof part.input === 'string') input = part.input;
+        else if (typeof part.input === 'object' && part.input !== null) input = Reflect.get(part.input, 'input');
         return typeof input === 'string' ? { ...part, input } : part;
       }),
     };

@@ -98,12 +98,9 @@ function imageUrlContent(part: FilePart, path: string): OpenAIImageUrlContent {
   if (typeof data !== 'object' || data === null || !('type' in data)) {
     throw new OpenAICompletionsTransformError(`${path}.data`);
   }
-  const url =
-    data.type === 'url'
-      ? data.url.toString()
-      : data.type === 'data' && typeof data.data === 'string'
-        ? `data:${part.mediaType};base64,${data.data}`
-        : undefined;
+  let url: string | undefined;
+  if (data.type === 'url') url = data.url.toString();
+  else if (data.type === 'data' && typeof data.data === 'string') url = `data:${part.mediaType};base64,${data.data}`;
   if (url === undefined) throw new OpenAICompletionsTransformError(`${path}.data`);
   const detail = openAIImageDetail(part);
   return {

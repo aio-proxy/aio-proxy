@@ -95,8 +95,8 @@ export async function loginOAuthAccount(options: LoginOAuthAccountOptions): Prom
       throw new ProviderFingerprintMismatchError(options.targetProviderId as string);
     }
     options.onAuthorized?.();
-    const metadata: { label?: string; expiresAt?: number } = {
-      ...(validated.label === undefined ? {} : { label: validated.label }),
+    const metadata: { accountLabel?: string; expiresAt?: number } = {
+      ...(validated.accountLabel === undefined ? {} : { accountLabel: validated.accountLabel }),
       ...(validated.expiresAt === undefined ? {} : { expiresAt: validated.expiresAt }),
     };
     const discoveryDeadline = childDeadline(deadline.signal, CATALOG_DISCOVERY_TIMEOUT_MS);

@@ -270,7 +270,10 @@ export function createCredentialPort<Credential>(
               expectedRevision,
               owner,
               validated.value,
-              exchanged.metadata,
+              {
+                ...(exchanged.metadata?.accountLabel === undefined ? {} : { label: exchanged.metadata.accountLabel }),
+                ...(exchanged.metadata?.expiresAt === undefined ? {} : { expiresAt: exchanged.metadata.expiresAt }),
+              },
             );
             if (updated === null) {
               const latest = await guard.race(readValidated(options.providerId, options.schema, options.repository));
@@ -282,7 +285,8 @@ export function createCredentialPort<Credential>(
                 options.onDiagnosticChanged();
               }
               if (
-                (exchanged.metadata?.label !== undefined && exchanged.metadata.label !== current.account.label) ||
+                (exchanged.metadata?.accountLabel !== undefined &&
+                  exchanged.metadata.accountLabel !== current.account.label) ||
                 (exchanged.metadata?.expiresAt !== undefined &&
                   exchanged.metadata.expiresAt !== current.account.expiresAt)
               ) {

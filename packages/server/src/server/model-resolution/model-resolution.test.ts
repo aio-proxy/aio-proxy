@@ -59,14 +59,12 @@ async function seedCatalog(models: Record<string, ModelsDevModel>): Promise<void
     openai: {},
     openrouter: {},
   };
-  const prefixProvider = (slug: string): string =>
-    slug.startsWith('claude-')
-      ? 'anthropic'
-      : slug.startsWith('gemini-')
-        ? 'google'
-        : slug.startsWith('gpt-')
-          ? 'openai'
-          : 'openrouter';
+  const prefixProvider = (slug: string): string => {
+    if (slug.startsWith('claude-')) return 'anthropic';
+    if (slug.startsWith('gemini-')) return 'google';
+    if (slug.startsWith('gpt-')) return 'openai';
+    return 'openrouter';
+  };
   for (const [slug, model] of Object.entries(models)) {
     providerModels.openrouter[slug] = model;
     providerModels[prefixProvider(slug)][slug] = model;

@@ -449,7 +449,10 @@
         "col_catalog": "Catalog",
         "col_models": "Models",
         "col_weight": "Weight",
+        "col_usage_24h": "24h requests",
         "col_actions": "Actions",
+        "expand_group": "Expand provider group",
+        "collapse_group": "Collapse provider group",
         "filter": "Filter providers",
         "filter_placeholder": "Search by name or Provider ID",
         "columns": "Provider columns"

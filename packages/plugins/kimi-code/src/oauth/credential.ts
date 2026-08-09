@@ -31,11 +31,10 @@ export async function refreshKimiCredential(
   if (!response.ok) {
     const oauthError = await readOAuthError(response);
     const invalidGrant = oauthError === 'invalid_grant';
-    throw refreshError(
-      !invalidGrant && isRetryableStatus(response.status),
-      invalidGrant ? 'invalid_grant' : response.status === 401 || response.status === 403 ? 'rejected' : 'http',
-      response.status,
-    );
+    let reason = 'http';
+    if (invalidGrant) reason = 'invalid_grant';
+    else if (response.status === 401 || response.status === 403) reason = 'rejected';
+    throw refreshError(!invalidGrant && isRetryableStatus(response.status), reason, response.status);
   }
   const token = await parseSuccessfulToken(response);
   return {

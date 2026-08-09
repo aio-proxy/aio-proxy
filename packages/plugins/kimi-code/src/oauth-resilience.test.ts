@@ -90,14 +90,14 @@ test.each(['catalog', 'quota', 'runtime'] as const)(
     const neverFetch = (async () => {
       throw new Error('fetch should not run');
     }) as typeof fetch;
-    const operation =
-      kind === 'catalog'
-        ? discoverKimiCatalog(context, { fetch: neverFetch })
-        : kind === 'quota'
-          ? readKimiQuota(context, { fetch: neverFetch })
-          : createKimiDynamicFetch(port, { fetch: neverFetch })(
-              new Request('https://proxy.test/v1/messages', { signal: controller.signal }),
-            );
+    let operation: Promise<unknown>;
+    if (kind === 'catalog') operation = discoverKimiCatalog(context, { fetch: neverFetch });
+    else if (kind === 'quota') operation = readKimiQuota(context, { fetch: neverFetch });
+    else {
+      operation = createKimiDynamicFetch(port, { fetch: neverFetch })(
+        new Request('https://proxy.test/v1/messages', { signal: controller.signal }),
+      );
+    }
 
     await expect(operation).rejects.toBe(reason);
     expect(reads).toBe(0);

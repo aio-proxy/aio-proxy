@@ -19,7 +19,7 @@ test('a cancelled OAuth session stays cancelled when a committed login finishes 
   const staging = host.stage('@example/oauth');
   staging.api.oauth.register({
     id: 'default',
-    label: 'Example OAuth',
+    displayName: 'Example OAuth',
     account: { options: { schema: zod.object({}), form: [] } },
     credentials: zod.object({ token: zod.string() }),
     async login() {
