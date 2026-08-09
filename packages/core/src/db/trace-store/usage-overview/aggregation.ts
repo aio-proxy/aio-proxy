@@ -38,15 +38,14 @@ export function aggregateRows(
     addSummary(summary, row);
     if (metric !== 'requests' && row.terminationReason !== null) continue;
 
-    const value =
-      metric === 'requests' ? (row.requestCount ?? 1n) : metric === 'cost' ? row.estimatedCostNanoUsd : row.totalTokens;
-    const kind = groupOutcomesByDimension
-      ? 'dimension'
-      : row.terminationReason === 'failure' || row.terminationReason === 'interrupted'
-        ? 'failed'
-        : row.terminationReason === 'cancelled'
-          ? 'cancelled'
-          : 'dimension';
+    let value = row.totalTokens;
+    if (metric === 'requests') value = row.requestCount ?? 1n;
+    else if (metric === 'cost') value = row.estimatedCostNanoUsd;
+    let kind: 'dimension' | 'failed' | 'cancelled' = 'dimension';
+    if (!groupOutcomesByDimension) {
+      if (row.terminationReason === 'failure' || row.terminationReason === 'interrupted') kind = 'failed';
+      else if (row.terminationReason === 'cancelled') kind = 'cancelled';
+    }
     const bucket = valuesByBucket.get(row.bucket) ?? { dimensions: new Map(), failed: 0n, cancelled: 0n };
     if (kind === 'dimension') {
       totals.set(row.dimension, (totals.get(row.dimension) ?? 0n) + value);
@@ -144,7 +143,7 @@ function bucketValues(
   return Object.fromEntries([...values].map(([key, value]) => [key, value.toString()]));
 }
 
-const compareBigIntDescending = (left: bigint, right: bigint) => (left === right ? 0 : left > right ? -1 : 1);
+const compareBigIntDescending = (left: bigint, right: bigint) => (left === right ? 0 : Number(left < right) * 2 - 1);
 
 const dimensionKeyPrefix = 'dimension:';
 const reservedSeriesKeys = new Set(['__failed__', '__cancelled__', '__other__', '__proto__']);

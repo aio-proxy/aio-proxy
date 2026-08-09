@@ -26,16 +26,17 @@ export const buildRequestTransformStageDraft = (
     return { kind: 'remove', target: controls.target, path: controls.path };
   }
   const acceptedValue = acceptedStage.kind === 'set' ? acceptedStage.value : undefined;
+  if (acceptedValue?.kind === controls.valueMode) {
+    return { kind: 'set', target: controls.target, path: controls.path, value: acceptedValue };
+  }
+  if (controls.valueMode === 'static') {
+    return { kind: 'set', target: controls.target, path: controls.path, value: { kind: 'static', value: null } };
+  }
   return {
     kind: 'set',
     target: controls.target,
     path: controls.path,
-    value:
-      acceptedValue?.kind === controls.valueMode
-        ? acceptedValue
-        : controls.valueMode === 'static'
-          ? { kind: 'static', value: null }
-          : { kind: 'expression', expression: { kind: 'field', field: 'request.body.value' } },
+    value: { kind: 'expression', expression: { kind: 'field', field: 'request.body.value' } },
   };
 };
 

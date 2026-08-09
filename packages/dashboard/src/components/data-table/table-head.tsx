@@ -26,6 +26,11 @@ const ariaSort = (sortDirection: false | SortDirection): 'ascending' | 'descendi
 
 export const TableHead: React.FC<TableHeadProps> = ({ className, column, label, sortDirection }) => {
   const canSort = column.getCanSort();
+  const directionIcon = () => {
+    if (sortDirection === 'asc') return <ArrowUp />;
+    if (sortDirection === 'desc') return <ArrowDown />;
+    return null;
+  };
   return (
     <TableHeadRoot
       {...(className === undefined ? {} : { className })}
@@ -39,7 +44,7 @@ export const TableHead: React.FC<TableHeadProps> = ({ className, column, label, 
           onClick={column.getToggleSortingHandler()}
         >
           {label}
-          {sortDirection === 'asc' ? <ArrowUp /> : (sortDirection === 'desc' ? <ArrowDown /> : null)}
+          {directionIcon()}
         </Button>
       ) : (
         label

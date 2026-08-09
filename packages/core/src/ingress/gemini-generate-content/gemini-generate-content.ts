@@ -7,7 +7,7 @@ const idSchema = z.string().min(1);
 const inlineDataLimitBytes = 20 * 1024 * 1024;
 
 function base64ByteLength(data: string): number {
-  const padding = data.endsWith('==') ? 2 : data.endsWith('=') ? 1 : 0;
+  const padding = data.endsWith('==') ? 2 : Number(data.endsWith('='));
   return Math.floor((data.length * 3) / 4) - padding;
 }
 

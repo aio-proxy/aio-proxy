@@ -164,12 +164,11 @@ function toBillableUsage(
       const afterCache = peelSubsets(usage.inputTokens, [{ count: usage.cacheReadTokens, unitPrice: price.cacheRead }]);
       const thoughts = usage.reasoningTokens;
       const reasoningPriced = pricedSubset(thoughts, price.reasoning) !== undefined;
-      const outputTokens =
-        usage.outputTokens === undefined && thoughts === undefined
-          ? undefined
-          : reasoningPriced
-            ? (usage.outputTokens ?? 0)
-            : (usage.outputTokens ?? 0) + (thoughts ?? 0);
+      let outputTokens: number | undefined;
+      if (usage.outputTokens !== undefined || thoughts !== undefined) {
+        outputTokens = usage.outputTokens ?? 0;
+        if (!reasoningPriced) outputTokens += thoughts ?? 0;
+      }
       return {
         ...(afterCache.parent === undefined ? {} : { inputTokens: afterCache.parent }),
         ...(outputTokens === undefined ? {} : { outputTokens }),

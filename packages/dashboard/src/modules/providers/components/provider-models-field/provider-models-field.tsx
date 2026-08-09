@@ -32,6 +32,48 @@ export const ProviderModelsField: React.FC<ProviderModelsFieldProps> = ({ form, 
             const metadata = metadataField.state.value ?? {};
             const toggleModel = (model: string, enabled: boolean) =>
               modelsField.handleChange(enabled ? [...models, model] : models.filter((item) => item !== model));
+            const catalogContent = (() => {
+              if (catalogMutation.isError) {
+                return (
+                  <p role="status" className="rounded-lg border bg-muted p-3 text-sm">
+                    {m['dashboard.providers.form.catalog_failed']({ code: 'catalog_unavailable' })}
+                  </p>
+                );
+              }
+              if (catalogResult?.ok) {
+                if (catalogResult.models.length === 0) {
+                  return (
+                    <p role="status" className="rounded-lg border bg-muted p-3 text-sm">
+                      {m['dashboard.providers.form.catalog_empty']()}
+                    </p>
+                  );
+                }
+                return (
+                  <Field role="group" aria-label={m['dashboard.providers.form.catalog_models']()}>
+                    <FieldLabel>{m['dashboard.providers.form.catalog_models']()}</FieldLabel>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {catalogResult.models.map((model) => (
+                        <Label key={model} className="rounded-lg border p-3">
+                          <Checkbox
+                            checked={models.includes(model)}
+                            onClick={() => toggleModel(model, !models.includes(model))}
+                          />
+                          <span className="truncate">{model}</span>
+                        </Label>
+                      ))}
+                    </div>
+                  </Field>
+                );
+              }
+              if (catalogResult !== undefined) {
+                return (
+                  <p role="status" className="rounded-lg border bg-muted p-3 text-sm">
+                    {m['dashboard.providers.form.catalog_failed']({ code: catalogResult.error.code })}
+                  </p>
+                );
+              }
+              return null;
+            })();
 
             return (
               <div className="space-y-5" data-testid="provider-form-field-models">
@@ -52,36 +94,7 @@ export const ProviderModelsField: React.FC<ProviderModelsFieldProps> = ({ form, 
                   </Button>
                 </div>
 
-                {catalogMutation.isError ? (
-                  <p role="status" className="rounded-lg border bg-muted p-3 text-sm">
-                    {m['dashboard.providers.form.catalog_failed']({ code: 'catalog_unavailable' })}
-                  </p>
-                ) : catalogResult?.ok ? (
-                  catalogResult.models.length === 0 ? (
-                    <p role="status" className="rounded-lg border bg-muted p-3 text-sm">
-                      {m['dashboard.providers.form.catalog_empty']()}
-                    </p>
-                  ) : (
-                    <Field role="group" aria-label={m['dashboard.providers.form.catalog_models']()}>
-                      <FieldLabel>{m['dashboard.providers.form.catalog_models']()}</FieldLabel>
-                      <div className="grid gap-2 sm:grid-cols-2">
-                        {catalogResult.models.map((model) => (
-                          <Label key={model} className="rounded-lg border p-3">
-                            <Checkbox
-                              checked={models.includes(model)}
-                              onClick={() => toggleModel(model, !models.includes(model))}
-                            />
-                            <span className="truncate">{model}</span>
-                          </Label>
-                        ))}
-                      </div>
-                    </Field>
-                  )
-                ) : catalogResult === undefined ? null : (
-                  <p role="status" className="rounded-lg border bg-muted p-3 text-sm">
-                    {m['dashboard.providers.form.catalog_failed']({ code: catalogResult.error.code })}
-                  </p>
-                )}
+                {catalogContent}
 
                 <Field>
                   <FieldLabel>{m['dashboard.providers.form.enabled_models']()}</FieldLabel>

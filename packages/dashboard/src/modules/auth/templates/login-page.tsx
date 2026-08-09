@@ -28,6 +28,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({ reason }) => {
       if (!result.ok) setError(result.error);
     },
   });
+  let errorMessage: string | undefined;
+  if (error === 'invalid') errorMessage = m['dashboard.auth.login.invalid']();
+  else if (error === 'rate-limited') errorMessage = m['dashboard.auth.login.rate_limited']();
+  else if (error !== undefined) errorMessage = m['dashboard.auth.login.unavailable']();
 
   return (
     <main className="flex min-h-dvh items-center justify-center bg-sidebar px-4 py-8">
@@ -80,11 +84,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ reason }) => {
             </form.Field>
             {error === undefined ? null : (
               <p role="alert" className="text-sm text-destructive">
-                {error === 'invalid'
-                  ? m['dashboard.auth.login.invalid']()
-                  : error === 'rate-limited'
-                    ? m['dashboard.auth.login.rate_limited']()
-                    : m['dashboard.auth.login.unavailable']()}
+                {errorMessage}
               </p>
             )}
             <form.Subscribe selector={(state) => [state.canSubmit, state.isSubmitting] as const}>

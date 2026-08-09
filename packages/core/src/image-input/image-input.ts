@@ -31,7 +31,7 @@ const dataImageUrl = /^data:(image\/[A-Za-z0-9!#$&^_.+-]+);base64,([^,]+)$/u;
 
 export function isValidBase64(value: string): boolean {
   if (value.length === 0 || value.length % 4 !== 0) return false;
-  const padding = value.endsWith('==') ? 2 : value.endsWith('=') ? 1 : 0;
+  const padding = value.endsWith('==') ? 2 : Number(value.endsWith('='));
   for (let index = 0; index < value.length - padding; index += 1) {
     const code = value.charCodeAt(index);
     const isAlphabet =

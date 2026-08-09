@@ -209,28 +209,28 @@ test.each([
   ['missing capability', 'CAPABILITY_MISSING', 'capability'],
 ])('preserves the %s diagnostic', async (_name, code, state) => {
   const { fixture, input } = options();
-  const plugins =
-    state === 'failed'
-      ? {
-          ...fixture.plugins,
-          plugins: new Map([
-            [
-              config.plugin,
-              {
-                packageName: config.plugin,
-                version: '1.0.0',
-                builtIn: false,
-                state: {
-                  status: 'failed',
-                  diagnostic: diagnostics('PLUGIN_LOAD_FAILED', { retryable: false }),
-                },
-              },
-            ],
-          ]),
-        }
-      : state === 'capability'
-        ? { ...fixture.plugins, registry: { resolveOAuth: () => undefined, oauthCapabilities: () => [] } }
-        : { ...fixture.plugins, plugins: new Map() };
+  let plugins = { ...fixture.plugins, plugins: new Map() };
+  if (state === 'capability') {
+    plugins = { ...fixture.plugins, registry: { resolveOAuth: () => undefined, oauthCapabilities: () => [] } };
+  } else if (state === 'failed') {
+    plugins = {
+      ...fixture.plugins,
+      plugins: new Map([
+        [
+          config.plugin,
+          {
+            packageName: config.plugin,
+            version: '1.0.0',
+            builtIn: false,
+            state: {
+              status: 'failed',
+              diagnostic: diagnostics('PLUGIN_LOAD_FAILED', { retryable: false }),
+            },
+          },
+        ],
+      ]),
+    };
+  }
   const error = await expectPreparationError({ ...input, plugins: plugins as never });
   expect(error).toMatchObject({ code, accountSummary: {}, suggestLogin: false });
 });

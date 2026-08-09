@@ -5,7 +5,7 @@ import { Skeleton } from '@aio-proxy/ui/components/skeleton';
 import { toast } from '@aio-proxy/ui/components/toast';
 import { useNavigate } from '@tanstack/react-router';
 import { Copy, RefreshCw } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 
 import { PageContainer } from '@/components/page-container';
 
@@ -28,14 +28,6 @@ export const TraceDetailPage: React.FC<TraceDetailPageProps> = ({ traceId }) => 
     query.data?.spans.find((span) => span.spanId === selectedSpanId) ??
     query.data?.spans.find((span) => span.spanId === query.data?.trace.rootSpanId) ??
     query.data?.spans[0];
-
-  useEffect(() => {
-    if (query.data === undefined || query.data.spans.some((span) => span.spanId === selectedSpanId)) return;
-    setSelectedSpanId(
-      query.data.spans.find((span) => span.spanId === query.data?.trace.rootSpanId)?.spanId ??
-        query.data.spans[0]?.spanId,
-    );
-  }, [query.data, selectedSpanId]);
 
   const refresh = (
     <Button variant="outline" onClick={() => void query.refetch()}>

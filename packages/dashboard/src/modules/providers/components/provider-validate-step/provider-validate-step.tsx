@@ -20,12 +20,16 @@ export const ProviderValidateStep: React.FC<ProviderValidateStepProps> = ({ form
   const selectedModel = configuredModel !== undefined && models.includes(configuredModel) ? configuredModel : models[0];
   const testMutation = useProviderTestMutation(form, persistedProviderId);
   const tested = testMutation.data;
-  const result =
-    tested !== undefined && tested.model === selectedModel
-      ? tested.result
-      : testMutation.isError && testMutation.variables === selectedModel
-        ? ({ ok: false, error: { code: 'test_request_failed', recoverable: true } } as const)
-        : null;
+  let result: typeof tested.result | null = null;
+  if (tested !== undefined && tested.model === selectedModel) result = tested.result;
+  else if (testMutation.isError && testMutation.variables === selectedModel) {
+    result = { ok: false, error: { code: 'test_request_failed', recoverable: true } };
+  }
+  let resultMessage: string | undefined;
+  if (result?.ok) resultMessage = m['dashboard.providers.editor.validate_success']();
+  else if (result?.error.code === 'invalid_draft') resultMessage = m['dashboard.providers.editor.validate_invalid']();
+  else if (result !== null)
+    resultMessage = m['dashboard.providers.editor.validate_failed']({ code: result.error.code });
 
   return (
     <section className="space-y-5" aria-labelledby="provider-validate-heading">
@@ -76,11 +80,7 @@ export const ProviderValidateStep: React.FC<ProviderValidateStepProps> = ({ form
       </Button>
       {result === null ? null : (
         <p role={result.ok ? 'status' : 'alert'} className="rounded-lg border bg-muted p-3 text-sm">
-          {result.ok
-            ? m['dashboard.providers.editor.validate_success']()
-            : result.error.code === 'invalid_draft'
-              ? m['dashboard.providers.editor.validate_invalid']()
-              : m['dashboard.providers.editor.validate_failed']({ code: result.error.code })}
+          {resultMessage}
         </p>
       )}
     </section>

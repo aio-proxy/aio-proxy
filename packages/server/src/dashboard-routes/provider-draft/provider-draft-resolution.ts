@@ -87,7 +87,9 @@ function hasSameProviderIdentity(previous: Provider, draft: DashboardProviderDra
 }
 
 function hasSameProxyIdentity(previous: string | false | undefined, draft: string | false | null | undefined): boolean {
-  const resolved = draft === undefined ? previous : draft === null ? undefined : draft;
+  let resolved: string | false | undefined;
+  if (draft === undefined) resolved = previous;
+  else if (draft !== null) resolved = draft;
   return resolved === previous;
 }
 

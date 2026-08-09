@@ -64,12 +64,9 @@ export function parseProviderFormInitial(value: unknown): ProviderFormInitial | 
   if (value === null || typeof value !== 'object' || !('kind' in value)) return undefined;
   const redactedProxy = 'proxy' in value && value.proxy === '****';
   const candidate = redactedProxy ? { ...value, proxy: undefined } : value;
-  const schema =
-    value.kind === ProviderKind.Api
-      ? ApiProviderMutationBodySchema
-      : value.kind === ProviderKind.AiSdk
-        ? AiSdkProviderMutationBodySchema
-        : undefined;
+  let schema: typeof ApiProviderMutationBodySchema | typeof AiSdkProviderMutationBodySchema | undefined;
+  if (value.kind === ProviderKind.Api) schema = ApiProviderMutationBodySchema;
+  else if (value.kind === ProviderKind.AiSdk) schema = AiSdkProviderMutationBodySchema;
   if (schema === undefined) return undefined;
   const result = schema.safeParse(candidate);
   return result.success ? { ...result.data, ...(redactedProxy ? { proxy: '****' } : {}) } : undefined;

@@ -18,18 +18,14 @@ export interface RequestTransformStaticValueEditorProps {
   readonly onValidityChange: (valid: boolean) => void;
 }
 
-const valueType = (value: JsonValue): StaticValueType =>
-  value === null
-    ? 'null'
-    : Array.isArray(value)
-      ? 'array'
-      : typeof value === 'string'
-        ? 'text'
-        : typeof value === 'number'
-          ? 'number'
-          : typeof value === 'boolean'
-            ? 'boolean'
-            : 'object';
+const valueType = (value: JsonValue): StaticValueType => {
+  if (value === null) return 'null';
+  if (Array.isArray(value)) return 'array';
+  if (typeof value === 'string') return 'text';
+  if (typeof value === 'number') return 'number';
+  if (typeof value === 'boolean') return 'boolean';
+  return 'object';
+};
 
 const valueDraft = (value: JsonValue): string =>
   typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean'

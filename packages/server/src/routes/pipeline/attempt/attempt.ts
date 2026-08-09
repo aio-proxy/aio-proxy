@@ -110,6 +110,10 @@ export async function attemptCandidates<TRequest, TContext>(
     const provider = candidate.provider;
     const startedAt = performance.now();
     const observation = createAttemptResponseObservation({ startedAt });
+    let selectionReason: CandidateSlot['trace']['selectionReason'] = 'weight';
+    if (resolution.affinity?.active === true && resolution.affinity.providerId === provider.id)
+      selectionReason = 'affinity';
+    if (resolution.responseOwner?.providerId === provider.id) selectionReason = 'response_owner';
     const slot: CandidateSlot = {
       index,
       candidate,
@@ -119,12 +123,7 @@ export async function attemptCandidates<TRequest, TContext>(
       trace: {
         ...(weightByProviderId === undefined ? {} : { providerWeight: weightByProviderId.get(provider.id) ?? 0 }),
         sourceProtocol: adapter.protocol,
-        selectionReason:
-          resolution.responseOwner?.providerId === provider.id
-            ? 'response_owner'
-            : resolution.affinity?.active === true && resolution.affinity.providerId === provider.id
-              ? 'affinity'
-              : 'weight',
+        selectionReason,
       },
       inAttempt: <T>(targetProtocol: CandidateSlot['trace']['targetProtocol'], operation: () => T): T =>
         withAttemptResponseObservation(observation, () =>

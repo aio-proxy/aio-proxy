@@ -30,15 +30,11 @@ export const ProviderRequestTransformsEditor: React.FC<ProviderRequestTransforms
   onChange,
   onValidityChange,
 }) => {
-  const [mode, setMode] = useState<'visual' | 'json'>('visual');
+  const [mode, setMode] = useState<'visual' | 'json'>(() => (canEditVisually(value) ? 'visual' : 'json'));
   const [visualValid, setVisualValid] = useState(true);
   const [jsonValid, setJsonValid] = useState(true);
   const visualCompatible = useMemo(() => canEditVisually(value), [value]);
   const activeMode = visualCompatible ? mode : 'json';
-
-  useEffect(() => {
-    if (!visualCompatible) setMode('json');
-  }, [visualCompatible]);
 
   useEffect(() => {
     onValidityChange(activeMode === 'visual' ? visualValid : jsonValid);

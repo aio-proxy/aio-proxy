@@ -172,8 +172,6 @@ function buildAccountWrite(ctx: StageContext, providerId: string, currentAccount
             kind: 'replace',
             value: { catalog: discovered.catalog, refreshedAt: (ctx.options.now ?? Date.now)() },
           } as const)
-        : currentAccount === null
-          ? ({ kind: 'missing', diagnostic: catalogDiagnostic } as const)
-          : ({ kind: 'preserve', diagnostic: catalogDiagnostic } as const),
+        : ({ kind: currentAccount === null ? 'missing' : 'preserve', diagnostic: catalogDiagnostic } as const),
   };
 }

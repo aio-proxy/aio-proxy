@@ -29,21 +29,17 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
 }) => {
   const { resolvedTheme } = useTheme();
   const editorRef = useRef<Parameters<OnMount>[0]>(null);
-  const invalidRef = useRef(invalid);
-  const ariaDescribedByRef = useRef(ariaDescribedBy);
-  const onMountRef = useRef(onMount);
-  invalidRef.current = invalid;
-  ariaDescribedByRef.current = ariaDescribedBy;
-  onMountRef.current = onMount;
+  const latestPropsRef = useRef({ invalid, ariaDescribedBy, onMount });
 
   useEffect(() => {
+    latestPropsRef.current = { invalid, ariaDescribedBy, onMount };
     if (editorRef.current) setCodeEditorAriaInvalid(editorRef.current, invalid, ariaDescribedBy);
-  }, [ariaDescribedBy, invalid]);
+  }, [ariaDescribedBy, invalid, onMount]);
 
   const handleMount: OnMount = (editor, monaco) => {
     editorRef.current = editor;
-    setCodeEditorAriaInvalid(editor, invalidRef.current, ariaDescribedByRef.current);
-    onMountRef.current?.(editor, monaco);
+    setCodeEditorAriaInvalid(editor, latestPropsRef.current.invalid, latestPropsRef.current.ariaDescribedBy);
+    latestPropsRef.current.onMount?.(editor, monaco);
   };
 
   return (

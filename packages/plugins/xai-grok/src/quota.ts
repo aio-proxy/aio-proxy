@@ -91,7 +91,7 @@ function record(value: unknown): BillingObject | undefined {
 function number(value: unknown): number | undefined {
   const trimmed = typeof value === 'string' ? value.trim() : undefined;
   if (trimmed === '') return undefined;
-  const parsed = typeof value === 'number' ? value : trimmed === undefined ? Number.NaN : Number(trimmed);
+  const parsed = typeof value === 'number' ? value : Number(trimmed);
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
