@@ -7,6 +7,7 @@ export default defineConfig({
   categories: {
     correctness: 'error',
   },
+  plugins: ['react'],
   jsPlugins: [{ name: 'logtape', specifier: '@logtape/lint/eslint' }],
   rules: {
     'unicorn/filename-case': [
@@ -19,6 +20,8 @@ export default defineConfig({
       },
     ],
     'unicorn/no-nested-ternary': 'error',
+    'react/no-multi-comp': 'error',
+    'react-hooks/exhaustive-deps': 'off',
     'import/no-duplicates': 'error',
     'max-lines-per-function': [
       'error',
