@@ -84,7 +84,7 @@ async function prepareContext(
       throw new OAuthQuotaCapabilityUnavailableError();
     }
     const secretValues = new Set(prepared.secretValues);
-    const runtimeFetch = (lease.snapshot as Snapshot).runtimeCache.get(providerId)?.fetch;
+    const runtimeFetch = (lease.snapshot as Partial<Snapshot>).runtimeCache?.get(providerId)?.fetch;
     return {
       adapter: prepared.adapter as PreparedOAuthQuotaContext['adapter'],
       accountContext: {
