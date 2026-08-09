@@ -81,6 +81,43 @@ test('materializes a configured API provider with raw and bridged model capabili
   expect(runtime.providers[0]?.model?.invoke).toBe(bridge.invoke);
 });
 
+test('materializes API metadata into the config layer only', () => {
+  const config = ConfigSchema.parse({
+    providers: {
+      api: {
+        kind: 'api',
+        protocol: 'openai-compatible',
+        baseURL: 'https://api.example.com',
+        models: ['model'],
+        metadata: { model: { name: 'Configured', cost: { input: 2 } } },
+      },
+    },
+  });
+
+  const provider = materializeProviders(config).providers[0];
+  expect(provider?.configMetadata?.model).toMatchObject({ name: 'Configured', cost: { input: 2 } });
+  expect(provider?.upstreamMetadata).toBeUndefined();
+});
+
+test('materializes AI SDK metadata into the config layer only', () => {
+  const config = ConfigSchema.parse({
+    providers: {
+      sdk: {
+        kind: 'ai-sdk',
+        packageName: '@ai-sdk/openai-compatible',
+        models: ['model'],
+        metadata: { model: { name: 'Configured', cost: { input: 2 } } },
+      },
+    },
+  });
+
+  const provider = materializeProviders(config, {
+    createAiSdkProvider: (configured) => ({ ...configured, invoke: () => new ReadableStream() }),
+  }).providers[0];
+  expect(provider?.configMetadata?.model).toMatchObject({ name: 'Configured', cost: { input: 2 } });
+  expect(provider?.upstreamMetadata).toBeUndefined();
+});
+
 test('provider summaries preserve configured weight and truthful display identity', () => {
   const config = ConfigSchema.parse({
     providers: {

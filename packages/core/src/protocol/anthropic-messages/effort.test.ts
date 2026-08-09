@@ -49,3 +49,21 @@ test('accepts an unsupported effort by forwarding it verbatim when no capability
   const forwarded = await rewriteAnthropicRawEffort(raw, 'upstream', new Set());
   expect(await forwarded.json()).toMatchObject({ model: 'upstream', output_config: { effort: 'xhigh' } });
 });
+
+test.each([
+  [{ effort: 'high' }, undefined],
+  [{ effort: 'high', verbosity: 'high' }, { verbosity: 'high' }],
+])('strips effort when thinking is disabled %#', async (outputConfig, expectedOutputConfig) => {
+  const raw = anthropicRequest({
+    model: 'same',
+    messages: [{ role: 'user', content: 'hi' }],
+    thinking: { type: 'disabled' },
+    output_config: outputConfig,
+  });
+
+  const forwarded = await rewriteAnthropicRawEffort(raw, 'same', new Set(['low', 'medium', 'high']));
+  const body = (await forwarded.json()) as Record<string, unknown>;
+
+  expect(body['thinking']).toEqual({ type: 'disabled' });
+  expect(body['output_config']).toEqual(expectedOutputConfig);
+});

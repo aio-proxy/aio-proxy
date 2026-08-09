@@ -52,7 +52,6 @@ describe('POST /v1/messages', () => {
     { thinking: { type: 'enabled', budget_tokens: 1023 }, max_tokens: 8192 },
     { thinking: { type: 'enabled', budget_tokens: 8192 }, max_tokens: 8192 },
     { thinking: { type: 'adaptive' }, max_tokens: 8192 },
-    { thinking: { type: 'disabled' }, output_config: { effort: 'high' }, max_tokens: 8192 },
   ])('Given invalid thinking %# When message is posted Then it fails before a provider attempt', async (invalid) => {
     let invoked = false;
     const provider = {
@@ -83,6 +82,43 @@ describe('POST /v1/messages', () => {
       error: { type: 'invalid_request_error', message: 'Invalid Anthropic Messages request' },
     });
     expect(invoked).toBe(false);
+  });
+
+  test('Given disabled thinking with effort When message is posted Then it is routed', async () => {
+    let invoked = false;
+    const provider = {
+      id: 'mock-ai',
+      kind: 'ai-sdk',
+      models: ['claude-sonnet-4-5'],
+      alias: { 'claude-sonnet-4-5': { model: 'claude-sonnet-4-5', preserve: false } },
+      invoke() {
+        invoked = true;
+        return textStream([
+          { type: 'text-start', id: 'text-1' },
+          { type: 'text-end', id: 'text-1' },
+          { type: 'finish', finishReason: 'stop', rawFinishReason: 'stop', totalUsage: {} },
+        ]);
+      },
+    } satisfies AiSdkProviderInstance;
+    const app = await createServer({
+      config: { providers: {} },
+      dbHome: tempHome(),
+      providerInstances: [provider],
+    });
+
+    const response = await app.request('/v1/messages', {
+      body: JSON.stringify({
+        ...messagesRequest,
+        thinking: { type: 'disabled' },
+        output_config: { effort: 'high' },
+      }),
+      headers: { 'content-type': 'application/json' },
+      method: 'POST',
+    });
+    await response.text();
+
+    expect(response.status).toBe(200);
+    expect(invoked).toBe(true);
   });
 
   test('Given ai-sdk provider package is missing When stream message is posted Then Anthropic error is actionable 503 before SSE', async () => {

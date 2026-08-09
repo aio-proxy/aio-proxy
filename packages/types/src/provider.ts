@@ -104,6 +104,7 @@ export const ApiProviderAuthoringSchema = ApiProviderSchema.omit({ baseURL: true
 export const OAuthPluginProviderSchema = z.object({
   kind: z.literal(ProviderKind.OAuth).describe('Provider backed by a plugin OAuth account.'),
   ...SharedProviderSchemaBase,
+  ...metadataField,
   plugin: PluginPackageNameSchema,
   capability: CapabilityIdSchema,
   options: z.record(z.string(), z.unknown()).optional(),
@@ -221,6 +222,7 @@ export const OAuthProviderMutationBodySchema = z.strictObject({
   enabled: z.boolean().optional(),
   weight: z.number().optional(),
   proxy: ProviderMutationProxySchema,
+  ...metadataField,
   alias: z.record(z.string().min(1), AliasConfigSchema).optional().describe('Client-facing model aliases.'),
   transforms: ProviderTransformsSchema.optional().describe('Ordered outbound request transforms.'),
 });

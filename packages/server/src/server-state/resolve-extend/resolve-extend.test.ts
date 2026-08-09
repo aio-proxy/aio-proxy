@@ -77,6 +77,30 @@ describe('applyMetadataExtend', () => {
     }
   });
 
+  it('materializes metadata.extend for an OAuth Provider', async () => {
+    const config = ConfigSchema.parse({
+      providers: {
+        person: {
+          kind: 'oauth',
+          plugin: '@example/oauth',
+          capability: 'default',
+          metadata: { model: { extend: 'openai/gpt-5.5', name: 'Configured OAuth Name' } },
+        },
+      },
+    });
+    const resolved = await applyMetadataExtend(config, undefined, {
+      getModels: stubGetModels({ 'openai/gpt-5.5': catalogModel() }),
+    });
+    const provider = resolved.providers[0];
+    if (provider?.kind !== ProviderKind.OAuth) throw new Error('expected OAuth Provider');
+
+    expect(provider.metadata?.model).toMatchObject({
+      name: 'Configured OAuth Name',
+      limit: { context: 400_000, input: 300_000, output: 128_000 },
+    });
+    expect(provider.metadata?.model.extend).toBeUndefined();
+  });
+
   it('two-layer merges catalog base under user fields with array replacement', async () => {
     const config = makeConfig({
       'my-gpt': {
@@ -141,6 +165,26 @@ describe('applyMetadataExtend', () => {
     expect(call?.context.providerId).toBe('p1');
     expect(call?.error.message).toContain('openai/missing');
     expect(call?.error.message).toContain('my-gpt');
+  });
+
+  it('ignores inheritance when merged limits would be invalid', async () => {
+    const config = makeConfig({
+      'my-gpt': { extend: 'openai/gpt-5.5', name: 'Kept', limit: { input: 500_000 } },
+    });
+    const logger = mock<PluginLogSink>(() => {});
+
+    const resolved = await applyMetadataExtend(config, logger, {
+      getModels: stubGetModels({ 'openai/gpt-5.5': catalogModel() }),
+    });
+    const entry = metadataOf(resolved, 'p1')['my-gpt'];
+
+    expect(entry).toEqual({ name: 'Kept', limit: { input: 500_000 } });
+    expect(logger.mock.calls[0]?.[0]).toMatchObject({
+      event: 'metadata.extend.invalid',
+      code: 'PROVIDER_CONFIG_INVALID',
+      context: { providerId: 'p1' },
+      error: { name: 'MetadataExtendInvalid' },
+    });
   });
 
   it('passes entries without extend through untouched and skips the catalog fetch', async () => {

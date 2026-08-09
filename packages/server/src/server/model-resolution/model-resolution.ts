@@ -1,116 +1,83 @@
-import { catalogModelToMetadata, getModels, type ModelsDevModel, modelRoutes } from '@aio-proxy/core';
-import { ModelContextAggregation, type ModelMetadata } from '@aio-proxy/types';
+import { catalogModelToMetadata, getModels, modelRoutes } from '@aio-proxy/core';
+import { ModelContextAggregation, type ModelCapabilities, type ModelLimit, type ModelMetadata } from '@aio-proxy/types';
 import { mergeWith } from 'es-toolkit/object';
 
-import type { RuntimeProviderInstance } from '../../runtime';
+import type { RuntimeModelMetadata, RuntimeProviderInstance } from '../../runtime';
 import type { ServerState } from '../../server-state';
+
+export type ResolvedModelCandidate = {
+  readonly modelId: string;
+  readonly provider: RuntimeProviderInstance;
+  readonly configMetadata: ModelMetadata | undefined;
+  readonly upstreamMetadata: RuntimeModelMetadata | undefined;
+};
 
 export type ResolvedModel = {
   readonly slug: string;
   readonly modelId: string;
   readonly provider: RuntimeProviderInstance;
-  readonly metadata: ModelsDevModel | undefined;
-  readonly displayName: string;
-  // Client-facing context window after config override + cross-provider
-  // aggregation; undefined => downstream applies its own default.
-  readonly contextWindow: number | undefined;
-  // Config-overridden metadata merged over the alias-slug catalog entry (catalog
-  // under, config wins, arrays replace). Drives the /v1/models projection so
-  // config capabilities/limit.output/modalities surface, not just the raw catalog.
-  readonly effectiveMetadata: ModelMetadata | undefined;
-  // Max input tokens (config limit.input ?? catalog limit.input). Distinct from
-  // contextWindow (total context); never falls back to context.
-  readonly maxInput: number | undefined;
+  readonly candidates: readonly ResolvedModelCandidate[];
+  readonly fallbackMetadata: ModelMetadata | undefined;
+  readonly aggregation: (typeof ModelContextAggregation)[keyof typeof ModelContextAggregation];
 };
 
-type ModelRouteCandidate = {
-  readonly slug: string;
-  readonly modelId: string;
-  readonly provider: RuntimeProviderInstance;
-};
-
-// An alias is a fully self-contained public view: metadata is read only from the
-// alias slug's own catalog entry, never from the upstream modelId. The upstream
-// model's catalog name/capabilities/token limits must not leak to clients.
-function resolveDisplayName(
-  provider: RuntimeProviderInstance,
-  modelId: string,
-  slug: string,
-  metadata: ModelsDevModel | undefined,
-): string {
-  const catalogName = metadata !== undefined && metadata.name !== metadata.id ? metadata.name : undefined;
-  return provider.metadata?.[modelId]?.name ?? catalogName ?? slug;
+export function resolveModelField<T>(
+  model: ResolvedModel,
+  select: (metadata: ModelMetadata) => T | undefined,
+): T | undefined {
+  const primary = model.candidates[0]!;
+  const read = (metadata: ModelMetadata | undefined) => (metadata === undefined ? undefined : select(metadata));
+  return read(primary.configMetadata) ?? read(primary.upstreamMetadata) ?? read(model.fallbackMetadata);
 }
 
-// Effective context window for one candidate: config override wins over catalog.
-// Config limit.context preferred, then limit.input; models.dev exposes input or context.
-function candidateContextWindow(
-  provider: RuntimeProviderInstance,
-  modelId: string,
-  metadata: ModelsDevModel | undefined,
-): number | undefined {
-  const limit = provider.metadata?.[modelId]?.limit;
-  return limit?.context ?? limit?.input ?? metadata?.limit.input ?? metadata?.limit.context;
+export function resolveModelCapabilities(model: ResolvedModel): ModelCapabilities | undefined {
+  const primary = model.candidates[0]!;
+  const sources = [
+    model.fallbackMetadata?.capabilities,
+    primary.upstreamMetadata?.capabilities,
+    primary.configMetadata?.capabilities,
+  ].filter((value): value is ModelCapabilities => value !== undefined);
+  if (sources.length === 0) return undefined;
+
+  let resolved: ModelCapabilities = {};
+  for (const source of sources) {
+    resolved = mergeWith(resolved, source, (_target, sourceValue) =>
+      Array.isArray(sourceValue) ? sourceValue : undefined,
+    );
+  }
+  return resolved;
 }
 
-// Effective metadata for the public slug: the alias-slug catalog entry as the
-// base layer, config metadata for the primary candidate's upstream modelId merged
-// on top (user wins; arrays replace). Same direction/customizer as resolve-extend.
-function effectiveMetadata(
-  provider: RuntimeProviderInstance,
-  modelId: string,
-  metadata: ModelsDevModel | undefined,
-): ModelMetadata | undefined {
-  const config = provider.metadata?.[modelId];
-  const base = metadata === undefined ? undefined : catalogModelToMetadata(metadata);
-  if (base === undefined) return config === undefined ? undefined : stripProtocol(config);
-  if (config === undefined) return base;
-  return mergeWith(base, stripProtocol(config), (_target, source) => (Array.isArray(source) ? source : undefined));
-}
-
-// RuntimeModelMetadata carries a runtime-only `protocol`; drop it so the merged
-// view is a clean ModelMetadata (protocol is not a client-facing metadata field).
-function stripProtocol(meta: ModelMetadata & { protocol?: unknown }): ModelMetadata {
-  const { protocol: _protocol, ...rest } = meta;
-  return rest;
-}
-
-// Max input tokens for one candidate: config limit.input wins over catalog
-// limit.input. Never falls back to the context window (context !== max input).
-function candidateMaxInput(
-  provider: RuntimeProviderInstance,
-  modelId: string,
-  metadata: ModelsDevModel | undefined,
-): number | undefined {
-  return provider.metadata?.[modelId]?.limit?.input ?? metadata?.limit.input;
-}
-
-// The same public slug from multiple providers can carry different windows.
-// min = usable on every channel (conservative); max = largest any offers.
-// Absent values do not participate.
-function aggregateContextWindow(
-  values: readonly (number | undefined)[],
-  aggregation: (typeof ModelContextAggregation)[keyof typeof ModelContextAggregation],
-): number | undefined {
-  const present = values.filter((value): value is number => value !== undefined);
-  if (present.length === 0) return undefined;
-  return aggregation === ModelContextAggregation.Max ? Math.max(...present) : Math.min(...present);
+export function resolveAggregatedLimit(model: ResolvedModel, field: keyof ModelLimit): number | undefined {
+  const values = model.candidates.flatMap((candidate) => {
+    const value = [
+      candidate.configMetadata?.limit?.[field],
+      candidate.upstreamMetadata?.limit?.[field],
+      model.fallbackMetadata?.limit?.[field],
+    ].find(
+      (candidate): candidate is number =>
+        typeof candidate === 'number' && Number.isSafeInteger(candidate) && candidate > 0,
+    );
+    return value === undefined ? [] : [value];
+  });
+  if (values.length === 0) return undefined;
+  return model.aggregation === ModelContextAggregation.Max ? Math.max(...values) : Math.min(...values);
 }
 
 export async function resolveEnabledModels(state: ServerState): Promise<readonly ResolvedModel[]> {
   const lease = state.acquireProviderSnapshot();
   try {
     const aggregation = lease.snapshot.config?.router.modelContextAggregation ?? ModelContextAggregation.Min;
-
-    // Group every route by its public slug, preserving first-seen (config/weight)
-    // order. Grouping-by-slug for cross-provider window aggregation needs mutation,
-    // an early continue, and first-seen ordering, so an imperative Map is clearer
-    // than a functional pipeline here.
-    const bySlug = new Map<string, ModelRouteCandidate[]>();
+    const bySlug = new Map<string, ResolvedModelCandidate[]>();
     for (const provider of lease.snapshot.providers) {
       if (!provider.enabled) continue;
       for (const route of modelRoutes(provider)) {
-        const candidate = { slug: route.alias, modelId: route.modelId, provider };
+        const candidate: ResolvedModelCandidate = {
+          modelId: route.modelId,
+          provider,
+          configMetadata: provider.configMetadata?.[route.modelId],
+          upstreamMetadata: provider.upstreamMetadata?.[route.modelId],
+        };
         const group = bySlug.get(route.alias);
         if (group === undefined) bySlug.set(route.alias, [candidate]);
         else group.push(candidate);
@@ -118,33 +85,23 @@ export async function resolveEnabledModels(state: ServerState): Promise<readonly
     }
 
     const slugs = [...bySlug.keys()];
-    // metadata is read from the alias slug's own catalog entry, never the
-    // upstream modelId, so a single batched lookup keyed by slug suffices.
     const metadataBySlug = slugs.length === 0 ? {} : await getModels(slugs).catch(() => ({}));
 
     return slugs.map((slug): ResolvedModel => {
       const candidates = bySlug.get(slug)!;
-      const metadata = metadataBySlug[slug];
-      // The first candidate (config/weight order) supplies the public identity;
-      // only the context window aggregates across every provider on this slug.
       const primary = candidates[0]!;
-      const contextWindow = aggregateContextWindow(
-        candidates.map((candidate) => candidateContextWindow(candidate.provider, candidate.modelId, metadata)),
-        aggregation,
-      );
-      const maxInput = aggregateContextWindow(
-        candidates.map((candidate) => candidateMaxInput(candidate.provider, candidate.modelId, metadata)),
-        aggregation,
-      );
+      const fallback = metadataBySlug[slug];
+      let fallbackMetadata: ModelMetadata | undefined;
+      try {
+        fallbackMetadata = fallback === undefined ? undefined : catalogModelToMetadata(fallback);
+      } catch {}
       return {
         slug,
         modelId: primary.modelId,
         provider: primary.provider,
-        metadata,
-        displayName: resolveDisplayName(primary.provider, primary.modelId, slug, metadata),
-        contextWindow,
-        effectiveMetadata: effectiveMetadata(primary.provider, primary.modelId, metadata),
-        maxInput,
+        candidates,
+        fallbackMetadata,
+        aggregation,
       };
     });
   } finally {

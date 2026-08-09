@@ -45,7 +45,7 @@ export function materializeRuntimeProvider(
       enabled: provider.enabled,
       ...(provider.models === undefined ? {} : { models: provider.models }),
       ...(provider.alias === undefined ? {} : { alias: provider.alias }),
-      ...(provider.metadata === undefined ? {} : { metadata: provider.metadata }),
+      ...(provider.metadata === undefined ? {} : { configMetadata: provider.metadata }),
       hasApiKey: provider.apiKey !== undefined,
       raw: {
         resolve: ({ protocol }) =>
@@ -72,7 +72,7 @@ export function materializeRuntimeProvider(
       enabled: provider.enabled,
       ...(provider.models === undefined ? {} : { models: provider.models }),
       ...(provider.alias === undefined ? {} : { alias: provider.alias }),
-      ...(provider.metadata === undefined ? {} : { metadata: provider.metadata }),
+      ...(provider.metadata === undefined ? {} : { configMetadata: provider.metadata }),
       model: {
         ...(provider.ensureAvailable === undefined ? {} : { ensureAvailable: provider.ensureAvailable }),
         invoke: provider.invoke,

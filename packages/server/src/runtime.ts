@@ -51,7 +51,8 @@ type RuntimeProviderBase = {
   readonly enabled: boolean;
   readonly models?: readonly ModelId[];
   readonly alias?: Readonly<Record<string, AliasConfig>>;
-  readonly metadata?: Readonly<Record<ModelId, RuntimeModelMetadata>>;
+  readonly configMetadata?: Readonly<Record<ModelId, ModelMetadata>>;
+  readonly upstreamMetadata?: Readonly<Record<ModelId, RuntimeModelMetadata>>;
   readonly plugin?: string;
   readonly capability?: string;
   readonly hasApiKey?: boolean;

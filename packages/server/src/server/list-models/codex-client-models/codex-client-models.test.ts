@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { clearModelsCache, fileCacheStorage } from '@aio-proxy/core';
-import { ProviderKind } from '@aio-proxy/types';
+import { ModelContextAggregation, ProviderKind } from '@aio-proxy/types';
 import type { Model, ProviderMap } from '@opencode-ai/models';
 
 import type { RuntimeProviderInstance } from '../../../runtime';
@@ -23,9 +23,18 @@ const provider = {
   model: { invoke: async function* () {} },
 } as unknown as RuntimeProviderInstance;
 
-function fakeState(): ServerState {
+function fakeState(
+  providers: readonly RuntimeProviderInstance[] = [provider],
+  aggregation?: (typeof ModelContextAggregation)[keyof typeof ModelContextAggregation],
+): ServerState {
   return {
-    acquireProviderSnapshot: () => ({ snapshot: { providers: [provider] }, release() {} }),
+    acquireProviderSnapshot: () => ({
+      snapshot: {
+        providers,
+        ...(aggregation === undefined ? {} : { config: { router: { modelContextAggregation: aggregation } } }),
+      },
+      release() {},
+    }),
   } as unknown as ServerState;
 }
 
@@ -39,7 +48,7 @@ const upstream = {
   availability_nux: { message: 'keep me' },
 };
 
-const model = (id: string, name: string): Model => ({
+const model = (id: string, name: string, overrides: Partial<Model> = {}): Model => ({
   attachment: false,
   description: '',
   id,
@@ -51,6 +60,7 @@ const model = (id: string, name: string): Model => ({
   reasoning: false,
   release_date: '2026-01-15',
   tool_call: false,
+  ...overrides,
 });
 
 const providerMap: ProviderMap = {
@@ -58,7 +68,11 @@ const providerMap: ProviderMap = {
     doc: 'https://example.com/openai',
     env: [],
     id: 'openai',
-    models: { 'gpt-5': model('gpt-5', 'GPT-5') },
+    models: {
+      'gpt-5': model('gpt-5', 'GPT-5', {
+        limit: { context: 1_050_000, input: 922_000, output: 128_000 },
+      }),
+    },
     name: 'OpenAI',
     npm: '@ai-sdk/openai',
   },
@@ -113,9 +127,33 @@ test('case A returns upstream verbatim with alias slug/id; case B synthesizes wi
   expect((caseBEntry.base_instructions as string).includes('based on my-alias.')).toBe(true);
 });
 
-test('config context overrides win in both the upstream row (case A) and the synthesized entry (case B)', async () => {
-  // Provider config caps gpt-5.6-sol (case A upstream row) at 250k and third-party-model
-  // (case B synthesized) at 750k. Both must project into the Codex ModelInfo.
+test('official Codex windows beat larger models.dev fallback limits', async () => {
+  const officialRow = { ...upstream, context_window: 272_000, max_context_window: 272_000 };
+  const fetchImpl = (async () => Response.json({ models: [officialRow] })) as unknown as typeof fetch;
+  const { models } = await codexClientModels(fakeState(), { fetchImpl });
+
+  const official = models.find((entry) => entry.id === 'gpt-5') as Record<string, unknown>;
+  expect(official.context_window).toBe(272_000);
+  expect(official.max_context_window).toBe(272_000);
+});
+
+test('configured generic limits override official Codex windows as a distinct pair', async () => {
+  const configured = {
+    ...provider,
+    configMetadata: {
+      'gpt-5.6-sol': { limit: { context: 1_050_000, input: 922_000, output: 128_000 } },
+    },
+  } as unknown as RuntimeProviderInstance;
+  const officialRow = { ...upstream, context_window: 272_000, max_context_window: 272_000 };
+  const fetchImpl = (async () => Response.json({ models: [officialRow] })) as unknown as typeof fetch;
+  const { models } = await codexClientModels(fakeState([configured]), { fetchImpl });
+
+  const official = models.find((entry) => entry.id === 'gpt-5') as Record<string, unknown>;
+  expect(official.context_window).toBe(922_000);
+  expect(official.max_context_window).toBe(1_050_000);
+});
+
+test('configured composite limits win in both matching-row case A and synthesized case B', async () => {
   const configured = {
     id: 'p1',
     kind: ProviderKind.OAuth,
@@ -124,34 +162,171 @@ test('config context overrides win in both the upstream row (case A) and the syn
       'gpt-5': { model: 'gpt-5.6-sol', preserve: false },
       'my-alias': { model: 'third-party-model', preserve: false },
     },
-    metadata: {
-      'gpt-5.6-sol': { limit: { context: 250_000 } },
-      'third-party-model': { limit: { context: 750_000 } },
+    configMetadata: {
+      'gpt-5.6-sol': { limit: { context: 400_000, input: 272_000, output: 128_000 } },
+      'third-party-model': { limit: { context: 400_000, input: 272_000, output: 128_000 } },
     },
     model: { invoke: async function* () {} },
   } as unknown as RuntimeProviderInstance;
-  const state = {
-    acquireProviderSnapshot: () => ({ snapshot: { providers: [configured] }, release() {} }),
-  } as unknown as ServerState;
 
-  // Upstream row advertises its own context window; the config override must win.
-  const upstreamRow = { ...upstream, context_window: 111_000, max_context_window: 111_000 };
+  const upstreamRow = { ...upstream, context_window: 272_000, max_context_window: 272_000 };
   const fetchImpl = (async () => Response.json({ models: [upstreamRow] })) as unknown as typeof fetch;
-  const { models } = await codexClientModels(state, { fetchImpl });
+  const { models } = await codexClientModels(fakeState([configured]), { fetchImpl });
 
   const caseA = models.find((m) => m.id === 'gpt-5') as Record<string, unknown>;
-  expect(caseA.context_window).toBe(250_000);
-  expect(caseA.max_context_window).toBe(250_000);
+  expect(caseA.context_window).toBe(272_000);
+  expect(caseA.max_context_window).toBe(400_000);
 
   const caseB = models.find((m) => m.id === 'my-alias') as Record<string, unknown>;
-  expect(caseB.context_window).toBe(750_000);
-  expect(caseB.max_context_window).toBe(750_000);
+  expect(caseB.context_window).toBe(272_000);
+  expect(caseB.max_context_window).toBe(400_000);
+});
+
+test('case A applies mapped config fields without dropping official-only fields', async () => {
+  const configured = {
+    ...provider,
+    configMetadata: {
+      'gpt-5.6-sol': {
+        name: 'Configured Name',
+        description: 'Configured description',
+        capabilities: {
+          modalities: { input: ['text'] },
+          reasoning: true,
+          reasoningOptions: [{ type: 'effort', values: ['high', 'max'] }],
+        },
+      },
+    },
+  } as unknown as RuntimeProviderInstance;
+  const officialRow = {
+    ...upstream,
+    display_name: 'Official Name',
+    description: 'Official description',
+    context_window: 272_000,
+    max_context_window: 272_000,
+    input_modalities: ['text', 'image'],
+    supported_reasoning_levels: [{ effort: 'low', description: 'official' }],
+    default_reasoning_level: 'low',
+    service_tiers: [{ name: 'priority' }],
+  };
+  const fetchImpl = (async () => Response.json({ models: [officialRow] })) as unknown as typeof fetch;
+  const { models } = await codexClientModels(fakeState([configured]), { fetchImpl });
+
+  const entry = models.find((item) => item.id === 'gpt-5') as Record<string, unknown>;
+  expect(entry.display_name).toBe('Configured Name');
+  expect(entry.description).toBe('Configured description');
+  expect(entry.input_modalities).toEqual(['text']);
+  expect((entry.supported_reasoning_levels as { effort: string }[]).map(({ effort }) => effort)).toEqual([
+    'high',
+    'max',
+  ]);
+  expect(entry.default_reasoning_level).toBe('high');
+  expect(entry.availability_nux).toEqual({ message: 'keep me' });
+  expect(entry.base_instructions).toBe('UPSTREAM VERBATIM');
+  expect(entry.service_tiers).toEqual([{ name: 'priority' }]);
+});
+
+test('a config reasoning flag without effort values leaves official reasoning levels intact', async () => {
+  const configured = {
+    ...provider,
+    configMetadata: { 'gpt-5.6-sol': { capabilities: { reasoning: true } } },
+  } as unknown as RuntimeProviderInstance;
+  const officialRow = {
+    ...upstream,
+    supported_reasoning_levels: [{ effort: 'high', description: 'official' }],
+    default_reasoning_level: 'high',
+  };
+  const fetchImpl = (async () => Response.json({ models: [officialRow] })) as unknown as typeof fetch;
+  const { models } = await codexClientModels(fakeState([configured]), { fetchImpl });
+
+  const entry = models.find((item) => item.id === 'gpt-5') as Record<string, unknown>;
+  expect(entry.supported_reasoning_levels).toEqual([{ effort: 'high', description: 'official' }]);
+  expect(entry.default_reasoning_level).toBe('high');
+});
+
+test.each([
+  ['non-positive', { context_window: 0, max_context_window: -1 }],
+  ['non-integer', { context_window: 272_000.5, max_context_window: 400_000 }],
+  ['reversed', { context_window: 400_000, max_context_window: 272_000 }],
+])('ignores %s official windows and resolves a valid fallback pair', async (_label, invalidWindows) => {
+  const fetchImpl = (async () =>
+    Response.json({ models: [{ ...upstream, ...invalidWindows }] })) as unknown as typeof fetch;
+  const { models } = await codexClientModels(fakeState(), { fetchImpl });
+
+  const entry = models.find((item) => item.id === 'gpt-5') as Record<string, unknown>;
+  expect(entry.context_window).toBe(922_000);
+  expect(entry.max_context_window).toBe(1_050_000);
+});
+
+test('falls back to static valid windows when official and models.dev windows are unavailable', async () => {
+  await fileCacheStorage.setItem('models-dev-providers', {
+    ...providerMap,
+    openai: { ...providerMap.openai, models: {} },
+    openrouter: { ...providerMap.openrouter, models: {} },
+  });
+  clearModelsCache();
+  const invalidRow = { ...upstream, context_window: 400_000, max_context_window: 272_000 };
+  const fetchImpl = (async () => Response.json({ models: [invalidRow] })) as unknown as typeof fetch;
+  const { models } = await codexClientModels(fakeState(), { fetchImpl });
+
+  const entry = models.find((item) => item.id === 'gpt-5') as Record<string, unknown>;
+  expect(entry.context_window).toBe(272_000);
+  expect(entry.max_context_window).toBe(272_000);
+});
+
+test('an empty models.dev map leaves a valid official Codex pair unchanged', async () => {
+  await fileCacheStorage.setItem('models-dev-providers', {
+    ...providerMap,
+    openai: { ...providerMap.openai, models: {} },
+    openrouter: { ...providerMap.openrouter, models: {} },
+  });
+  clearModelsCache();
+  const officialRow = { ...upstream, context_window: 272_000, max_context_window: 400_000 };
+  const fetchImpl = (async () => Response.json({ models: [officialRow] })) as unknown as typeof fetch;
+  const { models } = await codexClientModels(fakeState(), { fetchImpl });
+
+  const entry = models.find((item) => item.id === 'gpt-5') as Record<string, unknown>;
+  expect(entry.context_window).toBe(272_000);
+  expect(entry.max_context_window).toBe(400_000);
+});
+
+test('aggregates candidate windows only after each candidate resolves its own sources', async () => {
+  const configured = {
+    id: 'configured',
+    kind: ProviderKind.Api,
+    enabled: true,
+    alias: { shared: { model: 'configured-model', preserve: false } },
+    configMetadata: {
+      'configured-model': { limit: { context: 400_000, input: 272_000, output: 128_000 } },
+    },
+    model: { invoke: async function* () {} },
+  } as unknown as RuntimeProviderInstance;
+  const official = {
+    id: 'official',
+    kind: ProviderKind.Api,
+    enabled: true,
+    alias: { shared: { model: 'official-model', preserve: false } },
+    model: { invoke: async function* () {} },
+  } as unknown as RuntimeProviderInstance;
+  const officialRow = {
+    ...upstream,
+    slug: 'official-model',
+    context_window: 300_000,
+    max_context_window: 500_000,
+  };
+  const fetchImpl = (async () => Response.json({ models: [officialRow] })) as unknown as typeof fetch;
+
+  const min = await codexClientModels(fakeState([configured, official], ModelContextAggregation.Min), { fetchImpl });
+  const max = await codexClientModels(fakeState([configured, official], ModelContextAggregation.Max), { fetchImpl });
+  const minEntry = min.models.find((item) => item.id === 'shared') as Record<string, unknown>;
+  const maxEntry = max.models.find((item) => item.id === 'shared') as Record<string, unknown>;
+  expect([minEntry.context_window, minEntry.max_context_window]).toEqual([272_000, 400_000]);
+  expect([maxEntry.context_window, maxEntry.max_context_window]).toEqual([300_000, 500_000]);
 });
 
 test('config metadata overrides (description) flow into the synthesized case B entry', async () => {
   // Provider config overrides third-party-model's description and input modalities.
-  // The synthesized entry must reflect the merged (effective) metadata, not the raw
-  // catalog record, so these config overrides surface to Codex.
+  // The synthesized entry must reflect metadata projected on demand from config and
+  // fallback sources, not the raw catalog record, so these config overrides surface to Codex.
   const configured = {
     id: 'p1',
     kind: ProviderKind.OAuth,
@@ -159,7 +334,7 @@ test('config metadata overrides (description) flow into the synthesized case B e
     alias: {
       'my-alias': { model: 'my-alias', preserve: false },
     },
-    metadata: {
+    configMetadata: {
       'my-alias': {
         description: 'Overridden by config',
         capabilities: { modalities: { input: ['text', 'image'] } },

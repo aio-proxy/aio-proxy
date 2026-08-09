@@ -1,5 +1,27 @@
 # @aio-proxy/dashboard
 
+## 0.6.4
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @aio-proxy/server@0.6.4
+  - @aio-proxy/i18n@0.6.4
+  - @aio-proxy/plugin-sdk@0.6.4
+  - @aio-proxy/types@0.6.4
+  - @aio-proxy/ui@0.6.4
+
+## 0.6.3
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @aio-proxy/server@0.6.3
+  - @aio-proxy/i18n@0.6.3
+  - @aio-proxy/plugin-sdk@0.6.3
+  - @aio-proxy/types@0.6.3
+  - @aio-proxy/ui@0.6.3
+
 ## 0.6.2
 
 ### Patch Changes

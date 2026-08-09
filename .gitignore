@@ -12,4 +12,4 @@ npm/cli-*/bin/
 .superpowers/
 .impeccable/
 .worktrees/
-.reference/
+.reference

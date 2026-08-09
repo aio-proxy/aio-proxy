@@ -5,7 +5,7 @@ import {
   type ModelsDevModel,
   type PluginLogSink,
 } from '@aio-proxy/core';
-import type { Config, ModelMetadata, Provider } from '@aio-proxy/types';
+import { type Config, type ModelMetadata, ModelMetadataSchema, type Provider } from '@aio-proxy/types';
 import { mergeWith } from 'es-toolkit/object';
 
 /** Injection seam so tests can supply a catalog without touching the network/global cache. */
@@ -109,7 +109,19 @@ function resolveEntry(
   // replace wholesale; objects deep-merge; scalars source-win; undefined user
   // fields do not clobber inherited values.
   const base = catalogModelToMetadata(target);
-  return mergeWith(base, userFields, (_target, source) => (Array.isArray(source) ? source : undefined));
+  const merged = mergeWith(base, userFields, (_target, source) => (Array.isArray(source) ? source : undefined));
+  const parsed = ModelMetadataSchema.safeParse(merged);
+  if (parsed.success) return parsed.data;
+  logger?.({
+    event: 'metadata.extend.invalid',
+    code: 'PROVIDER_CONFIG_INVALID',
+    context: { providerId },
+    error: {
+      name: 'MetadataExtendInvalid',
+      message: `metadata.extend target '${slug}' for model '${modelId}' produced invalid merged metadata; ignoring inheritance`,
+    },
+  });
+  return userFields;
 }
 
 function warnUnresolved(providerId: string, modelId: string, slug: string, logger: PluginLogSink | undefined): void {

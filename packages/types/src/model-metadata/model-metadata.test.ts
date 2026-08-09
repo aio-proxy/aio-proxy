@@ -83,6 +83,23 @@ describe('ModelMetadataSchema validation', () => {
     expect(ModelMetadataSchema.safeParse({ limit: { context: 0 } }).success).toBe(false);
   });
 
+  test.each([
+    [{ context: 272_000, input: 400_000 }, 'input'],
+    [{ context: 272_000, output: 400_000 }, 'output'],
+  ] as const)('rejects limit.%s above limit.context', (limit, field) => {
+    const result = ModelMetadataSchema.safeParse({ limit });
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.issues.map((issue) => issue.path)).toContainEqual(['limit', field]);
+  });
+
+  test('accepts distinct input and output limits within the total context', () => {
+    expect(ModelMetadataSchema.parse({ limit: { context: 400_000, input: 272_000, output: 128_000 } }).limit).toEqual({
+      context: 400_000,
+      input: 272_000,
+      output: 128_000,
+    });
+  });
+
   test('rejects a negative tier size', () => {
     expect(
       ModelMetadataSchema.safeParse({ cost: { tiers: [{ tier: { type: 'context', size: -1 }, input: 2 }] } }).success,

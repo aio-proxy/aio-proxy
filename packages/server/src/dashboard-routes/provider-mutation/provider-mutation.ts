@@ -88,7 +88,7 @@ export function replaceProvider(
   const previous = isPlainObject(previousValue) ? previousValue : {};
   const next = retainRedactedSecrets(previous, provider);
 
-  for (const key of ['headers', 'proxy', 'transforms'] as const) {
+  for (const key of ['headers', 'metadata', 'proxy', 'transforms'] as const) {
     if (provider[key] === undefined && previous[key] !== undefined) next[key] = previous[key];
   }
 

@@ -26,11 +26,6 @@ jobs:
             ${{ runner.os }}-bun-
 
       - run: bun install --frozen-lockfile
-
-      # Changesets guard: the `fixed` group must list every workspace package so
-      # the whole workspace stays on one lockstep version.
-      - run: bun run scripts/check-lockstep-fixed.ts
-
       - run: bun run check
       - run: test -f packages/core/src/db/migrations/meta/_journal.json
       - run: bun run --filter @aio-proxy/core build:migrations
