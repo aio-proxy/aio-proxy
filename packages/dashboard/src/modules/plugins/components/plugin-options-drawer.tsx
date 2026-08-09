@@ -58,14 +58,19 @@ export const PluginOptionsDrawer = forwardRef<PluginOptionsDrawerRef>((_, ref) =
       clearSecretKeys: value.clearSecretKeys,
     });
     if (!parsed.success) return;
-    mutation.mutate(parsed.data, { onSuccess: closeDrawer });
+    mutation.mutate(parsed.data, {
+      onSuccess: () => {
+        mutation.reset();
+        setPackageName(null);
+      },
+    });
   });
 
-  function closeDrawer() {
+  const closeDrawer = () => {
     form.reset(pluginOptionsFormValues(editViewQuery.data));
     mutation.reset();
     setPackageName(null);
-  }
+  };
 
   useImperativeHandle(ref, () => ({ open: (plugin) => setPackageName(plugin.packageName) }), []);
 

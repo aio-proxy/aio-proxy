@@ -14,6 +14,7 @@ import { providerPluginPresentationsQueryOptions } from '../../services/provider
 import { providerUsageQueryOptions, type ProviderUsage } from '../../services/provider-usage-service';
 import { DeleteProviderDialog, type DeleteProviderDialogRef } from '../delete-provider-dialog';
 import { OAuthProviderGroupRow } from '../oauth-provider-group-row';
+import { ProviderTableActionsContext } from '../provider-table-actions';
 import { canEditProvider, createProviderColumns } from '../providers-table-columns';
 import { ProviderTableCell } from './provider-table-cell';
 import { groupProviderRows, providerTableRowId, type ProviderTableRow } from './provider-table-row';
@@ -38,7 +39,7 @@ export const ProvidersTable: React.FC<ProvidersTableProps> = ({ providers, focus
   const pluginPresentations = useMemo(() => new Map(plugins.map((plugin) => [plugin.packageName, plugin])), [plugins]);
   const providerUsage = useQuery(providerUsageQueryOptions()).data ?? emptyProviderUsage;
   const rows = useMemo(() => groupProviderRows(providers), [providers]);
-  const columns = useMemo(() => createProviderColumns(deleteDialogRef, providerUsage), [providerUsage]);
+  const columns = useMemo(() => createProviderColumns(providerUsage), [providerUsage]);
   const { table } = useDataTable(rows, columns, {
     getRowId: providerTableRowId,
     getSubRows: (row) => (row.rowType === 'oauth-group' ? row.accounts : undefined),
@@ -68,65 +69,68 @@ export const ProvidersTable: React.FC<ProvidersTableProps> = ({ providers, focus
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <Table aria-label={m['dashboard.providers.table.label']()} data-testid="providers-table">
-        <TableHeader>
-          {table.getHeaderGroups().map((headerGroup) => (
-            <TableRow key={headerGroup.id}>
-              {headerGroup.headers.map((header) => (
-                <Fragment key={header.id}>
-                  {header.isPlaceholder ? null : <table.FlexRender header={header} />}
-                </Fragment>
-              ))}
-            </TableRow>
-          ))}
-        </TableHeader>
-        <TableBody>
-          {table.getRowModel().rows.map((row) => {
-            if (row.original.rowType === 'oauth-group') {
-              return (
-                <OAuthProviderGroupRow
-                  key={row.id}
-                  pluginPresentations={pluginPresentations}
-                  row={row}
-                  providerUsage={providerUsage}
-                />
-              );
-            }
-            const provider = row.original.provider;
-            return (
-              <TableRow
-                key={row.id}
-                id={`provider-row-${provider.id}`}
-                tabIndex={-1}
-                data-testid={`provider-row-${provider.id}`}
-                data-focused={provider.id === focusProviderId ? 'true' : undefined}
-                className={cn(
-                  canEditProvider(provider) && 'focus-within:bg-muted/50 focus-within:ring-2 focus-within:ring-ring/40',
-                  provider.id === focusProviderId && 'bg-accent ring-2 ring-ring/40',
-                )}
-              >
-                {row.getAllCells().map((cell) => (
-                  <ProviderTableCell key={cell.id} cell={cell}>
-                    <table.FlexRender cell={cell} />
-                  </ProviderTableCell>
+    <ProviderTableActionsContext.Provider value={{ deleteDialogRef }}>
+      <div className="flex flex-col gap-4">
+        <Table aria-label={m['dashboard.providers.table.label']()} data-testid="providers-table">
+          <TableHeader>
+            {table.getHeaderGroups().map((headerGroup) => (
+              <TableRow key={headerGroup.id}>
+                {headerGroup.headers.map((header) => (
+                  <Fragment key={header.id}>
+                    {header.isPlaceholder ? null : <table.FlexRender header={header} />}
+                  </Fragment>
                 ))}
               </TableRow>
-            );
-          })}
-        </TableBody>
-      </Table>
-      {table.getPageCount() > 1 ? (
-        <Pagination
-          pageSize={table.state.pagination.pageSize}
-          canPrevious={table.getCanPreviousPage()}
-          canNext={table.getCanNextPage()}
-          onShowSizeChange={table.setPageSize}
-          onPrevious={table.previousPage}
-          onNext={table.nextPage}
-        />
-      ) : null}
-      <DeleteProviderDialog ref={deleteDialogRef} />
-    </div>
+            ))}
+          </TableHeader>
+          <TableBody>
+            {table.getRowModel().rows.map((row) => {
+              if (row.original.rowType === 'oauth-group') {
+                return (
+                  <OAuthProviderGroupRow
+                    key={row.id}
+                    pluginPresentations={pluginPresentations}
+                    row={row}
+                    providerUsage={providerUsage}
+                  />
+                );
+              }
+              const provider = row.original.provider;
+              return (
+                <TableRow
+                  key={row.id}
+                  id={`provider-row-${provider.id}`}
+                  tabIndex={-1}
+                  data-testid={`provider-row-${provider.id}`}
+                  data-focused={provider.id === focusProviderId ? 'true' : undefined}
+                  className={cn(
+                    canEditProvider(provider) &&
+                      'focus-within:bg-muted/50 focus-within:ring-2 focus-within:ring-ring/40',
+                    provider.id === focusProviderId && 'bg-accent ring-2 ring-ring/40',
+                  )}
+                >
+                  {row.getAllCells().map((cell) => (
+                    <ProviderTableCell key={cell.id} cell={cell}>
+                      <table.FlexRender cell={cell} />
+                    </ProviderTableCell>
+                  ))}
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+        {table.getPageCount() > 1 ? (
+          <Pagination
+            pageSize={table.state.pagination.pageSize}
+            canPrevious={table.getCanPreviousPage()}
+            canNext={table.getCanNextPage()}
+            onShowSizeChange={table.setPageSize}
+            onPrevious={table.previousPage}
+            onNext={table.nextPage}
+          />
+        ) : null}
+        <DeleteProviderDialog ref={deleteDialogRef} />
+      </div>
+    </ProviderTableActionsContext.Provider>
   );
 };

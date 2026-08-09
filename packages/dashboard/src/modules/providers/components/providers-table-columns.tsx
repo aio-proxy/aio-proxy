@@ -1,9 +1,7 @@
 import { m } from '@aio-proxy/i18n';
-import type { DashboardProviderSummary } from '@aio-proxy/types';
 import { Link } from '@tanstack/react-router';
 import type { ColumnDef, RowData } from '@tanstack/react-table';
 import { startCase } from 'es-toolkit/string';
-import type React from 'react';
 
 import { tableHead } from '@/components/data-table/table-head';
 import { ProtocolLabel } from '@/components/protocol-label';
@@ -12,11 +10,10 @@ import type { DataTableFeatures } from '@/hooks/use-data-table';
 
 import { PROVIDER_KIND_LABEL } from '../lib/constants';
 import type { ProviderUsage } from '../services/provider-usage-service';
-import type { DeleteProviderDialogRef } from './delete-provider-dialog';
 import { ProviderEnabledSwitch } from './provider-enabled-switch';
 import { ProviderModelsCell } from './provider-models-cell';
-import { ProviderMoreMenu } from './provider-more-menu';
 import { ProviderStateCell } from './provider-state-cell';
+import { ProviderTableActions } from './provider-table-actions';
 import type { ProviderTableRow } from './providers-table/provider-table-row';
 
 declare module '@tanstack/react-table' {
@@ -187,23 +184,18 @@ const usageColumn = (
   },
 });
 
-const actionsColumn = (
-  deleteDialogRef: React.RefObject<DeleteProviderDialogRef | null>,
-): ColumnDef<DataTableFeatures, ProviderTableRow> => ({
+const actionsColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
   id: 'actions',
   enableSorting: false,
   meta: { className: 'w-20 text-right' },
   header: tableHead(() => m['dashboard.providers.table.col_actions']()),
   cell: ({ row }) => {
     const provider = concreteProvider(row.original);
-    return provider === undefined || !canEditProvider(provider) ? null : (
-      <ProviderMoreMenu provider={provider} onDelete={(target) => deleteDialogRef.current?.open(target)} />
-    );
+    return provider === undefined || !canEditProvider(provider) ? null : <ProviderTableActions provider={provider} />;
   },
-});
+};
 
 export const createProviderColumns = (
-  deleteDialogRef: React.RefObject<DeleteProviderDialogRef | null>,
   providerUsage: ReadonlyMap<string, ProviderUsage>,
 ): ColumnDef<DataTableFeatures, ProviderTableRow>[] => [
   aggregateColumn,
@@ -214,5 +206,5 @@ export const createProviderColumns = (
   stateColumn,
   usageColumn(providerUsage),
   enabledColumn,
-  actionsColumn(deleteDialogRef),
+  actionsColumn,
 ];

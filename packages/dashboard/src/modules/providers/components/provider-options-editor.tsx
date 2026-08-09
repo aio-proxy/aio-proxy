@@ -69,7 +69,7 @@ const initialValidation: JsonEditorValidation = {
 export const ProviderOptionsEditor: FC<Props> = ({ field, schemaState, onValidityChange }) => {
   const [editorValue, setEditorValue] = useState<JsonValue | undefined>(field.state.value);
   const [validation, setValidation] = useState(initialValidation);
-  const [installDialogPackage, setInstallDialogPackage] = useState<string | null>(null);
+  const [dismissedInstallPackage, setDismissedInstallPackage] = useState<string | null>(null);
   const rootValid = isProviderOptionsObject(editorValue);
   const requiredRootMissing =
     editorValue === undefined &&
@@ -93,10 +93,6 @@ export const ProviderOptionsEditor: FC<Props> = ({ field, schemaState, onValidit
 
   const packageName = schemaState.packageName ?? '';
   const installRequiredPackage = schemaState.phase === 'install_required' ? schemaState.packageName : null;
-
-  useEffect(() => {
-    setInstallDialogPackage(installRequiredPackage);
-  }, [installRequiredPackage]);
 
   let helper: string | null = null;
   if (schemaState.phase === 'checking') {
@@ -122,8 +118,7 @@ export const ProviderOptionsEditor: FC<Props> = ({ field, schemaState, onValidit
     error = m['dashboard.providers.form.options_schema_load_error']();
   }
   const errorId = `${field.name}-error`;
-  const dialogOpen =
-    installDialogPackage !== null && installRequiredPackage !== null && installDialogPackage === installRequiredPackage;
+  const dialogOpen = installRequiredPackage !== null && dismissedInstallPackage !== installRequiredPackage;
 
   return (
     <Field data-invalid={!valid}>
@@ -148,7 +143,7 @@ export const ProviderOptionsEditor: FC<Props> = ({ field, schemaState, onValidit
           variant="outline"
           onClick={() => {
             if (schemaState.phase === 'install_required') {
-              setInstallDialogPackage(installRequiredPackage);
+              setDismissedInstallPackage(null);
             } else {
               schemaState.requestInstall();
             }
@@ -160,14 +155,14 @@ export const ProviderOptionsEditor: FC<Props> = ({ field, schemaState, onValidit
       {error !== null && <FieldError id={errorId}>{error}</FieldError>}
       <AlertDialog
         open={dialogOpen}
-        onOpenChange={(open) => setInstallDialogPackage(open ? installRequiredPackage : null)}
+        onOpenChange={(open) => setDismissedInstallPackage(open ? null : installRequiredPackage)}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{m['dashboard.providers.form.options_install_dialog_title']()}</AlertDialogTitle>
             <AlertDialogDescription>
               {m['dashboard.providers.form.options_install_dialog_description']({
-                packageName: installDialogPackage ?? packageName,
+                packageName: installRequiredPackage ?? packageName,
               })}
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -175,8 +170,8 @@ export const ProviderOptionsEditor: FC<Props> = ({ field, schemaState, onValidit
             <AlertDialogCancel>{m['dashboard.providers.form.options_install_dialog_cancel']()}</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
-                const confirmedPackage = installDialogPackage;
-                setInstallDialogPackage(null);
+                const confirmedPackage = installRequiredPackage;
+                setDismissedInstallPackage(confirmedPackage);
                 if (canConfirmProviderInstall(confirmedPackage, schemaState.phase, schemaState.packageName)) {
                   schemaState.confirmInstall();
                 }

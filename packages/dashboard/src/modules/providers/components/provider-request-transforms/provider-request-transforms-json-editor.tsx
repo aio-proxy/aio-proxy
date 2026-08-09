@@ -21,6 +21,11 @@ interface SemanticIssue {
   readonly code: string;
 }
 
+interface SemanticIssueState {
+  readonly canonicalDraft: string;
+  readonly issue: SemanticIssue;
+}
+
 interface ValidCandidate {
   readonly draft: string;
   readonly value: readonly ProviderRequestTransformRule[];
@@ -39,23 +44,25 @@ export const ProviderRequestTransformsJsonEditor: React.FC<ProviderRequestTransf
   onValidityChange,
 }) => {
   const errorId = useId();
-  const [semanticIssue, setSemanticIssue] = useState<SemanticIssue>();
+  const [semanticIssue, setSemanticIssue] = useState<SemanticIssueState>();
   const canonicalDraft = JSON.stringify(value, null, 2);
+  const [initialCandidate] = useState<ValidCandidate>(() => ({ draft: canonicalDraft, value }));
   const canonicalDraftRef = useRef(canonicalDraft);
-  canonicalDraftRef.current = canonicalDraft;
   const canonicalValue = useRef(value);
-  canonicalValue.current = value;
-  const initialCandidate = useRef<ValidCandidate>({ draft: canonicalDraft, value }).current;
   const latestDraft = useRef(initialCandidate.draft);
   const candidate = useRef<ValidCandidate | undefined>(initialCandidate);
   const lastEmitted = useRef<ValidCandidate>(initialCandidate);
+
+  useEffect(() => {
+    canonicalDraftRef.current = canonicalDraft;
+    canonicalValue.current = value;
+  }, [canonicalDraft, value]);
 
   useEffect(() => {
     const next: ValidCandidate = { draft: canonicalDraft, value: canonicalValue.current };
     latestDraft.current = next.draft;
     candidate.current = next;
     lastEmitted.current = next;
-    setSemanticIssue(undefined);
   }, [canonicalDraft]);
 
   const handleDraftChange = useCallback(
@@ -76,13 +83,16 @@ export const ProviderRequestTransformsJsonEditor: React.FC<ProviderRequestTransf
         result.success
           ? undefined
           : {
-              path: jsonPath(result.error.issues[0]?.path ?? []),
-              code: result.error.issues[0]?.message ?? 'INVALID_TRANSFORM',
+              canonicalDraft,
+              issue: {
+                path: jsonPath(result.error.issues[0]?.path ?? []),
+                code: result.error.issues[0]?.message ?? 'INVALID_TRANSFORM',
+              },
             },
       );
       onValidityChange(false);
     },
-    [onValidityChange],
+    [canonicalDraft, onValidityChange],
   );
 
   const handleValidationChange = useCallback(
@@ -105,20 +115,22 @@ export const ProviderRequestTransformsJsonEditor: React.FC<ProviderRequestTransf
     [onChange, onValidityChange],
   );
 
+  const visibleSemanticIssue = semanticIssue?.canonicalDraft === canonicalDraft ? semanticIssue.issue : undefined;
+
   return (
     <div className="space-y-2">
       <JsonEditor
         value={value as unknown as JsonValue}
         schema={ProviderRequestTransformRulesJsonSchema}
         ariaLabel={m['dashboard.providers.transforms.json_label']()}
-        externalInvalid={semanticIssue !== undefined}
-        {...(semanticIssue === undefined ? {} : { errorDescriptionId: errorId })}
+        externalInvalid={visibleSemanticIssue !== undefined}
+        {...(visibleSemanticIssue === undefined ? {} : { errorDescriptionId: errorId })}
         onDraftChange={handleDraftChange}
         onValueChange={handleValueChange}
         onValidationChange={handleValidationChange}
       />
-      {semanticIssue === undefined ? null : (
-        <FieldError id={errorId}>{m['dashboard.providers.transforms.invalid'](semanticIssue)}</FieldError>
+      {visibleSemanticIssue === undefined ? null : (
+        <FieldError id={errorId}>{m['dashboard.providers.transforms.invalid'](visibleSemanticIssue)}</FieldError>
       )}
     </div>
   );

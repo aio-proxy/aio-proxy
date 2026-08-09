@@ -20,8 +20,8 @@ export default defineConfig({
       },
     ],
     'unicorn/no-nested-ternary': 'error',
-    'react/no-multi-comp': 'error',
-    'react-hooks/exhaustive-deps': 'off',
+    'react/react-compiler': 'error',
+    'react-hooks/exhaustive-deps': 'warn',
     'import/no-duplicates': 'error',
     'max-lines-per-function': [
       'error',
@@ -48,6 +48,7 @@ export default defineConfig({
     {
       files: ['**/*.tsx'],
       rules: {
+        'react/no-multi-comp': 'error',
         'max-lines-per-function': [
           'error',
           {
@@ -62,6 +63,7 @@ export default defineConfig({
     {
       files: ['**/*.test.ts', '**/*.test.tsx', '**/__tests__/**'],
       rules: {
+        'react/react-compiler': 'off',
         'max-lines-per-function': 'off',
         'max-lines': 'off',
       },
