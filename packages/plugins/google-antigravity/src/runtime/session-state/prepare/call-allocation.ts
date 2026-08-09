@@ -51,7 +51,7 @@ export function allocateCallOccurrences(
     const id = Reflect.get(call, 'id');
     const signatureValue = Reflect.get(candidate, 'thoughtSignature');
     const signature = validThoughtSignature(modelId, signatureValue) ? signatureValue : undefined;
-    let quality = 0;
+    let quality: Candidate['quality'] = 0;
     if (signatureValue === undefined) quality = 1;
     if (signature !== undefined) quality = 2;
     group(groups, key).candidates.push({
