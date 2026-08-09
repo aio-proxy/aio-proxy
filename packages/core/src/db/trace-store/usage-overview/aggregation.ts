@@ -28,7 +28,8 @@ export function aggregateRows(
   rows: Iterable<OverviewRow>,
   metric: UsageOverviewMetric,
   chartBuckets: readonly ChartBucket[],
-  retainedDimensionCount = 5,
+  retainedDimensionCount?: number,
+  groupOutcomesByDimension = false,
 ) {
   const summary = emptySummary();
   const totals = new Map<string, bigint>();
@@ -37,14 +38,14 @@ export function aggregateRows(
     addSummary(summary, row);
     if (metric !== 'requests' && row.terminationReason !== null) continue;
 
-    const value =
-      metric === 'requests' ? (row.requestCount ?? 1n) : metric === 'cost' ? row.estimatedCostNanoUsd : row.totalTokens;
-    const kind =
-      row.terminationReason === 'failure' || row.terminationReason === 'interrupted'
-        ? 'failed'
-        : row.terminationReason === 'cancelled'
-          ? 'cancelled'
-          : 'dimension';
+    let value = row.totalTokens;
+    if (metric === 'requests') value = row.requestCount ?? 1n;
+    else if (metric === 'cost') value = row.estimatedCostNanoUsd;
+    let kind: 'dimension' | 'failed' | 'cancelled' = 'dimension';
+    if (!groupOutcomesByDimension) {
+      if (row.terminationReason === 'failure' || row.terminationReason === 'interrupted') kind = 'failed';
+      else if (row.terminationReason === 'cancelled') kind = 'cancelled';
+    }
     const bucket = valuesByBucket.get(row.bucket) ?? { dimensions: new Map(), failed: 0n, cancelled: 0n };
     if (kind === 'dimension') {
       totals.set(row.dimension, (totals.get(row.dimension) ?? 0n) + value);
@@ -54,7 +55,10 @@ export function aggregateRows(
     }
     valuesByBucket.set(row.bucket, bucket);
   }
-  return { summary, ...buildChart(totals, valuesByBucket, metric, chartBuckets, retainedDimensionCount) };
+  return {
+    summary,
+    ...buildChart(totals, valuesByBucket, metric, chartBuckets, retainedDimensionCount, groupOutcomesByDimension),
+  };
 }
 
 function emptySummary() {
@@ -92,19 +96,20 @@ function buildChart(
   valuesByBucket: ReadonlyMap<string | number, BucketValues>,
   metric: UsageOverviewMetric,
   chartBuckets: readonly ChartBucket[],
-  retainedDimensionCount: number,
+  retainedDimensionCount: number | undefined,
+  groupOutcomesByDimension: boolean,
 ) {
   const ranked = [...totals]
     .sort(
       ([leftKey, left], [rightKey, right]) => compareBigIntDescending(left, right) || leftKey.localeCompare(rightKey),
     )
     .map(([key]) => key);
-  const retained = ranked.slice(0, retainedDimensionCount);
+  const retained = retainedDimensionCount === undefined ? ranked : ranked.slice(0, retainedDimensionCount);
   const hasOther = ranked.length > retained.length;
   const series = [
     ...retained.map((dimension) => ({ key: chartDimensionKey(dimension), kind: 'dimension' as const })),
     ...(hasOther ? [{ key: '__other__', kind: 'other' as const }] : []),
-    ...(metric === 'requests'
+    ...(metric === 'requests' && !groupOutcomesByDimension
       ? [
           { key: '__failed__', kind: 'failed' as const },
           { key: '__cancelled__', kind: 'cancelled' as const },
@@ -138,7 +143,7 @@ function bucketValues(
   return Object.fromEntries([...values].map(([key, value]) => [key, value.toString()]));
 }
 
-const compareBigIntDescending = (left: bigint, right: bigint) => (left === right ? 0 : left > right ? -1 : 1);
+const compareBigIntDescending = (left: bigint, right: bigint) => (left === right ? 0 : Number(left < right) * 2 - 1);
 
 const dimensionKeyPrefix = 'dimension:';
 const reservedSeriesKeys = new Set(['__failed__', '__cancelled__', '__other__', '__proto__']);

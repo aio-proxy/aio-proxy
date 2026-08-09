@@ -202,12 +202,8 @@ export async function materializePluginProvider(
     return catalogUnavailableMaterialization(options, unavailable, persistedSummary, catalogJobFor, createCredentials);
   }
 
-  const proxyIdentity =
-    options.effectiveProxy === undefined
-      ? config.proxy === false
-        ? null
-        : (config.proxy ?? null)
-      : options.effectiveProxy;
+  let proxyIdentity = options.effectiveProxy;
+  if (proxyIdentity === undefined) proxyIdentity = config.proxy === false ? null : (config.proxy ?? null);
   const identity = runtimeIdentity({
     packageName: config.plugin,
     version: pluginVersion(plugins, config.plugin),

@@ -44,7 +44,7 @@ const oauthRaceDescriptor = (deviceCodePresented: () => void, loginReleased: Pro
     (api) => {
       api.oauth.register({
         id: 'default',
-        label: 'Example OAuth',
+        displayName: 'Example OAuth',
         account: { options: { schema: z.object({}), form: [] } },
         credentials: z.object({ token: z.string() }),
         async login({ authorization }) {

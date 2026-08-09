@@ -16,13 +16,13 @@ import { useProviderDelete } from '../hooks/use-provider-mutations';
 
 type DeleteProviderTarget = Pick<DashboardProviderSummary, 'id'>;
 
-export type DeleteProviderDialogRef = {
-  readonly open: (provider: DeleteProviderTarget) => void;
-};
-
 interface DeleteProviderDialogProps {
   readonly onDeleted?: () => void;
 }
+
+export type DeleteProviderDialogRef = {
+  readonly open: (provider: DeleteProviderTarget) => void;
+};
 
 export const DeleteProviderDialog = forwardRef<DeleteProviderDialogRef, DeleteProviderDialogProps>(
   ({ onDeleted }, ref) => {

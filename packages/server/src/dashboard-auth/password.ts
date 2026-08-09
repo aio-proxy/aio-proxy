@@ -54,12 +54,10 @@ export async function prepareDashboardConfig(
   configPath: string | undefined,
 ): Promise<{ readonly config: unknown; readonly dashboardUnavailable: boolean; readonly error?: unknown }> {
   try {
-    const normalized =
-      configPath === undefined
-        ? isPlainObject(config)
-          ? await normalizeDashboardPassword(config)
-          : config
-        : await normalizeDashboardPasswordFile(new AtomicConfigFile(configPath));
+    let normalized: unknown;
+    if (configPath !== undefined) normalized = await normalizeDashboardPasswordFile(new AtomicConfigFile(configPath));
+    else if (isPlainObject(config)) normalized = await normalizeDashboardPassword(config);
+    else normalized = config;
     return { config: normalized, dashboardUnavailable: false };
   } catch (error) {
     return { config: withoutDashboardPassword(config), dashboardUnavailable: true, error };

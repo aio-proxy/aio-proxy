@@ -6,7 +6,7 @@ import { Empty, EmptyDescription, EmptyTitle } from '@aio-proxy/ui/components/em
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@aio-proxy/ui/components/sidebar';
 import { Skeleton } from '@aio-proxy/ui/components/skeleton';
 import { cn } from '@aio-proxy/ui/lib/utils';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useReducer, useRef, useState } from 'react';
 
 import { PageContainer } from '@/components/page-container';
 
@@ -18,6 +18,23 @@ import { DashboardTracesRequestError } from '../../services/traces-service';
 
 type TracesData = NonNullable<ReturnType<typeof useTracesQuery>['data']>;
 
+interface TraceBufferState {
+  readonly searchKey: string;
+  readonly renderedData: TracesData | undefined;
+  readonly newItemsCount: number;
+}
+
+type TraceBufferAction =
+  | { readonly type: 'reset'; readonly searchKey: string }
+  | { readonly type: 'replace'; readonly searchKey: string; readonly data: TracesData }
+  | { readonly type: 'set-new-items'; readonly searchKey: string; readonly count: number };
+
+const traceBufferReducer = (state: TraceBufferState, action: TraceBufferAction): TraceBufferState => {
+  if (action.type === 'reset') return { searchKey: action.searchKey, renderedData: undefined, newItemsCount: 0 };
+  if (action.type === 'replace') return { searchKey: action.searchKey, renderedData: action.data, newItemsCount: 0 };
+  return { ...state, searchKey: action.searchKey, newItemsCount: action.count };
+};
+
 interface TracesPageProps {
   readonly search: TraceSearch;
   readonly onSearchChange: (search: TraceSearch, options?: { readonly replace?: boolean }) => void;
@@ -26,31 +43,30 @@ interface TracesPageProps {
 
 export const TracesPage: React.FC<TracesPageProps> = ({ search, onSearchChange, onTraceSelect }) => {
   const [autoRefresh, setAutoRefresh] = useState(true);
-  const [renderedData, setRenderedData] = useState<TracesData>();
-  const [newItemsCount, setNewItemsCount] = useState(0);
   const searchKey = JSON.stringify(search);
-  const [bufferSearchKey, setBufferSearchKey] = useState(searchKey);
+  const [buffer, dispatchBuffer] = useReducer(traceBufferReducer, searchKey, (initialSearchKey) => ({
+    searchKey: initialSearchKey,
+    renderedData: undefined,
+    newItemsCount: 0,
+  }));
   const activeSearchKeyRef = useRef(searchKey);
   const canonicalizedSearchKeyRef = useRef<string | undefined>(undefined);
   const renderedDataRef = useRef<TracesData | undefined>(undefined);
   const latestFirstPageRef = useRef<TracesData | undefined>(undefined);
   const query = useTracesQuery(search, autoRefresh);
 
-  if (activeSearchKeyRef.current !== searchKey) {
-    activeSearchKeyRef.current = searchKey;
-    canonicalizedSearchKeyRef.current = undefined;
-    renderedDataRef.current = undefined;
-    latestFirstPageRef.current = undefined;
-  }
-
   useEffect(() => {
     if (query.data === undefined || query.isError) return;
 
-    setBufferSearchKey(searchKey);
+    if (activeSearchKeyRef.current !== searchKey) {
+      activeSearchKeyRef.current = searchKey;
+      canonicalizedSearchKeyRef.current = undefined;
+      renderedDataRef.current = undefined;
+      latestFirstPageRef.current = undefined;
+    }
 
     if (query.isPlaceholderData) {
-      setRenderedData(undefined);
-      setNewItemsCount(0);
+      dispatchBuffer({ type: 'reset', searchKey });
       return;
     }
 
@@ -68,8 +84,7 @@ export const TracesPage: React.FC<TracesPageProps> = ({ search, onSearchChange, 
     if (search.pageToken !== undefined) {
       renderedDataRef.current = query.data;
       latestFirstPageRef.current = undefined;
-      setRenderedData(query.data);
-      setNewItemsCount(0);
+      dispatchBuffer({ type: 'replace', searchKey, data: query.data });
       return;
     }
 
@@ -77,16 +92,16 @@ export const TracesPage: React.FC<TracesPageProps> = ({ search, onSearchChange, 
     const renderedIds = new Set(current.items.map((item) => item.traceId));
     const unseenCount = query.data.items.filter((item) => !renderedIds.has(item.traceId)).length;
     latestFirstPageRef.current = query.data;
-    setNewItemsCount(unseenCount);
+    dispatchBuffer({ type: 'set-new-items', searchKey, count: unseenCount });
 
     if (unseenCount === 0) {
       renderedDataRef.current = query.data;
-      setRenderedData(query.data);
+      dispatchBuffer({ type: 'replace', searchKey, data: query.data });
     }
   }, [onSearchChange, query.data, query.isError, query.isPlaceholderData, search, search.pageToken, searchKey]);
 
-  const bufferIsActive = bufferSearchKey === searchKey;
-  const visibleData = bufferIsActive ? (renderedData ?? query.data) : query.data;
+  const bufferIsActive = buffer.searchKey === searchKey;
+  const visibleData = bufferIsActive ? (buffer.renderedData ?? query.data) : query.data;
 
   return (
     <PageContainer
@@ -113,13 +128,14 @@ export const TracesPage: React.FC<TracesPageProps> = ({ search, onSearchChange, 
                 <SidebarTrigger aria-label={m['dashboard.traces.filters']()} />
               </div>
               <div className="min-h-0 min-w-0 flex-1 pb-3 sm:pb-4">
-                {query.isLoading ? (
+                {query.isLoading && (
                   <div className="mx-3 space-y-2 sm:mx-4" role="status" aria-label={m['dashboard.traces.loading']()}>
                     {['a', 'b', 'c', 'd', 'e', 'f'].map((key) => (
                       <Skeleton className="h-12 w-full" key={key} />
                     ))}
                   </div>
-                ) : query.isError ? (
+                )}
+                {!query.isLoading && query.isError && (
                   <Empty>
                     <EmptyTitle>{m['dashboard.traces.error_title']()}</EmptyTitle>
                     <EmptyDescription>{m['dashboard.traces.error_description']()}</EmptyDescription>
@@ -138,7 +154,8 @@ export const TracesPage: React.FC<TracesPageProps> = ({ search, onSearchChange, 
                       <Button onClick={() => void query.refetch()}>{m['dashboard.traces.refresh']()}</Button>
                     )}
                   </Empty>
-                ) : query.data?.items.length === 0 ? (
+                )}
+                {!query.isLoading && !query.isError && query.data?.items.length === 0 && (
                   <Empty>
                     <EmptyTitle>{m['dashboard.traces.empty_title']()}</EmptyTitle>
                     <EmptyDescription>{m['dashboard.traces.empty_description']()}</EmptyDescription>
@@ -146,18 +163,18 @@ export const TracesPage: React.FC<TracesPageProps> = ({ search, onSearchChange, 
                       {m['dashboard.traces.reset']()}
                     </Button>
                   </Empty>
-                ) : visibleData ? (
+                )}
+                {!query.isLoading && !query.isError && query.data?.items.length !== 0 && visibleData && (
                   <TracesTable
                     data={visibleData}
                     isFetching={query.isFetching || query.isPlaceholderData}
                     pageSize={search.pageSize}
-                    newItemsCount={search.pageToken === undefined && bufferIsActive ? newItemsCount : 0}
+                    newItemsCount={search.pageToken === undefined && bufferIsActive ? buffer.newItemsCount : 0}
                     onAcceptNewItems={() => {
                       const latest = latestFirstPageRef.current;
                       if (latest === undefined) return;
                       renderedDataRef.current = latest;
-                      setRenderedData(latest);
-                      setNewItemsCount(0);
+                      dispatchBuffer({ type: 'replace', searchKey, data: latest });
                     }}
                     onShowSizeChange={(pageSize) =>
                       onSearchChange(
@@ -168,9 +185,8 @@ export const TracesPage: React.FC<TracesPageProps> = ({ search, onSearchChange, 
                     onNext={(pageToken) => onSearchChange({ ...search, pageToken })}
                     onSelect={onTraceSelect}
                   />
-                ) : (
-                  <Empty />
                 )}
+                {!query.isLoading && !query.isError && query.data?.items.length !== 0 && !visibleData && <Empty />}
               </div>
             </div>
           </SidebarInset>

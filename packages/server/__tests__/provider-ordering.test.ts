@@ -187,7 +187,7 @@ function oauthDescriptor(createRuntime: OAuthAdapter['createRuntime'] = async ()
   return definePlugin((api) => {
     api.oauth.register({
       id: 'default',
-      label: 'Example',
+      displayName: 'Example',
       account: { options: { schema: zod.object({}), form: [] } },
       credentials: zod.object({ token: zod.string() }),
       async login() {

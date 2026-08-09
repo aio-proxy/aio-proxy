@@ -187,18 +187,14 @@ function rowToSpan(row: typeof traceSpan.$inferSelect, isRoot: boolean, now: Dat
 }
 
 export function list(db: BunSQLiteDatabase, query: TracesQuery): TracesPage {
-  const cursorFilter =
-    query.cursor === undefined
-      ? undefined
-      : query.cursor.direction === 'older'
-        ? or(
-            lt(traceSpan.startedAt, query.cursor.startedAt),
-            and(eq(traceSpan.startedAt, query.cursor.startedAt), lt(traceSpan.traceId, query.cursor.traceId)),
-          )
-        : or(
-            gt(traceSpan.startedAt, query.cursor.startedAt),
-            and(eq(traceSpan.startedAt, query.cursor.startedAt), gt(traceSpan.traceId, query.cursor.traceId)),
-          );
+  let cursorFilter;
+  if (query.cursor !== undefined) {
+    const compare = query.cursor.direction === 'older' ? lt : gt;
+    cursorFilter = or(
+      compare(traceSpan.startedAt, query.cursor.startedAt),
+      and(eq(traceSpan.startedAt, query.cursor.startedAt), compare(traceSpan.traceId, query.cursor.traceId)),
+    );
+  }
   const filter = and(
     isNull(traceSpan.parentSpanId),
     cursorFilter,

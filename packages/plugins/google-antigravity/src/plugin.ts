@@ -61,7 +61,7 @@ export function createGoogleAntigravityPlugin(
 
   const adapter: OAuthAdapter<GoogleAntigravityAccountOptions, GoogleAntigravityCredential> = {
     id: 'default',
-    label: presentationText.adapterLabel,
+    displayName: presentationText.adapterLabel,
     account: { options: accountOptions },
     credentials: credentialSchema,
     login: async (context, options) => {
@@ -91,7 +91,7 @@ export function createGoogleAntigravityPlugin(
       return {
         fingerprint: email,
         suggestedKey: `antigravity-${email}`,
-        label: email,
+        accountLabel: email,
         credentials: { ...token, email, projectId },
         expiresAt: token.expiresAt,
       };
@@ -120,8 +120,9 @@ export function createGoogleAntigravityPlugin(
       api.oauth.register(adapter);
     },
     {
-      label: presentationText.pluginLabel ?? 'Google Antigravity',
+      displayName: presentationText.pluginLabel ?? 'Google Antigravity',
       description: presentationText.pluginDescription ?? 'Use a Google Antigravity account to access models',
+      icon: 'antigravity-color',
     },
   );
 }

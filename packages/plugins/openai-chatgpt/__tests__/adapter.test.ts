@@ -21,10 +21,11 @@ describe('OpenAI ChatGPT plugin', () => {
   test('exports a versioned default descriptor with OAuth capability default', async () => {
     const adapter = await adapterFrom(openAIChatGPTPlugin);
 
-    expect(openAIChatGPTPlugin.apiVersion).toBe(1);
+    expect(openAIChatGPTPlugin.apiVersion).toBe(2);
     expect(openAIChatGPTPlugin[PLUGIN_DESCRIPTOR_BRAND]).toBe(true);
+    expect(openAIChatGPTPlugin.metadata.icon).toBe('openai');
     expect(adapter.id).toBe('default');
-    expect(adapter.label).toBe('Login with ChatGPT (Plus/Pro)');
+    expect(adapter.displayName).toBe('Login with ChatGPT (Plus/Pro)');
     expect(OPENAI_CHATGPT_PLUGIN_VERSION).toBe(packageJson.version);
   });
 
@@ -38,7 +39,7 @@ describe('OpenAI ChatGPT plugin', () => {
   test('supports injectable localized copy', async () => {
     const adapter = await adapterFrom(createOpenAIChatGPTPlugin({ adapterLabel: 'Se connecter avec ChatGPT' }));
 
-    expect(adapter.label).toBe('Se connecter avec ChatGPT');
+    expect(adapter.displayName).toBe('Se connecter avec ChatGPT');
   });
 
   test('uses the host loopback redirect URI in authorization and exchange', async () => {
@@ -81,7 +82,7 @@ describe('OpenAI ChatGPT plugin', () => {
     expect(result).toEqual({
       fingerprint: 'account-123',
       suggestedKey: 'chatgpt-account-123',
-      label: 'account-123',
+      accountLabel: 'account-123',
       credentials: {
         accessToken: buildJwt({ chatgpt_account_id: 'account-123' }),
         accountId: 'account-123',

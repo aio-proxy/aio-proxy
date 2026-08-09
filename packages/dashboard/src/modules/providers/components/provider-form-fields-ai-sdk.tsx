@@ -53,7 +53,7 @@ export const ProviderFormFieldsAiSdk: React.FC<ProviderFormFieldsAiSdkProps> = (
   onTransformsValidityChange,
 }) => {
   const schemaState = useProviderOptionsSchema();
-  const initialPackageName = useRef(form.getFieldValue('packageName') ?? DEFAULT_AI_SDK_PACKAGE).current;
+  const initialPackageName = useRef<string>();
   const initialPackageSynchronized = useRef(false);
   const lastCommittedPackage = useRef<string | null>(null);
   const commitUserPackage = (packageName: string) =>
@@ -64,8 +64,9 @@ export const ProviderFormFieldsAiSdk: React.FC<ProviderFormFieldsAiSdkProps> = (
   useEffect(() => {
     if (initialPackageSynchronized.current) return;
     initialPackageSynchronized.current = true;
-    schemaState.commitPackage(initialPackageName, false);
-  }, [initialPackageName, schemaState.commitPackage]);
+    initialPackageName.current = form.getFieldValue('packageName') ?? DEFAULT_AI_SDK_PACKAGE;
+    schemaState.commitPackage(initialPackageName.current, false);
+  }, [form, schemaState.commitPackage]);
 
   if (activeStep === 0) {
     return (

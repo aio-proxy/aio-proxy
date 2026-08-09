@@ -57,12 +57,9 @@ const isDocument = (value: unknown): value is Document =>
 const validArity = (node: ExpressionNode, meta: ExpressionFunctionMetaRegistry): boolean => {
   if (node.kind !== 'func') return node.kind !== 'field' || node.field !== '';
   const arity = meta[node.fn]?.arity;
-  const valid =
-    arity === undefined
-      ? true
-      : typeof arity === 'number'
-        ? node.args.length === arity
-        : node.args.length >= arity[0] && node.args.length <= arity[1];
+  let valid = true;
+  if (typeof arity === 'number') valid = node.args.length === arity;
+  else if (arity !== undefined) valid = node.args.length >= arity[0] && node.args.length <= arity[1];
   return valid && node.args.every((argument) => validArity(argument, meta));
 };
 

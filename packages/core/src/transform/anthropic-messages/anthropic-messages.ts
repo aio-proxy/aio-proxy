@@ -170,12 +170,14 @@ function imageBlock(part: FilePart, path: string): AnthropicImageBlock {
   if (typeof data !== 'object' || data === null || !('type' in data)) {
     throw new AnthropicMessagesTransformError(`${path}.data`);
   }
-  const source =
-    data.type === 'url'
-      ? ({ type: 'url', url: data.url.toString() } as const)
-      : data.type === 'data' && typeof data.data === 'string' && part.mediaType !== 'image'
-        ? ({ type: 'base64', media_type: part.mediaType, data: data.data } as const)
-        : undefined;
+  let source:
+    | { readonly type: 'url'; readonly url: string }
+    | { readonly type: 'base64'; readonly media_type: string; readonly data: string }
+    | undefined;
+  if (data.type === 'url') source = { type: 'url', url: data.url.toString() };
+  else if (data.type === 'data' && typeof data.data === 'string' && part.mediaType !== 'image') {
+    source = { type: 'base64', media_type: part.mediaType, data: data.data };
+  }
   if (source === undefined) throw new AnthropicMessagesTransformError(`${path}.data`);
   const cacheControl = (part.providerOptions as AnthropicProviderOptions | undefined)?.anthropic?.cache_control;
   return {

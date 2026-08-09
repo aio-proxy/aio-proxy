@@ -10,11 +10,8 @@ export function pluginEntries(config: Readonly<Record<string, unknown>>): readon
 }
 
 export function packageNameOf(entry: unknown): string | undefined {
-  return typeof entry === 'string'
-    ? entry
-    : Array.isArray(entry) && typeof entry[0] === 'string'
-      ? entry[0]
-      : undefined;
+  if (typeof entry === 'string') return entry;
+  return Array.isArray(entry) && typeof entry[0] === 'string' ? entry[0] : undefined;
 }
 
 export function normalizedPackageName(value: unknown): string | undefined {

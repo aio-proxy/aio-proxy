@@ -119,6 +119,9 @@ function rebuildRequest(request: Request, result: ProviderRequestTransformResult
     if (result.bodyModified) headers.delete('content-length');
 
     const serializedBody = result.bodyModified ? JSON.stringify(result.request.body) : undefined;
+    let body: BodyInit | undefined;
+    if (result.bodyModified) body = serializedBody;
+    else if (request.body !== null) body = request.body;
     return new Request(request.url, {
       cache: request.cache,
       credentials: request.credentials,
@@ -131,13 +134,7 @@ function rebuildRequest(request: Request, result: ProviderRequestTransformResult
       referrer: request.referrer,
       referrerPolicy: request.referrerPolicy,
       signal: request.signal,
-      ...(result.bodyModified
-        ? serializedBody === undefined
-          ? {}
-          : { body: serializedBody }
-        : request.body === null
-          ? {}
-          : { body: request.body }),
+      ...(body === undefined ? {} : { body }),
     });
   } catch (error) {
     if (error instanceof ProviderRequestTransformError) throw error;

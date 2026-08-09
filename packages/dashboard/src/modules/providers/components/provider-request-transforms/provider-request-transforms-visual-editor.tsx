@@ -17,7 +17,7 @@ export const ProviderRequestTransformsVisualEditor: React.FC<ProviderRequestTran
   onChange,
   onValidityChange,
 }) => {
-  const pendingFocusRule = useRef<number | undefined>(undefined);
+  const pendingFocusRule = useRef<number>();
   const [ruleValidity, setRuleValidity] = useState<Readonly<Record<number, boolean>>>({});
   const visualValid = value.every((_, index) => ruleValidity[index] !== false);
   useEffect(() => onValidityChange(visualValid), [onValidityChange, visualValid]);
@@ -45,16 +45,12 @@ export const ProviderRequestTransformsVisualEditor: React.FC<ProviderRequestTran
               canMoveUp={index > 0}
               canMoveDown={index < value.length - 1}
               structuralDisabled={!visualValid}
-              {...(pendingFocusRule.current === index
-                ? {
-                    firstPathInputRef: (element: HTMLInputElement | null) => {
-                      if (element === null || pendingFocusRule.current !== index) return;
-                      pendingFocusRule.current = undefined;
-                      element.focus();
-                      element.select();
-                    },
-                  }
-                : {})}
+              firstPathInputRef={(element: HTMLInputElement | null) => {
+                if (element === null || pendingFocusRule.current !== index) return;
+                pendingFocusRule.current = undefined;
+                element.focus();
+                element.select();
+              }}
               onChange={(nextRule) => onChange(value.map((item, itemIndex) => (itemIndex === index ? nextRule : item)))}
               onValidityChange={(valid) =>
                 setRuleValidity((current) => (current[index] === valid ? current : { ...current, [index]: valid }))

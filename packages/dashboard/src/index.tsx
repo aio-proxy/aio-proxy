@@ -1,10 +1,10 @@
 import { getLocale } from '@aio-proxy/i18n';
-
-import './styles.css';
 import { createRouter, RouterProvider } from '@tanstack/react-router';
 import ReactDOM from 'react-dom/client';
 
 import { routeTree } from './route-tree.gen';
+
+import './styles.css';
 
 document.documentElement.lang = getLocale();
 
@@ -19,6 +19,10 @@ const rootEl = document.getElementById('root');
 if (rootEl) {
   const root = ReactDOM.createRoot(rootEl);
   root.render(<RouterProvider router={router} />);
+}
+
+if (import.meta.env.DEV) {
+  import('react-grab');
 }
 
 export { createDashboardClient } from './lib/dashboard-client';

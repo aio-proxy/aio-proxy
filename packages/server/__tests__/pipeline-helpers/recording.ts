@@ -123,12 +123,9 @@ function projectAttempt(span: StoredSpan): RecordedAttempt {
 
 function projectFinal(completion: TraceCompletion, projected: readonly RecordedAttempt[]): RecordedFinal {
   const { summary } = completion;
-  const outcome: RecordedFinal['outcome'] =
-    summary.terminationReason === 'failure' || summary.errorCode !== undefined
-      ? 'failure'
-      : summary.terminationReason === 'cancelled'
-        ? 'cancelled'
-        : 'success';
+  let outcome: RecordedFinal['outcome'] = 'success';
+  if (summary.terminationReason === 'cancelled') outcome = 'cancelled';
+  if (summary.terminationReason === 'failure' || summary.errorCode !== undefined) outcome = 'failure';
   const last = projected.at(-1);
   const attachAttempt =
     summary.finalProviderId !== undefined &&

@@ -75,7 +75,7 @@ export async function loginKimi(
       return {
         fingerprint,
         suggestedKey: `kimi-${fingerprint.slice(0, 12)}`,
-        label: 'Kimi Code',
+        accountLabel: 'Kimi Code',
         credentials: credential,
         expiresAt: credential.expiresAt,
       };

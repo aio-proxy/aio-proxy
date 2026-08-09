@@ -47,12 +47,11 @@ function inputImagePart(part: FilePart, path: string): InputImagePart {
     if (typeof fileId !== 'string' || fileId === '') throw new OpenAIResponsesTransformError(`${path}.data`);
     return { type: 'input_image', file_id: fileId, ...(detail === undefined ? {} : { detail }) };
   }
-  const imageUrl =
-    data.type === 'url'
-      ? data.url.toString()
-      : data.type === 'data' && typeof data.data === 'string' && part.mediaType !== 'image'
-        ? `data:${part.mediaType};base64,${data.data}`
-        : undefined;
+  let imageUrl: string | undefined;
+  if (data.type === 'url') imageUrl = data.url.toString();
+  else if (data.type === 'data' && typeof data.data === 'string' && part.mediaType !== 'image') {
+    imageUrl = `data:${part.mediaType};base64,${data.data}`;
+  }
   if (imageUrl === undefined) throw new OpenAIResponsesTransformError(`${path}.data`);
   return { type: 'input_image', image_url: imageUrl, ...(detail === undefined ? {} : { detail }) };
 }

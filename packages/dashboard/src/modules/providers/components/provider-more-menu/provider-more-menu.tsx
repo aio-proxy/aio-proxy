@@ -8,7 +8,7 @@ import {
   DropdownMenuTrigger,
 } from '@aio-proxy/ui/components/dropdown-menu';
 import { Link } from '@tanstack/react-router';
-import { Copy, MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
+import { MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
 import type React from 'react';
 
 interface ProviderMoreMenuProps {
@@ -34,10 +34,6 @@ export const ProviderMoreMenu: React.FC<ProviderMoreMenuProps> = ({ provider, on
       <DropdownMenuItem render={<Link to="/providers/$id/edit" params={{ id: provider.id }} />}>
         <Pencil />
         {m['dashboard.providers.actions.edit']()}
-      </DropdownMenuItem>
-      <DropdownMenuItem onClick={() => void navigator.clipboard?.writeText(provider.id)}>
-        <Copy />
-        {m['dashboard.providers.actions.copy_provider_id']()}
       </DropdownMenuItem>
       <DropdownMenuItem variant="destructive" onClick={() => onDelete(provider)}>
         <Trash2 />

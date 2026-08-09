@@ -202,12 +202,9 @@ function loginResult(body: zod.infer<typeof tokenSchema>, now: number) {
   const claims = readClaims(body.id_token ?? accessToken);
   const email = readClaim(claims, 'email');
   const subject = readClaim(claims, 'sub');
-  const identity =
-    subject === undefined
-      ? email === undefined
-        ? `refresh:${refreshToken}`
-        : `email:${email.toLowerCase()}`
-      : `sub:${subject}`;
+  let identity = `refresh:${refreshToken}`;
+  if (email !== undefined) identity = `email:${email.toLowerCase()}`;
+  if (subject !== undefined) identity = `sub:${subject}`;
   const digest = new Bun.CryptoHasher('sha256').update(identity).digest('hex');
   const expiresAt = now + body.expires_in * 1_000;
   const credentials = {
@@ -220,7 +217,7 @@ function loginResult(body: zod.infer<typeof tokenSchema>, now: number) {
   return {
     fingerprint: `sha256:${digest}`,
     suggestedKey: `grok-${digest.slice(0, 12)}`,
-    label: email ?? subject ?? 'xAI Grok',
+    accountLabel: email ?? subject ?? 'xAI Grok',
     credentials,
     expiresAt,
   };
@@ -251,7 +248,8 @@ function appendCode(text: LocalizedText, code: string): LocalizedText {
 }
 
 function classifyStatus(status: number): string {
-  return status === 429 ? 'rate_limited' : status >= 500 ? 'upstream_5xx' : 'request_rejected';
+  if (status === 429) return 'rate_limited';
+  return status >= 500 ? 'upstream_5xx' : 'request_rejected';
 }
 
 function refreshError(retryable: boolean, reason: string, status?: number) {

@@ -13,13 +13,14 @@ import {
   test,
 } from '../test-support';
 
-test('materializes descriptor display metadata as inert localized plain data', async () => {
-  const label = Object.create(null) as Record<string, string>;
-  label['default'] = 'Example plugin';
-  label['zh-Hans'] = '示例插件';
+test('materializes descriptor presentation metadata as inert localized plain data', async () => {
+  const displayName = Object.create(null) as Record<string, string>;
+  displayName['default'] = 'Example plugin';
+  displayName['zh-Hans'] = '示例插件';
   const descriptor = definePlugin(() => {}, {
-    label,
+    displayName,
     description: { default: 'Example description', 'zh-Hans': '示例描述' },
+    icon: 'openai',
   } as never);
   const snapshot = await loadPluginRegistry(
     options({
@@ -28,10 +29,11 @@ test('materializes descriptor display metadata as inert localized plain data', a
   );
 
   const loaded = snapshot.plugins.get('@example/metadata');
-  expect(loaded?.label).toEqual({ default: 'Example plugin', 'zh-Hans': '示例插件' });
-  expect(loaded?.label).not.toBe(label);
-  expect(Object.getPrototypeOf(loaded?.label as object)).toBe(Object.prototype);
+  expect(loaded?.displayName).toEqual({ default: 'Example plugin', 'zh-Hans': '示例插件' });
+  expect(loaded?.displayName).not.toBe(displayName);
+  expect(Object.getPrototypeOf(loaded?.displayName as object)).toBe(Object.prototype);
   expect(loaded?.description).toEqual({ default: 'Example description', 'zh-Hans': '示例描述' });
+  expect(loaded?.icon).toBe('openai');
 });
 
 test('invalid default export fails', async () => {
@@ -64,19 +66,19 @@ test('apiVersion mismatch fails with incompatibility', async () => {
   });
 });
 
-test('apiVersion 1 is loadable', async () => {
+test('apiVersion 1 fails with incompatibility', async () => {
   const descriptor = {
     [PLUGIN_DESCRIPTOR_BRAND]: true,
     apiVersion: 1,
     metadata: {},
     setup() {},
   };
-  expect(validateDescriptor(descriptor).apiVersion).toBe(1);
+  expect(() => validateDescriptor(descriptor)).toThrow(expect.objectContaining({ code: 'PLUGIN_API_INCOMPATIBLE' }));
 });
 
-test('apiVersion 2 fails with incompatibility', () => {
+test('apiVersion 2 is loadable', () => {
   const descriptor = { ...definePlugin(() => {}), apiVersion: 2 };
-  expect(() => validateDescriptor(descriptor)).toThrow(expect.objectContaining({ code: 'PLUGIN_API_INCOMPATIBLE' }));
+  expect(validateDescriptor(descriptor).apiVersion).toBe(2);
 });
 
 test('apiVersion 3 fails with incompatibility', async () => {

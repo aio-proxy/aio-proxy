@@ -62,7 +62,7 @@ describe('GitHub Copilot login', () => {
       expect(result).toEqual({
         fingerprint: '12345',
         suggestedKey: 'copilot-12345',
-        label: 'octocat',
+        accountLabel: 'octocat',
         credentials: {
           githubToken: 'github-token',
           copilotToken: 'tid=x;exp=9999999999;proxy-ep=proxy.individual.githubcopilot.com;',

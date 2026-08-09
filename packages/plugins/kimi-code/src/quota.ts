@@ -4,8 +4,9 @@ import { kimiIdentityHeaders } from './headers';
 import { currentKimiCredential, type KimiCredential, type KimiOAuthDependencies } from './oauth';
 
 const numberValue = (value: unknown): number | undefined => {
-  const parsed =
-    typeof value === 'number' ? value : typeof value === 'string' && value.trim() !== '' ? Number(value) : NaN;
+  let parsed = Number.NaN;
+  if (typeof value === 'number') parsed = value;
+  else if (typeof value === 'string' && value.trim() !== '') parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : undefined;
 };
 
@@ -18,7 +19,7 @@ const resetTime = (value: unknown): number | undefined => {
   return Number.isFinite(parsed) ? parsed : undefined;
 };
 
-function item(value: unknown, id: string, label: OAuthQuotaItem['label']): OAuthQuotaItem | undefined {
+function item(value: unknown, id: string, displayName: OAuthQuotaItem['displayName']): OAuthQuotaItem | undefined {
   if (typeof value !== 'object' || value === null) return undefined;
   const limit = numberValue(Reflect.get(value, 'limit'));
   if (limit === undefined || limit <= 0) return undefined;
@@ -31,7 +32,7 @@ function item(value: unknown, id: string, label: OAuthQuotaItem['label']): OAuth
   const resetsAt = resetTime(rawReset);
   return {
     id,
-    label,
+    displayName,
     ...(ratio === undefined ? {} : { remainingRatio: Math.min(1, Math.max(0, ratio)) }),
     ...(resetsAt === undefined ? {} : { resetsAt }),
   };
@@ -70,19 +71,15 @@ export async function readKimiQuota(
         ? String(Reflect.get(window, 'timeUnit'))
         : 'window';
     const normalizedUnit = unit.toLowerCase().replaceAll('_', '-');
-    const shortUnit = unit.includes('MINUTE')
-      ? 'minute'
-      : unit.includes('HOUR')
-        ? 'hour'
-        : unit.includes('DAY')
-          ? 'day'
-          : 'window';
+    let shortUnit: 'minute' | 'hour' | 'day' | 'window' = 'window';
+    if (unit.includes('MINUTE')) shortUnit = 'minute';
+    else if (unit.includes('HOUR')) shortUnit = 'hour';
+    else if (unit.includes('DAY')) shortUnit = 'day';
     const displayDuration = duration ?? index + 1;
+    const chineseUnit = { day: '天', hour: '小时', minute: '分钟', window: '窗口' }[shortUnit];
     const mapped = item(Reflect.get(entry, 'detail'), `${duration ?? index}-${normalizedUnit}`, {
       default: `${displayDuration} ${shortUnit} quota`,
-      'zh-Hans': `${displayDuration} ${
-        shortUnit === 'minute' ? '分钟' : shortUnit === 'hour' ? '小时' : shortUnit === 'day' ? '天' : '窗口'
-      }配额`,
+      'zh-Hans': `${displayDuration} ${chineseUnit}配额`,
     });
     return mapped === undefined ? [] : [mapped];
   });

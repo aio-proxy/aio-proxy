@@ -155,7 +155,7 @@ function resetCount(value: unknown, path: Path): number {
 }
 
 const SNAPSHOT_KEYS = new Set(['items', 'resetCredits']);
-const ITEM_KEYS = new Set(['id', 'label', 'remainingRatio', 'resetsAt']);
+const ITEM_KEYS = new Set(['id', 'displayName', 'remainingRatio', 'resetsAt']);
 const RESET_KEYS = new Set(['availableCount', 'items']);
 const CREDIT_KEYS = new Set(['id', 'expiresAt']);
 
@@ -167,7 +167,7 @@ export function validateOAuthQuotaSnapshot(value: unknown): OAuthQuotaSnapshot {
     const items = withDenseArray(snapshotItems, ['items'], ancestors, (inputItems) =>
       inputItems.map((input, index) =>
         withPlainRecord(input, ['items', index], ITEM_KEYS, ancestors, (item) => {
-          const { id: itemId, label, remainingRatio: inputRatio, resetsAt: inputResetsAt } = item;
+          const { id: itemId, displayName, remainingRatio: inputRatio, resetsAt: inputResetsAt } = item;
           const id = quotaId(itemId, ['items', index, 'id']);
           if (itemIds.has(id)) invalid(['items', index, 'id']);
           itemIds.add(id);
@@ -175,7 +175,7 @@ export function validateOAuthQuotaSnapshot(value: unknown): OAuthQuotaSnapshot {
           const resetsAt = optionalTimestamp(inputResetsAt, ['items', index, 'resetsAt']);
           return {
             id,
-            label: localizedText(label, ['items', index, 'label']),
+            displayName: localizedText(displayName, ['items', index, 'displayName']),
             ...(remainingRatio === undefined ? {} : { remainingRatio }),
             ...(resetsAt === undefined ? {} : { resetsAt }),
           };

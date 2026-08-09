@@ -29,7 +29,7 @@ test('credential schema failure and malformed login metadata perform no write', 
     { fingerprint: ' ', suggestedKey: 'person', credentials: { token: 'new' } },
     { fingerprint: 42, suggestedKey: 'person', credentials: { token: 'new' } },
     { fingerprint: 'person@example.com', suggestedKey: 42, credentials: { token: 'new' } },
-    { fingerprint: 'person@example.com', suggestedKey: 'person', label: 42, credentials: { token: 'new' } },
+    { fingerprint: 'person@example.com', suggestedKey: 'person', accountLabel: 42, credentials: { token: 'new' } },
     { fingerprint: 'person@example.com', suggestedKey: 'person', expiresAt: Infinity, credentials: { token: 'new' } },
   ]) {
     const state = fixture();

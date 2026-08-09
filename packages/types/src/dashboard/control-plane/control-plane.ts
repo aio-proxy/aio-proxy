@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { ServerConfigSchema, ServerLoggingSchema, ServerRetrySchema } from '../../config/index';
+import { DashboardLocalizedTextSchema } from '../../dashboard-localized-text';
 import { DashboardOAuthFormFieldSchema } from '../../dashboard-oauth';
 import { PluginPackageNameSchema, PluginStateSchema } from '../../plugin';
 import { ConfigTemplateStringSchema, HttpProxyUrlSchema } from '../../provider';
@@ -25,13 +26,15 @@ function materializeProxyTemplate(value: string): string {
   const hostStart = Math.max(authorityStart, value.lastIndexOf('@', authorityEnd - 1) + 1);
   const bracketed = value[hostStart] === '[';
   const bracketEnd = bracketed ? value.indexOf(']', hostStart + 1) : -1;
-  const portSeparator = bracketed
-    ? bracketEnd >= 0 && value[bracketEnd + 1] === ':'
-      ? bracketEnd + 1
-      : -1
-    : value.lastIndexOf(':', authorityEnd - 1);
+  let portSeparator = value.lastIndexOf(':', authorityEnd - 1);
+  if (bracketed) {
+    portSeparator = -1;
+    if (bracketEnd >= 0 && value[bracketEnd + 1] === ':') portSeparator = bracketEnd + 1;
+  }
   const hostValueStart = bracketed ? hostStart + 1 : hostStart;
-  const hostEnd = bracketed && bracketEnd >= 0 ? bracketEnd : portSeparator > hostStart ? portSeparator : authorityEnd;
+  let hostEnd = authorityEnd;
+  if (portSeparator > hostStart) hostEnd = portSeparator;
+  if (bracketed && bracketEnd >= 0) hostEnd = bracketEnd;
 
   return value.replace(CONFIG_TEMPLATE_EXPRESSION, (expression, offset: number) => {
     const expressionEnd = offset + expression.length;
@@ -120,6 +123,8 @@ export const DashboardSettingsMutationResponseSchema = z.discriminatedUnion('ok'
 
 export const DashboardPluginSummarySchema = z.strictObject({
   packageName: PluginPackageNameSchema,
+  displayName: DashboardLocalizedTextSchema.optional(),
+  icon: z.string().min(1).optional(),
   version: z.string().min(1).optional(),
   builtin: z.boolean(),
   enabled: z.boolean(),

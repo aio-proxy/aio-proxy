@@ -31,7 +31,7 @@ export function overviewDashboardActivity(
     const models = [...(tokensByDate.get(date) ?? new Map<string, bigint>())]
       .filter(([, totalTokens]) => totalTokens !== 0n)
       .sort(([leftModelId, leftTokens], [rightModelId, rightTokens]) =>
-        leftTokens === rightTokens ? leftModelId.localeCompare(rightModelId) : leftTokens > rightTokens ? -1 : 1,
+        leftTokens === rightTokens ? leftModelId.localeCompare(rightModelId) : Number(leftTokens < rightTokens) * 2 - 1,
       )
       .map(([modelId, totalTokens]) => ({ modelId, totalTokens: totalTokens.toString() }));
     const totalTokens = models.reduce((total, model) => total + BigInt(model.totalTokens), 0n);

@@ -1,33 +1,50 @@
 import { Button } from '@aio-proxy/ui/components/button';
 import { TableHead as TableHeadRoot } from '@aio-proxy/ui/components/table';
+import { cn } from '@aio-proxy/ui/lib/utils';
 import type { SortDirection } from '@tanstack/react-table';
 import { ArrowDown, ArrowUp } from 'lucide-react';
 import type React from 'react';
 
 interface SortableTableColumn {
+  readonly columnDef: { readonly meta?: { readonly className?: string } };
   readonly getCanSort: () => boolean;
   readonly getIsSorted: () => false | SortDirection;
   readonly getToggleSortingHandler: () => undefined | ((event: unknown) => void);
 }
 
 interface TableHeadProps {
+  readonly className?: string;
   readonly column: SortableTableColumn;
   readonly label: string;
   readonly sortDirection: false | SortDirection;
 }
 
-export const TableHead: React.FC<TableHeadProps> = ({ column, label, sortDirection }) => {
+const ariaSort = (sortDirection: false | SortDirection): 'ascending' | 'descending' | 'none' => {
+  if (sortDirection === false) return 'none';
+  return sortDirection === 'asc' ? 'ascending' : 'descending';
+};
+
+export const TableHead: React.FC<TableHeadProps> = ({ className, column, label, sortDirection }) => {
   const canSort = column.getCanSort();
+  const directionIcon = () => {
+    if (sortDirection === 'asc') return <ArrowUp />;
+    if (sortDirection === 'desc') return <ArrowDown />;
+    return null;
+  };
   return (
     <TableHeadRoot
-      aria-sort={
-        canSort ? (sortDirection === false ? 'none' : sortDirection === 'asc' ? 'ascending' : 'descending') : undefined
-      }
+      {...(className === undefined ? {} : { className })}
+      aria-sort={canSort ? ariaSort(sortDirection) : undefined}
     >
       {canSort ? (
-        <Button className="-mx-3" variant="ghost" size="sm" onClick={column.getToggleSortingHandler()}>
+        <Button
+          className={cn('-mx-3', className?.includes('text-center') && 'justify-center')}
+          variant="ghost"
+          size="sm"
+          onClick={column.getToggleSortingHandler()}
+        >
           {label}
-          {sortDirection === 'asc' ? <ArrowUp /> : sortDirection === 'desc' ? <ArrowDown /> : null}
+          {directionIcon()}
         </Button>
       ) : (
         label
@@ -37,7 +54,12 @@ export const TableHead: React.FC<TableHeadProps> = ({ column, label, sortDirecti
 };
 
 export const tableHead =
-  (label: () => string) =>
+  (label: () => string, className?: string) =>
   ({ column }: { readonly column: SortableTableColumn }) => (
-    <TableHead column={column} label={label()} sortDirection={column.getIsSorted()} />
+    <TableHead
+      className={className ?? column.columnDef.meta?.className}
+      column={column}
+      label={label()}
+      sortDirection={column.getIsSorted()}
+    />
   );

@@ -157,9 +157,8 @@ describe('GET /dashboard/api/usage', () => {
     expect(body.series).toEqual(
       metric === 'requests'
         ? [
+            { key: 'unknown', kind: 'dimension' },
             { key: 'openrouter', kind: 'dimension' },
-            { key: '__failed__', kind: 'failed' },
-            { key: '__cancelled__', kind: 'cancelled' },
           ]
         : [{ key: 'openrouter', kind: 'dimension' }],
     );
@@ -178,5 +177,13 @@ describe('GET /dashboard/api/usage', () => {
 
     expect(response.status).toBe(400);
     expect(await response.json()).toMatchObject({ error: 'validation failed', details: expect.any(Array) });
+  });
+
+  test.each(['0', '-1', '1.5'])('rejects invalid maxResults %s', async (maxResults) => {
+    const response = await (
+      await seededApp()
+    ).request(`/dashboard/api/usage?maxResults=${maxResults}`, undefined, loopbackServer);
+
+    expect(response.status).toBe(400);
   });
 });

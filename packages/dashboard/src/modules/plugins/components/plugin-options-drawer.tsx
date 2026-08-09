@@ -58,14 +58,19 @@ export const PluginOptionsDrawer = forwardRef<PluginOptionsDrawerRef>((_, ref) =
       clearSecretKeys: value.clearSecretKeys,
     });
     if (!parsed.success) return;
-    mutation.mutate(parsed.data, { onSuccess: closeDrawer });
+    mutation.mutate(parsed.data, {
+      onSuccess: () => {
+        mutation.reset();
+        setPackageName(null);
+      },
+    });
   });
 
-  function closeDrawer() {
+  const closeDrawer = () => {
     form.reset(pluginOptionsFormValues(editViewQuery.data));
     mutation.reset();
     setPackageName(null);
-  }
+  };
 
   useImperativeHandle(ref, () => ({ open: (plugin) => setPackageName(plugin.packageName) }), []);
 
@@ -97,16 +102,18 @@ export const PluginOptionsDrawer = forwardRef<PluginOptionsDrawerRef>((_, ref) =
           }}
         >
           <div className="min-h-0 flex-1 overflow-auto p-4">
-            {editViewQuery.isLoading ? (
+            {editViewQuery.isLoading && (
               <div className="space-y-3">
                 <Skeleton className="h-16 w-full" />
                 <Skeleton className="h-16 w-full" />
               </div>
-            ) : editViewQuery.isError || editViewQuery.data === undefined ? (
+            )}
+            {!editViewQuery.isLoading && (editViewQuery.isError || editViewQuery.data === undefined) && (
               <p role="alert" className="text-sm text-destructive">
                 {m['dashboard.plugins.options_load_failed']()}
               </p>
-            ) : (
+            )}
+            {!editViewQuery.isLoading && !editViewQuery.isError && editViewQuery.data !== undefined && (
               <form.Field name="publicValues">
                 {(publicField: AnyFieldApi) => (
                   <form.Field name="secretValues">

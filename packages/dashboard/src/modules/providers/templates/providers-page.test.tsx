@@ -27,8 +27,8 @@ const invalidProvider = (): DashboardProviderSummary =>
 
 rs.mock('@tanstack/react-query', () => ({
   queryOptions: <T,>(options: T) => options,
-  useQuery: () => ({
-    data: queryMocks.providers,
+  useQuery: (options: { queryKey: readonly string[] }) => ({
+    data: options.queryKey[0] === 'providers' ? queryMocks.providers : new Map(),
     isLoading: false,
   }),
 }));
@@ -75,7 +75,8 @@ describe('providers page', () => {
     render(<ProvidersPage />);
 
     const group = within(screen.getByTestId('provider-group-@aio-proxy/plugin-github-copilot/default'));
-    expect(group.getByText('@aio-proxy/plugin-github-copilot/default')).toBeTruthy();
+    expect(group.getByText('@aio-proxy/plugin-github-copilot')).toBeTruthy();
+    expect(group.queryByText('@aio-proxy/plugin-github-copilot/default')).toBeNull();
     fireEvent.click(group.getByRole('button'));
     const row = within(screen.getByTestId('provider-row-copilot-octocat'));
     expect(row.getByText('octocat')).toBeTruthy();
@@ -96,6 +97,7 @@ describe('providers page', () => {
     expect(row.getByText('Carpool')).toBeTruthy();
     expect(row.getByText('carpool')).toBeTruthy();
     expect(row.getByText('API')).toBeTruthy();
+    expect(row.getByText('N/A')).toBeTruthy();
     expect(row.getByTestId('provider-models-count')).toHaveTextContent('1');
     expect(row.getByLabelText(/Edit provider carpool|编辑提供商 carpool/u)).toBeTruthy();
     expect(screen.queryByRole('columnheader', { name: /Details|详情/u })).toBeNull();

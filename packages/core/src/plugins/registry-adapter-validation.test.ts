@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { definePlugin, type OAuthAdapter, zod } from '@aio-proxy/plugin-sdk';
 
 import { npmPackageCacheDir } from '../npm';
-import type { DiagnosticFactory, PluginLogSink } from './diagnostic';
+import type { DiagnosticFactory } from './diagnostic';
 import { loadPluginRegistry } from './loader/index';
 
 const homeEnv = 'AIO_PROXY_HOME';
@@ -42,7 +42,7 @@ const diagnostics: DiagnosticFactory = (code, options) => ({
 function fakeAdapter(id: string, overrides: Record<string, unknown> = {}): OAuthAdapter {
   return {
     id,
-    label: 'Example',
+    displayName: 'Example',
     account: { options: { schema: zod.object({}), form: [] } },
     credentials: zod.object({ token: zod.string() }),
     async login() {
@@ -69,53 +69,9 @@ const base = {
 };
 
 describe('PluginRegistry staging', () => {
-  test('retains valid icons and degrades invalid icons without logging their data', async () => {
-    const invalidIcon = 'data:text/html,private-icon-payload';
-    const logs: Parameters<PluginLogSink>[0][] = [];
-    const snapshot = await loadPluginRegistry({
-      ...base,
-      builtIns: [
-        {
-          packageName: '@example/icons',
-          version: '1.0.0',
-          descriptor: definePlugin((api) => {
-            api.oauth.register(fakeAdapter('valid', { icon: 'openai' }));
-            api.oauth.register(fakeAdapter('invalid', { icon: invalidIcon }));
-            api.oauth.register(fakeAdapter('legacy'));
-          }),
-        },
-      ],
-      enablements: [{ packageName: '@example/icons' }],
-      importPackage: async () => {
-        throw new Error('must not import');
-      },
-      logger: (entry) => logs.push(entry),
-    });
-
-    const valid = snapshot.registry.resolveOAuth('@example/icons', 'valid');
-    const invalid = snapshot.registry.resolveOAuth('@example/icons', 'invalid');
-    const legacy = snapshot.registry.resolveOAuth('@example/icons', 'legacy');
-    if (valid === undefined || invalid === undefined || legacy === undefined) throw new Error('adapter not registered');
-
-    expect(valid.icon).toBe('openai');
-    expect(invalid.icon).toBeUndefined();
-    expect(legacy.icon).toBeUndefined();
-    expect(logs).toEqual([
-      {
-        event: 'plugin.oauth.icon.invalid',
-        code: 'PLUGIN_ICON_INVALID',
-        context: { plugin: '@example/icons', capability: 'invalid' },
-        error: { name: 'OAuthIconValidationError', message: 'OAuth adapter icon was ignored' },
-      },
-    ]);
-    const serialized = JSON.stringify(logs[0]);
-    expect(serialized).not.toContain(invalidIcon);
-    expect(serialized).not.toContain('private-icon-payload');
-  });
-
   test.each([
     ['blank adapter id', fakeAdapter(' ')],
-    ['blank label', fakeAdapter('blank-label', { label: ' ' })],
+    ['blank display name', fakeAdapter('blank-label', { displayName: ' ' })],
     ['invalid account options', fakeAdapter('account', { account: { options: { schema: {}, form: [] } } })],
     ['invalid credential schema', fakeAdapter('credentials', { credentials: {} })],
     ['missing login', fakeAdapter('login', { login: undefined })],
