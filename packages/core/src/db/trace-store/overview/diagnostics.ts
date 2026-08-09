@@ -23,7 +23,10 @@ export function overviewDashboardDiagnostics(
   query: DashboardOverviewQuery,
 ): DashboardOverviewDiagnosticsResponse {
   const range = resolveRange(query.range, query.now ?? new Date());
-  return { providerHealth: providerHealth(db, range), topModelCosts: topModelCosts(db, range) };
+  return {
+    providerHealth: query.range === '90d' ? null : providerHealth(db, range),
+    topModelCosts: topModelCosts(db, range),
+  };
 }
 
 function providerHealth(
@@ -58,14 +61,22 @@ function topModelCosts(
   range: ResolvedRange,
 ): DashboardOverviewDiagnosticsResponse['topModelCosts'] {
   const totals = new Map<string, bigint>();
-  const rows = iterate<RawCostRow>(
-    db,
-    `select coalesce(final_model_id, requested_model_id, 'unknown') as modelId,
-      cast(estimated_cost_nano_usd as text) as estimatedCostNanoUsd
-    from trace_span where parent_span_id is null and estimated_cost_nano_usd is not null
-      and ended_at >= ? and ended_at <= ?`,
-    [range.start.getTime(), range.end.getTime()],
-  );
+  const rows =
+    range.bucketUnit === 'day'
+      ? iterate<RawCostRow>(
+          db,
+          `select model_dimension as modelId, cast(estimated_cost_nano_usd as text) as estimatedCostNanoUsd
+          from usage_daily where local_day >= ? and local_day <= ?`,
+          [localDate(range.start), localDate(range.end)],
+        )
+      : iterate<RawCostRow>(
+          db,
+          `select coalesce(final_model_id, requested_model_id, 'unknown') as modelId,
+          cast(estimated_cost_nano_usd as text) as estimatedCostNanoUsd
+          from trace_span where parent_span_id is null and estimated_cost_nano_usd is not null
+            and ended_at >= ? and ended_at <= ?`,
+          [range.start.getTime(), range.end.getTime()],
+        );
   for (const row of rows) {
     totals.set(row.modelId, (totals.get(row.modelId) ?? 0n) + parseSqliteInteger(row.estimatedCostNanoUsd));
   }
@@ -89,3 +100,7 @@ function iterate<T>(db: BunSQLiteDatabase, sql: string, params: readonly SQLQuer
 }
 
 const compareBigIntDescending = (left: bigint, right: bigint) => (left === right ? 0 : Number(left < right) * 2 - 1);
+
+function localDate(value: Date): string {
+  return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`;
+}

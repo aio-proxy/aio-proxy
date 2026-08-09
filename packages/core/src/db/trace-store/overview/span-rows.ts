@@ -14,6 +14,7 @@ export type RootRow = OverviewRow & {
   readonly cacheWriteTokens: bigint;
   readonly normalizedCacheReadTokens: bigint;
   readonly normalizedPromptTokens: bigint;
+  readonly cacheHitRateKnown: boolean;
 };
 
 type RawRootRow = {
@@ -97,6 +98,7 @@ export function spanRows(db: BunSQLiteDatabase, range: ResolvedRange): readonly 
       cacheWriteTokens,
       normalizedCacheReadTokens: capturesCache ? cacheReadTokens : 0n,
       normalizedPromptTokens,
+      cacheHitRateKnown: true,
     };
   });
 }

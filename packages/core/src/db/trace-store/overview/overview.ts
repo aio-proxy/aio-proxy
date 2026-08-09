@@ -87,7 +87,9 @@ function summarize(
       outputTokens: sum(rows, 'outputTokens').toString(),
       cacheReadTokens: sum(rows, 'cacheReadTokens').toString(),
       cacheWriteTokens: sum(rows, 'cacheWriteTokens').toString(),
-      cacheHitRate: ratio(sum(rows, 'normalizedCacheReadTokens'), sum(rows, 'normalizedPromptTokens')),
+      cacheHitRate: rows.some((row) => !row.cacheHitRateKnown)
+        ? null
+        : ratio(sum(rows, 'normalizedCacheReadTokens'), sum(rows, 'normalizedPromptTokens')),
       estimatedCostNanoUsd: sum(rows, 'estimatedCostNanoUsd').toString(),
       averageRpm: Number(requestCount) / elapsedMinutes,
       averageTpm: Number(totalTokens) / elapsedMinutes,

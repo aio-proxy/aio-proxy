@@ -1,4 +1,4 @@
-import { primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import { integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 
 export const usageDaily = sqliteTable(
   'usage_daily',
@@ -23,6 +23,7 @@ export const usageDaily = sqliteTable(
     // because those live on a child span and cannot become rollup dimensions.
     normalizedCacheReadTokens: text('normalized_cache_read_tokens').notNull().default('0'),
     normalizedPromptTokens: text('normalized_prompt_tokens').notNull().default('0'),
+    cacheHitRateAvailable: integer('cache_hit_rate_available').notNull().default(0),
   },
   (table) => [primaryKey({ columns: [table.localDay, table.modelDimension] })],
 );

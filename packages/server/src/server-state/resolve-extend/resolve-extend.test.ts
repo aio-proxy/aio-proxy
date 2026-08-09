@@ -72,6 +72,8 @@ describe('applyMetadataExtend', () => {
       const result = await Promise.race([applyMetadataExtend(config), Bun.sleep(500).then(() => timedOut)]);
 
       expect(result).not.toBe(timedOut);
+      if (result === timedOut) throw new Error('metadata resolution waited for the catalog');
+      expect(metadataOf(result, 'p1')['my-gpt']).toMatchObject({ extend: 'openai/gpt-5.5', name: 'Kept' });
     } finally {
       globalThis.fetch = nativeFetch;
     }

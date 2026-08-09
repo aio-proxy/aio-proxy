@@ -1,0 +1,1 @@
+ALTER TABLE `usage_daily` ADD `cache_hit_rate_available` integer DEFAULT 0 NOT NULL;

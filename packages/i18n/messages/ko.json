@@ -892,6 +892,7 @@
       "success_rate": "성공률",
       "p95_latency": "P95 지연 시간",
       "no_provider_activity": "기록된 프로바이더 시도가 없음",
+      "provider_health_unavailable": "프로바이더 상태는 최근 45일 동안만 제공됩니다",
       "top_models_title": "상위 모델 비용",
       "no_model_costs": "기록된 모델 비용이 없음",
       "activity_title": "히트맵",

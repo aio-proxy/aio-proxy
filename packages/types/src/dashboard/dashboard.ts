@@ -125,13 +125,15 @@ export const DashboardOverviewResponseSchema = z.object({
 });
 
 export const DashboardOverviewDiagnosticsResponseSchema = z.object({
-  providerHealth: z.array(
-    z.object({
-      providerId: IdSchema,
-      successRate: NonNegativeFiniteNumberSchema.max(1),
-      p95LatencyMs: NonNegativeFiniteNumberSchema,
-    }),
-  ),
+  providerHealth: z
+    .array(
+      z.object({
+        providerId: IdSchema,
+        successRate: NonNegativeFiniteNumberSchema.max(1),
+        p95LatencyMs: NonNegativeFiniteNumberSchema,
+      }),
+    )
+    .nullable(),
   topModelCosts: z.array(z.object({ modelId: IdSchema, estimatedCostNanoUsd: NonNegativeIntegerStringSchema })),
 });
 

@@ -82,11 +82,15 @@ describe('overview service', () => {
     });
   });
 
-  test('polls only range data while diagnostics follow the range and activity stays independent', () => {
-    expect(overviewQueryOptions({ range: '24h' })).toMatchObject({
+  test('polls only successful 24h range data while diagnostics follow the range and activity stays independent', () => {
+    const liveOverview = overviewQueryOptions({ range: '24h' });
+    expect(liveOverview).toMatchObject({
       queryKey: ['dashboard', 'overview', 'range', '24h'],
-      refetchInterval: 5_000,
     });
+    expect(liveOverview.refetchInterval).toBeTypeOf('function');
+    if (typeof liveOverview.refetchInterval !== 'function') throw new Error('Expected conditional polling');
+    expect(liveOverview.refetchInterval({ state: { status: 'success' } } as never)).toBe(5_000);
+    expect(liveOverview.refetchInterval({ state: { status: 'error' } } as never)).toBe(false);
     expect(overviewQueryOptions({ range: '90d' })).toMatchObject({
       queryKey: ['dashboard', 'overview', 'range', '90d'],
       refetchInterval: false,

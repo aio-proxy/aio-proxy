@@ -890,6 +890,7 @@
       "success_rate": "Success rate",
       "p95_latency": "P95 latency",
       "no_provider_activity": "No Provider attempts recorded",
+      "provider_health_unavailable": "Provider health is available for up to 45 days",
       "top_models_title": "Top model costs",
       "no_model_costs": "No model costs recorded",
       "activity_title": "Heatmap",

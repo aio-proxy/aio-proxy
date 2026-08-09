@@ -17,7 +17,7 @@ type DraftResolution =
     };
 
 const OMIT = Symbol('redacted draft value');
-const CREDENTIAL_HEADER_PATTERN = /(?:^|-)(?:authorization|api-key)$/i;
+const FRESH_CREDENTIAL_KEY_PATTERN = /(?:api[-_]?key|authorization|bearer|credential|password|secret|token)(?:$|[-_])/i;
 
 export function resolveProviderDraft(
   state: ServerState,
@@ -130,14 +130,10 @@ function hasPersistedSensitiveValue(value: unknown, key = '', insideSecretBounda
   );
 }
 
-function hasFreshCredentialValue(value: unknown): boolean {
-  if (!isPlainObject(value)) return false;
-  if (typeof value['apiKey'] === 'string' && value['apiKey'].trim() !== '') return true;
-  const headers = value['headers'];
+function hasFreshCredentialValue(value: unknown, key = ''): boolean {
+  if (typeof value === 'string') return value.trim() !== '' && FRESH_CREDENTIAL_KEY_PATTERN.test(key);
+  if (Array.isArray(value)) return value.some((item) => hasFreshCredentialValue(item, key));
   return (
-    isPlainObject(headers) &&
-    Object.entries(headers).some(
-      ([header, item]) => CREDENTIAL_HEADER_PATTERN.test(header) && typeof item === 'string' && item.trim() !== '',
-    )
+    isPlainObject(value) && Object.entries(value).some(([entryKey, item]) => hasFreshCredentialValue(item, entryKey))
   );
 }

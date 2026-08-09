@@ -88,7 +88,7 @@ export const overviewQueryOptions = (input: OverviewQueryInput) =>
     queryKey: queryKeys.overviewRange(input.range),
     queryFn: () => getOverview(input),
     placeholderData: keepPreviousData,
-    refetchInterval: input.range === '24h' ? 5_000 : false,
+    refetchInterval: input.range === '24h' ? (query) => (query.state.status === 'error' ? false : 5_000) : false,
     refetchIntervalInBackground: false,
   });
 

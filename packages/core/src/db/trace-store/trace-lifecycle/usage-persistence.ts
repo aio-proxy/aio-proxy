@@ -182,6 +182,7 @@ function addUsageDailyDelta(
     estimatedCostNanoUsd: addDecimal(existing?.estimatedCostNanoUsd, delta.estimatedCostNanoUsd),
     normalizedCacheReadTokens: addDecimal(existing?.normalizedCacheReadTokens, delta.normalizedCacheReadTokens),
     normalizedPromptTokens: addDecimal(existing?.normalizedPromptTokens, delta.normalizedPromptTokens),
+    cacheHitRateAvailable: existing?.cacheHitRateAvailable ?? 1,
   };
 
   if (existing === undefined) {

@@ -892,6 +892,7 @@
       "success_rate": "成功率",
       "p95_latency": "P95 レイテンシー",
       "no_provider_activity": "記録されたプロバイダー試行はありません",
+      "provider_health_unavailable": "プロバイダーの健全性は直近 45 日間のみ利用できます",
       "top_models_title": "モデル別コスト上位",
       "no_model_costs": "記録されたモデルコストはありません",
       "activity_title": "ヒートマップ",

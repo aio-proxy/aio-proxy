@@ -77,7 +77,7 @@ export async function buildSnapshot(
   // Resolve per-model `metadata.extend` into effective merged metadata before any
   // materialization/summary derivation reads provider metadata, so downstream cost
   // and model-resolution consumers transparently see the merged values.
-  const configWithExtend = await applyMetadataExtend(config, logger);
+  const configWithExtend = await applyMetadataExtend(config, logger, { onCatalogWarmed: onDiagnosticChanged });
   const nonOAuth = {
     ...configWithExtend,
     providers: configWithExtend.providers.filter((provider) => provider.kind !== ProviderKind.OAuth),

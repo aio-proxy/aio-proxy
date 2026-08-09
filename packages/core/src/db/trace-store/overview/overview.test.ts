@@ -227,6 +227,28 @@ test('normalizes the day rollup cache rate by the same capture paths as the hot 
   });
 });
 
+test('marks cache hit rate unavailable for rollups predating normalization', () => {
+  const handle = openTestDb();
+  try {
+    const store = createTraceStore(handle.db);
+    seedTrace(store, {
+      id: 1,
+      attempts: [{ providerId: 'provider', durationMs: 10 }],
+      usage: { inputTokens: 100, cacheReadTokens: 50 },
+    });
+    handle.sqlite.run('UPDATE usage_daily SET cache_hit_rate_available = 0');
+    seedTrace(store, {
+      id: 2,
+      attempts: [{ providerId: 'provider', durationMs: 10 }],
+      usage: { inputTokens: 100, cacheReadTokens: 50 },
+    });
+
+    expect(store.overviewDashboard({ range: '7d', now: NOW }).summary.current.cacheHitRate).toBeNull();
+  } finally {
+    handle.close();
+  }
+});
+
 test('keeps the previous day window disjoint from the current one', () => {
   withStore((store) => {
     // NOW is mid-day, so the 7d window is 07-05..07-11 and its baseline must stop
@@ -363,10 +385,7 @@ test('scopes Provider health and top model costs to the selected range', () => {
     expect(recent.topModelCosts).toEqual([{ modelId: 'recent-model', estimatedCostNanoUsd: '2000000000' }]);
 
     const quarter = store.overviewDashboardDiagnostics({ range: '90d', now: NOW });
-    expect(quarter.providerHealth).toEqual([
-      { providerId: 'old-provider', successRate: 1, p95LatencyMs: 700 },
-      { providerId: 'recent-provider', successRate: 1, p95LatencyMs: 100 },
-    ]);
+    expect(quarter.providerHealth).toBeNull();
     expect(quarter.topModelCosts).toEqual([
       { modelId: 'old-model', estimatedCostNanoUsd: '5000000000' },
       { modelId: 'recent-model', estimatedCostNanoUsd: '2000000000' },
@@ -424,9 +443,7 @@ test('keeps rolling token activity after trace pruning', () => {
   }
 });
 
-// Diagnostics read pruned trace spans so they stay consistent with the range KPIs,
-// which are derived from the same spans.
-test('drops model costs for pruned traces', () => {
+test('keeps 90-day model costs after trace pruning and marks Provider health unavailable', () => {
   const handle = openTestDb();
   const now = new Date(2025, 0, 15, 12);
   try {
@@ -443,8 +460,8 @@ test('drops model costs for pruned traces', () => {
 
     expect(store.find('00000000000000000000000000000001')).toBeUndefined();
     expect(store.overviewDashboardDiagnostics({ range: '90d', now })).toEqual({
-      providerHealth: [],
-      topModelCosts: [],
+      providerHealth: null,
+      topModelCosts: [{ modelId: 'pruned-model', estimatedCostNanoUsd: '5000000000' }],
     });
   } finally {
     handle.close();

@@ -890,6 +890,7 @@
       "success_rate": "成功率",
       "p95_latency": "P95 延迟",
       "no_provider_activity": "暂无已记录的提供商尝试",
+      "provider_health_unavailable": "提供商健康状况仅提供最近 45 天的数据",
       "top_models_title": "模型费用排行",
       "no_model_costs": "暂无已记录的模型费用",
       "activity_title": "热力图",

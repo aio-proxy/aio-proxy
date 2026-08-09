@@ -14,7 +14,7 @@ interface ProviderHealthTableProps {
   readonly rows: OverviewDiagnosticsData['providerHealth'];
 }
 
-type ProviderHealthRow = OverviewDiagnosticsData['providerHealth'][number];
+type ProviderHealthRow = NonNullable<OverviewDiagnosticsData['providerHealth']>[number];
 
 export const ProviderHealthTable: React.FC<ProviderHealthTableProps> = ({ rows }) => {
   'use no memo';
@@ -42,7 +42,7 @@ export const ProviderHealthTable: React.FC<ProviderHealthTableProps> = ({ rows }
       },
     ];
   }, [locale]);
-  const { table } = useDataTable(rows, columns);
+  const { table } = useDataTable(rows ?? [], columns);
 
   return (
     <Card>
@@ -71,7 +71,9 @@ export const ProviderHealthTable: React.FC<ProviderHealthTableProps> = ({ rows }
                   colSpan={table.getAllLeafColumns().length}
                   className="h-24 text-center text-muted-foreground"
                 >
-                  {m['dashboard.overview.no_provider_activity']()}
+                  {rows === null
+                    ? m['dashboard.overview.provider_health_unavailable']()
+                    : m['dashboard.overview.no_provider_activity']()}
                 </TableCell>
               </TableRow>
             ) : (

@@ -24,6 +24,7 @@ const COLUMNS = [
   'estimatedCostNanoUsd',
   'normalizedCacheReadTokens',
   'normalizedPromptTokens',
+  'cacheHitRateAvailable',
 ] as const;
 
 type RawDailyRow = { readonly bucket: string; readonly dimension: string } & Record<(typeof COLUMNS)[number], string>;
@@ -50,8 +51,9 @@ export function dailyRows(db: BunSQLiteDatabase, range: ResolvedRange): readonly
   const rows: RootRow[] = [];
   for (const row of statement.all(localDate(range.start), localDate(range.end))) {
     const value = (column: (typeof COLUMNS)[number]) => parseSqliteInteger(row[column]);
+    const cacheHitRateKnown = value('cacheHitRateAvailable') === 1n;
     const failureCount = value('errorCount') + value('interruptedCount');
-    const shared = { bucket: row.bucket, dimension: row.dimension };
+    const shared = { bucket: row.bucket, dimension: row.dimension, cacheHitRateKnown };
     const successCount = value('successCount');
     if (successCount > 0n) {
       rows.push({
@@ -78,7 +80,7 @@ export function dailyRows(db: BunSQLiteDatabase, range: ResolvedRange): readonly
 }
 
 function outcomeRow(
-  shared: { readonly bucket: string; readonly dimension: string },
+  shared: { readonly bucket: string; readonly dimension: string; readonly cacheHitRateKnown: boolean },
   terminationReason: 'failure' | 'cancelled',
   requestCount: bigint,
 ): RootRow {
