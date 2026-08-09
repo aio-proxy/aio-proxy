@@ -67,7 +67,7 @@ describe('GET /overview', () => {
 
       expect(response.status).toBe(200);
       expect(DashboardOverviewDiagnosticsResponseSchema.parse(await response.json())).toEqual({
-        providerHealth: [],
+        providerHealth: null,
         topModelCosts: [],
       });
     } finally {

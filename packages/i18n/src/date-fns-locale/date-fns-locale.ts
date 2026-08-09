@@ -1,8 +1,8 @@
 import type { Locale as DateFnsLocale } from 'date-fns';
 import { enUS, ja, ko, zhCN, zhTW } from 'date-fns/locale';
 
-import { getLocale } from './paraglide/runtime';
-import type { Locale } from './resolve';
+import { getLocale } from '../paraglide/runtime';
+import type { Locale } from '../resolve';
 
 const DATE_FNS_LOCALES = {
   en: enUS,

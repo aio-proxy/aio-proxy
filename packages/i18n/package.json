@@ -14,7 +14,7 @@
     "build": "paraglide-js compile --emit-ts-declarations && rslib build",
     "dev": "paraglide-js compile --emit-ts-declarations --watch",
     "test": "bun run test:unit",
-    "test:unit": "cd ../.. && bun test packages/i18n/__tests__/*.test.ts",
+    "test:unit": "cd ../.. && bun test packages/i18n/src/**/*.test.ts packages/i18n/__tests__/*.test.ts",
     "test:artifact": "cd ../.. && bun test ./packages/i18n/__tests__/*.smoke.ts"
   },
   "dependencies": {

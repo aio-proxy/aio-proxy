@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 
-import { dateFnsLocale } from '../src/date-fns-locale';
-import { locales } from '../src/paraglide/runtime';
+import { locales } from '../paraglide/runtime';
+import { dateFnsLocale } from './date-fns-locale';
 
 test('maps every app locale to a matching date-fns locale', () => {
   expect(locales).toEqual(['en', 'zh-Hans', 'zh-Hant', 'ja', 'ko']);

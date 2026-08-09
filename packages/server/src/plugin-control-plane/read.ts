@@ -29,7 +29,7 @@ export function createPluginReads(options: {
       return [...snapshot.plugins.plugins.values()]
         .map((plugin) => ({
           builtin: plugin.builtIn,
-          enabled: enabled.has(plugin.packageName),
+          enabled: plugin.builtIn || enabled.has(plugin.packageName),
           hasOptions: plugin.hasOptions === true,
           packageName: plugin.packageName,
           ...(plugin.displayName === undefined ? {} : { displayName: plugin.displayName }),

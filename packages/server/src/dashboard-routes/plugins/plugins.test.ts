@@ -317,6 +317,21 @@ describe.serial('Dashboard plugin control plane', () => {
     );
   });
 
+  test('GET /plugins reports an unconfigured built-in as enabled', async () => {
+    await withFixture(
+      async ({ routes }) => {
+        const response = await routes.request('/plugins');
+        const body = (await response.json()) as {
+          readonly plugins: readonly { readonly packageName: string; enabled: boolean }[];
+        };
+
+        expect(response.status).toBe(200);
+        expect(body.plugins.find(({ packageName }) => packageName === builtInPackage)?.enabled).toBe(true);
+      },
+      { config: { plugins: [[configurablePackage, { endpoint: 'https://public.example' }]], providers: {} } },
+    );
+  });
+
   test('GET /plugins/edit-view exposes only public values, configured-secret flags, and an opaque revision', async () => {
     await withFixture(
       async ({ routes }) => {
