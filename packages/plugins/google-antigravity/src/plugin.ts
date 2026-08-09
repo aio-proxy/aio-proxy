@@ -75,15 +75,18 @@ export function createGoogleAntigravityPlugin(
       });
       if (callback.code.trim() === '') throw new Error('Google authorization code is missing');
       const token = await exchangeAuthorizationCode(callback.code, callback.redirectUri, {
-        fetch: dependencies.fetch,
+        fetch: dependencies.fetch ?? context.fetch,
         now: dependencies.now,
         signal: context.signal,
       });
       if (token.refreshToken.trim() === '') throw new Error('Google token response is missing a refresh token');
-      const email = await fetchGoogleEmail(token.accessToken, { fetch: dependencies.fetch, signal: context.signal });
+      const email = await fetchGoogleEmail(token.accessToken, {
+        fetch: dependencies.fetch ?? context.fetch,
+        signal: context.signal,
+      });
       if (email.trim() === '') throw new Error('Google userinfo response is missing email');
       const projectId = await initializeAntigravityProject(token.accessToken, parsedOptions, {
-        fetch: dependencies.fetch,
+        fetch: dependencies.fetch ?? context.fetch,
         sleep: dependencies.sleep,
         signal: context.signal,
       });
@@ -100,7 +103,9 @@ export function createGoogleAntigravityPlugin(
       policy: { kind: 'ttl', ttlMs: 6 * 60 * 60 * 1_000 },
       discover: async (context) =>
         await discoverAntigravityCatalog(context, {
-          ...(dependencies.fetch === undefined ? {} : { fetch: dependencies.fetch }),
+          ...((dependencies.fetch ?? context.fetch) === undefined
+            ? {}
+            : { fetch: dependencies.fetch ?? context.fetch }),
           ...(dependencies.now === undefined ? {} : { now: dependencies.now }),
         }),
       initialFallback: (error) =>

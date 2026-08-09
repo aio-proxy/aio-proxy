@@ -9,6 +9,7 @@ import { ProviderKind } from '@aio-proxy/types';
 
 import { prepareOAuthPluginAccount } from '../plugin-account';
 import type { ProviderSnapshotLease } from '../runtime';
+import type { Snapshot } from '../server-state/snapshot';
 import { OAuthQuotaCapabilityUnavailableError } from './errors';
 
 export type OAuthQuotaServiceDependencies = {
@@ -83,12 +84,14 @@ async function prepareContext(
       throw new OAuthQuotaCapabilityUnavailableError();
     }
     const secretValues = new Set(prepared.secretValues);
+    const runtimeFetch = (lease.snapshot as Snapshot).runtimeCache.get(providerId)?.fetch;
     return {
       adapter: prepared.adapter as PreparedOAuthQuotaContext['adapter'],
       accountContext: {
         credentials: createTrackingCredentialPort(prepared.createCredentials(), secretValues),
         options: prepared.accountOptions,
         signal,
+        ...(runtimeFetch === undefined ? {} : { fetch: runtimeFetch }),
       },
       plugin: provider.plugin,
       capability: provider.capability,

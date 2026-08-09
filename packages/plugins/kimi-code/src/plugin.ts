@@ -54,17 +54,30 @@ export function createKimiCodePlugin(
           instructions: presentationText.deviceInstructions,
           waiting: presentationText.waitingForAuthorization,
         },
-        dependencies,
+        {
+          ...dependencies,
+          ...(dependencies.fetch === undefined && context.fetch !== undefined ? { fetch: context.fetch } : {}),
+        },
       );
     },
     catalog: {
       policy: { kind: 'ttl', ttlMs: KIMI_CATALOG_TTL_MS },
-      discover: (context) => discoverKimiCatalog(context, dependencies),
+      discover: (context) =>
+        discoverKimiCatalog(context, {
+          ...dependencies,
+          ...(dependencies.fetch === undefined && context.fetch !== undefined ? { fetch: context.fetch } : {}),
+        }),
       initialFallback: (error) =>
         error instanceof DOMException && error.name === 'AbortError' ? undefined : staticKimiCatalog(),
     },
     createRuntime: (context) => createKimiRuntime(context, dependencies),
-    quota: { read: (context) => readKimiQuota(context, dependencies) },
+    quota: {
+      read: (context) =>
+        readKimiQuota(context, {
+          ...dependencies,
+          ...(dependencies.fetch === undefined && context.fetch !== undefined ? { fetch: context.fetch } : {}),
+        }),
+    },
   };
 
   return definePlugin((api) => api.oauth.register(adapter), {

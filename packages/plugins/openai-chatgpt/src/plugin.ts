@@ -62,7 +62,11 @@ export function createOpenAIChatGPTPlugin(
           buildAuthorizationUrl({ challenge: pkce.challenge, redirectUri: selectedRedirectUri, state }),
         allowManualCallbackUrl: true,
       });
-      const token = await exchangeCodeForTokens(code, pkce.verifier, { redirectUri, signal: context.signal });
+      const token = await exchangeCodeForTokens(code, pkce.verifier, {
+        ...(context.fetch === undefined ? {} : { fetch: context.fetch }),
+        redirectUri,
+        signal: context.signal,
+      });
       return {
         fingerprint: token.accountId,
         suggestedKey: `chatgpt-${token.accountId}`,
@@ -73,8 +77,8 @@ export function createOpenAIChatGPTPlugin(
     },
     catalog: {
       policy: { kind: 'ttl', ttlMs: CHATGPT_CATALOG_TTL_MS },
-      discover: async ({ signal }) => ({
-        language: await discoverOpenAIChatGPTModels(signal),
+      discover: async ({ fetch, signal }) => ({
+        language: await discoverOpenAIChatGPTModels(signal, fetch),
         image: [],
         embedding: [],
         speech: [],

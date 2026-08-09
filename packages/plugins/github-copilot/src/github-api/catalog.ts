@@ -1,4 +1,4 @@
-import type { CredentialPort, ModelDescriptor, ProtocolId } from '@aio-proxy/plugin-sdk';
+import type { CredentialPort, ModelDescriptor, ProtocolId, RuntimeFetch } from '@aio-proxy/plugin-sdk';
 
 import { copilotModelSchema, modelsResponseSchema } from '../schema';
 import { currentGitHubCopilotCredential } from './credential';
@@ -10,12 +10,14 @@ export const COPILOT_CATALOG_TTL_MS = 6 * 60 * 60_000;
 export async function discoverGitHubCopilotModels(
   credentials: CredentialPort<GitHubCopilotCredential>,
   signal: AbortSignal,
+  fetcher: RuntimeFetch = globalThis.fetch,
 ): Promise<readonly ModelDescriptor[]> {
-  const current = await currentGitHubCopilotCredential(credentials);
+  const current = await currentGitHubCopilotCredential(credentials, fetcher);
   const { data } = await fetchJson(
     `${current.baseURL}/models`,
     { headers: copilotHeaders(current.copilotToken), signal },
     modelsResponseSchema,
+    fetcher,
   );
   return data.flatMap((item) => {
     const model = modelEntry(item);

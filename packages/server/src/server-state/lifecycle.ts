@@ -6,7 +6,7 @@ import type {
   PluginRepository,
   Router,
 } from '@aio-proxy/core';
-import { OAuthCapabilityUnavailableError, parseRuntimeConfig } from '@aio-proxy/core';
+import { createProxyFetch, OAuthCapabilityUnavailableError, parseRuntimeConfig } from '@aio-proxy/core';
 import type { OpenDbHandle } from '@aio-proxy/core/db';
 import type { Config } from '@aio-proxy/types';
 
@@ -20,8 +20,9 @@ import type { LogicalSessionStore } from '../logical-session-store';
 import type { OAuthLoginSessionManager } from '../oauth-login-session/manager';
 import { createOAuthLoginSessionManager } from '../oauth-login-session/manager';
 import { findPluginEntry } from '../plugin-control-plane/plugin-config';
+import { createRuntimeFetch } from '../plugin-runtime';
 import type { SnapshotManager } from '../plugin-snapshot';
-import { providerDiff } from '../provider-runtime';
+import { effectiveProxy, providerDiff } from '../provider-runtime';
 import type { ProviderCooldownStore } from '../routes/pipeline/provider-cooldown';
 import type { RetiredProviderSnapshot, RuntimeProviderInstance } from '../runtime';
 import type { ServerLogSink } from '../server-log';
@@ -247,6 +248,15 @@ export function startLoginSessions(
       ) {
         throw new OAuthCapabilityUnavailableError(capability.plugin, capability.capability);
       }
+    },
+    createFetch: (input) => {
+      const config = (manager.current() as Snapshot).config;
+      const configured = config.providers.find((provider) => provider.id === input.targetProviderId);
+      const configuredProxy = configured?.kind === 'oauth' ? configured.proxy : undefined;
+      const patchProxy = input.providerPatch?.proxy;
+      const providerProxy = patchProxy === undefined ? configuredProxy : (patchProxy ?? undefined);
+      const control = createProxyFetch(effectiveProxy(config.proxy, providerProxy), globalThis.fetch);
+      return createRuntimeFetch({ control, model: control });
     },
     reload,
     ...(testHooks?.oauthSessionNow === undefined ? {} : { now: testHooks.oauthSessionNow }),

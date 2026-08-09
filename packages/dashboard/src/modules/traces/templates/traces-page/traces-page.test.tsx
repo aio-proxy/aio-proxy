@@ -417,28 +417,32 @@ describe('traces page', () => {
     const filteredSearch = { ...initialSearch, requestedModelId: 'filtered-model' };
     view.rerender(<TracesPage search={filteredSearch} onSearchChange={rs.fn()} onTraceSelect={rs.fn()} />);
     expect(screen.queryByRole('button', { name: /new traces available|新 Trace/iu })).toBeNull();
-    expect(screen.getByText(newTrace.traceId)).toBeTruthy();
+    expect(screen.getByRole('status', { name: /Loading traces|正在加载追踪/u })).toBeTruthy();
+    expect(screen.queryByText(newTrace.traceId)).toBeNull();
     expect(screen.queryByText(terminalTrace.traceId)).toBeNull();
 
-    const resizedPlaceholder = { ...toolOnlyTrace, traceId: '5'.repeat(32) };
-    mocks.data = { items: [resizedPlaceholder] };
-    view.rerender(
-      <TracesPage search={{ ...filteredSearch, pageSize: 50 }} onSearchChange={rs.fn()} onTraceSelect={rs.fn()} />,
-    );
-    expect(screen.getByText(resizedPlaceholder.traceId)).toBeTruthy();
-    expect(screen.queryByText(newTrace.traceId)).toBeNull();
+    mocks.isPlaceholderData = false;
+    view.rerender(<TracesPage search={filteredSearch} onSearchChange={rs.fn()} onTraceSelect={rs.fn()} />);
+    expect(screen.getByText(newTrace.traceId)).toBeTruthy();
+    expect(screen.queryByText(terminalTrace.traceId)).toBeNull();
+  });
 
-    const pagePlaceholder = { ...runningTrace, traceId: '6'.repeat(32) };
-    mocks.data = { items: [pagePlaceholder], prevPageToken: 'newer-token' };
+  test('does not render placeholder traces after a filter change', () => {
+    const initialSearch = { ...createDefaultTraceSearch(), pageSize: 20 as const };
+    mocks.data = { items: [terminalTrace] };
+    const view = render(<TracesPage search={initialSearch} onSearchChange={rs.fn()} onTraceSelect={rs.fn()} />);
+
+    mocks.isPlaceholderData = true;
     view.rerender(
       <TracesPage
-        search={{ ...filteredSearch, pageToken: 'older-token', pageSize: 50 }}
+        search={{ ...initialSearch, requestedModelId: 'filtered-model' }}
         onSearchChange={rs.fn()}
         onTraceSelect={rs.fn()}
       />,
     );
-    expect(screen.getByText(pagePlaceholder.traceId)).toBeTruthy();
-    expect(screen.queryByText(resizedPlaceholder.traceId)).toBeNull();
+
+    expect(screen.getByRole('status', { name: /Loading traces|正在加载追踪/u })).toBeTruthy();
+    expect(screen.queryByText(terminalTrace.traceId)).toBeNull();
   });
 
   test('retains the previous response while an adjacent token page is placeholder data', () => {

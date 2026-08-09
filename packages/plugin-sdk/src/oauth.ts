@@ -58,6 +58,7 @@ export type OAuthLoginContext = {
   readonly authorization: AuthorizationPort;
   readonly progress: (message: LocalizedText) => void;
   readonly signal: AbortSignal;
+  readonly fetch?: RuntimeFetch;
 };
 
 export type OAuthLoginResult<Credential> = {
@@ -94,6 +95,7 @@ export type AccountContext<Credential, AccountOptions> = {
   readonly credentials: CredentialPort<Credential>;
   readonly options: AccountOptions;
   readonly signal: AbortSignal;
+  readonly fetch?: RuntimeFetch;
 };
 
 export type OAuthQuotaItem = {

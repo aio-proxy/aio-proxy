@@ -46,17 +46,26 @@ export function createXAIGrokPlugin(
       await accountOptions.schema.parseAsync(options);
       return await loginXAIGrok(context, {
         ...dependencies,
+        ...(dependencies.fetch === undefined && context.fetch !== undefined ? { fetch: context.fetch } : {}),
         deviceInstructions: presentationText.deviceInstructions,
         waitingForAuthorization: presentationText.waitingForAuthorization,
       });
     },
     catalog: {
       policy: { kind: 'ttl', ttlMs: XAI_GROK_CATALOG_TTL_MS },
-      discover: (context) => discoverXAIGrokModels(context, dependencies),
+      discover: (context) =>
+        discoverXAIGrokModels(context, {
+          ...dependencies,
+          ...(dependencies.fetch === undefined && context.fetch !== undefined ? { fetch: context.fetch } : {}),
+        }),
       initialFallback: initialXAIGrokCatalogFallback,
     },
     quota: {
-      read: (context) => readXAIGrokQuota(context, dependencies),
+      read: (context) =>
+        readXAIGrokQuota(context, {
+          ...dependencies,
+          ...(dependencies.fetch === undefined && context.fetch !== undefined ? { fetch: context.fetch } : {}),
+        }),
     },
     createRuntime: (context) => createXAIGrokRuntime(context, dependencies),
   };

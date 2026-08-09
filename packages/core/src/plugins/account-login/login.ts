@@ -1,4 +1,4 @@
-import type { AuthorizationPort, ConfigSpec, LocalizedText } from '@aio-proxy/plugin-sdk';
+import type { AuthorizationPort, ConfigSpec, LocalizedText, RuntimeFetch } from '@aio-proxy/plugin-sdk';
 import type { OAuthProviderMutationBody, ProviderAlias, ProviderTransforms } from '@aio-proxy/types';
 
 import { AtomicConfigCommitUncertainError, type AtomicConfigFile } from '../config-file';
@@ -54,6 +54,7 @@ export type LoginOAuthAccountOptions = {
   readonly config: AtomicConfigFile;
   readonly renderAccountOptions: RenderAccountOptions;
   readonly createAuthorization: (signal: AbortSignal) => AuthorizationPort;
+  readonly fetch?: RuntimeFetch;
   readonly diagnostics: DiagnosticFactory;
   readonly logger: PluginLogSink;
   readonly coordinateProviderCommit?: <T>(capability: OAuthCapabilityReference, commit: () => Promise<T>) => Promise<T>;
@@ -89,6 +90,7 @@ export async function loginOAuthAccount(options: LoginOAuthAccountOptions): Prom
       options.progress ?? (() => {}),
       deadline.signal,
       parsedOptions.value,
+      options.fetch,
     );
     const validated = await validatedLoginResult(adapter, loginResult, deadline.signal);
     if (initial.fingerprint !== undefined && validated.fingerprint !== initial.fingerprint) {

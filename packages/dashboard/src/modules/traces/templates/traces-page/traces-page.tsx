@@ -102,6 +102,7 @@ export const TracesPage: React.FC<TracesPageProps> = ({ search, onSearchChange, 
 
   const bufferIsActive = buffer.searchKey === searchKey;
   const visibleData = bufferIsActive ? (buffer.renderedData ?? query.data) : query.data;
+  const loading = query.isLoading || (query.isPlaceholderData && search.pageToken === undefined);
 
   return (
     <PageContainer
@@ -128,14 +129,14 @@ export const TracesPage: React.FC<TracesPageProps> = ({ search, onSearchChange, 
                 <SidebarTrigger aria-label={m['dashboard.traces.filters']()} />
               </div>
               <div className="min-h-0 min-w-0 flex-1 pb-3 sm:pb-4">
-                {query.isLoading && (
+                {loading && (
                   <div className="mx-3 space-y-2 sm:mx-4" role="status" aria-label={m['dashboard.traces.loading']()}>
                     {['a', 'b', 'c', 'd', 'e', 'f'].map((key) => (
                       <Skeleton className="h-12 w-full" key={key} />
                     ))}
                   </div>
                 )}
-                {!query.isLoading && query.isError && (
+                {!loading && query.isError && (
                   <Empty>
                     <EmptyTitle>{m['dashboard.traces.error_title']()}</EmptyTitle>
                     <EmptyDescription>{m['dashboard.traces.error_description']()}</EmptyDescription>
@@ -155,7 +156,7 @@ export const TracesPage: React.FC<TracesPageProps> = ({ search, onSearchChange, 
                     )}
                   </Empty>
                 )}
-                {!query.isLoading && !query.isError && query.data?.items.length === 0 && (
+                {!loading && !query.isError && query.data?.items.length === 0 && (
                   <Empty>
                     <EmptyTitle>{m['dashboard.traces.empty_title']()}</EmptyTitle>
                     <EmptyDescription>{m['dashboard.traces.empty_description']()}</EmptyDescription>
@@ -164,7 +165,7 @@ export const TracesPage: React.FC<TracesPageProps> = ({ search, onSearchChange, 
                     </Button>
                   </Empty>
                 )}
-                {!query.isLoading && !query.isError && query.data?.items.length !== 0 && visibleData && (
+                {!loading && !query.isError && query.data?.items.length !== 0 && visibleData && (
                   <TracesTable
                     data={visibleData}
                     isFetching={query.isFetching || query.isPlaceholderData}
@@ -186,7 +187,7 @@ export const TracesPage: React.FC<TracesPageProps> = ({ search, onSearchChange, 
                     onSelect={onTraceSelect}
                   />
                 )}
-                {!query.isLoading && !query.isError && query.data?.items.length !== 0 && !visibleData && <Empty />}
+                {!loading && !query.isError && query.data?.items.length !== 0 && !visibleData && <Empty />}
               </div>
             </div>
           </SidebarInset>

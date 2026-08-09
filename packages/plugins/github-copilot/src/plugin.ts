@@ -125,7 +125,7 @@ export function createGitHubCopilotPlugin(
     catalog: {
       policy: { kind: 'ttl', ttlMs: COPILOT_CATALOG_TTL_MS },
       discover: async (context) => ({
-        language: await discoverGitHubCopilotModels(context.credentials, context.signal),
+        language: await discoverGitHubCopilotModels(context.credentials, context.signal, context.fetch),
         image: [],
         embedding: [],
         speech: [],
