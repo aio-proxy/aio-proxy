@@ -61,7 +61,7 @@ export const DataTableControls: React.FC<DataTableControlsProps> = ({
             <DropdownMenuCheckboxItem
               key={column.id}
               checked={column.getIsVisible()}
-              onCheckedChange={column.toggleVisibility}
+              onCheckedChange={(visible) => column.toggleVisibility(visible)}
             >
               {column.columnDef.meta?.label?.()}
             </DropdownMenuCheckboxItem>

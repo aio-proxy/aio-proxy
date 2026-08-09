@@ -8,11 +8,11 @@ const rows = [
   { providerId: 'provider-b', successRate: 0.75, p95LatencyMs: 980 },
 ];
 
-test('renders Provider health rows without a filter toolbar', () => {
+test('renders Provider health rows with client table controls', () => {
   render(<ProviderHealthTable rows={rows} />);
 
-  expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: /Columns|列/u })).not.toBeInTheDocument();
+  expect(screen.getByRole('textbox', { name: /Filter providers|筛选提供商/u })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /Provider columns|提供商列/u })).toBeInTheDocument();
 
   const table = screen.getByRole('table', { name: /Provider health|提供商健康状况/u });
   expect(within(table).getByText('provider-a')).toBeInTheDocument();
