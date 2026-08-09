@@ -22,10 +22,13 @@ const dimensionPrefix = 'dimension:';
 const emptyProviderUsage = (): ProviderUsage => ({ requestCount: 0n });
 
 const addUsageResponse = (totals: Map<string, ProviderUsage>, response: DashboardUsageWireResponse) => {
+  const dimensionKeys = new Set(
+    response.series.filter((series) => series.kind === 'dimension').map((series) => series.key),
+  );
   for (const bucket of response.buckets) {
     for (const [key, value] of Object.entries(bucket.values)) {
-      if (!key.startsWith(dimensionPrefix)) continue;
-      const providerId = decodeURIComponent(key.slice(dimensionPrefix.length));
+      if (!dimensionKeys.has(key)) continue;
+      const providerId = key.startsWith(dimensionPrefix) ? decodeURIComponent(key.slice(dimensionPrefix.length)) : key;
       const usage = totals.get(providerId) ?? emptyProviderUsage();
       totals.set(providerId, { requestCount: usage.requestCount + BigInt(value) });
     }

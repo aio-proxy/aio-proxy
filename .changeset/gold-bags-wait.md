@@ -6,4 +6,4 @@
 '@aio-proxy/server': patch
 ---
 
-Show each Provider’s 24-hour token usage in the Dashboard provider list.
+Show each Provider’s 24-hour request count in the Dashboard provider list.

@@ -33,7 +33,11 @@ const usageResponse = (values: readonly Record<string, string>[] = [{}, {}]) =>
       averageRpm: 0,
       averageTpm: 0,
     },
-    series: [{ key: 'dimension:openai%2Emain', kind: 'dimension' }],
+    series: [
+      { key: 'dimension:openai%2Emain', kind: 'dimension' },
+      { key: 'dimension:anthropic%2Ebackup', kind: 'dimension' },
+      { key: 'openai-main', kind: 'dimension' },
+    ],
     buckets: [
       { key: '2026-08-07T00:00:00.000Z', values: values[0] ?? {} },
       { key: '2026-08-07T01:00:00.000Z', values: values[1] ?? {} },
@@ -47,7 +51,7 @@ describe('Provider usage service', () => {
     mocks.usageGet.mockResolvedValue(
       usageResponse([
         { 'dimension:openai%2Emain': '1', 'dimension:anthropic%2Ebackup': '7' },
-        { 'dimension:openai%2Emain': '2' },
+        { 'dimension:openai%2Emain': '2', 'openai-main': '4' },
       ]),
     );
 
@@ -55,6 +59,7 @@ describe('Provider usage service', () => {
       new Map([
         ['openai.main', { requestCount: 3n }],
         ['anthropic.backup', { requestCount: 7n }],
+        ['openai-main', { requestCount: 4n }],
       ]),
     );
     expect(mocks.usageGet).toHaveBeenCalledWith({

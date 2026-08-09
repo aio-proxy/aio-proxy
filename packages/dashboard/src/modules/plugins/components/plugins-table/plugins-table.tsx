@@ -12,9 +12,9 @@ import { tableHead } from '@/components/data-table/table-head';
 import { type DataTableFeatures, useDataTable } from '@/hooks/use-data-table';
 import { resolveDashboardText } from '@/lib/localized-text';
 
-import { PluginOptionsDrawer, type PluginOptionsDrawerRef } from './plugin-options-drawer';
-import { PluginTableActions, PluginTableActionsContext } from './plugin-table-actions';
-import { PluginUninstallDialog, type PluginUninstallDialogRef } from './plugin-uninstall-dialog';
+import { PluginOptionsDrawer, type PluginOptionsDrawerRef } from '../plugin-options-drawer';
+import { PluginTableActions, PluginTableActionsContext } from '../plugin-table-actions';
+import { PluginUninstallDialog, type PluginUninstallDialogRef } from '../plugin-uninstall-dialog';
 
 interface PluginsTableProps {
   readonly plugins: readonly DashboardPluginSummary[];
