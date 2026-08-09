@@ -54,7 +54,7 @@ function stable(value: unknown, seen = new Set<object>()): unknown {
     ? value.map((item) => stable(item, seen))
     : Object.fromEntries(
         Object.entries(value as Record<string, unknown>)
-          .sort(([left], [right]) => (left === right ? 0 : Number(left > right)))
+          .sort(([left], [right]) => (left === right ? 0 : Number(left > right) * 2 - 1))
           .map(([key, item]) => [key, stable(item, seen)]),
       );
   seen.delete(value);
