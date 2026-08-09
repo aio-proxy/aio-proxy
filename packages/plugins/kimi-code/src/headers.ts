@@ -8,7 +8,18 @@ const printable = (value: string, fallback = 'unknown') => value.replace(/[^\x20
 
 export function kimiIdentityHeaders(deviceId: string, os: OsPort = systemOs): Readonly<Record<string, string>> {
   const platform = os.platform();
-  const name = { darwin: 'macOS', linux: 'Linux', win32: 'Windows' }[platform] ?? platform;
+  let name = platform;
+  switch (platform) {
+    case 'darwin':
+      name = 'macOS';
+      break;
+    case 'linux':
+      name = 'Linux';
+      break;
+    case 'win32':
+      name = 'Windows';
+      break;
+  }
   return Object.freeze({
     'User-Agent': `AIO-Proxy/${packageJson.version}`,
     'X-Msh-Platform': 'AIO-Proxy',
