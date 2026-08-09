@@ -29,18 +29,22 @@ export async function loadProviderDraftCatalog(
     const runtime = materializeDraft(state, provider);
     const raw = runtime.raw?.resolve({ protocol: provider.protocol, modelId: '' });
     if (raw === undefined) return failure('catalog_unavailable');
-    const response = await raw.invoke(
-      new Request(`http://provider-draft.invalid${catalogPath(provider.protocol)}`, {
-        signal: AbortSignal.timeout(5_000),
-      }),
-      undefined,
-      { upstreamStream: false },
-    );
-    if (!response.ok) {
-      await response.body?.cancel();
-      return failure('catalog_unavailable');
+    const signal = AbortSignal.timeout(5_000);
+    const models = new Set<string>();
+    let path: string | undefined = catalogPath(provider.protocol);
+    while (path !== undefined) {
+      const response = await raw.invoke(new Request(`http://provider-draft.invalid${path}`, { signal }), undefined, {
+        upstreamStream: false,
+      });
+      if (!response.ok) {
+        await response.body?.cancel();
+        return failure('catalog_unavailable');
+      }
+      const page = catalogPage(provider.protocol, await response.json());
+      for (const model of page.models) models.add(model);
+      path = page.nextPath;
     }
-    return { ok: true, models: catalogModels(provider.protocol, await response.json()) };
+    return { ok: true, models: [...models] };
   } catch {
     return failure('catalog_unavailable');
   }
@@ -131,6 +135,38 @@ function withDraftAttempt<T>(
 
 function catalogPath(protocol: ProviderProtocol): string {
   return protocol === ProviderProtocol.Gemini ? '/v1beta/models' : '/v1/models';
+}
+
+type CatalogPage = {
+  readonly models: readonly string[];
+  readonly nextPath?: string;
+};
+
+function catalogPage(protocol: ProviderProtocol, payload: unknown): CatalogPage {
+  const models = catalogModels(protocol, payload);
+  if (protocol === ProviderProtocol.Gemini) {
+    const pageToken = stringProperty(payload, 'nextPageToken');
+    return pageToken === undefined
+      ? { models }
+      : { models, nextPath: `/v1beta/models?pageToken=${encodeURIComponent(pageToken)}` };
+  }
+  if (protocol === ProviderProtocol.Anthropic && booleanProperty(payload, 'has_more')) {
+    const afterId = stringProperty(payload, 'last_id');
+    if (afterId === undefined) throw new TypeError('invalid catalog continuation');
+    return { models, nextPath: `/v1/models?after_id=${encodeURIComponent(afterId)}` };
+  }
+  return { models };
+}
+
+function stringProperty(payload: unknown, key: string): string | undefined {
+  if (typeof payload !== 'object' || payload === null) throw new TypeError('invalid catalog');
+  const value = Reflect.get(payload, key);
+  return typeof value === 'string' && value !== '' ? value : undefined;
+}
+
+function booleanProperty(payload: unknown, key: string): boolean {
+  if (typeof payload !== 'object' || payload === null) throw new TypeError('invalid catalog');
+  return Reflect.get(payload, key) === true;
 }
 
 function catalogModels(protocol: ProviderProtocol, payload: unknown): readonly string[] {

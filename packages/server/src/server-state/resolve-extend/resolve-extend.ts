@@ -44,7 +44,9 @@ export async function applyMetadataExtend(
 
   let changed = false;
   const providers = config.providers.map((provider) => {
-    const rewritten = rewriteProvider(provider, catalog, logger, !catalogCached);
+    const preserveUnresolved =
+      !catalogCached || (cachedOnly && Object.values(catalog).some((model) => model === undefined));
+    const rewritten = rewriteProvider(provider, catalog, logger, preserveUnresolved);
     if (rewritten !== provider) changed = true;
     return rewritten;
   });

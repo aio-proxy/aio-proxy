@@ -1,10 +1,29 @@
-import { describe, expect, it, mock } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import { clearModelsCache, fileCacheStorage, type getModels, type PluginLogSink } from '@aio-proxy/core';
 import { type Config, ConfigSchema, ProviderKind, ProviderProtocol } from '@aio-proxy/types';
 import type { Model } from '@opencode-ai/models';
 
 import { applyMetadataExtend } from './resolve-extend';
+
+const originalHome = process.env.AIO_PROXY_HOME;
+let home: string;
+
+beforeEach(() => {
+  home = mkdtempSync(join(tmpdir(), 'aio-resolve-extend-'));
+  process.env.AIO_PROXY_HOME = home;
+  clearModelsCache();
+});
+
+afterEach(() => {
+  rmSync(home, { force: true, recursive: true });
+  if (originalHome === undefined) delete process.env.AIO_PROXY_HOME;
+  else process.env.AIO_PROXY_HOME = originalHome;
+  clearModelsCache();
+});
 
 // A representative catalog model. Distinct values so a mis-mapping surfaces as a
 // wrong number, and reasoning_options present so array-replace can be verified.
@@ -77,6 +96,15 @@ describe('applyMetadataExtend', () => {
     } finally {
       globalThis.fetch = nativeFetch;
     }
+  });
+
+  it('keeps extend when a warm catalog lacks its target', async () => {
+    await fileCacheStorage.setItem('models-dev-providers', { openai: { models: {} } });
+    const config = makeConfig({ 'my-gpt': { extend: 'openai/missing', name: 'Kept' } });
+
+    const resolved = await applyMetadataExtend(config);
+
+    expect(metadataOf(resolved, 'p1')['my-gpt']).toEqual({ extend: 'openai/missing', name: 'Kept' });
   });
 
   it('materializes metadata.extend for an OAuth Provider', async () => {

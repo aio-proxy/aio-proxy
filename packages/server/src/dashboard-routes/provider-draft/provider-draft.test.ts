@@ -132,6 +132,72 @@ describe('draft Provider catalog and test routes', () => {
     }
   });
 
+  test('imports every page from a Gemini catalog', async () => {
+    const upstream = Bun.serve({
+      hostname: '127.0.0.1',
+      port: 0,
+      fetch(request) {
+        const pageToken = new URL(request.url).searchParams.get('pageToken');
+        return Response.json(
+          pageToken === null
+            ? { models: [{ name: 'models/gemini-first' }], nextPageToken: 'second-page' }
+            : { models: [{ name: 'models/gemini-second' }] },
+        );
+      },
+    });
+
+    try {
+      const response = await routes.request(
+        '/providers/draft/catalog',
+        jsonRequest({
+          draft: {
+            baseURL: `http://127.0.0.1:${upstream.port}`,
+            id: 'gemini-draft',
+            kind: 'api',
+            protocol: ProviderProtocol.Gemini,
+          },
+        }),
+      );
+
+      expect(await response.json()).toEqual({ ok: true, models: ['gemini-first', 'gemini-second'] });
+    } finally {
+      await upstream.stop(true);
+    }
+  });
+
+  test('imports every page from an Anthropic catalog', async () => {
+    const upstream = Bun.serve({
+      hostname: '127.0.0.1',
+      port: 0,
+      fetch(request) {
+        const afterId = new URL(request.url).searchParams.get('after_id');
+        return Response.json(
+          afterId === null
+            ? { data: [{ id: 'claude-first' }], has_more: true, last_id: 'claude-first' }
+            : { data: [{ id: 'claude-second' }], has_more: false },
+        );
+      },
+    });
+
+    try {
+      const response = await routes.request(
+        '/providers/draft/catalog',
+        jsonRequest({
+          draft: {
+            baseURL: `http://127.0.0.1:${upstream.port}`,
+            id: 'anthropic-draft',
+            kind: 'api',
+            protocol: ProviderProtocol.Anthropic,
+          },
+        }),
+      );
+
+      expect(await response.json()).toEqual({ ok: true, models: ['claude-first', 'claude-second'] });
+    } finally {
+      await upstream.stop(true);
+    }
+  });
+
   test('returns a recoverable catalog failure without reflecting the upstream body', async () => {
     const upstream = Bun.serve({
       hostname: '127.0.0.1',
