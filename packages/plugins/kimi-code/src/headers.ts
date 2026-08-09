@@ -8,7 +8,7 @@ const printable = (value: string, fallback = 'unknown') => value.replace(/[^\x20
 
 export function kimiIdentityHeaders(deviceId: string, os: OsPort = systemOs): Readonly<Record<string, string>> {
   const platform = os.platform();
-  let name = platform;
+  let name: string = platform;
   switch (platform) {
     case 'darwin':
       name = 'macOS';
