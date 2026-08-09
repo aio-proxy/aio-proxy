@@ -16,7 +16,7 @@ import { providerUsageQueryOptions, type ProviderUsage } from '../../services/pr
 import { DeleteProviderDialog, type DeleteProviderDialogRef } from '../delete-provider-dialog';
 import { OAuthProviderGroupRow } from '../oauth-provider-group-row';
 import { ProviderTableActionsContext } from '../provider-table-actions';
-import { canEditProvider, createProviderColumns } from '../providers-table-columns';
+import { canEditProvider, createProviderColumns, type ProviderUsageStatus } from '../providers-table-columns';
 import { ProviderTableCell } from './provider-table-cell';
 import { groupProviderRows, providerTableRowId, type ProviderTableRow } from './provider-table-row';
 
@@ -38,9 +38,17 @@ export const ProvidersTable: React.FC<ProvidersTableProps> = ({ providers, focus
   const deleteDialogRef = useRef<DeleteProviderDialogRef>(null);
   const plugins = useQuery(providerPluginPresentationsQueryOptions()).data?.plugins ?? [];
   const pluginPresentations = useMemo(() => new Map(plugins.map((plugin) => [plugin.packageName, plugin])), [plugins]);
-  const providerUsage = useQuery(providerUsageQueryOptions()).data ?? emptyProviderUsage;
+  const providerUsageQuery = useQuery(providerUsageQueryOptions());
+  const providerUsage = providerUsageQuery.data ?? emptyProviderUsage;
+  let providerUsageStatus: ProviderUsageStatus;
+  if (providerUsageQuery.isError) providerUsageStatus = 'unavailable';
+  else if (providerUsageQuery.data === undefined) providerUsageStatus = 'loading';
+  else providerUsageStatus = 'ready';
   const rows = useMemo(() => groupProviderRows(providers), [providers]);
-  const columns = useMemo(() => createProviderColumns(providerUsage), [providerUsage]);
+  const columns = useMemo(
+    () => createProviderColumns(providerUsage, providerUsageStatus),
+    [providerUsage, providerUsageStatus],
+  );
   const { table } = useDataTable(rows, columns, {
     getRowId: providerTableRowId,
     getSubRows: (row) => (row.rowType === 'oauth-group' ? row.accounts : undefined),
@@ -99,6 +107,7 @@ export const ProvidersTable: React.FC<ProvidersTableProps> = ({ providers, focus
                     pluginPresentations={pluginPresentations}
                     row={row}
                     providerUsage={providerUsage}
+                    providerUsageStatus={providerUsageStatus}
                   />
                 );
               }

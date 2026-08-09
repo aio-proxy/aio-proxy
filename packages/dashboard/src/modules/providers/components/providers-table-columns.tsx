@@ -16,6 +16,14 @@ import { ProviderStateCell } from './provider-state-cell';
 import { ProviderTableActions } from './provider-table-actions';
 import type { ProviderTableRow } from './providers-table/provider-table-row';
 
+export type ProviderUsageStatus = 'loading' | 'ready' | 'unavailable';
+
+export const formatProviderUsage = (status: ProviderUsageStatus, requests: bigint): string => {
+  if (status === 'loading') return '…';
+  if (status === 'unavailable') return 'N/A';
+  return formatCompactTokenCount(requests);
+};
+
 declare module '@tanstack/react-table' {
   interface ColumnMeta<TData extends RowData, TValue> {
     readonly className?: string;
@@ -172,6 +180,7 @@ const enabledColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
 
 const usageColumn = (
   providerUsage: ReadonlyMap<string, ProviderUsage>,
+  providerUsageStatus: ProviderUsageStatus,
 ): ColumnDef<DataTableFeatures, ProviderTableRow> => ({
   id: 'usage',
   meta: { className: 'w-24 text-right', label: () => m['dashboard.providers.table.col_usage_24h']() },
@@ -182,7 +191,7 @@ const usageColumn = (
     if (provider === undefined) return null;
     return (
       <span className="tabular-nums">
-        {formatCompactTokenCount(providerUsage.get(provider.id)?.requestCount ?? 0n)}
+        {formatProviderUsage(providerUsageStatus, providerUsage.get(provider.id)?.requestCount ?? 0n)}
       </span>
     );
   },
@@ -201,6 +210,7 @@ const actionsColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
 
 export const createProviderColumns = (
   providerUsage: ReadonlyMap<string, ProviderUsage>,
+  providerUsageStatus: ProviderUsageStatus,
 ): ColumnDef<DataTableFeatures, ProviderTableRow>[] => [
   aggregateColumn,
   providerColumn,
@@ -208,7 +218,7 @@ export const createProviderColumns = (
   modelsColumn,
   weightColumn,
   stateColumn,
-  usageColumn(providerUsage),
+  usageColumn(providerUsage, providerUsageStatus),
   enabledColumn,
   actionsColumn,
 ];

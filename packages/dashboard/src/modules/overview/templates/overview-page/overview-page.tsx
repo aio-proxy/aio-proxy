@@ -29,7 +29,13 @@ export const OverviewPage: React.FC = () => {
   const activity = useOverviewActivityQuery();
   let content: React.ReactNode;
 
-  if (overview.isLoading || diagnostics.isLoading || activity.isLoading) {
+  if (
+    overview.isLoading ||
+    overview.isPlaceholderData ||
+    diagnostics.isLoading ||
+    diagnostics.isPlaceholderData ||
+    activity.isLoading
+  ) {
     content = (
       <>
         <span className="sr-only" role="status">

@@ -7,12 +7,12 @@ import { ChevronDown, ChevronRight } from 'lucide-react';
 import type React from 'react';
 
 import { PluginIcon } from '@/components/plugin-icon';
-import { formatCompactTokenCount } from '@/components/token-count';
 import type { DataTableFeatures } from '@/hooks/use-data-table';
 import { resolveDashboardText } from '@/lib/localized-text';
 
 import type { ProviderUsage } from '../../services/provider-usage-service';
 import { ProviderModelsCell } from '../provider-models-cell';
+import { formatProviderUsage, type ProviderUsageStatus } from '../providers-table-columns';
 import { ProviderTableCell } from '../providers-table/provider-table-cell';
 import type { ProviderTableRow } from '../providers-table/provider-table-row';
 
@@ -20,12 +20,14 @@ interface OAuthProviderGroupRowProps {
   readonly pluginPresentations: ReadonlyMap<string, Pick<DashboardPluginSummary, 'displayName' | 'icon'>>;
   readonly row: Row<DataTableFeatures, ProviderTableRow>;
   readonly providerUsage: ReadonlyMap<string, ProviderUsage>;
+  readonly providerUsageStatus: ProviderUsageStatus;
 }
 
 export const OAuthProviderGroupRow: React.FC<OAuthProviderGroupRowProps> = ({
   pluginPresentations,
   row,
   providerUsage,
+  providerUsageStatus,
 }) => {
   const group = row.original;
   if (group.rowType !== 'oauth-group') return null;
@@ -89,7 +91,7 @@ export const OAuthProviderGroupRow: React.FC<OAuthProviderGroupRowProps> = ({
             case 'models':
               return <ProviderModelsCell models={models} />;
             case 'usage':
-              return <span className="tabular-nums">{formatCompactTokenCount(requestCount)}</span>;
+              return <span className="tabular-nums">{formatProviderUsage(providerUsageStatus, requestCount)}</span>;
             default:
               return null;
           }

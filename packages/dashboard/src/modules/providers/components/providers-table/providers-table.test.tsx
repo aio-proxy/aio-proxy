@@ -36,11 +36,11 @@ const oauthProvider = (id: string, accountLabel: string): DashboardProviderSumma
 
 const renderProvidersTable = (
   element: ReactElement,
-  usage: ReadonlyMap<string, ProviderUsage> = new Map<string, ProviderUsage>(),
+  usage: ReadonlyMap<string, ProviderUsage> | undefined,
   plugins = [] as DashboardPluginSummary[],
 ) => {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
-  queryClient.setQueryData(providerUsageQueryOptions().queryKey, usage);
+  if (usage !== undefined) queryClient.setQueryData(providerUsageQueryOptions().queryKey, usage);
   queryClient.setQueryData(providerPluginPresentationsQueryOptions().queryKey, { plugins });
   return render(<QueryClientProvider client={queryClient}>{element}</QueryClientProvider>);
 };
@@ -51,6 +51,15 @@ afterEach(() => {
 });
 
 describe('providers table', () => {
+  test('shows usage loading instead of fabricated zero traffic', () => {
+    renderProvidersTable(
+      <ProvidersTable providers={[providerStub({ id: 'usage-pending', kind: 'api', protocol: 'openai-response' })]} />,
+      undefined,
+    );
+
+    expect(within(screen.getByTestId('provider-row-usage-pending')).getByText('…')).toBeInTheDocument();
+  });
+
   test('shows concrete Provider routing fields and owns its row controls', async () => {
     renderProvidersTable(
       <ProvidersTable

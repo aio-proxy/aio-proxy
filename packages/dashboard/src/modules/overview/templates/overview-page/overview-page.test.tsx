@@ -246,6 +246,30 @@ describe('overview page', () => {
     chartBounds.mockRestore();
   });
 
+  test('shows loading while the selected range has placeholder data', () => {
+    mocks.useOverviewQuery.mockImplementation((input: { range: string }) => ({
+      data: overviewData,
+      isError: false,
+      isFetching: input.range === '7d',
+      isLoading: false,
+      isPlaceholderData: input.range === '7d',
+      refetch: mocks.overviewRefetch,
+    }));
+    mocks.useOverviewDiagnosticsQuery.mockImplementation((input: { range: string }) => ({
+      data: diagnosticsData,
+      isError: false,
+      isFetching: input.range === '7d',
+      isLoading: false,
+      isPlaceholderData: input.range === '7d',
+      refetch: mocks.diagnosticsRefetch,
+    }));
+
+    render(<OverviewPage />);
+    fireEvent.click(screen.getByRole('tab', { name: /7d|7 天|7 日|7일/u }));
+
+    expect(screen.getByRole('status')).toHaveTextContent(/Loading overview|正在加载概览/u);
+  });
+
   test('distinguishes no configured Provider from an empty selected range', () => {
     overviewData.summary.providerCount = 0;
     const first = render(<OverviewPage />);
