@@ -151,3 +151,25 @@
 - RED: finalizing text without any `tokenDelta` reports `outputTokens.total: undefined`; receiving token deltas still reports their sum, including an explicit zero delta.
 - Add one accumulator `sawTokenDelta` flag; set it for every decoded token update and use it to distinguish unknown usage from the observed total.
 - GREEN: run the focused interaction test, then the Cursor package unit suite.
+
+### Task 8: Preserve inline image tool results on resume
+
+**Files:**
+
+- `packages/plugins/cursor/src/runtime/history/history.ts`
+- `packages/plugins/cursor/src/runtime/history/history.test.ts`
+
+- RED: resume a pending MCP call with `output.type: 'content'` containing text plus an inline `image/png` file; decode the stored `ConversationStep` and assert ordered text/image result items, exact MIME type, and exact bytes.
+- Map text entries to `McpTextContent`. Map only inline image file entries (`mediaType === 'image'` or starts with `image/`, `data.type === 'data'`) to `McpImageContent`, decoding base64 strings with `Buffer` and passing `Uint8Array` through unchanged.
+- Preserve the existing textual placeholder for URL/reference files, non-image files, and custom provider content because Cursor's MCP result schema has no representation for them.
+- GREEN: run the focused history test, then Cursor unit tests.
+
+### Task 9: Apply the required same-name test directory layout
+
+**Files:** all handwritten Cursor modules with colocated tests under `packages/plugins/cursor/src`; generated `gen/agent_pb.ts` and its smoke test stay in place.
+
+- Move each handwritten `foo.ts` / `foo.test.ts` pair into `foo/index.ts`, `foo/foo.ts`, and `foo/foo.test.ts` without changing exports or runtime behavior.
+- Apply the same layout to nested pairs under `catalog`, `runtime`, `runtime/history`, `runtime/stream`, `store`, and `wire`; move `oauth.ts` plus its login/refresh tests into the existing `oauth` directory with an export-only `oauth/index.ts`.
+- Update only relative imports made invalid by the moves. Higher-level imports keep using the directory path and resolve through `index.ts`.
+- Do not add a source-layout unit test: package tests, build resolution, formatting, and repository review enforce this structural convention.
+- GREEN: run Cursor unit tests/build, `bun run check`, full workspace unit tests, and API E2E.
