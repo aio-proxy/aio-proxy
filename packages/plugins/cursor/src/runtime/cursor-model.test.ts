@@ -155,6 +155,58 @@ test('required tool choice emits an unsupported warning and doGenerate retains i
   expect(generated.warnings).toEqual([{ type: 'unsupported', feature: 'toolChoice: required' }]);
 });
 
+test('reports every supplied standard setting that Cursor ignores', async () => {
+  const { transport } = makeTransport();
+  const model = createCursorLanguageModel('claude-4.5-sonnet', runtimeWith(transport, new CursorSessionStore()));
+  const options = callOptions();
+  Object.assign(options, {
+    maxOutputTokens: 123,
+    temperature: 0,
+    stopSequences: ['END'],
+    topP: 0.8,
+    topK: 20,
+    presencePenalty: 0,
+    frequencyPenalty: 0,
+    seed: 0,
+    responseFormat: { type: 'json', schema: { type: 'object' } },
+    reasoning: 'high',
+    tools: [{ type: 'function', name: 'search', inputSchema: { type: 'object' } }],
+    toolChoice: { type: 'required' },
+  } satisfies Partial<LanguageModelV4CallOptions>);
+  const expected = [
+    { type: 'unsupported', feature: 'maxOutputTokens' },
+    { type: 'unsupported', feature: 'temperature' },
+    { type: 'unsupported', feature: 'stopSequences' },
+    { type: 'unsupported', feature: 'topP' },
+    { type: 'unsupported', feature: 'topK' },
+    { type: 'unsupported', feature: 'presencePenalty' },
+    { type: 'unsupported', feature: 'frequencyPenalty' },
+    { type: 'unsupported', feature: 'seed' },
+    { type: 'unsupported', feature: 'responseFormat' },
+    { type: 'unsupported', feature: 'reasoning' },
+    { type: 'unsupported', feature: 'toolChoice: required' },
+  ];
+
+  const streamed = await model.doStream(options);
+  const first = await streamed.stream.getReader().read();
+  expect(first.value).toMatchObject({ type: 'stream-start', warnings: expected });
+
+  const generated = await model.doGenerate(options);
+  expect(generated.warnings).toEqual(expected);
+});
+
+test('does not warn for text format or provider-default reasoning', async () => {
+  const { transport } = makeTransport();
+  const model = createCursorLanguageModel('claude-4.5-sonnet', runtimeWith(transport, new CursorSessionStore()));
+  const options = callOptions();
+  options.responseFormat = { type: 'text' };
+  options.reasoning = 'provider-default';
+
+  const generated = await model.doGenerate(options);
+
+  expect(generated.warnings).toEqual([]);
+});
+
 test('doGenerate preserves mixed text and reasoning order', async () => {
   const transport: CursorTransport = {
     openRun: () =>

@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 
 import type {
   LanguageModelV4,
+  LanguageModelV4CallOptions,
   LanguageModelV4GenerateResult,
   LanguageModelV4StreamPart,
   SharedV4Warning,
@@ -80,10 +81,35 @@ function canReuseCheckpoint(prior: CursorSessionState, routing: RoutingContinuit
   );
 }
 
+const unsupportedSettings = [
+  'maxOutputTokens',
+  'temperature',
+  'stopSequences',
+  'topP',
+  'topK',
+  'presencePenalty',
+  'frequencyPenalty',
+  'seed',
+] as const satisfies readonly (keyof LanguageModelV4CallOptions)[];
+
+function unsupportedWarnings(options: LanguageModelV4CallOptions): SharedV4Warning[] {
+  const warnings: SharedV4Warning[] = [];
+  for (const feature of unsupportedSettings) {
+    if (options[feature] !== undefined) warnings.push({ type: 'unsupported', feature });
+  }
+  if (options.responseFormat?.type === 'json') warnings.push({ type: 'unsupported', feature: 'responseFormat' });
+  if (options.reasoning !== undefined && options.reasoning !== 'provider-default') {
+    warnings.push({ type: 'unsupported', feature: 'reasoning' });
+  }
+  if (options.toolChoice?.type === 'required') {
+    warnings.push({ type: 'unsupported', feature: 'toolChoice: required' });
+  }
+  return warnings;
+}
+
 export function createCursorLanguageModel(modelId: string, runtime: CursorModelRuntime): LanguageModelV4 {
   const doStream: LanguageModelV4['doStream'] = async (options) => {
-    const warnings: SharedV4Warning[] =
-      options.toolChoice?.type === 'required' ? [{ type: 'unsupported', feature: 'toolChoice: required' }] : [];
+    const warnings = unsupportedWarnings(options);
     const requestContextTools = buildMcpToolDefinitions(options.tools, options.toolChoice);
     const credential = await currentCursorCredential(runtime.credentials, {
       ...runtime.credentialOptions,
