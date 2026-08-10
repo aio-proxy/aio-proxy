@@ -43,6 +43,7 @@ export type PluginRuntimeCacheEntry = {
   readonly identity: RuntimeIdentityKey;
   readonly provider: RuntimeProviderInstance;
   readonly credentials: CredentialPort<unknown>;
+  readonly fetch: RuntimeFetch;
 };
 
 export type PluginProviderMaterialization = {
@@ -61,6 +62,7 @@ export type MaterializePluginProviderOptions = {
   readonly logger: PluginLogSink;
   readonly onDiagnosticChanged: () => void;
   readonly pluginOptionsDigest: PluginOptionsIdentityDigest;
+  readonly effectiveProxy?: string | null;
   readonly runtimeFetch?: RuntimeFetch;
   readonly pluginSecrets?: unknown;
   readonly previous?: PluginRuntimeCacheEntry;

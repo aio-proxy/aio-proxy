@@ -1,6 +1,7 @@
 import {
   AtomicConfigCommitUncertainError,
   AtomicConfigFile,
+  parseRuntimeConfig,
   type PendingAccountOperation,
   type PluginRepository,
 } from '@aio-proxy/core';
@@ -35,8 +36,17 @@ export type ConfigStoreOptions = {
 };
 
 export type ConfigStore = {
+  readonly coordinateProviderMutation: <T>(operation: () => Promise<T>) => Promise<T>;
   readonly file: AtomicConfigFile | undefined;
   readonly deleteProvider: (providerId: string) => Promise<void>;
+  readonly mutateConfig: (
+    fn: (record: Record<string, unknown>) => Record<string, unknown> | Promise<Record<string, unknown>>,
+  ) => Promise<void>;
+  readonly mutateConfigWithProviderMutation: <T>(
+    fn: (record: Record<string, unknown>) => Record<string, unknown> | Promise<Record<string, unknown>>,
+    beforeOperation: (assertConfigOwnership: () => Promise<void>) => Promise<void>,
+    operation: () => Promise<T>,
+  ) => Promise<T>;
   readonly mutateProviders: (fn: (record: Record<string, unknown>) => Record<string, unknown>) => Promise<void>;
 };
 
@@ -46,6 +56,10 @@ export function createConfigStore(options: ConfigStoreOptions): ConfigStore {
   const accountRemovals =
     options.accountRemovals ?? createAccountRemovalCoordinator({ file, repository: options.repository });
   const enqueue = options.enqueue ?? createFifoQueue();
+
+  function enqueueProviderMutation<T>(operation: () => Promise<T>): Promise<T> {
+    return enqueue(operation);
+  }
 
   async function verifyCandidate(
     candidate: Readonly<Record<string, unknown>>,
@@ -96,6 +110,37 @@ export function createConfigStore(options: ConfigStoreOptions): ConfigStore {
     void accountRemovals.finalizeAfterDrain(staged, retired).catch(() => {});
   }
 
+  async function mutateConfigNow(
+    fn: (record: Record<string, unknown>) => Record<string, unknown> | Promise<Record<string, unknown>>,
+  ): Promise<void> {
+    if (file === undefined) throw new ConfigPathMissingError();
+    await file.replace(fn, {
+      validateCandidate: (candidate) => void parseRuntimeConfig(candidate),
+      verify: async (candidate) => void (await verifyCandidate(candidate)),
+    });
+  }
+
+  async function mutateConfigWithProviderMutationNow<T>(
+    fn: (record: Record<string, unknown>) => Record<string, unknown> | Promise<Record<string, unknown>>,
+    beforeOperation: (assertConfigOwnership: () => Promise<void>) => Promise<void>,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    if (file === undefined) throw new ConfigPathMissingError();
+    let operationResult: { readonly value: T } | undefined;
+    await file.replace(fn, {
+      validateCandidate: (candidate) => void parseRuntimeConfig(candidate),
+      verify: async (candidate) => void (await verifyCandidate(candidate)),
+      beforeCommit: async (_candidate, assertConfigOwnership) => {
+        await beforeOperation(assertConfigOwnership);
+      },
+      afterCommit: async () => {
+        operationResult = { value: await operation() };
+      },
+    });
+    if (operationResult === undefined) throw new Error('Provider mutation operation did not run');
+    return operationResult.value;
+  }
+
   async function deleteProviderNow(providerId: string): Promise<void> {
     await mutateProvidersNow((providers) => {
       const { [providerId]: _removed, ...remaining } = providers;
@@ -104,8 +149,12 @@ export function createConfigStore(options: ConfigStoreOptions): ConfigStore {
   }
 
   return {
-    deleteProvider: (providerId) => enqueue(() => deleteProviderNow(providerId)),
+    coordinateProviderMutation: enqueueProviderMutation,
+    deleteProvider: (providerId) => enqueueProviderMutation(() => deleteProviderNow(providerId)),
     file,
-    mutateProviders: (fn) => enqueue(() => mutateProvidersNow(fn)),
+    mutateConfig: (fn) => enqueue(() => mutateConfigNow(fn)),
+    mutateConfigWithProviderMutation: (fn, beforeOperation, operation) =>
+      enqueueProviderMutation(() => mutateConfigWithProviderMutationNow(fn, beforeOperation, operation)),
+    mutateProviders: (fn) => enqueueProviderMutation(() => mutateProvidersNow(fn)),
   };
 }

@@ -61,7 +61,7 @@ for (const firstMode of ['runtime', 'control-plane'] as const) {
           }
           return {
             value: { token: `${mode}-credential` },
-            metadata: { label: `${mode}-label`, expiresAt: mode === 'runtime' ? 10 : 20 },
+            metadata: { accountLabel: `${mode}-label`, expiresAt: mode === 'runtime' ? 10 : 20 },
           };
         };
 

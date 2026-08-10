@@ -32,6 +32,7 @@ export type QuotaFixtureOptions = {
   readonly additionalProviderIds?: readonly string[];
   readonly itemId?: string;
   readonly region?: string;
+  readonly proxy?: string;
 };
 
 type QuotaAdapterTracker = {
@@ -68,6 +69,7 @@ function providerConfig(
   kind: QuotaFixtureOptions['provider'],
   optionsRegion: string,
   providerIds: readonly string[],
+  proxy: string | undefined,
 ): ReturnType<typeof ConfigSchema.parse> {
   const provider =
     kind === 'api'
@@ -100,9 +102,7 @@ function providerConfig(
       ]),
     ),
   };
-  return ConfigSchema.parse({
-    providers,
-  });
+  return ConfigSchema.parse({ providers, ...(proxy === undefined ? {} : { proxy }) });
 }
 
 function runtimeProvider(id: string): RuntimeProviderInstance {
@@ -132,7 +132,7 @@ function runtimeProvider(id: string): RuntimeProviderInstance {
 function buildQuotaAdapter(options: QuotaFixtureOptions, tracker: QuotaAdapterTracker): OAuthAdapter {
   return {
     id: CAPABILITY,
-    label: 'Example',
+    displayName: 'Example',
     account: {
       options: options.accountOptions ?? {
         schema: zod.object({ region: zod.string(), clientSecret: zod.string() }),
@@ -161,7 +161,7 @@ function buildQuotaAdapter(options: QuotaFixtureOptions, tracker: QuotaAdapterTr
               tracker.contexts.push(context);
               return (
                 options.read?.(context) ?? {
-                  items: [{ id: options.itemId ?? 'default', label: 'Default' }],
+                  items: [{ id: options.itemId ?? 'default', displayName: 'Default' }],
                 }
               );
             },
@@ -189,17 +189,16 @@ export function createQuotaFixture(options: QuotaFixtureOptions = {}) {
   staging.api.oauth.register(buildQuotaAdapter(options, tracker));
   staging.seal();
   staging.commit();
-  const registry =
-    options.capability === 'missing'
-      ? { ...host.registry, resolveOAuth: () => undefined }
-      : options.capability === 'throw'
-        ? {
-            ...host.registry,
-            resolveOAuth: () => {
-              throw new Error('registry failed');
-            },
-          }
-        : host.registry;
+  let registry = host.registry;
+  if (options.capability === 'missing') registry = { ...host.registry, resolveOAuth: () => undefined };
+  else if (options.capability === 'throw') {
+    registry = {
+      ...host.registry,
+      resolveOAuth: () => {
+        throw new Error('registry failed');
+      },
+    };
+  }
   const plugins = {
     registry,
     plugins: new Map(
@@ -232,7 +231,7 @@ export function createQuotaFixture(options: QuotaFixtureOptions = {}) {
     : repository;
   const providers = providerIds.map(runtimeProvider);
   const snapshot: ProviderRouteSnapshot = {
-    config: providerConfig(options.provider ?? 'oauth', options.region ?? 'us-east', providerIds),
+    config: providerConfig(options.provider ?? 'oauth', options.region ?? 'us-east', providerIds, options.proxy),
     plugins: plugins as never,
     providers,
     router: new Router(providers),

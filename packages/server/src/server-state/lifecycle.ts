@@ -6,7 +6,7 @@ import type {
   PluginRepository,
   Router,
 } from '@aio-proxy/core';
-import { parseRuntimeConfig } from '@aio-proxy/core';
+import { createProxyFetch, OAuthCapabilityUnavailableError, parseRuntimeConfig } from '@aio-proxy/core';
 import type { OpenDbHandle } from '@aio-proxy/core/db';
 import type { Config } from '@aio-proxy/types';
 
@@ -19,8 +19,10 @@ import type { FifoQueue } from '../fifo-queue';
 import type { LogicalSessionStore } from '../logical-session-store';
 import type { OAuthLoginSessionManager } from '../oauth-login-session/manager';
 import { createOAuthLoginSessionManager } from '../oauth-login-session/manager';
+import { findPluginEntry } from '../plugin-control-plane/plugin-config';
+import { createRuntimeFetch } from '../plugin-runtime';
 import type { SnapshotManager } from '../plugin-snapshot';
-import { providerDiff } from '../provider-runtime';
+import { effectiveProxy, providerDiff } from '../provider-runtime';
 import type { ProviderCooldownStore } from '../routes/pipeline/provider-cooldown';
 import type { RetiredProviderSnapshot, RuntimeProviderInstance } from '../runtime';
 import type { ServerLogSink } from '../server-log';
@@ -117,6 +119,7 @@ export type ServerStateParts = Pick<
   | 'logicalSessionStore'
   | 'oauthQuota'
   | 'oauthLoginSessions'
+  | 'pluginControlPlane'
   | 'providerSummaries'
   | 'reload'
   | 'traceStore'
@@ -157,6 +160,7 @@ export function assembleServerState(runtime: ServerRuntime, parts: ServerStatePa
     oauthCapabilities: () => oauthCapabilities(manager),
     oauthProviderEditView: (providerId) => oauthProviderEditView(manager, repository, providerId),
     oauthLoginSessions: parts.oauthLoginSessions,
+    pluginControlPlane: parts.pluginControlPlane,
     providerSummaries: parts.providerSummaries,
     currentConfig: () => (manager.current() as Snapshot).config,
     oauthQuota: parts.oauthQuota,
@@ -210,6 +214,7 @@ export async function startRecovery(
 
 export function startLoginSessions(
   runtime: ServerRuntime,
+  configStore: ConfigStore,
   reload: () => Promise<ConfigReloadResult>,
 ): OAuthLoginSessionManager {
   const { manager, repository, diagnostics, pluginLogger, internalOptions } = runtime;
@@ -226,6 +231,33 @@ export function startLoginSessions(
     },
     diagnostics,
     logger: pluginLogger,
+    coordinateProviderCommit: (capability, commit) =>
+      configStore.coordinateProviderMutation(() => {
+        const registry = (manager.current() as Snapshot).plugins.registry;
+        if (registry.resolveOAuth(capability.plugin, capability.capability) === undefined) {
+          throw new OAuthCapabilityUnavailableError(capability.plugin, capability.capability);
+        }
+        return commit();
+      }),
+    validateProviderCommit: (capability, current) => {
+      const plugins = (manager.current() as Snapshot).plugins;
+      const builtIn = plugins.plugins.get(capability.plugin)?.builtIn === true;
+      if (
+        (!builtIn && findPluginEntry(current, capability.plugin) === undefined) ||
+        plugins.registry.resolveOAuth(capability.plugin, capability.capability) === undefined
+      ) {
+        throw new OAuthCapabilityUnavailableError(capability.plugin, capability.capability);
+      }
+    },
+    createFetch: (input) => {
+      const config = (manager.current() as Snapshot).config;
+      const configured = config.providers.find((provider) => provider.id === input.targetProviderId);
+      const configuredProxy = configured?.kind === 'oauth' ? configured.proxy : undefined;
+      const patchProxy = input.providerPatch?.proxy;
+      const providerProxy = patchProxy === undefined ? configuredProxy : (patchProxy ?? undefined);
+      const control = createProxyFetch(effectiveProxy(config.proxy, providerProxy), globalThis.fetch);
+      return createRuntimeFetch({ control, model: control });
+    },
     reload,
     ...(testHooks?.oauthSessionNow === undefined ? {} : { now: testHooks.oauthSessionNow }),
     ...(testHooks?.oauthSessionTtlMs === undefined ? {} : { terminalSessionTtlMs: testHooks.oauthSessionTtlMs }),

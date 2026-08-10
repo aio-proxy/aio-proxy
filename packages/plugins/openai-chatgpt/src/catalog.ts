@@ -1,4 +1,4 @@
-import { type ModelDescriptor, zod } from '@aio-proxy/plugin-sdk';
+import { type ModelDescriptor, type RuntimeFetch, zod } from '@aio-proxy/plugin-sdk';
 import { CodexLeanModelSchema } from '@aio-proxy/types';
 import { filter, map, pipe, sortBy } from 'es-toolkit/fp';
 
@@ -10,8 +10,11 @@ const CodexModelsSchema = zod.object({
   models: zod.array(CodexLeanModelSchema),
 });
 
-export async function discoverOpenAIChatGPTModels(signal: AbortSignal): Promise<readonly ModelDescriptor[]> {
-  const response = await fetch(CODEX_MODELS_URL, { signal });
+export async function discoverOpenAIChatGPTModels(
+  signal: AbortSignal,
+  fetch: RuntimeFetch = globalThis.fetch,
+): Promise<readonly ModelDescriptor[]> {
+  const response = await fetch(CODEX_MODELS_URL, { signal, aioProxy: { traffic: 'control' } });
   if (!response.ok) throw new Error(`Codex model catalog request failed with ${response.status}`);
   const { models } = CodexModelsSchema.parse(await response.json());
   return pipe(

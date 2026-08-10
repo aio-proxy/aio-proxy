@@ -2,18 +2,19 @@ import { m } from '@aio-proxy/i18n';
 import { Button } from '@aio-proxy/ui/components/button';
 import { Empty, EmptyDescription, EmptyTitle } from '@aio-proxy/ui/components/empty';
 import { Skeleton } from '@aio-proxy/ui/components/skeleton';
+import { toast } from '@aio-proxy/ui/components/toast';
 import { useNavigate } from '@tanstack/react-router';
-import { RefreshCw } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { Copy, RefreshCw } from 'lucide-react';
+import { useState } from 'react';
 
 import { PageContainer } from '@/components/page-container';
 
-import { SpanDetailPanel } from '../../components/span-detail-panel';
-import { SpanWaterfall } from '../../components/span-waterfall';
-import { TraceSummary } from '../../components/trace-summary';
+import { TraceContextRail } from '../../components/trace-context-rail';
+import { TraceDetailTabs } from '../../components/trace-detail-tabs';
+import { TraceStatus } from '../../components/trace-status';
 import { useTraceQuery } from '../../hooks/use-trace-query';
+import { createDefaultTraceSearch } from '../../lib/trace-search';
 import { DashboardTracesRequestError } from '../../services/traces-service';
-import { createDefaultTraceSearch } from '../../trace-search';
 
 interface TraceDetailPageProps {
   readonly traceId: string;
@@ -28,24 +29,27 @@ export const TraceDetailPage: React.FC<TraceDetailPageProps> = ({ traceId }) => 
     query.data?.spans.find((span) => span.spanId === query.data?.trace.rootSpanId) ??
     query.data?.spans[0];
 
-  useEffect(() => {
-    if (query.data === undefined || query.data.spans.some((span) => span.spanId === selectedSpanId)) return;
-    setSelectedSpanId(
-      query.data.spans.find((span) => span.spanId === query.data?.trace.rootSpanId)?.spanId ??
-        query.data.spans[0]?.spanId,
-    );
-  }, [query.data, selectedSpanId]);
-
   const refresh = (
     <Button variant="outline" onClick={() => void query.refetch()}>
       <RefreshCw />
       {m['dashboard.traces.refresh']()}
     </Button>
   );
+  const breadcrumbs = [
+    { label: m['dashboard.menus.observability']() },
+    { label: m['dashboard.menus.traces'](), to: '/traces' as const },
+    {
+      label: (
+        <span className="flex flex-wrap gap-1">
+          {traceId} {!!query.data?.trace && <TraceStatus item={query.data?.trace} />}
+        </span>
+      ),
+    },
+  ] as const;
 
   if (query.isLoading) {
     return (
-      <PageContainer title={m['dashboard.traces.detail_title']()} subtitle={traceId} extra={refresh} backTo="/traces">
+      <PageContainer extra={refresh} breadcrumbs={breadcrumbs}>
         <div className="space-y-3" role="status" aria-label={m['dashboard.traces.detail_loading']()}>
           <Skeleton className="h-48 w-full" />
           <Skeleton className="h-64 w-full" />
@@ -57,7 +61,7 @@ export const TraceDetailPage: React.FC<TraceDetailPageProps> = ({ traceId }) => 
   if (query.isError || query.data === undefined) {
     const notFound = query.error instanceof DashboardTracesRequestError && query.error.status === 404;
     return (
-      <PageContainer title={m['dashboard.traces.detail_title']()} subtitle={traceId} extra={refresh} backTo="/traces">
+      <PageContainer extra={refresh} breadcrumbs={breadcrumbs}>
         <Empty>
           <EmptyTitle>
             {notFound ? m['dashboard.traces.not_found_title']() : m['dashboard.traces.detail_error_title']()}
@@ -73,34 +77,48 @@ export const TraceDetailPage: React.FC<TraceDetailPageProps> = ({ traceId }) => 
     );
   }
 
-  const { trace, spans } = query.data;
+  const { trace } = query.data;
+  const copyTraceId = async () => {
+    try {
+      await navigator.clipboard.writeText(trace.traceId);
+      toast.add({ type: 'success', title: m['dashboard.traces.trace_id_copied']() });
+    } catch {
+      toast.add({ type: 'error', title: m['dashboard.traces.trace_id_copy_failed']() });
+    }
+  };
 
   return (
     <PageContainer
-      title={m['dashboard.traces.detail_title']()}
-      subtitle={trace.traceId}
-      extra={refresh}
-      backTo="/traces"
-    >
-      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(20rem,0.42fr)]">
-        <div className="min-w-0 space-y-4">
-          <TraceSummary
-            trace={trace}
-            onSessionSelect={(session) =>
-              void navigate({
-                to: '/traces',
-                search: {
-                  ...createDefaultTraceSearch(),
-                  page: 1,
-                  sessionSource: session.source,
-                  sessionId: session.id,
-                },
-              })
-            }
-          />
-          <SpanWaterfall spans={spans} selectedSpanId={selectedSpan?.spanId} onSelect={setSelectedSpanId} />
+      breadcrumbs={breadcrumbs}
+      extra={
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={() => void copyTraceId()}>
+            <Copy />
+            {m['dashboard.traces.copy_trace_id']()}
+          </Button>
+          {refresh}
         </div>
-        <SpanDetailPanel span={selectedSpan} />
+      }
+    >
+      <div
+        className="grid min-w-0 items-start gap-8 lg:grid-cols-[minmax(16rem,0.32fr)_minmax(0,1fr)]"
+        data-testid="trace-detail-layout"
+      >
+        <TraceContextRail
+          trace={trace}
+          onSessionSelect={(session) =>
+            void navigate({
+              to: '/traces',
+              search: {
+                ...createDefaultTraceSearch(),
+                page: 1,
+                sessionSource: session.source,
+                sessionId: session.id,
+              },
+            })
+          }
+        />
+        <TraceDetailTabs detail={query.data} selectedSpan={selectedSpan} onSpanSelect={setSelectedSpanId} />
       </div>
     </PageContainer>
   );

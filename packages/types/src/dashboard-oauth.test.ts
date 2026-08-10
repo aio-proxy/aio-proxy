@@ -10,9 +10,8 @@ test('dashboard OAuth capability schema accepts safe form metadata and rejects s
   const capability = {
     plugin: '@example/oauth',
     capability: 'default',
-    label: { default: 'Example OAuth', 'zh-Hans': '示例 OAuth' },
+    displayName: { default: 'Example OAuth', 'zh-Hans': '示例 OAuth' },
     description: 'Example account',
-    icon: 'openai',
     defaults: { deploymentType: 'github.com' },
     form: [
       {
@@ -26,6 +25,8 @@ test('dashboard OAuth capability schema accepts safe form metadata and rejects s
   };
 
   expect(schema.parse(capability)).toEqual(capability);
+  expect(schema.safeParse({ ...capability, label: 'Example OAuth' }).success).toBe(false);
+  expect(schema.safeParse({ ...capability, icon: 'openai' }).success).toBe(false);
   expect(() =>
     schema.parse({
       ...capability,
@@ -66,11 +67,16 @@ test('dashboard OAuth session start accepts a complete routing patch without ide
       enabled: false,
       weight: 7,
       alias: { chat: { model: 'model-1' } },
+      proxy: null,
     },
   };
 
   expect(schema.parse(request)).toMatchObject(request);
   expect(() =>
     schema.parse({ ...request, providerPatch: { ...request.providerPatch, plugin: '@example/other' } }),
+  ).toThrow();
+  expect(() => schema.parse({ ...request, providerPatch: { ...request.providerPatch, proxy: '****' } })).toThrow();
+  expect(() =>
+    schema.parse({ ...request, providerPatch: { ...request.providerPatch, proxy: 'socks5://localhost:1080' } }),
   ).toThrow();
 });

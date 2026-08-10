@@ -33,6 +33,7 @@ export async function discoverCatalog(input: DiscoverCatalogInput): Promise<Cata
             credentials: credentialPort,
             options: discoverOptions,
             signal: discoveryDeadline.signal,
+            ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
           }),
         ),
       ),

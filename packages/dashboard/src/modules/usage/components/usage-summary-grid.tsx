@@ -4,9 +4,9 @@ import { Activity, CircleCheckBig, CircleDollarSign, Cpu, Gauge, Zap } from 'luc
 import type { ReactNode } from 'react';
 
 import { formatCompactTokenCount, TokenCount } from '@/components/token-count';
+import { formatNanoUsd } from '@/lib/nano-usd';
 
 import type { UsageOverviewSummary } from '../services/usage-service';
-import { formatNanoUsd } from '../services/usage-value-formatter';
 
 interface UsageSummaryGridProps {
   readonly summary: UsageOverviewSummary;

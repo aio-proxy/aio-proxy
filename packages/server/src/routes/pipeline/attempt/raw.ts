@@ -49,8 +49,8 @@ export async function attemptRawCandidate<TRequest, TContext>(
       } catch {}
       return { kind: 'fallback', lastFailure: response };
     }
-    session.finish(finalFailure(base, response.status));
     const retained = retainedFailure(response, ctx);
+    session.finish({ ...finalFailure(base, retained.status), clientResponse: retained });
     return { kind: 'return', response: retained };
   }
 
@@ -90,6 +90,7 @@ export async function attemptRawCandidate<TRequest, TContext>(
       observation,
       terminalCompletion(captured.completion, rawRequest.signal).finally(release),
       { providerId: provider.id, modelId: candidate.modelId },
+      captured.value,
       () => capturedResponseId,
     ),
   );

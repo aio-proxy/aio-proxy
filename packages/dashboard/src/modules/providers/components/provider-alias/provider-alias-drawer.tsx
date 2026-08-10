@@ -24,8 +24,8 @@ import { useIsMobile } from '@aio-proxy/ui/hooks/use-mobile';
 import { PlusIcon } from 'lucide-react';
 import type { FC } from 'react';
 
-import { type AliasEditorIssue, aliasSummary, type ProviderAlias } from '../../alias-editor';
-import { aliasSummaryMessage } from '../../alias-editor-copy';
+import { type AliasEditorIssue, aliasSummary, type ProviderAlias } from '../../lib/alias-editor';
+import { aliasSummaryMessage } from '../../lib/alias-editor-copy';
 import { ProviderAliasList } from './provider-alias-list';
 import { useAliasDrafts } from './use-alias-drafts';
 

@@ -39,7 +39,7 @@ export async function recorded(home: string) {
     const handle = openDb({ home });
     try {
       const store = createTraceStore(handle.db);
-      const roots = store.list({ page: 1, pageSize: 100 }).items;
+      const roots = store.list({ pageSize: 100 }).items;
       if (roots.length > 0 && roots.every((root) => root.endedAt !== null)) {
         const ordered = [...roots].sort((a, b) => a.startedAt.localeCompare(b.startedAt));
         const requests = ordered.map((root) => toRequest(root, store.find(root.traceId)?.spans ?? []));

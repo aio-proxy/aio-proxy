@@ -1,13 +1,18 @@
-import type { DashboardProviderSummary, ProviderMutationBody } from '@aio-proxy/types';
+import type {
+  DashboardProviderEnabledMutationBody,
+  DashboardProviderSummary,
+  ProviderMutationBody,
+} from '@aio-proxy/types';
 import { queryOptions } from '@tanstack/react-query';
 
 import { createDashboardClient } from '@/lib/dashboard-client';
+import { queryKeys } from '@/lib/query-keys';
 
 const dashboardClient = createDashboardClient();
 
 export const providersQueryOptions = () =>
   queryOptions({
-    queryKey: ['providers'],
+    queryKey: queryKeys.providers,
     queryFn: async () => {
       const response = await dashboardClient.dashboard.api.providers.$get();
       return response.json();
@@ -16,7 +21,7 @@ export const providersQueryOptions = () =>
 
 export const providerEditViewQueryOptions = (id: string) =>
   queryOptions({
-    queryKey: ['providers', id, 'edit-view'],
+    queryKey: queryKeys.providerEditView(id),
     queryFn: async () => {
       const response = await dashboardClient.dashboard.api.providers[':id']['edit-view'].$get({
         param: { id },
@@ -57,9 +62,25 @@ export const deleteProviderMutationFn = async (id: string): Promise<{ ok: true; 
   return response.json();
 };
 
+export const updateProviderEnabledMutationFn = async ({
+  id,
+  enabled,
+}: DashboardProviderEnabledMutationBody & {
+  readonly id: string;
+}): Promise<{ provider: DashboardProviderSummary }> => {
+  const response = await dashboardClient.dashboard.api.providers[':id'].enabled.$patch({
+    param: { id },
+    json: { enabled },
+  });
+  if (!response.ok) {
+    throw new Error(`update provider enabled failed: ${response.status}`);
+  }
+  return response.json();
+};
+
 export const probeProviderQueryOptions = (id: string) =>
   queryOptions({
-    queryKey: ['providers', id, 'probe'],
+    queryKey: queryKeys.providerProbe(id),
     queryFn: async () => {
       const response = await dashboardClient.dashboard.api.providers[':id'].$get({
         param: { id },

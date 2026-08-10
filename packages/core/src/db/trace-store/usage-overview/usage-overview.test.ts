@@ -18,6 +18,13 @@ function bucketTotal(buckets: readonly { readonly values: Readonly<Record<string
     .reduce((total, value) => total + BigInt(String(value)), 0n);
 }
 
+function sumBuckets(
+  overview: { readonly buckets: readonly { readonly values: Readonly<Record<string, string | number>> }[] },
+  key: string,
+): bigint {
+  return overview.buckets.reduce((total, { values }) => total + BigInt(String(values[key] ?? 0)), 0n);
+}
+
 function rootStart(traceId: string, startedAt: Date, attrs: Record<string, unknown> = {}): TraceRootStart {
   return {
     traceId,
@@ -254,43 +261,98 @@ describe('usage overview from trace roots', () => {
     }
   });
 
-  test('keeps the top five dimensions and folds remaining successful models into Other', () => {
+  test('returns every provider when maxResults is omitted', () => {
     const { handle, store } = makeStore();
     try {
-      for (let index = 0; index < 6; index += 1) {
+      for (const [index, providerId] of ['alpha', 'beta', 'gamma', 'zulu', 'omega', 'theta'].entries()) {
         complete(
           store,
           `${index}`.padEnd(32, '0'),
           new Date(NOW.getTime() - 60_000),
           new Date(NOW.getTime() - 1000),
           {
-            finalProviderId: `provider-${index}`,
-            finalModelId: `model-${index}`,
+            finalProviderId: providerId,
+            finalModelId: 'model',
             finalHttpStatus: 200,
-            usage: {
-              providerId: `provider-${index}`,
-              modelId: `model-${index}`,
-              inputTokens: 6 - index,
-              outputTokens: 0,
-              totalTokens: 6 - index,
-            },
+            usage: { providerId, modelId: 'model' },
           },
-          { 'gen_ai.response.model': `model-${index}` },
+          { 'aio_proxy.route.final_provider_id': providerId },
         );
       }
 
-      const overview = store.overview({ range: '24h', metric: 'tokens', groupBy: 'model', now: NOW });
+      const overview = store.overview({ range: '24h', metric: 'requests', groupBy: 'provider', now: NOW });
       expect(overview.series).toEqual([
-        { key: 'model-0', kind: 'dimension' },
-        { key: 'model-1', kind: 'dimension' },
-        { key: 'model-2', kind: 'dimension' },
-        { key: 'model-3', kind: 'dimension' },
-        { key: 'model-4', kind: 'dimension' },
-        { key: '__other__', kind: 'other' },
+        { key: 'alpha', kind: 'dimension' },
+        { key: 'beta', kind: 'dimension' },
+        { key: 'gamma', kind: 'dimension' },
+        { key: 'omega', kind: 'dimension' },
+        { key: 'theta', kind: 'dimension' },
+        { key: 'zulu', kind: 'dimension' },
       ]);
-      expect(overview.buckets.flatMap(({ values }) => [values.__other__]).filter((value) => value !== '0')).toEqual([
-        '1',
-      ]);
+    } finally {
+      handle.close();
+    }
+  });
+
+  test('keeps five dimensions and Other when maxResults is 5', () => {
+    const { handle, store } = makeStore();
+    try {
+      for (let index = 0; index < 6; index += 1) {
+        const providerId = `provider-${index}`;
+        complete(store, `${index}`.padEnd(32, '1'), new Date(NOW.getTime() - 60_000), NOW, {
+          finalProviderId: providerId,
+          finalModelId: 'model',
+          finalHttpStatus: 200,
+          usage: { providerId, modelId: 'model' },
+        });
+      }
+
+      const overview = store.overview({
+        range: '24h',
+        metric: 'requests',
+        groupBy: 'provider',
+        maxResults: 5,
+        now: NOW,
+      });
+      expect(overview.series.at(-3)).toEqual({ key: '__other__', kind: 'other' });
+    } finally {
+      handle.close();
+    }
+  });
+
+  test('attributes every outcome to chart-safe provider dimensions for unlimited requests', () => {
+    const { handle, store } = makeStore();
+    try {
+      for (const [index, terminationReason] of ([undefined, 'failure', 'cancelled'] as const).entries()) {
+        complete(
+          store,
+          `${index}`.padEnd(32, '2'),
+          new Date(NOW.getTime() - (index + 2) * 60 * 60_000),
+          new Date(NOW.getTime() - index * 60 * 60_000),
+          {
+            finalProviderId: 'openai.main',
+            finalModelId: 'model',
+            finalHttpStatus: terminationReason === undefined ? 200 : 500,
+            terminationReason,
+          },
+        );
+      }
+      for (const [index, providerId] of ['__proto__', 'provider[west]'].entries()) {
+        complete(store, `${index + 3}`.padEnd(32, '2'), new Date(NOW.getTime() - 3_000), NOW, {
+          finalProviderId: providerId,
+          finalModelId: 'model',
+          finalHttpStatus: 200,
+        });
+      }
+
+      const overview = store.overview({ range: '24h', metric: 'requests', groupBy: 'provider', now: NOW });
+
+      expect(overview.series.map(({ key }) => key)).toContain('dimension:openai%2Emain');
+      expect(overview.series.map(({ key }) => key)).toContain('dimension:__proto__');
+      expect(overview.series.map(({ key }) => key)).toContain('dimension:provider%5Bwest%5D');
+      expect(overview.series.every(({ kind }) => kind === 'dimension')).toBe(true);
+      expect(sumBuckets(overview, 'dimension:openai%2Emain')).toBe(3n);
+      expect(bucketTotal(overview.buckets)).toBe(5n);
     } finally {
       handle.close();
     }

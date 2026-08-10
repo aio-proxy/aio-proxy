@@ -101,6 +101,7 @@ export async function attemptModelCandidate<TRequest, TContext>(
         observation,
         commitResponseOnSuccess(terminalCompletion(egressCompletion, rawRequest.signal)).finally(release),
         ids,
+        response,
         () => capturedResponseId,
       ),
     );
@@ -120,6 +121,7 @@ export async function attemptModelCandidate<TRequest, TContext>(
       observation,
       terminalCompletion(captured.completion, rawRequest.signal),
       ids,
+      response,
       () => capturedResponseId,
     ),
   );

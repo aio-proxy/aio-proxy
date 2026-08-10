@@ -45,13 +45,13 @@ test('reads weekly and monthly Grok billing through the CLI proxy', async () => 
     items: [
       {
         id: 'weekly',
-        label: { default: 'Weekly limit', 'zh-Hans': '周额度' },
+        displayName: { default: 'Weekly limit', 'zh-Hans': '周额度' },
         remainingRatio: 0.75,
         resetsAt: Date.parse('2027-01-15T00:00:00Z'),
       },
       {
         id: 'monthly-credits',
-        label: { default: 'Monthly credits', 'zh-Hans': '月度额度' },
+        displayName: { default: 'Monthly credits', 'zh-Hans': '月度额度' },
         remainingRatio: 0.75,
         resetsAt: Date.parse('2027-02-01T00:00:00Z'),
       },
@@ -76,7 +76,7 @@ test('keeps valid monthly quota when weekly billing fails', async () => {
   expect(snapshot.items).toEqual([
     {
       id: 'monthly-credits',
-      label: { default: 'Monthly credits', 'zh-Hans': '月度额度' },
+      displayName: { default: 'Monthly credits', 'zh-Hans': '月度额度' },
       remainingRatio: 0,
       resetsAt: Date.parse('2027-02-01T00:00:00Z'),
     },

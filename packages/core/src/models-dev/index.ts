@@ -64,6 +64,11 @@ async function readCachedProviderMap(): Promise<ProviderMap | undefined> {
   return providerMap ?? undefined;
 }
 
+/** Whether models.dev's provider catalog is available without a network request. */
+export async function hasCachedModelsCatalog(): Promise<boolean> {
+  return (await readCachedProviderMap()) !== undefined;
+}
+
 export async function getProviders(options?: RequestOptions): Promise<ProviderMap> {
   const cached = await readCachedProviderMap();
   if (cached) return cached;

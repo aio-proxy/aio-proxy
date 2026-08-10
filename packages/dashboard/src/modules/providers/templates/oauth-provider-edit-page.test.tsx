@@ -57,6 +57,10 @@ test('OAuth edit page groups terminal actions in the intended order', () => {
   render(<OAuthProviderEditPage provider={provider} oauth={oauth} sessionId={undefined} onSessionIdChange={rs.fn()} />);
 
   const connection = screen.getByRole('region', { name: /Connection|连接/u });
+  expect(
+    screen.getByRole('navigation', { name: /^Breadcrumbs$|^面包屑$|^パンくずリスト$|^브레드크럼$/u }),
+  ).toBeTruthy();
+  expect(screen.queryByLabelText(/^Back$|^返回$|^戻る$|^뒤로$/u)).toBeNull();
   const actions = screen.getByTestId('provider-form-actions');
   const actionButtons = within(actions).getAllByRole('button');
   const save = within(actions).getByRole('button', { name: /Save|保存/u });
@@ -71,6 +75,9 @@ test('OAuth edit page groups terminal actions in the intended order', () => {
   expect(screen.getByText('@example/oauth / default')).toBeTruthy();
   expect(screen.getByLabelText('Tenant')).toHaveValue('work');
   expect(screen.getByLabelText('Token')).toHaveAttribute('type', 'password');
+  expect(screen.getByRole('combobox', { name: /Proxy mode|代理模式/u })).toHaveTextContent(
+    /Inherit global proxy|继承全局代理/u,
+  );
   expect(screen.getByText('model-1')).toBeTruthy();
   expect(screen.getByText('model-2')).toBeTruthy();
   expect(screen.getByRole('button', { name: /Edit Aliases|编辑别名/u })).toBeTruthy();
@@ -78,6 +85,22 @@ test('OAuth edit page groups terminal actions in the intended order', () => {
   expect(actionButtons).toEqual([save, cancel, deleteProvider]);
   expect(within(actions).queryByRole('button', { name: /Reauthorize|重新授权/u })).toBeNull();
   expect(screen.queryByRole('region', { name: /Danger zone|危险操作/u })).toBeNull();
+});
+
+test('OAuth edit page presents only a redacted configured proxy as unchanged', () => {
+  render(
+    <OAuthProviderEditPage
+      provider={{ ...provider, proxy: '****' } as unknown as OAuthProvider}
+      oauth={oauth}
+      sessionId={undefined}
+      onSessionIdChange={rs.fn()}
+    />,
+  );
+
+  expect(screen.queryByRole('tablist')).toBeNull();
+  expect(screen.getByRole('combobox', { name: /Proxy mode|代理模式/u })).toHaveTextContent(
+    /Configured \(unchanged\)|已配置（保持不变）/u,
+  );
 });
 
 test('OAuth edit page hides edit actions while an existing session loads', () => {

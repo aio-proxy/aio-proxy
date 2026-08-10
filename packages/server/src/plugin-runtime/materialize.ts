@@ -110,6 +110,7 @@ async function createRuntimeMaterialization(
   accountSummary: PreparedOAuthPluginAccount['accountSummary'],
 ): Promise<PluginProviderMaterialization> {
   const { config } = options;
+  const fetch = options.runtimeFetch ?? globalThis.fetch;
   try {
     const result = await runtimeDeadline(
       Promise.resolve().then(() =>
@@ -117,12 +118,12 @@ async function createRuntimeMaterialization(
           credentials: credentials as never,
           options: accountOptions,
           catalog: storedCatalog.catalog,
-          fetch: options.runtimeFetch ?? globalThis.fetch,
+          fetch,
         }),
       ),
     );
     const provider = createRuntimeProvider(config, result, storedCatalog.catalog);
-    const cacheEntry = { identity, provider, credentials };
+    const cacheEntry = { identity, provider, credentials, fetch };
     return { provider, summary: persistedSummary(provider, storedCatalog), state, catalogJob, cacheEntry };
   } catch (error) {
     options.logger({
@@ -195,6 +196,7 @@ export async function materializePluginProvider(
         credentials: credentials as never,
         options: accountOptions,
         signal,
+        ...(options.runtimeFetch === undefined ? {} : { fetch: options.runtimeFetch }),
       } as unknown as AccountContext<unknown, unknown>),
   });
 
@@ -202,6 +204,8 @@ export async function materializePluginProvider(
     return catalogUnavailableMaterialization(options, unavailable, persistedSummary, catalogJobFor, createCredentials);
   }
 
+  let proxyIdentity = options.effectiveProxy;
+  if (proxyIdentity === undefined) proxyIdentity = config.proxy === false ? null : (config.proxy ?? null);
   const identity = runtimeIdentity({
     packageName: config.plugin,
     version: pluginVersion(plugins, config.plugin),
@@ -210,6 +214,7 @@ export async function materializePluginProvider(
     pluginOptionsDigest: options.pluginOptionsDigest,
     accountOptionsDigest,
     requestTransformsDigest: digest(config.transforms?.request ?? []),
+    proxyDigest: digest(proxyIdentity),
     runtimeRevision: account.runtimeRevision,
     catalogDigest: digest(storedCatalog.catalog),
     catalogRefreshedAt: storedCatalog.refreshedAt,

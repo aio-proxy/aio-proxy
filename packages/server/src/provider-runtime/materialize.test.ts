@@ -118,6 +118,50 @@ test('materializes AI SDK metadata into the config layer only', () => {
   expect(provider?.upstreamMetadata).toBeUndefined();
 });
 
+test('provider summaries preserve configured weight and truthful display identity', () => {
+  const config = ConfigSchema.parse({
+    providers: {
+      api: {
+        baseURL: 'https://api.example.com',
+        kind: ProviderKind.Api,
+        models: ['api-model'],
+        protocol: ProviderProtocol.Anthropic,
+        weight: 9,
+      },
+      sdk: {
+        kind: ProviderKind.AiSdk,
+        models: ['sdk-model'],
+        packageName: '@ai-sdk/anthropic',
+        weight: 0,
+      },
+    },
+  });
+
+  const runtime = materializeProviders(config, {
+    createApiProvider: (provider) => ({ ...provider, passthrough: () => Promise.resolve(new Response()) }),
+    bridgeApiProvider: () => ({
+      enabled: true,
+      id: 'api:bridge',
+      invoke: () => new ReadableStream(),
+      kind: ProviderKind.AiSdk,
+    }),
+    createAiSdkProvider: (provider) => ({
+      enabled: provider.enabled,
+      id: provider.id,
+      invoke: () => new ReadableStream(),
+      kind: ProviderKind.AiSdk,
+      models: provider.models,
+    }),
+  });
+  const api = runtime.summaries.find((provider) => provider.id === 'api');
+  const sdk = runtime.summaries.find((provider) => provider.id === 'sdk');
+
+  expect(api).toMatchObject({ weight: 9, protocol: ProviderProtocol.Anthropic });
+  expect(api).not.toHaveProperty('packageName');
+  expect(sdk).toMatchObject({ weight: 0, packageName: '@ai-sdk/anthropic' });
+  expect(sdk).not.toHaveProperty('protocol');
+});
+
 test('materializes one transformed Fetch for raw API, API bridge, and direct AI SDK model traffic', async () => {
   const config = ConfigSchema.parse({
     providers: {

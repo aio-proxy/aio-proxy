@@ -125,12 +125,9 @@ function compatibleImagePart(part: Readonly<Record<string, unknown>>) {
   if (typeof mediaType !== 'string' || (mediaType !== 'image' && !mediaType.startsWith('image/')) || !isRecord(data)) {
     throw new TypeError('Marked tool image is invalid');
   }
-  const url =
-    data['type'] === 'data' && typeof data['data'] === 'string'
-      ? `data:${mediaType};base64,${data['data']}`
-      : data['type'] === 'url' && typeof data['url'] === 'string'
-        ? data['url']
-        : undefined;
+  let url: string | undefined;
+  if (data['type'] === 'data' && typeof data['data'] === 'string') url = `data:${mediaType};base64,${data['data']}`;
+  else if (data['type'] === 'url' && typeof data['url'] === 'string') url = data['url'];
   if (url === undefined) throw new TypeError('Marked tool image source is unsupported');
   const providerOptions = part['providerOptions'];
   const openAI = isRecord(providerOptions) ? providerOptions['openai'] : undefined;

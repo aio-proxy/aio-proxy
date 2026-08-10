@@ -14,7 +14,7 @@ import {
 import type { LogicalSessionResolution } from '../../logical-session-store';
 import { logServerEvent, type ServerLogSink, serverErrorType } from '../../server-log';
 import { getTraceRuntime } from '../runtime';
-import { attributeName, spanName } from '../semantic';
+import { attributeName, captureTraceDiagnostics, spanName, traceDiagnosticsToAttributes } from '../semantic';
 import { applyTerminalAttributes, buildCompletion } from './completion';
 import type { RequestTraceFinishInput, RequestTraceIdentityInput } from './types';
 
@@ -37,7 +37,8 @@ export type RequestTraceSession = {
 
 export type RequestTraceRecorder = {
   readonly begin: (input: {
-    readonly headers: Headers;
+    /** Metadata source for request diagnostics and incoming trace links. */
+    readonly inboundRequest: Request;
     readonly inboundProtocol: string;
     readonly operation?: 'model' | 'token_count';
   }) => RequestTraceSession;
@@ -72,18 +73,24 @@ export function createRequestTraceRecorder(options: {
 
       const requestId = currentRequestId() ?? crypto.randomUUID();
       const { tracer, processor } = getTraceRuntime();
-      const links = extractIncomingLinks(input.headers);
+      const links = extractIncomingLinks(input.inboundRequest.headers);
+      const rootAttributes = {
+        [attributeName.requestId]: requestId,
+        [attributeName.inboundProtocol]: input.inboundProtocol,
+        [attributeName.operation]: input.operation ?? 'model',
+        ...traceDiagnosticsToAttributes(
+          captureTraceDiagnostics({
+            inboundRequest: { protocol: input.inboundProtocol, value: input.inboundRequest },
+          }),
+        ),
+      };
 
       const root = tracer.startSpan(
         spanName.request,
         {
           kind: SpanKind.SERVER,
           links,
-          attributes: {
-            [attributeName.requestId]: requestId,
-            [attributeName.inboundProtocol]: input.inboundProtocol,
-            [attributeName.operation]: input.operation ?? 'model',
-          },
+          attributes: rootAttributes,
         },
         ROOT_CONTEXT,
       );
@@ -110,11 +117,7 @@ export function createRequestTraceRecorder(options: {
             kind: SpanKind.SERVER,
             startedAt: current,
             statusCode: SpanStatusCode.UNSET,
-            attributes: {
-              [attributeName.requestId]: requestId,
-              [attributeName.inboundProtocol]: input.inboundProtocol,
-              [attributeName.operation]: input.operation ?? 'model',
-            },
+            attributes: rootAttributes,
             events: [],
             links: links.map((link) => ({
               traceId: link.context.traceId,
@@ -130,6 +133,11 @@ export function createRequestTraceRecorder(options: {
         if (state === 'finished') return;
         state = 'finished';
         try {
+          if (finish.clientResponse !== undefined) {
+            root.setAttributes(
+              traceDiagnosticsToAttributes(captureTraceDiagnostics({ clientResponse: finish.clientResponse })),
+            );
+          }
           applyTerminalAttributes(root, finish, identity);
           root.end();
           const completion = buildCompletion({ traceId, rootSpanId, spans: processor.take(traceId), finish, identity });

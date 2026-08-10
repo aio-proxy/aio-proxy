@@ -11,7 +11,7 @@ import type {
   ValueSources,
 } from 'react-querybuilder';
 
-import { requestTransformFunctionMeta } from '../../request-transforms';
+import { requestTransformFunctionMeta } from '../../lib/request-transforms';
 
 const comparisonOperators = new Set(['=', '!=', '>', '>=', '<', '<=']);
 const headerOperatorNames = new Set(['=', '!=', 'exists', 'doesNotExist', 'pattern', 'regex']);

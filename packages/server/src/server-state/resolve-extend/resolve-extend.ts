@@ -1,10 +1,19 @@
-import { catalogModelToMetadata, getModels, type ModelsDevModel, type PluginLogSink } from '@aio-proxy/core';
+import {
+  catalogModelToMetadata,
+  getModels,
+  getModelsCachedOnly,
+  hasCachedModelsCatalog,
+  type ModelsDevModel,
+  type PluginLogSink,
+} from '@aio-proxy/core';
 import { type Config, type ModelMetadata, ModelMetadataSchema, type Provider } from '@aio-proxy/types';
 import { mergeWith } from 'es-toolkit/object';
 
 /** Injection seam so tests can supply a catalog without touching the network/global cache. */
 export type ResolveExtendDeps = {
   readonly getModels?: typeof getModels;
+  /** Called after a cold catalog is warmed without delaying the current snapshot. */
+  readonly onCatalogWarmed?: () => void;
 };
 
 /**
@@ -26,11 +35,18 @@ export async function applyMetadataExtend(
   const slugs = collectExtendSlugs(config.providers);
   if (slugs.size === 0) return config;
 
-  const catalog = await resolveCatalog([...slugs], deps?.getModels ?? getModels);
+  const cachedOnly = deps?.getModels === undefined;
+  const catalogCached = !cachedOnly || (await hasCachedModelsCatalog());
+  const catalog = await resolveCatalog([...slugs], deps?.getModels ?? getModelsCachedOnly);
+  if (!catalogCached && deps?.onCatalogWarmed !== undefined) {
+    void getModels([...slugs]).then(deps.onCatalogWarmed, () => {});
+  }
 
   let changed = false;
   const providers = config.providers.map((provider) => {
-    const rewritten = rewriteProvider(provider, catalog, logger);
+    const preserveUnresolved =
+      !catalogCached || (cachedOnly && Object.values(catalog).some((model) => model === undefined));
+    const rewritten = rewriteProvider(provider, catalog, logger, preserveUnresolved);
     if (rewritten !== provider) changed = true;
     return rewritten;
   });
@@ -66,6 +82,7 @@ function rewriteProvider(
   provider: Provider,
   catalog: Record<string, ModelsDevModel | undefined>,
   logger: PluginLogSink | undefined,
+  preserveUnresolved: boolean,
 ): Provider {
   const metadata = providerMetadata(provider);
   if (metadata === undefined) return provider;
@@ -78,7 +95,7 @@ function rewriteProvider(
       continue;
     }
     changed = true;
-    next[modelId] = resolveEntry(provider.id, modelId, meta, catalog, logger);
+    next[modelId] = resolveEntry(provider.id, modelId, meta, catalog, logger, preserveUnresolved);
   }
   if (!changed) return provider;
   return { ...provider, metadata: next } as Provider;
@@ -90,11 +107,13 @@ function resolveEntry(
   meta: ModelMetadata,
   catalog: Record<string, ModelsDevModel | undefined>,
   logger: PluginLogSink | undefined,
+  preserveUnresolved: boolean,
 ): ModelMetadata {
   const slug = meta.extend as string;
   const { extend: _extend, ...userFields } = meta;
   const target = catalog[slug];
   if (target === undefined) {
+    if (preserveUnresolved) return meta;
     warnUnresolved(providerId, modelId, slug, logger);
     return userFields;
   }

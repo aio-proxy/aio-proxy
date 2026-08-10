@@ -17,7 +17,7 @@ export const ProviderRequestTransformsVisualEditor: React.FC<ProviderRequestTran
   onChange,
   onValidityChange,
 }) => {
-  const pendingFocusRule = useRef<number | undefined>(undefined);
+  const pendingFocusRule = useRef<number>();
   const [ruleValidity, setRuleValidity] = useState<Readonly<Record<number, boolean>>>({});
   const visualValid = value.every((_, index) => ruleValidity[index] !== false);
   useEffect(() => onValidityChange(visualValid), [onValidityChange, visualValid]);
@@ -29,18 +29,6 @@ export const ProviderRequestTransformsVisualEditor: React.FC<ProviderRequestTran
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
-        <Button
-          type="button"
-          disabled={!visualValid}
-          onClick={() => {
-            pendingFocusRule.current = value.length;
-            onChange([...value, { update: [{ $unset: 'request.body.value' }] }]);
-          }}
-        >
-          {m['dashboard.providers.transforms.rule.add']()}
-        </Button>
-      </div>
       {value.length === 0 ? (
         <Empty>
           <EmptyHeader>
@@ -57,16 +45,12 @@ export const ProviderRequestTransformsVisualEditor: React.FC<ProviderRequestTran
               canMoveUp={index > 0}
               canMoveDown={index < value.length - 1}
               structuralDisabled={!visualValid}
-              {...(pendingFocusRule.current === index
-                ? {
-                    firstPathInputRef: (element: HTMLInputElement | null) => {
-                      if (element === null || pendingFocusRule.current !== index) return;
-                      pendingFocusRule.current = undefined;
-                      element.focus();
-                      element.select();
-                    },
-                  }
-                : {})}
+              firstPathInputRef={(element: HTMLInputElement | null) => {
+                if (element === null || pendingFocusRule.current !== index) return;
+                pendingFocusRule.current = undefined;
+                element.focus();
+                element.select();
+              }}
               onChange={(nextRule) => onChange(value.map((item, itemIndex) => (itemIndex === index ? nextRule : item)))}
               onValidityChange={(valid) =>
                 setRuleValidity((current) => (current[index] === valid ? current : { ...current, [index]: valid }))
@@ -78,6 +62,18 @@ export const ProviderRequestTransformsVisualEditor: React.FC<ProviderRequestTran
           ))}
         </div>
       )}
+      <div className="flex justify-end">
+        <Button
+          type="button"
+          disabled={!visualValid}
+          onClick={() => {
+            pendingFocusRule.current = value.length;
+            onChange([...value, { update: [{ $set: { 'request.body.value': null } }] }]);
+          }}
+        >
+          {m['dashboard.providers.transforms.rule.add']()}
+        </Button>
+      </div>
     </div>
   );
 };

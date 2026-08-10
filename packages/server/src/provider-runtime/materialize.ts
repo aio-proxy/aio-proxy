@@ -114,7 +114,7 @@ function isModelTransport(value: unknown): value is ModelTransport {
 }
 
 /** `false` disables the top-level proxy for this provider; omitted inherits it. */
-function effectiveProxy(
+export function effectiveProxy(
   globalProxy: string | undefined,
   providerProxy: string | false | undefined,
 ): string | undefined {
@@ -149,7 +149,7 @@ export function materializeProviders(config: Config, options: MaterializeProvide
         });
         probes.set(id, () => probeApi(provider, api));
         providers.push(instance);
-        summaries.push(providerSummary(instance, provider.name));
+        summaries.push(providerSummary(instance, provider.name, provider));
         break;
       }
       case ProviderKind.AiSdk: {
@@ -161,7 +161,7 @@ export function materializeProviders(config: Config, options: MaterializeProvide
         const instance = materializeRuntimeProvider(aiSdk);
         probes.set(id, () => probeAiSdk(aiSdk));
         providers.push(instance);
-        summaries.push(providerSummary(instance, provider.name));
+        summaries.push(providerSummary(instance, provider.name, provider));
         break;
       }
       case ProviderKind.OAuth: {
@@ -180,7 +180,11 @@ export function materializeProviders(config: Config, options: MaterializeProvide
   };
 }
 
-export function providerSummary(provider: RuntimeProviderInstance, name?: string): ProviderRuntimeSummary {
+export function providerSummary(
+  provider: RuntimeProviderInstance,
+  name?: string,
+  config?: Provider,
+): ProviderRuntimeSummary {
   return {
     id: provider.id,
     kind: provider.kind,
@@ -190,6 +194,7 @@ export function providerSummary(provider: RuntimeProviderInstance, name?: string
     last_latency: null,
     // Runtime factories don't carry `name`, so callers pass the config display name through.
     ...(name === undefined ? {} : { name }),
+    ...(config === undefined ? {} : providerDisplayFields(config)),
     clientModels: [...new Set(modelRoutes(provider).map((route) => route.alias))],
     hasApiKey: provider.kind === ProviderKind.Api ? provider.hasApiKey : undefined,
   };
@@ -223,8 +228,19 @@ function providerConfigSummary(provider: Provider): ProviderRuntimeSummary {
     last_status: 'unknown',
     last_latency: null,
     name: provider.name,
+    ...providerDisplayFields(provider),
     clientModels,
     hasApiKey: provider.kind === ProviderKind.Api ? provider.apiKey !== undefined : undefined,
+  };
+}
+
+function providerDisplayFields(
+  provider: Provider,
+): Pick<ProviderRuntimeSummary, 'weight' | 'protocol' | 'packageName'> {
+  return {
+    ...(provider.weight === undefined ? {} : { weight: provider.weight }),
+    ...(provider.kind === ProviderKind.Api ? { protocol: provider.protocol } : {}),
+    ...(provider.kind === ProviderKind.AiSdk ? { packageName: provider.packageName } : {}),
   };
 }
 

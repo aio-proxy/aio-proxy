@@ -14,7 +14,7 @@ import {
 
 import 'react-querybuilder/dist/query-builder.css';
 
-import { parseRequestTransformCondition, serializeRequestTransformCondition } from '../../request-transforms';
+import { parseRequestTransformCondition, serializeRequestTransformCondition } from '../../lib/request-transforms';
 import { QueryBuilderShadcn } from './query-builder';
 import {
   allowRequestTransformFunctionsOnLhs,
@@ -109,6 +109,16 @@ const normalizeNumericBodyLiterals = (
       ) {
         return item;
       }
+      let value = item.value;
+      if (item.valueSource === 'expression') {
+        value = normalizeNumericExpressionEdit(
+          previousRule.valueSource === 'expression' ? (previousRule.value as ExpressionNode) : undefined,
+          item.value as ExpressionNode,
+          true,
+        );
+      } else if (!isEqual(previousRule.value, item.value)) {
+        value = numericLiteral(item.value);
+      }
       return {
         ...item,
         ...(item.lhs === undefined
@@ -120,16 +130,7 @@ const normalizeNumericBodyLiterals = (
                 false,
               ),
             }),
-        value:
-          item.valueSource === 'expression'
-            ? normalizeNumericExpressionEdit(
-                previousRule.valueSource === 'expression' ? (previousRule.value as ExpressionNode) : undefined,
-                item.value as ExpressionNode,
-                true,
-              )
-            : isEqual(previousRule.value, item.value)
-              ? item.value
-              : numericLiteral(item.value),
+        value,
       };
     }),
   });

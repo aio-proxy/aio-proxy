@@ -1,9 +1,10 @@
-import { queryOptions } from '@tanstack/react-query';
+import { keepPreviousData, queryOptions } from '@tanstack/react-query';
 import type { InferResponseType } from 'hono/client';
 
 import { dashboardClient } from '@/lib/dashboard-client';
+import { queryKeys } from '@/lib/query-keys';
 
-import type { TraceSearch } from '../../trace-search';
+import type { TraceSearch } from '../../lib/trace-search';
 
 type DashboardTracesResponse = InferResponseType<typeof dashboardClient.dashboard.api.traces.$get, 200>;
 type DashboardTraceResponse = InferResponseType<(typeof dashboardClient.dashboard.api.traces)[':traceId']['$get'], 200>;
@@ -17,24 +18,24 @@ export class DashboardTracesRequestError extends Error {
 
 export const tracesQueryOptions = (search: TraceSearch, autoRefresh: boolean) =>
   queryOptions({
-    queryKey: ['dashboard', 'traces', search],
+    queryKey: queryKeys.traces(search),
     queryFn: () => getTraces(search),
-    refetchInterval: autoRefresh && search.page === 1 ? 5_000 : false,
+    refetchInterval: autoRefresh && search.pageToken === undefined ? 5_000 : false,
     refetchIntervalInBackground: false,
-    placeholderData: (previous) => previous,
+    placeholderData: keepPreviousData,
   });
 
 export const traceQueryOptions = (traceId: string) =>
   queryOptions({
-    queryKey: ['dashboard', 'traces', traceId],
+    queryKey: queryKeys.trace(traceId),
     queryFn: () => getTrace(traceId),
   });
 
 export const getTraces = async (search: TraceSearch): Promise<DashboardTracesResponse> => {
   const response = await dashboardClient.dashboard.api.traces.$get({
     query: {
-      page: String(search.page),
       pageSize: String(search.pageSize),
+      ...(search.pageToken === undefined ? {} : { pageToken: search.pageToken }),
       // Hono exposes the validator's transformed Date type, but its HTTP client must send the ISO input.
       startedAfter: search.startedAfter as unknown as Date,
       startedBefore: search.startedBefore as unknown as Date,

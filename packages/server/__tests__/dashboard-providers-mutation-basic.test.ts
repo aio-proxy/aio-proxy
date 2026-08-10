@@ -17,6 +17,10 @@ describe('dashboard provider CRUD', () => {
     const api = body.providers.find((provider: { id: string }) => provider.id === 'seed-api');
     expect(api).toHaveProperty('clientModels');
     expect(api.hasApiKey).toBe(true);
+    expect(api.protocol).toBe('openai-response');
+    const aiSdk = body.providers.find((provider: { id: string }) => provider.id === 'seed-ai');
+    expect(aiSdk.packageName).toBe('@ai-sdk/openai-compatible');
+    expect(aiSdk).not.toHaveProperty('protocol');
   });
 
   test('2. POST new api provider returns 201 and writes it to disk', async () => {

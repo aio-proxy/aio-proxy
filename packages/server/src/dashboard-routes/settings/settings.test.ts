@@ -1,0 +1,252 @@
+import { expect, test } from 'bun:test';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+import { parseRuntimeConfig, Router } from '@aio-proxy/core';
+
+import { disabledDashboardAuthentication } from '../../dashboard-auth/test-support';
+import { createServerState, type ServerState } from '../../server-state';
+import { createDashboardRoutes } from '../config';
+
+const authoredConfig = {
+  futureRoot: { secret: 'root-preserved' },
+  plugins: [],
+  providers: {},
+  proxy: '{{env.SETTINGS_ROOT_PROXY}}',
+  router: { modelContextAggregation: 'min', futureRouter: true },
+  server: {
+    futureServer: 'server-preserved',
+    host: '{{env.SETTINGS_HOST}}',
+    logging: {
+      dir: '{{env.SETTINGS_LOG_DIR}}',
+      enabled: false,
+      futureLogging: 'logging-preserved',
+      level: 'info',
+      retentionDays: 14,
+    },
+    password: 'password-preserved',
+    port: 9_317,
+    retry: { futureRetry: 'retry-preserved', retryAfterCapMs: 30_000 },
+  },
+};
+
+type Routes = ReturnType<typeof createDashboardRoutes>;
+
+async function withSettingsFixture(
+  run: (fixture: {
+    readonly configPath: string;
+    readonly routes: Routes;
+    readonly state: ServerState;
+  }) => Promise<void>,
+  options: { readonly configPath?: boolean; readonly rejectReload?: { value: boolean } } = {},
+): Promise<void> {
+  const directory = mkdtempSync(join(tmpdir(), 'aio-dashboard-settings-'));
+  const configPath = join(directory, 'config.json');
+  writeFileSync(configPath, JSON.stringify(authoredConfig, null, 2));
+  const previous = {
+    SETTINGS_HOST: process.env['SETTINGS_HOST'],
+    SETTINGS_LOG_DIR: process.env['SETTINGS_LOG_DIR'],
+    SETTINGS_PROXY_HOST: process.env['SETTINGS_PROXY_HOST'],
+    SETTINGS_ROOT_PROXY: process.env['SETTINGS_ROOT_PROXY'],
+  };
+  process.env['SETTINGS_HOST'] = '127.0.0.1';
+  process.env['SETTINGS_LOG_DIR'] = '/tmp/settings-logs';
+  process.env['SETTINGS_PROXY_HOST'] = 'replacement.proxy.example';
+  process.env['SETTINGS_ROOT_PROXY'] = 'http://user:password@proxy.example:8080';
+  const rejectReload = options.rejectReload;
+  const state = await createServerState({
+    config: parseRuntimeConfig(authoredConfig),
+    dbHome: directory,
+    ...(options.configPath === false ? {} : { configPath }),
+    watchConfig: false,
+    ...(rejectReload === undefined
+      ? {}
+      : {
+          __test: {
+            createRouter: (providers) => {
+              if (rejectReload.value) throw new Error('reload rejected for test');
+              return new Router(providers);
+            },
+          },
+        }),
+  });
+
+  try {
+    await run({ configPath, routes: createDashboardRoutes(state, disabledDashboardAuthentication), state });
+  } finally {
+    state.close();
+    rmSync(directory, { force: true, recursive: true });
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+}
+
+function put(routes: Routes, body: unknown): Promise<Response> {
+  return routes.request('/settings', {
+    body: JSON.stringify(body),
+    headers: { 'content-type': 'application/json' },
+    method: 'PUT',
+  });
+}
+
+function onDisk(configPath: string): typeof authoredConfig {
+  return JSON.parse(readFileSync(configPath, 'utf8')) as typeof authoredConfig;
+}
+
+test('GET /settings returns only the redacted typed settings view', async () => {
+  await withSettingsFixture(async ({ routes }) => {
+    const response = await routes.request('/settings');
+    const text = await response.text();
+
+    expect(response.status).toBe(200);
+    expect(JSON.parse(text)).toEqual({
+      hasPassword: true,
+      host: '127.0.0.1',
+      logging: { enabled: false, level: 'info', retentionDays: 14 },
+      port: 9_317,
+      proxy: '****',
+      retryAfterCapMs: 30_000,
+    });
+    expect(text).not.toMatch(/password-preserved|user:password|SETTINGS_|root-preserved/u);
+  });
+});
+
+test('PUT /settings changes only owned authoring fields', async () => {
+  await withSettingsFixture(async ({ configPath, routes }) => {
+    const response = await put(routes, {
+      logging: { enabled: true, level: 'warn', retentionDays: 30 },
+      retryAfterCapMs: 15_000,
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      ok: true,
+      restartRequired: true,
+      settings: {
+        logging: { enabled: true, level: 'warn', retentionDays: 30 },
+        retryAfterCapMs: 15_000,
+      },
+    });
+    const stored = onDisk(configPath);
+    expect(stored.futureRoot).toEqual(authoredConfig.futureRoot);
+    expect(stored.proxy).toBe(authoredConfig.proxy);
+    expect(stored.router).toEqual(authoredConfig.router);
+    expect(stored.server.futureServer).toBe(authoredConfig.server.futureServer);
+    expect(stored.server.host).toBe(authoredConfig.server.host);
+    expect(stored.server.password).toBe(authoredConfig.server.password);
+    expect(stored.server.logging.dir).toBe(authoredConfig.server.logging.dir);
+    expect(stored.server.logging.futureLogging).toBe(authoredConfig.server.logging.futureLogging);
+    expect(stored.server.retry.futureRetry).toBe(authoredConfig.server.retry.futureRetry);
+  });
+});
+
+test('an omitted root proxy is preserved', async () => {
+  await withSettingsFixture(async ({ configPath, routes }) => {
+    const response = await put(routes, { retryAfterCapMs: 10_000 });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ ok: true, restartRequired: false });
+    expect(onDisk(configPath).proxy).toBe(authoredConfig.proxy);
+  });
+});
+
+test('a null root proxy deletes the authored value', async () => {
+  await withSettingsFixture(async ({ configPath, routes }) => {
+    const response = await put(routes, { proxy: null });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      ok: true,
+      restartRequired: false,
+      settings: { proxy: null },
+    });
+    expect(onDisk(configPath)).not.toHaveProperty('proxy');
+  });
+});
+
+test('a valid root proxy template replaces the authored value without exposing its expansion', async () => {
+  await withSettingsFixture(async ({ configPath, routes }) => {
+    const proxy = 'https://{{env.SETTINGS_PROXY_HOST}}:8443';
+    const response = await put(routes, { proxy });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      ok: true,
+      restartRequired: false,
+      settings: { proxy: '****' },
+    });
+    expect(onDisk(configPath).proxy).toBe(proxy);
+  });
+});
+
+test('invalid port, SOCKS proxy, and malformed template return 422 without changing config bytes', async () => {
+  await withSettingsFixture(async ({ configPath, routes }) => {
+    const before = readFileSync(configPath, 'utf8');
+    for (const body of [
+      { port: 0 },
+      { proxy: 'socks5://proxy.example:1080' },
+      { proxy: 'https://{{#if true}}proxy.example{{/if}}' },
+    ]) {
+      const response = await put(routes, body);
+
+      expect(response.status).toBe(422);
+      expect(await response.json()).toEqual({ ok: false, error: { code: 'config_rejected' } });
+      expect(readFileSync(configPath, 'utf8')).toBe(before);
+    }
+  });
+});
+
+test('PUT /settings returns 409 when no config path is configured', async () => {
+  await withSettingsFixture(
+    async ({ routes }) => {
+      const response = await put(routes, { port: 9_318 });
+
+      expect(response.status).toBe(409);
+      expect(await response.json()).toEqual({ ok: false, error: { code: 'config_unavailable' } });
+    },
+    { configPath: false },
+  );
+});
+
+test('a rejected runtime reload returns 422 and rolls back the config bytes', async () => {
+  const rejectReload = { value: false };
+  await withSettingsFixture(
+    async ({ configPath, routes }) => {
+      const before = readFileSync(configPath, 'utf8');
+      rejectReload.value = true;
+
+      const response = await put(routes, { retryAfterCapMs: 12_345 });
+
+      expect(response.status).toBe(422);
+      expect(await response.json()).toEqual({ ok: false, error: { code: 'reload_failed' } });
+      expect(readFileSync(configPath, 'utf8')).toBe(before);
+    },
+    { rejectReload },
+  );
+});
+
+test('persisted host, port, and logging changes require restart', async () => {
+  await withSettingsFixture(async ({ routes }) => {
+    for (const body of [{ host: 'localhost' }, { port: 9_318 }, { logging: { level: 'debug' } }]) {
+      const response = await put(routes, body);
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({ ok: true, restartRequired: true });
+    }
+  });
+});
+
+test('theme, language, and router fields are rejected without changing config bytes', async () => {
+  await withSettingsFixture(async ({ configPath, routes }) => {
+    const before = readFileSync(configPath, 'utf8');
+    for (const body of [{ theme: 'dark' }, { language: 'en' }, { router: { modelContextAggregation: 'max' } }]) {
+      const response = await put(routes, body);
+
+      expect(response.status).toBe(422);
+      expect(readFileSync(configPath, 'utf8')).toBe(before);
+    }
+  });
+});

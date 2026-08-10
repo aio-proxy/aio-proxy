@@ -1,9 +1,40 @@
 import { describe, expect, test } from 'bun:test';
 
 import { usageDaily } from '../schema';
-import { createTraceStore } from './index';
+import { createTraceStore, decodeTraceCursor, encodeTraceCursor } from './index';
 import { openTestDb } from './test-support';
 import { attemptSpan, completion, ROOT_SPAN_ID, rootSpan, rootStart, TRACE_ID } from './trace-store.test-support';
+
+describe('trace cursor codec', () => {
+  test('round-trips a versioned opaque cursor and rejects malformed tokens', () => {
+    const cursor = {
+      direction: 'older' as const,
+      startedAt: new Date('2026-07-24T11:00:00.000Z'),
+      traceId: 'a'.repeat(32),
+    };
+    const token = encodeTraceCursor(cursor);
+    expect(token).toMatch(/^[A-Za-z0-9_-]+$/u);
+    expect(decodeTraceCursor(token)).toEqual(cursor);
+
+    const unsupportedVersion = Buffer.from(
+      JSON.stringify({
+        version: 2,
+        direction: 'older',
+        startedAt: '2026-07-24T11:00:00.000Z',
+        traceId: 'a'.repeat(32),
+      }),
+    ).toString('base64url');
+    const invalidDate = Buffer.from(
+      JSON.stringify({ version: 1, direction: 'older', startedAt: 'not-a-date', traceId: 'a'.repeat(32) }),
+    ).toString('base64url');
+
+    expect(decodeTraceCursor('')).toBeUndefined();
+    expect(decodeTraceCursor('not+base64url')).toBeUndefined();
+    expect(decodeTraceCursor(Buffer.from('not-json').toString('base64url'))).toBeUndefined();
+    expect(decodeTraceCursor(unsupportedVersion)).toBeUndefined();
+    expect(decodeTraceCursor(invalidDate)).toBeUndefined();
+  });
+});
 
 describe('trace store lifecycle', () => {
   test('uses the supplied clock for running trace durations', () => {
@@ -225,34 +256,105 @@ describe('trace store recover, list, and prune', () => {
     }
   });
 
-  test('list orders roots by startedAt descending and filters by request id', () => {
+  test('list traverses adjacent pages in both directions with stable timestamp tie-breaking', () => {
     const handle = openTestDb();
     try {
       const store = createTraceStore(handle.db);
-      const t1 = '1'.repeat(32);
-      const t2 = '2'.repeat(32);
-      store.startRoot(
-        rootStart({
-          traceId: t1,
-          spanId: t1.slice(0, 16),
-          requestId: 'req-1',
-          startedAt: new Date('2026-07-24T10:00:00.000Z'),
-        }),
-      );
-      store.startRoot(
-        rootStart({
-          traceId: t2,
-          spanId: t2.slice(0, 16),
-          requestId: 'req-2',
-          startedAt: new Date('2026-07-24T11:00:00.000Z'),
-        }),
-      );
+      const rows = [
+        { traceId: 'd'.repeat(32), requestId: 'req-13', startedAt: '2026-07-24T13:00:00.000Z' },
+        { traceId: 'c'.repeat(32), requestId: 'req-12', startedAt: '2026-07-24T12:00:00.000Z' },
+        { traceId: 'b'.repeat(32), requestId: 'req-11', startedAt: '2026-07-24T11:00:00.000Z' },
+        { traceId: 'a'.repeat(32), requestId: 'req-10', startedAt: '2026-07-24T10:00:00.000Z' },
+        { traceId: '9'.repeat(32), requestId: 'req-9', startedAt: '2026-07-24T09:00:00.000Z' },
+        { traceId: '8'.repeat(32), requestId: 'req-8', startedAt: '2026-07-24T08:00:00.000Z' },
+        { traceId: '7'.repeat(32), requestId: 'req-7', startedAt: '2026-07-24T07:00:00.000Z' },
+        { traceId: '6'.repeat(32), requestId: 'req-6', startedAt: '2026-07-24T06:00:00.000Z' },
+        { traceId: '5'.repeat(32), requestId: 'req-5', startedAt: '2026-07-24T05:00:00.000Z' },
+        { traceId: 'f'.repeat(32), requestId: 'req-4-f', startedAt: '2026-07-24T04:00:00.000Z' },
+        { traceId: 'e'.repeat(32), requestId: 'req-4-e', startedAt: '2026-07-24T04:00:00.000Z' },
+        { traceId: '3'.repeat(32), requestId: 'req-3', startedAt: '2026-07-24T03:00:00.000Z' },
+        { traceId: '2'.repeat(32), requestId: 'req-2', startedAt: '2026-07-24T02:00:00.000Z' },
+        { traceId: '1'.repeat(32), requestId: 'req-1', startedAt: '2026-07-24T01:00:00.000Z' },
+      ] as const;
+      for (const row of rows) {
+        store.startRoot(rootStart({ ...row, spanId: row.traceId.slice(0, 16), startedAt: new Date(row.startedAt) }));
+      }
 
-      const all = store.list({ page: 1, pageSize: 10 });
-      expect(all.items.map((item) => item.requestId)).toEqual(['req-2', 'req-1']);
+      const latest = store.list({ pageSize: 10 });
+      expect(latest.items.map((item) => item.requestId)).toEqual([
+        'req-13',
+        'req-12',
+        'req-11',
+        'req-10',
+        'req-9',
+        'req-8',
+        'req-7',
+        'req-6',
+        'req-5',
+        'req-4-f',
+      ]);
+      expect(latest.previousCursor).toBeUndefined();
+      expect(latest.nextCursor).toBeDefined();
 
-      const filtered = store.list({ page: 1, pageSize: 10, requestId: 'req-1' });
+      const oldest = store.list({ pageSize: 10, cursor: latest.nextCursor });
+      expect(oldest.items.map((item) => item.requestId)).toEqual(['req-4-e', 'req-3', 'req-2', 'req-1']);
+      expect(oldest.previousCursor).toBeDefined();
+      expect(oldest.nextCursor).toBeUndefined();
+
+      const returnedLatest = store.list({ pageSize: 10, cursor: oldest.previousCursor });
+      expect(returnedLatest.items.map((item) => item.requestId)).toEqual(latest.items.map((item) => item.requestId));
+      expect(returnedLatest.previousCursor).toBeUndefined();
+      expect(returnedLatest.nextCursor).toBeDefined();
+
+      const filtered = store.list({ pageSize: 10, requestId: 'req-1' });
       expect(filtered.items.map((item) => item.requestId)).toEqual(['req-1']);
+      expect(filtered.previousCursor).toBeUndefined();
+      expect(filtered.nextCursor).toBeUndefined();
+    } finally {
+      handle.close();
+    }
+  });
+
+  test('list keeps older traversal stable when a newer root is inserted', () => {
+    const handle = openTestDb();
+    try {
+      const store = createTraceStore(handle.db);
+      const rows = [
+        { traceId: 'b'.repeat(32), requestId: 'req-11', startedAt: '2026-07-24T11:00:00.000Z' },
+        { traceId: 'a'.repeat(32), requestId: 'req-10', startedAt: '2026-07-24T10:00:00.000Z' },
+        { traceId: '9'.repeat(32), requestId: 'req-9', startedAt: '2026-07-24T09:00:00.000Z' },
+        { traceId: '8'.repeat(32), requestId: 'req-8', startedAt: '2026-07-24T08:00:00.000Z' },
+        { traceId: '7'.repeat(32), requestId: 'req-7', startedAt: '2026-07-24T07:00:00.000Z' },
+        { traceId: '6'.repeat(32), requestId: 'req-6', startedAt: '2026-07-24T06:00:00.000Z' },
+        { traceId: '5'.repeat(32), requestId: 'req-5', startedAt: '2026-07-24T05:00:00.000Z' },
+        { traceId: '4'.repeat(32), requestId: 'req-4', startedAt: '2026-07-24T04:00:00.000Z' },
+        { traceId: '3'.repeat(32), requestId: 'req-3', startedAt: '2026-07-24T03:00:00.000Z' },
+        { traceId: '2'.repeat(32), requestId: 'req-2', startedAt: '2026-07-24T02:00:00.000Z' },
+        { traceId: '1'.repeat(32), requestId: 'req-1', startedAt: '2026-07-24T01:00:00.000Z' },
+      ] as const;
+      for (const row of rows) {
+        store.startRoot(rootStart({ ...row, spanId: row.traceId.slice(0, 16), startedAt: new Date(row.startedAt) }));
+      }
+
+      const latest = store.list({ pageSize: 10 });
+      expect(latest.nextCursor).toBeDefined();
+
+      const insertedTraceId = 'c'.repeat(32);
+      store.startRoot(
+        rootStart({
+          traceId: insertedTraceId,
+          spanId: insertedTraceId.slice(0, 16),
+          requestId: 'req-12',
+          startedAt: new Date('2026-07-24T12:00:00.000Z'),
+        }),
+      );
+
+      const oldest = store.list({ pageSize: 10, cursor: latest.nextCursor });
+      expect(oldest.items.map((item) => item.requestId)).toEqual(['req-1']);
+
+      const returnedPage = store.list({ pageSize: 10, cursor: oldest.previousCursor });
+      expect(returnedPage.items.map((item) => item.requestId)).toEqual(latest.items.map((item) => item.requestId));
+      expect(returnedPage.previousCursor).toBeDefined();
     } finally {
       handle.close();
     }

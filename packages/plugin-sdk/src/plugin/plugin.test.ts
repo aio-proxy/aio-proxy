@@ -3,9 +3,9 @@ import { describe, expect, test } from 'bun:test';
 import { definePlugin, isPluginDescriptor, PLUGIN_API_VERSION, PLUGIN_DESCRIPTOR_BRAND, zod } from '..';
 
 describe('definePlugin', () => {
-  test('brands an apiVersion 1 descriptor', () => {
+  test('brands an apiVersion 2 descriptor', () => {
     const descriptor = definePlugin(() => {});
-    expect(descriptor.apiVersion).toBe(1);
+    expect(descriptor.apiVersion).toBe(2);
     expect(descriptor[PLUGIN_DESCRIPTOR_BRAND]).toBe(true);
     expect(isPluginDescriptor(descriptor)).toBe(true);
   });
@@ -25,7 +25,7 @@ describe('definePlugin', () => {
   });
 
   test('rejects unbranded lookalikes', () => {
-    expect(isPluginDescriptor({ apiVersion: 1, setup() {} })).toBe(false);
+    expect(isPluginDescriptor({ apiVersion: 2, setup() {} })).toBe(false);
   });
 
   test('rejects branded descriptors without object metadata', () => {
@@ -51,11 +51,11 @@ describe('definePlugin', () => {
     expect(isPluginDescriptor({ ...descriptor, metadata: { options: { form: 'bad' } } })).toBe(true);
   });
 
-  test('rejects branded apiVersion 2 descriptors', () => {
+  test('rejects branded apiVersion 1 descriptors', () => {
     expect(
       isPluginDescriptor({
         [PLUGIN_DESCRIPTOR_BRAND]: true,
-        apiVersion: 2,
+        apiVersion: 1,
         metadata: {},
         setup() {},
       }),

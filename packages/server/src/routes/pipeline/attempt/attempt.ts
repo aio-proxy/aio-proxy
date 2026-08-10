@@ -96,7 +96,12 @@ export async function attemptCandidates<TRequest, TContext>(
     // Request-level finalization: no provider was attempted, so do NOT use finalFailure
     // (it requires/records a provider+model). Snapshot lease + body cleanup are handled
     // by the outer finally blocks in index.ts.
-    session.finish({ outcome: 'failure', finalHttpStatus: 429, errorCode: 'rate_limited' });
+    session.finish({
+      outcome: 'failure',
+      finalHttpStatus: 429,
+      errorCode: 'rate_limited',
+      clientResponse: response,
+    });
     return response;
   }
   const { live } = selection;
@@ -105,6 +110,10 @@ export async function attemptCandidates<TRequest, TContext>(
     const provider = candidate.provider;
     const startedAt = performance.now();
     const observation = createAttemptResponseObservation({ startedAt });
+    let selectionReason: CandidateSlot['trace']['selectionReason'] = 'weight';
+    if (resolution.affinity?.active === true && resolution.affinity.providerId === provider.id)
+      selectionReason = 'affinity';
+    if (resolution.responseOwner?.providerId === provider.id) selectionReason = 'response_owner';
     const slot: CandidateSlot = {
       index,
       candidate,
@@ -114,12 +123,7 @@ export async function attemptCandidates<TRequest, TContext>(
       trace: {
         ...(weightByProviderId === undefined ? {} : { providerWeight: weightByProviderId.get(provider.id) ?? 0 }),
         sourceProtocol: adapter.protocol,
-        selectionReason:
-          resolution.responseOwner?.providerId === provider.id
-            ? 'response_owner'
-            : resolution.affinity?.active === true && resolution.affinity.providerId === provider.id
-              ? 'affinity'
-              : 'weight',
+        selectionReason,
       },
       inAttempt: <T>(targetProtocol: CandidateSlot['trace']['targetProtocol'], operation: () => T): T =>
         withAttemptResponseObservation(observation, () =>
@@ -164,6 +168,7 @@ export async function attemptCandidates<TRequest, TContext>(
     }
   }
 
-  session.finish({ outcome: 'failure' });
-  return lastFailure ?? adapter.errors.unsupported('transform_dispatch');
+  const response = lastFailure ?? adapter.errors.unsupported('transform_dispatch');
+  session.finish({ outcome: 'failure', finalHttpStatus: response.status, clientResponse: response });
+  return response;
 }

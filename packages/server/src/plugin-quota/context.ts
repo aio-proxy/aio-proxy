@@ -1,14 +1,18 @@
 import {
   collectSecretStrings,
+  createProxyFetch,
   type DiagnosticFactory,
   type PluginLogSink,
   type PluginRepository,
 } from '@aio-proxy/core';
 import type { AccountContext, CredentialPort, OAuthAdapter } from '@aio-proxy/plugin-sdk';
-import { ProviderKind } from '@aio-proxy/types';
+import { type OAuthProvider, ProviderKind } from '@aio-proxy/types';
 
 import { prepareOAuthPluginAccount } from '../plugin-account';
+import { createRuntimeFetch } from '../plugin-runtime';
+import { effectiveProxy } from '../provider-runtime';
 import type { ProviderSnapshotLease } from '../runtime';
+import type { Snapshot } from '../server-state/snapshot';
 import { OAuthQuotaCapabilityUnavailableError } from './errors';
 
 export type OAuthQuotaServiceDependencies = {
@@ -57,6 +61,13 @@ function createTrackingCredentialPort(
   };
 }
 
+function quotaFetch(snapshot: Partial<Snapshot>, provider: OAuthProvider) {
+  const cached = snapshot.runtimeCache?.get(provider.id)?.fetch;
+  if (cached !== undefined) return cached;
+  const control = createProxyFetch(effectiveProxy(snapshot.config?.proxy, provider.proxy));
+  return createRuntimeFetch({ control, model: control });
+}
+
 async function prepareContext(
   dependencies: OAuthQuotaServiceDependencies,
   lease: ProviderSnapshotLease,
@@ -83,12 +94,14 @@ async function prepareContext(
       throw new OAuthQuotaCapabilityUnavailableError();
     }
     const secretValues = new Set(prepared.secretValues);
+    const runtimeFetch = quotaFetch(lease.snapshot as Partial<Snapshot>, provider);
     return {
       adapter: prepared.adapter as PreparedOAuthQuotaContext['adapter'],
       accountContext: {
         credentials: createTrackingCredentialPort(prepared.createCredentials(), secretValues),
         options: prepared.accountOptions,
         signal,
+        fetch: runtimeFetch,
       },
       plugin: provider.plugin,
       capability: provider.capability,

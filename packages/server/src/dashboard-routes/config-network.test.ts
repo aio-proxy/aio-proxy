@@ -123,6 +123,27 @@ test('unrelated provider edits retain omitted headers and proxy', async () => {
   });
 });
 
+test('an explicit null provider proxy clears the override and inherits the global proxy', async () => {
+  await withNetworkFixture(async (routes, configPath) => {
+    const response = await routes.request('/providers/api', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        kind: 'api',
+        id: 'api',
+        protocol: 'openai-response',
+        baseURL: 'https://api.example/v1',
+        proxy: null,
+        models: ['gpt-test'],
+        enabled: true,
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(onDisk(configPath).providers.api).not.toHaveProperty('proxy');
+  });
+});
+
 test('submitting **** retains raw proxy and header templates', async () => {
   await withNetworkFixture(async (routes, configPath) => {
     const response = await routes.request('/providers/api', {

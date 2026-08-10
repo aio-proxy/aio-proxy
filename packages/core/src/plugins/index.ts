@@ -16,6 +16,7 @@ export {
   redactPluginError,
 } from './diagnostic/index';
 export * from './icon';
+export * from './installed-package';
 export * from './loader/index';
 export * from './provider-id';
 export * from './quota';

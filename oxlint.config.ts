@@ -7,6 +7,7 @@ export default defineConfig({
   categories: {
     correctness: 'error',
   },
+  plugins: ['react'],
   jsPlugins: [{ name: 'logtape', specifier: '@logtape/lint/eslint' }],
   rules: {
     'unicorn/filename-case': [
@@ -18,20 +19,23 @@ export default defineConfig({
         },
       },
     ],
+    'unicorn/no-nested-ternary': 'error',
+    'react/react-compiler': 'error',
+    'react-hooks/exhaustive-deps': 'warn',
     'import/no-duplicates': 'error',
     'max-lines-per-function': [
-      'warn',
+      'error',
       {
-        max: 120,
+        max: 160,
         IIFEs: true,
         skipBlankLines: true,
-        skipComments: false,
+        skipComments: true,
       },
     ],
     'max-lines': [
-      'warn',
+      'error',
       {
-        max: 300,
+        max: 500,
         skipBlankLines: true,
         skipComments: false,
       },
@@ -40,5 +44,30 @@ export default defineConfig({
     'typescript/consistent-type-imports': 'error',
     ...logtape.configs.recommended.rules,
   },
+  overrides: [
+    {
+      files: ['**/*.tsx'],
+      rules: {
+        'react/no-multi-comp': 'error',
+        'max-lines-per-function': [
+          'error',
+          {
+            max: 300,
+            IIFEs: true,
+            skipBlankLines: true,
+            skipComments: true,
+          },
+        ],
+      },
+    },
+    {
+      files: ['**/*.test.ts', '**/*.test.tsx', '**/__tests__/**'],
+      rules: {
+        'react/react-compiler': 'off',
+        'max-lines-per-function': 'off',
+        'max-lines': 'off',
+      },
+    },
+  ],
   ignorePatterns,
 });

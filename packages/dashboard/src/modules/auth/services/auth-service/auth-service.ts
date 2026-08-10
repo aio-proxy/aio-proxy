@@ -6,9 +6,9 @@ import {
   setDashboardUnavailableHandler,
 } from '@/lib/dashboard-client';
 import { queryClient } from '@/lib/query-client';
+import { queryKeys } from '@/lib/query-keys';
 
 import {
-  dashboardAuthQueryKey,
   type DashboardAuthSession,
   isNotDashboardAuthQuery,
   markDashboardSessionExpired,
@@ -25,7 +25,7 @@ export type DashboardLoginResult =
 
 export const dashboardAuthSessionQueryOptions = () =>
   queryOptions({
-    queryKey: dashboardAuthQueryKey,
+    queryKey: queryKeys.auth,
     queryFn: async (): Promise<DashboardAuthSession> => {
       const response = await dashboardClient.dashboard.api.auth.session.$get();
       if (!response.ok) throw new Error('Dashboard authentication status is unavailable');

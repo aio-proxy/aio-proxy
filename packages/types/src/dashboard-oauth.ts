@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import { AliasConfigSchema, IdSchema } from './common';
 import { DashboardLocalizedTextSchema } from './dashboard-localized-text';
+import { ProviderMutationProxySchema } from './provider';
 import { ProviderTransformsSchema } from './provider-transform/index';
 
 const DashboardOAuthFormConditionSchema = z.strictObject({
@@ -44,9 +45,8 @@ export const DashboardOAuthFormFieldSchema = z.discriminatedUnion('type', [
 export const DashboardOAuthCapabilitySchema = z.strictObject({
   plugin: z.string().min(1),
   capability: z.string().min(1),
-  label: DashboardLocalizedTextSchema,
+  displayName: DashboardLocalizedTextSchema,
   description: DashboardLocalizedTextSchema.optional(),
-  icon: z.string().min(1).optional(),
   form: z.array(DashboardOAuthFormFieldSchema),
   defaults: z.record(z.string(), z.json()),
 });
@@ -68,6 +68,7 @@ export const DashboardOAuthProviderPatchSchema = z.strictObject({
   name: z.string().optional(),
   enabled: z.boolean(),
   weight: z.number().optional(),
+  proxy: ProviderMutationProxySchema,
   alias: z.record(z.string().min(1), AliasConfigSchema).optional(),
   transforms: ProviderTransformsSchema.optional().describe('Ordered outbound request transforms.'),
 });

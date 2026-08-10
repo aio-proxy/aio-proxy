@@ -37,7 +37,7 @@ export function unsupportedDispatch<TRequest, TContext>(
   if (hasNext) {
     return { kind: 'fallback', lastFailure: unsupported };
   }
-  ctx.session.finish(finalFailure(base, unsupported.status));
+  ctx.session.finish({ ...finalFailure(base, unsupported.status), clientResponse: unsupported });
   return { kind: 'return', response: unsupported };
 }
 
@@ -88,6 +88,7 @@ export function handleAttemptError<TRequest, TContext>(
     finalProviderId: provider.id,
     finalModelId: candidate.modelId,
     finalHttpStatus: mapped.status,
+    clientResponse: mapped,
   });
   return { kind: 'return', response: mapped };
 }

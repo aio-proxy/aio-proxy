@@ -33,6 +33,7 @@ type LockInspection =
 
 export type NpmInstallLock = {
   readonly withOwnership: <T>(action: (assertOwnership: () => Promise<void>) => Promise<T>) => Promise<T>;
+  readonly withOwnershipFence: <T>(action: (assertFencedOwnership: () => Promise<void>) => Promise<T>) => Promise<T>;
   readonly release: () => Promise<void>;
 };
 
@@ -176,10 +177,10 @@ function createLockHandle(acquired: AcquiredLock, ctx: LockContext): NpmInstallL
     try {
       const [currentText, currentMetadata] = await Promise.all([readFile(lockPath, 'utf8'), stat(lockPath)]);
       if (currentText !== content || currentMetadata.dev !== identity.dev || currentMetadata.ino !== identity.ino) {
-        throw new Error('Npm lock ownership lost');
+        throw timeoutError();
       }
     } catch (error) {
-      if (isNodeError(error, 'ENOENT')) throw new Error('Npm lock ownership lost');
+      if (isNodeError(error, 'ENOENT')) throw timeoutError();
       throw error;
     }
   };
@@ -214,6 +215,22 @@ function createLockHandle(acquired: AcquiredLock, ctx: LockContext): NpmInstallL
       await assertOwnership();
       return result;
     },
+    withOwnershipFence: <T>(action: (assertFencedOwnership: () => Promise<void>) => Promise<T>) =>
+      withRecoveryFence(
+        lockPath,
+        async (assertFence) => {
+          const assertFencedOwnership = async () => {
+            await assertFence();
+            await verifyOwnership();
+            const now = new Date();
+            await handle.utimes(now, now);
+          };
+          await assertFencedOwnership();
+          return action(assertFencedOwnership);
+        },
+        Date.now() + waitMs,
+        timeoutError,
+      ),
     async release() {
       if (heartbeat !== undefined) {
         clearInterval(heartbeat);

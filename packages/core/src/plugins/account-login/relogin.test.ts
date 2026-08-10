@@ -28,7 +28,9 @@ test('explicit re-login preloads options and secrets, fixes Provider ID, and pre
         enabled: false,
         weight: 9,
         name: 'Work',
+        proxy: 'https://proxy.example:8443',
         alias: { chat: { model: 'model-1' } },
+        transforms: { request: [{ update: [{ $unset: 'request.body.store' }] }] },
       },
     },
   }));
@@ -37,6 +39,12 @@ test('explicit re-login preloads options and secrets, fixes Provider ID, and pre
     options(state, {
       targetProviderId: 'person',
       capability: undefined,
+      providerPatch: {
+        name: 'Work',
+        enabled: false,
+        weight: 9,
+        alias: { chat: { model: 'model-1' } },
+      },
       renderAccountOptions: async (input) => {
         preloaded = input;
         return { publicValues: { tenant: 'new' }, secrets: { secret: 'new-secret' } };
@@ -52,7 +60,9 @@ test('explicit re-login preloads options and secrets, fixes Provider ID, and pre
     enabled: false,
     weight: 9,
     name: 'Work',
+    proxy: 'https://proxy.example:8443',
     alias: { chat: { model: 'model-1' } },
+    transforms: { request: [{ update: [{ $unset: 'request.body.store' }] }] },
     options: { tenant: 'new' },
   });
 });
@@ -69,7 +79,9 @@ test('explicit re-login atomically applies a requested provider patch with accou
         name: 'Personal',
         enabled: false,
         weight: 4,
+        proxy: null,
         alias: { chat: { model: 'model-2' } },
+        transforms: { request: [{ update: [{ $unset: 'request.body.store' }] }] },
       },
       renderAccountOptions: async () => ({
         publicValues: { tenant: 'personal' },
@@ -78,7 +90,8 @@ test('explicit re-login atomically applies a requested provider patch with accou
     }),
   );
 
-  expect((configOf(state).providers as Record<string, unknown>).person).toMatchObject({
+  const provider = (configOf(state).providers as Record<string, unknown>).person;
+  expect(provider).toMatchObject({
     kind: 'oauth',
     plugin: '@example/oauth',
     capability: 'default',
@@ -86,8 +99,10 @@ test('explicit re-login atomically applies a requested provider patch with accou
     enabled: false,
     weight: 4,
     alias: { chat: { model: 'model-2' } },
+    transforms: { request: [{ update: [{ $unset: 'request.body.store' }] }] },
     options: { tenant: 'personal' },
   });
+  expect(provider).not.toHaveProperty('proxy');
   expect(accountOf(state, 'person')).toMatchObject({
     options: { tenant: 'personal' },
     secrets: { secret: 'replacement' },

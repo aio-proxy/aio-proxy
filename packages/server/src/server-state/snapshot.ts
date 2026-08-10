@@ -1,5 +1,6 @@
 import {
   createEmbeddedBuiltIns,
+  createProxyFetch,
   type DiagnosticFactory,
   loadPluginRegistry,
   type PluginLogSink,
@@ -29,6 +30,7 @@ import { createProviderRequestTransformFetch } from '../provider-request-transfo
 import {
   materializeProviders,
   materializeRuntimeProvider,
+  effectiveProxy,
   type ProviderProbe,
   type ProviderRuntime,
   providerSummary,
@@ -65,7 +67,6 @@ export async function buildSnapshot(
   createRouter: (providers: readonly RuntimeProviderInstance[]) => Router<RuntimeProviderInstance>,
 ): Promise<Snapshot> {
   const controlFetch = globalThis.fetch;
-  const observedModelFetch = createObservedFetch(controlFetch);
   const { plugins, pluginOptionInputs, pluginOptionsDigests } = await loadPlugins(
     config,
     options,
@@ -76,7 +77,7 @@ export async function buildSnapshot(
   // Resolve per-model `metadata.extend` into effective merged metadata before any
   // materialization/summary derivation reads provider metadata, so downstream cost
   // and model-resolution consumers transparently see the merged values.
-  const configWithExtend = await applyMetadataExtend(config, logger);
+  const configWithExtend = await applyMetadataExtend(config, logger, { onCatalogWarmed: onDiagnosticChanged });
   const nonOAuth = {
     ...configWithExtend,
     providers: configWithExtend.providers.filter((provider) => provider.kind !== ProviderKind.OAuth),
@@ -89,6 +90,8 @@ export async function buildSnapshot(
       const pluginOptionsDigest = pluginOptionsDigests.get(provider.plugin);
       const pluginOptionInput = pluginOptionInputs.get(provider.plugin);
       if (pluginOptionsDigest === undefined) throw new Error(`Missing plugin options digest for ${provider.plugin}`);
+      const resolvedProxy = effectiveProxy(configWithExtend.proxy, provider.proxy);
+      const providerFetch = createProxyFetch(resolvedProxy, controlFetch);
       return materializePluginProvider({
         config: provider,
         plugins,
@@ -97,9 +100,10 @@ export async function buildSnapshot(
         logger,
         onDiagnosticChanged,
         pluginOptionsDigest,
+        effectiveProxy: resolvedProxy ?? null,
         runtimeFetch: createRuntimeFetch({
-          control: controlFetch,
-          model: createProviderRequestTransformFetch(provider, observedModelFetch),
+          control: providerFetch,
+          model: createProviderRequestTransformFetch(provider, createObservedFetch(providerFetch)),
         }),
         ...(pluginOptionInput === undefined || 'error' in pluginOptionInput
           ? {}

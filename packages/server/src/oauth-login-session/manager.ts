@@ -1,6 +1,7 @@
 import {
   type AtomicConfigFile,
   type DiagnosticFactory,
+  type LoginOAuthAccountOptions,
   loginOAuthAccount,
   type OAuthProviderPatch,
   type PluginLogSink,
@@ -8,12 +9,15 @@ import {
   type PluginRepository,
   ProviderAccountAlreadyExistsError,
 } from '@aio-proxy/core';
+import type { RuntimeFetch } from '@aio-proxy/plugin-sdk';
 import type { DashboardOAuthSession, DashboardOAuthSessionStart } from '@aio-proxy/types';
 
 import { createDashboardAuthorization, type DashboardAuthorization } from './authorization';
 import { OAuthCallbackError } from './callback';
 
 type RegistryLease = { readonly registry: PluginRegistry; readonly release: () => void };
+type ProviderCommitCoordinator = NonNullable<LoginOAuthAccountOptions['coordinateProviderCommit']>;
+type ProviderCommitValidator = NonNullable<LoginOAuthAccountOptions['validateProviderCommit']>;
 type InternalSession = {
   snapshot: DashboardOAuthSession;
   readonly controller: AbortController;
@@ -27,7 +31,10 @@ type LoginSessionDeps = {
   readonly acquireRegistry: () => RegistryLease;
   readonly diagnostics: DiagnosticFactory;
   readonly logger: PluginLogSink;
+  readonly coordinateProviderCommit: ProviderCommitCoordinator;
+  readonly validateProviderCommit: ProviderCommitValidator;
   readonly reload: () => Promise<unknown>;
+  readonly createFetch?: (input: DashboardOAuthSessionStart) => RuntimeFetch;
   readonly publish: (session: InternalSession, snapshot: DashboardOAuthSession) => void;
 };
 
@@ -63,7 +70,9 @@ const runLoginSession = async (
               name: input.providerPatch.name,
               enabled: input.providerPatch.enabled,
               weight: input.providerPatch.weight,
+              proxy: input.providerPatch.proxy,
               alias: input.providerPatch.alias,
+              transforms: input.providerPatch.transforms,
             } satisfies OAuthProviderPatch,
           }),
       registry: lease.registry,
@@ -75,8 +84,11 @@ const runLoginSession = async (
         return { publicValues: input.publicValues, secrets };
       },
       createAuthorization: () => authorization.port,
+      ...(deps.createFetch === undefined ? {} : { fetch: deps.createFetch(input) }),
       diagnostics: deps.diagnostics,
       logger: deps.logger,
+      coordinateProviderCommit: deps.coordinateProviderCommit,
+      validateProviderCommit: deps.validateProviderCommit,
       onAuthorized: () => deps.publish(session, { id, status: 'discovering' }),
       signal: session.controller.signal,
     });
@@ -113,7 +125,10 @@ export const createOAuthLoginSessionManager = (options: {
   readonly acquireRegistry: () => RegistryLease;
   readonly diagnostics: DiagnosticFactory;
   readonly logger: PluginLogSink;
+  readonly coordinateProviderCommit: ProviderCommitCoordinator;
+  readonly validateProviderCommit: ProviderCommitValidator;
   readonly reload: () => Promise<unknown>;
+  readonly createFetch?: (input: DashboardOAuthSessionStart) => RuntimeFetch;
   readonly now?: () => number;
   readonly terminalSessionTtlMs?: number;
 }) => {
@@ -164,7 +179,10 @@ export const createOAuthLoginSessionManager = (options: {
         acquireRegistry: options.acquireRegistry,
         diagnostics: options.diagnostics,
         logger: options.logger,
+        coordinateProviderCommit: options.coordinateProviderCommit,
+        validateProviderCommit: options.validateProviderCommit,
         reload: options.reload,
+        ...(options.createFetch === undefined ? {} : { createFetch: options.createFetch }),
         publish,
       },
       session,

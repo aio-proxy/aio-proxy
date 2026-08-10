@@ -51,7 +51,7 @@ test('a credential diagnostic raised during initial runtime creation rebuilds af
     (api, pluginOptions) => {
       api.oauth.register({
         id: 'default',
-        label: 'Example',
+        displayName: 'Example',
         account: { options: { schema: zod.object({}), form: [] } },
         credentials: zod.object({ token: zod.string() }),
         async login() {
@@ -128,7 +128,7 @@ test('a credential diagnostic raised after close does not rebuild the server sna
   const descriptor = definePlugin((api) => {
     api.oauth.register({
       id: 'default',
-      label: 'Example',
+      displayName: 'Example',
       account: { options: { schema: zod.object({}), form: [] } },
       credentials: zod.object({ token: zod.string() }),
       async login() {

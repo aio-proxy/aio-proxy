@@ -88,6 +88,37 @@ test('request transform changes rebuild an OAuth runtime while unchanged transfo
   expect(changed.provider?.model).not.toBe(first.provider?.model);
 });
 
+test('proxy changes rebuild an OAuth runtime while an unchanged override reuses it', async () => {
+  const fixture = runtimeFixture({ kind: 'static' });
+  const base = {
+    id: 'person',
+    kind: ProviderKind.OAuth,
+    enabled: true,
+    plugin: '@example/oauth',
+    capability: 'default',
+  } as const;
+  const options = {
+    plugins: fixture.plugins,
+    repository: fixture.repository,
+    diagnostics,
+    logger: () => {},
+    onDiagnosticChanged: () => {},
+  } as const;
+  const firstConfig = { ...base, proxy: 'https://one.proxy.example:8443' } as const;
+
+  const first = await materializePluginProvider({ ...options, config: firstConfig });
+  const unchanged = await materializePluginProvider({ ...options, config: firstConfig, previous: first.cacheEntry });
+  const changed = await materializePluginProvider({
+    ...options,
+    config: { ...base, proxy: false },
+    previous: unchanged.cacheEntry,
+  });
+
+  expect(fixture.createCalls()).toBe(2);
+  expect(unchanged.provider?.model).toBe(first.provider?.model);
+  expect(changed.provider?.model).not.toBe(first.provider?.model);
+});
+
 test('plugin options, account re-login revision, and catalog refresh each rebuild the affected runtime', async () => {
   const fixture = runtimeFixture({ kind: 'static' });
   const base = {

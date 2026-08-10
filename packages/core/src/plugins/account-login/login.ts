@@ -1,5 +1,5 @@
-import type { AuthorizationPort, ConfigSpec, LocalizedText } from '@aio-proxy/plugin-sdk';
-import type { ProviderAlias } from '@aio-proxy/types';
+import type { AuthorizationPort, ConfigSpec, LocalizedText, RuntimeFetch } from '@aio-proxy/plugin-sdk';
+import type { OAuthProviderMutationBody, ProviderAlias, ProviderTransforms } from '@aio-proxy/types';
 
 import { AtomicConfigCommitUncertainError, type AtomicConfigFile } from '../config-file';
 import { type DiagnosticFactory, type PluginLogSink } from '../diagnostic/index';
@@ -41,7 +41,9 @@ export type OAuthProviderPatch = {
   readonly name: string | undefined;
   readonly enabled: boolean;
   readonly weight: number | undefined;
+  readonly proxy?: OAuthProviderMutationBody['proxy'];
   readonly alias: ProviderAlias | undefined;
+  readonly transforms?: ProviderTransforms | undefined;
 };
 export type LoginOAuthAccountOptions = {
   readonly targetProviderId?: string;
@@ -52,8 +54,14 @@ export type LoginOAuthAccountOptions = {
   readonly config: AtomicConfigFile;
   readonly renderAccountOptions: RenderAccountOptions;
   readonly createAuthorization: (signal: AbortSignal) => AuthorizationPort;
+  readonly fetch?: RuntimeFetch;
   readonly diagnostics: DiagnosticFactory;
   readonly logger: PluginLogSink;
+  readonly coordinateProviderCommit?: <T>(capability: OAuthCapabilityReference, commit: () => Promise<T>) => Promise<T>;
+  readonly validateProviderCommit?: (
+    capability: OAuthCapabilityReference,
+    current: Readonly<Record<string, unknown>>,
+  ) => Promise<void> | void;
   readonly progress?: (message: LocalizedText) => void;
   readonly onAuthorized?: () => void;
   readonly signal?: AbortSignal;
@@ -82,14 +90,15 @@ export async function loginOAuthAccount(options: LoginOAuthAccountOptions): Prom
       options.progress ?? (() => {}),
       deadline.signal,
       parsedOptions.value,
+      options.fetch,
     );
     const validated = await validatedLoginResult(adapter, loginResult, deadline.signal);
     if (initial.fingerprint !== undefined && validated.fingerprint !== initial.fingerprint) {
       throw new ProviderFingerprintMismatchError(options.targetProviderId as string);
     }
     options.onAuthorized?.();
-    const metadata: { label?: string; expiresAt?: number } = {
-      ...(validated.label === undefined ? {} : { label: validated.label }),
+    const metadata: { accountLabel?: string; expiresAt?: number } = {
+      ...(validated.accountLabel === undefined ? {} : { accountLabel: validated.accountLabel }),
       ...(validated.expiresAt === undefined ? {} : { expiresAt: validated.expiresAt }),
     };
     const discoveryDeadline = childDeadline(deadline.signal, CATALOG_DISCOVERY_TIMEOUT_MS);
@@ -108,10 +117,11 @@ export async function loginOAuthAccount(options: LoginOAuthAccountOptions): Prom
     const state: StageState = {};
     let staged: PendingAccountOperation;
     try {
-      staged = await options.config.transaction(
-        (current) =>
-          Promise.resolve(
-            stageAccountWrite(
+      const commit = () =>
+        options.config.transaction(
+          async (current) => {
+            await options.validateProviderCommit?.(initial.capability, current);
+            return stageAccountWrite(
               current,
               {
                 options,
@@ -128,10 +138,13 @@ export async function loginOAuthAccount(options: LoginOAuthAccountOptions): Prom
                 signal: deadline.signal,
               },
               state,
-            ),
-          ),
-        { validateCandidate: validateStagedOAuthWrite, signal: deadline.signal },
-      );
+            );
+          },
+          { validateCandidate: validateStagedOAuthWrite, signal: deadline.signal },
+        );
+      staged = await (options.coordinateProviderCommit === undefined
+        ? commit()
+        : options.coordinateProviderCommit(initial.capability, commit));
     } catch (error) {
       if (state.operation !== undefined && !(error instanceof AtomicConfigCommitUncertainError)) {
         const status = options.repository.compensateAccountOperation(state.operation.operationId);

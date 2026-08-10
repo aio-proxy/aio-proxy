@@ -17,6 +17,7 @@ import { ZodError, z } from 'zod';
 import { ConfigReloadRejectedError } from '../config-store';
 import { isTrustedProviderPackage } from '../provider-package-trust';
 import type { ServerState } from '../server-state';
+import { createDashboardProviderEnableRoute } from './provider-enable';
 import {
   insertProvider,
   type ParsedProviderMutation,
@@ -56,6 +57,7 @@ export const createDashboardProviderWriteRoutes = (state: ServerState) =>
         return context.json({ error: 'OAuth providers must be created through login' }, 400);
       }
       const { id, ...bodyRest } = authored;
+      if ('proxy' in bodyRest && bodyRest.proxy === null) delete bodyRest.proxy;
       const providerData: Record<string, unknown> = { ...bodyRest };
       try {
         await state.configStore.mutateProviders((record) => insertProvider(record, id, providerData));
@@ -108,6 +110,7 @@ export const createDashboardProviderWriteRoutes = (state: ServerState) =>
       }
       return context.json({ provider });
     })
+    .route('/', createDashboardProviderEnableRoute(state))
     .delete('/providers/:id', async (context) => {
       if (state.configPath === undefined) {
         return context.json({ error: 'config file path is not configured' }, 409);

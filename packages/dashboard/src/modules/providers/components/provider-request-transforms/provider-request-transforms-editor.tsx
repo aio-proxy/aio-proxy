@@ -3,7 +3,7 @@ import type { ProviderRequestTransformRule } from '@aio-proxy/types';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@aio-proxy/ui/components/tabs';
 import { useEffect, useMemo, useState } from 'react';
 
-import { parseRequestTransformCondition, parseRequestTransformStages } from '../../request-transforms';
+import { parseRequestTransformCondition, parseRequestTransformStages } from '../../lib/request-transforms';
 import { ProviderRequestTransformsJsonEditor } from './provider-request-transforms-json-editor';
 import { ProviderRequestTransformsVisualEditor } from './provider-request-transforms-visual-editor';
 
@@ -30,15 +30,11 @@ export const ProviderRequestTransformsEditor: React.FC<ProviderRequestTransforms
   onChange,
   onValidityChange,
 }) => {
-  const [mode, setMode] = useState<'visual' | 'json'>('visual');
+  const [mode, setMode] = useState<'visual' | 'json'>(() => (canEditVisually(value) ? 'visual' : 'json'));
   const [visualValid, setVisualValid] = useState(true);
   const [jsonValid, setJsonValid] = useState(true);
   const visualCompatible = useMemo(() => canEditVisually(value), [value]);
   const activeMode = visualCompatible ? mode : 'json';
-
-  useEffect(() => {
-    if (!visualCompatible) setMode('json');
-  }, [visualCompatible]);
 
   useEffect(() => {
     onValidityChange(activeMode === 'visual' ? visualValid : jsonValid);

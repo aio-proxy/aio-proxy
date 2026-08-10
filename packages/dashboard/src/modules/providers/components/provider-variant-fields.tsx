@@ -13,8 +13,8 @@ import {
 import { Switch } from '@aio-proxy/ui/components/switch';
 import type { Dispatch, FC, SetStateAction } from 'react';
 
-import type { AliasDraftForm } from '../alias-editor';
-import type { VisibleEditError } from '../alias-editor-copy';
+import type { AliasDraftForm } from '../lib/alias-editor';
+import type { VisibleEditError } from '../lib/alias-editor-copy';
 
 type Props = {
   readonly form: AliasDraftForm;
