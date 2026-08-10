@@ -227,6 +227,38 @@ test('a second call under the same session key reuses the stored conversationId'
   expect(conversationIdOf(runs[1]![0]!)).toBe(conversationIdOf(runs[0]![0]!));
 });
 
+test('a response-owned continuation reuses an affinity-less routed checkpoint', async () => {
+  const { transport, runs } = makeTransport();
+  const sessionStore = new CursorSessionStore();
+  const model = createCursorLanguageModel('claude-4.5-sonnet', runtimeWith(transport, sessionStore));
+
+  const first = await model.doStream(
+    routedCallOptions({
+      routedProviderId: 'cursor-a',
+      updatesAffinity: false,
+    }),
+  );
+  await lastPartType(first.stream as unknown as ReadableStream<{ type: string }>);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(sessionStore.get(logicalStoreKey)?.expectedAffinity).toBeUndefined();
+
+  const second = await model.doStream(
+    routedCallOptions({
+      routedProviderId: 'cursor-a',
+      responseOwnerProviderId: 'cursor-a',
+      updatesAffinity: true,
+    }),
+  );
+  await lastPartType(second.stream as unknown as ReadableStream<{ type: string }>);
+
+  const conversationIdOf = (framed: Uint8Array): string => {
+    const message = fromBinary(AgentClientMessageSchema, framed.subarray(5)).message;
+    if (message.case !== 'runRequest') throw new Error('expected runRequest');
+    return message.value.conversationId;
+  };
+  expect(conversationIdOf(runs[1]![0]!)).toBe(conversationIdOf(runs[0]![0]!));
+});
+
 test('a full-history continuation preserves the structured MCP checkpoint and applies its result', async () => {
   const { transport, runs } = makeTransport();
   const sessionStore = new CursorSessionStore();

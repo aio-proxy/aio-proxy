@@ -69,8 +69,10 @@ function routingContinuity(providerOptions: SharedV4ProviderOptions | undefined)
 
 function canReuseCheckpoint(prior: CursorSessionState, routing: RoutingContinuity): boolean {
   const expected = prior.expectedAffinity;
+  if (expected === undefined) {
+    return routing.observedAffinity === undefined && routing.responseOwnerProviderId === routing.routedProviderId;
+  }
   return (
-    expected !== undefined &&
     expected.providerId === routing.routedProviderId &&
     (routing.responseOwnerProviderId === undefined || routing.responseOwnerProviderId === routing.routedProviderId) &&
     routing.observedAffinity?.providerId === expected.providerId &&
