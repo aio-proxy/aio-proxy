@@ -73,7 +73,7 @@ function summarize(
 } {
   const requestCount = sum(rows, 'requestCount');
   const totalTokens = sum(rows, 'totalTokens');
-  const bucketMinutes = range.bucketUnit === 'hour' ? 60 : 1_440;
+  const bucketMinutes = range.bucketUnit === 'hour' ? 1 : 1_440;
   const peaks = bucketPeaks(rows);
   // Rate over the time that actually has data, not the nominal window: an empty
   // tail (a range longer than the retained history) would otherwise deflate both
@@ -99,8 +99,6 @@ function summarize(
   };
 }
 
-// ponytail: day-range peaks are within-day averages, so a spiky day reads low.
-// A real peak needs hourly rollups; add them if the peak note starts misleading.
 function bucketPeaks(rows: readonly RootRow[]): {
   readonly requests: number;
   readonly tokens: number;
@@ -110,8 +108,8 @@ function bucketPeaks(rows: readonly RootRow[]): {
   const tokensByBucket = new Map<string | number, number>();
   for (const row of rows) {
     const requestCount = Number(row.requestCount ?? 1n);
-    requestsByBucket.set(row.bucket, (requestsByBucket.get(row.bucket) ?? 0) + requestCount);
-    tokensByBucket.set(row.bucket, (tokensByBucket.get(row.bucket) ?? 0) + Number(row.totalTokens));
+    requestsByBucket.set(row.peakBucket, (requestsByBucket.get(row.peakBucket) ?? 0) + requestCount);
+    tokensByBucket.set(row.peakBucket, (tokensByBucket.get(row.peakBucket) ?? 0) + Number(row.totalTokens));
   }
   return {
     requests: Math.max(0, ...requestsByBucket.values()),

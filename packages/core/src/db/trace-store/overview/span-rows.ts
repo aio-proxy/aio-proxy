@@ -10,6 +10,7 @@ type IterableDatabase = BunSQLiteDatabase & { readonly $client: Database };
 
 /** One root span per row, with cache accounting normalized by the successful attempt's capture path. */
 export type RootRow = OverviewRow & {
+  readonly peakBucket: string | number;
   readonly cacheReadTokens: bigint;
   readonly cacheWriteTokens: bigint;
   readonly normalizedCacheReadTokens: bigint;
@@ -19,6 +20,7 @@ export type RootRow = OverviewRow & {
 
 type RawRootRow = {
   readonly bucket: string | number;
+  readonly peakBucket: string | number;
   readonly dimension: string;
   readonly terminationReason: string | null;
   readonly transport: string | null;
@@ -44,6 +46,7 @@ export function spanRows(db: BunSQLiteDatabase, range: ResolvedRange): readonly 
       : `strftime('%Y-%m-%d', root.ended_at / 1000, 'unixepoch', 'localtime')`;
   const sql = `
     select ${bucket} as bucket,
+      min(1439, cast((root.ended_at - ?) / 60000 as integer)) as peakBucket,
       coalesce(root.final_model_id, root.requested_model_id, 'unknown') as dimension,
       root.termination_reason as terminationReason,
       attempt.transport as transport,
@@ -65,7 +68,7 @@ export function spanRows(db: BunSQLiteDatabase, range: ResolvedRange): readonly 
       and attempt.name = 'aio_proxy.provider.attempt' and attempt.termination_reason is null
     where root.parent_span_id is null and root.ended_at >= ? and root.ended_at <= ?`;
   const params = [
-    ...(range.bucketUnit === 'hour' ? [range.start.getTime()] : []),
+    ...(range.bucketUnit === 'hour' ? [range.start.getTime(), range.start.getTime()] : [range.start.getTime()]),
     range.start.getTime(),
     range.end.getTime(),
   ];
@@ -85,6 +88,7 @@ export function spanRows(db: BunSQLiteDatabase, range: ResolvedRange): readonly 
     }
     return {
       bucket: row.bucket,
+      peakBucket: row.peakBucket,
       dimension: row.dimension,
       terminationReason: row.terminationReason,
       requestCount: 1n,

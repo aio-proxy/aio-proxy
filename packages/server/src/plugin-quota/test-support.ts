@@ -32,6 +32,7 @@ export type QuotaFixtureOptions = {
   readonly additionalProviderIds?: readonly string[];
   readonly itemId?: string;
   readonly region?: string;
+  readonly proxy?: string;
 };
 
 type QuotaAdapterTracker = {
@@ -68,6 +69,7 @@ function providerConfig(
   kind: QuotaFixtureOptions['provider'],
   optionsRegion: string,
   providerIds: readonly string[],
+  proxy: string | undefined,
 ): ReturnType<typeof ConfigSchema.parse> {
   const provider =
     kind === 'api'
@@ -100,9 +102,7 @@ function providerConfig(
       ]),
     ),
   };
-  return ConfigSchema.parse({
-    providers,
-  });
+  return ConfigSchema.parse({ providers, ...(proxy === undefined ? {} : { proxy }) });
 }
 
 function runtimeProvider(id: string): RuntimeProviderInstance {
@@ -231,7 +231,7 @@ export function createQuotaFixture(options: QuotaFixtureOptions = {}) {
     : repository;
   const providers = providerIds.map(runtimeProvider);
   const snapshot: ProviderRouteSnapshot = {
-    config: providerConfig(options.provider ?? 'oauth', options.region ?? 'us-east', providerIds),
+    config: providerConfig(options.provider ?? 'oauth', options.region ?? 'us-east', providerIds, options.proxy),
     plugins: plugins as never,
     providers,
     router: new Router(providers),

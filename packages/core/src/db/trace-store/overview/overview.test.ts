@@ -287,6 +287,23 @@ test('averages request rate over the buckets that carry data, not the nominal wi
   });
 });
 
+test('computes 24-hour peak rates from one-minute buckets', () => {
+  withStore((store) => {
+    for (let id = 1; id <= 60; id += 1) {
+      seedTrace(store, {
+        id,
+        attempts: [{ providerId: 'provider', durationMs: 10 }],
+        usage: { totalTokens: 2 },
+      });
+    }
+
+    const summary = store.overviewDashboard({ range: '24h', now: NOW }).summary;
+
+    expect(summary.peakRpm).toBe(60);
+    expect(summary.peakTpm).toBe(120);
+  });
+});
+
 test('keeps the hot range aggregation free of all-time and yearly sections', () => {
   withStore((store) => {
     const result = store.overviewDashboard({ range: '24h', now: NOW });

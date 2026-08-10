@@ -97,11 +97,12 @@ describe('overview service', () => {
     });
     expect(overviewDiagnosticsQueryOptions({ range: '24h' })).toMatchObject({
       queryKey: ['dashboard', 'overview', 'diagnostics', '24h'],
-      refetchInterval: false,
+      refetchInterval: 5_000,
       staleTime: 60_000,
     });
     expect(overviewDiagnosticsQueryOptions({ range: '90d' })).toMatchObject({
       queryKey: ['dashboard', 'overview', 'diagnostics', '90d'],
+      refetchInterval: false,
     });
     expect(overviewActivityQueryOptions()).toMatchObject({
       queryKey: ['dashboard', 'overview', 'activity'],

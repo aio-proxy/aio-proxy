@@ -97,7 +97,7 @@ export const overviewDiagnosticsQueryOptions = (input: OverviewQueryInput) =>
     queryKey: queryKeys.overviewDiagnostics(input.range),
     queryFn: () => getOverviewDiagnostics(input),
     placeholderData: keepPreviousData,
-    refetchInterval: false,
+    refetchInterval: input.range === '24h' ? 5_000 : false,
     staleTime: 60_000,
   });
 

@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from 'bun:test';
+import { afterEach, expect, mock, test } from 'bun:test';
 
 import type { OAuthQuotaSnapshot } from '@aio-proxy/plugin-sdk';
 
@@ -51,6 +51,30 @@ test('resolves the leased OAuth Provider ID and passes parsed account context wi
   expect(credential).toMatchObject({ value: { token: 'credential-secret' } });
   expect(result).not.toBe(raw);
   expect(result.items.map(({ id }) => id)).toEqual(['weekly', 'five-hour']);
+});
+
+test('routes quota control traffic through the configured proxy without a runtime cache entry', async () => {
+  const originalFetch = globalThis.fetch;
+  const downstream = mock(async () => new Response());
+  globalThis.fetch = downstream as typeof fetch;
+  try {
+    const fixture = createQuotaFixture({
+      proxy: 'http://proxy.example',
+      read: async (context) => {
+        await context.fetch?.('https://quota.example', { aioProxy: { traffic: 'control' } });
+        return { items: [] };
+      },
+    });
+
+    await createOAuthQuotaReader(fixture.dependencies).read(PROVIDER_ID, new AbortController().signal);
+
+    expect(downstream).toHaveBeenCalledWith(
+      'https://quota.example',
+      expect.objectContaining({ proxy: 'http://proxy.example' }),
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test('maps malformed plugin snapshots to one stable redacted read failure', async () => {
