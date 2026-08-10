@@ -1,3 +1,5 @@
+import { Buffer } from 'node:buffer';
+
 import type { LanguageModelV4Message, LanguageModelV4Prompt, LanguageModelV4ToolResultPart } from '@ai-sdk/provider';
 import { create, fromBinary, toBinary } from '@bufbuild/protobuf';
 
@@ -7,6 +9,7 @@ import {
   ConversationStepSchema,
   ConversationTurnStructureSchema,
   McpArgsSchema,
+  McpImageContentSchema,
   McpRejectedSchema,
   McpSuccessSchema,
   McpTextContentSchema,
@@ -272,23 +275,41 @@ function encodeMcpResult(part: LanguageModelV4ToolResultPart) {
       },
     });
   }
-  const texts =
+  const content =
     output.type === 'text'
-      ? [output.value]
+      ? [mcpTextContent(output.value)]
       : output.type === 'json'
-        ? [JSON.stringify(output.value)]
-        : output.value.map((entry) => (entry.type === 'text' ? entry.text : `[${entry.type}]`));
+        ? [mcpTextContent(JSON.stringify(output.value))]
+        : output.value.map((entry) => {
+            if (
+              entry.type === 'file' &&
+              (entry.mediaType === 'image' || entry.mediaType.startsWith('image/')) &&
+              entry.data.type === 'data'
+            ) {
+              const data =
+                entry.data.data instanceof Uint8Array
+                  ? entry.data.data
+                  : Uint8Array.from(Buffer.from(entry.data.data, 'base64'));
+              return create(McpToolResultContentItemSchema, {
+                content: {
+                  case: 'image',
+                  value: create(McpImageContentSchema, { data, mimeType: entry.mediaType }),
+                },
+              });
+            }
+            return mcpTextContent(entry.type === 'text' ? entry.text : `[${entry.type}]`);
+          });
   return create(McpToolResultSchema, {
     result: {
       case: 'success',
-      value: create(McpSuccessSchema, {
-        content: texts.map((text) =>
-          create(McpToolResultContentItemSchema, {
-            content: { case: 'text', value: create(McpTextContentSchema, { text }) },
-          }),
-        ),
-      }),
+      value: create(McpSuccessSchema, { content }),
     },
+  });
+}
+
+function mcpTextContent(text: string) {
+  return create(McpToolResultContentItemSchema, {
+    content: { case: 'text', value: create(McpTextContentSchema, { text }) },
   });
 }
 
