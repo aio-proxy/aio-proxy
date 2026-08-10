@@ -1,6 +1,6 @@
 import { Buffer } from 'node:buffer';
 
-import type { LanguageModelV4Prompt } from '@ai-sdk/provider';
+import { InvalidPromptError, type LanguageModelV4Prompt } from '@ai-sdk/provider';
 import { create, toBinary } from '@bufbuild/protobuf';
 
 import {
@@ -50,6 +50,7 @@ export function buildCursorRunRequestBytes(input: {
   pendingToolCalls: Map<string, string>;
 } {
   const { prompt, state } = input;
+  validateFileParts(prompt);
   const blobStore = state.blobStore;
   const pendingToolCalls = state.pendingToolCalls ?? new Map();
   const isPendingResume = hasMatchingPendingToolResult(prompt, pendingToolCalls);
@@ -122,4 +123,21 @@ export function buildCursorRunRequestBytes(input: {
     conversationState,
     pendingToolCalls: patched.pendingToolCalls,
   };
+}
+
+function validateFileParts(prompt: LanguageModelV4Prompt): void {
+  for (const message of prompt) {
+    if (message.role !== 'user' && message.role !== 'assistant') continue;
+    for (const part of message.content) {
+      if (
+        part.type === 'file' &&
+        (!(part.mediaType === 'image' || part.mediaType.startsWith('image/')) || part.data.type !== 'data')
+      ) {
+        throw new InvalidPromptError({
+          prompt,
+          message: 'Cursor only supports text and inline image data.',
+        });
+      }
+    }
+  }
 }

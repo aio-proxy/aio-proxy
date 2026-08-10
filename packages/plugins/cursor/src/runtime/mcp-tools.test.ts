@@ -34,3 +34,31 @@ test('returns an empty array for no tools', () => {
   expect(buildMcpToolDefinitions(undefined)).toEqual([]);
   expect(buildMcpToolDefinitions([])).toEqual([]);
 });
+
+test('toolChoice none advertises no tools', () => {
+  expect(buildMcpToolDefinitions([fn('search', {}), fn('read', {})], { type: 'none' })).toEqual([]);
+});
+
+test('a named tool choice advertises only the matching function tool', () => {
+  expect(
+    buildMcpToolDefinitions([fn('search', {}), fn('read', {})], { type: 'tool', toolName: 'read' }).map(
+      (tool) => tool.toolName,
+    ),
+  ).toEqual(['aio_proxy__read']);
+});
+
+test('a named tool choice rejects a missing or provider-defined tool', () => {
+  expect(() => buildMcpToolDefinitions([fn('search', {})], { type: 'tool', toolName: 'read' })).toThrow(
+    /toolChoice.*read/i,
+  );
+  expect(() =>
+    buildMcpToolDefinitions([{ type: 'provider', id: 'cursor.read', name: 'read', args: {} }], {
+      type: 'tool',
+      toolName: 'read',
+    }),
+  ).toThrow(/toolChoice.*read/i);
+});
+
+test('required keeps all usable function tools advertised', () => {
+  expect(buildMcpToolDefinitions([fn('search', {}), fn('read', {})], { type: 'required' })).toHaveLength(2);
+});

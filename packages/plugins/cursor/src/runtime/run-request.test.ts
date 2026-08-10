@@ -12,6 +12,16 @@ const decodeRun = (bytes: Uint8Array) => {
   return client.message.value;
 };
 
+const build = (prompt: LanguageModelV4Prompt) =>
+  buildCursorRunRequestBytes({
+    prompt,
+    wireModelId: 'claude-4.5-sonnet',
+    displayModelId: 'claude-4.5-sonnet',
+    displayName: 'Claude',
+    maxMode: false,
+    state: { conversationId: 'conv-files', blobStore: new Map() },
+  });
+
 test('a trailing user message selects userMessageAction', () => {
   const prompt: LanguageModelV4Prompt = [
     { role: 'system', content: 'sys' },
@@ -61,4 +71,35 @@ test('a trailing tool result selects resumeAction', () => {
   const run = decodeRun(requestBytes);
   expect(run.action?.action.case).toBe('resumeAction');
   expect(run.requestedModel?.maxMode).toBe(true);
+});
+
+test.each([
+  ['inline PDF', { type: 'file', mediaType: 'application/pdf', data: { type: 'data', data: 'AA==' } }],
+  ['inline text document', { type: 'file', mediaType: 'text/plain', data: { type: 'text', text: 'doc' } }],
+  [
+    'URL image',
+    { type: 'file', mediaType: 'image/png', data: { type: 'url', url: new URL('https://example.test/a.png') } },
+  ],
+  [
+    'referenced image',
+    { type: 'file', mediaType: 'image/png', data: { type: 'reference', reference: { cursor: 'blob-1' } } },
+  ],
+] as const)('rejects an unsupported %s before constructing a run request', (_name, part) => {
+  expect(() => build([{ role: 'user', content: [part] }] as LanguageModelV4Prompt)).toThrow(
+    /only supports text and inline image data/i,
+  );
+});
+
+test('accepts inline image data when constructing a run request', () => {
+  const run = decodeRun(
+    build([
+      {
+        role: 'user',
+        content: [{ type: 'file', mediaType: 'image/png', data: { type: 'data', data: 'AQID' } }],
+      },
+    ]).requestBytes,
+  );
+  expect(run.action?.action.case).toBe('userMessageAction');
+  if (run.action?.action.case !== 'userMessageAction') throw new Error('expected userMessageAction');
+  expect(run.action.action.value.userMessage?.selectedContext?.selectedImages).toHaveLength(1);
 });

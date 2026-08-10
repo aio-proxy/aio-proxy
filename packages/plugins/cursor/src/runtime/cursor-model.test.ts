@@ -121,6 +121,24 @@ test('doStream returns a finishing stream and frames a runRequest', async () => 
   expect(first.message.case).toBe('runRequest');
 });
 
+test('required tool choice emits an unsupported warning and doGenerate retains it', async () => {
+  const { transport } = makeTransport();
+  const model = createCursorLanguageModel('claude-4.5-sonnet', runtimeWith(transport, new CursorSessionStore()));
+  const options = callOptions();
+  options.tools = [{ type: 'function', name: 'search', inputSchema: { type: 'object' } }];
+  options.toolChoice = { type: 'required' };
+
+  const streamed = await model.doStream(options);
+  const first = await streamed.stream.getReader().read();
+  expect(first.value).toMatchObject({
+    type: 'stream-start',
+    warnings: [{ type: 'unsupported', feature: 'toolChoice: required' }],
+  });
+
+  const generated = await model.doGenerate(options);
+  expect(generated.warnings).toEqual([{ type: 'unsupported', feature: 'toolChoice: required' }]);
+});
+
 test('a second call under the same session key reuses the stored conversationId', async () => {
   const { transport, runs } = makeTransport();
   const sessionStore = new CursorSessionStore();

@@ -2,10 +2,9 @@ import { createHash } from 'node:crypto';
 
 import type {
   LanguageModelV4,
-  LanguageModelV4CallOptions,
-  LanguageModelV4FunctionTool,
   LanguageModelV4GenerateResult,
   LanguageModelV4StreamPart,
+  SharedV4Warning,
   SharedV4ProviderOptions,
 } from '@ai-sdk/provider';
 import { type CredentialPort, zod } from '@aio-proxy/plugin-sdk';
@@ -48,12 +47,11 @@ function logicalSessionKey(providerOptions: SharedV4ProviderOptions | undefined)
   return parsed.success ? parsed.data : undefined;
 }
 
-function functionTools(options: LanguageModelV4CallOptions): LanguageModelV4FunctionTool[] {
-  return (options.tools ?? []).filter((tool): tool is LanguageModelV4FunctionTool => tool.type === 'function');
-}
-
 export function createCursorLanguageModel(modelId: string, runtime: CursorModelRuntime): LanguageModelV4 {
   const doStream: LanguageModelV4['doStream'] = async (options) => {
+    const warnings: SharedV4Warning[] =
+      options.toolChoice?.type === 'required' ? [{ type: 'unsupported', feature: 'toolChoice: required' }] : [];
+    const requestContextTools = buildMcpToolDefinitions(options.tools, options.toolChoice);
     const credential = await currentCursorCredential(runtime.credentials, {
       ...runtime.credentialOptions,
       ...(options.abortSignal === undefined ? {} : { signal: options.abortSignal }),
@@ -94,7 +92,7 @@ export function createCursorLanguageModel(modelId: string, runtime: CursorModelR
       ...(options.abortSignal === undefined ? {} : { signal: options.abortSignal }),
       requestBytes,
       initialConversationState: conversationState,
-      requestContextTools: buildMcpToolDefinitions(functionTools(options)),
+      requestContextTools,
       blobStore,
       heartbeatMs: 5_000,
     });
@@ -115,7 +113,13 @@ export function createCursorLanguageModel(modelId: string, runtime: CursorModelR
         runtime.sessionStore.set(storeKey, next);
       })
       .catch(() => {});
-    return { stream };
+    return {
+      stream: stream.pipeThrough(
+        new TransformStream<LanguageModelV4StreamPart, LanguageModelV4StreamPart>({
+          start: (controller) => controller.enqueue({ type: 'stream-start', warnings }),
+        }),
+      ),
+    };
   };
   return {
     specificationVersion: 'v4',
@@ -136,11 +140,13 @@ async function drain(streamResult: {
   let text = '';
   let usage: LanguageModelV4GenerateResult['usage'] | undefined;
   let finishReason: LanguageModelV4GenerateResult['finishReason'] | undefined;
+  let warnings: LanguageModelV4GenerateResult['warnings'] = [];
   const reader = streamResult.stream.getReader();
   for (;;) {
     const { done, value } = await reader.read();
     if (done) break;
-    if (value.type === 'text-delta') text += value.delta;
+    if (value.type === 'stream-start') warnings = value.warnings;
+    else if (value.type === 'text-delta') text += value.delta;
     else if (value.type === 'tool-call') content.push(value);
     else if (value.type === 'finish') {
       usage = value.usage;
@@ -152,7 +158,7 @@ async function drain(streamResult: {
     content,
     usage: usage ?? emptyUsage(),
     finishReason: finishReason ?? { unified: 'stop', raw: undefined },
-    warnings: [],
+    warnings,
   };
 }
 
