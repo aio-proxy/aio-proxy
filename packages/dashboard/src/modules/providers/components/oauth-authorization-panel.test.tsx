@@ -62,13 +62,14 @@ test('shows a restart action for a cancelled session', () => {
   expect(restart).toHaveBeenCalledTimes(1);
 });
 
-test('renders the authorize_url branch with an open link and cancel, without a callback field', () => {
+test('renders the authorize_url branch with localized instructions, an open link, and cancel', () => {
   render(
     <OAuthAuthorizationPanel
       session={{
         id: '550e8400-e29b-41d4-a716-446655440000',
         status: 'authorize_url',
         url: 'https://cursor.com/loginDeepControl',
+        instructions: { default: 'Finish signing in from the opened page', 'zh-Hans': '请在打开的页面中完成登录' },
       }}
       onSubmitCallback={rs.fn()}
       onCancel={rs.fn()}
@@ -80,6 +81,7 @@ test('renders the authorize_url branch with an open link and cancel, without a c
     'href',
     'https://cursor.com/loginDeepControl',
   );
+  expect(screen.getByText(/Finish signing in from the opened page|请在打开的页面中完成登录/u)).toBeInTheDocument();
   expect(screen.queryByRole('textbox')).toBeNull();
   expect(screen.getByRole('button', { name: /cancel|取消/iu })).toBeInTheDocument();
 });
