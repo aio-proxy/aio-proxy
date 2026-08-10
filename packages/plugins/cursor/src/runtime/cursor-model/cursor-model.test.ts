@@ -279,6 +279,43 @@ test('a second call under the same session key reuses the stored conversationId'
   expect(conversationIdOf(runs[1]![0]!)).toBe(conversationIdOf(runs[0]![0]!));
 });
 
+test('access token rotation preserves the session checkpoint when subject is absent', async () => {
+  const { transport, runs } = makeTransport();
+  const sessionStore = new CursorSessionStore();
+  let reads = 0;
+  const model = createCursorLanguageModel('claude-4.5-sonnet', {
+    ...runtimeWith(transport, sessionStore),
+    credentials: {
+      ...credentials,
+      read: () => {
+        const revision = ++reads;
+        return Promise.resolve({
+          value: {
+            accessToken: `rotated-${revision}`,
+            refreshToken: 'stable-refresh',
+            expiresAt: Number.MAX_SAFE_INTEGER,
+            email: revision === 1 ? 'User@Example.com' : 'user@example.com',
+          },
+          revision,
+        });
+      },
+    },
+  });
+  const conversationIdOf = (framed: Uint8Array): string => {
+    const message = fromBinary(AgentClientMessageSchema, framed.subarray(5)).message;
+    if (message.case !== 'runRequest') throw new Error('expected runRequest');
+    return message.value.conversationId;
+  };
+
+  const first = await model.doStream(callOptions());
+  await lastPartType(first.stream as unknown as ReadableStream<{ type: string }>);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  const second = await model.doStream(callOptions());
+  await lastPartType(second.stream as unknown as ReadableStream<{ type: string }>);
+
+  expect(conversationIdOf(runs[1]![0]!)).toBe(conversationIdOf(runs[0]![0]!));
+});
+
 test('a response-owned continuation reuses an affinity-less routed checkpoint', async () => {
   const { transport, runs } = makeTransport();
   const sessionStore = new CursorSessionStore();

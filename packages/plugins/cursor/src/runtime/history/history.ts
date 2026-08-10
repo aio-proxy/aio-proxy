@@ -62,7 +62,22 @@ export function buildRootPromptMessagesJson(
     const message = prompt[index]!;
     if (message.role === 'user') {
       const text = extractV4UserText(message.content);
-      if (text.length > 0) pushJson({ role: 'user', content: [{ type: 'text', text }] });
+      const content: unknown[] = text.length > 0 ? [{ type: 'text', text }] : [];
+      for (const part of message.content) {
+        if (
+          part.type !== 'file' ||
+          (part.mediaType !== 'image' && !part.mediaType.startsWith('image/')) ||
+          part.data.type !== 'data'
+        ) {
+          continue;
+        }
+        const data =
+          part.data.data instanceof Uint8Array
+            ? Buffer.from(part.data.data).toString('base64')
+            : Buffer.from(part.data.data, 'base64').toString('base64');
+        content.push({ type: 'file', mediaType: part.mediaType, data: { type: 'data', data } });
+      }
+      if (content.length > 0) pushJson({ role: 'user', content });
     } else if (message.role === 'assistant') {
       const text = assistantText(message.content);
       if (text.length > 0) pushJson({ role: 'assistant', content: [{ type: 'text', text }] });

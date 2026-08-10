@@ -121,6 +121,40 @@ test('an edited full-history request rebuilds instead of reusing stale cached tu
   expect(conversationState.turns).not.toEqual([staleTurn]);
 });
 
+test('a changed image in full history rebuilds instead of reusing stale cached turns', () => {
+  const blobStore = new Map<string, Uint8Array>();
+  const promptWithImage = (data: string): LanguageModelV4Prompt => [
+    {
+      role: 'user',
+      content: [
+        { type: 'text', text: 'inspect this image' },
+        { type: 'file', mediaType: 'image/png', data: { type: 'data', data } },
+      ],
+    },
+    { role: 'assistant', content: [{ type: 'text', text: 'analysis' }] },
+    { role: 'user', content: [{ type: 'text', text: 'continue' }] },
+  ];
+  const initial = buildCursorRunRequestBytes({
+    prompt: promptWithImage('AQID'),
+    wireModelId: 'claude-4.5-sonnet',
+    displayModelId: 'claude-4.5-sonnet',
+    displayName: 'Claude',
+    maxMode: false,
+    state: { conversationId: 'conv-image', blobStore },
+  });
+
+  const changed = buildCursorRunRequestBytes({
+    prompt: promptWithImage('BAUG'),
+    wireModelId: 'claude-4.5-sonnet',
+    displayModelId: 'claude-4.5-sonnet',
+    displayName: 'Claude',
+    maxMode: false,
+    state: { conversationId: 'conv-image', blobStore, conversationState: initial.conversationState },
+  });
+
+  expect(changed.conversationState.turns).not.toEqual(initial.conversationState.turns);
+});
+
 test('an incremental request without inbound history preserves the reusable checkpoint', () => {
   const blobStore = new Map<string, Uint8Array>();
   const systemPrompt = storeCursorBlob(

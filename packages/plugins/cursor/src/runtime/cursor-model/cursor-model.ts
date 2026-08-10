@@ -1,5 +1,3 @@
-import { createHash } from 'node:crypto';
-
 import type {
   LanguageModelV4,
   LanguageModelV4CallOptions,
@@ -12,6 +10,7 @@ import { type CredentialPort, zod } from '@aio-proxy/plugin-sdk';
 import { fromBinary, toBinary } from '@bufbuild/protobuf';
 
 import { ConversationStateStructureSchema } from '../../gen/agent_pb';
+import { cursorIdentity } from '../../jwt';
 import { currentCursorCredential, type CursorOAuthDependencies } from '../../oauth';
 import type { CursorCredential } from '../../schema';
 import { type CursorSessionState, type CursorSessionStore, sessionKey } from '../../store/session-store';
@@ -115,10 +114,12 @@ export function createCursorLanguageModel(modelId: string, runtime: CursorModelR
       ...runtime.credentialOptions,
       ...(options.abortSignal === undefined ? {} : { signal: options.abortSignal }),
     });
-    // Identity scope keys session storage per account without ever touching the
-    // raw token (JWT sub when present, else a short access-token hash).
+    // Stored identity fields survive access-token refreshes. The fingerprint
+    // fallback uses the refresh token only when Cursor exposes no account ID.
+    const email = credential.email?.trim().toLowerCase();
     const identityScope =
-      credential.subject ?? createHash('sha256').update(credential.accessToken).digest('hex').slice(0, 16);
+      credential.subject ??
+      (email === undefined || email === '' ? cursorIdentity(credential).fingerprint : `email:${email}`);
     const logicalKey = logicalSessionKey(options.providerOptions);
     const routing = routingContinuity(options.providerOptions);
     const storeKey =
