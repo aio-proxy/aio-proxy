@@ -37,6 +37,7 @@ if (explicitOutfile !== undefined && selected.length !== 1) {
 }
 
 const rootDir = join(import.meta.dir, '..', '..', '..');
+const thirdPartyNotice = await Bun.file(join(rootDir, 'packages/plugins/cursor/src/gen/LICENSE')).bytes();
 
 const entry = virtualCompiledEntry();
 for (const { suffix, target } of selected) {
@@ -64,5 +65,6 @@ for (const { suffix, target } of selected) {
     console.error(`bun build --compile failed for ${target}`);
     process.exit(1);
   }
+  await Bun.write(join(dirname(outfile), 'THIRD_PARTY_NOTICES'), thirdPartyNotice);
   console.log(`${suffix}: ${outfile}`);
 }

@@ -9,7 +9,7 @@
 # self-contained, musl-linked binary for $TARGETARCH from a single ($BUILDPLATFORM)
 # builder, so buildx produces linux/amd64 and linux/arm64 without QEMU emulating
 # the build. Dashboard assets are embedded into the binary by the compiled entry,
-# so the runtime stage needs nothing but the binary itself.
+# so the runtime stage needs only the binary and its third-party notice.
 # Pinned to Bun 1.3.14 (reproducible stable). The Bun 1.3.x bug where fetch with
 # a proxy drops a ReadableStream request body is worked around in
 # createProxyFetch (packages/core/src/provider/proxy-fetch.ts), not by the
@@ -42,8 +42,10 @@ FROM alpine:3.20
 # wget (busybox) drives the HEALTHCHECK; ca-certificates for upstream TLS.
 RUN apk add --no-cache ca-certificates \
     && adduser -D -u 10001 aioproxy \
-    && mkdir -p /data && chown aioproxy:aioproxy /data
+    && mkdir -p /data /usr/share/licenses/aio-proxy \
+    && chown aioproxy:aioproxy /data
 COPY --from=build /out/aio-proxy /usr/local/bin/aio-proxy
+COPY --from=build /out/THIRD_PARTY_NOTICES /usr/share/licenses/aio-proxy/THIRD_PARTY_NOTICES
 
 # Config, SQLite db and logs all live under AIO_PROXY_HOME. Mount a volume at
 # /data to persist them across container restarts.
