@@ -75,7 +75,9 @@ export function runtimeFixture(
     readonly accountOptionsSchema?: OAuthAdapter['account']['options']['schema'];
     readonly catalog?: ModelCatalog | null;
     readonly createRuntime?: OAuthAdapter['createRuntime'];
+    readonly discover?: OAuthAdapter['catalog']['discover'];
     readonly providerId?: string;
+    readonly supportsProxy?: boolean;
   } = {},
 ): {
   readonly repository: PluginRepository;
@@ -117,6 +119,7 @@ export function runtimeFixture(
   staging.api.oauth.register({
     id: 'default',
     displayName: 'Example',
+    ...(overrides.supportsProxy === undefined ? {} : { supportsProxy: overrides.supportsProxy }),
     account: { options: { schema: overrides.accountOptionsSchema ?? zod.object({}), form: [] } },
     credentials: zod.object({ token: zod.string() }),
     async login() {
@@ -124,9 +127,7 @@ export function runtimeFixture(
     },
     catalog: {
       policy,
-      async discover() {
-        return fixtureCatalog ?? catalog;
-      },
+      discover: overrides.discover ?? (async () => fixtureCatalog ?? catalog),
     },
     async createRuntime(context) {
       calls++;

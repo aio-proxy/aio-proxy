@@ -78,6 +78,7 @@ function refreshCredential(state: ReturnType<typeof fixture>, expectedRevision: 
 }
 
 type AdapterControls = {
+  readonly supportsProxy?: boolean;
   login?: OAuthAdapter<Record<string, unknown>, { token: string; refresh?: string }>['login'];
   discover?: OAuthAdapter<Record<string, unknown>, { token: string; refresh?: string }>['catalog']['discover'];
   initialFallback?: OAuthAdapter<
@@ -102,6 +103,7 @@ function registry(controls: AdapterControls = {}): PluginRegistry {
   staging.api.oauth.register({
     id: 'default',
     displayName: 'Example OAuth',
+    ...(controls.supportsProxy === undefined ? {} : { supportsProxy: controls.supportsProxy }),
     account: {
       options: {
         schema: controls.accountSchema ?? zod.object({ tenant: zod.string(), secret: zod.string() }),

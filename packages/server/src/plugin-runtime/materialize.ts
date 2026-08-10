@@ -154,6 +154,11 @@ export async function materializePluginProvider(
     );
   }
   const { adapter, account, accountOptions, accountSummary, createCredentials } = prepared;
+  let proxyIdentity = options.effectiveProxy;
+  if (proxyIdentity === undefined) proxyIdentity = config.proxy === false ? null : (config.proxy ?? null);
+  if (adapter.supportsProxy === false && proxyIdentity !== null) {
+    return failure(options, 'PROXY_UNSUPPORTED', false, undefined, accountSummary);
+  }
   const accountOptionsDigest = digest(prepared.accountOptionsIdentity);
   let diagnostics: readonly Diagnostic[];
   try {
@@ -204,8 +209,6 @@ export async function materializePluginProvider(
     return catalogUnavailableMaterialization(options, unavailable, persistedSummary, catalogJobFor, createCredentials);
   }
 
-  let proxyIdentity = options.effectiveProxy;
-  if (proxyIdentity === undefined) proxyIdentity = config.proxy === false ? null : (config.proxy ?? null);
   const identity = runtimeIdentity({
     packageName: config.plugin,
     version: pluginVersion(plugins, config.plugin),

@@ -15,6 +15,7 @@ import {
 import {
   type OAuthCapabilityReference,
   OAuthCapabilityUnavailableError,
+  OAuthProxyUnsupportedError,
   ProviderFingerprintMismatchError,
 } from './errors';
 import { discoverCatalog } from './login/discovery';
@@ -75,6 +76,9 @@ export async function loginOAuthAccount(options: LoginOAuthAccountOptions): Prom
     const adapter = options.registry.resolveOAuth(initial.capability.plugin, initial.capability.capability);
     if (adapter === undefined)
       throw new OAuthCapabilityUnavailableError(initial.capability.plugin, initial.capability.capability);
+    if (adapter.supportsProxy === false && initial.hasEffectiveProxy) {
+      throw new OAuthProxyUnsupportedError(initial.capability.plugin, initial.capability.capability);
+    }
     const rendered = await withAbort(deadline.signal, () =>
       options.renderAccountOptions({
         spec: adapter.account.options,

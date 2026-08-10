@@ -27,6 +27,7 @@ test('registers SDK v2 presentation metadata on the descriptor and adapter', asy
   const adapter = await adapterFrom(cursorPlugin);
   expect(adapter.id).toBe('default');
   expect(adapter.displayName).toBe('Login with Cursor');
+  expect(adapter.supportsProxy).toBe(false);
   expect(cursorPlugin.metadata).toEqual({
     displayName: 'Cursor',
     description: 'Use a Cursor account to access models',

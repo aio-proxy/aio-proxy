@@ -76,6 +76,15 @@ export class OAuthCapabilityUnavailableError extends Error {
     super('OAUTH_CAPABILITY_UNAVAILABLE');
   }
 }
+export class OAuthProxyUnsupportedError extends Error {
+  override readonly name = 'OAuthProxyUnsupportedError';
+  constructor(
+    readonly plugin: string,
+    readonly capability: string,
+  ) {
+    super('PROXY_UNSUPPORTED');
+  }
+}
 export class ProviderConfigInvalidError extends Error {
   override readonly name = 'ProviderConfigInvalidError';
   constructor() {

@@ -8,6 +8,7 @@ export {
   OAuthCatalogDiscoveryTimeoutError,
   OAuthLoginResultValidationError,
   OAuthLoginTimeoutError,
+  OAuthProxyUnsupportedError,
   ProviderAccountAlreadyExistsError,
   ProviderAccountChangedError,
   ProviderCapabilityTargetMismatchError,

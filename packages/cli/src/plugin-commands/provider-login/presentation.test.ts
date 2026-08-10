@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 
 import {
   AccountCleanupPendingError,
+  OAuthProxyUnsupportedError,
   ProviderAccountAlreadyExistsError,
   ProviderFingerprintMismatchError,
   ProviderIdCollisionError,
@@ -82,5 +83,19 @@ describe('provider login safe presentation', () => {
       'The authenticated account does not match provider target',
     );
     expect(state.printed).toEqual([]);
+  });
+
+  test('localizes proxy rejection without exposing a proxy URL', async () => {
+    const state = scope.fixture();
+    state.deps = {
+      ...state.deps,
+      login: async () => {
+        throw new OAuthProxyUnsupportedError('@a/one', 'unique');
+      },
+    };
+
+    await expect(providerLogin('unique', {}, state.deps)).rejects.toThrow(
+      'OAuth capability @a/one#unique does not support the configured proxy',
+    );
   });
 });

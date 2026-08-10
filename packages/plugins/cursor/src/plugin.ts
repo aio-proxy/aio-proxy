@@ -34,6 +34,7 @@ export function createCursorPlugin(
   const adapter: OAuthAdapter<Record<string, never>, CursorCredential> = {
     id: 'default',
     displayName: presentationText.adapterLabel,
+    supportsProxy: false,
     account: { options: accountOptions },
     credentials: credentialSchema,
     login: async (context, options) => {

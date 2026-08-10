@@ -10,6 +10,7 @@ import { accountMatches, capabilityOf, isRecord, providerRecord, sameCapability,
 
 export type Preflight = {
   readonly capability: OAuthCapabilityReference;
+  readonly hasEffectiveProxy: boolean;
   readonly account?: StoredAccount;
   readonly runtimeRevision?: number;
   readonly fingerprint?: string;
@@ -17,12 +18,30 @@ export type Preflight = {
   readonly secrets: Readonly<Record<string, unknown>>;
 };
 
+function hasEffectiveProxy(
+  current: Readonly<Record<string, unknown>>,
+  entry: Readonly<Record<string, unknown>> | null,
+  patch: LoginOAuthAccountOptions['providerPatch'],
+): boolean {
+  const configuredProxy = entry?.['proxy'];
+  const providerProxy = patch?.proxy === null ? undefined : (patch?.proxy ?? configuredProxy);
+  if (providerProxy === false) return false;
+  return typeof providerProxy === 'string' || typeof current['proxy'] === 'string';
+}
+
 export async function preflight(options: LoginOAuthAccountOptions, signal: AbortSignal): Promise<Preflight> {
   signal.throwIfAborted();
   const providerId = options.targetProviderId;
   if (providerId === undefined) {
     if (options.capability === undefined) throw new OAuthCapabilityRequiredError();
-    return { capability: options.capability, publicOptions: {}, secrets: {} };
+    const current = await options.config.read();
+    signal.throwIfAborted();
+    return {
+      capability: options.capability,
+      hasEffectiveProxy: hasEffectiveProxy(current, null, options.providerPatch),
+      publicOptions: {},
+      secrets: {},
+    };
   }
   return options.config.transaction(
     async (current) => {
@@ -44,6 +63,7 @@ export async function preflight(options: LoginOAuthAccountOptions, signal: Abort
         next: current,
         result: {
           capability,
+          hasEffectiveProxy: hasEffectiveProxy(current, entry, options.providerPatch),
           account,
           runtimeRevision: account.runtimeRevision,
           fingerprint: account.fingerprint,
