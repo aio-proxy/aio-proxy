@@ -558,7 +558,7 @@ test('a successful routed turn stores the expected post-commit affinity revision
   expect(sessionStore.get(logicalStoreKey)?.expectedAffinity).toEqual({ providerId: 'cursor-a', revision: 8 });
 });
 
-test('concurrent successful turns discard a same-key last-writer conflict', async () => {
+test('concurrent successful turns preserve the first committed checkpoint', async () => {
   const releases: Array<ReturnType<typeof Promise.withResolvers<void>>> = [];
   const transport: CursorTransport = {
     openRun: () => {
@@ -587,11 +587,12 @@ test('concurrent successful turns discard a same-key last-writer conflict', asyn
   releases[0]!.resolve();
   await lastPartType(first.stream as unknown as ReadableStream<{ type: string }>);
   await new Promise((resolve) => setTimeout(resolve, 0));
-  expect(sessionStore.get(logicalStoreKey)).toBeDefined();
+  const winningState = sessionStore.get(logicalStoreKey);
+  expect(winningState).toBeDefined();
 
   releases[1]!.resolve();
   await lastPartType(second.stream as unknown as ReadableStream<{ type: string }>);
   await new Promise((resolve) => setTimeout(resolve, 0));
 
-  expect(sessionStore.get(logicalStoreKey)).toBeUndefined();
+  expect(sessionStore.get(logicalStoreKey)).toBe(winningState);
 });

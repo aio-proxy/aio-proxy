@@ -189,10 +189,7 @@ export function createCursorLanguageModel(modelId: string, runtime: CursorModelR
               : { expectedAffinity: prior.expectedAffinity }),
           pendingToolCalls: nextPendingToolCalls,
         };
-        if (runtime.sessionStore.get(storeKey) !== prior) {
-          runtime.sessionStore.delete(storeKey);
-          return;
-        }
+        if (runtime.sessionStore.get(storeKey) !== prior) return;
         runtime.sessionStore.set(storeKey, next);
       })
       .catch(() => {});
