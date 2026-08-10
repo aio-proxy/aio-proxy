@@ -1,7 +1,9 @@
 import { expect, spyOn, test } from 'bun:test';
 
 import type { CredentialPort, ModelCatalog } from '@aio-proxy/plugin-sdk';
+import { create, fromBinary, toBinary } from '@bufbuild/protobuf';
 
+import { AgentClientMessageSchema, AgentServerMessageSchema, InteractionUpdateSchema } from '../gen/agent_pb';
 import type { CursorCredential } from '../schema';
 import type { CursorH2Stream, CursorTransport } from '../wire/transport';
 import { createCursorRuntime } from './runtime';
@@ -84,4 +86,55 @@ test('credential refresh uses the runtime context fetch as control traffic', asy
   } finally {
     globalFetch.mockRestore();
   }
+});
+
+test('discovered model metadata reaches Cursor model details and requested model', async () => {
+  const writes: Uint8Array[] = [];
+  const turnEnded = create(AgentServerMessageSchema, {
+    message: {
+      case: 'interactionUpdate',
+      value: create(InteractionUpdateSchema, { message: { case: 'turnEnded', value: {} } } as never),
+    },
+  });
+  const metadataTransport: CursorTransport = {
+    openRun: () =>
+      Promise.resolve({
+        write: (frame) => writes.push(frame),
+        end: () => {},
+        close: () => {},
+        frames: (async function* () {
+          yield { flags: 0, payload: toBinary(AgentServerMessageSchema, turnEnded) };
+        })(),
+        trailers: Promise.resolve({ 'grpc-status': '0' }),
+      }),
+    unary: () => Promise.reject(new Error('unused')),
+  };
+  const metadataCatalog: ModelCatalog = {
+    ...catalog,
+    language: [
+      {
+        id: 'wire-model',
+        displayName: 'Display Model',
+        metadata: { displayModelId: 'display-model', maxMode: true },
+      },
+    ],
+  };
+  const result = await createCursorRuntime(
+    { credentials, options: {}, catalog: metadataCatalog, fetch: globalThis.fetch },
+    { transport: metadataTransport },
+  );
+  const response = await result.provider.languageModel('wire-model').doStream({
+    prompt: [{ role: 'user', content: [{ type: 'text', text: 'hello' }] }],
+  });
+  const reader = response.stream.getReader();
+  while (!(await reader.read()).done) {}
+
+  const client = fromBinary(AgentClientMessageSchema, writes[0]!.subarray(5));
+  if (client.message.case !== 'runRequest') throw new Error('expected run request');
+  expect(client.message.value.modelDetails).toMatchObject({
+    modelId: 'wire-model',
+    displayModelId: 'display-model',
+    maxMode: true,
+  });
+  expect(client.message.value.requestedModel).toMatchObject({ modelId: 'wire-model', maxMode: true });
 });

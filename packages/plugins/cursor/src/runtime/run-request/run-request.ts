@@ -76,22 +76,29 @@ export function buildCursorRunRequestBytes(input: {
 
   const historyActiveIndex = isUserAction ? activeIndex : -1;
   const promptTurns = buildConversationTurns(prompt, blobStore, historyActiveIndex);
+  const promptRootMessages = buildRootPromptMessagesJson(prompt, systemPromptIds, blobStore, historyActiveIndex);
 
-  const cachedHead = state.conversationState?.rootPromptMessagesJson?.slice(0, systemPromptIds.length) ?? [];
+  const cachedRootMessages = state.conversationState?.rootPromptMessagesJson ?? [];
+  const cachedHead = cachedRootMessages.slice(0, systemPromptIds.length);
   const promptHeadMatches =
     cachedHead.length === systemPromptIds.length &&
     systemPromptIds.every((id, index) => Buffer.from(cachedHead[index]!).equals(id));
+  const hasInboundHistory = promptRootMessages.length > systemPromptIds.length;
+  const promptHistoryMatches =
+    !hasInboundHistory ||
+    (cachedRootMessages.length === promptRootMessages.length &&
+      promptRootMessages.every((id, index) => Buffer.from(cachedRootMessages[index]!).equals(id)));
   const reusableState =
-    state.conversationState && (isPendingResume || promptHeadMatches) ? state.conversationState : undefined;
+    state.conversationState && (isPendingResume || (promptHeadMatches && promptHistoryMatches))
+      ? state.conversationState
+      : undefined;
   const baseState =
     reusableState ?? create(ConversationStateStructureSchema, { rootPromptMessagesJson: systemPromptIds });
   const baseTurns = reusableState?.turns ?? promptTurns;
   const patched = isPendingResume
     ? applyMcpToolResults({ prompt, turns: baseTurns, pendingToolCalls, blobStore })
     : { turns: baseTurns, pendingToolCalls: new Map<string, string>() };
-  const rootPromptMessagesJson =
-    reusableState?.rootPromptMessagesJson ??
-    buildRootPromptMessagesJson(prompt, systemPromptIds, blobStore, historyActiveIndex);
+  const rootPromptMessagesJson = reusableState?.rootPromptMessagesJson ?? promptRootMessages;
 
   const conversationState = create(ConversationStateStructureSchema, {
     ...baseState,

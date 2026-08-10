@@ -65,12 +65,19 @@ export function initialCursorCatalogFallback(error: unknown): ModelCatalog | und
   return error instanceof CursorCatalogError && error.retryable ? staticCursorCatalog() : undefined;
 }
 
-function dedupeById(models: readonly { modelId?: string; displayName?: string }[]): ModelDescriptor[] {
+function dedupeById(
+  models: readonly { modelId?: string; displayModelId?: string; displayName?: string; maxMode?: boolean }[],
+): ModelDescriptor[] {
   const byId = new Map<string, ModelDescriptor>();
   for (const model of models) {
     const id = typeof model.modelId === 'string' ? model.modelId.trim() : '';
     if (id.length === 0 || byId.has(id)) continue;
-    byId.set(id, model.displayName ? { id, displayName: model.displayName } : { id });
+    const displayModelId = model.displayModelId?.trim() || id;
+    byId.set(id, {
+      id,
+      ...(model.displayName ? { displayName: model.displayName } : {}),
+      metadata: { displayModelId, maxMode: model.maxMode ?? false },
+    });
   }
   return [...byId.values()].sort((left, right) => left.id.localeCompare(right.id));
 }

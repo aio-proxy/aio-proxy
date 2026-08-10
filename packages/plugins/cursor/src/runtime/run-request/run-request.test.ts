@@ -50,19 +50,27 @@ test('an explicit empty trailing user message selects userMessageAction', () => 
 
 test('a matching full-history request preserves the reusable Cursor checkpoint', () => {
   const blobStore = new Map<string, Uint8Array>();
+  const prompt: LanguageModelV4Prompt = [
+    { role: 'system', content: 'sys' },
+    { role: 'user', content: [{ type: 'text', text: 'first user' }] },
+    { role: 'assistant', content: [{ type: 'text', text: 'first answer' }] },
+    { role: 'user', content: [{ type: 'text', text: 'next turn' }] },
+  ];
   const systemPrompt = storeCursorBlob(
     blobStore,
     new TextEncoder().encode(JSON.stringify({ role: 'system', content: 'sys' })),
   );
-  const cachedHistory = storeCursorBlob(blobStore, new TextEncoder().encode('cached-history'));
-  const cachedTurn = storeCursorBlob(blobStore, new TextEncoder().encode('cached-turn'));
+  const cachedUser = storeCursorBlob(
+    blobStore,
+    new TextEncoder().encode(JSON.stringify({ role: 'user', content: [{ type: 'text', text: 'first user' }] })),
+  );
+  const cachedAssistant = storeCursorBlob(
+    blobStore,
+    new TextEncoder().encode(JSON.stringify({ role: 'assistant', content: [{ type: 'text', text: 'first answer' }] })),
+  );
+  const cachedTurn = storeCursorBlob(blobStore, new TextEncoder().encode('richer-cached-turn'));
   const { conversationState } = buildCursorRunRequestBytes({
-    prompt: [
-      { role: 'system', content: 'sys' },
-      { role: 'user', content: [{ type: 'text', text: 'lossy reconstructed user' }] },
-      { role: 'assistant', content: [{ type: 'text', text: 'lossy reconstructed answer' }] },
-      { role: 'user', content: [{ type: 'text', text: 'next turn' }] },
-    ],
+    prompt,
     wireModelId: 'claude-4.5-sonnet',
     displayModelId: 'claude-4.5-sonnet',
     displayName: 'Claude',
@@ -71,13 +79,74 @@ test('a matching full-history request preserves the reusable Cursor checkpoint',
       conversationId: 'conv-checkpoint',
       blobStore,
       conversationState: create(ConversationStateStructureSchema, {
-        rootPromptMessagesJson: [systemPrompt, cachedHistory],
+        rootPromptMessagesJson: [systemPrompt, cachedUser, cachedAssistant],
         turns: [cachedTurn],
       }),
     },
   });
 
-  expect(conversationState.rootPromptMessagesJson).toEqual([systemPrompt, cachedHistory]);
+  expect(conversationState.rootPromptMessagesJson).toEqual([systemPrompt, cachedUser, cachedAssistant]);
+  expect(conversationState.turns).toEqual([cachedTurn]);
+});
+
+test('an edited full-history request rebuilds instead of reusing stale cached turns', () => {
+  const blobStore = new Map<string, Uint8Array>();
+  const systemPrompt = storeCursorBlob(
+    blobStore,
+    new TextEncoder().encode(JSON.stringify({ role: 'system', content: 'sys' })),
+  );
+  const staleTurn = storeCursorBlob(blobStore, new TextEncoder().encode('stale-turn'));
+  const { conversationState } = buildCursorRunRequestBytes({
+    prompt: [
+      { role: 'system', content: 'sys' },
+      { role: 'user', content: [{ type: 'text', text: 'edited user' }] },
+      { role: 'assistant', content: [{ type: 'text', text: 'edited answer' }] },
+      { role: 'user', content: [{ type: 'text', text: 'branch from here' }] },
+    ],
+    wireModelId: 'claude-4.5-sonnet',
+    displayModelId: 'claude-4.5-sonnet',
+    displayName: 'Claude',
+    maxMode: false,
+    state: {
+      conversationId: 'conv-edited',
+      blobStore,
+      conversationState: create(ConversationStateStructureSchema, {
+        rootPromptMessagesJson: [systemPrompt],
+        turns: [staleTurn],
+      }),
+    },
+  });
+
+  expect(conversationState.turns).toHaveLength(1);
+  expect(conversationState.turns).not.toEqual([staleTurn]);
+});
+
+test('an incremental request without inbound history preserves the reusable checkpoint', () => {
+  const blobStore = new Map<string, Uint8Array>();
+  const systemPrompt = storeCursorBlob(
+    blobStore,
+    new TextEncoder().encode(JSON.stringify({ role: 'system', content: 'sys' })),
+  );
+  const cachedTurn = storeCursorBlob(blobStore, new TextEncoder().encode('cached-turn'));
+  const { conversationState } = buildCursorRunRequestBytes({
+    prompt: [
+      { role: 'system', content: 'sys' },
+      { role: 'user', content: [{ type: 'text', text: 'incremental next turn' }] },
+    ],
+    wireModelId: 'claude-4.5-sonnet',
+    displayModelId: 'claude-4.5-sonnet',
+    displayName: 'Claude',
+    maxMode: false,
+    state: {
+      conversationId: 'conv-incremental',
+      blobStore,
+      conversationState: create(ConversationStateStructureSchema, {
+        rootPromptMessagesJson: [systemPrompt],
+        turns: [cachedTurn],
+      }),
+    },
+  });
+
   expect(conversationState.turns).toEqual([cachedTurn]);
 });
 

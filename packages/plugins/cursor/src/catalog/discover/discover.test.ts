@@ -27,6 +27,36 @@ test('returns non-empty language models on success', async () => {
   expect(catalog.language.map((m) => m.id)).toContain('claude-4.5-sonnet');
 });
 
+test('preserves discovered display model ID and max mode metadata', async () => {
+  const body = frameConnectMessage(
+    toBinary(
+      GetUsableModelsResponseSchema,
+      create(GetUsableModelsResponseSchema, {
+        models: [
+          {
+            modelId: 'wire-model',
+            displayModelId: 'display-model',
+            displayName: 'Display Model',
+            maxMode: true,
+          },
+        ],
+      }),
+    ),
+  );
+  const catalog = await discoverCursorModels({
+    accessToken: 't',
+    transport: transportWith(200, body) as never,
+  });
+
+  expect(catalog.language).toEqual([
+    {
+      id: 'wire-model',
+      displayName: 'Display Model',
+      metadata: { displayModelId: 'display-model', maxMode: true },
+    },
+  ]);
+});
+
 test('401 is non-retryable and yields no fallback', async () => {
   const error = await discoverCursorModels({
     accessToken: 't',

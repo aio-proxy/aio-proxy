@@ -1,4 +1,4 @@
-import type { OAuthRuntimeResult, RuntimeContext } from '@aio-proxy/plugin-sdk';
+import type { JsonValue, OAuthRuntimeResult, RuntimeContext } from '@aio-proxy/plugin-sdk';
 
 import type { CursorOAuthDependencies } from '../oauth';
 import type { CursorCredential } from '../schema';
@@ -26,15 +26,18 @@ export function createCursorRuntime(
   const transport = injectedTransport ?? createNodeHttp2Transport();
   const sessionStore = injectedStore ?? new CursorSessionStore();
   const modelById = new Map<string, CursorModelDescriptor>(
-    context.catalog.language.map((descriptor) => [
-      descriptor.id,
-      {
-        wireModelId: descriptor.id,
-        displayModelId: descriptor.id,
-        displayName: descriptor.displayName ?? descriptor.id,
-        maxMode: false,
-      },
-    ]),
+    context.catalog.language.map((descriptor) => {
+      const metadata = cursorModelMetadata(descriptor.metadata);
+      return [
+        descriptor.id,
+        {
+          wireModelId: descriptor.id,
+          displayModelId: metadata.displayModelId ?? descriptor.id,
+          displayName: descriptor.displayName ?? descriptor.id,
+          maxMode: metadata.maxMode ?? false,
+        },
+      ] as const;
+    }),
   );
   const provider = createCursorProviderV4({
     transport,
@@ -45,4 +48,17 @@ export function createCursorRuntime(
     modelById,
   });
   return Promise.resolve({ provider });
+}
+
+function cursorModelMetadata(metadata: JsonValue | undefined): {
+  readonly displayModelId?: string;
+  readonly maxMode?: boolean;
+} {
+  if (metadata === undefined || metadata === null || typeof metadata !== 'object' || Array.isArray(metadata)) return {};
+  const displayModelId = Reflect.get(metadata, 'displayModelId');
+  const maxMode = Reflect.get(metadata, 'maxMode');
+  return {
+    ...(typeof displayModelId === 'string' && displayModelId.length > 0 ? { displayModelId } : {}),
+    ...(typeof maxMode === 'boolean' ? { maxMode } : {}),
+  };
 }
