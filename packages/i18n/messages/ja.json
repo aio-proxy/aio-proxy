@@ -71,6 +71,7 @@
         "error_timeout": "OAuth ログインがタイムアウトしました",
         "error_capability_required": "OAuth ケイパビリティが必要です",
         "error_capability_unavailable": "OAuth ケイパビリティ {reference} は利用できません",
+        "error_proxy_unsupported": "OAuth ケイパビリティ {reference} は設定されたプロキシをサポートしていません",
         "error_provider_id_collision": "{provider} に一意のプロバイダー ID を割り当てられませんでした"
       },
       "list": {
@@ -175,6 +176,7 @@
       "diagnostic_credential_refresh_failed": "プロバイダー {provider} の認証情報の更新に失敗しました",
       "diagnostic_authorization_failed": "プロバイダー {provider} の認可に失敗しました",
       "diagnostic_catalog_unavailable": "プロバイダー {provider} のモデルカタログが利用できません",
+      "diagnostic_proxy_unsupported": "プロバイダー {provider} は設定されたプロキシをサポートしていません",
       "diagnostic_runtime_create_failed": "プロバイダー {provider} のランタイムを作成できませんでした"
     },
     "error": {

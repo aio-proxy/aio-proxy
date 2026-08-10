@@ -152,6 +152,7 @@ export type OAuthAdapter<AccountOptions = unknown, Credential = unknown> = {
   readonly id: string;
   readonly displayName: LocalizedText;
   readonly description?: LocalizedText;
+  readonly supportsProxy?: boolean;
   readonly account: { readonly options: ConfigSpec<AccountOptions> };
   readonly credentials: ZodType<Credential>;
   readonly login: (context: OAuthLoginContext, options: AccountOptions) => Promise<OAuthLoginResult<Credential>>;

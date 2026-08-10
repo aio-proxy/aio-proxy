@@ -71,6 +71,7 @@
         "error_timeout": "OAuth 로그인 시간이 초과되었습니다",
         "error_capability_required": "OAuth 기능이 필요합니다",
         "error_capability_unavailable": "OAuth 기능 {reference}을(를) 사용할 수 없습니다",
+        "error_proxy_unsupported": "OAuth 기능 {reference}은(는) 구성된 프록시를 지원하지 않습니다",
         "error_provider_id_collision": "{provider}에 대한 고유한 프로바이더 ID를 할당할 수 없습니다"
       },
       "list": {
@@ -175,6 +176,7 @@
       "diagnostic_credential_refresh_failed": "프로바이더 {provider}의 자격 증명 갱신에 실패했습니다",
       "diagnostic_authorization_failed": "프로바이더 {provider}의 인증에 실패했습니다",
       "diagnostic_catalog_unavailable": "프로바이더 {provider}의 모델 카탈로그를 사용할 수 없습니다",
+      "diagnostic_proxy_unsupported": "프로바이더 {provider}은(는) 구성된 프록시를 지원하지 않습니다",
       "diagnostic_runtime_create_failed": "프로바이더 {provider}의 런타임을 생성할 수 없습니다"
     },
     "error": {

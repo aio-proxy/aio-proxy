@@ -71,6 +71,7 @@
         "error_timeout": "OAuth 登入已逾時",
         "error_capability_required": "必須指定 OAuth 能力",
         "error_capability_unavailable": "OAuth 能力 {reference} 無法使用",
+        "error_proxy_unsupported": "OAuth 能力 {reference} 不支援目前設定的代理",
         "error_provider_id_collision": "無法為 {provider} 配置唯一的提供商 ID"
       },
       "list": {
@@ -175,6 +176,7 @@
       "diagnostic_credential_refresh_failed": "提供商 {provider} 的憑證重新整理失敗",
       "diagnostic_authorization_failed": "提供商 {provider} 授權失敗",
       "diagnostic_catalog_unavailable": "提供商 {provider} 的模型目錄無法使用",
+      "diagnostic_proxy_unsupported": "提供商 {provider} 不支援目前設定的代理",
       "diagnostic_runtime_create_failed": "無法為提供商 {provider} 建立執行階段"
     },
     "error": {

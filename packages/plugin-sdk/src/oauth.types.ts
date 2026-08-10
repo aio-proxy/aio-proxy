@@ -68,6 +68,17 @@ const quotaAdapter: OAuthAdapter<MyOptions, MyCredential> = {
 
 api.oauth.register(quotaAdapter);
 
+const proxyUnsupportedAdapter: OAuthAdapter<MyOptions, MyCredential> = {
+  ...quotaAdapter,
+  id: 'proxy-unsupported',
+  supportsProxy: false,
+};
+api.oauth.register(proxyUnsupportedAdapter);
+
+// @ts-expect-error supportsProxy only accepts booleans
+const invalidProxySupport: OAuthAdapter<MyOptions, MyCredential> = { ...quotaAdapter, supportsProxy: 'false' };
+void invalidProxySupport;
+
 const loginResult: OAuthLoginResult<MyCredential> = {
   fingerprint: 'account',
   suggestedKey: 'account',

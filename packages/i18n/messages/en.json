@@ -71,6 +71,7 @@
         "error_timeout": "OAuth login timed out",
         "error_capability_required": "An OAuth capability is required",
         "error_capability_unavailable": "OAuth capability {reference} is unavailable",
+        "error_proxy_unsupported": "OAuth capability {reference} does not support the configured proxy",
         "error_provider_id_collision": "Unable to allocate a unique provider ID for {provider}"
       },
       "list": {
@@ -175,6 +176,7 @@
       "diagnostic_credential_refresh_failed": "Credential refresh failed for provider {provider}",
       "diagnostic_authorization_failed": "Authorization failed for provider {provider}",
       "diagnostic_catalog_unavailable": "The model catalog is unavailable for provider {provider}",
+      "diagnostic_proxy_unsupported": "Provider {provider} does not support the configured proxy",
       "diagnostic_runtime_create_failed": "The runtime could not be created for provider {provider}"
     },
     "error": {
