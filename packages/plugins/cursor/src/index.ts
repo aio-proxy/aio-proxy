@@ -1,10 +1,10 @@
 import packageJson from '../package.json' with { type: 'json' };
-import { createCursorPlugin, englishPresentationText } from './plugin';
+import { createCursorPlugin, englishPresentationText } from './plugin/index';
 
-export * from './catalog';
-export * from './jwt';
-export * from './oauth';
-export { createCursorPlugin, englishPresentationText, type CursorPresentationText } from './plugin';
+export * from './catalog/index';
+export * from './jwt/index';
+export * from './oauth/index';
+export { createCursorPlugin, englishPresentationText, type CursorPresentationText } from './plugin/index';
 export * from './runtime';
 export * from './schema';
 export * from './store';

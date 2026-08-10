@@ -2,9 +2,9 @@ import type { OAuthRuntimeResult, RuntimeContext } from '@aio-proxy/plugin-sdk';
 
 import type { CursorOAuthDependencies } from '../oauth';
 import type { CursorCredential } from '../schema';
-import { CursorSessionStore } from '../store/session-store';
-import { CURSOR_API_URL, createNodeHttp2Transport, type CursorTransport } from '../wire/transport';
-import { createCursorProviderV4, type CursorModelDescriptor } from './provider';
+import { CursorSessionStore } from '../store/session-store/index';
+import { CURSOR_API_URL, createNodeHttp2Transport, type CursorTransport } from '../wire/transport/index';
+import { createCursorProviderV4, type CursorModelDescriptor } from './provider/index';
 
 export type CursorRuntimeDependencies = CursorOAuthDependencies & {
   readonly transport?: CursorTransport;
@@ -47,6 +47,6 @@ export function createCursorRuntime(
   return Promise.resolve({ provider });
 }
 
-export { createCursorProviderV4, type CursorModelDescriptor, type CursorProviderRuntime } from './provider';
-export { createCursorLanguageModel, type CursorModelRuntime } from './cursor-model';
-export { runCursorTurn, type CursorTurnResult } from './driver';
+export { createCursorProviderV4, type CursorModelDescriptor, type CursorProviderRuntime } from './provider/index';
+export { createCursorLanguageModel, type CursorModelRuntime } from './cursor-model/index';
+export { runCursorTurn, type CursorTurnResult } from './driver/index';

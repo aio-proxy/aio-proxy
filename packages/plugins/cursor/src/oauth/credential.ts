@@ -1,6 +1,6 @@
 import { type CredentialPort, CredentialRefreshError, type RuntimeFetch } from '@aio-proxy/plugin-sdk';
 
-import { cursorIdentity, cursorTokenExpiry } from '../jwt';
+import { cursorIdentity, cursorTokenExpiry } from '../jwt/index';
 import type { CursorCredential } from '../schema';
 import { CURSOR_REFRESH_URL } from './constants';
 

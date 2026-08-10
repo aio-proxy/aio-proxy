@@ -1,2 +1,2 @@
 export * from './history';
-export * from './user-message';
+export * from './user-message/index';

@@ -20,9 +20,9 @@ import {
   ToolCallSchema,
   UserMessageSchema,
 } from '../../gen/agent_pb';
-import { readCursorBlob, storeCursorBlob } from '../../store/blobs';
-import { toWireName } from '../../tool-names';
-import { createCursorUserMessage, extractV4UserText, v4UserHasImages } from './user-message';
+import { readCursorBlob, storeCursorBlob } from '../../store/blobs/index';
+import { toWireName } from '../../tool-names/index';
+import { createCursorUserMessage, extractV4UserText, v4UserHasImages } from './user-message/index';
 
 // The active (latest) user message is excluded from history; it rides in the
 // run action (Task 13). Assistant tool-call parts flatten to nothing and
