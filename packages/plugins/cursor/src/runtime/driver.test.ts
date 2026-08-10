@@ -136,6 +136,11 @@ const turnEndedFrame = () =>
     case: 'interactionUpdate',
     value: create(InteractionUpdateSchema, { message: { case: 'turnEnded', value: {} } } as never),
   });
+const checkpointFrame = () =>
+  frameServer({
+    case: 'conversationCheckpointUpdate',
+    value: create(ConversationStateStructureSchema, {}),
+  });
 
 async function drainTypes(stream: ReadableStream<LanguageModelV4StreamPart>): Promise<string[]> {
   const types: string[] = [];
@@ -159,7 +164,7 @@ async function drainParts(stream: ReadableStream<LanguageModelV4StreamPart>): Pr
 }
 
 test('a text turn streams parts, frames the request, and resolves the turn result', async () => {
-  const { transport, writes, closeReasons } = fakeTransport([textFrame('Hi'), turnEndedFrame()]);
+  const { transport, writes, closeReasons } = fakeTransport([textFrame('Hi'), checkpointFrame(), turnEndedFrame()]);
   const { stream, result } = runCursorTurn({
     transport,
     accessToken: 'tok',
@@ -177,6 +182,22 @@ test('a text turn streams parts, frames the request, and resolves the turn resul
   expect(writes[0]?.length).toBe(6);
   expect(closeReasons).toHaveLength(1);
   expect(closeReasons).toEqual([undefined]);
+});
+
+test('a text turn without a received checkpoint does not mark the initial state reusable', async () => {
+  const { transport } = fakeTransport([textFrame('Hi'), turnEndedFrame()]);
+  const { stream, result } = runCursorTurn({
+    transport,
+    accessToken: 'tok',
+    requestBytes: new Uint8Array([1]),
+    initialConversationState: create(ConversationStateStructureSchema, {}),
+    requestContextTools: [],
+    blobStore: new Map(),
+    heartbeatMs: 0,
+  });
+
+  await drainTypes(stream);
+  expect((await result).checkpointUsable).toBe(false);
 });
 
 test('rejects when the stream ends before turnEnded', async () => {

@@ -11,6 +11,7 @@ export type CursorStreamAccumulator = {
   tools: Map<string, { nestedToolCallId: string; toolName: string; buffer: string }>;
   completedToolCalls: Map<string, string>;
   outputTokens: number;
+  sawTokenDelta: boolean;
   sawTurnEnded: boolean;
   toolCalls: number;
 };
@@ -20,6 +21,7 @@ export function createCursorStreamAccumulator(): CursorStreamAccumulator {
     tools: new Map(),
     completedToolCalls: new Map(),
     outputTokens: 0,
+    sawTokenDelta: false,
     sawTurnEnded: false,
     toolCalls: 0,
   };
@@ -50,6 +52,7 @@ export function mapInteractionUpdate(
       return completeMcpTool(accumulator, message.value);
     case 'tokenDelta':
       accumulator.outputTokens += message.value.tokens ?? 0;
+      accumulator.sawTokenDelta = true;
       return [];
     case 'turnEnded':
       accumulator.sawTurnEnded = true;
@@ -190,7 +193,11 @@ function safeJson(text: string): unknown {
 function usageOf(accumulator: CursorStreamAccumulator): LanguageModelV4Usage {
   return {
     inputTokens: { total: undefined, noCache: undefined, cacheRead: undefined, cacheWrite: undefined },
-    outputTokens: { total: accumulator.outputTokens, text: undefined, reasoning: undefined },
+    outputTokens: {
+      total: accumulator.sawTokenDelta ? accumulator.outputTokens : undefined,
+      text: undefined,
+      reasoning: undefined,
+    },
   };
 }
 

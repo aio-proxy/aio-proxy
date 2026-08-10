@@ -33,6 +33,7 @@ export function runCursorTurn(input: {
 }): { stream: ReadableStream<LanguageModelV4StreamPart>; result: Promise<CursorTurnResult> } {
   const accumulator = createCursorStreamAccumulator();
   let conversationState = input.initialConversationState;
+  let sawCheckpoint = false;
   let settle!: (result: CursorTurnResult) => void;
   let fail!: (error: unknown) => void;
   const result = new Promise<CursorTurnResult>((resolve, reject) => {
@@ -103,6 +104,7 @@ export function runCursorTurn(input: {
               h2.write(encodeExecResponse(message.value, input.requestContextTools));
             } else if (message.case === 'conversationCheckpointUpdate') {
               conversationState = message.value;
+              sawCheckpoint = true;
             }
           }
           const trailers = await h2.trailers;
@@ -117,7 +119,7 @@ export function runCursorTurn(input: {
           controller.close();
           settle({
             conversationState,
-            checkpointUsable: accumulator.toolCalls === 0,
+            checkpointUsable: sawCheckpoint && accumulator.toolCalls === 0,
             pendingToolCalls: new Map(accumulator.completedToolCalls),
             blobStore: input.blobStore,
           });

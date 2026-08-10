@@ -144,6 +144,23 @@ test('finalizing an incomplete MCP call does not emit or complete it', () => {
   expect(accumulator.completedToolCalls.size).toBe(0);
 });
 
+test('usage distinguishes a missing token update from an observed zero', () => {
+  const unknown = createCursorStreamAccumulator();
+  mapInteractionUpdate(update({ case: 'textDelta', value: { text: 'Hi' } }), unknown);
+  const unknownFinish = finalizeCursorStream(unknown).at(-1) as {
+    usage: { outputTokens: { total: number | undefined } };
+  };
+
+  const zero = createCursorStreamAccumulator();
+  mapInteractionUpdate(update({ case: 'tokenDelta', value: { tokens: 0 } }), zero);
+  const zeroFinish = finalizeCursorStream(zero).at(-1) as {
+    usage: { outputTokens: { total: number | undefined } };
+  };
+
+  expect(unknownFinish.usage.outputTokens.total).toBeUndefined();
+  expect(zeroFinish.usage.outputTokens.total).toBe(0);
+});
+
 test('token deltas accumulate into usage.outputTokens.total', () => {
   const accumulator = createCursorStreamAccumulator();
   mapInteractionUpdate(update({ case: 'tokenDelta', value: { tokens: 7 } }), accumulator);
