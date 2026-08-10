@@ -21,8 +21,8 @@ export function buildMcpToolDefinitions(
   tools: LanguageModelV4CallOptions['tools'],
   toolChoice?: LanguageModelV4CallOptions['toolChoice'],
 ): McpToolDefinition[] {
-  if (!tools || tools.length === 0 || toolChoice?.type === 'none') return [];
-  const functionTools = tools.filter((tool): tool is LanguageModelV4FunctionTool => tool.type === 'function');
+  if (toolChoice?.type === 'none') return [];
+  const functionTools = (tools ?? []).filter((tool): tool is LanguageModelV4FunctionTool => tool.type === 'function');
   const selectedTools =
     toolChoice?.type === 'tool' ? functionTools.filter((tool) => tool.name === toolChoice.toolName) : functionTools;
   if (toolChoice?.type === 'tool' && selectedTools.length === 0) {

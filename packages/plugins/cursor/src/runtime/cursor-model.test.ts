@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 import { Buffer } from 'node:buffer';
 
-import type { LanguageModelV4CallOptions } from '@ai-sdk/provider';
+import { InvalidArgumentError, type LanguageModelV4CallOptions } from '@ai-sdk/provider';
 import type { CredentialPort } from '@aio-proxy/plugin-sdk';
 import { create, fromBinary, toBinary } from '@bufbuild/protobuf';
 
@@ -137,6 +137,30 @@ test('required tool choice emits an unsupported warning and doGenerate retains i
 
   const generated = await model.doGenerate(options);
   expect(generated.warnings).toEqual([{ type: 'unsupported', feature: 'toolChoice: required' }]);
+});
+
+test('an unavailable named tool fails before credential lookup and transport', async () => {
+  let credentialReads = 0;
+  let transportOpens = 0;
+  const { transport } = makeTransport();
+  const model = createCursorLanguageModel('claude-4.5-sonnet', {
+    ...runtimeWith(
+      { ...transport, openRun: (...args) => ((transportOpens += 1), transport.openRun(...args)) },
+      new CursorSessionStore(),
+    ),
+    credentials: {
+      ...credentials,
+      read: (...args) => ((credentialReads += 1), credentials.read(...args)),
+    },
+  });
+  const options = callOptions();
+  options.toolChoice = { type: 'tool', toolName: 'read' };
+
+  const error = await model.doStream(options).catch((cause) => cause);
+
+  expect(InvalidArgumentError.isInstance(error)).toBe(true);
+  expect(credentialReads).toBe(0);
+  expect(transportOpens).toBe(0);
 });
 
 test('a second call under the same session key reuses the stored conversationId', async () => {

@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test';
 
+import { InvalidArgumentError } from '@ai-sdk/provider';
 import { fromBinary, fromJson, toBinary } from '@bufbuild/protobuf';
 import { ValueSchema } from '@bufbuild/protobuf/wkt';
 
@@ -57,6 +58,14 @@ test('a named tool choice rejects a missing or provider-defined tool', () => {
       toolName: 'read',
     }),
   ).toThrow(/toolChoice.*read/i);
+});
+
+test('a named tool choice rejects when tools are undefined', () => {
+  expect(() => buildMcpToolDefinitions(undefined, { type: 'tool', toolName: 'read' })).toThrow(InvalidArgumentError);
+});
+
+test('a named tool choice rejects when tools are empty', () => {
+  expect(() => buildMcpToolDefinitions([], { type: 'tool', toolName: 'read' })).toThrow(InvalidArgumentError);
 });
 
 test('required keeps all usable function tools advertised', () => {
