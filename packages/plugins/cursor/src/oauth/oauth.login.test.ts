@@ -59,6 +59,25 @@ test('presents the login URL then returns credentials after a 404 then 200', asy
   ]);
 });
 
+test('rejects login when Cursor returns no stable account identifier', async () => {
+  const { ctx } = context();
+  await expect(
+    loginCursor(
+      ctx,
+      { waiting: 'Waiting' },
+      {
+        now: () => 0,
+        sleep: async () => {},
+        uuid: () => 'uuid-1',
+        fetch: async () =>
+          new Response(JSON.stringify({ accessToken: jwt({ exp: 4_000 }), refreshToken: 'rotating' }), {
+            status: 200,
+          }),
+      },
+    ),
+  ).rejects.toThrow(/stable account identifier/i);
+});
+
 test('fails after three consecutive poll errors', async () => {
   const { ctx } = context();
   await expect(

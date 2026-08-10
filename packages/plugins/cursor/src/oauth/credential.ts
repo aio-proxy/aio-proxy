@@ -1,6 +1,6 @@
 import { type CredentialPort, CredentialRefreshError, type RuntimeFetch } from '@aio-proxy/plugin-sdk';
 
-import { cursorIdentity, cursorTokenExpiry } from '../jwt/index';
+import { cursorTokenExpiry } from '../jwt/index';
 import type { CursorCredential } from '../schema';
 import { CURSOR_REFRESH_URL } from './constants';
 
@@ -63,7 +63,7 @@ export async function currentCursorCredential(
     const refreshed = await refreshCursorCredential(value, { ...options, signal });
     return {
       value: refreshed,
-      metadata: { accountLabel: cursorIdentity(refreshed).label, expiresAt: refreshed.expiresAt },
+      metadata: { accountLabel: 'Cursor', expiresAt: refreshed.expiresAt },
     };
   });
   return (await waitForCaller(refreshing, options.signal)).snapshot.value;

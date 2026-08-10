@@ -10,7 +10,6 @@ import { type CredentialPort, zod } from '@aio-proxy/plugin-sdk';
 import { fromBinary, toBinary } from '@bufbuild/protobuf';
 
 import { ConversationStateStructureSchema } from '../../gen/agent_pb';
-import { cursorIdentity } from '../../jwt';
 import { currentCursorCredential, type CursorOAuthDependencies } from '../../oauth';
 import type { CursorCredential } from '../../schema';
 import { type CursorSessionState, type CursorSessionStore, sessionKey } from '../../store/session-store';
@@ -114,12 +113,15 @@ export function createCursorLanguageModel(modelId: string, runtime: CursorModelR
       ...runtime.credentialOptions,
       ...(options.abortSignal === undefined ? {} : { signal: options.abortSignal }),
     });
-    // Stored identity fields survive access-token refreshes. The fingerprint
-    // fallback uses the refresh token only when Cursor exposes no account ID.
+    // Stored identity fields survive access-token refreshes. The refresh-token
+    // fallback preserves session continuity for legacy credentials only; new
+    // logins require a stable account ID.
     const email = credential.email?.trim().toLowerCase();
     const identityScope =
       credential.subject ??
-      (email === undefined || email === '' ? cursorIdentity(credential).fingerprint : `email:${email}`);
+      (email === undefined || email === ''
+        ? `sha256:${new Bun.CryptoHasher('sha256').update(`refresh:${credential.refreshToken}`).digest('hex')}`
+        : `email:${email}`);
     const logicalKey = logicalSessionKey(options.providerOptions);
     const routing = routingContinuity(options.providerOptions);
     const storeKey =

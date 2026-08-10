@@ -75,7 +75,7 @@ function completeLogin(payload: unknown, now: number): OAuthLoginResult<CursorCr
   ) {
     throw new Error('Cursor authentication returned an incomplete token');
   }
-  const identity = cursorIdentity({ accessToken, refreshToken });
+  const identity = cursorIdentity({ accessToken });
   const expiresAt = cursorTokenExpiry(accessToken, now);
   return {
     fingerprint: identity.fingerprint,

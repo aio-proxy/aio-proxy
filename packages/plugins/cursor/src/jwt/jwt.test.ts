@@ -14,18 +14,13 @@ test('falls back to now + 1 hour when exp is unparseable', () => {
   expect(cursorTokenExpiry(jwt({}), 1_000)).toBe(1_000 + 3_600_000);
 });
 
-test('derives a stable sub-based fingerprint independent of the refresh token', () => {
-  const a = cursorIdentity({ accessToken: jwt({ sub: 'user-1', email: 'A@B.com' }), refreshToken: 'r1' });
-  const b = cursorIdentity({ accessToken: jwt({ sub: 'user-1', email: 'A@B.com' }), refreshToken: 'r2-rotated' });
-  expect(a.fingerprint).toBe(b.fingerprint);
-  expect(a.fingerprint.startsWith('sha256:')).toBe(true);
-  expect(a.suggestedKey).toBe(`cursor-${a.fingerprint.slice('sha256:'.length, 'sha256:'.length + 12)}`);
-  expect(a.email).toBe('a@b.com');
+test('derives a stable sub-based fingerprint and normalizes email', () => {
+  const identity = cursorIdentity({ accessToken: jwt({ sub: 'user-1', email: 'A@B.com' }) });
+  expect(identity.fingerprint.startsWith('sha256:')).toBe(true);
+  expect(identity.suggestedKey).toBe(`cursor-${identity.fingerprint.slice('sha256:'.length, 'sha256:'.length + 12)}`);
+  expect(identity.email).toBe('a@b.com');
 });
 
-test('falls back to the refresh token only when no sub or email exists', () => {
-  const id = cursorIdentity({ accessToken: jwt({}), refreshToken: 'only-refresh' });
-  const expected = new Bun.CryptoHasher('sha256').update('refresh:only-refresh').digest('hex');
-  expect(id.fingerprint).toBe(`sha256:${expected}`);
-  expect(id.label).toBe('Cursor');
+test('rejects a token without a stable account identifier', () => {
+  expect(() => cursorIdentity({ accessToken: jwt({}) })).toThrow(/stable account identifier/i);
 });

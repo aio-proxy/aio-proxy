@@ -20,7 +20,7 @@ export function cursorTokenExpiry(token: string, now: number): number {
   return typeof exp === 'number' && Number.isFinite(exp) ? exp * 1000 - 5 * 60_000 : now + 3_600_000;
 }
 
-export function cursorIdentity(input: { readonly accessToken: string; readonly refreshToken: string }): {
+export function cursorIdentity(input: { readonly accessToken: string }): {
   readonly fingerprint: string;
   readonly suggestedKey: string;
   readonly label: string;
@@ -30,8 +30,10 @@ export function cursorIdentity(input: { readonly accessToken: string; readonly r
   const claims = readCursorClaims(input.accessToken);
   const subject = readClaim(claims, 'sub');
   const email = readClaim(claims, 'email')?.toLowerCase();
-  const identity =
-    subject !== undefined ? `sub:${subject}` : email !== undefined ? `email:${email}` : `refresh:${input.refreshToken}`;
+  if (subject === undefined && email === undefined) {
+    throw new Error('Cursor authentication did not return a stable account identifier');
+  }
+  const identity = subject !== undefined ? `sub:${subject}` : `email:${email}`;
   const digest = new Bun.CryptoHasher('sha256').update(identity).digest('hex');
   return {
     fingerprint: `sha256:${digest}`,
