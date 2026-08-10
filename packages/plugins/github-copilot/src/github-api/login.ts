@@ -1,4 +1,4 @@
-import type { LocalizedText, OAuthLoginContext } from '@aio-proxy/plugin-sdk';
+import type { LocalizedText, OAuthLoginContext, RuntimeFetch } from '@aio-proxy/plugin-sdk';
 
 import { deviceCodeResponseSchema, githubTokenResponseSchema, githubUserResponseSchema } from '../schema';
 import { fetchCopilotToken } from './credential';
@@ -21,14 +21,15 @@ export async function loginToGitHubCopilot(
 ): Promise<{
   readonly fingerprint: string;
   readonly suggestedKey: string;
-  readonly label?: string;
+  readonly accountLabel?: string;
   readonly credentials: GitHubCopilotCredential;
   readonly expiresAt: number;
 }> {
   const enterpriseURL = options.deploymentType === 'enterprise' ? options.enterpriseURL : undefined;
   const authBase = enterpriseURL ?? 'https://github.com';
   const apiBase = githubApiBase(enterpriseURL);
-  const device = await requestDeviceCode(authBase, context.signal);
+  const fetcher = context.fetch ?? globalThis.fetch;
+  const device = await requestDeviceCode(authBase, context.signal, fetcher);
   await context.authorization.presentDeviceCode({
     url: device.verificationUriComplete ?? device.verificationUri,
     userCode: device.userCode,
@@ -37,14 +38,14 @@ export async function loginToGitHubCopilot(
 
   const githubToken = await pollGitHubToken(authBase, device, context, presentationText.waitingForAuthorization);
   context.progress(presentationText.refreshingToken);
-  const copilot = await fetchCopilotToken(apiBase, githubToken, context.signal);
+  const copilot = await fetchCopilotToken(apiBase, githubToken, context.signal, fetcher);
   const baseURL = getGitHubCopilotBaseURL(copilot.access, enterpriseURL);
-  const user = await fetchGitHubUser(apiBase, githubToken, context.signal);
+  const user = await fetchGitHubUser(apiBase, githubToken, context.signal, fetcher);
 
   return {
     fingerprint: user.id,
     suggestedKey: `copilot-${user.id}`,
-    ...(user.login === undefined ? {} : { label: user.login }),
+    ...(user.login === undefined ? {} : { accountLabel: user.login }),
     credentials: {
       githubToken,
       copilotToken: copilot.access,
@@ -56,7 +57,7 @@ export async function loginToGitHubCopilot(
   };
 }
 
-async function requestDeviceCode(authBase: string, signal: AbortSignal) {
+async function requestDeviceCode(authBase: string, signal: AbortSignal, fetcher: RuntimeFetch) {
   return await fetchJson(
     `${authBase}/login/device/code`,
     {
@@ -66,6 +67,7 @@ async function requestDeviceCode(authBase: string, signal: AbortSignal) {
       signal,
     },
     deviceCodeResponseSchema,
+    fetcher,
   );
 }
 
@@ -92,6 +94,7 @@ async function pollGitHubToken(
         signal: context.signal,
       },
       githubTokenResponseSchema,
+      context.fetch,
     );
     if (body.access_token !== undefined) return body.access_token;
     if (body.error === 'authorization_pending') {
@@ -109,11 +112,12 @@ async function pollGitHubToken(
   throw new Error('GitHub device authorization timed out');
 }
 
-async function fetchGitHubUser(apiBase: string, githubToken: string, signal: AbortSignal) {
+async function fetchGitHubUser(apiBase: string, githubToken: string, signal: AbortSignal, fetcher: RuntimeFetch) {
   const body = await fetchJson(
     `${apiBase}/user`,
     { headers: authHeaders(githubToken), signal },
     githubUserResponseSchema,
+    fetcher,
   );
   return { id: body.id.toString(), login: body.login };
 }

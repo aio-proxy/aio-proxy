@@ -1,6 +1,5 @@
 import { ProviderProtocol } from '@aio-proxy/types';
-
-import { cn } from '@/lib/utils';
+import { cn } from '@aio-proxy/ui/lib/utils';
 
 import { withLobeIcon } from '../lobe-icon';
 

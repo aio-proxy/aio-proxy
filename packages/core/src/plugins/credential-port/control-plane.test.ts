@@ -57,7 +57,7 @@ test('control-plane refresh preserves an existing diagnostic while retaining CAS
   await expect(
     credentials.refresh(current.revision, async () => ({
       value: { token: 'refreshed-secret' },
-      metadata: { label: 'Refreshed', expiresAt: 42 },
+      metadata: { accountLabel: 'Refreshed', expiresAt: 42 },
     })),
   ).resolves.toEqual({
     status: 'updated',

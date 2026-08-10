@@ -1,19 +1,19 @@
 import { m } from '@aio-proxy/i18n';
 import type { DashboardTraceSummary } from '@aio-proxy/types';
+import { Button } from '@aio-proxy/ui/components/button';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@aio-proxy/ui/components/tooltip';
 import type { ReactNode } from 'react';
 
 import { ProtocolLabel } from '@/components/protocol-label';
 import { TokenCount } from '@/components/token-count';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
+import { TRACE_PLACEHOLDER } from '../lib/trace-display-constants';
 import {
   displayTotalTokens,
   formatTraceCost,
   formatTraceDuration,
   formatTraceResultDetails,
-} from '../trace-formatters';
+} from '../lib/trace-formatters';
 import { TraceStatus } from './trace-status';
 
 interface TraceSummaryProps {
@@ -22,7 +22,6 @@ interface TraceSummaryProps {
 }
 
 export const TraceSummary: React.FC<TraceSummaryProps> = ({ trace, onSessionSelect }) => {
-  const missing = m['dashboard.traces.not_available']();
   const sessionValue =
     trace.session === undefined ? undefined : (
       <Tooltip>
@@ -31,7 +30,7 @@ export const TraceSummary: React.FC<TraceSummaryProps> = ({ trace, onSessionSele
             <Button
               type="button"
               variant="link"
-              className="h-auto max-w-full justify-end px-0 py-0 text-right whitespace-normal"
+              className="h-auto max-w-full justify-start px-0 py-0 text-left whitespace-normal"
               onClick={() => onSessionSelect(trace.session!)}
             />
           }
@@ -61,63 +60,81 @@ export const TraceSummary: React.FC<TraceSummaryProps> = ({ trace, onSessionSele
         <TooltipContent>{m['dashboard.traces.upstream_model_value']({ model: upstreamModel })}</TooltipContent>
       </Tooltip>
     );
-  const resultDetails = formatTraceResultDetails({
-    httpStatus: trace.finalHttpStatus,
-    errorType: trace.errorType,
-    errorCode: trace.errorCode,
-  });
-  const summaryRows: readonly (readonly [string, ReactNode])[] = [
-    [m['dashboard.traces.trace_id'](), trace.traceId],
-    [m['dashboard.traces.root_span_id'](), trace.rootSpanId],
-    [m['dashboard.traces.request_id'](), trace.requestId],
-    [m['dashboard.traces.status'](), <TraceStatus key="status" item={trace} className="justify-end" />],
-    [m['dashboard.traces.session'](), sessionValue],
-    [m['dashboard.traces.protocol'](), <ProtocolLabel key="protocol" protocol={trace.inboundProtocol} />],
-    [m['dashboard.traces.model'](), modelValue],
-    [m['dashboard.traces.final_provider'](), trace.finalProviderId],
-    [m['dashboard.traces.result_details'](), resultDetails],
-    [m['dashboard.traces.started_at'](), new Date(trace.startedAt).toLocaleString()],
-    [m['dashboard.traces.ended_at'](), trace.endedAt === null ? undefined : new Date(trace.endedAt).toLocaleString()],
-    [m['dashboard.traces.duration'](), formatTraceDuration(trace.durationMs)],
-  ];
-  const totalTokens = displayTotalTokens(trace.usage);
-  const usageRows: readonly (readonly [string, ReactNode])[] = [
-    [m['dashboard.traces.usage_provider'](), trace.usage?.providerId],
-    [m['dashboard.traces.usage_model'](), trace.usage?.modelId],
-    [m['dashboard.traces.price_model_id'](), trace.usage?.priceModelId],
-    [m['dashboard.traces.input_tokens'](), <TokenCount key="input" value={trace.usage?.inputTokens} />],
-    [m['dashboard.traces.output_tokens'](), <TokenCount key="output" value={trace.usage?.outputTokens} />],
-    [m['dashboard.traces.tokens'](), <TokenCount key="total" value={totalTokens} />],
-    [m['dashboard.traces.cache_read_tokens'](), <TokenCount key="cache-read" value={trace.usage?.cacheReadTokens} />],
+  const sections: readonly (readonly [string, readonly (readonly [string, ReactNode])[]])[] = [
     [
-      m['dashboard.traces.cache_write_tokens'](),
-      <TokenCount key="cache-write" value={trace.usage?.cacheWriteTokens} />,
+      m['dashboard.traces.summary'](),
+      [
+        [m['dashboard.traces.trace_id'](), trace.traceId],
+        [m['dashboard.traces.root_span_id'](), trace.rootSpanId],
+        [m['dashboard.traces.request_id'](), trace.requestId],
+        [m['dashboard.traces.session_id'](), sessionValue],
+        [m['dashboard.traces.started_at'](), new Date(trace.startedAt).toLocaleString()],
+        [
+          m['dashboard.traces.ended_at'](),
+          trace.endedAt === null ? undefined : new Date(trace.endedAt).toLocaleString(),
+        ],
+        [m['dashboard.traces.duration'](), formatTraceDuration(trace.durationMs)],
+      ],
     ],
-    [m['dashboard.traces.reasoning_tokens'](), <TokenCount key="reasoning" value={trace.usage?.reasoningTokens} />],
-    [m['dashboard.traces.cost'](), formatTraceCost(trace.usage?.estimatedCostUsd)],
+    [
+      m['dashboard.traces.routing'](),
+      [
+        [m['dashboard.traces.protocol'](), <ProtocolLabel key="protocol" protocol={trace.inboundProtocol} />],
+        [m['dashboard.traces.model'](), modelValue],
+        [m['dashboard.traces.final_provider'](), trace.finalProviderId],
+      ],
+    ],
+    [
+      m['dashboard.traces.result_details'](),
+      [
+        [m['dashboard.traces.status'](), <TraceStatus key="status" item={trace} />],
+        [
+          m['dashboard.traces.result_details'](),
+          formatTraceResultDetails({
+            httpStatus: trace.finalHttpStatus,
+            errorType: trace.errorType,
+            errorCode: trace.errorCode,
+          }),
+        ],
+      ],
+    ],
+    [
+      m['dashboard.traces.usage'](),
+      [
+        [m['dashboard.traces.usage_provider'](), trace.usage?.providerId],
+        [m['dashboard.traces.usage_model'](), trace.usage?.modelId],
+        [m['dashboard.traces.price_model_id'](), trace.usage?.priceModelId],
+        [m['dashboard.traces.input_tokens'](), <TokenCount key="input" value={trace.usage?.inputTokens} />],
+        [m['dashboard.traces.output_tokens'](), <TokenCount key="output" value={trace.usage?.outputTokens} />],
+        [m['dashboard.traces.tokens'](), <TokenCount key="total" value={displayTotalTokens(trace.usage)} />],
+        [
+          m['dashboard.traces.cache_read_tokens'](),
+          <TokenCount key="cache-read" value={trace.usage?.cacheReadTokens} />,
+        ],
+        [
+          m['dashboard.traces.cache_write_tokens'](),
+          <TokenCount key="cache-write" value={trace.usage?.cacheWriteTokens} />,
+        ],
+        [m['dashboard.traces.reasoning_tokens'](), <TokenCount key="reasoning" value={trace.usage?.reasoningTokens} />],
+        [m['dashboard.traces.cost'](), formatTraceCost(trace.usage?.estimatedCostUsd)],
+      ],
+    ],
   ];
 
   return (
-    <div className="grid gap-4 xl:grid-cols-2" data-testid="trace-summary">
-      {[
-        [m['dashboard.traces.summary'](), summaryRows],
-        [m['dashboard.traces.usage'](), usageRows],
-      ].map(([title, rows]) => (
-        <Card key={title as string}>
-          <CardHeader>
-            <CardTitle>{title as string}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2 text-sm">
-              {(rows as typeof summaryRows).map(([label, value]) => (
-                <div className="contents" key={label}>
-                  <dt className="text-muted-foreground">{label}</dt>
-                  <dd className="min-w-0 text-right wrap-break-word">{value ?? missing}</dd>
-                </div>
-              ))}
-            </dl>
-          </CardContent>
-        </Card>
+    <div className="space-y-6" data-testid="trace-summary">
+      {sections.map(([title, rows]) => (
+        <section className="space-y-3" key={title}>
+          <h2 className="font-heading text-sm font-semibold">{title}</h2>
+          <dl className="space-y-2 text-sm">
+            {rows.map(([label, value]) => (
+              <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)] gap-3" key={label}>
+                <dt className="text-muted-foreground">{label}</dt>
+                <dd className="min-w-0 text-left wrap-break-word">{value ?? TRACE_PLACEHOLDER}</dd>
+              </div>
+            ))}
+          </dl>
+        </section>
       ))}
     </div>
   );

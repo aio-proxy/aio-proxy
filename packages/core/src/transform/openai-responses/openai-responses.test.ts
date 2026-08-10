@@ -42,6 +42,50 @@ test('converts a developer message to a system message', () => {
   }
 });
 
+test('prepends top-level instructions as a system message', () => {
+  const request = parseOpenAIResponses({
+    model: 'gpt-5.6-terra',
+    instructions: 'Follow the repository guidance.',
+    input: 'hello',
+  });
+
+  expect(openAIResponsesToModelMessages(request).messages).toEqual([
+    { role: 'system', content: 'Follow the repository guidance.' },
+    { role: 'user', content: 'hello' },
+  ]);
+});
+
+test('omits null top-level instructions on the model path', () => {
+  const request = parseOpenAIResponses({
+    model: 'gpt-5.6-terra',
+    instructions: null,
+    input: 'hello',
+  });
+
+  expect(openAIResponsesToModelMessages(request).messages).toEqual([{ role: 'user', content: 'hello' }]);
+});
+
+test('drops hosted web search on the model path', () => {
+  const warn = spyOn(console, 'warn').mockImplementation(() => {});
+  const request = parseOpenAIResponses({
+    model: 'gpt-5.6-terra',
+    input: 'hello',
+    tools: [{ type: 'web_search' }],
+  });
+
+  try {
+    expect(openAIResponsesToModelMessages(request).tools).toBeUndefined();
+    expect(warn).toHaveBeenCalledWith(
+      '[aio-proxy] OpenAI Responses model conversion degraded',
+      'web_search',
+      'tools.0.type',
+      'dropped',
+    );
+  } finally {
+    warn.mockRestore();
+  }
+});
+
 test('converts function-call history', () => {
   const request = parseOpenAIResponses({
     model: 'gpt-5.6-terra',
@@ -141,6 +185,20 @@ test('rejects invalid function arguments', () => {
   });
 
   expect(() => openAIResponsesToModelMessages(request)).toThrow(new OpenAIResponsesTransformError('input.0.arguments'));
+});
+
+test('converts empty function arguments to an empty object', () => {
+  const request = parseOpenAIResponses({
+    model: 'gpt-5.6-terra',
+    input: [{ type: 'function_call', call_id: 'call_1', name: 'get_goal', arguments: '' }],
+  });
+
+  expect(openAIResponsesToModelMessages(request).messages).toEqual([
+    {
+      role: 'assistant',
+      content: [{ type: 'tool-call', toolCallId: 'call_1', toolName: 'get_goal', input: {} }],
+    },
+  ]);
 });
 
 test('groups consecutive parallel calls and outputs', () => {

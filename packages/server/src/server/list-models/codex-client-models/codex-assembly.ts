@@ -1,9 +1,6 @@
-import type { ModelsDevModel } from '@aio-proxy/core';
-import type { CodexUpstreamModel } from '@aio-proxy/types';
+import type { CodexUpstreamModel, ModelCapabilities, ModelMetadata } from '@aio-proxy/types';
 
 import instructions from './default-instructions.md' with { type: 'text' };
-
-const DEFAULT_CONTEXT_WINDOW = 272_000;
 
 const REASONING_DESCRIPTIONS = {
   low: 'Fast responses with lighter reasoning',
@@ -15,6 +12,13 @@ const REASONING_DESCRIPTIONS = {
 
 const REASONING_LEVELS = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
 type ReasoningLevel = (typeof REASONING_LEVELS)[number];
+
+// Renders the bundled base prompt for a slug. Case B uses it as the synthesized
+// instructions; Case A uses it only as the last-resort fallback when an upstream
+// row carries neither base_instructions nor model_messages.instructions_template.
+export function renderDefaultInstructions(slug: string): string {
+  return instructions.replaceAll('{{model_name}}', slug);
+}
 
 // Codex's ModelInfo struct requires these fields (no serde default, non-Option);
 // a synthesized entry that omits any one makes the client reject the whole
@@ -32,48 +36,64 @@ const REQUIRED_DEFAULTS = {
 } as const;
 
 type AssembleInput = {
-  slug: string;
-  displayName: string;
-  metadata: ModelsDevModel | undefined;
+  readonly slug: string;
+  readonly displayName: string;
+  readonly metadata: Pick<ModelMetadata, 'description' | 'capabilities'> | undefined;
+  readonly contextWindow: number;
+  readonly maxContextWindow: number;
   // A complete upstream ModelInfo cloned as the base so every required field is
   // present. Undefined only when the catalog cache is empty (first-run offline).
-  template: CodexUpstreamModel | undefined;
+  readonly template: CodexUpstreamModel | undefined;
 };
 
 function reasoningLevel(effort: ReasoningLevel) {
   return { effort, description: REASONING_DESCRIPTIONS[effort] };
 }
 
-// Codex is told exactly which effort levels the model accepts, read straight
-// from the models.dev `effort` reasoning option. No metadata at all falls back
-// to the full list (unknown, assume all); an explicit non-reasoning model
-// yields an empty list, so we advertise no reasoning and no default level.
-function reasoningLevelsFor(metadata: ModelsDevModel | undefined): readonly ReasoningLevel[] {
-  if (metadata === undefined) return REASONING_LEVELS;
-  const effort = metadata.reasoning_options?.find((option) => option.type === 'effort');
+function reasoningLevelsFor(
+  options: ModelCapabilities['reasoningOptions'],
+  reasoning: ModelCapabilities['reasoning'],
+  fillDefaults: boolean,
+): readonly ReasoningLevel[] | undefined {
+  if (reasoning === false) return [];
+  if (options === undefined) {
+    return fillDefaults ? REASONING_LEVELS : undefined;
+  }
+  const effort = options.find((option) => option.type === 'effort');
   if (effort === undefined) return [];
   const values = new Set(effort.values ?? []);
   return REASONING_LEVELS.filter((level) => values.has(level));
 }
 
+export function projectCodexMetadata(
+  metadata: Pick<ModelMetadata, 'description' | 'capabilities'> | undefined,
+  fillDefaults: boolean,
+): Record<string, unknown> {
+  const patch: Record<string, unknown> = {};
+  if (metadata?.description !== undefined || fillDefaults) {
+    patch['description'] = metadata?.description ?? '';
+  }
+
+  const inputs = metadata?.capabilities?.modalities?.input;
+  if (inputs !== undefined || fillDefaults) {
+    patch['input_modalities'] = ['text', ...((inputs ?? ['image']).includes('image') ? ['image'] : [])];
+  }
+
+  const levels = reasoningLevelsFor(
+    metadata?.capabilities?.reasoningOptions,
+    metadata?.capabilities?.reasoning,
+    fillDefaults,
+  );
+  if (levels !== undefined) {
+    patch['supported_reasoning_levels'] = levels.map(reasoningLevel);
+    const defaultLevel = levels.includes('low') ? 'low' : levels[0];
+    if (defaultLevel !== undefined) patch['default_reasoning_level'] = defaultLevel;
+  }
+  return patch;
+}
+
 export function assembleCodexModel(input: AssembleInput): Record<string, unknown> {
-  const text = instructions.replaceAll('{{model_name}}', input.slug);
-  const contextWindow = input.metadata?.limit.input ?? input.metadata?.limit.context ?? DEFAULT_CONTEXT_WINDOW;
-
-  // Codex's InputModality enum accepts only 'text' and 'image'; emitting 'pdf'
-  // (a common models.dev signal, e.g. Claude) makes the client reject the whole
-  // catalog. Case A passes the upstream codex row through verbatim, so this only
-  // constrains synthesized (Case B) entries.
-  const modalityInputs = input.metadata?.modalities.input;
-  const inputModalities = modalityInputs
-    ? ['text', ...(modalityInputs.includes('image') ? ['image'] : [])]
-    : ['text', 'image'];
-
-  const levels = reasoningLevelsFor(input.metadata);
-  const supportedReasoningLevels = levels.map(reasoningLevel);
-  // Empty levels (an explicit non-reasoning model) must omit the field entirely;
-  // Codex rejects a default that is not listed and would drop the whole catalog.
-  const defaultReasoningLevel = levels.includes('low') ? 'low' : levels[0];
+  const text = renderDefaultInstructions(input.slug);
 
   // Clone a complete template so every required field is inherited; fall back to
   // REQUIRED_DEFAULTS offline. Template values win where present, defaults fill gaps.
@@ -93,15 +113,12 @@ export function assembleCodexModel(input: AssembleInput): Record<string, unknown
     slug: input.slug,
     id: input.slug,
     display_name: input.displayName,
-    description: input.metadata?.description || '',
     priority: 999,
     supported_in_api: true,
     visibility: 'list',
-    context_window: contextWindow,
-    max_context_window: contextWindow,
-    input_modalities: inputModalities,
-    supported_reasoning_levels: supportedReasoningLevels,
-    ...(defaultReasoningLevel === undefined ? {} : { default_reasoning_level: defaultReasoningLevel }),
+    context_window: input.contextWindow,
+    max_context_window: input.maxContextWindow,
+    ...projectCodexMetadata(input.metadata, true),
     supports_search_tool: false,
     prefer_websockets: false,
     service_tiers: [],

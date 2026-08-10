@@ -18,15 +18,15 @@ export async function doctorCommand(
   const { host, port } = await resolveControlAddress(options);
   const url = controlBaseUrl(host, port);
 
-  print(m.cli_doctor_config_path({ path: configPath() }));
+  print(m['cli.doctor.config_path']({ path: configPath() }));
 
   const health = await probeHealth(url);
   print(
     health === null
-      ? m.cli_doctor_server_unreachable({ url })
-      : m.cli_doctor_server_reachable({ url, version: health.version ?? 'unknown' }),
+      ? m['cli.doctor.server_unreachable']({ url })
+      : m['cli.doctor.server_reachable']({ url, version: health.version ?? 'unknown' }),
   );
 
   const installed = await listInstalledNpmPackages();
-  print(m.cli_doctor_plugin_count({ count: installed.length }));
+  print(m['cli.doctor.plugin_count']({ count: installed.length }));
 }

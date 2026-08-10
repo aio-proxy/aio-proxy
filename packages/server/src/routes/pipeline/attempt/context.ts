@@ -1,5 +1,6 @@
 import type { ModelInvocation, ProtocolAdapter, RouterResolution } from '@aio-proxy/core';
 import type { LogicalRequestContext } from '@aio-proxy/plugin-sdk';
+import type { ProviderProtocol } from '@aio-proxy/types';
 
 import type { SessionIdentity } from '../../../logical-session-store';
 import type { RequestTraceSession } from '../../../request-tracing';
@@ -68,7 +69,7 @@ export type CandidateSlot = {
     targetProtocol?: AttemptTraceMetadata['targetProtocol'];
     selectionReason: AttemptTraceMetadata['selectionReason'];
   };
-  readonly inAttempt: <T>(operation: () => T) => T;
+  readonly inAttempt: <T>(targetProtocol: ProviderProtocol | undefined, operation: () => T) => T;
   // Holds the attempt span once the provider call begins, so a throw during the
   // provider/egress phase reuses it instead of opening a duplicate failure span.
   readonly spanRef: { current: OpenSpan | undefined };

@@ -11,7 +11,7 @@ import type { ProviderLoginDeps } from './index';
 export function adapter(id: string): OAuthAdapter {
   return {
     id,
-    label: id,
+    displayName: id,
     account: { options: { schema: zod.object({}), form: [] } },
     credentials: zod.object({ token: zod.string() }),
     async login() {

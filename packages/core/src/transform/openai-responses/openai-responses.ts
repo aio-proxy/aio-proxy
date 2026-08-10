@@ -17,6 +17,7 @@ import type {
 const supportedRequestKeys = new Set([
   'model',
   'input',
+  'instructions',
   'tools',
   'reasoning',
   'stream',
@@ -42,6 +43,10 @@ const supportedRequestKeys = new Set([
 export function openAIResponsesToModelMessages(request: OpenAIResponsesRequest): OpenAIResponsesModelMessages {
   validateModelCompatibility(request);
   const input = typeof request.input === 'string' ? undefined : request.input;
+  const messages =
+    typeof request.input === 'string'
+      ? [{ role: 'user' as const, content: request.input }]
+      : openAIResponsesInputMessages(request.input);
   const tools = normalizeOpenAIResponsesTools([
     { tools: request.tools, source: 'request' },
     ...(input ?? [])
@@ -52,33 +57,14 @@ export function openAIResponsesToModelMessages(request: OpenAIResponsesRequest):
       )
       .filter((source) => source !== undefined),
   ]);
-  validateCustomHistory(input, tools);
   return {
-    messages:
-      typeof request.input === 'string'
-        ? [{ role: 'user', content: request.input }]
-        : openAIResponsesInputMessages(request.input),
+    messages: [
+      ...(typeof request.instructions === 'string' ? [{ role: 'system' as const, content: request.instructions }] : []),
+      ...messages,
+    ],
     ...(tools === undefined ? {} : { tools }),
     settings: transformSettings(request, tools),
   };
-}
-
-function validateCustomHistory(
-  input: Exclude<OpenAIResponsesRequest['input'], string> | undefined,
-  tools: readonly OpenAIResponsesTransformTool[] | undefined,
-): void {
-  if (input === undefined) return;
-  const customNames = new Set(
-    (tools ?? []).flatMap((tool) => {
-      const metadata = readOpenAIResponsesWireMetadata(tool.metadata);
-      return metadata?.wireToolType === 'custom' && metadata.wireToolName !== undefined ? [metadata.wireToolName] : [];
-    }),
-  );
-  for (const [index, item] of input.entries()) {
-    if (item.type === 'custom_tool_call' && !customNames.has(item.name)) {
-      rejectOpenAIResponsesFeature('custom_tool_call', `input.${index}.type`);
-    }
-  }
 }
 
 function validateModelCompatibility(request: OpenAIResponsesRequest): void {

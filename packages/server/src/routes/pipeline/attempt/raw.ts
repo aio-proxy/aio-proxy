@@ -1,11 +1,12 @@
 import { attributeName } from '../../../request-tracing';
 import { terminalCompletion } from '../../../route-observation';
 import type { RawTransport } from '../../../runtime';
-import { attemptBase } from '../attempt-base';
+import { attemptBase, candidateConfigPrice } from '../attempt-base';
 import { failureTerminal, finalFailure, shouldFallbackStatus } from '../failure';
 import { retainResponseBody } from '../stream';
 import type { AttemptLoopContext, AttemptStep, CandidateSlot } from './context';
 import { cooldownTtlMs } from './cooldown-write';
+import { resolveSupportedEfforts } from './effort-capability';
 import { attemptLog } from './emit';
 
 // Raw passthrough for one candidate. The attempt span opens before the provider
@@ -22,9 +23,16 @@ export async function attemptRawCandidate<TRequest, TContext>(
   const attemptSpan = ctx.emitter.startAttempt(attemptBase(provider, candidate.modelId, startedAt, slot.trace), index);
   slot.spanRef.current = attemptSpan;
 
-  const upstream = await adapter.rawRequest(rawRequest, request, candidate.modelId, context);
+  // Only resolve capabilities when the request carries an effort to clamp;
+  // otherwise the rewrite has nothing to normalize and the hot-path catalog
+  // read is pure overhead.
+  const hasEffort = adapter.variant(request, context) !== undefined;
+  const supportedEfforts = hasEffort ? await resolveSupportedEfforts(candidate.modelId) : new Set<string>();
+  const upstream = await adapter.rawRequest(rawRequest, request, candidate.modelId, supportedEfforts, context);
   observation.markTransportUnavailable();
-  const response = await inAttempt(() => raw.invoke(upstream, logicalRequest, { upstreamStream: ctx.streamRequested }));
+  const response = await inAttempt(adapter.protocol, () =>
+    raw.invoke(upstream, logicalRequest, { upstreamStream: ctx.streamRequested }),
+  );
   if (!(response instanceof Response)) throw new TypeError('Provider raw transport must return a Response');
 
   const fallback = hasNext && shouldFallbackStatus(response.status);
@@ -41,8 +49,8 @@ export async function attemptRawCandidate<TRequest, TContext>(
       } catch {}
       return { kind: 'fallback', lastFailure: response };
     }
-    session.finish(finalFailure(base, response.status));
     const retained = retainedFailure(response, ctx);
+    session.finish({ ...finalFailure(base, retained.status), clientResponse: retained });
     return { kind: 'return', response: retained };
   }
 
@@ -50,6 +58,7 @@ export async function attemptRawCandidate<TRequest, TContext>(
   slot.spanRef.current = undefined;
   let capturedResponseId: string | undefined;
   const normalizedResponse = withEventStreamContentType(response, ctx.streamRequested);
+  const configPrice = candidateConfigPrice(provider, candidate.modelId);
   const captured = source.usageCapture.passthrough({
     response: normalizedResponse,
     protocol: adapter.protocol,
@@ -57,12 +66,15 @@ export async function attemptRawCandidate<TRequest, TContext>(
     modelId: candidate.modelId,
     requestedModelId: ctx.requestedModelId,
     observation,
+    ...(configPrice === undefined ? {} : { configPrice }),
     ...(ctx.streamRequested ? { startedAt } : {}),
     ...(adapter.session === undefined
       ? {}
       : {
           onResponseId: (responseId: string) => {
             capturedResponseId = responseId;
+          },
+          onCommit: (responseId: string) => {
             source.logicalSessionStore.commitResponse(
               responseId,
               logicalRequest.session.key,
@@ -78,6 +90,7 @@ export async function attemptRawCandidate<TRequest, TContext>(
       observation,
       terminalCompletion(captured.completion, rawRequest.signal).finally(release),
       { providerId: provider.id, modelId: candidate.modelId },
+      captured.value,
       () => capturedResponseId,
     ),
   );

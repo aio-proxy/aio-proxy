@@ -5,7 +5,7 @@ Contributions to AIO Proxy are welcome, including bug reports, documentation imp
 ## Requirements
 
 - Git
-- Bun 1.3.14 or later
+- Bun 1.3.14 or later. Bun 1.3.x silently drops a `ReadableStream` request body when `fetch` uses a proxy; aio-proxy works around this in `createProxyFetch` by buffering the request body on the proxy path, so proxied streaming passthrough works on 1.3.14. Once Bun 1.4.0 stable is released (issue #128) this workaround can be removed and the pins bumped to 1.4.0.
 
 ## Set up the development environment
 
@@ -54,3 +54,18 @@ When changing only part of the workspace, also run the tests for each affected p
 - Describe the problem, solution, and verification results in the pull request.
 - Keep each pull request focused on one clearly defined problem.
 - Confirm that formatting, lint, and relevant tests pass before submission.
+
+## Changesets
+
+Releases are driven by [Changesets](https://github.com/changesets/changesets). If your change affects the published products, add a changeset in the same pull request:
+
+```bash
+bun changeset
+```
+
+- Target only the public product packages — `aio-proxy` (the CLI/proxy launcher) or `@aio-proxy/plugin-sdk`. A CI guard rejects changesets that target private or platform-binary packages.
+- Put the affected internal area in the summary text, e.g. `core: fix provider fallback`. Every package is version-bumped in lockstep, but only the public products get a `CHANGELOG.md` and a GitHub Release, so the note must live on one of them.
+- Pick the bump level and write a short, user-facing summary. Commit the generated `.changeset/*.md` file with your change.
+- Purely internal changes (refactors, tests, tooling) need no changeset.
+
+You do not run `changeset version` or publish by hand. On merge to `main`, CI maintains a standing `chore: release` Version PR that consumes the accumulated changesets; merging that PR is what cuts a release.

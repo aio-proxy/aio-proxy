@@ -1,12 +1,11 @@
 import { m } from '@aio-proxy/i18n';
 import type { DashboardOAuthSession } from '@aio-proxy/types';
+import { Button } from '@aio-proxy/ui/components/button';
+import { Field } from '@aio-proxy/ui/components/field';
+import { Input } from '@aio-proxy/ui/components/input';
+import { Label } from '@aio-proxy/ui/components/label';
+import { Spinner } from '@aio-proxy/ui/components/spinner';
 import { useForm } from '@tanstack/react-form';
-
-import { Button } from '@/components/ui/button';
-import { Field } from '@/components/ui/field';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Spinner } from '@/components/ui/spinner';
 
 interface OAuthAuthorizationPanelProps {
   readonly session: DashboardOAuthSession;
@@ -28,6 +27,16 @@ export const OAuthAuthorizationPanel: React.FC<OAuthAuthorizationPanelProps> = (
       callbackForm.reset();
     },
   });
+  let failedMessage: string | undefined;
+  if (session.status === 'failed') {
+    if (session.code === 'OAUTH_SESSION_UNAVAILABLE')
+      failedMessage = m['dashboard.providers.oauth.session_unavailable']();
+    else if (session.code === 'PROVIDER_FINGERPRINT_MISMATCH') {
+      failedMessage = m['dashboard.providers.oauth.fingerprint_mismatch']();
+    } else {
+      failedMessage = m['dashboard.providers.oauth.failed']({ code: session.code });
+    }
+  }
 
   return (
     <div className="space-y-4 rounded-lg border p-4">
@@ -87,15 +96,7 @@ export const OAuthAuthorizationPanel: React.FC<OAuthAuthorizationPanelProps> = (
           ) : null}
         </div>
       ) : null}
-      {session.status === 'failed' ? (
-        <p className="text-destructive">
-          {session.code === 'OAUTH_SESSION_UNAVAILABLE'
-            ? m['dashboard.providers.oauth.session_unavailable']()
-            : session.code === 'PROVIDER_FINGERPRINT_MISMATCH'
-              ? m['dashboard.providers.oauth.fingerprint_mismatch']()
-              : m['dashboard.providers.oauth.failed']({ code: session.code })}
-        </p>
-      ) : null}
+      {session.status === 'failed' ? <p className="text-destructive">{failedMessage}</p> : null}
       {session.status === 'cancelled' ? <p>{m['dashboard.providers.oauth.authorization_cancelled']()}</p> : null}
       {session.status === 'succeeded' && session.duplicate ? <p>{m['dashboard.providers.oauth.duplicate']()}</p> : null}
       {session.status === 'succeeded' && session.warning === 'catalog_unavailable' ? (

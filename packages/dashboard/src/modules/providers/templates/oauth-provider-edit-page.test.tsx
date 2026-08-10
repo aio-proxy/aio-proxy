@@ -1,8 +1,16 @@
 import type { DashboardOAuthProviderEdit, OAuthProvider } from '@aio-proxy/types';
 import { afterEach, expect, rs, test } from '@rstest/core';
 import { render, screen, within } from '@testing-library/react';
+import { useEffect } from 'react';
 
 import { OAuthProviderEditPage } from './oauth-provider-edit-page';
+
+rs.mock('../components/provider-request-transforms/provider-request-transforms-editor', () => ({
+  ProviderRequestTransformsEditor: ({ onValidityChange }: { onValidityChange: (valid: boolean) => void }) => {
+    useEffect(() => onValidityChange(mocks.transformsValid), [onValidityChange]);
+    return null;
+  },
+}));
 
 const provider: OAuthProvider = {
   kind: 'oauth',
@@ -26,7 +34,7 @@ const oauth: DashboardOAuthProviderEdit = {
   models: ['model-1', 'model-2'],
 };
 
-const mocks = rs.hoisted(() => ({ sessionError: false }));
+const mocks = rs.hoisted(() => ({ sessionError: false, transformsValid: true }));
 
 rs.mock('@tanstack/react-query', () => ({
   queryOptions: <T,>(options: T) => options,
@@ -42,12 +50,17 @@ rs.mock('@tanstack/react-router', () => ({
 
 afterEach(() => {
   mocks.sessionError = false;
+  mocks.transformsValid = true;
 });
 
 test('OAuth edit page groups terminal actions in the intended order', () => {
   render(<OAuthProviderEditPage provider={provider} oauth={oauth} sessionId={undefined} onSessionIdChange={rs.fn()} />);
 
   const connection = screen.getByRole('region', { name: /Connection|连接/u });
+  expect(
+    screen.getByRole('navigation', { name: /^Breadcrumbs$|^面包屑$|^パンくずリスト$|^브레드크럼$/u }),
+  ).toBeTruthy();
+  expect(screen.queryByLabelText(/^Back$|^返回$|^戻る$|^뒤로$/u)).toBeNull();
   const actions = screen.getByTestId('provider-form-actions');
   const actionButtons = within(actions).getAllByRole('button');
   const save = within(actions).getByRole('button', { name: /Save|保存/u });
@@ -62,6 +75,9 @@ test('OAuth edit page groups terminal actions in the intended order', () => {
   expect(screen.getByText('@example/oauth / default')).toBeTruthy();
   expect(screen.getByLabelText('Tenant')).toHaveValue('work');
   expect(screen.getByLabelText('Token')).toHaveAttribute('type', 'password');
+  expect(screen.getByRole('combobox', { name: /Proxy mode|代理模式/u })).toHaveTextContent(
+    /Inherit global proxy|继承全局代理/u,
+  );
   expect(screen.getByText('model-1')).toBeTruthy();
   expect(screen.getByText('model-2')).toBeTruthy();
   expect(screen.getByRole('button', { name: /Edit Aliases|编辑别名/u })).toBeTruthy();
@@ -69,6 +85,22 @@ test('OAuth edit page groups terminal actions in the intended order', () => {
   expect(actionButtons).toEqual([save, cancel, deleteProvider]);
   expect(within(actions).queryByRole('button', { name: /Reauthorize|重新授权/u })).toBeNull();
   expect(screen.queryByRole('region', { name: /Danger zone|危险操作/u })).toBeNull();
+});
+
+test('OAuth edit page presents only a redacted configured proxy as unchanged', () => {
+  render(
+    <OAuthProviderEditPage
+      provider={{ ...provider, proxy: '****' } as unknown as OAuthProvider}
+      oauth={oauth}
+      sessionId={undefined}
+      onSessionIdChange={rs.fn()}
+    />,
+  );
+
+  expect(screen.queryByRole('tablist')).toBeNull();
+  expect(screen.getByRole('combobox', { name: /Proxy mode|代理模式/u })).toHaveTextContent(
+    /Configured \(unchanged\)|已配置（保持不变）/u,
+  );
 });
 
 test('OAuth edit page hides edit actions while an existing session loads', () => {
@@ -82,6 +114,16 @@ test('OAuth edit page hides edit actions while an existing session loads', () =>
   );
 
   expect(screen.queryByRole('button', { name: /Reauthorize|重新授权/u })).toBeNull();
+});
+
+test('OAuth edit page disables save and reauthorization while transforms are invalid', () => {
+  mocks.transformsValid = false;
+  render(<OAuthProviderEditPage provider={provider} oauth={oauth} sessionId={undefined} onSessionIdChange={rs.fn()} />);
+
+  const save = screen.getByRole('button', { name: /Save|保存/u });
+  const reauthorize = screen.getByRole('button', { name: /Reauthorize|重新授权/u });
+  expect(save.hasAttribute('disabled')).toBe(true);
+  expect(reauthorize.hasAttribute('disabled')).toBe(true);
 });
 
 test('OAuth edit page offers a restart when an existing session cannot be loaded', () => {

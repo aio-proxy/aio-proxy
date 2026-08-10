@@ -1,12 +1,11 @@
 import { m } from '@aio-proxy/i18n';
+import { Button } from '@aio-proxy/ui/components/button';
+import { Field, FieldDescription, FieldError, FieldLabel } from '@aio-proxy/ui/components/field';
 
-import { Button } from '@/components/ui/button';
-import { Field, FieldDescription, FieldError, FieldLabel } from '@/components/ui/field';
-
-import { aliasEditorIssues, aliasSummary, type ProviderAlias, serializeAlias } from '../alias-editor';
-import { aliasSummaryMessage } from '../alias-editor-copy';
-import { ProviderFormMode } from '../constants';
 import type { useOAuthProviderEditForm } from '../hooks/use-oauth-provider-edit-form';
+import { aliasEditorIssues, aliasSummary, type ProviderAlias, serializeAlias } from '../lib/alias-editor';
+import { aliasSummaryMessage } from '../lib/alias-editor-copy';
+import { ProviderFormMode } from '../lib/constants';
 import { ProviderAliasDrawer } from './provider-alias/provider-alias-drawer';
 
 interface OAuthProviderAliasFieldsProps {

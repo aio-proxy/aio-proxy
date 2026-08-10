@@ -1,0 +1,29 @@
+# Example docker-compose for running aio-proxy.
+#
+# First-run setup (config is NOT auto-generated):
+#   1. mkdir -p ./aio-proxy-data
+#   2. Create ./aio-proxy-data/config.jsonc with your providers. See
+#      config.schema.json in the repo for the schema. Minimal example:
+#         { "server": { "port": 9317 }, "providers": { /* ... */ } }
+#      Do NOT set server.host to 0.0.0.0 in config — the schema only allows
+#      loopback there. The container binds 0.0.0.0 via the --host flag below.
+#   3. docker compose up -d
+#
+# Everything under /data (config.jsonc, aio-proxy.db, logs) persists in the
+# mounted ./aio-proxy-data directory.
+services:
+  aio-proxy:
+    image: ghcr.io/aio-proxy/aio-proxy:latest
+    # To build locally from source instead of pulling the published image,
+    # comment out `image:` above and uncomment:
+    # build: .
+    ports:
+      - '9317:9317'
+    volumes:
+      - ./aio-proxy-data:/data
+    environment:
+      AIO_PROXY_HOME: /data
+    # --host 0.0.0.0 is required so the server is reachable outside the
+    # container; the config schema forbids non-loopback hosts in config.jsonc.
+    command: ['run', '--host', '0.0.0.0']
+    restart: unless-stopped

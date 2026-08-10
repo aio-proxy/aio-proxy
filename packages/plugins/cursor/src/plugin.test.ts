@@ -23,10 +23,15 @@ async function adapterFrom(
   return registered;
 }
 
-test('registers a default Cursor adapter with a ttl catalog and cursor icon', async () => {
+test('registers SDK v2 presentation metadata on the descriptor and adapter', async () => {
   const adapter = await adapterFrom(cursorPlugin);
   expect(adapter.id).toBe('default');
-  expect(adapter.icon).toBe('cursor');
+  expect(adapter.displayName).toBe('Login with Cursor');
+  expect(cursorPlugin.metadata).toEqual({
+    displayName: 'Cursor',
+    description: 'Use a Cursor account to access models',
+    icon: 'cursor',
+  });
   expect(adapter.account.options.form).toEqual([]);
   expect(adapter.catalog.policy).toEqual({ kind: 'ttl', ttlMs: expect.any(Number) });
 });
@@ -50,6 +55,7 @@ test('createRuntime builds a v4 provider-only runtime', async () => {
     credentials: {} as never,
     options: {},
     catalog: { language: [], image: [], embedding: [], speech: [], transcription: [], reranking: [] },
+    fetch: globalThis.fetch,
   });
   expect(runtime.provider.specificationVersion).toBe('v4');
   expect(runtime.raw).toBeUndefined();

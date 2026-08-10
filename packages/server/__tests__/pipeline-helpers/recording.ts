@@ -19,12 +19,14 @@ export function createRecording(): Recording & { readonly recorder: RequestTrace
   const identities: Recording['identities'] = [];
   const attempts: RecordedAttempt[] = [];
   const finals: RecordedFinal[] = [];
+  const spans: StoredSpan[] = [];
   const waiters: { readonly target: number; readonly resolve: () => void }[] = [];
 
   const store: RequestTraceWriteStore = {
     startRoot() {},
     prune() {},
     complete(completion) {
+      for (const span of completion.spans) spans.push(span);
       const projected = projectAttempts(completion.spans);
       for (const attempt of projected) attempts.push(attempt);
       finals.push(projectFinal(completion, projected));
@@ -59,6 +61,7 @@ export function createRecording(): Recording & { readonly recorder: RequestTrace
     finals,
     identities,
     recorder,
+    spans,
     settle() {
       const target = begins.length;
       if (finals.length >= target) return Promise.resolve();
@@ -120,12 +123,9 @@ function projectAttempt(span: StoredSpan): RecordedAttempt {
 
 function projectFinal(completion: TraceCompletion, projected: readonly RecordedAttempt[]): RecordedFinal {
   const { summary } = completion;
-  const outcome: RecordedFinal['outcome'] =
-    summary.terminationReason === 'failure' || summary.errorCode !== undefined
-      ? 'failure'
-      : summary.terminationReason === 'cancelled'
-        ? 'cancelled'
-        : 'success';
+  let outcome: RecordedFinal['outcome'] = 'success';
+  if (summary.terminationReason === 'cancelled') outcome = 'cancelled';
+  if (summary.terminationReason === 'failure' || summary.errorCode !== undefined) outcome = 'failure';
   const last = projected.at(-1);
   const attachAttempt =
     summary.finalProviderId !== undefined &&

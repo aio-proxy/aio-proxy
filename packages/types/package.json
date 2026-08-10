@@ -1,6 +1,6 @@
 {
   "name": "@aio-proxy/types",
-  "version": "0.0.1",
+  "version": "0.6.4",
   "private": true,
   "type": "module",
   "exports": {
@@ -14,7 +14,8 @@
     "build": "rslib",
     "dev": "rslib --watch --no-clean",
     "test": "bun run test:unit",
-    "test:unit": "bun test __tests__/*.test.ts src/**/*.test.ts"
+    "test:unit": "bun test __tests__/*.test.ts src/**/*.test.ts src/*/**/*.test.ts",
+    "test:artifact": "bun test ./__tests__/build-entry.smoke.ts"
   },
   "dependencies": {
     "es-toolkit": "catalog:",

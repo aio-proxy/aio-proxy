@@ -11,7 +11,7 @@ test('exports a versioned default descriptor with the complete OAuth adapter con
   const adapter = await adapterFrom(kimiCodePlugin);
 
   expect(adapter.id).toBe('default');
-  expect(adapter.icon).toBe('moonshot');
+  expect(kimiCodePlugin.metadata.icon).toBe('moonshot');
   expect(adapter.account.options.form).toEqual([]);
   await expect(adapter.account.options.schema.parseAsync({})).resolves.toEqual({});
   expect(adapter.catalog.policy).toEqual({ kind: 'ttl', ttlMs: KIMI_CATALOG_TTL_MS });
@@ -65,13 +65,13 @@ test('preserves localized login and quota presentation values', async () => {
   await adapter.login(loginContext(presented, progress), {});
   const quota = await adapter.quota?.read(accountContext());
 
-  expect(adapter.label).toEqual({ default: 'Localized login', 'zh-Hans': '本地化登录' });
+  expect(adapter.displayName).toEqual({ default: 'Localized login', 'zh-Hans': '本地化登录' });
   expect(presented[0]?.instructions).toEqual({
     default: 'Enter localized code\n\nABCD',
     'zh-Hans': '输入本地化代码\n\nABCD',
   });
   expect(progress).toEqual([waiting]);
-  expect(quota?.items[0]?.label).toEqual({ default: 'Weekly quota', 'zh-Hans': '周配额' });
+  expect(quota?.items[0]?.displayName).toEqual({ default: 'Weekly quota', 'zh-Hans': '周配额' });
 });
 
 function loginContext(

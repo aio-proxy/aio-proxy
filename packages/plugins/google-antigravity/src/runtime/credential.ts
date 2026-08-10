@@ -1,4 +1,4 @@
-import type { CredentialPort } from '@aio-proxy/plugin-sdk';
+import type { CredentialPort, RuntimeFetch } from '@aio-proxy/plugin-sdk';
 
 import { currentGoogleCredential, forceRefreshGoogleCredential } from '../oauth/refresh';
 import type { GoogleAntigravityCredential } from '../schema';
@@ -9,7 +9,7 @@ export type AntigravityCredentialSource = {
 };
 
 export type AntigravityCredentialDependencies = {
-  readonly fetch?: typeof globalThis.fetch;
+  readonly fetch?: RuntimeFetch;
   readonly now?: () => number;
 };
 

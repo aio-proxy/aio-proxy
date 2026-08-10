@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import type { CredentialPort, ModelCatalog } from '@aio-proxy/plugin-sdk';
+import type { CredentialPort, ModelCatalog, RuntimeFetch, RuntimeRequestInit } from '@aio-proxy/plugin-sdk';
 
 import type { XAIGrokCredential } from '../schema';
 import { createXAIGrokDynamicFetch, createXAIGrokRuntime } from './runtime';
@@ -8,7 +8,8 @@ import { createXAIGrokDynamicFetch, createXAIGrokRuntime } from './runtime';
 describe('xAI Grok runtime', () => {
   test('routes the final xAI Grok request through the host fetch', async () => {
     const originalFetch = globalThis.fetch;
-    const requests: Request[] = [];
+    const controlRequests: Request[] = [];
+    const modelRequests: Request[] = [];
     globalThis.fetch = async () => {
       throw new Error('unexpected global fetch');
     };
@@ -18,13 +19,16 @@ describe('xAI Grok runtime', () => {
         credentials: port(),
         options: {},
         catalog: emptyCatalog(),
-        fetch: async () => {
-          throw new Error('unexpected control fetch');
-        },
-        modelFetch: async (input, init) => {
-          requests.push(new Request(input, init));
+        fetch: (async (input: RequestInfo | URL, init?: RuntimeRequestInit) => {
+          const traffic = init?.aioProxy?.traffic ?? 'model';
+          const request = new Request(input, init);
+          if (traffic === 'control') {
+            controlRequests.push(request);
+            throw new Error('unexpected control fetch');
+          }
+          modelRequests.push(request);
           return Response.json(openAIResponse());
-        },
+        }) as RuntimeFetch,
       });
 
       await runtime.provider.languageModel('grok-4.5').doGenerate({
@@ -34,8 +38,9 @@ describe('xAI Grok runtime', () => {
       globalThis.fetch = originalFetch;
     }
 
-    expect(requests).toHaveLength(1);
-    const request = requests[0];
+    expect(controlRequests).toEqual([]);
+    expect(modelRequests).toHaveLength(1);
+    const request = modelRequests[0];
     expect(request?.url).toBe('https://cli-chat-proxy.grok.com/v1/responses');
     expect(request?.headers.get('authorization')).toBe('Bearer access-token');
     expect(request?.headers.get('x-xai-token-auth')).toBe('xai-grok-cli');
@@ -44,7 +49,12 @@ describe('xAI Grok runtime', () => {
   });
 
   test('exposes Responses language models without raw capability', async () => {
-    const runtime = await createXAIGrokRuntime({ credentials: port(), options: {}, catalog: emptyCatalog() });
+    const runtime = await createXAIGrokRuntime({
+      credentials: port(),
+      options: {},
+      catalog: emptyCatalog(),
+      fetch: globalThis.fetch,
+    });
     expect(runtime.provider.specificationVersion).toBe('v4');
     expect(runtime.provider.languageModel('grok-4.5').modelId).toBe('grok-4.5');
     expect(runtime.raw).toBeUndefined();

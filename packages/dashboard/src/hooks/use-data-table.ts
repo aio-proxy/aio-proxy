@@ -1,51 +1,66 @@
-import { useForm } from '@tanstack/react-form';
-import { useSelector } from '@tanstack/react-store';
 import {
   type ColumnDef,
-  type ColumnFiltersState,
-  getCoreRowModel,
-  getFilteredRowModel,
-  getPaginationRowModel,
-  getSortedRowModel,
+  columnFilteringFeature,
+  columnVisibilityFeature,
+  createExpandedRowModel,
+  createFilteredRowModel,
+  createPaginatedRowModel,
+  createSortedRowModel,
+  globalFilteringFeature,
   type PaginationState,
+  type RowData,
+  rowExpandingFeature,
+  rowPaginationFeature,
+  rowSortingFeature,
   type SortingState,
-  useReactTable,
-  type VisibilityState,
+  tableFeatures,
+  useTable,
 } from '@tanstack/react-table';
 import { useState } from 'react';
 
-const useColumnVisibilityForm = () =>
-  useForm({
-    defaultValues: { columnVisibility: {} as VisibilityState },
-  });
+export const dataTableFeatures = tableFeatures({
+  columnFilteringFeature,
+  columnVisibilityFeature,
+  globalFilteringFeature,
+  filteredRowModel: createFilteredRowModel(),
+  rowSortingFeature,
+  sortedRowModel: createSortedRowModel(),
+  rowExpandingFeature,
+  expandedRowModel: createExpandedRowModel(),
+  rowPaginationFeature,
+  paginatedRowModel: createPaginatedRowModel(),
+});
 
-export type ColumnVisibilityForm = ReturnType<typeof useColumnVisibilityForm>;
+export type DataTableFeatures = typeof dataTableFeatures;
 
-export function useDataTable<TData>(data: readonly TData[], columns: readonly ColumnDef<TData>[]) {
+interface UseDataTableOptions<TData extends RowData> {
+  readonly getRowId?: (row: TData) => string;
+  readonly getSubRows?: (row: TData) => TData[] | undefined;
+}
+
+export function useDataTable<TData extends RowData>(
+  data: readonly TData[],
+  columns: readonly ColumnDef<DataTableFeatures, TData>[],
+  options: UseDataTableOptions<TData> = {},
+) {
   const [sorting, setSorting] = useState<SortingState>([]);
-  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
-  const [globalFilter, setGlobalFilter] = useState('');
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 10 });
-  const columnVisibilityForm = useColumnVisibilityForm();
-  const columnVisibility = useSelector(columnVisibilityForm.store, (state) => state.values.columnVisibility);
+  const [globalFilter, setGlobalFilter] = useState('');
+  const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>({});
 
-  const table = useReactTable({
+  const table = useTable({
+    features: dataTableFeatures,
     data: data as TData[],
-    columns: columns as ColumnDef<TData>[],
-    state: { sorting, columnFilters, columnVisibility, globalFilter, pagination },
+    columns: columns as ColumnDef<DataTableFeatures, TData>[],
+    state: { sorting, pagination, globalFilter, columnVisibility },
     onSortingChange: setSorting,
-    onColumnFiltersChange: setColumnFilters,
-    onColumnVisibilityChange: (updater) =>
-      columnVisibilityForm.setFieldValue('columnVisibility', (value) =>
-        typeof updater === 'function' ? updater(value) : updater,
-      ),
-    onGlobalFilterChange: setGlobalFilter,
     onPaginationChange: setPagination,
-    getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
+    onGlobalFilterChange: setGlobalFilter,
+    onColumnVisibilityChange: setColumnVisibility,
+    ...(options.getRowId === undefined ? {} : { getRowId: options.getRowId }),
+    ...(options.getSubRows === undefined ? {} : { getSubRows: options.getSubRows }),
+    paginateExpandedRows: options.getSubRows === undefined,
   });
 
-  return { table, columnVisibilityForm };
+  return { table };
 }

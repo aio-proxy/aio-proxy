@@ -29,6 +29,7 @@ const context = (over: Partial<OAuthLoginContext> = {}): { ctx: OAuthLoginContex
 
 test('presents the login URL then returns credentials after a 404 then 200', async () => {
   const { ctx, urls } = context();
+  const requestOptions: RequestInit[] = [];
   const responses = [
     new Response('', { status: 404 }),
     new Response(JSON.stringify({ accessToken: jwt({ sub: 'u1', exp: 4_000 }), refreshToken: 'r1' }), { status: 200 }),
@@ -36,13 +37,26 @@ test('presents the login URL then returns credentials after a 404 then 200', asy
   const result = await loginCursor(
     ctx,
     { waiting: 'Waiting' },
-    { now: () => 0, sleep: async () => {}, uuid: () => 'uuid-1', fetch: async () => responses.shift()! },
+    {
+      now: () => 0,
+      sleep: async () => {},
+      uuid: () => 'uuid-1',
+      fetch: async (_input, init) => {
+        requestOptions.push(init ?? {});
+        return responses.shift()!;
+      },
+    },
   );
   expect(urls[0]).toContain('https://cursor.com/loginDeepControl?');
   expect(urls[0]).toContain('mode=login');
   expect(urls[0]).toContain('redirectTarget=cli');
   expect(result.credentials.refreshToken).toBe('r1');
   expect(result.suggestedKey.startsWith('cursor-')).toBe(true);
+  expect(result.accountLabel).toBe('Cursor');
+  expect(requestOptions).toEqual([
+    expect.objectContaining({ aioProxy: { traffic: 'control' } }),
+    expect.objectContaining({ aioProxy: { traffic: 'control' } }),
+  ]);
 });
 
 test('fails after three consecutive poll errors', async () => {

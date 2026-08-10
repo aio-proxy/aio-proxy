@@ -37,6 +37,8 @@ export function overview(db: BunSQLiteDatabase, query: UsageOverviewQuery): Dash
     overviewRows(db, query.groupBy, bucketUnit, start, rangeFilter),
     query.metric,
     bucketKeys(query.range, start, end),
+    query.maxResults,
+    query.metric === 'requests' && query.groupBy === 'provider' && query.maxResults === undefined,
   );
 
   const elapsedMinutes = Math.max(1, (end.getTime() - start.getTime()) / 60_000);
@@ -75,7 +77,9 @@ function resolveRange(range: UsageOverviewRange, now: Date) {
   if (range === '24h') {
     return { start: new Date(now.getTime() - 24 * 60 * 60 * 1000), end: now, bucketUnit: 'hour' as const };
   }
-  const days = range === '7d' ? 7 : range === '14d' ? 14 : 30;
+  let days = 30;
+  if (range === '7d') days = 7;
+  else if (range === '14d') days = 14;
   const start = new Date(now);
   start.setHours(0, 0, 0, 0);
   start.setDate(start.getDate() - (days - 1));

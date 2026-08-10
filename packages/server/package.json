@@ -1,6 +1,6 @@
 {
   "name": "@aio-proxy/server",
-  "version": "0.0.1",
+  "version": "0.6.4",
   "private": true,
   "type": "module",
   "exports": {
@@ -25,6 +25,7 @@
     "eventsource-parser": "catalog:",
     "hono": "catalog:",
     "lru-cache": "catalog:",
+    "mingo": "7.2.2",
     "zod": "catalog:"
   },
   "devDependencies": {

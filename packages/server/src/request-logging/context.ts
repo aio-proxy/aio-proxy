@@ -1,5 +1,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 
+import type { ProviderProtocol } from '@aio-proxy/types';
+
 import type { ServerLogSink } from '../server-log';
 
 export type RequestLogContext = {
@@ -9,12 +11,22 @@ export type RequestLogContext = {
   readonly modelId?: string;
 };
 
-export type AttemptLogContext = Required<Omit<RequestLogContext, 'requestId'>>;
-
-export type RequestLogScope = RequestLogContext & {
-  readonly debug: boolean;
-  readonly logger: ServerLogSink;
+export type ProviderAttemptContext = {
+  readonly providerId: string;
+  readonly modelId: string;
+  readonly requestedModelId: string;
+  readonly sourceProtocol: ProviderProtocol;
+  readonly targetProtocol?: ProviderProtocol;
 };
+
+export type AttemptLogContext = Required<Omit<RequestLogContext, 'requestId'>> &
+  Partial<Omit<ProviderAttemptContext, 'providerId' | 'modelId'>>;
+
+export type RequestLogScope = RequestLogContext &
+  Partial<Omit<ProviderAttemptContext, 'providerId' | 'modelId'>> & {
+    readonly debug: boolean;
+    readonly logger: ServerLogSink;
+  };
 
 const storage = new AsyncLocalStorage<RequestLogScope>();
 
@@ -35,6 +47,24 @@ export function currentRequestLogContext(): RequestLogContext | undefined {
     ...(scope.attemptIndex === undefined ? {} : { attemptIndex: scope.attemptIndex }),
     ...(scope.providerId === undefined ? {} : { providerId: scope.providerId }),
     ...(scope.modelId === undefined ? {} : { modelId: scope.modelId }),
+  };
+}
+
+export function currentProviderAttemptContext(): ProviderAttemptContext | undefined {
+  const scope = storage.getStore();
+  if (
+    scope?.providerId === undefined ||
+    scope.modelId === undefined ||
+    scope.requestedModelId === undefined ||
+    scope.sourceProtocol === undefined
+  )
+    return undefined;
+  return {
+    providerId: scope.providerId,
+    modelId: scope.modelId,
+    requestedModelId: scope.requestedModelId,
+    sourceProtocol: scope.sourceProtocol,
+    ...(scope.targetProtocol === undefined ? {} : { targetProtocol: scope.targetProtocol }),
   };
 }
 

@@ -63,15 +63,15 @@ export const createDashboardAuthorization = (options: {
           fetch(incoming) {
             const url = new URL(incoming.url);
             if (url.pathname !== request.redirect.path) {
-              return new Response(m.cli_oauth_callback_not_found(), { status: 404 });
+              return new Response(m['cli.oauth.callback_not_found'](), { status: 404 });
             }
             try {
               accept(incoming.url);
-              return new Response(m.cli_oauth_success_html(), {
+              return new Response(m['cli.oauth.success_html'](), {
                 headers: { 'content-type': 'text/html; charset=utf-8' },
               });
             } catch {
-              return new Response(m.cli_oauth_invalid_callback_response(), { status: 400 });
+              return new Response(m['cli.oauth.invalid_callback_response'](), { status: 400 });
             }
           },
         });

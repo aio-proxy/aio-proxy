@@ -142,6 +142,9 @@ test('invalid and legacy provider summaries remain visible but never enter Route
       kind: 'api',
       state: { status: 'unavailable', diagnostic: { code: 'PROVIDER_CONFIG_INVALID' } },
     });
+    expect(summaries.find(({ id }) => id === 'invalid')).not.toHaveProperty('protocol');
+    expect(summaries.find(({ id }) => id === 'invalid')).not.toHaveProperty('weight');
+    expect(summaries.find(({ id }) => id === 'invalid')).not.toHaveProperty('packageName');
     const legacy = summaries.find(({ id }) => id === 'legacy');
     expect(legacy).toMatchObject({
       kind: 'oauth',
@@ -154,6 +157,9 @@ test('invalid and legacy provider summaries remain visible but never enter Route
     });
     expect(legacy?.state.diagnostic?.summary).toMatch(/delete/iu);
     expect(legacy?.state.diagnostic?.suggestedCommand).toBeUndefined();
+    expect(legacy).not.toHaveProperty('protocol');
+    expect(legacy).not.toHaveProperty('weight');
+    expect(legacy).not.toHaveProperty('packageName');
     expect(state.currentProviderSnapshot().providers.map(({ id }) => id)).toEqual(['stable']);
     expect(state.currentProviderSnapshot().router.resolve('stable-model')[0]?.provider.id).toBe('stable');
     expect(() => state.currentProviderSnapshot().router.resolve('invalid-model')).toThrow();

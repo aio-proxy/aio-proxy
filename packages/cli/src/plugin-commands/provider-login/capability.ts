@@ -11,7 +11,7 @@ import {
 } from './errors';
 
 type ConfigRecord = Record<string, unknown>;
-export type CapabilityChoice = { readonly reference: string; readonly label: LocalizedText };
+export type CapabilityChoice = { readonly reference: string; readonly displayName: LocalizedText };
 type CapabilitySelectPrompt = (config: {
   readonly message: string;
   readonly choices: readonly { readonly name: string; readonly value: string }[];
@@ -29,10 +29,10 @@ function parseCanonical(value: string): OAuthCapabilityReference | null {
 
 function allCapabilities(
   registry: PluginRegistry,
-): readonly (OAuthCapabilityReference & { readonly label: LocalizedText })[] {
+): readonly (OAuthCapabilityReference & { readonly displayName: LocalizedText })[] {
   return registry
     .oauthCapabilities()
-    .map(({ plugin, capability, adapter }) => ({ plugin, capability, label: adapter.label }))
+    .map(({ plugin, capability, adapter }) => ({ plugin, capability, displayName: adapter.displayName }))
     .sort((left, right) => canonical(left).localeCompare(canonical(right)));
 }
 
@@ -41,9 +41,9 @@ export function createCapabilitySelector(
 ): (choices: readonly CapabilityChoice[]) => Promise<string> {
   return (choices) =>
     prompt({
-      message: m.cli_provider_login_capability_prompt(),
-      choices: choices.map(({ reference, label }) => ({
-        name: resolveLocalizedText(label, getLocale()),
+      message: m['cli.provider.login.capability_prompt'](),
+      choices: choices.map(({ reference, displayName }) => ({
+        name: resolveLocalizedText(displayName, getLocale()),
         value: reference,
       })),
     });
@@ -92,7 +92,7 @@ export async function chooseCapability(
     throw new ProviderCapabilityAmbiguousError(inputValue ?? '', references);
   }
   const selected = await deps.selectCapability(
-    candidates.map((candidate) => ({ reference: canonical(candidate), label: candidate.label })),
+    candidates.map((candidate) => ({ reference: canonical(candidate), displayName: candidate.displayName })),
   );
   const resolved = parseCanonical(selected);
   if (

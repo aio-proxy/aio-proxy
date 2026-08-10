@@ -19,6 +19,67 @@ const waitFor = async <T>(read: () => Promise<T>, accept: (value: T) => boolean)
   }
   throw new Error('timed out waiting for OAuth session');
 };
+const emptyOAuthInput = { publicValues: {}, secrets: {}, clearSecrets: [] } as const;
+const emptyModelCatalog = { image: [], embedding: [], speech: [], transcription: [], reranking: [] } as const;
+
+test('built-in OAuth commits through the Dashboard session without an authored Plugin entry', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'aio-dashboard-builtin-oauth-login-'));
+  const configPath = join(dir, 'config.json');
+  const packageName = '@example/builtin-oauth';
+  const config = { plugins: [], providers: {} };
+  writeFileSync(configPath, JSON.stringify(config));
+  const descriptor = definePlugin((api) => {
+    api.oauth.register({
+      id: 'default',
+      displayName: 'Built-in OAuth',
+      account: { options: { schema: zod.object({}), form: [] } },
+      credentials: zod.object({ token: zod.string() }),
+      async login() {
+        return { fingerprint: 'builtin@example.com', suggestedKey: 'builtin', credentials: { token: 'hidden' } };
+      },
+      catalog: {
+        policy: { kind: 'static' },
+        async discover() {
+          return { ...emptyModelCatalog, language: [{ id: 'builtin-model' }] };
+        },
+      },
+      createRuntime: async () => ({ models: {} }),
+    });
+  });
+  const state = await createServerState({
+    config: ConfigSchema.parse(config),
+    configPath,
+    dbHome: dir,
+    watchConfig: false,
+    builtIns: [{ packageName, version: '1.0.0', descriptor }],
+  });
+  const routes = createDashboardRoutes(state, disabledDashboardAuthentication);
+
+  try {
+    const started = await routes.request('/oauth/sessions', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ ...emptyOAuthInput, capability: { plugin: packageName, capability: 'default' } }),
+    });
+    const { session } = (await started.json()) as { session: { id: string } };
+    const completed = await waitFor(
+      async () => {
+        const response = await routes.request(`/oauth/sessions/${session.id}`);
+        return (await response.json()) as { session: { status: string; providerId?: string; code?: string } };
+      },
+      (value) => value.session.status === 'succeeded' || value.session.status === 'failed',
+    );
+
+    expect(completed.session).toMatchObject({ status: 'succeeded', providerId: 'builtin' });
+    expect(JSON.parse(await Bun.file(configPath).text())).toMatchObject({
+      plugins: [],
+      providers: { builtin: { kind: 'oauth', plugin: packageName } },
+    });
+  } finally {
+    state.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
 
 test('dashboard device-code session can be resumed by id and creates an OAuth provider', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'aio-dashboard-oauth-login-'));
@@ -32,7 +93,7 @@ test('dashboard device-code session can be resumed by id and creates an OAuth pr
   const descriptor = definePlugin((api) => {
     api.oauth.register({
       id: 'default',
-      label: 'Example OAuth',
+      displayName: 'Example OAuth',
       account: { options: { schema: zod.object({}), form: [] } },
       credentials: zod.object({ token: zod.string() }),
       async login({ authorization }) {
@@ -47,14 +108,7 @@ test('dashboard device-code session can be resumed by id and creates an OAuth pr
       catalog: {
         policy: { kind: 'static' },
         async discover() {
-          return {
-            language: [{ id: 'example-model' }],
-            image: [],
-            embedding: [],
-            speech: [],
-            transcription: [],
-            reranking: [],
-          };
+          return { ...emptyModelCatalog, language: [{ id: 'example-model' }] };
         },
       },
       async createRuntime() {
@@ -77,10 +131,13 @@ test('dashboard device-code session can be resumed by id and creates an OAuth pr
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
+        ...emptyOAuthInput,
         capability: { plugin: '@example/oauth', capability: 'default' },
-        publicValues: {},
-        secrets: {},
-        clearSecrets: [],
+        providerPatch: {
+          enabled: true,
+          proxy: 'https://proxy.example:8443',
+          transforms: { request: [{ update: [{ $unset: 'request.body.store' }] }] },
+        },
       }),
     });
     expect(started.status).toBe(202);
@@ -110,7 +167,14 @@ test('dashboard device-code session can be resumed by id and creates an OAuth pr
     );
     expect(completed.session).toMatchObject({ status: 'succeeded', providerId: 'person' });
     expect(state.currentConfig().providers).toContainEqual(
-      expect.objectContaining({ id: 'person', kind: 'oauth', plugin: '@example/oauth', capability: 'default' }),
+      expect.objectContaining({
+        id: 'person',
+        kind: 'oauth',
+        plugin: '@example/oauth',
+        capability: 'default',
+        proxy: 'https://proxy.example:8443',
+        transforms: { request: [{ update: [{ $unset: 'request.body.store' }] }] },
+      }),
     );
     expect(JSON.stringify(completed)).not.toContain('hidden');
 
@@ -140,7 +204,7 @@ test('dashboard loopback session rejects a mismatched callback and accepts a val
   const descriptor = definePlugin((api) => {
     api.oauth.register({
       id: 'default',
-      label: 'Example Loopback',
+      displayName: 'Example Loopback',
       account: { options: { schema: zod.object({}), form: [] } },
       credentials: zod.object({ token: zod.string() }),
       async login({ authorization }) {
@@ -161,7 +225,7 @@ test('dashboard loopback session rejects a mismatched callback and accepts a val
         policy: { kind: 'static' },
         async discover() {
           await discoveryReleased;
-          return { language: [], image: [], embedding: [], speech: [], transcription: [], reranking: [] };
+          return { ...emptyModelCatalog, language: [] };
         },
       },
       async createRuntime() {
@@ -183,10 +247,8 @@ test('dashboard loopback session rejects a mismatched callback and accepts a val
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
+        ...emptyOAuthInput,
         capability: { plugin: '@example/loopback', capability: 'default' },
-        publicValues: {},
-        secrets: {},
-        clearSecrets: [],
       }),
     });
     const { session } = (await started.json()) as { session: { id: string } };
@@ -206,11 +268,11 @@ test('dashboard loopback session rejects a mismatched callback and accepts a val
     const redirect = new URL(redirectUri);
     const missing = await fetch(new URL('/missing', redirect.origin));
     expect(missing.status).toBe(404);
-    expect(await missing.text()).toBe(m.cli_oauth_callback_not_found());
+    expect(await missing.text()).toBe(m['cli.oauth.callback_not_found']());
 
     const invalidHttp = await fetch(`${redirectUri}?code=do-not-log&state=wrong-state`);
     expect(invalidHttp.status).toBe(400);
-    expect(await invalidHttp.text()).toBe(m.cli_oauth_invalid_callback_response());
+    expect(await invalidHttp.text()).toBe(m['cli.oauth.invalid_callback_response']());
 
     const invalid = await routes.request(`/oauth/sessions/${session.id}/callback`, {
       method: 'POST',

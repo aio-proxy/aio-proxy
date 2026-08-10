@@ -1,6 +1,5 @@
+import { useComboboxAnchor } from '@aio-proxy/ui/components/combobox';
 import { useMemo, useRef, useState } from 'react';
-
-import { useComboboxAnchor } from '@/components/ui/combobox';
 
 export interface TagsInputItem {
   readonly value: string;

@@ -6,8 +6,8 @@ import { join } from 'node:path';
 const repoRoot = join(import.meta.dir, '../../..');
 
 const hostSuffix = (): string => {
-  const platform = process.platform === 'darwin' ? 'darwin' : process.platform === 'linux' ? 'linux' : undefined;
-  const architecture = process.arch === 'arm64' ? 'arm64' : process.arch === 'x64' ? 'x64' : undefined;
+  const platform = process.platform === 'darwin' || process.platform === 'linux' ? process.platform : undefined;
+  const architecture = process.arch === 'arm64' || process.arch === 'x64' ? process.arch : undefined;
   if (platform === undefined || architecture === undefined) {
     throw new Error(`Unsupported binary smoke platform: ${process.platform}-${process.arch}`);
   }

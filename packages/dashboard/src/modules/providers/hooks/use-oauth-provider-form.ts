@@ -1,4 +1,8 @@
-import { type DashboardOAuthSessionStart, DashboardOAuthSessionStartSchema } from '@aio-proxy/types';
+import {
+  type DashboardOAuthProviderPatch,
+  type DashboardOAuthSessionStart,
+  DashboardOAuthSessionStartSchema,
+} from '@aio-proxy/types';
 import { type ReactFormExtendedApi, useForm } from '@tanstack/react-form';
 import { z } from 'zod';
 
@@ -8,6 +12,7 @@ export interface OAuthProviderFormValues {
   readonly secrets: DashboardOAuthSessionStart['secrets'];
   readonly clearSecrets: readonly string[];
   readonly jsonValues: Readonly<Record<string, string>>;
+  readonly proxy?: DashboardOAuthProviderPatch['proxy'];
 }
 
 // The form-api generic uses a non-recursive `publicValues` shape: zod's recursive JSONType
@@ -65,6 +70,10 @@ export const useOAuthProviderForm = (
           publicValues: value.publicValues,
           secrets: value.secrets,
           clearSecrets: value.clearSecrets,
+          providerPatch: {
+            enabled: true,
+            ...(value.proxy === undefined ? {} : { proxy: value.proxy }),
+          },
         });
         const jsonValues = OAuthJsonValuesSchema.safeParse(value.jsonValues);
         return session.success && jsonValues.success ? undefined : 'INVALID_OAUTH_ACCOUNT_OPTIONS';

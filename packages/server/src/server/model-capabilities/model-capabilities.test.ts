@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 
 import type { ModelsDevModel } from '@aio-proxy/core';
 
-import { toAnthropicCapabilities } from './model-capabilities';
+import { toAnthropicCapabilities, toAnthropicCapabilitiesFromMetadata } from './model-capabilities';
 
 const model = (overrides: Partial<ModelsDevModel>): ModelsDevModel => ({
   attachment: false,
@@ -57,4 +57,59 @@ test('a non-reasoning text-only model reports no effort and no thinking', () => 
   expect(capabilities.effort.supported).toBe(false);
   expect(capabilities.thinking.supported).toBe(false);
   expect(capabilities.image_input.supported).toBe(false);
+});
+
+test('derives Anthropic capabilities from merged metadata, honoring config overrides', () => {
+  const meta = {
+    capabilities: {
+      reasoning: true,
+      structuredOutput: false, // config override: catalog might say true
+      modalities: { input: ['text', 'image', 'pdf'], output: ['text'] },
+      reasoningOptions: [{ type: 'effort', values: ['low', 'high'] }],
+    },
+  } as const;
+  const caps = toAnthropicCapabilitiesFromMetadata(meta);
+  expect(caps).not.toBeNull();
+  expect(caps?.structured_outputs).toEqual({ supported: false });
+  expect(caps?.image_input).toEqual({ supported: true });
+  expect(caps?.pdf_input).toEqual({ supported: true });
+  expect(caps?.thinking.supported).toBe(true);
+  expect(caps?.effort.supported).toBe(true);
+  expect(caps?.effort.high).toEqual({ supported: true });
+  expect(caps?.effort.medium).toEqual({ supported: false });
+});
+
+// A model whose merged metadata carries no capabilities block conveys no
+// capability signal: /v1/models must report `null` (unknown), not fabricate an
+// all-false block claiming the model supports nothing (Finding C regression).
+test('metadata with no capabilities field yields null (unknown), not an all-false block', () => {
+  expect(toAnthropicCapabilitiesFromMetadata({ name: 'x', limit: { context: 1000 } })).toBeNull();
+});
+
+// An explicit capabilities object is a signal even when it only sets one field,
+// so a populated block (not null) is returned.
+test('a capabilities object with any signal yields a populated block, not null', () => {
+  const caps = toAnthropicCapabilitiesFromMetadata({
+    capabilities: {
+      reasoning: true,
+      modalities: { input: ['text', 'image'], output: ['text'] },
+    },
+  });
+  expect(caps).not.toBeNull();
+  expect(caps?.image_input.supported).toBe(true);
+  expect(caps?.thinking.supported).toBe(true);
+});
+
+test('a budgetTokens reasoning option marks thinking.types.enabled supported', () => {
+  const caps = toAnthropicCapabilitiesFromMetadata({
+    capabilities: { reasoningOptions: [{ type: 'budgetTokens', min: 1024 }] },
+  });
+  expect(caps?.thinking.types.enabled).toEqual({ supported: true });
+});
+
+test('an effort-only reasoning option leaves thinking.types.enabled unsupported', () => {
+  const caps = toAnthropicCapabilitiesFromMetadata({
+    capabilities: { reasoningOptions: [{ type: 'effort', values: ['low', 'high'] }] },
+  });
+  expect(caps?.thinking.types.enabled).toEqual({ supported: false });
 });

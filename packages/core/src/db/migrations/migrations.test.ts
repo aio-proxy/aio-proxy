@@ -91,6 +91,13 @@ test('upgrading a version-two database removes legacy history and preserves trac
     expectCurrentPersistenceContract(handle.sqlite);
     expect(handle.sqlite.query('SELECT trace_id FROM trace_span').get()).toEqual({ trace_id: 'trace-1' });
     expect(handle.sqlite.query('SELECT request_count FROM usage_daily').get()).toEqual({ request_count: '1' });
+    expect(
+      handle.sqlite
+        .query(
+          'SELECT normalized_cache_read_tokens, normalized_prompt_tokens, cache_hit_rate_available FROM usage_daily',
+        )
+        .get(),
+    ).toEqual({ normalized_cache_read_tokens: '0', normalized_prompt_tokens: '0', cache_hit_rate_available: 0 });
     expect(handle.sqlite.query('SELECT provider_id FROM session_affinity').get()).toEqual({
       provider_id: 'provider-1',
     });

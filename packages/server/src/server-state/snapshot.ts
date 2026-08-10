@@ -1,5 +1,6 @@
 import {
   createEmbeddedBuiltIns,
+  createProxyFetch,
   type DiagnosticFactory,
   loadPluginRegistry,
   type PluginLogSink,
@@ -18,21 +19,25 @@ import { compact } from 'es-toolkit/array';
 
 import {
   type CatalogJobDescriptor,
+  createRuntimeFetch,
   materializePluginProvider,
   type PluginOptionsIdentityDigest,
   type PluginProviderMaterialization,
   type PluginRuntimeCacheEntry,
   pluginOptionsIdentityDigest,
 } from '../plugin-runtime';
+import { createProviderRequestTransformFetch } from '../provider-request-transform';
 import {
   materializeProviders,
   materializeRuntimeProvider,
+  effectiveProxy,
   type ProviderProbe,
   type ProviderRuntime,
   providerSummary,
 } from '../provider-runtime';
 import { createObservedFetch } from '../request-logging';
 import type { ProviderRouteSnapshot, RuntimeProviderInput, RuntimeProviderInstance } from '../runtime';
+import { applyMetadataExtend } from './resolve-extend/index';
 import type { ServerStateOptions } from './types';
 
 export type Snapshot = ProviderRouteSnapshot & {
@@ -61,8 +66,7 @@ export async function buildSnapshot(
   onDiagnosticChanged: () => void,
   createRouter: (providers: readonly RuntimeProviderInstance[]) => Router<RuntimeProviderInstance>,
 ): Promise<Snapshot> {
-  const runtimeFetch = globalThis.fetch;
-  const runtimeModelFetch = createObservedFetch(runtimeFetch);
+  const controlFetch = globalThis.fetch;
   const { plugins, pluginOptionInputs, pluginOptionsDigests } = await loadPlugins(
     config,
     options,
@@ -70,18 +74,24 @@ export async function buildSnapshot(
     diagnostics,
     logger,
   );
+  // Resolve per-model `metadata.extend` into effective merged metadata before any
+  // materialization/summary derivation reads provider metadata, so downstream cost
+  // and model-resolution consumers transparently see the merged values.
+  const configWithExtend = await applyMetadataExtend(config, logger, { onCatalogWarmed: onDiagnosticChanged });
   const nonOAuth = {
-    ...config,
-    providers: config.providers.filter((provider) => provider.kind !== ProviderKind.OAuth),
+    ...configWithExtend,
+    providers: configWithExtend.providers.filter((provider) => provider.kind !== ProviderKind.OAuth),
   };
   const base = materializeProviders(nonOAuth);
-  const oauthConfigs = config.providers.filter((provider) => provider.kind === ProviderKind.OAuth);
+  const oauthConfigs = configWithExtend.providers.filter((provider) => provider.kind === ProviderKind.OAuth);
   const oauth = await Promise.all(
     oauthConfigs.map((provider) => {
       const previousEntry = previous?.runtimeCache.get(provider.id);
       const pluginOptionsDigest = pluginOptionsDigests.get(provider.plugin);
       const pluginOptionInput = pluginOptionInputs.get(provider.plugin);
       if (pluginOptionsDigest === undefined) throw new Error(`Missing plugin options digest for ${provider.plugin}`);
+      const resolvedProxy = effectiveProxy(configWithExtend.proxy, provider.proxy);
+      const providerFetch = createProxyFetch(resolvedProxy, controlFetch);
       return materializePluginProvider({
         config: provider,
         plugins,
@@ -90,8 +100,11 @@ export async function buildSnapshot(
         logger,
         onDiagnosticChanged,
         pluginOptionsDigest,
-        runtimeFetch,
-        runtimeModelFetch,
+        effectiveProxy: resolvedProxy ?? null,
+        runtimeFetch: createRuntimeFetch({
+          control: providerFetch,
+          model: createProviderRequestTransformFetch(provider, createObservedFetch(providerFetch)),
+        }),
         ...(pluginOptionInput === undefined || 'error' in pluginOptionInput
           ? {}
           : { pluginSecrets: pluginOptionInput.secret }),
@@ -99,9 +112,16 @@ export async function buildSnapshot(
       });
     }),
   );
-  const { providers, summaries } = assembleProviders(config, nonOAuth, base, oauth, oauthConfigs, diagnostics);
+  const { providers, summaries } = assembleProviders(
+    configWithExtend,
+    nonOAuth,
+    base,
+    oauth,
+    oauthConfigs,
+    diagnostics,
+  );
   return {
-    config,
+    config: configWithExtend,
     plugins,
     probes: base.probes,
     providers,

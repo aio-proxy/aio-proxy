@@ -1,11 +1,10 @@
 import { m } from '@aio-proxy/i18n';
 import type { AliasTarget } from '@aio-proxy/types';
+import { Button } from '@aio-proxy/ui/components/button';
+import { Card, CardAction, CardContent, CardHeader, CardTitle } from '@aio-proxy/ui/components/card';
 import { useForm } from '@tanstack/react-form';
 import { Trash2Icon } from 'lucide-react';
 import { type FC, useState } from 'react';
-
-import { Button } from '@/components/ui/button';
-import { Card, CardAction, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 import {
   type AliasDraft,
@@ -14,8 +13,8 @@ import {
   aliasControlId,
   type ProviderAlias,
   preserveReferenceCount,
-} from '../alias-editor';
-import { aliasEditErrorMessage, aliasIssueMessage, type VisibleEditError } from '../alias-editor-copy';
+} from '../lib/alias-editor';
+import { aliasEditErrorMessage, aliasIssueMessage, type VisibleEditError } from '../lib/alias-editor-copy';
 import { ProviderVariantFields } from './provider-variant-fields';
 
 type Props = {

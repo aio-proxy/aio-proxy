@@ -1,9 +1,4 @@
 import { m } from '@aio-proxy/i18n';
-import { Link, useLocation } from '@tanstack/react-router';
-import { ChartNoAxesCombined, HandPlatter, Waypoints } from 'lucide-react';
-import type { ComponentProps, ComponentType } from 'react';
-
-import { AioProxyBrand } from '@/components/aio-proxy-brand';
 import {
   Sidebar,
   SidebarContent,
@@ -15,7 +10,12 @@ import {
   SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
-} from '@/components/ui/sidebar';
+} from '@aio-proxy/ui/components/sidebar';
+import { Link, useLocation } from '@tanstack/react-router';
+import { Blocks, ChartNoAxesCombined, HandPlatter, Settings2, Waypoints } from 'lucide-react';
+import type { ComponentProps, ComponentType } from 'react';
+
+import { AioProxyBrand } from '@/components/aio-proxy-brand';
 
 import { SidebarPreferences } from './sidebar-preferences';
 
@@ -36,7 +36,7 @@ interface SideMenuGroup {
 export const SideMenu: React.FC = () => {
   const groups: readonly SideMenuGroup[] = [
     {
-      label: m['dashboard.menus.overview'](),
+      label: m['dashboard.menus.observability'](),
       items: [
         {
           id: 'dashboard',
@@ -63,6 +63,20 @@ export const SideMenu: React.FC = () => {
           icon: HandPlatter,
           to: '/providers',
           isActive: (pathname) => pathname.startsWith('/providers'),
+        },
+        {
+          id: 'plugins',
+          label: m['dashboard.menus.plugins'](),
+          icon: Blocks,
+          to: '/plugins',
+          isActive: (pathname) => pathname.startsWith('/plugins'),
+        },
+        {
+          id: 'settings',
+          label: m['dashboard.menus.settings'](),
+          icon: Settings2,
+          to: '/settings',
+          isActive: (pathname) => pathname.startsWith('/settings'),
         },
         // {
         //   id: 'models',

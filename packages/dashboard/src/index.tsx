@@ -21,4 +21,8 @@ if (rootEl) {
   root.render(<RouterProvider router={router} />);
 }
 
+if (import.meta.env.DEV) {
+  import('react-grab');
+}
+
 export { createDashboardClient } from './lib/dashboard-client';

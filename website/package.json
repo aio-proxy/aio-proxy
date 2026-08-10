@@ -1,0 +1,24 @@
+{
+  "name": "@aio-proxy/website",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "rspress dev",
+    "build": "rspress build"
+  },
+  "dependencies": {
+    "@aio-proxy/ui": "workspace:*",
+    "@rspress/core": "2.0.19",
+    "react": "catalog:",
+    "react-dom": "catalog:"
+  },
+  "devDependencies": {
+    "@aio-proxy/infra": "workspace:*",
+    "@rsbuild/plugin-tailwindcss": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "rspress-plugin-mermaid": "1.0.1",
+    "tailwindcss": "catalog:",
+    "typescript": "catalog:"
+  }
+}

@@ -77,18 +77,18 @@ describe('server routes', () => {
           maxInputTokens: 1_000_000,
           maxTokens: 128_000,
         }),
+        // shared/gpt-only have no catalog limit.input (only context/output), so
+        // max_input_tokens is null — the context window is never used as a fallback.
         expectedModel('shared', 'high', 'Shared Model', {
           capabilities: textOnlyCapabilities,
           created: 1_768_435_200,
           createdAt: '2026-01-15T00:00:00.000Z',
-          maxInputTokens: 128_000,
           maxTokens: 8_000,
         }),
         expectedModel('gpt-only', 'low', 'GPT Only', {
           capabilities: textOnlyCapabilities,
           created: 0,
           createdAt: '1970-01-01T00:00:00Z',
-          maxInputTokens: 128_000,
           maxTokens: 8_000,
         }),
       ]),

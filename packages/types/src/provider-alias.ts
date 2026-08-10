@@ -5,6 +5,20 @@ import { normalizeAliasName, normalizeVariantKey } from './common';
 
 export type ProviderAlias = Readonly<Record<string, AliasConfig>>;
 
+type ProviderWithAlias = { readonly alias?: ProviderAlias | undefined };
+
+export function normalizeProviderAliasKeys<T extends ProviderWithAlias>(provider: T): T {
+  if (provider.alias === undefined) return provider;
+  return { ...provider, alias: normalizeAliasKeys(provider.alias) };
+}
+
+export function normalizeProviderAlias<T extends ProviderWithAlias>(provider: T): T {
+  const normalized = normalizeProviderAliasKeys(provider);
+  if (normalized.alias === undefined) return normalized;
+  const alias = normalizeAliasPreserve(normalized.alias);
+  return alias === normalized.alias ? normalized : { ...normalized, alias };
+}
+
 type ProviderAliasTargets = {
   readonly models?: readonly string[] | undefined;
   readonly alias?: ProviderAlias | undefined;
@@ -101,4 +115,35 @@ function collectPreservedModels(alias: ProviderAlias): ReadonlySet<string> {
 
 function targetModels(config: AliasConfig): readonly string[] {
   return [config.model, ...Object.values(config.variants ?? {}).map((target) => target.model)];
+}
+
+function normalizeAliasKeys(alias: ProviderAlias): ProviderAlias {
+  return Object.fromEntries(
+    Object.entries(alias).map(([name, config]) => [
+      normalizeAliasName(name),
+      config.variants === undefined
+        ? config
+        : {
+            ...config,
+            variants: Object.fromEntries(
+              Object.entries(config.variants).map(([variant, target]) => [normalizeVariantKey(variant), target]),
+            ),
+          },
+    ]),
+  );
+}
+
+function normalizeAliasPreserve(alias: ProviderAlias): ProviderAlias {
+  let changed = false;
+  const normalized: Record<string, ProviderAlias[string]> = {};
+  for (const [clientModel, config] of Object.entries(alias)) {
+    const selfAlias = alias[config.model];
+    if (config.preserve && clientModel !== config.model && selfAlias?.model === config.model) {
+      normalized[clientModel] = { ...config, preserve: false };
+      changed = true;
+      continue;
+    }
+    normalized[clientModel] = config;
+  }
+  return changed ? normalized : alias;
 }

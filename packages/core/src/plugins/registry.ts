@@ -9,8 +9,6 @@ import {
 import { CapabilityIdSchema } from '@aio-proxy/types';
 
 import { validateConfigSpec } from './config-spec';
-import type { PluginLogSink } from './diagnostic/index';
-import { validateOAuthIcon } from './icon';
 import { isPluginZodSchema } from './schema';
 
 export type PluginRegistry = {
@@ -43,28 +41,13 @@ function validateQuota(value: unknown): NonNullable<OAuthAdapter['quota']> | und
   };
 }
 
-function validateAdapter(
-  value: unknown,
-  plugin: string,
-  logger: PluginLogSink,
-): { readonly id: string; readonly adapter: OAuthAdapter } {
+function validateAdapter(value: unknown): { readonly id: string; readonly adapter: OAuthAdapter } {
   if (!isRecord(value)) throw new Error('Invalid OAuth adapter');
-  const { id: rawId, label, description, icon, account, credentials, login, createRuntime, catalog, quota } = value;
+  const { id: rawId, displayName, description, account, credentials, login, createRuntime, catalog, quota } = value;
   const id = CapabilityIdSchema.parse(rawId);
-  const validatedIcon = icon === undefined ? undefined : validateOAuthIcon(icon);
-  if (validatedIcon !== undefined && !validatedIcon.ok) {
-    try {
-      logger({
-        event: 'plugin.oauth.icon.invalid',
-        code: 'PLUGIN_ICON_INVALID',
-        context: { plugin, capability: id },
-        error: { name: 'OAuthIconValidationError', message: 'OAuth adapter icon was ignored' },
-      });
-    } catch {}
-  }
-  const validatedLabel = LocalizedTextSchema.safeParse(label);
+  const validatedDisplayName = LocalizedTextSchema.safeParse(displayName);
   const validatedDescription = LocalizedTextSchema.safeParse(description);
-  if (!validatedLabel.success || (description !== undefined && !validatedDescription.success)) {
+  if (!validatedDisplayName.success || (description !== undefined && !validatedDescription.success)) {
     throw new Error('Invalid OAuth adapter');
   }
   if (!isRecord(account)) throw new Error('Invalid OAuth adapter');
@@ -99,9 +82,8 @@ function validateAdapter(
     id,
     adapter: {
       id,
-      label: validatedLabel.data,
+      displayName: validatedDisplayName.data,
       ...(description === undefined ? {} : { description: validatedDescription.data as LocalizedText }),
-      ...(validatedIcon?.ok === true ? { icon: validatedIcon.value } : {}),
       account: { options: validatedOptions },
       credentials: credentials as OAuthAdapter['credentials'],
       login: login.bind(value) as OAuthAdapter['login'],
@@ -138,12 +120,7 @@ export type PluginStagingOptions = {
   readonly redactSecretValues?: readonly string[];
 };
 
-const noopPluginLogger: PluginLogSink = () => {};
-
-export function createPluginRegistryHost(
-  logger: PluginLogSink = noopPluginLogger,
-  createPluginLogger: PluginLoggerFactory = createLogger,
-): {
+export function createPluginRegistryHost(createPluginLogger: PluginLoggerFactory = createLogger): {
   readonly registry: PluginRegistry;
   readonly stage: (plugin: string, options?: PluginStagingOptions) => PluginStagingRegistry;
 } {
@@ -168,7 +145,7 @@ export function createPluginRegistryHost(
           oauth: {
             register(value) {
               if (sealed) throw new Error('Plugin staging registry is sealed');
-              const { id, adapter } = validateAdapter(value, plugin, logger);
+              const { id, adapter } = validateAdapter(value);
               if (staged.has(id)) throw new Error('Duplicate OAuth capability');
               staged.set(id, { plugin, capability: id, adapter });
             },

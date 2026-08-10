@@ -1,5 +1,7 @@
 import { expect, test } from 'bun:test';
 
+import type { RuntimeRequestInit } from '@aio-proxy/plugin-sdk';
+
 import {
   GOOGLE_ANTIGRAVITY_SCOPES,
   GOOGLE_CLIENT_ID,
@@ -24,8 +26,10 @@ test('builds the fixed Google authorization request without PKCE', () => {
 
 test('exchanges the authorization code as form data', async () => {
   const requests: Request[] = [];
+  let requestInit: RuntimeRequestInit | undefined;
   const token = await exchangeAuthorizationCode('authorization-code', 'http://localhost:51121/oauth-callback', {
     fetch: async (input, init) => {
+      requestInit = init;
       requests.push(new Request(input, init));
       return Response.json({
         access_token: 'access-1',
@@ -51,6 +55,7 @@ test('exchanges the authorization code as form data', async () => {
   expect(body.get('code')).toBe('authorization-code');
   expect(body.get('grant_type')).toBe('authorization_code');
   expect(body.get('redirect_uri')).toBe('http://localhost:51121/oauth-callback');
+  expect(requestInit?.aioProxy).toEqual({ traffic: 'control' });
 });
 
 test('fetches and trims the Google account email', async () => {

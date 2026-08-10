@@ -1,4 +1,4 @@
-import { expect, test } from 'bun:test';
+import { expect, spyOn, test } from 'bun:test';
 
 import type { CredentialPort, ModelCatalog } from '@aio-proxy/plugin-sdk';
 
@@ -50,4 +50,37 @@ test('createCursorRuntime returns a v4 provider and rejects unsupported surfaces
   expect(() => result.provider.embeddingModel('x')).toThrow(/embedding/i);
   expect(() => result.provider.languageModel('missing')).toThrow(/missing/);
   expect(result.provider.languageModel('claude-4.5-sonnet').provider).toBe('cursor-oauth');
+});
+
+test('credential refresh uses the runtime context fetch as control traffic', async () => {
+  const stale = { ...credential, expiresAt: 0 };
+  const refreshable: CredentialPort<CursorCredential> = {
+    read: () => Promise.resolve({ value: stale, revision: 0 }),
+    refresh: async (revision, exchange) => {
+      const exchanged = await exchange({ value: stale, revision }, new AbortController().signal);
+      return { status: 'updated', snapshot: { value: exchanged.value, revision: revision + 1 } };
+    },
+  };
+  const requests: RequestInit[] = [];
+  const globalFetch = spyOn(globalThis, 'fetch').mockImplementation(async () =>
+    Response.json({ accessToken: 'global-fetch-must-not-be-used' }),
+  );
+  try {
+    const result = await createCursorRuntime(
+      {
+        credentials: refreshable,
+        options: {},
+        catalog,
+        fetch: async (_input, init) => {
+          requests.push(init ?? {});
+          return Response.json({ accessToken: 'refreshed' });
+        },
+      },
+      { transport },
+    );
+    await result.provider.languageModel('claude-4.5-sonnet').doStream({ prompt: [] });
+    expect(requests).toEqual([expect.objectContaining({ aioProxy: { traffic: 'control' } })]);
+  } finally {
+    globalFetch.mockRestore();
+  }
 });

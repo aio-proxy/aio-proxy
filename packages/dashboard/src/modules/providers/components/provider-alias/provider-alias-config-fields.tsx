@@ -1,13 +1,19 @@
 import { m } from '@aio-proxy/i18n';
 import type { AliasConfig } from '@aio-proxy/types';
 import { normalizeAliasName } from '@aio-proxy/types';
+import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from '@aio-proxy/ui/components/field';
+import { Input } from '@aio-proxy/ui/components/input';
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@aio-proxy/ui/components/select';
+import { Switch } from '@aio-proxy/ui/components/switch';
 import { useForm } from '@tanstack/react-form';
 import { type FC, useState } from 'react';
-
-import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field';
-import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Switch } from '@/components/ui/switch';
 
 import {
   type AliasDraft,
@@ -16,8 +22,8 @@ import {
   aliasControlId,
   type ProviderAlias,
   preserveReferenceCount,
-} from '../../alias-editor';
-import { aliasEditErrorMessage, aliasIssueMessage, type VisibleEditError } from '../../alias-editor-copy';
+} from '../../lib/alias-editor';
+import { aliasEditErrorMessage, aliasIssueMessage, type VisibleEditError } from '../../lib/alias-editor-copy';
 
 type Props = {
   readonly alias: ProviderAlias;

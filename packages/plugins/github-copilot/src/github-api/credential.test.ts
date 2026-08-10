@@ -1,16 +1,23 @@
 import { describe, expect, test } from 'bun:test';
 
+import type { RuntimeRequestInit } from '@aio-proxy/plugin-sdk';
+
 import { currentGitHubCopilotCredential, fetchCopilotToken } from '.';
 import { credentialPort, withFetchMock } from '../../__tests__/test-support';
 
 describe('GitHub Copilot credential', () => {
   test('calculates token expiry in milliseconds', async () => {
+    let capturedInit: RequestInit | undefined;
     const result = await withFetchMock(
-      async () => Response.json({ token: 'copilot-token', expires_at: 9_999_999_999 }),
+      async (_input, init) => {
+        capturedInit = init;
+        return Response.json({ token: 'copilot-token', expires_at: 9_999_999_999 });
+      },
       () => fetchCopilotToken('https://api.github.com', 'github-token', new AbortController().signal),
     );
 
     expect(result).toEqual({ access: 'copilot-token', expires: 9_999_999_999_000 });
+    expect((capturedInit as RuntimeRequestInit | undefined)?.aioProxy).toEqual({ traffic: 'control' });
   });
 
   test('refreshes an expired token with the credential port signal', async () => {

@@ -1,11 +1,31 @@
 import type { DashboardTraceSummary } from '@aio-proxy/types';
-import { describe, expect, rs, test } from '@rstest/core';
+import { beforeEach, describe, expect, rs, test } from '@rstest/core';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 
-import { createDefaultTraceSearch } from '../../trace-search';
+import { createDefaultTraceSearch } from '../../lib/trace-search';
+import { DashboardTracesRequestError } from '../../services/traces-service';
 import { TracesPage } from './traces-page';
 
-const mocks = rs.hoisted(() => ({ refetch: rs.fn(), querySearch: rs.fn() }));
+const mocks = rs.hoisted(() => ({
+  refetch: rs.fn(),
+  querySearch: rs.fn(),
+  data: undefined as
+    | {
+        items: DashboardTraceSummary[];
+        nextPageToken?: string;
+        prevPageToken?: string;
+      }
+    | undefined,
+  error: null as Error | null,
+  isFetching: false,
+  isPlaceholderData: false,
+  mobile: false,
+}));
+
+rs.mock('@aio-proxy/ui/hooks/use-mobile', () => ({
+  useIsMobile: () => mocks.mobile,
+}));
+const longProviderId = 'provider-with-an-excessively-long-identifier';
 const terminalTrace: DashboardTraceSummary = {
   traceId: 'a'.repeat(32),
   rootSpanId: 'b'.repeat(16),
@@ -21,11 +41,11 @@ const terminalTrace: DashboardTraceSummary = {
   sessionResolvedBy: 'openai-prompt-cache',
   inboundProtocol: 'openai-response',
   requestedModelId: 'gpt-5',
-  finalProviderId: 'provider-a',
+  finalProviderId: longProviderId,
   finalModelId: 'gpt-5.1',
   finalHttpStatus: 503,
   usage: {
-    providerId: 'provider-a',
+    providerId: longProviderId,
     modelId: 'gpt-5.1',
     inputTokens: 26_600,
     outputTokens: 318,
@@ -67,20 +87,35 @@ rs.mock('../../hooks/use-traces-query', () => ({
   useTracesQuery: (search: unknown, autoRefresh: boolean) => {
     mocks.querySearch(search, autoRefresh);
     return {
-      data: { items: [runningTrace, toolOnlyTrace, terminalTrace], page: 2, pageSize: 20, total: 42, pageCount: 3 },
+      data: mocks.data,
       isLoading: false,
-      isError: false,
-      isFetching: false,
+      isError: mocks.error !== null,
+      error: mocks.error,
+      isFetching: mocks.isFetching,
+      isPlaceholderData: mocks.isPlaceholderData,
       refetch: mocks.refetch,
     };
   },
 }));
 
 describe('traces page', () => {
-  test('renders TTFT only when a streamed trace has a first content token', async () => {
+  beforeEach(() => {
+    mocks.data = {
+      items: [runningTrace, toolOnlyTrace, terminalTrace],
+      prevPageToken: 'newer-token',
+      nextPageToken: 'older-token',
+    };
+    mocks.error = null;
+    mocks.isFetching = false;
+    mocks.isPlaceholderData = false;
+    mocks.mobile = false;
+    mocks.querySearch.mockClear();
+  });
+
+  test('renders aligned latency and token details without the Session column', () => {
     render(
       <TracesPage
-        search={{ ...createDefaultTraceSearch(), page: 2, pageSize: 20 }}
+        search={{ ...createDefaultTraceSearch(), pageToken: 'middle-token', pageSize: 20 }}
         onSearchChange={rs.fn()}
         onTraceSelect={rs.fn()}
       />,
@@ -88,12 +123,13 @@ describe('traces page', () => {
 
     expect(screen.getByText(/Running|运行中/u)).toBeTruthy();
     expect(screen.getByText(/Failure|失败/u)).toBeTruthy();
-    expect(screen.queryByText(/Final|最终/u)).toBeNull();
-    const sessionId = screen.getByText('cache-a');
-    expect(screen.queryByText('openai-prompt-cache')).toBeNull();
-    fireEvent.focus(sessionId);
-    expect(await screen.findByText(/Session source: openai-prompt-cache|会话来源：openai-prompt-cache/u)).toBeTruthy();
-    expect(screen.getByRole('columnheader', { name: /^(Provider|提供商)$/u })).toBeTruthy();
+    expect(screen.queryByText('cache-a')).toBeNull();
+    expect(screen.getByRole('columnheader', { name: /^(Status|状态|ステータス|상태)$/u })).toBeTruthy();
+    expect(screen.getByRole('columnheader', { name: /^(Model|模型|モデル|모델)$/u })).toBeTruthy();
+    expect(
+      screen.getByRole('columnheader', { name: /Provider ID|提供商 ID|プロバイダー ID|프로바이더 ID/u }),
+    ).toBeTruthy();
+    expect(screen.getByRole('columnheader', { name: /HTTP/u })).toBeTruthy();
     const modelCell = within(screen.getByRole('button', { name: new RegExp(terminalTrace.traceId, 'u') })).getAllByRole(
       'cell',
     )[4];
@@ -102,7 +138,7 @@ describe('traces page', () => {
     const terminalCells = within(
       screen.getByRole('button', { name: new RegExp(terminalTrace.traceId, 'u') }),
     ).getAllByRole('cell');
-    expect(terminalCells[5]).toHaveTextContent('provider-a');
+    expect(within(terminalCells[5]).getByText(longProviderId)).toHaveClass('max-w-16', 'truncate');
     expect(terminalCells[8]).toHaveTextContent('26.6K');
     expect(terminalCells[8]).toHaveTextContent('318');
     expect(terminalCells[8]).toHaveTextContent('1K');
@@ -115,60 +151,111 @@ describe('traces page', () => {
     const toolOnlyDurationCell = within(
       screen.getByRole('button', { name: new RegExp(toolOnlyTrace.traceId, 'u') }),
     ).getAllByRole('cell')[7];
-    expect(toolOnlyDurationCell).not.toHaveTextContent('TTFT');
+    expect(toolOnlyDurationCell).toHaveTextContent('TTFT');
     expect(toolOnlyDurationCell).not.toHaveTextContent('N/A');
     expect(screen.getByText(/42 (ms|毫秒)/u)).toBeTruthy();
-    expect(screen.getAllByText(/TTFT/u)).toHaveLength(1);
+    expect(screen.getAllByText(/TTFT/u)).toHaveLength(2);
     expect(screen.getByText('$0.25')).toBeTruthy();
   });
 
-  test('drives server pagination through URL search state', () => {
+  test('keeps table gutters inside ScrollArea while pagination stays outside', () => {
+    render(
+      <TracesPage
+        search={{ ...createDefaultTraceSearch(), pageToken: 'middle-token', pageSize: 20 }}
+        onSearchChange={rs.fn()}
+        onTraceSelect={rs.fn()}
+      />,
+    );
+
+    const table = screen.getByRole('table');
+    const viewport = table.closest('[data-slot="scroll-area-viewport"]');
+    const tableContent = table.closest('[data-slot="traces-table-scroll-content"]');
+    const previousButton = screen.getByRole('button', { name: /previous|上一页|前へ|이전/iu });
+
+    expect(viewport).toBeTruthy();
+    expect(viewport?.contains(tableContent!)).toBe(true);
+    expect(previousButton.closest('[data-slot="scroll-area-viewport"]')).toBeNull();
+    expect(previousButton.closest('[data-slot="traces-table-pagination"]')).toBeTruthy();
+    expect(table.closest('[data-slot="sidebar-inset"]')).toHaveClass('min-w-0');
+  });
+
+  test('drives previous and next token navigation through URL search state', () => {
     const onSearchChange = rs.fn();
     render(
       <TracesPage
-        search={{ ...createDefaultTraceSearch(), page: 2, pageSize: 20 }}
+        search={{ ...createDefaultTraceSearch(), pageToken: 'middle-token', pageSize: 20 }}
         onSearchChange={onSearchChange}
         onTraceSelect={rs.fn()}
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /Next|下一页/u }));
+    fireEvent.click(screen.getByRole('button', { name: /previous|上一页|前へ|이전/iu }));
+    expect(onSearchChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ pageToken: 'newer-token', pageSize: 20 }),
+    );
 
-    expect(onSearchChange).toHaveBeenLastCalledWith(expect.objectContaining({ page: 3, pageSize: 20 }));
+    fireEvent.click(screen.getByRole('button', { name: /next|下一页|次へ|다음/iu }));
+
+    expect(onSearchChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ pageToken: 'older-token', pageSize: 20 }),
+    );
+  });
+
+  test('changes the page size through URL search state and clears the current page token', async () => {
+    const onSearchChange = rs.fn();
+    render(
+      <TracesPage
+        search={{ ...createDefaultTraceSearch(), pageToken: 'middle-token', pageSize: 20 }}
+        onSearchChange={onSearchChange}
+        onTraceSelect={rs.fn()}
+      />,
+    );
+
+    const pageSize = screen.getByRole('combobox', { name: /Rows per page|每页行数/u });
+    expect(pageSize).toHaveTextContent('20');
+
+    fireEvent.click(pageSize);
+    const option = await screen.findByRole('option', { name: '50' });
+    fireEvent.pointerDown(option, { pointerType: 'mouse' });
+    fireEvent.click(option);
+
+    expect(onSearchChange).toHaveBeenLastCalledWith(expect.objectContaining({ pageSize: 50 }));
+    expect(onSearchChange.mock.calls.at(-1)?.[0]).not.toHaveProperty('pageToken');
   });
 
   test('resets pagination when a trace filter changes', async () => {
     const onSearchChange = rs.fn();
     render(
       <TracesPage
-        search={{ ...createDefaultTraceSearch(), page: 3, pageSize: 20, otelStatusCode: 'ERROR' }}
+        search={{ ...createDefaultTraceSearch(), pageToken: 'stale-token', pageSize: 20, otelStatusCode: 'ERROR' }}
         onSearchChange={onSearchChange}
         onTraceSelect={rs.fn()}
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /More filters|更多筛选/u }));
+    fireEvent.click(screen.getByRole('button', { name: /Filters|筛选/u }));
+    fireEvent.click(screen.getByRole('button', { name: /^Request$|^请求$/u }));
     fireEvent.change(await screen.findByRole('textbox', { name: /Session ID|会话 ID/u }), {
       target: { value: 'cache-exact' },
     });
 
-    expect(onSearchChange).toHaveBeenLastCalledWith(
-      expect.objectContaining({ page: 1, sessionId: 'cache-exact', otelStatusCode: 'ERROR' }),
-    );
+    const nextSearch = onSearchChange.mock.calls.at(-1)?.[0];
+    expect(nextSearch).toEqual(expect.objectContaining({ sessionId: 'cache-exact', otelStatusCode: 'ERROR' }));
+    expect(nextSearch).not.toHaveProperty('pageToken');
   });
 
   test('keeps an incomplete Trace ID as a draft until it is valid', async () => {
     const onSearchChange = rs.fn();
     mocks.querySearch.mockClear();
-    const initialSearch = { ...createDefaultTraceSearch(), page: 3 };
+    const initialSearch = { ...createDefaultTraceSearch(), pageToken: 'stale-token' };
     const view = render(<TracesPage search={initialSearch} onSearchChange={onSearchChange} onTraceSelect={rs.fn()} />);
 
-    fireEvent.click(screen.getByRole('button', { name: /More filters|更多筛选/u }));
+    fireEvent.click(screen.getByRole('button', { name: /Filters|筛选/u }));
+    fireEvent.click(screen.getByRole('button', { name: /^Request$|^请求$/u }));
     const traceIdInput = await screen.findByRole('textbox', { name: /Trace ID|追踪 ID/u });
     fireEvent.change(traceIdInput, { target: { value: 'abc' } });
 
     expect(onSearchChange).not.toHaveBeenCalled();
-    expect(mocks.querySearch).toHaveBeenCalledTimes(1);
     expect(mocks.querySearch).toHaveBeenLastCalledWith(initialSearch, true);
     expect(screen.getByRole('alert')).toHaveTextContent(/32-character lowercase hexadecimal|32 位小写十六进制/u);
 
@@ -176,16 +263,17 @@ describe('traces page', () => {
     fireEvent.change(traceIdInput, { target: { value: traceId } });
 
     const validSearch = onSearchChange.mock.calls.at(-1)?.[0];
-    expect(validSearch).toEqual(expect.objectContaining({ page: 1, traceId }));
+    expect(validSearch).toEqual(expect.objectContaining({ traceId }));
+    expect(validSearch).not.toHaveProperty('pageToken');
     view.rerender(<TracesPage search={validSearch} onSearchChange={onSearchChange} onTraceSelect={rs.fn()} />);
-    expect(mocks.querySearch).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1, traceId }), true);
+    expect(mocks.querySearch).toHaveBeenLastCalledWith(expect.objectContaining({ traceId }), true);
   });
 
   test('navigates a keyboard-selected row to its trace detail', () => {
     const onTraceSelect = rs.fn();
     render(
       <TracesPage
-        search={{ ...createDefaultTraceSearch(), page: 2, pageSize: 20 }}
+        search={{ ...createDefaultTraceSearch(), pageToken: 'middle-token', pageSize: 20 }}
         onSearchChange={rs.fn()}
         onTraceSelect={onTraceSelect}
       />,
@@ -194,5 +282,254 @@ describe('traces page', () => {
     fireEvent.keyDown(screen.getByRole('button', { name: new RegExp(runningTrace.traceId, 'u') }), { key: 'Enter' });
 
     expect(onTraceSelect).toHaveBeenCalledWith(runningTrace.traceId);
+  });
+
+  test('uses the shared sidebar trigger to expand desktop filters', () => {
+    render(
+      <TracesPage
+        search={{ ...createDefaultTraceSearch(), pageToken: 'middle-token', pageSize: 20 }}
+        onSearchChange={rs.fn()}
+        onTraceSelect={rs.fn()}
+      />,
+    );
+
+    const sidebar = screen.getByRole('heading', { level: 2, name: /Filters|筛选/u }).closest('[data-slot="sidebar"]');
+    expect(sidebar).toHaveAttribute('data-state', 'collapsed');
+
+    const trigger = screen.getByRole('button', { name: /Filters|筛选/u });
+    expect(trigger).toHaveAttribute('data-sidebar', 'trigger');
+    fireEvent.click(trigger);
+
+    expect(sidebar).toHaveAttribute('data-state', 'expanded');
+  });
+
+  test('opens the same filters in a mobile Sheet', () => {
+    mocks.mobile = true;
+    render(
+      <TracesPage
+        search={{ ...createDefaultTraceSearch(), pageToken: 'middle-token', pageSize: 20 }}
+        onSearchChange={rs.fn()}
+        onTraceSelect={rs.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Filters|筛选/u }));
+
+    const sheet = screen.getByRole('dialog');
+    expect(within(sheet).getByRole('heading', { level: 2, name: /Filters|筛选/u })).toBeTruthy();
+  });
+
+  test('freezes the latest page across repeated polls and replaces it with the latest response on acceptance', () => {
+    const initial = [runningTrace, terminalTrace];
+    mocks.data = { items: initial, nextPageToken: 'older-initial' };
+    const view = render(
+      <TracesPage
+        search={{ ...createDefaultTraceSearch(), pageSize: 20 }}
+        onSearchChange={rs.fn()}
+        onTraceSelect={rs.fn()}
+      />,
+    );
+
+    const firstNew = { ...toolOnlyTrace, traceId: '1'.repeat(32) };
+    mocks.data = {
+      items: [firstNew, { ...runningTrace, endedAt: terminalTrace.endedAt }],
+      nextPageToken: 'older-first',
+    };
+    view.rerender(
+      <TracesPage
+        search={{ ...createDefaultTraceSearch(), pageSize: 20 }}
+        onSearchChange={rs.fn()}
+        onTraceSelect={rs.fn()}
+      />,
+    );
+    expect(screen.getByText(terminalTrace.traceId)).toBeTruthy();
+    expect(screen.queryByText(firstNew.traceId)).toBeNull();
+
+    const latestNew = { ...toolOnlyTrace, traceId: '2'.repeat(32) };
+    mocks.data = { items: [latestNew, firstNew], nextPageToken: 'older-latest' };
+    view.rerender(
+      <TracesPage
+        search={{ ...createDefaultTraceSearch(), pageSize: 20 }}
+        onSearchChange={rs.fn()}
+        onTraceSelect={rs.fn()}
+      />,
+    );
+
+    const notice = screen.getByRole('button', { name: /new traces available:\s*2|新.*2|2.*新/iu });
+    expect(screen.queryByText(latestNew.traceId)).toBeNull();
+    fireEvent.click(notice);
+    expect(screen.getByText(latestNew.traceId)).toBeTruthy();
+    expect(screen.getByText(firstNew.traceId)).toBeTruthy();
+    expect(screen.queryByText(terminalTrace.traceId)).toBeNull();
+  });
+
+  test('applies same-ID updates immediately unless a new-item notice freezes the snapshot', () => {
+    mocks.data = { items: [runningTrace] };
+    const search = { ...createDefaultTraceSearch(), pageSize: 20 as const };
+    const view = render(<TracesPage search={search} onSearchChange={rs.fn()} onTraceSelect={rs.fn()} />);
+
+    mocks.data = {
+      items: [{ ...runningTrace, endedAt: terminalTrace.endedAt }],
+    };
+    view.rerender(<TracesPage search={search} onSearchChange={rs.fn()} onTraceSelect={rs.fn()} />);
+    expect(screen.queryByText(/Running|运行中/u)).toBeNull();
+    expect(screen.getByText(/Success|成功/u)).toBeTruthy();
+  });
+
+  test('resets buffering for filters and page-size changes and never buffers token pages', () => {
+    const initialSearch = { ...createDefaultTraceSearch(), pageSize: 20 as const };
+    mocks.data = { items: [runningTrace], nextPageToken: 'older-token' };
+    const view = render(<TracesPage search={initialSearch} onSearchChange={rs.fn()} onTraceSelect={rs.fn()} />);
+
+    const filtered = { ...initialSearch, requestedModelId: 'new-filter' };
+    mocks.data = { items: [terminalTrace] };
+    view.rerender(<TracesPage search={filtered} onSearchChange={rs.fn()} onTraceSelect={rs.fn()} />);
+    expect(screen.getByText(terminalTrace.traceId)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /new trace|新 Trace/u })).toBeNull();
+
+    const resized = { ...filtered, pageSize: 50 as const };
+    mocks.data = { items: [toolOnlyTrace] };
+    view.rerender(<TracesPage search={resized} onSearchChange={rs.fn()} onTraceSelect={rs.fn()} />);
+    expect(screen.getByText(toolOnlyTrace.traceId)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /new trace|新 Trace/u })).toBeNull();
+
+    const pageTwo = { ...resized, pageToken: 'older-token' };
+    const pageTwoTrace = { ...runningTrace, traceId: '3'.repeat(32) };
+    mocks.data = { items: [pageTwoTrace], prevPageToken: 'newer-token' };
+    view.rerender(<TracesPage search={pageTwo} onSearchChange={rs.fn()} onTraceSelect={rs.fn()} />);
+    expect(screen.getByText(pageTwoTrace.traceId)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /new trace|新 Trace/u })).toBeNull();
+  });
+
+  test('isolates a frozen latest-page buffer immediately during placeholder search transitions', () => {
+    const initialSearch = { ...createDefaultTraceSearch(), pageSize: 20 as const };
+    mocks.data = { items: [runningTrace, terminalTrace], nextPageToken: 'older-token' };
+    const view = render(<TracesPage search={initialSearch} onSearchChange={rs.fn()} onTraceSelect={rs.fn()} />);
+
+    const newTrace = { ...toolOnlyTrace, traceId: '4'.repeat(32) };
+    mocks.data = { items: [newTrace, runningTrace], nextPageToken: 'older-updated' };
+    view.rerender(<TracesPage search={initialSearch} onSearchChange={rs.fn()} onTraceSelect={rs.fn()} />);
+    expect(screen.getByRole('button', { name: /new traces available|新 Trace/iu })).toBeTruthy();
+    expect(screen.getByText(terminalTrace.traceId)).toBeTruthy();
+    expect(screen.queryByText(newTrace.traceId)).toBeNull();
+
+    mocks.isPlaceholderData = true;
+    const filteredSearch = { ...initialSearch, requestedModelId: 'filtered-model' };
+    view.rerender(<TracesPage search={filteredSearch} onSearchChange={rs.fn()} onTraceSelect={rs.fn()} />);
+    expect(screen.queryByRole('button', { name: /new traces available|新 Trace/iu })).toBeNull();
+    expect(screen.getByRole('status', { name: /Loading traces|正在加载追踪/u })).toBeTruthy();
+    expect(screen.queryByText(newTrace.traceId)).toBeNull();
+    expect(screen.queryByText(terminalTrace.traceId)).toBeNull();
+
+    mocks.isPlaceholderData = false;
+    view.rerender(<TracesPage search={filteredSearch} onSearchChange={rs.fn()} onTraceSelect={rs.fn()} />);
+    expect(screen.getByText(newTrace.traceId)).toBeTruthy();
+    expect(screen.queryByText(terminalTrace.traceId)).toBeNull();
+  });
+
+  test('does not render placeholder traces after a filter change', () => {
+    const initialSearch = { ...createDefaultTraceSearch(), pageSize: 20 as const };
+    mocks.data = { items: [terminalTrace] };
+    const view = render(<TracesPage search={initialSearch} onSearchChange={rs.fn()} onTraceSelect={rs.fn()} />);
+
+    mocks.isPlaceholderData = true;
+    view.rerender(
+      <TracesPage
+        search={{ ...initialSearch, requestedModelId: 'filtered-model' }}
+        onSearchChange={rs.fn()}
+        onTraceSelect={rs.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('status', { name: /Loading traces|正在加载追踪/u })).toBeTruthy();
+    expect(screen.queryByText(terminalTrace.traceId)).toBeNull();
+  });
+
+  test('retains the previous response while an adjacent token page is placeholder data', () => {
+    const previousPage = { items: [runningTrace], nextPageToken: 'older-token' };
+    mocks.data = previousPage;
+    const latestSearch = { ...createDefaultTraceSearch(), pageSize: 20 as const };
+    const view = render(<TracesPage search={latestSearch} onSearchChange={rs.fn()} onTraceSelect={rs.fn()} />);
+
+    mocks.isPlaceholderData = true;
+    view.rerender(
+      <TracesPage
+        search={{ ...latestSearch, pageToken: 'older-token' }}
+        onSearchChange={rs.fn()}
+        onTraceSelect={rs.fn()}
+      />,
+    );
+
+    expect(screen.getByText(runningTrace.traceId)).toBeTruthy();
+    expect(screen.getByRole('button', { name: /next|下一页|次へ|다음/iu })).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  test('canonicalizes a successful newest response to the token-free URL with replacement', () => {
+    const onSearchChange = rs.fn();
+    const search = {
+      ...createDefaultTraceSearch(),
+      pageToken: 'newer-token',
+      requestedModelId: 'gpt-5',
+    };
+    mocks.data = { items: [runningTrace], nextPageToken: 'older-token' };
+
+    render(<TracesPage search={search} onSearchChange={onSearchChange} onTraceSelect={rs.fn()} />);
+
+    expect(onSearchChange).toHaveBeenCalledWith(expect.objectContaining({ requestedModelId: 'gpt-5' }), {
+      replace: true,
+    });
+    expect(onSearchChange).toHaveBeenCalledTimes(1);
+    expect(onSearchChange.mock.calls[0]?.[0]).not.toHaveProperty('pageToken');
+  });
+
+  test('canonicalizes the same token again after returning to the token-free search', () => {
+    const onSearchChange = rs.fn();
+    const latestSearch = { ...createDefaultTraceSearch(), requestedModelId: 'gpt-5' };
+    const tokenSearch = { ...latestSearch, pageToken: 'revisited-token' };
+    mocks.data = { items: [runningTrace], nextPageToken: 'older-token' };
+    const view = render(<TracesPage search={tokenSearch} onSearchChange={onSearchChange} onTraceSelect={rs.fn()} />);
+
+    view.rerender(<TracesPage search={latestSearch} onSearchChange={onSearchChange} onTraceSelect={rs.fn()} />);
+    view.rerender(<TracesPage search={tokenSearch} onSearchChange={onSearchChange} onTraceSelect={rs.fn()} />);
+
+    expect(onSearchChange).toHaveBeenCalledTimes(2);
+    expect(onSearchChange).toHaveBeenNthCalledWith(1, latestSearch, { replace: true });
+    expect(onSearchChange).toHaveBeenNthCalledWith(2, latestSearch, { replace: true });
+  });
+
+  test.each(['placeholder', 'failed'] as const)('does not canonicalize a %s token response', (state) => {
+    const onSearchChange = rs.fn();
+    mocks.data = { items: [runningTrace], nextPageToken: 'older-token' };
+    mocks.isPlaceholderData = state === 'placeholder';
+    mocks.error = state === 'failed' ? new DashboardTracesRequestError(503) : null;
+
+    render(
+      <TracesPage
+        search={{ ...createDefaultTraceSearch(), pageToken: 'newer-token' }}
+        onSearchChange={onSearchChange}
+        onTraceSelect={rs.fn()}
+      />,
+    );
+
+    expect(onSearchChange).not.toHaveBeenCalled();
+  });
+
+  test('clears an invalid page token while preserving filters', () => {
+    const onSearchChange = rs.fn();
+    mocks.error = new DashboardTracesRequestError(400);
+    render(
+      <TracesPage
+        search={{ ...createDefaultTraceSearch(), pageToken: 'invalid-token', requestedModelId: 'gpt-5' }}
+        onSearchChange={onSearchChange}
+        onTraceSelect={rs.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByText(/^(Reset|重置|リセット|초기화)$/u).closest('button')!);
+
+    expect(onSearchChange).toHaveBeenCalledWith(expect.objectContaining({ requestedModelId: 'gpt-5' }), {
+      replace: true,
+    });
+    expect(onSearchChange.mock.calls[0]?.[0]).not.toHaveProperty('pageToken');
   });
 });

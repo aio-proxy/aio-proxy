@@ -1,6 +1,8 @@
 import { m } from '@aio-proxy/i18n';
+import { toast } from '@aio-proxy/ui/components/toast';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { toast } from 'sonner';
+
+import { queryKeys } from '@/lib/query-keys';
 
 import {
   createProviderMutationFn,
@@ -13,11 +15,11 @@ export function useProviderCreate() {
   return useMutation({
     mutationFn: createProviderMutationFn,
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['providers'] });
-      toast.success(m['dashboard.providers.toast.created']());
+      void queryClient.invalidateQueries({ queryKey: queryKeys.providers });
+      toast.add({ type: 'success', title: m['dashboard.providers.toast.created']() });
     },
     onError: () => {
-      toast.error(m['dashboard.providers.toast.create_failed']());
+      toast.add({ type: 'error', title: m['dashboard.providers.toast.create_failed']() });
     },
   });
 }
@@ -27,11 +29,11 @@ export function useProviderUpdate() {
   return useMutation({
     mutationFn: updateProviderMutationFn,
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['providers'] });
-      toast.success(m['dashboard.providers.toast.updated']());
+      void queryClient.invalidateQueries({ queryKey: queryKeys.providers });
+      toast.add({ type: 'success', title: m['dashboard.providers.toast.updated']() });
     },
     onError: () => {
-      toast.error(m['dashboard.providers.toast.update_failed']());
+      toast.add({ type: 'error', title: m['dashboard.providers.toast.update_failed']() });
     },
   });
 }
@@ -41,11 +43,11 @@ export function useProviderDelete() {
   return useMutation({
     mutationFn: deleteProviderMutationFn,
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['providers'] });
-      toast.success(m['dashboard.providers.toast.deleted']());
+      void queryClient.invalidateQueries({ queryKey: queryKeys.providers });
+      toast.add({ type: 'success', title: m['dashboard.providers.toast.deleted']() });
     },
     onError: () => {
-      toast.error(m['dashboard.providers.toast.delete_failed']());
+      toast.add({ type: 'error', title: m['dashboard.providers.toast.delete_failed']() });
     },
   });
 }

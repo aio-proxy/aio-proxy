@@ -82,7 +82,7 @@ test('plugin raw capability receives catalog metadata and rejects malformed tran
     {
       catalog: {
         ...catalog,
-        language: [{ id: 'model', displayName: 'Model', metadata: { region: 'us', protocol: 'anthropic' } }],
+        language: [{ id: 'model', displayName: 'Catalog Name', metadata: { region: 'us', protocol: 'anthropic' } }],
       },
       createRuntime: async () =>
         ({
@@ -101,7 +101,7 @@ test('plugin raw capability receives catalog metadata and rejects malformed tran
     {
       ...catalog,
       language: [
-        { id: 'model', displayName: 'Model', metadata: { region: 'us', protocol: 'anthropic' } },
+        { id: 'model', displayName: 'Catalog Name', metadata: { region: 'us', protocol: 'anthropic' } },
         { id: 'bad-resolver' },
         { id: 'bad-response' },
       ],
@@ -116,6 +116,7 @@ test('plugin raw capability receives catalog metadata and rejects malformed tran
       plugin: '@example/oauth',
       capability: 'default',
       alias: { client: { model: 'model', preserve: false } },
+      metadata: { model: { name: 'Configured Name', limit: { context: 400_000, input: 272_000 } } },
     },
     plugins: fixture.plugins,
     repository: fixture.repository,
@@ -131,8 +132,12 @@ test('plugin raw capability receives catalog metadata and rejects malformed tran
     modelId: 'model',
     metadata: { region: 'us', protocol: 'anthropic' },
   });
-  expect(result.provider?.modelMetadata?.[modelId]).toEqual({
-    displayName: 'Model',
+  expect(result.provider?.configMetadata?.[modelId]).toEqual({
+    name: 'Configured Name',
+    limit: { context: 400_000, input: 272_000 },
+  });
+  expect(result.provider?.upstreamMetadata?.[modelId]).toEqual({
+    name: 'Catalog Name',
     protocol: ProviderProtocol.Anthropic,
   });
   expect(result.provider?.model?.targetProtocol?.(modelId)).toBe(ProviderProtocol.Anthropic);

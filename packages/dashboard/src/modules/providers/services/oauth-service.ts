@@ -6,12 +6,13 @@ import type {
 import { queryOptions } from '@tanstack/react-query';
 
 import { createDashboardClient } from '@/lib/dashboard-client';
+import { queryKeys } from '@/lib/query-keys';
 
 const dashboardClient = createDashboardClient();
 
 export const oauthCapabilitiesQueryOptions = () =>
   queryOptions({
-    queryKey: ['oauth-capabilities'],
+    queryKey: queryKeys.oauthCapabilities,
     queryFn: async (): Promise<DashboardOAuthCapabilitiesResponse> => {
       const response = await dashboardClient.dashboard.api.oauth.capabilities.$get();
       if (!response.ok) throw new Error(`load OAuth capabilities failed: ${response.status}`);
@@ -21,7 +22,7 @@ export const oauthCapabilitiesQueryOptions = () =>
 
 export const oauthSessionQueryOptions = (id: string) =>
   queryOptions({
-    queryKey: ['oauth-session', id],
+    queryKey: queryKeys.oauthSession(id),
     queryFn: async (): Promise<{ session: DashboardOAuthSession }> => {
       const response = await dashboardClient.dashboard.api.oauth.sessions[':id'].$get({ param: { id } });
       if (!response.ok) throw new Error(`load OAuth session failed: ${response.status}`);

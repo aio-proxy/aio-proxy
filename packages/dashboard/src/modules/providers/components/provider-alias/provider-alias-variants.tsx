@@ -1,13 +1,12 @@
 import { m } from '@aio-proxy/i18n';
 import type { AliasConfig, AliasTarget } from '@aio-proxy/types';
+import { Badge } from '@aio-proxy/ui/components/badge';
+import { Button } from '@aio-proxy/ui/components/button';
+import { FieldDescription } from '@aio-proxy/ui/components/field';
+import { Separator } from '@aio-proxy/ui/components/separator';
 import { omit } from 'es-toolkit/object';
 import { ChevronDownIcon, ChevronUpIcon, PlusIcon } from 'lucide-react';
 import { type FC, useState } from 'react';
-
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { FieldDescription } from '@/components/ui/field';
-import { Separator } from '@/components/ui/separator';
 
 import {
   type AliasEditorIssue,
@@ -15,7 +14,7 @@ import {
   commitVariantDraft,
   type ProviderAlias,
   renameVariant,
-} from '../../alias-editor';
+} from '../../lib/alias-editor';
 import { ProviderVariantDraft } from '../provider-variant-draft';
 import { ProviderVariantRow } from '../provider-variant-row';
 

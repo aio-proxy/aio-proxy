@@ -1,10 +1,9 @@
+import { Spinner } from '@aio-proxy/ui/components/spinner';
+import { cn } from '@aio-proxy/ui/lib/utils';
 import { Editor, type OnMount } from '@monaco-editor/react';
 import { merge } from 'es-toolkit/object';
 import { useTheme } from 'next-themes';
 import { useEffect, useRef } from 'react';
-
-import { Spinner } from '@/components/ui/spinner';
-import { cn } from '@/lib/utils';
 
 import { setCodeEditorAriaInvalid } from './code-editor-accessibility';
 import { CODE_EDITOR_THEME_IDS, defineCodeEditorThemes } from './themes';
@@ -30,21 +29,17 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
 }) => {
   const { resolvedTheme } = useTheme();
   const editorRef = useRef<Parameters<OnMount>[0]>(null);
-  const invalidRef = useRef(invalid);
-  const ariaDescribedByRef = useRef(ariaDescribedBy);
-  const onMountRef = useRef(onMount);
-  invalidRef.current = invalid;
-  ariaDescribedByRef.current = ariaDescribedBy;
-  onMountRef.current = onMount;
+  const latestPropsRef = useRef({ invalid, ariaDescribedBy, onMount });
 
   useEffect(() => {
+    latestPropsRef.current = { invalid, ariaDescribedBy, onMount };
     if (editorRef.current) setCodeEditorAriaInvalid(editorRef.current, invalid, ariaDescribedBy);
-  }, [ariaDescribedBy, invalid]);
+  }, [ariaDescribedBy, invalid, onMount]);
 
   const handleMount: OnMount = (editor, monaco) => {
     editorRef.current = editor;
-    setCodeEditorAriaInvalid(editor, invalidRef.current, ariaDescribedByRef.current);
-    onMountRef.current?.(editor, monaco);
+    setCodeEditorAriaInvalid(editor, latestPropsRef.current.invalid, latestPropsRef.current.ariaDescribedBy);
+    latestPropsRef.current.onMount?.(editor, monaco);
   };
 
   return (

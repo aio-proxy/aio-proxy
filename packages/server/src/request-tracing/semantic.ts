@@ -1,3 +1,5 @@
+import type { DashboardTraceDiagnostics } from '@aio-proxy/types';
+
 export const spanName = {
   request: 'aio_proxy.request',
   parse: 'aio_proxy.request.parse',
@@ -7,6 +9,7 @@ export const spanName = {
   prepare: 'aio_proxy.request.prepare',
   inference: 'gen_ai.client.inference',
   tokenCount: 'aio_proxy.token_count',
+  candidateSkipped: 'aio_proxy.token_count.candidate_skipped',
   egress: 'aio_proxy.response.egress',
   usage: 'aio_proxy.usage.resolve',
 } as const;
@@ -45,6 +48,8 @@ export const attributeName = {
   sourceProtocol: 'aio_proxy.protocol.source',
   targetProtocol: 'aio_proxy.protocol.target',
   selectionReason: 'aio_proxy.route.selection_reason',
+  tokenCountSource: 'aio_proxy.token_count.source',
+  skipReason: 'aio_proxy.token_count.skip_reason',
   prepareMode: 'aio_proxy.prepare.mode',
   egressMode: 'aio_proxy.egress.mode',
   errorCode: 'aio_proxy.error.code',
@@ -59,6 +64,167 @@ export const attributeName = {
   genAiUsageReasoningTokens: 'gen_ai.usage.reasoning_tokens',
   errorType: 'error.type',
   httpStatusCode: 'http.status_code',
+  diagnosticRequestProtocol: 'aio_proxy.diagnostics.request.protocol',
+  diagnosticRequestMethod: 'aio_proxy.diagnostics.request.method',
+  diagnosticRequestContentType: 'aio_proxy.diagnostics.request.content_type',
+  diagnosticRequestContentLengthBytes: 'aio_proxy.diagnostics.request.content_length_bytes',
+  diagnosticRequestUserAgent: 'aio_proxy.diagnostics.request.user_agent',
+  diagnosticResponseStatusCode: 'aio_proxy.diagnostics.response.status_code',
+  diagnosticResponseContentType: 'aio_proxy.diagnostics.response.content_type',
+  diagnosticResponseContentLengthBytes: 'aio_proxy.diagnostics.response.content_length_bytes',
 } as const;
 
 export const ALLOWED_ATTRIBUTES = new Set<string>(Object.values(attributeName));
+
+type DiagnosticAttributeValue = string | number;
+type DiagnosticAttributes = Record<string, DiagnosticAttributeValue>;
+
+const MAX_DIAGNOSTIC_TEXT_LENGTH = 512;
+
+export function captureTraceDiagnostics(input: {
+  readonly inboundRequest?: { readonly protocol: string; readonly value: Request };
+  readonly clientResponse?: Response;
+}): DashboardTraceDiagnostics {
+  const request = input.inboundRequest;
+  const response = input.clientResponse;
+  return {
+    ...(request === undefined
+      ? {}
+      : {
+          request: {
+            protocol: request.protocol,
+            method: request.value.method,
+            ...headerDiagnostics(request.value.headers, true),
+          },
+        }),
+    ...(response === undefined
+      ? {}
+      : {
+          response: {
+            statusCode: response.status,
+            ...headerDiagnostics(response.headers, false),
+          },
+        }),
+  };
+}
+
+function headerDiagnostics(headers: Headers, includeUserAgent: boolean) {
+  const contentType = safeHeader(headers, 'content-type');
+  const contentLengthBytes = safeContentLength(headers);
+  const userAgent = includeUserAgent ? safeHeader(headers, 'user-agent') : undefined;
+  return {
+    ...(contentType === undefined ? {} : { contentType }),
+    ...(contentLengthBytes === undefined ? {} : { contentLengthBytes }),
+    ...(userAgent === undefined ? {} : { userAgent }),
+  };
+}
+
+function safeHeader(headers: Headers, name: 'content-type' | 'user-agent'): string | undefined {
+  const value = headers.get(name)?.trim();
+  return value !== undefined && value.length > 0 && value.length <= MAX_DIAGNOSTIC_TEXT_LENGTH ? value : undefined;
+}
+
+function safeContentLength(headers: Headers): number | undefined {
+  const value = headers.get('content-length');
+  if (value === null || !/^(0|[1-9]\d*)$/u.test(value)) return undefined;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) ? parsed : undefined;
+}
+
+export function traceDiagnosticsToAttributes(diagnostics: DashboardTraceDiagnostics): DiagnosticAttributes {
+  const request = diagnostics.request;
+  const response = diagnostics.response;
+  return {
+    ...(request === undefined
+      ? {}
+      : {
+          [attributeName.diagnosticRequestProtocol]: request.protocol,
+          [attributeName.diagnosticRequestMethod]: request.method,
+          ...(request.contentType === undefined
+            ? {}
+            : { [attributeName.diagnosticRequestContentType]: request.contentType }),
+          ...(request.contentLengthBytes === undefined
+            ? {}
+            : { [attributeName.diagnosticRequestContentLengthBytes]: request.contentLengthBytes }),
+          ...(request.userAgent === undefined ? {} : { [attributeName.diagnosticRequestUserAgent]: request.userAgent }),
+        }),
+    ...(response === undefined
+      ? {}
+      : {
+          [attributeName.diagnosticResponseStatusCode]: response.statusCode,
+          ...(response.contentType === undefined
+            ? {}
+            : { [attributeName.diagnosticResponseContentType]: response.contentType }),
+          ...(response.contentLengthBytes === undefined
+            ? {}
+            : { [attributeName.diagnosticResponseContentLengthBytes]: response.contentLengthBytes }),
+        }),
+  };
+}
+
+export function traceDiagnosticsFromAttributes(
+  attributes: Readonly<Record<string, unknown>>,
+): DashboardTraceDiagnostics | undefined {
+  const requestProtocol = stringAttribute(attributes, attributeName.diagnosticRequestProtocol);
+  const requestMethod = stringAttribute(attributes, attributeName.diagnosticRequestMethod);
+  const responseStatus = numberAttribute(attributes, attributeName.diagnosticResponseStatusCode);
+  const diagnostics: DashboardTraceDiagnostics = {
+    ...(requestProtocol === undefined || requestMethod === undefined
+      ? {}
+      : {
+          request: {
+            protocol: requestProtocol,
+            method: requestMethod,
+            ...optionalStringAttribute(attributes, attributeName.diagnosticRequestContentType, 'contentType'),
+            ...optionalNumberAttribute(
+              attributes,
+              attributeName.diagnosticRequestContentLengthBytes,
+              'contentLengthBytes',
+            ),
+            ...optionalStringAttribute(attributes, attributeName.diagnosticRequestUserAgent, 'userAgent'),
+          },
+        }),
+    ...(responseStatus === undefined
+      ? {}
+      : {
+          response: {
+            statusCode: responseStatus,
+            ...optionalStringAttribute(attributes, attributeName.diagnosticResponseContentType, 'contentType'),
+            ...optionalNumberAttribute(
+              attributes,
+              attributeName.diagnosticResponseContentLengthBytes,
+              'contentLengthBytes',
+            ),
+          },
+        }),
+  };
+  return diagnostics.request === undefined && diagnostics.response === undefined ? undefined : diagnostics;
+}
+
+function stringAttribute(attributes: Readonly<Record<string, unknown>>, name: string): string | undefined {
+  const value = attributes[name];
+  return typeof value === 'string' ? value : undefined;
+}
+
+function numberAttribute(attributes: Readonly<Record<string, unknown>>, name: string): number | undefined {
+  const value = attributes[name];
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+function optionalStringAttribute(
+  attributes: Readonly<Record<string, unknown>>,
+  name: string,
+  field: 'contentType' | 'userAgent',
+): Partial<Record<'contentType' | 'userAgent', string>> {
+  const value = stringAttribute(attributes, name);
+  return value === undefined ? {} : { [field]: value };
+}
+
+function optionalNumberAttribute(
+  attributes: Readonly<Record<string, unknown>>,
+  name: string,
+  field: 'contentLengthBytes',
+): Partial<Record<'contentLengthBytes', number>> {
+  const value = numberAttribute(attributes, name);
+  return value === undefined ? {} : { [field]: value };
+}

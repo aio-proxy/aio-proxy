@@ -39,25 +39,33 @@ export function createXAIGrokPlugin(
   } as const satisfies ConfigSpec<Record<string, never>>;
   const adapter: OAuthAdapter<Record<string, never>, XAIGrokCredential> = {
     id: 'default',
-    label: presentationText.adapterLabel,
-    icon: 'xai',
+    displayName: presentationText.adapterLabel,
     account: { options: accountOptions },
     credentials: credentialSchema,
     login: async (context, options) => {
       await accountOptions.schema.parseAsync(options);
       return await loginXAIGrok(context, {
         ...dependencies,
+        ...(dependencies.fetch === undefined && context.fetch !== undefined ? { fetch: context.fetch } : {}),
         deviceInstructions: presentationText.deviceInstructions,
         waitingForAuthorization: presentationText.waitingForAuthorization,
       });
     },
     catalog: {
       policy: { kind: 'ttl', ttlMs: XAI_GROK_CATALOG_TTL_MS },
-      discover: (context) => discoverXAIGrokModels(context, dependencies),
+      discover: (context) =>
+        discoverXAIGrokModels(context, {
+          ...dependencies,
+          ...(dependencies.fetch === undefined && context.fetch !== undefined ? { fetch: context.fetch } : {}),
+        }),
       initialFallback: initialXAIGrokCatalogFallback,
     },
     quota: {
-      read: (context) => readXAIGrokQuota(context, dependencies),
+      read: (context) =>
+        readXAIGrokQuota(context, {
+          ...dependencies,
+          ...(dependencies.fetch === undefined && context.fetch !== undefined ? { fetch: context.fetch } : {}),
+        }),
     },
     createRuntime: (context) => createXAIGrokRuntime(context, dependencies),
   };
@@ -66,8 +74,9 @@ export function createXAIGrokPlugin(
       api.oauth.register(adapter);
     },
     {
-      label: presentationText.pluginLabel ?? 'xAI Grok',
+      displayName: presentationText.pluginLabel ?? 'xAI Grok',
       description: presentationText.pluginDescription ?? 'Use a SuperGrok or X Premium+ account to access Grok models',
+      icon: 'xai',
     },
   );
 }

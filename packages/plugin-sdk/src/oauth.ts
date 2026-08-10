@@ -32,11 +32,6 @@ export class CredentialRefreshError extends Error {
   }
 }
 
-export type LobeIconKey = AioProxyLobeIconKey;
-
-// oxlint-disable-next-line typescript/no-redundant-type-constituents -- LobeIconKey is a literal-key union at build time (a `string` placeholder only during lint), so the URL/data-URI members are not redundant and are required to reject arbitrary strings.
-export type OAuthIcon = LobeIconKey | `http://${string}` | `https://${string}` | `data:image/${string}`;
-
 export type DeviceCodePresentation = {
   readonly url: string;
   readonly userCode: string;
@@ -67,12 +62,13 @@ export type OAuthLoginContext = {
   readonly authorization: AuthorizationPort;
   readonly progress: (message: LocalizedText) => void;
   readonly signal: AbortSignal;
+  readonly fetch?: RuntimeFetch;
 };
 
 export type OAuthLoginResult<Credential> = {
   readonly fingerprint: string;
   readonly suggestedKey: string;
-  readonly label?: string;
+  readonly accountLabel?: string;
   readonly credentials: Credential;
   readonly expiresAt?: number;
 };
@@ -91,7 +87,7 @@ export type CredentialPort<Credential> = {
       signal: AbortSignal,
     ) => Promise<{
       readonly value: Credential;
-      readonly metadata?: { readonly label?: string; readonly expiresAt?: number };
+      readonly metadata?: { readonly accountLabel?: string; readonly expiresAt?: number };
     }>,
   ) => Promise<
     | { readonly status: 'updated'; readonly snapshot: CredentialSnapshot<Credential> }
@@ -103,11 +99,12 @@ export type AccountContext<Credential, AccountOptions> = {
   readonly credentials: CredentialPort<Credential>;
   readonly options: AccountOptions;
   readonly signal: AbortSignal;
+  readonly fetch?: RuntimeFetch;
 };
 
 export type OAuthQuotaItem = {
   readonly id: string;
-  readonly label: LocalizedText;
+  readonly displayName: LocalizedText;
   readonly remainingRatio?: number;
   readonly resetsAt?: number;
 };
@@ -132,19 +129,29 @@ export type OAuthQuotaCapability<AccountOptions, Credential> = {
   readonly reset?: (context: AccountContext<Credential, AccountOptions>) => Promise<void>;
 };
 
+export type RuntimeFetchTraffic = 'model' | 'control';
+
+export type RuntimeRequestInit = RequestInit & {
+  readonly aioProxy?: {
+    readonly traffic?: RuntimeFetchTraffic;
+  };
+};
+
+export type RuntimeFetch = typeof globalThis.fetch & {
+  (input: RequestInfo | URL, init?: RuntimeRequestInit): Promise<Response>;
+};
+
 export type RuntimeContext<Credential, AccountOptions> = {
   readonly credentials: CredentialPort<Credential>;
   readonly options: AccountOptions;
   readonly catalog: ModelCatalog;
-  readonly fetch?: typeof globalThis.fetch;
-  readonly modelFetch?: typeof globalThis.fetch;
+  readonly fetch: RuntimeFetch;
 };
 
 export type OAuthAdapter<AccountOptions = unknown, Credential = unknown> = {
   readonly id: string;
-  readonly label: LocalizedText;
+  readonly displayName: LocalizedText;
   readonly description?: LocalizedText;
-  readonly icon?: OAuthIcon;
   readonly account: { readonly options: ConfigSpec<AccountOptions> };
   readonly credentials: ZodType<Credential>;
   readonly login: (context: OAuthLoginContext, options: AccountOptions) => Promise<OAuthLoginResult<Credential>>;

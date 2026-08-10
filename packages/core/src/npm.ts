@@ -194,12 +194,15 @@ async function ensureInstalledNpmPackage(pkg: string, registry: string): Promise
 
 export async function withNpmPackageLifecycle<T>(
   pkg: string,
-  use: (assertOwnership: () => Promise<void>) => Promise<T>,
+  use: (
+    assertOwnership: () => Promise<void>,
+    withOwnershipFence: <R>(action: (assertFencedOwnership: () => Promise<void>) => Promise<R>) => Promise<R>,
+  ) => Promise<T>,
 ): Promise<T> {
   const lockDir = join(packagesDir(), '.locks', encodeURIComponent(pkg));
   const lock = await acquireNpmInstallLock(pkg, lockDir, { waitMs: INSTALL_TIMEOUT_MS });
   try {
-    return await lock.withOwnership(use);
+    return await lock.withOwnership((assertOwnership) => use(assertOwnership, lock.withOwnershipFence));
   } finally {
     await lock.release();
   }
@@ -217,14 +220,24 @@ export async function withInstalledNpmPackage<T>(
   });
 }
 
-export async function removeNpmPackageCache(pkg: string, canRemove?: () => Promise<boolean>): Promise<boolean> {
+export async function removeNpmPackageCache(
+  pkg: string,
+  canRemove?: () => Promise<boolean>,
+  coordinate: (remove: () => Promise<boolean>, assertPackageOwnership: () => Promise<void>) => Promise<boolean> = (
+    remove,
+  ) => remove(),
+): Promise<boolean> {
   const cacheDir = npmPackageCacheDir(pkg);
-  if (!existsSync(cacheDir)) return false;
-  return withNpmPackageLifecycle(pkg, async (assertOwnership) => {
-    if (canRemove !== undefined && !(await canRemove())) return false;
-    if (!existsSync(cacheDir)) return false;
+  return withNpmPackageLifecycle(pkg, async (assertOwnership, withOwnershipFence) => {
     await assertOwnership();
-    await rm(cacheDir, { recursive: true, force: true });
-    return true;
+    return withOwnershipFence((assertPackageOwnership) =>
+      coordinate(async () => {
+        if (canRemove !== undefined && !(await canRemove())) return false;
+        if (!existsSync(cacheDir)) return false;
+        await assertPackageOwnership();
+        await rm(cacheDir, { recursive: true, force: true });
+        return true;
+      }, assertPackageOwnership),
+    );
   });
 }

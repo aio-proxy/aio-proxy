@@ -36,7 +36,7 @@ function install(packageName: string, version = '1.0.0') {
 function adapter(id = 'default'): OAuthAdapter {
   return {
     id,
-    label: 'Example',
+    displayName: 'Example',
     account: { options: { schema: zod.object({}), form: [] } },
     credentials: zod.object({ token: zod.string() }),
     async login() {

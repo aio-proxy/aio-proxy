@@ -1,14 +1,14 @@
 import { m } from '@aio-proxy/i18n';
+import { Button } from '@aio-proxy/ui/components/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@aio-proxy/ui/components/card';
+import { Field, FieldError, FieldLabel } from '@aio-proxy/ui/components/field';
+import { Input } from '@aio-proxy/ui/components/input';
+import { Spinner } from '@aio-proxy/ui/components/spinner';
 import { useForm } from '@tanstack/react-form';
 import { useState } from 'react';
 import { z } from 'zod';
 
 import { AioProxyBrand } from '@/components/aio-proxy-brand';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Field, FieldError, FieldLabel } from '@/components/ui/field';
-import { Input } from '@/components/ui/input';
-import { Spinner } from '@/components/ui/spinner';
 
 import { loginDashboard, type DashboardLoginResult } from '../services/auth-service';
 
@@ -28,13 +28,17 @@ export const LoginPage: React.FC<LoginPageProps> = ({ reason }) => {
       if (!result.ok) setError(result.error);
     },
   });
+  let errorMessage: string | undefined;
+  if (error === 'invalid') errorMessage = m['dashboard.auth.login.invalid']();
+  else if (error === 'rate-limited') errorMessage = m['dashboard.auth.login.rate_limited']();
+  else if (error !== undefined) errorMessage = m['dashboard.auth.login.unavailable']();
 
   return (
     <main className="flex min-h-dvh items-center justify-center bg-sidebar px-4 py-8">
       <Card className="w-full max-w-sm">
         <CardHeader>
           <div className="mb-4">
-            <AioProxyBrand logoHeight="32px" showTagline={false} />
+            <AioProxyBrand className="text-2xl" showTagline={false} />
           </div>
           <CardTitle>
             <h1 className="text-xl font-semibold text-balance">{m['dashboard.auth.login.title']()}</h1>
@@ -80,11 +84,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ reason }) => {
             </form.Field>
             {error === undefined ? null : (
               <p role="alert" className="text-sm text-destructive">
-                {error === 'invalid'
-                  ? m['dashboard.auth.login.invalid']()
-                  : error === 'rate-limited'
-                    ? m['dashboard.auth.login.rate_limited']()
-                    : m['dashboard.auth.login.unavailable']()}
+                {errorMessage}
               </p>
             )}
             <form.Subscribe selector={(state) => [state.canSubmit, state.isSubmitting] as const}>

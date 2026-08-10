@@ -1,4 +1,4 @@
-import type { ZodType } from '@aio-proxy/plugin-sdk';
+import type { RuntimeFetch, ZodType } from '@aio-proxy/plugin-sdk';
 
 import { extractAccountId } from './jwt';
 import type { ChatGPTCredential } from './schema';
@@ -19,13 +19,11 @@ type OpenAITokenResponse = {
 };
 
 export type ChatGPTTokenExchangeOptions = {
-  readonly fetch?: ChatGPTFetch;
+  readonly fetch?: RuntimeFetch;
   readonly now?: () => number;
   readonly redirectUri?: string;
   readonly signal?: AbortSignal;
 };
-
-export type ChatGPTFetch = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 
 export class ChatGPTTokenExchangeError extends Error {
   override readonly name = 'ChatGPTTokenExchangeError';
@@ -94,7 +92,9 @@ async function postTokenRequest<T>(
   options: ChatGPTTokenExchangeOptions,
   schema: ZodType<T>,
 ): Promise<T> {
-  const response = await (options.fetch ?? globalThis.fetch)(TOKEN_ENDPOINT, {
+  const fetch: RuntimeFetch = options.fetch ?? globalThis.fetch;
+  const response = await fetch(TOKEN_ENDPOINT, {
+    aioProxy: { traffic: 'control' },
     body,
     headers: {
       accept: 'application/json',

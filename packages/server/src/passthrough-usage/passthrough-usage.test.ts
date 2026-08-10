@@ -121,4 +121,64 @@ describe('passthrough usage extraction', () => {
       reasoningTokens: 3,
     });
   });
+
+  test('counts Responses JSON image/web-search items alongside tokens', () => {
+    expect(
+      extractPassthroughUsage(
+        ProviderProtocol.OpenAIResponse,
+        JSON.stringify({
+          usage: { input_tokens: 7, output_tokens: 8, total_tokens: 15 },
+          output: [
+            { type: 'image_generation_call' },
+            { type: 'image_generation_call' },
+            { type: 'web_search_call' },
+            { type: 'message' },
+          ],
+        }),
+      ),
+    ).toEqual({ inputTokens: 7, outputTokens: 8, totalTokens: 15, imageCount: 2, webSearchCount: 1 });
+  });
+
+  test('surfaces Responses item counts even when token usage is absent', () => {
+    expect(
+      extractPassthroughUsage(
+        ProviderProtocol.OpenAIResponse,
+        JSON.stringify({ output: [{ type: 'image_generation_call' }, { type: 'web_search_call' }] }),
+      ),
+    ).toEqual({ imageCount: 1, webSearchCount: 1 });
+  });
+
+  test('omits Responses item counts when no such items are present', () => {
+    const usage = extractPassthroughUsage(
+      ProviderProtocol.OpenAIResponse,
+      JSON.stringify({ usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 }, output: [{ type: 'message' }] }),
+    );
+    expect(usage).toEqual({ inputTokens: 1, outputTokens: 1, totalTokens: 2 });
+    expect(usage?.imageCount).toBeUndefined();
+    expect(usage?.webSearchCount).toBeUndefined();
+  });
+
+  test('does not count output items for non-Responses protocols', () => {
+    const usage = extractPassthroughUsage(
+      ProviderProtocol.OpenAICompatible,
+      JSON.stringify({
+        usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+        output: [{ type: 'image_generation_call' }, { type: 'web_search_call' }],
+      }),
+    );
+    expect(usage?.imageCount).toBeUndefined();
+    expect(usage?.webSearchCount).toBeUndefined();
+  });
+
+  test('counts Responses SSE output_item.done items alongside terminal usage', () => {
+    expect(
+      extractPassthroughUsage(
+        ProviderProtocol.OpenAIResponse,
+        'event: response.output_item.done\ndata: {"type":"response.output_item.done","item":{"type":"image_generation_call"}}\n\n' +
+          'event: response.output_item.done\ndata: {"type":"response.output_item.done","item":{"type":"web_search_call"}}\n\n' +
+          'event: response.output_item.done\ndata: {"type":"response.output_item.done","item":{"type":"web_search_call"}}\n\n' +
+          'event: response.completed\ndata: {"type":"response.completed","response":{"status":"completed","usage":{"input_tokens":2,"output_tokens":3,"total_tokens":5}}}\n\n',
+      ),
+    ).toEqual({ inputTokens: 2, outputTokens: 3, totalTokens: 5, imageCount: 1, webSearchCount: 2 });
+  });
 });

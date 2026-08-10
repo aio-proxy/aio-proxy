@@ -1,12 +1,12 @@
 import { getLocale, m } from '@aio-proxy/i18n';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@aio-proxy/ui/components/card';
 import { Activity, CircleCheckBig, CircleDollarSign, Cpu, Gauge, Zap } from 'lucide-react';
 import type { ReactNode } from 'react';
 
 import { formatCompactTokenCount, TokenCount } from '@/components/token-count';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { formatNanoUsd } from '@/lib/nano-usd';
 
 import type { UsageOverviewSummary } from '../services/usage-service';
-import { formatNanoUsd } from '../services/usage-value-formatter';
 
 interface UsageSummaryGridProps {
   readonly summary: UsageOverviewSummary;
@@ -27,7 +27,7 @@ export const UsageSummaryGrid: React.FC<UsageSummaryGridProps> = ({ summary }) =
     maximumFractionDigits: 1,
     style: 'percent',
   });
-  const notAvailable = m['dashboard.usage.not_available']();
+  const notAvailable = 'N/A';
   const cards: readonly UsageSummaryCard[] = [
     {
       icon: CircleDollarSign,

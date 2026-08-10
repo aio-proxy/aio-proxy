@@ -29,31 +29,31 @@ function diagnosticSummary(code: DiagnosticCode, context: DiagnosticContext): st
     : '<provider>';
   switch (code) {
     case 'PLUGIN_NOT_INSTALLED':
-      return m.cli_plugin_diagnostic_plugin_not_installed({ plugin });
+      return m['cli.plugin.diagnostic_plugin_not_installed']({ plugin });
     case 'PLUGIN_API_INCOMPATIBLE':
-      return m.cli_plugin_diagnostic_plugin_api_incompatible({ plugin });
+      return m['cli.plugin.diagnostic_plugin_api_incompatible']({ plugin });
     case 'PLUGIN_LOAD_FAILED':
-      return m.cli_plugin_diagnostic_plugin_load_failed({ plugin });
+      return m['cli.plugin.diagnostic_plugin_load_failed']({ plugin });
     case 'PLUGIN_OPTIONS_INVALID':
-      return m.cli_plugin_diagnostic_plugin_options_invalid({ plugin });
+      return m['cli.plugin.diagnostic_plugin_options_invalid']({ plugin });
     case 'PROVIDER_CONFIG_INVALID':
-      return m.cli_plugin_diagnostic_provider_config_invalid({ provider });
+      return m['cli.plugin.diagnostic_provider_config_invalid']({ provider });
     case 'LEGACY_OAUTH_CONFIG_UNSUPPORTED':
-      return m.cli_plugin_diagnostic_legacy_oauth_config_unsupported({ provider });
+      return m['cli.plugin.diagnostic_legacy_oauth_config_unsupported']({ provider });
     case 'CAPABILITY_MISSING':
-      return m.cli_plugin_diagnostic_capability_missing({ plugin, capability });
+      return m['cli.plugin.diagnostic_capability_missing']({ plugin, capability });
     case 'ACCOUNT_OPTIONS_INVALID':
-      return m.cli_plugin_diagnostic_account_options_invalid({ provider });
+      return m['cli.plugin.diagnostic_account_options_invalid']({ provider });
     case 'CREDENTIALS_MISSING_OR_INVALID':
-      return m.cli_plugin_diagnostic_credentials_missing_or_invalid({ provider });
+      return m['cli.plugin.diagnostic_credentials_missing_or_invalid']({ provider });
     case 'CREDENTIAL_REFRESH_FAILED':
-      return m.cli_plugin_diagnostic_credential_refresh_failed({ provider });
+      return m['cli.plugin.diagnostic_credential_refresh_failed']({ provider });
     case 'AUTHORIZATION_FAILED':
-      return m.cli_plugin_diagnostic_authorization_failed({ provider });
+      return m['cli.plugin.diagnostic_authorization_failed']({ provider });
     case 'CATALOG_UNAVAILABLE':
-      return m.cli_plugin_diagnostic_catalog_unavailable({ provider });
+      return m['cli.plugin.diagnostic_catalog_unavailable']({ provider });
     case 'RUNTIME_CREATE_FAILED':
-      return m.cli_plugin_diagnostic_runtime_create_failed({ provider });
+      return m['cli.plugin.diagnostic_runtime_create_failed']({ provider });
   }
 }
 

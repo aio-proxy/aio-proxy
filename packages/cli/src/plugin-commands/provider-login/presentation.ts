@@ -65,50 +65,54 @@ export function presentProviderLoginUserError(error: unknown): Error | null {
     const provider = safeIdentifier(safeProperty(error, 'existingProviderId'));
     if (provider === null) return null;
     return presentationError(
-      m.cli_provider_login_error_account_exists({ provider, command: providerLoginCommand(provider) }),
+      m['cli.provider.login.error_account_exists']({ provider, command: providerLoginCommand(provider) }),
     );
   } else if (error instanceof AccountCleanupPendingError) {
     const provider = safeIdentifier(safeProperty(error, 'providerId'));
-    return provider === null ? null : presentationError(m.cli_provider_login_error_cleanup_pending({ provider }));
+    return provider === null ? null : presentationError(m['cli.provider.login.error_cleanup_pending']({ provider }));
   } else if (error instanceof ProviderAccountChangedError) {
     const provider = safeIdentifier(safeProperty(error, 'providerId'));
-    return provider === null ? null : presentationError(m.cli_provider_login_error_account_changed({ provider }));
+    return provider === null ? null : presentationError(m['cli.provider.login.error_account_changed']({ provider }));
   } else if (error instanceof ProviderFingerprintMismatchError) {
     const provider = safeIdentifier(safeProperty(error, 'providerId'));
-    return provider === null ? null : presentationError(m.cli_provider_login_error_fingerprint_mismatch({ provider }));
+    return provider === null
+      ? null
+      : presentationError(m['cli.provider.login.error_fingerprint_mismatch']({ provider }));
   } else if (error instanceof ProviderCapabilityTargetMismatchError) {
     const requested = safeCapability(safeProperty(error, 'requested'));
     const target = safeCapability(safeProperty(error, 'target'));
     return requested === null || target === null
       ? null
       : presentationError(
-          m.cli_provider_login_error_target_mismatch({ requested: canonical(requested), target: canonical(target) }),
+          m['cli.provider.login.error_target_mismatch']({ requested: canonical(requested), target: canonical(target) }),
         );
   } else if (error instanceof OAuthLoginResultValidationError) {
-    return presentationError(m.cli_provider_login_error_result_invalid());
+    return presentationError(m['cli.provider.login.error_result_invalid']());
   } else if (error instanceof AccountOptionsValidationError) {
-    return presentationError(m.cli_provider_login_error_options_invalid());
+    return presentationError(m['cli.provider.login.error_options_invalid']());
   } else if (error instanceof ProviderConfigInvalidError) {
-    return presentationError(m.cli_provider_login_error_config_invalid());
+    return presentationError(m['cli.provider.login.error_config_invalid']());
   } else if (error instanceof OAuthLoginTimeoutError) {
-    return presentationError(m.cli_provider_login_error_timeout());
+    return presentationError(m['cli.provider.login.error_timeout']());
   } else if (error instanceof OAuthCapabilityRequiredError) {
-    return presentationError(m.cli_provider_login_error_capability_required());
+    return presentationError(m['cli.provider.login.error_capability_required']());
   } else if (error instanceof OAuthCapabilityUnavailableError) {
     const reference = safeCapability(error);
     return reference === null
       ? null
-      : presentationError(m.cli_provider_login_error_capability_unavailable({ reference: canonical(reference) }));
+      : presentationError(m['cli.provider.login.error_capability_unavailable']({ reference: canonical(reference) }));
   } else if (error instanceof ProviderIdCollisionError) {
     const provider = safeIdentifier(safeProperty(error, 'providerId'));
-    return provider === null ? null : presentationError(m.cli_provider_login_error_provider_id_collision({ provider }));
+    return provider === null
+      ? null
+      : presentationError(m['cli.provider.login.error_provider_id_collision']({ provider }));
   } else if (error instanceof ProviderCapabilityNotFoundError) {
     const reference = safeProperty(error, 'reference');
-    if (reference === undefined) return presentationError(m.cli_provider_login_error_capability_not_found_any());
+    if (reference === undefined) return presentationError(m['cli.provider.login.error_capability_not_found_any']());
     const safeReference = safeIdentifier(reference);
     return safeReference === null
       ? null
-      : presentationError(m.cli_provider_login_error_capability_not_found({ reference: safeReference }));
+      : presentationError(m['cli.provider.login.error_capability_not_found']({ reference: safeReference }));
   } else if (error instanceof ProviderCapabilityAmbiguousError) {
     const inputValue = safeText(safeProperty(error, 'input'), true);
     const rawReferences = safeProperty(error, 'references');
@@ -118,21 +122,21 @@ export function presentProviderLoginUserError(error: unknown): Error | null {
     const joined = (references as string[]).join(', ');
     return presentationError(
       inputValue.length === 0
-        ? m.cli_provider_login_error_capability_ambiguous_selection({ references: joined })
-        : m.cli_provider_login_error_capability_ambiguous({ input: inputValue, references: joined }),
+        ? m['cli.provider.login.error_capability_ambiguous_selection']({ references: joined })
+        : m['cli.provider.login.error_capability_ambiguous']({ input: inputValue, references: joined }),
     );
   } else if (error instanceof ProviderCapabilityMismatchError) {
     const requested = safeIdentifier(safeProperty(error, 'requested'));
     const target = safeIdentifier(safeProperty(error, 'target'));
     return requested === null || target === null
       ? null
-      : presentationError(m.cli_provider_login_error_capability_mismatch({ requested, target }));
+      : presentationError(m['cli.provider.login.error_capability_mismatch']({ requested, target }));
   } else if (error instanceof ProviderTargetNotFoundError) {
     const provider = safeIdentifier(safeProperty(error, 'providerId'));
-    return provider === null ? null : presentationError(m.cli_provider_login_error_target_not_found({ provider }));
+    return provider === null ? null : presentationError(m['cli.provider.login.error_target_not_found']({ provider }));
   } else if (error instanceof ProviderTargetInvalidError) {
     const provider = safeIdentifier(safeProperty(error, 'providerId'));
-    return provider === null ? null : presentationError(m.cli_provider_login_error_target_invalid({ provider }));
+    return provider === null ? null : presentationError(m['cli.provider.login.error_target_invalid']({ provider }));
   }
   return null;
 }

@@ -1,4 +1,4 @@
-@reference "../../styles.css";
+@reference '@aio-proxy/ui/styles.css';
 
 .code-editor {
   @apply w-full rounded-3xl border border-transparent bg-input/50 transition-[color,box-shadow,background-color] outline-none;

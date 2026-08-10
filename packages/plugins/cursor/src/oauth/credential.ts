@@ -1,11 +1,11 @@
-import { type CredentialPort, CredentialRefreshError } from '@aio-proxy/plugin-sdk';
+import { type CredentialPort, CredentialRefreshError, type RuntimeFetch } from '@aio-proxy/plugin-sdk';
 
-import { cursorTokenExpiry } from '../jwt';
+import { cursorIdentity, cursorTokenExpiry } from '../jwt';
 import type { CursorCredential } from '../schema';
 import { CURSOR_REFRESH_URL } from './constants';
 
 export type CursorOAuthDependencies = {
-  readonly fetch?: typeof globalThis.fetch;
+  readonly fetch?: RuntimeFetch;
   readonly now?: () => number;
   readonly sleep?: (milliseconds: number, signal: AbortSignal) => Promise<void>;
   readonly uuid?: () => string;
@@ -18,7 +18,7 @@ export async function refreshCursorCredential(
   current: CursorCredential,
   options: CursorOAuthDependencies = {},
 ): Promise<CursorCredential> {
-  const fetcher = options.fetch ?? globalThis.fetch;
+  const fetcher: RuntimeFetch = options.fetch ?? globalThis.fetch;
   const now = options.now ?? Date.now;
   let response: Response;
   try {
@@ -27,6 +27,7 @@ export async function refreshCursorCredential(
       headers: { Authorization: `Bearer ${current.refreshToken}`, 'Content-Type': 'application/json' },
       body: '{}',
       signal: options.signal ?? null,
+      aioProxy: { traffic: 'control' },
     });
   } catch {
     if (options.signal?.aborted) throw options.signal.reason;
@@ -60,7 +61,10 @@ export async function currentCursorCredential(
   if (current.value.expiresAt > (options.now ?? Date.now)()) return current.value;
   const refreshing = port.refresh(current.revision, async ({ value }, signal) => {
     const refreshed = await refreshCursorCredential(value, { ...options, signal });
-    return { value: refreshed, metadata: { expiresAt: refreshed.expiresAt } };
+    return {
+      value: refreshed,
+      metadata: { accountLabel: cursorIdentity(refreshed).label, expiresAt: refreshed.expiresAt },
+    };
   });
   return (await waitForCaller(refreshing, options.signal)).snapshot.value;
 }

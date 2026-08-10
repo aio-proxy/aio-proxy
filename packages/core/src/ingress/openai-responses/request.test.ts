@@ -51,6 +51,25 @@ describe('OpenAIResponsesRequestSchema', () => {
     }
   });
 
+  test('Given unknown input_image detail When parsed Then request is accepted and detail dropped', () => {
+    const result = parseOpenAIResponses({
+      model: 'gpt-5-mini',
+      input: [
+        {
+          role: 'user',
+          content: [{ type: 'input_image', image_url: 'data:image/png;base64,iVBOR', detail: 'original' }],
+        },
+      ],
+    });
+
+    expect(result.input).toEqual([
+      {
+        role: 'user',
+        content: [{ type: 'input_image', image_url: 'data:image/png;base64,iVBOR' }],
+      },
+    ]);
+  });
+
   test('Given invalid content part When parsed Then ZodError is thrown', () => {
     expect(() =>
       parseOpenAIResponses({
@@ -95,7 +114,17 @@ describe('OpenAIResponsesRequestSchema', () => {
     });
   });
 
-  test.each(['web_search', 'web_search_preview', 'file_search', 'computer_use', 'computer-use', 'image_generation'])(
+  test('Given hosted web search tool When parsed Then it is retained as a known tool', () => {
+    const input = {
+      model: 'gpt-5-mini',
+      input: 'x',
+      tools: [{ type: 'web_search' }],
+    };
+
+    expect(parseOpenAIResponses(input)).toEqual(input);
+  });
+
+  test.each(['web_search_preview', 'file_search', 'computer_use', 'computer-use', 'image_generation'])(
     'Given raw-only %s tool When parsed Then it is retained',
     (toolType) => {
       const input = {

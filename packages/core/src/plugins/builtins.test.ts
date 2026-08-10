@@ -68,20 +68,20 @@ test('embedded adapters retain English and Chinese copy independent of creation 
 
   const adapter = snapshot.registry.resolveOAuth('@aio-proxy/plugin-github-copilot', 'default');
   const plugin = snapshot.plugins.get('@aio-proxy/plugin-github-copilot');
-  expect(resolveLocalizedText(plugin?.label ?? '', 'en')).toBe('GitHub Copilot');
-  expect(resolveLocalizedText(plugin?.label ?? '', 'zh-Hans')).toBe('GitHub Copilot');
+  expect(resolveLocalizedText(plugin?.displayName ?? '', 'en')).toBe('GitHub Copilot');
+  expect(resolveLocalizedText(plugin?.displayName ?? '', 'zh-Hans')).toBe('GitHub Copilot');
   expect(resolveLocalizedText(plugin?.description ?? '', 'zh-Hans')).toBe('使用 GitHub Copilot 账号访问模型');
-  expect(resolveLocalizedText(adapter?.label ?? '', 'en')).toBe('Login with GitHub Copilot');
-  expect(resolveLocalizedText(adapter?.label ?? '', 'zh-Hans')).toBe('使用 GitHub Copilot 登录');
+  expect(resolveLocalizedText(adapter?.displayName ?? '', 'en')).toBe('Login with GitHub Copilot');
+  expect(resolveLocalizedText(adapter?.displayName ?? '', 'zh-Hans')).toBe('使用 GitHub Copilot 登录');
   expect(resolveLocalizedText(adapter?.account.options.form[0]?.label ?? '', 'zh-Hans')).toBe('选择 GitHub 部署类型');
 
   const antigravity = snapshot.registry.resolveOAuth('@aio-proxy/plugin-google-antigravity', 'default');
   const antigravityPlugin = snapshot.plugins.get('@aio-proxy/plugin-google-antigravity');
-  expect(resolveLocalizedText(antigravityPlugin?.label ?? '', 'zh-Hans')).toBe('Google Antigravity');
+  expect(resolveLocalizedText(antigravityPlugin?.displayName ?? '', 'zh-Hans')).toBe('Google Antigravity');
   expect(resolveLocalizedText(antigravityPlugin?.description ?? '', 'zh-Hans')).toBe(
     '使用 Google Antigravity 账号访问 Cloud Code Assist 模型',
   );
-  expect(resolveLocalizedText(antigravity?.label ?? '', 'zh-Hans')).toBe('使用 Google Antigravity 登录');
+  expect(resolveLocalizedText(antigravity?.displayName ?? '', 'zh-Hans')).toBe('使用 Google Antigravity 登录');
   expect(resolveLocalizedText(antigravity?.account.options.form[0]?.label ?? '', 'zh-Hans')).toBe(
     '自定义 Antigravity Base URL',
   );
@@ -91,23 +91,23 @@ test('embedded adapters retain English and Chinese copy independent of creation 
 
   const kimi = snapshot.registry.resolveOAuth('@aio-proxy/plugin-kimi-code', 'default');
   const kimiPlugin = snapshot.plugins.get('@aio-proxy/plugin-kimi-code');
-  expect(resolveLocalizedText(kimiPlugin?.label ?? '', 'zh-Hans')).toBe('Kimi Code');
+  expect(resolveLocalizedText(kimiPlugin?.displayName ?? '', 'zh-Hans')).toBe('Kimi Code');
   expect(resolveLocalizedText(kimiPlugin?.description ?? '', 'zh-Hans')).toBe('使用 Kimi Code 账号访问模型');
-  expect(resolveLocalizedText(kimi?.label ?? '', 'zh-Hans')).toBe('使用 Kimi Code 登录');
+  expect(resolveLocalizedText(kimi?.displayName ?? '', 'zh-Hans')).toBe('使用 Kimi Code 登录');
 
   const grok = snapshot.registry.resolveOAuth('@aio-proxy/plugin-xai-grok', 'default');
   const grokPlugin = snapshot.plugins.get('@aio-proxy/plugin-xai-grok');
-  expect(resolveLocalizedText(grokPlugin?.label ?? '', 'zh-Hans')).toBe('xAI Grok');
+  expect(resolveLocalizedText(grokPlugin?.displayName ?? '', 'zh-Hans')).toBe('xAI Grok');
   expect(resolveLocalizedText(grokPlugin?.description ?? '', 'zh-Hans')).toBe(
     '使用 SuperGrok 或 X Premium+ 账号访问 Grok 模型',
   );
-  expect(resolveLocalizedText(grok?.label ?? '', 'zh-Hans')).toBe('使用 xAI Grok 登录');
+  expect(resolveLocalizedText(grok?.displayName ?? '', 'zh-Hans')).toBe('使用 xAI Grok 登录');
 
   const cursor = snapshot.registry.resolveOAuth('@aio-proxy/plugin-cursor', 'default');
   const cursorPlugin = snapshot.plugins.get('@aio-proxy/plugin-cursor');
-  expect(resolveLocalizedText(cursorPlugin?.label ?? '', 'zh-Hans')).toBe('Cursor');
+  expect(resolveLocalizedText(cursorPlugin?.displayName ?? '', 'zh-Hans')).toBe('Cursor');
   expect(resolveLocalizedText(cursorPlugin?.description ?? '', 'zh-Hans')).toBe('使用 Cursor 账号访问模型');
-  expect(resolveLocalizedText(cursor?.label ?? '', 'zh-Hans')).toBe('使用 Cursor 登录');
+  expect(resolveLocalizedText(cursor?.displayName ?? '', 'zh-Hans')).toBe('使用 Cursor 登录');
   expect(cursor?.catalog.policy).toEqual({ kind: 'ttl', ttlMs: expect.any(Number) });
   expect(typeof cursor?.createRuntime).toBe('function');
 });

@@ -15,8 +15,9 @@ const typedDescriptor = definePlugin<MyOptions>(
     void options.baseURL;
   },
   {
-    label: { default: 'Example plugin', 'zh-Hans': '示例插件' },
+    displayName: { default: 'Example plugin', 'zh-Hans': '示例插件' },
     description: 'Example description',
+    icon: 'openai',
   },
 );
 
@@ -36,12 +37,14 @@ declare const candidate: unknown;
 
 if (isPluginDescriptor(candidate)) {
   const opaqueOptions: unknown = candidate.metadata.options;
-  const localizedLabel = candidate.metadata.label;
+  const localizedDisplayName = candidate.metadata.displayName;
   const localizedDescription = candidate.metadata.description;
+  const opaqueIcon: unknown = candidate.metadata.icon;
   const opaqueSetup: unknown = candidate.setup;
   void opaqueOptions;
-  void localizedLabel;
+  void localizedDisplayName;
   void localizedDescription;
+  void opaqueIcon;
   void opaqueSetup;
 
   // @ts-expect-error Runtime identification does not validate a ConfigSpec.

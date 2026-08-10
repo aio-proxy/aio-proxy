@@ -1,9 +1,11 @@
-import { Badge } from '@/components/ui/badge';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { Badge } from '@aio-proxy/ui/components/badge';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@aio-proxy/ui/components/tooltip';
 
-type Props = { models: readonly string[] };
+interface ProviderModelsCellProps {
+  readonly models: readonly string[];
+}
 
-export const ProviderModelsCell: React.FC<Props> = ({ models }) => {
+export const ProviderModelsCell: React.FC<ProviderModelsCellProps> = ({ models }) => {
   if (models.length === 0) return <span className="text-muted-foreground">—</span>;
   return (
     <Tooltip>

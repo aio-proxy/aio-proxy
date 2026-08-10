@@ -72,22 +72,22 @@ async function providerInstalledList(): Promise<void> {
 
 function printProviderTable(providers: readonly DashboardProviderSummary[], probe: boolean): void {
   const headers = [
-    m.cli_provider_list_header_id(),
-    m.cli_provider_list_header_kind(),
-    m.cli_provider_list_header_enabled(),
-    m.cli_provider_list_header_passthrough(),
-    m.cli_provider_list_header_last_status(),
-    m.cli_provider_list_header_last_latency(),
-    m.cli_provider_list_header_state(),
-    m.cli_provider_list_header_catalog(),
-    m.cli_provider_list_header_plugin(),
-    m.cli_provider_list_header_capability(),
-    m.cli_provider_list_header_account(),
-    m.cli_provider_list_header_expires_at(),
-    m.cli_provider_list_header_catalog_last_success_at(),
-    m.cli_provider_list_header_diagnostic(),
-    m.cli_provider_list_header_suggested_command(),
-    ...(probe ? [m.cli_provider_list_header_probe()] : []),
+    m['cli.provider.list.header_id'](),
+    m['cli.provider.list.header_kind'](),
+    m['cli.provider.list.header_enabled'](),
+    m['cli.provider.list.header_passthrough'](),
+    m['cli.provider.list.header_last_status'](),
+    m['cli.provider.list.header_last_latency'](),
+    m['cli.provider.list.header_state'](),
+    m['cli.provider.list.header_catalog'](),
+    m['cli.provider.list.header_plugin'](),
+    m['cli.provider.list.header_capability'](),
+    m['cli.provider.list.header_account'](),
+    m['cli.provider.list.header_expires_at'](),
+    m['cli.provider.list.header_catalog_last_success_at'](),
+    m['cli.provider.list.header_diagnostic'](),
+    m['cli.provider.list.header_suggested_command'](),
+    ...(probe ? [m['cli.provider.list.header_probe']()] : []),
   ];
   console.log(headers.join(' | '));
   for (const provider of providers) {

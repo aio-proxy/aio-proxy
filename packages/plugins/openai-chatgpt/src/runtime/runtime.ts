@@ -1,5 +1,5 @@
 import { createOpenAI } from '@ai-sdk/openai';
-import type { CredentialPort, OAuthRuntimeResult, RuntimeContext } from '@aio-proxy/plugin-sdk';
+import type { CredentialPort, OAuthRuntimeResult, RuntimeContext, RuntimeFetch } from '@aio-proxy/plugin-sdk';
 import {
   createOpenAIStreamFetch,
   type OpenAIStreamFetch,
@@ -17,11 +17,7 @@ const PLACEHOLDER_CREDENTIAL = 'dynamic-credential' as const;
 export async function createOpenAIChatGPTRuntime(
   context: RuntimeContext<ChatGPTCredential, Record<string, never>>,
 ): Promise<OAuthRuntimeResult> {
-  const dynamicFetch = createOpenAIChatGPTDynamicFetch(
-    context.credentials,
-    context.modelFetch ?? context.fetch,
-    context.fetch,
-  );
+  const dynamicFetch = createOpenAIChatGPTDynamicFetch(context.credentials, context.fetch);
   const openAI = createOpenAI({
     name: 'openai-chatgpt',
     baseURL: CHATGPT_CODEX_BASE_URL,
@@ -45,8 +41,7 @@ export async function createOpenAIChatGPTRuntime(
 
 export function createOpenAIChatGPTDynamicFetch(
   credentials: CredentialPort<ChatGPTCredential>,
-  fetcher: typeof fetch = globalThis.fetch,
-  credentialFetcher: typeof fetch = fetcher,
+  fetcher: RuntimeFetch = globalThis.fetch,
 ): OpenAIStreamFetch {
   const fetchOpenAIResponses = createOpenAIStreamFetch('openai-response', fetcher, {
     acceptEncoding: 'identity',
@@ -57,7 +52,7 @@ export function createOpenAIChatGPTDynamicFetch(
     init?: RequestInit,
     options?: OpenAIStreamFetchCallOptions,
   ): Promise<Response> => {
-    const credential = await currentCredential(credentials, credentialFetcher);
+    const credential = await currentCredential(credentials, fetcher);
     const request = new Request(input, init);
     const headers = new Headers(request.headers);
     headers.delete('authorization');
@@ -113,7 +108,7 @@ async function rewriteResponsesBody(request: Request, headers: Headers): Promise
 
 export async function currentCredential(
   port: CredentialPort<ChatGPTCredential>,
-  fetcher: typeof fetch = globalThis.fetch,
+  fetcher: RuntimeFetch = globalThis.fetch,
 ): Promise<ChatGPTCredential> {
   const current = await port.read();
   if (current.value.expiresAt > Date.now() && current.value.accessToken.length > 0) return current.value;

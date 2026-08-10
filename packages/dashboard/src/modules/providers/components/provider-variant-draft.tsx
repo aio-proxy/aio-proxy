@@ -1,17 +1,23 @@
 import { m } from '@aio-proxy/i18n';
+import { Button } from '@aio-proxy/ui/components/button';
+import { Card, CardAction, CardContent, CardFooter, CardHeader, CardTitle } from '@aio-proxy/ui/components/card';
+import { Field, FieldError, FieldGroup, FieldLabel } from '@aio-proxy/ui/components/field';
+import { Input } from '@aio-proxy/ui/components/input';
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@aio-proxy/ui/components/select';
+import { Switch } from '@aio-proxy/ui/components/switch';
 import { useForm } from '@tanstack/react-form';
 import { PlusIcon, Trash2Icon } from 'lucide-react';
 import { type FC, useState } from 'react';
 
-import { Button } from '@/components/ui/button';
-import { Card, CardAction, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { Field, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field';
-import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Switch } from '@/components/ui/switch';
-
-import type { AliasDraft, AliasEditResult } from '../alias-editor';
-import { aliasEditErrorMessage, type VisibleEditError } from '../alias-editor-copy';
+import type { AliasDraft, AliasEditResult } from '../lib/alias-editor';
+import { aliasEditErrorMessage, type VisibleEditError } from '../lib/alias-editor-copy';
 
 type Props = {
   readonly id: string;

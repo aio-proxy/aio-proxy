@@ -27,7 +27,7 @@ export async function handleProtocolRequest<TRequest, TContext>(
 ): Promise<Response> {
   const inboundProtocol = options.adapter.protocol;
   const session = options.source.requestRecorder.begin({
-    headers: options.rawRequest.headers,
+    inboundRequest: options.rawRequest,
     inboundProtocol,
   });
   return await context.with(session.rootContext, () =>
@@ -72,48 +72,9 @@ async function handleProtocolRequestInContext<TRequest, TContext>(
       });
     }
 
-    let request: TRequest;
-    try {
-      request = await adapter.parse(rawRequest, context);
-    } catch (error) {
-      await cancelRetainedRequestBody(rawRequest, error);
-      if (error instanceof RequestBodyTooLargeError) {
-        return rejectRequest({
-          source,
-          session,
-          rawRequest,
-          inboundProtocol,
-          response: adapter.errors.tooLarge(),
-          errorCode: 'request_too_large',
-          error,
-        });
-      }
-      if (error instanceof UnsupportedContentEncodingError) {
-        return rejectRequest({
-          source,
-          session,
-          rawRequest,
-          inboundProtocol,
-          response: adapter.errors.unsupportedContentEncoding(),
-          errorCode: 'unsupported_content_encoding',
-          error,
-        });
-      }
-      const mapped = adapter.errors.requestError(error);
-      if (mapped !== undefined) {
-        const errorCode = mapped.status === 501 ? 'unsupported_feature' : 'invalid_request';
-        return rejectRequest({
-          source,
-          session,
-          rawRequest,
-          inboundProtocol,
-          response: mapped,
-          errorCode,
-          error,
-        });
-      }
-      throw error;
-    }
+    const parsed = await parseProtocolRequest({ adapter, context, inboundProtocol, rawRequest, session, source });
+    if (parsed.response !== undefined) return parsed.response;
+    const request = parsed.request;
     releaseRetainedBody = true;
 
     const requestedModel = adapter.model(request, context);
@@ -152,47 +113,18 @@ async function handleProtocolRequestInContext<TRequest, TContext>(
       requestedModelId: requestedModel,
       diagnostics: adapter.requestDiagnostics(request, context),
     });
-
-    const lease = source.acquireProviderSnapshot();
-    let deferred = false;
-    const deferRelease = () => {
-      deferred = true;
-    };
-    try {
-      const candidates = lease.snapshot.router.resolve(requestedModel, adapter.variant(request, context));
-      return await attemptCandidates({
-        adapter,
-        candidates,
-        config: lease.snapshot.config,
-        context,
-        deferRelease,
-        rawRequest,
-        release: lease.release,
-        request,
-        requestedModelId: requestedModel,
-        resolution,
-        session,
-        source,
-        streamRequested,
-      });
-    } catch (error) {
-      if (error instanceof RouterModelNotFoundError) {
-        const response = adapter.errors.modelNotFound(error.message);
-        return rejectRequest({
-          source,
-          session,
-          rawRequest,
-          inboundProtocol,
-          requestedModelId: requestedModel,
-          response,
-          errorCode: 'model_not_found',
-          error,
-        });
-      }
-      throw error;
-    } finally {
-      if (!deferred) lease.release();
-    }
+    return await attemptResolvedRequest({
+      adapter,
+      context,
+      inboundProtocol,
+      rawRequest,
+      request,
+      requestedModel,
+      resolution,
+      session,
+      source,
+      streamRequested,
+    });
   } catch (error) {
     const cancelled = isInboundAbort(error, rawRequest.signal);
     if (
@@ -216,6 +148,129 @@ async function handleProtocolRequestInContext<TRequest, TContext>(
   }
 }
 
+type ParsedProtocolRequest<TRequest> =
+  | { readonly request: TRequest; readonly response?: undefined }
+  | { readonly request?: undefined; readonly response: Response };
+
+async function parseProtocolRequest<TRequest, TContext>(options: {
+  readonly adapter: ProtocolAdapter<TRequest, TContext>;
+  readonly context: TContext;
+  readonly inboundProtocol: ProviderProtocol;
+  readonly rawRequest: Request;
+  readonly session: RequestTraceSession;
+  readonly source: ProviderRouteSource;
+}): Promise<ParsedProtocolRequest<TRequest>> {
+  const { adapter, context, rawRequest } = options;
+  try {
+    return { request: await adapter.parse(rawRequest, context) };
+  } catch (error) {
+    await cancelRetainedRequestBody(rawRequest, error);
+    if (error instanceof RequestBodyTooLargeError) {
+      return rejectParsedRequest(adapter.errors.tooLarge(), 'request_too_large', error, options);
+    }
+    if (error instanceof UnsupportedContentEncodingError) {
+      return rejectParsedRequest(
+        adapter.errors.unsupportedContentEncoding(),
+        'unsupported_content_encoding',
+        error,
+        options,
+      );
+    }
+    const response = adapter.errors.requestError(error);
+    if (response === undefined) throw error;
+    return rejectParsedRequest(
+      response,
+      response.status === 501 ? 'unsupported_feature' : 'invalid_request',
+      error,
+      options,
+    );
+  }
+}
+
+function rejectParsedRequest<TRequest, TContext>(
+  response: Response,
+  errorCode: string,
+  error: unknown,
+  {
+    inboundProtocol,
+    rawRequest,
+    session,
+    source,
+  }: {
+    readonly adapter: ProtocolAdapter<TRequest, TContext>;
+    readonly context: TContext;
+    readonly inboundProtocol: ProviderProtocol;
+    readonly rawRequest: Request;
+    readonly session: RequestTraceSession;
+    readonly source: ProviderRouteSource;
+  },
+): ParsedProtocolRequest<TRequest> {
+  return { response: rejectRequest({ source, session, rawRequest, inboundProtocol, response, errorCode, error }) };
+}
+
+async function attemptResolvedRequest<TRequest, TContext>(options: {
+  readonly adapter: ProtocolAdapter<TRequest, TContext>;
+  readonly context: TContext;
+  readonly inboundProtocol: ProviderProtocol;
+  readonly rawRequest: Request;
+  readonly request: TRequest;
+  readonly requestedModel: string;
+  readonly resolution: ReturnType<ProviderRouteSource['logicalSessionStore']['begin']>;
+  readonly session: RequestTraceSession;
+  readonly source: ProviderRouteSource;
+  readonly streamRequested: boolean;
+}): Promise<Response> {
+  const {
+    adapter,
+    context,
+    inboundProtocol,
+    rawRequest,
+    request,
+    requestedModel,
+    resolution,
+    session,
+    source,
+    streamRequested,
+  } = options;
+  const lease = source.acquireProviderSnapshot();
+  let deferred = false;
+  const deferRelease = () => {
+    deferred = true;
+  };
+  try {
+    const candidates = lease.snapshot.router.resolve(requestedModel, adapter.variant(request, context));
+    return await attemptCandidates({
+      adapter,
+      candidates,
+      config: lease.snapshot.config,
+      context,
+      deferRelease,
+      rawRequest,
+      release: lease.release,
+      request,
+      requestedModelId: requestedModel,
+      resolution,
+      session,
+      source,
+      streamRequested,
+    });
+  } catch (error) {
+    if (!(error instanceof RouterModelNotFoundError)) throw error;
+    return rejectRequest({
+      source,
+      session,
+      rawRequest,
+      inboundProtocol,
+      requestedModelId: requestedModel,
+      response: adapter.errors.modelNotFound(error.message),
+      errorCode: 'model_not_found',
+      error,
+    });
+  } finally {
+    if (!deferred) lease.release();
+  }
+}
+
 function rejectRequest(options: {
   readonly source: ProviderRouteSource;
   readonly session: RequestTraceSession;
@@ -231,9 +286,11 @@ function rejectRequest(options: {
     outcome: 'failure',
     finalHttpStatus: response.status,
     errorCode: rejection.errorCode,
+    clientResponse: response,
   });
   logRequestRejected({ ...rejection, requestId: session.requestId, statusCode: response.status });
   return response;
 }
 
+export { resolveSupportedEfforts } from './attempt/effort-capability';
 export { hasInvalidOrOversizedContentLength } from './request';

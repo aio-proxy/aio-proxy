@@ -1,0 +1,44 @@
+{
+  "$schema": "https://unpkg.com/@changesets/config@4.0.0-next.8/schema.json",
+  "changelog": [
+    "@changesets/changelog-github",
+    {
+      "repo": "aio-proxy/aio-proxy"
+    }
+  ],
+  "commit": false,
+  "fixed": [
+    [
+      "@aio-proxy/cli",
+      "@aio-proxy/cli-darwin-arm64",
+      "@aio-proxy/cli-darwin-x64",
+      "@aio-proxy/cli-linux-arm64",
+      "@aio-proxy/cli-linux-x64",
+      "@aio-proxy/core",
+      "@aio-proxy/dashboard",
+      "@aio-proxy/i18n",
+      "@aio-proxy/infra",
+      "@aio-proxy/logger",
+      "@aio-proxy/plugin-github-copilot",
+      "@aio-proxy/plugin-google-antigravity",
+      "@aio-proxy/plugin-kimi-code",
+      "@aio-proxy/plugin-openai-chatgpt",
+      "@aio-proxy/plugin-sdk",
+      "@aio-proxy/plugin-xai-grok",
+      "@aio-proxy/server",
+      "@aio-proxy/types",
+      "@aio-proxy/ui",
+      "aio-proxy"
+    ]
+  ],
+  "linked": [],
+  "access": "public",
+  "baseBranch": "main",
+  "updateInternalDependencies": "patch",
+  "format": "oxfmt",
+  "privatePackages": {
+    "version": true,
+    "tag": false
+  },
+  "ignore": []
+}

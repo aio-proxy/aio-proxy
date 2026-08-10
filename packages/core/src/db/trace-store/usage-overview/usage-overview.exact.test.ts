@@ -131,7 +131,7 @@ describe('exact usage overview aggregation', () => {
         }
       }
 
-      const overview = store.overview({ range: '24h', metric: 'tokens', groupBy: 'model', now: NOW });
+      const overview = store.overview({ range: '24h', metric: 'tokens', groupBy: 'model', maxResults: 5, now: NOW });
 
       expect(overview.series).toEqual([
         { key: 'model-top-0', kind: 'dimension' },

@@ -1,8 +1,10 @@
 import { z } from 'zod';
 
-import { AliasConfigSchema, ModelIdSchema, normalizeAliasName, normalizeVariantKey } from './common';
+import { AliasConfigSchema, ModelIdSchema } from './common';
+import { ModelMetadataSchema } from './model-metadata/index';
 import { CapabilityIdSchema, PluginPackageNameSchema } from './plugin';
-import { type ProviderAlias, validateAliasTargets } from './provider-alias';
+import { normalizeProviderAlias, normalizeProviderAliasKeys, validateAliasTargets } from './provider-alias';
+import { ProviderTransformsSchema } from './provider-transform/index';
 
 export { type ProviderAlias, validateAliasTargets } from './provider-alias';
 
@@ -35,7 +37,8 @@ export const HttpProxyUrlSchema = z.url().refine((value) => {
   }
 }, 'Proxy URL must use http: or https:');
 
-const ProviderProxySchema = z.union([HttpProxyUrlSchema, z.literal(false)]).optional();
+export const ProviderProxySchema = z.union([HttpProxyUrlSchema, z.literal(false)]).optional();
+export const ProviderMutationProxySchema = ProviderProxySchema.nullable();
 const AuthoringProviderProxySchema = z
   .union([HttpProxyUrlSchema, ConfigTemplateStringSchema, z.literal(false)])
   .optional();
@@ -58,10 +61,18 @@ const SharedProviderSchemaBase = {
   weight: z.number().optional().describe('Provider priority; higher weights are tried first.'),
   alias: z.record(z.string().min(1), AliasConfigSchema).optional().describe('Client-facing model aliases.'),
   name: z.string().optional().describe('Display name shown in the dashboard.'),
+  transforms: ProviderTransformsSchema.optional().describe('Ordered outbound request transforms.'),
 } as const;
 
 const modelsField = {
   models: z.array(ModelIdSchema).optional().describe('Upstream model ids available through this provider.'),
+} as const;
+
+const metadataField = {
+  metadata: z
+    .record(ModelIdSchema, ModelMetadataSchema)
+    .optional()
+    .describe('Per-model metadata overrides keyed by upstream model id.'),
 } as const;
 
 const AiSdkPackageNameSchema = z.string().trim().min(1, 'AI SDK package name cannot be blank');
@@ -70,6 +81,7 @@ const ApiProviderSharedFields = {
   kind: z.literal(ProviderKind.Api).describe('Provider backed by a raw HTTP API.'),
   ...SharedProviderSchemaBase,
   ...modelsField,
+  ...metadataField,
   protocol: ProviderProtocolSchema,
   apiKey: z.string().optional().describe('Bearer token or API key for the provider.'),
   headers: ApiHeadersSchema.optional().describe('Headers applied to upstream requests; configured values win.'),
@@ -92,22 +104,30 @@ export const ApiProviderAuthoringSchema = ApiProviderSchema.omit({ baseURL: true
 export const OAuthPluginProviderSchema = z.object({
   kind: z.literal(ProviderKind.OAuth).describe('Provider backed by a plugin OAuth account.'),
   ...SharedProviderSchemaBase,
+  ...metadataField,
   plugin: PluginPackageNameSchema,
   capability: CapabilityIdSchema,
   options: z.record(z.string(), z.unknown()).optional(),
+  proxy: ProviderProxySchema.describe(PROXY_DESCRIPTION),
 });
 
 export const OAuthProviderSchema = OAuthPluginProviderSchema;
 
-export const OAuthProviderAuthoringSchema = OAuthProviderSchema.omit({ plugin: true, capability: true }).extend({
+export const OAuthProviderAuthoringSchema = OAuthProviderSchema.omit({
+  plugin: true,
+  capability: true,
+  proxy: true,
+}).extend({
   plugin: z.union([PluginPackageNameSchema, ConfigTemplateStringSchema]),
   capability: z.union([CapabilityIdSchema, ConfigTemplateStringSchema]),
+  proxy: AuthoringProviderProxySchema.describe(PROXY_DESCRIPTION),
 });
 
 const AiSdkProviderSharedFields = {
   kind: z.literal(ProviderKind.AiSdk).describe('Provider loaded from an AI SDK provider package.'),
   ...SharedProviderSchemaBase,
   ...modelsField,
+  ...metadataField,
   packageName: AiSdkPackageNameSchema.default('@ai-sdk/openai-compatible').describe(
     'npm package name that exports the AI SDK provider factory.',
   ),
@@ -146,13 +166,15 @@ const ApiProviderMutationSharedFields = {
   apiKey: z.string().optional(),
   headers: ApiHeadersSchema.optional(),
   models: z.array(z.string()).optional(),
+  ...metadataField,
   alias: z.record(z.string().min(1), AliasConfigSchema).optional().describe('Client-facing model aliases.'),
+  transforms: ProviderTransformsSchema.optional().describe('Ordered outbound request transforms.'),
 } as const;
 
 export const ApiProviderMutationBodySchema = z.object({
   ...ApiProviderMutationSharedFields,
   baseURL: z.url(),
-  proxy: ProviderProxySchema,
+  proxy: ProviderMutationProxySchema,
 });
 
 const ApiProviderMutationAuthoringBodySchema = ApiProviderMutationBodySchema.omit({
@@ -162,7 +184,7 @@ const ApiProviderMutationAuthoringBodySchema = ApiProviderMutationBodySchema.omi
 }).extend({
   protocol: z.union([ProviderProtocolSchema, ConfigTemplateStringSchema]),
   baseURL: z.union([z.url(), ConfigTemplateStringSchema]),
-  proxy: AuthoringProviderProxySchema,
+  proxy: AuthoringProviderProxySchema.nullable(),
 });
 
 const AiSdkProviderMutationSharedFields = {
@@ -175,12 +197,14 @@ const AiSdkProviderMutationSharedFields = {
   options: z.record(z.string(), z.unknown()).optional(),
   parseReasoningContent: z.boolean().optional(),
   models: z.array(z.string()).optional(),
+  ...metadataField,
   alias: z.record(z.string().min(1), AliasConfigSchema).optional().describe('Client-facing model aliases.'),
+  transforms: ProviderTransformsSchema.optional().describe('Ordered outbound request transforms.'),
 } as const;
 
 export const AiSdkProviderMutationBodySchema = z.object({
   ...AiSdkProviderMutationSharedFields,
-  proxy: ProviderProxySchema,
+  proxy: ProviderMutationProxySchema,
 });
 
 const AiSdkProviderMutationAuthoringBodySchema = AiSdkProviderMutationBodySchema.omit({
@@ -188,7 +212,7 @@ const AiSdkProviderMutationAuthoringBodySchema = AiSdkProviderMutationBodySchema
   packageName: true,
 }).extend({
   packageName: z.union([AiSdkPackageNameSchema, ConfigTemplateStringSchema]).optional(),
-  proxy: AuthoringProviderProxySchema,
+  proxy: AuthoringProviderProxySchema.nullable(),
 });
 
 export const OAuthProviderMutationBodySchema = z.strictObject({
@@ -197,7 +221,10 @@ export const OAuthProviderMutationBodySchema = z.strictObject({
   name: z.string().optional(),
   enabled: z.boolean().optional(),
   weight: z.number().optional(),
+  proxy: ProviderMutationProxySchema,
+  ...metadataField,
   alias: z.record(z.string().min(1), AliasConfigSchema).optional().describe('Client-facing model aliases.'),
+  transforms: ProviderTransformsSchema.optional().describe('Ordered outbound request transforms.'),
 });
 
 export const ProviderMutationBodySchema = z
@@ -207,9 +234,7 @@ export const ProviderMutationBodySchema = z
     AiSdkProviderMutationBodySchema,
   ])
   .superRefine(validateAliasTargets)
-  .transform((provider) =>
-    provider.alias === undefined ? provider : { ...provider, alias: normalizeAliasKeys(provider.alias) },
-  );
+  .transform(normalizeProviderAliasKeys);
 
 export const ProviderMutationAuthoringBodySchema = z
   .discriminatedUnion('kind', [
@@ -218,57 +243,12 @@ export const ProviderMutationAuthoringBodySchema = z
     AiSdkProviderMutationAuthoringBodySchema,
   ])
   .superRefine(validateAliasTargets)
-  .transform((provider) =>
-    provider.alias === undefined ? provider : { ...provider, alias: normalizeAliasKeys(provider.alias) },
-  );
+  .transform(normalizeProviderAliasKeys);
 
-type ProviderValue =
-  | z.output<typeof ApiProviderSchema>
-  | z.output<typeof OAuthProviderSchema>
-  | z.output<typeof AiSdkProviderSchema>;
 export const ProviderSchema = z
   .discriminatedUnion('kind', [ApiProviderSchema, OAuthProviderSchema, AiSdkProviderSchema])
   .superRefine(validateAliasTargets)
   .transform(normalizeProviderAlias);
-
-function normalizeProviderAlias(provider: ProviderValue): ProviderValue {
-  if (provider.alias === undefined) {
-    return provider;
-  }
-  const alias = normalizeAliasPreserve(normalizeAliasKeys(provider.alias));
-  return alias === provider.alias ? provider : { ...provider, alias };
-}
-
-function normalizeAliasKeys(alias: ProviderAlias): ProviderAlias {
-  return Object.fromEntries(
-    Object.entries(alias).map(([name, config]) => [
-      normalizeAliasName(name),
-      config.variants === undefined
-        ? config
-        : {
-            ...config,
-            variants: Object.fromEntries(
-              Object.entries(config.variants).map(([variant, target]) => [normalizeVariantKey(variant), target]),
-            ),
-          },
-    ]),
-  );
-}
-
-function normalizeAliasPreserve(alias: ProviderAlias): ProviderAlias {
-  let changed = false;
-  const normalized: Record<string, ProviderAlias[string]> = {};
-  for (const [clientModel, config] of Object.entries(alias)) {
-    const selfAlias = alias[config.model];
-    if (config.preserve && clientModel !== config.model && selfAlias?.model === config.model) {
-      normalized[clientModel] = { ...config, preserve: false };
-      changed = true;
-      continue;
-    }
-    normalized[clientModel] = config;
-  }
-  return changed ? normalized : alias;
-}
 
 export type ApiProviderInput = z.input<typeof ApiProviderSchema>;
 export type ApiProvider = z.output<typeof ApiProviderSchema>;

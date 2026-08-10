@@ -53,6 +53,9 @@ export type RequestProviderAttemptFailedLog = {
   readonly failureKind: 'response' | 'exception';
   readonly fallback: boolean;
   readonly upstreamRequestId?: string;
+  readonly transformRuleIndex?: number;
+  readonly transformRuleName?: string;
+  readonly transformStageIndex?: number;
 } & SafeExceptionLog;
 
 export type RequestInboundSnapshotLog = {

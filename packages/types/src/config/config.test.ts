@@ -3,10 +3,15 @@ import { expect, test } from 'bun:test';
 import {
   ConfigAuthoringSchema,
   ConfigSchema,
+  DashboardOAuthProviderPatchSchema,
   ProviderKind,
   ProviderMutationAuthoringBodySchema,
   ProviderMutationBodySchema,
 } from '..';
+
+const transforms = {
+  request: [{ update: [{ $unset: 'request.body.store' }] }],
+};
 
 test('preserves an exact non-empty dashboard password', () => {
   expect(ConfigSchema.parse({ server: { password: '  ' }, providers: {} }).server.password).toBe('  ');
@@ -93,6 +98,22 @@ test('degrades invalid and legacy provider entries independently', () => {
   ]);
   expect(JSON.stringify(config)).not.toContain('legacy-provider');
   expect(JSON.stringify(config)).not.toContain('@example/oauth');
+});
+
+test('marks an OAuth Provider invalid when an input limit exceeds context', () => {
+  const config = ConfigSchema.parse({
+    providers: {
+      bad: {
+        kind: 'oauth',
+        plugin: '@example/oauth',
+        capability: 'default',
+        metadata: { model: { limit: { context: 272_000, input: 400_000 } } },
+      },
+    },
+  });
+
+  expect(config.providers).toEqual([]);
+  expect(config.invalidProviders[0]?.issuePaths).toContainEqual(['metadata', 'model', 'limit', 'input']);
 });
 
 test('keeps authoring schema strict and documents the structured oauth shape', () => {
@@ -301,4 +322,55 @@ test('provider mutation body rejects unresolved proxy and base URL templates', (
       proxy: '{{env.PROVIDER_PROXY}}',
     }).success,
   ).toBe(false);
+});
+
+test('runtime and authoring configs retain transforms for every provider kind', () => {
+  const providers = {
+    api: {
+      kind: 'api',
+      protocol: 'openai-response',
+      baseURL: 'https://api.example/v1',
+      transforms,
+    },
+    sdk: {
+      kind: 'ai-sdk',
+      packageName: '@ai-sdk/openai',
+      transforms,
+    },
+    oauth: {
+      kind: 'oauth',
+      plugin: '@example/oauth',
+      capability: 'default',
+      transforms,
+    },
+  };
+
+  const runtime = ConfigSchema.parse({ providers });
+  const authoring = ConfigAuthoringSchema.parse({ providers });
+
+  expect(runtime.providers.map((provider) => provider.transforms)).toEqual([transforms, transforms, transforms]);
+  expect(Object.values(authoring.providers).map((provider) => provider.transforms)).toEqual([
+    transforms,
+    transforms,
+    transforms,
+  ]);
+});
+
+test.each([
+  {
+    kind: 'api',
+    id: 'api',
+    protocol: 'openai-response',
+    baseURL: 'https://api.example/v1',
+    transforms,
+  },
+  { kind: 'ai-sdk', id: 'sdk', packageName: '@ai-sdk/openai', transforms },
+  { kind: 'oauth', id: 'oauth', transforms },
+])('provider mutation body retains transforms for $kind providers', (provider) => {
+  expect(ProviderMutationBodySchema.parse(provider).transforms).toEqual(transforms);
+  expect(ProviderMutationAuthoringBodySchema.parse(provider).transforms).toEqual(transforms);
+});
+
+test('dashboard OAuth patches retain transforms', () => {
+  expect(DashboardOAuthProviderPatchSchema.parse({ enabled: true, transforms }).transforms).toEqual(transforms);
 });

@@ -51,13 +51,14 @@ describe('definePlugin', () => {
     expect(isPluginDescriptor({ ...descriptor, metadata: { options: { form: 'bad' } } })).toBe(true);
   });
 
-  test('accepts branded apiVersion 1 descriptors for compatibility', () => {
-    const descriptor = {
-      [PLUGIN_DESCRIPTOR_BRAND]: true,
-      apiVersion: 1,
-      metadata: {},
-      setup() {},
-    };
-    expect(isPluginDescriptor(descriptor)).toBe(true);
+  test('rejects branded apiVersion 1 descriptors', () => {
+    expect(
+      isPluginDescriptor({
+        [PLUGIN_DESCRIPTOR_BRAND]: true,
+        apiVersion: 1,
+        metadata: {},
+        setup() {},
+      }),
+    ).toBe(false);
   });
 });

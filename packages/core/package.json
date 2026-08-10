@@ -1,6 +1,6 @@
 {
   "name": "@aio-proxy/core",
-  "version": "0.0.1",
+  "version": "0.6.4",
   "private": true,
   "type": "module",
   "exports": {
@@ -55,6 +55,7 @@
     "@opencode-ai/models": "catalog:",
     "@openrouter/ai-sdk-provider": "catalog:",
     "ai": "catalog:",
+    "date-fns": "catalog:",
     "drizzle-orm": "catalog:",
     "es-toolkit": "catalog:",
     "lru-cache": "catalog:",

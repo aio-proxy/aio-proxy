@@ -1,10 +1,22 @@
-import { describe, expect, test } from '@rstest/core';
+import { beforeEach, describe, expect, rs, test } from '@rstest/core';
+import { render } from '@testing-library/react';
 import { createStore } from 'jotai';
+import { createElement } from 'react';
 
 import { toUsageChartData } from '../components/usage-trend-chart';
-import { decodeUsageOverview, usageQueryOptions } from '../services/usage-service';
-import { createUsageValueFormatter, formatNanoUsd } from '../services/usage-value-formatter';
+import { decodeUsageOverview, getUsage, usageQueryOptions } from '../services/usage-service';
 import { usageOverviewFiltersAtom } from '../stores/usage-overview-filters';
+import { UsageOverview } from './usage-overview';
+
+const mocks = rs.hoisted(() => ({ usage: rs.fn(), useUsageQuery: rs.fn() }));
+
+rs.mock('@/lib/dashboard-client', () => ({
+  dashboardClient: { dashboard: { api: { usage: { $get: mocks.usage } } } },
+}));
+
+rs.mock('../hooks/use-usage-query', () => ({
+  useUsageQuery: (input: unknown) => mocks.useUsageQuery(input),
+}));
 
 const usageWire = {
   range: '24h' as const,
@@ -34,6 +46,13 @@ const usageWire = {
 };
 
 describe('usage overview', () => {
+  beforeEach(() => {
+    mocks.usage.mockReset();
+    mocks.usage.mockResolvedValue(Response.json(usageWire));
+    mocks.useUsageQuery.mockReset();
+    mocks.useUsageQuery.mockReturnValue({ isLoading: true });
+  });
+
   test('decodes aggregate decimal strings as bigint without changing rate fields', () => {
     const decoded = decodeUsageOverview(usageWire);
 
@@ -41,11 +60,6 @@ describe('usage overview', () => {
     expect(decoded.summary.requestCount).toBe(12n);
     expect(decoded.buckets[0]?.values['model']).toBe(9_007_199_254_740_993n);
     expect(decoded.summary.averageTpm).toBe(usageWire.summary.averageTpm);
-  });
-
-  test('formats nano-USD without crossing the Number precision boundary', () => {
-    expect(formatNanoUsd(2n, 'en-US')).toBe('$0.000000002');
-    expect(formatNanoUsd(9_007_199_254_740_993_000_000_002n, 'en-US')).toBe('$9,007,199,254,740,993.000000002');
   });
 
   test('converts bigint buckets to numbers only at the chart boundary', () => {
@@ -69,9 +83,34 @@ describe('usage overview', () => {
   test('keys cache and polling by all selected controls', () => {
     const options = usageQueryOptions({ range: '7d', metric: 'tokens', groupBy: 'provider' });
 
-    expect(options.queryKey).toEqual(['dashboard', 'usage', '7d', 'tokens', 'provider']);
+    expect(options.queryKey).toEqual(['dashboard', 'usage', '7d', 'tokens', 'provider', undefined]);
     expect(options.refetchInterval).toBe(60_000);
     expect(options.refetchIntervalInBackground).toBe(false);
+  });
+
+  test('limits regular Usage requests to the top five dimensions', async () => {
+    await getUsage({ range: '7d', metric: 'tokens', groupBy: 'provider', maxResults: 5 });
+
+    expect(mocks.usage).toHaveBeenCalledWith({
+      query: { range: '7d', metric: 'tokens', groupBy: 'provider', maxResults: 5 },
+    });
+  });
+
+  test('omits maxResults from unlimited Usage requests', async () => {
+    await getUsage({ range: '7d', metric: 'tokens', groupBy: 'provider' });
+
+    expect(mocks.usage.mock.calls[0]?.[0].query).not.toHaveProperty('maxResults');
+  });
+
+  test('limits the overview query to the top five dimensions', () => {
+    render(createElement(UsageOverview));
+
+    expect(mocks.useUsageQuery).toHaveBeenCalledWith({
+      range: '24h',
+      metric: 'cost',
+      groupBy: 'model',
+      maxResults: 5,
+    });
   });
 
   test('stores all overview filters in one Jotai atom', () => {
@@ -80,20 +119,5 @@ describe('usage overview', () => {
     expect(store.get(usageOverviewFiltersAtom)).toEqual({ range: '24h', metric: 'cost', groupBy: 'model' });
     store.set(usageOverviewFiltersAtom, (current) => ({ ...current, metric: 'requests', groupBy: 'provider' }));
     expect(store.get(usageOverviewFiltersAtom)).toEqual({ range: '24h', metric: 'requests', groupBy: 'provider' });
-  });
-
-  test('preserves meaningful USD precision without compacting cost', () => {
-    const formatCost = createUsageValueFormatter('cost', 'en-US');
-
-    expect(formatCost(0.0049)).toBe('$0.0049');
-    expect(formatCost(12_345.67)).toBe('$12,345.67');
-  });
-
-  test('formats token and request metrics as compact integers', () => {
-    const formatTokens = createUsageValueFormatter('tokens', 'en-US');
-    const formatRequests = createUsageValueFormatter('requests', 'en-US');
-
-    expect(formatTokens(1_200)).toBe('1.2K');
-    expect(formatRequests(1_234_567)).toBe('1M');
   });
 });

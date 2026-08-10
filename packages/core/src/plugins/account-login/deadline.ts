@@ -3,6 +3,7 @@ import {
   CATALOG_DISCOVERY_TIMEOUT_MS,
   type LocalizedText,
   type OAuthAdapter,
+  type RuntimeFetch,
 } from '@aio-proxy/plugin-sdk';
 
 import { OAuthCatalogDiscoveryTimeoutError, OAuthLoginTimeoutError } from './errors';
@@ -67,6 +68,7 @@ export async function loginWithProtectedAuthorization<Options, Credential>(
   progress: (message: LocalizedText) => void,
   signal: AbortSignal,
   options: Options,
+  fetch?: RuntimeFetch,
 ): Promise<Awaited<ReturnType<OAuthAdapter<Options, Credential>['login']>>> {
   try {
     return await withAbort(signal, () => {
@@ -76,7 +78,15 @@ export async function loginWithProtectedAuthorization<Options, Credential>(
       } catch (error) {
         throw protectHostAuthorizationError(error);
       }
-      return adapter.login({ authorization: protectedAuthorization(authorization), progress, signal }, options);
+      return adapter.login(
+        {
+          authorization: protectedAuthorization(authorization),
+          progress,
+          signal,
+          ...(fetch === undefined ? {} : { fetch }),
+        },
+        options,
+      );
     });
   } catch (error) {
     if (signal.aborted) throw signal.reason;

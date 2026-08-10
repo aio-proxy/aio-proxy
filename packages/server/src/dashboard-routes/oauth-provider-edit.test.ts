@@ -25,6 +25,7 @@ async function createOAuthEditFixture() {
         name: 'Old name',
         enabled: true,
         weight: 1,
+        proxy: 'https://old-proxy.example:8443',
         options: { tenant: 'work' },
         alias: { old: { model: 'model-1' } },
       },
@@ -65,7 +66,7 @@ async function createOAuthEditFixture() {
   const descriptor = definePlugin((api) => {
     api.oauth.register({
       id: 'default',
-      label: 'Example OAuth',
+      displayName: 'Example OAuth',
       account: {
         options: {
           schema: zod.object({ tenant: zod.string(), token: zod.string() }),
@@ -117,7 +118,13 @@ test('OAuth edit-view is secret-safe and common edits preserve account identity 
     expect(editResponse.status).toBe(200);
     const edit = await editResponse.json();
     expect(edit).toMatchObject({
-      provider: { id: 'person', kind: 'oauth', plugin: '@example/oauth', capability: 'default' },
+      provider: {
+        id: 'person',
+        kind: 'oauth',
+        plugin: '@example/oauth',
+        capability: 'default',
+        proxy: '****',
+      },
       oauth: {
         accountLabel: 'person@example.com',
         publicValues: { tenant: 'work' },
@@ -151,9 +158,41 @@ test('OAuth edit-view is secret-safe and common edits preserve account identity 
       name: 'Personal',
       enabled: false,
       weight: 4,
+      proxy: 'https://old-proxy.example:8443',
       options: { tenant: 'work' },
       alias: { chat: { model: 'model-2', preserve: false } },
     });
+  } finally {
+    cleanup();
+  }
+});
+
+test('OAuth provider updates persist every proxy override state without exposing credentials', async () => {
+  const { configPath, routes, cleanup } = await createOAuthEditFixture();
+  const update = async (proxy: null | false | string) =>
+    routes.request('/providers/person', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ kind: 'oauth', id: 'person', enabled: true, proxy }),
+    });
+  const providerOnDisk = () =>
+    (JSON.parse(readFileSync(configPath, 'utf8')) as { providers: Record<string, Record<string, unknown>> }).providers[
+      'person'
+    ];
+
+  try {
+    expect((await update(null)).status).toBe(200);
+    expect(providerOnDisk()).not.toHaveProperty('proxy');
+
+    expect((await update(false)).status).toBe(200);
+    expect(providerOnDisk()).toMatchObject({ proxy: false });
+
+    expect((await update('http://new-proxy.example:8080')).status).toBe(200);
+    expect(providerOnDisk()).toMatchObject({ proxy: 'http://new-proxy.example:8080' });
+
+    const edit = await (await routes.request('/providers/person/edit-view')).json();
+    expect(edit).toMatchObject({ provider: { proxy: '****' } });
+    expect(JSON.stringify(edit)).not.toContain('new-proxy.example');
   } finally {
     cleanup();
   }

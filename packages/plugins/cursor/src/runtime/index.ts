@@ -18,7 +18,11 @@ export function createCursorRuntime(
   context: RuntimeContext<CursorCredential, Record<string, never>>,
   dependencies: CursorRuntimeDependencies = {},
 ): Promise<OAuthRuntimeResult> {
-  const { transport: injectedTransport, sessionStore: injectedStore, ...credentialOptions } = dependencies;
+  const { transport: injectedTransport, sessionStore: injectedStore, ...injectedCredentialOptions } = dependencies;
+  const credentialOptions: CursorOAuthDependencies = {
+    ...injectedCredentialOptions,
+    ...(injectedCredentialOptions.fetch === undefined ? { fetch: context.fetch } : {}),
+  };
   const transport = injectedTransport ?? createNodeHttp2Transport();
   const sessionStore = injectedStore ?? new CursorSessionStore();
   const modelById = new Map<string, CursorModelDescriptor>(
@@ -36,7 +40,7 @@ export function createCursorRuntime(
     transport,
     credentials: context.credentials,
     sessionStore,
-    ...(Object.keys(credentialOptions).length === 0 ? {} : { credentialOptions }),
+    credentialOptions,
     baseUrl: CURSOR_API_URL,
     modelById,
   });

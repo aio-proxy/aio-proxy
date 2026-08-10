@@ -1,17 +1,19 @@
 import { m } from '@aio-proxy/i18n';
-import type { DashboardOAuthProviderEdit, OAuthProvider } from '@aio-proxy/types';
-
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Field } from '@/components/ui/field';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
+import type { DashboardOAuthProviderEdit, OAuthProvider, ProviderTransforms } from '@aio-proxy/types';
+import { Badge } from '@aio-proxy/ui/components/badge';
+import { Button } from '@aio-proxy/ui/components/button';
+import { Field } from '@aio-proxy/ui/components/field';
+import { Input } from '@aio-proxy/ui/components/input';
+import { Label } from '@aio-proxy/ui/components/label';
+import { Switch } from '@aio-proxy/ui/components/switch';
 
 import type { useOAuthProviderEditForm } from '../hooks/use-oauth-provider-edit-form';
 import type { useOAuthProviderForm } from '../hooks/use-oauth-provider-form';
+import { ProviderFormMode } from '../lib/constants';
 import { OAuthAccountFields } from './oauth-account-fields';
 import { OAuthProviderAliasFields } from './oauth-provider-alias-fields';
+import { ProviderProxyField } from './provider-proxy-field';
+import { ProviderRequestTransformsEditor } from './provider-request-transforms';
 
 interface OAuthProviderEditFieldsProps {
   readonly provider: OAuthProvider;
@@ -22,6 +24,8 @@ interface OAuthProviderEditFieldsProps {
   readonly onAliasOpenChange: (open: boolean) => void;
   readonly onReauthorize: () => void;
   readonly isReauthorizing: boolean;
+  readonly transformsValid: boolean;
+  readonly onTransformsValidityChange: (valid: boolean) => void;
 }
 
 export const OAuthProviderEditFields: React.FC<OAuthProviderEditFieldsProps> = ({
@@ -33,6 +37,8 @@ export const OAuthProviderEditFields: React.FC<OAuthProviderEditFieldsProps> = (
   onAliasOpenChange,
   onReauthorize,
   isReauthorizing,
+  transformsValid,
+  onTransformsValidityChange,
 }) => (
   <div className="space-y-8">
     <section className="space-y-4" aria-labelledby="provider-oauth-basic-heading">
@@ -103,13 +109,29 @@ export const OAuthProviderEditFields: React.FC<OAuthProviderEditFieldsProps> = (
         </div>
       </dl>
       <OAuthAccountFields fields={oauth.form} form={accountForm} />
+      <form.Field name="proxy">
+        {(field) => <ProviderProxyField field={field} mode={ProviderFormMode.Edit} />}
+      </form.Field>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">{m['dashboard.providers.oauth.reauthorize_helper']()}</p>
-        <Button type="button" variant="outline" onClick={onReauthorize} disabled={isReauthorizing}>
+        <Button type="button" variant="outline" onClick={onReauthorize} disabled={isReauthorizing || !transformsValid}>
           {m['dashboard.providers.oauth.reauthorize']()}
         </Button>
       </div>
     </section>
+
+    <form.Field name="transforms">
+      {(field) => {
+        const transforms = field.state.value as ProviderTransforms | undefined;
+        return (
+          <ProviderRequestTransformsEditor
+            value={transforms?.request ?? []}
+            onChange={(request) => field.handleChange({ request })}
+            onValidityChange={onTransformsValidityChange}
+          />
+        );
+      }}
+    </form.Field>
 
     <section className="space-y-4 border-t pt-6" aria-labelledby="provider-oauth-models-heading">
       <h2 id="provider-oauth-models-heading" className="text-base font-semibold">

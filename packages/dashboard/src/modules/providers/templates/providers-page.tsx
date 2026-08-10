@@ -1,20 +1,21 @@
 import { m } from '@aio-proxy/i18n';
-import { useQuery } from '@tanstack/react-query';
-import { Link } from '@tanstack/react-router';
-import type React from 'react';
-
-import { PageContainer } from '@/components/page-container';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
+import { Button } from '@aio-proxy/ui/components/button';
+import { Card, CardContent } from '@aio-proxy/ui/components/card';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { Skeleton } from '@/components/ui/skeleton';
+} from '@aio-proxy/ui/components/dropdown-menu';
+import { Skeleton } from '@aio-proxy/ui/components/skeleton';
+import { useQuery } from '@tanstack/react-query';
+import { Link } from '@tanstack/react-router';
+import type React from 'react';
+
+import { PageContainer } from '@/components/page-container';
 
 import { ProvidersTable } from '../components/providers-table';
+import { PROVIDER_KIND_LABEL } from '../lib/constants';
 import { providersQueryOptions } from '../services/providers-service';
 
 interface ProvidersPageProps {
@@ -29,20 +30,21 @@ export const ProvidersPage: React.FC<ProvidersPageProps> = ({ focusProviderId, w
   return (
     <PageContainer
       title={m['dashboard.providers.list_title']()}
+      breadcrumbs={[{ label: m['dashboard.menus.configuration']() }, { label: m['dashboard.providers.list_title']() }]}
       extra={
         <DropdownMenu>
           <DropdownMenuTrigger render={<Button data-testid="new-provider-button" />}>
             {m['dashboard.providers.new_provider']()}
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem render={<Link preload="intent" to="/providers/new/$kind" params={{ kind: 'oauth' }} />}>
-              {m['dashboard.providers.kind_label.oauth']()}
-            </DropdownMenuItem>
             <DropdownMenuItem render={<Link preload="intent" to="/providers/new/$kind" params={{ kind: 'api' }} />}>
-              {m['dashboard.providers.kind_label.api']()}
+              {PROVIDER_KIND_LABEL.api}
+            </DropdownMenuItem>
+            <DropdownMenuItem render={<Link preload="intent" to="/providers/new/$kind" params={{ kind: 'oauth' }} />}>
+              {PROVIDER_KIND_LABEL.oauth}
             </DropdownMenuItem>
             <DropdownMenuItem render={<Link preload="intent" to="/providers/new/$kind" params={{ kind: 'ai-sdk' }} />}>
-              {m['dashboard.providers.kind_label.ai-sdk']()}
+              {PROVIDER_KIND_LABEL['ai-sdk']}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

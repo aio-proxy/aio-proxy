@@ -55,7 +55,7 @@ describe('provider login capability resolution', () => {
     state.deps = { ...state.deps, registry: registry([['@multi/plugin', ['alpha', 'beta']]]) };
 
     await expect(providerLogin('@multi/plugin', {}, state.deps)).rejects.toMatchObject({
-      message: 'OAuth capability @multi/plugin is ambiguous. Choose one of: @multi/plugin#alpha, @multi/plugin#beta.',
+      message: 'OAuth capability @multi/plugin is ambiguous. Choose one of: @multi/plugin#alpha, @multi/plugin#beta',
     });
   });
 
@@ -85,7 +85,7 @@ describe('provider login capability resolution', () => {
     const state = scope.fixture();
 
     await expect(providerLogin('@missing/plugin', {}, state.deps)).rejects.toMatchObject({
-      message: 'OAuth capability @missing/plugin was not found.',
+      message: 'OAuth capability @missing/plugin was not found',
     });
   });
 
@@ -93,7 +93,7 @@ describe('provider login capability resolution', () => {
     const state = scope.fixture();
     await expect(providerLogin('default', {}, state.deps)).rejects.toMatchObject({
       name: 'ProviderLoginPresentationError',
-      message: 'OAuth capability default is ambiguous. Choose one of: @a/one#default, @b/two#default.',
+      message: 'OAuth capability default is ambiguous. Choose one of: @a/one#default, @b/two#default',
     });
     expect(new ProviderCapabilityAmbiguousError('default', ['@a/one#default']).references).toEqual(['@a/one#default']);
   });

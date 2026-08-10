@@ -1,6 +1,5 @@
 import { m } from '@aio-proxy/i18n';
 import type { DashboardOAuthCapability } from '@aio-proxy/types';
-
 import {
   Combobox,
   ComboboxContent,
@@ -8,11 +7,11 @@ import {
   ComboboxInput,
   ComboboxItem,
   ComboboxList,
-} from '@/components/ui/combobox';
-import { Field } from '@/components/ui/field';
-import { Label } from '@/components/ui/label';
+} from '@aio-proxy/ui/components/combobox';
+import { Field } from '@aio-proxy/ui/components/field';
+import { Label } from '@aio-proxy/ui/components/label';
 
-import { resolveDashboardText } from '../localized-text';
+import { resolveDashboardText } from '@/lib/localized-text';
 
 interface OAuthCapabilityComboboxProps {
   readonly capabilities: readonly DashboardOAuthCapability[];
@@ -31,7 +30,7 @@ export const OAuthCapabilityCombobox: React.FC<OAuthCapabilityComboboxProps> = (
       items={capabilities}
       value={value}
       onValueChange={onValueChange}
-      itemToStringValue={(item) => resolveDashboardText(item.label)}
+      itemToStringValue={(item) => resolveDashboardText(item.displayName)}
     >
       <ComboboxInput
         id="oauth-capability"
@@ -44,7 +43,7 @@ export const OAuthCapabilityCombobox: React.FC<OAuthCapabilityComboboxProps> = (
           {capabilities.map((capability) => (
             <ComboboxItem key={`${capability.plugin}:${capability.capability}`} value={capability}>
               <div>
-                <div>{resolveDashboardText(capability.label)}</div>
+                <div>{resolveDashboardText(capability.displayName)}</div>
                 {capability.description === undefined ? null : (
                   <div className="text-xs text-muted-foreground">{resolveDashboardText(capability.description)}</div>
                 )}

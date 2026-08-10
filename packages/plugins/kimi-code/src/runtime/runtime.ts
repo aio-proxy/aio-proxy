@@ -14,16 +14,8 @@ export async function createKimiRuntime(
   context: RuntimeContext<KimiCredential, Record<string, never>>,
   dependencies: KimiOAuthDependencies = {},
 ): Promise<OAuthRuntimeResult> {
-  const controlFetch = dependencies.fetch ?? context.fetch ?? globalThis.fetch;
-  const modelFetch = dependencies.fetch ?? context.modelFetch ?? controlFetch;
-  const dynamicFetch = createKimiDynamicFetch(
-    context.credentials,
-    {
-      ...dependencies,
-      fetch: modelFetch,
-    },
-    controlFetch,
-  );
+  const fetch = dependencies.fetch ?? context.fetch;
+  const dynamicFetch = createKimiDynamicFetch(context.credentials, { ...dependencies, fetch });
   const compatibleFetch = createOpenAIStreamFetch('openai-compatible', dynamicFetch, {
     rewriteToolImages: true,
   });
@@ -99,13 +91,13 @@ export async function createKimiRuntime(
 export function createKimiDynamicFetch(
   credentials: RuntimeContext<KimiCredential, Record<string, never>>['credentials'],
   dependencies: KimiOAuthDependencies = {},
-  credentialFetch: typeof globalThis.fetch = dependencies.fetch ?? globalThis.fetch,
 ) {
+  const fetch = dependencies.fetch ?? globalThis.fetch;
   const fetchWithCredential = async (input: RequestInfo | URL, init?: RequestInit) => {
     const request = new Request(input, init);
     const credential = await currentKimiCredential(credentials, {
       ...dependencies,
-      fetch: credentialFetch,
+      fetch,
       signal: request.signal,
     });
     const headers = new Headers(request.headers);
@@ -122,7 +114,7 @@ export function createKimiDynamicFetch(
     }
     headers.set('authorization', `Bearer ${credential.accessToken}`);
     for (const [key, value] of Object.entries(kimiIdentityHeaders(credential.deviceId))) headers.set(key, value);
-    return await (dependencies.fetch ?? globalThis.fetch)(request.url, {
+    return await fetch(request.url, {
       method: request.method,
       headers,
       ...(request.method === 'GET' || request.method === 'HEAD' ? {} : { body: request.body }),

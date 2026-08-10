@@ -2,6 +2,7 @@ import {
   calculateEstimatedCost,
   findModelPrice,
   getProviders,
+  type OpenRouterModelPrice,
   type TextStreamPart,
   type ToolSet,
   type UsageAccounting,
@@ -35,9 +36,16 @@ export async function priceUsage(
   usage: UsageRow | undefined,
   accounting: UsageAccounting,
   requestedModelId?: string,
+  configPrice?: OpenRouterModelPrice,
 ): Promise<UsageRow | undefined> {
   if (usage === undefined) return undefined;
   try {
+    // A per-provider config price for the hit channel wins over catalog lookup,
+    // so an explicit override does not fall back to models.dev on a catalog miss.
+    if (configPrice !== undefined) {
+      const cost = calculateEstimatedCost(pricingInput(usage), configPrice, accounting);
+      return cost === undefined ? usage : { ...usage, ...cost, priceSource: 'config' };
+    }
     const providers = await getProviders();
     // Price the resolved target first: usage.modelId is the alias/variant the
     // Router selected, so it is the authoritative billed model. Fall back to
@@ -47,7 +55,7 @@ export async function priceUsage(
       findModelPrice(providers, usage.modelId) ??
       (requestedModelId === undefined ? undefined : findModelPrice(providers, requestedModelId));
     const cost = price === undefined ? undefined : calculateEstimatedCost(pricingInput(usage), price, accounting);
-    return cost === undefined ? usage : { ...usage, ...cost };
+    return cost === undefined ? usage : { ...usage, ...cost, priceSource: 'models-dev' };
   } catch {
     return usage;
   }
@@ -60,5 +68,9 @@ function pricingInput(usage: UsageRow) {
     ...(usage.cacheReadTokens === undefined ? {} : { cacheReadTokens: usage.cacheReadTokens }),
     ...(usage.cacheWriteTokens === undefined ? {} : { cacheWriteTokens: usage.cacheWriteTokens }),
     ...(usage.reasoningTokens === undefined ? {} : { reasoningTokens: usage.reasoningTokens }),
+    ...(usage.inputAudioTokens === undefined ? {} : { inputAudioTokens: usage.inputAudioTokens }),
+    ...(usage.outputAudioTokens === undefined ? {} : { outputAudioTokens: usage.outputAudioTokens }),
+    ...(usage.imageCount === undefined ? {} : { imageCount: usage.imageCount }),
+    ...(usage.webSearchCount === undefined ? {} : { webSearchCount: usage.webSearchCount }),
   };
 }

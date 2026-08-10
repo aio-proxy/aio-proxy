@@ -15,13 +15,13 @@ describe('provider login capability prompts', () => {
       message = config.message;
       return config.choices[0]?.value ?? '';
     });
-    await expect(selectCapability([{ reference: '@a/one#default', label: 'First account' }])).resolves.toBe(
+    await expect(selectCapability([{ reference: '@a/one#default', displayName: 'First account' }])).resolves.toBe(
       '@a/one#default',
     );
-    expect(message).toBe('Select an OAuth capability.');
+    expect(message).toBe('Select an OAuth capability');
   });
 
-  test('uses adapter labels for TTY choice names and canonical references for values', async () => {
+  test('uses localized capability display names for TTY choice names and canonical references for values', async () => {
     await setLocale('zh-Hans');
     let choices: readonly { readonly name: string; readonly value: string }[] = [];
     const selectCapability = createCapabilitySelector(async (config) => {
@@ -30,10 +30,13 @@ describe('provider login capability prompts', () => {
     });
     await expect(
       selectCapability([
-        { reference: '@a/one#default', label: { default: 'First account', 'zh-Hans': '第一个账户' } },
+        {
+          reference: '@a/one#default',
+          displayName: { default: 'Localized capability name', 'zh-Hans': '本地化功能名称' },
+        },
       ] as never),
     ).resolves.toBe('@a/one#default');
-    expect(choices).toEqual([{ name: '第一个账户', value: '@a/one#default' }]);
+    expect(choices).toEqual([{ name: '本地化功能名称', value: '@a/one#default' }]);
   });
 
   test('manual-only confirmation uses the login signal', async () => {

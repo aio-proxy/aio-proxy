@@ -2,16 +2,16 @@ import type {
   DashboardTraceDetail,
   DashboardTraceSpan,
   DashboardTraceSummary,
-  DashboardTracesResponse,
   TraceTerminationReason,
 } from '@aio-proxy/types';
-import { and, asc, desc, eq, gte, isNull, lte, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, gte, isNull, lt, lte, or } from 'drizzle-orm';
 import type { BunSQLiteDatabase } from 'drizzle-orm/bun-sqlite';
+import { z } from 'zod';
 
 import { nanoUsdToUsd } from '../../usage-numbers';
 import { traceSpan } from '../schema';
 import { mergeAttributes } from './span-projection';
-import type { TracesQuery } from './types';
+import type { TraceCursor, TracesPage, TracesQuery } from './types';
 import { hasAnyUsage } from './usage-fields';
 
 const STATUS_CODE_TO_OTEL: Record<number, 'UNSET' | 'OK' | 'ERROR'> = {
@@ -27,6 +27,46 @@ const KIND_TO_ENUM: Record<number, 'INTERNAL' | 'SERVER' | 'CLIENT' | 'PRODUCER'
   3: 'PRODUCER',
   4: 'CONSUMER',
 };
+
+const TRACE_CURSOR_VERSION = 1;
+const TraceCursorPayloadSchema = z
+  .object({
+    version: z.literal(TRACE_CURSOR_VERSION),
+    direction: z.enum(['older', 'newer']),
+    startedAt: z.iso.datetime(),
+    traceId: z.string().regex(/^[0-9a-f]{32}$/u),
+  })
+  .strict();
+
+export function encodeTraceCursor(cursor: TraceCursor): string {
+  return Buffer.from(
+    JSON.stringify({
+      version: TRACE_CURSOR_VERSION,
+      direction: cursor.direction,
+      startedAt: cursor.startedAt.toISOString(),
+      traceId: cursor.traceId,
+    }),
+  ).toString('base64url');
+}
+
+export function decodeTraceCursor(token: string): TraceCursor | undefined {
+  if (!/^[A-Za-z0-9_-]+$/u.test(token)) {
+    return undefined;
+  }
+  try {
+    const parsed = TraceCursorPayloadSchema.safeParse(JSON.parse(Buffer.from(token, 'base64url').toString('utf8')));
+    if (!parsed.success) {
+      return undefined;
+    }
+    return {
+      direction: parsed.data.direction,
+      startedAt: new Date(parsed.data.startedAt),
+      traceId: parsed.data.traceId,
+    };
+  } catch {
+    return undefined;
+  }
+}
 
 function toIso(date: Date | null): string | null {
   return date === null ? null : date.toISOString();
@@ -146,9 +186,18 @@ function rowToSpan(row: typeof traceSpan.$inferSelect, isRoot: boolean, now: Dat
   };
 }
 
-export function list(db: BunSQLiteDatabase, query: TracesQuery): DashboardTracesResponse {
+export function list(db: BunSQLiteDatabase, query: TracesQuery): TracesPage {
+  let cursorFilter;
+  if (query.cursor !== undefined) {
+    const compare = query.cursor.direction === 'older' ? lt : gt;
+    cursorFilter = or(
+      compare(traceSpan.startedAt, query.cursor.startedAt),
+      and(eq(traceSpan.startedAt, query.cursor.startedAt), compare(traceSpan.traceId, query.cursor.traceId)),
+    );
+  }
   const filter = and(
     isNull(traceSpan.parentSpanId),
+    cursorFilter,
     query.startedAfter === undefined ? undefined : gte(traceSpan.startedAt, query.startedAfter),
     query.startedBefore === undefined ? undefined : lte(traceSpan.startedAt, query.startedBefore),
     query.traceId === undefined ? undefined : eq(traceSpan.traceId, query.traceId),
@@ -164,30 +213,41 @@ export function list(db: BunSQLiteDatabase, query: TracesQuery): DashboardTraces
     query.finalHttpStatus === undefined ? undefined : eq(traceSpan.finalHttpStatus, query.finalHttpStatus),
   );
 
-  const total =
-    db
-      .select({ value: sql<number>`count(*)`.mapWith(Number) })
-      .from(traceSpan)
-      .where(filter)
-      .get()?.value ?? 0;
-
-  const rows = db
+  const queryingNewer = query.cursor?.direction === 'newer';
+  const selectedRows = db
     .select()
     .from(traceSpan)
     .where(filter)
-    .orderBy(desc(traceSpan.startedAt), desc(traceSpan.traceId))
-    .limit(query.pageSize)
-    .offset((query.page - 1) * query.pageSize)
+    .orderBy(
+      queryingNewer ? asc(traceSpan.startedAt) : desc(traceSpan.startedAt),
+      queryingNewer ? asc(traceSpan.traceId) : desc(traceSpan.traceId),
+    )
+    .limit(query.pageSize + 1)
     .all();
+  const hasMore = selectedRows.length > query.pageSize;
+  const pageRows = selectedRows.slice(0, query.pageSize);
+  if (queryingNewer) {
+    pageRows.reverse();
+  }
   const now = new Date();
+  const firstRow = pageRows[0];
+  const lastRow = pageRows.at(-1);
+  if (firstRow === undefined || lastRow === undefined) {
+    return { items: [] };
+  }
+
+  const hasNewer = query.cursor?.direction === 'older' || (queryingNewer && hasMore);
+  const hasOlder = query.cursor?.direction === 'newer' || (!queryingNewer && hasMore);
 
   return {
-    items: rows.map((row) => rowToSummary(row, now)),
-    page: query.page,
-    pageSize: query.pageSize,
-    total,
-    pageCount: Math.ceil(total / query.pageSize),
+    items: pageRows.map((row) => rowToSummary(row, now)),
+    ...(hasOlder ? { nextCursor: rowToCursor(lastRow, 'older') } : {}),
+    ...(hasNewer ? { previousCursor: rowToCursor(firstRow, 'newer') } : {}),
   };
+}
+
+function rowToCursor(row: typeof traceSpan.$inferSelect, direction: TraceCursor['direction']): TraceCursor {
+  return { direction, startedAt: row.startedAt, traceId: row.traceId };
 }
 
 export function find(db: BunSQLiteDatabase, traceId: string, now = new Date()): DashboardTraceDetail | undefined {

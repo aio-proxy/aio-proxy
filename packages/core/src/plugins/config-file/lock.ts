@@ -23,7 +23,7 @@ type LockRecord = {
 export type ConfigLock = {
   readonly owner: string;
   readonly withOwnership: <T>(action: (assertOwnership: () => Promise<void>) => Promise<T>) => Promise<T>;
-  readonly withOwnershipFence: <T>(action: () => Promise<T>) => Promise<T>;
+  readonly withOwnershipFence: <T>(action: (assertFencedOwnership: () => Promise<void>) => Promise<T>) => Promise<T>;
   readonly release: () => Promise<void>;
 };
 
@@ -211,11 +211,14 @@ export async function acquireConfigLock(path: string, signal?: AbortSignal): Pro
         await assertOwnership();
         return action(assertOwnership);
       },
-      withOwnershipFence: <T>(action: () => Promise<T>) =>
+      withOwnershipFence: <T>(action: (assertFencedOwnership: () => Promise<void>) => Promise<T>) =>
         withRecoveryFence(path, async (assertFence) => {
-          await assertFence();
-          await verifyOwnership();
-          return action();
+          const assertFencedOwnership = async () => {
+            await assertFence();
+            await assertOwnership();
+          };
+          await assertFencedOwnership();
+          return action(assertFencedOwnership);
         }),
       async release() {
         if (heartbeat !== undefined) {

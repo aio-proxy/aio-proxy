@@ -1,24 +1,35 @@
 import { m } from '@aio-proxy/i18n';
-import type { DashboardProviderSummary } from '@aio-proxy/types';
 import { Link } from '@tanstack/react-router';
-import type { ColumnDef } from '@tanstack/react-table';
+import type { ColumnDef, RowData } from '@tanstack/react-table';
 import { startCase } from 'es-toolkit/string';
-import { ChevronRight, Trash2 } from 'lucide-react';
-import type React from 'react';
 
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+import { tableHead } from '@/components/data-table/table-head';
+import { ProtocolLabel } from '@/components/protocol-label';
+import { formatCompactTokenCount } from '@/components/token-count';
+import type { DataTableFeatures } from '@/hooks/use-data-table';
 
-import type { DeleteProviderDialogRef } from './delete-provider-dialog';
+import { PROVIDER_KIND_LABEL } from '../lib/constants';
+import type { ProviderUsage } from '../services/provider-usage-service';
+import { ProviderEnabledSwitch } from './provider-enabled-switch';
 import { ProviderModelsCell } from './provider-models-cell';
 import { ProviderStateCell } from './provider-state-cell';
+import { ProviderTableActions } from './provider-table-actions';
+import type { ProviderTableRow } from './providers-table/provider-table-row';
 
-const kindLabels: Record<DashboardProviderSummary['kind'], () => string> = {
-  api: () => m['dashboard.providers.kind_label.api'](),
-  'ai-sdk': () => m['dashboard.providers.kind_label.ai-sdk'](),
-  oauth: () => m['dashboard.providers.kind_label.oauth'](),
-  invalid: () => m['dashboard.providers.kind_label.invalid'](),
+export type ProviderUsageStatus = 'loading' | 'ready' | 'unavailable';
+
+export const formatProviderUsage = (status: ProviderUsageStatus, requests: bigint): string => {
+  if (status === 'loading') return '…';
+  if (status === 'unavailable') return 'N/A';
+  return formatCompactTokenCount(requests);
 };
+
+declare module '@tanstack/react-table' {
+  interface ColumnMeta<TData extends RowData, TValue> {
+    readonly className?: string;
+    readonly label?: () => string;
+  }
+}
 
 const uneditableDiagnosticCodes = new Set(['PROVIDER_CONFIG_INVALID', 'LEGACY_OAUTH_CONFIG_UNSUPPORTED']);
 
@@ -26,126 +37,188 @@ export const canEditProvider = (provider: DashboardProviderSummary): boolean =>
   provider.kind !== 'invalid' &&
   (provider.state.diagnostic === undefined || !uneditableDiagnosticCodes.has(provider.state.diagnostic.code));
 
-const displayName = (provider: DashboardProviderSummary): string => provider.name ?? startCase(provider.id);
+const displayName = (provider: DashboardProviderSummary): string =>
+  (provider.kind === 'oauth' ? (provider.accountLabel ?? provider.name) : provider.name) ?? startCase(provider.id);
 
-const providerColumn: ColumnDef<DashboardProviderSummary> = {
+const concreteProvider = (row: ProviderTableRow): DashboardProviderSummary | undefined =>
+  row.rowType === 'provider' ? row.provider : undefined;
+
+const requestCount = (row: ProviderTableRow, providerUsage: ReadonlyMap<string, ProviderUsage>): bigint =>
+  (row.rowType === 'provider' ? [row.provider] : row.accounts.map(({ provider }) => provider)).reduce(
+    (total, provider) => total + (providerUsage.get(provider.id)?.requestCount ?? 0n),
+    0n,
+  );
+
+const providerColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
   id: 'provider',
-  accessorFn: (provider) => [displayName(provider), provider.id, kindLabels[provider.kind]()].join(' '),
-  header: () => m['dashboard.providers.table.col_provider'](),
+  enableHiding: false,
+  enableSorting: false,
+  meta: { label: () => m['dashboard.providers.table.col_provider']() },
+  accessorFn: (row) =>
+    row.rowType === 'oauth-group'
+      ? [row.groupKey, ...row.accounts.flatMap(({ provider }) => [displayName(provider), provider.id])].join(' ')
+      : `${displayName(row.provider)} ${row.provider.id}`,
+  header: tableHead(() => m['dashboard.providers.table.col_provider']()),
   cell: ({ row }) => {
-    const provider = row.original;
+    const provider = concreteProvider(row.original);
+    if (provider === undefined) return null;
     const name = displayName(provider);
     return (
-      <div className="min-w-0 sm:min-w-40">
+      <div className="max-w-64 min-w-16 truncate">
         {canEditProvider(provider) ? (
           <Link
             id={`provider-link-${provider.id}`}
             to="/providers/$id/edit"
             params={{ id: provider.id }}
             aria-label={m['dashboard.providers.actions.edit_provider']({ id: provider.id })}
-            className="font-medium after:absolute after:inset-0 focus-visible:outline-none"
+            className="font-medium"
           >
             {name}
           </Link>
         ) : (
           <div className="font-medium">{name}</div>
         )}
-        <div className="flex items-center gap-1 text-xs text-muted-foreground">
-          <span>{provider.id}</span>
-          <span aria-hidden="true">·</span>
-          <span>{kindLabels[provider.kind]()}</span>
-          <span className="sm:hidden" aria-hidden="true">
-            ·
-          </span>
-          <span className="sm:hidden" data-testid={`provider-mobile-models-${provider.id}`}>
-            {(provider.clientModels ?? []).length} {m['dashboard.providers.table.col_models']()}
-          </span>
-        </div>
+        <div className="truncate text-muted-foreground">{provider.id}</div>
       </div>
     );
   },
 };
 
-const statusColumn: ColumnDef<DashboardProviderSummary> = {
-  id: 'status',
-  accessorFn: (provider) =>
-    `${provider.enabled} ${provider.state.status} ${provider.state.status === 'ready' ? (provider.state.catalog ?? '') : ''}`,
-  header: () => m['dashboard.providers.table.col_status'](),
-  cell: ({ row }) => (
-    <div className="flex min-w-0 flex-col items-start gap-1 sm:min-w-32 sm:flex-row sm:gap-2">
-      <Badge variant={row.original.enabled ? 'secondary' : 'outline'}>
-        {row.original.enabled ? m['dashboard.providers.badge.enabled']() : m['dashboard.providers.badge.disabled']()}
-      </Badge>
-      <div className="space-y-1 whitespace-normal">
-        <ProviderStateCell provider={row.original} />
-        {row.original.catalogLastSuccessAt === undefined ? null : (
-          <div className="text-xs text-muted-foreground">
-            {m['dashboard.providers.catalog.last_success_at']({
-              value: new Date(row.original.catalogLastSuccessAt).toLocaleString(),
-            })}
-          </div>
-        )}
-      </div>
-    </div>
-  ),
+const typeColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
+  id: 'type',
+  enableSorting: false,
+  meta: { className: 'w-36 max-w-36 whitespace-normal', label: () => m['dashboard.providers.table.col_type']() },
+  accessorFn: (row) => {
+    if (row.rowType === 'oauth-group') return `OAuth ${row.groupKey}`;
+    if (row.provider.kind === 'api') return `${PROVIDER_KIND_LABEL.api} · ${row.provider.protocol ?? 'N/A'}`;
+    if (row.provider.kind === 'ai-sdk') return row.provider.packageName ?? PROVIDER_KIND_LABEL['ai-sdk'];
+    if (row.provider.kind === 'invalid') return m['dashboard.providers.kind_label.invalid']();
+    return PROVIDER_KIND_LABEL[row.provider.kind];
+  },
+  header: tableHead(() => m['dashboard.providers.table.col_type']()),
+  cell: ({ row }) => {
+    const provider = concreteProvider(row.original);
+    if (provider === undefined) return null;
+    if (provider.kind === 'api') {
+      return (
+        <div className="leading-5">
+          <div className="">{PROVIDER_KIND_LABEL.api}</div>
+          <ProtocolLabel className="truncate text-muted-foreground" protocol={provider.protocol ?? 'N/A'} />
+        </div>
+      );
+    }
+    if (provider.kind === 'ai-sdk') {
+      return <span className="block truncate">{provider.packageName ?? PROVIDER_KIND_LABEL['ai-sdk']}</span>;
+    }
+    if (provider.kind === 'invalid') return m['dashboard.providers.kind_label.invalid']();
+    return PROVIDER_KIND_LABEL[provider.kind];
+  },
 };
 
-const detailsColumn: ColumnDef<DashboardProviderSummary> = {
-  id: 'details',
-  accessorFn: (provider) => [provider.accountLabel, provider.plugin, provider.capability].filter(Boolean).join(' '),
-  header: () => m['dashboard.providers.table.col_details'](),
+const modelsColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
+  id: 'models',
+  enableSorting: false,
+  meta: { className: 'w-20 text-center', label: () => m['dashboard.providers.table.col_models']() },
+  accessorFn: (row) =>
+    row.rowType === 'oauth-group'
+      ? row.accounts.flatMap(({ provider }) => provider.clientModels).join(' ')
+      : row.provider.clientModels.join(' '),
+  header: tableHead(() => m['dashboard.providers.table.col_models']()),
   cell: ({ row }) => {
-    const provider = row.original;
-    const capability = [provider.plugin, provider.capability].filter(Boolean).join('/');
-    if (provider.accountLabel === undefined && capability === '' && provider.expiresAt === undefined) {
-      return null;
-    }
+    const provider = concreteProvider(row.original);
+    return provider === undefined ? null : <ProviderModelsCell models={provider.clientModels} />;
+  },
+};
+
+const weightColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
+  id: 'weight',
+  meta: { className: 'w-20 text-center', label: () => m['dashboard.providers.table.col_weight']() },
+  accessorFn: (row) => concreteProvider(row)?.weight,
+  header: tableHead(() => m['dashboard.providers.table.col_weight']()),
+  cell: ({ row }) => {
+    const provider = concreteProvider(row.original);
+    return provider === undefined ? null : (provider.weight ?? 0);
+  },
+};
+
+const stateColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
+  id: 'state',
+  enableSorting: false,
+  meta: { className: 'whitespace-normal', label: () => m['dashboard.providers.table.col_state']() },
+  accessorFn: (row) => {
+    const provider = concreteProvider(row);
+    return provider === undefined
+      ? ''
+      : `${provider.state.status} ${provider.state.diagnostic?.summary ?? ''} ${provider.state.diagnostic?.code ?? ''}`;
+  },
+  header: tableHead(() => m['dashboard.providers.table.col_state']()),
+  cell: ({ row }) => {
+    const provider = concreteProvider(row.original);
+    return provider === undefined ? null : <ProviderStateCell provider={provider} />;
+  },
+};
+
+const aggregateColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
+  id: 'aggregate',
+  enableHiding: false,
+  enableSorting: false,
+  meta: { className: 'w-12' },
+  header: tableHead(() => ''),
+  cell: () => null,
+};
+
+const enabledColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
+  id: 'enabled',
+  meta: { className: 'w-20 text-center', label: () => m['dashboard.providers.table.col_enabled']() },
+  accessorFn: (row) => String(concreteProvider(row)?.enabled ?? ''),
+  header: tableHead(() => m['dashboard.providers.table.col_enabled']()),
+  cell: ({ row }) => {
+    const provider = concreteProvider(row.original);
+    return provider === undefined || !canEditProvider(provider) ? null : <ProviderEnabledSwitch provider={provider} />;
+  },
+};
+
+const usageColumn = (
+  providerUsage: ReadonlyMap<string, ProviderUsage>,
+  providerUsageStatus: ProviderUsageStatus,
+): ColumnDef<DataTableFeatures, ProviderTableRow> => ({
+  id: 'usage',
+  meta: { className: 'w-24 text-right', label: () => m['dashboard.providers.table.col_usage_24h']() },
+  accessorFn: (row) => requestCount(row, providerUsage),
+  header: tableHead(() => m['dashboard.providers.table.col_usage_24h']()),
+  cell: ({ row }) => {
+    const provider = concreteProvider(row.original);
+    if (provider === undefined) return null;
     return (
-      <div className="max-w-xs space-y-1 whitespace-normal">
-        {provider.accountLabel === undefined ? null : <div>{provider.accountLabel}</div>}
-        {capability === '' ? null : <div className="text-xs text-muted-foreground">{capability}</div>}
-        {provider.expiresAt === undefined ? null : (
-          <div className="text-xs text-muted-foreground">
-            {m['dashboard.providers.account.expires_at']({
-              value: new Date(provider.expiresAt).toLocaleString(),
-            })}
-          </div>
-        )}
-      </div>
+      <span className="tabular-nums">
+        {formatProviderUsage(providerUsageStatus, providerUsage.get(provider.id)?.requestCount ?? 0n)}
+      </span>
     );
+  },
+});
+
+const actionsColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
+  id: 'actions',
+  enableSorting: false,
+  meta: { className: 'w-20 text-right', label: () => m['dashboard.providers.table.col_actions']() },
+  header: tableHead(() => m['dashboard.providers.table.col_actions']()),
+  cell: ({ row }) => {
+    const provider = concreteProvider(row.original);
+    return provider === undefined || !canEditProvider(provider) ? null : <ProviderTableActions provider={provider} />;
   },
 };
 
 export const createProviderColumns = (
-  deleteDialogRef: React.RefObject<DeleteProviderDialogRef | null>,
-  hasDetails: boolean,
-): ColumnDef<DashboardProviderSummary>[] => [
+  providerUsage: ReadonlyMap<string, ProviderUsage>,
+  providerUsageStatus: ProviderUsageStatus,
+): ColumnDef<DataTableFeatures, ProviderTableRow>[] => [
+  aggregateColumn,
   providerColumn,
-  statusColumn,
-  ...(hasDetails ? [detailsColumn] : []),
-  {
-    id: 'models',
-    accessorFn: (provider) => (provider.clientModels ?? []).join(', '),
-    header: () => m['dashboard.providers.table.col_models'](),
-    cell: ({ row }) => <ProviderModelsCell models={row.original.clientModels ?? []} />,
-  },
-  {
-    id: 'actions',
-    enableSorting: false,
-    header: () => '',
-    cell: ({ row }) =>
-      canEditProvider(row.original) ? (
-        <ChevronRight className="size-4 text-muted-foreground" aria-hidden="true" />
-      ) : (
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          aria-label={m['dashboard.providers.actions.delete_provider']({ id: row.original.id })}
-          onClick={() => deleteDialogRef.current?.open(row.original)}
-        >
-          <Trash2 />
-        </Button>
-      ),
-  },
+  typeColumn,
+  modelsColumn,
+  weightColumn,
+  stateColumn,
+  usageColumn(providerUsage, providerUsageStatus),
+  enabledColumn,
+  actionsColumn,
 ];

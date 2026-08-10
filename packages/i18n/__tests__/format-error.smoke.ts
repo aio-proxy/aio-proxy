@@ -19,7 +19,7 @@ describe('formatUserError', () => {
     const err = new ProviderNotInstalledError('@ai-sdk/test');
 
     // When
-    const result = formatUserError(err, 'zh-CN');
+    const result = formatUserError(err, 'zh-Hans');
 
     // Then
     expect(result.code).toBe('provider_not_installed');
@@ -38,8 +38,7 @@ describe('formatUserError', () => {
     // Then
     expect(result).toEqual({
       code: 'alias_collision',
-      message:
-        'Alias collision: fast is provided by both openai and groq. Rename one or use the provider/alias syntax.',
+      message: 'Alias collision: fast is provided by both openai and groq. Rename one or use the provider/alias syntax',
     });
   });
 
@@ -77,12 +76,12 @@ describe('formatUserError', () => {
     // Given / When / Then
     expect(formatUserError(new AppError('config_not_found', 'cli_error_config_not_found'), 'en')).toEqual({
       code: 'config_not_found',
-      message: 'Config file not found.',
+      message: 'Config file not found',
     });
 
     expect(formatUserError(new StaleProviderGenerationError('openai'), 'en')).toEqual({
       code: 'stale_provider_generation',
-      message: 'Provider generation is stale for openai. Regenerate providers.',
+      message: 'Provider generation is stale for openai. Regenerate providers',
     });
   });
 });

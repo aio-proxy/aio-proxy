@@ -1,1 +1,5 @@
-export { type ModelCapabilitiesSubset, toAnthropicCapabilities } from './model-capabilities';
+export {
+  type ModelCapabilitiesSubset,
+  toAnthropicCapabilities,
+  toAnthropicCapabilitiesFromMetadata,
+} from './model-capabilities';

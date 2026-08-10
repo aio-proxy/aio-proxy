@@ -1,4 +1,4 @@
-import type { LocalizedText, OAuthLoginContext, OAuthLoginResult } from '@aio-proxy/plugin-sdk';
+import type { LocalizedText, OAuthLoginContext, OAuthLoginResult, RuntimeFetch } from '@aio-proxy/plugin-sdk';
 
 import { cursorIdentity, cursorTokenExpiry } from './jwt';
 import {
@@ -21,7 +21,7 @@ export async function loginCursor(
   presentation: CursorLoginPresentation,
   dependencies: CursorOAuthDependencies = {},
 ): Promise<OAuthLoginResult<CursorCredential>> {
-  const fetcher = dependencies.fetch ?? globalThis.fetch;
+  const fetcher: RuntimeFetch = dependencies.fetch ?? context.fetch ?? globalThis.fetch;
   const now = dependencies.now ?? Date.now;
   const sleep = dependencies.sleep ?? abortableSleep;
   const { generateCursorPkce } = await import('./pkce');
@@ -37,7 +37,10 @@ export async function loginCursor(
     await sleep(delay, context.signal);
     let response: Response;
     try {
-      response = await fetcher(`${CURSOR_POLL_URL}?uuid=${uuid}&verifier=${verifier}`, { signal: context.signal });
+      response = await fetcher(`${CURSOR_POLL_URL}?uuid=${uuid}&verifier=${verifier}`, {
+        signal: context.signal,
+        aioProxy: { traffic: 'control' },
+      });
     } catch {
       if (context.signal.aborted) throw context.signal.reason;
       if (++consecutiveErrors >= 3) throw new Error('Cursor authentication polling failed');
@@ -77,7 +80,7 @@ function completeLogin(payload: unknown, now: number): OAuthLoginResult<CursorCr
   return {
     fingerprint: identity.fingerprint,
     suggestedKey: identity.suggestedKey,
-    label: identity.label,
+    accountLabel: identity.label,
     credentials: {
       accessToken,
       refreshToken,

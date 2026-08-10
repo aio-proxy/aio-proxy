@@ -1,10 +1,10 @@
 import { m } from '@aio-proxy/i18n';
 import type { DashboardTraceSpan } from '@aio-proxy/types';
+import { Card, CardContent, CardHeader, CardTitle } from '@aio-proxy/ui/components/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@aio-proxy/ui/components/tabs';
 
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-
-import { formatTraceDuration, formatTraceResultDetails } from '../../trace-formatters';
+import { TRACE_PLACEHOLDER } from '../../lib/trace-display-constants';
+import { formatTraceDuration, formatTraceResultDetails } from '../../lib/trace-formatters';
 import { TraceStatus } from '../trace-status';
 
 interface SpanDetailPanelProps {
@@ -12,7 +12,7 @@ interface SpanDetailPanelProps {
 }
 
 export const SpanDetailPanel: React.FC<SpanDetailPanelProps> = ({ span }) => {
-  const missing = m['dashboard.traces.not_available']();
+  const missing = TRACE_PLACEHOLDER;
   const resultDetails =
     span === undefined ? undefined : formatTraceResultDetails({ errorType: span.errorType, errorCode: span.errorCode });
 

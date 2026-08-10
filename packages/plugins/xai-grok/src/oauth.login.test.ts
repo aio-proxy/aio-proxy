@@ -51,7 +51,7 @@ describe('xAI Grok OAuth', () => {
     expect(result).toEqual({
       fingerprint: expect.stringMatching(/^sha256:[a-f0-9]{64}$/u),
       suggestedKey: expect.stringMatching(/^grok-[a-f0-9]{12}$/u),
-      label: 'Person@Example.com',
+      accountLabel: 'Person@Example.com',
       credentials: {
         accessToken,
         refreshToken: 'refresh-1',

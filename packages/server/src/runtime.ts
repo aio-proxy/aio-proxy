@@ -1,6 +1,14 @@
 import type { AiSdkProviderInstance, ApiProviderInstance, PluginRegistrySnapshot, Router } from '@aio-proxy/core';
 import type { LogicalRequestContext, ProviderExecutedTool, TokenCountCapability } from '@aio-proxy/plugin-sdk';
-import type { AliasConfig, Config, ModelId, ProviderKind, ProviderProtocol, ProviderState } from '@aio-proxy/types';
+import type {
+  AliasConfig,
+  Config,
+  ModelId,
+  ModelMetadata,
+  ProviderKind,
+  ProviderProtocol,
+  ProviderState,
+} from '@aio-proxy/types';
 
 import type { LogicalSessionStore } from './logical-session-store';
 import type { RequestTraceRecorder } from './request-tracing';
@@ -8,8 +16,7 @@ import type { ProviderCooldownStore } from './routes/pipeline/provider-cooldown'
 import type { ServerLogSink } from './server-log';
 import type { UsageCapture } from './usage-capture';
 
-export type RuntimeModelMetadata = {
-  readonly displayName?: string;
+export type RuntimeModelMetadata = ModelMetadata & {
   readonly protocol?: ProviderProtocol;
 };
 
@@ -44,7 +51,8 @@ type RuntimeProviderBase = {
   readonly enabled: boolean;
   readonly models?: readonly ModelId[];
   readonly alias?: Readonly<Record<string, AliasConfig>>;
-  readonly modelMetadata?: Readonly<Record<ModelId, RuntimeModelMetadata>>;
+  readonly configMetadata?: Readonly<Record<ModelId, ModelMetadata>>;
+  readonly upstreamMetadata?: Readonly<Record<ModelId, RuntimeModelMetadata>>;
   readonly plugin?: string;
   readonly capability?: string;
   readonly hasApiKey?: boolean;

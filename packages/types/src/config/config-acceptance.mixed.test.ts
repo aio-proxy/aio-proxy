@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import { ConfigSchema } from '..';
-import { apiProvider, defaultServer, providers } from './config-acceptance.test-support';
+import { apiProvider, defaultRouter, defaultServer, providers } from './config-acceptance.test-support';
 
 describe('ConfigSchema', () => {
   test('accepts mixed provider config', () => {
@@ -19,6 +19,7 @@ describe('ConfigSchema', () => {
     ).toEqual({
       plugins: [],
       server: { ...defaultServer, port: 3000 },
+      router: defaultRouter,
       providers: [
         { ...apiProvider, enabled: true, id: 'openai' },
         {

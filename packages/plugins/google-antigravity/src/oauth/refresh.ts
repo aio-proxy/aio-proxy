@@ -3,6 +3,7 @@ import {
   CredentialRefreshError,
   type CredentialSnapshot,
   type RuntimeContext,
+  type RuntimeFetch,
 } from '@aio-proxy/plugin-sdk';
 
 import type { GoogleAntigravityAccountOptions, GoogleAntigravityCredential } from '../schema';
@@ -19,9 +20,10 @@ export async function refreshGoogleCredential(
   credential: GoogleAntigravityCredential,
   options: OAuthHttpOptions = {},
 ): Promise<GoogleAntigravityCredential> {
+  const fetcher: RuntimeFetch = options.fetch ?? globalThis.fetch;
   let response: Response;
   try {
-    response = await (options.fetch ?? globalThis.fetch)(GOOGLE_TOKEN_ENDPOINT, {
+    response = await fetcher(GOOGLE_TOKEN_ENDPOINT, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
@@ -30,6 +32,7 @@ export async function refreshGoogleCredential(
         refresh_token: credential.refreshToken,
         grant_type: 'refresh_token',
       }),
+      aioProxy: { traffic: 'control' },
       ...(options.signal === undefined ? {} : { signal: options.signal }),
     });
   } catch {
@@ -87,7 +90,7 @@ async function refreshThroughPort(
   options.signal?.throwIfAborted();
   const refreshing = credentials.refresh(revision, async (current, signal) => {
     const value = await refreshGoogleCredential(current.value, { ...options, signal });
-    return { value, metadata: { label: value.email, expiresAt: value.expiresAt } };
+    return { value, metadata: { accountLabel: value.email, expiresAt: value.expiresAt } };
   });
   const result = await waitForCaller(refreshing, options.signal);
   return result.snapshot;

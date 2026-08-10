@@ -8,7 +8,7 @@ import {
   commitAliasDraft,
   type ProviderAlias,
   renameAlias,
-} from '../../alias-editor';
+} from '../../lib/alias-editor';
 
 export const useAliasDrafts = (alias: ProviderAlias, onAliasChange: (alias: ProviderAlias) => void) => {
   const draftSequence = useRef(0);

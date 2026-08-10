@@ -3,7 +3,7 @@ import { describe, expect, test } from 'bun:test';
 import { z } from 'zod';
 
 import { AiSdkProviderSchema, ConfigAuthoringSchema, ConfigSchema, OAuthProviderSchema } from '..';
-import { defaultServer, providers } from './config-acceptance.test-support';
+import { defaultRouter, defaultServer, providers } from './config-acceptance.test-support';
 
 describe('ConfigSchema', () => {
   test('Given oauth provider config with openai-chatgpt vendor When parsed Then it is accepted', () => {
@@ -16,6 +16,7 @@ describe('ConfigSchema', () => {
     expect(ConfigSchema.parse({ server: {}, providers: { chatgpt: provider } })).toEqual({
       plugins: [],
       server: defaultServer,
+      router: defaultRouter,
       providers: [{ ...provider, enabled: true, id: 'chatgpt' }],
       invalidProviders: [],
     });
@@ -29,6 +30,7 @@ describe('ConfigSchema', () => {
         plugin: '@example/oauth',
         capability: 'default',
         name: 'My Copilot',
+        proxy: 'https://proxy.example:8443',
       }),
     ).toEqual({
       kind: 'oauth',
@@ -36,6 +38,7 @@ describe('ConfigSchema', () => {
       plugin: '@example/oauth',
       capability: 'default',
       name: 'My Copilot',
+      proxy: 'https://proxy.example:8443',
       enabled: true,
     });
     expect(AiSdkProviderSchema.parse({ kind: 'ai-sdk', id: 'y', name: 'My SDK' })).toEqual({
@@ -58,6 +61,7 @@ describe('ConfigSchema', () => {
     expect(ConfigSchema.parse(providers({ google: provider }))).toEqual({
       plugins: [],
       server: defaultServer,
+      router: defaultRouter,
       providers: [{ ...provider, enabled: true, id: 'google' }],
       invalidProviders: [],
     });

@@ -31,43 +31,36 @@ type AttemptCandidatesOptions<TRequest, TContext> = {
   readonly release: () => void;
 };
 
-export async function attemptCandidates<TRequest, TContext>(
+function createAttemptLoopContext<TRequest, TContext>(
   options: AttemptCandidatesOptions<TRequest, TContext>,
-): Promise<Response> {
+): AttemptLoopContext<TRequest, TContext> {
   const {
     adapter,
-    candidates,
     config,
     context,
     deferRelease,
-    resolution,
     rawRequest,
     release,
     request,
+    requestedModelId,
+    resolution,
     session,
     source,
     streamRequested,
   } = options;
-  const affinityOrdered =
-    resolution.affinity?.active === true ? prioritizeAffinity(candidates, resolution.affinity.providerId) : candidates;
-  const ordered = prioritizeAffinity(affinityOrdered, resolution.responseOwner?.providerId);
-  const weightByProviderId =
-    config === undefined ? undefined : new Map(config.providers.map((provider) => [provider.id, provider.weight ?? 0]));
-  const retryAfterCapMs = config?.server.retry.retryAfterCapMs ?? 30_000;
-
   const logContext = {
     source,
     requestId: session.requestId,
     rawRequest,
     inboundProtocol: adapter.protocol,
-    requestedModelId: options.requestedModelId,
+    requestedModelId,
   };
-  const ctx: AttemptLoopContext<TRequest, TContext> = {
+  return {
     adapter,
     context,
     rawRequest,
     request,
-    requestedModelId: options.requestedModelId,
+    requestedModelId,
     session,
     source,
     logicalRequest: resolution.context,
@@ -79,8 +72,20 @@ export async function attemptCandidates<TRequest, TContext>(
     logFailure: (index, attempt: AttemptLog, failureKind, fallback, detail = {}) =>
       logProviderAttemptFailed({ ...logContext, attemptIndex: index, attempt, failureKind, fallback, ...detail }),
     cooldown: source.cooldown,
-    retryAfterCapMs,
+    retryAfterCapMs: config?.server.retry.retryAfterCapMs ?? 30_000,
   };
+}
+
+export async function attemptCandidates<TRequest, TContext>(
+  options: AttemptCandidatesOptions<TRequest, TContext>,
+): Promise<Response> {
+  const { adapter, candidates, config, resolution, session } = options;
+  const affinityOrdered =
+    resolution.affinity?.active === true ? prioritizeAffinity(candidates, resolution.affinity.providerId) : candidates;
+  const ordered = prioritizeAffinity(affinityOrdered, resolution.responseOwner?.providerId);
+  const weightByProviderId =
+    config === undefined ? undefined : new Map(config.providers.map((provider) => [provider.id, provider.weight ?? 0]));
+  const ctx = createAttemptLoopContext(options);
 
   const holder: InvocationHolder = { invocation: undefined, invocationUnsupported: undefined };
   let lastFailure: Response | undefined;
@@ -91,7 +96,12 @@ export async function attemptCandidates<TRequest, TContext>(
     // Request-level finalization: no provider was attempted, so do NOT use finalFailure
     // (it requires/records a provider+model). Snapshot lease + body cleanup are handled
     // by the outer finally blocks in index.ts.
-    session.finish({ outcome: 'failure', finalHttpStatus: 429, errorCode: 'rate_limited' });
+    session.finish({
+      outcome: 'failure',
+      finalHttpStatus: 429,
+      errorCode: 'rate_limited',
+      clientResponse: response,
+    });
     return response;
   }
   const { live } = selection;
@@ -100,6 +110,10 @@ export async function attemptCandidates<TRequest, TContext>(
     const provider = candidate.provider;
     const startedAt = performance.now();
     const observation = createAttemptResponseObservation({ startedAt });
+    let selectionReason: CandidateSlot['trace']['selectionReason'] = 'weight';
+    if (resolution.affinity?.active === true && resolution.affinity.providerId === provider.id)
+      selectionReason = 'affinity';
+    if (resolution.responseOwner?.providerId === provider.id) selectionReason = 'response_owner';
     const slot: CandidateSlot = {
       index,
       candidate,
@@ -109,17 +123,19 @@ export async function attemptCandidates<TRequest, TContext>(
       trace: {
         ...(weightByProviderId === undefined ? {} : { providerWeight: weightByProviderId.get(provider.id) ?? 0 }),
         sourceProtocol: adapter.protocol,
-        selectionReason:
-          resolution.responseOwner?.providerId === provider.id
-            ? 'response_owner'
-            : resolution.affinity?.active === true && resolution.affinity.providerId === provider.id
-              ? 'affinity'
-              : 'weight',
+        selectionReason,
       },
-      inAttempt: <T>(operation: () => T): T =>
+      inAttempt: <T>(targetProtocol: CandidateSlot['trace']['targetProtocol'], operation: () => T): T =>
         withAttemptResponseObservation(observation, () =>
           withAttemptLogContext(
-            { attemptIndex: index, providerId: provider.id, modelId: candidate.modelId },
+            {
+              attemptIndex: index,
+              providerId: provider.id,
+              modelId: candidate.modelId,
+              requestedModelId: options.requestedModelId,
+              sourceProtocol: adapter.protocol,
+              ...(targetProtocol === undefined ? {} : { targetProtocol }),
+            },
             operation,
           ),
         ),
@@ -152,6 +168,7 @@ export async function attemptCandidates<TRequest, TContext>(
     }
   }
 
-  session.finish({ outcome: 'failure' });
-  return lastFailure ?? adapter.errors.unsupported('transform_dispatch');
+  const response = lastFailure ?? adapter.errors.unsupported('transform_dispatch');
+  session.finish({ outcome: 'failure', finalHttpStatus: response.status, clientResponse: response });
+  return response;
 }

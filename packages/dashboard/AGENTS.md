@@ -13,8 +13,8 @@ This file is the frontend authority for `packages/dashboard`.
 
 ## UI Components
 
-- Use the shadcn components in `src/components/ui` when an equivalent exists.
-- Add missing shadcn components through the shadcn CLI so `components.json` stays the source of truth.
+- Use the shared shadcn components from `@aio-proxy/ui/components/*` when an equivalent exists.
+- Add missing shadcn components from `packages/ui` with `bun x --bun --no-install shadcn add <component> --overwrite` run from that package; `packages/ui/components.json` is the source of truth.
 - The configured primitives are Base UI and lucide icons; follow that pattern for new UI controls.
 - Direct Tailwind is fine for layout, spacing, responsive behavior, and page composition.
 - Control styling belongs in the shared UI components, not one-off lookalikes.
@@ -64,12 +64,18 @@ This file is the frontend authority for `packages/dashboard`.
 ## Module Structure
 
 - Use `src/modules/<domain>/` for non-trivial dashboard features.
-- Each module may contain `services/`, `hooks/`, `components/`, `stores/`, and `templates/`.
+- A module directory contains ONLY these six subdirectories and nothing else. No loose files at the module root, and no other directory names.
 - `services`: non-React domain adapters, types, query options, and mutation functions. Services may call the typed Hono dashboard client.
 - `hooks`: React Query, TanStack Form, and TanStack Table hooks only.
 - `components`: reusable domain UI pieces.
 - `stores`: client-only UI state such as collapsed panels, local table state, and selected rows. Stores must not mirror API response data.
 - `templates`: page-level assembly such as `ProvidersPage`.
+- `lib`: the module's own domain logic that talks to nothing external — pure transforms, codecs, parsers, formatters, module constants and enums, and test fixtures or stubs. Singular, matching the shared `src/lib/`.
+- `services` versus `lib` is decided by one question: does it cross the network boundary? Anything that calls the dashboard client is a service; everything else is `lib`. This is the only dividing line — do not split them by "domain-ish" versus "helper-ish".
+- `lib` is not a junk drawer. Each entry is a focused unit named for what it does, following the same-name-directory grouping. A file that needs a generic name such as `helpers.ts`, `utils.ts`, or `misc.ts` to describe itself does not belong in `lib`; it belongs next to its one caller.
+- Nothing in `lib` may import React or call the dashboard client. If it needs either, it belongs in one of the other five buckets.
+- Shared across modules? It does not belong in a module. Move it to `src/lib/`. A `@/modules/<a>/...` import appearing inside `modules/<b>/` is the signal.
+- These are the only permitted names. If a file fits none of the six, that is a design signal, not a reason to add a seventh bucket or drop it at the module root.
 - `routes/*.tsx` should declare TanStack Router routes and render module templates for non-trivial pages.
 - Each `.tsx` file may declare exactly one React component. Split helper components into their own files instead of colocating multiple components in one file.
 - Declare React components with arrow functions typed as `React.FC<ComponentNameProps>`; do not use function declarations for components.

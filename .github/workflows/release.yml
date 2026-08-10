@@ -1,61 +1,130 @@
 name: Release
 
+# Changesets owns the release. On every push to main the action either:
+#   - maintains the standing "chore: release" Version PR (when changesets exist), or
+#   - runs the publish script (when none exist, i.e. right after that PR merged).
+# Cutting a release therefore = merging the Version PR. See .changeset/config.json
+# and scripts/release.ts.
 on:
-  workflow_dispatch:
-    inputs:
-      bump:
-        description: 'Version bump (leave empty to auto-detect from conventional commits)'
-        required: false
-        type: choice
-        options:
-          - ''
-          - major
-          - minor
-          - patch
+  push:
+    branches: [main]
 
 concurrency:
   group: release
   cancel-in-progress: false
 
 permissions:
-  contents: write # push the version bump commit + tag
+  contents: write # push the version bump commit + git tag(s)
+  pull-requests: write # open/update the Version PR
   id-token: write # npm OIDC trusted publishing (+ provenance)
+  packages: write # push the Docker image to GHCR
 
 jobs:
   release:
-    # Publish only from the default branch; never from a feature branch or tag dispatch.
-    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
     runs-on: ubuntu-latest
+    env:
+      # lefthook's postinstall no-ops when CI=true unless LEFTHOOK is set; without
+      # installed hooks the release commit skips oxfmt/commitlint (e.g. CHANGELOG.md).
+      LEFTHOOK: 'true'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
-          fetch-depth: 0 # Bumper needs full history + tags to find the last release
+          fetch-depth: 0 # full history so the action can build the Version PR / changelog
           fetch-tags: true
+          persist-credentials: false # avoid duplicate Authorization headers during changesets push
 
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: '1.3.14'
+          bun-version-file: .bun-version
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '26' # bundles npm 11.17+, which supports OIDC trusted publishing
           registry-url: 'https://registry.npmjs.org'
 
       - run: bun install --frozen-lockfile
 
-      - name: Configure git committer
-        run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-
-      - name: Release
-        run: bun run scripts/release.ts ${{ inputs.bump && format('--bump={0}', inputs.bump) || '' }}
+      # v3-next line (CLI v3). Pinned to the built release tag's commit — `main`
+      # does not commit dist/, so a branch/main SHA would not run. Bump this pin
+      # (and the @changesets/* devDependencies) together when upgrading.
+      - name: Changesets — maintain Version PR or publish
+        id: changesets
+        uses: changesets/action@c47fa68bd43bb8ae0bae7e558622593deebf5955 # v2.0.0-next.3
+        with:
+          # This action uses kebab-case inputs and HARD-FAILS if given any legacy
+          # name (publish/version/commit/title/setupGitUser/createGithubReleases/…).
+          # Defaults we rely on: version-script=`changeset version`,
+          # create-github-releases=true, push-git-tags=true, setup-git-user=true —
+          # so we only set the publish script and the commit/PR title.
+          publish-script: bun run scripts/release.ts
+          commit-message: 'chore: release'
+          pr-title: 'chore: release'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }} # gh release create
+          # PR creation / GitHub Release / @changesets/changelog-github links.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Bootstrap credential for the FIRST publish of each package: OIDC trusted
-          # publishing cannot create a package that does not yet exist on npm (there is
-          # nowhere to configure a trusted publisher until the package exists). Set the
-          # NPM_TOKEN secret to an automation token for the initial release, then, once
-          # every package exists and its trusted publisher is configured on npmjs.com,
-          # delete the secret so this resolves to empty and publishing runs on OIDC alone.
+          # publishing cannot create a package that does not yet exist on npm (there
+          # is nowhere to configure a trusted publisher until the package exists).
+          # Set the NPM_TOKEN secret to an automation token for the initial release,
+          # then, once every package exists and its trusted publisher is configured
+          # on npmjs.com, delete the secret so this resolves to empty and publishing
+          # runs on OIDC alone.
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      # homebrew-tap listens for repository_dispatch aio-proxy-release and opens a
+      # formula update PR. GITHUB_TOKEN cannot dispatch into another repo, so this
+      # uses HOMEBREW_TAP_TOKEN (a PAT with access to aio-proxy/homebrew-tap).
+      - name: Notify Homebrew tap
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${HOMEBREW_TAP_TOKEN}" ]; then
+            echo 'HOMEBREW_TAP_TOKEN secret is not configured' >&2
+            exit 1
+          fi
+          version="$(gh release view --json tagName --jq '.tagName')"
+          version="${version#v}"
+          GH_TOKEN="${HOMEBREW_TAP_TOKEN}" gh api --method POST \
+            repos/aio-proxy/homebrew-tap/dispatches \
+            --input - <<EOF
+          {"event_type":"aio-proxy-release","client_payload":{"version":"${version}"}}
+          EOF
+
+      # Publish a multi-arch Docker image to GHCR, but only when this run actually
+      # published a release (i.e. the Version PR just merged). Bun cross-compiles
+      # both musl targets from this amd64 runner, so buildx builds linux/amd64 and
+      # linux/arm64 in one pass without QEMU emulating the build.
+      - name: Set up Docker Buildx
+        if: steps.changesets.outputs.published == 'true'
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR
+        if: steps.changesets.outputs.published == 'true'
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata
+        if: steps.changesets.outputs.published == 'true'
+        id: docker-meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/aio-proxy/aio-proxy
+          tags: |
+            type=raw,value=latest
+            type=raw,value=${{ fromJSON(steps.changesets.outputs['published-packages'])[0].version }}
+
+      - name: Build and push Docker image
+        if: steps.changesets.outputs.published == 'true'
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.docker-meta.outputs.tags }}
+          labels: ${{ steps.docker-meta.outputs.labels }}

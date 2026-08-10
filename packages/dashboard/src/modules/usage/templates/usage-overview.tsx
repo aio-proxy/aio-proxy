@@ -1,9 +1,8 @@
 import { m } from '@aio-proxy/i18n';
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@aio-proxy/ui/components/empty';
+import { Skeleton } from '@aio-proxy/ui/components/skeleton';
 import { useAtomValue } from 'jotai';
 import { ReceiptText } from 'lucide-react';
-
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
-import { Skeleton } from '@/components/ui/skeleton';
 
 import { UsageRangeTabs } from '../components/usage-range-tabs';
 import { UsageSummaryGrid } from '../components/usage-summary-grid';
@@ -15,7 +14,7 @@ const loadingMetricIds = ['cost', 'requests', 'tokens', 'rpm', 'tpm', 'success-r
 
 export const UsageOverview: React.FC = () => {
   const filters = useAtomValue(usageOverviewFiltersAtom);
-  const usage = useUsageQuery(filters);
+  const usage = useUsageQuery({ ...filters, maxResults: 5 });
   let content: React.ReactNode;
 
   if (usage.isLoading) {

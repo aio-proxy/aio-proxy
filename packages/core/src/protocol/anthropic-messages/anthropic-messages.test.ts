@@ -5,6 +5,7 @@ import { ProviderProtocol } from '@aio-proxy/types';
 import {
   anthropicMessagesAdapter,
   anthropicMessagesErrors,
+  parseAnthropicMessages,
   writeAnthropicMessagesResponse,
   writeAnthropicMessagesSSE,
 } from '../../index';
@@ -103,7 +104,7 @@ describe('anthropicMessagesAdapter', () => {
       },
       { role: 'user', content: [{ type: 'text', text: 'Summarize.' }] },
     ]);
-    expect(await (await anthropicMessagesAdapter.rawRequest(raw, parsed, 'upstream', {})).json()).toEqual({
+    expect(await (await anthropicMessagesAdapter.rawRequest(raw, parsed, 'upstream', new Set(), {})).json()).toEqual({
       ...body,
       model: 'upstream',
     });
@@ -131,4 +132,57 @@ describe('anthropicMessagesAdapter', () => {
       expect(anthropicMessagesAdapter.modelInvocation(parsed, {}).settings).toEqual(settings);
     });
   }
+
+  test('clamps output_config.effort to the highest supported level in the raw body', async () => {
+    const body = {
+      model: 'src',
+      max_tokens: 1024,
+      messages: [{ role: 'user', content: 'hi' }],
+      thinking: { type: 'adaptive' },
+      output_config: { effort: 'xhigh' },
+    };
+    const raw = new Request('https://x/v1/messages', { method: 'POST', body: JSON.stringify(body) });
+    const parsed = parseAnthropicMessages(structuredClone(body));
+    const forwarded = await anthropicMessagesAdapter.rawRequest(
+      raw,
+      parsed,
+      'upstream',
+      new Set(['low', 'medium', 'high']),
+      {},
+    );
+    expect(await forwarded.json()).toMatchObject({ model: 'upstream', output_config: { effort: 'high' } });
+  });
+
+  test('leaves effort untouched in the raw body when the supported set is empty', async () => {
+    const body = {
+      model: 'upstream',
+      max_tokens: 1024,
+      messages: [{ role: 'user', content: 'hi' }],
+      thinking: { type: 'adaptive' },
+      output_config: { effort: 'xhigh' },
+    };
+    const raw = new Request('https://x/v1/messages', { method: 'POST', body: JSON.stringify(body) });
+    const parsed = parseAnthropicMessages(structuredClone(body));
+    const forwarded = await anthropicMessagesAdapter.rawRequest(raw, parsed, 'upstream', new Set(), {});
+    expect(await forwarded.json()).toMatchObject({ output_config: { effort: 'xhigh' } });
+  });
+
+  test('clamps the adaptive thinking effort in the model invocation', () => {
+    const parsed = parseAnthropicMessages({
+      model: 'm',
+      max_tokens: 1024,
+      messages: [{ role: 'user', content: 'hi' }],
+      thinking: { type: 'adaptive' },
+      output_config: { effort: 'xhigh' },
+    });
+    const invocation = anthropicMessagesAdapter.modelInvocation(parsed, {});
+    const clamped = anthropicMessagesAdapter.modelInvocationForTarget(
+      invocation,
+      undefined,
+      new Set(['low', 'medium', 'high']),
+    );
+    const thinking = (clamped.settings?.providerOptions as { aioProxy?: { thinking?: { effort?: string } } })?.aioProxy
+      ?.thinking;
+    expect(thinking?.effort).toBe('high');
+  });
 });

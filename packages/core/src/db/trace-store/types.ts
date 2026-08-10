@@ -1,8 +1,12 @@
 import type { LogicalSessionSource } from '@aio-proxy/plugin-sdk';
 import type {
+  DashboardOverviewActivityResponse,
+  DashboardOverviewDiagnosticsResponse,
+  DashboardOverviewRange,
+  DashboardOverviewResponse,
   DashboardTraceDetail,
   DashboardTracePageSize,
-  DashboardTracesResponse,
+  DashboardTraceSummary,
   DashboardUsageOverviewResponse,
   OtelSpanStatusCode,
   TraceTerminationReason,
@@ -88,9 +92,15 @@ export type TraceCompletion = {
   };
 };
 
+export type TraceCursor = {
+  readonly direction: 'older' | 'newer';
+  readonly startedAt: Date;
+  readonly traceId: string;
+};
+
 export type TracesQuery = {
-  readonly page: number;
   readonly pageSize: DashboardTracePageSize;
+  readonly cursor?: TraceCursor;
   readonly startedAfter?: Date;
   readonly startedBefore?: Date;
   readonly traceId?: string;
@@ -106,19 +116,34 @@ export type TracesQuery = {
   readonly finalHttpStatus?: number;
 };
 
+export type TracesPage = {
+  readonly items: DashboardTraceSummary[];
+  readonly nextCursor?: TraceCursor;
+  readonly previousCursor?: TraceCursor;
+};
+
 export type UsageOverviewQuery = {
   readonly range: UsageOverviewRange;
   readonly metric: UsageOverviewMetric;
   readonly groupBy: UsageOverviewGroupBy;
+  readonly maxResults?: number;
+  readonly now?: Date;
+};
+
+export type DashboardOverviewQuery = {
+  readonly range: DashboardOverviewRange;
   readonly now?: Date;
 };
 
 export type TraceStore = {
   readonly startRoot: (input: TraceRootStart) => void;
   readonly complete: (input: TraceCompletion) => boolean;
-  readonly list: (query: TracesQuery) => DashboardTracesResponse;
+  readonly list: (query: TracesQuery) => TracesPage;
   readonly find: (traceId: string, now?: Date) => DashboardTraceDetail | undefined;
   readonly overview: (query: UsageOverviewQuery) => DashboardUsageOverviewResponse;
+  readonly overviewDashboard: (query: DashboardOverviewQuery) => DashboardOverviewResponse;
+  readonly overviewDashboardDiagnostics: (query: DashboardOverviewQuery) => DashboardOverviewDiagnosticsResponse;
+  readonly overviewDashboardActivity: (options?: { readonly now?: Date }) => DashboardOverviewActivityResponse;
   readonly resolveResponse: (responseId: string, now: Date) => SessionResponseResolution | undefined;
   readonly markResponseAmbiguous: (responseId: string, now: Date) => void;
   readonly findAffinity: (

@@ -24,14 +24,14 @@ const LoopbackHostSchema = z
   .string()
   .refine((host) => LOOPBACK_HOSTS.has(host), 'Remote binding requires an authenticated remote-mode design');
 
-const ServerLoggingSchema = z.object({
+export const ServerLoggingSchema = z.object({
   enabled: z.boolean().default(false),
   dir: z.string().min(1).optional(),
   retentionDays: z.number().int().min(1).max(365).default(14),
   level: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
 });
 
-const ServerRetrySchema = z.object({
+export const ServerRetrySchema = z.object({
   retryAfterCapMs: z
     .number()
     .int()
@@ -115,10 +115,20 @@ const PluginsAuthoringInputSchema = z
 
 const CONFIG_PROXY_DESCRIPTION = 'Default HTTP(S) proxy URL inherited by providers that omit their own proxy.';
 
+export const ModelContextAggregation = { Min: 'min', Max: 'max' } as const;
+
+export const RouterConfigSchema = z.object({
+  modelContextAggregation: z
+    .enum([ModelContextAggregation.Min, ModelContextAggregation.Max])
+    .default(ModelContextAggregation.Min)
+    .describe('How to reconcile a public slug context window across providers: min (safe) or max.'),
+});
+
 export const ConfigAuthoringSchema = z.object({
   server: ServerConfigAuthoringSchema.prefault({}).describe('Local server settings.'),
   plugins: PluginsAuthoringInputSchema,
   proxy: z.union([HttpProxyUrlSchema, ConfigTemplateStringSchema]).optional().describe(CONFIG_PROXY_DESCRIPTION),
+  router: RouterConfigSchema.prefault({}).describe('Routing and model-catalog reconciliation settings.'),
   providers: z.record(z.string().min(1), ProviderAuthoringInputValueSchema),
 });
 
@@ -126,6 +136,7 @@ const ConfigEnvelopeSchema = z.object({
   server: ServerConfigSchema.prefault({}).describe('Local server settings.'),
   plugins: PluginsInputSchema,
   proxy: HttpProxyUrlSchema.optional().describe(CONFIG_PROXY_DESCRIPTION),
+  router: RouterConfigSchema.prefault({}).describe('Routing and model-catalog reconciliation settings.'),
   providers: z.record(z.string().min(1), z.unknown()),
 });
 
@@ -172,7 +183,14 @@ export const ConfigSchema = ConfigEnvelopeSchema.transform((input) => {
     providers.push(ProviderSchema.parse({ ...result.data, id }));
   }
   providers.sort((left, right) => (right.weight ?? 0) - (left.weight ?? 0));
-  return { server: input.server, plugins: input.plugins, proxy: input.proxy, providers, invalidProviders };
+  return {
+    server: input.server,
+    plugins: input.plugins,
+    proxy: input.proxy,
+    router: input.router,
+    providers,
+    invalidProviders,
+  };
 });
 
 export type ServerConfigInput = z.input<typeof ServerConfigSchema>;

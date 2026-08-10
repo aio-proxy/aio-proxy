@@ -58,6 +58,7 @@ export const OpenAIResponsesRequestSchema = z
         .transform((items) => compact(items))
         .refine((items) => items.length > 0, 'OpenAI Responses input must contain a semantic item'),
     ]),
+    instructions: z.string().nullish(),
     tools: z.array(openAIResponsesToolSchema).optional(),
     reasoning: z
       .object({
@@ -137,4 +138,5 @@ export type {
   OpenAIResponsesNamespaceTool,
   OpenAIResponsesTool,
   OpenAIResponsesUnsupportedTool,
+  OpenAIResponsesWebSearchTool,
 } from './tools';

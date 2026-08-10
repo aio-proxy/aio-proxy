@@ -35,7 +35,11 @@ export async function discoverCursorCatalog(
   context: AccountContext<CursorCredential, Record<string, never>>,
   dependencies: CursorOAuthDependencies & { readonly transport?: CursorTransport } = {},
 ): Promise<ModelCatalog> {
-  const credential = await currentCursorCredential(context.credentials, { ...dependencies, signal: context.signal });
+  const credential = await currentCursorCredential(context.credentials, {
+    ...dependencies,
+    ...(dependencies.fetch === undefined && context.fetch !== undefined ? { fetch: context.fetch } : {}),
+    signal: context.signal,
+  });
   const transport = dependencies.transport ?? createNodeHttp2Transport();
   return await discoverCursorModels({ accessToken: credential.accessToken, transport, signal: context.signal });
 }

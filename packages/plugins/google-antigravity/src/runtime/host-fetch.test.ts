@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 
-import type { CredentialPort, LogicalRequestContext } from '@aio-proxy/plugin-sdk';
+import type { CredentialPort, LogicalRequestContext, RuntimeFetch, RuntimeRequestInit } from '@aio-proxy/plugin-sdk';
 
 import type { GoogleAntigravityCredential } from '../schema';
 
@@ -51,6 +51,54 @@ test('routes the final Google Antigravity request through the host fetch', async
   expect(request?.headers.get('user-agent')).toContain('antigravity/hub/');
 });
 
+test('classifies refresh as control traffic before the Google Antigravity request', async () => {
+  const originalFetch = globalThis.fetch;
+  const clientId = Reflect.get(globalThis, '__AIO_PROXY_GOOGLE_ANTIGRAVITY_CLIENT_ID__');
+  const clientSecret = Reflect.get(globalThis, '__AIO_PROXY_GOOGLE_ANTIGRAVITY_CLIENT_SECRET__');
+  const calls: { traffic: 'control' | 'model'; request: Request }[] = [];
+  Reflect.set(globalThis, '__AIO_PROXY_GOOGLE_ANTIGRAVITY_CLIENT_ID__', clientId ?? 'test-client-id');
+  Reflect.set(globalThis, '__AIO_PROXY_GOOGLE_ANTIGRAVITY_CLIENT_SECRET__', clientSecret ?? 'test-client-secret');
+  globalThis.fetch = async () => {
+    throw new Error('unexpected global fetch');
+  };
+
+  try {
+    const { createGoogleAntigravityRuntime } = await import('./provider');
+    const fetch: RuntimeFetch = async (input, init) => {
+      const traffic = (init as RuntimeRequestInit | undefined)?.aioProxy?.traffic ?? 'model';
+      calls.push({ traffic, request: new Request(input, init) });
+      if (new URL(calls.at(-1)?.request.url ?? '').origin === 'https://oauth2.googleapis.com') {
+        return Response.json({ access_token: 'refreshed-access-token', expires_in: 3600 });
+      }
+      return Response.json({ response: {} });
+    };
+    const runtime = createGoogleAntigravityRuntime({
+      credentials: expiredCredentialPort(),
+      options: {},
+      catalog: emptyCatalog(),
+      fetch,
+    });
+    const transport = runtime.raw?.({ protocol: 'gemini', modelId: 'gemini-3-flash-agent' });
+    if (transport === undefined) throw new Error('missing Google Antigravity raw transport');
+
+    await transport.invoke(
+      new Request('http://localhost/v1beta/models/gemini-3-flash-agent:generateContent', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: '{}',
+      }),
+      logicalContext(),
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+    restoreGlobal('__AIO_PROXY_GOOGLE_ANTIGRAVITY_CLIENT_ID__', clientId);
+    restoreGlobal('__AIO_PROXY_GOOGLE_ANTIGRAVITY_CLIENT_SECRET__', clientSecret);
+  }
+
+  expect(calls.map(({ traffic }) => traffic)).toEqual(['control', 'model']);
+  expect(calls[1]?.request.headers.get('authorization')).toBe('Bearer refreshed-access-token');
+});
+
 function credentialPort(): CredentialPort<GoogleAntigravityCredential> {
   const value = {
     accessToken: 'access-token',
@@ -63,6 +111,23 @@ function credentialPort(): CredentialPort<GoogleAntigravityCredential> {
     read: async () => ({ revision: 1, value }),
     refresh: async () => {
       throw new Error('valid credentials must not refresh');
+    },
+  };
+}
+
+function expiredCredentialPort(): CredentialPort<GoogleAntigravityCredential> {
+  const value = {
+    accessToken: 'expired-access-token',
+    refreshToken: 'refresh-token',
+    expiresAt: 0,
+    email: 'person@example.com',
+    projectId: 'project-1',
+  };
+  return {
+    read: async () => ({ revision: 1, value }),
+    refresh: async (revision, exchange) => {
+      const refreshed = await exchange({ revision, value }, new AbortController().signal);
+      return { status: 'updated', snapshot: { revision: revision + 1, value: refreshed.value } };
     },
   };
 }

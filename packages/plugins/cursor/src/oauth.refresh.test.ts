@@ -53,6 +53,8 @@ test('currentCursorCredential refreshes only when expiresAt <= now', async () =>
 test('currentCursorCredential refreshes through the port when expiresAt <= now', async () => {
   const stale = { accessToken: 'a', refreshToken: 'r', expiresAt: 1_000 };
   const rotated = jwt({ exp: 10_000 });
+  let metadata: { accountLabel?: string; expiresAt?: number } | undefined;
+  let requestInit: RequestInit | undefined;
   const port = {
     read: async () => ({ value: stale, revision: 7 }),
     refresh: async (
@@ -64,15 +66,21 @@ test('currentCursorCredential refreshes through the port when expiresAt <= now',
     ) => {
       expect(expectedRevision).toBe(7);
       const result = await exchange({ value: stale, revision: 7 }, new AbortController().signal);
+      metadata = Reflect.get(result, 'metadata');
       return { status: 'updated' as const, snapshot: { value: result.value, revision: 8 } };
     },
   };
   const result = await currentCursorCredential(port, {
     now: () => 5_000,
-    fetch: async () => okResponse({ accessToken: rotated }),
+    fetch: async (_input, init) => {
+      requestInit = init;
+      return okResponse({ accessToken: rotated });
+    },
   });
   expect(result.accessToken).toBe(rotated);
   expect(result.expiresAt).toBe(10_000 * 1000 - 5 * 60_000);
+  expect(metadata).toEqual({ accountLabel: 'Cursor', expiresAt: 10_000 * 1000 - 5 * 60_000 });
+  expect(Reflect.get(requestInit ?? {}, 'aioProxy')).toEqual({ traffic: 'control' });
 });
 
 test('refreshCursorCredential produces a CredentialRefreshError on failure', async () => {

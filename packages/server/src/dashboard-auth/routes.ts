@@ -13,17 +13,17 @@ const passwordBodyValidator = validator('json', (value, context): { readonly pas
   isPasswordBody(value) ? value : context.json({ error: 'invalid_request' }, 400),
 );
 
+const sessionStatus = (auth: DashboardAuthentication, context: Context) => {
+  if (!auth.available()) return 'unavailable' as const;
+  if (!auth.enabled()) return 'disabled' as const;
+  return auth.verify(dashboardSessionToken(context)) ? ('authenticated' as const) : ('unauthenticated' as const);
+};
+
 export const createDashboardAuthRoutes = (auth: DashboardAuthentication) =>
   new Hono()
     .get('/session', (context) =>
       context.json({
-        status: !auth.available()
-          ? ('unavailable' as const)
-          : !auth.enabled()
-            ? ('disabled' as const)
-            : auth.verify(dashboardSessionToken(context))
-              ? ('authenticated' as const)
-              : ('unauthenticated' as const),
+        status: sessionStatus(auth, context),
       }),
     )
     .post('/login', passwordBodyValidator, async (context) => {

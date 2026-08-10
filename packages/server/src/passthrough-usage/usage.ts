@@ -38,6 +38,10 @@ function openAICompatibleUsage(value: unknown): UsageExtraction {
     totalTokens: numberField(usage, 'total_tokens', 'totalTokens'),
     cacheReadTokens: nestedNumberField(usage, 'prompt_tokens_details', 'cached_tokens', 'cacheReadTokens'),
     reasoningTokens: nestedNumberField(usage, 'completion_tokens_details', 'reasoning_tokens', 'reasoningTokens'),
+    // Audio token counts are exposed only by the OpenAI Chat Completions usage object;
+    // the Responses/Anthropic/Gemini usage objects have no audio breakdown.
+    inputAudioTokens: nestedNumberField(usage, 'prompt_tokens_details', 'audio_tokens', 'inputAudioTokens'),
+    outputAudioTokens: nestedNumberField(usage, 'completion_tokens_details', 'audio_tokens', 'outputAudioTokens'),
   });
 }
 
@@ -50,6 +54,8 @@ function openAIResponsesUsage(value: unknown): UsageExtraction {
     return { kind: 'absent' };
   }
   const usage = response['usage'];
+  // No audio tokens: the Responses (and Anthropic/Gemini) usage objects expose no audio breakdown,
+  // so audio extraction is intentionally OpenAI-compatible only.
   return tokenUsage({
     inputTokens: numberField(usage, 'input_tokens', 'inputTokens'),
     outputTokens: numberField(usage, 'output_tokens', 'outputTokens'),

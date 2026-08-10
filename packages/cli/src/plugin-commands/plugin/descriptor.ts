@@ -2,14 +2,16 @@ import { pathToFileURL } from 'node:url';
 
 import {
   AtomicConfigCommitUncertainError,
+  classifyInstalledPackage as classifyCoreInstalledPackage,
   ConfigSpecValidationError,
   findInstalledNpmPackage,
-  isAiSdkProviderModule,
-  loadPluginRegistry,
+  InstalledPackageInvalidError,
   type NpmPackageInfo,
   observedPromiseDeadline,
   PLUGIN_IMPORT_TIMEOUT_MS,
+  PluginSetupInvalidError,
   type PluginSecretSnapshot,
+  stagePluginDescriptor,
   validateConfigSpec,
 } from '@aio-proxy/core';
 import { isPluginDescriptor, type PluginDescriptor } from '@aio-proxy/plugin-sdk';
@@ -83,12 +85,12 @@ export async function classifyInstalledPackage(
   installed: NpmPackageInfo,
   deps: PluginLifecycleDeps,
 ): Promise<InstalledPackageClassification> {
-  const imported = await importInstalledModule(packageName, installed, deps);
-  if (isRecord(imported) && isPluginDescriptor(imported['default'])) {
-    return { kind: 'plugin', descriptor: descriptorFromModule(packageName, imported) };
+  try {
+    return await classifyCoreInstalledPackage(packageName, installed, deps.importPackage, deps.importTimeoutMs);
+  } catch (error) {
+    if (error instanceof InstalledPackageInvalidError) throw new PluginDescriptorInvalidError(packageName);
+    throw error;
   }
-  if (isAiSdkProviderModule(imported)) return { kind: 'ai-sdk-provider' };
-  throw new PluginDescriptorInvalidError(packageName);
 }
 
 export async function stageDescriptor(
@@ -100,18 +102,22 @@ export async function stageDescriptor(
 ): Promise<void> {
   const stagingPublicValues = cloneInertJson(publicValues);
   const stagingSecrets = cloneInertJson(secrets);
-  const snapshot = await loadPluginRegistry({
-    enablements: [
-      { packageName, ...(Object.keys(stagingPublicValues).length === 0 ? {} : { options: stagingPublicValues }) },
-    ],
-    builtIns: [{ packageName, version, descriptor }],
-    diagnostics: createCliPluginDiagnosticFactory(),
-    importPackage: async () => ({ default: descriptor }),
-    logger: () => {},
-    secrets: { readPluginSecret: () => stagingSecrets },
-  });
-  const state = snapshot.plugins.get(packageName)?.state;
-  if (state?.status === 'failed') throw new PluginSetupValidationError(packageName, state.diagnostic.summary);
+  try {
+    await stagePluginDescriptor({
+      packageName,
+      version,
+      descriptor,
+      publicValues: stagingPublicValues,
+      secrets: stagingSecrets,
+      diagnostics: createCliPluginDiagnosticFactory(),
+      logger: () => {},
+    });
+  } catch (error) {
+    if (error instanceof PluginSetupInvalidError) {
+      throw new PluginSetupValidationError(packageName, error.diagnostic.summary);
+    }
+    throw error;
+  }
 }
 
 async function compensateSecret(

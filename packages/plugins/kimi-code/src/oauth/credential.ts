@@ -1,4 +1,4 @@
-import { type CredentialPort, CredentialRefreshError } from '@aio-proxy/plugin-sdk';
+import { type CredentialPort, CredentialRefreshError, type RuntimeFetch } from '@aio-proxy/plugin-sdk';
 
 import { kimiIdentityHeaders } from '../headers';
 import type { KimiCredential, KimiOAuthDependencies } from '../oauth';
@@ -10,7 +10,7 @@ export async function refreshKimiCredential(
   current: KimiCredential,
   options: KimiOAuthDependencies & { readonly signal?: AbortSignal } = {},
 ): Promise<KimiCredential> {
-  const fetcher = options.fetch ?? globalThis.fetch;
+  const fetcher: RuntimeFetch = options.fetch ?? globalThis.fetch;
   const now = options.now ?? Date.now;
   let response: Response;
   try {
@@ -23,6 +23,7 @@ export async function refreshKimiCredential(
         refresh_token: current.refreshToken,
       }),
       signal: options.signal ?? null,
+      aioProxy: { traffic: 'control' },
     });
   } catch {
     throw refreshError(true, 'network');
@@ -30,11 +31,10 @@ export async function refreshKimiCredential(
   if (!response.ok) {
     const oauthError = await readOAuthError(response);
     const invalidGrant = oauthError === 'invalid_grant';
-    throw refreshError(
-      !invalidGrant && isRetryableStatus(response.status),
-      invalidGrant ? 'invalid_grant' : response.status === 401 || response.status === 403 ? 'rejected' : 'http',
-      response.status,
-    );
+    let reason = 'http';
+    if (invalidGrant) reason = 'invalid_grant';
+    else if (response.status === 401 || response.status === 403) reason = 'rejected';
+    throw refreshError(!invalidGrant && isRetryableStatus(response.status), reason, response.status);
   }
   const token = await parseSuccessfulToken(response);
   return {

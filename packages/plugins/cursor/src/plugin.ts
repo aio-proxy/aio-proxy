@@ -33,8 +33,7 @@ export function createCursorPlugin(
   const accountOptions = { schema: zod.object({}), form: [] } as const satisfies ConfigSpec<Record<string, never>>;
   const adapter: OAuthAdapter<Record<string, never>, CursorCredential> = {
     id: 'default',
-    label: presentationText.adapterLabel,
-    icon: 'cursor',
+    displayName: presentationText.adapterLabel,
     account: { options: accountOptions },
     credentials: credentialSchema,
     login: async (context, options) => {
@@ -49,7 +48,8 @@ export function createCursorPlugin(
     createRuntime: (context) => createCursorRuntime(context, dependencies),
   };
   return definePlugin((api) => api.oauth.register(adapter), {
-    label: presentationText.pluginLabel ?? 'Cursor',
+    displayName: presentationText.pluginLabel ?? 'Cursor',
     description: presentationText.pluginDescription ?? 'Use a Cursor account to access models',
+    icon: 'cursor',
   });
 }

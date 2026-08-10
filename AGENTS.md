@@ -20,6 +20,16 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is 
 - `packages/dashboard/AGENTS.md` is the authority for dashboard/frontend rules.
 - Before considering a change complete, run `bun run preflight` (oxlint + oxfmt check + all unit tests), or at minimum `bun run check` plus the affected package's tests.
 
+## Changesets
+
+Releases are driven by Changesets. All workspace packages share one lockstep version (`fixed` in `.changeset/config.json`), and only two packages get a published GitHub Release with notes: the `aio-proxy` CLI launcher and `@aio-proxy/plugin-sdk`.
+
+- Every changeset that affects users MUST target a product package: `aio-proxy` (for CLI/proxy changes) and/or `@aio-proxy/plugin-sdk` (for SDK changes). This is what puts the note into a published Release.
+- When the change actually lives in an internal package, also list that package alongside the product package, e.g. a `core` fix is a changeset targeting both `@aio-proxy/core` and `aio-proxy`.
+- Never write a changeset that targets ONLY an internal or platform-binary package (`@aio-proxy/core`, `server`, `cli`, the plugins, `@aio-proxy/cli-*`). The `fixed` group still bumps `aio-proxy`, but its CHANGELOG entry would be empty, so `scripts/release.ts` skips its GitHub Release and the notes silently vanish.
+- Keep the product package's bump level equal to the internal package's (internal `minor` -> `aio-proxy` `minor`).
+- Use `bun changeset` to author them; commit the generated `.changeset/*.md` alongside the change. Do not run `changeset version`/`publish` by hand — CI owns both.
+
 ## Domain Language
 
 Use these terms in code, docs, and discussion; avoid the listed synonyms.
@@ -84,12 +94,12 @@ foo/
 
 ### File Size
 
-- The 300-line limit applies to handwritten non-test implementation files.
-- At 240 lines, evaluate whether a non-test implementation file has accumulated multiple responsibilities and split it before adding more.
+- The 500-line limit applies to handwritten non-test implementation files.
+- At 400 lines, evaluate whether a non-test implementation file has accumulated multiple responsibilities and split it before adding more.
 - Test files have no hard line limit. Keep tests for one module or feature together when splitting would scatter shared fixtures or obscure the behavior under test.
 - Split a test file when it covers multiple independent responsibilities and those behavior groups can be separated without substantial duplicated setup. Do not split a cohesive test file solely to satisfy a line count.
 - Generated files, externally managed files, migrations, and declarative fixtures are exempt.
-- New non-test implementation files must follow these limits. Existing non-test implementation files over 300 lines must not grow and should be split when materially modified.
+- New non-test implementation files must follow these limits. Existing non-test implementation files over 500 lines must not grow and should be split when materially modified.
 
 ### File Splitting
 

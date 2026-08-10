@@ -125,7 +125,7 @@ test('definite config write failure fully restores an unchanged update', async (
           login: async () => ({
             fingerprint: 'person@example.com',
             suggestedKey: 'ignored',
-            label: 'new-label',
+            accountLabel: 'new-label',
             credentials: { token: 'new-token' },
           }),
           discover: async () => ({ ...emptyCatalog(), language: [{ id: 'new-model' }] }),

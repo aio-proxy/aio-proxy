@@ -1,45 +1,44 @@
-import { m } from '@aio-proxy/i18n';
-import { Link } from '@tanstack/react-router';
-import { ArrowLeftIcon } from 'lucide-react';
+import { cn } from '@aio-proxy/ui/lib/utils';
 
-import { buttonVariants } from '@/components/ui/button';
+import { Breadcrumbs, type BreadcrumbItem } from '@/components/breadcrumbs';
+
+type BreadcrumbItems = readonly [BreadcrumbItem, ...BreadcrumbItem[]];
 
 interface PageContainerProps {
-  readonly title: string;
-  readonly subtitle?: string;
+  readonly title?: React.ReactNode;
+  readonly subtitle?: React.ReactNode;
   readonly extra?: React.ReactNode;
-  readonly backTo?: React.ComponentProps<typeof Link>['to'];
+  readonly breadcrumbs: BreadcrumbItems;
+  readonly classNames?: {
+    root?: string;
+    header?: string;
+    main?: string;
+  };
 }
 
 export const PageContainer: React.FC<React.PropsWithChildren<PageContainerProps>> = ({
   title,
   subtitle,
   extra,
-  backTo,
+  breadcrumbs,
+  classNames,
   children,
 }) => {
   return (
-    <div className="h-full min-h-0 flex-1 overflow-y-auto">
-      <header className="container mx-auto flex min-h-16 items-start justify-between px-4 pt-8 pb-4">
-        <div className="flex min-w-0 items-start gap-1">
-          {!!backTo && (
-            <Link
-              to={backTo}
-              preload="intent"
-              aria-label={m['dashboard.navigation.back']()}
-              className={buttonVariants({ variant: 'ghost', size: 'icon-lg' })}
-            >
-              <ArrowLeftIcon />
-            </Link>
-          )}
-          <div className="min-w-0">
-            <h1 className="truncate font-heading text-2xl font-semibold">{title}</h1>
-            {subtitle === undefined ? null : <p className="truncate text-sm text-muted-foreground">{subtitle}</p>}
+    <div className={cn('h-full min-h-0 w-full flex-1 overflow-y-auto', classNames?.root)}>
+      <header className={cn('container mx-auto px-4 pt-8 pb-4', classNames?.header)}>
+        <div className="space-y-2">
+          <Breadcrumbs items={breadcrumbs} />
+          <div className="flex w-full items-start justify-between gap-1">
+            <div className="min-w-0">
+              {!!title && <h1 className="truncate font-heading text-2xl font-semibold">{title}</h1>}
+              {!!subtitle && <div className="mt-1 text-sm text-muted-foreground">{subtitle}</div>}
+            </div>
+            {extra && <div className="w-full sm:ml-2 sm:w-auto">{extra}</div>}
           </div>
         </div>
-        {extra && <div className="ml-2">{extra}</div>}
       </header>
-      <main className="container mx-auto p-3">{children}</main>
+      <main className={cn('container mx-auto p-3', classNames?.main)}>{children}</main>
     </div>
   );
 };

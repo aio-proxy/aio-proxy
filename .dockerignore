@@ -1,0 +1,16 @@
+# Keep the build context small and reproducible. The build stage runs
+# `bun install` from the lockfile, so local node_modules and build outputs
+# must not leak in.
+.git
+.worktrees
+**/node_modules
+**/dist
+**/.turbo
+**/coverage
+npm/cli-*/bin
+aio-proxy-data
+Dockerfile
+docker-compose.yml
+.dockerignore
+**/*.log
+.DS_Store

@@ -1,5 +1,3 @@
-import type React from 'react';
-
 import {
   Combobox,
   ComboboxChip,
@@ -9,7 +7,8 @@ import {
   ComboboxItem,
   ComboboxList,
   ComboboxValue,
-} from '@/components/ui/combobox';
+} from '@aio-proxy/ui/components/combobox';
+import type React from 'react';
 
 import { splitByTokenSeparators, type TagsInputItem, useTagsInput } from './use-tags-input';
 
@@ -22,6 +21,7 @@ interface TagsInputProps {
   readonly removeLabel: (tag: string) => string;
   readonly tokenSeparators?: readonly string[];
   readonly options?: readonly string[];
+  readonly showValues?: boolean;
 }
 
 export const TagsInput: React.FC<TagsInputProps> = ({
@@ -33,6 +33,7 @@ export const TagsInput: React.FC<TagsInputProps> = ({
   removeLabel,
   tokenSeparators = [',', '\n'],
   options = [],
+  showValues = true,
 }) => {
   const { draft, setDraft, open, setOpen, anchor, highlightedItemRef, items, selectedItems, addMany, commit } =
     useTagsInput({ value, onValueChange, options });
@@ -64,16 +65,18 @@ export const TagsInput: React.FC<TagsInputProps> = ({
     >
       <ComboboxChips ref={anchor}>
         <ComboboxValue>
-          {value.map((tag) => (
-            <ComboboxChip key={tag} removeLabel={removeLabel(tag)}>
-              {tag}
-            </ComboboxChip>
-          ))}
+          {showValues
+            ? value.map((tag) => (
+                <ComboboxChip key={tag} removeLabel={removeLabel(tag)}>
+                  {tag}
+                </ComboboxChip>
+              ))
+            : null}
         </ComboboxValue>
         <ComboboxChipsInput
           id={id}
           disabled={disabled}
-          placeholder={value.length === 0 ? placeholder : undefined}
+          placeholder={!showValues || value.length === 0 ? placeholder : undefined}
           onBlur={() => commit()}
           onKeyDownCapture={(event) => {
             if (event.key !== 'Escape') return;

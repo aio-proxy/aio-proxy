@@ -16,8 +16,9 @@ describe('GitHub Copilot plugin', () => {
   test('exports a versioned default descriptor that registers OAuth capability default', async () => {
     const adapter = await adapterFrom(githubCopilotPlugin);
 
+    expect(githubCopilotPlugin.metadata.icon).toBe('githubcopilot');
     expect(adapter.id).toBe('default');
-    expect(adapter.label).toBe('Login with GitHub Copilot');
+    expect(adapter.displayName).toBe('Login with GitHub Copilot');
     expect(GITHUB_COPILOT_PLUGIN_VERSION).toBe(packageJson.version);
   });
 
@@ -85,7 +86,7 @@ describe('GitHub Copilot plugin', () => {
       }),
     );
 
-    expect(adapter.label).toBe('Copilote GitHub');
+    expect(adapter.displayName).toBe('Copilote GitHub');
     expect(adapter.account.options.form[0]?.label).toBe('Déploiement GitHub');
     expect(adapter.account.options.form[1]?.label).toBe('Domaine GitHub Entreprise');
   });

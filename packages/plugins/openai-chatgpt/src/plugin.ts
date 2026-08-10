@@ -39,8 +39,7 @@ export function createOpenAIChatGPTPlugin(
 
   const adapter: OAuthAdapter<Record<string, never>, ChatGPTCredential> = {
     id: 'default',
-    label: presentationText.adapterLabel,
-    icon: 'openai',
+    displayName: presentationText.adapterLabel,
     account: { options: accountOptions },
     credentials: zod.object({
       accessToken: zod.string(),
@@ -63,19 +62,23 @@ export function createOpenAIChatGPTPlugin(
           buildAuthorizationUrl({ challenge: pkce.challenge, redirectUri: selectedRedirectUri, state }),
         allowManualCallbackUrl: true,
       });
-      const token = await exchangeCodeForTokens(code, pkce.verifier, { redirectUri, signal: context.signal });
+      const token = await exchangeCodeForTokens(code, pkce.verifier, {
+        ...(context.fetch === undefined ? {} : { fetch: context.fetch }),
+        redirectUri,
+        signal: context.signal,
+      });
       return {
         fingerprint: token.accountId,
         suggestedKey: `chatgpt-${token.accountId}`,
-        label: token.accountId,
+        accountLabel: token.accountId,
         credentials: token,
         expiresAt: token.expiresAt,
       };
     },
     catalog: {
       policy: { kind: 'ttl', ttlMs: CHATGPT_CATALOG_TTL_MS },
-      discover: async ({ signal }) => ({
-        language: await discoverOpenAIChatGPTModels(signal),
+      discover: async ({ fetch, signal }) => ({
+        language: await discoverOpenAIChatGPTModels(signal, fetch),
         image: [],
         embedding: [],
         speech: [],
@@ -91,8 +94,9 @@ export function createOpenAIChatGPTPlugin(
       api.oauth.register(adapter);
     },
     {
-      label: presentationText.pluginLabel ?? 'OpenAI ChatGPT',
+      displayName: presentationText.pluginLabel ?? 'OpenAI ChatGPT',
       description: presentationText.pluginDescription ?? 'Use a ChatGPT Plus or Pro account to access models',
+      icon: 'openai',
     },
   );
 }

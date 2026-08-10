@@ -7,9 +7,13 @@ import type { DashboardAuthentication } from '../dashboard-auth';
 import type { ServerState } from '../server-state';
 import { createDashboardEventsRoute } from './events';
 import { createDashboardOAuthLoginRoutes } from './oauth-login';
+import { createDashboardOverviewRoute } from './overview';
+import { createDashboardPluginRoutes } from './plugins';
+import { createDashboardProviderDraftRoutes } from './provider-draft';
 import { createDashboardProviderReadRoutes } from './provider-routes';
 import { redactSecrets } from './provider-secrets';
 import { createDashboardProviderWriteRoutes } from './provider-write-routes';
+import { createDashboardSettingsRoute } from './settings';
 import { createDashboardTraceRoutes } from './traces';
 
 export { redactSecrets } from './provider-secrets';
@@ -18,6 +22,7 @@ const UsageOverviewQuerySchema = z.object({
   range: UsageOverviewRangeSchema.default('24h'),
   metric: UsageOverviewMetricSchema.default('cost'),
   groupBy: UsageOverviewGroupBySchema.default('model'),
+  maxResults: z.coerce.number().int().positive().optional(),
 });
 
 const usageOverviewValidator = validator('query', (raw, context) => {
@@ -31,11 +36,16 @@ export const createDashboardRoutes = (state: ServerState, auth: DashboardAuthent
     .get('/oauth/capabilities', (context) => context.json({ capabilities: state.oauthCapabilities() }))
     .route('/oauth', createDashboardOAuthLoginRoutes(state))
     .route('/', createDashboardProviderReadRoutes(state))
+    .route('/', createDashboardProviderDraftRoutes(state))
     .route('/', createDashboardProviderWriteRoutes(state))
     .get('/usage', usageOverviewValidator, (context) => {
       const query = context.req.valid('query');
-      return context.json(state.traceStore.overview(query));
+      const { maxResults, ...required } = query;
+      return context.json(state.traceStore.overview(maxResults === undefined ? required : { ...required, maxResults }));
     })
+    .route('/overview', createDashboardOverviewRoute(state))
+    .route('/plugins', createDashboardPluginRoutes(state))
+    .route('/settings', createDashboardSettingsRoute(state))
     .route('/traces', createDashboardTraceRoutes(state))
     .route('/events', createDashboardEventsRoute(state, auth))
     .post('/reload', async (context) => {

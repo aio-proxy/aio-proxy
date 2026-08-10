@@ -1,7 +1,7 @@
-const COMPACT_LOCALE = 'en';
+export const COMPACT_TOKEN_LOCALE = 'en';
 
 export const formatCompactTokenCount = (value: number | bigint) =>
-  new Intl.NumberFormat(COMPACT_LOCALE, {
+  new Intl.NumberFormat(COMPACT_TOKEN_LOCALE, {
     maximumFractionDigits: 1,
     notation: 'compact',
   }).format(value);

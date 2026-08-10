@@ -168,7 +168,7 @@ export function complete(db: BunSQLiteDatabase, input: TraceCompletion): boolean
 
     for (const span of childSpans) insertSpan(tx, span, false);
 
-    upsertUsageDelta(tx, input, now, preparedUsage);
+    upsertUsageDelta(tx, input, now, preparedUsage, childSpans);
 
     if (
       input.sessionState?.responseId !== undefined &&

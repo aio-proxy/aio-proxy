@@ -1,7 +1,4 @@
 import { m } from '@aio-proxy/i18n';
-import { PlusIcon } from 'lucide-react';
-import type { FC } from 'react';
-
 import {
   AlertDialog,
   AlertDialogAction,
@@ -11,9 +8,9 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+} from '@aio-proxy/ui/components/alert-dialog';
+import { Badge } from '@aio-proxy/ui/components/badge';
+import { Button } from '@aio-proxy/ui/components/button';
 import {
   Drawer,
   DrawerContent,
@@ -21,12 +18,14 @@ import {
   DrawerFooter,
   DrawerHeader,
   DrawerTitle,
-} from '@/components/ui/drawer';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { useIsMobile } from '@/hooks/use-mobile';
+} from '@aio-proxy/ui/components/drawer';
+import { ScrollArea } from '@aio-proxy/ui/components/scroll-area';
+import { useIsMobile } from '@aio-proxy/ui/hooks/use-mobile';
+import { PlusIcon } from 'lucide-react';
+import type { FC } from 'react';
 
-import { type AliasEditorIssue, aliasSummary, type ProviderAlias } from '../../alias-editor';
-import { aliasSummaryMessage } from '../../alias-editor-copy';
+import { type AliasEditorIssue, aliasSummary, type ProviderAlias } from '../../lib/alias-editor';
+import { aliasSummaryMessage } from '../../lib/alias-editor-copy';
 import { ProviderAliasList } from './provider-alias-list';
 import { useAliasDrafts } from './use-alias-drafts';
 
