@@ -104,8 +104,8 @@ export const useOAuthProviderEditPage = ({
       : undefined);
 
   useEffect(() => {
-    if (session?.status === 'loopback' && popup.current !== null) {
-      popup.current.location.href = session.authorizationUrl;
+    if ((session?.status === 'authorize_url' || session?.status === 'loopback') && popup.current !== null) {
+      popup.current.location.href = session.status === 'authorize_url' ? session.url : session.authorizationUrl;
       popup.current = null;
     }
     if (session?.status === 'succeeded') {

@@ -100,6 +100,43 @@ test('OAuth create page submits a typed provider proxy patch without using the s
   );
 });
 
+test('OAuth create page navigates the pre-opened popup when authorization is ready', async () => {
+  const popup = { location: { href: '' } } as Window;
+  const open = rs.spyOn(window, 'open').mockReturnValue(popup);
+  const view = render(<OAuthProviderCreatePage sessionId={undefined} onSessionIdChange={rs.fn()} />);
+
+  const picker = screen.getByRole('combobox', { name: /OAuth provider|OAuth 提供商/u });
+  fireEvent.keyDown(picker, { key: 'ArrowDown' });
+  fireEvent.change(picker, { target: { value: 'Example' } });
+  fireEvent.click(await screen.findByRole('option', { name: /Example OAuth/u }));
+  fireEvent.click(screen.getByRole('button', { name: /Continue authorization|继续授权/u }));
+  await waitFor(() => expect(open).toHaveBeenCalledTimes(1));
+
+  mocks.session = {
+    id: '0198bfc4-239e-7d62-bcb0-a9e0849cabaf',
+    status: 'authorize_url',
+    url: 'https://example.com/authorize',
+  };
+  view.rerender(
+    <OAuthProviderCreatePage sessionId="0198bfc4-239e-7d62-bcb0-a9e0849cabaf" onSessionIdChange={rs.fn()} />,
+  );
+
+  expect(popup.location.href).toBe('https://example.com/authorize');
+  expect(open).toHaveBeenCalledTimes(1);
+
+  mocks.session = {
+    id: '0198bfc4-239e-7d62-bcb0-a9e0849cabaf',
+    status: 'loopback',
+    authorizationUrl: 'https://example.com/loopback',
+    allowManualCallback: false,
+  };
+  view.rerender(
+    <OAuthProviderCreatePage sessionId="0198bfc4-239e-7d62-bcb0-a9e0849cabaf" onSessionIdChange={rs.fn()} />,
+  );
+
+  expect(popup.location.href).toBe('https://example.com/authorize');
+});
+
 test('OAuth create page hides the setup form while an existing session loads', () => {
   render(<OAuthProviderCreatePage sessionId="0198bfc4-239e-7d62-bcb0-a9e0849cabaf" onSessionIdChange={rs.fn()} />);
 

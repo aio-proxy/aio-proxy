@@ -1,6 +1,6 @@
-import type { DashboardOAuthProviderEdit, OAuthProvider } from '@aio-proxy/types';
+import type { DashboardOAuthProviderEdit, DashboardOAuthSession, OAuthProvider } from '@aio-proxy/types';
 import { afterEach, expect, rs, test } from '@rstest/core';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import { useEffect } from 'react';
 
 import { OAuthProviderEditPage } from './oauth-provider-edit-page';
@@ -34,12 +34,20 @@ const oauth: DashboardOAuthProviderEdit = {
   models: ['model-1', 'model-2'],
 };
 
-const mocks = rs.hoisted(() => ({ sessionError: false, transformsValid: true }));
+const mocks = rs.hoisted(() => ({
+  session: undefined as DashboardOAuthSession | undefined,
+  sessionError: false,
+  transformsValid: true,
+}));
 
 rs.mock('@tanstack/react-query', () => ({
   queryOptions: <T,>(options: T) => options,
   useMutation: () => ({ mutate: rs.fn(), isPending: false }),
-  useQuery: () => ({ data: undefined, isError: mocks.sessionError, refetch: rs.fn() }),
+  useQuery: () => ({
+    data: mocks.session === undefined ? undefined : { session: mocks.session },
+    isError: mocks.sessionError,
+    refetch: rs.fn(),
+  }),
   useQueryClient: () => ({ invalidateQueries: rs.fn() }),
 }));
 
@@ -49,6 +57,8 @@ rs.mock('@tanstack/react-router', () => ({
 }));
 
 afterEach(() => {
+  rs.restoreAllMocks();
+  mocks.session = undefined;
   mocks.sessionError = false;
   mocks.transformsValid = true;
 });
@@ -101,6 +111,51 @@ test('OAuth edit page presents only a redacted configured proxy as unchanged', (
   expect(screen.getByRole('combobox', { name: /Proxy mode|代理模式/u })).toHaveTextContent(
     /Configured \(unchanged\)|已配置（保持不变）/u,
   );
+});
+
+test('OAuth edit page navigates the pre-opened popup when authorization is ready', async () => {
+  const popup = { location: { href: '' } } as Window;
+  const open = rs.spyOn(window, 'open').mockReturnValue(popup);
+  const view = render(
+    <OAuthProviderEditPage provider={provider} oauth={oauth} sessionId={undefined} onSessionIdChange={rs.fn()} />,
+  );
+
+  screen.getByRole('button', { name: /Reauthorize|重新授权/u }).click();
+  await waitFor(() => expect(open).toHaveBeenCalledTimes(1));
+
+  mocks.session = {
+    id: '0198bfc4-239e-7d62-bcb0-a9e0849cabaf',
+    status: 'authorize_url',
+    url: 'https://example.com/authorize',
+  };
+  view.rerender(
+    <OAuthProviderEditPage
+      provider={provider}
+      oauth={oauth}
+      sessionId="0198bfc4-239e-7d62-bcb0-a9e0849cabaf"
+      onSessionIdChange={rs.fn()}
+    />,
+  );
+
+  expect(popup.location.href).toBe('https://example.com/authorize');
+  expect(open).toHaveBeenCalledTimes(1);
+
+  mocks.session = {
+    id: '0198bfc4-239e-7d62-bcb0-a9e0849cabaf',
+    status: 'loopback',
+    authorizationUrl: 'https://example.com/loopback',
+    allowManualCallback: false,
+  };
+  view.rerender(
+    <OAuthProviderEditPage
+      provider={provider}
+      oauth={oauth}
+      sessionId="0198bfc4-239e-7d62-bcb0-a9e0849cabaf"
+      onSessionIdChange={rs.fn()}
+    />,
+  );
+
+  expect(popup.location.href).toBe('https://example.com/authorize');
 });
 
 test('OAuth edit page hides edit actions while an existing session loads', () => {
