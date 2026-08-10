@@ -76,7 +76,7 @@ export function mapH2TransportError(error: unknown, baseUrl: string): unknown {
 type FrameSink = {
   readonly iterable: AsyncIterable<ConnectFrame>;
   push(chunk: Uint8Array): void;
-  finish(): void;
+  finish(validateEof: boolean): void;
   fail(error: unknown): void;
 };
 
@@ -98,9 +98,9 @@ function createFrameSink(): FrameSink {
       for (const frame of decoder.push(chunk)) queue.push(frame);
       notify();
     },
-    finish() {
+    finish(validateEof) {
       if (done) return;
-      decoder.finish();
+      if (validateEof) decoder.finish();
       done = true;
       notify();
     },
@@ -167,14 +167,14 @@ export function createNodeHttp2Transport(dependencies?: { connect?: typeof http2
       const onAbort = (): void => {
         finish(signal?.reason === undefined ? new Error('Cursor run aborted') : signal.reason, true);
       };
-      const finish = (error?: unknown, closeRequest = false): void => {
+      const finish = (error?: unknown, closeRequest = false, validateEof = false): void => {
         if (finished) return;
         finished = true;
         signal?.removeEventListener('abort', onAbort);
         let terminalError = error;
         if (terminalError === undefined) {
           try {
-            sink.finish();
+            sink.finish(validateEof);
           } catch (caught) {
             terminalError = caught;
             sink.fail(caught);
@@ -204,7 +204,7 @@ export function createNodeHttp2Transport(dependencies?: { connect?: typeof http2
       request.on('trailers', (received) => {
         if (!finished) receivedTrailers = normalizeHeaders(received);
       });
-      request.on('end', () => finish());
+      request.on('end', () => finish(undefined, false, true));
       request.on('error', (error) => finish(mapH2TransportError(error, baseUrl), true));
       request.on('close', () => finish(new Error('Cursor Run request closed before response EOF'), true));
       if (signal) {

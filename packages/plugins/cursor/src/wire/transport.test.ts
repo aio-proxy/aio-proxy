@@ -224,6 +224,26 @@ test('openRun rejects a truncated frame after an earlier complete frame', async 
   expect(session.destroyCalls).toBe(1);
 });
 
+test('openRun locally releases an MCP suspension with a buffered partial next frame', async () => {
+  const { transport, request, session } = transportHarness();
+  const stream = await transport.openRun({ accessToken: 'tok' });
+  const frames = stream.frames[Symbol.asyncIterator]();
+  const complete = frameConnectMessage(new Uint8Array([7]));
+  const partialNext = frameConnectMessage(new Uint8Array([1, 2])).slice(0, 6);
+
+  request.emit('data', new Uint8Array([...complete, ...partialNext]));
+  expect(await frames.next()).toEqual({ done: false, value: { flags: 0, payload: new Uint8Array([7]) } });
+  stream.end();
+  stream.close();
+
+  expect(await frames.next()).toEqual({ done: true, value: undefined });
+  expect(await stream.trailers).toEqual({});
+  expect(request.endCalls).toBe(1);
+  expect(request.closeCalls).toBe(1);
+  expect(session.closeCalls).toBe(1);
+  expect(session.destroyCalls).toBe(0);
+});
+
 test('unary rejects an already-aborted signal before connecting', async () => {
   const { transport, session, connectCalls } = transportHarness();
   const abort = new AbortController();
