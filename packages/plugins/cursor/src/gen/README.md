@@ -48,5 +48,5 @@ oneof cases the exec/stream mappers depend on.
 
 ## License
 
-Upstream is MIT-licensed (see the oh-my-pi `LICENSE`). The generated code and
-`.proto` are redistributed here under those terms.
+Upstream is MIT-licensed. The generated code and `.proto` are redistributed
+under the terms in the vendored [LICENSE](./LICENSE).
