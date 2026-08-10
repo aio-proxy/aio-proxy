@@ -65,6 +65,61 @@ test('a completed MCP tool call emits one tool-call with an un-escaped name and 
   expect((parts.at(-1) as { finishReason: { unified: string } }).finishReason.unified).toBe('tool-calls');
 });
 
+test('interleaved MCP calls keep outer and nested IDs uncrossed', () => {
+  const accumulator = createCursorStreamAccumulator();
+  const mcpUpdate = (
+    event: 'toolCallStarted' | 'toolCallCompleted',
+    outerCallId: string,
+    nestedToolCallId: string,
+    path: string,
+  ) =>
+    update({
+      case: event,
+      value: {
+        callId: outerCallId,
+        toolCall: {
+          tool: {
+            case: 'mcpToolCall',
+            value: {
+              args: {
+                name: 'aio_proxy__read',
+                toolCallId: nestedToolCallId,
+                args: { path: argValue(path) },
+              },
+            },
+          },
+        },
+      },
+    });
+  const parts = [
+    ...mapInteractionUpdate(mcpUpdate('toolCallStarted', 'outer-a', 'nested-a', '/a'), accumulator),
+    ...mapInteractionUpdate(mcpUpdate('toolCallStarted', 'outer-b', 'nested-b', '/b'), accumulator),
+    ...mapInteractionUpdate(
+      update({ case: 'partialToolCall', value: { callId: 'outer-a', argsTextDelta: '{"path":"/a"}' } }),
+      accumulator,
+    ),
+    ...mapInteractionUpdate(
+      update({ case: 'partialToolCall', value: { callId: 'outer-b', argsTextDelta: '{"path":"/b"}' } }),
+      accumulator,
+    ),
+    ...mapInteractionUpdate(mcpUpdate('toolCallCompleted', 'outer-a', 'nested-a', '/a'), accumulator),
+    ...mapInteractionUpdate(mcpUpdate('toolCallCompleted', 'outer-b', 'nested-b', '/b'), accumulator),
+  ];
+  const calls = parts.filter((part) => part.type === 'tool-call') as Array<{
+    toolCallId: string;
+    input: string;
+  }>;
+
+  expect(calls.map(({ toolCallId, input }) => [toolCallId, JSON.parse(input)])).toEqual([
+    ['outer-a', { path: '/a' }],
+    ['outer-b', { path: '/b' }],
+  ]);
+  expect([...accumulator.completedToolCalls]).toEqual([
+    ['outer-a', 'nested-a'],
+    ['outer-b', 'nested-b'],
+  ]);
+});
+
 test('token deltas accumulate into usage.outputTokens.total', () => {
   const accumulator = createCursorStreamAccumulator();
   mapInteractionUpdate(update({ case: 'tokenDelta', value: { tokens: 7 } }), accumulator);

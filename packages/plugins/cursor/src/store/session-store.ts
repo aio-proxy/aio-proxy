@@ -8,8 +8,8 @@ export type CursorSessionState = {
   readonly conversationState?: Uint8Array;
   readonly blobs: ReadonlyMap<string, Uint8Array>;
   readonly checkpointUsable: boolean;
-  // callId -> toolCallId, so a resumed turn can map real Cursor tool results
-  // back onto the AI-SDK tool calls that requested them.
+  // Outer InteractionUpdate.callId -> nested McpArgs.toolCallId, so a resumed
+  // AI-SDK result can restore Cursor's nested history ID.
   readonly pendingToolCalls: ReadonlyMap<string, string>;
 };
 

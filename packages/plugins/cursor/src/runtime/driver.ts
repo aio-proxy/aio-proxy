@@ -32,7 +32,6 @@ export function runCursorTurn(input: {
   readonly heartbeatMs?: number;
 }): { stream: ReadableStream<LanguageModelV4StreamPart>; result: Promise<CursorTurnResult> } {
   const accumulator = createCursorStreamAccumulator();
-  const pendingToolCalls = new Map<string, string>();
   let conversationState = input.initialConversationState;
   let settle!: (result: CursorTurnResult) => void;
   let fail!: (error: unknown) => void;
@@ -63,6 +62,18 @@ export function runCursorTurn(input: {
           const message = fromBinary(AgentServerMessageSchema, frame.payload).message;
           if (message.case === 'interactionUpdate') {
             for (const part of mapInteractionUpdate(message.value, accumulator)) controller.enqueue(part);
+            if (accumulator.completedToolCalls.size > 0 && accumulator.tools.size === 0) {
+              for (const part of finalizeCursorStream(accumulator)) controller.enqueue(part);
+              h2.end();
+              controller.close();
+              settle({
+                conversationState,
+                checkpointUsable: false,
+                pendingToolCalls: new Map(accumulator.completedToolCalls),
+                blobStore: input.blobStore,
+              });
+              return;
+            }
           } else if (message.case === 'kvServerMessage') {
             const reply = encodeKvResponse(message.value, input.blobStore);
             if (reply !== undefined) h2.write(reply);
@@ -84,7 +95,7 @@ export function runCursorTurn(input: {
         settle({
           conversationState,
           checkpointUsable: accumulator.toolCalls === 0,
-          pendingToolCalls,
+          pendingToolCalls: new Map(),
           blobStore: input.blobStore,
         });
       } catch (error) {

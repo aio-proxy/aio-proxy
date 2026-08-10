@@ -16,11 +16,13 @@ import {
 } from '../gen/agent_pb';
 import { storeCursorBlob } from '../store/blobs';
 import {
+  applyMcpToolResults,
   buildConversationTurns,
   buildCursorSystemPromptJsons,
   buildRootPromptMessagesJson,
   createCursorUserMessage,
   extractV4UserText,
+  hasMatchingPendingToolResult,
   v4UserHasImages,
 } from './history';
 
@@ -28,6 +30,7 @@ export type CursorRunState = {
   readonly conversationId: string;
   readonly blobStore: Map<string, Uint8Array>;
   readonly conversationState?: ConversationStateStructure;
+  readonly pendingToolCalls?: ReadonlyMap<string, string>;
 };
 
 // Tools are NOT placed in the run request; Cursor requests them later via the
@@ -41,9 +44,15 @@ export function buildCursorRunRequestBytes(input: {
   readonly displayName: string;
   readonly maxMode: boolean;
   readonly state: CursorRunState;
-}): { requestBytes: Uint8Array; conversationState: ConversationStateStructure } {
+}): {
+  requestBytes: Uint8Array;
+  conversationState: ConversationStateStructure;
+  pendingToolCalls: Map<string, string>;
+} {
   const { prompt, state } = input;
   const blobStore = state.blobStore;
+  const pendingToolCalls = state.pendingToolCalls ?? new Map();
+  const isPendingResume = hasMatchingPendingToolResult(prompt, pendingToolCalls);
   const systemPromptIds = buildCursorSystemPromptJsons(prompt).map((json) =>
     storeCursorBlob(blobStore, new TextEncoder().encode(json)),
   );
@@ -66,22 +75,29 @@ export function buildCursorRunRequestBytes(input: {
   });
 
   const historyActiveIndex = isUserAction ? activeIndex : -1;
-  const turns = buildConversationTurns(prompt, blobStore, historyActiveIndex);
-  const rootPromptMessagesJson = buildRootPromptMessagesJson(prompt, systemPromptIds, blobStore, historyActiveIndex);
+  const promptTurns = buildConversationTurns(prompt, blobStore, historyActiveIndex);
 
   const cachedHead = state.conversationState?.rootPromptMessagesJson?.slice(0, systemPromptIds.length) ?? [];
   const promptHeadMatches =
     cachedHead.length === systemPromptIds.length &&
     systemPromptIds.every((id, index) => Buffer.from(cachedHead[index]!).equals(id));
   const baseState =
-    state.conversationState && promptHeadMatches
+    state.conversationState && (isPendingResume || promptHeadMatches)
       ? state.conversationState
       : create(ConversationStateStructureSchema, { rootPromptMessagesJson: systemPromptIds });
+  const baseTurns = isPendingResume && promptTurns.length === 0 ? baseState.turns : promptTurns;
+  const patched = isPendingResume
+    ? applyMcpToolResults({ prompt, turns: baseTurns, pendingToolCalls, blobStore })
+    : { turns: baseTurns, pendingToolCalls: new Map<string, string>() };
+  const rootPromptMessagesJson =
+    isPendingResume && promptTurns.length === 0
+      ? baseState.rootPromptMessagesJson
+      : buildRootPromptMessagesJson(prompt, systemPromptIds, blobStore, historyActiveIndex);
 
   const conversationState = create(ConversationStateStructureSchema, {
     ...baseState,
     rootPromptMessagesJson,
-    turns,
+    turns: patched.turns,
   });
   const runRequest = create(AgentRunRequestSchema, {
     conversationState,
@@ -101,5 +117,9 @@ export function buildCursorRunRequestBytes(input: {
   const clientMessage = create(AgentClientMessageSchema, {
     message: { case: 'runRequest', value: runRequest },
   });
-  return { requestBytes: toBinary(AgentClientMessageSchema, clientMessage), conversationState };
+  return {
+    requestBytes: toBinary(AgentClientMessageSchema, clientMessage),
+    conversationState,
+    pendingToolCalls: patched.pendingToolCalls,
+  };
 }

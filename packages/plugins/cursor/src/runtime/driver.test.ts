@@ -34,6 +34,39 @@ function fakeTransport(frames: Uint8Array[]): { transport: CursorTransport; writ
   };
 }
 
+function openMcpTransport(frames: Uint8Array[]): {
+  transport: CursorTransport;
+  writes: Uint8Array[];
+  endCalls: () => number;
+  release: () => void;
+} {
+  const writes: Uint8Array[] = [];
+  const ended = Promise.withResolvers<void>();
+  let endCalls = 0;
+  const framePayloads: ConnectFrame[] = frames.map((bytes) => ({ flags: 0, payload: bytes.subarray(5) }));
+  const stream: CursorH2Stream = {
+    write: (frame) => writes.push(frame),
+    end: () => {
+      endCalls += 1;
+      ended.resolve();
+    },
+    frames: (async function* () {
+      for (const frame of framePayloads) yield frame;
+      await ended.promise;
+    })(),
+    trailers: Promise.resolve({ 'grpc-status': '0' }),
+  };
+  return {
+    writes,
+    endCalls: () => endCalls,
+    release: ended.resolve,
+    transport: {
+      openRun: () => Promise.resolve(stream),
+      unary: () => Promise.reject(new Error('unused')),
+    },
+  };
+}
+
 const textFrame = (text: string) =>
   frameServer({
     case: 'interactionUpdate',
@@ -54,6 +87,16 @@ async function drainTypes(stream: ReadableStream<LanguageModelV4StreamPart>): Pr
     types.push(value.type);
   }
   return types;
+}
+
+async function drainParts(stream: ReadableStream<LanguageModelV4StreamPart>): Promise<LanguageModelV4StreamPart[]> {
+  const parts: LanguageModelV4StreamPart[] = [];
+  const reader = stream.getReader();
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) return parts;
+    parts.push(value);
+  }
 }
 
 test('a text turn streams parts, frames the request, and resolves the turn result', async () => {
@@ -89,4 +132,61 @@ test('rejects when the stream ends before turnEnded', async () => {
   // The stream errors AND `result` rejects; swallow the stream throw and assert on result.
   await drainTypes(stream).catch(() => {});
   await expect(result).rejects.toThrow(/before turnEnded/i);
+});
+
+test('a completed MCP call suspends without waiting for upstream turnEnded', async () => {
+  const mcpFrame = (event: 'toolCallStarted' | 'toolCallCompleted') =>
+    frameServer({
+      case: 'interactionUpdate',
+      value: create(InteractionUpdateSchema, {
+        message: {
+          case: event,
+          value: {
+            callId: 'outer-call',
+            toolCall: {
+              tool: {
+                case: 'mcpToolCall',
+                value: { args: { name: 'search', toolCallId: 'nested-call', args: {} } },
+              },
+            },
+          },
+        },
+      } as never),
+    });
+  const { transport, writes, endCalls, release } = openMcpTransport([
+    mcpFrame('toolCallStarted'),
+    mcpFrame('toolCallCompleted'),
+  ]);
+  const { stream, result } = runCursorTurn({
+    transport,
+    accessToken: 'tok',
+    requestBytes: new Uint8Array([1]),
+    initialConversationState: create(ConversationStateStructureSchema, {}),
+    requestContextTools: [],
+    blobStore: new Map(),
+    heartbeatMs: 0,
+  });
+  void result.catch(() => {});
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const parts = await Promise.race([
+      drainParts(stream),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('tool stream did not suspend promptly')), 100);
+      }),
+    ]);
+    const turn = await result;
+    const toolCall = parts.find((part) => part.type === 'tool-call') as { toolCallId: string } | undefined;
+    const finish = parts.at(-1) as { type: string; finishReason: { unified: string } };
+
+    expect(toolCall?.toolCallId).toBe('outer-call');
+    expect(finish).toMatchObject({ type: 'finish', finishReason: { unified: 'tool-calls' } });
+    expect(endCalls()).toBe(1);
+    expect(writes).toHaveLength(1);
+    expect(turn.checkpointUsable).toBe(false);
+    expect([...turn.pendingToolCalls]).toEqual([['outer-call', 'nested-call']]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+    release();
+  }
 });

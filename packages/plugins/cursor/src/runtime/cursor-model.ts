@@ -9,7 +9,7 @@ import type {
   SharedV4ProviderOptions,
 } from '@ai-sdk/provider';
 import { type CredentialPort, zod } from '@aio-proxy/plugin-sdk';
-import { create, fromBinary, toBinary } from '@bufbuild/protobuf';
+import { fromBinary, toBinary } from '@bufbuild/protobuf';
 
 import { ConversationStateStructureSchema } from '../gen/agent_pb';
 import { currentCursorCredential, type CursorOAuthDependencies } from '../oauth';
@@ -17,6 +17,7 @@ import type { CursorCredential } from '../schema';
 import { type CursorSessionState, type CursorSessionStore, sessionKey } from '../store/session-store';
 import type { CursorTransport } from '../wire/transport';
 import { runCursorTurn } from './driver';
+import { hasMatchingPendingToolResult } from './history';
 import { buildMcpToolDefinitions } from './mcp-tools';
 import { buildCursorRunRequestBytes, type CursorRunState } from './run-request';
 
@@ -67,18 +68,18 @@ export function createCursorLanguageModel(modelId: string, runtime: CursorModelR
     const prior = storeKey === undefined ? undefined : runtime.sessionStore.get(storeKey);
     const conversationId = prior?.conversationId ?? crypto.randomUUID();
     const blobStore = new Map(prior?.blobs ?? []);
-    // Only reuse a checkpoint that ended a clean (tool-free) turn; a mid-tool
-    // checkpoint would resume into a half-finished tool exchange.
+    const isPendingResume = prior !== undefined && hasMatchingPendingToolResult(options.prompt, prior.pendingToolCalls);
     const priorState =
-      prior?.checkpointUsable && prior.conversationState !== undefined
+      prior?.conversationState !== undefined && (prior.checkpointUsable || isPendingResume)
         ? fromBinary(ConversationStateStructureSchema, prior.conversationState)
         : undefined;
     const runState: CursorRunState = {
       conversationId,
       blobStore,
       ...(priorState === undefined ? {} : { conversationState: priorState }),
+      ...(isPendingResume ? { pendingToolCalls: prior!.pendingToolCalls } : {}),
     };
-    const { requestBytes } = buildCursorRunRequestBytes({
+    const { requestBytes, conversationState, pendingToolCalls } = buildCursorRunRequestBytes({
       prompt: options.prompt,
       wireModelId: runtime.model.wireModelId,
       displayModelId: runtime.model.displayModelId,
@@ -92,7 +93,7 @@ export function createCursorLanguageModel(modelId: string, runtime: CursorModelR
       ...(runtime.baseUrl === undefined ? {} : { baseUrl: runtime.baseUrl }),
       ...(options.abortSignal === undefined ? {} : { signal: options.abortSignal }),
       requestBytes,
-      initialConversationState: runState.conversationState ?? create(ConversationStateStructureSchema, {}),
+      initialConversationState: conversationState,
       requestContextTools: buildMcpToolDefinitions(functionTools(options)),
       blobStore,
       heartbeatMs: 5_000,
@@ -100,18 +101,20 @@ export function createCursorLanguageModel(modelId: string, runtime: CursorModelR
     void result
       .then((turn) => {
         if (storeKey === undefined) return;
+        const nextPendingToolCalls = new Map(pendingToolCalls);
+        for (const [outerCallId, nestedToolCallId] of turn.pendingToolCalls) {
+          nextPendingToolCalls.set(outerCallId, nestedToolCallId);
+        }
         const next: CursorSessionState = {
           conversationId,
           conversationState: toBinary(ConversationStateStructureSchema, turn.conversationState),
           blobs: turn.blobStore,
-          checkpointUsable: turn.checkpointUsable,
-          pendingToolCalls: turn.pendingToolCalls,
+          checkpointUsable: turn.checkpointUsable && nextPendingToolCalls.size === 0,
+          pendingToolCalls: nextPendingToolCalls,
         };
         runtime.sessionStore.set(storeKey, next);
       })
-      .catch(() => {
-        if (storeKey !== undefined) runtime.sessionStore.delete(storeKey);
-      });
+      .catch(() => {});
     return { stream };
   };
   return {

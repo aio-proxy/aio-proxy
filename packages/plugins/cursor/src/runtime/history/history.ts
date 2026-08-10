@@ -1,20 +1,31 @@
 import type { LanguageModelV4Message, LanguageModelV4Prompt, LanguageModelV4ToolResultPart } from '@ai-sdk/provider';
-import { create, toBinary } from '@bufbuild/protobuf';
+import { create, fromBinary, toBinary } from '@bufbuild/protobuf';
 
 import {
   AgentConversationTurnStructureSchema,
   AssistantMessageSchema,
   ConversationStepSchema,
   ConversationTurnStructureSchema,
+  McpArgsSchema,
+  McpRejectedSchema,
+  McpSuccessSchema,
+  McpTextContentSchema,
+  McpToolCallSchema,
+  McpToolErrorSchema,
+  McpToolResultContentItemSchema,
+  McpToolResultSchema,
+  ToolCallSchema,
   UserMessageSchema,
 } from '../../gen/agent_pb';
-import { storeCursorBlob } from '../../store/blobs';
+import { readCursorBlob, storeCursorBlob } from '../../store/blobs';
+import { toWireName } from '../../tool-names';
 import { createCursorUserMessage, extractV4UserText, v4UserHasImages } from './user-message';
 
 // The active (latest) user message is excluded from history; it rides in the
 // run action (Task 13). Assistant tool-call parts flatten to nothing and
 // tool-result parts flatten to "[Tool Result]\n<text>" / "[Tool Error]\n<text>"
-// assistant-side text, matching Cursor's expected history shape.
+// assistant-side text for ordinary reconstructed history. Pending MCP results
+// use applyMcpToolResults so their IDs and structured result remain intact.
 
 export function findActiveUserMessageIndex(prompt: LanguageModelV4Prompt): number {
   for (let index = prompt.length - 1; index >= 0; index -= 1) {
@@ -122,6 +133,163 @@ export function buildConversationTurns(
     turns.push(storeCursorBlob(blobStore, toBinary(ConversationTurnStructureSchema, turn)));
   }
   return turns;
+}
+
+export function hasMatchingPendingToolResult(
+  prompt: LanguageModelV4Prompt,
+  pendingToolCalls: ReadonlyMap<string, string>,
+): boolean {
+  return toolResultParts(prompt).some((part) => pendingToolCalls.has(part.toolCallId));
+}
+
+export function applyMcpToolResults(input: {
+  readonly prompt: LanguageModelV4Prompt;
+  readonly turns: Uint8Array[];
+  readonly pendingToolCalls: ReadonlyMap<string, string>;
+  readonly blobStore: Map<string, Uint8Array>;
+}): { turns: Uint8Array[]; pendingToolCalls: Map<string, string> } {
+  const turns = [...input.turns];
+  const pendingToolCalls = new Map(input.pendingToolCalls);
+  for (const part of toolResultParts(input.prompt)) {
+    const nestedToolCallId = pendingToolCalls.get(part.toolCallId);
+    if (nestedToolCallId === undefined) continue;
+    if (!patchMcpStep(turns, nestedToolCallId, part, input.blobStore)) {
+      appendMcpStep(turns, nestedToolCallId, part, input.blobStore);
+    }
+    pendingToolCalls.delete(part.toolCallId);
+  }
+  return { turns, pendingToolCalls };
+}
+
+function toolResultParts(prompt: LanguageModelV4Prompt): LanguageModelV4ToolResultPart[] {
+  const parts: LanguageModelV4ToolResultPart[] = [];
+  for (const message of prompt) {
+    if (message.role !== 'assistant' && message.role !== 'tool') continue;
+    for (const part of message.content) if (part.type === 'tool-result') parts.push(part);
+  }
+  return parts;
+}
+
+function patchMcpStep(
+  turns: Uint8Array[],
+  nestedToolCallId: string,
+  part: LanguageModelV4ToolResultPart,
+  blobStore: Map<string, Uint8Array>,
+): boolean {
+  for (let turnIndex = 0; turnIndex < turns.length; turnIndex += 1) {
+    const turnBytes = readCursorBlob(blobStore, turns[turnIndex]!);
+    if (turnBytes === undefined) continue;
+    const turn = fromBinary(ConversationTurnStructureSchema, turnBytes);
+    if (turn.turn.case !== 'agentConversationTurn') continue;
+    for (let stepIndex = 0; stepIndex < turn.turn.value.steps.length; stepIndex += 1) {
+      const stepBytes = readCursorBlob(blobStore, turn.turn.value.steps[stepIndex]!);
+      if (stepBytes === undefined) continue;
+      const step = fromBinary(ConversationStepSchema, stepBytes);
+      if (
+        step.message.case !== 'toolCall' ||
+        step.message.value.tool.case !== 'mcpToolCall' ||
+        step.message.value.tool.value.args?.toolCallId !== nestedToolCallId
+      ) {
+        continue;
+      }
+      step.message.value.tool.value.result = encodeMcpResult(part);
+      turn.turn.value.steps[stepIndex] = storeCursorBlob(blobStore, toBinary(ConversationStepSchema, step));
+      turns[turnIndex] = storeCursorBlob(blobStore, toBinary(ConversationTurnStructureSchema, turn));
+      return true;
+    }
+  }
+  return false;
+}
+
+function appendMcpStep(
+  turns: Uint8Array[],
+  nestedToolCallId: string,
+  part: LanguageModelV4ToolResultPart,
+  blobStore: Map<string, Uint8Array>,
+): void {
+  const stepId = storeCursorBlob(blobStore, toBinary(ConversationStepSchema, createMcpStep(nestedToolCallId, part)));
+  for (let turnIndex = turns.length - 1; turnIndex >= 0; turnIndex -= 1) {
+    const turnBytes = readCursorBlob(blobStore, turns[turnIndex]!);
+    if (turnBytes === undefined) continue;
+    const turn = fromBinary(ConversationTurnStructureSchema, turnBytes);
+    if (turn.turn.case !== 'agentConversationTurn') continue;
+    turn.turn.value.steps.push(stepId);
+    turns[turnIndex] = storeCursorBlob(blobStore, toBinary(ConversationTurnStructureSchema, turn));
+    return;
+  }
+  const userMessage = storeCursorBlob(blobStore, toBinary(UserMessageSchema, create(UserMessageSchema, {})));
+  turns.push(
+    storeCursorBlob(
+      blobStore,
+      toBinary(
+        ConversationTurnStructureSchema,
+        create(ConversationTurnStructureSchema, {
+          turn: {
+            case: 'agentConversationTurn',
+            value: create(AgentConversationTurnStructureSchema, { userMessage, steps: [stepId] }),
+          },
+        }),
+      ),
+    ),
+  );
+}
+
+function createMcpStep(nestedToolCallId: string, part: LanguageModelV4ToolResultPart) {
+  return create(ConversationStepSchema, {
+    message: {
+      case: 'toolCall',
+      value: create(ToolCallSchema, {
+        tool: {
+          case: 'mcpToolCall',
+          value: create(McpToolCallSchema, {
+            args: create(McpArgsSchema, {
+              name: toWireName(part.toolName),
+              toolName: toWireName(part.toolName),
+              toolCallId: nestedToolCallId,
+            }),
+            result: encodeMcpResult(part),
+          }),
+        },
+      }),
+    },
+  });
+}
+
+function encodeMcpResult(part: LanguageModelV4ToolResultPart) {
+  const output = part.output;
+  if (output.type === 'execution-denied') {
+    return create(McpToolResultSchema, {
+      result: { case: 'rejected', value: create(McpRejectedSchema, { reason: output.reason ?? '' }) },
+    });
+  }
+  if (output.type === 'error-text' || output.type === 'error-json') {
+    return create(McpToolResultSchema, {
+      result: {
+        case: 'error',
+        value: create(McpToolErrorSchema, {
+          error: output.type === 'error-text' ? output.value : JSON.stringify(output.value),
+        }),
+      },
+    });
+  }
+  const texts =
+    output.type === 'text'
+      ? [output.value]
+      : output.type === 'json'
+        ? [JSON.stringify(output.value)]
+        : output.value.map((entry) => (entry.type === 'text' ? entry.text : `[${entry.type}]`));
+  return create(McpToolResultSchema, {
+    result: {
+      case: 'success',
+      value: create(McpSuccessSchema, {
+        content: texts.map((text) =>
+          create(McpToolResultContentItemSchema, {
+            content: { case: 'text', value: create(McpTextContentSchema, { text }) },
+          }),
+        ),
+      }),
+    },
+  });
 }
 
 function assistantText(content: Extract<LanguageModelV4Message, { role: 'assistant' }>['content']): string {

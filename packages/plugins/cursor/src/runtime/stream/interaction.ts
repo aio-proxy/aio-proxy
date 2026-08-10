@@ -8,14 +8,21 @@ import { fromWireName } from '../../tool-names';
 export type CursorStreamAccumulator = {
   textId?: string | undefined;
   reasoningId?: string | undefined;
-  tool?: { callId: string; toolName: string; buffer: string; started: boolean } | undefined;
+  tools: Map<string, { nestedToolCallId: string; toolName: string; buffer: string }>;
+  completedToolCalls: Map<string, string>;
   outputTokens: number;
   sawTurnEnded: boolean;
   toolCalls: number;
 };
 
 export function createCursorStreamAccumulator(): CursorStreamAccumulator {
-  return { outputTokens: 0, sawTurnEnded: false, toolCalls: 0 };
+  return {
+    tools: new Map(),
+    completedToolCalls: new Map(),
+    outputTokens: 0,
+    sawTurnEnded: false,
+    toolCalls: 0,
+  };
 }
 
 // Pure mapping of ONE interactionUpdate payload into ordered V4 parts; mutates
@@ -99,54 +106,61 @@ function closeReasoning(accumulator: CursorStreamAccumulator): LanguageModelV4St
 
 function startMcpTool(accumulator: CursorStreamAccumulator, value: unknown): LanguageModelV4StreamPart[] {
   const mcp = mcpArgsOf(value);
-  if (mcp === undefined) return [];
+  const outerCallId = (value as { callId?: string } | undefined)?.callId;
+  if (mcp === undefined || !outerCallId) return [];
   const parts: LanguageModelV4StreamPart[] = [...closeText(accumulator), ...closeReasoning(accumulator)];
   const toolName = fromWireName(mcp.name);
-  accumulator.tool = { callId: mcp.toolCallId, toolName, buffer: '', started: true };
-  return [...parts, { type: 'tool-input-start', id: mcp.toolCallId, toolName }];
+  accumulator.tools.set(outerCallId, { nestedToolCallId: mcp.toolCallId, toolName, buffer: '' });
+  return [...parts, { type: 'tool-input-start', id: outerCallId, toolName }];
 }
 
 function deltaMcpTool(
   accumulator: CursorStreamAccumulator,
   value: { argsTextDelta?: string; callId?: string },
 ): LanguageModelV4StreamPart[] {
-  const tool = accumulator.tool;
+  const outerCallId = value.callId;
+  if (outerCallId === undefined) return [];
+  const tool = accumulator.tools.get(outerCallId);
   if (tool === undefined) return [];
   const snapshot = value.argsTextDelta ?? '';
   const chunk = snapshot.startsWith(tool.buffer) ? snapshot.slice(tool.buffer.length) : snapshot;
   if (chunk.length === 0) return [];
   tool.buffer += chunk;
-  return [{ type: 'tool-input-delta', id: tool.callId, delta: chunk }];
+  return [{ type: 'tool-input-delta', id: outerCallId, delta: chunk }];
 }
 
 function completeMcpTool(accumulator: CursorStreamAccumulator, value: unknown): LanguageModelV4StreamPart[] {
-  const tool = accumulator.tool;
-  if (tool === undefined) return [];
+  const outerCallId = (value as { callId?: string } | undefined)?.callId;
+  const tool = outerCallId === undefined ? undefined : accumulator.tools.get(outerCallId);
+  if (tool === undefined || outerCallId === undefined) return [];
   const mcp = mcpArgsOf(value);
   const decoded = mcp ? decodeMcpArgsMap(mcp.args) : undefined;
   const input = decoded !== undefined ? JSON.stringify(decoded) : tool.buffer.length > 0 ? tool.buffer : '{}';
-  accumulator.tool = undefined;
+  accumulator.tools.delete(outerCallId);
+  accumulator.completedToolCalls.set(outerCallId, tool.nestedToolCallId);
   accumulator.toolCalls += 1;
   return [
-    { type: 'tool-input-end', id: tool.callId },
-    { type: 'tool-call', toolCallId: tool.callId, toolName: tool.toolName, input },
+    { type: 'tool-input-end', id: outerCallId },
+    { type: 'tool-call', toolCallId: outerCallId, toolName: tool.toolName, input },
   ];
 }
 
 function flushIncompleteTool(accumulator: CursorStreamAccumulator): LanguageModelV4StreamPart[] {
-  const tool = accumulator.tool;
-  if (tool === undefined) return [];
-  accumulator.tool = undefined;
-  accumulator.toolCalls += 1;
-  return [
-    { type: 'tool-input-end', id: tool.callId },
-    {
-      type: 'tool-call',
-      toolCallId: tool.callId,
-      toolName: tool.toolName,
-      input: tool.buffer.length > 0 ? tool.buffer : '{}',
-    },
-  ];
+  const parts: LanguageModelV4StreamPart[] = [];
+  for (const [outerCallId, tool] of accumulator.tools) {
+    parts.push(
+      { type: 'tool-input-end', id: outerCallId },
+      {
+        type: 'tool-call',
+        toolCallId: outerCallId,
+        toolName: tool.toolName,
+        input: tool.buffer.length > 0 ? tool.buffer : '{}',
+      },
+    );
+    accumulator.toolCalls += 1;
+  }
+  accumulator.tools.clear();
+  return parts;
 }
 
 function mcpArgsOf(
