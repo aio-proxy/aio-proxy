@@ -185,7 +185,7 @@ function mcpArgsOf(
 }
 
 function decodeMcpArgsMap(args: Record<string, Uint8Array> | undefined): Record<string, unknown> | undefined {
-  if (!args) return undefined;
+  if (!args || Object.keys(args).length === 0) return undefined;
   const decoded: Record<string, unknown> = {};
   for (const [key, bytes] of Object.entries(args)) decoded[key] = decodeMcpArgValue(bytes);
   return decoded;

@@ -26,7 +26,7 @@ test('text deltas stream and finalize as a stop finish', () => {
   expect(finish.finishReason.unified).toBe('stop');
 });
 
-test('a completed MCP tool call emits one tool-call with an un-escaped name and tool-calls finish', () => {
+test('a completed MCP tool call keeps streamed arguments when the final map is empty', () => {
   const accumulator = createCursorStreamAccumulator();
   const started = update({
     case: 'toolCallStarted',
@@ -45,7 +45,7 @@ test('a completed MCP tool call emits one tool-call with an un-escaped name and 
       toolCall: {
         tool: {
           case: 'mcpToolCall',
-          value: { args: { name: 'aio_proxy__read', toolCallId: 'c1', args: { path: argValue('/x') } } },
+          value: { args: { name: 'aio_proxy__read', toolCallId: 'c1', args: {} } },
         },
       },
     },
