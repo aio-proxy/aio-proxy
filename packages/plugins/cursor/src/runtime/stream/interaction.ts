@@ -63,7 +63,6 @@ export function finalizeCursorStream(accumulator: CursorStreamAccumulator): Lang
   const parts: LanguageModelV4StreamPart[] = [];
   parts.push(...closeText(accumulator));
   parts.push(...closeReasoning(accumulator));
-  parts.push(...flushIncompleteTool(accumulator));
   parts.push({ type: 'finish', usage: usageOf(accumulator), finishReason: finishReasonOf(accumulator) });
   return parts;
 }
@@ -143,25 +142,6 @@ function completeMcpTool(accumulator: CursorStreamAccumulator, value: unknown): 
     { type: 'tool-input-end', id: outerCallId },
     { type: 'tool-call', toolCallId: outerCallId, toolName: tool.toolName, input },
   ];
-}
-
-function flushIncompleteTool(accumulator: CursorStreamAccumulator): LanguageModelV4StreamPart[] {
-  const parts: LanguageModelV4StreamPart[] = [];
-  for (const [outerCallId, tool] of accumulator.tools) {
-    accumulator.completedToolCalls.set(outerCallId, tool.nestedToolCallId);
-    parts.push(
-      { type: 'tool-input-end', id: outerCallId },
-      {
-        type: 'tool-call',
-        toolCallId: outerCallId,
-        toolName: tool.toolName,
-        input: tool.buffer.length > 0 ? tool.buffer : '{}',
-      },
-    );
-    accumulator.toolCalls += 1;
-  }
-  accumulator.tools.clear();
-  return parts;
 }
 
 function mcpArgsOf(

@@ -253,7 +253,10 @@ test('a completed MCP call suspends without waiting for upstream turnEnded', asy
   }
 });
 
-test('a turn-ended incomplete MCP call persists the mapping for every emitted tool call', async () => {
+test.each([
+  ['turn-ended', true],
+  ['EOF', false],
+] as const)('%s rejects incomplete MCP calls', async (_boundary, includeTurnEnded) => {
   const started = frameServer({
     case: 'interactionUpdate',
     value: create(InteractionUpdateSchema, {
@@ -271,7 +274,7 @@ test('a turn-ended incomplete MCP call persists the mapping for every emitted to
       },
     } as never),
   });
-  const { transport } = fakeTransport([started, turnEndedFrame()]);
+  const { transport } = fakeTransport([started, ...(includeTurnEnded ? [turnEndedFrame()] : [])]);
   const { stream, result } = runCursorTurn({
     transport,
     accessToken: 'tok',
@@ -282,12 +285,20 @@ test('a turn-ended incomplete MCP call persists the mapping for every emitted to
     heartbeatMs: 0,
   });
 
-  const parts = await drainParts(stream);
-  const turn = await result;
+  const parts: LanguageModelV4StreamPart[] = [];
+  const reader = stream.getReader();
+  void result.catch(() => {});
+  const drain = async () => {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) return;
+      parts.push(value);
+    }
+  };
 
-  expect(parts.find((part) => part.type === 'tool-call')).toMatchObject({ toolCallId: 'outer-incomplete' });
-  expect([...turn.pendingToolCalls]).toEqual([['outer-incomplete', 'nested-incomplete']]);
-  expect(turn.checkpointUsable).toBe(false);
+  await expect(drain()).rejects.toThrow(/incomplete MCP tool call/i);
+  await expect(result).rejects.toThrow(/incomplete MCP tool call/i);
+  expect(parts.some((part) => part.type === 'tool-call')).toBe(false);
 });
 
 test('reader cancellation stops heartbeats, closes the Run, and rejects the result', async () => {

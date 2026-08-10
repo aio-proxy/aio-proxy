@@ -81,6 +81,9 @@ export function runCursorTurn(input: {
             const message = fromBinary(AgentServerMessageSchema, frame.payload).message;
             if (message.case === 'interactionUpdate') {
               for (const part of mapInteractionUpdate(message.value, accumulator)) controller.enqueue(part);
+              if (accumulator.sawTurnEnded && accumulator.tools.size > 0) {
+                throw new Error('Cursor turn ended with incomplete MCP tool call');
+              }
               if (accumulator.completedToolCalls.size > 0 && accumulator.tools.size === 0) {
                 for (const part of finalizeCursorStream(accumulator)) controller.enqueue(part);
                 h2.end();
@@ -108,6 +111,7 @@ export function runCursorTurn(input: {
           if (grpcStatus !== undefined && grpcStatus !== '0') {
             throw new Error(`Cursor gRPC status ${grpcStatus}: ${trailers['grpc-message'] ?? ''}`);
           }
+          if (accumulator.tools.size > 0) throw new Error('Cursor stream ended with incomplete MCP tool call');
           if (!accumulator.sawTurnEnded) throw new Error('Cursor stream ended before turnEnded');
           for (const part of finalizeCursorStream(accumulator)) controller.enqueue(part);
           controller.close();
