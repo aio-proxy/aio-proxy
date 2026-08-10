@@ -2,7 +2,7 @@ import type { LanguageModelV4FinishReason, LanguageModelV4StreamPart, LanguageMo
 import { fromBinary, toJson } from '@bufbuild/protobuf';
 import { ValueSchema } from '@bufbuild/protobuf/wkt';
 
-import type { InteractionUpdate } from '../../../gen/agent_pb';
+import type { InteractionUpdate, McpArgs } from '../../../gen/agent_pb';
 import { fromWireName } from '../../../tool-names';
 
 export type CursorStreamAccumulator = {
@@ -60,6 +60,25 @@ export function mapInteractionUpdate(
     default:
       return [];
   }
+}
+
+export function mapMcpExec(mcp: McpArgs, accumulator: CursorStreamAccumulator): LanguageModelV4StreamPart[] {
+  const nestedToolCallId = mcp.toolCallId || crypto.randomUUID();
+  const outerCallId =
+    [...accumulator.tools].find(([, tool]) => tool.nestedToolCallId === nestedToolCallId)?.[0] ?? nestedToolCallId;
+  const value = {
+    callId: outerCallId,
+    toolCall: {
+      tool: {
+        case: 'mcpToolCall',
+        value: { args: { ...mcp, name: mcp.name || mcp.toolName, toolCallId: nestedToolCallId } },
+      },
+    },
+  };
+  return [
+    ...(accumulator.tools.has(outerCallId) ? [] : startMcpTool(accumulator, value)),
+    ...completeMcpTool(accumulator, value),
+  ];
 }
 
 export function finalizeCursorStream(accumulator: CursorStreamAccumulator): LanguageModelV4StreamPart[] {

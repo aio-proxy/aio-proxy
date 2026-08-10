@@ -6,7 +6,9 @@ import { create, toBinary } from '@bufbuild/protobuf';
 import {
   AgentServerMessageSchema,
   ConversationStateStructureSchema,
+  ExecServerMessageSchema,
   InteractionUpdateSchema,
+  McpArgsSchema,
 } from '../../gen/agent_pb';
 import type { ConnectFrame } from '../../wire/frame';
 import { frameConnectMessage } from '../../wire/frame';
@@ -276,6 +278,45 @@ test('a completed MCP call suspends without waiting for upstream turnEnded', asy
     if (timer !== undefined) clearTimeout(timer);
     release();
   }
+});
+
+test('an mcpArgs exec suspends instead of acknowledging the caller tool', async () => {
+  const exec = frameServer({
+    case: 'execServerMessage',
+    value: create(ExecServerMessageSchema, {
+      id: 7,
+      execId: 'exec-7',
+      message: {
+        case: 'mcpArgs',
+        value: create(McpArgsSchema, {
+          name: 'search',
+          toolCallId: 'nested-call',
+          args: { query: new TextEncoder().encode('"docs"') },
+        }),
+      },
+    }),
+  });
+  const { transport, writes } = fakeTransport([exec]);
+  const { stream, result } = runCursorTurn({
+    transport,
+    accessToken: 'tok',
+    requestBytes: new Uint8Array([1]),
+    initialConversationState: create(ConversationStateStructureSchema, {}),
+    requestContextTools: [],
+    blobStore: new Map(),
+    heartbeatMs: 0,
+  });
+  const parts = await drainParts(stream);
+  const turn = await result;
+
+  expect(parts.find((part) => part.type === 'tool-call')).toMatchObject({
+    toolCallId: 'nested-call',
+    toolName: 'search',
+    input: '{"query":"docs"}',
+  });
+  expect(parts.at(-1)).toMatchObject({ type: 'finish', finishReason: { unified: 'tool-calls' } });
+  expect(writes).toHaveLength(1);
+  expect([...turn.pendingToolCalls]).toEqual([['nested-call', 'nested-call']]);
 });
 
 test.each([

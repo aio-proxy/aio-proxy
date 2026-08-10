@@ -11,7 +11,7 @@ import {
 import { CONNECT_END_STREAM_FLAG, frameConnectMessage, parseConnectEndStream } from '../../wire/frame';
 import type { CursorH2Stream, CursorTransport } from '../../wire/transport';
 import { encodeExecResponse, encodeKvResponse } from '../client-messages';
-import { createCursorStreamAccumulator, finalizeCursorStream, mapInteractionUpdate } from '../stream';
+import { createCursorStreamAccumulator, finalizeCursorStream, mapInteractionUpdate, mapMcpExec } from '../stream';
 
 export type CursorTurnResult = {
   readonly conversationState: ConversationStateStructure;
@@ -85,26 +85,30 @@ export function runCursorTurn(input: {
               if (accumulator.sawTurnEnded && accumulator.tools.size > 0) {
                 throw new Error('Cursor turn ended with incomplete MCP tool call');
               }
-              if (accumulator.completedToolCalls.size > 0 && accumulator.tools.size === 0) {
-                for (const part of finalizeCursorStream(accumulator)) controller.enqueue(part);
-                h2.end();
-                controller.close();
-                settle({
-                  conversationState,
-                  checkpointUsable: false,
-                  pendingToolCalls: new Map(accumulator.completedToolCalls),
-                  blobStore: input.blobStore,
-                });
-                return;
-              }
             } else if (message.case === 'kvServerMessage') {
               const reply = encodeKvResponse(message.value, input.blobStore);
               if (reply !== undefined) h2.write(reply);
             } else if (message.case === 'execServerMessage') {
-              h2.write(encodeExecResponse(message.value, input.requestContextTools));
+              if (message.value.message.case === 'mcpArgs') {
+                for (const part of mapMcpExec(message.value.message.value, accumulator)) controller.enqueue(part);
+              } else {
+                h2.write(encodeExecResponse(message.value, input.requestContextTools));
+              }
             } else if (message.case === 'conversationCheckpointUpdate') {
               conversationState = message.value;
               sawCheckpoint = true;
+            }
+            if (accumulator.completedToolCalls.size > 0 && accumulator.tools.size === 0) {
+              for (const part of finalizeCursorStream(accumulator)) controller.enqueue(part);
+              h2.end();
+              controller.close();
+              settle({
+                conversationState,
+                checkpointUsable: false,
+                pendingToolCalls: new Map(accumulator.completedToolCalls),
+                blobStore: input.blobStore,
+              });
+              return;
             }
           }
           const trailers = await h2.trailers;
