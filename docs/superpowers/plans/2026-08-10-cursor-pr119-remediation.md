@@ -133,3 +133,21 @@
 - If real Cursor credentials are available locally without exposing them, run the documented text/tool/discovery smoke; otherwise record this as the only external validation gap and do not fabricate success.
 - Run a whole-branch correctness review against `origin/main`; fix Critical/Important findings in one bounded fix wave and re-review once.
 - Confirm `git status`, PR mergeability, and GitHub checks; push `codex/cursor-oauth-spec` to update PR #119.
+
+## Review Follow-up: Missing Checkpoint and Token Usage
+
+### Task 7: Require observed upstream state before reporting exact state
+
+**Files:**
+
+- `packages/plugins/cursor/src/runtime/driver.ts`
+- `packages/plugins/cursor/src/runtime/driver.test.ts`
+- `packages/plugins/cursor/src/runtime/stream/interaction.ts`
+- `packages/plugins/cursor/src/runtime/stream/interaction.test.ts`
+
+- RED: a clean text turn without `conversationCheckpointUpdate` returns `checkpointUsable: false`; the same turn with an update returns `true`.
+- Add one local `sawCheckpoint` flag in `runCursorTurn`; set it only when a checkpoint update is decoded and require it for clean-turn reuse.
+- GREEN: run the focused driver test.
+- RED: finalizing text without any `tokenDelta` reports `outputTokens.total: undefined`; receiving token deltas still reports their sum, including an explicit zero delta.
+- Add one accumulator `sawTokenDelta` flag; set it for every decoded token update and use it to distinguish unknown usage from the observed total.
+- GREEN: run the focused interaction test, then the Cursor package unit suite.
