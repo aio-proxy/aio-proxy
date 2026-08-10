@@ -31,6 +31,7 @@ const transport: CursorTransport = {
     const stream: CursorH2Stream = {
       write: () => {},
       end: () => {},
+      close: () => {},
       frames: (async function* () {})(),
       trailers: Promise.resolve({ 'grpc-status': '0' }),
     };

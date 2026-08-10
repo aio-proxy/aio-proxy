@@ -9,7 +9,7 @@ import {
   type McpToolDefinition,
 } from '../gen/agent_pb';
 import { CONNECT_END_STREAM_FLAG, frameConnectMessage, parseConnectEndStream } from '../wire/frame';
-import type { CursorTransport } from '../wire/transport';
+import type { CursorH2Stream, CursorTransport } from '../wire/transport';
 import { encodeExecResponse, encodeKvResponse } from './client-messages';
 import { createCursorStreamAccumulator, finalizeCursorStream, mapInteractionUpdate } from './stream';
 
@@ -39,71 +39,100 @@ export function runCursorTurn(input: {
     settle = resolve;
     fail = reject;
   });
+  let activeRun: CursorH2Stream | undefined;
+  let heartbeat: ReturnType<typeof setInterval> | undefined;
+  let canceled = false;
+  let cancelReason: unknown;
+  const stopHeartbeat = (): void => {
+    if (heartbeat === undefined) return;
+    clearInterval(heartbeat);
+    heartbeat = undefined;
+  };
+  const closeRun = (reason?: unknown): void => {
+    const run = activeRun;
+    activeRun = undefined;
+    run?.close(reason);
+  };
 
   const stream = new ReadableStream<LanguageModelV4StreamPart>({
-    async start(controller) {
-      let heartbeat: ReturnType<typeof setInterval> | undefined;
-      try {
-        const h2 = await input.transport.openRun({
-          accessToken: input.accessToken,
-          ...(input.baseUrl === undefined ? {} : { baseUrl: input.baseUrl }),
-          ...(input.signal === undefined ? {} : { signal: input.signal }),
-        });
-        h2.write(frameConnectMessage(input.requestBytes));
-        if (input.heartbeatMs !== undefined && input.heartbeatMs > 0) {
-          heartbeat = setInterval(() => h2.write(heartbeatFrame()), input.heartbeatMs);
-        }
-        let endStreamError: string | undefined;
-        for await (const frame of h2.frames) {
-          if ((frame.flags & CONNECT_END_STREAM_FLAG) !== 0) {
-            endStreamError = parseConnectEndStream(frame.payload).error?.message;
-            continue;
+    start(controller) {
+      void (async () => {
+        try {
+          const h2 = await input.transport.openRun({
+            accessToken: input.accessToken,
+            ...(input.baseUrl === undefined ? {} : { baseUrl: input.baseUrl }),
+            ...(input.signal === undefined ? {} : { signal: input.signal }),
+          });
+          activeRun = h2;
+          if (canceled) {
+            closeRun(cancelReason);
+            return;
           }
-          const message = fromBinary(AgentServerMessageSchema, frame.payload).message;
-          if (message.case === 'interactionUpdate') {
-            for (const part of mapInteractionUpdate(message.value, accumulator)) controller.enqueue(part);
-            if (accumulator.completedToolCalls.size > 0 && accumulator.tools.size === 0) {
-              for (const part of finalizeCursorStream(accumulator)) controller.enqueue(part);
-              h2.end();
-              controller.close();
-              settle({
-                conversationState,
-                checkpointUsable: false,
-                pendingToolCalls: new Map(accumulator.completedToolCalls),
-                blobStore: input.blobStore,
-              });
-              return;
+          h2.write(frameConnectMessage(input.requestBytes));
+          if (input.heartbeatMs !== undefined && input.heartbeatMs > 0) {
+            heartbeat = setInterval(() => h2.write(heartbeatFrame()), input.heartbeatMs);
+          }
+          let endStreamError: string | undefined;
+          for await (const frame of h2.frames) {
+            if ((frame.flags & CONNECT_END_STREAM_FLAG) !== 0) {
+              endStreamError = parseConnectEndStream(frame.payload).error?.message;
+              continue;
             }
-          } else if (message.case === 'kvServerMessage') {
-            const reply = encodeKvResponse(message.value, input.blobStore);
-            if (reply !== undefined) h2.write(reply);
-          } else if (message.case === 'execServerMessage') {
-            h2.write(encodeExecResponse(message.value, input.requestContextTools));
-          } else if (message.case === 'conversationCheckpointUpdate') {
-            conversationState = message.value;
+            const message = fromBinary(AgentServerMessageSchema, frame.payload).message;
+            if (message.case === 'interactionUpdate') {
+              for (const part of mapInteractionUpdate(message.value, accumulator)) controller.enqueue(part);
+              if (accumulator.completedToolCalls.size > 0 && accumulator.tools.size === 0) {
+                for (const part of finalizeCursorStream(accumulator)) controller.enqueue(part);
+                h2.end();
+                controller.close();
+                settle({
+                  conversationState,
+                  checkpointUsable: false,
+                  pendingToolCalls: new Map(accumulator.completedToolCalls),
+                  blobStore: input.blobStore,
+                });
+                return;
+              }
+            } else if (message.case === 'kvServerMessage') {
+              const reply = encodeKvResponse(message.value, input.blobStore);
+              if (reply !== undefined) h2.write(reply);
+            } else if (message.case === 'execServerMessage') {
+              h2.write(encodeExecResponse(message.value, input.requestContextTools));
+            } else if (message.case === 'conversationCheckpointUpdate') {
+              conversationState = message.value;
+            }
           }
+          const trailers = await h2.trailers;
+          if (endStreamError !== undefined) throw new Error(`Cursor stream error: ${endStreamError}`);
+          const grpcStatus = trailers['grpc-status'];
+          if (grpcStatus !== undefined && grpcStatus !== '0') {
+            throw new Error(`Cursor gRPC status ${grpcStatus}: ${trailers['grpc-message'] ?? ''}`);
+          }
+          if (!accumulator.sawTurnEnded) throw new Error('Cursor stream ended before turnEnded');
+          for (const part of finalizeCursorStream(accumulator)) controller.enqueue(part);
+          controller.close();
+          settle({
+            conversationState,
+            checkpointUsable: accumulator.toolCalls === 0,
+            pendingToolCalls: new Map(),
+            blobStore: input.blobStore,
+          });
+        } catch (error) {
+          closeRun(error);
+          if (!canceled) controller.error(error);
+          fail(error);
+        } finally {
+          stopHeartbeat();
+          closeRun();
         }
-        const trailers = await h2.trailers;
-        if (endStreamError !== undefined) throw new Error(`Cursor stream error: ${endStreamError}`);
-        const grpcStatus = trailers['grpc-status'];
-        if (grpcStatus !== undefined && grpcStatus !== '0') {
-          throw new Error(`Cursor gRPC status ${grpcStatus}: ${trailers['grpc-message'] ?? ''}`);
-        }
-        if (!accumulator.sawTurnEnded) throw new Error('Cursor stream ended before turnEnded');
-        for (const part of finalizeCursorStream(accumulator)) controller.enqueue(part);
-        controller.close();
-        settle({
-          conversationState,
-          checkpointUsable: accumulator.toolCalls === 0,
-          pendingToolCalls: new Map(),
-          blobStore: input.blobStore,
-        });
-      } catch (error) {
-        controller.error(error);
-        fail(error);
-      } finally {
-        if (heartbeat !== undefined) clearInterval(heartbeat);
-      }
+      })();
+    },
+    cancel(reason) {
+      canceled = true;
+      cancelReason = reason === undefined ? new Error('Cursor stream canceled') : reason;
+      stopHeartbeat();
+      closeRun(cancelReason);
+      fail(cancelReason);
     },
   });
   return { stream, result };

@@ -20,6 +20,17 @@ test('ConnectFrameDecoder reassembles a frame split across two chunks', () => {
   expect([...frames[0]!.payload]).toEqual([9, 8, 7, 6]);
 });
 
+for (const [name, partial] of [
+  ['header', frameConnectMessage(new Uint8Array([1])).slice(0, 3)],
+  ['payload', frameConnectMessage(new Uint8Array([1, 2])).slice(0, 6)],
+] as const) {
+  test(`ConnectFrameDecoder rejects a partial ${name} at EOF`, () => {
+    const decoder = new ConnectFrameDecoder();
+    decoder.push(partial);
+    expect(() => decoder.finish()).toThrow('Truncated Cursor Connect frame');
+  });
+}
+
 test('parseConnectEndStream surfaces an envelope error', () => {
   const payload = new TextEncoder().encode(JSON.stringify({ error: { code: 'resource_exhausted', message: 'quota' } }));
   expect(parseConnectEndStream(payload)).toEqual({

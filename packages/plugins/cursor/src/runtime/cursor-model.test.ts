@@ -49,6 +49,7 @@ function makeTransport(): { transport: CursorTransport; runs: Uint8Array[][] } {
       const stream: CursorH2Stream = {
         write: (frame) => writes.push(frame),
         end: () => {},
+        close: () => {},
         frames: (async function* () {
           yield text('ok');
           yield turnEnded();
@@ -261,6 +262,7 @@ test('a failed attempt preserves the prior successful session checkpoint', async
       Promise.resolve({
         write: () => {},
         end: () => {},
+        close: () => {},
         frames: (async function* () {
           yield text('partial');
         })(),

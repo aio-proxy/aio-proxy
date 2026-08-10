@@ -27,6 +27,10 @@ export class ConnectFrameDecoder {
     }
     return frames;
   }
+
+  finish(): void {
+    if (this.#buffer.length !== 0) throw new Error('Truncated Cursor Connect frame');
+  }
 }
 
 export function parseConnectEndStream(payload: Uint8Array): ConnectEndStream {

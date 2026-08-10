@@ -10,6 +10,7 @@ export const CURSOR_GET_USABLE_MODELS_PATH = '/agent.v1.AgentService/GetUsableMo
 export type CursorH2Stream = {
   write(frame: Uint8Array): void;
   end(): void;
+  close(reason?: unknown): void;
   frames: AsyncIterable<ConnectFrame>;
   trailers: Promise<Record<string, string>>;
 };
@@ -83,6 +84,7 @@ function createFrameSink(): FrameSink {
   const decoder = new ConnectFrameDecoder();
   const queue: ConnectFrame[] = [];
   let done = false;
+  let failed = false;
   let failure: unknown;
   let wake: (() => void) | null = null;
   const notify = (): void => {
@@ -92,14 +94,19 @@ function createFrameSink(): FrameSink {
   };
   return {
     push(chunk) {
+      if (done) return;
       for (const frame of decoder.push(chunk)) queue.push(frame);
       notify();
     },
     finish() {
+      if (done) return;
+      decoder.finish();
       done = true;
       notify();
     },
     fail(error) {
+      if (done) return;
+      failed = true;
       failure = error ?? new Error('Cursor run stream failed');
       done = true;
       notify();
@@ -112,7 +119,7 @@ function createFrameSink(): FrameSink {
             yield next;
             continue;
           }
-          if (failure) throw failure;
+          if (failed) throw failure;
           if (done) return;
           await new Promise<void>((resolve) => {
             wake = resolve;
@@ -136,97 +143,137 @@ export function createNodeHttp2Transport(dependencies?: { connect?: typeof http2
   const connect = dependencies?.connect ?? http2.connect;
   return {
     openRun({ accessToken, baseUrl = CURSOR_API_URL, signal }) {
+      if (signal?.aborted) {
+        return Promise.reject(
+          signal.reason === undefined ? new Error('Cursor run aborted before connecting') : signal.reason,
+        );
+      }
       const session = connect(baseUrl);
       const sink = createFrameSink();
       const trailers = Promise.withResolvers<Record<string, string>>();
-      let trailersSettled = false;
-      const resolveTrailers = (value: Record<string, string>): void => {
-        if (trailersSettled) return;
-        trailersSettled = true;
-        trailers.resolve(value);
-      };
-      session.on('error', (error) => sink.fail(mapH2TransportError(error, baseUrl)));
       const request = session.request({
         ':method': 'POST',
         ':path': CURSOR_RUN_PATH,
         ...buildRunHeaders({ accessToken }),
       });
-      request.on('data', (chunk: Buffer) => sink.push(chunk));
-      request.on('trailers', (received) => resolveTrailers(normalizeHeaders(received)));
-      request.on('end', () => {
-        resolveTrailers({});
-        sink.finish();
-      });
-      request.on('error', (error) => {
-        resolveTrailers({});
-        sink.fail(mapH2TransportError(error, baseUrl));
-      });
-      if (signal) {
-        if (signal.aborted) request.close();
-        signal.addEventListener('abort', () => {
+      let finished = false;
+      let requestEnded = false;
+      let receivedTrailers: Record<string, string> | undefined;
+      const endRequest = (): void => {
+        if (requestEnded) return;
+        requestEnded = true;
+        request.end();
+      };
+      const onAbort = (): void => {
+        finish(signal?.reason === undefined ? new Error('Cursor run aborted') : signal.reason, true);
+      };
+      const finish = (error?: unknown, closeRequest = false): void => {
+        if (finished) return;
+        finished = true;
+        signal?.removeEventListener('abort', onAbort);
+        let terminalError = error;
+        if (terminalError === undefined) {
+          try {
+            sink.finish();
+          } catch (caught) {
+            terminalError = caught;
+            sink.fail(caught);
+          }
+        } else {
+          sink.fail(terminalError);
+        }
+        trailers.resolve(terminalError === undefined ? (receivedTrailers ?? {}) : {});
+        if (terminalError === undefined) {
+          endRequest();
+          if (closeRequest) request.close();
+          session.close();
+        } else {
           request.close();
-          resolveTrailers({});
-          sink.fail(new Error('Cursor run aborted'));
-        });
+          session.destroy();
+        }
+      };
+      session.on('error', (error) => finish(mapH2TransportError(error, baseUrl), true));
+      session.on('close', () => finish(new Error('Cursor HTTP/2 session closed before Run EOF'), true));
+      request.on('data', (chunk: Buffer) => {
+        try {
+          sink.push(chunk);
+        } catch (error) {
+          finish(error, true);
+        }
+      });
+      request.on('trailers', (received) => {
+        if (!finished) receivedTrailers = normalizeHeaders(received);
+      });
+      request.on('end', () => finish());
+      request.on('error', (error) => finish(mapH2TransportError(error, baseUrl), true));
+      request.on('close', () => finish(new Error('Cursor Run request closed before response EOF'), true));
+      if (signal) {
+        signal.addEventListener('abort', onAbort, { once: true });
+        if (signal.aborted) onAbort();
       }
       return Promise.resolve({
         write: (frame: Uint8Array) => {
           request.write(frame);
         },
-        end: () => {
-          request.end();
-        },
+        end: endRequest,
+        close: (reason?: unknown) => finish(reason, true),
         frames: sink.iterable,
         trailers: trailers.promise,
       });
     },
     unary({ path, headers, body, baseUrl = CURSOR_API_URL, timeoutMs, signal }) {
+      if (signal?.aborted) {
+        return Promise.reject(
+          signal.reason === undefined ? new Error('Cursor unary request aborted before connecting') : signal.reason,
+        );
+      }
       const session = connect(baseUrl);
       const { promise, resolve, reject } = Promise.withResolvers<{ status: number; body: Uint8Array }>();
       let settled = false;
-      const settle = (run: () => void): void => {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const request = session.request({ ':method': 'POST', ':path': path, ...headers });
+      const onAbort = (): void => {
+        settle({
+          error: signal?.reason === undefined ? new Error('Cursor unary request aborted') : signal.reason,
+        });
+      };
+      const settle = (outcome: { value: { status: number; body: Uint8Array } } | { error: unknown }): void => {
         if (settled) return;
         settled = true;
-        clearTimeout(timer);
-        run();
-      };
-      const timer = setTimeout(() => {
-        settle(() => {
+        if (timer !== undefined) clearTimeout(timer);
+        signal?.removeEventListener('abort', onAbort);
+        if ('error' in outcome) {
+          request.close();
           session.destroy();
-          reject(new Error(`Cursor unary request to ${path} timed out after ${timeoutMs}ms`));
-        });
-      }, timeoutMs);
-      session.on('error', (error) => settle(() => reject(mapH2TransportError(error, baseUrl))));
-      const request = session.request({ ':method': 'POST', ':path': path, ...headers });
+          reject(outcome.error);
+        } else {
+          session.close();
+          resolve(outcome.value);
+        }
+      };
+      timer = setTimeout(
+        () => settle({ error: new Error(`Cursor unary request to ${path} timed out after ${timeoutMs}ms`) }),
+        timeoutMs,
+      );
+      session.on('error', (error) => settle({ error: mapH2TransportError(error, baseUrl) }));
+      session.on('close', () => settle({ error: new Error('Cursor unary HTTP/2 session closed before response EOF') }));
       const chunks: Buffer[] = [];
       let status = 0;
       request.on('response', (received) => {
         status = Number(received[':status'] ?? 0);
       });
       request.on('data', (chunk: Buffer) => chunks.push(chunk));
-      request.on('end', () =>
-        settle(() => {
-          session.close();
-          resolve({ status, body: new Uint8Array(Buffer.concat(chunks)) });
-        }),
-      );
-      request.on('error', (error) =>
-        settle(() => {
-          session.close();
-          reject(mapH2TransportError(error, baseUrl));
-        }),
-      );
+      request.on('end', () => settle({ value: { status, body: new Uint8Array(Buffer.concat(chunks)) } }));
+      request.on('error', (error) => settle({ error: mapH2TransportError(error, baseUrl) }));
+      request.on('close', () => settle({ error: new Error('Cursor unary request closed before response EOF') }));
       if (signal) {
-        if (signal.aborted) request.close();
-        signal.addEventListener('abort', () =>
-          settle(() => {
-            request.close();
-            reject(new Error('Cursor unary request aborted'));
-          }),
-        );
+        signal.addEventListener('abort', onAbort, { once: true });
+        if (signal.aborted) onAbort();
       }
-      if (body.length > 0) request.end(Buffer.from(body));
-      else request.end();
+      if (!settled) {
+        if (body.length > 0) request.end(Buffer.from(body));
+        else request.end();
+      }
       return promise;
     },
   };
