@@ -148,6 +148,43 @@ test('records response owner when response ownership and affinity select the sam
   );
 });
 
+test('passes observed routing continuity to a model attempt', async () => {
+  let routingContinuity: unknown;
+  const owner = modelProvider({
+    id: 'owner',
+    invoke: (invokeRequest) => {
+      routingContinuity = invokeRequest.routingContinuity;
+      return textStream('owner');
+    },
+  });
+  const route = defineProviderRouteSource([owner]);
+  const source = {
+    ...route.source,
+    logicalSessionStore: new LogicalSessionStore({
+      repository: {
+        resolveResponse: () => ({
+          status: 'owned',
+          owner: { identity: { source: 'body-session', id: 'session-1' }, providerId: 'owner' },
+        }),
+        findAffinity: () => ({ providerId: 'owner', revision: 7, active: true }),
+      },
+    }),
+  };
+
+  const response = await request(source, {
+    model: REQUESTED_MODEL,
+    input: 'ping',
+    previous_response_id: 'resp-1',
+  });
+  await response.json();
+
+  expect(routingContinuity).toEqual({
+    observedAffinity: { providerId: 'owner', revision: 7, active: true },
+    responseOwnerProviderId: 'owner',
+    updatesAffinity: true,
+  });
+});
+
 function request(
   source: ProviderRouteSource,
   body: Record<string, unknown>,

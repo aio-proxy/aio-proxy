@@ -23,7 +23,6 @@ import {
   createCursorUserMessage,
   extractV4UserText,
   hasMatchingPendingToolResult,
-  v4UserHasImages,
 } from './history';
 
 export type CursorRunState = {
@@ -62,7 +61,7 @@ export function buildCursorRunRequestBytes(input: {
   const active = prompt[activeIndex];
   const activeUserContent = active?.role === 'user' ? active.content : undefined;
   const activeText = activeUserContent ? extractV4UserText(activeUserContent) : '';
-  const isUserAction = activeUserContent !== undefined && (activeText.length > 0 || v4UserHasImages(activeUserContent));
+  const isUserAction = activeUserContent !== undefined;
 
   const action = create(ConversationActionSchema, {
     action: isUserAction
@@ -82,18 +81,17 @@ export function buildCursorRunRequestBytes(input: {
   const promptHeadMatches =
     cachedHead.length === systemPromptIds.length &&
     systemPromptIds.every((id, index) => Buffer.from(cachedHead[index]!).equals(id));
+  const reusableState =
+    state.conversationState && (isPendingResume || promptHeadMatches) ? state.conversationState : undefined;
   const baseState =
-    state.conversationState && (isPendingResume || promptHeadMatches)
-      ? state.conversationState
-      : create(ConversationStateStructureSchema, { rootPromptMessagesJson: systemPromptIds });
-  const baseTurns = isPendingResume && promptTurns.length === 0 ? baseState.turns : promptTurns;
+    reusableState ?? create(ConversationStateStructureSchema, { rootPromptMessagesJson: systemPromptIds });
+  const baseTurns = reusableState?.turns ?? promptTurns;
   const patched = isPendingResume
     ? applyMcpToolResults({ prompt, turns: baseTurns, pendingToolCalls, blobStore })
     : { turns: baseTurns, pendingToolCalls: new Map<string, string>() };
   const rootPromptMessagesJson =
-    isPendingResume && promptTurns.length === 0
-      ? baseState.rootPromptMessagesJson
-      : buildRootPromptMessagesJson(prompt, systemPromptIds, blobStore, historyActiveIndex);
+    reusableState?.rootPromptMessagesJson ??
+    buildRootPromptMessagesJson(prompt, systemPromptIds, blobStore, historyActiveIndex);
 
   const conversationState = create(ConversationStateStructureSchema, {
     ...baseState,

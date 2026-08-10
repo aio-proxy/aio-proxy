@@ -148,6 +148,7 @@ function completeMcpTool(accumulator: CursorStreamAccumulator, value: unknown): 
 function flushIncompleteTool(accumulator: CursorStreamAccumulator): LanguageModelV4StreamPart[] {
   const parts: LanguageModelV4StreamPart[] = [];
   for (const [outerCallId, tool] of accumulator.tools) {
+    accumulator.completedToolCalls.set(outerCallId, tool.nestedToolCallId);
     parts.push(
       { type: 'tool-input-end', id: outerCallId },
       {

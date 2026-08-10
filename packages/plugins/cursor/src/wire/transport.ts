@@ -149,13 +149,19 @@ export function createNodeHttp2Transport(dependencies?: { connect?: typeof http2
         );
       }
       const session = connect(baseUrl);
+      let request: http2.ClientHttp2Stream;
+      try {
+        request = session.request({
+          ':method': 'POST',
+          ':path': CURSOR_RUN_PATH,
+          ...buildRunHeaders({ accessToken }),
+        });
+      } catch (error) {
+        session.destroy();
+        return Promise.reject(mapH2TransportError(error, baseUrl));
+      }
       const sink = createFrameSink();
       const trailers = Promise.withResolvers<Record<string, string>>();
-      const request = session.request({
-        ':method': 'POST',
-        ':path': CURSOR_RUN_PATH,
-        ...buildRunHeaders({ accessToken }),
-      });
       let finished = false;
       let requestEnded = false;
       let receivedTrailers: Record<string, string> | undefined;
@@ -228,10 +234,16 @@ export function createNodeHttp2Transport(dependencies?: { connect?: typeof http2
         );
       }
       const session = connect(baseUrl);
+      let request: http2.ClientHttp2Stream;
+      try {
+        request = session.request({ ':method': 'POST', ':path': path, ...headers });
+      } catch (error) {
+        session.destroy();
+        return Promise.reject(mapH2TransportError(error, baseUrl));
+      }
       const { promise, resolve, reject } = Promise.withResolvers<{ status: number; body: Uint8Array }>();
       let settled = false;
       let timer: ReturnType<typeof setTimeout> | undefined;
-      const request = session.request({ ':method': 'POST', ':path': path, ...headers });
       const onAbort = (): void => {
         settle({
           error: signal?.reason === undefined ? new Error('Cursor unary request aborted') : signal.reason,

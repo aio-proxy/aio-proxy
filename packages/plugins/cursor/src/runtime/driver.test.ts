@@ -253,6 +253,43 @@ test('a completed MCP call suspends without waiting for upstream turnEnded', asy
   }
 });
 
+test('a turn-ended incomplete MCP call persists the mapping for every emitted tool call', async () => {
+  const started = frameServer({
+    case: 'interactionUpdate',
+    value: create(InteractionUpdateSchema, {
+      message: {
+        case: 'toolCallStarted',
+        value: {
+          callId: 'outer-incomplete',
+          toolCall: {
+            tool: {
+              case: 'mcpToolCall',
+              value: { args: { name: 'search', toolCallId: 'nested-incomplete', args: {} } },
+            },
+          },
+        },
+      },
+    } as never),
+  });
+  const { transport } = fakeTransport([started, turnEndedFrame()]);
+  const { stream, result } = runCursorTurn({
+    transport,
+    accessToken: 'tok',
+    requestBytes: new Uint8Array([1]),
+    initialConversationState: create(ConversationStateStructureSchema, {}),
+    requestContextTools: [],
+    blobStore: new Map(),
+    heartbeatMs: 0,
+  });
+
+  const parts = await drainParts(stream);
+  const turn = await result;
+
+  expect(parts.find((part) => part.type === 'tool-call')).toMatchObject({ toolCallId: 'outer-incomplete' });
+  expect([...turn.pendingToolCalls]).toEqual([['outer-incomplete', 'nested-incomplete']]);
+  expect(turn.checkpointUsable).toBe(false);
+});
+
 test('reader cancellation stops heartbeats, closes the Run, and rejects the result', async () => {
   const { transport, writes, closeReasons, started } = cancelableTransport();
   const reason = new Error('reader canceled');

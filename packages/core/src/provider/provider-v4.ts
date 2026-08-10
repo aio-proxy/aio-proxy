@@ -32,6 +32,10 @@ export function createProviderV4Invoke(providerId: string, provider: ProviderV4)
         aioProxy: {
           ...(request.settings?.providerOptions?.aioProxy as Record<string, unknown> | undefined),
           logicalRequest: request.context,
+          routingContinuity: {
+            ...request.routingContinuity,
+            routedProviderId: providerId,
+          },
           ...(request.providerTools === undefined || request.providerTools.length === 0
             ? {}
             : { providerTools: request.providerTools }),

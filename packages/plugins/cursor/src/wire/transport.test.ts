@@ -37,12 +37,16 @@ class FakeSession extends EventEmitter {
   destroyCalls = 0;
   requestCalls = 0;
 
-  constructor(readonly stream: FakeClientHttp2Stream) {
+  constructor(
+    readonly stream: FakeClientHttp2Stream,
+    readonly requestError?: Error,
+  ) {
     super();
   }
 
   request(): FakeClientHttp2Stream {
     this.requestCalls += 1;
+    if (this.requestError !== undefined) throw this.requestError;
     return this.stream;
   }
 
@@ -55,14 +59,14 @@ class FakeSession extends EventEmitter {
   }
 }
 
-function transportHarness(): {
+function transportHarness(requestError?: Error): {
   transport: ReturnType<typeof createNodeHttp2Transport>;
   request: FakeClientHttp2Stream;
   session: FakeSession;
   connectCalls: () => number;
 } {
   const request = new FakeClientHttp2Stream();
-  const session = new FakeSession(request);
+  const session = new FakeSession(request, requestError);
   let calls = 0;
   return {
     request,
@@ -207,6 +211,21 @@ test('openRun rejects an already-aborted signal before connecting', async () => 
   expect(session.requestCalls).toBe(0);
 });
 
+test('openRun rejects and destroys its dedicated session when request construction throws', async () => {
+  const error = new Error('request construction failed');
+  const { transport, request, session, connectCalls } = transportHarness(error);
+  let pending!: Promise<unknown>;
+
+  expect(() => {
+    pending = transport.openRun({ accessToken: 'tok' });
+  }).not.toThrow();
+  await expect(pending).rejects.toBe(error);
+  expect(connectCalls()).toBe(1);
+  expect(session.requestCalls).toBe(1);
+  expect(session.destroyCalls).toBe(1);
+  expect(request.closeCalls).toBe(0);
+});
+
 test('openRun rejects a truncated frame after an earlier complete frame', async () => {
   const { transport, request, session } = transportHarness();
   const stream = await transport.openRun({ accessToken: 'tok' });
@@ -257,6 +276,21 @@ test('unary rejects an already-aborted signal before connecting', async () => {
   expect(connectCalls()).toBe(0);
   expect(session.requestCalls).toBe(0);
   expect(error).toBe(reason);
+});
+
+test('unary rejects and destroys its dedicated session when request construction throws', async () => {
+  const error = new Error('request construction failed');
+  const { transport, request, session, connectCalls } = transportHarness(error);
+  let pending!: Promise<unknown>;
+
+  expect(() => {
+    pending = transport.unary({ path: '/test', headers: {}, body: new Uint8Array(), timeoutMs: 10 });
+  }).not.toThrow();
+  await expect(pending).rejects.toBe(error);
+  expect(connectCalls()).toBe(1);
+  expect(session.requestCalls).toBe(1);
+  expect(session.destroyCalls).toBe(1);
+  expect(request.closeCalls).toBe(0);
 });
 
 test('unary preserves an in-flight abort reason and destroys its session', async () => {

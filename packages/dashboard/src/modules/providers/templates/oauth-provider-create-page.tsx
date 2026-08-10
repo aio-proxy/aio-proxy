@@ -3,7 +3,7 @@ import type { DashboardOAuthCapability, DashboardOAuthSession } from '@aio-proxy
 import { Button } from '@aio-proxy/ui/components/button';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 
 import { PageContainer } from '@/components/page-container';
 import { queryKeys } from '@/lib/query-keys';
@@ -34,6 +34,11 @@ export const OAuthProviderCreatePage: React.FC<OAuthProviderCreatePageProps> = (
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const popup = useRef<Window | null>(null);
+  const closeUnclaimedPopup = useCallback(() => {
+    const unclaimed = popup.current;
+    popup.current = null;
+    unclaimed?.close();
+  }, []);
   const capabilitiesQuery = useQuery(oauthCapabilitiesQueryOptions());
   const sessionQuery = useQuery(oauthSessionQueryOptions(sessionId ?? ''));
   const startMutation = useMutation({
@@ -51,15 +56,18 @@ export const OAuthProviderCreatePage: React.FC<OAuthProviderCreatePageProps> = (
     if (capability === undefined) return;
     const account = oauthAccountSubmission(capability.form, value);
     popup.current = window.open('', '_blank');
-    startMutation.mutate({
-      capability: { plugin: capability.plugin, capability: capability.capability },
-      ...account,
-      clearSecrets: [...account.clearSecrets],
-      providerPatch: {
-        enabled: true,
-        ...(value.proxy === undefined ? {} : { proxy: value.proxy }),
+    startMutation.mutate(
+      {
+        capability: { plugin: capability.plugin, capability: capability.capability },
+        ...account,
+        clearSecrets: [...account.clearSecrets],
+        providerPatch: {
+          enabled: true,
+          ...(value.proxy === undefined ? {} : { proxy: value.proxy }),
+        },
       },
-    });
+      { onError: closeUnclaimedPopup },
+    );
   });
   const session: DashboardOAuthSession | undefined =
     sessionQuery.data?.session ??
@@ -72,6 +80,7 @@ export const OAuthProviderCreatePage: React.FC<OAuthProviderCreatePageProps> = (
       popup.current.location.href = session.status === 'authorize_url' ? session.url : session.authorizationUrl;
       popup.current = null;
     }
+    if (session?.status === 'failed' || session?.status === 'cancelled') closeUnclaimedPopup();
     if (session?.status === 'succeeded') {
       void queryClient.invalidateQueries({ queryKey: queryKeys.providers });
       void navigate({
@@ -82,7 +91,9 @@ export const OAuthProviderCreatePage: React.FC<OAuthProviderCreatePageProps> = (
         },
       });
     }
-  }, [navigate, queryClient, session]);
+  }, [closeUnclaimedPopup, navigate, queryClient, session]);
+
+  useEffect(() => closeUnclaimedPopup, [closeUnclaimedPopup]);
 
   return (
     <PageContainer

@@ -35,6 +35,7 @@ const oauth: DashboardOAuthProviderEdit = {
 };
 
 const mocks = rs.hoisted(() => ({
+  start: rs.fn(),
   session: undefined as DashboardOAuthSession | undefined,
   sessionError: false,
   transformsValid: true,
@@ -42,7 +43,7 @@ const mocks = rs.hoisted(() => ({
 
 rs.mock('@tanstack/react-query', () => ({
   queryOptions: <T,>(options: T) => options,
-  useMutation: () => ({ mutate: rs.fn(), isPending: false }),
+  useMutation: () => ({ mutate: mocks.start, isPending: false }),
   useQuery: () => ({
     data: mocks.session === undefined ? undefined : { session: mocks.session },
     isError: mocks.sessionError,
@@ -61,7 +62,13 @@ afterEach(() => {
   mocks.session = undefined;
   mocks.sessionError = false;
   mocks.transformsValid = true;
+  mocks.start.mockReset();
 });
+
+const startEditAuthorization = async () => {
+  screen.getByRole('button', { name: /Reauthorize|重新授权/u }).click();
+  await waitFor(() => expect(mocks.start).toHaveBeenCalled());
+};
 
 test('OAuth edit page groups terminal actions in the intended order', () => {
   render(<OAuthProviderEditPage provider={provider} oauth={oauth} sessionId={undefined} onSessionIdChange={rs.fn()} />);
@@ -114,7 +121,8 @@ test('OAuth edit page presents only a redacted configured proxy as unchanged', (
 });
 
 test('OAuth edit page navigates the pre-opened popup when authorization is ready', async () => {
-  const popup = { location: { href: '' } } as Window;
+  const close = rs.fn();
+  const popup = { location: { href: '' }, close } as unknown as Window;
   const open = rs.spyOn(window, 'open').mockReturnValue(popup);
   const view = render(
     <OAuthProviderEditPage provider={provider} oauth={oauth} sessionId={undefined} onSessionIdChange={rs.fn()} />,
@@ -156,7 +164,56 @@ test('OAuth edit page navigates the pre-opened popup when authorization is ready
   );
 
   expect(popup.location.href).toBe('https://example.com/authorize');
+
+  mocks.session = {
+    id: '0198bfc4-239e-7d62-bcb0-a9e0849cabaf',
+    status: 'cancelled',
+  };
+  view.rerender(
+    <OAuthProviderEditPage
+      provider={provider}
+      oauth={oauth}
+      sessionId="0198bfc4-239e-7d62-bcb0-a9e0849cabaf"
+      onSessionIdChange={rs.fn()}
+    />,
+  );
+  view.unmount();
+
+  expect(close).not.toHaveBeenCalled();
 });
+
+test.each(['start failure', 'failed', 'cancelled', 'unavailable', 'unmount'] as const)(
+  'OAuth edit page closes its unclaimed popup on %s',
+  async (scenario) => {
+    const close = rs.fn();
+    rs.spyOn(window, 'open').mockReturnValue({ location: { href: '' }, close } as unknown as Window);
+    const view = render(
+      <OAuthProviderEditPage provider={provider} oauth={oauth} sessionId={undefined} onSessionIdChange={rs.fn()} />,
+    );
+    await startEditAuthorization();
+
+    if (scenario === 'start failure') {
+      const onError = (mocks.start.mock.calls.at(-1)?.[1] as { onError?: () => void } | undefined)?.onError;
+      expect(typeof onError).toBe('function');
+      onError?.();
+    } else if (scenario === 'unmount') {
+      view.unmount();
+    } else {
+      mocks.sessionError = scenario === 'unavailable';
+      mocks.session =
+        scenario === 'failed'
+          ? { id: 'session', status: 'failed', code: 'START_FAILED' }
+          : scenario === 'cancelled'
+            ? { id: 'session', status: 'cancelled' }
+            : undefined;
+      view.rerender(
+        <OAuthProviderEditPage provider={provider} oauth={oauth} sessionId="session" onSessionIdChange={rs.fn()} />,
+      );
+    }
+
+    await waitFor(() => expect(close).toHaveBeenCalledTimes(1));
+  },
+);
 
 test('OAuth edit page hides edit actions while an existing session loads', () => {
   render(

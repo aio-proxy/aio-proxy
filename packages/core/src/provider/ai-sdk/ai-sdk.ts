@@ -29,6 +29,16 @@ type AiSdkProviderOptions = Readonly<Record<string, Readonly<Record<string, unkn
   readonly aioProxy?: Readonly<Record<string, unknown>>;
 };
 
+export type AiSdkRoutingContinuity = {
+  readonly observedAffinity?: {
+    readonly providerId: string;
+    readonly revision: number;
+    readonly active: boolean;
+  };
+  readonly responseOwnerProviderId?: string;
+  readonly updatesAffinity: boolean;
+};
+
 export type AiSdkProviderInvokeRequest = {
   readonly context: LogicalRequestContext;
   readonly modelId: string;
@@ -36,6 +46,7 @@ export type AiSdkProviderInvokeRequest = {
   readonly settings?: AiSdkCallSettings & { readonly providerOptions?: AiSdkProviderOptions };
   readonly tools?: ToolSet;
   readonly providerTools?: readonly ProviderExecutedTool[];
+  readonly routingContinuity?: AiSdkRoutingContinuity;
   readonly signal?: AbortSignal;
 };
 

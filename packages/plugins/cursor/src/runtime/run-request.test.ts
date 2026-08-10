@@ -1,9 +1,10 @@
 import { expect, test } from 'bun:test';
 
 import type { LanguageModelV4Prompt } from '@ai-sdk/provider';
-import { fromBinary } from '@bufbuild/protobuf';
+import { create, fromBinary } from '@bufbuild/protobuf';
 
-import { AgentClientMessageSchema } from '../gen/agent_pb';
+import { AgentClientMessageSchema, ConversationStateStructureSchema } from '../gen/agent_pb';
+import { storeCursorBlob } from '../store/blobs';
 import { buildCursorRunRequestBytes } from './run-request';
 
 const decodeRun = (bytes: Uint8Array) => {
@@ -39,6 +40,75 @@ test('a trailing user message selects userMessageAction', () => {
   expect(run.action?.action.case).toBe('userMessageAction');
   expect(run.conversationId).toBe('conv-1');
   expect(run.modelDetails?.modelId).toBe('claude-4.5-sonnet');
+});
+
+test('an explicit empty trailing user message selects userMessageAction', () => {
+  const run = decodeRun(build([{ role: 'user', content: [] }]).requestBytes);
+
+  expect(run.action?.action.case).toBe('userMessageAction');
+});
+
+test('a matching full-history request preserves the reusable Cursor checkpoint', () => {
+  const blobStore = new Map<string, Uint8Array>();
+  const systemPrompt = storeCursorBlob(
+    blobStore,
+    new TextEncoder().encode(JSON.stringify({ role: 'system', content: 'sys' })),
+  );
+  const cachedHistory = storeCursorBlob(blobStore, new TextEncoder().encode('cached-history'));
+  const cachedTurn = storeCursorBlob(blobStore, new TextEncoder().encode('cached-turn'));
+  const { conversationState } = buildCursorRunRequestBytes({
+    prompt: [
+      { role: 'system', content: 'sys' },
+      { role: 'user', content: [{ type: 'text', text: 'lossy reconstructed user' }] },
+      { role: 'assistant', content: [{ type: 'text', text: 'lossy reconstructed answer' }] },
+      { role: 'user', content: [{ type: 'text', text: 'next turn' }] },
+    ],
+    wireModelId: 'claude-4.5-sonnet',
+    displayModelId: 'claude-4.5-sonnet',
+    displayName: 'Claude',
+    maxMode: false,
+    state: {
+      conversationId: 'conv-checkpoint',
+      blobStore,
+      conversationState: create(ConversationStateStructureSchema, {
+        rootPromptMessagesJson: [systemPrompt, cachedHistory],
+        turns: [cachedTurn],
+      }),
+    },
+  });
+
+  expect(conversationState.rootPromptMessagesJson).toEqual([systemPrompt, cachedHistory]);
+  expect(conversationState.turns).toEqual([cachedTurn]);
+});
+
+test('a changed system prompt rebuilds instead of reusing a checkpoint', () => {
+  const blobStore = new Map<string, Uint8Array>();
+  const staleSystemPrompt = storeCursorBlob(
+    blobStore,
+    new TextEncoder().encode(JSON.stringify({ role: 'system', content: 'old system' })),
+  );
+  const staleTurn = storeCursorBlob(blobStore, new TextEncoder().encode('stale-turn'));
+  const { conversationState } = buildCursorRunRequestBytes({
+    prompt: [
+      { role: 'system', content: 'new system' },
+      { role: 'user', content: [{ type: 'text', text: 'next turn' }] },
+    ],
+    wireModelId: 'claude-4.5-sonnet',
+    displayModelId: 'claude-4.5-sonnet',
+    displayName: 'Claude',
+    maxMode: false,
+    state: {
+      conversationId: 'conv-checkpoint',
+      blobStore,
+      conversationState: create(ConversationStateStructureSchema, {
+        rootPromptMessagesJson: [staleSystemPrompt],
+        turns: [staleTurn],
+      }),
+    },
+  });
+
+  expect(conversationState.rootPromptMessagesJson).not.toEqual([staleSystemPrompt]);
+  expect(conversationState.turns).toEqual([]);
 });
 
 test('a trailing tool result selects resumeAction', () => {

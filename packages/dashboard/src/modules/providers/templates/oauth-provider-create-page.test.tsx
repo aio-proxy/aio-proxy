@@ -54,6 +54,15 @@ afterEach(() => {
   mocks.sessionError = false;
 });
 
+const startCreateAuthorization = async () => {
+  const picker = screen.getByRole('combobox', { name: /OAuth provider|OAuth 提供商/u });
+  fireEvent.keyDown(picker, { key: 'ArrowDown' });
+  fireEvent.change(picker, { target: { value: 'Example' } });
+  fireEvent.click(await screen.findByRole('option', { name: /Example OAuth/u }));
+  fireEvent.click(screen.getByRole('button', { name: /Continue authorization|继续授权/u }));
+  await waitFor(() => expect(mocks.start).toHaveBeenCalled());
+};
+
 test('OAuth create page selects a capability and renders its account fields before authorization', async () => {
   render(<OAuthProviderCreatePage sessionId={undefined} onSessionIdChange={rs.fn()} />);
 
@@ -96,12 +105,14 @@ test('OAuth create page submits a typed provider proxy patch without using the s
   await waitFor(() =>
     expect(mocks.start).toHaveBeenCalledWith(
       expect.objectContaining({ providerPatch: expect.objectContaining({ enabled: true, proxy: false }) }),
+      expect.objectContaining({ onError: expect.any(Function) }),
     ),
   );
 });
 
 test('OAuth create page navigates the pre-opened popup when authorization is ready', async () => {
-  const popup = { location: { href: '' } } as Window;
+  const close = rs.fn();
+  const popup = { location: { href: '' }, close } as unknown as Window;
   const open = rs.spyOn(window, 'open').mockReturnValue(popup);
   const view = render(<OAuthProviderCreatePage sessionId={undefined} onSessionIdChange={rs.fn()} />);
 
@@ -135,7 +146,48 @@ test('OAuth create page navigates the pre-opened popup when authorization is rea
   );
 
   expect(popup.location.href).toBe('https://example.com/authorize');
+
+  mocks.session = {
+    id: '0198bfc4-239e-7d62-bcb0-a9e0849cabaf',
+    status: 'failed',
+    code: 'FAILED_AFTER_NAVIGATION',
+  };
+  view.rerender(
+    <OAuthProviderCreatePage sessionId="0198bfc4-239e-7d62-bcb0-a9e0849cabaf" onSessionIdChange={rs.fn()} />,
+  );
+  view.unmount();
+
+  expect(close).not.toHaveBeenCalled();
 });
+
+test.each(['start failure', 'failed', 'cancelled', 'unavailable', 'unmount'] as const)(
+  'OAuth create page closes its unclaimed popup on %s',
+  async (scenario) => {
+    const close = rs.fn();
+    rs.spyOn(window, 'open').mockReturnValue({ location: { href: '' }, close } as unknown as Window);
+    const view = render(<OAuthProviderCreatePage sessionId={undefined} onSessionIdChange={rs.fn()} />);
+    await startCreateAuthorization();
+
+    if (scenario === 'start failure') {
+      const onError = (mocks.start.mock.calls.at(-1)?.[1] as { onError?: () => void } | undefined)?.onError;
+      expect(typeof onError).toBe('function');
+      onError?.();
+    } else if (scenario === 'unmount') {
+      view.unmount();
+    } else {
+      mocks.sessionError = scenario === 'unavailable';
+      mocks.session =
+        scenario === 'failed'
+          ? { id: 'session', status: 'failed', code: 'START_FAILED' }
+          : scenario === 'cancelled'
+            ? { id: 'session', status: 'cancelled' }
+            : undefined;
+      view.rerender(<OAuthProviderCreatePage sessionId="session" onSessionIdChange={rs.fn()} />);
+    }
+
+    await waitFor(() => expect(close).toHaveBeenCalledTimes(1));
+  },
+);
 
 test('OAuth create page hides the setup form while an existing session loads', () => {
   render(<OAuthProviderCreatePage sessionId="0198bfc4-239e-7d62-bcb0-a9e0849cabaf" onSessionIdChange={rs.fn()} />);

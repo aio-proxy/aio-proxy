@@ -114,7 +114,7 @@ export function runCursorTurn(input: {
           settle({
             conversationState,
             checkpointUsable: accumulator.toolCalls === 0,
-            pendingToolCalls: new Map(),
+            pendingToolCalls: new Map(accumulator.completedToolCalls),
             blobStore: input.blobStore,
           });
         } catch (error) {

@@ -21,7 +21,6 @@
     "@ai-sdk/provider": "catalog:",
     "@aio-proxy/plugin-sdk": "workspace:*",
     "@bufbuild/protobuf": "catalog:",
-    "es-toolkit": "catalog:",
     "lru-cache": "catalog:"
   },
   "devDependencies": {

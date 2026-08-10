@@ -64,6 +64,13 @@ function createAttemptLoopContext<TRequest, TContext>(
     session,
     source,
     logicalRequest: resolution.context,
+    routingContinuity: {
+      ...(resolution.affinity === undefined ? {} : { observedAffinity: resolution.affinity }),
+      ...(resolution.responseOwner === undefined
+        ? {}
+        : { responseOwnerProviderId: resolution.responseOwner.providerId }),
+      updatesAffinity: resolution.resolvedBy !== 'generated',
+    },
     sessionIdentity: resolution.identity,
     streamRequested,
     emitter: createAttemptEmitter(session, streamRequested),

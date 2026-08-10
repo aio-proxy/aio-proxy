@@ -33,3 +33,32 @@ test('evicts the oldest entry past max', () => {
   expect(store.get('k1')).toBeUndefined();
   expect(store.get('k2')?.conversationId).toBe('c2');
 });
+
+test('bounds total retained bytes and drops an oversized same-key replacement', () => {
+  const store = new CursorSessionStore({ maxSize: 20 });
+  store.set('first', {
+    conversationId: 'c',
+    conversationState: new Uint8Array(2),
+    blobs: new Map([['blob', new Uint8Array(4)]]),
+    checkpointUsable: true,
+    pendingToolCalls: new Map(),
+  });
+  store.set('next', {
+    conversationId: 'c',
+    blobs: new Map(),
+    checkpointUsable: true,
+    pendingToolCalls: new Map(),
+  });
+
+  expect(store.get('first')).toBeUndefined();
+  expect(store.get('next')).toBeDefined();
+
+  store.set('next', {
+    conversationId: 'c',
+    blobs: new Map(),
+    checkpointUsable: true,
+    pendingToolCalls: new Map([['outer-id', 'nested-id']]),
+  });
+
+  expect(store.get('next')).toBeUndefined();
+});

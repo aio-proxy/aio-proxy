@@ -120,6 +120,30 @@ test('interleaved MCP calls keep outer and nested IDs uncrossed', () => {
   ]);
 });
 
+test('a flushed incomplete MCP call keeps its outer-to-nested resume mapping', () => {
+  const accumulator = createCursorStreamAccumulator();
+  mapInteractionUpdate(
+    update({
+      case: 'toolCallStarted',
+      value: {
+        callId: 'outer-incomplete',
+        toolCall: {
+          tool: {
+            case: 'mcpToolCall',
+            value: { args: { name: 'search', toolCallId: 'nested-incomplete', args: {} } },
+          },
+        },
+      },
+    }),
+    accumulator,
+  );
+
+  const emitted = finalizeCursorStream(accumulator).find((part) => part.type === 'tool-call');
+
+  expect(emitted).toMatchObject({ type: 'tool-call', toolCallId: 'outer-incomplete' });
+  expect([...accumulator.completedToolCalls]).toEqual([['outer-incomplete', 'nested-incomplete']]);
+});
+
 test('token deltas accumulate into usage.outputTokens.total', () => {
   const accumulator = createCursorStreamAccumulator();
   mapInteractionUpdate(update({ case: 'tokenDelta', value: { tokens: 7 } }), accumulator);
