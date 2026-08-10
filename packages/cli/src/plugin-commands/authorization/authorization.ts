@@ -1,7 +1,7 @@
 import { getLocale, m } from '@aio-proxy/i18n';
 import { type AuthorizationPort, LocalizedTextSchema, resolveLocalizedText } from '@aio-proxy/plugin-sdk';
 
-import { AuthorizationUrlInvalidError, runLoopbackAuthorization } from './loopback';
+import { AuthorizationUrlInvalidError, runLoopbackAuthorization } from '../loopback';
 
 export type CliAuthorizationDeps = {
   readonly copy: {

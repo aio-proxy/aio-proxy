@@ -2,9 +2,9 @@ import { expect, spyOn, test } from 'bun:test';
 
 import type { CredentialPort, ModelCatalog } from '@aio-proxy/plugin-sdk';
 
-import { createCursorRuntime } from '..';
-import type { CursorCredential } from '../../schema';
-import type { CursorH2Stream, CursorTransport } from '../../wire/transport';
+import type { CursorCredential } from '../schema';
+import type { CursorH2Stream, CursorTransport } from '../wire/transport';
+import { createCursorRuntime } from './runtime';
 
 const catalog: ModelCatalog = {
   language: [{ id: 'claude-4.5-sonnet', displayName: 'Claude 4.5 Sonnet' }],
