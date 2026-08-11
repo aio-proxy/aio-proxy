@@ -35,6 +35,7 @@ export const oauthSessionQueryOptions = (id: string) =>
       return status === undefined ||
         status === 'preparing' ||
         status === 'device_code' ||
+        status === 'authorize_url' ||
         status === 'loopback' ||
         status === 'discovering'
         ? 500

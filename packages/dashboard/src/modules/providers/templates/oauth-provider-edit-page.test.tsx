@@ -1,6 +1,6 @@
-import type { DashboardOAuthProviderEdit, OAuthProvider } from '@aio-proxy/types';
+import type { DashboardOAuthProviderEdit, DashboardOAuthSession, OAuthProvider } from '@aio-proxy/types';
 import { afterEach, expect, rs, test } from '@rstest/core';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import { useEffect } from 'react';
 
 import { OAuthProviderEditPage } from './oauth-provider-edit-page';
@@ -34,12 +34,21 @@ const oauth: DashboardOAuthProviderEdit = {
   models: ['model-1', 'model-2'],
 };
 
-const mocks = rs.hoisted(() => ({ sessionError: false, transformsValid: true }));
+const mocks = rs.hoisted(() => ({
+  start: rs.fn(),
+  session: undefined as DashboardOAuthSession | undefined,
+  sessionError: false,
+  transformsValid: true,
+}));
 
 rs.mock('@tanstack/react-query', () => ({
   queryOptions: <T,>(options: T) => options,
-  useMutation: () => ({ mutate: rs.fn(), isPending: false }),
-  useQuery: () => ({ data: undefined, isError: mocks.sessionError, refetch: rs.fn() }),
+  useMutation: () => ({ mutate: mocks.start, isPending: false }),
+  useQuery: () => ({
+    data: mocks.session === undefined ? undefined : { session: mocks.session },
+    isError: mocks.sessionError,
+    refetch: rs.fn(),
+  }),
   useQueryClient: () => ({ invalidateQueries: rs.fn() }),
 }));
 
@@ -49,9 +58,17 @@ rs.mock('@tanstack/react-router', () => ({
 }));
 
 afterEach(() => {
+  rs.restoreAllMocks();
+  mocks.session = undefined;
   mocks.sessionError = false;
   mocks.transformsValid = true;
+  mocks.start.mockReset();
 });
+
+const startEditAuthorization = async () => {
+  screen.getByRole('button', { name: /Reauthorize|重新授权/u }).click();
+  await waitFor(() => expect(mocks.start).toHaveBeenCalled());
+};
 
 test('OAuth edit page groups terminal actions in the intended order', () => {
   render(<OAuthProviderEditPage provider={provider} oauth={oauth} sessionId={undefined} onSessionIdChange={rs.fn()} />);
@@ -102,6 +119,101 @@ test('OAuth edit page presents only a redacted configured proxy as unchanged', (
     /Configured \(unchanged\)|已配置（保持不变）/u,
   );
 });
+
+test('OAuth edit page navigates the pre-opened popup when authorization is ready', async () => {
+  const close = rs.fn();
+  const popup = { location: { href: '' }, close } as unknown as Window;
+  const open = rs.spyOn(window, 'open').mockReturnValue(popup);
+  const view = render(
+    <OAuthProviderEditPage provider={provider} oauth={oauth} sessionId={undefined} onSessionIdChange={rs.fn()} />,
+  );
+
+  screen.getByRole('button', { name: /Reauthorize|重新授权/u }).click();
+  await waitFor(() => expect(open).toHaveBeenCalledTimes(1));
+
+  mocks.session = {
+    id: '0198bfc4-239e-7d62-bcb0-a9e0849cabaf',
+    status: 'authorize_url',
+    url: 'https://example.com/authorize',
+  };
+  view.rerender(
+    <OAuthProviderEditPage
+      provider={provider}
+      oauth={oauth}
+      sessionId="0198bfc4-239e-7d62-bcb0-a9e0849cabaf"
+      onSessionIdChange={rs.fn()}
+    />,
+  );
+
+  expect(popup.location.href).toBe('https://example.com/authorize');
+  expect(open).toHaveBeenCalledTimes(1);
+
+  mocks.session = {
+    id: '0198bfc4-239e-7d62-bcb0-a9e0849cabaf',
+    status: 'loopback',
+    authorizationUrl: 'https://example.com/loopback',
+    allowManualCallback: false,
+  };
+  view.rerender(
+    <OAuthProviderEditPage
+      provider={provider}
+      oauth={oauth}
+      sessionId="0198bfc4-239e-7d62-bcb0-a9e0849cabaf"
+      onSessionIdChange={rs.fn()}
+    />,
+  );
+
+  expect(popup.location.href).toBe('https://example.com/authorize');
+
+  mocks.session = {
+    id: '0198bfc4-239e-7d62-bcb0-a9e0849cabaf',
+    status: 'cancelled',
+  };
+  view.rerender(
+    <OAuthProviderEditPage
+      provider={provider}
+      oauth={oauth}
+      sessionId="0198bfc4-239e-7d62-bcb0-a9e0849cabaf"
+      onSessionIdChange={rs.fn()}
+    />,
+  );
+  view.unmount();
+
+  expect(close).not.toHaveBeenCalled();
+});
+
+test.each(['start failure', 'failed', 'cancelled', 'unavailable', 'unmount'] as const)(
+  'OAuth edit page closes its unclaimed popup on %s',
+  async (scenario) => {
+    const close = rs.fn();
+    rs.spyOn(window, 'open').mockReturnValue({ location: { href: '' }, close } as unknown as Window);
+    const view = render(
+      <OAuthProviderEditPage provider={provider} oauth={oauth} sessionId={undefined} onSessionIdChange={rs.fn()} />,
+    );
+    await startEditAuthorization();
+
+    if (scenario === 'start failure') {
+      const onError = (mocks.start.mock.calls.at(-1)?.[1] as { onError?: () => void } | undefined)?.onError;
+      expect(typeof onError).toBe('function');
+      onError?.();
+    } else if (scenario === 'unmount') {
+      view.unmount();
+    } else {
+      mocks.sessionError = scenario === 'unavailable';
+      mocks.session =
+        scenario === 'failed'
+          ? { id: 'session', status: 'failed', code: 'START_FAILED' }
+          : scenario === 'cancelled'
+            ? { id: 'session', status: 'cancelled' }
+            : undefined;
+      view.rerender(
+        <OAuthProviderEditPage provider={provider} oauth={oauth} sessionId="session" onSessionIdChange={rs.fn()} />,
+      );
+    }
+
+    await waitFor(() => expect(close).toHaveBeenCalledTimes(1));
+  },
+);
 
 test('OAuth edit page hides edit actions while an existing session loads', () => {
   render(

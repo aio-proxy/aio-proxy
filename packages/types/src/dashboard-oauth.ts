@@ -84,6 +84,12 @@ export const DashboardOAuthSessionSchema = z.discriminatedUnion('status', [
   }),
   z.strictObject({
     ...DashboardOAuthSessionCommonSchema.shape,
+    status: z.literal('authorize_url'),
+    url: z.url(),
+    instructions: DashboardLocalizedTextSchema.optional(),
+  }),
+  z.strictObject({
+    ...DashboardOAuthSessionCommonSchema.shape,
     status: z.literal('loopback'),
     authorizationUrl: z.url(),
     allowManualCallback: z.boolean(),

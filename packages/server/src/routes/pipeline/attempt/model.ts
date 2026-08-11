@@ -15,7 +15,7 @@ export async function attemptModelCandidate<TRequest, TContext>(
   model: ModelTransport,
   holder: InvocationHolder,
 ): Promise<AttemptStep> {
-  const { adapter, rawRequest, session, source, logicalRequest, release, deferRelease } = ctx;
+  const { adapter, rawRequest, session, source, logicalRequest, routingContinuity, release, deferRelease } = ctx;
   const { index, candidate, startedAt, observation, inAttempt } = slot;
   const provider = candidate.provider;
 
@@ -44,6 +44,7 @@ export async function attemptModelCandidate<TRequest, TContext>(
         context: logicalRequest,
         messages: candidateInvocation.messages,
         modelId: candidate.modelId,
+        routingContinuity,
         signal: rawRequest.signal,
         ...(candidateInvocation.settings === undefined ? {} : { settings: candidateInvocation.settings }),
         ...(candidateInvocation.tools === undefined ? {} : { tools: candidateInvocation.tools }),

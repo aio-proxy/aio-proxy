@@ -43,13 +43,25 @@ function validateQuota(value: unknown): NonNullable<OAuthAdapter['quota']> | und
 
 function validateAdapter(value: unknown): { readonly id: string; readonly adapter: OAuthAdapter } {
   if (!isRecord(value)) throw new Error('Invalid OAuth adapter');
-  const { id: rawId, displayName, description, account, credentials, login, createRuntime, catalog, quota } = value;
+  const {
+    id: rawId,
+    displayName,
+    description,
+    supportsProxy,
+    account,
+    credentials,
+    login,
+    createRuntime,
+    catalog,
+    quota,
+  } = value;
   const id = CapabilityIdSchema.parse(rawId);
   const validatedDisplayName = LocalizedTextSchema.safeParse(displayName);
   const validatedDescription = LocalizedTextSchema.safeParse(description);
   if (!validatedDisplayName.success || (description !== undefined && !validatedDescription.success)) {
     throw new Error('Invalid OAuth adapter');
   }
+  if (supportsProxy !== undefined && typeof supportsProxy !== 'boolean') throw new Error('Invalid OAuth adapter');
   if (!isRecord(account)) throw new Error('Invalid OAuth adapter');
   const { options } = account;
   const validatedOptions = validateConfigSpec(options).spec;
@@ -84,6 +96,7 @@ function validateAdapter(value: unknown): { readonly id: string; readonly adapte
       id,
       displayName: validatedDisplayName.data,
       ...(description === undefined ? {} : { description: validatedDescription.data as LocalizedText }),
+      ...(supportsProxy === undefined ? {} : { supportsProxy }),
       account: { options: validatedOptions },
       credentials: credentials as OAuthAdapter['credentials'],
       login: login.bind(value) as OAuthAdapter['login'],

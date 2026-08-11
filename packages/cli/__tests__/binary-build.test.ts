@@ -14,7 +14,7 @@ const hostSuffix = (): string => {
   return `${platform}-${architecture}`;
 };
 
-test('compiled binary lists all embedded OAuth plugins outside the workspace', () => {
+test('compiled platform package runs outside the workspace and includes its third-party notice', async () => {
   const suffix = hostSuffix();
   const build = Bun.spawnSync([process.execPath, 'packages/cli/scripts/build-binary.ts', suffix], {
     cwd: repoRoot,
@@ -26,7 +26,22 @@ test('compiled binary lists all embedded OAuth plugins outside the workspace', (
 
   const home = mkdtempSync(join(tmpdir(), 'aio-proxy-binary-home-'));
   const cwd = mkdtempSync(join(tmpdir(), 'aio-proxy-binary-cwd-'));
+  const packDir = mkdtempSync(join(tmpdir(), 'aio-proxy-binary-pack-'));
   try {
+    const pack = Bun.spawnSync([process.execPath, 'pm', 'pack', '--destination', packDir], {
+      cwd: join(repoRoot, 'npm', `cli-${suffix}`),
+      stderr: 'pipe',
+      stdout: 'pipe',
+    });
+    expect(pack.exitCode).toBe(0);
+    const [tarball] = await Array.fromAsync(new Bun.Glob('*.tgz').scan({ cwd: packDir, absolute: true }));
+    expect(tarball).toBeDefined();
+    const files = await new Bun.Archive(await Bun.file(tarball!).bytes()).files();
+    const notice = await files.get('package/bin/THIRD_PARTY_NOTICES')?.text();
+    expect(notice).toBeDefined();
+    expect(notice!).toContain('Copyright (c) 2025 Mario Zechner');
+    expect(notice!).toContain('Copyright (c) 2025-2026 Can Bölük');
+
     const result = Bun.spawnSync([join(repoRoot, 'npm', `cli-${suffix}`, 'bin', 'aio-proxy'), 'plugin', 'list'], {
       cwd,
       env: {
@@ -48,8 +63,10 @@ test('compiled binary lists all embedded OAuth plugins outside the workspace', (
     expect(stdout).toContain('@aio-proxy/plugin-openai-chatgpt');
     expect(stdout).toContain('@aio-proxy/plugin-google-antigravity');
     expect(stdout).toContain('@aio-proxy/plugin-kimi-code');
+    expect(stdout).toContain('@aio-proxy/plugin-cursor');
   } finally {
     rmSync(home, { recursive: true, force: true });
     rmSync(cwd, { recursive: true, force: true });
+    rmSync(packDir, { recursive: true, force: true });
   }
 }, 120_000);

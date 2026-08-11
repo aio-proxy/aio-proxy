@@ -7,6 +7,8 @@ import { Label } from '@aio-proxy/ui/components/label';
 import { Spinner } from '@aio-proxy/ui/components/spinner';
 import { useForm } from '@tanstack/react-form';
 
+import { resolveDashboardText } from '@/lib/localized-text';
+
 interface OAuthAuthorizationPanelProps {
   readonly session: DashboardOAuthSession;
   readonly onSubmitCallback: (callbackUrl: string) => void;
@@ -54,6 +56,15 @@ export const OAuthAuthorizationPanel: React.FC<OAuthAuthorizationPanelProps> = (
           </Button>
         </div>
       ) : null}
+      {session.status === 'authorize_url' ? (
+        <div className="space-y-3">
+          <h2 className="font-semibold">{m['dashboard.providers.oauth.authorize_url_title']()}</h2>
+          {session.instructions === undefined ? null : <p>{resolveDashboardText(session.instructions)}</p>}
+          <Button nativeButton={false} render={<a href={session.url} target="_blank" rel="noreferrer" />}>
+            {m['dashboard.providers.oauth.open_authorization']()}
+          </Button>
+        </div>
+      ) : null}
       {session.status === 'loopback' ? (
         <div className="space-y-3">
           <h2 className="font-semibold">{m['dashboard.providers.oauth.loopback_title']()}</h2>
@@ -96,6 +107,7 @@ export const OAuthAuthorizationPanel: React.FC<OAuthAuthorizationPanelProps> = (
       ) : null}
       {session.status === 'preparing' ||
       session.status === 'device_code' ||
+      session.status === 'authorize_url' ||
       session.status === 'loopback' ||
       session.status === 'discovering' ? (
         <Button type="button" variant="outline" onClick={onCancel} disabled={isPending}>

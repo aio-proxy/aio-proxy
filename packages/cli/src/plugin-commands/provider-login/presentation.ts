@@ -6,6 +6,7 @@ import {
   OAuthCapabilityUnavailableError,
   OAuthLoginResultValidationError,
   OAuthLoginTimeoutError,
+  OAuthProxyUnsupportedError,
   ProviderAccountAlreadyExistsError,
   ProviderAccountChangedError,
   ProviderCapabilityTargetMismatchError,
@@ -96,6 +97,11 @@ export function presentProviderLoginUserError(error: unknown): Error | null {
     return presentationError(m['cli.provider.login.error_timeout']());
   } else if (error instanceof OAuthCapabilityRequiredError) {
     return presentationError(m['cli.provider.login.error_capability_required']());
+  } else if (error instanceof OAuthProxyUnsupportedError) {
+    const reference = safeCapability(error);
+    return reference === null
+      ? null
+      : presentationError(m['cli.provider.login.error_proxy_unsupported']({ reference: canonical(reference) }));
   } else if (error instanceof OAuthCapabilityUnavailableError) {
     const reference = safeCapability(error);
     return reference === null

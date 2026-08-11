@@ -1,6 +1,35 @@
 import type { LoopbackRequest } from '@aio-proxy/plugin-sdk';
 
+import { protectedAuthorization } from './deadline';
 import { createAccount, expect, fixture, loginOAuthAccount, options, registry, test } from './test-support';
+
+test('protectedAuthorization forwards presentAuthorizeUrl and protects host failures', async () => {
+  const calls: Array<{ url: string }> = [];
+  const port = protectedAuthorization({
+    async presentDeviceCode() {},
+    async presentAuthorizeUrl(input) {
+      calls.push({ url: input.url });
+    },
+    async loopback() {
+      throw new Error('unused');
+    },
+  });
+  await port.presentAuthorizeUrl({ url: 'https://cursor.com/loginDeepControl' });
+  expect(calls).toEqual([{ url: 'https://cursor.com/loginDeepControl' }]);
+
+  const failing = protectedAuthorization({
+    async presentDeviceCode() {},
+    async presentAuthorizeUrl() {
+      throw new Error('host exploded');
+    },
+    async loopback() {
+      throw new Error('unused');
+    },
+  });
+  await expect(failing.presentAuthorizeUrl({ url: 'https://cursor.com/x' })).rejects.toThrow(
+    'HOST_AUTHORIZATION_FAILED',
+  );
+});
 
 test('rethrows host authorization failures by identity', async () => {
   const state = fixture();
@@ -9,6 +38,7 @@ test('rethrows host authorization failures by identity', async () => {
     createAccount(state, {
       createAuthorization: () => ({
         async presentDeviceCode() {},
+        async presentAuthorizeUrl() {},
         async loopback() {
           throw failure;
         },
@@ -107,6 +137,7 @@ test('authorization rejection preserves undefined by identity', async () => {
         async presentDeviceCode() {
           throw undefined;
         },
+        async presentAuthorizeUrl() {},
         async loopback() {
           return { code: 'unused', redirectUri: 'http://127.0.0.1/callback' };
         },

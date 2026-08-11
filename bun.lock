@@ -22,7 +22,7 @@
     },
     "npm/aio-proxy": {
       "name": "aio-proxy",
-      "version": "0.6.2",
+      "version": "0.6.4",
       "bin": {
         "aio-proxy": "bin/aio-proxy.js",
       },
@@ -35,23 +35,23 @@
     },
     "npm/cli-darwin-arm64": {
       "name": "@aio-proxy/cli-darwin-arm64",
-      "version": "0.6.2",
+      "version": "0.6.4",
     },
     "npm/cli-darwin-x64": {
       "name": "@aio-proxy/cli-darwin-x64",
-      "version": "0.6.2",
+      "version": "0.6.4",
     },
     "npm/cli-linux-arm64": {
       "name": "@aio-proxy/cli-linux-arm64",
-      "version": "0.6.2",
+      "version": "0.6.4",
     },
     "npm/cli-linux-x64": {
       "name": "@aio-proxy/cli-linux-x64",
-      "version": "0.6.2",
+      "version": "0.6.4",
     },
     "packages/cli": {
       "name": "@aio-proxy/cli",
-      "version": "0.6.2",
+      "version": "0.6.4",
       "dependencies": {
         "@aio-proxy/core": "workspace:*",
         "@aio-proxy/dashboard": "workspace:*",
@@ -72,7 +72,7 @@
     },
     "packages/core": {
       "name": "@aio-proxy/core",
-      "version": "0.6.2",
+      "version": "0.6.4",
       "dependencies": {
         "@ai-sdk/anthropic": "catalog:",
         "@ai-sdk/google": "catalog:",
@@ -84,6 +84,7 @@
         "@ai-sdk/xai": "catalog:",
         "@aio-proxy/i18n": "workspace:*",
         "@aio-proxy/logger": "workspace:*",
+        "@aio-proxy/plugin-cursor": "workspace:*",
         "@aio-proxy/plugin-github-copilot": "workspace:*",
         "@aio-proxy/plugin-google-antigravity": "workspace:*",
         "@aio-proxy/plugin-kimi-code": "workspace:*",
@@ -114,7 +115,7 @@
     },
     "packages/dashboard": {
       "name": "@aio-proxy/dashboard",
-      "version": "0.6.2",
+      "version": "0.6.4",
       "dependencies": {
         "@aio-proxy/i18n": "workspace:*",
         "@aio-proxy/plugin-sdk": "workspace:*",
@@ -169,7 +170,7 @@
     },
     "packages/i18n": {
       "name": "@aio-proxy/i18n",
-      "version": "0.6.2",
+      "version": "0.6.4",
       "dependencies": {
         "@inlang/paraglide-js": "catalog:",
         "date-fns": "catalog:",
@@ -185,7 +186,7 @@
     },
     "packages/infra": {
       "name": "@aio-proxy/infra",
-      "version": "0.6.2",
+      "version": "0.6.4",
       "dependencies": {
         "@rslib/core": "catalog:",
       },
@@ -195,7 +196,7 @@
     },
     "packages/logger": {
       "name": "@aio-proxy/logger",
-      "version": "0.6.2",
+      "version": "0.6.4",
       "dependencies": {
         "@aio-proxy/plugin-sdk": "workspace:*",
         "@logtape/file": "2.2.4",
@@ -209,7 +210,7 @@
     },
     "packages/plugin-sdk": {
       "name": "@aio-proxy/plugin-sdk",
-      "version": "0.6.2",
+      "version": "0.6.4",
       "dependencies": {
         "@ai-sdk/provider": "catalog:",
         "@date-fns/tz": "catalog:",
@@ -226,9 +227,25 @@
         "typescript": "catalog:",
       },
     },
+    "packages/plugins/cursor": {
+      "name": "@aio-proxy/plugin-cursor",
+      "version": "0.6.4",
+      "dependencies": {
+        "@ai-sdk/provider": "catalog:",
+        "@aio-proxy/plugin-sdk": "workspace:*",
+        "@bufbuild/protobuf": "catalog:",
+        "lru-cache": "catalog:",
+      },
+      "devDependencies": {
+        "@aio-proxy/infra": "workspace:*",
+        "@rslib/core": "catalog:",
+        "@types/bun": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
     "packages/plugins/github-copilot": {
       "name": "@aio-proxy/plugin-github-copilot",
-      "version": "0.6.2",
+      "version": "0.6.4",
       "dependencies": {
         "@ai-sdk/anthropic": "catalog:",
         "@ai-sdk/openai": "catalog:",
@@ -244,7 +261,7 @@
     },
     "packages/plugins/google-antigravity": {
       "name": "@aio-proxy/plugin-google-antigravity",
-      "version": "0.6.2",
+      "version": "0.6.4",
       "dependencies": {
         "@ai-sdk/google": "catalog:",
         "@ai-sdk/provider": "catalog:",
@@ -262,7 +279,7 @@
     },
     "packages/plugins/kimi-code": {
       "name": "@aio-proxy/plugin-kimi-code",
-      "version": "0.6.2",
+      "version": "0.6.4",
       "dependencies": {
         "@ai-sdk/anthropic": "catalog:",
         "@ai-sdk/openai-compatible": "catalog:",
@@ -277,7 +294,7 @@
     },
     "packages/plugins/openai-chatgpt": {
       "name": "@aio-proxy/plugin-openai-chatgpt",
-      "version": "0.6.2",
+      "version": "0.6.4",
       "dependencies": {
         "@ai-sdk/openai": "catalog:",
         "@aio-proxy/plugin-sdk": "workspace:*",
@@ -294,7 +311,7 @@
     },
     "packages/plugins/xai-grok": {
       "name": "@aio-proxy/plugin-xai-grok",
-      "version": "0.6.2",
+      "version": "0.6.4",
       "dependencies": {
         "@ai-sdk/openai": "catalog:",
         "@aio-proxy/plugin-sdk": "workspace:*",
@@ -308,7 +325,7 @@
     },
     "packages/server": {
       "name": "@aio-proxy/server",
-      "version": "0.6.2",
+      "version": "0.6.4",
       "dependencies": {
         "@aio-proxy/core": "workspace:*",
         "@aio-proxy/i18n": "workspace:*",
@@ -341,7 +358,7 @@
     },
     "packages/types": {
       "name": "@aio-proxy/types",
-      "version": "0.6.2",
+      "version": "0.6.4",
       "dependencies": {
         "es-toolkit": "catalog:",
         "zod": "catalog:",
@@ -354,7 +371,7 @@
     },
     "packages/ui": {
       "name": "@aio-proxy/ui",
-      "version": "0.6.2",
+      "version": "0.6.4",
       "dependencies": {
         "@base-ui/react": "^1.6.0",
         "@fontsource-variable/jetbrains-mono": "^5.3.0",
@@ -386,7 +403,6 @@
     },
     "website": {
       "name": "@aio-proxy/website",
-      "version": "0.5.4",
       "dependencies": {
         "@aio-proxy/ui": "workspace:*",
         "@rspress/core": "2.0.19",
@@ -418,6 +434,7 @@
     "@ai-sdk/provider": "4.0.1",
     "@ai-sdk/xai": "4.0.3",
     "@anthropic-ai/sdk": "0.111.0",
+    "@bufbuild/protobuf": "^2.10.2",
     "@date-fns/tz": "^1.5.0",
     "@google/genai": "2.11.0",
     "@inlang/paraglide-js": "2.22.0",
@@ -492,6 +509,8 @@
     "@aio-proxy/infra": ["@aio-proxy/infra@workspace:packages/infra"],
 
     "@aio-proxy/logger": ["@aio-proxy/logger@workspace:packages/logger"],
+
+    "@aio-proxy/plugin-cursor": ["@aio-proxy/plugin-cursor@workspace:packages/plugins/cursor"],
 
     "@aio-proxy/plugin-github-copilot": ["@aio-proxy/plugin-github-copilot@workspace:packages/plugins/github-copilot"],
 
@@ -602,6 +621,8 @@
     "@base-ui/utils": ["@base-ui/utils@0.3.1", "", { "dependencies": { "@babel/runtime": "^7.29.2", "@floating-ui/utils": "^0.2.11", "reselect": "^5.2.0", "use-sync-external-store": "^1.6.0" }, "peerDependencies": { "@types/react": "^17 || ^18 || ^19", "react": "^17 || ^18 || ^19", "react-dom": "^17 || ^18 || ^19" }, "optionalPeers": ["@types/react"] }, "sha512-gFFiltORVmW/N6IILTGxizP3PBpVpysqML1ALY5Vk0mH+7faVkCknOU31goYHN5Aoek2dkjxva1XOD2Ce9WuIg=="],
 
     "@braintree/sanitize-url": ["@braintree/sanitize-url@6.0.4", "", {}, "sha512-s3jaWicZd0pkP0jf5ysyHUI/RE7MHos6qlToFcGWXVp+ykHOy77OUMrfbgJ9it2C5bow7OIQwYYaHjk9XlBQ2A=="],
+
+    "@bufbuild/protobuf": ["@bufbuild/protobuf@2.13.0", "", {}, "sha512-acq7c49vxfm1ggJ95P70TX7ABDM0vxr1SYD3BB0o0jnBLB4OAqeHyKuN+cD3w80gXEDQ2zxHpR6CUeA+O/aU9g=="],
 
     "@changesets/apply-release-plan": ["@changesets/apply-release-plan@8.0.0-next.9", "", { "dependencies": { "@changesets/config": "^4.0.0-next.8", "@changesets/format": "^0.1.1", "@changesets/git": "^4.0.0-next.8", "@changesets/should-skip-package": "^1.0.0-next.8", "@changesets/types": "^7.0.0-next.8", "import-meta-resolve": "^4.2.0", "jsonc-parser": "^3.3.1", "semver": "^7.8.1" } }, "sha512-Q/mQVsu4R40WlrAQ9fYnGXUCqmDLq2ZnAIsduSHVR71MUN6I1lCxYuUyoEm5FT2nHtR2tg4epbqVdwRzZYrqfQ=="],
 

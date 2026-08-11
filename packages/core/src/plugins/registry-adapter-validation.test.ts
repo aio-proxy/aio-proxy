@@ -83,6 +83,7 @@ describe('PluginRegistry staging', () => {
     ['missing quota read', fakeAdapter('quota-read-missing', { quota: {} })],
     ['non-function quota read', fakeAdapter('quota-read-invalid', { quota: { read: 'invalid' } })],
     ['non-function quota reset', fakeAdapter('quota-reset-invalid', { quota: { read() {}, reset: 'invalid' } })],
+    ['non-boolean proxy support', fakeAdapter('proxy-support-invalid', { supportsProxy: 'false' })],
   ])('rejects %s atomically', async (_name, adapter) => {
     const snapshot = await loadPluginRegistry({
       ...base,
@@ -103,5 +104,25 @@ describe('PluginRegistry staging', () => {
       status: 'failed',
       diagnostic: { code: 'PLUGIN_LOAD_FAILED' },
     });
+  });
+
+  test('preserves an explicit false proxy capability', async () => {
+    const packageName = '@example/proxy-support';
+    const snapshot = await loadPluginRegistry({
+      ...base,
+      builtIns: [
+        {
+          packageName,
+          version: '1.0.0',
+          descriptor: definePlugin((api) => api.oauth.register(fakeAdapter('default', { supportsProxy: false }))),
+        },
+      ],
+      enablements: [{ packageName }],
+      importPackage: async () => {
+        throw new Error('must not import');
+      },
+    });
+
+    expect(snapshot.registry.resolveOAuth(packageName, 'default')?.supportsProxy).toBe(false);
   });
 });

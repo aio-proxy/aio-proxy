@@ -75,6 +75,70 @@ test('runtime creation timeout isolates a hung provider from another provider ma
   });
 }, 7_000);
 
+test('a proxy-unsupported adapter is unavailable before catalog or runtime work', async () => {
+  let discoveries = 0;
+  const fixture = runtimeFixture(
+    { kind: 'static' },
+    {
+      catalog: null,
+      supportsProxy: false,
+      discover: async () => {
+        discoveries++;
+        throw new Error('catalog discovery must not run');
+      },
+    },
+  );
+  const result = await materializePluginProvider({
+    config: {
+      id: 'person',
+      kind: ProviderKind.OAuth,
+      enabled: true,
+      plugin: '@example/oauth',
+      capability: 'default',
+    },
+    plugins: fixture.plugins,
+    repository: fixture.repository,
+    diagnostics,
+    logger: () => {},
+    onDiagnosticChanged: () => {},
+    effectiveProxy: 'https://proxy-user:proxy-password@proxy.example:8443',
+  });
+
+  expect(result.provider).toBeUndefined();
+  expect(result.catalogJob).toBeUndefined();
+  expect(result.state).toMatchObject({
+    status: 'unavailable',
+    diagnostic: { code: 'PROXY_UNSUPPORTED', retryable: false },
+  });
+  expect(fixture.createCalls()).toBe(0);
+  expect(discoveries).toBe(0);
+  expect(JSON.stringify(result)).not.toContain('proxy-password');
+  expect(JSON.stringify(result)).not.toContain('proxy.example');
+});
+
+test('a proxy-unsupported adapter remains available without an effective proxy', async () => {
+  const fixture = runtimeFixture({ kind: 'static' }, { supportsProxy: false });
+  const result = await materializePluginProvider({
+    config: {
+      id: 'person',
+      kind: ProviderKind.OAuth,
+      enabled: true,
+      plugin: '@example/oauth',
+      capability: 'default',
+    },
+    plugins: fixture.plugins,
+    repository: fixture.repository,
+    diagnostics,
+    logger: () => {},
+    onDiagnosticChanged: () => {},
+    effectiveProxy: null,
+  });
+
+  expect(result.state).toMatchObject({ status: 'ready' });
+  expect(result.provider).toBeDefined();
+  expect(fixture.createCalls()).toBe(1);
+});
+
 test('the provider config key and proxy override reach the materialized OAuth runtime', async () => {
   const fixture = runtimeFixture({ kind: 'static' }, { providerId: 'configured-key' });
   const serverHome = mkdtempSync(join(tmpdir(), 'aio-proxy-plugin-runtime-server-'));

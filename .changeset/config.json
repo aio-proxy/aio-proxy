@@ -19,6 +19,7 @@
       "@aio-proxy/i18n",
       "@aio-proxy/infra",
       "@aio-proxy/logger",
+      "@aio-proxy/plugin-cursor",
       "@aio-proxy/plugin-github-copilot",
       "@aio-proxy/plugin-google-antigravity",
       "@aio-proxy/plugin-kimi-code",

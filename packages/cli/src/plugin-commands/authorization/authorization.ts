@@ -1,7 +1,7 @@
 import { getLocale, m } from '@aio-proxy/i18n';
 import { type AuthorizationPort, LocalizedTextSchema, resolveLocalizedText } from '@aio-proxy/plugin-sdk';
 
-import { AuthorizationUrlInvalidError, runLoopbackAuthorization } from './loopback';
+import { AuthorizationUrlInvalidError, runLoopbackAuthorization } from '../loopback';
 
 export type CliAuthorizationDeps = {
   readonly copy: {
@@ -72,6 +72,23 @@ export function createCliAuthorizationPort(deps: CliAuthorizationDeps): Authoriz
       if (opened) {
         deps.print(deps.copy.openedAuthorizationPage);
       }
+      deps.print(url.href);
+      if (input.instructions !== undefined) {
+        const instructions = LocalizedTextSchema.safeParse(input.instructions);
+        if (instructions.success) {
+          deps.print(resolveLocalizedText(instructions.data, deps.locale ?? getLocale()));
+        }
+      }
+    },
+    async presentAuthorizeUrl(input) {
+      const url = requireHttpUrl(input.url);
+      let opened = false;
+      try {
+        opened = deps.openBrowser(url.href);
+      } catch {
+        opened = false;
+      }
+      if (opened) deps.print(deps.copy.openedAuthorizationPage);
       deps.print(url.href);
       if (input.instructions !== undefined) {
         const instructions = LocalizedTextSchema.safeParse(input.instructions);

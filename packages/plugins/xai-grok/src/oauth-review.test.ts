@@ -91,6 +91,7 @@ function loginContext(): OAuthLoginContext {
   return {
     authorization: {
       presentDeviceCode: async () => {},
+      presentAuthorizeUrl: async () => {},
       loopback: async () => {
         throw new Error('device flow must not use loopback');
       },

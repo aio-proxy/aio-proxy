@@ -69,6 +69,7 @@ export function createProviderLoginTestScope() {
       renderAccountOptions: async () => ({ publicValues: {}, secrets: {} }),
       createAuthorization: () => ({
         async presentDeviceCode() {},
+        async presentAuthorizeUrl() {},
         async loopback() {
           return { code: 'c', redirectUri: 'http://localhost' };
         },

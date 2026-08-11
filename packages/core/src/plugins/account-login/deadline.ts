@@ -38,6 +38,13 @@ export function protectedAuthorization(authorization: AuthorizationPort): Author
         throw protectHostAuthorizationError(error);
       }
     },
+    async presentAuthorizeUrl(input) {
+      try {
+        await authorization.presentAuthorizeUrl(input);
+      } catch (error) {
+        throw protectHostAuthorizationError(error);
+      }
+    },
     async loopback(input) {
       try {
         return await authorization.loopback(input);

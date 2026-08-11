@@ -3,6 +3,7 @@ import { expect, test } from 'bun:test';
 import type { ZodType } from 'zod';
 
 import * as dashboard from './dashboard-oauth';
+import { DashboardOAuthSessionSchema } from './dashboard-oauth';
 
 test('dashboard OAuth capability schema accepts safe form metadata and rejects secret values', () => {
   expect(dashboard).toHaveProperty('DashboardOAuthCapabilitySchema');
@@ -78,5 +79,24 @@ test('dashboard OAuth session start accepts a complete routing patch without ide
   expect(() => schema.parse({ ...request, providerPatch: { ...request.providerPatch, proxy: '****' } })).toThrow();
   expect(() =>
     schema.parse({ ...request, providerPatch: { ...request.providerPatch, proxy: 'socks5://localhost:1080' } }),
+  ).toThrow();
+});
+
+test('accepts an authorize_url session without a user code', () => {
+  const parsed = DashboardOAuthSessionSchema.parse({
+    id: '00000000-0000-4000-8000-000000000000',
+    status: 'authorize_url',
+    url: 'https://cursor.com/loginDeepControl?challenge=c&uuid=u&mode=login&redirectTarget=cli',
+  });
+  expect(parsed.status).toBe('authorize_url');
+});
+
+test('rejects an authorize_url session with a non-URL', () => {
+  expect(() =>
+    DashboardOAuthSessionSchema.parse({
+      id: '00000000-0000-4000-8000-000000000000',
+      status: 'authorize_url',
+      url: 'not-a-url',
+    }),
   ).toThrow();
 });

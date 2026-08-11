@@ -21,4 +21,20 @@ describe('createPluginDiagnosticFactory', () => {
     });
     expect(diagnostic.summary).not.toContain('secret');
   });
+
+  test('renders proxy rejection with the provider ID only', () => {
+    const diagnostic = createPluginDiagnosticFactory(() => 123)('PROXY_UNSUPPORTED', {
+      plugin: '@aio-proxy/plugin-cursor',
+      capability: 'default',
+      providerId: 'cursor-personal',
+      retryable: false,
+    });
+
+    expect(diagnostic).toEqual({
+      code: 'PROXY_UNSUPPORTED',
+      occurredAt: new Date(123).toISOString(),
+      retryable: false,
+      summary: 'Provider cursor-personal does not support the configured proxy',
+    });
+  });
 });

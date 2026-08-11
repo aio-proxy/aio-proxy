@@ -77,6 +77,7 @@ test('definite config write failure removes a newly staged account', async () =>
   const state = fixture();
   const real = state.config;
   const failing = {
+    read: () => real.read(),
     async transaction<T>(mutate: Parameters<AtomicConfigFile['transaction']>[0]): Promise<T> {
       await mutate(await real.read());
       throw new Error('write failed');
@@ -144,6 +145,7 @@ test('uncertain config commit preserves the staged account and marker', async ()
   const state = fixture();
   const real = state.config;
   const uncertain = {
+    read: () => real.read(),
     async transaction<T>(mutate: Parameters<AtomicConfigFile['transaction']>[0]): Promise<T> {
       await mutate(await real.read());
       throw new AtomicConfigCommitUncertainError();

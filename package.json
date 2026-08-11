@@ -19,6 +19,7 @@
       "@ai-sdk/xai": "4.0.3",
       "@ai-sdk/provider": "4.0.1",
       "@anthropic-ai/sdk": "0.111.0",
+      "@bufbuild/protobuf": "^2.10.2",
       "@google/genai": "2.11.0",
       "@opencode-ai/models": "0.0.11",
       "@openrouter/ai-sdk-provider": "2.10.0",

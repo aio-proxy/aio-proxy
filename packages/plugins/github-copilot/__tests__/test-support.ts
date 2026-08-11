@@ -11,6 +11,7 @@ export function loginContext(
   return {
     authorization: {
       presentDeviceCode: presentDeviceCode ?? (async () => undefined),
+      presentAuthorizeUrl: async () => undefined,
       loopback: async () => {
         throw new Error('unexpected loopback flow');
       },

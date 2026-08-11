@@ -79,6 +79,7 @@ describe('provider login adapter boundary', () => {
       registry: host.registry,
       createAuthorization: () => ({
         async presentDeviceCode() {},
+        async presentAuthorizeUrl() {},
         async loopback() {
           throw new LoopbackPortUnavailableError(1455);
         },

@@ -6,7 +6,7 @@ import type {
 } from '@aio-proxy/types';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { queryKeys } from '@/lib/query-keys';
 
@@ -39,6 +39,11 @@ export const useOAuthProviderEditPage = ({
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const popup = useRef<Window | null>(null);
+  const closeUnclaimedPopup = useCallback(() => {
+    const unclaimed = popup.current;
+    popup.current = null;
+    unclaimed?.close();
+  }, []);
   const forceReauthorization = useRef(false);
   const [aliasOpen, setAliasOpen] = useState(false);
   const [transformsValid, setTransformsValid] = useState(true);
@@ -94,7 +99,7 @@ export const useOAuthProviderEditPage = ({
         return;
       }
       popup.current = window.open('', '_blank');
-      startMutation.mutate(action.input);
+      startMutation.mutate(action.input, { onError: closeUnclaimedPopup });
     },
   );
   const session: DashboardOAuthSession | undefined =
@@ -104,10 +109,11 @@ export const useOAuthProviderEditPage = ({
       : undefined);
 
   useEffect(() => {
-    if (session?.status === 'loopback' && popup.current !== null) {
-      popup.current.location.href = session.authorizationUrl;
+    if ((session?.status === 'authorize_url' || session?.status === 'loopback') && popup.current !== null) {
+      popup.current.location.href = session.status === 'authorize_url' ? session.url : session.authorizationUrl;
       popup.current = null;
     }
+    if (session?.status === 'failed' || session?.status === 'cancelled') closeUnclaimedPopup();
     if (session?.status === 'succeeded') {
       void queryClient.invalidateQueries({ queryKey: queryKeys.providers });
       void navigate({
@@ -118,7 +124,9 @@ export const useOAuthProviderEditPage = ({
         },
       });
     }
-  }, [navigate, queryClient, session]);
+  }, [closeUnclaimedPopup, navigate, queryClient, session]);
+
+  useEffect(() => closeUnclaimedPopup, [closeUnclaimedPopup]);
 
   const submit = (reauthorize: boolean) => {
     if (!transformsValid) return;

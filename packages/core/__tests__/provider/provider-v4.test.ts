@@ -68,7 +68,7 @@ test('ProviderV4 invoke resolves the routed model through languageModel', () => 
   void stream.cancel();
 });
 
-test('ProviderV4 invoke injects logical context without overwriting provider options', async () => {
+test('ProviderV4 invoke injects internal routing metadata after caller provider options', async () => {
   let callOptions: Record<string, unknown> | undefined;
   const provider = {
     specificationVersion: 'v4',
@@ -114,9 +114,17 @@ test('ProviderV4 invoke injects logical context without overwriting provider opt
     context,
     messages: [{ role: 'user', content: 'hi' }],
     modelId: 'gpt-4o-mini',
+    routingContinuity: {
+      observedAffinity: { providerId: 'openai', revision: 4, active: true },
+      responseOwnerProviderId: 'openai',
+      updatesAffinity: true,
+    },
     settings: {
       providerOptions: {
-        aioProxy: { existing: 'keep' },
+        aioProxy: {
+          existing: 'keep',
+          routingContinuity: { routedProviderId: 'forged', updatesAffinity: false },
+        },
         google: { safetySettings: ['safe'] },
       },
     },
@@ -124,7 +132,16 @@ test('ProviderV4 invoke injects logical context without overwriting provider opt
   }
 
   expect(callOptions?.providerOptions).toEqual({
-    aioProxy: { existing: 'keep', logicalRequest: context },
+    aioProxy: {
+      existing: 'keep',
+      logicalRequest: context,
+      routingContinuity: {
+        routedProviderId: 'openai',
+        observedAffinity: { providerId: 'openai', revision: 4, active: true },
+        responseOwnerProviderId: 'openai',
+        updatesAffinity: true,
+      },
+    },
     google: { safetySettings: ['safe'] },
   });
 });
