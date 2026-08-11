@@ -1,5 +1,6 @@
 import { queryOptions } from '@tanstack/react-query';
 
+import { clearDashboardAuthToken, writeDashboardAuthToken } from '@/lib/dashboard-auth-token';
 import {
   dashboardClient,
   setDashboardUnauthorizedHandler,
@@ -15,7 +16,6 @@ import {
   markDashboardUnavailable,
   setDashboardAuthSession,
 } from '../auth-session-store';
-import { clearDashboardAuthToken, writeDashboardAuthToken } from '../dashboard-auth-token';
 
 setDashboardUnauthorizedHandler(markDashboardSessionExpired);
 setDashboardUnavailableHandler(markDashboardUnavailable);

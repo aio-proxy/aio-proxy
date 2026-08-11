@@ -7,17 +7,37 @@ import { requireApiKey } from './api-key-auth';
 const appWithKeys = () => {
   const app = new Hono();
   app.use(
-    '/v1/*',
+    '/*',
     requireApiKey(() => [{ key: 'caller-secret', label: 'CI' }]),
   );
   app.get('/v1/models', (context) =>
     context.json({ authorization: context.req.header('authorization'), apiKey: context.req.header('x-api-key') }),
   );
+  app.all('/*', (context) => context.text('ok'));
   return app;
 };
 
 test('rejects a request without a caller API key', async () => {
   expect((await appWithKeys().request('/v1/models')).status).toBe(401);
+});
+
+test('returns an Anthropic authentication error for invalid credentials', async () => {
+  const response = await appWithKeys().request('/v1/messages', { method: 'POST' });
+
+  expect(response.status).toBe(401);
+  expect(await response.json()).toEqual({
+    type: 'error',
+    error: { type: 'authentication_error', message: 'Invalid API key' },
+  });
+});
+
+test('returns a Gemini authentication error for invalid credentials', async () => {
+  const response = await appWithKeys().request('/v1beta/models/gemini-2.5-flash:generateContent', { method: 'POST' });
+
+  expect(response.status).toBe(401);
+  expect(await response.json()).toEqual({
+    error: { code: 401, message: 'Invalid API key', status: 'UNAUTHENTICATED' },
+  });
 });
 
 test('accepts bearer authentication and removes caller credentials before dispatch', async () => {

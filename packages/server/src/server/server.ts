@@ -1,7 +1,7 @@
 import { parseRuntimeConfig } from '@aio-proxy/core';
 import { currentRequestId, withRequestId } from '@aio-proxy/logger';
 import { honoLogger } from '@logtape/hono';
-import type { Context } from 'hono';
+import type { Context, MiddlewareHandler } from 'hono';
 import { Hono } from 'hono';
 import { bearerAuth } from 'hono/bearer-auth';
 
@@ -35,57 +35,64 @@ export const serverDefaults = {
 
 const csrfMethods = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
-const hasLoopbackOrigin = (context: Context): boolean => {
+const hasLoopbackOrigin = (context: Context, expectedPort: number): boolean => {
   const origin = context.req.header('origin');
   if (origin === undefined) return false;
   try {
-    const { hostname, protocol } = new URL(origin);
+    const { hostname, port, protocol } = new URL(origin);
+    const originPort = port === '' ? (protocol === 'https:' ? 443 : 80) : Number(port);
     return (
       (protocol === 'http:' || protocol === 'https:') &&
-      (hostname === 'localhost' || hostname === '::1' || hostname.startsWith('127.'))
+      originPort === expectedPort &&
+      (hostname === 'localhost' || hostname === '::1' || hostname === '127.0.0.1')
     );
   } catch {
     return false;
   }
 };
 
-const requireSameHostOrigin = async (context: Context, next: () => Promise<void>) => {
-  if (!csrfMethods.has(context.req.method)) {
-    await next();
-    return;
-  }
-  const origin = context.req.header('origin');
-  if (origin === undefined || !hasLoopbackOrigin(context)) {
-    return context.text('Forbidden', 403);
-  }
-  const fetchSite = context.req.header('sec-fetch-site');
-  if (fetchSite !== undefined && fetchSite !== 'same-origin' && fetchSite !== 'none') {
-    return context.text('Forbidden', 403);
-  }
-  await next();
-};
-
-const requireAdminSameHostOrigin = async (context: Context, next: () => Promise<void>) => {
-  if (
-    csrfMethods.has(context.req.method) &&
-    context.req.header('origin') === undefined &&
-    isDashboardLoopbackRequest(context)
-  ) {
+const requireSameHostOrigin =
+  (expectedPort: () => number): MiddlewareHandler =>
+  async (context, next) => {
+    if (!csrfMethods.has(context.req.method)) {
+      await next();
+      return;
+    }
+    const origin = context.req.header('origin');
+    if (origin === undefined || !hasLoopbackOrigin(context, expectedPort())) {
+      return context.text('Forbidden', 403);
+    }
     const fetchSite = context.req.header('sec-fetch-site');
     if (fetchSite !== undefined && fetchSite !== 'same-origin' && fetchSite !== 'none') {
       return context.text('Forbidden', 403);
     }
     await next();
-    return;
-  }
-  return requireSameHostOrigin(context, next);
-};
+  };
+
+const requireAdminSameHostOrigin =
+  (expectedPort: () => number): MiddlewareHandler =>
+  async (context, next) => {
+    if (
+      csrfMethods.has(context.req.method) &&
+      context.req.header('origin') === undefined &&
+      isDashboardLoopbackRequest(context)
+    ) {
+      const fetchSite = context.req.header('sec-fetch-site');
+      if (fetchSite !== undefined && fetchSite !== 'same-origin' && fetchSite !== 'none') {
+        return context.text('Forbidden', 403);
+      }
+      await next();
+      return;
+    }
+    return requireSameHostOrigin(expectedPort)(context, next);
+  };
 
 const mountAdminControlPlane = (
   app: Hono,
   state: ServerState,
   requireDashboardAuth: ReturnType<typeof requireDashboardAuthentication>,
   dashboardAuthEnabled: () => boolean,
+  requireAdminSameHostOrigin: MiddlewareHandler,
 ): void => {
   app.use('/admin/*', async (context, next) => {
     if (isDashboardLoopbackRequest(context)) {
@@ -123,6 +130,7 @@ const createRoutes = (
   dashboardAssets?: DashboardAssets,
   dashboardAuthAvailable: () => boolean = () => true,
   version: string = '0.0.0',
+  loopbackPort: number = serverDefaults.port,
 ) => {
   const app = new Hono();
   app.use((_context, next) => withRequestId(crypto.randomUUID(), next));
@@ -173,6 +181,8 @@ const createRoutes = (
   );
   const requireDashboardAuth = requireDashboardAuthentication(dashboardAuth);
   const requireDashboardBearerAuth = bearerAuth({ verifyToken: (token) => dashboardAuth.verify(token) });
+  const expectedLoopbackPort = () => loopbackPort;
+  const requireLoopbackSameOrigin = requireSameHostOrigin(expectedLoopbackPort);
   const requireDashboardAccess = async (context: Context, next: () => Promise<void>) => {
     if (isDashboardLoopbackRequest(context) || dashboardAuth.enabled()) {
       await next();
@@ -180,7 +190,13 @@ const createRoutes = (
     }
     return context.notFound();
   };
-  mountAdminControlPlane(app, state, requireDashboardAuth, dashboardAuth.enabled);
+  mountAdminControlPlane(
+    app,
+    state,
+    requireDashboardAuth,
+    dashboardAuth.enabled,
+    requireAdminSameHostOrigin(expectedLoopbackPort),
+  );
 
   app.use('/dashboard', requireDashboardAccess);
   app.use('/dashboard/*', requireDashboardAccess);
@@ -190,7 +206,7 @@ const createRoutes = (
       await next();
       return;
     }
-    return requireSameHostOrigin(context, next);
+    return requireLoopbackSameOrigin(context, next);
   });
 
   app.use('/dashboard/api/*', async (context, next) => {
@@ -265,10 +281,12 @@ export const createServer = async (options: CreateServerOptions): Promise<AppTyp
     ...(options.logger === undefined ? {} : { logger: options.logger }),
     ...(options.watchConfig === undefined ? {} : { watchConfig: options.watchConfig }),
   };
+  const state = await createServerState(stateOptions);
   return createRoutes(
-    await createServerState(stateOptions),
+    state,
     options.dashboardAssets,
     () => dashboardAuthAvailable,
     options.version,
+    options.port ?? state.currentConfig().server.port,
   );
 };

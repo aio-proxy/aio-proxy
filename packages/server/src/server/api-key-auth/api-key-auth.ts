@@ -1,6 +1,6 @@
 import { timingSafeEqual } from 'node:crypto';
 
-import type { MiddlewareHandler } from 'hono';
+import type { Context, MiddlewareHandler } from 'hono';
 
 type ApiKeyEntry = { readonly key: string };
 
@@ -15,7 +15,7 @@ export const requireApiKey =
 
     const candidates = [bearerToken(context.req.header('authorization')), context.req.header('x-api-key')];
     if (!candidates.some((candidate) => candidate !== undefined && matchesConfiguredKey(candidate, configuredKeys))) {
-      return context.json({ error: { message: 'Invalid API key', type: 'authentication_error' } }, 401);
+      return authenticationError(context);
     }
 
     context.req.raw.headers.delete('authorization');
@@ -34,4 +34,14 @@ function matchesConfiguredKey(candidate: string, configuredKeys: readonly ApiKey
     const keyBytes = Buffer.from(key);
     return keyBytes.byteLength === candidateBytes.byteLength && timingSafeEqual(keyBytes, candidateBytes);
   });
+}
+
+function authenticationError(context: Context): Response {
+  if (context.req.path.startsWith('/v1/messages')) {
+    return context.json({ type: 'error', error: { type: 'authentication_error', message: 'Invalid API key' } }, 401);
+  }
+  if (context.req.path.startsWith('/v1beta/')) {
+    return context.json({ error: { code: 401, message: 'Invalid API key', status: 'UNAUTHENTICATED' } }, 401);
+  }
+  return context.json({ error: { message: 'Invalid API key', type: 'authentication_error' } }, 401);
 }

@@ -1,7 +1,6 @@
+import { clearDashboardAuthToken } from '@/lib/dashboard-auth-token';
 import { queryClient } from '@/lib/query-client';
 import { queryKeys } from '@/lib/query-keys';
-
-import { clearDashboardAuthToken } from './dashboard-auth-token';
 
 export type DashboardAuthSession = {
   readonly status: 'authenticated' | 'disabled' | 'unauthenticated' | 'unavailable';

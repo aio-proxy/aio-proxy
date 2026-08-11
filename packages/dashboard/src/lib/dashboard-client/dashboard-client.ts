@@ -1,7 +1,7 @@
 import type { AppType } from '@aio-proxy/server';
 import { hc } from 'hono/client';
 
-import { readDashboardAuthToken } from '@/modules/auth/services/dashboard-auth-token';
+import { readDashboardAuthToken } from '@/lib/dashboard-auth-token';
 
 let handleDashboardUnauthorized = (): void => {};
 let handleDashboardUnavailable = (): void => {};

@@ -80,6 +80,30 @@ describe('admin control plane', () => {
     expect([200, 409]).toContain(res.status);
   });
 
+  test('POST /admin/reload rejects a loopback origin on another port', async () => {
+    const app = await createServer();
+
+    const res = await app.request(
+      '/admin/reload',
+      { method: 'POST', headers: { origin: 'http://127.0.0.1:22078' } },
+      loopbackServer,
+    );
+
+    expect(res.status).toBe(403);
+  });
+
+  test('POST /admin/reload rejects a different loopback host on the proxy port', async () => {
+    const app = await createServer();
+
+    const res = await app.request(
+      '/admin/reload',
+      { method: 'POST', headers: { origin: 'http://127.0.0.2:9317' } },
+      loopbackServer,
+    );
+
+    expect(res.status).toBe(403);
+  });
+
   test('POST /admin/reload remains unavailable to remote clients with a Dashboard session', async () => {
     const hash = await Bun.password.hash('remote-admin');
     const app = await createServer(undefined, { server: { password: hash }, providers: {} });
