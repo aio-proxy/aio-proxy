@@ -13,13 +13,18 @@ export const requireApiKey =
       return;
     }
 
-    const candidates = [bearerToken(context.req.header('authorization')), context.req.header('x-api-key')];
+    const candidates = [
+      bearerToken(context.req.header('authorization')),
+      context.req.header('x-api-key'),
+      ...(context.req.path.startsWith('/v1beta/') ? [context.req.header('x-goog-api-key')] : []),
+    ];
     if (!candidates.some((candidate) => candidate !== undefined && matchesConfiguredKey(candidate, configuredKeys))) {
       return authenticationError(context);
     }
 
     context.req.raw.headers.delete('authorization');
     context.req.raw.headers.delete('x-api-key');
+    context.req.raw.headers.delete('x-goog-api-key');
     await next();
   };
 

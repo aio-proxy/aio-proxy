@@ -80,8 +80,12 @@ describe('admin control plane', () => {
     expect([200, 409]).toContain(res.status);
   });
 
-  test('POST /admin/reload allows an IPv6 loopback same-origin browser request', async () => {
-    const app = await createServer();
+  test('POST /admin/reload allows the configured IPv6 loopback origin', async () => {
+    const app = await createBaseServer({
+      config: { server: { host: '::1', port: 9_317 }, providers: {} },
+      dbHome: dir,
+      watchConfig: false,
+    });
 
     const res = await app.request(
       '/admin/reload',
@@ -89,6 +93,22 @@ describe('admin control plane', () => {
         method: 'POST',
         headers: { host: '[::1]:9317', origin: 'http://[::1]:9317', 'sec-fetch-site': 'same-origin' },
       },
+      loopbackServer,
+    );
+
+    expect([200, 409]).toContain(res.status);
+  });
+
+  test('POST /admin/reload allows the configured IPv4 loopback origin', async () => {
+    const app = await createBaseServer({
+      config: { server: { host: '127.0.0.2', port: 9_317 }, providers: {} },
+      dbHome: dir,
+      watchConfig: false,
+    });
+
+    const res = await app.request(
+      '/admin/reload',
+      { method: 'POST', headers: { host: '127.0.0.2:9317', origin: 'http://127.0.0.2:9317' } },
       loopbackServer,
     );
 

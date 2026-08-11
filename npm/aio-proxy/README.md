@@ -226,7 +226,7 @@ Set `server.password` to protect the Dashboard. It does not protect model API en
 
 Set the top-level `proxy` to configure a default HTTP(S) proxy. A Provider can inherit it, override it, or disable it with `false`. An `api` Provider can also set upstream request headers through `headers`.
 
-By default AIO Proxy binds to `127.0.0.1`. Set `server.host` to another non-empty host (for example, `0.0.0.0`) when clients need remote access. Add `server.apiKeys` before doing so:
+By default AIO Proxy binds to `127.0.0.1`. Set `server.host` to another non-empty host (for example, `0.0.0.0`) when clients need remote access. The proxy serves HTTP only, so terminate TLS with a reverse proxy, tunnel, or gateway before exposing it beyond a trusted network. Add `server.apiKeys` before doing so:
 
 ```jsonc
 {
@@ -238,7 +238,7 @@ By default AIO Proxy binds to `127.0.0.1`. Set `server.host` to another non-empt
 }
 ```
 
-Each `label` is optional and only helps identify a key. With at least one key configured, every `/v1/*` and `/v1beta/*` request (including `/v1/models`) must send `Authorization: Bearer <key>` or `X-API-Key: <key>`; an empty list leaves model APIs open. Remote Dashboard access requires `server.password` and its Dashboard session. `/admin/*` remains loopback-only for local CLI control. Browser writes without a Dashboard password must come from the configured loopback Origin. Direct loopback peers, including a local reverse proxy, are treated as local.
+Each `label` is optional and only helps identify a key. With at least one key configured, every `/v1/*` and `/v1beta/*` request (including `/v1/models`) must send `Authorization: Bearer <key>` or `X-API-Key: <key>`; native Gemini clients may use `X-Goog-Api-Key`. An empty list leaves model APIs open. Remote Dashboard access requires `server.password` and its Dashboard session. `/admin/*` remains loopback-only for local CLI control. Browser writes without a Dashboard password must come from the configured loopback Origin. Direct loopback peers, including a local reverse proxy, are treated as local.
 
 ## Common commands
 

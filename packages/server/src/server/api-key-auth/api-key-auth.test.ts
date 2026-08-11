@@ -13,6 +13,7 @@ const appWithKeys = () => {
   app.get('/v1/models', (context) =>
     context.json({ authorization: context.req.header('authorization'), apiKey: context.req.header('x-api-key') }),
   );
+  app.get('/v1beta/models', (context) => context.json({ googleApiKey: context.req.header('x-goog-api-key') }));
   app.all('/*', (context) => context.text('ok'));
   return app;
 };
@@ -51,6 +52,13 @@ test('accepts bearer authentication and removes caller credentials before dispat
 
 test('accepts X-API-Key authentication', async () => {
   expect((await appWithKeys().request('/v1/models', { headers: { 'x-api-key': 'caller-secret' } })).status).toBe(200);
+});
+
+test('accepts and removes Gemini X-Goog-Api-Key authentication', async () => {
+  const response = await appWithKeys().request('/v1beta/models', { headers: { 'x-goog-api-key': 'caller-secret' } });
+
+  expect(response.status).toBe(200);
+  expect(await response.json()).toEqual({ googleApiKey: undefined });
 });
 
 test('leaves model routes open when no caller API keys are configured', async () => {

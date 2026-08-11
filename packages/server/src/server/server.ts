@@ -35,31 +35,32 @@ export const serverDefaults = {
 
 const csrfMethods = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
-const hasLoopbackOrigin = (context: Context, expectedPort: number): boolean => {
+const loopbackOriginHostname = (host: string): string => {
+  if (host === 'localhost' || host.startsWith('127.')) return host;
+  return host === '::1' ? '[::1]' : serverDefaults.host;
+};
+
+const hasLoopbackOrigin = (context: Context, expectedHost: string, expectedPort: number): boolean => {
   const origin = context.req.header('origin');
   if (origin === undefined) return false;
   try {
     const { hostname, port, protocol } = new URL(origin);
     const originPort = port === '' ? (protocol === 'https:' ? 443 : 80) : Number(port);
-    return (
-      (protocol === 'http:' || protocol === 'https:') &&
-      originPort === expectedPort &&
-      (hostname === 'localhost' || hostname === '[::1]' || hostname === '127.0.0.1')
-    );
+    return (protocol === 'http:' || protocol === 'https:') && originPort === expectedPort && hostname === expectedHost;
   } catch {
     return false;
   }
 };
 
 const requireSameHostOrigin =
-  (expectedPort: () => number): MiddlewareHandler =>
+  (expectedHost: string, expectedPort: number): MiddlewareHandler =>
   async (context, next) => {
     if (!csrfMethods.has(context.req.method)) {
       await next();
       return;
     }
     const origin = context.req.header('origin');
-    if (origin === undefined || !hasLoopbackOrigin(context, expectedPort())) {
+    if (origin === undefined || !hasLoopbackOrigin(context, expectedHost, expectedPort)) {
       return context.text('Forbidden', 403);
     }
     const fetchSite = context.req.header('sec-fetch-site');
@@ -70,7 +71,7 @@ const requireSameHostOrigin =
   };
 
 const requireAdminSameHostOrigin =
-  (expectedPort: () => number): MiddlewareHandler =>
+  (expectedHost: string, expectedPort: number): MiddlewareHandler =>
   async (context, next) => {
     if (
       csrfMethods.has(context.req.method) &&
@@ -84,7 +85,7 @@ const requireAdminSameHostOrigin =
       await next();
       return;
     }
-    return requireSameHostOrigin(expectedPort)(context, next);
+    return requireSameHostOrigin(expectedHost, expectedPort)(context, next);
   };
 
 const mountAdminControlPlane = (
@@ -131,6 +132,7 @@ const createRoutes = (
   dashboardAuthAvailable: () => boolean = () => true,
   version: string = '0.0.0',
   loopbackPort: number = serverDefaults.port,
+  loopbackHost: string = serverDefaults.host,
 ) => {
   const app = new Hono();
   app.use((_context, next) => withRequestId(crypto.randomUUID(), next));
@@ -181,8 +183,8 @@ const createRoutes = (
   );
   const requireDashboardAuth = requireDashboardAuthentication(dashboardAuth);
   const requireDashboardBearerAuth = bearerAuth({ verifyToken: (token) => dashboardAuth.verify(token) });
-  const expectedLoopbackPort = () => loopbackPort;
-  const requireLoopbackSameOrigin = requireSameHostOrigin(expectedLoopbackPort);
+  const expectedLoopbackHost = loopbackOriginHostname(loopbackHost);
+  const requireLoopbackSameOrigin = requireSameHostOrigin(expectedLoopbackHost, loopbackPort);
   const requireDashboardAccess = async (context: Context, next: () => Promise<void>) => {
     if (isDashboardLoopbackRequest(context) || dashboardAuth.enabled()) {
       await next();
@@ -195,7 +197,7 @@ const createRoutes = (
     state,
     requireDashboardAuth,
     dashboardAuth.enabled,
-    requireAdminSameHostOrigin(expectedLoopbackPort),
+    requireAdminSameHostOrigin(expectedLoopbackHost, loopbackPort),
   );
 
   app.use('/dashboard', requireDashboardAccess);
@@ -288,5 +290,6 @@ export const createServer = async (options: CreateServerOptions): Promise<AppTyp
     () => dashboardAuthAvailable,
     options.version,
     options.port ?? state.currentConfig().server.port,
+    options.host ?? state.currentConfig().server.host,
   );
 };
