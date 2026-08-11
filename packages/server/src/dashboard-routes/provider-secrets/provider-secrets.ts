@@ -34,6 +34,14 @@ export const redactSecrets = (value: unknown, key = '', insideSecretBoundary = f
   }
 
   if (Array.isArray(value)) {
+    if (key === 'apiKeys') {
+      return value.map((entry) => {
+        if (!isPlainObject(entry)) return '****';
+        return mapValues(entry, (entryValue, entryKey) =>
+          entryKey === 'key' ? '****' : redactSecrets(entryValue, String(entryKey)),
+        );
+      });
+    }
     return value.map((item) => redactSecrets(item, key, insideSecretBoundary));
   }
 

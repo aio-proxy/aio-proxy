@@ -220,13 +220,25 @@ The Dashboard is available at `http://127.0.0.1:9317/dashboard`. Use it to manag
 - View request volume, token usage, and cost trends.
 - Search complete request traces and inspect the status and latency of each Provider attempt.
 
-Set `server.password` to protect the Dashboard. This password does not protect the model API endpoints.
+Set `server.password` to protect the Dashboard. It does not protect model API endpoints; use `server.apiKeys` for those.
 
 ## Network and security
 
 Set the top-level `proxy` to configure a default HTTP(S) proxy. A Provider can inherit it, override it, or disable it with `false`. An `api` Provider can also set upstream request headers through `headers`.
 
-The AIO Proxy process currently binds only to `127.0.0.1`, `::1`, or `localhost`, but it can run on a personal computer, remote server, or in a container. For remote access, expose the service through a reverse proxy, tunnel, or gateway, and configure TLS, authentication, and access control at the outer layer.
+By default AIO Proxy binds to `127.0.0.1`. Set `server.host` to another non-empty host (for example, `0.0.0.0`) when clients need remote access. Add `server.apiKeys` before doing so:
+
+```jsonc
+{
+  "server": {
+    "host": "0.0.0.0",
+    "apiKeys": [{ "key": "{{env.AIO_PROXY_KEY}}", "label": "CI" }],
+    "password": "a-dashboard-password",
+  },
+}
+```
+
+Each `label` is optional and only helps identify a key. With at least one key configured, every `/v1/*` request (including `/v1/models`) must send `Authorization: Bearer <key>` or `X-API-Key: <key>`; an empty list leaves model APIs open. Remote Dashboard and `/admin/*` access requires `server.password` and its Dashboard session. Browser writes must come from the same host Origin. Direct loopback peers, including a local reverse proxy, are treated as local.
 
 ## Common commands
 

@@ -12,8 +12,8 @@ describe('admin control plane', () => {
   // Empty providers config guarantees a clean reload snapshot (ok:true), independent
   // of the shared secret-laden fixture used by server-config.test.ts.
   const emptyConfig = { server: { port: 9_317 }, providers: {} };
-  const createServer = (version?: string) =>
-    createBaseServer({ config: emptyConfig, dbHome: dir, watchConfig: false, ...(version ? { version } : {}) });
+  const createServer = (version?: string, config = emptyConfig) =>
+    createBaseServer({ config, dbHome: dir, watchConfig: false, ...(version ? { version } : {}) });
 
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), 'aio-proxy-admin-'));
@@ -61,10 +61,45 @@ describe('admin control plane', () => {
     // The bundled dashboard (same origin) legitimately reloads; it must pass.
     const res = await app.request(
       '/admin/reload',
-      { method: 'POST', headers: { origin: 'http://127.0.0.1:9317', 'sec-fetch-site': 'same-origin' } },
+      {
+        method: 'POST',
+        headers: { host: '127.0.0.1:9317', origin: 'http://127.0.0.1:9317', 'sec-fetch-site': 'same-origin' },
+      },
       loopbackServer,
     );
     expect([200, 409]).toContain(res.status);
+  });
+
+  test('POST /admin/reload requires a Dashboard password session from remote clients', async () => {
+    const hash = await Bun.password.hash('remote-admin');
+    const app = await createServer(undefined, { server: { password: hash }, providers: {} });
+    const remote = { requestIP: () => ({ address: '192.168.1.20' }) };
+    const origin = 'http://proxy.example:9317';
+    const login = await app.request(
+      '/dashboard/api/auth/login',
+      {
+        body: JSON.stringify({ password: 'remote-admin' }),
+        headers: { 'content-type': 'application/json', host: 'proxy.example:9317', origin },
+        method: 'POST',
+      },
+      remote,
+    );
+    const cookie = login.headers.get('set-cookie')?.split(';', 1)[0];
+
+    expect(login.status).toBe(200);
+    expect(
+      (await app.request('/admin/reload', { headers: { host: 'proxy.example:9317', origin }, method: 'POST' }, remote))
+        .status,
+    ).toBe(401);
+    expect([200, 409]).toContain(
+      (
+        await app.request(
+          '/admin/reload',
+          { headers: { cookie: cookie ?? '', host: 'proxy.example:9317', origin }, method: 'POST' },
+          remote,
+        )
+      ).status,
+    );
   });
 
   test('GET /health reports the injected version', async () => {

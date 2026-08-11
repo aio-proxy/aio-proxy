@@ -6,7 +6,7 @@ import { validator } from 'hono/validator';
 import type { DashboardAuthentication } from './dashboard-auth';
 
 const COOKIE_NAME = 'aio_proxy_dashboard_session';
-const COOKIE_PATH = '/dashboard';
+const COOKIE_PATH = '/';
 const SESSION_MAX_AGE_SECONDS = 7 * 24 * 60 * 60;
 
 const passwordBodyValidator = validator('json', (value, context): { readonly password: string } | Response =>
@@ -63,10 +63,14 @@ export const requireDashboardAuthentication =
   };
 
 export const requireDashboardLoopback: MiddlewareHandler = async (context, next) => {
-  const address = requestAddress(context);
-  if (address === undefined || !isLoopbackAddress(address)) return context.notFound();
+  if (!isDashboardLoopbackRequest(context)) return context.notFound();
   await next();
 };
+
+export function isDashboardLoopbackRequest(context: Context): boolean {
+  const address = requestAddress(context);
+  return address !== undefined && isLoopbackAddress(address);
+}
 
 export function dashboardSessionToken(context: Context): string | undefined {
   return getCookie(context, COOKIE_NAME);

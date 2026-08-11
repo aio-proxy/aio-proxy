@@ -11,15 +11,16 @@ async function login(
   app: Awaited<ReturnType<typeof createServer>>,
   password: string,
   requestOrigin = origin,
+  requestServer = loopbackServer,
 ): Promise<Response> {
   return app.request(
     '/dashboard/api/auth/login',
     {
       body: JSON.stringify({ password }),
-      headers: { 'content-type': 'application/json', origin: requestOrigin },
+      headers: { 'content-type': 'application/json', host: new URL(requestOrigin).host, origin: requestOrigin },
       method: 'POST',
     },
-    loopbackServer,
+    requestServer,
   );
 }
 
@@ -48,7 +49,7 @@ describe('dashboard authentication', () => {
     expect(correct.status).toBe(200);
     expect(correct.headers.get('set-cookie')).toContain('HttpOnly');
     expect(correct.headers.get('set-cookie')).toContain('Max-Age=604800');
-    expect(correct.headers.get('set-cookie')).toContain('Path=/dashboard');
+    expect(correct.headers.get('set-cookie')).toContain('Path=/');
     expect(correct.headers.get('set-cookie')).toContain('SameSite=Strict');
     expect(protectedAfter.status).toBe(200);
     expect(await protectedAfter.json()).toMatchObject({ server: { password: '****' } });
@@ -71,7 +72,7 @@ describe('dashboard authentication', () => {
     const response = await app.request(
       '/dashboard/api/auth/logout',
       {
-        headers: { cookie, origin },
+        headers: { cookie, host: '127.0.0.1:22078', origin },
         method: 'POST',
       },
       loopbackServer,
@@ -88,7 +89,7 @@ describe('dashboard authentication', () => {
     expect((await login(app, 'ipv6-loopback', 'http://[::1]:22078')).status).toBe(200);
   });
 
-  test('rejects remote Dashboard API clients without blocking model APIs', async () => {
+  test('rejects remote Dashboard clients without a password without blocking model APIs', async () => {
     const app = await createServer({
       config: { providers: {} },
       dashboardAssets: async (path) => (path === 'index.html' ? new Response('Dashboard') : undefined),
@@ -101,6 +102,33 @@ describe('dashboard authentication', () => {
     expect((await app.request('/dashboard')).status).toBe(404);
     expect((await app.request('/dashboard', undefined, loopbackServer)).status).toBe(200);
     expect((await app.request('/v1/models', undefined, remote)).status).toBe(200);
+  });
+
+  test('permits remote Dashboard and Admin access with a password session and same-host Origin', async () => {
+    const remote = { requestIP: () => ({ address: '192.168.1.20' }) };
+    const remoteOrigin = 'http://proxy.example:22078';
+    const hash = await Bun.password.hash('remote-password');
+    const app = await createServer({
+      config: { server: { password: hash }, providers: {} },
+      dashboardAssets: async (path) => (path === 'index.html' ? new Response('Dashboard') : undefined),
+    });
+    const loginResponse = await login(app, 'remote-password', remoteOrigin, remote);
+    const cookie = cookieFrom(loginResponse);
+    const headers = { cookie, host: 'proxy.example:22078', origin: remoteOrigin };
+
+    expect(loginResponse.status).toBe(200);
+    expect((await app.request('/dashboard', { headers: { host: 'proxy.example:22078' } }, remote)).status).toBe(200);
+    expect((await app.request('/dashboard/api/config', { headers }, remote)).status).toBe(200);
+    expect([200, 409]).toContain((await app.request('/admin/reload', { headers, method: 'POST' }, remote)).status);
+    expect(
+      (
+        await app.request(
+          '/admin/reload',
+          { headers: { ...headers, origin: 'http://evil.example' }, method: 'POST' },
+          remote,
+        )
+      ).status,
+    ).toBe(403);
   });
 
   test('rate limits all attempts after five failures', async () => {

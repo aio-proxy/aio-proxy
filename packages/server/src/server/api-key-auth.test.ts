@@ -1,0 +1,45 @@
+import { expect, test } from 'bun:test';
+
+import { Hono } from 'hono';
+
+import { requireApiKey } from './api-key-auth';
+
+const appWithKeys = () => {
+  const app = new Hono();
+  app.use(
+    '/v1/*',
+    requireApiKey(() => [{ key: 'caller-secret', label: 'CI' }]),
+  );
+  app.get('/v1/models', (context) =>
+    context.json({ authorization: context.req.header('authorization'), apiKey: context.req.header('x-api-key') }),
+  );
+  return app;
+};
+
+test('rejects a request without a caller API key', async () => {
+  expect((await appWithKeys().request('/v1/models')).status).toBe(401);
+});
+
+test('accepts bearer authentication and removes caller credentials before dispatch', async () => {
+  const response = await appWithKeys().request('/v1/models', {
+    headers: { authorization: 'Bearer caller-secret', 'x-api-key': 'other-value' },
+  });
+
+  expect(response.status).toBe(200);
+  expect(await response.json()).toEqual({ authorization: undefined, apiKey: undefined });
+});
+
+test('accepts X-API-Key authentication', async () => {
+  expect((await appWithKeys().request('/v1/models', { headers: { 'x-api-key': 'caller-secret' } })).status).toBe(200);
+});
+
+test('leaves model routes open when no caller API keys are configured', async () => {
+  const app = new Hono();
+  app.use(
+    '/v1/*',
+    requireApiKey(() => []),
+  );
+  app.get('/v1/models', (context) => context.text('ok'));
+
+  expect((await app.request('/v1/models')).status).toBe(200);
+});

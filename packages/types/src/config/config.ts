@@ -18,11 +18,17 @@ import {
   validateAliasTargets,
 } from '../provider';
 
-const LOOPBACK_HOSTS = new Set(['127.0.0.1', '::1', 'localhost']);
+const ServerHostSchema = z.string().min(1);
 
-const LoopbackHostSchema = z
-  .string()
-  .refine((host) => LOOPBACK_HOSTS.has(host), 'Remote binding requires an authenticated remote-mode design');
+const ApiKeySchema = z.object({
+  key: z.string().min(1),
+  label: z.string().min(1).optional(),
+});
+
+const ApiKeyAuthoringSchema = z.object({
+  key: z.union([z.string().min(1), ConfigTemplateStringSchema]),
+  label: z.string().min(1).optional(),
+});
 
 export const ServerLoggingSchema = z.object({
   enabled: z.boolean().default(false),
@@ -47,18 +53,20 @@ const ServerLoggingAuthoringSchema = ServerLoggingSchema.omit({ dir: true, level
 });
 
 export const ServerConfigSchema = z.object({
-  host: LoopbackHostSchema.default('127.0.0.1').describe('Loopback host for the proxy API server.'),
+  host: ServerHostSchema.default('127.0.0.1').describe('Host for the proxy API server.'),
   port: z.number().int().min(1).max(65_535).default(9_317).describe('HTTP port for the proxy API server.'),
+  apiKeys: z.array(ApiKeySchema).default([]).describe('Caller API keys for the proxy API server.'),
   password: z.string().min(1).optional().describe('Dashboard password or Argon2id PHC hash.'),
   logging: ServerLoggingSchema.prefault({}).optional(),
   retry: ServerRetrySchema.prefault({}),
 });
 
-const ServerConfigAuthoringSchema = ServerConfigSchema.omit({ host: true, logging: true }).extend({
+const ServerConfigAuthoringSchema = ServerConfigSchema.omit({ host: true, logging: true, apiKeys: true }).extend({
   host: z
-    .union([LoopbackHostSchema, ConfigTemplateStringSchema])
+    .union([ServerHostSchema, ConfigTemplateStringSchema])
     .default('127.0.0.1')
-    .describe('Loopback host for the proxy API server.'),
+    .describe('Host for the proxy API server.'),
+  apiKeys: z.array(ApiKeyAuthoringSchema).default([]).describe('Caller API keys for the proxy API server.'),
   logging: ServerLoggingAuthoringSchema.prefault({}).optional(),
 });
 

@@ -18,12 +18,26 @@ test('preserves an exact non-empty dashboard password', () => {
   expect(ConfigAuthoringSchema.safeParse({ server: { password: '' }, providers: {} }).success).toBe(false);
 });
 
-test.each(['0.0.0.0', '192.168.1.20', 'example.test'])('rejects non-loopback host %s', (host) => {
-  expect(() => ConfigSchema.parse({ server: { host }, providers: {} })).toThrow();
-});
+test.each(['0.0.0.0', '192.168.1.20', 'example.test', '127.0.0.1', '::1', 'localhost'])(
+  'accepts server host %s',
+  (host) => {
+    expect(ConfigSchema.parse({ server: { host }, providers: {} }).server.host).toBe(host);
+  },
+);
 
-test.each(['127.0.0.1', '::1', 'localhost'])('accepts loopback host %s', (host) => {
-  expect(ConfigSchema.parse({ server: { host }, providers: {} }).server.host).toBe(host);
+test('accepts labeled caller API keys and authoring templates', () => {
+  expect(
+    ConfigSchema.parse({
+      server: { apiKeys: [{ key: 'caller-secret', label: 'CI' }] },
+      providers: {},
+    }).server.apiKeys,
+  ).toEqual([{ key: 'caller-secret', label: 'CI' }]);
+  expect(
+    ConfigAuthoringSchema.safeParse({
+      server: { apiKeys: [{ key: '{{env.AIO_PROXY_KEY}}', label: 'CI' }] },
+      providers: {},
+    }).success,
+  ).toBe(true);
 });
 
 test('defaults server.retry.retryAfterCapMs', () => {

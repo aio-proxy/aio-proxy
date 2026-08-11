@@ -1,0 +1,37 @@
+import { timingSafeEqual } from 'node:crypto';
+
+import type { MiddlewareHandler } from 'hono';
+
+type ApiKeyEntry = { readonly key: string };
+
+export const requireApiKey =
+  (apiKeys: () => readonly ApiKeyEntry[]): MiddlewareHandler =>
+  async (context, next) => {
+    const configuredKeys = apiKeys();
+    if (configuredKeys.length === 0) {
+      await next();
+      return;
+    }
+
+    const candidates = [bearerToken(context.req.header('authorization')), context.req.header('x-api-key')];
+    if (!candidates.some((candidate) => candidate !== undefined && matchesConfiguredKey(candidate, configuredKeys))) {
+      return context.json({ error: { message: 'Invalid API key', type: 'authentication_error' } }, 401);
+    }
+
+    context.req.raw.headers.delete('authorization');
+    context.req.raw.headers.delete('x-api-key');
+    await next();
+  };
+
+function bearerToken(value: string | undefined): string | undefined {
+  const match = /^Bearer\s+(.+)$/iu.exec(value ?? '');
+  return match?.[1];
+}
+
+function matchesConfiguredKey(candidate: string, configuredKeys: readonly ApiKeyEntry[]): boolean {
+  const candidateBytes = Buffer.from(candidate);
+  return configuredKeys.some(({ key }) => {
+    const keyBytes = Buffer.from(key);
+    return keyBytes.byteLength === candidateBytes.byteLength && timingSafeEqual(keyBytes, candidateBytes);
+  });
+}
