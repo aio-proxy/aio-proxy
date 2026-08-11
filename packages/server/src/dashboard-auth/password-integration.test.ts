@@ -22,10 +22,10 @@ async function login(app: Awaited<ReturnType<typeof createServer>>, password: st
   );
 }
 
-function cookieFrom(response: Response): string {
-  const setCookie = response.headers.get('set-cookie');
-  if (setCookie === null) throw new Error('missing session cookie');
-  return setCookie.split(';', 1)[0] ?? '';
+async function tokenFrom(response: Response): Promise<string> {
+  const body = (await response.json()) as { readonly token?: unknown };
+  if (typeof body.token !== 'string') throw new Error('missing session token');
+  return body.token;
 }
 
 describe('Dashboard password config lifecycle', () => {
@@ -56,16 +56,17 @@ describe('Dashboard password config lifecycle', () => {
 
     try {
       const app = await createServer({ config: initial, configPath, watchConfig: false });
-      const oldCookie = cookieFrom(await login(app, 'old password'));
+      const oldToken = await tokenFrom(await login(app, 'old password'));
       writeFileSync(configPath, JSON.stringify({ server: { password: 'new password' }, providers: {} }));
 
-      const stream = await app.request('/dashboard/api/events', { headers: { cookie: oldCookie } }, loopbackServer);
+      const authorization = `Bearer ${oldToken}`;
+      const stream = await app.request('/dashboard/api/events', { headers: { authorization } }, loopbackServer);
       const reader = stream.body?.getReader();
       if (reader === undefined) throw new Error('dashboard event stream body is missing');
       const reload = await app.request(
         '/dashboard/api/reload',
         {
-          headers: { cookie: oldCookie, host: new URL(origin).host, origin },
+          headers: { authorization, host: new URL(origin).host, origin },
           method: 'POST',
         },
         loopbackServer,
@@ -77,9 +78,9 @@ describe('Dashboard password config lifecycle', () => {
       expect(event.done).toBe(true);
       expect(stored.server.password).toStartWith('$argon2id$');
       expect(await Bun.password.verify('new password', stored.server.password)).toBe(true);
-      expect(
-        (await app.request('/dashboard/api/config', { headers: { cookie: oldCookie } }, loopbackServer)).status,
-      ).toBe(401);
+      expect((await app.request('/dashboard/api/config', { headers: { authorization } }, loopbackServer)).status).toBe(
+        401,
+      );
       expect((await login(app, 'new password')).status).toBe(200);
     } finally {
       rmSync(dir, { force: true, recursive: true });
