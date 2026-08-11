@@ -15,7 +15,7 @@ async function login(app: Awaited<ReturnType<typeof createServer>>, password: st
     '/dashboard/api/auth/login',
     {
       body: JSON.stringify({ password }),
-      headers: { 'content-type': 'application/json', origin },
+      headers: { 'content-type': 'application/json', host: new URL(origin).host, origin },
       method: 'POST',
     },
     loopbackServer,
@@ -65,7 +65,7 @@ describe('Dashboard password config lifecycle', () => {
       const reload = await app.request(
         '/dashboard/api/reload',
         {
-          headers: { cookie: oldCookie, origin },
+          headers: { cookie: oldCookie, host: new URL(origin).host, origin },
           method: 'POST',
         },
         loopbackServer,
