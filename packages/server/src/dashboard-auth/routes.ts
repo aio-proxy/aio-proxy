@@ -1,13 +1,8 @@
 import type { Context, MiddlewareHandler } from 'hono';
 import { Hono } from 'hono';
-import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import { validator } from 'hono/validator';
 
 import type { DashboardAuthentication } from './dashboard-auth';
-
-const COOKIE_NAME = 'aio_proxy_dashboard_session';
-const COOKIE_PATH = '/';
-const SESSION_MAX_AGE_SECONDS = 7 * 24 * 60 * 60;
 
 const passwordBodyValidator = validator('json', (value, context): { readonly password: string } | Response =>
   isPasswordBody(value) ? value : context.json({ error: 'invalid_request' }, 400),
@@ -37,19 +32,9 @@ export const createDashboardAuthRoutes = (auth: DashboardAuthentication) =>
         return context.json({ error: 'rate_limited', retryAfterSeconds: result.retryAfterSeconds }, 429);
       }
       if (result.status !== 'authenticated') return context.json({ error: 'authentication_failed' }, 500);
-      setCookie(context, COOKIE_NAME, result.token, {
-        expires: new Date(result.expiresAt),
-        httpOnly: true,
-        maxAge: SESSION_MAX_AGE_SECONDS,
-        path: COOKIE_PATH,
-        sameSite: 'Strict',
-      });
-      return context.json({ ok: true, expiresAt: new Date(result.expiresAt).toISOString() });
+      return context.json({ ok: true, token: result.token, expiresAt: new Date(result.expiresAt).toISOString() });
     })
-    .post('/logout', (context) => {
-      deleteCookie(context, COOKIE_NAME, { path: COOKIE_PATH, sameSite: 'Strict' });
-      return context.json({ ok: true });
-    });
+    .post('/logout', (context) => context.json({ ok: true }));
 
 export const requireDashboardAuthentication =
   (auth: DashboardAuthentication): MiddlewareHandler =>
@@ -73,7 +58,8 @@ export function isDashboardLoopbackRequest(context: Context): boolean {
 }
 
 export function dashboardSessionToken(context: Context): string | undefined {
-  return getCookie(context, COOKIE_NAME);
+  const match = /^Bearer\s+(.+)$/iu.exec(context.req.header('authorization') ?? '');
+  return match?.[1];
 }
 
 function isPasswordBody(value: unknown): value is { readonly password: string } {

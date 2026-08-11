@@ -46,6 +46,16 @@ describe('admin control plane', () => {
     expect(res.status).toBe(403);
   });
 
+  test('POST /admin/reload rejects an attacker Origin even when Host matches', async () => {
+    const app = await createServer();
+    const res = await app.request(
+      '/admin/reload',
+      { method: 'POST', headers: { host: 'attacker.example', origin: 'http://attacker.example' } },
+      loopbackServer,
+    );
+    expect(res.status).toBe(403);
+  });
+
   test('POST /admin/reload rejects a cross-site fetch-metadata request', async () => {
     const app = await createServer();
     const res = await app.request(
@@ -70,7 +80,7 @@ describe('admin control plane', () => {
     expect([200, 409]).toContain(res.status);
   });
 
-  test('POST /admin/reload requires a Dashboard password session from remote clients', async () => {
+  test('POST /admin/reload remains unavailable to remote clients with a Dashboard session', async () => {
     const hash = await Bun.password.hash('remote-admin');
     const app = await createServer(undefined, { server: { password: hash }, providers: {} });
     const remote = { requestIP: () => ({ address: '192.168.1.20' }) };
@@ -84,22 +94,22 @@ describe('admin control plane', () => {
       },
       remote,
     );
-    const cookie = login.headers.get('set-cookie')?.split(';', 1)[0];
+    const token = ((await login.clone().json()) as { readonly token?: string }).token;
 
     expect(login.status).toBe(200);
     expect(
       (await app.request('/admin/reload', { headers: { host: 'proxy.example:9317', origin }, method: 'POST' }, remote))
         .status,
     ).toBe(401);
-    expect([200, 409]).toContain(
+    expect(
       (
         await app.request(
           '/admin/reload',
-          { headers: { cookie: cookie ?? '', host: 'proxy.example:9317', origin }, method: 'POST' },
+          { headers: { authorization: `Bearer ${token ?? ''}`, host: 'proxy.example:9317', origin }, method: 'POST' },
           remote,
         )
       ).status,
-    );
+    ).toBe(403);
   });
 
   test('GET /health reports the injected version', async () => {

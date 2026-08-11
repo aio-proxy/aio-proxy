@@ -3,6 +3,7 @@ import { currentRequestId, withRequestId } from '@aio-proxy/logger';
 import { honoLogger } from '@logtape/hono';
 import type { Context } from 'hono';
 import { Hono } from 'hono';
+import { bearerAuth } from 'hono/bearer-auth';
 
 import type { DashboardAssets } from '../dashboard-assets';
 import {
@@ -34,12 +35,15 @@ export const serverDefaults = {
 
 const csrfMethods = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
-const hasSameHostOrigin = (context: Context): boolean => {
+const hasLoopbackOrigin = (context: Context): boolean => {
   const origin = context.req.header('origin');
-  const host = context.req.header('host') ?? new URL(context.req.url).host;
   if (origin === undefined) return false;
   try {
-    return new URL(origin).host === new URL(`http://${host}`).host;
+    const { hostname, protocol } = new URL(origin);
+    return (
+      (protocol === 'http:' || protocol === 'https:') &&
+      (hostname === 'localhost' || hostname === '::1' || hostname.startsWith('127.'))
+    );
   } catch {
     return false;
   }
@@ -51,7 +55,7 @@ const requireSameHostOrigin = async (context: Context, next: () => Promise<void>
     return;
   }
   const origin = context.req.header('origin');
-  if (origin === undefined || !hasSameHostOrigin(context)) {
+  if (origin === undefined || !hasLoopbackOrigin(context)) {
     return context.text('Forbidden', 403);
   }
   const fetchSite = context.req.header('sec-fetch-site');
@@ -145,6 +149,10 @@ const createRoutes = (
     '/v1/*',
     requireApiKey(() => state.currentConfig().server.apiKeys),
   );
+  app.use(
+    '/v1beta/*',
+    requireApiKey(() => state.currentConfig().server.apiKeys),
+  );
   app.get('/health', (context) =>
     context.json({
       status: 'ok',
@@ -164,6 +172,7 @@ const createRoutes = (
     dashboardAuthAvailable,
   );
   const requireDashboardAuth = requireDashboardAuthentication(dashboardAuth);
+  const requireDashboardBearerAuth = bearerAuth({ verifyToken: (token) => dashboardAuth.verify(token) });
   const requireDashboardAccess = async (context: Context, next: () => Promise<void>) => {
     if (isDashboardLoopbackRequest(context) || dashboardAuth.enabled()) {
       await next();
@@ -176,12 +185,22 @@ const createRoutes = (
   app.use('/dashboard', requireDashboardAccess);
   app.use('/dashboard/*', requireDashboardAccess);
 
-  app.use('/dashboard/api/*', requireSameHostOrigin);
+  app.use('/dashboard/api/*', async (context, next) => {
+    if (dashboardAuth.enabled()) {
+      await next();
+      return;
+    }
+    return requireSameHostOrigin(context, next);
+  });
 
   app.use('/dashboard/api/*', async (context, next) => {
     if (context.req.path.startsWith('/dashboard/api/auth/')) {
       await next();
       return;
+    }
+    if (dashboardAuth.enabled()) {
+      if (!dashboardAuth.available()) return context.json({ error: 'dashboard_unavailable' }, 503);
+      return requireDashboardBearerAuth(context, next);
     }
     return requireDashboardAuth(context, next);
   });
