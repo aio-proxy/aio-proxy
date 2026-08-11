@@ -80,6 +80,21 @@ describe('admin control plane', () => {
     expect([200, 409]).toContain(res.status);
   });
 
+  test('POST /admin/reload allows an IPv6 loopback same-origin browser request', async () => {
+    const app = await createServer();
+
+    const res = await app.request(
+      '/admin/reload',
+      {
+        method: 'POST',
+        headers: { host: '[::1]:9317', origin: 'http://[::1]:9317', 'sec-fetch-site': 'same-origin' },
+      },
+      loopbackServer,
+    );
+
+    expect([200, 409]).toContain(res.status);
+  });
+
   test('POST /admin/reload rejects a loopback origin on another port', async () => {
     const app = await createServer();
 

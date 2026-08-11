@@ -44,7 +44,7 @@ const hasLoopbackOrigin = (context: Context, expectedPort: number): boolean => {
     return (
       (protocol === 'http:' || protocol === 'https:') &&
       originPort === expectedPort &&
-      (hostname === 'localhost' || hostname === '::1' || hostname === '127.0.0.1')
+      (hostname === 'localhost' || hostname === '[::1]' || hostname === '127.0.0.1')
     );
   } catch {
     return false;
