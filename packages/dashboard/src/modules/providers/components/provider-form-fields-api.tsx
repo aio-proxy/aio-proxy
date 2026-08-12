@@ -110,7 +110,7 @@ export const ProviderFormFieldsApi: React.FC<ProviderFormFieldsApiProps> = ({
             )}
           </form.Field>
         </div>
-        <form.Field name="proxy">{(field) => <ProviderProxyField field={field} mode={mode} />}</form.Field>
+        <form.Field name="proxy">{(field) => <ProviderProxyField field={field} />}</form.Field>
         <form.Field name="headers">
           {(field) => <ProviderHeadersField value={field.state.value} onChange={field.handleChange} />}
         </form.Field>

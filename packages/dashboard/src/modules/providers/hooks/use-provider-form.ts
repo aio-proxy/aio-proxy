@@ -55,21 +55,17 @@ const AiSdkRoutingSchema = AiSdkProviderMutationBodySchema.pick({
 
 export function normalizeProviderFormValue(value: ProviderFormShape): unknown {
   const { validationModel: _validationModel, ...provider } = value;
-  if (provider.proxy !== '****') return provider;
-  const { proxy: _proxy, ...withoutRedactedProxy } = provider;
-  return withoutRedactedProxy;
+  return provider;
 }
 
 export function parseProviderFormInitial(value: unknown): ProviderFormInitial | undefined {
   if (value === null || typeof value !== 'object' || !('kind' in value)) return undefined;
-  const redactedProxy = 'proxy' in value && value.proxy === '****';
-  const candidate = redactedProxy ? { ...value, proxy: undefined } : value;
   let schema: typeof ApiProviderMutationBodySchema | typeof AiSdkProviderMutationBodySchema | undefined;
   if (value.kind === ProviderKind.Api) schema = ApiProviderMutationBodySchema;
   else if (value.kind === ProviderKind.AiSdk) schema = AiSdkProviderMutationBodySchema;
   if (schema === undefined) return undefined;
-  const result = schema.safeParse(candidate);
-  return result.success ? { ...result.data, ...(redactedProxy ? { proxy: '****' } : {}) } : undefined;
+  const result = schema.safeParse(value);
+  return result.success ? result.data : undefined;
 }
 
 export function providerFormStepIsValid(

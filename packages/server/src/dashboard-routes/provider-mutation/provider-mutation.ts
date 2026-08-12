@@ -7,7 +7,7 @@ import {
 } from '@aio-proxy/types';
 import { isPlainObject } from 'es-toolkit/predicate';
 
-import { retainAuthoredTemplateStrings, retainRedactedSecrets } from '../provider-secrets';
+import { retainAuthoredTemplateStrings } from '../provider-secrets';
 
 export class ProviderAlreadyExistsError extends Error {
   override readonly name = 'ProviderAlreadyExistsError';
@@ -86,7 +86,7 @@ export function replaceProvider(
 
   const previousValue = record[providerId];
   const previous = isPlainObject(previousValue) ? previousValue : {};
-  const next = retainRedactedSecrets(previous, provider);
+  const next = { ...provider };
 
   for (const key of ['headers', 'metadata', 'proxy', 'transforms'] as const) {
     if (provider[key] === undefined && previous[key] !== undefined) next[key] = previous[key];

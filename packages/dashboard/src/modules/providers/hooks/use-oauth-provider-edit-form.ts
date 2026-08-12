@@ -36,19 +36,17 @@ export type OAuthProviderEditForm = ReactFormExtendedApi<
   any
 >;
 
-const parseOAuthProviderEditValue = (value: OAuthProviderEditFormShape) => {
-  const proxy = value.proxy === '****' ? undefined : value.proxy;
-  return OAuthProviderMutationBodySchema.safeParse({
+const parseOAuthProviderEditValue = (value: OAuthProviderEditFormShape) =>
+  OAuthProviderMutationBodySchema.safeParse({
     kind: 'oauth',
     id: value.id,
     name: value.name,
     enabled: value.enabled,
     weight: value.weight,
-    ...(proxy === undefined ? {} : { proxy }),
+    ...(value.proxy === undefined ? {} : { proxy: value.proxy }),
     alias: value.alias,
     transforms: value.transforms,
   });
-};
 
 export const useOAuthProviderEditForm = (
   initial: OAuthProviderCommonFormValues,

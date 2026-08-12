@@ -13,7 +13,6 @@ import { OAuthAuthorizationPanel } from '../components/oauth-authorization-panel
 import { OAuthCapabilityCombobox } from '../components/oauth-capability-combobox';
 import { ProviderProxyField } from '../components/provider-proxy-field';
 import { useOAuthProviderForm } from '../hooks/use-oauth-provider-form';
-import { ProviderFormMode } from '../lib/constants';
 import { oauthAccountSubmission } from '../lib/oauth-account-submission';
 import {
   cancelOAuthSession,
@@ -135,9 +134,7 @@ export const OAuthProviderCreatePage: React.FC<OAuthProviderCreatePageProps> = (
                     </form.Field>
                     {selected === undefined ? null : <OAuthAccountFields fields={selected.form} form={form} />}
                     {selected === undefined ? null : (
-                      <form.Field name="proxy">
-                        {(field) => <ProviderProxyField field={field} mode={ProviderFormMode.Create} />}
-                      </form.Field>
+                      <form.Field name="proxy">{(field) => <ProviderProxyField field={field} />}</form.Field>
                     )}
                     <Button type="submit" disabled={selected === undefined || startMutation.isPending}>
                       {m['dashboard.providers.oauth.continue']()}

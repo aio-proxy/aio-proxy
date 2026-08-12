@@ -9,7 +9,6 @@ import { Switch } from '@aio-proxy/ui/components/switch';
 
 import type { useOAuthProviderEditForm } from '../hooks/use-oauth-provider-edit-form';
 import type { useOAuthProviderForm } from '../hooks/use-oauth-provider-form';
-import { ProviderFormMode } from '../lib/constants';
 import { OAuthAccountFields } from './oauth-account-fields';
 import { OAuthProviderAliasFields } from './oauth-provider-alias-fields';
 import { ProviderProxyField } from './provider-proxy-field';
@@ -109,9 +108,7 @@ export const OAuthProviderEditFields: React.FC<OAuthProviderEditFieldsProps> = (
         </div>
       </dl>
       <OAuthAccountFields fields={oauth.form} form={accountForm} />
-      <form.Field name="proxy">
-        {(field) => <ProviderProxyField field={field} mode={ProviderFormMode.Edit} />}
-      </form.Field>
+      <form.Field name="proxy">{(field) => <ProviderProxyField field={field} />}</form.Field>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">{m['dashboard.providers.oauth.reauthorize_helper']()}</p>
         <Button type="button" variant="outline" onClick={onReauthorize} disabled={isReauthorizing || !transformsValid}>

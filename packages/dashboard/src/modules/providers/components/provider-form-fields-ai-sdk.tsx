@@ -128,7 +128,7 @@ export const ProviderFormFieldsAiSdk: React.FC<ProviderFormFieldsAiSdkProps> = (
             )}
           </form.Field>
         </div>
-        <form.Field name="proxy">{(field) => <ProviderProxyField field={field} mode={mode} />}</form.Field>
+        <form.Field name="proxy">{(field) => <ProviderProxyField field={field} />}</form.Field>
       </section>
     );
   }

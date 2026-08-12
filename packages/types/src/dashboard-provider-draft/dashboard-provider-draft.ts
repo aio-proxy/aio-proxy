@@ -28,11 +28,9 @@ export const DashboardProviderDraftCatalogResponseSchema = z.discriminatedUnion(
     error: z.strictObject({
       code: z.enum([
         'invalid_draft',
-        'redacted_proxy_unsupported',
         'persisted_provider_not_found',
         'persisted_provider_mismatch',
         'persisted_provider_identity_mismatch',
-        'fresh_credentials_required',
         'catalog_unsupported',
         'catalog_unavailable',
       ]),
@@ -48,11 +46,9 @@ export const DashboardProviderDraftTestResponseSchema = z.discriminatedUnion('ok
     error: z.strictObject({
       code: z.enum([
         'invalid_draft',
-        'redacted_proxy_unsupported',
         'persisted_provider_not_found',
         'persisted_provider_mismatch',
         'persisted_provider_identity_mismatch',
-        'fresh_credentials_required',
         'model_not_enabled',
         'test_request_failed',
       ]),

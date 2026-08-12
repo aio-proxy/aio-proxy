@@ -134,7 +134,7 @@ describe('API provider form fields', () => {
         id: 'api-provider',
         protocol: ProviderProtocol.OpenAICompatible,
         baseURL: 'https://api.example/v1',
-        proxy: '****',
+        proxy: 'https://proxy.example:8443',
       },
     },
     {
@@ -143,13 +143,13 @@ describe('API provider form fields', () => {
         kind: ProviderKind.AiSdk,
         id: 'sdk-provider',
         packageName: '@ai-sdk/openai-compatible',
-        proxy: '****',
+        proxy: 'https://proxy.example:8443',
       },
     },
-  ])('omits the redacted proxy when submitting a $kind provider edit', async ({ kind, initial }) => {
+  ])('round-trips the configured proxy when submitting a $kind provider edit', async ({ kind, initial }) => {
     const onSubmit = rs.fn();
     const parsed = parseProviderFormInitial(initial);
-    expect(parsed?.proxy).toBe('****');
+    expect(parsed?.proxy).toBe('https://proxy.example:8443');
     const { result } = renderHook(() =>
       useProviderForm({ mode: ProviderFormMode.Edit, kind, initial: parsed, onSubmit }),
     );
@@ -157,7 +157,7 @@ describe('API provider form fields', () => {
     await act(async () => result.current.handleSubmit());
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
-    expect(onSubmit.mock.calls[0]?.[0]).not.toHaveProperty('proxy');
+    expect(onSubmit.mock.calls[0]?.[0]).toMatchObject({ proxy: 'https://proxy.example:8443' });
   });
 
   test('enables catalog models, accepts unique pasted models, and edits per-model metadata', async () => {

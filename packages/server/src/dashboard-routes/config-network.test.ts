@@ -78,7 +78,7 @@ function onDisk(configPath: string) {
   return JSON.parse(readFileSync(configPath, 'utf8')) as typeof authoredConfig;
 }
 
-test('GET /config and edit-view redact proxy credentials and header values', async () => {
+test('GET /config redacts proxy credentials and header values that edit-view returns in full', async () => {
   await withNetworkFixture(async (routes) => {
     const configResponse = await routes.request('/config');
     expect(configResponse.status).toBe(200);
@@ -86,12 +86,16 @@ test('GET /config and edit-view redact proxy credentials and header values', asy
     expect(configText).not.toMatch(/user:password|expanded-secret|expanded-tenant/u);
     expect(configText).toMatch(/"proxy"\s*:\s*"\*\*\*\*"/u);
 
+    // The editor round-trips edit-view straight back through the mutation endpoint,
+    // so it gets the expanded truth; only /config and the CLI mask.
     const editResponse = await routes.request('/providers/api/edit-view');
     expect(editResponse.status).toBe(200);
-    const editText = await editResponse.text();
-    expect(editText).not.toMatch(/user:password|expanded-secret|expanded-tenant/u);
-    expect(editText).toMatch(/"proxy"\s*:\s*"\*\*\*\*"/u);
-    expect(editText).toMatch(/"Authorization"\s*:\s*"\*\*\*\*"/u);
+    const edit = (await editResponse.json()) as {
+      readonly provider: { readonly proxy: string; readonly headers: Record<string, string>; readonly apiKey: string };
+    };
+    expect(edit.provider.proxy).toBe('http://user:password@provider.proxy:8080');
+    expect(edit.provider.headers).toEqual({ Authorization: 'Bearer expanded-secret', 'X-Tenant': 'expanded-tenant' });
+    expect(edit.provider.apiKey).toBe('sk-preserved-value');
   });
 });
 
@@ -141,33 +145,6 @@ test('an explicit null provider proxy clears the override and inherits the globa
 
     expect(response.status).toBe(200);
     expect(onDisk(configPath).providers.api).not.toHaveProperty('proxy');
-  });
-});
-
-test('submitting **** retains raw proxy and header templates', async () => {
-  await withNetworkFixture(async (routes, configPath) => {
-    const response = await routes.request('/providers/api', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        kind: 'api',
-        id: 'api',
-        protocol: 'openai-response',
-        baseURL: 'https://api.example/v1',
-        proxy: '****',
-        headers: { Authorization: '****', 'X-Tenant': '****' },
-        models: ['gpt-test'],
-        enabled: true,
-      }),
-    });
-    expect(response.status).toBe(200);
-
-    const disk = onDisk(configPath);
-    expect(disk.providers.api.proxy).toBe('{{env.PROVIDER_PROXY}}');
-    expect(disk.providers.api.headers).toEqual({
-      Authorization: 'Bearer {{env.UPSTREAM_TOKEN}}',
-      'X-Tenant': '{{env.TENANT}}',
-    });
   });
 });
 

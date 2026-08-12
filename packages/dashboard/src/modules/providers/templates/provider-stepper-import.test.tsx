@@ -63,8 +63,8 @@ const apiInitial = {
   weight: 10,
   protocol: ProviderProtocol.OpenAICompatible,
   baseURL: 'https://api.example/v1',
-  proxy: '****',
-  headers: { Authorization: '****' },
+  proxy: 'https://proxy.example:8443',
+  headers: { Authorization: 'Bearer upstream-token' },
   models: ['model-a', 'model-b'],
 } as const;
 
@@ -110,7 +110,7 @@ describe('Provider editor workflow', () => {
 
     const headers = screen.getByTestId('provider-form-field-headers');
     expect(within(headers).getByLabelText(/^Key$|^键$|^鍵$|^キー$|^키$/u)).toHaveValue('Authorization');
-    expect(within(headers).getByLabelText(/^Value$|^值$|^値$|^값$/u)).toHaveValue('****');
+    expect(within(headers).getByLabelText(/^Value$|^值$|^値$|^값$/u)).toHaveValue('Bearer upstream-token');
     expect(
       within(headers).getByRole('button', { name: /Add header|添加请求头|新增請求標頭|ヘッダーを追加|헤더 추가/u }),
     ).toBeTruthy();
@@ -159,7 +159,7 @@ describe('Provider editor workflow', () => {
     expect(screen.getByRole('alert')).toHaveTextContent(/required fields|必填|必須|필수/u);
   });
 
-  test('preserves redacted proxy presentation for API and AI SDK providers', () => {
+  test('renders a configured proxy override as an editable URL for API and AI SDK providers', () => {
     const { unmount } = renderEditor(
       <ProviderFormPage
         mode={ProviderFormMode.Edit}
@@ -169,9 +169,11 @@ describe('Provider editor workflow', () => {
       />,
     );
 
-    expect(within(screen.getByTestId('provider-form-field-proxy')).getByRole('combobox')).toHaveTextContent(
-      /Configured|已配置|已設定|設定済み|구성됨/u,
+    const apiProxy = screen.getByTestId('provider-form-field-proxy');
+    expect(within(apiProxy).getByRole('combobox')).toHaveTextContent(
+      /Use proxy URL|使用代理 URL|プロキシ URL|프록시 URL/u,
     );
+    expect(within(apiProxy).getByRole('textbox')).toHaveValue('https://proxy.example:8443');
 
     unmount();
     renderEditor(
@@ -183,16 +185,18 @@ describe('Provider editor workflow', () => {
           id: 'sdk-provider',
           enabled: true,
           packageName: '@ai-sdk/openai-compatible',
-          proxy: '****',
+          proxy: 'https://proxy.example:8443',
           models: ['model-a'],
         }}
         providerId="sdk-provider"
       />,
     );
 
-    expect(within(screen.getByTestId('provider-form-field-proxy')).getByRole('combobox')).toHaveTextContent(
-      /Configured|已配置|已設定|設定済み|구성됨/u,
+    const sdkProxy = screen.getByTestId('provider-form-field-proxy');
+    expect(within(sdkProxy).getByRole('combobox')).toHaveTextContent(
+      /Use proxy URL|使用代理 URL|プロキシ URL|프록시 URL/u,
     );
+    expect(within(sdkProxy).getByRole('textbox')).toHaveValue('https://proxy.example:8443');
   });
 
   test('renders an absent API or AI SDK proxy override as inherited when editing', () => {
@@ -231,7 +235,7 @@ describe('Provider editor workflow', () => {
     );
   });
 
-  test('tests an enabled model without gating Save and omits the redacted proxy from the draft', async () => {
+  test('tests an enabled model without gating Save and sends the configured proxy in the draft', async () => {
     mocks.testDraft.mockResolvedValue({
       ok: false,
       error: { code: 'test_request_failed', recoverable: true },
@@ -256,7 +260,7 @@ describe('Provider editor workflow', () => {
     await waitFor(() => expect(mocks.testDraft).toHaveBeenCalledTimes(1));
     const request = mocks.testDraft.mock.calls[0]?.[0];
     expect(request).toMatchObject({ model: 'model-a', persistedProviderId: 'api-provider' });
-    expect(request.draft).not.toHaveProperty('proxy');
+    expect(request.draft).toMatchObject({ proxy: 'https://proxy.example:8443' });
     expect(await screen.findByRole('alert')).toHaveTextContent(/test failed|测试失败|測試失敗|失敗|실패/u);
     expect(screen.getByTestId('provider-save')).toBeEnabled();
   });

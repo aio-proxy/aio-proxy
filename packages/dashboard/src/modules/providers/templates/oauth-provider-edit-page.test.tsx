@@ -104,10 +104,10 @@ test('OAuth edit page groups terminal actions in the intended order', () => {
   expect(screen.queryByRole('region', { name: /Danger zone|危险操作/u })).toBeNull();
 });
 
-test('OAuth edit page presents only a redacted configured proxy as unchanged', () => {
+test('OAuth edit page presents a configured proxy override as an editable URL', () => {
   render(
     <OAuthProviderEditPage
-      provider={{ ...provider, proxy: '****' } as unknown as OAuthProvider}
+      provider={{ ...provider, proxy: 'https://proxy.example:8443' }}
       oauth={oauth}
       sessionId={undefined}
       onSessionIdChange={rs.fn()}
@@ -115,9 +115,9 @@ test('OAuth edit page presents only a redacted configured proxy as unchanged', (
   );
 
   expect(screen.queryByRole('tablist')).toBeNull();
-  expect(screen.getByRole('combobox', { name: /Proxy mode|代理模式/u })).toHaveTextContent(
-    /Configured \(unchanged\)|已配置（保持不变）/u,
-  );
+  const proxy = screen.getByTestId('provider-form-field-proxy');
+  expect(within(proxy).getByRole('combobox')).toHaveTextContent(/Use proxy URL|使用代理 URL|プロキシ URL|프록시 URL/u);
+  expect(within(proxy).getByRole('textbox')).toHaveValue('https://proxy.example:8443');
 });
 
 test('OAuth edit page navigates the pre-opened popup when authorization is ready', async () => {
