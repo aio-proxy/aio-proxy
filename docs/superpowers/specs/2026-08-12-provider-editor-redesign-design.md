@@ -286,7 +286,7 @@ There is no locale parity check in the repository, and the store has already dri
 | `templates/oauth-provider-edit-page.test.tsx` | 256 | Rewrite against the unified shell, including stay-in-place re-authorize |
 | `components/providers-table/providers-table.test.tsx` | 357 | Update; the create menu no longer carries a kind |
 | `components/provider-validate-step/provider-validate-step.test.tsx` | 86 | Update; the step becomes the rail panel |
-| `lib/alias-editor/alias-editor.drafts.test.ts` | 107 | Delete with the draft layer |
+| `lib/alias-editor/alias-editor.drafts.test.ts` | 107 | Keep; the draft layer survives the drawer deletion |
 | `lib/alias-editor/alias-editor.issues.test.ts` | 59 | Update; change 6 alters `target-missing` for empty `models` |
 | `lib/oauth-provider-edit/oauth-provider-edit.test.ts` | 88 | Extend with whitelist round-tripping |
 | `components/provider-form-fields-api.test.tsx` | 290 | Update; the component keeps only connection fields, so assertions on models, alias, and transforms move to the new section tests |
@@ -324,5 +324,5 @@ The change spans `@aio-proxy/types`, `@aio-proxy/core`, `server`, `@aio-proxy/ui
 - `models[]` now means two different things depending on kind: the exposed set for api and ai-sdk, a filter over a discovered catalog for oauth. The models section must word this difference explicitly — "all 47 discovered" versus an explicit subset — or an oauth user will read an empty list as "nothing exposed" and an api user will read it as "everything".
 - Adding `models` to the oauth mutation body silently enrolls oauth providers in `validateAliasTargets`. Backend change 6 is what keeps that from turning previously valid payloads into 400s; shipping change 1 without it is a regression, not a missing feature. The same fix must land on `aliasEditorIssues`, or the block simply moves from the server to the submit button.
 - The oauth model test checks the saved account, not the draft. A user who edits a request transform and immediately tests a model gets a pass or fail that ignores the edit. Wording in the rail is the whole mitigation; the alternative drives plugin auth from a test button.
-- Deleting the alias draft layer removes conflict detection at commit time. Inline rows must surface the same `alias-editor` issues immediately, or a conflicting alias reaches submit and fails there instead.
+- Deleting the drawer removes its staging-until-close behavior, not the draft layer: `useAliasDrafts` and its commit/rename conflict detection survive unchanged. Inline rows must still surface the same `alias-editor` issues immediately, or a conflicting edit reaches submit and fails there instead.
 
