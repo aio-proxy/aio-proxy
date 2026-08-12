@@ -546,10 +546,10 @@ test('modelRoutes: preserve keeps the original id routable next to the alias', (
 });
 ```
 
-And one assertion that the package **root** barrel actually re-exports the moved symbols — without it, forgetting the `provider.ts:9` widening below stays green here and only breaks in task 17:
+And one assertion that the package **root** barrel actually re-exports the moved symbols — without it, forgetting the `provider.ts:9` widening below stays green here and only breaks in task 17. Import it from `../index`, **not** `@aio-proxy/types` — inside `packages/types` the package name self-resolves to `dist/index.js`, so a stale or absent build would let a missing widening pass unnoticed. `../index` traverses `src/index.ts` -> `provider.ts:9` -> `./provider-alias`, which is the exact chain the guard exists to check:
 
 ```ts
-import * as types from '@aio-proxy/types';
+import * as types from '../index';
 
 test('modelRoutes and its helpers reach the package root barrel', () => {
   expect(typeof types.modelRoutes).toBe('function');
@@ -592,7 +592,7 @@ export {
 In `packages/core/src/router.ts`:
 
 ```ts
-import { type AliasConfig, directModelIds, type ModelId, modelRoutes, resolveAliasTarget, sameRouteTargets } from '@aio-proxy/types';
+import { type AliasConfig, directModelIds, type ModelId, resolveAliasTarget, sameRouteTargets } from '@aio-proxy/types';
 
 export { modelRoutes } from '@aio-proxy/types';
 export type { ModelRoute } from '@aio-proxy/types';
