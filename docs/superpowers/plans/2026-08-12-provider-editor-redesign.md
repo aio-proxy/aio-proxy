@@ -2115,7 +2115,7 @@ Read the fixture to get the seeded key rather than guessing it.
 In `packages/server/src/dashboard-routes/provider-draft/provider-draft.test.ts`, these are the masked-round-trip tests. Every one of them asserts a behavior this task removes, so each is **deleted**, not adjusted: `:270`, `:324-352`, `:527`, `:573`, `:585-635`, `:627`, `:637-687`. Before deleting, read each and check whether it also pins something that survives (e.g. a `persisted_provider_mismatch` assertion sharing the block) — keep those halves. Replace the deleted coverage with one test proving the new contract end to end:
 
 ```ts
-test('an identity-changing edit on a saved provider reuses the persisted credential', async () => {
+test('an identity-changing edit reaches the upstream instead of short-circuiting', async () => {
   const response = await routes.request(
     '/providers/draft/catalog',
     jsonRequest({
