@@ -20,6 +20,17 @@ const issuesOf = (provider: unknown): readonly string[] => {
   return collected;
 };
 
+const issueRecordsOf = (provider: unknown): readonly { message: string; path: readonly (string | number)[] }[] => {
+  const collected: { message: string; path: readonly (string | number)[] }[] = [];
+  const ctx = {
+    addIssue: (issue: { readonly message?: string; readonly path?: readonly (string | number)[] }) => {
+      collected.push({ message: issue.message ?? '', path: issue.path ?? [] });
+    },
+  } as unknown as z.RefinementCtx;
+  validateApiEndpoints(provider as never, ctx);
+  return collected;
+};
+
 describe('apiProviderEndpoints', () => {
   test('legacy pair alone normalizes to a single origin endpoint', () => {
     expect(
@@ -119,11 +130,11 @@ describe('validateApiEndpoints', () => {
 
   test('rejects bearer auth without apiKey', () => {
     expect(
-      issuesOf({
+      issueRecordsOf({
         kind: 'api',
         endpoints: [{ protocol: 'anthropic', baseURL: 'https://a.test/v1', auth: 'bearer' }],
       }),
-    ).toEqual(["auth 'bearer' requires apiKey"]);
+    ).toEqual([{ message: "auth 'bearer' requires apiKey", path: ['endpoints', 0, 'auth'] }]);
   });
 
   test('accepts bearer auth with apiKey', () => {
