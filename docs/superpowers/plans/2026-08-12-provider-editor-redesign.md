@@ -757,7 +757,14 @@ git commit -m "feat(server): ai-sdk drafts list models from an OpenAI-shaped opt
 - Consumes: `exposedModelIds` from `../../plugin-runtime` (task 4); `state.acquireProviderSnapshot()` (`ProviderRouteSource`, `packages/server/src/runtime.ts:87-96`); `runtime.upstreamMetadata` (`runtime.ts:55`).
 - Produces: `DashboardProviderDraftSchema` gains an oauth branch; `resolveProviderDraft` admits oauth drafts backed by a persisted oauth provider; `testProviderDraft(state, provider: Provider, modelId)` handles oauth by borrowing the live runtime.
 
-**Design constraints from the spec:** the oauth test borrows the live runtime instance from the provider snapshot (never a throwaway materialization — that would drive plugin auth from a test button); the enablement gate for oauth checks the *effective* exposed set (`exposedModelIds` over the runtime's full catalog ids with the **draft's** whitelist), so an empty whitelist can test any discovered model; `fresh_credentials_required` never applies to oauth. Deviation from the spec's letter: instead of widening all five `Exclude<Provider, ...OAuth>` signatures, `testProviderDraft` widens to `Provider` and branches to the oauth path before the materialization helpers, which keep their `Exclude` types accurately (they are only reachable for api/ai-sdk). `withDraftAttempt` widens to `Provider` because the oauth path calls it. **Keep** the existing `if (testProvider.kind === ProviderKind.OAuth) return failure('test_request_failed');` bail at `provider-draft-operations.ts:62`: `ProviderSchema` is a discriminated union over all three kinds (`types/src/provider.ts:248-249`), so `const testProvider = ProviderSchema.parse(...)` at `:61` is typed as the full `Provider` regardless of the entry-point branch — narrowing the `provider` parameter does not narrow the separate `testProvider` binding. Deleting the bail makes `materializeDraftRuntime(state, testProvider)` at `:63` fail with TS2345 against its `Exclude<Provider, { kind: ProviderKind.OAuth }>` parameter (`:96-99`). It is unreachable at runtime and load-bearing at compile time.
+**Design constraints from the spec:** the oauth test borrows the live runtime instance from the provider snapshot (never a throwaway materialization — that would drive plugin auth from a test button); the enablement gate for oauth checks the *effective* exposed set (`exposedModelIds` over the runtime's full catalog ids with the **draft's** whitelist), so an empty whitelist can test any discovered model; `fresh_credentials_required` never applies to oauth. Deviation from the spec's letter: instead of widening all five `Exclude<Provider, ...OAuth>` signatures, `testProviderDraft` widens to `Provider` and branches to the oauth path before the materialization helpers, which keep their `Exclude` types accurately (they are only reachable for api/ai-sdk). `withDraftAttempt` widens to `Provider` because the oauth path calls it. **Keep** the existing `if (testProvider.kind === ProviderKind.OAuth) return failure('test_request_failed');` bail at `provider-draft-operations.ts:62`: `ProviderSchema` is a discriminated union over all three kinds (`types/src/provider.ts:248-249`), so `const testProvider = ProviderSchema.parse(...)` at `:61` is typed as the full `Provider` regardless of the entry-point branch — narrowing the `provider` parameter does not narrow the separate `testProvider` binding. Deleting the bail makes `materializeDraftRuntime(state, testProvider)` at `:63` fail with TS2345 against its `Exclude<Provider, { kind: ProviderKind.OAuth }>` parameter (`:96-99`). It is unreachable at runtime and load-bearing at compile time. Leave an inline comment on it so it does not read as dead code:
+
+```ts
+  // Unreachable: the entry point routes oauth to testOAuthProvider. Kept because
+  // ProviderSchema.parse returns the full union — this narrows testProvider for
+  // materializeDraftRuntime's Exclude<Provider, { kind: OAuth }> parameter.
+  if (testProvider.kind === ProviderKind.OAuth) return failure('test_request_failed');
+```
 
 - [ ] **Step 1: Write the failing schema test**
 
@@ -933,8 +940,7 @@ export async function testProviderDraft(
 ): Promise<DashboardProviderDraftTestResponse> {
   if (provider.kind === ProviderKind.OAuth) return testOAuthProvider(state, provider, modelId);
   if (!provider.models?.includes(modelId)) return failure('model_not_enabled');
-  // ... existing api/ai-sdk body unchanged, INCLUDING the
-  // `if (testProvider.kind === ProviderKind.OAuth) return failure('test_request_failed');` bail ...
+  // ... existing api/ai-sdk body unchanged, INCLUDING the `testProvider.kind === OAuth` bail ...
 }
 
 // Borrows the live runtime: an oauth provider cannot exist unsaved, and a
