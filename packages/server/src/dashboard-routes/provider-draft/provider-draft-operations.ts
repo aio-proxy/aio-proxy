@@ -1,3 +1,4 @@
+import { createProxyFetch } from '@aio-proxy/core';
 import {
   type DashboardProviderDraftCatalogResponse,
   type DashboardProviderDraftTestResponse,
@@ -7,7 +8,7 @@ import {
   ProviderSchema,
 } from '@aio-proxy/types';
 
-import { materializeProviders } from '../../provider-runtime';
+import { effectiveProxy, materializeProviders } from '../../provider-runtime';
 import { withAttemptLogContext, withRequestLogContext } from '../../request-logging';
 import type { RuntimeProviderInstance } from '../../runtime';
 import type { ServerState } from '../../server-state';
@@ -23,7 +24,7 @@ export async function loadProviderDraftCatalog(
   state: ServerState,
   provider: Exclude<Provider, { kind: ProviderKind.OAuth }>,
 ): Promise<DashboardProviderDraftCatalogResponse> {
-  if (provider.kind === ProviderKind.AiSdk) return failure('catalog_unsupported');
+  if (provider.kind === ProviderKind.AiSdk) return loadAiSdkDraftCatalog(state, provider);
 
   try {
     const runtime = materializeDraft(state, provider);
@@ -45,6 +46,48 @@ export async function loadProviderDraftCatalog(
       path = page.nextPath;
     }
     return { ok: true, models: [...models] };
+  } catch {
+    return failure('catalog_unavailable');
+  }
+}
+
+// ai-sdk runtimes expose no raw capability and no protocol field, so the api
+// loader cannot serve them. Convention over schema: baseURL/apiKey/headers are the
+// @ai-sdk/openai-compatible option keys, and the listing must be OpenAI-shaped.
+async function loadAiSdkDraftCatalog(
+  state: ServerState,
+  provider: Extract<Provider, { kind: ProviderKind.AiSdk }>,
+): Promise<DashboardProviderDraftCatalogResponse> {
+  const baseURL = provider.options?.['baseURL'];
+  if (typeof baseURL !== 'string' || baseURL.trim() === '') return failure('catalog_unsupported');
+  const apiKey = provider.options?.['apiKey'];
+  const configuredHeaders = provider.options?.['headers'];
+  // Proxy only. The runtime path also wraps this in createProviderRequestTransformFetch +
+  // createObservedFetch (materialize.ts:156-159), but both are provably inert here: the
+  // transform fetch returns early unless currentProviderAttemptContext() names this
+  // provider, and createObservedFetch passes through with no debug scope. Draft catalog
+  // loading establishes neither — the api loader above has the same gap. Wiring them in
+  // would look like transform support without providing any.
+  const fetchWithProxy = createProxyFetch(effectiveProxy(state.currentConfig().proxy, provider.proxy));
+  try {
+    const response = await fetchWithProxy(`${baseURL.replace(/\/+$/u, '')}/models`, {
+      signal: AbortSignal.timeout(5_000),
+      headers: {
+        // An @ai-sdk/anthropic-shaped provider authenticates via options.headers
+        // (x-api-key), not a bearer token; without this it 401s here while
+        // /draft/test on the same draft succeeds.
+        ...(typeof configuredHeaders === 'object' && configuredHeaders !== null
+          ? (configuredHeaders as Record<string, string>)
+          : {}),
+        ...(typeof apiKey === 'string' && apiKey !== '' ? { authorization: `Bearer ${apiKey}` } : {}),
+      },
+    });
+    if (!response.ok) {
+      await response.body?.cancel();
+      return failure('catalog_unavailable');
+    }
+    const page = catalogPage(ProviderProtocol.OpenAICompatible, await response.json());
+    return { ok: true, models: [...new Set(page.models)] };
   } catch {
     return failure('catalog_unavailable');
   }

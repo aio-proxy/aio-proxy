@@ -250,6 +250,79 @@ describe('draft Provider catalog and test routes', () => {
     });
   });
 
+  test('lists an ai-sdk draft catalog from options.baseURL with bearer auth', async () => {
+    let authorization: string | null = null;
+    let pathname = '';
+    const upstream = Bun.serve({
+      hostname: '127.0.0.1',
+      port: 0,
+      fetch(request) {
+        authorization = request.headers.get('authorization');
+        pathname = new URL(request.url).pathname;
+        return Response.json({ data: [{ id: 'sdk-model-a' }, { id: 'sdk-model-b' }] });
+      },
+    });
+    try {
+      const response = await routes.request(
+        '/providers/draft/catalog',
+        jsonRequest({
+          draft: {
+            id: 'unsaved-sdk',
+            kind: 'ai-sdk',
+            packageName: '@ai-sdk/openai-compatible',
+            options: { apiKey: 'sdk-secret', baseURL: `http://127.0.0.1:${upstream.port}/v1` },
+          },
+        }),
+      );
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ ok: true, models: ['sdk-model-a', 'sdk-model-b'] });
+      expect(authorization).toBe('Bearer sdk-secret');
+      expect(pathname).toBe('/v1/models');
+    } finally {
+      await upstream.stop(true);
+    }
+  });
+
+  // A *missing* options.baseURL is already pinned by the existing test at
+  // `provider-draft.test.ts:233` ("returns a recoverable unsupported catalog result
+  // for an AI SDK draft", no options at all) — do not add a second test for that.
+  // This one pins the blank-string branch, which nothing else covers: without the
+  // `.trim() === ''` guard a blank baseURL fetches "/models" and degrades to
+  // catalog_unavailable ("we tried and it broke") instead of catalog_unsupported
+  // ("you have not configured a listing endpoint").
+  test('an ai-sdk draft with a blank options.baseURL still returns catalog_unsupported', async () => {
+    const response = await routes.request(
+      '/providers/draft/catalog',
+      jsonRequest({ draft: { id: 'unsaved-sdk', kind: 'ai-sdk', options: { apiKey: 'x', baseURL: '   ' } } }),
+    );
+    expect(await response.json()).toEqual({
+      ok: false,
+      error: { code: 'catalog_unsupported', recoverable: true },
+    });
+  });
+
+  test('an ai-sdk endpoint that is not OpenAI-shaped returns catalog_unavailable', async () => {
+    const upstream = Bun.serve({
+      hostname: '127.0.0.1',
+      port: 0,
+      fetch: () => Response.json({ unexpected: true }),
+    });
+    try {
+      const response = await routes.request(
+        '/providers/draft/catalog',
+        jsonRequest({
+          draft: { id: 'unsaved-sdk', kind: 'ai-sdk', options: { baseURL: `http://127.0.0.1:${upstream.port}/v1` } },
+        }),
+      );
+      expect(await response.json()).toEqual({
+        ok: false,
+        error: { code: 'catalog_unavailable', recoverable: true },
+      });
+    } finally {
+      await upstream.stop(true);
+    }
+  });
+
   test('an identity-changing edit reaches the upstream instead of short-circuiting', async () => {
     const response = await routes.request(
       '/providers/draft/catalog',
