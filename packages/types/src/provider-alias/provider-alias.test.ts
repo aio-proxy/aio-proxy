@@ -1,8 +1,8 @@
 import { expect, test } from 'bun:test';
 
-import * as types from '@aio-proxy/types';
 import { z } from 'zod';
 
+import * as types from '../index';
 import { modelRoutes, validateAliasTargets } from './provider-alias';
 
 const issuesFor = (provider: {
