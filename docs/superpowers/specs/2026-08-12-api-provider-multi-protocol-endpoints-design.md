@@ -1,7 +1,7 @@
 # API Provider 多协议端点设计
 
 - 日期：2026-08-12
-- 状态：待用户评审
+- 状态：待用户评审（已按评审意见修订：统一 ai-sdk 入参语义、单次归一化、anthropic auth 覆盖、probe 路径职责、dashboard 交接）
 
 ## 背景
 
@@ -11,14 +11,17 @@ aio-proxy 的 API provider 目前只能声明一个 `protocol` + 一个 `baseURL
 
 现状中的关键事实（决定了本设计的语义分层）：
 
-- raw 透传的 URL 重写是 `upstreamUrl.pathname = incomingUrl.pathname`，即 **baseURL 自带的 path 前缀被丢弃，只用 origin**；而 AI SDK 桥接使用完整 baseURL。README 教的写法是 `https://api.openai.com/v1`（带版本段），origin-only 写法也因透传忽略 path 而同样工作。存量配置两种写法并存，任何全局语义统一都会破坏其中一类。
-- pipeline 分发已经协议参数化：`provider.raw.resolve({ protocol, modelId })` 命中才透传，否则走 `model` capability，扩展点天然存在。
-- 鉴权 header 风格（`x-api-key` / `x-goog-api-key` / `Bearer`）、流包装 `wrapOpenAIProtocolFetch`、probe 请求构造均已按协议分支。
+- raw 透传的 URL 重写是 `upstreamUrl.pathname = incomingUrl.pathname`，即 **baseURL 自带的 path 前缀被丢弃，只用 origin**；而 AI SDK 桥接使用完整 baseURL。README 教的写法是 `https://api.openai.com/v1`（带版本段），origin-only 写法也因透传忽略 path 而同样工作。存量配置两种写法并存，任何对旧写法的语义统一都会破坏其中一类。
+- `@ai-sdk/*` 各包的 baseURL 约定（已在 node_modules 实证）：`@ai-sdk/openai` 默认 `https://api.openai.com/v1`（追加 `/responses` 等）；`@ai-sdk/openai-compatible` 同为版本段风格（追加 `/chat/completions`）；`@ai-sdk/anthropic` 默认 `https://api.anthropic.com/v1`（追加 `/messages`）；`@ai-sdk/google` 默认 `https://generativelanguage.googleapis.com/v1beta`（追加 `/models/...`）。前三者对同根网关是同一个值（`{root}/v1`），仅 gemini 例外（`/v1beta`）。
+- `@ai-sdk/anthropic` 区分 `apiKey`（发 `x-api-key`）与 `authToken`（发 `Authorization: Bearer`），二者互斥。z.ai / Moonshot / DeepSeek 的 anthropic 端点官方配置均为 `ANTHROPIC_AUTH_TOKEN`（Bearer），仅按协议推导鉴权 header 不够。
+- 配置解析是两段式：`ProviderInputValueSchema.safeParse` 先校验单个 provider，`ProviderSchema.parse` 再解析一次（见 `packages/types/src/config/config.ts`）。在 `ApiProviderSchema` 上挂 transform 会被执行两次并破坏现有 `.omit()` 组合（ZodEffects 无 `.omit`），归一化必须放在这条链之外。
+- pipeline 分发已经协议参数化：`provider.raw.resolve({ protocol, modelId })` 命中才透传，否则走 `model` capability；token-count 等旁路复用同一接口。
 
 ## 目标
 
-- API provider 可声明多个协议端点；inbound 协议命中任一端点即 raw 透传，透传时鉴权 header、流包装、URL 构造均按命中端点的协议。
-- 支持两类真实渠道形态：per-protocol baseURL（一方渠道）与共享根 baseURL（聚合网关）。
+- API provider 可声明多个协议端点；inbound 协议命中任一端点即 raw 透传，透传时 URL 构造、鉴权 header、流包装均按命中端点。
+- 端点 `baseURL` 语义唯一且所见即所得：**等同于传给对应 `@ai-sdk/*` 包的 `baseURL` 入参**，raw 与桥接从同一个值出发，无隐式派生。
+- 支持真实渠道的鉴权差异：anthropic 协议端点可选择 Bearer。
 - 存量配置零回归：旧写法长期合法、行为冻结；磁盘配置从不主动重写。
 - 存量用户零成本渐进迁移：保留原 `protocol`+`baseURL` 不动，追加 `endpoints` 即可。
 
@@ -26,8 +29,9 @@ aio-proxy 的 API provider 目前只能声明一个 `protocol` + 一个 `baseURL
 
 - 渠道内跨协议降级重试（raw 失败后同渠道换协议桥接）。渠道内仍单次尝试，失败进入现有跨渠道 fallback。
 - per-endpoint 的 `apiKey` / `headers` / `proxy` / `transforms` / `models` 覆盖。现实渠道各协议端点共用同一凭据与模型集；出现真实需求再做非破坏扩展。
+- anthropic 之外协议的 `auth` 覆盖。当前无真实渠道证据；枚举扩展是非破坏变更。
 - 桥接目标协议偏好配置。桥接固定使用主协议端点。
-- Dashboard 表单与 provider mutation API 对 `endpoints` 的支持（由进行中的 dashboard 重构需求承接）。`replaceProvider` 保留清单本轮不加 `endpoints`。
+- Dashboard 表单与 provider mutation API 对 `endpoints` 的支持，以及 `replaceProvider` 保留清单的修改。已知编辑抹除风险（见 Dashboard 交接一节），在本需求 PR 描述中明确交接给进行中的 dashboard 重构需求。
 - 配置文件的启动时迁移重写或旧写法硬废弃。
 - probe 探测全部端点或逐端点状态展示。
 
@@ -36,39 +40,41 @@ aio-proxy 的 API provider 目前只能声明一个 `protocol` + 一个 `baseURL
 | 决策点 | 结论 |
 | --- | --- |
 | 新字段 | `endpoints`，仅 API provider，可选 |
-| 形态 | 数组 `[{ protocol, baseURL }]` 或共享对象 `{ baseURL, protocol: Protocol[] }`，二选一不混合 |
+| 形态 | 数组 `[{ protocol, baseURL, auth? }]` 或共享对象 `{ baseURL, protocol: Protocol[] }`，二选一不混合 |
+| 共享对象 | 纯语法糖：按 `protocol` 顺序展开为同 `baseURL` 的多个条目，无独立语义、不支持 `auth`（需要 `auth` 用数组形态） |
 | 与旧字段共存 | 合并：旧 `protocol`+`baseURL` 作为主端点排最前，`endpoints` 为附加端点 |
-| 主端点 | 旧字段存在时即旧字段；否则数组第一个条目 / 共享形态 `protocol` 数组第一个 |
-| 归一化 | zod transform 解析时把三种写法打平为统一端点数组，每条目带 baseURL 解释模式标签 |
-| baseURL 解释模式 | 旧字段=`origin`（冻结现状）；数组条目=`sdk`；共享条目=`root` |
+| 主端点 | 旧字段存在时即旧字段；否则第一个条目（共享形态展开后的第一个） |
+| baseURL 解释模式 | 仅两种：旧字段=`origin`（冻结现状）；endpoints 条目=`sdk`（ai-sdk 入参语义） |
+| 鉴权 | 条目级可选 `auth: 'bearer' \| 'x-api-key'`，仅 anthropic 协议条目接受；缺省按协议推导（现状规则） |
 | raw 匹配 | inbound 协议 ∈ 端点协议集 → 用该端点透传；否则主协议端点桥接 |
-| 桥接 | 每 provider 仍只建一个 bridge，固定主协议端点 |
-| probe | 只探主端点，维持单状态 |
-| 校验 | 协议重复（含旧字段与 endpoints 之间）、空数组、空协议列表、`endpoints` 与旧字段皆缺 → 配置无效 |
-| 迁移 | 仅解析归一化；旧写法长期合法；磁盘不主动重写 |
+| 桥接 | 每 provider 仍只建一个 bridge，固定主协议端点，baseURL 原样传包 |
+| probe | 只探主端点；probe 仅构造标准 inbound path/body，URL 改写完全由端点 transport 负责 |
+| 归一化 | types 导出纯函数，仅在运行时物化点调用一次；schema 不做 transform，解析输出无镜像、无模式标签字段 |
+| 校验 | union 级 `superRefine`：协议重复（含旧字段与 endpoints 之间）、空数组/空协议列表、旧字段只出现其一、`endpoints` 与旧字段皆缺、`auth` 用于非 anthropic 条目 → 配置无效 |
+| 迁移 | 仅解析校验；旧写法长期合法；磁盘不主动重写 |
 
 ## 配置契约
 
 ```jsonc
 {
   "providers": {
-    // 一方渠道：各协议不同端点（数组形态，SDK 语义）
+    // 一方渠道：各协议不同端点（z.ai 的 anthropic 端点要求 Bearer）
     "zai": {
       "kind": "api",
       "apiKey": "{{env.ZAI_API_KEY}}",
       "models": ["glm-4.7"],
       "endpoints": [
         { "protocol": "openai-compatible", "baseURL": "https://api.z.ai/api/paas/v4" },
-        { "protocol": "anthropic", "baseURL": "https://api.z.ai/api/anthropic" },
+        { "protocol": "anthropic", "baseURL": "https://api.z.ai/api/anthropic/v1", "auth": "bearer" },
       ],
     },
 
-    // 聚合网关：同根标准路径（共享形态，根语义）
+    // 聚合网关：openai 系与 anthropic 的 ai-sdk 入参同值，共享对象一行搞定
     "gateway": {
       "kind": "api",
       "apiKey": "{{env.GATEWAY_KEY}}",
       "models": ["gpt-5"],
-      "endpoints": { "baseURL": "https://gw.example.com", "protocol": ["openai-response", "anthropic", "gemini"] },
+      "endpoints": { "baseURL": "https://gw.example.com/v1", "protocol": ["openai-response", "anthropic"] },
     },
 
     // 存量渐进迁移：旧字段一行不改，追加 endpoints；旧字段即主端点
@@ -78,7 +84,7 @@ aio-proxy 的 API provider 目前只能声明一个 `protocol` + 一个 `baseURL
       "baseURL": "https://api.moonshot.cn/v1",
       "apiKey": "{{env.MOONSHOT_API_KEY}}",
       "models": ["kimi-k2"],
-      "endpoints": [{ "protocol": "anthropic", "baseURL": "https://api.moonshot.cn/anthropic" }],
+      "endpoints": [{ "protocol": "anthropic", "baseURL": "https://api.moonshot.cn/anthropic/v1", "auth": "bearer" }],
     },
   },
 }
@@ -89,123 +95,136 @@ aio-proxy 的 API provider 目前只能声明一个 `protocol` + 一个 `baseURL
 - `endpoints` 省略时行为与今天完全一致。
 - 配了 `endpoints` 时，顶层 `protocol`+`baseURL` 可整对省略或整对保留；只出现其一 → 配置无效。
 - 同一协议在合并后的端点集中最多出现一次；重复 → 配置无效（进入现有 `invalidProviders` 流程）。
+- `auth` 仅 anthropic 协议条目接受：`'bearer'`（`Authorization: Bearer`）或 `'x-api-key'`（缺省，同现状）。共享对象形态不承载 `auth`。
 - authoring 层 `endpoints` 内字符串值支持 `{{env.NAME}}` 模板，跟随现有 authoring/materialized 双 schema 模式。
 - `apiKey` / `headers` / `proxy` / `transforms` / `models` / `alias` / `metadata` 保持 provider 级，作用于全部端点。
 
-## baseURL 三种解释模式
-
-归一化后每个端点条目携带解释模式标签（内部字段，建议名 `baseUrlMode: 'origin' | 'sdk' | 'root'`）：
+## baseURL 两种解释模式
 
 | 模式 | 来源 | 透传 URL 构造 | 桥接 baseURL |
 | --- | --- | --- | --- |
-| `origin` | 旧 `protocol`+`baseURL` | 冻结现状：origin + inbound 完整路径（丢弃 baseURL path） | 完整 baseURL（现状不变） |
-| `sdk` | 数组条目 | 按该协议官方 SDK 的 baseURL 语义拼接（见下） | 同一 baseURL，raw 与桥接一致 |
-| `root` | 共享条目 | 根前缀 + inbound 标准路径（含 query 原样保留） | 按主协议从根派生（见下） |
+| `origin` | 旧 `protocol`+`baseURL` | 冻结现状：origin + inbound 完整路径（丢弃 baseURL path） | 完整 baseURL 原样传包（现状不变） |
+| `sdk` | endpoints 条目（数组或共享展开） | baseURL + 协议操作路径（inbound 路径剥去版本前缀的剩余部分），query 原样保留 | 同一 baseURL 原样传包 |
 
-`sdk` 模式的用户心智是"照抄渠道文档给该协议官方 SDK 的值"：
+`sdk` 模式的用户心智：**baseURL 写你会传给对应 `@ai-sdk/*` 包的那个值**；raw 透传的拼接行为与该包一致。
 
-- `openai-compatible` / `openai-response`：baseURL 含版本段（如 `…/v1`、`…/api/paas/v4`）。透传把 inbound 路径的 `/v1` 前缀剥掉后拼接：`/v1/chat/completions` → `{base}/chat/completions`，`/v1/responses` → `{base}/responses`。
-- `anthropic`：baseURL 为根（官方 SDK 的 `ANTHROPIC_BASE_URL` 语义，如 `https://api.z.ai/api/anthropic`）。透传拼接完整 inbound 路径：`/v1/messages` → `{base}/v1/messages`。
-- `gemini`：baseURL 为根（官方 GenAI SDK 语义）。透传拼接完整 inbound 路径：`/v1beta/models/...` → `{base}/v1beta/models/...`。
-- 即 `anthropic` / `gemini` 的 `sdk` 模式与 `root` 模式等价；仅 openai 系有版本段差异。
+各协议的版本前缀与操作路径：
 
-`root` 模式桥接派生规则：openai 系 = `{root}/v1`；`anthropic` / `gemini` = `{root}`。各 `@ai-sdk/*` 包自身的 baseURL 约定（是否内含 `/v1`、`/v1beta`）在实现时逐包核对，派生值以"该包收到后的实际请求 URL 与渠道端点一致"为准。
+| 协议 | inbound 路径 → 追加到 baseURL 的操作路径 |
+| --- | --- |
+| `openai-compatible` | `/v1/chat/completions` → `/chat/completions` |
+| `openai-response` | `/v1/responses` → `/responses` |
+| `anthropic` | `/v1/messages` → `/messages`；`/v1/messages/count_tokens` → `/messages/count_tokens` |
+| `gemini` | `/v1beta/models/...` → `/models/...` |
 
-已知文档义务：单元素数组与旧写法同值不同义（`sdk` vs `origin`）。文档明确引导：单协议继续用旧写法；多协议用 `endpoints`；新写法 baseURL 照抄渠道 SDK 文档。
+推论与文档义务：
+
+- 同根网关上 openai 系与 anthropic 的 ai-sdk 入参是同一个值（`{root}/v1`），共享对象因此成立且无任何派生；**gemini 的入参是 `{root}/v1beta`，不能与 `/v1` 系共用一个共享对象**，需单独数组条目。
+- 渠道文档给 vendor SDK 的 anthropic 根地址（`ANTHROPIC_BASE_URL`，如 `https://api.z.ai/api/anthropic`）写进 endpoints 时需补 `/v1`。文档列出主流渠道（z.ai / Moonshot / DeepSeek / 聚合网关）的确切值。
+- 单元素数组与旧写法同值不同义（`sdk` vs `origin`）。文档明确引导：单协议继续用旧写法；多协议用 `endpoints`。
+
+## 鉴权
+
+- 有效鉴权风格按命中条目决定：anthropic 缺省 `x-api-key`、可覆盖为 `bearer`；gemini 固定 `x-goog-api-key`；openai 系固定 `Bearer`。`origin` 条目冻结现状（协议推导，无覆盖）。
+- raw 透传：`upstreamHeaders` 按有效风格写入 `Authorization: Bearer` / `x-api-key` / `x-goog-api-key`，其余 header 处理（剥离客户端凭据、provider `headers` 最后写入且最终获胜）不变。
+- 桥接：主端点为 anthropic 且 `auth: 'bearer'` 时，`@ai-sdk/anthropic` 用 `authToken` 选项替代 `apiKey`（二者互斥已实证）；其余组合沿用现状 `apiKey` 注入。
 
 ## 数据流
 
-### 归一化（packages/types）
+### Schema 与归一化（packages/types）
 
-`ApiProviderSchema` 增加 `endpoints` 输入形态，transform 输出：
-
-- `endpoints: readonly NormalizedProtocolEndpoint[]`（非空，含解释模式标签），主端点恒为 `endpoints[0]`；
-- 顶层 `protocol` / `baseURL` 保留为主端点镜像，**仅供展示与身份读取**（dashboard summary、日志字段等）；所有 URL 构造必须读端点条目。
-
-三种输入的归一化：
-
-1. 仅旧字段 → `[origin(protocol, baseURL)]`（与今天的单协议行为逐字节一致）。
-2. 旧字段 + endpoints → `[origin(protocol, baseURL), ...endpoints 条目]`。
-3. 仅 endpoints → 数组条目逐个转 `sdk` 条目；共享对象按 `protocol` 顺序展开为多个 `root` 条目（共享同一 baseURL）。
+- `ApiProviderSchema` / `ApiProviderAuthoringSchema` 增加 `endpoints` 输入形态；`protocol`/`baseURL` 变为可选（成对约束在 refine 中保证）。对象 schema 保持纯 `z.object`，`.omit()` 组合不受影响。
+- 端点相关校验实现为 union 级 `superRefine`（与 `validateAliasTargets` 同位，纯校验、幂等，两段解析下安全）。
+- 归一化是 types 导出的**纯函数**（如 `apiProviderEndpoints(provider)`）：输入解析后的 provider，输出非空端点数组 `{ protocol, baseURL, auth?, mode: 'origin' | 'sdk' }[]`，主端点恒为下标 0。三种写法的展开：仅旧字段 → `[origin]`；旧字段+endpoints → `[origin, ...sdk 条目]`；仅 endpoints → sdk 条目（共享对象按 `protocol` 顺序展开）。
+- 解析输出（`Provider` 类型、Dashboard API、mutation 流）**不包含**归一化结果或模式标签；归一化只在运行时物化点调用，每个 provider 一次。
 
 ### raw 透传（packages/core / packages/server）
 
-- `materializeRuntimeProvider` 的 `raw.resolve({ protocol })` 从"等于单一 protocol"改为"在端点集中查找条目"；命中即返回绑定该条目的 invoke。
-- `createApiProvider` 按条目构造透传：URL 按条目解释模式拼接；`upstreamHeaders` 的鉴权 header 风格按条目协议；`wrapOpenAIProtocolFetch` 按条目协议包装。inbound query、method、body、signal、SSE tee/trace 行为不变。
+- `materializeRuntimeProvider` 在物化时调用归一化函数，`raw.resolve({ protocol })` 从"等于单一 protocol"改为"在端点集中查找条目"；命中即返回绑定该条目的 invoke。
+- `createApiProvider` 按条目构造透传：URL 按条目模式拼接（`origin` 现状 / `sdk` 操作路径），鉴权按条目有效风格，`wrapOpenAIProtocolFetch` 按条目协议包装。inbound query、method、body、signal、SSE tee/trace 行为不变。
 - token-count 等复用 `raw.resolve` 的路径自动获得多协议匹配，无需单独改动。
 
 ### 桥接（packages/core）
 
-`bridgeApiProviderToAiSdk` 改读主端点：协议 → AI SDK 包映射不变；baseURL 按主端点解释模式取值（`origin`/`sdk` 直取，`root` 按派生规则）。每 provider 仍只建一个 bridge。
+`bridgeApiProviderToAiSdk` 改读主端点：协议 → AI SDK 包映射不变；baseURL 原样传包（两种模式一致，桥接代码无需感知模式）；anthropic + `bearer` 时改用 `authToken`。每 provider 仍只建一个 bridge。
 
 ### probe（packages/server）
 
-`providerProbeRequest` 改读主端点，URL 构造按主端点解释模式（不再对 `sdk`/`root` 条目做 origin-替换）。单状态语义不变；附加端点故障在真实请求失败时通过现有 attempt 日志暴露。
+probe 只构造**标准 inbound path/body**（协议形状的探测请求），经主端点的同一条 raw invoke 路径发出，URL 改写完全由端点 transport 负责——probe 自身不做任何 baseURL 拼接，杜绝双重前缀。单状态语义不变；附加端点故障在真实请求失败时通过现有 attempt 日志暴露。
+
+### 展示（packages/server）
+
+`providerDisplayFields` / summary 的 `protocol` 显示主端点协议（经归一化函数取得），`passthrough` 标志不变。Dashboard read model 形状零变化。
 
 ### 不受影响
 
 候选排序（Provider weight）、session affinity、cooldown、usage 计量、attempt trace 字段语义（raw 的 `targetProtocol` = inbound 协议）、`modelRoutes` 模型目录、list-models。
 
-## Dashboard 风险（已知并接受）
+## Dashboard 交接（已知风险，本轮不修）
 
-dashboard 的 `replaceProvider` 是"整体替换 + 手工保留清单"。本轮不把 `endpoints` 加入保留清单、不扩展 mutation schema：**通过 dashboard 编辑配了 `endpoints` 的 provider 会静默丢掉该字段**。处置：
+dashboard 的 `replaceProvider` 是"整体替换 + 手工保留清单"，`endpoints` 不在清单中：**通过 dashboard 编辑配了 `endpoints` 的 provider 会静默丢掉该字段**。经确认本轮不改 `replaceProvider`、不扩展 mutation schema；处置方式：
 
-- 文档（README / website）中明确警告；
-- dashboard 重构需求承接 mutation schema 扩展与表单编辑。
+- 本需求的 PR 描述中明确列出该风险与复现路径，点名由进行中的 dashboard 重构需求补齐 `endpoints` 的 mutation schema、保留/编辑能力；
+- 用户文档在 `endpoints` 章节附带警告。
 
-只读展示不受影响：summary 的 `protocol` 显示主协议，`passthrough` 标志不变。
+只读展示不受影响。
 
 ## 模块边界
 
-- `packages/types`：`endpoints` authoring/materialized schema、归一化 transform、`NormalizedProtocolEndpoint` 类型与校验（重复协议、空数组、字段成对约束），colocated 测试。
-- `packages/core`：`createApiProvider` 按条目透传（URL 拼接三模式、header 风格、流包装）、`bridgeApiProviderToAiSdk` 主端点取值与 `root` 派生。
-- `packages/server`：`materializeRuntimeProvider` 端点集 `raw.resolve`、probe 主端点构造。pipeline 候选循环不动。
+- `packages/types`：`endpoints`/`auth` authoring 与 materialized 输入 schema、union 级校验 refine、归一化纯函数与类型，colocated 测试。
+- `packages/core`：`createApiProvider` 按条目透传（两模式 URL 拼接、鉴权风格、流包装）、`bridgeApiProviderToAiSdk` 主端点取值与 `authToken` 映射。
+- `packages/server`：`materializeRuntimeProvider` 端点集 `raw.resolve`、probe 标准路径化、summary 主协议取值。pipeline 候选循环不动。
 - `packages/dashboard`：无改动。
-- 文档：README.md、READNE.zh-Hans.md、website getting-started（en/zh）补两种形态示例、语义差异说明、dashboard 编辑警告。
+- 文档：`npm/aio-proxy/README.md`（仓库根 `README.md` 是其符号链接）；将根目录 typo 文件 `READNE.zh-Hans.md` 重命名为 `README.zh-Hans.md` 并校正仓内引用，同步补充中英文 `endpoints` 章节；website getting-started（en/zh）补两种形态示例、主流渠道 baseURL 对照、gemini 例外、dashboard 编辑警告。
 - changeset：minor，目标 `aio-proxy` 与实际改动的内部包（`@aio-proxy/core` 等）。
 
 ## 测试策略
 
-### Schema 归一化（types）
+### Schema 与归一化（types）
 
-- 三种写法各自归一化结果与解释模式标签正确；合并形态主端点为旧字段。
-- 重复协议（含旧字段与 endpoints 之间）、空数组、空协议列表、旧字段只出现其一 → provider 无效且进入 `invalidProviders`。
-- 仅旧字段时输出与现状逐字段一致（存量零回归的 schema 层证据）。
+- 三种写法的归一化展开、模式标签、主端点次序正确；共享对象按协议顺序展开。
+- 重复协议（含旧字段与 endpoints 之间）、空数组、空协议列表、旧字段只出现其一、`auth` 用于非 anthropic 条目 → provider 无效且进入 `invalidProviders`。
+- 仅旧字段时归一化输出与现状行为等价（存量零回归的 schema 层证据）。
 - `{{env.NAME}}` 模板在 endpoints 内字符串值上展开。
+- 两段解析（`ProviderInputValueSchema` → `ProviderSchema`)下结果稳定，无重复合并。
 
 ### 透传与桥接（core）
 
-- 三种解释模式的 URL 拼接：`origin` 保持现状；`sdk` 对 openai 系剥 `/v1`、对 anthropic/gemini 拼完整路径；`root` 前缀拼接；query 原样保留。
-- 命中非主协议端点时鉴权 header 风格与流包装按该端点协议。
-- 桥接使用主端点；`root` 主端点的派生 baseURL 使该 AI SDK 包发出的请求命中渠道端点。
+- 两种模式的 URL 拼接：`origin` 保持现状；`sdk` 按操作路径表拼接（含 anthropic count_tokens、gemini `/models/...`）；query 原样保留。
+- 命中非主协议端点时鉴权风格与流包装按该端点；anthropic `auth: 'bearer'` 在 raw 发 `Authorization: Bearer` 且不发 `x-api-key`。
+- 桥接使用主端点 baseURL 原样传包；anthropic + `bearer` 走 `authToken`；对照各包实际请求 URL 与鉴权 header 断言。
 
-### 分发矩阵（server）
+### 分发矩阵与 probe（server）
 
 - inbound 协议命中任一端点 → raw 透传该端点；不命中 → 主协议桥接；沿用现有 dispatch-matrix 测试模式扩展。
-- probe 使用主端点与其解释模式。
+- probe 请求只含标准 inbound 路径，最终上游 URL 由端点 transport 生成（断言无双重前缀）。
 - 仅旧字段的 provider 全链路行为不变（回归护栏）。
 
 ## 拒绝的替代方案
 
-### 全局统一为 SDK 语义
+### 在 `ApiProviderSchema` 上做 transform 归一化并输出顶层镜像
 
-三种写法一个规则最简洁，但今天的透传忽略 baseURL path，存量 origin-only 的 openai 系配置（合法且工作中）在统一后透传会打到错误路径。README 惯例（带 `/v1`）不受影响不足以豁免其余存量。
+配置解析是两段式，transform 会执行两次：第一次产出的镜像与归一化数组在第二次解析时被再次合并，触发重复协议误报；且 ZodEffects 无 `.omit()`，破坏现有 schema 组合。归一化改为运行时单次调用的纯函数，校验留在 union 级 refine。
 
-### 全局统一为根语义
+### 共享对象用"网关根"语义 + 按协议派生桥接地址
 
-README 自己教的 `https://api.openai.com/v1` 会拼出 `/v1/v1/...` 直接破坏，被事实排除。
+初版设计。`@ai-sdk/anthropic`/`@ai-sdk/google` 实测要求版本段前缀，"根"必须经一张隐式派生表（openai 系补 `/v1`、anthropic 补 `/v1`、gemini 补 `/v1beta`）才能用，配置里写的 URL 与实际请求不一致，排查成本高。统一为"ai-sdk 入参"语义后派生表消失，共享对象退化为纯语法糖。
 
-### 智能拼接启发式
+### 删掉共享对象形态
 
-"去掉 baseURL 尾部已知版本段再根拼接"可让常见配置零回归，但规则含魔法、边角（非标准版本段如 `/api/paas/v4`）无法判定，解释成本高于三模式标签。
+评审建议的收敛方案。在"网关根"语义下成立（少一套语法、一个模式、一批分支）；但统一为"ai-sdk 入参"语义后共享对象无独立语义、归一化只是一次展开，保留它的成本接近零，而网关场景的配置紧凑度收益真实。经确认保留。
+
+### 全局统一旧写法为 `sdk` 语义
+
+今天的透传忽略 baseURL path，存量 origin-only 的 openai 系配置（合法且工作中）统一后透传会打到错误路径。README 惯例（带 `/v1`）不受影响不足以豁免其余存量。旧写法冻结为 `origin` 模式。
+
+### 任意 per-endpoint headers 覆盖
+
+鉴权差异的真实需求只有 anthropic 的 Bearer/x-api-key 之分。开放任意 headers 会与 provider 级 `headers`（最后写入且最终获胜）形成两层合并规则；用最小 `auth` 枚举覆盖已证实的需求，枚举扩展是非破坏变更。
 
 ### 旧字段与 endpoints 互斥报错
 
 无歧义但堵死了"存量配置追加一行"的迁移路径，强迫用户重写已工作的配置。合并规则（旧字段=主端点）与"旧写法=首选单协议写法"的文档口径一致。
-
-### per-endpoint 凭据/模型覆盖
-
-现实多协议渠道各端点共用凭据与模型集。`raw.resolve` 已接收 `modelId`，未来加 per-endpoint 白名单是非破坏扩展；现在不做。
 
 ### 启动时迁移重写配置文件
 
