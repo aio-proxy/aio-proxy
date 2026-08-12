@@ -1,4 +1,4 @@
-import type { Provider } from '@aio-proxy/types';
+import { apiProviderEndpoints, type Provider, ProviderKind } from '@aio-proxy/types';
 
 import { currentProviderAttemptContext } from '../request-logging';
 import { compileProviderRequestTransforms } from './compile';
@@ -50,7 +50,7 @@ export function createProviderRequestTransformFetch(
         provider: {
           id: provider.id,
           kind: provider.kind,
-          ...('protocol' in provider ? { protocol: provider.protocol } : {}),
+          ...(provider.kind === ProviderKind.Api ? { protocol: apiProviderEndpoints(provider)[0].protocol } : {}),
         },
         request: {
           model: attempt.modelId,

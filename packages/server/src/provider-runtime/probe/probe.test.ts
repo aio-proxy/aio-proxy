@@ -40,3 +40,26 @@ test.each([
   expect(decompression).toBeUndefined();
   expect(acceptEncoding).toBeNull();
 });
+
+test('probe sends the standard inbound path through the primary endpoint transport', async () => {
+  let requested: string | undefined;
+  const provider = {
+    apiKey: 'k',
+    baseURL: 'https://api.z.ai/api/paas/v4',
+    enabled: true,
+    id: 'zai',
+    kind: ProviderKind.Api,
+    models: ['glm-4.7'],
+    protocol: ProviderProtocol.OpenAICompatible,
+  } as const;
+  const instance = createApiProvider(provider, {
+    fetch: (async (input: string | URL | Request) => {
+      requested = input instanceof Request ? input.url : String(input);
+      return new Response('{}', { status: 200 });
+    }) as typeof globalThis.fetch,
+  });
+
+  expect(await probeApi(provider, instance)).toBe('OK');
+  // origin 模式冻结现状：探测打到 origin + 标准路径，端点 transport 是唯一改写 URL 的地方。
+  expect(requested).toBe('https://api.z.ai/v1/chat/completions');
+});
