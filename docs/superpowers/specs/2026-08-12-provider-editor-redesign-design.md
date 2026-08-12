@@ -43,21 +43,25 @@ The footer lists every `todo` section as a clickable jump target and disables sa
 
 ### File Layout
 
-Current shells (`templates/provider-form-page.tsx` 216, `templates/oauth-provider-create-page.tsx` 171, `templates/oauth-provider-edit-page.tsx` 112, `templates/use-oauth-provider-edit-page.ts` 162) collapse into one directory that respects the 400/500-line rule:
+Current shells (`templates/provider-form-page.tsx` 216, `templates/oauth-provider-create-page.tsx` 171, `templates/oauth-provider-edit-page.tsx` 112, `templates/use-oauth-provider-edit-page.ts` 162) collapse into the layout below. It is constrained by three rules in `packages/dashboard/AGENTS.md`: a module holds only the six listed subdirectories (`:67`), each `.tsx` declares exactly one component (`:80`), and `lib` entries use same-name-directory grouping (`:75`). So the section components are `components/`, not a nested folder under `templates/`, and the pure logic is module-level `lib/`:
 
 ```
-modules/providers/templates/provider-editor-page/
-  index.ts                          exports only
-  provider-editor-page.tsx          layout, section nav, footer, save/delete
-  sections/identity-section.tsx
-  sections/connection-section.tsx   switches on kind, delegates to existing field components
-  sections/models-section.tsx
-  sections/routing-section.tsx
-  sections/advanced-section.tsx
-  rail/exposure-panel.tsx
-  rail/model-validation-panel.tsx
-  lib/section-status.ts             pure: (values, issues) -> per-section status
-  lib/model-rows.ts                 pure: models[] x metadata{} <-> row objects
+modules/providers/
+  templates/provider-editor-page/
+    index.ts                        exports only
+    provider-editor-page.tsx        layout + save/delete orchestration only
+    section-nav.tsx
+    editor-footer.tsx
+  components/provider-editor/
+    identity-section.tsx
+    connection-section.tsx          switches on kind, delegates to existing field components
+    models-section.tsx
+    routing-section.tsx
+    advanced-section.tsx
+    exposure-panel.tsx
+    model-validation-panel.tsx
+  lib/section-status/               index.ts + section-status.ts + section-status.test.ts
+  lib/model-rows/                   index.ts + model-rows.ts + model-rows.test.ts
 ```
 
 No leaf field component is rewritten. The three kind-specific files already delegate to per-concern children, and `ProviderCommonFields` already takes `section: 'connection' | 'routing'` (`components/provider-common-fields.tsx:15`), so the split this redesign needs partly exists:
@@ -82,11 +86,25 @@ Section status is a pure function in `lib/section-status.ts`, not a boolean livi
 
 | Status | Meaning | Blocks save |
 |---|---|---|
-| `todo` | A required field is empty: provider id, api key, package name, oauth capability. Or an alias targets a model outside a non-empty whitelist, which the schema rejects outright | Yes |
+| `todo` | A field the mutation schema requires is empty, or an alias targets a model outside a non-empty whitelist, which the schema rejects outright | Yes |
 | `attention` | Saveable but suspect: the weight ties another provider serving the same model, or a whitelist entry is no longer in the discovered catalog | No |
 | `ok` | Neither | No |
 
-An alias whose target is outside the whitelist is **not** a soft warning. `validateAliasTargets` (`packages/types/src/provider-alias.ts:38-45`) raises a Zod issue on `['alias', <name>, 'model']`, so the mutation returns 400. The UI must therefore block save and restrict the alias target picker to whitelisted models rather than letting the user save into a rejected state.
+The required set is taken from the mutation schema, not from what looks mandatory:
+
+| Field | Required | Source |
+|---|---|---|
+| provider id | Yes, on POST and PUT | `provider.ts:158` |
+| `baseURL` | Yes for `api` | `provider.ts:176`, `z.url()` with no `.optional()` |
+| `packageName` | Effectively yes for `ai-sdk`, but defaulted to `@ai-sdk/openai-compatible` | `provider.ts:126-141` |
+| `apiKey` | **No** | `provider.ts:86` and `:166`, `z.string().optional()` |
+| oauth capability | Yes, at authorization time | `dashboard-oauth.ts` |
+
+`apiKey` must not be a `todo`. It is optional in the schema and the current stepper does not demand it, so requiring it would stop an unauthenticated local endpoint such as Ollama from being saved — a behavior regression. `baseURL` is the field that is genuinely required and was missing from this list; without it in the table, an empty base URL does not block save and instead fails silently at schema parse on submit.
+
+`apiKey` also carries edit-time semantics the old stepper hid: `""` means "retain the stored key" server-side (`provider.ts:158`). The single page always renders the field, so it must show that an empty box on an existing provider keeps the current key rather than clearing it, and offer an explicit way to clear.
+
+An alias whose target is outside the whitelist is **not** a soft warning. `validateAliasTargets` (`packages/types/src/provider-alias.ts:38-45`) raises a Zod issue on `['alias', <name>, 'model']`, and `validateVariants` (`:52`) does the same for every variant target, so the mutation returns 400. The UI must therefore block save and restrict the alias target picker to whitelisted models rather than letting the user save into a rejected state.
 
 Alias target issues already exist as data (`lib/alias-editor/alias-editor.ts:178`); they move from drawer-time validation to inline row errors that also raise the section to `todo`.
 
@@ -126,7 +144,9 @@ Candidate sources, by kind. Catalog capability is decided by whether a base URL 
 
 ## Routing Section
 
-The weight slider is a `slider.tsx` added to `packages/ui/src/components/` through the registry already configured in `packages/ui/components.json` (style `base-rhea`, base color `olive`, `@reui` registry), not hand-copied from the prototype. It wraps `@base-ui/react/slider`, and `@base-ui/react` is already a `packages/ui` dependency, so this adds no package.
+The weight slider is added to `packages/ui/src/components/` with `bun x --bun --no-install shadcn add slider --overwrite` run from `packages/ui`, per `AGENTS.md:17` and the registry in `packages/ui/components.json`. It wraps `@base-ui/react/slider`, already a `packages/ui` dependency, so this adds no package.
+
+Its range is the prototype's: `min=0`, `max=100`, `step=5`, disabled while the provider is disabled. But `weight` is `z.number().optional()` with no bounds (`provider.ts:61`), so a stored `500`, `-3`, or `2.5` is valid config the slider cannot represent. The control must not rewrite a value the user did not touch: an out-of-range or off-step weight is displayed as-is and only snaps to the grid once the user drags. Absent weight stays absent rather than being written as `0`, since absent and `0` order differently against other providers.
 
 The attempt-order preview needs no new endpoint. `DashboardProviderSummarySchema` already carries `weight` (`packages/types/src/dashboard/dashboard.ts:26`) and `clientModels` (`:29`), so the page computes "other providers serving these models, descending by weight" from the provider list it already fetches. The preview states plainly that session affinity can override weight order, matching the routing contract in `CLAUDE.md`.
 
@@ -140,7 +160,12 @@ That colocation makes the near-duplication between `preservedModelIds` and `coll
 
 ## OAuth Creation: Two Stages, One Shell
 
-OAuth creation is not a form save, and the prototype does not model this. In `templates/oauth-provider-create-page.tsx:56-72` the submit action is `startOAuthSession()`, which opens a popup and runs a device-code / authorize-url / loopback state machine. The provider id is generated server-side as `session.providerId`; the user never types it. At creation time `providerPatch` carries only `enabled` and `proxy`, so weight, aliases, model whitelist, and transforms have nowhere to be stored until the account exists.
+OAuth creation is not a form save, and the prototype does not model this. In `templates/oauth-provider-create-page.tsx:56-72` the submit action is `startOAuthSession()`, which opens a popup and runs a device-code / authorize-url / loopback state machine.
+
+Two facts force the split, and neither is "the fields have nowhere to go" — `DashboardOAuthProviderPatchSchema` (`packages/types/src/dashboard-oauth.ts:67-74`) already accepts `name`, `weight`, `alias`, `proxy`, and `transforms`:
+
+- The provider id is generated server-side as `session.providerId`. The user never types it, so section 1 cannot show an id field before authorization, and nothing can be patched before an id exists.
+- The model whitelist's candidate list comes from plugin discovery, which needs credentials. Section 3 has nothing to offer until the account exists — not because `models` cannot be stored, but because the choices are unknown.
 
 The shell therefore has an authorization stage:
 
@@ -151,6 +176,8 @@ The shell therefore has an authorization stage:
 - Failed and cancelled sessions keep the current popup cleanup (`closeUnclaimedPopup`) and leave the page in the authorization stage.
 
 `/providers/new` becomes `/providers/$id/edit` for the adopted id via a history replace, so a reload after authorization lands on the saved provider rather than an empty create page.
+
+Re-authorization on an existing provider needs the same treatment. `use-oauth-provider-edit-page.ts` leaves the page in two places today: `:97` after a save and `:119-126` after a re-authorize session succeeds, both navigating to `/providers` with `focus` and an optional `warning`. In the single page neither navigates. A save stays put and shows a saved indicator; a successful re-authorize refetches the edit view in place. Both surface `session.warning` in the rail, which is the only place it can go once the list is no longer the destination.
 
 ## Backend Changes
 
@@ -168,7 +195,12 @@ Each of the six changes below was verified against the current source.
 models: catalog.language.map(({ id }) => id),
 ```
 
-It becomes the intersection of the discovered catalog with `config.models`, applied at both places the runtime provider's `models` is set: `createRuntimeProvider` (fresh materialization) and `withRoutingConfig` (`capabilities.ts:60-68`, the cached path, which today overlays only `enabled`/`alias`/`configMetadata`). Missing either one makes the whitelist silently depend on cache state.
+It becomes the intersection of the discovered catalog with `config.models`, extracted into one exported helper — `exposedModelIds(catalog, config.models)` — so the rule lives in exactly one place. Two call sites use it:
+
+- `createRuntimeProvider` (`:70+`), which already has `catalog` in scope.
+- `withRoutingConfig` (`:60-68`), which does not. It currently overlays only `enabled`/`alias`/`configMetadata` onto the cached provider, and its `models` rides along untouched inside `...previousProvider` — already filtered by whatever whitelist was in effect when the runtime was built, so it cannot be re-filtered. The signature gains a third parameter carrying the unfiltered catalog: both callers (`materialize.ts:233` and `:244`) have `storedCatalog` in scope and pass `storedCatalog.catalog`, the same value `createRuntimeProvider` receives.
+
+Both call sites must use the helper. Missing `withRoutingConfig` makes the whitelist silently depend on cache state: it would apply on a cold start and be ignored on every subsequent edit.
 
 An absent or empty whitelist means expose everything, which keeps every existing oauth config working unchanged. Ids in the whitelist that are no longer in the catalog are dropped, so a stale whitelist cannot create dead routes.
 
@@ -178,7 +210,7 @@ No router change is needed. `directModelIds` (`packages/core/src/router.ts:104`)
 
 `runtimeIdentity` (`packages/server/src/plugin-runtime/materialize.ts:212-224`) hashes `catalogDigest` and credential inputs. Adding `modelsDigest` to it would be the obvious move and is wrong: identity equality is exactly what selects the cheap path at `materialize.ts:232-246`, where `options.previous?.identity === identity` reuses the existing credentials and catalog and only re-applies `withRoutingConfig`. A whitelist edit is a pure routing change, so it must keep identity stable and flow through that path — no credential rebuild, no re-discovery, no upstream call to change which models are exposed.
 
-This is why change 2 has to touch `withRoutingConfig` and not just `createRuntimeProvider`. Do one or the other, never both.
+To be unambiguous about the two decisions: the intersection goes into **both** functions named in change 2, and `modelsDigest` goes into **neither** `runtimeIdentity` nor any other identity input. Adding it to identity while also filtering in `withRoutingConfig` is not belt-and-braces; it defeats the cheap path the filtering exists to preserve.
 
 ### 4. Catalog capability follows base URL, not kind
 
@@ -193,24 +225,36 @@ Removing that line is not enough. The existing catalog loader (`:22-52`) resolve
 The ai-sdk path is therefore separate, and narrow by design:
 
 - Read `baseURL` and `apiKey` off the free-form `options` record (`provider.ts:126-141` types it as `z.record(z.string(), z.unknown())`, so both are conventional `@ai-sdk/openai-compatible` keys, not schema fields).
-- Fetch `baseURL` + `catalogPath(ProviderProtocol.OpenAICompletions)` directly, honoring the provider proxy, and parse with `catalogPage(ProviderProtocol.OpenAICompletions, ...)`.
+- Fetch `baseURL` + `catalogPath(ProviderProtocol.OpenAICompatible)` directly, honoring the provider proxy, and parse with `catalogPage(ProviderProtocol.OpenAICompatible, ...)`.
 - A non-string `baseURL` keeps returning `catalog_unsupported`. A base URL that does not answer the OpenAI `{ data: [{ id }] }` shape returns a new `catalog_unavailable` code, so "this package cannot list models" reads differently from "this endpoint failed".
 
 Any ai-sdk package whose upstream is not OpenAI-shaped is out of scope; it lands on `catalog_unavailable` and the user types model ids manually, exactly as today.
 
 ### 5. OAuth drafts can be tested
 
-`DashboardProviderDraftSchema` (`packages/types/src/dashboard-provider-draft/dashboard-provider-draft.ts:7-10`) is a discriminated union of api and ai-sdk only. Add an oauth branch so the rail's model test works for oauth providers.
+`DashboardProviderDraftSchema` (`packages/types/src/dashboard-provider-draft/dashboard-provider-draft.ts:7-10`) is a discriminated union of api and ai-sdk only. Add an oauth branch so the rail's model test works for oauth providers. Three layers stand in the way, and the third is a design decision, not a type widening.
 
-The blocker is one line earlier in the flow: `provider-draft-resolution.ts:58-61` returns `persisted_provider_mismatch` for *any* provider whose persisted config parses as oauth, before credentials are ever considered. That early return has to admit oauth drafts. An oauth draft is always backed by a persisted account, so it resolves credentials by `persistedProviderId`; a draft naming an id with no persisted account keeps failing with `persisted_provider_mismatch`. The `fresh_credentials_required` code does not apply here — oauth never carries draft credentials.
+**Resolution.** `provider-draft-resolution.ts:58-61` returns `persisted_provider_mismatch` for any provider whose persisted config parses as oauth, before credentials are ever considered. That early return has to admit oauth. `fresh_credentials_required` does not apply — oauth never carries draft credentials, so a draft naming an id with no persisted account keeps failing with `persisted_provider_mismatch`.
 
-### 6. Empty `models` must stop invalidating aliases
+**Signatures.** `Exclude<Provider, { kind: ProviderKind.OAuth }>` appears on `testProviderDraft` (`:55`), `materializeDraftRuntime` (`:98`), `materializeDraft` (`:109`), and `withDraftAttempt` (`:115`), plus a redundant runtime bail at `:62`. All five widen together or none do.
 
-`validateAliasTargets` (`packages/types/src/provider-alias.ts:33-49`) builds `new Set(provider.models)` whenever `models` is not `undefined`, then requires every alias target to be in it. With `models: []` the set is empty, so **every** alias becomes invalid — a provider that exposes nothing directly and everything through aliases cannot be saved, even though `directModelIds` supports exactly that shape.
+**Where the runtime comes from.** This is the real gap. `materializeDraftRuntime` calls `materializeProviders({ ...state.currentConfig(), providers: [provider] })` and reads `runtime.providers[0]` and `runtime.probes.get(id)`. For oauth, `provider-runtime/materialize.ts:167-170` pushes only a summary — no runtime instance, no probe — so that call throws `'draft provider materialization failed'`. OAuth runtimes are built asynchronously in `plugin-runtime` from stored credentials and a catalog job. Two options, and the spec picks one:
+
+The oauth test **borrows the live runtime instance from the plugin-runtime snapshot** by provider id, rather than materializing a throwaway. It does not re-materialize, so `ProviderSchema.parse({ ...provider, models: [modelId] })` at `:61` does not apply to the oauth path.
+
+That choice is not a compromise, because an oauth provider cannot exist unsaved: the account is created by authorization, so by the time a model can be tested the credentials are already persisted. The only unsaved fields are routing ones, and none of them affect whether the account can reach a model. The one real limitation is that an unsaved draft `transforms.request` is not exercised, unlike api and ai-sdk where the whole draft is materialized — the rail must say the oauth test checks the saved account. Falling back to one-shot materialization would mean driving plugin auth and catalog discovery from a test button, which can refresh and rewrite stored credentials as a side effect of a read-only action.
+
+**The enablement gate.** `testProviderDraft:58` reads `if (!provider.models?.includes(modelId)) return failure('model_not_enabled')`. Under change 2 an oauth provider with an empty whitelist exposes everything, so this gate would reject every model on exactly the configs that are most common. It becomes a check against the *effective* exposed set — the runtime provider's `models` after `exposedModelIds` — which is unchanged for api and ai-sdk (their runtime `models` is their config `models`) and correct for oauth. That reorders the function: resolve the runtime first, then gate, then probe.
+
+### 6. Empty `models` must stop invalidating aliases, on both sides
+
+`validateAliasTargets` (`packages/types/src/provider-alias.ts:33-49`) builds `new Set(provider.models)` whenever `models` is not `undefined`, then requires every alias target to be in it. With `models: []` the set is empty, so **every** alias becomes invalid — a provider that exposes nothing directly and everything through aliases cannot be saved, even though `directModelIds` supports exactly that shape. `validateVariants` (`:52`) receives the same set and has the same behavior for variant targets.
 
 Change the guard to skip the target check when `models` is empty as well as when it is absent, matching the router's reading of `[]`.
 
-This is a prerequisite for change 1, not an unrelated fix. Adding `models` to `OAuthProviderMutationBodySchema` puts oauth providers under `validateAliasTargets` for the first time, since `ProviderMutationBodySchema.superRefine(validateAliasTargets)` (`provider.ts:230-238`) applies to the whole union. Without this fix, the first oauth provider saved with an empty whitelist and any alias starts returning 400 on a payload that used to succeed.
+The dashboard has an independent copy of this rule that must change in the same commit. `aliasEditorIssues` (`modules/providers/lib/alias-editor/alias-editor.ts:165`) computes `models === undefined ? undefined : new Set(models)` and flags `target-missing` from it, at `:182` for the alias target and `:195` for each variant target. Fixing only the server produces the mirror image of the bug this change closes: the server accepts the payload and the editor refuses to submit it, because section status treats alias issues as blocking `todo`. Both guards move to the same "absent or empty means no whitelist" rule.
+
+This is also a prerequisite for change 1, not an unrelated fix. Adding `models` to `OAuthProviderMutationBodySchema` puts oauth providers under `validateAliasTargets` for the first time, since `ProviderMutationBodySchema.superRefine(validateAliasTargets)` (`provider.ts:230-238`) applies to the whole union. Without this fix, the first oauth provider saved with an empty whitelist and any alias starts returning 400 on a payload that used to succeed.
 
 ## Internationalization
 
@@ -225,36 +269,37 @@ There is no locale parity check in the repository, and the store has already dri
 
 ## Test Accounting
 
-`modules/providers` currently holds 9217 lines of implementation and 4480 lines of tests.
+`modules/providers` holds 9092 lines of implementation and 4480 lines of tests, with a further 125 lines under `routes/providers/` that the module count excludes.
 
 | Test | Lines | Fate |
 |---|---|---|
 | `templates/provider-stepper-import.test.tsx` | 263 | Delete; the stepper is gone |
 | `templates/oauth-provider-create-page.test.tsx` | 220 | Rewrite against the authorization stage |
-| `templates/oauth-provider-edit-page.test.tsx` | 256 | Rewrite against the unified shell |
+| `templates/oauth-provider-edit-page.test.tsx` | 256 | Rewrite against the unified shell, including stay-in-place re-authorize |
 | `components/providers-table/providers-table.test.tsx` | 357 | Update; the create menu no longer carries a kind |
 | `components/provider-validate-step/provider-validate-step.test.tsx` | 86 | Update; the step becomes the rail panel |
 | `lib/alias-editor/alias-editor.drafts.test.ts` | 107 | Delete with the draft layer |
-| `lib/alias-editor/alias-editor.issues.test.ts` | 59 | Keep; issue computation is unchanged |
+| `lib/alias-editor/alias-editor.issues.test.ts` | 59 | Update; change 6 alters `target-missing` for empty `models` |
 | `lib/oauth-provider-edit/oauth-provider-edit.test.ts` | 88 | Extend with whitelist round-tripping |
-| `components/provider-form-fields-api.test.tsx` | 290 | Keep; connection fields are unchanged |
+| `components/provider-form-fields-api.test.tsx` | 290 | Update; the component keeps only connection fields, so assertions on models, alias, and transforms move to the new section tests |
 | request-transform suite | ~1400 | Untouched |
 
 New tests, each protecting a user-visible outcome rather than restating structure:
 
-- `lib/section-status.test.ts`: a missing api key yields `todo` and blocks save; an alias pointing outside a non-empty whitelist also yields `todo`, because the schema would reject it; a stale whitelist entry yields `attention` and does not block.
-- `lib/model-rows.test.ts`: rows round-trip without dropping metadata for alias-only models or unrecognized metadata fields.
-- `packages/types/src/provider-alias`: an alias-only provider with `models: []` passes validation; an alias outside a non-empty whitelist still fails.
-- `plugin-runtime/capabilities`: an empty whitelist exposes the whole catalog; a whitelist intersects it; a whitelist entry absent from the catalog is dropped. Asserted on both the fresh and the `withRoutingConfig` path, since only one of them is exercised by a cached edit.
+- `lib/section-status/section-status.test.ts`: an empty `baseURL` on an `api` provider yields `todo` and blocks save; an empty `apiKey` does **not**, so an unauthenticated local endpoint stays saveable; an alias pointing outside a non-empty whitelist yields `todo`; a stale whitelist entry yields `attention` and does not block.
+- `lib/model-rows/model-rows.test.ts`: rows round-trip without dropping metadata for alias-only models or unrecognized metadata fields.
+- `packages/types/src/provider-alias`: an alias-only provider with `models: []` passes validation, including variant targets; an alias outside a non-empty whitelist still fails.
+- `lib/alias-editor`: `aliasEditorIssues` reports no `target-missing` for `models: []`, matching the server. This is the paired assertion that keeps the two guards from drifting.
+- `plugin-runtime/capabilities`: an empty whitelist exposes the whole catalog; a whitelist intersects it; a whitelist entry absent from the catalog is dropped. Asserted through both `createRuntimeProvider` and `withRoutingConfig`, since a cached edit only exercises the second.
 - `plugin-runtime/materialize`: changing only the whitelist leaves `runtimeIdentity` unchanged, so the edit takes the cached routing path instead of rebuilding credentials.
-- `provider-draft-operations`: an ai-sdk draft with `options.baseURL` lists models; one without still returns `catalog_unsupported`; one whose endpoint is not OpenAI-shaped returns `catalog_unavailable`.
+- `provider-draft-operations`: an ai-sdk draft with `options.baseURL` lists models; one without still returns `catalog_unsupported`; one whose endpoint is not OpenAI-shaped returns `catalog_unavailable`. An oauth draft with an empty whitelist can test a discovered model rather than failing `model_not_enabled`.
 - `packages/i18n/__tests__/`: all five locales share one key set. That directory is already scanned by `test:unit` (`packages/i18n/package.json:17`) and is the right home, since the assertion is over `messages/*.json` rather than a source module.
 
 ## Non-Goals
 
 - No models.dev HTTP proxy route. The prototype's `/dashboard/api/proxy` is not ported; `packages/core/src/models-dev` already caches the catalog.
 - No new endpoint for the attempt-order preview; the provider summary already carries `weight` and `clientModels`.
-- No change to `/providers/:id/edit-view`. It already returns the redacted full config alongside the oauth view (`packages/server/src/dashboard-routes/provider-routes.ts:25-39`), so `name`, `weight`, and `protocol` are present in one fetch today.
+- No change to `/providers/:id/edit-view`. It already returns the redacted full config alongside the oauth view (`packages/server/src/dashboard-routes/provider-routes.ts:25-39`), so `name` and `weight` are present in one fetch today.
 - No changes to request-transform editing, `components/provider-options-editor.tsx` schema resolution, or workflow install. They move containers only.
 - No deletion of `components/reui/stepper.tsx`, even though it loses its last consumer.
 - No consolidation of `preservedModelIds` and `collectPreservedModels`, which end up in the same file.
@@ -269,6 +314,7 @@ The change spans `@aio-proxy/types`, `@aio-proxy/core`, `server`, `@aio-proxy/ui
 
 - The authorization stage is the only place where one shell must model two different submit semantics. If adopting `session.providerId` in place proves unstable, the fallback is the current navigate-to-list behavior, which is a footer change rather than a redesign.
 - `models[]` now means two different things depending on kind: the exposed set for api and ai-sdk, a filter over a discovered catalog for oauth. The models section must word this difference explicitly — "all 47 discovered" versus an explicit subset — or an oauth user will read an empty list as "nothing exposed" and an api user will read it as "everything".
-- Adding `models` to the oauth mutation body silently enrolls oauth providers in `validateAliasTargets`. Backend change 6 is what keeps that from turning previously valid payloads into 400s; shipping change 1 without it is a regression, not a missing feature.
+- Adding `models` to the oauth mutation body silently enrolls oauth providers in `validateAliasTargets`. Backend change 6 is what keeps that from turning previously valid payloads into 400s; shipping change 1 without it is a regression, not a missing feature. The same fix must land on `aliasEditorIssues`, or the block simply moves from the server to the submit button.
+- The oauth model test checks the saved account, not the draft. A user who edits a request transform and immediately tests a model gets a pass or fail that ignores the edit. Wording in the rail is the whole mitigation; the alternative drives plugin auth from a test button.
 - Deleting the alias draft layer removes conflict detection at commit time. Inline rows must surface the same `alias-editor` issues immediately, or a conflicting alias reaches submit and fails there instead.
 
