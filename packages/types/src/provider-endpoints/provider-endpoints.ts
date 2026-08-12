@@ -136,8 +136,9 @@ export function validateApiEndpoints(provider: EndpointsValidationSource, ctx: z
 type EndpointValidationEntry = {
   readonly protocol: string | undefined;
   readonly auth: unknown;
-  readonly protocolPath: readonly (string | number)[];
-  readonly authPath: readonly (string | number)[];
+  // zod's addIssue takes a mutable path array, so these cannot be readonly.
+  readonly protocolPath: (string | number)[];
+  readonly authPath: (string | number)[];
 };
 
 const PROTOCOL_VALUES = new Set<string>(Object.values(ProviderProtocol));

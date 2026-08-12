@@ -59,10 +59,9 @@ export function createApiProvider(
 ): ApiProviderInstance {
   const trace = options.trace ?? config.trace;
   const fetcher = options.fetch ?? globalThis.fetch;
-  const transports = apiProviderEndpoints(config).map((endpoint) =>
-    endpointTransport(endpoint, config, fetcher, trace),
-  );
-  const [primary, ...rest] = transports;
+  const endpoints = apiProviderEndpoints(config);
+  const primary = endpointTransport(endpoints[0], config, fetcher, trace);
+  const rest = endpoints.slice(1).map((endpoint) => endpointTransport(endpoint, config, fetcher, trace));
   const { trace: _trace, ...providerFields } = config;
   return { ...providerFields, endpointTransports: [primary, ...rest], passthrough: primary.passthrough };
 }
