@@ -669,10 +669,17 @@ test('lists an ai-sdk draft catalog from options.baseURL with bearer auth', asyn
   }
 });
 
-test('an ai-sdk draft without options.baseURL still returns catalog_unsupported', async () => {
+// A *missing* options.baseURL is already pinned by the existing test at
+// `provider-draft.test.ts:233` ("returns a recoverable unsupported catalog result
+// for an AI SDK draft", no options at all) — do not add a second test for that.
+// This one pins the blank-string branch, which nothing else covers: without the
+// `.trim() === ''` guard a blank baseURL fetches "/models" and degrades to
+// catalog_unavailable ("we tried and it broke") instead of catalog_unsupported
+// ("you have not configured a listing endpoint").
+test('an ai-sdk draft with a blank options.baseURL still returns catalog_unsupported', async () => {
   const response = await routes.request(
     '/providers/draft/catalog',
-    jsonRequest({ draft: { id: 'unsaved-sdk', kind: 'ai-sdk', options: { apiKey: 'x' } } }),
+    jsonRequest({ draft: { id: 'unsaved-sdk', kind: 'ai-sdk', options: { apiKey: 'x', baseURL: '   ' } } }),
   );
   expect(await response.json()).toEqual({
     ok: false,
@@ -706,7 +713,7 @@ test('an ai-sdk endpoint that is not OpenAI-shaped returns catalog_unavailable',
 - [ ] **Step 2: Run to verify failure**
 
 Run: `bun test packages/server/src/dashboard-routes/provider-draft/provider-draft.test.ts`
-Expected: first and third tests FAIL with `catalog_unsupported` (the kind test rejects them today); the second already passes — keep it as the pinned behavior.
+Expected: the first test FAILS with `catalog_unsupported` (the kind test rejects it today) and the third FAILS the same way; the blank-baseURL test passes from the start — it pins the guard you are about to write, and stays green through the change.
 
 - [ ] **Step 3: Implement**
 
@@ -715,8 +722,6 @@ In `provider-draft-operations.ts`, replace line 26 (`if (provider.kind === Provi
 ```ts
 import { createProxyFetch } from '@aio-proxy/core';
 import { effectiveProxy } from '../../provider-runtime';
-import { createProviderRequestTransformFetch } from '../../provider-request-transform';
-import { createObservedFetch } from '../../request-logging';
 
 export async function loadProviderDraftCatalog(
   state: ServerState,
@@ -737,12 +742,13 @@ async function loadAiSdkDraftCatalog(
   if (typeof baseURL !== 'string' || baseURL.trim() === '') return failure('catalog_unsupported');
   const apiKey = provider.options?.['apiKey'];
   const configuredHeaders = provider.options?.['headers'];
-  // Same composition as the runtime path (materialize.ts:156-159), so a
-  // transform that injects auth works here and the request is debug-loggable.
-  const fetchWithProxy = createProviderRequestTransformFetch(
-    provider,
-    createObservedFetch(createProxyFetch(effectiveProxy(state.currentConfig().proxy, provider.proxy))),
-  );
+  // Proxy only. The runtime path also wraps this in createProviderRequestTransformFetch +
+  // createObservedFetch (materialize.ts:156-159), but both are provably inert here: the
+  // transform fetch returns early unless currentProviderAttemptContext() names this
+  // provider, and createObservedFetch passes through with no debug scope. Draft catalog
+  // loading establishes neither — the api loader above has the same gap. Wiring them in
+  // would look like transform support without providing any.
+  const fetchWithProxy = createProxyFetch(effectiveProxy(state.currentConfig().proxy, provider.proxy));
   try {
     const response = await fetchWithProxy(`${baseURL.replace(/\/+$/u, '')}/models`, {
       signal: AbortSignal.timeout(5_000),
