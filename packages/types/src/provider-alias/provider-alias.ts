@@ -1,7 +1,7 @@
 import type { z } from 'zod';
 
-import type { AliasConfig } from './common';
-import { normalizeAliasName, normalizeVariantKey } from './common';
+import type { AliasConfig } from '../common';
+import { normalizeAliasName, normalizeVariantKey } from '../common';
 
 export type ProviderAlias = Readonly<Record<string, AliasConfig>>;
 
@@ -36,7 +36,9 @@ export function validateAliasTargets(provider: ProviderAliasTargets, ctx: z.Refi
   }
 
   validateAliasNames(provider.alias, ctx);
-  const models = provider.models === undefined ? undefined : new Set(provider.models);
+  // Absent AND empty both mean "no whitelist": the router exposes nothing directly
+  // for either shape, and an alias-only provider (models: []) must stay saveable.
+  const models = provider.models === undefined || provider.models.length === 0 ? undefined : new Set(provider.models);
   const preservedModels = collectPreservedModels(provider.alias);
 
   for (const [alias, config] of Object.entries(provider.alias)) {
