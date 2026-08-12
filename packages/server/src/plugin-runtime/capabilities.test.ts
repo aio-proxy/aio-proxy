@@ -3,6 +3,7 @@ import { afterEach, expect, test } from 'bun:test';
 import type { LogicalRequestContext, RawResolver, RawTransportOptions } from '@aio-proxy/plugin-sdk';
 import { ProviderKind, ProviderProtocol } from '@aio-proxy/types';
 
+import { exposedModelIds, withRoutingConfig } from './capabilities';
 import { PluginRawResolverError, PluginRawTransportError, validatePluginProtocolMap } from './index';
 import { catalog, cleanup, diagnostics, materializePluginProvider, runtimeFixture } from './test-support';
 
@@ -208,4 +209,69 @@ test('materializes an optional plugin token-count capability', async () => {
   };
 
   expect(await result.provider?.tokenCount?.countTokens(input)).toEqual({ inputTokens: 13 });
+});
+
+test('exposedModelIds: absent or empty whitelist exposes the whole catalog', () => {
+  expect(exposedModelIds(['a', 'b'], undefined)).toEqual(['a', 'b']);
+  expect(exposedModelIds(['a', 'b'], [])).toEqual(['a', 'b']);
+});
+
+test('exposedModelIds: a whitelist intersects the catalog and drops stale entries', () => {
+  expect(exposedModelIds(['a', 'b', 'c'], ['b', 'gone', 'a'])).toEqual(['a', 'b']);
+});
+
+test('a whitelist filters the freshly materialized catalog', async () => {
+  const fixture = runtimeFixture({ kind: 'static' }, { createRuntime: async () => ({ provider: providerV4() }) });
+  fixture.repository.writeCatalog('person', { ...catalog, language: [{ id: 'model' }, { id: 'other' }] }, 1_000);
+
+  const result = await materializePluginProvider({
+    config: { ...providerConfig, models: ['model'] },
+    plugins: fixture.plugins,
+    repository: fixture.repository,
+    diagnostics,
+    logger: () => {},
+    onDiagnosticChanged: () => {},
+  });
+
+  expect(result.provider?.models).toEqual(['model']); // 'other' is discovered but not exposed
+});
+
+test('changing only the whitelist keeps runtime identity stable and takes the cached routing path', async () => {
+  const fixture = runtimeFixture({ kind: 'static' }, { createRuntime: async () => ({ provider: providerV4() }) });
+  fixture.repository.writeCatalog('person', { ...catalog, language: [{ id: 'model' }, { id: 'other' }] }, 1_000);
+
+  const first = await materializeFixture(fixture);
+  expect(first.provider?.models).toEqual(['model', 'other']);
+
+  const second = await materializePluginProvider({
+    config: { ...providerConfig, models: ['model'] },
+    plugins: fixture.plugins,
+    repository: fixture.repository,
+    diagnostics,
+    logger: () => {},
+    onDiagnosticChanged: () => {},
+    previous: first.cacheEntry,
+  });
+
+  // Same identity -> the provider instance is rebuilt via withRoutingConfig, not re-created:
+  expect(second.cacheEntry?.identity).toBe(first.cacheEntry?.identity);
+  expect(second.provider?.models).toEqual(['model']);
+});
+
+test('withRoutingConfig re-derives models from the unfiltered catalog ids', () => {
+  const cached = {
+    id: 'person',
+    kind: ProviderKind.OAuth,
+    enabled: true,
+    models: ['a'],
+    model: {
+      invoke: () => {
+        throw new Error('unused');
+      },
+    },
+  } as never;
+
+  const next = withRoutingConfig(cached, { ...providerConfig, models: ['b'] } as never, ['a', 'b']);
+
+  expect(next.models).toEqual(['b']);
 });
