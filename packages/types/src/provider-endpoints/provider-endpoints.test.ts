@@ -116,6 +116,35 @@ describe('validateApiEndpoints', () => {
       }),
     ).toEqual([]);
   });
+
+  test('rejects bearer auth without apiKey', () => {
+    expect(
+      issuesOf({
+        kind: 'api',
+        endpoints: [{ protocol: 'anthropic', baseURL: 'https://a.test/v1', auth: 'bearer' }],
+      }),
+    ).toEqual(["auth 'bearer' requires apiKey"]);
+  });
+
+  test('accepts bearer auth with apiKey', () => {
+    expect(
+      issuesOf({
+        kind: 'api',
+        apiKey: 'k',
+        endpoints: [{ protocol: 'anthropic', baseURL: 'https://a.test/v1', auth: 'bearer' }],
+      }),
+    ).toEqual([]);
+  });
+
+  test('accepts bearer auth with templated apiKey', () => {
+    expect(
+      issuesOf({
+        kind: 'api',
+        apiKey: '{{env.KEY}}',
+        endpoints: [{ protocol: 'anthropic', baseURL: 'https://a.test/v1', auth: 'bearer' }],
+      }),
+    ).toEqual([]);
+  });
 });
 
 describe('ApiEndpointsInputSchema', () => {

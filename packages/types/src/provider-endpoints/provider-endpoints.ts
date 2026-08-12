@@ -81,6 +81,7 @@ type EndpointsValidationSource = {
   readonly protocol?: unknown;
   readonly baseURL?: unknown;
   readonly endpoints?: unknown;
+  readonly apiKey?: unknown;
 };
 
 export function validateApiEndpoints(provider: EndpointsValidationSource, ctx: z.RefinementCtx): void {
@@ -118,6 +119,13 @@ export function validateApiEndpoints(provider: EndpointsValidationSource, ctx: z
         ctx.addIssue({
           code: 'custom',
           message: 'auth is only supported on anthropic endpoints',
+          path: entry.authPath,
+        });
+      }
+      if (entry.auth === 'bearer' && entry.protocol === ProviderProtocol.Anthropic && provider.apiKey === undefined) {
+        ctx.addIssue({
+          code: 'custom',
+          message: "auth 'bearer' requires apiKey",
           path: entry.authPath,
         });
       }
