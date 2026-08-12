@@ -38,4 +38,16 @@ describe('DashboardProviderDraftSchema', () => {
 
     expect(result.success).toBeFalse();
   });
+
+  test('rejects a redacted proxy sentinel instead of accepting it as an unchanged marker', () => {
+    const result = DashboardProviderDraftSchema.safeParse({
+      baseURL: 'https://api.example/v1',
+      id: 'api-draft',
+      kind: 'api',
+      protocol: ProviderProtocol.OpenAICompatible,
+      proxy: '****',
+    });
+
+    expect(result.success).toBeFalse();
+  });
 });

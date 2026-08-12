@@ -250,7 +250,7 @@ describe('draft Provider catalog and test routes', () => {
     });
   });
 
-  test('an identity-changing edit on a saved provider reuses the persisted credential', async () => {
+  test('an identity-changing edit reaches the upstream instead of short-circuiting', async () => {
     const response = await routes.request(
       '/providers/draft/catalog',
       jsonRequest({
@@ -266,6 +266,45 @@ describe('draft Provider catalog and test routes', () => {
 
     // Reaches the upstream fetch and fails there — no longer short-circuited by fresh_credentials_required.
     expect(await response.json()).toEqual({ ok: false, error: { code: 'catalog_unavailable', recoverable: true } });
+  });
+
+  test('an identity-changing edit sends no persisted credential to the new destination', async () => {
+    let authorization: string | null = null;
+    let savedHeader: string | null = null;
+    const relocated = Bun.serve({
+      hostname: '127.0.0.1',
+      port: 0,
+      fetch(request) {
+        authorization = request.headers.get('authorization');
+        savedHeader = request.headers.get('x-saved-secret');
+        return Response.json({ data: [{ id: 'relocated-model' }] });
+      },
+    });
+
+    try {
+      // The draft moves the destination and supplies no credentials of its own, so the
+      // persisted merge must stay gated: an attacker-chosen baseURL never harvests the
+      // stored apiKey or headers that the edit-view now hands the editor in full.
+      const response = await routes.request(
+        '/providers/draft/catalog',
+        jsonRequest({
+          draft: {
+            baseURL: `http://127.0.0.1:${relocated.port}/v1`,
+            id: 'saved',
+            kind: 'api',
+            protocol: ProviderProtocol.OpenAICompatible,
+          },
+          persistedProviderId: 'saved',
+        }),
+      );
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ ok: true, models: ['relocated-model'] });
+      expect(authorization).toBeNull();
+      expect(savedHeader).toBeNull();
+    } finally {
+      await relocated.stop(true);
+    }
   });
 
   test('restores an unchanged proxy and materializes only explicit changed proxy semantics', () => {

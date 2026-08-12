@@ -148,6 +148,34 @@ test('an explicit null provider proxy clears the override and inherits the globa
   });
 });
 
+test('round-tripping the edit-view body back through PUT retains every authored template', async () => {
+  await withNetworkFixture(async (routes, configPath) => {
+    // The whole point of the un-masked edit-view: the editor submits the expanded
+    // values it was handed straight back, and the file must keep its {{env.*}} authoring.
+    const editResponse = await routes.request('/providers/api/edit-view');
+    expect(editResponse.status).toBe(200);
+    const { provider } = (await editResponse.json()) as { readonly provider: Record<string, unknown> };
+    expect(provider['proxy']).toBe('http://user:password@provider.proxy:8080');
+    expect(provider['headers']).toEqual({ Authorization: 'Bearer expanded-secret', 'X-Tenant': 'expanded-tenant' });
+
+    const response = await routes.request('/providers/api', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(provider),
+    });
+    expect(response.status).toBe(200);
+
+    const disk = onDisk(configPath);
+    expect(disk.providers.api.proxy).toBe('{{env.PROVIDER_PROXY}}');
+    expect(disk.providers.api.headers).toEqual({
+      Authorization: 'Bearer {{env.UPSTREAM_TOKEN}}',
+      'X-Tenant': '{{env.TENANT}}',
+    });
+    expect(disk.providers.api.baseURL).toBe('{{env.API_BASE_URL}}');
+    expect(disk.providers.api.apiKey).toBe('sk-preserved-value');
+  });
+});
+
 test('submitting the expanded baseURL retains the authored template', async () => {
   await withNetworkFixture(async (routes, configPath) => {
     const response = await routes.request('/providers/api', {
