@@ -74,7 +74,9 @@ export const useOAuthProviderEditPage = ({
       proxy: provider.proxy,
       alias: provider.alias,
       transforms: provider.transforms,
-      models: oauth.models,
+      // oauth.models is the discovered catalog, not the whitelist; seeding from it would
+      // freeze the catalog as an explicit whitelist on the first save.
+      models: provider.models ?? [],
     },
     (value) => {
       const account = oauthAccountSubmission(oauth.form, {
@@ -130,7 +132,7 @@ export const useOAuthProviderEditPage = ({
 
   const submit = (reauthorize: boolean) => {
     if (!transformsValid) return;
-    const issue = aliasEditorIssues(form.getFieldValue('alias') ?? {}, oauth.models)[0];
+    const issue = aliasEditorIssues(form.getFieldValue('alias') ?? {}, form.getFieldValue('models'))[0];
     if (issue !== undefined) {
       setAliasOpen(true);
       requestAnimationFrame(() => {

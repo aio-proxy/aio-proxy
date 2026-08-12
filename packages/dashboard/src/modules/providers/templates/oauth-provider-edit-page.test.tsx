@@ -254,3 +254,20 @@ test('OAuth edit page offers a restart when an existing session cannot be loaded
   screen.getByRole('button', { name: /Start over|重新开始/u }).click();
   expect(changeSession).toHaveBeenCalledWith(undefined);
 });
+
+test.each([
+  { whitelist: ['model-2'] as string[] | undefined, saved: ['model-2'] },
+  { whitelist: undefined, saved: [] },
+])(
+  'OAuth edit page saves the provider whitelist $whitelist, never the discovered catalog',
+  async ({ whitelist, saved }) => {
+    const target: OAuthProvider = whitelist === undefined ? provider : { ...provider, models: whitelist };
+    render(<OAuthProviderEditPage provider={target} oauth={oauth} sessionId={undefined} onSessionIdChange={rs.fn()} />);
+
+    screen.getByRole('button', { name: /Save|保存/u }).click();
+    await waitFor(() => expect(mocks.start).toHaveBeenCalled());
+
+    const [{ body }] = mocks.start.mock.calls.at(-1) as [{ body: { models?: readonly string[] } }];
+    expect(body.models).toEqual(saved);
+  },
+);
