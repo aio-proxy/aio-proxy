@@ -1,5 +1,22 @@
 import { z } from 'zod';
 
+import { ProviderProtocolSchema } from './provider-endpoints/index';
+
+export {
+  type ApiEndpointEntry,
+  ApiEndpointEntrySchema,
+  type ApiEndpointsInput,
+  ApiEndpointsInputSchema,
+  type ApiEndpointsSource,
+  apiProviderEndpoints,
+  type NormalizedApiEndpoint,
+  type ProviderEndpointAuth,
+  ProviderEndpointAuthSchema,
+  ProviderProtocol,
+  ProviderProtocolSchema,
+  validateApiEndpoints,
+} from './provider-endpoints/index';
+
 import { AliasConfigSchema, ModelIdSchema } from './common';
 import { ModelMetadataSchema } from './model-metadata/index';
 import { CapabilityIdSchema, PluginPackageNameSchema } from './plugin';
@@ -13,17 +30,6 @@ export enum ProviderKind {
   OAuth = 'oauth',
   AiSdk = 'ai-sdk',
 }
-
-export enum ProviderProtocol {
-  OpenAIResponse = 'openai-response',
-  OpenAICompatible = 'openai-compatible',
-  Anthropic = 'anthropic',
-  Gemini = 'gemini',
-}
-
-export const ProviderProtocolSchema = z
-  .enum(ProviderProtocol)
-  .describe('Wire protocol supported by this provider base URL.');
 
 /** Authoring-only string that still contains an unresolved `{{env.NAME}}` template. */
 export const ConfigTemplateStringSchema = z.string().regex(/\{\{[\s\S]*\}\}/u, 'Expected a config template');
