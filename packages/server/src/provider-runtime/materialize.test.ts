@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import type { AiSdkProviderInstance, ApiProviderInstance } from '@aio-proxy/core';
+import { createApiProvider } from '@aio-proxy/core';
 import { ConfigSchema, ProviderKind, ProviderProtocol } from '@aio-proxy/types';
 
 import { withAttemptLogContext, withRequestLogContext } from '../request-logging';
@@ -81,6 +82,27 @@ test('materializes a configured API provider with raw and bridged model capabili
   expect(runtime.providers[0]?.model?.invoke).toBe(bridge.invoke);
 });
 
+test('api provider raw capability resolves any declared endpoint protocol', () => {
+  const api = createApiProvider(
+    {
+      apiKey: 'k',
+      baseURL: 'https://api.moonshot.cn/v1',
+      enabled: true,
+      id: 'moonshot',
+      kind: ProviderKind.Api,
+      models: ['kimi-k2'],
+      protocol: ProviderProtocol.OpenAICompatible,
+      endpoints: [{ protocol: ProviderProtocol.Anthropic, baseURL: 'https://api.moonshot.cn/anthropic/v1' }],
+    },
+    { fetch: (async () => new Response('{}')) as typeof globalThis.fetch },
+  );
+  const instance = materializeRuntimeProvider(api);
+
+  expect(instance.raw?.resolve({ protocol: ProviderProtocol.OpenAICompatible, modelId: 'kimi-k2' })).toBeDefined();
+  expect(instance.raw?.resolve({ protocol: ProviderProtocol.Anthropic, modelId: 'kimi-k2' })).toBeDefined();
+  expect(instance.raw?.resolve({ protocol: ProviderProtocol.Gemini, modelId: 'kimi-k2' })).toBeUndefined();
+});
+
 test('materializes API metadata into the config layer only', () => {
   const config = ConfigSchema.parse({
     providers: {
@@ -138,7 +160,10 @@ test('provider summaries preserve configured weight and truthful display identit
   });
 
   const runtime = materializeProviders(config, {
-    createApiProvider: (provider) => ({ ...provider, passthrough: () => Promise.resolve(new Response()) }),
+    createApiProvider: (provider) => {
+      const passthrough = () => Promise.resolve(new Response());
+      return { ...provider, endpointTransports: [{ protocol: provider.protocol, passthrough }], passthrough };
+    },
     bridgeApiProvider: () => ({
       enabled: true,
       id: 'api:bridge',
@@ -213,9 +238,11 @@ test('materializes one transformed Fetch for raw API, API bridge, and direct AI 
     },
     createApiProvider(provider, options) {
       apiFetch = options.fetch;
+      const passthrough = (request: Request) => options.fetch(request);
       return {
         ...provider,
-        passthrough: (request) => options.fetch(request),
+        endpointTransports: [{ protocol: provider.protocol, passthrough }],
+        passthrough,
       } satisfies ApiProviderInstance;
     },
     bridgeApiProvider(provider, options) {
@@ -313,6 +340,7 @@ test('materializes an API input whose raw placeholder is undefined', async () =>
   const provider = {
     baseURL: 'https://api.example.com',
     enabled: true,
+    endpointTransports: [{ protocol: ProviderProtocol.Anthropic, passthrough }],
     id: 'api-placeholder',
     kind: ProviderKind.Api,
     passthrough,
@@ -372,6 +400,7 @@ test('materializes an injected API test double without baseURL through the snaps
   };
   const provider = {
     enabled: true,
+    endpointTransports: [{ protocol: ProviderProtocol.Anthropic, passthrough }],
     id: 'api-double',
     kind: ProviderKind.Api,
     passthrough,

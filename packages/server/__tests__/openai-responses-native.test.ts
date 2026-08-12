@@ -15,19 +15,21 @@ describe('OpenAI Responses routes', () => {
     // Given
     const rawRequest = '{"model":"gpt-4.1-mini","input":"Say pong.","stream":false}';
     let bodySeen = '';
+    const passthrough = async (req: Request) => {
+      bodySeen = await req.text();
+      return new Response('{"upstream":true}', {
+        headers: { 'content-type': 'application/json', 'x-upstream': '1' },
+        status: 203,
+      });
+    };
     const provider = {
       id: 'openai',
       kind: 'api',
       models: ['gpt-4.1-mini'],
       alias: { 'gpt-4.1-mini': { model: 'gpt-4.1-mini', preserve: false } },
       protocol: ProviderProtocol.OpenAIResponse,
-      async passthrough(req) {
-        bodySeen = await req.text();
-        return new Response('{"upstream":true}', {
-          headers: { 'content-type': 'application/json', 'x-upstream': '1' },
-          status: 203,
-        });
-      },
+      endpointTransports: [{ protocol: ProviderProtocol.OpenAIResponse, passthrough }],
+      passthrough,
     } satisfies ApiProviderInstance;
     const dbHome = tempHome();
     const app = await createServer({
@@ -66,6 +68,10 @@ describe('OpenAI Responses routes', () => {
   test('Given an alias variant and native provider When POST is valid Then passthrough receives the variant model', async () => {
     // Given
     let bodySeen: unknown;
+    const passthrough = async (req: Request) => {
+      bodySeen = await req.json();
+      return Response.json({ ok: true });
+    };
     const provider = {
       id: 'openai',
       kind: 'api',
@@ -78,10 +84,8 @@ describe('OpenAI Responses routes', () => {
         },
       },
       protocol: ProviderProtocol.OpenAIResponse,
-      async passthrough(req) {
-        bodySeen = await req.json();
-        return Response.json({ ok: true });
-      },
+      endpointTransports: [{ protocol: ProviderProtocol.OpenAIResponse, passthrough }],
+      passthrough,
     } satisfies ApiProviderInstance;
     const app = await createServer({ config: { providers: {} }, providerInstances: [provider] });
 

@@ -212,6 +212,7 @@ function provider(
       alias: { m: { model: 'm', preserve: false } },
       baseURL: `https://${id}.example.test`,
       enabled: true,
+      endpointTransports: [{ protocol, passthrough: raw }],
       id,
       kind: ProviderKind.Api,
       model: { invoke },

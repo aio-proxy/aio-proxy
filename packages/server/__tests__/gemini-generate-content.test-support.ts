@@ -52,6 +52,7 @@ export function googleNativeProvider(passthrough: ApiProviderInstance['passthrou
     models: ['gemini-2.5-flash'],
     alias: { 'gemini-2.5-flash': { model: 'gemini-2.5-flash', preserve: false } },
     protocol: ProviderProtocol.Gemini,
+    endpointTransports: [{ protocol: ProviderProtocol.Gemini, passthrough }],
     passthrough,
   };
 }

@@ -18,12 +18,14 @@ test('materializes configured target protocol resolvers', () => {
 
   expect(aiSdkRuntime.model?.targetProtocol?.('any-model')).toBe(ProviderProtocol.Anthropic);
 
+  const passthrough = async () => new Response();
   const api = {
     baseURL: 'https://api.example.test',
     enabled: true,
+    endpointTransports: [{ protocol: ProviderProtocol.Gemini, passthrough }],
     id: 'api',
     kind: ProviderKind.Api,
-    passthrough: async () => new Response(),
+    passthrough,
     protocol: ProviderProtocol.Gemini,
   } satisfies ApiProviderInstance;
   const bridge = {

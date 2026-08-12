@@ -16,19 +16,21 @@ describe('POST /v1/messages', () => {
   test('Given anthropic api provider When message is posted Then passthrough receives original request', async () => {
     // Given
     let bodySeen: unknown;
+    const passthrough = async (req: Request) => {
+      bodySeen = await req.json();
+      return new Response('provider-bytes', {
+        headers: { 'x-provider': 'anthropic' },
+        status: 202,
+      });
+    };
     const provider = {
       id: 'anthropic',
       kind: 'api',
       models: ['claude-sonnet-4-5'],
       alias: { 'claude-sonnet-4-5': { model: 'claude-sonnet-4-5', preserve: false } },
       protocol: ProviderProtocol.Anthropic,
-      async passthrough(req) {
-        bodySeen = await req.json();
-        return new Response('provider-bytes', {
-          headers: { 'x-provider': 'anthropic' },
-          status: 202,
-        });
-      },
+      endpointTransports: [{ protocol: ProviderProtocol.Anthropic, passthrough }],
+      passthrough,
     } satisfies ApiProviderInstance;
     const dbHome = tempHome();
     const app = await createServer({
@@ -65,20 +67,24 @@ describe('POST /v1/messages', () => {
   });
 
   test('Given first native provider throws When message is posted Then next provider is used and attempts are ordered', async () => {
+    const failing = async () => {
+      throw new Error('connection refused');
+    };
+    const succeeding = async () => Response.json({ fallback: true });
     const first = {
       id: 'offline',
       kind: 'api',
       models: ['claude-sonnet-4-5'],
       alias: { 'claude-sonnet-4-5': { model: 'claude-sonnet-4-5', preserve: false } },
       protocol: ProviderProtocol.Anthropic,
-      passthrough: async () => {
-        throw new Error('connection refused');
-      },
+      endpointTransports: [{ protocol: ProviderProtocol.Anthropic, passthrough: failing }],
+      passthrough: failing,
     } satisfies ApiProviderInstance;
     const second = {
       ...first,
       id: 'ok',
-      passthrough: async () => Response.json({ fallback: true }),
+      endpointTransports: [{ protocol: ProviderProtocol.Anthropic, passthrough: succeeding }],
+      passthrough: succeeding,
     } satisfies ApiProviderInstance;
     const dbHome = tempHome();
     const app = await createServer({ config: { providers: {} }, dbHome, providerInstances: [first, second] });
@@ -142,16 +148,18 @@ describe('POST /v1/messages', () => {
       }),
     });
     let bodySeen: Record<string, unknown> | undefined;
+    const passthrough = async (req: Request) => {
+      bodySeen = (await req.json()) as Record<string, unknown>;
+      return Response.json({ ok: true });
+    };
     const provider = {
       id: 'anthropic',
       kind: 'api',
       models: ['claude-sonnet-4-5'],
       alias: { 'claude-sonnet-4-5': { model: 'claude-sonnet-4-5', preserve: false } },
       protocol: ProviderProtocol.Anthropic,
-      async passthrough(req) {
-        bodySeen = (await req.json()) as Record<string, unknown>;
-        return Response.json({ ok: true });
-      },
+      endpointTransports: [{ protocol: ProviderProtocol.Anthropic, passthrough }],
+      passthrough,
     } satisfies ApiProviderInstance;
     const app = await createServer({ config: { providers: {} }, dbHome: tempHome(), providerInstances: [provider] });
 
