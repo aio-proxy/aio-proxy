@@ -35,8 +35,7 @@ export type ProviderMutationParseResult =
   | { readonly ok: false; readonly status: 400 | 422; readonly payload: Record<string, unknown> };
 
 export function parseProviderMutation(raw: unknown): ProviderMutationParseResult {
-  const prepared = stripRedactedProxyPlaceholder(raw);
-  const authoredParsed = ProviderMutationAuthoringBodySchema.safeParse(prepared);
+  const authoredParsed = ProviderMutationAuthoringBodySchema.safeParse(raw);
   if (!authoredParsed.success) {
     return { ok: false, status: 400, payload: { error: 'validation failed', details: authoredParsed.error.issues } };
   }
@@ -128,10 +127,4 @@ export function replaceOAuthProvider(
     capability: previousValue['capability'],
     ...(previousValue['options'] === undefined ? {} : { options: previousValue['options'] }),
   });
-}
-
-function stripRedactedProxyPlaceholder(raw: unknown): unknown {
-  if (!isPlainObject(raw) || raw['proxy'] !== '****') return raw;
-  const { proxy: _proxy, ...rest } = raw;
-  return rest;
 }

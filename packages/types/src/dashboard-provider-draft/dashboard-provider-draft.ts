@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 import { AiSdkProviderMutationBodySchema, ApiProviderMutationBodySchema, HttpProxyUrlSchema } from '../provider';
 
-const DraftProxySchema = z.union([HttpProxyUrlSchema, z.literal(false), z.null(), z.literal('****')]).optional();
+const DraftProxySchema = z.union([HttpProxyUrlSchema, z.literal(false), z.null()]).optional();
 
 export const DashboardProviderDraftSchema = z.discriminatedUnion('kind', [
   ApiProviderMutationBodySchema.extend({ proxy: DraftProxySchema }).strict(),
