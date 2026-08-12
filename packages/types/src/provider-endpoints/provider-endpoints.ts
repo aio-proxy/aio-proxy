@@ -18,7 +18,9 @@ export const ProviderEndpointAuthSchema = z
 
 export type ProviderEndpointAuth = z.output<typeof ProviderEndpointAuthSchema>;
 
-export const ApiEndpointEntrySchema = z.object({
+// Strict so a typo (a per-entry `headers`, or `auth` on the shared form where it
+// has no meaning) fails loudly instead of being stripped into a silent no-op.
+export const ApiEndpointEntrySchema = z.strictObject({
   protocol: ProviderProtocolSchema,
   baseURL: z.url().describe('AI SDK-style base URL for this protocol endpoint.'),
   auth: ProviderEndpointAuthSchema.optional(),
@@ -27,7 +29,7 @@ export const ApiEndpointEntrySchema = z.object({
 export const ApiEndpointsInputSchema = z
   .union([
     z.array(ApiEndpointEntrySchema).min(1),
-    z.object({
+    z.strictObject({
       baseURL: z.url().describe('AI SDK-style base URL shared by every listed protocol.'),
       protocol: z.array(ProviderProtocolSchema).min(1),
     }),

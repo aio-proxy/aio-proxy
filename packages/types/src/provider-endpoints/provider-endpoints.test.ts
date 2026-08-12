@@ -105,6 +105,18 @@ describe('validateApiEndpoints', () => {
     ).toEqual(['Duplicate endpoint protocol "anthropic"']);
   });
 
+  test('rejects duplicate protocols inside the endpoints array', () => {
+    expect(
+      issueRecordsOf({
+        kind: 'api',
+        endpoints: [
+          { protocol: 'anthropic', baseURL: 'https://a.test/v1' },
+          { protocol: 'anthropic', baseURL: 'https://b.test/v1' },
+        ],
+      }),
+    ).toEqual([{ message: 'Duplicate endpoint protocol "anthropic"', path: ['endpoints', 1, 'protocol'] }]);
+  });
+
   test('rejects duplicate protocols inside the shared object', () => {
     expect(
       issuesOf({ kind: 'api', endpoints: { baseURL: 'https://gw.test/v1', protocol: ['anthropic', 'anthropic'] } }),
@@ -162,5 +174,20 @@ describe('ApiEndpointsInputSchema', () => {
   test('rejects an empty array and an empty shared protocol list', () => {
     expect(ApiEndpointsInputSchema.safeParse([]).success).toBeFalse();
     expect(ApiEndpointsInputSchema.safeParse({ baseURL: 'https://gw.test/v1', protocol: [] }).success).toBeFalse();
+  });
+
+  test('rejects auth on the shared object form instead of stripping it', () => {
+    expect(
+      ApiEndpointsInputSchema.safeParse({ baseURL: 'https://gw.test/v1', protocol: ['anthropic'], auth: 'bearer' })
+        .success,
+    ).toBeFalse();
+  });
+
+  test('rejects an unknown key on an array entry instead of stripping it', () => {
+    expect(
+      ApiEndpointsInputSchema.safeParse([
+        { protocol: 'anthropic', baseURL: 'https://a.test/v1', headers: { 'x-a': 'b' } },
+      ]).success,
+    ).toBeFalse();
   });
 });

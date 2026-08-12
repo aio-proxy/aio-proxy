@@ -30,6 +30,7 @@ async function capturedUpstreamRequest(
     }) as ProviderFetch,
   });
 
+  // Invoke rejections are deliberately ignored: these tests only assert how the upstream request is constructed.
   await collect(bridge.invoke({ messages, modelId })).catch(() => []);
   if (upstream === undefined) throw new Error('bridge issued no upstream request');
   return upstream;

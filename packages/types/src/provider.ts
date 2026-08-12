@@ -107,7 +107,7 @@ export const ApiProviderSchema = z.object({
   proxy: ProviderProxySchema.describe(PROXY_DESCRIPTION),
 });
 
-const ApiEndpointEntryAuthoringSchema = z.object({
+const ApiEndpointEntryAuthoringSchema = z.strictObject({
   protocol: z.union([ProviderProtocolSchema, ConfigTemplateStringSchema]),
   baseURL: z.union([z.url(), ConfigTemplateStringSchema]),
   auth: z.union([ProviderEndpointAuthSchema, ConfigTemplateStringSchema]).optional(),
@@ -115,7 +115,7 @@ const ApiEndpointEntryAuthoringSchema = z.object({
 
 const ApiEndpointsAuthoringInputSchema = z.union([
   z.array(ApiEndpointEntryAuthoringSchema).min(1),
-  z.object({
+  z.strictObject({
     baseURL: z.union([z.url(), ConfigTemplateStringSchema]),
     protocol: z.array(z.union([ProviderProtocolSchema, ConfigTemplateStringSchema])).min(1),
   }),

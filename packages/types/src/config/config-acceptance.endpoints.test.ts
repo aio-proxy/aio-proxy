@@ -86,6 +86,10 @@ describe('endpoints acceptance', () => {
       name: 'auth on non-anthropic endpoint',
       provider: { endpoints: [{ protocol: 'gemini', baseURL: 'https://g.test/v1beta', auth: 'bearer' }] },
     },
+    {
+      name: 'auth on the shared endpoints form',
+      provider: { endpoints: { baseURL: 'https://gw.test/v1', protocol: ['anthropic'], auth: 'bearer' } },
+    },
   ])('rejects $name into invalidProviders', ({ provider }) => {
     expect(invalidPaths(provider).length).toBeGreaterThan(0);
   });

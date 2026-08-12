@@ -65,7 +65,7 @@ export async function testProviderDraft(
     const runtime = materializeDraftRuntime(state, testProvider);
     const targetProtocol =
       testProvider.kind === ProviderKind.Api
-        ? testProvider.protocol
+        ? apiProviderEndpoints(testProvider)[0].protocol
         : runtime.provider.model?.targetProtocol?.(modelId);
     const passed = await withDraftAttempt(testProvider, modelId, targetProtocol, async () => {
       if (testProvider.kind === ProviderKind.Api) {

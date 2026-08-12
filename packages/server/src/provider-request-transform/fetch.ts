@@ -31,6 +31,7 @@ export function createProviderRequestTransformFetch(
 ): typeof globalThis.fetch {
   const compiled = compileProviderRequestTransforms(provider.transforms?.request ?? []);
   if (compiled.rules.length === 0) return fetcher;
+  const primaryProtocol = provider.kind === ProviderKind.Api ? apiProviderEndpoints(provider)[0].protocol : undefined;
 
   return (async (input, init) => {
     const attempt = currentProviderAttemptContext();
@@ -50,7 +51,7 @@ export function createProviderRequestTransformFetch(
         provider: {
           id: provider.id,
           kind: provider.kind,
-          ...(provider.kind === ProviderKind.Api ? { protocol: apiProviderEndpoints(provider)[0].protocol } : {}),
+          ...(primaryProtocol === undefined ? {} : { protocol: primaryProtocol }),
         },
         request: {
           model: attempt.modelId,
