@@ -60,7 +60,17 @@ modules/providers/templates/provider-editor-page/
   lib/model-rows.ts                 pure: models[] x metadata{} <-> row objects
 ```
 
-The connection section reuses `components/provider-form-fields-api.tsx` (146), `components/provider-form-fields-ai-sdk.tsx` (161), and `components/oauth-provider-edit-fields.tsx` (153) unchanged. None of the three is rewritten.
+No leaf field component is rewritten. The three kind-specific files already delegate to per-concern children, and `ProviderCommonFields` already takes `section: 'connection' | 'routing'` (`components/provider-common-fields.tsx:15`), so the split this redesign needs partly exists:
+
+| Leaf component | Moves to section |
+|---|---|
+| `ProviderCommonFields section="connection"` | Identity |
+| `ProviderCommonFields section="routing"`, `ProviderAliasFields`, `OAuthProviderAliasFields` | Routing |
+| protocol / `baseURL` / `apiKey` fields, `OAuthAccountFields` | Connection |
+| `ProviderModelsField` internals | Models |
+| `ProviderProxyField`, `ProviderHeadersField`, `ProviderRequestTransformsFormField` | Advanced |
+
+What shrinks is the three kind-specific wrappers: `provider-form-fields-api.tsx` (146), `provider-form-fields-ai-sdk.tsx` (161), and `oauth-provider-edit-fields.tsx` (153) stop being whole-form layouts and keep only their connection-section fields. The new `sections/*.tsx` files own layout and re-parent the leaves listed above.
 
 `components/reui/stepper.tsx` loses its only consumer. Leave the component in place; deleting it is a separate cleanup.
 
@@ -72,11 +82,22 @@ Section status is a pure function in `lib/section-status.ts`, not a boolean livi
 
 | Status | Meaning | Blocks save |
 |---|---|---|
-| `todo` | A required field is empty: provider id, api key, package name, oauth capability | Yes |
-| `attention` | Saveable but suspect: an alias targets a model outside the whitelist, or the weight ties another provider serving the same model | No |
+| `todo` | A required field is empty: provider id, api key, package name, oauth capability. Or an alias targets a model outside a non-empty whitelist, which the schema rejects outright | Yes |
+| `attention` | Saveable but suspect: the weight ties another provider serving the same model, or a whitelist entry is no longer in the discovered catalog | No |
 | `ok` | Neither | No |
 
-Alias target issues already exist as data (`lib/alias-editor/alias-editor.ts:178`); they move from drawer-time validation to inline row errors that also raise the section to `attention`.
+An alias whose target is outside the whitelist is **not** a soft warning. `validateAliasTargets` (`packages/types/src/provider-alias.ts:38-45`) raises a Zod issue on `['alias', <name>, 'model']`, so the mutation returns 400. The UI must therefore block save and restrict the alias target picker to whitelisted models rather than letting the user save into a rejected state.
+
+Alias target issues already exist as data (`lib/alias-editor/alias-editor.ts:178`); they move from drawer-time validation to inline row errors that also raise the section to `todo`.
+
+`models[]` semantics differ per kind, and the difference is load-bearing:
+
+| Kind | `models` absent or `[]` | `models` non-empty |
+|---|---|---|
+| `api`, `ai-sdk` | No direct routes; only aliases are exposed | Exactly those models are exposed |
+| `oauth` | Every discovered model is exposed | The intersection with the discovered catalog |
+
+`directModelIds` (`packages/core/src/router.ts:104`) treats absent and `[]` identically — as "no direct models" — so "empty means everything" is **not** a router convention. For oauth it is realized by populating the runtime provider's `models` with the discovered catalog (`plugin-runtime/capabilities.ts:97`), which the router then sees as an explicit list. An implementer who unifies the two readings breaks either oauth backward compatibility or api routing.
 
 ## Models Section
 
@@ -89,7 +110,7 @@ Candidate sources, by kind. Catalog capability is decided by whether a base URL 
 | Kind | Candidates |
 |---|---|
 | `api` | Draft catalog (already works) |
-| `ai-sdk` | Draft catalog, when `options.baseURL` is present |
+| `ai-sdk` | Draft catalog, when `options.baseURL` is a string and answers an OpenAI-shaped `/v1/models` (backend change 4) |
 | `oauth` | The plugin-discovered catalog already returned by `oauthProviderEditView` (`packages/server/src/server-state/oauth-views.ts:41`) |
 
 ### Metadata Drawer
@@ -105,13 +126,17 @@ Candidate sources, by kind. Catalog capability is decided by whether a base URL 
 
 ## Routing Section
 
-The weight slider is `slider.tsx` copied from the prototype into `packages/ui/src/components/`. It is `@base-ui/react/slider`, and `@base-ui/react` is already a `packages/ui` dependency, so this adds no package.
+The weight slider is a `slider.tsx` added to `packages/ui/src/components/` through the registry already configured in `packages/ui/components.json` (style `base-rhea`, base color `olive`, `@reui` registry), not hand-copied from the prototype. It wraps `@base-ui/react/slider`, and `@base-ui/react` is already a `packages/ui` dependency, so this adds no package.
 
 The attempt-order preview needs no new endpoint. `DashboardProviderSummarySchema` already carries `weight` (`packages/types/src/dashboard/dashboard.ts:26`) and `clientModels` (`:29`), so the page computes "other providers serving these models, descending by weight" from the provider list it already fetches. The preview states plainly that session affinity can override weight order, matching the routing contract in `CLAUDE.md`.
 
 Alias editing moves inline. `components/provider-alias/provider-alias-drawer.tsx` (126) and `components/provider-alias/use-alias-drafts.ts` (100) are deleted: without a drawer there is no draft to stage, no dirty check, and no commit step. Rows write the form immediately. `provider-alias-config-fields.tsx` (157), `provider-alias-variants.tsx` (143), and `provider-alias-list.tsx` (107) are reused inside the inline rows.
 
-The prototype's `exposedRoutes()` helper is discarded. The exposure panel calls the real `modelRoutes()` from `packages/core/src/router.ts:94`, which is the same function the server uses to compute `clientModels`.
+The prototype's `exposedRoutes()` helper is discarded: the exposure panel must call the same `modelRoutes()` the server uses to compute `clientModels`, or the panel and the router will disagree. That function lives in `packages/core/src/router.ts:94` and `packages/dashboard` does not depend on `@aio-proxy/core` (`packages/dashboard/package.json:18-23`), and should not — the core root export pulls in server-only modules.
+
+So `modelRoutes` and its two private helpers `directModelIds`/`preservedModelIds` move into `@aio-proxy/types`, next to `validateAliasTargets` in `provider-alias.ts`, which already owns the same domain logic (`collectPreservedModels`, `targetModels`). `packages/core/src/router.ts` re-exports `modelRoutes` so no core consumer changes. The dashboard imports it from `@aio-proxy/types`, which it already depends on.
+
+That colocation makes the near-duplication between `preservedModelIds` and `collectPreservedModels` visible. Consolidating them is a follow-up, not part of this change.
 
 ## OAuth Creation: Two Stages, One Shell
 
@@ -143,13 +168,17 @@ Each of the six changes below was verified against the current source.
 models: catalog.language.map(({ id }) => id),
 ```
 
-It becomes the intersection of the discovered catalog with `config.models`. An absent or empty whitelist means expose everything, which keeps every existing oauth config working unchanged. Ids in the whitelist that are no longer in the catalog are dropped, so a stale whitelist cannot create dead routes.
+It becomes the intersection of the discovered catalog with `config.models`, applied at both places the runtime provider's `models` is set: `createRuntimeProvider` (fresh materialization) and `withRoutingConfig` (`capabilities.ts:60-68`, the cached path, which today overlays only `enabled`/`alias`/`configMetadata`). Missing either one makes the whitelist silently depend on cache state.
+
+An absent or empty whitelist means expose everything, which keeps every existing oauth config working unchanged. Ids in the whitelist that are no longer in the catalog are dropped, so a stale whitelist cannot create dead routes.
 
 No router change is needed. `directModelIds` (`packages/core/src/router.ts:104`) reads `'models' in provider ? provider.models ?? [] : []` — a structural check, not a kind check — so the oauth runtime provider participates the moment it carries `models`.
 
-### 3. Runtime identity must include the whitelist
+### 3. Runtime identity must *not* include the whitelist
 
-`runtimeIdentity` (`packages/server/src/plugin-runtime/materialize.ts:212-224`) hashes `catalogDigest` but not the whitelist. Editing the whitelist would otherwise reuse a cached runtime with the old model set. Add `modelsDigest: digest(config.models ?? [])`.
+`runtimeIdentity` (`packages/server/src/plugin-runtime/materialize.ts:212-224`) hashes `catalogDigest` and credential inputs. Adding `modelsDigest` to it would be the obvious move and is wrong: identity equality is exactly what selects the cheap path at `materialize.ts:232-246`, where `options.previous?.identity === identity` reuses the existing credentials and catalog and only re-applies `withRoutingConfig`. A whitelist edit is a pure routing change, so it must keep identity stable and flow through that path — no credential rebuild, no re-discovery, no upstream call to change which models are exposed.
+
+This is why change 2 has to touch `withRoutingConfig` and not just `createRuntimeProvider`. Do one or the other, never both.
 
 ### 4. Catalog capability follows base URL, not kind
 
@@ -159,15 +188,29 @@ No router change is needed. `directModelIds` (`packages/core/src/router.ts:104`)
 if (provider.kind === ProviderKind.AiSdk) return failure('catalog_unsupported');
 ```
 
-Replace the kind test with a base-URL test, so an ai-sdk provider configured with `options.baseURL` can list models and one without it still fails with `catalog_unsupported`.
+Removing that line is not enough. The existing catalog loader (`:22-52`) resolves the upstream through `runtime.raw?.resolve({ protocol: provider.protocol, ... })` and parses the response with `catalogPath(protocol)` / `catalogPage(protocol, payload)` (`:136-159`). Neither input exists for ai-sdk: `materialize.ts:68-82` builds ai-sdk runtimes with a `model` capability only and no `raw`, and ai-sdk config has no `protocol` field at all.
+
+The ai-sdk path is therefore separate, and narrow by design:
+
+- Read `baseURL` and `apiKey` off the free-form `options` record (`provider.ts:126-141` types it as `z.record(z.string(), z.unknown())`, so both are conventional `@ai-sdk/openai-compatible` keys, not schema fields).
+- Fetch `baseURL` + `catalogPath(ProviderProtocol.OpenAICompletions)` directly, honoring the provider proxy, and parse with `catalogPage(ProviderProtocol.OpenAICompletions, ...)`.
+- A non-string `baseURL` keeps returning `catalog_unsupported`. A base URL that does not answer the OpenAI `{ data: [{ id }] }` shape returns a new `catalog_unavailable` code, so "this package cannot list models" reads differently from "this endpoint failed".
+
+Any ai-sdk package whose upstream is not OpenAI-shaped is out of scope; it lands on `catalog_unavailable` and the user types model ids manually, exactly as today.
 
 ### 5. OAuth drafts can be tested
 
-`DashboardProviderDraftSchema` (`packages/types/src/dashboard-provider-draft/dashboard-provider-draft.ts:7-10`) is a discriminated union of api and ai-sdk only. Add an oauth branch so the rail's model test works for oauth providers. An oauth draft is always backed by a persisted account, so it uses `persistedProviderId` for credentials; a draft with no persisted account fails with the existing `fresh_credentials_required`.
+`DashboardProviderDraftSchema` (`packages/types/src/dashboard-provider-draft/dashboard-provider-draft.ts:7-10`) is a discriminated union of api and ai-sdk only. Add an oauth branch so the rail's model test works for oauth providers.
 
-### 6. The edit view returns the whole provider
+The blocker is one line earlier in the flow: `provider-draft-resolution.ts:58-61` returns `persisted_provider_mismatch` for *any* provider whose persisted config parses as oauth, before credentials are ever considered. That early return has to admit oauth drafts. An oauth draft is always backed by a persisted account, so it resolves credentials by `persistedProviderId`; a draft naming an id with no persisted account keeps failing with `persisted_provider_mismatch`. The `fresh_credentials_required` code does not apply here — oauth never carries draft credentials.
 
-`oauthProviderEditView` (`packages/server/src/server-state/oauth-views.ts:21-44`) returns only `accountLabel`, `publicValues`, `form`, and `models`. Its `models` is the plugin-discovered catalog, which is the candidate list the picker needs and is kept. `name`, `weight`, and `protocol` are missing, and `provider-routes.ts:37` currently patches around this by merging a separate summary. Extend `DashboardOAuthProviderEditSchema` (`packages/types/src/dashboard-oauth.ts:58-63`) with those fields and make `metadataProtocol()` non-private so one fetch of `/providers/:id/edit-view` populates the whole page.
+### 6. Empty `models` must stop invalidating aliases
+
+`validateAliasTargets` (`packages/types/src/provider-alias.ts:33-49`) builds `new Set(provider.models)` whenever `models` is not `undefined`, then requires every alias target to be in it. With `models: []` the set is empty, so **every** alias becomes invalid — a provider that exposes nothing directly and everything through aliases cannot be saved, even though `directModelIds` supports exactly that shape.
+
+Change the guard to skip the target check when `models` is empty as well as when it is absent, matching the router's reading of `[]`.
+
+This is a prerequisite for change 1, not an unrelated fix. Adding `models` to `OAuthProviderMutationBodySchema` puts oauth providers under `validateAliasTargets` for the first time, since `ProviderMutationBodySchema.superRefine(validateAliasTargets)` (`provider.ts:230-238`) applies to the whole union. Without this fix, the first oauth provider saved with an empty whitelist and any alias starts returning 400 on a payload that used to succeed.
 
 ## Internationalization
 
@@ -199,20 +242,24 @@ There is no locale parity check in the repository, and the store has already dri
 
 New tests, each protecting a user-visible outcome rather than restating structure:
 
-- `lib/section-status.test.ts`: a missing api key yields `todo` and blocks save; an alias pointing outside the whitelist yields `attention` and does not.
+- `lib/section-status.test.ts`: a missing api key yields `todo` and blocks save; an alias pointing outside a non-empty whitelist also yields `todo`, because the schema would reject it; a stale whitelist entry yields `attention` and does not block.
 - `lib/model-rows.test.ts`: rows round-trip without dropping metadata for alias-only models or unrecognized metadata fields.
-- `plugin-runtime/capabilities`: an empty whitelist exposes the whole catalog; a whitelist intersects it; a whitelist entry absent from the catalog is dropped.
-- `plugin-runtime/identity`: changing only the whitelist changes the runtime identity.
-- `provider-draft-operations`: an ai-sdk draft with `options.baseURL` lists models; one without still returns `catalog_unsupported`.
-- `packages/i18n/__tests__`: all five locales share one key set.
+- `packages/types/src/provider-alias`: an alias-only provider with `models: []` passes validation; an alias outside a non-empty whitelist still fails.
+- `plugin-runtime/capabilities`: an empty whitelist exposes the whole catalog; a whitelist intersects it; a whitelist entry absent from the catalog is dropped. Asserted on both the fresh and the `withRoutingConfig` path, since only one of them is exercised by a cached edit.
+- `plugin-runtime/materialize`: changing only the whitelist leaves `runtimeIdentity` unchanged, so the edit takes the cached routing path instead of rebuilding credentials.
+- `provider-draft-operations`: an ai-sdk draft with `options.baseURL` lists models; one without still returns `catalog_unsupported`; one whose endpoint is not OpenAI-shaped returns `catalog_unavailable`.
+- `packages/i18n/__tests__/`: all five locales share one key set. That directory is already scanned by `test:unit` (`packages/i18n/package.json:17`) and is the right home, since the assertion is over `messages/*.json` rather than a source module.
 
 ## Non-Goals
 
 - No models.dev HTTP proxy route. The prototype's `/dashboard/api/proxy` is not ported; `packages/core/src/models-dev` already caches the catalog.
 - No new endpoint for the attempt-order preview; the provider summary already carries `weight` and `clientModels`.
+- No change to `/providers/:id/edit-view`. It already returns the redacted full config alongside the oauth view (`packages/server/src/dashboard-routes/provider-routes.ts:25-39`), so `name`, `weight`, and `protocol` are present in one fetch today.
 - No changes to request-transform editing, `components/provider-options-editor.tsx` schema resolution, or workflow install. They move containers only.
 - No deletion of `components/reui/stepper.tsx`, even though it loses its last consumer.
+- No consolidation of `preservedModelIds` and `collectPreservedModels`, which end up in the same file.
 - No metadata visual editor for fields outside `extend`, `limit`, `cost`, and `capabilities`; the JSON tab covers the rest.
+- No support for ai-sdk packages whose upstream does not expose an OpenAI-shaped `/v1/models`.
 
 ## Release
 
@@ -221,6 +268,7 @@ The change spans `@aio-proxy/types`, `@aio-proxy/core`, `server`, `@aio-proxy/ui
 ## Risks
 
 - The authorization stage is the only place where one shell must model two different submit semantics. If adopting `session.providerId` in place proves unstable, the fallback is the current navigate-to-list behavior, which is a footer change rather than a redesign.
-- Whitelist semantics are asymmetric by necessity: for oauth an empty whitelist means everything, because existing configs have none. The models section must therefore distinguish "all N discovered" from an explicit subset in its wording, or users will read an empty list as "nothing exposed".
+- `models[]` now means two different things depending on kind: the exposed set for api and ai-sdk, a filter over a discovered catalog for oauth. The models section must word this difference explicitly — "all 47 discovered" versus an explicit subset — or an oauth user will read an empty list as "nothing exposed" and an api user will read it as "everything".
+- Adding `models` to the oauth mutation body silently enrolls oauth providers in `validateAliasTargets`. Backend change 6 is what keeps that from turning previously valid payloads into 400s; shipping change 1 without it is a regression, not a missing feature.
 - Deleting the alias draft layer removes conflict detection at commit time. Inline rows must surface the same `alias-editor` issues immediately, or a conflicting alias reaches submit and fails there instead.
 
