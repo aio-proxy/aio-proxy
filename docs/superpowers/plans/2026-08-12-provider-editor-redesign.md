@@ -511,18 +511,22 @@ git commit -m "feat(server): oauth whitelist filters the runtime catalog on both
 **Interfaces:**
 - Produces (from `@aio-proxy/types`):
   - `type ModelRoute = { readonly alias: string; readonly modelId: string }`
-  - `modelRoutes(provider: { readonly models?: readonly string[] | undefined; readonly alias?: ProviderAlias | undefined }): ModelRoute[]`
+  - `modelRoutes(provider: { readonly enabled: boolean; readonly models?: readonly string[] | undefined; readonly alias?: ProviderAlias | undefined }): ModelRoute[]`
   - `directModelIds(provider: same): string[]`
   - `sameRouteTargets(left: AliasConfig, right: AliasConfig): boolean`
 - `@aio-proxy/core` re-exports `modelRoutes` and `ModelRoute` unchanged, so `packages/server/src/provider-runtime/materialize.ts:7` and every other core consumer keeps compiling without edits. The dashboard (task 17) imports `modelRoutes` from `@aio-proxy/types`.
 
 - [ ] **Step 1: Write the failing test**
 
-Append to `packages/types/src/provider-alias/provider-alias.test.ts`:
+In `packages/types/src/provider-alias/provider-alias.test.ts`, **merge** the new symbol into the existing import at `:5` — do not add a second `from './provider-alias'` line, `import/no-duplicates` is `error` in `oxlint.config.ts:25` and preflight would fail:
 
 ```ts
-import { modelRoutes } from './provider-alias';
+import { modelRoutes, validateAliasTargets } from './provider-alias';
+```
 
+Then append:
+
+```ts
 test('modelRoutes: aliases shadow their targets unless preserved', () => {
   expect(
     modelRoutes({ models: ['a', 'b'], alias: { smart: { model: 'a', preserve: false } } }),
@@ -542,16 +546,29 @@ test('modelRoutes: preserve keeps the original id routable next to the alias', (
 });
 ```
 
+And one assertion that the package **root** barrel actually re-exports the moved symbols — without it, forgetting the `provider.ts:9` widening below stays green here and only breaks in task 17:
+
+```ts
+import * as types from '@aio-proxy/types';
+
+test('modelRoutes and its helpers reach the package root barrel', () => {
+  expect(typeof types.modelRoutes).toBe('function');
+  expect(typeof types.directModelIds).toBe('function');
+  expect(typeof types.sameRouteTargets).toBe('function');
+});
+```
+
 Run: `bun test packages/types/src/provider-alias/provider-alias.test.ts` — FAILS (`modelRoutes` not exported).
 
 - [ ] **Step 2: Move the code**
 
-Cut `modelRoutes`, `directModelIds`, `preservedModelIds`, `sameRouteTargets`, `routeTargetModels`, and the `ModelRoute` type from `packages/core/src/router.ts` **verbatim** into `packages/types/src/provider-alias/provider-alias.ts`. The symbols live in two spans — `router.ts:28-30` (`ModelRoute`) and `router.ts:94-163` (`modelRoutes` `:94`, `directModelIds` `:104`, `preservedModelIds` `:129`, `sameRouteTargets` `:155`, `routeTargetModels` `:161-163`). Do **not** cut `28-163` as one block: `ConfiguredRouterRoute` (`:32`) and the whole `Router` class (`:38-92`) sit between them and must stay in core. Then apply these mechanical adjustments:
+Cut `modelRoutes`, `directModelIds`, `preservedModelIds`, `sameRouteTargets`, `routeTargetModels`, and the `ModelRoute` type from `packages/core/src/router.ts` **verbatim** into `packages/types/src/provider-alias/provider-alias.ts`. The symbols live in two spans — `router.ts:28-31` (`ModelRoute`, including its closing `};`) and `router.ts:94-163` (`modelRoutes` `:94`, `directModelIds` `:104`, `preservedModelIds` `:129`, `sameRouteTargets` `:155`, `routeTargetModels` `:161-163`). Do **not** cut `28-163` as one block: `ConfiguredRouterRoute` (`:33`) and the whole `Router` class (`:38-92`) sit between them and must stay in core. Then apply these mechanical adjustments:
 
-- Parameter type: replace `RoutableProvider` with a local structural type (no `id`/`enabled` needed by these functions):
+- Parameter type: replace `RoutableProvider` with a local structural type. Drop only `id`; **keep `enabled: boolean` required.** These functions never read `enabled`, but every planned caller has it, and requiring it keeps two accident-prone shapes out — a `CatalogPage` (`provider-draft-operations.ts:140-143`) and a bare `{ models: aliasTargetModels(alias) }` both lack it and must stay compile errors. Task 17's `ExposurePanelProps` already carries `enabled: boolean`:
 
 ```ts
 type RoutableModelSource = {
+  readonly enabled: boolean;
   readonly models?: readonly string[] | undefined;
   readonly alias?: ProviderAlias | undefined;
 };
@@ -608,6 +625,8 @@ git commit -m "refactor: move modelRoutes and alias route helpers into @aio-prox
 - Produces: `loadProviderDraftCatalog` accepts ai-sdk drafts when `options.baseURL` is a string; keeps `catalog_unsupported` otherwise; wrong response shape → `catalog_unavailable`.
 
 **Implementation note (deviation from spec wording):** the spec says fetch "`baseURL` + `catalogPath(...)`" but ai-sdk `baseURL` conventionally already contains the version segment (`http://host/v1`) — `@ai-sdk/openai-compatible` appends `/chat/completions` to it. The correct listing URL is `${baseURL}/models`. `catalogPage(ProviderProtocol.OpenAICompatible, ...)` is single-page (no pagination for that protocol), so no loop is needed.
+
+**Depends on task 21** — dispatch it first. Until it lands, `/providers/:id/edit-view` returns `options.apiKey` masked as `'****'`, so loading the catalog for a *saved* provider (the primary use case: open the editor, click Load models) would authenticate with `Bearer ****` and 401 into `catalog_unavailable`. The tests below use unsaved drafts and pass either way; only real use is affected.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -693,6 +712,8 @@ In `provider-draft-operations.ts`, replace line 26 (`if (provider.kind === Provi
 ```ts
 import { createProxyFetch } from '@aio-proxy/core';
 import { effectiveProxy } from '../../provider-runtime';
+import { createProviderRequestTransformFetch } from '../../provider-request-transform';
+import { createObservedFetch } from '../../request-logging';
 
 export async function loadProviderDraftCatalog(
   state: ServerState,
@@ -703,7 +724,7 @@ export async function loadProviderDraftCatalog(
 }
 
 // ai-sdk runtimes expose no raw capability and no protocol field, so the api
-// loader cannot serve them. Convention over schema: baseURL/apiKey are the
+// loader cannot serve them. Convention over schema: baseURL/apiKey/headers are the
 // @ai-sdk/openai-compatible option keys, and the listing must be OpenAI-shaped.
 async function loadAiSdkDraftCatalog(
   state: ServerState,
@@ -712,11 +733,23 @@ async function loadAiSdkDraftCatalog(
   const baseURL = provider.options?.['baseURL'];
   if (typeof baseURL !== 'string' || baseURL.trim() === '') return failure('catalog_unsupported');
   const apiKey = provider.options?.['apiKey'];
-  const fetchWithProxy = createProxyFetch(effectiveProxy(state.currentConfig().proxy, provider.proxy));
+  const configuredHeaders = provider.options?.['headers'];
+  // Same composition as the runtime path (materialize.ts:156-159), so a
+  // transform that injects auth works here and the request is debug-loggable.
+  const fetchWithProxy = createProviderRequestTransformFetch(
+    provider,
+    createObservedFetch(createProxyFetch(effectiveProxy(state.currentConfig().proxy, provider.proxy))),
+  );
   try {
     const response = await fetchWithProxy(`${baseURL.replace(/\/+$/u, '')}/models`, {
       signal: AbortSignal.timeout(5_000),
-      headers: typeof apiKey === 'string' && apiKey !== '' ? { authorization: `Bearer ${apiKey}` } : {},
+      headers: {
+        // An @ai-sdk/anthropic-shaped provider authenticates via options.headers
+        // (x-api-key), not a bearer token; without this it 401s here while
+        // /draft/test on the same draft succeeds.
+        ...(typeof configuredHeaders === 'object' && configuredHeaders !== null ? (configuredHeaders as Record<string, string>) : {}),
+        ...(typeof apiKey === 'string' && apiKey !== '' ? { authorization: `Bearer ${apiKey}` } : {}),
+      },
     });
     if (!response.ok) {
       await response.body?.cancel();
@@ -831,7 +864,7 @@ providerInstances: [
 ],
 ```
 
-Then the tests:
+Then the tests. (`proxy: null` is the required schema shape, not form state: the oauth editor has no proxy field — the live runtime owns the connection, so the draft's proxy is inert on this path. Do not wire a form value to it.)
 
 ```ts
 test('tests an oauth draft model against the live runtime', async () => {
@@ -1037,10 +1070,13 @@ test('getCachedModelSlugs returns [] on a cold cache and provider/model slugs on
 
   await fileCacheStorage.setItem('models-dev-providers', {
     anthropic: { models: { 'claude-x': { id: 'claude-x' } } },
-    openai: { models: { 'gpt-y': { id: 'gpt-y' } } },
+    // One slash-bearing key on purpose: 54% of real models.dev ids contain a
+    // slash and `resolveModel` splits on the FIRST slash only, so a slug like
+    // `openrouter/vendor/model-z` must round-trip through `extend` unchanged.
+    openrouter: { models: { 'vendor/model-z': { id: 'vendor/model-z' } } },
   });
   clearModelsCache();
-  expect(await getCachedModelSlugs()).toEqual(['anthropic/claude-x', 'openai/gpt-y']);
+  expect(await getCachedModelSlugs()).toEqual(['anthropic/claude-x', 'openrouter/vendor/model-z']);
 });
 ```
 
@@ -1057,7 +1093,11 @@ export async function getCachedModelSlugs(): Promise<string[]> {
   const providerMap = await readCachedProviderMap();
   if (providerMap === undefined) return [];
   return Object.entries(providerMap)
-    .flatMap(([providerId, provider]) => Object.keys(provider.models).map((modelId) => `${providerId}/${modelId}`))
+    // `provider.models` is a compile-time fiction: readCachedProviderMap never
+    // passes a `schema` (cache/index.ts:60-62) and cache/file.ts:66 is a bare
+    // `return value as T`. The live cache really does hold `{"openrouter":{"models":{}}}`.
+    // Without `?? {}` one malformed entry 500s every drawer open. resolve.ts:38 guards the same way.
+    .flatMap(([providerId, provider]) => Object.keys(provider.models ?? {}).map((modelId) => `${providerId}/${modelId}`))
     .sort();
 }
 ```
@@ -1945,7 +1985,7 @@ git commit -m "feat(dashboard): single-page provider editor shell with in-place 
 - Modify: `modules/providers/templates/providers-page.tsx` (+ `components/providers-table/*` as needed): the create action links to `/providers/new` without a kind; keep the `focus` search param; the list keeps its `warning` banner for direct URLs but nothing navigates with `warning` anymore
 - Delete: `templates/provider-form-page.tsx`, `templates/oauth-provider-create-page.tsx`, `templates/oauth-provider-edit-page.tsx`, `templates/use-oauth-provider-edit-page.ts`, `hooks/use-oauth-provider-edit-form.ts`, `templates/provider-stepper-import.test.tsx`, `templates/oauth-provider-create-page.test.tsx`, `templates/oauth-provider-edit-page.test.tsx`, `components/provider-validate-step/` (all three files: `index.ts`, `provider-validate-step.tsx`, `provider-validate-step.test.tsx` — `templates/provider-form-page.tsx` is its only consumer and `model-validation-panel` from task 17 replaces it; it also calls the `step_validate` key Step 4 retires, so leaving it breaks both the build and Step 4's grep gate)
 - Modify: `templates/providers-page.test.tsx` (create menu carries no kind — the menu lives in `templates/providers-page.tsx:35-42`, not in `components/providers-table/`)
-- Modify: `packages/i18n/messages/*.json` — retire `dashboard.providers.editor.step_*`, `editor.next`, `editor.previous`, `dashboard.providers.oauth.models_readonly`, and `dashboard.providers.form.aliases_empty_models` (task 16 deletes its only consumer, the `provider-alias-list.tsx` empty-whitelist early return); reword `form.metadata_description`, `form.metadata_json_label`, `form.metadata_json_error` to stop asserting the editor is JSON-only (all five locales; parity test keeps this honest); run `bun run i18n:compile`
+- Modify: `packages/i18n/messages/*.json` — retire `dashboard.providers.editor.step_*`, `editor.next`, `editor.previous`, `dashboard.providers.oauth.models_readonly`, `dashboard.providers.form.aliases_empty_models` (task 16 deletes its only consumer, the `provider-alias-list.tsx` empty-whitelist early return), and `dashboard.providers.form.proxy_unchanged` (task 21 deletes its only consumer, the proxy field's masked tri-state); reword `form.metadata_description`, `form.metadata_json_label`, `form.metadata_json_error` to stop asserting the editor is JSON-only (all five locales; parity test keeps this honest); run `bun run i18n:compile`
 - Keep: `components/reui/stepper.tsx` (loses its last consumer; deletion is explicitly out of scope)
 
 Route files:
@@ -1989,7 +2029,7 @@ export const Route = createFileRoute('/providers/new')({
 - [ ] **Step 1: Swap routes and delete legacy files; fix every dangling import** (`rg -n "provider-form-page|oauth-provider-create-page|oauth-provider-edit-page|use-oauth-provider-edit|provider-validate-step|new/\\$kind|new\\.\\$kind" packages/dashboard/src -g '!route-tree.gen.ts'` must return nothing. The generated route tree still names `new/$kind` until Step 2 regenerates it, so it has to be excluded here rather than fixed by hand).
 - [ ] **Step 2: Regenerate the route tree** — run `bun run --filter @aio-proxy/dashboard build` (TanStack Router regenerates `route-tree.gen.ts`; never edit it by hand).
 - [ ] **Step 3: Update `templates/providers-page.test.tsx`** — the create menu asserts one entry linking to `/providers/new` with no `params` (no kind submenu). This is the file that renders `ProvidersPage`, the component that owns the menu; `components/providers-table/providers-table.test.tsx` has no create-menu assertions to change.
-- [ ] **Step 4: Retire/reword the i18n keys listed above in all five locales, run `bun run i18n:compile`, and confirm `rg -n "step_connection|step_models|step_routing|step_validate|step_invalid|models_readonly|aliases_empty_models" packages/dashboard/src packages/i18n/messages` only matches the reworded metadata keys.**
+- [ ] **Step 4: Retire/reword the i18n keys listed above in all five locales, run `bun run i18n:compile`, and confirm `rg -n "step_connection|step_models|step_routing|step_validate|step_invalid|models_readonly|aliases_empty_models|proxy_unchanged" packages/dashboard/src packages/i18n/messages` only matches the reworded metadata keys.**
 - [ ] **Step 5: Run the full dashboard suite** — `bun run --filter @aio-proxy/dashboard test:unit` PASS, and `bun test packages/i18n/__tests__/locale-parity.test.ts` PASS.
 - [ ] **Step 6: Commit**
 
@@ -2037,9 +2077,124 @@ git commit -m "chore: changeset for the single-page provider editor"
 
 ---
 
+### Task 21: The provider edit-view returns real secrets (human ruling; dispatch BEFORE tasks 6 and 7)
+
+**Human ruling:** stop masking on the provider editor path, api providers included — return real values. Scoped by the follow-up ruling to the provider edit endpoint only. `GET /providers/:id/edit-view` returns the real config entry. `GET /dashboard/api/config` (`dashboard-routes/config.ts:35`) and the `aio-proxy config` CLI (`cli/src/config-cmd/config-cmd.ts:21`) **keep masking**, so `redactSecrets` survives — only its edit-view caller, and the machinery that existed solely to cope with masked round-trips, go.
+
+Why this is a task and not cleanup: it dissolves three defects at one root — an ai-sdk `options.apiKey` masked to `'****'` and sent upstream as `Bearer ****` (task 6), a `baseURL` edit hitting `fresh_credentials_required` before the new catalog loader can run (task 6), and every proxied oauth provider failing the new test button with `redacted_proxy_unsupported` (task 7).
+
+**Files:**
+- Modify: `packages/server/src/dashboard-routes/provider-routes.ts` (edit-view handler, `:25-39`)
+- Modify: `packages/server/src/dashboard-routes/provider-draft/provider-draft-resolution.ts`
+- Modify: `packages/types/src/dashboard-provider-draft/dashboard-provider-draft.ts` (both error enums)
+- Modify: `packages/server/src/dashboard-routes/provider-mutation/provider-mutation.ts` (`:10`, `:89`)
+- Modify: `packages/server/src/dashboard-routes/provider-secrets/provider-secrets.ts` and `provider-secrets/index.ts` (delete `retainRedactedSecrets`)
+- Modify: `packages/dashboard/src/modules/providers/hooks/use-provider-form.ts` (`:56-72`), `hooks/use-oauth-provider-edit-form.ts` (`:40`), `components/provider-proxy-field/provider-proxy-field.tsx`
+- Test: `packages/server/__tests__/dashboard-providers-mutation-basic.lifecycle.test.ts`, `packages/server/src/dashboard-routes/provider-draft/provider-draft.test.ts`
+
+**Interfaces:**
+- `GET /providers/:id/edit-view` returns the stored provider entry verbatim — real `apiKey`, real `headers`, real `options`, real `proxy`. The ad-hoc `hasApiKey` boolean it synthesized goes away (nothing outside its own test reads it; the providers *list* keeps its own `hasApiKey` from `materialize.ts:49`, which is unrelated and untouched).
+- `DraftResolution` loses `'redacted_proxy_unsupported'` and `'fresh_credentials_required'`; both codes leave the two enums in `dashboard-provider-draft.ts` as well.
+- `retainRedactedSecrets` is deleted. `redactSecrets` and `retainAuthoredTemplateStrings` stay.
+
+- [ ] **Step 1: Invert the tests that pin masking**
+
+`packages/server/__tests__/dashboard-providers-mutation-basic.lifecycle.test.ts:59-63` currently reads `13. GET edit-view returns hasApiKey:true and no apiKey field`. Invert it — same request, opposite contract:
+
+```ts
+  test('13. GET edit-view returns the real apiKey', async () => {
+    const response = await routes.request('/providers/api-provider/edit-view');
+    const body = await response.json();
+    expect(body.provider.apiKey).toBe('secret-key'); // whatever the fixture seeds
+    expect(body.provider).not.toHaveProperty('hasApiKey');
+  });
+```
+
+Read the fixture to get the seeded key rather than guessing it.
+
+In `packages/server/src/dashboard-routes/provider-draft/provider-draft.test.ts`, these are the masked-round-trip tests. Every one of them asserts a behavior this task removes, so each is **deleted**, not adjusted: `:270`, `:324-352`, `:527`, `:573`, `:585-635`, `:627`, `:637-687`. Before deleting, read each and check whether it also pins something that survives (e.g. a `persisted_provider_mismatch` assertion sharing the block) — keep those halves. Replace the deleted coverage with one test proving the new contract end to end:
+
+```ts
+test('an identity-changing edit on a saved provider reuses the persisted credential', async () => {
+  const response = await routes.request(
+    '/providers/draft/catalog',
+    jsonRequest({
+      draft: { id: 'saved-api', kind: 'api', protocol: 'openai-compatible', baseURL: 'http://127.0.0.1:1/v2' },
+      persistedProviderId: 'saved-api',
+    }),
+  );
+  // Reaches the upstream fetch and fails there — no longer short-circuited by fresh_credentials_required.
+  expect(await response.json()).toEqual({ ok: false, error: { code: 'catalog_unavailable', recoverable: true } });
+});
+```
+
+Run: `bun run --filter @aio-proxy/server test:unit` — the inverted lifecycle test and the new draft test FAIL; the deletions are already green by construction.
+
+- [ ] **Step 2: Un-mask the edit-view**
+
+`provider-routes.ts:25-39` collapses to:
+
+```ts
+    .get('/providers/:id/edit-view', (context) => {
+      const id = context.req.param('id');
+      // Real values on purpose: the editor round-trips this entry straight back
+      // through the mutation endpoint, and every masked field it had to restore
+      // was a source of Bearer '****' bugs. GET /config and the CLI still mask.
+      const provider = state.currentConfig().providers.find((entry) => entry.id === id);
+      if (provider === undefined) {
+        return context.json({ error: 'provider not found' }, 404);
+      }
+      const oauth = provider.kind === 'oauth' ? state.oauthProviderEditView(id) : undefined;
+      return context.json({ provider, ...(oauth === undefined ? {} : { oauth }) });
+    })
+```
+
+Drop the now-unused `redactSecrets` import if nothing else in the file uses it (check first — `rg -n redactSecrets packages/server/src/dashboard-routes/provider-routes.ts`).
+
+- [ ] **Step 3: Delete the masked-draft machinery**
+
+In `provider-draft-resolution.ts`, in one commit:
+
+- **`:81` is load-bearing, not cleanup.** `isEqual(draft.options, redactSecrets(previous.options))` compares a now-real draft against a masked previous, so it is permanently unequal and **every** ai-sdk draft would become `identityChanged`. It becomes `isEqual(draft.options, previous.options)`.
+- Delete `:27` (the `draft.proxy === '****'` bail), `:44`'s `stripRedactedValues(...)` call (the `identityChanged` branch becomes `candidate = { ...normalizedDraft, enabled: true }`), and `:62-64`'s `requiresFreshCredentials` gate.
+- Delete the now-dead helpers: `stripRedactedValues` (`:96`), `requiresFreshCredentials` (`:108`), `credentialFields` (`:113`), `hasPersistedSensitiveValue` (`:118`), `hasFreshCredentialValue` (`:133`), plus the `OMIT` symbol (`:19`) and `FRESH_CREDENTIAL_KEY_PATTERN` (`:20`).
+- Remove `'redacted_proxy_unsupported'` and `'fresh_credentials_required'` from the `DraftResolution` code union (`:13`, `:16`).
+- The `redactSecrets` and `isPlainObject` imports (`:2`, `:6`) both go dead — remove them. `isEqual` stays.
+
+In `packages/types/src/dashboard-provider-draft/dashboard-provider-draft.ts`, remove both codes from each of the two enums (`:31`, `:35`, `:51`, `:55`). Grep the whole repo for each string afterwards — a leftover reference in a dashboard error-message map would compile but never fire.
+
+- [ ] **Step 4: Delete `retainRedactedSecrets`**
+
+`provider-mutation.ts:89` becomes `const next = { ...provider };` and the import at `:10` narrows to `retainAuthoredTemplateStrings` only. Then delete `retainRedactedSecrets` and its private `mergeRecord`/`mergeValue` helpers from `provider-secrets.ts`, drop it from `provider-secrets/index.ts`, and drop its tests from `provider-secrets.test.ts`.
+
+Why this is safe rather than a behavior change: it existed so a masked value coming back from a client resolved to the stored one. After Step 2 nothing produces a masked provider body — the dashboard reads providers only through `/providers/:id/edit-view` (it never calls `/config`; settings uses `/settings`, which keeps its own masking), and the CLI's masking is print-only. Verify that claim before deleting: `rg -n 'api\.config|\.config\.\$get' packages/dashboard/src` must come back empty.
+
+- [ ] **Step 5: Retire the dashboard's `'****'` handling**
+
+Only the provider editor's, not the settings form's (`settings-service-group.tsx:56,67` reads `/settings` and stays).
+
+- `hooks/use-provider-form.ts`: `normalizeProviderFormValue` (`:56`) loses its proxy-mask strip and becomes just the `validationModel` split; `parseProviderFormInitial` (`:63`) loses `redactedProxy` and its re-application at `:72`.
+- `hooks/use-oauth-provider-edit-form.ts:40`: `const proxy = value.proxy;`.
+- `components/provider-proxy-field/provider-proxy-field.tsx`: drop the `'unchanged'` mode from `ProxyMode`, `selectedMode`'s `'****'` arm (`:32`), `initiallyRedacted` (`:39`), the `'unchanged'` arm of `changeMode` (`:45`), the conditional `SelectItem` that renders it, and the `!== '****'` guard on the url input (`:73`). `mode` (`ProviderFormMode`) may become unused — remove the prop only if no other branch reads it.
+- The `dashboard.providers.form.proxy_unchanged` i18n key becomes dead: add it to task 19's retirement list and its grep gate.
+
+- [ ] **Step 6: Run to verify pass**
+
+Run: `bun run --filter @aio-proxy/server test:unit && bun run --filter @aio-proxy/types test:unit && bun run --filter @aio-proxy/dashboard test:unit` — all PASS.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add packages/server/src/dashboard-routes packages/server/__tests__/dashboard-providers-mutation-basic.lifecycle.test.ts packages/types/src/dashboard-provider-draft packages/dashboard/src/modules/providers
+git commit -m "feat(server): the provider edit-view returns real credentials instead of masks"
+```
+
+---
+
 ## Self-Review Notes (already applied)
 
-- **Spec coverage:** change 1 → task 3; change 2+3 → task 4; change 4 → task 6; change 5 → task 7; change 6 → tasks 1–2; models.dev slugs → task 8; i18n section → tasks 9 + 19; slider/preview/inline alias → tasks 10 + 16; models section/metadata tabs → task 15; shell/two-stage/re-auth-in-place → task 18; route removal + test accounting rows → task 19; release → task 20. The `modelRoutes` move (spec Routing) → task 5.
+- **Spec coverage:** change 1 → task 3; change 2+3 → task 4; change 4 → task 6; change 5 → task 7; change 6 → tasks 1–2; models.dev slugs → task 8; i18n section → tasks 9 + 19; slider/preview/inline alias → tasks 10 + 16; models section/metadata tabs → task 15; shell/two-stage/re-auth-in-place → task 18; route removal + test accounting rows → task 19; release → task 20. The `modelRoutes` move (spec Routing) → task 5. Un-masking the provider edit-view (human ruling, no spec section) → task 21.
 - **No remaining deviations from the spec.** The two that were declared here have been folded into the spec itself (commit `870db4e9`) after being verified against source: task 6 fetches `${options.baseURL}/models` because `catalogPath()` returns an inbound request path the raw capability rewrites, never a base-URL suffix, and ai-sdk base URLs already carry `/v1` (spec Metadata/change 4); task 7 widens only `testProviderDraft` and `withDraftAttempt` to `Provider` and **keeps** the `:62` oauth bail, which is runtime-unreachable after the entry branch but load-bearing for narrowing `testProvider` before `materializeDraftRuntime` (spec change 5, Signatures).
 - **Type consistency:** `exposedModelIds(catalogIds, whitelist)` is defined in task 4 and consumed with the same signature in task 7; `ProviderEditorShape`/`ProviderEditorForm` are defined in task 13 and consumed in 14–19; `SectionStatus`/`SectionId`/`blockingSections` defined in task 11 and consumed in 14/18; `toModelRows`/`applyModelRows` defined in task 12 and consumed in 15; `modelRoutes` from `@aio-proxy/types` defined in task 5 and consumed in 17.
 - **Ordering constraint:** i18n keys are added (task 9) before any component uses them (14–18) and retired only after their last consumers are deleted (19), so every intermediate commit compiles.
+- **Ordering constraint (task 21):** task 21 is numbered last but must be dispatched **before tasks 6 and 7**. Both assume the edit-view returns real credentials: task 6's catalog loader authenticates with `options.apiKey` and task 7's oauth test path would otherwise be rejected by the `redacted_proxy_unsupported` bail it deletes. Task 21 is self-contained against the current `main` (it depends on none of tasks 1–20), so it can run at any point before them.
