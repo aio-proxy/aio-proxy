@@ -536,12 +536,15 @@ test('modelRoutes: aliases shadow their targets unless preserved', () => {
   ]);
 });
 
+// Two models and no .sort(): with a single model the `!config.preserve` guard and the
+// preservedModelIds re-add mask each other exactly, so the test only fails when BOTH break.
+// Order is a product contract, not an implementation detail — clientModels
+// (`materialize.ts:198,222`, `catalog.ts:37`) is this array's aliases in this order.
 test('modelRoutes: preserve keeps the original id routable next to the alias', () => {
-  expect(
-    modelRoutes({ enabled: true, models: ['a'], alias: { smart: { model: 'a', preserve: true } } }).sort((l, r) => l.alias.localeCompare(r.alias)),
-  ).toEqual([
-    { alias: 'a', modelId: 'a' },
+  expect(modelRoutes({ enabled: true, models: ['a', 'b'], alias: { smart: { model: 'a', preserve: true } } })).toEqual([
     { alias: 'smart', modelId: 'a' },
+    { alias: 'a', modelId: 'a' },
+    { alias: 'b', modelId: 'b' },
   ]);
 });
 ```
