@@ -152,6 +152,7 @@ export function providerEntry(
   const weight = patch === undefined ? existing?.['weight'] : patch.weight;
   const name = patch === undefined ? existing?.['name'] : patch.name;
   const alias = patch === undefined ? (existing?.['alias'] ?? defaults) : patch.alias;
+  const models = patch === undefined ? existing?.['models'] : patch.models;
   const proxy = patch?.proxy === undefined ? existing?.['proxy'] : patch.proxy;
   const transforms = patch?.transforms === undefined ? existing?.['transforms'] : patch.transforms;
   return {
@@ -163,6 +164,7 @@ export function providerEntry(
     ...(weight === undefined ? {} : { weight }),
     ...(name === undefined ? {} : { name }),
     ...(alias === undefined ? {} : { alias }),
+    ...(models === undefined ? {} : { models }),
     ...(proxy === undefined || proxy === null ? {} : { proxy }),
     ...(transforms === undefined ? {} : { transforms }),
   };

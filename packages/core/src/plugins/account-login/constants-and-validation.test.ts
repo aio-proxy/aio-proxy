@@ -14,6 +14,7 @@ import {
   registry,
   test,
 } from './test-support';
+import { providerEntry } from './validation';
 
 test('exports the specified constants', () => {
   expect(LOGIN_TIMEOUT_MS).toBe(20 * 60_000);
@@ -66,4 +67,13 @@ test('typed duplicate error contains only canonical guidance', () => {
     existingProviderId: 'provider; echo unsafe',
     suggestedCommand: "aio-proxy provider login --provider 'provider; echo unsafe'",
   });
+});
+
+test('providerEntry keeps the existing models whitelist and lets the patch replace it', () => {
+  const existing = { kind: 'oauth', plugin: 'p', capability: 'c', enabled: true, models: ['a'] };
+  expect(providerEntry('p', 'c', {}, existing, undefined, undefined)['models']).toEqual(['a']);
+  const patch = { name: undefined, enabled: true, weight: undefined, alias: undefined, models: ['b'] };
+  expect(providerEntry('p', 'c', {}, existing, undefined, patch)['models']).toEqual(['b']);
+  const clearing = { ...patch, models: undefined };
+  expect('models' in providerEntry('p', 'c', {}, existing, undefined, clearing)).toBe(false);
 });

@@ -68,6 +68,7 @@ export const DashboardOAuthProviderPatchSchema = z.strictObject({
   name: z.string().optional(),
   enabled: z.boolean(),
   weight: z.number().optional(),
+  models: z.array(z.string()).optional(),
   proxy: ProviderMutationProxySchema,
   alias: z.record(z.string().min(1), AliasConfigSchema).optional(),
   transforms: ProviderTransformsSchema.optional().describe('Ordered outbound request transforms.'),

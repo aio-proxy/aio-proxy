@@ -86,3 +86,21 @@ test('OAuth proxy edits preserve explicit inheritance across update and reauthor
     input: expect.objectContaining({ providerPatch: expect.objectContaining({ proxy: null }) }),
   });
 });
+
+test('whitelist round-trips through both action branches', () => {
+  const base = {
+    id: 'p',
+    enabled: true,
+    publicValues: {},
+    secrets: {},
+    clearSecrets: [],
+    models: ['m1', 'm2'],
+  };
+  const update = oauthProviderEditAction(base, {});
+  expect(update.kind).toBe('update');
+  if (update.kind === 'update') expect(update.body.models).toEqual(['m1', 'm2']);
+
+  const reauth = oauthProviderEditAction(base, {}, true);
+  expect(reauth.kind).toBe('reauthorize');
+  if (reauth.kind === 'reauthorize') expect(reauth.input.providerPatch?.models).toEqual(['m1', 'm2']);
+});

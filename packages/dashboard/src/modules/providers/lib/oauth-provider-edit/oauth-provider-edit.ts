@@ -14,6 +14,7 @@ export interface OAuthProviderEditValues {
   readonly weight?: number | undefined;
   readonly proxy?: OAuthProviderMutationBody['proxy'];
   readonly alias?: ProviderAlias | undefined;
+  readonly models?: readonly string[] | undefined;
   readonly transforms?: ProviderTransforms | undefined;
   readonly publicValues: DashboardOAuthSessionStart['publicValues'];
   readonly secrets: DashboardOAuthSessionStart['secrets'];
@@ -35,6 +36,7 @@ export const oauthProviderEditAction = (
     ...(values.weight === undefined ? {} : { weight: values.weight }),
     ...(values.proxy === undefined ? {} : { proxy: values.proxy }),
     ...(values.alias === undefined ? {} : { alias: values.alias }),
+    ...(values.models === undefined ? {} : { models: [...values.models] }),
     ...(values.transforms === undefined ? {} : { transforms: values.transforms }),
   };
   const secrets = Object.fromEntries(Object.entries(values.secrets).filter(([, value]) => value !== ''));
