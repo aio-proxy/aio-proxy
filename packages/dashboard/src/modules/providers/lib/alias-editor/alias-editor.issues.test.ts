@@ -50,6 +50,14 @@ describe('provider alias editor summary and issues', () => {
     ]);
   });
 
+  test('reports no target-missing for models: [], matching the server guard', () => {
+    const issues = aliasEditorIssues(
+      { smart: { model: 'upstream-a', preserve: false, variants: { fast: { model: 'upstream-b', preserve: false } } } },
+      [],
+    );
+    expect(issues).toEqual([]);
+  });
+
   test('Given alias and variant issues When locating controls Then target errors focus their selects', () => {
     expect(aliasIssueControlId({ code: 'target-missing', alias: 'mini' })).toBe('provider-alias-mini-target');
     expect(aliasIssueControlId({ code: 'target-missing', alias: 'mini', variant: 'low' })).toBe(

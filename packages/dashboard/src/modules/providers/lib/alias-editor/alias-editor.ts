@@ -162,7 +162,9 @@ export function preserveReferenceCount(alias: ProviderAlias, model: string): num
 
 export function aliasEditorIssues(alias: ProviderAlias, models?: readonly string[]): readonly AliasEditorIssue[] {
   const issues: AliasEditorIssue[] = [];
-  const availableModels = models === undefined ? undefined : new Set(models);
+  // Keep in lockstep with validateAliasTargets in @aio-proxy/types: absent and
+  // empty both mean "no whitelist", or the editor blocks a payload the server accepts.
+  const availableModels = models === undefined || models.length === 0 ? undefined : new Set(models);
   const preservedModels = collectPreservedModels(alias);
   const aliasNames = new Set<string>();
 
