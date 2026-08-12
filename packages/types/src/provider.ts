@@ -96,7 +96,9 @@ const ApiProviderSharedFields = {
   protocol: ProviderProtocolSchema.optional(),
   apiKey: z.string().optional().describe('Bearer token or API key for the provider.'),
   headers: ApiHeadersSchema.optional().describe('Headers applied to upstream requests; configured values win.'),
-  endpoints: ApiEndpointsInputSchema.optional(),
+  endpoints: ApiEndpointsInputSchema.optional().describe(
+    'Additional protocol endpoints natively served by this provider (AI SDK-style base URLs).',
+  ),
 } as const;
 
 export const ApiProviderSchema = z.object({

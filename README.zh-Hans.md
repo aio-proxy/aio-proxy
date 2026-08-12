@@ -97,6 +97,42 @@ aio-proxy reload
 
 支持 `$schema` 的编辑器可以为配置提供补全和校验。`{{env.NAME}}` 用于读取环境变量。
 
+### 多协议端点
+
+部分上游原生支持多种协议。可以用 `endpoints` 声明这些额外的端点；当请求的入站协议命中任意一个已声明的端点时，请求会被原样转发（原始透传），而不会经过协议转换：
+
+```jsonc
+{
+  "providers": {
+    // 一方渠道：按协议分别声明端点。保留原有的 protocol/baseURL 作为主端点，
+    // 再追加其他协议。
+    "moonshot": {
+      "kind": "api",
+      "protocol": "openai-compatible",
+      "baseURL": "https://api.moonshot.cn/v1",
+      "apiKey": "{{env.MOONSHOT_API_KEY}}",
+      "models": ["kimi-k2"],
+      "endpoints": [{ "protocol": "anthropic", "baseURL": "https://api.moonshot.cn/anthropic/v1", "auth": "bearer" }],
+    },
+    // 聚合网关：多个协议共用同一个 AI SDK 风格的 base URL。
+    "gateway": {
+      "kind": "api",
+      "apiKey": "{{env.GATEWAY_KEY}}",
+      "models": ["gpt-5"],
+      "endpoints": { "baseURL": "https://gw.example.com/v1", "protocol": ["openai-response", "anthropic"] },
+    },
+  },
+}
+```
+
+规则：
+
+- 端点的 `baseURL` 就是传给对应 AI SDK 包的那个值：OpenAI 系和 Anthropic 端点包含 `/v1` 段，Gemini 端点包含 `/v1beta`（因此 Gemini 无法共用 `/v1` 的 base URL，需要在数组中单独声明一项）。
+- 厂商文档给出的 Anthropic 地址通常是用于 `ANTHROPIC_BASE_URL` 的形式（例如 `https://api.z.ai/api/anthropic`）；填写到这里时需要补上 `/v1`。
+- `auth` 只在 `anthropic` 端点上生效：`bearer` 会发送 `Authorization: Bearer`，默认的 `x-api-key` 维持现有请求头。
+- 顶层的 `protocol`/`baseURL` 仍然是主端点，并保持既有的透传行为；跨协议转换始终指向主端点。
+- 在 Dashboard 中编辑声明了 `endpoints` 的 Provider 目前会丢失该字段；在 Dashboard 支持之前，请直接编辑配置文件。
+
 ## 路由规则
 
 `providers` 对象中的键是稳定的 **Provider ID**。一次请求按以下规则处理：
