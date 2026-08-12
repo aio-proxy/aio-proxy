@@ -1,5 +1,5 @@
-import type { AiSdkProvider, ApiProvider } from '@aio-proxy/types';
-import { ProviderKind, ProviderProtocol } from '@aio-proxy/types';
+import type { AiSdkProvider, ApiEndpointsSource, ApiProvider, NormalizedApiEndpoint } from '@aio-proxy/types';
+import { apiProviderEndpoints, ProviderKind, ProviderProtocol } from '@aio-proxy/types';
 
 import type { AiSdkLanguageModel, LoadedAiSdkRuntimeProvider } from '../../ai-sdk-bridge';
 import type { AiSdkProviderLoadOptions } from '../ai-sdk-loader/index';
@@ -21,12 +21,12 @@ type ResponsesProvider = {
 };
 
 export function bridgeApiProviderToAiSdk(
-  provider: ApiProvider,
+  provider: ApiProvider & ApiEndpointsSource,
   options: AiSdkProviderFactoryOptions = {},
 ): AiSdkProviderInstance {
-  const baseURL = provider.baseURL;
+  const primary = apiProviderEndpoints(provider)[0];
   const providerId = provider.id;
-  const mapping = bridgeMapping(provider, baseURL, providerId);
+  const mapping = bridgeMapping(provider, primary, providerId);
   const synthesized = {
     kind: ProviderKind.AiSdk,
     enabled: provider.enabled,
@@ -43,41 +43,36 @@ export function bridgeApiProviderToAiSdk(
   });
 }
 
-function bridgeMapping(provider: ApiProvider, baseURL: string, providerId: string): BridgeMapping {
+function bridgeMapping(
+  provider: ApiProvider & ApiEndpointsSource,
+  primary: NormalizedApiEndpoint,
+  providerId: string,
+): BridgeMapping {
   const apiKey = resolveApiKey(provider.apiKey);
   const sharedOptions = {
     ...(apiKey === undefined ? {} : { apiKey }),
-    baseURL,
+    baseURL: primary.baseURL,
     ...(provider.headers === undefined ? {} : { headers: provider.headers }),
   } satisfies AiSdkProviderLoadOptions;
 
-  switch (provider.protocol) {
+  switch (primary.protocol) {
     case ProviderProtocol.OpenAICompatible:
-      return {
-        packageName: '@ai-sdk/openai-compatible',
-        options: {
-          ...sharedOptions,
-          name: providerId,
-        },
-      };
-    case ProviderProtocol.Anthropic:
+      return { packageName: '@ai-sdk/openai-compatible', options: { ...sharedOptions, name: providerId } };
+    case ProviderProtocol.Anthropic: {
+      if (primary.auth !== 'bearer') return { packageName: '@ai-sdk/anthropic', options: sharedOptions };
+      // @ai-sdk/anthropic rejects apiKey+authToken together; bearer endpoints hand the key over as authToken.
+      const { apiKey: bearerToken, ...withoutApiKey } = sharedOptions;
       return {
         packageName: '@ai-sdk/anthropic',
-        options: sharedOptions,
+        options: { ...withoutApiKey, ...(bearerToken === undefined ? {} : { authToken: bearerToken }) },
       };
+    }
     case ProviderProtocol.Gemini:
-      return {
-        packageName: '@ai-sdk/google',
-        options: sharedOptions,
-      };
+      return { packageName: '@ai-sdk/google', options: sharedOptions };
     case ProviderProtocol.OpenAIResponse:
-      return {
-        packageName: '@ai-sdk/openai',
-        options: sharedOptions,
-        resolveModel: resolveOpenAIResponsesModel,
-      };
+      return { packageName: '@ai-sdk/openai', options: sharedOptions, resolveModel: resolveOpenAIResponsesModel };
     default:
-      return assertNever(provider.protocol);
+      return assertNever(primary.protocol);
   }
 }
 
