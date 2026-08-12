@@ -149,3 +149,86 @@ function normalizeAliasPreserve(alias: ProviderAlias): ProviderAlias {
   }
   return changed ? normalized : alias;
 }
+
+/** Enough of a provider to derive its client-facing routes; `enabled` is required so callers cannot pass a bare model list. */
+type RoutableModelSource = {
+  readonly enabled: boolean;
+  readonly models?: readonly string[] | undefined;
+  readonly alias?: ProviderAlias | undefined;
+};
+
+export type ModelRoute = {
+  readonly alias: string;
+  readonly modelId: string;
+};
+
+export function modelRoutes(provider: RoutableModelSource): ModelRoute[] {
+  const routes = Object.entries(provider.alias ?? {}).map(([alias, config]) => ({ alias, modelId: config.model }));
+  for (const modelId of directModelIds(provider)) {
+    if (!routes.some((route) => route.alias === modelId && route.modelId === modelId)) {
+      routes.push({ alias: modelId, modelId });
+    }
+  }
+  return routes;
+}
+
+export function directModelIds(provider: RoutableModelSource): string[] {
+  const configuredModelIds = new Set<string>('models' in provider ? (provider.models ?? []) : []);
+  const modelIds = new Set(configuredModelIds);
+
+  for (const [alias, config] of Object.entries(provider.alias ?? {})) {
+    modelIds.delete(alias);
+    if (configuredModelIds.has(alias)) {
+      continue;
+    }
+    if (!config.preserve) {
+      modelIds.delete(config.model);
+    }
+    for (const target of Object.values(config.variants ?? {})) {
+      if (!target.preserve) {
+        modelIds.delete(target.model);
+      }
+    }
+  }
+
+  for (const modelId of preservedModelIds(provider)) {
+    modelIds.add(modelId);
+  }
+  return [...modelIds];
+}
+
+function preservedModelIds(provider: RoutableModelSource): string[] {
+  const modelIds = new Set<string>();
+  for (const config of Object.values(provider.alias ?? {})) {
+    if (config.preserve) {
+      modelIds.add(config.model);
+    }
+  }
+
+  for (const config of Object.values(provider.alias ?? {})) {
+    for (const target of Object.values(config.variants ?? {})) {
+      if (target.preserve) {
+        const selfRoute = provider.alias?.[target.model];
+        if (
+          !modelIds.has(target.model) &&
+          selfRoute !== undefined &&
+          sameRouteTargets(selfRoute, { model: target.model, preserve: false })
+        ) {
+          continue;
+        }
+        modelIds.add(target.model);
+      }
+    }
+  }
+  return [...modelIds];
+}
+
+export function sameRouteTargets(left: AliasConfig, right: AliasConfig): boolean {
+  const leftTargets = routeTargetModels(left);
+  const rightTargets = routeTargetModels(right);
+  return leftTargets.size === rightTargets.size && [...leftTargets].every((modelId) => rightTargets.has(modelId));
+}
+
+function routeTargetModels(config: AliasConfig): ReadonlySet<string> {
+  return new Set([config.model, ...Object.values(config.variants ?? {}).map((target) => target.model)]);
+}

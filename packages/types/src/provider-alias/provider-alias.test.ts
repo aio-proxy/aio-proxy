@@ -1,8 +1,9 @@
 import { expect, test } from 'bun:test';
 
+import * as types from '@aio-proxy/types';
 import { z } from 'zod';
 
-import { validateAliasTargets } from './provider-alias';
+import { modelRoutes, validateAliasTargets } from './provider-alias';
 
 const issuesFor = (provider: {
   models?: readonly string[];
@@ -35,4 +36,30 @@ test('an alias outside a non-empty whitelist still fails, for alias and variant 
     ['alias', 'smart', 'model'],
     ['alias', 'smart', 'variants', 'fast', 'model'],
   ]);
+});
+
+test('modelRoutes: aliases shadow their targets unless preserved', () => {
+  expect(modelRoutes({ enabled: true, models: ['a', 'b'], alias: { smart: { model: 'a', preserve: false } } })).toEqual(
+    [
+      { alias: 'smart', modelId: 'a' },
+      { alias: 'b', modelId: 'b' },
+    ],
+  );
+});
+
+test('modelRoutes: preserve keeps the original id routable next to the alias', () => {
+  expect(
+    modelRoutes({ enabled: true, models: ['a'], alias: { smart: { model: 'a', preserve: true } } }).sort((l, r) =>
+      l.alias.localeCompare(r.alias),
+    ),
+  ).toEqual([
+    { alias: 'a', modelId: 'a' },
+    { alias: 'smart', modelId: 'a' },
+  ]);
+});
+
+test('modelRoutes and its helpers reach the package root barrel', () => {
+  expect(typeof types.modelRoutes).toBe('function');
+  expect(typeof types.directModelIds).toBe('function');
+  expect(typeof types.sameRouteTargets).toBe('function');
 });

@@ -6,7 +6,14 @@ import { CapabilityIdSchema, PluginPackageNameSchema } from './plugin';
 import { normalizeProviderAlias, normalizeProviderAliasKeys, validateAliasTargets } from './provider-alias';
 import { ProviderTransformsSchema } from './provider-transform/index';
 
-export { type ProviderAlias, validateAliasTargets } from './provider-alias';
+export {
+  directModelIds,
+  type ModelRoute,
+  modelRoutes,
+  type ProviderAlias,
+  sameRouteTargets,
+  validateAliasTargets,
+} from './provider-alias';
 
 export enum ProviderKind {
   Api = 'api',
