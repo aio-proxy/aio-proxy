@@ -529,7 +529,7 @@ Then append:
 ```ts
 test('modelRoutes: aliases shadow their targets unless preserved', () => {
   expect(
-    modelRoutes({ models: ['a', 'b'], alias: { smart: { model: 'a', preserve: false } } }),
+    modelRoutes({ enabled: true, models: ['a', 'b'], alias: { smart: { model: 'a', preserve: false } } }),
   ).toEqual([
     { alias: 'smart', modelId: 'a' },
     { alias: 'b', modelId: 'b' },
@@ -538,7 +538,7 @@ test('modelRoutes: aliases shadow their targets unless preserved', () => {
 
 test('modelRoutes: preserve keeps the original id routable next to the alias', () => {
   expect(
-    modelRoutes({ models: ['a'], alias: { smart: { model: 'a', preserve: true } } }).sort((l, r) => l.alias.localeCompare(r.alias)),
+    modelRoutes({ enabled: true, models: ['a'], alias: { smart: { model: 'a', preserve: true } } }).sort((l, r) => l.alias.localeCompare(r.alias)),
   ).toEqual([
     { alias: 'a', modelId: 'a' },
     { alias: 'smart', modelId: 'a' },
