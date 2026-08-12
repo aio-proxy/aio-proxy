@@ -5,12 +5,13 @@ import { join } from 'node:path';
 
 import type { AiSdkProviderInstance, ApiProviderInstance } from '@aio-proxy/core';
 import { createApiProvider } from '@aio-proxy/core';
+import type { Provider } from '@aio-proxy/types';
 import { ConfigSchema, ProviderKind, ProviderProtocol } from '@aio-proxy/types';
 
 import { withAttemptLogContext, withRequestLogContext } from '../request-logging';
 import type { RuntimeProviderInstance } from '../runtime';
 import { createServerState } from '../server-state';
-import { materializeProviders, materializeRuntimeProvider } from './materialize';
+import { materializeProviders, materializeRuntimeProvider, providerSummary } from './materialize';
 
 const headerSet = (field: string, value: unknown) => ({
   $setField: { field, input: '$request.headers', value },
@@ -101,6 +102,25 @@ test('api provider raw capability resolves any declared endpoint protocol', () =
   expect(instance.raw?.resolve({ protocol: ProviderProtocol.OpenAICompatible, modelId: 'kimi-k2' })).toBeDefined();
   expect(instance.raw?.resolve({ protocol: ProviderProtocol.Anthropic, modelId: 'kimi-k2' })).toBeDefined();
   expect(instance.raw?.resolve({ protocol: ProviderProtocol.Gemini, modelId: 'kimi-k2' })).toBeUndefined();
+});
+
+test('summarizes an endpoints-only api provider with its primary endpoint protocol', () => {
+  const config = {
+    apiKey: 'k',
+    enabled: true,
+    endpoints: [
+      { protocol: ProviderProtocol.Anthropic, baseURL: 'https://api.z.ai/api/anthropic/v1' },
+      { protocol: ProviderProtocol.OpenAICompatible, baseURL: 'https://api.z.ai/api/paas/v4' },
+    ],
+    id: 'zai',
+    kind: ProviderKind.Api,
+    models: ['glm-4.7'],
+  } satisfies Provider;
+  const instance = materializeRuntimeProvider(
+    createApiProvider(config, { fetch: (async () => new Response('{}')) as typeof globalThis.fetch }),
+  );
+
+  expect(providerSummary(instance, undefined, config)).toMatchObject({ protocol: ProviderProtocol.Anthropic });
 });
 
 test('materializes API metadata into the config layer only', () => {

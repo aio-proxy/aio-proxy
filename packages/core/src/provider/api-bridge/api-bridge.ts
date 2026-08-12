@@ -1,4 +1,4 @@
-import type { AiSdkProvider, ApiEndpointsSource, ApiProvider, NormalizedApiEndpoint } from '@aio-proxy/types';
+import type { AiSdkProvider, ApiProvider, NormalizedApiEndpoint } from '@aio-proxy/types';
 import { apiProviderEndpoints, ProviderKind, ProviderProtocol } from '@aio-proxy/types';
 
 import type { AiSdkLanguageModel, LoadedAiSdkRuntimeProvider } from '../../ai-sdk-bridge';
@@ -21,7 +21,7 @@ type ResponsesProvider = {
 };
 
 export function bridgeApiProviderToAiSdk(
-  provider: ApiProvider & ApiEndpointsSource,
+  provider: ApiProvider,
   options: AiSdkProviderFactoryOptions = {},
 ): AiSdkProviderInstance {
   const primary = apiProviderEndpoints(provider)[0];
@@ -43,11 +43,7 @@ export function bridgeApiProviderToAiSdk(
   });
 }
 
-function bridgeMapping(
-  provider: ApiProvider & ApiEndpointsSource,
-  primary: NormalizedApiEndpoint,
-  providerId: string,
-): BridgeMapping {
+function bridgeMapping(provider: ApiProvider, primary: NormalizedApiEndpoint, providerId: string): BridgeMapping {
   const apiKey = resolveApiKey(provider.apiKey);
   const sharedOptions = {
     ...(apiKey === undefined ? {} : { apiKey }),

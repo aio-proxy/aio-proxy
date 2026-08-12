@@ -1,6 +1,11 @@
 import { z } from 'zod';
 
-import { ProviderProtocolSchema } from './provider-endpoints/index';
+import {
+  ApiEndpointsInputSchema,
+  ProviderEndpointAuthSchema,
+  ProviderProtocolSchema,
+  validateApiEndpoints,
+} from './provider-endpoints/index';
 
 export {
   type ApiEndpointEntry,
@@ -88,24 +93,43 @@ const ApiProviderSharedFields = {
   ...SharedProviderSchemaBase,
   ...modelsField,
   ...metadataField,
-  protocol: ProviderProtocolSchema,
+  protocol: ProviderProtocolSchema.optional(),
   apiKey: z.string().optional().describe('Bearer token or API key for the provider.'),
   headers: ApiHeadersSchema.optional().describe('Headers applied to upstream requests; configured values win.'),
+  endpoints: ApiEndpointsInputSchema.optional(),
 } as const;
 
 export const ApiProviderSchema = z.object({
   ...ApiProviderSharedFields,
-  baseURL: z.url().describe('Provider API base URL.'),
+  baseURL: z.url().optional().describe('Provider API base URL (primary endpoint, legacy origin semantics).'),
   proxy: ProviderProxySchema.describe(PROXY_DESCRIPTION),
 });
 
-export const ApiProviderAuthoringSchema = ApiProviderSchema.omit({ baseURL: true, proxy: true, protocol: true }).extend(
-  {
-    protocol: z.union([ProviderProtocolSchema, ConfigTemplateStringSchema]),
-    baseURL: z.union([z.url(), ConfigTemplateStringSchema]).describe('Provider API base URL.'),
-    proxy: AuthoringProviderProxySchema.describe(PROXY_DESCRIPTION),
-  },
-);
+const ApiEndpointEntryAuthoringSchema = z.object({
+  protocol: z.union([ProviderProtocolSchema, ConfigTemplateStringSchema]),
+  baseURL: z.union([z.url(), ConfigTemplateStringSchema]),
+  auth: z.union([ProviderEndpointAuthSchema, ConfigTemplateStringSchema]).optional(),
+});
+
+const ApiEndpointsAuthoringInputSchema = z.union([
+  z.array(ApiEndpointEntryAuthoringSchema).min(1),
+  z.object({
+    baseURL: z.union([z.url(), ConfigTemplateStringSchema]),
+    protocol: z.array(z.union([ProviderProtocolSchema, ConfigTemplateStringSchema])).min(1),
+  }),
+]);
+
+export const ApiProviderAuthoringSchema = ApiProviderSchema.omit({
+  baseURL: true,
+  proxy: true,
+  protocol: true,
+  endpoints: true,
+}).extend({
+  protocol: z.union([ProviderProtocolSchema, ConfigTemplateStringSchema]).optional(),
+  baseURL: z.union([z.url(), ConfigTemplateStringSchema]).optional().describe('Provider API base URL.'),
+  endpoints: ApiEndpointsAuthoringInputSchema.optional(),
+  proxy: AuthoringProviderProxySchema.describe(PROXY_DESCRIPTION),
+});
 
 export const OAuthPluginProviderSchema = z.object({
   kind: z.literal(ProviderKind.OAuth).describe('Provider backed by a plugin OAuth account.'),
@@ -254,6 +278,7 @@ export const ProviderMutationAuthoringBodySchema = z
 export const ProviderSchema = z
   .discriminatedUnion('kind', [ApiProviderSchema, OAuthProviderSchema, AiSdkProviderSchema])
   .superRefine(validateAliasTargets)
+  .superRefine(validateApiEndpoints)
   .transform(normalizeProviderAlias);
 
 export type ApiProviderInput = z.input<typeof ApiProviderSchema>;

@@ -1,11 +1,5 @@
 import type { RawTransportOptions } from '@aio-proxy/plugin-sdk';
-import {
-  type ApiEndpointsSource,
-  type ApiProvider,
-  apiProviderEndpoints,
-  type NormalizedApiEndpoint,
-  ProviderProtocol,
-} from '@aio-proxy/types';
+import { type ApiProvider, apiProviderEndpoints, type NormalizedApiEndpoint, ProviderProtocol } from '@aio-proxy/types';
 
 import { wrapOpenAIProtocolFetch } from '../openai-stream-fetch';
 import type { ProviderFetch } from '../proxy-fetch';
@@ -34,7 +28,7 @@ const CLIENT_CREDENTIAL_HEADERS = [
   'x-goog-api-key',
 ] as const;
 
-export type ApiProviderConfig = ApiProvider & ApiEndpointsSource & { readonly trace?: ApiProviderTraceTarget };
+export type ApiProviderConfig = ApiProvider & { readonly trace?: ApiProviderTraceTarget };
 
 export type ApiEndpointTransport = {
   readonly protocol: ProviderProtocol;

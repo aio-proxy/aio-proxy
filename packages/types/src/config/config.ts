@@ -16,6 +16,7 @@ import {
   ProviderKind,
   ProviderSchema,
   validateAliasTargets,
+  validateApiEndpoints,
 } from '../provider';
 
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', '::1', 'localhost']);
@@ -68,7 +69,8 @@ const ProviderInputValueSchema = z
     OAuthProviderSchema.omit({ id: true }),
     AiSdkProviderSchema.omit({ id: true }),
   ])
-  .superRefine(validateAliasTargets);
+  .superRefine(validateAliasTargets)
+  .superRefine(validateApiEndpoints);
 
 const ProviderAuthoringInputValueSchema = z
   .discriminatedUnion('kind', [
@@ -76,7 +78,8 @@ const ProviderAuthoringInputValueSchema = z
     OAuthProviderAuthoringSchema.omit({ id: true }),
     AiSdkProviderAuthoringSchema.omit({ id: true }),
   ])
-  .superRefine(validateAliasTargets);
+  .superRefine(validateAliasTargets)
+  .superRefine(validateApiEndpoints);
 
 const PluginPackageNameAuthoringSchema = z.union([PluginPackageNameSchema, ConfigTemplateStringSchema]);
 

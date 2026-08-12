@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
 
 import { createApiProvider } from '@aio-proxy/core';
+import type { Provider } from '@aio-proxy/types';
 import { ProviderKind, ProviderProtocol } from '@aio-proxy/types';
 
 import { probeApi } from '.';
@@ -62,4 +63,28 @@ test('probe sends the standard inbound path through the primary endpoint transpo
   expect(await probeApi(provider, instance)).toBe('OK');
   // origin 模式冻结现状：探测打到 origin + 标准路径，端点 transport 是唯一改写 URL 的地方。
   expect(requested).toBe('https://api.z.ai/v1/chat/completions');
+});
+
+test('probe follows sdk base URL semantics for an endpoints-only provider', async () => {
+  let requested: string | undefined;
+  let apiKeyHeader: string | null = null;
+  const provider = {
+    apiKey: 'k',
+    enabled: true,
+    endpoints: [{ protocol: ProviderProtocol.Gemini, baseURL: 'https://g.example.com/v1beta' }],
+    id: 'gemini-gateway',
+    kind: ProviderKind.Api,
+    models: ['gemini-pro'],
+  } satisfies Provider;
+  const instance = createApiProvider(provider, {
+    fetch: (async (input: string | URL | Request, init?: RequestInit) => {
+      requested = input instanceof Request ? input.url : String(input);
+      apiKeyHeader = new Headers(init?.headers).get('x-goog-api-key');
+      return new Response('{}', { status: 200 });
+    }) as typeof globalThis.fetch,
+  });
+
+  expect(await probeApi(provider, instance)).toBe('OK');
+  expect(requested).toBe('https://g.example.com/v1beta/models/gemini-pro:generateContent');
+  expect(apiKeyHeader).toBe('k');
 });
