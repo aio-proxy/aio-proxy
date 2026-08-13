@@ -76,6 +76,8 @@ aio-proxy reload
 
 `openai` is this provider's Provider ID; `gpt-5` is the model name it exposes to clients. You can add more providers for the same model later.
 
+> Upstreams that natively serve several protocols (Moonshot, z.ai, aggregator gateways, ...) can declare extra `endpoints` so matching requests are forwarded verbatim instead of converted. See the README's "Multi-protocol endpoints" section for the full rules.
+
 ## Send your first request
 
 ```sh

@@ -13,13 +13,15 @@ afterEach(restoreFetch);
 describe('POST /v1/chat/completions', () => {
   test('Given cross-protocol provider with model capability When completion has function tools Then model receives tools', async () => {
     let toolsSeen: ToolSet | undefined;
+    const passthrough = async () => Response.json({ transport: 'raw' });
     const provider = {
       id: 'anthropic-bridge',
       kind: 'api',
       models: ['gpt-4o-mini'],
       alias: { 'gpt-4o-mini': { model: 'gpt-4o-mini', preserve: false } },
       protocol: ProviderProtocol.Anthropic,
-      passthrough: async () => Response.json({ transport: 'raw' }),
+      endpointTransports: [{ protocol: ProviderProtocol.Anthropic, passthrough }],
+      passthrough,
       model: {
         invoke(request) {
           toolsSeen = request.tools;

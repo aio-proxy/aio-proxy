@@ -144,9 +144,11 @@ describe('shared protocol routing pipeline raw exception logging', () => {
         }) as typeof globalThis.fetch;
       },
       createApiProvider(provider, options) {
+        const passthrough = (request: Request) => options.fetch(request);
         return {
           ...provider,
-          passthrough: (request) => options.fetch(request),
+          endpointTransports: [{ protocol: provider.protocol, passthrough }],
+          passthrough,
         } satisfies ApiProviderInstance;
       },
       bridgeApiProvider(provider) {

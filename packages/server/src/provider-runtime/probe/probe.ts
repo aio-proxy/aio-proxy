@@ -1,6 +1,6 @@
 import type { ApiProviderInstance } from '@aio-proxy/core';
 import type { DashboardProviderProbe, Provider, ProviderKind } from '@aio-proxy/types';
-import { ProviderProtocol } from '@aio-proxy/types';
+import { apiProviderEndpoints, ProviderProtocol } from '@aio-proxy/types';
 
 export type ProviderProbe = () => Promise<DashboardProviderProbe>;
 
@@ -18,7 +18,7 @@ export async function probeApi(
     }
     const request = providerProbeRequest(provider, model);
     const response = await instance.passthrough(
-      new Request(request.url, {
+      new Request(new URL(request.path, 'http://probe.internal'), {
         body: JSON.stringify(request.body),
         headers: { 'content-type': 'application/json' },
         method: 'POST',
@@ -41,39 +41,38 @@ export async function probeApi(
 export function providerProbeRequest(
   provider: Extract<Provider, { kind: ProviderKind.Api }>,
   model: string,
-): { readonly body: unknown; readonly url: URL } {
-  const url = new URL(provider.baseURL);
-  switch (provider.protocol) {
+): { readonly body: unknown; readonly path: string } {
+  const primary = apiProviderEndpoints(provider)[0];
+  switch (primary.protocol) {
     case ProviderProtocol.OpenAICompatible:
-      url.pathname = '/v1/chat/completions';
       return {
         body: { max_tokens: probeMaxOutputTokens, messages: [{ role: 'user', content: 'ping' }], model },
-        url,
+        path: '/v1/chat/completions',
       };
     case ProviderProtocol.OpenAIResponse:
-      url.pathname = '/v1/responses';
-      return { body: { input: 'ping', max_output_tokens: openAIResponsesProbeMaxOutputTokens, model }, url };
+      return {
+        body: { input: 'ping', max_output_tokens: openAIResponsesProbeMaxOutputTokens, model },
+        path: '/v1/responses',
+      };
     case ProviderProtocol.Anthropic:
-      url.pathname = '/v1/messages';
       return {
         body: {
           max_tokens: probeMaxOutputTokens,
           messages: [{ role: 'user', content: 'ping' }],
           model,
         },
-        url,
+        path: '/v1/messages',
       };
     case ProviderProtocol.Gemini:
-      url.pathname = `/v1beta/models/${model}:generateContent`;
       return {
         body: {
           contents: [{ role: 'user', parts: [{ text: 'ping' }] }],
           generationConfig: { maxOutputTokens: probeMaxOutputTokens },
         },
-        url,
+        path: `/v1beta/models/${model}:generateContent`,
       };
     default:
-      return assertNever(provider.protocol);
+      return assertNever(primary.protocol);
   }
 }
 

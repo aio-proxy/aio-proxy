@@ -7,7 +7,7 @@ import {
   modelRoutes,
 } from '@aio-proxy/core';
 import type { Config, DashboardProviderSummary, Provider } from '@aio-proxy/types';
-import { ProviderKind } from '@aio-proxy/types';
+import { apiProviderEndpoints, ProviderKind } from '@aio-proxy/types';
 
 import { createProviderRequestTransformFetch } from '../provider-request-transform';
 import { createObservedFetch } from '../request-logging';
@@ -48,10 +48,12 @@ export function materializeRuntimeProvider(
       ...(provider.metadata === undefined ? {} : { configMetadata: provider.metadata }),
       hasApiKey: provider.apiKey !== undefined,
       raw: {
-        resolve: ({ protocol }) =>
-          protocol === provider.protocol
-            ? { invoke: (request, _context, options) => provider.passthrough(request, options) }
-            : undefined,
+        resolve: ({ protocol }) => {
+          const transport = provider.endpointTransports.find((endpoint) => endpoint.protocol === protocol);
+          return transport === undefined
+            ? undefined
+            : { invoke: (request, _context, options) => transport.passthrough(request, options) };
+        },
       },
       ...(apiBridge === undefined
         ? {}
@@ -239,7 +241,7 @@ function providerDisplayFields(
 ): Pick<ProviderRuntimeSummary, 'weight' | 'protocol' | 'packageName'> {
   return {
     ...(provider.weight === undefined ? {} : { weight: provider.weight }),
-    ...(provider.kind === ProviderKind.Api ? { protocol: provider.protocol } : {}),
+    ...(provider.kind === ProviderKind.Api ? { protocol: apiProviderEndpoints(provider)[0].protocol } : {}),
     ...(provider.kind === ProviderKind.AiSdk ? { packageName: provider.packageName } : {}),
   };
 }

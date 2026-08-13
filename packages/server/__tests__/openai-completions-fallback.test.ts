@@ -21,13 +21,15 @@ afterEach(homes.cleanup);
 
 describe('POST /v1/chat/completions', () => {
   test('Given first provider returns 429 When completion is posted Then next provider is used', async () => {
+    const passthrough = async () => Response.json({ error: 'rate limited' }, { status: 429 });
     const first = {
       id: 'rate-limited',
       kind: 'api',
       models: ['gpt-5-mini'],
       alias: { 'gpt-5-mini': { model: 'gpt-5-mini', preserve: false } },
       protocol: ProviderProtocol.OpenAICompatible,
-      passthrough: async () => Response.json({ error: 'rate limited' }, { status: 429 }),
+      endpointTransports: [{ protocol: ProviderProtocol.OpenAICompatible, passthrough }],
+      passthrough,
     } satisfies ApiProviderInstance;
     const second = {
       id: 'ok',

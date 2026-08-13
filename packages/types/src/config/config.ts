@@ -6,8 +6,8 @@ import { PluginPackageNameSchema } from '../plugin';
 import {
   AiSdkProviderAuthoringSchema,
   AiSdkProviderSchema,
-  ApiProviderAuthoringSchema,
-  ApiProviderSchema,
+  ApiProviderAuthoringObjectSchema,
+  ApiProviderObjectSchema,
   ConfigTemplateStringSchema,
   HttpProxyUrlSchema,
   OAuthProviderAuthoringSchema,
@@ -16,6 +16,7 @@ import {
   ProviderKind,
   ProviderSchema,
   validateAliasTargets,
+  validateApiEndpoints,
 } from '../provider';
 
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', '::1', 'localhost']);
@@ -64,19 +65,21 @@ const ServerConfigAuthoringSchema = ServerConfigSchema.omit({ host: true, loggin
 
 const ProviderInputValueSchema = z
   .discriminatedUnion('kind', [
-    ApiProviderSchema.omit({ id: true }),
+    ApiProviderObjectSchema.omit({ id: true }),
     OAuthProviderSchema.omit({ id: true }),
     AiSdkProviderSchema.omit({ id: true }),
   ])
-  .superRefine(validateAliasTargets);
+  .superRefine(validateAliasTargets)
+  .superRefine(validateApiEndpoints);
 
 const ProviderAuthoringInputValueSchema = z
   .discriminatedUnion('kind', [
-    ApiProviderAuthoringSchema.omit({ id: true }),
+    ApiProviderAuthoringObjectSchema.omit({ id: true }),
     OAuthProviderAuthoringSchema.omit({ id: true }),
     AiSdkProviderAuthoringSchema.omit({ id: true }),
   ])
-  .superRefine(validateAliasTargets);
+  .superRefine(validateAliasTargets)
+  .superRefine(validateApiEndpoints);
 
 const PluginPackageNameAuthoringSchema = z.union([PluginPackageNameSchema, ConfigTemplateStringSchema]);
 

@@ -1,4 +1,5 @@
 export {
+  type ApiEndpointTransport,
   type ApiProviderConfig,
   type ApiProviderFactoryOptions,
   type ApiProviderInstance,

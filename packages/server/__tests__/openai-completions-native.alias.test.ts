@@ -13,6 +13,10 @@ describe('POST /v1/chat/completions', () => {
   test('Given an alias variant and native provider When completion is posted Then passthrough receives the variant model', async () => {
     // Given
     let bodySeen: unknown;
+    const passthrough = async (req: Request) => {
+      bodySeen = await req.json();
+      return Response.json({ ok: true });
+    };
     const provider = {
       id: 'openai',
       kind: 'api',
@@ -25,10 +29,8 @@ describe('POST /v1/chat/completions', () => {
         },
       },
       protocol: ProviderProtocol.OpenAICompatible,
-      async passthrough(req) {
-        bodySeen = await req.json();
-        return Response.json({ ok: true });
-      },
+      endpointTransports: [{ protocol: ProviderProtocol.OpenAICompatible, passthrough }],
+      passthrough,
     } satisfies ApiProviderInstance;
     const app = await createServer({ config: { providers: {} }, providerInstances: [provider] });
 
