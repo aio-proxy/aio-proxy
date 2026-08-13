@@ -78,7 +78,7 @@ export async function getCachedModelSlugs(): Promise<string[]> {
     Object.entries(providerMap)
       // `provider.models` is a compile-time fiction: readCachedProviderMap never
       // passes a `schema` (see it above in this file) and cache/file.ts:66 is a bare
-      // `return value as T`, so a truncated or hand-edited cache file really can hold
+      // `return value as T`, so a hand-edited cache file really can hold
       // a provider with no `models` — and `Object.keys(undefined)` throws. The test's
       // `broken: {}` fixture pins this guard. resolve.ts:38 guards the same way.
       .flatMap(([providerId, provider]) =>
