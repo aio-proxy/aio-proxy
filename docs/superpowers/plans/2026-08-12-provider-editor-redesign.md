@@ -1242,7 +1242,7 @@ export async function getCachedModelSlugs(): Promise<string[]> {
   if (providerMap === undefined) return [];
   return Object.entries(providerMap)
     // `provider.models` is a compile-time fiction: readCachedProviderMap never
-    // passes a `schema` (cache/index.ts:60-62) and cache/file.ts:66 is a bare
+    // passes a `schema` (see it above in this file) and cache/file.ts:66 is a bare
     // `return value as T`. The live cache really does hold `{"openrouter":{"models":{}}}`.
     // Without `?? {}` one malformed entry 500s every drawer open. resolve.ts:38 guards the same way.
     .flatMap(([providerId, provider]) => Object.keys(provider.models ?? {}).map((modelId) => `${providerId}/${modelId}`))
