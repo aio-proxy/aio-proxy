@@ -518,7 +518,7 @@ git commit -m "feat(server): oauth whitelist filters the runtime catalog on both
 
 - [ ] **Step 1: Write the failing test**
 
-In `packages/types/src/provider-alias/provider-alias.test.ts`, **merge** the new symbol into the existing import at `:5` — do not add a second `from './provider-alias'` line, `import/no-duplicates` is `error` in `oxlint.config.ts:25` and preflight would fail:
+In `packages/types/src/provider-alias/provider-alias.test.ts`, **merge** the new symbol into the existing import at `:5` — do not add a second `from './provider-alias'` line. (Style only: no gate enforces this. `oxlint.config.ts:25` does set `'import/no-duplicates': 'error'`, but the rule is inert because `import` is absent from `plugins: ['react']` at `:10` — verified by probe: a file with two duplicate imports drew zero diagnostics while a `debugger` statement in the same file exited 1. Test files are also invisible to `lint:types`, which ignores every `*.test.ts`.):
 
 ```ts
 import { modelRoutes, validateAliasTargets } from './provider-alias';
@@ -2323,17 +2323,52 @@ git commit -m "feat(dashboard): route the unified provider editor and delete the
 '@aio-proxy/dashboard': minor
 ---
 
-Redesign the provider editor into a single page shared by api, ai-sdk, and oauth providers: five fixed sections, a persistent exposure/validation rail, an in-place two-stage OAuth authorization flow, inline alias editing, a weight slider with a real attempt-order preview, and a visual model-metadata tab. OAuth providers gain a `models` whitelist that filters the discovered catalog (empty or absent exposes everything); ai-sdk providers with an OpenAI-shaped `options.baseURL` can list their catalog; oauth providers can run draft model tests; `models: []` no longer invalidates alias-only providers.
+Redesign the provider editor into a single page shared by api, ai-sdk, and oauth providers: five fixed sections, a persistent exposure/validation rail, an in-place two-stage OAuth authorization flow, inline alias editing, a weight slider with a real attempt-order preview, and a visual model-metadata tab. OAuth providers gain a `models` whitelist that filters the discovered catalog (empty or absent exposes everything); ai-sdk providers with an OpenAI-shaped `options.baseURL` can list their catalog; oauth providers can run draft model tests; `models: []` no longer invalidates alias-only providers. The provider edit endpoint now returns the stored credentials so the editor can prefill them, replacing the previous redaction sentinels; `GET /dashboard/api/config` and `aio-proxy config` still mask secrets.
 ```
 
 Verify the package names before committing: the six `@aio-proxy/*` entries against `packages/*/package.json` `name`, and `aio-proxy` against `npm/aio-proxy/package.json` — the CLI launcher lives under `npm/`, not `packages/`, so it will not appear in a `packages/*` listing and must not be dropped as a typo. It is the entry that gets the published release notes.
 
-- [ ] **Step 2: Full gate**
+Then make that check runnable rather than visual:
 
-Run: `bun run preflight`
-Expected: oxlint clean, oxfmt clean, all unit tests green. Fix anything it reports before committing.
+Run: `bunx changeset status`
+Expected: exit 0, listing all packages of the `fixed` group at `minor`. A misspelled package name is what this catches — verified by negative control: with `@aio-proxy/dashboards` in place of `@aio-proxy/dashboard` it exits 1 with `Found changeset provider-editor-single-page for package @aio-proxy/dashboards which is not in the workspace`.
+
+- [ ] **Step 2: Full gate — three separate commands, NOT `bun run preflight`**
+
+`bun run preflight` must not be used as this plan's gate. It is `bun run lint:types && bun run format:check && bun run test`, and on this branch it fails at its first leg, so the formatter and the entire test suite never run under it. It also never runs plain `oxlint .` at all. Run these three instead, each with its own pass criterion:
+
+Run: `bun run check`
+Expected: exit 0. This is `oxlint .` plus `oxfmt --check .`, and it is the ONLY gate that lints the test files this plan adds — `lint:types` is invoked with `--ignore-pattern='**/*.test.ts' --ignore-pattern='**/*.test.tsx' --ignore-pattern='**/__tests__/**'` and friends, so every test file in this plan is invisible to it. Verified: a hard type error appended to an existing `*.test.ts` produced zero diagnostics under `lint:types` and was caught only by `bun run lint`.
+
+Run: `bun run test:unit`
+Expected: exit 0. Deliberately not `bun run test`: that also runs `packages/plugins/xai-grok/oauth.smoke.ts`, which asserts the plugin api version is `1` while `@aio-proxy/plugin-sdk` now ships `PLUGIN_API_VERSION = 2`. Pre-existing, unrelated to this plan, and the reason the repo has a separate `test:unit` script.
+
+Run: `bun run lint:types`
+Expected: **exit 1 with exactly the 15 inherited errors below and nothing else.** Any error in a file this plan created or modified is yours to fix. This set is stable — verified byte-identical across repeated runs on unchanged code (15 errors plus 7 react-hooks warnings; do not count the warnings as errors). Do not try to gate this by filtering the output to the files the branch touched: `provider-form-fields-ai-sdk.tsx:56` is one of the inherited errors and its `useRef<string>()` is byte-identical on `main`, yet this branch modifies that file elsewhere, so a file-scoped filter reports a false failure. Compare error sets, not file names. Path-scoping does not help either — `packages/dashboard/src/modules/providers` alone carries 8 of the 15.
+
+```
+packages/cli/src/plugin-commands/plugin/remove.ts:42:46 TS2322
+packages/dashboard/src/modules/overview/components/overview-kpi-grid/kpi-number.tsx:16:30 TS2322
+packages/dashboard/src/modules/overview/components/overview-kpi-grid/overview-kpi-grid.tsx:94:11 TS2322
+packages/dashboard/src/modules/providers/components/provider-form-fields-ai-sdk.tsx:56:30 TS2554
+packages/dashboard/src/modules/providers/components/provider-request-transforms/provider-request-transforms-visual-editor.tsx:20:28 TS2554
+packages/dashboard/src/modules/providers/components/provider-request-transforms/provider-request-transforms-visual-editor.tsx:50:17 TS2322
+packages/dashboard/src/modules/providers/components/provider-validate-step/provider-validate-step.tsx:23:22 TS18048
+packages/dashboard/src/modules/providers/components/providers-table-columns.tsx:28:13 TS2428
+packages/dashboard/src/modules/providers/components/providers-table-columns.tsx:36:43 TS2304
+packages/dashboard/src/modules/providers/components/providers-table-columns.tsx:40:32 TS2304
+packages/dashboard/src/modules/providers/components/providers-table-columns.tsx:43:51 TS2304
+packages/dashboard/src/modules/providers/components/providers-table-columns.tsx:114:12 TS7053
+packages/dashboard/src/modules/providers/lib/request-transforms/stage-codec.ts:90:3 TS2352
+website/theme/env.d.ts:4:12 TS2411
+website/theme/env.d.ts:8:12 TS2717
+```
+
+Task 19 deletes `components/provider-validate-step/`, so after task 19 the expected set is the 14 remaining lines.
 
 - [ ] **Step 3: Commit**
+
+Commit only the changeset. If Step 2 turned up a failure in a file this plan created or modified, that fix belongs to the task that owns the file — go back and commit it there, rather than sweeping it into this changeset commit.
 
 ```bash
 git add .changeset/provider-editor-single-page.md
