@@ -1659,7 +1659,10 @@ git commit -m "feat(dashboard): pure section status for the provider editor"
 ```ts
 export interface ModelRow {
   readonly id: string;
-  readonly metadata: Record<string, unknown> | undefined;
+  // `Readonly<...>` is load-bearing: rows alias `previousMetadata`'s records by reference (no clone),
+  // so a consumer that mutated `row.metadata` in place would corrupt the saved config. The compiler
+  // rejects that write; no runtime test can, short of freezing.
+  readonly metadata: Readonly<Record<string, unknown>> | undefined;
 }
 export function toModelRows(models: readonly string[], metadata: Readonly<Record<string, Record<string, unknown>>> | undefined): ModelRow[];
 export function applyModelRows(
@@ -1683,6 +1686,26 @@ test('rows join models with their metadata', () => {
     { id: 'a', metadata: { name: 'A' } },
     { id: 'b', metadata: undefined },
   ]);
+  // The common case — a provider with no metadata at all — takes a different branch from `b` above
+  // (`metadata?.[id]` short-circuits on the argument, not the key). Without this line, returning `{}`
+  // for every row of every metadata-less provider goes unnoticed, and any downstream
+  // `metadata !== undefined` has-metadata badge or dirty check then misfires on every row.
+  expect(toModelRows(['a'], undefined)).toEqual([{ id: 'a', metadata: undefined }]);
+});
+
+test('every row is applied, and models keeps the row order', () => {
+  const rows = [
+    { id: 'b', metadata: { name: 'B' } },
+    { id: 'a', metadata: { name: 'A' } },
+  ];
+  // The only test where the rows loop is seen ITERATING, and the only one whose ids are not already
+  // sorted. Every other test passes a single row, so both of these are invisible: processing only
+  // the first row drops every other model's metadata on save, and reordering `models` churns the
+  // config file diff on every save.
+  expect(applyModelRows(rows, undefined)).toEqual({
+    models: ['b', 'a'],
+    metadata: { b: { name: 'B' }, a: { name: 'A' } },
+  });
 });
 
 test('round trip keeps metadata for alias-only models and unrecognized fields', () => {
@@ -1696,8 +1719,10 @@ test('round trip keeps metadata for alias-only models and unrecognized fields', 
 test('a row metadata record replaces the previous record for that id', () => {
   const previous = { a: { cost: { input: 1 }, removedInDrawer: true } };
   const rows = [{ id: 'a', metadata: { cost: { input: 2 } } }];
-  // A row carries the WHOLE record for its id (toModelRows seeded it from previous), so the row
-  // must replace, never shallow-merge onto, the previous record for that id.
+  // A row carries the WHOLE record for its id (toModelRows seeded it from previous), so fields the
+  // drawer removed from that record must not come back from `previousMetadata`. This does NOT pin
+  // replace-vs-shallow-merge: the preservation guard leaves `merged[row.id]` unset when the rows
+  // loop runs, so merging onto it is an equivalent mutant.
   expect(applyModelRows(rows, previous).metadata).toEqual({ a: { cost: { input: 2 } } });
 });
 
@@ -1725,7 +1750,9 @@ Run: `bun run --filter @aio-proxy/dashboard test:unit` — FAILS.
 // model-rows.ts
 export interface ModelRow {
   readonly id: string;
-  readonly metadata: Record<string, unknown> | undefined;
+  // Rows alias `previousMetadata`'s records by reference; `Readonly` is what stops a consumer
+  // from mutating the live config through a row.
+  readonly metadata: Readonly<Record<string, unknown>> | undefined;
 }
 
 type MetadataRecord = Readonly<Record<string, Record<string, unknown>>>;
@@ -2187,6 +2214,8 @@ Orchestration in `provider-editor-page.tsx` (layout + save/delete ONLY; sections
 
 - Builds `sectionStatuses` from form values (via `form.Subscribe`/`useSelector`), `aliasEditorIssues`, `transformsValid` state, weight-tie from the summaries query, oauth candidates.
 - Save dispatch: api/ai-sdk → `ProviderMutationBodySchema` branch parse → `useProviderCreate`/`useProviderUpdate`; success **stays put** and shows the `footer_saved` indicator (no navigate — spec OAuth section: "A save stays put"). oauth → `oauthProviderEditAction(values, oauth.publicValues, forceReauthorize)`; `update` → `useProviderUpdate`; `reauthorize` → `startOAuthSession` with popup (port the popup + effect wiring from `use-oauth-provider-edit-page.ts:41-129` verbatim, minus both `navigate({ to: '/providers' ... })` calls).
+- **Clearing model metadata on an existing provider must send an explicit `{}`.** `replaceProvider` treats an ABSENT `metadata` as "retain what was persisted" (`packages/server/src/dashboard-routes/provider-mutation/provider-mutation.ts:90-92`; pinned by `provider-mutation.test.ts:52` — *preserves existing metadata when an older client omits it and clears it when explicitly empty*), while task 12's `applyModelRows` correctly collapses an emptied record set to `undefined`, because that is the right *config* shape. Passing that straight into the PUT body silently resurrects the record the user just deleted. On the update path only, build the body with `metadata: values.metadata ?? {}` — `metadata` is `.optional()` and NOT nullable on the mutation schemas (`packages/types/src/provider.ts:78-83`), so `{}` is the only way to express the clear. Leave the create path alone: nothing exists to retain, and `insertProvider` would write a pointless `metadata: {}` into a fresh config entry.
+  - Scope: `headers`, `proxy` and `transforms` share that same server clause, and the wizard this replaces has the identical exposure today. Do not widen this task to cover them; they are unchanged pre-existing behavior, tracked as a deferred minor for the final review.
 - OAuth create stage (spec OAuth Creation): while `mode === Create && kind === OAuth && !authorized` — sections 3-5 render inside `SectionShell disabledReason={m['dashboard.providers.editor.authorization_locked_hint']()}`; identity hides the id field; primary button is `authorize` and submits `startOAuthSession` with `providerPatch` built from live sections 1-2 values (`{ enabled: true, name?, proxy? }`).
 - On `session.status === 'succeeded'`: do NOT navigate to the list. Adopt `session.providerId`, `queryClient.invalidateQueries({ queryKey: queryKeys.providers })`, refetch the edit view, unlock sections 3-5, set primary to Save, surface `session.warning` through `ExposurePanel`'s `warning` prop, and `history`-replace the URL to `/providers/$id/edit` (TanStack Router: `navigate({ to: '/providers/$id/edit', params: { id }, replace: true })` — this replace is the one navigation the flow keeps, so a reload lands on the saved provider).
 - Re-authorize on an existing provider: same in-place handling — refetch the edit view, stay put, warning to the rail.
@@ -2197,6 +2226,7 @@ Orchestration in `provider-editor-page.tsx` (layout + save/delete ONLY; sections
   - create-api: fill name/id/baseURL/protocol → footer save enabled → save calls create mutation, stays on page, shows saved indicator; emptying baseURL disables save and lists Connection in the footer.
   - oauth create: sections 3-5 disabled with the lock hint; primary reads Authorize; on mocked `session = { status: 'succeeded', providerId: 'p-new', warning: 'catalog_unavailable' }` the page does NOT call `navigate` to `/providers`, calls the replace-navigation to the edit route, and renders the catalog warning in the rail.
   - oauth re-auth: with a succeeded session on an existing provider, no list navigation happens and the edit view refetch is triggered.
+  - edit-api metadata clear: an existing provider whose edit view carries `metadata: { a: { name: 'A' } }` for its only model → remove that model's metadata in the drawer → save sends `metadata: {}`, NOT an absent key. Assert on the mutation mock's argument. Without this the server's retain-on-absent branch silently restores the record and the deletion appears to succeed.
 - [ ] **Step 2: Implement the four files + `use-active-section.ts`.** Keep `provider-editor-page.tsx` under 400 lines by pushing all rendering into the section/rail/nav/footer components; if orchestration alone exceeds it, extract `templates/provider-editor-page/use-provider-editor-page.ts` (hook, one file one responsibility).
 - [ ] **Step 3: Run to verify pass, then commit**
 
