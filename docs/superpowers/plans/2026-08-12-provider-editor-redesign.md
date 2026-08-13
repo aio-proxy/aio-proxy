@@ -13,7 +13,12 @@
 ## Global Constraints
 
 - Repo root for all commands: `/Users/bytedance/Documents/self/aio-proxy/.claude/worktrees/provider-07e326` (the worktree).
-- Run backend package tests with `bun test <file>` from the repo root. Run dashboard tests with `bun run --filter @aio-proxy/dashboard test:unit`. Final gate: `bun run preflight` (oxlint + oxfmt + all unit tests).
+- Run backend package tests with `bun test <file>` from the repo root. Run dashboard tests with `bun run --filter @aio-proxy/dashboard test:unit`.
+- **Never use `bun run preflight` as a gate, here or in any task.** It is `lint:types && format:check && test`, and `lint:types` exits 1 on this branch for 15 errors inherited from `main` (CI runs `bun run check`, which is plain oxlint with no `--type-aware`, so they accumulated unnoticed). Under `preflight` the formatter and the whole test suite therefore never run. Task 20 defines the real final gate as three separate commands.
+- **`test:unit` cannot see type errors** — rstest strips types with SWC, it does not typecheck. So every task from 13 on, after its `test:unit` passes, also runs:
+
+  Run: `bunx oxlint --type-aware --type-check --ignore-pattern='**/*.test.ts' --ignore-pattern='**/*.test.tsx' packages/dashboard/src/modules/providers`
+  Expected: exit 1 with **at most the 10 inherited errors** listed in task 20 (`providers-table-columns.tsx` ×5, `provider-request-transforms-visual-editor.tsx` ×2, `provider-form-fields-ai-sdk.tsx`, `provider-validate-step.tsx`, `stage-codec.ts`). Any error in a file your task created or modified is yours to fix before committing. The count only ever shrinks — tasks 14 and 17/19 rewrite or delete three of those files. Without this line a cross-task type break (task 13's form union reaching task 15's hook, task 17's `ProviderEditorForm` params) stays invisible for six more tasks and lands on the wrong implementer.
 - Colocated tests use same-name-directory grouping: `foo/index.ts` + `foo/foo.ts` + `foo/foo.test.ts` (repo rule). Never add tests to legacy `_test/` directories.
 - Dashboard rules (`packages/dashboard/AGENTS.md`): every input uses TanStack Form; server state via TanStack Query; no direct `fetch` in components (services only); one React component per `.tsx` file; components are arrow functions typed `React.FC<XxxProps>` with `interface XxxProps`; user-facing copy via `import { m } from '@aio-proxy/i18n'` and keys in `packages/i18n/messages/*.json`; run `bun run i18n:compile` after changing messages; do not edit `src/route-tree.gen.ts`.
 - Non-test implementation files: 500-line hard cap, evaluate splitting at 400.
@@ -35,13 +40,13 @@ modules/providers/
     identity-section.tsx            kind picker + ProviderCommonFields section="connection"
     connection-section.tsx          kind fork: api fields / ai-sdk fields / oauth account fields
     section-shell.tsx               anchor + heading + status badge + pre-authorization lock
-    models-section.tsx              row list + filter + manual add (all kinds)
+    models-section/                 row list + filter + manual add (all kinds); index.ts + .tsx + .test.tsx
     routing-section.tsx             enabled + weight slider + attempt-order preview + inline aliases
     advanced-section.tsx            proxy + headers (api) + request transforms
     exposure-panel.tsx              rail: modelRoutes() over current values
-    model-validation-panel.tsx      rail: draft model test (all kinds)
+    model-validation-panel/         rail: draft model test (all kinds); index.ts + .tsx + .test.tsx
     weight-slider-field.tsx
-    attempt-order-preview.tsx
+    attempt-order-preview/          index.ts + .tsx + .test.tsx
     model-metadata-visual-tab.tsx
   hooks/use-provider-editor-form.ts
   lib/section-status/               index.ts + section-status.ts + section-status.test.ts
@@ -1481,7 +1486,7 @@ export function sectionStatuses(input: SectionStatusInput): Readonly<Record<Sect
 export function blockingSections(statuses: Readonly<Record<SectionId, SectionStatus>>): SectionId[];
 ```
 
-There is deliberately **no `authorized` field**, and adding one would be dead weight: the authorization lock is the shell's job, not a status. Task 18 gates `SectionShell disabledReason={…authorization_locked_hint()}` on `!authorized` directly (see its OAuth create stage), and task 14's rail reads only the returned statuses. An unauthorized oauth draft is already covered without it — its empty `capabilityKey` makes `connection` a `todo`, and its primary action in that stage is `authorize`, not save, so `blockingSections` is not what gates it.
+There is deliberately **no `authorized` field**, and adding one would be dead weight: the authorization lock is the page's job, not a status. Task 18 gates its own lock container on `!authorized` directly (see its OAuth create stage), and task 14's rail reads only the returned statuses. An unauthorized oauth draft is already covered without it — its empty `capabilityKey` makes `connection` a `todo`, and its primary action in that stage is `authorize`, not save, so `blockingSections` is not what gates it.
 
 Status rules (spec Form State table): `todo` only for fields the mutation schema requires — Provider ID (create mode), api `baseURL`/`protocol`, oauth capability before authorization — plus alias issues (the schema rejects those payloads) and invalid transforms JSON. `apiKey` is NOT a todo (optional in the schema; an unauthenticated local endpoint must stay saveable). `attention` for a weight tie (routing) and stale whitelist entries (models: whitelist entry not in `discoveredModels` when provided). Empty `models` is not a todo — alias-only providers are valid.
 
@@ -1988,24 +1993,20 @@ interface SectionShellProps {
   readonly title: string;
   readonly status: SectionStatus;
   readonly children: React.ReactNode;
-  readonly disabledReason?: string | undefined; // oauth pre-authorization lock
 }
-export const SectionShell: React.FC<SectionShellProps> = ({ id, title, status, children, disabledReason }) => (
+export const SectionShell: React.FC<SectionShellProps> = ({ id, title, status, children }) => (
   <section id={`editor-${id}`} aria-labelledby={`editor-${id}-heading`} className="scroll-mt-28 space-y-5">
     <div className="flex items-center gap-2">
       <h2 id={`editor-${id}-heading`} className="text-base font-semibold">{title}</h2>
       {status === 'todo' ? <Badge variant="destructive">{m['dashboard.providers.editor.section_status_todo']()}</Badge> : null}
       {status === 'attention' ? <Badge variant="outline">{m['dashboard.providers.editor.section_status_attention']()}</Badge> : null}
     </div>
-    {disabledReason === undefined ? children : (
-      <div aria-disabled className="pointer-events-none space-y-5 opacity-50">
-        <p className="pointer-events-auto rounded-lg border bg-muted p-3 text-sm opacity-100">{disabledReason}</p>
-        {children}
-      </div>
-    )}
+    {children}
   </section>
 );
 ```
+
+The shell deliberately has **no `disabledReason` prop.** Sections 3-5 each render their own `SectionShell` internally and declare no lock prop of their own (tasks 15-17), so a shell-level `disabledReason` is unreachable from the page — nothing would ever pass it. Task 18 owns the pre-authorization lock instead, as one container wrapping all three sections at once.
 
 `connection-section.tsx` forks on kind and renders the slimmed wrappers (`ProviderFormFieldsApi`, `ProviderFormFieldsAiSdk`, oauth: `OAuthCapabilityCombobox` + `OAuthAccountFields` in create, `OAuthProviderEditFields` in edit) inside a `SectionShell id="connection"`.
 
@@ -2025,7 +2026,7 @@ git commit -m "feat(dashboard): identity and connection sections; kind wrappers 
 **Files:**
 - Create: `components/provider-editor/models-section/{index.ts,models-section.tsx,models-section.test.tsx}` (same-name directory: it has a colocated test), `components/provider-editor/model-metadata-visual-tab.tsx` (no test, stays flat)
 - Modify: `components/provider-models-field/provider-model-metadata-drawer-content.tsx` (add the tab strip)
-- Modify: `hooks/use-provider-catalog-mutation/use-provider-catalog-mutation.ts` — widen its first parameter from `ProviderForm` (`:7`) to `ProviderEditorForm`. The models section reuses this hook with the new form, so without this the section does not typecheck.
+- Modify: `hooks/use-provider-catalog-mutation/use-provider-catalog-mutation.ts` — widen its first parameter to the union `form: ProviderForm | ProviderEditorForm` (`:7`), NOT to `ProviderEditorForm` alone. `ProviderForm` is not assignable to `ProviderEditorForm` (`TFormData` is invariant, reached through `options.listeners.onChange`), so a straight swap breaks the two existing call sites (`provider-catalog-button.tsx`, `provider-validate-step.tsx`) that this task does not touch. Inside, read values as `normalizeProviderFormValue(form.state.values as ProviderFormShape)` — both unions share that shape. The models section reuses this hook with the new form, so without the widening the section does not typecheck.
 - Create: `packages/dashboard/src/modules/providers/services/models-dev-service.ts`
 - Modify: `packages/dashboard/src/lib/query-keys.ts` (add `modelsDevSlugs`)
 
@@ -2036,7 +2037,6 @@ git commit -m "feat(dashboard): identity and connection sections; kind wrappers 
 interface ModelsSectionProps {
   readonly form: ProviderEditorForm;
   readonly kind: ProviderKind;
-  readonly mode: ProviderFormMode;
   readonly persistedProviderId?: string | undefined;
   readonly candidates?: readonly string[] | undefined; // oauth: oauth.models (discovered catalog); api/ai-sdk: last draft catalog result
   readonly status: SectionStatus;
@@ -2048,12 +2048,12 @@ export const modelsDevSlugsQueryOptions = () => queryOptions({
 });
 ```
 
-Behavior (spec Models Section): one row list built from `toModelRows(models, metadata)`; a filter input; a count line — for oauth with empty whitelist the count reads `models_all_discovered` (candidates length), otherwise `models_count`; a single manual-add input (replaces `TagsInput`, catalog grid, and enabled list in `provider-models-field.tsx`); per-row: enable/disable checkbox against `candidates`, metadata button opening the drawer, remove button; rows write back through `applyModelRows` so alias-only/unknown metadata survives.
+Behavior (spec Models Section): one row list built from `toModelRows(models, metadata)`; a filter input; a count line — for oauth with empty whitelist the count reads `models_all_discovered({ count: candidates?.length ?? 0 })`, otherwise `models_count({ enabled: models.length, total: candidates?.length ?? models.length })`. Both keys take named params (`en.json:700-701`), so calling them with no argument object renders the literal `{enabled}`/`{count}` placeholders; `total` falls back to the whitelist length because api/ai-sdk providers have no candidates until the user loads a catalog, and `0 of undefined` is not shippable copy. A single manual-add input (replaces `TagsInput`, catalog grid, and enabled list in `provider-models-field.tsx`); per-row: enable/disable checkbox against `candidates`, metadata button opening the drawer, remove button; rows write back through `applyModelRows` so alias-only/unknown metadata survives.
 **Tighten `applyModelRows`'s return type while you are here** (deferred out of task 12 only because its brief mandated the signature verbatim, and it has no importer until this task): `metadata: Record<string, Readonly<Record<string, unknown>>> | undefined`. Task 12 made `ModelRow.metadata` readonly, but the return value hands back the SAME aliased records through a mutable type, so `applyModelRows(rows, prev).metadata?.['a']['name'] = 'x'` compiles clean today. Do NOT carry forward the claim that the return must stay mutable to build the PUT body — it is false: TypeScript ignores `readonly` in assignability, so the tightened type still assigns into `ApiProviderMutationBody['metadata']` with no cast and no new diagnostics (verified). Treat it as best-effort even so: the form value and the mutation DTOs re-widen the same references one hop later. Stale whitelist rows (not in candidates) render with `models_stale_whitelist` copy. The "load catalog" button reuses `useProviderCatalogMutation` for api/ai-sdk; for oauth, candidates come in via props (no draft catalog call).
 
-Metadata drawer: wrap the existing JSON textarea in `<Tabs>` (`@aio-proxy/ui/components/tabs`) with `metadata_tab_visual` / `metadata_tab_json`. The visual tab (`model-metadata-visual-tab.tsx`) edits `extend` (Combobox fed by `modelsDevSlugsQueryOptions`, empty state `metadata_extend_empty`), `limit.context`/`limit.output` (number inputs), `cost.input`/`cost.output` (number inputs), `capabilities.attachment`/`capabilities.reasoning` (switches). It must merge over the existing object — build its output as `{ ...currentValue, extend, limit, cost, capabilities }` dropping only keys the user explicitly cleared — and render `metadata_unknown_fields` with the count of keys outside `{name, description, extend, limit, cost, capabilities}`. The JSON tab keeps the current textarea behavior byte-for-byte.
+Metadata drawer: wrap the existing JSON textarea in `<Tabs>` (`@aio-proxy/ui/components/tabs`) with `metadata_tab_visual` / `metadata_tab_json`. **The JSON tab is the default-selected one** (`defaultValue` on `<Tabs>`) — the textarea is the shipped behavior and must not regress for anyone editing keys the visual tab cannot reach. Base UI's `Tabs.Panel` defaults to `keepMounted = false` (`@base-ui/react@1.6.0` `tabs/panel/TabsPanel.js:37,110`), so the inactive tab's content is absent from the DOM: a test that asserts on the textarea must not first switch to the visual tab, and vice versa. The visual tab (`model-metadata-visual-tab.tsx`) edits `extend` (Combobox fed by `modelsDevSlugsQueryOptions`, empty state `metadata_extend_empty`), `limit.context`/`limit.output` (number inputs), `cost.input`/`cost.output` (number inputs), `capabilities.attachment`/`capabilities.reasoning` (switches). It must merge over the existing object — build its output as `{ ...currentValue, extend, limit, cost, capabilities }` dropping only keys the user explicitly cleared — and render `metadata_unknown_fields({ count })` where `count` is the number of keys failing `MODEL_METADATA_KNOWN_KEYS.has(key)` (import the shipped allowlist from `@aio-proxy/types`, `packages/types/src/model-metadata/model-metadata.ts:160` — do not retype the six names, or the visual tab starts warning about a key the parser accepts the moment either list changes). The JSON tab keeps the current textarea behavior byte-for-byte.
 
-- [ ] **Step 1: Write failing section tests** (`components/provider-editor/models-section/models-section.test.tsx`, rstest + Testing Library, mock `@tanstack/react-query` as `provider-models-field` tests do): (a) rows render from form `models`+`metadata`; (b) manual add appends a row and writes the form; (c) removing a row keeps alias-only metadata (assert via form value after `applyModelRows`); (d) oauth empty whitelist renders the `models_all_discovered` wording; (e) a whitelist entry outside candidates renders the stale copy. Run — FAIL.
+- [ ] **Step 1: Write failing section tests** (`components/provider-editor/models-section/models-section.test.tsx`, rstest + Testing Library). **Harness: copy `provider-form-fields-api.test.tsx:13-26`** — render inside a real `QueryClientProvider` and mock only the service boundary (`rs.mock('../../../services/provider-draft', …)`, and `rs.mock('../../../services/models-dev-service', …)` for the visual tab's Combobox). Do NOT mock `@tanstack/react-query` the way the three template tests do: their `useMutation` stub returns a `mutate` that never resolves, so a "load catalog" assertion written against it passes no matter what the button does. Cases: (a) rows render from form `models`+`metadata`; (b) manual add appends a row and writes the form; (c) removing a row keeps alias-only metadata (assert via form value after `applyModelRows`); (d) oauth empty whitelist renders the `models_all_discovered` wording *with the candidate count substituted* — assert the number, since the bug this catches is an unsubstituted `{count}`; (e) a whitelist entry outside candidates renders the stale copy; (f) the visual tab merges rather than replaces — seed metadata with a key the visual tab does not edit (`description`), switch to `metadata_tab_visual`, change `limit.context`, and assert the form value still carries `description` **and** the new limit. Run — FAIL.
 
 - [ ] **Step 2: Implement `models-section.tsx`, `model-metadata-visual-tab.tsx`, the drawer tab strip, and the slugs service.** Keep `provider-models-field/` intact for now (deleted with the stepper in task 19 if nothing else consumes it; `provider-model-metadata-drawer-content.tsx` and `provider-model-metadata-drawer.tsx` are reused by the new section).
 
@@ -2233,7 +2233,20 @@ Orchestration in `provider-editor-page.tsx` (layout + save/delete ONLY; sections
 
 - **Clearing model metadata on an existing provider must send an explicit `{}`.** `replaceProvider` treats an ABSENT `metadata` as "retain what was persisted" (`packages/server/src/dashboard-routes/provider-mutation/provider-mutation.ts:90-92`; pinned by `provider-mutation.test.ts:52` — *preserves existing metadata when an older client omits it and clears it when explicitly empty*), while task 12's `applyModelRows` correctly collapses an emptied record set to `undefined`, because that is the right *config* shape. Passing that straight into the PUT body silently resurrects the record the user just deleted. On the update path only, build the body with `metadata: values.metadata ?? {}` — `metadata` is `.optional()` and NOT nullable on the mutation schemas (`packages/types/src/provider.ts:78-83`), so `{}` is the only way to express the clear. Leave the create path alone: nothing exists to retain, and `insertProvider` would write a pointless `metadata: {}` into a fresh config entry.
   - Scope: `headers`, `proxy` and `transforms` share that same server clause, and the wizard this replaces has the identical exposure today. Do not widen this task to cover them; they are unchanged pre-existing behavior, tracked as a deferred minor for the final review.
-- OAuth create stage (spec OAuth Creation): while `mode === Create && kind === OAuth && !authorized` — sections 3-5 render inside `SectionShell disabledReason={m['dashboard.providers.editor.authorization_locked_hint']()}`; identity hides the id field; primary button is `authorize` and submits `startOAuthSession`. That payload is not just the provider patch — port it from `oauth-provider-create-page.tsx:53-70`: resolve the selected capability from the account form's `capabilityKey`, bail if it is unresolved, then send `{ capability: { plugin, capability }, ...oauthAccountSubmission(capability.form, accountValues), clearSecrets: [...], providerPatch: { enabled: true, ...(proxy === undefined ? {} : { proxy }) } }`, opening the popup before the mutation and closing it on error. The `providerPatch` here is sections 1-2 only (`{ enabled: true, name?, proxy? }`) — the server assigns the id, and sections 3-5 are still locked, so there is nothing else to send.
+- OAuth create stage (spec OAuth Creation): while `mode === Create && kind === OAuth && !authorized` — sections 3-5 render inside one lock container owned by this page (see below); identity hides the id field; primary button is `authorize` and submits `startOAuthSession`. That payload is not just the provider patch — port it from `oauth-provider-create-page.tsx:53-70`: resolve the selected capability from the account form's `capabilityKey`, bail if it is unresolved, then send `{ capability: { plugin, capability }, ...oauthAccountSubmission(capability.form, accountValues), clearSecrets: [...], providerPatch: { enabled: true, ...(proxy === undefined ? {} : { proxy }) } }`, opening the popup before the mutation and closing it on error. The `providerPatch` here is sections 1-2 only (`{ enabled: true, name?, proxy? }`) — the server assigns the id, and sections 3-5 are still locked, so there is nothing else to send.
+
+- **The pre-authorization lock is one container here, not a prop on `SectionShell`.** Sections 3-5 render their own shells and expose no lock prop, so wrap all three in this page at once:
+
+```tsx
+{mode === ProviderFormMode.Create && kind === ProviderKind.OAuth && !authorized ? (
+  <>
+    <p className="rounded-lg border bg-muted p-3 text-sm">{m['dashboard.providers.editor.authorization_locked_hint']()}</p>
+    <fieldset disabled className="space-y-10 pointer-events-none opacity-60">{sections345}</fieldset>
+  </>
+) : sections345}
+```
+
+  Both attributes are load-bearing. `disabled` on the `fieldset` is what actually blocks native controls — including the `<input type="range">` Base UI nests inside its slider thumb (`@base-ui/react@1.6.0` `slider/thumb/SliderThumb.js:58`) — and, unlike `pointer-events-none`, it also removes them from the tab order, so a keyboard user cannot focus and edit a locked field. `pointer-events-none` covers the div-based widgets (the slider thumb's own handlers, comboboxes) that `disabled` does not reach because they are not form controls. Do not reach for `inert` instead: it hides the whole subtree from the accessibility tree, so a screen-reader user would not learn the sections exist.
 - On `session.status === 'succeeded'`: do NOT navigate to the list. Adopt `session.providerId`, `queryClient.invalidateQueries({ queryKey: queryKeys.providers })`, refetch the edit view, unlock sections 3-5, set primary to Save, surface `session.warning` through `ExposurePanel`'s `warning` prop, and `history`-replace the URL to `/providers/$id/edit` (TanStack Router: `navigate({ to: '/providers/$id/edit', params: { id }, replace: true })` — this replace is the one navigation the flow keeps, so a reload lands on the saved provider).
 - Re-authorize on an existing provider: same in-place handling — refetch the edit view, stay put, warning to the rail.
 - Failed/cancelled sessions keep `closeUnclaimedPopup` and remain in the authorization stage.
@@ -2242,7 +2255,7 @@ Orchestration in `provider-editor-page.tsx` (layout + save/delete ONLY; sections
 - [ ] **Step 1: Write the failing page tests** (rstest + Testing Library, mock react-query/router as `oauth-provider-create-page.test.tsx:28-48` does):
   - create-api: fill name/id/baseURL/protocol → footer save enabled → save calls create mutation, stays on page, shows saved indicator; emptying baseURL disables save, lists Connection in the footer, and renders the `section_status_todo` badge inside the Connection section (`within(getByRole('region', { name: /Connection/u })).getByText(/To do/)`) — that badge is `SectionShell`'s only output for `status`, so without this assertion a shell that ignores `status` entirely still passes every test in the plan.
   - **create, kind switched after typing:** fill name and `baseURL`, switch the kind picker to `ai-sdk`, fill `packageName`, save → the create mutation receives `kind: 'ai-sdk'` **and no `baseURL`/`protocol` key**. Assert on the mutation mock's argument. This is the guard for the `form.reset` in `onKindChange`: delete the reset and this test fails with a body carrying `kind: 'api'`, which is a silently-persisted wrong provider kind rather than a visible error.
-  - oauth create: sections 3-5 disabled with the lock hint; primary reads Authorize; `queryByTestId('provider-form-field-id')` is null (oauth create must not offer a Provider ID — the server assigns `session.providerId`, and `ProviderCommonFields` both renders the input and auto-generates an id from Name's `onBlur` under `mode === Create`, `provider-common-fields.tsx:68,84`; `IdentitySection` suppresses both by passing `mode: Edit`); on mocked `session = { status: 'succeeded', providerId: 'p-new', warning: 'catalog_unavailable' }` the page does NOT call `navigate` to `/providers`, calls the replace-navigation to the edit route, and renders the catalog warning in the rail.
+  - oauth create: the lock hint renders **and a control inside section 3 is actually disabled** — assert `within(getByRole('region', { name: /Models/u })).getByRole('textbox').toBeDisabled()` (or the manual-add input by testid), not merely that the hint text is present. Asserting the hint alone passes against a page that renders the paragraph and leaves every field live, which is the whole bug the lock exists to prevent. Primary reads Authorize; `queryByTestId('provider-form-field-id')` is null (oauth create must not offer a Provider ID — the server assigns `session.providerId`, and `ProviderCommonFields` both renders the input and auto-generates an id from Name's `onBlur` under `mode === Create`, `provider-common-fields.tsx:68,84`; `IdentitySection` suppresses both by passing `mode: Edit`); on mocked `session = { status: 'succeeded', providerId: 'p-new', warning: 'catalog_unavailable' }` the page does NOT call `navigate` to `/providers`, calls the replace-navigation to the edit route, and renders the catalog warning in the rail.
   - oauth re-auth: with a succeeded session on an existing provider, no list navigation happens and the edit view refetch is triggered.
   - edit-api metadata clear: an existing provider whose edit view carries `metadata: { a: { name: 'A' } }` for its only model → remove that model's metadata in the drawer → save sends `metadata: {}`, NOT an absent key. Assert on the mutation mock's argument. Without this the server's retain-on-absent branch silently restores the record and the deletion appears to succeed.
 - [ ] **Step 2: Implement the four files + `use-active-section.ts`.** Keep `provider-editor-page.tsx` under 400 lines by pushing all rendering into the section/rail/nav/footer components; if orchestration alone exceeds it, extract `templates/provider-editor-page/use-provider-editor-page.ts` (hook, one file one responsibility).
@@ -2359,7 +2372,7 @@ Run: `bun run test:unit`
 Expected: exit 0. Deliberately not `bun run test`: that also runs `packages/plugins/xai-grok/oauth.smoke.ts`, which asserts the plugin api version is `1` while `@aio-proxy/plugin-sdk` now ships `PLUGIN_API_VERSION = 2`. Pre-existing, unrelated to this plan, and the reason the repo has a separate `test:unit` script.
 
 Run: `bun run lint:types`
-Expected: **exit 1 with exactly the 15 inherited errors below and nothing else.** Any error in a file this plan created or modified is yours to fix. This set is stable — verified byte-identical across repeated runs on unchanged code (15 errors plus 7 react-hooks warnings; do not count the warnings as errors). Do not try to gate this by filtering the output to the files the branch touched: `provider-form-fields-ai-sdk.tsx:56` is one of the inherited errors and its `useRef<string>()` is byte-identical on `main`, yet this branch modifies that file elsewhere, so a file-scoped filter reports a false failure. Compare error sets, not file names. Path-scoping does not help either — `packages/dashboard/src/modules/providers` alone carries 8 of the 15.
+Expected: **exit 1 with exactly the 15 inherited errors below and nothing else.** Any error in a file this plan created or modified is yours to fix. This set is stable — verified byte-identical across repeated runs on unchanged code (15 errors plus 7 react-hooks warnings; do not count the warnings as errors). Do not try to gate this by filtering the output to the files the branch touched: `provider-form-fields-ai-sdk.tsx:56` is one of the inherited errors and its `useRef<string>()` is byte-identical on `main`, yet this branch modifies that file elsewhere, so a file-scoped filter reports a false failure. Compare error sets, not file names. Path-scoping does not help either — `packages/dashboard/src/modules/providers` alone carries 10 of the 15 (verified: `bunx oxlint --type-aware --type-check --ignore-pattern='**/*.test.ts*' packages/dashboard/src/modules/providers` → exit 1, 10 errors).
 
 ```
 packages/cli/src/plugin-commands/plugin/remove.ts:42:46 TS2322
