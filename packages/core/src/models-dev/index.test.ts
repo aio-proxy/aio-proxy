@@ -211,18 +211,39 @@ describe('getModelsCachedOnly', () => {
   });
 });
 
-test('getCachedModelSlugs returns [] on a cold cache and provider/model slugs on a warm one', async () => {
+test('getCachedModelSlugs returns [] on a cold cache and sorted provider/model slugs on a warm one', async () => {
   await fileCacheStorage.removeItem('models-dev-providers'); // drop the beforeEach seed so the file cache misses
   clearModelsCache();
-  expect(await getCachedModelSlugs()).toEqual([]);
 
-  await fileCacheStorage.setItem('models-dev-providers', {
-    anthropic: { models: { 'claude-x': { id: 'claude-x' } } },
-    // One slash-bearing key on purpose: 54% of real models.dev ids contain a
-    // slash and `resolveModel` splits on the FIRST slash only, so a slug like
-    // `openrouter/vendor/model-z` must round-trip through `extend` unchanged.
-    openrouter: { models: { 'vendor/model-z': { id: 'vendor/model-z' } } },
-  });
-  clearModelsCache();
-  expect(await getCachedModelSlugs()).toEqual(['anthropic/claude-x', 'openrouter/vendor/model-z']);
+  // Cached-only is a hot-path promise: opening the drawer must never reach the
+  // network. Reject instead of calling through so a regression fails fast.
+  const originalFetch = globalThis.fetch;
+  let fetched = false;
+  globalThis.fetch = (() => {
+    fetched = true;
+    throw new Error('getCachedModelSlugs must not fetch');
+  }) as typeof fetch;
+
+  try {
+    expect(await getCachedModelSlugs()).toEqual([]);
+
+    await fileCacheStorage.setItem('models-dev-providers', {
+      // Insertion order is deliberately NOT sorted order: without `.sort()` this
+      // yields openrouter's slug first and the assertion below fails.
+      // One slash-bearing key on purpose: 54% of real models.dev ids contain a
+      // slash and `resolveModel` splits on the FIRST slash only, so a slug like
+      // `openrouter/vendor/model-z` must round-trip through `extend` unchanged.
+      openrouter: { models: { 'vendor/model-z': { id: 'vendor/model-z' } } },
+      anthropic: { models: { 'claude-x': { id: 'claude-x' } } },
+      // No `models` at all: the cache is unvalidated, so this shape is reachable
+      // and `Object.keys(undefined)` would throw without the `?? {}` guard.
+      broken: {},
+    });
+    clearModelsCache();
+    expect(await getCachedModelSlugs()).toEqual(['anthropic/claude-x', 'openrouter/vendor/model-z']);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  expect(fetched).toBe(false);
 });
