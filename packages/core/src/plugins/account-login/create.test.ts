@@ -90,6 +90,24 @@ test('new account rejects default aliases that reference an undiscovered target'
   ).rejects.toThrow('default alias target');
 });
 
+test('new account rejects array default-alias rows missing from the catalog', async () => {
+  const state = fixture();
+  await expect(
+    createAccount(state, {
+      registry: registry({
+        discover: async () => ({ ...emptyCatalog(), language: [{ id: 'wire-low' }] }),
+        defaultAliases: () =>
+          ({
+            logical: {
+              model: 'wire-low',
+              variants: [{ when: { effort: 'high' }, model: 'missing-high' }],
+            },
+          }) as never,
+      }),
+    }),
+  ).rejects.toThrow('default alias target');
+});
+
 test('new account uses a validated discovery fallback', async () => {
   const state = fixture();
   const logs: Parameters<PluginLogSink>[0][] = [];
