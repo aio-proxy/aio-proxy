@@ -1,5 +1,6 @@
 import { queryOptions } from '@tanstack/react-query';
 
+import { clearDashboardAuthToken, writeDashboardAuthToken } from '@/lib/dashboard-auth-token';
 import {
   dashboardClient,
   setDashboardUnauthorizedHandler,
@@ -43,6 +44,9 @@ export async function loginDashboard(password: string): Promise<DashboardLoginRe
     return { ok: false, error: 'unknown' };
   }
   if (response.status === 200) {
+    const body = (await response.json()) as { readonly token?: unknown };
+    if (typeof body.token !== 'string' || body.token === '') return { ok: false, error: 'unknown' };
+    writeDashboardAuthToken(body.token);
     setDashboardAuthSession({ status: 'authenticated' });
     await queryClient.invalidateQueries({ predicate: isNotDashboardAuthQuery });
     return { ok: true };
@@ -58,8 +62,7 @@ export async function loginDashboard(password: string): Promise<DashboardLoginRe
 }
 
 export async function logoutDashboard(): Promise<void> {
-  const response = await dashboardClient.dashboard.api.auth.logout.$post();
-  if (!response.ok) throw new Error('Dashboard logout failed');
+  clearDashboardAuthToken();
   queryClient.removeQueries({ predicate: isNotDashboardAuthQuery });
   setDashboardAuthSession({ status: 'unauthenticated' });
 }

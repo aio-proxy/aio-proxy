@@ -11,6 +11,7 @@ const installRequest = (body: Record<string, unknown>) => ({
   body: JSON.stringify(body),
   headers: {
     'content-type': 'application/json',
+    Host: '127.0.0.1:22078',
     Origin: 'http://127.0.0.1:22078',
   },
   method: 'POST',

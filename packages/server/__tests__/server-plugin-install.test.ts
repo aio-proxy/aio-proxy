@@ -33,6 +33,7 @@ describe('server routes', () => {
         body: JSON.stringify({ npm: 'aio-proxy-test-provider' }),
         headers: {
           'content-type': 'application/json',
+          Host: '127.0.0.1:22078',
           Origin: 'http://127.0.0.1:22078',
         },
         method: 'POST',
@@ -60,6 +61,7 @@ describe('server routes', () => {
         body: JSON.stringify({ npm: '../bad', confirmed: true }),
         headers: {
           'content-type': 'application/json',
+          Host: '127.0.0.1:22078',
           Origin: 'http://127.0.0.1:22078',
         },
         method: 'POST',
@@ -88,6 +90,7 @@ describe('server routes', () => {
         }),
         headers: {
           'content-type': 'application/json',
+          Host: '127.0.0.1:22078',
           Origin: 'http://127.0.0.1:22078',
         },
         method: 'POST',

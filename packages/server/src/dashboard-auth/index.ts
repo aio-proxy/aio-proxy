@@ -5,4 +5,5 @@ export {
   dashboardSessionToken,
   requireDashboardAuthentication,
   requireDashboardLoopback,
+  isDashboardLoopbackRequest,
 } from './routes';

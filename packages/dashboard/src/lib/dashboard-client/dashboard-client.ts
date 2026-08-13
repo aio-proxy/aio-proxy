@@ -1,6 +1,8 @@
 import type { AppType } from '@aio-proxy/server';
 import { hc } from 'hono/client';
 
+import { readDashboardAuthToken } from '@/lib/dashboard-auth-token';
+
 let handleDashboardUnauthorized = (): void => {};
 let handleDashboardUnavailable = (): void => {};
 
@@ -13,7 +15,12 @@ export function setDashboardUnavailableHandler(handler: () => void): void {
 }
 
 const dashboardFetch = (async (input, init) => {
-  const response = await fetch(input, init);
+  const url = new URL(typeof input === 'string' ? input : input.url, globalThis.location?.origin);
+  const token = readDashboardAuthToken();
+  const shouldAuthenticate = url.pathname.startsWith('/dashboard/api/') && url.pathname !== '/dashboard/api/auth/login';
+  const headers = new Headers(init?.headers ?? (typeof input === 'string' ? undefined : input.headers));
+  if (shouldAuthenticate && token !== undefined) headers.set('authorization', `Bearer ${token}`);
+  const response = await fetch(input, { ...init, headers });
   if (response.status === 401) handleDashboardUnauthorized();
   if (await isDashboardUnavailable(response)) handleDashboardUnavailable();
   return response;
