@@ -1800,7 +1800,7 @@ git commit -m "feat(dashboard): model rows join/split preserving alias-only and 
 
 **Files:**
 - Create: `packages/dashboard/src/modules/providers/hooks/use-provider-editor-form.ts`
-- Modify: `hooks/use-provider-form.ts` — `ProviderFormShape` (`:10`) is currently package-private (`type ProviderFormShape = ...`). Add `export`: `export type ProviderFormShape = ...`. Nothing else in that file changes. `normalizeProviderFormValue` (`:56`) and `parseProviderFormInitial` (`:63`) are already exported — reuse, do not duplicate.
+- Modify: `hooks/use-provider-form.ts` — `ProviderFormShape` (`:10`) is currently package-private (`type ProviderFormShape = ...`). Add `export`: `export type ProviderFormShape = ...`. Nothing else in that file changes — in particular this task does **not** call `normalizeProviderFormValue` (`:56`) or `parseProviderFormInitial` (`:61`); both are already exported for later tasks, which must reuse rather than duplicate them.
 
 **Interfaces:**
 
@@ -1815,27 +1815,31 @@ export type OAuthEditorShape = {
   readonly alias?: ProviderAlias | undefined;
   readonly transforms?: unknown;
   readonly models?: readonly string[] | undefined;
-  readonly metadata?: Record<string, unknown> | undefined;
-  readonly capabilityKey: string;
-  readonly publicValues: Record<string, unknown>;
-  readonly secrets: Record<string, string>;
-  readonly clearSecrets: readonly string[];
-  readonly jsonValues: Record<string, string>;
+  readonly metadata?: OAuthProviderMutationBody['metadata']; // NOT Record<string, unknown>: task 15 feeds this to toModelRows
   readonly validationModel?: string | undefined;
 };
 export type ProviderEditorShape = ProviderFormShape | OAuthEditorShape; // ProviderFormShape from use-provider-form.ts
 export type ProviderEditorForm = ReactFormExtendedApi<ProviderEditorShape, any, ..., any>; // same any-arity as ProviderForm
 type UseProviderEditorFormOptions = {
-  // mirrors the private UseProviderFormOptions at use-provider-form.ts:109
+  // narrower than the private UseProviderFormOptions at use-provider-form.ts:105 — no `mode`, no `onSubmit`
   readonly kind: ProviderKind;
-  readonly mode: ProviderFormMode;
   readonly initial?: Partial<ProviderEditorShape> | undefined;
-  readonly onSubmit: (value: ProviderEditorShape) => void | Promise<void>;
 };
 export function useProviderEditorForm(options: UseProviderEditorFormOptions): ProviderEditorForm;
 ```
 
-Implementation mirrors `useProviderForm` (`hooks/use-provider-form.ts:120-136`): `useForm` with `defaultValues: { ...initial, kind }`, an `onChange` validator that safeParses api/ai-sdk values against their mutation schemas via `normalizeProviderFormValue` and skips schema validation for oauth (account fields are not a Zod shape; the oauth body is validated at submit in the page), and `onSubmit` that forwards raw values — the page template owns dispatch (task 18). Cast through `as unknown as ProviderEditorForm` exactly as `useProviderForm` does; keep the existing `// ponytail:` comments' rationale by reference, not by copying.
+`OAuthEditorShape` carries **only** provider-config fields, and its `metadata` must be typed as `OAuthProviderMutationBody['metadata']` (`Record<ModelId, ModelMetadata> | undefined`), not `Record<string, unknown>`: task 15 passes it to task 12's shipped `toModelRows(models, metadata)`, whose parameter is `Readonly<Record<string, Record<string, unknown>>> | undefined`. Verified — `Record<string, unknown>` fails there with `TS2345: Argument of type 'Wrong' is not assignable to parameter of type 'Readonly<Record<string, Record<string, unknown>>> | undefined'`, while `OAuthProviderMutationBody['metadata']` compiles clean. The OAuth *account* fields (`capabilityKey`, `publicValues`, `secrets`, `clearSecrets`, `jsonValues`) stay in the existing `useOAuthProviderForm` (`hooks/use-oauth-provider-form.ts:9-16`), which already defaults them at `:59-63`; task 14 threads that instance through as `ConnectionSectionProps.accountForm`, and task 18 passes **its** values to `oauthProviderEditAction`. Do not mirror them here. `defaultValues` never supplies them, so a required field would sit `undefined` at runtime behind the `as` cast, and `lib/oauth-provider-edit/oauth-provider-edit.ts:42,47` does `Object.entries(values.secrets)` and `values.clearSecrets.length`, which throw on `undefined`. Task 18 builds `SectionStatusInput.capabilityKey` from the account form, where task 11 already declares it optional (`section-status.ts:12`, guarded `?? ''` at `:31`).
+
+Implementation mirrors `useProviderForm` (`hooks/use-provider-form.ts:116-132`) but deliberately keeps **only** its `defaultValues` seeding: `useForm` with `defaultValues: { ...initial, kind }`, cast through `as unknown as ProviderEditorForm` exactly as `useProviderForm` does. Keep the existing `// ponytail:` comments' rationale by reference, not by copying.
+
+This hook carries no `validators` and no `onSubmit`, and that is the point — both would be inert here:
+
+- Save gating is task 18's `blockingSections(sectionStatuses(...))` over form **values**, and the footer's primary is a plain `onPrimary: () => void` that dispatches directly. Nothing in this plan reads `form.state.errors`, `errorMap`, `canSubmit`, or `isValid` (0 hits each), and nothing calls `form.handleSubmit()` — so a required `onSubmit` option would force all six consumer tasks to pass a callback that can never fire, and an `onChange` validator would compute an error string nothing renders. The providers module renders no field-level errors either today (`field.state.meta.errors` has no non-test reader), so the shipped hook's validator is already inert; do not carry that forward.
+- Body correctness is checked where it is acted on: task 18's `ProviderMutationBodySchema` branch parse at dispatch. Adding a second, unread validation authority here invites the misreading that it gates saving. The two would also diverge by design — `sectionStatuses` deliberately does not treat `apiKey` as required (plan `:1487`), and `ApiProviderMutationBodySchema` agrees (`apiKey: z.string().optional()`, `packages/types/src/provider.ts`), but only `sectionStatuses` is consulted.
+- Consequence for the implementer: `normalizeProviderFormValue`, `ApiProviderMutationBodySchema` and `AiSdkProviderMutationBodySchema` are **not** imported by this file. `ProviderFormShape` still is, for `ProviderEditorShape`.
+
+`kind` is mutable in create mode (task 14's picker, task 18's `onKindChange`), and `useForm` re-applies `defaultValues` only while the form is untouched — `@tanstack/form-core@1.33.0` `dist/esm/FormApi.js:94` reads `const shouldUpdateValues = options.defaultValues && !evaluate(...) && !this.state.isTouched;`. Typing a name before switching kind therefore leaves the form's `kind` field stale forever, and there is no on-screen control that can clear it because `kind` is not form-bound. Task 18 closes this with `form.reset` on `onKindChange`; this hook must not try to solve it by re-deriving anything from the `kind` option after mount.
+
 
 - [ ] **Step 1: Export `ProviderFormShape`, then implement the hook (no isolated unit test — it is exercised by the section/page tests in tasks 14–19; a hook-only test would restate the implementation)**
 
@@ -1848,40 +1852,29 @@ export type ProviderFormShape = ProviderFormValues extends infer Provider
 Then create the hook:
 
 ```ts
-import type { OAuthProviderMutationBody, ProviderAlias } from '@aio-proxy/types';
-import { AiSdkProviderMutationBodySchema, ApiProviderMutationBodySchema, ProviderKind } from '@aio-proxy/types';
+import type { OAuthProviderMutationBody, ProviderAlias, ProviderKind } from '@aio-proxy/types';
 import { type ReactFormExtendedApi, useForm } from '@tanstack/react-form';
 
-import type { ProviderFormMode } from '../lib/constants';
-import { normalizeProviderFormValue, type ProviderFormShape } from './use-provider-form';
+import type { ProviderFormShape } from './use-provider-form';
 
 // ... types exactly as in Interfaces above ...
 
-export function useProviderEditorForm({ kind, initial, onSubmit }: UseProviderEditorFormOptions): ProviderEditorForm {
-  const schema =
-    kind === ProviderKind.Api
-      ? ApiProviderMutationBodySchema
-      : kind === ProviderKind.AiSdk
-        ? AiSdkProviderMutationBodySchema
-        : undefined;
-
+export function useProviderEditorForm({ kind, initial }: UseProviderEditorFormOptions): ProviderEditorForm {
   return useForm({
     defaultValues: { ...initial, kind } as ProviderEditorShape,
-    validators: {
-      onChange: ({ value }) => {
-        if (schema === undefined) return undefined; // oauth: validated at submit
-        const result = schema.safeParse(normalizeProviderFormValue(value as ProviderFormShape));
-        return result.success ? undefined : result.error.issues.map((issue) => issue.message).join(', ');
-      },
-    },
-    onSubmit: async ({ value }) => onSubmit(value),
   }) as unknown as ProviderEditorForm;
 }
 ```
 
-- [ ] **Step 2: Verify compile, then commit**
+Every `@aio-proxy/types` import here is **type-only**, including `ProviderKind`. `ProviderKind` is a real `enum` (`packages/types/src/provider.ts:18-22`), so `kind: ProviderKind.OAuth` and `kind: ProviderKind` both resolve under `import type`; with no validator left, nothing in this file needs the enum's runtime value, and `oxlint.config.ts:44` sets `typescript/consistent-type-imports` to `error`, so a value import would fail the `bun run check` gate below. Verified: this exact import block is clean under both `tsc` and `oxlint`.
 
-Run: `bun run --filter @aio-proxy/dashboard build` — PASS (hook unused yet; that is fine).
+- [ ] **Step 2: Verify the hook type-checks, then commit**
+
+`rsbuild build` is **not** a gate here and must not be used as one: `packages/dashboard`'s `build` is plain `rsbuild build` with no `@rsbuild/plugin-type-check`, so rspack strips types without checking them (593 pre-existing `tsc` errors coexist with a green build), and at this point nothing imports the new hook, so rspack never even resolves it — a file with a syntax error still exits 0. Root `bun run lint:types` is also unusable as a pass/fail check (it exits 1 on `main` with 15 inherited errors, and it ignores every `*.test.ts`/`*.test.tsx` by construction). Use a module-scoped, per-file grep instead:
+
+Run: `cd packages/dashboard && bun x tsc --noEmit -p tsconfig.json 2>&1 | grep -E 'use-provider-editor-form|use-provider-form'` — PASS means **no output at all**. Both files are verified error-free at baseline, so any line here is yours. The grep is by filename because the package carries 593 inherited errors, which makes the exit code meaningless.
+
+Run: `bun run check` (`bun run lint && bun run format:check`) — PASS. oxlint does reach `modules/providers/hooks/` (it is not in `oxc.ts` `ignorePatterns`), so this is what catches an unused import if the shape drifts.
 
 ```bash
 git add packages/dashboard/src/modules/providers/hooks/use-provider-editor-form.ts packages/dashboard/src/modules/providers/hooks/use-provider-form.ts
@@ -2215,7 +2208,27 @@ interface SectionNavProps {
 Orchestration in `provider-editor-page.tsx` (layout + save/delete ONLY; sections/nav/footer are the imported components):
 
 - Builds `sectionStatuses` from form values (via `form.Subscribe`/`useSelector`), `aliasEditorIssues`, `transformsValid` state, weight-tie from the summaries query, oauth candidates.
+- **`onKindChange` must reset the form, not just the page state.** The kind picker is not form-bound, and `useForm` re-applies `defaultValues` only while the form is untouched (`@tanstack/form-core@1.33.0` `dist/esm/FormApi.js:94`: `... && !this.state.isTouched`). So after the user types anything — the normal flow is name first — a kind switch leaves the form's `kind` field stale. Handle the switch as `(next) => { setKind(next); form.reset({ ...initial, kind: next } as ProviderEditorShape); }` before threading it to `IdentitySection`. Without the reset the save path below silently persists the **wrong kind**: `ProviderMutationBodySchema` is a union of `z.object`s, so a form the user filled as api and then switched to ai-sdk parses successfully against the stale `kind: 'api'` branch, `packageName` is stripped, and an api provider is written with no error shown. The reset also drops the stale api-only values (`baseURL`/`protocol`/`apiKey`) that make that parse succeed. Route-level remounting is not available: task 19's create route is `routes/providers/new.tsx`, so kind is page state and the page never unmounts on a switch.
 - Save dispatch: api/ai-sdk → `ProviderMutationBodySchema` branch parse → `useProviderCreate`/`useProviderUpdate`; success **stays put** and shows the `footer_saved` indicator (no navigate — spec OAuth section: "A save stays put"). oauth → `oauthProviderEditAction(values, oauth.publicValues, forceReauthorize)`; `update` → `useProviderUpdate`; `reauthorize` → `startOAuthSession` with popup (port the popup + effect wiring from `use-oauth-provider-edit-page.ts:41-129` verbatim, minus both `navigate({ to: '/providers' ... })` calls).
+- **The oauth `values` argument is a merge of both forms, and `oauth-provider-edit.ts` must learn `metadata`.** `OAuthProviderEditValues` (`lib/oauth-provider-edit/oauth-provider-edit.ts:10-22`) spans the provider-config fields *and* three account fields (`publicValues`, `secrets`, `clearSecrets`), which task 13 deliberately does **not** put on `OAuthEditorShape` — they live on the `useOAuthProviderForm` instance. So build the argument explicitly rather than passing either form's values straight through:
+
+  ```ts
+  oauthProviderEditAction(
+    {
+      ...editorValues,                       // id, name, weight, proxy, alias, models, transforms
+      enabled: editorValues.enabled ?? true, // OAuthProviderEditValues.enabled is required; the shape's is optional
+      metadata: editorValues.metadata ?? {}, // see below
+      publicValues: accountValues.publicValues,
+      secrets: accountValues.secrets,
+      clearSecrets: accountValues.clearSecrets,
+    },
+    oauth.publicValues,
+    forceReauthorize,
+  )
+  ```
+
+  `metadata` is absent from `OAuthProviderEditValues` **and** from the `providerPatch` it builds (`:33-41`), so as shipped every oauth save silently discards model metadata. That was invisible before this plan — `oauth-provider-edit-fields.tsx` never exposed metadata — but sections 3-5 are now shared across all three kinds, so the task 15 drawer edits metadata on oauth providers too, and `OAuthProviderMutationBodySchema` accepts it (`...metadataField`, `packages/types/src/provider.ts`). Add `readonly metadata?: Record<string, ModelMetadata> | undefined;` to `OAuthProviderEditValues` and one conditional spread to `providerPatch` in the same style as its neighbours, plus one assertion in the existing `oauth-provider-edit.test.ts` that a `metadata` record survives into `update`'s body and into `reauthorize`'s `providerPatch`. The `?? {}` at the call site is the same retain-on-absent defence as the api/ai-sdk path below: `oauthProviderEditAction` is only reachable in edit mode (oauth create goes through the authorize stage, whose `providerPatch` is built from sections 1-2 only), so an emptied record set must be sent as `{}` or the server keeps the record the user just deleted.
+
 - **Clearing model metadata on an existing provider must send an explicit `{}`.** `replaceProvider` treats an ABSENT `metadata` as "retain what was persisted" (`packages/server/src/dashboard-routes/provider-mutation/provider-mutation.ts:90-92`; pinned by `provider-mutation.test.ts:52` — *preserves existing metadata when an older client omits it and clears it when explicitly empty*), while task 12's `applyModelRows` correctly collapses an emptied record set to `undefined`, because that is the right *config* shape. Passing that straight into the PUT body silently resurrects the record the user just deleted. On the update path only, build the body with `metadata: values.metadata ?? {}` — `metadata` is `.optional()` and NOT nullable on the mutation schemas (`packages/types/src/provider.ts:78-83`), so `{}` is the only way to express the clear. Leave the create path alone: nothing exists to retain, and `insertProvider` would write a pointless `metadata: {}` into a fresh config entry.
   - Scope: `headers`, `proxy` and `transforms` share that same server clause, and the wizard this replaces has the identical exposure today. Do not widen this task to cover them; they are unchanged pre-existing behavior, tracked as a deferred minor for the final review.
 - OAuth create stage (spec OAuth Creation): while `mode === Create && kind === OAuth && !authorized` — sections 3-5 render inside `SectionShell disabledReason={m['dashboard.providers.editor.authorization_locked_hint']()}`; identity hides the id field; primary button is `authorize` and submits `startOAuthSession` with `providerPatch` built from live sections 1-2 values (`{ enabled: true, name?, proxy? }`).
@@ -2226,6 +2239,7 @@ Orchestration in `provider-editor-page.tsx` (layout + save/delete ONLY; sections
 
 - [ ] **Step 1: Write the failing page tests** (rstest + Testing Library, mock react-query/router as `oauth-provider-create-page.test.tsx:28-48` does):
   - create-api: fill name/id/baseURL/protocol → footer save enabled → save calls create mutation, stays on page, shows saved indicator; emptying baseURL disables save and lists Connection in the footer.
+  - **create, kind switched after typing:** fill name and `baseURL`, switch the kind picker to `ai-sdk`, fill `packageName`, save → the create mutation receives `kind: 'ai-sdk'` **and no `baseURL`/`protocol` key**. Assert on the mutation mock's argument. This is the guard for the `form.reset` in `onKindChange`: delete the reset and this test fails with a body carrying `kind: 'api'`, which is a silently-persisted wrong provider kind rather than a visible error.
   - oauth create: sections 3-5 disabled with the lock hint; primary reads Authorize; on mocked `session = { status: 'succeeded', providerId: 'p-new', warning: 'catalog_unavailable' }` the page does NOT call `navigate` to `/providers`, calls the replace-navigation to the edit route, and renders the catalog warning in the rail.
   - oauth re-auth: with a succeeded session on an existing provider, no list navigation happens and the edit view refetch is triggered.
   - edit-api metadata clear: an existing provider whose edit view carries `metadata: { a: { name: 'A' } }` for its only model → remove that model's metadata in the drawer → save sends `metadata: {}`, NOT an absent key. Assert on the mutation mock's argument. Without this the server's retain-on-absent branch silently restores the record and the deletion appears to succeed.
