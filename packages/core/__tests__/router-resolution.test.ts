@@ -3,7 +3,7 @@ import { describe, expect, test } from 'bun:test';
 import { ProviderProtocol } from '@aio-proxy/types';
 
 import type { ProviderInstance } from '../src/index';
-import { Router } from '../src/index';
+import { Router, RouterModelNotFoundError } from '../src/index';
 
 const openai = {
   kind: 'api',
@@ -81,7 +81,7 @@ describe('Router', () => {
     } satisfies ProviderInstance;
     const router = new Router([primary, fallback]);
 
-    expect(router.resolve('mini', ' High ')).toEqual([
+    expect(router.resolve('mini', { effort: ' High ' })).toEqual([
       { provider: primary, modelId: 'gpt-5' },
       { provider: fallback, modelId: 'fallback-high' },
     ]);
@@ -101,7 +101,7 @@ describe('Router', () => {
     } satisfies ProviderInstance;
     const router = new Router([provider]);
 
-    expect(router.resolve('mini', 'unknown')).toEqual([{ provider, modelId: 'gpt-5-mini' }]);
+    expect(router.resolve('mini', { effort: 'unknown' })).toEqual([{ provider, modelId: 'gpt-5-mini' }]);
   });
 
   test('resolves provider-qualified aliases with variants', () => {
@@ -118,6 +118,30 @@ describe('Router', () => {
     } satisfies ProviderInstance;
     const router = new Router([provider]);
 
-    expect(router.resolve('openai/mini', 'high')).toEqual([{ provider, modelId: 'gpt-5' }]);
+    expect(router.resolve('openai/mini', { effort: 'high' })).toEqual([{ provider, modelId: 'gpt-5' }]);
+  });
+
+  test('resolves array variants from cached rows and preserves row ids', () => {
+    const provider = {
+      ...openai,
+      models: ['cursor-grok-4.6-medium', 'cursor-grok-4.6-high', 'cursor-grok-4.6-high-fast'],
+      alias: {
+        'grok-4.6': {
+          model: 'cursor-grok-4.6-medium',
+          preserve: false,
+          variants: [
+            { when: { effort: 'high', speed: 'fast' }, model: 'cursor-grok-4.6-high-fast', preserve: true },
+            { when: { effort: 'high' }, model: 'cursor-grok-4.6-high', preserve: false },
+          ],
+        },
+      },
+    } satisfies ProviderInstance;
+    const router = new Router([provider]);
+
+    expect(router.resolve('grok-4.6', { effort: 'high', speed: 'fast' })).toEqual([
+      { provider, modelId: 'cursor-grok-4.6-high-fast' },
+    ]);
+    expect(router.resolve('cursor-grok-4.6-high-fast')).toEqual([{ provider, modelId: 'cursor-grok-4.6-high-fast' }]);
+    expect(() => router.resolve('cursor-grok-4.6-high')).toThrow(RouterModelNotFoundError);
   });
 });

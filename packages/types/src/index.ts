@@ -1,5 +1,6 @@
 export * from './aio';
-export { foldEffortSpelling } from './alias-variant';
+export { canonicalEffort, flattenAliasVariants, foldEffortSpelling, matchAliasRows } from './alias-variant';
+export type { AliasDimensions, AliasSelectRow } from './alias-variant';
 export * from './codex-model/index';
 export * from './commands';
 export * from './common';

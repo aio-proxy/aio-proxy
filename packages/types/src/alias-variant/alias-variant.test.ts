@@ -9,7 +9,7 @@ import {
   flattenAliasVariants,
   foldEffortSpelling,
   matchAliasRows,
-  resolveAliasTargetFromConfig,
+  resolveAliasTarget,
   type AliasSelectRow,
 } from './alias-variant';
 
@@ -292,14 +292,14 @@ describe('provider-level alias validation', () => {
   });
 });
 
-describe('resolveAliasTargetFromConfig', () => {
+describe('resolveAliasTarget', () => {
   test('object config plus bag selects the flattened row', () => {
     const config: AliasConfig = {
       model: 'model-default',
       preserve: false,
       variants: { ' High ': { model: 'model-high', preserve: true } },
     };
-    expect(resolveAliasTargetFromConfig(config, { effort: 'HIGH' })).toEqual({
+    expect(resolveAliasTarget(config, { effort: 'HIGH' })).toEqual({
       model: 'model-high',
       preserve: true,
     });
@@ -311,7 +311,7 @@ describe('resolveAliasTargetFromConfig', () => {
       preserve: true,
       variants: { low: { model: 'model-low', preserve: false } },
     };
-    expect(resolveAliasTargetFromConfig(config, { effort: 'medium' })).toEqual({
+    expect(resolveAliasTarget(config, { effort: 'medium' })).toEqual({
       model: 'model-default',
       preserve: true,
     });

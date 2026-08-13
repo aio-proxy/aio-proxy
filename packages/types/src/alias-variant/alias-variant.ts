@@ -211,7 +211,7 @@ export function matchAliasRows(
   return { model: winner.model, preserve: winner.preserve };
 }
 
-export function resolveAliasTargetFromConfig(config: AliasConfig, dimensions: AliasDimensions = {}): AliasTarget {
+export function resolveAliasTarget(config: AliasConfig, dimensions: AliasDimensions = {}): AliasTarget {
   return matchAliasRows(flattenAliasVariants(config.variants), dimensions, {
     model: config.model,
     preserve: config.preserve,
