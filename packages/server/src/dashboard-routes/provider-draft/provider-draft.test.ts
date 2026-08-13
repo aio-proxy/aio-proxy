@@ -34,6 +34,7 @@ describe('draft Provider catalog and test routes', () => {
             models: ['saved-model'],
             protocol: ProviderProtocol.OpenAICompatible,
           },
+          'saved-oauth': { kind: 'oauth', plugin: '@example/oauth', capability: 'default' },
           'saved-proxied': {
             baseURL: 'https://saved.example/v1',
             kind: 'api',
@@ -56,6 +57,20 @@ describe('draft Provider catalog and test routes', () => {
         },
       }),
       dbHome: directory,
+      providerInstances: [
+        {
+          id: 'saved-oauth',
+          kind: 'oauth',
+          enabled: true,
+          models: ['disc-a', 'disc-b'],
+          upstreamMetadata: { 'disc-a': {}, 'disc-b': {} },
+          model: {
+            invoke: async function* () {
+              yield { type: 'text-delta', delta: 'pong' };
+            },
+          },
+        } as never,
+      ],
     });
     routes = createDashboardRoutes(state, disabledDashboardAuthentication);
   });
@@ -95,7 +110,12 @@ describe('draft Provider catalog and test routes', () => {
       expect(JSON.parse(text)).toEqual({ ok: true, models: ['model-b', 'model-a'] });
       expect(authorization).toBe('Bearer draft-secret');
       expect(text).not.toContain('draft-secret');
-      expect(state.currentConfig().providers.map(({ id }) => id)).toEqual(['saved', 'saved-proxied', 'saved-sdk']);
+      expect(state.currentConfig().providers.map(({ id }) => id)).toEqual([
+        'saved',
+        'saved-oauth',
+        'saved-proxied',
+        'saved-sdk',
+      ]);
     } finally {
       await upstream.stop(true);
     }
@@ -797,5 +817,46 @@ describe('draft Provider catalog and test routes', () => {
     } finally {
       await upstream.stop(true);
     }
+  });
+
+  test('tests an oauth draft model against the live runtime', async () => {
+    const response = await routes.request(
+      '/providers/draft/test',
+      jsonRequest({
+        draft: { kind: 'oauth', id: 'saved-oauth', enabled: true, proxy: null, models: [] },
+        persistedProviderId: 'saved-oauth',
+        model: 'disc-a',
+      }),
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ ok: true });
+  });
+
+  test('an oauth draft with an empty whitelist can test any discovered model, but not an unknown one', async () => {
+    const response = await routes.request(
+      '/providers/draft/test',
+      jsonRequest({
+        draft: { kind: 'oauth', id: 'saved-oauth', enabled: true, proxy: null, models: [] },
+        persistedProviderId: 'saved-oauth',
+        model: 'not-discovered',
+      }),
+    );
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ ok: false, error: { code: 'model_not_enabled', recoverable: true } });
+  });
+
+  test('an oauth draft naming an id with no persisted provider fails with persisted_provider_not_found', async () => {
+    const response = await routes.request(
+      '/providers/draft/test',
+      jsonRequest({
+        draft: { kind: 'oauth', id: 'ghost', enabled: true, proxy: null },
+        persistedProviderId: 'ghost',
+        model: 'disc-a',
+      }),
+    );
+    expect(await response.json()).toEqual({
+      ok: false,
+      error: { code: 'persisted_provider_not_found', recoverable: true },
+    });
   });
 });

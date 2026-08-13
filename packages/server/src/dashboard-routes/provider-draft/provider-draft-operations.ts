@@ -9,6 +9,7 @@ import {
 } from '@aio-proxy/types';
 import { isPlainObject } from 'es-toolkit/predicate';
 
+import { exposedModelIds } from '../../plugin-runtime';
 import { effectiveProxy, materializeProviders } from '../../provider-runtime';
 import { withAttemptLogContext, withRequestLogContext } from '../../request-logging';
 import type { RuntimeProviderInstance } from '../../runtime';
@@ -23,8 +24,10 @@ const failure = <Code extends string>(code: Code) => ({
 
 export async function loadProviderDraftCatalog(
   state: ServerState,
-  provider: Exclude<Provider, { kind: ProviderKind.OAuth }>,
+  provider: Provider,
 ): Promise<DashboardProviderDraftCatalogResponse> {
+  // OAuth candidates come from oauthProviderEditView, not the draft catalog endpoint.
+  if (provider.kind === ProviderKind.OAuth) return failure('catalog_unsupported');
   if (provider.kind === ProviderKind.AiSdk) return loadAiSdkDraftCatalog(state, provider);
 
   try {
@@ -107,13 +110,17 @@ function catalogHeaders(options: Readonly<Record<string, unknown>> | undefined):
 
 export async function testProviderDraft(
   state: ServerState,
-  provider: Exclude<Provider, { kind: ProviderKind.OAuth }>,
+  provider: Provider,
   modelId: string,
 ): Promise<DashboardProviderDraftTestResponse> {
+  if (provider.kind === ProviderKind.OAuth) return testOAuthProvider(state, provider, modelId);
   if (!provider.models?.includes(modelId)) return failure('model_not_enabled');
 
   try {
     const testProvider = ProviderSchema.parse({ ...provider, alias: undefined, enabled: true, models: [modelId] });
+    // Unreachable: the entry point routes oauth to testOAuthProvider. Kept because
+    // ProviderSchema.parse returns the full union — this narrows testProvider for
+    // materializeDraftRuntime's Exclude<Provider, { kind: OAuth }> parameter.
     if (testProvider.kind === ProviderKind.OAuth) return failure('test_request_failed');
     const runtime = materializeDraftRuntime(state, testProvider);
     const targetProtocol =
@@ -148,6 +155,52 @@ export async function testProviderDraft(
   }
 }
 
+// Borrows the live runtime: an oauth provider cannot exist unsaved, and a
+// one-shot materialization would drive plugin auth (and can rewrite stored
+// credentials) from a read-only test button. Unsaved draft transforms are
+// therefore NOT exercised here; the rail copy says so (task 17).
+async function testOAuthProvider(
+  state: ServerState,
+  provider: Extract<Provider, { kind: ProviderKind.OAuth }>,
+  modelId: string,
+): Promise<DashboardProviderDraftTestResponse> {
+  const lease = state.acquireProviderSnapshot();
+  try {
+    const runtime = lease.snapshot.providers.find((candidate) => candidate.id === provider.id);
+    const transport = runtime?.model;
+    if (runtime === undefined || transport === undefined) return failure('test_request_failed');
+    const catalogIds = Object.keys(runtime.upstreamMetadata ?? {});
+    // Gate on the DRAFT whitelist over the full discovered catalog, so an
+    // unsaved whitelist edit is honored and an empty whitelist exposes everything.
+    if (!new Set(exposedModelIds(catalogIds, provider.models)).has(modelId)) {
+      return failure('model_not_enabled');
+    }
+    const passed = await withDraftAttempt(provider, modelId, transport.targetProtocol?.(modelId), async () => {
+      await transport.ensureAvailable?.();
+      const signal = AbortSignal.timeout(10_000);
+      const stream = transport.invoke({
+        context: {
+          requestId: crypto.randomUUID(),
+          session: { key: `sha256:${'0'.repeat(64)}`, source: 'internal' },
+        },
+        messages: [{ role: 'user', content: 'ping' }],
+        modelId,
+        settings: { maxOutputTokens: 1 },
+        signal,
+      });
+      for await (const _part of stream) {
+        // Fully consume the single validation request so provider stream errors are observed.
+      }
+      return true;
+    });
+    return passed ? { ok: true } : failure('test_request_failed');
+  } catch {
+    return failure('test_request_failed');
+  } finally {
+    lease.release();
+  }
+}
+
 function materializeDraftRuntime(
   state: ServerState,
   provider: Exclude<Provider, { kind: ProviderKind.OAuth }>,
@@ -167,7 +220,7 @@ function materializeDraft(
 }
 
 function withDraftAttempt<T>(
-  provider: Exclude<Provider, { kind: ProviderKind.OAuth }>,
+  provider: Provider,
   modelId: string,
   targetProtocol: ProviderProtocol | undefined,
   operation: () => Promise<T>,

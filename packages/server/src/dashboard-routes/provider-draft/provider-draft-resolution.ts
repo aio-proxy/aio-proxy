@@ -2,10 +2,10 @@ import { type DashboardProviderDraft, type Provider, ProviderKind, ProviderSchem
 import { isEqual } from 'es-toolkit/predicate';
 
 import type { ServerState } from '../../server-state';
-import { replaceProvider } from '../provider-mutation';
+import { replaceOAuthProvider, replaceProvider } from '../provider-mutation';
 
 type DraftResolution =
-  | { readonly ok: true; readonly provider: Exclude<Provider, { kind: ProviderKind.OAuth }> }
+  | { readonly ok: true; readonly provider: Provider }
   | {
       readonly ok: false;
       readonly code: 'persisted_provider_not_found' | 'persisted_provider_mismatch';
@@ -20,17 +20,19 @@ export function resolveProviderDraft(
   const { proxy: _proxy, ...draftWithoutProxy } = draft;
   const normalizedDraft = inheritsProxy ? draftWithoutProxy : draft;
   let candidate: unknown = { ...normalizedDraft, enabled: true };
+  let previous: Provider | undefined;
 
   if (persistedProviderId !== undefined) {
     if (persistedProviderId !== draft.id) return { ok: false, code: 'persisted_provider_mismatch' };
-    const previous = state.currentConfig().providers.find(({ id }) => id === persistedProviderId);
+    previous = state.currentConfig().providers.find(({ id }) => id === persistedProviderId);
     if (previous === undefined) return { ok: false, code: 'persisted_provider_not_found' };
     if (previous.kind !== draft.kind) return { ok: false, code: 'persisted_provider_mismatch' };
 
     if (hasSameProviderIdentity(previous, draft)) {
       const { id: _previousId, ...previousBody } = previous;
       const { id: _draftId, ...draftBody } = normalizedDraft;
-      const restored = replaceProvider({ [persistedProviderId]: previousBody }, persistedProviderId, draftBody)[
+      const merge = draft.kind === ProviderKind.OAuth ? replaceOAuthProvider : replaceProvider;
+      const restored = merge({ [persistedProviderId]: previousBody }, persistedProviderId, draftBody)[
         persistedProviderId
       ];
       if (inheritsProxy && typeof restored === 'object' && restored !== null) {
@@ -41,7 +43,11 @@ export function resolveProviderDraft(
   }
 
   const parsed = ProviderSchema.safeParse(candidate);
-  if (!parsed.success || parsed.data.kind === ProviderKind.OAuth) {
+  if (!parsed.success) return { ok: false, code: 'persisted_provider_mismatch' };
+  // An oauth draft is only testable against its persisted account; a fresh
+  // oauth draft has no credentials and never will (fresh_credentials_required
+  // does not apply — oauth drafts carry no credential fields at all).
+  if (parsed.data.kind === ProviderKind.OAuth && previous?.kind !== ProviderKind.OAuth) {
     return { ok: false, code: 'persisted_provider_mismatch' };
   }
   return { ok: true, provider: parsed.data };
@@ -63,6 +69,11 @@ function hasSameProviderIdentity(previous: Provider, draft: DashboardProviderDra
       isEqual(draft.options, previous.options) &&
       hasSameProxyIdentity(previous.proxy, draft.proxy)
     );
+  }
+
+  // OAuth drafts cannot edit plugin/capability, so connection identity never changes.
+  if (previous.kind === ProviderKind.OAuth && draft.kind === ProviderKind.OAuth) {
+    return true;
   }
 
   return false;
