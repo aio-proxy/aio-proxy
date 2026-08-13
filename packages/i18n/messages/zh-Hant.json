@@ -243,7 +243,6 @@
       "description": "將 aio-proxy 升級到最新版本",
       "option_check_description": "僅檢查是否有新版本，不執行安裝",
       "option_force_description": "即使已是最新版本也強制重新安裝最新版",
-      "option_restart_description": "升級成功後重新啟動正在執行的守護行程",
       "option_registry_description": "覆寫用於版本檢查與安裝的 npm registry 位址",
       "current_version": "目前版本：{version}",
       "check_failed": "檢查最新版本失敗",
@@ -254,7 +253,6 @@
       "success": "已升級到 v{version}",
       "detect_failed": "無法確定 aio-proxy 的安裝方式：{reason}",
       "install_failed": "升級失敗：{reason}",
-      "daemon_running_hint": "守護行程仍在執行舊版本。執行 `aio-proxy service restart` 以套用升級",
       "manual_restart_hint": "守護行程是手動啟動的，沒有可重新啟動的受管服務。請自行重新啟動以套用升級",
       "restarting": "正在重新啟動守護行程……"
     }
@@ -672,7 +670,7 @@
         "previous": "上一步",
         "step_invalid": "請先完成此步驟中的必填欄位",
         "section_identity": "識別",
-        "section_connection": "連接",
+        "section_connection": "連線",
         "section_models": "模型",
         "section_routing": "路由",
         "section_advanced": "進階",

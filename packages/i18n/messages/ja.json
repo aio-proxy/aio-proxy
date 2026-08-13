@@ -243,7 +243,6 @@
       "description": "aio-proxy を最新バージョンにアップグレードします",
       "option_check_description": "インストールせずに新しいバージョンを確認します",
       "option_force_description": "最新の状態でも最新バージョンを再インストールします",
-      "option_restart_description": "アップグレード成功後に実行中のデーモンを再起動します",
       "option_registry_description": "バージョン確認とインストールに使用する npm レジストリ URL を上書きします",
       "current_version": "現在のバージョン: {version}",
       "check_failed": "最新バージョンの確認に失敗しました",
@@ -254,7 +253,6 @@
       "success": "v{version} にアップグレードしました",
       "detect_failed": "aio-proxy のインストール方法を特定できません: {reason}",
       "install_failed": "アップグレードに失敗しました: {reason}",
-      "daemon_running_hint": "デーモンはまだ古いバージョンを実行しています。アップグレードを適用するには `aio-proxy service restart` を実行してください",
       "manual_restart_hint": "デーモンは手動で起動されており、再起動するマネージドサービスがありません。アップグレードを適用するには自分で再起動してください",
       "restarting": "デーモンを再起動しています…"
     }
@@ -689,7 +687,7 @@
         "kind_api": "API エンドポイント",
         "kind_ai_sdk": "AI SDK パッケージ",
         "kind_oauth": "OAuth プラグイン",
-        "api_key_retained_hint": "保存済みのキーを保持するには空欄のままにしてください。",
+        "api_key_retained_hint": "保存済みの API キーを保持するには空欄のままにしてください。",
         "exposure_title": "公開中のモデル",
         "exposure_empty": "モデルを有効化するかエイリアスを追加すると、このプロバイダーのモデルが公開されます。",
         "exposure_disabled_note": "このプロバイダーは無効なため、ルーティングされません。",
@@ -702,7 +700,7 @@
         "models_count": "{total} 個中 {enabled} 個のモデルが有効",
         "models_all_discovered": "検出された {count} 個のモデルをすべて公開しています",
         "models_manual_add": "モデル ID を追加",
-        "models_stale_whitelist": "{model} は検出されたカタログに存在しません",
+        "models_stale_whitelist": "{model} は検出されたカタログに存在しなくなりました",
         "metadata_tab_visual": "ビジュアル",
         "metadata_tab_json": "JSON",
         "metadata_unknown_fields": "他の {count} 個のフィールドは JSON タブでのみ編集できます",

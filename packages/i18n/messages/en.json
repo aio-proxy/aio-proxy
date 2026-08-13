@@ -243,7 +243,6 @@
       "description": "Upgrade aio-proxy to the latest version",
       "option_check_description": "Check for a newer version without installing",
       "option_force_description": "Reinstall the latest version even if already up to date",
-      "option_restart_description": "Restart the running daemon after a successful upgrade",
       "option_registry_description": "Override the npm registry URL used for version checks and installs",
       "current_version": "Current version: {version}",
       "check_failed": "Failed to check for the latest version",
@@ -254,7 +253,6 @@
       "success": "Upgraded to v{version}",
       "detect_failed": "Cannot determine how aio-proxy was installed: {reason}",
       "install_failed": "Upgrade failed: {reason}",
-      "daemon_running_hint": "The daemon is still running the old version. Run `aio-proxy service restart` to apply the upgrade",
       "manual_restart_hint": "The daemon was started manually; there is no managed service to restart. Restart it yourself to apply the upgrade",
       "restarting": "Restarting the daemon..."
     }
