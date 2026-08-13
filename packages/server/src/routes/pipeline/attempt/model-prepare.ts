@@ -6,7 +6,7 @@ import { attemptBase } from '../attempt-base';
 import { failureTerminal, finalFailure } from '../failure';
 import { logRequestRejected } from '../logging';
 import type { AttemptLoopContext, AttemptStep, CandidateSlot, InvocationHolder } from './context';
-import { resolveSupportedEfforts } from './effort-capability';
+import { resolveSupportedEffortsForDimensions } from './effort-capability';
 
 export type PreparedInvocation =
   | {
@@ -71,11 +71,13 @@ export async function prepareModelInvocation<TRequest, TContext>(
   holder: InvocationHolder,
 ): Promise<PreparedInvocation> {
   slot.trace.targetProtocol = model.targetProtocol?.(slot.candidate.modelId);
-  // Only resolve capabilities when the request actually carries an effort to
-  // clamp. Skipping the lookup otherwise avoids a hot-path catalog read for
-  // requests (e.g. custom models) that have nothing to normalize.
-  const hasEffort = ctx.adapter.variant(ctx.request, ctx.context) !== undefined;
-  const supportedEfforts = hasEffort ? await resolveSupportedEfforts(slot.candidate.modelId) : new Set<string>();
+  // Capabilities are only resolved when the request actually carries an effort
+  // to clamp; the helper otherwise skips the hot-path catalog read for requests
+  // (e.g. custom models) that have nothing to normalize.
+  const supportedEfforts = await resolveSupportedEffortsForDimensions(
+    ctx.adapter.dimensions(ctx.request, ctx.context),
+    slot.candidate.modelId,
+  );
   return resolveInvocation(ctx, slot, holder, slot.trace.targetProtocol, supportedEfforts);
 }
 

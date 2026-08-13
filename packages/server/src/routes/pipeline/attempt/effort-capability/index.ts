@@ -1,1 +1,1 @@
-export { resolveSupportedEfforts } from './effort-capability';
+export { resolveSupportedEfforts, resolveSupportedEffortsForDimensions } from './effort-capability';

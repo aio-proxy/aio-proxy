@@ -42,7 +42,6 @@ export type ProtocolAdapter<TRequest, TContext> = Readonly<{
   protocol: ProviderProtocol;
   parse: (raw: Request, context: TContext) => Promise<TRequest>;
   model: (request: TRequest, context: TContext) => string;
-  variant: (request: TRequest, context: TContext) => string | undefined;
   dimensions: (request: TRequest, context: TContext) => AliasDimensions;
   requestDiagnostics: (request: TRequest, context: TContext) => readonly ProtocolRequestDiagnostic[];
   session?: (request: TRequest, context: TContext) => ProtocolSessionHints;
@@ -67,15 +66,13 @@ export type ProtocolAdapter<TRequest, TContext> = Readonly<{
 
 export type ProtocolAdapterDefinition<TRequest, TContext> = Omit<
   ProtocolAdapter<TRequest, TContext>,
-  'modelInvocationForTarget' | 'requestDiagnostics' | 'variant' | 'dimensions'
+  'modelInvocationForTarget' | 'requestDiagnostics' | 'dimensions'
 > & {
   readonly modelInvocationForTarget?: ProtocolAdapter<TRequest, TContext>['modelInvocationForTarget'];
-  readonly variant?: ProtocolAdapter<TRequest, TContext>['variant'];
   readonly dimensions?: ProtocolAdapter<TRequest, TContext>['dimensions'];
   readonly requestDiagnostics?: ProtocolAdapter<TRequest, TContext>['requestDiagnostics'];
 };
 
-const noVariant = (): undefined => undefined;
 const noDimensions = (): AliasDimensions => ({});
 const noRequestDiagnostics = (): readonly ProtocolRequestDiagnostic[] => [];
 const sameModelInvocation = (invocation: ModelInvocation): ModelInvocation => invocation;
@@ -83,18 +80,10 @@ const sameModelInvocation = (invocation: ModelInvocation): ModelInvocation => in
 export function defineProtocolAdapter<TRequest, TContext>(
   definition: ProtocolAdapterDefinition<TRequest, TContext>,
 ): ProtocolAdapter<TRequest, TContext> {
-  const { dimensions } = definition;
   return Object.freeze({
     ...definition,
     modelInvocationForTarget: definition.modelInvocationForTarget ?? sameModelInvocation,
-    // The pipeline still routes on the legacy string variant; adapters that
-    // moved to dimensions() feed it the effort axis until the callers migrate.
-    variant:
-      definition.variant ??
-      (dimensions === undefined
-        ? noVariant
-        : (request: TRequest, context: TContext) => dimensions(request, context).effort),
-    dimensions: dimensions ?? noDimensions,
+    dimensions: definition.dimensions ?? noDimensions,
     requestDiagnostics: definition.requestDiagnostics ?? noRequestDiagnostics,
   });
 }

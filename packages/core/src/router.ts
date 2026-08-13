@@ -43,13 +43,6 @@ type ConfiguredRouterRoute<TProvider extends RoutableProvider> = {
   readonly rows: readonly AliasSelectRow[];
 };
 
-// Task 7 removes the string shim once every caller passes AliasDimensions.
-function asDimensions(value: AliasDimensions | string | undefined): AliasDimensions {
-  if (value === undefined) return {};
-  if (typeof value === 'string') return { effort: value };
-  return value;
-}
-
 export class Router<TProvider extends RoutableProvider = ProviderInstance> {
   private readonly aliases = new Map<string, ConfiguredRouterRoute<TProvider>[]>();
   private readonly providerAliases = new Map<string, ConfiguredRouterRoute<TProvider>>();
@@ -69,8 +62,7 @@ export class Router<TProvider extends RoutableProvider = ProviderInstance> {
     }
   }
 
-  resolve(model: string, dimensions: AliasDimensions | string = {}): RouterCandidate<TProvider>[] {
-    const bag = asDimensions(dimensions);
+  resolve(model: string, dimensions: AliasDimensions = {}): RouterCandidate<TProvider>[] {
     const route = model.indexOf('/') > 0 ? this.providerAliases.get(model) : this.aliases.get(model);
 
     if (route === undefined) {
@@ -80,7 +72,7 @@ export class Router<TProvider extends RoutableProvider = ProviderInstance> {
     const routes = Array.isArray(route) ? route : [route];
     return routes.map(({ config, provider, rows }) => ({
       provider,
-      modelId: matchAliasRows(rows, bag, { model: config.model, preserve: config.preserve }).model,
+      modelId: matchAliasRows(rows, dimensions, { model: config.model, preserve: config.preserve }).model,
     }));
   }
 
