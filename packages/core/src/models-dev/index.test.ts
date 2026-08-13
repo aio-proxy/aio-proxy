@@ -5,7 +5,7 @@ import { join } from 'node:path';
 
 import type { Model, Provider, ProviderMap } from '@opencode-ai/models';
 
-import { clearModelsCache, getModels, getModelsCachedOnly } from '.';
+import { clearModelsCache, getCachedModelSlugs, getModels, getModelsCachedOnly } from '.';
 import { fileCacheStorage } from '../cache';
 
 const model = (id: string, name = id): Model => ({
@@ -209,4 +209,20 @@ describe('getModelsCachedOnly', () => {
       spy.mockRestore();
     }
   });
+});
+
+test('getCachedModelSlugs returns [] on a cold cache and provider/model slugs on a warm one', async () => {
+  await fileCacheStorage.removeItem('models-dev-providers'); // drop the beforeEach seed so the file cache misses
+  clearModelsCache();
+  expect(await getCachedModelSlugs()).toEqual([]);
+
+  await fileCacheStorage.setItem('models-dev-providers', {
+    anthropic: { models: { 'claude-x': { id: 'claude-x' } } },
+    // One slash-bearing key on purpose: 54% of real models.dev ids contain a
+    // slash and `resolveModel` splits on the FIRST slash only, so a slug like
+    // `openrouter/vendor/model-z` must round-trip through `extend` unchanged.
+    openrouter: { models: { 'vendor/model-z': { id: 'vendor/model-z' } } },
+  });
+  clearModelsCache();
+  expect(await getCachedModelSlugs()).toEqual(['anthropic/claude-x', 'openrouter/vendor/model-z']);
 });
