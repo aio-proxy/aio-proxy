@@ -42,6 +42,10 @@ describe('normalizeEffort', () => {
     expect(normalizeEffort('ultra', new Set(['low', 'medium', 'high']))).toBe('high');
     expect(normalizeEffort('ultra', new Set())).toBe('ultra');
   });
+
+  test('does not trim before clamping (padded low stays off-ladder)', () => {
+    expect(normalizeEffort(' low ', new Set(['low', 'medium', 'high']))).toBe('high');
+  });
 });
 
 describe('modelEffortValues', () => {
@@ -107,5 +111,9 @@ describe('reasoningSetting', () => {
   test('drops a genuinely unknown level and an absent value', () => {
     expect(reasoningSetting('ultra')).toEqual({});
     expect(reasoningSetting(undefined)).toEqual({});
+  });
+
+  test('does not trim padded low into a known AI SDK level', () => {
+    expect(reasoningSetting(' low ')).toEqual({});
   });
 });

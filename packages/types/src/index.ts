@@ -1,4 +1,5 @@
 export * from './aio';
+export { foldEffortSpelling } from './alias-variant';
 export * from './codex-model/index';
 export * from './commands';
 export * from './common';

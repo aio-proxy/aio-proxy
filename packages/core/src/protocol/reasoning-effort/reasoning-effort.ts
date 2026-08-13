@@ -1,19 +1,16 @@
+import { foldEffortSpelling } from '@aio-proxy/types';
+
 import type { AiSdkCallSettings } from '../../ai-sdk-bridge';
 import type { ModelInvocation } from '../adapter';
 
 // Ascending reasoning-effort ladder. Index = rank; higher index = more effort.
 const LADDER = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const;
 
-// Common spellings folded to the canonical ladder value before clamping.
-const ALIASES: Readonly<Record<string, string>> = {
-  'x-high': 'xhigh',
-  x_high: 'xhigh',
-  extrahigh: 'xhigh',
-};
-
+// Fold common spellings to the canonical ladder value before clamping. Unlike
+// the alias matcher's canonicalEffort, this wire-path clamp must NOT trim:
+// padded input stays off-ladder and is treated as unknown.
 function canonical(effort: string): string {
-  const lower = effort.toLowerCase();
-  return ALIASES[lower] ?? lower;
+  return foldEffortSpelling(effort.toLowerCase());
 }
 
 // Clamp the requested effort down to the highest supported level at or below it.
