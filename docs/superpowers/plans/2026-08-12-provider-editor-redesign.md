@@ -1435,7 +1435,12 @@ Expected: `packages/ui/src/components/slider.tsx` exists and imports from `@base
 
 - [ ] **Step 2: Verify the generated file typechecks**
 
-Run: `bun run lint:types` — PASS. (`@aio-proxy/ui`'s own `build` script is a no-op — `bun -e "void 0"` — so it cannot catch a bad generated file. The type-aware lint can, and it is what `preflight` runs.)
+Run: `bun x --bun tsc --noEmit -p packages/ui` — PASS (exit 0, no output; verified clean on this tree before the slider was added, so any error is attributable to the generated file).
+
+This is the ONLY check that reads the new file. Three plausible alternatives are all inert here:
+- `@aio-proxy/ui`'s own `build` script is `bun -e "void 0"`, a no-op.
+- `bun run lint:types` cannot see the file at all: `oxc.ts:11` ignores `packages/ui/src/components/**` ("shadcn-generated primitives are maintained upstream rather than by this repository"). Pointing oxlint straight at a deliberately broken file in that directory returns "No files found to lint", exit 0.
+- `packages/ui` is absent from the root `tsconfig.json` `references`, so the project-wide build does not reach it either.
 
 - [ ] **Step 3: Commit**
 
