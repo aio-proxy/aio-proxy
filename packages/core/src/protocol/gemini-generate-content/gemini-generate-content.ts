@@ -1,4 +1,4 @@
-import { normalizeVariantKey, ProviderProtocol } from '@aio-proxy/types';
+import { canonicalEffort, normalizeVariantKey, ProviderProtocol } from '@aio-proxy/types';
 import { z } from 'zod';
 
 import type { AiSdkCallSettings, JSONValue } from '../../ai-sdk-bridge';
@@ -56,7 +56,14 @@ export const geminiGenerateContentAdapter = defineProtocolAdapter<GeminiGenerate
     );
   },
   model: (_request, context) => context.model,
-  variant: (request) => request.generationConfig?.thinkingConfig?.thinkingLevel,
+  dimensions: (request) => {
+    const level = request.generationConfig?.thinkingConfig?.thinkingLevel;
+    if (level === undefined) return {};
+    // OFF turns thinking off entirely; NONE is zero-effort *thinking* and must
+    // keep its effort axis rather than collapsing into OFF.
+    if (normalizeVariantKey(level) === 'off') return { thinking: false };
+    return { thinking: true, effort: canonicalEffort(level) };
+  },
   session: (request) => ({
     candidates: [
       candidate('body-session', request.session_id),

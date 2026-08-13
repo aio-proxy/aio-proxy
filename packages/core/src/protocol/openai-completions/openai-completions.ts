@@ -1,4 +1,4 @@
-import { ProviderProtocol } from '@aio-proxy/types';
+import { canonicalEffort, ProviderProtocol } from '@aio-proxy/types';
 
 import { writeOpenAICompletionsResponse, writeOpenAICompletionsSSE } from '../../egress/openai-completions';
 import { type OpenAICompletionsRequest, parseOpenAICompletions } from '../../ingress/openai-completions';
@@ -16,7 +16,8 @@ export const openAICompletionsAdapter = defineProtocolAdapter<OpenAICompletionsR
     return parseOpenAICompletions(await readJsonRequest(raw));
   },
   model: (request) => request.model,
-  variant: (request) => request.reasoning_effort,
+  dimensions: (request) =>
+    request.reasoning_effort === undefined ? {} : { effort: canonicalEffort(request.reasoning_effort) },
   session: (request) => ({
     candidates: [
       candidate('openai-prompt-cache', request.prompt_cache_key),

@@ -68,7 +68,7 @@ describe('geminiGenerateContentAdapter', () => {
     expect(geminiGenerateContentAdapter.protocol).toBe(ProviderProtocol.Gemini);
     expect(parsed.model).toBe('route-model');
     expect(geminiGenerateContentAdapter.model(parsed, context)).toBe('route-model');
-    expect(geminiGenerateContentAdapter.variant(parsed, context)).toBe('HIGH');
+    expect(geminiGenerateContentAdapter.dimensions(parsed, context)).toEqual({ thinking: true, effort: 'high' });
     expect(geminiGenerateContentAdapter.wantsStream(parsed, context)).toBe(true);
     expect(geminiGenerateContentAdapter.wantsStream(parsed, { ...context, stream: false })).toBe(false);
     expect(invocation.settings).toEqual({
@@ -90,6 +90,26 @@ describe('geminiGenerateContentAdapter', () => {
     expect(geminiGenerateContentAdapter.modelJson).toBe(writeGeminiGenerateContentResponse);
     expect(geminiGenerateContentAdapter.modelSse).toBe(writeGeminiGenerateContentSSE);
     expect(geminiGenerateContentAdapter.errors).toBe(geminiGenerateContentErrors);
+  });
+
+  test('separates OFF (thinking off) from NONE (zero-effort thinking) on the dimension bag', async () => {
+    const context = { model: 'gemini', stream: false };
+    const parse = (thinkingLevel: string) =>
+      geminiGenerateContentAdapter.parse(
+        request(
+          JSON.stringify({
+            contents: [{ parts: [{ text: 'hello' }] }],
+            generationConfig: { thinkingConfig: { thinkingLevel } },
+          }),
+        ),
+        context,
+      );
+
+    expect(geminiGenerateContentAdapter.dimensions(await parse('OFF'), context)).toEqual({ thinking: false });
+    expect(geminiGenerateContentAdapter.dimensions(await parse('NONE'), context)).toEqual({
+      thinking: true,
+      effort: 'none',
+    });
   });
 
   test('accepts only the current reasoning enum after normalization', async () => {

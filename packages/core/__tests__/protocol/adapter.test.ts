@@ -40,6 +40,7 @@ describe('defineProtocolAdapter', () => {
     });
 
     expect(adapter.variant({ model: 'm' }, { stream: false })).toBeUndefined();
+    expect(adapter.dimensions({ model: 'm' }, { stream: false })).toEqual({});
     expect(Object.isFrozen(adapter)).toBe(true);
     const typed: ProtocolAdapter<RequestValue, RouteContext> = adapter;
     expect(typed.protocol).toBe(ProviderProtocol.OpenAICompatible);

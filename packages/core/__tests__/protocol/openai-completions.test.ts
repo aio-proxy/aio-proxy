@@ -19,7 +19,8 @@ describe('openAICompletionsAdapter', () => {
     const parsed = await openAICompletionsAdapter.parse(raw, {});
 
     expect(openAICompletionsAdapter.model(parsed, {})).toBe('alias');
-    expect(openAICompletionsAdapter.variant(parsed, {})).toBe('high');
+    expect(openAICompletionsAdapter.dimensions(parsed, {})).toEqual({ effort: 'high' });
+    expect(openAICompletionsAdapter.variant(parsed, {})).toBe(openAICompletionsAdapter.dimensions(parsed, {}).effort);
     const invocation = openAICompletionsAdapter.modelInvocation(parsed, {});
     expect(Object.keys(invocation.tools ?? {})).toEqual(['weather']);
     expect(invocation.settings).toEqual({ reasoning: 'high' });

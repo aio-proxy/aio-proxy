@@ -1,5 +1,5 @@
 import type { ProviderExecutedTool } from '@aio-proxy/plugin-sdk';
-import { ProviderProtocol } from '@aio-proxy/types';
+import { type AliasDimensions, canonicalEffort, ProviderProtocol } from '@aio-proxy/types';
 
 import type { ModelMessage } from '../../ai-sdk-bridge';
 import { writeAnthropicMessagesResponse, writeAnthropicMessagesSSE } from '../../egress/anthropic-messages';
@@ -32,7 +32,23 @@ export const anthropicMessagesAdapter = defineProtocolAdapter<AnthropicMessagesR
     return request;
   },
   model: (request) => request.model,
-  variant: (request) => (request.thinking?.type === 'adaptive' ? request.output_config?.effort : undefined),
+  dimensions: (request) => {
+    const type = request.thinking?.type;
+    const speed = anthropicSpeed(request.speed, request.service_tier);
+    return {
+      // disabled + output_config.effort must stay { thinking: false } only:
+      // anthropicThinkingOption tolerates the combination (Claude Code sends
+      // it), so the bag must not route on the dropped effort.
+      ...(type === 'adaptive' && request.output_config?.effort !== undefined
+        ? { effort: canonicalEffort(request.output_config.effort), thinking: true as const }
+        : type === 'enabled'
+          ? { thinking: true as const }
+          : type === 'disabled'
+            ? { thinking: false as const }
+            : {}),
+      ...(speed === undefined ? {} : { speed }),
+    };
+  },
   session: (request) => ({
     candidates: [
       candidate('claude-code', claudeCodeSession(request.metadata?.user_id)),
@@ -74,6 +90,22 @@ export const anthropicMessagesAdapter = defineProtocolAdapter<AnthropicMessagesR
   modelSse: writeAnthropicMessagesSSE,
   errors: anthropicMessagesErrors,
 });
+
+function anthropicSpeed(speed: string | undefined, serviceTier: string | undefined): AliasDimensions['speed'] {
+  if (speed !== undefined) {
+    const value = speed.trim().toLowerCase();
+    if (value === 'fast' || value === 'standard') return value;
+    // Field present but not an enum value: omit the speed axis without
+    // falling through to service_tier.
+    return undefined;
+  }
+  if (serviceTier === undefined) return undefined;
+  const tier = serviceTier.trim().toLowerCase();
+  if (tier === 'auto' || tier === 'standard_only') return undefined;
+  if (tier === 'flex') return 'flex';
+  if (tier === 'priority' || tier === 'fast') return 'fast';
+  return undefined;
+}
 
 export function anthropicWebSearchTool(tool: AnthropicWebSearchTool): ProviderExecutedTool {
   return {
