@@ -1920,9 +1920,31 @@ interface ConnectionSectionProps {
   readonly kind: ProviderKind;
   readonly capabilities?: readonly DashboardOAuthCapability[] | undefined;
   readonly oauth?: DashboardOAuthProviderEdit | undefined; // oauth edit stage
+  readonly provider?: OAuthProvider | undefined;           // oauth edit stage: plugin/capability for the service cell
+  readonly onReauthorize?: (() => void) | undefined;       // oauth edit stage; task 18 wires it to forceReauthorize
+  readonly isReauthorizing?: boolean | undefined;
   readonly status: SectionStatus;
 }
 ```
+
+The last three props are not decoration — they are the only wiring for the two things the slimmed
+`oauth-provider-edit-fields.tsx` still renders, and without them Step 2 has no way to compile.
+`DashboardOAuthProviderEdit` is `{ accountLabel, publicValues, form, models }`
+(`packages/types/src/dashboard-oauth.ts:58-63`) — it carries **no** `plugin`/`capability`, so the
+`oauth.service_label` cell at `oauth-provider-edit-fields.tsx:100-103` needs `provider`. And
+`forceReauthorize` is a parameter of `oauthProviderEditAction` that this plan otherwise never gives a
+producer: the retained reauthorize button (`:112-117`) **is** that producer. Both flow in from the
+route, which already holds the provider (`routes/providers/$id.edit.tsx:41,53` casts `data.provider`
+to `OAuthProvider`), so no extra query is needed anywhere — task 18's `ProviderEditorPageProps` takes
+`provider?: OAuthProvider | undefined` and task 19's edit route passes it.
+
+The reauthorize button's disabled condition becomes `isReauthorizing` **alone**, dropping the shipped
+`|| !transformsValid` (`:114`). That is not a lost guard: transforms move to the advanced section
+(task 17) and task 18 already surfaces transform invalidity through
+`sectionStatuses`/`blockingSections` on the footer, which is where the user is looking when they save.
+Repeating it on a button four sections up is the duplication this redesign removes — and it is why
+`transformsValid`/`onTransformsValidityChange` leave `OAuthProviderEditFieldsProps` entirely, per
+Step 2's "drop transforms blocks".
 
 - [ ] **Step 1: Slim the api wrapper**
 
@@ -1943,6 +1965,16 @@ Props shrink to `{ form, mode }`. Update `provider-form-fields-api.test.tsx`: ke
 - [ ] **Step 2: Slim the ai-sdk and oauth wrappers the same way**
 
 `provider-form-fields-ai-sdk.tsx`: keep packageName, options editor (`provider-options-editor.tsx` untouched), `parseReasoningContent`; drop everything else. `oauth-provider-edit-fields.tsx`: keep the account fields + reauthorize block (`OAuthAccountFields`, capability display, reauthorize button); drop common/alias/transforms/proxy blocks. Drop the section chrome too — all three `<section>` wrappers and their `<h2>` headings (`form.section_basic` at `:45`, `form.section_connection` at `:92`, `form.section_models_aliases` at `:135`) go with them, leaving the file contributing fields only. The new `identity-section.tsx`/`connection-section.tsx` own the headings via the `editor.section_*` keys, so keeping the inner `<h2>` would render two headings for one section — identical text in `en`, and in `zh-Hant` two different words for it (`form.section_connection` is 「連接」, `editor.section_connection` is 「連線」). This file is the sole consumer of all three keys, so task 19 retires them.
+
+Its props end up exactly `{ provider, oauth, accountForm, onReauthorize, isReauthorizing }` — keep the
+`oauth.service_label` cell (`:100-103`) and the `oauth.account_label` cell (`:105-108`), drop the
+`form.label_id` cell (`:96-97`, identity now owns the Provider ID), drop the `proxy` field (`:111`,
+task 17's advanced section), keep `OAuthAccountFields` (`:110`) and the reauthorize row (`:112-117`).
+**Dropping the `form` prop is load-bearing for a later task, not cosmetic:** it is the file's only use
+of `useOAuthProviderEditForm` (imported at `:10`, used by the name/weight/enabled/transforms/alias
+blocks this step deletes), and task 19 deletes `hooks/use-oauth-provider-edit-form.ts`. Leave the prop
+in and that deletion breaks the build in a file nobody is looking at by then. `aliasOpen`,
+`onAliasOpenChange`, `transformsValid` and `onTransformsValidityChange` go with it.
 
 - [ ] **Step 3: Create the two section components**
 
@@ -2229,6 +2261,7 @@ interface ProviderEditorPageProps {
   readonly providerId?: string | undefined;          // edit mode
   readonly initial?: Partial<ProviderEditorShape> | undefined;
   readonly oauth?: DashboardOAuthProviderEdit | undefined;
+  readonly provider?: OAuthProvider | undefined;     // oauth edit stage; threaded to ConnectionSection
   readonly sessionId?: string | undefined;           // oauth authorization session (search param)
   readonly onSessionIdChange: (sessionId: string | undefined) => void;
 }
@@ -2254,6 +2287,7 @@ Orchestration in `provider-editor-page.tsx` (layout + save/delete ONLY; sections
 - **`onKindChange` must reset the form's discriminant, not just the route's state.** `kind` arrives as a prop and the switch bubbles up through `onKindChange`, but `useForm` re-applies `defaultValues` only while the form is untouched (`@tanstack/form-core@1.33.0` `dist/esm/FormApi.js:94`: `... && !this.state.isTouched`). So after the user types anything — the normal flow is name first — a kind switch leaves the form's `kind` field stale. Handle the switch as `(next) => { onKindChange?.(next); form.reset({ ...form.state.values, kind: next } as ProviderEditorShape); }` before threading it to `IdentitySection`. Without the reset the save path below silently persists the **wrong kind**: `ProviderMutationBodySchema` is a union of `z.object`s, so a form the user filled as api and then switched to ai-sdk parses successfully against the stale `kind: 'api'` branch, `packageName` is stripped, and an api provider is written with no error shown. Reset from `form.state.values`, not from `initial`: the create route passes `initial={{ enabled: true }}`, so resetting from `initial` would wipe the name and id the user typed in the section directly above the picker. Carrying the kind-specific leftovers across the switch is safe — the branch schemas are plain `z.object` and strip unknown keys (verified: parsing `{ kind: 'ai-sdk', packageName, baseURL, protocol, apiKey, headers }` yields exactly `id,kind,packageName,proxy`), and the oauth path never reaches that parse at all (`oauthProviderEditAction` picks fields explicitly, `oauth-provider-edit.ts:33-41,62`). This reset is the ONLY kind-switch mechanism: task 19's create route deliberately does **not** key the page on `kind`, because remounting would throw away the same identity fields this reset preserves.
 - Save dispatch: api/ai-sdk → `ProviderMutationBodySchema` branch parse → `useProviderCreate`/`useProviderUpdate`; success **stays put** and shows the `footer_saved` indicator (no navigate — spec OAuth section: "A save stays put"). **That parse is the real gate, and it must have a failure surface.** `blockingSections` only models task 11's five section rules, so a value that satisfies every one of them can still fail Zod: `baseURL: 'api.example.com/v1'` — the single most common way to type a base URL — passes `section-status.ts:28`'s emptiness check and fails `z.url()` (measured: all five statuses `ok`, `blocking = []`, parse `invalid_format … "Invalid URL"`), and a touched-then-cleared `packageName: ''` passes every section rule and fails `AiSdkPackageNameSchema`. So on `!result.success` do NOT discard the result: `toast.add({ type: 'error', title: m['dashboard.providers.toast.create_failed']() /* or `update_failed` in edit mode */, description: <joined issue messages> })` and leave the footer enabled. Both keys already exist and are what `useProviderCreate`/`useProviderUpdate` use for server failures (`use-provider-mutations.ts:35-37`), so the user-facing title stays translated while the Zod detail rides in `description` (Base UI's toast renders one, `packages/ui/src/components/toast.tsx:78`) — no new i18n key. Do not instead try to teach `sectionStatuses` about Zod — it is a guidance signal, not a mirror of the schema, and widening it patches one instance while editing shipped code. oauth → `oauthProviderEditAction(values, oauth.publicValues, forceReauthorize)`; `update` → `useProviderUpdate`; `reauthorize` → `startOAuthSession` with popup (port the popup + effect wiring from `use-oauth-provider-edit-page.ts:41-129` verbatim, minus both `navigate({ to: '/providers' ... })` calls).
 - **The page owns the OAuth account form, and every oauth payload goes through `oauthAccountSubmission`.** Task 13's `OAuthEditorShape` deliberately excludes the five account fields — they stay in the existing `useOAuthProviderForm` (`hooks/use-oauth-provider-form.ts:53-56`). So when `kind === OAuth`, construct one instance here and thread it to `ConnectionSection` as `accountForm` (task 14's prop); it is the only producer of that prop. Seed it per stage exactly as the two pages being replaced do: create leaves the defaults and lets the capability combobox set `capabilityKey`/`publicValues`/`secrets` (`oauth-provider-create-page.tsx:120-128`); edit seeds `{ capabilityKey: `${provider.plugin}\0${provider.capability}`, publicValues: oauth.publicValues, secrets: {}, clearSecrets: [], jsonValues: {} }` (`use-oauth-provider-edit-page.ts:50-56`). Pass `() => undefined` as its `onSubmit` — the footer's primary button drives both stages, not the account form's submit. Never read `accountForm.state.values` straight into a payload: both stages must first run `oauthAccountSubmission(fields, accountValues)` (`lib/oauth-account-submission/oauth-account-submission.ts:9-25`), with `fields` being the selected capability's `form` in create and `oauth.form` in edit. That helper prunes `when`-hidden conditional fields, drops `undefined` public values and empty secrets, and filters `clearSecrets` to real secret keys. Skipping it is not cosmetic: the form keeps a key after its field hides, so a stale value would survive in `publicValues`, and `oauthProviderEditAction` compares `!isEqual(values.publicValues, initialPublicValues)` (`oauth-provider-edit.ts:45`) — every plain save (a weight change) would then force a full re-authorization and post the stale value to the plugin.
+- **`forceReauthorize` has exactly one producer: task 14's reauthorize button.** Thread `provider` straight through to `ConnectionSection` (the route hands it over — `routes/providers/$id.edit.tsx:41` already has `data.provider`), and pass `onReauthorize` as the same save path you built above with `forceReauthorize` forced true, plus `isReauthorizing` from that mutation's pending state. Do not build a second dispatch path for it: `oauthProviderEditAction(values, oauth.publicValues, true)` differs from a plain save only in that third argument, so reuse the one function and let it return `kind: 'reauthorize'`. Without this wiring the button is inert and `forceReauthorize` is permanently `false`, which means a user whose token expired while their account values are unchanged has no way to re-authorize at all — `oauth-provider-edit.ts:45` only forces it when `publicValues` differ.
 - **The oauth save argument is a merge of both forms, and `oauth-provider-edit.ts` must learn `metadata`.** `OAuthProviderEditValues` (`lib/oauth-provider-edit/oauth-provider-edit.ts:10-22`) spans the provider-config fields *and* three account fields (`publicValues`, `secrets`, `clearSecrets`). Build the argument explicitly rather than passing either form's values straight through:
 
   ```ts
@@ -2359,7 +2393,7 @@ export const Route = createFileRoute('/providers/new')({
 });
 ```
 
-(`onKindChange` is threaded to `IdentitySection`; note create no longer seeds `weight: 0` — absent stays absent per the spec's slider rule.) `$id.edit.tsx` keeps its loading/not-found branches and replaces both page components with `ProviderEditorPage` (`mode: Edit`, `kind: provider.kind`, `initial: parseProviderFormInitial(provider)` for api/ai-sdk, oauth initial built from `provider` + `oauth`).
+(`onKindChange` is threaded to `IdentitySection`; note create no longer seeds `weight: 0` — absent stays absent per the spec's slider rule.) `$id.edit.tsx` keeps its loading/not-found branches and replaces both page components with `ProviderEditorPage` (`mode: Edit`, `kind: provider.kind`, `initial: parseProviderFormInitial(provider)` for api/ai-sdk, oauth initial built from `provider` + `oauth`). On the oauth branch it must also keep passing `provider={provider as unknown as OAuthProvider}` — the exact expression and cast already at `:53` — because `ProviderEditorPage` threads it to `ConnectionSection` for the `oauth.service_label` cell and `DashboardOAuthProviderEdit` carries no `plugin`/`capability`. Drop it and the service cell renders blank with no type error, since the prop is optional by design (api/ai-sdk never supply it).
 
 **Do not copy `use-oauth-provider-edit-page.ts:68-78` verbatim for the oauth initial — it seeds the whitelist from the catalog.** Task 3's review confirmed the bug and the human ruled it fixed at the root: that file's `models: oauth.models` was corrected to seed from `provider.models` (with `?? []`, since absent and empty both mean "no whitelist"), because `server-state/oauth-views.ts:39` fills `oauth.models` with `catalog?.language.map(({ id }) => id)` — the discovered catalog. Take every other field from `provider.*` as that hook does; take the form's `models` from `provider.models ?? []`, and pass `oauth.models` only as `candidates` per the Models section contract above. Seeding the whitelist from the catalog makes one no-op Save freeze the current catalog as an explicit whitelist, after which newly discovered upstream models are never exposed. The same file's `aliasEditorIssues(alias, …)` call was likewise corrected to take the form's live whitelist, not the catalog — carry that over too.
 
