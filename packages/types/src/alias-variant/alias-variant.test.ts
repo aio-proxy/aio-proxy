@@ -3,6 +3,7 @@ import { describe, expect, test } from 'bun:test';
 import type { AliasConfig, AliasTarget } from '../common';
 import { normalizeAliasName, normalizeVariantKey } from '../common';
 import {
+  AliasConfigSchema,
   canonicalEffort,
   flattenAliasVariants,
   foldEffortSpelling,
@@ -139,6 +140,77 @@ describe('matchAliasRows', () => {
       model: 'model-high',
       preserve: true,
     });
+  });
+});
+
+describe('AliasConfigSchema', () => {
+  test('parses array variants and keeps when', () => {
+    const parsed = AliasConfigSchema.parse({
+      model: 'cursor-grok-4.6-medium',
+      variants: [{ when: { effort: 'high' }, model: 'cursor-grok-4.6-high' }],
+    });
+    expect(Array.isArray(parsed.variants)).toBe(true);
+    expect(parsed.variants).toEqual([{ when: { effort: 'high' }, model: 'cursor-grok-4.6-high', preserve: false }]);
+  });
+
+  test('round-trips array variants through JSON', () => {
+    const parsed = AliasConfigSchema.parse({
+      model: 'm',
+      variants: [{ when: { thinking: true }, model: 't' }],
+    });
+    const again = AliasConfigSchema.parse(JSON.parse(JSON.stringify(parsed)));
+    expect(Array.isArray(again.variants)).toBe(true);
+  });
+
+  test('keeps object variants as objects', () => {
+    const parsed = AliasConfigSchema.parse({
+      model: 'gemini-3.5-flash-extra-low',
+      variants: { high: 'gemini-3-flash-agent' },
+    });
+    expect(Array.isArray(parsed.variants)).toBe(false);
+    expect(parsed.variants).toEqual({ high: { model: 'gemini-3-flash-agent', preserve: false } });
+  });
+
+  test('rejects empty when, unknown when keys, and duplicate canonical when on the schema alone', () => {
+    expect(AliasConfigSchema.safeParse({ model: 'm', variants: [{ when: {}, model: 'x' }] }).success).toBe(false);
+    expect(
+      AliasConfigSchema.safeParse({
+        model: 'm',
+        variants: [{ when: { effort: 'high', verbosity: 'high' }, model: 'x' }],
+      }).success,
+    ).toBe(false);
+    expect(
+      AliasConfigSchema.safeParse({
+        model: 'm',
+        variants: [
+          { when: { effort: 'high' }, model: 'a' },
+          { when: { effort: 'HIGH' }, model: 'b' },
+        ],
+      }).success,
+    ).toBe(false);
+    expect(
+      AliasConfigSchema.safeParse({
+        model: 'm',
+        variants: { 'x-high': 'a', xhigh: 'b' },
+      }).success,
+    ).toBe(false);
+  });
+
+  test('DashboardOAuthProviderPatchSchema rejects duplicate when without models', async () => {
+    const { DashboardOAuthProviderPatchSchema } = await import('../dashboard-oauth');
+    const result = DashboardOAuthProviderPatchSchema.safeParse({
+      enabled: true,
+      alias: {
+        grok: {
+          model: 'medium',
+          variants: [
+            { when: { effort: 'high' }, model: 'high-a' },
+            { when: { effort: 'high' }, model: 'high-b' },
+          ],
+        },
+      },
+    });
+    expect(result.success).toBe(false);
   });
 });
 

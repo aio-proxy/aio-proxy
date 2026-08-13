@@ -1,4 +1,6 @@
-import type { AliasConfig, AliasTarget } from '../common';
+import { z } from 'zod';
+
+import { ModelIdSchema } from '../model-id';
 
 export const EFFORT_SPELLING: Readonly<Record<string, string>> = {
   'x-high': 'xhigh',
@@ -32,6 +34,83 @@ export type AliasDimensions = {
 };
 
 const WHEN_KEYS = ['thinking', 'effort', 'speed'] as const;
+
+const AliasTargetObjectSchema = z.object({
+  model: ModelIdSchema.describe('Default upstream model id for this alias target.'),
+  preserve: z.boolean().default(false).describe('Expose the target model under its original id as well.'),
+});
+
+export const AliasTargetSchema = z
+  .union([ModelIdSchema, AliasTargetObjectSchema])
+  .transform((value) => (typeof value === 'string' ? { model: value, preserve: false } : value));
+
+export const AliasWhenSchema = z
+  .strictObject({
+    effort: z.string().optional().describe('Requested reasoning effort, canonicalized case-insensitively.'),
+    thinking: z.boolean().optional().describe('Whether the request asks for thinking output.'),
+    speed: z.enum(['flex', 'standard', 'fast']).optional().describe('Requested service tier.'),
+  })
+  .refine((when) => WHEN_KEYS.some((key) => when[key] !== undefined), {
+    message: 'Alias when must specify at least one of thinking, effort, or speed',
+  });
+
+export const AliasSelectRowSchema = z.object({
+  when: AliasWhenSchema,
+  model: ModelIdSchema,
+  preserve: z.boolean().default(false).describe('Expose the target model under its original id as well.'),
+});
+
+// Array first: Zod 4's z.record rejects arrays outright, so array inputs fall through to the record branch otherwise.
+export const AliasVariantsSchema = z.union([
+  z.array(AliasSelectRowSchema),
+  z.record(z.string().min(1), AliasTargetSchema),
+]);
+
+function whenIdentity(when: AliasWhen): string {
+  const parts: string[] = [];
+  if (when.thinking !== undefined) parts.push(`thinking=${when.thinking}`);
+  if (when.effort !== undefined) parts.push(`effort=${canonicalEffort(when.effort)}`);
+  if (when.speed !== undefined) parts.push(`speed=${when.speed}`);
+  return parts.join('|');
+}
+
+function rejectDuplicateWhen(
+  config: { readonly variants?: z.output<typeof AliasVariantsSchema> | undefined },
+  ctx: z.RefinementCtx,
+): void {
+  const variants = config.variants;
+  if (variants === undefined) return;
+  const seen = new Set<string>();
+  if (Array.isArray(variants)) {
+    for (const [index, row] of variants.entries()) {
+      const id = whenIdentity(row.when);
+      if (seen.has(id)) {
+        ctx.addIssue({ code: 'custom', message: `Duplicate alias when "${id}"`, path: ['variants', index] });
+      }
+      seen.add(id);
+    }
+    return;
+  }
+  for (const key of Object.keys(variants)) {
+    const id = `effort=${canonicalEffort(key)}`;
+    if (seen.has(id)) {
+      ctx.addIssue({ code: 'custom', message: `Duplicate alias when "${id}"`, path: ['variants', key] });
+    }
+    seen.add(id);
+  }
+}
+
+export const AliasConfigSchema = z
+  .union([
+    ModelIdSchema,
+    AliasTargetObjectSchema.extend({ variants: AliasVariantsSchema.optional() }).superRefine(rejectDuplicateWhen),
+  ])
+  .transform((value) => (typeof value === 'string' ? { model: value, preserve: false } : value));
+
+export type AliasTargetInput = z.input<typeof AliasTargetSchema>;
+export type AliasTarget = z.output<typeof AliasTargetSchema>;
+export type AliasConfigInput = z.input<typeof AliasConfigSchema>;
+export type AliasConfig = z.output<typeof AliasConfigSchema>;
 
 export function isAliasVariantSelect(variants: unknown): variants is readonly AliasSelectRow[] {
   return Array.isArray(variants);
