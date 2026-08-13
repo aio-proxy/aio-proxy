@@ -6,11 +6,11 @@ import { Switch } from '@aio-proxy/ui/components/switch';
 import { kebabCase } from 'es-toolkit/string';
 import type React from 'react';
 
-import type { useProviderForm } from '../hooks/use-provider-form';
+import type { ProviderEditorForm } from '../hooks/use-provider-editor-form';
 import { ProviderFormMode } from '../lib/constants';
 
 interface ProviderCommonFieldsProps {
-  form: ReturnType<typeof useProviderForm>;
+  form: ProviderEditorForm;
   mode: ProviderFormMode;
   section: 'connection' | 'routing';
 }
