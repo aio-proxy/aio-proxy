@@ -1675,9 +1675,20 @@ test('round trip keeps metadata for alias-only models and unrecognized fields', 
 test('a row metadata record replaces the previous record for that id', () => {
   const previous = { a: { cost: { input: 1 }, removedInDrawer: true } };
   const rows = [{ id: 'a', metadata: { cost: { input: 2 } } }];
-  // A row carries the WHOLE record for its id (toModelRows seeded it from previous), so a key
-  // the user deleted in the drawer must stay deleted — never revived from previousMetadata.
+  // A row carries the WHOLE record for its id (toModelRows seeded it from previous), so the row
+  // must replace, never shallow-merge onto, the previous record for that id.
   expect(applyModelRows(rows, previous).metadata).toEqual({ a: { cost: { input: 2 } } });
+});
+
+test('clearing a row metadata drops the stored record instead of reviving it', () => {
+  const previous = { a: { cost: { input: 1 } }, 'alias-only': { extend: 'openai/gpt-y' } };
+  // The only test that pins two clauses of `applyModelRows`, both invisible to every test above
+  // because the rows loop overwrites whatever the previous loop let through: drop the
+  // `!rowIds.has(id)` guard and the cleared record is revived from `previousMetadata`; drop the
+  // `Object.keys(row.metadata).length > 0` half and it comes back as an empty `{}`.
+  expect(applyModelRows([{ id: 'a', metadata: {} }], previous).metadata).toEqual({
+    'alias-only': { extend: 'openai/gpt-y' },
+  });
 });
 
 test('empty metadata collapses to undefined', () => {
