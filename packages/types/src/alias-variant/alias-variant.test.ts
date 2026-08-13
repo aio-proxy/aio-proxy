@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 
 import type { AliasConfig, AliasTarget } from '../common';
 import { normalizeAliasName, normalizeVariantKey } from '../common';
+import { OAuthPluginProviderSchema, ProviderSchema } from '../provider';
 import {
   AliasConfigSchema,
   canonicalEffort,
@@ -211,6 +212,83 @@ describe('AliasConfigSchema', () => {
       },
     });
     expect(result.success).toBe(false);
+  });
+});
+
+describe('provider-level alias validation', () => {
+  test('array row model missing from models is rejected', () => {
+    const result = ProviderSchema.safeParse({
+      kind: 'api',
+      id: 'openai',
+      protocol: 'openai-response',
+      baseURL: 'https://api.openai.com',
+      models: ['gpt-5-mini'],
+      alias: {
+        mini: {
+          model: 'gpt-5-mini',
+          variants: [{ when: { effort: 'high' }, model: 'missing' }],
+        },
+      },
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.map((issue) => issue.path)).toContainEqual(['alias', 'mini', 'variants', 0, 'model']);
+    }
+  });
+
+  test('OAuth parse without models does not require catalog membership', () => {
+    const parsed = OAuthPluginProviderSchema.parse({
+      kind: 'oauth',
+      id: 'cursor',
+      plugin: '@example/oauth',
+      capability: 'default',
+      alias: {
+        grok: {
+          model: 'not-in-any-catalog',
+          variants: [{ when: { effort: 'high' }, model: 'also-missing' }],
+        },
+      },
+    });
+    expect(parsed.alias?.['grok']?.model).toBe('not-in-any-catalog');
+  });
+
+  test('provider-level refine does not emit a second duplicate-variant issue', () => {
+    const result = ProviderSchema.safeParse({
+      kind: 'api',
+      id: 'openai',
+      protocol: 'openai-response',
+      baseURL: 'https://api.openai.com',
+      models: ['gpt-5-mini'],
+      alias: {
+        mini: {
+          model: 'gpt-5-mini',
+          variants: { High: 'gpt-5-mini', ' high ': 'gpt-5-mini' },
+        },
+      },
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const variantIssues = result.error.issues.filter((issue) => issue.path.includes('variants'));
+      expect(variantIssues).toHaveLength(1);
+    }
+  });
+
+  test('ProviderSchema parse keeps array variants (does not smash into numeric keys)', () => {
+    const parsed = ProviderSchema.parse({
+      kind: 'api',
+      id: 'openai',
+      protocol: 'openai-response',
+      baseURL: 'https://api.openai.com',
+      models: ['gpt-5-mini', 'gpt-5'],
+      alias: {
+        mini: {
+          model: 'gpt-5-mini',
+          variants: [{ when: { effort: 'high' }, model: 'gpt-5' }],
+        },
+      },
+    });
+    expect(Array.isArray(parsed.alias?.mini?.variants)).toBe(true);
+    expect(parsed.alias?.mini?.variants).toEqual([{ when: { effort: 'high' }, model: 'gpt-5', preserve: false }]);
   });
 });
 

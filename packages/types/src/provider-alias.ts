@@ -1,5 +1,6 @@
 import type { z } from 'zod';
 
+import { flattenAliasVariants, isAliasVariantsObject } from './alias-variant';
 import type { AliasConfig } from './common';
 import { normalizeAliasName, normalizeVariantKey } from './common';
 
@@ -24,12 +25,6 @@ type ProviderAliasTargets = {
   readonly alias?: ProviderAlias | undefined;
 };
 
-type VariantValidation = {
-  readonly alias: string;
-  readonly models: ReadonlySet<string> | undefined;
-  readonly ctx: z.RefinementCtx;
-};
-
 export function validateAliasTargets(provider: ProviderAliasTargets, ctx: z.RefinementCtx): void {
   if (provider.alias === undefined) {
     return;
@@ -48,7 +43,18 @@ export function validateAliasTargets(provider: ProviderAliasTargets, ctx: z.Refi
       });
     }
 
-    validateVariants(config, { alias, models, ctx });
+    if (models !== undefined) {
+      eachVariantTarget(config, (model, path) => {
+        if (!models.has(model)) {
+          ctx.addIssue({
+            code: 'custom',
+            message: `Alias variant target "${model}" is not listed in models`,
+            path: ['alias', alias, ...path],
+          });
+        }
+      });
+    }
+
     const clientModel = normalizeAliasName(alias);
     if (preservedModels.has(clientModel) && targetModels(config).some((model) => model !== clientModel)) {
       ctx.addIssue({
@@ -75,27 +81,15 @@ function validateAliasNames(alias: ProviderAlias, ctx: z.RefinementCtx): void {
   }
 }
 
-function validateVariants(config: AliasConfig, { alias, models, ctx }: VariantValidation): void {
-  const names = new Set<string>();
-  for (const [variant, target] of Object.entries(config.variants ?? {})) {
-    const normalized = normalizeVariantKey(variant);
-    if (normalized === '' || names.has(normalized)) {
-      ctx.addIssue({
-        code: 'custom',
-        message: normalized === '' ? 'Variant name cannot be empty' : `Duplicate variant name "${normalized}"`,
-        path: ['alias', alias, 'variants', variant],
-      });
-    }
-    names.add(normalized);
-
-    if (models !== undefined && !models.has(target.model)) {
-      ctx.addIssue({
-        code: 'custom',
-        message: `Alias variant target "${target.model}" is not listed in models`,
-        path: ['alias', alias, 'variants', variant, 'model'],
-      });
-    }
+// Flattening drops object variant keys, so membership issues walk the raw shape to keep Zod paths exact.
+function eachVariantTarget(config: AliasConfig, visit: (model: string, path: Array<string | number>) => void): void {
+  const variants = config.variants;
+  if (variants === undefined) return;
+  if (Array.isArray(variants)) {
+    for (const [index, row] of variants.entries()) visit(row.model, ['variants', index, 'model']);
+    return;
   }
+  for (const [key, target] of Object.entries(variants)) visit(target.model, ['variants', key, 'model']);
 }
 
 function collectPreservedModels(alias: ProviderAlias): ReadonlySet<string> {
@@ -104,9 +98,9 @@ function collectPreservedModels(alias: ProviderAlias): ReadonlySet<string> {
     if (config.preserve) {
       models.add(config.model);
     }
-    for (const target of Object.values(config.variants ?? {})) {
-      if (target.preserve) {
-        models.add(target.model);
+    for (const row of flattenAliasVariants(config.variants)) {
+      if (row.preserve) {
+        models.add(row.model);
       }
     }
   }
@@ -114,21 +108,21 @@ function collectPreservedModels(alias: ProviderAlias): ReadonlySet<string> {
 }
 
 function targetModels(config: AliasConfig): readonly string[] {
-  return [config.model, ...Object.values(config.variants ?? {}).map((target) => target.model)];
+  return [config.model, ...flattenAliasVariants(config.variants).map((row) => row.model)];
 }
 
 function normalizeAliasKeys(alias: ProviderAlias): ProviderAlias {
   return Object.fromEntries(
     Object.entries(alias).map(([name, config]) => [
       normalizeAliasName(name),
-      config.variants === undefined
-        ? config
-        : {
+      isAliasVariantsObject(config.variants)
+        ? {
             ...config,
             variants: Object.fromEntries(
               Object.entries(config.variants).map(([variant, target]) => [normalizeVariantKey(variant), target]),
             ),
-          },
+          }
+        : config,
     ]),
   );
 }
