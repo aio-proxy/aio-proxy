@@ -2260,8 +2260,9 @@ Orchestration in `provider-editor-page.tsx` (layout + save/delete ONLY; sections
   const account = oauthAccountSubmission(oauth.form, accountForm.state.values);
   oauthProviderEditAction(
     {
-      ...editorValues,                       // id, name, weight, proxy, alias, models, transforms
+      ...editorValues,                       // id, name, weight, proxy, alias, models
       enabled: editorValues.enabled ?? true, // OAuthProviderEditValues.enabled is required; the shape's is optional
+      transforms: editorValues.transforms as ProviderTransforms | undefined, // see below
       metadata: editorValues.metadata ?? {}, // see below
       ...account,                            // publicValues, secrets, clearSecrets — pruned, never raw
     },
@@ -2269,6 +2270,8 @@ Orchestration in `provider-editor-page.tsx` (layout + save/delete ONLY; sections
     forceReauthorize,
   )
   ```
+
+  **The `transforms` cast is required, not defensive.** Task 13's `OAuthEditorShape.transforms` is `unknown` — deliberately, mirroring the shipped `ProviderFormShape` (`use-provider-form.ts:12`), because the transforms visual editor writes a recursive JSON value that blows TanStack Form's TS2589 ceiling if typed. `unknown` is assignable only to `unknown` and `any`, so spreading `...editorValues` into `OAuthProviderEditValues.transforms` (`ProviderTransforms | undefined`, `oauth-provider-edit.ts:17`) is a hard `TS2345`. The api/ai-sdk arm never hits this because `normalizeProviderFormValue` returns `unknown` straight into `safeParse(unknown)` — there is no typed parameter in that path. Do **not** "fix" it by widening `OAuthProviderEditValues.transforms` to `unknown`: `providerPatch` (`:40`) feeds it into `OAuthProviderMutationBody` at `:62`, so the error would just move one line down. The cast is safe because the value is server-validated and a rejection surfaces through `useProviderUpdate`'s existing `update_failed` toast.
 
   `metadata` is absent from `OAuthProviderEditValues` **and** from the `providerPatch` it builds (`:33-41`), so as shipped every oauth save silently discards model metadata. That was invisible before this plan — `oauth-provider-edit-fields.tsx` never exposed metadata — but sections 3-5 are now shared across all three kinds, so the task 15 drawer edits metadata on oauth providers too, and `OAuthProviderMutationBodySchema` accepts it (`...metadataField`, `packages/types/src/provider.ts`). Add `readonly metadata?: Record<string, ModelMetadata> | undefined;` to `OAuthProviderEditValues` and put it in the **`update` body only** (`:62` → `{ kind, id, ...providerPatch, metadata: values.metadata ?? {} }`). **Do not add it to the shared `providerPatch`.** That object is also `reauthorize`'s `input.providerPatch` (`:57`), typed by `DashboardOAuthProviderPatchSchema`, which is a `z.strictObject` (`packages/types/src/dashboard-oauth.ts:67-75`) whose keys are exactly name/enabled/weight/models/proxy/alias/transforms — an extra `metadata` there is an `unrecognized_keys` 400 on the authorize call, i.e. the fix would break the flow it is meant to complete. So metadata authored during an authorization stage is deliberately dropped and the user re-saves after adoption; assert exactly that in the existing `oauth-provider-edit.test.ts` — a `metadata` record survives into `update`'s body, and the `reauthorize` branch's `providerPatch` has **no** `metadata` key (`toEqual`, not `toMatchObject`, or the absent-key half asserts nothing). The `?? {}` is the same retain-on-absent defence as the api/ai-sdk path below: `oauthProviderEditAction` is only reachable in edit mode (oauth create goes through the authorize stage, whose `providerPatch` is built from sections 1-2 only), so an emptied record set must be sent as `{}` or the server keeps the record the user just deleted.
 
