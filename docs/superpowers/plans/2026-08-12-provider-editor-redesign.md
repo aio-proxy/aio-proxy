@@ -937,16 +937,27 @@ In `provider-draft.test.ts`, extend the `beforeEach` config with an oauth provid
 // In the ConfigSchema.parse({ providers: { ... } }) block add:
 'saved-oauth': { kind: 'oauth', plugin: '@example/oauth', capability: 'default' },
 
-// In the createServerState options add:
+// Declare next to `routes` in the describe scope, reset in beforeEach:
+let probedModel: string | undefined;
+
+// In the createServerState options add. The two lists MUST differ: `models` is the
+// runtime's already-filtered SAVED whitelist, `upstreamMetadata` keys are the full
+// discovered catalog, and the gate must read the latter. Make them equal and
+// `Object.keys(runtime.upstreamMetadata)` and `runtime.models` become
+// indistinguishable, so nothing catches a gate wired to the saved whitelist —
+// which is exactly the unsaved-whitelist-edit case this task exists to support.
 providerInstances: [
   {
     id: 'saved-oauth',
     kind: 'oauth',
     enabled: true,
-    models: ['disc-a', 'disc-b'],
+    models: ['disc-a'],
     upstreamMetadata: { 'disc-a': {}, 'disc-b': {} },
     model: {
-      invoke: async function* () {
+      // Record the requested id: the transport must be invoked with the model the
+      // user asked about, or the button reports "works" for a model it never called.
+      invoke: async function* (input: { readonly modelId: string }) {
+        probedModel = input.modelId;
         yield { type: 'text-delta', delta: 'pong' };
       },
     },
@@ -968,6 +979,25 @@ test('tests an oauth draft model against the live runtime', async () => {
   );
   expect(response.status).toBe(200);
   expect(await response.json()).toEqual({ ok: true });
+  expect(probedModel).toBe('disc-a');
+});
+
+// The gate reads the DISCOVERED catalog with the DRAFT's whitelist, not the saved
+// `runtime.models` (which is only ['disc-a']). Swap the implementation to
+// `runtime.models` and this is the test that goes red: an unsaved whitelist edit
+// naming a discovered-but-not-yet-saved model must be testable before saving.
+test('an oauth draft whitelist beats the saved one for a discovered model', async () => {
+  const response = await routes.request(
+    '/providers/draft/test',
+    jsonRequest({
+      draft: { kind: 'oauth', id: 'saved-oauth', enabled: true, proxy: null, models: ['disc-b'] },
+      persistedProviderId: 'saved-oauth',
+      model: 'disc-b',
+    }),
+  );
+  expect(response.status).toBe(200);
+  expect(await response.json()).toEqual({ ok: true });
+  expect(probedModel).toBe('disc-b');
 });
 
 test('an oauth draft with an empty whitelist can test any discovered model, but not an unknown one', async () => {
@@ -997,11 +1027,39 @@ test('an oauth draft naming an id with no persisted provider fails with persiste
     error: { code: 'persisted_provider_not_found', recoverable: true },
   });
 });
+
+// The contract, not the line that happens to enforce it: an oauth draft is testable
+// only against its persisted account. Today the candidate fails ProviderSchema first
+// (no plugin/capability), so this passes through the `!parsed.success` arm rather than
+// the oauth guard below it — that is fine. If plugin/capability ever gain defaults,
+// this test is what stops a credential-less oauth draft from reaching a transport.
+test('a fresh oauth draft with no persisted provider is not testable', async () => {
+  const response = await routes.request(
+    '/providers/draft/test',
+    jsonRequest({
+      draft: { kind: 'oauth', id: 'fresh-oauth', enabled: true, proxy: null, models: [] },
+      model: 'disc-a',
+    }),
+  );
+  expect(await response.json()).toEqual({
+    ok: false,
+    error: { code: 'persisted_provider_mismatch', recoverable: true },
+  });
+  expect(probedModel).toBeUndefined();
+});
 ```
 
-If `createServerState` does not merge `providerInstances` for a config-declared oauth provider, check how `oauth-quota.test.ts` or other server-state tests inject runtimes and mirror that seam; the assertions stay as written.
+`providerInstances` does not merge with config-declared providers — it replaces materialization
+outright. `server-state/index.ts:89-102` calls `buildSnapshotWithProviders(config, providerInstances,
+createRouter)` *instead of* `buildSnapshot(...)` whenever the option is present, so the snapshot's
+`providers` array is exactly the injected list and `saved`/`saved-proxied`/`saved-sdk` are absent from
+it. That is safe here: the api/ai-sdk draft paths read `state.currentConfig()` and build a throwaway
+runtime via `materializeDraftRuntime`, never the snapshot — only the oauth path below reads it.
+`buildSnapshotWithProviders` maps each input through `materializeRuntimeProvider`
+(`provider-runtime/materialize.ts:32-38`), which returns an already-materialized provider unchanged, so
+the fixture keeps its `model` transport and `upstreamMetadata`.
 
-Run: `bun test packages/server/src/dashboard-routes/provider-draft/provider-draft.test.ts` — the first two FAIL with `persisted_provider_mismatch` (today's early return).
+Run: `bun test packages/server/src/dashboard-routes/provider-draft/provider-draft.test.ts` — the first three FAIL with `persisted_provider_mismatch` (today's early return).
 
 - [ ] **Step 4: Implement resolution and the oauth test path**
 
@@ -1069,7 +1127,7 @@ export async function testProviderDraft(
 // Borrows the live runtime: an oauth provider cannot exist unsaved, and a
 // one-shot materialization would drive plugin auth (and can rewrite stored
 // credentials) from a read-only test button. Unsaved draft transforms are
-// therefore NOT exercised here; the rail copy says so (task 17).
+// therefore NOT exercised here; the editor's rail copy says so.
 async function testOAuthProvider(
   state: ServerState,
   provider: Extract<Provider, { kind: ProviderKind.OAuth }>,
