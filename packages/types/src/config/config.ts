@@ -6,8 +6,8 @@ import { PluginPackageNameSchema } from '../plugin';
 import {
   AiSdkProviderAuthoringSchema,
   AiSdkProviderSchema,
-  ApiProviderAuthoringSchema,
-  ApiProviderSchema,
+  ApiProviderAuthoringObjectSchema,
+  ApiProviderObjectSchema,
   ConfigTemplateStringSchema,
   HttpProxyUrlSchema,
   OAuthProviderAuthoringSchema,
@@ -65,7 +65,7 @@ const ServerConfigAuthoringSchema = ServerConfigSchema.omit({ host: true, loggin
 
 const ProviderInputValueSchema = z
   .discriminatedUnion('kind', [
-    ApiProviderSchema.omit({ id: true }),
+    ApiProviderObjectSchema.omit({ id: true }),
     OAuthProviderSchema.omit({ id: true }),
     AiSdkProviderSchema.omit({ id: true }),
   ])
@@ -74,7 +74,7 @@ const ProviderInputValueSchema = z
 
 const ProviderAuthoringInputValueSchema = z
   .discriminatedUnion('kind', [
-    ApiProviderAuthoringSchema.omit({ id: true }),
+    ApiProviderAuthoringObjectSchema.omit({ id: true }),
     OAuthProviderAuthoringSchema.omit({ id: true }),
     AiSdkProviderAuthoringSchema.omit({ id: true }),
   ])

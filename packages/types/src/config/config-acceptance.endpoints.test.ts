@@ -1,6 +1,12 @@
 import { describe, expect, test } from 'bun:test';
 
-import { apiProviderEndpoints, ProviderKind, ProviderProtocol } from '../provider';
+import {
+  ApiProviderAuthoringSchema,
+  ApiProviderSchema,
+  apiProviderEndpoints,
+  ProviderKind,
+  ProviderProtocol,
+} from '../provider';
 import { ConfigSchema } from './config';
 
 const baseConfig = (provider: Record<string, unknown>) => ({
@@ -135,5 +141,35 @@ describe('endpoints acceptance', () => {
       },
     });
     expect(parsed.success).toBeTrue();
+  });
+});
+
+describe('standalone API provider schemas', () => {
+  test('ApiProviderSchema rejects a provider with no protocol endpoints', () => {
+    const parsed = ApiProviderSchema.safeParse({ kind: 'api', id: 'p' });
+    expect(parsed.success).toBeFalse();
+    if (parsed.success) return;
+    expect(
+      parsed.error.issues.some((issue) => issue.message === 'protocol/baseURL or endpoints is required'),
+    ).toBeTrue();
+  });
+
+  test('ApiProviderSchema accepts a legacy protocol pair', () => {
+    const parsed = ApiProviderSchema.safeParse({
+      kind: 'api',
+      id: 'p',
+      protocol: 'openai-response',
+      baseURL: 'https://api.openai.com/v1',
+    });
+    expect(parsed.success).toBeTrue();
+  });
+
+  test('ApiProviderAuthoringSchema rejects a provider with no protocol endpoints', () => {
+    const parsed = ApiProviderAuthoringSchema.safeParse({ kind: 'api', id: 'p' });
+    expect(parsed.success).toBeFalse();
+    if (parsed.success) return;
+    expect(
+      parsed.error.issues.some((issue) => issue.message === 'protocol/baseURL or endpoints is required'),
+    ).toBeTrue();
   });
 });

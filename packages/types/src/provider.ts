@@ -101,11 +101,15 @@ const ApiProviderSharedFields = {
   ),
 } as const;
 
-export const ApiProviderSchema = z.object({
+// Omit-able object shape. Endpoint invariants live on `ApiProviderSchema` so
+// standalone `.parse()` matches config loading; unions re-apply the refine after omit.
+export const ApiProviderObjectSchema = z.object({
   ...ApiProviderSharedFields,
   baseURL: z.url().optional().describe('Provider API base URL (primary endpoint, legacy origin semantics).'),
   proxy: ProviderProxySchema.describe(PROXY_DESCRIPTION),
 });
+
+export const ApiProviderSchema = ApiProviderObjectSchema.superRefine(validateApiEndpoints);
 
 const ApiEndpointEntryAuthoringSchema = z.strictObject({
   protocol: z.union([ProviderProtocolSchema, ConfigTemplateStringSchema]),
@@ -121,7 +125,7 @@ const ApiEndpointsAuthoringInputSchema = z.union([
   }),
 ]);
 
-export const ApiProviderAuthoringSchema = ApiProviderSchema.omit({
+export const ApiProviderAuthoringObjectSchema = ApiProviderObjectSchema.omit({
   baseURL: true,
   proxy: true,
   protocol: true,
@@ -132,6 +136,8 @@ export const ApiProviderAuthoringSchema = ApiProviderSchema.omit({
   endpoints: ApiEndpointsAuthoringInputSchema.optional(),
   proxy: AuthoringProviderProxySchema.describe(PROXY_DESCRIPTION),
 });
+
+export const ApiProviderAuthoringSchema = ApiProviderAuthoringObjectSchema.superRefine(validateApiEndpoints);
 
 export const OAuthPluginProviderSchema = z.object({
   kind: z.literal(ProviderKind.OAuth).describe('Provider backed by a plugin OAuth account.'),
@@ -278,7 +284,7 @@ export const ProviderMutationAuthoringBodySchema = z
   .transform(normalizeProviderAliasKeys);
 
 export const ProviderSchema = z
-  .discriminatedUnion('kind', [ApiProviderSchema, OAuthProviderSchema, AiSdkProviderSchema])
+  .discriminatedUnion('kind', [ApiProviderObjectSchema, OAuthProviderSchema, AiSdkProviderSchema])
   .superRefine(validateAliasTargets)
   .superRefine(validateApiEndpoints)
   .transform(normalizeProviderAlias);
