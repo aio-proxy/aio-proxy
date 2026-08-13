@@ -16,7 +16,9 @@ export const requireApiKey =
     const candidates = [
       bearerToken(context.req.header('authorization')),
       context.req.header('x-api-key'),
-      ...(context.req.path.startsWith('/v1beta/') ? [context.req.header('x-goog-api-key')] : []),
+      context.req.header('x-goog-api-key'),
+      context.req.query('key'),
+      context.req.query('auth_token'),
     ];
     if (!candidates.some((candidate) => candidate !== undefined && matchesConfiguredKey(candidate, configuredKeys))) {
       return authenticationError(context);
@@ -25,12 +27,23 @@ export const requireApiKey =
     context.req.raw.headers.delete('authorization');
     context.req.raw.headers.delete('x-api-key');
     context.req.raw.headers.delete('x-goog-api-key');
+    context.req.raw = withoutCallerQuery(context.req.raw);
     await next();
   };
 
 function bearerToken(value: string | undefined): string | undefined {
   const match = /^Bearer\s+(.+)$/iu.exec(value ?? '');
   return match?.[1];
+}
+
+function withoutCallerQuery(request: Request): Request {
+  const url = new URL(request.url);
+  if (!url.searchParams.has('key') && !url.searchParams.has('auth_token')) {
+    return request;
+  }
+  url.searchParams.delete('key');
+  url.searchParams.delete('auth_token');
+  return new Request(url, request);
 }
 
 function matchesConfiguredKey(candidate: string, configuredKeys: readonly ApiKeyEntry[]): boolean {

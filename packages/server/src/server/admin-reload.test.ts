@@ -80,6 +80,32 @@ describe('admin control plane', () => {
     expect([200, 409]).toContain(res.status);
   });
 
+  test('POST /admin/reload allows the localhost origin on the proxy port', async () => {
+    const app = await createServer();
+    const res = await app.request(
+      '/admin/reload',
+      {
+        method: 'POST',
+        headers: { host: 'localhost:9317', origin: 'http://localhost:9317', 'sec-fetch-site': 'same-origin' },
+      },
+      loopbackServer,
+    );
+    expect([200, 409]).toContain(res.status);
+  });
+
+  test('POST /admin/reload allows the IPv6 loopback origin on the default bind', async () => {
+    const app = await createServer();
+    const res = await app.request(
+      '/admin/reload',
+      {
+        method: 'POST',
+        headers: { host: '[::1]:9317', origin: 'http://[::1]:9317', 'sec-fetch-site': 'same-origin' },
+      },
+      loopbackServer,
+    );
+    expect([200, 409]).toContain(res.status);
+  });
+
   test('POST /admin/reload allows the configured IPv6 loopback origin', async () => {
     const app = await createBaseServer({
       config: { server: { host: '::1', port: 9_317 }, providers: {} },

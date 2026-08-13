@@ -34,6 +34,7 @@ export const serverDefaults = {
 } as const;
 
 const csrfMethods = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+const canonicalLoopbackOriginHosts = new Set(['localhost', '127.0.0.1', '[::1]']);
 
 const loopbackOriginHostname = (host: string): string => {
   if (host === 'localhost' || host.startsWith('127.')) return host;
@@ -46,7 +47,11 @@ const hasLoopbackOrigin = (context: Context, expectedHost: string, expectedPort:
   try {
     const { hostname, port, protocol } = new URL(origin);
     const originPort = port === '' ? (protocol === 'https:' ? 443 : 80) : Number(port);
-    return (protocol === 'http:' || protocol === 'https:') && originPort === expectedPort && hostname === expectedHost;
+    return (
+      (protocol === 'http:' || protocol === 'https:') &&
+      originPort === expectedPort &&
+      (hostname === expectedHost || canonicalLoopbackOriginHosts.has(hostname))
+    );
   } catch {
     return false;
   }
