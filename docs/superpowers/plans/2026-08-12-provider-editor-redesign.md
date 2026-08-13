@@ -1659,9 +1659,10 @@ git commit -m "feat(dashboard): pure section status for the provider editor"
 ```ts
 export interface ModelRow {
   readonly id: string;
-  // `Readonly<...>` is load-bearing: rows alias `previousMetadata`'s records by reference (no clone),
-  // so a consumer that mutated `row.metadata` in place would corrupt the saved config. The compiler
-  // rejects that write; no runtime test can, short of freezing.
+  // `Readonly<...>` is load-bearing: rows alias their records by reference (no clone), so a consumer
+  // that mutated `row.metadata` in place would write straight through to the form value — silently,
+  // with no re-render, and with cancel unable to restore it. The compiler rejects that write; no
+  // runtime test can, short of freezing.
   readonly metadata: Readonly<Record<string, unknown>> | undefined;
 }
 export function toModelRows(models: readonly string[], metadata: Readonly<Record<string, Record<string, unknown>>> | undefined): ModelRow[];
@@ -1750,8 +1751,8 @@ Run: `bun run --filter @aio-proxy/dashboard test:unit` — FAILS.
 // model-rows.ts
 export interface ModelRow {
   readonly id: string;
-  // Rows alias `previousMetadata`'s records by reference; `Readonly` is what stops a consumer
-  // from mutating the live config through a row.
+  // Rows alias their records by reference; `Readonly` is what stops a consumer from writing through
+  // a row into the form value.
   readonly metadata: Readonly<Record<string, unknown>> | undefined;
 }
 
@@ -2052,7 +2053,8 @@ export const modelsDevSlugsQueryOptions = () => queryOptions({
 });
 ```
 
-Behavior (spec Models Section): one row list built from `toModelRows(models, metadata)`; a filter input; a count line — for oauth with empty whitelist the count reads `models_all_discovered` (candidates length), otherwise `models_count`; a single manual-add input (replaces `TagsInput`, catalog grid, and enabled list in `provider-models-field.tsx`); per-row: enable/disable checkbox against `candidates`, metadata button opening the drawer, remove button; rows write back through `applyModelRows` so alias-only/unknown metadata survives. Stale whitelist rows (not in candidates) render with `models_stale_whitelist` copy. The "load catalog" button reuses `useProviderCatalogMutation` for api/ai-sdk; for oauth, candidates come in via props (no draft catalog call).
+Behavior (spec Models Section): one row list built from `toModelRows(models, metadata)`; a filter input; a count line — for oauth with empty whitelist the count reads `models_all_discovered` (candidates length), otherwise `models_count`; a single manual-add input (replaces `TagsInput`, catalog grid, and enabled list in `provider-models-field.tsx`); per-row: enable/disable checkbox against `candidates`, metadata button opening the drawer, remove button; rows write back through `applyModelRows` so alias-only/unknown metadata survives.
+**Tighten `applyModelRows`'s return type while you are here** (deferred out of task 12 only because its brief mandated the signature verbatim, and it has no importer until this task): `metadata: Record<string, Readonly<Record<string, unknown>>> | undefined`. Task 12 made `ModelRow.metadata` readonly, but the return value hands back the SAME aliased records through a mutable type, so `applyModelRows(rows, prev).metadata?.['a']['name'] = 'x'` compiles clean today. Do NOT carry forward the claim that the return must stay mutable to build the PUT body — it is false: TypeScript ignores `readonly` in assignability, so the tightened type still assigns into `ApiProviderMutationBody['metadata']` with no cast and no new diagnostics (verified). Treat it as best-effort even so: the form value and the mutation DTOs re-widen the same references one hop later. Stale whitelist rows (not in candidates) render with `models_stale_whitelist` copy. The "load catalog" button reuses `useProviderCatalogMutation` for api/ai-sdk; for oauth, candidates come in via props (no draft catalog call).
 
 Metadata drawer: wrap the existing JSON textarea in `<Tabs>` (`@aio-proxy/ui/components/tabs`) with `metadata_tab_visual` / `metadata_tab_json`. The visual tab (`model-metadata-visual-tab.tsx`) edits `extend` (Combobox fed by `modelsDevSlugsQueryOptions`, empty state `metadata_extend_empty`), `limit.context`/`limit.output` (number inputs), `cost.input`/`cost.output` (number inputs), `capabilities.attachment`/`capabilities.reasoning` (switches). It must merge over the existing object — build its output as `{ ...currentValue, extend, limit, cost, capabilities }` dropping only keys the user explicitly cleared — and render `metadata_unknown_fields` with the count of keys outside `{name, description, extend, limit, cost, capabilities}`. The JSON tab keeps the current textarea behavior byte-for-byte.
 
