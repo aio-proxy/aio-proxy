@@ -708,6 +708,73 @@ test('an ai-sdk endpoint that is not OpenAI-shaped returns catalog_unavailable',
     await upstream.stop(true);
   }
 });
+
+// A configured Authorization must beat options.apiKey, the way upstreamHeaders
+// (core/.../api.ts:98-104), the schema contract (types/provider.ts:94) and
+// @ai-sdk/openai-compatible all resolve it. Deliberately spelled with a capital A: an
+// object spread keeps both casings and fetch comma-joins them into one malformed
+// credential, so this asserts the single-value outcome that Headers.set guarantees.
+test('a configured Authorization header overrides options.apiKey', async () => {
+  let authorization: string | null = null;
+  const upstream = Bun.serve({
+    hostname: '127.0.0.1',
+    port: 0,
+    fetch(request) {
+      authorization = request.headers.get('authorization');
+      return Response.json({ data: [{ id: 'sdk-model-a' }] });
+    },
+  });
+  try {
+    await routes.request(
+      '/providers/draft/catalog',
+      jsonRequest({
+        draft: {
+          id: 'unsaved-sdk',
+          kind: 'ai-sdk',
+          options: {
+            apiKey: 'placeholder',
+            baseURL: `http://127.0.0.1:${upstream.port}/v1`,
+            headers: { Authorization: 'Bearer real-token' },
+          },
+        },
+      }),
+    );
+    expect(authorization).toBe('Bearer real-token');
+  } finally {
+    await upstream.stop(true);
+  }
+});
+
+// The ai-sdk loader duplicates the api loader's non-ok handling (its equivalent test is
+// 'returns a recoverable catalog failure without reflecting the upstream body') and
+// carries the same guarantee: an upstream error body never reaches the dashboard.
+test('an ai-sdk catalog error is recoverable and does not reflect the upstream body', async () => {
+  const upstream = Bun.serve({
+    hostname: '127.0.0.1',
+    port: 0,
+    fetch: () => new Response('sdk-upstream-secret-body', { status: 401 }),
+  });
+  try {
+    const response = await routes.request(
+      '/providers/draft/catalog',
+      jsonRequest({
+        draft: {
+          id: 'unsaved-sdk',
+          kind: 'ai-sdk',
+          options: { apiKey: 'wrong-key', baseURL: `http://127.0.0.1:${upstream.port}/v1` },
+        },
+      }),
+    );
+    const text = await response.text();
+
+    expect(response.status).toBe(200);
+    expect(JSON.parse(text)).toEqual({ ok: false, error: { code: 'catalog_unavailable', recoverable: true } });
+    expect(text).not.toContain('sdk-upstream-secret-body');
+    expect(text).not.toContain('wrong-key');
+  } finally {
+    await upstream.stop(true);
+  }
+});
 ```
 
 - [ ] **Step 2: Run to verify failure**
@@ -721,6 +788,7 @@ In `provider-draft-operations.ts`, replace line 26 (`if (provider.kind === Provi
 
 ```ts
 import { createProxyFetch } from '@aio-proxy/core';
+import { isPlainObject } from 'es-toolkit/predicate';
 import { effectiveProxy } from '../../provider-runtime';
 
 export async function loadProviderDraftCatalog(
@@ -740,25 +808,18 @@ async function loadAiSdkDraftCatalog(
 ): Promise<DashboardProviderDraftCatalogResponse> {
   const baseURL = provider.options?.['baseURL'];
   if (typeof baseURL !== 'string' || baseURL.trim() === '') return failure('catalog_unsupported');
-  const apiKey = provider.options?.['apiKey'];
-  const configuredHeaders = provider.options?.['headers'];
   // Proxy only. The runtime path also wraps this in createProviderRequestTransformFetch +
   // createObservedFetch (materialize.ts:156-159), but both are provably inert here: the
   // transform fetch returns early unless currentProviderAttemptContext() names this
-  // provider, and createObservedFetch passes through with no debug scope. Draft catalog
-  // loading establishes neither — the api loader above has the same gap. Wiring them in
-  // would look like transform support without providing any.
+  // provider, and createObservedFetch passes through with neither a debug scope nor an
+  // attempt response observation. Draft catalog loading establishes none of the three —
+  // the api loader above has the same gap. Wiring them in would look like transform
+  // support without providing any.
   const fetchWithProxy = createProxyFetch(effectiveProxy(state.currentConfig().proxy, provider.proxy));
   try {
     const response = await fetchWithProxy(`${baseURL.replace(/\/+$/u, '')}/models`, {
       signal: AbortSignal.timeout(5_000),
-      headers: {
-        // An @ai-sdk/anthropic-shaped provider authenticates via options.headers
-        // (x-api-key), not a bearer token; without this it 401s here while
-        // /draft/test on the same draft succeeds.
-        ...(typeof configuredHeaders === 'object' && configuredHeaders !== null ? (configuredHeaders as Record<string, string>) : {}),
-        ...(typeof apiKey === 'string' && apiKey !== '' ? { authorization: `Bearer ${apiKey}` } : {}),
-      },
+      headers: catalogHeaders(provider.options),
     });
     if (!response.ok) {
       await response.body?.cancel();
@@ -769,6 +830,26 @@ async function loadAiSdkDraftCatalog(
   } catch {
     return failure('catalog_unavailable');
   }
+}
+
+// apiKey first, configured headers second — `upstreamHeaders` (core/.../api.ts:98-104),
+// the schema contract at types/provider.ts:94 ("configured values win"), and
+// @ai-sdk/openai-compatible itself all resolve the collision this way. A gateway whose
+// real credential lives in options.headers must authenticate here exactly as it does in
+// the proxy, or Load models reports catalog_unavailable for a provider that works.
+// Headers.set is case-insensitive, so a configured `Authorization` in any casing replaces
+// the bearer instead of being comma-joined onto it the way an object spread would.
+function catalogHeaders(options: Readonly<Record<string, unknown>> | undefined): Headers {
+  const headers = new Headers();
+  const apiKey = options?.['apiKey'];
+  if (typeof apiKey === 'string' && apiKey !== '') headers.set('authorization', `Bearer ${apiKey}`);
+  const configured = options?.['headers'];
+  // isPlainObject, not `typeof === 'object'`: the native check admits an array, which
+  // would spread into a bogus `0:` header.
+  if (isPlainObject(configured)) {
+    for (const [name, value] of Object.entries(configured)) headers.set(name, String(value));
+  }
+  return headers;
 }
 ```
 
