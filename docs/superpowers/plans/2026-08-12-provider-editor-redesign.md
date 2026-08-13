@@ -1470,7 +1470,6 @@ export interface SectionStatusInput {
   readonly baseURL?: string | undefined;          // api only
   readonly protocol?: string | undefined;         // api only
   readonly capabilityKey?: string | undefined;    // oauth only
-  readonly authorized: boolean;                   // oauth: account exists; api/ai-sdk: always true
   readonly models: readonly string[];
   readonly discoveredModels?: readonly string[] | undefined; // oauth catalog candidates
   readonly aliasIssues: readonly AliasEditorIssue[];
@@ -1480,6 +1479,8 @@ export interface SectionStatusInput {
 export function sectionStatuses(input: SectionStatusInput): Readonly<Record<SectionId, SectionStatus>>;
 export function blockingSections(statuses: Readonly<Record<SectionId, SectionStatus>>): SectionId[];
 ```
+
+There is deliberately **no `authorized` field**, and adding one would be dead weight: the authorization lock is the shell's job, not a status. Task 18 gates `SectionShell disabledReason={…authorization_locked_hint()}` on `!authorized` directly (see its OAuth create stage), and task 14's rail reads only the returned statuses. An unauthorized oauth draft is already covered without it — its empty `capabilityKey` makes `connection` a `todo`, and its primary action in that stage is `authorize`, not save, so `blockingSections` is not what gates it.
 
 Status rules (spec Form State table): `todo` only for fields the mutation schema requires — Provider ID (create mode), api `baseURL`/`protocol`, oauth capability before authorization — plus alias issues (the schema rejects those payloads) and invalid transforms JSON. `apiKey` is NOT a todo (optional in the schema; an unauthenticated local endpoint must stay saveable). `attention` for a weight tie (routing) and stale whitelist entries (models: whitelist entry not in `discoveredModels` when provided). Empty `models` is not a todo — alias-only providers are valid.
 
@@ -1497,7 +1498,6 @@ const base = {
   id: 'p1',
   baseURL: 'https://x.example/v1',
   protocol: 'openai-compatible',
-  authorized: true,
   models: ['m1'],
   aliasIssues: [],
   transformsValid: true,
@@ -1537,15 +1537,18 @@ test('a weight tie is attention on routing', () => {
   expect(sectionStatuses({ ...base, weightTie: true }).routing).toBe('attention');
 });
 
-test('an oauth provider without a capability is todo; unauthorized locks nothing but connection stays attention-free todo path', () => {
+test('an oauth provider needs a capability, but never its own id — the server assigns that', () => {
   const statuses = sectionStatuses({
     ...base,
     kind: 'oauth',
+    id: '',
     capabilityKey: '',
-    authorized: false,
     models: [],
   });
   expect(statuses.connection).toBe('todo');
+  // Same empty id is a todo for api/ai-sdk (test above); dropping the `kind !== 'oauth'`
+  // guard in `identity` must red HERE, since nothing else exercises that clause.
+  expect(statuses.identity).toBe('ok');
 });
 
 test('invalid transforms JSON blocks the advanced section', () => {
@@ -1571,7 +1574,6 @@ export interface SectionStatusInput {
   readonly baseURL?: string | undefined;
   readonly protocol?: string | undefined;
   readonly capabilityKey?: string | undefined;
-  readonly authorized: boolean;
   readonly models: readonly string[];
   readonly discoveredModels?: readonly string[] | undefined;
   readonly aliasIssues: readonly AliasEditorIssue[];
