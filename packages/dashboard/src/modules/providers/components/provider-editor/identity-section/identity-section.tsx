@@ -4,11 +4,11 @@ import { Field } from '@aio-proxy/ui/components/field';
 import { Label } from '@aio-proxy/ui/components/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@aio-proxy/ui/components/select';
 
-import type { ProviderEditorForm } from '../../hooks/use-provider-editor-form';
-import { ProviderFormMode } from '../../lib/constants';
-import type { SectionStatus } from '../../lib/section-status';
-import { ProviderCommonFields } from '../provider-common-fields';
-import { SectionShell } from './section-shell';
+import type { ProviderEditorForm } from '../../../hooks/use-provider-editor-form';
+import { ProviderFormMode } from '../../../lib/constants';
+import type { SectionStatus } from '../../../lib/section-status';
+import { ProviderCommonFields } from '../../provider-common-fields';
+import { SectionShell } from '../section-shell';
 
 interface IdentitySectionProps {
   readonly form: ProviderEditorForm;

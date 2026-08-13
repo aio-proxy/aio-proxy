@@ -2,13 +2,15 @@ import { ProviderKind, ProviderProtocol } from '@aio-proxy/types';
 import { describe, expect, rs, test } from '@rstest/core';
 import { act, fireEvent, render, renderHook, screen, waitFor, within } from '@testing-library/react';
 
+import { useProviderEditorForm } from '../hooks/use-provider-editor-form';
+// The submit-normalization cases below still need useProviderForm: the editor hook has no onSubmit.
 import { parseProviderFormInitial, useProviderForm } from '../hooks/use-provider-form';
 import { ProviderFormMode } from '../lib/constants';
 import { ProviderFormFieldsApi } from './provider-form-fields-api';
 
 describe('API provider form fields', () => {
   test('shows a protocol placeholder and icons in the options and selected value', async () => {
-    const { result } = renderHook(() => useProviderForm({ mode: ProviderFormMode.Create, kind: ProviderKind.Api }));
+    const { result } = renderHook(() => useProviderEditorForm({ kind: ProviderKind.Api }));
 
     render(<ProviderFormFieldsApi form={result.current} mode={ProviderFormMode.Create} />);
 
@@ -65,8 +67,7 @@ describe('API provider form fields', () => {
 
   test('keeps a stored API key retained when editing and never renders a clear control', () => {
     const { result } = renderHook(() =>
-      useProviderForm({
-        mode: ProviderFormMode.Edit,
+      useProviderEditorForm({
         kind: ProviderKind.Api,
         initial: { kind: ProviderKind.Api, id: 'openrouter', enabled: true },
       }),

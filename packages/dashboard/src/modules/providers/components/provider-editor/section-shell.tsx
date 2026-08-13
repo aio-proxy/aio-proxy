@@ -1,10 +1,10 @@
 import { m } from '@aio-proxy/i18n';
 import { Badge } from '@aio-proxy/ui/components/badge';
 
-import type { SectionStatus } from '../../lib/section-status';
+import type { SectionId, SectionStatus } from '../../lib/section-status';
 
 interface SectionShellProps {
-  readonly id: string;
+  readonly id: SectionId;
   readonly title: string;
   readonly status: SectionStatus;
   readonly children: React.ReactNode;
