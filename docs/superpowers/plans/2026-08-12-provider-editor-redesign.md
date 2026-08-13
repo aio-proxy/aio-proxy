@@ -1211,20 +1211,41 @@ git commit -m "feat(server): oauth drafts resolve against their persisted accoun
 In `packages/core/src/models-dev/index.test.ts` add (the file already imports `clearModelsCache` and seeds `fileCacheStorage` — mirror its seeding helper). Note the `removeItem` on the first line: `beforeEach` (`:46-51`) seeds `models-dev-providers` with four providers for every test, and `clearModelsCache()` only drops the in-memory LRUs (`index.ts:48-52`) while `readCachedProviderMap` (`:57-65`) still falls back to the file cache. Without the removal the "cold cache" assertion sees 4 slugs. The file's own cold-cache test does exactly this at `:125-127`.
 
 ```ts
-test('getCachedModelSlugs returns [] on a cold cache and provider/model slugs on a warm one', async () => {
+test('getCachedModelSlugs returns [] on a cold cache and sorted provider/model slugs on a warm one', async () => {
   await fileCacheStorage.removeItem('models-dev-providers'); // drop the beforeEach seed so the file cache misses
   clearModelsCache();
-  expect(await getCachedModelSlugs()).toEqual([]);
 
-  await fileCacheStorage.setItem('models-dev-providers', {
-    anthropic: { models: { 'claude-x': { id: 'claude-x' } } },
-    // One slash-bearing key on purpose: 54% of real models.dev ids contain a
-    // slash and `resolveModel` splits on the FIRST slash only, so a slug like
-    // `openrouter/vendor/model-z` must round-trip through `extend` unchanged.
-    openrouter: { models: { 'vendor/model-z': { id: 'vendor/model-z' } } },
-  });
-  clearModelsCache();
-  expect(await getCachedModelSlugs()).toEqual(['anthropic/claude-x', 'openrouter/vendor/model-z']);
+  // Cached-only is a hot-path promise: opening the drawer must never reach the
+  // network. Reject instead of calling through so a regression fails fast.
+  const originalFetch = globalThis.fetch;
+  let fetched = false;
+  globalThis.fetch = (() => {
+    fetched = true;
+    throw new Error('getCachedModelSlugs must not fetch');
+  }) as typeof fetch;
+
+  try {
+    expect(await getCachedModelSlugs()).toEqual([]);
+
+    await fileCacheStorage.setItem('models-dev-providers', {
+      // Insertion order is deliberately NOT sorted order: without `.sort()` this
+      // yields openrouter's slug first and the assertion below fails.
+      // One slash-bearing key on purpose: 54% of real models.dev ids contain a
+      // slash and `resolveModel` splits on the FIRST slash only, so a slug like
+      // `openrouter/vendor/model-z` must round-trip through `extend` unchanged.
+      openrouter: { models: { 'vendor/model-z': { id: 'vendor/model-z' } } },
+      anthropic: { models: { 'claude-x': { id: 'claude-x' } } },
+      // No `models` at all: the cache is unvalidated, so this shape is reachable
+      // and `Object.keys(undefined)` would throw without the `?? {}` guard.
+      broken: {},
+    });
+    clearModelsCache();
+    expect(await getCachedModelSlugs()).toEqual(['anthropic/claude-x', 'openrouter/vendor/model-z']);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  expect(fetched).toBe(false);
 });
 ```
 
@@ -1243,8 +1264,9 @@ export async function getCachedModelSlugs(): Promise<string[]> {
   return Object.entries(providerMap)
     // `provider.models` is a compile-time fiction: readCachedProviderMap never
     // passes a `schema` (see it above in this file) and cache/file.ts:66 is a bare
-    // `return value as T`. The live cache really does hold `{"openrouter":{"models":{}}}`.
-    // Without `?? {}` one malformed entry 500s every drawer open. resolve.ts:38 guards the same way.
+    // `return value as T`, so a truncated or hand-edited cache file really can hold
+    // a provider with no `models` — and `Object.keys(undefined)` throws. The test's
+    // `broken: {}` fixture pins this guard. resolve.ts:38 guards the same way.
     .flatMap(([providerId, provider]) => Object.keys(provider.models ?? {}).map((modelId) => `${providerId}/${modelId}`))
     .sort();
 }
