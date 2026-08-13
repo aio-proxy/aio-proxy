@@ -1,7 +1,7 @@
 export interface ModelRow {
   readonly id: string;
-  // Rows alias `previousMetadata`'s records by reference; `Readonly` is what stops a consumer
-  // from mutating the live config through a row.
+  // Rows alias their records by reference; `Readonly` is what stops a consumer from writing through
+  // a row into the form value.
   readonly metadata: Readonly<Record<string, unknown>> | undefined;
 }
 
