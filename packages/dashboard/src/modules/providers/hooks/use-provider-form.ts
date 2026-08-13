@@ -7,7 +7,7 @@ import type { ProviderFormMode, ProviderFormStep } from '../lib/constants';
 
 type ProviderFormValues = ApiProviderMutationBody | AiSdkProviderMutationBody;
 export type ProviderEditorKind = ProviderKind.Api | ProviderKind.AiSdk;
-type ProviderFormShape = ProviderFormValues extends infer Provider
+export type ProviderFormShape = ProviderFormValues extends infer Provider
   ? Provider extends ProviderFormValues
     ? Omit<Provider, 'transforms'> & { readonly transforms?: unknown; readonly validationModel?: string }
     : never
