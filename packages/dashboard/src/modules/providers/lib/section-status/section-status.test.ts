@@ -20,8 +20,9 @@ test('an empty baseURL on an api provider is todo and blocks; an empty apiKey is
   expect(blockingSections(statuses)).toEqual(['connection']);
   expect(sectionStatuses(base).connection).toBe('ok');
   // `baseURL: ''` short-circuits the `||` before `protocol` is read, so the protocol half needs
-  // its own case — and a missing `protocol` is the default state of every api create draft.
-  expect(sectionStatuses({ ...base, protocol: '' }).connection).toBe('todo');
+  // its own case. Use `undefined`, not `''`: `defaultValues: { ...initial, kind }` leaves the field
+  // absent on a fresh api draft, so `undefined` is the real state AND it also pins the `?? ''`.
+  expect(sectionStatuses({ ...base, protocol: undefined }).connection).toBe('todo');
   // ai-sdk drafts carry neither field; widening the guard to `!== 'oauth'` would make their
   // connection permanently todo, i.e. an unsaveable-looking draft.
   expect(sectionStatuses({ ...base, kind: 'ai-sdk', baseURL: undefined, protocol: undefined }).connection).toBe('ok');
