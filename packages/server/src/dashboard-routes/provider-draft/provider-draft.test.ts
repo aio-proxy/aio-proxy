@@ -323,6 +323,73 @@ describe('draft Provider catalog and test routes', () => {
     }
   });
 
+  // A configured Authorization must beat options.apiKey, the way upstreamHeaders
+  // (core/.../api.ts:98-104), the schema contract (types/provider.ts:94) and
+  // @ai-sdk/openai-compatible all resolve it. Deliberately spelled with a capital A: an
+  // object spread keeps both casings and fetch comma-joins them into one malformed
+  // credential, so this asserts the single-value outcome that Headers.set guarantees.
+  test('a configured Authorization header overrides options.apiKey', async () => {
+    let authorization: string | null = null;
+    const upstream = Bun.serve({
+      hostname: '127.0.0.1',
+      port: 0,
+      fetch(request) {
+        authorization = request.headers.get('authorization');
+        return Response.json({ data: [{ id: 'sdk-model-a' }] });
+      },
+    });
+    try {
+      await routes.request(
+        '/providers/draft/catalog',
+        jsonRequest({
+          draft: {
+            id: 'unsaved-sdk',
+            kind: 'ai-sdk',
+            options: {
+              apiKey: 'placeholder',
+              baseURL: `http://127.0.0.1:${upstream.port}/v1`,
+              headers: { Authorization: 'Bearer real-token' },
+            },
+          },
+        }),
+      );
+      expect(authorization).toBe('Bearer real-token');
+    } finally {
+      await upstream.stop(true);
+    }
+  });
+
+  // The ai-sdk loader duplicates the api loader's non-ok handling (its equivalent test is
+  // 'returns a recoverable catalog failure without reflecting the upstream body') and
+  // carries the same guarantee: an upstream error body never reaches the dashboard.
+  test('an ai-sdk catalog error is recoverable and does not reflect the upstream body', async () => {
+    const upstream = Bun.serve({
+      hostname: '127.0.0.1',
+      port: 0,
+      fetch: () => new Response('sdk-upstream-secret-body', { status: 401 }),
+    });
+    try {
+      const response = await routes.request(
+        '/providers/draft/catalog',
+        jsonRequest({
+          draft: {
+            id: 'unsaved-sdk',
+            kind: 'ai-sdk',
+            options: { apiKey: 'wrong-key', baseURL: `http://127.0.0.1:${upstream.port}/v1` },
+          },
+        }),
+      );
+      const text = await response.text();
+
+      expect(response.status).toBe(200);
+      expect(JSON.parse(text)).toEqual({ ok: false, error: { code: 'catalog_unavailable', recoverable: true } });
+      expect(text).not.toContain('sdk-upstream-secret-body');
+      expect(text).not.toContain('wrong-key');
+    } finally {
+      await upstream.stop(true);
+    }
+  });
+
   test('an identity-changing edit reaches the upstream instead of short-circuiting', async () => {
     const response = await routes.request(
       '/providers/draft/catalog',
