@@ -158,7 +158,7 @@ export async function testProviderDraft(
 // Borrows the live runtime: an oauth provider cannot exist unsaved, and a
 // one-shot materialization would drive plugin auth (and can rewrite stored
 // credentials) from a read-only test button. Unsaved draft transforms are
-// therefore NOT exercised here; the rail copy says so (task 17).
+// therefore NOT exercised here; the editor's rail copy says so.
 async function testOAuthProvider(
   state: ServerState,
   provider: Extract<Provider, { kind: ProviderKind.OAuth }>,

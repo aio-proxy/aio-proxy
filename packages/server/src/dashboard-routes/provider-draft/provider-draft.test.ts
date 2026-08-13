@@ -20,8 +20,10 @@ describe('draft Provider catalog and test routes', () => {
   let directory: string;
   let state: ServerState;
   let routes: ReturnType<typeof createDashboardRoutes>;
+  let probedModel: string | undefined;
 
   beforeEach(async () => {
+    probedModel = undefined;
     directory = mkdtempSync(join(tmpdir(), 'aio-dashboard-provider-draft-'));
     state = await createServerState({
       config: ConfigSchema.parse({
@@ -57,15 +59,23 @@ describe('draft Provider catalog and test routes', () => {
         },
       }),
       dbHome: directory,
+      // The two lists MUST differ: `models` is the runtime's already-filtered SAVED
+      // whitelist, `upstreamMetadata` keys are the full discovered catalog, and the gate
+      // must read the latter. Make them equal and `Object.keys(runtime.upstreamMetadata)`
+      // and `runtime.models` become indistinguishable, so nothing catches a gate wired to
+      // the saved whitelist — exactly the unsaved-whitelist-edit case this supports.
       providerInstances: [
         {
           id: 'saved-oauth',
           kind: 'oauth',
           enabled: true,
-          models: ['disc-a', 'disc-b'],
+          models: ['disc-a'],
           upstreamMetadata: { 'disc-a': {}, 'disc-b': {} },
           model: {
-            invoke: async function* () {
+            // Record the requested id: the transport must be invoked with the model the
+            // user asked about, or the button reports "works" for a model it never called.
+            invoke: async function* (input: { readonly modelId: string }) {
+              probedModel = input.modelId;
               yield { type: 'text-delta', delta: 'pong' };
             },
           },
@@ -830,6 +840,25 @@ describe('draft Provider catalog and test routes', () => {
     );
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ ok: true });
+    expect(probedModel).toBe('disc-a');
+  });
+
+  // The gate reads the DISCOVERED catalog with the DRAFT's whitelist, not the saved
+  // `runtime.models` (which is only ['disc-a']). Swap the implementation to
+  // `runtime.models` and this is the test that goes red: an unsaved whitelist edit
+  // naming a discovered-but-not-yet-saved model must be testable before saving.
+  test('an oauth draft whitelist beats the saved one for a discovered model', async () => {
+    const response = await routes.request(
+      '/providers/draft/test',
+      jsonRequest({
+        draft: { kind: 'oauth', id: 'saved-oauth', enabled: true, proxy: null, models: ['disc-b'] },
+        persistedProviderId: 'saved-oauth',
+        model: 'disc-b',
+      }),
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ ok: true });
+    expect(probedModel).toBe('disc-b');
   });
 
   test('an oauth draft with an empty whitelist can test any discovered model, but not an unknown one', async () => {
@@ -858,5 +887,25 @@ describe('draft Provider catalog and test routes', () => {
       ok: false,
       error: { code: 'persisted_provider_not_found', recoverable: true },
     });
+  });
+
+  // The contract, not the line that happens to enforce it: an oauth draft is testable
+  // only against its persisted account. Today the candidate fails ProviderSchema first
+  // (no plugin/capability), so this passes through the `!parsed.success` arm rather than
+  // the oauth guard below it — that is fine. If plugin/capability ever gain defaults,
+  // this test is what stops a credential-less oauth draft from reaching a transport.
+  test('a fresh oauth draft with no persisted provider is not testable', async () => {
+    const response = await routes.request(
+      '/providers/draft/test',
+      jsonRequest({
+        draft: { kind: 'oauth', id: 'fresh-oauth', enabled: true, proxy: null, models: [] },
+        model: 'disc-a',
+      }),
+    );
+    expect(await response.json()).toEqual({
+      ok: false,
+      error: { code: 'persisted_provider_mismatch', recoverable: true },
+    });
+    expect(probedModel).toBeUndefined();
   });
 });
