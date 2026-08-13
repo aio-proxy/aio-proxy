@@ -7,6 +7,26 @@ test('rows join models with their metadata', () => {
     { id: 'a', metadata: { name: 'A' } },
     { id: 'b', metadata: undefined },
   ]);
+  // The common case — a provider with no metadata at all — takes a different branch from `b` above
+  // (`metadata?.[id]` short-circuits on the argument, not the key). Without this line, returning `{}`
+  // for every row of every metadata-less provider goes unnoticed, and any downstream
+  // `metadata !== undefined` has-metadata badge or dirty check then misfires on every row.
+  expect(toModelRows(['a'], undefined)).toEqual([{ id: 'a', metadata: undefined }]);
+});
+
+test('every row is applied, and models keeps the row order', () => {
+  const rows = [
+    { id: 'b', metadata: { name: 'B' } },
+    { id: 'a', metadata: { name: 'A' } },
+  ];
+  // The only test where the rows loop is seen ITERATING, and the only one whose ids are not already
+  // sorted. Every other test passes a single row, so both of these are invisible: processing only
+  // the first row drops every other model's metadata on save, and reordering `models` churns the
+  // config file diff on every save.
+  expect(applyModelRows(rows, undefined)).toEqual({
+    models: ['b', 'a'],
+    metadata: { b: { name: 'B' }, a: { name: 'A' } },
+  });
 });
 
 test('round trip keeps metadata for alias-only models and unrecognized fields', () => {
@@ -20,8 +40,10 @@ test('round trip keeps metadata for alias-only models and unrecognized fields', 
 test('a row metadata record replaces the previous record for that id', () => {
   const previous = { a: { cost: { input: 1 }, removedInDrawer: true } };
   const rows = [{ id: 'a', metadata: { cost: { input: 2 } } }];
-  // A row carries the WHOLE record for its id (toModelRows seeded it from previous), so the row
-  // must replace, never shallow-merge onto, the previous record for that id.
+  // A row carries the WHOLE record for its id (toModelRows seeded it from previous), so fields the
+  // drawer removed from that record must not come back from `previousMetadata`. This does NOT pin
+  // replace-vs-shallow-merge: the preservation guard leaves `merged[row.id]` unset when the rows
+  // loop runs, so merging onto it is an equivalent mutant.
   expect(applyModelRows(rows, previous).metadata).toEqual({ a: { cost: { input: 2 } } });
 });
 
