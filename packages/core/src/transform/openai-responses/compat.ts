@@ -133,9 +133,10 @@ function convertReasoning(state: ConvertState, item: ReasoningItem, index: numbe
 }
 
 function convertFunctionCall(state: ConvertState, item: FunctionCallItem, index: number): void {
-  const flattenedName = flattenOpenAIResponsesToolName(item.namespace, item.name);
+  const namespace = item.namespace ?? uniqueToolNamespace(state.tools, item.name, 'function', index, item.type);
+  const flattenedName = flattenOpenAIResponsesToolName(namespace, item.name);
   const metadata =
-    item.namespace === undefined && item.id === undefined && item.status === undefined
+    namespace === undefined && item.id === undefined && item.status === undefined
       ? undefined
       : ({
           protocol: 'openai-responses',
@@ -145,7 +146,7 @@ function convertFunctionCall(state: ConvertState, item: FunctionCallItem, index:
           ...(item.status === undefined ? {} : { status: item.status }),
           wireToolType: 'function',
           wireToolName: item.name,
-          ...(item.namespace === undefined ? {} : { namespace: item.namespace }),
+          ...(namespace === undefined ? {} : { namespace }),
         } satisfies OpenAIResponsesWireMetadata);
   state.calls.set(item.call_id, { flattenedName, ...(metadata === undefined ? {} : { metadata }) });
   appendAssistantPart(state.messages, state.previous, {
@@ -159,7 +160,7 @@ function convertFunctionCall(state: ConvertState, item: FunctionCallItem, index:
 }
 
 function convertCustomToolCall(state: ConvertState, item: CustomToolCallItem, index: number): void {
-  const namespace = item.namespace ?? uniqueCustomToolNamespace(state.tools, item.name);
+  const namespace = item.namespace ?? uniqueToolNamespace(state.tools, item.name, 'custom', index, item.type);
   const flattenedName = flattenOpenAIResponsesToolName(namespace, item.name);
   const metadata = {
     protocol: 'openai-responses',
@@ -182,19 +183,24 @@ function convertCustomToolCall(state: ConvertState, item: CustomToolCallItem, in
   state.previous = 'call';
 }
 
-function uniqueCustomToolNamespace(
+function uniqueToolNamespace(
   tools: readonly OpenAIResponsesTransformTool[] | undefined,
   wireName: string,
+  wireType: 'function' | 'custom',
+  index: number,
+  itemType: string,
 ): string | undefined {
-  const namespaces = new Set<string>();
+  const matches: Array<string | undefined> = [];
   for (const tool of tools ?? []) {
     const metadata = readOpenAIResponsesWireMetadata(tool.metadata);
-    if (metadata?.wireToolType !== 'custom' || metadata.wireToolName !== wireName || metadata.namespace === undefined) {
-      continue;
-    }
-    namespaces.add(metadata.namespace);
+    if (metadata?.wireToolType !== wireType || metadata.wireToolName !== wireName) continue;
+    matches.push(metadata.namespace);
   }
-  return namespaces.size === 1 ? [...namespaces][0] : undefined;
+  if (matches.length === 1) return matches[0];
+  if (matches.length > 1) {
+    warnOpenAIResponsesDegradation(`${itemType}.namespace`, `input.${index}.namespace`, 'dropped');
+  }
+  return undefined;
 }
 
 function convertToolCallOutput(state: ConvertState, item: ToolCallOutputItem, index: number): void {

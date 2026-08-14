@@ -88,7 +88,9 @@ test('aligns replayed custom calls to a unique namespaced declaration', () => {
     ],
   });
 
-  expect(openAIResponsesToModelMessages(request).messages).toMatchObject([
+  const converted = openAIResponsesToModelMessages(request);
+  expect(converted.tools).toMatchObject([{ name: 'functions__exec' }]);
+  expect(converted.messages).toMatchObject([
     {
       role: 'assistant',
       content: [
@@ -105,6 +107,110 @@ test('aligns replayed custom calls to a unique namespaced declaration', () => {
       content: [{ type: 'tool-result', toolCallId: 'call_1', toolName: 'functions__exec' }],
     },
   ]);
+});
+
+test('aligns replayed function calls to a unique namespaced declaration', () => {
+  const request = parseOpenAIResponses({
+    model: 'gpt-5.6-terra',
+    input: [
+      {
+        type: 'additional_tools',
+        role: 'developer',
+        tools: [
+          {
+            type: 'namespace',
+            name: 'functions',
+            tools: [{ type: 'function', name: 'wait', parameters: { type: 'object' } }],
+          },
+        ],
+      },
+      { type: 'function_call', call_id: 'call_1', name: 'wait', arguments: '{}' },
+      { type: 'function_call_output', call_id: 'call_1', output: 'ok' },
+    ],
+  });
+
+  const converted = openAIResponsesToModelMessages(request);
+  expect(converted.tools).toMatchObject([{ name: 'functions__wait' }]);
+  expect(converted.messages).toMatchObject([
+    { role: 'assistant', content: [{ type: 'tool-call', toolCallId: 'call_1', toolName: 'functions__wait' }] },
+    { role: 'tool', content: [{ type: 'tool-result', toolCallId: 'call_1', toolName: 'functions__wait' }] },
+  ]);
+});
+
+test('does not infer a namespace when a top-level custom tool also matches', () => {
+  const warn = spyOn(console, 'warn').mockImplementation(() => {});
+  const request = parseOpenAIResponses({
+    model: 'gpt-5.6-terra',
+    input: [
+      {
+        type: 'additional_tools',
+        role: 'developer',
+        tools: [
+          { type: 'custom', name: 'exec' },
+          {
+            type: 'namespace',
+            name: 'functions',
+            tools: [{ type: 'custom', name: 'exec', format: { type: 'text' } }],
+          },
+        ],
+      },
+      { type: 'custom_tool_call', call_id: 'call_1', name: 'exec', input: 'pwd' },
+    ],
+  });
+
+  try {
+    expect(openAIResponsesToModelMessages(request).messages).toMatchObject([
+      { role: 'assistant', content: [{ type: 'tool-call', toolCallId: 'call_1', toolName: 'exec' }] },
+    ]);
+    expect(warn).toHaveBeenCalledWith(
+      '[aio-proxy] OpenAI Responses model conversion degraded',
+      'custom_tool_call.namespace',
+      'input.1.namespace',
+      'dropped',
+    );
+  } finally {
+    warn.mockRestore();
+  }
+});
+
+test('does not infer a namespace when multiple namespaced custom tools match', () => {
+  const warn = spyOn(console, 'warn').mockImplementation(() => {});
+  const request = parseOpenAIResponses({
+    model: 'gpt-5.6-terra',
+    input: [
+      {
+        type: 'additional_tools',
+        role: 'developer',
+        tools: [
+          {
+            type: 'namespace',
+            name: 'functions',
+            tools: [{ type: 'custom', name: 'exec', format: { type: 'text' } }],
+          },
+          {
+            type: 'namespace',
+            name: 'other',
+            tools: [{ type: 'custom', name: 'exec', format: { type: 'text' } }],
+          },
+        ],
+      },
+      { type: 'custom_tool_call', call_id: 'call_1', name: 'exec', input: 'pwd' },
+    ],
+  });
+
+  try {
+    expect(openAIResponsesToModelMessages(request).messages).toMatchObject([
+      { role: 'assistant', content: [{ type: 'tool-call', toolCallId: 'call_1', toolName: 'exec' }] },
+    ]);
+    expect(warn).toHaveBeenCalledWith(
+      '[aio-proxy] OpenAI Responses model conversion degraded',
+      'custom_tool_call.namespace',
+      'input.1.namespace',
+      'dropped',
+    );
+  } finally {
+    warn.mockRestore();
+  }
 });
 
 test('materializes custom tools nested in a namespace', () => {
