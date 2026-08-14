@@ -150,16 +150,26 @@ describe('ModelsSection', () => {
     await screen.findByTestId('provider-model-metadata-drawer');
     fireEvent.click(screen.getByTestId('metadata-tab-visual'));
 
-    const cost = await screen.findByLabelText('cost.input');
-    // Per character, not one `fireEvent.change`: the regression is React rewriting the field at the
-    // `0.0` step, where `Number()` collapses the text to `0`. A whole-string change never sees it.
-    for (const text of ['0', '0.', '0.0', '0.07', '0.075']) {
-      fireEvent.change(cost, { target: { value: text } });
+    const cost = (await screen.findByLabelText('cost.input')) as HTMLInputElement;
+    // Append to the live DOM value rather than feeding absolute strings. The regression is React
+    // rewriting the field at the `0.0` step, where `Number()` collapses the text to `0`; an absolute
+    // next event would overwrite that rewrite, so the test would pass either way. Appending carries
+    // the clobber forward — on the broken code the field accumulates to `75`.
+    for (const character of '0.075') {
+      fireEvent.change(cost, { target: { value: cost.value + character } });
     }
 
     expect(cost).toHaveValue(0.075);
     fireEvent.click(screen.getByTestId('provider-model-metadata-save'));
     await waitFor(() => expect(section.state.values.metadata?.['model-a']).toEqual({ cost: { input: 0.075 } }));
+
+    // Clearing a money field must delete the key, not write `0`. Save closed the drawer, so reopen it.
+    fireEvent.click(within(screen.getByTestId('model-row-model-a')).getByTestId('model-row-metadata'));
+    await screen.findByTestId('provider-model-metadata-drawer');
+    fireEvent.click(screen.getByTestId('metadata-tab-visual'));
+    fireEvent.change(await screen.findByLabelText('cost.input'), { target: { value: '' } });
+    fireEvent.click(screen.getByTestId('provider-model-metadata-save'));
+    await waitFor(() => expect(section.state.values.metadata?.['model-a']).toEqual({}));
   });
 
   test('the metadata visual tab cannot be entered while the JSON draft is unparseable', async () => {
@@ -179,8 +189,13 @@ describe('ModelsSection', () => {
     // keepMounted defaults to false, so the visual fields' absence is the assertion.
     expect(screen.queryByLabelText('limit.context')).toBeNull();
 
-    // The real guarantee: no lossy value can reach the form from this state.
+    // Save is disabled on an unparseable draft, so this click is a no-op; the two assertions above
+    // are the discriminating ones. This only pins that nothing lossy slips through anyway.
     fireEvent.click(screen.getByTestId('provider-model-metadata-save'));
     expect(section.state.values.metadata?.['model-a']).toEqual({ name: 'A' });
+
+    // Emptying the textarea to start over has no keys to lose, so it must not lock the tab.
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: '  ' } });
+    await waitFor(() => expect(screen.getByTestId('metadata-tab-visual')).not.toHaveAttribute('aria-disabled', 'true'));
   });
 });

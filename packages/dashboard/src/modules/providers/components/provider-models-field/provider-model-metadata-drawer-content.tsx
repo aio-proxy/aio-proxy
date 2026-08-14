@@ -38,6 +38,9 @@ export const ProviderModelMetadataDrawerContent: React.FC<ProviderModelMetadataD
   // Deliberately not `parsed.data`: the visual tab must merge over a draft the schema rejects
   // (e.g. `limit.input > limit.context`) instead of replacing it with `{}`.
   const rawValue = useMemo((): Readonly<Record<string, unknown>> | undefined => {
+    // An emptied textarea is a legitimate "start over" flow and has no keys to lose, so it stays
+    // open to the visual tab. Non-empty broken text does not.
+    if (draft.trim() === '') return {};
     try {
       const value: unknown = JSON.parse(draft);
       return typeof value === 'object' && value !== null && !Array.isArray(value)
