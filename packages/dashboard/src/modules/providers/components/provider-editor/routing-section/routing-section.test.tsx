@@ -13,9 +13,10 @@ interface HarnessProps {
   readonly initial: Partial<ProviderEditorShape>;
   readonly models: readonly string[];
   readonly candidates?: readonly string[] | undefined;
+  readonly others?: React.ComponentProps<typeof RoutingSection>['others'];
 }
 
-const Harness: React.FC<HarnessProps> = ({ initial, models, candidates }) => {
+const Harness: React.FC<HarnessProps> = ({ initial, models, candidates, others = [] }) => {
   const form = useProviderEditorForm({ kind: ProviderKind.Api, initial });
   section = form;
   return (
@@ -24,7 +25,7 @@ const Harness: React.FC<HarnessProps> = ({ initial, models, candidates }) => {
       mode={ProviderFormMode.Edit}
       models={models}
       candidates={candidates}
-      others={[]}
+      others={others}
       status="ok"
     />
   );
@@ -99,6 +100,20 @@ describe('RoutingSection', () => {
     render(<Harness initial={apiInitial([])} models={[]} candidates={['disc-a']} />);
 
     expect(screen.getByRole('button', { name: /Add Alias|添加/u })).toBeEnabled();
+  });
+
+  test('empty whitelist previews attempt order from the discovered catalog', () => {
+    render(
+      <Harness
+        initial={apiInitial([])}
+        models={[]}
+        candidates={['disc-a']}
+        others={[{ id: 'other', clientModels: ['disc-a'], enabled: true }]}
+      />,
+    );
+
+    expect(screen.getByTestId('attempt-order-row-disc-a')).toBeTruthy();
+    expect(screen.queryByTestId('attempt-order-empty')).toBeNull();
   });
 
   test('the weight slider writes the dragged value onto the form', () => {

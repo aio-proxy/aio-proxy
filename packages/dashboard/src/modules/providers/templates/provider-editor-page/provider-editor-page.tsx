@@ -16,6 +16,7 @@ import { RoutingSection } from '../../components/provider-editor/routing-section
 import { useActiveSection } from '../../hooks/use-active-section';
 import { ProviderFormMode } from '../../lib/constants';
 import { EditorFooter } from './editor-footer';
+import { exposedModels } from './exposed-models';
 import { SectionNav } from './section-nav';
 import { type ProviderEditorPageProps, useProviderEditorPage } from './use-provider-editor-page';
 
@@ -58,7 +59,7 @@ export const ProviderEditorPage: React.FC<ProviderEditorPageProps> = (props) => 
   const deleteDialogRef = useRef<DeleteProviderDialogRef>(null);
   const locked = mode === ProviderFormMode.Create && kind === ProviderKind.OAuth && !authorized;
   const models = values.models ?? [];
-  const testableModels = models.length > 0 ? models : (oauth?.models ?? []);
+  const exposed = exposedModels(models, oauth?.models);
 
   const sections345 = (
     <>
@@ -134,17 +135,12 @@ export const ProviderEditorPage: React.FC<ProviderEditorPageProps> = (props) => 
         </div>
         <aside className="w-72 shrink-0 space-y-8">
           <ExposurePanel
-            models={models}
+            models={exposed}
             alias={values.alias}
             enabled={values.enabled ?? true}
             warning={sessionWarning}
           />
-          <ModelValidationPanel
-            form={form}
-            kind={kind}
-            persistedProviderId={persistedId}
-            testableModels={testableModels}
-          />
+          <ModelValidationPanel form={form} kind={kind} persistedProviderId={persistedId} testableModels={exposed} />
         </aside>
       </div>
       {saved ? (

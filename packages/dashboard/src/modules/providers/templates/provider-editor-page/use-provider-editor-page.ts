@@ -2,7 +2,6 @@ import { m } from '@aio-proxy/i18n';
 import {
   type DashboardOAuthCapability,
   type DashboardOAuthProviderEdit,
-  type DashboardOAuthSession,
   type DashboardOAuthSessionStart,
   type OAuthProvider,
   type ProviderKind,
@@ -12,12 +11,9 @@ import {
   ProviderMutationBodySchema,
 } from '@aio-proxy/types';
 import { toast } from '@aio-proxy/ui/components/toast';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from '@tanstack/react-router';
+import { useQuery } from '@tanstack/react-query';
 import { useSelector } from '@tanstack/react-store';
-import { useCallback, useEffect, useRef, useState } from 'react';
-
-import { queryKeys } from '@/lib/query-keys';
+import { useState } from 'react';
 
 import { hasWeightTie } from '../../components/provider-editor/attempt-order-preview';
 import { useOAuthProviderForm } from '../../hooks/use-oauth-provider-form';
@@ -31,14 +27,10 @@ import { oauthAccountSubmission } from '../../lib/oauth-account-submission';
 import { capabilityKey } from '../../lib/oauth-capability-key';
 import { oauthProviderEditAction } from '../../lib/oauth-provider-edit';
 import { blockingSections, sectionStatuses } from '../../lib/section-status';
-import {
-  cancelOAuthSession,
-  oauthCapabilitiesQueryOptions,
-  oauthSessionQueryOptions,
-  startOAuthSession,
-  submitOAuthCallback,
-} from '../../services/oauth-service';
-import { providerEditViewQueryOptions, providersQueryOptions } from '../../services/providers-service';
+import { oauthCapabilitiesQueryOptions } from '../../services/oauth-service';
+import { providersQueryOptions } from '../../services/providers-service';
+import { exposedModels } from './exposed-models';
+import { useOAuthEditorSession } from './use-oauth-editor-session';
 
 const accountDraft = (values: {
   readonly publicValues: Record<string, unknown>;
@@ -157,84 +149,6 @@ export interface ProviderEditorPageProps {
   readonly onSessionIdChange: (sessionId: string | undefined) => void;
 }
 
-const useOAuthEditorSession = (
-  mode: ProviderFormMode,
-  sessionId: string | undefined,
-  onSessionIdChange: (sessionId: string | undefined) => void,
-  providerId: string | undefined,
-) => {
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const popup = useRef<Window | null>(null);
-  const handledSuccess = useRef<string | undefined>(undefined);
-  const closeUnclaimedPopup = useCallback(() => {
-    const unclaimed = popup.current;
-    popup.current = null;
-    unclaimed?.close();
-  }, []);
-  const openPopup = useCallback(() => {
-    popup.current = window.open('', '_blank');
-  }, []);
-  const [authorizedProviderId, setAuthorizedProviderId] = useState<string | undefined>(
-    mode === ProviderFormMode.Edit ? providerId : undefined,
-  );
-  const [sessionWarning, setSessionWarning] = useState<'catalog_unavailable' | undefined>(undefined);
-  const startMutation = useMutation({
-    mutationFn: startOAuthSession,
-    onSuccess: ({ session }) => onSessionIdChange(session.id),
-  });
-  const callbackMutation = useMutation({ mutationFn: submitOAuthCallback });
-  const cancelMutation = useMutation({
-    mutationFn: cancelOAuthSession,
-    onSuccess: () => onSessionIdChange(undefined),
-  });
-  const sessionQuery = useQuery(oauthSessionQueryOptions(sessionId ?? ''));
-  const persistedId = authorizedProviderId ?? providerId;
-  const editViewQuery = useQuery({
-    ...providerEditViewQueryOptions(persistedId ?? ''),
-    enabled: persistedId !== undefined && persistedId !== '',
-  });
-  const session: DashboardOAuthSession | undefined =
-    sessionQuery.data?.session ??
-    (sessionId !== undefined && sessionQuery.isError
-      ? { id: sessionId, status: 'failed', code: 'OAUTH_SESSION_UNAVAILABLE' }
-      : undefined);
-
-  useEffect(() => {
-    if ((session?.status === 'authorize_url' || session?.status === 'loopback') && popup.current !== null) {
-      popup.current.location.href = session.status === 'authorize_url' ? session.url : session.authorizationUrl;
-      popup.current = null;
-    }
-    if (session?.status === 'failed' || session?.status === 'cancelled') closeUnclaimedPopup();
-    if (session?.status === 'succeeded' && handledSuccess.current !== session.id) {
-      handledSuccess.current = session.id;
-      setAuthorizedProviderId(session.providerId);
-      setSessionWarning(session.warning);
-      void queryClient.invalidateQueries({ queryKey: queryKeys.providers });
-      void editViewQuery.refetch();
-      if (mode === ProviderFormMode.Create) {
-        void navigate({ to: '/providers/$id/edit', params: { id: session.providerId }, replace: true });
-      }
-    }
-  }, [closeUnclaimedPopup, editViewQuery, mode, navigate, queryClient, session]);
-
-  useEffect(() => closeUnclaimedPopup, [closeUnclaimedPopup]);
-
-  return {
-    openPopup,
-    closeUnclaimedPopup,
-    startMutation,
-    callbackMutation,
-    cancelMutation,
-    sessionQuery,
-    session,
-    authorizedProviderId,
-    sessionWarning,
-    persistedId,
-    navigate,
-  };
-};
-
 export const useProviderEditorPage = ({
   mode,
   kind,
@@ -302,7 +216,11 @@ export const useProviderEditorPage = ({
     weightTie: hasWeightTie({
       selfId: values.id ?? '',
       selfWeight: values.weight,
-      exposedAliases: modelRoutes({ enabled: true, models, alias: values.alias }).map((route) => route.alias),
+      exposedAliases: modelRoutes({
+        enabled: true,
+        models: exposedModels(models, oauth?.models),
+        alias: values.alias,
+      }).map((route) => route.alias),
       others,
     }),
     optionsValid,

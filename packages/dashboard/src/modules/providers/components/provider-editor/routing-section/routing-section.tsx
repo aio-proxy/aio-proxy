@@ -24,64 +24,67 @@ interface RoutingSectionProps {
   readonly status: SectionStatus;
 }
 
-export const RoutingSection: React.FC<RoutingSectionProps> = ({ form, mode, models, candidates, others, status }) => (
-  <SectionShell id="routing" title={m['dashboard.providers.editor.section_routing']()} status={status}>
-    <div data-testid="provider-editor-field-enabled">
-      <form.Field name="enabled">
+export const RoutingSection: React.FC<RoutingSectionProps> = ({ form, mode, models, candidates, others, status }) => {
+  const exposed = models.length === 0 ? (candidates ?? []) : models;
+  return (
+    <SectionShell id="routing" title={m['dashboard.providers.editor.section_routing']()} status={status}>
+      <div data-testid="provider-editor-field-enabled">
+        <form.Field name="enabled">
+          {(field) => (
+            <Field orientation="horizontal">
+              <Switch
+                id="provider-routing-enabled"
+                checked={field.state.value ?? true}
+                onCheckedChange={(checked) => field.handleChange(Boolean(checked))}
+              />
+              <Label htmlFor="provider-routing-enabled">{m['dashboard.providers.form.label_enabled']()}</Label>
+            </Field>
+          )}
+        </form.Field>
+      </div>
+
+      <form.Field name="weight">
         {(field) => (
-          <Field orientation="horizontal">
-            <Switch
-              id="provider-routing-enabled"
-              checked={field.state.value ?? true}
-              onCheckedChange={(checked) => field.handleChange(Boolean(checked))}
-            />
-            <Label htmlFor="provider-routing-enabled">{m['dashboard.providers.form.label_enabled']()}</Label>
-          </Field>
+          <WeightSliderField
+            value={field.state.value}
+            disabled={false}
+            onChange={(weight) => field.handleChange(weight)}
+          />
         )}
       </form.Field>
-    </div>
 
-    <form.Field name="weight">
-      {(field) => (
-        <WeightSliderField
-          value={field.state.value}
-          disabled={false}
-          onChange={(weight) => field.handleChange(weight)}
-        />
-      )}
-    </form.Field>
+      <form.Field name="alias">
+        {(field) => {
+          const alias: ProviderAlias = field.state.value ?? {};
+          return (
+            <RoutingAliases
+              alias={alias}
+              // The RAW whitelist, never the fallback: empty means "no whitelist, so no target can be
+              // missing", and the fallback would make an alias-only provider fail against the catalog.
+              issues={aliasEditorIssues(alias, models)}
+              // The router exposes everything when the whitelist is empty, so the target picker mirrors
+              // that. `?? []` is load-bearing: api/ai-sdk have no catalog until the user loads one, and
+              // `undefined` crashes the downstream `.map` on exactly the alias-only provider this fixes.
+              targetOptions={exposed}
+              onAliasChange={(next) =>
+                field.handleChange(serializeAlias(next, mode === ProviderFormMode.Create ? 'create' : 'edit'))
+              }
+            />
+          );
+        }}
+      </form.Field>
 
-    <form.Field name="alias">
-      {(field) => {
-        const alias: ProviderAlias = field.state.value ?? {};
-        return (
-          <RoutingAliases
-            alias={alias}
-            // The RAW whitelist, never the fallback: empty means "no whitelist, so no target can be
-            // missing", and the fallback would make an alias-only provider fail against the catalog.
-            issues={aliasEditorIssues(alias, models)}
-            // The router exposes everything when the whitelist is empty, so the target picker mirrors
-            // that. `?? []` is load-bearing: api/ai-sdk have no catalog until the user loads one, and
-            // `undefined` crashes the downstream `.map` on exactly the alias-only provider this fixes.
-            targetOptions={models.length === 0 ? (candidates ?? []) : models}
-            onAliasChange={(next) =>
-              field.handleChange(serializeAlias(next, mode === ProviderFormMode.Create ? 'create' : 'edit'))
-            }
+      <form.Subscribe selector={(state) => [state.values.id, state.values.weight, state.values.alias] as const}>
+        {([id, weight, alias]) => (
+          <AttemptOrderPreview
+            selfId={id ?? ''}
+            selfWeight={weight}
+            // A disabled self is still previewed, so the routes are derived unconditionally.
+            exposedAliases={modelRoutes({ enabled: true, models: exposed, alias }).map((route) => route.alias)}
+            others={others}
           />
-        );
-      }}
-    </form.Field>
-
-    <form.Subscribe selector={(state) => [state.values.id, state.values.weight, state.values.alias] as const}>
-      {([id, weight, alias]) => (
-        <AttemptOrderPreview
-          selfId={id ?? ''}
-          selfWeight={weight}
-          // A disabled self is still previewed, so the routes are derived unconditionally.
-          exposedAliases={modelRoutes({ enabled: true, models, alias }).map((route) => route.alias)}
-          others={others}
-        />
-      )}
-    </form.Subscribe>
-  </SectionShell>
-);
+        )}
+      </form.Subscribe>
+    </SectionShell>
+  );
+};

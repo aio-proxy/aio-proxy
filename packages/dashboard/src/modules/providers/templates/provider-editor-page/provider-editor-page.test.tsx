@@ -324,6 +324,7 @@ test('oauth create authorizes in place, locks sections 3-5, then unlocks after s
     expect(mocks.navigate).toHaveBeenCalledWith({
       to: '/providers/$id/edit',
       params: { id: 'p-new' },
+      search: { session: '0198bfc4-239e-7d62-bcb0-a9e0849cabaf' },
       replace: true,
     }),
   );
@@ -331,6 +332,48 @@ test('oauth create authorizes in place, locks sections 3-5, then unlocks after s
   expect(screen.getByText(/model catalog is not available/u)).toBeTruthy();
   expect(saveButton()).toBeEnabled();
   expect(within(screen.getByRole('region', { name: /Models/u })).getByTestId('models-manual-add-input')).toBeEnabled();
+});
+
+test('oauth empty whitelist lists discovered catalog ids on the exposure rail', () => {
+  renderPage({
+    mode: ProviderFormMode.Edit,
+    kind: ProviderKind.OAuth,
+    providerId: 'existing',
+    provider: oauthProvider,
+    oauth: { ...oauth, models: ['catalog-a', 'catalog-b'] },
+    initial: { id: 'existing', enabled: true, models: [] },
+    onSessionIdChange: rs.fn(),
+  });
+
+  const rail = screen.getByTestId('exposure-panel');
+  expect(within(rail).getByTestId('exposure-route-catalog-a')).toBeTruthy();
+  expect(within(rail).getByTestId('exposure-route-catalog-b')).toBeTruthy();
+  expect(within(rail).queryByText(/Enable models or add aliases/u)).toBeNull();
+});
+
+test('edit-mode succeeded session with catalog_unavailable shows the rail warning', async () => {
+  mocks.session = {
+    id: 'session',
+    status: 'succeeded',
+    providerId: 'existing',
+    warning: 'catalog_unavailable',
+  };
+
+  renderPage({
+    mode: ProviderFormMode.Edit,
+    kind: ProviderKind.OAuth,
+    providerId: 'existing',
+    provider: oauthProvider,
+    oauth,
+    initial: { id: 'existing', enabled: true, models: [] },
+    sessionId: 'session',
+    onSessionIdChange: rs.fn(),
+  });
+
+  await waitFor(() =>
+    expect(within(screen.getByTestId('exposure-panel')).getByText(/model catalog is not available/u)).toBeTruthy(),
+  );
+  expect(mocks.navigate).not.toHaveBeenCalled();
 });
 
 test('oauth re-auth on an existing provider stays put and refetches the edit view', async () => {
