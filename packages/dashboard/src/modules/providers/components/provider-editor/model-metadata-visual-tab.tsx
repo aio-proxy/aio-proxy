@@ -9,13 +9,13 @@ import {
   ComboboxList,
 } from '@aio-proxy/ui/components/combobox';
 import { Field, FieldLabel } from '@aio-proxy/ui/components/field';
-import { Input } from '@aio-proxy/ui/components/input';
 import { Label } from '@aio-proxy/ui/components/label';
 import { Switch } from '@aio-proxy/ui/components/switch';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 
 import { modelsDevSlugsQueryOptions } from '../../services/models-dev-service';
+import { ModelMetadataNumberField } from './model-metadata-number-field';
 
 interface ModelMetadataVisualTabProps {
   readonly value: Readonly<Record<string, unknown>>;
@@ -59,7 +59,7 @@ const withNested = (source: Readonly<Record<string, unknown>>, group: string, ke
   return withKey(source, group, Object.keys(group_).length === 0 ? undefined : group_);
 };
 
-const numberText = (value: unknown) => (typeof value === 'number' ? String(value) : '');
+const numberValue = (value: unknown) => (typeof value === 'number' ? value : undefined);
 
 export const ModelMetadataVisualTab: React.FC<ModelMetadataVisualTabProps> = ({ value, onChange }) => {
   const extend = typeof value['extend'] === 'string' ? value['extend'] : '';
@@ -102,21 +102,15 @@ export const ModelMetadataVisualTab: React.FC<ModelMetadataVisualTabProps> = ({ 
 
       <div className="grid gap-3 sm:grid-cols-2">
         {NUMBER_FIELDS.map(([group, key]) => (
-          <Field key={`${group}.${key}`}>
-            <FieldLabel htmlFor={`metadata-${group}-${key}`}>{`${group}.${key}`}</FieldLabel>
-            <Input
-              id={`metadata-${group}-${key}`}
-              type="number"
-              min={group === 'limit' ? 1 : 0}
-              step={group === 'limit' ? 1 : 'any'}
-              value={numberText(objectAt(value, group)[key])}
-              onChange={(event) => {
-                const next = event.target.value === '' ? undefined : Number(event.target.value);
-                if (next !== undefined && !Number.isFinite(next)) return;
-                onChange(withNested(value, group, key, next));
-              }}
-            />
-          </Field>
+          <ModelMetadataNumberField
+            key={`${group}.${key}`}
+            id={`metadata-${group}-${key}`}
+            label={`${group}.${key}`}
+            min={group === 'limit' ? 1 : 0}
+            step={group === 'limit' ? 1 : 'any'}
+            value={numberValue(objectAt(value, group)[key])}
+            onValueChange={(next) => onChange(withNested(value, group, key, next))}
+          />
         ))}
       </div>
 

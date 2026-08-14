@@ -1,0 +1,59 @@
+import { Field, FieldLabel } from '@aio-proxy/ui/components/field';
+import { Input } from '@aio-proxy/ui/components/input';
+import { useState } from 'react';
+
+interface ModelMetadataNumberFieldProps {
+  readonly id: string;
+  readonly label: string;
+  readonly min: number;
+  readonly step: number | 'any';
+  readonly value: number | undefined;
+  readonly onValueChange: (next: number | undefined) => void;
+}
+
+/**
+ * A number input whose DOM text is owned locally, not derived from the parsed draft.
+ *
+ * Deriving `value` from the draft on every render makes fractional entry impossible: typing `0.075`
+ * passes through `0.0`, which `Number()` collapses to `0`, and the controlled string `'0'` is then
+ * written back over the user's `'0.0'`. Holding the in-progress text here and pushing only the
+ * parsed number outward keeps the field editable while the draft stays numeric.
+ */
+export const ModelMetadataNumberField: React.FC<ModelMetadataNumberFieldProps> = ({
+  id,
+  label,
+  min,
+  step,
+  value,
+  onValueChange,
+}) => {
+  const [text, setText] = useState(value === undefined ? '' : String(value));
+  const [lastValue, setLastValue] = useState(value);
+
+  // Re-sync from outside (JSON tab edited, drawer reopened) but never from our own echo: if the
+  // incoming number is what the current text already parses to, the text is the better display.
+  if (value !== lastValue) {
+    setLastValue(value);
+    if (value !== (text === '' ? undefined : Number(text))) setText(value === undefined ? '' : String(value));
+  }
+
+  return (
+    <Field>
+      <FieldLabel htmlFor={id}>{label}</FieldLabel>
+      <Input
+        id={id}
+        type="number"
+        min={min}
+        step={step}
+        value={text}
+        onChange={(event) => {
+          const next = event.target.value;
+          setText(next);
+          const parsed = next === '' ? undefined : Number(next);
+          if (parsed !== undefined && !Number.isFinite(parsed)) return;
+          onValueChange(parsed);
+        }}
+      />
+    </Field>
+  );
+};

@@ -37,14 +37,14 @@ export const ProviderModelMetadataDrawerContent: React.FC<ProviderModelMetadataD
   }, [draft]);
   // Deliberately not `parsed.data`: the visual tab must merge over a draft the schema rejects
   // (e.g. `limit.input > limit.context`) instead of replacing it with `{}`.
-  const rawValue = useMemo((): Readonly<Record<string, unknown>> => {
+  const rawValue = useMemo((): Readonly<Record<string, unknown>> | undefined => {
     try {
       const value: unknown = JSON.parse(draft);
       return typeof value === 'object' && value !== null && !Array.isArray(value)
         ? (value as Readonly<Record<string, unknown>>)
-        : {};
+        : undefined;
     } catch {
-      return {};
+      return undefined;
     }
   }, [draft]);
 
@@ -58,11 +58,26 @@ export const ProviderModelMetadataDrawerContent: React.FC<ProviderModelMetadataD
         {/* JSON is the default: the textarea is the shipped editor and reaches keys the visual tab cannot. */}
         <Tabs defaultValue="json">
           <TabsList>
-            <TabsTrigger value="visual">{m['dashboard.providers.editor.metadata_tab_visual']()}</TabsTrigger>
+            {/*
+              Disabled while the draft is not a JSON object: the visual tab merges over the parsed
+              draft and writes the whole result back, so entering it on unparseable text would
+              silently drop every key it cannot render (`name` among them). A visual edit always
+              emits `JSON.stringify` output, so this can never disable the tab a user is already on.
+            */}
+            <TabsTrigger
+              value="visual"
+              data-testid="metadata-tab-visual"
+              disabled={rawValue === undefined}
+              aria-describedby={rawValue === undefined ? 'metadata-visual-blocked' : undefined}
+            >
+              {m['dashboard.providers.editor.metadata_tab_visual']()}
+            </TabsTrigger>
             <TabsTrigger value="json">{m['dashboard.providers.editor.metadata_tab_json']()}</TabsTrigger>
           </TabsList>
           <TabsContent value="visual">
-            <ModelMetadataVisualTab value={rawValue} onChange={(next) => setDraft(JSON.stringify(next, null, 2))} />
+            {rawValue === undefined ? null : (
+              <ModelMetadataVisualTab value={rawValue} onChange={(next) => setDraft(JSON.stringify(next, null, 2))} />
+            )}
           </TabsContent>
           <TabsContent value="json">
             <Textarea
@@ -73,7 +88,7 @@ export const ProviderModelMetadataDrawerContent: React.FC<ProviderModelMetadataD
               onChange={(event) => setDraft(event.target.value)}
             />
             {!parsed.success ? (
-              <p role="alert" className="mt-2 text-sm text-destructive">
+              <p role="alert" id="metadata-visual-blocked" className="mt-2 text-sm text-destructive">
                 {m['dashboard.providers.form.metadata_json_error']()}
               </p>
             ) : null}

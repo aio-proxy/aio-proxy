@@ -142,4 +142,45 @@ describe('ModelsSection', () => {
       }),
     );
   });
+
+  test('the metadata visual tab accepts a fractional cost typed one keystroke at a time', async () => {
+    renderSection({ kind: ProviderKind.Api, initial: apiInitial(['model-a']) });
+
+    fireEvent.click(within(screen.getByTestId('model-row-model-a')).getByTestId('model-row-metadata'));
+    await screen.findByTestId('provider-model-metadata-drawer');
+    fireEvent.click(screen.getByTestId('metadata-tab-visual'));
+
+    const cost = await screen.findByLabelText('cost.input');
+    // Per character, not one `fireEvent.change`: the regression is React rewriting the field at the
+    // `0.0` step, where `Number()` collapses the text to `0`. A whole-string change never sees it.
+    for (const text of ['0', '0.', '0.0', '0.07', '0.075']) {
+      fireEvent.change(cost, { target: { value: text } });
+    }
+
+    expect(cost).toHaveValue(0.075);
+    fireEvent.click(screen.getByTestId('provider-model-metadata-save'));
+    await waitFor(() => expect(section.state.values.metadata?.['model-a']).toEqual({ cost: { input: 0.075 } }));
+  });
+
+  test('the metadata visual tab cannot be entered while the JSON draft is unparseable', async () => {
+    renderSection({ kind: ProviderKind.Api, initial: apiInitial(['model-a'], { 'model-a': { name: 'A' } }) });
+
+    fireEvent.click(within(screen.getByTestId('model-row-model-a')).getByTestId('model-row-metadata'));
+    await screen.findByTestId('provider-model-metadata-drawer');
+    expect(screen.getByTestId('metadata-tab-visual')).not.toHaveAttribute('aria-disabled', 'true');
+
+    // Drop the closing brace: the visual tab merges over the parsed draft, so entering it here would
+    // write back an object missing `name` — a key the visual tab cannot even re-enter.
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: '{"name":"A"' } });
+
+    // Base UI marks a disabled tab with aria-disabled, not the native attribute.
+    await waitFor(() => expect(screen.getByTestId('metadata-tab-visual')).toHaveAttribute('aria-disabled', 'true'));
+    fireEvent.click(screen.getByTestId('metadata-tab-visual'));
+    // keepMounted defaults to false, so the visual fields' absence is the assertion.
+    expect(screen.queryByLabelText('limit.context')).toBeNull();
+
+    // The real guarantee: no lossy value can reach the form from this state.
+    fireEvent.click(screen.getByTestId('provider-model-metadata-save'));
+    expect(section.state.values.metadata?.['model-a']).toEqual({ name: 'A' });
+  });
 });
