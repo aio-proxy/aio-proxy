@@ -3,4 +3,4 @@
 'aio-proxy': patch
 ---
 
-core: accept Codex Responses requests that nest custom tools inside a namespace
+core: accept namespaced custom tools and align replayed Codex custom_tool_call history to the flattened tool name

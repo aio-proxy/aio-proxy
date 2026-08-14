@@ -68,6 +68,45 @@ test('converts custom tool history with reversible metadata', () => {
   ]);
 });
 
+test('aligns replayed custom calls to a unique namespaced declaration', () => {
+  const request = parseOpenAIResponses({
+    model: 'gpt-5.6-terra',
+    input: [
+      {
+        type: 'additional_tools',
+        role: 'developer',
+        tools: [
+          {
+            type: 'namespace',
+            name: 'functions',
+            tools: [{ type: 'custom', name: 'exec', format: { type: 'text' } }],
+          },
+        ],
+      },
+      { type: 'custom_tool_call', id: 'ctc_1', call_id: 'call_1', name: 'exec', input: 'pwd' },
+      { type: 'custom_tool_call_output', id: 'out_1', call_id: 'call_1', output: 'done' },
+    ],
+  });
+
+  expect(openAIResponsesToModelMessages(request).messages).toMatchObject([
+    {
+      role: 'assistant',
+      content: [
+        {
+          type: 'tool-call',
+          toolCallId: 'call_1',
+          toolName: 'functions__exec',
+          providerOptions: { aioProxy: { openaiResponses: { namespace: 'functions', wireToolName: 'exec' } } },
+        },
+      ],
+    },
+    {
+      role: 'tool',
+      content: [{ type: 'tool-result', toolCallId: 'call_1', toolName: 'functions__exec' }],
+    },
+  ]);
+});
+
 test('materializes custom tools nested in a namespace', () => {
   const request = parseOpenAIResponses({
     model: 'gpt-5.6-terra',

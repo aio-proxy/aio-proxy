@@ -43,10 +43,6 @@ const supportedRequestKeys = new Set([
 export function openAIResponsesToModelMessages(request: OpenAIResponsesRequest): OpenAIResponsesModelMessages {
   validateModelCompatibility(request);
   const input = typeof request.input === 'string' ? undefined : request.input;
-  const messages =
-    typeof request.input === 'string'
-      ? [{ role: 'user' as const, content: request.input }]
-      : openAIResponsesInputMessages(request.input);
   const tools = normalizeOpenAIResponsesTools([
     { tools: request.tools, source: 'request' },
     ...(input ?? [])
@@ -57,6 +53,10 @@ export function openAIResponsesToModelMessages(request: OpenAIResponsesRequest):
       )
       .filter((source) => source !== undefined),
   ]);
+  const messages =
+    typeof request.input === 'string'
+      ? [{ role: 'user' as const, content: request.input }]
+      : openAIResponsesInputMessages(request.input, tools);
   return {
     messages: [
       ...(typeof request.instructions === 'string' ? [{ role: 'system' as const, content: request.instructions }] : []),

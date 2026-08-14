@@ -4,12 +4,13 @@ import type { OpenAIResponsesInputItem } from '../../ingress/openai-responses/in
 import { inputMessage, toolOutput } from './input-content';
 import {
   flattenOpenAIResponsesToolName,
+  readOpenAIResponsesWireMetadata,
   rejectOpenAIResponsesFeature,
   warnOpenAIResponsesDegradation,
   wireProviderOptions,
   wireToolCallProviderOptions,
 } from './tools';
-import type { OpenAIResponsesWireMetadata } from './types';
+import type { OpenAIResponsesTransformTool, OpenAIResponsesWireMetadata } from './types';
 
 type AssistantMessage = Extract<ModelMessage, { role: 'assistant' }>;
 type AssistantPart = Exclude<AssistantMessage['content'], string>[number];
@@ -23,6 +24,7 @@ type CallIdentity = {
 type ConvertState = {
   readonly messages: ModelMessage[];
   readonly calls: Map<string, CallIdentity>;
+  readonly tools: readonly OpenAIResponsesTransformTool[] | undefined;
   previous: 'call' | 'result' | undefined;
 };
 
@@ -33,8 +35,11 @@ type FunctionCallItem = Extract<InputItem, { type: 'function_call' }>;
 type CustomToolCallItem = Extract<InputItem, { type: 'custom_tool_call' }>;
 type ToolCallOutputItem = Extract<InputItem, { type: 'function_call_output' | 'custom_tool_call_output' }>;
 
-export function openAIResponsesInputMessages(items: readonly OpenAIResponsesInputItem[]): ModelMessage[] {
-  const state: ConvertState = { messages: [], calls: new Map(), previous: undefined };
+export function openAIResponsesInputMessages(
+  items: readonly OpenAIResponsesInputItem[],
+  tools?: readonly OpenAIResponsesTransformTool[],
+): ModelMessage[] {
+  const state: ConvertState = { messages: [], calls: new Map(), tools, previous: undefined };
 
   for (const [index, item] of items.entries()) {
     if ('role' in item && item.type !== 'additional_tools') {
@@ -154,6 +159,8 @@ function convertFunctionCall(state: ConvertState, item: FunctionCallItem, index:
 }
 
 function convertCustomToolCall(state: ConvertState, item: CustomToolCallItem, index: number): void {
+  const namespace = item.namespace ?? uniqueCustomToolNamespace(state.tools, item.name);
+  const flattenedName = flattenOpenAIResponsesToolName(namespace, item.name);
   const metadata = {
     protocol: 'openai-responses',
     inputIndex: index,
@@ -162,16 +169,32 @@ function convertCustomToolCall(state: ConvertState, item: CustomToolCallItem, in
     ...(item.status === undefined ? {} : { status: item.status }),
     wireToolType: 'custom',
     wireToolName: item.name,
+    ...(namespace === undefined ? {} : { namespace }),
   } satisfies OpenAIResponsesWireMetadata;
-  state.calls.set(item.call_id, { flattenedName: item.name, metadata });
+  state.calls.set(item.call_id, { flattenedName, metadata });
   appendAssistantPart(state.messages, state.previous, {
     type: 'tool-call',
     toolCallId: item.call_id,
-    toolName: item.name,
+    toolName: flattenedName,
     input: { input: item.input },
     providerOptions: wireToolCallProviderOptions(metadata),
   });
   state.previous = 'call';
+}
+
+function uniqueCustomToolNamespace(
+  tools: readonly OpenAIResponsesTransformTool[] | undefined,
+  wireName: string,
+): string | undefined {
+  const namespaces = new Set<string>();
+  for (const tool of tools ?? []) {
+    const metadata = readOpenAIResponsesWireMetadata(tool.metadata);
+    if (metadata?.wireToolType !== 'custom' || metadata.wireToolName !== wireName || metadata.namespace === undefined) {
+      continue;
+    }
+    namespaces.add(metadata.namespace);
+  }
+  return namespaces.size === 1 ? [...namespaces][0] : undefined;
 }
 
 function convertToolCallOutput(state: ConvertState, item: ToolCallOutputItem, index: number): void {
