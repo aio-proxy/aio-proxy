@@ -5,6 +5,7 @@ import { ProviderKind } from '@aio-proxy/types';
 import type { OAuthProviderForm } from '../../hooks/use-oauth-provider-form';
 import type { ProviderEditorForm } from '../../hooks/use-provider-editor-form';
 import { ProviderFormMode } from '../../lib/constants';
+import { capabilityKey } from '../../lib/oauth-capability-key';
 import type { SectionStatus } from '../../lib/section-status';
 import { OAuthAccountFields } from '../oauth-account-fields';
 import { OAuthCapabilityCombobox } from '../oauth-capability-combobox';
@@ -23,11 +24,9 @@ interface ConnectionSectionProps {
   readonly provider?: OAuthProvider | undefined;
   readonly onReauthorize?: (() => void) | undefined;
   readonly isReauthorizing?: boolean | undefined;
+  readonly onOptionsValidityChange?: ((valid: boolean) => void) | undefined;
   readonly status: SectionStatus;
 }
-
-// The `\0`-joined key the oauth account form already stores in `capabilityKey`.
-const capabilityKey = (capability: DashboardOAuthCapability) => `${capability.plugin}\0${capability.capability}`;
 
 export const ConnectionSection: React.FC<ConnectionSectionProps> = ({
   form,
@@ -39,11 +38,14 @@ export const ConnectionSection: React.FC<ConnectionSectionProps> = ({
   provider,
   onReauthorize,
   isReauthorizing,
+  onOptionsValidityChange,
   status,
 }) => (
   <SectionShell id="connection" title={m['dashboard.providers.editor.section_connection']()} status={status}>
     {kind === ProviderKind.Api ? <ProviderFormFieldsApi form={form} mode={mode} /> : null}
-    {kind === ProviderKind.AiSdk ? <ProviderFormFieldsAiSdk form={form} /> : null}
+    {kind === ProviderKind.AiSdk ? (
+      <ProviderFormFieldsAiSdk form={form} onOptionsValidityChange={onOptionsValidityChange} />
+    ) : null}
     {kind === ProviderKind.OAuth && mode === ProviderFormMode.Create && accountForm !== undefined ? (
       <accountForm.Field name="capabilityKey">
         {(field) => {

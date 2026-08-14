@@ -15,6 +15,7 @@ export interface SectionStatusInput {
   readonly aliasIssues: readonly AliasEditorIssue[];
   readonly transformsValid: boolean;
   readonly weightTie: boolean;
+  readonly optionsValid?: boolean | undefined;
 }
 
 const SECTION_ORDER: readonly SectionId[] = ['identity', 'connection', 'models', 'routing', 'advanced'];
@@ -29,6 +30,7 @@ export function sectionStatuses(input: SectionStatusInput): Readonly<Record<Sect
     connection = 'todo';
   }
   if (input.kind === 'oauth' && (input.capabilityKey ?? '') === '') connection = 'todo';
+  if (input.kind === 'ai-sdk' && input.optionsValid === false) connection = 'todo';
 
   let models: SectionStatus = 'ok';
   if (input.discoveredModels !== undefined && input.models.length > 0) {

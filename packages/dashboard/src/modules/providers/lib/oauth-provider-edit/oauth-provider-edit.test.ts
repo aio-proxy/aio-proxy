@@ -26,6 +26,7 @@ test('common-only OAuth edits use the normal provider update', () => {
       enabled: true,
       weight: 2,
       alias: { chat: { model: 'model-2', preserve: false } },
+      metadata: {},
     },
   });
 });
@@ -85,6 +86,24 @@ test('OAuth proxy edits preserve explicit inheritance across update and reauthor
     kind: 'reauthorize',
     input: expect.objectContaining({ providerPatch: expect.objectContaining({ proxy: null }) }),
   });
+});
+
+test('metadata survives into the update body and is omitted from the reauthorize patch', () => {
+  const metadata = { a: { name: 'A' } };
+  const update = oauthProviderEditAction({ ...values, metadata }, { tenant: 'work' });
+  expect(update.kind).toBe('update');
+  if (update.kind === 'update') expect(update.body.metadata).toEqual(metadata);
+
+  const reauth = oauthProviderEditAction({ ...values, metadata }, { tenant: 'work' }, true);
+  expect(reauth.kind).toBe('reauthorize');
+  if (reauth.kind === 'reauthorize') {
+    expect(reauth.input.providerPatch).toEqual({
+      name: 'Personal',
+      enabled: true,
+      weight: 2,
+      alias: { chat: { model: 'model-2', preserve: false } },
+    });
+  }
 });
 
 test('whitelist round-trips through both action branches', () => {

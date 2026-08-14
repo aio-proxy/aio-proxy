@@ -85,3 +85,8 @@ test('an oauth provider needs a capability, but never its own id — the server 
 test('invalid transforms JSON blocks the advanced section', () => {
   expect(sectionStatuses({ ...base, transformsValid: false }).advanced).toBe('todo');
 });
+
+test('invalid ai-sdk options block the connection section and do not leak onto api', () => {
+  expect(sectionStatuses({ ...base, kind: 'ai-sdk', optionsValid: false }).connection).toBe('todo');
+  expect(sectionStatuses({ ...base, optionsValid: false }).connection).toBe('ok');
+});

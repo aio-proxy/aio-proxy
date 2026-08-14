@@ -1,5 +1,6 @@
 import {
   type DashboardOAuthSessionStart,
+  type ModelMetadata,
   type OAuthProviderMutationBody,
   ProviderKind,
   type ProviderAlias,
@@ -16,6 +17,7 @@ export interface OAuthProviderEditValues {
   readonly alias?: ProviderAlias | undefined;
   readonly models?: readonly string[] | undefined;
   readonly transforms?: ProviderTransforms | undefined;
+  readonly metadata?: Record<string, ModelMetadata> | undefined;
   readonly publicValues: DashboardOAuthSessionStart['publicValues'];
   readonly secrets: DashboardOAuthSessionStart['secrets'];
   readonly clearSecrets: readonly string[];
@@ -59,5 +61,8 @@ export const oauthProviderEditAction = (
     };
   }
 
-  return { kind: 'update', body: { kind: ProviderKind.OAuth, id: values.id, ...providerPatch } };
+  return {
+    kind: 'update',
+    body: { kind: ProviderKind.OAuth, id: values.id, ...providerPatch, metadata: values.metadata ?? {} },
+  };
 };
