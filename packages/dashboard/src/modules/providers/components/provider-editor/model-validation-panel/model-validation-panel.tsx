@@ -29,8 +29,9 @@ export const ModelValidationPanel: React.FC<ModelValidationPanelProps> = ({
   const testMutation = useProviderTestMutation(form, persistedProviderId);
   const tested = testMutation.data;
   let result: DashboardProviderDraftTestResponse | null = null;
-  if (tested !== undefined && tested.model === selectedModel) result = tested.result;
-  else if (testMutation.isError && testMutation.variables === selectedModel) {
+  if (tested !== undefined && tested.model === selectedModel) {
+    result = tested.result;
+  } else if (testMutation.isError && testMutation.variables === selectedModel) {
     result = { ok: false, error: { code: 'test_request_failed', recoverable: true } };
   }
   let resultMessage: string | undefined;
