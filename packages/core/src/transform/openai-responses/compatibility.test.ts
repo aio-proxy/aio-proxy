@@ -68,6 +68,53 @@ test('converts custom tool history with reversible metadata', () => {
   ]);
 });
 
+test('materializes custom tools nested in a namespace', () => {
+  const request = parseOpenAIResponses({
+    model: 'gpt-5.6-terra',
+    input: [
+      {
+        type: 'additional_tools',
+        role: 'developer',
+        tools: [
+          {
+            type: 'namespace',
+            name: 'functions',
+            description: '',
+            tools: [
+              {
+                type: 'custom',
+                name: 'exec',
+                format: { type: 'grammar', syntax: 'lark', definition: 'start: SOURCE' },
+              },
+              { type: 'function', name: 'wait', strict: false, parameters: { type: 'object' } },
+            ],
+          },
+        ],
+      },
+    ],
+  });
+
+  expect(openAIResponsesToModelMessages(request).tools).toMatchObject([
+    {
+      name: 'functions__exec',
+      metadata: {
+        aioProxy: {
+          openaiResponses: {
+            wireToolType: 'custom',
+            wireToolName: 'exec',
+            namespace: 'functions',
+            format: { type: 'grammar', syntax: 'lark', definition: 'start: SOURCE' },
+          },
+        },
+      },
+    },
+    {
+      name: 'functions__wait',
+      metadata: { aioProxy: { openaiResponses: { wireToolName: 'wait', namespace: 'functions' } } },
+    },
+  ]);
+});
+
 test('materializes additional custom and namespaced tools', () => {
   const request = parseOpenAIResponses({
     model: 'gpt-5.6-terra',
