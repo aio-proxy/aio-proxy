@@ -14,10 +14,13 @@ export function toModelRows(models: readonly string[], metadata: MetadataRecord 
 export function applyModelRows(
   rows: readonly ModelRow[],
   previousMetadata: MetadataRecord | undefined,
-): { models: string[]; metadata: Record<string, Record<string, unknown>> | undefined } {
+): { models: string[]; metadata: Record<string, Readonly<Record<string, unknown>>> | undefined } {
   const models = rows.map((row) => row.id);
   const rowIds = new Set(models);
-  const merged: Record<string, Record<string, unknown>> = {};
+  // Best-effort only: the records are aliased, and the form value plus the mutation DTOs re-widen
+  // the same references one hop later. `readonly` is ignored in assignability, so this still flows
+  // into `metadata` on the mutation bodies with no cast.
+  const merged: Record<string, Readonly<Record<string, unknown>>> = {};
   // Metadata for ids outside models[] (e.g. alias-only targets) must survive.
   for (const [id, value] of Object.entries(previousMetadata ?? {})) {
     if (!rowIds.has(id)) merged[id] = value;

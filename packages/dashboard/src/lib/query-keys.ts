@@ -8,6 +8,7 @@
  */
 export const queryKeys = {
   auth: ['dashboard-auth'],
+  modelsDevSlugs: ['models-dev-slugs'],
   oauthCapabilities: ['oauth-capabilities'],
   oauthSession: (id: string) => ['oauth-session', id],
   overviewActivity: ['dashboard', 'overview', 'activity'],
