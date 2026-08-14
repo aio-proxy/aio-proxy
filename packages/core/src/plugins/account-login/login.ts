@@ -45,6 +45,7 @@ export type OAuthProviderPatch = {
   readonly proxy?: OAuthProviderMutationBody['proxy'];
   readonly alias: ProviderAlias | undefined;
   readonly models?: readonly string[] | undefined;
+  readonly metadata?: OAuthProviderMutationBody['metadata'];
   readonly transforms?: ProviderTransforms | undefined;
 };
 export type LoginOAuthAccountOptions = {

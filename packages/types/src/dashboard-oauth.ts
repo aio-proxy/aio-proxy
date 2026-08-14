@@ -2,6 +2,8 @@ import { z } from 'zod';
 
 import { AliasConfigSchema, IdSchema } from './common';
 import { DashboardLocalizedTextSchema } from './dashboard-localized-text';
+import { ModelIdSchema } from './model-id';
+import { ModelMetadataSchema } from './model-metadata/index';
 import { ProviderMutationProxySchema } from './provider';
 import { ProviderTransformsSchema } from './provider-transform/index';
 
@@ -69,6 +71,10 @@ export const DashboardOAuthProviderPatchSchema = z.strictObject({
   enabled: z.boolean(),
   weight: z.number().optional(),
   models: z.array(z.string()).optional(),
+  metadata: z
+    .record(ModelIdSchema, ModelMetadataSchema)
+    .optional()
+    .describe('Per-model metadata overrides keyed by upstream model id.'),
   proxy: ProviderMutationProxySchema,
   alias: z.record(z.string().min(1), AliasConfigSchema).optional(),
   transforms: ProviderTransformsSchema.optional().describe('Ordered outbound request transforms.'),

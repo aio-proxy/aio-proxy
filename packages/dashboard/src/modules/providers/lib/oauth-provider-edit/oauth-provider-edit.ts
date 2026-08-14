@@ -40,6 +40,9 @@ export const oauthProviderEditAction = (
     ...(values.alias === undefined ? {} : { alias: values.alias }),
     ...(values.models === undefined ? {} : { models: [...values.models] }),
     ...(values.transforms === undefined ? {} : { transforms: values.transforms }),
+    // Always present, both branches: the editor owns the whole map, and a save that reauthorizes
+    // must carry the metadata edits made alongside the credential change instead of dropping them.
+    metadata: values.metadata ?? {},
   };
   const secrets = Object.fromEntries(Object.entries(values.secrets).filter(([, value]) => value !== ''));
   const requiresReauthorization =
@@ -63,6 +66,6 @@ export const oauthProviderEditAction = (
 
   return {
     kind: 'update',
-    body: { kind: ProviderKind.OAuth, id: values.id, ...providerPatch, metadata: values.metadata ?? {} },
+    body: { kind: ProviderKind.OAuth, id: values.id, ...providerPatch },
   };
 };

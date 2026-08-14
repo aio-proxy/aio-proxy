@@ -54,6 +54,7 @@ test('account edits start locked reauthorization and omit blank replacement secr
         enabled: true,
         weight: 2,
         alias: { chat: { model: 'model-2', preserve: false } },
+        metadata: {},
       },
     },
   });
@@ -88,7 +89,10 @@ test('OAuth proxy edits preserve explicit inheritance across update and reauthor
   });
 });
 
-test('metadata survives into the update body and is omitted from the reauthorize patch', () => {
+// A credential change and a metadata edit arrive in the same save. Routing that save through
+// reauthorization used to drop the metadata half on the floor: the login path rebuilds the provider
+// entry, so anything missing from the patch reverts to whatever was last on disk.
+test('metadata rides both action branches', () => {
   const metadata = { a: { name: 'A' } };
   const update = oauthProviderEditAction({ ...values, metadata }, { tenant: 'work' });
   expect(update.kind).toBe('update');
@@ -96,14 +100,7 @@ test('metadata survives into the update body and is omitted from the reauthorize
 
   const reauth = oauthProviderEditAction({ ...values, metadata }, { tenant: 'work' }, true);
   expect(reauth.kind).toBe('reauthorize');
-  if (reauth.kind === 'reauthorize') {
-    expect(reauth.input.providerPatch).toEqual({
-      name: 'Personal',
-      enabled: true,
-      weight: 2,
-      alias: { chat: { model: 'model-2', preserve: false } },
-    });
-  }
+  if (reauth.kind === 'reauthorize') expect(reauth.input.providerPatch?.metadata).toEqual(metadata);
 });
 
 test('whitelist round-trips through both action branches', () => {

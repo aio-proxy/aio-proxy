@@ -65,10 +65,45 @@ test('explicit re-login preloads options and secrets, fixes Provider ID, and pre
     alias: { chat: { model: 'model-1' } },
     transforms: { request: [{ update: [{ $unset: 'request.body.store' }] }] },
     options: { tenant: 'new' },
-    // Per-model metadata is not patchable, so re-login must carry the authored entry through
-    // untouched — including `extend`, which materialization would otherwise have flattened away.
+    // A patch that omits metadata retains the authored entry untouched — including `extend`, which
+    // materialization would otherwise have flattened away.
     metadata: { 'model-1': { extend: 'openai/gpt-4o', name: 'Kept name' } },
   });
+});
+
+// The editor saves credential changes and per-model metadata edits in one action. That save routes
+// through re-login, which rebuilds the provider entry, so metadata the patch carries has to win over
+// what is on disk — otherwise the metadata half of the save is silently discarded.
+test('explicit re-login applies per-model metadata carried by the provider patch', async () => {
+  const state = fixture();
+  await createAccount(state);
+  await state.config.replace((current) => ({
+    ...current,
+    providers: {
+      person: {
+        ...((current['providers'] as Record<string, unknown>)['person'] as object),
+        metadata: { 'model-1': { name: 'Stale name' } },
+      },
+    },
+  }));
+
+  await loginOAuthAccount(
+    options(state, {
+      targetProviderId: 'person',
+      capability: undefined,
+      providerPatch: {
+        name: undefined,
+        enabled: true,
+        weight: undefined,
+        alias: undefined,
+        metadata: { 'model-2': { name: 'Edited in the same save' } },
+      },
+    }),
+  );
+
+  const provider = (configOf(state)['providers'] as Record<string, unknown>)['person'] as Record<string, unknown>;
+  // Exact, not a subset: the stale `model-1` record must be gone, not merged under the new one.
+  expect(provider['metadata']).toEqual({ 'model-2': { name: 'Edited in the same save' } });
 });
 
 test('explicit re-login atomically applies a requested provider patch with account options', async () => {

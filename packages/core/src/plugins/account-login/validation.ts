@@ -160,9 +160,9 @@ export function providerEntry(
   const models = patch === undefined ? existing?.['models'] : patch.models;
   const proxy = patch?.proxy === undefined ? existing?.['proxy'] : patch.proxy;
   const transforms = patch?.transforms === undefined ? existing?.['transforms'] : patch.transforms;
-  // Per-model metadata is not patchable, so it can only come from the authored entry. Rebuilding the
-  // entry without it would delete every metadata override on each re-login.
-  const metadata = existing?.['metadata'];
+  // Retained, not cleared, when the patch omits it: a re-login triggered from a surface that does not
+  // edit per-model metadata must not delete the authored overrides. The editor sends the whole map.
+  const metadata = patch?.metadata === undefined ? existing?.['metadata'] : patch.metadata;
   return {
     kind: 'oauth',
     plugin,
