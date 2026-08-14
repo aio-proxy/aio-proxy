@@ -31,6 +31,7 @@ test('explicit re-login preloads options and secrets, fixes Provider ID, and pre
         proxy: 'https://proxy.example:8443',
         alias: { chat: { model: 'model-1' } },
         transforms: { request: [{ update: [{ $unset: 'request.body.store' }] }] },
+        metadata: { 'model-1': { extend: 'openai/gpt-4o', name: 'Kept name' } },
       },
     },
   }));
@@ -64,6 +65,9 @@ test('explicit re-login preloads options and secrets, fixes Provider ID, and pre
     alias: { chat: { model: 'model-1' } },
     transforms: { request: [{ update: [{ $unset: 'request.body.store' }] }] },
     options: { tenant: 'new' },
+    // Per-model metadata is not patchable, so re-login must carry the authored entry through
+    // untouched — including `extend`, which materialization would otherwise have flattened away.
+    metadata: { 'model-1': { extend: 'openai/gpt-4o', name: 'Kept name' } },
   });
 });
 

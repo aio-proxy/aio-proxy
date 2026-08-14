@@ -160,6 +160,9 @@ export function providerEntry(
   const models = patch === undefined ? existing?.['models'] : patch.models;
   const proxy = patch?.proxy === undefined ? existing?.['proxy'] : patch.proxy;
   const transforms = patch?.transforms === undefined ? existing?.['transforms'] : patch.transforms;
+  // Per-model metadata is not patchable, so it can only come from the authored entry. Rebuilding the
+  // entry without it would delete every metadata override on each re-login.
+  const metadata = existing?.['metadata'];
   return {
     kind: 'oauth',
     plugin,
@@ -170,6 +173,7 @@ export function providerEntry(
     ...(name === undefined ? {} : { name }),
     ...(alias === undefined ? {} : { alias }),
     ...(models === undefined ? {} : { models }),
+    ...(metadata === undefined ? {} : { metadata }),
     ...(proxy === undefined || proxy === null ? {} : { proxy }),
     ...(transforms === undefined ? {} : { transforms }),
   };
