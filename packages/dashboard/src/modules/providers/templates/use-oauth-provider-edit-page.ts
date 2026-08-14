@@ -88,6 +88,7 @@ export const useOAuthProviderEditPage = ({
         {
           ...value,
           ...account,
+          metadata: provider.metadata ?? {},
         },
         oauth.publicValues,
         forceReauthorization.current,
