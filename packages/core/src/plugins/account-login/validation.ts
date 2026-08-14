@@ -1,5 +1,10 @@
 import type { CredentialPort, ModelCatalog, OAuthAdapter, OAuthLoginResult } from '@aio-proxy/plugin-sdk';
-import { AliasConfigSchema, OAuthPluginProviderSchema, type ProviderAlias } from '@aio-proxy/types';
+import {
+  AliasConfigSchema,
+  flattenAliasVariants,
+  OAuthPluginProviderSchema,
+  type ProviderAlias,
+} from '@aio-proxy/types';
 import { z } from 'zod';
 
 import { parseRuntimeConfig } from '../../config';
@@ -173,9 +178,10 @@ export function validatedDefaultAliases(adapter: OAuthAdapter, catalog: ModelCat
   const models = new Set(catalog.language.map(({ id }) => id));
   const parsed = z.record(z.string().min(1), AliasConfigSchema).parse(raw);
   for (const [alias, config] of Object.entries(parsed)) {
-    for (const target of [config, ...Object.values(config.variants ?? {})]) {
-      if (!models.has(target.model)) {
-        throw new Error(`Plugin default alias target ${alias} -> ${target.model} is not in the initial catalog`);
+    const modelsToCheck = [config.model, ...flattenAliasVariants(config.variants).map((row) => row.model)];
+    for (const model of modelsToCheck) {
+      if (!models.has(model)) {
+        throw new Error(`Plugin default alias target ${alias} -> ${model} is not in the initial catalog`);
       }
     }
   }

@@ -1,4 +1,13 @@
 export * from './aio';
+export {
+  canonicalEffort,
+  flattenAliasVariants,
+  foldEffortSpelling,
+  isAliasVariantSelect,
+  isAliasVariantsObject,
+  matchAliasRows,
+} from './alias-variant';
+export type { AliasDimensions, AliasSelectRow, AliasSpeed, AliasWhen } from './alias-variant';
 export * from './codex-model/index';
 export * from './commands';
 export * from './common';

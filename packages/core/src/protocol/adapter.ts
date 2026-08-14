@@ -1,5 +1,5 @@
 import type { ProviderExecutedTool } from '@aio-proxy/plugin-sdk';
-import type { ProviderProtocol } from '@aio-proxy/types';
+import type { AliasDimensions, ProviderProtocol } from '@aio-proxy/types';
 
 import type { AiSdkCallSettings, ModelMessage, TextStreamPart, ToolSet } from '../ai-sdk-bridge';
 import type { ProtocolSessionHints } from './session';
@@ -42,7 +42,7 @@ export type ProtocolAdapter<TRequest, TContext> = Readonly<{
   protocol: ProviderProtocol;
   parse: (raw: Request, context: TContext) => Promise<TRequest>;
   model: (request: TRequest, context: TContext) => string;
-  variant: (request: TRequest, context: TContext) => string | undefined;
+  dimensions: (request: TRequest, context: TContext) => AliasDimensions;
   requestDiagnostics: (request: TRequest, context: TContext) => readonly ProtocolRequestDiagnostic[];
   session?: (request: TRequest, context: TContext) => ProtocolSessionHints;
   wantsStream: (request: TRequest, context: TContext) => boolean;
@@ -66,14 +66,14 @@ export type ProtocolAdapter<TRequest, TContext> = Readonly<{
 
 export type ProtocolAdapterDefinition<TRequest, TContext> = Omit<
   ProtocolAdapter<TRequest, TContext>,
-  'modelInvocationForTarget' | 'requestDiagnostics' | 'variant'
+  'modelInvocationForTarget' | 'requestDiagnostics' | 'dimensions'
 > & {
   readonly modelInvocationForTarget?: ProtocolAdapter<TRequest, TContext>['modelInvocationForTarget'];
-  readonly variant?: ProtocolAdapter<TRequest, TContext>['variant'];
+  readonly dimensions?: ProtocolAdapter<TRequest, TContext>['dimensions'];
   readonly requestDiagnostics?: ProtocolAdapter<TRequest, TContext>['requestDiagnostics'];
 };
 
-const noVariant = (): undefined => undefined;
+const noDimensions = (): AliasDimensions => ({});
 const noRequestDiagnostics = (): readonly ProtocolRequestDiagnostic[] => [];
 const sameModelInvocation = (invocation: ModelInvocation): ModelInvocation => invocation;
 
@@ -83,7 +83,7 @@ export function defineProtocolAdapter<TRequest, TContext>(
   return Object.freeze({
     ...definition,
     modelInvocationForTarget: definition.modelInvocationForTarget ?? sameModelInvocation,
-    variant: definition.variant ?? noVariant,
+    dimensions: definition.dimensions ?? noDimensions,
     requestDiagnostics: definition.requestDiagnostics ?? noRequestDiagnostics,
   });
 }

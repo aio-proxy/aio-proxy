@@ -43,7 +43,12 @@ describe('Router', () => {
       { alias: 'untouched', modelId: 'untouched' },
     ]);
     expect(router.resolve('claude-opus-4-8')).toEqual([{ provider, modelId: 'upstream-opus-48' }]);
-    expect(router.resolve('claude-sonnet-4-6', 'fast')).toEqual([{ provider, modelId: 'upstream-opus-46' }]);
+    expect(router.resolve('claude-sonnet-4-6', { effort: 'fast' })).toEqual([
+      { provider, modelId: 'upstream-opus-46' },
+    ]);
+    expect(router.resolve('claude-sonnet-4-6', { speed: 'fast' })).toEqual([
+      { provider, modelId: 'upstream-sonnet-46' },
+    ]);
     expect(() => router.resolve('upstream-opus-48')).toThrow(RouterModelNotFoundError);
     expect(() => router.resolve('upstream-opus-46')).toThrow(RouterModelNotFoundError);
     expect(() => router.resolve('upstream-sonnet-46')).toThrow(RouterModelNotFoundError);

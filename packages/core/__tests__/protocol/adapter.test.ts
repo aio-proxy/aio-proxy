@@ -9,7 +9,7 @@ type RequestValue = { readonly model: string };
 type RouteContext = { readonly stream: boolean };
 
 describe('defineProtocolAdapter', () => {
-  test('adds the no-variant default and freezes the adapter', () => {
+  test('adds the empty-dimensions default and freezes the adapter', () => {
     const adapter = defineProtocolAdapter<RequestValue, RouteContext>({
       protocol: ProviderProtocol.OpenAICompatible,
       async parse(raw) {
@@ -39,7 +39,7 @@ describe('defineProtocolAdapter', () => {
       },
     });
 
-    expect(adapter.variant({ model: 'm' }, { stream: false })).toBeUndefined();
+    expect(adapter.dimensions({ model: 'm' }, { stream: false })).toEqual({});
     expect(Object.isFrozen(adapter)).toBe(true);
     const typed: ProtocolAdapter<RequestValue, RouteContext> = adapter;
     expect(typed.protocol).toBe(ProviderProtocol.OpenAICompatible);

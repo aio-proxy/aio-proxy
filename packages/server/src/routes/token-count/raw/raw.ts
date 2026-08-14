@@ -5,7 +5,7 @@ import { ProviderProtocol } from '@aio-proxy/types';
 import { attributeName, type RequestTraceSession } from '../../../request-tracing';
 import { isInboundAbort } from '../../../route-observation';
 import type { RuntimeProviderInstance } from '../../../runtime';
-import { resolveSupportedEfforts } from '../../pipeline';
+import { resolveSupportedEffortsForDimensions } from '../../pipeline';
 import { failureTerminal } from '../../pipeline/failure';
 import { type CountAttempt, startAttemptSpan, throwIfCountAborted } from '../shared';
 
@@ -69,9 +69,11 @@ export async function attemptRawCount<TRequest, TContext>({
   try {
     // Clamp adaptive effort to the candidate's real capabilities so an
     // unsupported level does not make the provider's count_tokens throw and
-    // silently fall back to a local estimate. Skip when there is no effort.
-    const hasEffort = adapter.variant(request, context) !== undefined;
-    const supportedEfforts = hasEffort ? await resolveSupportedEfforts(candidate.modelId) : new Set<string>();
+    // silently fall back to a local estimate. Skipped when there is no effort.
+    const supportedEfforts = await resolveSupportedEffortsForDimensions(
+      adapter.dimensions(request, context),
+      candidate.modelId,
+    );
     const upstream = await adapter.rawRequest(
       rawRequest.clone(),
       request,
