@@ -26,7 +26,9 @@ export const createDashboardProviderReadRoutes = (state: ServerState) =>
       // Real values on purpose: the editor round-trips this entry straight back
       // through the mutation endpoint, and every masked field it had to restore
       // was a source of Bearer '****' bugs. GET /config and the CLI still mask.
-      const provider = state.currentConfig().providers.find((entry) => entry.id === id);
+      // Pre-extend on purpose: the editor writes this entry straight back, so a resolved
+      // `metadata.extend` would land on disk as a frozen copy of its models.dev entry.
+      const provider = state.configBeforeExtend().providers.find((entry) => entry.id === id);
       if (provider === undefined) {
         return context.json({ error: 'provider not found' }, 404);
       }
