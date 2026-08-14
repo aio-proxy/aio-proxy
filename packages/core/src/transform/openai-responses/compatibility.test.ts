@@ -68,6 +68,198 @@ test('converts custom tool history with reversible metadata', () => {
   ]);
 });
 
+test('aligns replayed custom calls to a unique namespaced declaration', () => {
+  const request = parseOpenAIResponses({
+    model: 'gpt-5.6-terra',
+    input: [
+      {
+        type: 'additional_tools',
+        role: 'developer',
+        tools: [
+          {
+            type: 'namespace',
+            name: 'functions',
+            tools: [{ type: 'custom', name: 'exec', format: { type: 'text' } }],
+          },
+        ],
+      },
+      { type: 'custom_tool_call', id: 'ctc_1', call_id: 'call_1', name: 'exec', input: 'pwd' },
+      { type: 'custom_tool_call_output', id: 'out_1', call_id: 'call_1', output: 'done' },
+    ],
+  });
+
+  const converted = openAIResponsesToModelMessages(request);
+  expect(converted.tools).toMatchObject([{ name: 'functions__exec' }]);
+  expect(converted.messages).toMatchObject([
+    {
+      role: 'assistant',
+      content: [
+        {
+          type: 'tool-call',
+          toolCallId: 'call_1',
+          toolName: 'functions__exec',
+          providerOptions: { aioProxy: { openaiResponses: { namespace: 'functions', wireToolName: 'exec' } } },
+        },
+      ],
+    },
+    {
+      role: 'tool',
+      content: [{ type: 'tool-result', toolCallId: 'call_1', toolName: 'functions__exec' }],
+    },
+  ]);
+});
+
+test('aligns replayed function calls to a unique namespaced declaration', () => {
+  const request = parseOpenAIResponses({
+    model: 'gpt-5.6-terra',
+    input: [
+      {
+        type: 'additional_tools',
+        role: 'developer',
+        tools: [
+          {
+            type: 'namespace',
+            name: 'functions',
+            tools: [{ type: 'function', name: 'wait', parameters: { type: 'object' } }],
+          },
+        ],
+      },
+      { type: 'function_call', call_id: 'call_1', name: 'wait', arguments: '{}' },
+      { type: 'function_call_output', call_id: 'call_1', output: 'ok' },
+    ],
+  });
+
+  const converted = openAIResponsesToModelMessages(request);
+  expect(converted.tools).toMatchObject([{ name: 'functions__wait' }]);
+  expect(converted.messages).toMatchObject([
+    { role: 'assistant', content: [{ type: 'tool-call', toolCallId: 'call_1', toolName: 'functions__wait' }] },
+    { role: 'tool', content: [{ type: 'tool-result', toolCallId: 'call_1', toolName: 'functions__wait' }] },
+  ]);
+});
+
+test('does not infer a namespace when a top-level custom tool also matches', () => {
+  const warn = spyOn(console, 'warn').mockImplementation(() => {});
+  const request = parseOpenAIResponses({
+    model: 'gpt-5.6-terra',
+    input: [
+      {
+        type: 'additional_tools',
+        role: 'developer',
+        tools: [
+          { type: 'custom', name: 'exec' },
+          {
+            type: 'namespace',
+            name: 'functions',
+            tools: [{ type: 'custom', name: 'exec', format: { type: 'text' } }],
+          },
+        ],
+      },
+      { type: 'custom_tool_call', call_id: 'call_1', name: 'exec', input: 'pwd' },
+    ],
+  });
+
+  try {
+    expect(openAIResponsesToModelMessages(request).messages).toMatchObject([
+      { role: 'assistant', content: [{ type: 'tool-call', toolCallId: 'call_1', toolName: 'exec' }] },
+    ]);
+    expect(warn).toHaveBeenCalledWith(
+      '[aio-proxy] OpenAI Responses model conversion degraded',
+      'custom_tool_call.namespace',
+      'input.1.namespace',
+      'dropped',
+    );
+  } finally {
+    warn.mockRestore();
+  }
+});
+
+test('does not infer a namespace when multiple namespaced custom tools match', () => {
+  const warn = spyOn(console, 'warn').mockImplementation(() => {});
+  const request = parseOpenAIResponses({
+    model: 'gpt-5.6-terra',
+    input: [
+      {
+        type: 'additional_tools',
+        role: 'developer',
+        tools: [
+          {
+            type: 'namespace',
+            name: 'functions',
+            tools: [{ type: 'custom', name: 'exec', format: { type: 'text' } }],
+          },
+          {
+            type: 'namespace',
+            name: 'other',
+            tools: [{ type: 'custom', name: 'exec', format: { type: 'text' } }],
+          },
+        ],
+      },
+      { type: 'custom_tool_call', call_id: 'call_1', name: 'exec', input: 'pwd' },
+    ],
+  });
+
+  try {
+    expect(openAIResponsesToModelMessages(request).messages).toMatchObject([
+      { role: 'assistant', content: [{ type: 'tool-call', toolCallId: 'call_1', toolName: 'exec' }] },
+    ]);
+    expect(warn).toHaveBeenCalledWith(
+      '[aio-proxy] OpenAI Responses model conversion degraded',
+      'custom_tool_call.namespace',
+      'input.1.namespace',
+      'dropped',
+    );
+  } finally {
+    warn.mockRestore();
+  }
+});
+
+test('materializes custom tools nested in a namespace', () => {
+  const request = parseOpenAIResponses({
+    model: 'gpt-5.6-terra',
+    input: [
+      {
+        type: 'additional_tools',
+        role: 'developer',
+        tools: [
+          {
+            type: 'namespace',
+            name: 'functions',
+            description: '',
+            tools: [
+              {
+                type: 'custom',
+                name: 'exec',
+                format: { type: 'grammar', syntax: 'lark', definition: 'start: SOURCE' },
+              },
+              { type: 'function', name: 'wait', strict: false, parameters: { type: 'object' } },
+            ],
+          },
+        ],
+      },
+    ],
+  });
+
+  expect(openAIResponsesToModelMessages(request).tools).toMatchObject([
+    {
+      name: 'functions__exec',
+      metadata: {
+        aioProxy: {
+          openaiResponses: {
+            wireToolType: 'custom',
+            wireToolName: 'exec',
+            namespace: 'functions',
+            format: { type: 'grammar', syntax: 'lark', definition: 'start: SOURCE' },
+          },
+        },
+      },
+    },
+    {
+      name: 'functions__wait',
+      metadata: { aioProxy: { openaiResponses: { wireToolName: 'wait', namespace: 'functions' } } },
+    },
+  ]);
+});
+
 test('materializes additional custom and namespaced tools', () => {
   const request = parseOpenAIResponses({
     model: 'gpt-5.6-terra',

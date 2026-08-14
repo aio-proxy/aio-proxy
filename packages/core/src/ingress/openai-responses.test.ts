@@ -48,6 +48,32 @@ test('accepts background true for synchronous downgrade', () => {
   expect(parseOpenAIResponses(request)).toEqual(request);
 });
 
+test('accepts custom tools nested in a namespace', () => {
+  const input: Extract<OpenAIResponsesRequest['input'], unknown[]> = [
+    {
+      type: 'additional_tools',
+      role: 'developer',
+      tools: [
+        {
+          type: 'namespace',
+          name: 'functions',
+          description: '',
+          tools: [
+            {
+              type: 'custom',
+              name: 'exec',
+              format: { type: 'grammar', syntax: 'lark', definition: 'start: SOURCE' },
+            },
+            { type: 'function', name: 'wait', strict: false, parameters: { type: 'object' } },
+          ],
+        },
+      ],
+    },
+  ];
+
+  expect(parseOpenAIResponses({ model: 'gpt-5.6-terra', input }).input).toEqual(input);
+});
+
 test('preserves known semantic extension items', () => {
   const input: Extract<OpenAIResponsesRequest['input'], unknown[]> = [
     {

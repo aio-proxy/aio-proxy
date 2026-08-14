@@ -80,6 +80,38 @@ describe('OpenAI Responses transform', () => {
     expect(modelMessagesToOpenAIResponses({ model: request.model, ...converted }).tools).toEqual(request.tools);
   });
 
+  test('Given namespaced custom tools When transformed twice Then custom type and format survive', () => {
+    const request = parseOpenAIResponses({
+      model: 'gpt-5.6-terra',
+      input: [
+        {
+          type: 'additional_tools',
+          role: 'developer',
+          tools: [
+            {
+              type: 'namespace',
+              name: 'functions',
+              description: '',
+              tools: [
+                {
+                  type: 'custom',
+                  name: 'exec',
+                  format: { type: 'grammar', syntax: 'lark', definition: 'start: SOURCE' },
+                },
+                { type: 'function', name: 'wait', strict: false, parameters: { type: 'object' } },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+
+    const converted = openAIResponsesToModelMessages(request);
+    const roundTrip = modelMessagesToOpenAIResponses({ model: request.model, ...converted });
+
+    expect(roundTrip.input).toEqual(request.input);
+  });
+
   test('Given additional tools When transformed twice Then they are normalized before messages', () => {
     const request = parseOpenAIResponses({
       model: 'gpt-5.6-terra',
