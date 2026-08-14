@@ -1,6 +1,6 @@
 {
   "name": "@aio-proxy/cli-linux-arm64",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "AIO Proxy binary for linux-arm64",
   "repository": {
     "type": "git",

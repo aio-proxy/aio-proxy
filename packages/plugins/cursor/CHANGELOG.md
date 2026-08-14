@@ -1,5 +1,12 @@
 # @aio-proxy/plugin-cursor
 
+## 0.8.0
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @aio-proxy/plugin-sdk@0.8.0
+
 ## 0.7.0
 
 ### Minor Changes
