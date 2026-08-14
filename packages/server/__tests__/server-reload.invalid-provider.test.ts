@@ -50,7 +50,7 @@ describe('server invalid provider reload', () => {
       const reload = await app.request(
         '/dashboard/api/reload',
         {
-          headers: { Origin: 'http://127.0.0.1:22078' },
+          headers: { Host: '127.0.0.1:22078', Origin: 'http://127.0.0.1:22078' },
           method: 'POST',
         },
         loopbackServer,

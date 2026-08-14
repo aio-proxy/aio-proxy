@@ -26,7 +26,9 @@ describe('server routes', () => {
 
   test('GET /dashboard/api/config redacts secret-like config values when requested', async () => {
     // Given
-    const app = await createServer({ config });
+    const app = await createServer({
+      config: { ...config, server: { apiKeys: [{ key: 'caller-secret', label: 'CI' }] } },
+    });
 
     // When
     const response = await app.request('/dashboard/api/config', undefined, loopbackServer);
@@ -42,6 +44,7 @@ describe('server routes', () => {
     expect(body.providers[1].options.apiKey).toBe('****');
     expect(body.providers[1].options.headers.authorization).toBe('****');
     expect(body.providers[1].options.headers['x-api-key']).toBe('****');
+    expect(body.server.apiKeys).toEqual([{ key: '****', label: 'CI' }]);
   });
 
   test('POST /dashboard/api/config rejects evil origin when requested', async () => {
@@ -86,8 +89,18 @@ describe('server routes', () => {
     expect(serverDefaults).toEqual({ host: '127.0.0.1', port: 9_317 });
   });
 
-  test('server config rejects non-loopback binding', () => {
-    expect(() => ConfigSchema.parse({ server: { host: '0.0.0.0' }, providers: {} })).toThrow();
+  test('server config accepts non-loopback binding', () => {
+    expect(ConfigSchema.parse({ server: { host: '0.0.0.0' }, providers: {} }).server.host).toBe('0.0.0.0');
+  });
+
+  test('requires caller API keys for model APIs while health remains public', async () => {
+    const app = await createServer({
+      config: { server: { apiKeys: [{ key: 'caller-secret', label: 'CI' }] }, providers: {} },
+    });
+
+    expect((await app.request('/v1/models')).status).toBe(401);
+    expect((await app.request('/v1/models', { headers: { authorization: 'Bearer caller-secret' } })).status).toBe(200);
+    expect((await app.request('/health')).status).toBe(200);
   });
 
   test('RPC client exposes typed dashboard config get when constructed', () => {

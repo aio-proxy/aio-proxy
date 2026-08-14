@@ -1,4 +1,13 @@
-import { type AliasConfig, directModelIds, type ModelId, resolveAliasTarget, sameRouteTargets } from '@aio-proxy/types';
+import {
+  type AliasConfig,
+  type AliasDimensions,
+  type AliasSelectRow,
+  directModelIds,
+  flattenAliasVariants,
+  matchAliasRows,
+  type ModelId,
+  sameRouteTargets,
+} from '@aio-proxy/types';
 
 import { RouterModelCollisionError, RouterModelNotFoundError } from './error';
 import type { AiSdkProviderInstance } from './provider/ai-sdk/index';
@@ -31,6 +40,7 @@ export type RouterCandidate<TProvider extends RoutableProvider = ProviderInstanc
 type ConfiguredRouterRoute<TProvider extends RoutableProvider> = {
   readonly provider: TProvider;
   readonly config: AliasConfig;
+  readonly rows: readonly AliasSelectRow[];
 };
 
 export class Router<TProvider extends RoutableProvider = ProviderInstance> {
@@ -44,15 +54,15 @@ export class Router<TProvider extends RoutableProvider = ProviderInstance> {
       }
 
       for (const [alias, config] of Object.entries(provider.alias ?? {})) {
-        this.addRoute(provider, alias, config);
+        this.addRoute(provider, alias, config, flattenAliasVariants(config.variants));
       }
       for (const modelId of directModelIds(provider)) {
-        this.addRoute(provider, modelId, { model: modelId, preserve: false });
+        this.addRoute(provider, modelId, { model: modelId, preserve: false }, []);
       }
     }
   }
 
-  resolve(model: string, variantKey?: string): RouterCandidate<TProvider>[] {
+  resolve(model: string, dimensions: AliasDimensions = {}): RouterCandidate<TProvider>[] {
     const route = model.indexOf('/') > 0 ? this.providerAliases.get(model) : this.aliases.get(model);
 
     if (route === undefined) {
@@ -60,14 +70,14 @@ export class Router<TProvider extends RoutableProvider = ProviderInstance> {
     }
 
     const routes = Array.isArray(route) ? route : [route];
-    return routes.map(({ config, provider }) => ({
+    return routes.map(({ config, provider, rows }) => ({
       provider,
-      modelId: resolveAliasTarget(config, variantKey).model,
+      modelId: matchAliasRows(rows, dimensions, { model: config.model, preserve: config.preserve }).model,
     }));
   }
 
-  private addRoute(provider: TProvider, alias: string, config: AliasConfig): void {
-    const route = { provider, config };
+  private addRoute(provider: TProvider, alias: string, config: AliasConfig, rows: readonly AliasSelectRow[]): void {
+    const route = { provider, config, rows };
     const providerAlias = `${provider.id}/${alias}`;
     const existingProviderRoute = this.providerAliases.get(providerAlias);
 

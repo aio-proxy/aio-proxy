@@ -13,16 +13,18 @@ afterEach(homes.cleanup);
 describe('OpenAI Responses raw HTTP integration', () => {
   test('raw-forwards opencode developer and function-tool history without loss', async () => {
     const bodiesSeen: unknown[] = [];
+    const passthrough = async (request: Request) => {
+      bodiesSeen.push(await request.json());
+      return Response.json({ ok: true });
+    };
     const provider = {
       id: 'responses',
       kind: 'api',
       models: ['upstream-gpt'],
       alias: { 'gpt-5.6-terra': { model: 'upstream-gpt', preserve: false } },
       protocol: ProviderProtocol.OpenAIResponse,
-      async passthrough(request) {
-        bodiesSeen.push(await request.json());
-        return Response.json({ ok: true });
-      },
+      endpointTransports: [{ protocol: ProviderProtocol.OpenAIResponse, passthrough }],
+      passthrough,
     } satisfies ApiProviderInstance;
     const app = await createServer({
       config: { providers: {} },
@@ -86,16 +88,18 @@ describe('OpenAI Responses raw HTTP integration', () => {
   test('drops background before raw forwarding and logs one synchronous downgrade', async () => {
     const logs: ServerLog[] = [];
     let bodySeen: unknown;
+    const passthrough = async (request: Request) => {
+      bodySeen = await request.json();
+      return Response.json({ ok: true });
+    };
     const provider = {
       id: 'responses',
       kind: 'api',
       models: ['gpt-5.6-terra'],
       alias: { 'gpt-5.6-terra': { model: 'gpt-5.6-terra', preserve: false } },
       protocol: ProviderProtocol.OpenAIResponse,
-      async passthrough(request) {
-        bodySeen = await request.json();
-        return Response.json({ ok: true });
-      },
+      endpointTransports: [{ protocol: ProviderProtocol.OpenAIResponse, passthrough }],
+      passthrough,
     } satisfies ApiProviderInstance;
     const app = await createServer({
       config: { providers: {} },

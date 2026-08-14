@@ -22,19 +22,21 @@ describe('POST /v1/chat/completions', () => {
   test('Given openai-compatible api provider When completion is posted Then passthrough receives original request', async () => {
     // Given
     let bodySeen: unknown;
+    const passthrough = async (req: Request) => {
+      bodySeen = await req.json();
+      return new Response('provider-bytes', {
+        headers: { 'x-provider': 'openai' },
+        status: 202,
+      });
+    };
     const provider = {
       id: 'openai',
       kind: 'api',
       models: ['gpt-4o-mini'],
       alias: { 'gpt-4o-mini': { model: 'gpt-4o-mini', preserve: false } },
       protocol: ProviderProtocol.OpenAICompatible,
-      async passthrough(req) {
-        bodySeen = await req.json();
-        return new Response('provider-bytes', {
-          headers: { 'x-provider': 'openai' },
-          status: 202,
-        });
-      },
+      endpointTransports: [{ protocol: ProviderProtocol.OpenAICompatible, passthrough }],
+      passthrough,
     } satisfies ApiProviderInstance;
     const dbHome = tempHome();
     const app = await createServer({
@@ -73,23 +75,25 @@ describe('POST /v1/chat/completions', () => {
   test('Given openai-compatible api provider When non-stream completion is posted Then passthrough receives original request', async () => {
     // Given
     let bodySeen: unknown;
+    const passthrough = async (req: Request) => {
+      bodySeen = await req.json();
+      return Response.json(
+        {
+          id: 'chatcmpl-upstream',
+          object: 'chat.completion',
+          choices: [],
+        },
+        { status: 200 },
+      );
+    };
     const provider = {
       id: 'openai',
       kind: 'api',
       models: ['gpt-4o-mini'],
       alias: { 'gpt-4o-mini': { model: 'gpt-4o-mini', preserve: false } },
       protocol: ProviderProtocol.OpenAICompatible,
-      async passthrough(req) {
-        bodySeen = await req.json();
-        return Response.json(
-          {
-            id: 'chatcmpl-upstream',
-            object: 'chat.completion',
-            choices: [],
-          },
-          { status: 200 },
-        );
-      },
+      endpointTransports: [{ protocol: ProviderProtocol.OpenAICompatible, passthrough }],
+      passthrough,
     } satisfies ApiProviderInstance;
     const app = await createServer({
       config: { providers: {} },

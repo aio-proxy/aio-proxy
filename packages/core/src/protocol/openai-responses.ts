@@ -1,5 +1,5 @@
 import { openai } from '@ai-sdk/openai';
-import { ProviderProtocol } from '@aio-proxy/types';
+import { type AliasDimensions, canonicalEffort, ProviderProtocol } from '@aio-proxy/types';
 import { z } from 'zod';
 
 import type { FilePart, ModelMessage, ToolSet } from '../ai-sdk-bridge';
@@ -21,7 +21,13 @@ export const openAIResponsesAdapter = defineProtocolAdapter<OpenAIResponsesReque
     return parseOpenAIResponses(await readJsonRequest(raw));
   },
   model: (request) => request.model,
-  variant: (request) => request.reasoning?.effort,
+  dimensions: (request) => {
+    const speed = speedFromServiceTier(request.service_tier);
+    return {
+      ...(request.reasoning?.effort === undefined ? {} : { effort: canonicalEffort(request.reasoning.effort) }),
+      ...(speed === undefined ? {} : { speed }),
+    };
+  },
   requestDiagnostics: (request) =>
     request.background === true ? [{ feature: 'background', action: 'dropped', effectiveMode: 'synchronous' }] : [],
   session: (request) => ({
@@ -67,6 +73,14 @@ export const openAIResponsesAdapter = defineProtocolAdapter<OpenAIResponsesReque
   modelSse: writeOpenAIResponsesSSE,
   errors: openAIResponsesErrors,
 });
+
+function speedFromServiceTier(value: string | undefined): AliasDimensions['speed'] {
+  if (value === undefined) return undefined;
+  const tier = value.trim().toLowerCase();
+  if (tier === 'priority' || tier === 'fast') return 'fast';
+  if (tier === 'flex') return 'flex';
+  return undefined;
+}
 
 type ModelMessagePart = Exclude<ModelMessage['content'], string>[number];
 

@@ -192,6 +192,19 @@ export const AnthropicMessagesRequestSchema = z.object({
   conversation_id: z.string().optional(),
   thinking: ThinkingSchema.optional(),
   output_config: OutputConfigSchema.optional(),
+  // .nullish(), not .optional() on the string: an explicit `null` must keep
+  // parsing and read as "absent". The trailing .optional() keeps the key
+  // optional in the output type so synthesized requests can omit it.
+  speed: z
+    .string()
+    .nullish()
+    .transform((value) => value ?? undefined)
+    .optional(),
+  service_tier: z
+    .string()
+    .nullish()
+    .transform((value) => value ?? undefined)
+    .optional(),
   tools: z.array(ToolSchema).optional(),
   stream: z.boolean().optional(),
   max_tokens: z.number().int().positive().optional(),

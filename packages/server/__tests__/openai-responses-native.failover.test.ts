@@ -19,15 +19,18 @@ afterEach(homes.cleanup);
 
 describe('OpenAI Responses routes', () => {
   test('Given first native provider throws When POST is valid Then next provider is used', async () => {
+    const failing = async () => {
+      throw new Error('connection refused');
+    };
+    const succeeding = async () => Response.json({ fallback: true });
     const first = {
       id: 'offline',
       kind: 'api',
       models: ['gpt-4.1-mini'],
       alias: { 'gpt-4.1-mini': { model: 'gpt-4.1-mini', preserve: false } },
       protocol: ProviderProtocol.OpenAIResponse,
-      passthrough: async () => {
-        throw new Error('connection refused');
-      },
+      endpointTransports: [{ protocol: ProviderProtocol.OpenAIResponse, passthrough: failing }],
+      passthrough: failing,
     } satisfies ApiProviderInstance;
     const second = {
       id: 'ok',
@@ -35,7 +38,8 @@ describe('OpenAI Responses routes', () => {
       models: ['gpt-4.1-mini'],
       alias: { 'gpt-4.1-mini': { model: 'gpt-4.1-mini', preserve: false } },
       protocol: ProviderProtocol.OpenAIResponse,
-      passthrough: async () => Response.json({ fallback: true }),
+      endpointTransports: [{ protocol: ProviderProtocol.OpenAIResponse, passthrough: succeeding }],
+      passthrough: succeeding,
     } satisfies ApiProviderInstance;
     const dbHome = tempHome();
     const app = await createServer({ config: { providers: {} }, dbHome, providerInstances: [first, second] });

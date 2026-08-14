@@ -20,7 +20,7 @@ describe('openAIResponsesAdapter', () => {
     const parsed = await openAIResponsesAdapter.parse(raw, {});
 
     expect(openAIResponsesAdapter.model(parsed, {})).toBe('alias');
-    expect(openAIResponsesAdapter.variant(parsed, {})).toBe('high');
+    expect(openAIResponsesAdapter.dimensions(parsed, {})).toEqual({ effort: 'high' });
     expect(openAIResponsesAdapter.wantsStream(parsed, {})).toBe(false);
     const invocation = openAIResponsesAdapter.modelInvocation(parsed, {});
     expect(Object.keys(invocation.tools ?? {})).toEqual(['weather']);
@@ -48,9 +48,20 @@ describe('openAIResponsesAdapter', () => {
     // Ingress keeps the raw level so raw passthrough and routing can use it,
     // but the AI SDK call drops a level it does not know and defers to the
     // provider default instead of forwarding an invalid enum.
-    expect(openAIResponsesAdapter.variant(parsed, {})).toBe('ultra');
+    expect(openAIResponsesAdapter.dimensions(parsed, {})).toEqual({ effort: 'ultra' });
     const invocation = openAIResponsesAdapter.modelInvocation(parsed, {});
     expect('reasoning' in invocation.settings).toBe(false);
+  });
+
+  test('maps service_tier to the speed axis without an effort', async () => {
+    const raw = new Request('https://proxy.test/v1/responses', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ model: 'alias', input: 'hi', service_tier: 'priority' }),
+    });
+    const parsed = await openAIResponsesAdapter.parse(raw, {});
+
+    expect(openAIResponsesAdapter.dimensions(parsed, {})).toEqual({ speed: 'fast' });
   });
 
   test('keeps custom tools portable outside the OpenAI Responses target', async () => {

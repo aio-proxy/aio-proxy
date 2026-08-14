@@ -1,6 +1,6 @@
 # AIO Proxy
 
-English | [简体中文](https://github.com/aio-proxy/aio-proxy/blob/main/READNE.zh-Hans.md)
+English | [简体中文](https://github.com/aio-proxy/aio-proxy/blob/main/README.zh-Hans.md)
 
 Connect and manage multiple model providers through one API endpoint. AIO Proxy provides an extensible plugin system, automatic routing and failover, and observability across usage, cost, and end-to-end request traces.
 
@@ -96,6 +96,42 @@ aio-proxy reload
 ```
 
 Editors that support `$schema` can provide completion and validation. Use `{{env.NAME}}` to read environment variables.
+
+### Multi-protocol endpoints
+
+Some upstreams natively serve more than one protocol. Declare the extra endpoints with `endpoints`; a request whose inbound protocol matches any declared endpoint is forwarded verbatim (raw passthrough) instead of being converted:
+
+```jsonc
+{
+  "providers": {
+    // First-party channel: per-protocol endpoints. Keep the legacy pair as the
+    // primary endpoint and append the extra protocols.
+    "moonshot": {
+      "kind": "api",
+      "protocol": "openai-compatible",
+      "baseURL": "https://api.moonshot.cn/v1",
+      "apiKey": "{{env.MOONSHOT_API_KEY}}",
+      "models": ["kimi-k2"],
+      "endpoints": [{ "protocol": "anthropic", "baseURL": "https://api.moonshot.cn/anthropic/v1", "auth": "bearer" }],
+    },
+    // Aggregator gateway: one AI SDK-style base URL shared by several protocols.
+    "gateway": {
+      "kind": "api",
+      "apiKey": "{{env.GATEWAY_KEY}}",
+      "models": ["gpt-5"],
+      "endpoints": { "baseURL": "https://gw.example.com/v1", "protocol": ["openai-response", "anthropic"] },
+    },
+  },
+}
+```
+
+Rules:
+
+- An `endpoints` entry's `baseURL` is exactly what you would pass to the matching AI SDK package: OpenAI-style and Anthropic endpoints include the `/v1` segment, Gemini endpoints include `/v1beta` (so Gemini cannot share a `/v1` base URL — give it its own array entry).
+- Vendor docs often quote the Anthropic base for `ANTHROPIC_BASE_URL` (for example `https://api.z.ai/api/anthropic`); append `/v1` when copying it here.
+- `auth` is only supported on `anthropic` endpoints (declaring it on an endpoint of any other protocol fails validation): `bearer` sends `Authorization: Bearer` and requires the provider to declare `apiKey`, the default `x-api-key` keeps today's header.
+- The top-level `protocol`/`baseURL` pair stays the primary endpoint and keeps its historical passthrough behavior — on passthrough its base URL's path is discarded and only the origin is used, joined with the inbound request path, so a single-protocol provider is best left on the top-level pair; cross-protocol conversion always targets the primary endpoint. Without a top-level pair, the primary endpoint is the first `endpoints` entry (in the shared form, the first protocol in its `protocol` list).
+- Editing a provider that declares `endpoints` from the Dashboard currently drops the field; edit the config file directly until Dashboard support lands.
 
 ### Model metadata and pricing
 
@@ -220,13 +256,25 @@ The Dashboard is available at `http://127.0.0.1:9317/dashboard`. Use it to manag
 - View request volume, token usage, and cost trends.
 - Search complete request traces and inspect the status and latency of each Provider attempt.
 
-Set `server.password` to protect the Dashboard. This password does not protect the model API endpoints.
+Set `server.password` to protect the Dashboard. It does not protect model API endpoints; use `server.apiKeys` for those.
 
 ## Network and security
 
 Set the top-level `proxy` to configure a default HTTP(S) proxy. A Provider can inherit it, override it, or disable it with `false`. An `api` Provider can also set upstream request headers through `headers`.
 
-The AIO Proxy process currently binds only to `127.0.0.1`, `::1`, or `localhost`, but it can run on a personal computer, remote server, or in a container. For remote access, expose the service through a reverse proxy, tunnel, or gateway, and configure TLS, authentication, and access control at the outer layer.
+By default AIO Proxy binds to `127.0.0.1`. Set `server.host` to another non-empty host (for example, `0.0.0.0`) when clients need remote access. The proxy serves HTTP only, so terminate TLS with a reverse proxy, tunnel, or gateway before exposing it beyond a trusted network. Add `server.apiKeys` before doing so:
+
+```jsonc
+{
+  "server": {
+    "host": "0.0.0.0",
+    "apiKeys": [{ "key": "{{env.AIO_PROXY_KEY}}", "label": "CI" }],
+    "password": "a-dashboard-password",
+  },
+}
+```
+
+Each `label` is optional and only helps identify a key. With at least one key configured, every `/v1/*` and `/v1beta/*` request (including `/v1/models`) must send `Authorization: Bearer <key>` or `X-API-Key: <key>`; native Gemini clients may use `X-Goog-Api-Key`, `?key=`, or `?auth_token=`. Matched caller credentials are stripped before the request is forwarded upstream. An empty list leaves model APIs open. Remote Dashboard access requires `server.password` and its Dashboard session. `/admin/*` remains loopback-only for local CLI control. Browser writes without a Dashboard password must come from a loopback Origin on the proxy port (`127.0.0.1`, `localhost`, `[::1]`, or the configured loopback host). Direct loopback peers, including a local reverse proxy, are treated as local.
 
 ## Common commands
 

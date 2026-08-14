@@ -1,5 +1,5 @@
 import type { RawTransportOptions } from '@aio-proxy/plugin-sdk';
-import { type ApiProvider, ProviderProtocol } from '@aio-proxy/types';
+import { type ApiProvider, apiProviderEndpoints, type NormalizedApiEndpoint, ProviderProtocol } from '@aio-proxy/types';
 
 import { wrapOpenAIProtocolFetch } from '../openai-stream-fetch';
 import type { ProviderFetch } from '../proxy-fetch';
@@ -28,11 +28,16 @@ const CLIENT_CREDENTIAL_HEADERS = [
   'x-goog-api-key',
 ] as const;
 
-export type ApiProviderConfig = ApiProvider & {
-  readonly trace?: ApiProviderTraceTarget;
+export type ApiProviderConfig = ApiProvider & { readonly trace?: ApiProviderTraceTarget };
+
+export type ApiEndpointTransport = {
+  readonly protocol: ProviderProtocol;
+  readonly passthrough: (req: Request, options?: RawTransportOptions) => Promise<Response>;
 };
 
 export type ApiProviderInstance = ApiProvider & {
+  readonly endpointTransports: readonly [ApiEndpointTransport, ...ApiEndpointTransport[]];
+  /** Primary-endpoint passthrough; equals endpointTransports[0].passthrough. */
   readonly passthrough: (req: Request, options?: RawTransportOptions) => Promise<Response>;
 };
 
@@ -46,50 +51,73 @@ export function createApiProvider(
   config: ApiProviderConfig,
   options: ApiProviderFactoryOptions = {},
 ): ApiProviderInstance {
-  const baseURL = config.baseURL;
   const trace = options.trace ?? config.trace;
-  const fetchUpstream = wrapOpenAIProtocolFetch(config.protocol, options.fetch ?? globalThis.fetch);
+  const fetcher = options.fetch ?? globalThis.fetch;
+  const endpoints = apiProviderEndpoints(config);
+  const primary = endpointTransport(endpoints[0], config, fetcher, trace);
+  const rest = endpoints.slice(1).map((endpoint) => endpointTransport(endpoint, config, fetcher, trace));
+  const { trace: _trace, ...providerFields } = config;
+  return { ...providerFields, endpointTransports: [primary, ...rest], passthrough: primary.passthrough };
+}
 
+const SDK_VERSION_PREFIXES: Record<ProviderProtocol, string> = {
+  [ProviderProtocol.OpenAIResponse]: '/v1',
+  [ProviderProtocol.OpenAICompatible]: '/v1',
+  [ProviderProtocol.Anthropic]: '/v1',
+  [ProviderProtocol.Gemini]: '/v1beta',
+};
+
+function endpointTransport(
+  endpoint: NormalizedApiEndpoint,
+  config: Pick<ApiProviderConfig, 'apiKey' | 'headers'>,
+  fetcher: ProviderFetch,
+  trace: ApiProviderTraceTarget | undefined,
+): ApiEndpointTransport {
+  const fetchUpstream = wrapOpenAIProtocolFetch(endpoint.protocol, fetcher);
   return {
-    ...(config.apiKey === undefined ? {} : { apiKey: config.apiKey }),
-    baseURL,
-    enabled: config.enabled,
-    id: config.id,
-    kind: config.kind,
-    ...(config.models === undefined ? {} : { models: config.models }),
-    ...(config.alias === undefined ? {} : { alias: config.alias }),
-    ...(config.metadata === undefined ? {} : { metadata: config.metadata }),
-    protocol: config.protocol,
+    protocol: endpoint.protocol,
     async passthrough(req, options) {
-      const upstreamUrl = rewrittenUrl(baseURL, req.url);
-      const headers = upstreamHeaders(req.headers, config);
+      const upstreamUrl =
+        endpoint.mode === 'origin'
+          ? rewrittenUrl(endpoint.baseURL, req.url)
+          : sdkRewrittenUrl(endpoint.baseURL, req.url, endpoint.protocol);
+      const headers = upstreamHeaders(req.headers, config, endpoint);
 
       const response = await fetchUpstream(
         upstreamUrl,
-        {
-          body: req.body,
-          headers,
-          method: req.method,
-          signal: req.signal,
-        },
+        { body: req.body, headers, method: req.method, signal: req.signal },
         options,
       );
 
       if (trace === undefined || response.body === null) {
         return new Response(response.body, decodedBodyResponseInit(response));
       }
-
       const [returnedBody, tracedBody] = response.body.tee();
       void recordTrace(trace, response.status, tracedBody);
-
       return new Response(returnedBody, decodedBodyResponseInit(response));
     },
   };
 }
 
+// sdk 模式：baseURL 即 @ai-sdk/* 的入参；剥去 inbound 标准路径的版本前缀，
+// 余下操作路径拼到 baseURL path 之后（与各包自身的拼接行为一致）。
+function sdkRewrittenUrl(baseURL: string, requestUrl: string, protocol: ProviderProtocol): URL {
+  const incomingUrl = new URL(requestUrl);
+  const prefix = SDK_VERSION_PREFIXES[protocol];
+  const operationPath =
+    incomingUrl.pathname === prefix || incomingUrl.pathname.startsWith(`${prefix}/`)
+      ? incomingUrl.pathname.slice(prefix.length)
+      : incomingUrl.pathname;
+  const upstreamUrl = new URL(baseURL);
+  upstreamUrl.pathname = `${upstreamUrl.pathname.replace(/\/$/u, '')}${operationPath}`;
+  upstreamUrl.search = incomingUrl.search;
+  return upstreamUrl;
+}
+
 function upstreamHeaders(
   inbound: Headers,
-  config: Pick<ApiProviderConfig, 'apiKey' | 'headers' | 'protocol'>,
+  config: Pick<ApiProviderConfig, 'apiKey' | 'headers'>,
+  endpoint: Pick<NormalizedApiEndpoint, 'protocol' | 'auth'>,
 ): Headers {
   const headers = new Headers(inbound);
   headers.delete('host');
@@ -97,9 +125,13 @@ function upstreamHeaders(
   for (const name of CLIENT_CREDENTIAL_HEADERS) headers.delete(name);
   const apiKey = resolveApiKey(config.apiKey);
   if (apiKey !== undefined) {
-    if (config.protocol === ProviderProtocol.Anthropic) headers.set('x-api-key', apiKey);
-    else if (config.protocol === ProviderProtocol.Gemini) headers.set('x-goog-api-key', apiKey);
-    else headers.set('authorization', `Bearer ${apiKey}`);
+    if (endpoint.protocol === ProviderProtocol.Anthropic && endpoint.auth !== 'bearer') {
+      headers.set('x-api-key', apiKey);
+    } else if (endpoint.protocol === ProviderProtocol.Gemini) {
+      headers.set('x-goog-api-key', apiKey);
+    } else {
+      headers.set('authorization', `Bearer ${apiKey}`);
+    }
   }
   for (const [name, value] of Object.entries(config.headers ?? {})) headers.set(name, value);
   return headers;

@@ -1,4 +1,4 @@
-import type { Provider } from '@aio-proxy/types';
+import { apiProviderEndpoints, type Provider, ProviderKind } from '@aio-proxy/types';
 
 import { currentProviderAttemptContext } from '../request-logging';
 import { compileProviderRequestTransforms } from './compile';
@@ -31,6 +31,7 @@ export function createProviderRequestTransformFetch(
 ): typeof globalThis.fetch {
   const compiled = compileProviderRequestTransforms(provider.transforms?.request ?? []);
   if (compiled.rules.length === 0) return fetcher;
+  const primaryProtocol = provider.kind === ProviderKind.Api ? apiProviderEndpoints(provider)[0].protocol : undefined;
 
   return (async (input, init) => {
     const attempt = currentProviderAttemptContext();
@@ -50,7 +51,7 @@ export function createProviderRequestTransformFetch(
         provider: {
           id: provider.id,
           kind: provider.kind,
-          ...('protocol' in provider ? { protocol: provider.protocol } : {}),
+          ...(primaryProtocol === undefined ? {} : { protocol: primaryProtocol }),
         },
         request: {
           model: attempt.modelId,

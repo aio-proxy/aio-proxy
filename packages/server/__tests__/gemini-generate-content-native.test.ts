@@ -21,6 +21,29 @@ const tempHome = homes.tempHome;
 afterEach(homes.cleanup);
 
 describe('POST /v1beta/models/:model::generateContent', () => {
+  test('Given caller API keys When Gemini content is posted Then a valid Bearer key is required', async () => {
+    const provider = googleNativeProvider(async () => Response.json({ ok: true }));
+    const app = await createServer({
+      config: { server: { apiKeys: [{ key: 'caller-secret' }] }, providers: {} },
+      dbHome: tempHome(),
+      providerInstances: [provider],
+    });
+
+    const missing = await app.request('/v1beta/models/gemini-2.5-flash:generateContent', {
+      body: JSON.stringify(generateRequest),
+      headers: { 'content-type': 'application/json' },
+      method: 'POST',
+    });
+    const authorized = await app.request('/v1beta/models/gemini-2.5-flash:generateContent', {
+      body: JSON.stringify(generateRequest),
+      headers: { authorization: 'Bearer caller-secret', 'content-type': 'application/json' },
+      method: 'POST',
+    });
+
+    expect(missing.status).toBe(401);
+    expect(authorized.status).toBe(200);
+  });
+
   test('Given gemini api provider When generateContent is posted Then passthrough receives original bytes', async () => {
     // Given
     const requestBody = JSON.stringify(generateRequest);

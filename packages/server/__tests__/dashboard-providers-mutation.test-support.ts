@@ -43,7 +43,8 @@ export async function createDashboardProviderFixture(prefix: string) {
         `/dashboard/api${path}`,
         {
           method,
-          headers: method === 'GET' ? {} : { Origin: ORIGIN, 'Content-Type': 'application/json' },
+          headers:
+            method === 'GET' ? {} : { Host: `127.0.0.1:${PORT}`, Origin: ORIGIN, 'Content-Type': 'application/json' },
           body: body === undefined ? undefined : JSON.stringify(body),
         },
         loopbackServer,
@@ -58,7 +59,7 @@ export async function createDashboardProviderFixture(prefix: string) {
         '/dashboard/api/providers',
         {
           method: 'POST',
-          headers: { Origin: ORIGIN, 'Content-Type': 'application/json' },
+          headers: { Host: `127.0.0.1:${PORT}`, Origin: ORIGIN, 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
         },
         loopbackServer,

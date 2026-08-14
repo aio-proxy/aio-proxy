@@ -238,7 +238,7 @@ async function attemptResolvedRequest<TRequest, TContext>(options: {
     deferred = true;
   };
   try {
-    const candidates = lease.snapshot.router.resolve(requestedModel, adapter.variant(request, context));
+    const candidates = lease.snapshot.router.resolve(requestedModel, adapter.dimensions(request, context));
     return await attemptCandidates({
       adapter,
       candidates,
@@ -292,5 +292,5 @@ function rejectRequest(options: {
   return response;
 }
 
-export { resolveSupportedEfforts } from './attempt/effort-capability';
+export { resolveSupportedEfforts, resolveSupportedEffortsForDimensions } from './attempt/effort-capability';
 export { hasInvalidOrOversizedContentLength } from './request';

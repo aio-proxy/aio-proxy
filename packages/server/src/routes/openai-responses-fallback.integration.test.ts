@@ -43,16 +43,18 @@ describe('OpenAI Responses fallback HTTP integration', () => {
           return textStream([]);
         },
       } satisfies AiSdkProviderInstance;
+      const passthrough = async (request: Request) => {
+        rawBody = await request.json();
+        return Response.json({ fallback: true });
+      };
       const raw = {
         id: 'raw',
         kind: 'api',
         models: ['gpt-5.6-terra'],
         alias: { 'gpt-5.6-terra': { model: 'gpt-5.6-terra', preserve: false } },
         protocol: ProviderProtocol.OpenAIResponse,
-        async passthrough(request) {
-          rawBody = await request.json();
-          return Response.json({ fallback: true });
-        },
+        endpointTransports: [{ protocol: ProviderProtocol.OpenAIResponse, passthrough }],
+        passthrough,
       } satisfies ApiProviderInstance;
       const dbHome = homes.tempHome();
       const app = await createServer({

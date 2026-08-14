@@ -14,7 +14,7 @@ import { observeInboundRequest, withAttemptLogContext, withRequestLogContext } f
 import { attributeName, type RequestTraceSession } from '../../request-tracing';
 import { isInboundAbort } from '../../route-observation';
 import type { ProviderRouteSource, RuntimeProviderInstance } from '../../runtime';
-import { hasInvalidOrOversizedContentLength, resolveSupportedEfforts } from '../pipeline';
+import { hasInvalidOrOversizedContentLength, resolveSupportedEffortsForDimensions } from '../pipeline';
 import { prioritizeAffinity } from '../pipeline/affinity';
 import { failureTerminal } from '../pipeline/failure';
 import { cancelRetainedRequestBody } from '../pipeline/request';
@@ -122,7 +122,7 @@ async function handleTokenCountInContext<TRequest, TContext>(
     }
     const lease = source.acquireProviderSnapshot();
     try {
-      const candidates = lease.snapshot.router.resolve(requestedModel, adapter.variant(request, context));
+      const candidates = lease.snapshot.router.resolve(requestedModel, adapter.dimensions(request, context));
       const affinityOrdered =
         resolution.affinity?.active === true
           ? prioritizeAffinity(candidates, resolution.affinity.providerId)
@@ -185,9 +185,9 @@ async function countCandidates<TRequest, TContext>({
 }: CountCandidatesOptions<TRequest, TContext>): Promise<Response> {
   throwIfCountAborted(session, rawRequest.signal);
 
-  // Whether the inbound request carries an effort to clamp; when it does not,
+  // The same dimensions bag routing resolved with; when it carries no effort,
   // capability resolution is a no-op and is skipped per candidate.
-  const hasEffort = adapter.variant(request, context) !== undefined;
+  const dimensions = adapter.dimensions(request, context);
 
   for (const [attemptIndex, candidate] of candidates.entries()) {
     const rawResult = await attemptRawCount({
@@ -214,8 +214,8 @@ async function countCandidates<TRequest, TContext>({
     // Clamp adaptive effort against this candidate's real capabilities, exactly
     // as the generation path does; otherwise an unsupported level (e.g. xhigh)
     // survives and the provider's own count throws, silently falling back to a
-    // local estimate. Skip the lookup when the request carries no effort.
-    const supportedEfforts = hasEffort ? await resolveSupportedEfforts(candidate.modelId) : new Set<string>();
+    // local estimate. The lookup is skipped when the request carries no effort.
+    const supportedEfforts = await resolveSupportedEffortsForDimensions(dimensions, candidate.modelId);
     const candidateInvocation = adapter.modelInvocationForTarget(invocation, targetProtocol, supportedEfforts);
     try {
       assertImageInputSupported(candidateInvocation.messages, targetProtocol);

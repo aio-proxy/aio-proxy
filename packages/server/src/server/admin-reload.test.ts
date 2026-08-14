@@ -12,8 +12,8 @@ describe('admin control plane', () => {
   // Empty providers config guarantees a clean reload snapshot (ok:true), independent
   // of the shared secret-laden fixture used by server-config.test.ts.
   const emptyConfig = { server: { port: 9_317 }, providers: {} };
-  const createServer = (version?: string) =>
-    createBaseServer({ config: emptyConfig, dbHome: dir, watchConfig: false, ...(version ? { version } : {}) });
+  const createServer = (version?: string, config = emptyConfig) =>
+    createBaseServer({ config, dbHome: dir, watchConfig: false, ...(version ? { version } : {}) });
 
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), 'aio-proxy-admin-'));
@@ -46,6 +46,16 @@ describe('admin control plane', () => {
     expect(res.status).toBe(403);
   });
 
+  test('POST /admin/reload rejects an attacker Origin even when Host matches', async () => {
+    const app = await createServer();
+    const res = await app.request(
+      '/admin/reload',
+      { method: 'POST', headers: { host: 'attacker.example', origin: 'http://attacker.example' } },
+      loopbackServer,
+    );
+    expect(res.status).toBe(403);
+  });
+
   test('POST /admin/reload rejects a cross-site fetch-metadata request', async () => {
     const app = await createServer();
     const res = await app.request(
@@ -61,10 +71,130 @@ describe('admin control plane', () => {
     // The bundled dashboard (same origin) legitimately reloads; it must pass.
     const res = await app.request(
       '/admin/reload',
-      { method: 'POST', headers: { origin: 'http://127.0.0.1:9317', 'sec-fetch-site': 'same-origin' } },
+      {
+        method: 'POST',
+        headers: { host: '127.0.0.1:9317', origin: 'http://127.0.0.1:9317', 'sec-fetch-site': 'same-origin' },
+      },
       loopbackServer,
     );
     expect([200, 409]).toContain(res.status);
+  });
+
+  test('POST /admin/reload allows the localhost origin on the proxy port', async () => {
+    const app = await createServer();
+    const res = await app.request(
+      '/admin/reload',
+      {
+        method: 'POST',
+        headers: { host: 'localhost:9317', origin: 'http://localhost:9317', 'sec-fetch-site': 'same-origin' },
+      },
+      loopbackServer,
+    );
+    expect([200, 409]).toContain(res.status);
+  });
+
+  test('POST /admin/reload allows the IPv6 loopback origin on the default bind', async () => {
+    const app = await createServer();
+    const res = await app.request(
+      '/admin/reload',
+      {
+        method: 'POST',
+        headers: { host: '[::1]:9317', origin: 'http://[::1]:9317', 'sec-fetch-site': 'same-origin' },
+      },
+      loopbackServer,
+    );
+    expect([200, 409]).toContain(res.status);
+  });
+
+  test('POST /admin/reload allows the configured IPv6 loopback origin', async () => {
+    const app = await createBaseServer({
+      config: { server: { host: '::1', port: 9_317 }, providers: {} },
+      dbHome: dir,
+      watchConfig: false,
+    });
+
+    const res = await app.request(
+      '/admin/reload',
+      {
+        method: 'POST',
+        headers: { host: '[::1]:9317', origin: 'http://[::1]:9317', 'sec-fetch-site': 'same-origin' },
+      },
+      loopbackServer,
+    );
+
+    expect([200, 409]).toContain(res.status);
+  });
+
+  test('POST /admin/reload allows the configured IPv4 loopback origin', async () => {
+    const app = await createBaseServer({
+      config: { server: { host: '127.0.0.2', port: 9_317 }, providers: {} },
+      dbHome: dir,
+      watchConfig: false,
+    });
+
+    const res = await app.request(
+      '/admin/reload',
+      { method: 'POST', headers: { host: '127.0.0.2:9317', origin: 'http://127.0.0.2:9317' } },
+      loopbackServer,
+    );
+
+    expect([200, 409]).toContain(res.status);
+  });
+
+  test('POST /admin/reload rejects a loopback origin on another port', async () => {
+    const app = await createServer();
+
+    const res = await app.request(
+      '/admin/reload',
+      { method: 'POST', headers: { origin: 'http://127.0.0.1:22078' } },
+      loopbackServer,
+    );
+
+    expect(res.status).toBe(403);
+  });
+
+  test('POST /admin/reload rejects a different loopback host on the proxy port', async () => {
+    const app = await createServer();
+
+    const res = await app.request(
+      '/admin/reload',
+      { method: 'POST', headers: { origin: 'http://127.0.0.2:9317' } },
+      loopbackServer,
+    );
+
+    expect(res.status).toBe(403);
+  });
+
+  test('POST /admin/reload remains unavailable to remote clients with a Dashboard session', async () => {
+    const hash = await Bun.password.hash('remote-admin');
+    const app = await createServer(undefined, { server: { password: hash }, providers: {} });
+    const remote = { requestIP: () => ({ address: '192.168.1.20' }) };
+    const origin = 'http://proxy.example:9317';
+    const login = await app.request(
+      '/dashboard/api/auth/login',
+      {
+        body: JSON.stringify({ password: 'remote-admin' }),
+        headers: { 'content-type': 'application/json', host: 'proxy.example:9317', origin },
+        method: 'POST',
+      },
+      remote,
+    );
+    const token = ((await login.clone().json()) as { readonly token?: string }).token;
+
+    expect(login.status).toBe(200);
+    expect(
+      (await app.request('/admin/reload', { headers: { host: 'proxy.example:9317', origin }, method: 'POST' }, remote))
+        .status,
+    ).toBe(401);
+    expect(
+      (
+        await app.request(
+          '/admin/reload',
+          { headers: { authorization: `Bearer ${token ?? ''}`, host: 'proxy.example:9317', origin }, method: 'POST' },
+          remote,
+        )
+      ).status,
+    ).toBe(403);
   });
 
   test('GET /health reports the injected version', async () => {

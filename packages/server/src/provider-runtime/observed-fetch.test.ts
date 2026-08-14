@@ -69,9 +69,11 @@ function observedFetchFixture() {
     },
     createApiProvider(provider, options) {
       apiFetch = options.fetch;
+      const passthrough = (request: Request) => apiFetch!(request);
       return {
         ...provider,
-        passthrough: (request) => apiFetch!(request),
+        endpointTransports: [{ protocol: provider.protocol, passthrough }],
+        passthrough,
       } satisfies ApiProviderInstance;
     },
     bridgeApiProvider(provider, options) {

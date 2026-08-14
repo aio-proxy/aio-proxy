@@ -145,6 +145,7 @@ export {
   loadAiSdkProvider,
 } from './provider/ai-sdk-loader/index';
 export {
+  type ApiEndpointTransport,
   type ApiProviderConfig,
   type ApiProviderFactoryOptions,
   type ApiProviderInstance,

@@ -10,6 +10,11 @@ describe('POST /v1beta/models/:model::generateContent', () => {
     // Given
     let pathnameSeen = '';
     let bodySeen = '';
+    const passthrough = async (req: Request) => {
+      pathnameSeen = new URL(req.url).pathname;
+      bodySeen = await req.text();
+      return Response.json({ ok: true });
+    };
     const provider = {
       id: 'google',
       kind: 'api',
@@ -22,11 +27,8 @@ describe('POST /v1beta/models/:model::generateContent', () => {
         },
       },
       protocol: ProviderProtocol.Gemini,
-      async passthrough(req) {
-        pathnameSeen = new URL(req.url).pathname;
-        bodySeen = await req.text();
-        return Response.json({ ok: true });
-      },
+      endpointTransports: [{ protocol: ProviderProtocol.Gemini, passthrough }],
+      passthrough,
     } satisfies ApiProviderInstance;
     const app = await appWith(provider);
     const body = {

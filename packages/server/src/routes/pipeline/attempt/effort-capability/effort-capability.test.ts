@@ -6,7 +6,7 @@ import {
   seedEmptyModelsDevCatalog,
   seedModelsDevCatalog,
 } from '../../../../../__tests__/server.test-support';
-import { resolveSupportedEfforts } from './effort-capability';
+import { resolveSupportedEfforts, resolveSupportedEffortsForDimensions } from './effort-capability';
 
 // Seed an isolated, empty catalog so the lookup resolves offline instead of
 // reaching models.dev — the empty-set pass-through contract is what matters here.
@@ -48,5 +48,32 @@ describe('resolveSupportedEfforts', () => {
     } finally {
       globalThis.fetch = originalFetch;
     }
+  });
+});
+
+describe('resolveSupportedEffortsForDimensions', () => {
+  test('skips catalog lookup when effort is omitted', async () => {
+    // Seed a catalog where the model DOES advertise efforts: if the
+    // effort-undefined short-circuit were removed, the lookup would leak
+    // through and return a non-empty set, failing this assertion.
+    await seedModelsDevCatalog({
+      'gpt-effort': modelsDevModel('gpt-effort', 'GPT Effort', {
+        reasoning: true,
+        reasoning_options: [{ type: 'effort', values: ['low', 'medium', 'high'] }],
+      }),
+    });
+    const result = await resolveSupportedEffortsForDimensions({}, 'gpt-effort');
+    expect(result.size).toBe(0);
+  });
+
+  test('looks up capabilities when effort is present', async () => {
+    await seedModelsDevCatalog({
+      'gpt-effort': modelsDevModel('gpt-effort', 'GPT Effort', {
+        reasoning: true,
+        reasoning_options: [{ type: 'effort', values: ['low', 'medium', 'high'] }],
+      }),
+    });
+    const result = await resolveSupportedEffortsForDimensions({ effort: 'high' }, 'gpt-effort');
+    expect([...result].sort()).toEqual(['high', 'low', 'medium']);
   });
 });

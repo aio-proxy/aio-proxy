@@ -50,6 +50,67 @@ describe('anthropicMessagesAdapter', () => {
       {},
     );
 
-    expect(anthropicMessagesAdapter.variant(parsed, {})).toBe('medium');
+    expect(anthropicMessagesAdapter.dimensions(parsed, {})).toEqual({ thinking: true, effort: 'medium' });
+  });
+
+  test('maps enabled, disabled+effort, and null speed', async () => {
+    const enabled = await anthropicMessagesAdapter.parse(
+      request({
+        model: 'claude-opus-4-6',
+        messages: [{ role: 'user', content: 'hello' }],
+        max_tokens: 8192,
+        thinking: { type: 'enabled', budget_tokens: 2048 },
+      }),
+      {},
+    );
+    expect(anthropicMessagesAdapter.dimensions(enabled, {})).toEqual({ thinking: true });
+
+    const disabled = await anthropicMessagesAdapter.parse(
+      request({
+        model: 'claude-opus-4-6',
+        messages: [{ role: 'user', content: 'hello' }],
+        max_tokens: 8192,
+        thinking: { type: 'disabled' },
+        output_config: { effort: 'high' },
+      }),
+      {},
+    );
+    expect(anthropicMessagesAdapter.dimensions(disabled, {})).toEqual({ thinking: false });
+
+    const nullSpeed = await anthropicMessagesAdapter.parse(
+      request({
+        model: 'claude-opus-4-6',
+        messages: [{ role: 'user', content: 'hello' }],
+        max_tokens: 8192,
+        speed: null,
+      }),
+      {},
+    );
+    expect(anthropicMessagesAdapter.dimensions(nullSpeed, {})).toEqual({});
+  });
+
+  test('maps speed and service_tier onto the speed axis with in-field precedence', async () => {
+    const parse = (extra: object) =>
+      anthropicMessagesAdapter.parse(
+        request({
+          model: 'claude-opus-4-6',
+          messages: [{ role: 'user', content: 'hello' }],
+          max_tokens: 8192,
+          ...extra,
+        }),
+        {},
+      );
+
+    expect(anthropicMessagesAdapter.dimensions(await parse({ speed: 'fast' }), {})).toEqual({ speed: 'fast' });
+    // Non-enum in-field speed omits the axis and must NOT fall through to service_tier.
+    expect(anthropicMessagesAdapter.dimensions(await parse({ speed: 'turbo', service_tier: 'priority' }), {})).toEqual(
+      {},
+    );
+    // Absent (or null) speed may fall through to service_tier.
+    expect(anthropicMessagesAdapter.dimensions(await parse({ service_tier: 'flex' }), {})).toEqual({ speed: 'flex' });
+    expect(anthropicMessagesAdapter.dimensions(await parse({ speed: null, service_tier: 'priority' }), {})).toEqual({
+      speed: 'fast',
+    });
+    expect(anthropicMessagesAdapter.dimensions(await parse({ service_tier: 'standard_only' }), {})).toEqual({});
   });
 });

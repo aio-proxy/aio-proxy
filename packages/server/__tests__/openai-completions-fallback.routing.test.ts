@@ -11,15 +11,18 @@ afterEach(restoreFetch);
 
 describe('POST /v1/chat/completions', () => {
   test('Given first native provider throws When completion is posted Then next provider is used', async () => {
+    const failing = async () => {
+      throw new Error('connection refused');
+    };
+    const succeeding = async () => Response.json({ fallback: true });
     const first = {
       id: 'offline',
       kind: 'api',
       models: ['gpt-5-mini'],
       alias: { 'gpt-5-mini': { model: 'gpt-5-mini', preserve: false } },
       protocol: ProviderProtocol.OpenAICompatible,
-      passthrough: async () => {
-        throw new Error('connection refused');
-      },
+      endpointTransports: [{ protocol: ProviderProtocol.OpenAICompatible, passthrough: failing }],
+      passthrough: failing,
     } satisfies ApiProviderInstance;
     const second = {
       id: 'ok',
@@ -27,7 +30,8 @@ describe('POST /v1/chat/completions', () => {
       models: ['gpt-5-mini'],
       alias: { 'gpt-5-mini': { model: 'gpt-5-mini', preserve: false } },
       protocol: ProviderProtocol.OpenAICompatible,
-      passthrough: async () => Response.json({ fallback: true }),
+      endpointTransports: [{ protocol: ProviderProtocol.OpenAICompatible, passthrough: succeeding }],
+      passthrough: succeeding,
     } satisfies ApiProviderInstance;
     const app = await createServer({ config: { providers: {} }, providerInstances: [first, second] });
 
@@ -81,13 +85,15 @@ describe('POST /v1/chat/completions', () => {
 
   test('Given first provider returns 400 When completion is posted Then no fallback occurs', async () => {
     let secondCalled = false;
+    const passthrough = async () => Response.json({ error: 'bad request' }, { status: 400 });
     const first = {
       id: 'bad-request',
       kind: 'api',
       models: ['gpt-5-mini'],
       alias: { 'gpt-5-mini': { model: 'gpt-5-mini', preserve: false } },
       protocol: ProviderProtocol.OpenAICompatible,
-      passthrough: async () => Response.json({ error: 'bad request' }, { status: 400 }),
+      endpointTransports: [{ protocol: ProviderProtocol.OpenAICompatible, passthrough }],
+      passthrough,
     } satisfies ApiProviderInstance;
     const second = {
       id: 'ok',

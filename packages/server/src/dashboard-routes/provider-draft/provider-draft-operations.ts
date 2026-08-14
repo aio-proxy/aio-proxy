@@ -1,5 +1,6 @@
 import { createProxyFetch } from '@aio-proxy/core';
 import {
+  apiProviderEndpoints,
   type DashboardProviderDraftCatalogResponse,
   type DashboardProviderDraftTestResponse,
   type Provider,
@@ -31,12 +32,13 @@ export async function loadProviderDraftCatalog(
   if (provider.kind === ProviderKind.AiSdk) return loadAiSdkDraftCatalog(state, provider);
 
   try {
+    const primary = apiProviderEndpoints(provider)[0];
     const runtime = materializeDraft(state, provider);
-    const raw = runtime.raw?.resolve({ protocol: provider.protocol, modelId: '' });
+    const raw = runtime.raw?.resolve({ protocol: primary.protocol, modelId: '' });
     if (raw === undefined) return failure('catalog_unavailable');
     const signal = AbortSignal.timeout(5_000);
     const models = new Set<string>();
-    let path: string | undefined = catalogPath(provider.protocol);
+    let path: string | undefined = catalogPath(primary.protocol);
     while (path !== undefined) {
       const response = await raw.invoke(new Request(`http://provider-draft.invalid${path}`, { signal }), undefined, {
         upstreamStream: false,
@@ -45,7 +47,7 @@ export async function loadProviderDraftCatalog(
         await response.body?.cancel();
         return failure('catalog_unavailable');
       }
-      const page = catalogPage(provider.protocol, await response.json());
+      const page = catalogPage(primary.protocol, await response.json());
       for (const model of page.models) models.add(model);
       path = page.nextPath;
     }
@@ -125,7 +127,7 @@ export async function testProviderDraft(
     const runtime = materializeDraftRuntime(state, testProvider);
     const targetProtocol =
       testProvider.kind === ProviderKind.Api
-        ? testProvider.protocol
+        ? apiProviderEndpoints(testProvider)[0].protocol
         : runtime.provider.model?.targetProtocol?.(modelId);
     const passed = await withDraftAttempt(testProvider, modelId, targetProtocol, async () => {
       if (testProvider.kind === ProviderKind.Api) {
@@ -225,7 +227,8 @@ function withDraftAttempt<T>(
   targetProtocol: ProviderProtocol | undefined,
   operation: () => Promise<T>,
 ): Promise<T> {
-  const sourceProtocol = provider.kind === ProviderKind.Api ? provider.protocol : ProviderProtocol.OpenAIResponse;
+  const sourceProtocol =
+    provider.kind === ProviderKind.Api ? apiProviderEndpoints(provider)[0].protocol : ProviderProtocol.OpenAIResponse;
   return withRequestLogContext({ requestId: crypto.randomUUID(), debug: false, logger: () => {} }, () =>
     withAttemptLogContext(
       {

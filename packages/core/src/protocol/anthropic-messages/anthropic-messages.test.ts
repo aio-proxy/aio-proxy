@@ -62,7 +62,7 @@ describe('anthropicMessagesAdapter', () => {
 
     expect(anthropicMessagesAdapter.protocol).toBe(ProviderProtocol.Anthropic);
     expect(anthropicMessagesAdapter.model(parsed, {})).toBe('alias');
-    expect(anthropicMessagesAdapter.variant(parsed, {})).toBeUndefined();
+    expect(anthropicMessagesAdapter.dimensions(parsed, {})).toEqual({});
     expect(anthropicMessagesAdapter.wantsStream(parsed, {})).toBe(false);
     expect(invocation.messages[0]).toEqual({
       role: 'system',
