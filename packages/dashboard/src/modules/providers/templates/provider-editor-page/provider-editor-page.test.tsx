@@ -376,7 +376,9 @@ test('edit-api clearing model metadata sends an explicit empty metadata object',
 
   fireEvent.click(within(screen.getByTestId('model-row-a')).getByTestId('model-row-metadata'));
   await screen.findByTestId('provider-model-metadata-drawer');
-  fireEvent.change(screen.getByRole('textbox', { name: /JSON|json/u }), { target: { value: '{}' } });
+  fireEvent.change(within(screen.getByTestId('provider-model-metadata-drawer')).getByRole('textbox'), {
+    target: { value: '{}' },
+  });
   fireEvent.click(screen.getByTestId('provider-model-metadata-save'));
 
   await waitFor(() => expect(saveButton()).toBeEnabled());
