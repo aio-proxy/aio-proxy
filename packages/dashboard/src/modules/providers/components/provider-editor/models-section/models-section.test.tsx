@@ -107,6 +107,27 @@ describe('ModelsSection', () => {
     expect(count.textContent ?? '').not.toContain('{count}');
   });
 
+  // An empty oauth whitelist means "expose the whole discovered catalog" to the runtime
+  // (`exposedModelIds` treats absent and length-0 alike), and the editor's own create flow saves a
+  // provider with no `models` key. Rendering those rows unchecked misreports what is live, and the
+  // first click then committed a one-model whitelist — silently disabling everything else.
+  test('an oauth provider with an empty whitelist renders every discovered model as enabled', async () => {
+    renderSection({
+      kind: ProviderKind.OAuth,
+      initial: { kind: ProviderKind.OAuth, id: 'oauth-provider', models: [] },
+      candidates: ['disc-a', 'disc-b', 'disc-c'],
+    });
+
+    for (const id of ['disc-a', 'disc-b', 'disc-c']) {
+      expect(within(screen.getByTestId(`model-row-${id}`)).getByRole('checkbox')).toBeChecked();
+    }
+
+    fireEvent.click(within(screen.getByTestId('model-row-disc-a')).getByRole('checkbox'));
+
+    // Unchecking one narrows the whitelist to the rest, rather than promoting it to the only model.
+    await waitFor(() => expect(section.state.values.models).toEqual(['disc-b', 'disc-c']));
+  });
+
   test('a whitelisted model missing from the discovered catalog is called out as stale', () => {
     renderSection({
       kind: ProviderKind.OAuth,

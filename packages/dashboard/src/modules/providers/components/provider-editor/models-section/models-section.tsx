@@ -8,6 +8,7 @@ import { useState } from 'react';
 import { useProviderCatalogMutation } from '../../../hooks/use-provider-catalog-mutation';
 import type { ProviderEditorForm } from '../../../hooks/use-provider-editor-form';
 import { PROVIDER_MODELS_PLACEHOLDER } from '../../../lib/constants';
+import { exposedModels } from '../../../lib/exposed-models';
 import { applyModelRows, toModelRows, type ModelRow } from '../../../lib/model-rows';
 import type { SectionStatus } from '../../../lib/section-status';
 import { ProviderModelMetadataDrawer } from '../../provider-models-field/provider-model-metadata-drawer';
@@ -49,13 +50,17 @@ export const ModelsSection: React.FC<ModelsSectionProps> = ({
             {(metadataField) => {
               const models: readonly string[] = modelsField.state.value ?? [];
               const metadata = (metadataField.state.value ?? {}) as MetadataMap;
-              const whitelist = new Set(models);
+              // An empty oauth whitelist exposes the whole discovered catalog at runtime, so the rows
+              // must render checked and unchecking one must narrow that set — not promote the single
+              // survivor. api/ai-sdk get no such substitution: an empty whitelist there exposes nothing.
+              const selected = exposedModels(models, kind === ProviderKind.OAuth ? discovered : undefined);
+              const whitelist = new Set(selected);
               const discoveredSet = new Set(discovered ?? []);
               // One list: the whitelist in its configured order, then any discovered model not yet
               // whitelisted, so a candidate can be enabled without a second grid.
-              const rowIds = [...models, ...(discovered ?? []).filter((id) => !whitelist.has(id))];
+              const rowIds = [...selected, ...(discovered ?? []).filter((id) => !whitelist.has(id))];
               const rows = toModelRows(rowIds, metadata);
-              const whitelistRows = toModelRows(models, metadata);
+              const whitelistRows = toModelRows(selected, metadata);
               const needle = filter.trim().toLowerCase();
               const visible = rows.filter((row) => needle === '' || row.id.toLowerCase().includes(needle));
 

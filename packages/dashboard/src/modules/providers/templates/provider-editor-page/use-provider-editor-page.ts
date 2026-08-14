@@ -22,6 +22,7 @@ import { normalizeProviderFormValue, type ProviderFormShape } from '../../hooks/
 import { useProviderCreate, useProviderUpdate } from '../../hooks/use-provider-mutations';
 import { aliasEditorIssues } from '../../lib/alias-editor';
 import { ProviderFormMode, PROVIDER_KIND_LABEL } from '../../lib/constants';
+import { exposedModels } from '../../lib/exposed-models';
 import { applyModelRows, toModelRows } from '../../lib/model-rows';
 import { oauthAccountSubmission } from '../../lib/oauth-account-submission';
 import { capabilityKey } from '../../lib/oauth-capability-key';
@@ -29,7 +30,6 @@ import { oauthProviderEditAction } from '../../lib/oauth-provider-edit';
 import { blockingSections, sectionStatuses } from '../../lib/section-status';
 import { oauthCapabilitiesQueryOptions } from '../../services/oauth-service';
 import { providersQueryOptions } from '../../services/providers-service';
-import { exposedModels } from './exposed-models';
 import { useOAuthEditorSession } from './use-oauth-editor-session';
 
 const accountDraft = (values: {

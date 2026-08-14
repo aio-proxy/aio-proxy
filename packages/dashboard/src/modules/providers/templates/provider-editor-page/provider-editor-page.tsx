@@ -15,8 +15,8 @@ import { ModelsSection } from '../../components/provider-editor/models-section';
 import { RoutingSection } from '../../components/provider-editor/routing-section';
 import { useActiveSection } from '../../hooks/use-active-section';
 import { ProviderFormMode } from '../../lib/constants';
+import { exposedModels } from '../../lib/exposed-models';
 import { EditorFooter } from './editor-footer';
-import { exposedModels } from './exposed-models';
 import { SectionNav } from './section-nav';
 import { type ProviderEditorPageProps, useProviderEditorPage } from './use-provider-editor-page';
 
