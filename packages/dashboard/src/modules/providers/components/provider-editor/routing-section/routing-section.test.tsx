@@ -86,6 +86,21 @@ describe('RoutingSection', () => {
     expect(within(card).getByLabelText(/Target Model|目标/u)).not.toHaveAttribute('aria-invalid', 'true');
   });
 
+  // Empty-state Add lives in ProviderAliasList, not the secondary button RoutingAliases gates.
+  // After the top-level substitution, `models` *is* targetOptions: no catalog means no picker
+  // options, so the button must stay disabled; a loaded catalog still authorizes alias-only.
+  test('empty-state Add Alias is disabled when target options are empty', () => {
+    render(<Harness initial={apiInitial([])} models={[]} />);
+
+    expect(screen.getByRole('button', { name: /Add Alias|添加/u })).toBeDisabled();
+  });
+
+  test('empty-state Add Alias is enabled when the catalog fills target options', () => {
+    render(<Harness initial={apiInitial([])} models={[]} candidates={['disc-a']} />);
+
+    expect(screen.getByRole('button', { name: /Add Alias|添加/u })).toBeEnabled();
+  });
+
   test('the weight slider writes the dragged value onto the form', () => {
     render(<Harness initial={apiInitial(['model-a'])} models={['model-a']} />);
 

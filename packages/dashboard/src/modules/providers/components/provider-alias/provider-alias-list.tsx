@@ -51,7 +51,7 @@ export const ProviderAliasList: FC<Props> = ({
           <EmptyTitle>{m['dashboard.providers.form.aliases_empty']()}</EmptyTitle>
         </EmptyHeader>
         <EmptyContent>
-          <Button type="button" onClick={onAddAliasDraft}>
+          <Button type="button" disabled={models.length === 0} onClick={onAddAliasDraft}>
             <PlusIcon data-icon="inline-start" />
             {m['dashboard.providers.form.add_alias']()}
           </Button>
