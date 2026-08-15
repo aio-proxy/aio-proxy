@@ -261,8 +261,7 @@ test('create kind switched after typing persists ai-sdk and strips api fields', 
   fillId('switched');
   fillBaseURL('https://api.example.com/v1');
 
-  fireEvent.click(within(screen.getByTestId('provider-editor-field-kind')).getByRole('combobox'));
-  fireEvent.keyDown(await screen.findByRole('option', { name: /AI SDK/u }), { key: 'Enter' });
+  fireEvent.click(screen.getByRole('radio', { name: /AI SDK/u }));
   expect(onKindChange).toHaveBeenCalledWith(ProviderKind.AiSdk);
 
   view.rerender(
@@ -403,6 +402,34 @@ test('oauth re-auth on an existing provider stays put and refetches the edit vie
   await waitFor(() => expect(mocks.refetch).toHaveBeenCalled());
   expect(mocks.navigate).not.toHaveBeenCalledWith(expect.objectContaining({ to: '/providers' }));
   expect(mocks.create).not.toHaveBeenCalled();
+});
+
+test('edit mode heads the page with the provider name, and falls back when it has none', () => {
+  const props = {
+    mode: ProviderFormMode.Edit,
+    kind: ProviderKind.Api,
+    providerId: 'p1',
+    initial: { id: 'p1', name: 'Prod OpenAI', enabled: true, models: ['gpt-5-mini'] } as const,
+    onSessionIdChange: rs.fn(),
+  };
+  const named = renderPage(props);
+  expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Prod OpenAI');
+  named.unmount();
+
+  // A display name is optional (D-F5), so a historical provider without one still needs a heading.
+  renderPage({ ...props, initial: { id: 'p1', enabled: true, models: ['gpt-5-mini'] } });
+  expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(m['dashboard.providers.edit_title']());
+});
+
+test('create mode explains what the page is for under the title', () => {
+  renderPage({
+    mode: ProviderFormMode.Create,
+    kind: ProviderKind.Api,
+    initial: { enabled: true, models: ['gpt-5-mini'] },
+    onSessionIdChange: rs.fn(),
+  });
+
+  expect(screen.getByText(m['dashboard.providers.editor.header_create_subtitle']())).toBeTruthy();
 });
 
 test('edit-api clearing model metadata sends an explicit empty metadata object', async () => {

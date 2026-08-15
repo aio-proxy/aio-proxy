@@ -137,6 +137,15 @@ const saveConfigProvider = (
   );
 };
 
+/**
+ * The edit heading names the provider you are on. A display name is optional (D-F5), so a provider
+ * saved without one falls back to the generic label rather than heading the page with nothing.
+ */
+const editorTitle = (mode: ProviderFormMode, name: string | undefined): string => {
+  if (mode === ProviderFormMode.Create) return m['dashboard.providers.new_title']();
+  return name === undefined || name.trim() === '' ? m['dashboard.providers.edit_title']() : name;
+};
+
 export interface ProviderEditorPageProps {
   readonly mode: ProviderFormMode;
   readonly kind: ProviderKind;
@@ -275,12 +284,11 @@ export const useProviderEditorPage = ({
     saveConfigProvider(mode, values, providerId, createProvider, updateProvider, () => setSaved(true));
   };
 
-  const title =
-    mode === ProviderFormMode.Create ? m['dashboard.providers.new_title']() : m['dashboard.providers.edit_title']();
+  const title = editorTitle(mode, values.name);
   const subtitle =
-    mode === ProviderFormMode.Edit && (providerId ?? values.id) !== undefined
-      ? `${providerId ?? values.id} · ${PROVIDER_KIND_LABEL[kind]}`
-      : undefined;
+    mode === ProviderFormMode.Create
+      ? m['dashboard.providers.editor.header_create_subtitle']()
+      : `${providerId ?? values.id} · ${PROVIDER_KIND_LABEL[kind]}`;
 
   return {
     form,

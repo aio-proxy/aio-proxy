@@ -90,7 +90,7 @@ export const ProviderEditorPage: React.FC<ProviderEditorPageProps> = (props) => 
   return (
     <PageContainer
       title={title}
-      {...(subtitle === undefined ? {} : { subtitle })}
+      subtitle={subtitle}
       breadcrumbs={[
         { label: m['dashboard.menus.configuration']() },
         { label: m['dashboard.providers.list_title'](), to: '/providers' },
