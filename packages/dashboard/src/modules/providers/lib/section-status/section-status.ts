@@ -1,4 +1,5 @@
 import type { AliasEditorIssue } from '../alias-editor';
+import { exposedModels } from '../exposed-models';
 import { advancedHint, blankPackageName, connectionHint, identityHint, modelsHint, routingHint } from './section-hint';
 
 export type SectionId = 'identity' | 'connection' | 'models' | 'routing' | 'advanced';
@@ -57,7 +58,13 @@ export function sectionStatuses(input: SectionStatusInput): Readonly<Record<Sect
     connection = 'attention';
   }
 
-  let models: SectionStatus = 'ok';
+  // Nothing exposed and no aliases means the provider would route nothing at all, so the save is
+  // pointless: `modelRoutes` derives its routes from the whitelist plus the alias map. oauth is
+  // exempt — its empty whitelist means "expose the whole upstream catalog", which stays true even
+  // when the dashboard could not fetch that catalog (`catalog_unavailable`).
+  const exposed = exposedModels(input.models, input.discoveredModels);
+  let models: SectionStatus =
+    input.kind !== 'oauth' && exposed.length === 0 && (input.aliasCount ?? 0) === 0 ? 'todo' : 'ok';
   if (input.discoveredModels !== undefined && input.models.length > 0) {
     const discovered = new Set(input.discoveredModels);
     if (input.models.some((model) => !discovered.has(model))) models = 'attention';
@@ -74,7 +81,7 @@ export function sectionStatuses(input: SectionStatusInput): Readonly<Record<Sect
     connection: { status: connection, hint: connectionHint(input, connection) },
     models: { status: models, hint: modelsHint(input, models) },
     routing: { status: routing, hint: routingHint(input, routing) },
-    advanced: { status: advanced, hint: advancedHint(input) },
+    advanced: { status: advanced, hint: advancedHint(input, advanced) },
   };
 }
 

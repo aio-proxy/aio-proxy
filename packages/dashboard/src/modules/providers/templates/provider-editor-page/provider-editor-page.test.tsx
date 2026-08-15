@@ -182,7 +182,7 @@ test('create-api save stays on the page and shows the saved indicator', async ()
   renderPage({
     mode: ProviderFormMode.Create,
     kind: ProviderKind.Api,
-    initial: { enabled: true },
+    initial: { enabled: true, models: ['gpt-5-mini'] },
     onSessionIdChange,
   });
 
@@ -204,7 +204,7 @@ test('create-api emptying baseURL disables save and marks Connection as to do', 
   renderPage({
     mode: ProviderFormMode.Create,
     kind: ProviderKind.Api,
-    initial: { enabled: true },
+    initial: { enabled: true, models: ['gpt-5-mini'] },
     onSessionIdChange: rs.fn(),
   });
 
@@ -229,7 +229,7 @@ test('create-api a malformed baseURL keeps Save enabled and surfaces the parse e
   renderPage({
     mode: ProviderFormMode.Create,
     kind: ProviderKind.Api,
-    initial: { enabled: true },
+    initial: { enabled: true, models: ['gpt-5-mini'] },
     onSessionIdChange: rs.fn(),
   });
 
@@ -251,7 +251,7 @@ test('create kind switched after typing persists ai-sdk and strips api fields', 
   const props = {
     mode: ProviderFormMode.Create,
     kind: ProviderKind.Api,
-    initial: { enabled: true } as const,
+    initial: { enabled: true, models: ['gpt-5-mini'] } as const,
     onKindChange,
     onSessionIdChange: rs.fn(),
   };

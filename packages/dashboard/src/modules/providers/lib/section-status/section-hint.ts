@@ -11,8 +11,13 @@ import type { SectionStatus, SectionStatusInput } from './section-status';
 export const blankPackageName = (packageName: string | undefined): boolean =>
   packageName !== undefined && packageName.trim() === '';
 
-export const identityHint = (input: SectionStatusInput, status: SectionStatus): string =>
-  status === 'todo' ? m['dashboard.providers.editor.hint_identity_todo']() : input.id.trim();
+export const identityHint = (input: SectionStatusInput, status: SectionStatus): string => {
+  if (status === 'todo') return m['dashboard.providers.editor.hint_identity_todo']();
+  const id = input.id.trim();
+  // oauth creation is `ok` with an empty id because the server assigns it. Falling through to the
+  // raw id would render a badge holding nothing but a dot.
+  return id === '' ? m['dashboard.providers.editor.hint_identity_server_assigned']() : id;
+};
 
 export const connectionHint = (input: SectionStatusInput, status: SectionStatus): string => {
   if (input.kind === 'oauth') {
@@ -33,8 +38,10 @@ export const connectionHint = (input: SectionStatusInput, status: SectionStatus)
 
 export const modelsHint = (input: SectionStatusInput, status: SectionStatus): string => {
   if (status === 'attention') return m['dashboard.providers.editor.hint_models_stale']();
+  // Keyed off the status, not off the count: an oauth provider whose catalog could not be fetched
+  // exposes everything and is `ok`, so "no models enabled" would be false there.
+  if (status === 'todo') return m['dashboard.providers.editor.hint_models_todo']();
   const count = exposedModels(input.models, input.discoveredModels).length;
-  if (count === 0) return m['dashboard.providers.editor.hint_models_todo']();
   const aliases = input.aliasCount ?? 0;
   return aliases === 0
     ? m['dashboard.providers.editor.hint_models_count']({ count })
@@ -50,7 +57,10 @@ export const routingHint = (input: SectionStatusInput, status: SectionStatus): s
   return m['dashboard.providers.editor.hint_routing_weight']({ weight: input.weight ?? 0 });
 };
 
-export const advancedHint = (input: SectionStatusInput): string => {
+export const advancedHint = (input: SectionStatusInput, status: SectionStatus): string => {
+  // Unparseable transforms JSON leaves `transformCount` on the last valid value, so the counts alone
+  // would read "All defaults" beside a save-blocking dot.
+  if (status === 'todo') return m['dashboard.providers.editor.hint_advanced_todo']();
   const headers = input.headerCount ?? 0;
   const transforms = input.transformCount ?? 0;
   const parts = [

@@ -99,9 +99,26 @@ test('an oauth provider needs a capability, but never its own id — the server 
   // Same empty id is a todo for api/ai-sdk (test above); dropping the `kind !== 'oauth'`
   // guard in `identity` must red HERE, since nothing else exercises that clause.
   expect(summaries.identity).toBe('ok');
-  // Alias-only providers ship an empty `models`; making that a todo would put an uncleanable
-  // entry in the save-blocking footer.
-  expect(summaries.models).toBe('ok');
+  // An `ok` identity with no id still has to say something: without the fallback the badge is a
+  // lone dot on the oauth create screen.
+  expect(sectionStatuses({ ...base, kind: 'oauth', id: '', capabilityKey: '', models: [] }).identity.hint).toBe(
+    m['dashboard.providers.editor.hint_identity_server_assigned'](),
+  );
+});
+
+test('a provider that would route nothing is todo; aliases alone are enough to be ready', () => {
+  // Zero exposed models means `modelRoutes` yields nothing, so the save produces a provider no
+  // request can ever reach.
+  const empty = sectionStatuses({ ...base, models: [] });
+  expect(empty.models.status).toBe('todo');
+  expect(blockingSections(empty)).toEqual(['models']);
+  expect(empty.models.hint).toBe(m['dashboard.providers.editor.hint_models_todo']());
+  // Alias-only providers ship an empty whitelist and still expose routes; blocking them would put
+  // an uncleanable entry in the save-blocking footer.
+  expect(statuses({ ...base, models: [], aliasCount: 1 }).models).toBe('ok');
+  // oauth's empty whitelist means "expose the whole catalog", so it is ready even when the catalog
+  // could not be fetched (`catalog_unavailable`) — the user has nothing to fix there.
+  expect(statuses({ ...base, kind: 'oauth', capabilityKey: 'p\0c', models: [] }).models).toBe('ok');
 });
 
 test('invalid transforms JSON blocks the advanced section', () => {
@@ -203,6 +220,14 @@ test('the advanced hint joins exactly the parts that are active', () => {
     m['dashboard.providers.editor.hint_advanced_transforms']({ count: 3 }),
   );
   expect(sectionStatuses(base).advanced.hint).toBe(m['dashboard.providers.editor.hint_advanced_defaults']());
+});
+
+// Unparseable JSON leaves `transformCount` on the last valid value, so counting alone reads
+// "All defaults" beside a hollow dot while the footer demands the section be completed.
+test('a save-blocking advanced section never reads as defaults', () => {
+  const summaries = sectionStatuses({ ...base, transformsValid: false, headerCount: 0, transformCount: 0 });
+  expect(summaries.advanced.status).toBe('todo');
+  expect(summaries.advanced.hint).toBe(m['dashboard.providers.editor.hint_advanced_todo']());
 });
 
 test('a stale whitelist names staleness rather than the model count', () => {
