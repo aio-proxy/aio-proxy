@@ -691,8 +691,6 @@
         "hint_advanced_headers": "{count} headers",
         "hint_advanced_proxy": "Custom proxy",
         "hint_advanced_transforms": "{count} rewrites",
-        "section_status_todo": "To do",
-        "section_status_attention": "Attention",
         "footer_blocking": "Complete these sections before saving:",
         "footer_cancel": "Cancel",
         "footer_save": "Save provider",

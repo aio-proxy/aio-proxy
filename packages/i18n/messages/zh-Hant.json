@@ -691,8 +691,6 @@
         "hint_advanced_headers": "{count} 個請求標頭",
         "hint_advanced_proxy": "自訂代理",
         "hint_advanced_transforms": "{count} 條改寫",
-        "section_status_todo": "待完成",
-        "section_status_attention": "需注意",
         "footer_blocking": "儲存前請先完成以下部分：",
         "footer_cancel": "取消",
         "footer_save": "儲存提供商",

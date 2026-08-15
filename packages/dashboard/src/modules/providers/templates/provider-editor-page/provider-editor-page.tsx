@@ -97,9 +97,9 @@ export const ProviderEditorPage: React.FC<ProviderEditorPageProps> = (props) => 
         { label: title },
       ]}
     >
-      <div className="flex gap-8">
-        <SectionNav statuses={summaries} activeId={activeId} />
-        <div className="max-w-6xl min-w-0 flex-1 space-y-10">
+      <SectionNav summaries={summaries} activeId={activeId} />
+      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_18rem]">
+        <div className="max-w-6xl min-w-0 space-y-10">
           <IdentitySection
             form={form}
             mode={mode}
@@ -133,14 +133,20 @@ export const ProviderEditorPage: React.FC<ProviderEditorPageProps> = (props) => 
             sections345
           )}
         </div>
-        <aside className="w-72 shrink-0 space-y-8">
-          <ExposurePanel
-            models={exposed}
-            alias={values.alias}
-            enabled={values.enabled ?? true}
-            warning={sessionWarning}
-          />
-          <ModelValidationPanel form={form} kind={kind} persistedProviderId={persistedId} testableModels={exposed} />
+        {/* Stacks under the form below `lg`; above it, stays in view while the user works down the
+            sections. `top-24` clears the sticky nav strip. */}
+        <aside className="space-y-4 lg:sticky lg:top-24 lg:self-start">
+          <div className="rounded-2xl bg-muted/40 p-4">
+            <ExposurePanel
+              models={exposed}
+              alias={values.alias}
+              enabled={values.enabled ?? true}
+              warning={sessionWarning}
+            />
+          </div>
+          <div className="rounded-2xl bg-muted/40 p-4">
+            <ModelValidationPanel form={form} kind={kind} persistedProviderId={persistedId} testableModels={exposed} />
+          </div>
         </aside>
       </div>
       {saved ? (

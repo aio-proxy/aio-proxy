@@ -691,8 +691,6 @@
         "hint_advanced_headers": "요청 헤더 {count}개",
         "hint_advanced_proxy": "사용자 지정 프록시",
         "hint_advanced_transforms": "재작성 {count}건",
-        "section_status_todo": "미완료",
-        "section_status_attention": "확인 필요",
         "footer_blocking": "저장하기 전에 다음 섹션을 완료하세요:",
         "footer_cancel": "취소",
         "footer_save": "프로바이더 저장",

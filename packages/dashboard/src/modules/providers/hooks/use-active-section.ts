@@ -19,7 +19,9 @@ export function useActiveSection(ids: readonly SectionId[] = SECTION_IDS): Secti
           setActiveId(id);
         }
       },
-      { rootMargin: '-20% 0px -55% 0px', threshold: 0 },
+      // The top inset is the sticky nav strip's own height (`section-nav.tsx`: py-2.5 around a 28px
+      // pill, 48px): without it the active pill names the section hidden behind the strip.
+      { rootMargin: '-48px 0px -55% 0px', threshold: 0 },
     );
     for (const id of ids) {
       const element = document.getElementById(`editor-${id}`);

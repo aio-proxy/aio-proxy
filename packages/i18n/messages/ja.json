@@ -691,8 +691,6 @@
         "hint_advanced_headers": "{count} 個のリクエストヘッダー",
         "hint_advanced_proxy": "カスタムプロキシ",
         "hint_advanced_transforms": "{count} 件の書き換え",
-        "section_status_todo": "未入力",
-        "section_status_attention": "確認が必要",
         "footer_blocking": "保存する前に次のセクションを完了してください:",
         "footer_cancel": "キャンセル",
         "footer_save": "プロバイダーを保存",
