@@ -57,7 +57,7 @@ export const ProviderPackageCombobox: React.FC<ProviderPackageComboboxProps> = (
         aria-label={m['dashboard.providers.form.label_package_name']()}
         placeholder={PROVIDER_AI_SDK_DEFAULT_PACKAGE}
         className="w-full [&_input]:font-mono"
-        showClear={value !== ''}
+        showClear
         onBlur={() => onCommit(value)}
       />
       <ComboboxContent>

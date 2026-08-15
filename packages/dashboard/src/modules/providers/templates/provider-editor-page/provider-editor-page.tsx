@@ -116,9 +116,8 @@ export const ProviderEditorPage: React.FC<ProviderEditorPageProps> = (props) => 
             oauth={oauth}
             provider={provider}
             onReauthorize={() => save(true)}
-            isReauthorizing={isReauthorizing}
+            isAuthorizationPending={isReauthorizing}
             onAuthorize={() => save(false)}
-            authorized={authorized}
             onOptionsValidityChange={setOptionsValid}
             summary={summaries.connection}
           />

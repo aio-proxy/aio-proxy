@@ -25,10 +25,10 @@ interface ConnectionSectionProps {
   readonly oauth?: DashboardOAuthProviderEdit | undefined;
   readonly provider?: OAuthProvider | undefined;
   readonly onReauthorize?: (() => void) | undefined;
-  readonly isReauthorizing?: boolean | undefined;
+  /** True while an authorization start is in flight: a first authorize in create, a reauthorize in edit. */
+  readonly isAuthorizationPending?: boolean | undefined;
   /** OAuth create only: starts the authorization from inside this section. */
   readonly onAuthorize?: (() => void) | undefined;
-  readonly authorized?: boolean | undefined;
   readonly onOptionsValidityChange?: ((valid: boolean) => void) | undefined;
   readonly summary: SectionSummary;
 }
@@ -42,9 +42,8 @@ export const ConnectionSection: React.FC<ConnectionSectionProps> = ({
   oauth,
   provider,
   onReauthorize,
-  isReauthorizing,
+  isAuthorizationPending,
   onAuthorize,
-  authorized,
   onOptionsValidityChange,
   summary,
 }) => (
@@ -83,14 +82,11 @@ export const ConnectionSection: React.FC<ConnectionSectionProps> = ({
                   type="button"
                   data-testid="connection-authorize"
                   size="sm"
-                  variant={authorized === true ? 'outline' : 'default'}
-                  disabled={field.state.value === '' || isReauthorizing === true}
+                  disabled={field.state.value === '' || isAuthorizationPending === true}
                   onClick={onAuthorize}
                 >
-                  {isReauthorizing === true ? <Spinner data-icon="inline-start" /> : null}
-                  {authorized === true
-                    ? m['dashboard.providers.oauth.reauthorize']()
-                    : m['dashboard.providers.oauth.authorize_in_browser']()}
+                  {isAuthorizationPending === true ? <Spinner data-icon="inline-start" /> : null}
+                  {m['dashboard.providers.oauth.authorize_in_browser']()}
                 </Button>
                 <p className="text-sm text-muted-foreground">{m['dashboard.providers.oauth.authorize_popup_hint']()}</p>
               </div>
@@ -109,7 +105,7 @@ export const ConnectionSection: React.FC<ConnectionSectionProps> = ({
         oauth={oauth}
         accountForm={accountForm}
         onReauthorize={onReauthorize ?? (() => undefined)}
-        isReauthorizing={isReauthorizing ?? false}
+        isReauthorizing={isAuthorizationPending ?? false}
       />
     ) : null}
   </SectionShell>
