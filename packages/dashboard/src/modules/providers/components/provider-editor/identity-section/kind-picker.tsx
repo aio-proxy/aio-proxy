@@ -31,6 +31,9 @@ const KIND_CARDS = [
   icon: typeof KeyRoundIcon;
 }[];
 
+// Both axes, per the WAI-ARIA radiogroup pattern.
+const ARROW_STEP: Record<string, number> = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 };
+
 interface KindPickerProps {
   readonly value: ProviderKind;
   readonly onChange: (kind: ProviderKind) => void;
@@ -39,7 +42,8 @@ interface KindPickerProps {
 }
 
 export const KindPicker: React.FC<KindPickerProps> = ({ value, onChange, locked = false }) => {
-  const current = KIND_CARDS.find((card) => card.value === value) ?? KIND_CARDS[0];
+  const currentIndex = KIND_CARDS.findIndex((card) => card.value === value);
+  const current = KIND_CARDS[currentIndex] ?? KIND_CARDS[0];
 
   if (locked) {
     const Icon = current.icon;
@@ -54,10 +58,21 @@ export const KindPicker: React.FC<KindPickerProps> = ({ value, onChange, locked 
     );
   }
 
+  // Selection follows focus, and the roving tabIndex keeps the group to one tab stop.
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    const step = ARROW_STEP[event.key];
+    if (step === undefined) return;
+    event.preventDefault(); // the arrows move selection here, so they must not also scroll the page
+    const next = KIND_CARDS[(currentIndex + step + KIND_CARDS.length) % KIND_CARDS.length] ?? current;
+    onChange(next.value);
+    event.currentTarget.querySelector<HTMLElement>(`[data-kind="${next.value}"]`)?.focus();
+  };
+
   return (
     <div
       role="radiogroup"
       aria-label={m['dashboard.providers.editor.kind_label']()}
+      onKeyDown={handleKeyDown}
       className="grid gap-2 sm:grid-cols-3"
     >
       {KIND_CARDS.map((card) => {
@@ -69,6 +84,8 @@ export const KindPicker: React.FC<KindPickerProps> = ({ value, onChange, locked 
             type="button"
             role="radio"
             aria-checked={selected}
+            tabIndex={selected ? 0 : -1}
+            data-kind={card.value}
             onClick={() => onChange(card.value)}
             className={cn(
               'flex items-start gap-2.5 rounded-2xl border p-3 text-left transition-colors outline-none',

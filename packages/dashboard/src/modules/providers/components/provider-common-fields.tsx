@@ -12,7 +12,7 @@ interface ProviderCommonFieldsProps {
   form: ProviderEditorForm;
   mode: ProviderFormMode;
   /** oauth creation: the server assigns `session.providerId`, so there is no id to edit or derive. */
-  serverAssignsId?: boolean;
+  serverAssignsId: boolean;
 }
 
 // Lowercase, every other run of characters collapsed to a dash. The id lands in logs, URLs and config
@@ -31,7 +31,7 @@ const idDescription = (mode: ProviderFormMode, pinned: boolean): string => {
     : m['dashboard.providers.form.id_description_auto']();
 };
 
-export const ProviderCommonFields: React.FC<ProviderCommonFieldsProps> = ({ form, mode, serverAssignsId = false }) => {
+export const ProviderCommonFields: React.FC<ProviderCommonFieldsProps> = ({ form, mode, serverAssignsId }) => {
   // Transient field state, never submitted: the id stops following the name once the user types
   // their own, and the choice is meaningless after the first save.
   const [idPinned, setIdPinned] = useState(false);

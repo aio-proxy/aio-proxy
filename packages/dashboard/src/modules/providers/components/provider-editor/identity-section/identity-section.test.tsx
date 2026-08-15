@@ -32,6 +32,8 @@ describe('IdentitySection', () => {
 
     expect(screen.getByRole('radiogroup')).toBeTruthy();
     expect(kindCard(/API/u)).toHaveAttribute('aria-checked', 'true');
+    expect(kindCard(/OAuth/u)).toHaveAttribute('aria-checked', 'false');
+    expect(kindCard(/AI SDK/u)).toHaveAttribute('aria-checked', 'false');
     expect(screen.getByText(m['dashboard.providers.editor.kind_api_hint']())).toBeTruthy();
     expect(screen.getByText(m['dashboard.providers.editor.kind_oauth_hint']())).toBeTruthy();
     expect(screen.getByText(m['dashboard.providers.editor.kind_ai_sdk_hint']())).toBeTruthy();
@@ -39,6 +41,33 @@ describe('IdentitySection', () => {
     fireEvent.click(kindCard(/AI SDK/u));
 
     expect(onKindChange).toHaveBeenCalledWith(ProviderKind.AiSdk);
+  });
+
+  test('walks the cards with either arrow axis, wraps at the ends, and keeps one tab stop', () => {
+    const onKindChange = renderIdentity(ProviderFormMode.Create, ProviderKind.Api);
+    const group = screen.getByRole('radiogroup');
+
+    // Roving tabindex: Tab enters the group at the selected card, not at all three.
+    expect(kindCard(/API/u)).toHaveAttribute('tabindex', '0');
+    expect(kindCard(/OAuth/u)).toHaveAttribute('tabindex', '-1');
+    expect(kindCard(/AI SDK/u)).toHaveAttribute('tabindex', '-1');
+
+    // `false` means the handler called preventDefault, so arrows do not also scroll the page.
+    expect(fireEvent.keyDown(group, { key: 'ArrowRight' })).toBe(false);
+    expect(onKindChange).toHaveBeenLastCalledWith(ProviderKind.OAuth);
+    expect(document.activeElement).toBe(kindCard(/OAuth/u));
+
+    fireEvent.keyDown(group, { key: 'ArrowDown' });
+    expect(onKindChange).toHaveBeenLastCalledWith(ProviderKind.OAuth);
+
+    fireEvent.keyDown(group, { key: 'ArrowLeft' });
+    expect(onKindChange).toHaveBeenLastCalledWith(ProviderKind.AiSdk);
+
+    fireEvent.keyDown(group, { key: 'ArrowUp' });
+    expect(onKindChange).toHaveBeenLastCalledWith(ProviderKind.AiSdk);
+
+    fireEvent.keyDown(group, { key: 'a' });
+    expect(onKindChange).toHaveBeenCalledTimes(4);
   });
 
   test('states the locked kind instead of a picker when editing', () => {
