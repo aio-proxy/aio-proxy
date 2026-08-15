@@ -8,9 +8,8 @@ import { useEffect, useRef } from 'react';
 
 import type { ProviderEditorForm } from '../hooks/use-provider-editor-form';
 import { useProviderOptionsSchema } from '../hooks/use-provider-options-schema';
+import { PROVIDER_AI_SDK_DEFAULT_PACKAGE as DEFAULT_AI_SDK_PACKAGE } from '../lib/constants';
 import { ProviderOptionsEditor } from './provider-options-editor';
-
-const DEFAULT_AI_SDK_PACKAGE = '@ai-sdk/openai-compatible';
 
 const IGNORE_VALIDITY = () => undefined;
 

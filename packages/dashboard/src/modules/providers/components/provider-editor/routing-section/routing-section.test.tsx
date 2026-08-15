@@ -26,7 +26,7 @@ const Harness: React.FC<HarnessProps> = ({ initial, models, candidates, others =
       models={models}
       candidates={candidates}
       others={others}
-      status="ok"
+      summary={{ status: 'ok', hint: '' }}
     />
   );
 };

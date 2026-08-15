@@ -6,7 +6,7 @@ import type { OAuthProviderForm } from '../../hooks/use-oauth-provider-form';
 import type { ProviderEditorForm } from '../../hooks/use-provider-editor-form';
 import { ProviderFormMode } from '../../lib/constants';
 import { capabilityKey } from '../../lib/oauth-capability-key';
-import type { SectionStatus } from '../../lib/section-status';
+import type { SectionSummary } from '../../lib/section-status';
 import { OAuthAccountFields } from '../oauth-account-fields';
 import { OAuthCapabilityCombobox } from '../oauth-capability-combobox';
 import { OAuthProviderEditFields } from '../oauth-provider-edit-fields';
@@ -25,7 +25,7 @@ interface ConnectionSectionProps {
   readonly onReauthorize?: (() => void) | undefined;
   readonly isReauthorizing?: boolean | undefined;
   readonly onOptionsValidityChange?: ((valid: boolean) => void) | undefined;
-  readonly status: SectionStatus;
+  readonly summary: SectionSummary;
 }
 
 export const ConnectionSection: React.FC<ConnectionSectionProps> = ({
@@ -39,9 +39,15 @@ export const ConnectionSection: React.FC<ConnectionSectionProps> = ({
   onReauthorize,
   isReauthorizing,
   onOptionsValidityChange,
-  status,
+  summary,
 }) => (
-  <SectionShell id="connection" title={m['dashboard.providers.editor.section_connection']()} status={status}>
+  <SectionShell
+    id="connection"
+    title={m['dashboard.providers.editor.section_connection']()}
+    description={m['dashboard.providers.editor.section_connection_description']()}
+    status={summary.status}
+    statusHint={summary.hint}
+  >
     {kind === ProviderKind.Api ? <ProviderFormFieldsApi form={form} mode={mode} /> : null}
     {kind === ProviderKind.AiSdk ? (
       <ProviderFormFieldsAiSdk form={form} onOptionsValidityChange={onOptionsValidityChange} />

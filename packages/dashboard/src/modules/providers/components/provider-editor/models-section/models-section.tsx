@@ -10,7 +10,7 @@ import type { ProviderEditorForm } from '../../../hooks/use-provider-editor-form
 import { PROVIDER_MODELS_PLACEHOLDER } from '../../../lib/constants';
 import { exposedModels } from '../../../lib/exposed-models';
 import { applyModelRows, toModelRows, type ModelRow } from '../../../lib/model-rows';
-import type { SectionStatus } from '../../../lib/section-status';
+import type { SectionSummary } from '../../../lib/section-status';
 import { ProviderModelMetadataDrawer } from '../../provider-models-field/provider-model-metadata-drawer';
 import { SectionShell } from '../section-shell';
 import { ModelRowItem } from './model-row-item';
@@ -21,7 +21,7 @@ interface ModelsSectionProps {
   readonly persistedProviderId?: string | undefined;
   /** oauth: `oauth.models` (discovered catalog); api/ai-sdk: last draft catalog result. */
   readonly candidates?: readonly string[] | undefined;
-  readonly status: SectionStatus;
+  readonly summary: SectionSummary;
 }
 
 type MetadataMap = Readonly<Record<string, ModelMetadata>>;
@@ -31,7 +31,7 @@ export const ModelsSection: React.FC<ModelsSectionProps> = ({
   kind,
   persistedProviderId,
   candidates,
-  status,
+  summary,
 }) => {
   const [filter, setFilter] = useState('');
   const [manualDraft, setManualDraft] = useState('');
@@ -43,7 +43,13 @@ export const ModelsSection: React.FC<ModelsSectionProps> = ({
   const discovered = loaded ?? candidates;
 
   return (
-    <SectionShell id="models" title={m['dashboard.providers.editor.section_models']()} status={status}>
+    <SectionShell
+      id="models"
+      title={m['dashboard.providers.editor.section_models']()}
+      description={m['dashboard.providers.editor.section_models_description']()}
+      status={summary.status}
+      statusHint={summary.hint}
+    >
       <form.Field name="models">
         {(modelsField) => (
           <form.Field name="metadata">

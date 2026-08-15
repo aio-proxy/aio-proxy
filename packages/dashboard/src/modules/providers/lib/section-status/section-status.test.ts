@@ -1,6 +1,7 @@
+import { m } from '@aio-proxy/i18n';
 import { expect, test } from '@rstest/core';
 
-import { blockingSections, sectionStatuses } from './section-status';
+import { blockingSections, type SectionStatusInput, type SectionSummary, sectionStatuses } from './section-status';
 
 const base = {
   kind: 'api' as const,
@@ -8,85 +9,204 @@ const base = {
   id: 'p1',
   baseURL: 'https://x.example/v1',
   protocol: 'openai-compatible',
+  apiKey: 'sk-test',
   models: ['m1'],
   aliasIssues: [],
   transformsValid: true,
   weightTie: false,
 };
 
+/** Statuses only, so the pre-hint status assertions stay readable. */
+const statuses = (input: SectionStatusInput) => {
+  const summaries = sectionStatuses(input);
+  return {
+    identity: summaries.identity.status,
+    connection: summaries.connection.status,
+    models: summaries.models.status,
+    routing: summaries.routing.status,
+    advanced: summaries.advanced.status,
+  };
+};
+
+const summary = (status: SectionSummary['status']): SectionSummary => ({ status, hint: '' });
+
 test('an empty baseURL on an api provider is todo and blocks; an empty apiKey is not', () => {
-  const statuses = sectionStatuses({ ...base, baseURL: '' });
-  expect(statuses.connection).toBe('todo');
-  expect(blockingSections(statuses)).toEqual(['connection']);
-  expect(sectionStatuses(base).connection).toBe('ok');
+  const summaries = sectionStatuses({ ...base, baseURL: '' });
+  expect(summaries.connection.status).toBe('todo');
+  expect(blockingSections(summaries)).toEqual(['connection']);
+  expect(statuses(base).connection).toBe('ok');
   // `baseURL: ''` short-circuits the `||` before `protocol` is read, so the protocol half needs
   // its own case. Use `undefined`, not `''`: `defaultValues: { ...initial, kind }` leaves the field
   // absent on a fresh api draft, so `undefined` is the real state AND it also pins the `?? ''`.
-  expect(sectionStatuses({ ...base, protocol: undefined }).connection).toBe('todo');
+  expect(statuses({ ...base, protocol: undefined }).connection).toBe('todo');
   // ai-sdk drafts carry neither field; widening the guard to `!== 'oauth'` would make their
   // connection permanently todo, i.e. an unsaveable-looking draft.
-  expect(sectionStatuses({ ...base, kind: 'ai-sdk', baseURL: undefined, protocol: undefined }).connection).toBe('ok');
+  expect(statuses({ ...base, kind: 'ai-sdk', baseURL: undefined, protocol: undefined }).connection).toBe('ok');
 });
 
 test('blocking sections come back in rail order, whatever order the statuses were built in', () => {
   // Keys deliberately out of SECTION_ORDER: a naive `Object.keys(statuses).filter(...)` would
   // return ['advanced', 'identity'] and mis-order the save-blocking footer.
   expect(
-    blockingSections({ advanced: 'todo', identity: 'todo', connection: 'ok', models: 'ok', routing: 'ok' }),
+    blockingSections({
+      advanced: summary('todo'),
+      identity: summary('todo'),
+      connection: summary('ok'),
+      models: summary('ok'),
+      routing: summary('ok'),
+    }),
   ).toEqual(['identity', 'advanced']);
 });
 
 test('an empty provider id blocks in create mode only', () => {
-  expect(sectionStatuses({ ...base, id: '' }).identity).toBe('todo');
-  expect(sectionStatuses({ ...base, id: '', mode: 'edit' }).identity).toBe('ok');
+  expect(statuses({ ...base, id: '' }).identity).toBe('todo');
+  expect(statuses({ ...base, id: '', mode: 'edit' }).identity).toBe('ok');
 });
 
 test('alias issues raise routing to todo because the schema would reject the save', () => {
-  const statuses = sectionStatuses({ ...base, aliasIssues: [{ code: 'target-missing', alias: 'smart' }] });
-  expect(statuses.routing).toBe('todo');
+  expect(statuses({ ...base, aliasIssues: [{ code: 'target-missing', alias: 'smart' }] }).routing).toBe('todo');
 });
 
 test('a stale whitelist entry is attention and does not block', () => {
-  const statuses = sectionStatuses({
+  const summaries = sectionStatuses({
     ...base,
     kind: 'oauth',
     capabilityKey: 'p\0c',
+    authorized: true,
     models: ['gone'],
     discoveredModels: ['here'],
   });
-  expect(statuses.models).toBe('attention');
-  expect(blockingSections(statuses)).toEqual([]);
+  expect(summaries.models.status).toBe('attention');
+  expect(blockingSections(summaries)).toEqual([]);
   // Staleness is only computed when a catalog was fetched. Dropping that guard makes
   // `new Set(undefined)` empty, so every whitelisted model reads as stale on every provider.
-  expect(sectionStatuses(base).models).toBe('ok');
+  expect(statuses(base).models).toBe('ok');
 });
 
 test('a weight tie is attention on routing', () => {
-  expect(sectionStatuses({ ...base, weightTie: true }).routing).toBe('attention');
+  expect(statuses({ ...base, weightTie: true }).routing).toBe('attention');
 });
 
 test('an oauth provider needs a capability, but never its own id — the server assigns that', () => {
-  const statuses = sectionStatuses({
+  const summaries = statuses({
     ...base,
     kind: 'oauth',
     id: '',
     capabilityKey: '',
     models: [],
   });
-  expect(statuses.connection).toBe('todo');
+  expect(summaries.connection).toBe('todo');
   // Same empty id is a todo for api/ai-sdk (test above); dropping the `kind !== 'oauth'`
   // guard in `identity` must red HERE, since nothing else exercises that clause.
-  expect(statuses.identity).toBe('ok');
+  expect(summaries.identity).toBe('ok');
   // Alias-only providers ship an empty `models`; making that a todo would put an uncleanable
   // entry in the save-blocking footer.
-  expect(statuses.models).toBe('ok');
+  expect(summaries.models).toBe('ok');
 });
 
 test('invalid transforms JSON blocks the advanced section', () => {
-  expect(sectionStatuses({ ...base, transformsValid: false }).advanced).toBe('todo');
+  expect(statuses({ ...base, transformsValid: false }).advanced).toBe('todo');
 });
 
 test('invalid ai-sdk options block the connection section and do not leak onto api', () => {
-  expect(sectionStatuses({ ...base, kind: 'ai-sdk', optionsValid: false }).connection).toBe('todo');
-  expect(sectionStatuses({ ...base, optionsValid: false }).connection).toBe('ok');
+  expect(statuses({ ...base, kind: 'ai-sdk', optionsValid: false }).connection).toBe('todo');
+  expect(statuses({ ...base, optionsValid: false }).connection).toBe('ok');
+});
+
+// A blank package name fails AiSdkPackageNameSchema's `min(1)`, so the save it allows today can only
+// come back as a toast. `undefined` is a different state: the schema defaults it.
+test('an explicitly emptied ai-sdk package name is todo and names itself', () => {
+  const summaries = sectionStatuses({ ...base, kind: 'ai-sdk', packageName: '  ' });
+  expect(summaries.connection.status).toBe('todo');
+  expect(summaries.connection.hint).toBe(m['dashboard.providers.editor.hint_connection_todo_ai_sdk']());
+  expect(statuses({ ...base, kind: 'ai-sdk', packageName: undefined }).connection).toBe('ok');
+});
+
+test('a missing api key is attention and never blocks the save', () => {
+  const summaries = sectionStatuses({ ...base, apiKey: '' });
+  expect(summaries.connection.status).toBe('attention');
+  expect(summaries.connection.hint).toBe(m['dashboard.providers.editor.hint_connection_no_api_key']());
+  // D-F2: widening `blockingSections` past 'todo' would disable Save here, and in edit mode an empty
+  // field means "keep the stored key", so the section is complete.
+  expect(blockingSections(summaries)).toEqual([]);
+  expect(statuses({ ...base, apiKey: '', mode: 'edit' }).connection).toBe('ok');
+});
+
+test('a ready api connection reads as the host, not the whole URL', () => {
+  expect(sectionStatuses(base).connection.hint).toBe('x.example/v1');
+});
+
+test('a ready oauth connection is authorized, an unauthorized one is attention', () => {
+  const pending = sectionStatuses({ ...base, kind: 'oauth', capabilityKey: 'p\0c', authorized: false });
+  expect(pending.connection.status).toBe('attention');
+  expect(pending.connection.hint).toBe(m['dashboard.providers.editor.hint_connection_oauth_unauthorized']());
+  // Authorizing is what the primary button does in oauth create; blocking it would deadlock the flow.
+  expect(blockingSections(pending)).toEqual([]);
+  const done = sectionStatuses({ ...base, kind: 'oauth', capabilityKey: 'p\0c', authorized: true });
+  expect(done.connection.hint).toBe(m['dashboard.providers.editor.hint_connection_oauth_ready']());
+});
+
+// D-F5: the display name is optional, and `SectionStatusInput` deliberately carries no `name` for
+// identity to inspect. Editing a historical provider without one must not deadlock Save.
+test('identity is ready on a filled id alone and reads as that id', () => {
+  const identity = sectionStatuses(base).identity;
+  expect(identity.status).toBe('ok');
+  expect(identity.hint).toBe('p1');
+  expect(sectionStatuses({ ...base, id: '' }).identity.hint).toBe(m['dashboard.providers.editor.hint_identity_todo']());
+});
+
+test('a models hint with no aliases counts models only', () => {
+  // The shortcut to avoid: one message with `aliases: 0`, which prints "3 models · 0 aliases".
+  expect(sectionStatuses({ ...base, models: ['a', 'b', 'c'] }).models.hint).toBe(
+    m['dashboard.providers.editor.hint_models_count']({ count: 3 }),
+  );
+  expect(sectionStatuses({ ...base, models: ['a', 'b', 'c'], aliasCount: 2 }).models.hint).toBe(
+    m['dashboard.providers.editor.hint_models_count_aliases']({ count: 3, aliases: 2 }),
+  );
+  // An empty whitelist exposes the discovered catalog, so the count comes from it.
+  expect(sectionStatuses({ ...base, models: [], discoveredModels: ['a', 'b'] }).models.hint).toBe(
+    m['dashboard.providers.editor.hint_models_count']({ count: 2 }),
+  );
+  expect(sectionStatuses({ ...base, models: [] }).models.hint).toBe(m['dashboard.providers.editor.hint_models_todo']());
+});
+
+test('a disabled provider reads as disabled, never as a weight it will not honour', () => {
+  // A disabled provider is never materialized, so printing "weight 40" states something the router
+  // will not do.
+  expect(sectionStatuses({ ...base, enabled: false, weight: 40 }).routing.hint).toBe(
+    m['dashboard.providers.editor.hint_routing_disabled'](),
+  );
+  expect(sectionStatuses({ ...base, enabled: true, weight: 40 }).routing.hint).toBe(
+    m['dashboard.providers.editor.hint_routing_weight']({ weight: 40 }),
+  );
+  // Absent coalesces to 0 at the single ordering point, so 0 is the honest readout.
+  expect(sectionStatuses(base).routing.hint).toBe(m['dashboard.providers.editor.hint_routing_weight']({ weight: 0 }));
+});
+
+test('routing states its own problem before its weight', () => {
+  expect(sectionStatuses({ ...base, aliasIssues: [{ code: 'target-missing', alias: 'smart' }] }).routing.hint).toBe(
+    m['dashboard.providers.editor.hint_routing_alias_issues'](),
+  );
+  expect(sectionStatuses({ ...base, weightTie: true }).routing.hint).toBe(
+    m['dashboard.providers.editor.hint_routing_weight_tie'](),
+  );
+});
+
+test('the advanced hint joins exactly the parts that are active', () => {
+  expect(sectionStatuses({ ...base, headerCount: 2, proxyCustom: true, transformCount: 0 }).advanced.hint).toBe(
+    [
+      m['dashboard.providers.editor.hint_advanced_headers']({ count: 2 }),
+      m['dashboard.providers.editor.hint_advanced_proxy'](),
+    ].join(' · '),
+  );
+  expect(sectionStatuses({ ...base, transformCount: 3 }).advanced.hint).toBe(
+    m['dashboard.providers.editor.hint_advanced_transforms']({ count: 3 }),
+  );
+  expect(sectionStatuses(base).advanced.hint).toBe(m['dashboard.providers.editor.hint_advanced_defaults']());
+});
+
+test('a stale whitelist names staleness rather than the model count', () => {
+  expect(sectionStatuses({ ...base, models: ['gone'], discoveredModels: ['here'] }).models.hint).toBe(
+    m['dashboard.providers.editor.hint_models_stale'](),
+  );
 });

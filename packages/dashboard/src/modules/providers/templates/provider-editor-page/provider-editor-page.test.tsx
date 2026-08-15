@@ -1,3 +1,4 @@
+import { m } from '@aio-proxy/i18n';
 import type {
   DashboardOAuthCapability,
   DashboardOAuthProviderEdit,
@@ -217,7 +218,11 @@ test('create-api emptying baseURL disables save and marks Connection as to do', 
 
   await waitFor(() => expect(saveButton()).toBeDisabled());
   expect(within(screen.getByTestId('editor-footer')).getByRole('button', { name: /Connection/u })).toBeTruthy();
-  expect(within(screen.getByRole('region', { name: /Connection/u })).getByText(/To do/u)).toBeTruthy();
+  expect(
+    within(screen.getByRole('region', { name: /Connection/u })).getByText(
+      m['dashboard.providers.editor.hint_connection_todo_api'](),
+    ),
+  ).toBeTruthy();
 });
 
 test('create-api a malformed baseURL keeps Save enabled and surfaces the parse error', async () => {

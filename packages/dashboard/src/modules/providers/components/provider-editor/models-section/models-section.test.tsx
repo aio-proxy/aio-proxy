@@ -38,7 +38,7 @@ interface HarnessProps {
 const Harness: React.FC<HarnessProps> = ({ kind, initial, candidates }) => {
   const form = useProviderEditorForm({ kind, initial });
   section = form;
-  return <ModelsSection form={form} kind={kind} candidates={candidates} status="ok" />;
+  return <ModelsSection form={form} kind={kind} candidates={candidates} summary={{ status: 'ok', hint: '' }} />;
 };
 
 const renderSection = (props: HarnessProps) => render(<Harness {...props} />, { wrapper });

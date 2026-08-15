@@ -202,17 +202,25 @@ export const useProviderEditorPage = ({
   const others = summariesQuery.data?.providers ?? [];
   const models = values.models ?? [];
   const aliasIssues = aliasEditorIssues(values.alias ?? {}, models);
-  const statuses = sectionStatuses({
+  const authorized =
+    mode === ProviderFormMode.Edit || authorizedProviderId !== undefined || session?.status === 'succeeded';
+  const transforms = values.transforms as ProviderTransforms | undefined;
+  const summaries = sectionStatuses({
     kind: values.kind ?? kind,
     mode,
     id: values.id ?? '',
     baseURL: values.kind === 'api' ? values.baseURL : undefined,
     protocol: values.kind === 'api' ? values.protocol : undefined,
+    apiKey: values.kind === 'api' ? values.apiKey : undefined,
     capabilityKey: accountValues.capabilityKey,
+    authorized,
+    packageName: values.kind === 'ai-sdk' ? values.packageName : undefined,
     models,
     discoveredModels: oauth?.models,
+    aliasCount: Object.keys(values.alias ?? {}).length,
     aliasIssues,
     transformsValid,
+    transformCount: transforms?.request?.length ?? 0,
     weightTie: hasWeightTie({
       selfId: values.id ?? '',
       selfWeight: values.weight,
@@ -223,12 +231,14 @@ export const useProviderEditorPage = ({
       }).map((route) => route.alias),
       others,
     }),
+    enabled: values.enabled,
+    weight: values.weight,
+    headerCount: values.kind === 'api' ? Object.keys(values.headers ?? {}).length : 0,
+    // `null`/absent is the inherit default; both `false` and a URL are a deliberate override.
+    proxyCustom: values.proxy !== undefined && values.proxy !== null,
     optionsValid,
   });
-  const blocking = blockingSections(statuses);
-
-  const authorized =
-    mode === ProviderFormMode.Edit || authorizedProviderId !== undefined || session?.status === 'succeeded';
+  const blocking = blockingSections(summaries);
 
   const handleKindChange = (next: ProviderKind) => {
     onKindChange?.(next);
@@ -280,7 +290,7 @@ export const useProviderEditorPage = ({
     capabilities,
     oauth,
     provider,
-    statuses,
+    summaries,
     blocking,
     authorized,
     saved,

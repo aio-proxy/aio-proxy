@@ -1,9 +1,9 @@
 import { m } from '@aio-proxy/i18n';
 
-import type { SectionId, SectionStatus } from '../../lib/section-status';
+import type { SectionId, SectionSummary } from '../../lib/section-status';
 
 interface SectionNavProps {
-  readonly statuses: Readonly<Record<SectionId, SectionStatus>>;
+  readonly statuses: Readonly<Record<SectionId, SectionSummary>>;
   readonly activeId: SectionId;
 }
 
@@ -26,7 +26,7 @@ export const SectionNav: React.FC<SectionNavProps> = ({ statuses, activeId }) =>
   <nav aria-label={m['dashboard.providers.edit_title']()} className="sticky top-24 hidden w-48 shrink-0 lg:block">
     <ol className="space-y-1 text-sm">
       {SECTION_ORDER.map((id, index) => {
-        const status = statuses[id];
+        const status = statuses[id].status;
         return (
           <li key={id}>
             <a

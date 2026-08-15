@@ -31,7 +31,7 @@ export const ProviderEditorPage: React.FC<ProviderEditorPageProps> = (props) => 
     capabilities,
     oauth,
     provider,
-    statuses,
+    summaries,
     blocking,
     authorized,
     saved,
@@ -68,7 +68,7 @@ export const ProviderEditorPage: React.FC<ProviderEditorPageProps> = (props) => 
         kind={kind}
         persistedProviderId={persistedId}
         candidates={oauth?.models}
-        status={statuses.models}
+        summary={summaries.models}
       />
       <RoutingSection
         form={form}
@@ -76,12 +76,12 @@ export const ProviderEditorPage: React.FC<ProviderEditorPageProps> = (props) => 
         models={models}
         candidates={oauth?.models}
         others={others}
-        status={statuses.routing}
+        summary={summaries.routing}
       />
       <AdvancedSection
         form={form}
         kind={kind}
-        status={statuses.advanced}
+        summary={summaries.advanced}
         onTransformsValidityChange={setTransformsValid}
       />
     </>
@@ -98,14 +98,14 @@ export const ProviderEditorPage: React.FC<ProviderEditorPageProps> = (props) => 
       ]}
     >
       <div className="flex gap-8">
-        <SectionNav statuses={statuses} activeId={activeId} />
+        <SectionNav statuses={summaries} activeId={activeId} />
         <div className="max-w-6xl min-w-0 flex-1 space-y-10">
           <IdentitySection
             form={form}
             mode={mode}
             kind={kind}
             onKindChange={handleKindChange}
-            status={statuses.identity}
+            summary={summaries.identity}
           />
           <ConnectionSection
             form={form}
@@ -118,7 +118,7 @@ export const ProviderEditorPage: React.FC<ProviderEditorPageProps> = (props) => 
             onReauthorize={() => save(true)}
             isReauthorizing={isReauthorizing}
             onOptionsValidityChange={setOptionsValid}
-            status={statuses.connection}
+            summary={summaries.connection}
           />
           {locked ? (
             <>

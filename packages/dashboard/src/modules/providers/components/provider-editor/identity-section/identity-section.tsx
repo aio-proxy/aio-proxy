@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 
 import type { ProviderEditorForm } from '../../../hooks/use-provider-editor-form';
 import { ProviderFormMode } from '../../../lib/constants';
-import type { SectionStatus } from '../../../lib/section-status';
+import type { SectionSummary } from '../../../lib/section-status';
 import { ProviderCommonFields } from '../../provider-common-fields';
 import { SectionShell } from '../section-shell';
 
@@ -15,7 +15,7 @@ interface IdentitySectionProps {
   readonly mode: ProviderFormMode;
   readonly kind: ProviderKind;
   readonly onKindChange?: ((kind: ProviderKind) => void) | undefined;
-  readonly status: SectionStatus;
+  readonly summary: SectionSummary;
 }
 
 const KIND_LABEL_KEYS = {
@@ -24,8 +24,14 @@ const KIND_LABEL_KEYS = {
   [ProviderKind.OAuth]: 'dashboard.providers.editor.kind_oauth',
 } as const;
 
-export const IdentitySection: React.FC<IdentitySectionProps> = ({ form, mode, kind, onKindChange, status }) => (
-  <SectionShell id="identity" title={m['dashboard.providers.editor.section_identity']()} status={status}>
+export const IdentitySection: React.FC<IdentitySectionProps> = ({ form, mode, kind, onKindChange, summary }) => (
+  <SectionShell
+    id="identity"
+    title={m['dashboard.providers.editor.section_identity']()}
+    description={m['dashboard.providers.editor.section_identity_description']()}
+    status={summary.status}
+    statusHint={summary.hint}
+  >
     {mode === ProviderFormMode.Create ? (
       <div data-testid="provider-editor-field-kind">
         <Field>

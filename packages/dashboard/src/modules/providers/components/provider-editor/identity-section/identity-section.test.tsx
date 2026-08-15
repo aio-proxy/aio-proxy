@@ -9,7 +9,15 @@ import { IdentitySection } from './identity-section';
 const renderIdentity = (mode: ProviderFormMode, kind: ProviderKind) => {
   const onKindChange = rs.fn();
   const { result } = renderHook(() => useProviderEditorForm({ kind }));
-  render(<IdentitySection form={result.current} mode={mode} kind={kind} onKindChange={onKindChange} status="todo" />);
+  render(
+    <IdentitySection
+      form={result.current}
+      mode={mode}
+      kind={kind}
+      onKindChange={onKindChange}
+      summary={{ status: 'todo', hint: '' }}
+    />,
+  );
   return onKindChange;
 };
 

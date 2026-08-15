@@ -7,7 +7,7 @@ import { Switch } from '@aio-proxy/ui/components/switch';
 import type { ProviderEditorForm } from '../../../hooks/use-provider-editor-form';
 import { aliasEditorIssues, type ProviderAlias, serializeAlias } from '../../../lib/alias-editor';
 import { ProviderFormMode } from '../../../lib/constants';
-import type { SectionStatus } from '../../../lib/section-status';
+import type { SectionSummary } from '../../../lib/section-status';
 import { AttemptOrderPreview } from '../attempt-order-preview';
 import { SectionShell } from '../section-shell';
 import { WeightSliderField } from '../weight-slider-field';
@@ -21,13 +21,19 @@ interface RoutingSectionProps {
   /** The discovered catalog; the alias-target fallback for an empty whitelist. */
   readonly candidates?: readonly string[] | undefined;
   readonly others: readonly Pick<DashboardProviderSummary, 'id' | 'weight' | 'clientModels' | 'enabled'>[];
-  readonly status: SectionStatus;
+  readonly summary: SectionSummary;
 }
 
-export const RoutingSection: React.FC<RoutingSectionProps> = ({ form, mode, models, candidates, others, status }) => {
+export const RoutingSection: React.FC<RoutingSectionProps> = ({ form, mode, models, candidates, others, summary }) => {
   const exposed = models.length === 0 ? (candidates ?? []) : models;
   return (
-    <SectionShell id="routing" title={m['dashboard.providers.editor.section_routing']()} status={status}>
+    <SectionShell
+      id="routing"
+      title={m['dashboard.providers.editor.section_routing']()}
+      description={m['dashboard.providers.editor.section_routing_description']()}
+      status={summary.status}
+      statusHint={summary.hint}
+    >
       <div data-testid="provider-editor-field-enabled">
         <form.Field name="enabled">
           {(field) => (

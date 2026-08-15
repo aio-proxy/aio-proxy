@@ -18,3 +18,7 @@ export const PROVIDER_KIND_LABEL = {
 // Example model list shown as the models-field placeholder in both the API and
 // AI SDK provider forms. A locale-independent example, so it stays a literal.
 export const PROVIDER_MODELS_PLACEHOLDER = 'gpt-5-mini, gpt-5';
+
+// The package an ai-sdk provider gets when its packageName is left untouched: both the field's
+// displayed value and `AiSdkPackageNameSchema.default`. An npm package name, so it stays a literal.
+export const PROVIDER_AI_SDK_DEFAULT_PACKAGE = '@ai-sdk/openai-compatible';
