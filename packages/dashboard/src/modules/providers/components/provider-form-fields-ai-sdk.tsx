@@ -1,6 +1,5 @@
 import { m } from '@aio-proxy/i18n';
-import { Field } from '@aio-proxy/ui/components/field';
-import { Input } from '@aio-proxy/ui/components/input';
+import { Field, FieldDescription } from '@aio-proxy/ui/components/field';
 import { Label } from '@aio-proxy/ui/components/label';
 import { Switch } from '@aio-proxy/ui/components/switch';
 import type React from 'react';
@@ -10,6 +9,7 @@ import type { ProviderEditorForm } from '../hooks/use-provider-editor-form';
 import { useProviderOptionsSchema } from '../hooks/use-provider-options-schema';
 import { PROVIDER_AI_SDK_DEFAULT_PACKAGE as DEFAULT_AI_SDK_PACKAGE } from '../lib/constants';
 import { ProviderOptionsEditor } from './provider-options-editor';
+import { ProviderPackageCombobox } from './provider-package-combobox';
 
 const IGNORE_VALIDITY = () => undefined;
 
@@ -53,23 +53,20 @@ export const ProviderFormFieldsAiSdk: React.FC<ProviderFormFieldsAiSdkProps> = (
           {(field) => (
             <Field>
               <Label htmlFor={field.name}>{m['dashboard.providers.form.label_package_name']()}</Label>
-              <Input
+              <ProviderPackageCombobox
                 id={field.name}
                 value={field.state.value ?? DEFAULT_AI_SDK_PACKAGE}
-                onChange={(event) => {
-                  field.handleChange(event.target.value);
+                onValueChange={(packageName) => {
+                  field.handleChange(packageName);
+                  // Picking from the list also re-emits the picked text as an input change. Resetting
+                  // on that echo would throw away the commit the pick just made, so it is ignored.
+                  if (packageName === lastCommittedPackage.current) return;
                   lastCommittedPackage.current = null;
-                  schemaState.changePackage(event.target.value);
+                  schemaState.changePackage(packageName);
                 }}
-                onBlur={() => commitUserPackage(field.state.value ?? DEFAULT_AI_SDK_PACKAGE)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') {
-                    event.preventDefault();
-                    commitUserPackage(field.state.value ?? DEFAULT_AI_SDK_PACKAGE);
-                  }
-                }}
-                placeholder={DEFAULT_AI_SDK_PACKAGE}
+                onCommit={commitUserPackage}
               />
+              <FieldDescription>{m['dashboard.providers.form.package_name_description']()}</FieldDescription>
             </Field>
           )}
         </form.Field>

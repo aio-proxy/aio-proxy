@@ -27,6 +27,20 @@ describe('API provider form fields', () => {
     expect(trigger.querySelector('img')).toHaveAttribute('alt', '');
   });
 
+  test('pairs the protocol and base URL fields on one row, with the API key below it', () => {
+    const { result } = renderHook(() => useProviderEditorForm({ kind: ProviderKind.Api }));
+
+    render(<ProviderFormFieldsApi form={result.current} mode={ProviderFormMode.Create} />);
+
+    // jsdom has no layout, so the shared row element and its column template are the only evidence
+    // that these two fields are paired; a stacked layout passes every other assertion here.
+    const row = screen.getByTestId('provider-form-field-protocol').parentElement;
+    expect(screen.getByTestId('provider-form-field-baseURL').parentElement).toBe(row);
+    expect(row?.className).toContain('grid');
+    expect(row?.className).toContain('sm:grid-cols-[minmax(0,15rem)_1fr]');
+    expect(screen.getByTestId('provider-form-field-apiKey').parentElement).not.toBe(row);
+  });
+
   test('hydrates and submits the canonical baseURL field when editing', async () => {
     const onSubmit = rs.fn();
     const initial = parseProviderFormInitial({

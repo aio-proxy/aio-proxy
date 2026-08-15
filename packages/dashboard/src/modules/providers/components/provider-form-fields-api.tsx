@@ -17,49 +17,53 @@ interface ProviderFormFieldsApiProps {
 
 export const ProviderFormFieldsApi: React.FC<ProviderFormFieldsApiProps> = ({ form, mode }) => (
   <>
-    <div data-testid="provider-form-field-protocol">
-      <form.Field name="protocol">
-        {(field) => (
-          <Field>
-            <Label>{m['dashboard.providers.form.label_protocol']()}</Label>
-            <Select value={field.state.value ?? ''} onValueChange={(v) => field.handleChange(v as ProviderProtocol)}>
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder={m['dashboard.providers.form.placeholder_protocol']()}>
-                  {(protocol: ProviderProtocol | null) =>
-                    protocol ? (
+    {/* Protocol and address are one decision, so they share a row; the protocol select only needs
+        enough width for its label, and the rest goes to the URL. */}
+    <div className="grid gap-4 sm:grid-cols-[minmax(0,15rem)_1fr]">
+      <div data-testid="provider-form-field-protocol">
+        <form.Field name="protocol">
+          {(field) => (
+            <Field>
+              <Label>{m['dashboard.providers.form.label_protocol']()}</Label>
+              <Select value={field.state.value ?? ''} onValueChange={(v) => field.handleChange(v as ProviderProtocol)}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder={m['dashboard.providers.form.placeholder_protocol']()}>
+                    {(protocol: ProviderProtocol | null) =>
+                      protocol ? (
+                        <ProtocolLabel protocol={protocol} showIcon />
+                      ) : (
+                        m['dashboard.providers.form.placeholder_protocol']()
+                      )
+                    }
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.values(ProviderProtocol).map((protocol) => (
+                    <SelectItem key={protocol} value={protocol}>
                       <ProtocolLabel protocol={protocol} showIcon />
-                    ) : (
-                      m['dashboard.providers.form.placeholder_protocol']()
-                    )
-                  }
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {Object.values(ProviderProtocol).map((protocol) => (
-                  <SelectItem key={protocol} value={protocol}>
-                    <ProtocolLabel protocol={protocol} showIcon />
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Field>
-        )}
-      </form.Field>
-    </div>
-    <div data-testid="provider-form-field-baseURL">
-      <form.Field name="baseURL">
-        {(field) => (
-          <Field>
-            <Label htmlFor={field.name}>{m['dashboard.providers.form.label_base_url']()}</Label>
-            <Input
-              id={field.name}
-              value={field.state.value ?? ''}
-              onChange={(event) => field.handleChange(event.target.value)}
-              placeholder={m['dashboard.providers.form.placeholder_base_url']()}
-            />
-          </Field>
-        )}
-      </form.Field>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+          )}
+        </form.Field>
+      </div>
+      <div data-testid="provider-form-field-baseURL">
+        <form.Field name="baseURL">
+          {(field) => (
+            <Field>
+              <Label htmlFor={field.name}>{m['dashboard.providers.form.label_base_url']()}</Label>
+              <Input
+                id={field.name}
+                value={field.state.value ?? ''}
+                onChange={(event) => field.handleChange(event.target.value)}
+                placeholder={m['dashboard.providers.form.placeholder_base_url']()}
+              />
+            </Field>
+          )}
+        </form.Field>
+      </div>
     </div>
     <div data-testid="provider-form-field-apiKey">
       <form.Field name="apiKey">

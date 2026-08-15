@@ -78,16 +78,18 @@ rs.mock('@tanstack/react-router', () => ({
 rs.mock('@/components/json-editor', () => {
   const { useEffect } = require('react') as typeof import('react');
   return {
-    JsonEditor: (props: { onValidationChange?: (validation: object) => void }) => {
+    // Echoes the schema prop back, like the real editor: its validation results carry the identity of
+    // the schema they validated, and the options editor compares those identities before enabling Save.
+    JsonEditor: (props: { schema?: object; onValidationChange?: (validation: object) => void }) => {
       useEffect(() => {
         props.onValidationChange?.({
           valid: true,
           syntaxValid: true,
           pending: false,
           markers: [],
-          schema: undefined,
+          schema: props.schema,
         });
-      }, [props.onValidationChange]);
+      }, [props.onValidationChange, props.schema]);
       return <textarea data-testid="json-editor" />;
     },
   };
@@ -168,7 +170,10 @@ const pickProtocol = async () => {
 };
 
 const saveButton = () => screen.getByRole('button', { name: /Save/u });
-const authorizeButton = () => screen.getByRole('button', { name: /Authorize/u });
+// Scoped to the footer: the connection section now carries its own "Authorize in browser" button,
+// so an unscoped /Authorize/ query matches two elements and throws.
+const authorizeButton = () => within(screen.getByTestId('editor-footer')).getByRole('button', { name: /Authorize/u });
+const packageInput = () => within(screen.getByTestId('provider-form-field-packageName')).getByRole('combobox');
 
 const selectOAuthCapability = async () => {
   const picker = screen.getByRole('combobox', { name: /OAuth provider|OAuth 提供商/u });
@@ -271,7 +276,7 @@ test('create kind switched after typing persists ai-sdk and strips api fields', 
     </>,
   );
 
-  const packageName = within(screen.getByTestId('provider-form-field-packageName')).getByRole('textbox');
+  const packageName = packageInput();
   fireEvent.change(packageName, { target: { value: '@example/custom-sdk' } });
   fireEvent.blur(packageName);
 
@@ -283,6 +288,85 @@ test('create kind switched after typing persists ai-sdk and strips api fields', 
   expect(body.kind).toBe('ai-sdk');
   expect(body).not.toHaveProperty('baseURL');
   expect(body).not.toHaveProperty('protocol');
+});
+
+test('ai-sdk create lists the common packages and commits the one picked', async () => {
+  renderPage({
+    mode: ProviderFormMode.Create,
+    kind: ProviderKind.AiSdk,
+    initial: { enabled: true, models: ['gpt-5-mini'] },
+    onSessionIdChange: rs.fn(),
+  });
+
+  fillName('SDK Demo');
+  fillId('sdk-demo');
+  fireEvent.keyDown(packageInput(), { key: 'ArrowDown' });
+
+  const options = await screen.findAllByRole('option');
+  expect(options.map((option) => option.textContent)).toEqual([
+    '@ai-sdk/openai',
+    '@ai-sdk/openai-compatible',
+    '@ai-sdk/anthropic',
+    '@ai-sdk/google',
+    '@ai-sdk/azure',
+  ]);
+
+  fireEvent.click(screen.getByRole('option', { name: '@ai-sdk/anthropic' }));
+
+  // No blur is fired here on purpose: picking from the list has to commit the package to the
+  // options-schema workflow by itself, or Save stays disabled on an invalid options editor.
+  await waitFor(() => expect(saveButton()).toBeEnabled());
+  fireEvent.click(saveButton());
+
+  await waitFor(() => expect(mocks.create).toHaveBeenCalled());
+  expect(mocks.create.mock.calls[0]?.[0]).toMatchObject({ packageName: '@ai-sdk/anthropic' });
+});
+
+test('ai-sdk create offers a typed package outside the list and commits it', async () => {
+  renderPage({
+    mode: ProviderFormMode.Create,
+    kind: ProviderKind.AiSdk,
+    initial: { enabled: true, models: ['gpt-5-mini'] },
+    onSessionIdChange: rs.fn(),
+  });
+
+  fillName('SDK Demo');
+  fillId('sdk-demo');
+  const input = packageInput();
+  fireEvent.keyDown(input, { key: 'ArrowDown' });
+  fireEvent.change(input, { target: { value: '@example/custom-sdk' } });
+
+  fireEvent.click(await screen.findByRole('option', { name: /@example\/custom-sdk/u }));
+
+  await waitFor(() => expect(saveButton()).toBeEnabled());
+  fireEvent.click(saveButton());
+
+  await waitFor(() => expect(mocks.create).toHaveBeenCalled());
+  expect(mocks.create.mock.calls[0]?.[0]).toMatchObject({ packageName: '@example/custom-sdk' });
+});
+
+test('oauth create authorizes from the connection section once a sign-in method is picked', async () => {
+  renderPage({
+    mode: ProviderFormMode.Create,
+    kind: ProviderKind.OAuth,
+    initial: { enabled: true },
+    onSessionIdChange: rs.fn(),
+  });
+
+  const inlineAuthorize = screen.getByTestId('connection-authorize');
+  expect(inlineAuthorize).toBeDisabled();
+  expect(screen.getByText(m['dashboard.providers.oauth.authorize_popup_hint']())).toBeTruthy();
+
+  fillName('OAuth Demo');
+  await selectOAuthCapability();
+
+  await waitFor(() => expect(inlineAuthorize).toBeEnabled());
+  fireEvent.click(inlineAuthorize);
+
+  await waitFor(() => expect(mocks.start).toHaveBeenCalled());
+  expect(mocks.start.mock.calls[0]?.[0]).toEqual(
+    expect.objectContaining({ providerPatch: expect.objectContaining({ enabled: true, name: 'OAuth Demo' }) }),
+  );
 });
 
 test('oauth create authorizes in place, locks sections 3-5, then unlocks after success', async () => {

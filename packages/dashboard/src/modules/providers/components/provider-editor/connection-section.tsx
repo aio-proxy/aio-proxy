@@ -1,6 +1,8 @@
 import { m } from '@aio-proxy/i18n';
 import type { DashboardOAuthCapability, DashboardOAuthProviderEdit, OAuthProvider } from '@aio-proxy/types';
 import { ProviderKind } from '@aio-proxy/types';
+import { Button } from '@aio-proxy/ui/components/button';
+import { Spinner } from '@aio-proxy/ui/components/spinner';
 
 import type { OAuthProviderForm } from '../../hooks/use-oauth-provider-form';
 import type { ProviderEditorForm } from '../../hooks/use-provider-editor-form';
@@ -24,6 +26,9 @@ interface ConnectionSectionProps {
   readonly provider?: OAuthProvider | undefined;
   readonly onReauthorize?: (() => void) | undefined;
   readonly isReauthorizing?: boolean | undefined;
+  /** OAuth create only: starts the authorization from inside this section. */
+  readonly onAuthorize?: (() => void) | undefined;
+  readonly authorized?: boolean | undefined;
   readonly onOptionsValidityChange?: ((valid: boolean) => void) | undefined;
   readonly summary: SectionSummary;
 }
@@ -38,6 +43,8 @@ export const ConnectionSection: React.FC<ConnectionSectionProps> = ({
   provider,
   onReauthorize,
   isReauthorizing,
+  onAuthorize,
+  authorized,
   onOptionsValidityChange,
   summary,
 }) => (
@@ -70,6 +77,23 @@ export const ConnectionSection: React.FC<ConnectionSectionProps> = ({
                 }}
               />
               {selected === undefined ? null : <OAuthAccountFields fields={selected.form} form={accountForm} />}
+              {/* Below the account fields it submits: this button posts them, so it cannot sit above. */}
+              <div className="flex flex-wrap items-center gap-3">
+                <Button
+                  type="button"
+                  data-testid="connection-authorize"
+                  size="sm"
+                  variant={authorized === true ? 'outline' : 'default'}
+                  disabled={field.state.value === '' || isReauthorizing === true}
+                  onClick={onAuthorize}
+                >
+                  {isReauthorizing === true ? <Spinner data-icon="inline-start" /> : null}
+                  {authorized === true
+                    ? m['dashboard.providers.oauth.reauthorize']()
+                    : m['dashboard.providers.oauth.authorize_in_browser']()}
+                </Button>
+                <p className="text-sm text-muted-foreground">{m['dashboard.providers.oauth.authorize_popup_hint']()}</p>
+              </div>
             </>
           );
         }}
