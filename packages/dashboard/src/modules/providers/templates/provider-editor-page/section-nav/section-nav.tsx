@@ -1,22 +1,12 @@
 import { m } from '@aio-proxy/i18n';
 
 import { StatusDot } from '../../../components/provider-editor/status-dot';
-import type { SectionId, SectionSummary } from '../../../lib/section-status';
+import { SECTION_LABEL, SECTION_ORDER, type SectionId, type SectionSummary } from '../../../lib/section-status';
 
 interface SectionNavProps {
   readonly summaries: Readonly<Record<SectionId, SectionSummary>>;
   readonly activeId: SectionId;
 }
-
-const SECTION_ORDER: readonly SectionId[] = ['identity', 'connection', 'models', 'routing', 'advanced'];
-
-const SECTION_LABEL = {
-  identity: 'dashboard.providers.editor.section_identity',
-  connection: 'dashboard.providers.editor.section_connection',
-  models: 'dashboard.providers.editor.section_models',
-  routing: 'dashboard.providers.editor.section_routing',
-  advanced: 'dashboard.providers.editor.section_advanced',
-} as const;
 
 // A horizontal strip, never breakpoint-gated: the column version vanished under 1024px and took every
 // section's status with it. `overflow-x-auto` lets it scroll sideways instead. The translucent
@@ -25,7 +15,7 @@ const SECTION_LABEL = {
 // inset in `use-active-section`; change one and the active pill starts naming a hidden section.
 export const SectionNav: React.FC<SectionNavProps> = ({ summaries, activeId }) => (
   <nav
-    aria-label={m['dashboard.providers.edit_title']()}
+    aria-label={m['dashboard.providers.editor.section_nav_label']()}
     className="sticky top-0 z-20 mb-6 flex gap-1 overflow-x-auto border-b bg-background/85 py-2.5 backdrop-blur-md"
   >
     {SECTION_ORDER.map((id) => (
@@ -33,14 +23,18 @@ export const SectionNav: React.FC<SectionNavProps> = ({ summaries, activeId }) =
         key={id}
         href={`#editor-${id}`}
         aria-current={activeId === id ? 'location' : undefined}
-        className={`flex shrink-0 items-center gap-1.5 rounded-2xl px-2.5 py-1 text-sm transition-colors ${
+        className={`flex shrink-0 items-center gap-1.5 rounded-2xl px-2.5 py-1 text-sm transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/30 ${
           activeId === id ? 'bg-muted font-medium text-foreground' : 'text-muted-foreground hover:bg-muted/60'
         }`}
         // The section ids live inside that scroll container rather than the document, so a bare hash
-        // jump does not reliably land on them.
+        // jump does not reliably land on them — hence the manual scroll. `preventDefault` also
+        // suppresses the native focus move onto the fragment target, so that half is restored by hand:
+        // without it the next Tab continues from the strip instead of from the requested section.
         onClick={(event) => {
           event.preventDefault();
-          document.getElementById(`editor-${id}`)?.scrollIntoView({ behavior: 'smooth' });
+          const target = document.getElementById(`editor-${id}`);
+          target?.scrollIntoView({ behavior: 'smooth' });
+          target?.focus({ preventScroll: true });
         }}
       >
         <StatusDot status={summaries[id].status} />

@@ -667,6 +667,7 @@
         "section_models": "Models",
         "section_routing": "Routing",
         "section_advanced": "Advanced",
+        "section_nav_label": "Form sections",
         "section_identity_description": "Give this upstream a name a person can read. The ID shows up in logs and requests, and cannot be changed after saving.",
         "section_connection_description": "Configure the protocol, address, and credentials aio-proxy needs to reach this upstream. Model requests are verified in the next section.",
         "section_models_description": "Pick the upstream models this provider may call, then configure the model IDs clients see.",

@@ -667,6 +667,7 @@
         "section_models": "模型",
         "section_routing": "路由",
         "section_advanced": "高级",
+        "section_nav_label": "表单小节",
         "section_identity_description": "给这个上游一个人能读懂的名字。ID 会出现在日志和请求里，保存后不可更改。",
         "section_connection_description": "配置 aio-proxy 访问这个上游所需的协议、地址与凭据。模型请求在下一节验证。",
         "section_models_description": "选择这个 provider 可以调用的上游模型，再配置客户端看到的模型 ID。",

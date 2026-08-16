@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
 
-import type { SectionId } from '../lib/section-status';
+import { SECTION_ORDER, type SectionId } from '../lib/section-status';
 
-const SECTION_IDS: readonly SectionId[] = ['identity', 'connection', 'models', 'routing', 'advanced'];
+const KNOWN = new Set<string>(SECTION_ORDER);
 
-export function useActiveSection(ids: readonly SectionId[] = SECTION_IDS): SectionId {
+export function useActiveSection(ids: readonly SectionId[] = SECTION_ORDER): SectionId {
   const [activeId, setActiveId] = useState<SectionId>(ids[0] ?? 'identity');
 
   useEffect(() => {
@@ -15,9 +15,9 @@ export function useActiveSection(ids: readonly SectionId[] = SECTION_IDS): Secti
           .filter((entry) => entry.isIntersecting)
           .sort((left, right) => left.boundingClientRect.top - right.boundingClientRect.top);
         const id = visible[0]?.target.id.replace(/^editor-/u, '');
-        if (id === 'identity' || id === 'connection' || id === 'models' || id === 'routing' || id === 'advanced') {
-          setActiveId(id);
-        }
+        // A membership test over the shared registry, not a hand-rolled `||` chain: the chain silently
+        // stopped matching a section that was added to `SECTION_ORDER`, leaving the active pill stale.
+        if (id !== undefined && KNOWN.has(id)) setActiveId(id as SectionId);
       },
       // The top inset is the sticky nav strip's own height (`section-nav.tsx`: py-2.5 around a 28px
       // pill, 48px): without it the active pill names the section hidden behind the strip.

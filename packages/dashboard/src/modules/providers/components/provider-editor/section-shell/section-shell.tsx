@@ -26,6 +26,10 @@ export const SectionShell: React.FC<SectionShellProps> = ({
   <section
     id={`editor-${id}`}
     aria-labelledby={`editor-${id}-heading`}
+    // Both jump surfaces focus this element after scrolling it into view; a bare `<section>` is not
+    // programmatically focusable, so without this the focus call is a silent no-op. The native focus
+    // ring is deliberately left in place: the whole point of the jump is that the user can tell it landed.
+    tabIndex={-1}
     className="scroll-mt-28 border-b border-border pb-8 last:border-b-0 last:pb-0"
   >
     <div className="flex flex-wrap items-start justify-between gap-3">

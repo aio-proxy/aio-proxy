@@ -667,6 +667,7 @@
         "section_models": "모델",
         "section_routing": "라우팅",
         "section_advanced": "고급",
+        "section_nav_label": "폼 섹션",
         "section_identity_description": "이 업스트림에 사람이 읽을 수 있는 이름을 지정하세요. ID는 로그와 요청에 표시되며 저장 후에는 변경할 수 없습니다.",
         "section_connection_description": "aio-proxy가 이 업스트림에 접근하는 데 필요한 프로토콜, 주소, 자격 증명을 설정합니다. 모델 요청은 다음 섹션에서 검증합니다.",
         "section_models_description": "이 provider가 호출할 수 있는 업스트림 모델을 선택한 뒤, 클라이언트에 보이는 모델 ID를 설정하세요.",

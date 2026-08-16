@@ -35,7 +35,21 @@ export interface SectionStatusInput {
   readonly optionsValid?: boolean | undefined;
 }
 
-const SECTION_ORDER: readonly SectionId[] = ['identity', 'connection', 'models', 'routing', 'advanced'];
+/**
+ * The one section registry. Declared in rail order, so its keys double as the order every surface
+ * lists sections in — and, unlike `Object.keys(summaries)`, that order cannot be reshuffled by
+ * however a caller built its map. `satisfies` is the load-bearing part: it is what stops a sixth
+ * `SectionId` from silently going unlisted in the nav, the footer, or the scroll observer.
+ */
+export const SECTION_LABEL = {
+  identity: 'dashboard.providers.editor.section_identity',
+  connection: 'dashboard.providers.editor.section_connection',
+  models: 'dashboard.providers.editor.section_models',
+  routing: 'dashboard.providers.editor.section_routing',
+  advanced: 'dashboard.providers.editor.section_advanced',
+} as const satisfies Record<SectionId, string>;
+
+export const SECTION_ORDER = Object.keys(SECTION_LABEL) as readonly SectionId[];
 
 export function sectionStatuses(input: SectionStatusInput): Readonly<Record<SectionId, SectionSummary>> {
   // The id is server-assigned for oauth creation, so it can never be a todo there.

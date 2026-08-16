@@ -667,6 +667,7 @@
         "section_models": "モデル",
         "section_routing": "ルーティング",
         "section_advanced": "詳細設定",
+        "section_nav_label": "フォームのセクション",
         "section_identity_description": "この上流に人が読んで分かる名前を付けます。ID はログとリクエストに表示され、保存後は変更できません。",
         "section_connection_description": "aio-proxy がこの上流に接続するためのプロトコル、アドレス、認証情報を設定します。モデルリクエストは次のセクションで検証します。",
         "section_models_description": "この provider が呼び出せる上流モデルを選び、クライアントに見えるモデル ID を設定します。",
