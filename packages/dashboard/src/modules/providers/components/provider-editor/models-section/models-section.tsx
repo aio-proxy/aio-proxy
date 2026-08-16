@@ -2,11 +2,12 @@ import { m } from '@aio-proxy/i18n';
 import { ProviderKind, type ModelMetadata } from '@aio-proxy/types';
 import { Button } from '@aio-proxy/ui/components/button';
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@aio-proxy/ui/components/empty';
-import { Field, FieldLabel } from '@aio-proxy/ui/components/field';
-import { Input } from '@aio-proxy/ui/components/input';
+import { Field, FieldDescription, FieldLabel } from '@aio-proxy/ui/components/field';
 import { InputGroup, InputGroupAddon, InputGroupInput } from '@aio-proxy/ui/components/input-group';
 import { LayersIcon, SearchIcon } from 'lucide-react';
 import { useState } from 'react';
+
+import { TagsInput } from '@/components/tags-input';
 
 import { useProviderCatalogMutation } from '../../../hooks/use-provider-catalog-mutation';
 import type { ProviderEditorForm } from '../../../hooks/use-provider-editor-form';
@@ -37,7 +38,6 @@ export const ModelsSection: React.FC<ModelsSectionProps> = ({
   summary,
 }) => {
   const [filter, setFilter] = useState('');
-  const [manualDraft, setManualDraft] = useState('');
   const [metadataModel, setMetadataModel] = useState<string | null>(null);
   const catalogMutation = useProviderCatalogMutation(form, persistedProviderId);
   const catalogResult = catalogMutation.data;
@@ -107,12 +107,6 @@ export const ModelsSection: React.FC<ModelsSectionProps> = ({
                   whitelistRows.filter((row) => row.id !== id),
                   rest,
                 );
-              };
-              const addManual = () => {
-                const id = manualDraft.trim();
-                if (id === '' || whitelist.has(id)) return;
-                setManualDraft('');
-                commit([...whitelistRows, { id, metadata: metadata[id] }]);
               };
 
               return (
@@ -201,29 +195,19 @@ export const ModelsSection: React.FC<ModelsSectionProps> = ({
                     <FieldLabel htmlFor="models-manual-add">
                       {m['dashboard.providers.editor.models_manual_add']()}
                     </FieldLabel>
-                    <div className="flex gap-2">
-                      <Input
+                    <div className="w-full sm:w-64">
+                      {/* The shared tags control, not a lookalike: the placeholder promises a
+                          comma-separated list, and this is what splits one. */}
+                      <TagsInput
                         id="models-manual-add"
-                        data-testid="models-manual-add-input"
-                        value={manualDraft}
+                        value={selected}
+                        onValueChange={(next) => commit(toModelRows(next, metadata))}
                         placeholder={PROVIDER_MODELS_PLACEHOLDER}
-                        onChange={(event) => setManualDraft(event.target.value)}
-                        onKeyDown={(event) => {
-                          if (event.key !== 'Enter') return;
-                          event.preventDefault();
-                          addManual();
-                        }}
+                        removeLabel={(model) => m['dashboard.providers.form.remove_model']({ model })}
+                        showValues={false}
                       />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        data-testid="models-manual-add-button"
-                        disabled={manualDraft.trim() === ''}
-                        onClick={addManual}
-                      >
-                        {m['dashboard.providers.editor.models_manual_add']()}
-                      </Button>
                     </div>
+                    <FieldDescription>{m['dashboard.providers.form.models_helper']()}</FieldDescription>
                   </Field>
 
                   <ProviderModelMetadataDrawer

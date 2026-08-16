@@ -174,6 +174,8 @@ const saveButton = () => screen.getByRole('button', { name: /Save/u });
 // so an unscoped /Authorize/ query matches two elements and throws.
 const authorizeButton = () => within(screen.getByTestId('editor-footer')).getByRole('button', { name: /Authorize/u });
 const packageInput = () => within(screen.getByTestId('provider-form-field-packageName')).getByRole('combobox');
+// The manual-add box is the shared tags control, which owns no test id; its label is the handle.
+const manualAddLabel = m['dashboard.providers.editor.models_manual_add']();
 
 const selectOAuthCapability = async () => {
   const picker = screen.getByRole('combobox', { name: /OAuth provider|OAuth 提供商/u });
@@ -384,7 +386,7 @@ test('oauth create authorizes in place, locks sections 3-5, then unlocks after s
 
   expect(screen.queryByTestId('provider-form-field-id')).toBeNull();
   expect(screen.getByText(/Authorize this account to unlock/u)).toBeTruthy();
-  expect(within(screen.getByRole('region', { name: /Models/u })).getByTestId('models-manual-add-input')).toBeDisabled();
+  expect(within(screen.getByRole('region', { name: /Models/u })).getByLabelText(manualAddLabel)).toBeDisabled();
   expect(authorizeButton()).toBeEnabled();
 
   fireEvent.click(authorizeButton());
@@ -419,7 +421,7 @@ test('oauth create authorizes in place, locks sections 3-5, then unlocks after s
   expect(mocks.navigate).not.toHaveBeenCalledWith(expect.objectContaining({ to: '/providers' }));
   expect(screen.getByText(/model catalog is not available/u)).toBeTruthy();
   expect(saveButton()).toBeEnabled();
-  expect(within(screen.getByRole('region', { name: /Models/u })).getByTestId('models-manual-add-input')).toBeEnabled();
+  expect(within(screen.getByRole('region', { name: /Models/u })).getByLabelText(manualAddLabel)).toBeEnabled();
 });
 
 test('oauth empty whitelist lists discovered catalog ids on the exposure rail', () => {

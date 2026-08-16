@@ -7,6 +7,7 @@ import type { ReactNode } from 'react';
 
 import { type ProviderEditorForm, useProviderEditorForm } from '../../../hooks/use-provider-editor-form';
 import type { ProviderEditorShape } from '../../../hooks/use-provider-editor-form';
+import { PROVIDER_MODELS_PLACEHOLDER } from '../../../lib/constants';
 import { ModelsSection } from './models-section';
 
 const mocks = rs.hoisted(() => ({ fetchCatalog: rs.fn(), slugs: rs.fn() }));
@@ -135,8 +136,9 @@ describe('ModelsSection', () => {
   test('manual add appends a row and writes it to the form', async () => {
     renderSection({ kind: ProviderKind.Api, initial: apiInitial(['model-a']) });
 
-    fireEvent.change(screen.getByTestId('models-manual-add-input'), { target: { value: 'model-z' } });
-    fireEvent.click(screen.getByTestId('models-manual-add-button'));
+    const input = screen.getByLabelText(m['dashboard.providers.editor.models_manual_add']());
+    fireEvent.change(input, { target: { value: 'model-z' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
 
     await waitFor(() => expect(screen.getByTestId('model-row-model-z')).toBeInTheDocument());
     expect(section.state.values.models).toEqual(['model-a', 'model-z']);
@@ -367,6 +369,41 @@ describe('ModelsSection', () => {
     fireEvent.click(screen.getByTestId('metadata-tab-json'));
     const draft = JSON.parse(((await screen.findByTestId('metadata-json-draft')) as HTMLTextAreaElement).value);
     expect(draft).toEqual({ name: 'GPT-5', limit: { input: 8192 }, cost: { cacheRead: 0.5 } });
+  });
+
+  // The placeholder is a comma-separated pair, and the box used to take the whole string as a single
+  // id — so a user following the field's own hint got one model literally named `gpt-5-mini, gpt-5`,
+  // rendered as a normal row and written to config with no validation and no error.
+  test('the comma-separated format the placeholder promises adds one model per id', async () => {
+    renderSection({ kind: ProviderKind.Api, initial: apiInitial([]) });
+
+    const input = screen.getByLabelText(m['dashboard.providers.editor.models_manual_add']());
+    fireEvent.paste(input, { clipboardData: { getData: () => PROVIDER_MODELS_PLACEHOLDER } });
+
+    await waitFor(() => expect(section.state.values.models).toEqual(['gpt-5-mini', 'gpt-5']));
+    // Typing the separator commits the id in front of it, the other half of the same hint.
+    fireEvent.change(input, { target: { value: 'gpt-5-nano' } });
+    fireEvent.keyDown(input, { key: ',' });
+
+    await waitFor(() => expect(section.state.values.models).toEqual(['gpt-5-mini', 'gpt-5', 'gpt-5-nano']));
+    expect(screen.queryByTestId(`model-row-${PROVIDER_MODELS_PLACEHOLDER}`)).toBeNull();
+  });
+
+  // The label and the Add button rendered the same words, and retyping an existing id left the text
+  // sitting in the box with nothing happening at all.
+  test('the manual-add field labels its own control once, and a duplicate id clears the box', async () => {
+    renderSection({ kind: ProviderKind.Api, initial: apiInitial(['model-a']) });
+
+    const label = m['dashboard.providers.editor.models_manual_add']();
+    const input = screen.getByLabelText(label) as HTMLInputElement;
+    expect(screen.getAllByText(label)).toHaveLength(1);
+
+    fireEvent.change(input, { target: { value: 'model-a' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    await waitFor(() => expect(input.value).toBe(''));
+    expect(section.state.values.models).toEqual(['model-a']);
+    expect(screen.getByTestId('models-rows').children).toHaveLength(1);
   });
 
   // The section's primary action, and nothing pinned it end to end: the loaded catalog has to reach
