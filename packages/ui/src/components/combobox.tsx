@@ -63,8 +63,11 @@ function ComboboxInput({
     <InputGroup className={cn('w-auto', className)}>
       <ComboboxPrimitive.Input render={<InputGroupInput disabled={disabled} />} {...props} />
       <InputGroupAddon align="inline-end">
-        {/* The chevron stays beside the clear button: Base UI's input opens on typing and arrow keys
-            only, so hiding the chevron whenever a value is set leaves pointer users no way in. */}
+        {/* The chevron stays beside the clear button instead of being replaced by it. Base UI's input
+            does open on click — `openOnInputClick` defaults to `true` — so this is about the affordance,
+            not reachability: with the chevron hidden, the only visible control on a filled field is the
+            clear button, which discards the value rather than revealing the list, so nothing tells a
+            pointer user a curated list is there at all. */}
         {showTrigger && (
           <InputGroupButton
             size="icon-xs"
