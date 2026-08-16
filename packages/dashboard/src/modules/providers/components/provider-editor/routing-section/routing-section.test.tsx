@@ -141,4 +141,34 @@ describe('RoutingSection', () => {
 
     expect(screen.getByRole('slider', { hidden: true })).toBeEnabled();
   });
+
+  // Finding 9's round trip, and the case that would have caught it: the slider bounds weight to
+  // 0-100 on a step of 5, so a config weight of 250 could be displayed but never re-entered, and the
+  // first drag destroyed it. The number input is bound to the same form field, so what the user types
+  // is what the form submits. Remounting with the submitted value stands in for the reload — that is
+  // where a clamp or a snap on the way in would show up.
+  test('a weight the slider cannot represent survives the form and comes back unchanged', () => {
+    const { unmount } = render(<Harness initial={apiInitial(['model-a'])} models={['model-a']} />);
+
+    fireEvent.change(screen.getByTestId('weight-number-input'), { target: { value: '250' } });
+
+    const saved = section.state.values.weight;
+    expect(saved).toBe(250);
+    unmount();
+
+    render(<Harness initial={{ ...apiInitial(['model-a']), weight: saved }} models={['model-a']} />);
+
+    expect(screen.getByTestId('weight-number-input')).toHaveValue(250);
+    expect(section.state.values.weight).toBe(250);
+  });
+
+  // Absent had no way back once a weight was set, and `0` is not a synonym for it: `0` is a real
+  // configured weight, while absent is the key being omitted from config entirely.
+  test('clearing the weight input returns the form to absent rather than zero', () => {
+    render(<Harness initial={{ ...apiInitial(['model-a']), weight: 40 }} models={['model-a']} />);
+
+    fireEvent.change(screen.getByTestId('weight-number-input'), { target: { value: '' } });
+
+    expect(section.state.values.weight).toBeUndefined();
+  });
 });
