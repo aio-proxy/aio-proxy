@@ -369,6 +369,27 @@ describe('ModelsSection', () => {
     expect(draft).toEqual({ name: 'GPT-5', limit: { input: 8192 }, cost: { cacheRead: 0.5 } });
   });
 
+  // An overflowing entry (`1e999` parses to Infinity) is the one numeric string the field cannot
+  // store. Keeping its text on screen left the input showing a value the draft did not contain, so
+  // the user read a context limit or a price that was never saved.
+  test('a number the draft cannot hold is refused instead of being displayed', async () => {
+    renderSection({
+      kind: ProviderKind.Api,
+      initial: apiInitial(['model-a'], { 'model-a': { limit: { context: 4096 } } }),
+    });
+
+    fireEvent.click(within(screen.getByTestId('model-row-model-a')).getByTestId('model-row-metadata'));
+    await screen.findByTestId('provider-model-metadata-drawer');
+
+    const context = (await screen.findByLabelText('limit.context')) as HTMLInputElement;
+    fireEvent.change(context, { target: { value: '1e999' } });
+
+    expect(context.value).toBe('4096');
+    fireEvent.click(screen.getByTestId('metadata-tab-json'));
+    const draft = JSON.parse(((await screen.findByTestId('metadata-json-draft')) as HTMLTextAreaElement).value);
+    expect(draft).toEqual({ limit: { context: 4096 } });
+  });
+
   // An empty picker with no explanation is indistinguishable from a catalog with no models.
   test('a failed models.dev slug query explains itself and offers a retry', async () => {
     mocks.slugs.mockRejectedValue(new Error('offline'));

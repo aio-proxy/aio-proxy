@@ -52,9 +52,11 @@ export const ModelMetadataNumberField: React.FC<ModelMetadataNumberFieldProps> =
         value={text}
         onChange={(event) => {
           const next = event.target.value;
-          setText(next);
           const parsed = next === '' ? undefined : Number(next);
+          // Refused, not displayed: a value the draft cannot hold (`1e999` -> Infinity) would
+          // otherwise sit in the field as text no saved record contains.
           if (parsed !== undefined && !Number.isFinite(parsed)) return;
+          setText(next);
           onValueChange(parsed);
         }}
       />
