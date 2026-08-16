@@ -256,6 +256,22 @@ test('changing only the whitelist keeps runtime identity stable and takes the ca
   // Same identity -> the provider instance is rebuilt via withRoutingConfig, not re-created:
   expect(second.cacheEntry?.identity).toBe(first.cacheEntry?.identity);
   expect(second.provider?.models).toEqual(['model']);
+
+  // Widening is not a one-way ratchet. Kills the mutant that sources the cached routing path's catalog
+  // ids from the already-filtered `previous.provider.models` instead of the discovered catalog: narrowing
+  // would then be irreversible, because each cached materialization re-filters a filtered list. That is
+  // the exposure defect this branch already shipped once (899d22df).
+  const third = await materializePluginProvider({
+    config: providerConfig, // whitelist removed again
+    plugins: fixture.plugins,
+    repository: fixture.repository,
+    diagnostics,
+    logger: () => {},
+    onDiagnosticChanged: () => {},
+    previous: second.cacheEntry,
+  });
+
+  expect(third.provider?.models).toEqual(['model', 'other']);
 });
 
 test('withRoutingConfig re-derives models from the unfiltered catalog ids', () => {

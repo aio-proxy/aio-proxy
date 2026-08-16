@@ -861,6 +861,25 @@ describe('draft Provider catalog and test routes', () => {
     expect(probedModel).toBe('disc-b');
   });
 
+  // The gate's other direction, and the one that matters for exposure: a non-empty draft whitelist
+  // must RESTRICT. Kills the mutant that drops the whitelist and gates on the discovered catalog alone
+  // (`exposedModelIds(catalogIds, undefined)`), which is otherwise green on every oauth test here —
+  // the empty-whitelist case passes via "whole catalog" and the unknown-model case still 400s on
+  // catalog membership. `disc-b` is discovered, so only the whitelist can reject it.
+  test('an oauth draft whitelist restricts a discovered model it omits', async () => {
+    const response = await routes.request(
+      '/providers/draft/test',
+      jsonRequest({
+        draft: { kind: 'oauth', id: 'saved-oauth', enabled: true, proxy: null, models: ['disc-a'] },
+        persistedProviderId: 'saved-oauth',
+        model: 'disc-b',
+      }),
+    );
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ ok: false, error: { code: 'model_not_enabled', recoverable: true } });
+    expect(probedModel).toBeUndefined();
+  });
+
   test('an oauth draft with an empty whitelist can test any discovered model, but not an unknown one', async () => {
     const response = await routes.request(
       '/providers/draft/test',
