@@ -1,6 +1,6 @@
 import { m } from '@aio-proxy/i18n';
 import type { DashboardProviderSummary } from '@aio-proxy/types';
-import { FieldDescription, FieldLabel } from '@aio-proxy/ui/components/field';
+import { FieldDescription } from '@aio-proxy/ui/components/field';
 import { cn } from '@aio-proxy/ui/lib/utils';
 
 type ProviderRow = Pick<DashboardProviderSummary, 'id' | 'weight' | 'clientModels' | 'enabled'>;
@@ -24,7 +24,12 @@ interface AttemptOrderPreviewProps extends AttemptOrderInput {
 
 interface AttemptOrderCandidate {
   id: string;
-  weight: number;
+  /**
+   * The weight as configured, NOT the ordering weight: absent stays `undefined` so the row can say
+   * "no weight" instead of claiming a `0` nobody stored. Ordering and ties go through
+   * `effectiveWeight` below and are unaffected.
+   */
+  weight: number | undefined;
   self: boolean;
 }
 
@@ -36,6 +41,10 @@ interface AttemptOrderRow {
 
 // Absent coalesces to 0 at the single ordering point, config.ts:185.
 const effectiveWeight = (weight: number | undefined): number => weight ?? 0;
+
+// Same absent marker the rest of the dashboard uses (provider-models-cell, model-row-item): a symbol,
+// not translatable copy, so no message key.
+const ABSENT_WEIGHT = '—';
 
 /**
  * Attempt order for every alias this provider exposes. `others` comes from `providersQueryOptions()`,
@@ -60,7 +69,7 @@ export const attemptOrder = ({ selfId, selfWeight, exposedAliases, others }: Att
         .sort((left, right) => effectiveWeight(right.weight) - effectiveWeight(left.weight))
         .map((provider) => ({
           id: provider.id,
-          weight: effectiveWeight(provider.weight),
+          weight: provider.weight,
           self: provider.id === selfId,
         })),
       tie: serving.some(
@@ -80,14 +89,17 @@ export const AttemptOrderPreview: React.FC<AttemptOrderPreviewProps> = (props) =
 
   return (
     <div className="space-y-2" data-testid="attempt-order-preview">
-      <FieldLabel>{m['dashboard.providers.editor.preview_title']()}</FieldLabel>
+      {/* A heading, not a `<FieldLabel>`: the preview below is a read-only `<div>`, so there is no
+          control for a `<label>` to name. */}
+      <h3 className="text-sm font-medium">{m['dashboard.providers.editor.preview_title']()}</h3>
       {hasOtherProvider ? (
         <div className="space-y-3 rounded-lg border p-3 text-sm">
           {rows.map((row) => (
             <div key={row.alias} data-testid={`attempt-order-row-${row.alias}`} className="space-y-1">
               <span className="font-medium">{row.alias}</span>
-              {/* Rank restarts per alias: each alias has its own independent attempt order. */}
-              <ol className="space-y-1">
+              {/* Rank restarts per alias: each alias has its own independent attempt order. The alias
+                  names the list, or a screen reader announces N indistinguishable ordered lists. */}
+              <ol aria-label={row.alias} className="space-y-1">
                 {row.candidates.map((candidate, index) => (
                   <li
                     key={candidate.id}
@@ -106,7 +118,9 @@ export const AttemptOrderPreview: React.FC<AttemptOrderPreviewProps> = (props) =
                           : m['dashboard.providers.editor.preview_rank_disabled']()}
                       </span>
                     ) : null}
-                    <span className="shrink-0 font-mono text-xs text-muted-foreground">{candidate.weight}</span>
+                    <span className="shrink-0 font-mono text-xs text-muted-foreground">
+                      {candidate.weight ?? ABSENT_WEIGHT}
+                    </span>
                   </li>
                 ))}
               </ol>

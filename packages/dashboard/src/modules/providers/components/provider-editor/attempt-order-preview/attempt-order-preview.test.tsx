@@ -39,8 +39,9 @@ describe('attemptOrder', () => {
   });
 
   // `tie: true` is not incidental: absent coalesces to 0 at the single ordering point, so three
-  // unweighted providers genuinely share a weight and the section must say so.
-  test('absent weights keep configuration order and still count as a tie', () => {
+  // unweighted providers genuinely share a weight and the section must say so. The candidate's own
+  // `weight` is display-only and stays absent — `toStrictEqual` so dropping the key is not a pass.
+  test('absent weights keep configuration order and still count as a tie without displaying a weight', () => {
     expect(
       attemptOrder({
         selfId: 'self',
@@ -48,15 +49,38 @@ describe('attemptOrder', () => {
         exposedAliases: ['smart'],
         others: [other('first', undefined, ['smart']), other('second', undefined, ['smart'])],
       }),
-    ).toEqual([
+    ).toStrictEqual([
       {
         alias: 'smart',
         candidates: [
-          { id: 'first', weight: 0, self: false },
-          { id: 'second', weight: 0, self: false },
-          { id: 'self', weight: 0, self: true },
+          { id: 'first', weight: undefined, self: false },
+          { id: 'second', weight: undefined, self: false },
+          { id: 'self', weight: undefined, self: true },
         ],
         tie: true,
+      },
+    ]);
+  });
+
+  // The ordering weight and the displayed weight are different values. An absent weight must still
+  // sort as 0 — the mutant is "display-only means display-only everywhere", which would sort absent
+  // above an explicit weight (NaN comparison) or below it.
+  test('an absent weight still sorts as zero even though it displays as absent', () => {
+    expect(
+      attemptOrder({
+        selfId: 'self',
+        selfWeight: undefined,
+        exposedAliases: ['smart'],
+        others: [other('weighted', 5, ['smart'])],
+      }),
+    ).toStrictEqual([
+      {
+        alias: 'smart',
+        candidates: [
+          { id: 'weighted', weight: 5, self: false },
+          { id: 'self', weight: undefined, self: true },
+        ],
+        tie: false,
       },
     ]);
   });
@@ -217,5 +241,76 @@ describe('AttemptOrderPreview', () => {
 
     expect(screen.getByTestId('attempt-order-empty')).toBeTruthy();
     expect(screen.queryByTestId('attempt-order-row-smart')).toBeNull();
+  });
+
+  // The queue said `0` for a weight the slider calls absent, so one screen told two truths about one
+  // field and an explicit 0 was indistinguishable from no weight at all. Ordering still uses 0; only
+  // the rendered cell changes. The mutant is re-coalescing at the display point.
+  test('an absent weight renders a dash instead of a zero it never stored', () => {
+    render(
+      <AttemptOrderPreview
+        selfId="self"
+        selfWeight={undefined}
+        selfEnabled
+        exposedAliases={['smart']}
+        others={[other('peer', 10, ['smart'])]}
+      />,
+    );
+
+    const selfRow = screen.getAllByRole('listitem').find((row) => row.textContent?.includes('self'));
+    expect(selfRow?.textContent).toContain('—');
+    expect(selfRow?.textContent).not.toContain('0');
+  });
+
+  // `weight || '—'` passes the absent case and silently erases a deliberate 0, which is a real
+  // configured weight and the lowest priority in the queue.
+  test('an explicit zero weight still renders as zero, never as the absent dash', () => {
+    render(
+      <AttemptOrderPreview
+        selfId="self"
+        selfWeight={0}
+        selfEnabled
+        exposedAliases={['smart']}
+        others={[other('peer', 10, ['smart'])]}
+      />,
+    );
+
+    const selfRow = screen.getAllByRole('listitem').find((row) => row.textContent?.includes('self'));
+    expect(selfRow?.textContent).toContain('0');
+    expect(selfRow?.textContent).not.toContain('—');
+  });
+
+  // One `<ol>` per alias and none of them named, so a screen-reader user heard N identical unnamed
+  // ordered lists with no way to tell which alias each ranked.
+  test('each alias group exposes its list under the alias as accessible name', () => {
+    render(
+      <AttemptOrderPreview
+        selfId="self"
+        selfWeight={7}
+        selfEnabled
+        exposedAliases={['smart', 'fast']}
+        others={[other('high', 10, ['smart', 'fast'])]}
+      />,
+    );
+
+    expect(screen.getByRole('list', { name: 'smart' })).toBeTruthy();
+    expect(screen.getByRole('list', { name: 'fast' })).toBeTruthy();
+  });
+
+  // It was a `<FieldLabel>`, i.e. a `<label>`, with no `htmlFor` and no control to point at: the
+  // preview is a read-only `<div>`. A label that labels nothing is invisible to the outline.
+  test('the preview title is a heading rather than a label for a control that does not exist', () => {
+    const { container } = render(
+      <AttemptOrderPreview
+        selfId="self"
+        selfWeight={7}
+        selfEnabled
+        exposedAliases={['smart']}
+        others={[other('high', 10, ['smart'])]}
+      />,
+    );
+
+    expect(screen.getByRole('heading', { name: m['dashboard.providers.editor.preview_title']() })).toBeTruthy();
+    expect(container.querySelectorAll('label')).toHaveLength(0);
   });
 });
