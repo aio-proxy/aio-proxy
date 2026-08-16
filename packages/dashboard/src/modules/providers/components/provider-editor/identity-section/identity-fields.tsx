@@ -5,10 +5,10 @@ import { Label } from '@aio-proxy/ui/components/label';
 import type React from 'react';
 import { useState } from 'react';
 
-import type { ProviderEditorForm } from '../hooks/use-provider-editor-form';
-import { ProviderFormMode } from '../lib/constants';
+import type { ProviderEditorForm } from '../../../hooks/use-provider-editor-form';
+import { ProviderFormMode } from '../../../lib/constants';
 
-interface ProviderCommonFieldsProps {
+interface IdentityFieldsProps {
   form: ProviderEditorForm;
   mode: ProviderFormMode;
   /** oauth creation: the server assigns `session.providerId`, so there is no id to edit or derive. */
@@ -31,7 +31,7 @@ const idDescription = (mode: ProviderFormMode, pinned: boolean): string => {
     : m['dashboard.providers.form.id_description_auto']();
 };
 
-export const ProviderCommonFields: React.FC<ProviderCommonFieldsProps> = ({ form, mode, serverAssignsId }) => {
+export const IdentityFields: React.FC<IdentityFieldsProps> = ({ form, mode, serverAssignsId }) => {
   // Transient field state, never submitted: the id stops following the name once the user types
   // their own, and the choice is meaningless after the first save.
   const [idPinned, setIdPinned] = useState(false);
