@@ -32,11 +32,7 @@ export const OAuthCapabilityCombobox: React.FC<OAuthCapabilityComboboxProps> = (
       onValueChange={onValueChange}
       itemToStringValue={(item) => resolveDashboardText(item.displayName)}
     >
-      <ComboboxInput
-        id="oauth-capability"
-        aria-label={m['dashboard.providers.oauth.select_label']()}
-        placeholder={m['dashboard.providers.oauth.search_placeholder']()}
-      />
+      <ComboboxInput id="oauth-capability" placeholder={m['dashboard.providers.oauth.search_placeholder']()} />
       <ComboboxContent>
         <ComboboxEmpty>{m['dashboard.providers.oauth.empty']()}</ComboboxEmpty>
         <ComboboxList>

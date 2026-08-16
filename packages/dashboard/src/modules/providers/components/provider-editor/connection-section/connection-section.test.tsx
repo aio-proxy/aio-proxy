@@ -147,6 +147,17 @@ describe('ConnectionSection', () => {
     expect(aiSdkFields()).toBeNull();
   });
 
+  // Minor 15's pattern at the editor's other combobox: the visible <Label htmlFor="oauth-capability">
+  // is correctly associated with the input's id, so an aria-label carrying the same string only
+  // replaces that name with a copy of itself. Should either string later change alone, a speech-input
+  // user could no longer address the field by the words on screen.
+  test('the capability picker takes its name from the visible label, with no aria-label shadowing it', () => {
+    renderConnection({ kind: ProviderKind.OAuth });
+
+    const input = screen.getByRole('combobox', { name: m['dashboard.providers.oauth.select_label']() });
+    expect(input).not.toHaveAttribute('aria-label');
+  });
+
   test('oauth editing gets the account panel and reauthorize, not the create-time picker', () => {
     renderConnection({ kind: ProviderKind.OAuth, mode: ProviderFormMode.Edit });
 

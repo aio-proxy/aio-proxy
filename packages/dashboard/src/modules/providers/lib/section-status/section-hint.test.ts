@@ -1,7 +1,7 @@
 import { m } from '@aio-proxy/i18n';
 import { expect, test } from '@rstest/core';
 
-import { advancedHint, modelsHint } from './section-hint';
+import { advancedHint, modelsHint, routingHint } from './section-hint';
 import { sectionStatuses, type SectionStatusInput } from './section-status';
 
 const base: SectionStatusInput = {
@@ -48,4 +48,18 @@ test('an oauth provider exposing its whole catalog never reads as a count of zer
 // models and "0 models" is true.
 test('a non-oauth provider with an empty whitelist still reads as zero models', () => {
   expect(modelsHint({ ...base, models: [], aliasCount: 1 }, 'ok')).toBe('0 models · 1 alias');
+});
+
+// `0` is a real configured weight and absent is the key being omitted from config; the routing badge
+// coalesced the two while the attempt-order queue beside it renders a dash for absent, so one screen
+// stated both. Ordering still coalesces to 0 (attempt-order-preview's `effectiveWeight`) — this is the
+// readout only.
+test('the routing hint tells an absent weight apart from a configured zero', () => {
+  const input = { ...base, models: ['m1'], aliasCount: 0 } satisfies SectionStatusInput;
+
+  expect(routingHint({ ...input, weight: 0 }, 'ok')).toBe(
+    m['dashboard.providers.editor.hint_routing_weight']({ weight: 0 }),
+  );
+  expect(routingHint(input, 'ok')).toBe(m['dashboard.providers.editor.hint_routing_no_weight']());
+  expect(routingHint(input, 'ok')).not.toBe(m['dashboard.providers.editor.hint_routing_weight']({ weight: 0 }));
 });

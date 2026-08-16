@@ -196,8 +196,10 @@ test('a disabled provider reads as disabled, never as a weight it will not honou
   expect(sectionStatuses({ ...base, enabled: true, weight: 40 }).routing.hint).toBe(
     m['dashboard.providers.editor.hint_routing_weight']({ weight: 40 }),
   );
-  // Absent coalesces to 0 at the single ordering point, so 0 is the honest readout.
-  expect(sectionStatuses(base).routing.hint).toBe(m['dashboard.providers.editor.hint_routing_weight']({ weight: 0 }));
+  // Absent coalesces to 0 for *ordering*, but the readout keeps the two apart: the attempt-order
+  // queue beside this badge renders a dash for absent, and a stored 0 must stay distinguishable
+  // from a key that was never written. `section-hint.test.ts` pins all three states at the unit.
+  expect(sectionStatuses(base).routing.hint).toBe(m['dashboard.providers.editor.hint_routing_no_weight']());
 });
 
 test('routing states its own problem before its weight', () => {
