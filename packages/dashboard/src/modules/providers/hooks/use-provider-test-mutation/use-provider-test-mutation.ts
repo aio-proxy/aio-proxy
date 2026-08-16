@@ -1,9 +1,9 @@
 import { DashboardProviderDraftSchema, ProviderKind, type DashboardProviderDraftTestResponse } from '@aio-proxy/types';
 import { useMutation } from '@tanstack/react-query';
 
+import { normalizeProviderFormValue, type ProviderFormShape } from '../../lib/provider-form-value';
 import { testProviderDraftModel } from '../../services/provider-draft';
 import type { ProviderEditorForm, ProviderEditorShape } from '../use-provider-editor-form';
-import { normalizeProviderFormValue, type ProviderForm, type ProviderFormShape } from '../use-provider-form';
 
 interface ProviderTestResult {
   readonly model: string;
@@ -22,7 +22,7 @@ const oauthDraftBody = (values: OAuthEditorValues) => ({
   models: values.models,
 });
 
-export const useProviderTestMutation = (form: ProviderEditorForm | ProviderForm, persistedProviderId?: string) =>
+export const useProviderTestMutation = (form: ProviderEditorForm, persistedProviderId?: string) =>
   useMutation<ProviderTestResult, Error, string>({
     mutationFn: async (model) => {
       const values = form.state.values;

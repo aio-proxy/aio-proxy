@@ -1,7 +1,7 @@
 import type { OAuthProviderMutationBody, ProviderAlias, ProviderKind } from '@aio-proxy/types';
 import { type ReactFormExtendedApi, useForm } from '@tanstack/react-form';
 
-import type { ProviderFormShape } from './use-provider-form';
+import type { ProviderFormShape } from '../lib/provider-form-value';
 
 /**
  * Provider-config fields only. The OAuth *account* fields (`capabilityKey`, `publicValues`,

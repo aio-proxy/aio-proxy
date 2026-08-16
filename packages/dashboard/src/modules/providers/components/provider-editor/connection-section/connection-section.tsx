@@ -4,17 +4,17 @@ import { ProviderKind } from '@aio-proxy/types';
 import { Button } from '@aio-proxy/ui/components/button';
 import { Spinner } from '@aio-proxy/ui/components/spinner';
 
-import type { OAuthProviderForm } from '../../hooks/use-oauth-provider-form';
-import type { ProviderEditorForm } from '../../hooks/use-provider-editor-form';
-import { ProviderFormMode } from '../../lib/constants';
-import { capabilityKey } from '../../lib/oauth-capability-key';
-import type { SectionSummary } from '../../lib/section-status';
-import { OAuthAccountFields } from '../oauth-account-fields';
-import { OAuthCapabilityCombobox } from '../oauth-capability-combobox';
-import { OAuthProviderEditFields } from '../oauth-provider-edit-fields';
-import { ProviderFormFieldsAiSdk } from '../provider-form-fields-ai-sdk';
-import { ProviderFormFieldsApi } from '../provider-form-fields-api';
-import { SectionShell } from './section-shell';
+import type { OAuthProviderForm } from '../../../hooks/use-oauth-provider-form';
+import type { ProviderEditorForm } from '../../../hooks/use-provider-editor-form';
+import { ProviderFormMode } from '../../../lib/constants';
+import { capabilityKey } from '../../../lib/oauth-capability-key';
+import type { SectionSummary } from '../../../lib/section-status';
+import { OAuthAccountFields } from '../../oauth-account-fields';
+import { OAuthCapabilityCombobox } from '../../oauth-capability-combobox';
+import { OAuthProviderEditFields } from '../../oauth-provider-edit-fields';
+import { ProviderFormFieldsAiSdk } from '../../provider-form-fields-ai-sdk';
+import { ProviderFormFieldsApi } from '../../provider-form-fields-api';
+import { SectionShell } from '../section-shell';
 
 interface ConnectionSectionProps {
   readonly form: ProviderEditorForm;

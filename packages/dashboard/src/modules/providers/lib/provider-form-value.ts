@@ -1,6 +1,9 @@
 import type { AiSdkProviderMutationBody, ApiProviderMutationBody } from '@aio-proxy/types';
 import { AiSdkProviderMutationBodySchema, ApiProviderMutationBodySchema, ProviderKind } from '@aio-proxy/types';
-import type { ReactFormExtendedApi } from '@tanstack/react-form';
+
+// The provider editor's form *value*, and the two conversions at its edges: `parseProviderFormInitial`
+// on the way in from a route loader, `normalizeProviderFormValue` on the way out to a mutation body.
+// No hook and no network — the form itself lives in `hooks/use-provider-editor-form.ts`.
 
 type ProviderFormValues = ApiProviderMutationBody | AiSdkProviderMutationBody;
 export type ProviderFormShape = ProviderFormValues extends infer Provider
@@ -24,18 +27,3 @@ export function parseProviderFormInitial(value: unknown): ProviderFormInitial | 
   const result = schema.safeParse(value);
   return result.success ? result.data : undefined;
 }
-
-export type ProviderForm = ReactFormExtendedApi<
-  ProviderFormShape,
-  any,
-  any,
-  any,
-  any,
-  any,
-  any,
-  any,
-  any,
-  any,
-  any,
-  any
->;

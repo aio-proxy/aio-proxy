@@ -1,12 +1,12 @@
 import { m } from '@aio-proxy/i18n';
 import { ProviderKind } from '@aio-proxy/types';
 
-import type { ProviderEditorForm } from '../../hooks/use-provider-editor-form';
-import type { SectionSummary } from '../../lib/section-status';
-import { ProviderHeadersField } from '../provider-headers-field';
-import { ProviderProxyField } from '../provider-proxy-field';
-import { ProviderRequestTransformsFormField } from '../provider-request-transforms/provider-request-transforms-form-field';
-import { SectionShell } from './section-shell';
+import type { ProviderEditorForm } from '../../../hooks/use-provider-editor-form';
+import type { SectionSummary } from '../../../lib/section-status';
+import { ProviderHeadersField } from '../../provider-headers-field';
+import { ProviderProxyField } from '../../provider-proxy-field';
+import { ProviderRequestTransformsFormField } from '../../provider-request-transforms/provider-request-transforms-form-field';
+import { SectionShell } from '../section-shell';
 
 interface AdvancedSectionProps {
   readonly form: ProviderEditorForm;

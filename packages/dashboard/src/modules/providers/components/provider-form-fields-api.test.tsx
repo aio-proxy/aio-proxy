@@ -3,12 +3,12 @@ import { describe, expect, test } from '@rstest/core';
 import { fireEvent, render, renderHook, screen, waitFor, within } from '@testing-library/react';
 
 import { useProviderEditorForm, type ProviderEditorShape } from '../hooks/use-provider-editor-form';
+import { ProviderFormMode } from '../lib/constants';
 import {
   normalizeProviderFormValue,
   parseProviderFormInitial,
   type ProviderFormShape,
-} from '../hooks/use-provider-form';
-import { ProviderFormMode } from '../lib/constants';
+} from '../lib/provider-form-value';
 import { ProviderFormFieldsApi } from './provider-form-fields-api';
 
 // The editor form is seed-only by design, so there is no onSubmit to spy on. This is the body the
