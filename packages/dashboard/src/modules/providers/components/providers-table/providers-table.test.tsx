@@ -273,7 +273,11 @@ describe('providers table', () => {
     });
   });
 
-  test('renders an omitted Provider weight as its effective zero default', () => {
+  // An absent weight and a stored `0` are different configurations — `0` is a real, lowest-priority
+  // weight — so the list must tell them apart the way the editor already does (badge "no weight",
+  // attempt-order em-dash). Both assertions are load-bearing: the second is what rejects a later
+  // `weight || '—'` simplification, which would print the dash for a deliberate zero.
+  test('an absent Provider weight reads as absent while a stored zero still reads as zero', () => {
     renderProvidersTable(
       <ProvidersTable
         providers={[
@@ -288,7 +292,7 @@ describe('providers table', () => {
     const weightColumnIndex = screen
       .getAllByRole('columnheader')
       .indexOf(screen.getByRole('columnheader', { name: /Weight|权重/u }));
-    expect(missing.getAllByRole('cell')[weightColumnIndex]).toHaveTextContent('0');
+    expect(missing.getAllByRole('cell')[weightColumnIndex]).toHaveTextContent('—');
     expect(zero.getAllByRole('cell')[weightColumnIndex]).toHaveTextContent('0');
   });
 

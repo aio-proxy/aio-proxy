@@ -73,17 +73,18 @@ test('a todo section blocks the save', () => {
   expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
 });
 
-// Mixed list: the sentence softens (`blocking.length === listed.length` is false) but the todo still
-// gates Save. Deriving one list instead of two — gating on `listed` — would disable Save for an
-// attention-only form, and reading `blocking` for the sentence would call a weight tie an error.
-test('a mixed list keeps the attention sentence and still blocks the save', () => {
+// Mixed list: the sentence must not soften while Save is still gated. The lead-in keys off
+// `blocking.length > 0`, so one `todo` beside an `attention` keeps "complete these before saving" —
+// telling the user to fix something while a disabled Save contradicts it is the defect this pins.
+// The `attention`-only test above is the other half: `listed.length > 0` would redden it.
+test('a mixed list keeps the blocking sentence because the todo still gates the save', () => {
   renderFooter({
     models: { status: 'todo', hint: 'no models enabled' },
     connection: { status: 'attention', hint: 'missing API key' },
   });
 
-  expect(screen.getByText(m['dashboard.providers.editor.footer_attention']())).toBeTruthy();
-  expect(screen.queryByText(m['dashboard.providers.editor.footer_blocking']())).toBeNull();
+  expect(screen.getByText(m['dashboard.providers.editor.footer_blocking']())).toBeTruthy();
+  expect(screen.queryByText(m['dashboard.providers.editor.footer_attention']())).toBeNull();
   expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
 });
 

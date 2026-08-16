@@ -50,7 +50,7 @@ export const EditorFooter: React.FC<EditorFooterProps> = ({
         <p aria-live="polite">
           {listed.length === 0
             ? m['dashboard.providers.editor.footer_ready']()
-            : blocking.length === listed.length
+            : blocking.length > 0
               ? m['dashboard.providers.editor.footer_blocking']()
               : m['dashboard.providers.editor.footer_attention']()}
         </p>

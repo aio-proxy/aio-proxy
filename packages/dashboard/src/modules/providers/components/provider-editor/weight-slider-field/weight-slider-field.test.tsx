@@ -44,6 +44,20 @@ describe('WeightSliderField', () => {
     expect(note.textContent ?? '').not.toContain('{weight}');
   });
 
+  // The escape-hatch input accepts weights the slider's 0-100 track cannot express, which parked the
+  // Base UI thumb past the end of the track for a stored 250. Only the *rendered* position is clamped:
+  // the second half of this test is what rejects a later "simplification" that clamps the stored value
+  // too and silently rewrites the user's 250 to 100.
+  test('an out-of-range weight clamps the thumb to the track without touching the stored value', () => {
+    const onChange = rs.fn();
+    render(<WeightSliderField value={250} onChange={onChange} disabled={false} />);
+
+    expect(screen.getByRole('slider', { hidden: true })).toHaveAttribute('aria-valuenow', '100');
+    expect(screen.getByRole('spinbutton')).toHaveValue(250);
+    expect(screen.getByTestId('weight-slider-out-of-range')).toHaveTextContent(/250/u);
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
   // Finding 9: the slider is a one-way door. It clamps to 0-100 and snaps to step 5, so the first
   // touch destroyed a stored 250 or 7 with no way to type it back. The number input is bound to the
   // same form field; the mutant is routing it through the slider's min/max/step.

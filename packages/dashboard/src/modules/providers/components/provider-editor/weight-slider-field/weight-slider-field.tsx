@@ -2,6 +2,7 @@ import { m } from '@aio-proxy/i18n';
 import { Field, FieldDescription, FieldLabel } from '@aio-proxy/ui/components/field';
 import { Input } from '@aio-proxy/ui/components/input';
 import { Slider } from '@aio-proxy/ui/components/slider';
+import { clamp } from 'es-toolkit/math';
 
 const WEIGHT_MIN = 0;
 const WEIGHT_MAX = 100;
@@ -41,7 +42,10 @@ export const WeightSliderField: React.FC<WeightSliderFieldProps> = ({ value, onC
         step={WEIGHT_STEP}
         // An ARRAY, not a scalar: the wrapper derives its thumb count from a `_values` that falls
         // back to `[min, max]` for a non-array, which silently renders two thumbs at 0 and 100.
-        value={[value ?? 0]}
+        // Clamped for *rendering only* — the number input accepts weights off this track by design, and
+        // an unclamped 250 parks the thumb past the end of it. The stored value stays untouched: the
+        // out-of-range note below and the input above both read the true `value`.
+        value={[clamp(value ?? 0, WEIGHT_MIN, WEIGHT_MAX)]}
         // Base UI hands back `number | readonly number[]` for the same reason; narrow it here or the
         // caller stores an array in a `number | undefined` field.
         onValueChange={(next) => onChange(Array.isArray(next) ? next[0] : next)}

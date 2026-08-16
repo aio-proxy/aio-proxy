@@ -1,5 +1,6 @@
 import type { AiSdkProviderMutationBody, ApiProviderMutationBody } from '@aio-proxy/types';
 import { AiSdkProviderMutationBodySchema, ApiProviderMutationBodySchema, ProviderKind } from '@aio-proxy/types';
+import { omit } from 'es-toolkit/object';
 
 // The provider editor's form *value*, and the two conversions at its edges: `parseProviderFormInitial`
 // on the way in from a route loader, `normalizeProviderFormValue` on the way out to a mutation body.
@@ -15,7 +16,11 @@ export type ProviderFormInitial = Partial<ProviderFormValues>;
 
 export function normalizeProviderFormValue(value: ProviderFormShape): unknown {
   const { validationModel: _validationModel, ...provider } = value;
-  return provider;
+  // A cleared display name drops the key instead of writing `name: ""`: `replaceProvider` persists this
+  // body verbatim, so an empty string would land in the user's hand-editable config as a dead key. The
+  // OAuth write path already drops it (`providerEntry`, core account-login/validation.ts) — this is the
+  // `api`/`ai-sdk` half. `.trim()` matches `editorTitle`, which already reads blank as absent.
+  return provider.name?.trim() === '' ? omit(provider, ['name']) : provider;
 }
 
 export function parseProviderFormInitial(value: unknown): ProviderFormInitial | undefined {
