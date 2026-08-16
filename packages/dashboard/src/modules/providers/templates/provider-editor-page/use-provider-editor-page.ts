@@ -110,6 +110,7 @@ const saveConfigProvider = (
   mode: ProviderFormMode,
   values: ProviderEditorShape,
   providerId: string | undefined,
+  persistedMetadata: ProviderEditorShape['metadata'],
   createProvider: (body: ProviderMutationBody, options: { onSuccess: () => void }) => void,
   updateProvider: (input: { id: string; body: ProviderMutationBody }, options: { onSuccess: () => void }) => void,
   onSaved: () => void,
@@ -126,15 +127,19 @@ const saveConfigProvider = (
     });
     return;
   }
+  // Reconciled before the mode branch, not inside it: create must prune the records the drawer left
+  // behind for models no longer on the list, exactly as update does.
+  const applied = applyModelRows(toModelRows(values.models ?? [], values.metadata ?? {}), values.metadata);
+  // `{}` is not inert on update — `replaceProvider` retains `metadata` when the body omits it, so an
+  // emptied map has to be sent explicitly to clear the persisted one. With nothing persisted there is
+  // nothing to clear, and sending `{}` would stamp a dead `metadata: {}` key into the config file.
+  const metadata = applied.metadata ?? (Object.keys(persistedMetadata ?? {}).length === 0 ? undefined : {});
+  const body = { ...result.data, metadata } as ProviderMutationBody;
   if (mode === ProviderFormMode.Create) {
-    createProvider(result.data, { onSuccess: onSaved });
+    createProvider(body, { onSuccess: onSaved });
     return;
   }
-  const applied = applyModelRows(toModelRows(values.models ?? [], values.metadata ?? {}), values.metadata);
-  updateProvider(
-    { id: providerId ?? values.id, body: { ...result.data, metadata: applied.metadata ?? {} } },
-    { onSuccess: onSaved },
-  );
+  updateProvider({ id: providerId ?? values.id, body }, { onSuccess: onSaved });
 };
 
 /**
@@ -280,7 +285,8 @@ export const useProviderEditorPage = ({
       );
       return;
     }
-    saveConfigProvider(mode, values, providerId, createProvider, updateProvider, () => setSaved(true));
+    const onSaved = () => setSaved(true);
+    saveConfigProvider(mode, values, providerId, initial?.metadata, createProvider, updateProvider, onSaved);
   };
 
   const title = editorTitle(mode, values.name);
