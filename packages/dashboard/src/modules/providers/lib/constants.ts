@@ -3,8 +3,6 @@ export enum ProviderFormMode {
   Edit = 'edit',
 }
 
-export type ProviderFormStep = 0 | 1 | 2 | 3;
-
 // Provider-kind display labels for the three fixed-acronym kinds. These are
 // proper-noun acronyms ("API", "AI SDK", "OAuth") that are identical across
 // locales, so they live as literals rather than translatable messages. The

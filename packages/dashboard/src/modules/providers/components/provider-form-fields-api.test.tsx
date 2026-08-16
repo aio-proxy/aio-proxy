@@ -1,12 +1,24 @@
-import { ProviderKind, ProviderProtocol } from '@aio-proxy/types';
-import { describe, expect, rs, test } from '@rstest/core';
-import { act, fireEvent, render, renderHook, screen, waitFor, within } from '@testing-library/react';
+import { ProviderKind, ProviderMutationBodySchema, ProviderProtocol } from '@aio-proxy/types';
+import { describe, expect, test } from '@rstest/core';
+import { fireEvent, render, renderHook, screen, waitFor, within } from '@testing-library/react';
 
-import { useProviderEditorForm } from '../hooks/use-provider-editor-form';
-// The submit-normalization cases below still need useProviderForm: the editor hook has no onSubmit.
-import { parseProviderFormInitial, useProviderForm } from '../hooks/use-provider-form';
+import { useProviderEditorForm, type ProviderEditorShape } from '../hooks/use-provider-editor-form';
+import {
+  normalizeProviderFormValue,
+  parseProviderFormInitial,
+  type ProviderFormShape,
+} from '../hooks/use-provider-form';
 import { ProviderFormMode } from '../lib/constants';
 import { ProviderFormFieldsApi } from './provider-form-fields-api';
+
+// The editor form is seed-only by design, so there is no onSubmit to spy on. This is the body the
+// live save actually sends: `saveConfigProvider` runs exactly this normalize + parse over form
+// values (use-provider-editor-page.ts), so asserting on it pins the real submit contract.
+const mutationBody = (values: ProviderEditorShape) => {
+  const result = ProviderMutationBodySchema.safeParse(normalizeProviderFormValue(values as ProviderFormShape));
+  expect(result.success).toBe(true);
+  return result.success ? result.data : undefined;
+};
 
 describe('API provider form fields', () => {
   test('shows a protocol placeholder and icons in the options and selected value', async () => {
@@ -41,8 +53,7 @@ describe('API provider form fields', () => {
     expect(screen.getByTestId('provider-form-field-apiKey').parentElement).not.toBe(row);
   });
 
-  test('hydrates and submits the canonical baseURL field when editing', async () => {
-    const onSubmit = rs.fn();
+  test('hydrates the canonical baseURL field and carries an edit into the mutation body', async () => {
     const initial = parseProviderFormInitial({
       kind: ProviderKind.Api,
       id: 'openrouter',
@@ -53,14 +64,7 @@ describe('API provider form fields', () => {
       hasApiKey: true,
     });
     expect(initial).toBeDefined();
-    const { result } = renderHook(() =>
-      useProviderForm({
-        mode: ProviderFormMode.Edit,
-        kind: ProviderKind.Api,
-        initial,
-        onSubmit,
-      }),
-    );
+    const { result } = renderHook(() => useProviderEditorForm({ kind: ProviderKind.Api, initial }));
 
     render(<ProviderFormFieldsApi form={result.current} mode={ProviderFormMode.Edit} />);
 
@@ -68,12 +72,9 @@ describe('API provider form fields', () => {
     expect(baseURLInput).toHaveValue('https://openrouter.example/v1');
 
     fireEvent.change(baseURLInput, { target: { value: 'https://updated.example/v1' } });
-    await act(async () => {
-      await result.current.handleSubmit();
-    });
+    await waitFor(() => expect(baseURLInput).toHaveValue('https://updated.example/v1'));
 
-    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
-    const submitted = onSubmit.mock.calls[0]?.[0];
+    const submitted = mutationBody(result.current.state.values);
     expect(submitted).toMatchObject({ baseURL: 'https://updated.example/v1' });
     expect(submitted).not.toHaveProperty('baseUrl');
     expect(submitted).not.toHaveProperty('hasApiKey');
@@ -115,17 +116,11 @@ describe('API provider form fields', () => {
         proxy: 'https://proxy.example:8443',
       },
     },
-  ])('round-trips the configured proxy when submitting a $kind provider edit', async ({ kind, initial }) => {
-    const onSubmit = rs.fn();
+  ])('round-trips the configured proxy into a $kind provider mutation body', ({ kind, initial }) => {
     const parsed = parseProviderFormInitial(initial);
     expect(parsed?.proxy).toBe('https://proxy.example:8443');
-    const { result } = renderHook(() =>
-      useProviderForm({ mode: ProviderFormMode.Edit, kind, initial: parsed, onSubmit }),
-    );
+    const { result } = renderHook(() => useProviderEditorForm({ kind, initial: parsed }));
 
-    await act(async () => result.current.handleSubmit());
-
-    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
-    expect(onSubmit.mock.calls[0]?.[0]).toMatchObject({ proxy: 'https://proxy.example:8443' });
+    expect(mutationBody(result.current.state.values)).toMatchObject({ proxy: 'https://proxy.example:8443' });
   });
 });

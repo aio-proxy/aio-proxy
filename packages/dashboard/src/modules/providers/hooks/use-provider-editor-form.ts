@@ -47,8 +47,9 @@ type UseProviderEditorFormOptions = {
 
 // Seeding only: no validators and no onSubmit by design. Save gating reads form values through
 // sectionStatuses, and body correctness is parsed at dispatch, so both would be inert here.
-// The `as unknown as` cast follows useProviderForm: recursive transform JSON exceeds
-// TanStack Form's TS2589 ceiling (see the ponytail notes in use-provider-form.ts).
+// ponytail: the `as unknown as` cast is load-bearing — recursive transform JSON exceeds TanStack
+// Form's TS2589 ceiling, so consumers narrow it at the composite editor boundary while Zod stays
+// authoritative at dispatch.
 export function useProviderEditorForm({ kind, initial }: UseProviderEditorFormOptions): ProviderEditorForm {
   return useForm({
     defaultValues: { ...initial, kind } as ProviderEditorShape,
