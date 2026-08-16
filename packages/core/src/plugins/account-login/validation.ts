@@ -55,7 +55,15 @@ export function validateStagedOAuthWrite(candidate: ConfigRecord): void {
   const legacyProviders: Record<string, unknown> = {};
   for (const [id, value] of Object.entries(providers)) {
     if (isRecord(value) && value['kind'] === 'oauth' && !Object.hasOwn(value, 'vendor')) {
-      OAuthPluginProviderSchema.parse({ ...value, id });
+      const parsed = OAuthPluginProviderSchema.safeParse({ ...value, id });
+      // A hand-edited `models` on an oauth provider is validated as of this branch, so this rejection is
+      // reachable from an ordinary re-login. Standalone issue paths read `["models", 0]` and never say
+      // which provider — unactionable in a config with several — so re-throw them rooted at the entry.
+      if (!parsed.success) {
+        throw new z.ZodError(
+          parsed.error.issues.map((issue) => ({ ...issue, path: ['providers', id, ...issue.path] })),
+        );
+      }
     } else {
       legacyProviders[id] = value;
     }

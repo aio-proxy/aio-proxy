@@ -14,7 +14,7 @@ import {
   registry,
   test,
 } from './test-support';
-import { providerEntry } from './validation';
+import { providerEntry, validateStagedOAuthWrite } from './validation';
 
 test('exports the specified constants', () => {
   expect(LOGIN_TIMEOUT_MS).toBe(20 * 60_000);
@@ -56,6 +56,20 @@ test('malformed providers config prevents delete staging', async () => {
   ).rejects.toThrow();
   expect(state.repository.listPendingAccountOperations()).toHaveLength(0);
   expect(configOf(state)).toEqual({ plugins: [], providers: 'malformed' });
+});
+
+// A hand-edited `models` on an oauth provider became both active and validated on this branch, so the
+// rejection a user hits must name what to go fix. The bare schema throw said `["models", 0]` and never
+// said which provider, which is unactionable in a config with several.
+test('a rejected staged oauth write names the offending provider id and field', () => {
+  const candidate = {
+    plugins: [],
+    providers: {
+      'my-claude': { kind: 'oauth', plugin: '@example/oauth', capability: 'default', models: [''] },
+    },
+  };
+  expect(() => validateStagedOAuthWrite(candidate)).toThrow(/my-claude/u);
+  expect(() => validateStagedOAuthWrite(candidate)).toThrow(/models/u);
 });
 
 test('typed duplicate error contains only canonical guidance', () => {
