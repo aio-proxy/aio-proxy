@@ -1,15 +1,18 @@
 import { m } from '@aio-proxy/i18n';
 import { ProviderKind, type ModelMetadata } from '@aio-proxy/types';
 import { Button } from '@aio-proxy/ui/components/button';
-import { Field, FieldDescription, FieldLabel } from '@aio-proxy/ui/components/field';
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@aio-proxy/ui/components/empty';
+import { Field, FieldLabel } from '@aio-proxy/ui/components/field';
 import { Input } from '@aio-proxy/ui/components/input';
+import { InputGroup, InputGroupAddon, InputGroupInput } from '@aio-proxy/ui/components/input-group';
+import { LayersIcon, SearchIcon } from 'lucide-react';
 import { useState } from 'react';
 
 import { useProviderCatalogMutation } from '../../../hooks/use-provider-catalog-mutation';
 import type { ProviderEditorForm } from '../../../hooks/use-provider-editor-form';
 import { PROVIDER_MODELS_PLACEHOLDER } from '../../../lib/constants';
 import { exposedModels } from '../../../lib/exposed-models';
-import { applyModelRows, toModelRows, type ModelRow } from '../../../lib/model-rows';
+import { applyModelRows, modelRowContext, toModelRows, type ModelRow } from '../../../lib/model-rows';
 import type { SectionSummary } from '../../../lib/section-status';
 import { ProviderModelMetadataDrawer } from '../../provider-models-field/provider-model-metadata-drawer';
 import { SectionShell } from '../section-shell';
@@ -49,6 +52,22 @@ export const ModelsSection: React.FC<ModelsSectionProps> = ({
       description={m['dashboard.providers.editor.section_models_description']()}
       status={summary.status}
       statusHint={summary.hint}
+      action={
+        kind === ProviderKind.OAuth ? undefined : (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            data-testid="models-catalog-load"
+            disabled={catalogMutation.isPending}
+            onClick={() => catalogMutation.mutate()}
+          >
+            {catalogMutation.isPending
+              ? m['dashboard.providers.form.catalog_loading']()
+              : m['dashboard.providers.form.catalog_load']()}
+          </Button>
+        )
+      }
     >
       <form.Field name="models">
         {(modelsField) => (
@@ -98,34 +117,11 @@ export const ModelsSection: React.FC<ModelsSectionProps> = ({
 
               return (
                 <div className="space-y-4" data-testid="provider-editor-field-models">
-                  <div className="flex flex-wrap items-end justify-between gap-3">
-                    <div>
-                      <FieldLabel>{m['dashboard.providers.form.label_models']()}</FieldLabel>
-                      <FieldDescription data-testid="models-count">
-                        {kind === ProviderKind.OAuth && models.length === 0
-                          ? m['dashboard.providers.editor.models_all_discovered']({
-                              count: discovered?.length ?? 0,
-                            })
-                          : m['dashboard.providers.editor.models_count']({
-                              enabled: models.length,
-                              // api/ai-sdk have no candidates until a catalog loads; the whitelist is
-                              // the only honest total until then.
-                              total: discovered?.length ?? models.length,
-                            })}
-                      </FieldDescription>
-                    </div>
-                    {kind === ProviderKind.OAuth ? null : (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        disabled={catalogMutation.isPending}
-                        onClick={() => catalogMutation.mutate()}
-                      >
-                        {catalogMutation.isPending
-                          ? m['dashboard.providers.form.catalog_loading']()
-                          : m['dashboard.providers.form.catalog_load']()}
-                      </Button>
-                    )}
+                  <div>
+                    <h3 className="text-sm font-medium">{m['dashboard.providers.form.models_upstream_heading']()}</h3>
+                    <p className="text-xs text-muted-foreground">
+                      {m['dashboard.providers.form.models_upstream_hint']()}
+                    </p>
                   </div>
 
                   {catalogMutation.isError || catalogResult?.ok === false ? (
@@ -136,32 +132,69 @@ export const ModelsSection: React.FC<ModelsSectionProps> = ({
                     </p>
                   ) : null}
 
-                  <Input
-                    value={filter}
-                    data-testid="models-filter"
-                    aria-label={m['dashboard.providers.editor.models_filter_placeholder']()}
-                    placeholder={m['dashboard.providers.editor.models_filter_placeholder']()}
-                    onChange={(event) => setFilter(event.target.value)}
-                  />
-
-                  {visible.length === 0 ? (
-                    <FieldDescription>{m['dashboard.providers.form.enabled_models_empty']()}</FieldDescription>
+                  {rows.length === 0 ? (
+                    <Empty className="border" data-testid="models-empty">
+                      <EmptyHeader>
+                        <EmptyMedia variant="icon">
+                          <LayersIcon />
+                        </EmptyMedia>
+                        <EmptyTitle>{m['dashboard.providers.form.models_empty_title']()}</EmptyTitle>
+                        <EmptyDescription>{m['dashboard.providers.form.models_empty_description']()}</EmptyDescription>
+                      </EmptyHeader>
+                    </Empty>
                   ) : (
-                    <div className="space-y-2" data-testid="models-rows">
-                      {visible.map((row) => (
-                        <ModelRowItem
-                          key={row.id}
-                          id={row.id}
-                          enabled={whitelist.has(row.id)}
-                          selectable={discovered !== undefined}
-                          stale={discovered !== undefined && whitelist.has(row.id) && !discoveredSet.has(row.id)}
-                          removable={!discoveredSet.has(row.id)}
-                          onToggle={(enabled) => toggle(row.id, enabled)}
-                          onRemove={() => remove(row.id)}
-                          onEditMetadata={() => setMetadataModel(row.id)}
-                        />
-                      ))}
-                    </div>
+                    <>
+                      <div className="flex flex-wrap items-center gap-3">
+                        <InputGroup className="w-full sm:w-64">
+                          <InputGroupAddon>
+                            <SearchIcon />
+                          </InputGroupAddon>
+                          <InputGroupInput
+                            value={filter}
+                            data-testid="models-filter"
+                            aria-label={m['dashboard.providers.editor.models_filter_placeholder']()}
+                            placeholder={m['dashboard.providers.editor.models_filter_placeholder']()}
+                            onChange={(event) => setFilter(event.target.value)}
+                          />
+                        </InputGroup>
+                        <p className="text-sm text-muted-foreground" data-testid="models-count">
+                          {kind === ProviderKind.OAuth && models.length === 0
+                            ? m['dashboard.providers.editor.models_all_discovered']({
+                                count: discovered?.length ?? 0,
+                              })
+                            : m['dashboard.providers.editor.models_count']({
+                                enabled: models.length,
+                                // api/ai-sdk have no candidates until a catalog loads; the whitelist is
+                                // the only honest total until then.
+                                total: discovered?.length ?? models.length,
+                              })}
+                        </p>
+                      </div>
+
+                      {visible.length === 0 ? (
+                        // Distinct from the no-models card: the provider has models, the filter hides them.
+                        <p className="text-sm text-muted-foreground" data-testid="models-no-matches">
+                          {m['dashboard.providers.form.models_filter_no_matches']()}
+                        </p>
+                      ) : (
+                        <div className="space-y-2" data-testid="models-rows">
+                          {visible.map((row) => (
+                            <ModelRowItem
+                              key={row.id}
+                              id={row.id}
+                              enabled={whitelist.has(row.id)}
+                              selectable={discovered !== undefined}
+                              stale={discovered !== undefined && whitelist.has(row.id) && !discoveredSet.has(row.id)}
+                              removable={!discoveredSet.has(row.id)}
+                              context={modelRowContext(row.metadata)}
+                              onToggle={(enabled) => toggle(row.id, enabled)}
+                              onRemove={() => remove(row.id)}
+                              onEditMetadata={() => setMetadataModel(row.id)}
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </>
                   )}
 
                   <Field>

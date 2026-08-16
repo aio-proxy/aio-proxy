@@ -7,6 +7,18 @@ export interface ModelRow {
 
 type MetadataRecord = Readonly<Record<string, Record<string, unknown>>>;
 
+/**
+ * The row's own `limit.context` override, in tokens. The catalog endpoint returns slugs without
+ * limits, so an override is the only context a row can know. Metadata is user-authored JSON: read
+ * through it rather than trusting a shape.
+ */
+export function modelRowContext(metadata: ModelRow['metadata']): number | undefined {
+  const limit = metadata?.['limit'];
+  if (typeof limit !== 'object' || limit === null) return undefined;
+  const context = (limit as Readonly<Record<string, unknown>>)['context'];
+  return typeof context === 'number' && Number.isFinite(context) && context > 0 ? context : undefined;
+}
+
 export function toModelRows(models: readonly string[], metadata: MetadataRecord | undefined): ModelRow[] {
   return models.map((id) => ({ id, metadata: metadata?.[id] }));
 }

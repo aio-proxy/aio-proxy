@@ -1,3 +1,4 @@
+import { m } from '@aio-proxy/i18n';
 import { ProviderKind, ProviderProtocol } from '@aio-proxy/types';
 import { beforeEach, describe, expect, rs, test } from '@rstest/core';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -69,6 +70,66 @@ describe('ModelsSection', () => {
     expect(within(screen.getByTestId('model-row-model-a')).getByText('model-a')).toBeInTheDocument();
     expect(screen.getByTestId('model-row-model-b')).toBeInTheDocument();
     expect(screen.getByTestId('models-rows').children).toHaveLength(2);
+  });
+
+  test('with no models the empty card says so and names the two ways out', () => {
+    renderSection({ kind: ProviderKind.Api, initial: apiInitial([]) });
+
+    const empty = screen.getByTestId('models-empty');
+    expect(empty).toHaveTextContent(m['dashboard.providers.form.models_empty_title']());
+    // The instruction is the half a bare muted line drops: pull the catalog, or type an id.
+    expect(empty).toHaveTextContent(m['dashboard.providers.form.models_empty_description']());
+  });
+
+  // "This provider has no models" and "your search found nothing" are different problems with
+  // different exits. One shared string passes every class and testid assertion, so this pins the copy.
+  test('a filter matching nothing reads differently from having no models at all', () => {
+    renderSection({ kind: ProviderKind.Api, initial: apiInitial(['model-a']) });
+
+    fireEvent.change(screen.getByTestId('models-filter'), { target: { value: 'no-such-model' } });
+
+    const noMatches = screen.getByTestId('models-no-matches');
+    expect(noMatches).toHaveTextContent(m['dashboard.providers.form.models_filter_no_matches']());
+    expect(noMatches.textContent ?? '').not.toContain(m['dashboard.providers.form.models_empty_title']());
+    expect(noMatches.textContent ?? '').not.toContain(m['dashboard.providers.form.models_empty_description']());
+    // The provider does have models, so the no-models card must stay away.
+    expect(screen.queryByTestId('models-empty')).toBeNull();
+  });
+
+  // A class assertion cannot see the htmlFor binding; only a click on the id can.
+  test('clicking a model id toggles its checkbox', async () => {
+    renderSection({ kind: ProviderKind.Api, initial: apiInitial(['model-a']), candidates: ['model-a'] });
+
+    const row = screen.getByTestId('model-row-model-a');
+    expect(within(row).getByRole('checkbox')).toBeChecked();
+
+    fireEvent.click(within(row).getByText('model-a'));
+
+    await waitFor(() => expect(section.state.values.models).toEqual([]));
+    expect(within(screen.getByTestId('model-row-model-a')).getByRole('checkbox')).not.toBeChecked();
+  });
+
+  test('a row renders its limit.context override, and an em dash without one', () => {
+    renderSection({
+      kind: ProviderKind.Api,
+      initial: apiInitial(['with-context', 'without-context'], { 'with-context': { limit: { context: 128_000 } } }),
+    });
+
+    expect(within(screen.getByTestId('model-row-with-context')).getByTestId('model-row-context')).toHaveTextContent(
+      '128K',
+    );
+    expect(within(screen.getByTestId('model-row-without-context')).getByTestId('model-row-context')).toHaveTextContent(
+      '—',
+    );
+  });
+
+  test('the catalog button sits in the section header, not in the body', () => {
+    renderSection({ kind: ProviderKind.Api, initial: apiInitial(['model-a']) });
+
+    const catalog = screen.getByTestId('models-catalog-load');
+    expect(within(screen.getByTestId('provider-editor-field-models')).queryByTestId('models-catalog-load')).toBeNull();
+    // The header row is the element holding both the section heading and the action slot.
+    expect(catalog.parentElement).toContainElement(screen.getByRole('heading', { level: 2 }));
   });
 
   test('manual add appends a row and writes it to the form', async () => {
