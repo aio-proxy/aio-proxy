@@ -369,6 +369,42 @@ describe('ModelsSection', () => {
     expect(draft).toEqual({ name: 'GPT-5', limit: { input: 8192 }, cost: { cacheRead: 0.5 } });
   });
 
+  // The section's primary action, and nothing pinned it end to end: the loaded catalog has to reach
+  // the row list, supersede the seeded candidates, and make its ids selectable without being silently
+  // promoted into the whitelist.
+  test('loading the catalog lists its models as unchecked rows and supersedes the seed', async () => {
+    mocks.fetchCatalog.mockResolvedValue({ ok: true, models: ['model-a', 'fresh-b'] });
+    renderSection({ kind: ProviderKind.Api, initial: apiInitial(['model-a']), candidates: ['seeded-c'] });
+
+    expect(screen.getByTestId('model-row-seeded-c')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('models-catalog-load'));
+
+    await waitFor(() => expect(screen.getByTestId('model-row-fresh-b')).toBeInTheDocument());
+    expect(screen.queryByTestId('model-row-seeded-c')).toBeNull();
+    expect(within(screen.getByTestId('model-row-fresh-b')).getByRole('checkbox')).not.toBeChecked();
+    expect(within(screen.getByTestId('model-row-model-a')).getByRole('checkbox')).toBeChecked();
+    // Discovering a model is not enabling it.
+    expect(section.state.values.models).toEqual(['model-a']);
+    expect(screen.getByTestId('models-count')).toHaveTextContent(
+      m['dashboard.providers.editor.models_count']({ enabled: 1, total: 2 }),
+    );
+  });
+
+  test('a failed catalog load names the error code instead of emptying the list', async () => {
+    mocks.fetchCatalog.mockResolvedValue({ ok: false, error: { code: 'upstream_unauthorized', recoverable: true } });
+    renderSection({ kind: ProviderKind.Api, initial: apiInitial(['model-a']) });
+
+    fireEvent.click(screen.getByTestId('models-catalog-load'));
+
+    await waitFor(() =>
+      expect(screen.getByRole('status')).toHaveTextContent(
+        m['dashboard.providers.form.catalog_failed']({ code: 'upstream_unauthorized' }),
+      ),
+    );
+    expect(screen.getByTestId('model-row-model-a')).toBeInTheDocument();
+  });
+
   // An overflowing entry (`1e999` parses to Infinity) is the one numeric string the field cannot
   // store. Keeping its text on screen left the input showing a value the draft did not contain, so
   // the user read a context limit or a price that was never saved.
