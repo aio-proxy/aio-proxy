@@ -59,8 +59,13 @@ export function validateStagedOAuthWrite(candidate: ConfigRecord): void {
       // A hand-edited `models` on an oauth provider is validated as of this branch, so this rejection is
       // reachable from an ordinary re-login. Standalone issue paths read `["models", 0]` and never say
       // which provider — unactionable in a config with several — so re-throw them rooted at the entry.
+      // `ZodRealError` is the constructor `safeParse` itself uses, and unlike a bare `new z.ZodError` it
+      // produces a true `instanceof Error` with a stack — which the log sites that record
+      // `error instanceof Error ? error.name : ...` need to report `ZodError` rather than `Error`/`object`.
+      // It has to be a fresh error rather than a mutated `parsed.error`: `message` is stringified once at
+      // construction, so re-rooting the paths afterwards would leave the rendered message unprefixed.
       if (!parsed.success) {
-        throw new z.ZodError(
+        throw new z.ZodRealError(
           parsed.error.issues.map((issue) => ({ ...issue, path: ['providers', id, ...issue.path] })),
         );
       }
@@ -165,7 +170,8 @@ export function providerEntry(
   // partial edit surface must not delete config the user authored elsewhere. `weight` is the deliberate
   // exception — `{ weight: undefined }` is `{}` after JSON, so an omitted key is the only "absent" signal
   // a caller has, and retaining it would make a cleared weight unreachable over the wire. `name` gets the
-  // same treatment via `''`, its own surviving clear signal (see the entry spread below).
+  // same treatment via a blank-after-trim value, its own surviving clear signal (see the entry spread
+  // below).
   //
   // `replaceProvider` in server's dashboard-routes/provider-mutation answers the same question for the
   // config-provider PUT path, with a much shorter field list, and the two are deliberately not unified.
@@ -191,7 +197,7 @@ export function providerEntry(
     ...(Object.keys(publicOptions).length === 0 ? {} : { options: publicOptions }),
     enabled,
     ...(weight === undefined ? {} : { weight }),
-    ...(name === undefined || name === '' ? {} : { name }),
+    ...(name === undefined || (typeof name === 'string' && name.trim() === '') ? {} : { name }),
     ...(alias === undefined ? {} : { alias }),
     ...(models === undefined ? {} : { models }),
     ...(metadata === undefined ? {} : { metadata }),

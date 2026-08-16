@@ -1,3 +1,5 @@
+import { z } from 'zod';
+
 import {
   ABSENT_PROVIDER_DIGEST,
   configOf,
@@ -72,6 +74,28 @@ test('a rejected staged oauth write names the offending provider id and field', 
   expect(() => validateStagedOAuthWrite(candidate)).toThrow(/models/u);
 });
 
+// `new z.ZodError([...])` is not an `instanceof Error` in Zod 4 and carries no stack, while the error
+// `safeParse` returns is a real one. Both render the same `message`, so only the identity is observable:
+// the structured-log sites that read `error instanceof Error ? error.name : ...` (server's
+// server-state/recovery and logical-session-store) recorded `'Error'` and `'object'` for a ZodError.
+test('a rejected staged oauth write throws a real Error that keeps the re-rooted issue paths', () => {
+  const candidate = {
+    plugins: [],
+    providers: {
+      'my-claude': { kind: 'oauth', plugin: '@example/oauth', capability: 'default', models: [''] },
+    },
+  };
+  let thrown: unknown;
+  try {
+    validateStagedOAuthWrite(candidate);
+  } catch (error) {
+    thrown = error;
+  }
+  expect(thrown).toBeInstanceOf(Error);
+  expect(thrown).toBeInstanceOf(z.ZodError);
+  expect((thrown as z.ZodError).issues[0]?.path).toEqual(['providers', 'my-claude', 'models', 0]);
+});
+
 test('typed duplicate error contains only canonical guidance', () => {
   expect(new ProviderAccountAlreadyExistsError('provider-1')).toMatchObject({
     existingProviderId: 'provider-1',
@@ -127,6 +151,15 @@ test('providerEntry retains every stored field a patch does not mention', () => 
 test('providerEntry treats a blank patched display name as clearing it', () => {
   const existing = { kind: 'oauth', plugin: 'p', capability: 'c', enabled: true, name: 'Personal' };
   const patch = { name: '', enabled: true, weight: undefined, alias: undefined } as never;
+  expect('name' in providerEntry('p', 'c', {}, existing, undefined, patch)).toBe(false);
+});
+
+// Whitespace-only carries the same intent, and the dashboard's `normalizeProviderFormValue` already
+// trims before it sends — so only the oauth patch path can deliver one, and the editor reads
+// blank-after-trim as absent. Persisting it writes a key nothing will ever render.
+test('providerEntry treats a whitespace-only patched display name as clearing it', () => {
+  const existing = { kind: 'oauth', plugin: 'p', capability: 'c', enabled: true, name: 'Personal' };
+  const patch = { name: '   ', enabled: true, weight: undefined, alias: undefined } as never;
   expect('name' in providerEntry('p', 'c', {}, existing, undefined, patch)).toBe(false);
 });
 

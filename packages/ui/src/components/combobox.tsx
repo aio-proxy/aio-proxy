@@ -46,6 +46,13 @@ function ComboboxClear({
   );
 }
 
+/**
+ * The clear button is icon-only, so `showClear` without an accessible name is never a valid combination.
+ * Pairing them here turns that into a compile error instead of a silently unnamed button; this package has
+ * no i18n, so the label has to come from the caller.
+ */
+type ComboboxClearPairProps = { showClear: boolean; clearLabel: string } | { showClear?: false; clearLabel?: never };
+
 function ComboboxInput({
   className,
   children,
@@ -56,9 +63,7 @@ function ComboboxInput({
   ...props
 }: ComboboxPrimitive.Input.Props & {
   showTrigger?: boolean;
-  showClear?: boolean;
-  clearLabel?: string;
-}) {
+} & ComboboxClearPairProps) {
   return (
     <InputGroup className={cn('w-auto', className)}>
       <ComboboxPrimitive.Input render={<InputGroupInput disabled={disabled} />} {...props} />
