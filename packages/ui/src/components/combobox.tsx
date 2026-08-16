@@ -25,12 +25,20 @@ function ComboboxTrigger({ className, children, ...props }: ComboboxPrimitive.Tr
   );
 }
 
-function ComboboxClear({ className, ...props }: ComboboxPrimitive.Clear.Props) {
+function ComboboxClear({
+  className,
+  clearLabel,
+  ...props
+}: ComboboxPrimitive.Clear.Props & {
+  /** Accessible name for the icon-only button. This package has no i18n, so the caller supplies it. */
+  clearLabel?: string;
+}) {
   return (
     <ComboboxPrimitive.Clear
       data-slot="combobox-clear"
       render={<InputGroupButton variant="ghost" size="icon-xs" />}
       className={cn(className)}
+      aria-label={clearLabel}
       {...props}
     >
       <XIcon className="pointer-events-none" />
@@ -44,26 +52,30 @@ function ComboboxInput({
   disabled = false,
   showTrigger = true,
   showClear = false,
+  clearLabel,
   ...props
 }: ComboboxPrimitive.Input.Props & {
   showTrigger?: boolean;
   showClear?: boolean;
+  clearLabel?: string;
 }) {
   return (
     <InputGroup className={cn('w-auto', className)}>
       <ComboboxPrimitive.Input render={<InputGroupInput disabled={disabled} />} {...props} />
       <InputGroupAddon align="inline-end">
+        {/* The chevron stays beside the clear button: Base UI's input opens on typing and arrow keys
+            only, so hiding the chevron whenever a value is set leaves pointer users no way in. */}
         {showTrigger && (
           <InputGroupButton
             size="icon-xs"
             variant="ghost"
             render={<ComboboxTrigger />}
             data-slot="input-group-button"
-            className="group-has-data-[slot=combobox-clear]/input-group:hidden data-pressed:bg-transparent"
+            className="data-pressed:bg-transparent"
             disabled={disabled}
           />
         )}
-        {showClear && <ComboboxClear disabled={disabled} />}
+        {showClear && <ComboboxClear disabled={disabled} clearLabel={clearLabel} />}
       </InputGroupAddon>
       {children}
     </InputGroup>

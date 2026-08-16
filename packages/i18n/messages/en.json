@@ -8,7 +8,8 @@
     "loading": "Loading",
     "save": "Save",
     "delete": "Delete",
-    "close": "Close"
+    "close": "Close",
+    "clear": "Clear"
   },
   "error": {
     "provider_not_installed": "Provider package not installed: {pkg}. Run `aio-proxy plugin add {pkg}` first",

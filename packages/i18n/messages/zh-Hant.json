@@ -8,7 +8,8 @@
     "loading": "載入中",
     "save": "儲存",
     "delete": "刪除",
-    "close": "關閉"
+    "close": "關閉",
+    "clear": "清除"
   },
   "error": {
     "provider_not_installed": "提供商套件尚未安裝：{pkg}。請先執行 `aio-proxy plugin add {pkg}`",

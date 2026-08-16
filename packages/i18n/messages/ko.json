@@ -8,7 +8,8 @@
     "loading": "로딩 중",
     "save": "저장",
     "delete": "삭제",
-    "close": "닫기"
+    "close": "닫기",
+    "clear": "지우기"
   },
   "error": {
     "provider_not_installed": "프로바이더 패키지가 설치되지 않았습니다: {pkg}. 먼저 `aio-proxy plugin add {pkg}`를 실행하세요",
