@@ -36,16 +36,33 @@ export const connectionHint = (input: SectionStatusInput, status: SectionStatus)
   return (input.baseURL ?? '').trim().replace(/^https?:\/\//u, '');
 };
 
+/**
+ * oauth's empty whitelist means "expose the whole upstream catalog" (`section-status.ts`), so counting a
+ * catalog the dashboard never fetched would print "0 models" for a provider that exposes all of them.
+ * api and ai-sdk route only what their whitelist plus alias map name, so 0 is true there.
+ */
+const exposureText = (input: SectionStatusInput): string => {
+  const count = exposedModels(input.models, input.discoveredModels).length;
+  if (count === 0 && input.kind === 'oauth') return m['dashboard.providers.editor.hint_models_all']();
+  return count === 1
+    ? m['dashboard.providers.editor.hint_models_count_model']({ count })
+    : m['dashboard.providers.editor.hint_models_count_models']({ count });
+};
+
+/** The same pair the alias block itself renders, so both places count aliases in one voice. */
+const aliasText = (count: number): string =>
+  count === 1
+    ? m['dashboard.providers.form.aliases_summary_alias']({ count })
+    : m['dashboard.providers.form.aliases_summary_aliases']({ count });
+
 export const modelsHint = (input: SectionStatusInput, status: SectionStatus): string => {
   if (status === 'attention') return m['dashboard.providers.editor.hint_models_stale']();
   // Keyed off the status, not off the count: an oauth provider whose catalog could not be fetched
   // exposes everything and is `ok`, so "no models enabled" would be false there.
   if (status === 'todo') return m['dashboard.providers.editor.hint_models_todo']();
-  const count = exposedModels(input.models, input.discoveredModels).length;
+  const exposure = exposureText(input);
   const aliases = input.aliasCount ?? 0;
-  return aliases === 0
-    ? m['dashboard.providers.editor.hint_models_count']({ count })
-    : m['dashboard.providers.editor.hint_models_count_aliases']({ count, aliases });
+  return aliases === 0 ? exposure : `${exposure} · ${aliasText(aliases)}`;
 };
 
 export const routingHint = (input: SectionStatusInput, status: SectionStatus): string => {
@@ -57,6 +74,16 @@ export const routingHint = (input: SectionStatusInput, status: SectionStatus): s
   return m['dashboard.providers.editor.hint_routing_weight']({ weight: input.weight ?? 0 });
 };
 
+const headerText = (count: number): string =>
+  count === 1
+    ? m['dashboard.providers.editor.hint_advanced_header']({ count })
+    : m['dashboard.providers.editor.hint_advanced_headers']({ count });
+
+const transformText = (count: number): string =>
+  count === 1
+    ? m['dashboard.providers.editor.hint_advanced_transform']({ count })
+    : m['dashboard.providers.editor.hint_advanced_transforms']({ count });
+
 export const advancedHint = (input: SectionStatusInput, status: SectionStatus): string => {
   // Unparseable transforms JSON leaves `transformCount` on the last valid value, so the counts alone
   // would read "All defaults" beside a save-blocking dot.
@@ -64,9 +91,9 @@ export const advancedHint = (input: SectionStatusInput, status: SectionStatus): 
   const headers = input.headerCount ?? 0;
   const transforms = input.transformCount ?? 0;
   const parts = [
-    headers > 0 ? m['dashboard.providers.editor.hint_advanced_headers']({ count: headers }) : '',
+    headers > 0 ? headerText(headers) : '',
     input.proxyCustom === true ? m['dashboard.providers.editor.hint_advanced_proxy']() : '',
-    transforms > 0 ? m['dashboard.providers.editor.hint_advanced_transforms']({ count: transforms }) : '',
+    transforms > 0 ? transformText(transforms) : '',
   ].filter((part) => part !== '');
   // Punctuation, not copy: the separator is identical in every locale.
   return parts.length === 0 ? m['dashboard.providers.editor.hint_advanced_defaults']() : parts.join(' · ');

@@ -175,14 +175,14 @@ test('identity is ready on a filled id alone and reads as that id', () => {
 test('a models hint with no aliases counts models only', () => {
   // The shortcut to avoid: one message with `aliases: 0`, which prints "3 models · 0 aliases".
   expect(sectionStatuses({ ...base, models: ['a', 'b', 'c'] }).models.hint).toBe(
-    m['dashboard.providers.editor.hint_models_count']({ count: 3 }),
+    m['dashboard.providers.editor.hint_models_count_models']({ count: 3 }),
   );
   expect(sectionStatuses({ ...base, models: ['a', 'b', 'c'], aliasCount: 2 }).models.hint).toBe(
-    m['dashboard.providers.editor.hint_models_count_aliases']({ count: 3, aliases: 2 }),
+    `${m['dashboard.providers.editor.hint_models_count_models']({ count: 3 })} · ${m['dashboard.providers.form.aliases_summary_aliases']({ count: 2 })}`,
   );
   // An empty whitelist exposes the discovered catalog, so the count comes from it.
   expect(sectionStatuses({ ...base, models: [], discoveredModels: ['a', 'b'] }).models.hint).toBe(
-    m['dashboard.providers.editor.hint_models_count']({ count: 2 }),
+    m['dashboard.providers.editor.hint_models_count_models']({ count: 2 }),
   );
   expect(sectionStatuses({ ...base, models: [] }).models.hint).toBe(m['dashboard.providers.editor.hint_models_todo']());
 });
