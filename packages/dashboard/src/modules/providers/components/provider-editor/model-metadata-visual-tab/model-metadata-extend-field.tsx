@@ -52,6 +52,7 @@ export const ModelMetadataExtendField: React.FC<ModelMetadataExtendFieldProps> =
               : m['dashboard.providers.editor.metadata_extend_placeholder']()
           }
           showClear={value !== ''}
+          clearLabel={m['common.clear']()}
         />
         <ComboboxContent>
           <ComboboxEmpty>{m['dashboard.providers.editor.metadata_extend_empty']()}</ComboboxEmpty>

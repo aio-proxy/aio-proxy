@@ -485,4 +485,19 @@ describe('ModelsSection', () => {
       ),
     );
   });
+
+  // The clear button is icon-only, so without a name a screen reader announces it as just "button"
+  // and a speech-input user has nothing to say. `packages/ui` carries no i18n, so the name has to
+  // arrive as a prop from here.
+  test('the extend picker names its clear button', async () => {
+    renderSection({
+      kind: ProviderKind.Api,
+      initial: apiInitial(['model-a'], { 'model-a': { extend: 'openai/gpt-5' } }),
+    });
+
+    fireEvent.click(within(screen.getByTestId('model-row-model-a')).getByTestId('model-row-metadata'));
+    await screen.findByTestId('provider-model-metadata-drawer');
+
+    expect(await screen.findByRole('button', { name: m['common.clear']() })).toBeInTheDocument();
+  });
 });
