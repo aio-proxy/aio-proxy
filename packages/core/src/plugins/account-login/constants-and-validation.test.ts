@@ -133,6 +133,11 @@ test('providerEntry treats a blank patched display name as clearing it', () => {
 // Weight deliberately keeps the clobbering idiom: `{ weight: undefined }` is `{}` after JSON, so an
 // omitted key is the only "absent" signal the editor's number input has. Retaining here would make a
 // cleared weight unreachable over the wire.
+//
+// Unlike its three siblings in this file, this test passes against the PRE-FIX code, and that is the
+// point: it is a guard, not a regression witness. The retention fix that made the others go green must
+// stop at `weight`, so this test exists to redden if a later "finish the job" change extends per-field
+// retention to it. Do not convert it into a failing-first test or delete it as dead coverage.
 test('providerEntry lets a patch clear a stored weight', () => {
   const existing = { kind: 'oauth', plugin: 'p', capability: 'c', enabled: true, weight: 7 };
   const patch = { name: undefined, enabled: true, weight: undefined, alias: undefined };

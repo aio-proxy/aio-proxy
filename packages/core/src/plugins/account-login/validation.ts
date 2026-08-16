@@ -166,6 +166,13 @@ export function providerEntry(
   // exception — `{ weight: undefined }` is `{}` after JSON, so an omitted key is the only "absent" signal
   // a caller has, and retaining it would make a cleared weight unreachable over the wire. `name` gets the
   // same treatment via `''`, its own surviving clear signal (see the entry spread below).
+  //
+  // `replaceProvider` in server's dashboard-routes/provider-mutation answers the same question for the
+  // config-provider PUT path, with a much shorter field list, and the two are deliberately not unified.
+  // Its input is a full authored replacement body, so omission there means "delete" and only the fields
+  // the editor cannot round-trip are retained; this input is a partial patch, so omission means "keep"
+  // and the exceptions are enumerated instead. Same rule, opposite defaults, because the contracts
+  // differ — a shared helper would have to hide that.
   const enabled = patch?.enabled ?? existing?.['enabled'] ?? true;
   const weight = patch === undefined ? existing?.['weight'] : patch.weight;
   const name = patch?.name === undefined ? existing?.['name'] : patch.name;

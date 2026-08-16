@@ -11,9 +11,12 @@ import {
 } from '../lib/provider-form-value';
 import { ProviderFormFieldsApi } from './provider-form-fields-api';
 
-// The editor form is seed-only by design, so there is no onSubmit to spy on. This is the body the
-// live save actually sends: `saveConfigProvider` runs exactly this normalize + parse over form
-// values (use-provider-editor-page.ts), so asserting on it pins the real submit contract.
+// The editor form is seed-only by design, so there is no onSubmit to spy on. This reproduces the
+// normalize + parse half of what `saveConfigProvider` sends (use-provider-editor-page.ts), which is
+// enough for the assertions below — every one of them is about a field that path passes through
+// untouched. It is NOT the whole submit body: the real path also reconciles `metadata` against what
+// was persisted and drops the parsed copy. That override is covered at page level, in
+// provider-editor-page.test.tsx, so nothing here should grow a `metadata` assertion.
 const mutationBody = (values: ProviderEditorShape) => {
   const result = ProviderMutationBodySchema.safeParse(normalizeProviderFormValue(values as ProviderFormShape));
   expect(result.success).toBe(true);
@@ -116,6 +119,9 @@ describe('API provider form fields', () => {
         proxy: 'https://proxy.example:8443',
       },
     },
+    // The ai-sdk case does not render `ProviderFormFieldsApi` at all, so it is a hook+lib test sitting in
+    // a component test file. Left in place deliberately: `proxy` is a shared field and both kinds have to
+    // round-trip it through the same parse, which is the point of the pair. Moving it is a restructure.
   ])('round-trips the configured proxy into a $kind provider mutation body', ({ kind, initial }) => {
     const parsed = parseProviderFormInitial(initial);
     expect(parsed?.proxy).toBe('https://proxy.example:8443');

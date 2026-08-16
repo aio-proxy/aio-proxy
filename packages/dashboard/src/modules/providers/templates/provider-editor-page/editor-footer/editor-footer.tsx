@@ -1,6 +1,7 @@
 import { m } from '@aio-proxy/i18n';
 import { Button } from '@aio-proxy/ui/components/button';
 
+import { jumpToSection } from '../../../lib/jump-to-section';
 import {
   blockingSections,
   SECTION_LABEL,
@@ -17,14 +18,6 @@ interface EditorFooterProps {
   readonly onDelete?: (() => void) | undefined;
   readonly pending: boolean;
 }
-
-const jumpToSection = (id: SectionId) => {
-  const target = document.getElementById(`editor-${id}`);
-  target?.scrollIntoView({ behavior: 'smooth' });
-  // This is the error-recovery path — "take me to the field blocking my save" — so focus has to travel
-  // with the viewport. Scrolling alone leaves the next Tab in the footer, i.e. on Cancel/Save.
-  target?.focus({ preventScroll: true });
-};
 
 export const EditorFooter: React.FC<EditorFooterProps> = ({
   summaries,

@@ -87,6 +87,13 @@ export function replaceProvider(
   const previous = isPlainObject(previousValue) ? previousValue : {};
   const next = { ...provider };
 
+  // The second implementation of "a save that does not mention a field keeps its stored value"; the
+  // other is `providerEntry` in core's plugins/account-login/validation.ts. Deliberately NOT shared:
+  // that one rebuilds an oauth entry from a *partial patch*, so it retains almost every field and
+  // enumerates the exceptions. This one takes a PUT body that is a full authored replacement, so
+  // omission normally means "delete" and only this short list is retained — the fields the editor
+  // cannot round-trip or does not own. A common abstraction would have to hide that difference in
+  // contract, and hiding it is how a field silently changes sides.
   for (const key of ['headers', 'metadata', 'proxy', 'transforms'] as const) {
     if (provider[key] === undefined && previous[key] !== undefined) next[key] = previous[key];
   }

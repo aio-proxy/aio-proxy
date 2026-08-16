@@ -127,14 +127,22 @@ const saveConfigProvider = (
     });
     return;
   }
-  // Reconciled before the mode branch, not inside it: create must prune the records the drawer left
-  // behind for models no longer on the list, exactly as update does.
+  // Reconciled before the mode branch, not inside it: create must drop the empty records the drawer
+  // left behind, exactly as update does. What `applyModelRows` prunes is the EMPTY record of a LISTED
+  // id — a model whose cost fields were opened and cleared. Records for ids outside `models[]` are
+  // deliberately kept, because alias-only targets have metadata and no list entry; do not "fix"
+  // `applyModelRows` to prune those.
   const applied = applyModelRows(toModelRows(values.models ?? [], values.metadata ?? {}), values.metadata);
   // `{}` is not inert on update — `replaceProvider` retains `metadata` when the body omits it, so an
   // emptied map has to be sent explicitly to clear the persisted one. With nothing persisted there is
   // nothing to clear, and sending `{}` would stamp a dead `metadata: {}` key into the config file.
   const metadata = applied.metadata ?? (Object.keys(persistedMetadata ?? {}).length === 0 ? undefined : {});
-  const body = { ...result.data, metadata } as ProviderMutationBody;
+  // The parsed `metadata` is dropped rather than overwritten with `undefined`, and the reconciled one
+  // is spread in only when there is one — the same conditional-spread idiom as `proxy` above. The
+  // parsed value is the unreconciled form state, so letting it through would restore exactly the
+  // empty records `applyModelRows` just pruned.
+  const { metadata: _unreconciled, ...parsed } = result.data;
+  const body = { ...parsed, ...(metadata === undefined ? {} : { metadata }) };
   if (mode === ProviderFormMode.Create) {
     createProvider(body, { onSuccess: onSaved });
     return;

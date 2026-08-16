@@ -1,6 +1,7 @@
 import { m } from '@aio-proxy/i18n';
 
 import { StatusDot } from '../../../components/provider-editor/status-dot';
+import { jumpToSection } from '../../../lib/jump-to-section';
 import { SECTION_LABEL, SECTION_ORDER, type SectionId, type SectionSummary } from '../../../lib/section-status';
 
 interface SectionNavProps {
@@ -26,15 +27,13 @@ export const SectionNav: React.FC<SectionNavProps> = ({ summaries, activeId }) =
         className={`flex shrink-0 items-center gap-1.5 rounded-2xl px-2.5 py-1 text-sm transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/30 ${
           activeId === id ? 'bg-muted font-medium text-foreground' : 'text-muted-foreground hover:bg-muted/60'
         }`}
-        // The section ids live inside that scroll container rather than the document, so a bare hash
-        // jump does not reliably land on them — hence the manual scroll. `preventDefault` also
-        // suppresses the native focus move onto the fragment target, so that half is restored by hand:
-        // without it the next Tab continues from the strip instead of from the requested section.
+        // `preventDefault` because a bare hash jump does not reliably land on ids that live inside
+        // PageContainer's scroll container rather than the document; `jumpToSection` does that scroll
+        // and restores the focus move `preventDefault` suppressed. Shared with the save footer so the
+        // two jump surfaces cannot drift.
         onClick={(event) => {
           event.preventDefault();
-          const target = document.getElementById(`editor-${id}`);
-          target?.scrollIntoView({ behavior: 'smooth' });
-          target?.focus({ preventScroll: true });
+          jumpToSection(id);
         }}
       >
         <StatusDot status={summaries[id].status} />

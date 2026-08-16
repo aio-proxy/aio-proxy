@@ -64,7 +64,9 @@ export const WeightSliderField: React.FC<WeightSliderFieldProps> = ({ value, onC
           const raw = event.target.value.trim();
           const next = Number(raw);
           // Empty is absent, not `0` — `Number('')` is `0`, the one value this field must never
-          // invent. A half-typed `-` or `1e` is NaN and also reads as absent until it parses.
+          // invent. The `Number.isNaN` arm is unreachable for `type="number"`, which reports `''` for
+          // anything it cannot parse (a half-typed `-` or `1e` arrives as empty and is caught by the
+          // arm before it). Kept deliberately as defence if this input's type ever changes.
           onChange(raw === '' || Number.isNaN(next) ? undefined : next);
         }}
       />
