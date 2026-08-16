@@ -126,4 +126,19 @@ describe('RoutingSection', () => {
 
     expect(section.state.values.weight).toBe(35);
   });
+
+  // `disabled={false}` was hardcoded here, so a provider excluded from routing still had a fully
+  // draggable slider. `undefined` is the switch's own enabled default, so only an explicit `false`
+  // may disable it.
+  test('switching routing off disables the weight slider', () => {
+    render(<Harness initial={{ ...apiInitial(['model-a']), enabled: false }} models={['model-a']} />);
+
+    expect(screen.getByRole('slider', { hidden: true })).toBeDisabled();
+  });
+
+  test('an absent enabled value leaves the weight slider live', () => {
+    render(<Harness initial={apiInitial(['model-a'])} models={['model-a']} />);
+
+    expect(screen.getByRole('slider', { hidden: true })).toBeEnabled();
+  });
 });

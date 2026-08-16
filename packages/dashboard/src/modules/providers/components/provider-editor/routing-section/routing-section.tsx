@@ -49,15 +49,20 @@ export const RoutingSection: React.FC<RoutingSectionProps> = ({ form, mode, mode
         </form.Field>
       </div>
 
-      <form.Field name="weight">
-        {(field) => (
-          <WeightSliderField
-            value={field.state.value}
-            disabled={false}
-            onChange={(weight) => field.handleChange(weight)}
-          />
+      <form.Subscribe selector={(state) => state.values.enabled}>
+        {(enabled) => (
+          <form.Field name="weight">
+            {(field) => (
+              // `undefined` is the switch's own enabled default, so only an explicit `false` is off.
+              <WeightSliderField
+                value={field.state.value}
+                disabled={enabled === false}
+                onChange={(weight) => field.handleChange(weight)}
+              />
+            )}
+          </form.Field>
         )}
-      </form.Field>
+      </form.Subscribe>
 
       <form.Field name="alias">
         {(field) => {
@@ -80,11 +85,15 @@ export const RoutingSection: React.FC<RoutingSectionProps> = ({ form, mode, mode
         }}
       </form.Field>
 
-      <form.Subscribe selector={(state) => [state.values.id, state.values.weight, state.values.alias] as const}>
-        {([id, weight, alias]) => (
+      <form.Subscribe
+        selector={(state) => [state.values.id, state.values.weight, state.values.alias, state.values.enabled] as const}
+      >
+        {([id, weight, alias, enabled]) => (
           <AttemptOrderPreview
             selfId={id ?? ''}
             selfWeight={weight}
+            // The live switch value, which only dims and relabels the self row.
+            selfEnabled={enabled}
             // A disabled self is still previewed, so the routes are derived unconditionally.
             exposedAliases={modelRoutes({ enabled: true, models: exposed, alias }).map((route) => route.alias)}
             others={others}

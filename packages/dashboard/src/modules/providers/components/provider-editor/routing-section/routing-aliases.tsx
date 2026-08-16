@@ -25,6 +25,12 @@ export const RoutingAliases: React.FC<RoutingAliasesProps> = ({ alias, issues, t
 
   return (
     <div className="flex flex-col gap-4" data-testid="provider-editor-field-alias">
+      <div>
+        <h3 className="text-sm font-medium">{m['dashboard.providers.editor.aliases_heading']()}</h3>
+        <p className="max-w-2xl text-xs text-muted-foreground">
+          {m['dashboard.providers.editor.aliases_description']()}
+        </p>
+      </div>
       <ProviderAliasList
         alias={alias}
         models={targetOptions}

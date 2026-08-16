@@ -42,6 +42,11 @@ export const WeightSliderField: React.FC<WeightSliderFieldProps> = ({ value, onC
         </span>
       )}
     </div>
+    {/* The affinity half of the prototype's sentence already ships as `preview_affinity_note` under
+        the attempt-order list on this same screen, so this states the direction only. */}
+    <FieldDescription data-testid="weight-slider-description">
+      {m['dashboard.providers.editor.weight_description']()}
+    </FieldDescription>
     {value !== undefined && (value < WEIGHT_MIN || value > WEIGHT_MAX) ? (
       <FieldDescription data-testid="weight-slider-out-of-range">
         {m['dashboard.providers.editor.weight_out_of_range']({ weight: value })}

@@ -50,4 +50,28 @@ describe('WeightSliderField', () => {
     expect(screen.queryByTestId('weight-slider-value')).toBeNull();
     expect(onChange).not.toHaveBeenCalled();
   });
+
+  // The meaning of the number shipped nowhere: no locale stated that a higher weight is attempted
+  // first, so the slider was a bare 0-100 with no direction. This description is permanent; the
+  // out-of-range one is a separate, conditional line that must survive alongside it.
+  test('the higher-is-tried-first description is permanent, and the out-of-range one still renders', () => {
+    const inRange = render(<WeightSliderField value={20} onChange={rs.fn()} disabled={false} />);
+
+    expect(inRange.getByTestId('weight-slider-description')).toHaveTextContent(/\S/u);
+    expect(inRange.queryByTestId('weight-slider-out-of-range')).toBeNull();
+    inRange.unmount();
+
+    const outOfRange = render(<WeightSliderField value={250} onChange={rs.fn()} disabled={false} />);
+
+    expect(outOfRange.getByTestId('weight-slider-description')).toHaveTextContent(/\S/u);
+    expect(outOfRange.getByTestId('weight-slider-out-of-range')).toHaveTextContent(/250/u);
+  });
+
+  // `disabled={false}` was hardcoded, so the slider stayed draggable and looked live while the
+  // provider was excluded from routing entirely.
+  test('the slider is disabled when routing is off', () => {
+    render(<WeightSliderField value={20} onChange={rs.fn()} disabled />);
+
+    expect(screen.getByRole('slider', { hidden: true })).toBeDisabled();
+  });
 });
