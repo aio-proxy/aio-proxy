@@ -12,7 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@aio-proxy/ui/componen
 import { Textarea } from '@aio-proxy/ui/components/textarea';
 import { useMemo, useState } from 'react';
 
-import { ModelMetadataVisualTab } from '../provider-editor/model-metadata-visual-tab';
+import { ModelMetadataVisualTab } from '../model-metadata-visual-tab';
 
 export interface ProviderModelMetadataDrawerContentProps {
   readonly model: string;

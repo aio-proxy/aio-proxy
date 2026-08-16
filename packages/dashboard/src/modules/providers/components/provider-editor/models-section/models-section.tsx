@@ -14,7 +14,7 @@ import { PROVIDER_MODELS_PLACEHOLDER } from '../../../lib/constants';
 import { exposedModels } from '../../../lib/exposed-models';
 import { applyModelRows, modelRowContext, toModelRows, type ModelRow } from '../../../lib/model-rows';
 import type { SectionSummary } from '../../../lib/section-status';
-import { ProviderModelMetadataDrawer } from '../../provider-models-field/provider-model-metadata-drawer';
+import { ProviderModelMetadataDrawer } from '../provider-model-metadata-drawer';
 import { SectionShell } from '../section-shell';
 import { ModelRowItem } from './model-row-item';
 
