@@ -205,13 +205,13 @@ describe('ModelsSection', () => {
   test('the metadata visual tab merges over fields it cannot edit instead of replacing them', async () => {
     renderSection({
       kind: ProviderKind.Api,
-      initial: apiInitial(['model-a'], { 'model-a': { description: 'keep me', limit: { context: 100 } } }),
+      initial: apiInitial(['model-a'], {
+        'model-a': { capabilities: { knowledge: '2024-06' }, limit: { context: 100 } },
+      }),
     });
 
     fireEvent.click(within(screen.getByTestId('model-row-model-a')).getByTestId('model-row-metadata'));
     await screen.findByTestId('provider-model-metadata-drawer');
-    // Visual is the first tab; JSON is the default-selected one, so switch explicitly.
-    fireEvent.click(screen.getAllByRole('tab')[0] as HTMLElement);
 
     const context = await screen.findByLabelText('limit.context');
     fireEvent.change(context, { target: { value: '4096' } });
@@ -219,7 +219,7 @@ describe('ModelsSection', () => {
 
     await waitFor(() =>
       expect(section.state.values.metadata?.['model-a']).toEqual({
-        description: 'keep me',
+        capabilities: { knowledge: '2024-06' },
         limit: { context: 4096 },
       }),
     );
@@ -230,7 +230,6 @@ describe('ModelsSection', () => {
 
     fireEvent.click(within(screen.getByTestId('model-row-model-a')).getByTestId('model-row-metadata'));
     await screen.findByTestId('provider-model-metadata-drawer');
-    fireEvent.click(screen.getByTestId('metadata-tab-visual'));
 
     const cost = (await screen.findByLabelText('cost.input')) as HTMLInputElement;
     // Append to the live DOM value rather than feeding absolute strings. The regression is React
@@ -248,7 +247,6 @@ describe('ModelsSection', () => {
     // Clearing a money field must delete the key, not write `0`. Save closed the drawer, so reopen it.
     fireEvent.click(within(screen.getByTestId('model-row-model-a')).getByTestId('model-row-metadata'));
     await screen.findByTestId('provider-model-metadata-drawer');
-    fireEvent.click(screen.getByTestId('metadata-tab-visual'));
     fireEvent.change(await screen.findByLabelText('cost.input'), { target: { value: '' } });
     fireEvent.click(screen.getByTestId('provider-model-metadata-save'));
     await waitFor(() => expect(section.state.values.metadata?.['model-a']).toEqual({}));
@@ -261,9 +259,10 @@ describe('ModelsSection', () => {
     await screen.findByTestId('provider-model-metadata-drawer');
     expect(screen.getByTestId('metadata-tab-visual')).not.toHaveAttribute('aria-disabled', 'true');
 
-    // Drop the closing brace: the visual tab merges over the parsed draft, so entering it here would
-    // write back an object missing `name` — a key the visual tab cannot even re-enter.
-    fireEvent.change(screen.getByRole('textbox'), { target: { value: '{"name":"A"' } });
+    // Drop the closing brace: the visual tab merges over the parsed draft, so entering it on broken
+    // text would write back an object missing every key the text still carries.
+    fireEvent.click(screen.getByTestId('metadata-tab-json'));
+    fireEvent.change(await screen.findByTestId('metadata-json-draft'), { target: { value: '{"name":"A"' } });
 
     // Base UI marks a disabled tab with aria-disabled, not the native attribute.
     await waitFor(() => expect(screen.getByTestId('metadata-tab-visual')).toHaveAttribute('aria-disabled', 'true'));
@@ -277,7 +276,119 @@ describe('ModelsSection', () => {
     expect(section.state.values.metadata?.['model-a']).toEqual({ name: 'A' });
 
     // Emptying the textarea to start over has no keys to lose, so it must not lock the tab.
-    fireEvent.change(screen.getByRole('textbox'), { target: { value: '  ' } });
+    fireEvent.change(screen.getByTestId('metadata-json-draft'), { target: { value: '  ' } });
     await waitFor(() => expect(screen.getByTestId('metadata-tab-visual')).not.toHaveAttribute('aria-disabled', 'true'));
+  });
+
+  // The drawer is a form, not a code editor: opening on the textarea was the shipped default and the
+  // demo's first impression is the visual form. Only an unparseable draft may force JSON.
+  test('the metadata drawer opens on the visual tab and an unparseable draft forces JSON', async () => {
+    renderSection({ kind: ProviderKind.Api, initial: apiInitial(['model-a'], { 'model-a': { name: 'A' } }) });
+
+    fireEvent.click(within(screen.getByTestId('model-row-model-a')).getByTestId('model-row-metadata'));
+    await screen.findByTestId('provider-model-metadata-drawer');
+
+    // No click into the visual tab: the fields are there because visual is the default.
+    expect(await screen.findByLabelText('limit.context')).toBeInTheDocument();
+    expect(screen.getByTestId('metadata-tab-visual')).toHaveAttribute('aria-selected', 'true');
+    expect(screen.queryByTestId('metadata-json-draft')).toBeNull();
+
+    fireEvent.click(screen.getByTestId('metadata-tab-json'));
+    fireEvent.change(await screen.findByTestId('metadata-json-draft'), { target: { value: '{oops' } });
+    await waitFor(() => expect(screen.getByTestId('metadata-tab-json')).toHaveAttribute('aria-selected', 'true'));
+
+    // Controlled tabs still have to obey the user: repairing the draft and choosing visual must work,
+    // or forcing json once would strand the user there for the rest of the session.
+    fireEvent.change(screen.getByTestId('metadata-json-draft'), { target: { value: '{"name":"A"}' } });
+    fireEvent.click(screen.getByTestId('metadata-tab-visual'));
+    expect(await screen.findByLabelText('limit.context')).toBeInTheDocument();
+  });
+
+  // A two-state switch reads an explicit `false` as "inherit" and silently converts it on save. Only a
+  // three-state control can tell the two apart, so both directions are pinned here.
+  test('a capability reads and writes explicit false, and inherit deletes the key', async () => {
+    renderSection({
+      kind: ProviderKind.Api,
+      initial: apiInitial(['model-a'], { 'model-a': { capabilities: { attachment: false, reasoning: true } } }),
+    });
+
+    fireEvent.click(within(screen.getByTestId('model-row-model-a')).getByTestId('model-row-metadata'));
+    await screen.findByTestId('provider-model-metadata-drawer');
+
+    const attachment = await screen.findByTestId('metadata-capability-attachment');
+    expect(attachment).toHaveTextContent(m['dashboard.providers.editor.metadata_capability_unsupported']());
+    expect(screen.getByTestId('metadata-capability-reasoning')).toHaveTextContent(
+      m['dashboard.providers.editor.metadata_capability_supported'](),
+    );
+
+    // Inherit is the only choice that writes nothing.
+    fireEvent.click(attachment);
+    fireEvent.keyDown(
+      await screen.findByRole('option', { name: m['dashboard.providers.editor.metadata_capability_inherit']() }),
+      { key: 'Enter' },
+    );
+    fireEvent.click(screen.getByTestId('provider-model-metadata-save'));
+    await waitFor(() =>
+      expect(section.state.values.metadata?.['model-a']).toEqual({ capabilities: { reasoning: true } }),
+    );
+
+    // And unsupported writes the boolean rather than dropping the key.
+    fireEvent.click(within(screen.getByTestId('model-row-model-a')).getByTestId('model-row-metadata'));
+    await screen.findByTestId('provider-model-metadata-drawer');
+    fireEvent.click(await screen.findByTestId('metadata-capability-toolCall'));
+    fireEvent.keyDown(
+      await screen.findByRole('option', { name: m['dashboard.providers.editor.metadata_capability_unsupported']() }),
+      { key: 'Enter' },
+    );
+    fireEvent.click(screen.getByTestId('provider-model-metadata-save'));
+    await waitFor(() =>
+      expect(section.state.values.metadata?.['model-a']).toEqual({
+        capabilities: { reasoning: true, toolCall: false },
+      }),
+    );
+  });
+
+  test('the newly exposed limit and cost fields round-trip into the draft', async () => {
+    renderSection({ kind: ProviderKind.Api, initial: apiInitial(['model-a']) });
+
+    fireEvent.click(within(screen.getByTestId('model-row-model-a')).getByTestId('model-row-metadata'));
+    await screen.findByTestId('provider-model-metadata-drawer');
+
+    fireEvent.change(await screen.findByLabelText('limit.input'), { target: { value: '8192' } });
+    fireEvent.change(screen.getByLabelText('cost.cacheRead'), { target: { value: '0.5' } });
+    fireEvent.change(screen.getByLabelText('name'), { target: { value: 'GPT-5' } });
+    // An empty number field must read as inherit, not as zero.
+    expect(screen.getByLabelText('cost.reasoning')).toHaveAttribute(
+      'placeholder',
+      m['dashboard.providers.editor.metadata_inherit_placeholder'](),
+    );
+
+    // The JSON tab is the same draft seen from the other side; a field wired to nothing shows up here.
+    fireEvent.click(screen.getByTestId('metadata-tab-json'));
+    const draft = JSON.parse(((await screen.findByTestId('metadata-json-draft')) as HTMLTextAreaElement).value);
+    expect(draft).toEqual({ name: 'GPT-5', limit: { input: 8192 }, cost: { cacheRead: 0.5 } });
+  });
+
+  // An empty picker with no explanation is indistinguishable from a catalog with no models.
+  test('a failed models.dev slug query explains itself and offers a retry', async () => {
+    mocks.slugs.mockRejectedValue(new Error('offline'));
+    renderSection({ kind: ProviderKind.Api, initial: apiInitial(['model-a']) });
+
+    fireEvent.click(within(screen.getByTestId('model-row-model-a')).getByTestId('model-row-metadata'));
+    await screen.findByTestId('provider-model-metadata-drawer');
+
+    const retry = await screen.findByTestId('metadata-extend-retry');
+    expect(screen.getByTestId('metadata-extend-status')).toHaveTextContent(
+      m['dashboard.providers.editor.metadata_extend_error'](),
+    );
+
+    mocks.slugs.mockResolvedValue({ slugs: ['openai/gpt-5'] });
+    fireEvent.click(retry);
+
+    await waitFor(() =>
+      expect(screen.getByTestId('metadata-extend-status')).toHaveTextContent(
+        m['dashboard.providers.editor.metadata_extend_loaded']({ count: 1 }),
+      ),
+    );
   });
 });

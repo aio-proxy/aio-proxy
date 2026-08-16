@@ -535,9 +535,9 @@ test('edit-api clearing model metadata sends an explicit empty metadata object',
 
   fireEvent.click(within(screen.getByTestId('model-row-a')).getByTestId('model-row-metadata'));
   await screen.findByTestId('provider-model-metadata-drawer');
-  fireEvent.change(within(screen.getByTestId('provider-model-metadata-drawer')).getByRole('textbox'), {
-    target: { value: '{}' },
-  });
+  // The drawer opens on the visual form, so emptying the record means going to the raw draft first.
+  fireEvent.click(screen.getByTestId('metadata-tab-json'));
+  fireEvent.change(await screen.findByTestId('metadata-json-draft'), { target: { value: '{}' } });
   fireEvent.click(screen.getByTestId('provider-model-metadata-save'));
 
   await waitFor(() => expect(saveButton()).toBeEnabled());

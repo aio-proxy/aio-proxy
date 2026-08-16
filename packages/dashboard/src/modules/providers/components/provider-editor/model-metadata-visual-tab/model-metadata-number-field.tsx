@@ -7,6 +7,8 @@ interface ModelMetadataNumberFieldProps {
   readonly label: string;
   readonly min: number;
   readonly step: number | 'any';
+  /** Shown while empty, so a blank field reads as "inherit" rather than as zero. */
+  readonly placeholder: string;
   readonly value: number | undefined;
   readonly onValueChange: (next: number | undefined) => void;
 }
@@ -24,6 +26,7 @@ export const ModelMetadataNumberField: React.FC<ModelMetadataNumberFieldProps> =
   label,
   min,
   step,
+  placeholder,
   value,
   onValueChange,
 }) => {
@@ -45,6 +48,7 @@ export const ModelMetadataNumberField: React.FC<ModelMetadataNumberFieldProps> =
         type="number"
         min={min}
         step={step}
+        placeholder={placeholder}
         value={text}
         onChange={(event) => {
           const next = event.target.value;

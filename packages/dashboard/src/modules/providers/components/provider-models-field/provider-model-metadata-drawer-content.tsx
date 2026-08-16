@@ -28,6 +28,7 @@ export const ProviderModelMetadataDrawerContent: React.FC<ProviderModelMetadataD
   onSave,
 }) => {
   const [draft, setDraft] = useState(initialDraft);
+  const [mode, setMode] = useState<'visual' | 'json'>('visual');
   const parsed = useMemo(() => {
     try {
       return ModelMetadataSchema.safeParse(JSON.parse(draft));
@@ -50,6 +51,9 @@ export const ProviderModelMetadataDrawerContent: React.FC<ProviderModelMetadataD
       return undefined;
     }
   }, [draft]);
+  // One source of truth for the tab: the user's own choice, overridden only while the draft cannot be
+  // shown as a form. Repairing the draft therefore returns the user to the tab they picked.
+  const activeMode = rawValue === undefined ? 'json' : mode;
 
   return (
     <DrawerContent className="p-0 sm:w-full sm:max-w-[680px]" data-testid="provider-model-metadata-drawer">
@@ -58,8 +62,15 @@ export const ProviderModelMetadataDrawerContent: React.FC<ProviderModelMetadataD
         <DrawerDescription>{m['dashboard.providers.form.metadata_description']()}</DrawerDescription>
       </DrawerHeader>
       <div className="min-h-0 flex-1 overflow-auto p-4">
-        {/* JSON is the default: the textarea is the shipped editor and reaches keys the visual tab cannot. */}
-        <Tabs defaultValue="json">
+        {/* Visual is the default: this is a form, not a code editor. JSON takes over only while the
+            draft cannot be rendered as one, and stays available for the keys the form does not reach. */}
+        <Tabs
+          value={activeMode}
+          onValueChange={(next: unknown) => {
+            if (next === 'json') setMode('json');
+            else if (next === 'visual' && rawValue !== undefined) setMode('visual');
+          }}
+        >
           <TabsList>
             {/*
               Disabled while the draft is not a JSON object: the visual tab merges over the parsed
@@ -75,7 +86,9 @@ export const ProviderModelMetadataDrawerContent: React.FC<ProviderModelMetadataD
             >
               {m['dashboard.providers.editor.metadata_tab_visual']()}
             </TabsTrigger>
-            <TabsTrigger value="json">{m['dashboard.providers.editor.metadata_tab_json']()}</TabsTrigger>
+            <TabsTrigger value="json" data-testid="metadata-tab-json">
+              {m['dashboard.providers.editor.metadata_tab_json']()}
+            </TabsTrigger>
           </TabsList>
           <TabsContent value="visual">
             {rawValue === undefined ? null : (
@@ -85,6 +98,7 @@ export const ProviderModelMetadataDrawerContent: React.FC<ProviderModelMetadataD
           <TabsContent value="json">
             <Textarea
               className="min-h-72 font-mono"
+              data-testid="metadata-json-draft"
               aria-label={m['dashboard.providers.form.metadata_json_label']({ model })}
               aria-invalid={!parsed.success}
               value={draft}
