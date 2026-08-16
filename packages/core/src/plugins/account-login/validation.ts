@@ -153,15 +153,21 @@ export function providerEntry(
   defaults?: ProviderAlias,
   patch?: OAuthProviderPatch,
 ): PlainRecord {
+  // Retention is per-field: a patch that omits a field keeps the stored value, because a re-login or a
+  // partial edit surface must not delete config the user authored elsewhere. `weight` is the deliberate
+  // exception — `{ weight: undefined }` is `{}` after JSON, so an omitted key is the only "absent" signal
+  // a caller has, and retaining it would make a cleared weight unreachable over the wire. `name` gets the
+  // same treatment via `''`, its own surviving clear signal (see the entry spread below).
   const enabled = patch?.enabled ?? existing?.['enabled'] ?? true;
   const weight = patch === undefined ? existing?.['weight'] : patch.weight;
-  const name = patch === undefined ? existing?.['name'] : patch.name;
-  const alias = patch === undefined ? (existing?.['alias'] ?? defaults) : patch.alias;
-  const models = patch === undefined ? existing?.['models'] : patch.models;
+  const name = patch?.name === undefined ? existing?.['name'] : patch.name;
+  // `defaults` seeds a first login only, and stays gated on a patchless caller so a dashboard create
+  // keeps writing no alias. Widening it to every create is a behaviour change, not a retention fix.
+  const alias =
+    patch?.alias === undefined ? (existing?.['alias'] ?? (patch === undefined ? defaults : undefined)) : patch.alias;
+  const models = patch?.models === undefined ? existing?.['models'] : patch.models;
   const proxy = patch?.proxy === undefined ? existing?.['proxy'] : patch.proxy;
   const transforms = patch?.transforms === undefined ? existing?.['transforms'] : patch.transforms;
-  // Retained, not cleared, when the patch omits it: a re-login triggered from a surface that does not
-  // edit per-model metadata must not delete the authored overrides. The editor sends the whole map.
   const metadata = patch?.metadata === undefined ? existing?.['metadata'] : patch.metadata;
   return {
     kind: 'oauth',
@@ -170,7 +176,7 @@ export function providerEntry(
     ...(Object.keys(publicOptions).length === 0 ? {} : { options: publicOptions }),
     enabled,
     ...(weight === undefined ? {} : { weight }),
-    ...(name === undefined ? {} : { name }),
+    ...(name === undefined || name === '' ? {} : { name }),
     ...(alias === undefined ? {} : { alias }),
     ...(models === undefined ? {} : { models }),
     ...(metadata === undefined ? {} : { metadata }),
