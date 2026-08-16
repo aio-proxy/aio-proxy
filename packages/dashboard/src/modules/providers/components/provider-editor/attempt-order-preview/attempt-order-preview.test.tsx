@@ -63,22 +63,27 @@ describe('attemptOrder', () => {
   });
 
   // The ordering weight and the displayed weight are different values. An absent weight must still
-  // sort as 0 — the mutant is "display-only means display-only everywhere", which would sort absent
-  // above an explicit weight (NaN comparison) or below it.
+  // sort as 0 — the mutant is `effectiveWeight` losing its coalesce, which makes absent compare as NaN.
+  // The candidate *order* is the assertion that does the work, and the absent provider is deliberately
+  // listed BEFORE a positive-weight one so correct coalescing has to move it: with self appended last,
+  // an absent self is already in its sorted position and NaN would leave the array untouched. `tie` is
+  // false under both the correct code and the mutant, so it is not the discriminator here. `toStrictEqual`
+  // is what stops a dropped `weight: undefined` key from passing.
   test('an absent weight still sorts as zero even though it displays as absent', () => {
     expect(
       attemptOrder({
         selfId: 'self',
-        selfWeight: undefined,
+        selfWeight: 1,
         exposedAliases: ['smart'],
-        others: [other('weighted', 5, ['smart'])],
+        others: [other('absent', undefined, ['smart']), other('weighted', 5, ['smart'])],
       }),
     ).toStrictEqual([
       {
         alias: 'smart',
         candidates: [
           { id: 'weighted', weight: 5, self: false },
-          { id: 'self', weight: undefined, self: true },
+          { id: 'self', weight: 1, self: true },
+          { id: 'absent', weight: undefined, self: false },
         ],
         tie: false,
       },

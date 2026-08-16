@@ -85,7 +85,6 @@ const Harness: React.FC<HarnessProps> = ({
     () => undefined,
     pickedCapability ? { capabilityKey: capabilityKey(capability) } : {},
   );
-  const isEdit = mode === ProviderFormMode.Edit;
   return (
     <ConnectionSection
       form={form}
@@ -93,8 +92,12 @@ const Harness: React.FC<HarnessProps> = ({
       mode={mode}
       kind={kind}
       capabilities={[capability]}
-      oauth={isEdit && withhold !== 'oauth' ? oauthEdit : undefined}
-      provider={isEdit && withhold !== 'provider' ? oauthProvider : undefined}
+      // Supplied regardless of `kind` and `mode`, and only `withhold` takes them away. Tying them to
+      // `isEdit` made them `undefined` in every non-edit test, which meant the edit arm's own
+      // `oauth !== undefined && provider !== undefined` half suppressed it there — so dropping the
+      // arm's `kind` or `mode` condition reddened nothing.
+      oauth={withhold === 'oauth' ? undefined : oauthEdit}
+      provider={withhold === 'provider' ? undefined : oauthProvider}
       onReauthorize={() => undefined}
       isAuthorizationPending={isAuthorizationPending}
       onAuthorize={() => undefined}
@@ -117,8 +120,10 @@ beforeEach(() => {
 
 describe('ConnectionSection', () => {
   // The kind switch is four sibling ternaries over the same children, so the mutant that matters is a
-  // dropped guard rather than a wrong one: each case asserts the other three arms are absent, which is
-  // what fails if any `kind === ...` or `mode === ...` condition is removed.
+  // dropped guard rather than a wrong one. Because the Harness now hands `oauth` and `provider` to
+  // every case, each arm's "the other three are absent" assertions are live: a dropped `kind` or `mode`
+  // condition mounts a second arm and reddens one of them. The one exception is the edit arm's `kind`
+  // guard, which needs an Edit-mode non-oauth kind to see — that is the api-edit test below.
   test('an api provider gets the api fields and nothing from the other three arms', () => {
     renderConnection({ kind: ProviderKind.Api });
 
@@ -128,10 +133,28 @@ describe('ConnectionSection', () => {
     expect(oauthEditFields()).toBeNull();
   });
 
+  // Every other Edit-mode case in this file is oauth, so this is the only place the edit arm's
+  // `kind === ProviderKind.OAuth` condition is observable: without it, an api provider being edited
+  // mounts the oauth account panel over its own fields.
+  test('an api provider being edited gets no oauth panel even with an oauth payload in hand', () => {
+    renderConnection({ kind: ProviderKind.Api, mode: ProviderFormMode.Edit });
+
+    expect(apiFields()).toBeInTheDocument();
+    expect(oauthEditFields()).toBeNull();
+    expect(oauthCreateFields()).toBeNull();
+  });
+
   test('an ai-sdk provider gets the package fields and nothing from the other three arms', () => {
     renderConnection({ kind: ProviderKind.AiSdk });
 
     expect(aiSdkFields()).toBeInTheDocument();
+    // The package combobox carries no `aria-label`, on the grounds that the caller's visible
+    // `<Label htmlFor>` already names it. That association lives in provider-form-fields-ai-sdk.tsx,
+    // and the combobox's own test hand-copies it into a harness — so only an assertion against the
+    // REAL caller, here, catches the shipped label being deleted and leaving an unnamed combobox.
+    expect(
+      screen.getByRole('combobox', { name: m['dashboard.providers.form.label_package_name']() }),
+    ).toBeInTheDocument();
     expect(apiFields()).toBeNull();
     expect(oauthCreateFields()).toBeNull();
     expect(oauthEditFields()).toBeNull();

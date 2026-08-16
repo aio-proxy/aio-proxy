@@ -94,7 +94,6 @@ describe('AdvancedSection', () => {
     fireEvent.click(removeHeader('x-only'));
 
     expect(headers()).toEqual({});
-    expect(headers()).not.toBeUndefined();
   });
 
   test('deleting one of two headers keeps the other', () => {
@@ -113,7 +112,6 @@ describe('AdvancedSection', () => {
     fireEvent.click(removeRule(1));
 
     expect(transforms()).toEqual({ request: [] });
-    expect(transforms()?.request).toHaveLength(0);
   });
 
   test('deleting one of two transform rules keeps the other', () => {
