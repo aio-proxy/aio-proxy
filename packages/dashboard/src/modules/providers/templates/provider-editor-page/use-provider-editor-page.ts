@@ -27,7 +27,7 @@ import { applyModelRows, toModelRows } from '../../lib/model-rows';
 import { oauthAccountSubmission } from '../../lib/oauth-account-submission';
 import { capabilityKey } from '../../lib/oauth-capability-key';
 import { oauthProviderEditAction } from '../../lib/oauth-provider-edit';
-import { blockingSections, sectionStatuses } from '../../lib/section-status';
+import { sectionStatuses } from '../../lib/section-status';
 import { oauthCapabilitiesQueryOptions } from '../../services/oauth-service';
 import { providersQueryOptions } from '../../services/providers-service';
 import { useOAuthEditorSession } from './use-oauth-editor-session';
@@ -247,7 +247,6 @@ export const useProviderEditorPage = ({
     proxyCustom: values.proxy !== undefined && values.proxy !== null,
     optionsValid,
   });
-  const blocking = blockingSections(summaries);
 
   const handleKindChange = (next: ProviderKind) => {
     onKindChange?.(next);
@@ -299,7 +298,6 @@ export const useProviderEditorPage = ({
     oauth,
     provider,
     summaries,
-    blocking,
     authorized,
     saved,
     sessionWarning,

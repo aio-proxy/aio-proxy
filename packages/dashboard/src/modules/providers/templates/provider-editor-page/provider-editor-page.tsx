@@ -32,7 +32,6 @@ export const ProviderEditorPage: React.FC<ProviderEditorPageProps> = (props) => 
     oauth,
     provider,
     summaries,
-    blocking,
     authorized,
     saved,
     sessionWarning,
@@ -154,7 +153,7 @@ export const ProviderEditorPage: React.FC<ProviderEditorPageProps> = (props) => 
         <p className="mt-4 text-sm text-muted-foreground">{m['dashboard.providers.editor.footer_saved']()}</p>
       ) : null}
       <EditorFooter
-        blocking={blocking}
+        summaries={summaries}
         primaryLabel={primaryLabel}
         onPrimary={() => save(false)}
         onCancel={() => void navigate({ to: '/providers' })}

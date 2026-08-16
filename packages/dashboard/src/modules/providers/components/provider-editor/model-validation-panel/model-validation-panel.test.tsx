@@ -164,6 +164,38 @@ describe('ModelValidationPanel', () => {
     });
   });
 
+  test('a failed result is distinguishable from a passing one without reading the text', async () => {
+    mocks.testDraft.mockRejectedValue(new Error('offline'));
+    const failed = render(
+      <Harness
+        kind={ProviderKind.Api}
+        initial={apiInitial(['model-a'])}
+        testableModels={['model-a']}
+        persistedProviderId="provider"
+      />,
+      { wrapper },
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Test connection|测试连接/u }));
+    await waitFor(() => expect(screen.getByRole('alert').className).toContain('text-destructive'));
+    failed.unmount();
+    queryClient.clear();
+
+    mocks.testDraft.mockResolvedValue({ ok: true });
+    render(
+      <Harness
+        kind={ProviderKind.Api}
+        initial={apiInitial(['model-a'])}
+        testableModels={['model-a']}
+        persistedProviderId="provider"
+      />,
+      { wrapper },
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Test connection|测试连接/u }));
+    expect((await screen.findByRole('status')).className).not.toContain('text-destructive');
+  });
+
   test('an api fixture with an alias offers the upstream model id, not the alias', async () => {
     render(
       <Harness

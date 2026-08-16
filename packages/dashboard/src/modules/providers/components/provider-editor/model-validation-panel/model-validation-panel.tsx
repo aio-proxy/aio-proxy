@@ -1,10 +1,13 @@
 import { m } from '@aio-proxy/i18n';
 import { ProviderKind, type DashboardProviderDraftTestResponse } from '@aio-proxy/types';
 import { Button } from '@aio-proxy/ui/components/button';
-import { Field, FieldDescription } from '@aio-proxy/ui/components/field';
+import { Field } from '@aio-proxy/ui/components/field';
 import { Label } from '@aio-proxy/ui/components/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@aio-proxy/ui/components/select';
+import { Spinner } from '@aio-proxy/ui/components/spinner';
+import { cn } from '@aio-proxy/ui/lib/utils';
 import { useSelector } from '@tanstack/react-store';
+import { CircleAlertIcon, CircleCheckIcon } from 'lucide-react';
 
 import type { ProviderEditorForm } from '../../../hooks/use-provider-editor-form';
 import { useProviderTestMutation } from '../../../hooks/use-provider-test-mutation';
@@ -44,7 +47,7 @@ export const ModelValidationPanel: React.FC<ModelValidationPanelProps> = ({
     <section className="space-y-5" aria-labelledby="provider-validate-heading">
       <div className="space-y-1">
         <h2 id="provider-validate-heading" className="text-base font-semibold">
-          {m['dashboard.providers.editor.validate_action']()}
+          {m['dashboard.providers.editor.validate_title']()}
         </h2>
         <p className="text-sm text-muted-foreground">{m['dashboard.providers.editor.validate_description']()}</p>
       </div>
@@ -73,16 +76,18 @@ export const ModelValidationPanel: React.FC<ModelValidationPanelProps> = ({
                   ))}
                 </SelectContent>
               </Select>
-              <FieldDescription>{m['dashboard.providers.editor.validate_description']()}</FieldDescription>
             </Field>
           )}
         </form.Field>
       )}
       <Button
         type="button"
+        variant="outline"
+        className="w-full"
         disabled={selectedModel === undefined || testMutation.isPending}
         onClick={() => selectedModel !== undefined && testMutation.mutate(selectedModel)}
       >
+        {testMutation.isPending ? <Spinner data-icon="inline-start" /> : null}
         {testMutation.isPending
           ? m['dashboard.providers.editor.validate_pending']()
           : m['dashboard.providers.editor.validate_action']()}
@@ -91,7 +96,15 @@ export const ModelValidationPanel: React.FC<ModelValidationPanelProps> = ({
         <p className="text-sm text-muted-foreground">{m['dashboard.providers.editor.test_checks_saved_account']()}</p>
       ) : null}
       {result === null ? null : (
-        <p role={result.ok ? 'status' : 'alert'} className="rounded-lg border bg-muted p-3 text-sm">
+        <p
+          role={result.ok ? 'status' : 'alert'}
+          className={cn('flex items-start gap-1.5 text-sm', result.ok ? 'text-muted-foreground' : 'text-destructive')}
+        >
+          {result.ok ? (
+            <CircleCheckIcon className="mt-0.5 size-3.5 shrink-0 text-primary" />
+          ) : (
+            <CircleAlertIcon className="mt-0.5 size-3.5 shrink-0" />
+          )}
           {resultMessage}
         </p>
       )}

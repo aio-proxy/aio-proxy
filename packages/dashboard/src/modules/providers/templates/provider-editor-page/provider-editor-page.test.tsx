@@ -516,6 +516,76 @@ test('create mode explains what the page is for under the title', () => {
   expect(screen.getByText(m['dashboard.providers.editor.header_create_subtitle']())).toBeTruthy();
 });
 
+test('an attention-only section is listed in the footer and still leaves Save enabled', async () => {
+  renderPage({
+    mode: ProviderFormMode.Create,
+    kind: ProviderKind.Api,
+    initial: { enabled: true, models: ['gpt-5-mini'] },
+    onSessionIdChange: rs.fn(),
+  });
+
+  fillName('Demo API');
+  fillId('demo-api');
+  fillBaseURL('https://api.example.com/v1');
+  await pickProtocol();
+
+  // An api create with no key is `attention`, never `todo`: the key may be supplied later.
+  const footer = within(screen.getByTestId('editor-footer'));
+  await waitFor(() => expect(footer.getByText(m['dashboard.providers.editor.footer_attention']())).toBeTruthy());
+  expect(footer.getByRole('button', { name: /Connection/u })).toBeTruthy();
+  expect(footer.queryByText(m['dashboard.providers.editor.footer_blocking']())).toBeNull();
+  // D-F2: listing a section is not gating it. Gating on the displayed list disables Save here.
+  expect(saveButton()).toBeEnabled();
+});
+
+test('a form with nothing outstanding announces that it is ready to save', () => {
+  renderPage({
+    mode: ProviderFormMode.Edit,
+    kind: ProviderKind.Api,
+    providerId: 'p1',
+    initial: {
+      id: 'p1',
+      name: 'Existing',
+      enabled: true,
+      protocol: ProviderProtocol.OpenAICompatible,
+      baseURL: 'https://api.example.com/v1',
+      models: ['gpt-5-mini'],
+    },
+    onSessionIdChange: rs.fn(),
+  });
+
+  const status = within(screen.getByTestId('editor-footer')).getByText(m['dashboard.providers.editor.footer_ready']());
+  expect(status).toHaveAttribute('aria-live', 'polite');
+  expect(saveButton()).toBeEnabled();
+});
+
+test('every exposure row names its origin, direct models included', () => {
+  renderPage({
+    mode: ProviderFormMode.Edit,
+    kind: ProviderKind.Api,
+    providerId: 'p1',
+    initial: {
+      id: 'p1',
+      enabled: true,
+      protocol: ProviderProtocol.OpenAICompatible,
+      baseURL: 'https://api.example.com/v1',
+      models: ['direct-a', 'direct-b'],
+      alias: { friendly: { model: 'direct-b', preserve: false } },
+    },
+    onSessionIdChange: rs.fn(),
+  });
+
+  const rail = within(screen.getByTestId('exposure-panel'));
+  // `direct-a` exposes its own upstream id, so `alias !== modelId` leaves it unlabelled.
+  const direct = within(rail.getByTestId('exposure-route-direct-a'));
+  expect(direct.getByText(m['dashboard.providers.editor.exposure_origin_model']())).toBeTruthy();
+  expect(direct.queryByText(m['dashboard.providers.editor.exposure_origin_alias']())).toBeNull();
+
+  const mapped = within(rail.getByTestId('exposure-route-friendly'));
+  expect(mapped.getByText(m['dashboard.providers.editor.exposure_origin_alias']())).toBeTruthy();
+  expect(mapped.getByText(/direct-b/u)).toBeTruthy();
+});
+
 test('edit-api clearing model metadata sends an explicit empty metadata object', async () => {
   renderPage({
     mode: ProviderFormMode.Edit,
