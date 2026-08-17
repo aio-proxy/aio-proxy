@@ -1,5 +1,28 @@
 # @aio-proxy/core
 
+## 0.8.0
+
+### Minor Changes
+
+- [#179](https://github.com/aio-proxy/aio-proxy/pull/179) [`667d232`](https://github.com/aio-proxy/aio-proxy/commit/667d2322171b9e41ebdb6ae727701ef7b3866203) Thanks [@baranwang](https://github.com/baranwang)! - core: select alias targets from effort, thinking, and speed dimensions. A Gemini 1D variant key `off`/`OFF` no longer matches `thinkingLevel: "OFF"`; replace it with `{ "when": { "thinking": false }, "model": "…" }` (or drop the row and use the alias `model`) — shipped Antigravity defaults are unaffected.
+
+- [#177](https://github.com/aio-proxy/aio-proxy/pull/177) [`3975995`](https://github.com/aio-proxy/aio-proxy/commit/3975995850c0bd7c8282d25387bd56c2f9b3c705) Thanks [@baranwang](https://github.com/baranwang)! - API providers can declare multi-protocol `endpoints` (per-protocol or shared AI SDK-style base URLs). Raw passthrough now matches any natively supported protocol, Anthropic endpoints accept `auth: "bearer"`, and cross-protocol conversion keeps targeting the primary endpoint.
+
+### Patch Changes
+
+- [#180](https://github.com/aio-proxy/aio-proxy/pull/180) [`4f73aa6`](https://github.com/aio-proxy/aio-proxy/commit/4f73aa69236d458a8ad8c811287fad03d674ad43) Thanks [@baranwang](https://github.com/baranwang)! - core: accept namespaced custom tools and align replayed Codex custom/function call history to the unique flattened tool name
+- Updated dependencies [[`667d232`](https://github.com/aio-proxy/aio-proxy/commit/667d2322171b9e41ebdb6ae727701ef7b3866203), [`3975995`](https://github.com/aio-proxy/aio-proxy/commit/3975995850c0bd7c8282d25387bd56c2f9b3c705), [`b5e40ce`](https://github.com/aio-proxy/aio-proxy/commit/b5e40ceaa0d60eb5fee734c63fb92c9794c3ebc9)]:
+  - @aio-proxy/types@0.8.0
+  - @aio-proxy/plugin-openai-chatgpt@0.8.0
+  - @aio-proxy/i18n@0.8.0
+  - @aio-proxy/logger@0.8.0
+  - @aio-proxy/plugin-cursor@0.8.0
+  - @aio-proxy/plugin-github-copilot@0.8.0
+  - @aio-proxy/plugin-google-antigravity@0.8.0
+  - @aio-proxy/plugin-kimi-code@0.8.0
+  - @aio-proxy/plugin-sdk@0.8.0
+  - @aio-proxy/plugin-xai-grok@0.8.0
+
 ## 0.7.0
 
 ### Minor Changes
