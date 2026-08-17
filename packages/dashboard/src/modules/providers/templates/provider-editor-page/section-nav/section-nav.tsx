@@ -17,7 +17,7 @@ interface SectionNavProps {
 export const SectionNav: React.FC<SectionNavProps> = ({ summaries, activeId }) => (
   <nav
     aria-label={m['dashboard.providers.editor.section_nav_label']()}
-    className="sticky top-0 z-20 mb-6 flex gap-1 overflow-x-auto border-b bg-background/85 py-2.5 backdrop-blur-md"
+    className="sticky top-0 z-20 mb-6 flex gap-1 overflow-x-auto bg-page-background/85 py-2.5 backdrop-blur-md"
   >
     {SECTION_ORDER.map((id) => (
       <a

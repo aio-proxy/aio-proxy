@@ -16,7 +16,7 @@ export const RootLayoutContent: React.FC = () => {
     return (
       <main
         aria-label={m['dashboard.auth.loading']()}
-        className="flex min-h-dvh items-center justify-center bg-background px-4"
+        className="flex min-h-dvh items-center justify-center bg-page-background px-4"
       >
         <div className="w-full max-w-sm space-y-4" role="status">
           <Skeleton className="h-6 w-28" />
@@ -30,7 +30,7 @@ export const RootLayoutContent: React.FC = () => {
     return session.data.reason === undefined ? <LoginPage /> : <LoginPage reason={session.data.reason} />;
 
   return (
-    <SidebarProvider className="overflow-x-hidden overflow-y-hidden bg-olive-50 dark:bg-olive-950">
+    <SidebarProvider className="overflow-x-hidden overflow-y-hidden bg-page-background">
       <SideMenu />
       <SidebarInset className="h-dvh overflow-hidden bg-transparent">
         <Outlet />
