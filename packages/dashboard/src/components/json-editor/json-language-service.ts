@@ -13,9 +13,8 @@ import {
   DiagnosticSeverity,
   getLanguageService,
   type Diagnostic,
-  type LanguageService,
+  type JSONSchema,
 } from 'vscode-json-languageservice';
-import { TextDocument } from 'vscode-languageserver-textdocument';
 
 import type { JsonSchema, JsonValidationMarker } from './json-editor-state';
 import { markdownToDom } from './json-markup';
@@ -33,12 +32,7 @@ const documentSettings = {
   schemaValidation: 'error',
 } as const;
 
-let languageService: LanguageService | undefined;
-
-const getJsonLanguageService = () => {
-  languageService ??= getLanguageService({ clientCapabilities: ClientCapabilities.LATEST });
-  return languageService;
-};
+const languageService = getLanguageService({ clientCapabilities: ClientCapabilities.LATEST });
 
 export const toJsonValidationMarkers = (diagnostics: readonly Diagnostic[]): readonly JsonValidationMarker[] =>
   diagnostics.flatMap((diagnostic): readonly JsonValidationMarker[] => {
@@ -48,7 +42,7 @@ export const toJsonValidationMarkers = (diagnostics: readonly Diagnostic[]): rea
   });
 
 export const configureJsonSchemas = (schemas: readonly JsonSchemaRegistration[]) => {
-  getJsonLanguageService().configure({
+  languageService.configure({
     validate: true,
     allowComments: false,
     schemas: schemas.map(({ fileMatch, schema, ...registration }) => ({
@@ -59,19 +53,12 @@ export const configureJsonSchemas = (schemas: readonly JsonSchemaRegistration[])
   });
 };
 
-export const validateJsonModel = async (modelUri: string, text: string) => {
-  const service = getJsonLanguageService();
-  const document = TextDocument.create(modelUri, 'json', 1, text);
-  const diagnostics = await service.doValidation(document, service.parseJSONDocument(document), documentSettings);
-  return toJsonValidationMarkers(diagnostics);
-};
-
 export const createJsonCompletionSource = (): CompletionSource => {
-  const service = getJsonLanguageService();
   const source = createCompletionSource({
     markdownToDom,
     triggerCharacters: '": \n\t,',
-    doComplete: (document, position) => service.doComplete(document, position, service.parseJSONDocument(document)),
+    doComplete: (document, position) =>
+      languageService.doComplete(document, position, languageService.parseJSONDocument(document)),
   });
 
   return async (context) => {
@@ -87,28 +74,37 @@ export const createJsonCompletionSource = (): CompletionSource => {
 };
 
 export const createJsonHoverTooltipSource = () => {
-  const service = getJsonLanguageService();
   return createHoverTooltipSource({
     markdownToDom,
-    doHover: (document, position) => service.doHover(document, position, service.parseJSONDocument(document)),
+    doHover: (document, position) =>
+      languageService.doHover(document, position, languageService.parseJSONDocument(document)),
   });
 };
 
-export const createJsonLanguageExtensions = (uri: string): Extension[] => {
-  const service = getJsonLanguageService();
-  const parse = (document: TextDocument) => service.parseJSONDocument(document);
-
-  return [
-    textDocument(uri),
-    autocompletion({
-      icons: false,
-      override: [createJsonCompletionSource()],
+export const createJsonLanguageExtensions = (
+  uri: string,
+  schema: JsonSchema | undefined,
+  onValidation: (draft: string, markers: readonly JsonValidationMarker[]) => void,
+): Extension[] => [
+  textDocument(uri),
+  autocompletion({
+    icons: false,
+    override: [createJsonCompletionSource()],
+  }),
+  hoverTooltip(createJsonHoverTooltipSource()),
+  linter(
+    createLintSource({
+      doDiagnostics: async (document) => {
+        const diagnostics = await languageService.doValidation(
+          document,
+          languageService.parseJSONDocument(document),
+          documentSettings,
+          schema as JSONSchema | undefined,
+        );
+        onValidation(document.getText(), toJsonValidationMarkers(diagnostics));
+        return diagnostics;
+      },
     }),
-    hoverTooltip(createJsonHoverTooltipSource()),
-    linter(
-      createLintSource({
-        doDiagnostics: (document) => service.doValidation(document, parse(document), documentSettings),
-      }),
-    ),
-  ];
-};
+    { delay: 0 },
+  ),
+];

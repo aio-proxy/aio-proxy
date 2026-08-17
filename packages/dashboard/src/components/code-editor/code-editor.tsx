@@ -11,11 +11,10 @@ import {
   keymap,
   lineNumbers,
 } from '@codemirror/view';
-import { useTheme } from 'next-themes';
 import { useEffect, useRef } from 'react';
 
 import { createCodeEditorContentAttributes } from './code-editor-accessibility';
-import { createCodeEditorTheme } from './themes';
+import { codeEditorTheme } from './themes';
 
 import styles from './code-editor.module.css';
 
@@ -28,18 +27,13 @@ interface CodeEditorProps {
   readonly extensions?: Extension[];
 }
 
-const toThemeMode = (theme: string | undefined) => (theme === 'dark' ? 'dark' : 'light');
-
 export const CodeEditor: React.FC<CodeEditorProps> = ({ className, invalid, id, onChange, value, extensions }) => {
-  const { resolvedTheme } = useTheme();
   const parentRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView>(null);
   const valueRef = useRef(value);
   const onChangeRef = useRef(onChange);
-  const themeCompartment = useRef(new Compartment());
   const a11yCompartment = useRef(new Compartment());
   const extraCompartment = useRef(new Compartment());
-
   useEffect(() => {
     valueRef.current = value;
     onChangeRef.current = onChange;
@@ -66,7 +60,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ className, invalid, id, 
             const next = update.state.doc.toString();
             if (next !== valueRef.current) onChangeRef.current?.(next);
           }),
-          themeCompartment.current.of(createCodeEditorTheme(toThemeMode(resolvedTheme))),
+          codeEditorTheme,
           a11yCompartment.current.of(
             EditorView.contentAttributes.of(createCodeEditorContentAttributes({ invalid, id })),
           ),
@@ -89,12 +83,6 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({ className, invalid, id, 
     if (!view || view.state.doc.toString() === value) return;
     view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: value } });
   }, [value]);
-
-  useEffect(() => {
-    viewRef.current?.dispatch({
-      effects: themeCompartment.current.reconfigure(createCodeEditorTheme(toThemeMode(resolvedTheme))),
-    });
-  }, [resolvedTheme]);
 
   useEffect(() => {
     viewRef.current?.dispatch({

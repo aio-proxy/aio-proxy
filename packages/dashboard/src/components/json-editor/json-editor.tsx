@@ -14,7 +14,7 @@ import {
   parseJsonDraft,
 } from './json-editor-state';
 import { createJsonLanguageExtensions } from './json-language-service';
-import { registerJsonSchema, validateJsonModel } from './json-schema-registry';
+import { registerJsonSchema } from './json-schema-registry';
 
 export type JsonEditorProps = {
   readonly value: JsonValue | undefined;
@@ -48,7 +48,8 @@ type ControlledJsonDraftAction =
   | { readonly type: 'begin-validation'; readonly schema: JsonSchema | undefined }
   | {
       readonly type: 'complete-validation';
-      readonly generation: number;
+      readonly draft: string;
+      readonly schema: JsonSchema | undefined;
       readonly markers: JsonEditorValidation['markers'];
     }
   | { readonly type: 'set-external-value-pending'; readonly pending: boolean };
@@ -71,9 +72,16 @@ const controlledJsonDraftReducer = (
     };
   }
   if (action.type === 'complete-validation') {
+    if (
+      !state.validationState.pending ||
+      state.validationState.draft !== action.draft ||
+      state.validationState.schema !== action.schema
+    )
+      return state;
+
     return {
       ...state,
-      validationState: completeJsonValidation(state.validationState, action.generation, action.markers),
+      validationState: completeJsonValidation(state.validationState, state.validationState.generation, action.markers),
     };
   }
   return { ...state, externalValuePending: action.pending };
@@ -142,7 +150,6 @@ export const JsonEditor: React.FC<JsonEditorProps> = ({
 }) => {
   const generatedId = useId();
   const modelUri = useMemo(() => createJsonEditorModelUri(generatedId, id), [generatedId, id]);
-  const languageExtensions = useMemo(() => createJsonLanguageExtensions(modelUri), [modelUri]);
   const {
     draft,
     validationState,
@@ -151,6 +158,16 @@ export const JsonEditor: React.FC<JsonEditorProps> = ({
     expectValueAcknowledgement,
     markExternalValuePending,
   } = useControlledJsonDraft(value, schema);
+  const handleLanguageValidation = useCallback(
+    (validatedDraft: string, markers: JsonEditorValidation['markers']) => {
+      dispatch({ type: 'complete-validation', draft: validatedDraft, schema: validationState.schema, markers });
+    },
+    [dispatch, validationState.schema],
+  );
+  const languageExtensions = useMemo(
+    () => createJsonLanguageExtensions(modelUri, validationState.schema, handleLanguageValidation),
+    [handleLanguageValidation, modelUri, validationState.schema],
+  );
 
   useEffect(() => {
     dispatch({ type: 'begin-validation', schema });
@@ -162,29 +179,6 @@ export const JsonEditor: React.FC<JsonEditorProps> = ({
       schema,
     });
   }, [dispatch, modelUri, schema]);
-
-  useEffect(() => {
-    if (
-      schema === undefined ||
-      !validationState.pending ||
-      validationState.draft !== draft ||
-      validationState.schema !== schema
-    )
-      return;
-
-    const generation = validationState.generation;
-    let active = true;
-
-    void validateJsonModel(modelUri, validationState.draft)
-      .then((nextMarkers) => {
-        if (active) dispatch({ type: 'complete-validation', generation, markers: nextMarkers });
-      })
-      .catch(() => undefined);
-
-    return () => {
-      active = false;
-    };
-  }, [dispatch, draft, modelUri, schema, validationState]);
 
   const parseResult = parseJsonDraft(draft);
   const draftValidation = useMemo(

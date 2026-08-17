@@ -1,6 +1,7 @@
 import type { ProviderRequestTransformRule } from '@aio-proxy/types';
 import { beforeEach, expect, rs, test } from '@rstest/core';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { useEffect } from 'react';
 
 import { JsonEditor, type JsonEditorValueAcknowledgement } from '@/components/json-editor/json-editor';
 import type { JsonValue } from '@/components/json-editor/json-editor-state';
@@ -9,27 +10,43 @@ import { ProviderRequestTransformsEditor } from './provider-request-transforms-e
 
 const validationMocks = rs.hoisted(() => ({
   requests: [] as Array<{
-    readonly promise: Promise<readonly { readonly severity: 'error' | 'warning' }[]>;
     readonly resolve: (markers: readonly { readonly severity: 'error' | 'warning' }[]) => void;
   }>,
 }));
 
 rs.mock('@/components/json-editor/json-schema-registry', () => ({
   registerJsonSchema: () => () => undefined,
-  validateJsonModel: () => {
-    let resolve!: (markers: readonly { readonly severity: 'error' | 'warning' }[]) => void;
-    const promise = new Promise<readonly { readonly severity: 'error' | 'warning' }[]>((nextResolve) => {
-      resolve = nextResolve;
-    });
-    validationMocks.requests.push({ promise, resolve });
-    return promise;
-  },
+}));
+
+rs.mock('@/components/json-editor/json-language-service', () => ({
+  createJsonLanguageExtensions: (
+    _uri: string,
+    _schema: unknown,
+    onValidation: (draft: string, markers: readonly { readonly severity: 'error' | 'warning' }[]) => void,
+  ) => [{ onValidation }],
 }));
 
 rs.mock('@/components/code-editor', () => ({
-  CodeEditor: ({ id, onChange, value }: { id?: string; onChange?: (value: string) => void; value: string }) => (
-    <textarea id={id} value={value} onChange={(event) => onChange?.(event.target.value)} />
-  ),
+  CodeEditor: ({
+    id,
+    onChange,
+    value,
+    extensions,
+  }: {
+    id?: string;
+    onChange?: (value: string) => void;
+    value: string;
+    extensions?: Array<{
+      onValidation: (draft: string, markers: readonly { readonly severity: 'error' | 'warning' }[]) => void;
+    }>;
+  }) => {
+    useEffect(() => {
+      const listener = extensions?.[0]?.onValidation;
+      if (listener) validationMocks.requests.push({ resolve: (markers) => listener(value, markers) });
+    }, [extensions, value]);
+
+    return <textarea id={id} value={value} onChange={(event) => onChange?.(event.target.value)} />;
+  },
 }));
 
 const initialValue: readonly ProviderRequestTransformRule[] = [{ update: [{ $unset: 'request.body.store' }] }];

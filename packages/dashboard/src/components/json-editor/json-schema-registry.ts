@@ -28,5 +28,3 @@ const globalRegistry = createJsonSchemaRegistry(configureJsonSchemas);
 
 export const registerJsonSchema = (key: string, registration: JsonSchemaRegistration) =>
   globalRegistry.set(key, registration);
-
-export { validateJsonModel } from './json-language-service';

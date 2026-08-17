@@ -1,8 +1,10 @@
 import { CompletionContext } from '@codemirror/autocomplete';
 import { json } from '@codemirror/lang-json';
+import { forceLinting } from '@codemirror/lint';
 import { EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
-import { describe, expect, test } from '@rstest/core';
+import { describe, expect, rs, test } from '@rstest/core';
+import { waitFor } from '@testing-library/react';
 import { textDocument } from 'codemirror-languageservice';
 import { DiagnosticSeverity, type Diagnostic } from 'vscode-json-languageservice';
 
@@ -10,8 +12,8 @@ import {
   configureJsonSchemas,
   createJsonCompletionSource,
   createJsonHoverTooltipSource,
+  createJsonLanguageExtensions,
   toJsonValidationMarkers,
-  validateJsonModel,
 } from './json-language-service';
 
 const optionsUri = 'inmemory://aio-proxy/json-editor/options.json';
@@ -63,42 +65,34 @@ describe('json language service', () => {
     expect(toJsonValidationMarkers(diagnostics)).toEqual([{ severity: 'error' }, { severity: 'warning' }]);
   });
 
-  test('reports a schema mismatch as an error marker', async () => {
+  test('reports the diagnostics produced by the editor linter', async () => {
     configureJsonSchemas([
       {
         uri: 'schema:required-name',
-        fileMatch: ['inmemory://aio-proxy/json-editor/required-name.json'],
+        fileMatch: ['inmemory://aio-proxy/json-editor/lint-callback.json'],
         schema: {
           type: 'object',
           required: ['name'],
-          additionalProperties: false,
           properties: { name: { type: 'string' } },
         },
       },
     ]);
+    const onValidation = rs.fn();
+    const view = new EditorView({
+      doc: '{}',
+      extensions: [
+        json(),
+        ...createJsonLanguageExtensions(
+          'inmemory://aio-proxy/json-editor/lint-callback.json',
+          { type: 'object', required: ['name'], properties: { name: { type: 'string' } } },
+          onValidation,
+        ),
+      ],
+    });
 
-    await expect(validateJsonModel('inmemory://aio-proxy/json-editor/required-name.json', '{}')).resolves.toEqual([
-      { severity: 'error' },
-    ]);
-  });
-
-  test('accepts a document that matches the registered schema', async () => {
-    configureJsonSchemas([
-      {
-        uri: 'schema:required-name',
-        fileMatch: ['inmemory://aio-proxy/json-editor/required-name.json'],
-        schema: {
-          type: 'object',
-          required: ['name'],
-          additionalProperties: false,
-          properties: { name: { type: 'string' } },
-        },
-      },
-    ]);
-
-    await expect(
-      validateJsonModel('inmemory://aio-proxy/json-editor/required-name.json', '{"name":"ok"}'),
-    ).resolves.toEqual([]);
+    forceLinting(view);
+    await waitFor(() => expect(onValidation).toHaveBeenCalledWith('{}', [{ severity: 'error' }]));
+    view.destroy();
   });
 
   test('suggests every schema key after an opening quote', async () => {
