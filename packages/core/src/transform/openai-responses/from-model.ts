@@ -108,23 +108,14 @@ function responsesToolSources(tools: readonly OpenAIResponsesTransformTool[] | u
         ...(metadata.namespaceDescription === undefined ? {} : { description: metadata.namespaceDescription }),
         tools: [],
       };
-      namespace.tools.push(functionTool(tool, metadata.wireToolName ?? tool.name));
+      namespace.tools.push(executableTool(tool, metadata));
       if (!sourceNamespaces.has(metadata.namespace)) {
         sourceNamespaces.set(metadata.namespace, namespace);
         target.push(namespace);
       }
       continue;
     }
-    if (metadata?.wireToolType === 'custom') {
-      target.push({
-        type: 'custom',
-        name: metadata.wireToolName ?? tool.name,
-        ...(tool.description === undefined ? {} : { description: tool.description }),
-        ...(metadata.format === undefined ? {} : { format: metadata.format }),
-      });
-      continue;
-    }
-    target.push(functionTool(tool, metadata?.wireToolName ?? tool.name));
+    target.push(executableTool(tool, metadata));
   }
   return {
     request: request.length === 0 ? undefined : request,
@@ -162,10 +153,19 @@ function responsesToolChoice(
   };
 }
 
-function functionTool(
+function executableTool(
   tool: OpenAIResponsesTransformTool,
-  name: string,
-): Extract<OpenAIResponsesExecutableTool, { type: 'function' }> {
+  metadata: OpenAIResponsesWireMetadata | undefined,
+): Extract<OpenAIResponsesExecutableTool, { type: 'function' | 'custom' }> {
+  const name = metadata?.wireToolName ?? tool.name;
+  if (metadata?.wireToolType === 'custom') {
+    return {
+      type: 'custom',
+      name,
+      ...(tool.description === undefined ? {} : { description: tool.description }),
+      ...(metadata.format === undefined ? {} : { format: metadata.format }),
+    };
+  }
   return {
     type: 'function',
     name,

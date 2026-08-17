@@ -76,6 +76,7 @@ const customToolCallItemSchema = z.object({
   type: z.literal('custom_tool_call'),
   call_id: idSchema,
   name: idSchema,
+  namespace: idSchema.optional(),
   input: z.string(),
   id: idSchema.optional(),
   status: z.string().optional(),

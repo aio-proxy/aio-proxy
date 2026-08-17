@@ -22,7 +22,7 @@ export const namespaceToolSchema = z.object({
   type: z.literal('namespace'),
   name: idSchema,
   description: z.string().optional(),
-  tools: z.array(functionToolSchema).min(1),
+  tools: z.array(z.union([functionToolSchema, customToolSchema])).min(1),
 });
 
 const executableToolSchema = z.union([functionToolSchema, customToolSchema, namespaceToolSchema]);
