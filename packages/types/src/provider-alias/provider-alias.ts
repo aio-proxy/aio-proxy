@@ -34,7 +34,7 @@ export function validateAliasTargets(provider: ProviderAliasTargets, ctx: z.Refi
   // Absent AND empty both mean "no whitelist": the router exposes nothing directly
   // for either shape, and an alias-only provider (models: []) must stay saveable.
   const models = provider.models === undefined || provider.models.length === 0 ? undefined : new Set(provider.models);
-  const preservedModels = collectPreservedModels(provider.alias);
+  const preservedModels = preservedAliasModels(provider.alias);
 
   for (const [alias, config] of Object.entries(provider.alias)) {
     if (models !== undefined && !models.has(config.model)) {
@@ -58,7 +58,7 @@ export function validateAliasTargets(provider: ProviderAliasTargets, ctx: z.Refi
     }
 
     const clientModel = normalizeAliasName(alias);
-    if (preservedModels.has(clientModel) && targetModels(config).some((model) => model !== clientModel)) {
+    if (preservedModels.has(clientModel) && aliasTargetModels(config).some((model) => model !== clientModel)) {
       ctx.addIssue({
         code: 'custom',
         message: `Alias "${clientModel}" conflicts with a preserved original model id`,
@@ -94,7 +94,8 @@ function eachVariantTarget(config: AliasConfig, visit: (model: string, path: Arr
   for (const [key, target] of Object.entries(variants)) visit(target.model, ['variants', key, 'model']);
 }
 
-function collectPreservedModels(alias: ProviderAlias): ReadonlySet<string> {
+/** Every model id an alias map asks to keep routable under its original id, defaults and variants alike. */
+export function preservedAliasModels(alias: ProviderAlias): ReadonlySet<string> {
   const models = new Set<string>();
   for (const config of Object.values(alias)) {
     if (config.preserve) {
@@ -109,7 +110,8 @@ function collectPreservedModels(alias: ProviderAlias): ReadonlySet<string> {
   return models;
 }
 
-function targetModels(config: AliasConfig): readonly string[] {
+/** Every model id one alias can resolve to: its default plus every variant row's target. */
+export function aliasTargetModels(config: AliasConfig): readonly string[] {
   return [config.model, ...flattenAliasVariants(config.variants).map((row) => row.model)];
 }
 
@@ -218,11 +220,9 @@ function preservedModelIds(provider: RoutableModelSource): string[] {
 }
 
 export function sameRouteTargets(left: AliasConfig, right: AliasConfig): boolean {
-  const leftTargets = routeTargetModels(left);
-  const rightTargets = routeTargetModels(right);
+  // One derivation for both callers: a second copy here is what lets route shadowing drift away
+  // from what validateAliasTargets considers an alias's targets.
+  const leftTargets = new Set(aliasTargetModels(left));
+  const rightTargets = new Set(aliasTargetModels(right));
   return leftTargets.size === rightTargets.size && [...leftTargets].every((modelId) => rightTargets.has(modelId));
-}
-
-function routeTargetModels(config: AliasConfig): ReadonlySet<string> {
-  return new Set([config.model, ...flattenAliasVariants(config.variants).map((row) => row.model)]);
 }

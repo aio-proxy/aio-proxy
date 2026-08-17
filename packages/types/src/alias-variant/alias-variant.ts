@@ -66,7 +66,11 @@ export const AliasVariantsSchema = z.union([
   z.record(z.string().min(1), AliasTargetSchema),
 ]);
 
-function whenIdentity(when: AliasWhen): string {
+/**
+ * The identity the server rejects duplicates on. Exported so an editor can reject the same pair
+ * before it builds a payload `rejectDuplicateWhen` would refuse.
+ */
+export function whenIdentity(when: AliasWhen): string {
   const parts: string[] = [];
   if (when.thinking !== undefined) parts.push(`thinking=${when.thinking}`);
   if (when.effort !== undefined) parts.push(`effort=${canonicalEffort(when.effort)}`);

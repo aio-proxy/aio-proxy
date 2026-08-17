@@ -63,4 +63,59 @@ test('modelRoutes and its helpers reach the package root barrel', () => {
   expect(typeof types.modelRoutes).toBe('function');
   expect(typeof types.directModelIds).toBe('function');
   expect(typeof types.sameRouteTargets).toBe('function');
+  expect(typeof types.aliasTargetModels).toBe('function');
+  expect(typeof types.preservedAliasModels).toBe('function');
+  expect(typeof types.whenIdentity).toBe('function');
+});
+
+// `provider-alias/index.ts` is a bare `export *`, so every helper this file exports is public whether
+// or not that was intended. Pinning the list makes widening it a deliberate edit to this test.
+test('the provider-alias barrel exports exactly its intended surface', async () => {
+  const barrel = await import('./index');
+  expect(Object.keys(barrel).sort()).toEqual([
+    'aliasTargetModels',
+    'directModelIds',
+    'modelRoutes',
+    'normalizeProviderAlias',
+    'normalizeProviderAliasKeys',
+    'preservedAliasModels',
+    'sameRouteTargets',
+    'validateAliasTargets',
+  ]);
+});
+
+// Both helpers now read variants through flattenAliasVariants, so the array branch counts. A copy
+// that walked `Object.values(variants)` would see the row objects and miss `model` entirely.
+test('aliasTargetModels and preservedAliasModels read array-form variants', () => {
+  const config = {
+    model: 'default-model',
+    preserve: false,
+    variants: [{ when: { thinking: true }, model: 'thinking-model', preserve: true }],
+  } as const;
+
+  expect(types.aliasTargetModels(config)).toEqual(['default-model', 'thinking-model']);
+  expect([...types.preservedAliasModels({ smart: config })]).toEqual(['thinking-model']);
+});
+
+test('sameRouteTargets compares array-form and record-form variants by the models they reach', () => {
+  const rows = {
+    model: 'a',
+    preserve: false,
+    variants: [{ when: { effort: 'high' }, model: 'b', preserve: false }],
+  } as const;
+  const record = { model: 'a', preserve: false, variants: { high: { model: 'b', preserve: false } } } as const;
+
+  expect(types.sameRouteTargets(rows, record)).toBe(true);
+  expect(types.sameRouteTargets(rows, { model: 'a', preserve: false })).toBe(false);
+});
+
+// The editor rejects duplicates before it builds a payload, so it has to agree with the server on
+// what "the same condition" means: case and x-high spellings fold, key order does not matter.
+test('whenIdentity folds effort spelling and ignores key order', () => {
+  expect(types.whenIdentity({ effort: 'High' })).toBe(types.whenIdentity({ effort: 'high' }));
+  expect(types.whenIdentity({ effort: 'x-high' })).toBe(types.whenIdentity({ effort: 'XHIGH' }));
+  expect(types.whenIdentity({ thinking: true, effort: 'low' })).toBe(
+    types.whenIdentity({ effort: 'low', thinking: true }),
+  );
+  expect(types.whenIdentity({ thinking: false })).not.toBe(types.whenIdentity({}));
 });

@@ -29,9 +29,11 @@ import { normalizeProviderAlias, normalizeProviderAliasKeys, validateAliasTarget
 import { ProviderTransformsSchema } from './provider-transform/index';
 
 export {
+  aliasTargetModels,
   directModelIds,
   type ModelRoute,
   modelRoutes,
+  preservedAliasModels,
   type ProviderAlias,
   sameRouteTargets,
   validateAliasTargets,
