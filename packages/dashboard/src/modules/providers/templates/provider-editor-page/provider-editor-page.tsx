@@ -162,18 +162,10 @@ export const ProviderEditorPage: React.FC<ProviderEditorPageProps> = (props) => 
           </Card>
         </aside>
       </div>
-      <EditorFooter
-        summaries={summaries}
-        primaryLabel={primaryLabel}
-        onPrimary={() => save(false)}
-        onCancel={() => void navigate({ to: '/providers' })}
-        onDelete={
-          mode === ProviderFormMode.Edit && props.providerId !== undefined
-            ? () => deleteDialogRef.current?.open({ id: props.providerId as string })
-            : undefined
-        }
-        pending={pending}
-      />
+      {/* Before the footer, not after it: this panel is inline markup, not a portal, and the footer is
+          `sticky bottom-0`. Rendered after it, the device code and the manual-callback field sat in the
+          band the footer is pinned over, and scrolling to the true bottom un-pinned the footer into the
+          middle of the page, above the panel. Everything below this point must portal. */}
       {props.sessionId !== undefined && session !== undefined && session.status !== 'succeeded' ? (
         <OAuthAuthorizationPanel
           session={session}
@@ -190,6 +182,18 @@ export const ProviderEditorPage: React.FC<ProviderEditorPageProps> = (props) => 
           }}
         />
       ) : null}
+      <EditorFooter
+        summaries={summaries}
+        primaryLabel={primaryLabel}
+        onPrimary={() => save(false)}
+        onCancel={() => void navigate({ to: '/providers' })}
+        onDelete={
+          mode === ProviderFormMode.Edit && props.providerId !== undefined
+            ? () => deleteDialogRef.current?.open({ id: props.providerId as string })
+            : undefined
+        }
+        pending={pending}
+      />
       <DeleteProviderDialog ref={deleteDialogRef} onDeleted={() => void navigate({ to: '/providers' })} />
     </PageContainer>
   );
