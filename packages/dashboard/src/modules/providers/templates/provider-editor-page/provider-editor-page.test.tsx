@@ -98,6 +98,11 @@ rs.mock('@/components/json-editor', () => {
 // The success toasts are the real hooks' own `onSuccess` (`use-provider-mutations.ts`), kept here
 // because they are the only post-success render the page has: the toast is what tells a test that the
 // success path has finished committing.
+//
+// The order of the two statements inside each `mutate` is load-bearing: `onSuccess` must run before
+// `toast.add`, so that awaiting the toast proves the post-success re-render already happened. The
+// "no permanent Saved line" regression pin below anchors on the toast for exactly that reason —
+// swap these two lines and the pin still passes against code that re-adds the line.
 rs.mock('../../hooks/use-provider-mutations', () => ({
   useProviderCreate: () => ({
     mutate: (body: unknown, options?: { onSuccess?: () => void }) => {
