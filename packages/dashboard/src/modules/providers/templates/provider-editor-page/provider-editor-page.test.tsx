@@ -6,7 +6,7 @@ import type {
   OAuthProvider,
 } from '@aio-proxy/types';
 import { ProviderKind, ProviderProtocol } from '@aio-proxy/types';
-import { Toaster } from '@aio-proxy/ui/components/toast';
+import { Toaster, toast } from '@aio-proxy/ui/components/toast';
 import { afterEach, expect, rs, test } from '@rstest/core';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 
@@ -95,11 +95,15 @@ rs.mock('@/components/json-editor', () => {
   };
 });
 
+// The success toasts are the real hooks' own `onSuccess` (`use-provider-mutations.ts`), kept here
+// because they are the only post-success render the page has: the toast is what tells a test that the
+// success path has finished committing.
 rs.mock('../../hooks/use-provider-mutations', () => ({
   useProviderCreate: () => ({
     mutate: (body: unknown, options?: { onSuccess?: () => void }) => {
       mocks.create(body, options);
       options?.onSuccess?.();
+      toast.add({ type: 'success', title: m['dashboard.providers.toast.created']() });
     },
     isPending: false,
   }),
@@ -107,6 +111,7 @@ rs.mock('../../hooks/use-provider-mutations', () => ({
     mutate: (input: unknown, options?: { onSuccess?: () => void }) => {
       mocks.update(input, options);
       options?.onSuccess?.();
+      toast.add({ type: 'success', title: m['dashboard.providers.toast.updated']() });
     },
     isPending: false,
   }),
@@ -184,6 +189,11 @@ const selectOAuthCapability = async () => {
   fireEvent.click(await screen.findByRole('option', { name: /Example OAuth/u }));
 };
 
+// The removed `footer_saved` copy, in all five locales. Fully anchored: the page's own "Ready to
+// save." / "Save provider" and the zh success toasts all contain 保存/儲存 as a substring, and a loose
+// matcher would go green on those instead of on the line under test.
+const SAVED_LINE = /^(Saved|保存しました|저장됨|已保存|已儲存)$/u;
+
 // The success confirmation is the mutation hook's transient toast; the page keeps no "Saved" line of
 // its own, which used to sit there permanently while the footer went back to blocking the next save.
 test('create-api save stays on the page', async () => {
@@ -206,6 +216,11 @@ test('create-api save stays on the page', async () => {
   await waitFor(() => expect(mocks.create).toHaveBeenCalled());
   expect(mocks.update).not.toHaveBeenCalled();
   expect(mocks.navigate).not.toHaveBeenCalled();
+  // Ordered after the toast, never after `mocks.create` alone: the line only ever rendered once the
+  // mutation had succeeded, so an absence assertion that runs before the success render passes against
+  // the reverted code too — a false green that would make this pin worthless.
+  await screen.findByText(m['dashboard.providers.toast.created']());
+  expect(screen.queryByText(SAVED_LINE)).toBeNull();
 });
 
 test('create-api emptying baseURL disables save and marks Connection as to do', async () => {
