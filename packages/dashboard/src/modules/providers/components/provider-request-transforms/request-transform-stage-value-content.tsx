@@ -3,8 +3,9 @@ import { QueryBuilderExpressions } from '@react-querybuilder/expr/ui';
 import type React from 'react';
 import { QueryBuilderStateProvider } from 'react-querybuilder';
 
-import { requestTransformFunctionMeta, type RequestTransformStageDraft } from '../../lib/request-transforms';
+import type { RequestTransformStageDraft } from '../../lib/request-transforms';
 import { QueryBuilderShadcn } from './query-builder';
+import { getLocalizedRequestTransformFunctionMeta } from './request-transform-condition-metadata';
 import { RequestTransformExpressionEditor } from './request-transform-expression-editor';
 import { RequestTransformStaticValueEditor } from './request-transform-static-value-editor';
 
@@ -31,7 +32,7 @@ export const RequestTransformStageValueContent: React.FC<RequestTransformStageVa
     <div className="overflow-x-auto" aria-label={m['dashboard.providers.transforms.value.computed_label']()}>
       <QueryBuilderStateProvider>
         <QueryBuilderShadcn>
-          <QueryBuilderExpressions functions={requestTransformFunctionMeta}>
+          <QueryBuilderExpressions functions={getLocalizedRequestTransformFunctionMeta()}>
             <RequestTransformExpressionEditor
               expression={value.value.expression}
               onChange={(expression) => onChange({ ...value, value: { kind: 'expression', expression } })}

@@ -198,7 +198,7 @@ test('edits ordered Set and Remove actions losslessly across Visual and JSON mod
   expect(within(stages[1]!).getByTestId('request-transform-target')).toHaveTextContent(/Header|请求头/u);
   expect(within(stages[1]!).getByRole('textbox', { name: /Header name|请求头名称/u })).toHaveValue('x-route');
   expect(within(stages[1]!).getByTestId('request-transform-value-mode')).toHaveTextContent(/Computed|计算/u);
-  expect(within(stages[1]!).getByTestId('transform-set-expression-fn')).toHaveTextContent(/CONCAT/u);
+  expect(within(stages[1]!).getByTestId('transform-set-expression-fn')).toHaveTextContent(/CONCAT|Concatenate|拼接/u);
   expect(within(stages[2]!).getByTestId('request-transform-action')).toHaveTextContent(/Remove|移除/u);
   expect(within(stages[2]!).getByRole('textbox', { name: /Body path|请求体路径/u })).toHaveValue('value');
   expect(within(stages[3]!).getByRole('textbox', { name: /Header name|请求头名称/u })).toHaveValue('x-route');
