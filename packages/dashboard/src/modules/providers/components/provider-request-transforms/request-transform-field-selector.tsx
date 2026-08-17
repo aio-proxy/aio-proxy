@@ -15,6 +15,8 @@ import type React from 'react';
 import type { FullOption, FullOptionList, ValueSelectorProps } from 'react-querybuilder';
 import { isOptionGroupArray } from 'react-querybuilder';
 
+import { getRequestTransformExpressionControlLabel } from './request-transform-condition-metadata';
+
 export type TransformFieldKind =
   | 'provider.id'
   | 'provider.kind'
@@ -60,8 +62,12 @@ export const RequestTransformFieldSelector: React.FC<RequestTransformFieldSelect
   const suffixId = useId();
   const { kind, suffix } = splitField(String(value ?? ''));
   const optionList = options as FullOptionList<FullOption>;
-  const title = m['dashboard.providers.transforms.condition.field.title']();
   const dynamic = dynamicKinds.includes(kind as (typeof dynamicKinds)[number]);
+  const title = getRequestTransformExpressionControlLabel(
+    testID,
+    m['dashboard.providers.transforms.condition.field.title'](),
+  );
+  const suffixTitle = getRequestTransformExpressionControlLabel(testID, suffixLabel(kind));
   const selectedLabel = isOptionGroupArray(optionList)
     ? optionList.flatMap((group) => group.options).find((option) => option.name === kind)?.label
     : optionList.find((option) => option.name === kind)?.label;
@@ -106,15 +112,15 @@ export const RequestTransformFieldSelector: React.FC<RequestTransformFieldSelect
       {dynamic ? (
         <span className="min-w-36 flex-1">
           <Label htmlFor={suffixId} className="sr-only">
-            {suffixLabel(kind)}
+            {suffixTitle}
           </Label>
           <Input
             id={suffixId}
             data-testid={`${testID}-suffix`}
             value={suffix}
             disabled={disabled}
-            title={suffixLabel(kind)}
-            aria-label={suffixLabel(kind)}
+            title={suffixTitle}
+            aria-label={suffixTitle}
             onChange={(event) => {
               const nextSuffix = kind.endsWith('header:') ? event.target.value.toLowerCase() : event.target.value;
               props.handleOnChange(`${kind}${nextSuffix}`);

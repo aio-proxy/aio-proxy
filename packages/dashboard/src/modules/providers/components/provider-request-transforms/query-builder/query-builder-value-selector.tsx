@@ -13,6 +13,7 @@ import type React from 'react';
 import type { FullOption, FullOptionList, VersatileSelectorProps } from 'react-querybuilder';
 import { isOptionGroupArray, useValueSelector } from 'react-querybuilder';
 
+import { getRequestTransformExpressionControlLabel } from '../request-transform-condition-metadata';
 import { RequestTransformFieldSelector } from '../request-transform-field-selector';
 
 export const REQUEST_TRANSFORM_SET_EXPRESSION_TEST_ID = 'transform-set-expression';
@@ -49,8 +50,18 @@ const transformOptions = (items: FullOption[], testID: string | undefined): Full
 };
 
 const selectorTitle = (testID: string | undefined, fallback: string | undefined): string | undefined => {
-  if (testID?.endsWith('-kind')) return m['dashboard.providers.transforms.condition.expression_kind.title']();
-  if (testID?.endsWith('-fn')) return m['dashboard.providers.transforms.condition.function.title']();
+  if (testID?.endsWith('-kind')) {
+    return getRequestTransformExpressionControlLabel(
+      testID,
+      m['dashboard.providers.transforms.condition.expression_kind.title'](),
+    );
+  }
+  if (testID?.endsWith('-fn')) {
+    return getRequestTransformExpressionControlLabel(
+      testID,
+      m['dashboard.providers.transforms.condition.function.title'](),
+    );
+  }
   if (testID === 'value-source-selector') return m['dashboard.providers.transforms.condition.value_source.title']();
   return fallback;
 };

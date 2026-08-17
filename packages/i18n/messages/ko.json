@@ -626,6 +626,9 @@
             "value": "값",
             "function": "함수"
           },
+          "argument": {
+            "label": "인수 {index}"
+          },
           "function": {
             "title": "함수",
             "wrap_title": "필드를 함수로 감싸기",

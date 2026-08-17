@@ -9,6 +9,8 @@ import type React from 'react';
 import type { ValueEditorProps, ValueSelectorProps } from 'react-querybuilder';
 import { getFirstOption, joinWith, toArray, useValueEditor } from 'react-querybuilder';
 
+import { getRequestTransformExpressionControlLabel } from '../request-transform-condition-metadata';
+
 export interface QueryBuilderValueEditorProps extends ValueEditorProps {
   readonly extraProps?: Record<string, unknown>;
 }
@@ -25,7 +27,12 @@ const regexValue = (value: unknown): { regex: string; options: string } => {
 };
 
 const editorTitle = (props: QueryBuilderValueEditorProps): string | undefined =>
-  props.testID?.endsWith('-value') ? m['dashboard.providers.transforms.condition.value.title']() : props.title;
+  props.testID?.endsWith('-value')
+    ? getRequestTransformExpressionControlLabel(
+        props.testID,
+        m['dashboard.providers.transforms.condition.value.title'](),
+      )
+    : props.title;
 
 const renderBetweenEditor = (
   allProps: QueryBuilderValueEditorProps,

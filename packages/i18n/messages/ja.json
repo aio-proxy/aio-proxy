@@ -626,6 +626,9 @@
             "value": "値",
             "function": "関数"
           },
+          "argument": {
+            "label": "引数 {index}"
+          },
           "function": {
             "title": "関数",
             "wrap_title": "フィールドを関数で包む",

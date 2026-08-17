@@ -110,6 +110,15 @@ export const getRequestTransformExpressionTranslations = (): Partial<Translation
 export const getRequestTransformAccessibleDescription = (): string =>
   m['dashboard.providers.transforms.condition.editor_title']();
 
+// Nested expression arguments all render the same control, so their accessible names only differ by
+// the argument path the library encodes in the testID (`-arg0-arg1-…`, zero-based; humans count from 1).
+export const getRequestTransformExpressionControlLabel = (testID: string | undefined, label: string): string => {
+  const argumentPath = Array.from(testID?.matchAll(/-arg(\d+)/gu) ?? [], ([, index]) =>
+    m['dashboard.providers.transforms.condition.argument.label']({ index: Number(index) + 1 }),
+  );
+  return [...argumentPath, label].join(' → ');
+};
+
 export const getLocalizedRequestTransformFunctionMeta = (): ExpressionFunctionMetaRegistry => ({
   ...requestTransformFunctionMeta,
   add: { ...requestTransformFunctionMeta.add, label: m['dashboard.providers.transforms.condition.function.add']() },

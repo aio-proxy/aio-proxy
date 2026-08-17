@@ -626,6 +626,9 @@
             "value": "值",
             "function": "函式"
           },
+          "argument": {
+            "label": "參數 {index}"
+          },
           "function": {
             "title": "函式",
             "wrap_title": "使用函式包裝欄位",

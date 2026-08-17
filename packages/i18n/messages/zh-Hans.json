@@ -626,6 +626,9 @@
             "value": "值",
             "function": "函数"
           },
+          "argument": {
+            "label": "参数 {index}"
+          },
           "function": {
             "title": "函数",
             "wrap_title": "使用函数包装字段",

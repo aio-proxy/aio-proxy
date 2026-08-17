@@ -626,6 +626,9 @@
             "value": "Value",
             "function": "Function"
           },
+          "argument": {
+            "label": "Argument {index}"
+          },
           "function": {
             "title": "Function",
             "wrap_title": "Wrap the field in a function",

@@ -361,6 +361,26 @@ test('seeds a refused computed stage with an editable body field', async () => {
   expect(onChange).not.toHaveBeenCalled();
 });
 
+test('names every nested expression argument by its argument path', () => {
+  const nestedValue = [
+    {
+      update: [
+        {
+          $set: {
+            'request.body.value': { $concat: ['$request.body.a', { $min: ['$request.body.b', 1] }] },
+          },
+        },
+      ],
+    },
+  ] satisfies readonly ProviderRequestTransformRule[];
+  render(<RequestTransformsHarness initialValue={nestedValue} onChange={rs.fn()} onValidityChange={rs.fn()} />);
+
+  const outer = screen.getByRole('combobox', { name: /^(Argument 1 → Field|参数 1 → 字段)$/u });
+  const inner = screen.getByRole('combobox', { name: /^(Argument 2 → Argument 1 → Field|参数 2 → 参数 1 → 字段)$/u });
+  expect(outer).toHaveAttribute('data-testid', 'transform-set-expression-arg0-field-kind');
+  expect(inner).toHaveAttribute('data-testid', 'transform-set-expression-arg1-arg0-field-kind');
+});
+
 test('keeps malformed static JSON visible and blocks switching modes until it is valid', async () => {
   const objectValue = [
     { update: [{ $set: { 'request.body.value': { $literal: { seed: true } } } }] },
