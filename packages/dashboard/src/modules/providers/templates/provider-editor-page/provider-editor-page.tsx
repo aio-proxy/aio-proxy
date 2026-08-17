@@ -1,5 +1,6 @@
 import { m } from '@aio-proxy/i18n';
 import { ProviderKind } from '@aio-proxy/types';
+import { Card, CardContent } from '@aio-proxy/ui/components/card';
 import { useRef } from 'react';
 
 import { PageContainer } from '@/components/page-container';
@@ -10,6 +11,7 @@ import { AdvancedSection } from '../../components/provider-editor/advanced-secti
 import { ConnectionSection } from '../../components/provider-editor/connection-section';
 import { ExposurePanel } from '../../components/provider-editor/exposure-panel';
 import { IdentitySection } from '../../components/provider-editor/identity-section';
+import { KindCard } from '../../components/provider-editor/kind-card';
 import { ModelValidationPanel } from '../../components/provider-editor/model-validation-panel';
 import { ModelsSection } from '../../components/provider-editor/models-section';
 import { RoutingSection } from '../../components/provider-editor/routing-section';
@@ -97,15 +99,15 @@ export const ProviderEditorPage: React.FC<ProviderEditorPageProps> = (props) => 
       ]}
     >
       <SectionNav summaries={summaries} activeId={activeId} />
-      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_18rem]">
-        <div className="max-w-6xl min-w-0 space-y-10">
-          <IdentitySection
-            form={form}
-            mode={mode}
-            kind={kind}
-            onKindChange={handleKindChange}
-            summary={summaries.identity}
-          />
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
+        {/* `space-y-4`, not the prototype's `space-y-8`: its sections were separated by a bottom border
+            with nothing but whitespace between them, while ours are cards whose own padding already
+            supplies the interior air. Keeping `8`/`10` here reads as a gap, not a rhythm. */}
+        <div className="max-w-6xl min-w-0 space-y-4">
+          {/* Above Identity and outside the nav: the kind is what decides which fields the sections
+              below even contain, so it is not one of the provider's attributes (D-F11). */}
+          <KindCard value={kind} mode={mode} onChange={handleKindChange} />
+          <IdentitySection form={form} mode={mode} kind={kind} summary={summaries.identity} />
           <ConnectionSection
             form={form}
             accountForm={kind === ProviderKind.OAuth ? accountForm : undefined}
@@ -125,7 +127,7 @@ export const ProviderEditorPage: React.FC<ProviderEditorPageProps> = (props) => 
               <p className="rounded-lg border bg-muted p-3 text-sm">
                 {m['dashboard.providers.editor.authorization_locked_hint']()}
               </p>
-              <fieldset disabled className="pointer-events-none space-y-10 opacity-60">
+              <fieldset disabled className="pointer-events-none space-y-4 opacity-60">
                 {sections345}
               </fieldset>
             </>
@@ -136,17 +138,29 @@ export const ProviderEditorPage: React.FC<ProviderEditorPageProps> = (props) => 
         {/* Stacks under the form below `lg`; above it, stays in view while the user works down the
             sections. `top-24` clears the sticky nav strip. */}
         <aside className="space-y-4 lg:sticky lg:top-24 lg:self-start">
-          <div className="rounded-2xl bg-muted/40 p-4">
-            <ExposurePanel
-              models={exposed}
-              alias={values.alias}
-              enabled={values.enabled ?? true}
-              warning={sessionWarning}
-            />
-          </div>
-          <div className="rounded-2xl bg-muted/40 p-4">
-            <ModelValidationPanel form={form} kind={kind} persistedProviderId={persistedId} testableModels={exposed} />
-          </div>
+          {/* Cards, not the prototype's tinted `rounded-2xl` blocks: the sections beside them are cards
+              now, and two surface treatments on one page read as two unrelated designs. Each panel
+              brings its own heading, so `CardContent` alone — a `CardHeader` here would double it. */}
+          <Card size="sm">
+            <CardContent>
+              <ExposurePanel
+                models={exposed}
+                alias={values.alias}
+                enabled={values.enabled ?? true}
+                warning={sessionWarning}
+              />
+            </CardContent>
+          </Card>
+          <Card size="sm">
+            <CardContent>
+              <ModelValidationPanel
+                form={form}
+                kind={kind}
+                persistedProviderId={persistedId}
+                testableModels={exposed}
+              />
+            </CardContent>
+          </Card>
         </aside>
       </div>
       {saved ? (

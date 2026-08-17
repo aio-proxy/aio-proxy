@@ -184,7 +184,13 @@ export const ModelsSection: React.FC<ModelsSectionProps> = ({
                           {m['dashboard.providers.form.models_filter_no_matches']()}
                         </p>
                       ) : (
-                        <div className="space-y-2" data-testid="models-rows">
+                        // A loaded catalog is routinely dozens to hundreds of ids, and an unbounded list
+                        // pushed Routing and Advanced so far down the page that the section nav was the
+                        // only way back. Capped and scrolled, matching `max-h-* overflow-y-auto` as used
+                        // by the date-range panel and the heatmap hover. `pr-1` keeps the row's own hover
+                        // and focus ring clear of the scrollbar gutter. Deliberate deviation from the
+                        // prototype, which renders its 6-model fixture unbounded (see fidelity-rules D-F9).
+                        <div className="max-h-96 space-y-2 overflow-y-auto pr-1" data-testid="models-rows">
                           {visible.map((row) => (
                             <ModelRowItem
                               key={row.id}

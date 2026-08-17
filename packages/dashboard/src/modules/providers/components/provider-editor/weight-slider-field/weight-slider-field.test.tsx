@@ -83,10 +83,13 @@ describe('WeightSliderField', () => {
     expect(onChange).toHaveBeenLastCalledWith(undefined);
   });
 
-  // A deliberate 0 is a real weight and must not collapse into absent on the way in.
+  // A deliberate 0 is a real weight and must not collapse into absent on the way in. Starts from 40
+  // rather than absent: absent now *displays* 0, so a change event carrying '0' would match the value
+  // already in the box and React would never call the handler — the assertion would pass against a
+  // handler that was never invoked. The mutant is treating a falsy `Number(raw)` as empty.
   test('typing zero reports zero, not absent', () => {
     const onChange = rs.fn();
-    render(<WeightSliderField value={undefined} onChange={onChange} disabled={false} />);
+    render(<WeightSliderField value={40} onChange={onChange} disabled={false} />);
 
     fireEvent.change(screen.getByRole('spinbutton'), { target: { value: '0' } });
 
@@ -110,12 +113,15 @@ describe('WeightSliderField', () => {
     expect(screen.getByRole('spinbutton')).toBeDisabled();
   });
 
-  test('an absent weight renders no numeric value and never writes zero on mount', () => {
+  // The display and the body disagree on purpose. An absent weight IS zero to the router, so the box
+  // shows `0` beside a thumb already parked at zero; what must never happen is that rendering it
+  // *writes* it. The `onChange` assertion is the whole point of this test — drop it and a `?? 0`
+  // default silently stamps `weight: 0` into every provider the user merely opened.
+  test('an absent weight displays zero without writing one on mount', () => {
     const onChange = rs.fn();
     render(<WeightSliderField value={undefined} onChange={onChange} disabled={false} />);
 
-    // Empty, not 0: a parked-at-zero input is indistinguishable from an explicit 0 weight.
-    expect(screen.getByRole('spinbutton')).toHaveValue(null);
+    expect(screen.getByRole('spinbutton')).toHaveValue(0);
     expect(onChange).not.toHaveBeenCalled();
   });
 

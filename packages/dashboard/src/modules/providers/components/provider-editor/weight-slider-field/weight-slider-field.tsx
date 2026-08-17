@@ -17,13 +17,17 @@ interface WeightSliderFieldProps {
 }
 
 /**
- * Higher weights are attempted first. Absent stays absent: an untouched weight must never be written
- * as `0`, so the input is left empty rather than defaulted, and a stored value outside the range or
- * off the step is displayed verbatim until the user actually drags.
+ * Higher weights are attempted first. Absent stays absent in the *body*: an untouched weight must never
+ * be written as `0`, so `onChange` still reports `undefined` for an empty input and a stored value
+ * outside the range or off the step is kept verbatim until the user actually drags.
+ *
+ * What an absent weight *displays* is `0`, matching the slider thumb and the runtime, which reads an
+ * absent weight as `0` when ordering candidates (`routes/pipeline/attempt/attempt.ts`). A blank box
+ * beside a thumb parked at zero read as two controls disagreeing about the same field.
  *
  * The slider is the plan's and the prototype's control, but it can only express `0-100` on a step of
  * `5`. The number input beside it is bound to the same form field and carries no bounds, so any
- * weight config accepts can be typed, kept, and cleared back to absent.
+ * weight config accepts can be typed and kept.
  */
 export const WeightSliderField: React.FC<WeightSliderFieldProps> = ({ value, onChange, disabled }) => (
   <Field data-testid="provider-editor-field-weight">
@@ -59,7 +63,10 @@ export const WeightSliderField: React.FC<WeightSliderFieldProps> = ({ value, onC
         // stored 250 or 7 has to survive being typed. `step="any"` keeps a fractional weight valid.
         step="any"
         type="number"
-        value={value ?? ''}
+        // `?? 0`, not `?? ''`: an absent weight IS zero to the router, and the slider already shows it
+        // as such. Clearing the box still reports `undefined` below, so no `weight: 0` key is invented
+        // in the config file — only the digit the field was already behaving as becomes visible.
+        value={value ?? 0}
         onChange={(event) => {
           const raw = event.target.value.trim();
           const next = Number(raw);

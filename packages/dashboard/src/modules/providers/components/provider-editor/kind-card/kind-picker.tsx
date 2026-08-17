@@ -39,9 +39,11 @@ interface KindPickerProps {
   readonly onChange: (kind: ProviderKind) => void;
   /** Kind is immutable once saved, so editing shows one settled line instead of three cards. */
   readonly locked?: boolean;
+  /** The card heading already names this group; pointing at it beats repeating the text as a label. */
+  readonly labelledBy: string;
 }
 
-export const KindPicker: React.FC<KindPickerProps> = ({ value, onChange, locked = false }) => {
+export const KindPicker: React.FC<KindPickerProps> = ({ value, onChange, locked = false, labelledBy }) => {
   const currentIndex = KIND_CARDS.findIndex((card) => card.value === value);
   const current = KIND_CARDS[currentIndex] ?? KIND_CARDS[0];
 
@@ -69,12 +71,7 @@ export const KindPicker: React.FC<KindPickerProps> = ({ value, onChange, locked 
   };
 
   return (
-    <div
-      role="radiogroup"
-      aria-label={m['dashboard.providers.editor.kind_label']()}
-      onKeyDown={handleKeyDown}
-      className="grid gap-2 sm:grid-cols-3"
-    >
+    <div role="radiogroup" aria-labelledby={labelledBy} onKeyDown={handleKeyDown} className="grid gap-2 sm:grid-cols-3">
       {KIND_CARDS.map((card) => {
         const Icon = card.icon;
         const selected = card.value === value;

@@ -715,6 +715,7 @@
         "kind_api_hint": "直接填地址与 Key",
         "kind_oauth_hint": "走账号授权登录",
         "kind_ai_sdk_hint": "用 npm 包适配",
+        "kind_description": "决定这个上游如何接入，以及下面要填哪些字段。",
         "kind_locked_note": "类型保存后不可更改",
         "header_create_subtitle": "配置一个上游，然后立即验证它。",
         "api_key_retained_hint": "留空以保留已保存的 API Key。",

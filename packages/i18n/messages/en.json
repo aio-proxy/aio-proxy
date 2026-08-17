@@ -715,6 +715,7 @@
         "kind_api_hint": "Fill in the address and key directly",
         "kind_oauth_hint": "Sign in through an account authorization",
         "kind_ai_sdk_hint": "Adapt through an npm package",
+        "kind_description": "How aio-proxy reaches this upstream, and which fields below apply.",
         "kind_locked_note": "the kind cannot change after saving",
         "header_create_subtitle": "Configure an upstream, then verify it right away.",
         "api_key_retained_hint": "Leave empty to keep the stored key.",

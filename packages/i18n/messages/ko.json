@@ -715,6 +715,7 @@
         "kind_api_hint": "주소와 Key를 직접 입력",
         "kind_oauth_hint": "계정 인증으로 로그인",
         "kind_ai_sdk_hint": "npm 패키지로 연결",
+        "kind_description": "이 업스트림에 연결하는 방식과 아래에 표시되는 항목이 결정됩니다.",
         "kind_locked_note": "종류는 저장 후 변경할 수 없습니다",
         "header_create_subtitle": "업스트림을 구성한 뒤 바로 검증하세요.",
         "api_key_retained_hint": "저장된 API 키를 유지하려면 비워 두세요.",

@@ -6,17 +6,16 @@ import { ProviderFormMode } from '../../../lib/constants';
 import type { SectionSummary } from '../../../lib/section-status';
 import { SectionShell } from '../section-shell';
 import { IdentityFields } from './identity-fields';
-import { KindPicker } from './kind-picker';
 
 interface IdentitySectionProps {
   readonly form: ProviderEditorForm;
   readonly mode: ProviderFormMode;
+  /** Only to decide whether the server assigns the id; the kind is picked in `KindCard`, above. */
   readonly kind: ProviderKind;
-  readonly onKindChange?: ((kind: ProviderKind) => void) | undefined;
   readonly summary: SectionSummary;
 }
 
-export const IdentitySection: React.FC<IdentitySectionProps> = ({ form, mode, kind, onKindChange, summary }) => (
+export const IdentitySection: React.FC<IdentitySectionProps> = ({ form, mode, kind, summary }) => (
   <SectionShell
     id="identity"
     title={m['dashboard.providers.editor.section_identity']()}
@@ -24,7 +23,6 @@ export const IdentitySection: React.FC<IdentitySectionProps> = ({ form, mode, ki
     status={summary.status}
     statusHint={summary.hint}
   >
-    <KindPicker value={kind} onChange={(next) => onKindChange?.(next)} locked={mode === ProviderFormMode.Edit} />
     <IdentityFields
       form={form}
       mode={mode}

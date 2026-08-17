@@ -715,6 +715,7 @@
         "kind_api_hint": "アドレスと Key を直接入力",
         "kind_oauth_hint": "アカウント認可でサインイン",
         "kind_ai_sdk_hint": "npm パッケージで接続",
+        "kind_description": "この上流への接続方式と、下に表示される項目が決まります。",
         "kind_locked_note": "種類は保存後に変更できません",
         "header_create_subtitle": "上流を設定して、そのまま検証します。",
         "api_key_retained_hint": "保存済みの API キーを保持するには空欄のままにしてください。",
