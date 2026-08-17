@@ -3,7 +3,7 @@
 import { ProviderRequestTransformRulesSchema, type ProviderRequestTransformRule } from '@aio-proxy/types';
 import { expect, rs, test } from '@rstest/core';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 
 import { ProviderRequestTransformsEditor } from './provider-request-transforms-editor';
 
@@ -12,18 +12,10 @@ rs.mock('@/components/json-editor/json-schema-registry', () => ({
   validateJsonModel: async () => [],
 }));
 
-rs.mock('@monaco-editor/react', () => ({
-  Editor: ({ onChange, onMount, options, value }: any) => {
-    const valueRef = useRef(value);
-    const onMountRef = useRef(onMount);
-    valueRef.current = value;
-    useEffect(() => {
-      onMountRef.current?.({ getDomNode: () => null, getModel: () => ({ getValue: () => valueRef.current }) }, {});
-    }, []);
-    return (
-      <textarea aria-label={options?.ariaLabel} value={value} onChange={(event) => onChange?.(event.target.value)} />
-    );
-  },
+rs.mock('@/components/code-editor', () => ({
+  CodeEditor: ({ id, onChange, value }: { id?: string; onChange?: (value: string) => void; value: string }) => (
+    <textarea id={id} value={value} onChange={(event) => onChange?.(event.target.value)} />
+  ),
 }));
 
 interface RequestTransformsHarnessProps {

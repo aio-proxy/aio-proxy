@@ -5,6 +5,7 @@ import {
   type ProviderRequestTransformRule,
 } from '@aio-proxy/types';
 import { FieldError } from '@aio-proxy/ui/components/field';
+import { Label } from '@aio-proxy/ui/components/label';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 
 import { JsonEditor, type JsonEditorValueAcknowledgement } from '@/components/json-editor/json-editor';
@@ -43,7 +44,7 @@ export const ProviderRequestTransformsJsonEditor: React.FC<ProviderRequestTransf
   onChange,
   onValidityChange,
 }) => {
-  const errorId = useId();
+  const editorId = useId();
   const [semanticIssue, setSemanticIssue] = useState<SemanticIssueState>();
   const canonicalDraft = JSON.stringify(value, null, 2);
   const [initialCandidate] = useState<ValidCandidate>(() => ({ draft: canonicalDraft, value }));
@@ -119,18 +120,22 @@ export const ProviderRequestTransformsJsonEditor: React.FC<ProviderRequestTransf
 
   return (
     <div className="space-y-2">
+      <Label htmlFor={editorId} className="sr-only">
+        {m['dashboard.providers.transforms.json_label']()}
+      </Label>
       <JsonEditor
+        id={editorId}
         value={value as unknown as JsonValue}
         schema={ProviderRequestTransformRulesJsonSchema}
-        ariaLabel={m['dashboard.providers.transforms.json_label']()}
         externalInvalid={visibleSemanticIssue !== undefined}
-        {...(visibleSemanticIssue === undefined ? {} : { errorDescriptionId: errorId })}
         onDraftChange={handleDraftChange}
         onValueChange={handleValueChange}
         onValidationChange={handleValidationChange}
       />
       {visibleSemanticIssue === undefined ? null : (
-        <FieldError id={errorId}>{m['dashboard.providers.transforms.invalid'](visibleSemanticIssue)}</FieldError>
+        <FieldError id={`${editorId}-error`}>
+          {m['dashboard.providers.transforms.invalid'](visibleSemanticIssue)}
+        </FieldError>
       )}
     </div>
   );

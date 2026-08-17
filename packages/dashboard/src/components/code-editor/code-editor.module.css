@@ -1,7 +1,8 @@
 @reference '@aio-proxy/ui/styles.css';
 
 .code-editor {
-  @apply w-full rounded-3xl border border-transparent bg-input/50 transition-[color,box-shadow,background-color] outline-none;
+  @apply h-60 w-full overflow-hidden rounded-3xl border border-transparent bg-input/50 outline-none;
+  @apply transition-[color,box-shadow,background-color];
 }
 
 .code-editor:focus-within {
@@ -12,14 +13,14 @@
   @apply border-destructive ring-3 ring-destructive/20 dark:border-destructive/50 dark:ring-destructive/40;
 }
 
-.code-editor :global(.monaco-editor) {
-  --vscode-button-background: var(--color-primary);
-  --vscode-button-foreground: var(--color-primary-foreground);
-  --vscode-button-hoverBackground: color-mix(in oklab, var(--color-primary) 80%, transparent);
-
-  @apply rounded-3xl bg-transparent;
+.code-editor :global(.cm-editor) {
+  @apply h-full rounded-3xl bg-transparent;
 }
 
-.code-editor :global(.monaco-editor .overflow-guard) {
-  @apply rounded-3xl bg-transparent;
+.code-editor :global(.cm-gutters) {
+  @apply bg-transparent;
+}
+
+.code-editor :global(.cm-scroller) {
+  @apply rounded-3xl font-mono;
 }

@@ -1,5 +1,4 @@
-import type { Monaco, OnMount } from '@monaco-editor/react';
-import { useCallback, useEffect, useId, useMemo, useReducer, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useReducer, useRef } from 'react';
 
 import { CodeEditor } from '@/components/code-editor';
 
@@ -14,6 +13,7 @@ import {
   mergeJsonValidation,
   parseJsonDraft,
 } from './json-editor-state';
+import { createJsonLanguageExtensions } from './json-language-service';
 import { registerJsonSchema, validateJsonModel } from './json-schema-registry';
 
 export type JsonEditorProps = {
@@ -27,11 +27,8 @@ export type JsonEditorProps = {
   readonly onDraftChange?: (draft: string) => void;
   readonly onValidationChange?: (validation: JsonEditorValidation, draft: string) => void;
   readonly externalInvalid?: boolean;
-  readonly errorDescriptionId?: string;
-  readonly ariaLabel?: string;
   readonly id?: string;
   readonly className?: string;
-  readonly height?: string | number;
 };
 
 export type JsonEditorValueAcknowledgement = (value: JsonValue | undefined) => void;
@@ -140,16 +137,12 @@ export const JsonEditor: React.FC<JsonEditorProps> = ({
   onDraftChange,
   onValidationChange,
   externalInvalid,
-  errorDescriptionId,
-  ariaLabel,
   id,
   className,
-  height,
 }) => {
   const generatedId = useId();
   const modelUri = useMemo(() => createJsonEditorModelUri(generatedId, id), [generatedId, id]);
-  const [monaco, setMonaco] = useState<Monaco>();
-  const [editor, setEditor] = useState<Parameters<OnMount>[0]>();
+  const languageExtensions = useMemo(() => createJsonLanguageExtensions(modelUri), [modelUri]);
   const {
     draft,
     validationState,
@@ -161,20 +154,18 @@ export const JsonEditor: React.FC<JsonEditorProps> = ({
 
   useEffect(() => {
     dispatch({ type: 'begin-validation', schema });
-    if (!monaco || !schema) return undefined;
+    if (!schema) return undefined;
 
-    return registerJsonSchema(monaco, modelUri, {
+    return registerJsonSchema(modelUri, {
       uri: `${modelUri}#schema`,
       fileMatch: [modelUri],
       schema,
     });
-  }, [dispatch, modelUri, monaco, schema]);
+  }, [dispatch, modelUri, schema]);
 
   useEffect(() => {
     if (
       schema === undefined ||
-      !editor ||
-      !monaco ||
       !validationState.pending ||
       validationState.draft !== draft ||
       validationState.schema !== schema
@@ -183,9 +174,8 @@ export const JsonEditor: React.FC<JsonEditorProps> = ({
 
     const generation = validationState.generation;
     let active = true;
-    if (editor.getModel()?.getValue() !== validationState.draft) return;
 
-    void validateJsonModel(monaco, modelUri)
+    void validateJsonModel(modelUri, validationState.draft)
       .then((nextMarkers) => {
         if (active) dispatch({ type: 'complete-validation', generation, markers: nextMarkers });
       })
@@ -194,7 +184,7 @@ export const JsonEditor: React.FC<JsonEditorProps> = ({
     return () => {
       active = false;
     };
-  }, [dispatch, draft, editor, modelUri, monaco, schema, validationState]);
+  }, [dispatch, draft, modelUri, schema, validationState]);
 
   const parseResult = parseJsonDraft(draft);
   const draftValidation = useMemo(
@@ -221,40 +211,25 @@ export const JsonEditor: React.FC<JsonEditorProps> = ({
   }, [draft, onValidationChange, validation]);
 
   const handleChange = useCallback(
-    (nextDraft: string | undefined) => {
-      const nextValue = nextDraft ?? '';
-      onDraftChange?.(nextValue);
-      dispatch({ type: 'change-draft', draft: nextValue, schema });
-      const parsed = parseJsonDraft(nextValue);
+    (nextDraft: string) => {
+      onDraftChange?.(nextDraft);
+      dispatch({ type: 'change-draft', draft: nextDraft, schema });
+      const parsed = parseJsonDraft(nextDraft);
       if (!parsed.ok) return;
 
-      onValueChange(parsed.value, nextValue, expectValueAcknowledgement);
+      onValueChange(parsed.value, nextDraft, expectValueAcknowledgement);
       markExternalValuePending();
     },
     [dispatch, expectValueAcknowledgement, markExternalValuePending, onDraftChange, onValueChange, schema],
   );
 
-  const handleMount = useCallback<OnMount>((nextEditor, nextMonaco) => {
-    setEditor(nextEditor);
-    setMonaco(nextMonaco);
-  }, []);
-
-  const handleValidationReady = useCallback(() => {
-    dispatch({ type: 'begin-validation', schema });
-  }, [dispatch, schema]);
-
   return (
     <CodeEditor
       {...(className === undefined ? {} : { className })}
-      height={height ?? 240}
+      {...(id === undefined ? {} : { id })}
       invalid={externalInvalid || !validation.valid}
-      {...(errorDescriptionId === undefined ? {} : { ariaDescribedBy: errorDescriptionId })}
-      language="json"
-      {...(ariaLabel === undefined ? {} : { options: { ariaLabel } })}
+      extensions={languageExtensions}
       onChange={handleChange}
-      onMount={handleMount}
-      onValidate={handleValidationReady}
-      path={modelUri}
       value={draft}
     />
   );
