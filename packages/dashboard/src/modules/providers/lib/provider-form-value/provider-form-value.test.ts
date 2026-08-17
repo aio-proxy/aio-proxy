@@ -43,4 +43,19 @@ describe('parseProviderFormInitial', () => {
     expect(parseProviderFormInitial(null)).toBeUndefined();
     expect(parseProviderFormInitial({ id: 'no-kind' })).toBeUndefined();
   });
+
+  // A multi-protocol provider may omit the top-level protocol/baseURL pair entirely — the first
+  // `endpoints` entry is then the primary endpoint. The form shape has no slot for that, so the parse
+  // must fail rather than invent a pair: the edit route turns this `undefined` into "edit it in
+  // config.jsonc", and inventing a top-level baseURL would silently discard an endpoint path on
+  // passthrough. Delete this case only together with real `endpoints` support in the editor.
+  test('an endpoints-only api provider comes back undefined rather than a fabricated pair', () => {
+    expect(
+      parseProviderFormInitial({
+        kind: ProviderKind.Api,
+        id: 'moonshot',
+        endpoints: [{ protocol: 'anthropic', baseURL: 'https://api.moonshot.cn/anthropic/v1' }],
+      }),
+    ).toBeUndefined();
+  });
 });

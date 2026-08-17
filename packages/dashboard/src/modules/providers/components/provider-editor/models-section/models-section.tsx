@@ -4,6 +4,7 @@ import { Button } from '@aio-proxy/ui/components/button';
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@aio-proxy/ui/components/empty';
 import { Field, FieldDescription, FieldLabel } from '@aio-proxy/ui/components/field';
 import { InputGroup, InputGroupAddon, InputGroupInput } from '@aio-proxy/ui/components/input-group';
+import { toast } from '@aio-proxy/ui/components/toast';
 import { LayersIcon, SearchIcon } from 'lucide-react';
 import { useState } from 'react';
 
@@ -60,7 +61,27 @@ export const ModelsSection: React.FC<ModelsSectionProps> = ({
             size="sm"
             data-testid="models-catalog-load"
             disabled={catalogMutation.isPending}
-            onClick={() => catalogMutation.mutate()}
+            // Per-call callbacks, not an effect on `catalogMutation.data`: the load is only ever
+            // started by this click, so the toast fires exactly once per attempt instead of again on
+            // every re-render that observes the same failed result. A failed load is transient news —
+            // the user can still add models by hand — so it is a toast, not a banner pinned above
+            // the list it is not blocking.
+            onClick={() =>
+              catalogMutation.mutate(undefined, {
+                onSuccess: (result) => {
+                  if (result.ok) return;
+                  toast.add({
+                    type: 'error',
+                    title: m['dashboard.providers.form.catalog_failed']({ code: result.error.code }),
+                  });
+                },
+                onError: () =>
+                  toast.add({
+                    type: 'error',
+                    title: m['dashboard.providers.form.catalog_failed']({ code: 'catalog_unavailable' }),
+                  }),
+              })
+            }
           >
             {catalogMutation.isPending
               ? m['dashboard.providers.form.catalog_loading']()
@@ -117,14 +138,6 @@ export const ModelsSection: React.FC<ModelsSectionProps> = ({
                       {m['dashboard.providers.form.models_upstream_hint']()}
                     </p>
                   </div>
-
-                  {catalogMutation.isError || catalogResult?.ok === false ? (
-                    <p role="status" className="rounded-lg border bg-muted p-3 text-sm">
-                      {m['dashboard.providers.form.catalog_failed']({
-                        code: catalogResult?.ok === false ? catalogResult.error.code : 'catalog_unavailable',
-                      })}
-                    </p>
-                  ) : null}
 
                   {rows.length === 0 ? (
                     <Empty className="border" data-testid="models-empty">
@@ -207,6 +220,9 @@ export const ModelsSection: React.FC<ModelsSectionProps> = ({
                         showValues={false}
                       />
                     </div>
+                    {/* Says what the field is for before how to work it: the label already reads "add
+                        model id", so a bare keystroke instruction would be the only line on screen not
+                        explaining why anyone would type here when a catalog button sits above. */}
                     <FieldDescription>{m['dashboard.providers.form.models_helper']()}</FieldDescription>
                   </Field>
 

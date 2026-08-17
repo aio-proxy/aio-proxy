@@ -131,7 +131,7 @@ Rules:
 - Vendor docs often quote the Anthropic base for `ANTHROPIC_BASE_URL` (for example `https://api.z.ai/api/anthropic`); append `/v1` when copying it here.
 - `auth` is only supported on `anthropic` endpoints (declaring it on an endpoint of any other protocol fails validation): `bearer` sends `Authorization: Bearer` and requires the provider to declare `apiKey`, the default `x-api-key` keeps today's header.
 - The top-level `protocol`/`baseURL` pair stays the primary endpoint and keeps its historical passthrough behavior — on passthrough its base URL's path is discarded and only the origin is used, joined with the inbound request path, so a single-protocol provider is best left on the top-level pair; cross-protocol conversion always targets the primary endpoint. Without a top-level pair, the primary endpoint is the first `endpoints` entry (in the shared form, the first protocol in its `protocol` list).
-- Editing a provider that declares `endpoints` from the Dashboard currently drops the field; edit the config file directly until Dashboard support lands.
+- The Dashboard cannot author `endpoints` yet. A save from the Dashboard editor now leaves an existing list untouched, so editing a provider's other fields no longer drops it — but adding, changing, or removing entries has to happen in the config file. A provider that declares `endpoints` with no top-level `protocol`/`baseURL` pair cannot be opened in the Dashboard editor at all until that support lands.
 
 ### Model metadata and pricing
 

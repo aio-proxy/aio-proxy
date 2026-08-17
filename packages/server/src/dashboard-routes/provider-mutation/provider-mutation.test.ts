@@ -70,6 +70,24 @@ describe('replaceProvider', () => {
     expect(result['openai']).toMatchObject({ baseURL: 'https://new.example/v1', transforms });
   });
 
+  // The dashboard's mutation body schema strips `endpoints`, so every save from the editor arrives
+  // without one. Retaining it is what stops a routine "rename this provider" from deleting a
+  // hand-written multi-protocol list out of config.jsonc and still answering 200.
+  test('preserves a hand-authored endpoints list the editor cannot send back', () => {
+    const endpoints = [
+      { protocol: 'anthropic', baseURL: 'https://a.test/v1' },
+      { protocol: 'openai-response', baseURL: 'https://o.test/v1' },
+    ];
+
+    const result = replaceProvider(
+      { openai: { kind: 'api', baseURL: 'https://old.example/v1', endpoints } },
+      'openai',
+      { kind: 'api', baseURL: 'https://new.example/v1' },
+    );
+
+    expect(result['openai']).toMatchObject({ baseURL: 'https://new.example/v1', endpoints });
+  });
+
   test('clears existing transforms when the client sends an empty request list', () => {
     const result = replaceProvider({ openai: { kind: 'api', transforms } }, 'openai', {
       kind: 'api',

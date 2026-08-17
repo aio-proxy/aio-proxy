@@ -1,5 +1,6 @@
 import { m } from '@aio-proxy/i18n';
 import { ProviderKind, ProviderProtocol } from '@aio-proxy/types';
+import { Toaster } from '@aio-proxy/ui/components/toast';
 import { beforeEach, describe, expect, rs, test } from '@rstest/core';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
@@ -26,7 +27,12 @@ const queryClient = new QueryClient({
   defaultOptions: { mutations: { retry: false }, queries: { retry: false } },
 });
 const wrapper = ({ children }: { readonly children: ReactNode }) => (
-  <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  // The catalog-failure surface is a toast, so the viewport that renders it has to be in the tree or
+  // the assertion would pass against an absence rather than against the message.
+  <QueryClientProvider client={queryClient}>
+    {children}
+    <Toaster />
+  </QueryClientProvider>
 );
 
 let section: ProviderEditorForm;
@@ -129,8 +135,12 @@ describe('ModelsSection', () => {
 
     const catalog = screen.getByTestId('models-catalog-load');
     expect(within(screen.getByTestId('provider-editor-field-models')).queryByTestId('models-catalog-load')).toBeNull();
-    // The header row is the element holding both the section heading and the action slot.
-    expect(catalog.parentElement).toContainElement(screen.getByRole('heading', { level: 2 }));
+    // Asserted against the header itself rather than the button's immediate parent: the action lives in
+    // its own slot beside the heading, so a parent-identity check would break on any header regrouping
+    // while still passing if the button were moved to a different card's header entirely.
+    const header = catalog.closest('[data-slot="card-header"]');
+    expect(header).not.toBeNull();
+    expect(header).toContainElement(screen.getByRole('heading', { level: 2 }));
   });
 
   test('manual add appends a row and writes it to the form', async () => {
@@ -428,16 +438,21 @@ describe('ModelsSection', () => {
     );
   });
 
-  test('a failed catalog load names the error code instead of emptying the list', async () => {
+  test('a failed catalog load toasts the error code instead of emptying the list', async () => {
     mocks.fetchCatalog.mockResolvedValue({ ok: false, error: { code: 'upstream_unauthorized', recoverable: true } });
     renderSection({ kind: ProviderKind.Api, initial: apiInitial(['model-a']) });
 
     fireEvent.click(screen.getByTestId('models-catalog-load'));
 
+    // Found by text anywhere in the tree, so this fails both when the toast never fires and when the
+    // message regresses to something pinned inside the section.
     await waitFor(() =>
-      expect(screen.getByRole('status')).toHaveTextContent(
-        m['dashboard.providers.form.catalog_failed']({ code: 'upstream_unauthorized' }),
-      ),
+      expect(
+        screen.getByText(m['dashboard.providers.form.catalog_failed']({ code: 'upstream_unauthorized' })),
+      ).toBeInTheDocument(),
+    );
+    expect(screen.getByTestId('provider-editor-field-models')).not.toHaveTextContent(
+      m['dashboard.providers.form.catalog_failed']({ code: 'upstream_unauthorized' }),
     );
     expect(screen.getByTestId('model-row-model-a')).toBeInTheDocument();
   });

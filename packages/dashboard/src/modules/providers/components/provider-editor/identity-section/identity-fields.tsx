@@ -38,7 +38,10 @@ export const IdentityFields: React.FC<IdentityFieldsProps> = ({ form, mode, serv
   const derivesId = mode === ProviderFormMode.Create && !serverAssignsId && !idPinned;
 
   return (
-    <>
+    // Name and id sit side by side, as in the prototype. The grid collapses to one column when the
+    // server assigns the id: there is no second cell then, and a fixed two-column track would leave
+    // the name field at half width beside a dead gutter — a case the prototype has no concept of.
+    <div className={serverAssignsId ? undefined : 'grid gap-4 sm:grid-cols-2'}>
       <div data-testid="provider-form-field-name">
         <form.Field name="name">
           {(field) => (
@@ -82,6 +85,6 @@ export const IdentityFields: React.FC<IdentityFieldsProps> = ({ form, mode, serv
           </form.Field>
         </div>
       )}
-    </>
+    </div>
   );
 };
