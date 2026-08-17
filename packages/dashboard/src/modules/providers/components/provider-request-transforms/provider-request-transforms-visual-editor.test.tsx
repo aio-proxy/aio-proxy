@@ -344,6 +344,23 @@ test('retains unsafe stage control drafts until shared rule validation accepts t
   expect(onValidityChange).toHaveBeenLastCalledWith(true);
 });
 
+test('seeds a refused computed stage with an editable body field', async () => {
+  const onChange = rs.fn();
+  render(<RequestTransformsHarness initialValue={initialValue} onChange={onChange} onValidityChange={rs.fn()} />);
+
+  // A refused commit never round trips through the codec, so the seeded default is observable as authored.
+  fireEvent.change(within(stageCard(0)).getByRole('textbox', { name: /Body path|请求体路径/u }), {
+    target: { value: '__proto__' },
+  });
+  await selectOption(within(stageCard(0)).getByTestId('request-transform-value-mode'), /^(Computed|计算)$/u);
+
+  expect(within(stageCard(0)).getByTestId('transform-set-expression-field-suffix')).toHaveValue('value');
+  expect(within(stageCard(0)).getByTestId('transform-set-expression-field-kind')).toHaveTextContent(
+    /Current body field|当前请求体字段/u,
+  );
+  expect(onChange).not.toHaveBeenCalled();
+});
+
 test('keeps malformed static JSON visible and blocks switching modes until it is valid', async () => {
   const objectValue = [
     { update: [{ $set: { 'request.body.value': { $literal: { seed: true } } } }] },

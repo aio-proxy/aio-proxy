@@ -36,7 +36,7 @@ export const buildRequestTransformStageDraft = (
     kind: 'set',
     target: controls.target,
     path: controls.path,
-    value: { kind: 'expression', expression: { kind: 'field', field: 'request.body.value' } },
+    value: { kind: 'expression', expression: { kind: 'field', field: 'request.body:value' } },
   };
 };
 
