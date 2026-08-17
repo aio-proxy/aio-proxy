@@ -12,17 +12,20 @@ import { TagsInput } from '@/components/tags-input';
 
 import { useProviderCatalogMutation } from '../../../hooks/use-provider-catalog-mutation';
 import type { ProviderEditorForm } from '../../../hooks/use-provider-editor-form';
-import { PROVIDER_MODELS_PLACEHOLDER } from '../../../lib/constants';
+import { aliasEditorIssues, type ProviderAlias, serializeAlias } from '../../../lib/alias-editor';
+import { PROVIDER_MODELS_PLACEHOLDER, ProviderFormMode } from '../../../lib/constants';
 import { exposedModels } from '../../../lib/exposed-models';
 import { applyModelRows, modelRowContext, toModelRows, type ModelRow } from '../../../lib/model-rows';
 import type { SectionSummary } from '../../../lib/section-status';
 import { ProviderModelMetadataDrawer } from '../provider-model-metadata-drawer';
 import { SectionShell } from '../section-shell';
+import { ModelAliases } from './model-aliases';
 import { ModelRowItem } from './model-row-item';
 
 interface ModelsSectionProps {
   readonly form: ProviderEditorForm;
   readonly kind: ProviderKind;
+  readonly mode: ProviderFormMode;
   readonly persistedProviderId?: string | undefined;
   /** oauth: `oauth.models` (discovered catalog); api/ai-sdk: last draft catalog result. */
   readonly candidates?: readonly string[] | undefined;
@@ -34,6 +37,7 @@ type MetadataMap = Readonly<Record<string, ModelMetadata>>;
 export const ModelsSection: React.FC<ModelsSectionProps> = ({
   form,
   kind,
+  mode,
   persistedProviderId,
   candidates,
   summary,
@@ -231,6 +235,31 @@ export const ModelsSection: React.FC<ModelsSectionProps> = ({
                         explaining why anyone would type here when a catalog button sits above. */}
                     <FieldDescription>{m['dashboard.providers.form.models_helper']()}</FieldDescription>
                   </Field>
+
+                  <form.Field name="alias">
+                    {(aliasField) => {
+                      const alias: ProviderAlias = aliasField.state.value ?? {};
+                      return (
+                        <ModelAliases
+                          alias={alias}
+                          // The RAW whitelist, never the fallback: empty means "no whitelist, so no
+                          // target can be missing", and the fallback would make an alias-only provider
+                          // fail against the catalog.
+                          issues={aliasEditorIssues(alias, models)}
+                          // The router exposes everything when the whitelist is empty, so the target
+                          // picker mirrors that. `?? []` is load-bearing: api/ai-sdk have no catalog
+                          // until the user loads one, and `undefined` crashes the downstream `.map` on
+                          // exactly the alias-only provider this fixes.
+                          targetOptions={models.length === 0 ? (discovered ?? []) : models}
+                          onAliasChange={(next) =>
+                            aliasField.handleChange(
+                              serializeAlias(next, mode === ProviderFormMode.Create ? 'create' : 'edit'),
+                            )
+                          }
+                        />
+                      );
+                    }}
+                  </form.Field>
 
                   <ProviderModelMetadataDrawer
                     model={metadataModel}

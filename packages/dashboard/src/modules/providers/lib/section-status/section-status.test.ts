@@ -63,8 +63,12 @@ test('an empty provider id blocks in create mode only', () => {
   expect(statuses({ ...base, id: '', mode: 'edit' }).identity).toBe('ok');
 });
 
-test('alias issues raise routing to todo because the schema would reject the save', () => {
-  expect(statuses({ ...base, aliasIssues: [{ code: 'target-missing', alias: 'smart' }] }).routing).toBe('todo');
+test('alias issues raise models to todo because the schema would reject the save', () => {
+  const aliasIssues = [{ code: 'target-missing' as const, alias: 'smart' }];
+  expect(statuses({ ...base, aliasIssues }).models).toBe('todo');
+  // The alias editor lives in Models now (D-F6), so Routing must not carry a dot for a control it no
+  // longer holds — and todo there would send the footer's "complete these sections" to the wrong one.
+  expect(statuses({ ...base, aliasIssues }).routing).toBe('ok');
 });
 
 test('a stale whitelist entry is attention and does not block', () => {
@@ -203,9 +207,6 @@ test('a disabled provider reads as disabled, never as a weight it will not honou
 });
 
 test('routing states its own problem before its weight', () => {
-  expect(sectionStatuses({ ...base, aliasIssues: [{ code: 'target-missing', alias: 'smart' }] }).routing.hint).toBe(
-    m['dashboard.providers.editor.hint_routing_alias_issues'](),
-  );
   expect(sectionStatuses({ ...base, weightTie: true }).routing.hint).toBe(
     m['dashboard.providers.editor.hint_routing_weight_tie'](),
   );

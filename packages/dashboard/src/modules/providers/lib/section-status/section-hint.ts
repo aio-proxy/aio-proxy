@@ -56,6 +56,9 @@ const aliasText = (count: number): string =>
     : m['dashboard.providers.form.aliases_summary_aliases']({ count });
 
 export const modelsHint = (input: SectionStatusInput, status: SectionStatus): string => {
+  // Before the exposure count and before `hint_models_todo`: an alias pointing at nothing is the one
+  // thing in this section that blocks the save, so it is what the badge has to say.
+  if (input.aliasIssues.length > 0) return m['dashboard.providers.editor.hint_models_alias_issues']();
   if (status === 'attention') return m['dashboard.providers.editor.hint_models_stale']();
   // Keyed off the status, not off the count: an oauth provider whose catalog could not be fetched
   // exposes everything and is `ok`, so "no models enabled" would be false there.
@@ -66,7 +69,6 @@ export const modelsHint = (input: SectionStatusInput, status: SectionStatus): st
 };
 
 export const routingHint = (input: SectionStatusInput, status: SectionStatus): string => {
-  if (status === 'todo') return m['dashboard.providers.editor.hint_routing_alias_issues']();
   if (status === 'attention') return m['dashboard.providers.editor.hint_routing_weight_tie']();
   // A disabled provider is never materialized, so its weight would describe routing it never joins.
   if (input.enabled === false) return m['dashboard.providers.editor.hint_routing_disabled']();

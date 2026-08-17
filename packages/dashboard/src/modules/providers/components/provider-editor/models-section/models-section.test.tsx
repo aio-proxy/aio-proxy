@@ -8,7 +8,7 @@ import type { ReactNode } from 'react';
 
 import { type ProviderEditorForm, useProviderEditorForm } from '../../../hooks/use-provider-editor-form';
 import type { ProviderEditorShape } from '../../../hooks/use-provider-editor-form';
-import { PROVIDER_MODELS_PLACEHOLDER } from '../../../lib/constants';
+import { PROVIDER_MODELS_PLACEHOLDER, ProviderFormMode } from '../../../lib/constants';
 import { ModelsSection } from './models-section';
 
 const mocks = rs.hoisted(() => ({ fetchCatalog: rs.fn(), slugs: rs.fn() }));
@@ -46,10 +46,26 @@ interface HarnessProps {
 const Harness: React.FC<HarnessProps> = ({ kind, initial, candidates }) => {
   const form = useProviderEditorForm({ kind, initial });
   section = form;
-  return <ModelsSection form={form} kind={kind} candidates={candidates} summary={{ status: 'ok', hint: '' }} />;
+  return (
+    <ModelsSection
+      form={form}
+      kind={kind}
+      mode={ProviderFormMode.Edit}
+      candidates={candidates}
+      summary={{ status: 'ok', hint: '' }}
+    />
+  );
 };
 
 const renderSection = (props: HarnessProps) => render(<Harness {...props} />, { wrapper });
+
+// Open the alias draft's target picker and read back the option labels it offers.
+const targetOptions = async () => {
+  const draft = await screen.findByTestId('provider-alias-draft');
+  fireEvent.click(within(draft).getByRole('combobox'));
+  const options = await screen.findAllByRole('option');
+  return options.map((option) => option.textContent);
+};
 
 const apiInitial = (models: readonly string[], metadata?: Record<string, Record<string, unknown>>) => ({
   kind: ProviderKind.Api,
@@ -514,5 +530,61 @@ describe('ModelsSection', () => {
     await screen.findByTestId('provider-model-metadata-drawer');
 
     expect(await screen.findByRole('button', { name: m['common.clear']() })).toBeInTheDocument();
+  });
+
+  // Aliases moved here from Routing (fidelity-rules D-F6): they rename the models this section picks,
+  // so the target picker and the list it draws from sit under one heading.
+  //
+  // Spec change 6 made an alias-only provider (models: []) valid on both server and client. The draft
+  // row is the surface that matters: `ProviderAliasConfigFields` only renders for an already-named
+  // alias, so a fixture with an existing `alias` entry never mounts the draft and would pass green
+  // while the authoring path stays broken.
+  test('an empty whitelist offers the discovered catalog as alias targets', async () => {
+    renderSection({ kind: ProviderKind.Api, initial: apiInitial([]), candidates: ['disc-a', 'disc-b'] });
+
+    fireEvent.click(screen.getByRole('button', { name: /Add Alias|添加别名/u }));
+
+    expect(await targetOptions()).toEqual(['disc-a', 'disc-b']);
+  });
+
+  test('a non-empty whitelist offers only the whitelist', async () => {
+    renderSection({
+      kind: ProviderKind.Api,
+      initial: apiInitial(['model-a']),
+      candidates: ['disc-a', 'disc-b', 'model-a'],
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /Add Alias|添加别名/u }));
+
+    expect(await targetOptions()).toEqual(['model-a']);
+  });
+
+  // The raw whitelist, never the fallback, feeds aliasEditorIssues: empty there correctly means "no
+  // whitelist, so no target can be missing". The target here is absent from the catalog on purpose —
+  // passing the fallback instead would flag it target-missing and mark the section invalid.
+  test('an alias-only provider reports no target-missing issue', () => {
+    renderSection({
+      kind: ProviderKind.Api,
+      initial: { ...apiInitial([]), alias: { smart: { model: 'legacy-model', preserve: false } } },
+      candidates: ['disc-a'],
+    });
+
+    const card = screen.getByTestId('provider-alias-card');
+    expect(within(card).getByLabelText(/Target Model|目标/u)).not.toHaveAttribute('aria-invalid', 'true');
+  });
+
+  // Empty-state Add lives in ProviderAliasList, not the secondary button ModelAliases gates. After the
+  // top-level substitution, `models` *is* targetOptions: no catalog means no picker options, so the
+  // button must stay disabled; a loaded catalog still authorizes alias-only.
+  test('empty-state Add Alias is disabled when target options are empty', () => {
+    renderSection({ kind: ProviderKind.Api, initial: apiInitial([]) });
+
+    expect(screen.getByRole('button', { name: /Add Alias|添加别名/u })).toBeDisabled();
+  });
+
+  test('empty-state Add Alias is enabled when the catalog fills target options', () => {
+    renderSection({ kind: ProviderKind.Api, initial: apiInitial([]), candidates: ['disc-a'] });
+
+    expect(screen.getByRole('button', { name: /Add Alias|添加别名/u })).toBeEnabled();
   });
 });

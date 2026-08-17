@@ -83,10 +83,11 @@ export function sectionStatuses(input: SectionStatusInput): Readonly<Record<Sect
     const discovered = new Set(input.discoveredModels);
     if (input.models.some((model) => !discovered.has(model))) models = 'attention';
   }
+  // Last, so it outranks the stale-model `attention`: validateAliasTargets turns an alias issue into a
+  // 400 on save, and the alias editor sits in this section (D-F6).
+  if (input.aliasIssues.length > 0) models = 'todo';
 
-  // Alias issues block: validateAliasTargets turns them into a 400 on save.
-  let routing: SectionStatus = input.aliasIssues.length > 0 ? 'todo' : 'ok';
-  if (routing === 'ok' && input.weightTie) routing = 'attention';
+  const routing: SectionStatus = input.weightTie ? 'attention' : 'ok';
 
   const advanced: SectionStatus = input.transformsValid ? 'ok' : 'todo';
 

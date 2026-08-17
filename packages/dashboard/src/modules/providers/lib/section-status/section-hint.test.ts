@@ -50,6 +50,20 @@ test('a non-oauth provider with an empty whitelist still reads as zero models', 
   expect(modelsHint({ ...base, models: [], aliasCount: 1 }, 'ok')).toBe('0 models · 1 alias');
 });
 
+// The alias editor moved into Models (D-F6), so the badge that blocks the save has to name the alias
+// rather than the exposure count it would otherwise print beside a save-blocking dot.
+test('the models hint names a broken alias ahead of anything it counts', () => {
+  const aliasIssues = [{ code: 'target-missing' as const, alias: 'smart' }];
+
+  expect(modelsHint({ ...base, models: ['m1'], aliasCount: 1, aliasIssues }, 'todo')).toBe(
+    m['dashboard.providers.editor.hint_models_alias_issues'](),
+  );
+  // Also ahead of the stale-catalog attention text, which describes a different, non-blocking problem.
+  expect(modelsHint({ ...base, models: ['m1'], aliasIssues }, 'attention')).toBe(
+    m['dashboard.providers.editor.hint_models_alias_issues'](),
+  );
+});
+
 // `0` is a real configured weight and absent is the key being omitted from config; the routing badge
 // coalesced the two while the attempt-order queue beside it renders a dash for absent, so one screen
 // stated both. Ordering still coalesces to 0 (attempt-order-preview's `effectiveWeight`) — this is the

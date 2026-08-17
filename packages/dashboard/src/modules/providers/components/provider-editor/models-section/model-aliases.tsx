@@ -5,7 +5,7 @@ import { PlusIcon } from 'lucide-react';
 import type { AliasEditorIssue, ProviderAlias } from '../../../lib/alias-editor';
 import { ProviderAliasList, useAliasDrafts } from '../../provider-alias';
 
-interface RoutingAliasesProps {
+interface ModelAliasesProps {
   readonly alias: ProviderAlias;
   readonly issues: readonly AliasEditorIssue[];
   /** The whitelist, or the discovered catalog when the whitelist is empty. */
@@ -14,17 +14,23 @@ interface RoutingAliasesProps {
 }
 
 /**
+ * Lives with the models it renames, not with routing: an alias names a client-facing model id and
+ * points it at one of the ids picked above, so authoring it anywhere else means scrolling away from
+ * the list you are choosing targets from (the user's ruling; fidelity-rules D-F6).
+ *
  * The draft layer did not die with the alias drawer: a not-yet-named alias cannot be a key in the
  * `alias` record, and renaming has to reject duplicates. What went away is staging-until-close — rows
  * write the form as soon as an alias has a name.
  */
-export const RoutingAliases: React.FC<RoutingAliasesProps> = ({ alias, issues, targetOptions, onAliasChange }) => {
+export const ModelAliases: React.FC<ModelAliasesProps> = ({ alias, issues, targetOptions, onAliasChange }) => {
   const drafts = useAliasDrafts(alias, onAliasChange);
   // The list renders its own add button in the empty state, so only offer one once rows exist.
   const hasRows = Object.keys(alias).length > 0 || drafts.aliasDraftIds.length > 0;
 
   return (
-    <div className="flex flex-col gap-4" data-testid="provider-editor-field-alias">
+    // `border-t pt-5` because this block now shares the Models section with the row list above it:
+    // two headings under one section heading need the rule to read as two blocks, not one long one.
+    <div className="flex flex-col gap-4 border-t pt-5" data-testid="provider-editor-field-alias">
       <div>
         <h3 className="text-sm font-medium">{m['dashboard.providers.editor.aliases_heading']()}</h3>
         <p className="max-w-2xl text-xs text-muted-foreground">
