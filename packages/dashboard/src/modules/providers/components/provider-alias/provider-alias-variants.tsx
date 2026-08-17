@@ -1,142 +1,95 @@
 import { m } from '@aio-proxy/i18n';
-import type { AliasConfig, AliasTarget } from '@aio-proxy/types';
-import { Badge } from '@aio-proxy/ui/components/badge';
+import type { AliasConfig } from '@aio-proxy/types';
 import { Button } from '@aio-proxy/ui/components/button';
-import { FieldDescription } from '@aio-proxy/ui/components/field';
-import { Separator } from '@aio-proxy/ui/components/separator';
-import { omit } from 'es-toolkit/object';
-import { ChevronDownIcon, ChevronUpIcon, PlusIcon } from 'lucide-react';
-import { type FC, useState } from 'react';
+import { PlusIcon } from 'lucide-react';
+import type { FC } from 'react';
 
 import {
+  addVariantRow,
   type AliasEditorIssue,
-  type AliasEditResult,
-  commitVariantDraft,
+  blankVariantRow,
+  displayVariantRows,
   type ProviderAlias,
-  renameVariant,
+  variantRows,
+  withVariantRows,
 } from '../../lib/alias-editor';
-import { ProviderVariantDraft } from '../provider-variant-draft';
+import { aliasIssueMessage } from '../../lib/alias-editor-copy';
 import { ProviderVariantRow } from '../provider-variant-row';
 
-type Props = {
+interface ProviderAliasVariantsProps {
   readonly alias: ProviderAlias;
   readonly aliasName: string;
   readonly config: AliasConfig;
   readonly models: readonly string[];
   readonly issues: readonly AliasEditorIssue[];
-  readonly draftIds: readonly string[];
   readonly onAliasChange: (alias: ProviderAlias) => void;
-  readonly onAddDraft: () => void;
-  readonly onDiscardDraft: (id: string) => void;
-  readonly onDraftDirtyChange: (id: string, dirty: boolean) => void;
-};
+}
 
-export const ProviderAliasVariants: FC<Props> = ({
+export const ProviderAliasVariants: FC<ProviderAliasVariantsProps> = ({
   alias,
   aliasName,
   config,
   models,
   issues,
-  draftIds,
   onAliasChange,
-  onAddDraft,
-  onDiscardDraft,
-  onDraftDirtyChange,
 }) => {
-  const variants = config.variants ?? {};
-  const [open, setOpen] = useState(issues.length > 0 || draftIds.length > 0);
-  const expanded = open || issues.length > 0 || draftIds.length > 0;
-  const canCollapse = issues.length === 0 && draftIds.length === 0;
+  const rows = variantRows(config);
+  // Two rows can fail the same way; the list names each problem once, and `aria-invalid` on the
+  // offending controls is what points at which row it came from.
+  const messages = [...new Set(issues.map(aliasIssueMessage))];
 
   return (
     <>
-      <Separator />
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            disabled={expanded && !canCollapse}
-            aria-expanded={expanded}
-            aria-label={
-              expanded
-                ? m['dashboard.providers.form.collapse_variants']({ alias: aliasName })
-                : m['dashboard.providers.form.expand_variants']({ alias: aliasName })
-            }
-            onClick={() => setOpen((current) => !current)}
-          >
-            {expanded ? <ChevronUpIcon data-icon="inline-start" /> : <ChevronDownIcon data-icon="inline-start" />}
-            {m['dashboard.providers.form.label_variants']()}
-          </Button>
-          <Badge variant="secondary">{Object.keys(variants).length + draftIds.length}</Badge>
-        </div>
+      <div className="flex flex-wrap items-center justify-end gap-3 border-t pt-3">
         <Button
           type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => {
-            setOpen(true);
-            onAddDraft();
-          }}
+          variant="ghost"
+          size="xs"
+          disabled={models.length === 0}
+          onClick={() => onAliasChange(addVariantRow(alias, aliasName, blankVariantRow(models[0] ?? '')))}
         >
           <PlusIcon data-icon="inline-start" />
           {m['dashboard.providers.form.add_variant']()}
         </Button>
       </div>
-      {expanded && (
-        <div className="flex flex-col gap-3">
-          <FieldDescription>{m['dashboard.providers.form.variants_helper']()}</FieldDescription>
-          {Object.entries(variants).map(([variantName, target]) => (
+      {rows.length > 0 && (
+        <div className="space-y-2 rounded-xl bg-muted/40 p-2.5">
+          {displayVariantRows(rows).map(({ row, index }) => (
             <ProviderVariantRow
-              key={variantName}
-              alias={alias}
+              key={index}
               aliasName={aliasName}
-              variantName={variantName}
-              target={target}
+              index={index}
+              row={row}
               models={models}
-              issues={issues.filter((issue) => issue.variant === variantName)}
-              onChange={(nextTarget: AliasTarget) =>
-                onAliasChange({
-                  ...alias,
-                  [aliasName]: { ...config, variants: { ...variants, [variantName]: nextTarget } },
-                })
+              issues={issues.filter((issue) => issue.variant === index)}
+              onChange={(next) =>
+                onAliasChange(
+                  withVariantRows(
+                    alias,
+                    aliasName,
+                    rows.map((current, position) => (position === index ? next : current)),
+                  ),
+                )
               }
-              onRename={(name): AliasEditResult => {
-                const result = renameVariant(alias, { alias: aliasName, variant: variantName, name });
-                if (result.ok) onAliasChange(result.alias);
-                return result;
-              }}
-              onRemove={() => {
-                const nextVariants = omit(variants, [variantName]);
-                onAliasChange({
-                  ...alias,
-                  [aliasName]: {
-                    ...config,
-                    variants: Object.keys(nextVariants).length === 0 ? undefined : nextVariants,
-                  },
-                });
-              }}
-            />
-          ))}
-          {draftIds.map((id) => (
-            <ProviderVariantDraft
-              key={id}
-              id={id}
-              models={models}
-              onDirtyChange={onDraftDirtyChange}
-              onDiscard={() => onDiscardDraft(id)}
-              onCommit={(draft) => {
-                const result = commitVariantDraft(alias, aliasName, draft);
-                if (result.ok) {
-                  onAliasChange(result.alias);
-                  onDiscardDraft(id);
-                }
-                return result;
-              }}
+              onRemove={() =>
+                onAliasChange(
+                  withVariantRows(
+                    alias,
+                    aliasName,
+                    rows.filter((_, position) => position !== index),
+                  ),
+                )
+              }
             />
           ))}
         </div>
+      )}
+      {messages.length > 0 && (
+        <ul role="alert" className="space-y-1 text-xs text-destructive">
+          {messages.map((message) => (
+            <li key={message}>{message}</li>
+          ))}
+        </ul>
       )}
     </>
   );

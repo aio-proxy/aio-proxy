@@ -1,6 +1,6 @@
 import { describe, expect, test } from '@rstest/core';
 
-import { commitAliasDraft, commitVariantDraft, renameAlias, renameVariant, serializeAlias } from './alias-editor';
+import { commitAliasDraft, renameAlias, serializeAlias } from './alias-editor';
 import { alias } from './alias-editor.test-support';
 
 describe('provider alias editor drafts', () => {
@@ -44,79 +44,10 @@ describe('provider alias editor drafts', () => {
     });
   });
 
-  test('Given a variant draft When committed Then normalizes its key within the parent alias', () => {
-    const result = commitVariantDraft(alias, 'mini', {
-      name: '  XHigh  ',
-      model: 'gpt-xhigh',
-      preserve: true,
-    });
-
-    expect(result).toEqual({
-      ok: true,
-      alias: {
-        mini: {
-          ...alias.mini,
-          variants: {
-            low: { model: 'gpt-low', preserve: false },
-            xhigh: { model: 'gpt-xhigh', preserve: true },
-          },
-        },
-      },
-    });
-  });
-
-  test('Given equal variant names in different aliases When committed Then both are allowed', () => {
-    const aliases = {
-      first: { model: 'one', preserve: false },
-      second: { model: 'two', preserve: false },
-    };
-    const draft = { name: 'shared', model: 'shared-model', preserve: false };
-
-    expect([commitVariantDraft(aliases, 'first', draft).ok, commitVariantDraft(aliases, 'second', draft).ok]).toEqual([
-      true,
-      true,
-    ]);
-  });
-
-  test('Given array-shaped variants When renamed Then returns alias-missing', () => {
-    const result = renameVariant(
-      {
-        mini: {
-          model: 'gpt-default',
-          preserve: false,
-          variants: [{ when: { effort: 'low' }, model: 'gpt-low', preserve: false }],
-        },
-      },
-      { alias: 'mini', variant: 'low', name: 'high' },
-    );
-
-    expect(result).toEqual({ ok: false, code: 'alias-missing' });
-  });
-
-  test('Given a variant rename colliding in its parent When committed Then returns a duplicate error', () => {
-    const result = renameVariant(
-      {
-        mini: {
-          ...alias.mini,
-          variants: {
-            low: { model: 'gpt-low', preserve: false },
-            high: { model: 'gpt-high', preserve: false },
-          },
-        },
-      },
-      { alias: 'mini', variant: 'high', name: ' LOW ' },
-    );
-
-    expect(result).toEqual({ ok: false, code: 'name-duplicate' });
-  });
-
   test('Given prototype-like rename keys When committed Then they remain own record entries', () => {
-    const aliasResult = renameAlias(alias, 'mini', '__proto__');
-    const variantResult = renameVariant(alias, { alias: 'mini', variant: 'low', name: 'constructor' });
+    const result = renameAlias(alias, 'mini', '__proto__');
 
-    expect(aliasResult.ok).toBe(true);
-    expect(aliasResult.ok && Object.hasOwn(aliasResult.alias, '__proto__')).toBe(true);
-    expect(variantResult.ok).toBe(true);
-    expect(variantResult.ok && Object.hasOwn(variantResult.alias.mini?.variants ?? {}, 'constructor')).toBe(true);
+    expect(result.ok).toBe(true);
+    expect(result.ok && Object.hasOwn(result.alias, '__proto__')).toBe(true);
   });
 });

@@ -46,7 +46,7 @@ describe('provider alias editor summary and issues', () => {
     expect(issues).toEqual([
       { code: 'preserved-route-conflict', alias: 'legacy' },
       { code: 'target-missing', alias: 'legacy' },
-      { code: 'target-missing', alias: 'legacy', variant: 'low' },
+      { code: 'target-missing', alias: 'legacy', variant: 0 },
     ]);
   });
 
@@ -60,8 +60,8 @@ describe('provider alias editor summary and issues', () => {
 
   test('Given alias and variant issues When locating controls Then target errors focus their selects', () => {
     expect(aliasIssueControlId({ code: 'target-missing', alias: 'mini' })).toBe('provider-alias-mini-target');
-    expect(aliasIssueControlId({ code: 'target-missing', alias: 'mini', variant: 'low' })).toBe(
-      'provider-alias-mini-variant-low-target',
+    expect(aliasIssueControlId({ code: 'target-missing', alias: 'mini', variant: 0 })).toBe(
+      'provider-alias-mini-variant-0-target',
     );
   });
 });

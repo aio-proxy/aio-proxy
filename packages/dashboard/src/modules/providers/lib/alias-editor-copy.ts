@@ -18,15 +18,19 @@ export function aliasEditErrorMessage(code: VisibleEditError): string {
 export function aliasIssueMessage(issue: AliasEditorIssue): string {
   switch (issue.code) {
     case 'alias-name-duplicate':
-    case 'variant-name-duplicate':
       return m['dashboard.providers.form.error_name_duplicate']();
     case 'alias-name-required':
-    case 'variant-name-required':
       return m['dashboard.providers.form.error_name_required']();
     case 'preserved-route-conflict':
       return m['dashboard.providers.form.error_preserved_route_conflict']();
     case 'target-missing':
       return m['dashboard.providers.form.error_target_missing']();
+    case 'variant-effort-blank':
+      return m['dashboard.providers.form.variant_effort_blank']();
+    case 'variant-when-duplicate':
+      return m['dashboard.providers.form.variant_when_duplicate']();
+    case 'variant-when-required':
+      return m['dashboard.providers.form.variant_when_required']();
   }
 }
 

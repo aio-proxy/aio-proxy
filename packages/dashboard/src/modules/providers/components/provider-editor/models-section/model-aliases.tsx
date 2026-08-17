@@ -43,14 +43,12 @@ export const ModelAliases: React.FC<ModelAliasesProps> = ({ alias, issues, targe
         issues={issues}
         aliasDraftIds={drafts.aliasDraftIds}
         aliasIds={drafts.aliasIds}
-        variantDrafts={drafts.variantDrafts}
         onAliasChange={onAliasChange}
         onAddAliasDraft={drafts.addAliasDraft}
         onCommitAliasDraft={drafts.commitDraft}
         onDiscardDraft={drafts.discardDraft}
         onRenameAlias={drafts.rename}
         onRemoveAlias={drafts.removeAlias}
-        onAddVariantDraft={drafts.addVariantDraft}
         onDraftDirtyChange={drafts.reportDraftDirty}
       />
       {hasRows ? (

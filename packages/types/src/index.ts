@@ -7,6 +7,7 @@ export {
   isAliasVariantsObject,
   matchAliasRows,
   whenIdentity,
+  whenRank,
 } from './alias-variant';
 export type { AliasDimensions, AliasSelectRow, AliasSpeed, AliasWhen } from './alias-variant';
 export * from './codex-model/index';

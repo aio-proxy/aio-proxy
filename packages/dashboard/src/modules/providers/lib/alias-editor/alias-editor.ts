@@ -1,8 +1,15 @@
-import type { AliasConfig } from '@aio-proxy/types';
-import { isAliasVariantsObject, normalizeAliasName, normalizeVariantKey } from '@aio-proxy/types';
+import type { AliasConfig, AliasSelectRow, AliasSpeed, ProviderAlias } from '@aio-proxy/types';
+import {
+  aliasTargetModels,
+  flattenAliasVariants,
+  normalizeAliasName,
+  preservedAliasModels,
+  whenIdentity,
+  whenRank,
+} from '@aio-proxy/types';
 import type { ReactFormExtendedApi } from '@tanstack/react-form';
 
-export type ProviderAlias = Readonly<Record<string, AliasConfig>>;
+export type { ProviderAlias };
 
 export type AliasDraft = {
   readonly name: string;
@@ -22,10 +29,12 @@ export type AliasEditorIssue = {
     | 'alias-name-required'
     | 'preserved-route-conflict'
     | 'target-missing'
-    | 'variant-name-duplicate'
-    | 'variant-name-required';
+    | 'variant-effort-blank'
+    | 'variant-when-duplicate'
+    | 'variant-when-required';
   readonly alias: string;
-  readonly variant?: string;
+  /** Index into the alias's stored variant rows. Rows carry a condition, not a name, so there is no key. */
+  readonly variant?: number;
 };
 
 export type AliasSummary = {
@@ -33,20 +42,14 @@ export type AliasSummary = {
   readonly variants: number;
 };
 
-export const aliasControlId = (alias: string, variant?: string): string =>
+export const aliasControlId = (alias: string, variant?: number): string =>
   variant === undefined
     ? `provider-alias-${encodeURIComponent(alias)}`
-    : `provider-alias-${encodeURIComponent(alias)}-variant-${encodeURIComponent(variant)}`;
+    : `provider-alias-${encodeURIComponent(alias)}-variant-${variant}`;
 
 export const aliasIssueControlId = (issue: AliasEditorIssue): string => {
   const id = aliasControlId(issue.alias, issue.variant);
   return issue.code === 'target-missing' ? `${id}-target` : id;
-};
-
-type VariantRename = {
-  readonly alias: string;
-  readonly variant: string;
-  readonly name: string;
 };
 
 export function serializeAlias(alias: ProviderAlias, mode: 'create' | 'edit'): ProviderAlias | undefined {
@@ -87,72 +90,99 @@ export function renameAlias(alias: ProviderAlias, current: string, next: string)
   return { ok: true, alias: renamed };
 }
 
-export function commitVariantDraft(alias: ProviderAlias, aliasName: string, draft: AliasDraft): AliasEditResult {
+/** Rows are the one internal shape: the legacy record form is exactly the effort-only subset of it. */
+export function variantRows(config: AliasConfig): readonly AliasSelectRow[] {
+  return flattenAliasVariants(config.variants);
+}
+
+/** Rank order, so the row that `matchAliasRows` would pick reads first. Carries the stored index because
+ * that index — not the display position — is the row's identity for edits and for issue anchors. */
+export function displayVariantRows(
+  rows: readonly AliasSelectRow[],
+): readonly { readonly row: AliasSelectRow; readonly index: number }[] {
+  return rows
+    .map((row, index) => ({ row, index }))
+    .sort((left, right) => whenRank(right.row.when) - whenRank(left.row.when));
+}
+
+const isEffortOnly = (row: AliasSelectRow): boolean =>
+  row.when.thinking === undefined && row.when.speed === undefined && (row.when.effort ?? '') !== '';
+
+/**
+ * Every config in the wild uses the record form, so emitting rows unconditionally would rewrite a
+ * user's whole `alias` block into the verbose shape on the first save of an unrelated field. Effort-only
+ * rows round-trip to the compact shape; anything naming thinking or speed needs rows to survive.
+ */
+export function toAliasVariants(rows: readonly AliasSelectRow[]): AliasConfig['variants'] | undefined {
+  if (rows.length === 0) return undefined;
+  if (!rows.every(isEffortOnly)) return [...rows];
+  return Object.fromEntries(rows.map((row) => [row.when.effort, { model: row.model, preserve: row.preserve }]));
+}
+
+export function withVariantRows(
+  alias: ProviderAlias,
+  aliasName: string,
+  rows: readonly AliasSelectRow[],
+): ProviderAlias {
   const config = alias[aliasName];
-  if (config === undefined) {
-    return { ok: false, code: 'alias-missing' };
-  }
-
-  const variants = config.variants;
-  if (variants !== undefined && !isAliasVariantsObject(variants)) {
-    return { ok: false, code: 'alias-missing' };
-  }
-
-  const name = normalizeVariantKey(draft.name);
-  const error = draftError(name, draft.model, Object.keys(variants ?? {}).map(normalizeVariantKey));
-  if (error !== undefined) {
-    return { ok: false, code: error };
-  }
-
-  return {
-    ok: true,
-    alias: {
-      ...alias,
-      [aliasName]: {
-        ...config,
-        variants: { ...variants, [name]: { model: draft.model, preserve: draft.preserve } },
-      },
-    },
-  };
+  if (config === undefined) return alias;
+  const variants = toAliasVariants(rows);
+  const next: AliasConfig =
+    variants === undefined
+      ? { model: config.model, preserve: config.preserve }
+      : { model: config.model, preserve: config.preserve, variants };
+  return { ...alias, [aliasName]: next };
 }
 
-export function renameVariant(alias: ProviderAlias, rename: VariantRename): AliasEditResult {
-  const config = alias[rename.alias];
-  const variants = config?.variants;
-  if (config === undefined || !isAliasVariantsObject(variants)) {
-    return { ok: false, code: 'alias-missing' };
-  }
-
-  const target = variants[rename.variant];
-  if (target === undefined) {
-    return { ok: false, code: 'alias-missing' };
-  }
-
-  const name = normalizeVariantKey(rename.name);
-  const otherNames = Object.keys(variants)
-    .filter((key) => key !== rename.variant)
-    .map(normalizeVariantKey);
-  const error = draftError(name, target.model, otherNames);
-  if (error !== undefined) {
-    return { ok: false, code: error };
-  }
-
-  const renamed = Object.fromEntries(
-    Object.entries(variants).map(([key, value]) => [key === rename.variant ? name : key, value]),
-  );
-  return { ok: true, alias: { ...alias, [rename.alias]: { ...config, variants: renamed } } };
+export function addVariantRow(alias: ProviderAlias, aliasName: string, row: AliasSelectRow): ProviderAlias {
+  const config = alias[aliasName];
+  if (config === undefined) return alias;
+  return withVariantRows(alias, aliasName, [...variantRows(config), row]);
 }
+
+/** An unconditioned row: it reports `variant-when-required` on sight, which is what blocks the save
+ * until the user names a dimension. Appending it beats a staged draft that would duplicate this editor. */
+export const blankVariantRow = (model: string): AliasSelectRow => ({ when: {}, model, preserve: false });
+
+/** Selects need a value for "not part of this condition"; `undefined` is not one. */
+export const ANY_DIMENSION = 'any';
+
+export type AliasRowDraft = {
+  readonly thinking: typeof ANY_DIMENSION | 'on' | 'off';
+  readonly effort: string;
+  readonly speed: typeof ANY_DIMENSION | AliasSpeed;
+  readonly model: string;
+  readonly preserve: boolean;
+};
+
+export type AliasRowForm = ReactFormExtendedApi<AliasRowDraft, any, any, any, any, any, any, any, any, any, any, any>;
+
+export const toRowDraft = (row: AliasSelectRow): AliasRowDraft => ({
+  thinking: row.when.thinking === undefined ? ANY_DIMENSION : row.when.thinking ? 'on' : 'off',
+  effort: row.when.effort ?? '',
+  speed: row.when.speed ?? ANY_DIMENSION,
+  model: row.model,
+  preserve: row.preserve,
+});
+
+/** Blank effort drops the key rather than storing `''`: an empty condition is at least reported as
+ * `variant-when-required`, where `effort: ''` is a condition no request can ever match. */
+export const fromRowDraft = (draft: AliasRowDraft): AliasSelectRow => ({
+  when: {
+    ...(draft.thinking === ANY_DIMENSION ? {} : { thinking: draft.thinking === 'on' }),
+    ...(draft.effort.trim() === '' ? {} : { effort: draft.effort }),
+    ...(draft.speed === ANY_DIMENSION ? {} : { speed: draft.speed }),
+  },
+  model: draft.model,
+  preserve: draft.preserve,
+});
 
 export function aliasSummary(alias: ProviderAlias): AliasSummary {
   let variants = 0;
   for (const config of Object.values(alias)) {
-    variants += Object.keys(config.variants ?? {}).length;
+    variants += flattenAliasVariants(config.variants).length;
   }
   return { aliases: Object.keys(alias).length, variants };
-}
-
-export function aliasTargetModels(alias: ProviderAlias): readonly string[] {
-  return Array.from(new Set(Object.values(alias).flatMap(targetModels)));
 }
 
 export function preserveReferenceCount(alias: ProviderAlias, model: string): number {
@@ -161,8 +191,8 @@ export function preserveReferenceCount(alias: ProviderAlias, model: string): num
     if (config.preserve && config.model === model) {
       count += 1;
     }
-    for (const target of Object.values(config.variants ?? {})) {
-      if (target.preserve && target.model === model) {
+    for (const row of flattenAliasVariants(config.variants)) {
+      if (row.preserve && row.model === model) {
         count += 1;
       }
     }
@@ -175,7 +205,7 @@ export function aliasEditorIssues(alias: ProviderAlias, models?: readonly string
   // Keep in lockstep with validateAliasTargets in @aio-proxy/types: absent and
   // empty both mean "no whitelist", or the editor blocks a payload the server accepts.
   const availableModels = models === undefined || models.length === 0 ? undefined : new Set(models);
-  const preservedModels = collectPreservedModels(alias);
+  const preservedModels = preservedAliasModels(alias);
   const aliasNames = new Set<string>();
 
   for (const [aliasName, config] of Object.entries(alias)) {
@@ -187,23 +217,27 @@ export function aliasEditorIssues(alias: ProviderAlias, models?: readonly string
     }
     aliasNames.add(normalizedAlias);
 
-    if (preservedModels.has(normalizedAlias) && targetModels(config).some((model) => model !== normalizedAlias)) {
+    if (preservedModels.has(normalizedAlias) && aliasTargetModels(config).some((model) => model !== normalizedAlias)) {
       issues.push({ code: 'preserved-route-conflict', alias: aliasName });
     }
     if (availableModels !== undefined && !availableModels.has(config.model)) {
       issues.push({ code: 'target-missing', alias: aliasName });
     }
 
-    const variants = new Set<string>();
-    for (const [variant, target] of Object.entries(config.variants ?? {})) {
-      const normalizedVariant = normalizeVariantKey(variant);
-      if (normalizedVariant === '') {
-        issues.push({ code: 'variant-name-required', alias: aliasName, variant });
-      } else if (variants.has(normalizedVariant)) {
-        issues.push({ code: 'variant-name-duplicate', alias: aliasName, variant });
+    const conditions = new Set<string>();
+    for (const [variant, row] of variantRows(config).entries()) {
+      // An empty identity means no dimension at all. A present-but-blank effort still has an identity
+      // (`effort=`), so it needs its own check: the schema takes it, no request can ever match it.
+      const identity = whenIdentity(row.when);
+      if (identity === '') {
+        issues.push({ code: 'variant-when-required', alias: aliasName, variant });
+      } else if (row.when.effort === '') {
+        issues.push({ code: 'variant-effort-blank', alias: aliasName, variant });
+      } else if (conditions.has(identity)) {
+        issues.push({ code: 'variant-when-duplicate', alias: aliasName, variant });
       }
-      variants.add(normalizedVariant);
-      if (availableModels !== undefined && !availableModels.has(target.model)) {
+      conditions.add(identity);
+      if (availableModels !== undefined && !availableModels.has(row.model)) {
         issues.push({ code: 'target-missing', alias: aliasName, variant });
       }
     }
@@ -224,23 +258,4 @@ function draftError(
     return 'target-required';
   }
   return existingNames.includes(name) ? 'name-duplicate' : undefined;
-}
-
-function collectPreservedModels(alias: ProviderAlias): ReadonlySet<string> {
-  const models = new Set<string>();
-  for (const config of Object.values(alias)) {
-    if (config.preserve) {
-      models.add(config.model);
-    }
-    for (const target of Object.values(config.variants ?? {})) {
-      if (target.preserve) {
-        models.add(target.model);
-      }
-    }
-  }
-  return models;
-}
-
-function targetModels(config: AliasConfig): readonly string[] {
-  return [config.model, ...Object.values(config.variants ?? {}).map((target) => target.model)];
 }
