@@ -69,9 +69,11 @@ export const modelsHint = (input: SectionStatusInput, status: SectionStatus): st
 };
 
 export const routingHint = (input: SectionStatusInput, status: SectionStatus): string => {
-  if (status === 'attention') return m['dashboard.providers.editor.hint_routing_weight_tie']();
-  // A disabled provider is never materialized, so its weight would describe routing it never joins.
+  // First and unconditionally: a disabled provider is never materialized, so every other thing this
+  // badge could say — its weight, or a tie inside an attempt queue it never joins — describes routing
+  // it takes no part in.
   if (input.enabled === false) return m['dashboard.providers.editor.hint_routing_disabled']();
+  if (status === 'attention') return m['dashboard.providers.editor.hint_routing_weight_tie']();
   // Absent coalesces to 0 at the single ordering point, config.ts:185 — but that is ordering, not
   // readout. The attempt-order queue beside this badge renders a dash for an absent weight, so
   // printing `0` here would have the same screen state two things at once, and would make a stored

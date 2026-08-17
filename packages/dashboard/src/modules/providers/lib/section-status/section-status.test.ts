@@ -212,6 +212,15 @@ test('routing states its own problem before its weight', () => {
   );
 });
 
+// A disabled provider is never materialized, so it joins no attempt queue — which makes a tie inside
+// that queue exactly as untrue of it as the weight the branch above already suppresses.
+test('a disabled provider reads as disabled even when its weight ties', () => {
+  const summaries = sectionStatuses({ ...base, enabled: false, weightTie: true, weight: 40 });
+  expect(summaries.routing.hint).toBe(m['dashboard.providers.editor.hint_routing_disabled']());
+  // The dot stays on the tie (D-F6). This is the hint's ordering, not the status'.
+  expect(summaries.routing.status).toBe('attention');
+});
+
 test('the advanced hint joins exactly the parts that are active', () => {
   expect(sectionStatuses({ ...base, headerCount: 2, proxyCustom: true, transformCount: 0 }).advanced.hint).toBe(
     [
