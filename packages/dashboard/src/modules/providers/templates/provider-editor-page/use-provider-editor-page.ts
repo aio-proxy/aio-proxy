@@ -79,10 +79,9 @@ const saveOAuthProvider = (
   accountValues: AccountFormValues,
   oauth: DashboardOAuthProviderEdit,
   forceReauthorize: boolean,
-  updateProvider: (input: { id: string; body: ProviderMutationBody }, options: { onSuccess: () => void }) => void,
+  updateProvider: (input: { id: string; body: ProviderMutationBody }) => void,
   startReauthorize: (input: DashboardOAuthSessionStart, options: { onError: () => void }) => void,
   openPopup: () => void,
-  onSaved: () => void,
   onError: () => void,
 ) => {
   const account = oauthAccountSubmission(oauth.form, accountDraft(accountValues));
@@ -99,7 +98,7 @@ const saveOAuthProvider = (
     forceReauthorize,
   );
   if (action.kind === 'update') {
-    updateProvider({ id: values.id, body: action.body }, { onSuccess: onSaved });
+    updateProvider({ id: values.id, body: action.body });
     return;
   }
   openPopup();
@@ -111,9 +110,8 @@ const saveConfigProvider = (
   values: ProviderEditorShape,
   providerId: string | undefined,
   persistedMetadata: ProviderEditorShape['metadata'],
-  createProvider: (body: ProviderMutationBody, options: { onSuccess: () => void }) => void,
-  updateProvider: (input: { id: string; body: ProviderMutationBody }, options: { onSuccess: () => void }) => void,
-  onSaved: () => void,
+  createProvider: (body: ProviderMutationBody) => void,
+  updateProvider: (input: { id: string; body: ProviderMutationBody }) => void,
 ) => {
   const result = ProviderMutationBodySchema.safeParse(normalizeProviderFormValue(values as ProviderFormShape));
   if (!result.success) {
@@ -144,10 +142,10 @@ const saveConfigProvider = (
   const { metadata: _unreconciled, ...parsed } = result.data;
   const body = { ...parsed, ...(metadata === undefined ? {} : { metadata }) };
   if (mode === ProviderFormMode.Create) {
-    createProvider(body, { onSuccess: onSaved });
+    createProvider(body);
     return;
   }
-  updateProvider({ id: providerId ?? values.id, body }, { onSuccess: onSaved });
+  updateProvider({ id: providerId ?? values.id, body });
 };
 
 /**
@@ -184,7 +182,6 @@ export const useProviderEditorPage = ({
 }: ProviderEditorPageProps) => {
   const [optionsValid, setOptionsValid] = useState(kind !== 'ai-sdk');
   const [transformsValid, setTransformsValid] = useState(true);
-  const [saved, setSaved] = useState(false);
   const {
     openPopup,
     closeUnclaimedPopup,
@@ -272,7 +269,6 @@ export const useProviderEditorPage = ({
   };
 
   const save = (forceReauthorize = false) => {
-    setSaved(false);
     if (kind === 'oauth') {
       if (mode === ProviderFormMode.Create && !authorized) {
         openPopup();
@@ -288,13 +284,11 @@ export const useProviderEditorPage = ({
         updateProvider,
         startMutation.mutate,
         openPopup,
-        () => setSaved(true),
         closeUnclaimedPopup,
       );
       return;
     }
-    const onSaved = () => setSaved(true);
-    saveConfigProvider(mode, values, providerId, initial?.metadata, createProvider, updateProvider, onSaved);
+    saveConfigProvider(mode, values, providerId, initial?.metadata, createProvider, updateProvider);
   };
 
   const title = editorTitle(mode, values.name);
@@ -313,7 +307,6 @@ export const useProviderEditorPage = ({
     provider,
     summaries,
     authorized,
-    saved,
     sessionWarning,
     values,
     others,

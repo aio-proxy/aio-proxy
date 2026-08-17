@@ -704,7 +704,6 @@
         "footer_attention": "以下部分需要注意：",
         "footer_cancel": "取消",
         "footer_save": "儲存提供商",
-        "footer_saved": "已儲存",
         "footer_ready": "可以儲存了。",
         "authorize": "授權",
         "authorization_locked_hint": "完成此帳戶的授權後即可設定模型、路由與進階設定。",

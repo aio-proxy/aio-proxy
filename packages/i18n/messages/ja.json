@@ -704,7 +704,6 @@
         "footer_attention": "次のセクションを確認してください:",
         "footer_cancel": "キャンセル",
         "footer_save": "プロバイダーを保存",
-        "footer_saved": "保存しました",
         "footer_ready": "保存できます。",
         "authorize": "認可",
         "authorization_locked_hint": "このアカウントを認可すると、モデル・ルーティング・詳細設定が編集できます。",

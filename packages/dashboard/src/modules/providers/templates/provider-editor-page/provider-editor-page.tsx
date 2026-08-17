@@ -35,7 +35,6 @@ export const ProviderEditorPage: React.FC<ProviderEditorPageProps> = (props) => 
     provider,
     summaries,
     authorized,
-    saved,
     sessionWarning,
     values,
     others,
@@ -163,9 +162,6 @@ export const ProviderEditorPage: React.FC<ProviderEditorPageProps> = (props) => 
           </Card>
         </aside>
       </div>
-      {saved ? (
-        <p className="mt-4 text-sm text-muted-foreground">{m['dashboard.providers.editor.footer_saved']()}</p>
-      ) : null}
       <EditorFooter
         summaries={summaries}
         primaryLabel={primaryLabel}

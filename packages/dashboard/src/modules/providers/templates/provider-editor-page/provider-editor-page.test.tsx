@@ -184,7 +184,9 @@ const selectOAuthCapability = async () => {
   fireEvent.click(await screen.findByRole('option', { name: /Example OAuth/u }));
 };
 
-test('create-api save stays on the page and shows the saved indicator', async () => {
+// The success confirmation is the mutation hook's transient toast; the page keeps no "Saved" line of
+// its own, which used to sit there permanently while the footer went back to blocking the next save.
+test('create-api save stays on the page', async () => {
   const onSessionIdChange = rs.fn();
   renderPage({
     mode: ProviderFormMode.Create,
@@ -204,7 +206,6 @@ test('create-api save stays on the page and shows the saved indicator', async ()
   await waitFor(() => expect(mocks.create).toHaveBeenCalled());
   expect(mocks.update).not.toHaveBeenCalled();
   expect(mocks.navigate).not.toHaveBeenCalled();
-  expect(screen.getByText(/Saved/u)).toBeTruthy();
 });
 
 test('create-api emptying baseURL disables save and marks Connection as to do', async () => {

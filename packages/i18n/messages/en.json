@@ -704,7 +704,6 @@
         "footer_attention": "These sections need attention:",
         "footer_cancel": "Cancel",
         "footer_save": "Save provider",
-        "footer_saved": "Saved",
         "footer_ready": "Ready to save.",
         "authorize": "Authorize",
         "authorization_locked_hint": "Authorize this account to unlock models, routing, and advanced settings.",
