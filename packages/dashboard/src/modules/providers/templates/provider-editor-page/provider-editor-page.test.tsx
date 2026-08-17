@@ -232,7 +232,10 @@ test('create-api emptying baseURL disables save and marks Connection as to do', 
   ).toBeTruthy();
 });
 
-test('create-api a malformed baseURL keeps Save enabled and surfaces the parse error', async () => {
+// Was "keeps Save enabled and surfaces the parse error": the mutation body parses `baseURL` with
+// `z.url()`, so the bounce this used to pin was a green dot, an enabled Save and a rejected save. The
+// section gate is the form's only validator, so it is what has to catch it.
+test('create-api a malformed baseURL blocks Save instead of bouncing off the schema', async () => {
   renderPage({
     mode: ProviderFormMode.Create,
     kind: ProviderKind.Api,
@@ -246,10 +249,13 @@ test('create-api a malformed baseURL keeps Save enabled and surfaces the parse e
   await pickProtocol();
   fillBaseURL('api.example.com/v1');
 
-  expect(saveButton()).toBeEnabled();
-  fireEvent.click(saveButton());
-
-  await waitFor(() => expect(screen.getByText(/Failed to create provider/u)).toBeTruthy());
+  await waitFor(() => expect(saveButton()).toBeDisabled());
+  expect(within(screen.getByTestId('editor-footer')).getByRole('button', { name: /Connection/u })).toBeTruthy();
+  expect(
+    within(screen.getByRole('region', { name: /Connection/u })).getByText(
+      m['dashboard.providers.editor.hint_connection_todo_api'](),
+    ),
+  ).toBeTruthy();
   expect(mocks.create).not.toHaveBeenCalled();
 });
 

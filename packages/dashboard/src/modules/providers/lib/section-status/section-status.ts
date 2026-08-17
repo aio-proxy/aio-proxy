@@ -51,13 +51,23 @@ export const SECTION_LABEL = {
 
 export const SECTION_ORDER = Object.keys(SECTION_LABEL) as readonly SectionId[];
 
+/**
+ * The body the editor dispatches parses `baseURL` with `z.url()`, so an unparseable string is rejected
+ * on save exactly as an empty one is, and has to read the same here — the form has no validators, so
+ * this is the only gate. Deliberately stricter than `z.url()` on the scheme, which accepts any: the
+ * proxy calls an upstream over http(s) only. `{{...}}` templates are authoring-only and are NOT in the
+ * mutation body's union, so they belong on the `todo` side too.
+ */
+const usableBaseURL = (baseURL: string): boolean =>
+  URL.canParse(baseURL) && ['http:', 'https:'].includes(new URL(baseURL).protocol);
+
 export function sectionStatuses(input: SectionStatusInput): Readonly<Record<SectionId, SectionSummary>> {
   // The id is server-assigned for oauth creation, so it can never be a todo there.
   const identity: SectionStatus =
     input.mode === 'create' && input.kind !== 'oauth' && input.id.trim() === '' ? 'todo' : 'ok';
 
   let connection: SectionStatus = 'ok';
-  if (input.kind === 'api' && ((input.baseURL ?? '').trim() === '' || (input.protocol ?? '') === '')) {
+  if (input.kind === 'api' && (!usableBaseURL((input.baseURL ?? '').trim()) || (input.protocol ?? '') === '')) {
     connection = 'todo';
   }
   if (input.kind === 'oauth' && (input.capabilityKey ?? '') === '') connection = 'todo';

@@ -44,6 +44,25 @@ test('an empty baseURL on an api provider is todo and blocks; an empty apiKey is
   expect(statuses({ ...base, kind: 'ai-sdk', baseURL: undefined, protocol: undefined }).connection).toBe('ok');
 });
 
+// The editor form carries no validators by design, so `sectionStatuses` is the only save gate. The
+// body it dispatches parses `baseURL` with `z.url()`, so a non-empty string that is not a URL used to
+// buy a green dot, an enabled Save, and a rejected mutation.
+test('a non-empty but unparseable baseURL is todo, exactly as an empty one is', () => {
+  const summaries = sectionStatuses({ ...base, baseURL: 'api.example.com' });
+  expect(summaries.connection.status).toBe('todo');
+  expect(summaries.connection.hint).toBe(m['dashboard.providers.editor.hint_connection_todo_api']());
+  expect(blockingSections(summaries)).toEqual(['connection']);
+  // `{{...}}` is accepted by the authoring schemas but NOT by the mutation body the editor sends, so
+  // tolerating it here would restore the same green-dot-then-toast path.
+  expect(statuses({ ...base, baseURL: '{{env.OPENAI_BASE_URL}}' }).connection).toBe('todo');
+  // Deliberately stricter than `z.url()`, which accepts any scheme: the proxy reaches an upstream over
+  // http(s) only, so an `ftp://` origin is an unconnected section however well it parses.
+  expect(statuses({ ...base, baseURL: 'ftp://x.example' }).connection).toBe('todo');
+  // And the guard must not make every api provider a todo.
+  expect(statuses(base).connection).toBe('ok');
+  expect(statuses({ ...base, baseURL: 'http://localhost:8080/v1' }).connection).toBe('ok');
+});
+
 test('blocking sections come back in rail order, whatever order the statuses were built in', () => {
   // Keys deliberately out of SECTION_ORDER: a naive `Object.keys(statuses).filter(...)` would
   // return ['advanced', 'identity'] and mis-order the save-blocking footer.
