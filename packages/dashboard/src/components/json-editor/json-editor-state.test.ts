@@ -1,6 +1,5 @@
 import { describe, expect, test } from '@rstest/core';
 
-import { setCodeEditorAriaInvalid } from '../code-editor/code-editor-accessibility';
 import {
   beginJsonValidation,
   completeJsonValidation,
@@ -130,23 +129,5 @@ describe('JsonEditor state', () => {
 
     expect(firstModel).not.toBe(secondModel);
     expect(applied.at(-1)).toHaveLength(2);
-  });
-
-  test('mirrors invalid state and its description onto the Monaco textbox', () => {
-    const attributes = new Map<string, string>();
-    const textbox = {
-      setAttribute: (name: string, value: string) => attributes.set(name, value),
-      removeAttribute: (name: string) => attributes.delete(name),
-    };
-    const editor = {
-      getDomNode: () => ({ querySelector: () => textbox }),
-    };
-
-    setCodeEditorAriaInvalid(editor, true, 'options-error');
-    expect(attributes.get('aria-invalid')).toBe('true');
-    expect(attributes.get('aria-describedby')).toBe('options-error');
-    setCodeEditorAriaInvalid(editor, false, undefined);
-    expect(attributes.has('aria-invalid')).toBe(false);
-    expect(attributes.has('aria-describedby')).toBe(false);
   });
 });

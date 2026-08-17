@@ -3,26 +3,39 @@
 import { ProviderRequestTransformRulesSchema, type ProviderRequestTransformRule } from '@aio-proxy/types';
 import { expect, rs, test } from '@rstest/core';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { ProviderRequestTransformsEditor } from './provider-request-transforms-editor';
 
 rs.mock('@/components/json-editor/json-schema-registry', () => ({
   registerJsonSchema: () => () => undefined,
-  validateJsonModel: async () => [],
 }));
 
-rs.mock('@monaco-editor/react', () => ({
-  Editor: ({ onChange, onMount, options, value }: any) => {
-    const valueRef = useRef(value);
-    const onMountRef = useRef(onMount);
-    valueRef.current = value;
+rs.mock('@/components/json-editor/json-language-service', () => ({
+  createJsonLanguageExtensions: (
+    _uri: string,
+    _schema: unknown,
+    onValidation: (draft: string, markers: readonly []) => void,
+  ) => [{ onValidation }],
+}));
+
+rs.mock('@/components/code-editor', () => ({
+  CodeEditor: ({
+    id,
+    onChange,
+    value,
+    extensions,
+  }: {
+    id?: string;
+    onChange?: (value: string) => void;
+    value: string;
+    extensions?: Array<{ onValidation: (draft: string, markers: readonly []) => void }>;
+  }) => {
     useEffect(() => {
-      onMountRef.current?.({ getDomNode: () => null, getModel: () => ({ getValue: () => valueRef.current }) }, {});
-    }, []);
-    return (
-      <textarea aria-label={options?.ariaLabel} value={value} onChange={(event) => onChange?.(event.target.value)} />
-    );
+      queueMicrotask(() => extensions?.[0]?.onValidation(value, []));
+    }, [extensions, value]);
+
+    return <textarea id={id} value={value} onChange={(event) => onChange?.(event.target.value)} />;
   },
 }));
 
