@@ -115,7 +115,11 @@ const isEffortOnly = (row: AliasSelectRow): boolean =>
  */
 export function toAliasVariants(rows: readonly AliasSelectRow[]): AliasConfig['variants'] | undefined {
   if (rows.length === 0) return undefined;
-  if (!rows.every(isEffortOnly)) return [...rows];
+  // A record is keyed on effort, so two rows whose efforts canonicalize alike (`x-high` and `xhigh`)
+  // would collapse into one entry and drop a row the user authored. Colliding rows stay an array, which
+  // the server's own `rejectDuplicateWhen` refuses out loud instead.
+  const collides = new Set(rows.map((row) => whenIdentity(row.when))).size < rows.length;
+  if (collides || !rows.every(isEffortOnly)) return [...rows];
   return Object.fromEntries(rows.map((row) => [row.when.effort, { model: row.model, preserve: row.preserve }]));
 }
 
@@ -154,8 +158,6 @@ export type AliasRowDraft = {
   readonly model: string;
   readonly preserve: boolean;
 };
-
-export type AliasRowForm = ReactFormExtendedApi<AliasRowDraft, any, any, any, any, any, any, any, any, any, any, any>;
 
 export const toRowDraft = (row: AliasSelectRow): AliasRowDraft => ({
   thinking: row.when.thinking === undefined ? ANY_DIMENSION : row.when.thinking ? 'on' : 'off',

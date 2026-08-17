@@ -10,7 +10,6 @@ import {
   SelectValue,
 } from '@aio-proxy/ui/components/select';
 import { Switch } from '@aio-proxy/ui/components/switch';
-import { useForm } from '@tanstack/react-form';
 import { ArrowRightIcon, Trash2Icon } from 'lucide-react';
 import type { FC } from 'react';
 
@@ -34,6 +33,11 @@ interface ProviderVariantRowProps {
   readonly onRemove: () => void;
 }
 
+/**
+ * Every control reads the stored row, so the row prop is the only state. A per-row form would be a second
+ * copy, and removing a row renumbers the ones after it: React would hand the outgoing row's form to its
+ * successor, whose own edit then writes the wrong condition. Nothing to hand over, nothing to go stale.
+ */
 export const ProviderVariantRow: FC<ProviderVariantRowProps> = ({
   aliasName,
   index,
@@ -43,16 +47,16 @@ export const ProviderVariantRow: FC<ProviderVariantRowProps> = ({
   onChange,
   onRemove,
 }) => {
-  const form = useForm({ defaultValues: toRowDraft(row) satisfies AliasRowDraft });
+  const draft = toRowDraft(row);
   const codes = new Set(issues.map((issue) => issue.code));
   const controlId = aliasControlId(aliasName, index);
-  const commit = (patch: Partial<AliasRowDraft>) => onChange(fromRowDraft({ ...form.state.values, ...patch }));
+  const commit = (patch: Partial<AliasRowDraft>) => onChange(fromRowDraft({ ...draft, ...patch }));
 
   return (
     <div className="space-y-2 border-b pb-3 last:border-b-0 last:pb-0" data-testid="provider-variant-row">
       <div className="grid items-center gap-2 lg:grid-cols-[repeat(3,minmax(0,1fr))_auto_minmax(0,1.25fr)_auto]">
         <ProviderVariantConditions
-          form={form}
+          draft={draft}
           controlId={controlId}
           invalid={
             codes.has('variant-when-required') ||
@@ -63,37 +67,32 @@ export const ProviderVariantRow: FC<ProviderVariantRowProps> = ({
         />
         <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 lg:contents">
           <ArrowRightIcon className="mx-auto size-3.5 text-muted-foreground" aria-hidden="true" />
-          <form.Field name="model">
-            {(field) => (
-              <Select
-                value={field.state.value}
-                onValueChange={(model) => {
-                  if (model === null) return;
-                  field.handleChange(model);
-                  commit({ model });
-                }}
-              >
-                <SelectTrigger
-                  id={`${controlId}-target`}
-                  size="sm"
-                  className="w-full font-mono"
-                  aria-label={m['dashboard.providers.form.variant_target']()}
-                  aria-invalid={codes.has('target-missing')}
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    {models.map((model) => (
-                      <SelectItem key={model} value={model}>
-                        {model}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-            )}
-          </form.Field>
+          <Select
+            value={draft.model}
+            onValueChange={(model) => {
+              if (model === null) return;
+              commit({ model });
+            }}
+          >
+            <SelectTrigger
+              id={`${controlId}-target`}
+              size="sm"
+              className="w-full font-mono"
+              aria-label={m['dashboard.providers.form.variant_target']()}
+              aria-invalid={codes.has('target-missing')}
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                {models.map((model) => (
+                  <SelectItem key={model} value={model}>
+                    {model}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
           <Button
             type="button"
             variant="ghost"
@@ -105,21 +104,14 @@ export const ProviderVariantRow: FC<ProviderVariantRowProps> = ({
           </Button>
         </div>
       </div>
-      <form.Field name="preserve">
-        {(field) => (
-          <label className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Switch
-              size="sm"
-              checked={field.state.value}
-              onCheckedChange={(preserve) => {
-                field.handleChange(Boolean(preserve));
-                commit({ preserve: Boolean(preserve) });
-              }}
-            />
-            {m['dashboard.providers.form.variant_preserve']()}
-          </label>
-        )}
-      </form.Field>
+      <label className="flex items-center gap-2 text-xs text-muted-foreground">
+        <Switch
+          size="sm"
+          checked={draft.preserve}
+          onCheckedChange={(preserve) => commit({ preserve: Boolean(preserve) })}
+        />
+        {m['dashboard.providers.form.variant_preserve']()}
+      </label>
     </div>
   );
 };

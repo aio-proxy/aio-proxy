@@ -52,6 +52,18 @@ describe('provider alias editor variant rows', () => {
     expect(withVariantRows(alias, 'mini', [])['mini']).toEqual({ model: 'gpt-default', preserve: false });
   });
 
+  // The record is keyed on effort, and `x-high` folds to `xhigh`, so serializing these two as a record
+  // dropped the first row outright — a valid payload the server cannot refuse. They must stay rows.
+  test('Given two efforts that canonicalize alike When serialized Then no row is dropped', () => {
+    const rows = [
+      { when: { effort: 'xhigh' }, model: 'gpt-5-xhigh', preserve: false },
+      { when: { effort: 'x-high' }, model: 'gpt-5-other', preserve: false },
+    ] as const;
+
+    expect(toAliasVariants(rows)).toEqual([...rows]);
+    expect(variantRows({ model: 'gpt-default', preserve: false, variants: toAliasVariants(rows) })).toHaveLength(2);
+  });
+
   // `whenIdentity` is the server's own rule: these two canonicalize to the same condition, so a
   // string comparison of the raw `when` values would let the editor build a payload Zod refuses.
   test('Given two rows matching the same condition When inspected Then a duplicate issue names the later row', () => {
