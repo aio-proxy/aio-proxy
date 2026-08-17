@@ -678,6 +678,7 @@
         "hint_identity_todo": "Needs a provider ID",
         "hint_identity_server_assigned": "ID assigned on save",
         "hint_connection_todo_api": "Needs a protocol and address",
+        "hint_connection_bad_base_url": "Needs a valid http(s) address",
         "hint_connection_todo_ai_sdk": "Needs a package name",
         "hint_connection_todo_oauth": "Pick a sign-in method",
         "hint_connection_no_api_key": "Missing API Key",

@@ -3,6 +3,7 @@ import { m } from '@aio-proxy/i18n';
 import { PROVIDER_AI_SDK_DEFAULT_PACKAGE } from '../constants';
 import { exposedModels } from '../exposed-models';
 import type { SectionStatus, SectionStatusInput } from './section-status';
+import { usableBaseURL } from './usable-base-url';
 
 // The finished badge text for each section. A hint always follows the status it accompanies, so it
 // can never name a problem the status does not have.
@@ -31,7 +32,17 @@ export const connectionHint = (input: SectionStatusInput, status: SectionStatus)
     // JSON error, but it is never wrong; "needs a package name" would be.
     return input.packageName ?? PROVIDER_AI_SDK_DEFAULT_PACKAGE;
   }
-  if (status === 'todo') return m['dashboard.providers.editor.hint_connection_todo_api']();
+  if (status === 'todo') {
+    // S2 gave the section a second way to be `todo`, so the original copy — "needs an address" — was
+    // telling a user who typed `api.example.com` that the address is missing. This badge is the only
+    // explanation they get, since the form carries no validators of its own (D-F12). Empty stays on
+    // the original hint: there the protocol may be the missing half too, and often is.
+    const baseURL = (input.baseURL ?? '').trim();
+    if (baseURL !== '' && !usableBaseURL(baseURL)) {
+      return m['dashboard.providers.editor.hint_connection_bad_base_url']();
+    }
+    return m['dashboard.providers.editor.hint_connection_todo_api']();
+  }
   if (status === 'attention') return m['dashboard.providers.editor.hint_connection_no_api_key']();
   return (input.baseURL ?? '').trim().replace(/^https?:\/\//u, '');
 };

@@ -50,7 +50,7 @@ test('an empty baseURL on an api provider is todo and blocks; an empty apiKey is
 test('a non-empty but unparseable baseURL is todo, exactly as an empty one is', () => {
   const summaries = sectionStatuses({ ...base, baseURL: 'api.example.com' });
   expect(summaries.connection.status).toBe('todo');
-  expect(summaries.connection.hint).toBe(m['dashboard.providers.editor.hint_connection_todo_api']());
+  expect(summaries.connection.hint).toBe(m['dashboard.providers.editor.hint_connection_bad_base_url']());
   expect(blockingSections(summaries)).toEqual(['connection']);
   // `{{...}}` is accepted by the authoring schemas but NOT by the mutation body the editor sends, so
   // tolerating it here would restore the same green-dot-then-toast path.

@@ -1,7 +1,7 @@
 import { m } from '@aio-proxy/i18n';
 import { expect, test } from '@rstest/core';
 
-import { advancedHint, modelsHint, routingHint } from './section-hint';
+import { advancedHint, connectionHint, modelsHint, routingHint } from './section-hint';
 import { sectionStatuses, type SectionStatusInput } from './section-status';
 
 const base: SectionStatusInput = {
@@ -62,6 +62,34 @@ test('the models hint names a broken alias ahead of anything it counts', () => {
   expect(modelsHint({ ...base, models: ['m1'], aliasIssues }, 'attention')).toBe(
     m['dashboard.providers.editor.hint_models_alias_issues'](),
   );
+});
+
+// S2 made "present but unusable" a second way for Connection to be `todo`, and the one hint the badge
+// had said "Needs a protocol and address" — so a user who had typed an address was told it was missing.
+test('a malformed base URL says the address is invalid, not that it is missing', () => {
+  const badHint = m['dashboard.providers.editor.hint_connection_bad_base_url']();
+
+  // Unparseable, and the parseable-but-not-http(s) case the gate also rejects (D-F12). The copy has to
+  // be true of both, so both assert the same key.
+  expect(sectionStatuses({ ...base, baseURL: 'api.example.com' }).connection.hint).toBe(badHint);
+  expect(sectionStatuses({ ...base, baseURL: 'ftp://x.example' }).connection.hint).toBe(badHint);
+  expect(sectionStatuses({ ...base, baseURL: '{{env.OPENAI_BASE_URL}}' }).connection.hint).toBe(badHint);
+
+  // The other direction, or the branch would just swallow the original hint: an EMPTY address keeps it,
+  // because there the protocol may be the missing half too.
+  expect(sectionStatuses({ ...base, baseURL: '' }).connection.hint).toBe(
+    m['dashboard.providers.editor.hint_connection_todo_api'](),
+  );
+  // And so does a usable address whose protocol is unset — the other input that makes this section todo.
+  expect(sectionStatuses({ ...base, protocol: undefined }).connection.hint).toBe(
+    m['dashboard.providers.editor.hint_connection_todo_api'](),
+  );
+  // Keyed off the status, not off `usableBaseURL` alone: `attention` and `ok` have their own copy, and
+  // reordering the guard above them would report a bad address on a section that has none.
+  expect(connectionHint({ ...base, apiKey: '' }, 'attention')).toBe(
+    m['dashboard.providers.editor.hint_connection_no_api_key'](),
+  );
+  expect(sectionStatuses(base).connection.hint).toBe('x.example/v1');
 });
 
 // `0` is a real configured weight and absent is the key being omitted from config; the routing badge

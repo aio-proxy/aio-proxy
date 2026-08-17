@@ -678,6 +678,7 @@
         "hint_identity_todo": "Provider ID が必要です",
         "hint_identity_server_assigned": "ID は保存時にサーバーが割り当てます",
         "hint_connection_todo_api": "プロトコルとアドレスが必要です",
+        "hint_connection_bad_base_url": "有効な http(s) アドレスが必要です",
         "hint_connection_todo_ai_sdk": "パッケージ名が必要です",
         "hint_connection_todo_oauth": "ログイン方法を選択",
         "hint_connection_no_api_key": "API Key がありません",

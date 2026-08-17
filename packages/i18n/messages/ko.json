@@ -678,6 +678,7 @@
         "hint_identity_todo": "Provider ID가 필요합니다",
         "hint_identity_server_assigned": "ID는 저장 시 서버가 할당합니다",
         "hint_connection_todo_api": "프로토콜과 주소가 필요합니다",
+        "hint_connection_bad_base_url": "유효한 http(s) 주소가 필요합니다",
         "hint_connection_todo_ai_sdk": "패키지 이름이 필요합니다",
         "hint_connection_todo_oauth": "로그인 방식 선택",
         "hint_connection_no_api_key": "API Key가 없습니다",

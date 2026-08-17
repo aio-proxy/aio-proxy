@@ -267,9 +267,11 @@ test('create-api a malformed baseURL blocks Save instead of bouncing off the sch
 
   await waitFor(() => expect(saveButton()).toBeDisabled());
   expect(within(screen.getByTestId('editor-footer')).getByRole('button', { name: /Connection/u })).toBeTruthy();
+  // The malformed-address hint, not the generic one: the badge is the whole explanation, and telling
+  // someone who typed an address that they need an address explains nothing.
   expect(
     within(screen.getByRole('region', { name: /Connection/u })).getByText(
-      m['dashboard.providers.editor.hint_connection_todo_api'](),
+      m['dashboard.providers.editor.hint_connection_bad_base_url'](),
     ),
   ).toBeTruthy();
   expect(mocks.create).not.toHaveBeenCalled();

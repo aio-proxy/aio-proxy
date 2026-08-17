@@ -678,6 +678,7 @@
         "hint_identity_todo": "需要提供商 ID",
         "hint_identity_server_assigned": "ID 保存时由服务器分配",
         "hint_connection_todo_api": "需要协议与地址",
+        "hint_connection_bad_base_url": "需要有效的 http(s) 地址",
         "hint_connection_todo_ai_sdk": "需要包名",
         "hint_connection_todo_oauth": "选择登录方式",
         "hint_connection_no_api_key": "缺少 API Key",
