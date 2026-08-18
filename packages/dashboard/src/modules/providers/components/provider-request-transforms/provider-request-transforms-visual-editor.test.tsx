@@ -261,7 +261,9 @@ test('edits ordered Set and Remove actions losslessly across Visual and JSON mod
   let stages = within(ruleCard(0)).getAllByTestId(/request-transform-stage-/u);
   expect(stages).toHaveLength(4);
   expect(within(stages[0]!).getByTestId('request-transform-action')).toHaveTextContent(/Set|设置/u);
-  expect(within(stages[0]!).getByTestId('request-transform-target')).toHaveTextContent(/Body|请求体/u);
+  // By accessible name: after the labels went `sr-only`, the label/trigger pairing is the only thing naming
+  // this select, so fetching it by name here is what keeps that pairing honest.
+  expect(within(stages[0]!).getByRole('combobox', { name: /^(Target|目标)$/u })).toHaveTextContent(/Body|请求体/u);
   expect(within(stages[0]!).getByRole('textbox', { name: /Body path|请求体路径/u })).toHaveValue('value');
   expect(within(stages[0]!).getByTestId('request-transform-value-mode')).toHaveTextContent(/Fixed value|固定值/u);
   expect(within(stages[0]!).getByRole('textbox', { name: /Value to set|设置值/u })).toHaveValue('$seed');
@@ -271,6 +273,8 @@ test('edits ordered Set and Remove actions losslessly across Visual and JSON mod
   expect(within(stages[1]!).getByTestId('transform-set-expression-fn')).toHaveTextContent(/CONCAT|Concatenate|拼接/u);
   expect(within(stages[2]!).getByTestId('request-transform-action')).toHaveTextContent(/Remove|移除/u);
   expect(within(stages[2]!).getByRole('textbox', { name: /Body path|请求体路径/u })).toHaveValue('value');
+  // A Remove action has no value slot, so it explains the gap instead of leaving one.
+  expect(within(stages[2]!).getByText(/Remove actions need no value\.|删除字段无需填写值。/u)).toBeInTheDocument();
   expect(within(stages[3]!).getByRole('textbox', { name: /Header name|请求头名称/u })).toHaveValue('x-route');
 
   fireEvent.click(screen.getByRole('button', { name: /Add rule|添加规则/u }));
