@@ -177,19 +177,21 @@ test('gates applying JSON on a draft that parses to the selected type', async ()
   const onChange = rs.fn();
   render(
     <RequestTransformsHarness
-      initialValue={[{ update: [{ $set: { 'request.body.value': { $literal: [] } } }] }]}
+      initialValue={[{ update: [{ $set: { 'request.body.value': { $literal: [1, 2] } } }] }]}
       onChange={onChange}
       onValidityChange={rs.fn()}
     />,
   );
 
   const arrayControl = within(stageCard(0)).getByRole('button', { name: /Value to set|设置值/u });
-  expect(arrayControl).toHaveTextContent('[]');
+  expect(arrayControl).toHaveTextContent('[1,2]');
   fireEvent.click(arrayControl);
 
   const drawer = await screen.findByTestId('request-transform-json-drawer');
   const jsonDraft = within(drawer).getByTestId('request-transform-json-draft');
   const apply = within(drawer).getByTestId('request-transform-json-apply');
+  // Exact equality: the drawer seeds the indented form while the button shows the compact one.
+  expect(jsonDraft).toHaveValue('[\n  1,\n  2\n]');
   fireEvent.change(jsonDraft, { target: { value: '{}' } });
 
   expect(apply).toBeDisabled();
@@ -201,6 +203,7 @@ test('gates applying JSON on a draft that parses to the selected type', async ()
   await waitFor(() =>
     expect(latestValue(onChange)[0]?.update[0]).toEqual({ $set: { 'request.body.value': { $literal: [1] } } }),
   );
+  expect(screen.queryByTestId('request-transform-json-drawer')).toBeNull();
 });
 
 test('edits ordered Set and Remove actions losslessly across Visual and JSON modes', async () => {
