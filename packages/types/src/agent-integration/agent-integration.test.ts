@@ -183,6 +183,17 @@ test('recognizes both reserved Agent credential families', () => {
   expect(AgentTargetSchema.options).toEqual(['opencode', 'pi', 'omp']);
 });
 
+test.each(['aio_agent_at_legacy', 'aio_agent_rt_legacy', 'aio_agent_at_v1_', 'aio_agent_rt_v1_'] as const)(
+  'reserves Agent family prefix %s beyond exact v1 token payloads',
+  (value) => {
+    expect(hasReservedAgentTokenPrefix(value)).toBe(true);
+  },
+);
+
+test.each(['aio_agent_xt_v1_x', ''] as const)('does not reserve non-family credential %j', (value) => {
+  expect(hasReservedAgentTokenPrefix(value)).toBe(false);
+});
+
 test('token responses require one exact 32-byte base64url payload', () => {
   const base = {
     token_type: 'Bearer',
