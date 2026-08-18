@@ -11,6 +11,7 @@ interface RequestTransformCompositeValueControlProps {
   readonly type: 'object' | 'array';
   readonly draft: string;
   readonly valueId: string;
+  readonly labelId: string;
   readonly invalid: boolean;
   readonly describedBy: string | undefined;
   readonly onChange: (draft: string) => void;
@@ -20,6 +21,7 @@ export const RequestTransformCompositeValueControl: React.FC<RequestTransformCom
   type,
   draft,
   valueId,
+  labelId,
   invalid,
   describedBy,
   onChange,
@@ -33,6 +35,11 @@ export const RequestTransformCompositeValueControl: React.FC<RequestTransformCom
     type === 'object'
       ? m['dashboard.providers.transforms.value.type_object']()
       : m['dashboard.providers.transforms.value.type_array']();
+  // The value is the point of this control, so the name is the label plus the button's own contents.
+  // Listing the children rather than self-referencing `valueId`: accname implementations disagree on
+  // whether an element inside its own `aria-labelledby` contributes its contents, and the ones that
+  // drop it would announce the label alone.
+  const [jsonId, affordanceId] = [`${valueId}-json`, `${valueId}-affordance`];
 
   return (
     <>
@@ -43,12 +50,15 @@ export const RequestTransformCompositeValueControl: React.FC<RequestTransformCom
         className="h-8 min-w-0 justify-between px-3"
         aria-haspopup="dialog"
         aria-expanded={open}
+        aria-labelledby={`${labelId} ${jsonId} ${affordanceId}`}
         aria-invalid={invalid}
         aria-describedby={describedBy}
         onClick={() => setOpen(true)}
       >
-        <code className="min-w-0 truncate font-mono text-xs">{JSON.stringify(parsed)}</code>
-        <span className="ml-3 shrink-0 text-xs text-muted-foreground">
+        <code id={jsonId} className="min-w-0 truncate font-mono text-xs">
+          {JSON.stringify(parsed)}
+        </code>
+        <span id={affordanceId} className="ml-3 shrink-0 text-xs text-muted-foreground">
           {m['dashboard.providers.transforms.value.edit_json']()}
         </span>
       </Button>

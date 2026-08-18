@@ -163,7 +163,9 @@ test('offers booleans as a true/false select rather than a checkbox', async () =
     />,
   );
 
-  await selectOption(within(stageCard(0)).getByTestId('request-transform-static-type'), /^(Boolean|布尔值)$/u);
+  // By accessible name, not testid: the type select's own label pairing has to keep working.
+  const typeSelect = within(stageCard(0)).getByRole('combobox', { name: /^(Value type|值类型)$/u });
+  await selectOption(typeSelect, /^(Boolean|布尔值)$/u);
   const booleanControl = within(stageCard(0)).getByRole('combobox', { name: /Value to set|设置值/u });
   expect(booleanControl).toHaveAttribute('data-testid', 'request-transform-static-boolean');
   expect(within(stageCard(0)).queryByRole('checkbox')).toBeNull();
@@ -183,8 +185,8 @@ test('gates applying JSON on a draft that parses to the selected type', async ()
     />,
   );
 
-  const arrayControl = within(stageCard(0)).getByRole('button', { name: /Value to set|设置值/u });
-  expect(arrayControl).toHaveTextContent('[1,2]');
+  // The name anchors the label and the compact value, so losing either half fails here.
+  const arrayControl = within(stageCard(0)).getByRole('button', { name: /(Value to set|设置值)\s*\[1,2\]/u });
   fireEvent.click(arrayControl);
 
   const drawer = await screen.findByTestId('request-transform-json-drawer');

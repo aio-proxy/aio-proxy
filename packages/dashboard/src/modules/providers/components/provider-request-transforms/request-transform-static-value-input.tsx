@@ -51,6 +51,7 @@ export const RequestTransformStaticValueInput: React.FC<RequestTransformStaticVa
     );
   }
 
+  const labelId = `${valueId}-label`;
   const inputProps = {
     id: valueId,
     value: draft,
@@ -60,7 +61,7 @@ export const RequestTransformStaticValueInput: React.FC<RequestTransformStaticVa
   };
   return (
     <div className="min-w-0 space-y-2">
-      <Label htmlFor={valueId} className="sr-only">
+      <Label id={labelId} htmlFor={valueId} className="sr-only">
         {m['dashboard.providers.transforms.value.static_label']()}
       </Label>
       {type === 'object' || type === 'array' ? (
@@ -68,6 +69,7 @@ export const RequestTransformStaticValueInput: React.FC<RequestTransformStaticVa
           type={type}
           draft={draft}
           valueId={valueId}
+          labelId={labelId}
           invalid={error !== null}
           describedBy={error === null ? undefined : errorId}
           onChange={onChange}
