@@ -31,8 +31,14 @@ export const RequestTransformStageControlsRow: React.FC<RequestTransformStageCon
 }) => (
   // `sr-only` labels are absolutely positioned, so each one names its control without taking a grid track.
   <div className="grid items-center gap-2 sm:grid-cols-[auto_8rem_8rem_minmax(0,1fr)]">
-    {/* Later rows keep the connective reserved but hidden, so every stage row lines up on the same tracks. */}
-    <span className={index === 0 ? 'text-xs text-muted-foreground' : 'invisible text-xs text-muted-foreground'}>
+    {/* Later rows keep the connective reserved but hidden, so every stage row lines up on the same tracks.
+        Below `sm` the four-column template does not apply, so the reserved cell would only cost a stacked
+        line: there is no track left to hold open. */}
+    <span
+      className={
+        index === 0 ? 'text-xs text-muted-foreground' : 'invisible text-xs text-muted-foreground max-sm:hidden'
+      }
+    >
       {m['dashboard.providers.transforms.rule.then']()}
     </span>
     <form.Field name="kind">
