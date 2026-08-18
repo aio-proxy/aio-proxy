@@ -1,10 +1,12 @@
 import { m } from '@aio-proxy/i18n';
 import { Button } from '@aio-proxy/ui/components/button';
 import { isEqual } from 'es-toolkit/predicate';
+import { ArrowDownIcon, ArrowUpIcon, Trash2Icon } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
 import type { RefCallback } from 'react';
 
 import type { RequestTransformStageDraft } from '../../lib/request-transforms';
+import { RequestTransformStageControlsRow } from './request-transform-stage-controls-row';
 import {
   buildRequestTransformStageDraft,
   requestTransformStageControlValues,
@@ -12,8 +14,6 @@ import {
   validateRequestTransformStageDraft,
 } from './request-transform-stage-draft';
 import { useRequestTransformStageForm } from './request-transform-stage-form';
-import { RequestTransformStagePathControl } from './request-transform-stage-path-control';
-import { RequestTransformStagePrimaryControls } from './request-transform-stage-primary-controls';
 import { RequestTransformStageValueEditor } from './request-transform-stage-value-editor';
 
 export interface RequestTransformStageCardProps {
@@ -87,54 +87,64 @@ export const RequestTransformStageCard: React.FC<RequestTransformStageCardProps>
   };
 
   return (
-    <div className="space-y-4 rounded-lg border p-3" data-testid={`request-transform-stage-${index}`}>
-      <p className="text-sm font-medium">{m['dashboard.providers.transforms.action.label']({ index: actionIndex })}</p>
-      <div className="space-y-4">
-        <RequestTransformStagePrimaryControls
-          form={form}
-          actionId={actionId}
-          targetId={targetId}
-          onCommit={commitControls}
-          onResetContentValidity={() => setContentValid(true)}
-        />
-        <RequestTransformStagePathControl
-          form={form}
-          pathId={pathId}
-          {...(pathInputRef === undefined ? {} : { pathInputRef })}
-          onCommit={commitControls}
-        />
-        <RequestTransformStageValueEditor
-          form={form}
-          acceptedStage={value}
-          valueModeId={valueModeId}
-          onCommitControls={commitControls}
-          onCommitContent={commitContent}
-          onContentValidityChange={setContentValid}
-        />
+    <div className="space-y-2" data-testid={`request-transform-stage-${index}`}>
+      <div className="flex items-center gap-2">
+        <div className="min-w-0 flex-1">
+          <RequestTransformStageControlsRow
+            form={form}
+            index={index}
+            actionId={actionId}
+            targetId={targetId}
+            pathId={pathId}
+            {...(pathInputRef === undefined ? {} : { pathInputRef })}
+            onCommit={commitControls}
+            onResetContentValidity={() => setContentValid(true)}
+          />
+        </div>
+        {/* One action cannot be removed or reordered, so the whole group stays out of the row entirely. */}
+        {canRemove ? (
+          <>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              disabled={structureBlocked || !canMoveUp}
+              aria-label={m['dashboard.providers.transforms.action.move_up']({ index: actionIndex })}
+              onClick={onMoveUp}
+            >
+              <ArrowUpIcon />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              disabled={structureBlocked || !canMoveDown}
+              aria-label={m['dashboard.providers.transforms.action.move_down']({ index: actionIndex })}
+              onClick={onMoveDown}
+            >
+              <ArrowDownIcon />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              disabled={structureBlocked}
+              aria-label={m['dashboard.providers.transforms.action.remove_button']({ index: actionIndex })}
+              onClick={onRemove}
+            >
+              <Trash2Icon />
+            </Button>
+          </>
+        ) : null}
       </div>
-      <div className="flex flex-wrap gap-2">
-        <Button
-          type="button"
-          variant="destructive"
-          size="sm"
-          disabled={structureBlocked || !canRemove}
-          onClick={onRemove}
-        >
-          {m['dashboard.providers.transforms.action.remove_button']({ index: actionIndex })}
-        </Button>
-        <Button type="button" variant="outline" size="sm" disabled={structureBlocked || !canMoveUp} onClick={onMoveUp}>
-          {m['dashboard.providers.transforms.action.move_up']({ index: actionIndex })}
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={structureBlocked || !canMoveDown}
-          onClick={onMoveDown}
-        >
-          {m['dashboard.providers.transforms.action.move_down']({ index: actionIndex })}
-        </Button>
-      </div>
+      <RequestTransformStageValueEditor
+        form={form}
+        acceptedStage={value}
+        valueModeId={valueModeId}
+        onCommitControls={commitControls}
+        onCommitContent={commitContent}
+        onContentValidityChange={setContentValid}
+      />
     </div>
   );
 };

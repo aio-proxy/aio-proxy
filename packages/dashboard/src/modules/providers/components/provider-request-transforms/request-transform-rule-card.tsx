@@ -2,7 +2,6 @@ import { m } from '@aio-proxy/i18n';
 import { ProviderRequestTransformRulesSchema, type ProviderRequestTransformRule } from '@aio-proxy/types';
 import { Button } from '@aio-proxy/ui/components/button';
 import { Input } from '@aio-proxy/ui/components/input';
-import { Label } from '@aio-proxy/ui/components/label';
 import { Switch } from '@aio-proxy/ui/components/switch';
 import { useForm } from '@tanstack/react-form';
 import { isEqual } from 'es-toolkit/predicate';
@@ -154,16 +153,13 @@ export const RequestTransformRuleCard: React.FC<RequestTransformRuleCardProps> =
           onChange={commitCondition}
         />
       )}
-      <div className="space-y-3">
-        <Label>{m['dashboard.providers.transforms.rule.then']()}</Label>
-        <RequestTransformStageList
-          value={value.update}
-          structuralDisabled={structureBlocked}
-          {...(firstPathInputRef === undefined ? {} : { firstPathInputRef })}
-          onChange={(update) => commitRule({ ...value, update: [...update] }, setStagesValid)}
-          onValidityChange={setStagesValid}
-        />
-      </div>
+      <RequestTransformStageList
+        value={value.update}
+        structuralDisabled={structureBlocked}
+        {...(firstPathInputRef === undefined ? {} : { firstPathInputRef })}
+        onChange={(update) => commitRule({ ...value, update: [...update] }, setStagesValid)}
+        onValidityChange={setStagesValid}
+      />
     </div>
   );
 };

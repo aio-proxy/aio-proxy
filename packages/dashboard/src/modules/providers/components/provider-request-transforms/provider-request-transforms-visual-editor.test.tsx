@@ -280,7 +280,11 @@ test('edits ordered Set and Remove actions losslessly across Visual and JSON mod
   expect(document.activeElement).toBe(addedPath);
   expect((addedPath as HTMLInputElement).selectionStart).toBe(0);
   expect((addedPath as HTMLInputElement).selectionEnd).toBe('value'.length);
-  expect(within(addedRule).getByRole('button', { name: /Remove action 1|删除操作 1/u })).toBeDisabled();
+  // The only action still cannot be removed; it now says so by offering no control at all. The action select
+  // anchors the assertion so it cannot pass by the whole stage row having disappeared.
+  const addedStage = within(addedRule).getByTestId('request-transform-stage-0');
+  expect(within(addedStage).getByRole('combobox', { name: /^(Action|操作)$/u })).toBeInTheDocument();
+  expect(within(addedStage).queryByRole('button', { name: /Remove action 1|删除操作 1/u })).toBeNull();
   fireEvent.change(within(addedRule).getByRole('textbox', { name: /Rule 2 name|规则 2 名称/u }), {
     target: { value: 'fallback' },
   });
