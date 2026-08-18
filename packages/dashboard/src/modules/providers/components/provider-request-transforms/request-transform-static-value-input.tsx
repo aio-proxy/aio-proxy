@@ -32,16 +32,22 @@ export const RequestTransformStaticValueInput: React.FC<RequestTransformStaticVa
   onChange,
 }) => {
   if (type === 'boolean') {
+    // `sr-only` is absolutely positioned, so the label names the trigger without taking a grid track.
     return (
-      <Select value={draft} onValueChange={(next) => next !== null && onChange(next)}>
-        <SelectTrigger id={valueId} data-testid="request-transform-static-boolean" className="w-full">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="true">true</SelectItem>
-          <SelectItem value="false">false</SelectItem>
-        </SelectContent>
-      </Select>
+      <>
+        <Label htmlFor={valueId} className="sr-only">
+          {m['dashboard.providers.transforms.value.static_label']()}
+        </Label>
+        <Select value={draft} onValueChange={(next) => next !== null && onChange(next)}>
+          <SelectTrigger id={valueId} data-testid="request-transform-static-boolean" className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="true">true</SelectItem>
+            <SelectItem value="false">false</SelectItem>
+          </SelectContent>
+        </Select>
+      </>
     );
   }
 

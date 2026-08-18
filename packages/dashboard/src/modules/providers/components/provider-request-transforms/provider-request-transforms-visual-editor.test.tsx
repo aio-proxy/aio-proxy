@@ -164,8 +164,8 @@ test('offers booleans as a true/false select rather than a checkbox', async () =
   );
 
   await selectOption(within(stageCard(0)).getByTestId('request-transform-static-type'), /^(Boolean|布尔值)$/u);
-  const booleanControl = within(stageCard(0)).getByTestId('request-transform-static-boolean');
-  expect(booleanControl).toHaveAttribute('role', 'combobox');
+  const booleanControl = within(stageCard(0)).getByRole('combobox', { name: /Value to set|设置值/u });
+  expect(booleanControl).toHaveAttribute('data-testid', 'request-transform-static-boolean');
   expect(within(stageCard(0)).queryByRole('checkbox')).toBeNull();
 
   await selectOption(booleanControl, /^true$/u);
