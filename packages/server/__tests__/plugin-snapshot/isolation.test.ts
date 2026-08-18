@@ -8,7 +8,8 @@ import { openDb } from '@aio-proxy/core/db';
 import { type CredentialPort, definePlugin, zod } from '@aio-proxy/plugin-sdk';
 import { ConfigSchema } from '@aio-proxy/types';
 
-import { createServerState } from '../../src/server-state';
+import { createServerState } from '#server-test-lifecycle';
+
 import { cleanup, flushMicrotasks, seedOAuthAccount } from './test-support';
 
 afterEach(cleanup);

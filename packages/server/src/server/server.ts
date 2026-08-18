@@ -24,8 +24,8 @@ import type { ServerLogSink } from '../server-log';
 import { logServerEvent, serverErrorType } from '../server-log';
 import { createServerState, type ServerState } from '../server-state';
 import { defaultLogger } from '../server-state/logging';
-import type { InternalServerStateOptions } from '../server-state/types';
-import { requireApiKey } from './api-key-auth';
+import type { InternalServerStateOptions, ServerStateTestHooks } from '../server-state/types';
+import { requireModelAuthentication } from './agent-auth';
 import { codexClientModels, listModels } from './list-models/index';
 
 export const serverDefaults = {
@@ -118,6 +118,7 @@ const mountAdminControlPlane = (
 };
 
 export type CreateServerOptions = {
+  readonly __test?: ServerStateTestHooks & { readonly createRoutes?: typeof createRoutes };
   readonly config: unknown;
   readonly configPath?: string;
   readonly dbHome?: string;
@@ -160,14 +161,12 @@ const createRoutes = (
         context.req.path.startsWith('/dashboard/'),
     }),
   );
-  app.use(
-    '/v1/*',
-    requireApiKey(() => state.currentConfig().server.apiKeys),
-  );
-  app.use(
-    '/v1beta/*',
-    requireApiKey(() => state.currentConfig().server.apiKeys),
-  );
+  const requireModelAuth = requireModelAuthentication({
+    apiKeys: () => state.currentConfig().server.apiKeys,
+    authenticateAgent: (token) => state.agentIdentity.authenticateAccessToken(token),
+  });
+  app.use('/v1/*', requireModelAuth);
+  app.use('/v1beta/*', requireModelAuth);
   app.get('/health', (context) =>
     context.json({
       status: 'ok',
@@ -262,7 +261,7 @@ const createRoutes = (
   return routes;
 };
 
-export type AppType = ReturnType<typeof createRoutes>;
+export type AppType = ReturnType<typeof createRoutes> & { readonly close: () => void };
 
 export const createServer = async (options: CreateServerOptions): Promise<AppType> => {
   const prepared = await prepareDashboardConfig(options.config, options.configPath);
@@ -281,6 +280,7 @@ export const createServer = async (options: CreateServerOptions): Promise<AppTyp
     __dashboardAuthHealthChanged: (available) => {
       dashboardAuthAvailable = available;
     },
+    ...(options.__test === undefined ? {} : { __test: options.__test }),
     ...(options.configPath === undefined ? {} : { configPath: options.configPath }),
     ...(options.dbHome === undefined ? {} : { dbHome: options.dbHome }),
     ...(options.eventLimits === undefined ? {} : { eventLimits: options.eventLimits }),
@@ -289,12 +289,27 @@ export const createServer = async (options: CreateServerOptions): Promise<AppTyp
     ...(options.watchConfig === undefined ? {} : { watchConfig: options.watchConfig }),
   };
   const state = await createServerState(stateOptions);
-  return createRoutes(
-    state,
-    options.dashboardAssets,
-    () => dashboardAuthAvailable,
-    options.version,
-    options.port ?? state.currentConfig().server.port,
-    options.host ?? state.currentConfig().server.host,
-  );
+  try {
+    const routes = (options.__test?.createRoutes ?? createRoutes)(
+      state,
+      options.dashboardAssets,
+      () => dashboardAuthAvailable,
+      options.version,
+      options.port ?? state.currentConfig().server.port,
+      options.host ?? state.currentConfig().server.host,
+    );
+    let closed = false;
+    return Object.assign(routes, {
+      close() {
+        if (closed) return;
+        closed = true;
+        state.close();
+      },
+    });
+  } catch (error) {
+    try {
+      state.close();
+    } catch {}
+    throw error;
+  }
 };

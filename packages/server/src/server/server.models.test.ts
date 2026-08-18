@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { createServer as createBaseServer } from '@aio-proxy/server';
+import { createServer as createBaseServer } from '#server-test-lifecycle';
 
 import { config } from '../../__tests__/server.test-support';
 import { loopbackServer } from '../dashboard-auth/test-support';

@@ -1,10 +1,18 @@
-import { afterAll, describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
 import { createDashboardProviderFixture } from './dashboard-providers-mutation.test-support';
 
-const { cleanup, onDisk, req } = await createDashboardProviderFixture('aio-dashboard-provider-aliases-validation-');
+let cleanup: () => void;
+let onDisk: Awaited<ReturnType<typeof createDashboardProviderFixture>>['onDisk'];
+let req: Awaited<ReturnType<typeof createDashboardProviderFixture>>['req'];
 
-afterAll(cleanup);
+beforeEach(async () => {
+  const fixture = await createDashboardProviderFixture('aio-dashboard-provider-aliases-validation-');
+  cleanup = fixture.cleanup;
+  onDisk = fixture.onDisk;
+  req = fixture.req;
+});
+afterEach(() => cleanup());
 
 describe('dashboard provider CRUD', () => {
   test('21. POST api provider with models and alias including variants persists alias to disk', async () => {
@@ -34,6 +42,23 @@ describe('dashboard provider CRUD', () => {
   });
 
   test('22. PUT with a new alias replaces the stored alias', async () => {
+    expect(
+      (
+        await req('POST', '/providers', {
+          kind: 'api',
+          id: 'alias-test',
+          protocol: 'openai-compatible',
+          baseURL: 'https://alias-test.example.com',
+          models: ['gpt-4o-upstream', 'o3-upstream'],
+          alias: {
+            'gpt-4o': {
+              model: 'gpt-4o-upstream',
+              variants: { thinking: { model: 'o3-upstream' } },
+            },
+          },
+        })
+      ).status,
+    ).toBe(201);
     const res = await req('PUT', '/providers/alias-test', {
       kind: 'api',
       id: 'alias-test',
@@ -50,6 +75,23 @@ describe('dashboard provider CRUD', () => {
   });
 
   test('23. PUT with an empty alias clears the stored alias', async () => {
+    expect(
+      (
+        await req('POST', '/providers', {
+          kind: 'api',
+          id: 'alias-test',
+          protocol: 'openai-compatible',
+          baseURL: 'https://alias-test.example.com',
+          models: ['gpt-4o-upstream', 'o3-upstream'],
+          alias: {
+            'gpt-4o': {
+              model: 'gpt-4o-upstream',
+              variants: { thinking: { model: 'o3-upstream' } },
+            },
+          },
+        })
+      ).status,
+    ).toBe(201);
     const res = await req('PUT', '/providers/alias-test', {
       kind: 'api',
       id: 'alias-test',

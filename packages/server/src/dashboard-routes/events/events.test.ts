@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 
-import { createServer } from '@aio-proxy/server';
+import { createServer } from '#server-test-lifecycle';
 
 import { loopbackServer } from '../../dashboard-auth/test-support';
 

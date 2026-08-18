@@ -3,7 +3,8 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { createServer as createBaseServer } from '../server';
+import { createServer as createBaseServer } from '#server-test-lifecycle';
+
 import { loopbackServer } from './test-support';
 
 const origin = 'http://127.0.0.1:22078';

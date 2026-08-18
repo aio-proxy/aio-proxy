@@ -4,7 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { BUNDLED_PROVIDER_VERSIONS, npmPackageCacheDir } from '@aio-proxy/core';
-import { createServer as createBaseServer } from '@aio-proxy/server';
+
+import { createServer as createBaseServer } from '#server-test-lifecycle';
 
 import { loopbackServer } from '../src/dashboard-auth/test-support';
 

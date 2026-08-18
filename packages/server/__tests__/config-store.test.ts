@@ -5,8 +5,9 @@ import { join } from 'node:path';
 
 import { parseRuntimeConfig } from '@aio-proxy/core';
 
+import { createServerState } from '#server-test-lifecycle';
+
 import { ConfigReloadRejectedError, createConfigStore } from '../src/config-store';
-import { createServerState } from '../src/server-state';
 
 describe('createConfigStore mutex', () => {
   test('a rejected write does not poison later mutations', async () => {

@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
-import { createServer as createBaseServer } from '../server';
+import { createServer as createBaseServer, createServerTestHome } from '#server-test-lifecycle';
+
 import { loopbackServer } from './test-support';
 
 const origin = 'http://127.0.0.1:22078';
@@ -65,9 +66,17 @@ describe('dashboard authentication', () => {
 
   test('accepts a session after recreating the server with the same hash', async () => {
     const hash = await Bun.password.hash('restart-safe');
-    const first = await createServer({ config: { server: { password: hash }, providers: {} } });
+    const dbHome = createServerTestHome();
+    const first = await createServer({
+      config: { server: { password: hash }, providers: {} },
+      dbHome,
+    });
     const token = await tokenFrom(await login(first, 'restart-safe'));
-    const second = await createServer({ config: { server: { password: hash }, providers: {} } });
+    first.close();
+    const second = await createServer({
+      config: { server: { password: hash }, providers: {} },
+      dbHome,
+    });
 
     expect(
       (await second.request('/dashboard/api/config', { headers: { authorization: `Bearer ${token}` } }, loopbackServer))

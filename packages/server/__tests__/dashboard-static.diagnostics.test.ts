@@ -8,9 +8,10 @@ import { openDb } from '@aio-proxy/core/db';
 import { definePlugin, zod } from '@aio-proxy/plugin-sdk';
 import { ConfigSchema } from '@aio-proxy/types';
 
+import { createServerState } from '#server-test-lifecycle';
+
 import { disabledDashboardAuthentication } from '../src/dashboard-auth/test-support';
 import { createDashboardRoutes } from '../src/dashboard-routes/config';
-import { createServerState } from '../src/server-state';
 
 describe('dashboard static routes', () => {
   test('plugin and provider diagnostics never serialize stored secrets or original error stacks', async () => {

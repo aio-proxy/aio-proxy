@@ -8,8 +8,9 @@ import { openDb } from '@aio-proxy/core/db';
 import { definePlugin, zod } from '@aio-proxy/plugin-sdk';
 import { ConfigSchema } from '@aio-proxy/types';
 
+import { createServerState } from '#server-test-lifecycle';
+
 import { disabledDashboardAuthentication } from '../dashboard-auth/test-support';
-import { createServerState } from '../server-state';
 import { createDashboardRoutes } from './config';
 
 async function createOAuthEditFixture() {

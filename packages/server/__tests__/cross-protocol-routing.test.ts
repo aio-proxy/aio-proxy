@@ -4,8 +4,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import type { ApiProviderInstance, TextStreamPart, ToolSet } from '@aio-proxy/core';
-import { createServer } from '@aio-proxy/server';
 import { ProviderKind, ProviderProtocol } from '@aio-proxy/types';
+
+import { createServer } from '#server-test-lifecycle';
 
 import type { RuntimeProviderInstance } from '../src/runtime';
 import { recorded } from './trace-recording.test-support';

@@ -2,6 +2,7 @@ import { dirname } from 'node:path';
 
 import {
   AtomicConfigFile,
+  createAgentIdentityService,
   createEmbeddedBuiltIns,
   createPluginDiagnosticFactory,
   createPluginRepository,
@@ -10,7 +11,16 @@ import {
   Router,
   recoverPendingAccountOperations,
 } from '@aio-proxy/core';
-import { createTraceStore, type OpenDbHandle, openDb } from '@aio-proxy/core/db';
+import {
+  acquireDatabaseOwnershipLock,
+  assertSafeOwnedDatabaseFile,
+  createTraceStore,
+  type DatabaseOwnershipLock,
+  type OpenDbHandle,
+  type OpenDbOptions,
+  openDb,
+  resolveDbPath,
+} from '@aio-proxy/core/db';
 
 import type { AccountRemovalCoordinator } from '../account-removal';
 import { createAccountRemovalCoordinator } from '../account-removal';
@@ -42,19 +52,85 @@ import { defaultLogger, defaultPluginLogger } from './logging';
 import { createProviderSummaries } from './probe';
 import { defaultRecoveryScheduler, recoverBeforeSnapshot } from './recovery';
 import { buildSnapshot, buildSnapshotWithProviders, type Snapshot } from './snapshot';
-import type { ConfigReloadResult, InternalServerStateOptions, ServerState, ServerStateOptions } from './types';
+import type {
+  ConfigReloadResult,
+  InternalServerStateOptions,
+  ServerState,
+  ServerStateOptions,
+  ServerStateTestHooks,
+} from './types';
 
 export function createServerDiagnosticFactory(now: () => number = Date.now): DiagnosticFactory {
   return createPluginDiagnosticFactory(now);
 }
 
+function serverDbOptions(options: ServerStateOptions): OpenDbOptions {
+  if (options.dbHome !== undefined) return { home: options.dbHome };
+  return options.configPath === undefined ? {} : { home: dirname(options.configPath) };
+}
+
+function createStartupCleanup() {
+  const cleanups: Array<() => void> = [];
+  let armed = true;
+  return {
+    add(cleanup: () => void) {
+      if (!armed) throw new Error('startup cleanup is already disarmed');
+      cleanups.push(cleanup);
+    },
+    unwind() {
+      if (!armed) return;
+      armed = false;
+      for (const cleanup of cleanups.reverse()) {
+        try {
+          cleanup();
+        } catch {}
+      }
+      cleanups.length = 0;
+    },
+    disarm() {
+      armed = false;
+      cleanups.length = 0;
+    },
+  };
+}
+
 export async function createServerState(options: ServerStateOptions): Promise<ServerState> {
+  const dbOptions = serverDbOptions(options);
+  const startup = createStartupCleanup();
+  const databaseOwnership = await acquireDatabaseOwnershipLock(resolveDbPath(dbOptions));
+  startup.add(databaseOwnership.release);
+  try {
+    const dbHandle = openDb({ home: dirname(databaseOwnership.databasePath) });
+    startup.add(dbHandle.close);
+    assertSafeOwnedDatabaseFile(databaseOwnership.databasePath);
+    const state = await initializeServerState(options, dbHandle, databaseOwnership, startup.add);
+    startup.disarm();
+    return state;
+  } catch (error) {
+    startup.unwind();
+    throw error;
+  }
+}
+
+async function initializeServerState(
+  options: ServerStateOptions,
+  dbHandle: OpenDbHandle,
+  databaseOwnership: DatabaseOwnershipLock,
+  registerStartupCleanup: (cleanup: () => void) => void,
+): Promise<ServerState> {
   const internalOptions = options as InternalServerStateOptions;
   const testHooks = internalOptions.__test;
+  const agentIdentity = testHooks?.agentIdentity ?? createAgentIdentityService(dbHandle.sqlite);
+  type StartupResource = NonNullable<ServerStateTestHooks['failStartupAfter']>;
+  const failAfter = (resource: StartupResource): void => {
+    if (testHooks?.failStartupAfter === resource) {
+      throw new Error(`injected startup failure: ${resource}`);
+    }
+  };
   const createRouter =
     testHooks?.createRouter ?? ((providers: readonly RuntimeProviderInstance[]) => new Router(providers));
   const events = createDashboardEventHub(options.eventLimits);
-  const dbHandle = openServerDb(options);
+  registerStartupCleanup(() => events.close());
   const repository = options.pluginRepository ?? createPluginRepository(dbHandle.sqlite);
   const diagnostics = createServerDiagnosticFactory();
   const pluginLogger = options.pluginLogger ?? defaultPluginLogger;
@@ -122,6 +198,8 @@ export async function createServerState(options: ServerStateOptions): Promise<Se
     diagnostics,
     rebuild: () => queue(() => commitConfig(runtime, (manager.current() as Snapshot).config, 'catalog')),
   });
+  registerStartupCleanup(() => runtime.scheduler.close());
+  failAfter('scheduler');
   if (runtime.startupDiagnosticRebuildPending) {
     runtime.startupDiagnosticRebuildPending = false;
     await queue(() => commitConfig(runtime, (manager.current() as Snapshot).config, 'credential-diagnostic'));
@@ -137,24 +215,35 @@ export async function createServerState(options: ServerStateOptions): Promise<Se
     onResponsePersisted: (responseId) => logicalSessionStore.reconcilePersistedResponse(responseId),
   });
 
-  const configStore = await startRecovery(runtime, {
-    recoverAccounts,
-    recoveryScheduler,
-    reconciliationRetryMs: testHooks?.reconciliationRetryMs ?? RECOVERY_DRAIN_RETRY_MS,
-  });
+  const configStore = await startRecovery(
+    runtime,
+    {
+      recoverAccounts,
+      recoveryScheduler,
+      reconciliationRetryMs: testHooks?.reconciliationRetryMs ?? RECOVERY_DRAIN_RETRY_MS,
+    },
+    registerStartupCleanup,
+  );
+  failAfter('recovery');
   const pluginControlPlane = createStatePluginControlPlane(runtime, configStore);
 
   const providerSummaries = createProviderSummaries(manager);
 
   const reload = (): Promise<ConfigReloadResult> => queue(() => reloadNow(runtime));
   const oauthLoginSessions = startLoginSessions(runtime, configStore, reload);
+  registerStartupCleanup(() => oauthLoginSessions.close());
+  failAfter('login_sessions');
   const watcher =
     options.configPath !== undefined && options.watchConfig !== false
       ? watchConfigFile(options.configPath, reload)
       : undefined;
+  if (watcher !== undefined) registerStartupCleanup(() => watcher.close());
+  failAfter('watcher');
   return assembleServerState(runtime, {
+    agentIdentity,
     manager,
     dbHandle,
+    databaseOwnership,
     configStore,
     events,
     logicalSessionStore,
@@ -199,11 +288,6 @@ function recoverBeforeInitialSnapshot(
     scheduler,
     enqueue: runtime.queue,
   });
-}
-
-function openServerDb(options: ServerStateOptions): OpenDbHandle {
-  if (options.dbHome !== undefined) return openDb({ home: options.dbHome });
-  return options.configPath === undefined ? openDb() : openDb({ home: dirname(options.configPath) });
 }
 
 export type {

@@ -17,10 +17,12 @@ import { openDb } from '@aio-proxy/core/db';
 import { definePlugin, type PluginDescriptor } from '@aio-proxy/plugin-sdk';
 import { z } from 'zod';
 
+import { createServerState } from '#server-test-lifecycle';
+
 import { disabledDashboardAuthentication } from '../../dashboard-auth/test-support';
 import { createPluginControlPlaneAccess } from '../../plugin-control-plane/access';
 import { candidateOptions } from '../../plugin-control-plane/plugin-config';
-import { createServerState, type ServerState } from '../../server-state';
+import type { ServerState } from '../../server-state';
 import type { ServerStateTestHooks } from '../../server-state/types';
 import { createDashboardRoutes } from '../config';
 

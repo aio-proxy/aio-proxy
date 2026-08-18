@@ -155,7 +155,33 @@ export const run = (deps: CliDeps) => async (options: RunOptions) => {
   // pauses). Bun's default 10s idle timeout would close the client connection
   // mid-stream, surfacing to clients as "stream disconnected"/decode errors.
   // 255s is Bun's maximum idle window.
-  const server = Bun.serve({ hostname: host, port, idleTimeout: 255, fetch: app.fetch });
+  let server: ReturnType<typeof Bun.serve>;
+  try {
+    server = Bun.serve({ hostname: host, port, idleTimeout: 255, fetch: app.fetch });
+  } catch (error) {
+    try {
+      app.close();
+    } catch {}
+    throw error;
+  }
+
+  let closing = false;
+  const shutdown = (): void => {
+    if (closing) return;
+    closing = true;
+    try {
+      server.stop(true);
+    } finally {
+      try {
+        app.close();
+      } finally {
+        process.off('SIGINT', shutdown);
+        process.off('SIGTERM', shutdown);
+      }
+    }
+  };
+  process.once('SIGINT', shutdown);
+  process.once('SIGTERM', shutdown);
   console.error(
     m['cli.run.started']({
       apiUrl: controlBaseUrl(server.hostname ?? host, String(server.port)),

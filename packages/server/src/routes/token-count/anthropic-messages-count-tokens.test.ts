@@ -2,8 +2,9 @@ import { describe, expect, test } from 'bun:test';
 
 import { type AiSdkProviderInstance, REQUEST_BODY_LIMITS } from '@aio-proxy/core';
 
+import { createServer } from '#server-test-lifecycle';
+
 import { messagesRequest, textStream } from '../../../__tests__/anthropic-messages.test-support';
-import { createServer } from '../../server';
 
 describe('POST /v1/messages/count_tokens', () => {
   test('Given message request When token count is posted Then returns input token count', async () => {

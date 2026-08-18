@@ -1,7 +1,8 @@
 import { describe, expect, test } from 'bun:test';
 
 import { createAiSdkProvider } from '@aio-proxy/core';
-import { createServer } from '@aio-proxy/server';
+
+import { createServer } from '#server-test-lifecycle';
 
 const generateRequest = {
   contents: [{ role: 'user', parts: [{ text: 'Hello proxy' }] }],

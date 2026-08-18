@@ -3,8 +3,9 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import type { AiSdkProviderInstance } from '@aio-proxy/core';
 import type { ModelMessage } from 'ai';
 
+import { createServer } from '#server-test-lifecycle';
+
 import { createTempHomes, textStream } from '../../__tests__/openai-responses.test-support';
-import { createServer } from '../server';
 
 const homes = createTempHomes('aio-proxy-responses-model-');
 afterEach(homes.cleanup);

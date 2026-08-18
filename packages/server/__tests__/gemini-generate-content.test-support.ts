@@ -1,7 +1,8 @@
 import type { AiSdkProviderInstance, ApiProviderInstance } from '@aio-proxy/core';
-import { createServer } from '@aio-proxy/server';
 import { ProviderProtocol } from '@aio-proxy/types';
 import type { CallSettings, JSONValue, TextStreamPart, ToolSet } from 'ai';
+
+import { createServer } from '#server-test-lifecycle';
 
 export { createTempHomes } from './temporary-homes.test-support';
 
