@@ -6,6 +6,12 @@ import type { Context, MiddlewareHandler } from 'hono';
 import { Hono } from 'hono';
 import { bearerAuth } from 'hono/bearer-auth';
 
+import {
+  createAgentAdminRoutes,
+  createAgentApprovalRoutes,
+  createAgentOAuthRoutes,
+  createDeviceChallengeStore,
+} from '../agent-authorization';
 import type { DashboardAssets } from '../dashboard-assets';
 import {
   createDashboardAuthentication,
@@ -219,7 +225,9 @@ const createRoutes = (
       skip: (context) =>
         context.req.path === '/health' ||
         context.req.path === '/dashboard' ||
-        context.req.path.startsWith('/dashboard/'),
+        context.req.path.startsWith('/dashboard/') ||
+        context.req.path === '/oauth/device/code' ||
+        context.req.path === '/oauth/token',
     }),
   );
   const modelAuthentication = requireModelAuthentication({
@@ -283,6 +291,15 @@ const createRoutes = (
     return requireDashboardAuth(context, next);
   });
 
+  const approvalOrigin = `http://${expectedLoopbackHost}:${loopbackPort}`;
+  const challenges = createDeviceChallengeStore({
+    identity: state.agentIdentity,
+    verificationUri: new URL('/dashboard/agents/authorize', approvalOrigin).href,
+  });
+  const currentConfig = () => state.currentConfig();
+  const agentOAuthRoutes = createAgentOAuthRoutes({ challenges, identity: state.agentIdentity, currentConfig });
+  const agentApprovalRoutes = createAgentApprovalRoutes({ challenges, currentConfig });
+  const agentAdminRoutes = createAgentAdminRoutes({ identity: state.agentIdentity, currentConfig });
   const dashboardRoutes = createDashboardRoutes(state, dashboardAuth);
   const dashboardAuthRoutes = createDashboardAuthRoutes(dashboardAuth);
   const anthropicMessagesRoutes = createAnthropicMessagesRoutes(state);
@@ -290,6 +307,9 @@ const createRoutes = (
   const openAICompletionsRoutes = createOpenAICompletionsRoutes(state);
   const openAIResponsesRoutes = createOpenAIResponsesRoutes(state);
   const routes = app
+    .route('/oauth', agentOAuthRoutes)
+    .route('/dashboard/api/agent-authorizations', agentApprovalRoutes)
+    .route('/admin/agent-installations', agentAdminRoutes)
     .route('/', anthropicMessagesRoutes)
     .route('/', geminiGenerateContentRoutes)
     .route('/', openAICompletionsRoutes)

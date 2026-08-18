@@ -75,7 +75,7 @@ export function createAgentIdentityService(sqlite: Database, options: AgentIdent
   const repo = createAgentIdentityRepository(sqlite);
   const access = new Map(repo.loadActiveAccess(now()).map((grant) => [grant.tokenHash, grant]));
   const replay = new Map<string, { readonly until: number; readonly result: AgentRefreshSuccess }>();
-  const makeUuid = options.randomUUID ?? crypto.randomUUID;
+  const makeUuid = options.randomUUID ?? crypto.randomUUID.bind(crypto);
   const makeBytes = options.randomBytes;
 
   function authenticateAccessToken(token: string): AgentAccessAuthentication {

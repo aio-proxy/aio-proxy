@@ -4,6 +4,8 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { AGENT_ACCESS_TOKEN_PREFIX, AGENT_REFRESH_TOKEN_PREFIX } from '@aio-proxy/types';
+
 import { openDb } from '../db';
 import {
   AgentInstallationTargetMismatchError,
@@ -262,4 +264,17 @@ test('cleanup retains consumed refresh evidence through its expiry and later rem
     adapterVersion: '1.2.3',
   });
   expect(f.sqlite.query('SELECT * FROM agent_refresh_token WHERE token_hash = ?').get(oldHash)).toBeNull();
+});
+
+test('issues a credential when production defaults leave randomUUID unbound', () => {
+  const home = mkdtempSync(join(tmpdir(), 'aio-proxy-agent-identity-'));
+  roots.push(home);
+  const handle = openDb({ home });
+  closes.push(handle.close);
+  const issued = createAgentIdentityService(handle.sqlite).issueCredential(INPUT);
+  expect(issued.accessToken.startsWith(AGENT_ACCESS_TOKEN_PREFIX)).toBe(true);
+  expect(issued.refreshToken.startsWith(AGENT_REFRESH_TOKEN_PREFIX)).toBe(true);
+  expect(createAgentIdentityService(handle.sqlite).authenticateAccessToken(issued.accessToken)).toMatchObject({
+    status: 'valid',
+  });
 });
