@@ -32,7 +32,9 @@ export const RequestTransformStageValueEditor: React.FC<RequestTransformStageVal
 }) => (
   <form.Subscribe selector={(state) => [state.values.kind, state.values.valueMode] as const}>
     {([kind, valueMode]) => {
-      if (kind === 'remove') return null;
+      if (kind === 'remove') {
+        return <p className="text-xs text-muted-foreground">{m['dashboard.providers.transforms.action.no_value']()}</p>;
+      }
       const setStage = buildRequestTransformStageDraft({ ...form.state.values, valueMode }, acceptedStage) as SetStage;
       return (
         <div className="space-y-4">
