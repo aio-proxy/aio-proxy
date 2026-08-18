@@ -531,7 +531,6 @@
           "always": "이 규칙은 모든 요청에 적용됩니다."
         },
         "action": {
-          "label": "작업 {index}",
           "type": "작업",
           "set": "설정",
           "remove": "제거",

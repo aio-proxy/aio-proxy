@@ -531,7 +531,6 @@
           "always": "This rule runs on every request."
         },
         "action": {
-          "label": "Action {index}",
           "type": "Action",
           "set": "Set",
           "remove": "Remove",

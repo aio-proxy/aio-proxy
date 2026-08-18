@@ -531,7 +531,6 @@
           "always": "每次請求都會執行這條規則。"
         },
         "action": {
-          "label": "操作 {index}",
           "type": "操作",
           "set": "設定",
           "remove": "移除",

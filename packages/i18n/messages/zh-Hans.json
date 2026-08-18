@@ -531,7 +531,6 @@
           "always": "每次请求都会执行这条规则。"
         },
         "action": {
-          "label": "操作 {index}",
           "type": "操作",
           "set": "设置",
           "remove": "移除",
