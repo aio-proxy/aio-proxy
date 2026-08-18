@@ -540,7 +540,8 @@
           "add_remove": "Add Remove action",
           "remove_button": "Remove action {index}",
           "move_up": "Move action {index} up",
-          "move_down": "Move action {index} down"
+          "move_down": "Move action {index} down",
+          "no_value": "Remove actions need no value."
         },
         "target": {
           "label": "Target",

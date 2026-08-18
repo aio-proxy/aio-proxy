@@ -540,7 +540,8 @@
           "add_remove": "Remove 작업 추가",
           "remove_button": "작업 {index} 제거",
           "move_up": "작업 {index} 위로 이동",
-          "move_down": "작업 {index} 아래로 이동"
+          "move_down": "작업 {index} 아래로 이동",
+          "no_value": "제거 작업에는 값이 필요하지 않습니다."
         },
         "target": {
           "label": "대상",

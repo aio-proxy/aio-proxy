@@ -540,7 +540,8 @@
           "add_remove": "添加 Remove 操作",
           "remove_button": "删除操作 {index}",
           "move_up": "上移操作 {index}",
-          "move_down": "下移操作 {index}"
+          "move_down": "下移操作 {index}",
+          "no_value": "删除字段无需填写值。"
         },
         "target": {
           "label": "目标",

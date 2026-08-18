@@ -540,7 +540,8 @@
           "add_remove": "Remove アクションを追加",
           "remove_button": "アクション {index} を削除",
           "move_up": "アクション {index} を上に移動",
-          "move_down": "アクション {index} を下に移動"
+          "move_down": "アクション {index} を下に移動",
+          "no_value": "削除アクションでは値を入力する必要はありません。"
         },
         "target": {
           "label": "ターゲット",
