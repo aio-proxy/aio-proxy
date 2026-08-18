@@ -119,10 +119,10 @@ describe('ModelValidationPanel', () => {
     );
 
     fireEvent.click(screen.getByRole('button', { name: /Test connection|测试连接/u }));
-    expect(await screen.findByRole('status')).toHaveTextContent(/Connection test succeeded|连接测试成功/u);
+    expect(await screen.findByRole('status')).toHaveTextContent(/Request succeeded · model-a|请求成功 · model-a/u);
 
     act(() => validationForm.setFieldValue('validationModel', 'model-b'));
-    await waitFor(() => expect(screen.queryByText(/Connection test succeeded|连接测试成功/u)).toBeNull());
+    await waitFor(() => expect(screen.queryByText(/Request succeeded · model-a|请求成功 · model-a/u)).toBeNull());
   });
 
   test('announces a recoverable request error without gating the form', async () => {
@@ -196,7 +196,7 @@ describe('ModelValidationPanel', () => {
     // Scoped to the message, not merely to the absence of a class: `not.toContain` alone also passes
     // for a success region that renders nothing, or the failure text under a non-destructive class.
     // Same query and same pattern as the success assertion earlier in this file.
-    expect(await screen.findByRole('status')).toHaveTextContent(/Connection test succeeded|连接测试成功/u);
+    expect(await screen.findByRole('status')).toHaveTextContent(/Request succeeded · model-a|请求成功 · model-a/u);
     expect((await screen.findByRole('status')).className).not.toContain('text-destructive');
   });
 

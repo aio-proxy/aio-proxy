@@ -32,16 +32,18 @@ export const ModelValidationPanel: React.FC<ModelValidationPanelProps> = ({
   const testMutation = useProviderTestMutation(form, persistedProviderId);
   const tested = testMutation.data;
   let result: DashboardProviderDraftTestResponse | null = null;
+  let resultMessage: string | undefined;
   if (tested !== undefined && tested.model === selectedModel) {
     result = tested.result;
+    if (tested.result.ok) resultMessage = m['dashboard.providers.editor.validate_success']({ model: tested.model });
   } else if (testMutation.isError && testMutation.variables === selectedModel) {
     result = { ok: false, error: { code: 'test_request_failed', recoverable: true } };
   }
-  let resultMessage: string | undefined;
-  if (result?.ok) resultMessage = m['dashboard.providers.editor.validate_success']();
-  else if (result?.error.code === 'invalid_draft') resultMessage = m['dashboard.providers.editor.validate_invalid']();
-  else if (result !== null)
-    resultMessage = m['dashboard.providers.editor.validate_failed']({ code: result.error.code });
+  if (result !== null && !result.ok)
+    resultMessage =
+      result.error.code === 'invalid_draft'
+        ? m['dashboard.providers.editor.validate_invalid']()
+        : m['dashboard.providers.editor.validate_failed']({ code: result.error.code });
 
   return (
     <section className="space-y-5" aria-labelledby="provider-validate-heading">

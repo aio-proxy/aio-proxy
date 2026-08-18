@@ -772,7 +772,7 @@
         "validate_model": "テストするモデル",
         "validate_action": "接続をテスト",
         "validate_pending": "接続をテスト中…",
-        "validate_success": "接続テストに成功しました",
+        "validate_success": "リクエスト成功 · {model}",
         "validate_failed": "接続テストに失敗しました（{code}）。このプロバイダーは引き続き保存できます。",
         "validate_unavailable": "有効なモデルを追加すると、このプロバイダーをテストできます",
         "validate_invalid": "テストする前にプロバイダー設定を完了してください"

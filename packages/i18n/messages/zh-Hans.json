@@ -772,7 +772,7 @@
         "validate_model": "测试模型",
         "validate_action": "测试连接",
         "validate_pending": "正在测试连接…",
-        "validate_success": "连接测试成功",
+        "validate_success": "请求成功 · {model}",
         "validate_failed": "连接测试失败（{code}）。你仍可保存此提供商。",
         "validate_unavailable": "添加一个已启用模型后即可测试此提供商",
         "validate_invalid": "请先完成提供商配置再测试"
