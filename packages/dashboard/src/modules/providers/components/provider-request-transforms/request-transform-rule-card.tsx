@@ -1,16 +1,22 @@
 import { m } from '@aio-proxy/i18n';
 import { ProviderRequestTransformRulesSchema, type ProviderRequestTransformRule } from '@aio-proxy/types';
 import { Button } from '@aio-proxy/ui/components/button';
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@aio-proxy/ui/components/card';
 import { Input } from '@aio-proxy/ui/components/input';
 import { Label } from '@aio-proxy/ui/components/label';
+import { Switch } from '@aio-proxy/ui/components/switch';
 import { useForm } from '@tanstack/react-form';
 import { isEqual } from 'es-toolkit/predicate';
-import { useEffect, useId, useRef, useState } from 'react';
+import { ArrowDownIcon, ArrowUpIcon, Trash2Icon } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import type { RefCallback } from 'react';
 
 import { RequestTransformConditionEditor } from './request-transform-condition-editor';
 import { RequestTransformStageList } from './request-transform-stage-list';
+
+type Condition = NonNullable<ProviderRequestTransformRule['when']>;
+
+/** The shape the builder itself writes for a regex row, so the seeded row reopens as one editable condition. */
+const starterCondition: Condition = { 'request.model': { $regex: '' } };
 
 export interface RequestTransformRuleCardProps {
   readonly value: ProviderRequestTransformRule;
@@ -39,7 +45,6 @@ export const RequestTransformRuleCard: React.FC<RequestTransformRuleCardProps> =
   onMoveUp,
   onMoveDown,
 }) => {
-  const nameId = useId();
   const ruleIndex = index + 1;
   const form = useForm({ defaultValues: { name: value.name ?? '' } });
   const expectedValue = useRef(value);
@@ -67,79 +72,98 @@ export const RequestTransformRuleCard: React.FC<RequestTransformRuleCardProps> =
     onChange(nextRule);
   };
 
+  // One path for the toggle and the builder alike: an emptied condition means the rule carries no `when`.
+  const commitCondition = (when: Condition) => {
+    if (Object.keys(when).length === 0) {
+      const { when: _when, ...ruleWithoutCondition } = value;
+      commitRule(ruleWithoutCondition, setConditionValid);
+    } else {
+      commitRule({ ...value, when }, setConditionValid);
+    }
+  };
+
   return (
-    <Card data-testid={`request-transform-rule-${index}`}>
-      <CardHeader>
-        <CardTitle>
-          {value.name?.trim() || m['dashboard.providers.transforms.rule.label']({ index: ruleIndex })}
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-5">
-        <div className="space-y-2">
-          <Label htmlFor={nameId}>{m['dashboard.providers.transforms.rule.name']({ index: ruleIndex })}</Label>
-          <form.Field name="name">
-            {(field) => (
-              <Input
-                id={nameId}
-                value={field.state.value}
-                onChange={(event) => {
-                  const name = event.target.value;
-                  field.handleChange(name);
-                  if (name === '') {
-                    const { name: _name, ...ruleWithoutName } = value;
-                    commitRule(ruleWithoutName, setNameValid);
-                  } else {
-                    commitRule({ ...value, name }, setNameValid);
-                  }
-                }}
-              />
-            )}
-          </form.Field>
-        </div>
-        <div className="space-y-2">
-          <div className="flex items-center justify-between gap-3">
-            <Label>{m['dashboard.providers.transforms.rule.when']()}</Label>
-            {value.when === undefined ? (
-              <span className="text-xs text-muted-foreground">
-                {m['dashboard.providers.transforms.rule.match_all']()}
-              </span>
-            ) : null}
-          </div>
-          <RequestTransformConditionEditor
-            value={value.when ?? {}}
-            onValidityChange={setConditionValid}
-            onChange={(when) => {
-              if (Object.keys(when).length === 0) {
-                const { when: _when, ...ruleWithoutCondition } = value;
-                commitRule(ruleWithoutCondition, setConditionValid);
-              } else {
-                commitRule({ ...value, when }, setConditionValid);
-              }
-            }}
-          />
-        </div>
-        <div className="space-y-3">
-          <Label>{m['dashboard.providers.transforms.rule.then']()}</Label>
-          <RequestTransformStageList
-            value={value.update}
-            structuralDisabled={structureBlocked}
-            {...(firstPathInputRef === undefined ? {} : { firstPathInputRef })}
-            onChange={(update) => commitRule({ ...value, update: [...update] }, setStagesValid)}
-            onValidityChange={setStagesValid}
-          />
-        </div>
-      </CardContent>
-      <CardFooter className="flex flex-wrap gap-2">
-        <Button type="button" variant="destructive" disabled={structureBlocked} onClick={onRemove}>
-          {m['dashboard.providers.transforms.rule.remove']({ index: ruleIndex })}
+    <div className="space-y-3 rounded-2xl border bg-card p-3" data-testid={`request-transform-rule-${index}`}>
+      <div className="flex items-center gap-2">
+        <form.Field name="name">
+          {(field) => (
+            <Input
+              value={field.state.value}
+              // The index label only ever hints: writing it into the value would save a name nobody typed.
+              placeholder={m['dashboard.providers.transforms.rule.label']({ index: ruleIndex })}
+              aria-label={m['dashboard.providers.transforms.rule.name']({ index: ruleIndex })}
+              className="h-7 min-w-0 flex-1 border-transparent bg-transparent px-1 text-sm font-medium hover:border-input focus:bg-background"
+              onChange={(event) => {
+                const name = event.target.value;
+                field.handleChange(name);
+                if (name === '') {
+                  const { name: _name, ...ruleWithoutName } = value;
+                  commitRule(ruleWithoutName, setNameValid);
+                } else {
+                  commitRule({ ...value, name }, setNameValid);
+                }
+              }}
+            />
+          )}
+        </form.Field>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-xs"
+          disabled={structureBlocked || !canMoveUp}
+          aria-label={m['dashboard.providers.transforms.rule.move_up']({ index: ruleIndex })}
+          onClick={onMoveUp}
+        >
+          <ArrowUpIcon />
         </Button>
-        <Button type="button" variant="outline" disabled={structureBlocked || !canMoveUp} onClick={onMoveUp}>
-          {m['dashboard.providers.transforms.rule.move_up']({ index: ruleIndex })}
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-xs"
+          disabled={structureBlocked || !canMoveDown}
+          aria-label={m['dashboard.providers.transforms.rule.move_down']({ index: ruleIndex })}
+          onClick={onMoveDown}
+        >
+          <ArrowDownIcon />
         </Button>
-        <Button type="button" variant="outline" disabled={structureBlocked || !canMoveDown} onClick={onMoveDown}>
-          {m['dashboard.providers.transforms.rule.move_down']({ index: ruleIndex })}
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-xs"
+          disabled={structureBlocked}
+          aria-label={m['dashboard.providers.transforms.rule.remove']({ index: ruleIndex })}
+          onClick={onRemove}
+        >
+          <Trash2Icon />
         </Button>
-      </CardFooter>
-    </Card>
+      </div>
+      <label className="flex items-center gap-2 text-xs text-muted-foreground">
+        <Switch
+          size="sm"
+          checked={value.when !== undefined}
+          onCheckedChange={(checked) => commitCondition(checked ? starterCondition : {})}
+        />
+        {m['dashboard.providers.transforms.rule.conditional_toggle']()}
+      </label>
+      {value.when === undefined ? (
+        <p className="text-xs text-muted-foreground">{m['dashboard.providers.transforms.rule.always']()}</p>
+      ) : (
+        <RequestTransformConditionEditor
+          value={value.when}
+          onValidityChange={setConditionValid}
+          onChange={commitCondition}
+        />
+      )}
+      <div className="space-y-3">
+        <Label>{m['dashboard.providers.transforms.rule.then']()}</Label>
+        <RequestTransformStageList
+          value={value.update}
+          structuralDisabled={structureBlocked}
+          {...(firstPathInputRef === undefined ? {} : { firstPathInputRef })}
+          onChange={(update) => commitRule({ ...value, update: [...update] }, setStagesValid)}
+          onValidityChange={setStagesValid}
+        />
+      </div>
+    </div>
   );
 };

@@ -101,9 +101,42 @@ test('labels unnamed rules by index and renders Add rule after the rule list', (
   );
 
   const rule = ruleCard(0);
-  expect(within(rule).getByText(/^Rule 1$|^规则 1$/u)).toBeInTheDocument();
+  // The index label hints through the placeholder only; materializing it would save a name nobody typed.
+  const name = within(rule).getByRole('textbox', { name: /Rule 1 name|规则 1 名称/u }) as HTMLInputElement;
+  expect(name.placeholder).toMatch(/^Rule 1$|^规则 1$/u);
+  expect(name).toHaveValue('');
   const addRule = screen.getByRole('button', { name: /Add rule|添加规则/u });
   expect(rule.compareDocumentPosition(addRule) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+});
+
+test('seeds and strips the rule condition from the conditional toggle', async () => {
+  const onChange = rs.fn();
+  render(
+    <RequestTransformsHarness
+      initialValue={[{ update: [{ $unset: 'request.body.value' }] }]}
+      onChange={onChange}
+      onValidityChange={rs.fn()}
+    />,
+  );
+
+  const alwaysApplies = /runs on every request|每次请求都会执行这条规则/u;
+  const conditionalCopy = /Only run when conditions match|仅在满足条件时执行/u;
+  const toggle = () => within(ruleCard(0)).getByText(conditionalCopy);
+  expect(within(ruleCard(0)).getByText(alwaysApplies)).toBeInTheDocument();
+
+  // Clicking the enclosing label is the one path happy-dom toggles once: a click on the switch itself is
+  // forwarded to the hidden input by both Base UI and the label, and happy-dom runs the second forward.
+  fireEvent.click(toggle());
+  // The seeded condition has to be one the builder can reopen, not just one the schema accepts.
+  await waitFor(() => expect(latestValue(onChange)[0]?.when).toEqual({ 'request.model': { $regex: '' } }));
+  expect(within(ruleCard(0)).getByRole('switch', { name: conditionalCopy })).toBeChecked();
+  expect(within(ruleCard(0)).getByRole('button', { name: /Add condition|添加条件/u })).toBeInTheDocument();
+  expect(within(ruleCard(0)).queryByText(alwaysApplies)).toBeNull();
+
+  fireEvent.click(toggle());
+  await waitFor(() => expect(latestValue(onChange)[0]).not.toHaveProperty('when'));
+  expect(within(ruleCard(0)).queryByRole('button', { name: /Add condition|添加条件/u })).toBeNull();
+  expect(within(ruleCard(0)).getByText(alwaysApplies)).toBeInTheDocument();
 });
 
 test('directly adds one Set action and stores an explicitly selected null', async () => {
