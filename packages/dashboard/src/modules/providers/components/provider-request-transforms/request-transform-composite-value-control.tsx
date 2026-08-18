@@ -29,8 +29,12 @@ export const RequestTransformCompositeValueControl: React.FC<RequestTransformCom
   const isMobile = useIsMobile();
   const [open, setOpen] = useState(false);
   const parsed = parseCompositeDraft(type, draft);
-  // A rejected commit is the only way an unparseable draft reaches us, and it must still be editable.
-  const initialDraft = parsed === undefined ? draft : JSON.stringify(parsed, null, 2);
+  // Defensive and currently unreachable: every write path stores parseable text — `form.reset` seeds from
+  // an already parsed `JsonValue`, the type switch resets through `defaultValue`, and drawer apply emits a
+  // re-stringified parse. It stays because `commitDraft`'s `parsed !== undefined` check sits immediately in
+  // front of `emit` as the trust boundary, so this is what a draft slipping past it would have to look like.
+  const [initialDraft, compactJson] =
+    parsed === undefined ? [draft, draft] : [JSON.stringify(parsed, null, 2), JSON.stringify(parsed)];
   const typeLabel =
     type === 'object'
       ? m['dashboard.providers.transforms.value.type_object']()
@@ -56,7 +60,7 @@ export const RequestTransformCompositeValueControl: React.FC<RequestTransformCom
         onClick={() => setOpen(true)}
       >
         <code id={jsonId} className="min-w-0 truncate font-mono text-xs">
-          {JSON.stringify(parsed)}
+          {compactJson}
         </code>
         <span id={affordanceId} className="ml-3 shrink-0 text-xs text-muted-foreground">
           {m['dashboard.providers.transforms.value.edit_json']()}
