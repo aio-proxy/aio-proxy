@@ -31,18 +31,39 @@ test('schema 1 preserves every capability required by bundled adapters', () => {
   ).toMatchObject({ tool_call: true, temperature: false, attachment: true });
 });
 
+const managedMarker = {
+  format: 1,
+  managedBy: 'aio-proxy',
+  agent: 'pi',
+  installationId: '0f4dcb50-d68c-4b99-8af1-da32480ddd09',
+  adapterVersion: '1.2.3',
+  endpoint: 'http://127.0.0.1:9317',
+} as const;
+
 test('marker accepts only canonical loopback installations', () => {
-  const base = {
-    format: 1,
-    managedBy: 'aio-proxy',
-    agent: 'pi',
-    installationId: '0f4dcb50-d68c-4b99-8af1-da32480ddd09',
-    adapterVersion: '1.2.3',
-    endpoint: 'http://127.0.0.1:9317',
-  } as const;
-  expect(AgentManagedMarkerSchema.safeParse(base).success).toBe(true);
-  expect(AgentManagedMarkerSchema.safeParse({ ...base, endpoint: 'https://proxy.example' }).success).toBe(false);
-  expect(AgentManagedMarkerSchema.safeParse({ ...base, adapterVersion: 'latest' }).success).toBe(false);
+  expect(AgentManagedMarkerSchema.safeParse(managedMarker).success).toBe(true);
+  expect(AgentManagedMarkerSchema.safeParse({ ...managedMarker, endpoint: 'https://proxy.example' }).success).toBe(
+    false,
+  );
+  expect(AgentManagedMarkerSchema.safeParse({ ...managedMarker, adapterVersion: 'latest' }).success).toBe(false);
+});
+
+test.each(['http://localhost:9317', 'http://[::1]:9317', 'http://127.1.2.3:9317'] as const)(
+  'marker accepts canonical loopback endpoint %s',
+  (endpoint) => {
+    expect(AgentManagedMarkerSchema.safeParse({ ...managedMarker, endpoint }).success).toBe(true);
+  },
+);
+
+test.each([
+  'http://8.8.8.8:9317',
+  'https://127.0.0.1:9317',
+  'http://user:pass@127.0.0.1:9317',
+  'http://127.0.0.1:9317/v1',
+  'http://127.0.0.1:9317/?q=1',
+  'http://127.0.0.1:9317/#section',
+] as const)('marker rejects non-canonical endpoint %s', (endpoint) => {
+  expect(AgentManagedMarkerSchema.safeParse({ ...managedMarker, endpoint }).success).toBe(false);
 });
 
 test('managed state accepts only fixed error categories', () => {
