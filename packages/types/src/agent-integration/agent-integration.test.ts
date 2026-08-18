@@ -9,26 +9,30 @@ import {
   hasReservedAgentTokenPrefix,
 } from './agent-integration';
 
+const catalogV1 = {
+  schema_version: 1,
+  agent: 'opencode',
+  models: [
+    {
+      id: 'gpt-x',
+      name: 'GPT X',
+      reasoning: true,
+      tool_call: true,
+      temperature: false,
+      attachment: true,
+      input: ['text', 'image'],
+      context_window: 128_000,
+      max_output_tokens: null,
+    },
+  ],
+} as const;
+
 test('schema 1 preserves every capability required by bundled adapters', () => {
-  expect(
-    AgentCatalogV1Schema.parse({
-      schema_version: 1,
-      agent: 'opencode',
-      models: [
-        {
-          id: 'gpt-x',
-          name: 'GPT X',
-          reasoning: true,
-          tool_call: true,
-          temperature: false,
-          attachment: true,
-          input: ['text', 'image'],
-          context_window: 128_000,
-          max_output_tokens: null,
-        },
-      ],
-    }).models[0],
-  ).toMatchObject({ tool_call: true, temperature: false, attachment: true });
+  expect(AgentCatalogV1Schema.parse(catalogV1).models[0]).toMatchObject({
+    tool_call: true,
+    temperature: false,
+    attachment: true,
+  });
 });
 
 const managedMarker = {
@@ -66,6 +70,13 @@ test.each([
   expect(AgentManagedMarkerSchema.safeParse({ ...managedMarker, endpoint }).success).toBe(false);
 });
 
+const managedState = {
+  format: 1,
+  catalogSchema: 1,
+  lastSuccessfulAt: '2026-08-18T00:00:00.000Z',
+  lkg: catalogV1,
+} as const;
+
 test('managed state accepts only fixed error categories', () => {
   expect(
     AgentManagedStateV1Schema.safeParse({
@@ -95,6 +106,72 @@ test('managed state accepts only fixed error categories', () => {
       lastSuccessfulAt: null,
       lastError: null,
       lkg: null,
+    }).success,
+  ).toBe(false);
+});
+
+test('managed state accepts missing with a null lastError', () => {
+  expect(
+    AgentManagedStateV1Schema.safeParse({
+      format: 1,
+      catalogSchema: 1,
+      status: 'missing',
+      lastSuccessfulAt: null,
+      lastError: null,
+      lkg: null,
+    }).success,
+  ).toBe(true);
+});
+
+test('managed state rejects missing leftover last-known-good catalog', () => {
+  expect(
+    AgentManagedStateV1Schema.safeParse({
+      format: 1,
+      catalogSchema: 1,
+      status: 'missing',
+      lastSuccessfulAt: null,
+      lastError: 'network',
+      lkg: catalogV1,
+    }).success,
+  ).toBe(false);
+});
+
+test('managed state accepts consistent stale snapshots', () => {
+  expect(
+    AgentManagedStateV1Schema.safeParse({
+      ...managedState,
+      status: 'stale',
+      lastError: 'network',
+    }).success,
+  ).toBe(true);
+});
+
+test('managed state rejects stale snapshots that omit lastError', () => {
+  expect(
+    AgentManagedStateV1Schema.safeParse({
+      ...managedState,
+      status: 'stale',
+      lastError: null,
+    }).success,
+  ).toBe(false);
+});
+
+test('managed state accepts consistent fresh snapshots', () => {
+  expect(
+    AgentManagedStateV1Schema.safeParse({
+      ...managedState,
+      status: 'fresh',
+      lastError: null,
+    }).success,
+  ).toBe(true);
+});
+
+test('managed state rejects fresh snapshots that retain lastError', () => {
+  expect(
+    AgentManagedStateV1Schema.safeParse({
+      ...managedState,
+      status: 'fresh',
+      lastError: 'network',
     }).success,
   ).toBe(false);
 });
