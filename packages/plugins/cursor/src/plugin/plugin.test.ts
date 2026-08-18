@@ -1,8 +1,10 @@
 import { expect, test } from 'bun:test';
 
 import type { OAuthAdapter, PluginDescriptor } from '@aio-proxy/plugin-sdk';
+import { AliasConfigSchema } from '@aio-proxy/types';
 
 import cursorPlugin, { createCursorPlugin, englishPresentationText } from '..';
+import { defaultCursorAliases } from '../catalog';
 import type { CursorCredential } from '../schema';
 
 async function adapterFrom(
@@ -35,6 +37,35 @@ test('registers SDK v2 presentation metadata on the descriptor and adapter', asy
   });
   expect(adapter.account.options.form).toEqual([]);
   expect(adapter.catalog.policy).toEqual({ kind: 'ttl', ttlMs: expect.any(Number) });
+});
+
+test('Cursor adapter registers defaultAliases on catalog', async () => {
+  const adapter = await adapterFrom(cursorPlugin);
+  expect(adapter.catalog.defaultAliases).toBe(defaultCursorAliases);
+});
+
+test('Cursor adapter suggests array-when aliases that AliasConfigSchema accepts', async () => {
+  const adapter = await adapterFrom(cursorPlugin);
+  const catalog = {
+    language: [{ id: 'claude-opus-4-8-medium' }, { id: 'claude-opus-4-8-thinking-high' }],
+    image: [],
+    embedding: [],
+    speech: [],
+    transcription: [],
+    reranking: [],
+    metadata: {
+      cursorFamilies: [
+        {
+          name: 'claude-opus-4-8',
+          variants: [{ slug: 'claude-opus-4-8-medium' }, { slug: 'claude-opus-4-8-thinking-high' }],
+        },
+      ],
+    },
+  };
+  const aliases = adapter.catalog.defaultAliases!(catalog);
+  for (const config of Object.values(aliases)) {
+    expect(() => AliasConfigSchema.parse(config)).not.toThrow();
+  }
 });
 
 test('createRuntime builds a v4 provider-only runtime', async () => {
