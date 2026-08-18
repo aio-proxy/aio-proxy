@@ -153,6 +153,26 @@ test('shows and clears an accessible error for an invalid number literal', async
   expect(within(stageCard(0)).queryByRole('alert')).toBeNull();
 });
 
+test('offers booleans as a true/false select rather than a checkbox', async () => {
+  const onChange = rs.fn();
+  render(
+    <RequestTransformsHarness
+      initialValue={[{ update: [{ $set: { 'request.body.value': 'seed' } }] }]}
+      onChange={onChange}
+      onValidityChange={rs.fn()}
+    />,
+  );
+
+  await selectOption(within(stageCard(0)).getByTestId('request-transform-static-type'), /^(Boolean|布尔值)$/u);
+  const booleanControl = within(stageCard(0)).getByTestId('request-transform-static-boolean');
+  expect(booleanControl).toHaveAttribute('role', 'combobox');
+  expect(within(stageCard(0)).queryByRole('checkbox')).toBeNull();
+
+  await selectOption(booleanControl, /^true$/u);
+  // `staticExpression` only wraps arrays, objects and `$`-prefixed strings, so a boolean stays bare.
+  await waitFor(() => expect(latestValue(onChange)[0]?.update[0]).toEqual({ $set: { 'request.body.value': true } }));
+});
+
 test('gates applying JSON on a draft that parses to the selected type', async () => {
   const onChange = rs.fn();
   render(

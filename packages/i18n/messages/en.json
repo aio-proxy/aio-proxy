@@ -567,7 +567,6 @@
           "json_title": "Edit {type} JSON",
           "json_description": "Enter a valid JSON {type}. Applying writes it into this rule.",
           "json_apply": "Apply JSON",
-          "boolean_true": "True",
           "invalid_number": "Enter a valid number",
           "invalid_object": "Enter a valid JSON object",
           "invalid_array": "Enter a valid JSON array"

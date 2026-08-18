@@ -567,7 +567,6 @@
           "json_title": "編輯{type} JSON",
           "json_description": "輸入有效的 JSON {type}。套用後會寫入這條請求改寫規則。",
           "json_apply": "套用 JSON",
-          "boolean_true": "真",
           "invalid_number": "請輸入有效數字",
           "invalid_object": "請輸入有效的 JSON 物件",
           "invalid_array": "請輸入有效的 JSON 陣列"
