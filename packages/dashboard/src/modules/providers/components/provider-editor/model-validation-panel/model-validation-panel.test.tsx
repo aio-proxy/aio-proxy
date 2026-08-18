@@ -95,9 +95,9 @@ describe('ModelValidationPanel', () => {
       { wrapper },
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /Test connection|测试连接/u }));
+    fireEvent.click(screen.getByRole('button', { name: /Test model request|测试模型请求/u }));
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: /Testing connection|正在测试连接/u })).toBeDisabled(),
+      expect(screen.getByRole('button', { name: /Testing model request|正在测试模型请求/u })).toBeDisabled(),
     );
     const modelWasDisabled = screen.getByRole('combobox', { name: /Model to test|测试模型/u }).hasAttribute('disabled');
 
@@ -118,7 +118,7 @@ describe('ModelValidationPanel', () => {
       { wrapper },
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /Test connection|测试连接/u }));
+    fireEvent.click(screen.getByRole('button', { name: /Test model request|测试模型请求/u }));
     expect(await screen.findByRole('status')).toHaveTextContent(/Request succeeded · model-a|请求成功 · model-a/u);
 
     act(() => validationForm.setFieldValue('validationModel', 'model-b'));
@@ -137,7 +137,7 @@ describe('ModelValidationPanel', () => {
       { wrapper },
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /Test connection|测试连接/u }));
+    fireEvent.click(screen.getByRole('button', { name: /Test model request|测试模型请求/u }));
 
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/test_request_failed/u));
   });
@@ -154,7 +154,7 @@ describe('ModelValidationPanel', () => {
       { wrapper },
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /Test connection|测试连接/u }));
+    fireEvent.click(screen.getByRole('button', { name: /Test model request|测试模型请求/u }));
     await waitFor(() => expect(mocks.testDraft).toHaveBeenCalled());
 
     expect(mocks.testDraft).toHaveBeenCalledWith({
@@ -176,7 +176,7 @@ describe('ModelValidationPanel', () => {
       { wrapper },
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /Test connection|测试连接/u }));
+    fireEvent.click(screen.getByRole('button', { name: /Test model request|测试模型请求/u }));
     await waitFor(() => expect(screen.getByRole('alert').className).toContain('text-destructive'));
     failed.unmount();
     queryClient.clear();
@@ -192,7 +192,7 @@ describe('ModelValidationPanel', () => {
       { wrapper },
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /Test connection|测试连接/u }));
+    fireEvent.click(screen.getByRole('button', { name: /Test model request|测试模型请求/u }));
     // Scoped to the message, not merely to the absence of a class: `not.toContain` alone also passes
     // for a success region that renders nothing, or the failure text under a non-destructive class.
     // Same query and same pattern as the success assertion earlier in this file.
