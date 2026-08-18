@@ -19,6 +19,17 @@ message AvailableModelsResponse {
   repeated string model_names = 1;
   bool use_model_parameters = 11;
 
+  message ModelVariantConfig {
+    string display_name = 2;
+    bool is_max_mode = 3;
+    optional bool is_default_max_config = 4;
+    optional bool is_default_non_max_config = 5;
+    optional string tagline = 7;
+    optional string display_name_outside_picker = 8;
+    optional string variant_string_representation = 9;
+    optional string legacy_slug = 11;
+  }
+
   message AvailableModel {
     string name = 1;
     bool default_on = 2;
@@ -41,6 +52,7 @@ message AvailableModelsResponse {
     optional bool supports_sandboxing = 25;
     optional bool supports_cmd_k = 26;
     optional bool only_supports_cmd_k = 27;
+    repeated ModelVariantConfig variants = 30;
     optional bool is_hidden = 35;
     repeated string legacy_slugs = 36;
     repeated string id_aliases = 37;

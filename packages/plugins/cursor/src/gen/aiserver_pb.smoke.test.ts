@@ -24,3 +24,28 @@ test('aiserver AvailableModels response round-trips a model entry', () => {
   expect(decoded.modelNames).toEqual(['claude-4.5-sonnet']);
   expect(decoded.models[0]?.contextTokenLimit).toBe(200_000);
 });
+
+test('aiserver AvailableModels response round-trips a model variant', () => {
+  const bytes = toBinary(
+    AvailableModelsResponseSchema,
+    create(AvailableModelsResponseSchema, {
+      models: [
+        {
+          name: 'claude-opus-4-8',
+          variants: [
+            {
+              displayName: 'Medium',
+              legacySlug: 'claude-opus-4-8-medium',
+              variantStringRepresentation: 'medium',
+              isDefaultNonMaxConfig: true,
+            },
+          ],
+        },
+      ],
+    }),
+  );
+  const variant = fromBinary(AvailableModelsResponseSchema, bytes).models[0]?.variants[0];
+  expect(variant?.legacySlug).toBe('claude-opus-4-8-medium');
+  expect(variant?.variantStringRepresentation).toBe('medium');
+  expect(variant?.isDefaultNonMaxConfig).toBe(true);
+});

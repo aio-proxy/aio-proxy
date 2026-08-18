@@ -50,10 +50,16 @@ declares request fields `scope = 10`, `use_react_model_picker = 11`,
 `subagent_model_configs = 16`, `experimental_model_id = 19`,
 `experimental_model_display_name = 20`,
 `nudge_new_chats_to_auto_optimize_for = 21`; and `AvailableModel` fields
-including `parameter_definitions = 29` and `variants = 30`. Omitting them is
-wire-safe (proto3 keeps them as unknown fields), but anything that needs
-per-model variants or model-picker configuration must extend the schema from
-the client metadata rather than guessing field numbers.
+including `parameter_definitions = 29`. `AvailableModel.variants = 30` is now
+declared from that client metadata, as nested `ModelVariantConfig` with the
+client's scalar field numbers: `display_name = 2`, `is_max_mode = 3`,
+`is_default_max_config = 4`, `is_default_non_max_config = 5`, `tagline = 7`,
+`display_name_outside_picker = 8`, `variant_string_representation = 9`,
+`legacy_slug = 11`. Nested `parameter_values = 1`, `tooltip_data = 6`, and
+`confirmation_dialogue = 10` stay omitted (unknown fields are wire-safe).
+Omitting the remaining undeclared fields is also wire-safe; anything that
+needs those types must extend the schema from the client metadata rather than
+guessing field numbers.
 
 ## Local modifications
 
@@ -69,7 +75,9 @@ mis-attached `@deprecated` block from `rootPromptMessagesJson` in `agent_pb.ts`.
 When regenerating, keep the comment trailing on `turns_old` so the tag does not
 re-attach to the next field.
 
-`aiserver.proto` is unmodified.
+`aiserver.proto` adds `AvailableModelsResponse.ModelVariantConfig` and
+`AvailableModel.variants = 30` from the cursor-agent `2026.08.11-e8db854`
+client metadata. No field numbers were invented.
 
 ## Regeneration
 
