@@ -1,7 +1,7 @@
 # Agent Provider Integrations 设计
 
 - 日期：2026-08-18
-- 状态：待用户评审
+- 状态：已批准
 
 ## 摘要
 
@@ -348,6 +348,9 @@ type AgentCatalogV1 = {
     id: string
     name: string
     reasoning: boolean
+    tool_call: boolean
+    temperature: boolean
+    attachment: boolean
     input: Array<'text' | 'audio' | 'image' | 'video' | 'pdf'>
     context_window: number | null
     max_output_tokens: number | null
@@ -361,10 +364,11 @@ assembler 复用当前 `resolveEnabledModels(state)`，因此 catalog：
 
 - 只列出启用 Provider 暴露的 client-facing alias；
 - 保持现有 alias 去重和元数据优先级；
-- 从当前 model metadata 映射 display name、reasoning、输入模态、context/output limits；未知 reasoning 默认为 `false`，未知输入模态默认为 `['text']`，未知 limits 返回 `null`；
+- 从当前 model metadata 映射 display name、reasoning、tool call、temperature、attachment、输入模态和 context/output limits；
+- 未知 reasoning 与 attachment 默认为 `false`，未知 tool call 默认为 `true`，未知 temperature 默认为 `false`，未知输入模态默认为 `['text']`，未知 limits 返回 `null`；这些默认值与 OpenCode 对自定义 OpenAI-compatible model 的当前默认语义一致，并由 server wire contract 固定，adapter 不自行猜测；
 - 不改变 routing pipeline、Provider weight、session affinity 或 fallback。
 
-endpoint、Provider ID、API 类型、OAuth wiring、headers 和宿主要求的默认 cost 不从 catalog 返回；它们是 adapter 的固定安装级配置。中立 schema 保留当前 model metadata 的完整输入模态集合；每个 adapter 只投影宿主公开类型能表达的能力，不把 audio/video/pdf 误报成 image。宿主 schema 演进只改对应 adapter 和兼容测试，不改 server wire schema。宿主要求必填 limit 而 catalog 为 `null` 时，adapter 使用该宿主文档中的默认值。
+endpoint、Provider ID、API 类型、OAuth wiring、headers 和宿主要求的默认 cost 不从 catalog 返回；它们是 adapter 的固定安装级配置。中立 schema 保留当前 model metadata 中 Agent 需要的行为能力和完整输入模态集合；每个 adapter 只投影宿主公开类型能表达的能力，不把 audio/video/pdf 误报成 image。OpenCode 直接使用 catalog 的 `tool_call`、`temperature` 和 `attachment`，不在 adapter 内另设 capability 默认值。宿主 schema 演进只改对应 adapter 和兼容测试，不改 server wire schema。宿主要求必填 limit 而 catalog 为 `null` 时，adapter 使用该宿主文档中的默认值。
 
 ### 缓存与失败
 
@@ -626,7 +630,7 @@ pending challenge 不写数据库，也不进入现有 OAuth provider login sess
 
 - 三种 `agent` 分支返回同一 schema 1，并携带对应 target；server 输出不含宿主 SDK 字段。
 - `agent` query 无 Agent token 拒绝；普通和 Codex models 行为零回归。
-- alias、Provider metadata、reasoning、modalities、context limits 映射。
+- alias、Provider metadata、reasoning、tool call、temperature、attachment、modalities、context limits 映射及未知值默认语义。
 - 5 分钟 refresh、single-flight、LKG、stale、无 LKG unavailable。
 - schema mismatch 和 401 不覆盖 LKG。
 - OpenCode V1、可选 V2、官方 Pi 与 OMP 分别把同一 fixture 映射成各自宿主合法 model config；宿主版本差异不进入 server schema。
