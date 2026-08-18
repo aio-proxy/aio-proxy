@@ -122,7 +122,10 @@ describe('ModelValidationPanel', () => {
     expect(await screen.findByRole('status')).toHaveTextContent(/Request succeeded · model-a|请求成功 · model-a/u);
 
     act(() => validationForm.setFieldValue('validationModel', 'model-b'));
-    await waitFor(() => expect(screen.queryByText(/Request succeeded · model-a|请求成功 · model-a/u)).toBeNull());
+    // Deliberately broad: this asserts the line disappears for an untested selection, so pinning it to
+    // model-a would let a bug that re-renders success for model-b pass. The `· model-a` pin lives on the
+    // two positive assertions.
+    await waitFor(() => expect(screen.queryByText(/Request succeeded|请求成功/u)).toBeNull());
   });
 
   test('announces a recoverable request error without gating the form', async () => {
