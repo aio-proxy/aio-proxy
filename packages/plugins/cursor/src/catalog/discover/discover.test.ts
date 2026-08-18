@@ -3,6 +3,8 @@ import { expect, test } from 'bun:test';
 import { create, toBinary } from '@bufbuild/protobuf';
 
 import { GetUsableModelsResponseSchema } from '../../gen/agent_pb';
+import { AvailableModelsResponseSchema } from '../../gen/aiserver_pb';
+import { CURSOR_AVAILABLE_MODELS_PATH, CURSOR_GET_USABLE_MODELS_PATH } from '../../wire';
 import { frameConnectMessage } from '../../wire/frame';
 import { CursorCatalogError, discoverCursorModels, initialCursorCatalogFallback } from './discover';
 
@@ -11,6 +13,27 @@ const framed = (ids: string[]) =>
     toBinary(
       GetUsableModelsResponseSchema,
       create(GetUsableModelsResponseSchema, { models: ids.map((id) => ({ modelId: id })) }),
+    ),
+  );
+const framedUsable = framed;
+
+const framedAvailable = () =>
+  frameConnectMessage(
+    toBinary(
+      AvailableModelsResponseSchema,
+      create(AvailableModelsResponseSchema, {
+        models: [
+          {
+            name: 'claude-opus-4-8',
+            variants: [
+              {
+                legacySlug: 'claude-opus-4-8-medium',
+                isDefaultNonMaxConfig: true,
+              },
+            ],
+          },
+        ],
+      }),
     ),
   );
 
@@ -82,4 +105,41 @@ test('an empty model directory is non-retryable', async () => {
     transport: transportWith(200, framed([])) as never,
   }).catch((e) => e);
   expect((error as CursorCatalogError).retryable).toBe(false);
+});
+
+test('attaches cursorFamilies when AvailableModels succeeds', async () => {
+  const transport = {
+    openRun: () => Promise.reject(new Error('unused')),
+    unary: async ({ path }: { path: string }) => {
+      if (path === CURSOR_GET_USABLE_MODELS_PATH) {
+        return { status: 200, body: framedUsable(['claude-opus-4-8-medium']) };
+      }
+      if (path === CURSOR_AVAILABLE_MODELS_PATH) {
+        return { status: 200, body: framedAvailable() };
+      }
+      return { status: 404, body: new Uint8Array() };
+    },
+  };
+  const catalog = await discoverCursorModels({ accessToken: 't', transport: transport as never });
+  expect(catalog.language.map((m) => m.id)).toContain('claude-opus-4-8-medium');
+  expect(catalog.metadata).toEqual({
+    cursorFamilies: [
+      { name: 'claude-opus-4-8', variants: [{ slug: 'claude-opus-4-8-medium', isDefaultNonMax: true }] },
+    ],
+  });
+});
+
+test('AvailableModels failure does not drop GetUsableModels', async () => {
+  const transport = {
+    openRun: () => Promise.reject(new Error('unused')),
+    unary: async ({ path }: { path: string }) => {
+      if (path === CURSOR_GET_USABLE_MODELS_PATH) {
+        return { status: 200, body: framedUsable(['claude-opus-4-8-medium']) };
+      }
+      return { status: 503, body: new Uint8Array() };
+    },
+  };
+  const catalog = await discoverCursorModels({ accessToken: 't', transport: transport as never });
+  expect(catalog.language.map((m) => m.id)).toContain('claude-opus-4-8-medium');
+  expect(catalog.metadata).toBeUndefined();
 });
