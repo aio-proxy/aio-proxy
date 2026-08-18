@@ -122,7 +122,7 @@ test('directly adds one Set action and stores an explicitly selected null', asyn
 
   await selectOption(within(stageCard(0)).getByTestId('request-transform-static-type'), /^(Null|空值)$/u);
   await waitFor(() => expect(latestValue(onChange)[0]?.update[0]).toEqual({ $set: { 'request.body.value': null } }));
-  expect(within(stageCard(0)).queryByRole('textbox', { name: /Static value|静态值/u })).toBeNull();
+  expect(within(stageCard(0)).queryByRole('textbox', { name: /Value to set|设置值/u })).toBeNull();
 });
 
 test('shows and clears an accessible error for an invalid number literal', async () => {
@@ -137,7 +137,7 @@ test('shows and clears an accessible error for an invalid number literal', async
   );
 
   await selectOption(within(stageCard(0)).getByTestId('request-transform-static-type'), /^(Number|数字)$/u);
-  const numberInput = within(stageCard(0)).getByRole('spinbutton', { name: /Static value|静态值/u });
+  const numberInput = within(stageCard(0)).getByRole('spinbutton', { name: /Value to set|设置值/u });
   fireEvent.change(numberInput, { target: { value: '' } });
 
   const error = within(stageCard(0)).getByRole('alert');
@@ -183,7 +183,7 @@ test('gates applying JSON on a draft that parses to the selected type', async ()
     />,
   );
 
-  const arrayControl = within(stageCard(0)).getByRole('button', { name: /Static value|静态值/u });
+  const arrayControl = within(stageCard(0)).getByRole('button', { name: /Value to set|设置值/u });
   expect(arrayControl).toHaveTextContent('[]');
   fireEvent.click(arrayControl);
 
@@ -216,8 +216,8 @@ test('edits ordered Set and Remove actions losslessly across Visual and JSON mod
   expect(within(stages[0]!).getByTestId('request-transform-action')).toHaveTextContent(/Set|设置/u);
   expect(within(stages[0]!).getByTestId('request-transform-target')).toHaveTextContent(/Body|请求体/u);
   expect(within(stages[0]!).getByRole('textbox', { name: /Body path|请求体路径/u })).toHaveValue('value');
-  expect(within(stages[0]!).getByTestId('request-transform-value-mode')).toHaveTextContent(/Static|静态/u);
-  expect(within(stages[0]!).getByRole('textbox', { name: /Static value|静态值/u })).toHaveValue('$seed');
+  expect(within(stages[0]!).getByTestId('request-transform-value-mode')).toHaveTextContent(/Fixed value|固定值/u);
+  expect(within(stages[0]!).getByRole('textbox', { name: /Value to set|设置值/u })).toHaveValue('$seed');
   expect(within(stages[1]!).getByTestId('request-transform-target')).toHaveTextContent(/Header|请求头/u);
   expect(within(stages[1]!).getByRole('textbox', { name: /Header name|请求头名称/u })).toHaveValue('x-route');
   expect(within(stages[1]!).getByTestId('request-transform-value-mode')).toHaveTextContent(/Computed|计算/u);
@@ -312,9 +312,9 @@ test('edits ordered Set and Remove actions losslessly across Visual and JSON mod
     }),
   );
 
-  await selectOption(within(stageCard(0)).getByTestId('request-transform-value-mode'), /^(Static|静态)$/u);
+  await selectOption(within(stageCard(0)).getByTestId('request-transform-value-mode'), /^(Fixed value|固定值)$/u);
   await selectOption(within(stageCard(0)).getByTestId('request-transform-static-type'), /^(Text|文本)$/u);
-  const staticEditor = within(stageCard(0)).getByRole('textbox', { name: /Static value|静态值/u });
+  const staticEditor = within(stageCard(0)).getByRole('textbox', { name: /Value to set|设置值/u });
   fireEvent.change(staticEditor, { target: { value: '$literal' } });
   await waitFor(() =>
     expect(latestValue(onChange)[0]?.update[0]).toEqual({
@@ -414,7 +414,7 @@ test('contains a discarded JSON draft inside the drawer instead of the form', as
     <RequestTransformsHarness initialValue={objectValue} onChange={onChange} onValidityChange={onValidityChange} />,
   );
 
-  const objectControl = within(stageCard(0)).getByRole('button', { name: /Static value|静态值/u });
+  const objectControl = within(stageCard(0)).getByRole('button', { name: /Value to set|设置值/u });
   fireEvent.click(objectControl);
   const drawer = await screen.findByTestId('request-transform-json-drawer');
   fireEvent.change(within(drawer).getByTestId('request-transform-json-draft'), { target: { value: '{' } });
@@ -429,7 +429,7 @@ test('contains a discarded JSON draft inside the drawer instead of the form', as
   expect(onValidityChange).not.toHaveBeenCalledWith(false);
   expect(screen.getByRole('tab', { name: /JSON/u })).not.toHaveAttribute('aria-disabled', 'true');
 
-  fireEvent.click(within(stageCard(0)).getByRole('button', { name: /Static value|静态值/u }));
+  fireEvent.click(within(stageCard(0)).getByRole('button', { name: /Value to set|设置值/u }));
   const reopened = await screen.findByTestId('request-transform-json-drawer');
   expect(
     JSON.parse((within(reopened).getByTestId('request-transform-json-draft') as HTMLTextAreaElement).value),
