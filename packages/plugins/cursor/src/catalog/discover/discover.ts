@@ -27,10 +27,7 @@ export async function discoverCursorModels(input: {
   readonly signal?: AbortSignal;
 }): Promise<ModelCatalog> {
   const usablePromise = fetchGetUsableModels(input);
-  const familiesPromise = fetchCursorFamilies(input).then(
-    (families) => families,
-    () => undefined,
-  );
+  const familiesPromise = fetchCursorFamilies(input).catch(() => undefined);
   const [catalog, cursorFamilies] = await Promise.all([usablePromise, familiesPromise]);
   return cursorFamilies === undefined || cursorFamilies.length === 0
     ? catalog

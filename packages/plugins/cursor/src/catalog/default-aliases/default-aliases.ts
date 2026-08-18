@@ -32,10 +32,14 @@ export function defaultCursorAliases(catalog: ModelCatalog): DefaultAliasSuggest
     // A lone bare slug whose alias key is the slug itself would only alias a
     // model to itself.
     if (rows.length === 1 && key === rows[0]!.slug && isEmptyWhen(rows[0]!.when)) continue;
+    // Dedupe before dropping the default so a when-collision resolves in favour
+    // of the default, which the base `model` already covers.
     const variants = dedupeWhen(
-      rows.filter((row) => !isEmptyWhen(row.when) && row.slug !== chosen),
+      rows.filter((row) => !isEmptyWhen(row.when)),
       chosen,
-    ).map((row) => ({ when: row.when, model: row.slug, preserve: false }) satisfies DefaultAliasSelectRow);
+    )
+      .filter((row) => row.slug !== chosen)
+      .map((row) => ({ when: row.when, model: row.slug, preserve: false }) satisfies DefaultAliasSelectRow);
     out[key] = {
       model: chosen,
       preserve: false,
@@ -50,6 +54,12 @@ function peelFamily(family: CursorFamily, usable: ReadonlySet<string>): readonly
   const rows: PeeledVariant[] = [];
   for (const variant of family.variants) {
     if (!usable.has(variant.slug)) continue;
+    // The family's own slug carries no axes even when it ends in a token the
+    // peeler would strip (`grok-code-fast`).
+    if (variant.slug === family.name) {
+      rows.push({ ...variant, when: {} });
+      continue;
+    }
     const peeled = peelSlug(variant.slug);
     if (peeled === undefined) continue;
     rows.push({ ...variant, when: peeled.when });

@@ -20,10 +20,12 @@ package exempt from the 300-line limit; the exemption is enforced by `oxc.ts`
 
 - Upstream: https://github.com/schultzp2020/pi-extensions (MIT, Copyright (c) 2026 Paul Schultz)
 - Commit: `5517dbc4c857d48070a5267ef0ddc000a16f1a5f` (2026-08-13)
-- `aiserver.proto` copied verbatim from
+- `aiserver.proto` copied from
   `packages/pi-cursor/proto/aiserver.proto`
-  (https://raw.githubusercontent.com/schultzp2020/pi-extensions/5517dbc4c857d48070a5267ef0ddc000a16f1a5f/packages/pi-cursor/proto/aiserver.proto).
-  The upstream file is the whole vendored schema, not a slice taken here.
+  (https://raw.githubusercontent.com/schultzp2020/pi-extensions/5517dbc4c857d48070a5267ef0ddc000a16f1a5f/packages/pi-cursor/proto/aiserver.proto)
+  with the single local modification described below (`ModelVariantConfig` and
+  `AvailableModel.variants = 30`). The upstream file was taken whole, not
+  sliced here.
 - `aiserver_pb.ts` generated locally from that `.proto` with
   `protoc-gen-es 2.10.2` (`target=ts`), with a single added `// Source:`
   provenance comment after the generator banner.

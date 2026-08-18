@@ -39,7 +39,10 @@ const framedAvailable = () =>
 
 const transportWith = (status: number, body: Uint8Array) => ({
   openRun: () => Promise.reject(new Error('unused')),
-  unary: () => Promise.resolve({ status, body }),
+  unary: ({ path }: { path: string }) =>
+    path === CURSOR_GET_USABLE_MODELS_PATH
+      ? Promise.resolve({ status, body })
+      : Promise.reject(new Error(`unexpected path: ${path}`)),
 });
 
 test('returns non-empty language models on success', async () => {

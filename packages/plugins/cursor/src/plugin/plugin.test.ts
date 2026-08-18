@@ -63,6 +63,7 @@ test('Cursor adapter suggests array-when aliases that AliasConfigSchema accepts'
     },
   };
   const aliases = adapter.catalog.defaultAliases!(catalog);
+  expect(Object.keys(aliases).length).toBeGreaterThan(0);
   for (const config of Object.values(aliases)) {
     expect(() => AliasConfigSchema.parse(config)).not.toThrow();
   }

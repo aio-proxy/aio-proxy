@@ -194,6 +194,36 @@ test('keeps one row per when, preferring the lexicographically smaller slug', ()
   expect(aliases.dup?.variants).toEqual([{ when: { effort: 'high' }, model: 'dup-a-high', preserve: false }]);
 });
 
+test('a family name ending in an axis token stays its own default', () => {
+  const aliases = defaultCursorAliases(
+    catalog(
+      ['grok-code-fast', 'grok-code-fast-max'],
+      [
+        {
+          name: 'grok-code-fast',
+          variants: [{ slug: 'grok-code-fast' }, { slug: 'grok-code-fast-max' }],
+        },
+      ],
+    ),
+  );
+  const config = asAliasConfig(aliases['grok-code-fast']!);
+  expect(config.model).toBe('grok-code-fast');
+  expect(resolveAliasTarget(config, { effort: 'max', speed: 'fast' }).model).toBe('grok-code-fast-max');
+});
+
+test('a when collision with the default keeps the default and emits no row', () => {
+  const aliases = defaultCursorAliases(
+    catalog(
+      ['dup-a-high', 'dup-b-high'],
+      [{ name: 'dup', variants: [{ slug: 'dup-a-high' }, { slug: 'dup-b-high' }] }],
+    ),
+  );
+  const config = asAliasConfig(aliases.dup!);
+  expect(config.model).toBe('dup-a-high');
+  expect(config.variants).toBeUndefined();
+  expect(resolveAliasTarget(config, { effort: 'high' }).model).toBe('dup-a-high');
+});
+
 test('a pinned default wins over the scored pick', () => {
   const rows = [
     { slug: 'family-medium', when: { effort: 'medium' } },
