@@ -567,6 +567,7 @@
           "json_title": "{type} JSON 편집",
           "json_description": "유효한 JSON {type}을 입력하세요. 적용하면 이 규칙에 기록됩니다.",
           "json_apply": "JSON 적용",
+          "placeholder_text": "텍스트 값",
           "invalid_number": "유효한 숫자를 입력하세요",
           "invalid_object": "유효한 JSON 객체를 입력하세요",
           "invalid_array": "유효한 JSON 배열을 입력하세요"

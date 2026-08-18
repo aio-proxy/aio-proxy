@@ -49,7 +49,7 @@ export const RequestTransformStageValueEditor: React.FC<RequestTransformStageVal
                     onCommitControls({ ...form.state.values, valueMode: nextMode });
                   }}
                 >
-                  <SelectTrigger id={valueModeId} data-testid="request-transform-value-mode" className="w-full">
+                  <SelectTrigger id={valueModeId} data-testid="request-transform-value-mode" className="w-full sm:w-40">
                     <SelectValue>
                       {() =>
                         field.state.value === 'static'

@@ -567,6 +567,7 @@
           "json_title": "{type} JSON を編集",
           "json_description": "有効な JSON {type}を入力してください。適用するとこのルールに書き込まれます。",
           "json_apply": "JSON を適用",
+          "placeholder_text": "テキスト値",
           "invalid_number": "有効な数値を入力してください",
           "invalid_object": "有効な JSON オブジェクトを入力してください",
           "invalid_array": "有効な JSON 配列を入力してください"

@@ -567,6 +567,7 @@
           "json_title": "编辑{type} JSON",
           "json_description": "输入有效的 JSON {type}。应用后会写入这条请求改写规则。",
           "json_apply": "应用 JSON",
+          "placeholder_text": "文本值",
           "invalid_number": "请输入有效数字",
           "invalid_object": "请输入有效的 JSON 对象",
           "invalid_array": "请输入有效的 JSON 数组"

@@ -93,11 +93,13 @@ export const RequestTransformStaticValueEditor: React.FC<RequestTransformStaticV
     emit(parsed as JsonValue);
   };
   return (
-    <div className="space-y-4">
+    <div className="grid min-w-0 gap-2 sm:grid-cols-[6.5rem_minmax(0,1fr)]">
       <form.Field name="type">
         {(field) => (
           <div className="space-y-2">
-            <Label htmlFor={typeId}>{m['dashboard.providers.transforms.value.type']()}</Label>
+            <Label htmlFor={typeId} className="sr-only">
+              {m['dashboard.providers.transforms.value.type']()}
+            </Label>
             <Select
               value={field.state.value}
               onValueChange={(nextType) => {

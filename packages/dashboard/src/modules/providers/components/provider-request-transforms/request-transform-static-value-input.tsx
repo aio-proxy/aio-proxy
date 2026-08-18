@@ -53,8 +53,10 @@ export const RequestTransformStaticValueInput: React.FC<RequestTransformStaticVa
     onChange: (event: React.ChangeEvent<HTMLInputElement>) => onChange(event.target.value),
   };
   return (
-    <div className="space-y-2">
-      <Label htmlFor={valueId}>{m['dashboard.providers.transforms.value.static_label']()}</Label>
+    <div className="min-w-0 space-y-2">
+      <Label htmlFor={valueId} className="sr-only">
+        {m['dashboard.providers.transforms.value.static_label']()}
+      </Label>
       {type === 'object' || type === 'array' ? (
         <RequestTransformCompositeValueControl
           type={type}
@@ -65,7 +67,12 @@ export const RequestTransformStaticValueInput: React.FC<RequestTransformStaticVa
           onChange={onChange}
         />
       ) : (
-        <Input {...inputProps} type={type === 'number' ? 'number' : 'text'} />
+        <Input
+          {...inputProps}
+          type={type === 'number' ? 'number' : 'text'}
+          placeholder={type === 'text' ? m['dashboard.providers.transforms.value.placeholder_text']() : '0'}
+          className="font-mono text-xs"
+        />
       )}
       {error === null ? null : (
         <p id={errorId} role="alert" className="text-sm text-destructive">
