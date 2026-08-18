@@ -53,6 +53,9 @@ export class Router<TProvider extends RoutableProvider = ProviderInstance> {
         continue;
       }
 
+      // Aliases first, deliberately unlike `modelRoutes()`, which is direct-first for listing order:
+      // `addRoute`'s preserved-self-alias exemption only fires when the preserved route is already
+      // registered, so flipping these two loops makes every `preserve: true` self-alias collide.
       for (const [alias, config] of Object.entries(provider.alias ?? {})) {
         this.addRoute(provider, alias, config, flattenAliasVariants(config.variants));
       }

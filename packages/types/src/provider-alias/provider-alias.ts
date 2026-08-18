@@ -162,8 +162,8 @@ export type ModelRoute = {
 /**
  * Direct model ids first, then alias entries: this array's order is the client-facing listing order
  * (`clientModels`, `/v1/models`, the editor's exposure preview), not an implementation detail.
- * `uniqWith` keeps the first occurrence, so the dedup that used to skip the direct copy of a
- * preserved self-alias (`x -> x`) now skips the alias copy — one route either way.
+ * `Router` walks the same two sources in the opposite order on purpose — see the comment in its
+ * constructor — so do not unify the two.
  */
 export function modelRoutes(provider: RoutableModelSource): ModelRoute[] {
   return uniqWith(

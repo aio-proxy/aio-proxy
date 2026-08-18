@@ -1,0 +1,55 @@
+# Files ledger (task | line | verb | path)
+T1	57	Create	`packages/types/src/provider-alias/index.ts`, `packages/types/src/provider-alias/provider-alias.ts` (moved), `packages/types/src/provider-alias/provider-alias.test.ts`
+T1	58	Delete	`packages/types/src/provider-alias.ts` (moved into the directory)
+T2	160	Modify	`packages/dashboard/src/modules/providers/lib/alias-editor/alias-editor.ts:165`
+T2	161	Modify	`packages/dashboard/src/modules/providers/lib/alias-editor/alias-editor.issues.test.ts`
+T3	217	Modify	`packages/types/src/provider.ts` (`OAuthPluginProviderSchema` ~:104, `OAuthProviderMutationBodySchema` ~:218)
+T3	218	Modify	`packages/types/src/dashboard-oauth.ts` (`DashboardOAuthProviderPatchSchema` ~:67)
+T3	219	Modify	`packages/core/src/plugins/account-login/login.ts` (`OAuthProviderPatch` ~:41)
+T3	220	Modify	`packages/core/src/plugins/account-login/validation.ts` (`providerEntry` ~:143)
+T3	221	Modify	`packages/server/src/oauth-login-session/manager.ts` (~:69 patch mapping)
+T3	222	Modify	`packages/dashboard/src/modules/providers/lib/oauth-provider-edit/oauth-provider-edit.ts`
+T4	345	Modify	`packages/server/src/plugin-runtime/capabilities.ts` (`withRoutingConfig` :60, `createRuntimeProvider` :70, models line :97)
+T4	346	Modify	`packages/server/src/plugin-runtime/materialize.ts` (:233 and :244 call sites)
+T4	347	Modify	`packages/server/src/plugin-runtime/index.ts` (export `exposedModelIds`)
+T5	473	Modify	`packages/types/src/provider-alias/provider-alias.ts` (add `ModelRoute`, `modelRoutes`, `directModelIds`, `sameRouteTargets` + private `preservedModelIds`, `routeTargetModels`)
+T5	474	Modify	`packages/core/src/router.ts` (delete the moved functions, import from types, keep re-export)
+T6	556	Modify	`packages/server/src/dashboard-routes/provider-draft/provider-draft-operations.ts`
+T7	704	Modify	`packages/types/src/dashboard-provider-draft/dashboard-provider-draft.ts` (:7-10 union)
+T7	705	Modify	`packages/server/src/dashboard-routes/provider-draft/provider-draft-resolution.ts`
+T7	706	Modify	`packages/server/src/dashboard-routes/provider-draft/provider-draft-operations.ts`
+T8	956	Modify	`packages/core/src/models-dev/index.ts` (add `getCachedModelSlugs`)
+T8	957	Modify	`packages/core/src/index.ts` (re-export it where the other models-dev functions are re-exported — find with `rg -n "getModelsCachedOnly" packages/core/src/index.ts`)
+T8	958	Modify	`packages/server/src/dashboard-routes/config.ts` (add the route)
+T9	1024	Create	`packages/i18n/__tests__/locale-parity.test.ts` (this directory is already scanned by `test:unit`, `packages/i18n/package.json:17`, and holds message-level tests; the assertion is over `messages/*.json`, not a source module)
+T9	1025	Modify	`packages/i18n/messages/en.json`, `zh-Hans.json`, `zh-Hant.json`, `ja.json`, `ko.json`
+T10	1135	Create	`packages/ui/src/components/slider.tsx` (generated)
+T11	1161	Create	`packages/dashboard/src/modules/providers/lib/section-status/index.ts`, `section-status.ts`, `section-status.test.ts`
+T12	1336	Create	`packages/dashboard/src/modules/providers/lib/model-rows/index.ts`, `model-rows.ts`, `model-rows.test.ts`
+T13	1442	Create	`packages/dashboard/src/modules/providers/hooks/use-provider-editor-form.ts`
+T14	1526	Create	`packages/dashboard/src/modules/providers/components/provider-editor/identity-section.tsx`, `connection-section.tsx`
+T14	1527	Modify	`components/provider-form-fields-api.tsx` (keep ONLY protocol/baseURL/apiKey; drop the step switch, `ProviderCommonFields`, proxy, headers, models, alias, transforms blocks)
+T14	1528	Modify	`components/provider-form-fields-ai-sdk.tsx` (keep ONLY packageName/options/parseReasoningContent)
+T14	1529	Modify	`components/oauth-provider-edit-fields.tsx` (keep ONLY the account/capability/reauthorize block)
+T14	1530	Modify	`components/provider-form-fields-api.test.tsx` (assertions on models/alias/transforms move out per spec Test Accounting)
+T15	1665	Create	`components/provider-editor/models-section.tsx`, `components/provider-editor/model-metadata-visual-tab.tsx`
+T15	1666	Modify	`components/provider-models-field/provider-model-metadata-drawer-content.tsx` (add the tab strip)
+T15	1667	Create	`packages/dashboard/src/modules/providers/services/models-dev-service.ts`
+T15	1668	Modify	`packages/dashboard/src/lib/query-keys.ts` (add `modelsDevSlugs`)
+T16	1711	Create	`components/provider-editor/routing-section.tsx`, `weight-slider-field.tsx`, `attempt-order-preview.tsx`
+T16	1712	Modify	`components/provider-alias/provider-alias-list.tsx` + `provider-alias-config-fields.tsx` + `provider-alias-variants.tsx` — reused inline; they already write via callbacks
+T16	1713	Delete	`components/provider-alias/provider-alias-drawer.tsx`, `components/provider-alias/use-alias-drafts.ts`
+T16	1714	Delete	`lib/alias-editor/alias-editor.drafts.test.ts` (the draft layer dies with the drawer; keep `alias-editor.issues.test.ts`)
+T17	1759	Create	`components/provider-editor/advanced-section.tsx`, `exposure-panel.tsx`, `model-validation-panel.tsx`
+T17	1760	Modify	`components/provider-validate-step/provider-validate-step.test.tsx` → moves to `components/provider-editor/model-validation-panel.test.tsx` (update per spec Test Accounting: "the step becomes the rail panel")
+T18	1799	Create	`templates/provider-editor-page/index.ts`, `provider-editor-page.tsx`, `section-nav.tsx`, `editor-footer.tsx`
+T18	1800	Create	`hooks/use-active-section.ts` (scroll-spy via IntersectionObserver, ported from the prototype `hooks/use-active-section.ts`)
+T18	1841	Delete	`DeleteProviderDialog` ref (as `oauth-provider-edit-page.tsx:27,109` does today) — navigate to `/providers` only after deletion.
+T19	1862	Create	`packages/dashboard/src/routes/providers/new.tsx`
+T19	1863	Modify	`packages/dashboard/src/routes/providers/$id.edit.tsx` (render `ProviderEditorPage` for all kinds)
+T19	1864	Delete	`routes/providers/new.$kind.tsx`
+T19	1865	Modify	`modules/providers/templates/providers-page.tsx` (+ `components/providers-table/*` as needed): the create action links to `/providers/new` without a kind; keep the `focus` search param; the list keeps its `warning` banner for direct URLs but nothing navigates with `warning` anymore
+T19	1866	Delete	`templates/provider-form-page.tsx`, `templates/oauth-provider-create-page.tsx`, `templates/oauth-provider-edit-page.tsx`, `templates/use-oauth-provider-edit-page.ts`, `hooks/use-oauth-provider-edit-form.ts`, `templates/provider-stepper-import.test.tsx`, `templates/oauth-provider-create-page.test.tsx`, `templates/oauth-provider-edit-page.test.tsx`
+T19	1867	Modify	`components/providers-table/providers-table.test.tsx` (create menu carries no kind)
+T19	1868	Modify	`packages/i18n/messages/*.json` — retire `dashboard.providers.editor.step_*`, `editor.next`, `editor.previous`, `dashboard.providers.oauth.models_readonly`; reword `form.metadata_description`, `form.metadata_json_label`, `form.metadata_json_error` to stop asserting the editor is JSON-only (all five locales; parity test keeps this honest); run `bun run i18n:compile`
+T20	1924	Create	`.changeset/provider-editor-single-page.md`
