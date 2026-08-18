@@ -2,7 +2,8 @@ import { m } from '@aio-proxy/i18n';
 import { Checkbox } from '@aio-proxy/ui/components/checkbox';
 import { Input } from '@aio-proxy/ui/components/input';
 import { Label } from '@aio-proxy/ui/components/label';
-import { Textarea } from '@aio-proxy/ui/components/textarea';
+
+import { RequestTransformCompositeValueControl } from './request-transform-composite-value-control';
 
 export type StaticValueType = 'text' | 'number' | 'boolean' | 'null' | 'object' | 'array';
 export type InvalidStaticValueType = Extract<StaticValueType, 'number' | 'object' | 'array'>;
@@ -44,13 +45,20 @@ export const RequestTransformStaticValueInput: React.FC<RequestTransformStaticVa
     value: draft,
     'aria-invalid': error !== null,
     'aria-describedby': error === null ? undefined : errorId,
-    onChange: (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => onChange(event.target.value),
+    onChange: (event: React.ChangeEvent<HTMLInputElement>) => onChange(event.target.value),
   };
   return (
     <div className="space-y-2">
       <Label htmlFor={valueId}>{m['dashboard.providers.transforms.value.static_label']()}</Label>
       {type === 'object' || type === 'array' ? (
-        <Textarea {...inputProps} className="min-h-28 font-mono" />
+        <RequestTransformCompositeValueControl
+          type={type}
+          draft={draft}
+          valueId={valueId}
+          invalid={error !== null}
+          describedBy={error === null ? undefined : errorId}
+          onChange={onChange}
+        />
       ) : (
         <Input {...inputProps} type={type === 'number' ? 'number' : 'text'} />
       )}

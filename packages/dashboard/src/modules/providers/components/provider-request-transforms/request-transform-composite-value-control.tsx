@@ -1,0 +1,69 @@
+import { m } from '@aio-proxy/i18n';
+import { Button } from '@aio-proxy/ui/components/button';
+import { Drawer } from '@aio-proxy/ui/components/drawer';
+import { useIsMobile } from '@aio-proxy/ui/hooks/use-mobile';
+import { useState } from 'react';
+
+import { parseCompositeDraft } from './request-transform-composite-draft';
+import { RequestTransformJsonDrawerContent } from './request-transform-json-drawer-content';
+
+interface RequestTransformCompositeValueControlProps {
+  readonly type: 'object' | 'array';
+  readonly draft: string;
+  readonly valueId: string;
+  readonly invalid: boolean;
+  readonly describedBy: string | undefined;
+  readonly onChange: (draft: string) => void;
+}
+
+export const RequestTransformCompositeValueControl: React.FC<RequestTransformCompositeValueControlProps> = ({
+  type,
+  draft,
+  valueId,
+  invalid,
+  describedBy,
+  onChange,
+}) => {
+  const isMobile = useIsMobile();
+  const [open, setOpen] = useState(false);
+  const parsed = parseCompositeDraft(type, draft);
+  // A rejected commit is the only way an unparseable draft reaches us, and it must still be editable.
+  const initialDraft = parsed === undefined ? draft : JSON.stringify(parsed, null, 2);
+  const typeLabel =
+    type === 'object'
+      ? m['dashboard.providers.transforms.value.type_object']()
+      : m['dashboard.providers.transforms.value.type_array']();
+
+  return (
+    <>
+      <Button
+        type="button"
+        variant="outline"
+        id={valueId}
+        className="h-8 min-w-0 justify-between px-3"
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        aria-invalid={invalid}
+        aria-describedby={describedBy}
+        onClick={() => setOpen(true)}
+      >
+        <code className="min-w-0 truncate font-mono text-xs">{JSON.stringify(parsed)}</code>
+        <span className="ml-3 shrink-0 text-xs text-muted-foreground">
+          {m['dashboard.providers.transforms.value.edit_json']()}
+        </span>
+      </Button>
+      <Drawer open={open} onOpenChange={setOpen} swipeDirection={isMobile ? 'down' : 'right'}>
+        {open ? (
+          <RequestTransformJsonDrawerContent
+            key={initialDraft}
+            type={type}
+            typeLabel={typeLabel}
+            initialDraft={initialDraft}
+            onOpenChange={setOpen}
+            onApply={onChange}
+          />
+        ) : null}
+      </Drawer>
+    </>
+  );
+};

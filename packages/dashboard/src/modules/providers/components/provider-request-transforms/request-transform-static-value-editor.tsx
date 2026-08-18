@@ -6,6 +6,7 @@ import { useForm } from '@tanstack/react-form';
 import { isEqual } from 'es-toolkit/predicate';
 import { useEffect, useId, useRef, useState } from 'react';
 
+import { parseCompositeDraft } from './request-transform-composite-draft';
 import {
   type InvalidStaticValueType,
   RequestTransformStaticValueInput,
@@ -48,16 +49,6 @@ const staticTypeLabel = (type: StaticValueType): string => {
   if (type === 'null') return m['dashboard.providers.transforms.value.type_null']();
   if (type === 'object') return m['dashboard.providers.transforms.value.type_object']();
   return m['dashboard.providers.transforms.value.type_array']();
-};
-
-const parseCompositeDraft = (type: 'object' | 'array', draft: string): JsonValue | undefined => {
-  try {
-    const parsed = JSON.parse(draft) as JsonValue;
-    if (type === 'array') return Array.isArray(parsed) ? parsed : undefined;
-    return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed) ? parsed : undefined;
-  } catch {
-    return undefined;
-  }
 };
 
 export const RequestTransformStaticValueEditor: React.FC<RequestTransformStaticValueEditorProps> = ({

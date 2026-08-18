@@ -153,7 +153,7 @@ test('shows and clears an accessible error for an invalid number literal', async
   expect(within(stageCard(0)).queryByRole('alert')).toBeNull();
 });
 
-test('shows the JSON array-specific error and clears it after recovery', async () => {
+test('gates applying JSON on a draft that parses to the selected type', async () => {
   const onChange = rs.fn();
   render(
     <RequestTransformsHarness
@@ -163,21 +163,24 @@ test('shows the JSON array-specific error and clears it after recovery', async (
     />,
   );
 
-  const arrayInput = within(stageCard(0)).getByRole('textbox', { name: /Static value|静态值/u });
-  fireEvent.change(arrayInput, { target: { value: '{}' } });
+  const arrayControl = within(stageCard(0)).getByRole('button', { name: /Static value|静态值/u });
+  expect(arrayControl).toHaveTextContent('[]');
+  fireEvent.click(arrayControl);
 
-  const error = within(stageCard(0)).getByRole('alert');
-  expect(error).toHaveTextContent(/valid JSON array|有效的 JSON 数组/u);
-  expect(arrayInput).toHaveAttribute('aria-invalid', 'true');
-  expect(arrayInput).toHaveAttribute('aria-describedby', error.id);
+  const drawer = await screen.findByTestId('request-transform-json-drawer');
+  const jsonDraft = within(drawer).getByTestId('request-transform-json-draft');
+  const apply = within(drawer).getByTestId('request-transform-json-apply');
+  fireEvent.change(jsonDraft, { target: { value: '{}' } });
 
-  fireEvent.change(arrayInput, { target: { value: '[1]' } });
+  expect(apply).toBeDisabled();
+  expect(within(drawer).getByRole('alert')).toHaveTextContent(/valid JSON array|有效的 JSON 数组/u);
+
+  fireEvent.change(jsonDraft, { target: { value: '[1]' } });
+  expect(apply).not.toBeDisabled();
+  fireEvent.click(apply);
   await waitFor(() =>
     expect(latestValue(onChange)[0]?.update[0]).toEqual({ $set: { 'request.body.value': { $literal: [1] } } }),
   );
-  expect(arrayInput).toHaveAttribute('aria-invalid', 'false');
-  expect(arrayInput).not.toHaveAttribute('aria-describedby');
-  expect(within(stageCard(0)).queryByRole('alert')).toBeNull();
 });
 
 test('edits ordered Set and Remove actions losslessly across Visual and JSON modes', async () => {
@@ -381,48 +384,36 @@ test('names every nested expression argument by its argument path', () => {
   expect(inner).toHaveAttribute('data-testid', 'transform-set-expression-arg1-arg0-field-kind');
 });
 
-test('keeps malformed static JSON visible and blocks switching modes until it is valid', async () => {
+test('contains a discarded JSON draft inside the drawer instead of the form', async () => {
   const objectValue = [
     { update: [{ $set: { 'request.body.value': { $literal: { seed: true } } } }] },
   ] satisfies readonly ProviderRequestTransformRule[];
   const onChange = rs.fn();
   const onValidityChange = rs.fn();
-  const { rerender } = render(
+  render(
     <RequestTransformsHarness initialValue={objectValue} onChange={onChange} onValidityChange={onValidityChange} />,
   );
 
-  const staticEditor = within(stageCard(0)).getByRole('textbox', { name: /Static value|静态值/u });
-  fireEvent.change(staticEditor, { target: { value: '{' } });
+  const objectControl = within(stageCard(0)).getByRole('button', { name: /Static value|静态值/u });
+  fireEvent.click(objectControl);
+  const drawer = await screen.findByTestId('request-transform-json-drawer');
+  fireEvent.change(within(drawer).getByTestId('request-transform-json-draft'), { target: { value: '{' } });
 
-  await waitFor(() => expect(onValidityChange).toHaveBeenLastCalledWith(false));
-  const error = within(stageCard(0)).getByRole('alert');
-  expect(error).toHaveTextContent(/valid JSON object|有效的 JSON 对象/u);
-  expect(staticEditor).toHaveAttribute('aria-invalid', 'true');
-  expect(staticEditor).toHaveAttribute('aria-describedby', error.id);
-  const jsonTab = screen.getByRole('tab', { name: /JSON/u });
-  expect(jsonTab).toHaveAttribute('aria-disabled', 'true');
-  fireEvent.click(jsonTab);
-  expect(screen.getByTestId('request-transform-rule-0')).toBeInTheDocument();
-  expect(screen.queryByRole('textbox', { name: /request transforms json/i })).toBeNull();
+  expect(within(drawer).getByTestId('request-transform-json-apply')).toBeDisabled();
+  expect(within(drawer).getByRole('alert')).toHaveTextContent(/valid JSON object|有效的 JSON 对象/u);
+
+  fireEvent.click(within(drawer).getByRole('button', { name: /Cancel|取消/u }));
+
+  // The unparseable text never left the drawer, so the form still holds the committed object.
   expect(onChange).not.toHaveBeenCalled();
+  expect(onValidityChange).not.toHaveBeenCalledWith(false);
+  expect(screen.getByRole('tab', { name: /JSON/u })).not.toHaveAttribute('aria-disabled', 'true');
 
-  rerender(
-    <RequestTransformsHarness initialValue={objectValue} onChange={onChange} onValidityChange={onValidityChange} />,
-  );
-  const retainedDraft = within(stageCard(0)).getByRole('textbox', { name: /Static value|静态值/u });
-  expect(retainedDraft).toHaveValue('{');
-
-  fireEvent.change(retainedDraft, { target: { value: '{"ok":true}' } });
-  await waitFor(() =>
-    expect(latestValue(onChange)[0]?.update[0]).toEqual({
-      $set: { 'request.body.value': { $literal: { ok: true } } },
-    }),
-  );
-  expect(onValidityChange).toHaveBeenLastCalledWith(true);
-  expect(retainedDraft).toHaveAttribute('aria-invalid', 'false');
-  expect(retainedDraft).not.toHaveAttribute('aria-describedby');
-  expect(within(stageCard(0)).queryByRole('alert')).toBeNull();
-  expect(jsonTab).not.toHaveAttribute('aria-disabled', 'true');
+  fireEvent.click(within(stageCard(0)).getByRole('button', { name: /Static value|静态值/u }));
+  const reopened = await screen.findByTestId('request-transform-json-drawer');
+  expect(
+    JSON.parse((within(reopened).getByTestId('request-transform-json-draft') as HTMLTextAreaElement).value),
+  ).toEqual({ seed: true });
 });
 
 test('retains incomplete computed fields and blocks switching modes until the expression is valid', async () => {
