@@ -1,7 +1,7 @@
 import { m } from '@aio-proxy/i18n';
-import { Checkbox } from '@aio-proxy/ui/components/checkbox';
 import { Input } from '@aio-proxy/ui/components/input';
 import { Label } from '@aio-proxy/ui/components/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@aio-proxy/ui/components/select';
 
 import { RequestTransformCompositeValueControl } from './request-transform-composite-value-control';
 
@@ -33,10 +33,15 @@ export const RequestTransformStaticValueInput: React.FC<RequestTransformStaticVa
 }) => {
   if (type === 'boolean') {
     return (
-      <Label className="w-fit">
-        <Checkbox checked={draft === 'true'} onCheckedChange={(checked) => onChange(String(Boolean(checked)))} />
-        {m['dashboard.providers.transforms.value.boolean_true']()}
-      </Label>
+      <Select value={draft} onValueChange={(next) => next !== null && onChange(next)}>
+        <SelectTrigger id={valueId} data-testid="request-transform-static-boolean" className="w-full">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="true">true</SelectItem>
+          <SelectItem value="false">false</SelectItem>
+        </SelectContent>
+      </Select>
     );
   }
 
