@@ -124,8 +124,12 @@ test('seeds and strips the rule condition from the conditional toggle', async ()
   const toggle = () => within(ruleCard(0)).getByText(conditionalCopy);
   expect(within(ruleCard(0)).getByText(alwaysApplies)).toBeInTheDocument();
 
-  // Clicking the enclosing label is the one path happy-dom toggles once: a click on the switch itself is
-  // forwarded to the hidden input by both Base UI and the label, and happy-dom runs the second forward.
+  // Click the enclosing label, not the switch: the product markup is correct (Base UI's own endorsed pattern)
+  // but happy-dom double-toggles a click on the switch itself. SwitchRoot.js:142 calls preventDefault() to
+  // suppress the label's forwarding, which works in a browser because it lands before the label's default
+  // action; happy-dom's HTMLLabelElement.dispatchEvent forwards to the control *during* dispatch, before
+  // React's root-level handler has run, so the forward happens anyway and onCheckedChange fires twice.
+  // Verified in a real browser: one click, one toggle, from both the switch and the label.
   fireEvent.click(toggle());
   // The seeded condition has to be one the builder can reopen, not just one the schema accepts.
   await waitFor(() => expect(latestValue(onChange)[0]?.when).toEqual({ 'request.model': { $regex: '' } }));
