@@ -15,7 +15,7 @@ Agent 接入不是一套新的 Provider 配置，也不要求把上游密钥复�
 - 官方 Pi；
 - OMP（oh-my-pi）。
 
-官方 Pi 与 OMP 在产品上属于一个 **Pi-family integration**：共用一个包和业务核心，但各自使用一个很薄的宿主入口。OpenCode 使用一个同时兼容 V1/V2 插件 API 的包。Codex 只作为“Agent 接入不一定依赖插件”的现有案例，本期不进入 `agent configure` 产品面。
+官方 Pi 与 OMP 在产品上属于一个 **Pi-family integration**：共用一个包和业务核心，但各自使用一个很薄的宿主入口。OpenCode 首期只承诺稳定的 V1 `server` 插件入口；如果最低版本与当前版本的同包双栈实测证明 V2 `effect` 只是增加一个互不干扰的导出，则同包顺带交付 V2，否则延期且不阻塞首期。Codex 只作为“Agent 接入不一定依赖插件”的现有案例，本期不进入 `agent configure` 产品面。
 
 用户通过 aio-proxy CLI 安装受管插件，再通过 Agent 原生登录入口完成 Device Authorization。每次安装拥有独立、可撤销的 Agent 身份；同一 access token 同时访问受保护模型目录和推理 API。不存在硬编码共享 SK，也不根据可伪造的 header 或 loopback 来源豁免鉴权。
 
@@ -36,9 +36,10 @@ Agent 接入不是一套新的 Provider 配置，也不要求把上游密钥复�
 - 不把 aio-proxy 做成通用 OAuth/OIDC Authorization Server。
 - 不引入 Better Auth、用户账户、consent、动态 client registration 或 scope 引擎。
 - 不提供 Agent 身份管理 Dashboard；只提供 Device Code 批准/拒绝页。
-- 不统一或修复各 Agent 的 logout UI。尤其不承诺 OpenCode V2 当前未完整迁移的 logout 体验。
+- 不统一或修复各 Agent 的 logout UI。OpenCode V2 不是首期验收项，也不承诺其当前未完整迁移的 logout 体验。
 - 不把 Codex 纳入本期 `agent configure`。
 - 不支持多个命名 aio-proxy 实例、远程实例发现或团队配置分发。
+- 不提供离线 revoke、离线 SQLite mutation 或跳过撤销的 force-remove；server 无法启动时先修复配置并启动 control plane。
 - 不发布第三方 Agent adapter SDK，也不允许 aio-proxy runtime plugin 注入 Agent 安装逻辑。
 - 不为尚不存在的 catalog schema 2 预建兼容层。
 
@@ -49,7 +50,7 @@ Agent 接入不是一套新的 Provider 配置，也不要求把上游密钥复�
 - **Installation ID**：一次 Agent integration 安装的稳定 UUID。重新 configure 保留；remove 后重装生成新的 ID。
 - **Agent credential**：Device Authorization 批准后签发给 installation 的 access/refresh token。
 - **Token family**：一次登录产生并由 refresh rotation 延续的一组凭据。重新登录或撤销会终止旧 family。
-- **Agent catalog**：`GET /v1/models` 在带 Agent 协商参数时返回的宿主原生模型目录。
+- **Agent catalog**：`GET /v1/models` 在带 Agent 协商参数时返回的 aio-proxy 内部中立模型目录，由各 adapter 映射成宿主结构。
 - **LKG**：last-known-good，插件最后一次成功校验并持久化的目录。
 - **Ownership marker**：证明某个插件目录完全由 aio-proxy 管理的元数据文件。
 
@@ -57,7 +58,7 @@ Agent 接入不是一套新的 Provider 配置，也不要求把上游密钥复�
 
 | Agent target | 首期最低版本 | 插件入口 | 凭据与目录关键能力 |
 | --- | ---: | --- | --- |
-| OpenCode | `1.17.10` | 一个默认导出同时提供 V1 `server` 和 V2 `effect` | V1 插件自行 refresh 并用 `client.auth.set()` 持久化；V2 host 调用插件 `refresh()` 并持久化 credential |
+| OpenCode | `1.17.10` | 必选 V1 `server`；通过双版本加载实测后可在同一默认导出增加 V2 `effect` | V1 插件自行 refresh 并用 `client.auth.set()` 持久化；若交付 V2，则由 host 调用插件 `refresh()` 并持久化 credential |
 | 官方 Pi | `0.84.2` | Pi-family 包的官方 Pi 入口 | Provider OAuth；`refreshModels(context.credential)` 可使用已刷新 credential 发布动态模型 |
 | OMP | `17.3.7` | Pi-family 包的 OMP 入口 | OMP 原生 Provider/ModelRegistry、OAuth registry 与 credential-aware dynamic model discovery |
 
@@ -69,10 +70,10 @@ OMP 会读取 `pi.extensions`、重写历史 Pi 包作用域，并运行大量�
 
 2026-08-18 已更新并核对以下只读参考快照；它们只提供设计证据，不成为构建或运行时依赖：
 
-- OpenCode：`4e81a0b73f6e614afebf9c7ff8862904a3674455`（`1.18.18`），并回查 `1.17.10` 的 V2 integration OAuth/refresh contract；
+- OpenCode：`4e81a0b73f6e614afebf9c7ff8862904a3674455`（`1.18.18`），并回查 `1.17.10` 的 V1 loader 与可选 V2 integration OAuth/refresh contract；
 - OMP：`644ad30d6e9436074a00f8bd08ecadcd98992fc1`（`v17.3.7`），核对 `omp`/`pi` manifest、legacy Pi shims、OAuth registry 与 ModelRegistry；
 - OmniRoute：`aa912c42a7d50dd4c87c356f42218ccd2ff42c59`（`release/v3.8.50`），作为相邻产品对照。它有完整 OpenCode 动态插件，但 Pi 仍通过静态 `~/.pi/config.json` 管理，不是本设计的 Pi 插件模板；
-- 官方 Pi：以 `0.84.2` 的公开 Provider OAuth 与 credential-aware `refreshModels(context.credential)` contract 为最低实现基线。
+- 官方 Pi：`@earendil-works/pi-coding-agent@0.84.2`，npm integrity `sha512-l4E+B7hgXKWddRo8bC/eSue2aWZjEgJ9xIpf5p0Og+lq8a2TArCwJ0HCoCPCgaBP/tN4zbYH/wOwvx9pJpeLCA==`，git head `914cf1472e715297caa30db4b9535d534a9eb718`；该快照已核对 Provider OAuth 与 credential-aware `refreshModels(context.credential)` contract。
 
 后续修改宿主兼容代码前必须重新 fetch 对应参考项目，并用最低版本和当时最新版本各跑一次兼容矩阵。
 
@@ -158,13 +159,14 @@ aio-proxy agent revoke <installation-id>
 - integration 状态：`absent / managed / conflict`；
 - installation ID；
 - 已安装 adapter 版本；
+- marker endpoint，以及它是否与当前本机配置一致；
 - 本地 LKG 的 `fresh / stale / missing` 与最后成功时间。
 
 `--check` 额外连接当前本机 control plane，补充：
 
 - server 是否可达；
 - authorization 是否 `active / expired / revoked / missing`；
-- server 与 adapter schema 是否可用。
+- server、Device Approval 与 adapter schema 是否可用。
 
 `--check` 把 server installation 状态与本地 LKG 状态组合为最终诊断；它不代表 CLI 自己持有 Agent token 或代替插件拉取 catalog。
 
@@ -175,6 +177,7 @@ aio-proxy agent revoke <installation-id>
 - 只配置当前用户的全局插件。
 - 宿主未安装时失败且不落盘；aio-proxy 不代装宿主。
 - aio-proxy server 未运行时仍可完成安装，但不声称已验证连接，并提示先启动 server 后再登录。
+- server 可达但 `server.apiKeys` 非空且未配置 `server.password` 时仍完成插件安装，但明确提示 Device Approval 被安全策略禁用，必须先配置 Dashboard password。
 - 首期只支持同机 loopback endpoint。endpoint 来自当前本机配置；通配 bind host 归一化为可连接的 loopback host，显式非 loopback bind 则拒绝 configure，并说明远程实例不在首期范围。
 - 只写 aio-proxy 专属插件目录和 marker，不写宿主 auth/config 文件。
 - 安装完成后打印宿主原生登录命令和 reload/restart 提示。
@@ -193,8 +196,8 @@ aio-proxy agent revoke <installation-id>
 
 `@aio-proxy/opencode-provider` 与 `@aio-proxy/pi-provider` 是 workspace 内构建产物，并作为文件资产嵌入 aio-proxy CLI 分发。它们没有独立在线更新器；首期唯一受支持的安装和升级入口是 aio-proxy CLI。
 
-- OpenCode：一个包、一个默认导出，包含 V1/V2 入口与共享认证/目录逻辑。
-- Pi-family：一个包、共享 core、`official-pi` 与 `omp` 两个薄入口；package manifest 同时声明 `pi` 和 `omp` extension。
+- OpenCode：一个包、一个默认导出，V1 `server` 是必选入口；V2 `effect` 只有通过最低版与最新版双栈加载测试后才包含。
+- Pi-family：一个包、共享 core、`official-pi` 与 `omp` 两个薄入口；package manifest 同时声明 `pi` 和 `omp` extension。官方 Pi 读取 `pi`；OMP loader 使用 `pkg.omp ?? pkg.pi`，存在 `omp` 时不会再加载 `pi`，因此不会双重注册。
 - 两个包都构建为自包含的宿主运行文件，只把宿主公开 API 保留为 external；`configure` 不运行 npm/bun install，也不从网络下载插件代码。
 
 这两个包不是 aio-proxy runtime plugin，也不扩展 `@aio-proxy/plugin-sdk`。
@@ -240,13 +243,13 @@ marker 不含 secret。目录权限沿用用户私有配置目录；adapter 写�
 
 用户已决定 `aio-proxy upgrade` 自动更新受管插件。当前 upgrade 进程仍运行旧二进制，不能用自己的旧内嵌资产完成更新，因此流程是：
 
-1. 现有 upgrade 逻辑安装并校验新 aio-proxy。
-2. upgrade 从 PATH/已知 binary target 解析**新二进制**。
-3. 新二进制执行一次内部 post-upgrade action，只检查三个已知的用户全局目标目录及其合法 ownership marker，不遍历其他目录。
+1. 旧进程在升级前按自己的有效用户解析三个受管目标目录，然后由现有 upgrade 逻辑安装并校验新 aio-proxy。
+2. upgrade 从 PATH/已知 binary target 解析**新二进制**，仍由未提权的旧进程启动；package manager 自己的提权不改变插件目录所属用户。
+3. 新二进制执行一次内部 post-upgrade action，只检查旧进程传入且重新校验过的三个用户全局目标目录及其合法 ownership marker，不遍历其他目录。
 4. 新二进制用自己的内嵌资产原子更新每个 managed integration。
 5. 单个插件更新失败不回滚已成功的 aio-proxy 升级；汇总告警并给出 `aio-proxy agent configure <agent>` 修复命令。
 
-post-upgrade 不创建新 integration、不接管无 marker 目录、不撤销身份、不启动或重启 Agent。运行中的 Agent 继续使用已加载的旧代码，用户按提示 reload/restart 后加载新 adapter。
+如果用户直接以 root/Administrator 身份运行 `aio-proxy upgrade`，post-upgrade 不猜测 `SUDO_USER` 或其他用户 home，只更新该有效用户自己的受管目录并明确告警；普通用户的插件需在其身份下运行 `aio-proxy agent configure <agent>`。post-upgrade 不创建新 integration、不接管无 marker 目录、不撤销身份、不启动或重启 Agent。运行中的 Agent 继续使用已加载的旧代码，用户按提示 reload/restart 后加载新 adapter。
 
 ## Agent 插件架构
 
@@ -266,14 +269,17 @@ post-upgrade 不创建新 integration、不接管无 marker 目录、不撤销�
 
 ### OpenCode
 
-同一个默认导出提供：
+同一个默认导出必须提供 V1 `server`：
 
 - V1 `server`：
   - `auth.methods.authorize()` 请求并轮询 Device Code；
-  - `auth.loader` 安装带 Bearer token 的 fetch；
+  - `auth.loader` 安装带 Bearer token 的 fetch；每次请求通过 loader 提供的 `getAuth()` 读取当前 credential，不在加载时把 access token 捕获成常量；
   - access 到期时插件 single-flight refresh，并用 `client.auth.set()` 保存轮换结果；
-  - `provider.models` 返回 server 已组装的 OpenCode-native model records；
+  - `provider.models` 把中立 catalog 映射成 OpenCode V1 model records；
   - `dispose` 清理 adapter 自己的 timer。
+
+以下 V2 `effect` 是可选增量，不是首期交付条件：
+
 - V2 `effect`：
   - 注册 `aio-proxy` Integration OAuth method；
   - 实现 `authorize` 与 `refresh`；
@@ -281,7 +287,7 @@ post-upgrade 不创建新 integration、不接管无 marker 目录、不撤销�
   - catalog transform 注册 Provider/model；
   - background refresh 使用 Effect/host-managed lifecycle，不留 raw detached timer。
 
-V1/V2 共用 Provider ID 和 installation ID，不会同时注册两个用户可见 Provider。
+只有在 OpenCode `1.17.10` 和当时最新版都证明同一默认导出的 `server` / `effect` 会被各自 loader 独立识别且忽略对方字段时，才交付双栈。若交付，V1/V2 共用 Provider ID 和 installation ID，不会同时注册两个用户可见 Provider；任一版本出现加载、credential 或 lifecycle 歧义时只发布 V1。
 
 ### 官方 Pi
 
@@ -291,7 +297,7 @@ V1/V2 共用 Provider ID 和 installation ID，不会同时注册两个用户可
 - 登录返回标准 access/refresh credential；
 - `refreshToken` 调 aio-proxy token endpoint；
 - `getApiKey` 返回 access token；
-- 使用官方 credential-aware `refreshModels(context.credential)` 请求 Pi-native catalog 并 publish；
+- 使用官方 credential-aware `refreshModels(context.credential)` 请求中立 catalog，映射成 `ProviderModelConfig[]` 后 publish；
 - 启动和刷新失败时先从 adapter-owned LKG publish；宿主 cache 不作为持久化真相源；
 - 不直接读取或写入 `auth.json`。
 
@@ -301,8 +307,8 @@ OMP 入口使用 OMP 原生 Provider/ModelRegistry 生命周期：
 
 - 注册 OMP Provider 与 OAuth；
 - credential resolution 走 OMP AuthStorage/registry；
-- dynamic models 走 OMP 的 `fetchDynamicModels(apiKey)`；
-- 目录交给 OMP 原生 model cache/registry，同时把最后一次成功校验的响应写入 adapter-owned LKG；启动和刷新失败时由该 LKG 重新 publish；
+- dynamic models 走 OMP 的 `fetchDynamicModels(apiKey)`，在 adapter 内把中立 catalog 映射成 OMP model config；
+- 映射后的目录交给 OMP 原生 model cache/registry，同时把映射前的最后一次成功校验响应写入 adapter-owned LKG；启动和刷新失败时由该 LKG 重新映射并 publish；
 - source ID 与 unregister/rollback 使用 OMP 原生语义。
 
 OMP 的 Pi compatibility shim 只负责普通 extension 兼容，不作为本入口正确性的依赖。
@@ -322,34 +328,43 @@ Authorization: Bearer <agent-access-token>
 
 路由顺序：
 
-1. 有 `agent`：校验 Agent access token 与目标 installation，返回 Agent-native catalog。
+1. 有 `agent`：校验 Agent access token 与目标 installation，返回中立 Agent catalog。
 2. 无 `agent`、有 `client_version`：保留现有 Codex catalog 行为。
 3. 两者都没有：保留现有标准 `{ object: "list", data: [...] }`。
 
-有 `agent` 时不允许回退到 Codex 或标准列表。该分支只接受 Agent access token：匿名和静态 API key 返回 401，token target 与 `agent` 不匹配返回 403。反过来，使用 Agent access token 请求 `/v1/models` 时必须携带匹配的 `agent` 参数，不能进入 Codex 或标准列表。
+有 `agent` 时不允许回退到 Codex 或标准列表。该分支只接受 Agent access token：匿名和静态 API key 返回 401，token target 与 `agent` 不匹配返回 403。反过来，使用 Agent access token 请求 `/v1/models` 时缺少 `agent` 返回 400，target 不匹配返回 403，不能进入 Codex 或标准列表。
 
 未知 Agent、缺少参数、非法 semver 或不支持的 schema 均返回 400；body 使用稳定的 `{ "error": { "code": string, "message": string } }`，schema 不支持时额外返回 `supported_schema_versions`。认证失败继续使用现有 protocol-shaped 401/403。任何错误都不会触发插件用匿名或静态 key 重试，插件保留 LKG。
 
 ### schema 1
 
-schema 1 不定义跨 Agent 的统一 model wire object。server 分别组装目标宿主的公开模型记录，插件只做边界校验和注册：
+schema 1 是三个内嵌 adapter 共用的最小中立 wire object，不携带任何宿主 SDK 类型：
 
-| Agent | 响应 |
-| --- | --- |
-| OpenCode | `{ "schema_version": 1, "agent": "opencode", "models": Record<string, OpenCodeModelV2> }` |
-| 官方 Pi | `{ "schema_version": 1, "agent": "pi", "models": PiProviderModelConfig[] }` |
-| OMP | `{ "schema_version": 1, "agent": "omp", "models": OmpProviderModelConfig[] }` |
+```ts
+type AgentCatalogV1 = {
+  schema_version: 1
+  agent: 'opencode' | 'pi' | 'omp'
+  models: Array<{
+    id: string
+    name: string
+    reasoning: boolean
+    input: Array<'text' | 'audio' | 'image' | 'video' | 'pdf'>
+    context_window: number | null
+    max_output_tokens: number | null
+  }>
+}
+```
 
-对应 JSON-compatible schema 放在 `@aio-proxy/types` 的内部 Agent catalog 模块，供 server assembler 与内嵌 adapter 共用；它不是公开 Agent SDK。
+该 JSON-compatible schema 放在 `@aio-proxy/types` 的内部 Agent catalog 模块，供唯一 server assembler 与两个内嵌 adapter 包共用；它不是公开 Agent SDK。server 不依赖 OpenCode、Pi 或 OMP 的 model-config 类型，也不按宿主版本分支。
 
-所有 assembler 复用当前 `resolveEnabledModels(state)`，因此 catalog：
+assembler 复用当前 `resolveEnabledModels(state)`，因此 catalog：
 
 - 只列出启用 Provider 暴露的 client-facing alias；
 - 保持现有 alias 去重和元数据优先级；
-- 从当前 model metadata 映射 display name、reasoning、输入模态、context/output limits；
+- 从当前 model metadata 映射 display name、reasoning、输入模态、context/output limits；未知 reasoning 默认为 `false`，未知输入模态默认为 `['text']`，未知 limits 返回 `null`；
 - 不改变 routing pipeline、Provider weight、session affinity 或 fallback。
 
-插件持有的 endpoint、Provider ID、OAuth wiring 不从 catalog 返回。server 只返回宿主原生模型记录，避免每次刷新重建安装级配置。
+endpoint、Provider ID、API 类型、OAuth wiring、headers 和宿主要求的默认 cost 不从 catalog 返回；它们是 adapter 的固定安装级配置。中立 schema 保留当前 model metadata 的完整输入模态集合；每个 adapter 只投影宿主公开类型能表达的能力，不把 audio/video/pdf 误报成 image。宿主 schema 演进只改对应 adapter 和兼容测试，不改 server wire schema。宿主要求必填 limit 而 catalog 为 `null` 时，adapter 使用该宿主文档中的默认值。
 
 ### 缓存与失败
 
@@ -399,6 +414,14 @@ POST /admin/agent-installations/:installation-id/revoke
 
 不引入通用 OAuth server adapter。Dashboard approve/deny 复用现有 Dashboard authentication 和 same-origin mutation 防护；远程 Dashboard 仍遵守已有“非 loopback 必须设置密码”的边界。两个 `/admin/*` endpoint 复用现有 admin control-plane policy，只服务同机 CLI；list 不返回 token hash，revoke 是幂等操作。
 
+两个插件侧 OAuth endpoint（`/oauth/device/code`、`/oauth/token`）只接受 transport peer 为 loopback 的直连请求，不信任 `Forwarded` / `X-Forwarded-For`，也不支持经远程 reverse proxy 暴露；远程 Dashboard 只能审批已经由本机插件创建的 challenge。这与首期仅支持同机 endpoint 的产品边界一致，并避免公开 bind 上的未认证 pending-challenge DoS。
+
+Device Approval 的认证强度与模型 API 门禁一致：
+
+- `server.apiKeys` 为空时，保留现有 loopback Dashboard 行为；本机推理本来就是匿名的，批准 Agent token 不扩大推理权限。
+- `server.apiKeys` 非空时，必须同时配置 `server.password`。`POST /oauth/device/code` 在缺少 password 时返回 503 `authorization_unavailable`，不创建 challenge。
+- `server.apiKeys` 非空时，resolve、approve、deny 即使来自 loopback 也必须携带有效 Dashboard session；same-origin/Origin header 只做 CSRF 防护，绝不作为身份凭证。
+
 `POST /oauth/device/code` 接收 form-encoded `client_id`、`agent`、`installation_id` 和 `adapter_version`，返回标准 `device_code`、`user_code`、`verification_uri`、`verification_uri_complete`、`expires_in` 和 `interval`。`verification_uri_complete` 把 user code 放在 URL fragment 中，由 Dashboard 页面读取后通过 authenticated same-origin POST 解析，只返回内部 `device-id`；approve/deny 从不把 OAuth device code 暴露给页面。
 
 `POST /oauth/token` 只接受两种 form-encoded grant：
@@ -432,12 +455,16 @@ device/token 响应统一设置 `Cache-Control: no-store`。OAuth form body、Au
 - access token：15 分钟。
 - refresh token：90 天滑动过期。
 - 每次 refresh 同时轮换 access 和 refresh。
-- 插件和 V1 OpenCode fetch 都做进程内 single-flight。
+- 插件和 V1 OpenCode fetch 都做进程内 single-flight；refresh 发起前必须从宿主 credential store 重新解析当前 credential，不能使用 adapter 启动时捕获的 refresh token。
 - 服务端对同一旧 refresh token 提供 30 秒幂等窗口：
   - 同进程 replay cache 存在时返回同一轮换结果；
   - server 在窗口内重启导致 replay result 丢失时，返回 `invalid_grant` 但不撤销 family；
   - 窗口外再次使用任何已消费 refresh token，撤销整个 family。
 - remove、显式 revoke 和同 installation 重新登录都会撤销旧 family。
+
+同一宿主的多个进程共享一个 installation 与宿主 credential store。兼容矩阵必须覆盖两个进程同时到期，以及一个进程暂停超过 30 秒后恢复：第二个进程必须重新读到已轮换 credential，不能在窗口外提交旧 token。任一宿主做不到这一点时，该 target 不满足首期发布条件；不为绕过宿主 credential 一致性而放宽通用 reuse detection。
+
+refresh 响应到达后、宿主持久化新 credential 前存在不可消除的崩溃窗口。server 无法区分窗口外的旧 token 来自恢复中的合法进程还是窃取者，因此保持 fail closed：超过 30 秒后复用旧 token 仍撤销 family 并要求重新登录，不延长明文 replay cache，也不返回其后继 token。兼容测试必须注入 receive→persist 之间的崩溃/长暂停，并验证结果是明确、可恢复的重新登录诊断，而不是静默继续或放宽 reuse detection。
 
 `revoke <installation-id>` 撤销该 installation 当前 family，但不永久拉黑 installation ID；用户以后再次明确完成 Device Authorization，可以在同一受管安装上创建新 family。`remove` 随后删除 marker，所以重装会使用新 installation ID。
 
@@ -492,7 +519,11 @@ Agent identity 是 client 身份，不复用 `oauth_account`（它表示上游 P
 4. `server.apiKeys` 为空且请求没有 Agent token时，保持当前匿名访问。
 5. `server.apiKeys` 非空，模型 API 接受有效静态 API key **或**有效 Agent access token。
 
-带 `agent` query 的 catalog 是例外中的严格分支：无论 `server.apiKeys` 是否为空，都必须有 target 匹配的有效 Agent access token；静态 API key 和匿名请求不能读取 Agent-native catalog。
+`server.apiKeys` 从空变为非空不会追溯撤销已经批准的 Agent token family；Agent token 与静态 API key 是并列的显式 client credential。锁定服务后，运维提示用户用 `agent list --authorizations` 复核并按需 `agent revoke`，不增加按签发时配置状态区分的第二类 family。
+
+带 `agent` query 的 catalog 是例外中的严格分支：无论 `server.apiKeys` 是否为空，都必须有 target 匹配的有效 Agent access token；静态 API key 和匿名请求不能读取中立 Agent catalog。
+
+Agent token 只从 `Authorization: Bearer` 识别；不从 `x-api-key`、query 或其他兼容字段识别。配置加载时拒绝任何以 `aio_agent_at_` 或 `aio_agent_rt_` 保留前缀开头的静态 `server.apiKeys`，避免静态 key 被错误分派成 Agent credential。
 
 认证 middleware 在路由前剥离调用方 credential，保证它不会传给上游 Provider。各协议的 401 body 继续使用现有 protocol-shaped error。
 
@@ -504,6 +535,8 @@ Agent identity 是 client 身份，不复用 `oauth_account`（它表示上游 P
 - 展示待批准 installation 信息与固定权限；
 - approve / deny；
 - 展示 expired、consumed、denied 和成功状态。
+
+当 `server.apiKeys` 非空时，该页面必须先完成 Dashboard password 登录；未配置 password 时只展示阻塞原因和配置指引，不允许批准。
 
 不新增 Agent identity 列表、改名、scope、审计或 revoke 页面。遗失身份通过 CLI `list --authorizations` / `revoke` 处理。
 
@@ -523,14 +556,14 @@ pending challenge 不写数据库，也不进入现有 OAuth provider login sess
   - internal Device Authorization Hono sub-app；
   - Dashboard approval API；
   - composite model API authentication 与 access-token memory index；
-  - `/v1/models` Agent dispatch 和三个 native catalog assembler；
+  - `/v1/models` Agent dispatch 和一个中立 catalog assembler；
   - 本机 admin installation list/revoke。
 - `packages/cli`
   - `agent` commands、host detection、global path resolution；
   - marker、atomic install/remove、embedded adapter assets；
   - upgrade 的 new-binary post-upgrade step。
 - OpenCode adapter workspace package
-  - V1/V2 host bindings，共享 Device/token/catalog client。
+  - 必选 V1 host binding；通过双版本双栈测试时可增加 V2 binding；共享 Device/token/catalog client。
 - Pi-family adapter workspace package
   - 共享 core、官方 Pi entry、OMP entry。
 - `packages/dashboard`
@@ -546,6 +579,7 @@ pending challenge 不写数据库，也不进入现有 OAuth provider login sess
 | 宿主缺失 | configure 失败，不写目录 |
 | 宿主版本过旧/未知 | 警告后继续；list 标 unsupported/unknown |
 | aio-proxy 未运行 | configure 成功但不验证；登录和 `--check` 提示启动 server |
+| `server.apiKeys` 非空但无 Dashboard password | 插件可安装；device-code 创建返回 503，提示先配置 password |
 | 无 marker 同名目录 | 拒绝接管 |
 | managed 更新失败 | 恢复旧目录；upgrade 汇总告警 |
 | Device Flow 中 server 重启 | pending 失效，重新登录 |
@@ -556,6 +590,7 @@ pending challenge 不写数据库，也不进入现有 OAuth provider login sess
 | access token 过期/撤销 | 401，不匿名降级 |
 | refresh 正常并发 | 30 秒内幂等；插件 single-flight |
 | 旧 refresh 窗口外复用 | 撤销整个 family |
+| refresh 响应后、持久化前崩溃 | 后续旧 token 窗口外复用时撤销 family；明确要求重新登录 |
 | remove/revoke 时 server 不可达 | 不改数据库、不删插件；提示先启动 server 后重试 |
 | remove 撤销失败 | 不删除插件目录 |
 | remove 文件删除失败 | 身份保持 revoked，保留目录并提示重试 |
@@ -567,6 +602,7 @@ pending challenge 不写数据库，也不进入现有 OAuth provider login sess
 - token 只以 hash 落库，access/refresh 明文不出现于 SQLite。
 - access 15 分钟、refresh 90 天滑动和 rotation。
 - 30 秒正常并发返回同一结果；窗口外 reuse 撤销 family。
+- receive→persist 间崩溃或长暂停不会延长 replay 窗口；旧 token 复用后 family 撤销并返回可操作的重新登录诊断。
 - installation relogin、remove、显式 revoke 都终止旧 family。
 - 过期清理不删除仍需用于 reuse detection 的记录。
 - migration 从当前 schema 升级且保持现有数据。
@@ -575,20 +611,25 @@ pending challenge 不写数据库，也不进入现有 OAuth provider login sess
 
 - pending、slow_down、approve、deny、expired、atomic consume。
 - pending 重启失效。
+- 插件侧 OAuth endpoint 的非 loopback 直连请求被拒绝，forwarded header 不能伪造 loopback。
 - Dashboard auth + same-origin 防护覆盖 approve/deny。
 - 固定 client/Agent/installation 绑定，错误组合拒绝。
 - Agent token、`server.apiKeys` 和匿名模式的完整认证矩阵。
+- `server.apiKeys` 非空时，缺少 password、缺少 Dashboard session、仅伪造 Origin 都不能批准 Device Code。
+- 静态 API key 使用 Agent token 保留前缀时配置校验失败。
 - 无效或 revoked Agent token 在匿名模式下仍为 401。
 - credential 在进入 routing/upstream 前被剥离。
 - server 重启后未过期 access token 从数据库恢复到内存。
+- `server.apiKeys` 从空切换为非空不会静默撤销已有 Agent family，list/revoke 仍可管理它。
 
 ### Catalog
 
-- 三种 `agent` 分支返回各自 schema 1 native records。
+- 三种 `agent` 分支返回同一 schema 1，并携带对应 target；server 输出不含宿主 SDK 字段。
 - `agent` query 无 Agent token 拒绝；普通和 Codex models 行为零回归。
 - alias、Provider metadata、reasoning、modalities、context limits 映射。
 - 5 分钟 refresh、single-flight、LKG、stale、无 LKG unavailable。
 - schema mismatch 和 401 不覆盖 LKG。
+- OpenCode V1、可选 V2、官方 Pi 与 OMP 分别把同一 fixture 映射成各自宿主合法 model config；宿主版本差异不进入 server schema。
 
 ### CLI 与文件系统
 
@@ -602,11 +643,11 @@ pending challenge 不写数据库，也不进入现有 OAuth provider login sess
 
 ### 宿主兼容矩阵
 
-- OpenCode `1.17.10` 与当前版本：V1/V2 login、refresh、catalog、inference。
+- OpenCode `1.17.10` 与当前版本：V1 login、refresh、catalog、inference 是必过项；只有计划随首期交付 V2 时，才把 V2 双栈加载、login、refresh、catalog、inference 加入必过项。
 - 官方 Pi `0.84.2` 与当前版本：login、credential-aware refresh models、inference。
 - OMP `17.3.7` 与当前版本：OMP 原生入口、model registry/cache、inference。
 - 低于最低版本：configure 只警告，运行失败产生明确诊断。
-- OpenCode V2 logout 不列入通过标准；remove/revoke 是可靠清理路径。
+- OpenCode V2 logout 不列入通过标准；若交付 V2，remove/revoke 仍是可靠清理路径。
 
 常规完成门槛是 `bun run preflight`。宿主兼容测试可作为独立、版本固定的 integration job，不把 reference clone 作为运行时依赖。
 
@@ -626,6 +667,7 @@ pending challenge 不写数据库，也不进入现有 OAuth provider login sess
 3. 只有第三方 adapter 分发成为真实需求时，才设计公开 Agent SDK、信任模型和独立发布协议。
 4. Codex 后续若进入 `agent configure`，应使用 Codex 原生配置/auth contract；不能为了统一表面体验伪装成插件。
 5. 远程、多实例、团队授权或用户账户进入近期路线图时，再重新评估 Better Auth 或完整 OAuth server。
+6. catalog schema 升级必须至少跨一个完整 aio-proxy 发布周期同时服务旧版和新版；旧 schema 不能在 bundled adapter 已支持下一版的同一个发布中立即移除，以容忍单个 post-upgrade 插件更新失败。
 
 ## 拒绝的替代方案
 
@@ -655,7 +697,7 @@ HTTP header、query、User-Agent 和 loopback 来源都不能证明插件身份�
 
 ### OpenCode、Pi、OMP 三个独立插件产品
 
-重复发布与共享逻辑。Pi/OMP 应是一包双入口；OpenCode 只需一个 V1/V2 双栈包。
+重复发布与共享逻辑。Pi/OMP 应是一包双入口；OpenCode 只需一个以 V1 为必选、V2 为可选导出的包。
 
 ### 单一 Pi/OMP 宿主入口
 
@@ -668,3 +710,7 @@ OMP 的 Pi compatibility 很强，但没有保证官方 Pi native credential-awa
 ### 写静态 Agent Provider 配置
 
 OpenCode、官方 Pi 和 OMP 都已有正式插件 Provider/OAuth seam。静态配置会重新引入配置漂移、secret 写入和额外回滚语义。
+
+### server 停止时离线撤销或强制删除
+
+当前 server 没有持有覆盖整个进程生命周期的数据库 ownership lock；仅凭端口探测不能排除另一个配置或端口上的进程仍持有内存 token index。离线直写会制造数据库与内存分叉，强制只删插件又会把仍有效的 credential 留在宿主 auth store。首期因此 fail closed：修复配置并启动本机 control plane 后再 remove/revoke；只有未来已有可靠单实例 ownership lock 时才重新评估离线模式。
