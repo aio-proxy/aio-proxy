@@ -127,6 +127,54 @@ test('rotation consumes old refresh and inserts the successor atomically', () =>
   handle.close();
 });
 
+test('rotation does not consume a foreign refresh or mutate the requested family', () => {
+  const { handle, repo } = fixture();
+  const other = '1a2b3c4d-5e6f-4789-a012-3456789abcde';
+  repo.issue({
+    installationId: INSTALLATION,
+    target: 'opencode',
+    adapterVersion: '1.2.3',
+    familyId: 'family-1',
+    accessHash: 'at-1',
+    refreshHash: 'rt-1',
+    now: 1_000,
+    accessExpiresAt: 901_000,
+    refreshExpiresAt: 7_776_001_000,
+  });
+  repo.issue({
+    installationId: other,
+    target: 'pi',
+    adapterVersion: '1.0.0',
+    familyId: 'family-2',
+    accessHash: 'at-2',
+    refreshHash: 'rt-2',
+    now: 1_000,
+    accessExpiresAt: 901_000,
+    refreshExpiresAt: 7_776_001_000,
+  });
+  expect(
+    repo.rotate({
+      familyId: 'family-1',
+      currentRefreshHash: 'rt-2',
+      nextAccessHash: 'at-3',
+      nextRefreshHash: 'rt-3',
+      now: 2_000,
+      accessExpiresAt: 902_000,
+      refreshExpiresAt: 7_776_002_000,
+    }),
+  ).toBe(false);
+  expect(repo.readFamily('family-1')).toMatchObject({ revokedAt: null, refreshExpiresAt: 7_776_001_000 });
+  expect(repo.readRefresh('rt-2')?.consumedAt).toBeNull();
+  expect(repo.readRefresh('rt-3')).toBeNull();
+  expect(
+    repo
+      .loadActiveAccess(2_000)
+      .map(({ tokenHash }) => tokenHash)
+      .toSorted(),
+  ).toEqual(['at-1', 'at-2']);
+  handle.close();
+});
+
 test('revokeInstallation reports missing, expired, and revoked without mutating expired families', () => {
   const { handle, repo } = fixture();
   const other = '1a2b3c4d-5e6f-4789-a012-3456789abcde';
@@ -182,6 +230,32 @@ test('cleanup deletes expired access immediately and terminal rows after retenti
   repo.cleanup(3_000, 10_000);
   expect(repo.readRefresh('rt-1')).toBeNull();
   expect(repo.readFamily('family-1')).not.toBeNull();
+  repo.cleanup(12_999, 10_000);
+  expect(repo.readFamily('family-1')).not.toBeNull();
+  repo.cleanup(13_000, 10_000);
+  expect(repo.readFamily('family-1')).toBeNull();
+  expect(repo.listInstallations(13_000)).toEqual([]);
+  handle.close();
+});
+
+test('cleanup deletes expired unrevoked families after the refresh retention window', () => {
+  const { handle, repo } = fixture();
+  repo.issue({
+    installationId: INSTALLATION,
+    target: 'opencode',
+    adapterVersion: '1.2.3',
+    familyId: 'family-1',
+    accessHash: 'at-1',
+    refreshHash: 'rt-1',
+    now: 1_000,
+    accessExpiresAt: 1_500,
+    refreshExpiresAt: 3_000,
+  });
+  repo.cleanup(12_999, 10_000);
+  expect(repo.readFamily('family-1')?.revokedAt).toBeNull();
+  expect(repo.listInstallations(12_999)).toEqual([
+    expect.objectContaining({ installationId: INSTALLATION, authorization: 'expired' }),
+  ]);
   repo.cleanup(13_000, 10_000);
   expect(repo.readFamily('family-1')).toBeNull();
   expect(repo.listInstallations(13_000)).toEqual([]);

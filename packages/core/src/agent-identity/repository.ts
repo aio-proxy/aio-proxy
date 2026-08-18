@@ -144,7 +144,7 @@ function prepareStatements(sqlite: Database) {
        VALUES (?, ?, ?, ?, NULL)`,
     ),
     consumeRefresh: sqlite.query(
-      'UPDATE agent_refresh_token SET consumed_at = ? WHERE token_hash = ? AND consumed_at IS NULL',
+      'UPDATE agent_refresh_token SET consumed_at = ? WHERE token_hash = ? AND family_id = ? AND consumed_at IS NULL',
     ),
     deleteFamilyAccess: sqlite.query('DELETE FROM agent_access_token WHERE family_id = ?'),
     updateFamilyRefreshExpiry: sqlite.query('UPDATE agent_token_family SET refresh_expires_at = ? WHERE family_id = ?'),
@@ -187,7 +187,7 @@ function prepareStatements(sqlite: Database) {
     deleteExpiredAccess: sqlite.query('DELETE FROM agent_access_token WHERE expires_at <= ?'),
     deleteExpiredRefresh: sqlite.query('DELETE FROM agent_refresh_token WHERE expires_at <= ?'),
     deleteTerminalFamilies: sqlite.query(
-      'DELETE FROM agent_token_family WHERE MAX(revoked_at, refresh_expires_at) + ? <= ?',
+      'DELETE FROM agent_token_family WHERE COALESCE(MAX(revoked_at, refresh_expires_at), refresh_expires_at) + ? <= ?',
     ),
     deleteOrphanInstallations: sqlite.query(
       `DELETE FROM agent_installation
@@ -256,7 +256,7 @@ export function createAgentIdentityRepository(sqlite: Database): AgentIdentityRe
     return { status: 'issued', replacedFamilyIds };
   });
   const rotateRows = sqlite.transaction((input: RotateRowsInput): boolean => {
-    if (stmts.consumeRefresh.run(input.now, input.currentRefreshHash).changes !== 1) return false;
+    if (stmts.consumeRefresh.run(input.now, input.currentRefreshHash, input.familyId).changes !== 1) return false;
     stmts.deleteFamilyAccess.run(input.familyId);
     stmts.insertAccess.run(input.nextAccessHash, input.familyId, input.accessExpiresAt);
     stmts.insertRefresh.run(input.nextRefreshHash, input.familyId, input.now, input.refreshExpiresAt);
