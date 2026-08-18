@@ -480,10 +480,9 @@
         "last_success_at": "最終成功 {value}"
       },
       "oauth": {
-        "select_label": "OAuth プロバイダー",
-        "select_placeholder": "OAuth プロバイダーを選択",
-        "search_placeholder": "OAuth プロバイダーを検索",
-        "empty": "利用可能な OAuth プロバイダーがありません",
+        "select_label": "ログイン方法",
+        "search_placeholder": "ログイン方法を検索",
+        "empty": "利用可能なログイン方法がありません",
         "reauthorize": "再認可",
         "authorize_in_browser": "ブラウザーで認可する",
         "authorize_popup_hint": "認可は新しいウィンドウで開き、完了するとアカウントが自動的に入力されます。",

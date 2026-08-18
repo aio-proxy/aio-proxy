@@ -480,10 +480,9 @@
         "last_success_at": "Last success {value}"
       },
       "oauth": {
-        "select_label": "OAuth provider",
-        "select_placeholder": "Select an OAuth provider",
-        "search_placeholder": "Search OAuth providers",
-        "empty": "No OAuth providers are available",
+        "select_label": "Sign-in method",
+        "search_placeholder": "Search sign-in methods",
+        "empty": "No sign-in methods are available",
         "reauthorize": "Reauthorize",
         "authorize_in_browser": "Authorize in browser",
         "authorize_popup_hint": "Authorization opens a new window; the account is filled in automatically once it completes.",

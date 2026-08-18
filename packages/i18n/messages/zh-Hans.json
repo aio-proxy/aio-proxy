@@ -480,10 +480,9 @@
         "last_success_at": "最近成功 {value}"
       },
       "oauth": {
-        "select_label": "OAuth 提供商",
-        "select_placeholder": "选择 OAuth 提供商",
-        "search_placeholder": "搜索 OAuth 提供商",
-        "empty": "没有可用的 OAuth 提供商",
+        "select_label": "登录方式",
+        "search_placeholder": "搜索登录方式",
+        "empty": "没有可用的登录方式",
         "reauthorize": "重新授权",
         "authorize_in_browser": "在浏览器中授权",
         "authorize_popup_hint": "授权会打开一个新窗口，完成后自动回填账号。",

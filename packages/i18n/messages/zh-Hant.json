@@ -480,10 +480,9 @@
         "last_success_at": "最近成功 {value}"
       },
       "oauth": {
-        "select_label": "OAuth 提供商",
-        "select_placeholder": "選擇 OAuth 提供商",
-        "search_placeholder": "搜尋 OAuth 提供商",
-        "empty": "沒有可用的 OAuth 提供商",
+        "select_label": "登入方式",
+        "search_placeholder": "搜尋登入方式",
+        "empty": "沒有可用的登入方式",
         "reauthorize": "重新授權",
         "authorize_in_browser": "在瀏覽器中授權",
         "authorize_popup_hint": "授權會開啟一個新視窗，完成後自動回填帳號。",

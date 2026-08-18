@@ -480,10 +480,9 @@
         "last_success_at": "마지막 성공 {value}"
       },
       "oauth": {
-        "select_label": "OAuth 프로바이더",
-        "select_placeholder": "OAuth 프로바이더 선택",
-        "search_placeholder": "OAuth 프로바이더 검색",
-        "empty": "사용 가능한 OAuth 프로바이더가 없습니다",
+        "select_label": "로그인 방식",
+        "search_placeholder": "로그인 방식 검색",
+        "empty": "사용 가능한 로그인 방식이 없습니다",
         "reauthorize": "재인증",
         "authorize_in_browser": "브라우저에서 인증",
         "authorize_popup_hint": "인증은 새 창에서 열리며, 완료되면 계정이 자동으로 입력됩니다.",

@@ -188,7 +188,7 @@ const packageInput = () => within(screen.getByTestId('provider-form-field-packag
 const manualAddLabel = m['dashboard.providers.editor.models_manual_add']();
 
 const selectOAuthCapability = async () => {
-  const picker = screen.getByRole('combobox', { name: /OAuth provider|OAuth 提供商/u });
+  const picker = screen.getByRole('combobox', { name: m['dashboard.providers.oauth.select_label']() });
   fireEvent.keyDown(picker, { key: 'ArrowDown' });
   fireEvent.change(picker, { target: { value: 'Example' } });
   fireEvent.click(await screen.findByRole('option', { name: /Example OAuth/u }));
