@@ -129,6 +129,7 @@ test('seeds and strips the rule condition from the conditional toggle', async ()
   fireEvent.click(toggle());
   // The seeded condition has to be one the builder can reopen, not just one the schema accepts.
   await waitFor(() => expect(latestValue(onChange)[0]?.when).toEqual({ 'request.model': { $regex: '' } }));
+  expect(within(ruleCard(0)).getByTestId('fields-kind')).toHaveTextContent(/Current model|当前模型/u);
   expect(within(ruleCard(0)).getByRole('switch', { name: conditionalCopy })).toBeChecked();
   expect(within(ruleCard(0)).getByRole('button', { name: /Add condition|添加条件/u })).toBeInTheDocument();
   expect(within(ruleCard(0)).queryByText(alwaysApplies)).toBeNull();
