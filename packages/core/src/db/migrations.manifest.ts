@@ -4,6 +4,7 @@ import migration1Sql from "./migrations/0001_easy_logan.sql?raw";
 import migration2Sql from "./migrations/0002_orange_leper_queen.sql?raw";
 import migration3Sql from "./migrations/0003_charming_maginty.sql?raw";
 import migration4Sql from "./migrations/0004_classy_kabuki.sql?raw";
+import migration5Sql from "./migrations/0005_material_xavin.sql?raw";
 export type Migration = {
     readonly version: number;
     readonly file: string;
@@ -40,6 +41,12 @@ export const MIGRATIONS: readonly Migration[] = [
         file: "0004_classy_kabuki.sql",
         sha256: "44ba94230973ae54ff7f70dff5f2e237a512f75920fffea58922922fd19a7ffb",
         sql: migration4Sql
+    },
+    {
+        version: 6,
+        file: "0005_material_xavin.sql",
+        sha256: "6c35e0afd7a68d9d08100d5696798f0f1860cae1abe59b436767c086b76ff9fe",
+        sql: migration5Sql
     }
 ];
 export const COMPILED_SCHEMA_VERSION = MIGRATIONS.length;

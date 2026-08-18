@@ -18,6 +18,10 @@ export type {
   UsageOverviewQuery,
 } from './trace-store';
 export {
+  agentAccessToken,
+  agentInstallation,
+  agentRefreshToken,
+  agentTokenFamily,
   oauthAccount,
   oauthAccountDiagnostic,
   oauthCatalog,
