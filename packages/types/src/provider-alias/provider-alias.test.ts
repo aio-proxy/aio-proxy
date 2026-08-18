@@ -41,8 +41,8 @@ test('an alias outside a non-empty whitelist still fails, for alias and variant 
 test('modelRoutes: aliases shadow their targets unless preserved', () => {
   expect(modelRoutes({ enabled: true, models: ['a', 'b'], alias: { smart: { model: 'a', preserve: false } } })).toEqual(
     [
-      { alias: 'smart', modelId: 'a' },
       { alias: 'b', modelId: 'b' },
+      { alias: 'smart', modelId: 'a' },
     ],
   );
 });
@@ -50,12 +50,35 @@ test('modelRoutes: aliases shadow their targets unless preserved', () => {
 // Two models and no .sort(): with a single model the `!config.preserve` guard and the
 // preservedModelIds re-add mask each other exactly, so the test only fails when BOTH break.
 // Order is a product contract, not an implementation detail — clientModels
-// (`materialize.ts:198,222`, `catalog.ts:37`) is this array's aliases in this order.
+// (`materialize.ts:200,224`, `catalog.ts:37`) is this array's aliases in this order.
 test('modelRoutes: preserve keeps the original id routable next to the alias', () => {
   expect(modelRoutes({ enabled: true, models: ['a', 'b'], alias: { smart: { model: 'a', preserve: true } } })).toEqual([
-    { alias: 'smart', modelId: 'a' },
     { alias: 'a', modelId: 'a' },
     { alias: 'b', modelId: 'b' },
+    { alias: 'smart', modelId: 'a' },
+  ]);
+});
+
+// The right rail previews this array verbatim, so direct-before-alias is the contract, not a
+// by-product of how the two sources happen to be concatenated.
+test('modelRoutes: a direct model comes before an alias', () => {
+  expect(
+    modelRoutes({
+      enabled: true,
+      models: ['direct', 'aliased'],
+      alias: { smart: { model: 'aliased', preserve: false } },
+    }),
+  ).toEqual([
+    { alias: 'direct', modelId: 'direct' },
+    { alias: 'smart', modelId: 'aliased' },
+  ]);
+});
+
+// A preserved self-alias is the only input where both sources produce the same route; the dedup has
+// to collapse it to one whichever source is emitted first.
+test('modelRoutes: a preserved self-alias stays a single route', () => {
+  expect(modelRoutes({ enabled: true, models: ['a'], alias: { a: { model: 'a', preserve: true } } })).toEqual([
+    { alias: 'a', modelId: 'a' },
   ]);
 });
 

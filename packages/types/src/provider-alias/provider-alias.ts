@@ -1,3 +1,4 @@
+import { uniqWith } from 'es-toolkit/array';
 import type { z } from 'zod';
 
 import { flattenAliasVariants, isAliasVariantsObject } from '../alias-variant';
@@ -158,14 +159,20 @@ export type ModelRoute = {
   readonly modelId: string;
 };
 
+/**
+ * Direct model ids first, then alias entries: this array's order is the client-facing listing order
+ * (`clientModels`, `/v1/models`, the editor's exposure preview), not an implementation detail.
+ * `uniqWith` keeps the first occurrence, so the dedup that used to skip the direct copy of a
+ * preserved self-alias (`x -> x`) now skips the alias copy — one route either way.
+ */
 export function modelRoutes(provider: RoutableModelSource): ModelRoute[] {
-  const routes = Object.entries(provider.alias ?? {}).map(([alias, config]) => ({ alias, modelId: config.model }));
-  for (const modelId of directModelIds(provider)) {
-    if (!routes.some((route) => route.alias === modelId && route.modelId === modelId)) {
-      routes.push({ alias: modelId, modelId });
-    }
-  }
-  return routes;
+  return uniqWith(
+    [
+      ...directModelIds(provider).map((modelId) => ({ alias: modelId, modelId })),
+      ...Object.entries(provider.alias ?? {}).map(([alias, config]) => ({ alias, modelId: config.model })),
+    ],
+    (left, right) => left.alias === right.alias && left.modelId === right.modelId,
+  );
 }
 
 export function directModelIds(provider: RoutableModelSource): string[] {

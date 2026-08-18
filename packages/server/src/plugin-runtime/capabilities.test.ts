@@ -142,7 +142,7 @@ test('plugin raw capability receives catalog metadata and rejects malformed tran
     protocol: ProviderProtocol.Anthropic,
   });
   expect(result.provider?.model?.targetProtocol?.(modelId)).toBe(ProviderProtocol.Anthropic);
-  expect(result.summary.clientModels).toEqual(['client', 'bad-resolver', 'bad-response']);
+  expect(result.summary.clientModels).toEqual(['bad-resolver', 'bad-response', 'client']);
   expect(() =>
     result.provider?.raw?.resolve({ protocol: ProviderProtocol.OpenAICompatible, modelId: 'bad-resolver' }),
   ).toThrow(PluginRawResolverError);

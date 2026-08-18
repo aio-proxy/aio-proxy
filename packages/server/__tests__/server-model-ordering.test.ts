@@ -70,13 +70,8 @@ describe('server routes', () => {
 
     expect(await response.json()).toEqual(
       expectedModelList([
-        expectedModel('claude-sonnet-4-6', 'high', 'Claude Sonnet 4.6', {
-          capabilities: testCapabilities,
-          created: 1_768_435_200,
-          createdAt: '2026-01-15T00:00:00.000Z',
-          maxInputTokens: 1_000_000,
-          maxTokens: 128_000,
-        }),
+        // `high` is tried first (weight 10) and lists its direct models before its aliases, so
+        // `shared` leads and the alias slug follows.
         // shared/gpt-only have no catalog limit.input (only context/output), so
         // max_input_tokens is null — the context window is never used as a fallback.
         expectedModel('shared', 'high', 'Shared Model', {
@@ -84,6 +79,13 @@ describe('server routes', () => {
           created: 1_768_435_200,
           createdAt: '2026-01-15T00:00:00.000Z',
           maxTokens: 8_000,
+        }),
+        expectedModel('claude-sonnet-4-6', 'high', 'Claude Sonnet 4.6', {
+          capabilities: testCapabilities,
+          created: 1_768_435_200,
+          createdAt: '2026-01-15T00:00:00.000Z',
+          maxInputTokens: 1_000_000,
+          maxTokens: 128_000,
         }),
         expectedModel('gpt-only', 'low', 'GPT Only', {
           capabilities: textOnlyCapabilities,

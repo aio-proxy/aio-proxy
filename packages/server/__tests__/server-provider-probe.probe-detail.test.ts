@@ -73,7 +73,7 @@ describe('server routes', () => {
         last_status: 'unknown',
         last_latency: null,
         protocol: ProviderProtocol.OpenAICompatible,
-        clientModels: ['gpt-alias', 'gpt-test'],
+        clientModels: ['gpt-test', 'gpt-alias'],
         hasApiKey: true,
         state: { status: 'ready' },
       },

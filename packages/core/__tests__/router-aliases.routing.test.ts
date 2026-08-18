@@ -37,10 +37,10 @@ describe('Router', () => {
     const router = new Router([provider]);
 
     expect(modelRoutes(provider)).toEqual([
+      { alias: 'untouched', modelId: 'untouched' },
       { alias: 'claude-opus-4-8', modelId: 'upstream-opus-48' },
       { alias: 'claude-opus-4-6', modelId: 'upstream-opus-46' },
       { alias: 'claude-sonnet-4-6', modelId: 'upstream-sonnet-46' },
-      { alias: 'untouched', modelId: 'untouched' },
     ]);
     expect(router.resolve('claude-opus-4-8')).toEqual([{ provider, modelId: 'upstream-opus-48' }]);
     expect(router.resolve('claude-sonnet-4-6', { effort: 'fast' })).toEqual([
@@ -64,8 +64,8 @@ describe('Router', () => {
     const router = new Router([provider]);
 
     expect(modelRoutes(provider)).toEqual([
-      { alias: 'old', modelId: 'new' },
       { alias: 'new', modelId: 'new' },
+      { alias: 'old', modelId: 'new' },
     ]);
     expect(router.resolve('old')).toEqual([{ provider, modelId: 'new' }]);
     expect(router.resolve('new')).toEqual([{ provider, modelId: 'new' }]);
