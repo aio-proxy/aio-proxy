@@ -565,7 +565,7 @@
           "type_array": "Array",
           "edit_json": "Edit JSON",
           "json_title": "Edit {type} JSON",
-          "json_description": "Applying replaces this rule's current value.",
+          "json_description": "Applying replaces this action's current value.",
           "json_apply": "Apply JSON",
           "placeholder_text": "Text value",
           "invalid_number": "Enter a valid number",

@@ -565,7 +565,7 @@
           "type_array": "配列",
           "edit_json": "JSON を編集",
           "json_title": "{type} JSON を編集",
-          "json_description": "適用すると、このルールの現在の値が置き換えられます。",
+          "json_description": "適用すると、このアクションの現在の値が置き換えられます。",
           "json_apply": "JSON を適用",
           "placeholder_text": "テキスト値",
           "invalid_number": "有効な数値を入力してください",

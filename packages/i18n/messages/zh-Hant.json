@@ -565,7 +565,7 @@
           "type_array": "陣列",
           "edit_json": "編輯 JSON",
           "json_title": "編輯{type} JSON",
-          "json_description": "套用後將取代此規則的目前值。",
+          "json_description": "套用後將取代此操作的目前值。",
           "json_apply": "套用 JSON",
           "placeholder_text": "文字值",
           "invalid_number": "請輸入有效數字",
