@@ -773,7 +773,7 @@
         "validate_action": "Test model request",
         "validate_pending": "Testing model request…",
         "validate_success": "Request succeeded · {model}",
-        "validate_failed": "Connection test failed ({code}). You can still save this provider.",
+        "validate_failed": "Request failed ({code}). You can still save this provider.",
         "validate_unavailable": "Add an enabled model to test this provider",
         "validate_invalid": "Complete the provider configuration before testing"
       },
