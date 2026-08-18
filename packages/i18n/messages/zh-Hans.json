@@ -526,10 +526,7 @@
           "remove": "删除规则 {index}",
           "move_up": "上移规则 {index}",
           "move_down": "下移规则 {index}",
-          "condition": "条件",
-          "when": "当",
           "then": "则",
-          "match_all": "匹配所有请求",
           "conditional_toggle": "仅在满足条件时执行",
           "always": "每次请求都会执行这条规则。"
         },

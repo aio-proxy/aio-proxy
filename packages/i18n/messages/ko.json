@@ -526,10 +526,7 @@
           "remove": "규칙 {index} 제거",
           "move_up": "규칙 {index} 위로 이동",
           "move_down": "규칙 {index} 아래로 이동",
-          "condition": "조건",
-          "when": "조건",
           "then": "실행",
-          "match_all": "모든 요청 일치",
           "conditional_toggle": "조건을 충족할 때만 실행",
           "always": "이 규칙은 모든 요청에 적용됩니다."
         },

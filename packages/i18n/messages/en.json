@@ -526,10 +526,7 @@
           "remove": "Remove rule {index}",
           "move_up": "Move rule {index} up",
           "move_down": "Move rule {index} down",
-          "condition": "Condition",
-          "when": "When",
           "then": "Then",
-          "match_all": "Match all requests",
           "conditional_toggle": "Only run when conditions match",
           "always": "This rule runs on every request."
         },

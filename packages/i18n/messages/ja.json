@@ -526,10 +526,7 @@
           "remove": "ルール {index} を削除",
           "move_up": "ルール {index} を上に移動",
           "move_down": "ルール {index} を下に移動",
-          "condition": "条件",
-          "when": "条件",
           "then": "実行",
-          "match_all": "すべてのリクエストに一致",
           "conditional_toggle": "条件を満たす場合のみ実行",
           "always": "このルールはすべてのリクエストで実行されます。"
         },
