@@ -197,7 +197,11 @@ test('gates applying JSON on a draft that parses to the selected type', async ()
   fireEvent.change(jsonDraft, { target: { value: '{}' } });
 
   expect(apply).toBeDisabled();
-  expect(within(drawer).getByRole('alert')).toHaveTextContent(/valid JSON array|有效的 JSON 数组/u);
+  const error = within(drawer).getByRole('alert');
+  expect(error).toHaveTextContent(/valid JSON array|有效的 JSON 数组/u);
+  // The field is named for what it holds, not for the drawer title, and points at its own error.
+  expect(jsonDraft).toHaveAccessibleName(/Value to set|设置值/u);
+  expect(jsonDraft).toHaveAttribute('aria-describedby', error.id);
 
   fireEvent.change(jsonDraft, { target: { value: '[1]' } });
   expect(apply).not.toBeDisabled();

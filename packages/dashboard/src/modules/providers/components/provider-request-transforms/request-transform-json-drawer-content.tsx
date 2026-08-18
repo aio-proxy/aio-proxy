@@ -8,7 +8,7 @@ import {
   DrawerTitle,
 } from '@aio-proxy/ui/components/drawer';
 import { Textarea } from '@aio-proxy/ui/components/textarea';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 
 import { parseCompositeDraft } from './request-transform-composite-draft';
 
@@ -28,6 +28,7 @@ export const RequestTransformJsonDrawerContent: React.FC<RequestTransformJsonDra
   onApply,
 }) => {
   const [draft, setDraft] = useState(initialDraft);
+  const errorId = useId();
   const parsed = parseCompositeDraft(type, draft);
   const title = m['dashboard.providers.transforms.value.json_title']({ type: typeLabel });
 
@@ -43,12 +44,13 @@ export const RequestTransformJsonDrawerContent: React.FC<RequestTransformJsonDra
           rows={22}
           className="h-full min-h-80 resize-none font-mono text-xs"
           data-testid="request-transform-json-draft"
-          aria-label={title}
+          aria-label={m['dashboard.providers.transforms.value.static_label']()}
           aria-invalid={parsed === undefined}
+          aria-describedby={parsed === undefined ? errorId : undefined}
           onChange={(event) => setDraft(event.target.value)}
         />
         {parsed === undefined ? (
-          <p role="alert" className="mt-2 text-sm text-destructive">
+          <p id={errorId} role="alert" className="mt-2 text-sm text-destructive">
             {type === 'object'
               ? m['dashboard.providers.transforms.value.invalid_object']()
               : m['dashboard.providers.transforms.value.invalid_array']()}
