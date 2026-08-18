@@ -529,7 +529,9 @@
           "condition": "Condition",
           "when": "When",
           "then": "Then",
-          "match_all": "Match all requests"
+          "match_all": "Match all requests",
+          "conditional_toggle": "Only run when conditions match",
+          "always": "This rule runs on every request."
         },
         "action": {
           "label": "Action {index}",

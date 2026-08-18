@@ -529,7 +529,9 @@
           "condition": "조건",
           "when": "조건",
           "then": "실행",
-          "match_all": "모든 요청 일치"
+          "match_all": "모든 요청 일치",
+          "conditional_toggle": "조건을 충족할 때만 실행",
+          "always": "이 규칙은 모든 요청에 적용됩니다."
         },
         "action": {
           "label": "작업 {index}",

@@ -529,7 +529,9 @@
           "condition": "條件",
           "when": "當",
           "then": "則",
-          "match_all": "符合所有請求"
+          "match_all": "符合所有請求",
+          "conditional_toggle": "僅在符合條件時執行",
+          "always": "每次請求都會執行這條規則。"
         },
         "action": {
           "label": "操作 {index}",
