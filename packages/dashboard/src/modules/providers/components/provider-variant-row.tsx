@@ -1,14 +1,7 @@
 import { m } from '@aio-proxy/i18n';
 import type { AliasSelectRow } from '@aio-proxy/types';
 import { Button } from '@aio-proxy/ui/components/button';
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@aio-proxy/ui/components/select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@aio-proxy/ui/components/select';
 import { Switch } from '@aio-proxy/ui/components/switch';
 import { ArrowRightIcon, Trash2Icon } from 'lucide-react';
 import type { FC } from 'react';
@@ -80,13 +73,11 @@ export const ProviderVariantRow: FC<ProviderVariantRowProps> = ({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectGroup>
-                {models.map((model) => (
-                  <SelectItem key={model} value={model}>
-                    {model}
-                  </SelectItem>
-                ))}
-              </SelectGroup>
+              {models.map((model) => (
+                <SelectItem key={model} value={model}>
+                  {model}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
           <Button
