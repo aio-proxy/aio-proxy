@@ -24,7 +24,8 @@ export async function registerOmp(pi: ExtensionAPI, deps: OmpDeps): Promise<void
   let context: ExtensionContext | undefined;
   let generation = 0;
   let timerStarted = false;
-  let pendingCredentialRecovery = false;
+  type PendingRecovery = false | 'missing-key' | 'unauthorized';
+  let pendingRecovery: PendingRecovery = false;
   let credentialRecoveryInProgress = false;
   type CatalogFlight = {
     readonly generation: number;
@@ -33,17 +34,21 @@ export async function registerOmp(pi: ExtensionAPI, deps: OmpDeps): Promise<void
   const inflight = new Map<string | undefined, CatalogFlight>();
 
   const loginRequired = (): Error => new Error('aio-proxy login required');
-  const forceRefreshCredential = async (activeContext: ExtensionContext): Promise<string> => {
+  const resolveHostCredential = async (activeContext: ExtensionContext, forceRefresh: boolean): Promise<string> => {
     try {
-      const refreshed = await activeContext.modelRegistry.getApiKeyForProvider(PROVIDER_ID, undefined, {
-        forceRefresh: true,
-      });
-      if (refreshed === undefined) throw loginRequired();
-      return refreshed;
+      const key = await activeContext.modelRegistry.getApiKeyForProvider(
+        PROVIDER_ID,
+        undefined,
+        forceRefresh ? { forceRefresh: true } : undefined,
+      );
+      if (key === undefined) throw loginRequired();
+      return key;
     } catch {
       throw loginRequired();
     }
   };
+  const forceRefreshCredential = (activeContext: ExtensionContext): Promise<string> =>
+    resolveHostCredential(activeContext, true);
 
   const publishOrThrow = (result: Awaited<ReturnType<typeof readPiFamilyModels>>): ProviderModelConfig[] => {
     if (result.source === 'missing') throw new Error(piFamilyUnavailableMessage(result.error));
@@ -58,28 +63,26 @@ export async function registerOmp(pi: ExtensionAPI, deps: OmpDeps): Promise<void
     if (apiKey === undefined && startContext === undefined) {
       const lkg = await deps.readPiFamilyModels(managed, undefined);
       if (lkg.source === 'missing') throw loginRequired();
-      if (stillCurrent()) pendingCredentialRecovery = true;
+      if (stillCurrent()) pendingRecovery = 'missing-key';
       return lkg.models;
     }
 
-    let usedForcedKey = false;
     let key = apiKey;
     if (key === undefined) {
-      key = await forceRefreshCredential(startContext!);
-      usedForcedKey = true;
+      key = await resolveHostCredential(startContext!, false);
     }
     const first = await deps.readPiFamilyModels(managed, key);
     if (first.error !== 'unauthorized') return publishOrThrow(first);
     if (startContext === undefined) {
       if (first.source === 'missing') throw loginRequired();
-      if (stillCurrent()) pendingCredentialRecovery = true;
+      if (stillCurrent()) pendingRecovery = 'unauthorized';
       return first.models;
     }
     if (!stillCurrent()) {
       if (first.source === 'missing') throw loginRequired();
       return first.models;
     }
-    if (usedForcedKey || credentialRecoveryInProgress) throw loginRequired();
+    if (credentialRecoveryInProgress) throw loginRequired();
     const refreshed = await forceRefreshCredential(startContext);
     const second = await deps.readPiFamilyModels(managed, refreshed);
     if (second.error === 'unauthorized') throw loginRequired();
@@ -122,12 +125,14 @@ export async function registerOmp(pi: ExtensionAPI, deps: OmpDeps): Promise<void
   pi.on('session_start', async (_event, nextContext: ExtensionContext) => {
     const startGeneration = ++generation;
     context = nextContext;
-    const recover = pendingCredentialRecovery;
-    pendingCredentialRecovery = false;
-    credentialRecoveryInProgress = recover;
+    const recover = pendingRecovery;
+    pendingRecovery = false;
+    credentialRecoveryInProgress = recover !== false;
     try {
-      if (recover) {
-        await forceRefreshCredential(nextContext);
+      if (recover !== false) {
+        // Missing-key LKG recovery must reuse a peer-rotated host credential.
+        // Only a pre-session 401 may force-refresh an unexpired token.
+        await resolveHostCredential(nextContext, recover === 'unauthorized');
         if (generation !== startGeneration || context !== nextContext) return;
         await nextContext.modelRegistry.refreshRuntimeProviders('online');
       } else {

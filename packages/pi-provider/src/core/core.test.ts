@@ -202,6 +202,13 @@ test('overlapping refresh shares one exchange and releases it after settlement',
   const rotated = { access: 'aio_agent_at_v1_new', refresh: 'aio_agent_rt_v1_new', expires: 902_000 };
   await expect(Promise.all([first, second])).resolves.toEqual([rotated, rotated]);
   await expect(
+    refreshPiFamilyCredential(marker, rotated, {
+      now: () => 3_000,
+      refreshAgentCredential: exchange,
+    }),
+  ).resolves.toEqual(rotated);
+  expect(exchange).toHaveBeenCalledTimes(1);
+  await expect(
     refreshPiFamilyCredential(marker, credential, {
       now: () => 3_000,
       refreshAgentCredential: exchange,

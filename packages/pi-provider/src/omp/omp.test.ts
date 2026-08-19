@@ -112,7 +112,8 @@ test('pre-session undefined key serves LKG without network and marks pending rec
   });
 
   expect(order).toEqual(['credential', 'catalog']);
-  expect(getApiKeyForProvider).toHaveBeenCalledWith('aio-proxy', undefined, { forceRefresh: true });
+  expect(getApiKeyForProvider).toHaveBeenCalledWith('aio-proxy', undefined, undefined);
+  expect(getApiKeyForProvider).not.toHaveBeenCalledWith('aio-proxy', undefined, { forceRefresh: true });
   expect(f.catalogAccesses).toEqual([undefined, 'aio_agent_at_v1_new']);
 });
 
@@ -124,7 +125,7 @@ test('pre-session undefined key without LKG throws aio-proxy login required', as
   expect(f.catalogAccesses).toEqual([undefined]);
 });
 
-test('active-context undefined key force-refreshes and retries only with the host key', async () => {
+test('active-context undefined key resolves host auth without force-refresh', async () => {
   const f = await fixture({
     catalogResults: [{ models: fModels('fresh'), source: 'network', status: 'fresh' }],
   });
@@ -134,7 +135,8 @@ test('active-context undefined key force-refreshes and retries only with the hos
     modelRegistry: { getApiKeyForProvider, refreshRuntimeProviders: mock(async () => {}) },
   });
   await expect(f.provider.fetchDynamicModels!(undefined)).resolves.toEqual([expect.objectContaining({ id: 'fresh' })]);
-  expect(getApiKeyForProvider).toHaveBeenCalledWith('aio-proxy', undefined, { forceRefresh: true });
+  expect(getApiKeyForProvider).toHaveBeenCalledWith('aio-proxy', undefined, undefined);
+  expect(getApiKeyForProvider).not.toHaveBeenCalledWith('aio-proxy', undefined, { forceRefresh: true });
   expect(f.catalogAccesses).toEqual(['aio_agent_at_v1_new']);
 });
 
@@ -177,6 +179,7 @@ test('pre-session 401 serves LKG, then refreshes auth before the online republis
 
   expect(order).toEqual(['credential', 'catalog']);
   expect(getApiKeyForProvider).toHaveBeenCalledTimes(1);
+  expect(getApiKeyForProvider).toHaveBeenCalledWith('aio-proxy', undefined, { forceRefresh: true });
   expect(f.catalogAccesses).toEqual(['aio_agent_at_v1_old', 'aio_agent_at_v1_new']);
   expect(f.catalogAccesses).not.toContain(undefined);
 });
@@ -340,7 +343,8 @@ test('active-session undefined catalog does not reuse a pending pre-session unde
   while (refreshRuntimeProviders.mock.calls.length === 0) await Promise.resolve();
   await Promise.resolve();
   await Promise.resolve();
-  expect(getApiKeyForProvider).toHaveBeenCalledWith('aio-proxy', undefined, { forceRefresh: true });
+  expect(getApiKeyForProvider).toHaveBeenCalledWith('aio-proxy', undefined, undefined);
+  expect(getApiKeyForProvider).not.toHaveBeenCalledWith('aio-proxy', undefined, { forceRefresh: true });
   expect(f.catalogAccesses).toEqual([undefined, 'aio_agent_at_v1_new']);
   f.releaseCatalog();
   await starting;
