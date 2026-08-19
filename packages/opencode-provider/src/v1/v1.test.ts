@@ -97,7 +97,8 @@ test('two catalog 401 responses preserve LKG and require login after one rotatio
     refresh_token: 'aio_agent_rt_v1_new',
     expires_in: 900,
   });
-  await expect((await f.server()).auth!.loader!(f.getAuth, f.provider)).rejects.toThrow('aio-proxy login required');
+  const options = await (await f.server()).auth!.loader!(f.getAuth, f.provider);
+  await expect(options.fetch('http://127.0.0.1:9317/v1/chat/completions')).rejects.toThrow('aio-proxy login required');
   expect(f.refreshCalls).toBe(1);
   expect(f.catalogRefreshCalls).toBe(2);
   expect(f.readState()).toMatchObject({ status: 'stale', lastError: 'unauthorized' });
@@ -108,9 +109,23 @@ test('catalog 401 plus refresh invalid_grant preserves LKG and requires login', 
   const f = await fixture({ lkg: catalog() });
   f.catalogResponses.push(401);
   f.refresh.reject(new AgentRuntimeError('invalid_grant'));
-  await expect((await f.server()).auth!.loader!(f.getAuth, f.provider)).rejects.toThrow('aio-proxy login required');
+  const options = await (await f.server()).auth!.loader!(f.getAuth, f.provider);
+  await expect(options.fetch('http://127.0.0.1:9317/v1/chat/completions')).rejects.toThrow('aio-proxy login required');
   expect(f.refreshCalls).toBe(1);
   expect(f.readState()).toMatchObject({ status: 'stale', lastError: 'unauthorized' });
+  expect(f.anonymousCalls).toBe(0);
+});
+
+test('expired invalid_grant leaves the loader usable and fetch throws aio-proxy login required', async () => {
+  const f = await fixture({
+    lkg: catalog(),
+    auth: { type: 'oauth', access: 'old', refresh: 'aio_agent_rt_v1_old', expires: 999 },
+  });
+  f.setNow(1_000);
+  f.refresh.reject(new AgentRuntimeError('invalid_grant'));
+  const options = await (await f.server()).auth!.loader!(f.getAuth, f.provider);
+  await expect(options.fetch('http://127.0.0.1:9317/v1/chat/completions')).rejects.toThrow('aio-proxy login required');
+  expect(f.readState()).toMatchObject({ status: 'fresh', lastError: null });
   expect(f.anonymousCalls).toBe(0);
 });
 

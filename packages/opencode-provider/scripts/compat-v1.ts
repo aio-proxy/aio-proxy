@@ -8,6 +8,7 @@ const INITIAL_ACCESS = `aio_agent_at_v1_${'a'.repeat(43)}`;
 const INITIAL_REFRESH = `aio_agent_rt_v1_${'b'.repeat(43)}`;
 const ROTATED_ACCESS = `aio_agent_at_v1_${'c'.repeat(43)}`;
 const ROTATED_REFRESH = `aio_agent_rt_v1_${'d'.repeat(43)}`;
+const LOGIN_REQUIRED = 'aio-proxy login required';
 const versions = (process.env.OPENCODE_COMPAT_VERSIONS ?? '1.17.10,1.18.18')
   .split(',')
   .map((value) => value.trim())
@@ -23,6 +24,10 @@ type Stats = {
 
 function check(value: unknown, message: string): asserts value {
   if (!value) throw new Error(message);
+}
+
+function outputIncludes(result: CommandResult, needle: string): boolean {
+  return result.stdout.includes(needle) || result.stderr.includes(needle);
 }
 
 function startFakeProxy(options: { readonly rejectConsumedRefresh?: boolean } = {}) {
@@ -170,7 +175,7 @@ async function runCommandRaw(version: string, root: string, args: string[]): Pro
 
 async function runCommand(version: string, root: string, args: string[]): Promise<CommandResult> {
   const result = await runCommandRaw(version, root, args);
-  check(result.exitCode === 0, `${version} ${args.join(' ')} failed (${result.exitCode})\n${result.stderr}`);
+  check(result.exitCode === 0, `${version} ${args.join(' ')} failed (${result.exitCode})`);
   return result;
 }
 
@@ -225,7 +230,7 @@ async function runVersion(version: string): Promise<void> {
       runCommand(version, root, ['run', '--model', 'aio-proxy/compat-model', 'compat']),
     ]);
     for (const inference of inferences) {
-      check(`${inference.stdout}\n${inference.stderr}`.includes('compat-ok'), `${version} did not return compat-ok`);
+      check(outputIncludes(inference, 'compat-ok'), `${version} did not return compat-ok`);
     }
     const stats = proxy.stats();
     check(
@@ -283,21 +288,9 @@ async function runReceivePersistFailure(version: string): Promise<void> {
       unchanged['aio-proxy']?.refresh === INITIAL_REFRESH,
       `${version} replaced the old refresh credential before persistence succeeded`,
     );
-    // Default `run` wraps plugin failures as UnknownError; --print-logs is the
-    // public V1 switch that surfaces the re-login diagnostic.
-    const relaunch = await runCommandRaw(version, root, [
-      'run',
-      '--print-logs',
-      '--model',
-      'aio-proxy/compat-model',
-      'compat',
-    ]);
-    const diagnostic = `${relaunch.stdout}\n${relaunch.stderr}`;
+    const relaunch = await runCommandRaw(version, root, ['run', '--model', 'aio-proxy/compat-model', 'compat']);
     check(relaunch.exitCode !== 0, `${version} silently reused a consumed refresh credential`);
-    check(
-      /invalid_grant|log[ -]?in|required authentication/iu.test(diagnostic),
-      `${version} did not emit a re-login diagnostic after invalid_grant:\n${diagnostic}`,
-    );
+    check(outputIncludes(relaunch, LOGIN_REQUIRED), `${version} default run did not emit ${LOGIN_REQUIRED}`);
 
     const stats = proxy.stats();
     check(stats.refreshExchanges === 1, `${version} created ${stats.refreshExchanges} rotated pairs`);

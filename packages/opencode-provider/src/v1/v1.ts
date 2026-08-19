@@ -15,7 +15,9 @@ import type { Config, Hooks, PluginInput, PluginModule } from '@opencode-ai/plug
 import { openCodeCatalogDigest, toOpenCodeModels } from '../catalog';
 
 const PROVIDER_ID = 'aio-proxy';
-const loginRequired = (): Error => new Error('aio-proxy login required');
+const LOGIN_REQUIRED = 'aio-proxy login required';
+const loginRequired = (): Error => new Error(LOGIN_REQUIRED);
+const isLoginRequired = (error: unknown): boolean => error instanceof Error && error.message === LOGIN_REQUIRED;
 type AuthLoader = NonNullable<NonNullable<Hooks['auth']>['loader']>;
 type GetAuth = Parameters<AuthLoader>[0];
 type Auth = Awaited<ReturnType<GetAuth>>;
@@ -51,10 +53,12 @@ export async function createOpenCodeV1Server(input: PluginInput, deps: OpenCodeV
   const managed = await deps.readManagedInstallation(import.meta.url, 'opencode');
   let catalog = await deps.readLastKnownCatalog(managed.statePath, 'opencode');
   let timer: ReturnType<typeof globalThis.setInterval> | undefined;
+  let loginRequiredError: Error | undefined;
+  const requireLogin = (): Error => (loginRequiredError ??= loginRequired());
 
   const rotate = createSingleFlight(async (getAuth: GetAuth): Promise<OAuthAuth> => {
     const current = await getAuth();
-    if (current.type !== 'oauth') throw new Error('aio-proxy login required');
+    if (current.type !== 'oauth') throw requireLogin();
     let token: Awaited<ReturnType<typeof refreshAgentCredential>>;
     try {
       token = await deps.refreshAgentCredential(managed.marker, current.refresh, {
@@ -62,7 +66,7 @@ export async function createOpenCodeV1Server(input: PluginInput, deps: OpenCodeV
         now: deps.now,
       });
     } catch (error) {
-      if (error instanceof AgentRuntimeError && error.code === 'invalid_grant') throw loginRequired();
+      if (error instanceof AgentRuntimeError && error.code === 'invalid_grant') throw requireLogin();
       throw error;
     }
     const next: OAuthAuth = {
@@ -76,15 +80,16 @@ export async function createOpenCodeV1Server(input: PluginInput, deps: OpenCodeV
   });
 
   async function resolveAccess(getAuth: GetAuth): Promise<string> {
+    if (loginRequiredError !== undefined) throw loginRequiredError;
     const current = await getAuth();
-    if (current.type !== 'oauth') throw new Error('aio-proxy login required');
+    if (current.type !== 'oauth') throw requireLogin();
     if (current.access !== '' && current.expires > deps.now()) return current.access;
     return (await rotate(getAuth)).access;
   }
 
   async function recoverUnauthorized(getAuth: GetAuth, rejectedAccess: string): Promise<OAuthAuth> {
     const current = await getAuth();
-    if (current.type !== 'oauth') throw new Error('aio-proxy login required');
+    if (current.type !== 'oauth') throw requireLogin();
     if (current.access !== rejectedAccess && current.expires > deps.now()) return current;
     return rotate(getAuth);
   }
@@ -132,13 +137,19 @@ export async function createOpenCodeV1Server(input: PluginInput, deps: OpenCodeV
     if (first.error !== 'unauthorized') return;
     const next = await recoverUnauthorized(getAuth, access);
     const second = await refreshWithAccess(next.access);
-    if (second.error === 'unauthorized') throw loginRequired();
+    if (second.error === 'unauthorized') throw requireLogin();
   }
 
   const refreshCatalogFromStore = createSingleFlight(refreshFromStoredCredential);
 
   async function createLoader(getAuth: GetAuth): Promise<Record<string, unknown>> {
-    await refreshCatalogFromStore(getAuth);
+    try {
+      await refreshCatalogFromStore(getAuth);
+    } catch (error) {
+      // Loader init is wrapped as a generic host UnknownError. Keep the
+      // adapter usable so request-time fetch can throw the public sentence.
+      if (!isLoginRequired(error)) throw error;
+    }
     timer ??= deps.setInterval(() => {
       return refreshCatalogFromStore(getAuth).catch(() => {
         console.warn('[aio-proxy] background catalog refresh failed');
