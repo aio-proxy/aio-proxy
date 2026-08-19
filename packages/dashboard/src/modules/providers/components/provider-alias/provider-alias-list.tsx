@@ -1,7 +1,4 @@
 import { m } from '@aio-proxy/i18n';
-import { Button } from '@aio-proxy/ui/components/button';
-import { Empty, EmptyContent, EmptyHeader, EmptyMedia, EmptyTitle } from '@aio-proxy/ui/components/empty';
-import { PlusIcon, WaypointsIcon } from 'lucide-react';
 import type { FC } from 'react';
 
 import type { AliasDraft, AliasEditorIssue, AliasEditResult, ProviderAlias } from '../../lib/alias-editor';
@@ -15,7 +12,6 @@ interface ProviderAliasListProps {
   readonly aliasDraftIds: readonly string[];
   readonly aliasIds: Readonly<Record<string, string>>;
   readonly onAliasChange: (alias: ProviderAlias) => void;
-  readonly onAddAliasDraft: () => void;
   readonly onCommitAliasDraft: (id: string, draft: AliasDraft) => AliasEditResult;
   readonly onDiscardDraft: (id: string) => void;
   readonly onRenameAlias: (alias: string, name: string) => AliasEditResult;
@@ -30,7 +26,6 @@ export const ProviderAliasList: FC<ProviderAliasListProps> = ({
   aliasDraftIds,
   aliasIds,
   onAliasChange,
-  onAddAliasDraft,
   onCommitAliasDraft,
   onDiscardDraft,
   onRenameAlias,
@@ -39,25 +34,14 @@ export const ProviderAliasList: FC<ProviderAliasListProps> = ({
 }) => {
   if (Object.keys(alias).length === 0 && aliasDraftIds.length === 0) {
     return (
-      <Empty className="border">
-        <EmptyHeader>
-          <EmptyMedia variant="icon">
-            <WaypointsIcon />
-          </EmptyMedia>
-          <EmptyTitle>{m['dashboard.providers.form.aliases_empty']()}</EmptyTitle>
-        </EmptyHeader>
-        <EmptyContent>
-          <Button type="button" disabled={models.length === 0} onClick={onAddAliasDraft}>
-            <PlusIcon data-icon="inline-start" />
-            {m['dashboard.providers.form.add_alias']()}
-          </Button>
-        </EmptyContent>
-      </Empty>
+      <p className="rounded-xl bg-muted/40 px-3 py-2.5 text-xs text-muted-foreground">
+        {m['dashboard.providers.form.aliases_empty']()}
+      </p>
     );
   }
 
   return (
-    <>
+    <div className="space-y-2">
       {Object.entries(alias).map(([aliasName, config]) => (
         <ProviderAliasCard
           key={aliasIds[aliasName] ?? aliasName}
@@ -81,6 +65,6 @@ export const ProviderAliasList: FC<ProviderAliasListProps> = ({
           onCommit={(draft) => onCommitAliasDraft(id, draft)}
         />
       ))}
-    </>
+    </div>
   );
 };

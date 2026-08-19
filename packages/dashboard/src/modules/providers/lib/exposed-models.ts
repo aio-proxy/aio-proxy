@@ -1,4 +1,4 @@
-/** Empty whitelist means “expose the discovered catalog”, matching alias `targetOptions`. */
+/** Empty whitelist means “expose the discovered catalog” at runtime. */
 export const exposedModels = (
   models: readonly string[],
   candidates: readonly string[] | undefined,

@@ -19,15 +19,17 @@ export const providersQueryOptions = () =>
     },
   });
 
+export const fetchProviderEditView = async (id: string) => {
+  const response = await dashboardClient.dashboard.api.providers[':id']['edit-view'].$get({
+    param: { id },
+  });
+  return response.json();
+};
+
 export const providerEditViewQueryOptions = (id: string) =>
   queryOptions({
     queryKey: queryKeys.providerEditView(id),
-    queryFn: async () => {
-      const response = await dashboardClient.dashboard.api.providers[':id']['edit-view'].$get({
-        param: { id },
-      });
-      return response.json();
-    },
+    queryFn: () => fetchProviderEditView(id),
   });
 
 export const createProviderMutationFn = async (

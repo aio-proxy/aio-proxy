@@ -11,13 +11,20 @@ import type { ProviderEditorShape } from '../../../hooks/use-provider-editor-for
 import { PROVIDER_MODELS_PLACEHOLDER, ProviderFormMode } from '../../../lib/constants';
 import { ModelsSection } from './models-section';
 
-const mocks = rs.hoisted(() => ({ fetchCatalog: rs.fn(), slugs: rs.fn() }));
+const mocks = rs.hoisted(() => ({ fetchCatalog: rs.fn(), fetchEditView: rs.fn(), slugs: rs.fn() }));
 
 // Only the service boundary is mocked. `@tanstack/react-query` stays real: a stubbed `useMutation`
 // whose `mutate` never resolves makes every catalog assertion pass regardless of the button.
 rs.mock('../../../services/provider-draft', () => ({
   fetchProviderDraftCatalog: mocks.fetchCatalog,
   testProviderDraftModel: rs.fn(),
+}));
+rs.mock('../../../services/providers-service', () => ({
+  fetchProviderEditView: mocks.fetchEditView,
+  providerEditViewQueryOptions: (id: string) => ({
+    queryKey: ['providers', id, 'edit-view'],
+    queryFn: () => mocks.fetchEditView(id),
+  }),
 }));
 rs.mock('../../../services/models-dev-service', () => ({
   modelsDevSlugsQueryOptions: () => ({ queryKey: ['models-dev-slugs'], queryFn: mocks.slugs }),
@@ -41,9 +48,10 @@ interface HarnessProps {
   readonly kind: ProviderKind;
   readonly initial: Partial<ProviderEditorShape>;
   readonly candidates?: readonly string[] | undefined;
+  readonly persistedProviderId?: string | undefined;
 }
 
-const Harness: React.FC<HarnessProps> = ({ kind, initial, candidates }) => {
+const Harness: React.FC<HarnessProps> = ({ kind, initial, candidates, persistedProviderId }) => {
   const form = useProviderEditorForm({ kind, initial });
   section = form;
   return (
@@ -51,6 +59,7 @@ const Harness: React.FC<HarnessProps> = ({ kind, initial, candidates }) => {
       form={form}
       kind={kind}
       mode={ProviderFormMode.Edit}
+      persistedProviderId={persistedProviderId}
       candidates={candidates}
       summary={{ status: 'ok', hint: '' }}
     />
@@ -78,6 +87,7 @@ const apiInitial = (models: readonly string[], metadata?: Record<string, Record<
 
 beforeEach(() => {
   mocks.fetchCatalog.mockReset();
+  mocks.fetchEditView.mockReset();
   mocks.slugs.mockReset();
   mocks.slugs.mockResolvedValue({ slugs: ['openai/gpt-5', 'anthropic/claude-opus-4'] });
   queryClient.clear();
@@ -104,19 +114,14 @@ describe('ModelsSection', () => {
     expect(empty).toHaveTextContent(m['dashboard.providers.form.models_empty_description']());
   });
 
-  // "This provider has no models" and "your search found nothing" are different problems with
-  // different exits. One shared string passes every class and testid assertion, so this pins the copy.
-  test('a filter matching nothing reads differently from having no models at all', () => {
+  test('a filter matching nothing keeps the list and does not swap in the empty card', () => {
     renderSection({ kind: ProviderKind.Api, initial: apiInitial(['model-a']) });
 
     fireEvent.change(screen.getByTestId('models-filter'), { target: { value: 'no-such-model' } });
 
-    const noMatches = screen.getByTestId('models-no-matches');
-    expect(noMatches).toHaveTextContent(m['dashboard.providers.form.models_filter_no_matches']());
-    expect(noMatches.textContent ?? '').not.toContain(m['dashboard.providers.form.models_empty_title']());
-    expect(noMatches.textContent ?? '').not.toContain(m['dashboard.providers.form.models_empty_description']());
-    // The provider does have models, so the no-models card must stay away.
+    expect(screen.getByTestId('models-rows').children).toHaveLength(0);
     expect(screen.queryByTestId('models-empty')).toBeNull();
+    expect(screen.queryByText(m['dashboard.providers.form.models_filter_no_matches']())).toBeNull();
   });
 
   // A class assertion cannot see the htmlFor binding; only a click on the id can.
@@ -159,7 +164,7 @@ describe('ModelsSection', () => {
     expect(header).toContainElement(screen.getByRole('heading', { level: 2 }));
   });
 
-  test('manual add appends a row and writes it to the form', async () => {
+  test('manual add prepends a row and writes it to the form', async () => {
     renderSection({ kind: ProviderKind.Api, initial: apiInitial(['model-a']) });
 
     const input = screen.getByLabelText(m['dashboard.providers.editor.models_manual_add']());
@@ -167,7 +172,8 @@ describe('ModelsSection', () => {
     fireEvent.keyDown(input, { key: 'Enter' });
 
     await waitFor(() => expect(screen.getByTestId('model-row-model-z')).toBeInTheDocument());
-    expect(section.state.values.models).toEqual(['model-a', 'model-z']);
+    expect(section.state.values.models).toEqual(['model-z', 'model-a']);
+    expect(screen.getByTestId('models-rows').firstElementChild).toHaveAttribute('data-testid', 'model-row-model-z');
   });
 
   test('removing a row keeps metadata for models outside the whitelist', async () => {
@@ -183,17 +189,16 @@ describe('ModelsSection', () => {
     expect(section.state.values.metadata).toEqual({ 'alias-only': { extend: 'openai/gpt-5' } });
   });
 
-  test('an oauth provider with an empty whitelist reports the discovered count, substituted', () => {
+  test('an oauth provider with an empty whitelist counts every discovered row as enabled', () => {
     renderSection({
       kind: ProviderKind.OAuth,
       initial: { kind: ProviderKind.OAuth, id: 'oauth-provider', models: [] },
       candidates: ['disc-a', 'disc-b', 'disc-c'],
     });
 
-    const count = screen.getByTestId('models-count');
-    // The number, not the wording: an unsubstituted `{count}` is the regression this pins.
-    expect(count).toHaveTextContent(/\b3\b/u);
-    expect(count.textContent ?? '').not.toContain('{count}');
+    expect(screen.getByTestId('models-count')).toHaveTextContent(
+      m['dashboard.providers.editor.models_count']({ enabled: 3, total: 3 }),
+    );
   });
 
   // An empty oauth whitelist means "expose the whole discovered catalog" to the runtime
@@ -217,17 +222,12 @@ describe('ModelsSection', () => {
     await waitFor(() => expect(section.state.values.models).toEqual(['disc-b', 'disc-c']));
   });
 
-  test('a whitelisted model missing from the discovered catalog is called out as stale', () => {
-    renderSection({
-      kind: ProviderKind.OAuth,
-      initial: { kind: ProviderKind.OAuth, id: 'oauth-provider', models: ['gone', 'disc-a'] },
-      candidates: ['disc-a'],
-    });
+  test('a row without a discovered catalog still has a checkbox and a remove control', () => {
+    renderSection({ kind: ProviderKind.Api, initial: apiInitial(['model-a']) });
 
-    const stale = within(screen.getByTestId('model-row-gone')).getByTestId('model-row-stale');
-    expect(stale).toHaveTextContent(/gone/u);
-    expect(stale.textContent ?? '').not.toContain('{model}');
-    expect(within(screen.getByTestId('model-row-disc-a')).queryByTestId('model-row-stale')).toBeNull();
+    const row = screen.getByTestId('model-row-model-a');
+    expect(within(row).getByRole('checkbox')).toBeChecked();
+    expect(within(row).getByTestId('model-row-remove')).toBeInTheDocument();
   });
 
   test('the metadata visual tab merges over fields it cannot edit instead of replacing them', async () => {
@@ -400,36 +400,27 @@ describe('ModelsSection', () => {
   // The placeholder is a comma-separated pair, and the box used to take the whole string as a single
   // id — so a user following the field's own hint got one model literally named `gpt-5-mini, gpt-5`,
   // rendered as a normal row and written to config with no validation and no error.
-  test('the comma-separated format the placeholder promises adds one model per id', async () => {
-    renderSection({ kind: ProviderKind.Api, initial: apiInitial([]) });
+  test('comma-separated ids in the manual box become one row each, newest first', async () => {
+    renderSection({ kind: ProviderKind.Api, initial: apiInitial(['kept']) });
 
     const input = screen.getByLabelText(m['dashboard.providers.editor.models_manual_add']());
-    fireEvent.paste(input, { clipboardData: { getData: () => PROVIDER_MODELS_PLACEHOLDER } });
+    fireEvent.change(input, { target: { value: PROVIDER_MODELS_PLACEHOLDER } });
+    fireEvent.click(screen.getByRole('button', { name: m['dashboard.providers.form.models_manual_submit']() }));
 
-    await waitFor(() => expect(section.state.values.models).toEqual(['gpt-5-mini', 'gpt-5']));
-    // Typing the separator commits the id in front of it, the other half of the same hint.
-    fireEvent.change(input, { target: { value: 'gpt-5-nano' } });
-    fireEvent.keyDown(input, { key: ',' });
-
-    await waitFor(() => expect(section.state.values.models).toEqual(['gpt-5-mini', 'gpt-5', 'gpt-5-nano']));
+    await waitFor(() => expect(section.state.values.models).toEqual(['gpt-5-mini', 'gpt-5', 'kept']));
     expect(screen.queryByTestId(`model-row-${PROVIDER_MODELS_PLACEHOLDER}`)).toBeNull();
   });
 
-  // The label and the Add button rendered the same words, and retyping an existing id left the text
-  // sitting in the box with nothing happening at all.
-  test('the manual-add field labels its own control once, and a duplicate id clears the box', async () => {
-    renderSection({ kind: ProviderKind.Api, initial: apiInitial(['model-a']) });
+  test('retyping an already-listed id clears the box and does not move the row', async () => {
+    renderSection({ kind: ProviderKind.Api, initial: apiInitial(['model-a', 'model-b']) });
 
-    const label = m['dashboard.providers.editor.models_manual_add']();
-    const input = screen.getByLabelText(label) as HTMLInputElement;
-    expect(screen.getAllByText(label)).toHaveLength(1);
-
-    fireEvent.change(input, { target: { value: 'model-a' } });
+    const input = screen.getByLabelText(m['dashboard.providers.editor.models_manual_add']()) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: 'model-b' } });
     fireEvent.keyDown(input, { key: 'Enter' });
 
     await waitFor(() => expect(input.value).toBe(''));
-    expect(section.state.values.models).toEqual(['model-a']);
-    expect(screen.getByTestId('models-rows').children).toHaveLength(1);
+    expect(section.state.values.models).toEqual(['model-a', 'model-b']);
+    expect(screen.getByTestId('models-rows').children).toHaveLength(2);
   });
 
   // The section's primary action, and nothing pinned it end to end: the loaded catalog has to reach
@@ -539,15 +530,13 @@ describe('ModelsSection', () => {
   // row is the surface that matters: `ProviderAliasConfigFields` only renders for an already-named
   // alias, so a fixture with an existing `alias` entry never mounts the draft and would pass green
   // while the authoring path stays broken.
-  test('an empty whitelist offers the discovered catalog as alias targets', async () => {
+  test('an empty whitelist offers no alias targets', () => {
     renderSection({ kind: ProviderKind.Api, initial: apiInitial([]), candidates: ['disc-a', 'disc-b'] });
 
-    fireEvent.click(screen.getByRole('button', { name: /Add Alias|添加别名/u }));
-
-    expect(await targetOptions()).toEqual(['disc-a', 'disc-b']);
+    expect(screen.getByRole('button', { name: /Add Alias|添加别名/u })).toBeDisabled();
   });
 
-  test('a non-empty whitelist offers only the whitelist', async () => {
+  test('alias targets are the enabled models, not the rest of the catalog', async () => {
     renderSection({
       kind: ProviderKind.Api,
       initial: apiInitial(['model-a']),
@@ -573,18 +562,112 @@ describe('ModelsSection', () => {
     expect(within(card).getByLabelText(/Target Model|目标/u)).not.toHaveAttribute('aria-invalid', 'true');
   });
 
-  // Empty-state Add lives in ProviderAliasList, not the secondary button ModelAliases gates. After the
-  // top-level substitution, `models` *is* targetOptions: no catalog means no picker options, so the
-  // button must stay disabled; a loaded catalog still authorizes alias-only.
-  test('empty-state Add Alias is disabled when target options are empty', () => {
+  test('Add Alias stays on screen when there are no aliases, and is disabled without enabled models', () => {
     renderSection({ kind: ProviderKind.Api, initial: apiInitial([]) });
 
     expect(screen.getByRole('button', { name: /Add Alias|添加别名/u })).toBeDisabled();
+    expect(screen.getByText(m['dashboard.providers.form.aliases_empty']())).toBeInTheDocument();
   });
 
-  test('empty-state Add Alias is enabled when the catalog fills target options', () => {
-    renderSection({ kind: ProviderKind.Api, initial: apiInitial([]), candidates: ['disc-a'] });
+  test('Add Alias is enabled once at least one model is enabled', () => {
+    renderSection({ kind: ProviderKind.Api, initial: apiInitial(['model-a']) });
 
     expect(screen.getByRole('button', { name: /Add Alias|添加别名/u })).toBeEnabled();
+  });
+
+  test('oauth providers still get a catalog button and refresh the edit-view catalog', async () => {
+    mocks.fetchEditView.mockResolvedValue({
+      provider: { id: 'oauth-provider', kind: 'oauth' },
+      oauth: { accountLabel: 'acct', publicValues: {}, form: [], models: ['fresh-a'] },
+    });
+    renderSection({
+      kind: ProviderKind.OAuth,
+      initial: { kind: ProviderKind.OAuth, id: 'oauth-provider', models: [] },
+      candidates: ['seeded-c'],
+      persistedProviderId: 'oauth-provider',
+    });
+
+    expect(screen.getByTestId('models-catalog-load')).toBeInTheDocument();
+    expect(screen.getByTestId('model-row-seeded-c')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('models-catalog-load'));
+
+    await waitFor(() => expect(screen.getByTestId('model-row-fresh-a')).toBeInTheDocument());
+    expect(screen.queryByTestId('model-row-seeded-c')).toBeNull();
+    expect(mocks.fetchCatalog).not.toHaveBeenCalled();
+    expect(mocks.fetchEditView).toHaveBeenCalled();
+  });
+
+  test('the catalog button keeps its label while pending and names a reload after success', async () => {
+    let resolveCatalog: ((value: { ok: true; models: string[] }) => void) | undefined;
+    mocks.fetchCatalog.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveCatalog = resolve;
+        }),
+    );
+    renderSection({ kind: ProviderKind.Api, initial: apiInitial(['model-a']) });
+
+    const button = screen.getByTestId('models-catalog-load');
+    expect(button).toHaveTextContent(m['dashboard.providers.form.catalog_load']());
+    fireEvent.click(button);
+
+    await waitFor(() => expect(button).toBeDisabled());
+    expect(button).toHaveTextContent(m['dashboard.providers.form.catalog_load']());
+    expect(button).not.toHaveTextContent(m['dashboard.providers.form.catalog_loading']());
+
+    resolveCatalog?.({ ok: true, models: ['model-a', 'fresh-b'] });
+    await waitFor(() => expect(button).toHaveTextContent(m['dashboard.providers.form.catalog_reload']()));
+  });
+
+  test('removing a model also drops aliases and variants that pointed at it', async () => {
+    renderSection({
+      kind: ProviderKind.Api,
+      initial: {
+        ...apiInitial(['keep', 'drop']),
+        alias: {
+          gone: { model: 'drop', preserve: false },
+          stay: {
+            model: 'keep',
+            preserve: false,
+            variants: { high: { model: 'drop', preserve: false } },
+          },
+        },
+      },
+    });
+
+    fireEvent.click(within(screen.getByTestId('model-row-drop')).getByTestId('model-row-remove'));
+
+    await waitFor(() => expect(section.state.values.models).toEqual(['keep']));
+    expect(section.state.values.alias).toEqual({ stay: { model: 'keep', preserve: false } });
+  });
+
+  test('duplicate alias names raise a list-level alert', () => {
+    renderSection({
+      kind: ProviderKind.Api,
+      initial: {
+        ...apiInitial(['model-a']),
+        alias: {
+          smart: { model: 'model-a', preserve: false },
+          ' smart ': { model: 'model-a', preserve: false },
+        },
+      },
+    });
+
+    const summary = document.getElementById('alias-name-duplicate-error');
+    expect(summary).not.toBeNull();
+    expect(summary).toHaveAttribute('role', 'alert');
+    expect(summary).toHaveTextContent(m['dashboard.providers.form.alias_name_duplicate']());
+  });
+
+  test('metadata cannot be opened on a disabled row', () => {
+    renderSection({
+      kind: ProviderKind.Api,
+      initial: apiInitial(['model-a']),
+      candidates: ['model-a', 'disc-b'],
+    });
+
+    expect(within(screen.getByTestId('model-row-disc-b')).getByTestId('model-row-metadata')).toBeDisabled();
+    expect(within(screen.getByTestId('model-row-model-a')).getByTestId('model-row-metadata')).toBeEnabled();
   });
 });
