@@ -15,6 +15,18 @@ export default defineLibraryConfig({
         },
       },
       output: { distPath: { root: './dist' } },
+      splitChunks: false,
+      tools: {
+        rspack: (config) => {
+          config.optimization ??= {};
+          config.optimization.splitChunks = false;
+          config.optimization.runtimeChunk = false;
+          config.output ??= {};
+          config.output.asyncChunks = false;
+          config.output.library = { type: 'module' };
+          return config;
+        },
+      },
     },
   ],
 });

@@ -26,7 +26,11 @@ export async function registerOmp(pi: ExtensionAPI, deps: OmpDeps): Promise<void
   let timerStarted = false;
   let pendingCredentialRecovery = false;
   let credentialRecoveryInProgress = false;
-  const inflight = new Map<string | undefined, Promise<ProviderModelConfig[]>>();
+  type CatalogFlight = {
+    readonly generation: number;
+    readonly promise: Promise<ProviderModelConfig[]>;
+  };
+  const inflight = new Map<string | undefined, CatalogFlight>();
 
   const loginRequired = (): Error => new Error('aio-proxy login required');
   const forceRefreshCredential = async (activeContext: ExtensionContext): Promise<string> => {
@@ -83,13 +87,14 @@ export async function registerOmp(pi: ExtensionAPI, deps: OmpDeps): Promise<void
   };
 
   const fetchModels = (apiKey: string | undefined): Promise<ProviderModelConfig[]> => {
+    const startGeneration = generation;
     const existing = inflight.get(apiKey);
-    if (existing !== undefined) return existing;
-    const pending = loadModels(apiKey).finally(() => {
-      inflight.delete(apiKey);
+    if (existing !== undefined && existing.generation === startGeneration) return existing.promise;
+    const promise = loadModels(apiKey).finally(() => {
+      if (inflight.get(apiKey)?.promise === promise) inflight.delete(apiKey);
     });
-    inflight.set(apiKey, pending);
-    return pending;
+    inflight.set(apiKey, { generation: startGeneration, promise });
+    return promise;
   };
 
   pi.registerProvider(PROVIDER_ID, {

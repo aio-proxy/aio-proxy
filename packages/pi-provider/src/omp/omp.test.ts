@@ -317,6 +317,37 @@ test('shutdown during session_start refresh installs no timer; later start ticks
   expect(f.setInterval).toHaveBeenCalledTimes(1);
 });
 
+test('active-session undefined catalog does not reuse a pending pre-session undefined flight', async () => {
+  const f = await fixture({
+    holdCatalog: true,
+    resolveCatalog: (access) =>
+      access === undefined
+        ? { models: fModels('lkg'), source: 'lkg', status: 'stale' }
+        : { models: fModels('fresh'), source: 'network', status: 'fresh' },
+  });
+  const preSession = f.provider.fetchDynamicModels!(undefined);
+  await f.catalogStarted;
+
+  let activeModels: Awaited<ReturnType<NonNullable<ProviderConfig['fetchDynamicModels']>>> | undefined;
+  const getApiKeyForProvider = mock(async () => 'aio_agent_at_v1_new');
+  const refreshRuntimeProviders = mock(async () => {
+    activeModels = await f.provider.fetchDynamicModels!(undefined);
+  });
+  const starting = f.emit('session_start', {
+    setInterval: f.setInterval,
+    modelRegistry: { getApiKeyForProvider, refreshRuntimeProviders },
+  });
+  while (refreshRuntimeProviders.mock.calls.length === 0) await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(getApiKeyForProvider).toHaveBeenCalledWith('aio-proxy', undefined, { forceRefresh: true });
+  expect(f.catalogAccesses).toEqual([undefined, 'aio_agent_at_v1_new']);
+  f.releaseCatalog();
+  await starting;
+  await expect(preSession).resolves.toEqual([expect.objectContaining({ id: 'lkg' })]);
+  expect(activeModels).toEqual([expect.objectContaining({ id: 'fresh' })]);
+});
+
 test('pre-session catalog continuation does not mark pending recovery after a newer session starts', async () => {
   const f = await fixture({
     holdCatalog: true,
@@ -375,7 +406,11 @@ const ompCatalog = (id = 'compat-model'): AgentCatalogV1 => ({
 const fModels = (id = 'compat-model') => toPiFamilyModels(ompCatalog(id));
 
 async function fixture(
-  options: { readonly catalogResults?: PiFamilyCatalogResult[]; readonly holdCatalog?: boolean } = {},
+  options: {
+    readonly catalogResults?: PiFamilyCatalogResult[];
+    readonly holdCatalog?: boolean;
+    readonly resolveCatalog?: (access: string | undefined) => PiFamilyCatalogResult;
+  } = {},
 ) {
   let provider: ProviderConfig | undefined;
   const catalogAccesses: Array<string | undefined> = [];
@@ -444,7 +479,9 @@ async function fixture(
       catalogAccesses.push(access);
       notifyCatalogStarted();
       if (catalogHold !== undefined) await catalogHold;
-      return results.shift() ?? { models: fModels(), source: 'network', status: 'fresh' };
+      return (
+        options.resolveCatalog?.(access) ?? results.shift() ?? { models: fModels(), source: 'network', status: 'fresh' }
+      );
     },
   };
   await registerOmp(api, deps);
