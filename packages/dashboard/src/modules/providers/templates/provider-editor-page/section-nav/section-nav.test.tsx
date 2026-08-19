@@ -30,7 +30,7 @@ test('every section is a pill labelled by its title alone, with a dot in its own
 
   for (const [id, label] of PILLS) {
     const pill = screen.getByRole('link', { name: label });
-    expect(pill).toHaveAttribute('href', `#editor-${id}`);
+    expect(pill).toHaveAttribute('href', `#${id}`);
     const dot = pill.querySelector('span[aria-hidden="true"].rounded-full');
     expect(dot?.className).toContain(STATUS_CLASS[summaries[id].status]);
   }
@@ -80,16 +80,19 @@ test('activating a pill scrolls to the section AND moves focus into it', () => {
     <>
       <SectionNav summaries={summaries} activeId="identity" />
       {/* Stands in for SectionShell's rendered `<section>`; its own test pins the tabIndex. */}
-      <section id="editor-models" tabIndex={-1} />
+      <section id="models" tabIndex={-1} />
     </>,
   );
-  const target = document.getElementById('editor-models') as HTMLElement;
+  const target = document.getElementById('models') as HTMLElement;
   target.scrollIntoView = scrollIntoView;
 
   fireEvent.click(screen.getByRole('link', { name: m['dashboard.providers.editor.section_models']() }));
 
   expect(scrollIntoView).toHaveBeenCalled();
   expect(document.activeElement).toBe(target);
+  // `preventDefault` also suppresses the hash the browser would have written, so the jump puts it back:
+  // without this the address bar never names the section and the link cannot be copied or bookmarked.
+  expect(window.location.hash).toBe('#models');
 });
 
 // The pills set `outline-none`, so without the ring a keyboard user tabbing the strip sees nothing at

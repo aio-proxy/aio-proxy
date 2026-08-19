@@ -16,7 +16,11 @@ import type { SectionId } from '../section-status';
  * scroll container, not the document, so a fragment jump does not reliably land on them.
  */
 export const jumpToSection = (id: SectionId): void => {
-  const target = document.getElementById(`editor-${id}`);
+  const target = document.getElementById(id);
   target?.scrollIntoView({ behavior: 'smooth' });
   target?.focus({ preventScroll: true });
+  // shell7: the nav and footer are real `<a href>` links now, but both call `preventDefault` because the
+  // scroll container is not the document. Writing the hash back keeps the address bar, and so copying
+  // or bookmarking a section link, equivalent to the prototype's native fragment jump.
+  history.replaceState(null, '', `#${id}`);
 };

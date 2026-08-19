@@ -22,7 +22,7 @@ export const SectionNav: React.FC<SectionNavProps> = ({ summaries, activeId }) =
     {SECTION_ORDER.map((id) => (
       <a
         key={id}
-        href={`#editor-${id}`}
+        href={`#${id}`}
         aria-current={activeId === id ? 'location' : undefined}
         className={`flex shrink-0 items-center gap-1.5 rounded-2xl px-2.5 py-1 text-sm transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/30 ${
           activeId === id ? 'bg-muted font-medium text-foreground' : 'text-muted-foreground hover:bg-muted/60'

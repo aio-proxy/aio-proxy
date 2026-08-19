@@ -39,7 +39,7 @@ test('the section is a programmatically focusable jump target', () => {
     </SectionShell>,
   );
 
-  const section = document.getElementById('editor-routing');
+  const section = document.getElementById('routing');
   expect(section).toHaveAttribute('tabindex', '-1');
   section?.focus();
   expect(document.activeElement).toBe(section);

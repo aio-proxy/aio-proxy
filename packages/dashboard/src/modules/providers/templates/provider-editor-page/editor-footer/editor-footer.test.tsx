@@ -26,7 +26,7 @@ const renderFooter = (overrides: Partial<Record<SectionId, SectionSummary>>) =>
     <>
       <EditorFooter {...props} summaries={summaries(overrides)} />
       {/* Stands in for SectionShell's rendered `<section>`; its own test pins the tabIndex. */}
-      <section id="editor-models" tabIndex={-1} />
+      <section id="models" tabIndex={-1} />
     </>,
   );
 
@@ -36,7 +36,7 @@ const renderFooter = (overrides: Partial<Record<SectionId, SectionSummary>>) =>
 test('a jump link scrolls to its section AND moves focus into it', () => {
   const scrollIntoView = rs.fn();
   renderFooter({ models: { status: 'todo', hint: 'no models enabled' } });
-  const target = document.getElementById('editor-models') as HTMLElement;
+  const target = document.getElementById('models') as HTMLElement;
   target.scrollIntoView = scrollIntoView;
 
   fireEvent.click(screen.getByRole('button', { name: m['dashboard.providers.editor.section_models']() }));

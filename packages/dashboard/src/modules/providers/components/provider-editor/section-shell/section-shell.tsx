@@ -25,8 +25,8 @@ export const SectionShell: React.FC<SectionShellProps> = ({
   children,
 }) => (
   <section
-    id={`editor-${id}`}
-    aria-labelledby={`editor-${id}-heading`}
+    id={id}
+    aria-labelledby={`${id}-title`}
     // Both jump surfaces focus this element after scrolling it into view; a bare `<section>` is not
     // programmatically focusable, so without this the focus call is a silent no-op. The native focus
     // ring is deliberately left in place: the whole point of the jump is that the user can tell it landed.
@@ -41,7 +41,7 @@ export const SectionShell: React.FC<SectionShellProps> = ({
             `aria-labelledby` both key on, and `CardTitle` renders a `<div>`. The badge stays a sibling
             rather than a child so the status hint never joins the heading's accessible name. */}
         <div className="flex min-w-0 items-center gap-2">
-          <h2 id={`editor-${id}-heading`} className="font-heading text-base font-medium">
+          <h2 id={`${id}-title`} className="font-heading text-base font-medium">
             {title}
           </h2>
           {/* Always rendered: an `ok` section states what it settled on, not nothing. */}
