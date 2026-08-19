@@ -16,6 +16,7 @@ import {
   readPiFamilyModels,
   refreshPiFamilyCredential,
   toPiFamilyModels,
+  type PiFamilyCatalogResult,
 } from '../core';
 
 const PROVIDER_ID = 'aio-proxy';
@@ -50,7 +51,7 @@ export async function registerOfficialPi(pi: ExtensionAPI, deps: OfficialPiDeps)
 
   const refreshModels = async (context: RefreshModelsContext): Promise<ProviderModelConfig[]> => {
     const access = context.credential?.type === 'oauth' ? context.credential.access : undefined;
-    const result = context.allowNetwork
+    const result: PiFamilyCatalogResult = context.allowNetwork
       ? await deps.readPiFamilyModels(managed, access, { signal: context.signal })
       : await deps
           .readLastKnownCatalog(managed.statePath, 'pi')
