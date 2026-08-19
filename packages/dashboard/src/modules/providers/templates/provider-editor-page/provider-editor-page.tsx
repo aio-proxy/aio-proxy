@@ -33,6 +33,7 @@ export const ProviderEditorPage: React.FC<ProviderEditorPageProps> = (props) => 
     provider,
     summaries,
     authorized,
+    hasApiKey,
     sessionWarning,
     values,
     others,
@@ -111,6 +112,7 @@ export const ProviderEditorPage: React.FC<ProviderEditorPageProps> = (props) => 
               accountForm={kind === ProviderKind.OAuth ? accountForm : undefined}
               mode={mode}
               kind={kind}
+              hasApiKey={hasApiKey}
               capabilities={capabilities}
               oauth={oauth}
               provider={provider}

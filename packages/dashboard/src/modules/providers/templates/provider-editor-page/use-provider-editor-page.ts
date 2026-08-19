@@ -291,6 +291,10 @@ export const useProviderEditorPage = ({
     saveConfigProvider(mode, values, providerId, initial?.metadata, createProvider, updateProvider);
   };
 
+  // "Already has a key" is a property of what was loaded, not of the live field: the user clearing the
+  // input must not flip the copy to "optional" and lose the promise that an empty save retains the key.
+  const hasApiKey = initial !== undefined && 'apiKey' in initial && (initial.apiKey ?? '') !== '';
+
   const title = editorTitle(mode, values.name);
   const subtitle =
     mode === ProviderFormMode.Create
@@ -307,6 +311,7 @@ export const useProviderEditorPage = ({
     provider,
     summaries,
     authorized,
+    hasApiKey,
     sessionWarning,
     values,
     others,

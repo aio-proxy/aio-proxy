@@ -1,9 +1,9 @@
+import { m } from '@aio-proxy/i18n';
 import { ProviderKind, ProviderMutationBodySchema, ProviderProtocol } from '@aio-proxy/types';
 import { describe, expect, test } from '@rstest/core';
 import { fireEvent, render, renderHook, screen, waitFor, within } from '@testing-library/react';
 
 import { useProviderEditorForm, type ProviderEditorShape } from '../hooks/use-provider-editor-form';
-import { ProviderFormMode } from '../lib/constants';
 import {
   normalizeProviderFormValue,
   parseProviderFormInitial,
@@ -24,28 +24,31 @@ const mutationBody = (values: ProviderEditorShape) => {
 };
 
 describe('API provider form fields', () => {
-  test('shows a protocol placeholder and icons in the options and selected value', async () => {
+  test('opens on OpenAI Compatible, with a placeholder and icons in the options and selected value', async () => {
     const { result } = renderHook(() => useProviderEditorForm({ kind: ProviderKind.Api }));
 
-    render(<ProviderFormFieldsApi form={result.current} mode={ProviderFormMode.Create} />);
+    render(<ProviderFormFieldsApi form={result.current} hasApiKey={false} />);
 
     const protocolField = screen.getByTestId('provider-form-field-protocol');
     const trigger = within(protocolField).getByRole('combobox');
-    expect(trigger).toHaveTextContent(/Select a protocol|请选择协议/u);
+    expect(trigger).toHaveTextContent(m['dashboard.providers.form.placeholder_protocol']());
 
     fireEvent.click(trigger);
-    const option = await screen.findByRole('option', { name: 'OpenAI Response' });
-    expect(option.querySelector('img')).toHaveAttribute('alt', '');
-    fireEvent.click(option);
+    // The list leads with OpenAI Compatible, not with `Object.values(ProviderProtocol)`'s
+    // `openai-response`: OpenAI Compatible is what most third-party gateways speak.
+    const [option] = await screen.findAllByRole('option');
+    expect(option).toHaveTextContent('OpenAI Compatible');
+    expect(option?.querySelector('img')).toHaveAttribute('alt', '');
+    fireEvent.click(option as HTMLElement);
 
-    await waitFor(() => expect(trigger).toHaveTextContent('OpenAI Response'));
+    await waitFor(() => expect(trigger).toHaveTextContent('OpenAI Compatible'));
     expect(trigger.querySelector('img')).toHaveAttribute('alt', '');
   });
 
   test('pairs the protocol and base URL fields on one row, with the API key below it', () => {
     const { result } = renderHook(() => useProviderEditorForm({ kind: ProviderKind.Api }));
 
-    render(<ProviderFormFieldsApi form={result.current} mode={ProviderFormMode.Create} />);
+    render(<ProviderFormFieldsApi form={result.current} hasApiKey={false} />);
 
     // jsdom has no layout, so the shared row element and its column template are the only evidence
     // that these two fields are paired; a stacked layout passes every other assertion here.
@@ -69,7 +72,7 @@ describe('API provider form fields', () => {
     expect(initial).toBeDefined();
     const { result } = renderHook(() => useProviderEditorForm({ kind: ProviderKind.Api, initial }));
 
-    render(<ProviderFormFieldsApi form={result.current} mode={ProviderFormMode.Edit} />);
+    render(<ProviderFormFieldsApi form={result.current} hasApiKey={true} />);
 
     const baseURLInput = within(screen.getByTestId('provider-form-field-baseURL')).getByRole('textbox');
     expect(baseURLInput).toHaveValue('https://openrouter.example/v1');
@@ -83,21 +86,28 @@ describe('API provider form fields', () => {
     expect(submitted).not.toHaveProperty('hasApiKey');
   });
 
-  test('keeps a stored API key retained when editing and never renders a clear control', () => {
-    const { result } = renderHook(() =>
-      useProviderEditorForm({
-        kind: ProviderKind.Api,
-        initial: { kind: ProviderKind.Api, id: 'openrouter', enabled: true },
-      }),
-    );
+  test.each([
+    { hasApiKey: true, description: m['dashboard.providers.editor.api_key_retained_hint']() },
+    { hasApiKey: false, description: m['dashboard.providers.form.api_key_helper_create']() },
+  ])(
+    'describes the API Key field by whether one is stored (hasApiKey=$hasApiKey), never by edit mode',
+    ({ hasApiKey, description }) => {
+      const { result } = renderHook(() =>
+        useProviderEditorForm({
+          kind: ProviderKind.Api,
+          initial: { kind: ProviderKind.Api, id: 'openrouter', enabled: true },
+        }),
+      );
 
-    render(<ProviderFormFieldsApi form={result.current} mode={ProviderFormMode.Edit} />);
+      render(<ProviderFormFieldsApi form={result.current} hasApiKey={hasApiKey} />);
 
-    const apiKeyField = screen.getByTestId('provider-form-field-apiKey');
-    expect(within(apiKeyField).getByLabelText(/API Key/u)).toHaveValue('');
-    expect(apiKeyField.textContent).toMatch(/empty|留空/u);
-    expect(within(apiKeyField).queryByRole('button')).toBeNull();
-  });
+      const apiKeyField = screen.getByTestId('provider-form-field-apiKey');
+      expect(within(apiKeyField).getByLabelText(/API Key/u)).toHaveValue('');
+      expect(within(apiKeyField).getByText(description)).toBeTruthy();
+      // A stored key is retained by saving an empty field, so there is nothing to clear.
+      expect(within(apiKeyField).queryByRole('button')).toBeNull();
+    },
+  );
 
   test.each([
     {

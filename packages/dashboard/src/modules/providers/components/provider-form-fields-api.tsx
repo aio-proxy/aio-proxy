@@ -1,21 +1,25 @@
 import { m } from '@aio-proxy/i18n';
 import { ProviderProtocol } from '@aio-proxy/types';
-import { Field } from '@aio-proxy/ui/components/field';
+import { Field, FieldDescription } from '@aio-proxy/ui/components/field';
 import { Input } from '@aio-proxy/ui/components/input';
 import { Label } from '@aio-proxy/ui/components/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@aio-proxy/ui/components/select';
 
-import { ProtocolLabel } from '@/components/protocol-label';
+import { PROTOCOL_ORDER, ProtocolLabel } from '@/components/protocol-label';
 
 import type { ProviderEditorForm } from '../hooks/use-provider-editor-form';
-import { ProviderFormMode } from '../lib/constants';
 
 interface ProviderFormFieldsApiProps {
   form: ProviderEditorForm;
-  mode: ProviderFormMode;
+  /**
+   * Whether this provider already has a stored API key. Not `mode`: a key is optional for most
+   * upstreams, so an edit with no stored key must not promise to retain one, and a create seeded
+   * from an existing entry (kind switch) must not claim the field is empty.
+   */
+  hasApiKey: boolean;
 }
 
-export const ProviderFormFieldsApi: React.FC<ProviderFormFieldsApiProps> = ({ form, mode }) => (
+export const ProviderFormFieldsApi: React.FC<ProviderFormFieldsApiProps> = ({ form, hasApiKey }) => (
   <>
     {/* Protocol and address are one decision, so they share a row; the protocol select only needs
         enough width for its label, and the rest goes to the URL. */}
@@ -38,7 +42,7 @@ export const ProviderFormFieldsApi: React.FC<ProviderFormFieldsApiProps> = ({ fo
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  {Object.values(ProviderProtocol).map((protocol) => (
+                  {PROTOCOL_ORDER.map((protocol) => (
                     <SelectItem key={protocol} value={protocol}>
                       <ProtocolLabel protocol={protocol} showIcon />
                     </SelectItem>
@@ -68,20 +72,25 @@ export const ProviderFormFieldsApi: React.FC<ProviderFormFieldsApiProps> = ({ fo
     <div data-testid="provider-form-field-apiKey">
       <form.Field name="apiKey">
         {(field) => (
-          <Field>
+          // Divided from the endpoint above: the key is a separate decision from where to reach.
+          <Field className="border-t pt-4">
             <Label htmlFor={field.name}>{m['dashboard.providers.form.label_api_key']()}</Label>
             <Input
               id={field.name}
               type="password"
               value={field.state.value ?? ''}
               onChange={(event) => field.handleChange(event.target.value)}
-              placeholder={m['dashboard.providers.form.placeholder_api_key']()}
+              placeholder={
+                hasApiKey
+                  ? m['dashboard.providers.form.placeholder_api_key_configured']()
+                  : m['dashboard.providers.form.placeholder_api_key']()
+              }
             />
-            <p className="text-sm text-muted-foreground">
-              {mode === ProviderFormMode.Edit
+            <FieldDescription>
+              {hasApiKey
                 ? m['dashboard.providers.editor.api_key_retained_hint']()
                 : m['dashboard.providers.form.api_key_helper_create']()}
-            </p>
+            </FieldDescription>
           </Field>
         )}
       </form.Field>

@@ -21,6 +21,8 @@ interface ConnectionSectionProps {
   readonly accountForm?: OAuthProviderForm | undefined;
   readonly mode: ProviderFormMode;
   readonly kind: ProviderKind;
+  /** api only: whether a key is already stored, which decides the API Key field's copy. */
+  readonly hasApiKey?: boolean | undefined;
   readonly capabilities?: readonly DashboardOAuthCapability[] | undefined;
   readonly oauth?: DashboardOAuthProviderEdit | undefined;
   readonly provider?: OAuthProvider | undefined;
@@ -38,6 +40,7 @@ export const ConnectionSection: React.FC<ConnectionSectionProps> = ({
   accountForm,
   mode,
   kind,
+  hasApiKey,
   capabilities,
   oauth,
   provider,
@@ -54,7 +57,7 @@ export const ConnectionSection: React.FC<ConnectionSectionProps> = ({
     status={summary.status}
     statusHint={summary.hint}
   >
-    {kind === ProviderKind.Api ? <ProviderFormFieldsApi form={form} mode={mode} /> : null}
+    {kind === ProviderKind.Api ? <ProviderFormFieldsApi form={form} hasApiKey={hasApiKey ?? false} /> : null}
     {kind === ProviderKind.AiSdk ? (
       <ProviderFormFieldsAiSdk form={form} onOptionsValidityChange={onOptionsValidityChange} />
     ) : null}
