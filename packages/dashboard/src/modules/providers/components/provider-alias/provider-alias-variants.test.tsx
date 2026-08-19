@@ -71,6 +71,29 @@ test('reports the missing condition on a freshly added row', () => {
   expect(screen.getByRole('alert').textContent).toBe(m['dashboard.providers.form.variant_when_required']());
 });
 
+// A new row used to start on `models[0]`, a coin flip the user had to correct on nearly every add.
+test('a new condition row starts on the alias own target', () => {
+  const onAliasChange = renderVariants({ sonnet: { model: 'claude-sonnet-4-fast', preserve: false } });
+
+  fireEvent.click(screen.getByRole('button', { name: m['dashboard.providers.form.add_variant']() }));
+
+  expect(latestAlias(onAliasChange)['sonnet']?.variants).toEqual([
+    { when: {}, model: 'claude-sonnet-4-fast', preserve: false },
+  ]);
+});
+
+// The alias-level preserve switch shares the add-variant row now. It sits among per-row switches, so
+// the guard that matters is which config it writes. Clicked through its label text, not the switch
+// itself: jsdom forwards a click on the switch to Base UI's hidden input as well, which the HTML spec
+// exempts for interactive descendants, so clicking the control double-toggles here but not in a browser.
+test('the alias preserve switch writes the alias, not a variant row', () => {
+  const onAliasChange = renderVariants({ sonnet: { model: 'claude-sonnet-4-fast', preserve: false } });
+
+  fireEvent.click(screen.getByText(m['dashboard.providers.form.alias_preserve']()));
+
+  expect(latestAlias(onAliasChange)).toEqual({ sonnet: { model: 'claude-sonnet-4-fast', preserve: true } });
+});
+
 // Rows were keyed by stored index, so removing one renumbered the rest and React handed the removed
 // row's instance to its successor. State that never reaches `row` — DOM focus, an open condition
 // dropdown — then belonged to the wrong row. Keys have to follow the row.

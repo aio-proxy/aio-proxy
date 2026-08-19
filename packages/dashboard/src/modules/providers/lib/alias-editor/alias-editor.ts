@@ -6,18 +6,10 @@ import {
   preservedAliasModels,
   whenIdentity,
 } from '@aio-proxy/types';
-import type { ReactFormExtendedApi } from '@tanstack/react-form';
+import { countBy } from 'es-toolkit/array';
 import { omit } from 'es-toolkit/object';
 
 export type { ProviderAlias };
-
-export type AliasDraft = {
-  readonly name: string;
-  readonly model: string;
-  readonly preserve: boolean;
-};
-
-export type AliasDraftForm = ReactFormExtendedApi<AliasDraft, any, any, any, any, any, any, any, any, any, any, any>;
 
 export type AliasEditResult =
   | { readonly ok: true; readonly alias: ProviderAlias }
@@ -53,19 +45,6 @@ export const aliasIssueControlId = (issue: AliasEditorIssue): string => {
 
 export function serializeAlias(alias: ProviderAlias, mode: 'create' | 'edit'): ProviderAlias | undefined {
   return Object.keys(alias).length === 0 && mode === 'create' ? undefined : alias;
-}
-
-export function commitAliasDraft(alias: ProviderAlias, draft: AliasDraft): AliasEditResult {
-  const name = normalizeAliasName(draft.name);
-  const error = draftError(name, draft.model, Object.keys(alias).map(normalizeAliasName));
-  if (error !== undefined) {
-    return { ok: false, code: error };
-  }
-
-  return {
-    ok: true,
-    alias: { ...alias, [name]: { model: draft.model, preserve: draft.preserve } },
-  };
 }
 
 export function renameAlias(alias: ProviderAlias, current: string, next: string): AliasEditResult {
@@ -176,37 +155,23 @@ export function aliasSummary(alias: ProviderAlias): AliasSummary {
   return { aliases: Object.keys(alias).length, variants };
 }
 
-export function preserveReferenceCount(alias: ProviderAlias, model: string): number {
-  let count = 0;
-  for (const config of Object.values(alias)) {
-    if (config.preserve && config.model === model) {
-      count += 1;
-    }
-    for (const row of flattenAliasVariants(config.variants)) {
-      if (row.preserve && row.model === model) {
-        count += 1;
-      }
-    }
-  }
-  return count;
-}
-
 export function aliasEditorIssues(alias: ProviderAlias, models?: readonly string[]): readonly AliasEditorIssue[] {
   const issues: AliasEditorIssue[] = [];
   // Keep in lockstep with validateAliasTargets in @aio-proxy/types: absent and
   // empty both mean "no whitelist", or the editor blocks a payload the server accepts.
   const availableModels = models === undefined || models.length === 0 ? undefined : new Set(models);
   const preservedModels = preservedAliasModels(alias);
-  const aliasNames = new Set<string>();
+  // Every row in a collision is flagged, not just the later one: the first row is no more legal than
+  // the second, and marking one of them makes the other look like the only mistake.
+  const nameCounts = countBy(Object.keys(alias), normalizeAliasName);
 
   for (const [aliasName, config] of Object.entries(alias)) {
     const normalizedAlias = normalizeAliasName(aliasName);
     if (normalizedAlias === '') {
       issues.push({ code: 'alias-name-required', alias: aliasName });
-    } else if (aliasNames.has(normalizedAlias)) {
+    } else if ((nameCounts[normalizedAlias] ?? 0) > 1) {
       issues.push({ code: 'alias-name-duplicate', alias: aliasName });
     }
-    aliasNames.add(normalizedAlias);
 
     if (preservedModels.has(normalizedAlias) && aliasTargetModels(config).some((model) => model !== normalizedAlias)) {
       issues.push({ code: 'preserved-route-conflict', alias: aliasName });

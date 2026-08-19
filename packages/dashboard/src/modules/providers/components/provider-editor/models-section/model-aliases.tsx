@@ -3,7 +3,7 @@ import { Button } from '@aio-proxy/ui/components/button';
 import { ArrowRightIcon, PlusIcon } from 'lucide-react';
 
 import type { AliasEditorIssue, ProviderAlias } from '../../../lib/alias-editor';
-import { ProviderAliasList, useAliasDrafts } from '../../provider-alias';
+import { ProviderAliasList, useAliasRows } from '../../provider-alias';
 
 interface ModelAliasesProps {
   readonly alias: ProviderAlias;
@@ -23,8 +23,8 @@ interface ModelAliasesProps {
  * write the form as soon as an alias has a name.
  */
 export const ModelAliases: React.FC<ModelAliasesProps> = ({ alias, issues, targetOptions, onAliasChange }) => {
-  const drafts = useAliasDrafts(alias, onAliasChange);
-  const hasRows = Object.keys(alias).length > 0 || drafts.aliasDraftIds.length > 0;
+  const rows = useAliasRows(alias, onAliasChange);
+  const hasRows = Object.keys(alias).length > 0;
   const hasDuplicateName = issues.some((issue) => issue.code === 'alias-name-duplicate');
 
   return (
@@ -49,14 +49,10 @@ export const ModelAliases: React.FC<ModelAliasesProps> = ({ alias, issues, targe
         alias={alias}
         models={targetOptions}
         issues={issues}
-        aliasDraftIds={drafts.aliasDraftIds}
-        aliasIds={drafts.aliasIds}
+        rowKey={rows.rowKey}
         onAliasChange={onAliasChange}
-        onCommitAliasDraft={drafts.commitDraft}
-        onDiscardDraft={drafts.discardDraft}
-        onRenameAlias={drafts.rename}
-        onRemoveAlias={drafts.removeAlias}
-        onDraftDirtyChange={drafts.reportDraftDirty}
+        onRenameAlias={rows.rename}
+        onRemoveAlias={rows.removeAlias}
       />
       {hasDuplicateName ? (
         <p id="alias-name-duplicate-error" role="alert" className="text-xs text-destructive">
@@ -68,7 +64,7 @@ export const ModelAliases: React.FC<ModelAliasesProps> = ({ alias, issues, targe
         variant="outline"
         size="sm"
         disabled={targetOptions.length === 0}
-        onClick={drafts.addAliasDraft}
+        onClick={() => rows.addAlias(targetOptions[0])}
       >
         <PlusIcon data-icon="inline-start" />
         {m['dashboard.providers.form.add_alias']()}

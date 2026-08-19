@@ -1,7 +1,7 @@
 import { describe, expect, test } from '@rstest/core';
 
 import { aliasSummaryMessage } from '../alias-editor-copy';
-import { aliasEditorIssues, aliasIssueControlId, aliasSummary, preserveReferenceCount } from './alias-editor';
+import { aliasEditorIssues, aliasIssueControlId, aliasSummary } from './alias-editor';
 import { alias } from './alias-editor.test-support';
 
 describe('provider alias editor summary and issues', () => {
@@ -14,20 +14,26 @@ describe('provider alias editor summary and issues', () => {
     expect(aliasSummaryMessage({ aliases: 2, variants: 1 })).toBe('2 aliases · 1 variant');
   });
 
-  test('Given repeated preserve declarations When counted Then returns every declaration', () => {
-    expect(
-      preserveReferenceCount(
-        {
-          first: {
-            model: 'shared',
-            preserve: true,
-            variants: { low: { model: 'shared', preserve: true } },
-          },
-          second: { model: 'shared', preserve: true },
-        },
-        'shared',
-      ),
-    ).toBe(3);
+  /** Both rows are equally wrong, so both are marked: flagging only the second reads as "the first one
+   * is fine", and the row the user goes on to fix may well be the other one. */
+  test('Given names that collide once normalized When inspected Then every colliding row is flagged', () => {
+    const issues = aliasEditorIssues({
+      mini: { model: 'a', preserve: false },
+      ' mini ': { model: 'a', preserve: false },
+    });
+
+    expect(issues).toEqual([
+      { code: 'alias-name-duplicate', alias: 'mini' },
+      { code: 'alias-name-duplicate', alias: ' mini ' },
+    ]);
+  });
+
+  /** The unnamed row an Add Alias click leaves behind: it has to report something, or the save button
+   * stays enabled over a record with an empty key. */
+  test('Given an unnamed alias When inspected Then it reports a required name', () => {
+    expect(aliasEditorIssues({ '': { model: 'a', preserve: false } })).toEqual([
+      { code: 'alias-name-required', alias: '' },
+    ]);
   });
 
   test('Given invalid model references and a preserved-route conflict When inspected Then returns ordered locators', () => {

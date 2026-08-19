@@ -1,35 +1,22 @@
 import { describe, expect, test } from '@rstest/core';
 
-import { commitAliasDraft, renameAlias, serializeAlias } from './alias-editor';
+import { renameAlias, serializeAlias } from './alias-editor';
 import { alias } from './alias-editor.test-support';
 
-describe('provider alias editor drafts', () => {
+describe('provider alias editor names', () => {
   test('Given an empty alias map When serialized Then create omits it and edit clears it', () => {
     expect(serializeAlias({}, 'create')).toBeUndefined();
     expect(serializeAlias({}, 'edit')).toEqual({});
   });
 
-  test('Given a valid alias draft When committed Then trims the name and preserves insertion order', () => {
-    const result = commitAliasDraft(alias, { name: '  fast  ', model: 'gpt-fast', preserve: true });
+  /** Names are written per keystroke now, so a rejected rename is the only thing standing between a
+   * half-typed name and the sibling alias it would overwrite in the record. */
+  test('Given a name another alias already owns When renamed Then reports it and leaves the record alone', () => {
+    const two = { ...alias, fast: { model: 'gpt-fast', preserve: false } };
 
-    expect(result).toEqual({
-      ok: true,
-      alias: {
-        ...alias,
-        fast: { model: 'gpt-fast', preserve: true },
-      },
-    });
-  });
-
-  test('Given a missing target or duplicate alias name When committed Then returns a typed error', () => {
-    expect(commitAliasDraft(alias, { name: 'fast', model: '', preserve: false })).toEqual({
-      ok: false,
-      code: 'target-required',
-    });
-    expect(commitAliasDraft(alias, { name: ' mini ', model: 'gpt-fast', preserve: false })).toEqual({
-      ok: false,
-      code: 'name-duplicate',
-    });
+    expect(renameAlias(two, 'fast', ' mini ')).toEqual({ ok: false, code: 'name-duplicate' });
+    expect(renameAlias(two, 'fast', '')).toEqual({ ok: false, code: 'name-required' });
+    expect(two.fast).toEqual({ model: 'gpt-fast', preserve: false });
   });
 
   test('Given an alias rename When committed Then retains its position and configuration', () => {

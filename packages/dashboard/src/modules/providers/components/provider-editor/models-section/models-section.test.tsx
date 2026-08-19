@@ -68,10 +68,13 @@ const Harness: React.FC<HarnessProps> = ({ kind, initial, candidates, persistedP
 
 const renderSection = (props: HarnessProps) => render(<Harness {...props} />, { wrapper });
 
-// Open the alias draft's target picker and read back the option labels it offers.
+const CLIENT_ID_LABEL = /Client model ID|客户端模型 ID/u;
+const UPSTREAM_LABEL = /Upstream model|上游模型/u;
+
+// Open the alias row's target picker and read back the option labels it offers.
 const targetOptions = async () => {
-  const draft = await screen.findByTestId('provider-alias-draft');
-  fireEvent.click(within(draft).getByRole('combobox'));
+  const card = await screen.findByTestId('provider-alias-card');
+  fireEvent.click(within(card).getByLabelText(UPSTREAM_LABEL));
   const options = await screen.findAllByRole('option');
   return options.map((option) => option.textContent);
 };
@@ -559,7 +562,7 @@ describe('ModelsSection', () => {
     });
 
     const card = screen.getByTestId('provider-alias-card');
-    expect(within(card).getByLabelText(/Target Model|目标/u)).not.toHaveAttribute('aria-invalid', 'true');
+    expect(within(card).getByLabelText(UPSTREAM_LABEL)).not.toHaveAttribute('aria-invalid', 'true');
   });
 
   // Every row renders the trash control, but a catalog-only row cannot leave the list: it comes from
@@ -576,8 +579,8 @@ describe('ModelsSection', () => {
 
     expect(screen.getByTestId('model-row-disc-b')).toBeInTheDocument();
     const card = screen.getByTestId('provider-alias-card');
-    expect(within(card).getByText('smart')).toBeInTheDocument();
-    expect(within(card).getByText('disc-b', { selector: '[data-slot=card-description]' })).toBeInTheDocument();
+    expect(within(card).getByLabelText(CLIENT_ID_LABEL)).toHaveValue('smart');
+    expect(within(card).getByLabelText(UPSTREAM_LABEL)).toHaveTextContent('disc-b');
   });
 
   test('Add Alias stays on screen when there are no aliases, and is disabled without enabled models', () => {

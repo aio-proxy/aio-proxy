@@ -1,6 +1,7 @@
 import { m } from '@aio-proxy/i18n';
 import type { AliasConfig } from '@aio-proxy/types';
 import { Button } from '@aio-proxy/ui/components/button';
+import { Switch } from '@aio-proxy/ui/components/switch';
 import { PlusIcon } from 'lucide-react';
 import type { FC } from 'react';
 
@@ -41,15 +42,28 @@ export const ProviderAliasVariants: FC<ProviderAliasVariantsProps> = ({
 
   return (
     <>
-      <div className="flex flex-wrap items-center justify-end gap-3 border-t pt-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-3">
+        {/* The alias-level preserve switch shares this row with the add button: one divider, two blocks
+            per card. It reads the stored config, like the switch on every variant row. */}
+        <label className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Switch
+            size="sm"
+            checked={config.preserve}
+            onCheckedChange={(preserve) =>
+              onAliasChange({ ...alias, [aliasName]: { ...config, preserve: Boolean(preserve) } })
+            }
+          />
+          {m['dashboard.providers.form.alias_preserve']()}
+        </label>
         <Button
           type="button"
           variant="ghost"
           size="xs"
-          disabled={models.length === 0}
           onClick={() => {
             appendKey();
-            onAliasChange(addVariantRow(alias, aliasName, blankVariantRow(models[0] ?? '')));
+            // A new condition starts on the alias's own target, which is what the user meant most of
+            // the time; the first enabled model was a coin flip they had to correct.
+            onAliasChange(addVariantRow(alias, aliasName, blankVariantRow(config.model)));
           }}
         >
           <PlusIcon data-icon="inline-start" />
