@@ -7,6 +7,10 @@
     "dist",
     "package.json"
   ],
+  "exports": {
+    "./official-pi-artifact": "./dist/official-pi.js",
+    "./omp-artifact": "./dist/omp.js"
+  },
   "pi": {
     "extensions": [
       "./dist/official-pi.js"

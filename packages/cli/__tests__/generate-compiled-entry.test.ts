@@ -27,7 +27,17 @@ describe('renderCompiledEntry', () => {
     expect(code).toContain('"static/js/app.js": asset1,');
     expect(code).toContain('import { embeddedDashboardAssets } from "./dashboard-assets";');
     expect(code).toContain('import { main } from "./main";');
-    expect(code).toContain('await main({ dashboardAssets: () => embeddedDashboardAssets(files) });');
+    expect(code).toContain(
+      'import opencodeProvider from "@aio-proxy/opencode-provider/artifact" with { type: "file" };',
+    );
+    expect(code).toContain(
+      'import officialPiProvider from "@aio-proxy/pi-provider/official-pi-artifact" with { type: "file" };',
+    );
+    expect(code).toContain('import ompProvider from "@aio-proxy/pi-provider/omp-artifact" with { type: "file" };');
+    expect(code).toContain(
+      'agentAssetPaths: () => ({ opencode: opencodeProvider, officialPi: officialPiProvider, omp: ompProvider })',
+    );
+    expect(code).toContain('dashboardAssets: () => embeddedDashboardAssets(files),');
   });
 });
 
@@ -38,7 +48,11 @@ describe('virtualCompiledEntry', () => {
     expect(entry.entrypoint).toEndWith(join('packages', 'cli', 'src', 'main.compiled.gen.ts'));
     expect(Object.keys(entry.files)).toEqual([entry.entrypoint]);
     expect(entry.files[entry.entrypoint]).toContain(
-      'await main({ dashboardAssets: () => embeddedDashboardAssets(files) });',
+      'import opencodeProvider from "@aio-proxy/opencode-provider/artifact" with { type: "file" };',
     );
+    expect(entry.files[entry.entrypoint]).toContain(
+      'agentAssetPaths: () => ({ opencode: opencodeProvider, officialPi: officialPiProvider, omp: ompProvider })',
+    );
+    expect(entry.files[entry.entrypoint]).toContain('dashboardAssets: () => embeddedDashboardAssets(files),');
   });
 });

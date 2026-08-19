@@ -14,6 +14,9 @@ export const renderCompiledEntry = (assetPaths: readonly string[]): string => {
     ...assetPaths.map(
       (path, index) => `import asset${index} from "@aio-proxy/dashboard/dist/${path}" with { type: "file" };`,
     ),
+    'import opencodeProvider from "@aio-proxy/opencode-provider/artifact" with { type: "file" };',
+    'import officialPiProvider from "@aio-proxy/pi-provider/official-pi-artifact" with { type: "file" };',
+    'import ompProvider from "@aio-proxy/pi-provider/omp-artifact" with { type: "file" };',
     'import { embeddedDashboardAssets } from "./dashboard-assets";',
     'import { main } from "./main";',
     '',
@@ -21,7 +24,10 @@ export const renderCompiledEntry = (assetPaths: readonly string[]): string => {
     ...assetPaths.map((path, index) => `  "${path}": asset${index},`),
     '};',
     '',
-    'await main({ dashboardAssets: () => embeddedDashboardAssets(files) });',
+    'await main({',
+    '  dashboardAssets: () => embeddedDashboardAssets(files),',
+    '  agentAssetPaths: () => ({ opencode: opencodeProvider, officialPi: officialPiProvider, omp: ompProvider }),',
+    '});',
     '',
   ];
   return lines.join('\n');
