@@ -35,7 +35,7 @@ export const ProviderVariantConditions: FC<ProviderVariantConditionsProps> = ({
     <div className="grid gap-2 sm:grid-cols-3 lg:contents">
       <EffortCombobox
         id={controlId}
-        aliasName={alias}
+        alias={alias}
         value={draft.effort}
         invalid={invalid}
         onChange={(effort) => onCommit({ effort })}

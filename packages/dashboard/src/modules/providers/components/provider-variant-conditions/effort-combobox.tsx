@@ -18,13 +18,13 @@ const EFFORTS = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as 
 interface EffortComboboxProps {
   readonly id: string;
   /** Already resolved for display: the row's alias name, or the fallback noun when it has none. */
-  readonly aliasName: string;
+  readonly alias: string;
   readonly value: string;
   readonly invalid: boolean;
   readonly onChange: (effort: string) => void;
 }
 
-export const EffortCombobox: FC<EffortComboboxProps> = ({ id, aliasName, value, invalid, onChange }) => {
+export const EffortCombobox: FC<EffortComboboxProps> = ({ id, alias, value, invalid, onChange }) => {
   const custom = value.trim();
   const hasCustom = custom !== '' && !EFFORTS.some((effort) => effort === custom);
   // Appending the typed value keeps it selectable: without it the list contradicts the input, which
@@ -44,7 +44,7 @@ export const EffortCombobox: FC<EffortComboboxProps> = ({ id, aliasName, value, 
     >
       <ComboboxInput
         id={id}
-        aria-label={m['dashboard.providers.form.variant_effort_label']({ alias: aliasName })}
+        aria-label={m['dashboard.providers.form.variant_effort_label']({ alias })}
         aria-invalid={invalid}
         placeholder={m['dashboard.providers.form.variant_effort_unset']()}
         className="w-full [&_input]:font-mono [&_input]:text-xs"
