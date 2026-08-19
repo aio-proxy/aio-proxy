@@ -2,20 +2,13 @@ import { m } from '@aio-proxy/i18n';
 import { Button } from '@aio-proxy/ui/components/button';
 
 import { jumpToSection } from '../../../lib/jump-to-section';
-import {
-  blockingSections,
-  SECTION_LABEL,
-  SECTION_ORDER,
-  type SectionId,
-  type SectionSummary,
-} from '../../../lib/section-status';
+import { blockingSections, SECTION_LABEL, type SectionId, type SectionSummary } from '../../../lib/section-status';
 
 interface EditorFooterProps {
   readonly summaries: Readonly<Record<SectionId, SectionSummary>>;
   readonly primaryLabel: string;
   readonly onPrimary: () => void;
   readonly onCancel: () => void;
-  readonly onDelete?: (() => void) | undefined;
   readonly pending: boolean;
 }
 
@@ -24,52 +17,59 @@ export const EditorFooter: React.FC<EditorFooterProps> = ({
   primaryLabel,
   onPrimary,
   onCancel,
-  onDelete,
   pending,
 }) => {
-  // Two lists on purpose (D-F2): everything unfinished is *named*, but only `todo` gates Save. An
-  // `attention` section — a weight tie, a stale catalog entry — gets a jump link and a saveable form.
-  const listed = SECTION_ORDER.filter((id) => summaries[id].status !== 'ok');
   const blocking = blockingSections(summaries);
+  // One list, two lead-ins. Every outstanding section is named *and* gates Save, so the split is purely
+  // copy: `missing` narrows to the sections with nothing filled in yet, and only when that is all of
+  // them does the sentence promise a missing field. A form held up by an unauthorized account is
+  // "pending", not "still missing".
+  const missing = blocking.filter((id) => summaries[id].status === 'todo');
 
   return (
-    <div
-      className="sticky bottom-0 z-10 mt-10 flex flex-wrap items-center justify-between gap-3 border-t bg-background/95 py-4 backdrop-blur"
-      data-testid="editor-footer"
-    >
-      <div className="flex min-w-0 flex-wrap items-center gap-x-2 text-sm text-muted-foreground">
-        {/* The live region is the sentence alone. With the jump links inside it, every status flip
-            re-announced the sentence *and* every link label, so typing read the footer aloud. */}
-        <p aria-live="polite">
-          {listed.length === 0
-            ? m['dashboard.providers.editor.footer_ready']()
-            : blocking.length > 0
-              ? m['dashboard.providers.editor.footer_blocking']()
-              : m['dashboard.providers.editor.footer_attention']()}
+    <div className="sticky bottom-0 z-20 border-t bg-background/90 backdrop-blur-md" data-testid="editor-footer">
+      <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
+        {/* The links live inside the live region on purpose: the announcement is the sentence, and the
+            section names are that sentence's object — reading "still missing" without them says nothing.
+            Their labels only change when the list does, which is the change worth announcing. */}
+        <p aria-live="polite" className="min-w-0 text-sm text-muted-foreground">
+          {blocking.length === 0 ? (
+            m['dashboard.providers.editor.footer_ready']()
+          ) : (
+            <>
+              {missing.length === blocking.length
+                ? m['dashboard.providers.editor.footer_blocking']()
+                : m['dashboard.providers.editor.footer_attention']()}{' '}
+              {blocking.map((id, index) => (
+                <span key={id}>
+                  {/* A message, not an inline `、`: en and ko separate with a comma. */}
+                  {index > 0 ? m['dashboard.providers.editor.footer_section_separator']() : ''}
+                  <a
+                    href={`#${id}`}
+                    className="underline underline-offset-4 hover:text-foreground"
+                    // As in the nav strip: a bare hash jump does not reliably land on ids inside
+                    // PageContainer's scroll container, and `jumpToSection` restores the focus move
+                    // `preventDefault` suppresses — this is the "take me to what blocks my save" path.
+                    onClick={(event) => {
+                      event.preventDefault();
+                      jumpToSection(id);
+                    }}
+                  >
+                    {m[SECTION_LABEL[id]]()}
+                  </a>
+                </span>
+              ))}
+            </>
+          )}
         </p>
-        {listed.map((id) => (
-          <button
-            key={id}
-            type="button"
-            className="underline underline-offset-4 hover:text-foreground"
-            onClick={() => jumpToSection(id)}
-          >
-            {m[SECTION_LABEL[id]]()}
-          </button>
-        ))}
-      </div>
-      <div className="flex gap-3">
-        {onDelete === undefined ? null : (
-          <Button type="button" variant="destructive" onClick={onDelete}>
-            {m['dashboard.providers.actions.delete']()}
+        <div className="flex gap-2">
+          <Button type="button" variant="ghost" onClick={onCancel}>
+            {m['dashboard.providers.editor.footer_cancel']()}
           </Button>
-        )}
-        <Button type="button" variant="ghost" onClick={onCancel}>
-          {m['dashboard.providers.editor.footer_cancel']()}
-        </Button>
-        <Button type="button" disabled={blocking.length > 0 || pending} onClick={onPrimary}>
-          {primaryLabel}
-        </Button>
+          <Button type="button" disabled={blocking.length > 0 || pending} onClick={onPrimary}>
+            {primaryLabel}
+          </Button>
+        </div>
       </div>
     </div>
   );

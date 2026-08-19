@@ -39,21 +39,36 @@ test('a jump link scrolls to its section AND moves focus into it', () => {
   const target = document.getElementById('models') as HTMLElement;
   target.scrollIntoView = scrollIntoView;
 
-  fireEvent.click(screen.getByRole('button', { name: m['dashboard.providers.editor.section_models']() }));
+  fireEvent.click(screen.getByRole('link', { name: m['dashboard.providers.editor.section_models']() }));
 
   expect(scrollIntoView).toHaveBeenCalled();
   expect(document.activeElement).toBe(target);
 });
 
-// `aria-live` used to sit on the `<p>` that *contains* the jump links, so every status flip re-announced
-// the sentence and every link label — typing in a field made the footer read itself aloud.
-test('the live region announces the summary sentence and never the jump links', () => {
+// The sentence and the section names it points at are one announcement: "still missing" alone names
+// nothing. They were split so that the live region held the lead-in only, which is what read aloud on
+// every keystroke — the fix is that the names change only when the list does.
+test('the live region is the whole sentence, section names included', () => {
   renderFooter({ models: { status: 'todo', hint: 'no models enabled' } });
 
-  const live = screen.getByText(m['dashboard.providers.editor.footer_blocking']());
-  expect(live.closest('[aria-live]')).not.toBeNull();
-  const jump = screen.getByRole('button', { name: m['dashboard.providers.editor.section_models']() });
-  expect(jump.closest('[aria-live]')).toBeNull();
+  const jump = screen.getByRole('link', { name: m['dashboard.providers.editor.section_models']() });
+  const live = jump.closest('[aria-live]');
+  expect(live).not.toBeNull();
+  expect(live?.textContent).toBe(
+    `${m['dashboard.providers.editor.footer_blocking']()} ${m['dashboard.providers.editor.section_models']()}`,
+  );
+});
+
+// A section link is a link, not a button: it carries the section's fragment, so it can be copied,
+// middle-clicked or read out of the status bar. `preventDefault` handles the in-page jump (the ids live
+// in PageContainer's scroll container), but the `href` is the part a `<button>` could never have.
+test('a jump link is a real link to the section anchor', () => {
+  renderFooter({ models: { status: 'todo', hint: 'no models enabled' } });
+
+  expect(screen.getByRole('link', { name: m['dashboard.providers.editor.section_models']() })).toHaveAttribute(
+    'href',
+    '#models',
+  );
 });
 
 // X9: `attention` is no longer a softer `todo` — it is reserved for a draft that genuinely cannot be
@@ -61,7 +76,7 @@ test('the live region announces the summary sentence and never the jump links', 
 test('an attention section is listed and jumpable, and it gates the save', () => {
   renderFooter({ connection: { status: 'attention', hint: 'missing API key' } });
 
-  expect(screen.getByRole('button', { name: m['dashboard.providers.editor.section_connection']() })).toBeTruthy();
+  expect(screen.getByRole('link', { name: m['dashboard.providers.editor.section_connection']() })).toBeTruthy();
   expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
 });
 
@@ -72,18 +87,17 @@ test('a todo section blocks the save', () => {
   expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
 });
 
-// Mixed list: the sentence must not soften while Save is still gated. The lead-in keys off
-// `blocking.length > 0`, so one `todo` beside an `attention` keeps "complete these before saving" —
-// telling the user to fix something while a disabled Save contradicts it is the defect this pins.
-// The `attention`-only test above is the other half: `listed.length > 0` would redden it.
-test('a mixed list keeps the blocking sentence because the todo still gates the save', () => {
+// The lead-in describes the whole list, so it can only promise a missing field when every listed section
+// is one. Keying it off `blocking.length > 0` (the gate) instead of the `todo` count told a user whose
+// account merely needs authorizing that something was "still missing" from the form.
+test('a mixed list reads as pending, because not everything listed is missing', () => {
   renderFooter({
     models: { status: 'todo', hint: 'no models enabled' },
     connection: { status: 'attention', hint: 'missing API key' },
   });
 
-  expect(screen.getByText(m['dashboard.providers.editor.footer_blocking']())).toBeTruthy();
-  expect(screen.queryByText(m['dashboard.providers.editor.footer_attention']())).toBeNull();
+  expect(screen.getByText(m['dashboard.providers.editor.footer_attention']())).toBeTruthy();
+  expect(screen.queryByText(m['dashboard.providers.editor.footer_blocking']())).toBeNull();
   expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
 });
 
@@ -96,23 +110,19 @@ test('nothing outstanding reads as ready inside the live region', () => {
 });
 
 // The footer lists sections in rail order regardless of how the caller's map was built; taking
-// `Object.keys(summaries)` back would let that order be reshuffled by the caller.
-test('listed sections come back in rail order', () => {
+// `Object.keys(summaries)` back would let that order be reshuffled by the caller. The separator sits
+// between the names for the same reason the order does: the sentence has to read as a list.
+test('listed sections come back in rail order, separated', () => {
   renderFooter({
     advanced: { status: 'todo', hint: 'invalid JSON' },
     identity: { status: 'todo', hint: 'needs an ID' },
   });
 
-  const labels = screen
-    .getAllByRole('button')
-    .map((button) => button.textContent)
-    .filter(
-      (label) =>
-        label === m['dashboard.providers.editor.section_identity']() ||
-        label === m['dashboard.providers.editor.section_advanced'](),
-    );
-  expect(labels).toEqual([
-    m['dashboard.providers.editor.section_identity'](),
-    m['dashboard.providers.editor.section_advanced'](),
-  ]);
+  const live = screen.getByText(m['dashboard.providers.editor.footer_blocking']());
+  expect(live.textContent).toBe(
+    [
+      `${m['dashboard.providers.editor.footer_blocking']()} ${m['dashboard.providers.editor.section_identity']()}`,
+      m['dashboard.providers.editor.section_advanced'](),
+    ].join(m['dashboard.providers.editor.footer_section_separator']()),
+  );
 });

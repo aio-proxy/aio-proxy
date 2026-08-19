@@ -1,11 +1,9 @@
 import { m } from '@aio-proxy/i18n';
 import { ProviderKind } from '@aio-proxy/types';
 import { Card, CardContent } from '@aio-proxy/ui/components/card';
-import { useRef } from 'react';
 
 import { PageContainer } from '@/components/page-container';
 
-import { DeleteProviderDialog, type DeleteProviderDialogRef } from '../../components/delete-provider-dialog';
 import { OAuthAuthorizationPanel } from '../../components/oauth-authorization-panel';
 import { AdvancedSection } from '../../components/provider-editor/advanced-section';
 import { ConnectionSection } from '../../components/provider-editor/connection-section';
@@ -56,7 +54,6 @@ export const ProviderEditorPage: React.FC<ProviderEditorPageProps> = (props) => 
     navigate,
   } = useProviderEditorPage(props);
   const activeId = useActiveSection();
-  const deleteDialogRef = useRef<DeleteProviderDialogRef>(null);
   const locked = mode === ProviderFormMode.Create && kind === ProviderKind.OAuth && !authorized;
   const models = values.models ?? [];
   const exposed = exposedModels(models, oauth?.models);
@@ -187,14 +184,8 @@ export const ProviderEditorPage: React.FC<ProviderEditorPageProps> = (props) => 
         primaryLabel={primaryLabel}
         onPrimary={() => save(false)}
         onCancel={() => void navigate({ to: '/providers' })}
-        onDelete={
-          mode === ProviderFormMode.Edit && props.providerId !== undefined
-            ? () => deleteDialogRef.current?.open({ id: props.providerId as string })
-            : undefined
-        }
         pending={pending}
       />
-      <DeleteProviderDialog ref={deleteDialogRef} onDeleted={() => void navigate({ to: '/providers' })} />
     </PageContainer>
   );
 };

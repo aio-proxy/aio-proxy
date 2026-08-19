@@ -247,7 +247,7 @@ test('create-api emptying baseURL disables save and marks Connection as to do', 
   fillBaseURL('');
 
   await waitFor(() => expect(saveButton()).toBeDisabled());
-  expect(within(screen.getByTestId('editor-footer')).getByRole('button', { name: /Connection/u })).toBeTruthy();
+  expect(within(screen.getByTestId('editor-footer')).getByRole('link', { name: /Connection/u })).toBeTruthy();
   expect(
     within(screen.getByRole('region', { name: /Connection/u })).getByText(
       m['dashboard.providers.editor.hint_connection_todo_api'](),
@@ -273,7 +273,7 @@ test('create-api a malformed baseURL blocks Save instead of bouncing off the sch
   fillBaseURL('api.example.com/v1');
 
   await waitFor(() => expect(saveButton()).toBeDisabled());
-  expect(within(screen.getByTestId('editor-footer')).getByRole('button', { name: /Connection/u })).toBeTruthy();
+  expect(within(screen.getByTestId('editor-footer')).getByRole('link', { name: /Connection/u })).toBeTruthy();
   // The malformed-address hint, not the generic one: the badge is the whole explanation, and telling
   // someone who typed an address that they need an address explains nothing.
   expect(
