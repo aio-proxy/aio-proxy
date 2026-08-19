@@ -322,10 +322,10 @@ export const useProviderEditorPage = ({
     save,
     isReauthorizing: startMutation.isPending,
     pending: isCreating || isUpdating || startMutation.isPending,
-    primaryLabel:
-      kind === 'oauth' && mode === ProviderFormMode.Create && !authorized
-        ? m['dashboard.providers.editor.authorize']()
-        : m['dashboard.providers.editor.footer_save'](),
+    // One label, as in the demo footer. It used to read "authorize" for an unauthorized oauth draft,
+    // but X9 makes that draft block the save, so the button was permanently disabled in exactly the
+    // state whose action it named. Authorizing is the Connection section's button — same `save(false)`.
+    primaryLabel: m['dashboard.providers.editor.footer_save'](),
     title,
     subtitle,
     navigate,

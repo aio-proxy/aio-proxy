@@ -712,7 +712,6 @@
         "footer_cancel": "Cancel",
         "footer_save": "Save provider",
         "footer_ready": "Ready to save.",
-        "authorize": "Authorize",
         "authorization_locked_hint": "Authorize this account to unlock models, routing, and advanced settings.",
         "kind_label": "Provider kind",
         "kind_api": "API endpoint",

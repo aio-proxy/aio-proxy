@@ -712,7 +712,6 @@
         "footer_cancel": "취소",
         "footer_save": "프로바이더 저장",
         "footer_ready": "저장할 수 있습니다.",
-        "authorize": "인증",
         "authorization_locked_hint": "이 계정을 인증하면 모델, 라우팅, 고급 설정을 편집할 수 있습니다.",
         "kind_label": "프로바이더 종류",
         "kind_api": "API 엔드포인트",

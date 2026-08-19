@@ -180,9 +180,9 @@ const pickProtocol = async () => {
 };
 
 const saveButton = () => screen.getByRole('button', { name: /Save/u });
-// Scoped to the footer: the connection section now carries its own "Authorize in browser" button,
-// so an unscoped /Authorize/ query matches two elements and throws.
-const authorizeButton = () => within(screen.getByTestId('editor-footer')).getByRole('button', { name: /Authorize/u });
+// Scoped to the footer: "Save provider" is the footer primary in every mode, and an unscoped query
+// would also reach the section-level buttons.
+const footerPrimary = () => within(screen.getByTestId('editor-footer')).getByRole('button', { name: /Save provider/u });
 // The one that actually starts the round trip since X9 gated the footer primary on `attention`.
 const sectionAuthorizeButton = () => screen.getByTestId('connection-authorize');
 const packageInput = () => within(screen.getByTestId('provider-form-field-packageName')).getByRole('combobox');
@@ -420,9 +420,10 @@ test('oauth create authorizes in place, locks sections 3-5, then unlocks after s
   expect(within(screen.getByRole('region', { name: /Models/u })).getByLabelText(manualAddLabel)).toBeDisabled();
   // X9: an unauthorized oauth draft has nothing to persist, so it is `attention` and the footer primary
   // is gated. The Connection section's own authorize button is the entry that works — the same shape the
-  // prototype has, where Save is likewise disabled until the round trip lands.
+  // prototype has, where Save is likewise disabled until the round trip lands. The footer never renames
+  // itself to "Authorize": a permanently disabled button must not name the action it cannot perform.
   expect(sectionAuthorizeButton()).toBeEnabled();
-  expect(authorizeButton()).toBeDisabled();
+  expect(footerPrimary()).toBeDisabled();
 
   fireEvent.click(sectionAuthorizeButton());
   await waitFor(() => expect(mocks.start).toHaveBeenCalled());
