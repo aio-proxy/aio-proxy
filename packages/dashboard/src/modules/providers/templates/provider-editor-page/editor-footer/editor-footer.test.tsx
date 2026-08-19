@@ -56,14 +56,13 @@ test('the live region announces the summary sentence and never the jump links', 
   expect(jump.closest('[aria-live]')).toBeNull();
 });
 
-// D-F2, and the reason the footer derives two lists rather than one: `attention` is informational, so it
-// is named but does not gate. Gating on the displayed list disables Save here.
-test('an attention section is listed and jumpable while Save stays enabled', () => {
+// X9: `attention` is no longer a softer `todo` — it is reserved for a draft that genuinely cannot be
+// persisted (an unauthorized oauth account), so it is named AND it gates.
+test('an attention section is listed and jumpable, and it gates the save', () => {
   renderFooter({ connection: { status: 'attention', hint: 'missing API key' } });
 
-  expect(screen.getByText(m['dashboard.providers.editor.footer_attention']())).toBeTruthy();
   expect(screen.getByRole('button', { name: m['dashboard.providers.editor.section_connection']() })).toBeTruthy();
-  expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled();
+  expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
 });
 
 test('a todo section blocks the save', () => {

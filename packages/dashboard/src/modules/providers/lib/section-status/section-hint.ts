@@ -43,7 +43,12 @@ export const connectionHint = (input: SectionStatusInput, status: SectionStatus)
     }
     return m['dashboard.providers.editor.hint_connection_todo_api']();
   }
-  if (status === 'attention') return m['dashboard.providers.editor.hint_connection_no_api_key']();
+  // Off the inputs, not off the status: a create-time blank key is `ok` since X9 (an empty field in
+  // edit mode means "keep the stored key"), and keying this off `attention` would have deleted the only
+  // on-screen explanation the moment the status was downgraded.
+  if (input.mode === 'create' && (input.apiKey ?? '').trim() === '') {
+    return m['dashboard.providers.editor.hint_connection_no_api_key']();
+  }
   return (input.baseURL ?? '').trim().replace(/^https?:\/\//u, '');
 };
 
@@ -66,11 +71,20 @@ const aliasText = (count: number): string =>
     ? m['dashboard.providers.form.aliases_summary_alias']({ count })
     : m['dashboard.providers.form.aliases_summary_aliases']({ count });
 
+/** A whitelisted model the fetched catalog no longer lists. Only computable once a catalog arrived. */
+const staleWhitelist = (input: SectionStatusInput): boolean => {
+  if (input.discoveredModels === undefined || input.models.length === 0) return false;
+  const discovered = new Set(input.discoveredModels);
+  return input.models.some((model) => !discovered.has(model));
+};
+
 export const modelsHint = (input: SectionStatusInput, status: SectionStatus): string => {
   // Before the exposure count and before `hint_models_todo`: an alias pointing at nothing is the one
   // thing in this section that blocks the save, so it is what the badge has to say.
   if (input.aliasIssues.length > 0) return m['dashboard.providers.editor.hint_models_alias_issues']();
-  if (status === 'attention') return m['dashboard.providers.editor.hint_models_stale']();
+  // Off the inputs, not off the status: staleness is `ok` since X9 (an upstream catalog that dropped a
+  // model is not the user's to fix), and this is the only place that says so.
+  if (staleWhitelist(input)) return m['dashboard.providers.editor.hint_models_stale']();
   // Keyed off the status, not off the count: an oauth provider whose catalog could not be fetched
   // exposes everything and is `ok`, so "no models enabled" would be false there.
   if (status === 'todo') return m['dashboard.providers.editor.hint_models_todo']();
@@ -79,12 +93,16 @@ export const modelsHint = (input: SectionStatusInput, status: SectionStatus): st
   return aliases === 0 ? exposure : `${exposure} · ${aliasText(aliases)}`;
 };
 
-export const routingHint = (input: SectionStatusInput, status: SectionStatus): string => {
+/** No `status` parameter: routing is always `ok` since X9, so a status could not change any answer. */
+export const routingHint = (input: SectionStatusInput): string => {
   // First and unconditionally: a disabled provider is never materialized, so every other thing this
   // badge could say — its weight, or a tie inside an attempt queue it never joins — describes routing
   // it takes no part in.
   if (input.enabled === false) return m['dashboard.providers.editor.hint_routing_disabled']();
-  if (status === 'attention') return m['dashboard.providers.editor.hint_routing_weight_tie']();
+  // Off the input, not off the status: a tie is `ok` since X9 — it is advice about attempt order, and
+  // the other provider in the tie may not even be the user's to change — so this branch is what keeps
+  // the advice on screen.
+  if (input.weightTie) return m['dashboard.providers.editor.hint_routing_weight_tie']();
   // Absent coalesces to 0 at the single ordering point, config.ts:185 — but that is ordering, not
   // readout. The attempt-order queue beside this badge renders a dash for an absent weight, so
   // printing `0` here would have the same screen state two things at once, and would make a stored

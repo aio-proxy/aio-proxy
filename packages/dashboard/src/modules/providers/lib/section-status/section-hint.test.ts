@@ -58,10 +58,30 @@ test('the models hint names a broken alias ahead of anything it counts', () => {
   expect(modelsHint({ ...base, models: ['m1'], aliasCount: 1, aliasIssues }, 'todo')).toBe(
     m['dashboard.providers.editor.hint_models_alias_issues'](),
   );
-  // Also ahead of the stale-catalog attention text, which describes a different, non-blocking problem.
-  expect(modelsHint({ ...base, models: ['m1'], aliasIssues }, 'attention')).toBe(
+  // Also ahead of the stale-catalog text, which describes a different, non-blocking problem. Both
+  // conditions hold here, so this pins the order rather than either branch alone.
+  expect(modelsHint({ ...base, models: ['m1'], discoveredModels: ['other'], aliasIssues }, 'todo')).toBe(
     m['dashboard.providers.editor.hint_models_alias_issues'](),
   );
+});
+
+// X9 downgraded staleness, a create-time blank key and a weight tie from `attention` to `ok`. Their
+// three hints used to be selected BY `status === 'attention'`, so the downgrade would have silently
+// deleted all three explanations; each now reads its own input. One assertion per hint, with the status
+// the section actually reports now — pass `'attention'` and these all pass against the deleted branch.
+test('the three downgraded conditions still explain themselves at status ok', () => {
+  expect(connectionHint({ ...base, apiKey: '' }, 'ok')).toBe(
+    m['dashboard.providers.editor.hint_connection_no_api_key'](),
+  );
+  expect(modelsHint({ ...base, models: ['gone'], discoveredModels: ['here'] }, 'ok')).toBe(
+    m['dashboard.providers.editor.hint_models_stale'](),
+  );
+  expect(routingHint({ ...base, weightTie: true })).toBe(m['dashboard.providers.editor.hint_routing_weight_tie']());
+  // The mirror half: none of the three may fire when its own condition is absent, or every healthy
+  // section reports a problem it does not have.
+  expect(connectionHint(base, 'ok')).toBe('x.example/v1');
+  expect(modelsHint({ ...base, models: ['m1'], discoveredModels: ['m1'] }, 'ok')).toBe('1 model');
+  expect(routingHint(base)).toBe(m['dashboard.providers.editor.hint_routing_no_weight']());
 });
 
 // S2 made "present but unusable" a second way for Connection to be `todo`, and the one hint the badge
@@ -84,11 +104,8 @@ test('a malformed base URL says the address is invalid, not that it is missing',
   expect(sectionStatuses({ ...base, protocol: undefined }).connection.hint).toBe(
     m['dashboard.providers.editor.hint_connection_todo_api'](),
   );
-  // Keyed off the status, not off `usableBaseURL` alone: `attention` and `ok` have their own copy, and
-  // reordering the guard above them would report a bad address on a section that has none.
-  expect(connectionHint({ ...base, apiKey: '' }, 'attention')).toBe(
-    m['dashboard.providers.editor.hint_connection_no_api_key'](),
-  );
+  // Keyed off the status, not off `usableBaseURL` alone: the `ok` copy is its own branch, and
+  // reordering the guard above it would report a bad address on a section that has none.
   expect(sectionStatuses(base).connection.hint).toBe('x.example/v1');
 });
 
@@ -99,9 +116,7 @@ test('a malformed base URL says the address is invalid, not that it is missing',
 test('the routing hint tells an absent weight apart from a configured zero', () => {
   const input = { ...base, models: ['m1'], aliasCount: 0 } satisfies SectionStatusInput;
 
-  expect(routingHint({ ...input, weight: 0 }, 'ok')).toBe(
-    m['dashboard.providers.editor.hint_routing_weight']({ weight: 0 }),
-  );
-  expect(routingHint(input, 'ok')).toBe(m['dashboard.providers.editor.hint_routing_no_weight']());
-  expect(routingHint(input, 'ok')).not.toBe(m['dashboard.providers.editor.hint_routing_weight']({ weight: 0 }));
+  expect(routingHint({ ...input, weight: 0 })).toBe(m['dashboard.providers.editor.hint_routing_weight']({ weight: 0 }));
+  expect(routingHint(input)).toBe(m['dashboard.providers.editor.hint_routing_no_weight']());
+  expect(routingHint(input)).not.toBe(m['dashboard.providers.editor.hint_routing_weight']({ weight: 0 }));
 });

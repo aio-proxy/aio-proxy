@@ -66,12 +66,10 @@ export function sectionStatuses(input: SectionStatusInput): Readonly<Record<Sect
   if (input.kind === 'ai-sdk' && (input.optionsValid === false || blankPackageName(input.packageName))) {
     connection = 'todo';
   }
-  // Attention, never todo: an unauthorized oauth draft is saved BY authorizing, and an empty apiKey
-  // in edit mode means "keep the stored key" (D-F2).
+  // The one `attention` in the whole registry (X9), and it gates the save like any other non-ok status:
+  // an unauthorized oauth draft has nothing to persist yet. The Connection section's own authorize
+  // button is the way out, not the footer's primary.
   if (connection === 'ok' && input.kind === 'oauth' && input.authorized !== true) connection = 'attention';
-  if (connection === 'ok' && input.kind === 'api' && input.mode === 'create' && (input.apiKey ?? '').trim() === '') {
-    connection = 'attention';
-  }
 
   // Nothing exposed and no aliases means the provider would route nothing at all, so the save is
   // pointless: `modelRoutes` derives its routes from the whitelist plus the alias map. oauth is
@@ -80,15 +78,16 @@ export function sectionStatuses(input: SectionStatusInput): Readonly<Record<Sect
   const exposed = exposedModels(input.models, input.discoveredModels);
   let models: SectionStatus =
     input.kind !== 'oauth' && exposed.length === 0 && (input.aliasCount ?? 0) === 0 ? 'todo' : 'ok';
-  if (input.discoveredModels !== undefined && input.models.length > 0) {
-    const discovered = new Set(input.discoveredModels);
-    if (input.models.some((model) => !discovered.has(model))) models = 'attention';
-  }
-  // Last, so it outranks the stale-model `attention`: validateAliasTargets turns an alias issue into a
-  // 400 on save, and the alias editor sits in this section (D-F6).
+  // A stale whitelist entry stays `ok` (X9): the upstream catalog is not the user's to fix, so gating
+  // the save on it would strand them. `modelsHint` still names it — off the same inputs, not off this
+  // status — so the reason survives on screen.
+  // Last, so it outranks nothing: validateAliasTargets turns an alias issue into a 400 on save, and
+  // the alias editor sits in this section (D-F6).
   if (input.aliasIssues.length > 0) models = 'todo';
 
-  const routing: SectionStatus = input.weightTie ? 'attention' : 'ok';
+  // Always `ok` (X9): a weight tie is advice about ordering, not an unfinished field. `routingHint`
+  // reads `weightTie` directly to keep saying so.
+  const routing: SectionStatus = 'ok';
 
   const advanced: SectionStatus = input.transformsValid ? 'ok' : 'todo';
 
@@ -96,12 +95,16 @@ export function sectionStatuses(input: SectionStatusInput): Readonly<Record<Sect
     identity: { status: identity, hint: identityHint(input, identity) },
     connection: { status: connection, hint: connectionHint(input, connection) },
     models: { status: models, hint: modelsHint(input, models) },
-    routing: { status: routing, hint: routingHint(input, routing) },
+    routing: { status: routing, hint: routingHint(input) },
     advanced: { status: advanced, hint: advancedHint(input, advanced) },
   };
 }
 
-/** Save gating stays on `todo` alone: `attention` is informational (D-F2). */
+/**
+ * Anything not `ok` gates the save (X9). `attention` is not a softer `todo` here — it is reserved for
+ * the one state that genuinely cannot be persisted yet (an unauthorized oauth draft), so a section
+ * that only has advice to give reports `ok` and puts the advice in its hint instead.
+ */
 export function blockingSections(summaries: Readonly<Record<SectionId, SectionSummary>>): SectionId[] {
-  return SECTION_ORDER.filter((section) => summaries[section].status === 'todo');
+  return SECTION_ORDER.filter((section) => summaries[section].status !== 'ok');
 }

@@ -183,6 +183,8 @@ const saveButton = () => screen.getByRole('button', { name: /Save/u });
 // Scoped to the footer: the connection section now carries its own "Authorize in browser" button,
 // so an unscoped /Authorize/ query matches two elements and throws.
 const authorizeButton = () => within(screen.getByTestId('editor-footer')).getByRole('button', { name: /Authorize/u });
+// The one that actually starts the round trip since X9 gated the footer primary on `attention`.
+const sectionAuthorizeButton = () => screen.getByTestId('connection-authorize');
 const packageInput = () => within(screen.getByTestId('provider-form-field-packageName')).getByRole('combobox');
 // The manual-add box is the shared tags control, which owns no test id; its label is the handle.
 const manualAddLabel = m['dashboard.providers.editor.models_manual_add']();
@@ -416,9 +418,13 @@ test('oauth create authorizes in place, locks sections 3-5, then unlocks after s
   expect(screen.queryByTestId('provider-form-field-id')).toBeNull();
   expect(screen.getByText(/Authorize this account to unlock/u)).toBeTruthy();
   expect(within(screen.getByRole('region', { name: /Models/u })).getByLabelText(manualAddLabel)).toBeDisabled();
-  expect(authorizeButton()).toBeEnabled();
+  // X9: an unauthorized oauth draft has nothing to persist, so it is `attention` and the footer primary
+  // is gated. The Connection section's own authorize button is the entry that works — the same shape the
+  // prototype has, where Save is likewise disabled until the round trip lands.
+  expect(sectionAuthorizeButton()).toBeEnabled();
+  expect(authorizeButton()).toBeDisabled();
 
-  fireEvent.click(authorizeButton());
+  fireEvent.click(sectionAuthorizeButton());
   await waitFor(() => expect(mocks.start).toHaveBeenCalled());
   expect(mocks.start.mock.calls[0]?.[0]).toEqual(
     expect.objectContaining({
@@ -547,7 +553,10 @@ test('create mode explains what the page is for under the title', () => {
   expect(screen.getByText(m['dashboard.providers.editor.header_create_subtitle']())).toBeTruthy();
 });
 
-test('an attention-only section is listed in the footer and still leaves Save enabled', async () => {
+// X9 downgraded "created without an API key" from `attention` to `ok`, so the whole point is that this
+// draft is saveable AND still explains itself: the Connection badge is the only place the missing key is
+// mentioned, and the hint used to be selected by the very status that was removed.
+test('an api create with no key is saveable and its badge still names the missing key', async () => {
   renderPage({
     mode: ProviderFormMode.Create,
     kind: ProviderKind.Api,
@@ -560,13 +569,14 @@ test('an attention-only section is listed in the footer and still leaves Save en
   fillBaseURL('https://api.example.com/v1');
   await pickProtocol();
 
-  // An api create with no key is `attention`, never `todo`: the key may be supplied later.
   const footer = within(screen.getByTestId('editor-footer'));
-  await waitFor(() => expect(footer.getByText(m['dashboard.providers.editor.footer_attention']())).toBeTruthy());
-  expect(footer.getByRole('button', { name: /Connection/u })).toBeTruthy();
-  expect(footer.queryByText(m['dashboard.providers.editor.footer_blocking']())).toBeNull();
-  // D-F2: listing a section is not gating it. Gating on the displayed list disables Save here.
+  await waitFor(() => expect(footer.getByText(m['dashboard.providers.editor.footer_ready']())).toBeTruthy());
   expect(saveButton()).toBeEnabled();
+  expect(
+    within(screen.getByRole('region', { name: /Connection/u })).getByText(
+      m['dashboard.providers.editor.hint_connection_no_api_key'](),
+    ),
+  ).toBeTruthy();
 });
 
 test('a form with nothing outstanding announces that it is ready to save', () => {

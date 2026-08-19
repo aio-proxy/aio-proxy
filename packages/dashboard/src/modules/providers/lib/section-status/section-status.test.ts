@@ -90,7 +90,10 @@ test('alias issues raise models to todo because the schema would reject the save
   expect(statuses({ ...base, aliasIssues }).routing).toBe('ok');
 });
 
-test('a stale whitelist entry is attention and does not block', () => {
+// X9: the upstream catalog is not the user's to fix, so a stale whitelist entry must not gate the save.
+// The hint is the whole point of the downgrade — it is now the only place staleness is reported, so
+// asserting the status without the hint would pass against the mutant that just drops the branch.
+test('a stale whitelist entry is ok, does not block, and still names its staleness', () => {
   const summaries = sectionStatuses({
     ...base,
     kind: 'oauth',
@@ -99,15 +102,22 @@ test('a stale whitelist entry is attention and does not block', () => {
     models: ['gone'],
     discoveredModels: ['here'],
   });
-  expect(summaries.models.status).toBe('attention');
+  expect(summaries.models.status).toBe('ok');
   expect(blockingSections(summaries)).toEqual([]);
+  expect(summaries.models.hint).toBe(m['dashboard.providers.editor.hint_models_stale']());
   // Staleness is only computed when a catalog was fetched. Dropping that guard makes
   // `new Set(undefined)` empty, so every whitelisted model reads as stale on every provider.
   expect(statuses(base).models).toBe('ok');
+  expect(sectionStatuses(base).models.hint).not.toBe(m['dashboard.providers.editor.hint_models_stale']());
 });
 
-test('a weight tie is attention on routing', () => {
-  expect(statuses({ ...base, weightTie: true }).routing).toBe('attention');
+// X9 again: a tie is advice about attempt order — the other provider in it may not even be this user's
+// to change — so it reports `ok` and keeps the explanation in the hint.
+test('a weight tie is ok on routing and still names the tie', () => {
+  const summaries = sectionStatuses({ ...base, weightTie: true });
+  expect(summaries.routing.status).toBe('ok');
+  expect(blockingSections(summaries)).toEqual([]);
+  expect(summaries.routing.hint).toBe(m['dashboard.providers.editor.hint_routing_weight_tie']());
 });
 
 test('an oauth provider needs a capability, but never its own id — the server assigns that', () => {
@@ -162,28 +172,33 @@ test('an explicitly emptied ai-sdk package name is todo and names itself', () =>
   expect(statuses({ ...base, kind: 'ai-sdk', packageName: undefined }).connection).toBe('ok');
 });
 
-test('a missing api key is attention and never blocks the save', () => {
+// X9 downgraded this to `ok`, and the hint is the only thing left that reports it: a create-time draft
+// with no key is saveable, so the badge is the sole explanation of why the key field still looks unfinished.
+test('a missing api key is ok, never blocks, and still says the key is missing', () => {
   const summaries = sectionStatuses({ ...base, apiKey: '' });
-  expect(summaries.connection.status).toBe('attention');
+  expect(summaries.connection.status).toBe('ok');
   expect(summaries.connection.hint).toBe(m['dashboard.providers.editor.hint_connection_no_api_key']());
-  // D-F2: widening `blockingSections` past 'todo' would disable Save here, and in edit mode an empty
-  // field means "keep the stored key", so the section is complete.
   expect(blockingSections(summaries)).toEqual([]);
+  // In edit mode an empty field means "keep the stored key", so it is not even worth remarking on.
   expect(statuses({ ...base, apiKey: '', mode: 'edit' }).connection).toBe('ok');
+  expect(sectionStatuses({ ...base, apiKey: '', mode: 'edit' }).connection.hint).toBe('x.example/v1');
 });
 
 test('a ready api connection reads as the host, not the whole URL', () => {
   expect(sectionStatuses(base).connection.hint).toBe('x.example/v1');
 });
 
-test('a ready oauth connection is authorized, an unauthorized one is attention', () => {
+// The one surviving `attention` (X9), and the one that gates: there is nothing to persist until the
+// round trip completes. The Connection section's own authorize button is the way out — not the footer's
+// primary, which this deliberately disables.
+test('a ready oauth connection is authorized; an unauthorized one is attention and blocks', () => {
   const pending = sectionStatuses({ ...base, kind: 'oauth', capabilityKey: 'p\0c', authorized: false });
   expect(pending.connection.status).toBe('attention');
   expect(pending.connection.hint).toBe(m['dashboard.providers.editor.hint_connection_oauth_unauthorized']());
-  // Authorizing is what the primary button does in oauth create; blocking it would deadlock the flow.
-  expect(blockingSections(pending)).toEqual([]);
+  expect(blockingSections(pending)).toEqual(['connection']);
   const done = sectionStatuses({ ...base, kind: 'oauth', capabilityKey: 'p\0c', authorized: true });
   expect(done.connection.hint).toBe(m['dashboard.providers.editor.hint_connection_oauth_ready']());
+  expect(blockingSections(done)).toEqual([]);
 });
 
 // D-F5: the display name is optional, and `SectionStatusInput` deliberately carries no `name` for
@@ -236,8 +251,9 @@ test('routing states its own problem before its weight', () => {
 test('a disabled provider reads as disabled even when its weight ties', () => {
   const summaries = sectionStatuses({ ...base, enabled: false, weightTie: true, weight: 40 });
   expect(summaries.routing.hint).toBe(m['dashboard.providers.editor.hint_routing_disabled']());
-  // The dot stays on the tie (D-F6). This is the hint's ordering, not the status'.
-  expect(summaries.routing.status).toBe('attention');
+  // The tie no longer moves the status (X9), so what this pins is purely the hint's ordering: the
+  // `enabled === false` branch has to stay ahead of the tie branch.
+  expect(summaries.routing.status).toBe('ok');
 });
 
 test('the advanced hint joins exactly the parts that are active', () => {
