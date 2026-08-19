@@ -109,21 +109,12 @@ const refreshPiFamilyCredentialOnce = createSingleFlight(
   },
 );
 
-const lastRotatedByInstallation = new Map<string, OAuthCredentials>();
-
 export async function refreshPiFamilyCredential(
   marker: AgentManagedMarker,
   credential: OAuthCredentials,
   options: CoreOptions = {},
 ): Promise<OAuthCredentials> {
-  const now = options.now ?? Date.now;
-  const last = lastRotatedByInstallation.get(marker.installationId);
-  if (last !== undefined && last.refresh === credential.refresh && now() < last.expires) {
-    return last;
-  }
-  const next = await refreshPiFamilyCredentialOnce(marker, credential, options);
-  lastRotatedByInstallation.set(marker.installationId, next);
-  return next;
+  return refreshPiFamilyCredentialOnce(marker, credential, options);
 }
 
 export async function readPiFamilyModels(

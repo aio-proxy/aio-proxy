@@ -10,7 +10,6 @@ test('uses onDeviceCode and returns credentials without touching auth storage', 
   const f = await fixture();
   const onDeviceCode = mock(() => {});
   const credentials = await f.provider.oauth!.login({
-    onAuth: mock(() => {}),
     onDeviceCode,
     onPrompt: async () => '',
     onSelect: async () => undefined,

@@ -201,20 +201,21 @@ test('overlapping refresh shares one exchange and releases it after settlement',
   releaseExchange();
   const rotated = { access: 'aio_agent_at_v1_new', refresh: 'aio_agent_rt_v1_new', expires: 902_000 };
   await expect(Promise.all([first, second])).resolves.toEqual([rotated, rotated]);
+  const exchanged = { access: 'aio_agent_at_v1_new', refresh: 'aio_agent_rt_v1_new', expires: 903_000 };
   await expect(
     refreshPiFamilyCredential(marker, rotated, {
       now: () => 3_000,
       refreshAgentCredential: exchange,
     }),
-  ).resolves.toEqual(rotated);
-  expect(exchange).toHaveBeenCalledTimes(1);
+  ).resolves.toEqual(exchanged);
+  expect(exchange).toHaveBeenCalledTimes(2);
   await expect(
     refreshPiFamilyCredential(marker, credential, {
       now: () => 3_000,
       refreshAgentCredential: exchange,
     }),
-  ).resolves.toEqual({ access: 'aio_agent_at_v1_new', refresh: 'aio_agent_rt_v1_new', expires: 903_000 });
-  expect(exchange).toHaveBeenCalledTimes(2);
+  ).resolves.toEqual(exchanged);
+  expect(exchange).toHaveBeenCalledTimes(3);
 });
 
 const managed = {

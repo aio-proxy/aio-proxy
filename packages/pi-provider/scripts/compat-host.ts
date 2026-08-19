@@ -38,13 +38,21 @@ type ProviderRegistration = {
   readonly name: string;
   readonly config: {
     readonly oauth: {
-      readonly login: (callbacks: {
-        readonly onAuth: (value: { readonly url?: string }) => void;
-        readonly onDeviceCode: (value: unknown) => void;
-        readonly onPrompt: () => Promise<string>;
-        readonly onSelect: () => Promise<undefined>;
-        readonly signal: AbortSignal;
-      }) => Promise<OAuthCredential>;
+      readonly login: (
+        callbacks:
+          | {
+              readonly onDeviceCode: (value: unknown) => void;
+              readonly onPrompt: () => Promise<string>;
+              readonly onSelect: () => Promise<undefined>;
+              readonly signal: AbortSignal;
+            }
+          | {
+              readonly onAuth: (value: { readonly url?: string }) => void;
+              readonly onPrompt: () => Promise<string>;
+              readonly onSelect: () => Promise<undefined>;
+              readonly signal: AbortSignal;
+            },
+      ) => Promise<OAuthCredential>;
       readonly refreshToken?: (credential: OAuthCredential, signal?: AbortSignal) => Promise<OAuthCredential>;
       readonly getApiKey: (credential: OAuthCredential) => string;
     };
@@ -386,17 +394,26 @@ async function runProbe(
   const devicePresentations: unknown[] = [];
   const authPresentations: Array<{ url?: string }> = [];
   const signal = new AbortController().signal;
-  const credential = await registration.config.oauth.login({
-    onAuth: (value: { url?: string }) => {
-      authPresentations.push(value);
-    },
-    onDeviceCode: (value: unknown) => {
-      devicePresentations.push(value);
-    },
+  const shared = {
     onPrompt: async () => '',
     onSelect: async () => undefined,
     signal,
-  });
+  };
+  const credential = await registration.config.oauth.login(
+    target === 'pi'
+      ? {
+          onDeviceCode: (value: unknown) => {
+            devicePresentations.push(value);
+          },
+          ...shared,
+        }
+      : {
+          onAuth: (value: { url?: string }) => {
+            authPresentations.push(value);
+          },
+          ...shared,
+        },
+  );
   if (target === 'pi') {
     check(devicePresentations.length === 1, 'official Pi did not use onDeviceCode');
   } else {
