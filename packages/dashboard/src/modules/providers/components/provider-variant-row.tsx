@@ -28,8 +28,7 @@ interface ProviderVariantRowProps {
 
 /**
  * Every control reads the stored row, so the row prop is the only state. A per-row form would be a second
- * copy, and removing a row renumbers the ones after it: React would hand the outgoing row's form to its
- * successor, whose own edit then writes the wrong condition. Nothing to hand over, nothing to go stale.
+ * copy of it, with nothing to keep the two in step once the row changes underneath. Nothing to go stale.
  */
 export const ProviderVariantRow: FC<ProviderVariantRowProps> = ({
   aliasName,
