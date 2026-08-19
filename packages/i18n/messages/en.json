@@ -505,7 +505,7 @@
         "authorization_cancelled": "The authorization was cancelled",
         "start_over": "Start over",
         "service_label": "OAuth service",
-        "account_label": "Account",
+        "connected_account": "Connected as {account}",
         "account_fields_title": "Account settings",
         "models_title": "Discovered models",
         "reauthorize_helper": "Account setting changes are saved only after authorization succeeds"

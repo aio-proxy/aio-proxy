@@ -505,7 +505,7 @@
         "authorization_cancelled": "授权已取消",
         "start_over": "重新开始",
         "service_label": "OAuth 服务",
-        "account_label": "账户",
+        "connected_account": "已连接 {account}",
         "account_fields_title": "账户设置",
         "models_title": "已发现模型",
         "reauthorize_helper": "账户设置变更只会在授权成功后保存"

@@ -1,6 +1,6 @@
 import { m } from '@aio-proxy/i18n';
 import type { DashboardOAuthFormField } from '@aio-proxy/types';
-import { Field } from '@aio-proxy/ui/components/field';
+import { Field, FieldDescription } from '@aio-proxy/ui/components/field';
 import { Input } from '@aio-proxy/ui/components/input';
 import { Label } from '@aio-proxy/ui/components/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@aio-proxy/ui/components/select';
@@ -122,7 +122,7 @@ export const OAuthAccountField: React.FC<OAuthAccountFieldProps> = (props) => {
           setPublic(value);
         }}
       />
-      {description === undefined ? null : <p className="text-sm text-muted-foreground">{description}</p>}
+      {description === undefined ? null : <FieldDescription>{description}</FieldDescription>}
     </Field>
   );
 };

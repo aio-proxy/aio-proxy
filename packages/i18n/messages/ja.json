@@ -505,7 +505,7 @@
         "authorization_cancelled": "認可がキャンセルされました",
         "start_over": "最初からやり直す",
         "service_label": "OAuth サービス",
-        "account_label": "アカウント",
+        "connected_account": "{account} に接続済み",
         "account_fields_title": "アカウント設定",
         "models_title": "検出されたモデル",
         "reauthorize_helper": "アカウント設定の変更は認可が成功した後にのみ保存されます"

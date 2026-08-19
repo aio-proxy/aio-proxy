@@ -185,7 +185,7 @@ describe('ConnectionSection', () => {
     renderConnection({ kind: ProviderKind.OAuth, mode: ProviderFormMode.Edit });
 
     expect(oauthEditFields()).toBeInTheDocument();
-    expect(screen.getByText(oauthEdit.accountLabel)).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent(oauthEdit.accountLabel);
     expect(oauthCreateFields()).toBeNull();
     expect(apiFields()).toBeNull();
     expect(aiSdkFields()).toBeNull();
