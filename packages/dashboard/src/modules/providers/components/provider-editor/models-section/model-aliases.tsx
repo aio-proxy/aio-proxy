@@ -28,6 +28,8 @@ export const ModelAliases: React.FC<ModelAliasesProps> = ({ alias, issues, targe
   const hasDuplicateName = issues.some((issue) => issue.code === 'alias-name-duplicate');
 
   return (
+    // `border-t pt-5` because this block shares the Models section with the row list above it: two
+    // headings under one section heading need the rule to read as two blocks, not one long one.
     <div className="space-y-3 border-t pt-5" data-testid="provider-editor-field-alias">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="max-w-2xl">

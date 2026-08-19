@@ -165,7 +165,7 @@ export const ModelsSection: React.FC<ModelsSectionProps> = ({
                   };
 
                   return (
-                    <div className="contents">
+                    <>
                       <div className="space-y-3" data-testid="provider-editor-field-models">
                         <div>
                           <h3 className="text-sm font-medium">
@@ -257,7 +257,7 @@ export const ModelsSection: React.FC<ModelsSectionProps> = ({
                           }
                         }}
                       />
-                    </div>
+                    </>
                   );
                 }}
               </form.Field>

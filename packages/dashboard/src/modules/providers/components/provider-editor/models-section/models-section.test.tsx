@@ -670,4 +670,15 @@ describe('ModelsSection', () => {
     expect(within(screen.getByTestId('model-row-disc-b')).getByTestId('model-row-metadata')).toBeDisabled();
     expect(within(screen.getByTestId('model-row-model-a')).getByTestId('model-row-metadata')).toBeEnabled();
   });
+
+  // Nesting, not styling: the card body spaces its blocks with `space-y-*`, which Tailwind compiles to a
+  // direct-child combinator. Wrapping the blocks in anything — even a `display: contents` div, which was
+  // the regression this guards — makes them grandchildren and the gap silently becomes 0.
+  test('the models and alias blocks are direct children of the card body', () => {
+    renderSection({ kind: ProviderKind.Api, initial: apiInitial(['model-a']) });
+
+    const body = screen.getByTestId('provider-editor-field-models').parentElement;
+    expect(body).toHaveAttribute('data-slot', 'card-content');
+    expect(screen.getByTestId('provider-editor-field-alias').parentElement).toBe(body);
+  });
 });
