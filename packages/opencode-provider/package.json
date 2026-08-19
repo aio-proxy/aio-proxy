@@ -10,7 +10,7 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "build": "rslib",
+    "build": "rslib --lib provider",
     "test": "bun run test:unit",
     "test:unit": "bun test src",
     "test:artifact": "bun test ./artifact.test.ts",
