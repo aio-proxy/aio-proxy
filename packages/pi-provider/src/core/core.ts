@@ -1,5 +1,6 @@
 import {
   AgentRuntimeError,
+  createSingleFlight,
   pollDeviceAuthorization,
   readLastKnownCatalog,
   refreshAgentCatalog,
@@ -94,20 +95,26 @@ export async function loginPiFamily(
   return credentialFromToken(token, options.now ?? Date.now);
 }
 
+const refreshPiFamilyCredentialOnce = createSingleFlight(
+  async (marker: AgentManagedMarker, credential: OAuthCredentials, options: CoreOptions): Promise<OAuthCredentials> => {
+    let token: Awaited<ReturnType<typeof refreshAgentCredential>>;
+    try {
+      token = await (options.refreshAgentCredential ?? refreshAgentCredential)(marker, credential.refresh, options);
+    } catch (error) {
+      if (error instanceof AgentRuntimeError && error.code === 'invalid_grant')
+        throw new Error('aio-proxy login required');
+      throw error;
+    }
+    return credentialFromToken(token, options.now ?? Date.now);
+  },
+);
+
 export async function refreshPiFamilyCredential(
   marker: AgentManagedMarker,
   credential: OAuthCredentials,
   options: CoreOptions = {},
 ): Promise<OAuthCredentials> {
-  let token: Awaited<ReturnType<typeof refreshAgentCredential>>;
-  try {
-    token = await (options.refreshAgentCredential ?? refreshAgentCredential)(marker, credential.refresh, options);
-  } catch (error) {
-    if (error instanceof AgentRuntimeError && error.code === 'invalid_grant')
-      throw new Error('aio-proxy login required');
-    throw error;
-  }
-  return credentialFromToken(token, options.now ?? Date.now);
+  return refreshPiFamilyCredentialOnce(marker, credential, options);
 }
 
 export async function readPiFamilyModels(

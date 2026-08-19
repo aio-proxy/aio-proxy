@@ -173,6 +173,43 @@ test('refresh invalid_grant becomes one stable host-visible login diagnostic', a
   ).rejects.toThrow('aio-proxy login required');
 });
 
+test('overlapping refresh shares one exchange and releases it after settlement', async () => {
+  const credential = { access: 'old', refresh: 'aio_agent_rt_v1_old', expires: 0 };
+  let releaseStarted!: () => void;
+  let releaseExchange!: () => void;
+  const started = new Promise<void>((resolve) => {
+    releaseStarted = resolve;
+  });
+  const hold = new Promise<void>((resolve) => {
+    releaseExchange = resolve;
+  });
+  const exchange = mock(async () => {
+    releaseStarted();
+    await hold;
+    return {
+      token_type: 'Bearer' as const,
+      access_token: 'aio_agent_at_v1_new',
+      refresh_token: 'aio_agent_rt_v1_new',
+      expires_in: 900,
+    };
+  });
+  const options = { now: () => 2_000, refreshAgentCredential: exchange };
+  const first = refreshPiFamilyCredential(marker, credential, options);
+  const second = refreshPiFamilyCredential(marker, credential, options);
+  await started;
+  expect(exchange).toHaveBeenCalledTimes(1);
+  releaseExchange();
+  const rotated = { access: 'aio_agent_at_v1_new', refresh: 'aio_agent_rt_v1_new', expires: 902_000 };
+  await expect(Promise.all([first, second])).resolves.toEqual([rotated, rotated]);
+  await expect(
+    refreshPiFamilyCredential(marker, credential, {
+      now: () => 3_000,
+      refreshAgentCredential: exchange,
+    }),
+  ).resolves.toEqual({ access: 'aio_agent_at_v1_new', refresh: 'aio_agent_rt_v1_new', expires: 903_000 });
+  expect(exchange).toHaveBeenCalledTimes(2);
+});
+
 const managed = {
   rootDir: '/managed',
   markerPath: '/managed/.aio-proxy-managed.json',
