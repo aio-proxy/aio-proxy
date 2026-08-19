@@ -64,6 +64,15 @@ const aliases: DefaultAliasSuggestions = {
   },
 };
 
+const cursorAliases: DefaultAliasSuggestions = {
+  'claude-opus-4-8': {
+    model: 'claude-opus-4-8-medium',
+    preserve: false,
+    variants: [{ when: { thinking: true, effort: 'high' }, model: 'claude-opus-4-8-thinking-high', preserve: false }],
+  },
+};
+void cursorAliases;
+
 adapter.catalog.defaultAliases?.({
   language: [],
   image: [],

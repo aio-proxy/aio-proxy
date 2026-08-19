@@ -4,6 +4,7 @@ import { create, fromBinary, toBinary } from '@bufbuild/protobuf';
 import { GetUsableModelsRequestSchema, GetUsableModelsResponseSchema } from '../../gen/agent_pb';
 import { buildDiscoveryHeaders, CURSOR_GET_USABLE_MODELS_PATH, type CursorTransport } from '../../wire';
 import { decodeConnectUnaryBody } from '../../wire/unary';
+import { fetchCursorFamilies } from '../available-models';
 import { staticCursorCatalog } from '../catalog';
 
 export class CursorCatalogError extends Error {
@@ -19,6 +20,21 @@ export class CursorCatalogError extends Error {
 }
 
 export async function discoverCursorModels(input: {
+  readonly accessToken: string;
+  readonly transport: CursorTransport;
+  readonly baseUrl?: string;
+  readonly timeoutMs?: number;
+  readonly signal?: AbortSignal;
+}): Promise<ModelCatalog> {
+  const usablePromise = fetchGetUsableModels(input);
+  const familiesPromise = fetchCursorFamilies(input).catch(() => undefined);
+  const [catalog, cursorFamilies] = await Promise.all([usablePromise, familiesPromise]);
+  return cursorFamilies === undefined || cursorFamilies.length === 0
+    ? catalog
+    : { ...catalog, metadata: { cursorFamilies } };
+}
+
+async function fetchGetUsableModels(input: {
   readonly accessToken: string;
   readonly transport: CursorTransport;
   readonly baseUrl?: string;

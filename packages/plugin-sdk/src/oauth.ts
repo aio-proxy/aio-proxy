@@ -11,8 +11,18 @@ export type DefaultAliasTarget = {
   readonly preserve?: boolean;
 };
 
+export type DefaultAliasSelectRow = {
+  readonly when: {
+    readonly thinking?: boolean;
+    readonly effort?: string;
+    readonly speed?: 'flex' | 'standard' | 'fast';
+  };
+  readonly model: string;
+  readonly preserve?: boolean;
+};
+
 export type DefaultAliasSuggestion = DefaultAliasTarget & {
-  readonly variants?: Readonly<Record<string, DefaultAliasTarget>>;
+  readonly variants?: Readonly<Record<string, DefaultAliasTarget>> | readonly DefaultAliasSelectRow[];
 };
 
 export type DefaultAliasSuggestions = Readonly<Record<string, DefaultAliasSuggestion>>;
