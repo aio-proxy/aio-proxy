@@ -4,29 +4,29 @@ import { cn } from '@aio-proxy/ui/lib/utils';
 import { BoxesIcon, KeyRoundIcon, ShieldCheckIcon } from 'lucide-react';
 import type React from 'react';
 
+import { PROVIDER_KIND_LABEL } from '../../../lib/constants';
+
 // `satisfies` over the enum: adding a kind without a card here is a type error, not a missing card.
+// The heading is `PROVIDER_KIND_LABEL`, the same acronyms the providers table shows — proper nouns
+// that are identical in every locale, so only the hint below them is a message.
 const KIND_CARDS = [
   {
     value: ProviderKind.Api,
-    labelKey: 'dashboard.providers.editor.kind_api',
     hintKey: 'dashboard.providers.editor.kind_api_hint',
     icon: KeyRoundIcon,
   },
   {
     value: ProviderKind.OAuth,
-    labelKey: 'dashboard.providers.editor.kind_oauth',
     hintKey: 'dashboard.providers.editor.kind_oauth_hint',
     icon: ShieldCheckIcon,
   },
   {
     value: ProviderKind.AiSdk,
-    labelKey: 'dashboard.providers.editor.kind_ai_sdk',
     hintKey: 'dashboard.providers.editor.kind_ai_sdk_hint',
     icon: BoxesIcon,
   },
 ] as const satisfies readonly {
   value: ProviderKind;
-  labelKey: keyof typeof m;
   hintKey: keyof typeof m;
   icon: typeof KeyRoundIcon;
 }[];
@@ -52,10 +52,12 @@ export const KindPicker: React.FC<KindPickerProps> = ({ value, onChange, locked 
     return (
       <p data-testid="provider-editor-kind-locked" className="flex items-center gap-2 text-sm text-muted-foreground">
         <Icon className="size-4 shrink-0" />
-        <span className="text-foreground">{m[current.labelKey]()}</span>
-        {/* The separator is decoration; the note beside it carries the meaning. */}
-        <span aria-hidden>·</span>
-        <span>{m['dashboard.providers.editor.kind_locked_note']()}</span>
+        <span className="text-foreground">{PROVIDER_KIND_LABEL[current.value]}</span>
+        {/* One flex child, so the separator keeps a plain space to the note it decorates instead of
+            the row's `gap-2`. The dot is decoration; the note beside it carries the meaning. */}
+        <span>
+          <span aria-hidden>·</span> {m['dashboard.providers.editor.kind_locked_note']()}
+        </span>
       </p>
     );
   }
@@ -92,7 +94,7 @@ export const KindPicker: React.FC<KindPickerProps> = ({ value, onChange, locked 
           >
             <Icon className={cn('mt-0.5 size-4 shrink-0', selected ? 'text-primary' : 'text-muted-foreground')} />
             <span className="min-w-0">
-              <span className="block text-sm font-medium">{m[card.labelKey]()}</span>
+              <span className="block text-sm font-medium">{PROVIDER_KIND_LABEL[card.value]}</span>
               <span className="block text-xs text-muted-foreground">{m[card.hintKey]()}</span>
             </span>
           </button>

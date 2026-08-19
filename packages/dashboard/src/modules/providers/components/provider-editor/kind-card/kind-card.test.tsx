@@ -3,7 +3,7 @@ import { ProviderKind } from '@aio-proxy/types';
 import { describe, expect, rs, test } from '@rstest/core';
 import { fireEvent, render, screen } from '@testing-library/react';
 
-import { ProviderFormMode } from '../../../lib/constants';
+import { ProviderFormMode, PROVIDER_KIND_LABEL } from '../../../lib/constants';
 import { KindCard } from './kind-card';
 
 const renderKind = (mode: ProviderFormMode, value: ProviderKind) => {
@@ -66,9 +66,7 @@ describe('KindCard', () => {
     renderKind(ProviderFormMode.Edit, ProviderKind.AiSdk);
 
     expect(screen.queryByRole('radiogroup')).toBeNull();
-    expect(screen.getByTestId('provider-editor-kind-locked')).toHaveTextContent(
-      m['dashboard.providers.editor.kind_ai_sdk'](),
-    );
+    expect(screen.getByTestId('provider-editor-kind-locked')).toHaveTextContent(PROVIDER_KIND_LABEL['ai-sdk']);
     expect(screen.getByText(m['dashboard.providers.editor.kind_locked_note']())).toBeTruthy();
     expect(screen.queryByText(m['dashboard.providers.editor.kind_description']())).toBeNull();
   });
