@@ -25,3 +25,7 @@ Editing an OAuth provider now confirms the account it is connected to, announced
 place of a read-only table that printed the account name a second time and said nothing about being
 connected. Its reauthorize button sits beside the copy that explains it, at the same size as the
 authorize button on the create screen.
+
+The Connection section no longer reports a blank API Key as a missing one. A provider that needs no key
+is a legitimate configuration, so the section's summary shows its address in every mode rather than
+"Missing API Key" while creating. Saving was never gated on the key.
