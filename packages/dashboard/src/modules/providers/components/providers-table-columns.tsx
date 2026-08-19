@@ -133,11 +133,17 @@ const modelsColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
 const weightColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
   id: 'weight',
   meta: { className: 'w-20 text-center', label: () => m['dashboard.providers.table.col_weight']() },
+  // Raw weight on purpose: this feeds sorting, and coalescing an absent weight to 0 here would move
+  // rows. Only the rendered cell distinguishes absent from stored.
   accessorFn: (row) => concreteProvider(row)?.weight,
   header: tableHead(() => m['dashboard.providers.table.col_weight']()),
   cell: ({ row }) => {
     const provider = concreteProvider(row.original);
-    return provider === undefined ? null : (provider.weight ?? 0);
+    if (provider === undefined) return null;
+    // A stored `0` is a real weight — the lowest priority — so it must not read the same as a key the
+    // config never had. Same em-dash marker as provider-models-cell and model-row-item: a symbol, not
+    // translatable copy.
+    return provider.weight ?? <span className="text-muted-foreground">—</span>;
   },
 };
 

@@ -4,21 +4,15 @@ import { Input } from '@aio-proxy/ui/components/input';
 import { Label } from '@aio-proxy/ui/components/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@aio-proxy/ui/components/select';
 import type { AnyFieldApi } from '@tanstack/react-form';
-import { useState } from 'react';
 
-import { ProviderFormMode } from '../../lib/constants';
-
-type ProxyMode = 'unchanged' | 'inherit' | 'disabled' | 'url';
+type ProxyMode = 'inherit' | 'disabled' | 'url';
 
 interface ProviderProxyFieldProps {
   readonly field: AnyFieldApi;
-  readonly mode: ProviderFormMode;
 }
 
 const modeLabel = (mode: ProxyMode) => {
   switch (mode) {
-    case 'unchanged':
-      return m['dashboard.providers.form.proxy_unchanged']();
     case 'inherit':
       return m['dashboard.providers.form.proxy_inherit']();
     case 'disabled':
@@ -29,21 +23,18 @@ const modeLabel = (mode: ProxyMode) => {
 };
 
 const selectedMode = (value: unknown): ProxyMode => {
-  if (value === '****') return 'unchanged';
   if (value === false) return 'disabled';
   if (typeof value === 'string') return 'url';
   return 'inherit';
 };
 
-export const ProviderProxyField: React.FC<ProviderProxyFieldProps> = ({ field, mode }) => {
-  const [initiallyRedacted] = useState(() => field.state.value === '****');
+export const ProviderProxyField: React.FC<ProviderProxyFieldProps> = ({ field }) => {
   const proxyMode = selectedMode(field.state.value);
   const modeId = `${field.name}-mode`;
   const urlId = `${field.name}-url`;
 
   const changeMode = (next: ProxyMode) => {
-    if (next === 'unchanged') field.handleChange(initiallyRedacted ? '****' : undefined);
-    else if (next === 'inherit') field.handleChange(null);
+    if (next === 'inherit') field.handleChange(null);
     else if (next === 'disabled') field.handleChange(false);
     else field.handleChange('');
   };
@@ -57,9 +48,6 @@ export const ProviderProxyField: React.FC<ProviderProxyFieldProps> = ({ field, m
             <SelectValue>{(value: ProxyMode | null) => modeLabel(value ?? proxyMode)}</SelectValue>
           </SelectTrigger>
           <SelectContent>
-            {mode === ProviderFormMode.Edit && initiallyRedacted ? (
-              <SelectItem value="unchanged">{m['dashboard.providers.form.proxy_unchanged']()}</SelectItem>
-            ) : null}
             <SelectItem value="inherit">{m['dashboard.providers.form.proxy_inherit']()}</SelectItem>
             <SelectItem value="disabled">{m['dashboard.providers.form.proxy_disabled']()}</SelectItem>
             <SelectItem value="url">{m['dashboard.providers.form.proxy_url']()}</SelectItem>
@@ -70,7 +58,7 @@ export const ProviderProxyField: React.FC<ProviderProxyFieldProps> = ({ field, m
             <Label htmlFor={urlId}>{m['dashboard.providers.form.proxy_url']()}</Label>
             <Input
               id={urlId}
-              value={typeof field.state.value === 'string' && field.state.value !== '****' ? field.state.value : ''}
+              value={typeof field.state.value === 'string' ? field.state.value : ''}
               onChange={(event) => field.handleChange(event.target.value)}
               placeholder={m['dashboard.providers.form.placeholder_proxy_url']()}
             />

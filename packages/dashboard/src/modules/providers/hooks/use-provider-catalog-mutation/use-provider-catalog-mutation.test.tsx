@@ -4,8 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { createElement, type ReactNode } from 'react';
 
-import { ProviderFormMode } from '../../lib/constants';
-import { useProviderForm } from '../use-provider-form';
+import { useProviderEditorForm } from '../use-provider-editor-form';
 import { useProviderCatalogMutation } from './use-provider-catalog-mutation';
 
 const mocks = rs.hoisted(() => ({ fetchCatalog: rs.fn() }));
@@ -24,8 +23,7 @@ test('loads a validated Provider catalogue only after the mutation is triggered'
     createElement(QueryClientProvider, { client: queryClient }, children);
   const { result } = renderHook(
     () => {
-      const form = useProviderForm({
-        mode: ProviderFormMode.Edit,
+      const form = useProviderEditorForm({
         kind: ProviderKind.Api,
         initial: {
           kind: ProviderKind.Api,

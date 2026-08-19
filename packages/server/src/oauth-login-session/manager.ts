@@ -72,6 +72,8 @@ const runLoginSession = async (
               weight: input.providerPatch.weight,
               proxy: input.providerPatch.proxy,
               alias: input.providerPatch.alias,
+              models: input.providerPatch.models,
+              metadata: input.providerPatch.metadata,
               transforms: input.providerPatch.transforms,
             } satisfies OAuthProviderPatch,
           }),

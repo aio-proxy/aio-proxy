@@ -110,7 +110,7 @@ async function createOAuthEditFixture() {
   };
 }
 
-test('OAuth edit-view is secret-safe and common edits preserve account identity and options', async () => {
+test('OAuth edit-view returns the real proxy but never account secrets, and common edits preserve account identity and options', async () => {
   const { configPath, routes, cleanup } = await createOAuthEditFixture();
 
   try {
@@ -123,7 +123,7 @@ test('OAuth edit-view is secret-safe and common edits preserve account identity 
         kind: 'oauth',
         plugin: '@example/oauth',
         capability: 'default',
-        proxy: '****',
+        proxy: 'https://old-proxy.example:8443',
       },
       oauth: {
         accountLabel: 'person@example.com',
@@ -167,7 +167,7 @@ test('OAuth edit-view is secret-safe and common edits preserve account identity 
   }
 });
 
-test('OAuth provider updates persist every proxy override state without exposing credentials', async () => {
+test('OAuth provider updates persist every proxy override state and edit-view returns the current one', async () => {
   const { configPath, routes, cleanup } = await createOAuthEditFixture();
   const update = async (proxy: null | false | string) =>
     routes.request('/providers/person', {
@@ -191,8 +191,7 @@ test('OAuth provider updates persist every proxy override state without exposing
     expect(providerOnDisk()).toMatchObject({ proxy: 'http://new-proxy.example:8080' });
 
     const edit = await (await routes.request('/providers/person/edit-view')).json();
-    expect(edit).toMatchObject({ provider: { proxy: '****' } });
-    expect(JSON.stringify(edit)).not.toContain('new-proxy.example');
+    expect(edit).toMatchObject({ provider: { proxy: 'http://new-proxy.example:8080' } });
   } finally {
     cleanup();
   }

@@ -2,14 +2,19 @@ import {
   type AliasConfig,
   type AliasDimensions,
   type AliasSelectRow,
-  type ModelId,
+  directModelIds,
   flattenAliasVariants,
   matchAliasRows,
+  type ModelId,
+  sameRouteTargets,
 } from '@aio-proxy/types';
 
 import { RouterModelCollisionError, RouterModelNotFoundError } from './error';
 import type { AiSdkProviderInstance } from './provider/ai-sdk/index';
 import type { ApiProviderInstance } from './provider/api/index';
+
+export { modelRoutes } from '@aio-proxy/types';
+export type { ModelRoute } from '@aio-proxy/types';
 
 export type RoutableProvider = {
   readonly id: string;
@@ -31,11 +36,6 @@ export type RouterResolution<TProvider extends RoutableProvider = ProviderInstan
 };
 
 export type RouterCandidate<TProvider extends RoutableProvider = ProviderInstance> = RouterResolution<TProvider>;
-
-export type ModelRoute = {
-  readonly alias: string;
-  readonly modelId: string;
-};
 
 type ConfiguredRouterRoute<TProvider extends RoutableProvider> = {
   readonly provider: TProvider;
@@ -97,75 +97,4 @@ export class Router<TProvider extends RoutableProvider = ProviderInstance> {
     routes.push(route);
     this.aliases.set(alias, routes);
   }
-}
-
-export function modelRoutes(provider: RoutableProvider): ModelRoute[] {
-  const routes = Object.entries(provider.alias ?? {}).map(([alias, config]) => ({ alias, modelId: config.model }));
-  for (const modelId of directModelIds(provider)) {
-    if (!routes.some((route) => route.alias === modelId && route.modelId === modelId)) {
-      routes.push({ alias: modelId, modelId });
-    }
-  }
-  return routes;
-}
-
-function directModelIds(provider: RoutableProvider): string[] {
-  const configuredModelIds = new Set<string>('models' in provider ? (provider.models ?? []) : []);
-  const modelIds = new Set(configuredModelIds);
-
-  for (const [alias, config] of Object.entries(provider.alias ?? {})) {
-    modelIds.delete(alias);
-    if (configuredModelIds.has(alias)) {
-      continue;
-    }
-    if (!config.preserve) {
-      modelIds.delete(config.model);
-    }
-    for (const target of flattenAliasVariants(config.variants)) {
-      if (!target.preserve) {
-        modelIds.delete(target.model);
-      }
-    }
-  }
-
-  for (const modelId of preservedModelIds(provider)) {
-    modelIds.add(modelId);
-  }
-  return [...modelIds];
-}
-
-function preservedModelIds(provider: RoutableProvider): string[] {
-  const modelIds = new Set<string>();
-  for (const config of Object.values(provider.alias ?? {})) {
-    if (config.preserve) {
-      modelIds.add(config.model);
-    }
-  }
-
-  for (const config of Object.values(provider.alias ?? {})) {
-    for (const target of flattenAliasVariants(config.variants)) {
-      if (target.preserve) {
-        const selfRoute = provider.alias?.[target.model];
-        if (
-          !modelIds.has(target.model) &&
-          selfRoute !== undefined &&
-          sameRouteTargets(selfRoute, { model: target.model, preserve: false })
-        ) {
-          continue;
-        }
-        modelIds.add(target.model);
-      }
-    }
-  }
-  return [...modelIds];
-}
-
-function sameRouteTargets(left: AliasConfig, right: AliasConfig): boolean {
-  const leftTargets = routeTargetModels(left);
-  const rightTargets = routeTargetModels(right);
-  return leftTargets.size === rightTargets.size && [...leftTargets].every((modelId) => rightTargets.has(modelId));
-}
-
-function routeTargetModels(config: AliasConfig): ReadonlySet<string> {
-  return new Set([config.model, ...flattenAliasVariants(config.variants).map((row) => row.model)]);
 }

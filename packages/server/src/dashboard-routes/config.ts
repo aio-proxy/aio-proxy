@@ -1,3 +1,4 @@
+import { getCachedModelSlugs } from '@aio-proxy/core';
 import { UsageOverviewGroupBySchema, UsageOverviewMetricSchema, UsageOverviewRangeSchema } from '@aio-proxy/types';
 import { Hono } from 'hono';
 import { validator } from 'hono/validator';
@@ -33,6 +34,7 @@ const usageOverviewValidator = validator('query', (raw, context) => {
 export const createDashboardRoutes = (state: ServerState, auth: DashboardAuthentication) =>
   new Hono()
     .get('/config', (context) => context.json(redactSecrets(state.currentConfig())))
+    .get('/models-dev/slugs', async (context) => context.json({ slugs: await getCachedModelSlugs() }))
     .get('/oauth/capabilities', (context) => context.json({ capabilities: state.oauthCapabilities() }))
     .route('/oauth', createDashboardOAuthLoginRoutes(state))
     .route('/', createDashboardProviderReadRoutes(state))

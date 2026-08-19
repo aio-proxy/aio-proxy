@@ -56,12 +56,12 @@ describe('dashboard provider CRUD', () => {
     expect(body.error).toBe('provider not found');
   });
 
-  test('13. GET edit-view returns hasApiKey:true and no apiKey field', async () => {
+  test('13. GET edit-view returns the real apiKey', async () => {
     const res = await req('GET', '/providers/seed-api/edit-view');
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.provider.hasApiKey).toBe(true);
-    expect(body.provider).not.toHaveProperty('apiKey');
+    expect(body.provider.apiKey).toBe('sk-preserved-value');
+    expect(body.provider).not.toHaveProperty('hasApiKey');
   });
 
   test('14. SSE config.changed fires after POST', async () => {

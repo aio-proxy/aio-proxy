@@ -47,16 +47,13 @@ afterEach(() => {
 });
 
 describe('providers page', () => {
-  test('offers API, OAuth, and AI SDK in the new-provider menu', async () => {
+  test('offers a new-provider action linking to /providers/new', () => {
     render(<ProvidersPage />);
 
     expect(screen.queryByTestId('plugins-table')).toBeNull();
-    fireEvent.click(screen.getByTestId('new-provider-button'));
-    expect((await screen.findAllByRole('menuitem')).map((item) => item.textContent)).toEqual([
-      'API',
-      'OAuth',
-      'AI SDK',
-    ]);
+    const action = screen.getByTestId('new-provider-button');
+    expect(action).toHaveAttribute('to', '/providers/new');
+    expect(action).not.toHaveAttribute('params');
   });
 
   test('renders OAuth accounts under their plugin capability group', () => {

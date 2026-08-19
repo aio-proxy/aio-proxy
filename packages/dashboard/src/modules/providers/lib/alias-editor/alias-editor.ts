@@ -1,5 +1,5 @@
 import type { AliasConfig } from '@aio-proxy/types';
-import { normalizeAliasName, normalizeVariantKey } from '@aio-proxy/types';
+import { isAliasVariantsObject, normalizeAliasName, normalizeVariantKey } from '@aio-proxy/types';
 import type { ReactFormExtendedApi } from '@tanstack/react-form';
 
 export type ProviderAlias = Readonly<Record<string, AliasConfig>>;
@@ -93,8 +93,13 @@ export function commitVariantDraft(alias: ProviderAlias, aliasName: string, draf
     return { ok: false, code: 'alias-missing' };
   }
 
+  const variants = config.variants;
+  if (variants !== undefined && !isAliasVariantsObject(variants)) {
+    return { ok: false, code: 'alias-missing' };
+  }
+
   const name = normalizeVariantKey(draft.name);
-  const error = draftError(name, draft.model, Object.keys(config.variants ?? {}).map(normalizeVariantKey));
+  const error = draftError(name, draft.model, Object.keys(variants ?? {}).map(normalizeVariantKey));
   if (error !== undefined) {
     return { ok: false, code: error };
   }
@@ -105,7 +110,7 @@ export function commitVariantDraft(alias: ProviderAlias, aliasName: string, draf
       ...alias,
       [aliasName]: {
         ...config,
-        variants: { ...config.variants, [name]: { model: draft.model, preserve: draft.preserve } },
+        variants: { ...variants, [name]: { model: draft.model, preserve: draft.preserve } },
       },
     },
   };
@@ -113,13 +118,18 @@ export function commitVariantDraft(alias: ProviderAlias, aliasName: string, draf
 
 export function renameVariant(alias: ProviderAlias, rename: VariantRename): AliasEditResult {
   const config = alias[rename.alias];
-  const target = config?.variants?.[rename.variant];
-  if (config === undefined || target === undefined) {
+  const variants = config?.variants;
+  if (config === undefined || !isAliasVariantsObject(variants)) {
+    return { ok: false, code: 'alias-missing' };
+  }
+
+  const target = variants[rename.variant];
+  if (target === undefined) {
     return { ok: false, code: 'alias-missing' };
   }
 
   const name = normalizeVariantKey(rename.name);
-  const otherNames = Object.keys(config.variants ?? {})
+  const otherNames = Object.keys(variants)
     .filter((key) => key !== rename.variant)
     .map(normalizeVariantKey);
   const error = draftError(name, target.model, otherNames);
@@ -127,10 +137,10 @@ export function renameVariant(alias: ProviderAlias, rename: VariantRename): Alia
     return { ok: false, code: error };
   }
 
-  const variants = Object.fromEntries(
-    Object.entries(config.variants ?? {}).map(([key, value]) => [key === rename.variant ? name : key, value]),
+  const renamed = Object.fromEntries(
+    Object.entries(variants).map(([key, value]) => [key === rename.variant ? name : key, value]),
   );
-  return { ok: true, alias: { ...alias, [rename.alias]: { ...config, variants } } };
+  return { ok: true, alias: { ...alias, [rename.alias]: { ...config, variants: renamed } } };
 }
 
 export function aliasSummary(alias: ProviderAlias): AliasSummary {
@@ -162,7 +172,9 @@ export function preserveReferenceCount(alias: ProviderAlias, model: string): num
 
 export function aliasEditorIssues(alias: ProviderAlias, models?: readonly string[]): readonly AliasEditorIssue[] {
   const issues: AliasEditorIssue[] = [];
-  const availableModels = models === undefined ? undefined : new Set(models);
+  // Keep in lockstep with validateAliasTargets in @aio-proxy/types: absent and
+  // empty both mean "no whitelist", or the editor blocks a payload the server accepts.
+  const availableModels = models === undefined || models.length === 0 ? undefined : new Set(models);
   const preservedModels = collectPreservedModels(alias);
   const aliasNames = new Set<string>();
 

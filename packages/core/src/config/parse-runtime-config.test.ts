@@ -46,6 +46,24 @@ test('degrades a provider whose template resolves to an invalid base URL', () =>
   ]);
 });
 
+// `models` on an oauth provider used to be silently stripped and is now validated, so a hand-edited
+// malformed value newly fails its schema. This pins that the failure stays QUARANTINED: the proxy still
+// loads, sibling providers still route, and the bad one is named. Kills a mutant that lets the entry's
+// ZodError escape `ConfigSchema`'s per-provider `safeParse` and take the whole config load down.
+test('a malformed oauth models whitelist degrades only its own provider', () => {
+  const config = parseRuntimeConfig({
+    providers: {
+      'my-claude': { kind: 'oauth', plugin: '@example/oauth', capability: 'default', models: [''] },
+      api: { kind: 'api', protocol: 'openai-response', baseURL: 'https://api.example.test/v1' },
+    },
+  });
+
+  expect(config.providers.map(({ id }) => id)).toEqual(['api']);
+  expect(config.invalidProviders).toEqual([
+    { id: 'my-claude', kind: 'oauth', code: 'PROVIDER_CONFIG_INVALID', issuePaths: [['models', 0]] },
+  ]);
+});
+
 test('leaves the raw config record byte-for-byte unchanged', () => {
   const raw = {
     proxy: '{{env.PROXY_URL}}',

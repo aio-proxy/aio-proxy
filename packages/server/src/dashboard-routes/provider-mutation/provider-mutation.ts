@@ -7,7 +7,7 @@ import {
 } from '@aio-proxy/types';
 import { isPlainObject } from 'es-toolkit/predicate';
 
-import { retainAuthoredTemplateStrings, retainRedactedSecrets } from '../provider-secrets';
+import { retainAuthoredTemplateStrings } from '../provider-secrets';
 
 export class ProviderAlreadyExistsError extends Error {
   override readonly name = 'ProviderAlreadyExistsError';
@@ -35,8 +35,7 @@ export type ProviderMutationParseResult =
   | { readonly ok: false; readonly status: 400 | 422; readonly payload: Record<string, unknown> };
 
 export function parseProviderMutation(raw: unknown): ProviderMutationParseResult {
-  const prepared = stripRedactedProxyPlaceholder(raw);
-  const authoredParsed = ProviderMutationAuthoringBodySchema.safeParse(prepared);
+  const authoredParsed = ProviderMutationAuthoringBodySchema.safeParse(raw);
   if (!authoredParsed.success) {
     return { ok: false, status: 400, payload: { error: 'validation failed', details: authoredParsed.error.issues } };
   }
@@ -86,8 +85,15 @@ export function replaceProvider(
 
   const previousValue = record[providerId];
   const previous = isPlainObject(previousValue) ? previousValue : {};
-  const next = retainRedactedSecrets(previous, provider);
+  const next = { ...provider };
 
+  // The second implementation of "a save that does not mention a field keeps its stored value"; the
+  // other is `providerEntry` in core's plugins/account-login/validation.ts. Deliberately NOT shared:
+  // that one rebuilds an oauth entry from a *partial patch*, so it retains almost every field and
+  // enumerates the exceptions. This one takes a PUT body that is a full authored replacement, so
+  // omission normally means "delete" and only this short list is retained — the fields the editor
+  // cannot round-trip or does not own. A common abstraction would have to hide that difference in
+  // contract, and hiding it is how a field silently changes sides.
   for (const key of ['headers', 'metadata', 'proxy', 'transforms'] as const) {
     if (provider[key] === undefined && previous[key] !== undefined) next[key] = previous[key];
   }
@@ -128,10 +134,4 @@ export function replaceOAuthProvider(
     capability: previousValue['capability'],
     ...(previousValue['options'] === undefined ? {} : { options: previousValue['options'] }),
   });
-}
-
-function stripRedactedProxyPlaceholder(raw: unknown): unknown {
-  if (!isPlainObject(raw) || raw['proxy'] !== '****') return raw;
-  const { proxy: _proxy, ...rest } = raw;
-  return rest;
 }

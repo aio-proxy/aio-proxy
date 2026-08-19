@@ -78,6 +78,21 @@ describe('provider alias editor drafts', () => {
     ]);
   });
 
+  test('Given array-shaped variants When renamed Then returns alias-missing', () => {
+    const result = renameVariant(
+      {
+        mini: {
+          model: 'gpt-default',
+          preserve: false,
+          variants: [{ when: { effort: 'low' }, model: 'gpt-low', preserve: false }],
+        },
+      },
+      { alias: 'mini', variant: 'low', name: 'high' },
+    );
+
+    expect(result).toEqual({ ok: false, code: 'alias-missing' });
+  });
+
   test('Given a variant rename colliding in its parent When committed Then returns a duplicate error', () => {
     const result = renameVariant(
       {
