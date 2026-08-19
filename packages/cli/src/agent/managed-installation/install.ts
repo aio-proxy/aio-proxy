@@ -1,4 +1,4 @@
-import { link, lstat, mkdir, mkdtemp, readFile, rename, rm, rmdir } from 'node:fs/promises';
+import { link, lstat, mkdir, mkdtemp, readFile, rename, rmdir } from 'node:fs/promises';
 import { dirname, isAbsolute, join } from 'node:path';
 
 import {
@@ -9,7 +9,17 @@ import {
 } from '@aio-proxy/types';
 
 import type { AgentLocation } from '../hosts';
-import { inspectPath, isFsCode, removeOwnedDirectory, syncDirectory, writeDurable } from './durable';
+import {
+  captureIdentity,
+  inspectPath,
+  isFsCode,
+  relocateIdentity,
+  removeOwned,
+  restoreOwned,
+  syncDirectory,
+  writeDurable,
+  type FsIdentity,
+} from './durable';
 import { inspectManagedInstallation, openCodeEntry, type LocalIntegrationStatus } from './inspect';
 
 export type ManagedInstallInput = {
@@ -21,7 +31,9 @@ export type ManagedInstallInput = {
   readonly managedOnly?: boolean;
 };
 export type ManagedInstallTestDeps = {
-  readonly failpoint?: (point: 'staged' | 'backed_up' | 'directory_swapped' | 'entry_ready') => void | Promise<void>;
+  readonly failpoint?: (
+    point: 'staged' | 'backed_up' | 'directory_swapped' | 'entry_ready' | 'entry_linked' | 'backup_cleanup',
+  ) => void | Promise<void>;
 };
 
 const throwConflict = (status: LocalIntegrationStatus): never => {
@@ -102,6 +114,7 @@ const commitOpenCodeEntry = async (
   adjacentEntry: string,
   installationId: string,
   failpoint?: ManagedInstallTestDeps['failpoint'],
+  onLinked?: () => void,
 ): Promise<void> => {
   const existing = await inspectPath(adjacentEntry);
   if (existing !== undefined) {
@@ -113,16 +126,24 @@ const commitOpenCodeEntry = async (
 
   const temporary = join(dirname(adjacentEntry), `.aio-proxy-entry-${crypto.randomUUID()}`);
   await writeDurable(temporary, openCodeEntry(installationId));
+  const temp = await captureIdentity(temporary);
   try {
     await failpoint?.('entry_ready');
     await link(temporary, adjacentEntry);
   } catch (error) {
-    await rm(temporary, { force: true });
+    await removeOwned(temp);
     if (isFsCode(error, 'EEXIST')) throw new Error('entry already exists');
     throw error;
   }
-  await rm(temporary, { force: true });
-  await syncDirectory(dirname(adjacentEntry));
+  onLinked?.();
+  try {
+    await failpoint?.('entry_linked');
+    await removeOwned(temp);
+    await syncDirectory(dirname(adjacentEntry));
+  } catch (error) {
+    await removeOwned(temp);
+    throw error;
+  }
 };
 
 const repairOpenCodeEntry = async (location: AgentLocation, marker: AgentManagedMarker): Promise<void> => {
@@ -158,12 +179,14 @@ const runStagedInstall = async (
   await mkdir(location.hostRoot, { recursive: true, mode: 0o700 });
   const assets = await input.readAssets();
 
-  let stagingDir: string | undefined;
-  let backupDir: string | undefined;
+  let staging: FsIdentity | undefined;
+  let backup: FsIdentity | undefined;
   let promoted = false;
+  let committed = false;
 
   try {
-    stagingDir = await mkdtemp(join(location.hostRoot, '.aio-proxy-stage-'));
+    const stagingDir = await mkdtemp(join(location.hostRoot, '.aio-proxy-stage-'));
+    staging = await captureIdentity(stagingDir);
     await writeStagingTree(stagingDir, assets, {
       format: 1,
       managedBy: 'aio-proxy',
@@ -177,38 +200,42 @@ const runStagedInstall = async (
     if (updating) {
       const reserved = await reserveSibling(location.hostRoot, '.aio-proxy-backup-');
       await rename(location.managedDir, reserved);
-      backupDir = reserved;
+      backup = await captureIdentity(reserved);
       await testDeps?.failpoint?.('backed_up');
       if ((await validateBackup(reserved, location.target, installationId, input.adapterVersion)) === 'newer') {
-        await rename(reserved, location.managedDir);
-        backupDir = undefined;
+        await restoreOwned(backup, location.managedDir);
+        backup = undefined;
         return 'newer';
       }
       await copyValidState(reserved, stagingDir, location.target);
     }
 
-    await rename(stagingDir, location.managedDir);
+    await rename(staging.path, location.managedDir);
+    staging = relocateIdentity(staging, location.managedDir);
     promoted = true;
     await testDeps?.failpoint?.('directory_swapped');
 
     if (location.adjacentEntry !== undefined) {
-      await commitOpenCodeEntry(location.adjacentEntry, installationId, testDeps?.failpoint);
+      await commitOpenCodeEntry(location.adjacentEntry, installationId, testDeps?.failpoint, () => {
+        committed = true;
+      });
     }
+    committed = true;
 
-    if (backupDir !== undefined) {
-      await rm(backupDir, { recursive: true, force: true });
-      backupDir = undefined;
+    if (backup !== undefined) {
+      await testDeps?.failpoint?.('backup_cleanup');
+      await removeOwned(backup);
+      backup = undefined;
     }
     return updating ? 'updated' : 'installed';
   } catch (error) {
-    if (promoted) await removeOwnedDirectory(location.managedDir);
-    if (backupDir !== undefined && (await inspectPath(location.managedDir)) === undefined) {
-      await rename(backupDir, location.managedDir);
-      backupDir = undefined;
+    if (!committed) {
+      if (promoted && staging !== undefined) await removeOwned(staging);
+      if (backup !== undefined) await restoreOwned(backup, location.managedDir);
     }
     throw error;
   } finally {
-    if (!promoted && stagingDir !== undefined) await rm(stagingDir, { recursive: true, force: true });
+    if (!promoted && staging !== undefined) await removeOwned(staging);
   }
 };
 

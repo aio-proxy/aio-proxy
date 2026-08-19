@@ -2,12 +2,14 @@ import type { Dirent } from 'node:fs';
 import { chmod, lstat, readdir, readFile, rmdir, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 
+import { AgentManagedMarkerSchema } from '@aio-proxy/types';
+
 import type { AgentLocation } from '../hosts';
-import { inspectPath, writeDurable } from './durable';
+import { captureIdentity, inspectPath, matchesIdentity, removeOwned, writeDurable, type FsIdentity } from './durable';
 import { inspectManagedInstallation, openCodeEntry } from './inspect';
 
 export type ManagedRemoveTestDeps = {
-  readonly failpoint?: (point: 'content_removed') => void | Promise<void>;
+  readonly failpoint?: (point: 'validated' | 'content_removed') => void | Promise<void>;
 };
 
 const MARKER_NAME = '.aio-proxy-managed.json';
@@ -34,16 +36,24 @@ const removeChildrenExceptMarker = async (directory: string): Promise<void> => {
   }
 };
 
-const unlinkValidatedEntry = async (path: string, installationId: string): Promise<void> => {
+const requireOwned = async (identity: FsIdentity, message: string) => {
+  const current = await inspectPath(identity.path);
+  if (current === undefined || !matchesIdentity(identity, current)) throw new Error(message);
+  return current;
+};
+
+const bindAdjacentEntry = async (path: string, installationId: string): Promise<FsIdentity | undefined> => {
   const stat = await inspectPath(path);
-  if (stat === undefined) return;
+  if (stat === undefined) return undefined;
   if (stat.isSymbolicLink() || !stat.isFile()) throw new Error('entry conflict');
   if (!(await readFile(path)).equals(Buffer.from(openCodeEntry(installationId)))) {
     throw new Error('entry conflict');
   }
   const again = await lstat(path);
-  if (again.isSymbolicLink() || !again.isFile()) throw new Error('entry conflict');
-  await unlink(path);
+  if (again.isSymbolicLink() || !again.isFile() || !matchesIdentity({ path, dev: stat.dev, ino: stat.ino }, again)) {
+    throw new Error('entry conflict');
+  }
+  return { path, dev: stat.dev, ino: stat.ino };
 };
 
 export async function removeManagedIntegration(
@@ -59,23 +69,58 @@ export async function removeManagedIntegration(
     throw new Error('managed installation is required');
   }
 
+  const directory = await lstat(location.managedDir);
+  if (directory.isSymbolicLink() || !directory.isDirectory()) throw new Error('managed directory invalid');
+  const dir = await captureIdentity(location.managedDir);
+
   const markerPath = join(location.managedDir, MARKER_NAME);
   const markerStat = await lstat(markerPath);
   if (markerStat.isSymbolicLink() || !markerStat.isFile()) throw new Error('managed marker invalid');
   const markerBytes = await readFile(markerPath);
-
-  if (location.adjacentEntry !== undefined && status.entry === 'present') {
-    await unlinkValidatedEntry(location.adjacentEntry, expectedInstallationId);
+  let parsed: ReturnType<typeof AgentManagedMarkerSchema.safeParse>;
+  try {
+    parsed = AgentManagedMarkerSchema.safeParse(JSON.parse(markerBytes.toString('utf8')));
+  } catch {
+    throw new Error('managed marker invalid');
   }
+  if (
+    !parsed.success ||
+    parsed.data.agent !== location.target ||
+    parsed.data.installationId !== expectedInstallationId
+  ) {
+    throw new Error('managed marker invalid');
+  }
+  const markerAgain = await lstat(markerPath);
+  if (!matchesIdentity({ path: markerPath, dev: markerStat.dev, ino: markerStat.ino }, markerAgain)) {
+    throw new Error('managed marker invalid');
+  }
+  await requireOwned(dir, 'managed directory replaced');
+  const marker = { path: markerPath, dev: markerStat.dev, ino: markerStat.ino };
 
+  const entry =
+    location.adjacentEntry === undefined
+      ? undefined
+      : await bindAdjacentEntry(location.adjacentEntry, expectedInstallationId);
+
+  await testDeps?.failpoint?.('validated');
+  await requireOwned(dir, 'managed directory replaced');
+  if (entry !== undefined) await requireOwned(entry, 'entry conflict');
+
+  if (entry !== undefined) await removeOwned(entry);
+  await requireOwned(dir, 'managed directory replaced');
   await removeChildrenExceptMarker(location.managedDir);
   await testDeps?.failpoint?.('content_removed');
-  await unlink(markerPath);
+  await requireOwned(dir, 'managed directory replaced');
+  await requireOwned(marker, 'managed marker invalid');
+  await removeOwned(marker);
   try {
     await rmdir(location.managedDir);
   } catch (error) {
-    await writeDurable(markerPath, markerBytes);
-    await chmod(markerPath, markerStat.mode & 0o777);
+    const stillOurs = await inspectPath(location.managedDir);
+    if (stillOurs !== undefined && matchesIdentity(dir, stillOurs)) {
+      await writeDurable(markerPath, markerBytes);
+      await chmod(markerPath, markerStat.mode & 0o777);
+    }
     throw error;
   }
 }

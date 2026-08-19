@@ -1,5 +1,5 @@
 import { mock } from 'bun:test';
-import { mkdir, mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 
@@ -137,6 +137,23 @@ export async function installFixture(
     beforeTree: await snapshotTree(root),
     tree: () => snapshotTree(root),
   };
+}
+
+export async function onlyPrefixed(directory: string, prefix: string): Promise<string> {
+  const names = (await readdir(directory)).filter((name) => name.startsWith(prefix));
+  if (names.length !== 1) throw new Error(`expected one ${prefix}* in ${directory}, found ${names.join(', ')}`);
+  return join(directory, names[0]);
+}
+
+export async function displaceAndReplaceDir(path: string, displaced: string, child: string, contents: string) {
+  await rename(path, displaced);
+  await mkdir(path);
+  await writeFile(join(path, child), contents);
+}
+
+export async function displaceAndReplaceFile(path: string, displaced: string, contents: string) {
+  await rename(path, displaced);
+  await writeFile(path, contents);
 }
 
 export async function removeFixture(target: AgentTarget, options: { readonly conflictingEntry?: boolean } = {}) {
