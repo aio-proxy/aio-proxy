@@ -7,6 +7,7 @@ import {
   whenIdentity,
 } from '@aio-proxy/types';
 import type { ReactFormExtendedApi } from '@tanstack/react-form';
+import { omit } from 'es-toolkit/object';
 
 export type { ProviderAlias };
 
@@ -28,7 +29,6 @@ export type AliasEditorIssue = {
     | 'alias-name-required'
     | 'preserved-route-conflict'
     | 'target-missing'
-    | 'variant-effort-blank'
     | 'variant-when-duplicate'
     | 'variant-when-required';
   readonly alias: string;
@@ -217,13 +217,13 @@ export function aliasEditorIssues(alias: ProviderAlias, models?: readonly string
 
     const conditions = new Set<string>();
     for (const [variant, row] of variantRows(config).entries()) {
-      // An empty identity means no dimension at all. A present-but-blank effort still has an identity
-      // (`effort=`), so it needs its own check: the schema takes it, no request can ever match it.
-      const identity = whenIdentity(row.when);
+      // A blank effort is not a dimension, but the server's `whenIdentity` still emits `effort=` for it,
+      // which would read as a condition. Drop it first so `{ effort: '' }` reports the same missing
+      // condition as `{}` — the state the user has to fix is the same one.
+      const when = row.when.effort?.trim() === '' ? omit(row.when, ['effort']) : row.when;
+      const identity = whenIdentity(when);
       if (identity === '') {
         issues.push({ code: 'variant-when-required', alias: aliasName, variant });
-      } else if (row.when.effort === '') {
-        issues.push({ code: 'variant-effort-blank', alias: aliasName, variant });
       } else if (conditions.has(identity)) {
         issues.push({ code: 'variant-when-duplicate', alias: aliasName, variant });
       }

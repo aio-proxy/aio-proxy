@@ -877,7 +877,6 @@
         "variant_speed_unset": "Any",
         "variant_when_required": "Set at least one of effort, thinking, or speed",
         "variant_when_duplicate": "Another variant already matches this condition",
-        "variant_effort_blank": "Enter an effort value, or leave it unset",
         "variant_target": "Target Model",
         "variant_preserve": "Also expose this target model under its original ID",
         "remove_variant": "Remove Conditional Target",

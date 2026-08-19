@@ -81,8 +81,9 @@ describe('provider alias editor variant rows', () => {
   });
 
   // Upstream's rewrite deleted `validateVariants`, so `{ "  ": "model-x" }` now parses and yields
-  // `when: { effort: '' }` — a condition no request bag can match. The editor is the only guard left.
-  test('Given an empty condition or a blank effort When inspected Then each row reports its own issue', () => {
+  // `when: { effort: '' }`. The server's `whenIdentity` still calls that a condition (`effort=`), so
+  // without stripping it the row reads as configured instead of as the empty condition it is.
+  test('Given an empty condition or a blank effort When inspected Then both report a missing condition', () => {
     const issues = aliasEditorIssues({
       mini: {
         model: 'gpt-default',
@@ -96,8 +97,25 @@ describe('provider alias editor variant rows', () => {
 
     expect(issues).toEqual([
       { code: 'variant-when-required', alias: 'mini', variant: 0 },
-      { code: 'variant-effort-blank', alias: 'mini', variant: 1 },
+      { code: 'variant-when-required', alias: 'mini', variant: 1 },
     ]);
+  });
+
+  // Two blank-effort rows are both "no condition", not a duplicate pair: the fix is to give each one a
+  // condition, and a duplicate warning would send the user looking for a collision that isn't there.
+  test('Given two blank-effort rows When inspected Then neither is called a duplicate', () => {
+    const issues = aliasEditorIssues({
+      mini: {
+        model: 'gpt-default',
+        preserve: false,
+        variants: [
+          { when: { effort: ' ' }, model: 'gpt-a', preserve: false },
+          { when: { effort: '' }, model: 'gpt-b', preserve: false },
+        ],
+      },
+    });
+
+    expect(issues.map((issue) => issue.code)).toEqual(['variant-when-required', 'variant-when-required']);
   });
 
   // `thinking: false` is a real condition ("route non-thinking requests here"), so the editor's

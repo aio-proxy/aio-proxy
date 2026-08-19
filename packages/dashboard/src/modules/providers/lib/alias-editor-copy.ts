@@ -25,8 +25,6 @@ export function aliasIssueMessage(issue: AliasEditorIssue): string {
       return m['dashboard.providers.form.error_preserved_route_conflict']();
     case 'target-missing':
       return m['dashboard.providers.form.error_target_missing']();
-    case 'variant-effort-blank':
-      return m['dashboard.providers.form.variant_effort_blank']();
     case 'variant-when-duplicate':
       return m['dashboard.providers.form.variant_when_duplicate']();
     case 'variant-when-required':

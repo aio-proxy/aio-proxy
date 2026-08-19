@@ -58,11 +58,7 @@ export const ProviderVariantRow: FC<ProviderVariantRowProps> = ({
         <ProviderVariantConditions
           draft={draft}
           controlId={controlId}
-          invalid={
-            codes.has('variant-when-required') ||
-            codes.has('variant-when-duplicate') ||
-            codes.has('variant-effort-blank')
-          }
+          invalid={codes.has('variant-when-required') || codes.has('variant-when-duplicate')}
           onCommit={commit}
         />
         <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 lg:contents">

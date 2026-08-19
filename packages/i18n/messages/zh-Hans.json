@@ -877,7 +877,6 @@
         "variant_speed_unset": "不限",
         "variant_when_required": "至少设置 effort、thinking 或 speed 中的一项",
         "variant_when_duplicate": "已有其他变体使用相同条件",
-        "variant_effort_blank": "请填写 effort 值，或将其留空表示不限",
         "variant_target": "目标模型",
         "variant_preserve": "同时保留该目标模型的原始 ID",
         "remove_variant": "删除条件目标",
