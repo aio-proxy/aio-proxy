@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rename, rm, symlink, writeFile } from 'node:fs/promises
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import type { AgentCatalogV1, AgentManagedStateV1 } from '@aio-proxy/types';
+import type { AgentCatalogV1, AgentManagedStateV1, AgentTarget } from '@aio-proxy/types';
 
 import type { AgentLocation } from '../hosts';
 import { inspectManagedInstallation } from './inspect';
@@ -36,6 +36,7 @@ async function installationFixture(
   options: {
     readonly symlink?: 'managed directory' | 'marker' | 'OpenCode entry';
     readonly state?: AgentManagedStateV1;
+    readonly markerAgent?: AgentTarget;
     readonly entryInstallationId?: string;
     readonly missingEntry?: boolean;
   } = {},
@@ -50,7 +51,7 @@ async function installationFixture(
   const marker = {
     format: 1,
     managedBy: 'aio-proxy',
-    agent: 'opencode',
+    agent: options.markerAgent ?? 'opencode',
     installationId: INSPECT_INSTALLATION,
     adapterVersion: '1.2.3',
     endpoint: 'http://127.0.0.1:9317',
@@ -124,5 +125,13 @@ test('a legal OpenCode marker exposes a missing adjacent entry as repairable sta
     integration: 'managed',
     entry: 'missing',
     catalog: 'missing',
+  });
+});
+
+test('a schema-valid marker for another target is a marker conflict', async () => {
+  const f = await installationFixture({ markerAgent: 'pi' });
+  await expect(inspectManagedInstallation(f.location, Date.now)).resolves.toMatchObject({
+    integration: 'conflict',
+    reason: 'marker_invalid',
   });
 });
