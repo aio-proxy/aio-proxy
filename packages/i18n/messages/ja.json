@@ -806,6 +806,7 @@
         "id_description_auto": "名前から自動生成されます。上書きできます。",
         "id_description_pinned": "手動で指定しました。",
         "id_description_locked": "保存後は変更できません。",
+        "id_description_server_assigned": "認可フローが自動的に入力します。",
         "placeholder_name": "例: OpenAI メインアカウント",
         "placeholder_protocol": "プロトコルを選択",
         "placeholder_base_url": "https://api.example.com/v1",

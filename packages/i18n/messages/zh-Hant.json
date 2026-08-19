@@ -806,6 +806,7 @@
         "id_description_auto": "隨名稱自動產生，可覆寫。",
         "id_description_pinned": "已手動指定。",
         "id_description_locked": "儲存後不可修改。",
+        "id_description_server_assigned": "將由授權流程自動填入。",
         "placeholder_name": "例如 OpenAI 主帳號",
         "placeholder_protocol": "請選擇協定",
         "placeholder_base_url": "https://api.example.com/v1",

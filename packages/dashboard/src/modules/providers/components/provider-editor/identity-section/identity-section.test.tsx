@@ -16,11 +16,27 @@ const nameInput = () => within(screen.getByTestId('provider-form-field-name')).g
 const idInput = () => within(screen.getByTestId('provider-form-field-id')).getByRole('textbox');
 
 describe('IdentitySection', () => {
-  test('omits the Provider ID field for oauth creation because the server assigns it', () => {
+  test('shows the Provider ID for oauth creation, frozen and explained, because the server assigns it', () => {
     renderIdentity(ProviderFormMode.Create, ProviderKind.OAuth);
 
-    expect(screen.queryByTestId('provider-form-field-id')).toBeNull();
-    expect(screen.getByTestId('provider-form-field-name')).toBeTruthy();
+    // The field keeps its place in every mode; what changes is that it cannot be typed into and says why.
+    expect(idInput()).toBeDisabled();
+    expect(idInput()).toHaveValue('');
+    expect(
+      within(screen.getByTestId('provider-form-field-id')).getByText(
+        m['dashboard.providers.form.id_description_server_assigned'](),
+      ),
+    ).toBeTruthy();
+  });
+
+  test('leaves the id alone while typing a name for oauth creation', async () => {
+    renderIdentity(ProviderFormMode.Create, ProviderKind.OAuth);
+
+    fireEvent.change(nameInput(), { target: { value: 'OpenAI 主账号' } });
+
+    await waitFor(() => expect(nameInput()).toHaveValue('OpenAI 主账号'));
+    // Deriving one would show the user an id the authorization flow is about to overwrite.
+    expect(idInput()).toHaveValue('');
   });
 
   test('derives the id live while typing the name, and stops once the id is edited by hand', async () => {

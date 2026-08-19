@@ -415,7 +415,8 @@ test('oauth create authorizes in place, locks sections 3-5, then unlocks after s
   fillName('OAuth Demo');
   await selectOAuthCapability();
 
-  expect(screen.queryByTestId('provider-form-field-id')).toBeNull();
+  // The id field stays in place for oauth creation, disabled: the authorization flow assigns the id.
+  expect(within(screen.getByTestId('provider-form-field-id')).getByRole('textbox')).toBeDisabled();
   expect(screen.getByText(/Authorize this account to unlock/u)).toBeTruthy();
   expect(within(screen.getByRole('region', { name: /Models/u })).getByLabelText(manualAddLabel)).toBeDisabled();
   // X9: an unauthorized oauth draft has nothing to persist, so it is `attention` and the footer primary

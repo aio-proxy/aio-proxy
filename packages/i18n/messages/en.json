@@ -806,6 +806,7 @@
         "id_description_auto": "Generated from the name; you can override it.",
         "id_description_pinned": "Set by hand.",
         "id_description_locked": "Cannot be changed after saving.",
+        "id_description_server_assigned": "The authorization flow fills this in.",
         "placeholder_name": "e.g. OpenAI main account",
         "placeholder_protocol": "Select a protocol",
         "placeholder_base_url": "https://api.example.com/v1",
