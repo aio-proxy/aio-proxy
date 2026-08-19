@@ -53,12 +53,12 @@ export async function createOpenCodeV1Server(input: PluginInput, deps: OpenCodeV
   const managed = await deps.readManagedInstallation(import.meta.url, 'opencode');
   let catalog = await deps.readLastKnownCatalog(managed.statePath, 'opencode');
   let timer: ReturnType<typeof globalThis.setInterval> | undefined;
-  let loginRequiredError: Error | undefined;
-  const requireLogin = (): Error => (loginRequiredError ??= loginRequired());
+  let rejectedRefresh: string | undefined;
 
   const rotate = createSingleFlight(async (getAuth: GetAuth): Promise<OAuthAuth> => {
     const current = await getAuth();
-    if (current.type !== 'oauth') throw requireLogin();
+    if (current.type !== 'oauth') throw loginRequired();
+    if (rejectedRefresh !== undefined && current.refresh === rejectedRefresh) throw loginRequired();
     let token: Awaited<ReturnType<typeof refreshAgentCredential>>;
     try {
       token = await deps.refreshAgentCredential(managed.marker, current.refresh, {
@@ -66,7 +66,10 @@ export async function createOpenCodeV1Server(input: PluginInput, deps: OpenCodeV
         now: deps.now,
       });
     } catch (error) {
-      if (error instanceof AgentRuntimeError && error.code === 'invalid_grant') throw requireLogin();
+      if (error instanceof AgentRuntimeError && error.code === 'invalid_grant') {
+        rejectedRefresh = current.refresh;
+        throw loginRequired();
+      }
       throw error;
     }
     const next: OAuthAuth = {
@@ -80,16 +83,17 @@ export async function createOpenCodeV1Server(input: PluginInput, deps: OpenCodeV
   });
 
   async function resolveAccess(getAuth: GetAuth): Promise<string> {
-    if (loginRequiredError !== undefined) throw loginRequiredError;
     const current = await getAuth();
-    if (current.type !== 'oauth') throw requireLogin();
+    if (current.type !== 'oauth') throw loginRequired();
+    if (rejectedRefresh !== undefined && current.refresh === rejectedRefresh) throw loginRequired();
     if (current.access !== '' && current.expires > deps.now()) return current.access;
     return (await rotate(getAuth)).access;
   }
 
   async function recoverUnauthorized(getAuth: GetAuth, rejectedAccess: string): Promise<OAuthAuth> {
     const current = await getAuth();
-    if (current.type !== 'oauth') throw requireLogin();
+    if (current.type !== 'oauth') throw loginRequired();
+    if (rejectedRefresh !== undefined && current.refresh === rejectedRefresh) throw loginRequired();
     if (current.access !== rejectedAccess && current.expires > deps.now()) return current;
     return rotate(getAuth);
   }
@@ -137,7 +141,7 @@ export async function createOpenCodeV1Server(input: PluginInput, deps: OpenCodeV
     if (first.error !== 'unauthorized') return;
     const next = await recoverUnauthorized(getAuth, access);
     const second = await refreshWithAccess(next.access);
-    if (second.error === 'unauthorized') throw requireLogin();
+    if (second.error === 'unauthorized') throw loginRequired();
   }
 
   const refreshCatalogFromStore = createSingleFlight(refreshFromStoredCredential);

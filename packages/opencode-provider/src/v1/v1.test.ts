@@ -88,7 +88,7 @@ test('401 never falls back to an anonymous retry', async () => {
   expect(f.anonymousCalls).toBe(0);
 });
 
-test('two catalog 401 responses preserve LKG and require login after one rotation', async () => {
+test('two catalog 401 responses preserve LKG and use the persisted rotation', async () => {
   const f = await fixture({ lkg: catalog() });
   f.catalogResponses.push(401, 401);
   f.refresh.resolve({
@@ -98,7 +98,8 @@ test('two catalog 401 responses preserve LKG and require login after one rotatio
     expires_in: 900,
   });
   const options = await (await f.server()).auth!.loader!(f.getAuth, f.provider);
-  await expect(options.fetch('http://127.0.0.1:9317/v1/chat/completions')).rejects.toThrow('aio-proxy login required');
+  await options.fetch('http://127.0.0.1:9317/v1/chat/completions');
+  expect(f.upstreamHeaders).toEqual(['Bearer aio_agent_at_v1_new']);
   expect(f.refreshCalls).toBe(1);
   expect(f.catalogRefreshCalls).toBe(2);
   expect(f.readState()).toMatchObject({ status: 'stale', lastError: 'unauthorized' });
@@ -126,6 +127,30 @@ test('expired invalid_grant leaves the loader usable and fetch throws aio-proxy 
   const options = await (await f.server()).auth!.loader!(f.getAuth, f.provider);
   await expect(options.fetch('http://127.0.0.1:9317/v1/chat/completions')).rejects.toThrow('aio-proxy login required');
   expect(f.readState()).toMatchObject({ status: 'fresh', lastError: null });
+  expect(f.anonymousCalls).toBe(0);
+});
+
+test('a later host credential recovers after login-required on the same server', async () => {
+  const f = await fixture({
+    lkg: catalog(),
+    auth: { type: 'oauth', access: 'old', refresh: 'aio_agent_rt_v1_old', expires: 999 },
+  });
+  f.setNow(1_000);
+  f.refresh.reject(new AgentRuntimeError('invalid_grant'));
+  const options = await (await f.server()).auth!.loader!(f.getAuth, f.provider);
+  await expect(options.fetch('http://127.0.0.1:9317/v1/chat/completions')).rejects.toThrow('aio-proxy login required');
+  expect(f.refreshCalls).toBe(1);
+  await expect(options.fetch('http://127.0.0.1:9317/v1/chat/completions')).rejects.toThrow('aio-proxy login required');
+  expect(f.refreshCalls).toBe(1);
+  f.replaceAuth({
+    type: 'oauth',
+    access: 'aio_agent_at_v1_relogin',
+    refresh: 'aio_agent_rt_v1_relogin',
+    expires: 901_000,
+  });
+  await options.fetch('http://127.0.0.1:9317/v1/chat/completions');
+  expect(f.upstreamHeaders).toEqual(['Bearer aio_agent_at_v1_relogin']);
+  expect(f.refreshCalls).toBe(1);
   expect(f.anonymousCalls).toBe(0);
 });
 
@@ -328,6 +353,9 @@ async function fixture(options: FixtureOptions = {}) {
     getAuth: async () => structuredClone(storedAuth),
     provider: { id: 'aio-proxy' } as Provider,
     server: () => createOpenCodeV1Server(input, deps),
+    replaceAuth: (value: Auth) => {
+      storedAuth = value;
+    },
     setNow: (value: number) => {
       now = value;
     },
