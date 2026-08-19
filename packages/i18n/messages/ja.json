@@ -734,7 +734,7 @@
         "preview_rank_disabled": "無効",
         "weight_description": "値が大きいほど先に試行されます。",
         "aliases_heading": "モデルエイリアス",
-        "aliases_description": "クライアントのモデル ID をこの provider の上流モデルに割り当てます。同じ ID を複数の provider へルーティングするには、各 provider で同じエイリアス名を設定してください。上流の ID が既に同じなら、モデルを有効にするだけで済みます。",
+        "aliases_description": "クライアントのモデル ID をこのプロバイダーの上流モデルに割り当てます。同じ ID を複数の provider へルーティングするには、各 provider で同じエイリアス名を設定してください。上流の ID が既に同じなら、モデルを有効にするだけで済みます。",
         "models_filter_placeholder": "モデルを絞り込む",
         "models_count": "有効 {enabled} / {total}",
         "models_all_discovered": "検出された {count} 個のモデルをすべて公開しています",

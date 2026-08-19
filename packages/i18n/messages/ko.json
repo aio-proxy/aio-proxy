@@ -740,7 +740,7 @@
         "models_all_discovered": "발견된 {count}개 모델을 모두 노출합니다",
         "models_manual_add": "모델 ID 수동 추가",
         "alias_column_client": "클라이언트 모델 ID",
-        "alias_column_upstream": "현재 provider의 업스트림 모델",
+        "alias_column_upstream": "현재 프로바이더의 업스트림 모델",
         "models_stale_whitelist": "{model}은(는) 더 이상 발견된 카탈로그에 없습니다",
         "metadata_tab_visual": "비주얼",
         "metadata_tab_json": "JSON",
