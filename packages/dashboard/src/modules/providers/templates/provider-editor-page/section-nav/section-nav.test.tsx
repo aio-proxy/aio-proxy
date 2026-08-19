@@ -48,11 +48,14 @@ test('the pill strip is never hidden at a breakpoint', () => {
   expect(nav.className).toContain('overflow-x-auto');
 });
 
+// `'true'`, not `'location'`: the pills point at sections of the page the user is already on, so the
+// active one is the current item of a set, not a link to the current page.
 test('only the active section pill is marked current', () => {
   render(<SectionNav summaries={summaries} activeId="models" />);
 
   expect(screen.getByRole('link', { name: m['dashboard.providers.editor.section_models']() })).toHaveAttribute(
     'aria-current',
+    'true',
   );
   expect(screen.getByRole('link', { name: m['dashboard.providers.editor.section_identity']() })).not.toHaveAttribute(
     'aria-current',

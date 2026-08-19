@@ -132,8 +132,9 @@ export const ProviderEditorPage: React.FC<ProviderEditorPageProps> = (props) => 
           )}
         </div>
         {/* Stacks under the form below `lg`; above it, stays in view while the user works down the
-            sections. `top-24` clears the sticky nav strip. */}
-        <aside className="space-y-4 lg:sticky lg:top-24 lg:self-start">
+            sections. `top-18` clears the sticky nav strip by the same offset a jumped-to section keeps
+            (`SectionShell`'s `scroll-mt-18`), so the panel lines up with the section it describes. */}
+        <aside className="space-y-4 lg:sticky lg:top-18 lg:self-start">
           {/* Cards, not the prototype's tinted `rounded-2xl` blocks: the sections beside them are cards
               now, and two surface treatments on one page read as two unrelated designs. Each panel
               brings its own heading, so `CardContent` alone — a `CardHeader` here would double it. */}

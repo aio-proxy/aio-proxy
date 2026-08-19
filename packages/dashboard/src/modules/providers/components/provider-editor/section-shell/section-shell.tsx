@@ -32,8 +32,10 @@ export const SectionShell: React.FC<SectionShellProps> = ({
     // ring is deliberately left in place: the whole point of the jump is that the user can tell it landed.
     tabIndex={-1}
     // The card owns the section's padding and its own separating edge, so the shell keeps only the
-    // scroll offset that holds a jumped-to heading clear of the sticky nav.
-    className="scroll-mt-28"
+    // scroll offset that holds a jumped-to heading clear of the sticky nav strip (~37px) plus a little
+    // air. Matches the pinned side panel's `lg:top-18`, so a jumped-to section and the panel beside it
+    // start on the same line; without the offset the heading lands underneath the strip.
+    className="scroll-mt-18"
   >
     <Card>
       <CardHeader>
