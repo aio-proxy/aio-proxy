@@ -1,3 +1,5 @@
+import { uniq } from 'es-toolkit/array';
+
 const MANUAL_MODEL_SPLIT = /[\s,]+/u;
 
 export const parseManualModelIds = (raw: string): readonly string[] =>
@@ -12,11 +14,6 @@ export const parseManualModelIds = (raw: string): readonly string[] =>
  */
 export const addManualModels = (selected: readonly string[], incoming: readonly string[]): readonly string[] => {
   const known = new Set(selected);
-  const prepended: string[] = [];
-  for (const id of incoming) {
-    if (known.has(id)) continue;
-    known.add(id);
-    prepended.push(id);
-  }
+  const prepended = uniq(incoming).filter((id) => !known.has(id));
   return prepended.length === 0 ? selected : [...prepended, ...selected];
 };
