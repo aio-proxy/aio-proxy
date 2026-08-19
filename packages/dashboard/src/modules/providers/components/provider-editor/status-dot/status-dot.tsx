@@ -6,10 +6,12 @@ interface StatusDotProps {
   readonly status: SectionStatus;
 }
 
-// Severity follows the save gate, not the prototype's palette: `todo` is the only status that disables
-// Save (D-F2), so it takes the system's error colour. `attention` is savable, so it gets a warning
-// treatment instead — amber mirrors `--destructive`'s red-600/red-400 light/dark pairing, as there is no
-// `warning` token. See D-F1 in fidelity-rules.md for the amendment.
+// Severity is about what the user has to do, not about savability: since X9 every non-`ok` status gates
+// Save, so the two cannot be told apart by that any more. `todo` is a field the user must still fill in
+// and takes the system's error colour; `attention` is the one state nothing can be persisted from yet (an
+// unauthorized oauth draft), whose way out is a round trip rather than a field, so it gets a warning
+// treatment — amber mirrors `--destructive`'s red-600/red-400 light/dark pairing, as there is no
+// `warning` token. Palette itself is X8 "do not change"; see D-F1 in fidelity-rules.md.
 export const STATUS_CLASS: Record<SectionStatus, string> = {
   ok: 'bg-primary',
   attention: 'bg-amber-600 dark:bg-amber-400',

@@ -19,9 +19,10 @@ export function useActiveSection(ids: readonly SectionId[] = SECTION_ORDER): Sec
         // stopped matching a section that was added to `SECTION_ORDER`, leaving the active pill stale.
         if (id !== undefined && KNOWN.has(id)) setActiveId(id as SectionId);
       },
-      // The top inset covers the sticky strip the nav sits in (`section-nav.tsx`: a 28px pill row over
-      // `pb-2` and a border, ~37px), rounded up so a section counts as active only once it is clear of
-      // the strip. Without it the active pill names the section hidden behind the strip.
+      // The top inset is the sticky strip the nav sits in (`section-nav.tsx`: a 28px pill row over
+      // `pb-2` and a border, ~37px) plus ~11px of deliberate slack — a section should count as active
+      // once it is properly clear of the strip, not the moment its first pixel emerges from under it.
+      // Without any inset the active pill names the section hidden behind the strip.
       { rootMargin: '-48px 0px -55% 0px', threshold: 0 },
     );
     for (const id of ids) {

@@ -81,8 +81,9 @@ export function sectionStatuses(input: SectionStatusInput): Readonly<Record<Sect
   // A stale whitelist entry stays `ok` (X9): the upstream catalog is not the user's to fix, so gating
   // the save on it would strand them. `modelsHint` still names it — off the same inputs, not off this
   // status — so the reason survives on screen.
-  // Last, so it outranks nothing: validateAliasTargets turns an alias issue into a 400 on save, and
-  // the alias editor sits in this section (D-F6).
+  // Last, so it outranks the exposure check above — an alias issue turns the save into a 400 through
+  // validateAliasTargets, and the alias editor sits in this section (D-F6), so a provider that exposes
+  // plenty of models still has unfinished work here.
   if (input.aliasIssues.length > 0) models = 'todo';
 
   // Always `ok` (X9): a weight tie is advice about ordering, not an unfinished field. `routingHint`

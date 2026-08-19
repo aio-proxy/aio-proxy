@@ -15,8 +15,13 @@ interface SectionNavProps {
 // sideways would otherwise drag its own background and bottom edge out from under the pills. Its ~37px
 // height is the top `rootMargin` inset in `use-active-section`; change one and the active pill starts
 // naming a section hidden behind the strip.
+// The 8px `pb-2` inside the strip plus the 32px `mb-8` under it reproduce the prototype's gap from the
+// pills to the first card: it splits the same 40px across `pb-2` on the strip's own container and `pt-8`
+// on the content container below it (`provider-editor-page.tsx:54` and `:60`). We have no separate
+// content container to hang `pt-8` on — the nav lives inside `PageContainer`'s `<main>` — so the lower
+// half is a margin here.
 export const SectionNav: React.FC<SectionNavProps> = ({ summaries, activeId }) => (
-  <div className="sticky top-0 z-20 mb-6 border-b bg-page-background/85 pb-2 backdrop-blur-md">
+  <div className="sticky top-0 z-20 mb-8 border-b bg-page-background/85 pb-2 backdrop-blur-md">
     <nav aria-label={m['dashboard.providers.editor.section_nav_label']()} className="flex gap-1 overflow-x-auto">
       {SECTION_ORDER.map((id) => (
         <a
