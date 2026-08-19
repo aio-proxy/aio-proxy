@@ -71,6 +71,35 @@ test('reports the missing condition on a freshly added row', () => {
   expect(screen.getByRole('alert').textContent).toBe(m['dashboard.providers.form.variant_when_required']());
 });
 
+// Display used to follow `whenRank`, so making a row's condition more specific moved it up the list
+// while the user was still working in it. Stored order is the only order now.
+test('a row stays in place when its own condition becomes more specific', async () => {
+  const twoRows: ProviderAlias = {
+    sonnet: {
+      model: 'claude-sonnet-4',
+      preserve: false,
+      variants: [
+        { when: { effort: 'high' }, model: 'claude-sonnet-4-fast', preserve: false },
+        { when: { speed: 'fast' }, model: 'claude-sonnet-4-thinking', preserve: false },
+      ],
+    },
+  };
+  const onAliasChange = renderVariants(twoRows);
+  const firstRow = () => screen.getAllByTestId('provider-variant-row')[0]!;
+
+  await selectOption(
+    within(firstRow()).getByLabelText(m['dashboard.providers.form.variant_thinking_label']()),
+    m['dashboard.providers.form.variant_thinking_on'](),
+  );
+
+  // Rank would now put this row second; it is still the row the user was editing, still first.
+  expect(latestAlias(onAliasChange)['sonnet']?.variants).toEqual([
+    { when: { thinking: true, effort: 'high' }, model: 'claude-sonnet-4-fast', preserve: false },
+    { when: { speed: 'fast' }, model: 'claude-sonnet-4-thinking', preserve: false },
+  ]);
+  expect(within(firstRow()).getByLabelText(m['dashboard.providers.form.variant_effort_label']())).toHaveValue('high');
+});
+
 // Removing a row renumbers every row after it. While each row held its own form, the row that shifted
 // into the removed row's index inherited its state — so the survivor rendered the deleted row's
 // condition, and its next edit wrote that condition over its own.
@@ -86,8 +115,8 @@ test('the row surviving a removal keeps its own condition and edits it', async (
     },
   };
   const onAliasChange = renderVariants(twoRows);
-  // Rank orders the display, so the thinking row reads first and the effort row is the one at stored 0.
-  const effortRow = () => screen.getAllByTestId('provider-variant-row')[1]!;
+  // Rows render in stored order, so the effort row is both first on screen and stored 0.
+  const effortRow = () => screen.getAllByTestId('provider-variant-row')[0]!;
 
   fireEvent.click(within(effortRow()).getByRole('switch'));
   fireEvent.click(within(effortRow()).getByRole('button', { name: m['dashboard.providers.form.remove_variant']() }));

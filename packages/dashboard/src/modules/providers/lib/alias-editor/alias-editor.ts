@@ -5,7 +5,6 @@ import {
   normalizeAliasName,
   preservedAliasModels,
   whenIdentity,
-  whenRank,
 } from '@aio-proxy/types';
 import type { ReactFormExtendedApi } from '@tanstack/react-form';
 
@@ -93,16 +92,6 @@ export function renameAlias(alias: ProviderAlias, current: string, next: string)
 /** Rows are the one internal shape: the legacy record form is exactly the effort-only subset of it. */
 export function variantRows(config: AliasConfig): readonly AliasSelectRow[] {
   return flattenAliasVariants(config.variants);
-}
-
-/** Rank order, so the row that `matchAliasRows` would pick reads first. Carries the stored index because
- * that index — not the display position — is the row's identity for edits and for issue anchors. */
-export function displayVariantRows(
-  rows: readonly AliasSelectRow[],
-): readonly { readonly row: AliasSelectRow; readonly index: number }[] {
-  return rows
-    .map((row, index) => ({ row, index }))
-    .sort((left, right) => whenRank(right.row.when) - whenRank(left.row.when));
 }
 
 const isEffortOnly = (row: AliasSelectRow): boolean =>

@@ -3,7 +3,6 @@ import { describe, expect, test } from '@rstest/core';
 import {
   addVariantRow,
   aliasEditorIssues,
-  displayVariantRows,
   fromRowDraft,
   toAliasVariants,
   toRowDraft,
@@ -99,18 +98,6 @@ describe('provider alias editor variant rows', () => {
       { code: 'variant-when-required', alias: 'mini', variant: 0 },
       { code: 'variant-effort-blank', alias: 'mini', variant: 1 },
     ]);
-  });
-
-  // `matchAliasRows` breaks ties by rank, so the more specific row wins for a thinking request.
-  // Display follows rank; the stored order is user-authored and must not be rewritten under them.
-  test('Given rows of mixed specificity When displayed Then the most specific comes first, stored order intact', () => {
-    const rows = [
-      { when: { effort: 'high' }, model: 'gpt-high', preserve: false },
-      { when: { effort: 'high', thinking: true }, model: 'gpt-high-thinking', preserve: false },
-    ] as const;
-
-    expect(displayVariantRows(rows).map((entry) => entry.index)).toEqual([1, 0]);
-    expect(rows.map((row) => row.model)).toEqual(['gpt-high', 'gpt-high-thinking']);
   });
 
   // `thinking: false` is a real condition ("route non-thinking requests here"), so the editor's

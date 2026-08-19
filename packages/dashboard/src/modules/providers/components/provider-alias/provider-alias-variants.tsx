@@ -8,7 +8,6 @@ import {
   addVariantRow,
   type AliasEditorIssue,
   blankVariantRow,
-  displayVariantRows,
   type ProviderAlias,
   variantRows,
   withVariantRows,
@@ -54,7 +53,7 @@ export const ProviderAliasVariants: FC<ProviderAliasVariantsProps> = ({
       </div>
       {rows.length > 0 && (
         <div className="space-y-2 rounded-xl bg-muted/40 p-2.5">
-          {displayVariantRows(rows).map(({ row, index }) => (
+          {rows.map((row, index) => (
             <ProviderVariantRow
               key={index}
               aliasName={aliasName}

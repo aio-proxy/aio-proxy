@@ -24,7 +24,7 @@ import { ProviderVariantConditions } from './provider-variant-conditions';
 
 interface ProviderVariantRowProps {
   readonly aliasName: string;
-  /** Index into the stored rows, so an edit addresses the row the user sees even when rank reorders it. */
+  /** Index into the stored rows: the row's identity for edits and for issue anchors. */
   readonly index: number;
   readonly row: AliasSelectRow;
   readonly models: readonly string[];
