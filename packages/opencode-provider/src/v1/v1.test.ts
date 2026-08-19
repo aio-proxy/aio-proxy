@@ -88,7 +88,7 @@ test('401 never falls back to an anonymous retry', async () => {
   expect(f.anonymousCalls).toBe(0);
 });
 
-test('two catalog 401 responses preserve LKG and use the persisted rotation', async () => {
+test('two catalog 401 responses preserve LKG and require login after one rotation', async () => {
   const f = await fixture({ lkg: catalog() });
   f.catalogResponses.push(401, 401);
   f.refresh.resolve({
@@ -98,11 +98,24 @@ test('two catalog 401 responses preserve LKG and use the persisted rotation', as
     expires_in: 900,
   });
   const options = await (await f.server()).auth!.loader!(f.getAuth, f.provider);
-  await options.fetch('http://127.0.0.1:9317/v1/chat/completions');
-  expect(f.upstreamHeaders).toEqual(['Bearer aio_agent_at_v1_new']);
+  await expect(options.fetch('http://127.0.0.1:9317/v1/chat/completions')).rejects.toThrow('aio-proxy login required');
   expect(f.refreshCalls).toBe(1);
   expect(f.catalogRefreshCalls).toBe(2);
   expect(f.readState()).toMatchObject({ status: 'stale', lastError: 'unauthorized' });
+  expect(f.anonymousCalls).toBe(0);
+  expect(f.upstreamHeaders).toEqual([]);
+  await expect(options.fetch('http://127.0.0.1:9317/v1/chat/completions')).rejects.toThrow('aio-proxy login required');
+  expect(f.refreshCalls).toBe(1);
+  expect(f.upstreamHeaders).toEqual([]);
+  f.replaceAuth({
+    type: 'oauth',
+    access: 'aio_agent_at_v1_relogin',
+    refresh: 'aio_agent_rt_v1_relogin',
+    expires: 901_000,
+  });
+  await options.fetch('http://127.0.0.1:9317/v1/chat/completions');
+  expect(f.upstreamHeaders).toEqual(['Bearer aio_agent_at_v1_relogin']);
+  expect(f.refreshCalls).toBe(1);
   expect(f.anonymousCalls).toBe(0);
 });
 

@@ -54,6 +54,10 @@ export async function createOpenCodeV1Server(input: PluginInput, deps: OpenCodeV
   let catalog = await deps.readLastKnownCatalog(managed.statePath, 'opencode');
   let timer: ReturnType<typeof globalThis.setInterval> | undefined;
   let rejectedRefresh: string | undefined;
+  const rejectRefresh = (refresh: string): never => {
+    rejectedRefresh = refresh;
+    throw loginRequired();
+  };
 
   const rotate = createSingleFlight(async (getAuth: GetAuth): Promise<OAuthAuth> => {
     const current = await getAuth();
@@ -66,10 +70,7 @@ export async function createOpenCodeV1Server(input: PluginInput, deps: OpenCodeV
         now: deps.now,
       });
     } catch (error) {
-      if (error instanceof AgentRuntimeError && error.code === 'invalid_grant') {
-        rejectedRefresh = current.refresh;
-        throw loginRequired();
-      }
+      if (error instanceof AgentRuntimeError && error.code === 'invalid_grant') rejectRefresh(current.refresh);
       throw error;
     }
     const next: OAuthAuth = {
@@ -141,7 +142,7 @@ export async function createOpenCodeV1Server(input: PluginInput, deps: OpenCodeV
     if (first.error !== 'unauthorized') return;
     const next = await recoverUnauthorized(getAuth, access);
     const second = await refreshWithAccess(next.access);
-    if (second.error === 'unauthorized') throw loginRequired();
+    if (second.error === 'unauthorized') rejectRefresh(next.refresh);
   }
 
   const refreshCatalogFromStore = createSingleFlight(refreshFromStoredCredential);
