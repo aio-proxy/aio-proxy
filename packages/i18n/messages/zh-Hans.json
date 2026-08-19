@@ -322,6 +322,31 @@
         "reload": "重新加载"
       }
     },
+    "agent_authorization": {
+      "title": "授权 aio-proxy",
+      "instructions": "输入 Agent 中显示的代码。",
+      "code_label": "授权码",
+      "code_placeholder": "ABCD-EFGH",
+      "code_invalid": "请输入 8 位授权码。",
+      "permissions_title": "请求的权限",
+      "permission_catalog": "读取模型目录",
+      "permission_inference": "调用模型推理",
+      "target": "Agent",
+      "installation": "安装 ID",
+      "version": "适配器版本",
+      "expires": "过期时间",
+      "resolve": "继续",
+      "approve": "批准",
+      "deny": "拒绝",
+      "pending": "等待你的决定。",
+      "approved": "已批准授权，请返回 Agent。",
+      "denied": "已拒绝授权。",
+      "expired": "此授权码已过期。",
+      "consumed": "此授权码已使用。",
+      "password_required": "请先设置 Dashboard 密码，再批准 Agent 访问。",
+      "network_error": "无法连接 aio-proxy，请检查服务后重试。",
+      "retry": "使用其他授权码"
+    },
     "menus": {
       "observability": "观测",
       "overview": "概览",

@@ -322,6 +322,31 @@
         "reload": "Reload"
       }
     },
+    "agent_authorization": {
+      "title": "Authorize aio-proxy",
+      "instructions": "Enter the code shown by your Agent.",
+      "code_label": "Authorization code",
+      "code_placeholder": "ABCD-EFGH",
+      "code_invalid": "Enter the eight-character code.",
+      "permissions_title": "Requested access",
+      "permission_catalog": "Read the model catalog",
+      "permission_inference": "Run model inference",
+      "target": "Agent",
+      "installation": "Installation ID",
+      "version": "Adapter version",
+      "expires": "Expires",
+      "resolve": "Continue",
+      "approve": "Approve",
+      "deny": "Deny",
+      "pending": "Waiting for your decision.",
+      "approved": "Authorization approved. Return to your Agent.",
+      "denied": "Authorization denied.",
+      "expired": "This authorization code expired.",
+      "consumed": "This authorization code was already used.",
+      "password_required": "Set a Dashboard password before approving Agent access.",
+      "network_error": "aio-proxy is unavailable. Check the server and try again.",
+      "retry": "Use another code"
+    },
     "menus": {
       "observability": "Observability",
       "overview": "Overview",

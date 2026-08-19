@@ -324,6 +324,31 @@
         "reload": "다시 로드"
       }
     },
+    "agent_authorization": {
+      "title": "aio-proxy 승인",
+      "instructions": "Agent에 표시된 코드를 입력하세요.",
+      "code_label": "승인 코드",
+      "code_placeholder": "ABCD-EFGH",
+      "code_invalid": "8자리 코드를 입력하세요.",
+      "permissions_title": "요청된 액세스",
+      "permission_catalog": "모델 카탈로그 읽기",
+      "permission_inference": "모델 추론 실행",
+      "target": "Agent",
+      "installation": "설치 ID",
+      "version": "어댑터 버전",
+      "expires": "만료",
+      "resolve": "계속",
+      "approve": "승인",
+      "deny": "거부",
+      "pending": "결정을 기다리는 중입니다.",
+      "approved": "승인이 완료되었습니다. Agent로 돌아가세요.",
+      "denied": "승인이 거부되었습니다.",
+      "expired": "이 승인 코드는 만료되었습니다.",
+      "consumed": "이 승인 코드는 이미 사용되었습니다.",
+      "password_required": "Agent 액세스를 승인하기 전에 Dashboard 비밀번호를 설정하세요.",
+      "network_error": "aio-proxy에 연결할 수 없습니다. 서버를 확인하고 다시 시도하세요.",
+      "retry": "다른 코드 사용"
+    },
     "menus": {
       "observability": "관측성",
       "overview": "개요",
