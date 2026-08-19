@@ -562,6 +562,24 @@ describe('ModelsSection', () => {
     expect(within(card).getByLabelText(/Target Model|目标/u)).not.toHaveAttribute('aria-invalid', 'true');
   });
 
+  // Every row renders the trash control, but a catalog-only row cannot leave the list: it comes from
+  // `discovered`, not the whitelist. The click must therefore change nothing at all — dropping the
+  // alias while the row stays on screen reads as "delete did nothing" and loses the alias on Save.
+  test('deleting a catalog-only row leaves the alias pointing at it alone', () => {
+    renderSection({
+      kind: ProviderKind.Api,
+      initial: { ...apiInitial(['model-a']), alias: { smart: { model: 'disc-b', preserve: false } } },
+      candidates: ['disc-b'],
+    });
+
+    fireEvent.click(within(screen.getByTestId('model-row-disc-b')).getByTestId('model-row-remove'));
+
+    expect(screen.getByTestId('model-row-disc-b')).toBeInTheDocument();
+    const card = screen.getByTestId('provider-alias-card');
+    expect(within(card).getByText('smart')).toBeInTheDocument();
+    expect(within(card).getByText('disc-b', { selector: '[data-slot=card-description]' })).toBeInTheDocument();
+  });
+
   test('Add Alias stays on screen when there are no aliases, and is disabled without enabled models', () => {
     renderSection({ kind: ProviderKind.Api, initial: apiInitial([]) });
 

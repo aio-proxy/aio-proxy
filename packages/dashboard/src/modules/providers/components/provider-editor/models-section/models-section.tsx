@@ -151,6 +151,11 @@ export const ModelsSection: React.FC<ModelsSectionProps> = ({
                         : whitelistRows.filter((row) => row.id !== id),
                     );
                   const remove = (id: string) => {
+                    // Every row renders the trash control, but only whitelisted ids can leave the
+                    // list — a catalog-only row survives `discovered`. Removing one is a no-op on
+                    // `models`, so the cascade below must not run either: it would delete aliases
+                    // and metadata pointing at a row still on screen.
+                    if (!whitelist.has(id)) return;
                     const { [id]: _dropped, ...rest } = metadata;
                     commit(
                       whitelistRows.filter((row) => row.id !== id),
@@ -211,6 +216,10 @@ export const ModelsSection: React.FC<ModelsSectionProps> = ({
                               </p>
                             </div>
 
+                            {/* A loaded catalog is routinely dozens to hundreds of ids, and an unbounded
+                                list pushed Routing and Advanced so far down the page that the section nav
+                                was the only way back. `pr-3` keeps the row's own hover and focus ring clear
+                                of the scrollbar gutter. */}
                             <ScrollArea className="[&_[data-slot=scroll-area-viewport]]:max-h-72">
                               <div className="space-y-1.5 pr-3" data-testid="models-rows">
                                 {visible.map((row) => (

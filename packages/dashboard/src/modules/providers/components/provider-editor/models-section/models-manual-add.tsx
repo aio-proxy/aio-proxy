@@ -22,7 +22,6 @@ export const ModelsManualAdd: React.FC<ModelsManualAddProps> = ({ onAdd }) => {
   return (
     <div className="flex flex-wrap items-end gap-2">
       <Input
-        id="models-manual-add"
         value={manual}
         placeholder={m['dashboard.providers.editor.models_manual_add']()}
         aria-label={m['dashboard.providers.editor.models_manual_add']()}
