@@ -71,6 +71,41 @@ test('reports the missing condition on a freshly added row', () => {
   expect(screen.getByRole('alert').textContent).toBe(m['dashboard.providers.form.variant_when_required']());
 });
 
+// Rows were keyed by stored index, so removing one renumbered the rest and React handed the removed
+// row's instance to its successor. State that never reaches `row` — DOM focus, an open condition
+// dropdown — then belonged to the wrong row. Keys have to follow the row.
+test('a row keeps its own focus when an earlier row is removed', () => {
+  const threeRows: ProviderAlias = {
+    sonnet: {
+      model: 'claude-sonnet-4',
+      preserve: false,
+      variants: [
+        { when: { effort: 'low' }, model: 'claude-sonnet-4', preserve: false },
+        { when: { effort: 'high' }, model: 'claude-sonnet-4-fast', preserve: false },
+        { when: { thinking: true }, model: 'claude-sonnet-4-thinking', preserve: false },
+      ],
+    },
+  };
+  renderVariants(threeRows);
+  const effortOf = (position: number) =>
+    within(screen.getAllByTestId('provider-variant-row')[position]!).getByLabelText(
+      m['dashboard.providers.form.variant_effort_label']({ alias: 'sonnet' }),
+    );
+
+  const working = effortOf(2);
+  working.focus();
+  fireEvent.click(
+    within(screen.getAllByTestId('provider-variant-row')[0]!).getByRole('button', {
+      name: m['dashboard.providers.form.remove_variant'](),
+    }),
+  );
+
+  // The row the user was working in is now at position 1, and it is still the focused one.
+  expect(screen.getAllByTestId('provider-variant-row')).toHaveLength(2);
+  expect(effortOf(1)).toBe(working);
+  expect(document.activeElement).toBe(working);
+});
+
 // A config can carry an unnamed alias (that is its own reported issue), and an empty name would leave
 // the condition controls announced as " 's effort condition". The fallback noun is i18n copy too.
 test('an unnamed alias falls back to the alias noun in the condition labels', () => {

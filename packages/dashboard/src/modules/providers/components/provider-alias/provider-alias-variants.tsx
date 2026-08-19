@@ -14,6 +14,7 @@ import {
 } from '../../lib/alias-editor';
 import { aliasIssueMessage } from '../../lib/alias-editor-copy';
 import { ProviderVariantRow } from '../provider-variant-row';
+import { useVariantRowKeys } from './use-variant-row-keys';
 
 interface ProviderAliasVariantsProps {
   readonly alias: ProviderAlias;
@@ -33,6 +34,7 @@ export const ProviderAliasVariants: FC<ProviderAliasVariantsProps> = ({
   onAliasChange,
 }) => {
   const rows = variantRows(config);
+  const { keys, appendKey, dropKey } = useVariantRowKeys(rows.length);
   // Two rows can fail the same way; the list names each problem once, and `aria-invalid` on the
   // offending controls is what points at which row it came from.
   const messages = [...new Set(issues.map(aliasIssueMessage))];
@@ -45,7 +47,10 @@ export const ProviderAliasVariants: FC<ProviderAliasVariantsProps> = ({
           variant="ghost"
           size="xs"
           disabled={models.length === 0}
-          onClick={() => onAliasChange(addVariantRow(alias, aliasName, blankVariantRow(models[0] ?? '')))}
+          onClick={() => {
+            appendKey();
+            onAliasChange(addVariantRow(alias, aliasName, blankVariantRow(models[0] ?? '')));
+          }}
         >
           <PlusIcon data-icon="inline-start" />
           {m['dashboard.providers.form.add_variant']()}
@@ -55,7 +60,7 @@ export const ProviderAliasVariants: FC<ProviderAliasVariantsProps> = ({
         <div className="space-y-2 rounded-xl bg-muted/40 p-2.5">
           {rows.map((row, index) => (
             <ProviderVariantRow
-              key={index}
+              key={keys[index] ?? index}
               aliasName={aliasName}
               index={index}
               row={row}
@@ -70,15 +75,16 @@ export const ProviderAliasVariants: FC<ProviderAliasVariantsProps> = ({
                   ),
                 )
               }
-              onRemove={() =>
+              onRemove={() => {
+                dropKey(index);
                 onAliasChange(
                   withVariantRows(
                     alias,
                     aliasName,
                     rows.filter((_, position) => position !== index),
                   ),
-                )
-              }
+                );
+              }}
             />
           ))}
         </div>
