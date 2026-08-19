@@ -9,7 +9,10 @@ import { captureIdentity, inspectPath, matchesIdentity, removeOwned, writeDurabl
 import { inspectManagedInstallation, openCodeEntry } from './inspect';
 
 export type ManagedRemoveTestDeps = {
-  readonly failpoint?: (point: 'validated' | 'content_removed') => void | Promise<void>;
+  readonly failpoint?: (point: 'content_removed') => void | Promise<void>;
+};
+export type ManagedRemovePrivateTestDeps = ManagedRemoveTestDeps & {
+  readonly onValidated?: () => void | Promise<void>;
 };
 
 const MARKER_NAME = '.aio-proxy-managed.json';
@@ -56,10 +59,10 @@ const bindAdjacentEntry = async (path: string, installationId: string): Promise<
   return { path, dev: stat.dev, ino: stat.ino };
 };
 
-export async function removeManagedIntegration(
+async function runManagedRemove(
   location: AgentLocation,
   expectedInstallationId: string,
-  testDeps?: ManagedRemoveTestDeps,
+  testDeps?: ManagedRemovePrivateTestDeps,
 ): Promise<void> {
   const status = await inspectManagedInstallation(location, Date.now);
   if (status.integration === 'conflict') {
@@ -102,9 +105,10 @@ export async function removeManagedIntegration(
       ? undefined
       : await bindAdjacentEntry(location.adjacentEntry, expectedInstallationId);
 
-  await testDeps?.failpoint?.('validated');
+  await testDeps?.onValidated?.();
   await requireOwned(dir, 'managed directory replaced');
   if (entry !== undefined) await requireOwned(entry, 'entry conflict');
+  await requireOwned(marker, 'managed marker invalid');
 
   if (entry !== undefined) await removeOwned(entry);
   await requireOwned(dir, 'managed directory replaced');
@@ -123,4 +127,20 @@ export async function removeManagedIntegration(
     }
     throw error;
   }
+}
+
+export async function removeManagedIntegration(
+  location: AgentLocation,
+  expectedInstallationId: string,
+  testDeps?: ManagedRemoveTestDeps,
+): Promise<void> {
+  return runManagedRemove(location, expectedInstallationId, testDeps);
+}
+
+export async function removeManagedIntegrationForTest(
+  location: AgentLocation,
+  expectedInstallationId: string,
+  testDeps?: ManagedRemovePrivateTestDeps,
+): Promise<void> {
+  return runManagedRemove(location, expectedInstallationId, testDeps);
 }

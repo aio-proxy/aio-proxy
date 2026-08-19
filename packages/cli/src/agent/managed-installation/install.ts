@@ -31,9 +31,11 @@ export type ManagedInstallInput = {
   readonly managedOnly?: boolean;
 };
 export type ManagedInstallTestDeps = {
-  readonly failpoint?: (
-    point: 'staged' | 'backed_up' | 'directory_swapped' | 'entry_ready' | 'entry_linked' | 'backup_cleanup',
-  ) => void | Promise<void>;
+  readonly failpoint?: (point: 'staged' | 'backed_up' | 'directory_swapped' | 'entry_ready') => void | Promise<void>;
+};
+export type ManagedInstallPrivateTestDeps = ManagedInstallTestDeps & {
+  readonly onEntryLinked?: () => void | Promise<void>;
+  readonly onBackupCleanup?: () => void | Promise<void>;
 };
 
 const throwConflict = (status: LocalIntegrationStatus): never => {
@@ -113,7 +115,7 @@ const copyValidState = async (backupDir: string, stagingDir: string, target: Age
 const commitOpenCodeEntry = async (
   adjacentEntry: string,
   installationId: string,
-  failpoint?: ManagedInstallTestDeps['failpoint'],
+  testDeps?: ManagedInstallPrivateTestDeps,
   onLinked?: () => void,
 ): Promise<void> => {
   const existing = await inspectPath(adjacentEntry);
@@ -128,7 +130,7 @@ const commitOpenCodeEntry = async (
   await writeDurable(temporary, openCodeEntry(installationId));
   const temp = await captureIdentity(temporary);
   try {
-    await failpoint?.('entry_ready');
+    await testDeps?.failpoint?.('entry_ready');
     await link(temporary, adjacentEntry);
   } catch (error) {
     await removeOwned(temp);
@@ -137,7 +139,7 @@ const commitOpenCodeEntry = async (
   }
   onLinked?.();
   try {
-    await failpoint?.('entry_linked');
+    await testDeps?.onEntryLinked?.();
     await removeOwned(temp);
     await syncDirectory(dirname(adjacentEntry));
   } catch (error) {
@@ -173,7 +175,7 @@ const runStagedInstall = async (
   input: ManagedInstallInput,
   installationId: string,
   updating: boolean,
-  testDeps?: ManagedInstallTestDeps,
+  testDeps?: ManagedInstallPrivateTestDeps,
 ): Promise<'installed' | 'updated' | 'newer'> => {
   const { location } = input;
   await mkdir(location.hostRoot, { recursive: true, mode: 0o700 });
@@ -203,7 +205,9 @@ const runStagedInstall = async (
       backup = await captureIdentity(reserved);
       await testDeps?.failpoint?.('backed_up');
       if ((await validateBackup(reserved, location.target, installationId, input.adapterVersion)) === 'newer') {
-        await restoreOwned(backup, location.managedDir);
+        if (!(await restoreOwned(backup, location.managedDir))) {
+          throw new Error('managed backup restore failed');
+        }
         backup = undefined;
         return 'newer';
       }
@@ -216,14 +220,14 @@ const runStagedInstall = async (
     await testDeps?.failpoint?.('directory_swapped');
 
     if (location.adjacentEntry !== undefined) {
-      await commitOpenCodeEntry(location.adjacentEntry, installationId, testDeps?.failpoint, () => {
+      await commitOpenCodeEntry(location.adjacentEntry, installationId, testDeps, () => {
         committed = true;
       });
     }
     committed = true;
 
     if (backup !== undefined) {
-      await testDeps?.failpoint?.('backup_cleanup');
+      await testDeps?.onBackupCleanup?.();
       await removeOwned(backup);
       backup = undefined;
     }
@@ -239,9 +243,9 @@ const runStagedInstall = async (
   }
 };
 
-export async function installManagedIntegration(
+async function runManagedInstall(
   input: ManagedInstallInput,
-  testDeps?: ManagedInstallTestDeps,
+  testDeps?: ManagedInstallPrivateTestDeps,
 ): Promise<'installed' | 'updated' | 'newer'> {
   const { location } = input;
   const status = await inspectManagedInstallation(location, Date.now);
@@ -262,4 +266,18 @@ export async function installManagedIntegration(
 
   if (input.managedOnly === true) throw new Error('managed installation is required');
   return runStagedInstall(input, input.requestedInstallationId, false, testDeps);
+}
+
+export async function installManagedIntegration(
+  input: ManagedInstallInput,
+  testDeps?: ManagedInstallTestDeps,
+): Promise<'installed' | 'updated' | 'newer'> {
+  return runManagedInstall(input, testDeps);
+}
+
+export async function installManagedIntegrationForTest(
+  input: ManagedInstallInput,
+  testDeps?: ManagedInstallPrivateTestDeps,
+): Promise<'installed' | 'updated' | 'newer'> {
+  return runManagedInstall(input, testDeps);
 }

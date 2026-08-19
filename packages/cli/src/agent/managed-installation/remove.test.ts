@@ -2,7 +2,8 @@ import { afterEach, expect, test } from 'bun:test';
 import { lstat, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import { removeManagedIntegration } from './remove';
+import * as managedInstallation from './index';
+import { removeManagedIntegration, removeManagedIntegrationForTest, type ManagedRemoveTestDeps } from './remove';
 import {
   displaceAndReplaceDir,
   displaceAndReplaceFile,
@@ -13,6 +14,12 @@ import {
 
 afterEach(async () => {
   await Promise.all(fixtureRoots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+});
+
+test('public remove failpoints accept a brief-union callback', () => {
+  const failpoint = (_point: 'content_removed') => {};
+  ({ failpoint }) satisfies ManagedRemoveTestDeps;
+  expect('removeManagedIntegrationForTest' in managedInstallation).toBe(false);
 });
 
 test('remove refuses an entry conflict before deleting any byte', async () => {
@@ -40,9 +47,8 @@ test('remove preserves a replaced managed directory', async () => {
   const f = await removeFixture('pi');
   const displaced = join(f.root, 'displaced-managed');
   await expect(
-    removeManagedIntegration(f.location, f.installationId, {
-      failpoint: async (point) => {
-        if (point !== 'validated') return;
+    removeManagedIntegrationForTest(f.location, f.installationId, {
+      onValidated: async () => {
         await displaceAndReplaceDir(f.location.managedDir, displaced, 'foreign.txt', 'foreign managed');
       },
     }),
@@ -56,9 +62,8 @@ test('remove preserves a replaced adjacent entry', async () => {
   const f = await removeFixture('opencode');
   const displaced = join(f.root, 'displaced-entry');
   await expect(
-    removeManagedIntegration(f.location, f.installationId, {
-      failpoint: async (point) => {
-        if (point !== 'validated') return;
+    removeManagedIntegrationForTest(f.location, f.installationId, {
+      onValidated: async () => {
         await displaceAndReplaceFile(f.location.adjacentEntry!, displaced, openCodeEntry(f.installationId));
       },
     }),
@@ -67,6 +72,31 @@ test('remove preserves a replaced adjacent entry', async () => {
   expect(await Bun.file(displaced).text()).toBe(openCodeEntry(f.installationId));
   expect(await Bun.file(join(f.location.managedDir, 'old.js')).text()).toBe('old-adapter');
   expect(await Bun.file(join(f.location.managedDir, '.aio-proxy-managed.json')).exists()).toBe(true);
+});
+
+test('remove preserves a replaced ownership marker before any deletion', async () => {
+  const f = await removeFixture('opencode');
+  const marker = join(f.location.managedDir, '.aio-proxy-managed.json');
+  const displaced = join(f.root, 'displaced-marker');
+  const foreignMarker = JSON.stringify({
+    format: 1,
+    managedBy: 'aio-proxy',
+    agent: 'opencode',
+    installationId: crypto.randomUUID(),
+    adapterVersion: '1.0.0',
+    endpoint: 'http://127.0.0.1:9317',
+  });
+  await expect(
+    removeManagedIntegrationForTest(f.location, f.installationId, {
+      onValidated: async () => {
+        await displaceAndReplaceFile(marker, displaced, foreignMarker);
+      },
+    }),
+  ).rejects.toThrow('marker');
+  expect(await Bun.file(f.location.adjacentEntry!).text()).toBe(openCodeEntry(f.installationId));
+  expect(await Bun.file(join(f.location.managedDir, 'old.js')).text()).toBe('old-adapter');
+  expect(await Bun.file(marker).text()).toBe(foreignMarker);
+  expect(await Bun.file(displaced).exists()).toBe(true);
 });
 
 test('rmdir failure restores exact marker bytes and mode, then retry succeeds', async () => {

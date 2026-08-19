@@ -1,10 +1,13 @@
 import { afterEach, expect, test } from 'bun:test';
-import { lstat, mkdir, rename, rm, symlink, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, mkdtemp, rename, rm, symlink, unlink, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { AgentManagedMarkerSchema } from '@aio-proxy/types';
 
-import { installManagedIntegration } from './install';
+import { captureIdentity, isolateOwned } from './durable';
+import * as managedInstallation from './index';
+import { installManagedIntegration, installManagedIntegrationForTest, type ManagedInstallTestDeps } from './install';
 import {
   displaceAndReplaceDir,
   displaceAndReplaceFile,
@@ -17,6 +20,12 @@ import {
 
 afterEach(async () => {
   await Promise.all(fixtureRoots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+});
+
+test('public install failpoints accept a brief-union callback', () => {
+  const failpoint = (_point: 'staged' | 'backed_up' | 'directory_swapped' | 'entry_ready') => {};
+  ({ failpoint }) satisfies ManagedInstallTestDeps;
+  expect('installManagedIntegrationForTest' in managedInstallation).toBe(false);
 });
 
 test('first configure writes files, marker, and fixed OpenCode entry', async () => {
@@ -210,12 +219,27 @@ test('a replaced entry temporary file is not deleted', async () => {
   expect(await Bun.file(f.location.adjacentEntry!).exists()).toBe(false);
 });
 
+test('isolateOwned retains a mismatched occupant under the isolated sibling when the original path is recreated', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'aio-owned-restore-'));
+  fixtureRoots.push(home);
+  const owned = join(home, 'occupied');
+  await writeFile(owned, 'owned');
+  const identity = await captureIdentity(owned);
+  await unlink(owned);
+  await writeFile(owned, 'foreign');
+  await isolateOwned(identity, async (_isolated, originalPath) => {
+    await writeFile(originalPath, 'third-party');
+  });
+  expect(await Bun.file(owned).text()).toBe('third-party');
+  expect(await Bun.file(await onlyPrefixed(home, '.aio-proxy-owned-')).text()).toBe('foreign');
+});
+
 test('a post-link failure keeps the committed OpenCode installation', async () => {
   const f = await installFixture('opencode');
   await expect(
-    installManagedIntegration(f.input, {
-      failpoint: async (point) => {
-        if (point === 'entry_linked') throw new Error('fsync');
+    installManagedIntegrationForTest(f.input, {
+      onEntryLinked: () => {
+        throw new Error('fsync');
       },
     }),
   ).rejects.toThrow('fsync');
@@ -226,9 +250,8 @@ test('a post-link failure keeps the committed OpenCode installation', async () =
 test('a backup-cleanup failure keeps the promoted installation', async () => {
   const f = await installFixture('pi', { existing: true });
   await expect(
-    installManagedIntegration(f.input, {
-      failpoint: async (point) => {
-        if (point !== 'backup_cleanup') return;
+    installManagedIntegrationForTest(f.input, {
+      onBackupCleanup: async () => {
         await rm(join(await onlyPrefixed(f.location.hostRoot, '.aio-proxy-backup-'), 'old.js'));
         throw new Error('backup rm');
       },
@@ -285,4 +308,37 @@ test('a backup that becomes newer is restored without promotion', async () => {
     adapterVersion: '9.0.0',
     installationId: f.installationId,
   });
+});
+
+test('a newer backup is not claimed when restore cannot replace an occupied destination', async () => {
+  const f = await installFixture('pi', { existing: true });
+  await expect(
+    installManagedIntegration(f.input, {
+      failpoint: async (point) => {
+        if (point !== 'backed_up') return;
+        const backup = await onlyPrefixed(f.location.hostRoot, '.aio-proxy-backup-');
+        await writeFile(
+          join(backup, '.aio-proxy-managed.json'),
+          JSON.stringify({
+            format: 1,
+            managedBy: 'aio-proxy',
+            agent: 'pi',
+            installationId: f.installationId,
+            adapterVersion: '9.0.0',
+            endpoint: 'http://127.0.0.1:9317',
+          }),
+        );
+        await mkdir(f.location.managedDir);
+        await writeFile(join(f.location.managedDir, 'foreign.txt'), 'occupied');
+      },
+    }),
+  ).rejects.toThrow();
+  expect(await Bun.file(join(f.location.managedDir, 'foreign.txt')).text()).toBe('occupied');
+  expect(await Bun.file(join(await onlyPrefixed(f.location.hostRoot, '.aio-proxy-backup-'), 'old.js')).text()).toBe(
+    'old-adapter',
+  );
+  await expect(
+    Bun.file(join(await onlyPrefixed(f.location.hostRoot, '.aio-proxy-backup-'), '.aio-proxy-managed.json')).json(),
+  ).resolves.toMatchObject({ adapterVersion: '9.0.0' });
+  expect(await Bun.file(join(f.location.managedDir, 'old.js')).exists()).toBe(false);
 });

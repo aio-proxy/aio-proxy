@@ -51,7 +51,10 @@ export async function syncDirectory(path: string): Promise<void> {
   }
 }
 
-export async function isolateOwned(identity: FsIdentity): Promise<string | undefined> {
+export async function isolateOwned(
+  identity: FsIdentity,
+  afterIsolate?: (isolated: string, originalPath: string) => void | Promise<void>,
+): Promise<string | undefined> {
   const isolated = join(dirname(identity.path), `.aio-proxy-owned-${crypto.randomUUID()}`);
   try {
     await rename(identity.path, isolated);
@@ -59,9 +62,10 @@ export async function isolateOwned(identity: FsIdentity): Promise<string | undef
     if (isFsCode(error, 'ENOENT')) return undefined;
     throw error;
   }
+  await afterIsolate?.(isolated, identity.path);
   const stat = await inspectPath(isolated);
   if (stat !== undefined && matchesIdentity(identity, stat)) return isolated;
-  if (stat !== undefined) {
+  if (stat !== undefined && (await inspectPath(identity.path)) === undefined) {
     try {
       await rename(isolated, identity.path);
     } catch {
