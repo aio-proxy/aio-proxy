@@ -65,23 +65,27 @@ test('the models hint names a broken alias ahead of anything it counts', () => {
   );
 });
 
-// X9 downgraded staleness, a create-time blank key and a weight tie from `attention` to `ok`. Their
-// three hints used to be selected BY `status === 'attention'`, so the downgrade would have silently
-// deleted all three explanations; each now reads its own input. One assertion per hint, with the status
-// the section actually reports now — pass `'attention'` and these all pass against the deleted branch.
-test('the three downgraded conditions still explain themselves at status ok', () => {
-  expect(connectionHint({ ...base, apiKey: '' }, 'ok')).toBe(
-    m['dashboard.providers.editor.hint_connection_no_api_key'](),
-  );
+// X9 downgraded staleness and a weight tie from `attention` to `ok`. Both hints used to be selected BY
+// `status === 'attention'`, so the downgrade would have silently deleted both explanations; each now
+// reads its own input. One assertion per hint, with the status the section actually reports now — pass
+// `'attention'` and these pass against the deleted branch.
+test('the two downgraded conditions still explain themselves at status ok', () => {
   expect(modelsHint({ ...base, models: ['gone'], discoveredModels: ['here'] }, 'ok')).toBe(
     m['dashboard.providers.editor.hint_models_stale'](),
   );
   expect(routingHint({ ...base, weightTie: true })).toBe(m['dashboard.providers.editor.hint_routing_weight_tie']());
-  // The mirror half: none of the three may fire when its own condition is absent, or every healthy
-  // section reports a problem it does not have.
-  expect(connectionHint(base, 'ok')).toBe('x.example/v1');
+  // The mirror half: neither may fire when its own condition is absent, or every healthy section reports
+  // a problem it does not have.
   expect(modelsHint({ ...base, models: ['m1'], discoveredModels: ['m1'] }, 'ok')).toBe('1 model');
   expect(routingHint(base)).toBe(m['dashboard.providers.editor.hint_routing_no_weight']());
+});
+
+// C15 (ruled 2026-08-19): a provider with no api key is a legitimate configuration, so the badge keeps
+// showing the address instead of calling the blank field out. Asserted in both modes because create mode
+// used to be the one that differed.
+test('a blank api key leaves the badge on the address, in either mode', () => {
+  expect(connectionHint({ ...base, apiKey: '' }, 'ok')).toBe('x.example/v1');
+  expect(connectionHint({ ...base, apiKey: '', mode: 'edit' }, 'ok')).toBe('x.example/v1');
 });
 
 // S2 made "present but unusable" a second way for Connection to be `todo`, and the one hint the badge

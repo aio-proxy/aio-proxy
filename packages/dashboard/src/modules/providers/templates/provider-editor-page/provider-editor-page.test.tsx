@@ -555,10 +555,9 @@ test('create mode explains what the page is for under the title', () => {
   expect(screen.getByText(m['dashboard.providers.editor.header_create_subtitle']())).toBeTruthy();
 });
 
-// X9 downgraded "created without an API key" from `attention` to `ok`, so the whole point is that this
-// draft is saveable AND still explains itself: the Connection badge is the only place the missing key is
-// mentioned, and the hint used to be selected by the very status that was removed.
-test('an api create with no key is saveable and its badge still names the missing key', async () => {
+// A provider with no API key is a legitimate configuration: X9 made the draft saveable, and C15 (ruled
+// 2026-08-19) took away the badge text that called the blank field out, so the badge stays on the address.
+test('an api create with no key is saveable and its badge shows the address', async () => {
   renderPage({
     mode: ProviderFormMode.Create,
     kind: ProviderKind.Api,
@@ -574,11 +573,7 @@ test('an api create with no key is saveable and its badge still names the missin
   const footer = within(screen.getByTestId('editor-footer'));
   await waitFor(() => expect(footer.getByText(m['dashboard.providers.editor.footer_ready']())).toBeTruthy());
   expect(saveButton()).toBeEnabled();
-  expect(
-    within(screen.getByRole('region', { name: /Connection/u })).getByText(
-      m['dashboard.providers.editor.hint_connection_no_api_key'](),
-    ),
-  ).toBeTruthy();
+  expect(within(screen.getByRole('region', { name: /Connection/u })).getByText('api.example.com/v1')).toBeTruthy();
 });
 
 test('a form with nothing outstanding announces that it is ready to save', () => {

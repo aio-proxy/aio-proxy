@@ -172,14 +172,13 @@ test('an explicitly emptied ai-sdk package name is todo and names itself', () =>
   expect(statuses({ ...base, kind: 'ai-sdk', packageName: undefined }).connection).toBe('ok');
 });
 
-// X9 downgraded this to `ok`, and the hint is the only thing left that reports it: a create-time draft
-// with no key is saveable, so the badge is the sole explanation of why the key field still looks unfinished.
-test('a missing api key is ok, never blocks, and still says the key is missing', () => {
+// X9 made this saveable; C15 (ruled 2026-08-19) then took the badge text away too, because a provider
+// with no key is a legitimate configuration rather than an unfinished field. Both modes now read alike.
+test('a missing api key is ok, never blocks, and is not remarked on', () => {
   const summaries = sectionStatuses({ ...base, apiKey: '' });
   expect(summaries.connection.status).toBe('ok');
-  expect(summaries.connection.hint).toBe(m['dashboard.providers.editor.hint_connection_no_api_key']());
+  expect(summaries.connection.hint).toBe('x.example/v1');
   expect(blockingSections(summaries)).toEqual([]);
-  // In edit mode an empty field means "keep the stored key", so it is not even worth remarking on.
   expect(statuses({ ...base, apiKey: '', mode: 'edit' }).connection).toBe('ok');
   expect(sectionStatuses({ ...base, apiKey: '', mode: 'edit' }).connection.hint).toBe('x.example/v1');
 });

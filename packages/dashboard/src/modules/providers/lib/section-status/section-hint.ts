@@ -43,12 +43,11 @@ export const connectionHint = (input: SectionStatusInput, status: SectionStatus)
     }
     return m['dashboard.providers.editor.hint_connection_todo_api']();
   }
-  // Off the inputs, not off the status: a create-time blank key is `ok` since X9 (an empty field in
-  // edit mode means "keep the stored key"), and keying this off `attention` would have deleted the only
-  // on-screen explanation the moment the status was downgraded.
-  if (input.mode === 'create' && (input.apiKey ?? '').trim() === '') {
-    return m['dashboard.providers.editor.hint_connection_no_api_key']();
-  }
+  // No branch for a blank api key: a provider without one is a legitimate configuration, not an
+  // unfinished field (C15 ruling, 2026-08-19), so the badge stays on the address in every mode. In edit
+  // mode an empty field has always meant "keep the stored key" — now create mode reads the same.
+  // Reaching here means the status is `ok`, which for api means `usableBaseURL` passed, so this is
+  // never the empty string.
   return (input.baseURL ?? '').trim().replace(/^https?:\/\//u, '');
 };
 

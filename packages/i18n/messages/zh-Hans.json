@@ -686,7 +686,6 @@
         "hint_connection_bad_base_url": "需要有效的 http(s) 地址",
         "hint_connection_todo_ai_sdk": "需要包名",
         "hint_connection_todo_oauth": "选择登录方式",
-        "hint_connection_no_api_key": "缺少 API Key",
         "hint_connection_oauth_unauthorized": "尚未授权",
         "hint_connection_oauth_ready": "已授权",
         "hint_models_todo": "尚未启用模型",

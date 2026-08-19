@@ -686,7 +686,6 @@
         "hint_connection_bad_base_url": "Needs a valid http(s) address",
         "hint_connection_todo_ai_sdk": "Needs a package name",
         "hint_connection_todo_oauth": "Pick a sign-in method",
-        "hint_connection_no_api_key": "Missing API Key",
         "hint_connection_oauth_unauthorized": "Not authorized yet",
         "hint_connection_oauth_ready": "Authorized",
         "hint_models_todo": "No models enabled yet",

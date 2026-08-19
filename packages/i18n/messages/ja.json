@@ -686,7 +686,6 @@
         "hint_connection_bad_base_url": "有効な http(s) アドレスが必要です",
         "hint_connection_todo_ai_sdk": "パッケージ名が必要です",
         "hint_connection_todo_oauth": "ログイン方法を選択",
-        "hint_connection_no_api_key": "API Key がありません",
         "hint_connection_oauth_unauthorized": "未認可",
         "hint_connection_oauth_ready": "認可済み",
         "hint_models_todo": "有効なモデルがありません",
