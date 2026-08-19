@@ -148,7 +148,7 @@ test('a replaced staging directory is not deleted', async () => {
       },
     }),
   ).rejects.toThrow('stage replaced');
-  expect(await Bun.file(join(await onlyPrefixed(f.location.hostRoot, '.aio-proxy-stage-'), 'foreign.txt')).text()).toBe(
+  expect(await Bun.file(join(await onlyPrefixed(f.location.hostRoot, '.aio-proxy-owned-'), 'foreign.txt')).text()).toBe(
     'foreign staging',
   );
   expect(await Bun.file(join(displaced, 'index.js')).text()).toBe('built-pi');
@@ -191,11 +191,11 @@ test('a replaced promoted directory is not deleted', async () => {
       },
     }),
   ).rejects.toThrow('promoted replaced');
-  expect(await Bun.file(join(f.location.managedDir, 'foreign.txt')).text()).toBe('foreign promoted');
-  expect(await Bun.file(join(displaced, 'index.js')).text()).toBe('built-pi');
-  expect(await Bun.file(join(await onlyPrefixed(f.location.hostRoot, '.aio-proxy-backup-'), 'old.js')).text()).toBe(
-    'old-adapter',
+  expect(await Bun.file(join(await onlyPrefixed(f.location.hostRoot, '.aio-proxy-owned-'), 'foreign.txt')).text()).toBe(
+    'foreign promoted',
   );
+  expect(await Bun.file(join(displaced, 'index.js')).text()).toBe('built-pi');
+  expect(await Bun.file(join(f.location.managedDir, 'old.js')).text()).toBe('old-adapter');
 });
 
 test('a replaced entry temporary file is not deleted', async () => {
@@ -214,23 +214,21 @@ test('a replaced entry temporary file is not deleted', async () => {
       },
     }),
   ).rejects.toThrow('entry temp replaced');
-  expect(await Bun.file(await onlyPrefixed(f.location.hostRoot, '.aio-proxy-entry-')).text()).toBe('foreign temp');
+  expect(await Bun.file(await onlyPrefixed(f.location.hostRoot, '.aio-proxy-owned-')).text()).toBe('foreign temp');
   expect(await Bun.file(displaced).text()).toBe(openCodeEntry(f.installationId));
   expect(await Bun.file(f.location.adjacentEntry!).exists()).toBe(false);
 });
 
-test('isolateOwned retains a mismatched occupant under the isolated sibling when the original path is recreated', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'aio-owned-restore-'));
+test('isolateOwned retains a mismatched occupant under the isolated sibling when the original path stays vacant', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'aio-owned-vacant-'));
   fixtureRoots.push(home);
   const owned = join(home, 'occupied');
   await writeFile(owned, 'owned');
   const identity = await captureIdentity(owned);
   await unlink(owned);
   await writeFile(owned, 'foreign');
-  await isolateOwned(identity, async (_isolated, originalPath) => {
-    await writeFile(originalPath, 'third-party');
-  });
-  expect(await Bun.file(owned).text()).toBe('third-party');
+  await isolateOwned(identity);
+  expect(await Bun.file(owned).exists()).toBe(false);
   expect(await Bun.file(await onlyPrefixed(home, '.aio-proxy-owned-')).text()).toBe('foreign');
 });
 
