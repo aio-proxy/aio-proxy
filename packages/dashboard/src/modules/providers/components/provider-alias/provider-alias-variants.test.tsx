@@ -147,20 +147,26 @@ test('a row stays in place when its own condition becomes more specific', async 
     },
   };
   const onAliasChange = renderVariants(twoRows);
-  const firstRow = () => screen.getAllByTestId('provider-variant-row')[0]!;
+  const rowAt = (position: number) => screen.getAllByTestId('provider-variant-row')[position]!;
+  const thinkingLabel = m['dashboard.providers.form.variant_thinking_label']({ alias: 'sonnet' });
 
+  // The second row is the one rank would promote: `whenRank` scores thinking 4 / effort 2 / speed 1,
+  // so switching thinking on takes it from 1 to 5, past the first row's 2.
   await selectOption(
-    within(firstRow()).getByLabelText(m['dashboard.providers.form.variant_thinking_label']({ alias: 'sonnet' })),
+    within(rowAt(1)).getByLabelText(thinkingLabel),
     m['dashboard.providers.form.variant_thinking_on'](),
   );
 
-  // Rank would now put this row second; it is still the row the user was editing, still first.
   expect(latestAlias(onAliasChange)['sonnet']?.variants).toEqual([
-    { when: { thinking: true, effort: 'high' }, model: 'claude-sonnet-4-fast', preserve: false },
-    { when: { speed: 'fast' }, model: 'claude-sonnet-4-thinking', preserve: false },
+    { when: { effort: 'high' }, model: 'claude-sonnet-4-fast', preserve: false },
+    { when: { thinking: true, speed: 'fast' }, model: 'claude-sonnet-4-thinking', preserve: false },
   ]);
+  // Rank order would now read this row first. It is still second, and the first row is still its own.
+  expect(within(rowAt(1)).getByLabelText(thinkingLabel)).toHaveTextContent(
+    m['dashboard.providers.form.variant_thinking_on'](),
+  );
   expect(
-    within(firstRow()).getByLabelText(m['dashboard.providers.form.variant_effort_label']({ alias: 'sonnet' })),
+    within(rowAt(0)).getByLabelText(m['dashboard.providers.form.variant_effort_label']({ alias: 'sonnet' })),
   ).toHaveValue('high');
 });
 
