@@ -1,6 +1,5 @@
 import {
   CATALOG_REFRESH_INTERVAL_MS,
-  createSingleFlight,
   readLastKnownCatalog,
   readManagedInstallation,
 } from '@aio-proxy/agent-provider-runtime';
@@ -46,8 +45,10 @@ export async function registerOfficialPi(pi: ExtensionAPI, deps: OfficialPiDeps)
   const managed = await deps.readManagedInstallation(import.meta.url, 'pi');
   const lkg = await deps.readLastKnownCatalog(managed.statePath, 'pi');
   let timer: ReturnType<typeof globalThis.setInterval> | undefined;
+  let generation = 0;
+  let registry: ExtensionContext['modelRegistry'] | undefined;
 
-  const refreshModels = createSingleFlight(async (context: RefreshModelsContext): Promise<ProviderModelConfig[]> => {
+  const refreshModels = async (context: RefreshModelsContext): Promise<ProviderModelConfig[]> => {
     const access = context.credential?.type === 'oauth' ? context.credential.access : undefined;
     const result = context.allowNetwork
       ? await deps.readPiFamilyModels(managed, access, { signal: context.signal })
@@ -61,7 +62,7 @@ export async function registerOfficialPi(pi: ExtensionAPI, deps: OfficialPiDeps)
     if (result.error === 'unauthorized') throw new Error('aio-proxy login required');
     if (result.source === 'missing') throw new Error(piFamilyUnavailableMessage(result.error));
     return [...result.models];
-  });
+  };
 
   const config: ProviderConfig = {
     name: PROVIDER_ID,
@@ -92,14 +93,19 @@ export async function registerOfficialPi(pi: ExtensionAPI, deps: OfficialPiDeps)
   pi.registerProvider(PROVIDER_ID, config);
 
   pi.on('session_start', async (_event, context: ExtensionContext) => {
+    const startGeneration = ++generation;
+    registry = context.modelRegistry;
     await context.modelRegistry.refresh({ allowNetwork: true, providers: [PROVIDER_ID], force: true });
+    if (startGeneration !== generation || registry === undefined) return;
     timer ??= deps.setInterval(() => {
-      void context.modelRegistry
-        .refresh({ allowNetwork: true, providers: [PROVIDER_ID], force: true })
+      void registry
+        ?.refresh({ allowNetwork: true, providers: [PROVIDER_ID], force: true })
         .catch(() => console.warn('[aio-proxy] official Pi catalog refresh failed'));
     }, CATALOG_REFRESH_INTERVAL_MS);
   });
   pi.on('session_shutdown', () => {
+    generation += 1;
+    registry = undefined;
     if (timer !== undefined) deps.clearInterval(timer);
     timer = undefined;
   });

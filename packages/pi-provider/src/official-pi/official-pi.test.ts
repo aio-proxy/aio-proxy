@@ -141,6 +141,74 @@ test('one raw timer requests a forced provider refresh and shutdown clears it', 
   expect(f.activeTimers()).toBe(0);
 });
 
+test('overlapping refreshModels uses each host context instead of sharing the first', async () => {
+  const f = await fixture({ holdCatalog: true });
+  const first = f.provider.refreshModels!({
+    credential: { type: 'oauth', access: 'old-access', refresh: 'old-refresh', expires: 1 },
+    allowNetwork: true,
+    force: true,
+    signal: new AbortController().signal,
+    publish: async () => true,
+  });
+  await f.catalogStarted;
+  const second = f.provider.refreshModels!({
+    credential: { type: 'oauth', access: 'new-access', refresh: 'new-refresh', expires: 2 },
+    allowNetwork: true,
+    force: true,
+    signal: new AbortController().signal,
+    publish: async () => true,
+  });
+  await Promise.resolve();
+  try {
+    expect(f.catalogAccesses).toEqual(['old-access', 'new-access']);
+  } finally {
+    f.releaseCatalog();
+  }
+  const [firstModels, secondModels] = await Promise.all([first, second]);
+  expect(firstModels.map(({ id }) => id)).toEqual(['compat-model']);
+  expect(secondModels.map(({ id }) => id)).toEqual(['compat-model']);
+});
+
+test('later session_start retargets the existing timer to the new registry', async () => {
+  const f = await fixture();
+  const firstRefresh = mock(async () => ({ aborted: false, errors: new Map() }));
+  const secondRefresh = mock(async () => ({ aborted: false, errors: new Map() }));
+  await f.emit('session_start', { modelRegistry: { refresh: firstRefresh } });
+  await f.emit('session_start', { modelRegistry: { refresh: secondRefresh } });
+  expect(f.activeTimers()).toBe(1);
+  expect(f.timerDelays).toEqual([300_000]);
+  firstRefresh.mockClear();
+  secondRefresh.mockClear();
+  await f.tick();
+  expect(firstRefresh).not.toHaveBeenCalled();
+  expect(secondRefresh).toHaveBeenCalledWith({ allowNetwork: true, providers: ['aio-proxy'], force: true });
+});
+
+test('shutdown during the initial refresh prevents a later timer install', async () => {
+  const f = await fixture();
+  let releaseRefresh!: () => void;
+  let notifyStarted!: () => void;
+  const started = new Promise<void>((resolve) => {
+    notifyStarted = resolve;
+  });
+  const hold = new Promise<void>((resolve) => {
+    releaseRefresh = resolve;
+  });
+  const refresh = mock(async () => {
+    notifyStarted();
+    await hold;
+    return { aborted: false, errors: new Map() };
+  });
+  const context = { modelRegistry: { refresh } };
+  const starting = f.emit('session_start', context);
+  await started;
+  expect(f.activeTimers()).toBe(0);
+  await f.emit('session_shutdown', context);
+  releaseRefresh();
+  await starting;
+  expect(f.activeTimers()).toBe(0);
+});
+
 const HOST_MARKER = {
   format: 1,
   managedBy: 'aio-proxy',
@@ -168,7 +236,9 @@ const hostCatalog = (id = 'compat-model'): AgentCatalogV1 => ({
   ],
 });
 
-async function fixture(options: { readonly catalogResults?: PiFamilyCatalogResult[] } = {}) {
+async function fixture(
+  options: { readonly catalogResults?: PiFamilyCatalogResult[]; readonly holdCatalog?: boolean } = {},
+) {
   let lkg = hostCatalog();
   let provider: ProviderConfig | undefined;
   const catalogAccesses: Array<string | undefined> = [];
@@ -177,6 +247,16 @@ async function fixture(options: { readonly catalogResults?: PiFamilyCatalogResul
   const timerDelays: number[] = [];
   let timerSequence = 0;
   const catalogResults = [...(options.catalogResults ?? [])];
+  let notifyCatalogStarted = () => {};
+  const catalogStarted = new Promise<void>((resolve) => {
+    notifyCatalogStarted = resolve;
+  });
+  let releaseCatalog = () => {};
+  const catalogHold = options.holdCatalog
+    ? new Promise<void>((resolve) => {
+        releaseCatalog = resolve;
+      })
+    : undefined;
   const managed = {
     rootDir: '/managed',
     markerPath: '/managed/.aio-proxy-managed.json',
@@ -214,6 +294,8 @@ async function fixture(options: { readonly catalogResults?: PiFamilyCatalogResul
     refreshPiFamilyCredential: async () => credentials,
     readPiFamilyModels: async (_managed, access) => {
       catalogAccesses.push(access);
+      notifyCatalogStarted();
+      if (catalogHold !== undefined) await catalogHold;
       return (
         catalogResults.shift() ?? {
           models: toPiFamilyModels(lkg),
@@ -238,6 +320,8 @@ async function fixture(options: { readonly catalogResults?: PiFamilyCatalogResul
   return {
     provider,
     catalogAccesses,
+    catalogStarted,
+    releaseCatalog,
     timerDelays,
     setLkg: (next: AgentCatalogV1) => {
       lkg = next;
