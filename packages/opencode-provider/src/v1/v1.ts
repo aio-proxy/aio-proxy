@@ -140,7 +140,7 @@ export async function createOpenCodeV1Server(input: PluginInput, deps: OpenCodeV
   async function createLoader(getAuth: GetAuth): Promise<Record<string, unknown>> {
     await refreshCatalogFromStore(getAuth);
     timer ??= deps.setInterval(() => {
-      void refreshCatalogFromStore(getAuth).catch(() => {
+      return refreshCatalogFromStore(getAuth).catch(() => {
         console.warn('[aio-proxy] background catalog refresh failed');
       });
     }, CATALOG_REFRESH_INTERVAL_MS);
