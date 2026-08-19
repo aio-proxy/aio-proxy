@@ -28,7 +28,7 @@ export const ProviderVariantConditions: FC<ProviderVariantConditionsProps> = ({
   onCommit,
 }) => {
   // Every row of every alias would otherwise announce the same three labels, so a screen reader hears
-  // "thinking" with no way to tell which alias — or which row — it belongs to.
+  // "thinking" with no way to tell which alias it belongs to.
   const alias = aliasName.trim() === '' ? m['dashboard.providers.form.variant_condition_alias_fallback']() : aliasName;
 
   return (
