@@ -1,0 +1,30 @@
+{
+  "name": "@aio-proxy/opencode-provider",
+  "version": "0.8.0",
+  "private": true,
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "rslib",
+    "test": "bun run test:unit",
+    "test:unit": "bun test src",
+    "test:artifact": "bun test ./artifact.test.ts",
+    "test:compat": "bun scripts/compat-v1.ts"
+  },
+  "dependencies": {
+    "@aio-proxy/agent-provider-runtime": "workspace:*",
+    "@aio-proxy/types": "workspace:*"
+  },
+  "devDependencies": {
+    "@aio-proxy/infra": "workspace:*",
+    "@opencode-ai/plugin": "1.18.18",
+    "@rslib/core": "catalog:",
+    "@types/bun": "catalog:",
+    "typescript": "catalog:"
+  }
+}
