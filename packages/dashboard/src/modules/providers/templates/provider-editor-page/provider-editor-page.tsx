@@ -95,98 +95,100 @@ export const ProviderEditorPage: React.FC<ProviderEditorPageProps> = (props) => 
       ]}
     >
       <SectionNav summaries={summaries} activeId={activeId} />
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
-        {/* `space-y-4`, not the prototype's `space-y-8`: its sections were separated by a bottom border
-            with nothing but whitespace between them, while ours are cards whose own padding already
-            supplies the interior air. Keeping `8`/`10` here reads as a gap, not a rhythm. */}
-        <div className="max-w-6xl min-w-0 space-y-4">
-          {/* Above Identity and outside the nav: the kind is what decides which fields the sections
-              below even contain, so it is not one of the provider's attributes (D-F11). */}
-          <KindCard value={kind} mode={mode} onChange={handleKindChange} />
-          <IdentitySection form={form} mode={mode} kind={kind} summary={summaries.identity} />
-          <ConnectionSection
-            form={form}
-            accountForm={kind === ProviderKind.OAuth ? accountForm : undefined}
-            mode={mode}
-            kind={kind}
-            capabilities={capabilities}
-            oauth={oauth}
-            provider={provider}
-            onReauthorize={() => save(true)}
-            isAuthorizationPending={isReauthorizing}
-            onAuthorize={() => save(false)}
-            onOptionsValidityChange={setOptionsValid}
-            summary={summaries.connection}
-          />
-          {locked ? (
-            <>
-              <p className="rounded-lg border bg-muted p-3 text-sm">
-                {m['dashboard.providers.editor.authorization_locked_hint']()}
-              </p>
-              <fieldset disabled className="pointer-events-none space-y-4 opacity-60">
-                {sections345}
-              </fieldset>
-            </>
-          ) : (
-            sections345
-          )}
+      {/* One form, so the editor is a form to the platform: labels, autofill and Enter all key off
+          it. Submission is suppressed because saving is the footer primary's job — it is outside
+          the fields, has to survive a `pending` state, and must not fire on an Enter keypress in a
+          field the user is still editing. */}
+      <form onSubmit={(event) => event.preventDefault()}>
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
+          <div className="min-w-0 space-y-4">
+            {/* Above Identity and outside the nav: the kind is what decides which fields the sections
+                below even contain, so it is not one of the provider's attributes (D-F11). */}
+            <KindCard value={kind} mode={mode} onChange={handleKindChange} />
+            <IdentitySection form={form} mode={mode} kind={kind} summary={summaries.identity} />
+            <ConnectionSection
+              form={form}
+              accountForm={kind === ProviderKind.OAuth ? accountForm : undefined}
+              mode={mode}
+              kind={kind}
+              capabilities={capabilities}
+              oauth={oauth}
+              provider={provider}
+              onReauthorize={() => save(true)}
+              isAuthorizationPending={isReauthorizing}
+              onAuthorize={() => save(false)}
+              onOptionsValidityChange={setOptionsValid}
+              summary={summaries.connection}
+            />
+            {locked ? (
+              <>
+                <p className="rounded-lg border bg-muted p-3 text-sm">
+                  {m['dashboard.providers.editor.authorization_locked_hint']()}
+                </p>
+                <fieldset disabled className="pointer-events-none space-y-4 opacity-60">
+                  {sections345}
+                </fieldset>
+              </>
+            ) : (
+              sections345
+            )}
+          </div>
+          {/* Stacks under the form below `lg`; above it, stays in view while the user works down the
+              sections. `top-18` clears the sticky nav strip by the same offset a jumped-to section keeps
+              (`SectionShell`'s `scroll-mt-18`), so the panel lines up with the section it describes. */}
+          <aside className="space-y-4 lg:sticky lg:top-18 lg:self-start">
+            {/* Each panel brings its own heading, so `CardContent` alone — a `CardHeader` here would
+                double it. */}
+            <Card size="sm">
+              <CardContent>
+                <ExposurePanel
+                  models={exposed}
+                  alias={values.alias}
+                  enabled={values.enabled ?? true}
+                  warning={sessionWarning}
+                />
+              </CardContent>
+            </Card>
+            <Card size="sm">
+              <CardContent>
+                <ModelValidationPanel
+                  form={form}
+                  kind={kind}
+                  persistedProviderId={persistedId}
+                  testableModels={exposed}
+                />
+              </CardContent>
+            </Card>
+          </aside>
         </div>
-        {/* Stacks under the form below `lg`; above it, stays in view while the user works down the
-            sections. `top-18` clears the sticky nav strip by the same offset a jumped-to section keeps
-            (`SectionShell`'s `scroll-mt-18`), so the panel lines up with the section it describes. */}
-        <aside className="space-y-4 lg:sticky lg:top-18 lg:self-start">
-          {/* Cards, not the prototype's tinted `rounded-2xl` blocks: the sections beside them are cards
-              now, and two surface treatments on one page read as two unrelated designs. Each panel
-              brings its own heading, so `CardContent` alone — a `CardHeader` here would double it. */}
-          <Card size="sm">
-            <CardContent>
-              <ExposurePanel
-                models={exposed}
-                alias={values.alias}
-                enabled={values.enabled ?? true}
-                warning={sessionWarning}
-              />
-            </CardContent>
-          </Card>
-          <Card size="sm">
-            <CardContent>
-              <ModelValidationPanel
-                form={form}
-                kind={kind}
-                persistedProviderId={persistedId}
-                testableModels={exposed}
-              />
-            </CardContent>
-          </Card>
-        </aside>
-      </div>
-      {/* Before the footer, not after it: this panel is inline markup, not a portal, and the footer is
-          `sticky bottom-0`. Rendered after it, the device code and the manual-callback field sat in the
-          band the footer is pinned over, and scrolling to the true bottom un-pinned the footer into the
-          middle of the page, above the panel. Everything below this point must portal. */}
-      {props.sessionId !== undefined && session !== undefined && session.status !== 'succeeded' ? (
-        <OAuthAuthorizationPanel
-          session={session}
-          isPending={callbackMutation.isPending || cancelMutation.isPending}
-          onSubmitCallback={(callbackUrl) =>
-            callbackMutation.mutate({ id: session.id, callbackUrl }, { onSuccess: () => sessionQuery.refetch() })
-          }
-          onCancel={() => {
-            if (session.status === 'failed' || session.status === 'cancelled') {
-              onSessionIdChange(undefined);
-              return;
+        {/* Before the footer, not after it: this panel is inline markup, not a portal, and the footer is
+            `sticky bottom-0`. Rendered after it, the device code and the manual-callback field sat in the
+            band the footer is pinned over, and scrolling to the true bottom un-pinned the footer into the
+            middle of the page, above the panel. Everything below this point must portal. */}
+        {props.sessionId !== undefined && session !== undefined && session.status !== 'succeeded' ? (
+          <OAuthAuthorizationPanel
+            session={session}
+            isPending={callbackMutation.isPending || cancelMutation.isPending}
+            onSubmitCallback={(callbackUrl) =>
+              callbackMutation.mutate({ id: session.id, callbackUrl }, { onSuccess: () => sessionQuery.refetch() })
             }
-            cancelMutation.mutate(session.id);
-          }}
+            onCancel={() => {
+              if (session.status === 'failed' || session.status === 'cancelled') {
+                onSessionIdChange(undefined);
+                return;
+              }
+              cancelMutation.mutate(session.id);
+            }}
+          />
+        ) : null}
+        <EditorFooter
+          summaries={summaries}
+          primaryLabel={primaryLabel}
+          onPrimary={() => save(false)}
+          onCancel={() => void navigate({ to: '/providers' })}
+          pending={pending}
         />
-      ) : null}
-      <EditorFooter
-        summaries={summaries}
-        primaryLabel={primaryLabel}
-        onPrimary={() => save(false)}
-        onCancel={() => void navigate({ to: '/providers' })}
-        pending={pending}
-      />
+      </form>
     </PageContainer>
   );
 };
