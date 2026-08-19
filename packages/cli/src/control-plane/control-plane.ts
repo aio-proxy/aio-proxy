@@ -1,4 +1,4 @@
-import { AtomicConfigFile, configPath, parseRuntimeConfig } from '@aio-proxy/core';
+import { AtomicConfigFile, configPath, parseRuntimeConfig, resolveConfigTemplates } from '@aio-proxy/core';
 
 import { loadServiceEnv } from '../service-env';
 
@@ -6,6 +6,19 @@ export type Health = { readonly status?: string; readonly uptime?: number; reado
 
 export const DEFAULT_CONTROL_HOST = '127.0.0.1';
 export const DEFAULT_CONTROL_PORT = '9317';
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+// Template expansion yields strings. ConfigSchema.port is a number, so a
+// `{{env.AGENT_BIND_PORT}}` value must be coerced before parseRuntimeConfig.
+const withDigitServerPort = (value: unknown): unknown => {
+  if (!isRecord(value) || !isRecord(value.server)) return value;
+  const port = value.server.port;
+  if (typeof port !== 'string' || !/^[1-9]\d{0,4}$/u.test(port)) return value;
+  const numeric = Number(port);
+  return numeric > 65_535 ? value : { ...value, server: { ...value.server, port: numeric } };
+};
 
 // Resolve the daemon address the control commands (status/reload/doctor) should
 // probe: an explicit --host/--port flag always wins; otherwise fall back to the
@@ -25,7 +38,9 @@ export async function resolveControlAddress(options: { readonly host?: string; r
   try {
     const path = configPath();
     loadServiceEnv(path);
-    const config = parseRuntimeConfig(await new AtomicConfigFile(path).read());
+    const config = parseRuntimeConfig(
+      withDigitServerPort(resolveConfigTemplates(await new AtomicConfigFile(path).read())),
+    );
     configured = { host: config.server.host, port: config.server.port };
   } catch {
     // Unreadable / malformed / not-yet-created config: keep the loopback defaults.
