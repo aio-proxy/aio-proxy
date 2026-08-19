@@ -9,7 +9,16 @@ import { IdentitySection } from './identity-section';
 
 const renderIdentity = (mode: ProviderFormMode, kind: ProviderKind, initial?: { readonly name?: string }) => {
   const { result } = renderHook(() => useProviderEditorForm({ kind, ...(initial === undefined ? {} : { initial }) }));
-  render(<IdentitySection form={result.current} mode={mode} kind={kind} summary={{ status: 'todo', hint: '' }} />);
+  const view = render(
+    <IdentitySection form={result.current} mode={mode} kind={kind} summary={{ status: 'todo', hint: '' }} />,
+  );
+  // Re-renders the same form instance under a different kind, which is what picking another kind card
+  // does: the form is owned by the page, not remounted per kind.
+  const switchKind = (next: ProviderKind) =>
+    view.rerender(
+      <IdentitySection form={result.current} mode={mode} kind={next} summary={{ status: 'todo', hint: '' }} />,
+    );
+  return { switchKind };
 };
 
 const nameInput = () => within(screen.getByTestId('provider-form-field-name')).getByRole('textbox');
@@ -64,6 +73,30 @@ describe('IdentitySection', () => {
       expect(within(field()).getByText(m['dashboard.providers.form.id_description_pinned']())).toBeTruthy(),
     );
     expect(within(field()).queryByText(m['dashboard.providers.form.id_description_auto']())).toBeNull();
+  });
+
+  test('drops a derived id from view when the kind switches to oauth, and brings it back on the way out', async () => {
+    const { switchKind } = renderIdentity(ProviderFormMode.Create, ProviderKind.Api);
+
+    fireEvent.change(nameInput(), { target: { value: 'OpenAI Main' } });
+    await waitFor(() => expect(idInput()).toHaveValue('openai-main'));
+
+    switchKind(ProviderKind.OAuth);
+
+    // Showing `openai-main` under "the authorization flow fills this in" would say two contradictory
+    // things at once, and that id is not what the created provider gets.
+    await waitFor(() => expect(idInput()).toHaveValue(''));
+    expect(idInput()).toBeDisabled();
+    expect(
+      within(screen.getByTestId('provider-form-field-id')).getByText(
+        m['dashboard.providers.form.id_description_server_assigned'](),
+      ),
+    ).toBeTruthy();
+
+    switchKind(ProviderKind.Api);
+
+    // Hidden, not discarded: a user who mis-clicks oauth keeps the id they had named.
+    await waitFor(() => expect(idInput()).toHaveValue('openai-main'));
   });
 
   test('keeps the id readable but frozen when editing', () => {

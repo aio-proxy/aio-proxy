@@ -73,7 +73,12 @@ export const IdentityFields: React.FC<IdentityFieldsProps> = ({ form, mode, serv
               <Input
                 id={field.name}
                 className="font-mono"
-                value={field.state.value ?? ''}
+                // Shown empty, not cleared: naming an api draft derives an id from the name, and
+                // switching the kind to oauth must not display that leftover under a description
+                // promising the authorization flow will fill the field in. The derived value stays in
+                // form state so switching back restores it, and oauth creation never submits it —
+                // `startCreateAuthorization` sends only name, proxy and enabled.
+                value={serverAssignsId ? '' : (field.state.value ?? '')}
                 disabled={mode === ProviderFormMode.Edit || serverAssignsId}
                 onChange={(e) => {
                   setIdPinned(true);
