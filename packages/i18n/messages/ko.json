@@ -813,6 +813,7 @@
         "placeholder_api_key": "선택 사항",
         "placeholder_api_key_configured": "설정됨, 비워 두면 유지",
         "placeholder_proxy_url": "https://proxy.example.com:8443",
+        "placeholder_package_name": "예: @ai-sdk/openai-compatible",
         "api_key_helper_create": "보통 비워 둘 수 있습니다. Anthropic Bearer 인증에서는 필수입니다.",
         "package_name_description": "자주 쓰는 패키지를 선택하거나 호환되는 패키지 이름을 직접 입력할 수 있습니다. 포커스를 벗어나면 사용 가능 여부를 확인합니다.",
         "package_use_custom": "{packageName} 사용",

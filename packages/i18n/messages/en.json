@@ -813,6 +813,7 @@
         "placeholder_api_key": "Optional",
         "placeholder_api_key_configured": "Configured, leave empty to keep",
         "placeholder_proxy_url": "https://proxy.example.com:8443",
+        "placeholder_package_name": "e.g. @ai-sdk/openai-compatible",
         "api_key_helper_create": "Usually optional; required for Anthropic Bearer authentication.",
         "package_name_description": "Pick a common package or type any compatible package name; availability is checked when you leave the field.",
         "package_use_custom": "Use {packageName}",

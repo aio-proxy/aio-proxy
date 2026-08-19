@@ -52,4 +52,14 @@ describe('ProviderPackageCombobox', () => {
     const input = screen.getByRole('combobox', { name: m['dashboard.providers.form.label_package_name']() });
     expect(input).not.toHaveAttribute('aria-label');
   });
+
+  test('marks the empty field with an example rather than a package name', () => {
+    render(<PackageHarness />);
+
+    // The placeholder used to be the bundled package name verbatim, so a cleared field read as
+    // already filled with it — and saving that empty value hit the schema's min(1) instead.
+    const placeholder = screen.getByRole('combobox').getAttribute('placeholder');
+    expect(placeholder).toBeTruthy();
+    expect(placeholder).not.toBe(PROVIDER_AI_SDK_DEFAULT_PACKAGE);
+  });
 });

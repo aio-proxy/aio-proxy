@@ -813,6 +813,7 @@
         "placeholder_api_key": "選填",
         "placeholder_api_key_configured": "已設定，留空保留",
         "placeholder_proxy_url": "https://proxy.example.com:8443",
+        "placeholder_package_name": "例如 @ai-sdk/openai-compatible",
         "api_key_helper_create": "通常可留空；Anthropic Bearer 認證必須填寫。",
         "package_name_description": "可選擇常用套件，也可輸入任意相容套件名稱；失焦後檢查可用性。",
         "package_use_custom": "使用 {packageName}",

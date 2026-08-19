@@ -7,8 +7,6 @@ import {
   ComboboxList,
 } from '@aio-proxy/ui/components/combobox';
 
-import { PROVIDER_AI_SDK_DEFAULT_PACKAGE } from '../../lib/constants';
-
 // The AI SDK packages worth suggesting up front. npm package identifiers, so they stay literal and
 // monospace rather than becoming messages. Any other compatible package can still be typed.
 const COMMON_PROVIDER_PACKAGES = [
@@ -54,7 +52,7 @@ export const ProviderPackageCombobox: React.FC<ProviderPackageComboboxProps> = (
     >
       <ComboboxInput
         id={id}
-        placeholder={PROVIDER_AI_SDK_DEFAULT_PACKAGE}
+        placeholder={m['dashboard.providers.form.placeholder_package_name']()}
         className="w-full [&_input]:font-mono"
         showClear
         clearLabel={m['common.clear']()}

@@ -85,15 +85,15 @@ export const ProviderFormFieldsAiSdk: React.FC<ProviderFormFieldsAiSdkProps> = (
       <div data-testid="provider-form-field-parseReasoningContent">
         <form.Field name="parseReasoningContent">
           {(field) => (
-            <Field>
-              <div className="flex items-center gap-2">
-                <Switch
-                  id={field.name}
-                  checked={field.state.value ?? false}
-                  onCheckedChange={(checked) => field.handleChange(Boolean(checked))}
-                />
-                <Label htmlFor={field.name}>{m['dashboard.providers.form.label_parse_reasoning']()}</Label>
-              </div>
+            // Same horizontal Field as the routing switch, rather than a nested flex row: the switch
+            // then its label, on the vertical rhythm the two fields above sit on.
+            <Field orientation="horizontal">
+              <Switch
+                id={field.name}
+                checked={field.state.value ?? false}
+                onCheckedChange={(checked) => field.handleChange(Boolean(checked))}
+              />
+              <Label htmlFor={field.name}>{m['dashboard.providers.form.label_parse_reasoning']()}</Label>
             </Field>
           )}
         </form.Field>
