@@ -14,5 +14,7 @@ whichever row shifted into that position. A blank `effort` now reports the same
 message that told the user to leave a value unset when it already was. The
 variant target dropdown drops a stray group wrapper, and the variant copy matches
 the prototype: the preserve switch names the variant, both condition errors are
-reworded, and the target select and the three condition controls announce which
-alias they belong to instead of repeating one generic label per row.
+reworded, the variant target select now says which select it is instead of
+carrying the same label as the alias-level target select next to it, and the three
+condition controls name the alias they belong to instead of repeating one generic
+label per row.
