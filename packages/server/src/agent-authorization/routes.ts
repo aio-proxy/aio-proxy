@@ -93,29 +93,20 @@ export const createAgentOAuthRoutes = ({ challenges, identity, currentConfig }: 
       });
     });
 
-const loopbackBindOrigin = (config: Config): string => {
-  const host = config.server.host;
-  const hostname = host === 'localhost' || host.startsWith('127.') ? host : host === '::1' ? '[::1]' : '127.0.0.1';
-  return `http://${hostname}:${config.server.port}`;
+const requireAgentApprovalOrigin: MiddlewareHandler = async (context, next) => {
+  const origin = context.req.header('origin');
+  const fetchSite = context.req.header('sec-fetch-site');
+  if (
+    origin !== new URL(context.req.url).origin ||
+    (fetchSite !== undefined && fetchSite !== 'same-origin' && fetchSite !== 'none')
+  )
+    return context.json({ error: 'forbidden' }, 403);
+  await next();
 };
-
-const requireAgentApprovalOrigin =
-  (currentConfig: () => Config): MiddlewareHandler =>
-  async (context, next) => {
-    const origin = context.req.header('origin');
-    const fetchSite = context.req.header('sec-fetch-site');
-    const requestOrigin = new URL(context.req.url).origin;
-    if (
-      (origin !== requestOrigin && origin !== loopbackBindOrigin(currentConfig())) ||
-      (fetchSite !== undefined && fetchSite !== 'same-origin' && fetchSite !== 'none')
-    )
-      return context.json({ error: 'forbidden' }, 403);
-    await next();
-  };
 
 export const createAgentApprovalRoutes = ({ challenges, currentConfig }: AgentApprovalRouteInput) =>
   new Hono()
-    .use('*', requireAgentApprovalOrigin(currentConfig))
+    .use('*', requireAgentApprovalOrigin)
     .use('*', async (context, next) => {
       const server = currentConfig().server;
       if (server.apiKeys.length > 0 && server.password === undefined)

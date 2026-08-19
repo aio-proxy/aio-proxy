@@ -25,6 +25,8 @@ afterEach(() => {
   for (const home of routeHomes.splice(0)) rmSync(home, { recursive: true, force: true });
 });
 
+const LOCAL_ORIGIN = 'http://127.0.0.1:9317';
+const localUrl = (path: string): string => `${LOCAL_ORIGIN}${path}`;
 const form = (value: Record<string, string>): RequestInit => ({
   method: 'POST',
   headers: { 'content-type': 'application/x-www-form-urlencoded' },
@@ -62,7 +64,7 @@ async function routeFixture(server: { apiKeys?: Array<{ key: string }>; password
         json(
           { password },
           {
-            origin: 'http://127.0.0.1:9317',
+            origin: LOCAL_ORIGIN,
             'sec-fetch-site': 'same-origin',
           },
         ),
@@ -144,18 +146,18 @@ test.each(['resolve', 'approve', 'deny'] as const)(
     const f = await routeFixture();
     const path =
       operation === 'resolve'
-        ? '/dashboard/api/agent-authorizations/resolve'
-        : `/dashboard/api/agent-authorizations/${crypto.randomUUID()}/${operation}`;
+        ? localUrl('/dashboard/api/agent-authorizations/resolve')
+        : localUrl(`/dashboard/api/agent-authorizations/${crypto.randomUUID()}/${operation}`);
     const init =
       operation === 'resolve'
         ? json(
             { userCode: 'ZZZZ-ZZZZ' },
             {
-              origin: 'http://127.0.0.1:9317',
+              origin: LOCAL_ORIGIN,
               'sec-fetch-site': 'same-origin',
             },
           )
-        : json({}, { origin: 'http://127.0.0.1:9317', 'sec-fetch-site': 'same-origin' });
+        : json({}, { origin: LOCAL_ORIGIN, 'sec-fetch-site': 'same-origin' });
     for (let index = 0; index < 10; index += 1) {
       expect((await f.app.request(path, init, loopbackServer)).status).toBe(200);
     }
@@ -170,9 +172,9 @@ test('approval requires both Dashboard session and same origin when locked', asy
   const created = await (await f.app.request('/oauth/device/code', form(DEVICE_REQUEST), loopbackServer)).json();
   const resolveBody = { userCode: created.user_code };
   const originOnly = await f.app.request(
-    '/dashboard/api/agent-authorizations/resolve',
+    localUrl('/dashboard/api/agent-authorizations/resolve'),
     json(resolveBody, {
-      origin: 'http://127.0.0.1:9317',
+      origin: LOCAL_ORIGIN,
     }),
     loopbackServer,
   );
@@ -180,7 +182,7 @@ test('approval requires both Dashboard session and same origin when locked', asy
 
   const token = await f.login('dashboard-password');
   const crossOrigin = await f.app.request(
-    '/dashboard/api/agent-authorizations/resolve',
+    localUrl('/dashboard/api/agent-authorizations/resolve'),
     json(resolveBody, {
       authorization: `Bearer ${token}`,
       origin: 'https://evil.example',
@@ -189,10 +191,10 @@ test('approval requires both Dashboard session and same origin when locked', asy
   );
   expect(crossOrigin.status).toBe(403);
   const resolved = await f.app.request(
-    '/dashboard/api/agent-authorizations/resolve',
+    localUrl('/dashboard/api/agent-authorizations/resolve'),
     json(resolveBody, {
       authorization: `Bearer ${token}`,
-      origin: 'http://127.0.0.1:9317',
+      origin: LOCAL_ORIGIN,
       'sec-fetch-site': 'same-origin',
     }),
     loopbackServer,
@@ -201,12 +203,12 @@ test('approval requires both Dashboard session and same origin when locked', asy
   const details = await resolved.json();
   expect(details).not.toHaveProperty('device_code');
   const approved = await f.app.request(
-    `/dashboard/api/agent-authorizations/${details.deviceId}/approve`,
+    localUrl(`/dashboard/api/agent-authorizations/${details.deviceId}/approve`),
     json(
       {},
       {
         authorization: `Bearer ${token}`,
-        origin: 'http://127.0.0.1:9317',
+        origin: LOCAL_ORIGIN,
         'sec-fetch-site': 'same-origin',
       },
     ),
@@ -219,12 +221,12 @@ test('approval requires both Dashboard session and same origin when locked', asy
   ).json();
   const deniedDetails = await (
     await f.app.request(
-      '/dashboard/api/agent-authorizations/resolve',
+      localUrl('/dashboard/api/agent-authorizations/resolve'),
       json(
         { userCode: deniedChallenge.user_code },
         {
           authorization: `Bearer ${token}`,
-          origin: 'http://127.0.0.1:9317',
+          origin: LOCAL_ORIGIN,
           'sec-fetch-site': 'same-origin',
         },
       ),
@@ -232,12 +234,12 @@ test('approval requires both Dashboard session and same origin when locked', asy
     )
   ).json();
   const denied = await f.app.request(
-    `/dashboard/api/agent-authorizations/${deniedDetails.deviceId}/deny`,
+    localUrl(`/dashboard/api/agent-authorizations/${deniedDetails.deviceId}/deny`),
     json(
       {},
       {
         authorization: `Bearer ${token}`,
-        origin: 'http://127.0.0.1:9317',
+        origin: LOCAL_ORIGIN,
         'sec-fetch-site': 'same-origin',
       },
     ),
@@ -280,16 +282,35 @@ test('an authenticated remote Dashboard may approve a challenge created by a loc
   expect(await approved.json()).toEqual({ status: 'approved' });
 });
 
+test('a remote request with the configured local Origin is forbidden even with a Dashboard session', async () => {
+  const f = await routeFixture({ apiKeys: [{ key: 'static' }], password: 'dashboard-password' });
+  const created = await (await f.app.request('/oauth/device/code', form(DEVICE_REQUEST), loopbackServer)).json();
+  const token = await f.login('dashboard-password');
+  const remote = await f.app.request(
+    'https://proxy.example/dashboard/api/agent-authorizations/resolve',
+    json(
+      { userCode: created.user_code },
+      {
+        authorization: `Bearer ${token}`,
+        origin: LOCAL_ORIGIN,
+        'sec-fetch-site': 'same-origin',
+      },
+    ),
+    { requestIP: () => ({ address: '203.0.113.10' }) },
+  );
+  expect(remote.status).toBe(403);
+});
+
 test('token endpoint consumes once, replays the same result, rotates, and never logs credentials', async () => {
   const f = await routeFixture();
   const created = await (await f.app.request('/oauth/device/code', form(DEVICE_REQUEST), loopbackServer)).json();
   const details = await (
     await f.app.request(
-      '/dashboard/api/agent-authorizations/resolve',
+      localUrl('/dashboard/api/agent-authorizations/resolve'),
       json(
         { userCode: created.user_code },
         {
-          origin: 'http://127.0.0.1:9317',
+          origin: LOCAL_ORIGIN,
           'sec-fetch-site': 'same-origin',
         },
       ),
@@ -297,8 +318,8 @@ test('token endpoint consumes once, replays the same result, rotates, and never 
     )
   ).json();
   await f.app.request(
-    `/dashboard/api/agent-authorizations/${details.deviceId}/approve`,
-    json({}, { origin: 'http://127.0.0.1:9317', 'sec-fetch-site': 'same-origin' }),
+    localUrl(`/dashboard/api/agent-authorizations/${details.deviceId}/approve`),
+    json({}, { origin: LOCAL_ORIGIN, 'sec-fetch-site': 'same-origin' }),
     loopbackServer,
   );
   const deviceGrant = {
