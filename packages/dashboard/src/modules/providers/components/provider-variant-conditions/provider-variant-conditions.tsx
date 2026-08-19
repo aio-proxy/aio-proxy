@@ -12,6 +12,7 @@ const SPEEDS = ['flex', 'standard', 'fast'] as const;
 
 interface ProviderVariantConditionsProps {
   readonly draft: AliasRowDraft;
+  readonly aliasName: string;
   readonly controlId: string;
   readonly invalid: boolean;
   readonly onCommit: (patch: Partial<AliasRowDraft>) => void;
@@ -21,72 +22,85 @@ interface ProviderVariantConditionsProps {
  * conditions and target align across rows, while below `lg` they keep their own three-up grid. */
 export const ProviderVariantConditions: FC<ProviderVariantConditionsProps> = ({
   draft,
+  aliasName,
   controlId,
   invalid,
   onCommit,
-}) => (
-  <div className="grid gap-2 sm:grid-cols-3 lg:contents">
-    <EffortCombobox id={controlId} value={draft.effort} invalid={invalid} onChange={(effort) => onCommit({ effort })} />
-    <InputGroup>
-      <InputGroupAddon className={CONDITION_LABEL_CLASS}>thinking</InputGroupAddon>
-      <Select
-        value={draft.thinking}
-        onValueChange={(thinking) => {
-          if (thinking === null) return;
-          onCommit({ thinking });
-        }}
-      >
-        <SelectTrigger
-          id={`${controlId}-thinking`}
-          data-slot="input-group-control"
-          className={CONDITION_SELECT_CLASS}
-          aria-label={m['dashboard.providers.form.variant_thinking_label']()}
-          aria-invalid={invalid}
+}) => {
+  // Every row of every alias would otherwise announce the same three labels, so a screen reader hears
+  // "thinking" with no way to tell which alias — or which row — it belongs to.
+  const alias = aliasName.trim() === '' ? m['dashboard.providers.form.variant_condition_alias_fallback']() : aliasName;
+
+  return (
+    <div className="grid gap-2 sm:grid-cols-3 lg:contents">
+      <EffortCombobox
+        id={controlId}
+        aliasName={alias}
+        value={draft.effort}
+        invalid={invalid}
+        onChange={(effort) => onCommit({ effort })}
+      />
+      <InputGroup>
+        <InputGroupAddon className={CONDITION_LABEL_CLASS}>thinking</InputGroupAddon>
+        <Select
+          value={draft.thinking}
+          onValueChange={(thinking) => {
+            if (thinking === null) return;
+            onCommit({ thinking });
+          }}
         >
-          <SelectValue>
-            {draft.thinking === 'on'
-              ? m['dashboard.providers.form.variant_thinking_on']()
-              : draft.thinking === 'off'
-                ? m['dashboard.providers.form.variant_thinking_off']()
-                : m['dashboard.providers.form.variant_thinking_unset']()}
-          </SelectValue>
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value={ANY_DIMENSION}>{m['dashboard.providers.form.variant_thinking_unset']()}</SelectItem>
-          <SelectItem value="on">{m['dashboard.providers.form.variant_thinking_on']()}</SelectItem>
-          <SelectItem value="off">{m['dashboard.providers.form.variant_thinking_off']()}</SelectItem>
-        </SelectContent>
-      </Select>
-    </InputGroup>
-    <InputGroup>
-      <InputGroupAddon className={CONDITION_LABEL_CLASS}>speed</InputGroupAddon>
-      <Select
-        value={draft.speed}
-        onValueChange={(speed) => {
-          if (speed === null) return;
-          onCommit({ speed });
-        }}
-      >
-        <SelectTrigger
-          id={`${controlId}-speed`}
-          data-slot="input-group-control"
-          className={CONDITION_SELECT_CLASS}
-          aria-label={m['dashboard.providers.form.variant_speed_label']()}
-          aria-invalid={invalid}
+          <SelectTrigger
+            id={`${controlId}-thinking`}
+            data-slot="input-group-control"
+            className={CONDITION_SELECT_CLASS}
+            aria-label={m['dashboard.providers.form.variant_thinking_label']({ alias })}
+            aria-invalid={invalid}
+          >
+            <SelectValue>
+              {draft.thinking === 'on'
+                ? m['dashboard.providers.form.variant_thinking_on']()
+                : draft.thinking === 'off'
+                  ? m['dashboard.providers.form.variant_thinking_off']()
+                  : m['dashboard.providers.form.variant_thinking_unset']()}
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ANY_DIMENSION}>{m['dashboard.providers.form.variant_thinking_unset']()}</SelectItem>
+            <SelectItem value="on">{m['dashboard.providers.form.variant_thinking_on']()}</SelectItem>
+            <SelectItem value="off">{m['dashboard.providers.form.variant_thinking_off']()}</SelectItem>
+          </SelectContent>
+        </Select>
+      </InputGroup>
+      <InputGroup>
+        <InputGroupAddon className={CONDITION_LABEL_CLASS}>speed</InputGroupAddon>
+        <Select
+          value={draft.speed}
+          onValueChange={(speed) => {
+            if (speed === null) return;
+            onCommit({ speed });
+          }}
         >
-          <SelectValue>
-            {draft.speed === ANY_DIMENSION ? m['dashboard.providers.form.variant_speed_unset']() : draft.speed}
-          </SelectValue>
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value={ANY_DIMENSION}>{m['dashboard.providers.form.variant_speed_unset']()}</SelectItem>
-          {SPEEDS.map((speed) => (
-            <SelectItem key={speed} value={speed}>
-              {speed}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    </InputGroup>
-  </div>
-);
+          <SelectTrigger
+            id={`${controlId}-speed`}
+            data-slot="input-group-control"
+            className={CONDITION_SELECT_CLASS}
+            aria-label={m['dashboard.providers.form.variant_speed_label']({ alias })}
+            aria-invalid={invalid}
+          >
+            <SelectValue>
+              {draft.speed === ANY_DIMENSION ? m['dashboard.providers.form.variant_speed_unset']() : draft.speed}
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ANY_DIMENSION}>{m['dashboard.providers.form.variant_speed_unset']()}</SelectItem>
+            {SPEEDS.map((speed) => (
+              <SelectItem key={speed} value={speed}>
+                {speed}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </InputGroup>
+    </div>
+  );
+};

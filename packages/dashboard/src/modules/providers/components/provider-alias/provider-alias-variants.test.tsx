@@ -71,6 +71,33 @@ test('reports the missing condition on a freshly added row', () => {
   expect(screen.getByRole('alert').textContent).toBe(m['dashboard.providers.form.variant_when_required']());
 });
 
+// A config can carry an unnamed alias (that is its own reported issue), and an empty name would leave
+// the condition controls announced as " 's effort condition". The fallback noun is i18n copy too.
+test('an unnamed alias falls back to the alias noun in the condition labels', () => {
+  const unnamed: ProviderAlias = {
+    '': {
+      model: 'claude-sonnet-4',
+      preserve: false,
+      variants: [{ when: { thinking: true }, model: 'claude-sonnet-4-thinking', preserve: false }],
+    },
+  };
+  const onAliasChange = rs.fn();
+  render(
+    <ProviderAliasVariants
+      alias={unnamed}
+      aliasName=""
+      config={unnamed['']!}
+      models={models}
+      issues={[]}
+      onAliasChange={onAliasChange}
+    />,
+  );
+
+  const alias = m['dashboard.providers.form.variant_condition_alias_fallback']();
+  expect(screen.getByLabelText(m['dashboard.providers.form.variant_effort_label']({ alias }))).toBeInTheDocument();
+  expect(screen.getByLabelText(m['dashboard.providers.form.variant_speed_label']({ alias }))).toBeInTheDocument();
+});
+
 // Display used to follow `whenRank`, so making a row's condition more specific moved it up the list
 // while the user was still working in it. Stored order is the only order now.
 test('a row stays in place when its own condition becomes more specific', async () => {
@@ -88,7 +115,7 @@ test('a row stays in place when its own condition becomes more specific', async 
   const firstRow = () => screen.getAllByTestId('provider-variant-row')[0]!;
 
   await selectOption(
-    within(firstRow()).getByLabelText(m['dashboard.providers.form.variant_thinking_label']()),
+    within(firstRow()).getByLabelText(m['dashboard.providers.form.variant_thinking_label']({ alias: 'sonnet' })),
     m['dashboard.providers.form.variant_thinking_on'](),
   );
 
@@ -97,7 +124,9 @@ test('a row stays in place when its own condition becomes more specific', async 
     { when: { thinking: true, effort: 'high' }, model: 'claude-sonnet-4-fast', preserve: false },
     { when: { speed: 'fast' }, model: 'claude-sonnet-4-thinking', preserve: false },
   ]);
-  expect(within(firstRow()).getByLabelText(m['dashboard.providers.form.variant_effort_label']())).toHaveValue('high');
+  expect(
+    within(firstRow()).getByLabelText(m['dashboard.providers.form.variant_effort_label']({ alias: 'sonnet' })),
+  ).toHaveValue('high');
 });
 
 // Removing a row renumbers every row after it. While each row held its own form, the row that shifted
@@ -123,10 +152,12 @@ test('the row surviving a removal keeps its own condition and edits it', async (
 
   const survivor = screen.getByTestId('provider-variant-row');
   expect(screen.getAllByTestId('provider-variant-row')).toHaveLength(1);
-  expect(within(survivor).getByLabelText(m['dashboard.providers.form.variant_effort_label']())).toHaveValue('');
-  expect(within(survivor).getByLabelText(m['dashboard.providers.form.variant_thinking_label']())).toHaveTextContent(
-    m['dashboard.providers.form.variant_thinking_on'](),
-  );
+  expect(
+    within(survivor).getByLabelText(m['dashboard.providers.form.variant_effort_label']({ alias: 'sonnet' })),
+  ).toHaveValue('');
+  expect(
+    within(survivor).getByLabelText(m['dashboard.providers.form.variant_thinking_label']({ alias: 'sonnet' })),
+  ).toHaveTextContent(m['dashboard.providers.form.variant_thinking_on']());
   expect(within(survivor).getByRole('switch')).not.toBeChecked();
 
   await selectOption(

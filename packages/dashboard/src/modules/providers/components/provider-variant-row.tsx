@@ -50,6 +50,7 @@ export const ProviderVariantRow: FC<ProviderVariantRowProps> = ({
       <div className="grid items-center gap-2 lg:grid-cols-[repeat(3,minmax(0,1fr))_auto_minmax(0,1.25fr)_auto]">
         <ProviderVariantConditions
           draft={draft}
+          aliasName={aliasName}
           controlId={controlId}
           invalid={codes.has('variant-when-required') || codes.has('variant-when-duplicate')}
           onCommit={commit}
