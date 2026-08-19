@@ -12,7 +12,7 @@ import {
 } from '@aio-proxy/agent-provider-runtime';
 import type { Config, Hooks, PluginInput, PluginModule } from '@opencode-ai/plugin';
 
-import { toOpenCodeModels } from '../catalog';
+import { openCodeCatalogDigest, toOpenCodeModels } from '../catalog';
 
 const PROVIDER_ID = 'aio-proxy';
 const loginRequired = (): Error => new Error('aio-proxy login required');
@@ -110,7 +110,8 @@ export async function createOpenCodeV1Server(input: PluginInput, deps: OpenCodeV
     return fetchWithAccess(next.access, normalized);
   }
 
-  async function refreshWithAccess(accessToken: string): Promise<RefreshCatalogResult> {
+  async function refreshWithAccess(accessToken: string, rebuildOnChange = true): Promise<RefreshCatalogResult> {
+    const before = openCodeCatalogDigest(catalog);
     const result = await deps.refreshAgentCatalog({
       marker: managed.marker,
       statePath: managed.statePath,
@@ -119,6 +120,9 @@ export async function createOpenCodeV1Server(input: PluginInput, deps: OpenCodeV
       now: deps.now,
     });
     catalog = result.catalog;
+    if (rebuildOnChange && openCodeCatalogDigest(catalog) !== before) {
+      await input.client.instance.dispose();
+    }
     return result;
   }
 
@@ -180,7 +184,7 @@ export async function createOpenCodeV1Server(input: PluginInput, deps: OpenCodeV
                   fetch: deps.fetch,
                   now: deps.now,
                 });
-                const result = await refreshWithAccess(token.access_token);
+                const result = await refreshWithAccess(token.access_token, false);
                 if (result.error === 'unauthorized') throw loginRequired();
                 return {
                   type: 'success' as const,

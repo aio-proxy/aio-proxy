@@ -138,6 +138,26 @@ test('concurrent loaders share one catalog refresh and one interval, then dispos
   expect(f.activeIntervals()).toBe(0);
 });
 
+test('new catalog content persists before one rebuild and identical content terminates', async () => {
+  const f = await fixture({ lkg: catalog({ name: 'Old' }) });
+  f.catalogResponses.push(catalog({ name: 'New' }), catalog({ name: 'New' }));
+  const hooks = await f.server();
+  await hooks.auth!.loader!(f.getAuth, f.provider);
+  expect(f.readState().lkg.models[0].name).toBe('New');
+  expect(f.instanceDispose).toHaveBeenCalledTimes(1);
+  await f.runRefreshTimer();
+  expect(f.instanceDispose).toHaveBeenCalledTimes(1);
+});
+
+test('stale refresh preserves LKG without rebuilding for status-only changes', async () => {
+  const old = catalog({ name: 'Old' });
+  const f = await fixture({ lkg: old });
+  const hooks = await f.server();
+  await hooks.auth!.loader!(f.getAuth, f.provider);
+  expect(f.readState()).toMatchObject({ status: 'stale', lkg: old });
+  expect(f.instanceDispose).not.toHaveBeenCalled();
+});
+
 type FixtureOptions = {
   readonly auth?: Auth;
   readonly lkg?: AgentCatalogV1 | null;
