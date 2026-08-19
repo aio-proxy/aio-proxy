@@ -22,7 +22,7 @@
 - With no LKG, inject the Provider with an empty `models` object so the auth loader and login remain reachable.
 - Read credentials with `getAuth()` immediately before refresh or request dispatch. Never close over an access or refresh token from loader initialization.
 - Catalog refresh runs after login, on loader startup, and every `300_000` ms. Only a change to validated `catalog.models` may call `client.instance.dispose()`.
-- A 401 never retries anonymously. Preserve LKG, attempt one credential refresh after re-reading host auth, and retry once with the returned access token. Refresh `invalid_grant` or a second 401 throws the stable host-visible error `aio-proxy login required`; the stale catalog remains on disk.
+- A 401 never retries anonymously. Preserve LKG, attempt one credential refresh after re-reading host auth, and retry once with the returned access token. Inference returns that persistent retry 401 without anonymous fallback and does not latch login-required. A catalog second 401 or refresh `invalid_grant` throws the stable host-visible error `aio-proxy login required`; the stale catalog remains on disk.
 - `dispose` clears the one owned interval; do not leave a detached timer.
 - The emitted JS is self-contained. Only type-only host imports are allowed, and the artifact test must reject runtime imports containing `@aio-proxy/` or `@opencode-ai/plugin`.
 - Handwritten non-test implementation files remain below 500 lines.
@@ -926,6 +926,12 @@ function startFakeProxy(options: { readonly rejectConsumedRefresh?: boolean } = 
       }
       if (url.pathname === '/v1/models') {
         if (authorization === null) anonymousCatalogCalls += 1;
+        check(
+          authorization === null ||
+            authorization === `Bearer ${INITIAL_ACCESS}` ||
+            authorization === `Bearer ${ROTATED_ACCESS}`,
+          'catalog used a disallowed Authorization value',
+        );
         if (authorization !== `Bearer ${INITIAL_ACCESS}` && authorization !== `Bearer ${ROTATED_ACCESS}`)
           return new Response('', { status: 401 });
         check(url.searchParams.get('agent') === 'opencode', 'wrong catalog target');
@@ -941,6 +947,12 @@ function startFakeProxy(options: { readonly rejectConsumedRefresh?: boolean } = 
       if (url.pathname === '/v1/chat/completions') {
         inferenceAttempts += 1;
         if (authorization === null) anonymousInferenceCalls += 1;
+        check(
+          authorization === null ||
+            authorization === `Bearer ${INITIAL_ACCESS}` ||
+            authorization === `Bearer ${ROTATED_ACCESS}`,
+          'inference used a disallowed Authorization value',
+        );
         if (authorization === `Bearer ${INITIAL_ACCESS}`) return new Response('', { status: 401 });
         if (authorization !== `Bearer ${ROTATED_ACCESS}`) return new Response('', { status: 401 });
         const stream = [

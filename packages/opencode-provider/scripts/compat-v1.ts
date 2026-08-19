@@ -20,6 +20,7 @@ type Stats = {
   readonly inferenceAttempts: number;
   readonly anonymousCatalogCalls: number;
   readonly anonymousInferenceCalls: number;
+  readonly disallowedAuthorizationCalls: number;
 };
 
 function check(value: unknown, message: string): asserts value {
@@ -35,6 +36,17 @@ function startFakeProxy(options: { readonly rejectConsumedRefresh?: boolean } = 
   let inferenceAttempts = 0;
   let anonymousCatalogCalls = 0;
   let anonymousInferenceCalls = 0;
+  let disallowedAuthorizationCalls = 0;
+
+  const assertAllowedInstallationAuthorization = (
+    authorization: string | null,
+    surface: 'catalog' | 'inference',
+  ): void => {
+    if (authorization === null) return;
+    if (authorization === `Bearer ${INITIAL_ACCESS}` || authorization === `Bearer ${ROTATED_ACCESS}`) return;
+    disallowedAuthorizationCalls += 1;
+    check(false, `${surface} used a disallowed Authorization value`);
+  };
 
   const server = Bun.serve({
     hostname: '127.0.0.1',
@@ -87,6 +99,7 @@ function startFakeProxy(options: { readonly rejectConsumedRefresh?: boolean } = 
       }
       if (url.pathname === '/v1/models') {
         if (authorization === null) anonymousCatalogCalls += 1;
+        assertAllowedInstallationAuthorization(authorization, 'catalog');
         if (authorization !== `Bearer ${INITIAL_ACCESS}` && authorization !== `Bearer ${ROTATED_ACCESS}`)
           return new Response('', { status: 401 });
         check(url.searchParams.get('agent') === 'opencode', 'wrong catalog target');
@@ -112,6 +125,7 @@ function startFakeProxy(options: { readonly rejectConsumedRefresh?: boolean } = 
       if (url.pathname === '/v1/chat/completions') {
         inferenceAttempts += 1;
         if (authorization === null) anonymousInferenceCalls += 1;
+        assertAllowedInstallationAuthorization(authorization, 'inference');
         if (authorization === `Bearer ${INITIAL_ACCESS}`) return new Response('', { status: 401 });
         if (authorization !== `Bearer ${ROTATED_ACCESS}`) return new Response('', { status: 401 });
         const stream = [
@@ -132,6 +146,7 @@ function startFakeProxy(options: { readonly rejectConsumedRefresh?: boolean } = 
       inferenceAttempts,
       anonymousCatalogCalls,
       anonymousInferenceCalls,
+      disallowedAuthorizationCalls,
     }),
     stop: () => server.stop(true),
   };
@@ -241,6 +256,7 @@ async function runVersion(version: string): Promise<void> {
     check(stats.inferenceAttempts === 4, `${version} inference count was ${stats.inferenceAttempts}`);
     check(stats.anonymousCatalogCalls === 0, `${version} made an anonymous catalog request`);
     check(stats.anonymousInferenceCalls === 0, `${version} made an anonymous inference request`);
+    check(stats.disallowedAuthorizationCalls === 0, `${version} used a disallowed Authorization value`);
   } finally {
     proxy.stop();
     await rm(root, { recursive: true, force: true });
@@ -296,6 +312,7 @@ async function runReceivePersistFailure(version: string): Promise<void> {
     check(stats.refreshExchanges === 1, `${version} created ${stats.refreshExchanges} rotated pairs`);
     check(stats.anonymousCatalogCalls === 0, `${version} made an anonymous catalog request`);
     check(stats.anonymousInferenceCalls === 0, `${version} made an anonymous inference request`);
+    check(stats.disallowedAuthorizationCalls === 0, `${version} used a disallowed Authorization value`);
   } finally {
     await chmod(authDir, 0o700).catch(() => {});
     await chmod(authPath, 0o600).catch(() => {});
