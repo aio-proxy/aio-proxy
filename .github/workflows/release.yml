@@ -5,6 +5,13 @@ name: Release
 #   - runs the publish script (when none exist, i.e. right after that PR merged).
 # Cutting a release therefore = merging the Version PR. See .changeset/config.json
 # and scripts/release.ts.
+#
+# TODO(oven-sh/bun#39764): after Bun's compile-on-darwin signature is accepted
+# on macOS 27, this job can return to ubuntu-latest (cross-compile, no resign).
+# Until then release runs on macOS so `bun build --compile` + `codesign` happen
+# on the same machine. Compile only runs on the publish path inside
+# scripts/release.ts. The Linux Docker image stays on Ubuntu — GitHub macOS
+# runners do not ship Docker.
 on:
   push:
     branches: [main]
@@ -21,7 +28,10 @@ permissions:
 
 jobs:
   release:
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
+    outputs:
+      published: ${{ steps.changesets.outputs.published }}
+      published-packages: ${{ steps.changesets.outputs.published-packages }}
     env:
       # lefthook's postinstall no-ops when CI=true unless LEFTHOOK is set; without
       # installed hooks the release commit skips oxfmt/commitlint (e.g. CHANGELOG.md).
@@ -93,16 +103,20 @@ jobs:
           {"event_type":"aio-proxy-release","client_payload":{"version":"${version}"}}
           EOF
 
-      # Publish a multi-arch Docker image to GHCR, but only when this run actually
-      # published a release (i.e. the Version PR just merged). Bun cross-compiles
-      # both musl targets from this amd64 runner, so buildx builds linux/amd64 and
+  docker:
+    needs: release
+    if: needs.release.outputs.published == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # Publish a multi-arch Docker image to GHCR. Bun cross-compiles both musl
+      # targets from this amd64 runner, so buildx builds linux/amd64 and
       # linux/arm64 in one pass without QEMU emulating the build.
       - name: Set up Docker Buildx
-        if: steps.changesets.outputs.published == 'true'
         uses: docker/setup-buildx-action@v4
 
       - name: Log in to GHCR
-        if: steps.changesets.outputs.published == 'true'
         uses: docker/login-action@v4
         with:
           registry: ghcr.io
@@ -110,17 +124,15 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Docker metadata
-        if: steps.changesets.outputs.published == 'true'
         id: docker-meta
         uses: docker/metadata-action@v6
         with:
           images: ghcr.io/aio-proxy/aio-proxy
           tags: |
             type=raw,value=latest
-            type=raw,value=${{ fromJSON(steps.changesets.outputs['published-packages'])[0].version }}
+            type=raw,value=${{ fromJSON(needs.release.outputs.published-packages)[0].version }}
 
       - name: Build and push Docker image
-        if: steps.changesets.outputs.published == 'true'
         uses: docker/build-push-action@v7
         with:
           context: .

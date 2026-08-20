@@ -2,6 +2,7 @@ import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 import { virtualCompiledEntry } from './generate-compiled-entry';
+import { resignStandaloneBinary } from './resign-standalone-binary';
 
 // Default targets: the glibc/darwin binaries packed into the npm/cli-* publish packages.
 const publishTargets = [
@@ -65,6 +66,7 @@ for (const { suffix, target } of selected) {
     console.error(`bun build --compile failed for ${target}`);
     process.exit(1);
   }
+  resignStandaloneBinary(outfile, target);
   await Bun.write(join(dirname(outfile), 'THIRD_PARTY_NOTICES'), thirdPartyNotice);
   console.log(`${suffix}: ${outfile}`);
 }
