@@ -1,4 +1,4 @@
-import { parseRuntimeConfig } from '@aio-proxy/core';
+import { canonicalizeLoopbackHost, parseRuntimeConfig } from '@aio-proxy/core';
 import { currentRequestId, withRequestId } from '@aio-proxy/logger';
 import { AgentCatalogQuerySchema } from '@aio-proxy/types';
 import { honoLogger } from '@logtape/hono';
@@ -45,9 +45,10 @@ const csrfMethods = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 const canonicalLoopbackOriginHosts = new Set(['localhost', '127.0.0.1', '[::1]']);
 
 const loopbackOriginHostname = (host: string): string => {
-  if (host === 'localhost' || host.startsWith('127.')) return host;
-  if (host === '::' || host === '[::]' || host === '::1' || host === '[::1]') return '[::1]';
-  return serverDefaults.host;
+  if (host === '::' || host === '[::]') return '[::1]';
+  const canonical = canonicalizeLoopbackHost(host);
+  if (canonical === undefined) return serverDefaults.host;
+  return canonical === '::1' ? '[::1]' : canonical;
 };
 
 const hasLoopbackOrigin = (context: Context, expectedHost: string, expectedPort: number): boolean => {

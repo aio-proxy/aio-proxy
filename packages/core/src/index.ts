@@ -137,6 +137,7 @@ export {
   withNpmPackageLifecycle,
 } from './npm';
 export { type InstalledNpmPackage, listInstalledNpmPackages } from './npm-list';
+export { canonicalizeLoopbackHost } from './network/index';
 export { aioHome, configPath, dbPath, packagesDir } from './paths/index';
 export * from './plugins';
 export * from './protocol';

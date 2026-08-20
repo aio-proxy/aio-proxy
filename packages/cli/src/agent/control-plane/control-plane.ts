@@ -1,5 +1,4 @@
-import { isIP } from 'node:net';
-
+import { canonicalizeLoopbackHost } from '@aio-proxy/core';
 import {
   AgentAdminSnapshotSchema,
   AgentRevokeResponseSchema,
@@ -12,9 +11,9 @@ import { controlBaseUrl, resolveControlAddress } from '../../control-plane';
 export const connectHost = (host: string): string => {
   if (host === '0.0.0.0' || host === '*') return '127.0.0.1';
   if (host === '::' || host === '[::]') return '::1';
-  if (host === 'localhost' || host === '::1') return host;
-  if (isIP(host) === 4 && host.split('.')[0] === '127') return host;
-  throw new Error('Agent integrations require a loopback aio-proxy endpoint');
+  const canonical = canonicalizeLoopbackHost(host);
+  if (canonical === undefined) throw new Error('Agent integrations require a loopback aio-proxy endpoint');
+  return canonical;
 };
 
 export const resolveAgentEndpoint = async (): Promise<string> => {

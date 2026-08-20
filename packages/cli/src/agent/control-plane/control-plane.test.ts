@@ -50,6 +50,7 @@ test.each([
   ['localhost', 'localhost'],
   ['127.255.255.254', '127.255.255.254'],
   ['::1', '::1'],
+  ['[::1]', '::1'],
 ] as const)('maps accepted host %s to %s', (host, expected) => {
   expect(connectHost(host)).toBe(expected);
 });
