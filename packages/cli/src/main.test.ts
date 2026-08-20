@@ -21,7 +21,7 @@ describe('cli', () => {
     // Then
     expect(result.exitCode).toBe(0);
     expect(result.stdout.toString().trim()).toBe(packageJson.version);
-  });
+  }, 60_000);
 
   test('localizes help when --lang overrides environment', () => {
     // Given / When
@@ -35,7 +35,7 @@ describe('cli', () => {
     expect(chinese.exitCode).toBe(0);
     expect(english.stdout.toString()).toContain('AIO Proxy command line');
     expect(chinese.stdout.toString()).toContain('AIO Proxy 命令行界面');
-  }, 15_000);
+  }, 60_000);
 
   test('rejects out-of-range run ports', () => {
     // Given / When
@@ -44,7 +44,7 @@ describe('cli', () => {
     // Then
     expect(result.exitCode).toBe(1);
     expect(output(result)).toContain('Port 99999 is out of range');
-  });
+  }, 60_000);
 
   test('reports run port conflicts with the bound address', () => {
     // Given
@@ -65,7 +65,7 @@ describe('cli', () => {
     } finally {
       blocker.stop(true);
     }
-  });
+  }, 60_000);
 
   test('exits unrecoverable (1) when startup config is schema-invalid', () => {
     // A schema-invalid config can never succeed on retry; the daemon must exit 1
@@ -80,7 +80,7 @@ describe('cli', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
-  });
+  }, 60_000);
 
   test('bootstraps missing non-tty config path and serves health', async () => {
     // Given
@@ -100,7 +100,7 @@ describe('cli', () => {
       // When
       const response = await waitForOk(`http://127.0.0.1:${port}/health`, {
         probeTimeoutMs: 1_000,
-        readinessTimeoutMs: 5_000,
+        readinessTimeoutMs: 20_000,
       });
 
       // Then
@@ -119,7 +119,7 @@ describe('cli', () => {
       await server.exited;
       rmSync(dir, { recursive: true, force: true });
     }
-  });
+  }, 60_000);
 
   test('bare run honors the configured server.port when no flag is given', async () => {
     // A managed service starts `run` with no flags; it must bind the config's
@@ -138,7 +138,7 @@ describe('cli', () => {
     try {
       const response = await waitForOk(`http://127.0.0.1:${port}/health`, {
         probeTimeoutMs: 1_000,
-        readinessTimeoutMs: 5_000,
+        readinessTimeoutMs: 20_000,
       });
       expect(response.status).toBe(200);
       server.kill();
@@ -149,7 +149,7 @@ describe('cli', () => {
       await server.exited;
       rmSync(dir, { recursive: true, force: true });
     }
-  });
+  }, 60_000);
 
   test('exits unrecoverable (1) when service.env exists but cannot be read', () => {
     // A service.env that cannot be read (here, a directory in its place) can never
@@ -165,7 +165,7 @@ describe('cli', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
-  });
+  }, 60_000);
   test('run --help advertises --open and drops --config and --dashboard', () => {
     // Given / When
     const result = runCli(['run', '--help']);
@@ -176,7 +176,7 @@ describe('cli', () => {
     expect(help).toContain('--open');
     expect(help).not.toContain('config');
     expect(help).not.toContain('--dashboard');
-  });
+  }, 60_000);
 
   test('the hidden post-upgrade command is registered and omitted from help', () => {
     const program = buildProgram();

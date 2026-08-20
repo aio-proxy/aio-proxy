@@ -36,7 +36,7 @@ export async function pluginList(_options: PluginListOptions, injected?: PluginL
     const names = [...new Set([...deps.builtInNames, ...configured])].sort();
     for (const packageName of names) {
       const loaded = snapshot.plugins.get(packageName);
-      let state = m['cli.plugin.state_not_installed']();
+      let state: string = m['cli.plugin.state_not_installed']();
       if (installed.has(packageName)) state = m['cli.plugin.state_configured']();
       if (deps.builtInNames.has(packageName)) state = m['cli.plugin.state_builtin']();
       if (loaded?.state.status === 'failed') state = loaded.state.diagnostic.summary;
