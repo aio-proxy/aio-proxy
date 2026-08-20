@@ -744,7 +744,6 @@
         "models_stale_whitelist": "{model}은(는) 더 이상 발견된 카탈로그에 없습니다",
         "metadata_tab_visual": "비주얼",
         "metadata_tab_json": "JSON",
-        "metadata_unknown_fields": "다른 {count}개 필드는 JSON 탭에서만 편집할 수 있습니다",
         "metadata_extend_label": "models.dev 모델",
         "metadata_extend_empty": "일치하는 모델이 없습니다",
         "metadata_group_extend": "상속할 모델 정보",

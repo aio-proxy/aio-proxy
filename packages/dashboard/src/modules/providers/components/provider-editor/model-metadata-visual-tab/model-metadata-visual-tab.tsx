@@ -1,5 +1,4 @@
 import { m } from '@aio-proxy/i18n';
-import { MODEL_METADATA_KNOWN_KEYS } from '@aio-proxy/types';
 import { Input } from '@aio-proxy/ui/components/input';
 import { Label } from '@aio-proxy/ui/components/label';
 import { Textarea } from '@aio-proxy/ui/components/textarea';
@@ -69,7 +68,6 @@ const stringValue = (value: unknown) => (typeof value === 'string' ? value : '')
 const booleanValue = (value: unknown) => (typeof value === 'boolean' ? value : undefined);
 
 export const ModelMetadataVisualTab: React.FC<ModelMetadataVisualTabProps> = ({ value, onChange }) => {
-  const unknownCount = Object.keys(value).filter((key) => !MODEL_METADATA_KNOWN_KEYS.has(key)).length;
   const inherit = m['dashboard.providers.editor.metadata_inherit_placeholder']();
 
   return (
@@ -177,12 +175,6 @@ export const ModelMetadataVisualTab: React.FC<ModelMetadataVisualTabProps> = ({ 
           ))}
         </div>
       </ModelMetadataGroup>
-
-      {unknownCount > 0 ? (
-        <p className="text-sm text-muted-foreground">
-          {m['dashboard.providers.editor.metadata_unknown_fields']({ count: unknownCount })}
-        </p>
-      ) : null}
     </div>
   );
 };

@@ -744,7 +744,6 @@
         "models_stale_whitelist": "{model} is no longer in the discovered catalog",
         "metadata_tab_visual": "Visual",
         "metadata_tab_json": "JSON",
-        "metadata_unknown_fields": "{count} more fields are only editable in the JSON tab",
         "metadata_extend_label": "models.dev model",
         "metadata_extend_empty": "No matching models",
         "metadata_group_extend": "Inherited model info",

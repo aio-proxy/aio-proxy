@@ -744,7 +744,6 @@
         "models_stale_whitelist": "{model} は検出されたカタログに存在しなくなりました",
         "metadata_tab_visual": "ビジュアル",
         "metadata_tab_json": "JSON",
-        "metadata_unknown_fields": "他の {count} 個のフィールドは JSON タブでのみ編集できます",
         "metadata_extend_label": "models.dev モデル",
         "metadata_extend_empty": "一致するモデルがありません",
         "metadata_group_extend": "継承するモデル情報",

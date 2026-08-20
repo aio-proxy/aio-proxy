@@ -744,7 +744,6 @@
         "models_stale_whitelist": "{model} 已不在已探索的模型目录中",
         "metadata_tab_visual": "可视化",
         "metadata_tab_json": "JSON",
-        "metadata_unknown_fields": "另有 {count} 个字段仅能在 JSON 标签页中编辑",
         "metadata_extend_label": "models.dev 模型",
         "metadata_extend_empty": "没有匹配的模型",
         "metadata_group_extend": "继承模型信息",
