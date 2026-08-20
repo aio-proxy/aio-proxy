@@ -234,7 +234,7 @@ test('list --check reports a missing authorization and incompatible catalog sche
   );
 });
 
-test('list --check reports missing authorization when the snapshot is unreachable', async () => {
+test('list --check leaves target checks not_checked when the snapshot is unreachable', async () => {
   const f = commandFixture({
     localInstallationIds: [INSTALLATION],
     server: 'offline',
@@ -246,13 +246,13 @@ test('list --check reports missing authorization when the snapshot is unreachabl
   expect(result.targets).toContainEqual(
     expect.objectContaining({
       target: 'opencode',
-      authorization: 'missing',
-      schemaCompatibility: 'incompatible',
+      authorization: 'not_checked',
+      schemaCompatibility: 'not_checked',
     }),
   );
 });
 
-test('list --check reports missing authorization when endpoint resolution fails', async () => {
+test('list --check leaves target checks not_checked when endpoint resolution fails', async () => {
   const f = commandFixture({
     localInstallationIds: [INSTALLATION],
     serverHost: '192.0.2.10',
@@ -264,8 +264,8 @@ test('list --check reports missing authorization when endpoint resolution fails'
   expect(result.targets).toContainEqual(
     expect.objectContaining({
       target: 'opencode',
-      authorization: 'missing',
-      schemaCompatibility: 'incompatible',
+      authorization: 'not_checked',
+      schemaCompatibility: 'not_checked',
     }),
   );
 });
