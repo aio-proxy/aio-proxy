@@ -15,7 +15,6 @@ import { useQuery } from '@tanstack/react-query';
 import { useSelector } from '@tanstack/react-store';
 import { useState } from 'react';
 
-import { hasWeightTie } from '../../components/provider-editor/attempt-order-preview';
 import { useOAuthProviderForm } from '../../hooks/use-oauth-provider-form';
 import {
   type ProviderEditorInitial,
@@ -33,6 +32,7 @@ import { capabilityKey } from '../../lib/oauth-capability-key';
 import { oauthProviderEditAction } from '../../lib/oauth-provider-edit';
 import { normalizeProviderFormValue, type ProviderFormShape } from '../../lib/provider-form-value';
 import { blockingSections, sectionStatuses } from '../../lib/section-status';
+import { hasWeightTie } from '../../lib/weight-tie';
 import { oauthCapabilitiesQueryOptions } from '../../services/oauth-service';
 import { providersQueryOptions } from '../../services/providers-service';
 import { useOAuthEditorSession } from './use-oauth-editor-session';
