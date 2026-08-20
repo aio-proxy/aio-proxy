@@ -788,3 +788,31 @@ test('edit-api a provider with no metadata does not gain a dead metadata key', a
   const input = mocks.update.mock.calls[0]?.[0] as { body: { metadata?: unknown } };
   expect(input.body.metadata).toBeUndefined();
 });
+
+// serializeAlias([], 'edit') is `{}`. Passing that on every save of a provider that never had
+// aliases stamps `alias: {}` into the user's config. An untouched undefined form value must stay
+// omitted — deleting every row still serializes to `{}`, which is the intentional clear.
+test('edit-api a provider with no aliases does not gain a dead alias key', async () => {
+  renderPage({
+    mode: ProviderFormMode.Edit,
+    kind: ProviderKind.Api,
+    providerId: 'p1',
+    initial: {
+      id: 'p1',
+      name: 'Existing',
+      enabled: true,
+      protocol: ProviderProtocol.OpenAICompatible,
+      baseURL: 'https://api.example.com/v1',
+      models: ['a'],
+    },
+    onSessionIdChange: rs.fn(),
+  });
+
+  fillName('Renamed');
+  await waitFor(() => expect(saveButton()).toBeEnabled());
+  fireEvent.click(saveButton());
+
+  await waitFor(() => expect(mocks.update).toHaveBeenCalled());
+  const input = mocks.update.mock.calls[0]?.[0] as { body: { alias?: unknown } };
+  expect(input.body.alias).toBeUndefined();
+});

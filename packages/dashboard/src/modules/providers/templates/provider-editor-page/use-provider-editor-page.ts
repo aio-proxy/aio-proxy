@@ -276,7 +276,10 @@ export const useProviderEditorPage = ({
   const save = (forceReauthorize = false) => {
     const wireValues = {
       ...values,
-      alias: serializeAlias(values.alias ?? [], mode === ProviderFormMode.Create ? 'create' : 'edit'),
+      alias:
+        values.alias === undefined
+          ? undefined
+          : serializeAlias(values.alias, mode === ProviderFormMode.Create ? 'create' : 'edit'),
     };
     if (kind === 'oauth') {
       if (mode === ProviderFormMode.Create && !authorized) {
