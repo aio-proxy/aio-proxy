@@ -31,6 +31,8 @@ function commandFixture(
   options: {
     readonly server?: 'online' | 'offline';
     readonly serverHost?: string;
+    readonly resolvedEndpoint?: string;
+    readonly markerEndpoint?: string;
     readonly target?: AgentTarget;
     readonly hostSupport?: AgentHost['support'];
     readonly hostVersion?: string;
@@ -70,7 +72,7 @@ function commandFixture(
   const resolveEndpoint = mock(async () => {
     if (options.serverHost !== undefined && options.serverHost !== '127.0.0.1')
       throw new Error('Agent integrations require loopback');
-    return 'http://127.0.0.1:9317';
+    return options.resolvedEndpoint ?? 'http://127.0.0.1:9317';
   });
   const readSnapshot = mock(async () => {
     if (options.server === 'offline') throw new TypeError('offline');
@@ -109,7 +111,7 @@ function commandFixture(
           agent: location.target,
           installationId,
           adapterVersion: '1.2.3',
-          endpoint: 'http://127.0.0.1:9317',
+          endpoint: options.markerEndpoint ?? 'http://127.0.0.1:9317',
         },
       };
     },
@@ -177,6 +179,19 @@ test('remove leaves files untouched on network failure', async () => {
   const f = commandFixture({ revokeError: new TypeError('offline'), target: 'pi' });
   await expect(agentRemove('pi', f.deps)).rejects.toThrow('offline');
   expect(f.remove).not.toHaveBeenCalled();
+});
+
+test('remove revokes at the marker endpoint when the resolved endpoint has changed', async () => {
+  const f = commandFixture({
+    target: 'opencode',
+    resolvedEndpoint: 'http://127.0.0.1:9417',
+    markerEndpoint: 'http://127.0.0.1:9317',
+  });
+  await agentRemove('opencode', f.deps);
+  expect(f.resolveEndpoint).not.toHaveBeenCalled();
+  expect(f.revoke).toHaveBeenCalledTimes(1);
+  expect(f.revoke).toHaveBeenCalledWith('http://127.0.0.1:9317', INSTALLATION);
+  expect(f.events).toEqual(['revoke', 'remove']);
 });
 
 test('authorizations marks configured and orphaned server identities', async () => {

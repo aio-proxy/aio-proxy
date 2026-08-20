@@ -313,7 +313,7 @@ export async function agentRemove(target: string, deps?: AgentCommandDeps): Prom
   if (status.integration !== 'managed' || status.marker === undefined) {
     throw new Error('managed installation is required');
   }
-  const revokeStatus = await resolved.revoke(await resolved.resolveEndpoint(), status.marker.installationId);
+  const revokeStatus = await resolved.revoke(status.marker.endpoint, status.marker.installationId);
   await resolved.remove(location, status.marker.installationId);
   return { target: parsed, installationId: status.marker.installationId, revokeStatus };
 }
