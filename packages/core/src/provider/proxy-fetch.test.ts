@@ -26,7 +26,7 @@ describe('createProxyFetch', () => {
     expect(createProxyFetch(undefined)).toBe(globalThis.fetch);
   });
 
-  test('materializes a ReadableStream request body to bytes when a proxy is set', async () => {
+  test('forwards a ReadableStream request body unchanged when a proxy is set', async () => {
     const calls: Array<{ input: unknown; init: (RequestInit & { proxy?: string }) | undefined }> = [];
     const spy = (async (input: unknown, init?: RequestInit) => {
       calls.push({ input, init });
@@ -46,12 +46,10 @@ describe('createProxyFetch', () => {
 
     const forwarded = calls[0]?.init;
     expect(forwarded?.proxy).toBe('http://proxy.example:8080');
-    expect(forwarded?.body instanceof ReadableStream).toBe(false);
-    const sent = await new Response(forwarded?.body as BodyInit).text();
-    expect(sent).toBe('{"hello":"world"}');
+    expect(forwarded?.body).toBe(body);
   });
 
-  test('buffers a ReadableStream body carried on a Request input when a proxy is set', async () => {
+  test('forwards a Request input unchanged when a proxy is set', async () => {
     const calls: Array<{ input: unknown; init: (RequestInit & { proxy?: string }) | undefined }> = [];
     const spy = (async (input: unknown, init?: RequestInit) => {
       calls.push({ input, init });
@@ -74,14 +72,13 @@ describe('createProxyFetch', () => {
     const proxyFetch = createProxyFetch('http://proxy.example:8080', spy);
     await proxyFetch(request, { headers: new Headers({ 'x-test': '1' }) });
 
+    expect(calls[0]?.input).toBe(request);
     const forwarded = calls[0]?.init;
     expect(forwarded?.proxy).toBe('http://proxy.example:8080');
-    expect(forwarded?.method).toBe('POST');
-    expect(forwarded?.body instanceof ReadableStream).toBe(false);
-    const sent = await new Response(forwarded?.body as BodyInit).text();
-    expect(sent).toBe('{"hello":"world"}');
-    const headers = forwarded?.headers as Headers;
-    expect(headers.get('x-test')).toBe('1');
+    expect(request.bodyUsed).toBe(false);
+    const headers = forwarded?.headers;
+    expect(headers).toBeInstanceOf(Headers);
+    expect(headers instanceof Headers ? headers.get('x-test') : undefined).toBe('1');
   });
 
   test('forwards a non-stream body unchanged when a proxy is set', async () => {

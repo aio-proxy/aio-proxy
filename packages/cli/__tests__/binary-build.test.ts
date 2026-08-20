@@ -4,6 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { resignStandaloneBinary } from '../scripts/resign-standalone-binary';
+
 const repoRoot = join(import.meta.dir, '../../..');
 
 const hostSuffix = (): string => {
@@ -118,6 +120,7 @@ test('compiled binary can read embedded agent adapter files after source fixture
       compile: { outfile },
     });
     if (!build.success) throw new Error(build.logs.map(String).join('\n') || 'compile failed');
+    resignStandaloneBinary(outfile);
 
     for (const path of Object.values(fixtures)) rmSync(path);
     expect(existsSync(fixtures.opencode)).toBe(false);
