@@ -1,6 +1,5 @@
 import {
   AgentRuntimeError,
-  createSingleFlight,
   pollDeviceAuthorization,
   readLastKnownCatalog,
   refreshAgentCatalog,
@@ -95,26 +94,39 @@ export async function loginPiFamily(
   return credentialFromToken(token, options.now ?? Date.now);
 }
 
-const refreshPiFamilyCredentialOnce = createSingleFlight(
-  async (marker: AgentManagedMarker, credential: OAuthCredentials, options: CoreOptions): Promise<OAuthCredentials> => {
-    let token: Awaited<ReturnType<typeof refreshAgentCredential>>;
-    try {
-      token = await (options.refreshAgentCredential ?? refreshAgentCredential)(marker, credential.refresh, options);
-    } catch (error) {
-      if (error instanceof AgentRuntimeError && error.code === 'invalid_grant')
-        throw new Error('aio-proxy login required');
-      throw error;
-    }
-    return credentialFromToken(token, options.now ?? Date.now);
-  },
-);
+const refreshFlights = new Map<string, Promise<OAuthCredentials>>();
+
+const refreshPiFamilyCredentialOnce = async (
+  marker: AgentManagedMarker,
+  credential: OAuthCredentials,
+  options: CoreOptions,
+): Promise<OAuthCredentials> => {
+  let token: Awaited<ReturnType<typeof refreshAgentCredential>>;
+  try {
+    token = await (options.refreshAgentCredential ?? refreshAgentCredential)(marker, credential.refresh, options);
+  } catch (error) {
+    if (error instanceof AgentRuntimeError && error.code === 'invalid_grant')
+      throw new Error('aio-proxy login required');
+    throw error;
+  }
+  return credentialFromToken(token, options.now ?? Date.now);
+};
 
 export async function refreshPiFamilyCredential(
   marker: AgentManagedMarker,
   credential: OAuthCredentials,
   options: CoreOptions = {},
 ): Promise<OAuthCredentials> {
-  return refreshPiFamilyCredentialOnce(marker, credential, options);
+  const key = `${marker.installationId}\0${credential.refresh}`;
+  const active = refreshFlights.get(key);
+  if (active !== undefined) return active;
+  const flight = Promise.resolve()
+    .then(() => refreshPiFamilyCredentialOnce(marker, credential, options))
+    .finally(() => {
+      refreshFlights.delete(key);
+    });
+  refreshFlights.set(key, flight);
+  return flight;
 }
 
 export async function readPiFamilyModels(

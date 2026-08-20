@@ -121,10 +121,10 @@ export function registerAgentCommands(
       };
       emit(renderAgentList(await input.actions.list(normalized), normalized.json));
     });
-  agent.command('configure <target>').action(async (target) => {
+  agent.command('configure <opencode|pi|omp>').action(async (target) => {
     emit(renderAgentConfigure(await input.actions.configure(target)));
   });
-  agent.command('remove <target>').action(async (target) => {
+  agent.command('remove <opencode|pi|omp>').action(async (target) => {
     emit(renderAgentRemove(await input.actions.remove(target)));
   });
   agent.command('revoke <installation-id>').action(async (installationId) => {

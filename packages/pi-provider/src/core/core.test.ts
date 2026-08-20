@@ -218,6 +218,33 @@ test('overlapping refresh shares one exchange and releases it after settlement',
   expect(exchange).toHaveBeenCalledTimes(3);
 });
 
+test('overlapping refresh for distinct tokens keeps independent exchanges and pairings', async () => {
+  const firstCredential = { access: 'old-a', refresh: 'aio_agent_rt_v1_old_a', expires: 0 };
+  const secondCredential = { access: 'old-b', refresh: 'aio_agent_rt_v1_old_b', expires: 0 };
+  let releaseExchange!: () => void;
+  const hold = new Promise<void>((resolve) => {
+    releaseExchange = resolve;
+  });
+  const exchange = mock(async (_marker: AgentManagedMarker, refresh: string) => {
+    await hold;
+    return {
+      token_type: 'Bearer' as const,
+      access_token: `aio_agent_at_v1_new_${refresh.slice(-1)}`,
+      refresh_token: `aio_agent_rt_v1_new_${refresh.slice(-1)}`,
+      expires_in: 900,
+    };
+  });
+  const options = { now: () => 2_000, refreshAgentCredential: exchange };
+  const first = refreshPiFamilyCredential(marker, firstCredential, options);
+  const second = refreshPiFamilyCredential(marker, secondCredential, options);
+  releaseExchange();
+  await expect(Promise.all([first, second])).resolves.toEqual([
+    { access: 'aio_agent_at_v1_new_a', refresh: 'aio_agent_rt_v1_new_a', expires: 902_000 },
+    { access: 'aio_agent_at_v1_new_b', refresh: 'aio_agent_rt_v1_new_b', expires: 902_000 },
+  ]);
+  expect(exchange).toHaveBeenCalledTimes(2);
+});
+
 const managed = {
   rootDir: '/managed',
   markerPath: '/managed/.aio-proxy-managed.json',

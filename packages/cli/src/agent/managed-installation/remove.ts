@@ -1,11 +1,21 @@
 import type { Dirent } from 'node:fs';
-import { chmod, lstat, readdir, readFile, rmdir, unlink } from 'node:fs/promises';
-import { join } from 'node:path';
+import { chmod, lstat, readdir, readFile, rename, rmdir, unlink } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 
 import { AgentManagedMarkerSchema } from '@aio-proxy/types';
 
 import type { AgentLocation } from '../hosts';
-import { captureIdentity, inspectPath, matchesIdentity, removeOwned, writeDurable, type FsIdentity } from './durable';
+import {
+  captureIdentity,
+  inspectPath,
+  isFsCode,
+  matchesIdentity,
+  relocateIdentity,
+  removeOwned,
+  restoreOwned,
+  writeDurable,
+  type FsIdentity,
+} from './durable';
 import { inspectManagedInstallation, openCodeEntry } from './inspect';
 
 export type ManagedRemoveTestDeps = {
@@ -13,6 +23,7 @@ export type ManagedRemoveTestDeps = {
 };
 export type ManagedRemovePrivateTestDeps = ManagedRemoveTestDeps & {
   readonly onValidated?: () => void | Promise<void>;
+  readonly onBeforeContentRemoval?: () => void | Promise<void>;
 };
 
 const MARKER_NAME = '.aio-proxy-managed.json';
@@ -43,6 +54,26 @@ const requireOwned = async (identity: FsIdentity, message: string) => {
   const current = await inspectPath(identity.path);
   if (current === undefined || !matchesIdentity(identity, current)) throw new Error(message);
   return current;
+};
+
+const isolateValidatedDirectory = async (dir: FsIdentity): Promise<FsIdentity> => {
+  const isolated = join(dirname(dir.path), `.aio-proxy-owned-${crypto.randomUUID()}`);
+  try {
+    await rename(dir.path, isolated);
+  } catch (error) {
+    if (isFsCode(error, 'ENOENT')) throw new Error('managed directory replaced');
+    throw error;
+  }
+  const stat = await inspectPath(isolated);
+  if (stat !== undefined && matchesIdentity(dir, stat)) return relocateIdentity(dir, isolated);
+  if (stat !== undefined && (await inspectPath(dir.path)) === undefined) {
+    try {
+      await rename(isolated, dir.path);
+    } catch {
+      // Keep the unmatched occupant on the owned sibling rather than deleting it.
+    }
+  }
+  throw new Error('managed directory replaced');
 };
 
 const bindAdjacentEntry = async (path: string, installationId: string): Promise<FsIdentity | undefined> => {
@@ -113,19 +144,26 @@ async function runManagedRemove(
   await requireOwned(dir, 'managed directory replaced');
   if (entry !== undefined) await requireOwned(entry, 'entry conflict');
   await requireOwned(marker, 'managed marker invalid');
-
+  await requireOwned(dir, 'managed directory replaced');
+  await testDeps?.onBeforeContentRemoval?.();
+  const isolatedDir = await isolateValidatedDirectory(dir);
+  const isolatedMarker = relocateIdentity(marker, join(isolatedDir.path, MARKER_NAME));
   if (entry !== undefined) await removeOwned(entry);
-  await requireOwned(dir, 'managed directory replaced');
-  await removeChildrenExceptMarker(location.managedDir);
+  await requireOwned(isolatedDir, 'managed directory replaced');
+  await requireOwned(isolatedMarker, 'managed marker invalid');
+  await removeChildrenExceptMarker(isolatedDir.path);
+  if (!(await restoreOwned(isolatedDir, location.managedDir))) throw new Error('managed directory replaced');
+  const restoredDir = relocateIdentity(isolatedDir, location.managedDir);
+  const restoredMarker = relocateIdentity(isolatedMarker, markerPath);
   await testDeps?.failpoint?.('content_removed');
-  await requireOwned(dir, 'managed directory replaced');
-  await requireOwned(marker, 'managed marker invalid');
-  await removeOwned(marker);
+  await requireOwned(restoredDir, 'managed directory replaced');
+  await requireOwned(restoredMarker, 'managed marker invalid');
+  await removeOwned(restoredMarker);
   try {
     await rmdir(location.managedDir);
   } catch (error) {
     const stillOurs = await inspectPath(location.managedDir);
-    if (stillOurs !== undefined && matchesIdentity(dir, stillOurs)) {
+    if (stillOurs !== undefined && matchesIdentity(restoredDir, stillOurs)) {
       await writeDurable(markerPath, markerBytes);
       await chmod(markerPath, markerStat.mode & 0o777);
     }

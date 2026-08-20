@@ -38,7 +38,8 @@ const json = (value: unknown, headers: Record<string, string> = {}): RequestInit
   body: JSON.stringify(value),
 });
 
-async function routeFixture(server: { apiKeys?: Array<{ key: string }>; password?: string } = {}) {
+async function routeFixture(server: { apiKeys?: Array<{ key: string }>; password?: string; host?: string } = {}) {
+  const host = server.host ?? '127.0.0.1';
   const home = mkdtempSync(join(tmpdir(), 'aio-proxy-agent-routes-'));
   routeHomes.push(home);
   const identityDb = openDb({ home: join(home, 'identity') });
@@ -46,9 +47,9 @@ async function routeFixture(server: { apiKeys?: Array<{ key: string }>; password
   const agentIdentity = createAgentIdentityService(identityDb.sqlite);
   const logs: unknown[] = [];
   const app = await createServer({
-    config: { server: { host: '127.0.0.1', port: 9_317, ...server }, providers: {} },
+    config: { server: { host, port: 9_317, ...server }, providers: {} },
     dbHome: join(home, 'server'),
-    host: '127.0.0.1',
+    host,
     port: 9_317,
     logger: (entry) => logs.push(entry),
     __test: { agentIdentity },
@@ -132,6 +133,18 @@ test('device endpoint is form-only, loopback-only, and binds the fixed client tu
       .status,
   ).toBe(400);
 });
+
+test.each(['::', '[::]'] as const)(
+  'IPv6 wildcard %s Device approval origin is accepted at the configured Agent endpoint',
+  async (host) => {
+    const f = await routeFixture({ host });
+    const created = await (await f.app.request('/oauth/device/code', form(DEVICE_REQUEST), loopbackServer)).json();
+    const endpoint = 'http://[::1]:9317';
+    expect(created.verification_uri).toBe(`${endpoint}/dashboard/agents/authorize`);
+    expect(new URL(created.verification_uri).origin).toBe(new URL(endpoint).origin);
+    expect(new URL(created.verification_uri_complete).origin).toBe(new URL(endpoint).origin);
+  },
+);
 
 test('static API keys without a Dashboard password disable challenge creation', async () => {
   const f = await routeFixture({ apiKeys: [{ key: 'static' }] });

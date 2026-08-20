@@ -46,7 +46,8 @@ const canonicalLoopbackOriginHosts = new Set(['localhost', '127.0.0.1', '[::1]']
 
 const loopbackOriginHostname = (host: string): string => {
   if (host === 'localhost' || host.startsWith('127.')) return host;
-  return host === '::1' ? '[::1]' : serverDefaults.host;
+  if (host === '::' || host === '[::]' || host === '::1' || host === '[::1]') return '[::1]';
+  return serverDefaults.host;
 };
 
 const hasLoopbackOrigin = (context: Context, expectedHost: string, expectedPort: number): boolean => {

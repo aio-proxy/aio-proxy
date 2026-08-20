@@ -43,6 +43,22 @@ test('partial deletion keeps the ownership marker and a retry completes', async 
   expect(await Bun.file(f.location.managedDir).exists()).toBe(false);
 });
 
+test('remove does not delete foreign children when the managed directory is replaced at the final check-to-traversal boundary', async () => {
+  const f = await removeFixture('pi');
+  const displaced = join(f.root, 'displaced-managed');
+  await expect(
+    removeManagedIntegrationForTest(f.location, f.installationId, {
+      onBeforeContentRemoval: async () => {
+        await displaceAndReplaceDir(f.location.managedDir, displaced, 'foreign.txt', 'foreign managed');
+      },
+    }),
+  ).rejects.toThrow('managed');
+  expect(await Bun.file(join(f.location.managedDir, 'foreign.txt')).text()).toBe('foreign managed');
+  expect((await lstat(f.location.managedDir)).ino).not.toBe((await lstat(displaced)).ino);
+  expect(await Bun.file(join(displaced, 'old.js')).text()).toBe('old-adapter');
+  expect(await Bun.file(join(displaced, '.aio-proxy-managed.json')).exists()).toBe(true);
+});
+
 test('remove preserves a replaced managed directory', async () => {
   const f = await removeFixture('pi');
   const displaced = join(f.root, 'displaced-managed');

@@ -13,6 +13,7 @@ import {
   captureIdentity,
   inspectPath,
   isFsCode,
+  matchesIdentity,
   relocateIdentity,
   removeOwned,
   restoreOwned,
@@ -171,6 +172,27 @@ const reserveSibling = async (hostRoot: string, prefix: string): Promise<string>
   return reserved;
 };
 
+const reserveVacantManagedDir = async (path: string): Promise<FsIdentity> => {
+  try {
+    await mkdir(path, { mode: 0o700 });
+  } catch (error) {
+    if (isFsCode(error, 'EEXIST')) throw new Error('managed path exists');
+    throw error;
+  }
+  return captureIdentity(path);
+};
+
+const promoteStagedDir = async (staging: FsIdentity, dest: string): Promise<void> => {
+  const reservation = await reserveVacantManagedDir(dest);
+  try {
+    await rename(staging.path, dest);
+  } catch (error) {
+    const current = await inspectPath(dest);
+    if (current !== undefined && matchesIdentity(reservation, current)) await rmdir(dest);
+    throw error;
+  }
+};
+
 const runStagedInstall = async (
   input: ManagedInstallInput,
   installationId: string,
@@ -214,7 +236,7 @@ const runStagedInstall = async (
       await copyValidState(reserved, stagingDir, location.target);
     }
 
-    await rename(staging.path, location.managedDir);
+    await promoteStagedDir(staging, location.managedDir);
     staging = relocateIdentity(staging, location.managedDir);
     promoted = true;
     await testDeps?.failpoint?.('directory_swapped');

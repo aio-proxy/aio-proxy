@@ -273,3 +273,12 @@ test('the real buildProgram registers public Agent commands and keeps the child 
   expect(help).toContain('agent');
   expect(help).not.toContain('__agent-post-upgrade');
 });
+
+test('agent configure and remove help render the supported target grammar', () => {
+  const program = buildProgram();
+  const agent = program.commands.find((command) => command.name() === 'agent');
+  const help = agent?.helpInformation() ?? '';
+  expect(help).toContain('configure <opencode|pi|omp>');
+  expect(help).toContain('remove <opencode|pi|omp>');
+  expect(help).not.toContain('<target>');
+});

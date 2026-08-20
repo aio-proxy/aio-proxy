@@ -1,12 +1,13 @@
 import { afterEach, expect, test } from 'bun:test';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { stat } from 'node:fs/promises';
+import { readdir, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 
 import type { AgentCatalogV1, AgentManagedMarker, AgentManagedStateV1 } from '@aio-proxy/types';
 
-import { writeManagedState } from './managed-state';
+import * as managedState from './index';
+import { writeManagedState, writeManagedStateForTest } from './managed-state';
 
 const CATALOG: AgentCatalogV1 = {
   schema_version: 1,
@@ -61,6 +62,21 @@ function runtimeFixture(options: { readonly lkg?: AgentCatalogV1 } = {}) {
     readState: (): AgentManagedStateV1 => JSON.parse(readFileSync(statePath, 'utf8')),
   };
 }
+
+test('write/sync/close failure removes the invocation temp file and keeps prior state', async () => {
+  const f = runtimeFixture({ lkg: CATALOG });
+  const before = await Bun.file(f.statePath).bytes();
+  expect('writeManagedStateForTest' in managedState).toBe(false);
+  await expect(
+    writeManagedStateForTest(f.statePath, freshState(CATALOG, 2_000), {
+      writeFile: async () => {
+        throw new Error('injected write failure');
+      },
+    }),
+  ).rejects.toThrow('injected write failure');
+  expect((await readdir(dirname(f.statePath))).filter((name) => name.endsWith('.tmp'))).toEqual([]);
+  expect(await Bun.file(f.statePath).bytes()).toEqual(before);
+});
 
 test('atomic state failure leaves the prior bytes and successful replacement is private', async () => {
   const f = runtimeFixture({ lkg: CATALOG });

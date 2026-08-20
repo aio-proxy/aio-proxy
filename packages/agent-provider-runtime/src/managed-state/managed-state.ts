@@ -1,4 +1,4 @@
-import { open, readFile, rename as nodeRename, rm } from 'node:fs/promises';
+import { open, readFile, rename as nodeRename, rm, type FileHandle } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -63,22 +63,34 @@ export async function readLastKnownCatalog(
   return state?.lkg?.agent === expectedTarget ? state.lkg : null;
 }
 
-export async function writeManagedState(
+type WriteManagedStatePrivateDeps = {
+  readonly rename?: typeof nodeRename;
+  readonly writeFile?: (handle: FileHandle, data: string) => Promise<void>;
+};
+
+async function writeManagedStateInternal(
   statePath: string,
   state: AgentManagedStateV1,
-  deps: { readonly rename?: typeof nodeRename } = {},
+  deps: WriteManagedStatePrivateDeps = {},
 ): Promise<void> {
   const parsed = AgentManagedStateV1Schema.parse(state);
   const parent = dirname(statePath);
   const temporary = join(parent, `.${basename(statePath)}.${crypto.randomUUID()}.tmp`);
   const handle = await open(temporary, 'wx', 0o600);
+  let primary: unknown;
   try {
-    await handle.writeFile(`${JSON.stringify(parsed)}\n`);
-    await handle.sync();
-  } finally {
-    await handle.close();
-  }
-  try {
+    try {
+      await (deps.writeFile ?? ((file, data) => file.writeFile(data)))(handle, `${JSON.stringify(parsed)}\n`);
+      await handle.sync();
+    } catch (error) {
+      primary = error;
+    }
+    try {
+      await handle.close();
+    } catch (error) {
+      primary ??= error;
+    }
+    if (primary !== undefined) throw primary;
     await (deps.rename ?? nodeRename)(temporary, statePath);
     const directory = await open(parent, 'r');
     try {
@@ -89,4 +101,20 @@ export async function writeManagedState(
   } finally {
     await rm(temporary, { force: true });
   }
+}
+
+export async function writeManagedState(
+  statePath: string,
+  state: AgentManagedStateV1,
+  deps: { readonly rename?: typeof nodeRename } = {},
+): Promise<void> {
+  return writeManagedStateInternal(statePath, state, deps);
+}
+
+export async function writeManagedStateForTest(
+  statePath: string,
+  state: AgentManagedStateV1,
+  deps: WriteManagedStatePrivateDeps,
+): Promise<void> {
+  return writeManagedStateInternal(statePath, state, deps);
 }

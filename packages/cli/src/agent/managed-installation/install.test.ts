@@ -86,24 +86,38 @@ test('a target replaced while staging is fixed as backup and rejected before pro
   expect(await Bun.file(join(f.location.managedDir, 'index.js')).exists()).toBe(false);
 });
 
-test.each(['file', 'symlink'] as const)('a concurrently created managed-path %s is preserved', async (kind) => {
-  const f = await installFixture('pi');
-  const foreign = join(f.root, 'foreign');
-  await expect(
-    installManagedIntegration(f.input, {
-      failpoint: async (point) => {
-        if (point !== 'staged') return;
-        if (kind === 'file') await writeFile(f.location.managedDir, 'foreign file');
-        else {
-          await mkdir(foreign);
-          await symlink(foreign, f.location.managedDir, 'dir');
-        }
-      },
-    }),
-  ).rejects.toThrow();
-  if (kind === 'file') expect(await Bun.file(f.location.managedDir).text()).toBe('foreign file');
-  else expect((await lstat(f.location.managedDir)).isSymbolicLink()).toBe(true);
-});
+test.each(['file', 'symlink', 'directory'] as const)(
+  'a concurrently created managed-path %s is preserved',
+  async (kind) => {
+    const f = await installFixture('pi');
+    const foreign = join(f.root, 'foreign');
+    let directoryIno: number | undefined;
+    await expect(
+      installManagedIntegration(f.input, {
+        failpoint: async (point) => {
+          if (point !== 'staged') return;
+          if (kind === 'file') await writeFile(f.location.managedDir, 'foreign file');
+          else if (kind === 'symlink') {
+            await mkdir(foreign);
+            await symlink(foreign, f.location.managedDir, 'dir');
+          } else {
+            await mkdir(f.location.managedDir);
+            directoryIno = (await lstat(f.location.managedDir)).ino;
+          }
+        },
+      }),
+    ).rejects.toThrow();
+    if (kind === 'file') expect(await Bun.file(f.location.managedDir).text()).toBe('foreign file');
+    else if (kind === 'symlink') expect((await lstat(f.location.managedDir)).isSymbolicLink()).toBe(true);
+    else {
+      const stat = await lstat(f.location.managedDir);
+      expect(stat.isDirectory()).toBe(true);
+      expect(stat.ino).toBe(directoryIno);
+      expect(await Bun.file(join(f.location.managedDir, 'index.js')).exists()).toBe(false);
+      expect(await Bun.file(join(f.location.managedDir, '.aio-proxy-managed.json')).exists()).toBe(false);
+    }
+  },
+);
 
 test.each(['file', 'symlink'] as const)('a concurrently created OpenCode entry %s is never replaced', async (kind) => {
   const f = await installFixture('opencode');
