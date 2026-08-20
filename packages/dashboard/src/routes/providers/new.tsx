@@ -14,7 +14,7 @@ const NewProviderPage: React.FC = () => {
       mode={ProviderFormMode.Create}
       kind={kind}
       onKindChange={setKind}
-      initial={{ enabled: true }}
+      initial={{ enabled: true, weight: 0 }}
       sessionId={session}
       onSessionIdChange={(next) =>
         void navigate({ search: next === undefined ? {} : { session: next }, replace: true })
