@@ -6,32 +6,42 @@ type ApiKeyEntry = { readonly key: string };
 
 export const requireApiKey =
   (apiKeys: () => readonly ApiKeyEntry[]): MiddlewareHandler =>
-  async (context, next) => {
-    const configuredKeys = apiKeys();
-    if (configuredKeys.length === 0) {
-      await next();
-      return;
-    }
+  async (context, next) =>
+    authenticateStaticOrAnonymous(context, next, apiKeys());
 
-    const candidates = [
-      bearerToken(context.req.header('authorization')),
-      context.req.header('x-api-key'),
-      context.req.header('x-goog-api-key'),
-      context.req.query('key'),
-      context.req.query('auth_token'),
-    ];
-    if (!candidates.some((candidate) => candidate !== undefined && matchesConfiguredKey(candidate, configuredKeys))) {
-      return authenticationError(context);
-    }
-
-    context.req.raw.headers.delete('authorization');
-    context.req.raw.headers.delete('x-api-key');
-    context.req.raw.headers.delete('x-goog-api-key');
-    context.req.raw = withoutCallerQuery(context.req.raw);
+export async function authenticateStaticOrAnonymous(
+  context: Context,
+  next: () => Promise<void>,
+  configuredKeys: readonly ApiKeyEntry[],
+): Promise<Response | void> {
+  if (configuredKeys.length === 0) {
     await next();
-  };
+    return;
+  }
 
-function bearerToken(value: string | undefined): string | undefined {
+  const candidates = [
+    bearerToken(context.req.header('authorization')),
+    context.req.header('x-api-key'),
+    context.req.header('x-goog-api-key'),
+    context.req.query('key'),
+    context.req.query('auth_token'),
+  ];
+  if (!candidates.some((candidate) => candidate !== undefined && matchesConfiguredKey(candidate, configuredKeys))) {
+    return authenticationError(context);
+  }
+
+  stripCallerCredentials(context);
+  await next();
+}
+
+export function stripCallerCredentials(context: Context): void {
+  context.req.raw.headers.delete('authorization');
+  context.req.raw.headers.delete('x-api-key');
+  context.req.raw.headers.delete('x-goog-api-key');
+  context.req.raw = withoutCallerQuery(context.req.raw);
+}
+
+export function bearerToken(value: string | undefined): string | undefined {
   const match = /^Bearer\s+(.+)$/iu.exec(value ?? '');
   return match?.[1];
 }
@@ -54,7 +64,7 @@ function matchesConfiguredKey(candidate: string, configuredKeys: readonly ApiKey
   });
 }
 
-function authenticationError(context: Context): Response {
+export function authenticationError(context: Context): Response {
   if (context.req.path.startsWith('/v1/messages')) {
     return context.json({ type: 'error', error: { type: 'authentication_error', message: 'Invalid API key' } }, 401);
   }

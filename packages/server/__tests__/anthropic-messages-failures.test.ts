@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import { AiSdkProviderError, type AiSdkProviderInstance } from '@aio-proxy/core';
-import { createServer } from '@aio-proxy/server';
 import type { TextStreamPart, ToolSet } from 'ai';
+
+import { createServer } from '#server-test-lifecycle';
 
 import { AbortStreamError, createTempHomes, messagesRequest, recorded } from './anthropic-messages.test-support';
 

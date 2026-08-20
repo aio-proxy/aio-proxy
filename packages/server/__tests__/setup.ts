@@ -1,11 +1,15 @@
+import { afterEach } from 'bun:test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+
+import { cleanupServerTestLifecycle } from '#server-test-lifecycle';
 
 const testHome = mkdtempSync(join(tmpdir(), 'aio-proxy-server-tests-'));
 
 process.env.AIO_PROXY_HOME = testHome;
 process.on('exit', () => rmSync(testHome, { force: true, recursive: true }));
+afterEach(cleanupServerTestLifecycle);
 
 // The models.dev catalog resolves through fileCacheStorage + a process-wide LRU
 // before it fetches https://models.dev/api.json. Server tests seed that file

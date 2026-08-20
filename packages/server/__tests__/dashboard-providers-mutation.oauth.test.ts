@@ -7,9 +7,10 @@ import { createPluginRepository } from '@aio-proxy/core';
 import { openDb } from '@aio-proxy/core/db';
 import { ConfigSchema } from '@aio-proxy/types';
 
+import { createServerState } from '#server-test-lifecycle';
+
 import { disabledDashboardAuthentication } from '../src/dashboard-auth/test-support';
 import { createDashboardRoutes } from '../src/dashboard-routes/config';
-import { createServerState } from '../src/server-state';
 import { seedOAuthAccount, waitUntil } from './dashboard-providers-mutation.oauth.test-support';
 
 describe('dashboard OAuth provider deletion', () => {

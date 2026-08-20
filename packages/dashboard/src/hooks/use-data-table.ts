@@ -7,6 +7,7 @@ import {
   createPaginatedRowModel,
   createSortedRowModel,
   globalFilteringFeature,
+  metaHelper,
   type PaginationState,
   type RowData,
   rowExpandingFeature,
@@ -19,6 +20,10 @@ import {
 import { useState } from 'react';
 
 export const dataTableFeatures = tableFeatures({
+  columnMeta: metaHelper<{
+    readonly className?: string;
+    readonly label?: () => string;
+  }>(),
   columnFilteringFeature,
   columnVisibilityFeature,
   globalFilteringFeature,

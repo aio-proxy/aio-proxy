@@ -16,11 +16,11 @@ import {
 } from './test-support';
 
 type CompatibleTestDescriptor<Options> = Omit<PluginDescriptor<Options>, 'apiVersion'> & {
-  readonly apiVersion: 2;
+  readonly apiVersion: 1;
 };
 
-test('setup receives a redacting plugin logger for API v2', async () => {
-  for (const apiVersion of [2] as const) {
+test('setup receives a redacting plugin logger for API v1', async () => {
+  for (const apiVersion of [1] as const) {
     const packageName = `@example/logger-v${apiVersion}`;
     const secret = `private-v${apiVersion}`;
     const records: { readonly category: readonly string[]; readonly payload: string }[] = [];
@@ -85,7 +85,7 @@ test('setup receives a redacting plugin logger for API v2', async () => {
   }
 });
 
-test('default plugin logger redacts setup logs for API v2', async () => {
+test('default plugin logger redacts setup logs for API v1', async () => {
   const calls: unknown[][] = [];
   const info = spyOn(console, 'info').mockImplementation((...args) => {
     calls.push(args);
@@ -93,7 +93,7 @@ test('default plugin logger redacts setup logs for API v2', async () => {
 
   try {
     await configureLogging({ dir: '/unused/when-disabled' });
-    for (const apiVersion of [2] as const) {
+    for (const apiVersion of [1] as const) {
       const packageName = `@example/default-logger-v${apiVersion}`;
       const secret = `production-private-v${apiVersion}`;
       const descriptor: CompatibleTestDescriptor<{ token: string }> = {
@@ -135,9 +135,9 @@ test('default plugin logger redacts setup logs for API v2', async () => {
     expect(pluginCalls).toHaveLength(1);
     expect(captured).toContain('aio-proxy');
     expect(captured).toContain('plugin');
-    expect(captured).toContain('@example/default-logger-v2');
+    expect(captured).toContain('@example/default-logger-v1');
     expect(captured).toContain('[REDACTED]');
-    expect(captured).not.toContain('production-private-v2');
+    expect(captured).not.toContain('production-private-v1');
   } finally {
     info.mockRestore();
   }

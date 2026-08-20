@@ -1,7 +1,8 @@
 import { expect, test } from 'bun:test';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const repoRoot = join(import.meta.dir, '../../..');
 
@@ -68,5 +69,73 @@ test('compiled platform package runs outside the workspace and includes its thir
     rmSync(home, { recursive: true, force: true });
     rmSync(cwd, { recursive: true, force: true });
     rmSync(packDir, { recursive: true, force: true });
+  }
+}, 120_000);
+
+test('compiled binary can read embedded agent adapter files after source fixtures are removed', async () => {
+  const work = mkdtempSync(join(tmpdir(), 'aio-proxy-agent-embed-'));
+  const outfile = join(work, 'read-agent-assets');
+  const fixtures = {
+    opencode: join(work, 'opencode.js'),
+    officialPi: join(work, 'official-pi.js'),
+    omp: join(work, 'omp.js'),
+  } as const;
+  const sources = {
+    opencode: fileURLToPath(import.meta.resolve('@aio-proxy/opencode-provider/artifact')),
+    officialPi: fileURLToPath(import.meta.resolve('@aio-proxy/pi-provider/official-pi-artifact')),
+    omp: fileURLToPath(import.meta.resolve('@aio-proxy/pi-provider/omp-artifact')),
+  } as const;
+  const expected = {
+    opencode: '',
+    officialPi: '',
+    omp: '',
+  };
+  for (const name of Object.keys(fixtures) as (keyof typeof fixtures)[]) {
+    const bytes = await Bun.file(sources[name]).bytes();
+    writeFileSync(fixtures[name], bytes);
+    expected[name] = new Bun.CryptoHasher('sha256').update(bytes).digest('hex');
+  }
+  const entrypoint = join(import.meta.dir, 'read-agent-assets.gen.ts');
+  try {
+    const build = await Bun.build({
+      entrypoints: [entrypoint],
+      files: {
+        [entrypoint]: [
+          `import opencodeProvider from ${JSON.stringify(fixtures.opencode)} with { type: "file" };`,
+          `import officialPiProvider from ${JSON.stringify(fixtures.officialPi)} with { type: "file" };`,
+          `import ompProvider from ${JSON.stringify(fixtures.omp)} with { type: "file" };`,
+          'const paths = { opencode: opencodeProvider, officialPi: officialPiProvider, omp: ompProvider };',
+          'const out = {};',
+          'for (const [name, path] of Object.entries(paths)) {',
+          '  const file = Bun.file(path);',
+          '  if (!(await file.exists())) throw new Error(`missing ${path}`);',
+          '  out[name] = new Bun.CryptoHasher("sha256").update(await file.bytes()).digest("hex");',
+          '}',
+          'console.log(JSON.stringify(out));',
+          '',
+        ].join('\n'),
+      },
+      compile: { outfile },
+    });
+    if (!build.success) throw new Error(build.logs.map(String).join('\n') || 'compile failed');
+
+    for (const path of Object.values(fixtures)) rmSync(path);
+    expect(existsSync(fixtures.opencode)).toBe(false);
+    expect(existsSync(fixtures.officialPi)).toBe(false);
+    expect(existsSync(fixtures.omp)).toBe(false);
+    expect(existsSync(sources.opencode)).toBe(true);
+    expect(existsSync(sources.officialPi)).toBe(true);
+    expect(existsSync(sources.omp)).toBe(true);
+
+    const result = Bun.spawnSync([outfile], {
+      cwd: work,
+      stderr: 'pipe',
+      stdout: 'pipe',
+    });
+    expect(result.stderr.toString()).toBe('');
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(result.stdout.toString())).toEqual(expected);
+  } finally {
+    rmSync(work, { recursive: true, force: true });
   }
 }, 120_000);

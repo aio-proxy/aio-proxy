@@ -20,7 +20,7 @@ export const ProviderValidateStep: React.FC<ProviderValidateStepProps> = ({ form
   const selectedModel = configuredModel !== undefined && models.includes(configuredModel) ? configuredModel : models[0];
   const testMutation = useProviderTestMutation(form, persistedProviderId);
   const tested = testMutation.data;
-  let result: typeof tested.result | null = null;
+  let result: NonNullable<typeof tested>['result'] | null = null;
   if (tested !== undefined && tested.model === selectedModel) result = tested.result;
   else if (testMutation.isError && testMutation.variables === selectedModel) {
     result = { ok: false, error: { code: 'test_request_failed', recoverable: true } };

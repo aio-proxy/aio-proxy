@@ -5,9 +5,11 @@ import { join } from 'node:path';
 
 import { parseRuntimeConfig } from '@aio-proxy/core';
 
+import { createServerState } from '#server-test-lifecycle';
+
 import { ConfigReloadRejectedError } from '../../config-store';
 import { disabledDashboardAuthentication } from '../../dashboard-auth/test-support';
-import { createServerState, type ServerState } from '../../server-state';
+import type { ServerState } from '../../server-state';
 import { createDashboardRoutes } from '../config';
 
 const authoredProvider = {

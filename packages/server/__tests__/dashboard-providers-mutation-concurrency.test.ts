@@ -1,10 +1,18 @@
-import { afterAll, describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
 import { createDashboardProviderFixture } from './dashboard-providers-mutation.test-support';
 
-const { cleanup, onDisk, req } = await createDashboardProviderFixture('aio-dashboard-provider-concurrency-');
+let cleanup: () => void;
+let onDisk: Awaited<ReturnType<typeof createDashboardProviderFixture>>['onDisk'];
+let req: Awaited<ReturnType<typeof createDashboardProviderFixture>>['req'];
 
-afterAll(cleanup);
+beforeEach(async () => {
+  const fixture = await createDashboardProviderFixture('aio-dashboard-provider-concurrency-');
+  cleanup = fixture.cleanup;
+  onDisk = fixture.onDisk;
+  req = fixture.req;
+});
+afterEach(() => cleanup());
 
 describe('dashboard provider CRUD', () => {
   test('27. concurrent POST requests for one id allow exactly one create', async () => {

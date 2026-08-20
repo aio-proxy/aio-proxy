@@ -4,9 +4,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import type { AppType } from '@aio-proxy/server';
-import { createServer as createBaseServer, serverDefaults } from '@aio-proxy/server';
+import { serverDefaults } from '@aio-proxy/server';
 import { ConfigSchema } from '@aio-proxy/types';
 import { hc } from 'hono/client';
+
+import { createServer as createBaseServer } from '#server-test-lifecycle';
 
 import { config } from '../../__tests__/server.test-support';
 import { loopbackServer } from '../dashboard-auth/test-support';

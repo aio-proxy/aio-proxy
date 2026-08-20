@@ -3,6 +3,9 @@
   "version": "0.8.0",
   "private": true,
   "type": "module",
+  "imports": {
+    "#server-test-lifecycle": "./__tests__/server-test-lifecycle.ts"
+  },
   "exports": {
     ".": "./src/index.ts"
   },

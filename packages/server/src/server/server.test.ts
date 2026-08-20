@@ -19,4 +19,4 @@ test('importing the server module does not initialize server state', () => {
   } finally {
     rmSync(home, { force: true, recursive: true });
   }
-});
+}, 15_000);

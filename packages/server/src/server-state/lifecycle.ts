@@ -7,7 +7,7 @@ import type {
   Router,
 } from '@aio-proxy/core';
 import { createProxyFetch, OAuthCapabilityUnavailableError, parseRuntimeConfig } from '@aio-proxy/core';
-import type { OpenDbHandle } from '@aio-proxy/core/db';
+import type { DatabaseOwnershipLock, OpenDbHandle } from '@aio-proxy/core/db';
 import type { Config } from '@aio-proxy/types';
 
 import type { AccountRemovalCoordinator } from '../account-removal';
@@ -114,6 +114,7 @@ export function reloadNow(
 
 export type ServerStateParts = Pick<
   ServerState,
+  | 'agentIdentity'
   | 'configStore'
   | 'events'
   | 'logicalSessionStore'
@@ -134,22 +135,35 @@ export type ServerStateParts = Pick<
   readonly cooldown: ProviderCooldownStore;
   readonly watcher: { readonly close: () => void } | undefined;
   readonly closeRecovery: () => void;
+  readonly databaseOwnership: DatabaseOwnershipLock;
 };
 export function assembleServerState(runtime: ServerRuntime, parts: ServerStateParts): ServerState {
   const { manager, dbHandle } = parts;
   const { events, repository, options, logger } = runtime;
   return {
+    agentIdentity: parts.agentIdentity,
     acquireProviderSnapshot: manager.acquire,
     cooldown: parts.cooldown,
     close() {
       if (runtime.closed) return;
       runtime.closed = true;
-      parts.watcher?.close();
-      runtime.scheduler.close();
-      parts.closeRecovery();
-      parts.oauthLoginSessions.close();
-      events.close();
-      dbHandle.close();
+      const failures: unknown[] = [];
+      for (const close of [
+        () => parts.watcher?.close(),
+        () => runtime.scheduler.close(),
+        parts.closeRecovery,
+        () => parts.oauthLoginSessions.close(),
+        () => events.close(),
+        () => dbHandle.close(),
+        parts.databaseOwnership.release,
+      ]) {
+        try {
+          close();
+        } catch (error) {
+          failures.push(error);
+        }
+      }
+      if (failures[0] !== undefined) throw failures[0];
     },
     configPath: options.configPath,
     configStore: parts.configStore,
@@ -186,6 +200,7 @@ export async function startRecovery(
     readonly recoveryScheduler: Parameters<typeof createRecovery>[0]['scheduler'];
     readonly reconciliationRetryMs: number;
   },
+  registerStartupCleanup: (cleanup: () => void) => void,
 ): Promise<ConfigStore> {
   const recovery = createRecovery({
     configFile: runtime.configFile,
@@ -200,6 +215,7 @@ export async function startRecovery(
     reloadNow: (operations) => reloadNow(runtime, operations),
   });
   runtime.recovery = recovery;
+  registerStartupCleanup(() => recovery.close());
   await recovery.start();
   return createConfigStore({
     getConfigPath: () => runtime.options.configPath,

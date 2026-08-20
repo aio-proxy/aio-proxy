@@ -27,7 +27,7 @@ The public API should retain the ergonomics of the standard Fetch API. Plugins s
 
 ## Non-goals
 
-- Preserve compatibility with plugins built against the current `apiVersion: 2` or dual-fetch `RuntimeContext` contract. No third-party plugins currently depend on that contract.
+- Support descriptors authored as `apiVersion: 2`, or plugins built against the dual-fetch `RuntimeContext` contract. No third-party plugins depend on that rejected contract.
 - Infer request purpose from URLs, headers, or provider attempt context.
 - Apply provider transforms to OAuth refresh, account, catalog, quota, or auxiliary repair requests.
 - Add additional traffic classes beyond `model` and `control`.

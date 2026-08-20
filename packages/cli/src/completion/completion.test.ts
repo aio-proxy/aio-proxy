@@ -21,6 +21,14 @@ test('rejects an unsupported shell with an unrecoverable exit', () => {
   expect(() => completionCommand('powershell')).toThrow(CliExit);
 });
 
+test('top-level completion includes the public agent command for bash, zsh, and fish', () => {
+  for (const shell of ['bash', 'zsh', 'fish'] as const) {
+    const lines: string[] = [];
+    completionCommand(shell, (line) => lines.push(line));
+    expect(lines.join('\n')).toContain('agent');
+  }
+});
+
 test('rejects an inherited Object property as a shell', () => {
   // Regression: `shell in SCRIPTS` walked the prototype chain, so `toString`
   // printed a prototype value and exited 0. An own-property check must reject it.

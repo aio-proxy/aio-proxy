@@ -8,8 +8,9 @@ import { openDb } from '@aio-proxy/core/db';
 import { definePlugin, type ModelCatalog, type OAuthAdapter, type RawResolver, zod } from '@aio-proxy/plugin-sdk';
 import { ConfigSchema, ProviderProtocol } from '@aio-proxy/types';
 
+import { createServerState } from '#server-test-lifecycle';
+
 import { handleProtocolRequest } from '../src/routes/pipeline';
-import { createServerState } from '../src/server-state';
 
 const antigravityPackage = '@aio-proxy/plugin-google-antigravity';
 

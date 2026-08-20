@@ -1,0 +1,43 @@
+{
+  "name": "@aio-proxy/pi-provider",
+  "version": "0.8.0",
+  "private": true,
+  "type": "module",
+  "files": [
+    "dist",
+    "package.json"
+  ],
+  "exports": {
+    "./official-pi-artifact": "./dist/official-pi.js",
+    "./omp-artifact": "./dist/omp.js"
+  },
+  "pi": {
+    "extensions": [
+      "./dist/official-pi.js"
+    ]
+  },
+  "omp": {
+    "extensions": [
+      "./dist/omp.js"
+    ]
+  },
+  "scripts": {
+    "build": "rslib --lib pi-family",
+    "test": "bun run test:unit",
+    "test:unit": "bun test src",
+    "test:artifact": "bun test ./artifact.test.ts",
+    "test:compat": "bun scripts/compat-host.ts"
+  },
+  "dependencies": {
+    "@aio-proxy/agent-provider-runtime": "workspace:*",
+    "@aio-proxy/types": "workspace:*"
+  },
+  "devDependencies": {
+    "@aio-proxy/infra": "workspace:*",
+    "@earendil-works/pi-coding-agent": "0.84.2",
+    "@oh-my-pi/pi-coding-agent": "17.3.7",
+    "@rslib/core": "catalog:",
+    "@types/bun": "catalog:",
+    "typescript": "catalog:"
+  }
+}

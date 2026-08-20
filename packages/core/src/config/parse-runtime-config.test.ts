@@ -46,6 +46,34 @@ test('degrades a provider whose template resolves to an invalid base URL', () =>
   ]);
 });
 
+test('accepts a digit server.port expanded from an environment template', () => {
+  const config = parseRuntimeConfig(
+    {
+      server: { host: '{{env.AGENT_BIND_HOST}}', port: '{{env.AGENT_BIND_PORT}}' },
+      providers: {},
+    },
+    { AGENT_BIND_HOST: '127.0.0.9', AGENT_BIND_PORT: '9417' },
+  );
+
+  expect(config.server).toMatchObject({ host: '127.0.0.9', port: 9417 });
+});
+
+test('does not expand nested environment templates a second time', () => {
+  const config = parseRuntimeConfig(
+    { server: { host: '{{env.OUTER_HOST}}' }, providers: {} },
+    { OUTER_HOST: '{{env.INNER_HOST}}', INNER_HOST: '127.0.0.1' },
+  );
+
+  expect(config.server.host).toBe('{{env.INNER_HOST}}');
+});
+
+test.each(['not-a-port', '0', '65536', '{{env.INNER}}'] as const)(
+  'rejects expanded server.port %s instead of defaulting',
+  (port) => {
+    expect(() => parseRuntimeConfig({ server: { port: '{{env.PORT}}' }, providers: {} }, { PORT: port })).toThrow();
+  },
+);
+
 test('leaves the raw config record byte-for-byte unchanged', () => {
   const raw = {
     proxy: '{{env.PROXY_URL}}',

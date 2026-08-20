@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
 import { AiSdkProviderError, type AiSdkProviderInstance } from '@aio-proxy/core';
-import { createServer } from '@aio-proxy/server';
+
+import { createServer } from '#server-test-lifecycle';
 
 import {
   AbortStreamError,

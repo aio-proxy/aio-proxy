@@ -1,10 +1,14 @@
-import { afterAll, describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
 import { createDashboardProviderFixture } from './dashboard-providers-mutation.test-support';
 
 const decoder = new TextDecoder();
-const fixture = await createDashboardProviderFixture('aio-dashboard-provider-basic-lifecycle-');
-const { cleanup, onDisk, req, requestPathless, requestPathlessProviders } = fixture;
+let fixture: Awaited<ReturnType<typeof createDashboardProviderFixture>>;
+let cleanup: () => void;
+let onDisk: Awaited<ReturnType<typeof createDashboardProviderFixture>>['onDisk'];
+let req: Awaited<ReturnType<typeof createDashboardProviderFixture>>['req'];
+let requestPathless: Awaited<ReturnType<typeof createDashboardProviderFixture>>['requestPathless'];
+let requestPathlessProviders: Awaited<ReturnType<typeof createDashboardProviderFixture>>['requestPathlessProviders'];
 
 async function readNextEventText(stream: Response, timeoutMs = 2_000): Promise<string> {
   const reader = stream.body?.getReader();
@@ -26,7 +30,15 @@ async function readNextEventText(stream: Response, timeoutMs = 2_000): Promise<s
   }
 }
 
-afterAll(cleanup);
+beforeEach(async () => {
+  fixture = await createDashboardProviderFixture('aio-dashboard-provider-basic-lifecycle-');
+  cleanup = fixture.cleanup;
+  onDisk = fixture.onDisk;
+  req = fixture.req;
+  requestPathless = fixture.requestPathless;
+  requestPathlessProviders = fixture.requestPathlessProviders;
+});
+afterEach(() => cleanup());
 
 describe('dashboard provider CRUD', () => {
   test('10. PUT nonexistent provider returns 404', async () => {

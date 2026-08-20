@@ -1,10 +1,17 @@
-import { parseRuntimeConfig } from '@aio-proxy/core';
+import { canonicalizeLoopbackHost, parseRuntimeConfig } from '@aio-proxy/core';
 import { currentRequestId, withRequestId } from '@aio-proxy/logger';
+import { AgentCatalogQuerySchema } from '@aio-proxy/types';
 import { honoLogger } from '@logtape/hono';
 import type { Context, MiddlewareHandler } from 'hono';
 import { Hono } from 'hono';
 import { bearerAuth } from 'hono/bearer-auth';
 
+import {
+  createAgentAdminRoutes,
+  createAgentApprovalRoutes,
+  createAgentOAuthRoutes,
+  createDeviceChallengeStore,
+} from '../agent-authorization';
 import type { DashboardAssets } from '../dashboard-assets';
 import {
   createDashboardAuthentication,
@@ -24,9 +31,10 @@ import type { ServerLogSink } from '../server-log';
 import { logServerEvent, serverErrorType } from '../server-log';
 import { createServerState, type ServerState } from '../server-state';
 import { defaultLogger } from '../server-state/logging';
-import type { InternalServerStateOptions } from '../server-state/types';
-import { requireApiKey } from './api-key-auth';
-import { codexClientModels, listModels } from './list-models/index';
+import type { InternalServerStateOptions, ServerStateTestHooks } from '../server-state/types';
+import { requireModelAuthentication, type AgentEnv } from './agent-auth';
+import { authenticationError } from './api-key-auth/api-key-auth';
+import { agentCatalog, codexClientModels, listModels } from './list-models/index';
 
 export const serverDefaults = {
   host: '127.0.0.1',
@@ -37,8 +45,10 @@ const csrfMethods = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 const canonicalLoopbackOriginHosts = new Set(['localhost', '127.0.0.1', '[::1]']);
 
 const loopbackOriginHostname = (host: string): string => {
-  if (host === 'localhost' || host.startsWith('127.')) return host;
-  return host === '::1' ? '[::1]' : serverDefaults.host;
+  if (host === '::' || host === '[::]') return '[::1]';
+  const canonical = canonicalizeLoopbackHost(host);
+  if (canonical === undefined) return serverDefaults.host;
+  return canonical === '::1' ? '[::1]' : canonical;
 };
 
 const hasLoopbackOrigin = (context: Context, expectedHost: string, expectedPort: number): boolean => {
@@ -117,7 +127,70 @@ const mountAdminControlPlane = (
   });
 };
 
+type AgentCatalogQuery = ReturnType<typeof AgentCatalogQuerySchema.parse>;
+type ModelsEnv = {
+  Variables: AgentEnv['Variables'] & {
+    agentCatalogQuery: AgentCatalogQuery | null;
+  };
+};
+
+const agentQueryFields = ['agent', 'adapter_version', 'schema_version'] as const;
+
+const parseAgentCatalogNegotiation: MiddlewareHandler<ModelsEnv> = async (context, next) => {
+  const raw = Object.fromEntries(
+    agentQueryFields.flatMap((field) => {
+      const value = context.req.query(field);
+      return value === undefined ? [] : ([[field, value]] as const);
+    }),
+  );
+  if (Object.keys(raw).length === 0) {
+    context.set('agentCatalogQuery', null);
+    await next();
+    return;
+  }
+  if (raw['schema_version'] !== undefined && raw['schema_version'] !== '1') {
+    return context.json(
+      {
+        error: {
+          code: 'unsupported_schema',
+          message: `Agent catalog schema ${raw['schema_version']} is not supported.`,
+        },
+        supported_schema_versions: [1],
+      },
+      400,
+    );
+  }
+  const parsed = AgentCatalogQuerySchema.safeParse(raw);
+  if (!parsed.success) {
+    return context.json({ error: { code: 'invalid_request', message: 'Invalid Agent catalog negotiation.' } }, 400);
+  }
+  context.set('agentCatalogQuery', parsed.data);
+  await next();
+};
+
+const listModelsHandler =
+  (state: ServerState): MiddlewareHandler<ModelsEnv> =>
+  async (context) => {
+    const query = context.get('agentCatalogQuery');
+    const grant = context.get('agentGrant');
+    if (query !== null && query !== undefined) {
+      if (grant === undefined) return authenticationError(context);
+      if (grant.target !== query.agent) {
+        return context.json({ error: { code: 'forbidden', message: 'Agent catalog target mismatch.' } }, 403);
+      }
+      return context.json(await agentCatalog(state, query.agent));
+    }
+    if (grant !== undefined) {
+      return context.json({ error: { code: 'invalid_request', message: 'Invalid Agent catalog negotiation.' } }, 400);
+    }
+    if (context.req.query('client_version') !== undefined) {
+      return context.json(await codexClientModels(state, { signal: context.req.raw.signal }));
+    }
+    return context.json(await listModels(state));
+  };
+
 export type CreateServerOptions = {
+  readonly __test?: ServerStateTestHooks & { readonly createRoutes?: typeof createRoutes };
   readonly config: unknown;
   readonly configPath?: string;
   readonly dbHome?: string;
@@ -157,17 +230,18 @@ const createRoutes = (
       skip: (context) =>
         context.req.path === '/health' ||
         context.req.path === '/dashboard' ||
-        context.req.path.startsWith('/dashboard/'),
+        context.req.path.startsWith('/dashboard/') ||
+        context.req.path === '/oauth/device/code' ||
+        context.req.path === '/oauth/token',
     }),
   );
-  app.use(
-    '/v1/*',
-    requireApiKey(() => state.currentConfig().server.apiKeys),
-  );
-  app.use(
-    '/v1beta/*',
-    requireApiKey(() => state.currentConfig().server.apiKeys),
-  );
+  const modelAuthentication = requireModelAuthentication({
+    apiKeys: () => state.currentConfig().server.apiKeys,
+    authenticateAgent: (token) => state.agentIdentity.authenticateAccessToken(token),
+  });
+  app.get('/v1/models', parseAgentCatalogNegotiation, modelAuthentication, listModelsHandler(state));
+  app.use('/v1/*', modelAuthentication);
+  app.use('/v1beta/*', modelAuthentication);
   app.get('/health', (context) =>
     context.json({
       status: 'ok',
@@ -175,12 +249,6 @@ const createRoutes = (
       version,
     }),
   );
-  app.get('/v1/models', async (context) => {
-    if (context.req.query('client_version') !== undefined) {
-      return context.json(await codexClientModels(state, { signal: context.req.raw.signal }));
-    }
-    return context.json(await listModels(state));
-  });
   const dashboardAuth = createDashboardAuthentication(
     () => state.currentConfig().server.password,
     Date.now,
@@ -228,6 +296,15 @@ const createRoutes = (
     return requireDashboardAuth(context, next);
   });
 
+  const approvalOrigin = `http://${expectedLoopbackHost}:${loopbackPort}`;
+  const challenges = createDeviceChallengeStore({
+    identity: state.agentIdentity,
+    verificationUri: new URL('/dashboard/agents/authorize', approvalOrigin).href,
+  });
+  const currentConfig = () => state.currentConfig();
+  const agentOAuthRoutes = createAgentOAuthRoutes({ challenges, identity: state.agentIdentity, currentConfig });
+  const agentApprovalRoutes = createAgentApprovalRoutes({ challenges, currentConfig });
+  const agentAdminRoutes = createAgentAdminRoutes({ identity: state.agentIdentity, currentConfig });
   const dashboardRoutes = createDashboardRoutes(state, dashboardAuth);
   const dashboardAuthRoutes = createDashboardAuthRoutes(dashboardAuth);
   const anthropicMessagesRoutes = createAnthropicMessagesRoutes(state);
@@ -235,6 +312,9 @@ const createRoutes = (
   const openAICompletionsRoutes = createOpenAICompletionsRoutes(state);
   const openAIResponsesRoutes = createOpenAIResponsesRoutes(state);
   const routes = app
+    .route('/oauth', agentOAuthRoutes)
+    .route('/dashboard/api/agent-authorizations', agentApprovalRoutes)
+    .route('/admin/agent-installations', agentAdminRoutes)
     .route('/', anthropicMessagesRoutes)
     .route('/', geminiGenerateContentRoutes)
     .route('/', openAICompletionsRoutes)
@@ -264,7 +344,7 @@ const createRoutes = (
 
 export type AppType = ReturnType<typeof createRoutes>;
 
-export const createServer = async (options: CreateServerOptions): Promise<AppType> => {
+export const createServer = async (options: CreateServerOptions): Promise<AppType & { readonly close: () => void }> => {
   const prepared = await prepareDashboardConfig(options.config, options.configPath);
   let dashboardAuthAvailable = !prepared.dashboardUnavailable;
   if (prepared.error !== undefined) {
@@ -281,6 +361,7 @@ export const createServer = async (options: CreateServerOptions): Promise<AppTyp
     __dashboardAuthHealthChanged: (available) => {
       dashboardAuthAvailable = available;
     },
+    ...(options.__test === undefined ? {} : { __test: options.__test }),
     ...(options.configPath === undefined ? {} : { configPath: options.configPath }),
     ...(options.dbHome === undefined ? {} : { dbHome: options.dbHome }),
     ...(options.eventLimits === undefined ? {} : { eventLimits: options.eventLimits }),
@@ -289,12 +370,27 @@ export const createServer = async (options: CreateServerOptions): Promise<AppTyp
     ...(options.watchConfig === undefined ? {} : { watchConfig: options.watchConfig }),
   };
   const state = await createServerState(stateOptions);
-  return createRoutes(
-    state,
-    options.dashboardAssets,
-    () => dashboardAuthAvailable,
-    options.version,
-    options.port ?? state.currentConfig().server.port,
-    options.host ?? state.currentConfig().server.host,
-  );
+  try {
+    const routes = (options.__test?.createRoutes ?? createRoutes)(
+      state,
+      options.dashboardAssets,
+      () => dashboardAuthAvailable,
+      options.version,
+      options.port ?? state.currentConfig().server.port,
+      options.host ?? state.currentConfig().server.host,
+    );
+    let closed = false;
+    return Object.assign(routes, {
+      close() {
+        if (closed) return;
+        closed = true;
+        state.close();
+      },
+    });
+  } catch (error) {
+    try {
+      state.close();
+    } catch {}
+    throw error;
+  }
 };

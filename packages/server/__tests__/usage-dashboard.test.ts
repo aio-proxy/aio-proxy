@@ -4,8 +4,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { createTraceStore, openDb } from '@aio-proxy/core/db';
-import { createServer } from '@aio-proxy/server';
 import { DashboardUsageOverviewResponseSchema } from '@aio-proxy/types';
+
+import { createServer } from '#server-test-lifecycle';
 
 import { loopbackServer } from '../src/dashboard-auth/test-support';
 

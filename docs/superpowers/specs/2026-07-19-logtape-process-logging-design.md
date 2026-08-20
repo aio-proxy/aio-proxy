@@ -58,8 +58,8 @@ Dashboard request log 结构固定，无法承载上游中间态、堆栈细节�
 | 库                    | LogTape + `@logtape/file`                                                                                               |
 | 包边界                | `@aio-proxy/logger` 只依赖 LogTape 包；**不**依赖 core                                                                  |
 | Logger 类型位置       | **窄接口定义在 `plugin-sdk`**；logger 包实现该接口                                                                      |
-| 插件 API              | v2 `PluginApi.logger` 为**必有**字段；新宿主对 v1 也注入同形状                                                          |
-| `PLUGIN_API_VERSION`  | SDK 常量 **`2`**；宿主 **兼容加载 1 与 2**（见下节）                                                                    |
+| 插件 API              | `PluginApi.logger` 为**必有**字段，留在 descriptor v1                                                          |
+| `PLUGIN_API_VERSION`  | SDK 常量 **`1`**；宿主 **只加载 v1**（见下节）                                                                    |
 | 消息风格              | 同时支持 `(properties, message)` 与 LogTape 占位符 message                                                              |
 | 既有 sink             | **保留**；默认实现桥接 logger                                                                                           |
 | ServerLog 级别        | **显式 map/switch**，禁止用 event 名字符串猜测                                                                          |
@@ -73,28 +73,22 @@ Dashboard request log 结构固定，无法承载上游中间态、堆栈细节�
 | 对外 level 名         | config / `Logger.warn` 使用 `"warn"`；configure LogTape 时映射为 `"warning"`                                            |
 | 插件脱敏              | 宿主注入的 `api.logger` **必须**绑定 loader 已收集的 `secretValues` 精确值脱敏；遍历规则见专节                          |
 | 启动顺序              | 去掉 server 模块 import-time `createServerState`，或 CLI 在 configure 后动态 import server                              |
-| Plugin API 兼容       | **新宿主同时接受 v1 与 v2**；仅旧宿主会拒绝 v2（见兼容性专节）                                                          |
+| Plugin API 兼容       | **宿主只接受 v1**；branded v2 → `PLUGIN_API_INCOMPATIBLE`（见兼容性专节）                                                          |
 | Dashboard request log | 不变                                                                                                                    |
 
-## 兼容性：`PLUGIN_API_VERSION` v1 / v2 并存
+## 兼容性：宿主只支持 descriptor v1
 
-问题本质是**双向**兼容：
+`PluginMetadata` 与 `PluginApi.logger` 留在 descriptor v1。宿主只接受 branded `apiVersion === 1`。
 
-| 组合                 | 风险                                              |
-| -------------------- | ------------------------------------------------- |
-| 旧插件 (v1) + 新宿主 | 应继续可跑；旧插件不访问 `logger`                 |
-| 新插件 (v2) + 旧宿主 | 旧宿主若仍当 v1 接受 → setup 读 `api.logger` 崩溃 |
+| 组合 | 结果 |
+| --- | --- |
+| branded v1 | 加载；`api` 含 `oauth` + `logger` |
+| branded v2 或其它 `apiVersion` | `PLUGIN_API_INCOMPATIBLE`，不进入 setup |
 
-**选定：兼容方案（非一刀切破坏性升级）。**
-
-1. **SDK / 内置插件**：当前 `PLUGIN_API_VERSION` 常量改为 `2`；仓库内描述符与夹具发 v2。
-2. **新宿主加载规则**：
-   - 接受 `apiVersion === 1` 或 `2`；其它值 → `PLUGIN_API_INCOMPATIBLE`，不进入 setup。
-   - **无论 v1/v2**，新宿主注入的运行时 `api` 都包含 `oauth` + `logger`（v1 插件忽略 `logger` 即可）。
-   - TypeScript 上：v2 的 `PluginApi` 将 `logger` 标为必有；宿主实现对 v1 描述符仍注入同一形状。
-3. **旧宿主**：只认识 v1，会拒绝 v2 描述符 → **防止**「新插件在旧宿主半加载后崩溃」。这是升 v2 的主要目的。
-4. **文档措辞**：不再写「新宿主拒绝所有非 v2」；明确「新宿主兼容 v1/v2；旧宿主拒绝 v2」。
-5. 不采用「logger 可选 + 插件探测」作为主方案：新插件应直接依赖 `api.logger`；靠 apiVersion=2 把旧宿主挡在门外。
+1. **SDK / 内置插件**：`PLUGIN_API_VERSION` 为 `1`；仓库内描述符与夹具发 v1。
+2. **宿主加载规则**：只接受 `apiVersion === 1`；branded v2 及其它值 → `PLUGIN_API_INCOMPATIBLE`。
+3. TypeScript 上：v1 的 `PluginApi` 将 `logger` 标为必有。
+4. 不提供 v1\|v2 双版本兼容，也不把 logger 做成可选探测字段。
 
 ## 架构
 
@@ -107,8 +101,8 @@ CLI serve
   └─ import/createServer (after configure; no import-time server state)
        ├─ ServerLogSink  ──explicit severity──► logger["aio-proxy","server"]
        ├─ PluginLogSink  ──redact then──► logger["aio-proxy","plugin",…]
-       └─ plugin setup(api)  // host accepts apiVersion 1|2
-            └─ api.logger  (category + secretValues redaction; v1 ignores)
+       └─ plugin setup(api)  // host accepts apiVersion 1 only; rejects v2
+            └─ api.logger  (category + secretValues redaction; stays on v1)
 
 Dashboard/SQLite request_log  ← 独立，不经过 LogTape
 ```
@@ -132,7 +126,7 @@ plugin-sdk ✗→ logger       (forbidden; only interface lives in sdk)
 
 | 包                      | 职责                                                                                                                         |
 | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `@aio-proxy/plugin-sdk` | 定义 `Logger` 窄接口；`PluginApi.logger`；`PLUGIN_API_VERSION = 2`                                                           |
+| `@aio-proxy/plugin-sdk` | 定义 `Logger` 窄接口；`PluginApi.logger`；`PLUGIN_API_VERSION = 1`                                                           |
 | `@aio-proxy/logger`     | LogTape `configure`；实现 `Logger`；stderr + `@logtape/file` 按日文件；secret redaction helper（可复用/抽离精确值替换）      |
 | `@aio-proxy/server`     | 默认 sink 桥接；加载插件时注入带脱敏的 `api.logger`；**移除**模块顶层 `createServerState`                                    |
 | `@aio-proxy/cli`        | 解析默认 `dir`；`configureLogging`；再加载/创建 server                                                                       |
@@ -269,7 +263,7 @@ const serverLogLevel: Record<ServerLog["event"], LogLevel> = {
 
 ### 插件 `api.logger` 与脱敏
 
-加载并 `setup` 时（v1/v2 描述符在新宿主上均注入）：
+加载并 `setup` 时（仅 v1 描述符；branded v2 在进入 setup 前被拒绝）：
 
 ```ts
 const api = {
@@ -316,8 +310,8 @@ const api = {
 | --------------------------------- | --------------------------------------------------------------------------------------------------- |
 | `@aio-proxy/logger`               | level 过滤；child；双写法 message；enabled 时 file sink；`maxAgeMs`/轮转配置接线；secretValues 脱敏 |
 | `@aio-proxy/types`                | `server.logging` schema 默认值与边界                                                                |
-| `@aio-proxy/plugin-sdk`           | 当前常量 `PLUGIN_API_VERSION === 2`；`PluginApi.logger` 必有                                        |
-| `@aio-proxy/core` / server loader | 新宿主接受 v1+v2；其它 version → 不兼容；旧宿主行为由版本门禁覆盖                                   |
+| `@aio-proxy/plugin-sdk`           | 当前常量 `PLUGIN_API_VERSION === 1`；`PluginApi.logger` 必有                                        |
+| `@aio-proxy/core` / server loader | 宿主只接受 v1；branded v2 及其它 version → 不兼容                                   |
 | `@aio-proxy/server`               | ServerLog 显式 level map；默认 sink 桥接；**无** import-time createServerState 副作用（或等价证明） |
 | `@aio-proxy/cli`                  | configure 先于 server 初始化的顺序测试                                                              |
 | 插件脱敏回归                      | secret options；Error message/stack；循环引用不抛错且不泄密                                         |
@@ -328,7 +322,7 @@ const api = {
 1. `serve` 后 stderr 出现结构化诊断日志，且发生在 `configureLogging` 完成之后。
 2. `server.logging.enabled: true` 时，在默认或配置目录生成库默认名 `YYYY-MM-DD.log`（经 `@logtape/file`）。
 3. `retentionDays` 映射为 `maxAgeMs`；因使用默认文件名，过期文件可被库清理。
-4. 新宿主接受 v1 与 v2；内置插件发 v2；旧宿主会拒绝 v2。
+4. 宿主只接受 v1；内置插件发 v1；branded v2 被拒绝。
 5. 插件 `api.logger` 可用，且 secret options / Error / 循环对象场景不会明文泄漏或抛垮进程。
 6. `ServerLog` 各级别由显式映射决定。
 7. Dashboard request log 行为与数据不变。
@@ -336,16 +330,17 @@ const api = {
 
 ## 实现分期建议
 
-1. `plugin-sdk`：`Logger` 接口 + 常量 v2；内置插件/夹具升级；**loader 接受 v1|v2**
+1. `plugin-sdk`：`Logger` 接口 + 常量 v1；内置插件/夹具发 v1；**loader 只接受 v1**
 2. `@aio-proxy/logger`：configure + stderr + `@logtape/file`（默认 `YYYY-MM-DD.log` + `maxAgeMs`）+ `warn→warning` + 安全脱敏；types `logging`
 3. 启动顺序修复（去 import-time state 或动态 import）+ CLI 解析 dir 并 configure
-4. server sink 桥接（显式 level map）+ `api.logger` 注入（v1/v2）与脱敏回归5.（可选）关键排障点补 `debug/info`
+4. server sink 桥接（显式 level map）+ `api.logger` 注入（descriptor v1）与脱敏回归
+5. （可选）关键排障点补 `debug/info`
 
 ## 审查回应摘要
 
 | 审查项            | 设计修订                                                 |
 | ----------------- | -------------------------------------------------------- |
-| P1 API 版本       | SDK 常量升 v2；**新宿主兼容 v1+v2**；旧宿主拒 v2         |
+| P1 API 版本       | SDK 常量保持 v1；**宿主只接受 v1**；branded v2 被拒绝         |
 | P1 插件脱敏       | `api.logger` 绑定 `secretValues` + 安全遍历 + 回归测试   |
 | P1 configure 太晚 | 去除 import-time server state 或动态 import              |
 | P2 依赖环         | Logger 接口在 sdk；logger 不依赖 core；CLI 传入 dir      |

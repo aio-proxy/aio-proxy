@@ -255,6 +255,76 @@
       "install_failed": "Upgrade failed: {reason}",
       "manual_restart_hint": "The daemon was started manually; there is no managed service to restart. Restart it yourself to apply the upgrade",
       "restarting": "Restarting the daemon..."
+    },
+    "agent": {
+      "description": "Manage Agent integrations",
+      "list": {
+        "option_check": "Check live control-plane status",
+        "option_authorizations": "Include control-plane authorizations",
+        "unresolved": "{target}: unresolved ({reason}); host {hostVersion} (minimum {minimumVersion}, {support}); authorization {authorization}; schema {schemaCompatibility}",
+        "target": "{target}: host {hostVersion} (minimum {minimumVersion}, {support}); integration {integration}; installation {installationId}; adapter {adapterVersion}; endpoint {endpoint} ({endpointMatch}); catalog {catalog} (last success {lastSuccessfulAt}); authorization {authorization}; schema {schemaCompatibility}",
+        "server": "aio-proxy: {status}",
+        "capabilities": "Device authorization {deviceAuthorization}; catalog schemas {catalogSchemaVersions}",
+        "authorization": "{installationId}: {target}, {authorization}, {local}"
+      },
+      "configure": {
+        "host_missing": "{target} is not installed; aio-proxy did not change any files.",
+        "unsupported": "{target} {version} is below the supported minimum {minimum}; installed with a compatibility warning.",
+        "version_unknown": "Could not determine the {target} version; installed with a compatibility warning.",
+        "result": "{target}: {status}.",
+        "server_offline": "The integration is installed, but aio-proxy is not running. Start it before signing in.",
+        "password_required": "Set server.password before Agent authorization can be approved while server.apiKeys is enabled.",
+        "login": "Sign in with: {command}",
+        "reload": "Reload or restart {target} to load the updated integration.",
+        "newer": "{target} already has a newer adapter; it was not downgraded."
+      },
+      "conflict": "Refusing to manage {path}: it is not an intact aio-proxy-managed integration.",
+      "remove": {
+        "server_required": "Start the local aio-proxy control plane and retry; no files were removed.",
+        "success": "Revoked installation {installationId} and removed the {target} integration."
+      },
+      "revoke": {
+        "success": "Installation {installationId}: {status}."
+      },
+      "upgrade": {
+        "warning": "aio-proxy upgraded, but {target} could not be updated: {reason}. Repair with: aio-proxy agent configure {target}",
+        "root_effective_user": "aio-proxy upgrade is running as root; only root's Agent integrations will be updated. Run aio-proxy agent configure <target> again as each regular user that owns integrations.",
+        "protocol_warning": "aio-proxy upgraded, but Agent integrations could not be updated: {reason}. Repair with: aio-proxy agent configure <target>"
+      },
+      "integration": {
+        "unresolved": "unresolved",
+        "managed": "managed",
+        "absent": "absent",
+        "conflict": "conflict"
+      },
+      "catalog": {
+        "fresh": "fresh",
+        "stale": "stale",
+        "missing": "missing"
+      },
+      "authorization": {
+        "active": "active",
+        "expired": "expired",
+        "revoked": "revoked",
+        "missing": "missing",
+        "not_checked": "not_checked"
+      },
+      "schema": {
+        "compatible": "compatible",
+        "incompatible": "incompatible",
+        "not_checked": "not_checked"
+      },
+      "endpoint": {
+        "match": "match",
+        "mismatch": "mismatch",
+        "unknown": "unknown"
+      },
+      "status": {
+        "installed": "installed",
+        "updated": "updated",
+        "newer": "newer"
+      },
+      "loopback_required": "Agent integrations require a loopback aio-proxy endpoint."
     }
   },
   "oauth": {
@@ -321,6 +391,31 @@
         "description": "The Dashboard password could not be loaded safely. Check server.password and the server logs, then restart aio-proxy",
         "reload": "Reload"
       }
+    },
+    "agent_authorization": {
+      "title": "Authorize aio-proxy",
+      "instructions": "Enter the code shown by your Agent.",
+      "code_label": "Authorization code",
+      "code_placeholder": "ABCD-EFGH",
+      "code_invalid": "Enter the eight-character code.",
+      "permissions_title": "Requested access",
+      "permission_catalog": "Read the model catalog",
+      "permission_inference": "Run model inference",
+      "target": "Agent",
+      "installation": "Installation ID",
+      "version": "Adapter version",
+      "expires": "Expires",
+      "resolve": "Continue",
+      "approve": "Approve",
+      "deny": "Deny",
+      "pending": "Waiting for your decision.",
+      "approved": "Authorization approved. Return to your Agent.",
+      "denied": "Authorization denied.",
+      "expired": "This authorization code expired.",
+      "consumed": "This authorization code was already used.",
+      "password_required": "Set a Dashboard password before approving Agent access.",
+      "network_error": "aio-proxy is unavailable. Check the server and try again.",
+      "retry": "Use another code"
     },
     "menus": {
       "observability": "Observability",
