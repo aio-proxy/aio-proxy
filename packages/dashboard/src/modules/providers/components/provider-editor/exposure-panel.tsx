@@ -13,23 +13,26 @@ export const ExposurePanel: React.FC<ExposurePanelProps> = ({ models, alias, ena
   const routes = modelRoutes({ enabled: true, models, alias });
 
   return (
-    <section className="space-y-3" data-testid="exposure-panel">
+    <section className="space-y-4" data-testid="exposure-panel">
       <div className="space-y-1">
-        <h2 className="text-base font-semibold">{m['dashboard.providers.editor.exposure_title']()}</h2>
+        <h2 className="font-heading text-sm font-medium">{m['dashboard.providers.editor.exposure_title']()}</h2>
         {/* The disabled reason belongs here rather than after the list: read first, it explains why the
             names below are dimmed instead of contradicting a list that looked live. */}
         <p className="text-xs text-muted-foreground">
-          {m['dashboard.providers.editor.exposure_description']()}
-          {enabled ? null : ` ${m['dashboard.providers.editor.exposure_disabled_note']()}`}
+          {m['dashboard.providers.editor.exposure_description']({
+            note: enabled ? '' : m['dashboard.providers.editor.exposure_disabled_note'](),
+          })}
         </p>
       </div>
       {warning === 'catalog_unavailable' ? (
-        <p role="status" className="rounded-lg border bg-muted p-3 text-sm">
+        <p role="status" className="rounded-2xl bg-muted/50 px-3 py-2.5 text-xs text-muted-foreground">
           {m['dashboard.providers.editor.exposure_warning_catalog']()}
         </p>
       ) : null}
       {routes.length === 0 ? (
-        <p className="text-sm text-muted-foreground">{m['dashboard.providers.editor.exposure_empty']()}</p>
+        <p className="rounded-2xl bg-muted/50 px-3 py-2.5 text-xs text-muted-foreground">
+          {m['dashboard.providers.editor.exposure_empty']()}
+        </p>
       ) : (
         <ul className={cn('space-y-1', enabled ? undefined : 'opacity-60')}>
           {routes.map((route) => {

@@ -476,7 +476,9 @@ test('oauth empty whitelist lists discovered catalog ids on the exposure rail', 
   const rail = screen.getByTestId('exposure-panel');
   expect(within(rail).getByTestId('exposure-route-catalog-a')).toBeTruthy();
   expect(within(rail).getByTestId('exposure-route-catalog-b')).toBeTruthy();
-  expect(within(rail).queryByText(/Enable models or add aliases/u)).toBeNull();
+  expect(
+    within(rail).queryByText(/Enable models and the names clients can actually request will appear here\./u),
+  ).toBeNull();
 });
 
 test('edit-mode succeeded session with catalog_unavailable shows the rail warning', async () => {

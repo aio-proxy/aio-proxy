@@ -1,3 +1,4 @@
+import { m } from '@aio-proxy/i18n';
 import { ProviderKind, ProviderProtocol } from '@aio-proxy/types';
 import { beforeEach, describe, expect, rs, test } from '@rstest/core';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -80,6 +81,45 @@ describe('ModelValidationPanel', () => {
     expect(screen.getByText(/The test uses the saved account|测试使用已保存的账户/u)).toBeTruthy();
   });
 
+  test('the oauth saved-account note disappears when no model is testable', () => {
+    render(
+      <Harness
+        kind={ProviderKind.OAuth}
+        initial={oauthInitial([])}
+        testableModels={[]}
+        persistedProviderId="oauth-p"
+      />,
+      { wrapper },
+    );
+
+    expect(screen.queryByText(m['dashboard.providers.editor.test_checks_saved_account']())).toBeNull();
+  });
+
+  test('hides the test button when no model is testable', () => {
+    render(
+      <Harness kind={ProviderKind.Api} initial={apiInitial([])} testableModels={[]} persistedProviderId="provider" />,
+      { wrapper },
+    );
+
+    expect(screen.queryByRole('button', { name: /Test model request|测试模型请求/u })).toBeNull();
+    expect(screen.getByRole('status')).toBeTruthy();
+  });
+
+  test('the model select has no visible label but keeps its accessible name', () => {
+    render(
+      <Harness
+        kind={ProviderKind.Api}
+        initial={apiInitial(['model-a'])}
+        testableModels={['model-a']}
+        persistedProviderId="provider"
+      />,
+      { wrapper },
+    );
+
+    expect(screen.queryByText(m['dashboard.providers.editor.validate_model']())).toBeNull();
+    expect(screen.getByRole('combobox', { name: /Model to test|测试模型/u })).toBeTruthy();
+  });
+
   test('disables model changes while testing', async () => {
     let resolveTest: ((value: { readonly ok: true }) => void) | undefined;
     mocks.testDraft.mockImplementation(
@@ -100,7 +140,7 @@ describe('ModelValidationPanel', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Test model request|测试模型请求/u }));
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: /Testing model request|正在测试模型请求/u })).toBeDisabled(),
+      expect(screen.getByRole('button', { name: /Test model request|测试模型请求/u })).toBeDisabled(),
     );
     const modelWasDisabled = screen.getByRole('combobox', { name: /Model to test|测试模型/u }).hasAttribute('disabled');
 
@@ -233,7 +273,11 @@ describe('ModelValidationPanel', () => {
       { wrapper },
     );
 
-    expect(screen.queryByText(/Add an enabled model|添加一个已启用模型/u)).toBeNull();
+    expect(
+      screen.queryByText(
+        /Enable at least one model before you can test a request\.|先启用至少一个模型，才能测试请求。/u,
+      ),
+    ).toBeNull();
     expect(screen.getByRole('combobox', { name: /Model to test|测试模型/u })).toBeTruthy();
   });
 });

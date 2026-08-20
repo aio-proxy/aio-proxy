@@ -1,8 +1,6 @@
 import { m } from '@aio-proxy/i18n';
 import { ProviderKind, type DashboardProviderDraftTestResponse } from '@aio-proxy/types';
 import { Button } from '@aio-proxy/ui/components/button';
-import { Field } from '@aio-proxy/ui/components/field';
-import { Label } from '@aio-proxy/ui/components/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@aio-proxy/ui/components/select';
 import { Spinner } from '@aio-proxy/ui/components/spinner';
 import { cn } from '@aio-proxy/ui/lib/utils';
@@ -46,28 +44,30 @@ export const ModelValidationPanel: React.FC<ModelValidationPanelProps> = ({
         : m['dashboard.providers.editor.validate_failed']({ code: result.error.code });
 
   return (
-    <section className="space-y-5" aria-labelledby="provider-validate-heading">
+    <section className="space-y-4" aria-labelledby="provider-validate-heading">
       <div className="space-y-1">
-        <h2 id="provider-validate-heading" className="text-base font-semibold">
+        <h2 id="provider-validate-heading" className="font-heading text-sm font-medium">
           {m['dashboard.providers.editor.validate_title']()}
         </h2>
-        <p className="text-sm text-muted-foreground">{m['dashboard.providers.editor.validate_description']()}</p>
+        <p className="text-xs text-muted-foreground">{m['dashboard.providers.editor.validate_description']()}</p>
       </div>
       {selectedModel === undefined ? (
-        <p role="status" className="rounded-lg border bg-muted p-3 text-sm">
+        <p role="status" className="rounded-2xl bg-muted/50 px-3 py-2.5 text-xs text-muted-foreground">
           {m['dashboard.providers.editor.validate_unavailable']()}
         </p>
       ) : (
-        <form.Field name="validationModel">
-          {(field) => (
-            <Field>
-              <Label htmlFor="provider-validation-model">{m['dashboard.providers.editor.validate_model']()}</Label>
+        <div className="space-y-3">
+          <form.Field name="validationModel">
+            {(field) => (
               <Select
                 value={selectedModel}
                 disabled={testMutation.isPending}
                 onValueChange={(value) => field.handleChange(value ?? undefined)}
               >
-                <SelectTrigger id="provider-validation-model" className="w-full">
+                <SelectTrigger
+                  className="w-full min-w-0 font-mono"
+                  aria-label={m['dashboard.providers.editor.validate_model']()}
+                >
                   <SelectValue>{(value: string | null) => value ?? selectedModel}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
@@ -78,29 +78,29 @@ export const ModelValidationPanel: React.FC<ModelValidationPanelProps> = ({
                   ))}
                 </SelectContent>
               </Select>
-            </Field>
-          )}
-        </form.Field>
+            )}
+          </form.Field>
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full"
+            disabled={testMutation.isPending}
+            onClick={() => testMutation.mutate(selectedModel)}
+          >
+            {testMutation.isPending ? <Spinner data-icon="inline-start" /> : null}
+            {m['dashboard.providers.editor.validate_action']()}
+          </Button>
+          {kind === ProviderKind.OAuth ? (
+            <p className="text-xs text-muted-foreground">
+              {m['dashboard.providers.editor.test_checks_saved_account']()}
+            </p>
+          ) : null}
+        </div>
       )}
-      <Button
-        type="button"
-        variant="outline"
-        className="w-full"
-        disabled={selectedModel === undefined || testMutation.isPending}
-        onClick={() => selectedModel !== undefined && testMutation.mutate(selectedModel)}
-      >
-        {testMutation.isPending ? <Spinner data-icon="inline-start" /> : null}
-        {testMutation.isPending
-          ? m['dashboard.providers.editor.validate_pending']()
-          : m['dashboard.providers.editor.validate_action']()}
-      </Button>
-      {kind === ProviderKind.OAuth ? (
-        <p className="text-sm text-muted-foreground">{m['dashboard.providers.editor.test_checks_saved_account']()}</p>
-      ) : null}
       {result === null ? null : (
         <p
           role={result.ok ? 'status' : 'alert'}
-          className={cn('flex items-start gap-1.5 text-sm', result.ok ? 'text-muted-foreground' : 'text-destructive')}
+          className={cn('flex items-start gap-1.5 text-xs', result.ok ? 'text-muted-foreground' : 'text-destructive')}
         >
           {result.ok ? (
             <CircleCheckIcon className="mt-0.5 size-3.5 shrink-0 text-primary" />
