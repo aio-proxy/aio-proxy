@@ -889,7 +889,6 @@
         "aliases_errors_title": "エイリアス設定を修正",
         "error_name_required": "名前を入力してください",
         "error_name_duplicate": "この名前は既に使用されています",
-        "error_target_required": "ターゲットモデルを選択してください",
         "error_target_missing": "ターゲットモデルはプロバイダーのモデル一覧に存在しなくなりました",
         "error_preserved_route_conflict": "このエイリアスは保持された元のモデル ID と競合しています"
       },

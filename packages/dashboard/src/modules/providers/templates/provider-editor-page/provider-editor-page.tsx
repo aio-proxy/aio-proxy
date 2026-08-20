@@ -65,7 +65,6 @@ export const ProviderEditorPage: React.FC<ProviderEditorPageProps> = (props) => 
       <ModelsSection
         form={form}
         kind={kind}
-        mode={mode}
         persistedProviderId={persistedId}
         candidates={oauth?.models}
         summary={summaries.models}

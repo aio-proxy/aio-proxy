@@ -889,7 +889,6 @@
         "aliases_errors_title": "Fix alias configuration",
         "error_name_required": "Enter a name",
         "error_name_duplicate": "This name is already used",
-        "error_target_required": "Choose a target model",
         "error_target_missing": "The target model is no longer in the provider model list",
         "error_preserved_route_conflict": "This alias conflicts with a preserved original model ID"
       },

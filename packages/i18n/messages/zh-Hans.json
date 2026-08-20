@@ -889,7 +889,6 @@
         "aliases_errors_title": "修复别名配置",
         "error_name_required": "请输入名称",
         "error_name_duplicate": "该名称已被使用",
-        "error_target_required": "请选择目标模型",
         "error_target_missing": "目标模型已不在提供商模型列表中",
         "error_preserved_route_conflict": "该别名与保留的原始模型 ID 冲突"
       },

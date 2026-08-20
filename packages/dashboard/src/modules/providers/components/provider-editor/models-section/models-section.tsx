@@ -14,7 +14,6 @@ import { useProviderCatalogMutation } from '../../../hooks/use-provider-catalog-
 import type { ProviderEditorForm } from '../../../hooks/use-provider-editor-form';
 import { addManualModels } from '../../../lib/add-manual-models';
 import { aliasEditorIssues, type AliasRow } from '../../../lib/alias-editor';
-import { ProviderFormMode } from '../../../lib/constants';
 import { exposedModels } from '../../../lib/exposed-models';
 import { applyModelRows, modelRowContext, toModelRows, type ModelRow } from '../../../lib/model-rows';
 import { removeModelFromAliases } from '../../../lib/remove-model-from-aliases';
@@ -30,7 +29,6 @@ import { ModelsManualAdd } from './models-manual-add';
 interface ModelsSectionProps {
   readonly form: ProviderEditorForm;
   readonly kind: ProviderKind;
-  readonly mode: ProviderFormMode;
   readonly persistedProviderId?: string | undefined;
   /** oauth: `oauth.models` (discovered catalog); api/ai-sdk: last draft catalog result. */
   readonly candidates?: readonly string[] | undefined;

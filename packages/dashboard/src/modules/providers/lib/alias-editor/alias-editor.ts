@@ -67,11 +67,6 @@ export const aliasControlId = (rowId: string, variant?: number): string =>
     ? `provider-alias-${encodeURIComponent(rowId)}`
     : `provider-alias-${encodeURIComponent(rowId)}-variant-${variant}`;
 
-export const aliasIssueControlId = (issue: AliasEditorIssue): string => {
-  const id = aliasControlId(issue.alias, issue.variant);
-  return issue.code === 'target-missing' ? `${id}-target` : id;
-};
-
 export function serializeAlias(rows: readonly AliasRow[], mode: 'create' | 'edit'): ProviderAlias | undefined {
   return rows.length === 0 && mode === 'create' ? undefined : toAliasRecord(rows);
 }

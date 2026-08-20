@@ -11,7 +11,7 @@ import {
   type ProviderEditorInitial,
   useProviderEditorForm,
 } from '../../../hooks/use-provider-editor-form';
-import { PROVIDER_MODELS_PLACEHOLDER, ProviderFormMode } from '../../../lib/constants';
+import { PROVIDER_MODELS_PLACEHOLDER } from '../../../lib/constants';
 import { ModelsSection } from './models-section';
 
 const mocks = rs.hoisted(() => ({ fetchCatalog: rs.fn(), fetchEditView: rs.fn(), slugs: rs.fn() }));
@@ -61,7 +61,6 @@ const Harness: React.FC<HarnessProps> = ({ kind, initial, candidates, persistedP
     <ModelsSection
       form={form}
       kind={kind}
-      mode={ProviderFormMode.Edit}
       persistedProviderId={persistedProviderId}
       candidates={candidates}
       summary={{ status: 'ok', hint: '' }}

@@ -1,7 +1,7 @@
 import { describe, expect, test } from '@rstest/core';
 
 import { aliasSummaryMessage } from '../alias-editor-copy';
-import { aliasEditorIssues, aliasIssueControlId, aliasSummary } from './alias-editor';
+import { aliasEditorIssues, aliasSummary } from './alias-editor';
 import { alias, aliasRow } from './alias-editor.test-support';
 
 describe('provider alias editor summary and issues', () => {
@@ -86,12 +86,5 @@ describe('provider alias editor summary and issues', () => {
       [],
     );
     expect(issues).toEqual([]);
-  });
-
-  test('Given alias and variant issues When locating controls Then target errors focus their selects', () => {
-    expect(aliasIssueControlId({ code: 'target-missing', alias: 'row-1' })).toBe('provider-alias-row-1-target');
-    expect(aliasIssueControlId({ code: 'target-missing', alias: 'row-1', variant: 0 })).toBe(
-      'provider-alias-row-1-variant-0-target',
-    );
   });
 });
