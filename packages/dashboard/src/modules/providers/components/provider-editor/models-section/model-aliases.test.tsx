@@ -81,6 +81,19 @@ test('a name another row already owns is written and marks every colliding row',
   expect(screen.getByRole('alert')).toHaveTextContent(m['dashboard.providers.form.alias_name_duplicate']());
 });
 
+// Two legal `mini` rows must not share a DOM id. Each name input points at the one list-level
+// alert; if `aliasControlId` keyed on the name, both boxes would be `provider-alias-mini`.
+test('two rows sharing a name keep distinct control ids and share the list-level alert', () => {
+  renderAliases([named('mini', 'model-a', 'r1'), named('mini', 'model-b', 'r2')]);
+
+  const boxes = screen.getAllByLabelText(m['dashboard.providers.form.alias_name']());
+  expect(boxes[0]?.id).not.toBe(boxes[1]?.id);
+  const alert = screen.getByRole('alert');
+  expect(alert).toHaveAttribute('id', 'alias-name-duplicate-error');
+  expect(boxes[0]).toHaveAttribute('aria-describedby', alert.id);
+  expect(boxes[1]).toHaveAttribute('aria-describedby', alert.id);
+});
+
 // Clicking Add twice used to overwrite the first unnamed row because both lived at the '' key.
 test('Add Alias twice keeps both unnamed rows', () => {
   const onAliasChange = renderAliases([]);

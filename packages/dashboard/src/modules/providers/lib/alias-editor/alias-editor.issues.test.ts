@@ -30,6 +30,20 @@ describe('provider alias editor summary and issues', () => {
 
   /** The unnamed row an Add Alias click leaves behind: it has to report something, or the save button
    * stays enabled over a row the user has not finished. */
+  // Same name, different ids: `issue.alias` has to be the row id. If it were the name, both
+  // locators would be `mini` and `aria-describedby` / control ids would collide.
+  test('Given two rows that share a name When inspected Then each duplicate issue names the row id', () => {
+    const issues = aliasEditorIssues([
+      aliasRow('mini', { model: 'model-a', preserve: false }, 'r1'),
+      aliasRow('mini', { model: 'model-b', preserve: false }, 'r2'),
+    ]);
+
+    expect(issues).toEqual([
+      { code: 'alias-name-duplicate', alias: 'r1' },
+      { code: 'alias-name-duplicate', alias: 'r2' },
+    ]);
+  });
+
   test('Given an unnamed alias When inspected Then it reports a required name', () => {
     expect(aliasEditorIssues([aliasRow('', { model: 'a', preserve: false }, 'new')])).toEqual([
       { code: 'alias-name-required', alias: 'new' },

@@ -39,6 +39,24 @@ describe('provider alias editor variant rows', () => {
     });
   });
 
+  // Two rows may legally share a name (X16). Addressing by name would `find` the first `mini`
+  // and write r2's variant onto r1. The models differ so a swapped write cannot hide.
+  test('Given two rows that share a name When a variant is written by id Then only that row changes', () => {
+    const r1 = aliasRow('mini', { model: 'model-a', preserve: false }, 'r1');
+    const r2 = aliasRow('mini', { model: 'model-b', preserve: false }, 'r2');
+    const added = { when: { thinking: true }, model: 'model-c', preserve: false } as const;
+
+    const afterAdd = addVariantRow([r1, r2], 'r2', added);
+    expect(afterAdd[0]?.config).toEqual(r1.config);
+    expect(afterAdd[1]?.config.model).toBe('model-b');
+    expect(afterAdd[1]?.config.variants).toEqual([added]);
+
+    const afterReplace = withVariantRows([r1, r2], 'r2', [added]);
+    expect(afterReplace[0]?.config).toEqual(r1.config);
+    expect(afterReplace[1]?.config.model).toBe('model-b');
+    expect(afterReplace[1]?.config.variants).toEqual([added]);
+  });
+
   test('Given a thinking row added to a record-form alias When serialized Then the whole value flips to rows', () => {
     const next = addVariantRow([aliasRow('mini', alias.mini)], 'mini', {
       when: { thinking: true },
