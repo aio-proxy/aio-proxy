@@ -35,8 +35,8 @@ const mapSchemaNode = (value: unknown): unknown => {
 
 export const withMarkdownDescriptions = (schema: JsonSchema): JsonSchema => {
   const next: Record<string, unknown> = { ...schema };
-  if (typeof next.description === 'string' && next.markdownDescription === undefined) {
-    next.markdownDescription = next.description;
+  if (typeof next['description'] === 'string' && next['markdownDescription'] === undefined) {
+    next['markdownDescription'] = next['description'];
   }
 
   for (const key of SCHEMA_MAP_KEYS) {

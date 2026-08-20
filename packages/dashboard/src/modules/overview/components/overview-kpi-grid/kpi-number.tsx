@@ -13,7 +13,8 @@ export const KpiNumber: React.FC<KpiNumberProps> = ({ value, format, locales, to
   // Client-rendered NumberFlow puts every digit in shadow DOM, so expose the formatted
   // value as a single label the way number-flow's own SSR output does.
   const label = (new Intl.NumberFormat(locales, format).format as unknown as (value: number | string) => string)(value);
-  const number = <NumberFlow value={value} format={format} locales={locales} role="img" aria-label={label} />;
+  const numeric = typeof value === 'number' ? value : Number(value);
+  const number = <NumberFlow value={numeric} format={format} locales={locales} role="img" aria-label={label} />;
 
   if (tooltip === undefined) return number;
 

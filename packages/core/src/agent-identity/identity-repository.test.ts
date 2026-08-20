@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { openDb } from '../db';
-import { createAgentIdentityRepository } from './repository';
+import { createAgentIdentityRepository } from './identity-repository';
 
 const INSTALLATION = '0f4dcb50-d68c-4b99-8af1-da32480ddd09';
 const roots: string[] = [];

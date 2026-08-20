@@ -340,9 +340,9 @@ const createRoutes = (
   return routes;
 };
 
-export type AppType = ReturnType<typeof createRoutes> & { readonly close: () => void };
+export type AppType = ReturnType<typeof createRoutes>;
 
-export const createServer = async (options: CreateServerOptions): Promise<AppType> => {
+export const createServer = async (options: CreateServerOptions): Promise<AppType & { readonly close: () => void }> => {
   const prepared = await prepareDashboardConfig(options.config, options.configPath);
   let dashboardAuthAvailable = !prepared.dashboardUnavailable;
   if (prepared.error !== undefined) {

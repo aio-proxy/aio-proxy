@@ -17,7 +17,7 @@ export const ProviderRequestTransformsVisualEditor: React.FC<ProviderRequestTran
   onChange,
   onValidityChange,
 }) => {
-  const pendingFocusRule = useRef<number>();
+  const pendingFocusRule = useRef<number | undefined>(undefined);
   const [ruleValidity, setRuleValidity] = useState<Readonly<Record<number, boolean>>>({});
   const visualValid = value.every((_, index) => ruleValidity[index] !== false);
   useEffect(() => onValidityChange(visualValid), [onValidityChange, visualValid]);

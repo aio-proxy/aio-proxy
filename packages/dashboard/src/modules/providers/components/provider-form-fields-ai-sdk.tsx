@@ -53,7 +53,7 @@ export const ProviderFormFieldsAiSdk: React.FC<ProviderFormFieldsAiSdkProps> = (
   onTransformsValidityChange,
 }) => {
   const schemaState = useProviderOptionsSchema();
-  const initialPackageName = useRef<string>();
+  const initialPackageName = useRef<string | undefined>(undefined);
   const initialPackageSynchronized = useRef(false);
   const lastCommittedPackage = useRef<string | null>(null);
   const commitUserPackage = (packageName: string) =>

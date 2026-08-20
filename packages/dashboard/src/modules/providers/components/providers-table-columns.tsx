@@ -1,6 +1,7 @@
 import { m } from '@aio-proxy/i18n';
+import type { DashboardProviderSummary } from '@aio-proxy/types';
 import { Link } from '@tanstack/react-router';
-import type { ColumnDef, RowData } from '@tanstack/react-table';
+import type { ColumnDef } from '@tanstack/react-table';
 import { startCase } from 'es-toolkit/string';
 
 import { tableHead } from '@/components/data-table/table-head';
@@ -23,13 +24,6 @@ export const formatProviderUsage = (status: ProviderUsageStatus, requests: bigin
   if (status === 'unavailable') return 'N/A';
   return formatCompactTokenCount(requests);
 };
-
-declare module '@tanstack/react-table' {
-  interface ColumnMeta<TData extends RowData, TValue> {
-    readonly className?: string;
-    readonly label?: () => string;
-  }
-}
 
 const uneditableDiagnosticCodes = new Set(['PROVIDER_CONFIG_INVALID', 'LEGACY_OAUTH_CONFIG_UNSUPPORTED']);
 

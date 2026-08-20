@@ -11,10 +11,10 @@ export const nanoUsdToDecimal = (value: bigint) => {
   return fraction === '' ? whole.toString() : `${whole}.${fraction}`;
 };
 
-export const nanoUsdFormatOptions = (variant: 'exact' | 'compact'): Intl.NumberFormatOptions =>
+export const nanoUsdFormatOptions = (variant: 'exact' | 'compact') =>
   variant === 'compact'
-    ? { currency: 'USD', currencyDisplay: 'narrowSymbol', maximumFractionDigits: 2, style: 'currency' }
-    : { currency: 'USD', maximumFractionDigits: 9, style: 'currency' };
+    ? ({ currency: 'USD', currencyDisplay: 'narrowSymbol', maximumFractionDigits: 2, style: 'currency' } as const)
+    : ({ currency: 'USD', maximumFractionDigits: 9, style: 'currency' } as const);
 
 export const formatNanoUsd = (value: bigint, locale: string, variant: 'exact' | 'compact' = 'exact') => {
   const decimal = nanoUsdToDecimal(value);

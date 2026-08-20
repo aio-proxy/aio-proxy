@@ -28,7 +28,7 @@ test('uses the typed resolve and decision routes', async () => {
   await expect(resolveAgentAuthorization('ABCD-EFGH')).resolves.toEqual({ status: 'expired' });
   await expect(decideAgentAuthorization('device-id', 'approve')).resolves.toEqual({ status: 'approved' });
   expect(mocks.resolve).toHaveBeenCalledWith({ json: { userCode: 'ABCD-EFGH' } });
-  expect(mocks.approve).toHaveBeenCalledWith({ param: { deviceId: 'device-id' }, json: {} });
+  expect(mocks.approve).toHaveBeenCalledWith({ param: { deviceId: 'device-id' } });
 });
 
 test.each([

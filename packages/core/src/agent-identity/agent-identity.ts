@@ -7,7 +7,7 @@ import {
   type AgentTarget,
 } from '@aio-proxy/types';
 
-import { createAgentIdentityRepository } from './repository';
+import { createAgentIdentityRepository } from './identity-repository';
 import { createAgentToken, hashAgentToken } from './tokens';
 
 export type AgentCredentialIssueInput = {

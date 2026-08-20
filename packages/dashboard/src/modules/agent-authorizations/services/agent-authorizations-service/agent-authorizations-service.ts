@@ -35,7 +35,7 @@ export const decideAgentAuthorization = async (
   const routes = dashboardClient.dashboard.api['agent-authorizations'][':deviceId'];
   const response =
     decision === 'approve'
-      ? await routes.approve.$post({ param: { deviceId }, json: {} })
-      : await routes.deny.$post({ param: { deviceId }, json: {} });
+      ? await routes.approve.$post({ param: { deviceId } })
+      : await routes.deny.$post({ param: { deviceId } });
   return requireOk(response);
 };

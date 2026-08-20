@@ -1,5 +1,5 @@
 import { m } from '@aio-proxy/i18n';
-import type { AliasConfig, AliasTarget } from '@aio-proxy/types';
+import { type AliasConfig, type AliasTarget, isAliasVariantsObject } from '@aio-proxy/types';
 import { Badge } from '@aio-proxy/ui/components/badge';
 import { Button } from '@aio-proxy/ui/components/button';
 import { FieldDescription } from '@aio-proxy/ui/components/field';
@@ -43,7 +43,7 @@ export const ProviderAliasVariants: FC<Props> = ({
   onDiscardDraft,
   onDraftDirtyChange,
 }) => {
-  const variants = config.variants ?? {};
+  const variants = isAliasVariantsObject(config.variants) ? config.variants : {};
   const [open, setOpen] = useState(issues.length > 0 || draftIds.length > 0);
   const expanded = open || issues.length > 0 || draftIds.length > 0;
   const canCollapse = issues.length === 0 && draftIds.length === 0;
