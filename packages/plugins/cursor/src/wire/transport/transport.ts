@@ -6,6 +6,7 @@ export const CURSOR_API_URL = 'https://api2.cursor.sh';
 export const CURSOR_CLIENT_VERSION = 'cli-2026.01.09-231024f';
 export const CURSOR_RUN_PATH = '/agent.v1.AgentService/Run';
 export const CURSOR_GET_USABLE_MODELS_PATH = '/agent.v1.AgentService/GetUsableModels';
+export const CURSOR_AVAILABLE_MODELS_PATH = '/aiserver.v1.AiService/AvailableModels';
 
 export type CursorH2Stream = {
   write(frame: Uint8Array): void;

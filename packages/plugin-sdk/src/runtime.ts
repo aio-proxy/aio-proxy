@@ -90,6 +90,7 @@ export type ModelCatalog = {
   readonly speech: readonly ModelDescriptor[];
   readonly transcription: readonly ModelDescriptor[];
   readonly reranking: readonly ModelDescriptor[];
+  readonly metadata?: JsonValue;
 };
 
 export type OAuthRuntimeResult = {

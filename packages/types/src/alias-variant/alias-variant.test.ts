@@ -47,6 +47,8 @@ describe('canonicalEffort', () => {
     expect(canonicalEffort(' X-High ')).toBe('xhigh');
     expect(canonicalEffort('x_high')).toBe('xhigh');
     expect(canonicalEffort('extrahigh')).toBe('xhigh');
+    expect(canonicalEffort('extra-high')).toBe('xhigh');
+    expect(canonicalEffort('Extra-High')).toBe('xhigh');
     expect(canonicalEffort('HIGH')).toBe('high');
   });
 
