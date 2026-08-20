@@ -16,6 +16,7 @@ import {
   matchesIdentity,
   relocateIdentity,
   removeOwned,
+  reserveVacantDir,
   restoreOwned,
   syncDirectory,
   writeDurable,
@@ -172,18 +173,9 @@ const reserveSibling = async (hostRoot: string, prefix: string): Promise<string>
   return reserved;
 };
 
-const reserveVacantManagedDir = async (path: string): Promise<FsIdentity> => {
-  try {
-    await mkdir(path, { mode: 0o700 });
-  } catch (error) {
-    if (isFsCode(error, 'EEXIST')) throw new Error('managed path exists');
-    throw error;
-  }
-  return captureIdentity(path);
-};
-
 const promoteStagedDir = async (staging: FsIdentity, dest: string): Promise<void> => {
-  const reservation = await reserveVacantManagedDir(dest);
+  const reservation = await reserveVacantDir(dest);
+  if (reservation === undefined) throw new Error('managed path exists');
   try {
     await rename(staging.path, dest);
   } catch (error) {

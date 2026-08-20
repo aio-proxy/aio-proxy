@@ -5,7 +5,7 @@ import { join } from 'node:path';
 
 import { AgentManagedMarkerSchema } from '@aio-proxy/types';
 
-import { captureIdentity, isolateOwned } from './durable';
+import { captureIdentity, isolateOwned, restoreOwnedForTest } from './durable';
 import * as managedInstallation from './index';
 import { installManagedIntegration, installManagedIntegrationForTest, type ManagedInstallTestDeps } from './install';
 import {
@@ -231,6 +231,32 @@ test('a replaced entry temporary file is not deleted', async () => {
   expect(await Bun.file(await onlyPrefixed(f.location.hostRoot, '.aio-proxy-owned-')).text()).toBe('foreign temp');
   expect(await Bun.file(displaced).text()).toBe(openCodeEntry(f.installationId));
   expect(await Bun.file(f.location.adjacentEntry!).exists()).toBe(false);
+});
+
+test('restoreOwned does not replace a foreign empty destination created in the inspect-to-rename window', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'aio-owned-restore-'));
+  fixtureRoots.push(home);
+  const source = join(home, 'owned');
+  const dest = join(home, 'dest');
+  await mkdir(source);
+  await writeFile(join(source, 'kept.txt'), 'owned tree');
+  const identity = await captureIdentity(source);
+  let destIno: number | undefined;
+  expect('restoreOwnedForTest' in managedInstallation).toBe(false);
+  await expect(
+    restoreOwnedForTest(identity, dest, {
+      onBeforeRename: async () => {
+        await mkdir(dest);
+        destIno = (await lstat(dest)).ino;
+      },
+    }),
+  ).resolves.toBe(false);
+  const destStat = await lstat(dest);
+  expect(destStat.isDirectory()).toBe(true);
+  expect(destStat.ino).toBe(destIno);
+  expect(await Bun.file(join(dest, 'kept.txt')).exists()).toBe(false);
+  expect(await Bun.file(join(source, 'kept.txt')).text()).toBe('owned tree');
+  expect((await lstat(source)).ino).toBe(identity.ino);
 });
 
 test('isolateOwned retains a mismatched occupant under the isolated sibling when the original path stays vacant', async () => {
