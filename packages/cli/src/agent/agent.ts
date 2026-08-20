@@ -91,7 +91,7 @@ export type AgentRevokeResult = {
 };
 
 const captureHostCommand = async (command: readonly [string, ...string[]]): Promise<string> => {
-  const proc = Bun.spawn(command, { stdout: 'pipe', stderr: 'pipe' });
+  const proc = Bun.spawn([...command], { stdout: 'pipe', stderr: 'pipe' });
   const stdout = await new Response(proc.stdout).text();
   if ((await proc.exited) !== 0) throw new Error(`${command[0]} command failed`);
   return stdout;
@@ -206,8 +206,9 @@ const applySnapshot = (
   const schemaCompatibility = snapshot.catalogSchemaVersions.includes(1) ? 'compatible' : 'incompatible';
   return targets.map((row) => {
     if (row.integration !== 'managed' || row.marker === undefined) return row;
+    const { marker } = row;
     const match = snapshot.installations.find(
-      (item) => item.installationId === row.marker.installationId && item.target === row.marker.agent,
+      (item) => item.installationId === marker.installationId && item.target === marker.agent,
     );
     return applyCheckedMarker(row, match?.authorization ?? 'missing', schemaCompatibility);
   });

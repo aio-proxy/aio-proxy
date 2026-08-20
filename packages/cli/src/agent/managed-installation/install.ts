@@ -252,16 +252,18 @@ async function runManagedInstall(
   if (status.integration === 'conflict') throwConflict(status);
 
   if (status.integration === 'managed') {
-    if (input.managedOnly === true && status.marker.installationId !== input.requestedInstallationId) {
+    const { marker } = status;
+    if (marker === undefined) throw new Error('managed installation is required');
+    if (input.managedOnly === true && marker.installationId !== input.requestedInstallationId) {
       throw new Error('managed installation id mismatch');
     }
-    if (isNewerAdapter(status.marker.adapterVersion, input.adapterVersion)) {
+    if (isNewerAdapter(marker.adapterVersion, input.adapterVersion)) {
       if (location.adjacentEntry !== undefined && status.entry === 'missing') {
-        await repairOpenCodeEntry(location, status.marker);
+        await repairOpenCodeEntry(location, marker);
       }
       return 'newer';
     }
-    return runStagedInstall(input, status.marker.installationId, true, testDeps);
+    return runStagedInstall(input, marker.installationId, true, testDeps);
   }
 
   if (input.managedOnly === true) throw new Error('managed installation is required');

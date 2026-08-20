@@ -128,7 +128,7 @@ async function run(
   env: NodeJS.ProcessEnv,
   timeoutMs = 60_000,
 ): Promise<CommandResult> {
-  const child = Bun.spawn(command, {
+  const child = Bun.spawn([...command], {
     cwd,
     env,
     stdin: 'ignore',

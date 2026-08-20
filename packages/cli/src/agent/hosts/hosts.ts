@@ -92,7 +92,7 @@ export async function resolveAgentLocation(target: AgentTarget, deps: AgentHostD
   }
 
   if (target === 'pi') {
-    const override = deps.env.PI_CODING_AGENT_DIR;
+    const override = deps.env['PI_CODING_AGENT_DIR'];
     const configured =
       override === undefined || override === ''
         ? join(deps.home, '.pi', 'agent')

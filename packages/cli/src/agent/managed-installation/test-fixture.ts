@@ -141,8 +141,11 @@ export async function installFixture(
 
 export async function onlyPrefixed(directory: string, prefix: string): Promise<string> {
   const names = (await readdir(directory)).filter((name) => name.startsWith(prefix));
-  if (names.length !== 1) throw new Error(`expected one ${prefix}* in ${directory}, found ${names.join(', ')}`);
-  return join(directory, names[0]);
+  const name = names[0];
+  if (names.length !== 1 || name === undefined) {
+    throw new Error(`expected one ${prefix}* in ${directory}, found ${names.join(', ')}`);
+  }
+  return join(directory, name);
 }
 
 export async function displaceAndReplaceDir(path: string, displaced: string, child: string, contents: string) {

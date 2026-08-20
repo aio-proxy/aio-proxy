@@ -68,7 +68,11 @@ async function runManagedRemove(
   if (status.integration === 'conflict') {
     throw new Error(status.reason === 'entry_invalid' ? 'entry conflict' : `managed ${status.reason ?? 'conflict'}`);
   }
-  if (status.integration !== 'managed' || status.marker.installationId !== expectedInstallationId) {
+  if (
+    status.integration !== 'managed' ||
+    status.marker === undefined ||
+    status.marker.installationId !== expectedInstallationId
+  ) {
     throw new Error('managed installation is required');
   }
 

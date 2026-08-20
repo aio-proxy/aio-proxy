@@ -146,10 +146,13 @@ const parseAgentCatalogNegotiation: MiddlewareHandler<ModelsEnv> = async (contex
     await next();
     return;
   }
-  if (raw.schema_version !== undefined && raw.schema_version !== '1') {
+  if (raw['schema_version'] !== undefined && raw['schema_version'] !== '1') {
     return context.json(
       {
-        error: { code: 'unsupported_schema', message: `Agent catalog schema ${raw.schema_version} is not supported.` },
+        error: {
+          code: 'unsupported_schema',
+          message: `Agent catalog schema ${raw['schema_version']} is not supported.`,
+        },
         supported_schema_versions: [1],
       },
       400,
