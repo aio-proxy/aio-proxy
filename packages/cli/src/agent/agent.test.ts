@@ -2,7 +2,7 @@ import { expect, mock, test } from 'bun:test';
 
 import type { AgentAdminSnapshot, AgentInstallationSummary, AgentRevokeStatus, AgentTarget } from '@aio-proxy/types';
 
-import { agentConfigure, agentList, agentRemove, type AgentCommandDeps } from './agent';
+import { agentConfigure, agentList, agentRemove, agentRevoke, type AgentCommandDeps } from './agent';
 import type { AgentHost, AgentLocation } from './hosts';
 
 const INSTALLATION = '0f4dcb50-d68c-4b99-8af1-da32480ddd09';
@@ -67,6 +67,19 @@ function commandFixture(
     if (options.revokeError !== undefined) throw options.revokeError;
     return options.revokeStatus ?? 'revoked';
   });
+  const resolveEndpoint = mock(async () => {
+    if (options.serverHost !== undefined && options.serverHost !== '127.0.0.1')
+      throw new Error('Agent integrations require loopback');
+    return 'http://127.0.0.1:9317';
+  });
+  const readSnapshot = mock(async () => {
+    if (options.server === 'offline') throw new TypeError('offline');
+    return {
+      installations: [...(options.serverInstallations ?? [])],
+      deviceAuthorization: options.deviceAuthorization ?? 'available',
+      catalogSchemaVersions: [...(options.catalogSchemaVersions ?? [1])],
+    };
+  });
   const deps: AgentCommandDeps = {
     detectHost: async (target) => ({
       target,
@@ -100,28 +113,17 @@ function commandFixture(
         },
       };
     },
-    resolveEndpoint: async () => {
-      if (options.serverHost !== undefined && options.serverHost !== '127.0.0.1')
-        throw new Error('Agent integrations require loopback');
-      return 'http://127.0.0.1:9317';
-    },
+    resolveEndpoint,
     install,
     remove,
-    readSnapshot: async () => {
-      if (options.server === 'offline') throw new TypeError('offline');
-      return {
-        installations: [...(options.serverInstallations ?? [])],
-        deviceAuthorization: options.deviceAuthorization ?? 'available',
-        catalogSchemaVersions: [...(options.catalogSchemaVersions ?? [1])],
-      };
-    },
+    readSnapshot,
     revoke,
     readAssets: async () => new Map([['index.js', new TextEncoder().encode('adapter')]]),
     adapterVersion: '1.2.3',
     randomUUID: () => INSTALLATION,
     now: () => Date.parse('2026-08-18T00:05:00.000Z'),
   };
-  return { deps, events, install, remove, revoke };
+  return { deps, events, install, remove, revoke, resolveEndpoint, readSnapshot };
 }
 
 test('configure installs while an offline server remains an explicit warning', async () => {
@@ -187,6 +189,7 @@ test('authorizations marks configured and orphaned server identities', async () 
     expect.objectContaining({ installationId: INSTALLATION, local: 'configured' }),
     expect.objectContaining({ installationId: ORPHAN_INSTALLATION, local: 'orphaned' }),
   ]);
+  expect(f.readSnapshot).toHaveBeenCalledTimes(1);
 });
 
 test('list --check returns the complete per-target and server capability contract', async () => {
@@ -216,6 +219,7 @@ test('list --check returns the complete per-target and server capability contrac
       }),
     }),
   );
+  expect(f.readSnapshot).toHaveBeenCalledTimes(1);
 });
 
 test('list --check reports a missing authorization and incompatible catalog schema', async () => {
@@ -232,6 +236,7 @@ test('list --check reports a missing authorization and incompatible catalog sche
       schemaCompatibility: 'incompatible',
     }),
   );
+  expect(f.readSnapshot).toHaveBeenCalledTimes(1);
 });
 
 test('list --check leaves target checks not_checked when the snapshot is unreachable', async () => {
@@ -250,6 +255,7 @@ test('list --check leaves target checks not_checked when the snapshot is unreach
       schemaCompatibility: 'not_checked',
     }),
   );
+  expect(f.readSnapshot).toHaveBeenCalledTimes(1);
 });
 
 test('list --check leaves target checks not_checked when endpoint resolution fails', async () => {
@@ -268,6 +274,7 @@ test('list --check leaves target checks not_checked when endpoint resolution fai
       schemaCompatibility: 'not_checked',
     }),
   );
+  expect(f.readSnapshot).not.toHaveBeenCalled();
 });
 
 test('local-only list makes authorization and schema checks explicit', async () => {
@@ -284,6 +291,7 @@ test('local-only list makes authorization and schema checks explicit', async () 
       schemaCompatibility: 'not_checked',
     }),
   );
+  expect(f.readSnapshot).not.toHaveBeenCalled();
 });
 
 test('list reports an undetected host as unresolved without resolving its path', async () => {
@@ -303,4 +311,22 @@ test('remove fails before revoke when the public host path is unavailable', asyn
   await expect(agentRemove('omp', f.deps)).rejects.toThrow('path unavailable');
   expect(f.revoke).not.toHaveBeenCalled();
   expect(f.remove).not.toHaveBeenCalled();
+});
+
+test('revoke rejects an invalid installation id before resolving the endpoint', async () => {
+  const f = commandFixture();
+  await expect(agentRevoke('not-a-uuid', f.deps)).rejects.toThrow();
+  expect(f.resolveEndpoint).not.toHaveBeenCalled();
+  expect(f.revoke).not.toHaveBeenCalled();
+});
+
+test('revoke invokes the client once with the resolved endpoint and installation id', async () => {
+  const f = commandFixture();
+  await expect(agentRevoke(INSTALLATION, f.deps)).resolves.toEqual({
+    installationId: INSTALLATION,
+    status: 'revoked',
+  });
+  expect(f.resolveEndpoint).toHaveBeenCalledTimes(1);
+  expect(f.revoke).toHaveBeenCalledTimes(1);
+  expect(f.revoke).toHaveBeenCalledWith('http://127.0.0.1:9317', INSTALLATION);
 });
