@@ -327,7 +327,6 @@ export const useProviderEditorPage = ({
     hasApiKey,
     sessionWarning,
     values,
-    others,
     persistedId,
     session,
     sessionQuery,

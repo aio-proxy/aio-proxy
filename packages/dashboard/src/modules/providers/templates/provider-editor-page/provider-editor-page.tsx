@@ -37,7 +37,6 @@ export const ProviderEditorPage: React.FC<ProviderEditorPageProps> = (props) => 
     hasApiKey,
     sessionWarning,
     values,
-    others,
     persistedId,
     session,
     sessionQuery,
@@ -69,13 +68,7 @@ export const ProviderEditorPage: React.FC<ProviderEditorPageProps> = (props) => 
         candidates={oauth?.models}
         summary={summaries.models}
       />
-      <RoutingSection
-        form={form}
-        models={models}
-        candidates={oauth?.models}
-        others={others}
-        summary={summaries.routing}
-      />
+      <RoutingSection form={form} summary={summaries.routing} />
       <AdvancedSection
         form={form}
         kind={kind}

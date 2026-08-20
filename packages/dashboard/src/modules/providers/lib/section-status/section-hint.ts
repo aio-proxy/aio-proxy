@@ -103,9 +103,8 @@ export const routingHint = (input: SectionStatusInput): string => {
   // the advice on screen.
   if (input.weightTie) return m['dashboard.providers.editor.hint_routing_weight_tie']();
   // Absent coalesces to 0 at the single ordering point, config.ts:185 — but that is ordering, not
-  // readout. The attempt-order queue beside this badge renders a dash for an absent weight, so
-  // printing `0` here would have the same screen state two things at once, and would make a stored
-  // `0` indistinguishable from a key that was never written.
+  // readout, and the two are deliberately kept apart here: an absent weight reports "not set", because
+  // printing `0` would make a stored `0` indistinguishable from a key that was never written.
   if (input.weight === undefined) return m['dashboard.providers.editor.hint_routing_no_weight']();
   return m['dashboard.providers.editor.hint_routing_weight']({ weight: input.weight });
 };

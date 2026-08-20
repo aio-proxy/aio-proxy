@@ -12,20 +12,20 @@ import { WeightSliderField } from './weight-slider-field';
 // Base UI tracks one value. Measured on the registry file: 5 -> 2, undefined -> 2, [5] -> 1, [0] -> 1.
 describe('WeightSliderField', () => {
   test('renders exactly one thumb for a stored weight', () => {
-    render(<WeightSliderField value={5} onChange={rs.fn()} disabled={false} />);
+    render(<WeightSliderField value={5} onChange={rs.fn()} />);
 
     expect(screen.getAllByRole('slider', { hidden: true })).toHaveLength(1);
   });
 
   test('renders exactly one thumb for an absent weight', () => {
-    render(<WeightSliderField value={undefined} onChange={rs.fn()} disabled={false} />);
+    render(<WeightSliderField value={undefined} onChange={rs.fn()} />);
 
     expect(screen.getAllByRole('slider', { hidden: true })).toHaveLength(1);
   });
 
   test('reports a bare number, never the array Base UI hands back', () => {
     const onChange = rs.fn();
-    render(<WeightSliderField value={20} onChange={onChange} disabled={false} />);
+    render(<WeightSliderField value={20} onChange={onChange} />);
 
     fireEvent.change(screen.getByRole('slider', { hidden: true }), { target: { value: '45' } });
 
@@ -36,7 +36,7 @@ describe('WeightSliderField', () => {
   });
 
   test('an out-of-range stored weight is shown as-is rather than snapped', () => {
-    render(<WeightSliderField value={250} onChange={rs.fn()} disabled={false} />);
+    render(<WeightSliderField value={250} onChange={rs.fn()} />);
 
     expect(screen.getByRole('spinbutton')).toHaveValue(250);
     const note = screen.getByTestId('weight-slider-out-of-range');
@@ -50,7 +50,7 @@ describe('WeightSliderField', () => {
   // too and silently rewrites the user's 250 to 100.
   test('an out-of-range weight clamps the thumb to the track without touching the stored value', () => {
     const onChange = rs.fn();
-    render(<WeightSliderField value={250} onChange={onChange} disabled={false} />);
+    render(<WeightSliderField value={250} onChange={onChange} />);
 
     expect(screen.getByRole('slider', { hidden: true })).toHaveAttribute('aria-valuenow', '100');
     expect(screen.getByRole('spinbutton')).toHaveValue(250);
@@ -63,7 +63,7 @@ describe('WeightSliderField', () => {
   // same form field; the mutant is routing it through the slider's min/max/step.
   test('the number input keeps a weight the slider cannot represent, neither clamped nor snapped', () => {
     const onChange = rs.fn();
-    render(<WeightSliderField value={undefined} onChange={onChange} disabled={false} />);
+    render(<WeightSliderField value={undefined} onChange={onChange} />);
 
     fireEvent.change(screen.getByRole('spinbutton'), { target: { value: '250' } });
     expect(onChange).toHaveBeenLastCalledWith(250);
@@ -76,7 +76,7 @@ describe('WeightSliderField', () => {
   // affordance to unset it. Empty means absent, and the mutant is `Number('') === 0`.
   test('clearing the number input reports absent rather than zero', () => {
     const onChange = rs.fn();
-    render(<WeightSliderField value={40} onChange={onChange} disabled={false} />);
+    render(<WeightSliderField value={40} onChange={onChange} />);
 
     fireEvent.change(screen.getByRole('spinbutton'), { target: { value: '' } });
 
@@ -89,7 +89,7 @@ describe('WeightSliderField', () => {
   // handler that was never invoked. The mutant is treating a falsy `Number(raw)` as empty.
   test('typing zero reports zero, not absent', () => {
     const onChange = rs.fn();
-    render(<WeightSliderField value={40} onChange={onChange} disabled={false} />);
+    render(<WeightSliderField value={40} onChange={onChange} />);
 
     fireEvent.change(screen.getByRole('spinbutton'), { target: { value: '0' } });
 
@@ -100,17 +100,11 @@ describe('WeightSliderField', () => {
   // have shipped unnamed. The mutant is dropping `htmlFor`, which leaves the input nameless while the
   // slider keeps its `aria-labelledby` and the field still looks labelled.
   test('the weight label names the number input', () => {
-    render(<WeightSliderField value={40} onChange={rs.fn()} disabled={false} />);
+    render(<WeightSliderField value={40} onChange={rs.fn()} />);
 
     expect(screen.getByRole('spinbutton', { name: m['dashboard.providers.form.label_weight']() })).toBe(
       screen.getByTestId('weight-number-input'),
     );
-  });
-
-  test('the number input is disabled when routing is off', () => {
-    render(<WeightSliderField value={20} onChange={rs.fn()} disabled />);
-
-    expect(screen.getByRole('spinbutton')).toBeDisabled();
   });
 
   // The display and the body disagree on purpose. An absent weight IS zero to the router, so the box
@@ -119,7 +113,7 @@ describe('WeightSliderField', () => {
   // default silently stamps `weight: 0` into every provider the user merely opened.
   test('an absent weight displays zero without writing one on mount', () => {
     const onChange = rs.fn();
-    render(<WeightSliderField value={undefined} onChange={onChange} disabled={false} />);
+    render(<WeightSliderField value={undefined} onChange={onChange} />);
 
     expect(screen.getByRole('spinbutton')).toHaveValue(0);
     expect(onChange).not.toHaveBeenCalled();
@@ -131,7 +125,7 @@ describe('WeightSliderField', () => {
   // `/\S/u` was the defect in this test: any non-empty string passed it, including a message whose
   // `{placeholder}` never interpolated.
   test('the higher-is-tried-first description is permanent, and the out-of-range one still renders', () => {
-    const inRange = render(<WeightSliderField value={20} onChange={rs.fn()} disabled={false} />);
+    const inRange = render(<WeightSliderField value={20} onChange={rs.fn()} />);
 
     const description = m['dashboard.providers.editor.weight_description']();
     expect(inRange.getByTestId('weight-slider-description')).toHaveTextContent(description);
@@ -139,19 +133,11 @@ describe('WeightSliderField', () => {
     expect(inRange.queryByTestId('weight-slider-out-of-range')).toBeNull();
     inRange.unmount();
 
-    const outOfRange = render(<WeightSliderField value={250} onChange={rs.fn()} disabled={false} />);
+    const outOfRange = render(<WeightSliderField value={250} onChange={rs.fn()} />);
 
     expect(outOfRange.getByTestId('weight-slider-description')).toHaveTextContent(description);
     const note = outOfRange.getByTestId('weight-slider-out-of-range');
     expect(note).toHaveTextContent(/250/u);
     expect(note.textContent ?? '').not.toMatch(/[{}]/u);
-  });
-
-  // `disabled={false}` was hardcoded, so the slider stayed draggable and looked live while the
-  // provider was excluded from routing entirely.
-  test('the slider is disabled when routing is off', () => {
-    render(<WeightSliderField value={20} onChange={rs.fn()} disabled />);
-
-    expect(screen.getByRole('slider', { hidden: true })).toBeDisabled();
   });
 });

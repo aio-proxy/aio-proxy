@@ -13,7 +13,6 @@ const INPUT_ID = 'provider-weight-input';
 interface WeightSliderFieldProps {
   readonly value: number | undefined;
   readonly onChange: (value: number | undefined) => void;
-  readonly disabled: boolean;
 }
 
 /**
@@ -29,7 +28,7 @@ interface WeightSliderFieldProps {
  * `5`. The number input beside it is bound to the same form field and carries no bounds, so any
  * weight config accepts can be typed and kept.
  */
-export const WeightSliderField: React.FC<WeightSliderFieldProps> = ({ value, onChange, disabled }) => (
+export const WeightSliderField: React.FC<WeightSliderFieldProps> = ({ value, onChange }) => (
   <Field data-testid="provider-editor-field-weight">
     {/* `htmlFor` names the number input; the slider takes the same label by `aria-labelledby` and is
         told apart by its role. */}
@@ -40,7 +39,6 @@ export const WeightSliderField: React.FC<WeightSliderFieldProps> = ({ value, onC
       <Slider
         aria-labelledby={LABEL_ID}
         className="grow"
-        disabled={disabled}
         min={WEIGHT_MIN}
         max={WEIGHT_MAX}
         step={WEIGHT_STEP}
@@ -57,7 +55,6 @@ export const WeightSliderField: React.FC<WeightSliderFieldProps> = ({ value, onC
       <Input
         className="w-20 shrink-0 text-right tabular-nums"
         data-testid="weight-number-input"
-        disabled={disabled}
         id={INPUT_ID}
         // Deliberately no min/max/step: this input IS the escape hatch from the slider's grid, so a
         // stored 250 or 7 has to survive being typed. `step="any"` keeps a fractional weight valid.
@@ -78,8 +75,6 @@ export const WeightSliderField: React.FC<WeightSliderFieldProps> = ({ value, onC
         }}
       />
     </div>
-    {/* The affinity half of the prototype's sentence already ships as `preview_affinity_note` under
-        the attempt-order list on this same screen, so this states the direction only. */}
     <FieldDescription data-testid="weight-slider-description">
       {m['dashboard.providers.editor.weight_description']()}
     </FieldDescription>
