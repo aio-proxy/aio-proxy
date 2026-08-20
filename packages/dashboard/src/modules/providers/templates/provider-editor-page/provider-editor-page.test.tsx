@@ -631,6 +631,38 @@ test('typing a name another alias already uses blocks Save', () => {
   expect(saveButton()).toBeDisabled();
 });
 
+// Clearing used to be rejected, so the box could show '' while the row still held `mini`:
+// aliasEditorIssues stayed empty and Save wrote the old name. `toHaveValue('')` alone is not
+// enough — a rejected write never re-renders, so the DOM stays empty after fireEvent.change.
+// The issue and the Save gate are what prove the empty name actually landed in the row.
+test('clearing an existing alias name writes the empty string and blocks Save', () => {
+  renderPage({
+    mode: ProviderFormMode.Edit,
+    kind: ProviderKind.Api,
+    providerId: 'p1',
+    initial: {
+      id: 'p1',
+      name: 'Existing',
+      enabled: true,
+      protocol: ProviderProtocol.OpenAICompatible,
+      baseURL: 'https://api.example.com/v1',
+      models: ['model-a'],
+      alias: {
+        mini: { model: 'model-a', preserve: false },
+      },
+    },
+    onSessionIdChange: rs.fn(),
+  });
+
+  expect(saveButton()).toBeEnabled();
+  const box = screen.getByLabelText(m['dashboard.providers.form.alias_name']());
+  fireEvent.change(box, { target: { value: '' } });
+
+  expect(box).toHaveValue('');
+  expect(box).toHaveAttribute('aria-invalid', 'true');
+  expect(saveButton()).toBeDisabled();
+});
+
 test('every exposure row names its origin, direct models included', () => {
   renderPage({
     mode: ProviderFormMode.Edit,
