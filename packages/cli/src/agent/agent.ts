@@ -190,6 +190,18 @@ const listTarget = async (
 
 const localMarkerKey = (installationId: string, target: AgentTarget): string => `${installationId}:${target}`;
 
+const applyCheckedMarker = (
+  row: AgentListTargetResult,
+  authorization: AgentListTargetResult['authorization'],
+  schemaCompatibility: AgentListTargetResult['schemaCompatibility'],
+): AgentListTargetResult => {
+  if (row.integration !== 'managed' || row.marker === undefined) return row;
+  return { ...row, authorization, schemaCompatibility };
+};
+
+const applyUnavailableCheck = (targets: readonly AgentListTargetResult[]): readonly AgentListTargetResult[] =>
+  targets.map((row) => applyCheckedMarker(row, 'missing', 'incompatible'));
+
 const applySnapshot = (
   targets: readonly AgentListTargetResult[],
   snapshot: AgentAdminSnapshot,
@@ -200,11 +212,7 @@ const applySnapshot = (
     const match = snapshot.installations.find(
       (item) => item.installationId === row.marker.installationId && item.target === row.marker.agent,
     );
-    return {
-      ...row,
-      authorization: match?.authorization ?? 'missing',
-      schemaCompatibility,
-    };
+    return applyCheckedMarker(row, match?.authorization ?? 'missing', schemaCompatibility);
   });
 };
 
@@ -240,12 +248,12 @@ export async function agentList(
   const online = options.check === true || options.authorizations === true;
   if (!online) return { targets, server: 'not_checked' };
 
-  if (configuredEndpoint === undefined) return { targets, server: 'unreachable' };
+  if (configuredEndpoint === undefined) return { targets: applyUnavailableCheck(targets), server: 'unreachable' };
   let snapshot: AgentAdminSnapshot;
   try {
     snapshot = await resolved.readSnapshot(configuredEndpoint);
   } catch {
-    return { targets, server: 'unreachable' };
+    return { targets: applyUnavailableCheck(targets), server: 'unreachable' };
   }
 
   return {

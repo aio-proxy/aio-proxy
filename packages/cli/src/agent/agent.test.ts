@@ -234,6 +234,42 @@ test('list --check reports a missing authorization and incompatible catalog sche
   );
 });
 
+test('list --check reports missing authorization when the snapshot is unreachable', async () => {
+  const f = commandFixture({
+    localInstallationIds: [INSTALLATION],
+    server: 'offline',
+  });
+  const result = await agentList({ check: true }, f.deps);
+  expect(result).toMatchObject({ server: 'unreachable' });
+  expect(result.deviceAuthorization).toBeUndefined();
+  expect(result.catalogSchemaVersions).toBeUndefined();
+  expect(result.targets).toContainEqual(
+    expect.objectContaining({
+      target: 'opencode',
+      authorization: 'missing',
+      schemaCompatibility: 'incompatible',
+    }),
+  );
+});
+
+test('list --check reports missing authorization when endpoint resolution fails', async () => {
+  const f = commandFixture({
+    localInstallationIds: [INSTALLATION],
+    serverHost: '192.0.2.10',
+  });
+  const result = await agentList({ check: true }, f.deps);
+  expect(result).toMatchObject({ server: 'unreachable' });
+  expect(result.deviceAuthorization).toBeUndefined();
+  expect(result.catalogSchemaVersions).toBeUndefined();
+  expect(result.targets).toContainEqual(
+    expect.objectContaining({
+      target: 'opencode',
+      authorization: 'missing',
+      schemaCompatibility: 'incompatible',
+    }),
+  );
+});
+
 test('local-only list makes authorization and schema checks explicit', async () => {
   const f = commandFixture({ localInstallationIds: [INSTALLATION] });
   const result = await agentList({}, f.deps);
