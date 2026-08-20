@@ -162,17 +162,6 @@ const editorTitle = (mode: ProviderFormMode, name: string | undefined): string =
   return name === undefined || name.trim() === '' ? m['dashboard.providers.edit_title']() : name;
 };
 
-// Same function as the footer. A bare `blocking.length > 0` return would swallow the Connection
-// authorize click: an unauthorized oauth draft is connection `attention`, and that button is the
-// X9 way out (`save(false)`). Allow only that single attention, and only when nothing else is
-// unfinished — so a doomed popup never opens, and reauthorize cannot persist a colliding alias map.
-const saveIsBlocked = (summaries: ReturnType<typeof sectionStatuses>): boolean => {
-  const blocking = blockingSections(summaries);
-  const authorizeEscape =
-    blocking.length === 1 && blocking[0] === 'connection' && summaries.connection.status === 'attention';
-  return blocking.length > 0 && !authorizeEscape;
-};
-
 export interface ProviderEditorPageProps {
   readonly mode: ProviderFormMode;
   readonly kind: ProviderKind;
@@ -285,7 +274,6 @@ export const useProviderEditorPage = ({
   };
 
   const save = (forceReauthorize = false) => {
-    if (saveIsBlocked(summaries)) return;
     const wireValues = {
       ...values,
       alias:
@@ -293,12 +281,13 @@ export const useProviderEditorPage = ({
           ? undefined
           : serializeAlias(values.alias, mode === ProviderFormMode.Create ? 'create' : 'edit'),
     };
+    if (kind === 'oauth' && mode === ProviderFormMode.Create && !authorized) {
+      openPopup();
+      startCreateAuthorization(wireValues, accountValues, capabilities, startMutation.mutate, closeUnclaimedPopup);
+      return;
+    }
+    if (blockingSections(summaries).length > 0) return;
     if (kind === 'oauth') {
-      if (mode === ProviderFormMode.Create && !authorized) {
-        openPopup();
-        startCreateAuthorization(wireValues, accountValues, capabilities, startMutation.mutate, closeUnclaimedPopup);
-        return;
-      }
       if (oauth === undefined) return;
       saveOAuthProvider(
         wireValues,

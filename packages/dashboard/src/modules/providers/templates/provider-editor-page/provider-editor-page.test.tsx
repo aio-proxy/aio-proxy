@@ -868,3 +868,39 @@ test('resolving a duplicate alias name lets reauthorize start a mutation again',
   fireEvent.click(reauthorizeButton());
   await waitFor(() => expect(mocks.start).toHaveBeenCalled());
 });
+
+// Create-authorization does not send alias, so a leftover empty-name row (models `todo`)
+// must not block the Connection authorize button. The escape hatch that keyed off
+// "only connection is attention" closed once models joined the blocking list.
+test('oauth create still authorizes when a leftover empty alias has models as todo', async () => {
+  const onKindChange = rs.fn();
+  const props = {
+    mode: ProviderFormMode.Create,
+    kind: ProviderKind.Api,
+    initial: { enabled: true, models: ['gpt-5-mini'] } as const,
+    onKindChange,
+    onSessionIdChange: rs.fn(),
+  };
+  const view = renderPage(props);
+
+  fireEvent.click(screen.getByRole('button', { name: m['dashboard.providers.form.add_alias']() }));
+  expect(screen.getByLabelText(m['dashboard.providers.form.alias_name']())).toHaveValue('');
+
+  fireEvent.click(screen.getByRole('radio', { name: /OAuth/u }));
+  expect(onKindChange).toHaveBeenCalledWith(ProviderKind.OAuth);
+
+  view.rerender(
+    <>
+      <Toaster />
+      <ProviderEditorPage {...props} kind={ProviderKind.OAuth} />
+    </>,
+  );
+
+  expect(screen.getByLabelText(m['dashboard.providers.form.alias_name']())).toHaveValue('');
+
+  await selectOAuthCapability();
+  await waitFor(() => expect(sectionAuthorizeButton()).toBeEnabled());
+  fireEvent.click(sectionAuthorizeButton());
+
+  await waitFor(() => expect(mocks.start).toHaveBeenCalled());
+});
