@@ -175,6 +175,24 @@ export const buildProgram = (deps: CliDeps = defaultCliDeps) => {
     .option('--registry <url>', m['cli.upgrade.option_registry_description']())
     .action((options) => runUpgradeCommand(options));
 
+  program.command('__agent-post-upgrade', { hidden: true }).action(async () => {
+    const [{ createAgentCommandDeps }, { readAgentPostUpgradePayload, runAgentPostUpgrade }] = await Promise.all([
+      import('./agent'),
+      import('./upgrade/post-upgrade-agents'),
+    ]);
+    const payload = await readAgentPostUpgradePayload();
+    const agent = createAgentCommandDeps(deps);
+    const results = await runAgentPostUpgrade(payload, {
+      resolveLocation: agent.resolveLocation,
+      inspect: agent.inspect,
+      install: agent.install,
+      readAssets: agent.readAssets,
+      adapterVersion: VERSION,
+      now: agent.now,
+    });
+    console.log(JSON.stringify(results));
+  });
+
   return program;
 };
 

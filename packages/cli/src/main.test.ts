@@ -6,6 +6,7 @@ import { join } from 'node:path';
 
 import { cliRunArgs, freePort, output, repoCwd, runCli, waitForOk } from '../__tests__/cli-test-helpers';
 import packageJson from '../package.json' with { type: 'json' };
+import { buildProgram } from './main';
 
 describe('cli', () => {
   test('prints package version when requested', () => {
@@ -170,5 +171,12 @@ describe('cli', () => {
     expect(help).toContain('--open');
     expect(help).not.toContain('config');
     expect(help).not.toContain('--dashboard');
+  });
+
+  test('the hidden post-upgrade command is registered and omitted from help', () => {
+    const program = buildProgram();
+    const child = program.commands.find((command) => command.name() === '__agent-post-upgrade');
+    expect(child).toBeDefined();
+    expect(program.helpInformation()).not.toContain('__agent-post-upgrade');
   });
 });

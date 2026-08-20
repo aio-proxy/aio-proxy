@@ -25,7 +25,8 @@
     "@aio-proxy/types": "workspace:*",
     "@inquirer/prompts": "^8.5.2",
     "commander": "15",
-    "es-toolkit": "catalog:"
+    "es-toolkit": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@aio-proxy/infra": "workspace:*",

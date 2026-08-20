@@ -1,13 +1,20 @@
 import { m } from '@aio-proxy/i18n';
+import { AgentTargetSchema } from '@aio-proxy/types';
 
 import packageJson from '../../package.json' with { type: 'json' };
 import { controlBaseUrl, probeHealth, resolveControlAddress } from '../control-plane';
+import { defaultCliDeps } from '../dashboard-assets';
 import { CliExit, EXIT } from '../exit';
 import { isManagedServiceInstalled, serviceRestart } from '../service';
 import { updateViaBinary } from './binary';
 import { NPM_REGISTRY, type UpgradeTarget } from './constants';
 import { resolveUpgradeTarget } from './detect';
 import { runPackageManagerUpgrade } from './methods';
+import type {
+  AgentPostUpgradeItemResult,
+  AgentPostUpgradePayload,
+  AgentUpgradeHandoffDeps,
+} from './post-upgrade-agents';
 import { fetchLatestVersion } from './registry';
 
 export type UpgradeOptions = {
@@ -16,7 +23,7 @@ export type UpgradeOptions = {
   readonly registry?: string;
 };
 
-type UpgradeDeps = {
+type UpgradeDeps = AgentUpgradeHandoffDeps & {
   readonly resolveTarget: () => Promise<UpgradeTarget>;
   readonly fetchLatest: (registry: string) => Promise<string>;
   readonly currentVersion: string;
@@ -39,15 +46,51 @@ const probeDaemonRunning = async (): Promise<boolean> => {
   return (await probeHealth(controlBaseUrl(host, port))) !== null;
 };
 
+const captureManagedAgentTargets = async (): Promise<AgentPostUpgradePayload> => {
+  const { createAgentCommandDeps } = await import('../agent');
+  const agent = createAgentCommandDeps(defaultCliDeps);
+  const targets: AgentPostUpgradePayload['targets'][number][] = [];
+  for (const target of AgentTargetSchema.options) {
+    try {
+      const location = await agent.resolveLocation(target);
+      const status = await agent.inspect(location, agent.now);
+      if (status.integration !== 'managed') continue;
+      targets.push({
+        target,
+        managedDir: location.managedDir,
+        ...(location.adjacentEntry === undefined ? {} : { adjacentEntry: location.adjacentEntry }),
+      });
+    } catch {
+      // Unresolvable hosts stay off the payload; the new binary never creates them.
+    }
+  }
+  return { format: 1, targets };
+};
+
 const defaultDeps: UpgradeDeps = {
   resolveTarget: resolveUpgradeTarget,
   fetchLatest: (registry) => fetchLatestVersion(registry),
   currentVersion: packageJson.version,
   install: runInstall,
+  captureAgentTargets: captureManagedAgentTargets,
+  isEffectiveUserRoot: () => process.getuid?.() === 0,
+  resolveNewBinary: async (target, installedVersion) =>
+    (await import('./agent-post-upgrade-process')).resolveNewAgentBinary(target, installedVersion),
+  invokeAgentPostUpgrade: async (binary, payload) =>
+    (await import('./agent-post-upgrade-process')).invokeAgentPostUpgrade(binary, payload),
   isDaemonRunning: probeDaemonRunning,
   isServiceManaged: isManagedServiceInstalled,
   restartService: serviceRestart,
 };
+
+const agentItemWarning = (item: Extract<AgentPostUpgradeItemResult, { readonly status: 'warning' }>): string =>
+  `aio-proxy upgraded, but ${item.target} could not be updated: ${item.reason}. Repair with: aio-proxy agent configure ${item.target}`;
+
+const agentProtocolWarning = (reason: string): string =>
+  `aio-proxy upgraded, but Agent integrations could not be updated: ${reason}. Repair with: aio-proxy agent configure <target>`;
+
+const ROOT_EFFECTIVE_USER_WARNING =
+  "aio-proxy upgrade is running as root; only root's Agent integrations will be updated. Run aio-proxy agent configure <target> again as each regular user that owns integrations.";
 
 const errorReason = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 
@@ -84,6 +127,8 @@ export const runUpgradeCommand = async (
   if (cmp <= 0 && options.force === true) print(m['cli.upgrade.forcing']({ version: latest }));
 
   print(m['cli.upgrade.via']({ method: target.method }));
+  const payload = await deps.captureAgentTargets();
+  if (deps.isEffectiveUserRoot()) print(ROOT_EFFECTIVE_USER_WARNING);
   // Install failures are plain Errors (package-manager exit code, missing asset);
   // rethrow as CliExit so the user sees the actionable reason, not a generic message.
   try {
@@ -92,6 +137,16 @@ export const runUpgradeCommand = async (
     throw new CliExit(EXIT.transient, m['cli.upgrade.install_failed']({ reason: errorReason(err) }));
   }
   print(m['cli.upgrade.success']({ version: latest }));
+
+  try {
+    const binary = await deps.resolveNewBinary(target, latest);
+    const results = await deps.invokeAgentPostUpgrade(binary, payload);
+    for (const item of results) {
+      if (item.status === 'warning') print(agentItemWarning(item));
+    }
+  } catch (err) {
+    print(agentProtocolWarning(errorReason(err)));
+  }
 
   if (!(await deps.isDaemonRunning())) return;
   // A managed daemon (launchd/systemd) is designed to be bounced, so applying the
