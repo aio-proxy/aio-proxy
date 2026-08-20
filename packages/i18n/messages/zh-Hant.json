@@ -734,7 +734,7 @@
         "preview_rank_disabled": "已停用",
         "weight_description": "數值越高越先被嘗試。",
         "aliases_heading": "模型別名",
-        "aliases_description": "把一個用戶端模型 ID 映射到目前提供商的上游模型。同一 ID 要跨多個 provider 路由時，在各 provider 設定同名別名；如果上游 ID 本來就相同，直接啟用模型即可。",
+        "aliases_description": "把一個用戶端模型 ID 映射到目前 provider 的上游模型。同一 ID 要跨多個 provider 路由時，在各 provider 設定同名別名；如果上游 ID 本來就相同，直接啟用模型即可。",
         "models_filter_placeholder": "篩選模型",
         "models_count": "已啟用 {enabled} / {total}",
         "models_all_discovered": "已探索的 {count} 個模型全部對外提供",
