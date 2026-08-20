@@ -44,5 +44,7 @@ export const revokeAgentInstallation = async (
     signal: AbortSignal.timeout(3_000),
   });
   if (!response.ok) throw new Error(`agent admin revoke failed (${response.status})`);
-  return AgentRevokeResponseSchema.parse(await response.json()).status;
+  const parsed = AgentRevokeResponseSchema.parse(await response.json());
+  if (parsed.installationId !== id) throw new Error('agent admin revoke installation mismatch');
+  return parsed.status;
 };

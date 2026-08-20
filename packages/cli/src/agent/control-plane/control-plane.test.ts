@@ -24,6 +24,14 @@ test.each(['revoked', 'expired', 'missing'] as const)('accepts revoke terminal %
   ).resolves.toBe(status);
 });
 
+test('rejects a revoke terminal for a different installation', async () => {
+  await expect(
+    revokeAgentInstallation('http://127.0.0.1:9317', INSTALLATION, async () =>
+      Response.json({ installationId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', status: 'revoked' }),
+    ),
+  ).rejects.toThrow();
+});
+
 test.each([404, 500])('rejects revoke HTTP %s without fabricating a terminal status', async (status) => {
   await expect(
     revokeAgentInstallation('http://127.0.0.1:9317', INSTALLATION, async () => new Response('', { status })),
