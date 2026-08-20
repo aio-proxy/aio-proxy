@@ -871,7 +871,7 @@
         "metadata_description": "Optional per-model overrides for the display name, context limits, capabilities, and pricing. This does not change the upstream model ID.",
         "metadata_json_label": "{model} metadata JSON",
         "metadata_json_error": "Enter a valid JSON object.",
-        "metadata_schema_error": "{path}: {reason}",
+        "metadata_schema_error": "{path}: this value is not valid.",
         "remove_model": "Remove {model} from the list",
         "enable_model": "Enable {model}",
         "models_manual_submit": "Add",

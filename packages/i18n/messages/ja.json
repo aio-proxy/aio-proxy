@@ -871,7 +871,7 @@
         "metadata_description": "任意のモデル単位の上書きです。表示名、コンテキスト制限、能力、価格に使われ、上流のモデル ID は変わりません。",
         "metadata_json_label": "{model} の metadata JSON",
         "metadata_json_error": "有効な JSON オブジェクトを入力してください。",
-        "metadata_schema_error": "{path}：{reason}",
+        "metadata_schema_error": "{path}: この項目の値が不正です。",
         "remove_model": "リストから {model} を削除",
         "enable_model": "{model} を有効にする",
         "models_manual_submit": "追加",

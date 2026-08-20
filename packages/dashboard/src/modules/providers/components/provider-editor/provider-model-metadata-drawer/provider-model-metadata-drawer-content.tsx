@@ -113,7 +113,6 @@ export const ProviderModelMetadataDrawerContent: React.FC<ProviderModelMetadataD
               <p role="alert" className="mt-2 text-sm text-destructive">
                 {m['dashboard.providers.form.metadata_schema_error']({
                   path: parsed.error.issues[0].path.join('.') || '.',
-                  reason: parsed.error.issues[0].message,
                 })}
               </p>
             ) : !parsed.success ? (

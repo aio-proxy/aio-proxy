@@ -1,1 +1,1 @@
-export { fetchModelsDevSlugs, modelsDevSlugsQueryOptions } from './models-dev-service';
+export { modelsDevSlugsQueryOptions } from './models-dev-service';

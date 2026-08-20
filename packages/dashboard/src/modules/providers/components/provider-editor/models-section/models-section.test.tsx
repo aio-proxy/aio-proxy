@@ -580,7 +580,6 @@ describe('ModelsSection', () => {
     expect(schemaAlert).toHaveTextContent(
       m['dashboard.providers.form.metadata_schema_error']({
         path: 'limit.input',
-        reason: 'Input limit must not exceed context limit',
       }),
     );
     expect(schemaAlert).not.toHaveAttribute('id', 'metadata-visual-blocked');
@@ -600,6 +599,22 @@ describe('ModelsSection', () => {
     expect(empty).toHaveAttribute('placeholder', m['dashboard.providers.editor.metadata_extend_loading_placeholder']());
     expect(empty).toHaveAttribute('aria-label', m['dashboard.providers.editor.metadata_extend_aria_label']());
     expect(screen.getByRole('status')).toHaveTextContent(m['dashboard.providers.editor.metadata_extend_loading']());
+  });
+
+  test('the extend picker stays enabled while the catalog is loading if a slug is already set', async () => {
+    mocks.slugs.mockReset();
+    mocks.slugs.mockImplementation(() => new Promise(() => {}));
+    renderSection({
+      kind: ProviderKind.Api,
+      initial: apiInitial(['model-a'], { 'model-a': { extend: 'openai/gpt-5' } }),
+    });
+
+    fireEvent.click(within(screen.getByTestId('model-row-model-a')).getByTestId('model-row-metadata'));
+    await screen.findByTestId('provider-model-metadata-drawer');
+
+    const filled = document.getElementById('metadata-extend');
+    expect(filled).toBeEnabled();
+    expect(filled).toHaveValue('openai/gpt-5');
   });
 
   test('an extend slug missing from the catalog stays in the picker so it can be selected again', async () => {
