@@ -903,4 +903,11 @@ test('oauth create still authorizes when a leftover empty alias has models as to
   fireEvent.click(sectionAuthorizeButton());
 
   await waitFor(() => expect(mocks.start).toHaveBeenCalled());
+  // This form still has a leftover empty alias row, so a missing `alias` on the
+  // patch is proven, not incidental. Create-authorization writes no
+  // section-gated fields; if a later change starts sending alias (the parked
+  // "create-auth drops draft aliases" todo), this branch needs a validation
+  // gate again — exact equality here is the tripwire for models / transforms /
+  // metadata / weight as well, not just alias.
+  expect(mocks.start.mock.calls[0]?.[0]).toEqual(expect.objectContaining({ providerPatch: { enabled: true } }));
 });
