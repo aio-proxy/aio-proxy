@@ -26,7 +26,6 @@
 - `PiFamilyCatalogResult` retains `source` and `status`. When `source` is `missing`, do not return a silent empty catalog: `unauthorized` throws `aio-proxy login required`, `unsupported_schema` throws `aio-proxy adapter upgrade required`, and `network` / `server_error` / `invalid_json` / `invalid_catalog` throw `aio-proxy server required`.
 - The package build script is exactly `rslib --lib pi-family`. Plain `rslib` also builds the repository `library` config and is not acceptable.
 - Compatibility isolation deletes inherited `PI_OFFLINE` together with `OMP_AUTH_BROKER_URL` and `OMP_PROFILE`. Crash-window host output must contain the exact substring `aio-proxy login required`.
-- Keep the current flat package paths and identities: `packages/agent-provider-runtime`, `packages/opencode-provider`, and `packages/pi-provider`. Do not migrate to `packages/agent-provider/*`.
 - OMP performs an offline/background runtime-provider refresh before `session_start`. A 401 in that phase returns LKG and records pending recovery; the first `session_start` force-refreshes the host credential before one online runtime-provider refresh.
 - Adapter-owned `.aio-proxy-state.json` is the LKG source of truth. Host model caches are downstream copies and are never read as aio-proxy state.
 - Host model types can express only `text` and `image`; drop unsupported modalities rather than coercing audio/video/pdf to image.
@@ -41,31 +40,31 @@
 
 ## File Structure
 
-- `packages/pi-provider/package.json` — private package metadata, dual host manifests, scripts, and pinned type-only host dependencies.
-- `packages/pi-provider/tsconfig.json` — workspace TypeScript configuration.
-- `packages/pi-provider/rslib.config.ts` — bundled `official-pi` and `omp` ESM entries.
-- `packages/pi-provider/src/core/index.ts` — export-only package-private core barrel.
-- `packages/pi-provider/src/core/core.ts` — catalog projection plus concrete login, refresh, and LKG operations.
-- `packages/pi-provider/src/core/core.test.ts` — exact capability/modality/limit projection and OAuth behavior.
-- `packages/pi-provider/src/official-pi/index.ts` — export-only official Pi barrel.
-- `packages/pi-provider/src/official-pi/official-pi.ts` — native official Pi registration and timer lifecycle.
-- `packages/pi-provider/src/official-pi/official-pi.test.ts` — official callbacks, credential-aware catalog, and shutdown tests.
-- `packages/pi-provider/src/omp/index.ts` — export-only OMP barrel.
-- `packages/pi-provider/src/omp/omp.ts` — native OMP registration, 401 recovery, and managed timer.
-- `packages/pi-provider/src/omp/omp.test.ts` — OMP callbacks, ModelRegistry recovery, cache refresh, and timer tests.
-- `packages/pi-provider/artifact.test.ts` — explicit post-build dual-manifest/self-contained gate; excluded from source-unit discovery.
-- `packages/pi-provider/scripts/compat-host.ts` — version-pinned real-loader/login/catalog/inference matrix for both hosts.
+- `packages/agent-provider/pi/package.json` — private package metadata, dual host manifests, scripts, and pinned type-only host dependencies.
+- `packages/agent-provider/pi/tsconfig.json` — workspace TypeScript configuration.
+- `packages/agent-provider/pi/rslib.config.ts` — bundled `official-pi` and `omp` ESM entries.
+- `packages/agent-provider/pi/src/core/index.ts` — export-only package-private core barrel.
+- `packages/agent-provider/pi/src/core/core.ts` — catalog projection plus concrete login, refresh, and LKG operations.
+- `packages/agent-provider/pi/src/core/core.test.ts` — exact capability/modality/limit projection and OAuth behavior.
+- `packages/agent-provider/pi/src/official-pi/index.ts` — export-only official Pi barrel.
+- `packages/agent-provider/pi/src/official-pi/official-pi.ts` — native official Pi registration and timer lifecycle.
+- `packages/agent-provider/pi/src/official-pi/official-pi.test.ts` — official callbacks, credential-aware catalog, and shutdown tests.
+- `packages/agent-provider/pi/src/omp/index.ts` — export-only OMP barrel.
+- `packages/agent-provider/pi/src/omp/omp.ts` — native OMP registration, 401 recovery, and managed timer.
+- `packages/agent-provider/pi/src/omp/omp.test.ts` — OMP callbacks, ModelRegistry recovery, cache refresh, and timer tests.
+- `packages/agent-provider/pi/artifact.test.ts` — explicit post-build dual-manifest/self-contained gate; excluded from source-unit discovery.
+- `packages/agent-provider/pi/scripts/compat-host.ts` — version-pinned real-loader/login/catalog/inference matrix for both hosts.
 
 ### Task 1: Package and shared Pi-family projection/OAuth core
 
 **Files:**
 
-- Create: `packages/pi-provider/package.json`
-- Create: `packages/pi-provider/tsconfig.json`
-- Create: `packages/pi-provider/rslib.config.ts`
-- Create: `packages/pi-provider/src/core/index.ts`
-- Create: `packages/pi-provider/src/core/core.ts`
-- Test: `packages/pi-provider/src/core/core.test.ts`
+- Create: `packages/agent-provider/pi/package.json`
+- Create: `packages/agent-provider/pi/tsconfig.json`
+- Create: `packages/agent-provider/pi/rslib.config.ts`
+- Create: `packages/agent-provider/pi/src/core/index.ts`
+- Create: `packages/agent-provider/pi/src/core/core.ts`
+- Test: `packages/agent-provider/pi/src/core/core.test.ts`
 - Modify: `bun.lock`
 
 **Interfaces:**
@@ -83,7 +82,7 @@
 - [ ] **Step 1: Write failing shared-core tests**
 
 ```ts
-// packages/pi-provider/src/core/core.test.ts
+// packages/agent-provider/pi/src/core/core.test.ts
 import { expect, mock, test } from 'bun:test';
 import { AgentRuntimeError } from '@aio-proxy/agent-provider-runtime';
 import type { AgentCatalogV1, AgentManagedMarker } from '@aio-proxy/types';
@@ -281,7 +280,7 @@ test('undefined access token without LKG is missing and does not touch the netwo
 
 - [ ] **Step 2: Run the tests to verify RED**
 
-Run: `bun test packages/pi-provider/src/core/core.test.ts`
+Run: `bun test packages/agent-provider/pi/src/core/core.test.ts`
 
 Expected: FAIL because the package and core do not exist.
 
@@ -319,7 +318,7 @@ Expected: FAIL because the package and core do not exist.
 ```
 
 ```ts
-// packages/pi-provider/rslib.config.ts
+// packages/agent-provider/pi/rslib.config.ts
 import { defineLibraryConfig } from '@aio-proxy/infra/rslib';
 
 export default defineLibraryConfig({
@@ -348,7 +347,7 @@ export default defineLibraryConfig({
 - [ ] **Step 4: Implement the concrete shared operations**
 
 ```ts
-// packages/pi-provider/src/core/core.ts
+// packages/agent-provider/pi/src/core/core.ts
 import {
   AgentRuntimeError,
   pollDeviceAuthorization,
@@ -504,7 +503,7 @@ Expected: PASS. Do not build yet: the two entry files are created by Tasks 2–3
 - [ ] **Step 6: Commit**
 
 ```bash
-git add packages/pi-provider bun.lock
+git add packages/agent-provider/pi bun.lock
 git commit -m "feat(pi): add shared provider integration core" -m "Co-authored-by: Codex <noreply@openai.com>"
 ```
 
@@ -512,9 +511,9 @@ git commit -m "feat(pi): add shared provider integration core" -m "Co-authored-b
 
 **Files:**
 
-- Create: `packages/pi-provider/src/official-pi/index.ts`
-- Create: `packages/pi-provider/src/official-pi/official-pi.ts`
-- Test: `packages/pi-provider/src/official-pi/official-pi.test.ts`
+- Create: `packages/agent-provider/pi/src/official-pi/index.ts`
+- Create: `packages/agent-provider/pi/src/official-pi/official-pi.ts`
+- Test: `packages/agent-provider/pi/src/official-pi/official-pi.test.ts`
 
 **Interfaces:**
 
@@ -524,7 +523,7 @@ git commit -m "feat(pi): add shared provider integration core" -m "Co-authored-b
 - [ ] **Step 1: Write failing official-host tests**
 
 ```ts
-// packages/pi-provider/src/official-pi/official-pi.test.ts
+// packages/agent-provider/pi/src/official-pi/official-pi.test.ts
 import { expect, mock, test } from 'bun:test';
 import type { AgentCatalogV1, AgentManagedMarker } from '@aio-proxy/types';
 import type { ExtensionAPI, ProviderConfig } from '@earendil-works/pi-coding-agent';
@@ -713,14 +712,14 @@ async function fixture(options: { readonly catalogResults?: PiFamilyCatalogResul
 
 - [ ] **Step 2: Run the test to verify RED**
 
-Run: `bun test packages/pi-provider/src/official-pi/official-pi.test.ts`
+Run: `bun test packages/agent-provider/pi/src/official-pi/official-pi.test.ts`
 
 Expected: FAIL because the official entry does not exist.
 
 - [ ] **Step 3: Implement the official Pi binding**
 
 ```ts
-// packages/pi-provider/src/official-pi/official-pi.ts
+// packages/agent-provider/pi/src/official-pi/official-pi.ts
 import {
   CATALOG_REFRESH_INTERVAL_MS,
   createSingleFlight,
@@ -832,14 +831,14 @@ Use type-only imports for both official packages; emitted JavaScript must contai
 
 - [ ] **Step 4: Run official entry tests GREEN**
 
-Run: `bun test packages/pi-provider/src/official-pi/official-pi.test.ts`
+Run: `bun test packages/agent-provider/pi/src/official-pi/official-pi.test.ts`
 
 Expected: PASS; the host-refreshed credential is the only catalog access token, exactly one timer exists with delay `300_000`, missing catalogs throw the spec diagnostics, and shutdown clears the timer.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add packages/pi-provider/src/official-pi
+git add packages/agent-provider/pi/src/official-pi
 git commit -m "feat(pi): register native official Pi provider" -m "Co-authored-by: Codex <noreply@openai.com>"
 ```
 
@@ -847,9 +846,9 @@ git commit -m "feat(pi): register native official Pi provider" -m "Co-authored-b
 
 **Files:**
 
-- Create: `packages/pi-provider/src/omp/index.ts`
-- Create: `packages/pi-provider/src/omp/omp.ts`
-- Test: `packages/pi-provider/src/omp/omp.test.ts`
+- Create: `packages/agent-provider/pi/src/omp/index.ts`
+- Create: `packages/agent-provider/pi/src/omp/omp.ts`
+- Test: `packages/agent-provider/pi/src/omp/omp.test.ts`
 
 **Interfaces:**
 
@@ -859,7 +858,7 @@ git commit -m "feat(pi): register native official Pi provider" -m "Co-authored-b
 - [ ] **Step 1: Write failing OMP lifecycle tests**
 
 ```ts
-// packages/pi-provider/src/omp/omp.test.ts
+// packages/agent-provider/pi/src/omp/omp.test.ts
 import { expect, mock, test } from 'bun:test';
 import type { AgentCatalogV1, AgentManagedMarker } from '@aio-proxy/types';
 import type { ExtensionAPI, ProviderConfig } from '@oh-my-pi/pi-coding-agent';
@@ -1182,14 +1181,14 @@ async function fixture(options: { readonly catalogResults?: PiFamilyCatalogResul
 
 - [ ] **Step 2: Run the test to verify RED**
 
-Run: `bun test packages/pi-provider/src/omp/omp.test.ts`
+Run: `bun test packages/agent-provider/pi/src/omp/omp.test.ts`
 
 Expected: FAIL because the OMP entry does not exist.
 
 - [ ] **Step 3: Implement the OMP-native binding**
 
 ```ts
-// packages/pi-provider/src/omp/omp.ts
+// packages/agent-provider/pi/src/omp/omp.ts
 import {
   CATALOG_REFRESH_INTERVAL_MS,
   createSingleFlight,
@@ -1333,7 +1332,7 @@ Expected: PASS; pre-session undefined keys serve LKG, active-context undefined k
 - [ ] **Step 5: Commit**
 
 ```bash
-git add packages/pi-provider/src/omp
+git add packages/agent-provider/pi/src/omp
 git commit -m "feat(pi): register native OMP provider" -m "Co-authored-by: Codex <noreply@openai.com>"
 ```
 
@@ -1341,9 +1340,9 @@ git commit -m "feat(pi): register native OMP provider" -m "Co-authored-by: Codex
 
 **Files:**
 
-- Create: `packages/pi-provider/artifact.test.ts`
-- Create: `packages/pi-provider/scripts/compat-host.ts`
-- Modify: `packages/pi-provider/package.json`
+- Create: `packages/agent-provider/pi/artifact.test.ts`
+- Create: `packages/agent-provider/pi/scripts/compat-host.ts`
+- Modify: `packages/agent-provider/pi/package.json`
 
 **Interfaces:**
 
@@ -1353,7 +1352,7 @@ git commit -m "feat(pi): register native OMP provider" -m "Co-authored-by: Codex
 - [ ] **Step 1: Write the artifact/manifest guard**
 
 ```ts
-// packages/pi-provider/artifact.test.ts
+// packages/agent-provider/pi/artifact.test.ts
 import { expect, test } from 'bun:test';
 import manifest from './package.json' with { type: 'json' };
 
@@ -1382,7 +1381,7 @@ Expected: PASS if Tasks 1–3 kept every host import type-only. This is a perman
 - [ ] **Step 3: Implement one real-host matrix script**
 
 ```ts
-// packages/pi-provider/scripts/compat-host.ts
+// packages/agent-provider/pi/scripts/compat-host.ts
 import { copyFile, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -1933,6 +1932,6 @@ Expected: PASS with no runtime host-package import in either artifact.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add packages/pi-provider
+git add packages/agent-provider/pi
 git commit -m "test(pi): pin official Pi and OMP compatibility" -m "Co-authored-by: Codex <noreply@openai.com>"
 ```

@@ -49,7 +49,38 @@
       "name": "@aio-proxy/cli-linux-x64",
       "version": "0.8.0",
     },
-    "packages/agent-provider-runtime": {
+    "packages/agent-provider/opencode": {
+      "name": "@aio-proxy/opencode-provider",
+      "version": "0.8.0",
+      "dependencies": {
+        "@aio-proxy/agent-provider-runtime": "workspace:*",
+        "@aio-proxy/types": "workspace:*",
+      },
+      "devDependencies": {
+        "@aio-proxy/infra": "workspace:*",
+        "@opencode-ai/plugin": "1.18.18",
+        "@rslib/core": "catalog:",
+        "@types/bun": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
+    "packages/agent-provider/pi": {
+      "name": "@aio-proxy/pi-provider",
+      "version": "0.8.0",
+      "dependencies": {
+        "@aio-proxy/agent-provider-runtime": "workspace:*",
+        "@aio-proxy/types": "workspace:*",
+      },
+      "devDependencies": {
+        "@aio-proxy/infra": "workspace:*",
+        "@earendil-works/pi-coding-agent": "0.84.2",
+        "@oh-my-pi/pi-coding-agent": "17.3.7",
+        "@rslib/core": "catalog:",
+        "@types/bun": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
+    "packages/agent-provider/runtime": {
       "name": "@aio-proxy/agent-provider-runtime",
       "version": "0.8.0",
       "dependencies": {
@@ -229,37 +260,6 @@
       },
       "devDependencies": {
         "@aio-proxy/infra": "workspace:*",
-        "@types/bun": "catalog:",
-        "typescript": "catalog:",
-      },
-    },
-    "packages/opencode-provider": {
-      "name": "@aio-proxy/opencode-provider",
-      "version": "0.8.0",
-      "dependencies": {
-        "@aio-proxy/agent-provider-runtime": "workspace:*",
-        "@aio-proxy/types": "workspace:*",
-      },
-      "devDependencies": {
-        "@aio-proxy/infra": "workspace:*",
-        "@opencode-ai/plugin": "1.18.18",
-        "@rslib/core": "catalog:",
-        "@types/bun": "catalog:",
-        "typescript": "catalog:",
-      },
-    },
-    "packages/pi-provider": {
-      "name": "@aio-proxy/pi-provider",
-      "version": "0.8.0",
-      "dependencies": {
-        "@aio-proxy/agent-provider-runtime": "workspace:*",
-        "@aio-proxy/types": "workspace:*",
-      },
-      "devDependencies": {
-        "@aio-proxy/infra": "workspace:*",
-        "@earendil-works/pi-coding-agent": "0.84.2",
-        "@oh-my-pi/pi-coding-agent": "17.3.7",
-        "@rslib/core": "catalog:",
         "@types/bun": "catalog:",
         "typescript": "catalog:",
       },
@@ -546,7 +546,7 @@
 
     "@ai-sdk/xai": ["@ai-sdk/xai@4.0.3", "", { "dependencies": { "@ai-sdk/openai-compatible": "3.0.2", "@ai-sdk/provider": "4.0.1", "@ai-sdk/provider-utils": "5.0.2" }, "peerDependencies": { "zod": "^3.25.76 || ^4.1.8" } }, "sha512-Ionx1KwoBYQa6zV0vhz+L4F2lZQ6LntmJPZegI92C4vPbXq3dY6GgVj1U2CVGfLoKXRBT9oill6+C7auDaMubg=="],
 
-    "@aio-proxy/agent-provider-runtime": ["@aio-proxy/agent-provider-runtime@workspace:packages/agent-provider-runtime"],
+    "@aio-proxy/agent-provider-runtime": ["@aio-proxy/agent-provider-runtime@workspace:packages/agent-provider/runtime"],
 
     "@aio-proxy/cli": ["@aio-proxy/cli@workspace:packages/cli"],
 
@@ -568,9 +568,9 @@
 
     "@aio-proxy/logger": ["@aio-proxy/logger@workspace:packages/logger"],
 
-    "@aio-proxy/opencode-provider": ["@aio-proxy/opencode-provider@workspace:packages/opencode-provider"],
+    "@aio-proxy/opencode-provider": ["@aio-proxy/opencode-provider@workspace:packages/agent-provider/opencode"],
 
-    "@aio-proxy/pi-provider": ["@aio-proxy/pi-provider@workspace:packages/pi-provider"],
+    "@aio-proxy/pi-provider": ["@aio-proxy/pi-provider@workspace:packages/agent-provider/pi"],
 
     "@aio-proxy/plugin-cursor": ["@aio-proxy/plugin-cursor@workspace:packages/plugins/cursor"],
 

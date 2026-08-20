@@ -591,10 +591,12 @@ pending challenge 不写数据库，也不进入现有 OAuth provider login sess
   - `agent` commands、host detection、global path resolution；
   - marker、atomic install/remove、embedded adapter assets；
   - upgrade 的 new-binary post-upgrade step。
-- OpenCode adapter workspace package
-  - 本期只有 V1 host binding；共享 Device/token/catalog client；V2 binding 延期。
-- Pi-family adapter workspace package
-  - 共享 core、官方 Pi entry、OMP entry。
+- `packages/agent-provider/runtime`
+  - `@aio-proxy/agent-provider-runtime`：共享 Device/token/catalog client，无宿主行为。
+- `packages/agent-provider/opencode`
+  - `@aio-proxy/opencode-provider`：本期只有 V1 host binding；V2 binding 延期。
+- `packages/agent-provider/pi`
+  - `@aio-proxy/pi-provider`：共享 core、官方 Pi entry、OMP entry。
 - `packages/dashboard`
   - Device Code approval route/page；
   - 不新增长期身份管理页面。

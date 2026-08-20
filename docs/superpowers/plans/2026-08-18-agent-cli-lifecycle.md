@@ -70,8 +70,8 @@
 - Modify: `packages/cli/__tests__/generate-compiled-entry.test.ts`
 - Modify: `packages/cli/__tests__/binary-build.test.ts`
 - Modify: `packages/cli/package.json`
-- Modify: `packages/opencode-provider/package.json`
-- Modify: `packages/pi-provider/package.json`
+- Modify: `packages/agent-provider/opencode/package.json`
+- Modify: `packages/agent-provider/pi/package.json`
 - Modify: `bun.lock`
 
 **Interfaces:**
@@ -151,7 +151,7 @@ Expected: FAIL because Agent assets are not embedded.
 Add these package exports without changing their existing source export:
 
 ```jsonc
-// packages/opencode-provider/package.json
+// packages/agent-provider/opencode/package.json
 "exports": {
   ".": "./src/index.ts",
   "./artifact": "./dist/index.js"
@@ -159,7 +159,7 @@ Add these package exports without changing their existing source export:
 ```
 
 ```jsonc
-// packages/pi-provider/package.json
+// packages/agent-provider/pi/package.json
 "exports": {
   "./official-pi-artifact": "./dist/official-pi.js",
   "./omp-artifact": "./dist/omp.js"
@@ -239,7 +239,7 @@ Expected: PASS; the compiled test binary can read all three embedded file paths 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add packages/cli packages/opencode-provider/package.json packages/pi-provider/package.json bun.lock
+git add packages/cli packages/agent-provider/opencode/package.json packages/agent-provider/pi/package.json bun.lock
 git commit -m "feat(cli): embed agent provider artifacts" -m "Co-authored-by: Codex <noreply@openai.com>"
 ```
 

@@ -33,30 +33,30 @@
 
 ## File Structure
 
-- `packages/opencode-provider/package.json` — private workspace package, build/test scripts, and type-only OpenCode development dependency.
-- `packages/opencode-provider/tsconfig.json` — package TypeScript configuration extending the workspace baseline.
-- `packages/opencode-provider/rslib.config.ts` — single-entry bundled ESM output at `dist/index.js`.
-- `packages/opencode-provider/src/index.ts` — export-only package entry.
-- `packages/opencode-provider/src/catalog/index.ts` — export-only private catalog barrel.
-- `packages/opencode-provider/src/catalog/catalog.ts` — schema-1 to OpenCode model projection and stable model-content digest.
-- `packages/opencode-provider/src/catalog/catalog.test.ts` — exact capability, modality, and nullable-limit mapping behavior.
-- `packages/opencode-provider/src/v1/index.ts` — export-only V1 barrel.
-- `packages/opencode-provider/src/v1/v1.ts` — Device login, credential refresh, authenticated fetch, LKG publication, rebuild guard, and disposal.
-- `packages/opencode-provider/src/v1/v1.test.ts` — host-contract tests with fake `PluginInput`, auth storage, timers, and HTTP responses.
-- `packages/opencode-provider/artifact.test.ts` — explicit post-build artifact import/shape/runtime-import gate; excluded from source-unit discovery.
-- `packages/opencode-provider/scripts/compat-v1.ts` — version-pinned real-host compatibility harness for `1.17.10` and current.
+- `packages/agent-provider/opencode/package.json` — private workspace package, build/test scripts, and type-only OpenCode development dependency.
+- `packages/agent-provider/opencode/tsconfig.json` — package TypeScript configuration extending the workspace baseline.
+- `packages/agent-provider/opencode/rslib.config.ts` — single-entry bundled ESM output at `dist/index.js`.
+- `packages/agent-provider/opencode/src/index.ts` — export-only package entry.
+- `packages/agent-provider/opencode/src/catalog/index.ts` — export-only private catalog barrel.
+- `packages/agent-provider/opencode/src/catalog/catalog.ts` — schema-1 to OpenCode model projection and stable model-content digest.
+- `packages/agent-provider/opencode/src/catalog/catalog.test.ts` — exact capability, modality, and nullable-limit mapping behavior.
+- `packages/agent-provider/opencode/src/v1/index.ts` — export-only V1 barrel.
+- `packages/agent-provider/opencode/src/v1/v1.ts` — Device login, credential refresh, authenticated fetch, LKG publication, rebuild guard, and disposal.
+- `packages/agent-provider/opencode/src/v1/v1.test.ts` — host-contract tests with fake `PluginInput`, auth storage, timers, and HTTP responses.
+- `packages/agent-provider/opencode/artifact.test.ts` — explicit post-build artifact import/shape/runtime-import gate; excluded from source-unit discovery.
+- `packages/agent-provider/opencode/scripts/compat-v1.ts` — version-pinned real-host compatibility harness for `1.17.10` and current.
 
 ### Task 1: Package and exact OpenCode catalog projection
 
 **Files:**
 
-- Create: `packages/opencode-provider/package.json`
-- Create: `packages/opencode-provider/tsconfig.json`
-- Create: `packages/opencode-provider/rslib.config.ts`
-- Create: `packages/opencode-provider/src/index.ts`
-- Create: `packages/opencode-provider/src/catalog/index.ts`
-- Create: `packages/opencode-provider/src/catalog/catalog.ts`
-- Test: `packages/opencode-provider/src/catalog/catalog.test.ts`
+- Create: `packages/agent-provider/opencode/package.json`
+- Create: `packages/agent-provider/opencode/tsconfig.json`
+- Create: `packages/agent-provider/opencode/rslib.config.ts`
+- Create: `packages/agent-provider/opencode/src/index.ts`
+- Create: `packages/agent-provider/opencode/src/catalog/index.ts`
+- Create: `packages/agent-provider/opencode/src/catalog/catalog.ts`
+- Test: `packages/agent-provider/opencode/src/catalog/catalog.test.ts`
 - Modify: `bun.lock`
 
 **Interfaces:**
@@ -70,7 +70,7 @@
 - [ ] **Step 1: Write the failing projection tests**
 
 ```ts
-// packages/opencode-provider/src/catalog/catalog.test.ts
+// packages/agent-provider/opencode/src/catalog/catalog.test.ts
 import { expect, test } from 'bun:test';
 import type { AgentCatalogV1 } from '@aio-proxy/types';
 import { openCodeCatalogDigest, toOpenCodeModels } from './catalog';
@@ -112,7 +112,7 @@ test('digest changes only when ordered model content changes', () => {
 
 - [ ] **Step 2: Run the test to verify RED**
 
-Run: `bun test packages/opencode-provider/src/catalog/catalog.test.ts`
+Run: `bun test packages/agent-provider/opencode/src/catalog/catalog.test.ts`
 
 Expected: FAIL because the package and catalog module do not exist.
 
@@ -150,7 +150,7 @@ Expected: FAIL because the package and catalog module do not exist.
 Use an explicit single-entry build and disable dependency auto-externalization so the CLI can install one file:
 
 ```ts
-// packages/opencode-provider/rslib.config.ts
+// packages/agent-provider/opencode/rslib.config.ts
 import { defineLibraryConfig } from '@aio-proxy/infra/rslib';
 
 export default defineLibraryConfig({
@@ -184,7 +184,7 @@ export { opencodePlugin as default } from './v1';
 - [ ] **Step 4: Implement the deterministic projection**
 
 ```ts
-// packages/opencode-provider/src/catalog/catalog.ts
+// packages/agent-provider/opencode/src/catalog/catalog.ts
 import type { AgentCatalogV1 } from '@aio-proxy/types';
 import type { Config } from '@opencode-ai/plugin';
 
@@ -222,7 +222,7 @@ Expected: PASS. Do not build yet: `src/index.ts` intentionally points at the V1 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add packages/opencode-provider bun.lock
+git add packages/agent-provider/opencode bun.lock
 git commit -m "feat(opencode): map aio-proxy agent catalog" -m "Co-authored-by: Codex <noreply@openai.com>"
 ```
 
@@ -230,9 +230,9 @@ git commit -m "feat(opencode): map aio-proxy agent catalog" -m "Co-authored-by: 
 
 **Files:**
 
-- Create: `packages/opencode-provider/src/v1/index.ts`
-- Create: `packages/opencode-provider/src/v1/v1.ts`
-- Test: `packages/opencode-provider/src/v1/v1.test.ts`
+- Create: `packages/agent-provider/opencode/src/v1/index.ts`
+- Create: `packages/agent-provider/opencode/src/v1/v1.ts`
+- Test: `packages/agent-provider/opencode/src/v1/v1.test.ts`
 
 **Interfaces:**
 
@@ -242,7 +242,7 @@ git commit -m "feat(opencode): map aio-proxy agent catalog" -m "Co-authored-by: 
 - [ ] **Step 1: Write failing login and request-authentication tests**
 
 ```ts
-// packages/opencode-provider/src/v1/v1.test.ts
+// packages/agent-provider/opencode/src/v1/v1.test.ts
 import { afterEach, expect, mock, test } from 'bun:test';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -497,14 +497,14 @@ The production constant supplies the imported runtime functions, `Date.now`, `gl
 
 - [ ] **Step 2: Run the tests to verify RED**
 
-Run: `bun test packages/opencode-provider/src/v1/v1.test.ts`
+Run: `bun test packages/agent-provider/opencode/src/v1/v1.test.ts`
 
 Expected: FAIL because the V1 module does not exist.
 
 - [ ] **Step 3: Implement the production dependency set and complete V1 server**
 
 ```ts
-// packages/opencode-provider/src/v1/v1.ts
+// packages/agent-provider/opencode/src/v1/v1.ts
 import {
   AgentRuntimeError,
   CATALOG_REFRESH_INTERVAL_MS,
@@ -711,13 +711,13 @@ export const opencodePlugin = {
 
 - [ ] **Step 4: Re-run the focused test after replacing every global with `deps`**
 
-Run: `bun test packages/opencode-provider/src/v1/v1.test.ts --test-name-pattern 'authorize|re-reads|401'`
+Run: `bun test packages/agent-provider/opencode/src/v1/v1.test.ts --test-name-pattern 'authorize|re-reads|401'`
 
 Expected: PASS; `deps.now`, `deps.fetch`, `deps.setInterval`, and `deps.clearInterval` are the only clock, HTTP, and timer effects inside `createOpenCodeV1Server`.
 
 - [ ] **Step 5: Run V1 tests and the first complete build GREEN**
 
-Run: `bun test packages/opencode-provider/src/v1/v1.test.ts && bun run --filter @aio-proxy/opencode-provider build`
+Run: `bun test packages/agent-provider/opencode/src/v1/v1.test.ts && bun run --filter @aio-proxy/opencode-provider build`
 
 Expected: PASS; two simultaneous expired requests produce one token exchange and one `auth.set`, concurrent
 loader refreshes issue one catalog request, a 401 retry preserves the exact POST body, and `dist/index.js` now exists.
@@ -725,7 +725,7 @@ loader refreshes issue one catalog request, a 401 retry preserves the exact POST
 - [ ] **Step 6: Commit**
 
 ```bash
-git add packages/opencode-provider/src/v1 packages/opencode-provider/src/index.ts
+git add packages/agent-provider/opencode/src/v1 packages/agent-provider/opencode/src/index.ts
 git commit -m "feat(opencode): add device login and rotating auth" -m "Co-authored-by: Codex <noreply@openai.com>"
 ```
 
@@ -733,8 +733,8 @@ git commit -m "feat(opencode): add device login and rotating auth" -m "Co-author
 
 **Files:**
 
-- Modify: `packages/opencode-provider/src/v1/v1.ts`
-- Modify: `packages/opencode-provider/src/v1/v1.test.ts`
+- Modify: `packages/agent-provider/opencode/src/v1/v1.ts`
+- Modify: `packages/agent-provider/opencode/src/v1/v1.test.ts`
 
 **Interfaces:**
 
@@ -767,7 +767,7 @@ test('stale refresh preserves LKG without rebuilding for status-only changes', a
 
 - [ ] **Step 2: Run the tests to verify RED**
 
-Run: `bun test packages/opencode-provider/src/v1/v1.test.ts --test-name-pattern 'catalog content|status-only'`
+Run: `bun test packages/agent-provider/opencode/src/v1/v1.test.ts --test-name-pattern 'catalog content|status-only'`
 
 Expected: FAIL because validated model changes are not yet connected to `instance.dispose()`.
 
@@ -811,7 +811,7 @@ Expected: PASS, including the second identical refresh and the stale status-only
 - [ ] **Step 5: Commit**
 
 ```bash
-git add packages/opencode-provider/src/v1
+git add packages/agent-provider/opencode/src/v1
 git commit -m "feat(opencode): publish catalog through V1 config" -m "Co-authored-by: Codex <noreply@openai.com>"
 ```
 
@@ -819,9 +819,9 @@ git commit -m "feat(opencode): publish catalog through V1 config" -m "Co-authore
 
 **Files:**
 
-- Create: `packages/opencode-provider/artifact.test.ts`
-- Create: `packages/opencode-provider/scripts/compat-v1.ts`
-- Modify: `packages/opencode-provider/package.json`
+- Create: `packages/agent-provider/opencode/artifact.test.ts`
+- Create: `packages/agent-provider/opencode/scripts/compat-v1.ts`
+- Modify: `packages/agent-provider/opencode/package.json`
 
 **Interfaces:**
 
@@ -854,7 +854,7 @@ it does not manufacture a failing product state after the bundle already exists.
 - [ ] **Step 3: Implement the real-host harness**
 
 ```ts
-// packages/opencode-provider/scripts/compat-v1.ts
+// packages/agent-provider/opencode/scripts/compat-v1.ts
 import { chmod, copyFile, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -1128,7 +1128,7 @@ Both versions intentionally run the same public V1 commands. `--method aio-proxy
 
 - [ ] **Step 4: Run artifact and compatibility gates GREEN**
 
-Run: `bun run --filter @aio-proxy/opencode-provider build && bun test packages/opencode-provider/artifact.test.ts && bun run --filter @aio-proxy/opencode-provider test:compat`
+Run: `bun run --filter @aio-proxy/opencode-provider build && bun test packages/agent-provider/opencode/artifact.test.ts && bun run --filter @aio-proxy/opencode-provider test:compat`
 
 Expected: PASS for `1.17.10` and `1.18.18`; both discover the adjacent `aio-proxy.js` entry, load the default V1 `server` export, and fail closed with a re-login diagnostic in the receive-before-persist crash window. No V2 acceptance is run because V2 is intentionally deferred.
 
@@ -1141,6 +1141,6 @@ Expected: PASS.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add packages/opencode-provider
+git add packages/agent-provider/opencode
 git commit -m "test(opencode): pin V1 host compatibility" -m "Co-authored-by: Codex <noreply@openai.com>"
 ```

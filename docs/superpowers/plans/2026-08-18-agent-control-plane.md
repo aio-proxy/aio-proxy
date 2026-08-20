@@ -43,10 +43,10 @@
 - `packages/core/src/agent-identity/agent-identity.ts` — credential issuance, rotation, replay detection, revocation, cleanup, and the in-memory access index.
 - `packages/core/src/agent-identity/index.ts` — export-only barrel.
 - `packages/core/src/db/ownership-lock/` — PID/starttime/heartbeat database ownership lock with fenced stale recovery and synchronous release.
-- `packages/agent-provider-runtime/src/managed-state/` — export-only barrel, marker/state loading, its atomic-write tests, and no host behavior.
-- `packages/agent-provider-runtime/src/oauth-client/` — export-only barrel, form-encoded Device/refresh requests, and polling tests.
-- `packages/agent-provider-runtime/src/catalog-client/` — export-only barrel, authenticated schema-1 catalog fetch, failure classification, and LKG tests.
-- `packages/agent-provider-runtime/src/single-flight/` — export-only barrel, one concrete promise coalescer, and its test.
+- `packages/agent-provider/runtime/src/managed-state/` — export-only barrel, marker/state loading, its atomic-write tests, and no host behavior.
+- `packages/agent-provider/runtime/src/oauth-client/` — export-only barrel, form-encoded Device/refresh requests, and polling tests.
+- `packages/agent-provider/runtime/src/catalog-client/` — export-only barrel, authenticated schema-1 catalog fetch, failure classification, and LKG tests.
+- `packages/agent-provider/runtime/src/single-flight/` — export-only barrel, one concrete promise coalescer, and its test.
 - `packages/server/src/server/agent-auth/agent-auth.ts` — composite Agent/static/anonymous model middleware.
 - `packages/server/src/server/list-models/agent-catalog/agent-catalog.ts` — the only neutral Agent catalog assembler.
 - `packages/server/src/agent-authorization/device-challenges.ts` — in-memory RFC 8628 challenge state and rate limits.
@@ -1070,22 +1070,22 @@ git commit -m "feat(core): rotate agent credentials safely" -m "Co-authored-by: 
 
 **Files:**
 
-- Create: `packages/agent-provider-runtime/package.json`
-- Create: `packages/agent-provider-runtime/tsconfig.json`
-- Create: `packages/agent-provider-runtime/rslib.config.ts`
-- Create: `packages/agent-provider-runtime/src/index.ts`
-- Create: `packages/agent-provider-runtime/src/oauth-client/index.ts`
-- Create: `packages/agent-provider-runtime/src/oauth-client/oauth-client.ts`
-- Test: `packages/agent-provider-runtime/src/oauth-client/oauth-client.test.ts`
-- Create: `packages/agent-provider-runtime/src/catalog-client/index.ts`
-- Create: `packages/agent-provider-runtime/src/catalog-client/catalog-client.ts`
-- Test: `packages/agent-provider-runtime/src/catalog-client/catalog-client.test.ts`
-- Create: `packages/agent-provider-runtime/src/managed-state/index.ts`
-- Create: `packages/agent-provider-runtime/src/managed-state/managed-state.ts`
-- Test: `packages/agent-provider-runtime/src/managed-state/managed-state.test.ts`
-- Create: `packages/agent-provider-runtime/src/single-flight/index.ts`
-- Create: `packages/agent-provider-runtime/src/single-flight/single-flight.ts`
-- Test: `packages/agent-provider-runtime/src/single-flight/single-flight.test.ts`
+- Create: `packages/agent-provider/runtime/package.json`
+- Create: `packages/agent-provider/runtime/tsconfig.json`
+- Create: `packages/agent-provider/runtime/rslib.config.ts`
+- Create: `packages/agent-provider/runtime/src/index.ts`
+- Create: `packages/agent-provider/runtime/src/oauth-client/index.ts`
+- Create: `packages/agent-provider/runtime/src/oauth-client/oauth-client.ts`
+- Test: `packages/agent-provider/runtime/src/oauth-client/oauth-client.test.ts`
+- Create: `packages/agent-provider/runtime/src/catalog-client/index.ts`
+- Create: `packages/agent-provider/runtime/src/catalog-client/catalog-client.ts`
+- Test: `packages/agent-provider/runtime/src/catalog-client/catalog-client.test.ts`
+- Create: `packages/agent-provider/runtime/src/managed-state/index.ts`
+- Create: `packages/agent-provider/runtime/src/managed-state/managed-state.ts`
+- Test: `packages/agent-provider/runtime/src/managed-state/managed-state.test.ts`
+- Create: `packages/agent-provider/runtime/src/single-flight/index.ts`
+- Create: `packages/agent-provider/runtime/src/single-flight/single-flight.ts`
+- Test: `packages/agent-provider/runtime/src/single-flight/single-flight.test.ts`
 - Modify: `bun.lock`
 
 **Interfaces:**
@@ -1426,7 +1426,7 @@ runtime is bundled into those artifacts, while its own build remains the
 type/artifact boundary checked by this task:
 
 ```ts
-// packages/agent-provider-runtime/rslib.config.ts
+// packages/agent-provider/runtime/rslib.config.ts
 import { defineLibraryConfig } from '@aio-proxy/infra/rslib';
 
 export default defineLibraryConfig({
@@ -1454,7 +1454,7 @@ export default defineLibraryConfig({
 Implement the managed marker/state file directly; these functions are the only file-system code in the shared runtime:
 
 ```ts
-// packages/agent-provider-runtime/src/managed-state/managed-state.ts
+// packages/agent-provider/runtime/src/managed-state/managed-state.ts
 import { open, readFile, rename as nodeRename, rm } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -1549,7 +1549,7 @@ export async function writeManagedState(
 Implement every OAuth request through this one form helper:
 
 ```ts
-// packages/agent-provider-runtime/src/oauth-client/oauth-client.ts
+// packages/agent-provider/runtime/src/oauth-client/oauth-client.ts
 import {
   AGENT_CLIENT_ID,
   AgentDeviceCodeResponseSchema,
@@ -1798,7 +1798,7 @@ Expected: PASS; `dist/` contains no OpenCode, Pi, or OMP import.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add packages/agent-provider-runtime bun.lock
+git add packages/agent-provider/runtime bun.lock
 git commit -m "feat: share agent provider protocol runtime" -m "Co-authored-by: Codex <noreply@openai.com>"
 ```
 
