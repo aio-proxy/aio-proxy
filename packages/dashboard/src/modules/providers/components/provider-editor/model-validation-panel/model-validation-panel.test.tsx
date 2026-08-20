@@ -102,7 +102,7 @@ describe('ModelValidationPanel', () => {
     );
 
     expect(screen.queryByRole('button', { name: /Test model request|测试模型请求/u })).toBeNull();
-    expect(screen.getByRole('status')).toBeTruthy();
+    expect(screen.getByRole('status')).toHaveTextContent(m['dashboard.providers.editor.validate_unavailable']());
   });
 
   test('the model select has no visible label but keeps its accessible name', () => {
@@ -138,10 +138,13 @@ describe('ModelValidationPanel', () => {
       { wrapper },
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /Test model request|测试模型请求/u }));
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: /Test model request|测试模型请求/u })).toBeDisabled(),
-    );
+    const testButton = () => screen.getByRole('button', { name: /Test model request|测试模型请求/u });
+    fireEvent.click(testButton());
+    await waitFor(() => expect(testButton()).toBeDisabled());
+    // rail16: pending adds a spinner and must not rename the button. Pin the text content, not the
+    // accessible name — that absorbs the spinner's own "Loading" label — and pin it exactly, or a
+    // pending copy that merely wraps the action name still matches in some locales.
+    expect(testButton().textContent?.trim()).toBe(m['dashboard.providers.editor.validate_action']());
     const modelWasDisabled = screen.getByRole('combobox', { name: /Model to test|测试模型/u }).hasAttribute('disabled');
 
     act(() => resolveTest?.({ ok: true }));
