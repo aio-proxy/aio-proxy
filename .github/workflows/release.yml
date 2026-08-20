@@ -31,7 +31,7 @@ jobs:
     runs-on: macos-latest
     outputs:
       published: ${{ steps.changesets.outputs.published }}
-      published-packages: ${{ steps.changesets.outputs.published-packages }}
+      published-packages: ${{ steps.changesets.outputs['published-packages'] }}
     env:
       # lefthook's postinstall no-ops when CI=true unless LEFTHOOK is set; without
       # installed hooks the release commit skips oxfmt/commitlint (e.g. CHANGELOG.md).
@@ -130,7 +130,7 @@ jobs:
           images: ghcr.io/aio-proxy/aio-proxy
           tags: |
             type=raw,value=latest
-            type=raw,value=${{ fromJSON(needs.release.outputs.published-packages)[0].version }}
+            type=raw,value=${{ fromJSON(needs.release.outputs['published-packages'])[0].version }}
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v7
