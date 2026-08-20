@@ -90,22 +90,34 @@ export const ProviderModelMetadataDrawerContent: React.FC<ProviderModelMetadataD
               {m['dashboard.providers.editor.metadata_tab_json']()}
             </TabsTrigger>
           </TabsList>
-          <TabsContent value="visual">
+          <TabsContent value="visual" className="pt-4">
             {rawValue === undefined ? null : (
               <ModelMetadataVisualTab value={rawValue} onChange={(next) => setDraft(JSON.stringify(next, null, 2))} />
             )}
           </TabsContent>
-          <TabsContent value="json">
+          <TabsContent value="json" className="pt-4">
             <Textarea
-              className="min-h-72 font-mono"
+              className="min-h-72 font-mono text-xs"
+              rows={18}
               data-testid="metadata-json-draft"
               aria-label={m['dashboard.providers.form.metadata_json_label']({ model })}
               aria-invalid={!parsed.success}
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
             />
-            {!parsed.success ? (
+            {rawValue === undefined ? (
               <p role="alert" id="metadata-visual-blocked" className="mt-2 text-sm text-destructive">
+                {m['dashboard.providers.form.metadata_json_error']()}
+              </p>
+            ) : !parsed.success && 'error' in parsed && parsed.error.issues[0] !== undefined ? (
+              <p role="alert" className="mt-2 text-sm text-destructive">
+                {m['dashboard.providers.form.metadata_schema_error']({
+                  path: parsed.error.issues[0].path.join('.') || '.',
+                  reason: parsed.error.issues[0].message,
+                })}
+              </p>
+            ) : !parsed.success ? (
+              <p role="alert" className="mt-2 text-sm text-destructive">
                 {m['dashboard.providers.form.metadata_json_error']()}
               </p>
             ) : null}
@@ -126,7 +138,7 @@ export const ProviderModelMetadataDrawerContent: React.FC<ProviderModelMetadataD
             onOpenChange(false);
           }}
         >
-          {m['dashboard.providers.actions.save']()}
+          {m['dashboard.providers.actions.save_metadata']()}
         </Button>
       </DrawerFooter>
     </DrawerContent>

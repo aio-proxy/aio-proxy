@@ -1,5 +1,5 @@
-import { Field, FieldLabel } from '@aio-proxy/ui/components/field';
 import { Input } from '@aio-proxy/ui/components/input';
+import { Label } from '@aio-proxy/ui/components/label';
 import { useState } from 'react';
 
 interface ModelMetadataNumberFieldProps {
@@ -41,8 +41,8 @@ export const ModelMetadataNumberField: React.FC<ModelMetadataNumberFieldProps> =
   }
 
   return (
-    <Field>
-      <FieldLabel htmlFor={id}>{label}</FieldLabel>
+    <div className="space-y-1.5">
+      <Label htmlFor={id}>{label}</Label>
       <Input
         id={id}
         type="number"
@@ -60,6 +60,6 @@ export const ModelMetadataNumberField: React.FC<ModelMetadataNumberFieldProps> =
           onValueChange(parsed);
         }}
       />
-    </Field>
+    </div>
   );
 };

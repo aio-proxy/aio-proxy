@@ -744,13 +744,17 @@ test('create-api prunes an emptied metadata record instead of writing it', async
 
   fireEvent.click(within(screen.getByTestId('model-row-a')).getByTestId('model-row-metadata'));
   await screen.findByTestId('provider-model-metadata-drawer');
-  fireEvent.change(await screen.findByLabelText('cost.input'), { target: { value: '1' } });
+  fireEvent.change(await screen.findByLabelText(m['dashboard.providers.editor.metadata_cost_label_input']()), {
+    target: { value: '1' },
+  });
   fireEvent.click(screen.getByTestId('provider-model-metadata-save'));
 
   // Reopen and clear it again: the record is now `{}`, which is what the update branch drops.
   fireEvent.click(within(screen.getByTestId('model-row-a')).getByTestId('model-row-metadata'));
   await screen.findByTestId('provider-model-metadata-drawer');
-  fireEvent.change(await screen.findByLabelText('cost.input'), { target: { value: '' } });
+  fireEvent.change(await screen.findByLabelText(m['dashboard.providers.editor.metadata_cost_label_input']()), {
+    target: { value: '' },
+  });
   fireEvent.click(screen.getByTestId('provider-model-metadata-save'));
 
   await waitFor(() => expect(saveButton()).toBeEnabled());

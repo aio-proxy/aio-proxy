@@ -73,6 +73,13 @@ const renderSection = (props: HarnessProps) => render(<Harness {...props} />, { 
 const CLIENT_ID_LABEL = /Client model ID|客户端模型 ID/u;
 const UPSTREAM_LABEL = /Upstream model|上游模型/u;
 
+const limitContextLabel = () => m['dashboard.providers.editor.metadata_limit_label_context']();
+const limitInputLabel = () => m['dashboard.providers.editor.metadata_limit_label_input']();
+const costInputLabel = () => m['dashboard.providers.editor.metadata_cost_label_input']();
+const costCacheReadLabel = () => m['dashboard.providers.editor.metadata_cost_label_cache_read']();
+const costReasoningLabel = () => m['dashboard.providers.editor.metadata_cost_label_reasoning']();
+const nameLabel = () => m['dashboard.providers.editor.metadata_field_label_name']();
+
 // Open the alias row's target picker and read back the option labels it offers.
 const targetOptions = async () => {
   const card = await screen.findByTestId('provider-alias-card');
@@ -246,7 +253,7 @@ describe('ModelsSection', () => {
     fireEvent.click(within(screen.getByTestId('model-row-model-a')).getByTestId('model-row-metadata'));
     await screen.findByTestId('provider-model-metadata-drawer');
 
-    const context = await screen.findByLabelText('limit.context');
+    const context = await screen.findByLabelText(limitContextLabel());
     fireEvent.change(context, { target: { value: '4096' } });
     fireEvent.click(screen.getByTestId('provider-model-metadata-save'));
 
@@ -264,7 +271,7 @@ describe('ModelsSection', () => {
     fireEvent.click(within(screen.getByTestId('model-row-model-a')).getByTestId('model-row-metadata'));
     await screen.findByTestId('provider-model-metadata-drawer');
 
-    const cost = (await screen.findByLabelText('cost.input')) as HTMLInputElement;
+    const cost = (await screen.findByLabelText(costInputLabel())) as HTMLInputElement;
     // Append to the live DOM value rather than feeding absolute strings. The regression is React
     // rewriting the field at the `0.0` step, where `Number()` collapses the text to `0`; an absolute
     // next event would overwrite that rewrite, so the test would pass either way. Appending carries
@@ -280,7 +287,7 @@ describe('ModelsSection', () => {
     // Clearing a money field must delete the key, not write `0`. Save closed the drawer, so reopen it.
     fireEvent.click(within(screen.getByTestId('model-row-model-a')).getByTestId('model-row-metadata'));
     await screen.findByTestId('provider-model-metadata-drawer');
-    fireEvent.change(await screen.findByLabelText('cost.input'), { target: { value: '' } });
+    fireEvent.change(await screen.findByLabelText(costInputLabel()), { target: { value: '' } });
     fireEvent.click(screen.getByTestId('provider-model-metadata-save'));
     await waitFor(() => expect(section.state.values.metadata?.['model-a']).toEqual({}));
   });
@@ -301,7 +308,7 @@ describe('ModelsSection', () => {
     await waitFor(() => expect(screen.getByTestId('metadata-tab-visual')).toHaveAttribute('aria-disabled', 'true'));
     fireEvent.click(screen.getByTestId('metadata-tab-visual'));
     // keepMounted defaults to false, so the visual fields' absence is the assertion.
-    expect(screen.queryByLabelText('limit.context')).toBeNull();
+    expect(screen.queryByLabelText(limitContextLabel())).toBeNull();
 
     // Save is disabled on an unparseable draft, so this click is a no-op; the two assertions above
     // are the discriminating ones. This only pins that nothing lossy slips through anyway.
@@ -322,7 +329,7 @@ describe('ModelsSection', () => {
     await screen.findByTestId('provider-model-metadata-drawer');
 
     // No click into the visual tab: the fields are there because visual is the default.
-    expect(await screen.findByLabelText('limit.context')).toBeInTheDocument();
+    expect(await screen.findByLabelText(limitContextLabel())).toBeInTheDocument();
     expect(screen.getByTestId('metadata-tab-visual')).toHaveAttribute('aria-selected', 'true');
     expect(screen.queryByTestId('metadata-json-draft')).toBeNull();
 
@@ -334,7 +341,7 @@ describe('ModelsSection', () => {
     // or forcing json once would strand the user there for the rest of the session.
     fireEvent.change(screen.getByTestId('metadata-json-draft'), { target: { value: '{"name":"A"}' } });
     fireEvent.click(screen.getByTestId('metadata-tab-visual'));
-    expect(await screen.findByLabelText('limit.context')).toBeInTheDocument();
+    expect(await screen.findByLabelText(limitContextLabel())).toBeInTheDocument();
   });
 
   // A two-state switch reads an explicit `false` as "inherit" and silently converts it on save. Only a
@@ -387,11 +394,11 @@ describe('ModelsSection', () => {
     fireEvent.click(within(screen.getByTestId('model-row-model-a')).getByTestId('model-row-metadata'));
     await screen.findByTestId('provider-model-metadata-drawer');
 
-    fireEvent.change(await screen.findByLabelText('limit.input'), { target: { value: '8192' } });
-    fireEvent.change(screen.getByLabelText('cost.cacheRead'), { target: { value: '0.5' } });
-    fireEvent.change(screen.getByLabelText('name'), { target: { value: 'GPT-5' } });
+    fireEvent.change(await screen.findByLabelText(limitInputLabel()), { target: { value: '8192' } });
+    fireEvent.change(screen.getByLabelText(costCacheReadLabel()), { target: { value: '0.5' } });
+    fireEvent.change(screen.getByLabelText(nameLabel()), { target: { value: 'GPT-5' } });
     // An empty number field must read as inherit, not as zero.
-    expect(screen.getByLabelText('cost.reasoning')).toHaveAttribute(
+    expect(screen.getByLabelText(costReasoningLabel())).toHaveAttribute(
       'placeholder',
       m['dashboard.providers.editor.metadata_inherit_placeholder'](),
     );
@@ -481,7 +488,7 @@ describe('ModelsSection', () => {
     fireEvent.click(within(screen.getByTestId('model-row-model-a')).getByTestId('model-row-metadata'));
     await screen.findByTestId('provider-model-metadata-drawer');
 
-    const context = (await screen.findByLabelText('limit.context')) as HTMLInputElement;
+    const context = (await screen.findByLabelText(limitContextLabel())) as HTMLInputElement;
     fireEvent.change(context, { target: { value: '1e999' } });
 
     expect(context.value).toBe('4096');
@@ -526,6 +533,89 @@ describe('ModelsSection', () => {
     await screen.findByTestId('provider-model-metadata-drawer');
 
     expect(await screen.findByRole('button', { name: m['common.clear']() })).toBeInTheDocument();
+  });
+
+  test('visual metadata fields are named by prose, not config key paths', async () => {
+    renderSection({ kind: ProviderKind.Api, initial: apiInitial(['model-a']) });
+
+    fireEvent.click(within(screen.getByTestId('model-row-model-a')).getByTestId('model-row-metadata'));
+    await screen.findByTestId('provider-model-metadata-drawer');
+
+    expect(await screen.findByLabelText(limitContextLabel())).toBeInTheDocument();
+    expect(
+      screen.getByLabelText(m['dashboard.providers.editor.metadata_capability_label_reasoning']()),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText('Temperature')).toBeInTheDocument();
+    expect(screen.getByLabelText(nameLabel())).toHaveAttribute(
+      'placeholder',
+      m['dashboard.providers.editor.metadata_name_placeholder'](),
+    );
+    expect(screen.getByTestId('provider-model-metadata-save')).toHaveTextContent(
+      m['dashboard.providers.actions.save_metadata'](),
+    );
+    expect(screen.queryByLabelText('limit.context')).toBeNull();
+    expect(screen.queryByLabelText('capabilities.reasoning')).toBeNull();
+  });
+
+  test('broken JSON and a schema failure use different alerts, and only the former names the blocked tab', async () => {
+    renderSection({ kind: ProviderKind.Api, initial: apiInitial(['model-a'], { 'model-a': { name: 'A' } }) });
+
+    fireEvent.click(within(screen.getByTestId('model-row-model-a')).getByTestId('model-row-metadata'));
+    await screen.findByTestId('provider-model-metadata-drawer');
+    fireEvent.click(screen.getByTestId('metadata-tab-json'));
+
+    fireEvent.change(await screen.findByTestId('metadata-json-draft'), { target: { value: '{oops' } });
+    const jsonAlert = await screen.findByRole('alert');
+    expect(jsonAlert).toHaveTextContent(m['dashboard.providers.form.metadata_json_error']());
+    expect(jsonAlert).toHaveAttribute('id', 'metadata-visual-blocked');
+    expect(screen.getByTestId('metadata-tab-visual')).toHaveAttribute('aria-disabled', 'true');
+
+    // A legal object that Zod rejects is still a form: the visual tab stays open, and the alert
+    // has to name the field instead of claiming the draft is not an object.
+    fireEvent.change(screen.getByTestId('metadata-json-draft'), {
+      target: { value: JSON.stringify({ limit: { context: 100, input: 200 } }) },
+    });
+    await waitFor(() => expect(screen.getByTestId('metadata-tab-visual')).not.toHaveAttribute('aria-disabled', 'true'));
+    const schemaAlert = screen.getByRole('alert');
+    expect(schemaAlert).toHaveTextContent(
+      m['dashboard.providers.form.metadata_schema_error']({
+        path: 'limit.input',
+        reason: 'Input limit must not exceed context limit',
+      }),
+    );
+    expect(schemaAlert).not.toHaveAttribute('id', 'metadata-visual-blocked');
+    expect(screen.getByTestId('provider-model-metadata-save')).toBeDisabled();
+  });
+
+  test('the extend picker is disabled only while the catalog is loading and no slug is set', async () => {
+    mocks.slugs.mockReset();
+    mocks.slugs.mockImplementation(() => new Promise(() => {}));
+    renderSection({ kind: ProviderKind.Api, initial: apiInitial(['model-a']) });
+
+    fireEvent.click(within(screen.getByTestId('model-row-model-a')).getByTestId('model-row-metadata'));
+    await screen.findByTestId('provider-model-metadata-drawer');
+
+    const empty = document.getElementById('metadata-extend');
+    expect(empty).toBeDisabled();
+    expect(empty).toHaveAttribute('placeholder', m['dashboard.providers.editor.metadata_extend_loading_placeholder']());
+    expect(empty).toHaveAttribute('aria-label', m['dashboard.providers.editor.metadata_extend_aria_label']());
+    expect(screen.getByRole('status')).toHaveTextContent(m['dashboard.providers.editor.metadata_extend_loading']());
+  });
+
+  test('an extend slug missing from the catalog stays in the picker so it can be selected again', async () => {
+    mocks.slugs.mockResolvedValue({ slugs: ['openai/gpt-5'] });
+    renderSection({
+      kind: ProviderKind.Api,
+      initial: apiInitial(['model-a'], { 'model-a': { extend: 'legacy/missing-slug' } }),
+    });
+
+    fireEvent.click(within(screen.getByTestId('model-row-model-a')).getByTestId('model-row-metadata'));
+    await screen.findByTestId('provider-model-metadata-drawer');
+
+    fireEvent.mouseDown(screen.getByRole('button', { expanded: false }));
+    // The typed query is the saved slug itself, so the catalog hit is filtered out; the
+    // discriminating check is that the missing slug is still an option and can be picked again.
+    expect(await screen.findByRole('option', { name: 'legacy/missing-slug' })).toBeInTheDocument();
   });
 
   // Aliases moved here from Routing (fidelity-rules D-F6): they rename the models this section picks,

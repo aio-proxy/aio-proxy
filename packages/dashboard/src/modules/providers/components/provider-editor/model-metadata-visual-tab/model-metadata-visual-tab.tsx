@@ -1,7 +1,7 @@
 import { m } from '@aio-proxy/i18n';
 import { MODEL_METADATA_KNOWN_KEYS } from '@aio-proxy/types';
-import { Field, FieldLabel } from '@aio-proxy/ui/components/field';
 import { Input } from '@aio-proxy/ui/components/input';
+import { Label } from '@aio-proxy/ui/components/label';
 import { Textarea } from '@aio-proxy/ui/components/textarea';
 
 import { ModelMetadataCapabilitySelect } from './model-metadata-capability-select';
@@ -15,13 +15,34 @@ interface ModelMetadataVisualTabProps {
 }
 
 /**
- * The fields of `ModelMetadataSchema` this tab exposes. Labels are the config key paths themselves
- * rather than i18n prose: they are identifiers the user sees verbatim in the JSON tab, so their
- * spelling is intentionally shared by every locale. The localized prose lives in the group headings.
+ * The fields of `ModelMetadataSchema` this tab exposes. Labels follow the demo's prose
+ * (`Temperature` stays an English literal). Config key paths appear only in the JSON tab.
  */
 const LIMIT_FIELDS = ['context', 'input', 'output'] as const;
 const CAPABILITY_FIELDS = ['reasoning', 'temperature', 'toolCall', 'attachment', 'structuredOutput'] as const;
 const COST_FIELDS = ['input', 'output', 'cacheRead', 'cacheWrite', 'reasoning'] as const;
+
+const LIMIT_LABEL: Readonly<Record<(typeof LIMIT_FIELDS)[number], () => string>> = {
+  context: m['dashboard.providers.editor.metadata_limit_label_context'],
+  input: m['dashboard.providers.editor.metadata_limit_label_input'],
+  output: m['dashboard.providers.editor.metadata_limit_label_output'],
+};
+
+const CAPABILITY_LABEL: Readonly<Record<(typeof CAPABILITY_FIELDS)[number], () => string>> = {
+  reasoning: m['dashboard.providers.editor.metadata_capability_label_reasoning'],
+  temperature: () => 'Temperature',
+  toolCall: m['dashboard.providers.editor.metadata_capability_label_tool_call'],
+  attachment: m['dashboard.providers.editor.metadata_capability_label_attachment'],
+  structuredOutput: m['dashboard.providers.editor.metadata_capability_label_structured_output'],
+};
+
+const COST_LABEL: Readonly<Record<(typeof COST_FIELDS)[number], () => string>> = {
+  input: m['dashboard.providers.editor.metadata_cost_label_input'],
+  output: m['dashboard.providers.editor.metadata_cost_label_output'],
+  cacheRead: m['dashboard.providers.editor.metadata_cost_label_cache_read'],
+  cacheWrite: m['dashboard.providers.editor.metadata_cost_label_cache_write'],
+  reasoning: m['dashboard.providers.editor.metadata_cost_label_reasoning'],
+};
 
 const objectAt = (value: Readonly<Record<string, unknown>>, key: string): Readonly<Record<string, unknown>> => {
   const nested = value[key];
@@ -71,18 +92,21 @@ export const ModelMetadataVisualTab: React.FC<ModelMetadataVisualTabProps> = ({ 
         hint={m['dashboard.providers.editor.metadata_group_display_hint']()}
         separated={false}
       >
-        <Field>
-          <FieldLabel htmlFor="metadata-name">name</FieldLabel>
+        <div className="space-y-1.5">
+          <Label htmlFor="metadata-name">{m['dashboard.providers.editor.metadata_field_label_name']()}</Label>
           <Input
             id="metadata-name"
+            placeholder={m['dashboard.providers.editor.metadata_name_placeholder']()}
             value={stringValue(value['name'])}
             onChange={(event) =>
               onChange(withKey(value, 'name', event.target.value === '' ? undefined : event.target.value))
             }
           />
-        </Field>
-        <Field>
-          <FieldLabel htmlFor="metadata-description">description</FieldLabel>
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="metadata-description">
+            {m['dashboard.providers.editor.metadata_field_label_description']()}
+          </Label>
           <Textarea
             id="metadata-description"
             rows={3}
@@ -91,7 +115,7 @@ export const ModelMetadataVisualTab: React.FC<ModelMetadataVisualTabProps> = ({ 
               onChange(withKey(value, 'description', event.target.value === '' ? undefined : event.target.value))
             }
           />
-        </Field>
+        </div>
       </ModelMetadataGroup>
 
       <ModelMetadataGroup
@@ -104,7 +128,7 @@ export const ModelMetadataVisualTab: React.FC<ModelMetadataVisualTabProps> = ({ 
             <ModelMetadataNumberField
               key={key}
               id={`metadata-limit-${key}`}
-              label={`limit.${key}`}
+              label={LIMIT_LABEL[key]()}
               min={1}
               step={1}
               placeholder={inherit}
@@ -125,6 +149,7 @@ export const ModelMetadataVisualTab: React.FC<ModelMetadataVisualTabProps> = ({ 
             <ModelMetadataCapabilitySelect
               key={key}
               capability={key}
+              label={CAPABILITY_LABEL[key]()}
               value={booleanValue(objectAt(value, 'capabilities')[key])}
               onValueChange={(next) => onChange(withNested(value, 'capabilities', key, next))}
             />
@@ -142,7 +167,7 @@ export const ModelMetadataVisualTab: React.FC<ModelMetadataVisualTabProps> = ({ 
             <ModelMetadataNumberField
               key={key}
               id={`metadata-cost-${key}`}
-              label={`cost.${key}`}
+              label={COST_LABEL[key]()}
               min={0}
               step="any"
               placeholder={inherit}

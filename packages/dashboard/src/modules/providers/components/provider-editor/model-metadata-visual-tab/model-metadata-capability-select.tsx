@@ -5,8 +5,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 type CapabilityChoice = 'inherit' | 'true' | 'false';
 
 interface ModelMetadataCapabilitySelectProps {
-  /** Key inside `capabilities`; also the label, which is the config key path verbatim. */
+  /** Key inside `capabilities`. */
   readonly capability: string;
+  readonly label: string;
   readonly value: boolean | undefined;
   readonly onValueChange: (next: boolean | undefined) => void;
 }
@@ -24,6 +25,7 @@ const CHOICE_LABEL: Readonly<Record<CapabilityChoice, () => string>> = {
  */
 export const ModelMetadataCapabilitySelect: React.FC<ModelMetadataCapabilitySelectProps> = ({
   capability,
+  label,
   value,
   onValueChange,
 }) => {
@@ -32,7 +34,7 @@ export const ModelMetadataCapabilitySelect: React.FC<ModelMetadataCapabilitySele
 
   return (
     <div className="grid grid-cols-[minmax(0,1fr)_8rem] items-center gap-3">
-      <Label htmlFor={fieldId}>{`capabilities.${capability}`}</Label>
+      <Label htmlFor={fieldId}>{label}</Label>
       <Select
         value={selected}
         onValueChange={(next: CapabilityChoice | null) => {

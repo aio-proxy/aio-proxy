@@ -8,7 +8,7 @@ import {
   ComboboxItem,
   ComboboxList,
 } from '@aio-proxy/ui/components/combobox';
-import { Field, FieldLabel } from '@aio-proxy/ui/components/field';
+import { Label } from '@aio-proxy/ui/components/label';
 import { Spinner } from '@aio-proxy/ui/components/spinner';
 import { useQuery } from '@tanstack/react-query';
 import { RotateCwIcon } from 'lucide-react';
@@ -27,12 +27,13 @@ export const ModelMetadataExtendField: React.FC<ModelMetadataExtendFieldProps> =
   const slugs = useQuery(modelsDevSlugsQueryOptions());
   const query = slugQuery.trim().toLowerCase();
   const loaded = slugs.data?.slugs ?? [];
+  const base = value !== '' && !loaded.includes(value) ? [value, ...loaded] : loaded;
   // The catalog is thousands of entries; the popup only needs enough to pick from.
-  const options = loaded.filter((slug) => query === '' || slug.toLowerCase().includes(query)).slice(0, 100);
+  const options = base.filter((slug) => query === '' || slug.toLowerCase().includes(query)).slice(0, 100);
 
   return (
-    <Field>
-      <FieldLabel htmlFor="metadata-extend">{m['dashboard.providers.editor.metadata_extend_label']()}</FieldLabel>
+    <div className="space-y-1.5">
+      <Label htmlFor="metadata-extend">{m['dashboard.providers.editor.metadata_extend_label']()}</Label>
       <Combobox
         items={options}
         value={value === '' ? null : value}
@@ -46,9 +47,11 @@ export const ModelMetadataExtendField: React.FC<ModelMetadataExtendFieldProps> =
         <ComboboxInput
           id="metadata-extend"
           className="w-full font-mono text-xs"
+          disabled={slugs.isPending && value === ''}
+          aria-label={m['dashboard.providers.editor.metadata_extend_aria_label']()}
           placeholder={
             slugs.isPending
-              ? m['dashboard.providers.editor.metadata_extend_loading']()
+              ? m['dashboard.providers.editor.metadata_extend_loading_placeholder']()
               : m['dashboard.providers.editor.metadata_extend_placeholder']()
           }
           showClear={value !== ''}
@@ -91,6 +94,6 @@ export const ModelMetadataExtendField: React.FC<ModelMetadataExtendFieldProps> =
           {m['dashboard.providers.editor.metadata_extend_loaded']({ count: loaded.length })}
         </p>
       )}
-    </Field>
+    </div>
   );
 };
