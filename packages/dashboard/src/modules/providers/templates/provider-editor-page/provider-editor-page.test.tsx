@@ -185,6 +185,7 @@ const saveButton = () => screen.getByRole('button', { name: /Save/u });
 const footerPrimary = () => within(screen.getByTestId('editor-footer')).getByRole('button', { name: /Save provider/u });
 // The one that actually starts the round trip since X9 gated the footer primary on `attention`.
 const sectionAuthorizeButton = () => screen.getByTestId('connection-authorize');
+const reauthorizeButton = () => screen.getByRole('button', { name: m['dashboard.providers.oauth.reauthorize']() });
 const packageInput = () => within(screen.getByTestId('provider-form-field-packageName')).getByRole('combobox');
 // The manual-add box is the shared tags control, which owns no test id; its label is the handle.
 const manualAddLabel = m['dashboard.providers.editor.models_manual_add']();
@@ -815,4 +816,55 @@ test('edit-api a provider with no aliases does not gain a dead alias key', async
   await waitFor(() => expect(mocks.update).toHaveBeenCalled());
   const input = mocks.update.mock.calls[0]?.[0] as { body: { alias?: unknown } };
   expect(input.body.alias).toBeUndefined();
+});
+
+const renderOAuthEditWithTwoAliases = () =>
+  renderPage({
+    mode: ProviderFormMode.Edit,
+    kind: ProviderKind.OAuth,
+    providerId: 'existing',
+    provider: oauthProvider,
+    oauth: { ...oauth, models: ['m1', 'm2'] },
+    initial: {
+      id: 'existing',
+      enabled: true,
+      models: ['m1', 'm2'],
+      alias: {
+        mini: { model: 'm1', preserve: false },
+        fast: { model: 'm2', preserve: false },
+      },
+    },
+    onSessionIdChange: rs.fn(),
+  });
+
+// Reauthorize is a second caller of save(), and its button is not gated by blockingSections.
+// The collision must be refused inside save() — a test that only clicked Save would stay green
+// against the data-loss path this pin is for.
+test('duplicate alias names stop reauthorize from starting a mutation', async () => {
+  renderOAuthEditWithTwoAliases();
+
+  fireEvent.click(reauthorizeButton());
+  await waitFor(() => expect(mocks.start).toHaveBeenCalled());
+  mocks.start.mockClear();
+
+  const boxes = screen.getAllByLabelText(m['dashboard.providers.form.alias_name']());
+  fireEvent.change(boxes[1]!, { target: { value: 'mini' } });
+  expect(saveButton()).toBeDisabled();
+
+  fireEvent.click(reauthorizeButton());
+  expect(mocks.start).not.toHaveBeenCalled();
+});
+
+test('resolving a duplicate alias name lets reauthorize start a mutation again', async () => {
+  renderOAuthEditWithTwoAliases();
+
+  const boxes = screen.getAllByLabelText(m['dashboard.providers.form.alias_name']());
+  fireEvent.change(boxes[1]!, { target: { value: 'mini' } });
+  expect(saveButton()).toBeDisabled();
+
+  fireEvent.change(boxes[1]!, { target: { value: 'swift' } });
+  expect(saveButton()).toBeEnabled();
+
+  fireEvent.click(reauthorizeButton());
+  await waitFor(() => expect(mocks.start).toHaveBeenCalled());
 });

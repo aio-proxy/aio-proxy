@@ -32,7 +32,7 @@ import { oauthAccountSubmission } from '../../lib/oauth-account-submission';
 import { capabilityKey } from '../../lib/oauth-capability-key';
 import { oauthProviderEditAction } from '../../lib/oauth-provider-edit';
 import { normalizeProviderFormValue, type ProviderFormShape } from '../../lib/provider-form-value';
-import { sectionStatuses } from '../../lib/section-status';
+import { blockingSections, sectionStatuses } from '../../lib/section-status';
 import { oauthCapabilitiesQueryOptions } from '../../services/oauth-service';
 import { providersQueryOptions } from '../../services/providers-service';
 import { useOAuthEditorSession } from './use-oauth-editor-session';
@@ -162,6 +162,17 @@ const editorTitle = (mode: ProviderFormMode, name: string | undefined): string =
   return name === undefined || name.trim() === '' ? m['dashboard.providers.edit_title']() : name;
 };
 
+// Same function as the footer. A bare `blocking.length > 0` return would swallow the Connection
+// authorize click: an unauthorized oauth draft is connection `attention`, and that button is the
+// X9 way out (`save(false)`). Allow only that single attention, and only when nothing else is
+// unfinished — so a doomed popup never opens, and reauthorize cannot persist a colliding alias map.
+const saveIsBlocked = (summaries: ReturnType<typeof sectionStatuses>): boolean => {
+  const blocking = blockingSections(summaries);
+  const authorizeEscape =
+    blocking.length === 1 && blocking[0] === 'connection' && summaries.connection.status === 'attention';
+  return blocking.length > 0 && !authorizeEscape;
+};
+
 export interface ProviderEditorPageProps {
   readonly mode: ProviderFormMode;
   readonly kind: ProviderKind;
@@ -274,6 +285,7 @@ export const useProviderEditorPage = ({
   };
 
   const save = (forceReauthorize = false) => {
+    if (saveIsBlocked(summaries)) return;
     const wireValues = {
       ...values,
       alias:
