@@ -84,13 +84,9 @@ const defaultDeps: UpgradeDeps = {
 };
 
 const agentItemWarning = (item: Extract<AgentPostUpgradeItemResult, { readonly status: 'warning' }>): string =>
-  `aio-proxy upgraded, but ${item.target} could not be updated: ${item.reason}. Repair with: aio-proxy agent configure ${item.target}`;
+  m['cli.agent.upgrade.warning']({ target: item.target, reason: item.reason });
 
-const agentProtocolWarning = (reason: string): string =>
-  `aio-proxy upgraded, but Agent integrations could not be updated: ${reason}. Repair with: aio-proxy agent configure <target>`;
-
-const ROOT_EFFECTIVE_USER_WARNING =
-  "aio-proxy upgrade is running as root; only root's Agent integrations will be updated. Run aio-proxy agent configure <target> again as each regular user that owns integrations.";
+const agentProtocolWarning = (reason: string): string => m['cli.agent.upgrade.protocol_warning']({ reason });
 
 const errorReason = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 
@@ -128,7 +124,7 @@ export const runUpgradeCommand = async (
 
   print(m['cli.upgrade.via']({ method: target.method }));
   const payload = await deps.captureAgentTargets();
-  if (deps.isEffectiveUserRoot()) print(ROOT_EFFECTIVE_USER_WARNING);
+  if (deps.isEffectiveUserRoot()) print(m['cli.agent.upgrade.root_effective_user']());
   // Install failures are plain Errors (package-manager exit code, missing asset);
   // rethrow as CliExit so the user sees the actionable reason, not a generic message.
   try {

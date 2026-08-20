@@ -336,6 +336,28 @@ test('successful install invokes the newly resolved binary with pre-install targ
   expect(events).toEqual(['capture', 'install', 'resolve:2.0.0', 'post:/new/aio-proxy']);
 });
 
+test('a failed Agent post-upgrade handshake prints a localized protocol warning', async () => {
+  const { setLocale } = await import('@aio-proxy/i18n');
+  await setLocale('zh-Hans');
+  try {
+    const lines: string[] = [];
+    await runUpgradeCommand(
+      {},
+      (line) => lines.push(line),
+      makeDeps({
+        invokeAgentPostUpgrade: async () => {
+          throw new Error('handshake failed');
+        },
+      }),
+    );
+    const text = lines.join('\n');
+    expect(text).toContain('handshake failed');
+    expect(text).not.toContain('aio-proxy upgraded, but Agent integrations could not be updated');
+  } finally {
+    await setLocale('en');
+  }
+});
+
 test('adapter warning does not roll back a successful aio-proxy upgrade', async () => {
   const lines: string[] = [];
   await runUpgradeCommand(

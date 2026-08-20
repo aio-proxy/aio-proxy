@@ -29,6 +29,9 @@
       "@aio-proxy/server",
       "@aio-proxy/types",
       "@aio-proxy/ui",
+      "@aio-proxy/agent-provider-runtime",
+      "@aio-proxy/opencode-provider",
+      "@aio-proxy/pi-provider",
       "aio-proxy"
     ]
   ],

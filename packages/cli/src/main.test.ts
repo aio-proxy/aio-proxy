@@ -1,11 +1,16 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, mock, test } from 'bun:test';
 import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { Command } from 'commander';
+
 import { cliRunArgs, freePort, output, repoCwd, runCli, waitForOk } from '../__tests__/cli-test-helpers';
 import packageJson from '../package.json' with { type: 'json' };
+import type { AgentConfigureResult, AgentListResult, AgentRemoveResult, AgentRevokeResult } from './agent';
+import type { AgentCliActions } from './agent/output';
+import { registerAgentCommands } from './agent/output';
 import { buildProgram } from './main';
 
 describe('cli', () => {
@@ -179,4 +184,92 @@ describe('cli', () => {
     expect(child).toBeDefined();
     expect(program.helpInformation()).not.toContain('__agent-post-upgrade');
   });
+});
+
+const listResult: AgentListResult = {
+  targets: [
+    {
+      target: 'opencode',
+      host: {
+        target: 'opencode',
+        detected: true,
+        support: 'supported',
+        version: '1.17.10',
+        minimumVersion: '1.17.10',
+      },
+      integration: 'absent',
+      catalog: 'missing',
+      authorization: 'not_checked',
+      schemaCompatibility: 'not_checked',
+    },
+  ],
+  server: 'not_checked',
+};
+const configureResult: AgentConfigureResult = {
+  target: 'opencode',
+  installed: true,
+  status: 'installed',
+  server: 'unreachable',
+  host: {
+    target: 'opencode',
+    detected: true,
+    support: 'supported',
+    version: '1.17.10',
+    minimumVersion: '1.17.10',
+  },
+  loginCommand: 'opencode auth login --provider aio-proxy',
+  reloadRequired: true,
+};
+const removeResult: AgentRemoveResult = {
+  target: 'opencode',
+  installationId: '0f4dcb50-d68c-4b99-8af1-da32480ddd09',
+  revokeStatus: 'revoked',
+};
+const revokeResult: AgentRevokeResult = {
+  installationId: removeResult.installationId,
+  status: 'revoked',
+};
+
+function agentProgram() {
+  const lines: string[] = [];
+  const actions: AgentCliActions = {
+    list: mock(async () => listResult),
+    configure: mock(async () => configureResult),
+    remove: mock(async () => removeResult),
+    revoke: mock(async () => revokeResult),
+  };
+  const program = new Command().name('aio-proxy').exitOverride();
+  registerAgentCommands(program, { actions, print: (line) => lines.push(line) });
+  return { actions, lines, program };
+}
+
+test.each([
+  [['agent', 'list'], 'list'],
+  [['agent', 'configure', 'opencode'], 'configure'],
+  [['agent', 'remove', 'opencode'], 'remove'],
+  [['agent', 'revoke', removeResult.installationId], 'revoke'],
+] as const)('%s awaits its action and prints text', async (args, action) => {
+  const f = agentProgram();
+  await f.program.parseAsync(['node', 'aio-proxy', ...args]);
+  expect(f.actions[action]).toHaveBeenCalledTimes(1);
+  expect(f.lines.length).toBeGreaterThan(0);
+});
+
+test('agent list --json forwards json in options and prints one JSON result', async () => {
+  const f = agentProgram();
+  await f.program.parseAsync(['node', 'aio-proxy', 'agent', 'list', '--check', '--json']);
+  expect(f.actions.list).toHaveBeenCalledWith({ check: true, authorizations: false, json: true });
+  expect(f.lines).toHaveLength(1);
+  expect(JSON.parse(f.lines[0]!)).toEqual(listResult);
+});
+
+test('the real buildProgram registers public Agent commands and keeps the child action hidden', () => {
+  const program = buildProgram();
+  const agent = program.commands.find((command) => command.name() === 'agent');
+  const child = program.commands.find((command) => command.name() === '__agent-post-upgrade');
+  expect(agent?.commands.map((command) => command.name())).toEqual(['list', 'configure', 'remove', 'revoke']);
+  expect(child).toBeDefined();
+  const help = program.helpInformation();
+  expect(help).toContain('agent');
+  expect(help).not.toContain('__agent-post-upgrade');
 });

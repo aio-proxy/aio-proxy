@@ -257,6 +257,76 @@
       "daemon_running_hint": "デーモンはまだ古いバージョンを実行しています。アップグレードを適用するには `aio-proxy service restart` を実行してください",
       "manual_restart_hint": "デーモンは手動で起動されており、再起動するマネージドサービスがありません。アップグレードを適用するには自分で再起動してください",
       "restarting": "デーモンを再起動しています…"
+    },
+    "agent": {
+      "description": "Agent 連携を管理します",
+      "list": {
+        "option_check": "稼働中のコントロールプレーン状態を確認します",
+        "option_authorizations": "コントロールプレーンの認可を表示します",
+        "unresolved": "{target}: 未解決 ({reason})；ホスト {hostVersion}（最低 {minimumVersion}、{support}）；認可 {authorization}；スキーマ {schemaCompatibility}",
+        "target": "{target}: ホスト {hostVersion}（最低 {minimumVersion}、{support}）；連携 {integration}；インストール {installationId}；アダプター {adapterVersion}；エンドポイント {endpoint}（{endpointMatch}）；カタログ {catalog}（前回の成功 {lastSuccessfulAt}）；認可 {authorization}；スキーマ {schemaCompatibility}",
+        "server": "aio-proxy: {status}",
+        "capabilities": "デバイス認可 {deviceAuthorization}；カタログスキーマ {catalogSchemaVersions}",
+        "authorization": "{installationId}: {target}、{authorization}、{local}"
+      },
+      "configure": {
+        "host_missing": "{target} はインストールされていません。aio-proxy はファイルを変更していません。",
+        "unsupported": "{target} {version} はサポートされる最低バージョン {minimum} を下回っています。互換性警告付きでインストールしました。",
+        "version_unknown": "{target} のバージョンを特定できませんでした。互換性警告付きでインストールしました。",
+        "result": "{target}: {status}。",
+        "server_offline": "連携はインストール済みですが、aio-proxy が起動していません。サインインする前に起動してください。",
+        "password_required": "server.apiKeys が有効な場合、Agent 認可を承認する前に server.password を設定してください。",
+        "login": "次のコマンドでサインインします: {command}",
+        "reload": "更新した連携を読み込むには {target} を再読み込みまたは再起動してください。",
+        "newer": "{target} には既により新しいアダプターがあります。ダウングレードしませんでした。"
+      },
+      "conflict": "{path} の管理を拒否しました。aio-proxy が管理する完全な連携ではありません。",
+      "remove": {
+        "server_required": "ローカルの aio-proxy コントロールプレーンを起動して再試行してください。ファイルは削除していません。",
+        "success": "インストール {installationId} を取り消し、{target} 連携を削除しました。"
+      },
+      "revoke": {
+        "success": "インストール {installationId}: {status}。"
+      },
+      "upgrade": {
+        "warning": "aio-proxy はアップグレードされましたが、{target} を更新できませんでした: {reason}。修復するには aio-proxy agent configure {target} を実行してください",
+        "root_effective_user": "aio-proxy のアップグレードは root で実行されています。更新されるのは root の Agent 連携だけです。連携を所有する各一般ユーザーで aio-proxy agent configure <target> を再実行してください。",
+        "protocol_warning": "aio-proxy はアップグレードされましたが、Agent 連携を更新できませんでした: {reason}。修復するには aio-proxy agent configure <target> を実行してください"
+      },
+      "integration": {
+        "unresolved": "未解決",
+        "managed": "管理済み",
+        "absent": "未導入",
+        "conflict": "競合"
+      },
+      "catalog": {
+        "fresh": "最新",
+        "stale": "古い",
+        "missing": "欠落"
+      },
+      "authorization": {
+        "active": "有効",
+        "expired": "期限切れ",
+        "revoked": "取り消し済み",
+        "missing": "欠落",
+        "not_checked": "未確認"
+      },
+      "schema": {
+        "compatible": "互換",
+        "incompatible": "非互換",
+        "not_checked": "未確認"
+      },
+      "endpoint": {
+        "match": "一致",
+        "mismatch": "不一致",
+        "unknown": "不明"
+      },
+      "status": {
+        "installed": "インストール済み",
+        "updated": "更新済み",
+        "newer": "新しい"
+      },
+      "loopback_required": "Agent 連携にはループバック上の aio-proxy エンドポイントが必要です。"
     }
   },
   "oauth": {

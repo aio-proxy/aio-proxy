@@ -257,6 +257,76 @@
       "daemon_running_hint": "守護行程仍在執行舊版本。執行 `aio-proxy service restart` 以套用升級",
       "manual_restart_hint": "守護行程是手動啟動的，沒有可重新啟動的受管服務。請自行重新啟動以套用升級",
       "restarting": "正在重新啟動守護行程……"
+    },
+    "agent": {
+      "description": "管理 Agent 整合",
+      "list": {
+        "option_check": "檢查即時控制面狀態",
+        "option_authorizations": "列出控制面授權",
+        "unresolved": "{target}：未解析（{reason}）；主機 {hostVersion}（最低 {minimumVersion}，{support}）；授權 {authorization}；架構 {schemaCompatibility}",
+        "target": "{target}：主機 {hostVersion}（最低 {minimumVersion}，{support}）；整合 {integration}；安裝 {installationId}；配接器 {adapterVersion}；端點 {endpoint}（{endpointMatch}）；目錄 {catalog}（上次成功 {lastSuccessfulAt}）；授權 {authorization}；架構 {schemaCompatibility}",
+        "server": "aio-proxy：{status}",
+        "capabilities": "裝置授權 {deviceAuthorization}；目錄架構 {catalogSchemaVersions}",
+        "authorization": "{installationId}：{target}，{authorization}，{local}"
+      },
+      "configure": {
+        "host_missing": "{target} 未安裝；aio-proxy 未變更任何檔案。",
+        "unsupported": "{target} {version} 低於支援的最低版本 {minimum}；已安裝但帶有相容性警告。",
+        "version_unknown": "無法判斷 {target} 的版本；已安裝但帶有相容性警告。",
+        "result": "{target}：{status}。",
+        "server_offline": "整合已安裝，但 aio-proxy 未在執行。請先啟動再登入。",
+        "password_required": "在啟用 server.apiKeys 時，必須先設定 server.password，才能核准 Agent 授權。",
+        "login": "使用以下命令登入：{command}",
+        "reload": "重新載入或重新啟動 {target} 以載入更新後的整合。",
+        "newer": "{target} 已有較新的配接器；未降級。"
+      },
+      "conflict": "拒絕管理 {path}：它不是完整的 aio-proxy 託管整合。",
+      "remove": {
+        "server_required": "請先啟動本機 aio-proxy 控制面後重試；未刪除任何檔案。",
+        "success": "已撤銷安裝 {installationId} 並移除 {target} 整合。"
+      },
+      "revoke": {
+        "success": "安裝 {installationId}：{status}。"
+      },
+      "upgrade": {
+        "warning": "aio-proxy 已升級，但 {target} 未能更新：{reason}。請執行 aio-proxy agent configure {target} 進行修復",
+        "root_effective_user": "aio-proxy 升級正在以 root 執行；只會更新 root 的 Agent 整合。請以擁有整合的每個一般使用者身分再次執行 aio-proxy agent configure <target>。",
+        "protocol_warning": "aio-proxy 已升級，但 Agent 整合未能更新：{reason}。請執行 aio-proxy agent configure <target> 進行修復"
+      },
+      "integration": {
+        "unresolved": "未解析",
+        "managed": "已託管",
+        "absent": "缺失",
+        "conflict": "衝突"
+      },
+      "catalog": {
+        "fresh": "最新",
+        "stale": "過期",
+        "missing": "缺失"
+      },
+      "authorization": {
+        "active": "有效",
+        "expired": "已過期",
+        "revoked": "已撤銷",
+        "missing": "缺失",
+        "not_checked": "未檢查"
+      },
+      "schema": {
+        "compatible": "相容",
+        "incompatible": "不相容",
+        "not_checked": "未檢查"
+      },
+      "endpoint": {
+        "match": "相符",
+        "mismatch": "不相符",
+        "unknown": "未知"
+      },
+      "status": {
+        "installed": "已安裝",
+        "updated": "已更新",
+        "newer": "較新"
+      },
+      "loopback_required": "Agent 整合要求 aio-proxy 使用迴環位址。"
     }
   },
   "oauth": {
