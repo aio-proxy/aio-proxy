@@ -1,9 +1,15 @@
 import { expect, mock, test } from 'bun:test';
+import { fileURLToPath } from 'node:url';
 
 import type { AgentTarget } from '@aio-proxy/types';
 
 import type { AgentLocation } from '../agent/hosts';
-import { runAgentPostUpgrade, type AgentPostUpgradeDeps, type AgentPostUpgradePayload } from './post-upgrade-agents';
+import {
+  AgentPostUpgradePayloadSchema,
+  runAgentPostUpgrade,
+  type AgentPostUpgradeDeps,
+  type AgentPostUpgradePayload,
+} from './post-upgrade-agents';
 
 const POST_UPGRADE_INSTALLATION = '0f4dcb50-d68c-4b99-8af1-da32480ddd09';
 const postUpgradeLocation = (target: AgentTarget): AgentLocation => {
@@ -98,4 +104,79 @@ test('post-upgrade never creates an absent integration', async () => {
   const f = postUpgradeFixture({ managed: [] });
   await runAgentPostUpgrade(f.payload, f.deps);
   expect(f.install).not.toHaveBeenCalled();
+});
+
+const validOpenCode = {
+  target: 'opencode' as const,
+  managedDir: '/tmp/opencode/plugins/aio-proxy',
+  adjacentEntry: '/tmp/opencode/plugins/aio-proxy.js',
+};
+
+test.each([
+  ['unknown payload field', { format: 1, targets: [validOpenCode], extra: true }],
+  ['unknown target field', { format: 1, targets: [{ ...validOpenCode, extra: true }] }],
+  ['duplicate target', { format: 1, targets: [validOpenCode, { ...validOpenCode }] }],
+  ['relative managedDir', { format: 1, targets: [{ ...validOpenCode, managedDir: 'plugins/aio-proxy' }] }],
+  ['relative adjacentEntry', { format: 1, targets: [{ ...validOpenCode, adjacentEntry: 'aio-proxy.js' }] }],
+  [
+    'OpenCode without adjacentEntry',
+    { format: 1, targets: [{ target: 'opencode', managedDir: '/tmp/opencode/plugins/aio-proxy' }] },
+  ],
+  [
+    'non-OpenCode with adjacentEntry',
+    {
+      format: 1,
+      targets: [
+        { target: 'pi', managedDir: '/tmp/pi/extensions/aio-proxy', adjacentEntry: '/tmp/pi/extensions/aio-proxy.js' },
+      ],
+    },
+  ],
+  [
+    'more than three rows',
+    {
+      format: 1,
+      targets: [
+        validOpenCode,
+        { target: 'pi', managedDir: '/tmp/pi/extensions/aio-proxy' },
+        { target: 'omp', managedDir: '/tmp/omp/extensions/aio-proxy' },
+        {
+          target: 'opencode',
+          managedDir: '/tmp/other/plugins/aio-proxy',
+          adjacentEntry: '/tmp/other/plugins/aio-proxy.js',
+        },
+      ],
+    },
+  ],
+] as const)('payload schema rejects %s', (_name, payload) => {
+  expect(AgentPostUpgradePayloadSchema.safeParse(payload).success).toBe(false);
+});
+
+test('oversized stdin is rejected before the hidden action allocates the body', async () => {
+  const modulePath = fileURLToPath(new URL('./post-upgrade-agents.ts', import.meta.url));
+  const child = Bun.spawn(
+    [
+      process.execPath,
+      '--eval',
+      `const { readAgentPostUpgradePayload } = await import(${JSON.stringify(modulePath)});
+await readAgentPostUpgradePayload();`,
+    ],
+    { stdin: 'pipe', stdout: 'pipe', stderr: 'pipe' },
+  );
+  try {
+    child.stdin.write(Buffer.alloc(64 * 1_024 + 1, 0x61));
+    child.stdin.end();
+  } catch (error) {
+    try {
+      child.kill('SIGKILL');
+    } catch {}
+    throw error;
+  }
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+    child.exited,
+  ]);
+  expect(stdout).toBe('');
+  expect(exitCode).not.toBe(0);
+  expect(stderr).toContain('exceeds 64 KiB');
 });
