@@ -131,24 +131,31 @@ test.each([
       ],
     },
   ],
-  [
-    'more than three rows',
-    {
-      format: 1,
-      targets: [
-        validOpenCode,
-        { target: 'pi', managedDir: '/tmp/pi/extensions/aio-proxy' },
-        { target: 'omp', managedDir: '/tmp/omp/extensions/aio-proxy' },
-        {
-          target: 'opencode',
-          managedDir: '/tmp/other/plugins/aio-proxy',
-          adjacentEntry: '/tmp/other/plugins/aio-proxy.js',
-        },
-      ],
-    },
-  ],
 ] as const)('payload schema rejects %s', (_name, payload) => {
   expect(AgentPostUpgradePayloadSchema.safeParse(payload).success).toBe(false);
+});
+
+test('payload schema rejects more than three rows with a too_big targets issue', () => {
+  const parsed = AgentPostUpgradePayloadSchema.safeParse({
+    format: 1,
+    targets: [
+      validOpenCode,
+      { target: 'pi', managedDir: '/tmp/pi/extensions/aio-proxy' },
+      { target: 'omp', managedDir: '/tmp/omp/extensions/aio-proxy' },
+      {
+        target: 'opencode',
+        managedDir: '/tmp/other/plugins/aio-proxy',
+        adjacentEntry: '/tmp/other/plugins/aio-proxy.js',
+      },
+    ],
+  });
+  expect(parsed.success).toBe(false);
+  if (parsed.success) throw new Error('expected four-row payload to fail');
+  expect(
+    parsed.error.issues.some(
+      (issue) => issue.code === 'too_big' && issue.path.length === 1 && issue.path[0] === 'targets',
+    ),
+  ).toBe(true);
 });
 
 test('oversized stdin is rejected before the hidden action allocates the body', async () => {
