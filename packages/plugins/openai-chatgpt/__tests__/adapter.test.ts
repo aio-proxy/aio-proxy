@@ -21,7 +21,7 @@ describe('OpenAI ChatGPT plugin', () => {
   test('exports a versioned default descriptor with OAuth capability default', async () => {
     const adapter = await adapterFrom(openAIChatGPTPlugin);
 
-    expect(openAIChatGPTPlugin.apiVersion).toBe(2);
+    expect(openAIChatGPTPlugin.apiVersion).toBe(1);
     expect(openAIChatGPTPlugin[PLUGIN_DESCRIPTOR_BRAND]).toBe(true);
     expect(openAIChatGPTPlugin.metadata.icon).toBe('openai');
     expect(adapter.id).toBe('default');

@@ -3,9 +3,9 @@ import type { LocalizedText } from '../localized-text';
 import type { Logger } from '../logger';
 import type { OAuthAdapter } from '../oauth';
 
-export const PLUGIN_API_VERSION = 2 as const;
-export const PLUGIN_API_VERSIONS_SUPPORTED = [2] as const;
-export const PLUGIN_DESCRIPTOR_BRAND = Symbol.for('@aio-proxy/plugin-sdk/descriptor/v2');
+export const PLUGIN_API_VERSION = 1 as const;
+export const PLUGIN_API_VERSIONS_SUPPORTED = [1] as const;
+export const PLUGIN_DESCRIPTOR_BRAND = Symbol.for('@aio-proxy/plugin-sdk/descriptor/v1');
 
 export type LobeIconKey = AioProxyLobeIconKey;
 
