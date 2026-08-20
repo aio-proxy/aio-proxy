@@ -16,6 +16,8 @@ import {
 import { ProviderVariantConditions } from './provider-variant-conditions';
 
 interface ProviderVariantRowProps {
+  /** Stable alias row id — used for control ids so two same-named aliases do not collide. */
+  readonly rowId: string;
   readonly aliasName: string;
   /** Index into the stored rows: the row's identity for edits and for issue anchors. */
   readonly index: number;
@@ -31,6 +33,7 @@ interface ProviderVariantRowProps {
  * copy of it, with nothing to keep the two in step once the row changes underneath. Nothing to go stale.
  */
 export const ProviderVariantRow: FC<ProviderVariantRowProps> = ({
+  rowId,
   aliasName,
   index,
   row,
@@ -41,7 +44,7 @@ export const ProviderVariantRow: FC<ProviderVariantRowProps> = ({
 }) => {
   const draft = toRowDraft(row);
   const codes = new Set(issues.map((issue) => issue.code));
-  const controlId = aliasControlId(aliasName, index);
+  const controlId = aliasControlId(rowId, index);
   const commit = (patch: Partial<AliasRowDraft>) => onChange(fromRowDraft({ ...draft, ...patch }));
 
   return (

@@ -17,9 +17,14 @@ import { useState } from 'react';
 
 import { hasWeightTie } from '../../components/provider-editor/attempt-order-preview';
 import { useOAuthProviderForm } from '../../hooks/use-oauth-provider-form';
-import { type ProviderEditorShape, useProviderEditorForm } from '../../hooks/use-provider-editor-form';
+import {
+  type ProviderEditorInitial,
+  type ProviderEditorShape,
+  type ProviderEditorWire,
+  useProviderEditorForm,
+} from '../../hooks/use-provider-editor-form';
 import { useProviderCreate, useProviderUpdate } from '../../hooks/use-provider-mutations';
-import { aliasEditorIssues } from '../../lib/alias-editor';
+import { aliasEditorIssues, serializeAlias, toAliasRecord } from '../../lib/alias-editor';
 import { ProviderFormMode, PROVIDER_KIND_LABEL } from '../../lib/constants';
 import { exposedModels } from '../../lib/exposed-models';
 import { applyModelRows, toModelRows } from '../../lib/model-rows';
@@ -50,7 +55,7 @@ type AccountFormValues = {
 };
 
 const startCreateAuthorization = (
-  values: ProviderEditorShape,
+  values: ProviderEditorWire,
   accountValues: AccountFormValues,
   capabilities: readonly DashboardOAuthCapability[],
   mutate: (input: DashboardOAuthSessionStart, options: { onError: () => void }) => void,
@@ -75,7 +80,7 @@ const startCreateAuthorization = (
 };
 
 const saveOAuthProvider = (
-  values: ProviderEditorShape,
+  values: ProviderEditorWire,
   accountValues: AccountFormValues,
   oauth: DashboardOAuthProviderEdit,
   forceReauthorize: boolean,
@@ -107,7 +112,7 @@ const saveOAuthProvider = (
 
 const saveConfigProvider = (
   mode: ProviderFormMode,
-  values: ProviderEditorShape,
+  values: ProviderEditorWire,
   providerId: string | undefined,
   persistedMetadata: ProviderEditorShape['metadata'],
   createProvider: (body: ProviderMutationBody) => void,
@@ -162,7 +167,7 @@ export interface ProviderEditorPageProps {
   readonly kind: ProviderKind;
   readonly onKindChange?: ((kind: ProviderKind) => void) | undefined;
   readonly providerId?: string | undefined;
-  readonly initial?: Partial<ProviderEditorShape> | undefined;
+  readonly initial?: ProviderEditorInitial | undefined;
   readonly oauth?: DashboardOAuthProviderEdit | undefined;
   readonly provider?: OAuthProvider | undefined;
   readonly sessionId?: string | undefined;
@@ -220,7 +225,7 @@ export const useProviderEditorPage = ({
   const capabilities = capabilitiesQuery.data?.capabilities ?? [];
   const others = summariesQuery.data?.providers ?? [];
   const models = values.models ?? [];
-  const aliasIssues = aliasEditorIssues(values.alias ?? {}, models);
+  const aliasIssues = aliasEditorIssues(values.alias ?? [], models);
   const authorized =
     mode === ProviderFormMode.Edit || authorizedProviderId !== undefined || session?.status === 'succeeded';
   const transforms = values.transforms as ProviderTransforms | undefined;
@@ -236,7 +241,7 @@ export const useProviderEditorPage = ({
     packageName: values.kind === 'ai-sdk' ? values.packageName : undefined,
     models,
     discoveredModels: oauth?.models,
-    aliasCount: Object.keys(values.alias ?? {}).length,
+    aliasCount: (values.alias ?? []).length,
     aliasIssues,
     transformsValid,
     transformCount: transforms?.request?.length ?? 0,
@@ -246,7 +251,7 @@ export const useProviderEditorPage = ({
       exposedAliases: modelRoutes({
         enabled: true,
         models: exposedModels(models, oauth?.models),
-        alias: values.alias,
+        alias: values.alias === undefined ? undefined : toAliasRecord(values.alias),
       }).map((route) => route.alias),
       others,
     }),
@@ -269,15 +274,19 @@ export const useProviderEditorPage = ({
   };
 
   const save = (forceReauthorize = false) => {
+    const wireValues = {
+      ...values,
+      alias: serializeAlias(values.alias ?? [], mode === ProviderFormMode.Create ? 'create' : 'edit'),
+    };
     if (kind === 'oauth') {
       if (mode === ProviderFormMode.Create && !authorized) {
         openPopup();
-        startCreateAuthorization(values, accountValues, capabilities, startMutation.mutate, closeUnclaimedPopup);
+        startCreateAuthorization(wireValues, accountValues, capabilities, startMutation.mutate, closeUnclaimedPopup);
         return;
       }
       if (oauth === undefined) return;
       saveOAuthProvider(
-        values,
+        wireValues,
         accountValues,
         oauth,
         forceReauthorize,
@@ -288,7 +297,7 @@ export const useProviderEditorPage = ({
       );
       return;
     }
-    saveConfigProvider(mode, values, providerId, initial?.metadata, createProvider, updateProvider);
+    saveConfigProvider(mode, wireValues, providerId, initial?.metadata, createProvider, updateProvider);
   };
 
   // "Already has a key" is a property of what was loaded, not of the live field: the user clearing the

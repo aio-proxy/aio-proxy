@@ -1,27 +1,22 @@
 import { m } from '@aio-proxy/i18n';
+import type { AliasConfig } from '@aio-proxy/types';
 import { expect, rs, test } from '@rstest/core';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import type { ReactElement } from 'react';
 
-import type { ProviderAlias } from '../../lib/alias-editor';
+import type { AliasRow } from '../../lib/alias-editor';
 import { aliasEditorIssues } from '../../lib/alias-editor';
+import { aliasRow } from '../../lib/alias-editor/alias-editor.test-support';
 import { ProviderAliasVariants } from './provider-alias-variants';
 
 const models = ['claude-sonnet-4', 'claude-sonnet-4-thinking', 'claude-sonnet-4-fast'];
 
-const alias: ProviderAlias = {
-  sonnet: {
-    model: 'claude-sonnet-4',
-    preserve: false,
-    variants: [{ when: { thinking: true }, model: 'claude-sonnet-4-thinking', preserve: false }],
-  },
-};
+const sonnet = (config: AliasConfig): readonly AliasRow[] => [aliasRow('sonnet', config)];
 
-const variants = (value: ProviderAlias, onAliasChange: (next: ProviderAlias) => void): ReactElement => (
+const variants = (value: readonly AliasRow[], onAliasChange: (next: readonly AliasRow[]) => void): ReactElement => (
   <ProviderAliasVariants
     alias={value}
-    aliasName="sonnet"
-    config={value['sonnet']!}
+    row={value[0]!}
     models={models}
     issues={aliasEditorIssues(value).filter((issue) => issue.variant !== undefined)}
     onAliasChange={onAliasChange}
@@ -29,8 +24,8 @@ const variants = (value: ProviderAlias, onAliasChange: (next: ProviderAlias) => 
 );
 
 /** The editor page owns the alias, so the component only ever sees the value it was handed back. */
-const renderVariants = (initial: ProviderAlias) => {
-  const onAliasChange = rs.fn((next: ProviderAlias) => rerender(variants(next, onAliasChange)));
+const renderVariants = (initial: readonly AliasRow[]) => {
+  const onAliasChange = rs.fn((next: readonly AliasRow[]) => rerender(variants(next, onAliasChange)));
   const { rerender } = render(variants(initial, onAliasChange));
   return onAliasChange;
 };
@@ -40,29 +35,36 @@ const selectOption = async (trigger: HTMLElement, name: string) => {
   fireEvent.keyDown(await screen.findByRole('option', { name }), { key: 'Enter' });
 };
 
-const latestAlias = (onAliasChange: ReturnType<typeof rs.fn>) => onAliasChange.mock.calls.at(-1)?.[0] as ProviderAlias;
+const latestAlias = (onAliasChange: ReturnType<typeof rs.fn>) =>
+  onAliasChange.mock.calls.at(-1)?.[0] as readonly AliasRow[];
+
+const latestConfig = (onAliasChange: ReturnType<typeof rs.fn>) => latestAlias(onAliasChange)[0]?.config;
+
+const thinkingConfig: AliasConfig = {
+  model: 'claude-sonnet-4',
+  preserve: false,
+  variants: [{ when: { thinking: true }, model: 'claude-sonnet-4-thinking', preserve: false }],
+};
 
 // The editor used to write variants back through `Object.entries`, which turns an array into
 // `{ "0": row }` and re-reads `when: { thinking: true }` as `when: { effort: '0' }`. Editing any other
 // field on the row is what triggered it, so the target select is the guard that matters.
 test('keeps a thinking condition when its target model is changed', async () => {
-  const onAliasChange = renderVariants(alias);
+  const onAliasChange = renderVariants(sonnet(thinkingConfig));
 
   await selectOption(screen.getByLabelText(m['dashboard.providers.form.variant_target']()), 'claude-sonnet-4');
 
-  expect(latestAlias(onAliasChange)).toEqual({
-    sonnet: {
-      model: 'claude-sonnet-4',
-      preserve: false,
-      variants: [{ when: { thinking: true }, model: 'claude-sonnet-4', preserve: false }],
-    },
+  expect(latestConfig(onAliasChange)).toEqual({
+    model: 'claude-sonnet-4',
+    preserve: false,
+    variants: [{ when: { thinking: true }, model: 'claude-sonnet-4', preserve: false }],
   });
 });
 
 // An added row has no condition yet, so the alias must say so rather than silently saving a row that
 // `matchAliasRows` can never pick.
 test('reports the missing condition on a freshly added row', () => {
-  const onAliasChange = renderVariants(alias);
+  const onAliasChange = renderVariants(sonnet(thinkingConfig));
 
   fireEvent.click(screen.getByRole('button', { name: m['dashboard.providers.form.add_variant']() }));
 
@@ -73,13 +75,11 @@ test('reports the missing condition on a freshly added row', () => {
 
 // A new row used to start on `models[0]`, a coin flip the user had to correct on nearly every add.
 test('a new condition row starts on the alias own target', () => {
-  const onAliasChange = renderVariants({ sonnet: { model: 'claude-sonnet-4-fast', preserve: false } });
+  const onAliasChange = renderVariants(sonnet({ model: 'claude-sonnet-4-fast', preserve: false }));
 
   fireEvent.click(screen.getByRole('button', { name: m['dashboard.providers.form.add_variant']() }));
 
-  expect(latestAlias(onAliasChange)['sonnet']?.variants).toEqual([
-    { when: {}, model: 'claude-sonnet-4-fast', preserve: false },
-  ]);
+  expect(latestConfig(onAliasChange)?.variants).toEqual([{ when: {}, model: 'claude-sonnet-4-fast', preserve: false }]);
 });
 
 // The alias-level preserve switch shares the add-variant row now. It sits among per-row switches, so
@@ -87,28 +87,26 @@ test('a new condition row starts on the alias own target', () => {
 // itself: jsdom forwards a click on the switch to Base UI's hidden input as well, which the HTML spec
 // exempts for interactive descendants, so clicking the control double-toggles here but not in a browser.
 test('the alias preserve switch writes the alias, not a variant row', () => {
-  const onAliasChange = renderVariants({ sonnet: { model: 'claude-sonnet-4-fast', preserve: false } });
+  const onAliasChange = renderVariants(sonnet({ model: 'claude-sonnet-4-fast', preserve: false }));
 
   fireEvent.click(screen.getByText(m['dashboard.providers.form.alias_preserve']()));
 
-  expect(latestAlias(onAliasChange)).toEqual({ sonnet: { model: 'claude-sonnet-4-fast', preserve: true } });
+  expect(latestConfig(onAliasChange)).toEqual({ model: 'claude-sonnet-4-fast', preserve: true });
 });
 
 // Rows were keyed by stored index, so removing one renumbered the rest and React handed the removed
 // row's instance to its successor. State that never reaches `row` — DOM focus, an open condition
 // dropdown — then belonged to the wrong row. Keys have to follow the row.
 test('a row keeps its own focus when an earlier row is removed', () => {
-  const threeRows: ProviderAlias = {
-    sonnet: {
-      model: 'claude-sonnet-4',
-      preserve: false,
-      variants: [
-        { when: { effort: 'low' }, model: 'claude-sonnet-4', preserve: false },
-        { when: { effort: 'high' }, model: 'claude-sonnet-4-fast', preserve: false },
-        { when: { thinking: true }, model: 'claude-sonnet-4-thinking', preserve: false },
-      ],
-    },
-  };
+  const threeRows = sonnet({
+    model: 'claude-sonnet-4',
+    preserve: false,
+    variants: [
+      { when: { effort: 'low' }, model: 'claude-sonnet-4', preserve: false },
+      { when: { effort: 'high' }, model: 'claude-sonnet-4-fast', preserve: false },
+      { when: { thinking: true }, model: 'claude-sonnet-4-thinking', preserve: false },
+    ],
+  });
   renderVariants(threeRows);
   const effortOf = (position: number) =>
     within(screen.getAllByTestId('provider-variant-row')[position]!).getByLabelText(
@@ -132,19 +130,12 @@ test('a row keeps its own focus when an earlier row is removed', () => {
 // A config can carry an unnamed alias (that is its own reported issue), and an empty name would leave
 // the condition controls announced as " 's effort condition". The fallback noun is i18n copy too.
 test('an unnamed alias falls back to the alias noun in the condition labels', () => {
-  const unnamed: ProviderAlias = {
-    '': {
-      model: 'claude-sonnet-4',
-      preserve: false,
-      variants: [{ when: { thinking: true }, model: 'claude-sonnet-4-thinking', preserve: false }],
-    },
-  };
+  const unnamed = [aliasRow('', thinkingConfig, 'new')];
   const onAliasChange = rs.fn();
   render(
     <ProviderAliasVariants
       alias={unnamed}
-      aliasName=""
-      config={unnamed['']!}
+      row={unnamed[0]!}
       models={models}
       issues={[]}
       onAliasChange={onAliasChange}
@@ -159,16 +150,14 @@ test('an unnamed alias falls back to the alias noun in the condition labels', ()
 // Display used to follow `whenRank`, so making a row's condition more specific moved it up the list
 // while the user was still working in it. Stored order is the only order now.
 test('a row stays in place when its own condition becomes more specific', async () => {
-  const twoRows: ProviderAlias = {
-    sonnet: {
-      model: 'claude-sonnet-4',
-      preserve: false,
-      variants: [
-        { when: { effort: 'high' }, model: 'claude-sonnet-4-fast', preserve: false },
-        { when: { speed: 'fast' }, model: 'claude-sonnet-4-thinking', preserve: false },
-      ],
-    },
-  };
+  const twoRows = sonnet({
+    model: 'claude-sonnet-4',
+    preserve: false,
+    variants: [
+      { when: { effort: 'high' }, model: 'claude-sonnet-4-fast', preserve: false },
+      { when: { speed: 'fast' }, model: 'claude-sonnet-4-thinking', preserve: false },
+    ],
+  });
   const onAliasChange = renderVariants(twoRows);
   const rowAt = (position: number) => screen.getAllByTestId('provider-variant-row')[position]!;
   const thinkingLabel = m['dashboard.providers.form.variant_thinking_label']({ alias: 'sonnet' });
@@ -180,7 +169,7 @@ test('a row stays in place when its own condition becomes more specific', async 
     m['dashboard.providers.form.variant_thinking_on'](),
   );
 
-  expect(latestAlias(onAliasChange)['sonnet']?.variants).toEqual([
+  expect(latestConfig(onAliasChange)?.variants).toEqual([
     { when: { effort: 'high' }, model: 'claude-sonnet-4-fast', preserve: false },
     { when: { thinking: true, speed: 'fast' }, model: 'claude-sonnet-4-thinking', preserve: false },
   ]);
@@ -197,16 +186,14 @@ test('a row stays in place when its own condition becomes more specific', async 
 // into the removed row's index inherited its state — so the survivor rendered the deleted row's
 // condition, and its next edit wrote that condition over its own.
 test('the row surviving a removal keeps its own condition and edits it', async () => {
-  const twoRows: ProviderAlias = {
-    sonnet: {
-      model: 'claude-sonnet-4',
-      preserve: false,
-      variants: [
-        { when: { effort: 'high' }, model: 'claude-sonnet-4-fast', preserve: false },
-        { when: { thinking: true }, model: 'claude-sonnet-4-thinking', preserve: false },
-      ],
-    },
-  };
+  const twoRows = sonnet({
+    model: 'claude-sonnet-4',
+    preserve: false,
+    variants: [
+      { when: { effort: 'high' }, model: 'claude-sonnet-4-fast', preserve: false },
+      { when: { thinking: true }, model: 'claude-sonnet-4-thinking', preserve: false },
+    ],
+  });
   const onAliasChange = renderVariants(twoRows);
   // Rows render in stored order, so the effort row is both first on screen and stored 0.
   const effortRow = () => screen.getAllByTestId('provider-variant-row')[0]!;
@@ -229,7 +216,7 @@ test('the row surviving a removal keeps its own condition and edits it', async (
     'claude-sonnet-4-fast',
   );
 
-  expect(latestAlias(onAliasChange)['sonnet']?.variants).toEqual([
+  expect(latestConfig(onAliasChange)?.variants).toEqual([
     { when: { thinking: true }, model: 'claude-sonnet-4-fast', preserve: false },
   ]);
 });

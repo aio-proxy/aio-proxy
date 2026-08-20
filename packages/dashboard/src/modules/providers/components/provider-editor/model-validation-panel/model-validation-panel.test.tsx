@@ -5,8 +5,11 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type React from 'react';
 import type { ReactNode } from 'react';
 
-import { type ProviderEditorForm, useProviderEditorForm } from '../../../hooks/use-provider-editor-form';
-import type { ProviderEditorShape } from '../../../hooks/use-provider-editor-form';
+import {
+  type ProviderEditorForm,
+  type ProviderEditorInitial,
+  useProviderEditorForm,
+} from '../../../hooks/use-provider-editor-form';
 import { ModelValidationPanel } from './model-validation-panel';
 
 const mocks = rs.hoisted(() => ({ testDraft: rs.fn() }));
@@ -23,7 +26,7 @@ const wrapper = ({ children }: { readonly children: ReactNode }) => (
 
 interface HarnessProps {
   readonly kind: ProviderKind;
-  readonly initial: Partial<ProviderEditorShape>;
+  readonly initial: ProviderEditorInitial;
   readonly testableModels: readonly string[];
   readonly persistedProviderId: string | undefined;
 }
@@ -41,7 +44,7 @@ const Harness: React.FC<HarnessProps> = ({ kind, initial, testableModels, persis
   );
 };
 
-const apiInitial = (models: readonly string[], alias?: ProviderEditorShape['alias']): Partial<ProviderEditorShape> => ({
+const apiInitial = (models: readonly string[], alias?: ProviderEditorInitial['alias']): ProviderEditorInitial => ({
   kind: ProviderKind.Api,
   id: 'provider',
   protocol: ProviderProtocol.OpenAICompatible,
@@ -50,7 +53,7 @@ const apiInitial = (models: readonly string[], alias?: ProviderEditorShape['alia
   ...(alias === undefined ? {} : { alias }),
 });
 
-const oauthInitial = (models: readonly string[]): Partial<ProviderEditorShape> => ({
+const oauthInitial = (models: readonly string[]): ProviderEditorInitial => ({
   kind: ProviderKind.OAuth,
   id: 'oauth-p',
   enabled: true,

@@ -6,8 +6,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { ReactNode } from 'react';
 
-import { type ProviderEditorForm, useProviderEditorForm } from '../../../hooks/use-provider-editor-form';
-import type { ProviderEditorShape } from '../../../hooks/use-provider-editor-form';
+import {
+  type ProviderEditorForm,
+  type ProviderEditorInitial,
+  useProviderEditorForm,
+} from '../../../hooks/use-provider-editor-form';
 import { PROVIDER_MODELS_PLACEHOLDER, ProviderFormMode } from '../../../lib/constants';
 import { ModelsSection } from './models-section';
 
@@ -46,7 +49,7 @@ let section: ProviderEditorForm;
 
 interface HarnessProps {
   readonly kind: ProviderKind;
-  readonly initial: Partial<ProviderEditorShape>;
+  readonly initial: ProviderEditorInitial;
   readonly candidates?: readonly string[] | undefined;
   readonly persistedProviderId?: string | undefined;
 }
@@ -660,7 +663,9 @@ describe('ModelsSection', () => {
     fireEvent.click(within(screen.getByTestId('model-row-drop')).getByTestId('model-row-remove'));
 
     await waitFor(() => expect(section.state.values.models).toEqual(['keep']));
-    expect(section.state.values.alias).toEqual({ stay: { model: 'keep', preserve: false } });
+    expect(section.state.values.alias).toEqual([
+      expect.objectContaining({ name: 'stay', config: { model: 'keep', preserve: false } }),
+    ]);
   });
 
   test('duplicate alias names raise a list-level alert', () => {

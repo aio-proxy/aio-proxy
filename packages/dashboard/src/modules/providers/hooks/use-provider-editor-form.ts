@@ -1,6 +1,8 @@
 import type { OAuthProviderMutationBody, ProviderAlias, ProviderKind } from '@aio-proxy/types';
 import { type ReactFormExtendedApi, useForm } from '@tanstack/react-form';
+import { useState } from 'react';
 
+import { type AliasRow, toAliasRows } from '../lib/alias-editor';
 import type { ProviderFormShape } from '../lib/provider-form-value';
 
 /**
@@ -15,7 +17,7 @@ export type OAuthEditorShape = {
   readonly enabled?: boolean | undefined;
   readonly weight?: number | undefined;
   readonly proxy?: OAuthProviderMutationBody['proxy'];
-  readonly alias?: ProviderAlias | undefined;
+  readonly alias?: readonly AliasRow[] | undefined;
   readonly transforms?: unknown;
   readonly models?: readonly string[] | undefined;
   // Keyed metadata, not Record<string, unknown>: this is fed to toModelRows.
@@ -23,7 +25,24 @@ export type OAuthEditorShape = {
   readonly validationModel?: string | undefined;
 };
 
-export type ProviderEditorShape = ProviderFormShape | OAuthEditorShape;
+type WithEditorAlias<T> = Omit<T, 'alias'> & { readonly alias?: readonly AliasRow[] | undefined };
+
+export type ProviderEditorShape =
+  | WithEditorAlias<Extract<ProviderFormShape, { kind: ProviderKind.Api }>>
+  | WithEditorAlias<Extract<ProviderFormShape, { kind: ProviderKind.AiSdk }>>
+  | OAuthEditorShape;
+
+export type ProviderEditorInitial = Omit<Partial<ProviderEditorShape>, 'alias'> & {
+  readonly alias?: ProviderAlias | undefined;
+};
+
+type WithWireAlias<T> = Omit<T, 'alias'> & { readonly alias?: ProviderAlias | undefined };
+
+/** Form values after `save()` serializes alias rows back to the wire record. */
+export type ProviderEditorWire =
+  | WithWireAlias<Extract<ProviderFormShape, { kind: ProviderKind.Api }>>
+  | WithWireAlias<Extract<ProviderFormShape, { kind: ProviderKind.AiSdk }>>
+  | WithWireAlias<OAuthEditorShape>;
 
 export type ProviderEditorForm = ReactFormExtendedApi<
   ProviderEditorShape,
@@ -42,7 +61,7 @@ export type ProviderEditorForm = ReactFormExtendedApi<
 
 type UseProviderEditorFormOptions = {
   readonly kind: ProviderKind;
-  readonly initial?: Partial<ProviderEditorShape> | undefined;
+  readonly initial?: ProviderEditorInitial | undefined;
 };
 
 // Seeding only: no validators and no onSubmit by design. Save gating reads form values through
@@ -51,7 +70,15 @@ type UseProviderEditorFormOptions = {
 // Form's TS2589 ceiling, so consumers narrow it at the composite editor boundary while Zod stays
 // authoritative at dispatch.
 export function useProviderEditorForm({ kind, initial }: UseProviderEditorFormOptions): ProviderEditorForm {
+  const [defaultValues] = useState(
+    () =>
+      ({
+        ...initial,
+        kind,
+        alias: initial?.alias === undefined ? undefined : toAliasRows(initial.alias),
+      }) as ProviderEditorShape,
+  );
   return useForm({
-    defaultValues: { ...initial, kind } as ProviderEditorShape,
+    defaultValues,
   }) as unknown as ProviderEditorForm;
 }

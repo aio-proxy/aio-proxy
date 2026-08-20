@@ -5,6 +5,7 @@ import { Label } from '@aio-proxy/ui/components/label';
 import { Switch } from '@aio-proxy/ui/components/switch';
 
 import type { ProviderEditorForm } from '../../../hooks/use-provider-editor-form';
+import { toAliasRecord } from '../../../lib/alias-editor';
 import type { SectionSummary } from '../../../lib/section-status';
 import { AttemptOrderPreview } from '../attempt-order-preview';
 import { SectionShell } from '../section-shell';
@@ -70,7 +71,11 @@ export const RoutingSection: React.FC<RoutingSectionProps> = ({ form, models, ca
             // The live switch value, which only dims and relabels the self row.
             selfEnabled={enabled}
             // A disabled self is still previewed, so the routes are derived unconditionally.
-            exposedAliases={modelRoutes({ enabled: true, models: exposed, alias }).map((route) => route.alias)}
+            exposedAliases={modelRoutes({
+              enabled: true,
+              models: exposed,
+              alias: alias === undefined ? undefined : toAliasRecord(alias),
+            }).map((route) => route.alias)}
             others={others}
           />
         )}

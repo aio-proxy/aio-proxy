@@ -1,3 +1,7 @@
+import type { AliasConfig } from '@aio-proxy/types';
+
+import type { AliasRow } from './alias-editor';
+
 export const alias = {
   mini: {
     model: 'gpt-default',
@@ -14,3 +18,5 @@ export const thinkingAlias = {
     variants: [{ when: { thinking: true }, model: 'claude-sonnet-4-thinking', preserve: false }],
   },
 };
+
+export const aliasRow = (name: string, config: AliasConfig, id = name): AliasRow => ({ id, name, config });

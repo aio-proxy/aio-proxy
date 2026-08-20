@@ -13,7 +13,7 @@ import { queryKeys } from '@/lib/query-keys';
 import { useProviderCatalogMutation } from '../../../hooks/use-provider-catalog-mutation';
 import type { ProviderEditorForm } from '../../../hooks/use-provider-editor-form';
 import { addManualModels } from '../../../lib/add-manual-models';
-import { aliasEditorIssues, type ProviderAlias, serializeAlias } from '../../../lib/alias-editor';
+import { aliasEditorIssues, type AliasRow } from '../../../lib/alias-editor';
 import { ProviderFormMode } from '../../../lib/constants';
 import { exposedModels } from '../../../lib/exposed-models';
 import { applyModelRows, modelRowContext, toModelRows, type ModelRow } from '../../../lib/model-rows';
@@ -46,7 +46,6 @@ type CatalogOutcome =
 export const ModelsSection: React.FC<ModelsSectionProps> = ({
   form,
   kind,
-  mode,
   persistedProviderId,
   candidates,
   summary,
@@ -127,7 +126,7 @@ export const ModelsSection: React.FC<ModelsSectionProps> = ({
                 {(aliasField) => {
                   const models: readonly string[] = modelsField.state.value ?? [];
                   const metadata = (metadataField.state.value ?? {}) as MetadataMap;
-                  const alias: ProviderAlias = aliasField.state.value ?? {};
+                  const alias: readonly AliasRow[] = aliasField.state.value ?? [];
                   // An empty oauth whitelist exposes the whole discovered catalog at runtime, so the
                   // rows must render checked and unchecking one must narrow that set — not promote
                   // the single survivor. api/ai-sdk get no such substitution.
@@ -161,12 +160,7 @@ export const ModelsSection: React.FC<ModelsSectionProps> = ({
                       whitelistRows.filter((row) => row.id !== id),
                       rest,
                     );
-                    aliasField.handleChange(
-                      serializeAlias(
-                        removeModelFromAliases(alias, id),
-                        mode === ProviderFormMode.Create ? 'create' : 'edit',
-                      ),
-                    );
+                    aliasField.handleChange(removeModelFromAliases(alias, id));
                   };
 
                   return (
@@ -247,11 +241,7 @@ export const ModelsSection: React.FC<ModelsSectionProps> = ({
                         alias={alias}
                         issues={aliasEditorIssues(alias, models)}
                         targetOptions={selected}
-                        onAliasChange={(next) =>
-                          aliasField.handleChange(
-                            serializeAlias(next, mode === ProviderFormMode.Create ? 'create' : 'edit'),
-                          )
-                        }
+                        onAliasChange={(next) => aliasField.handleChange(next)}
                       />
 
                       <ProviderModelMetadataDrawer

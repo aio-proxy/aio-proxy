@@ -1,19 +1,6 @@
 import { m } from '@aio-proxy/i18n';
 
-import type { AliasEditorIssue, AliasEditResult, AliasSummary } from './alias-editor';
-
-export type VisibleEditError = Exclude<Extract<AliasEditResult, { readonly ok: false }>['code'], 'alias-missing'>;
-
-export function aliasEditErrorMessage(code: VisibleEditError): string {
-  switch (code) {
-    case 'name-duplicate':
-      return m['dashboard.providers.form.error_name_duplicate']();
-    case 'name-required':
-      return m['dashboard.providers.form.error_name_required']();
-    case 'target-required':
-      return m['dashboard.providers.form.error_target_required']();
-  }
-}
+import type { AliasEditorIssue, AliasSummary } from './alias-editor';
 
 export function aliasIssueMessage(issue: AliasEditorIssue): string {
   switch (issue.code) {

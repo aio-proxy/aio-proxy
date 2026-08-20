@@ -1,40 +1,41 @@
 import { describe, expect, test } from '@rstest/core';
 
-import { renameAlias, serializeAlias } from './alias-editor';
-import { alias } from './alias-editor.test-support';
+import { serializeAlias, toAliasRecord, toAliasRows } from './alias-editor';
+import { alias, aliasRow } from './alias-editor.test-support';
 
 describe('provider alias editor names', () => {
-  test('Given an empty alias map When serialized Then create omits it and edit clears it', () => {
-    expect(serializeAlias({}, 'create')).toBeUndefined();
-    expect(serializeAlias({}, 'edit')).toEqual({});
+  test('Given an empty alias list When serialized Then create omits it and edit clears it', () => {
+    expect(serializeAlias([], 'create')).toBeUndefined();
+    expect(serializeAlias([], 'edit')).toEqual({});
   });
 
-  /** Names are written per keystroke now, so a rejected rename is the only thing standing between a
-   * half-typed name and the sibling alias it would overwrite in the record. */
-  test('Given a name another alias already owns When renamed Then reports it and leaves the record alone', () => {
-    const two = { ...alias, fast: { model: 'gpt-fast', preserve: false } };
-
-    expect(renameAlias(two, 'fast', ' mini ')).toEqual({ ok: false, code: 'name-duplicate' });
-    expect(renameAlias(two, 'fast', '')).toEqual({ ok: false, code: 'name-required' });
-    expect(two.fast).toEqual({ model: 'gpt-fast', preserve: false });
+  test('Given rows When converted Then names are trimmed and a collision keeps the later row', () => {
+    expect(
+      toAliasRecord([
+        aliasRow(' mini ', { model: 'first', preserve: false }, 'a'),
+        aliasRow('mini', { model: 'second', preserve: false }, 'b'),
+      ]),
+    ).toEqual({ mini: { model: 'second', preserve: false } });
   });
 
-  test('Given an alias rename When committed Then retains its position and configuration', () => {
-    const result = renameAlias({ first: { model: 'one', preserve: false }, ...alias }, 'mini', '  MINI  ');
+  test('Given a wire record When converted Then each row keeps its name and config under a unique id', () => {
+    const rows = toAliasRows({
+      mini: alias.mini,
+      fast: { model: 'gpt-fast', preserve: true },
+    });
 
-    expect(result).toEqual({
-      ok: true,
-      alias: {
-        first: { model: 'one', preserve: false },
-        MINI: alias.mini,
-      },
+    expect(rows.map((row) => row.name)).toEqual(['mini', 'fast']);
+    expect(rows.map((row) => row.config)).toEqual([alias.mini, { model: 'gpt-fast', preserve: true }]);
+    expect(new Set(rows.map((row) => row.id)).size).toBe(2);
+    expect(toAliasRecord(rows)).toEqual({
+      mini: alias.mini,
+      fast: { model: 'gpt-fast', preserve: true },
     });
   });
 
-  test('Given prototype-like rename keys When committed Then they remain own record entries', () => {
-    const result = renameAlias(alias, 'mini', '__proto__');
+  test('Given prototype-like names When serialized Then they remain own record entries', () => {
+    const record = toAliasRecord([aliasRow('__proto__', alias.mini)]);
 
-    expect(result.ok).toBe(true);
-    expect(result.ok && Object.hasOwn(result.alias, '__proto__')).toBe(true);
+    expect(Object.hasOwn(record, '__proto__')).toBe(true);
   });
 });

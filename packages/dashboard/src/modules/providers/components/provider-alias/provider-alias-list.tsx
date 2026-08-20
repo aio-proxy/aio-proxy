@@ -1,29 +1,27 @@
 import { m } from '@aio-proxy/i18n';
 import type { FC } from 'react';
 
-import type { AliasEditorIssue, AliasEditResult, ProviderAlias } from '../../lib/alias-editor';
+import type { AliasEditorIssue, AliasRow } from '../../lib/alias-editor';
 import { ProviderAliasCard } from './provider-alias-card';
 
 interface ProviderAliasListProps {
-  readonly alias: ProviderAlias;
+  readonly alias: readonly AliasRow[];
   readonly models: readonly string[];
   readonly issues: readonly AliasEditorIssue[];
-  readonly rowKey: (aliasName: string) => string;
-  readonly onAliasChange: (alias: ProviderAlias) => void;
-  readonly onRenameAlias: (alias: string, name: string) => AliasEditResult;
-  readonly onRemoveAlias: (alias: string) => void;
+  readonly onAliasChange: (alias: readonly AliasRow[]) => void;
+  readonly onRenameAlias: (id: string, name: string) => void;
+  readonly onRemoveAlias: (id: string) => void;
 }
 
 export const ProviderAliasList: FC<ProviderAliasListProps> = ({
   alias,
   models,
   issues,
-  rowKey,
   onAliasChange,
   onRenameAlias,
   onRemoveAlias,
 }) => {
-  if (Object.keys(alias).length === 0) {
+  if (alias.length === 0) {
     return (
       <p className="rounded-xl bg-muted/40 px-3 py-2.5 text-xs text-muted-foreground">
         {m['dashboard.providers.form.aliases_empty']()}
@@ -33,17 +31,16 @@ export const ProviderAliasList: FC<ProviderAliasListProps> = ({
 
   return (
     <div className="space-y-2">
-      {Object.entries(alias).map(([aliasName, config]) => (
+      {alias.map((row) => (
         <ProviderAliasCard
-          key={rowKey(aliasName)}
+          key={row.id}
           alias={alias}
-          aliasName={aliasName}
-          config={config}
+          row={row}
           models={models}
-          issues={issues.filter((issue) => issue.alias === aliasName)}
+          issues={issues.filter((issue) => issue.alias === row.id)}
           onAliasChange={onAliasChange}
-          onRename={(name) => onRenameAlias(aliasName, name)}
-          onRemove={() => onRemoveAlias(aliasName)}
+          onRename={(name) => onRenameAlias(row.id, name)}
+          onRemove={() => onRemoveAlias(row.id)}
         />
       ))}
     </div>

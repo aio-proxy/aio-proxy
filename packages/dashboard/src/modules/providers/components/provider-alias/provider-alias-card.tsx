@@ -1,25 +1,22 @@
-import type { AliasConfig } from '@aio-proxy/types';
 import type { FC } from 'react';
 
-import type { AliasEditorIssue, AliasEditResult, ProviderAlias } from '../../lib/alias-editor';
+import type { AliasEditorIssue, AliasRow } from '../../lib/alias-editor';
 import { ProviderAliasConfigFields } from './provider-alias-config-fields';
 import { ProviderAliasVariants } from './provider-alias-variants';
 
 interface ProviderAliasCardProps {
-  readonly alias: ProviderAlias;
-  readonly aliasName: string;
-  readonly config: AliasConfig;
+  readonly alias: readonly AliasRow[];
+  readonly row: AliasRow;
   readonly models: readonly string[];
   readonly issues: readonly AliasEditorIssue[];
-  readonly onAliasChange: (alias: ProviderAlias) => void;
-  readonly onRename: (name: string) => AliasEditResult;
+  readonly onAliasChange: (alias: readonly AliasRow[]) => void;
+  readonly onRename: (name: string) => void;
   readonly onRemove: () => void;
 }
 
 export const ProviderAliasCard: FC<ProviderAliasCardProps> = ({
   alias,
-  aliasName,
-  config,
+  row,
   models,
   issues,
   onAliasChange,
@@ -31,8 +28,7 @@ export const ProviderAliasCard: FC<ProviderAliasCardProps> = ({
   <div className="space-y-3 rounded-2xl border bg-card p-3" data-testid="provider-alias-card">
     <ProviderAliasConfigFields
       alias={alias}
-      aliasName={aliasName}
-      config={config}
+      row={row}
       models={models}
       issues={issues.filter((issue) => issue.variant === undefined)}
       onAliasChange={onAliasChange}
@@ -41,8 +37,7 @@ export const ProviderAliasCard: FC<ProviderAliasCardProps> = ({
     />
     <ProviderAliasVariants
       alias={alias}
-      aliasName={aliasName}
-      config={config}
+      row={row}
       models={models}
       issues={issues.filter((issue) => issue.variant !== undefined)}
       onAliasChange={onAliasChange}

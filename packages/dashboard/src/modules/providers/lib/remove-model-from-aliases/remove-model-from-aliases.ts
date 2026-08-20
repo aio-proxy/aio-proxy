@@ -1,17 +1,20 @@
-import type { AliasConfig } from '@aio-proxy/types';
 import { flattenAliasVariants } from '@aio-proxy/types';
 
-import { type ProviderAlias, toAliasVariants } from '../alias-editor';
+import { type AliasRow, toAliasVariants } from '../alias-editor';
 
-export const removeModelFromAliases = (alias: ProviderAlias, modelId: string): ProviderAlias => {
-  const next: Record<string, AliasConfig> = {};
-  for (const [name, config] of Object.entries(alias)) {
-    if (config.model === modelId) continue;
-    const variants = toAliasVariants(flattenAliasVariants(config.variants).filter((row) => row.model !== modelId));
-    next[name] =
-      variants === undefined
-        ? { model: config.model, preserve: config.preserve }
-        : { model: config.model, preserve: config.preserve, variants };
-  }
-  return next;
-};
+export const removeModelFromAliases = (rows: readonly AliasRow[], modelId: string): readonly AliasRow[] =>
+  rows.flatMap((row) => {
+    if (row.config.model === modelId) return [];
+    const variants = toAliasVariants(
+      flattenAliasVariants(row.config.variants).filter((item) => item.model !== modelId),
+    );
+    return [
+      {
+        ...row,
+        config:
+          variants === undefined
+            ? { model: row.config.model, preserve: row.config.preserve }
+            : { model: row.config.model, preserve: row.config.preserve, variants },
+      },
+    ];
+  });

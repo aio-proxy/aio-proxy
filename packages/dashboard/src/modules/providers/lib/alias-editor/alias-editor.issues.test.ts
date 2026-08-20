@@ -2,11 +2,11 @@ import { describe, expect, test } from '@rstest/core';
 
 import { aliasSummaryMessage } from '../alias-editor-copy';
 import { aliasEditorIssues, aliasIssueControlId, aliasSummary } from './alias-editor';
-import { alias } from './alias-editor.test-support';
+import { alias, aliasRow } from './alias-editor.test-support';
 
 describe('provider alias editor summary and issues', () => {
   test('Given aliases and variants When summarized Then returns committed counts', () => {
-    expect(aliasSummary(alias)).toEqual({ aliases: 1, variants: 1 });
+    expect(aliasSummary([aliasRow('mini', alias.mini)])).toEqual({ aliases: 1, variants: 1 });
   });
 
   test('Given singular and plural counts When formatted Then English grammar matches each count', () => {
@@ -17,57 +17,67 @@ describe('provider alias editor summary and issues', () => {
   /** Both rows are equally wrong, so both are marked: flagging only the second reads as "the first one
    * is fine", and the row the user goes on to fix may well be the other one. */
   test('Given names that collide once normalized When inspected Then every colliding row is flagged', () => {
-    const issues = aliasEditorIssues({
-      mini: { model: 'a', preserve: false },
-      ' mini ': { model: 'a', preserve: false },
-    });
+    const issues = aliasEditorIssues([
+      aliasRow('mini', { model: 'a', preserve: false }, 'first'),
+      aliasRow(' mini ', { model: 'a', preserve: false }, 'second'),
+    ]);
 
     expect(issues).toEqual([
-      { code: 'alias-name-duplicate', alias: 'mini' },
-      { code: 'alias-name-duplicate', alias: ' mini ' },
+      { code: 'alias-name-duplicate', alias: 'first' },
+      { code: 'alias-name-duplicate', alias: 'second' },
     ]);
   });
 
   /** The unnamed row an Add Alias click leaves behind: it has to report something, or the save button
-   * stays enabled over a record with an empty key. */
+   * stays enabled over a row the user has not finished. */
   test('Given an unnamed alias When inspected Then it reports a required name', () => {
-    expect(aliasEditorIssues({ '': { model: 'a', preserve: false } })).toEqual([
-      { code: 'alias-name-required', alias: '' },
+    expect(aliasEditorIssues([aliasRow('', { model: 'a', preserve: false }, 'new')])).toEqual([
+      { code: 'alias-name-required', alias: 'new' },
     ]);
   });
 
   test('Given invalid model references and a preserved-route conflict When inspected Then returns ordered locators', () => {
     const issues = aliasEditorIssues(
-      {
-        legacy: {
-          model: 'missing-default',
-          preserve: false,
-          variants: { low: { model: 'missing-low', preserve: false } },
-        },
-        preserved: { model: 'legacy', preserve: true },
-      },
+      [
+        aliasRow(
+          'legacy',
+          {
+            model: 'missing-default',
+            preserve: false,
+            variants: { low: { model: 'missing-low', preserve: false } },
+          },
+          'legacy-row',
+        ),
+        aliasRow('preserved', { model: 'legacy', preserve: true }, 'preserved-row'),
+      ],
       ['legacy'],
     );
 
     expect(issues).toEqual([
-      { code: 'preserved-route-conflict', alias: 'legacy' },
-      { code: 'target-missing', alias: 'legacy' },
-      { code: 'target-missing', alias: 'legacy', variant: 0 },
+      { code: 'preserved-route-conflict', alias: 'legacy-row' },
+      { code: 'target-missing', alias: 'legacy-row' },
+      { code: 'target-missing', alias: 'legacy-row', variant: 0 },
     ]);
   });
 
   test('reports no target-missing for models: [], matching the server guard', () => {
     const issues = aliasEditorIssues(
-      { smart: { model: 'upstream-a', preserve: false, variants: { fast: { model: 'upstream-b', preserve: false } } } },
+      [
+        aliasRow('smart', {
+          model: 'upstream-a',
+          preserve: false,
+          variants: { fast: { model: 'upstream-b', preserve: false } },
+        }),
+      ],
       [],
     );
     expect(issues).toEqual([]);
   });
 
   test('Given alias and variant issues When locating controls Then target errors focus their selects', () => {
-    expect(aliasIssueControlId({ code: 'target-missing', alias: 'mini' })).toBe('provider-alias-mini-target');
-    expect(aliasIssueControlId({ code: 'target-missing', alias: 'mini', variant: 0 })).toBe(
-      'provider-alias-mini-variant-0-target',
+    expect(aliasIssueControlId({ code: 'target-missing', alias: 'row-1' })).toBe('provider-alias-row-1-target');
+    expect(aliasIssueControlId({ code: 'target-missing', alias: 'row-1', variant: 0 })).toBe(
+      'provider-alias-row-1-variant-0-target',
     );
   });
 });

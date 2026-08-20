@@ -9,7 +9,7 @@ import {
   variantRows,
   withVariantRows,
 } from './alias-editor';
-import { alias, thinkingAlias } from './alias-editor.test-support';
+import { alias, aliasRow, thinkingAlias } from './alias-editor.test-support';
 
 describe('provider alias editor variant rows', () => {
   // The data-loss guard, and the reason this task exists. Every dashboard site used to read
@@ -19,9 +19,11 @@ describe('provider alias editor variant rows', () => {
     const rows = variantRows(thinkingAlias.sonnet);
     expect(rows).toEqual([{ when: { thinking: true }, model: 'claude-sonnet-4-thinking', preserve: false }]);
 
-    const edited = withVariantRows(thinkingAlias, 'sonnet', [{ ...rows[0]!, model: 'claude-sonnet-4-retimed' }]);
+    const edited = withVariantRows([aliasRow('sonnet', thinkingAlias.sonnet)], 'sonnet', [
+      { ...rows[0]!, model: 'claude-sonnet-4-retimed' },
+    ]);
 
-    expect(edited['sonnet']?.variants).toEqual([
+    expect(edited[0]?.config.variants).toEqual([
       { when: { thinking: true }, model: 'claude-sonnet-4-retimed', preserve: false },
     ]);
   });
@@ -32,15 +34,19 @@ describe('provider alias editor variant rows', () => {
     const rows = variantRows(alias.mini);
 
     expect(toAliasVariants(rows)).toEqual({ low: { model: 'gpt-low', preserve: false } });
-    expect(withVariantRows(alias, 'mini', rows)['mini']?.variants).toEqual({
+    expect(withVariantRows([aliasRow('mini', alias.mini)], 'mini', rows)[0]?.config.variants).toEqual({
       low: { model: 'gpt-low', preserve: false },
     });
   });
 
   test('Given a thinking row added to a record-form alias When serialized Then the whole value flips to rows', () => {
-    const next = addVariantRow(alias, 'mini', { when: { thinking: true }, model: 'gpt-thinking', preserve: false });
+    const next = addVariantRow([aliasRow('mini', alias.mini)], 'mini', {
+      when: { thinking: true },
+      model: 'gpt-thinking',
+      preserve: false,
+    });
 
-    expect(next['mini']?.variants).toEqual([
+    expect(next[0]?.config.variants).toEqual([
       { when: { effort: 'low' }, model: 'gpt-low', preserve: false },
       { when: { thinking: true }, model: 'gpt-thinking', preserve: false },
     ]);
@@ -48,7 +54,10 @@ describe('provider alias editor variant rows', () => {
 
   test('Given every row removed When serialized Then variants is dropped rather than left empty', () => {
     expect(toAliasVariants([])).toBeUndefined();
-    expect(withVariantRows(alias, 'mini', [])['mini']).toEqual({ model: 'gpt-default', preserve: false });
+    expect(withVariantRows([aliasRow('mini', alias.mini)], 'mini', [])[0]?.config).toEqual({
+      model: 'gpt-default',
+      preserve: false,
+    });
   });
 
   // The record is keyed on effort, and `x-high` folds to `xhigh`, so serializing these two as a record
@@ -66,16 +75,16 @@ describe('provider alias editor variant rows', () => {
   // `whenIdentity` is the server's own rule: these two canonicalize to the same condition, so a
   // string comparison of the raw `when` values would let the editor build a payload Zod refuses.
   test('Given two rows matching the same condition When inspected Then a duplicate issue names the later row', () => {
-    const issues = aliasEditorIssues({
-      mini: {
+    const issues = aliasEditorIssues([
+      aliasRow('mini', {
         model: 'gpt-default',
         preserve: false,
         variants: [
           { when: { effort: 'High' }, model: 'gpt-high', preserve: false },
           { when: { effort: 'high' }, model: 'gpt-other', preserve: false },
         ],
-      },
-    });
+      }),
+    ]);
 
     expect(issues).toEqual([{ code: 'variant-when-duplicate', alias: 'mini', variant: 1 }]);
   });
@@ -84,16 +93,16 @@ describe('provider alias editor variant rows', () => {
   // `when: { effort: '' }`. The server's `whenIdentity` still calls that a condition (`effort=`), so
   // without stripping it the row reads as configured instead of as the empty condition it is.
   test('Given an empty condition or a blank effort When inspected Then both report a missing condition', () => {
-    const issues = aliasEditorIssues({
-      mini: {
+    const issues = aliasEditorIssues([
+      aliasRow('mini', {
         model: 'gpt-default',
         preserve: false,
         variants: [
           { when: {}, model: 'gpt-a', preserve: false },
           { when: { effort: '   ' }, model: 'gpt-b', preserve: false },
         ],
-      },
-    });
+      }),
+    ]);
 
     expect(issues).toEqual([
       { code: 'variant-when-required', alias: 'mini', variant: 0 },
@@ -104,16 +113,16 @@ describe('provider alias editor variant rows', () => {
   // Two blank-effort rows are both "no condition", not a duplicate pair: the fix is to give each one a
   // condition, and a duplicate warning would send the user looking for a collision that isn't there.
   test('Given two blank-effort rows When inspected Then neither is called a duplicate', () => {
-    const issues = aliasEditorIssues({
-      mini: {
+    const issues = aliasEditorIssues([
+      aliasRow('mini', {
         model: 'gpt-default',
         preserve: false,
         variants: [
           { when: { effort: ' ' }, model: 'gpt-a', preserve: false },
           { when: { effort: '' }, model: 'gpt-b', preserve: false },
         ],
-      },
-    });
+      }),
+    ]);
 
     expect(issues.map((issue) => issue.code)).toEqual(['variant-when-required', 'variant-when-required']);
   });

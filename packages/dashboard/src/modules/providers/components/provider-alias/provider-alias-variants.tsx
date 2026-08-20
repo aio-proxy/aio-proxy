@@ -1,5 +1,4 @@
 import { m } from '@aio-proxy/i18n';
-import type { AliasConfig } from '@aio-proxy/types';
 import { Button } from '@aio-proxy/ui/components/button';
 import { Switch } from '@aio-proxy/ui/components/switch';
 import { PlusIcon } from 'lucide-react';
@@ -8,8 +7,8 @@ import type { FC } from 'react';
 import {
   addVariantRow,
   type AliasEditorIssue,
+  type AliasRow,
   blankVariantRow,
-  type ProviderAlias,
   variantRows,
   withVariantRows,
 } from '../../lib/alias-editor';
@@ -18,23 +17,21 @@ import { ProviderVariantRow } from '../provider-variant-row';
 import { useVariantRowKeys } from './use-variant-row-keys';
 
 interface ProviderAliasVariantsProps {
-  readonly alias: ProviderAlias;
-  readonly aliasName: string;
-  readonly config: AliasConfig;
+  readonly alias: readonly AliasRow[];
+  readonly row: AliasRow;
   readonly models: readonly string[];
   readonly issues: readonly AliasEditorIssue[];
-  readonly onAliasChange: (alias: ProviderAlias) => void;
+  readonly onAliasChange: (alias: readonly AliasRow[]) => void;
 }
 
 export const ProviderAliasVariants: FC<ProviderAliasVariantsProps> = ({
   alias,
-  aliasName,
-  config,
+  row,
   models,
   issues,
   onAliasChange,
 }) => {
-  const rows = variantRows(config);
+  const rows = variantRows(row.config);
   const { keys, appendKey, dropKey } = useVariantRowKeys(rows.length);
   // Two rows can fail the same way; the list names each problem once, and `aria-invalid` on the
   // offending controls is what points at which row it came from.
@@ -48,9 +45,13 @@ export const ProviderAliasVariants: FC<ProviderAliasVariantsProps> = ({
         <label className="flex items-center gap-2 text-xs text-muted-foreground">
           <Switch
             size="sm"
-            checked={config.preserve}
+            checked={row.config.preserve}
             onCheckedChange={(preserve) =>
-              onAliasChange({ ...alias, [aliasName]: { ...config, preserve: Boolean(preserve) } })
+              onAliasChange(
+                alias.map((item) =>
+                  item.id === row.id ? { ...item, config: { ...item.config, preserve: Boolean(preserve) } } : item,
+                ),
+              )
             }
           />
           {m['dashboard.providers.form.alias_preserve']()}
@@ -63,7 +64,7 @@ export const ProviderAliasVariants: FC<ProviderAliasVariantsProps> = ({
             appendKey();
             // A new condition starts on the alias's own target, which is what the user meant most of
             // the time; the first enabled model was a coin flip they had to correct.
-            onAliasChange(addVariantRow(alias, aliasName, blankVariantRow(config.model)));
+            onAliasChange(addVariantRow(alias, row.id, blankVariantRow(row.config.model)));
           }}
         >
           <PlusIcon data-icon="inline-start" />
@@ -72,19 +73,20 @@ export const ProviderAliasVariants: FC<ProviderAliasVariantsProps> = ({
       </div>
       {rows.length > 0 && (
         <div className="space-y-2 rounded-xl bg-muted/40 p-2.5">
-          {rows.map((row, index) => (
+          {rows.map((variant, index) => (
             <ProviderVariantRow
               key={keys[index] ?? index}
-              aliasName={aliasName}
+              rowId={row.id}
+              aliasName={row.name}
               index={index}
-              row={row}
+              row={variant}
               models={models}
               issues={issues.filter((issue) => issue.variant === index)}
               onChange={(next) =>
                 onAliasChange(
                   withVariantRows(
                     alias,
-                    aliasName,
+                    row.id,
                     rows.map((current, position) => (position === index ? next : current)),
                   ),
                 )
@@ -94,7 +96,7 @@ export const ProviderAliasVariants: FC<ProviderAliasVariantsProps> = ({
                 onAliasChange(
                   withVariantRows(
                     alias,
-                    aliasName,
+                    row.id,
                     rows.filter((_, position) => position !== index),
                   ),
                 );

@@ -14,6 +14,7 @@ import { ModelValidationPanel } from '../../components/provider-editor/model-val
 import { ModelsSection } from '../../components/provider-editor/models-section';
 import { RoutingSection } from '../../components/provider-editor/routing-section';
 import { useActiveSection } from '../../hooks/use-active-section';
+import { toAliasRecord } from '../../lib/alias-editor';
 import { ProviderFormMode } from '../../lib/constants';
 import { exposedModels } from '../../lib/exposed-models';
 import { EditorFooter } from './editor-footer';
@@ -145,7 +146,7 @@ export const ProviderEditorPage: React.FC<ProviderEditorPageProps> = (props) => 
               <CardContent>
                 <ExposurePanel
                   models={exposed}
-                  alias={values.alias}
+                  alias={values.alias === undefined ? undefined : toAliasRecord(values.alias)}
                   enabled={values.enabled ?? true}
                   warning={sessionWarning}
                 />

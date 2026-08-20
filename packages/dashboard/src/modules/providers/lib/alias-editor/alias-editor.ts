@@ -11,9 +11,11 @@ import { omit } from 'es-toolkit/object';
 
 export type { ProviderAlias };
 
-export type AliasEditResult =
-  | { readonly ok: true; readonly alias: ProviderAlias }
-  | { readonly ok: false; readonly code: 'alias-missing' | 'name-duplicate' | 'name-required' | 'target-required' };
+export type AliasRow = {
+  readonly id: string;
+  readonly name: string;
+  readonly config: AliasConfig;
+};
 
 export type AliasEditorIssue = {
   readonly code:
@@ -23,6 +25,7 @@ export type AliasEditorIssue = {
     | 'target-missing'
     | 'variant-when-duplicate'
     | 'variant-when-required';
+  /** Stable row id, not the alias name — two rows may legally share a name while editing. */
   readonly alias: string;
   /** Index into the alias's stored variant rows. Rows carry a condition, not a name, so there is no key. */
   readonly variant?: number;
@@ -33,39 +36,44 @@ export type AliasSummary = {
   readonly variants: number;
 };
 
-export const aliasControlId = (alias: string, variant?: number): string =>
+let sequence = 0;
+const nextKey = (): string => {
+  sequence += 1;
+  return `k${sequence}`;
+};
+
+export const blankAliasRow = (model: string): AliasRow => ({
+  id: nextKey(),
+  name: '',
+  config: { model, preserve: false },
+});
+
+export function toAliasRows(record: ProviderAlias): readonly AliasRow[] {
+  return Object.entries(record).map(([name, config]) => ({
+    id: nextKey(),
+    name,
+    config,
+  }));
+}
+
+export function toAliasRecord(rows: readonly AliasRow[]): ProviderAlias {
+  return Object.fromEntries(
+    rows.map((row) => [normalizeAliasName(row.name), row.config] as const).filter(([name]) => name !== ''),
+  );
+}
+
+export const aliasControlId = (rowId: string, variant?: number): string =>
   variant === undefined
-    ? `provider-alias-${encodeURIComponent(alias)}`
-    : `provider-alias-${encodeURIComponent(alias)}-variant-${variant}`;
+    ? `provider-alias-${encodeURIComponent(rowId)}`
+    : `provider-alias-${encodeURIComponent(rowId)}-variant-${variant}`;
 
 export const aliasIssueControlId = (issue: AliasEditorIssue): string => {
   const id = aliasControlId(issue.alias, issue.variant);
   return issue.code === 'target-missing' ? `${id}-target` : id;
 };
 
-export function serializeAlias(alias: ProviderAlias, mode: 'create' | 'edit'): ProviderAlias | undefined {
-  return Object.keys(alias).length === 0 && mode === 'create' ? undefined : alias;
-}
-
-export function renameAlias(alias: ProviderAlias, current: string, next: string): AliasEditResult {
-  const config = alias[current];
-  if (config === undefined) {
-    return { ok: false, code: 'alias-missing' };
-  }
-
-  const name = normalizeAliasName(next);
-  const otherNames = Object.keys(alias)
-    .filter((key) => key !== current)
-    .map(normalizeAliasName);
-  const error = draftError(name, config.model, otherNames);
-  if (error !== undefined) {
-    return { ok: false, code: error };
-  }
-
-  const renamed = Object.fromEntries(
-    Object.entries(alias).map(([key, value]) => [key === current ? name : key, value]),
-  );
-  return { ok: true, alias: renamed };
+export function serializeAlias(rows: readonly AliasRow[], mode: 'create' | 'edit'): ProviderAlias | undefined {
+  return rows.length === 0 && mode === 'create' ? undefined : toAliasRecord(rows);
 }
 
 /** Rows are the one internal shape: the legacy record form is exactly the effort-only subset of it. */
@@ -91,25 +99,25 @@ export function toAliasVariants(rows: readonly AliasSelectRow[]): AliasConfig['v
   return Object.fromEntries(rows.map((row) => [row.when.effort, { model: row.model, preserve: row.preserve }]));
 }
 
-export function withVariantRows(
-  alias: ProviderAlias,
-  aliasName: string,
-  rows: readonly AliasSelectRow[],
-): ProviderAlias {
-  const config = alias[aliasName];
-  if (config === undefined) return alias;
+const configWithVariantRows = (config: AliasConfig, rows: readonly AliasSelectRow[]): AliasConfig => {
   const variants = toAliasVariants(rows);
-  const next: AliasConfig =
-    variants === undefined
-      ? { model: config.model, preserve: config.preserve }
-      : { model: config.model, preserve: config.preserve, variants };
-  return { ...alias, [aliasName]: next };
+  return variants === undefined
+    ? { model: config.model, preserve: config.preserve }
+    : { model: config.model, preserve: config.preserve, variants };
+};
+
+export function withVariantRows(
+  aliases: readonly AliasRow[],
+  id: string,
+  rows: readonly AliasSelectRow[],
+): readonly AliasRow[] {
+  return aliases.map((row) => (row.id === id ? { ...row, config: configWithVariantRows(row.config, rows) } : row));
 }
 
-export function addVariantRow(alias: ProviderAlias, aliasName: string, row: AliasSelectRow): ProviderAlias {
-  const config = alias[aliasName];
-  if (config === undefined) return alias;
-  return withVariantRows(alias, aliasName, [...variantRows(config), row]);
+export function addVariantRow(aliases: readonly AliasRow[], id: string, row: AliasSelectRow): readonly AliasRow[] {
+  const target = aliases.find((item) => item.id === id);
+  if (target === undefined) return aliases;
+  return withVariantRows(aliases, id, [...variantRows(target.config), row]);
 }
 
 /** An unconditioned row: it reports `variant-when-required` on sight, which is what blocks the save
@@ -147,71 +155,60 @@ export const fromRowDraft = (draft: AliasRowDraft): AliasSelectRow => ({
   preserve: draft.preserve,
 });
 
-export function aliasSummary(alias: ProviderAlias): AliasSummary {
+export function aliasSummary(rows: readonly AliasRow[]): AliasSummary {
   let variants = 0;
-  for (const config of Object.values(alias)) {
-    variants += flattenAliasVariants(config.variants).length;
+  for (const row of rows) {
+    variants += flattenAliasVariants(row.config.variants).length;
   }
-  return { aliases: Object.keys(alias).length, variants };
+  return { aliases: rows.length, variants };
 }
 
-export function aliasEditorIssues(alias: ProviderAlias, models?: readonly string[]): readonly AliasEditorIssue[] {
+export function aliasEditorIssues(rows: readonly AliasRow[], models?: readonly string[]): readonly AliasEditorIssue[] {
   const issues: AliasEditorIssue[] = [];
   // Keep in lockstep with validateAliasTargets in @aio-proxy/types: absent and
   // empty both mean "no whitelist", or the editor blocks a payload the server accepts.
   const availableModels = models === undefined || models.length === 0 ? undefined : new Set(models);
-  const preservedModels = preservedAliasModels(alias);
+  const preservedModels = preservedAliasModels(toAliasRecord(rows));
   // Every row in a collision is flagged, not just the later one: the first row is no more legal than
   // the second, and marking one of them makes the other look like the only mistake.
-  const nameCounts = countBy(Object.keys(alias), normalizeAliasName);
+  const nameCounts = countBy(rows, (row) => normalizeAliasName(row.name));
 
-  for (const [aliasName, config] of Object.entries(alias)) {
-    const normalizedAlias = normalizeAliasName(aliasName);
+  for (const row of rows) {
+    const normalizedAlias = normalizeAliasName(row.name);
     if (normalizedAlias === '') {
-      issues.push({ code: 'alias-name-required', alias: aliasName });
+      issues.push({ code: 'alias-name-required', alias: row.id });
     } else if ((nameCounts[normalizedAlias] ?? 0) > 1) {
-      issues.push({ code: 'alias-name-duplicate', alias: aliasName });
+      issues.push({ code: 'alias-name-duplicate', alias: row.id });
     }
 
-    if (preservedModels.has(normalizedAlias) && aliasTargetModels(config).some((model) => model !== normalizedAlias)) {
-      issues.push({ code: 'preserved-route-conflict', alias: aliasName });
+    if (
+      preservedModels.has(normalizedAlias) &&
+      aliasTargetModels(row.config).some((model) => model !== normalizedAlias)
+    ) {
+      issues.push({ code: 'preserved-route-conflict', alias: row.id });
     }
-    if (availableModels !== undefined && !availableModels.has(config.model)) {
-      issues.push({ code: 'target-missing', alias: aliasName });
+    if (availableModels !== undefined && !availableModels.has(row.config.model)) {
+      issues.push({ code: 'target-missing', alias: row.id });
     }
 
     const conditions = new Set<string>();
-    for (const [variant, row] of variantRows(config).entries()) {
+    for (const [variant, variantRow] of variantRows(row.config).entries()) {
       // A blank effort is not a dimension, but the server's `whenIdentity` still emits `effort=` for it,
       // which would read as a condition. Drop it first so `{ effort: '' }` reports the same missing
       // condition as `{}` — the state the user has to fix is the same one.
-      const when = row.when.effort?.trim() === '' ? omit(row.when, ['effort']) : row.when;
+      const when = variantRow.when.effort?.trim() === '' ? omit(variantRow.when, ['effort']) : variantRow.when;
       const identity = whenIdentity(when);
       if (identity === '') {
-        issues.push({ code: 'variant-when-required', alias: aliasName, variant });
+        issues.push({ code: 'variant-when-required', alias: row.id, variant });
       } else if (conditions.has(identity)) {
-        issues.push({ code: 'variant-when-duplicate', alias: aliasName, variant });
+        issues.push({ code: 'variant-when-duplicate', alias: row.id, variant });
       }
       conditions.add(identity);
-      if (availableModels !== undefined && !availableModels.has(row.model)) {
-        issues.push({ code: 'target-missing', alias: aliasName, variant });
+      if (availableModels !== undefined && !availableModels.has(variantRow.model)) {
+        issues.push({ code: 'target-missing', alias: row.id, variant });
       }
     }
   }
 
   return issues;
-}
-
-function draftError(
-  name: string,
-  model: string,
-  existingNames: readonly string[],
-): Extract<AliasEditResult, { readonly ok: false }>['code'] | undefined {
-  if (name === '') {
-    return 'name-required';
-  }
-  if (model === '') {
-    return 'target-required';
-  }
-  return existingNames.includes(name) ? 'name-duplicate' : undefined;
 }

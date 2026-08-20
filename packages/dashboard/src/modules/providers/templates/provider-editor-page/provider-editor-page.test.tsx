@@ -597,6 +597,40 @@ test('a form with nothing outstanding announces that it is ready to save', () =>
   expect(saveButton()).toBeEnabled();
 });
 
+// The record-keyed editor used to reject a colliding keystroke, leave the box showing the typed
+// name, and keep the stored row on the last accepted prefix — so aliasEditorIssues was empty and
+// Save stayed enabled over a name the user never confirmed. Writing the name into the row is what
+// makes the issue visible to the save gate.
+test('typing a name another alias already uses blocks Save', () => {
+  renderPage({
+    mode: ProviderFormMode.Edit,
+    kind: ProviderKind.Api,
+    providerId: 'p1',
+    initial: {
+      id: 'p1',
+      name: 'Existing',
+      enabled: true,
+      protocol: ProviderProtocol.OpenAICompatible,
+      baseURL: 'https://api.example.com/v1',
+      models: ['model-a', 'model-b'],
+      alias: {
+        mini: { model: 'model-a', preserve: false },
+        fast: { model: 'model-b', preserve: false },
+      },
+    },
+    onSessionIdChange: rs.fn(),
+  });
+
+  expect(saveButton()).toBeEnabled();
+  const boxes = screen.getAllByLabelText(m['dashboard.providers.form.alias_name']());
+  fireEvent.change(boxes[1]!, { target: { value: 'mini' } });
+
+  expect(boxes[0]).toHaveAttribute('aria-invalid', 'true');
+  expect(boxes[1]).toHaveAttribute('aria-invalid', 'true');
+  expect(screen.getByRole('alert')).toHaveTextContent(m['dashboard.providers.form.alias_name_duplicate']());
+  expect(saveButton()).toBeDisabled();
+});
+
 test('every exposure row names its origin, direct models included', () => {
   renderPage({
     mode: ProviderFormMode.Edit,

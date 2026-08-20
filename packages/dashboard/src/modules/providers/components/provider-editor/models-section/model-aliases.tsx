@@ -2,29 +2,25 @@ import { m } from '@aio-proxy/i18n';
 import { Button } from '@aio-proxy/ui/components/button';
 import { ArrowRightIcon, PlusIcon } from 'lucide-react';
 
-import type { AliasEditorIssue, ProviderAlias } from '../../../lib/alias-editor';
+import type { AliasEditorIssue, AliasRow } from '../../../lib/alias-editor';
 import { ProviderAliasList, useAliasRows } from '../../provider-alias';
 
 interface ModelAliasesProps {
-  readonly alias: ProviderAlias;
+  readonly alias: readonly AliasRow[];
   readonly issues: readonly AliasEditorIssue[];
   /** Enabled upstream model ids — the only legal alias targets. */
   readonly targetOptions: readonly string[];
-  readonly onAliasChange: (alias: ProviderAlias) => void;
+  readonly onAliasChange: (alias: readonly AliasRow[]) => void;
 }
 
 /**
  * Lives with the models it renames, not with routing: an alias names a client-facing model id and
  * points it at one of the ids picked above, so authoring it anywhere else means scrolling away from
  * the list you are choosing targets from (the user's ruling; fidelity-rules D-F6).
- *
- * The draft layer did not die with the alias drawer: a not-yet-named alias cannot be a key in the
- * `alias` record, and renaming has to reject duplicates. What went away is staging-until-close — rows
- * write the form as soon as an alias has a name.
  */
 export const ModelAliases: React.FC<ModelAliasesProps> = ({ alias, issues, targetOptions, onAliasChange }) => {
   const rows = useAliasRows(alias, onAliasChange);
-  const hasRows = Object.keys(alias).length > 0;
+  const hasRows = alias.length > 0;
   const hasDuplicateName = issues.some((issue) => issue.code === 'alias-name-duplicate');
 
   return (
@@ -49,7 +45,6 @@ export const ModelAliases: React.FC<ModelAliasesProps> = ({ alias, issues, targe
         alias={alias}
         models={targetOptions}
         issues={issues}
-        rowKey={rows.rowKey}
         onAliasChange={onAliasChange}
         onRenameAlias={rows.rename}
         onRemoveAlias={rows.removeAlias}
