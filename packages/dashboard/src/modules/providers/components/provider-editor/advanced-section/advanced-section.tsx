@@ -1,7 +1,8 @@
 import { m } from '@aio-proxy/i18n';
 import { ProviderKind, type ProviderTransforms } from '@aio-proxy/types';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@aio-proxy/ui/components/accordion';
-import { FieldDescription } from '@aio-proxy/ui/components/field';
+import { Field, FieldDescription } from '@aio-proxy/ui/components/field';
+import { Label } from '@aio-proxy/ui/components/label';
 
 import type { ProviderEditorForm } from '../../../hooks/use-provider-editor-form';
 import { headerCountText, proxyModeLabel, transformRuleCountText } from '../../../lib/advanced-summary';
@@ -56,10 +57,13 @@ export const AdvancedSection: React.FC<AdvancedSectionProps> = ({
           {kind === ProviderKind.Api ? (
             <form.Field name="headers">
               {(field) => (
-                <ProviderHeadersField
-                  value={field.state.value as Readonly<Record<string, string>> | undefined}
-                  onChange={(headers) => field.handleChange(headers)}
-                />
+                <Field>
+                  <Label>{m['dashboard.providers.form.label_headers']()}</Label>
+                  <ProviderHeadersField
+                    value={field.state.value as Readonly<Record<string, string>> | undefined}
+                    onChange={(headers) => field.handleChange(headers)}
+                  />
+                </Field>
               )}
             </form.Field>
           ) : null}
