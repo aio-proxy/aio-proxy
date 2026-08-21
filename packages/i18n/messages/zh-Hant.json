@@ -609,7 +609,9 @@
         "description": "自訂發往上游前的請求改寫。比對條件與更新動作按規則順序執行，後面的規則會看到前面規則的結果。",
         "json_label": "請求改寫 JSON",
         "invalid": "改寫設定無效（{path}）：{code}",
-        "empty": "尚未設定請求改寫",
+        "unsupported": "JSON 有效，但包含視覺化編輯器尚未支援的運算式。",
+        "invalid_array": "請輸入有效的 JSON 陣列。",
+        "empty": "沒有請求改寫規則。",
         "mode": {
           "visual": "視覺化"
         },
@@ -626,8 +628,8 @@
         },
         "action": {
           "type": "操作",
-          "set": "設定",
-          "remove": "移除",
+          "set": "設定欄位",
+          "remove": "刪除欄位",
           "add": "新增操作",
           "add_set": "新增 Set 操作",
           "add_remove": "新增 Remove 操作",
@@ -637,9 +639,6 @@
           "no_value": "刪除欄位無需填寫值。"
         },
         "target": {
-          "label": "目標",
-          "header": "請求標頭",
-          "body": "請求主體",
           "header_name": "請求標頭名稱",
           "body_path": "請求主體路徑"
         },

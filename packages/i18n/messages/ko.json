@@ -609,7 +609,9 @@
         "description": "업스트림으로 전송하기 전에 적용할 요청 재작성을 사용자 지정합니다. 일치 조건과 업데이트 동작은 규칙 순서대로 실행되므로 뒤의 규칙은 앞의 규칙 결과를 보게 됩니다.",
         "json_label": "요청 재작성 JSON",
         "invalid": "{path}의 재작성이 잘못되었습니다: {code}",
-        "empty": "구성된 요청 재작성이 없습니다",
+        "unsupported": "JSON은 유효하지만 비주얼 편집기가 아직 지원하지 않는 표현식이 포함되어 있습니다.",
+        "invalid_array": "유효한 JSON 배열을 입력하세요.",
+        "empty": "요청 재작성 규칙이 없습니다.",
         "mode": {
           "visual": "비주얼"
         },
@@ -626,8 +628,8 @@
         },
         "action": {
           "type": "작업",
-          "set": "설정",
-          "remove": "제거",
+          "set": "필드 설정",
+          "remove": "필드 삭제",
           "add": "작업 추가",
           "add_set": "Set 작업 추가",
           "add_remove": "Remove 작업 추가",
@@ -637,9 +639,6 @@
           "no_value": "제거 작업에는 값이 필요하지 않습니다."
         },
         "target": {
-          "label": "대상",
-          "header": "헤더",
-          "body": "본문",
           "header_name": "헤더 이름",
           "body_path": "본문 경로"
         },

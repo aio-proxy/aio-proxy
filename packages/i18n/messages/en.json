@@ -609,7 +609,9 @@
         "description": "Customize the request rewrites applied before the request goes upstream. Match conditions and update actions run in rule order, so later rules see the results of earlier ones.",
         "json_label": "Request rewrites JSON",
         "invalid": "Invalid rewrite at {path}: {code}",
-        "empty": "No request rewrites configured",
+        "unsupported": "The JSON is valid but contains expressions the visual editor does not support yet.",
+        "invalid_array": "Enter a valid JSON array.",
+        "empty": "No request rewrite rules.",
         "mode": {
           "visual": "Visual"
         },
@@ -626,8 +628,8 @@
         },
         "action": {
           "type": "Action",
-          "set": "Set",
-          "remove": "Remove",
+          "set": "Set field",
+          "remove": "Remove field",
           "add": "Add action",
           "add_set": "Add Set action",
           "add_remove": "Add Remove action",
@@ -637,9 +639,6 @@
           "no_value": "Remove actions need no value."
         },
         "target": {
-          "label": "Target",
-          "header": "Header",
-          "body": "Body",
           "header_name": "Header name",
           "body_path": "Body path"
         },

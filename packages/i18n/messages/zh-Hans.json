@@ -609,7 +609,9 @@
         "description": "自定义发往上游前的请求改写。匹配条件与更新动作按规则顺序执行，后面的规则会看到前面规则的结果。",
         "json_label": "请求改写 JSON",
         "invalid": "改写配置无效（{path}）：{code}",
-        "empty": "尚未配置请求改写",
+        "unsupported": "JSON 有效，但包含可视化编辑器暂不支持的表达式。",
+        "invalid_array": "请输入一个有效的 JSON 数组。",
+        "empty": "没有请求改写规则。",
         "mode": {
           "visual": "可视化"
         },
@@ -626,8 +628,8 @@
         },
         "action": {
           "type": "操作",
-          "set": "设置",
-          "remove": "移除",
+          "set": "设置字段",
+          "remove": "删除字段",
           "add": "添加操作",
           "add_set": "添加 Set 操作",
           "add_remove": "添加 Remove 操作",
@@ -637,9 +639,6 @@
           "no_value": "删除字段无需填写值。"
         },
         "target": {
-          "label": "目标",
-          "header": "请求头",
-          "body": "请求体",
           "header_name": "请求头名称",
           "body_path": "请求体路径"
         },
