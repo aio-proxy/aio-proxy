@@ -33,6 +33,7 @@ interface ProviderFormFieldsAiSdkProps {
 
 export const ProviderFormFieldsAiSdk: React.FC<ProviderFormFieldsAiSdkProps> = ({ form, onOptionsValidityChange }) => {
   const schemaState = useProviderOptionsSchema();
+
   const initialPackageSynchronized = useRef(false);
   const lastCommittedPackage = useRef<string | null>(null);
   const commitUserPackage = (packageName: string) =>

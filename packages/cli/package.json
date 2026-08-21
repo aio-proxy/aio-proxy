@@ -7,7 +7,7 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "build:binary": "bun scripts/build-binary.ts",
+    "build:binary": "bun run --filter @aio-proxy/opencode-provider build && bun run --filter @aio-proxy/pi-provider build && bun scripts/build-binary.ts",
     "test": "bun run test:unit",
     "test:unit": "bun test --preload=./__tests__/setup.ts --timeout 20000",
     "serve:dev": "AIO_PROXY_HOME=../../.aio-proxy-dev bun --watch src/main.dev.ts run --port $AIO_PROXY_PORT",
@@ -18,12 +18,15 @@
     "@aio-proxy/dashboard": "workspace:*",
     "@aio-proxy/i18n": "workspace:*",
     "@aio-proxy/logger": "workspace:*",
+    "@aio-proxy/opencode-provider": "workspace:*",
+    "@aio-proxy/pi-provider": "workspace:*",
     "@aio-proxy/plugin-sdk": "workspace:*",
     "@aio-proxy/server": "workspace:*",
     "@aio-proxy/types": "workspace:*",
     "@inquirer/prompts": "^8.5.2",
     "commander": "15",
-    "es-toolkit": "catalog:"
+    "es-toolkit": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@aio-proxy/infra": "workspace:*",

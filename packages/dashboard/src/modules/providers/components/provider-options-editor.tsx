@@ -128,7 +128,6 @@ export const ProviderOptionsEditor: FC<Props> = ({ field, schemaState, onValidit
         value={editorValue}
         {...(schemaState.schema === undefined ? {} : { schema: schemaState.schema })}
         externalInvalid={!rootValid || requiredRootMissing || schemaState.schemaResolution === 'error'}
-        {...(error === null ? {} : { errorDescriptionId: errorId })}
         onValueChange={(value) => {
           setEditorValue(value);
           const nextRootValid = isProviderOptionsObject(value);

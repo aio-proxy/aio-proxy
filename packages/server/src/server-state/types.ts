@@ -1,4 +1,5 @@
 import type {
+  AgentIdentityService,
   AtomicConfigFile,
   BuiltInPluginDefinition,
   PluginLogSink,
@@ -46,6 +47,8 @@ export type RecoveryScheduler = {
 };
 
 export type ServerStateTestHooks = {
+  readonly agentIdentity?: AgentIdentityService;
+  readonly failStartupAfter?: 'scheduler' | 'recovery' | 'login_sessions' | 'watcher';
   readonly configFile?: AtomicConfigFile;
   readonly createRouter?: (providers: readonly RuntimeProviderInstance[]) => Router<RuntimeProviderInstance>;
   readonly onCatalogJobsReplaced?: (jobs: readonly CatalogJobDescriptor[]) => void;
@@ -70,6 +73,7 @@ export type ReloadFailure = { readonly error: string; readonly ok: false; readon
 export type ConfigReloadResult = { readonly ok: true; readonly diff: ConfigChangedData } | ReloadFailure;
 
 export type ServerState = ProviderRouteSource & {
+  readonly agentIdentity: AgentIdentityService;
   readonly close: () => void;
   readonly configPath: string | undefined;
   readonly configStore: ConfigStore;

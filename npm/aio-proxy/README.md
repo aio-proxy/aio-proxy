@@ -276,6 +276,25 @@ By default AIO Proxy binds to `127.0.0.1`. Set `server.host` to another non-empt
 
 Each `label` is optional and only helps identify a key. With at least one key configured, every `/v1/*` and `/v1beta/*` request (including `/v1/models`) must send `Authorization: Bearer <key>` or `X-API-Key: <key>`; native Gemini clients may use `X-Goog-Api-Key`, `?key=`, or `?auth_token=`. Matched caller credentials are stripped before the request is forwarded upstream. An empty list leaves model APIs open. Remote Dashboard access requires `server.password` and its Dashboard session. `/admin/*` remains loopback-only for local CLI control. Browser writes without a Dashboard password must come from a loopback Origin on the proxy port (`127.0.0.1`, `localhost`, `[::1]`, or the configured loopback host). Direct loopback peers, including a local reverse proxy, are treated as local.
 
+## Agent integrations
+
+Install or update the managed OpenCode, Pi, and oh-my-pi adapters, then sign in with each Agent's native login. Integrations are global to the current user; aio-proxy does not write project-local Agent config.
+
+```bash
+aio-proxy agent configure opencode
+aio-proxy agent configure pi
+aio-proxy agent configure omp
+aio-proxy agent list --check
+aio-proxy agent list --authorizations
+aio-proxy agent remove <target>
+```
+
+Supported floors are OpenCode 1.17.10, Pi 0.84.2, and oh-my-pi 17.3.7. After configure, sign in with `opencode auth login --provider aio-proxy` or `/login aio-proxy` in Pi and oh-my-pi. Reload or restart the Agent so it loads the updated adapter. `aio-proxy upgrade` refreshes managed adapters the same way and also requires a reload.
+
+When `server.apiKeys` is enabled, set `server.password` so Device Approval can authorize the Agent. `aio-proxy agent remove` revokes the installation and deletes aio-proxy's managed files; it does not log the Agent out of its own host account. If the local control plane is offline, remove refuses and leaves files in place.
+
+aio-proxy does not copy an upstream API key or a shared embedded SK into an Agent.
+
 ## Common commands
 
 ```bash

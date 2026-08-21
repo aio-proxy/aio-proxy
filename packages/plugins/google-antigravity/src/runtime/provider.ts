@@ -1,8 +1,10 @@
 import type { LanguageModelV4, ProviderV4 } from '@ai-sdk/provider';
 import type { JsonValue, OAuthRuntimeResult, RuntimeContext, RuntimeFetch } from '@aio-proxy/plugin-sdk';
 
+import { bindAntigravityThinking } from '../protocol/thinking';
 import type { GoogleAntigravityAccountOptions, GoogleAntigravityCredential } from '../schema';
 import { createAntigravityCredentialSource } from './credential';
+import { createCatalogWireLookups } from './envelope';
 import { type AntigravityLanguageModelRuntime, createAntigravityLanguageModel } from './google-model';
 import { takeAioProxyOptions } from './private-options';
 import { createGeminiRawResolver } from './raw';
@@ -36,14 +38,20 @@ export function createGoogleAntigravityRuntime(
     fetch,
     ...(dependencies.now === undefined ? {} : { now: dependencies.now }),
   });
+  const lookups = createCatalogWireLookups(context.catalog);
+  const thinkingBinder = bindAntigravityThinking(context.catalog);
   const transport = new AntigravityTransport({
     credentials,
     options: context.options,
     fetch,
+    descriptorById: lookups.descriptorById,
+    familyByWireId: lookups.familyByWireId,
     ...(dependencies.sleep === undefined ? {} : { sleep: dependencies.sleep }),
   });
   const modelRuntime: AntigravityLanguageModelRuntime = {
     call: (logicalRequest) => ({
+      catalog: context.catalog,
+      thinkingBinder,
       context: logicalRequest,
       transport,
       fetch,
@@ -55,8 +63,8 @@ export function createGoogleAntigravityRuntime(
       modelMetadata: (modelId) => metadataByModel.get(modelId),
     }),
     providerTools: { supported: ['web-search'] },
-    raw: createGeminiRawResolver(transport),
-    tokenCount: createAntigravityTokenCount(transport, (modelId) => metadataByModel.get(modelId)),
+    raw: createGeminiRawResolver(transport, thinkingBinder),
+    tokenCount: createAntigravityTokenCount(transport, (modelId) => metadataByModel.get(modelId), context.catalog),
   };
 }
 

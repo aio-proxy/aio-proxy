@@ -1,3 +1,4 @@
+export * from './agent-integration/index';
 export * from './aio';
 export {
   canonicalEffort,

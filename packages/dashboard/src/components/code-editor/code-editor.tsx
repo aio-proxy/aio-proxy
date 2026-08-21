@@ -1,74 +1,102 @@
-import { Spinner } from '@aio-proxy/ui/components/spinner';
 import { cn } from '@aio-proxy/ui/lib/utils';
-import { Editor, type OnMount } from '@monaco-editor/react';
-import { merge } from 'es-toolkit/object';
-import { useTheme } from 'next-themes';
+import { closeBrackets, closeBracketsKeymap, completionKeymap } from '@codemirror/autocomplete';
+import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
+import { json } from '@codemirror/lang-json';
+import { Compartment, EditorState, type Extension } from '@codemirror/state';
+import {
+  drawSelection,
+  EditorView,
+  highlightActiveLine,
+  highlightActiveLineGutter,
+  keymap,
+  lineNumbers,
+} from '@codemirror/view';
 import { useEffect, useRef } from 'react';
 
-import { setCodeEditorAriaInvalid } from './code-editor-accessibility';
-import { CODE_EDITOR_THEME_IDS, defineCodeEditorThemes } from './themes';
+import { createCodeEditorContentAttributes } from './code-editor-accessibility';
+import { codeEditorTheme } from './themes';
 
 import styles from './code-editor.module.css';
 
-type MonacoEditorProps = React.ComponentProps<typeof Editor>;
-
-interface CodeEditorProps extends Omit<MonacoEditorProps, 'beforeMount' | 'loading' | 'theme'> {
+interface CodeEditorProps {
+  readonly value: string;
+  readonly onChange?: (value: string) => void;
   readonly invalid?: boolean;
-  readonly ariaDescribedBy?: string;
+  readonly id?: string;
+  readonly className?: string;
+  readonly extensions?: Extension[];
 }
 
-type MonacoOptions = NonNullable<CodeEditorProps['options']>;
-
-export const CodeEditor: React.FC<CodeEditorProps> = ({
-  className,
-  invalid,
-  ariaDescribedBy,
-  onMount,
-  options,
-  ...rest
-}) => {
-  const { resolvedTheme } = useTheme();
-  const editorRef = useRef<Parameters<OnMount>[0]>(null);
-  const latestPropsRef = useRef({ invalid, ariaDescribedBy, onMount });
+export const CodeEditor: React.FC<CodeEditorProps> = ({ className, invalid, id, onChange, value, extensions }) => {
+  const parentRef = useRef<HTMLDivElement>(null);
+  const viewRef = useRef<EditorView>(null);
+  const valueRef = useRef(value);
+  const onChangeRef = useRef(onChange);
+  const a11yCompartment = useRef(new Compartment());
+  const extraCompartment = useRef(new Compartment());
+  useEffect(() => {
+    valueRef.current = value;
+    onChangeRef.current = onChange;
+  });
 
   useEffect(() => {
-    latestPropsRef.current = { invalid, ariaDescribedBy, onMount };
-    if (editorRef.current) setCodeEditorAriaInvalid(editorRef.current, invalid, ariaDescribedBy);
-  }, [ariaDescribedBy, invalid, onMount]);
+    if (!parentRef.current) return undefined;
 
-  const handleMount: OnMount = (editor, monaco) => {
-    editorRef.current = editor;
-    setCodeEditorAriaInvalid(editor, latestPropsRef.current.invalid, latestPropsRef.current.ariaDescribedBy);
-    latestPropsRef.current.onMount?.(editor, monaco);
-  };
+    const view = new EditorView({
+      parent: parentRef.current,
+      state: EditorState.create({
+        doc: valueRef.current,
+        extensions: [
+          json(),
+          closeBrackets(),
+          lineNumbers(),
+          highlightActiveLine(),
+          highlightActiveLineGutter(),
+          drawSelection(),
+          history(),
+          keymap.of([...completionKeymap, ...closeBracketsKeymap, ...defaultKeymap, ...historyKeymap]),
+          EditorView.updateListener.of((update) => {
+            if (!update.docChanged) return;
+            const next = update.state.doc.toString();
+            if (next !== valueRef.current) onChangeRef.current?.(next);
+          }),
+          codeEditorTheme,
+          a11yCompartment.current.of(
+            EditorView.contentAttributes.of(createCodeEditorContentAttributes({ invalid, id })),
+          ),
+          extraCompartment.current.of(extensions ?? []),
+        ],
+      }),
+    });
+    viewRef.current = view;
 
-  return (
-    <div
-      aria-describedby={ariaDescribedBy}
-      aria-invalid={invalid || undefined}
-      className={cn(styles['code-editor'], className)}
-    >
-      <Editor
-        {...rest}
-        onMount={handleMount}
-        loading={<Spinner />}
-        options={merge<MonacoOptions, MonacoOptions>(
-          {
-            minimap: {
-              enabled: false,
-            },
-            scrollbar: {
-              verticalHasArrows: false,
-              horizontalHasArrows: false,
-              verticalScrollbarSize: 8,
-              horizontalScrollbarSize: 8,
-            },
-          },
-          options ?? {},
-        )}
-        theme={resolvedTheme === 'dark' ? CODE_EDITOR_THEME_IDS.dark : CODE_EDITOR_THEME_IDS.light}
-        beforeMount={defineCodeEditorThemes}
-      />
-    </div>
-  );
+    return () => {
+      view.destroy();
+      viewRef.current = null;
+    };
+    // The view is created once; later prop changes are applied through compartments.
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view || view.state.doc.toString() === value) return;
+    view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: value } });
+  }, [value]);
+
+  useEffect(() => {
+    viewRef.current?.dispatch({
+      effects: a11yCompartment.current.reconfigure(
+        EditorView.contentAttributes.of(createCodeEditorContentAttributes({ invalid, id })),
+      ),
+    });
+  }, [id, invalid]);
+
+  useEffect(() => {
+    viewRef.current?.dispatch({
+      effects: extraCompartment.current.reconfigure(extensions ?? []),
+    });
+  }, [extensions]);
+
+  return <div ref={parentRef} aria-invalid={invalid || undefined} className={cn(styles['code-editor'], className)} />;
 };

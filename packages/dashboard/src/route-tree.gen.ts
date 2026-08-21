@@ -16,6 +16,7 @@ import { Route as ProvidersIndexRouteImport } from './routes/providers/index'
 import { Route as PluginsIndexRouteImport } from './routes/plugins/index'
 import { Route as TracesTraceIdRouteImport } from './routes/traces/$traceId'
 import { Route as ProvidersNewRouteImport } from './routes/providers/new'
+import { Route as AgentsAuthorizeRouteImport } from './routes/agents/authorize'
 import { Route as ProvidersIdEditRouteImport } from './routes/providers/$id.edit'
 
 const IndexRoute = IndexRouteImport.update({
@@ -53,6 +54,11 @@ const ProvidersNewRoute = ProvidersNewRouteImport.update({
   path: '/providers/new',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AgentsAuthorizeRoute = AgentsAuthorizeRouteImport.update({
+  id: '/agents/authorize',
+  path: '/agents/authorize',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ProvidersIdEditRoute = ProvidersIdEditRouteImport.update({
   id: '/providers/$id/edit',
   path: '/providers/$id/edit',
@@ -61,6 +67,7 @@ const ProvidersIdEditRoute = ProvidersIdEditRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/agents/authorize': typeof AgentsAuthorizeRoute
   '/providers/new': typeof ProvidersNewRoute
   '/traces/$traceId': typeof TracesTraceIdRoute
   '/plugins/': typeof PluginsIndexRoute
@@ -71,6 +78,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/agents/authorize': typeof AgentsAuthorizeRoute
   '/providers/new': typeof ProvidersNewRoute
   '/traces/$traceId': typeof TracesTraceIdRoute
   '/plugins': typeof PluginsIndexRoute
@@ -82,6 +90,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/agents/authorize': typeof AgentsAuthorizeRoute
   '/providers/new': typeof ProvidersNewRoute
   '/traces/$traceId': typeof TracesTraceIdRoute
   '/plugins/': typeof PluginsIndexRoute
@@ -94,6 +103,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/agents/authorize'
     | '/providers/new'
     | '/traces/$traceId'
     | '/plugins/'
@@ -104,6 +114,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/agents/authorize'
     | '/providers/new'
     | '/traces/$traceId'
     | '/plugins'
@@ -114,6 +125,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/agents/authorize'
     | '/providers/new'
     | '/traces/$traceId'
     | '/plugins/'
@@ -125,6 +137,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AgentsAuthorizeRoute: typeof AgentsAuthorizeRoute
   ProvidersNewRoute: typeof ProvidersNewRoute
   TracesTraceIdRoute: typeof TracesTraceIdRoute
   PluginsIndexRoute: typeof PluginsIndexRoute
@@ -185,6 +198,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProvidersNewRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/agents/authorize': {
+      id: '/agents/authorize'
+      path: '/agents/authorize'
+      fullPath: '/agents/authorize'
+      preLoaderRoute: typeof AgentsAuthorizeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/providers/$id/edit': {
       id: '/providers/$id/edit'
       path: '/providers/$id/edit'
@@ -197,6 +217,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AgentsAuthorizeRoute: AgentsAuthorizeRoute,
   ProvidersNewRoute: ProvidersNewRoute,
   TracesTraceIdRoute: TracesTraceIdRoute,
   PluginsIndexRoute: PluginsIndexRoute,

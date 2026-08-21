@@ -121,6 +121,31 @@ describe('Router', () => {
     expect(router.resolve('openai/mini', { effort: 'high' })).toEqual([{ provider, modelId: 'gpt-5' }]);
   });
 
+  test('resolves extra-high onto an xhigh array variant before falling back to the default', () => {
+    const provider = {
+      ...openai,
+      models: ['flash-low', 'flash-medium', 'flash-high'],
+      alias: {
+        flash: {
+          model: 'flash-medium',
+          preserve: false,
+          variants: [
+            { when: { effort: 'low' }, model: 'flash-low', preserve: false },
+            { when: { effort: 'medium' }, model: 'flash-medium', preserve: false },
+            { when: { effort: 'high' }, model: 'flash-high', preserve: false },
+            { when: { effort: 'xhigh' }, model: 'flash-high', preserve: false },
+          ],
+        },
+      },
+    } satisfies ProviderInstance;
+    const router = new Router([provider]);
+
+    expect(router.resolve('flash', { effort: 'xhigh' })).toEqual([{ provider, modelId: 'flash-high' }]);
+    expect(router.resolve('flash', { effort: 'extra-high' })).toEqual([{ provider, modelId: 'flash-high' }]);
+    expect(router.resolve('flash')).toEqual([{ provider, modelId: 'flash-medium' }]);
+    expect(() => router.resolve('flash-low')).toThrow(RouterModelNotFoundError);
+  });
+
   test('resolves array variants from cached rows and preserves row ids', () => {
     const provider = {
       ...openai,

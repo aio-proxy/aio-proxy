@@ -8,9 +8,10 @@ import { createApiProvider } from '@aio-proxy/core';
 import type { Provider } from '@aio-proxy/types';
 import { ConfigSchema, ProviderKind, ProviderProtocol } from '@aio-proxy/types';
 
+import { createServerState } from '#server-test-lifecycle';
+
 import { withAttemptLogContext, withRequestLogContext } from '../request-logging';
 import type { RuntimeProviderInstance } from '../runtime';
-import { createServerState } from '../server-state';
 import { materializeProviders, materializeRuntimeProvider, providerSummary } from './materialize';
 
 const headerSet = (field: string, value: unknown) => ({

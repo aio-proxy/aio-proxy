@@ -3,8 +3,9 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import type { AiSdkProviderInstance, ApiProviderInstance } from '@aio-proxy/core';
 import { ProviderProtocol } from '@aio-proxy/types';
 
+import { createServer } from '#server-test-lifecycle';
+
 import { createTempHomes, recorded, textStream } from '../../__tests__/openai-responses.test-support';
-import { createServer } from '../server';
 
 const homes = createTempHomes('aio-proxy-responses-fallback-');
 afterEach(homes.cleanup);

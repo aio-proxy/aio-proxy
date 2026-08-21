@@ -7,7 +7,8 @@ import { AtomicConfigCommitUncertainError, AtomicConfigFile, createPluginReposit
 import { openDb } from '@aio-proxy/core/db';
 import { ConfigSchema } from '@aio-proxy/types';
 
-import { createServerState } from '../src/server-state';
+import { createServerState } from '#server-test-lifecycle';
+
 import { deferred, seedOAuthAccount, waitUntil } from './config-store.oauth.test-support';
 import { rawProvider } from './pipeline-helpers';
 

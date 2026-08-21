@@ -4,7 +4,7 @@
 
 **Goal:** Ship process diagnostic logging via `@aio-proxy/logger` (LogTape), bridge existing sinks, inject redacted `api.logger` into plugins, and optionally write daily files under `{AIO_PROXY_HOME}/logs`.
 
-**Architecture:** Define a narrow `Logger` interface in `plugin-sdk`. Implement it in a new `@aio-proxy/logger` package that depends only on `@logtape/logtape` and `@logtape/file` (no dependency on `core`). CLI resolves the default log directory with `aioHome()`, calls `configureLogging` before any server initialization, then creates the server. Plugin loader accepts API versions `1` and `2`; SDK constant becomes `2`. Host always injects `api.logger` with secret-value redaction.
+**Architecture:** Define a narrow `Logger` interface in `plugin-sdk`. Implement it in a new `@aio-proxy/logger` package that depends only on `@logtape/logtape` and `@logtape/file` (no dependency on `core`). CLI resolves the default log directory with `aioHome()`, calls `configureLogging` before any server initialization, then creates the server. Plugin metadata and `api.logger` stay on descriptor v1. The host supports only API version `1`; branded version `2` is rejected. Host always injects `api.logger` with secret-value redaction.
 
 **Tech Stack:** Bun ≥1.3.14, TypeScript, LogTape (`@logtape/logtape`, `@logtape/file`), Zod config in `@aio-proxy/types`, Bun test.
 
@@ -30,10 +30,10 @@
 | Path | Responsibility |
 | --- | --- |
 | `packages/plugin-sdk/src/logger.ts` (new) | `LogLevel`, `LogBindings`, `Logger` types |
-| `packages/plugin-sdk/src/plugin.ts` | `PLUGIN_API_VERSION = 2`; `PluginApi.logger`; `isPluginDescriptor` accepts 1\|2 |
+| `packages/plugin-sdk/src/plugin.ts` | `PLUGIN_API_VERSION = 1`; `PluginApi.logger`; `isPluginDescriptor` accepts 1 only |
 | `packages/logger/` (new package) | `configureLogging`, `createLogger`, redaction, LogTape sinks |
 | `packages/types/src/config.ts` | `server.logging` schema |
-| `packages/core/src/plugins/loader/descriptor.ts` | Accept apiVersion 1\|2 |
+| `packages/core/src/plugins/loader/descriptor.ts` | Accept apiVersion 1 only; reject branded v2 |
 | `packages/core/src/plugins/registry.ts` | Inject `api.logger` in `stage()` |
 | `packages/server/src/server.ts` | Remove import-time `createServerState` |
 | `packages/server/src/server-log.ts` / bridge helper | Exhaustive `ServerLog` level map + sink adapters |
@@ -43,7 +43,7 @@
 
 ---
 
-### Task 1: Plugin SDK Logger interface + API v2 (compat load 1\|2)
+### Task 1: Plugin SDK Logger interface on API v1 (host supports only v1)
 
 **Files:**
 - Create: `packages/plugin-sdk/src/logger.ts`
@@ -65,8 +65,8 @@
     readonly error: (messageOrProps: string | LogBindings, propsOrMessage?: string | LogBindings) => void;
     readonly child: (bindings: LogBindings) => Logger;
   };
-  export const PLUGIN_API_VERSION = 2;
-  export const PLUGIN_API_VERSIONS_SUPPORTED = [1, 2] as const;
+  export const PLUGIN_API_VERSION = 1;
+  export const PLUGIN_API_VERSIONS_SUPPORTED = [1] as const;
   export type PluginApi = {
     readonly oauth: { readonly register: <Options, Credential>(adapter: OAuthAdapter<Options, Credential>) => void };
     readonly logger: Logger;
@@ -76,10 +76,10 @@
 
 - [ ] **Step 1: Write failing descriptor compatibility tests**
 
-In `packages/core/src/plugins/loader/descriptor.test.ts`, replace/extend the existing “future apiVersion 2 incompatible” case:
+In `packages/core/src/plugins/loader/descriptor.test.ts`, keep a positive version-1 case and reject branded v2:
 
 ```ts
-test("apiVersion 1 remains loadable after host supports v2", async () => {
+test("apiVersion 1 is loadable", async () => {
   const descriptor = {
     [PLUGIN_DESCRIPTOR_BRAND]: true,
     apiVersion: 1,
@@ -89,10 +89,9 @@ test("apiVersion 1 remains loadable after host supports v2", async () => {
   expect(validateDescriptor(descriptor).apiVersion).toBe(1);
 });
 
-test("apiVersion 2 is loadable", async () => {
-  const descriptor = definePlugin(() => {});
-  expect(descriptor.apiVersion).toBe(2);
-  expect(validateDescriptor(descriptor).apiVersion).toBe(2);
+test("apiVersion 2 fails with incompatibility", async () => {
+  const descriptor = { ...definePlugin(() => {}), apiVersion: 2 };
+  expect(() => validateDescriptor(descriptor)).toThrow(PluginHostError);
 });
 
 test("apiVersion 3 fails with incompatibility", async () => {
@@ -109,17 +108,17 @@ test("apiVersion 3 fails with incompatibility", async () => {
 - [ ] **Step 2: Run tests — expect fail**
 
 Run: `bun test packages/core/src/plugins/loader/descriptor.test.ts`  
-Expected: fail because `PLUGIN_API_VERSION` is still `1` and/or v2 is rejected.
+Expected: fail until `PLUGIN_API_VERSION` is `1` and branded v2 is rejected.
 
 - [ ] **Step 3: Implement SDK + loader changes**
 
 `packages/plugin-sdk/src/logger.ts` — export types above.
 
 `packages/plugin-sdk/src/plugin.ts`:
-- set `PLUGIN_API_VERSION = 2`
-- export `PLUGIN_API_VERSIONS_SUPPORTED = [1, 2] as const`
+- set `PLUGIN_API_VERSION = 1`
+- export `PLUGIN_API_VERSIONS_SUPPORTED = [1] as const`
 - add `logger: Logger` to `PluginApi`
-- change `isPluginDescriptor` to accept `apiVersion === 1 || apiVersion === 2` (do not require equality only to constant `2`, or v1 third-party descriptors fail brand checks)
+- change `isPluginDescriptor` to accept `apiVersion === 1` only; branded v2 is unsupported
 
 `packages/core/src/plugins/loader/descriptor.ts`:
 ```ts
@@ -132,7 +131,7 @@ if (Number.isInteger(apiVersion) && !supported.has(apiVersion as number)) {
 }
 ```
 
-Keep `definePlugin` stamping `apiVersion: PLUGIN_API_VERSION` (now 2).
+Keep `definePlugin` stamping `apiVersion: PLUGIN_API_VERSION` (1).
 
 - [ ] **Step 4: Run tests — expect pass**
 
@@ -143,7 +142,7 @@ Also: `bun run --filter @aio-proxy/plugin-sdk test:unit`
 
 ```bash
 git add packages/plugin-sdk packages/core/src/plugins/loader
-git commit -m "feat(plugin-sdk): add Logger API and accept plugin versions 1-2"
+git commit -m "feat(plugin-sdk): add Logger API on plugin descriptor v1"
 ```
 
 ---
@@ -602,8 +601,8 @@ git commit -m "test: verify LogTape process logging integration"
 | --- | --- |
 | `@aio-proxy/logger` + LogTape | Task 2 |
 | Logger interface in plugin-sdk; no logger→core cycle | Task 1–2 |
-| `PLUGIN_API_VERSION` 2 + host accepts 1\|2 | Task 1 |
-| `api.logger` required on v2 PluginApi; injected for v1 too | Task 1, 7 |
+| `PLUGIN_API_VERSION` 1 + host accepts only 1; branded v2 rejected | Task 1 |
+| `api.logger` required on v1 PluginApi | Task 1, 7 |
 | Dual message styles | Task 2 |
 | `warn` → LogTape `warning` | Task 2 |
 | `@logtape/file` rotation defaults + JSON Lines (`directory`, `formatter`, `maxAgeMs`) | Task 2, 5 |

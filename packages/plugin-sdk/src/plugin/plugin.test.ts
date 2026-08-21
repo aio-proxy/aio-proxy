@@ -1,12 +1,22 @@
 import { describe, expect, test } from 'bun:test';
 
-import { definePlugin, isPluginDescriptor, PLUGIN_API_VERSION, PLUGIN_DESCRIPTOR_BRAND, zod } from '..';
+import {
+  definePlugin,
+  isPluginDescriptor,
+  PLUGIN_API_VERSION,
+  PLUGIN_API_VERSIONS_SUPPORTED,
+  PLUGIN_DESCRIPTOR_BRAND,
+  zod,
+} from '..';
 
 describe('definePlugin', () => {
-  test('brands an apiVersion 2 descriptor', () => {
+  test('brands an apiVersion 1 descriptor', () => {
     const descriptor = definePlugin(() => {});
-    expect(descriptor.apiVersion).toBe(2);
+    expect(descriptor.apiVersion).toBe(1);
+    expect(PLUGIN_API_VERSION).toBe(1);
+    expect(PLUGIN_API_VERSIONS_SUPPORTED).toEqual([1]);
     expect(descriptor[PLUGIN_DESCRIPTOR_BRAND]).toBe(true);
+    expect(PLUGIN_DESCRIPTOR_BRAND).toBe(Symbol.for('@aio-proxy/plugin-sdk/descriptor/v1'));
     expect(isPluginDescriptor(descriptor)).toBe(true);
   });
 
@@ -25,7 +35,7 @@ describe('definePlugin', () => {
   });
 
   test('rejects unbranded lookalikes', () => {
-    expect(isPluginDescriptor({ apiVersion: 2, setup() {} })).toBe(false);
+    expect(isPluginDescriptor({ apiVersion: 1, setup() {} })).toBe(false);
   });
 
   test('rejects branded descriptors without object metadata', () => {
@@ -51,11 +61,11 @@ describe('definePlugin', () => {
     expect(isPluginDescriptor({ ...descriptor, metadata: { options: { form: 'bad' } } })).toBe(true);
   });
 
-  test('rejects branded apiVersion 1 descriptors', () => {
+  test('rejects branded apiVersion 2 descriptors', () => {
     expect(
       isPluginDescriptor({
         [PLUGIN_DESCRIPTOR_BRAND]: true,
-        apiVersion: 1,
+        apiVersion: 2,
         metadata: {},
         setup() {},
       }),

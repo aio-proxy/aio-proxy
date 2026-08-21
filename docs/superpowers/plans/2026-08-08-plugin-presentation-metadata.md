@@ -2,26 +2,26 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Move plugin display identity into plugin metadata and consistently rename capability and account presentation fields without retaining a v1 compatibility path.
+**Goal:** Move plugin display identity into plugin metadata and consistently rename capability and account presentation fields without a descriptor major bump or dual-version loader.
 
-**Architecture:** Plugin descriptor v2 owns `displayName`, `description`, and `icon`; OAuth adapters own only capability presentation and runtime behavior. Core validates descriptor icons, projects plugin presentation through the control plane, and preserves the existing account database column while exposing it as `accountLabel`. The Dashboard reads plugin presentation from `/plugins` for both plugin and OAuth aggregate rows.
+**Architecture:** Presentation metadata and `PluginApi.logger` are compatible extensions kept on descriptor v1, so no descriptor major bump or dual-version loader is warranted. Plugin descriptor v1 owns `displayName`, `description`, and `icon`. The host supports only v1. OAuth adapters own only capability presentation and runtime behavior. Core validates descriptor icons, projects plugin presentation through the control plane, and preserves the existing account database column while exposing it as `accountLabel`. The Dashboard reads plugin presentation from `/plugins` for both plugin and OAuth aggregate rows.
 
 **Tech Stack:** Bun, TypeScript, Zod, SQLite, Hono typed client, TanStack Query, React, Rstest.
 
 ## Global Constraints
 
-- Break the SDK ABI deliberately: use only descriptor API v2 and return `PLUGIN_API_INCOMPATIBLE` for v1 descriptors.
+- Keep presentation metadata and `PluginApi.logger` as compatible extensions on descriptor v1; no descriptor major bump or dual-version loader is warranted. Return `PLUGIN_API_INCOMPATIBLE` for branded v2 descriptors.
 - Do not add deprecated aliases, dual reads, or database migrations.
 - `PluginMetadata.icon` accepts the existing Lobe key, HTTP(S) URL, and safe image data URL forms; invalid values are stripped and logged without their raw value.
 - Keep the `oauth_account.label` database column; expose account data as `accountLabel` outside repository internals.
 - OAuth capability icons are removed; plugin summaries are the only Dashboard source for plugin display identity.
 - Use `displayName` for plugin/capability/quota presentation and `accountLabel` for account presentation.
 - Preserve whole-row OAuth expansion, keyboard interaction, and a visible chevron beside the plugin icon.
-- Add a major changeset covering `aio-proxy`, `@aio-proxy/plugin-sdk`, and every directly changed internal package.
+- Add a minor changeset covering `aio-proxy`, `@aio-proxy/plugin-sdk`, and every directly changed internal package.
 
 ---
 
-### Task 1: Publish descriptor API v2 and migrate built-in plugins
+### Task 1: Publish presentation metadata on descriptor API v1 and migrate built-in plugins
 
 **Files:**
 - Modify: `packages/plugin-sdk/src/plugin/plugin.ts`
@@ -34,7 +34,7 @@
 
 **Interfaces:**
 - Produces `PluginMetadata` with `displayName?: LocalizedText`, `description?: LocalizedText`, `icon?: PluginIcon`, and `options?: ConfigSpec<Options>`.
-- Produces descriptor API v2 (`PLUGIN_API_VERSION = 2`, `PLUGIN_DESCRIPTOR_BRAND = Symbol.for('@aio-proxy/plugin-sdk/descriptor/v2')`, supported versions `[2]`).
+- Produces descriptor API v1 (`PLUGIN_API_VERSION = 1`, `PLUGIN_DESCRIPTOR_BRAND = Symbol.for('@aio-proxy/plugin-sdk/descriptor/v1')`, supported versions `[1]`). Branded v2 is unsupported.
 - Produces `OAuthAdapter.displayName`, `OAuthLoginResult.accountLabel`, credential refresh metadata `accountLabel`, and `OAuthQuotaItem.displayName`.
 
 - [ ] **Step 1: Write failing SDK type assertions**
@@ -54,9 +54,9 @@ const invalid: OAuthAdapter = { id: 'default', icon: 'openai' };
 
 Run: `rtk bun test packages/plugin-sdk/__tests__/register.types.ts`
 
-Expected: FAIL because v1 fields still exist and v2 fields are absent.
+Expected: FAIL because old presentation fields still exist and the replacement fields are absent.
 
-- [ ] **Step 3: Implement the v2 public contracts**
+- [ ] **Step 3: Implement the v1 public contracts**
 
 Move the icon union to `PluginIcon`, define it beside plugin metadata, and update the descriptor shell's opaque metadata fields. Rename capability, account, refresh, and quota presentation fields exactly as produced above; do not rename form-field `label` fields.
 
@@ -77,7 +77,7 @@ rtk git add packages/plugin-sdk packages/plugins
 rtk git commit -m "feat(plugin-sdk): define plugin presentation metadata" -m "Co-authored-by: Codex <noreply@openai.com>"
 ```
 
-### Task 2: Validate and project v2 metadata through Core
+### Task 2: Validate and project v1 metadata through Core
 
 **Files:**
 - Modify: `packages/core/src/plugins/icon.ts`
@@ -94,7 +94,7 @@ rtk git commit -m "feat(plugin-sdk): define plugin presentation metadata" -m "Co
 - Test: `packages/core/src/plugins/credential-port/*.test.ts`
 
 **Interfaces:**
-- Consumes Task 1's v2 descriptor and renamed SDK fields.
+- Consumes Task 1's v1 descriptor and renamed SDK fields.
 - Produces `LoadedPluginState.displayName?: LocalizedText` and `icon?: PluginIcon`.
 - Keeps `StoredAccount.label` and `AccountWrite.label` private repository names while mapping all SDK boundary values through `accountLabel`.
 
@@ -103,7 +103,7 @@ rtk git commit -m "feat(plugin-sdk): define plugin presentation metadata" -m "Co
 Add four behavior tests:
 
 ```ts
-expect(() => validateDescriptor(v1Descriptor)).toThrow(new PluginHostError('PLUGIN_API_INCOMPATIBLE'));
+expect(() => validateDescriptor(v2Descriptor)).toThrow(new PluginHostError('PLUGIN_API_INCOMPATIBLE'));
 expect(loadPluginRegistry(invalidMetadataIcon)).toLog('plugin.metadata.icon.invalid');
 expect(loadedPlugin).toMatchObject({ displayName: 'Example', icon: 'openai' });
 expect(storedAccount.label).toBe(loginResult.accountLabel);
@@ -115,9 +115,9 @@ Also verify a throwing log sink does not prevent the plugin from becoming ready 
 
 Run: `rtk bun test packages/core/src/plugins/loader/descriptor/descriptor.test.ts packages/core/src/plugins/registry-icon-logging.test.ts packages/core/src/plugins/account-login/constants-and-validation.test.ts`
 
-Expected: FAIL because v1 remains accepted and descriptor icons are not yet validated or projected.
+Expected: FAIL because branded v2 remains accepted and descriptor icons are not yet validated or projected.
 
-- [ ] **Step 3: Implement descriptor ABI and icon validation**
+- [ ] **Step 3: Implement descriptor validation and icon validation**
 
 Rename `validateOAuthIcon` to `validatePluginIcon`. Validate descriptor `metadata.displayName`, `description`, and `icon`; on invalid icon, omit only the icon and emit guarded `plugin.metadata.icon.invalid` with `{ plugin: packageName }`. Thread package name and the existing `PluginLogSink` into descriptor validation for both built-in and installed plugins. Keep descriptor metadata failure semantics for invalid names/descriptions.
 
@@ -129,7 +129,7 @@ Validate/read `OAuthAdapter.displayName`; remove icon handling from registry reg
 
 Run: `rtk bun run --filter @aio-proxy/core test:unit -- plugins`
 
-Expected: PASS, including ABI rejection, safe icon logging, and account-label refresh behavior.
+Expected: PASS, including branded-v2 rejection, safe icon logging, and account-label refresh behavior.
 
 - [ ] **Step 6: Commit**
 
@@ -254,14 +254,14 @@ rtk git commit -m "feat(dashboard): show plugin presentation icons" -m "Co-autho
 
 **Interfaces:**
 - Consumes all renamed public contracts from Tasks 1–4.
-- Produces a major release note for the SDK and application packages.
+- Produces a minor release note for the SDK and application packages.
 
 - [ ] **Step 1: Create the changeset**
 
-Run `rtk bun changeset`, select major bumps for `@aio-proxy/plugin-sdk` and `aio-proxy`, and include each directly changed internal package at the same major level. Use this note:
+Run `rtk bun changeset`, select minor bumps for `@aio-proxy/plugin-sdk` and `aio-proxy`, and include each directly changed internal package at the same minor level. Use this note:
 
 ```markdown
-Move plugin display identity to descriptor metadata. Plugins must upgrade to descriptor API v2: use `metadata.displayName` and `metadata.icon`, `OAuthAdapter.displayName`, and `OAuthLoginResult.accountLabel`; old `label` and OAuth adapter `icon` fields are removed.
+Move plugin display identity to descriptor metadata on API v1. Use `metadata.displayName` and `metadata.icon`, `OAuthAdapter.displayName`, and `OAuthLoginResult.accountLabel`; old `label` and OAuth adapter `icon` fields are removed. Branded descriptor API v2 is rejected.
 ```
 
 - [ ] **Step 2: Run formatting and all relevant tests**
@@ -280,12 +280,12 @@ Expected: PASS. If preflight reports a pre-existing unrelated failure, capture i
 
 ```bash
 rtk git add .changeset
-rtk git commit -m "chore(release): note plugin metadata v2" -m "Co-authored-by: Codex <noreply@openai.com>"
+rtk git commit -m "chore(release): note plugin metadata on descriptor v1" -m "Co-authored-by: Codex <noreply@openai.com>"
 rtk git push origin codex/provider-list-aggregation
 ```
 
 ## Plan self-review
 
-- Spec coverage: Tasks 1–2 cover ABI v2, icon validation/logging, and account boundaries; Task 3 covers Dashboard and CLI wire contracts; Task 4 covers the sole UI source and fallback; Task 5 covers release policy and final verification.
+- Spec coverage: Tasks 1–2 cover descriptor v1 (branded v2 rejected), icon validation/logging, and account boundaries; Task 3 covers Dashboard and CLI wire contracts; Task 4 covers the sole UI source and fallback; Task 5 covers release policy and final verification.
 - Placeholder scan: no deferred work, unspecified error handling, or unbound interface names remain.
 - Type consistency: `PluginIcon`, `displayName`, and `accountLabel` are defined in Task 1 and consumed consistently by all later tasks; repository-private `label` never crosses a public boundary.

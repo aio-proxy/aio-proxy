@@ -5,8 +5,9 @@ import { join } from 'node:path';
 
 import { clearModelsCache, fileCacheStorage, parseRuntimeConfig } from '@aio-proxy/core';
 
+import { createServerState } from '#server-test-lifecycle';
+
 import { disabledDashboardAuthentication } from '../dashboard-auth/test-support';
-import { createServerState } from '../server-state';
 import { createDashboardRoutes } from './config';
 
 const authoredConfig = {

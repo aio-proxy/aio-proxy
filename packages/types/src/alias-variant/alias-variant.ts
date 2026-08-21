@@ -6,6 +6,7 @@ export const EFFORT_SPELLING: Readonly<Record<string, string>> = {
   'x-high': 'xhigh',
   x_high: 'xhigh',
   extrahigh: 'xhigh',
+  'extra-high': 'xhigh',
 };
 
 export function foldEffortSpelling(lowercased: string): string {

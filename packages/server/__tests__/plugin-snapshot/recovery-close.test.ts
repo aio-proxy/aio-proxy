@@ -6,7 +6,8 @@ import { join } from 'node:path';
 import { RECOVERY_DRAIN_RETRY_MS } from '@aio-proxy/core';
 import { ConfigSchema } from '@aio-proxy/types';
 
-import { createServerState } from '../../src/server-state';
+import { createServerState } from '#server-test-lifecycle';
+
 import { cleanup, deferred, flushMicrotasks } from './test-support';
 
 afterEach(cleanup);

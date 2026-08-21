@@ -5,8 +5,9 @@ import { join } from 'node:path';
 
 import { parseRuntimeConfig } from '@aio-proxy/core';
 
+import { createServerState } from '#server-test-lifecycle';
+
 import { ConfigReloadRejectedError, createConfigStore } from '../src/config-store';
-import { createServerState } from '../src/server-state';
 
 describe('createConfigStore mutex', () => {
   test('a rejected write does not poison later mutations', async () => {
@@ -36,6 +37,26 @@ describe('createConfigStore mutex', () => {
     expect(onDisk.providers.added).toEqual({ kind: 'api' });
     expect(reloads).toBe(1);
 
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test('returning the input providers object does not write or verify', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'aio-store-noop-'));
+    const configPath = join(dir, 'config.json');
+    const original = JSON.stringify({ providers: { a: { kind: 'api' } } }, null, 2);
+    writeFileSync(configPath, original);
+    let verifies = 0;
+    const store = createConfigStore({
+      getConfigPath: () => configPath,
+      verify: async () => {
+        verifies += 1;
+      },
+    });
+
+    await store.mutateProviders((providers) => providers);
+
+    expect(readFileSync(configPath, 'utf8')).toBe(original);
+    expect(verifies).toBe(0);
     rmSync(dir, { recursive: true, force: true });
   });
 

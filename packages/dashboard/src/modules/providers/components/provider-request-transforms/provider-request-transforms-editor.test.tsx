@@ -1,7 +1,7 @@
 import type { ProviderRequestTransformRule } from '@aio-proxy/types';
 import { beforeEach, expect, rs, test } from '@rstest/core';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 
 import { JsonEditor, type JsonEditorValueAcknowledgement } from '@/components/json-editor/json-editor';
 import type { JsonValue } from '@/components/json-editor/json-editor-state';
@@ -10,34 +10,42 @@ import { ProviderRequestTransformsEditor } from './provider-request-transforms-e
 
 const validationMocks = rs.hoisted(() => ({
   requests: [] as Array<{
-    readonly promise: Promise<readonly { readonly severity: 'error' | 'warning' }[]>;
     readonly resolve: (markers: readonly { readonly severity: 'error' | 'warning' }[]) => void;
   }>,
 }));
 
 rs.mock('@/components/json-editor/json-schema-registry', () => ({
   registerJsonSchema: () => () => undefined,
-  validateJsonModel: () => {
-    let resolve!: (markers: readonly { readonly severity: 'error' | 'warning' }[]) => void;
-    const promise = new Promise<readonly { readonly severity: 'error' | 'warning' }[]>((nextResolve) => {
-      resolve = nextResolve;
-    });
-    validationMocks.requests.push({ promise, resolve });
-    return promise;
-  },
 }));
 
-rs.mock('@monaco-editor/react', () => ({
-  Editor: ({ onChange, onMount, options, value }: any) => {
-    const valueRef = useRef(value);
-    const onMountRef = useRef(onMount);
-    valueRef.current = value;
+rs.mock('@/components/json-editor/json-language-service', () => ({
+  createJsonLanguageExtensions: (
+    _uri: string,
+    _schema: unknown,
+    onValidation: (draft: string, markers: readonly { readonly severity: 'error' | 'warning' }[]) => void,
+  ) => [{ onValidation }],
+}));
+
+rs.mock('@/components/code-editor', () => ({
+  CodeEditor: ({
+    id,
+    onChange,
+    value,
+    extensions,
+  }: {
+    id?: string;
+    onChange?: (value: string) => void;
+    value: string;
+    extensions?: Array<{
+      onValidation: (draft: string, markers: readonly { readonly severity: 'error' | 'warning' }[]) => void;
+    }>;
+  }) => {
     useEffect(() => {
-      onMountRef.current?.({ getDomNode: () => null, getModel: () => ({ getValue: () => valueRef.current }) }, {});
-    }, []);
-    return (
-      <textarea aria-label={options?.ariaLabel} value={value} onChange={(event) => onChange?.(event.target.value)} />
-    );
+      const listener = extensions?.[0]?.onValidation;
+      if (listener) validationMocks.requests.push({ resolve: (markers) => listener(value, markers) });
+    }, [extensions, value]);
+
+    return <textarea id={id} value={value} onChange={(event) => onChange?.(event.target.value)} />;
   },
 }));
 
@@ -95,15 +103,8 @@ test('reports a controlled JSON value as pending until the parent acknowledges i
       expectValueAcknowledgement(nextValue),
   );
 
-  render(
-    <JsonEditor
-      value={{ mode: 'one' }}
-      ariaLabel="controlled json"
-      onValueChange={onValueChange}
-      onValidationChange={onValidationChange}
-    />,
-  );
-  const editor = await screen.findByRole('textbox', { name: 'controlled json' });
+  render(<JsonEditor value={{ mode: 'one' }} onValueChange={onValueChange} onValidationChange={onValidationChange} />);
+  const editor = await screen.findByRole('textbox');
   await waitFor(() =>
     expect(onValidationChange).toHaveBeenLastCalledWith(expect.objectContaining({ valid: true }), expect.any(String)),
   );
@@ -159,7 +160,7 @@ test('clears a semantic issue when the JSON draft becomes malformed', async () =
   expect(onChange).not.toHaveBeenCalled();
 });
 
-test('does not emit a Zod-valid candidate rejected by Monaco schema validation', async () => {
+test('does not emit a Zod-valid candidate rejected by schema validation', async () => {
   const { editor, onChange, onValidityChange } = await renderEditor();
 
   fireEvent.change(editor, { target: { value: '[{"update":[{"$set":{"request.body.store":false}}]}]' } });

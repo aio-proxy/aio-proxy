@@ -10,7 +10,7 @@ Give each plugin one authoritative presentation identity. Its localized display 
 
 `OAuthAdapter` will expose required `displayName` and optional `description`; its `label` and `icon` fields are removed. OAuth login results and refresh metadata will rename their account-facing `label` to `accountLabel`. OAuth quota items will use `displayName`.
 
-This is intentionally a breaking change. No deprecated aliases or dual-read paths will remain. The descriptor ABI becomes v2: `PLUGIN_API_VERSION`, the descriptor brand, and the supported version set move to v2 only. A v1 descriptor must fail as `PLUGIN_API_INCOMPATIBLE` before metadata is read.
+Removed and renamed public fields have no deprecated aliases or dual-read paths. Presentation metadata and `PluginApi.logger` are compatible extensions kept on descriptor v1, so no descriptor major bump or dual-version loader is warranted. `PLUGIN_API_VERSION`, the descriptor brand, and the supported version set remain v1 only. The host supports only v1. A branded v2 descriptor must fail as `PLUGIN_API_INCOMPATIBLE` before metadata is read.
 
 ## Data flow
 
@@ -24,8 +24,8 @@ The Provider table maps a group by plugin package name, renders the plugin icon 
 
 ## Validation and tests
 
-Tests cover the v1-to-v2 incompatibility path, descriptor icon validation/logging (including a throwing sink), SDK type contracts, built-in plugin descriptors, dashboard schemas and endpoint serialization, CLI capability prompt localization, OAuth capability serialization, Provider aggregate icon rendering and fallback, and login plus both account-label refresh paths. Existing focused Dashboard table tests plus workspace checks verify the UI change.
+Tests cover the rejected branded-v2 incompatibility path, descriptor icon validation/logging (including a throwing sink), SDK type contracts, built-in plugin descriptors, dashboard schemas and endpoint serialization, CLI capability prompt localization, OAuth capability serialization, Provider aggregate icon rendering and fallback, and login plus both account-label refresh paths. Existing focused Dashboard table tests plus workspace checks verify the UI change.
 
 ## Release
 
-Add a major changeset for the product packages `@aio-proxy/plugin-sdk` and `aio-proxy`, alongside every directly changed internal workspace package (at minimum `@aio-proxy/core`, `@aio-proxy/types`, `@aio-proxy/cli`, and `@aio-proxy/dashboard`). Document every removed public field and its replacement, including the Dashboard API fields.
+Add a minor changeset for the product packages `@aio-proxy/plugin-sdk` and `aio-proxy`, alongside every directly changed internal workspace package (at minimum `@aio-proxy/core`, `@aio-proxy/types`, `@aio-proxy/cli`, and `@aio-proxy/dashboard`). Document every removed public field and its replacement, including the Dashboard API fields.

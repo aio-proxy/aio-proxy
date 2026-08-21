@@ -90,6 +90,87 @@ test('new account rejects default aliases that reference an undiscovered target'
   ).rejects.toThrow('default alias target');
 });
 
+test('new account writes full suggestions when the server reconstructs alias as undefined', async () => {
+  const state = fixture();
+  await createAccount(state, {
+    providerPatch: {
+      name: undefined,
+      enabled: true,
+      weight: 2,
+      proxy: undefined,
+      alias: undefined,
+      transforms: undefined,
+    },
+    registry: registry({
+      discover: async () => ({ ...emptyCatalog(), language: [{ id: 'wire-low' }, { id: 'wire-high' }] }),
+      defaultAliases: () => ({
+        logical: { model: 'wire-low' },
+        extra: { model: 'wire-high' },
+      }),
+    }),
+  });
+
+  expect(configOf(state)['providers']).toMatchObject({
+    person: {
+      weight: 2,
+      alias: {
+        logical: { model: 'wire-low' },
+        extra: { model: 'wire-high' },
+      },
+    },
+  });
+});
+
+test('new account writes full suggestions when the provider patch omits alias', async () => {
+  const state = fixture();
+  await createAccount(state, {
+    providerPatch: { weight: 2 } as never,
+    registry: registry({
+      discover: async () => ({ ...emptyCatalog(), language: [{ id: 'wire-low' }, { id: 'wire-high' }] }),
+      defaultAliases: () => ({
+        logical: { model: 'wire-low' },
+        extra: { model: 'wire-high' },
+      }),
+    }),
+  });
+
+  expect(configOf(state)['providers']).toMatchObject({
+    person: {
+      weight: 2,
+      alias: {
+        logical: { model: 'wire-low' },
+        extra: { model: 'wire-high' },
+      },
+    },
+  });
+});
+
+test('new account treats an explicit provider alias as final', async () => {
+  const state = fixture();
+  await createAccount(state, {
+    providerPatch: {
+      name: undefined,
+      enabled: true,
+      weight: undefined,
+      alias: { only: { model: 'wire-low' } },
+    },
+    registry: registry({
+      discover: async () => ({ ...emptyCatalog(), language: [{ id: 'wire-low' }, { id: 'wire-high' }] }),
+      defaultAliases: () => ({
+        only: { model: 'wire-low' },
+        extra: { model: 'wire-high' },
+      }),
+    }),
+  });
+
+  expect((configOf(state)['providers'] as Record<string, unknown>)['person']).toMatchObject({
+    alias: { only: { model: 'wire-low' } },
+  });
+  expect(
+    ((configOf(state)['providers'] as Record<string, unknown>)['person'] as Record<string, unknown>)['alias'],
+  ).not.toHaveProperty('extra');
+});
+
 test('new account rejects array default-alias rows missing from the catalog', async () => {
   const state = fixture();
   await expect(

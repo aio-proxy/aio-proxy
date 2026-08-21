@@ -256,6 +256,76 @@
       "install_failed": "升级失败：{reason}",
       "manual_restart_hint": "守护进程是手动启动的，没有可重启的托管服务。请自行重启以应用升级",
       "restarting": "正在重启守护进程……"
+    },
+    "agent": {
+      "description": "管理 Agent 集成",
+      "list": {
+        "option_check": "检查实时控制面状态",
+        "option_authorizations": "列出控制面授权",
+        "unresolved": "{target}：未解析（{reason}）；主机 {hostVersion}（最低 {minimumVersion}，{support}）；授权 {authorization}；架构 {schemaCompatibility}",
+        "target": "{target}：主机 {hostVersion}（最低 {minimumVersion}，{support}）；集成 {integration}；安装 {installationId}；适配器 {adapterVersion}；端点 {endpoint}（{endpointMatch}）；目录 {catalog}（上次成功 {lastSuccessfulAt}）；授权 {authorization}；架构 {schemaCompatibility}",
+        "server": "aio-proxy：{status}",
+        "capabilities": "设备授权 {deviceAuthorization}；目录架构 {catalogSchemaVersions}",
+        "authorization": "{installationId}：{target}，{authorization}，{local}"
+      },
+      "configure": {
+        "host_missing": "{target} 未安装；aio-proxy 未更改任何文件。",
+        "unsupported": "{target} {version} 低于支持的最低版本 {minimum}；已安装但带有兼容性警告。",
+        "version_unknown": "无法确定 {target} 的版本；已安装但带有兼容性警告。",
+        "result": "{target}：{status}。",
+        "server_offline": "集成已安装，但 aio-proxy 未在运行。请先启动再登录。",
+        "password_required": "在启用 server.apiKeys 时，必须先设置 server.password，才能批准 Agent 授权。",
+        "login": "使用以下命令登录：{command}",
+        "reload": "重新加载或重启 {target} 以加载更新后的集成。",
+        "newer": "{target} 已有更新的适配器；未降级。"
+      },
+      "conflict": "拒绝管理 {path}：它不是完整的 aio-proxy 托管集成。",
+      "remove": {
+        "server_required": "请先启动本地 aio-proxy 控制面后重试；未删除任何文件。",
+        "success": "已撤销安装 {installationId} 并移除 {target} 集成。"
+      },
+      "revoke": {
+        "success": "安装 {installationId}：{status}。"
+      },
+      "upgrade": {
+        "warning": "aio-proxy 已升级，但 {target} 未能更新：{reason}。请运行 aio-proxy agent configure {target} 进行修复",
+        "root_effective_user": "aio-proxy 升级正在以 root 运行；只会更新 root 的 Agent 集成。请以拥有集成的每个普通用户身份再次运行 aio-proxy agent configure <target>。",
+        "protocol_warning": "aio-proxy 已升级，但 Agent 集成未能更新：{reason}。请运行 aio-proxy agent configure <target> 进行修复"
+      },
+      "integration": {
+        "unresolved": "未解析",
+        "managed": "已托管",
+        "absent": "缺失",
+        "conflict": "冲突"
+      },
+      "catalog": {
+        "fresh": "最新",
+        "stale": "过期",
+        "missing": "缺失"
+      },
+      "authorization": {
+        "active": "有效",
+        "expired": "已过期",
+        "revoked": "已撤销",
+        "missing": "缺失",
+        "not_checked": "未检查"
+      },
+      "schema": {
+        "compatible": "兼容",
+        "incompatible": "不兼容",
+        "not_checked": "未检查"
+      },
+      "endpoint": {
+        "match": "匹配",
+        "mismatch": "不匹配",
+        "unknown": "未知"
+      },
+      "status": {
+        "installed": "已安装",
+        "updated": "已更新",
+        "newer": "更新"
+      },
+      "loopback_required": "Agent 集成要求 aio-proxy 使用回环地址。"
     }
   },
   "oauth": {
@@ -322,6 +392,31 @@
         "description": "无法安全加载控制台密码。请检查 server.password 和服务日志，然后重启 aio-proxy",
         "reload": "重新加载"
       }
+    },
+    "agent_authorization": {
+      "title": "授权 aio-proxy",
+      "instructions": "输入 Agent 中显示的代码。",
+      "code_label": "授权码",
+      "code_placeholder": "ABCD-EFGH",
+      "code_invalid": "请输入 8 位授权码。",
+      "permissions_title": "请求的权限",
+      "permission_catalog": "读取模型目录",
+      "permission_inference": "调用模型推理",
+      "target": "Agent",
+      "installation": "安装 ID",
+      "version": "适配器版本",
+      "expires": "过期时间",
+      "resolve": "继续",
+      "approve": "批准",
+      "deny": "拒绝",
+      "pending": "等待你的决定。",
+      "approved": "已批准授权，请返回 Agent。",
+      "denied": "已拒绝授权。",
+      "expired": "此授权码已过期。",
+      "consumed": "此授权码已使用。",
+      "password_required": "请先设置 Dashboard 密码，再批准 Agent 访问。",
+      "network_error": "无法连接 aio-proxy，请检查服务后重试。",
+      "retry": "使用其他授权码"
     },
     "menus": {
       "observability": "观测",

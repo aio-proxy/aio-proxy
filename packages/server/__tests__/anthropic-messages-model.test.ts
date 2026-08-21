@@ -1,8 +1,9 @@
 import { describe, expect, test } from 'bun:test';
 
 import type { AiSdkProviderInstance } from '@aio-proxy/core';
-import { createServer } from '@aio-proxy/server';
 import type { ModelMessage, ToolSet } from 'ai';
+
+import { createServer } from '#server-test-lifecycle';
 
 import { messagesRequest, textStream } from './anthropic-messages.test-support';
 

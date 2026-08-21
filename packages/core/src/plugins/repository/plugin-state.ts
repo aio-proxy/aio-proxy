@@ -4,28 +4,60 @@ import type { ModelCatalog } from '@aio-proxy/plugin-sdk';
 import type { Diagnostic } from '@aio-proxy/types';
 
 import { type CatalogRow, type DiagnosticRow, decodeJson, encodeJson, type PluginSecretRow } from './rows';
-import type { AccountWrite, PluginRepository, StoredCatalog } from './types';
+import type {
+  AccountWrite,
+  CatalogWrite,
+  CompareAndSwapCatalogInput,
+  PluginRepository,
+  StoredCatalog,
+  WriteCatalogUnavailableIfCurrentInput,
+} from './types';
+
+type CatalogGenerationFence = Pick<
+  CompareAndSwapCatalogInput,
+  'providerId' | 'plugin' | 'capability' | 'accountRuntimeRevision'
+>;
+
+function catalogGenerationCurrent(sqlite: Database, input: CatalogGenerationFence): boolean {
+  const pending = sqlite
+    .query('SELECT 1 AS present FROM oauth_pending_operation WHERE provider_id = ? LIMIT 1')
+    .get(input.providerId);
+  if (pending !== null) return false;
+  const account = sqlite
+    .query<{ plugin: string; capability: string; runtime_revision: number }, [string]>(
+      'SELECT plugin, capability, runtime_revision FROM oauth_account WHERE provider_id = ?',
+    )
+    .get(input.providerId);
+  return (
+    account !== null &&
+    account.plugin === input.plugin &&
+    account.capability === input.capability &&
+    account.runtime_revision === input.accountRuntimeRevision
+  );
+}
 
 export function createPluginStateRows(sqlite: Database) {
   const selectCatalog = sqlite.query<CatalogRow, [string]>(
-    'SELECT catalog_json, refreshed_at FROM oauth_catalog WHERE provider_id = ?',
+    'SELECT catalog_json, refreshed_at, revision FROM oauth_catalog WHERE provider_id = ?',
   );
   const selectDiagnostics = sqlite.query<DiagnosticRow, [string]>(
     'SELECT diagnostic_json FROM oauth_account_diagnostic WHERE provider_id = ? ORDER BY code',
   );
   function readCatalog(providerId: string): StoredCatalog | null {
     const row = selectCatalog.get(providerId);
-    return row === null ? null : { catalog: decodeJson<ModelCatalog>(row.catalog_json), refreshedAt: row.refreshed_at };
+    return row === null
+      ? null
+      : { catalog: decodeJson<ModelCatalog>(row.catalog_json), refreshedAt: row.refreshed_at, revision: row.revision };
   }
   function readDiagnostics(providerId: string): readonly Diagnostic[] {
     return selectDiagnostics.all(providerId).map(({ diagnostic_json }) => decodeJson<Diagnostic>(diagnostic_json));
   }
-  function replaceCatalog(providerId: string, value: StoredCatalog): void {
+  function replaceCatalog(providerId: string, value: CatalogWrite): void {
     sqlite
       .query(
-        `INSERT INTO oauth_catalog (provider_id, catalog_json, refreshed_at) VALUES (?, ?, ?)
+        `INSERT INTO oauth_catalog (provider_id, catalog_json, refreshed_at, revision) VALUES (?, ?, ?, 1)
          ON CONFLICT (provider_id) DO UPDATE SET catalog_json = excluded.catalog_json,
-           refreshed_at = excluded.refreshed_at`,
+           refreshed_at = excluded.refreshed_at, revision = oauth_catalog.revision + 1`,
       )
       .run(providerId, encodeJson(value.catalog), value.refreshedAt);
   }
@@ -64,6 +96,8 @@ export function createPluginStateRepository(
   | 'deletePluginSecret'
   | 'readCatalog'
   | 'writeCatalog'
+  | 'compareAndSwapCatalog'
+  | 'writeCatalogUnavailableIfCurrent'
   | 'readDiagnostics'
   | 'writeDiagnostic'
   | 'clearDiagnostic'
@@ -117,6 +151,28 @@ export function createPluginStateRepository(
           sqlite
             .query("DELETE FROM oauth_account_diagnostic WHERE provider_id = ? AND code = 'CATALOG_UNAVAILABLE'")
             .run(providerId);
+        })
+        .immediate();
+    },
+    compareAndSwapCatalog(input: CompareAndSwapCatalogInput) {
+      return sqlite
+        .transaction((): { readonly ok: false } | { readonly ok: true; readonly revision: number } => {
+          if (!catalogGenerationCurrent(sqlite, input)) return { ok: false };
+          const stored = rows.readCatalog(input.providerId);
+          if (stored !== null && stored.refreshedAt >= input.startedAt) return { ok: false };
+          rows.replaceCatalog(input.providerId, { catalog: input.catalog, refreshedAt: input.refreshedAt });
+          sqlite
+            .query("DELETE FROM oauth_account_diagnostic WHERE provider_id = ? AND code = 'CATALOG_UNAVAILABLE'")
+            .run(input.providerId);
+          return { ok: true, revision: (stored?.revision ?? 0) + 1 };
+        })
+        .immediate();
+    },
+    writeCatalogUnavailableIfCurrent(input: WriteCatalogUnavailableIfCurrentInput) {
+      return sqlite
+        .transaction(() => {
+          if (!catalogGenerationCurrent(sqlite, input)) return false;
+          return rows.upsertDiagnostic(input.providerId, input.diagnostic);
         })
         .immediate();
     },

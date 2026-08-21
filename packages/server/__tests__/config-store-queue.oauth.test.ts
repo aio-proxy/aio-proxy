@@ -5,8 +5,9 @@ import { join } from 'node:path';
 
 import { ConfigSchema } from '@aio-proxy/types';
 
+import { createServerState } from '#server-test-lifecycle';
+
 import { createConfigStore } from '../src/config-store';
-import { createServerState } from '../src/server-state';
 
 describe('createConfigStore OAuth queue', () => {
   test('a config mutation and concurrent reload share one FIFO without lock inversion', async () => {

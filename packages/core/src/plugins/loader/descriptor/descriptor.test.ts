@@ -66,19 +66,33 @@ test('apiVersion mismatch fails with incompatibility', async () => {
   });
 });
 
-test('apiVersion 1 fails with incompatibility', async () => {
+test('apiVersion 2 fails with incompatibility', async () => {
+  install('@example/stale-v2');
+  let setups = 0;
   const descriptor = {
-    [PLUGIN_DESCRIPTOR_BRAND]: true,
-    apiVersion: 1,
+    [Symbol.for('@aio-proxy/plugin-sdk/descriptor/v2')]: true,
+    apiVersion: 2,
     metadata: {},
-    setup() {},
+    setup() {
+      setups++;
+    },
   };
-  expect(() => validateDescriptor(descriptor)).toThrow(expect.objectContaining({ code: 'PLUGIN_API_INCOMPATIBLE' }));
+  const snapshot = await loadPluginRegistry(
+    options({
+      enablements: [{ packageName: '@example/stale-v2' }],
+      importPackage: async () => ({ default: descriptor }),
+    }),
+  );
+  expect(snapshot.plugins.get('@example/stale-v2')?.state).toMatchObject({
+    status: 'failed',
+    diagnostic: { code: 'PLUGIN_API_INCOMPATIBLE' },
+  });
+  expect(setups).toBe(0);
 });
 
-test('apiVersion 2 is loadable', () => {
-  const descriptor = { ...definePlugin(() => {}), apiVersion: 2 };
-  expect(validateDescriptor(descriptor).apiVersion).toBe(2);
+test('apiVersion 1 is loadable', () => {
+  const descriptor = { ...definePlugin(() => {}), apiVersion: 1 };
+  expect(validateDescriptor(descriptor).apiVersion).toBe(1);
 });
 
 test('apiVersion 3 fails with incompatibility', async () => {

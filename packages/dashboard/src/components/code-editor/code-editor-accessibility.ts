@@ -1,22 +1,10 @@
-type AttributeTarget = {
-  setAttribute(name: string, value: string): void;
-  removeAttribute(name: string): void;
+export type CodeEditorAriaProps = {
+  readonly invalid?: boolean;
+  readonly id?: string;
 };
 
-type CodeEditorDomAccessor = {
-  getDomNode(): {
-    querySelector(selector: string): AttributeTarget | null;
-  } | null;
-};
-
-export const setCodeEditorAriaInvalid = (
-  editor: CodeEditorDomAccessor,
-  invalid: boolean | undefined,
-  ariaDescribedBy?: string,
-) => {
-  const textbox = editor.getDomNode()?.querySelector('textarea.inputarea, [role="textbox"]');
-  if (invalid) textbox?.setAttribute('aria-invalid', 'true');
-  else textbox?.removeAttribute('aria-invalid');
-  if (ariaDescribedBy) textbox?.setAttribute('aria-describedby', ariaDescribedBy);
-  else textbox?.removeAttribute('aria-describedby');
-};
+export const createCodeEditorContentAttributes = ({ invalid, id }: CodeEditorAriaProps): Record<string, string> => ({
+  ...(id === undefined ? {} : { id }),
+  ...(invalid ? { 'aria-invalid': 'true' } : {}),
+  ...(invalid && id !== undefined ? { 'aria-describedby': `${id}-error` } : {}),
+});

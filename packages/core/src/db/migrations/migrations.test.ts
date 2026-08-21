@@ -109,3 +109,35 @@ test('upgrading a version-two database removes legacy history and preserves trac
     rmSync(home, { recursive: true, force: true });
   }
 });
+
+test('migration 6 preserves schema-5 session affinity data', () => {
+  const home = mkdtempSync(join(tmpdir(), 'aio-proxy-migration-agent-'));
+  const path = join(home, 'aio-proxy.db');
+  const versionFive = new Database(path);
+  try {
+    for (const migration of MIGRATIONS.slice(0, 5)) versionFive.run(migration.sql);
+    versionFive.run('PRAGMA user_version = 5');
+    versionFive.run(`INSERT INTO session_affinity
+      (session_source, session_id, requested_model_id, provider_id, revision, expires_at, updated_at)
+      VALUES ('header', 'session-1', 'gpt-x', 'provider-a', 1, 999999, 1000)`);
+  } finally {
+    versionFive.close();
+  }
+
+  const handle = openDb({ home });
+  try {
+    expect(
+      handle.sqlite
+        .query("SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'agent_%' ORDER BY name")
+        .all(),
+    ).toHaveLength(4);
+    expect(
+      handle.sqlite.query("SELECT provider_id FROM session_affinity WHERE session_id = 'session-1'").get(),
+    ).toEqual({
+      provider_id: 'provider-a',
+    });
+  } finally {
+    handle.close();
+    rmSync(home, { recursive: true, force: true });
+  }
+});

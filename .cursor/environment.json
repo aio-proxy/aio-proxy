@@ -1,0 +1,15 @@
+{
+  "name": "aio-proxy",
+  "install": "bash .cursor/install.sh",
+  "terminals": [
+    {
+      "name": "dev",
+      "command": "export BUN_INSTALL=\"$HOME/.bun\"; export PATH=\"$BUN_INSTALL/bin:$PATH\"; bun run dev",
+      "description": "Builds @aio-proxy/core, then runs the proxy (http://127.0.0.1:22078) and the dashboard dev server (http://127.0.0.1:3000/dashboard/) in watch mode."
+    }
+  ],
+  "ports": [
+    { "name": "proxy", "port": 22078 },
+    { "name": "dashboard", "port": 3000 }
+  ]
+}

@@ -3,6 +3,8 @@ import { formatUserError, getLocale, m, resolveLocaleFromArgv, setLocale } from 
 import { Command } from 'commander';
 
 import packageJson from '../package.json' with { type: 'json' };
+import { agentConfigure, agentList, agentRemove, agentRevoke, createAgentCommandDeps } from './agent';
+import { registerAgentCommands } from './agent/output';
 import { completionCommand } from './completion';
 import { configEdit, configPathCommand, configShow, configValidate } from './config-cmd';
 import { dashboardCommand } from './dashboard';
@@ -174,6 +176,35 @@ export const buildProgram = (deps: CliDeps = defaultCliDeps) => {
     .option('--force', m['cli.upgrade.option_force_description']())
     .option('--registry <url>', m['cli.upgrade.option_registry_description']())
     .action((options) => runUpgradeCommand(options));
+
+  const commandDeps = createAgentCommandDeps(deps);
+  registerAgentCommands(program, {
+    actions: {
+      list: (options) => agentList(options, commandDeps),
+      configure: (target) => agentConfigure(target, commandDeps),
+      remove: (target) => agentRemove(target, commandDeps),
+      revoke: (installationId) => agentRevoke(installationId, commandDeps),
+    },
+    print: console.log,
+  });
+
+  program.command('__agent-post-upgrade', { hidden: true }).action(async () => {
+    const [{ createAgentCommandDeps }, { readAgentPostUpgradePayload, runAgentPostUpgrade }] = await Promise.all([
+      import('./agent'),
+      import('./upgrade/post-upgrade-agents'),
+    ]);
+    const payload = await readAgentPostUpgradePayload();
+    const agent = createAgentCommandDeps(deps);
+    const results = await runAgentPostUpgrade(payload, {
+      resolveLocation: agent.resolveLocation,
+      inspect: agent.inspect,
+      install: agent.install,
+      readAssets: agent.readAssets,
+      adapterVersion: VERSION,
+      now: agent.now,
+    });
+    console.log(JSON.stringify(results));
+  });
 
   return program;
 };

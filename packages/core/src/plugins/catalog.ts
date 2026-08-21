@@ -64,7 +64,10 @@ function validateDescriptors(modality: Modality, value: unknown): readonly Model
 
 export function validateModelCatalog(value: unknown): ModelCatalog {
   if (!isRecord(value)) throw new ModelCatalogValidationError('language', -1, []);
-  const { language, image, embedding, speech, transcription, reranking } = value;
+  const { language, image, embedding, speech, transcription, reranking, metadata } = value;
+  if (metadata !== undefined && !isJsonValue(metadata)) {
+    throw new ModelCatalogValidationError('language', -1, ['metadata']);
+  }
   return {
     language: validateDescriptors('language', language),
     image: validateDescriptors('image', image),
@@ -72,5 +75,6 @@ export function validateModelCatalog(value: unknown): ModelCatalog {
     speech: validateDescriptors('speech', speech),
     transcription: validateDescriptors('transcription', transcription),
     reranking: validateDescriptors('reranking', reranking),
+    ...(metadata === undefined ? {} : { metadata }),
   };
 }

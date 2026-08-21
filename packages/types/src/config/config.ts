@@ -1,6 +1,7 @@
 import { isPlainObject } from 'es-toolkit/predicate';
 import { z } from 'zod';
 
+import { hasReservedAgentTokenPrefix } from '../agent-integration';
 import type { InvalidProviderConfig } from '../plugin';
 import { PluginPackageNameSchema } from '../plugin';
 import {
@@ -21,13 +22,20 @@ import {
 
 const ServerHostSchema = z.string().min(1);
 
+const StaticApiKeySchema = z
+  .string()
+  .min(1)
+  .refine(
+    (value) => !hasReservedAgentTokenPrefix(value),
+    'Static API keys cannot use reserved aio_agent_at_ or aio_agent_rt_ prefixes',
+  );
+
 const ApiKeySchema = z.object({
-  key: z.string().min(1),
+  key: StaticApiKeySchema,
   label: z.string().min(1).optional(),
 });
-
 const ApiKeyAuthoringSchema = z.object({
-  key: z.union([z.string().min(1), ConfigTemplateStringSchema]),
+  key: z.union([ConfigTemplateStringSchema, StaticApiKeySchema]),
   label: z.string().min(1).optional(),
 });
 

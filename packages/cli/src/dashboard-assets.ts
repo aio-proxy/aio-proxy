@@ -4,10 +4,19 @@ import { fileURLToPath } from 'node:url';
 
 import { type DashboardAssets, directoryDashboardAssets } from '@aio-proxy/server';
 
+import type { AgentAssetPaths } from './agent/assets';
+
 export type CliDeps = {
   readonly dashboardAssets: () => DashboardAssets;
   readonly dashboardUrl?: (apiUrl: string) => string;
+  readonly agentAssetPaths: () => AgentAssetPaths;
 };
+
+const resolveAgentAssetPaths = (): AgentAssetPaths => ({
+  opencode: fileURLToPath(import.meta.resolve('@aio-proxy/opencode-provider/artifact')),
+  officialPi: fileURLToPath(import.meta.resolve('@aio-proxy/pi-provider/official-pi-artifact')),
+  omp: fileURLToPath(import.meta.resolve('@aio-proxy/pi-provider/omp-artifact')),
+});
 
 export const devDashboardStaticDir = (): string => {
   const indexPath = fileURLToPath(import.meta.resolve('@aio-proxy/dashboard/dist/index.html'));
@@ -26,4 +35,5 @@ export const embeddedDashboardAssets =
 
 export const defaultCliDeps: CliDeps = {
   dashboardAssets: () => directoryDashboardAssets(devDashboardStaticDir()),
+  agentAssetPaths: resolveAgentAssetPaths,
 };

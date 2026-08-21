@@ -35,6 +35,7 @@ export const oauthCatalog = sqliteTable('oauth_catalog', {
     .references(() => oauthAccount.providerId, { onDelete: 'cascade' }),
   catalog: text('catalog_json', { mode: 'json' }).$type<ModelCatalog>().notNull(),
   refreshedAt: integer('refreshed_at').notNull(),
+  revision: integer('revision').notNull().default(0),
 });
 
 export const oauthAccountDiagnostic = sqliteTable(

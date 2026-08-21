@@ -10,6 +10,7 @@ import {
   fixture,
   loginOAuthAccount,
   options,
+  type PluginLogSink,
   ProviderAccountChangedError,
   ProviderFingerprintMismatchError,
   refreshCredential,
@@ -161,25 +162,139 @@ test('re-login preserves an edited alias despite catalog suggestions', async () 
     },
   }));
   let suggestions = 0;
+  let completed = false;
+  let suggestedAfterComplete = false;
 
   await loginOAuthAccount(
     options(state, {
       targetProviderId: 'person',
       capability: undefined,
+      repository: {
+        ...state.repository,
+        completeAccountOperation(operationId) {
+          state.repository.completeAccountOperation(operationId);
+          completed = true;
+        },
+      },
       registry: registry({
-        discover: async () => ({ ...emptyCatalog(), language: [{ id: 'suggested' }] }),
+        discover: async () => ({ ...emptyCatalog(), language: [{ id: 'suggested' }, { id: 'fresh' }] }),
         defaultAliases: () => {
           suggestions += 1;
-          return { logical: { model: 'suggested' } };
+          suggestedAfterComplete = completed;
+          return { logical: { model: 'suggested' }, fresh: { model: 'fresh' } };
         },
       }),
     }),
   );
 
   expect((configOf(state)['providers'] as Record<string, unknown>)['person']).toMatchObject({
+    alias: { logical: { model: 'edited' }, fresh: { model: 'fresh' } },
+  });
+  expect(suggestions).toBe(1);
+  expect(suggestedAfterComplete).toBe(true);
+});
+
+test('re-login post-commit merge does not write aliases when the config entry capability no longer matches', async () => {
+  const state = fixture();
+  await createAccount(state);
+  await state.config.replace((current) => ({
+    ...current,
+    providers: {
+      person: {
+        ...((current['providers'] as Record<string, unknown>)['person'] as object),
+        alias: { logical: { model: 'edited' } },
+      },
+    },
+  }));
+
+  let commits = 0;
+  await loginOAuthAccount(
+    options(state, {
+      targetProviderId: 'person',
+      capability: undefined,
+      coordinateProviderCommit: async (_capability, commit) => {
+        const result = await commit();
+        commits += 1;
+        if (commits === 1) {
+          await state.config.replace((current) => ({
+            ...current,
+            providers: {
+              person: {
+                ...((current['providers'] as Record<string, unknown>)['person'] as object),
+                capability: 'other',
+              },
+            },
+          }));
+        }
+        return result;
+      },
+      registry: registry({
+        discover: async () => ({ ...emptyCatalog(), language: [{ id: 'suggested' }, { id: 'fresh' }] }),
+        defaultAliases: () => ({ logical: { model: 'suggested' }, fresh: { model: 'fresh' } }),
+      }),
+    }),
+  );
+
+  const person = (configOf(state)['providers'] as Record<string, unknown>)['person'] as {
+    capability: string;
+    alias: Record<string, unknown>;
+  };
+  expect(person.capability).toBe('other');
+  expect(person.alias).toEqual({ logical: { model: 'edited' } });
+  expect(commits).toBe(2);
+});
+
+test('re-login keeps catalog and credential when post-commit alias merge throws', async () => {
+  const state = fixture();
+  await createAccount(state, {
+    registry: registry({ discover: async () => ({ ...emptyCatalog(), language: [{ id: 'old' }] }) }),
+  });
+  await state.config.replace((current) => ({
+    ...current,
+    providers: {
+      person: {
+        ...((current['providers'] as Record<string, unknown>)['person'] as object),
+        alias: { logical: { model: 'edited' } },
+      },
+    },
+  }));
+  const logs: Parameters<PluginLogSink>[0][] = [];
+  let compensations = 0;
+
+  await loginOAuthAccount(
+    options(state, {
+      targetProviderId: 'person',
+      capability: undefined,
+      logger: (entry) => logs.push(entry),
+      repository: {
+        ...state.repository,
+        compensateAccountOperation(operationId) {
+          compensations += 1;
+          return state.repository.compensateAccountOperation(operationId);
+        },
+      },
+      registry: registry({
+        login: async () => ({
+          fingerprint: 'person@example.com',
+          suggestedKey: 'person',
+          credentials: { token: 'relogin' },
+        }),
+        discover: async () => ({ ...emptyCatalog(), language: [{ id: 'new-model' }] }),
+        defaultAliases: () => {
+          throw new Error('suggestions failed');
+        },
+      }),
+    }),
+  );
+
+  expect(state.repository.readCatalog('person')?.catalog.language).toEqual([{ id: 'new-model' }]);
+  expect(state.repository.readAccount('person')?.credential).toEqual({ token: 'relogin' });
+  expect(state.repository.readDiagnostics('person')).toEqual([]);
+  expect(compensations).toBe(0);
+  expect((configOf(state)['providers'] as Record<string, unknown>)['person']).toMatchObject({
     alias: { logical: { model: 'edited' } },
   });
-  expect(suggestions).toBe(0);
+  expect(logs.map(({ event }) => event)).toContain('plugin.default-aliases.merge.failed');
 });
 
 test('missing config/account preflight makes no network call and reports cleanup-pending', async () => {

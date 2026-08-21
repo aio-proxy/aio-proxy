@@ -7,7 +7,8 @@ import { createPluginRepository, ORPHAN_ACCOUNT_GRACE_MS, PENDING_OPERATION_TTL_
 import { openDb } from '@aio-proxy/core/db';
 import { ConfigSchema } from '@aio-proxy/types';
 
-import { createServerState } from '../../src/server-state';
+import { createServerState } from '#server-test-lifecycle';
+
 import { cleanup, createManualRecoveryScheduler, deferred, seedOAuthAccount, waitUntil } from './test-support';
 
 afterEach(cleanup);
