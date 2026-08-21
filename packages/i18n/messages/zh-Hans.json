@@ -511,11 +511,10 @@
         "reauthorize_helper": "账户设置变更只会在授权成功后保存"
       },
       "transforms": {
-        "section": "请求修改",
-        "description": "在请求发送到上游之前，按当前 Provider 的配置修改出站请求",
-        "json_label": "请求修改 JSON",
-        "invalid": "修改配置无效（{path}）：{code}",
-        "empty": "尚未配置请求修改",
+        "description": "自定义发往上游前的请求改写。匹配条件与更新动作按规则顺序执行，后面的规则会看到前面规则的结果。",
+        "json_label": "请求改写 JSON",
+        "invalid": "改写配置无效（{path}）：{code}",
+        "empty": "尚未配置请求改写",
         "mode": {
           "visual": "可视化"
         },
@@ -705,6 +704,11 @@
         "hint_advanced_proxy": "自定义代理",
         "hint_advanced_transform": "{count} 条改写",
         "hint_advanced_transforms": "{count} 条改写",
+        "advanced_group_network": "网络",
+        "advanced_group_transforms": "请求改写",
+        "advanced_transforms_none": "未启用",
+        "advanced_transforms_rule": "{count} 条规则",
+        "advanced_transforms_rules": "{count} 条规则",
         "footer_blocking": "还差",
         "footer_attention": "待处理",
         "footer_section_separator": "、",
@@ -778,7 +782,7 @@
         "metadata_field_label_description": "说明",
         "metadata_name_placeholder": "例如 GPT-5",
         "weight_out_of_range": "已保存的权重 {weight} 超出滑块范围，可在数字输入框中修改",
-        "test_checks_saved_account": "测试使用已保存的账户，未保存的请求修改不会生效。",
+        "test_checks_saved_account": "测试使用已保存的账户，未保存的请求改写不会生效。",
         "validate_title": "模型测试",
         "validate_description": "选择已启用模型并发送小型真实请求；结果不会影响保存。",
         "validate_model": "测试模型",

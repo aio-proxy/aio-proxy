@@ -511,11 +511,10 @@
         "reauthorize_helper": "帳戶設定變更只會在授權成功後儲存"
       },
       "transforms": {
-        "section": "請求修改",
-        "description": "在請求傳送到上游之前，依目前 Provider 的設定修改出站請求",
-        "json_label": "請求修改 JSON",
-        "invalid": "修改設定無效（{path}）：{code}",
-        "empty": "尚未設定請求修改",
+        "description": "自訂發往上游前的請求改寫。比對條件與更新動作按規則順序執行，後面的規則會看到前面規則的結果。",
+        "json_label": "請求改寫 JSON",
+        "invalid": "改寫設定無效（{path}）：{code}",
+        "empty": "尚未設定請求改寫",
         "mode": {
           "visual": "視覺化"
         },
@@ -705,6 +704,11 @@
         "hint_advanced_proxy": "自訂代理",
         "hint_advanced_transform": "{count} 條改寫",
         "hint_advanced_transforms": "{count} 條改寫",
+        "advanced_group_network": "網路",
+        "advanced_group_transforms": "請求改寫",
+        "advanced_transforms_none": "未啟用",
+        "advanced_transforms_rule": "{count} 條規則",
+        "advanced_transforms_rules": "{count} 條規則",
         "footer_blocking": "還差",
         "footer_attention": "待處理",
         "footer_section_separator": "、",
@@ -778,7 +782,7 @@
         "metadata_field_label_description": "說明",
         "metadata_name_placeholder": "例如 GPT-5",
         "weight_out_of_range": "已儲存的權重 {weight} 超出滑桿範圍，可在數字輸入框中修改",
-        "test_checks_saved_account": "測試使用已儲存的帳戶，未儲存的請求修改不會生效。",
+        "test_checks_saved_account": "測試使用已儲存的帳戶，未儲存的請求改寫不會生效。",
         "validate_title": "模型測試",
         "validate_description": "選擇已啟用模型並傳送小型真實請求；結果不會影響儲存。",
         "validate_model": "測試模型",

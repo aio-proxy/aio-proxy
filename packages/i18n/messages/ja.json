@@ -511,11 +511,10 @@
         "reauthorize_helper": "アカウント設定の変更は認可が成功した後にのみ保存されます"
       },
       "transforms": {
-        "section": "リクエスト変換",
-        "description": "このプロバイダーの送信リクエストを、上流に送信される前に変更します",
-        "json_label": "リクエスト変換 JSON",
-        "invalid": "{path} の変換が無効です: {code}",
-        "empty": "リクエスト変換が設定されていません",
+        "description": "上流に送信する前に適用するリクエストの書き換えをカスタマイズします。一致条件と更新アクションはルールの順に実行されるため、後のルールは前のルールの結果を参照します。",
+        "json_label": "リクエストの書き換え JSON",
+        "invalid": "{path} の書き換えが無効です: {code}",
+        "empty": "リクエストの書き換えが設定されていません",
         "mode": {
           "visual": "ビジュアル"
         },
@@ -705,6 +704,11 @@
         "hint_advanced_proxy": "カスタムプロキシ",
         "hint_advanced_transform": "{count} 件の書き換え",
         "hint_advanced_transforms": "{count} 件の書き換え",
+        "advanced_group_network": "ネットワーク",
+        "advanced_group_transforms": "リクエストの書き換え",
+        "advanced_transforms_none": "未設定",
+        "advanced_transforms_rule": "{count} 件のルール",
+        "advanced_transforms_rules": "{count} 件のルール",
         "footer_blocking": "残り",
         "footer_attention": "未処理",
         "footer_section_separator": "、",
@@ -778,7 +782,7 @@
         "metadata_field_label_description": "説明",
         "metadata_name_placeholder": "例: GPT-5",
         "weight_out_of_range": "保存済みのウェイト {weight} はスライダーの範囲外です。数値入力欄で変更できます",
-        "test_checks_saved_account": "テストは保存済みのアカウントを使用します。未保存のリクエスト変換は反映されません。",
+        "test_checks_saved_account": "テストは保存済みのアカウントを使用します。未保存のリクエストの書き換えは反映されません。",
         "validate_title": "モデルテスト",
         "validate_description": "有効なモデルを選んで小さな実リクエストを送信します。結果は保存に影響しません。",
         "validate_model": "テストするモデル",

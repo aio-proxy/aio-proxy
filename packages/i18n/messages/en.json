@@ -511,11 +511,10 @@
         "reauthorize_helper": "Account setting changes are saved only after authorization succeeds"
       },
       "transforms": {
-        "section": "Request transforms",
-        "description": "Modify the outbound request for this Provider before it is sent upstream",
-        "json_label": "Request transforms JSON",
-        "invalid": "Invalid transform at {path}: {code}",
-        "empty": "No request transforms configured",
+        "description": "Customize the request rewrites applied before the request goes upstream. Match conditions and update actions run in rule order, so later rules see the results of earlier ones.",
+        "json_label": "Request rewrites JSON",
+        "invalid": "Invalid rewrite at {path}: {code}",
+        "empty": "No request rewrites configured",
         "mode": {
           "visual": "Visual"
         },
@@ -705,6 +704,11 @@
         "hint_advanced_proxy": "Custom proxy",
         "hint_advanced_transform": "{count} rewrite",
         "hint_advanced_transforms": "{count} rewrites",
+        "advanced_group_network": "Network",
+        "advanced_group_transforms": "Request rewrites",
+        "advanced_transforms_none": "Not enabled",
+        "advanced_transforms_rule": "{count} rule",
+        "advanced_transforms_rules": "{count} rules",
         "footer_blocking": "Still missing",
         "footer_attention": "Pending",
         "footer_section_separator": ", ",
@@ -778,7 +782,7 @@
         "metadata_field_label_description": "Description",
         "metadata_name_placeholder": "e.g. GPT-5",
         "weight_out_of_range": "Stored weight {weight} is outside the slider range; use the number field to change it",
-        "test_checks_saved_account": "The test uses the saved account; unsaved transform edits are not exercised.",
+        "test_checks_saved_account": "The test uses the saved account; unsaved rewrite edits are not exercised.",
         "validate_title": "Model test",
         "validate_description": "Pick an enabled model and send one small real request; the result does not affect saving.",
         "validate_model": "Model to test",
