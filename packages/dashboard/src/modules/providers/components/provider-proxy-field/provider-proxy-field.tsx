@@ -23,7 +23,7 @@ export const ProviderProxyField: React.FC<ProviderProxyFieldProps> = ({ field })
   };
 
   return (
-    <div data-testid="provider-form-field-proxy">
+    <div data-testid="provider-form-field-proxy" className="space-y-4">
       <Field>
         <Label htmlFor={modeId}>{m['dashboard.providers.form.label_proxy']()}</Label>
         <Select value={proxyMode} onValueChange={(value) => changeMode(value as ProxyMode)}>
