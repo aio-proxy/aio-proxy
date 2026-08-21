@@ -380,7 +380,7 @@ test('edits ordered Set and Remove actions losslessly across Visual and JSON mod
   const canonical = JSON.stringify(latestValue(onChange));
   const changeCount = onChange.mock.calls.length;
   fireEvent.click(screen.getByRole('tab', { name: /JSON/u }));
-  const jsonEditor = await screen.findByRole('textbox', { name: /request transforms json/i });
+  const jsonEditor = await screen.findByRole('textbox', { name: /request rewrites json/i });
   expect(JSON.stringify(JSON.parse((jsonEditor as HTMLTextAreaElement).value))).toBe(canonical);
   await waitFor(() => expect(onValidityChange).toHaveBeenLastCalledWith(true));
   fireEvent.click(screen.getByRole('tab', { name: /Visual|可视化/u }));

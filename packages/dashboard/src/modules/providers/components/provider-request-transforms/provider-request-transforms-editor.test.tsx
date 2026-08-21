@@ -55,7 +55,7 @@ const resolveNextValidation = async (markers: readonly { readonly severity: 'err
 
 const openJsonEditor = async () => {
   fireEvent.click(screen.getByRole('tab', { name: /JSON/u }));
-  return await screen.findByRole('textbox', { name: /request transforms json/i });
+  return await screen.findByRole('textbox', { name: /request rewrites json/i });
 };
 
 const renderEditor = async () => {
@@ -81,7 +81,7 @@ test('starts in JSON when valid transforms cannot be rendered visually', async (
 
   render(<ProviderRequestTransformsEditor value={value} onChange={onChange} onValidityChange={onValidityChange} />);
 
-  const editor = await screen.findByRole('textbox', { name: /request transforms json/i });
+  const editor = await screen.findByRole('textbox', { name: /request rewrites json/i });
   expect((editor as HTMLTextAreaElement).value).toContain('"retries": 2');
   expect(screen.getByRole('tab', { name: /Visual|可视化/u })).toHaveAttribute('aria-disabled', 'true');
   await resolveNextValidation();
