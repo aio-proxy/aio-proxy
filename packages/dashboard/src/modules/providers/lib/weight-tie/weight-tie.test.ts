@@ -21,16 +21,17 @@ describe('hasWeightTie', () => {
     ).toBe(true);
   });
 
-  // Not incidental: absent coalesces to 0 at the single ordering point, so two unweighted providers
-  // genuinely share a weight and the badge must say so. The mutant is `effectiveWeight` losing its
-  // coalesce, which makes `undefined === undefined` compare as NaN and the tie vanish.
-  test('two absent weights coalesce to zero and still tie', () => {
+  // The coalesce is load-bearing, not decorative: `routes/providers/new.tsx` seeds new providers with an
+  // explicit `0` while providers created before it have no weight key at all, so absent-against-stored-`0`
+  // is a config shape that really occurs. Two *absent* weights would not pin this — dropping the `?? 0`
+  // leaves `undefined === undefined` true — but here it compares `undefined === 0` and the tie vanishes.
+  test('an absent weight ties with a stored explicit zero', () => {
     expect(
       hasWeightTie({
         selfId: 'self',
         selfWeight: undefined,
         exposedAliases: ['smart'],
-        others: [other('peer', undefined, ['smart'])],
+        others: [other('seeded', 0, ['smart'])],
       }),
     ).toBe(true);
   });
@@ -48,15 +49,17 @@ describe('hasWeightTie', () => {
     ).toBe(false);
   });
 
-  // The weight only matters where two providers compete for the same alias; without an overlap there
-  // is no attempt order to be ambiguous about.
-  test('an equal weight with no alias in common is not a tie', () => {
+  // Both non-tie clauses at once, because each rescues a different mutation: a provider competing for the
+  // same alias on a *different* weight has an unambiguous place in the attempt order (drop the weight
+  // comparison and `heavier` reports a tie), and an equal weight with no alias in common has no attempt
+  // order to be ambiguous about (drop the alias overlap and `peer` reports one).
+  test('neither a differing weight nor a disjoint alias set is a tie', () => {
     expect(
       hasWeightTie({
         selfId: 'self',
         selfWeight: 10,
         exposedAliases: ['smart'],
-        others: [other('peer', 10, ['fast'])],
+        others: [other('heavier', 20, ['smart']), other('peer', 10, ['fast'])],
       }),
     ).toBe(false);
   });
