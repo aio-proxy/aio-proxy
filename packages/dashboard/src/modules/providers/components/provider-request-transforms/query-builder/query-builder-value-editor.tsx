@@ -4,6 +4,7 @@ import { Input } from '@aio-proxy/ui/components/input';
 import { Label } from '@aio-proxy/ui/components/label';
 import { Switch } from '@aio-proxy/ui/components/switch';
 import { Textarea } from '@aio-proxy/ui/components/textarea';
+import { cn } from '@aio-proxy/ui/lib/utils';
 import { useId } from 'react';
 import type React from 'react';
 import type { ValueEditorProps, ValueSelectorProps } from 'react-querybuilder';
@@ -30,7 +31,7 @@ const editorTitle = (props: QueryBuilderValueEditorProps): string | undefined =>
   props.testID?.endsWith('-value')
     ? getRequestTransformExpressionControlLabel(
         props.testID,
-        m['dashboard.providers.transforms.condition.value.title'](),
+        m['dashboard.providers.transforms.condition.expression_value.title'](),
       )
     : props.title;
 
@@ -92,9 +93,11 @@ const renderBetweenEditor = (
 
 const renderStandardEditor = (allProps: QueryBuilderValueEditorProps, state: ValueEditorState): React.ReactNode => {
   const testID = allProps.testID ?? 'value-editor';
-  const placeholder = allProps.fieldData?.placeholder ?? '';
   const title = editorTitle(allProps);
   const listEditor = allProps.listsAsArrays && ['in', 'notIn'].includes(allProps.operator);
+  const placeholder =
+    allProps.fieldData?.placeholder ??
+    (listEditor ? 'value-a, value-b' : m['dashboard.providers.transforms.condition.value.placeholder']());
   if (allProps.type === 'select' || allProps.type === 'multiselect') {
     const SelectorComponent = allProps.selectorComponent ?? allProps.schema.controls.valueSelector;
     const selectorProps = {
@@ -169,7 +172,7 @@ const renderStandardEditor = (allProps: QueryBuilderValueEditorProps, state: Val
       value={listEditor ? joinWith(state.valueAsArray) : (allProps.value ?? '')}
       title={title}
       aria-label={title}
-      className={allProps.className}
+      className={cn(allProps.className, 'min-w-36 flex-1 font-mono text-xs')}
       disabled={allProps.disabled}
       onChange={(event) => allProps.handleOnChange(listEditor ? toArray(event.target.value) : event.target.value)}
       {...allProps.extraProps}
@@ -190,7 +193,7 @@ export const QueryBuilderValueEditor: React.FC<QueryBuilderValueEditorProps> = (
     const regexLabel = m['dashboard.providers.transforms.condition.regex.source']();
     const optionsLabel = m['dashboard.providers.transforms.condition.regex.flags']();
     return (
-      <span data-testid={testID} className="inline-flex min-w-0 items-center gap-2" title={allProps.title}>
+      <span data-testid={testID} className="inline-flex min-w-52 flex-[1.25] items-center gap-2" title={allProps.title}>
         <span className="min-w-40 flex-1">
           <Label htmlFor={regexId} className="sr-only">
             {regexLabel}
@@ -200,12 +203,14 @@ export const QueryBuilderValueEditor: React.FC<QueryBuilderValueEditorProps> = (
             data-testid={`${testID}-regex`}
             value={regex.regex}
             disabled={allProps.disabled}
+            placeholder="^o4-"
+            className="min-w-28 flex-1 font-mono text-xs"
             title={regexLabel}
             aria-label={regexLabel}
             onChange={(event) => allProps.handleOnChange({ ...regex, regex: event.target.value })}
           />
         </span>
-        <span className="w-24">
+        <span className="w-16">
           <Label htmlFor={optionsId} className="sr-only">
             {optionsLabel}
           </Label>
@@ -214,6 +219,8 @@ export const QueryBuilderValueEditor: React.FC<QueryBuilderValueEditorProps> = (
             data-testid={`${testID}-options`}
             value={regex.options}
             disabled={allProps.disabled}
+            placeholder="i"
+            className="font-mono text-xs"
             title={optionsLabel}
             aria-label={optionsLabel}
             onChange={(event) => allProps.handleOnChange({ ...regex, options: event.target.value })}

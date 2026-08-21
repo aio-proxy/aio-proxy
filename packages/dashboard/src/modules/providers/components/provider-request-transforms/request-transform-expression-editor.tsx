@@ -4,11 +4,12 @@ import { isEqual } from 'es-toolkit/predicate';
 import { useEffect, useRef, useState } from 'react';
 import { useQueryBuilder, type DefaultRuleGroupType } from 'react-querybuilder';
 
-import { parseRequestTransformStages, serializeRequestTransformStages } from '../../lib/request-transforms';
 import {
-  getLocalizedRequestTransformFunctionMeta,
-  getRequestTransformFields,
-} from './request-transform-condition-metadata';
+  parseRequestTransformStages,
+  requestTransformFunctionMeta,
+  serializeRequestTransformStages,
+} from '../../lib/request-transforms';
+import { getRequestTransformExpressionFields } from './request-transform-condition-metadata';
 
 const emptyQuery: DefaultRuleGroupType = { combinator: 'and', rules: [] };
 const ignoreQueryChange = () => undefined;
@@ -44,7 +45,7 @@ export const RequestTransformExpressionEditor: React.FC<RequestTransformExpressi
   const [draft, setDraft] = useState(expression);
   const expectedExpression = useRef(expression);
   const { schema } = useQueryBuilder({
-    fields: getRequestTransformFields(),
+    fields: getRequestTransformExpressionFields(),
     query: emptyQuery,
     onQueryChange: ignoreQueryChange,
     enableMountQueryChange: false,
@@ -69,7 +70,7 @@ export const RequestTransformExpressionEditor: React.FC<RequestTransformExpressi
         expectedExpression.current = nextExpression;
         onChange(nextExpression);
       }}
-      meta={getLocalizedRequestTransformFunctionMeta()}
+      meta={requestTransformFunctionMeta}
       schema={schema}
       testID="transform-set-expression"
     />

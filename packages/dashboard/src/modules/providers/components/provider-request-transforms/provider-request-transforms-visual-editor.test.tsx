@@ -6,6 +6,7 @@ import { expect, rs, test } from '@rstest/core';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { useEffect, useState } from 'react';
 
+import { requestTransformFunctionMeta } from '../../lib/request-transforms';
 import { ProviderRequestTransformsEditor } from './provider-request-transforms-editor';
 
 rs.mock('@/components/json-editor/json-schema-registry', () => ({
@@ -105,6 +106,23 @@ const latestValue = (onChange: ReturnType<typeof rs.fn>) =>
 const ruleCard = (index: number) => screen.getByTestId(`request-transform-rule-${index}`);
 const stageCard = (index: number) => within(ruleCard(0)).getByTestId(`request-transform-stage-${index}`);
 
+// Read from the messages so a copy change cannot turn these field-decoding assertions red.
+const currentBodyField = m['dashboard.providers.transforms.condition.field.current_body']();
+const originalBodyField = m['dashboard.providers.transforms.condition.field.original_body']();
+
+// Value controls are named `<rule name> <label>`; the harness rules are unnamed, so the prefix is `Rule 1`.
+const scopedValueLabel = (label: string) =>
+  m['dashboard.providers.transforms.value.scoped_label']({
+    name: m['dashboard.providers.transforms.rule.label']({ index: 1 }),
+    label,
+  });
+
+const argumentPathLabel = (...indexes: readonly number[]) =>
+  [
+    ...indexes.map((index) => m['dashboard.providers.transforms.condition.argument.label']({ index })),
+    m['dashboard.providers.transforms.condition.field.title'](),
+  ].join(' → ');
+
 test('labels unnamed rules by index and renders Add rule after the rule list', () => {
   render(
     <RequestTransformsHarness
@@ -189,7 +207,7 @@ test('shows and clears an accessible error for an invalid number literal', async
   );
 
   await selectOption(within(stageCard(0)).getByTestId('request-transform-static-type'), /^(Number|数字)$/u);
-  const numberInput = within(stageCard(0)).getByRole('spinbutton', { name: /Value to set|设置值/u });
+  const numberInput = within(stageCard(0)).getByRole('textbox', { name: /Value to set|设置值/u });
   fireEvent.change(numberInput, { target: { value: '' } });
 
   const error = within(stageCard(0)).getByRole('alert');
@@ -216,7 +234,9 @@ test('offers booleans as a true/false select rather than a checkbox', async () =
   );
 
   // By accessible name, not testid: the type select's own label pairing has to keep working.
-  const typeSelect = within(stageCard(0)).getByRole('combobox', { name: /^(Value type|值类型)$/u });
+  const typeSelect = within(stageCard(0)).getByRole('combobox', {
+    name: scopedValueLabel(m['dashboard.providers.transforms.value.type']()),
+  });
   await selectOption(typeSelect, /^(Boolean|布尔值)$/u);
   const booleanControl = within(stageCard(0)).getByRole('combobox', { name: /Value to set|设置值/u });
   expect(booleanControl).toHaveAttribute('data-testid', 'request-transform-static-boolean');
@@ -352,10 +372,7 @@ test('edits ordered Set and Remove actions losslessly across Visual and JSON mod
   );
   await selectOption(within(stageCard(0)).getByTestId('transform-set-expression-kind'), /^(Function|函数)$/u);
   await selectOption(within(stageCard(0)).getByTestId('transform-set-expression-fn'), /^(CONCAT|Concatenate|拼接)$/u);
-  await selectOption(
-    within(stageCard(0)).getByTestId('transform-set-expression-arg0-field-kind'),
-    /Current body field|当前请求体字段/u,
-  );
+  await selectOption(within(stageCard(0)).getByTestId('transform-set-expression-arg0-field-kind'), currentBodyField);
   fireEvent.change(within(stageCard(0)).getByTestId('transform-set-expression-arg0-field-suffix'), {
     target: { value: 'name' },
   });
@@ -366,7 +383,7 @@ test('edits ordered Set and Remove actions losslessly across Visual and JSON mod
   );
   await selectOption(
     within(stageCard(0)).getByTestId('transform-set-expression-arg1-arg0-field-kind'),
-    /Original body field|原始请求体字段/u,
+    originalBodyField,
   );
   fireEvent.change(within(stageCard(0)).getByTestId('transform-set-expression-arg1-arg0-field-suffix'), {
     target: { value: 'suffix' },
@@ -440,9 +457,7 @@ test('seeds a refused computed stage with an editable body field', async () => {
   await selectOption(within(stageCard(0)).getByTestId('request-transform-value-mode'), /^(Computed|计算)$/u);
 
   expect(within(stageCard(0)).getByTestId('transform-set-expression-field-suffix')).toHaveValue('value');
-  expect(within(stageCard(0)).getByTestId('transform-set-expression-field-kind')).toHaveTextContent(
-    /Current body field|当前请求体字段/u,
-  );
+  expect(within(stageCard(0)).getByTestId('transform-set-expression-field-kind')).toHaveTextContent(currentBodyField);
   expect(onChange).not.toHaveBeenCalled();
 });
 
@@ -460,10 +475,58 @@ test('names every nested expression argument by its argument path', () => {
   ] satisfies readonly ProviderRequestTransformRule[];
   render(<RequestTransformsHarness initialValue={nestedValue} onChange={rs.fn()} onValidityChange={rs.fn()} />);
 
-  const outer = screen.getByRole('combobox', { name: /^(Argument 1 → Field|参数 1 → 字段)$/u });
-  const inner = screen.getByRole('combobox', { name: /^(Argument 2 → Argument 1 → Field|参数 2 → 参数 1 → 字段)$/u });
+  const outer = screen.getByRole('combobox', { name: argumentPathLabel(1) });
+  const inner = screen.getByRole('combobox', { name: argumentPathLabel(2, 1) });
   expect(outer).toHaveAttribute('data-testid', 'transform-set-expression-arg0-field-kind');
   expect(inner).toHaveAttribute('data-testid', 'transform-set-expression-arg1-arg0-field-kind');
+});
+
+test('prints the same function label in the expression preview and the function selector', () => {
+  const computedValue = [
+    { update: [{ $set: { 'request.body.value': { $concat: ['$request.body.a', 'b'] } } }] },
+  ] satisfies readonly ProviderRequestTransformRule[];
+  render(<RequestTransformsHarness initialValue={computedValue} onChange={rs.fn()} onValidityChange={rs.fn()} />);
+
+  // One source for both: the registry label. A localized copy of it would drift from the preview.
+  const label = requestTransformFunctionMeta.concat.label;
+  expect(within(stageCard(0)).getByTestId('transform-set-expression-fn')).toHaveTextContent(label);
+  expect(
+    within(stageCard(0)).getByLabelText(
+      m['dashboard.providers.transforms.value.preview_label']({
+        name: m['dashboard.providers.transforms.rule.label']({ index: 1 }),
+      }),
+    ),
+  ).toHaveTextContent(`${label}(request.body.a, "b")`);
+});
+
+test('prefixes each value control with the rule name exactly once', async () => {
+  render(
+    <RequestTransformsHarness
+      initialValue={[{ update: [{ $set: { 'request.body.value': 'seed' } }] }]}
+      onChange={rs.fn()}
+      onValidityChange={rs.fn()}
+    />,
+  );
+
+  // Exact accessible names: a missing prefix and a doubled one both fail here.
+  expect(within(stageCard(0)).getByTestId('request-transform-value-mode')).toHaveAccessibleName(
+    scopedValueLabel(m['dashboard.providers.transforms.value.mode']()),
+  );
+  expect(within(stageCard(0)).getByTestId('request-transform-static-type')).toHaveAccessibleName(
+    scopedValueLabel(m['dashboard.providers.transforms.value.type']()),
+  );
+  expect(
+    within(stageCard(0)).getByLabelText(scopedValueLabel(m['dashboard.providers.transforms.value.static_label']())),
+  ).toHaveValue('seed');
+
+  await selectOption(within(stageCard(0)).getByTestId('request-transform-value-mode'), /^(Computed|计算)$/u);
+  // The tree container holds the only prefix; nested controls keep their argument-path names.
+  expect(
+    within(stageCard(0)).getByLabelText(scopedValueLabel(m['dashboard.providers.transforms.value.computed_label']())),
+  ).toBeTruthy();
+  expect(within(stageCard(0)).getByTestId('transform-set-expression-field-kind')).toHaveAccessibleName(
+    m['dashboard.providers.transforms.condition.field.title'](),
+  );
 });
 
 test('contains a discarded JSON draft inside the drawer instead of the form', async () => {
@@ -515,10 +578,7 @@ test('retains incomplete computed fields and blocks switching modes until the ex
   onChange.mockClear();
   onValidityChange.mockClear();
 
-  await selectOption(
-    within(stageCard(0)).getByTestId('transform-set-expression-field-kind'),
-    /Current body field|当前请求体字段/u,
-  );
+  await selectOption(within(stageCard(0)).getByTestId('transform-set-expression-field-kind'), currentBodyField);
   const suffix = within(stageCard(0)).getByTestId('transform-set-expression-field-suffix');
   expect(suffix).toHaveValue('');
   await waitFor(() => expect(onValidityChange).toHaveBeenLastCalledWith(false));

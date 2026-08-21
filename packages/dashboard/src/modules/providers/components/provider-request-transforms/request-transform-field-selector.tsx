@@ -80,7 +80,7 @@ export const RequestTransformFieldSelector: React.FC<RequestTransformFieldSelect
     ));
 
   return (
-    <span data-testid={testID} className="inline-flex min-w-0 items-center gap-2">
+    <span data-testid={testID} className="inline-flex min-w-0 flex-1 items-center gap-2">
       <Label htmlFor={kindId} className="sr-only">
         {title}
       </Label>
@@ -110,7 +110,7 @@ export const RequestTransformFieldSelector: React.FC<RequestTransformFieldSelect
         </SelectContent>
       </Select>
       {dynamic ? (
-        <span className="min-w-36 flex-1">
+        <span className="min-w-32 flex-1">
           <Label htmlFor={suffixId} className="sr-only">
             {suffixTitle}
           </Label>
@@ -119,6 +119,8 @@ export const RequestTransformFieldSelector: React.FC<RequestTransformFieldSelect
             data-testid={`${testID}-suffix`}
             value={suffix}
             disabled={disabled}
+            placeholder={kind.endsWith('header:') ? 'x-header-name' : 'path.to.value'}
+            className="font-mono text-xs"
             title={suffixTitle}
             aria-label={suffixTitle}
             onChange={(event) => {

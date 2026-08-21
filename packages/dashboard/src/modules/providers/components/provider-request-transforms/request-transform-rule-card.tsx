@@ -154,6 +154,7 @@ export const RequestTransformRuleCard: React.FC<RequestTransformRuleCardProps> =
       )}
       <RequestTransformStageList
         value={value.update}
+        ruleName={value.name ?? m['dashboard.providers.transforms.rule.label']({ index: ruleIndex })}
         structuralDisabled={structureBlocked}
         {...(firstPathInputRef === undefined ? {} : { firstPathInputRef })}
         onChange={(update) => commitRule({ ...value, update: [...update] }, setStagesValid)}

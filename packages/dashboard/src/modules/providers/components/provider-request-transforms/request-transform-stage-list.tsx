@@ -13,6 +13,7 @@ import { RequestTransformStageCard } from './request-transform-stage-card';
 
 export interface RequestTransformStageListProps {
   readonly value: readonly ProviderRequestTransformStage[];
+  readonly ruleName: string;
   readonly firstPathInputRef?: RefCallback<HTMLInputElement>;
   readonly structuralDisabled: boolean;
   readonly onChange: (value: readonly ProviderRequestTransformStage[]) => void;
@@ -21,6 +22,7 @@ export interface RequestTransformStageListProps {
 
 export const RequestTransformStageList: React.FC<RequestTransformStageListProps> = ({
   value,
+  ruleName,
   firstPathInputRef,
   structuralDisabled,
   onChange,
@@ -50,6 +52,7 @@ export const RequestTransformStageList: React.FC<RequestTransformStageListProps>
           canMoveDown={index < stages.length - 1}
           canRemove={stages.length > 1}
           structuralDisabled={structureBlocked}
+          ruleName={ruleName}
           {...(index === 0 && firstPathInputRef !== undefined ? { pathInputRef: firstPathInputRef } : {})}
           onChange={(nextStage) => emit(stages.map((item, itemIndex) => (itemIndex === index ? nextStage : item)))}
           onValidityChange={(valid) =>

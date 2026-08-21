@@ -15,6 +15,7 @@ import {
 
 export interface RequestTransformStaticValueEditorProps {
   readonly value: JsonValue;
+  readonly ruleName: string;
   readonly onChange: (value: JsonValue) => void;
   readonly onValidityChange: (valid: boolean) => void;
 }
@@ -53,6 +54,7 @@ const staticTypeLabel = (type: StaticValueType): string => {
 
 export const RequestTransformStaticValueEditor: React.FC<RequestTransformStaticValueEditorProps> = ({
   value,
+  ruleName,
   onChange,
   onValidityChange,
 }) => {
@@ -98,7 +100,10 @@ export const RequestTransformStaticValueEditor: React.FC<RequestTransformStaticV
         {(field) => (
           <div>
             <Label htmlFor={typeId} className="sr-only">
-              {m['dashboard.providers.transforms.value.type']()}
+              {m['dashboard.providers.transforms.value.scoped_label']({
+                name: ruleName,
+                label: m['dashboard.providers.transforms.value.type'](),
+              })}
             </Label>
             <Select
               value={field.state.value}
@@ -136,6 +141,7 @@ export const RequestTransformStaticValueEditor: React.FC<RequestTransformStaticV
                 return (
                   <RequestTransformStaticValueInput
                     type={type}
+                    ruleName={ruleName}
                     draft={field.state.value}
                     valueId={valueId}
                     errorId={errorId}

@@ -3,7 +3,6 @@ import { getCompatContextProvider } from 'react-querybuilder';
 
 import { QueryBuilderActionElement } from './query-builder-action-element';
 import { QueryBuilderNotToggle } from './query-builder-not-toggle';
-import { QueryBuilderShiftActions } from './query-builder-shift-actions';
 import { QueryBuilderValueEditor } from './query-builder-value-editor';
 import { QueryBuilderValueSelector } from './query-builder-value-selector';
 
@@ -11,7 +10,6 @@ import { QueryBuilderValueSelector } from './query-builder-value-selector';
 const queryBuilderShadcnControlElements: ControlElementsProp<FullField, string> = {
   actionElement: QueryBuilderActionElement,
   notToggle: QueryBuilderNotToggle,
-  shiftActions: QueryBuilderShiftActions,
   valueEditor: QueryBuilderValueEditor,
   valueSelector: QueryBuilderValueSelector,
 };

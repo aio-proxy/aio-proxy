@@ -36,9 +36,11 @@ export const RequestTransformJsonDrawerContent: React.FC<RequestTransformJsonDra
     <DrawerContent className="p-0 sm:w-full sm:max-w-[680px]" data-testid="request-transform-json-drawer">
       <DrawerHeader>
         <DrawerTitle>{title}</DrawerTitle>
-        <DrawerDescription>{m['dashboard.providers.transforms.value.json_description']()}</DrawerDescription>
+        <DrawerDescription>
+          {m['dashboard.providers.transforms.value.json_description']({ type: typeLabel })}
+        </DrawerDescription>
       </DrawerHeader>
-      <div className="min-h-0 flex-1 overflow-auto p-4">
+      <div className="min-h-0 flex-1 p-4">
         <Textarea
           value={draft}
           rows={22}

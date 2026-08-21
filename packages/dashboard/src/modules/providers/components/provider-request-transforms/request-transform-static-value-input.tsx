@@ -10,6 +10,7 @@ export type InvalidStaticValueType = Extract<StaticValueType, 'number' | 'object
 
 interface RequestTransformStaticValueInputProps {
   readonly type: Exclude<StaticValueType, 'null'>;
+  readonly ruleName: string;
   readonly draft: string;
   readonly valueId: string;
   readonly errorId: string;
@@ -23,8 +24,16 @@ const validationMessage = (error: InvalidStaticValueType): string => {
   return m['dashboard.providers.transforms.value.invalid_array']();
 };
 
+// The composite control names itself through `labelId`, so scoping this label covers it too.
+const scopedStaticLabel = (ruleName: string): string =>
+  m['dashboard.providers.transforms.value.scoped_label']({
+    name: ruleName,
+    label: m['dashboard.providers.transforms.value.static_label'](),
+  });
+
 export const RequestTransformStaticValueInput: React.FC<RequestTransformStaticValueInputProps> = ({
   type,
+  ruleName,
   draft,
   valueId,
   errorId,
@@ -36,7 +45,7 @@ export const RequestTransformStaticValueInput: React.FC<RequestTransformStaticVa
     return (
       <>
         <Label htmlFor={valueId} className="sr-only">
-          {m['dashboard.providers.transforms.value.static_label']()}
+          {scopedStaticLabel(ruleName)}
         </Label>
         <Select value={draft} onValueChange={(next) => next !== null && onChange(next)}>
           <SelectTrigger id={valueId} data-testid="request-transform-static-boolean" className="w-full">
@@ -62,7 +71,7 @@ export const RequestTransformStaticValueInput: React.FC<RequestTransformStaticVa
   return (
     <div className="min-w-0 space-y-2">
       <Label id={labelId} htmlFor={valueId} className="sr-only">
-        {m['dashboard.providers.transforms.value.static_label']()}
+        {scopedStaticLabel(ruleName)}
       </Label>
       {type === 'object' || type === 'array' ? (
         <RequestTransformCompositeValueControl
@@ -77,7 +86,6 @@ export const RequestTransformStaticValueInput: React.FC<RequestTransformStaticVa
       ) : (
         <Input
           {...inputProps}
-          type={type === 'number' ? 'number' : 'text'}
           placeholder={type === 'text' ? m['dashboard.providers.transforms.value.placeholder_text']() : '0'}
           className="font-mono text-xs"
         />

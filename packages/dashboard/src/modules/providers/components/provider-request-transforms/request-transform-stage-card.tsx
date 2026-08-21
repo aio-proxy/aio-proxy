@@ -23,6 +23,7 @@ export interface RequestTransformStageCardProps {
   readonly canMoveDown: boolean;
   readonly canRemove: boolean;
   readonly structuralDisabled: boolean;
+  readonly ruleName: string;
   readonly pathInputRef?: RefCallback<HTMLInputElement>;
   readonly onChange: (value: RequestTransformStageDraft) => void;
   readonly onValidityChange: (valid: boolean) => void;
@@ -38,6 +39,7 @@ export const RequestTransformStageCard: React.FC<RequestTransformStageCardProps>
   canMoveDown,
   canRemove,
   structuralDisabled,
+  ruleName,
   pathInputRef,
   onChange,
   onValidityChange,
@@ -140,6 +142,7 @@ export const RequestTransformStageCard: React.FC<RequestTransformStageCardProps>
         form={form}
         acceptedStage={value}
         valueModeId={valueModeId}
+        ruleName={ruleName}
         onCommitControls={commitControls}
         onCommitContent={commitContent}
         onContentValidityChange={setContentValid}

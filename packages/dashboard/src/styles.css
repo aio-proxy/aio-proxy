@@ -1,3 +1,77 @@
 @import '@aio-proxy/ui/styles.css';
 
 @source "./";
+
+@layer components {
+  /* The expression tree is a nested grid: kind selector in column 1, the operand in column 2, and each
+     nested argument indented under its function with a connector line and an "argument N" marker.
+     CSS `content` cannot read i18n messages, so the marker text stays a literal here. */
+  .request-transform-expression-tree {
+    width: min(100%, 48rem);
+    min-width: 32rem;
+  }
+
+  .request-transform-expression-tree .expr-node {
+    display: grid;
+    width: 100%;
+    min-width: 0;
+    grid-template-columns: minmax(6rem, 7rem) minmax(0, 1fr);
+    align-items: start;
+    gap: 0.5rem;
+  }
+
+  .request-transform-expression-tree .expr-node > .expr-kind {
+    grid-column: 1;
+    width: 100%;
+  }
+
+  .request-transform-expression-tree .expr-node > [data-testid$='-field'],
+  .request-transform-expression-tree .expr-node > .expr-value,
+  .request-transform-expression-tree .expr-node > .expr-parameter {
+    grid-column: 2;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .request-transform-expression-tree .expr-node > .expr-func {
+    display: grid;
+    min-width: 0;
+    grid-column: 2;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.5rem;
+    counter-reset: expression-argument;
+  }
+
+  .request-transform-expression-tree .expr-node > .expr-func > .expr-fn {
+    width: 100%;
+  }
+
+  .request-transform-expression-tree .expr-node > .expr-func > .expr-node {
+    position: relative;
+    width: calc(100% - 1rem);
+    margin-left: 1rem;
+    padding-left: 4rem;
+    border-left: 1px solid var(--border);
+    counter-increment: expression-argument;
+  }
+
+  .request-transform-expression-tree .expr-node > .expr-func > .expr-node::before {
+    position: absolute;
+    top: 0.5rem;
+    left: 0.75rem;
+    color: var(--muted-foreground);
+    font-size: 0.75rem;
+    line-height: 1rem;
+    white-space: nowrap;
+    content: '参数 ' counter(expression-argument);
+  }
+
+  .request-transform-expression-tree .expr-node > .expr-func > .expr-node::after {
+    position: absolute;
+    top: 1rem;
+    left: 0;
+    width: 0.5rem;
+    border-top: 1px solid var(--border);
+    content: '';
+  }
+}

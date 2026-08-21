@@ -1,5 +1,5 @@
 import { m } from '@aio-proxy/i18n';
-import type { ExpressionFunctionMetaRegistry, ExpressionNode } from '@react-querybuilder/expr';
+import type { ExpressionNode } from '@react-querybuilder/expr';
 import type { TranslationsExpr } from '@react-querybuilder/expr/ui';
 import type {
   Combinator,
@@ -11,15 +11,18 @@ import type {
   ValueSources,
 } from 'react-querybuilder';
 
-import { requestTransformFunctionMeta } from '../../lib/request-transforms';
-
 const comparisonOperators = new Set(['=', '!=', '>', '>=', '<', '<=']);
 const headerOperatorNames = new Set(['=', '!=', 'exists', 'doesNotExist', 'pattern', 'regex']);
 
-export const getRequestTransformFields = (): Field[] => [
+// `provider.*` is constant within one provider's own rules, so it is a meaningless condition; it only
+// earns its place inside a computed value, where it can be read as an operand.
+const providerFields = (): Field[] => [
   { name: 'provider.id', label: 'Provider ID' },
   { name: 'provider.kind', label: m['dashboard.providers.transforms.condition.field.provider_kind']() },
   { name: 'provider.protocol', label: m['dashboard.providers.transforms.condition.field.provider_protocol']() },
+];
+
+export const getRequestTransformConditionFields = (): Field[] => [
   { name: 'request.model', label: m['dashboard.providers.transforms.condition.field.current_model']() },
   { name: 'request.requestedModel', label: m['dashboard.providers.transforms.condition.field.requested_model']() },
   {
@@ -36,6 +39,11 @@ export const getRequestTransformFields = (): Field[] => [
   { name: 'original.body:', label: m['dashboard.providers.transforms.condition.field.original_body']() },
   { name: 'request.header:', label: m['dashboard.providers.transforms.condition.field.current_header']() },
   { name: 'original.header:', label: m['dashboard.providers.transforms.condition.field.original_header']() },
+];
+
+export const getRequestTransformExpressionFields = (): Field[] => [
+  ...providerFields(),
+  ...getRequestTransformConditionFields(),
 ];
 
 export const getRequestTransformOperators = (): Operator[] => [
@@ -78,20 +86,12 @@ export const getRequestTransformTranslations = (): Partial<Translations> => ({
     title: m['dashboard.providers.transforms.condition.action.add_group'](),
   },
   removeRule: {
-    label: m['dashboard.providers.transforms.condition.action.remove_condition'](),
+    label: m['dashboard.providers.transforms.condition.action.remove'](),
     title: m['dashboard.providers.transforms.condition.action.remove_condition'](),
   },
   removeGroup: {
     label: m['dashboard.providers.transforms.condition.action.remove_group'](),
     title: m['dashboard.providers.transforms.condition.action.remove_group'](),
-  },
-  shiftActionUp: {
-    label: m['dashboard.providers.transforms.condition.action.move_up'](),
-    title: m['dashboard.providers.transforms.condition.action.move_up'](),
-  },
-  shiftActionDown: {
-    label: m['dashboard.providers.transforms.condition.action.move_down'](),
-    title: m['dashboard.providers.transforms.condition.action.move_down'](),
   },
 });
 
@@ -118,55 +118,6 @@ export const getRequestTransformExpressionControlLabel = (testID: string | undef
   );
   return [...argumentPath, label].join(' → ');
 };
-
-export const getLocalizedRequestTransformFunctionMeta = (): ExpressionFunctionMetaRegistry => ({
-  ...requestTransformFunctionMeta,
-  add: { ...requestTransformFunctionMeta.add, label: m['dashboard.providers.transforms.condition.function.add']() },
-  subtract: {
-    ...requestTransformFunctionMeta.subtract,
-    label: m['dashboard.providers.transforms.condition.function.subtract'](),
-  },
-  multiply: {
-    ...requestTransformFunctionMeta.multiply,
-    label: m['dashboard.providers.transforms.condition.function.multiply'](),
-  },
-  divide: {
-    ...requestTransformFunctionMeta.divide,
-    label: m['dashboard.providers.transforms.condition.function.divide'](),
-  },
-  min: { ...requestTransformFunctionMeta.min, label: m['dashboard.providers.transforms.condition.function.min']() },
-  max: { ...requestTransformFunctionMeta.max, label: m['dashboard.providers.transforms.condition.function.max']() },
-  abs: { ...requestTransformFunctionMeta.abs, label: m['dashboard.providers.transforms.condition.function.abs']() },
-  mod: { ...requestTransformFunctionMeta.mod, label: m['dashboard.providers.transforms.condition.function.mod']() },
-  upper: {
-    ...requestTransformFunctionMeta.upper,
-    label: m['dashboard.providers.transforms.condition.function.upper'](),
-  },
-  lower: {
-    ...requestTransformFunctionMeta.lower,
-    label: m['dashboard.providers.transforms.condition.function.lower'](),
-  },
-  concat: {
-    ...requestTransformFunctionMeta.concat,
-    label: m['dashboard.providers.transforms.condition.function.concat'](),
-  },
-  condition: {
-    ...requestTransformFunctionMeta.condition,
-    label: m['dashboard.providers.transforms.condition.function.condition'](),
-  },
-  ifNull: {
-    ...requestTransformFunctionMeta.ifNull,
-    label: m['dashboard.providers.transforms.condition.function.if_null'](),
-  },
-  concatArrays: {
-    ...requestTransformFunctionMeta.concatArrays,
-    label: m['dashboard.providers.transforms.condition.function.concat_arrays'](),
-  },
-  mergeObjects: {
-    ...requestTransformFunctionMeta.mergeObjects,
-    label: m['dashboard.providers.transforms.condition.function.merge_objects'](),
-  },
-});
 
 export const getRequestTransformOperatorsForField = (field: string, operators: Operator[]): Operator[] =>
   field.startsWith('request.header:') || field.startsWith('original.header:')
