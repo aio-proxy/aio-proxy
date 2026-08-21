@@ -5,31 +5,14 @@ import { Label } from '@aio-proxy/ui/components/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@aio-proxy/ui/components/select';
 import type { AnyFieldApi } from '@tanstack/react-form';
 
-type ProxyMode = 'inherit' | 'disabled' | 'url';
+import { proxyModeLabel, proxyModeOf, type ProxyMode } from '../../lib/advanced-summary';
 
 interface ProviderProxyFieldProps {
   readonly field: AnyFieldApi;
 }
 
-const modeLabel = (mode: ProxyMode) => {
-  switch (mode) {
-    case 'inherit':
-      return m['dashboard.providers.form.proxy_inherit']();
-    case 'disabled':
-      return m['dashboard.providers.form.proxy_disabled']();
-    case 'url':
-      return m['dashboard.providers.form.proxy_url']();
-  }
-};
-
-const selectedMode = (value: unknown): ProxyMode => {
-  if (value === false) return 'disabled';
-  if (typeof value === 'string') return 'url';
-  return 'inherit';
-};
-
 export const ProviderProxyField: React.FC<ProviderProxyFieldProps> = ({ field }) => {
-  const proxyMode = selectedMode(field.state.value);
+  const proxyMode = proxyModeOf(field.state.value);
   const modeId = `${field.name}-mode`;
   const urlId = `${field.name}-url`;
 
@@ -45,7 +28,7 @@ export const ProviderProxyField: React.FC<ProviderProxyFieldProps> = ({ field })
         <Label htmlFor={modeId}>{m['dashboard.providers.form.label_proxy_mode']()}</Label>
         <Select value={proxyMode} onValueChange={(value) => changeMode(value as ProxyMode)}>
           <SelectTrigger id={modeId} className="w-full">
-            <SelectValue>{(value: ProxyMode | null) => modeLabel(value ?? proxyMode)}</SelectValue>
+            <SelectValue>{() => proxyModeLabel(field.state.value)}</SelectValue>
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="inherit">{m['dashboard.providers.form.proxy_inherit']()}</SelectItem>

@@ -1,5 +1,6 @@
 import { m } from '@aio-proxy/i18n';
 
+import { headerCountText } from '../advanced-summary';
 import { PROVIDER_AI_SDK_DEFAULT_PACKAGE } from '../constants';
 import { exposedModels } from '../exposed-models';
 import type { SectionStatus, SectionStatusInput } from './section-status';
@@ -109,11 +110,6 @@ export const routingHint = (input: SectionStatusInput): string => {
   return m['dashboard.providers.editor.hint_routing_weight']({ weight: input.weight });
 };
 
-const headerText = (count: number): string =>
-  count === 1
-    ? m['dashboard.providers.editor.hint_advanced_header']({ count })
-    : m['dashboard.providers.editor.hint_advanced_headers']({ count });
-
 const transformText = (count: number): string =>
   count === 1
     ? m['dashboard.providers.editor.hint_advanced_transform']({ count })
@@ -126,7 +122,7 @@ export const advancedHint = (input: SectionStatusInput, status: SectionStatus): 
   const headers = input.headerCount ?? 0;
   const transforms = input.transformCount ?? 0;
   const parts = [
-    headers > 0 ? headerText(headers) : '',
+    headers > 0 ? headerCountText(headers) : '',
     input.proxyCustom === true ? m['dashboard.providers.editor.hint_advanced_proxy']() : '',
     transforms > 0 ? transformText(transforms) : '',
   ].filter((part) => part !== '');
