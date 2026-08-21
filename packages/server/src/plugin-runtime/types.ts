@@ -5,7 +5,13 @@ import type {
   PluginRepository,
   StoredCatalog,
 } from '@aio-proxy/core';
-import type { CredentialPort, ModelCatalog, OAuthAdapter, RuntimeFetch } from '@aio-proxy/plugin-sdk';
+import type {
+  CredentialPort,
+  DefaultAliasSuggestions,
+  ModelCatalog,
+  OAuthAdapter,
+  RuntimeFetch,
+} from '@aio-proxy/plugin-sdk';
 import type { DashboardProviderSummary, OAuthProvider, ProviderState } from '@aio-proxy/types';
 
 import type { RuntimeProviderInstance } from '../runtime';
@@ -33,10 +39,14 @@ export class PluginRawTransportError extends Error {
 
 export type CatalogJobDescriptor = {
   readonly providerId: string;
+  readonly plugin: string;
+  readonly capability: string;
+  readonly accountRuntimeRevision: number;
   readonly policy: OAuthAdapter['catalog']['policy'];
   readonly discover: (signal: AbortSignal) => Promise<ModelCatalog>;
   readonly stored: StoredCatalog | null;
   readonly unavailableOccurredAt?: number;
+  readonly defaultAliases?: (catalog: ModelCatalog) => DefaultAliasSuggestions;
 };
 
 export type PluginRuntimeCacheEntry = {

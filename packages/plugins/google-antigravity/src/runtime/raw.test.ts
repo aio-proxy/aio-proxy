@@ -24,6 +24,19 @@ describe('Gemini raw resolver', () => {
           return Response.json({ response: { candidates: [{ content: { parts: [{ text: 'ok' }] } }] } });
         },
       }),
+      {
+        language: [
+          {
+            id: 'gemini-3-flash-agent',
+            metadata: { antigravity: { apiProvider: 'gemini', thinkingBudget: 10_000 } },
+          },
+        ],
+        image: [],
+        embedding: [],
+        speech: [],
+        transcription: [],
+        reranking: [],
+      },
     );
     const transport = resolve(resolver, 'gemini');
     const image = { inlineData: { mimeType: 'image/png', data: 'image-base64-marker' } };

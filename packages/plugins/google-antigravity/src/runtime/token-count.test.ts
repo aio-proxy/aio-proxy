@@ -8,23 +8,77 @@ import { wireSessionId } from './envelope';
 import { createAntigravityTokenCount } from './token-count';
 import { AntigravityTransport } from './transport';
 
-test('uses the Google codec and count endpoint for the CCA token count', async () => {
+test('maps OpenAI reasoning through the catalog thinking binder on count', async () => {
   const seen: Request[] = [];
+  const catalog = {
+    language: [
+      {
+        id: 'claude-sonnet-4-6',
+        metadata: { antigravity: { apiProvider: 'anthropic' } },
+      },
+    ],
+    image: [],
+    embedding: [],
+    speech: [],
+    transcription: [],
+    reranking: [],
+  };
   const transport = new AntigravityTransport({
     credentials: credentialSource(),
+    descriptorById: new Map(catalog.language.map((descriptor) => [descriptor.id, descriptor])),
+    familyByWireId: () => undefined,
+    fetch: async (input, init) => {
+      seen.push(new Request(input, init));
+      return Response.json({ totalTokens: 9 });
+    },
+  });
+  const counter = createAntigravityTokenCount(transport, undefined, catalog);
+
+  const result = await counter.countTokens(
+    countInput({
+      invocation: {
+        messages: [{ role: 'user', content: 'hello' }],
+        settings: { reasoning: 'high' },
+      },
+    }),
+  );
+
+  expect(result).toEqual({ inputTokens: 9 });
+  const envelope = await seen[0]?.clone().json();
+  expect(envelope).toMatchObject({
+    request: {
+      generationConfig: { thinkingConfig: { thinkingBudget: 16_384, includeThoughts: true } },
+    },
+  });
+});
+
+test('uses the Google codec and count endpoint for the CCA token count', async () => {
+  const seen: Request[] = [];
+  const catalog = {
+    language: [{ id: 'claude-sonnet-4-6', metadata: { antigravity: { apiProvider: 'anthropic' } } }],
+    image: [],
+    embedding: [],
+    speech: [],
+    transcription: [],
+    reranking: [],
+  };
+  const transport = new AntigravityTransport({
+    credentials: credentialSource(),
+    descriptorById: new Map(catalog.language.map((descriptor) => [descriptor.id, descriptor])),
+    familyByWireId: () => undefined,
     fetch: async (input, init) => {
       seen.push(new Request(input, init));
       return Response.json({ totalTokens: 17 });
     },
   });
-  const counter = createAntigravityTokenCount(transport, () => ({ antigravity: { supportsWebSearch: true } }));
+  const counter = createAntigravityTokenCount(transport, () => ({ antigravity: { supportsWebSearch: true } }), catalog);
 
   const result = await counter.countTokens(
     countInput({
       invocation: {
         messages: [{ role: 'user', content: 'what is the weather?' }],
         settings: {
-          providerOptions: { aioProxy: { thinking: { mode: 'fixed', budgetTokens: 512 } } },
+          providerOptions: { aioProxy: { thinking: { mode: 'fixed', budgetTokens: 2048 } } },
         },
         tools: {
           weather: {
@@ -48,7 +102,7 @@ test('uses the Google codec and count endpoint for the CCA token count', async (
     request: {
       sessionId: wireSessionId(logicalContext().session.key),
       contents: [{ role: 'user', parts: [{ text: 'what is the weather?' }] }],
-      generationConfig: { thinkingConfig: { thinkingBudget: 512, includeThoughts: true } },
+      generationConfig: { thinkingConfig: { thinkingBudget: 2048, includeThoughts: true } },
       systemInstruction: {
         parts: [{ text: 'Use Google Search when current or external information would improve the answer.' }],
       },

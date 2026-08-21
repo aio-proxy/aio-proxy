@@ -79,7 +79,7 @@ test('catalog preserve keeps an existing catalog while recording its diagnostic'
       }),
     });
     repository.completeAccountOperation(pending.operationId);
-    expect(repository.readCatalog('provider-1')).toEqual({ catalog: catalog(), refreshedAt: 100 });
+    expect(repository.readCatalog('provider-1')).toEqual({ catalog: catalog(), refreshedAt: 100, revision: 1 });
     expect(repository.readDiagnostics('provider-1')).toContainEqual(diagnostic('CATALOG_UNAVAILABLE'));
   } finally {
     handle.close();
@@ -177,7 +177,152 @@ test('catalog refresh after a staged update makes compensation superseded withou
 
     expect(repository.compensateAccountOperation(pending.operationId)).toBe('superseded');
     expect(repository.readAccount('provider-1')).toMatchObject({ options: { generation: 2 }, revision: 2 });
-    expect(repository.readCatalog('provider-1')).toEqual({ catalog: catalog('model-3'), refreshedAt: 300 });
+    expect(repository.readCatalog('provider-1')).toEqual({
+      catalog: catalog('model-3'),
+      refreshedAt: 300,
+      revision: 3,
+    });
+  } finally {
+    handle.close();
+  }
+});
+
+function catalogSwap(
+  overrides: Partial<{
+    providerId: string;
+    catalog: ReturnType<typeof catalog>;
+    refreshedAt: number;
+    startedAt: number;
+    plugin: string;
+    capability: string;
+    accountRuntimeRevision: number;
+  }> = {},
+) {
+  return {
+    providerId: 'provider-1',
+    catalog: catalog('model-ttl'),
+    refreshedAt: 500,
+    startedAt: 400,
+    plugin: '@aio-proxy/example',
+    capability: 'oauth',
+    accountRuntimeRevision: 1,
+    ...overrides,
+  };
+}
+
+function catalogUnavailable(
+  overrides: Partial<{
+    providerId: string;
+    plugin: string;
+    capability: string;
+    accountRuntimeRevision: number;
+    diagnostic: ReturnType<typeof diagnostic>;
+  }> = {},
+) {
+  return {
+    providerId: 'provider-1',
+    plugin: '@aio-proxy/example',
+    capability: 'oauth',
+    accountRuntimeRevision: 1,
+    diagnostic: diagnostic('CATALOG_UNAVAILABLE'),
+    ...overrides,
+  };
+}
+
+test('catalog writes assign a monotonic revision starting at 1', () => {
+  const { handle, repository } = openRepository();
+  try {
+    createAccount(repository);
+    expect(repository.readCatalog('provider-1')).toEqual({ catalog: catalog(), refreshedAt: 100, revision: 1 });
+    repository.writeCatalog('provider-1', catalog('model-2'), 200);
+    expect(repository.readCatalog('provider-1')).toEqual({
+      catalog: catalog('model-2'),
+      refreshedAt: 200,
+      revision: 2,
+    });
+  } finally {
+    handle.close();
+  }
+});
+
+test('compareAndSwapCatalog rejects stale or mismatched generations without writing', () => {
+  const { handle, repository } = openRepository();
+  try {
+    createAccount(repository);
+    const stale = diagnostic('CATALOG_UNAVAILABLE', 'stale');
+    expect(repository.writeDiagnostic('provider-1', stale)).toBe(true);
+    const before = repository.readCatalog('provider-1');
+
+    expect(repository.compareAndSwapCatalog(catalogSwap({ startedAt: 100 }))).toEqual({ ok: false });
+    expect(repository.compareAndSwapCatalog(catalogSwap({ accountRuntimeRevision: 2 }))).toEqual({ ok: false });
+    expect(repository.compareAndSwapCatalog(catalogSwap({ plugin: '@aio-proxy/other' }))).toEqual({ ok: false });
+    expect(repository.compareAndSwapCatalog(catalogSwap({ capability: 'api-key' }))).toEqual({ ok: false });
+
+    const pending = repository.stageAccountOperation({
+      kind: 'update',
+      targetDigest: 'digest:pending',
+      expectedRuntimeRevision: 1,
+      account: account('provider-1', {
+        catalog: { kind: 'preserve', diagnostic: stale },
+      }),
+    });
+    expect(repository.compareAndSwapCatalog(catalogSwap())).toEqual({ ok: false });
+    expect(repository.readCatalog('provider-1')).toEqual(before);
+    expect(repository.readDiagnostics('provider-1')).toEqual([stale]);
+    repository.completeAccountOperation(pending.operationId);
+  } finally {
+    handle.close();
+  }
+});
+
+test('compareAndSwapCatalog increments revision and clears CATALOG_UNAVAILABLE', () => {
+  const { handle, repository } = openRepository();
+  try {
+    createAccount(repository);
+    expect(repository.writeDiagnostic('provider-1', diagnostic('CATALOG_UNAVAILABLE'))).toBe(true);
+
+    expect(repository.compareAndSwapCatalog(catalogSwap())).toEqual({ ok: true, revision: 2 });
+    expect(repository.readCatalog('provider-1')).toEqual({
+      catalog: catalog('model-ttl'),
+      refreshedAt: 500,
+      revision: 2,
+    });
+    expect(repository.readDiagnostics('provider-1')).toEqual([]);
+  } finally {
+    handle.close();
+  }
+});
+
+test('writeCatalogUnavailableIfCurrent writes only when the generation fence still holds', () => {
+  const { handle, repository } = openRepository();
+  try {
+    createAccount(repository);
+    const first = diagnostic('CATALOG_UNAVAILABLE', 'first');
+    expect(repository.writeCatalogUnavailableIfCurrent(catalogUnavailable({ diagnostic: first }))).toBe(true);
+    expect(repository.readDiagnostics('provider-1')).toEqual([first]);
+
+    expect(repository.writeCatalogUnavailableIfCurrent(catalogUnavailable({ accountRuntimeRevision: 2 }))).toBe(false);
+    expect(repository.writeCatalogUnavailableIfCurrent(catalogUnavailable({ plugin: '@aio-proxy/other' }))).toBe(false);
+    expect(repository.writeCatalogUnavailableIfCurrent(catalogUnavailable({ capability: 'api-key' }))).toBe(false);
+
+    const pending = repository.stageAccountOperation({
+      kind: 'update',
+      targetDigest: 'digest:pending',
+      expectedRuntimeRevision: 1,
+      account: account('provider-1', {
+        catalog: { kind: 'preserve', diagnostic: diagnostic('AUTHORIZATION_FAILED') },
+      }),
+    });
+    expect(
+      repository.writeCatalogUnavailableIfCurrent(
+        catalogUnavailable({ diagnostic: diagnostic('CATALOG_UNAVAILABLE', 'later') }),
+      ),
+    ).toBe(false);
+    expect(repository.readDiagnostics('provider-1')).toEqual([diagnostic('AUTHORIZATION_FAILED'), first]);
+    repository.completeAccountOperation(pending.operationId);
+
+    repository.deleteAccount('provider-1');
+    expect(repository.writeCatalogUnavailableIfCurrent(catalogUnavailable())).toBe(false);
   } finally {
     handle.close();
   }

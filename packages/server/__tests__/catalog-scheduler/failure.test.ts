@@ -1,8 +1,15 @@
 import { expect, test } from 'bun:test';
 
 import { CatalogScheduler } from '../../src/catalog-scheduler';
+import type { CatalogJobDescriptor } from '../../src/plugin-runtime';
 
 const repository = {
+  compareAndSwapCatalog() {
+    return { ok: true, revision: 1 };
+  },
+  writeCatalogUnavailableIfCurrent() {
+    return true;
+  },
   writeCatalog() {},
   writeDiagnostic() {
     return true;
@@ -12,13 +19,25 @@ const repository = {
   },
 };
 
+function job(overrides: Partial<CatalogJobDescriptor> & Pick<CatalogJobDescriptor, 'discover'>): CatalogJobDescriptor {
+  return {
+    providerId: 'person',
+    plugin: '@example/oauth',
+    capability: 'default',
+    accountRuntimeRevision: 1,
+    policy: { kind: 'static' },
+    stored: null,
+    ...overrides,
+  };
+}
+
 test('host deadline settles discovery even when the plugin ignores abort', async () => {
   let diagnostics = 0;
   let rebuilds = 0;
   const scheduler = new CatalogScheduler({
     repository: {
       ...repository,
-      writeDiagnostic() {
+      writeCatalogUnavailableIfCurrent() {
         diagnostics++;
         return true;
       },
@@ -35,17 +54,53 @@ test('host deadline settles discovery even when the plugin ignores abort', async
     discoveryTimeoutMs: 5,
   });
   scheduler.replaceJobs([
-    {
-      providerId: 'person',
-      policy: { kind: 'static' },
-      stored: null,
+    job({
       discover: async () => new Promise<never>(() => {}),
-    },
+    }),
   ]);
 
   await Bun.sleep(30);
   expect(diagnostics).toBe(1);
   expect(rebuilds).toBe(1);
+  scheduler.close();
+});
+
+test('a fenced unavailable write skips rebuild and still retries discovery', async () => {
+  let discoveries = 0;
+  let rebuilds = 0;
+  const scheduler = new CatalogScheduler({
+    repository: {
+      ...repository,
+      writeCatalogUnavailableIfCurrent() {
+        return false;
+      },
+    } as never,
+    diagnostics: ((code: string) => ({
+      code,
+      summary: code,
+      retryable: true,
+      occurredAt: new Date().toISOString(),
+    })) as never,
+    catalogRetryMs: 20,
+    rebuild: async () => {
+      rebuilds++;
+    },
+  });
+  scheduler.replaceJobs([
+    job({
+      discover: async () => {
+        discoveries++;
+        throw new Error('refresh failed');
+      },
+    }),
+  ]);
+
+  await Bun.sleep(10);
+  expect(discoveries).toBeGreaterThanOrEqual(1);
+  expect(rebuilds).toBe(0);
+  await Bun.sleep(50);
+  expect(discoveries).toBeGreaterThan(1);
+  expect(rebuilds).toBe(0);
   scheduler.close();
 });
 
@@ -64,10 +119,11 @@ test('a catalog that resolves after the host deadline is discarded', async () =>
   const scheduler = new CatalogScheduler({
     repository: {
       ...repository,
-      writeCatalog() {
+      compareAndSwapCatalog() {
         catalogWrites++;
+        return { ok: true, revision: 1 };
       },
-      writeDiagnostic() {
+      writeCatalogUnavailableIfCurrent() {
         diagnosticWrites++;
         resolveDiagnostic();
         return true;
@@ -84,16 +140,13 @@ test('a catalog that resolves after the host deadline is discarded', async () =>
   });
   try {
     scheduler.replaceJobs([
-      {
-        providerId: 'person',
-        policy: { kind: 'static' },
-        stored: null,
+      job({
         discover: async () => {
           await Bun.sleep(20);
           resolveDiscovery();
           return { language: [], image: [], embedding: [], speech: [], transcription: [], reranking: [] };
         },
-      },
+      }),
     ]);
 
     const deadline = new Promise<never>((_resolve, reject) => {
@@ -119,10 +172,11 @@ test('a malformed discovered catalog is diagnosed without overwriting stored cat
   const scheduler = new CatalogScheduler({
     repository: {
       ...repository,
-      writeCatalog() {
+      compareAndSwapCatalog() {
         catalogWrites++;
+        return { ok: true, revision: 1 };
       },
-      writeDiagnostic() {
+      writeCatalogUnavailableIfCurrent() {
         diagnosticWrites++;
         return true;
       },
@@ -138,12 +192,9 @@ test('a malformed discovered catalog is diagnosed without overwriting stored cat
     },
   });
   scheduler.replaceJobs([
-    {
-      providerId: 'person',
-      policy: { kind: 'static' },
-      stored: null,
+    job({
       discover: async () => ({ language: 'invalid' }) as never,
-    },
+    }),
   ]);
 
   await Bun.sleep(20);
@@ -161,10 +212,11 @@ test('a rebuild failure after successful persistence retries without rediscoveri
   const scheduler = new CatalogScheduler({
     repository: {
       ...repository,
-      writeCatalog() {
+      compareAndSwapCatalog() {
         catalogWrites++;
+        return { ok: true, revision: 1 };
       },
-      writeDiagnostic() {
+      writeCatalogUnavailableIfCurrent() {
         diagnosticWrites++;
         return true;
       },
@@ -182,15 +234,12 @@ test('a rebuild failure after successful persistence retries without rediscoveri
     rebuildRetryMs: 5,
   });
   scheduler.replaceJobs([
-    {
-      providerId: 'person',
-      policy: { kind: 'static' },
-      stored: null,
+    job({
       discover: async () => {
         discoveries++;
         return { language: [], image: [], embedding: [], speech: [], transcription: [], reranking: [] };
       },
-    },
+    }),
   ]);
 
   await Bun.sleep(40);
@@ -201,7 +250,7 @@ test('a rebuild failure after successful persistence retries without rediscoveri
   scheduler.close();
 });
 
-test('a failed TTL refresh preserves last-known-good and waits the host retry interval', async () => {
+test('a fenced CAS rejection retries discovery without writing CATALOG_UNAVAILABLE', async () => {
   let discoveries = 0;
   let catalogWrites = 0;
   let diagnosticWrites = 0;
@@ -209,10 +258,11 @@ test('a failed TTL refresh preserves last-known-good and waits the host retry in
   const scheduler = new CatalogScheduler({
     repository: {
       ...repository,
-      writeCatalog() {
+      compareAndSwapCatalog() {
         catalogWrites++;
+        return catalogWrites === 1 ? { ok: false } : { ok: true, revision: 2 };
       },
-      writeDiagnostic() {
+      writeCatalogUnavailableIfCurrent() {
         diagnosticWrites++;
         return true;
       },
@@ -229,8 +279,57 @@ test('a failed TTL refresh preserves last-known-good and waits the host retry in
     },
   });
   scheduler.replaceJobs([
-    {
-      providerId: 'person',
+    job({
+      discover: async () => {
+        discoveries++;
+        return { language: [], image: [], embedding: [], speech: [], transcription: [], reranking: [] };
+      },
+    }),
+  ]);
+
+  await Bun.sleep(10);
+  expect(discoveries).toBe(1);
+  expect(catalogWrites).toBe(1);
+  expect(diagnosticWrites).toBe(0);
+  expect(rebuilds).toBe(0);
+  await Bun.sleep(30);
+  expect(discoveries).toBe(2);
+  expect(catalogWrites).toBe(2);
+  expect(diagnosticWrites).toBe(0);
+  expect(rebuilds).toBe(1);
+  scheduler.close();
+});
+
+test('a failed TTL refresh preserves last-known-good and waits the host retry interval', async () => {
+  let discoveries = 0;
+  let catalogWrites = 0;
+  let diagnosticWrites = 0;
+  let rebuilds = 0;
+  const scheduler = new CatalogScheduler({
+    repository: {
+      ...repository,
+      compareAndSwapCatalog() {
+        catalogWrites++;
+        return { ok: true, revision: 1 };
+      },
+      writeCatalogUnavailableIfCurrent() {
+        diagnosticWrites++;
+        return true;
+      },
+    } as never,
+    diagnostics: ((code: string) => ({
+      code,
+      summary: code,
+      retryable: true,
+      occurredAt: new Date().toISOString(),
+    })) as never,
+    catalogRetryMs: 20,
+    rebuild: async () => {
+      rebuilds++;
+    },
+  });
+  scheduler.replaceJobs([
+    job({
       policy: { kind: 'ttl', ttlMs: 1 },
       stored: {
         catalog: {
@@ -242,13 +341,14 @@ test('a failed TTL refresh preserves last-known-good and waits the host retry in
           reranking: [],
         },
         refreshedAt: 0,
+        revision: 1,
       },
       discover: async () => {
         discoveries++;
         if (discoveries === 1) throw new Error('refresh failed');
         return new Promise<never>(() => {});
       },
-    },
+    }),
   ]);
 
   await Bun.sleep(10);

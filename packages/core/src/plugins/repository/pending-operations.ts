@@ -54,6 +54,24 @@ type PendingOpsDeps = {
 
 type StageInput = Parameters<PluginRepository['stageAccountOperation']>[0];
 
+function normalizeChildSnapshot(snapshot: ChildSnapshot): ChildSnapshot {
+  return {
+    catalog:
+      snapshot.catalog === null
+        ? null
+        : {
+            catalog: snapshot.catalog.catalog,
+            refreshedAt: snapshot.catalog.refreshedAt,
+            revision: snapshot.catalog.revision ?? 0,
+          },
+    diagnostics: snapshot.diagnostics,
+  };
+}
+
+function childSnapshotsEqual(left: ChildSnapshot, right: ChildSnapshot): boolean {
+  return encodeJson(normalizeChildSnapshot(left)) === encodeJson(normalizeChildSnapshot(right));
+}
+
 function stageAccountOperation(deps: PendingOpsDeps, input: StageInput): PendingAccountOperation {
   const { sqlite } = deps;
   return sqlite
@@ -123,7 +141,7 @@ function compensateAccountOperation(deps: PendingOpsDeps, operationId: string): 
         const current = deps.selectAccount.get(pending.provider_id);
         if (current?.revision === pending.applied_revision && pending.rollback_json !== null) {
           const rollback = decodeJson<AccountOperationRollback>(pending.rollback_json);
-          if (encodeJson(deps.childSnapshot(pending.provider_id)) === encodeJson(rollback.applied)) {
+          if (childSnapshotsEqual(deps.childSnapshot(pending.provider_id), rollback.applied)) {
             deps.restore(rollback.previous);
             compensated = true;
           }
@@ -198,8 +216,8 @@ export function createPendingOperationsRepository(
       .get(providerId);
   function restore(value: RollbackSnapshot): void {
     accounts.updateAccount(value, value.revision, value.runtimeRevision, value.updatedAt);
-    sqlite.query('DELETE FROM oauth_catalog WHERE provider_id = ?').run(value.providerId);
-    if (value.catalog !== null) state.replaceCatalog(value.providerId, value.catalog);
+    if (value.catalog === null) sqlite.query('DELETE FROM oauth_catalog WHERE provider_id = ?').run(value.providerId);
+    else state.replaceCatalog(value.providerId, value.catalog);
     sqlite.query('DELETE FROM oauth_account_diagnostic WHERE provider_id = ?').run(value.providerId);
     for (const diagnostic of value.diagnostics) state.upsertDiagnostic(value.providerId, diagnostic as Diagnostic);
   }

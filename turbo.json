@@ -30,6 +30,14 @@
       "dependsOn": ["build", "^build"],
       "outputs": []
     },
+    "@aio-proxy/plugin-google-antigravity#test": {
+      "dependsOn": ["build", "^build", "@aio-proxy/core#build"],
+      "outputs": []
+    },
+    "@aio-proxy/plugin-google-antigravity#test:unit": {
+      "dependsOn": ["build", "^build", "@aio-proxy/core#build"],
+      "outputs": []
+    },
     "@aio-proxy/core#test:unit": {
       "dependsOn": ["build"],
       "outputs": []
