@@ -35,12 +35,9 @@ export const ProviderHeadersField: React.FC<ProviderHeadersFieldProps> = ({ valu
   return (
     <div data-testid="provider-form-field-headers" className="space-y-2">
       {rows.map((row) => {
-        const keyId = `provider-header-key-${row.id}`;
-        const valueId = `provider-header-value-${row.id}`;
         return (
           <div key={row.id} className="flex items-center gap-2">
             <Input
-              id={keyId}
               value={row.key}
               onChange={(event) =>
                 changeRows((current) =>
@@ -54,7 +51,6 @@ export const ProviderHeadersField: React.FC<ProviderHeadersFieldProps> = ({ valu
               className="h-7 flex-1 font-mono text-xs"
             />
             <Input
-              id={valueId}
               value={row.value}
               onChange={(event) =>
                 changeRows((current) =>
