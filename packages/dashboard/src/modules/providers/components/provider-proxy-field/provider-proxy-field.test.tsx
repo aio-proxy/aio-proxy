@@ -51,7 +51,7 @@ describe('ProviderProxyField', () => {
   test('selecting url writes an empty string, not null', async () => {
     render(<Harness proxy={null} />);
 
-    await pickMode(/Use proxy URL|使用代理 URL/u);
+    await pickMode(/Use a specific proxy|使用指定代理/u);
 
     expect(form.state.values.proxy).toBe('');
   });
