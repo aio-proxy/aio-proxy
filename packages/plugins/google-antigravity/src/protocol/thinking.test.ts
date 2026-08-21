@@ -35,11 +35,9 @@ test('maps minimal on an extra-low wire to the catalog thinkingBudget', () => {
   });
 });
 
-test('maps legacy extra-low minimal to budget 1000 when thinkingBudget is missing', () => {
-  expect(geminiThinkingConfig('gemini-legacy-extra-low', { thinkingLevel: 'minimal' })).toEqual({
-    thinkingBudget: 1000,
-    includeThoughts: true,
-  });
+test('rejects minimal on extra-low when thinkingBudget is missing', () => {
+  expect(() => geminiThinkingConfig('gemini-legacy-extra-low', { thinkingLevel: 'minimal' })).toThrow();
+  expect(() => applyAntigravityThinking('gemini-legacy-extra-low', { mode: 'adaptive', effort: 'minimal' })).toThrow();
 });
 
 test('rejects minimal on gemini-3.8-flash when the medium base is not extra-low', () => {

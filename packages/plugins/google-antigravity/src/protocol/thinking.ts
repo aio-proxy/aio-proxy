@@ -142,10 +142,10 @@ function geminiMinimal(wire: ResolvedWire): CcaThinkingConfig {
   if (!wire.modelId.endsWith('-extra-low')) {
     throw new AntigravityThinkingError(`Unsupported thinking effort minimal for ${wire.modelId}`);
   }
-  if (wire.thinkingBudget !== undefined && wire.thinkingBudget <= 0) {
+  if (wire.thinkingBudget === undefined || wire.thinkingBudget <= 0) {
     throw new AntigravityThinkingError(`Unsupported thinking effort minimal for ${wire.modelId}`);
   }
-  return ccaConfig(wire.thinkingBudget ?? 1000);
+  return ccaConfig(wire.thinkingBudget);
 }
 
 function splitVariantMatches(family: AntigravityFamily, modelId: string, effort: string): boolean {
