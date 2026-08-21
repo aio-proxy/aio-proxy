@@ -47,13 +47,7 @@ export const ProviderRequestTransformsEditor: React.FC<ProviderRequestTransforms
   };
 
   return (
-    <section className="space-y-4 border-t pt-6" aria-labelledby="provider-request-transforms-heading">
-      <div className="space-y-1">
-        <h2 id="provider-request-transforms-heading" className="text-base font-semibold">
-          {m['dashboard.providers.transforms.section']()}
-        </h2>
-        <p className="text-sm text-muted-foreground">{m['dashboard.providers.transforms.description']()}</p>
-      </div>
+    <div className="space-y-4">
       <Tabs value={activeMode} onValueChange={changeMode}>
         <TabsList>
           <TabsTrigger value="visual" disabled={!jsonValid || !visualCompatible}>
@@ -70,6 +64,6 @@ export const ProviderRequestTransformsEditor: React.FC<ProviderRequestTransforms
           <ProviderRequestTransformsJsonEditor value={value} onChange={onChange} onValidityChange={setJsonValid} />
         </TabsContent>
       </Tabs>
-    </section>
+    </div>
   );
 };
