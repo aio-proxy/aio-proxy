@@ -47,23 +47,24 @@ export const ProviderRequestTransformsEditor: React.FC<ProviderRequestTransforms
   };
 
   return (
-    <div className="space-y-4">
-      <Tabs value={activeMode} onValueChange={changeMode}>
-        <TabsList>
-          <TabsTrigger value="visual" disabled={!jsonValid || !visualCompatible}>
-            {m['dashboard.providers.transforms.mode.visual']()}
-          </TabsTrigger>
-          <TabsTrigger value="json" disabled={!visualValid}>
-            JSON
-          </TabsTrigger>
-        </TabsList>
-        <TabsContent value="visual">
-          <ProviderRequestTransformsVisualEditor value={value} onChange={onChange} onValidityChange={setVisualValid} />
-        </TabsContent>
-        <TabsContent value="json">
-          <ProviderRequestTransformsJsonEditor value={value} onChange={onChange} onValidityChange={setJsonValid} />
-        </TabsContent>
-      </Tabs>
-    </div>
+    <Tabs value={activeMode} onValueChange={changeMode}>
+      <TabsList>
+        <TabsTrigger value="visual" disabled={!jsonValid || !visualCompatible}>
+          {m['dashboard.providers.transforms.mode.visual']()}
+        </TabsTrigger>
+        <TabsTrigger value="json" disabled={!visualValid}>
+          JSON
+        </TabsTrigger>
+      </TabsList>
+      <TabsContent value="visual" className="space-y-3 pt-2">
+        <ProviderRequestTransformsVisualEditor value={value} onChange={onChange} onValidityChange={setVisualValid} />
+      </TabsContent>
+      <TabsContent value="json" className="pt-2">
+        <ProviderRequestTransformsJsonEditor value={value} onChange={onChange} onValidityChange={setJsonValid} />
+        {visualCompatible ? null : (
+          <p className="mt-2 text-sm text-muted-foreground">{m['dashboard.providers.transforms.unsupported']()}</p>
+        )}
+      </TabsContent>
+    </Tabs>
   );
 };

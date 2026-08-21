@@ -1,5 +1,6 @@
 /* oxlint-disable max-lines, max-lines-per-function */
 
+import { m } from '@aio-proxy/i18n';
 import { ProviderRequestTransformRulesSchema, type ProviderRequestTransformRule } from '@aio-proxy/types';
 import { expect, rs, test } from '@rstest/core';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
@@ -274,21 +275,21 @@ test('edits ordered Set and Remove actions losslessly across Visual and JSON mod
   let stages = within(ruleCard(0)).getAllByTestId(/request-transform-stage-/u);
   expect(stages).toHaveLength(4);
   expect(within(stages[0]!).getByTestId('request-transform-action')).toHaveTextContent(/Set|设置/u);
-  // By accessible name: after the labels went `sr-only`, the label/trigger pairing is the only thing naming
-  // this select, so fetching it by name here is what keeps that pairing honest.
-  expect(within(stages[0]!).getByRole('combobox', { name: /^(Target|目标)$/u })).toHaveTextContent(/Body|请求体/u);
-  expect(within(stages[0]!).getByRole('textbox', { name: /Body path|请求体路径/u })).toHaveValue('value');
+  expect(within(stages[0]!).getByRole('textbox', { name: /Body path|请求体路径/u })).toHaveValue('request.body.value');
   expect(within(stages[0]!).getByTestId('request-transform-value-mode')).toHaveTextContent(/Fixed value|固定值/u);
   expect(within(stages[0]!).getByRole('textbox', { name: /Value to set|设置值/u })).toHaveValue('$seed');
-  expect(within(stages[1]!).getByTestId('request-transform-target')).toHaveTextContent(/Header|请求头/u);
-  expect(within(stages[1]!).getByRole('textbox', { name: /Header name|请求头名称/u })).toHaveValue('x-route');
+  expect(within(stages[1]!).getByRole('textbox', { name: /Header name|请求头名称/u })).toHaveValue(
+    'request.headers.x-route',
+  );
   expect(within(stages[1]!).getByTestId('request-transform-value-mode')).toHaveTextContent(/Computed|计算/u);
   expect(within(stages[1]!).getByTestId('transform-set-expression-fn')).toHaveTextContent(/CONCAT|Concatenate|拼接/u);
-  expect(within(stages[2]!).getByTestId('request-transform-action')).toHaveTextContent(/Remove|移除/u);
-  expect(within(stages[2]!).getByRole('textbox', { name: /Body path|请求体路径/u })).toHaveValue('value');
+  expect(within(stages[2]!).getByTestId('request-transform-action')).toHaveTextContent(/Remove|删除/u);
+  expect(within(stages[2]!).getByRole('textbox', { name: /Body path|请求体路径/u })).toHaveValue('request.body.value');
   // A Remove action has no value slot, so it explains the gap instead of leaving one.
   expect(within(stages[2]!).getByText(/Remove actions need no value\.|删除字段无需填写值。/u)).toBeInTheDocument();
-  expect(within(stages[3]!).getByRole('textbox', { name: /Header name|请求头名称/u })).toHaveValue('x-route');
+  expect(within(stages[3]!).getByRole('textbox', { name: /Header name|请求头名称/u })).toHaveValue(
+    'request.headers.x-route',
+  );
 
   fireEvent.click(screen.getByRole('button', { name: /Add rule|添加规则/u }));
   await waitFor(() => expect(screen.getAllByTestId(/request-transform-rule-/u)).toHaveLength(2));
@@ -296,7 +297,7 @@ test('edits ordered Set and Remove actions losslessly across Visual and JSON mod
   const addedPath = within(addedRule).getByRole('textbox', { name: /Body path|请求体路径/u });
   expect(document.activeElement).toBe(addedPath);
   expect((addedPath as HTMLInputElement).selectionStart).toBe(0);
-  expect((addedPath as HTMLInputElement).selectionEnd).toBe('value'.length);
+  expect((addedPath as HTMLInputElement).selectionEnd).toBe('request.body.value'.length);
   // The only action still cannot be removed; it now says so by offering no control at all. The action select
   // anchors the assertion so it cannot pass by the whole stage row having disappeared.
   const addedStage = within(addedRule).getByTestId('request-transform-stage-0');
@@ -319,9 +320,8 @@ test('edits ordered Set and Remove actions losslessly across Visual and JSON mod
   fireEvent.click(within(stageCard(4)).getByRole('button', { name: /Remove action 5|删除操作 5/u }));
   await waitFor(() => expect(latestValue(onChange)[0]?.update).toHaveLength(4));
 
-  await selectOption(within(stageCard(0)).getByTestId('request-transform-target'), /^(Header|请求头)$/u);
-  fireEvent.change(within(stageCard(0)).getByRole('textbox', { name: /Header name|请求头名称/u }), {
-    target: { value: 'X-Test' },
+  fireEvent.change(within(stageCard(0)).getByRole('textbox', { name: /Body path|请求体路径/u }), {
+    target: { value: 'request.headers.X-Test' },
   });
   await waitFor(() =>
     expect(latestValue(onChange)[0]?.update[0]).toEqual({
@@ -332,9 +332,8 @@ test('edits ordered Set and Remove actions losslessly across Visual and JSON mod
       },
     }),
   );
-  await selectOption(within(stageCard(0)).getByTestId('request-transform-target'), /^(Body|请求体)$/u);
-  fireEvent.change(within(stageCard(0)).getByRole('textbox', { name: /Body path|请求体路径/u }), {
-    target: { value: 'value' },
+  fireEvent.change(within(stageCard(0)).getByRole('textbox', { name: /Header name|请求头名称/u }), {
+    target: { value: 'request.body.value' },
   });
 
   fireEvent.click(within(stageCard(2)).getByRole('button', { name: /Move action 3 up|上移操作 3/u }));
@@ -410,18 +409,13 @@ test('retains unsafe stage control drafts until shared rule validation accepts t
   );
 
   const bodyPath = within(stageCard(0)).getByRole('textbox', { name: /Body path|请求体路径/u });
-  fireEvent.change(bodyPath, { target: { value: '__proto__' } });
+  fireEvent.change(bodyPath, { target: { value: 'request.body.__proto__' } });
 
-  expect(bodyPath).toHaveValue('__proto__');
+  expect(bodyPath).toHaveValue('request.body.__proto__');
   await waitFor(() => expect(onValidityChange).toHaveBeenLastCalledWith(false));
   expect(onChange).not.toHaveBeenCalled();
 
-  await selectOption(within(stageCard(0)).getByTestId('request-transform-target'), /^(Header|请求头)$/u);
-  const headerName = within(stageCard(0)).getByRole('textbox', { name: /Header name|请求头名称/u });
-  expect(headerName).toHaveValue('__proto__');
-  expect(onChange).not.toHaveBeenCalled();
-
-  fireEvent.change(headerName, { target: { value: 'X-Good' } });
+  fireEvent.change(bodyPath, { target: { value: 'request.headers.X-Good' } });
   await waitFor(() =>
     expect(latestValue(onChange)[0]?.update[0]).toEqual({
       $set: {
@@ -431,7 +425,7 @@ test('retains unsafe stage control drafts until shared rule validation accepts t
       },
     }),
   );
-  expect(headerName).toHaveValue('x-good');
+  expect(bodyPath).toHaveValue('request.headers.x-good');
   expect(onValidityChange).toHaveBeenLastCalledWith(true);
 });
 
@@ -441,7 +435,7 @@ test('seeds a refused computed stage with an editable body field', async () => {
 
   // A refused commit never round trips through the codec, so the seeded default is observable as authored.
   fireEvent.change(within(stageCard(0)).getByRole('textbox', { name: /Body path|请求体路径/u }), {
-    target: { value: '__proto__' },
+    target: { value: 'request.body.__proto__' },
   });
   await selectOption(within(stageCard(0)).getByTestId('request-transform-value-mode'), /^(Computed|计算)$/u);
 
@@ -542,4 +536,89 @@ test('retains incomplete computed fields and blocks switching modes until the ex
   );
   expect(onValidityChange).toHaveBeenLastCalledWith(true);
   expect(jsonTab).not.toHaveAttribute('aria-disabled', 'true');
+});
+
+test('maps dotted body and header paths onto the stored stage wire format', async () => {
+  const onChange = rs.fn();
+  render(
+    <RequestTransformsHarness
+      initialValue={[{ update: [{ $set: { 'request.body.value': { $literal: '$seed' } } }] }]}
+      onChange={onChange}
+      onValidityChange={rs.fn()}
+    />,
+  );
+
+  fireEvent.change(within(stageCard(0)).getByRole('textbox', { name: /Body path|请求体路径/u }), {
+    target: { value: 'request.headers.X-Trace-Id' },
+  });
+  await waitFor(() =>
+    expect(latestValue(onChange)[0]?.update[0]).toEqual({
+      $set: {
+        'request.headers': {
+          $setField: { field: 'x-trace-id', input: '$request.headers', value: { $literal: '$seed' } },
+        },
+      },
+    }),
+  );
+
+  fireEvent.change(within(stageCard(0)).getByRole('textbox', { name: /Header name|请求头名称/u }), {
+    target: { value: 'request.body.temperature' },
+  });
+  await waitFor(() =>
+    expect(latestValue(onChange)[0]?.update[0]).toEqual({
+      $set: { 'request.body.temperature': { $literal: '$seed' } },
+    }),
+  );
+});
+
+test('persists a generated name on a new rule and drops it when cleared', async () => {
+  const onChange = rs.fn();
+  render(<RequestTransformsHarness initialValue={[]} onChange={onChange} onValidityChange={rs.fn()} />);
+
+  fireEvent.click(screen.getByRole('button', { name: /Add rule|添加规则/u }));
+  await waitFor(() =>
+    expect(latestValue(onChange).at(-1)?.name).toBe(m['dashboard.providers.transforms.rule.label']({ index: 1 })),
+  );
+
+  fireEvent.change(within(ruleCard(0)).getByRole('textbox', { name: /Rule 1 name|规则 1 名称/u }), {
+    target: { value: '' },
+  });
+  await waitFor(() => expect(latestValue(onChange)[0]).not.toHaveProperty('name'));
+});
+
+test('removes a structurally invalid rule without requiring it to become valid first', async () => {
+  const onChange = rs.fn();
+  render(<RequestTransformsHarness initialValue={initialValue} onChange={onChange} onValidityChange={rs.fn()} />);
+
+  fireEvent.change(within(stageCard(0)).getByRole('textbox', { name: /Body path|请求体路径/u }), {
+    target: { value: '' },
+  });
+  await waitFor(() => expect(within(stageCard(0)).getByRole('alert')).toBeInTheDocument());
+  expect(onChange).not.toHaveBeenCalled();
+
+  fireEvent.click(within(ruleCard(0)).getByRole('button', { name: /Remove rule 1|删除规则 1/u }));
+  await waitFor(() => expect(onChange).toHaveBeenLastCalledWith([]));
+});
+
+test('does not replace the whole body when a path input is cleared', async () => {
+  const onChange = rs.fn();
+  render(
+    <RequestTransformsHarness
+      initialValue={[{ update: [{ $set: { 'request.body.value': { $literal: '$seed' } } }] }]}
+      onChange={onChange}
+      onValidityChange={rs.fn()}
+    />,
+  );
+
+  const path = within(stageCard(0)).getByRole('textbox', { name: /Body path|请求体路径/u });
+  fireEvent.change(path, { target: { value: '' } });
+  await waitFor(() => expect(within(stageCard(0)).getByRole('alert')).toBeInTheDocument());
+  expect(path).toHaveValue('');
+  expect(
+    onChange.mock.calls.some(([rules]) =>
+      (rules as readonly ProviderRequestTransformRule[]).some((rule) =>
+        rule.update.some((stage) => '$set' in stage && Object.hasOwn(stage.$set as object, 'request.body')),
+      ),
+    ),
+  ).toBe(false);
 });

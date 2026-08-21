@@ -40,7 +40,7 @@ const parseValue = (value: unknown): Extract<RequestTransformStageDraft, { kind:
 };
 
 const bodyPath = (target: string): string | undefined => {
-  if (target === 'request.body') return '';
+  if (target === 'request.body') return undefined;
   return target.startsWith('request.body.') ? target.slice('request.body.'.length) : undefined;
 };
 
@@ -94,7 +94,7 @@ export const serializeRequestTransformStages = (
   drafts.map((draft) => {
     if (draft.kind === 'remove') {
       return draft.target === 'body'
-        ? stage({ $unset: draft.path === '' ? 'request.body' : `request.body.${draft.path}` })
+        ? stage({ $unset: `request.body.${draft.path}` })
         : stage({
             $set: {
               'request.headers': {
@@ -108,7 +108,7 @@ export const serializeRequestTransformStages = (
         ? staticExpression(draft.value.value)
         : serializeRequestTransformExpression(draft.value.expression);
     return draft.target === 'body'
-      ? stage({ $set: { [draft.path === '' ? 'request.body' : `request.body.${draft.path}`]: value } })
+      ? stage({ $set: { [`request.body.${draft.path}`]: value } })
       : stage({
           $set: {
             'request.headers': {

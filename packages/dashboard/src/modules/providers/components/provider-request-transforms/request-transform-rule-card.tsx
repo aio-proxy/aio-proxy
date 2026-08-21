@@ -88,7 +88,7 @@ export const RequestTransformRuleCard: React.FC<RequestTransformRuleCardProps> =
           {(field) => (
             <Input
               value={field.state.value}
-              // The index label only ever hints: writing it into the value would save a name nobody typed.
+              // 默认名是真实值：demo 语义，新建即落盘；清空则移除 `name`
               placeholder={m['dashboard.providers.transforms.rule.label']({ index: ruleIndex })}
               aria-label={m['dashboard.providers.transforms.rule.name']({ index: ruleIndex })}
               className="h-7 min-w-0 flex-1 border-transparent bg-transparent px-1 text-sm font-medium hover:border-input focus:bg-background"
@@ -109,7 +109,7 @@ export const RequestTransformRuleCard: React.FC<RequestTransformRuleCardProps> =
           type="button"
           variant="ghost"
           size="icon-xs"
-          disabled={structureBlocked || !canMoveUp}
+          disabled={!canMoveUp}
           aria-label={m['dashboard.providers.transforms.rule.move_up']({ index: ruleIndex })}
           onClick={onMoveUp}
         >
@@ -119,7 +119,7 @@ export const RequestTransformRuleCard: React.FC<RequestTransformRuleCardProps> =
           type="button"
           variant="ghost"
           size="icon-xs"
-          disabled={structureBlocked || !canMoveDown}
+          disabled={!canMoveDown}
           aria-label={m['dashboard.providers.transforms.rule.move_down']({ index: ruleIndex })}
           onClick={onMoveDown}
         >
@@ -129,7 +129,6 @@ export const RequestTransformRuleCard: React.FC<RequestTransformRuleCardProps> =
           type="button"
           variant="ghost"
           size="icon-xs"
-          disabled={structureBlocked}
           aria-label={m['dashboard.providers.transforms.rule.remove']({ index: ruleIndex })}
           onClick={onRemove}
         >

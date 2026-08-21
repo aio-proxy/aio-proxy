@@ -46,7 +46,6 @@ export const RequestTransformStageCard: React.FC<RequestTransformStageCardProps>
   onMoveDown,
 }) => {
   const actionId = useId();
-  const targetId = useId();
   const pathId = useId();
   const valueModeId = useId();
   const form = useRequestTransformStageForm(value);
@@ -94,8 +93,8 @@ export const RequestTransformStageCard: React.FC<RequestTransformStageCardProps>
             form={form}
             index={index}
             actionId={actionId}
-            targetId={targetId}
             pathId={pathId}
+            invalid={!controlsValid}
             {...(pathInputRef === undefined ? {} : { pathInputRef })}
             onCommit={commitControls}
             onResetContentValidity={() => setContentValid(true)}
