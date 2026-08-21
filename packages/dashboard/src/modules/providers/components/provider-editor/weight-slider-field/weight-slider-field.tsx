@@ -16,9 +16,11 @@ interface WeightSliderFieldProps {
 }
 
 /**
- * Higher weights are attempted first. Absent stays absent in the *body*: an untouched weight must never
- * be written as `0`, so `onChange` still reports `undefined` for an empty input and a stored value
- * outside the range or off the step is kept verbatim until the user actually drags.
+ * Higher weights are attempted first. This control never derives a weight from absence: `onChange`
+ * reports `undefined` for an empty input, so an existing provider whose config omits the key keeps
+ * omitting it, and a stored value outside the range or off the step is kept verbatim until the user
+ * actually drags. A new provider is the other case — `routes/providers/new.tsx` seeds an explicit `0`,
+ * a value handed to the field rather than one invented here.
  *
  * What an absent weight *displays* is `0`, matching the slider thumb and the runtime, which reads an
  * absent weight as `0` when ordering candidates (`routes/pipeline/attempt/attempt.ts`). A blank box

@@ -12,7 +12,7 @@ export interface WeightTieInput {
   readonly others: readonly Pick<DashboardProviderSummary, 'id' | 'weight' | 'clientModels' | 'enabled'>[];
 }
 
-// Absent coalesces to 0 at the single ordering point, config.ts:185; matched here so a tie is judged
+// Absent coalesces to 0 at the single ordering point, attempt.ts:94; matched here so a tie is judged
 // by the same yardstick the router orders by.
 const effectiveWeight = (weight: number | undefined): number => weight ?? 0;
 
