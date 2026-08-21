@@ -17,7 +17,7 @@ export type AccountRow = {
   readonly updated_at: number;
 };
 export type AccountSummaryRow = Omit<AccountRow, 'options_json' | 'secret_json' | 'credential_json'>;
-export type CatalogRow = { readonly catalog_json: string; readonly refreshed_at: number };
+export type CatalogRow = { readonly catalog_json: string; readonly refreshed_at: number; readonly revision: number };
 export type DiagnosticRow = { readonly diagnostic_json: string };
 export type PluginSecretRow = { readonly value_json: string; readonly revision: number };
 export type PendingRow = {

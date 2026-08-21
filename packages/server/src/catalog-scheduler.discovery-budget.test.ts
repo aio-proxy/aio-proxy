@@ -13,10 +13,15 @@ test('scheduler leaves enough host budget for daily timeout and prod discovery',
   });
   const scheduler = new CatalogScheduler({
     repository: {
-      writeCatalog(_providerId: string, catalog: unknown) {
-        written = catalog;
+      compareAndSwapCatalog(input: { readonly catalog: unknown }) {
+        written = input.catalog;
         resolveWrite();
+        return { ok: true, revision: 1 };
       },
+      writeCatalogUnavailableIfCurrent() {
+        return true;
+      },
+      writeCatalog() {},
       writeDiagnostic() {
         return true;
       },
@@ -36,6 +41,9 @@ test('scheduler leaves enough host budget for daily timeout and prod discovery',
   scheduler.replaceJobs([
     {
       providerId: 'person',
+      plugin: '@example/oauth',
+      capability: 'default',
+      accountRuntimeRevision: 1,
       policy: { kind: 'static' },
       stored: null,
       discover: async (signal) =>

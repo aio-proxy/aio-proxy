@@ -1,6 +1,7 @@
-import type { LogicalRequestContext } from '@aio-proxy/plugin-sdk';
+import type { LogicalRequestContext, ModelCatalog, ModelDescriptor } from '@aio-proxy/plugin-sdk';
 
-import { antigravityFamilyForWireModel, modelCapabilities } from '../catalog/families';
+import { classifyProvider } from '../catalog/classify';
+import type { AntigravityFamily, Effort } from '../catalog/collapse';
 import { applyValidatedToolMode, normalizeFunctionDeclarations } from '../protocol/tool-schema';
 import type { GoogleAntigravityCredential } from '../schema';
 
@@ -21,13 +22,31 @@ export type CcaEnvelope = {
   readonly request: CcaRequestBody;
 };
 
+export type CcaWireLookups = {
+  readonly descriptorById?: ReadonlyMap<string, ModelDescriptor>;
+  readonly familyByWireId?: (modelId: string) => AntigravityFamily | undefined;
+};
+
 export type CcaEnvelopeInput = {
   readonly body: Readonly<Record<string, unknown>>;
   readonly context: LogicalRequestContext;
   readonly credential: Pick<GoogleAntigravityCredential, 'projectId'>;
   readonly modelId: string;
   readonly requestType: CcaRequestType;
-};
+} & CcaWireLookups;
+
+export function createCatalogWireLookups(catalog: ModelCatalog): Required<CcaWireLookups> {
+  const descriptorById = new Map(catalog.language.map((model) => [model.id, model]));
+  const byWire = new Map<string, AntigravityFamily>();
+  for (const family of readAntigravityFamilies(catalog.metadata)) {
+    byWire.set(family.base, family);
+    for (const variant of family.variants) byWire.set(variant.model, family);
+  }
+  return {
+    descriptorById,
+    familyByWireId: (modelId) => byWire.get(modelId),
+  };
+}
 
 export function wireSessionId(key: `sha256:${string}`): string {
   const hex = new Bun.CryptoHasher('sha256').update(key).digest('hex').slice(0, 16);
@@ -36,7 +55,10 @@ export function wireSessionId(key: `sha256:${string}`): string {
 }
 
 export function createCcaEnvelope(input: CcaEnvelopeInput): CcaEnvelope {
-  const claudeBacked = antigravityFamilyForWireModel(input.modelId)?.thinking.mode === 'claude';
+  const descriptor = input.descriptorById?.get(input.modelId);
+  const claudeBacked =
+    input.familyByWireId?.(input.modelId)?.thinking.mode === 'claude' ||
+    classifyProvider(descriptor ?? {}) === 'claude';
   const request = applyValidatedToolMode(normalizeToolDomains(cleanGeminiBody(input.body)), claudeBacked);
   return {
     model: input.modelId,
@@ -44,7 +66,7 @@ export function createCcaEnvelope(input: CcaEnvelopeInput): CcaEnvelope {
     userAgent: 'antigravity',
     requestId: `agent-${input.context.requestId}`,
     requestType: input.requestType,
-    request: applyWireProfile(request, input.modelId, input.context.session.key),
+    request: applyWireProfile(request, input.context.session.key, descriptor),
   };
 }
 
@@ -73,33 +95,87 @@ function cleanGeminiBody(body: Readonly<Record<string, unknown>>): Record<string
 
 function applyWireProfile(
   body: Record<string, unknown>,
-  modelId: string,
   sessionKey: `sha256:${string}`,
+  descriptor: ModelDescriptor | undefined,
 ): CcaRequestBody {
-  const profile = modelCapabilities(modelId);
+  const profile = wireProfile(descriptor);
   const generationConfig = record(Reflect.get(body, 'generationConfig'));
   const labels = record(Reflect.get(body, 'labels'));
   const explicitLimit = generationConfig === undefined ? undefined : Reflect.get(generationConfig, 'maxOutputTokens');
+  const maxOutputTokens =
+    profile.maxOutputTokens === undefined
+      ? undefined
+      : typeof explicitLimit === 'number' && Number.isFinite(explicitLimit)
+        ? Math.min(explicitLimit, profile.maxOutputTokens)
+        : profile.maxOutputTokens;
   return {
     ...body,
-    ...(profile === undefined
-      ? {}
-      : {
-          generationConfig: {
-            ...generationConfig,
-            maxOutputTokens:
-              typeof explicitLimit === 'number' && Number.isFinite(explicitLimit)
-                ? Math.min(explicitLimit, profile.maxOutputTokens)
-                : profile.maxOutputTokens,
-          },
-          ...(profile.modelEnum === undefined ? {} : { labels: { ...labels, model_enum: profile.modelEnum } }),
-        }),
+    ...(maxOutputTokens === undefined ? {} : { generationConfig: { ...generationConfig, maxOutputTokens } }),
+    ...(profile.modelEnum === undefined ? {} : { labels: { ...labels, model_enum: profile.modelEnum } }),
     sessionId: wireSessionId(sessionKey),
   };
+}
+
+function wireProfile(descriptor: ModelDescriptor | undefined) {
+  const source = providerSource(descriptor?.metadata);
+  return {
+    maxOutputTokens: finitePositive(source?.['maxOutputTokens']),
+    modelEnum: asString(source?.['modelEnum']),
+  };
+}
+
+function readAntigravityFamilies(metadata: unknown): readonly AntigravityFamily[] {
+  if (!isRecord(metadata) || !Array.isArray(metadata['antigravityFamilies'])) return [];
+  const families: AntigravityFamily[] = [];
+  for (const value of metadata['antigravityFamilies']) {
+    const family = asFamily(value);
+    if (family !== undefined) families.push(family);
+  }
+  return families;
+}
+
+function asFamily(value: unknown): AntigravityFamily | undefined {
+  if (!isRecord(value)) return undefined;
+  const logicalId = asString(value['logicalId']);
+  const base = asString(value['base']);
+  const kind = value['kind'];
+  const thinking = value['thinking'];
+  const thinkingMode = isRecord(thinking) ? thinking['mode'] : undefined;
+  if (logicalId === undefined || base === undefined) return undefined;
+  if (kind !== 'split' && kind !== 'tiered' && kind !== 'same-wire') return undefined;
+  if (thinkingMode !== 'gemini' && thinkingMode !== 'claude' && thinkingMode !== 'none') return undefined;
+  if (!Array.isArray(value['variants'])) return undefined;
+  const variants: { effort: Effort; model: string }[] = [];
+  for (const row of value['variants']) {
+    if (!isRecord(row)) continue;
+    const effort = row['effort'];
+    const model = asString(row['model']);
+    if (effort !== 'low' && effort !== 'medium' && effort !== 'high') continue;
+    if (model === undefined) continue;
+    variants.push({ effort, model });
+  }
+  return { logicalId, kind, thinking: { mode: thinkingMode }, base, variants };
+}
+
+function providerSource(metadata: unknown): Record<string, unknown> | undefined {
+  if (!isRecord(metadata)) return undefined;
+  return isRecord(metadata['antigravity']) ? metadata['antigravity'] : metadata;
 }
 
 function record(value: unknown): Record<string, unknown> | undefined {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : undefined;
+}
+
+function finitePositive(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : undefined;
+}
+
+function asString(value: unknown): string | undefined {
+  return typeof value === 'string' && value !== '' ? value : undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

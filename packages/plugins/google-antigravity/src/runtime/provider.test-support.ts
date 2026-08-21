@@ -78,7 +78,14 @@ export function runtimeContext() {
       refresh: async () => ({ status: 'superseded' as const, snapshot: { value: credential, revision: 1 } }),
     },
     options: {},
-    catalog: { language: [], image: [], embedding: [], speech: [], transcription: [], reranking: [] },
+    catalog: {
+      language: [{ id: 'claude-sonnet-4-6', metadata: { antigravity: { apiProvider: 'anthropic' } } }],
+      image: [],
+      embedding: [],
+      speech: [],
+      transcription: [],
+      reranking: [],
+    },
   };
 }
 

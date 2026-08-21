@@ -1,11 +1,5 @@
-import type { CredentialPort, ModelCatalog, OAuthAdapter, OAuthLoginResult } from '@aio-proxy/plugin-sdk';
-import {
-  AliasConfigSchema,
-  flattenAliasVariants,
-  OAuthPluginProviderSchema,
-  type ProviderAlias,
-} from '@aio-proxy/types';
-import { z } from 'zod';
+import type { CredentialPort, OAuthAdapter, OAuthLoginResult } from '@aio-proxy/plugin-sdk';
+import { OAuthPluginProviderSchema, type ProviderAlias } from '@aio-proxy/types';
 
 import { parseRuntimeConfig } from '../../config';
 import type { StoredAccount } from '../repository/index';
@@ -156,7 +150,7 @@ export function providerEntry(
   const enabled = patch?.enabled ?? existing?.['enabled'] ?? true;
   const weight = patch === undefined ? existing?.['weight'] : patch.weight;
   const name = patch === undefined ? existing?.['name'] : patch.name;
-  const alias = patch === undefined ? (existing?.['alias'] ?? defaults) : patch.alias;
+  const alias = patch?.alias ?? existing?.['alias'] ?? defaults;
   const proxy = patch?.proxy === undefined ? existing?.['proxy'] : patch.proxy;
   const transforms = patch?.transforms === undefined ? existing?.['transforms'] : patch.transforms;
   return {
@@ -172,21 +166,7 @@ export function providerEntry(
     ...(transforms === undefined ? {} : { transforms }),
   };
 }
-export function validatedDefaultAliases(adapter: OAuthAdapter, catalog: ModelCatalog): ProviderAlias | undefined {
-  const raw = adapter.catalog.defaultAliases?.(catalog);
-  if (raw === undefined) return undefined;
-  const models = new Set(catalog.language.map(({ id }) => id));
-  const parsed = z.record(z.string().min(1), AliasConfigSchema).parse(raw);
-  for (const [alias, config] of Object.entries(parsed)) {
-    const modelsToCheck = [config.model, ...flattenAliasVariants(config.variants).map((row) => row.model)];
-    for (const model of modelsToCheck) {
-      if (!models.has(model)) {
-        throw new Error(`Plugin default alias target ${alias} -> ${model} is not in the initial catalog`);
-      }
-    }
-  }
-  return parsed;
-}
+export { validatedDefaultAliases } from '../default-aliases';
 export function duplicateOrCleanup(account: StoredAccount, providers: Record<string, unknown>) {
   const entry = structuredEntry(providers[account.providerId]);
   return entry !== null && accountMatches(account, capabilityOf(entry))

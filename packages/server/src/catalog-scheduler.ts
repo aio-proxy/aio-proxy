@@ -1,5 +1,18 @@
-import { type DiagnosticFactory, type PluginRepository, validateModelCatalog } from '@aio-proxy/core';
-import { CATALOG_DISCOVERY_TIMEOUT_MS } from '@aio-proxy/plugin-sdk';
+import {
+  assertAliasTargetsInCatalog,
+  capabilityOf,
+  type DiagnosticFactory,
+  insertMissingAliases,
+  type PluginLogSink,
+  type PluginRepository,
+  redactPluginError,
+  sameCapability,
+  structuredEntry,
+  validateModelCatalog,
+} from '@aio-proxy/core';
+import { CATALOG_DISCOVERY_TIMEOUT_MS, type DefaultAliasSuggestions, type ModelCatalog } from '@aio-proxy/plugin-sdk';
+import type { ProviderAlias } from '@aio-proxy/types';
+import { isPlainObject } from 'es-toolkit/predicate';
 
 import type { CatalogJobDescriptor } from './plugin-runtime';
 
@@ -13,6 +26,14 @@ type ActiveJob = {
   controller: AbortController | undefined;
 };
 
+export type CatalogMergeIdentity = {
+  readonly plugin: string;
+  readonly capability: string;
+  readonly accountRuntimeRevision: number;
+  readonly writtenCatalogRevision: number;
+  readonly defaultAliases?: (catalog: ModelCatalog) => DefaultAliasSuggestions;
+};
+
 export type CatalogSchedulerOptions = {
   readonly repository: PluginRepository;
   readonly diagnostics: DiagnosticFactory;
@@ -21,15 +42,53 @@ export type CatalogSchedulerOptions = {
   readonly discoveryTimeoutMs?: number;
   readonly catalogRetryMs?: number;
   readonly rebuildRetryMs?: number;
+  readonly logger?: PluginLogSink;
+  readonly mergeDefaultAliases?: (
+    providerId: string,
+    catalog: ModelCatalog,
+    identity: CatalogMergeIdentity,
+  ) => Promise<void> | void;
 };
 
 function dueAt(job: CatalogJobDescriptor, now: number, retryMs: number): number | undefined {
   if (job.policy.kind === 'static' && job.stored !== null) return undefined;
   const catalogDue =
-    job.policy.kind === 'static' || job.stored === null ? now : job.stored.refreshedAt + job.policy.ttlMs;
+    job.policy.kind === 'static' || job.stored === null || job.stored.revision === 0
+      ? now
+      : job.stored.refreshedAt + job.policy.ttlMs;
   const retryDue =
     job.unavailableOccurredAt === undefined ? Number.NEGATIVE_INFINITY : job.unavailableOccurredAt + retryMs;
   return Math.max(now, catalogDue, retryDue);
+}
+
+export function mergeCatalogDefaultAliases(
+  providers: Record<string, unknown>,
+  input: {
+    readonly providerId: string;
+    readonly catalog: ModelCatalog;
+    readonly identity: CatalogMergeIdentity;
+    readonly repository: PluginRepository;
+  },
+): Record<string, unknown> {
+  const { providerId, catalog, identity, repository } = input;
+  const account = repository.readAccount(providerId);
+  if (account === null) return providers;
+  if (account.plugin !== identity.plugin || account.capability !== identity.capability) return providers;
+  if (account.runtimeRevision !== identity.accountRuntimeRevision) return providers;
+  if (repository.listPendingAccountOperations().some((operation) => operation.providerId === providerId)) {
+    return providers;
+  }
+  const stored = repository.readCatalog(providerId);
+  if (stored === null || stored.revision !== identity.writtenCatalogRevision) return providers;
+  const raw = identity.defaultAliases?.(catalog);
+  if (raw === undefined) return providers;
+  const suggestions = assertAliasTargetsInCatalog(raw, catalog);
+  const entry = structuredEntry(providers[providerId]);
+  if (entry === null || !sameCapability(capabilityOf(entry), identity)) return providers;
+  const existingAlias = isPlainObject(entry['alias']) ? (entry['alias'] as ProviderAlias) : {};
+  const alias = insertMissingAliases(existingAlias, suggestions);
+  if (alias === existingAlias) return providers;
+  return { ...providers, [providerId]: { ...entry, alias } };
 }
 
 export class CatalogScheduler {
@@ -75,6 +134,12 @@ export class CatalogScheduler {
     return !this.#closed && this.#jobs.get(active.descriptor.providerId) === active;
   }
 
+  #scheduleCatalogRetry(active: ActiveJob): void {
+    if (!this.#current(active)) return;
+    active.timer = setTimeout(() => void this.#run(active), this.#options.catalogRetryMs ?? CATALOG_RETRY_MS);
+    active.timer.unref?.();
+  }
+
   #scheduleRebuildRetry(active: ActiveJob): void {
     if (!this.#current(active)) return;
     active.timer = setTimeout(() => void this.#retryRebuild(active), this.#options.rebuildRetryMs ?? CATALOG_RETRY_MS);
@@ -94,6 +159,7 @@ export class CatalogScheduler {
   async #run(active: ActiveJob): Promise<void> {
     if (!this.#current(active)) return;
     active.timer = undefined;
+    const startedAt = (this.#options.now ?? Date.now)();
     const controller = new AbortController();
     active.controller = controller;
     const deadline = setTimeout(
@@ -108,23 +174,35 @@ export class CatalogScheduler {
     const onAbort = () => rejectAbort(controller.signal.reason);
     controller.signal.addEventListener('abort', onAbort, { once: true });
     const discovery = Promise.resolve().then(() => active.descriptor.discover(controller.signal));
+    let catalog: ModelCatalog | undefined;
+    let swapped: { readonly ok: false } | { readonly ok: true; readonly revision: number } | undefined;
     try {
-      const catalog = validateModelCatalog(await Promise.race([discovery, aborted]));
+      catalog = validateModelCatalog(await Promise.race([discovery, aborted]));
       if (!this.#current(active) || controller.signal.aborted) return;
-      this.#options.repository.writeCatalog(active.descriptor.providerId, catalog, (this.#options.now ?? Date.now)());
-      this.#options.repository.clearDiagnostic(active.descriptor.providerId, 'CATALOG_UNAVAILABLE');
+      swapped = this.#options.repository.compareAndSwapCatalog({
+        providerId: active.descriptor.providerId,
+        catalog,
+        refreshedAt: (this.#options.now ?? Date.now)(),
+        startedAt,
+        plugin: active.descriptor.plugin,
+        capability: active.descriptor.capability,
+        accountRuntimeRevision: active.descriptor.accountRuntimeRevision,
+      });
     } catch (error) {
       if (!this.#current(active) || (controller.signal.aborted && this.#closed)) return;
-      const diagnostic = this.#options.diagnostics('CATALOG_UNAVAILABLE', {
+      const wrote = this.#options.repository.writeCatalogUnavailableIfCurrent({
         providerId: active.descriptor.providerId,
-        retryable: true,
+        plugin: active.descriptor.plugin,
+        capability: active.descriptor.capability,
+        accountRuntimeRevision: active.descriptor.accountRuntimeRevision,
+        diagnostic: this.#options.diagnostics('CATALOG_UNAVAILABLE', {
+          providerId: active.descriptor.providerId,
+          retryable: true,
+        }),
       });
-      this.#options.repository.writeDiagnostic(active.descriptor.providerId, diagnostic);
       if (!this.#current(active)) return;
-      await this.#options.rebuild('catalog').catch(() => {});
-      if (!this.#current(active)) return;
-      active.timer = setTimeout(() => void this.#run(active), this.#options.catalogRetryMs ?? CATALOG_RETRY_MS);
-      active.timer.unref?.();
+      if (wrote) await this.#options.rebuild('catalog').catch(() => {});
+      this.#scheduleCatalogRetry(active);
       void error;
       return;
     } finally {
@@ -133,6 +211,33 @@ export class CatalogScheduler {
       if (active.controller === controller) active.controller = undefined;
     }
     if (!this.#current(active)) return;
+    if (swapped?.ok !== true || catalog === undefined) {
+      this.#scheduleCatalogRetry(active);
+      return;
+    }
+    const merge = this.#options.mergeDefaultAliases;
+    if (merge !== undefined && active.descriptor.defaultAliases !== undefined) {
+      try {
+        await merge(active.descriptor.providerId, catalog, {
+          plugin: active.descriptor.plugin,
+          capability: active.descriptor.capability,
+          accountRuntimeRevision: active.descriptor.accountRuntimeRevision,
+          writtenCatalogRevision: swapped.revision,
+          defaultAliases: active.descriptor.defaultAliases,
+        });
+      } catch (error) {
+        this.#options.logger?.({
+          event: 'plugin.default-aliases.merge.failed',
+          code: 'PROVIDER_CONFIG_INVALID',
+          context: {
+            plugin: active.descriptor.plugin,
+            capability: active.descriptor.capability,
+            providerId: active.descriptor.providerId,
+          },
+          error: redactPluginError(error),
+        });
+      }
+    }
     try {
       await this.#options.rebuild('catalog');
     } catch {

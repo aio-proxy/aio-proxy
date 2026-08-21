@@ -135,7 +135,12 @@ test('definite config write failure fully restores an unchanged update', async (
     ),
   ).rejects.toThrow('write failed');
   expect(state.repository.readAccount('person')).toEqual(previousAccount);
-  expect(state.repository.readCatalog('person')).toEqual(previousCatalog);
+  const restoredCatalog = state.repository.readCatalog('person');
+  expect(restoredCatalog).toMatchObject({
+    catalog: previousCatalog?.catalog,
+    refreshedAt: previousCatalog?.refreshedAt,
+  });
+  expect(restoredCatalog?.revision).toBeGreaterThan(previousCatalog?.revision ?? 0);
   expect(state.repository.readDiagnostics('person')).toEqual(previousDiagnostics);
   expect(state.repository.listPendingAccountOperations()).toHaveLength(0);
   expect(configOf(state)).toEqual(previousConfig);

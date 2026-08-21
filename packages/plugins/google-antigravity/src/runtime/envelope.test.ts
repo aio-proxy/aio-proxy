@@ -37,6 +37,7 @@ describe('CCA envelope identity', () => {
       credential: credentialFixture(),
       modelId: 'gemini-3-flash-agent',
       requestType: 'agent',
+      ...knownWireLookups(),
     });
 
     expect(envelope).toMatchObject({
@@ -62,6 +63,7 @@ describe('CCA envelope identity', () => {
       credential: credentialFixture(),
       modelId: 'gemini-pro-agent',
       requestType: 'agent',
+      ...knownWireLookups(),
     });
 
     expect(envelope.request.generationConfig).toEqual({ maxOutputTokens: 512 });
@@ -87,6 +89,7 @@ describe('CCA envelope identity', () => {
       credential: credentialFixture(),
       modelId: 'claude-sonnet-4-6',
       requestType: 'agent',
+      ...knownWireLookups(),
     });
 
     expect(body.tools).toHaveLength(2);
@@ -108,6 +111,75 @@ describe('CCA envelope identity', () => {
     });
     expect(JSON.stringify(envelope.request)).not.toContain('parametersJsonSchema');
   });
+
+  test('applies modelEnum and maxOutputTokens from a catalog-only wire', () => {
+    const envelope = createCcaEnvelope({
+      body: { generationConfig: { temperature: 0.2 } },
+      context: logicalContext(),
+      credential: credentialFixture(),
+      modelId: 'gemini-4.0-flash-preview',
+      requestType: 'agent',
+      descriptorById: descriptorMap([
+        {
+          id: 'gemini-4.0-flash-preview',
+          metadata: { antigravity: { modelEnum: 'MODEL_GEMINI_4_FLASH', maxOutputTokens: 8192 } },
+        },
+      ]),
+      familyByWireId: () => undefined,
+    });
+
+    expect(envelope.request.generationConfig).toEqual({ temperature: 0.2, maxOutputTokens: 8192 });
+    expect(envelope.request.labels).toEqual({ model_enum: 'MODEL_GEMINI_4_FLASH' });
+  });
+
+  test('does not inject maxOutputTokens when the catalog wire omits it', () => {
+    const envelope = createCcaEnvelope({
+      body: { generationConfig: { temperature: 0.1 } },
+      context: logicalContext(),
+      credential: credentialFixture(),
+      modelId: 'claude-sonnet-4-6',
+      requestType: 'agent',
+      descriptorById: descriptorMap([
+        {
+          id: 'claude-sonnet-4-6',
+          metadata: { antigravity: { apiProvider: 'anthropic', modelEnum: 'MODEL_CLAUDE_ONLY' } },
+        },
+      ]),
+      familyByWireId: () => undefined,
+    });
+
+    expect(envelope.request.generationConfig).toEqual({ temperature: 0.1 });
+    expect(envelope.request.generationConfig).not.toHaveProperty('maxOutputTokens');
+    expect(envelope.request.labels).toEqual({ model_enum: 'MODEL_CLAUDE_ONLY' });
+  });
+
+  test('sets VALIDATED tool mode for a non-picker Claude wire', () => {
+    const envelope = createCcaEnvelope({
+      body: {
+        tools: [
+          {
+            functionDeclarations: [
+              { name: 'weather', parametersJsonSchema: { type: 'object', properties: { days: { const: 3 } } } },
+            ],
+          },
+        ],
+        toolConfig: { functionCallingConfig: { mode: 'AUTO' } },
+      },
+      context: logicalContext(),
+      credential: credentialFixture(),
+      modelId: 'claude-haiku-direct',
+      requestType: 'agent',
+      descriptorById: descriptorMap([
+        {
+          id: 'claude-haiku-direct',
+          metadata: { antigravity: { apiProvider: 'anthropic' } },
+        },
+      ]),
+      familyByWireId: () => undefined,
+    });
+
+    expect(envelope.request.toolConfig).toEqual({ functionCallingConfig: { mode: 'VALIDATED' } });
+  });
 });
 
 function logicalContext(
@@ -124,5 +196,30 @@ function credentialFixture(): GoogleAntigravityCredential {
     expiresAt: 1_900_000_000_000,
     email: 'person@example.com',
     projectId: 'project-1',
+  };
+}
+
+function descriptorMap(descriptors: readonly { readonly id: string; readonly metadata: unknown }[]) {
+  return new Map(descriptors.map((descriptor) => [descriptor.id, descriptor]));
+}
+
+function knownWireLookups() {
+  return {
+    descriptorById: descriptorMap([
+      {
+        id: 'gemini-3-flash-agent',
+        metadata: { antigravity: { modelEnum: 'MODEL_PLACEHOLDER_M132', maxOutputTokens: 65_536 } },
+      },
+      {
+        id: 'gemini-pro-agent',
+        metadata: { antigravity: { modelEnum: 'MODEL_PLACEHOLDER_M16', maxOutputTokens: 65_535 } },
+      },
+      {
+        id: 'claude-sonnet-4-6',
+        metadata: { antigravity: { apiProvider: 'anthropic' } },
+      },
+    ]),
+    familyByWireId: (modelId: string) =>
+      modelId === 'claude-sonnet-4-6' ? { thinking: { mode: 'claude' as const } } : undefined,
   };
 }
