@@ -115,8 +115,8 @@ test('a malformed base URL says the address is invalid, not that it is missing',
 
 // `0` is a real configured weight and absent is the key being omitted from config; the routing badge
 // coalesced the two, so a provider that was never given a weight read as one deliberately set to zero.
-// Ordering still coalesces to 0 (attempt.ts:94, the single ordering point, mirrored by `lib/weight-tie`'s
-// `effectiveWeight`) — this is the readout only.
+// Ordering still coalesces to 0 (types/src/config/config.ts:196, the single ordering point, mirrored
+// by `lib/weight-tie`'s `effectiveWeight`) — this is the readout only.
 test('the routing hint tells an absent weight apart from a configured zero', () => {
   const input = { ...base, models: ['m1'], aliasCount: 0 } satisfies SectionStatusInput;
 

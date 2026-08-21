@@ -36,7 +36,7 @@ describe('hasWeightTie', () => {
     ).toBe(true);
   });
 
-  // A disabled provider is never materialized (materialize.ts:133-138 records a summary and
+  // A disabled provider is never materialized (materialize.ts:137-140 records a summary and
   // continues), so reporting a tie against it would flag a conflict the router cannot reach.
   test('a disabled provider on the same weight is not a tie', () => {
     expect(

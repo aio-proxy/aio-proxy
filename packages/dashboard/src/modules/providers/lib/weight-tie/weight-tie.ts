@@ -12,7 +12,7 @@ export interface WeightTieInput {
   readonly others: readonly Pick<DashboardProviderSummary, 'id' | 'weight' | 'clientModels' | 'enabled'>[];
 }
 
-// Absent coalesces to 0 at the single ordering point, attempt.ts:94; matched here so a tie is judged
+// Absent coalesces to 0 at the single ordering point, types/src/config/config.ts:196; matched here so a tie is judged
 // by the same yardstick the router orders by.
 const effectiveWeight = (weight: number | undefined): number => weight ?? 0;
 
@@ -20,7 +20,7 @@ const effectiveWeight = (weight: number | undefined): number => weight ?? 0;
  * Does another materialized provider share this one's weight on an alias they both serve? Feeds
  * `sectionStatuses` as `weightTie`; the predicate must exist exactly once.
  *
- * A disabled other is never materialized (materialize.ts:133-138 records a summary and continues), so
+ * A disabled other is never materialized (materialize.ts:137-140 records a summary and continues), so
  * a tie against it is a conflict that cannot happen. Self is excluded by id rather than by shape: the
  * summaries list includes the provider being edited, whose stored row is stale against the live form.
  */
