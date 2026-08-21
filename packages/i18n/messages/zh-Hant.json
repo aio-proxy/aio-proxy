@@ -648,51 +648,54 @@
           "computed": "計算",
           "static_label": "設定值",
           "computed_label": "計算值",
+          "preview": "預覽",
+          "preview_label": "{name} 運算式預覽",
+          "scoped_label": "{name} {label}",
           "type": "值類型",
           "type_text": "文字",
           "type_number": "數字",
           "type_boolean": "布林值",
-          "type_null": "空值",
+          "type_null": "Null",
           "type_object": "物件",
           "type_array": "陣列",
           "edit_json": "編輯 JSON",
           "json_title": "編輯{type} JSON",
-          "json_description": "套用後將取代此操作的目前值。",
+          "json_description": "輸入有效的 JSON {type}。套用後會寫入這條請求改寫規則。",
           "json_apply": "套用 JSON",
           "placeholder_text": "文字值",
           "invalid_number": "請輸入有效數字",
-          "invalid_object": "請輸入有效的 JSON 物件",
-          "invalid_array": "請輸入有效的 JSON 陣列"
+          "invalid_object": "請輸入一個有效的 JSON 物件。",
+          "invalid_array": "請輸入一個有效的 JSON 陣列。"
         },
         "condition": {
           "editor_title": "請求條件編輯器",
           "field": {
-            "title": "欄位",
+            "title": "條件欄位",
             "provider_kind": "Provider 類型",
             "provider_protocol": "Provider 協定",
-            "current_model": "目前模型",
-            "requested_model": "請求的模型",
+            "current_model": "目前模型 ID",
+            "requested_model": "客戶端請求模型 ID",
             "source_protocol": "來源協定",
             "target_protocol": "目標協定",
             "method": "請求方法",
             "url": "請求 URL",
-            "current_body": "目前請求主體欄位",
-            "original_body": "原始請求主體欄位",
-            "current_header": "目前請求標頭",
-            "original_header": "原始請求標頭",
-            "current_body_path": "目前請求主體欄位路徑",
-            "original_body_path": "原始請求主體欄位路徑",
-            "current_header_name": "目前請求標頭名稱",
-            "original_header_name": "原始請求標頭名稱"
+            "current_body": "目前請求 Body",
+            "original_body": "原始請求 Body",
+            "current_header": "目前請求 Header",
+            "original_header": "原始請求 Header",
+            "current_body_path": "目前請求 Body 路徑",
+            "original_body_path": "原始請求 Body 路徑",
+            "current_header_name": "目前請求 Header 名稱",
+            "original_header_name": "原始請求 Header 名稱"
           },
           "operator": {
-            "title": "運算子",
+            "title": "比較方式",
             "equals": "等於",
             "not_equal": "不等於",
             "greater_than": "大於",
-            "greater_than_or_equal": "大於或等於",
+            "greater_than_or_equal": "大於等於",
             "less_than": "小於",
-            "less_than_or_equal": "小於或等於",
+            "less_than_or_equal": "小於等於",
             "in": "屬於",
             "not_in": "不屬於",
             "exists": "存在",
@@ -702,11 +705,12 @@
           },
           "combinator": {
             "title": "條件組合方式",
-            "and": "全部滿足",
-            "or": "任一滿足"
+            "and": "滿足全部（AND）",
+            "or": "滿足任一（OR）"
           },
           "value": {
-            "title": "值"
+            "title": "條件值",
+            "placeholder": "比對值"
           },
           "value_source": {
             "title": "值來源",
@@ -718,8 +722,11 @@
           "expression_kind": {
             "title": "運算式類型",
             "field": "欄位",
-            "value": "值",
+            "value": "固定值",
             "function": "函式"
+          },
+          "expression_value": {
+            "title": "固定值"
           },
           "argument": {
             "label": "參數 {index}"
@@ -728,32 +735,16 @@
             "title": "函式",
             "wrap_title": "使用函式包裝欄位",
             "none": "無函式",
-            "none_title": "直接使用欄位",
-            "add": "加法",
-            "subtract": "減法",
-            "multiply": "乘法",
-            "divide": "除法",
-            "min": "最小值",
-            "max": "最大值",
-            "abs": "絕對值",
-            "mod": "取餘",
-            "upper": "轉大寫",
-            "lower": "轉小寫",
-            "concat": "串接",
-            "condition": "條件函式",
-            "if_null": "空值替代",
-            "concat_arrays": "串接陣列",
-            "merge_objects": "合併物件"
+            "none_title": "直接使用欄位"
           },
           "action": {
-            "not": "非",
-            "not_title": "反轉此條件組",
+            "not": "取反",
+            "not_title": "對這個條件組取反",
             "add_condition": "新增條件",
             "add_group": "新增條件組",
+            "remove": "刪除",
             "remove_condition": "刪除條件",
-            "remove_group": "刪除條件組",
-            "move_up": "上移",
-            "move_down": "下移"
+            "remove_group": "刪除條件組"
           },
           "regex": {
             "source": "正規表示式",

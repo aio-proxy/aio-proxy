@@ -648,6 +648,9 @@
           "computed": "계산됨",
           "static_label": "설정할 값",
           "computed_label": "계산된 값",
+          "preview": "미리보기",
+          "preview_label": "{name} 식 미리보기",
+          "scoped_label": "{name} {label}",
           "type": "값 유형",
           "type_text": "텍스트",
           "type_number": "숫자",
@@ -657,36 +660,36 @@
           "type_array": "배열",
           "edit_json": "JSON 편집",
           "json_title": "{type} JSON 편집",
-          "json_description": "적용하면 이 작업의 현재 값이 대체됩니다.",
+          "json_description": "유효한 JSON {type}을 입력하세요. 적용하면 이 요청 재작성 규칙에 기록됩니다.",
           "json_apply": "JSON 적용",
           "placeholder_text": "텍스트 값",
           "invalid_number": "유효한 숫자를 입력하세요",
-          "invalid_object": "유효한 JSON 객체를 입력하세요",
-          "invalid_array": "유효한 JSON 배열을 입력하세요"
+          "invalid_object": "유효한 JSON 객체를 입력하세요.",
+          "invalid_array": "유효한 JSON 배열을 입력하세요."
         },
         "condition": {
           "editor_title": "요청 조건 편집기",
           "field": {
-            "title": "필드",
+            "title": "조건 필드",
             "provider_kind": "프로바이더 종류",
             "provider_protocol": "프로바이더 프로토콜",
-            "current_model": "현재 모델",
-            "requested_model": "요청된 모델",
+            "current_model": "현재 모델 ID",
+            "requested_model": "클라이언트 요청 모델 ID",
             "source_protocol": "소스 프로토콜",
             "target_protocol": "대상 프로토콜",
             "method": "요청 메서드",
             "url": "요청 URL",
-            "current_body": "현재 본문 필드",
-            "original_body": "원본 본문 필드",
-            "current_header": "현재 헤더",
-            "original_header": "원본 헤더",
-            "current_body_path": "현재 본문 필드 경로",
-            "original_body_path": "원본 본문 필드 경로",
-            "current_header_name": "현재 헤더 이름",
-            "original_header_name": "원본 헤더 이름"
+            "current_body": "현재 요청 Body",
+            "original_body": "원본 요청 Body",
+            "current_header": "현재 요청 Header",
+            "original_header": "원본 요청 Header",
+            "current_body_path": "현재 요청 Body 경로",
+            "original_body_path": "원본 요청 Body 경로",
+            "current_header_name": "현재 요청 Header 이름",
+            "original_header_name": "원본 요청 Header 이름"
           },
           "operator": {
-            "title": "연산자",
+            "title": "비교 방식",
             "equals": "같음",
             "not_equal": "같지 않음",
             "greater_than": "초과",
@@ -702,11 +705,12 @@
           },
           "combinator": {
             "title": "조건 결합 방식",
-            "and": "모두",
-            "or": "하나라도"
+            "and": "모두 충족（AND）",
+            "or": "하나라도 충족（OR）"
           },
           "value": {
-            "title": "값"
+            "title": "조건 값",
+            "placeholder": "일치 값"
           },
           "value_source": {
             "title": "값 소스",
@@ -718,8 +722,11 @@
           "expression_kind": {
             "title": "표현식 종류",
             "field": "필드",
-            "value": "값",
+            "value": "고정 값",
             "function": "함수"
+          },
+          "expression_value": {
+            "title": "고정 값"
           },
           "argument": {
             "label": "인수 {index}"
@@ -728,32 +735,16 @@
             "title": "함수",
             "wrap_title": "필드를 함수로 감싸기",
             "none": "함수 없음",
-            "none_title": "필드를 직접 사용",
-            "add": "더하기",
-            "subtract": "빼기",
-            "multiply": "곱하기",
-            "divide": "나누기",
-            "min": "최솟값",
-            "max": "최댓값",
-            "abs": "절댓값",
-            "mod": "나머지",
-            "upper": "대문자로",
-            "lower": "소문자로",
-            "concat": "연결",
-            "condition": "조건",
-            "if_null": "널일 경우",
-            "concat_arrays": "배열 연결",
-            "merge_objects": "객체 병합"
+            "none_title": "필드를 직접 사용"
           },
           "action": {
-            "not": "부정",
+            "not": "반전",
             "not_title": "이 조건 그룹 반전",
             "add_condition": "조건 추가",
             "add_group": "그룹 추가",
+            "remove": "제거",
             "remove_condition": "조건 제거",
-            "remove_group": "그룹 제거",
-            "move_up": "위로 이동",
-            "move_down": "아래로 이동"
+            "remove_group": "그룹 제거"
           },
           "regex": {
             "source": "정규 표현식",

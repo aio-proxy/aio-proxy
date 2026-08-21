@@ -648,6 +648,9 @@
           "computed": "Computed",
           "static_label": "Value to set",
           "computed_label": "Computed value",
+          "preview": "Preview",
+          "preview_label": "{name} expression preview",
+          "scoped_label": "{name} {label}",
           "type": "Value type",
           "type_text": "Text",
           "type_number": "Number",
@@ -657,42 +660,42 @@
           "type_array": "Array",
           "edit_json": "Edit JSON",
           "json_title": "Edit {type} JSON",
-          "json_description": "Applying replaces this action's current value.",
+          "json_description": "Enter a valid JSON {type}. Applying writes it into this request rewrite rule.",
           "json_apply": "Apply JSON",
           "placeholder_text": "Text value",
           "invalid_number": "Enter a valid number",
-          "invalid_object": "Enter a valid JSON object",
-          "invalid_array": "Enter a valid JSON array"
+          "invalid_object": "Enter a valid JSON object.",
+          "invalid_array": "Enter a valid JSON array."
         },
         "condition": {
           "editor_title": "Request condition editor",
           "field": {
-            "title": "Field",
+            "title": "Condition field",
             "provider_kind": "Provider kind",
             "provider_protocol": "Provider protocol",
-            "current_model": "Current model",
-            "requested_model": "Requested model",
+            "current_model": "Current model ID",
+            "requested_model": "Client requested model ID",
             "source_protocol": "Source protocol",
             "target_protocol": "Target protocol",
             "method": "Request method",
             "url": "Request URL",
-            "current_body": "Current body field",
-            "original_body": "Original body field",
-            "current_header": "Current header",
-            "original_header": "Original header",
-            "current_body_path": "Current body field path",
-            "original_body_path": "Original body field path",
-            "current_header_name": "Current header name",
-            "original_header_name": "Original header name"
+            "current_body": "Current Body",
+            "original_body": "Original Body",
+            "current_header": "Current Header",
+            "original_header": "Original Header",
+            "current_body_path": "Current Body path",
+            "original_body_path": "Original Body path",
+            "current_header_name": "Current Header name",
+            "original_header_name": "Original Header name"
           },
           "operator": {
-            "title": "Operator",
+            "title": "Comparison",
             "equals": "Equals",
             "not_equal": "Not equal",
             "greater_than": "Greater than",
-            "greater_than_or_equal": "Greater than or equal",
+            "greater_than_or_equal": "Greater or equal",
             "less_than": "Less than",
-            "less_than_or_equal": "Less than or equal",
+            "less_than_or_equal": "Less or equal",
             "in": "In",
             "not_in": "Not in",
             "exists": "Exists",
@@ -702,11 +705,12 @@
           },
           "combinator": {
             "title": "Condition combinator",
-            "and": "All",
-            "or": "Any"
+            "and": "All (AND)",
+            "or": "Any (OR)"
           },
           "value": {
-            "title": "Value"
+            "title": "Condition value",
+            "placeholder": "Match value"
           },
           "value_source": {
             "title": "Value source",
@@ -718,8 +722,11 @@
           "expression_kind": {
             "title": "Expression kind",
             "field": "Field",
-            "value": "Value",
+            "value": "Fixed value",
             "function": "Function"
+          },
+          "expression_value": {
+            "title": "Fixed value"
           },
           "argument": {
             "label": "Argument {index}"
@@ -728,32 +735,16 @@
             "title": "Function",
             "wrap_title": "Wrap the field in a function",
             "none": "No function",
-            "none_title": "Use the field directly",
-            "add": "Add",
-            "subtract": "Subtract",
-            "multiply": "Multiply",
-            "divide": "Divide",
-            "min": "Minimum",
-            "max": "Maximum",
-            "abs": "Absolute value",
-            "mod": "Remainder",
-            "upper": "Uppercase",
-            "lower": "Lowercase",
-            "concat": "Concatenate",
-            "condition": "Conditional",
-            "if_null": "If null",
-            "concat_arrays": "Concatenate arrays",
-            "merge_objects": "Merge objects"
+            "none_title": "Use the field directly"
           },
           "action": {
-            "not": "Not",
+            "not": "Invert",
             "not_title": "Invert this condition group",
             "add_condition": "Add condition",
             "add_group": "Add group",
+            "remove": "Remove",
             "remove_condition": "Remove condition",
-            "remove_group": "Remove group",
-            "move_up": "Move up",
-            "move_down": "Move down"
+            "remove_group": "Remove group"
           },
           "regex": {
             "source": "Regular expression",

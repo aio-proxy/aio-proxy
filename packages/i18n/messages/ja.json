@@ -648,6 +648,9 @@
           "computed": "計算",
           "static_label": "設定する値",
           "computed_label": "計算された値",
+          "preview": "プレビュー",
+          "preview_label": "{name} 式のプレビュー",
+          "scoped_label": "{name} {label}",
           "type": "値の型",
           "type_text": "テキスト",
           "type_number": "数値",
@@ -657,36 +660,36 @@
           "type_array": "配列",
           "edit_json": "JSON を編集",
           "json_title": "{type} JSON を編集",
-          "json_description": "適用すると、このアクションの現在の値が置き換えられます。",
+          "json_description": "有効な JSON {type} を入力してください。適用するとこのリクエスト書き換えルールに書き込まれます。",
           "json_apply": "JSON を適用",
           "placeholder_text": "テキスト値",
           "invalid_number": "有効な数値を入力してください",
-          "invalid_object": "有効な JSON オブジェクトを入力してください",
-          "invalid_array": "有効な JSON 配列を入力してください"
+          "invalid_object": "有効な JSON オブジェクトを入力してください。",
+          "invalid_array": "有効な JSON 配列を入力してください。"
         },
         "condition": {
           "editor_title": "リクエスト条件エディター",
           "field": {
-            "title": "フィールド",
+            "title": "条件フィールド",
             "provider_kind": "プロバイダーの種類",
             "provider_protocol": "プロバイダーのプロトコル",
-            "current_model": "現在のモデル",
-            "requested_model": "要求されたモデル",
+            "current_model": "現在のモデル ID",
+            "requested_model": "クライアント要求モデル ID",
             "source_protocol": "ソースプロトコル",
             "target_protocol": "ターゲットプロトコル",
             "method": "リクエストメソッド",
             "url": "リクエスト URL",
-            "current_body": "現在のボディフィールド",
-            "original_body": "元のボディフィールド",
-            "current_header": "現在のヘッダー",
-            "original_header": "元のヘッダー",
-            "current_body_path": "現在のボディフィールドパス",
-            "original_body_path": "元のボディフィールドパス",
-            "current_header_name": "現在のヘッダー名",
-            "original_header_name": "元のヘッダー名"
+            "current_body": "現在のリクエスト Body",
+            "original_body": "元のリクエスト Body",
+            "current_header": "現在のリクエスト Header",
+            "original_header": "元のリクエスト Header",
+            "current_body_path": "現在のリクエスト Body パス",
+            "original_body_path": "元のリクエスト Body パス",
+            "current_header_name": "現在のリクエスト Header 名",
+            "original_header_name": "元のリクエスト Header 名"
           },
           "operator": {
-            "title": "演算子",
+            "title": "比較方法",
             "equals": "等しい",
             "not_equal": "等しくない",
             "greater_than": "より大きい",
@@ -702,11 +705,12 @@
           },
           "combinator": {
             "title": "条件の結合方法",
-            "and": "すべて",
-            "or": "いずれか"
+            "and": "すべて満たす（AND）",
+            "or": "いずれかを満たす（OR）"
           },
           "value": {
-            "title": "値"
+            "title": "条件の値",
+            "placeholder": "一致させる値"
           },
           "value_source": {
             "title": "値のソース",
@@ -718,8 +722,11 @@
           "expression_kind": {
             "title": "式の種類",
             "field": "フィールド",
-            "value": "値",
+            "value": "固定値",
             "function": "関数"
+          },
+          "expression_value": {
+            "title": "固定値"
           },
           "argument": {
             "label": "引数 {index}"
@@ -728,32 +735,16 @@
             "title": "関数",
             "wrap_title": "フィールドを関数で包む",
             "none": "関数なし",
-            "none_title": "フィールドを直接使用する",
-            "add": "加算",
-            "subtract": "減算",
-            "multiply": "乗算",
-            "divide": "除算",
-            "min": "最小値",
-            "max": "最大値",
-            "abs": "絶対値",
-            "mod": "剰余",
-            "upper": "大文字",
-            "lower": "小文字",
-            "concat": "連結",
-            "condition": "条件",
-            "if_null": "null の場合",
-            "concat_arrays": "配列を連結",
-            "merge_objects": "オブジェクトをマージ"
+            "none_title": "フィールドを直接使用する"
           },
           "action": {
-            "not": "否定",
+            "not": "反転",
             "not_title": "この条件グループを反転する",
             "add_condition": "条件を追加",
             "add_group": "グループを追加",
+            "remove": "削除",
             "remove_condition": "条件を削除",
-            "remove_group": "グループを削除",
-            "move_up": "上に移動",
-            "move_down": "下に移動"
+            "remove_group": "グループを削除"
           },
           "regex": {
             "source": "正規表現",

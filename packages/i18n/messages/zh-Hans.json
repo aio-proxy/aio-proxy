@@ -648,51 +648,54 @@
           "computed": "计算",
           "static_label": "设置值",
           "computed_label": "计算值",
+          "preview": "预览",
+          "preview_label": "{name} 表达式预览",
+          "scoped_label": "{name} {label}",
           "type": "值类型",
           "type_text": "文本",
           "type_number": "数字",
           "type_boolean": "布尔值",
-          "type_null": "空值",
+          "type_null": "Null",
           "type_object": "对象",
           "type_array": "数组",
           "edit_json": "编辑 JSON",
           "json_title": "编辑{type} JSON",
-          "json_description": "应用后将替换此操作的当前值。",
+          "json_description": "输入有效的 JSON {type}。应用后会写入这条请求改写规则。",
           "json_apply": "应用 JSON",
           "placeholder_text": "文本值",
           "invalid_number": "请输入有效数字",
-          "invalid_object": "请输入有效的 JSON 对象",
-          "invalid_array": "请输入有效的 JSON 数组"
+          "invalid_object": "请输入一个有效的 JSON 对象。",
+          "invalid_array": "请输入一个有效的 JSON 数组。"
         },
         "condition": {
           "editor_title": "请求条件编辑器",
           "field": {
-            "title": "字段",
+            "title": "条件字段",
             "provider_kind": "Provider 类型",
             "provider_protocol": "Provider 协议",
-            "current_model": "当前模型",
-            "requested_model": "请求的模型",
-            "source_protocol": "源协议",
+            "current_model": "当前模型 ID",
+            "requested_model": "客户端请求模型 ID",
+            "source_protocol": "来源协议",
             "target_protocol": "目标协议",
             "method": "请求方法",
             "url": "请求 URL",
-            "current_body": "当前请求体字段",
-            "original_body": "原始请求体字段",
-            "current_header": "当前请求头",
-            "original_header": "原始请求头",
-            "current_body_path": "当前请求体字段路径",
-            "original_body_path": "原始请求体字段路径",
-            "current_header_name": "当前请求头名称",
-            "original_header_name": "原始请求头名称"
+            "current_body": "当前请求 Body",
+            "original_body": "原始请求 Body",
+            "current_header": "当前请求 Header",
+            "original_header": "原始请求 Header",
+            "current_body_path": "当前请求 Body 路径",
+            "original_body_path": "原始请求 Body 路径",
+            "current_header_name": "当前请求 Header 名称",
+            "original_header_name": "原始请求 Header 名称"
           },
           "operator": {
-            "title": "运算符",
+            "title": "比较方式",
             "equals": "等于",
             "not_equal": "不等于",
             "greater_than": "大于",
-            "greater_than_or_equal": "大于或等于",
+            "greater_than_or_equal": "大于等于",
             "less_than": "小于",
-            "less_than_or_equal": "小于或等于",
+            "less_than_or_equal": "小于等于",
             "in": "属于",
             "not_in": "不属于",
             "exists": "存在",
@@ -702,11 +705,12 @@
           },
           "combinator": {
             "title": "条件组合方式",
-            "and": "全部满足",
-            "or": "任一满足"
+            "and": "满足全部（AND）",
+            "or": "满足任一（OR）"
           },
           "value": {
-            "title": "值"
+            "title": "条件值",
+            "placeholder": "匹配值"
           },
           "value_source": {
             "title": "值来源",
@@ -718,8 +722,11 @@
           "expression_kind": {
             "title": "表达式类型",
             "field": "字段",
-            "value": "值",
+            "value": "固定值",
             "function": "函数"
+          },
+          "expression_value": {
+            "title": "固定值"
           },
           "argument": {
             "label": "参数 {index}"
@@ -728,32 +735,16 @@
             "title": "函数",
             "wrap_title": "使用函数包装字段",
             "none": "无函数",
-            "none_title": "直接使用字段",
-            "add": "加法",
-            "subtract": "减法",
-            "multiply": "乘法",
-            "divide": "除法",
-            "min": "最小值",
-            "max": "最大值",
-            "abs": "绝对值",
-            "mod": "取余",
-            "upper": "转大写",
-            "lower": "转小写",
-            "concat": "拼接",
-            "condition": "条件函数",
-            "if_null": "空值替代",
-            "concat_arrays": "拼接数组",
-            "merge_objects": "合并对象"
+            "none_title": "直接使用字段"
           },
           "action": {
-            "not": "非",
-            "not_title": "反转此条件组",
+            "not": "取反",
+            "not_title": "对这个条件组取反",
             "add_condition": "添加条件",
             "add_group": "添加条件组",
+            "remove": "删除",
             "remove_condition": "删除条件",
-            "remove_group": "删除条件组",
-            "move_up": "上移",
-            "move_down": "下移"
+            "remove_group": "删除条件组"
           },
           "regex": {
             "source": "正则表达式",
