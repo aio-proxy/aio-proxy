@@ -1,4 +1,4 @@
-import { catalogModelToMetadata, getModels, modelRoutes } from '@aio-proxy/core';
+import { catalogModelToMetadata, getModels } from '@aio-proxy/core';
 import { ModelContextAggregation, type ModelCapabilities, type ModelLimit, type ModelMetadata } from '@aio-proxy/types';
 import { mergeWith } from 'es-toolkit/object';
 
@@ -68,27 +68,25 @@ export async function resolveEnabledModels(state: ServerState): Promise<readonly
   const lease = state.acquireProviderSnapshot();
   try {
     const aggregation = lease.snapshot.config?.router.modelContextAggregation ?? ModelContextAggregation.Min;
-    const bySlug = new Map<string, ResolvedModelCandidate[]>();
-    for (const provider of lease.snapshot.providers) {
-      if (!provider.enabled) continue;
-      for (const route of modelRoutes(provider)) {
-        const candidate: ResolvedModelCandidate = {
-          modelId: route.modelId,
+    const resolved: { slug: string; candidates: ResolvedModelCandidate[] }[] = [];
+    for (const slug of lease.snapshot.router.modelIds()) {
+      const routed = lease.snapshot.router.catalogCandidates(slug);
+      if (routed.length === 0) continue;
+      resolved.push({
+        slug,
+        candidates: routed.map(({ provider, modelId }) => ({
           provider,
-          configMetadata: provider.configMetadata?.[route.modelId],
-          upstreamMetadata: provider.upstreamMetadata?.[route.modelId],
-        };
-        const group = bySlug.get(route.alias);
-        if (group === undefined) bySlug.set(route.alias, [candidate]);
-        else group.push(candidate);
-      }
+          modelId,
+          configMetadata: provider.configMetadata?.[modelId],
+          upstreamMetadata: provider.upstreamMetadata?.[modelId],
+        })),
+      });
     }
 
-    const slugs = [...bySlug.keys()];
+    const slugs = resolved.map(({ slug }) => slug);
     const metadataBySlug = slugs.length === 0 ? {} : await getModels(slugs).catch(() => ({}));
 
-    return slugs.map((slug): ResolvedModel => {
-      const candidates = bySlug.get(slug)!;
+    return resolved.map(({ slug, candidates }): ResolvedModel => {
       const primary = candidates[0]!;
       const fallback = metadataBySlug[slug];
       let fallbackMetadata: ModelMetadata | undefined;

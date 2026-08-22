@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { clearModelsCache, fileCacheStorage, type ModelsDevModel } from '@aio-proxy/core';
+import { clearModelsCache, fileCacheStorage, Router, type ModelsDevModel } from '@aio-proxy/core';
 import { ModelContextAggregation, ProviderKind } from '@aio-proxy/types';
 
 import type { RuntimeProviderInstance } from '../../runtime';
@@ -69,11 +69,13 @@ function fakeState(
   providers: readonly RuntimeProviderInstance[],
   aggregation?: (typeof ModelContextAggregation)[keyof typeof ModelContextAggregation],
 ): ServerState {
+  const config = aggregation === undefined ? undefined : { router: { modelContextAggregation: aggregation } };
   return {
     acquireProviderSnapshot: () => ({
       snapshot: {
         providers,
-        ...(aggregation === undefined ? {} : { config: { router: { modelContextAggregation: aggregation } } }),
+        router: new Router(providers, { models: config?.router.models }),
+        ...(config === undefined ? {} : { config }),
       },
       release() {},
     }),
