@@ -67,7 +67,7 @@ export const RoutingEditorSheet: React.FC<RoutingEditorSheetProps> = ({ model, w
         if (!open) close();
       }}
     >
-      <SheetContent className="w-full sm:max-w-3xl" data-testid="routing-editor-sheet">
+      <SheetContent className="w-full data-[side=right]:sm:max-w-3xl" data-testid="routing-editor-sheet">
         <SheetHeader>
           <SheetTitle>{m['dashboard.routing.editor.title']({ modelId: model?.modelId ?? '' })}</SheetTitle>
           <SheetDescription>{m['dashboard.routing.editor.description']()}</SheetDescription>

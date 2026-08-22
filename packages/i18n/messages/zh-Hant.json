@@ -562,6 +562,7 @@
         "default_priority": "預設優先順序 {value}",
         "default_weight": "預設權重 {value}",
         "effective": "有效 {value}",
+        "priority_invalid": "優先順序必須是整數。",
         "override_priority": "優先順序覆寫",
         "override_weight": "權重覆寫",
         "provider_ready": "就緒",

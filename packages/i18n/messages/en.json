@@ -560,6 +560,7 @@
         "default_priority": "Default priority {value}",
         "default_weight": "Default weight {value}",
         "effective": "Effective {value}",
+        "priority_invalid": "Priority must be a whole number.",
         "override_priority": "Priority override",
         "override_weight": "Weight override",
         "provider_ready": "Ready",

@@ -562,6 +562,7 @@
         "default_priority": "기본 우선순위 {value}",
         "default_weight": "기본 가중치 {value}",
         "effective": "실효 {value}",
+        "priority_invalid": "우선순위는 정수여야 합니다.",
         "override_priority": "우선순위 재정의",
         "override_weight": "가중치 재정의",
         "provider_ready": "준비됨",

@@ -8,12 +8,15 @@ export type RoutingFormValues = {
   providers: Record<string, RoutingProviderDraft>;
 };
 
+export const RoutingPriorityDraftSchema = z.int().optional();
+const RoutingWeightDraftSchema = z.number().optional();
+
 const RoutingFormValuesSchema = z.object({
   providers: z.record(
     z.string(),
     z.object({
-      priority: z.int().optional(),
-      weight: z.number().optional(),
+      priority: RoutingPriorityDraftSchema,
+      weight: RoutingWeightDraftSchema,
     }),
   ),
 });

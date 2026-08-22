@@ -560,6 +560,7 @@
         "default_priority": "默认优先级 {value}",
         "default_weight": "默认权重 {value}",
         "effective": "有效 {value}",
+        "priority_invalid": "优先级必须是整数。",
         "override_priority": "优先级覆盖",
         "override_weight": "权重覆盖",
         "provider_ready": "就绪",

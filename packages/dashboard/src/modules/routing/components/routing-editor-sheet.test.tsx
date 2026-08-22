@@ -209,6 +209,18 @@ test('omits a Provider from Save after Reset leaves both fields blank', async ()
   });
 });
 
+test('shows a field error and does not save when priority is fractional', async () => {
+  renderSheet();
+
+  fireEvent.change(overridePriority('a'), { target: { value: '1.5' } });
+  fireEvent.click(screen.getByTestId('routing-save'));
+
+  const field = within(screen.getByTestId('routing-provider-a'));
+  expect(await field.findByRole('alert')).toHaveTextContent(/whole number|integer|整数|정수|整數/iu);
+  expect(overridePriority('a')).toHaveAttribute('aria-invalid', 'true');
+  expect(mocks.mutate).not.toHaveBeenCalled();
+});
+
 test('keeps the Sheet open on 409 stale_revision and offers reload', async () => {
   const onReload = rs.fn();
   mocks.mutate.mockImplementation((_body: unknown, callbacks?: { onError?: (error: Error) => void }) => {

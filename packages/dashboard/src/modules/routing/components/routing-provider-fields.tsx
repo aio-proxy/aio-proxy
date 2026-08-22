@@ -2,11 +2,11 @@ import { m } from '@aio-proxy/i18n';
 import type { DashboardRoutingProvider } from '@aio-proxy/types';
 import { Badge } from '@aio-proxy/ui/components/badge';
 import { Button } from '@aio-proxy/ui/components/button';
-import { Field, FieldDescription, FieldLabel } from '@aio-proxy/ui/components/field';
+import { Field, FieldDescription, FieldError, FieldLabel } from '@aio-proxy/ui/components/field';
 import { Input } from '@aio-proxy/ui/components/input';
 import type React from 'react';
 
-import type { useRoutingForm } from '../hooks/use-routing-form';
+import { RoutingPriorityDraftSchema, type useRoutingForm } from '../hooks/use-routing-form';
 import { effectiveRoutingCandidates, routingDraftNormalization } from '../lib/routing-summary';
 
 interface RoutingProviderFieldsProps {
@@ -24,8 +24,17 @@ const normalizeNotice = (kind: 'priority' | 'weight', authored: number | undefin
     : m['dashboard.routing.editor.normalize_notice']({ authored: notice.authored, effective: notice.effective });
 };
 
+const priorityDraftError = (value: number | undefined): string | undefined =>
+  RoutingPriorityDraftSchema.safeParse(value).success ? undefined : m['dashboard.routing.editor.priority_invalid']();
+
 export const RoutingProviderFields: React.FC<RoutingProviderFieldsProps> = ({ form, provider, writable }) => (
-  <form.Field name={`providers.${provider.id}.priority`}>
+  <form.Field
+    name={`providers.${provider.id}.priority`}
+    validators={{
+      onChange: ({ value }) => priorityDraftError(value),
+      onSubmit: ({ value }) => priorityDraftError(value),
+    }}
+  >
     {(priorityField) => (
       <form.Field name={`providers.${provider.id}.weight`}>
         {(weightField) => {
@@ -34,6 +43,7 @@ export const RoutingProviderFields: React.FC<RoutingProviderFieldsProps> = ({ fo
           const hasOverride = draft.priority !== undefined || draft.weight !== undefined;
           const priorityNotice = normalizeNotice('priority', draft.priority);
           const weightNotice = normalizeNotice('weight', draft.weight);
+          const priorityInvalid = priorityField.state.meta.errors.length > 0;
           const stateLabel =
             provider.state.status === 'unavailable'
               ? m['dashboard.routing.editor.provider_unavailable']()
@@ -56,7 +66,7 @@ export const RoutingProviderFields: React.FC<RoutingProviderFieldsProps> = ({ fo
                 {m['dashboard.routing.editor.default_weight']({ value: provider.defaults.weight.effective })}
               </p>
               <div className="grid gap-3 sm:grid-cols-2">
-                <Field>
+                <Field data-invalid={priorityInvalid || undefined}>
                   <FieldLabel htmlFor={`routing-override-priority-${provider.id}`}>
                     {m['dashboard.routing.editor.override_priority']()}
                   </FieldLabel>
@@ -66,9 +76,10 @@ export const RoutingProviderFields: React.FC<RoutingProviderFieldsProps> = ({ fo
                     type="number"
                     step="1"
                     disabled={!writable}
+                    aria-invalid={priorityInvalid || undefined}
                     value={priorityField.state.value ?? ''}
                     placeholder={String(provider.defaults.priority.effective)}
-                    onChange={(event) => priorityField.handleChange(numberChange(event.target.value))}
+                    onChange={(event) => priorityField.handleChange(numberChange(event.target.value) as never)}
                   />
                   <FieldDescription>
                     {draft.priority === undefined
@@ -76,6 +87,9 @@ export const RoutingProviderFields: React.FC<RoutingProviderFieldsProps> = ({ fo
                       : m['dashboard.routing.editor.source_model']()}
                   </FieldDescription>
                   {priorityNotice === null ? null : <FieldDescription>{priorityNotice}</FieldDescription>}
+                  <FieldError
+                    errors={priorityField.state.meta.errors.map((message) => ({ message: String(message) }))}
+                  />
                 </Field>
                 <Field>
                   <FieldLabel htmlFor={`routing-override-weight-${provider.id}`}>
@@ -89,7 +103,7 @@ export const RoutingProviderFields: React.FC<RoutingProviderFieldsProps> = ({ fo
                     disabled={!writable}
                     value={weightField.state.value ?? ''}
                     placeholder={String(provider.defaults.weight.effective)}
-                    onChange={(event) => weightField.handleChange(numberChange(event.target.value))}
+                    onChange={(event) => weightField.handleChange(numberChange(event.target.value) as never)}
                   />
                   <FieldDescription>
                     {draft.weight === undefined

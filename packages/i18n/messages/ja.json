@@ -562,6 +562,7 @@
         "default_priority": "既定の優先度 {value}",
         "default_weight": "既定の重み {value}",
         "effective": "実効 {value}",
+        "priority_invalid": "優先度は整数で入力してください。",
         "override_priority": "優先度の上書き",
         "override_weight": "重みの上書き",
         "provider_ready": "準備完了",

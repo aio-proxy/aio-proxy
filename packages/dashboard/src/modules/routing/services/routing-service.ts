@@ -20,7 +20,7 @@ export async function updateRoutingModelMutationFn(body: DashboardRoutingModelMu
   const response = await dashboardClient.dashboard.api.routing.models.$put({ json: body });
   if (response.status === 409) {
     const error = new Error('stale routing model');
-    Object.assign(error, { code: (await response.json()).error });
+    Object.assign(error, { code: ((await response.json()) as { error?: string }).error });
     throw error;
   }
   if (!response.ok) throw new Error(`update routing model failed: ${response.status}`);
