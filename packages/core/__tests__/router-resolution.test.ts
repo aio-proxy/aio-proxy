@@ -19,7 +19,7 @@ describe('Router', () => {
 
     const resolved = router.resolve('mini');
 
-    expect(resolved).toEqual([{ provider: openai, modelId: 'gpt-5-mini' }]);
+    expect(resolved).toMatchObject([{ provider: openai, modelId: 'gpt-5-mini' }]);
   });
 
   test('resolves a fully-qualified provider alias override', () => {
@@ -34,7 +34,7 @@ describe('Router', () => {
 
     const resolved = router.resolve('anthropic/haiku');
 
-    expect(resolved).toEqual([{ provider: anthropic, modelId: 'claude-3-5-haiku' }]);
+    expect(resolved).toMatchObject([{ provider: anthropic, modelId: 'claude-3-5-haiku' }]);
   });
 
   test('returns ordered candidates for duplicate aliases', () => {
@@ -46,9 +46,9 @@ describe('Router', () => {
       alias: { mini: { model: 'other-mini', preserve: false } },
     } satisfies ProviderInstance;
 
-    const router = new Router([openai, other]);
+    const router = new Router([openai, other], { random: () => 0 });
 
-    expect(router.resolve('mini')).toEqual([
+    expect(router.resolve('mini')).toMatchObject([
       { provider: openai, modelId: 'gpt-5-mini' },
       { provider: other, modelId: 'other-mini' },
     ]);
@@ -79,9 +79,9 @@ describe('Router', () => {
         },
       },
     } satisfies ProviderInstance;
-    const router = new Router([primary, fallback]);
+    const router = new Router([primary, fallback], { random: () => 0 });
 
-    expect(router.resolve('mini', { effort: ' High ' })).toEqual([
+    expect(router.resolve('mini', { effort: ' High ' })).toMatchObject([
       { provider: primary, modelId: 'gpt-5' },
       { provider: fallback, modelId: 'fallback-high' },
     ]);
@@ -101,7 +101,7 @@ describe('Router', () => {
     } satisfies ProviderInstance;
     const router = new Router([provider]);
 
-    expect(router.resolve('mini', { effort: 'unknown' })).toEqual([{ provider, modelId: 'gpt-5-mini' }]);
+    expect(router.resolve('mini', { effort: 'unknown' })).toMatchObject([{ provider, modelId: 'gpt-5-mini' }]);
   });
 
   test('resolves provider-qualified aliases with variants', () => {
@@ -118,7 +118,7 @@ describe('Router', () => {
     } satisfies ProviderInstance;
     const router = new Router([provider]);
 
-    expect(router.resolve('openai/mini', { effort: 'high' })).toEqual([{ provider, modelId: 'gpt-5' }]);
+    expect(router.resolve('openai/mini', { effort: 'high' })).toMatchObject([{ provider, modelId: 'gpt-5' }]);
   });
 
   test('resolves array variants from cached rows and preserves row ids', () => {
@@ -138,10 +138,12 @@ describe('Router', () => {
     } satisfies ProviderInstance;
     const router = new Router([provider]);
 
-    expect(router.resolve('grok-4.6', { effort: 'high', speed: 'fast' })).toEqual([
+    expect(router.resolve('grok-4.6', { effort: 'high', speed: 'fast' })).toMatchObject([
       { provider, modelId: 'cursor-grok-4.6-high-fast' },
     ]);
-    expect(router.resolve('cursor-grok-4.6-high-fast')).toEqual([{ provider, modelId: 'cursor-grok-4.6-high-fast' }]);
+    expect(router.resolve('cursor-grok-4.6-high-fast')).toMatchObject([
+      { provider, modelId: 'cursor-grok-4.6-high-fast' },
+    ]);
     expect(() => router.resolve('cursor-grok-4.6-high')).toThrow(RouterModelNotFoundError);
   });
 });

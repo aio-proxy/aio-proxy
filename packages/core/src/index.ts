@@ -170,13 +170,19 @@ export { bridgeApiProviderToAiSdk, resolveOpenAIResponsesModel } from './provide
 export { createProviderV4Invoke, validateProviderV4 } from './provider/provider-v4';
 export { createProxyFetch, type ProviderFetch } from './provider/proxy-fetch';
 export {
+  type EffectiveCandidateRouting,
   type ModelRoute,
   modelRoutes,
   type ProviderInstance,
   type RoutableProvider,
   Router,
   type RouterCandidate,
+  type RouterCatalogCandidate,
+  type RouterOptions,
   type RouterResolution,
+  type RouterResolveOptions,
+  type RouterSelectionSource,
+  type RoutingValueSource,
 } from './router';
 export {
   type AnthropicMessagesFromModelMessages,
