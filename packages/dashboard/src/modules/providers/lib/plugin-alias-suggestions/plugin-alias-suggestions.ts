@@ -51,7 +51,11 @@ export const mergePluginAliasRows = (rows: readonly AliasRow[], suggestions: Pro
   // reissuing it remounts the row and takes the caret with it; `name` stays verbatim because the
   // record key is the trimmed form either way, and rewriting it would edit text the user typed.
   const merged = rows.map((row) => {
-    const config = suggestions[normalizeAliasName(row.name)];
+    const name = normalizeAliasName(row.name);
+    // `Object.hasOwn`, not a bare lookup: a row named `constructor` reaches an inherited
+    // `Object.prototype` member, so a bracket read would replace that row's config with a function
+    // and lose the target the user typed. Same membership test as `insertMissingAliases`.
+    const config = Object.hasOwn(suggestions, name) ? suggestions[name] : undefined;
     return config === undefined ? row : { ...row, config };
   });
   const taken = new Set(rows.map((row) => normalizeAliasName(row.name)));

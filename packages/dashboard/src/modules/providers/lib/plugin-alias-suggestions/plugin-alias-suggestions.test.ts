@@ -51,15 +51,32 @@ describe('mergePluginAliasRows', () => {
     expect(next[1]?.id).not.toBe(blank.id);
     expect(new Set(next.map((row) => row.id)).size).toBe(next.length);
   });
+
+  // A bracket read finds inherited `Object.prototype` members, so this row would come back with a
+  // function where its config used to be — `target-missing`, a greyed-out Save, and the target the
+  // user typed gone, without the plugin having suggested anything under that name at all.
+  test('leaves a row named after an Object.prototype member alone', () => {
+    const kept = aliasRow('constructor', config('model-a'));
+    const next = mergePluginAliasRows([kept], { mini: config('model-b') });
+
+    expect(next).toHaveLength(2);
+    expect(next[0]).toBe(kept);
+  });
 });
 
 describe('applicablePluginAliases', () => {
   // A suggestion whose variant points outside the whitelist would report `target-missing` just as
-  // loudly as its default target would, so the whole entry goes rather than half of it.
+  // loudly as its default target would, so the whole entry goes rather than half of it. `sonnet`'s
+  // base model is inside the whitelist on purpose: a filter that only reads `config.model` keeps the
+  // entry and fails here, which is the whole point of the assertion.
   test('drops a whole suggestion when any target, variant included, is outside the whitelist', () => {
-    expect(applicablePluginAliases({ ...alias, sonnet: thinkingAlias.sonnet }, ['gpt-default', 'gpt-low'])).toEqual(
-      alias,
-    );
+    expect(
+      applicablePluginAliases({ ...alias, sonnet: thinkingAlias.sonnet }, [
+        'gpt-default',
+        'gpt-low',
+        'claude-sonnet-4',
+      ]),
+    ).toEqual(alias);
     expect(applicablePluginAliases(thinkingAlias, ['claude-sonnet-4'])).toBeUndefined();
   });
 
