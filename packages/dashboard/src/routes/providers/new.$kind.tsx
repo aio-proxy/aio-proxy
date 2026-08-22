@@ -22,7 +22,9 @@ const NewProviderPage: React.FC = () => {
   if (kind !== 'api' && kind !== 'ai-sdk') {
     throw notFound();
   }
-  return <ProviderFormPage mode={ProviderFormMode.Create} kind={kind} initial={{ enabled: true, weight: 0 }} />;
+  return (
+    <ProviderFormPage mode={ProviderFormMode.Create} kind={kind} initial={{ enabled: true, priority: 0, weight: 1 }} />
+  );
 };
 
 export const Route = createFileRoute('/providers/new/$kind')({

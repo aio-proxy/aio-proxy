@@ -43,12 +43,14 @@ const AiSdkModelsSchema = AiSdkProviderMutationBodySchema.pick({
 const ApiRoutingSchema = ApiProviderMutationBodySchema.pick({
   kind: true,
   enabled: true,
+  priority: true,
   weight: true,
   transforms: true,
 });
 const AiSdkRoutingSchema = AiSdkProviderMutationBodySchema.pick({
   kind: true,
   enabled: true,
+  priority: true,
   weight: true,
   transforms: true,
 });
@@ -121,7 +123,7 @@ export function useProviderForm({ kind, initial, onSubmit }: UseProviderFormOpti
   const schema = kind === 'api' ? ApiProviderMutationBodySchema : AiSdkProviderMutationBodySchema;
 
   return useForm({
-    defaultValues: { ...initial, kind } as ProviderFormShape,
+    defaultValues: { enabled: true, priority: 0, weight: 1, ...initial, kind } as ProviderFormShape,
     validators: {
       onChange: ({ value }) => {
         const result = schema.safeParse(normalizeProviderFormValue(value));

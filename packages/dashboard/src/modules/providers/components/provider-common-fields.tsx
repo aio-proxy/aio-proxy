@@ -1,5 +1,6 @@
 import { m } from '@aio-proxy/i18n';
-import { Field } from '@aio-proxy/ui/components/field';
+import type { DashboardRoutingNumber } from '@aio-proxy/types';
+import { Field, FieldDescription } from '@aio-proxy/ui/components/field';
 import { Input } from '@aio-proxy/ui/components/input';
 import { Label } from '@aio-proxy/ui/components/label';
 import { Switch } from '@aio-proxy/ui/components/switch';
@@ -13,9 +14,23 @@ interface ProviderCommonFieldsProps {
   form: ReturnType<typeof useProviderForm>;
   mode: ProviderFormMode;
   section: 'connection' | 'routing';
+  routing?: {
+    readonly priority: DashboardRoutingNumber;
+    readonly weight: DashboardRoutingNumber;
+  };
 }
 
-export const ProviderCommonFields: React.FC<ProviderCommonFieldsProps> = ({ form, mode, section }) => {
+const routingNormalizationNotice = (view: DashboardRoutingNumber | undefined) =>
+  view?.wasNormalized === true && view.authored !== undefined ? (
+    <FieldDescription>
+      {m['dashboard.providers.form.normalize_notice']({
+        authored: view.authored,
+        effective: view.effective,
+      })}
+    </FieldDescription>
+  ) : null;
+
+export const ProviderCommonFields: React.FC<ProviderCommonFieldsProps> = ({ form, mode, section, routing }) => {
   if (section === 'routing') {
     return (
       <>
@@ -33,6 +48,23 @@ export const ProviderCommonFields: React.FC<ProviderCommonFieldsProps> = ({ form
             )}
           </form.Field>
         </div>
+        <div data-testid="provider-form-field-priority">
+          <form.Field name="priority">
+            {(field) => (
+              <Field>
+                <Label htmlFor={field.name}>{m['dashboard.providers.form.label_priority']()}</Label>
+                <Input
+                  id={field.name}
+                  type="number"
+                  step="1"
+                  value={field.state.value ?? ''}
+                  onChange={(e) => field.handleChange(e.target.value === '' ? undefined : Number(e.target.value))}
+                />
+                {routingNormalizationNotice(routing?.priority)}
+              </Field>
+            )}
+          </form.Field>
+        </div>
         <div data-testid="provider-form-field-weight">
           <form.Field name="weight">
             {(field) => (
@@ -41,9 +73,12 @@ export const ProviderCommonFields: React.FC<ProviderCommonFieldsProps> = ({ form
                 <Input
                   id={field.name}
                   type="number"
+                  step="any"
                   value={field.state.value ?? ''}
                   onChange={(e) => field.handleChange(e.target.value === '' ? undefined : Number(e.target.value))}
                 />
+                <FieldDescription>{m['dashboard.providers.form.description_weight']()}</FieldDescription>
+                {routingNormalizationNotice(routing?.weight)}
               </Field>
             )}
           </form.Field>

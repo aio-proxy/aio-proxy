@@ -10,6 +10,7 @@ export interface OAuthProviderCommonFormValues {
   readonly id: string;
   readonly name?: string | undefined;
   readonly enabled: boolean;
+  readonly priority?: number | undefined;
   readonly weight?: number | undefined;
   readonly proxy?: OAuthProviderMutationBody['proxy'];
   readonly alias?: ProviderAlias | undefined;
@@ -43,6 +44,7 @@ const parseOAuthProviderEditValue = (value: OAuthProviderEditFormShape) => {
     id: value.id,
     name: value.name,
     enabled: value.enabled,
+    priority: value.priority,
     weight: value.weight,
     ...(proxy === undefined ? {} : { proxy }),
     alias: value.alias,
@@ -65,6 +67,14 @@ export const useOAuthProviderEditForm = (
     },
     onSubmit: ({ value }) => {
       const result = parseOAuthProviderEditValue(value);
-      if (result.success) onSubmit({ ...value, proxy: result.data.proxy, transforms: result.data.transforms });
+      if (result.success) {
+        onSubmit({
+          ...value,
+          priority: result.data.priority,
+          weight: result.data.weight,
+          proxy: result.data.proxy,
+          transforms: result.data.transforms,
+        });
+      }
     },
   }) as unknown as OAuthProviderEditForm;

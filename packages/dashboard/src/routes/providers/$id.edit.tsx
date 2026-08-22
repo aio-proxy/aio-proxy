@@ -7,7 +7,11 @@ import { createFileRoute, useNavigate, useParams, useSearch } from '@tanstack/re
 import { PageContainer } from '@/components/page-container';
 import { parseProviderFormInitial } from '@/modules/providers/hooks/use-provider-form';
 import { ProviderFormMode } from '@/modules/providers/lib/constants';
-import { providerEditViewQueryOptions } from '@/modules/providers/services/providers-service';
+import {
+  type ProviderEditRouting,
+  providerEditViewQueryOptions,
+  providerFormRoutingValues,
+} from '@/modules/providers/services/providers-service';
 import { OAuthProviderEditPage } from '@/modules/providers/templates/oauth-provider-edit-page';
 import { ProviderFormPage } from '@/modules/providers/templates/provider-form-page';
 
@@ -39,6 +43,8 @@ const EditProviderPage: React.FC = () => {
   }
 
   const provider = data.provider;
+  const routing = 'routing' in data ? (data.routing as ProviderEditRouting | undefined) : undefined;
+  const routingValues = providerFormRoutingValues(routing);
 
   if (provider.kind === 'oauth') {
     if (data.oauth === undefined) {
@@ -52,6 +58,7 @@ const EditProviderPage: React.FC = () => {
       <OAuthProviderEditPage
         provider={provider as unknown as OAuthProvider}
         oauth={data.oauth as unknown as DashboardOAuthProviderEdit}
+        {...(routing === undefined ? {} : { routing })}
         sessionId={session}
         onSessionIdChange={(next) =>
           void navigate({ search: next === undefined ? {} : { session: next }, replace: true })
@@ -69,7 +76,15 @@ const EditProviderPage: React.FC = () => {
     );
   }
 
-  return <ProviderFormPage mode={ProviderFormMode.Edit} kind={provider.kind} initial={initial} providerId={id} />;
+  return (
+    <ProviderFormPage
+      mode={ProviderFormMode.Edit}
+      kind={provider.kind}
+      initial={{ ...initial, ...routingValues }}
+      providerId={id}
+      {...(routing === undefined ? {} : { routing })}
+    />
+  );
 };
 
 export const Route = createFileRoute('/providers/$id/edit')({

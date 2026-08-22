@@ -547,6 +547,7 @@
         "col_account": "アカウント",
         "col_catalog": "カタログ",
         "col_models": "モデル",
+        "col_priority": "優先度",
         "col_weight": "ウェイト",
         "col_usage_24h": "24時間のリクエスト",
         "col_actions": "操作",
@@ -777,7 +778,10 @@
       "form": {
         "label_id": "Provider ID",
         "label_name": "表示名",
+        "label_priority": "優先度",
         "label_weight": "ウェイト",
+        "description_weight": "トラフィックは同一優先度内でのみ配分されます",
+        "normalize_notice": "保存すると {authored} は {effective} に正規化されます。",
         "label_protocol": "プロトコル",
         "label_base_url": "ベース URL",
         "label_api_key": "API Key",

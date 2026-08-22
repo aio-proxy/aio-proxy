@@ -1,6 +1,6 @@
 import type { DashboardOAuthProviderEdit, DashboardOAuthSession, OAuthProvider } from '@aio-proxy/types';
 import { afterEach, expect, rs, test } from '@rstest/core';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { useEffect } from 'react';
 
 import { OAuthProviderEditPage } from './oauth-provider-edit-page';
@@ -19,6 +19,7 @@ const provider: OAuthProvider = {
   capability: 'default',
   name: 'Personal',
   enabled: true,
+  priority: 0,
   weight: 2,
   options: { tenant: 'work' },
   alias: { chat: { model: 'model-2', preserve: false } },
@@ -226,6 +227,47 @@ test('OAuth edit page hides edit actions while an existing session loads', () =>
   );
 
   expect(screen.queryByRole('button', { name: /Reauthorize|重新授权/u })).toBeNull();
+});
+
+test('OAuth edit submits integer priority and normalized weight', async () => {
+  render(<OAuthProviderEditPage provider={provider} oauth={oauth} sessionId={undefined} onSessionIdChange={rs.fn()} />);
+
+  const priority = within(screen.getByTestId('provider-form-field-priority')).getByRole('spinbutton');
+  const weight = within(screen.getByTestId('provider-form-field-weight')).getByRole('spinbutton');
+  expect(priority).toHaveAttribute('step', '1');
+  expect(weight).toHaveAttribute('step', 'any');
+  fireEvent.change(priority, { target: { value: '4' } });
+  fireEvent.change(weight, { target: { value: '1.6' } });
+  fireEvent.click(screen.getByRole('button', { name: /Save|保存/u }));
+
+  await waitFor(() =>
+    expect(mocks.start).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: expect.objectContaining({ kind: 'oauth', id: 'person', priority: 4, weight: 2 }),
+      }),
+      expect.any(Object),
+    ),
+  );
+});
+
+test('OAuth edit shows a non-blocking notice when edit-view reports wasNormalized', () => {
+  render(
+    <OAuthProviderEditPage
+      provider={{ ...provider, weight: 2 }}
+      oauth={oauth}
+      routing={{
+        priority: { effective: 0, wasNormalized: false },
+        weight: { authored: 1.6, effective: 2, wasNormalized: true },
+      }}
+      sessionId={undefined}
+      onSessionIdChange={rs.fn()}
+    />,
+  );
+
+  const notice = screen.getByText(/normalize 1\.6 to 2|将 1\.6 规范为 2/u);
+  expect(notice).toBeInTheDocument();
+  expect(notice.closest('[role="alert"]')).toBeNull();
+  expect(within(screen.getByTestId('provider-form-field-weight')).getByRole('spinbutton')).toHaveValue(1.6);
 });
 
 test('OAuth edit page disables save and reauthorization while transforms are invalid', () => {

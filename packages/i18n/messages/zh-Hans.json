@@ -545,6 +545,7 @@
         "col_account": "账户",
         "col_catalog": "目录",
         "col_models": "模型",
+        "col_priority": "优先级",
         "col_weight": "权重",
         "col_usage_24h": "24 小时请求",
         "col_actions": "操作",
@@ -776,7 +777,10 @@
       "form": {
         "label_id": "提供商 ID",
         "label_name": "显示名称",
+        "label_priority": "优先级",
         "label_weight": "权重",
+        "description_weight": "仅在同一优先级内分配流量",
+        "normalize_notice": "保存时会将 {authored} 规范为 {effective}。",
         "label_protocol": "协议",
         "label_base_url": "基础 URL",
         "label_api_key": "API Key",

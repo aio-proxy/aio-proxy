@@ -9,6 +9,7 @@ import { useEffect, useRef } from 'react';
 import type { useProviderForm } from '../hooks/use-provider-form';
 import { useProviderOptionsSchema } from '../hooks/use-provider-options-schema';
 import { type ProviderFormMode, type ProviderFormStep } from '../lib/constants';
+import type { ProviderEditRouting } from '../services/providers-service';
 import { ProviderAliasFields } from './provider-alias';
 import { ProviderCommonFields } from './provider-common-fields';
 import { ProviderModelsField } from './provider-models-field';
@@ -40,6 +41,7 @@ interface ProviderFormFieldsAiSdkProps {
   onAliasOpenChange: (open: boolean) => void;
   onOptionsValidityChange: (valid: boolean) => void;
   onTransformsValidityChange: (valid: boolean) => void;
+  routing?: ProviderEditRouting;
 }
 
 export const ProviderFormFieldsAiSdk: React.FC<ProviderFormFieldsAiSdkProps> = ({
@@ -51,6 +53,7 @@ export const ProviderFormFieldsAiSdk: React.FC<ProviderFormFieldsAiSdkProps> = (
   onAliasOpenChange,
   onOptionsValidityChange,
   onTransformsValidityChange,
+  routing,
 }) => {
   const schemaState = useProviderOptionsSchema();
   const initialPackageName = useRef<string | undefined>(undefined);
@@ -151,7 +154,12 @@ export const ProviderFormFieldsAiSdk: React.FC<ProviderFormFieldsAiSdkProps> = (
         <h2 id="provider-ai-sdk-routing-heading" className="text-base font-semibold">
           {m['dashboard.providers.editor.step_routing']()}
         </h2>
-        <ProviderCommonFields form={form} mode={mode} section="routing" />
+        <ProviderCommonFields
+          form={form}
+          mode={mode}
+          section="routing"
+          {...(routing === undefined ? {} : { routing })}
+        />
         <ProviderRequestTransformsFormField form={form} onValidityChange={onTransformsValidityChange} />
       </section>
     );

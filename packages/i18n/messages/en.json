@@ -545,6 +545,7 @@
         "col_account": "Account",
         "col_catalog": "Catalog",
         "col_models": "Models",
+        "col_priority": "Priority",
         "col_weight": "Weight",
         "col_usage_24h": "24h requests",
         "col_actions": "Actions",
@@ -776,7 +777,10 @@
       "form": {
         "label_id": "Provider ID",
         "label_name": "Display Name",
+        "label_priority": "Priority",
         "label_weight": "Weight",
+        "description_weight": "Distributes traffic only within one priority",
+        "normalize_notice": "Saving will normalize {authored} to {effective}.",
         "label_protocol": "Protocol",
         "label_base_url": "Base URL",
         "label_api_key": "API Key",

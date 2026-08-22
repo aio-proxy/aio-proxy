@@ -7,6 +7,7 @@ const values: OAuthProviderEditValues = {
   id: 'person',
   name: 'Personal',
   enabled: true,
+  priority: 4,
   weight: 2,
   alias: { chat: { model: 'model-2', preserve: false } },
   publicValues: { tenant: 'work' },
@@ -24,6 +25,7 @@ test('common-only OAuth edits use the normal provider update', () => {
       id: 'person',
       name: 'Personal',
       enabled: true,
+      priority: 4,
       weight: 2,
       alias: { chat: { model: 'model-2', preserve: false } },
     },
@@ -51,6 +53,7 @@ test('account edits start locked reauthorization and omit blank replacement secr
       providerPatch: {
         name: 'Personal',
         enabled: true,
+        priority: 4,
         weight: 2,
         alias: { chat: { model: 'model-2', preserve: false } },
       },

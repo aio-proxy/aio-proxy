@@ -547,6 +547,7 @@
         "col_account": "계정",
         "col_catalog": "카탈로그",
         "col_models": "모델",
+        "col_priority": "우선순위",
         "col_weight": "가중치",
         "col_usage_24h": "24시간 요청",
         "col_actions": "작업",
@@ -777,7 +778,10 @@
       "form": {
         "label_id": "Provider ID",
         "label_name": "표시 이름",
+        "label_priority": "우선순위",
         "label_weight": "가중치",
+        "description_weight": "트래픽은 동일한 우선순위 내에서만 분배됩니다",
+        "normalize_notice": "저장하면 {authored}이(가) {effective}(으)로 정규화됩니다.",
         "label_protocol": "프로토콜",
         "label_base_url": "기본 URL",
         "label_api_key": "API Key",

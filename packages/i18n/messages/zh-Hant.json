@@ -547,6 +547,7 @@
         "col_account": "帳戶",
         "col_catalog": "目錄",
         "col_models": "模型",
+        "col_priority": "優先級",
         "col_weight": "權重",
         "col_usage_24h": "24 小時請求",
         "col_actions": "操作",
@@ -777,7 +778,10 @@
       "form": {
         "label_id": "提供商 ID",
         "label_name": "顯示名稱",
+        "label_priority": "優先級",
         "label_weight": "權重",
+        "description_weight": "僅在同一優先級內分配流量",
+        "normalize_notice": "儲存時會將 {authored} 正規化為 {effective}。",
         "label_protocol": "協定",
         "label_base_url": "基礎 URL",
         "label_api_key": "API Key",

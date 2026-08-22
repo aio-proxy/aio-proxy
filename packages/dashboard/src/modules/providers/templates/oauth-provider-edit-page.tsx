@@ -9,11 +9,13 @@ import { DeleteProviderDialog, type DeleteProviderDialogRef } from '../component
 import { OAuthAuthorizationPanel } from '../components/oauth-authorization-panel';
 import { OAuthProviderEditFields } from '../components/oauth-provider-edit-fields';
 import { PROVIDER_KIND_LABEL } from '../lib/constants';
+import type { ProviderEditRouting } from '../services/providers-service';
 import { useOAuthProviderEditPage } from './use-oauth-provider-edit-page';
 
 interface OAuthProviderEditPageProps {
   readonly provider: OAuthProvider;
   readonly oauth: DashboardOAuthProviderEdit;
+  readonly routing?: ProviderEditRouting;
   readonly sessionId: string | undefined;
   readonly onSessionIdChange: (sessionId: string | undefined) => void;
 }
@@ -21,6 +23,7 @@ interface OAuthProviderEditPageProps {
 export const OAuthProviderEditPage: React.FC<OAuthProviderEditPageProps> = ({
   provider,
   oauth,
+  routing,
   sessionId,
   onSessionIdChange,
 }) => {
@@ -40,7 +43,13 @@ export const OAuthProviderEditPage: React.FC<OAuthProviderEditPageProps> = ({
     startMutation,
     callbackMutation,
     cancelMutation,
-  } = useOAuthProviderEditPage({ provider, oauth, sessionId, onSessionIdChange });
+  } = useOAuthProviderEditPage({
+    provider,
+    oauth,
+    ...(routing === undefined ? {} : { routing }),
+    sessionId,
+    onSessionIdChange,
+  });
 
   return (
     <PageContainer
@@ -72,6 +81,7 @@ export const OAuthProviderEditPage: React.FC<OAuthProviderEditPageProps> = ({
               isReauthorizing={isUpdating || startMutation.isPending}
               transformsValid={transformsValid}
               onTransformsValidityChange={setTransformsValid}
+              {...(routing === undefined ? {} : { routing })}
             />
             <div className="flex items-center justify-between gap-3 border-t pt-4" data-testid="provider-form-actions">
               <div className="flex gap-3">

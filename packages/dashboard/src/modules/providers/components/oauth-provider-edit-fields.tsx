@@ -1,8 +1,13 @@
 import { m } from '@aio-proxy/i18n';
-import type { DashboardOAuthProviderEdit, OAuthProvider, ProviderTransforms } from '@aio-proxy/types';
+import type {
+  DashboardOAuthProviderEdit,
+  DashboardRoutingNumber,
+  OAuthProvider,
+  ProviderTransforms,
+} from '@aio-proxy/types';
 import { Badge } from '@aio-proxy/ui/components/badge';
 import { Button } from '@aio-proxy/ui/components/button';
-import { Field } from '@aio-proxy/ui/components/field';
+import { Field, FieldDescription } from '@aio-proxy/ui/components/field';
 import { Input } from '@aio-proxy/ui/components/input';
 import { Label } from '@aio-proxy/ui/components/label';
 import { Switch } from '@aio-proxy/ui/components/switch';
@@ -26,7 +31,21 @@ interface OAuthProviderEditFieldsProps {
   readonly isReauthorizing: boolean;
   readonly transformsValid: boolean;
   readonly onTransformsValidityChange: (valid: boolean) => void;
+  readonly routing?: {
+    readonly priority: DashboardRoutingNumber;
+    readonly weight: DashboardRoutingNumber;
+  };
 }
+
+const routingNormalizationNotice = (view: DashboardRoutingNumber | undefined) =>
+  view?.wasNormalized === true && view.authored !== undefined ? (
+    <FieldDescription>
+      {m['dashboard.providers.form.normalize_notice']({
+        authored: view.authored,
+        effective: view.effective,
+      })}
+    </FieldDescription>
+  ) : null;
 
 export const OAuthProviderEditFields: React.FC<OAuthProviderEditFieldsProps> = ({
   provider,
@@ -39,6 +58,7 @@ export const OAuthProviderEditFields: React.FC<OAuthProviderEditFieldsProps> = (
   isReauthorizing,
   transformsValid,
   onTransformsValidityChange,
+  routing,
 }) => (
   <div className="space-y-8">
     <section className="space-y-4" aria-labelledby="provider-oauth-basic-heading">
@@ -58,21 +78,45 @@ export const OAuthProviderEditFields: React.FC<OAuthProviderEditFieldsProps> = (
             </Field>
           )}
         </form.Field>
-        <form.Field name="weight">
-          {(field) => (
-            <Field>
-              <Label htmlFor={field.name}>{m['dashboard.providers.form.label_weight']()}</Label>
-              <Input
-                id={field.name}
-                type="number"
-                value={field.state.value ?? ''}
-                onChange={(event) =>
-                  field.handleChange(event.target.value === '' ? undefined : Number(event.target.value))
-                }
-              />
-            </Field>
-          )}
-        </form.Field>
+        <div data-testid="provider-form-field-priority">
+          <form.Field name="priority">
+            {(field) => (
+              <Field>
+                <Label htmlFor={field.name}>{m['dashboard.providers.form.label_priority']()}</Label>
+                <Input
+                  id={field.name}
+                  type="number"
+                  step="1"
+                  value={field.state.value ?? ''}
+                  onChange={(event) =>
+                    field.handleChange(event.target.value === '' ? undefined : Number(event.target.value))
+                  }
+                />
+                {routingNormalizationNotice(routing?.priority)}
+              </Field>
+            )}
+          </form.Field>
+        </div>
+        <div data-testid="provider-form-field-weight">
+          <form.Field name="weight">
+            {(field) => (
+              <Field>
+                <Label htmlFor={field.name}>{m['dashboard.providers.form.label_weight']()}</Label>
+                <Input
+                  id={field.name}
+                  type="number"
+                  step="any"
+                  value={field.state.value ?? ''}
+                  onChange={(event) =>
+                    field.handleChange(event.target.value === '' ? undefined : Number(event.target.value))
+                  }
+                />
+                <FieldDescription>{m['dashboard.providers.form.description_weight']()}</FieldDescription>
+                {routingNormalizationNotice(routing?.weight)}
+              </Field>
+            )}
+          </form.Field>
+        </div>
         <form.Field name="enabled">
           {(field) => (
             <Field>
