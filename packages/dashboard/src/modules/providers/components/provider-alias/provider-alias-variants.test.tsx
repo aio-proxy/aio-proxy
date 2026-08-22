@@ -184,9 +184,10 @@ test('a row stays in place when its own condition becomes more specific', async 
 
 // The effort field is free text over a curated list, so the typed text — not a list selection — is
 // what has to reach the draft, including when the user finishes with Enter while the popup is open.
-// `autoHighlight` used to sit on this combobox, which pre-highlights an option Enter then commits over
-// the typed value; `none` being a legal effort meant the substituted condition saved with no error.
-test('the popup stays open on Enter and the typed effort is what gets committed', async () => {
+// `autoHighlight` used to sit on this combobox: it highlights the first option as soon as the user
+// types, and Enter then clicks that option over the typed value. `none` leading the list and being a
+// legal effort meant the substituted condition saved with no error.
+test('Enter commits the typed effort, not the first option in the open popup', async () => {
   const onAliasChange = renderVariants(
     sonnet({
       model: 'claude-sonnet-4',
@@ -202,10 +203,13 @@ test('the popup stays open on Enter and the typed effort is what gets committed'
   fireEvent.mouseDown(effort());
   fireEvent.click(effort());
   await screen.findAllByRole('option');
-  fireEvent.change(effort(), { target: { value: 'high' } });
+  // An `InputEvent` carrying `inputType`, not `fireEvent.change`: Base UI only counts an input event as
+  // typing when `inputType` is set, and only typing arms the highlight this test is the guard against.
+  fireEvent.input(effort(), { target: { value: 'high' }, inputType: 'insertText' });
   fireEvent.keyDown(effort(), { key: 'Enter' });
 
-  // `variants` serializes to the effort-keyed shorthand when effort is the only condition.
+  // `variants` serializes to the effort-keyed shorthand when effort is the only condition. The
+  // regression writes `none` here — the first option — and leaves that in the input too.
   expect(latestConfig(onAliasChange)?.variants).toEqual({
     high: { model: 'claude-sonnet-4-fast', preserve: false },
   });

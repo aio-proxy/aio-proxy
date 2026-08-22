@@ -127,8 +127,12 @@ describe('OAuthAccountField', () => {
 
     fireEvent.change(screen.getByLabelText('Seats'), { target: { value: '' } });
 
-    // An explicit `seats: undefined` survives into the OAuth session start body as a present key.
-    expect(publishedValues()).toEqual({ tenant: 'acme' });
+    // The key set, not `toEqual`: an explicit `seats: undefined` survives into the OAuth session
+    // start body as a present key, and `toEqual` treats an undefined-valued key as absent, so it
+    // cannot tell the two apart.
+    const values = publishedValues();
+    expect(Object.keys(values).sort()).toEqual(['tenant']);
+    expect(values['tenant']).toBe('acme');
   });
 
   test('emptying a json field removes its key instead of writing undefined', () => {
@@ -141,6 +145,8 @@ describe('OAuthAccountField', () => {
 
     fireEvent.change(screen.getByLabelText('Extra'), { target: { value: '' } });
 
-    expect(publishedValues()).toEqual({ tenant: 'acme' });
+    const values = publishedValues();
+    expect(Object.keys(values).sort()).toEqual(['tenant']);
+    expect(values['tenant']).toBe('acme');
   });
 });
