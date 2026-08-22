@@ -962,6 +962,7 @@
         "alias_name_duplicate": "클라이언트 모델 ID는 앞뒤 공백을 제거한 뒤 중복될 수 없습니다.",
         "aliases_empty": "별칭이 없습니다. 클라이언트는 유지된 업스트림 모델 ID를 그대로 사용합니다.",
         "add_alias": "별칭 추가",
+        "sync_plugin_aliases": "플러그인 별칭 동기화",
         "alias_name": "클라이언트 모델 ID",
         "alias_name_placeholder": "예: default",
         "alias_target": "업스트림 모델",
@@ -1013,7 +1014,9 @@
         "deleted": "프로바이더가 삭제되었습니다",
         "create_failed": "프로바이더 생성에 실패했습니다",
         "update_failed": "프로바이더 업데이트에 실패했습니다",
-        "delete_failed": "프로바이더 삭제에 실패했습니다"
+        "delete_failed": "프로바이더 삭제에 실패했습니다",
+        "plugin_aliases_synced": "플러그인 별칭이 동기화되었습니다",
+        "plugin_aliases_synced_description": "같은 이름의 별칭을 업데이트했고 나머지 사용자 지정 별칭은 유지했습니다."
       },
       "delete_dialog": {
         "title": "프로바이더 삭제",

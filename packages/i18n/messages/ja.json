@@ -962,6 +962,7 @@
         "alias_name_duplicate": "クライアントモデル ID は前後の空白を除いたあと重複できません。",
         "aliases_empty": "エイリアスはありません。クライアントは保持された上流モデル ID をそのまま使います。",
         "add_alias": "エイリアスを追加",
+        "sync_plugin_aliases": "プラグインのエイリアスを同期",
         "alias_name": "クライアントモデル ID",
         "alias_name_placeholder": "例: default",
         "alias_target": "上流モデル",
@@ -1013,7 +1014,9 @@
         "deleted": "プロバイダーを削除しました",
         "create_failed": "プロバイダーの作成に失敗しました",
         "update_failed": "プロバイダーの更新に失敗しました",
-        "delete_failed": "プロバイダーの削除に失敗しました"
+        "delete_failed": "プロバイダーの削除に失敗しました",
+        "plugin_aliases_synced": "プラグインのエイリアスを同期しました",
+        "plugin_aliases_synced_description": "同名のエイリアスを更新し、その他のカスタムエイリアスは保持しました。"
       },
       "delete_dialog": {
         "title": "プロバイダーを削除",

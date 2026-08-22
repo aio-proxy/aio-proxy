@@ -962,6 +962,7 @@
         "alias_name_duplicate": "Client model IDs cannot be duplicated after trimming whitespace.",
         "aliases_empty": "No aliases. Clients will use the retained upstream model IDs directly.",
         "add_alias": "Add Alias",
+        "sync_plugin_aliases": "Sync Plugin Aliases",
         "alias_name": "Client model ID",
         "alias_name_placeholder": "e.g. default",
         "alias_target": "Upstream model",
@@ -1013,7 +1014,9 @@
         "deleted": "Provider deleted",
         "create_failed": "Failed to create provider",
         "update_failed": "Failed to update provider",
-        "delete_failed": "Failed to delete provider"
+        "delete_failed": "Failed to delete provider",
+        "plugin_aliases_synced": "Plugin aliases synced",
+        "plugin_aliases_synced_description": "Aliases with the same name were updated; your other custom aliases were kept."
       },
       "delete_dialog": {
         "title": "Delete Provider",

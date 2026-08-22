@@ -962,6 +962,7 @@
         "alias_name_duplicate": "客户端模型 ID 去除首尾空格后不能重复。",
         "aliases_empty": "没有别名。客户端将直接使用已保留的上游模型 ID。",
         "add_alias": "添加别名",
+        "sync_plugin_aliases": "同步插件别名",
         "alias_name": "客户端模型 ID",
         "alias_name_placeholder": "例如 default",
         "alias_target": "上游模型",
@@ -1013,7 +1014,9 @@
         "deleted": "提供商已删除",
         "create_failed": "创建提供商失败",
         "update_failed": "更新提供商失败",
-        "delete_failed": "删除提供商失败"
+        "delete_failed": "删除提供商失败",
+        "plugin_aliases_synced": "插件别名已同步",
+        "plugin_aliases_synced_description": "已更新同名别名，其他自定义别名已保留。"
       },
       "delete_dialog": {
         "title": "删除提供商",
