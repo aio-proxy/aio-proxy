@@ -391,6 +391,8 @@ test('materializes AI SDK inputs with model capabilities only', () => {
 
   expect(aiSdkRuntime.raw).toBeUndefined();
   expect(aiSdkRuntime.model).toEqual({ ensureAvailable, invoke });
+  expect(aiSdkRuntime).not.toHaveProperty('priority');
+  expect(aiSdkRuntime).not.toHaveProperty('weight');
 });
 
 test('rejects an injected runtime provider without raw or model capabilities', () => {

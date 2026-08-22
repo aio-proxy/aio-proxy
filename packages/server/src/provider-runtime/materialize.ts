@@ -73,7 +73,6 @@ export function materializeRuntimeProvider(
       id: provider.id,
       kind: provider.kind,
       enabled: provider.enabled,
-      ...routingDefaults(provider),
       ...(provider.models === undefined ? {} : { models: provider.models }),
       ...(provider.alias === undefined ? {} : { alias: provider.alias }),
       ...(provider.metadata === undefined ? {} : { configMetadata: provider.metadata }),
