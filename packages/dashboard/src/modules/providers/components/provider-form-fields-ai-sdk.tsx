@@ -44,7 +44,13 @@ export const ProviderFormFieldsAiSdk: React.FC<ProviderFormFieldsAiSdkProps> = (
   useEffect(() => {
     if (initialPackageSynchronized.current) return;
     initialPackageSynchronized.current = true;
-    schemaState.commitPackage(form.getFieldValue('packageName') ?? DEFAULT_AI_SDK_PACKAGE, false);
+    const initialPackage = form.getFieldValue('packageName') ?? DEFAULT_AI_SDK_PACKAGE;
+    // Arming commitProviderPackageOnce's equality guard is the point: without it a focus+blur with no
+    // keystroke is not recognized as a repeat of this commit, and re-commits with automatic install
+    // allowed — npm-installing a package the user only looked at. A real edit clears the ref in
+    // onValueChange below, so a genuinely changed package still installs.
+    lastCommittedPackage.current = initialPackage;
+    schemaState.commitPackage(initialPackage, false);
   }, [form, schemaState.commitPackage]);
 
   return (
