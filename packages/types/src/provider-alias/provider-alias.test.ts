@@ -98,6 +98,7 @@ test('the provider-alias barrel exports exactly its intended surface', async () 
   expect(Object.keys(barrel).sort()).toEqual([
     'aliasTargetModels',
     'directModelIds',
+    'exposedAliases',
     'modelRoutes',
     'normalizeProviderAlias',
     'normalizeProviderAliasKeys',

@@ -1,5 +1,5 @@
 import type { ProviderAlias } from '@aio-proxy/types';
-import { aliasTargetModels, normalizeAliasName } from '@aio-proxy/types';
+import { exposedAliases, normalizeAliasName } from '@aio-proxy/types';
 import { pick } from 'es-toolkit/object';
 
 import { type AliasRow, toAliasRows } from '../alias-editor';
@@ -25,15 +25,10 @@ export const applicablePluginAliases = (
       .map(([name, config]) => [normalizeAliasName(name), config] as const)
       .filter(([name]) => name !== ''),
   );
-  const allowed = models.length === 0 ? undefined : new Set(models);
   // Whole suggestions, never half: a surviving variant aimed outside the whitelist still reports
-  // `target-missing`, which is the same greyed-out Save the filter exists to prevent.
-  const applicable =
-    allowed === undefined
-      ? named
-      : Object.fromEntries(
-          Object.entries(named).filter(([, config]) => aliasTargetModels(config).every((model) => allowed.has(model))),
-        );
+  // `target-missing`, which is the same greyed-out Save the filter exists to prevent. Shared with the
+  // background refresh path in `insertMissingAliases`, which must satisfy the same refinement.
+  const applicable = exposedAliases(named, models);
   // "No suggestions" keeps a single representation all the way to the button, which renders only
   // when this returns a value.
   return Object.keys(applicable).length === 0 ? undefined : applicable;

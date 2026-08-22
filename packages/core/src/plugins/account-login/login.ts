@@ -228,7 +228,7 @@ function mergeInsertedAliases(
     return { next: current, result: undefined };
   }
   const existingAlias = isRecord(entry['alias']) ? (entry['alias'] as ProviderAlias) : {};
-  const alias = insertMissingAliases(existingAlias, suggestions);
+  const alias = insertMissingAliases(existingAlias, suggestions, entry['models']);
   if (alias === existingAlias) return { next: current, result: undefined };
   return {
     next: { ...current, providers: { ...providers, [providerId]: { ...entry, alias } } },

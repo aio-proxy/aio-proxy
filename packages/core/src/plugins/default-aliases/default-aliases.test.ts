@@ -18,11 +18,15 @@ test('insertMissingAliases keeps existing keys byte-identical and inserts only m
   const extraBase = { model: 'keep-me', variants: [{ when: { effort: 'high' as const }, model: 'wire-high' }] };
   const base = { logical: existing, extra: extraBase };
   const suggestedNew = { model: 'wire-low', preserve: false as const };
-  const result = insertMissingAliases(base, {
-    logical: { model: 'suggested' },
-    extra: { model: 'mutated' },
-    fresh: suggestedNew,
-  });
+  const result = insertMissingAliases(
+    base,
+    {
+      logical: { model: 'suggested' },
+      extra: { model: 'mutated' },
+      fresh: suggestedNew,
+    },
+    undefined,
+  );
 
   expect(result.logical).toBe(existing);
   expect(result.extra).toBe(extraBase);
@@ -32,8 +36,18 @@ test('insertMissingAliases keeps existing keys byte-identical and inserts only m
 
 test('insertMissingAliases returns the same base object when every suggestion key already exists', () => {
   const base = { logical: { model: 'edited' } };
-  expect(insertMissingAliases(base, { logical: { model: 'suggested' } })).toBe(base);
-  expect(insertMissingAliases(base, {})).toBe(base);
+  expect(insertMissingAliases(base, { logical: { model: 'suggested' } }, undefined)).toBe(base);
+  expect(insertMissingAliases(base, {}, undefined)).toBe(base);
+});
+
+test('insertMissingAliases treats an empty or unusable models value as no whitelist', () => {
+  const base = {};
+  const suggestions = { fresh: { model: 'anything' } };
+  // Empty means "no restriction" everywhere else in the codebase; a filter that read it as "expose
+  // nothing" would stop seeding aliases for every provider that has no whitelist at all.
+  expect(insertMissingAliases(base, suggestions, [])).toEqual(suggestions);
+  expect(insertMissingAliases(base, suggestions, undefined)).toEqual(suggestions);
+  expect(insertMissingAliases(base, suggestions, 'not-an-array')).toEqual(suggestions);
 });
 
 test('assertAliasTargetsInCatalog accepts array and record variants whose targets exist', () => {

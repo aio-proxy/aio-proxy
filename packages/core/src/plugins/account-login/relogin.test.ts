@@ -1,3 +1,4 @@
+import { parseRuntimeConfig } from '../../config';
 import {
   AccountCleanupPendingError,
   accountOf,
@@ -192,6 +193,44 @@ test('re-login preserves an edited alias despite catalog suggestions', async () 
   });
   expect(suggestions).toBe(1);
   expect(suggestedAfterComplete).toBe(true);
+});
+
+test('re-login skips a suggestion outside the models whitelist, so the provider stays routable', async () => {
+  const state = fixture();
+  await createAccount(state);
+  await state.config.replace((current) => ({
+    ...current,
+    providers: {
+      person: {
+        ...((current['providers'] as Record<string, unknown>)['person'] as object),
+        models: ['edited'],
+        alias: { logical: { model: 'edited' } },
+      },
+    },
+  }));
+
+  await loginOAuthAccount(
+    options(state, {
+      targetProviderId: 'person',
+      capability: undefined,
+      registry: registry({
+        discover: async () => ({ ...emptyCatalog(), language: [{ id: 'edited' }, { id: 'fresh' }] }),
+        // `fresh` is in the catalog but outside the whitelist the user narrowed in the editor.
+        // Inserting it would fail `validateAliasTargets`, which rejects per provider, not per alias.
+        defaultAliases: () => ({ logical: { model: 'edited' }, fresh: { model: 'fresh' } }),
+      }),
+    }),
+  );
+
+  const config = configOf(state);
+  const person = (config['providers'] as Record<string, { readonly alias: Record<string, unknown> }>)['person'];
+  // `toEqual`, not `toMatchObject`: the latter allows extra keys, so it would pass with `fresh` inserted.
+  expect(person?.alias).toEqual({ logical: { model: 'edited' } });
+  // Routability as the runtime decides it: a poisoned alias would land the whole provider in
+  // `invalidProviders`, which is what drops it out of the routable set.
+  const parsed = parseRuntimeConfig(config);
+  expect(parsed.invalidProviders).toEqual([]);
+  expect(parsed.providers.map(({ id }) => id)).toEqual(['person']);
 });
 
 test('re-login post-commit merge does not write aliases when the config entry capability no longer matches', async () => {

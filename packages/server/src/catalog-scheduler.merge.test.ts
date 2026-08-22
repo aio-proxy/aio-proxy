@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import type { PluginLogSink } from '@aio-proxy/core';
+import { parseRuntimeConfig } from '@aio-proxy/core';
 import type { ModelCatalog } from '@aio-proxy/plugin-sdk';
 import type { ProviderAlias } from '@aio-proxy/types';
 
@@ -553,6 +554,70 @@ test('matching account and catalog skip insert when the config entry is api or a
       repository: matchingRepository,
     }),
   ).toBe(otherPluginProviders);
+});
+
+test('a TTL refresh never inserts an alias outside the models whitelist, so the provider stays routable', async () => {
+  const { mergeCatalogDefaultAliases } = await import('./catalog-scheduler');
+  const discovered = languageCatalog('keep-me', 'brand-new');
+  const providers: Record<string, unknown> = {
+    person: {
+      kind: 'oauth',
+      plugin: '@example/oauth',
+      capability: 'default',
+      models: ['keep-me'],
+      alias: { logical: { model: 'keep-me' } },
+    },
+  };
+  const repository = {
+    readAccount: () => ({ plugin: '@example/oauth', capability: 'default', runtimeRevision: 2 }),
+    listPendingAccountOperations: () => [],
+    readCatalog: () => ({ catalog: discovered, refreshedAt: 20_000, revision: 4 }),
+  } as never;
+  const scheduler = new CatalogScheduler({
+    repository: {
+      compareAndSwapCatalog: () => ({ ok: true, revision: 4 }),
+      writeCatalog() {},
+      writeDiagnostic: () => true,
+    } as never,
+    diagnostics: ((code: string) => diagnostics(code)) as never,
+    rebuild: async () => {},
+    mergeDefaultAliases(providerId, catalog, identity) {
+      Object.assign(providers, mergeCatalogDefaultAliases(providers, { providerId, catalog, identity, repository }));
+    },
+  });
+
+  try {
+    scheduler.replaceJobs([
+      job({
+        accountRuntimeRevision: 2,
+        policy: { kind: 'ttl', ttlMs: 1 },
+        stored: { catalog: languageCatalog('keep-me'), refreshedAt: 0, revision: 1 },
+        // What a vendor shipping a new model looks like six hours later: the catalog carries it, the
+        // frozen whitelist does not, and the plugin mints a brand-new logical key for it.
+        defaultAliases: () => ({
+          fresh: { model: 'brand-new' },
+          varied: { model: 'keep-me', variants: { thinking: { model: 'brand-new' } } },
+          allowed: { model: 'keep-me' },
+        }),
+        discover: async () => discovered,
+      }),
+    ]);
+    await settle();
+
+    // Routability as the runtime decides it: `ConfigSchema` collects rather than throws, and
+    // `snapshot.ts` builds the routable set from `providers` alone, so an out-of-whitelist alias
+    // target moves the whole provider — its models and its previously valid aliases — into
+    // `invalidProviders`.
+    const parsed = parseRuntimeConfig({ providers });
+    expect(parsed.invalidProviders).toEqual([]);
+    expect(parsed.providers.map(({ id }) => id)).toEqual(['person']);
+    expect(parsed.providers[0]?.models).toEqual(['keep-me']);
+    // The in-whitelist suggestion still seeds; only the two reaching outside it are dropped, and
+    // `varied` proves a variant target is filtered as hard as a default one.
+    expect(Object.keys((providers['person'] as { alias: ProviderAlias }).alias).sort()).toEqual(['allowed', 'logical']);
+  } finally {
+    scheduler.close();
+  }
 });
 
 test('mutateProviders identity no-op does not write or verify and merge with no new keys uses that path', async () => {

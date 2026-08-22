@@ -116,6 +116,23 @@ export function aliasTargetModels(config: AliasConfig): readonly string[] {
   return [config.model, ...flattenAliasVariants(config.variants).map((row) => row.model)];
 }
 
+/**
+ * The alias entries a `models` whitelist can actually route. Absent and empty both mean "no
+ * whitelist", the same rule `validateAliasTargets` applies, and this filter exists to keep that
+ * refinement satisfiable: it rejects per provider, not per alias, so one entry aimed outside the
+ * whitelist invalidates the whole provider.
+ *
+ * Entries drop whole, never half — a surviving variant target outside the whitelist is rejected just
+ * as hard as a default one.
+ */
+export function exposedAliases(alias: ProviderAlias, models: readonly string[] | undefined): ProviderAlias {
+  if (models === undefined || models.length === 0) return alias;
+  const allowed = new Set(models);
+  return Object.fromEntries(
+    Object.entries(alias).filter(([, config]) => aliasTargetModels(config).every((model) => allowed.has(model))),
+  );
+}
+
 function normalizeAliasKeys(alias: ProviderAlias): ProviderAlias {
   return Object.fromEntries(
     Object.entries(alias).map(([name, config]) => [

@@ -31,6 +31,7 @@ import { ProviderTransformsSchema } from './provider-transform/index';
 export {
   aliasTargetModels,
   directModelIds,
+  exposedAliases,
   type ModelRoute,
   modelRoutes,
   preservedAliasModels,
