@@ -182,6 +182,36 @@ test('a row stays in place when its own condition becomes more specific', async 
   ).toHaveValue('high');
 });
 
+// The effort field is free text over a curated list, so the typed text — not a list selection — is
+// what has to reach the draft, including when the user finishes with Enter while the popup is open.
+// `autoHighlight` used to sit on this combobox, which pre-highlights an option Enter then commits over
+// the typed value; `none` being a legal effort meant the substituted condition saved with no error.
+test('the popup stays open on Enter and the typed effort is what gets committed', async () => {
+  const onAliasChange = renderVariants(
+    sonnet({
+      model: 'claude-sonnet-4',
+      preserve: false,
+      variants: [{ when: {}, model: 'claude-sonnet-4-fast', preserve: false }],
+    }),
+  );
+  const effort = () => screen.getByLabelText(m['dashboard.providers.form.variant_effort_label']({ alias: 'sonnet' }));
+
+  // Clicking the input opens the list (`openOnInputClick`), which is the state Enter is ambiguous in.
+  // Base UI opens on pointerdown, so a bare `click` leaves the popup shut.
+  fireEvent.pointerDown(effort());
+  fireEvent.mouseDown(effort());
+  fireEvent.click(effort());
+  await screen.findAllByRole('option');
+  fireEvent.change(effort(), { target: { value: 'high' } });
+  fireEvent.keyDown(effort(), { key: 'Enter' });
+
+  // `variants` serializes to the effort-keyed shorthand when effort is the only condition.
+  expect(latestConfig(onAliasChange)?.variants).toEqual({
+    high: { model: 'claude-sonnet-4-fast', preserve: false },
+  });
+  expect(effort()).toHaveValue('high');
+});
+
 // Removing a row renumbers every row after it. While each row held its own form, the row that shifted
 // into the removed row's index inherited its state — so the survivor rendered the deleted row's
 // condition, and its next edit wrote that condition over its own.

@@ -31,12 +31,14 @@ export const EffortCombobox: FC<EffortComboboxProps> = ({ id, alias, value, inva
   // reads as "this value is not allowed" for a field that accepts anything.
   const efforts: readonly string[] = hasCustom ? [...EFFORTS, custom] : EFFORTS;
 
+  // No `autoHighlight`: on a free-text field it pre-highlights a curated option that Enter then commits
+  // over what the user typed, and every effort in the list is itself legal, so the substitution saves
+  // silently. The typed text already reaches the draft through `onInputValueChange`.
   return (
     <Combobox
       value={value === '' ? null : value}
       inputValue={value}
       items={efforts}
-      autoHighlight
       onInputValueChange={onChange}
       onValueChange={(effort) => {
         if (typeof effort === 'string') onChange(effort);
