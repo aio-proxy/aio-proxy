@@ -5,7 +5,7 @@
 @layer components {
   /* The expression tree is a nested grid: kind selector in column 1, the operand in column 2, and each
      nested argument indented under its function with a connector line and an "argument N" marker.
-     CSS `content` cannot read i18n messages, so the marker text stays a literal here. */
+     The marker's prefix word is localized: React passes it in as the `--expr-arg-label` custom property. */
   .request-transform-expression-tree {
     width: min(100%, 48rem);
     min-width: 32rem;
@@ -63,7 +63,7 @@
     font-size: 0.75rem;
     line-height: 1rem;
     white-space: nowrap;
-    content: '参数 ' counter(expression-argument);
+    content: var(--expr-arg-label) counter(expression-argument);
   }
 
   .request-transform-expression-tree .expr-node > .expr-func > .expr-node::after {

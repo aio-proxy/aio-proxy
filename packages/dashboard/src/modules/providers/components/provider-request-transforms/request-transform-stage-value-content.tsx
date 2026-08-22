@@ -43,8 +43,17 @@ export const RequestTransformStageValueContent: React.FC<RequestTransformStageVa
           label: m['dashboard.providers.transforms.value.computed_label'](),
         })}
       >
-        {/* Two-column alignment, argument numbering and connector lines all come from `styles.css`. */}
-        <div className="request-transform-expression-tree">
+        {/* Two-column alignment, argument numbering and connector lines all come from `styles.css`;
+            `--expr-arg-label` hands that CSS the localized argument marker prefix to count from. */}
+        <div
+          className="request-transform-expression-tree"
+          data-testid="request-transform-expression-tree"
+          style={
+            {
+              '--expr-arg-label': `"${m['dashboard.providers.transforms.condition.argument.prefix']()} "`,
+            } as React.CSSProperties
+          }
+        >
           <QueryBuilderStateProvider>
             <QueryBuilderShadcn>
               <QueryBuilderExpressions functions={requestTransformFunctionMeta}>

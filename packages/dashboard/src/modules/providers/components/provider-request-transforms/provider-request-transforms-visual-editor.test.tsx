@@ -527,6 +527,10 @@ test('prefixes each value control with the rule name exactly once', async () => 
   expect(within(stageCard(0)).getByTestId('transform-set-expression-field-kind')).toHaveAccessibleName(
     m['dashboard.providers.transforms.condition.field.title'](),
   );
+  // The argument marker copy in `styles.css` reads this property, so dropping it renders an unprefixed number.
+  expect(within(stageCard(0)).getByTestId('request-transform-expression-tree')).toHaveStyle({
+    '--expr-arg-label': `"${m['dashboard.providers.transforms.condition.argument.prefix']()} "`,
+  });
 });
 
 test('contains a discarded JSON draft inside the drawer instead of the form', async () => {
