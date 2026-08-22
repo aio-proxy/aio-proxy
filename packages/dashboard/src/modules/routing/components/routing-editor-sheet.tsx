@@ -11,7 +11,7 @@ import {
 } from '@aio-proxy/ui/components/sheet';
 import { useState } from 'react';
 
-import { routingDraftRecord, useRoutingForm } from '../hooks/use-routing-form';
+import { reconcileRoutingFormRows, routingDraftRecord, useRoutingForm } from '../hooks/use-routing-form';
 import { useRoutingMutation } from '../hooks/use-routing-mutation';
 import {
   buildRoutingTiers,
@@ -26,7 +26,7 @@ interface RoutingEditorSheetProps {
   readonly model: DashboardRoutingModel | null;
   readonly writable: boolean;
   readonly onOpenChange: (open: boolean) => void;
-  readonly onReload: () => void;
+  readonly onReload: () => void | Promise<DashboardRoutingModel | null | undefined>;
 }
 
 export const RoutingEditorSheet: React.FC<RoutingEditorSheetProps> = ({ model, writable, onOpenChange, onReload }) => {
@@ -58,6 +58,13 @@ export const RoutingEditorSheet: React.FC<RoutingEditorSheetProps> = ({ model, w
     setStale(false);
     mutation.reset();
     onOpenChange(false);
+  };
+
+  const reloadEditor = () => {
+    void Promise.resolve(onReload()).then((next) => {
+      if (next == null) return;
+      form.setFieldValue('providers', reconcileRoutingFormRows(form.getFieldValue('providers') ?? [], next));
+    });
   };
 
   return (
@@ -156,7 +163,7 @@ export const RoutingEditorSheet: React.FC<RoutingEditorSheetProps> = ({ model, w
                 {m['dashboard.routing.editor.cancel']()}
               </Button>
               {stale ? (
-                <Button type="button" variant="outline" onClick={onReload}>
+                <Button type="button" variant="outline" onClick={reloadEditor}>
                   {m['dashboard.routing.editor.reload']()}
                 </Button>
               ) : null}

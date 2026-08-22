@@ -203,13 +203,38 @@ test('ordinary query refetch keeps the opened editor revision and draft', async 
   });
 });
 
-test('explicit stale reload adopts the new revision without clearing draft values', async () => {
+const overriddenProvider = (id: string, priority: number, weight: number) =>
+  provider({
+    id,
+    override: { priority: routingNumber(priority, priority), weight: routingNumber(weight, weight) },
+    effective: {
+      priority,
+      weight,
+      prioritySource: 'model',
+      weightSource: 'model',
+      eligible: weight > 0,
+      share: null,
+    },
+  });
+
+const armStaleReload = () => {
   mocks.query.refetch.mockImplementation(async () => ({ data: mocks.query.data }));
   mocks.mutate.mockImplementation((_body: unknown, callbacks?: { onError?: (error: Error) => void }) => {
     const error = Object.assign(new Error('stale routing model'), { code: 'stale_revision' });
     mocks.mutationError = error;
     callbacks?.onError?.(error);
   });
+};
+
+const reloadEditor = async () => {
+  await act(async () => {
+    fireEvent.click(screen.getByRole('button', { name: /Reload|再読|다시|重新|重新/u }));
+    await mocks.query.refetch.mock.results.at(-1)?.value;
+  });
+};
+
+test('explicit stale reload adopts the new revision without clearing draft values', async () => {
+  armStaleReload();
   mocks.query.data = {
     writable: true,
     models: [
@@ -239,10 +264,7 @@ test('explicit stale reload adopts the new revision without clearing draft value
       }),
     ],
   };
-  await act(async () => {
-    fireEvent.click(screen.getByRole('button', { name: /Reload|再読|다시|重新|重新/u }));
-    await mocks.query.refetch.mock.results.at(-1)?.value;
-  });
+  await reloadEditor();
 
   expect(screen.getByTestId('routing-override-weight-solo-model-provider')).toHaveValue(9);
   mocks.mutate.mockClear();
@@ -259,4 +281,117 @@ test('explicit stale reload adopts the new revision without clearing draft value
       expect.any(Object),
     );
   });
+});
+
+test('explicit reload appends a new Provider override from the refreshed model', async () => {
+  armStaleReload();
+  mocks.query.data = {
+    writable: true,
+    models: [
+      model({
+        modelId: 'solo-model',
+        revision: 'rev-1',
+        baselineProviderIds: ['kept'],
+        providers: [overriddenProvider('kept', 10, 1000)],
+      }),
+    ],
+  };
+
+  render(<RoutingPage />);
+  openSoloModelEditor();
+  fireEvent.change(screen.getByTestId('routing-override-weight-kept'), { target: { value: '9' } });
+  fireEvent.click(screen.getByTestId('routing-save'));
+  expect(await screen.findByRole('button', { name: /Reload|再読|다시|重新|重新/u })).toBeInTheDocument();
+
+  mocks.query.data = {
+    writable: true,
+    models: [
+      model({
+        modelId: 'solo-model',
+        revision: 'rev-2',
+        baselineProviderIds: ['kept', 'added'],
+        providers: [overriddenProvider('kept', 10, 1000), overriddenProvider('added', 30, 4000)],
+      }),
+    ],
+  };
+  await reloadEditor();
+
+  expect(screen.getByTestId('routing-override-weight-kept')).toHaveValue(9);
+  expect(screen.getByTestId('routing-provider-added')).toBeInTheDocument();
+  expect(screen.getByTestId('routing-override-priority-added')).toHaveValue(30);
+  expect(screen.getByTestId('routing-override-weight-added')).toHaveValue(4000);
+
+  mocks.mutate.mockClear();
+  fireEvent.click(screen.getByTestId('routing-save'));
+
+  await waitFor(() => {
+    expect(mocks.mutate).toHaveBeenCalledWith(
+      {
+        modelId: 'solo-model',
+        revision: 'rev-2',
+        baselineProviderIds: ['kept', 'added'],
+        providers: {
+          kept: { priority: 10, weight: 9 },
+          added: { priority: 30, weight: 4000 },
+        },
+      },
+      expect.any(Object),
+    );
+  });
+});
+
+test('explicit reload drops a disappeared Provider from the visible Save payload', async () => {
+  armStaleReload();
+  mocks.query.data = {
+    writable: true,
+    models: [
+      model({
+        modelId: 'solo-model',
+        revision: 'rev-1',
+        baselineProviderIds: ['kept', 'gone'],
+        providers: [overriddenProvider('kept', 10, 1000), overriddenProvider('gone', 20, 50)],
+      }),
+    ],
+  };
+
+  render(<RoutingPage />);
+  openSoloModelEditor();
+  fireEvent.change(screen.getByTestId('routing-override-weight-kept'), { target: { value: '9' } });
+  fireEvent.click(screen.getByTestId('routing-save'));
+  expect(await screen.findByRole('button', { name: /Reload|再読|다시|重新|重新/u })).toBeInTheDocument();
+  expect(screen.getByTestId('routing-provider-gone')).toBeInTheDocument();
+
+  mocks.query.data = {
+    writable: true,
+    models: [
+      model({
+        modelId: 'solo-model',
+        revision: 'rev-2',
+        baselineProviderIds: ['kept'],
+        providers: [overriddenProvider('kept', 10, 1000)],
+      }),
+    ],
+  };
+  await reloadEditor();
+
+  expect(screen.getByTestId('routing-override-weight-kept')).toHaveValue(9);
+  expect(screen.queryByTestId('routing-provider-gone')).not.toBeInTheDocument();
+
+  mocks.mutate.mockClear();
+  fireEvent.click(screen.getByTestId('routing-save'));
+
+  await waitFor(() => {
+    expect(mocks.mutate).toHaveBeenCalledWith(
+      {
+        modelId: 'solo-model',
+        revision: 'rev-2',
+        baselineProviderIds: ['kept'],
+        providers: { kept: { priority: 10, weight: 9 } },
+      },
+      expect.any(Object),
+    );
+  });
+  expect(mocks.mutate.mock.calls[0]?.[0]).not.toEqual(
+    expect.objectContaining({ providers: expect.objectContaining({ gone: expect.anything() }) }),
+  );
 });

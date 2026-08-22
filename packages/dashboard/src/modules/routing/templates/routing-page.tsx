@@ -73,14 +73,12 @@ export const RoutingPage: React.FC = () => {
         onOpenChange={(open) => {
           if (!open) setSelected(null);
         }}
-        onReload={() => {
-          void query.refetch().then((result) => {
-            const nextModels = result.data?.models ?? [];
-            setSelected((current) => {
-              if (current === null) return null;
-              return nextModels.find((model) => model.modelId === current.modelId) ?? current;
-            });
-          });
+        onReload={async () => {
+          const result = await query.refetch();
+          if (selected === null) return null;
+          const next = result.data?.models.find((model) => model.modelId === selected.modelId) ?? selected;
+          setSelected(next);
+          return next;
         }}
       />
     </PageContainer>

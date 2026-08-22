@@ -43,6 +43,16 @@ export const routingFormValues = (model: DashboardRoutingModel): RoutingFormValu
   })),
 });
 
+export const reconcileRoutingFormRows = (
+  rows: readonly RoutingFormProviderRow[],
+  model: DashboardRoutingModel,
+): RoutingFormProviderRow[] => {
+  const drafts = new Map(rows.map((row) => [row.providerId, row]));
+  return model.providers.map(
+    (provider) => drafts.get(provider.id) ?? { providerId: provider.id, ...overrideDraft(provider) },
+  );
+};
+
 export const routingDraftRecord = (rows: readonly RoutingFormProviderRow[]): Record<string, RoutingProviderDraft> =>
   Object.fromEntries(
     rows.map((row) => [
