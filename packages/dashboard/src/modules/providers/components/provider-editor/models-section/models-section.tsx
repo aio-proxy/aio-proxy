@@ -155,10 +155,10 @@ export const ModelsSection: React.FC<ModelsSectionProps> = ({
                         : whitelistRows.filter((row) => row.id !== id),
                     );
                   const remove = (id: string) => {
-                    // Every row renders the trash control, but only whitelisted ids can leave the
-                    // list — a catalog-only row survives `discovered`. Removing one is a no-op on
-                    // `models`, so the cascade below must not run either: it would delete aliases
-                    // and metadata pointing at a row still on screen.
+                    // Only whitelisted ids can leave the list — a catalog-only row survives
+                    // `discovered`. The row's trash control is disabled on this same predicate; the
+                    // guard stays because the cascade below must not run for a row that would remain
+                    // on screen, deleting aliases and metadata pointing at it.
                     if (!whitelist.has(id)) return;
                     const { [id]: _dropped, ...rest } = metadata;
                     commit(

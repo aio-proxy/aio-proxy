@@ -66,11 +66,15 @@ export const ModelRowItem: React.FC<ModelRowItemProps> = ({
           <BracesIcon data-icon="inline-start" />
           {m['dashboard.providers.form.metadata']()}
         </Button>
+        {/* `disabled` reads the same `enabled` the parent's `remove()` guard early-returns on: only a
+            whitelisted id can leave the list, and a catalog-only row's delete would otherwise be an
+            enabled control with an inert handler. */}
         <Button
           type="button"
           variant="ghost"
           size="icon-xs"
           data-testid="model-row-remove"
+          disabled={!enabled}
           aria-label={m['dashboard.providers.form.remove_model']({ model: id })}
           onClick={onRemove}
         >

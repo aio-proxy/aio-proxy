@@ -675,17 +675,19 @@ describe('ModelsSection', () => {
     expect(within(card).getByLabelText(UPSTREAM_LABEL)).not.toHaveAttribute('aria-invalid', 'true');
   });
 
-  // Every row renders the trash control, but a catalog-only row cannot leave the list: it comes from
-  // `discovered`, not the whitelist. The click must therefore change nothing at all — dropping the
-  // alias while the row stays on screen reads as "delete did nothing" and loses the alias on Save.
-  test('deleting a catalog-only row leaves the alias pointing at it alone', () => {
+  // A catalog-only row cannot leave the list: it comes from `discovered`, not the whitelist. Its trash
+  // control is therefore disabled rather than enabled-and-inert — a dead enabled button reads as a
+  // broken product, and clicking it dropped the alias while the row stayed on screen.
+  test('a catalog-only row cannot be deleted, so its alias survives', () => {
     renderSection({
       kind: ProviderKind.Api,
       initial: { ...apiInitial(['model-a']), alias: { smart: { model: 'disc-b', preserve: false } } },
       candidates: ['disc-b'],
     });
 
-    fireEvent.click(within(screen.getByTestId('model-row-disc-b')).getByTestId('model-row-remove'));
+    const remove = within(screen.getByTestId('model-row-disc-b')).getByTestId('model-row-remove');
+    expect(remove).toBeDisabled();
+    fireEvent.click(remove);
 
     expect(screen.getByTestId('model-row-disc-b')).toBeInTheDocument();
     const card = screen.getByTestId('provider-alias-card');
