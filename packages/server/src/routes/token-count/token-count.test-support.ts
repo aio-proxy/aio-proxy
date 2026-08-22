@@ -15,11 +15,13 @@ import { handleTokenCount } from './token-count';
 
 export const requestedModel = 'count-model';
 
+const defaultRouter = ConfigSchema.parse({ providers: {} }).router;
+
 export function countFixture(
   providers: readonly RuntimeProviderInstance[],
   options: { readonly debugLogging?: boolean; readonly logicalSessionStore?: LogicalSessionStore } = {},
 ) {
-  const router = new Router(providers);
+  const router = new Router(providers, { models: defaultRouter.models });
   const recording = createRecording();
   const logs: ServerLog[] = [];
   let releaseCount = 0;

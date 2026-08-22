@@ -46,11 +46,16 @@ export type RecoveryScheduler = {
   readonly setTimeout: (callback: () => void, delayMs: number) => RecoveryTimer;
 };
 
+export type CreateRouter = (
+  providers: readonly RuntimeProviderInstance[],
+  routerConfig: Config['router'],
+) => Router<RuntimeProviderInstance>;
+
 export type ServerStateTestHooks = {
   readonly agentIdentity?: AgentIdentityService;
   readonly failStartupAfter?: 'scheduler' | 'recovery' | 'login_sessions' | 'watcher';
   readonly configFile?: AtomicConfigFile;
-  readonly createRouter?: (providers: readonly RuntimeProviderInstance[]) => Router<RuntimeProviderInstance>;
+  readonly createRouter?: CreateRouter;
   readonly onCatalogJobsReplaced?: (jobs: readonly CatalogJobDescriptor[]) => void;
   readonly reconciliationRetryMs?: number;
   readonly recoveryScheduler?: RecoveryScheduler;

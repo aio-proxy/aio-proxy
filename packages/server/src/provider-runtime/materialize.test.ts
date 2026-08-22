@@ -161,6 +161,57 @@ test('materializes AI SDK metadata into the config layer only', () => {
   expect(provider?.upstreamMetadata).toBeUndefined();
 });
 
+test('materializes and summarizes normalized Provider routing defaults', () => {
+  const config = ConfigSchema.parse({
+    providers: {
+      api: { kind: 'api', protocol: 'openai-compatible', baseURL: 'https://api.test', priority: 7, weight: 2.6 },
+    },
+  });
+  const runtime = materializeProviders(config, {
+    createApiProvider: (provider) => {
+      const passthrough = async () => new Response();
+      return {
+        ...provider,
+        endpointTransports: [{ protocol: provider.protocol, passthrough }],
+        passthrough,
+      };
+    },
+    bridgeApiProvider: () => ({
+      enabled: true,
+      id: 'api:bridge',
+      invoke: () => new ReadableStream(),
+      kind: ProviderKind.AiSdk,
+    }),
+  });
+  expect(runtime.providers[0]).toMatchObject({ priority: 7, weight: 3 });
+  expect(runtime.summaries[0]).toMatchObject({ priority: 7, weight: 3 });
+});
+
+test('copies normalized routing defaults onto AI SDK runtime providers and summaries', () => {
+  const config = ConfigSchema.parse({
+    providers: {
+      sdk: {
+        kind: 'ai-sdk',
+        packageName: '@ai-sdk/openai-compatible',
+        models: ['model'],
+        priority: 4,
+        weight: 8.4,
+      },
+    },
+  });
+  const runtime = materializeProviders(config, {
+    createAiSdkProvider: (provider) => ({
+      enabled: provider.enabled,
+      id: provider.id,
+      invoke: () => new ReadableStream(),
+      kind: ProviderKind.AiSdk,
+      models: provider.models,
+    }),
+  });
+  expect(runtime.providers[0]).toMatchObject({ priority: 4, weight: 8 });
+  expect(runtime.summaries[0]).toMatchObject({ priority: 4, weight: 8 });
+});
+
 test('provider summaries preserve configured weight and truthful display identity', () => {
   const config = ConfigSchema.parse({
     providers: {

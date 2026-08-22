@@ -36,7 +36,6 @@ import type { SnapshotManager } from '../plugin-snapshot';
 import { createSnapshotManager } from '../plugin-snapshot';
 import { createRequestTraceRecorder } from '../request-tracing';
 import { ProviderCooldownStore } from '../routes/pipeline/provider-cooldown';
-import type { RuntimeProviderInstance } from '../runtime';
 import { createUsageCapture } from '../usage-capture';
 import type { ServerRuntime } from './lifecycle';
 import {
@@ -128,7 +127,7 @@ async function initializeServerState(
     }
   };
   const createRouter =
-    testHooks?.createRouter ?? ((providers: readonly RuntimeProviderInstance[]) => new Router(providers));
+    testHooks?.createRouter ?? ((providers, routerConfig) => new Router(providers, { models: routerConfig.models }));
   const events = createDashboardEventHub(options.eventLimits);
   registerStartupCleanup(() => events.close());
   const repository = options.pluginRepository ?? createPluginRepository(dbHandle.sqlite);

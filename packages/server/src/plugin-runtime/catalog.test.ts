@@ -52,6 +52,40 @@ test('a malformed stored catalog becomes unavailable and schedules safe rediscov
   expect(result.catalogJob).toBeDefined();
 });
 
+test('reused OAuth runtime refreshes priority and weight from the current config', async () => {
+  const fixture = runtimeFixture({ kind: 'static' });
+  const base = {
+    id: 'person',
+    kind: ProviderKind.OAuth,
+    enabled: true,
+    plugin: '@example/oauth',
+    capability: 'default',
+  } as const;
+  const options = {
+    plugins: fixture.plugins,
+    repository: fixture.repository,
+    diagnostics,
+    logger: () => {},
+    onDiagnosticChanged: () => {},
+  };
+
+  const first = await materializePluginProvider({
+    ...options,
+    config: { ...base, priority: 2, weight: 4 },
+  });
+  const reused = await materializePluginProvider({
+    ...options,
+    config: { ...base, priority: 9, weight: 7 },
+    previous: first.cacheEntry,
+  });
+
+  expect(fixture.createCalls()).toBe(1);
+  expect(first.provider).toMatchObject({ priority: 2, weight: 4 });
+  expect(reused.provider).toMatchObject({ priority: 9, weight: 7 });
+  expect(reused.summary).toMatchObject({ priority: 9, weight: 7 });
+  expect(reused.provider).not.toBe(first.provider);
+});
+
 test('an initially disabled provider validates state without creating runtime or catalog work', async () => {
   const fixture = runtimeFixture({ kind: 'ttl', ttlMs: 1 });
 

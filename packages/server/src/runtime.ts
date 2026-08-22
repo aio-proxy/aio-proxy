@@ -49,6 +49,8 @@ type RuntimeProviderBase = {
   readonly id: string;
   readonly kind: ProviderKind;
   readonly enabled: boolean;
+  readonly priority?: number;
+  readonly weight?: number;
   readonly models?: readonly ModelId[];
   readonly alias?: Readonly<Record<string, AliasConfig>>;
   readonly configMetadata?: Readonly<Record<ModelId, ModelMetadata>>;
