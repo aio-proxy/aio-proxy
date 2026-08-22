@@ -100,3 +100,20 @@ test('rejects an authorize_url session with a non-URL', () => {
     }),
   ).toThrow();
 });
+
+// The edit view carries the plugin's default aliases so the editor can offer them, but a plugin that
+// has none must keep the field absent rather than send an empty object — and the shape is the same
+// `AliasConfig` the provider stores, so `preserve` defaults here exactly as it does on save.
+test('provider edit view carries optional plugin default aliases as alias configs', () => {
+  expect(dashboard).toHaveProperty('DashboardOAuthProviderEditSchema');
+  const schema = Reflect.get(dashboard, 'DashboardOAuthProviderEditSchema') as ZodType;
+  const view = { accountLabel: 'Work', publicValues: {}, form: [], models: ['model-1'] };
+
+  expect(schema.parse(view)).toEqual(view);
+  expect(schema.parse({ ...view, pluginAliases: { chat: { model: 'model-1' } } })).toEqual({
+    ...view,
+    pluginAliases: { chat: { model: 'model-1', preserve: false } },
+  });
+  expect(schema.safeParse({ ...view, pluginAliases: { chat: { model: 42 } } }).success).toBe(false);
+  expect(schema.safeParse({ ...view, pluginAlias: {} }).success).toBe(false);
+});

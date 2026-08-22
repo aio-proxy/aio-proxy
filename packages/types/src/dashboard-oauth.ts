@@ -62,6 +62,7 @@ export const DashboardOAuthProviderEditSchema = z.strictObject({
   publicValues: z.record(z.string(), z.json()),
   form: z.array(DashboardOAuthFormFieldSchema),
   models: z.array(z.string()),
+  pluginAliases: z.record(z.string().min(1), AliasConfigSchema).optional(),
 });
 
 const DashboardOAuthSessionCommonSchema = z.object({ id: z.uuid() });
