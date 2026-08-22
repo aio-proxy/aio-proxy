@@ -460,6 +460,25 @@ describe('ModelsSection', () => {
     );
   });
 
+  // The rows sit in a fixed-height scroller that keeps its offset, so a row that changes position on
+  // being ticked drags every row after it under the pointer: the second click of a run of ticks landed
+  // on a model the user never aimed at.
+  test('ticking a catalog row leaves every row where it was', async () => {
+    renderSection({
+      kind: ProviderKind.Api,
+      initial: apiInitial(['listed']),
+      candidates: ['disc-a', 'disc-b', 'disc-c'],
+    });
+
+    const order = () => [...screen.getByTestId('models-rows').children].map((row) => row.getAttribute('data-testid'));
+    const before = order();
+
+    fireEvent.click(within(screen.getByTestId('model-row-disc-c')).getByRole('checkbox'));
+
+    await waitFor(() => expect(section.state.values.models).toContain('disc-c'));
+    expect(order()).toEqual(before);
+  });
+
   test('a failed catalog load toasts the error code instead of emptying the list', async () => {
     mocks.fetchCatalog.mockResolvedValue({ ok: false, error: { code: 'upstream_unauthorized', recoverable: true } });
     renderSection({ kind: ProviderKind.Api, initial: apiInitial(['model-a']) });

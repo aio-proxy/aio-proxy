@@ -137,7 +137,15 @@ export const ModelsSection: React.FC<ModelsSectionProps> = ({
                   // falls back to the whole catalog, which would drop suggestions the save accepts.
                   const applicableAliases = applicablePluginAliases(pluginAliases, models);
                   const whitelist = new Set(selected);
-                  const rowIds = [...selected, ...(discovered ?? []).filter((id) => !whitelist.has(id))];
+                  // Row order must not depend on which rows are ticked. Listing the whitelist first
+                  // re-sorted a row the moment its box was checked, while the ScrollArea kept its scroll
+                  // offset — so a catalog row jumped up to the enabled block and slid a different model
+                  // under the pointer, where the next click landed. Catalog order is fixed; ids the
+                  // catalog does not know (typed by hand) lead it, newest first as `addManualModels`
+                  // writes them.
+                  const catalogIds = discovered ?? [];
+                  const knownToCatalog = new Set(catalogIds);
+                  const rowIds = [...selected.filter((id) => !knownToCatalog.has(id)), ...catalogIds];
                   const rows = toModelRows(rowIds, metadata);
                   const whitelistRows = toModelRows(selected, metadata);
                   const needle = filter.trim().toLowerCase();
@@ -148,10 +156,11 @@ export const ModelsSection: React.FC<ModelsSectionProps> = ({
                     modelsField.handleChange(applied.models);
                     metadataField.handleChange(applied.metadata);
                   };
+                  // Front, as `addManualModels` does: one end for both ways a model joins the whitelist.
                   const toggle = (id: string, enabled: boolean) =>
                     commit(
                       enabled
-                        ? [...whitelistRows, { id, metadata: metadata[id] }]
+                        ? [{ id, metadata: metadata[id] }, ...whitelistRows]
                         : whitelistRows.filter((row) => row.id !== id),
                     );
                   const remove = (id: string) => {
