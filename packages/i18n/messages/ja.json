@@ -602,6 +602,7 @@
         "service_label": "OAuth サービス",
         "connected_account": "{account} に接続済み",
         "account_fields_title": "アカウント設定",
+        "account_select_placeholder": "選択してください",
         "models_title": "検出されたモデル",
         "reauthorize_helper": "アカウント設定の変更は認可が成功した後にのみ保存されます"
       },

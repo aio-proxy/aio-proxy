@@ -602,6 +602,7 @@
         "service_label": "OAuth 서비스",
         "connected_account": "{account} 연결됨",
         "account_fields_title": "계정 설정",
+        "account_select_placeholder": "선택하세요",
         "models_title": "발견된 모델",
         "reauthorize_helper": "계정 설정 변경은 인증에 성공한 후에만 저장됩니다"
       },

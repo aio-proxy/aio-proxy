@@ -602,6 +602,7 @@
         "service_label": "OAuth 服務",
         "connected_account": "已連接 {account}",
         "account_fields_title": "帳戶設定",
+        "account_select_placeholder": "請選擇",
         "models_title": "已探索模型",
         "reauthorize_helper": "帳戶設定變更只會在授權成功後儲存"
       },

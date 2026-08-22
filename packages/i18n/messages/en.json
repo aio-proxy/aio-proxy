@@ -602,6 +602,7 @@
         "service_label": "OAuth service",
         "connected_account": "Connected as {account}",
         "account_fields_title": "Account settings",
+        "account_select_placeholder": "Select an option",
         "models_title": "Discovered models",
         "reauthorize_helper": "Account setting changes are saved only after authorization succeeds"
       },
