@@ -21,15 +21,24 @@ describe('ConfigSchema', () => {
       server: { ...defaultServer, port: 3000 },
       router: defaultRouter,
       providers: [
-        { ...apiProvider, enabled: true, id: 'openai' },
+        { ...apiProvider, enabled: true, id: 'openai', priority: 0, weight: 1 },
         {
           kind: 'oauth',
           enabled: true,
           id: 'copilot',
           plugin: '@aio-proxy/plugin-github-copilot',
           capability: 'default',
+          priority: 0,
+          weight: 1,
         },
-        { kind: 'ai-sdk', enabled: true, id: 'anthropic', packageName: '@ai-sdk/anthropic' },
+        {
+          kind: 'ai-sdk',
+          enabled: true,
+          id: 'anthropic',
+          packageName: '@ai-sdk/anthropic',
+          priority: 0,
+          weight: 1,
+        },
       ],
       invalidProviders: [],
     });
@@ -56,6 +65,8 @@ describe('ConfigSchema', () => {
       ...provider,
       enabled: true,
       id: 'gemini',
+      priority: 0,
+      weight: 1,
       alias: {
         'gemini-3-flash-agent': {
           model: 'gemini-3.5-flash',

@@ -66,10 +66,17 @@ const ApiHeadersSchema = z
   })
   .readonly();
 
+export const ROUTING_VALUE_MAX = 10_000;
+const clampRoutingValue = (value: number): number => Math.min(ROUTING_VALUE_MAX, Math.max(0, value));
+
+export const RoutingPrioritySchema = z.int().transform(clampRoutingValue);
+export const RoutingWeightSchema = z.number().transform((value) => clampRoutingValue(Math.round(value)));
+
 const SharedProviderSchemaBase = {
   id: z.string().describe('Stable provider id used in routing.'),
   enabled: z.boolean().default(true).describe('Whether this provider participates in routing.'),
-  weight: z.number().optional().describe('Provider priority; higher weights are tried first.'),
+  priority: RoutingPrioritySchema.prefault(0).describe('Provider failover priority; higher values are tried first.'),
+  weight: RoutingWeightSchema.prefault(1).describe('Same-priority traffic weight; zero disables normal routing.'),
   alias: z.record(z.string().min(1), AliasConfigSchema).optional().describe('Client-facing model aliases.'),
   name: z.string().optional().describe('Display name shown in the dashboard.'),
   transforms: ProviderTransformsSchema.optional().describe('Ordered outbound request transforms.'),
@@ -199,7 +206,8 @@ const ApiProviderMutationSharedFields = {
   id: z.string().min(1),
   name: z.string().optional(),
   enabled: z.boolean().optional(),
-  weight: z.number().optional(),
+  priority: RoutingPrioritySchema.optional(),
+  weight: RoutingWeightSchema.optional(),
   protocol: ProviderProtocolSchema,
   apiKey: z.string().optional(),
   headers: ApiHeadersSchema.optional(),
@@ -230,7 +238,8 @@ const AiSdkProviderMutationSharedFields = {
   id: z.string().min(1),
   name: z.string().optional(),
   enabled: z.boolean().optional(),
-  weight: z.number().optional(),
+  priority: RoutingPrioritySchema.optional(),
+  weight: RoutingWeightSchema.optional(),
   packageName: AiSdkPackageNameSchema.optional(),
   options: z.record(z.string(), z.unknown()).optional(),
   parseReasoningContent: z.boolean().optional(),
@@ -258,7 +267,8 @@ export const OAuthProviderMutationBodySchema = z.strictObject({
   id: z.string().min(1),
   name: z.string().optional(),
   enabled: z.boolean().optional(),
-  weight: z.number().optional(),
+  priority: RoutingPrioritySchema.optional(),
+  weight: RoutingWeightSchema.optional(),
   proxy: ProviderMutationProxySchema,
   ...metadataField,
   alias: z.record(z.string().min(1), AliasConfigSchema).optional().describe('Client-facing model aliases.'),

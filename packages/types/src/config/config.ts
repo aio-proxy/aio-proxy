@@ -16,6 +16,8 @@ import {
   type Provider,
   ProviderKind,
   ProviderSchema,
+  RoutingPrioritySchema,
+  RoutingWeightSchema,
   validateAliasTargets,
   validateApiEndpoints,
 } from '../provider';
@@ -136,11 +138,21 @@ const CONFIG_PROXY_DESCRIPTION = 'Default HTTP(S) proxy URL inherited by provide
 
 export const ModelContextAggregation = { Min: 'min', Max: 'max' } as const;
 
+export const RouterProviderOverrideSchema = z.object({
+  priority: RoutingPrioritySchema.optional(),
+  weight: RoutingWeightSchema.optional(),
+});
+
+export const RouterModelPolicySchema = z.object({
+  providers: z.record(z.string().min(1), RouterProviderOverrideSchema).default({}),
+});
+
 export const RouterConfigSchema = z.object({
   modelContextAggregation: z
     .enum([ModelContextAggregation.Min, ModelContextAggregation.Max])
     .default(ModelContextAggregation.Min)
     .describe('How to reconcile a public slug context window across providers: min (safe) or max.'),
+  models: z.record(z.string().min(1), RouterModelPolicySchema).default({}),
 });
 
 export const ConfigAuthoringSchema = z.object({
@@ -201,7 +213,6 @@ export const ConfigSchema = ConfigEnvelopeSchema.transform((input) => {
     }
     providers.push(ProviderSchema.parse({ ...result.data, id }));
   }
-  providers.sort((left, right) => (right.weight ?? 0) - (left.weight ?? 0));
   return {
     server: input.server,
     plugins: input.plugins,
@@ -214,5 +225,8 @@ export const ConfigSchema = ConfigEnvelopeSchema.transform((input) => {
 
 export type ServerConfigInput = z.input<typeof ServerConfigSchema>;
 export type ServerConfig = z.output<typeof ServerConfigSchema>;
+export type RouterProviderOverride = z.output<typeof RouterProviderOverrideSchema>;
+export type RouterModelPolicy = z.output<typeof RouterModelPolicySchema>;
+export type RouterConfig = z.output<typeof RouterConfigSchema>;
 export type ConfigInput = z.input<typeof ConfigAuthoringSchema>;
 export type Config = z.output<typeof ConfigSchema>;

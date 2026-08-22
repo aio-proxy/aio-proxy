@@ -130,7 +130,12 @@ describe('plugin identifiers and staged OAuth provider schema', () => {
       options: { deploymentType: 'github.com' },
     } as const;
 
-    expect(OAuthPluginProviderSchema.parse(provider)).toEqual({ ...provider, enabled: true });
+    expect(OAuthPluginProviderSchema.parse(provider)).toEqual({
+      ...provider,
+      enabled: true,
+      priority: 0,
+      weight: 1,
+    });
     expect(OAuthProviderSchema.safeParse(provider).success).toBe(true);
   });
 
@@ -174,6 +179,8 @@ describe('OAuth plugin config schema', () => {
       capability: 'default',
       enabled: true,
       id: 'copilot',
+      priority: 0,
+      weight: 1,
     });
     expect(config.providers[0]).not.toHaveProperty('models');
   });
@@ -198,6 +205,8 @@ describe('OAuth plugin config schema', () => {
       enabled: true,
       id: 'copilot',
       alias: { mini: { model: 'gpt-5-mini', preserve: false } },
+      priority: 0,
+      weight: 1,
     });
     expect(config.providers[0]).not.toHaveProperty('models');
   });
