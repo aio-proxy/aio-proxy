@@ -306,4 +306,19 @@ describe('model routing inventory', () => {
     expect(response.writable).toBe(false);
     expect(response.models.length).toBeGreaterThan(0);
   });
+
+  test('read-only inventory omits authored numbers for omitted, defaulted, and clamped values', async () => {
+    const response = await inventory({ writable: false });
+    const api = provider(response, 'api-alias', 'disabled-api');
+    const oauth = provider(response, 'oauth-alias', 'disabled-oauth');
+
+    expect(api.defaults.priority).toEqual({ effective: 0, wasNormalized: false });
+    expect(api.defaults.weight).toEqual({ effective: 2, wasNormalized: false });
+    expect(api.override?.priority).toEqual({ effective: 30, wasNormalized: false });
+    expect(api.override).not.toHaveProperty('weight');
+    expect(api.effective).toMatchObject({ prioritySource: 'model', weightSource: 'provider', priority: 30, weight: 2 });
+    expect(oauth.defaults.priority).toEqual({ effective: 0, wasNormalized: false });
+    expect(oauth.defaults.weight).toEqual({ effective: 1, wasNormalized: false });
+    expect(oauth.override).toBeUndefined();
+  });
 });

@@ -20,7 +20,8 @@ export function applyRoutingMutation(
   const preserved = Object.fromEntries(
     Object.entries(rawPolicyProviders(currentPolicy)).filter(([id]) => !input.baselineProviderIds.includes(id)),
   );
-  return writeRawModelPolicy(current, input.modelId, { ...preserved, ...input.providers });
+  const submitted = Object.fromEntries(Object.entries(input.providers).filter(([, value]) => !isEmptyOverride(value)));
+  return writeRawModelPolicy(current, input.modelId, { ...preserved, ...submitted });
 }
 
 export function readRawModelPolicy(current: Record<string, unknown>, modelId: string): unknown {
@@ -40,15 +41,14 @@ export function writeRawModelPolicy(
   const currentModels = isPlainObject(currentRouter['models']) ? { ...currentRouter['models'] } : {};
   const currentPolicy = isPlainObject(currentModels[modelId]) ? currentModels[modelId] : {};
   const { providers: _ignored, ...futurePolicyFields } = currentPolicy;
-  const cleaned = Object.fromEntries(Object.entries(providers).filter(([, value]) => !isEmptyOverride(value)));
-  const hasProviders = Object.keys(cleaned).length > 0;
+  const hasProviders = Object.keys(providers).length > 0;
   const hasFuturePolicy = Object.keys(futurePolicyFields).length > 0;
 
   if (!hasProviders && !hasFuturePolicy) delete currentModels[modelId];
   else {
     currentModels[modelId] = {
       ...futurePolicyFields,
-      ...(hasProviders ? { providers: cleaned } : {}),
+      ...(hasProviders ? { providers } : {}),
     };
   }
 

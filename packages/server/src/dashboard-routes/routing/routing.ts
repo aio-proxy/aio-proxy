@@ -3,7 +3,7 @@ import type { MiddlewareHandler } from 'hono';
 import { Hono } from 'hono';
 import { validator } from 'hono/validator';
 
-import { ConfigPathMissingError } from '../../config-store';
+import { ConfigPathMissingError, ConfigReloadRejectedError } from '../../config-store';
 import { ModelRoutingStaleRevisionError } from '../../model-routing';
 import type { ServerState } from '../../server-state';
 
@@ -28,6 +28,7 @@ export const createDashboardRoutingRoutes = (state: ServerState) =>
       } catch (error) {
         if (error instanceof ConfigPathMissingError) return context.json({ error: 'config_unavailable' }, 409);
         if (error instanceof ModelRoutingStaleRevisionError) return context.json({ error: 'stale_revision' }, 409);
+        if (error instanceof ConfigReloadRejectedError) return context.json({ error: 'validation_failed' }, 422);
         throw error;
       }
     });

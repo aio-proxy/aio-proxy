@@ -46,6 +46,25 @@ test('rejects a stale raw policy without changing config', () => {
   expect(current).toEqual(before);
 });
 
+test('preserves non-baseline future-only Provider entries byte-semantically', () => {
+  const originalPolicy = {
+    providers: { a: { priority: 10 }, ghost: { strategy: 'future' } },
+  };
+  const current = { router: { models: { shared: originalPolicy } }, providers: {} };
+  const next = applyRoutingMutation(current, {
+    modelId: 'shared',
+    revision: digestProviderEntry(originalPolicy),
+    baselineProviderIds: ['a'],
+    providers: { a: { priority: 30 } },
+  });
+  expect(
+    (next as { router: { models: { shared: { providers: Record<string, unknown> } } } }).router.models.shared.providers,
+  ).toEqual({
+    a: { priority: 30 },
+    ghost: { strategy: 'future' },
+  });
+});
+
 test('deletes empty model and router containers while preserving future fields', () => {
   const originalPolicy = { providers: { a: { priority: 10 } } };
   const current = {

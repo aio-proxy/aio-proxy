@@ -59,12 +59,12 @@ export function createModelRoutingControlPlane(options: ModelRoutingControlPlane
     async providerNumberViews(providerId) {
       const provider = options.currentConfig().providers.find((entry) => entry.id === providerId);
       if (provider === undefined) return undefined;
-      const { record } = await rawRecord();
+      const { record, writable } = await rawRecord();
       const raw = objectRecord(record['providers'])[providerId];
       const authored = isPlainObject(raw) ? raw : {};
       return {
-        priority: routingNumberView(authoredNumber(authored['priority']), provider.priority),
-        weight: routingNumberView(authoredNumber(authored['weight']), provider.weight),
+        priority: routingNumberView(writable ? authoredNumber(authored['priority']) : undefined, provider.priority),
+        weight: routingNumberView(writable ? authoredNumber(authored['weight']) : undefined, provider.weight),
       };
     },
   };

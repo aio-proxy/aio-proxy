@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { digestProviderEntry, parseRuntimeConfig } from '@aio-proxy/core';
+import { digestProviderEntry, parseRuntimeConfig, Router } from '@aio-proxy/core';
 import { DashboardRoutingModelsResponseSchema, DashboardRoutingMutationErrorCodeSchema } from '@aio-proxy/types';
 
 import { createServerState } from '#server-test-lifecycle';
@@ -51,16 +51,27 @@ async function withRoutingFixture(
     readonly routes: Routes;
     readonly state: ServerState;
   }) => Promise<void>,
-  options: { readonly configPath?: boolean } = {},
+  options: { readonly configPath?: boolean; readonly rejectReload?: { value: boolean } } = {},
 ): Promise<void> {
   const directory = mkdtempSync(join(tmpdir(), 'aio-dashboard-routing-'));
   const configPath = join(directory, 'config.json');
   writeFileSync(configPath, JSON.stringify(authored, null, 2));
+  const rejectReload = options.rejectReload;
   const state = await createServerState({
     config: parseRuntimeConfig(authored),
     dbHome: directory,
     ...(options.configPath === false ? {} : { configPath }),
     watchConfig: false,
+    ...(rejectReload === undefined
+      ? {}
+      : {
+          __test: {
+            createRouter: (providers) => {
+              if (rejectReload.value) throw new Error('reload rejected for test');
+              return new Router(providers);
+            },
+          },
+        }),
   });
   try {
     await run({ configPath, routes: createDashboardRoutes(state, disabledDashboardAuthentication), state });
@@ -99,9 +110,32 @@ test('GET /routing/models is read-only when the config path is missing', async (
     async ({ routes }) => {
       const response = await routes.request('/routing/models');
       const body = DashboardRoutingModelsResponseSchema.parse(await response.json());
+      const model = body.models.find((entry) => entry.modelId === 'openai/gpt-5');
+      const edit = await (await routes.request('/providers/off/edit-view')).json();
+
       expect(response.status).toBe(200);
       expect(body.writable).toBe(false);
-      expect(body.models.map((entry) => entry.modelId)).toContain('openai/gpt-5');
+      expect(model?.providers[0]).toMatchObject({
+        id: 'off',
+        defaults: {
+          priority: { effective: 0, wasNormalized: false },
+          weight: { effective: 2, wasNormalized: false },
+        },
+      });
+      expect(model?.providers[0]?.defaults.weight).not.toHaveProperty('authored');
+      expect(model?.providers[1]).toMatchObject({
+        id: 'on',
+        override: { priority: { effective: 20, wasNormalized: false } },
+        effective: { prioritySource: 'model', priority: 20 },
+      });
+      expect(model?.providers[1]?.override?.priority).not.toHaveProperty('authored');
+      expect(edit).toMatchObject({
+        routing: {
+          priority: { effective: 0, wasNormalized: false },
+          weight: { effective: 2, wasNormalized: false },
+        },
+      });
+      expect(edit.routing.weight).not.toHaveProperty('authored');
     },
     { configPath: false },
   );
@@ -190,6 +224,35 @@ test('PUT /routing/models returns typed config, revision, and validation errors'
       );
     },
     { configPath: false },
+  );
+});
+
+test('PUT /routing/models returns typed validation_failed when reload rejects', async () => {
+  const rejectReload = { value: false };
+  await withRoutingFixture(
+    async ({ configPath, routes }) => {
+      const listed = DashboardRoutingModelsResponseSchema.parse(await (await routes.request('/routing/models')).json());
+      const current = listed.models.find((entry) => entry.modelId === 'openai/gpt-5');
+      const before = readFileSync(configPath, 'utf8');
+      rejectReload.value = true;
+      const response = await routes.request('/routing/models', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          modelId: 'openai/gpt-5',
+          revision: current?.revision,
+          baselineProviderIds: current?.baselineProviderIds,
+          providers: { on: { priority: 40 } },
+        }),
+      });
+
+      expect(response.status).toBe(422);
+      expect(DashboardRoutingMutationErrorCodeSchema.parse(((await response.json()) as { error: string }).error)).toBe(
+        'validation_failed',
+      );
+      expect(readFileSync(configPath, 'utf8')).toBe(before);
+    },
+    { rejectReload },
   );
 });
 

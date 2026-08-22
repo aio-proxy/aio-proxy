@@ -50,6 +50,7 @@ export async function assembleRoutingInventory(input: RoutingInventoryInput): Pr
           summaries.get(provider.id),
           rawProviders[provider.id],
           rawPolicyProviders(readRawModelPolicy(input.rawRecord, route.alias))[provider.id],
+          input.writable,
         ),
       );
     }
@@ -111,13 +112,14 @@ function providerRow(
   summary: DashboardProviderSummary | undefined,
   rawProvider: unknown,
   rawOverride: unknown,
+  discloseAuthored: boolean,
 ): DashboardRoutingProvider {
   const raw = isPlainObject(rawProvider) ? rawProvider : {};
   const defaults = {
-    priority: routingNumberView(authoredNumber(raw['priority']), provider.priority),
-    weight: routingNumberView(authoredNumber(raw['weight']), provider.weight),
+    priority: routingNumberView(discloseAuthored ? authoredNumber(raw['priority']) : undefined, provider.priority),
+    weight: routingNumberView(discloseAuthored ? authoredNumber(raw['weight']) : undefined, provider.weight),
   };
-  const override = overrideView(rawOverride);
+  const override = overrideView(rawOverride, discloseAuthored);
   const priority = override?.priority?.effective ?? defaults.priority.effective;
   const weight = override?.weight?.effective ?? defaults.weight.effective;
   return {
@@ -139,10 +141,10 @@ function providerRow(
   };
 }
 
-function overrideView(rawOverride: unknown): DashboardRoutingProvider['override'] {
+function overrideView(rawOverride: unknown, discloseAuthored: boolean): DashboardRoutingProvider['override'] {
   if (!isPlainObject(rawOverride)) return undefined;
-  const priority = parsedNumberView(rawOverride['priority'], RoutingPrioritySchema);
-  const weight = parsedNumberView(rawOverride['weight'], RoutingWeightSchema);
+  const priority = parsedNumberView(rawOverride['priority'], RoutingPrioritySchema, discloseAuthored);
+  const weight = parsedNumberView(rawOverride['weight'], RoutingWeightSchema, discloseAuthored);
   if (priority === undefined && weight === undefined) return undefined;
   return {
     ...(priority === undefined ? {} : { priority }),
@@ -153,13 +155,14 @@ function overrideView(rawOverride: unknown): DashboardRoutingProvider['override'
 function parsedNumberView(
   raw: unknown,
   schema: typeof RoutingPrioritySchema | typeof RoutingWeightSchema,
+  discloseAuthored: boolean,
 ): DashboardRoutingNumber | undefined {
   if (raw === undefined) return undefined;
   const authored = authoredNumber(raw);
   if (authored === undefined) return undefined;
   const parsed = schema.safeParse(authored);
   if (!parsed.success) return undefined;
-  return routingNumberView(authored, parsed.data);
+  return routingNumberView(discloseAuthored ? authored : undefined, parsed.data);
 }
 
 async function syntheticSource(
