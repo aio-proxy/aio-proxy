@@ -7,9 +7,10 @@
 Make request transform rules shorter to scan and stop showing the condition builder to rules that do not
 have a condition.
 
-Each rule now opens with a single row: the name is edited in place — an unnamed rule shows "Rule 1" as a
-hint rather than a stored name — and reorder and delete sit beside it as icon buttons instead of three
-full-text buttons in a footer, so a rule list no longer spends a third of its height on chrome.
+Each rule now opens with a single row: the name is edited in place — a new rule is created named "Rule N",
+and clearing the box removes the name again, leaving "Rule N" as a hint — and reorder and delete sit beside
+it as icon buttons instead of three full-text buttons in a footer, so a rule list no longer spends a third
+of its height on chrome.
 
 A rule without a condition previously still rendered the full condition builder, which read as an unfinished
 condition nobody wrote. A rule now states that it runs on every request, and a switch turns the condition

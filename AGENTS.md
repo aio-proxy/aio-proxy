@@ -29,6 +29,7 @@ Releases are driven by Changesets. All workspace packages share one lockstep ver
 - Never write a changeset that targets ONLY an internal or platform-binary package (`@aio-proxy/core`, `server`, `cli`, the plugins, `@aio-proxy/cli-*`). The `fixed` group still bumps `aio-proxy`, but its CHANGELOG entry would be empty, so `scripts/release.ts` skips its GitHub Release and the notes silently vanish.
 - Keep the product package's bump level equal to the internal package's (internal `minor` -> `aio-proxy` `minor`).
 - Use `bun changeset` to author them; commit the generated `.changeset/*.md` alongside the change. Do not run `changeset version`/`publish` by hand — CI owns both.
+- A pending note describes the shipped state, not the state when it was written. When a change reverses, replaces, or drops something an earlier unreleased note announced, grep `.changeset/` for that behavior and correct or delete the stale note in the same commit. Notes are authored per task and released in one batch, so an unrevisited note ships as a Release describing a feature the code does not have.
 
 ## Domain Language
 

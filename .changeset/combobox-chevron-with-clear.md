@@ -5,7 +5,7 @@
 'aio-proxy': patch
 ---
 
-Keep the dropdown chevron visible on the two provider fields that have a clear button. A combobox built
+Keep the dropdown chevron visible on every provider field that has a clear button. A combobox built
 from the shared input primitive hid its chevron as soon as a clear button appeared, leaving the AI SDK
 package field — which is never empty, because it defaults to a package — with nothing on screen to say
 it has a curated package list to pick from, and the models.dev extend field lost the same affordance

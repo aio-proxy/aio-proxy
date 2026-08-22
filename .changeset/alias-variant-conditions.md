@@ -12,8 +12,8 @@ editor read and wrote both through `Object.entries`, which turns a row list into
 an unrelated field on such an alias rewrote `when: { thinking: true }` into `when: { effort: "0" }`, a
 condition no request can ever match, so the variant stopped routing with no error shown. Variants are now
 edited as condition rows: each row picks any combination of `effort` (presets plus free text), `thinking`
-and `speed`, and rows are listed in the same precedence order the proxy resolves them in, so the row that
-actually wins reads first. Aliases already using the compact record shape keep it on save; the row list is
+and `speed`, and rows are listed in the order they are stored, so a row never moves while its own condition
+is being edited. Aliases already using the compact record shape keep it on save; the row list is
 only written when a condition needs it. The editor also reports the conditions the server would refuse or
 could never match — a row with no condition at all, a blank effort, and two rows matching the same
 condition — before the save instead of after it.
