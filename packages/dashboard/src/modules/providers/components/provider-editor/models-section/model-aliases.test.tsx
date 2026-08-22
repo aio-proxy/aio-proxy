@@ -107,3 +107,38 @@ test('Add Alias twice keeps both unnamed rows', () => {
   expect(added.every((row) => row.name === '')).toBe(true);
   expect(screen.getAllByTestId('provider-alias-card')).toHaveLength(2);
 });
+
+// Nothing to sync is the ordinary case — non-oauth providers, a missing catalog, a plugin without
+// default aliases, and suggestions the whitelist filtered away all reach this component as an absent
+// handler, so the button has to be absent too rather than present and inert.
+test('the plugin sync action stays off screen without a sync handler', () => {
+  render(aliases([], () => {}));
+
+  expect(screen.queryByTestId('provider-alias-sync-plugin')).toBeNull();
+});
+
+// Reuses the Add Alias gate rather than inventing one: with no enabled models there is no legal
+// target for a merged alias to point at.
+test('the plugin sync action follows the same enabled-models gate as Add Alias', () => {
+  const onSyncPluginAliases = rs.fn();
+  const syncable = (targetOptions: readonly string[]): ReactElement => (
+    <ModelAliases
+      alias={[]}
+      issues={[]}
+      targetOptions={targetOptions}
+      onAliasChange={() => {}}
+      onSyncPluginAliases={onSyncPluginAliases}
+    />
+  );
+  const { rerender } = render(syncable([]));
+
+  expect(screen.getByTestId('provider-alias-sync-plugin')).toBeDisabled();
+
+  rerender(syncable(models));
+
+  expect(screen.getByTestId('provider-alias-sync-plugin')).toBeEnabled();
+
+  fireEvent.click(screen.getByTestId('provider-alias-sync-plugin'));
+
+  expect(onSyncPluginAliases).toHaveBeenCalledTimes(1);
+});

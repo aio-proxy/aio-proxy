@@ -11,6 +11,7 @@ import {
   type ProviderEditorInitial,
   useProviderEditorForm,
 } from '../../../hooks/use-provider-editor-form';
+import type { ProviderAlias } from '../../../lib/alias-editor';
 import { PROVIDER_MODELS_PLACEHOLDER } from '../../../lib/constants';
 import { ModelsSection } from './models-section';
 
@@ -51,10 +52,11 @@ interface HarnessProps {
   readonly kind: ProviderKind;
   readonly initial: ProviderEditorInitial;
   readonly candidates?: readonly string[] | undefined;
+  readonly pluginAliases?: ProviderAlias | undefined;
   readonly persistedProviderId?: string | undefined;
 }
 
-const Harness: React.FC<HarnessProps> = ({ kind, initial, candidates, persistedProviderId }) => {
+const Harness: React.FC<HarnessProps> = ({ kind, initial, candidates, pluginAliases, persistedProviderId }) => {
   const form = useProviderEditorForm({ kind, initial });
   section = form;
   return (
@@ -63,6 +65,7 @@ const Harness: React.FC<HarnessProps> = ({ kind, initial, candidates, persistedP
       kind={kind}
       persistedProviderId={persistedProviderId}
       candidates={candidates}
+      pluginAliases={pluginAliases}
       summary={{ status: 'ok', hint: '' }}
     />
   );
@@ -701,6 +704,74 @@ describe('ModelsSection', () => {
     renderSection({ kind: ProviderKind.Api, initial: apiInitial(['model-a']) });
 
     expect(screen.getByRole('button', { name: /Add Alias|添加别名/u })).toBeEnabled();
+  });
+
+  // Same-name replace, end to end: the suggestion has to reach the form draft, not just the response,
+  // because the alias only lives in the draft and the next save replaces the stored record wholesale.
+  test('syncing plugin aliases rewrites the same-named row and says what it kept', async () => {
+    renderSection({
+      kind: ProviderKind.OAuth,
+      initial: {
+        kind: ProviderKind.OAuth,
+        id: 'oauth-provider',
+        models: ['model-a', 'model-b'],
+        alias: { mini: { model: 'model-a', preserve: false } },
+      },
+      candidates: ['model-a', 'model-b'],
+      pluginAliases: { mini: { model: 'model-b', preserve: false } },
+      persistedProviderId: 'oauth-provider',
+    });
+
+    expect(within(screen.getByTestId('provider-alias-card')).getByLabelText(UPSTREAM_LABEL)).toHaveTextContent(
+      'model-a',
+    );
+
+    fireEvent.click(screen.getByTestId('provider-alias-sync-plugin'));
+
+    expect(within(screen.getByTestId('provider-alias-card')).getByLabelText(UPSTREAM_LABEL)).toHaveTextContent(
+      'model-b',
+    );
+    // The toast mounts asynchronously, and the description is the half that tells the user their own
+    // aliases survived, so both halves are asserted against the whole tree.
+    await waitFor(() =>
+      expect(screen.getByText(m['dashboard.providers.toast.plugin_aliases_synced']())).toBeInTheDocument(),
+    );
+    expect(screen.getByText(m['dashboard.providers.toast.plugin_aliases_synced_description']())).toBeInTheDocument();
+  });
+
+  // Merging a target the whitelist does not contain reports `target-missing` and greys out Save, so a
+  // suggestion that cannot land is silently dropped — and with nothing left, the button goes with it.
+  test('a suggestion aimed outside the draft whitelist offers no sync action', () => {
+    renderSection({
+      kind: ProviderKind.OAuth,
+      initial: { kind: ProviderKind.OAuth, id: 'oauth-provider', models: ['model-a'] },
+      candidates: ['model-a', 'model-b'],
+      pluginAliases: { mini: { model: 'model-b', preserve: false } },
+      persistedProviderId: 'oauth-provider',
+    });
+
+    expect(screen.queryByTestId('provider-alias-sync-plugin')).toBeNull();
+  });
+
+  // The filter reads the draft's `models`, not the exposed set: an empty whitelist means "no
+  // whitelist", where `selected` falls back to the discovered catalog and would reject a suggestion
+  // the save accepts.
+  test('an empty whitelist filters no suggestion, even one outside the discovered catalog', () => {
+    renderSection({
+      kind: ProviderKind.OAuth,
+      initial: { kind: ProviderKind.OAuth, id: 'oauth-provider', models: [] },
+      candidates: ['model-a'],
+      pluginAliases: { mini: { model: 'model-b', preserve: false } },
+      persistedProviderId: 'oauth-provider',
+    });
+
+    expect(screen.getByTestId('provider-alias-sync-plugin')).toBeInTheDocument();
+  });
+
+  test('a provider with no plugin suggestions offers no sync action', () => {
+    renderSection({ kind: ProviderKind.Api, initial: apiInitial(['model-a']) });
+
+    expect(screen.queryByTestId('provider-alias-sync-plugin')).toBeNull();
   });
 
   test('oauth providers still get a catalog button and refresh the edit-view catalog', async () => {

@@ -66,6 +66,7 @@ export const ProviderEditorPage: React.FC<ProviderEditorPageProps> = (props) => 
         kind={kind}
         persistedProviderId={persistedId}
         candidates={oauth?.models}
+        pluginAliases={oauth?.pluginAliases}
         summary={summaries.models}
       />
       <RoutingSection form={form} summary={summaries.routing} />

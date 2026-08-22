@@ -1,0 +1,63 @@
+import type { ProviderAlias } from '@aio-proxy/types';
+import { aliasTargetModels, normalizeAliasName } from '@aio-proxy/types';
+import { pick } from 'es-toolkit/object';
+
+import { type AliasRow, toAliasRows } from '../alias-editor';
+
+/**
+ * The plugin's suggestions, reduced to the ones this draft can accept — and the one place their keys
+ * get normalized. The server passes plugin keys through verbatim, so a key like `' mini'` would
+ * otherwise miss the row already named `mini` and land as a second row under the same name, which is
+ * `alias-name-duplicate` and a greyed-out Save.
+ *
+ * An empty whitelist is not an empty set of legal targets: absent and empty both mean "no whitelist"
+ * here exactly as they do in `aliasEditorIssues` and in the server's own validator, so there is
+ * nothing to filter against.
+ */
+export const applicablePluginAliases = (
+  suggestions: ProviderAlias | undefined,
+  models: readonly string[],
+): ProviderAlias | undefined => {
+  if (suggestions === undefined) return undefined;
+  // A key that normalizes away is unusable: appended as-is it reports `alias-name-required`.
+  const named: ProviderAlias = Object.fromEntries(
+    Object.entries(suggestions)
+      .map(([name, config]) => [normalizeAliasName(name), config] as const)
+      .filter(([name]) => name !== ''),
+  );
+  const allowed = models.length === 0 ? undefined : new Set(models);
+  // Whole suggestions, never half: a surviving variant aimed outside the whitelist still reports
+  // `target-missing`, which is the same greyed-out Save the filter exists to prevent.
+  const applicable =
+    allowed === undefined
+      ? named
+      : Object.fromEntries(
+          Object.entries(named).filter(([, config]) => aliasTargetModels(config).every((model) => allowed.has(model))),
+        );
+  // "No suggestions" keeps a single representation all the way to the button, which renders only
+  // when this returns a value.
+  return Object.keys(applicable).length === 0 ? undefined : applicable;
+};
+
+/**
+ * Same-name replace: a suggestion overwrites the config of the row that already carries its name,
+ * every other row is returned untouched, and names the draft does not have yet are appended.
+ *
+ * Precondition: `suggestions` keys are already normalized. `applicablePluginAliases` is the only
+ * producer and guarantees it, so only `row.name` is normalized here.
+ */
+export const mergePluginAliasRows = (rows: readonly AliasRow[], suggestions: ProviderAlias): readonly AliasRow[] => {
+  // Only `config` is replaced. `id` is the row's React key and the anchor its issues point at, so
+  // reissuing it remounts the row and takes the caret with it; `name` stays verbatim because the
+  // record key is the trimmed form either way, and rewriting it would edit text the user typed.
+  const merged = rows.map((row) => {
+    const config = suggestions[normalizeAliasName(row.name)];
+    return config === undefined ? row : { ...row, config };
+  });
+  const taken = new Set(rows.map((row) => normalizeAliasName(row.name)));
+  const added = Object.keys(suggestions).filter((name) => !taken.has(name));
+  // `toAliasRows` sees only the genuinely new keys. It mints an id per entry from the module-wide
+  // sequence shared with `blankAliasRow`, which is what a new row needs and what an existing row
+  // must not get.
+  return added.length === 0 ? merged : [...merged, ...toAliasRows(pick(suggestions, added))];
+};

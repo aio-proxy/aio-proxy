@@ -13,9 +13,10 @@ import { queryKeys } from '@/lib/query-keys';
 import { useProviderCatalogMutation } from '../../../hooks/use-provider-catalog-mutation';
 import type { ProviderEditorForm } from '../../../hooks/use-provider-editor-form';
 import { addManualModels } from '../../../lib/add-manual-models';
-import { aliasEditorIssues, type AliasRow } from '../../../lib/alias-editor';
+import { aliasEditorIssues, type AliasRow, type ProviderAlias } from '../../../lib/alias-editor';
 import { exposedModels } from '../../../lib/exposed-models';
 import { applyModelRows, modelRowContext, toModelRows, type ModelRow } from '../../../lib/model-rows';
+import { applicablePluginAliases, mergePluginAliasRows } from '../../../lib/plugin-alias-suggestions';
 import { removeModelFromAliases } from '../../../lib/remove-model-from-aliases';
 import type { SectionSummary } from '../../../lib/section-status';
 import { fetchProviderEditView } from '../../../services/providers-service';
@@ -32,6 +33,8 @@ interface ModelsSectionProps {
   readonly persistedProviderId?: string | undefined;
   /** oauth: `oauth.models` (discovered catalog); api/ai-sdk: last draft catalog result. */
   readonly candidates?: readonly string[] | undefined;
+  /** oauth: `oauth.pluginAliases` — the plugin's default aliases, already validated server-side. */
+  readonly pluginAliases?: ProviderAlias | undefined;
   readonly summary: SectionSummary;
 }
 
@@ -46,6 +49,7 @@ export const ModelsSection: React.FC<ModelsSectionProps> = ({
   kind,
   persistedProviderId,
   candidates,
+  pluginAliases,
   summary,
 }) => {
   const [filter, setFilter] = useState('');
@@ -129,6 +133,9 @@ export const ModelsSection: React.FC<ModelsSectionProps> = ({
                   // rows must render checked and unchecking one must narrow that set — not promote
                   // the single survivor. api/ai-sdk get no such substitution.
                   const selected = exposedModels(models, kind === ProviderKind.OAuth ? discovered : undefined);
+                  // Filtered against the draft's own whitelist, not `selected`: an empty whitelist
+                  // falls back to the whole catalog, which would drop suggestions the save accepts.
+                  const applicableAliases = applicablePluginAliases(pluginAliases, models);
                   const whitelist = new Set(selected);
                   const rowIds = [...selected, ...(discovered ?? []).filter((id) => !whitelist.has(id))];
                   const rows = toModelRows(rowIds, metadata);
@@ -240,6 +247,18 @@ export const ModelsSection: React.FC<ModelsSectionProps> = ({
                         issues={aliasEditorIssues(alias, models)}
                         targetOptions={selected}
                         onAliasChange={(next) => aliasField.handleChange(next)}
+                        onSyncPluginAliases={
+                          applicableAliases === undefined
+                            ? undefined
+                            : () => {
+                                aliasField.handleChange(mergePluginAliasRows(alias, applicableAliases));
+                                toast.add({
+                                  type: 'success',
+                                  title: m['dashboard.providers.toast.plugin_aliases_synced'](),
+                                  description: m['dashboard.providers.toast.plugin_aliases_synced_description'](),
+                                });
+                              }
+                        }
                       />
 
                       <ProviderModelMetadataDrawer

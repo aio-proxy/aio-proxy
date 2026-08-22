@@ -4,6 +4,7 @@ import { ArrowRightIcon, PlusIcon } from 'lucide-react';
 
 import type { AliasEditorIssue, AliasRow } from '../../../lib/alias-editor';
 import { ProviderAliasList, useAliasRows } from '../../provider-alias';
+import { SyncPluginAliasesAction } from './sync-plugin-aliases-action';
 
 interface ModelAliasesProps {
   readonly alias: readonly AliasRow[];
@@ -11,6 +12,12 @@ interface ModelAliasesProps {
   /** Enabled upstream model ids — the only legal alias targets. */
   readonly targetOptions: readonly string[];
   readonly onAliasChange: (alias: readonly AliasRow[]) => void;
+  /**
+   * Absent whenever there is nothing to sync. The parent owns the decision because filtering the
+   * plugin's suggestions needs the draft's own `models` whitelist, and this component only sees
+   * `targetOptions`, which falls back to the whole catalog when that whitelist is empty.
+   */
+  readonly onSyncPluginAliases?: (() => void) | undefined;
 }
 
 /**
@@ -18,7 +25,13 @@ interface ModelAliasesProps {
  * points it at one of the ids picked above, so authoring it anywhere else means scrolling away from
  * the list you are choosing targets from (the user's ruling; fidelity-rules D-F6).
  */
-export const ModelAliases: React.FC<ModelAliasesProps> = ({ alias, issues, targetOptions, onAliasChange }) => {
+export const ModelAliases: React.FC<ModelAliasesProps> = ({
+  alias,
+  issues,
+  targetOptions,
+  onAliasChange,
+  onSyncPluginAliases,
+}) => {
   const rows = useAliasRows(alias, onAliasChange);
   const hasRows = alias.length > 0;
   const hasDuplicateName = issues.some((issue) => issue.code === 'alias-name-duplicate');
@@ -32,6 +45,9 @@ export const ModelAliases: React.FC<ModelAliasesProps> = ({ alias, issues, targe
           <h3 className="text-sm font-medium">{m['dashboard.providers.editor.aliases_heading']()}</h3>
           <p className="text-xs text-muted-foreground">{m['dashboard.providers.editor.aliases_description']()}</p>
         </div>
+        {onSyncPluginAliases === undefined ? null : (
+          <SyncPluginAliasesAction disabled={targetOptions.length === 0} onClick={onSyncPluginAliases} />
+        )}
       </div>
       {hasRows ? (
         <div className="hidden grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto] items-center gap-2 px-3 text-xs text-muted-foreground sm:grid">
