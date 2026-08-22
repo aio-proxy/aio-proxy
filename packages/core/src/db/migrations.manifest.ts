@@ -5,6 +5,7 @@ import migration2Sql from "./migrations/0002_orange_leper_queen.sql?raw";
 import migration3Sql from "./migrations/0003_charming_maginty.sql?raw";
 import migration4Sql from "./migrations/0004_classy_kabuki.sql?raw";
 import migration5Sql from "./migrations/0005_material_xavin.sql?raw";
+import migration6Sql from "./migrations/0006_routing_trace_v2.sql?raw";
 export type Migration = {
     readonly version: number;
     readonly file: string;
@@ -47,6 +48,12 @@ export const MIGRATIONS: readonly Migration[] = [
         file: "0005_material_xavin.sql",
         sha256: "6c35e0afd7a68d9d08100d5696798f0f1860cae1abe59b436767c086b76ff9fe",
         sql: migration5Sql
+    },
+    {
+        version: 7,
+        file: "0006_routing_trace_v2.sql",
+        sha256: "bf8efaa0a2162c5b343deaf27b8e7166edb94a556bd541a5e69793ba47e71dbe",
+        sql: migration6Sql
     }
 ];
 export const COMPILED_SCHEMA_VERSION = MIGRATIONS.length;

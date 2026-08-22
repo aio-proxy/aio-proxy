@@ -43,6 +43,13 @@
       "when": 1787083597461,
       "tag": "0005_material_xavin",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1787411669811,
+      "tag": "0006_routing_trace_v2",
+      "breakpoints": true
     }
   ]
 }

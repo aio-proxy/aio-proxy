@@ -153,6 +153,12 @@ function rowToSpan(row: typeof traceSpan.$inferSelect, isRoot: boolean, now: Dat
   setStr('sourceProtocol', row.sourceProtocol);
   setStr('targetProtocol', row.targetProtocol);
   setStr('selectionReason', row.selectionReason);
+  setNum('routingContractVersion', row.routingContractVersion);
+  setNum('effectivePriority', row.effectivePriority);
+  setNum('effectiveWeight', row.effectiveWeight);
+  setStr('prioritySource', row.prioritySource);
+  setStr('weightSource', row.weightSource);
+  setStr('selectionSource', row.selectionSource);
   setStr('terminationReason', row.terminationReason);
   setStr('errorType', row.errorType);
   setStr('errorCode', row.errorCode);

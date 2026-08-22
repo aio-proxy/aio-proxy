@@ -24,7 +24,17 @@ function expectCurrentPersistenceContract(sqlite: Database): void {
   expect(tables).not.toContain('usage');
   expect(tables).toEqual(expect.arrayContaining(['trace_span', 'usage_daily', 'session_affinity', 'session_response']));
   expect(traceColumns).toEqual(
-    expect.arrayContaining([expect.objectContaining({ name: 'estimated_cost_nano_usd', type: 'INTEGER' })]),
+    expect.arrayContaining([
+      expect.objectContaining({ name: 'estimated_cost_nano_usd', type: 'INTEGER' }),
+      expect.objectContaining({ name: 'provider_weight', type: 'REAL' }),
+      expect.objectContaining({ name: 'selection_reason', type: 'TEXT' }),
+      expect.objectContaining({ name: 'routing_contract_version', type: 'INTEGER' }),
+      expect.objectContaining({ name: 'effective_priority', type: 'INTEGER' }),
+      expect.objectContaining({ name: 'effective_weight', type: 'INTEGER' }),
+      expect.objectContaining({ name: 'priority_source', type: 'TEXT' }),
+      expect.objectContaining({ name: 'weight_source', type: 'TEXT' }),
+      expect.objectContaining({ name: 'selection_source', type: 'TEXT' }),
+    ]),
   );
   expect(traceColumns.some(({ name }) => name === 'estimated_cost_usd')).toBeFalse();
   expect(dailyColumns).toEqual(
@@ -135,6 +145,45 @@ test('migration 6 preserves schema-5 session affinity data', () => {
       handle.sqlite.query("SELECT provider_id FROM session_affinity WHERE session_id = 'session-1'").get(),
     ).toEqual({
       provider_id: 'provider-a',
+    });
+  } finally {
+    handle.close();
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('upgrading a version-six database preserves legacy provider weight and leaves routing v2 columns null', () => {
+  const home = mkdtempSync(join(tmpdir(), 'aio-proxy-migration-routing-v2-'));
+  const path = join(home, 'aio-proxy.db');
+  const versionSix = new Database(path);
+  try {
+    for (const migration of MIGRATIONS.slice(0, 6)) versionSix.run(migration.sql);
+    versionSix.run('PRAGMA user_version = 6');
+    versionSix.run(
+      "INSERT INTO trace_span (trace_id, span_id, name, kind, started_at, status_code, attributes_json, events_json, links_json, provider_weight, selection_reason) VALUES ('trace-legacy', 'span-legacy', 'aio_proxy.provider.attempt', 1, 1, 0, '{}', '[]', '[]', 100, 'weight')",
+    );
+  } finally {
+    versionSix.close();
+  }
+
+  const handle = openDb({ home });
+  try {
+    expectCurrentPersistenceContract(handle.sqlite);
+    expect(
+      handle.sqlite
+        .query(
+          'SELECT provider_weight, selection_reason, routing_contract_version, effective_priority, effective_weight, priority_source, weight_source, selection_source FROM trace_span',
+        )
+        .get(),
+    ).toEqual({
+      provider_weight: 100,
+      selection_reason: 'weight',
+      routing_contract_version: null,
+      effective_priority: null,
+      effective_weight: null,
+      priority_source: null,
+      weight_source: null,
+      selection_source: null,
     });
   } finally {
     handle.close();

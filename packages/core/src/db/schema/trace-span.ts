@@ -62,6 +62,12 @@ export const traceSpan = sqliteTable(
     sourceProtocol: text('source_protocol'),
     targetProtocol: text('target_protocol'),
     selectionReason: text('selection_reason'),
+    routingContractVersion: integer('routing_contract_version'),
+    effectivePriority: integer('effective_priority'),
+    effectiveWeight: integer('effective_weight'),
+    prioritySource: text('priority_source'),
+    weightSource: text('weight_source'),
+    selectionSource: text('selection_source'),
 
     attributes: text('attributes_json', { mode: 'json' }).$type<SpanAttributesJson>().notNull(),
     events: text('events_json', { mode: 'json' }).$type<SpanEventJson[]>().notNull(),
