@@ -13,8 +13,9 @@ interface SectionNavProps {
 // section's status with it. `overflow-x-auto` lets it scroll sideways instead. The wrapper is what pins
 // and what carries the translucent backdrop, not the `<nav>` itself: a strip narrow enough to scroll
 // sideways would otherwise drag its own background and bottom edge out from under the pills. Its ~37px
-// height is the top `rootMargin` inset in `use-active-section`; change one and the active pill starts
-// naming a section hidden behind the strip.
+// height (a 28px pill row over `pb-2` and the border) is what the top `rootMargin` inset in
+// `use-active-section` is measured from — that inset is this height plus a little slack, so growing the
+// strip without revisiting it starts the active pill naming a section hidden behind it.
 // The 8px `pb-2` inside the strip plus the 32px `mb-8` under it reproduce the prototype's gap from the
 // pills to the first card: it splits the same 40px across `pb-2` on the strip's own container and `pt-8`
 // on the content container below it (`provider-editor-page.tsx:54` and `:60`). We have no separate
