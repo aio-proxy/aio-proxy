@@ -2,7 +2,23 @@ import { describe, expect, test } from 'bun:test';
 
 import type { ZodType } from 'zod';
 
+import type { RouterProviderOverride } from '../../config';
 import * as dashboard from '../index';
+import type {
+  DashboardRoutingModel,
+  DashboardRoutingModelMutation,
+  DashboardRoutingModelsResponse,
+  DashboardRoutingNumber,
+  DashboardRoutingProvider,
+} from './routing';
+
+type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
+
+type ReadonlyKeys<T> = {
+  [K in keyof T]-?: Equal<Pick<T, K>, Readonly<Pick<T, K>>> extends true ? K : never;
+}[keyof T];
+
+type AllKeysReadonly<T extends object> = Equal<ReadonlyKeys<T>, keyof T>;
 
 const schema = (name: string): ZodType => {
   expect(dashboard).toHaveProperty(name);
@@ -93,5 +109,36 @@ describe('dashboard routing contracts', () => {
     expect(errorCode.parse('stale_revision')).toBe('stale_revision');
     expect(errorCode.parse('validation_failed')).toBe('validation_failed');
     expect(errorCode.safeParse('unknown').success).toBe(false);
+  });
+
+  test('keeps public routing DTO properties and mutation providers readonly', () => {
+    const providersAreReadonlyRecord: Equal<
+      DashboardRoutingModelMutation['providers'],
+      Readonly<Record<string, RouterProviderOverride>>
+    > = true;
+    const numberIsReadonly: AllKeysReadonly<DashboardRoutingNumber> = true;
+    const providerIsReadonly: AllKeysReadonly<DashboardRoutingProvider> = true;
+    const providerDefaultsAreReadonly: AllKeysReadonly<DashboardRoutingProvider['defaults']> = true;
+    const providerEffectiveIsReadonly: AllKeysReadonly<DashboardRoutingProvider['effective']> = true;
+    const providerOverrideIsReadonly: AllKeysReadonly<NonNullable<DashboardRoutingProvider['override']>> = true;
+    const modelIsReadonly: AllKeysReadonly<DashboardRoutingModel> = true;
+    const tierIsReadonly: AllKeysReadonly<DashboardRoutingModel['tiers'][number]> = true;
+    const tierProviderIsReadonly: AllKeysReadonly<DashboardRoutingModel['tiers'][number]['providers'][number]> = true;
+    const responseIsReadonly: AllKeysReadonly<DashboardRoutingModelsResponse> = true;
+    const mutationIsReadonly: AllKeysReadonly<DashboardRoutingModelMutation> = true;
+
+    expect([
+      providersAreReadonlyRecord,
+      numberIsReadonly,
+      providerIsReadonly,
+      providerDefaultsAreReadonly,
+      providerEffectiveIsReadonly,
+      providerOverrideIsReadonly,
+      modelIsReadonly,
+      tierIsReadonly,
+      tierProviderIsReadonly,
+      responseIsReadonly,
+      mutationIsReadonly,
+    ]).toEqual([true, true, true, true, true, true, true, true, true, true, true]);
   });
 });
