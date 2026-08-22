@@ -36,10 +36,22 @@ export type RecordedAttempt = {
   readonly modelId: string;
   readonly providerKind: RuntimeProviderInstance['kind'];
   readonly providerWeight?: number;
+  readonly routingContractVersion?: number;
+  readonly effectivePriority?: number;
+  readonly effectiveWeight?: number;
+  readonly prioritySource?: 'provider' | 'model';
+  readonly weightSource?: 'provider' | 'model';
+  readonly selectionSource?:
+    | 'provider_qualified'
+    | 'response_owner'
+    | 'session_affinity'
+    | 'deterministic_session'
+    | 'weighted_random';
   readonly transport?: 'raw' | 'ai_sdk';
   readonly sourceProtocol?: ProviderProtocol;
   readonly targetProtocol?: ProviderProtocol;
   readonly selectionReason?: 'response_owner' | 'affinity' | 'weight';
+  readonly attemptIndex?: number;
   readonly protocol?: ProviderProtocol;
   readonly durationMs: number;
   readonly outcome: 'success' | 'failure' | 'cancelled';

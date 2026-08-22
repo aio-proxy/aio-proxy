@@ -33,9 +33,8 @@ describe('server routes', () => {
     clearModelsDevCatalog();
   });
 
-  test('Given duplicate models When models are requested Then the highest-weight provider owns each id', async () => {
-    // Metadata is keyed by the alias slug each provider exposes. displayName is
-    // derived from name !== id, so no separate display map is needed.
+  test('Given duplicate models When models are requested Then configuration order owns each id', async () => {
+    // Listing and owned_by still follow configuration order; catalog ranking is separate.
     await seedModelsDevCatalog({
       'claude-sonnet-4-6': modelsDevModel('claude-sonnet-4-6', 'Claude Sonnet 4.6', {
         ...testCapabilitySignals,
@@ -50,6 +49,7 @@ describe('server routes', () => {
         providers: {
           low: {
             kind: 'api',
+            priority: 0,
             weight: 1,
             protocol: ProviderProtocol.OpenAICompatible,
             baseURL: 'https://low.example.com',
@@ -57,6 +57,7 @@ describe('server routes', () => {
           },
           high: {
             kind: 'api',
+            priority: 20,
             weight: 10,
             protocol: ProviderProtocol.Anthropic,
             baseURL: 'https://high.example.com',
@@ -71,16 +72,9 @@ describe('server routes', () => {
 
     expect(await response.json()).toEqual(
       expectedModelList([
-        expectedModel('claude-sonnet-4-6', 'high', 'Claude Sonnet 4.6', {
-          capabilities: testCapabilities,
-          created: 1_768_435_200,
-          createdAt: '2026-01-15T00:00:00.000Z',
-          maxInputTokens: 1_000_000,
-          maxTokens: 128_000,
-        }),
         // shared/gpt-only have no catalog limit.input (only context/output), so
         // max_input_tokens is null — the context window is never used as a fallback.
-        expectedModel('shared', 'high', 'Shared Model', {
+        expectedModel('shared', 'low', 'Shared Model', {
           capabilities: textOnlyCapabilities,
           created: 1_768_435_200,
           createdAt: '2026-01-15T00:00:00.000Z',
@@ -91,6 +85,13 @@ describe('server routes', () => {
           created: 0,
           createdAt: '1970-01-01T00:00:00Z',
           maxTokens: 8_000,
+        }),
+        expectedModel('claude-sonnet-4-6', 'high', 'Claude Sonnet 4.6', {
+          capabilities: testCapabilities,
+          created: 1_768_435_200,
+          createdAt: '2026-01-15T00:00:00.000Z',
+          maxInputTokens: 1_000_000,
+          maxTokens: 128_000,
         }),
       ]),
     );

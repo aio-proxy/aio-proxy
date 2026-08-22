@@ -238,7 +238,9 @@ async function attemptResolvedRequest<TRequest, TContext>(options: {
     deferred = true;
   };
   try {
-    const candidates = lease.snapshot.router.resolve(requestedModel, adapter.dimensions(request, context));
+    const candidates = lease.snapshot.router.resolve(requestedModel, adapter.dimensions(request, context), {
+      session: resolution.context.session,
+    });
     return await attemptCandidates({
       adapter,
       candidates,

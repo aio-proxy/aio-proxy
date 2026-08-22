@@ -5,7 +5,7 @@ import {
   Router,
 } from '@aio-proxy/core';
 import type { TokenCountCapability } from '@aio-proxy/plugin-sdk';
-import { ConfigSchema, ProviderKind, type ProviderProtocol } from '@aio-proxy/types';
+import { ConfigSchema, type Config, ProviderKind, type ProviderProtocol } from '@aio-proxy/types';
 
 import { createRecording } from '../../../__tests__/pipeline-helpers/recording';
 import { LogicalSessionStore } from '../../logical-session-store';
@@ -19,20 +19,33 @@ const defaultRouter = ConfigSchema.parse({ providers: {} }).router;
 
 export function countFixture(
   providers: readonly RuntimeProviderInstance[],
-  options: { readonly debugLogging?: boolean; readonly logicalSessionStore?: LogicalSessionStore } = {},
+  options: {
+    readonly debugLogging?: boolean;
+    readonly logicalSessionStore?: LogicalSessionStore;
+    readonly config?: Config;
+    readonly random?: () => number;
+  } = {},
 ) {
-  const router = new Router(providers, { models: defaultRouter.models });
+  const router = new Router(providers, {
+    models: options.config?.router.models ?? defaultRouter.models,
+    random: options.random ?? (() => 0),
+  });
   const recording = createRecording();
   const logs: ServerLog[] = [];
   let releaseCount = 0;
+  const snapshot = {
+    providers,
+    router,
+    ...(options.config === undefined ? {} : { config: options.config }),
+  };
   const source = {
     acquireProviderSnapshot: () => ({
-      snapshot: { providers, router },
+      snapshot,
       release: () => {
         releaseCount += 1;
       },
     }),
-    currentProviderSnapshot: () => ({ providers, router }),
+    currentProviderSnapshot: () => snapshot,
     ...(options.debugLogging === undefined ? {} : { debugLogging: options.debugLogging }),
     logger: (entry) => logs.push(entry),
     logicalSessionStore: options.logicalSessionStore ?? new LogicalSessionStore(),
@@ -101,18 +114,32 @@ export function provider(options: {
 }
 
 export function configOrderedProviders(
-  entries: readonly { readonly provider: RuntimeProviderInstance; readonly weight: number }[],
+  entries: readonly {
+    readonly provider: RuntimeProviderInstance;
+    readonly priority?: number;
+    readonly weight: number;
+  }[],
 ): readonly RuntimeProviderInstance[] {
   const config = ConfigSchema.parse({
     providers: Object.fromEntries(
-      entries.map(({ provider, weight }) => [
+      entries.map(({ provider, priority, weight }) => [
         provider.id,
-        { kind: 'ai-sdk', models: [requestedModel], packageName: '@example/provider', weight },
+        {
+          kind: 'ai-sdk',
+          models: [requestedModel],
+          packageName: '@example/provider',
+          ...(priority === undefined ? {} : { priority }),
+          weight,
+        },
       ]),
     ),
   });
   const byId = new Map(entries.map(({ provider }) => [provider.id, provider]));
-  return config.providers.map(({ id }) => byId.get(id) as RuntimeProviderInstance);
+  return config.providers.map((parsed) => ({
+    ...(byId.get(parsed.id) as RuntimeProviderInstance),
+    priority: parsed.priority,
+    weight: parsed.weight,
+  }));
 }
 
 export function counter(id: string, inputTokens: number, calls: string[]): TokenCountCapability['countTokens'] {

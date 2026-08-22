@@ -235,7 +235,7 @@ export function createQuotaFixture(options: QuotaFixtureOptions = {}) {
     config,
     plugins: plugins as never,
     providers,
-    router: new Router(providers, { models: config.router.models }),
+    router: new Router(providers, { models: config.router.models, random: () => 0 }),
     providerStates: new Map(providerIds.map((providerId) => [providerId, { status: 'ready' }] as const)),
   };
   const manager = createSnapshotManager(snapshot);

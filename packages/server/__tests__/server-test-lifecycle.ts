@@ -2,12 +2,28 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { Router } from '@aio-proxy/core';
+
 import {
   createServerState as createProductionServerState,
   type ServerState,
   type ServerStateOptions,
 } from '../src/server-state';
+import type { CreateRouter, InternalServerStateOptions, ServerStateTestHooks } from '../src/server-state/types';
 import { createServer as createProductionServer, type AppType, type CreateServerOptions } from '../src/server/server';
+
+const deterministicCreateRouter: CreateRouter = (providers, routerConfig) =>
+  new Router(providers, { models: routerConfig.models, random: () => 0 });
+
+function withDeterministicRouter<T extends { readonly __test?: ServerStateTestHooks }>(options: T): T {
+  return {
+    ...options,
+    __test: {
+      ...options.__test,
+      createRouter: options.__test?.createRouter ?? deterministicCreateRouter,
+    },
+  };
+}
 
 const trackedCloses: Array<() => void> = [];
 const temporaryHomes: string[] = [];
@@ -23,7 +39,7 @@ export async function createServer(options: CreateServerOptions): Promise<AppTyp
     options.dbHome === undefined && options.configPath === undefined
       ? { ...options, dbHome: createServerTestHome() }
       : options;
-  const app = await createProductionServer(effectiveOptions);
+  const app = await createProductionServer(withDeterministicRouter(effectiveOptions));
   trackedCloses.push(() => app.close());
   return app;
 }
@@ -33,7 +49,9 @@ export async function createServerState(options: ServerStateOptions): Promise<Se
     options.dbHome === undefined && options.configPath === undefined
       ? { ...options, dbHome: createServerTestHome() }
       : options;
-  const state = await createProductionServerState(effectiveOptions);
+  const state = await createProductionServerState(
+    withDeterministicRouter(effectiveOptions as InternalServerStateOptions) as ServerStateOptions,
+  );
   trackedCloses.push(() => state.close());
   return state;
 }

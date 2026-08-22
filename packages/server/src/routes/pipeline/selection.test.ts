@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { ProviderKind, ProviderProtocol } from '@aio-proxy/types';
+import { ConfigSchema, ProviderKind, ProviderProtocol } from '@aio-proxy/types';
 
 import {
   defineProtocolAdapter,
@@ -8,10 +8,108 @@ import {
   modelProvider,
   REQUESTED_MODEL,
   rawProvider,
+  type Recording,
   settleRecording,
   textStream,
 } from '../../../__tests__/pipeline-helpers';
 import { attemptsOf, pipeline } from './test-support';
+
+const attemptProviderIds = (recording: Recording): string[] => recording.attempts.map(({ providerId }) => providerId);
+
+test('tries the remaining same-priority Provider before a lower tier', async () => {
+  const failingA = modelProvider({
+    id: 'a',
+    invoke: () => {
+      throw new Error('a failed');
+    },
+  });
+  const succeedingB = modelProvider({ id: 'b', invoke: () => textStream('b') });
+  const lowerC = modelProvider({ id: 'c', invoke: () => textStream('c') });
+  const config = ConfigSchema.parse({
+    router: {
+      models: {
+        [REQUESTED_MODEL]: {
+          providers: {
+            a: { priority: 20, weight: 3 },
+            b: { priority: 20, weight: 1 },
+            c: { priority: 10, weight: 1 },
+          },
+        },
+      },
+    },
+    providers: {},
+  });
+  const harness = pipeline([failingA, succeedingB, lowerC], {
+    config,
+    random: () => 0,
+  });
+  await harness.run(jsonRequest({ model: REQUESTED_MODEL }));
+  await settleRecording(harness.recording);
+  expect(attemptProviderIds(harness.recording)).toEqual(['a', 'b']);
+});
+
+test('uses an injected same-tier weight draw before a heavier remaining candidate', async () => {
+  const heavy = modelProvider({ id: 'heavy', invoke: () => textStream('heavy') });
+  const light = modelProvider({ id: 'light', invoke: () => textStream('light') });
+  const config = ConfigSchema.parse({
+    router: {
+      models: {
+        [REQUESTED_MODEL]: {
+          providers: {
+            heavy: { priority: 20, weight: 3 },
+            light: { priority: 20, weight: 1 },
+          },
+        },
+      },
+    },
+    providers: {},
+  });
+  const harness = pipeline([heavy, light], { config, random: () => 0.9 });
+  await harness.run(jsonRequest({ model: REQUESTED_MODEL }));
+  await settleRecording(harness.recording);
+  expect(attemptProviderIds(harness.recording)).toEqual(['light']);
+});
+
+test('a stable session ignores the injected random source', async () => {
+  const first = modelProvider({ id: 'a', invoke: () => textStream('a') });
+  const second = modelProvider({ id: 'b', invoke: () => textStream('b') });
+  const config = ConfigSchema.parse({
+    router: {
+      models: {
+        [REQUESTED_MODEL]: {
+          providers: {
+            a: { priority: 20, weight: 3 },
+            b: { priority: 20, weight: 1 },
+          },
+        },
+      },
+    },
+    providers: {},
+  });
+  const harness = pipeline([first, second], { config, random: () => 0.99 });
+  await harness.run(
+    new Request('http://localhost/v1/test', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', session_id: 'session-1' },
+      body: JSON.stringify({ model: REQUESTED_MODEL }),
+    }),
+  );
+  await settleRecording(harness.recording);
+  expect(attemptProviderIds(harness.recording)).toEqual(['a']);
+  expect(harness.recording.attempts[0]).toEqual(
+    expect.objectContaining({ selectionSource: 'deterministic_session', attemptIndex: 0 }),
+  );
+});
+
+test('routes a Provider-qualified model even when effective weight is zero', async () => {
+  const zero = modelProvider({ id: 'zero', invoke: () => textStream('zero'), weight: 0 });
+  const other = modelProvider({ id: 'other', invoke: () => textStream('other'), weight: 1 });
+  const harness = pipeline([zero, other], { random: () => 0 });
+  await harness.run(jsonRequest({ model: `zero/${REQUESTED_MODEL}` }));
+  await settleRecording(harness.recording);
+  expect(attemptProviderIds(harness.recording)).toEqual(['zero']);
+  expect(harness.recording.attempts[0]).toEqual(expect.objectContaining({ selectionSource: 'provider_qualified' }));
+});
 
 describe('shared protocol routing pipeline capability selection', () => {
   test('prefers same-protocol raw capability when the provider also has model capability', async () => {
