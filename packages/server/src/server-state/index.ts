@@ -30,6 +30,7 @@ import { watchConfigFile } from '../config-watcher';
 import { createDashboardEventHub } from '../dashboard-events';
 import { createFifoQueue } from '../fifo-queue';
 import { LogicalSessionStore } from '../logical-session-store';
+import { createModelRoutingControlPlane } from '../model-routing';
 import { createPluginControlPlane } from '../plugin-control-plane';
 import { createOAuthQuotaOperations } from '../plugin-quota';
 import type { SnapshotManager } from '../plugin-snapshot';
@@ -225,6 +226,12 @@ async function initializeServerState(
   );
   failAfter('recovery');
   const pluginControlPlane = createStatePluginControlPlane(runtime, configStore);
+  const modelRouting = createModelRoutingControlPlane({
+    currentConfig: () => (manager.current() as Snapshot).config,
+    currentSummaries: () => (manager.current() as Snapshot).summaries,
+    repository,
+    configStore,
+  });
 
   const providerSummaries = createProviderSummaries(manager);
 
@@ -247,6 +254,7 @@ async function initializeServerState(
     events,
     logicalSessionStore,
     cooldown,
+    modelRouting,
     oauthQuota,
     oauthLoginSessions,
     pluginControlPlane,

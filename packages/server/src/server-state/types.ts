@@ -19,6 +19,7 @@ import type {
 
 import type { ConfigStore } from '../config-store';
 import type { DashboardEventHub, DashboardEventLimits } from '../dashboard-events';
+import type { ModelRoutingControlPlane } from '../model-routing';
 import type { OAuthLoginSessionManager } from '../oauth-login-session/manager';
 import type { PluginControlPlane, PluginControlPlaneOptions } from '../plugin-control-plane';
 import type { OAuthQuotaOperations } from '../plugin-quota';
@@ -83,6 +84,7 @@ export type ServerState = ProviderRouteSource & {
   readonly configPath: string | undefined;
   readonly configStore: ConfigStore;
   readonly events: DashboardEventHub;
+  readonly modelRouting: ModelRoutingControlPlane;
   readonly oauthQuota: OAuthQuotaOperations;
   readonly pluginControlPlane: PluginControlPlane;
   readonly oauthCapabilities: () => readonly DashboardOAuthCapability[];

@@ -13,6 +13,7 @@ import { createDashboardProviderDraftRoutes } from './provider-draft';
 import { createDashboardProviderReadRoutes } from './provider-routes';
 import { redactSecrets } from './provider-secrets';
 import { createDashboardProviderWriteRoutes } from './provider-write-routes';
+import { createDashboardRoutingRoutes } from './routing';
 import { createDashboardSettingsRoute } from './settings';
 import { createDashboardTraceRoutes } from './traces';
 
@@ -38,6 +39,7 @@ export const createDashboardRoutes = (state: ServerState, auth: DashboardAuthent
     .route('/', createDashboardProviderReadRoutes(state))
     .route('/', createDashboardProviderDraftRoutes(state))
     .route('/', createDashboardProviderWriteRoutes(state))
+    .route('/', createDashboardRoutingRoutes(state))
     .get('/usage', usageOverviewValidator, (context) => {
       const query = context.req.valid('query');
       const { maxResults, ...required } = query;

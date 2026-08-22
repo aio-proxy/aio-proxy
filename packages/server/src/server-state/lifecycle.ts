@@ -123,6 +123,7 @@ export type ServerStateParts = Pick<
   | 'configStore'
   | 'events'
   | 'logicalSessionStore'
+  | 'modelRouting'
   | 'oauthQuota'
   | 'oauthLoginSessions'
   | 'pluginControlPlane'
@@ -176,6 +177,7 @@ export function assembleServerState(runtime: ServerRuntime, parts: ServerStatePa
     debugLogging: options.config.server.logging?.level === 'debug',
     events,
     logicalSessionStore: parts.logicalSessionStore,
+    modelRouting: parts.modelRouting,
     oauthCapabilities: () => oauthCapabilities(manager),
     oauthProviderEditView: (providerId) => oauthProviderEditView(manager, repository, providerId),
     oauthLoginSessions: parts.oauthLoginSessions,
