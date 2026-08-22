@@ -724,3 +724,38 @@ test('keeps per-action and sibling-rule controls usable while one action is inva
   // Adding to another rule re-emits only that rule's actions, so it is unaffected by this one.
   expect(within(ruleCard(1)).getByRole('button', { name: /Add action|添加操作/u })).toBeEnabled();
 });
+
+/** Text no prefix parses out of is held in the row's own state, and both lists key rows by index, so
+ * removing an earlier action slides the next one into a row still displaying the previous action's
+ * unfinished path — a path that action never had. */
+test('does not carry an unfinished path over to the action that takes its row', async () => {
+  render(
+    <RequestTransformsHarness
+      initialValue={[
+        {
+          update: [
+            { $set: { 'request.body.first': 'a' } },
+            { $set: { 'request.body.second': 'b' } },
+            { $set: { 'request.body.third': 'c' } },
+          ],
+        },
+      ]}
+      onChange={rs.fn()}
+      onValidityChange={rs.fn()}
+    />,
+  );
+
+  const bodyPath = (stage: number) =>
+    within(stageCard(stage)).getByRole('textbox', { name: /Body path|请求体路径/u }) as HTMLInputElement;
+  fireEvent.change(bodyPath(1), { target: { value: 'nope' } });
+  expect(bodyPath(1)).toHaveValue('nope');
+
+  fireEvent.click(
+    within(stageCard(0)).getByRole('button', {
+      name: m['dashboard.providers.transforms.action.remove_button']({ index: 1 }),
+    }),
+  );
+
+  await waitFor(() => expect(bodyPath(0)).toHaveValue('request.body.second'));
+  expect(bodyPath(1)).toHaveValue('request.body.third');
+});

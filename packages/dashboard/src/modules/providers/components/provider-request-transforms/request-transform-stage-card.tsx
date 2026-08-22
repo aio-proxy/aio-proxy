@@ -53,6 +53,11 @@ export const RequestTransformStageCard: React.FC<RequestTransformStageCardProps>
   const [controlsValid, setControlsValid] = useState(true);
   const [contentValid, setContentValid] = useState(true);
   const [draftKind, setDraftKind] = useState(value.kind);
+  // Bumped only when the parent hands this card an action it did not emit, which is what a reorder or an
+  // earlier action's removal does: both lists key rows by index, so the next action slides into this one's
+  // row. The controls row holds the only copy of path text no prefix parses out of, and resetting the form
+  // does not reach it, so it kept displaying the previous action's unfinished path. Remounting drops it.
+  const [controlsKey, setControlsKey] = useState(0);
   const stageValid = controlsValid && (draftKind === 'remove' || contentValid);
   const actionIndex = index + 1;
 
@@ -65,6 +70,7 @@ export const RequestTransformStageCard: React.FC<RequestTransformStageCardProps>
     setDraftKind(controls.kind);
     setControlsValid(true);
     setContentValid(true);
+    setControlsKey((key) => key + 1);
   }, [form, value]);
 
   const emit = (nextStage: RequestTransformStageDraft) => {
@@ -89,6 +95,7 @@ export const RequestTransformStageCard: React.FC<RequestTransformStageCardProps>
       <div className="flex items-center gap-2">
         <div className="min-w-0 flex-1">
           <RequestTransformStageControlsRow
+            key={controlsKey}
             form={form}
             index={index}
             actionId={actionId}
