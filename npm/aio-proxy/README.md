@@ -36,7 +36,7 @@ flowchart LR
 - **Plugin-based integrations**: Connect different model providers through plugins, including AI SDK Provider packages and OAuth accounts.
 - **Rich observability**: Track requests, token usage, cost, and complete request traces in one place.
 - **Major protocol support**: Accept OpenAI Chat Completions, OpenAI Responses, Anthropic Messages, and Gemini GenerateContent requests.
-- **Multi-Provider routing**: Select candidates by model and Provider weight, with model aliases, failover, and session affinity.
+- **Multi-Provider routing**: Select candidates by model, Provider priority, and Provider weight, with model aliases, failover, and session affinity.
 - **Transparent protocol conversion**: Use raw passthrough for matching protocols and automatic conversion for cross-protocol requests.
 
 ## Install
@@ -218,13 +218,54 @@ When your Provider's upstream model id doesn't line up with a [models.dev](https
 
 ## Routing rules
 
-Each key in the `providers` object is a stable **Provider ID**. A request is handled as follows:
+Each key in the `providers` object is a stable **Provider ID**. **Provider priority** is an integer failover tier (`0..10000`, default `0`); higher values are tried first. **Provider weight** distributes traffic within one priority tier: it is a finite authored number, default `1`, then `Math.round` and clamped to `0..10000`. Existing configurations keep their old `weight` values, but that field no longer defines a global fixed order.
 
-1. Find every Provider that exposes the requested model or a matching alias.
-2. Try candidates by descending Provider weight; equal or missing Provider weights preserve configuration order.
-3. Prefer the Provider previously used by an active session to maintain session continuity.
-4. Use raw passthrough for a same-protocol `api` Provider; use AI SDK conversion for other supported combinations.
-5. Try the next candidate after a Provider failure; return the final failure if every candidate fails.
+```yaml
+providers:
+  provider-a:
+    priority: 0
+    weight: 1000
+router:
+  models:
+    model-m:
+      providers:
+        provider-a: { priority: 30, weight: 6000 }
+        provider-b: { priority: 30, weight: 4000 }
+        provider-c: { priority: 20 }
+```
+
+`router.models` keys are exact client-requested model IDs. They never create a candidate, choose an upstream target, or use glob matching. A missing Provider entry or field inherits the Provider default. A positive model weight can re-enable a Provider whose default weight is zero.
+
+A request is handled as follows:
+
+1. Try the complete request model string as an exact Provider-qualified route first. If it matches, select that Provider directly and bypass Provider priority and Provider weight, including effective weight zero. `enabled: false` still blocks the Provider because disabled Providers are not in the route map.
+2. Otherwise try the same complete string as an exact normal client model ID, including strings containing `/`.
+3. Merge Provider defaults with the exact model's sparse `providers` overrides. Discard normal candidates with `enabled: false` or effective weight zero.
+4. Order remaining candidates by descending Provider priority, then by Provider weight within the same priority tier. Configuration order is a deterministic tie-breaker for catalog representation and diagnostics, not the request order for positive-weight candidates in the same tier.
+5. Stable (non-generated) logical sessions use a deterministic weighted draw so token-count and generation share the same pre-attempt order when the routing snapshot is unchanged. Generated sessions use independent random draws.
+6. Response owner, then session affinity, may move an eligible normal candidate to the front. They never resurrect a disabled or zero-weight Provider. Session affinity still overrides priority so a session can stick to a previously successful Provider (for example, prompt-cache continuity).
+7. Use raw passthrough for a same-protocol `api` Provider; use AI SDK conversion for other supported combinations.
+8. Try the next candidate after a Provider failure; return the final failure if every candidate fails.
+
+On the example policy, `provider-a` is first about 60% of the time and `provider-b` about 40% at priority 30. If the selected Provider fails, the other priority-30 Provider is tried before `provider-c`.
+
+If every normal candidate is disabled or has effective weight zero, the model is omitted from `GET /v1/models` and normal requests use the existing model-unavailable/not-found behavior. An enabled Provider remains reachable through an exact Provider-qualified request.
+
+`GET /v1/models` is deterministic even though request selection is weighted. The public representative Provider is chosen from enabled, positive-effective-weight candidates by highest Provider priority, then highest Provider weight, then original configuration order.
+
+### Preserving previous weight-as-order behavior
+
+Previously, Provider weight was a global fixed order: unique weights were tried high-to-low, and equal or omitted weights preserved configuration order. Under this contract both Providers default to Provider priority `0`, and Provider weight is a same-tier traffic share. Existing files are not rewritten.
+
+| Old configuration                             | New configuration to preserve intent                                                                                       |
+| --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| Unique old weights used as fixed order        | Copy old `weight` to `priority`; set new `weight: 1`.                                                                      |
+| Equal old weights whose config order mattered | Assign explicit descending priorities in the old config order; set `weight: 1`.                                            |
+| Omitted old weight                            | It previously remained eligible at priority zero; set a positive new weight, normally `1`.                                 |
+| Fractional old weight                         | Assign priority from the old descending order; the new weight is rounded with `Math.round` if retained as a traffic ratio. |
+| Negative or greater-than-10000 old weight     | Assign explicit in-range priorities that preserve the old total order; do not copy values that would collapse under clamp. |
+| Old `weight: 0`                               | It previously remained an eligible fallback; set new `weight: 1` and the intended priority.                                |
+| `enabled: false`                              | No change; it remains the hard disable.                                                                                    |
 
 ## API
 
