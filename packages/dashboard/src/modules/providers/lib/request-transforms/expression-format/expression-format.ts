@@ -2,14 +2,16 @@ import type { ExpressionNode } from '@react-querybuilder/expr';
 
 import { requestTransformFunctionMeta } from '../mongo-codec';
 
-// Arithmetic reads as `a + b`, not `+(a, b)`; every other function keeps call syntax.
-const infixExpressionFunctions: Record<string, string> = {
-  add: '+',
-  subtract: '−',
-  multiply: '×',
-  divide: '÷',
-  mod: '%',
-};
+// Arithmetic reads as `a + b`, not `+(a, b)`; every other function keeps call syntax. A `Map` because
+// `node.fn` is data, and a plain object hands back `Object.prototype.constructor` for `fn: 'constructor'`
+// — which would then be formatted as the infix operator.
+const infixExpressionFunctions = new Map<string, string>([
+  ['add', '+'],
+  ['subtract', '−'],
+  ['multiply', '×'],
+  ['divide', '÷'],
+  ['mod', '%'],
+]);
 
 const expressionFieldPreview = (field: string): string => {
   const separator = field.indexOf(':');
@@ -28,7 +30,7 @@ const formatExpressionNode = (node: ExpressionNode, nested: boolean): string => 
   if (node.kind === 'parameter') return `$${node.parameter}`;
   if (node.kind === 'value') return JSON.stringify(node.value) ?? String(node.value);
 
-  const infix = infixExpressionFunctions[node.fn];
+  const infix = infixExpressionFunctions.get(node.fn);
   if (infix !== undefined) {
     const expression = node.args.map((argument) => formatExpressionNode(argument, true)).join(` ${infix} `);
     return nested ? `(${expression})` : expression;

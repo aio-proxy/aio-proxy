@@ -1,7 +1,7 @@
 import { describe, expect, test } from '@rstest/core';
 
 import { aliasSummaryMessage } from '../alias-editor-copy';
-import { aliasEditorIssues, aliasSummary } from './alias-editor';
+import { aliasEditorIssues, aliasSummary, serializeAlias } from './alias-editor';
 import { alias, aliasRow } from './alias-editor.test-support';
 
 describe('provider alias editor summary and issues', () => {
@@ -42,6 +42,23 @@ describe('provider alias editor summary and issues', () => {
       { code: 'alias-name-duplicate', alias: 'r1' },
       { code: 'alias-name-duplicate', alias: 'r2' },
     ]);
+  });
+
+  /** Alias names are user-typed, so a prototype member is a legal thing to type. Counting them in a
+   * plain object answered `constructor` from the prototype instead of the tally, so neither row was
+   * flagged, nothing gated Save, and the record form below kept only the last of the two. */
+  test('Given two rows named after a prototype member When inspected Then both are still flagged', () => {
+    const rows = [
+      aliasRow('constructor', { model: 'model-a', preserve: false }, 'r1'),
+      aliasRow('constructor', { model: 'model-b', preserve: false }, 'r2'),
+    ];
+
+    expect(aliasEditorIssues(rows)).toEqual([
+      { code: 'alias-name-duplicate', alias: 'r1' },
+      { code: 'alias-name-duplicate', alias: 'r2' },
+    ]);
+    // The reason the issue has to exist: serialization is keyed by name, so one row is dropped.
+    expect(Object.keys(serializeAlias(rows, 'edit') ?? {})).toEqual(['constructor']);
   });
 
   test('Given an unnamed alias When inspected Then it reports a required name', () => {

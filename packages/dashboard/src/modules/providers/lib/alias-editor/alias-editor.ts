@@ -6,7 +6,6 @@ import {
   preservedAliasModels,
   whenIdentity,
 } from '@aio-proxy/types';
-import { countBy } from 'es-toolkit/array';
 import { omit } from 'es-toolkit/object';
 
 export type { ProviderAlias };
@@ -165,14 +164,21 @@ export function aliasEditorIssues(rows: readonly AliasRow[], models?: readonly s
   const availableModels = models === undefined || models.length === 0 ? undefined : new Set(models);
   const preservedModels = preservedAliasModels(toAliasRecord(rows));
   // Every row in a collision is flagged, not just the later one: the first row is no more legal than
-  // the second, and marking one of them makes the other look like the only mistake.
-  const nameCounts = countBy(rows, (row) => normalizeAliasName(row.name));
+  // the second, and marking one of them makes the other look like the only mistake. A `Map`, not a
+  // counted record: the names are user-typed, and a plain object answers `constructor` (or `toString`,
+  // `valueOf`, `__proto__`) from the prototype, so two rows named `constructor` counted as one, raised
+  // no duplicate issue, and saved as a single alias — silent data loss.
+  const nameCounts = new Map<string, number>();
+  for (const row of rows) {
+    const name = normalizeAliasName(row.name);
+    nameCounts.set(name, (nameCounts.get(name) ?? 0) + 1);
+  }
 
   for (const row of rows) {
     const normalizedAlias = normalizeAliasName(row.name);
     if (normalizedAlias === '') {
       issues.push({ code: 'alias-name-required', alias: row.id });
-    } else if ((nameCounts[normalizedAlias] ?? 0) > 1) {
+    } else if ((nameCounts.get(normalizedAlias) ?? 0) > 1) {
       issues.push({ code: 'alias-name-duplicate', alias: row.id });
     }
 
