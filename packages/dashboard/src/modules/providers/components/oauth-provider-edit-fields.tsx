@@ -1,10 +1,5 @@
 import { m } from '@aio-proxy/i18n';
-import type {
-  DashboardOAuthProviderEdit,
-  DashboardRoutingNumber,
-  OAuthProvider,
-  ProviderTransforms,
-} from '@aio-proxy/types';
+import type { DashboardOAuthProviderEdit, OAuthProvider, ProviderTransforms } from '@aio-proxy/types';
 import { Badge } from '@aio-proxy/ui/components/badge';
 import { Button } from '@aio-proxy/ui/components/button';
 import { Field, FieldDescription } from '@aio-proxy/ui/components/field';
@@ -15,6 +10,7 @@ import { Switch } from '@aio-proxy/ui/components/switch';
 import type { useOAuthProviderEditForm } from '../hooks/use-oauth-provider-edit-form';
 import type { useOAuthProviderForm } from '../hooks/use-oauth-provider-form';
 import { ProviderFormMode } from '../lib/constants';
+import { routingDraftNormalization } from '../lib/routing-draft-normalization';
 import { OAuthAccountFields } from './oauth-account-fields';
 import { OAuthProviderAliasFields } from './oauth-provider-alias-fields';
 import { ProviderProxyField } from './provider-proxy-field';
@@ -31,21 +27,19 @@ interface OAuthProviderEditFieldsProps {
   readonly isReauthorizing: boolean;
   readonly transformsValid: boolean;
   readonly onTransformsValidityChange: (valid: boolean) => void;
-  readonly routing?: {
-    readonly priority: DashboardRoutingNumber;
-    readonly weight: DashboardRoutingNumber;
-  };
 }
 
-const routingNormalizationNotice = (view: DashboardRoutingNumber | undefined) =>
-  view?.wasNormalized === true && view.authored !== undefined ? (
+const routingDraftNotice = (kind: 'priority' | 'weight', authored: number | undefined) => {
+  const notice = routingDraftNormalization(kind, authored);
+  return notice === undefined ? null : (
     <FieldDescription>
       {m['dashboard.providers.form.normalize_notice']({
-        authored: view.authored,
-        effective: view.effective,
+        authored: notice.authored,
+        effective: notice.effective,
       })}
     </FieldDescription>
-  ) : null;
+  );
+};
 
 export const OAuthProviderEditFields: React.FC<OAuthProviderEditFieldsProps> = ({
   provider,
@@ -58,7 +52,6 @@ export const OAuthProviderEditFields: React.FC<OAuthProviderEditFieldsProps> = (
   isReauthorizing,
   transformsValid,
   onTransformsValidityChange,
-  routing,
 }) => (
   <div className="space-y-8">
     <section className="space-y-4" aria-labelledby="provider-oauth-basic-heading">
@@ -92,7 +85,7 @@ export const OAuthProviderEditFields: React.FC<OAuthProviderEditFieldsProps> = (
                     field.handleChange(event.target.value === '' ? undefined : Number(event.target.value))
                   }
                 />
-                {routingNormalizationNotice(routing?.priority)}
+                {routingDraftNotice('priority', field.state.value)}
               </Field>
             )}
           </form.Field>
@@ -112,7 +105,7 @@ export const OAuthProviderEditFields: React.FC<OAuthProviderEditFieldsProps> = (
                   }
                 />
                 <FieldDescription>{m['dashboard.providers.form.description_weight']()}</FieldDescription>
-                {routingNormalizationNotice(routing?.weight)}
+                {routingDraftNotice('weight', field.state.value)}
               </Field>
             )}
           </form.Field>

@@ -81,7 +81,6 @@ export const OAuthProviderEditPage: React.FC<OAuthProviderEditPageProps> = ({
               isReauthorizing={isUpdating || startMutation.isPending}
               transformsValid={transformsValid}
               onTransformsValidityChange={setTransformsValid}
-              {...(routing === undefined ? {} : { routing })}
             />
             <div className="flex items-center justify-between gap-3 border-t pt-4" data-testid="provider-form-actions">
               <div className="flex gap-3">

@@ -9,7 +9,6 @@ import { ProtocolLabel } from '@/components/protocol-label';
 
 import type { useProviderForm } from '../hooks/use-provider-form';
 import { ProviderFormMode, type ProviderFormStep } from '../lib/constants';
-import type { ProviderEditRouting } from '../services/providers-service';
 import { ProviderAliasFields } from './provider-alias';
 import { ProviderCommonFields } from './provider-common-fields';
 import { ProviderHeadersField } from './provider-headers-field';
@@ -25,7 +24,6 @@ interface ProviderFormFieldsApiProps {
   aliasOpen: boolean;
   onAliasOpenChange: (open: boolean) => void;
   onTransformsValidityChange: (valid: boolean) => void;
-  routing?: ProviderEditRouting;
 }
 
 export const ProviderFormFieldsApi: React.FC<ProviderFormFieldsApiProps> = ({
@@ -36,7 +34,6 @@ export const ProviderFormFieldsApi: React.FC<ProviderFormFieldsApiProps> = ({
   aliasOpen,
   onAliasOpenChange,
   onTransformsValidityChange,
-  routing,
 }) => {
   if (activeStep === 0) {
     return (
@@ -139,12 +136,7 @@ export const ProviderFormFieldsApi: React.FC<ProviderFormFieldsApiProps> = ({
         <h2 id="provider-api-routing-heading" className="text-base font-semibold">
           {m['dashboard.providers.editor.step_routing']()}
         </h2>
-        <ProviderCommonFields
-          form={form}
-          mode={mode}
-          section="routing"
-          {...(routing === undefined ? {} : { routing })}
-        />
+        <ProviderCommonFields form={form} mode={mode} section="routing" />
         <ProviderRequestTransformsFormField form={form} onValidityChange={onTransformsValidityChange} />
       </section>
     );

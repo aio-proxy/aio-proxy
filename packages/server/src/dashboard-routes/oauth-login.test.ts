@@ -136,6 +136,8 @@ test('dashboard device-code session can be resumed by id and creates an OAuth pr
         capability: { plugin: '@example/oauth', capability: 'default' },
         providerPatch: {
           enabled: true,
+          priority: 4,
+          weight: 3,
           proxy: 'https://proxy.example:8443',
           transforms: { request: [{ update: [{ $unset: 'request.body.store' }] }] },
         },
@@ -173,6 +175,8 @@ test('dashboard device-code session can be resumed by id and creates an OAuth pr
         kind: 'oauth',
         plugin: '@example/oauth',
         capability: 'default',
+        priority: 4,
+        weight: 3,
         proxy: 'https://proxy.example:8443',
         transforms: { request: [{ update: [{ $unset: 'request.body.store' }] }] },
       }),

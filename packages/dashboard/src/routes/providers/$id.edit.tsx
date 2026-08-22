@@ -82,7 +82,6 @@ const EditProviderPage: React.FC = () => {
       kind={provider.kind}
       initial={{ ...initial, ...routingValues }}
       providerId={id}
-      {...(routing === undefined ? {} : { routing })}
     />
   );
 };

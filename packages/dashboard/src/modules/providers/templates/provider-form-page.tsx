@@ -29,19 +29,17 @@ import {
 import { useProviderCreate, useProviderUpdate } from '../hooks/use-provider-mutations';
 import { aliasEditorIssues, aliasIssueControlId } from '../lib/alias-editor';
 import { ProviderFormMode, type ProviderFormStep, PROVIDER_KIND_LABEL } from '../lib/constants';
-import type { ProviderEditRouting } from '../services/providers-service';
 
 interface ProviderFormPageProps {
   mode: ProviderFormMode;
   kind: ProviderEditorKind;
   initial?: ProviderFormInitial;
   providerId?: string;
-  routing?: ProviderEditRouting;
 }
 
 const isProviderFormStep = (value: number): value is ProviderFormStep => value >= 0 && value <= 3;
 
-export const ProviderFormPage: FC<ProviderFormPageProps> = ({ mode, kind, initial, providerId, routing }) => {
+export const ProviderFormPage: FC<ProviderFormPageProps> = ({ mode, kind, initial, providerId }) => {
   const navigate = useNavigate();
   const deleteDialogRef = useRef<DeleteProviderDialogRef>(null);
   const [activeStep, setActiveStep] = useState<ProviderFormStep>(0);
@@ -156,7 +154,6 @@ export const ProviderFormPage: FC<ProviderFormPageProps> = ({ mode, kind, initia
                     aliasOpen={aliasOpen}
                     onAliasOpenChange={setAliasOpen}
                     onTransformsValidityChange={setTransformsValid}
-                    {...(routing === undefined ? {} : { routing })}
                   />
                 ) : (
                   <ProviderFormFieldsAiSdk
@@ -168,7 +165,6 @@ export const ProviderFormPage: FC<ProviderFormPageProps> = ({ mode, kind, initia
                     onAliasOpenChange={setAliasOpen}
                     onOptionsValidityChange={setOptionsValid}
                     onTransformsValidityChange={setTransformsValid}
-                    {...(routing === undefined ? {} : { routing })}
                   />
                 )}
                 {activeStep === 3 ? (

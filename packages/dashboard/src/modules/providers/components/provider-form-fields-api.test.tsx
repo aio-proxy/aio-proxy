@@ -365,29 +365,30 @@ describe('API provider form fields', () => {
     expect(onSubmit.mock.calls[0]?.[0]).toMatchObject({ priority: 5, weight: 2 });
   });
 
-  test('shows a non-blocking normalization notice when edit-view reports wasNormalized', () => {
+  test('recomputes non-blocking normalization copy from the current authored draft', () => {
     const { result } = renderHook(() =>
       useProviderForm({
         mode: ProviderFormMode.Edit,
         kind: ProviderKind.Api,
-        initial: { kind: ProviderKind.Api, id: 'api-provider', enabled: true, weight: 1.6 },
+        initial: { kind: ProviderKind.Api, id: 'api-provider', enabled: true, priority: 0, weight: 1 },
       }),
     );
 
-    render(
-      <ProviderCommonFields
-        form={result.current}
-        mode={ProviderFormMode.Edit}
-        section="routing"
-        routing={{
-          priority: { effective: 0, wasNormalized: false },
-          weight: { authored: 1.6, effective: 2, wasNormalized: true },
-        }}
-      />,
-    );
+    const view = render(<ProviderCommonFields form={result.current} mode={ProviderFormMode.Edit} section="routing" />);
 
+    expect(screen.queryByText(/normalize /u)).toBeNull();
+
+    fireEvent.change(within(screen.getByTestId('provider-form-field-weight')).getByRole('spinbutton'), {
+      target: { value: '1.6' },
+    });
+    view.rerender(<ProviderCommonFields form={result.current} mode={ProviderFormMode.Edit} section="routing" />);
     const notice = screen.getByText(/normalize 1\.6 to 2|将 1\.6 规范为 2/u);
-    expect(notice).toBeInTheDocument();
     expect(notice.closest('[role="alert"]')).toBeNull();
+
+    fireEvent.change(within(screen.getByTestId('provider-form-field-weight')).getByRole('spinbutton'), {
+      target: { value: '2' },
+    });
+    view.rerender(<ProviderCommonFields form={result.current} mode={ProviderFormMode.Edit} section="routing" />);
+    expect(screen.queryByText(/normalize /u)).toBeNull();
   });
 });

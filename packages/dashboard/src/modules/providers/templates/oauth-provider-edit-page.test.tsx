@@ -250,7 +250,7 @@ test('OAuth edit submits integer priority and normalized weight', async () => {
   );
 });
 
-test('OAuth edit shows a non-blocking notice when edit-view reports wasNormalized', () => {
+test('OAuth edit recomputes normalization copy from the current authored draft', () => {
   render(
     <OAuthProviderEditPage
       provider={{ ...provider, weight: 2 }}
@@ -264,10 +264,15 @@ test('OAuth edit shows a non-blocking notice when edit-view reports wasNormalize
     />,
   );
 
-  const notice = screen.getByText(/normalize 1\.6 to 2|将 1\.6 规范为 2/u);
-  expect(notice).toBeInTheDocument();
-  expect(notice.closest('[role="alert"]')).toBeNull();
-  expect(within(screen.getByTestId('provider-form-field-weight')).getByRole('spinbutton')).toHaveValue(1.6);
+  const weight = within(screen.getByTestId('provider-form-field-weight')).getByRole('spinbutton');
+  expect(weight).toHaveValue(1.6);
+  expect(screen.getByText(/normalize 1\.6 to 2|将 1\.6 规范为 2/u).closest('[role="alert"]')).toBeNull();
+
+  fireEvent.change(weight, { target: { value: '1.4' } });
+  expect(screen.getByText(/normalize 1\.4 to 1|将 1\.4 规范为 1/u)).toBeInTheDocument();
+
+  fireEvent.change(weight, { target: { value: '2' } });
+  expect(screen.queryByText(/normalize /u)).toBeNull();
 });
 
 test('OAuth edit page disables save and reauthorization while transforms are invalid', () => {
