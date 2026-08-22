@@ -1,7 +1,7 @@
 import type { DashboardRoutingModel, DashboardRoutingModelsResponse, DashboardRoutingProvider } from '@aio-proxy/types';
 import { ProviderKind } from '@aio-proxy/types';
 import { afterEach, expect, rs, test } from '@rstest/core';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 
 import { RoutingPage } from './routing-page';
 
@@ -153,4 +153,110 @@ test('shows Retry when the routing query fails', () => {
   expect(screen.getByRole('alert')).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: /Retry|再試|다시|重试|重試/u }));
   expect(mocks.query.refetch).toHaveBeenCalled();
+});
+
+const openSoloModelEditor = () => {
+  fireEvent.click(
+    within(screen.getByTestId('routing-row-solo-model')).getByRole('button', { name: /Edit|編集|편집|编辑|編輯/u }),
+  );
+};
+
+test('ordinary query refetch keeps the opened editor revision and draft', async () => {
+  const opened = model({
+    modelId: 'solo-model',
+    revision: 'rev-1',
+    baselineProviderIds: ['solo-model-provider'],
+    providers: [provider({ id: 'solo-model-provider' })],
+  });
+  mocks.query.data = { writable: true, models: [opened] };
+
+  const { rerender } = render(<RoutingPage />);
+  openSoloModelEditor();
+  fireEvent.change(screen.getByTestId('routing-override-weight-solo-model-provider'), { target: { value: '9' } });
+
+  mocks.query.data = {
+    writable: true,
+    models: [
+      model({
+        modelId: 'solo-model',
+        revision: 'rev-2',
+        baselineProviderIds: ['other'],
+        providers: [provider({ id: 'solo-model-provider' }), provider({ id: 'other' })],
+      }),
+    ],
+  };
+  rerender(<RoutingPage />);
+
+  expect(screen.getByTestId('routing-override-weight-solo-model-provider')).toHaveValue(9);
+  fireEvent.click(screen.getByTestId('routing-save'));
+
+  await waitFor(() => {
+    expect(mocks.mutate).toHaveBeenCalledWith(
+      {
+        modelId: 'solo-model',
+        revision: 'rev-1',
+        baselineProviderIds: ['solo-model-provider'],
+        providers: { 'solo-model-provider': { weight: 9 } },
+      },
+      expect.any(Object),
+    );
+  });
+});
+
+test('explicit stale reload adopts the new revision without clearing draft values', async () => {
+  mocks.query.refetch.mockImplementation(async () => ({ data: mocks.query.data }));
+  mocks.mutate.mockImplementation((_body: unknown, callbacks?: { onError?: (error: Error) => void }) => {
+    const error = Object.assign(new Error('stale routing model'), { code: 'stale_revision' });
+    mocks.mutationError = error;
+    callbacks?.onError?.(error);
+  });
+  mocks.query.data = {
+    writable: true,
+    models: [
+      model({
+        modelId: 'solo-model',
+        revision: 'rev-1',
+        baselineProviderIds: ['solo-model-provider'],
+        providers: [provider({ id: 'solo-model-provider' })],
+      }),
+    ],
+  };
+
+  render(<RoutingPage />);
+  openSoloModelEditor();
+  fireEvent.change(screen.getByTestId('routing-override-weight-solo-model-provider'), { target: { value: '9' } });
+  fireEvent.click(screen.getByTestId('routing-save'));
+  expect(await screen.findByRole('button', { name: /Reload|再読|다시|重新|重新/u })).toBeInTheDocument();
+
+  mocks.query.data = {
+    writable: true,
+    models: [
+      model({
+        modelId: 'solo-model',
+        revision: 'rev-2',
+        baselineProviderIds: ['solo-model-provider', 'other'],
+        providers: [provider({ id: 'solo-model-provider' }), provider({ id: 'other' })],
+      }),
+    ],
+  };
+  await act(async () => {
+    fireEvent.click(screen.getByRole('button', { name: /Reload|再読|다시|重新|重新/u }));
+    await mocks.query.refetch.mock.results.at(-1)?.value;
+  });
+
+  expect(screen.getByTestId('routing-override-weight-solo-model-provider')).toHaveValue(9);
+  mocks.mutate.mockClear();
+  fireEvent.click(screen.getByTestId('routing-save'));
+
+  await waitFor(() => {
+    expect(mocks.mutate).toHaveBeenCalledWith(
+      {
+        modelId: 'solo-model',
+        revision: 'rev-2',
+        baselineProviderIds: ['solo-model-provider', 'other'],
+        providers: { 'solo-model-provider': { weight: 9 } },
+      },
+      expect.any(Object),
+    );
+  });
 });

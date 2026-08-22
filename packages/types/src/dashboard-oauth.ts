@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 import { AliasConfigSchema, IdSchema } from './common';
 import { DashboardLocalizedTextSchema } from './dashboard-localized-text';
-import { ProviderMutationProxySchema, RoutingPrioritySchema } from './provider';
+import { ProviderMutationProxySchema, RoutingPrioritySchema, RoutingWeightSchema } from './provider';
 import { ProviderTransformsSchema } from './provider-transform/index';
 
 const DashboardOAuthFormConditionSchema = z.strictObject({
@@ -68,7 +68,7 @@ export const DashboardOAuthProviderPatchSchema = z.strictObject({
   name: z.string().optional(),
   enabled: z.boolean(),
   priority: RoutingPrioritySchema.optional(),
-  weight: z.number().optional(),
+  weight: RoutingWeightSchema.optional(),
   proxy: ProviderMutationProxySchema,
   alias: z.record(z.string().min(1), AliasConfigSchema).optional(),
   transforms: ProviderTransformsSchema.optional().describe('Ordered outbound request transforms.'),

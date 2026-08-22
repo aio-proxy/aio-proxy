@@ -255,3 +255,109 @@ test('disables duplicate Save while a mutation is pending', () => {
 
   expect(screen.getByTestId('routing-save')).toBeDisabled();
 });
+
+const dottedModel = (): DashboardRoutingModel => ({
+  modelId: 'gpt-5',
+  revision: 'rev-1',
+  baselineProviderIds: ['acme.us', 'edge[west]'],
+  providerCount: 2,
+  eligibleProviderCount: 2,
+  hasOverrides: true,
+  tiers: [
+    {
+      priority: 30,
+      providers: [
+        { providerId: 'acme.us', weight: 6000, share: 0.6 },
+        { providerId: 'edge[west]', weight: 4000, share: 0.4 },
+      ],
+    },
+  ],
+  providers: [
+    provider({
+      id: 'acme.us',
+      name: 'Acme',
+      override: { priority: routingNumber(30, 30), weight: routingNumber(6000, 6000) },
+      effective: {
+        priority: 30,
+        weight: 6000,
+        prioritySource: 'model',
+        weightSource: 'model',
+        eligible: true,
+        share: 0.6,
+      },
+    }),
+    provider({
+      id: 'edge[west]',
+      name: 'Edge',
+      override: { priority: routingNumber(30, 30), weight: routingNumber(4000, 4000) },
+      effective: {
+        priority: 30,
+        weight: 4000,
+        prioritySource: 'model',
+        weightSource: 'model',
+        eligible: true,
+        share: 0.4,
+      },
+    }),
+  ],
+});
+
+test('edits dotted and bracketed Provider IDs and saves them as exact payload keys', async () => {
+  renderSheet({ model: dottedModel() });
+
+  expect(overridePriority('acme.us')).toHaveValue(30);
+  expect(overrideWeight('edge[west]')).toHaveValue(4000);
+
+  fireEvent.change(overrideWeight('acme.us'), { target: { value: '1000' } });
+
+  await waitFor(() => {
+    expect(screen.getByTestId('routing-preview')).toHaveTextContent('acme.us');
+    expect(screen.getByTestId('routing-preview')).toHaveTextContent('20%');
+    expect(screen.getByTestId('routing-preview')).toHaveTextContent('edge[west]');
+    expect(screen.getByTestId('routing-preview')).toHaveTextContent('80%');
+  });
+
+  fireEvent.click(screen.getByTestId('routing-save'));
+
+  await waitFor(() => {
+    expect(mocks.mutate).toHaveBeenCalledWith(
+      {
+        modelId: 'gpt-5',
+        revision: 'rev-1',
+        baselineProviderIds: ['acme.us', 'edge[west]'],
+        providers: {
+          'acme.us': { priority: 30, weight: 1000 },
+          'edge[west]': { priority: 30, weight: 4000 },
+        },
+      },
+      expect.any(Object),
+    );
+  });
+  expect(Object.keys(mocks.mutate.mock.calls[0]?.[0].providers ?? {})).toEqual(['acme.us', 'edge[west]']);
+});
+
+test('Reset on dotted and bracketed Provider IDs omits those keys from Save', async () => {
+  renderSheet({ model: dottedModel() });
+
+  fireEvent.click(screen.getByTestId('routing-reset-acme.us'));
+  expect(overridePriority('acme.us')).toHaveValue(null);
+  expect(overrideWeight('acme.us')).toHaveValue(null);
+
+  fireEvent.click(screen.getByTestId('routing-reset-edge[west]'));
+  expect(overridePriority('edge[west]')).toHaveValue(null);
+  expect(overrideWeight('edge[west]')).toHaveValue(null);
+
+  fireEvent.click(screen.getByTestId('routing-save'));
+
+  await waitFor(() => {
+    expect(mocks.mutate).toHaveBeenCalledWith(
+      {
+        modelId: 'gpt-5',
+        revision: 'rev-1',
+        baselineProviderIds: ['acme.us', 'edge[west]'],
+        providers: {},
+      },
+      expect.any(Object),
+    );
+  });
+});

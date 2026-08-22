@@ -18,8 +18,6 @@ export const RoutingPage: React.FC = () => {
   const [selected, setSelected] = useState<DashboardRoutingModel | null>(null);
   const models = query.data?.models ?? [];
   const writable = query.data?.writable ?? false;
-  const selectedModel =
-    selected === null ? null : (models.find((model) => model.modelId === selected.modelId) ?? selected);
 
   const content = (() => {
     if (query.isLoading) {
@@ -69,14 +67,20 @@ export const RoutingPage: React.FC = () => {
         <CardContent>{content}</CardContent>
       </Card>
       <RoutingEditorSheet
-        key={selectedModel?.modelId ?? 'closed'}
-        model={selectedModel}
+        key={selected?.modelId ?? 'closed'}
+        model={selected}
         writable={writable}
         onOpenChange={(open) => {
           if (!open) setSelected(null);
         }}
         onReload={() => {
-          void query.refetch();
+          void query.refetch().then((result) => {
+            const nextModels = result.data?.models ?? [];
+            setSelected((current) => {
+              if (current === null) return null;
+              return nextModels.find((model) => model.modelId === current.modelId) ?? current;
+            });
+          });
         }}
       />
     </PageContainer>

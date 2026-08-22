@@ -12,6 +12,7 @@ import { effectiveRoutingCandidates, routingDraftNormalization } from '../lib/ro
 interface RoutingProviderFieldsProps {
   readonly form: ReturnType<typeof useRoutingForm>;
   readonly provider: DashboardRoutingProvider;
+  readonly index: number;
   readonly writable: boolean;
 }
 
@@ -27,16 +28,16 @@ const normalizeNotice = (kind: 'priority' | 'weight', authored: number | undefin
 const priorityDraftError = (value: number | undefined): string | undefined =>
   RoutingPriorityDraftSchema.safeParse(value).success ? undefined : m['dashboard.routing.editor.priority_invalid']();
 
-export const RoutingProviderFields: React.FC<RoutingProviderFieldsProps> = ({ form, provider, writable }) => (
+export const RoutingProviderFields: React.FC<RoutingProviderFieldsProps> = ({ form, provider, index, writable }) => (
   <form.Field
-    name={`providers.${provider.id}.priority`}
+    name={`providers[${index}].priority`}
     validators={{
       onChange: ({ value }) => priorityDraftError(value),
       onSubmit: ({ value }) => priorityDraftError(value),
     }}
   >
     {(priorityField) => (
-      <form.Field name={`providers.${provider.id}.weight`}>
+      <form.Field name={`providers[${index}].weight`}>
         {(weightField) => {
           const draft = { priority: priorityField.state.value, weight: weightField.state.value };
           const [candidate] = effectiveRoutingCandidates([provider], { [provider.id]: draft });
@@ -129,7 +130,7 @@ export const RoutingProviderFields: React.FC<RoutingProviderFieldsProps> = ({ fo
                   size="sm"
                   variant="ghost"
                   data-testid={`routing-reset-${provider.id}`}
-                  onClick={() => form.setFieldValue(`providers.${provider.id}`, {})}
+                  onClick={() => form.setFieldValue(`providers[${index}]`, { providerId: provider.id })}
                 >
                   {m['dashboard.routing.editor.reset']()}
                 </Button>

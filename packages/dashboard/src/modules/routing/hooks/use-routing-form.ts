@@ -4,42 +4,59 @@ import { z } from 'zod';
 
 import type { RoutingProviderDraft } from '../lib/routing-summary';
 
+export type RoutingFormProviderRow = {
+  providerId: string;
+  priority?: number;
+  weight?: number;
+};
+
 export type RoutingFormValues = {
-  providers: Record<string, RoutingProviderDraft>;
+  providers: RoutingFormProviderRow[];
 };
 
 export const RoutingPriorityDraftSchema = z.int().optional();
 const RoutingWeightDraftSchema = z.number().optional();
 
 const RoutingFormValuesSchema = z.object({
-  providers: z.record(
-    z.string(),
+  providers: z.array(
     z.object({
+      providerId: z.string().min(1),
       priority: RoutingPriorityDraftSchema,
       weight: RoutingWeightDraftSchema,
     }),
   ),
 });
 
+const overrideDraft = (provider: DashboardRoutingModel['providers'][number]): RoutingProviderDraft => {
+  const priority = provider.override?.priority?.authored ?? provider.override?.priority?.effective;
+  const weight = provider.override?.weight?.authored ?? provider.override?.weight?.effective;
+  return {
+    ...(priority === undefined ? {} : { priority }),
+    ...(weight === undefined ? {} : { weight }),
+  };
+};
+
 export const routingFormValues = (model: DashboardRoutingModel): RoutingFormValues => ({
-  providers: Object.fromEntries(
-    model.providers.map((provider) => {
-      const priority = provider.override?.priority?.authored ?? provider.override?.priority?.effective;
-      const weight = provider.override?.weight?.authored ?? provider.override?.weight?.effective;
-      return [
-        provider.id,
-        {
-          ...(priority === undefined ? {} : { priority }),
-          ...(weight === undefined ? {} : { weight }),
-        },
-      ];
-    }),
-  ),
+  providers: model.providers.map((provider) => ({
+    providerId: provider.id,
+    ...overrideDraft(provider),
+  })),
 });
+
+export const routingDraftRecord = (rows: readonly RoutingFormProviderRow[]): Record<string, RoutingProviderDraft> =>
+  Object.fromEntries(
+    rows.map((row) => [
+      row.providerId,
+      {
+        ...(row.priority === undefined ? {} : { priority: row.priority }),
+        ...(row.weight === undefined ? {} : { weight: row.weight }),
+      },
+    ]),
+  );
 
 export const useRoutingForm = (model: DashboardRoutingModel | null, onSubmit: (value: RoutingFormValues) => void) =>
   useForm({
-    defaultValues: (model === null ? { providers: {} } : routingFormValues(model)) satisfies RoutingFormValues,
+    defaultValues: (model === null ? { providers: [] } : routingFormValues(model)) satisfies RoutingFormValues,
     validators: {
       onSubmit: ({ value }) => (RoutingFormValuesSchema.safeParse(value).success ? undefined : 'INVALID_ROUTING'),
     },

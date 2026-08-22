@@ -11,7 +11,7 @@ import {
 } from '@aio-proxy/ui/components/sheet';
 import { useState } from 'react';
 
-import { useRoutingForm } from '../hooks/use-routing-form';
+import { routingDraftRecord, useRoutingForm } from '../hooks/use-routing-form';
 import { useRoutingMutation } from '../hooks/use-routing-mutation';
 import {
   buildRoutingTiers,
@@ -39,7 +39,7 @@ export const RoutingEditorSheet: React.FC<RoutingEditorSheetProps> = ({ model, w
         modelId: model.modelId,
         revision: model.revision,
         baselineProviderIds: model.baselineProviderIds,
-        providers: explicitRoutingOverrides(value.providers),
+        providers: explicitRoutingOverrides(routingDraftRecord(value.providers)),
       },
       {
         onSuccess: () => {
@@ -89,15 +89,30 @@ export const RoutingEditorSheet: React.FC<RoutingEditorSheetProps> = ({ model, w
             <div className="min-h-0 flex-1 overflow-auto px-6">
               <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(16rem,0.8fr)]">
                 <div>
-                  {model.providers.map((provider) => (
-                    <RoutingProviderFields key={provider.id} form={form} provider={provider} writable={writable} />
-                  ))}
+                  <form.Subscribe selector={(state) => state.values.providers}>
+                    {(rows) =>
+                      model.providers.map((provider) => {
+                        const index = rows.findIndex((row) => row.providerId === provider.id);
+                        return index < 0 ? null : (
+                          <RoutingProviderFields
+                            key={provider.id}
+                            form={form}
+                            provider={provider}
+                            index={index}
+                            writable={writable}
+                          />
+                        );
+                      })
+                    }
+                  </form.Subscribe>
                 </div>
                 <aside className="lg:sticky lg:top-0">
                   <h2 className="font-heading text-base font-medium">{m['dashboard.routing.editor.preview']()}</h2>
                   <form.Subscribe selector={(state) => state.values.providers}>
-                    {(providers) => {
-                      const tiers = buildRoutingTiers(effectiveRoutingCandidates(model.providers, providers));
+                    {(rows) => {
+                      const tiers = buildRoutingTiers(
+                        effectiveRoutingCandidates(model.providers, routingDraftRecord(rows)),
+                      );
                       if (tiers.length === 0) {
                         return (
                           <p className="mt-3 text-sm text-muted-foreground" data-testid="routing-preview">
