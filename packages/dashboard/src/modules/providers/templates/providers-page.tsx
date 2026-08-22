@@ -4,6 +4,7 @@ import { Card, CardContent } from '@aio-proxy/ui/components/card';
 import { Skeleton } from '@aio-proxy/ui/components/skeleton';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
+import { RotateCwIcon } from 'lucide-react';
 import type React from 'react';
 
 import { PageContainer } from '@/components/page-container';
@@ -42,6 +43,22 @@ export const ProvidersPage: React.FC<ProvidersPageProps> = ({ focusProviderId, w
               {Array.from({ length: 3 }).map((_, index) => (
                 <Skeleton key={index} className="h-12 w-full" />
               ))}
+            </div>
+          ) : providersQuery.isError ? (
+            // Without this branch a failed query falls through to the table's own empty state, which
+            // tells a user whose backend is down that they have no providers configured.
+            <div className="flex flex-wrap items-center gap-2" role="alert" data-testid="providers-load-error">
+              <p className="text-sm text-destructive">{m['dashboard.providers.list_load_failed']()}</p>
+              <Button
+                type="button"
+                size="xs"
+                variant="ghost"
+                data-testid="providers-load-retry"
+                onClick={() => void providersQuery.refetch()}
+              >
+                <RotateCwIcon data-icon="inline-start" aria-hidden="true" />
+                {m['dashboard.providers.list_retry']()}
+              </Button>
             </div>
           ) : (
             <ProvidersTable providers={providers} focusProviderId={focusProviderId} />

@@ -1,3 +1,4 @@
+import { m } from '@aio-proxy/i18n';
 import type { DashboardProviderSummary } from '@aio-proxy/types';
 import { afterEach, describe, expect, rs, test } from '@rstest/core';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
@@ -8,6 +9,8 @@ import { ProvidersPage } from './providers-page';
 
 const queryMocks = rs.hoisted(() => ({
   providers: { providers: [] as DashboardProviderSummary[] },
+  failed: false,
+  refetches: 0,
 }));
 
 const invalidProvider = (): DashboardProviderSummary =>
@@ -27,10 +30,17 @@ const invalidProvider = (): DashboardProviderSummary =>
 
 rs.mock('@tanstack/react-query', () => ({
   queryOptions: <T,>(options: T) => options,
-  useQuery: (options: { queryKey: readonly string[] }) => ({
-    data: options.queryKey[0] === 'providers' ? queryMocks.providers : new Map(),
-    isLoading: false,
-  }),
+  useQuery: (options: { queryKey: readonly string[] }) => {
+    const isProviders = options.queryKey[0] === 'providers';
+    return {
+      data: isProviders ? queryMocks.providers : new Map(),
+      isLoading: false,
+      isError: isProviders && queryMocks.failed,
+      refetch: () => {
+        queryMocks.refetches += 1;
+      },
+    };
+  },
 }));
 
 rs.mock('../components/delete-provider-dialog', () => ({ DeleteProviderDialog: DeleteProviderDialogStub }));
@@ -44,6 +54,8 @@ rs.mock('@tanstack/react-router', () => ({
 afterEach(() => {
   rs.restoreAllMocks();
   queryMocks.providers.providers = [];
+  queryMocks.failed = false;
+  queryMocks.refetches = 0;
 });
 
 describe('providers page', () => {
@@ -138,6 +150,21 @@ describe('providers page', () => {
     await waitFor(() => {
       expect(screen.getByTestId('provider-row-provider-10')).toHaveAttribute('data-focused', 'true');
     });
+  });
+
+  // A failed query used to fall through to the table's own empty state, so a user whose backend is
+  // down was told they have no providers configured — and invited to create one.
+  test('a failed providers query explains itself and offers a retry', () => {
+    queryMocks.failed = true;
+
+    render(<ProvidersPage />);
+
+    expect(screen.getByTestId('providers-load-error')).toHaveTextContent(m['dashboard.providers.list_load_failed']());
+    expect(screen.queryByText(m['dashboard.providers.empty_state']())).toBeNull();
+
+    fireEvent.click(screen.getByTestId('providers-load-retry'));
+
+    expect(queryMocks.refetches).toBe(1);
   });
 
   test('shows a catalog warning returned by OAuth login', () => {

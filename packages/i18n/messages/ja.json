@@ -1026,6 +1026,8 @@
         "cancel": "キャンセル"
       },
       "empty_state": "プロバイダーが設定されていません",
+      "list_load_failed": "プロバイダーを読み込めませんでした。もう一度お試しください。",
+      "list_retry": "再試行",
       "new_title": "新規プロバイダー",
       "edit_title": "プロバイダーを編集",
       "aliases_title": "プロバイダーのエイリアス",

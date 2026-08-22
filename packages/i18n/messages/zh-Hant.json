@@ -1026,6 +1026,8 @@
         "cancel": "取消"
       },
       "empty_state": "未設定任何提供商",
+      "list_load_failed": "無法載入提供商，請再試一次。",
+      "list_retry": "重試",
       "new_title": "新增提供商",
       "edit_title": "編輯提供商",
       "aliases_title": "提供商別名",

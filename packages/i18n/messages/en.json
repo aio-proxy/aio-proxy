@@ -1026,6 +1026,8 @@
         "cancel": "Cancel"
       },
       "empty_state": "No providers configured",
+      "list_load_failed": "Providers could not be loaded. Try again.",
+      "list_retry": "Retry",
       "new_title": "New Provider",
       "edit_title": "Edit Provider",
       "aliases_title": "Provider Aliases",
