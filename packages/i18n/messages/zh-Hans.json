@@ -729,7 +729,8 @@
             "title": "固定值"
           },
           "argument": {
-            "label": "参数 {index}"
+            "label": "参数 {index}",
+            "prefix": "参数"
           },
           "function": {
             "title": "函数",

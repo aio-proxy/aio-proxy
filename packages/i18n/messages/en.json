@@ -729,7 +729,8 @@
             "title": "Fixed value"
           },
           "argument": {
-            "label": "Argument {index}"
+            "label": "Argument {index}",
+            "prefix": "Argument"
           },
           "function": {
             "title": "Function",

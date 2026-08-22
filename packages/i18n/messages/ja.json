@@ -729,7 +729,8 @@
             "title": "固定値"
           },
           "argument": {
-            "label": "引数 {index}"
+            "label": "引数 {index}",
+            "prefix": "引数"
           },
           "function": {
             "title": "関数",

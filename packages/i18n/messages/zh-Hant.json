@@ -729,7 +729,8 @@
             "title": "固定值"
           },
           "argument": {
-            "label": "參數 {index}"
+            "label": "參數 {index}",
+            "prefix": "參數"
           },
           "function": {
             "title": "函式",

@@ -729,7 +729,8 @@
             "title": "고정 값"
           },
           "argument": {
-            "label": "인수 {index}"
+            "label": "인수 {index}",
+            "prefix": "인수"
           },
           "function": {
             "title": "함수",
