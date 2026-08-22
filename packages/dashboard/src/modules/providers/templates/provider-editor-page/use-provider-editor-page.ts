@@ -263,6 +263,10 @@ export const useProviderEditorPage = ({
     optionsValid,
   });
 
+  // One predicate for the guard in `save` and for every control that calls it: the footer's Save was
+  // disabled on this, but Reauthorize was not, so clicking it hit the bare `return` with no toast, no
+  // focus move and no explanation. The footer's live region already names the sections at fault.
+  const saveBlocked = blockingSections(summaries).length > 0;
   const handleKindChange = (next: ProviderKind) => {
     onKindChange?.(next);
     setOptionsValid(next !== 'ai-sdk');
@@ -286,7 +290,7 @@ export const useProviderEditorPage = ({
       startCreateAuthorization(wireValues, accountValues, capabilities, startMutation.mutate, closeUnclaimedPopup);
       return;
     }
-    if (blockingSections(summaries).length > 0) return;
+    if (saveBlocked) return;
     if (kind === 'oauth') {
       if (oauth === undefined) return;
       saveOAuthProvider(
@@ -337,6 +341,7 @@ export const useProviderEditorPage = ({
     setOptionsValid,
     setTransformsValid,
     save,
+    saveBlocked,
     isReauthorizing: startMutation.isPending,
     pending: isCreating || isUpdating || startMutation.isPending,
     // One label, as in the demo footer. It used to read "authorize" for an unauthorized oauth draft,

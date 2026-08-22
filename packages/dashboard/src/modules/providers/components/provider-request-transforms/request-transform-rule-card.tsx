@@ -22,7 +22,6 @@ export interface RequestTransformRuleCardProps {
   readonly index: number;
   readonly canMoveUp: boolean;
   readonly canMoveDown: boolean;
-  readonly structuralDisabled: boolean;
   readonly firstPathInputRef?: RefCallback<HTMLInputElement>;
   readonly onChange: (value: ProviderRequestTransformRule) => void;
   readonly onValidityChange: (valid: boolean) => void;
@@ -36,7 +35,6 @@ export const RequestTransformRuleCard: React.FC<RequestTransformRuleCardProps> =
   index,
   canMoveUp,
   canMoveDown,
-  structuralDisabled,
   firstPathInputRef,
   onChange,
   onValidityChange,
@@ -51,7 +49,6 @@ export const RequestTransformRuleCard: React.FC<RequestTransformRuleCardProps> =
   const [conditionValid, setConditionValid] = useState(true);
   const [stagesValid, setStagesValid] = useState(true);
   const ruleValid = nameValid && conditionValid && stagesValid;
-  const structureBlocked = structuralDisabled || !ruleValid;
 
   useEffect(() => onValidityChange(ruleValid), [onValidityChange, ruleValid]);
 
@@ -155,7 +152,6 @@ export const RequestTransformRuleCard: React.FC<RequestTransformRuleCardProps> =
       <RequestTransformStageList
         value={value.update}
         ruleName={value.name ?? m['dashboard.providers.transforms.rule.label']({ index: ruleIndex })}
-        structuralDisabled={structureBlocked}
         {...(firstPathInputRef === undefined ? {} : { firstPathInputRef })}
         onChange={(update) => commitRule({ ...value, update: [...update] }, setStagesValid)}
         onValidityChange={setStagesValid}

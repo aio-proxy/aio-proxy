@@ -41,7 +41,6 @@ export const ProviderRequestTransformsVisualEditor: React.FC<ProviderRequestTran
             index={index}
             canMoveUp={index > 0}
             canMoveDown={index < value.length - 1}
-            structuralDisabled={!visualValid}
             firstPathInputRef={(element: HTMLInputElement | null) => {
               if (element === null || pendingFocusRule.current !== index) return;
               pendingFocusRule.current = undefined;

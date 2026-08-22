@@ -15,7 +15,6 @@ export interface RequestTransformStageListProps {
   readonly value: readonly ProviderRequestTransformStage[];
   readonly ruleName: string;
   readonly firstPathInputRef?: RefCallback<HTMLInputElement>;
-  readonly structuralDisabled: boolean;
   readonly onChange: (value: readonly ProviderRequestTransformStage[]) => void;
   readonly onValidityChange: (valid: boolean) => void;
 }
@@ -24,14 +23,12 @@ export const RequestTransformStageList: React.FC<RequestTransformStageListProps>
   value,
   ruleName,
   firstPathInputRef,
-  structuralDisabled,
   onChange,
   onValidityChange,
 }) => {
   const stages = parseRequestTransformStages(value);
   const [stageValidity, setStageValidity] = useState<Readonly<Record<number, boolean>>>({});
   const stagesValid = stages.every((_, index) => stageValidity[index] !== false);
-  const structureBlocked = structuralDisabled || !stagesValid;
   useEffect(() => onValidityChange(stagesValid), [onValidityChange, stagesValid]);
   const emit = (nextStages: readonly RequestTransformStageDraft[]) =>
     onChange(serializeRequestTransformStages(nextStages));
@@ -51,7 +48,6 @@ export const RequestTransformStageList: React.FC<RequestTransformStageListProps>
           canMoveUp={index > 0}
           canMoveDown={index < stages.length - 1}
           canRemove={stages.length > 1}
-          structuralDisabled={structureBlocked}
           ruleName={ruleName}
           {...(index === 0 && firstPathInputRef !== undefined ? { pathInputRef: firstPathInputRef } : {})}
           onChange={(nextStage) => emit(stages.map((item, itemIndex) => (itemIndex === index ? nextStage : item)))}
@@ -64,10 +60,13 @@ export const RequestTransformStageList: React.FC<RequestTransformStageListProps>
         />
       ))}
       <div className="flex flex-wrap gap-2">
+        {/* Appending re-emits every action of this rule from its last accepted value, so an unfinished
+            action in this rule would lose what the user typed. Other rules are untouched by that emit
+            and must not disable this button. */}
         <Button
           type="button"
           variant="outline"
-          disabled={structureBlocked}
+          disabled={!stagesValid}
           onClick={() =>
             emit([...stages, { kind: 'set', target: 'body', path: 'value', value: { kind: 'static', value: null } }])
           }

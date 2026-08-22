@@ -47,6 +47,7 @@ export const ProviderEditorPage: React.FC<ProviderEditorPageProps> = (props) => 
     setOptionsValid,
     setTransformsValid,
     save,
+    saveBlocked,
     isReauthorizing,
     pending,
     primaryLabel,
@@ -111,6 +112,7 @@ export const ProviderEditorPage: React.FC<ProviderEditorPageProps> = (props) => 
               oauth={oauth}
               provider={provider}
               onReauthorize={() => save(true)}
+              isReauthorizeBlocked={saveBlocked}
               isAuthorizationPending={isReauthorizing}
               onAuthorize={() => save(false)}
               onOptionsValidityChange={setOptionsValid}

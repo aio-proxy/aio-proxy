@@ -12,6 +12,7 @@ interface OAuthProviderEditFieldsProps {
   readonly accountForm: OAuthProviderForm;
   readonly onReauthorize: () => void;
   readonly isReauthorizing: boolean;
+  readonly isReauthorizeBlocked: boolean;
 }
 
 export const OAuthProviderEditFields: React.FC<OAuthProviderEditFieldsProps> = ({
@@ -20,6 +21,7 @@ export const OAuthProviderEditFields: React.FC<OAuthProviderEditFieldsProps> = (
   accountForm,
   onReauthorize,
   isReauthorizing,
+  isReauthorizeBlocked,
 }) => (
   <>
     {/* One muted line, not a two-column table: the only thing the editor cannot show elsewhere is
@@ -35,7 +37,15 @@ export const OAuthProviderEditFields: React.FC<OAuthProviderEditFieldsProps> = (
         size, then the text beside it. `justify-between` used to throw the button to the far edge of
         the card, away from the copy explaining it. */}
     <div className="flex flex-wrap items-center gap-3">
-      <Button type="button" variant="outline" size="sm" onClick={onReauthorize} disabled={isReauthorizing}>
+      {/* Reauthorizing saves the provider on the way out, so it refuses while a section blocks the save.
+          Disabled rather than silently returning: the footer already names the sections at fault. */}
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={onReauthorize}
+        disabled={isReauthorizing || isReauthorizeBlocked}
+      >
         {m['dashboard.providers.oauth.reauthorize']()}
       </Button>
       {/* The section's only positive signal that this provider is connected, and the only one a

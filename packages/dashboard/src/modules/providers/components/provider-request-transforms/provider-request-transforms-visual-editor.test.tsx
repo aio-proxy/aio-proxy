@@ -686,3 +686,41 @@ test('does not replace the whole body when a path input is cleared', async () =>
     ),
   ).toBe(false);
 });
+
+/** An unfinished action is exactly when a user reaches for these buttons. Deriving them from the editor's
+ * overall validity froze every action in every rule — including the offending one — while the JSON tab was
+ * disabled for the same reason, so the only way out was to finish a stage the user wanted to discard. */
+test('keeps per-action and sibling-rule controls usable while one action is invalid', async () => {
+  render(
+    <RequestTransformsHarness
+      initialValue={[
+        { update: [{ $set: { 'request.body.value': 'seed' } }, { $unset: 'request.body.legacy' }] },
+        { update: [{ $unset: 'request.body.other' }] },
+      ]}
+      onChange={rs.fn()}
+      onValidityChange={rs.fn()}
+    />,
+  );
+
+  const path = within(stageCard(0)).getByRole('textbox', { name: /Body path|请求体路径/u });
+  fireEvent.change(path, { target: { value: '' } });
+  await waitFor(() => expect(within(stageCard(0)).getByRole('alert')).toBeInTheDocument());
+
+  const removeAction = (index: number) => m['dashboard.providers.transforms.action.remove_button']({ index });
+  // The offending action stays discardable, and a healthy sibling never notices.
+  expect(within(stageCard(0)).getByRole('button', { name: removeAction(1) })).toBeEnabled();
+  expect(within(stageCard(1)).getByRole('button', { name: removeAction(2) })).toBeEnabled();
+  // Reordering re-emits the action from its last accepted value, so only the unfinished action loses it.
+  expect(
+    within(stageCard(0)).getByRole('button', {
+      name: m['dashboard.providers.transforms.action.move_down']({ index: 1 }),
+    }),
+  ).toBeDisabled();
+  expect(
+    within(stageCard(1)).getByRole('button', {
+      name: m['dashboard.providers.transforms.action.move_up']({ index: 2 }),
+    }),
+  ).toBeEnabled();
+  // Adding to another rule re-emits only that rule's actions, so it is unaffected by this one.
+  expect(within(ruleCard(1)).getByRole('button', { name: /Add action|添加操作/u })).toBeEnabled();
+});

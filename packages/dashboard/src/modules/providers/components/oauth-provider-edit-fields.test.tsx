@@ -22,6 +22,7 @@ test('confirms the connected account once, as a status, without dropping the sav
       accountForm={result.current}
       onReauthorize={rs.fn()}
       isReauthorizing={false}
+      isReauthorizeBlocked={false}
     />,
   );
 

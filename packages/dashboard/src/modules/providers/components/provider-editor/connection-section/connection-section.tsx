@@ -27,6 +27,8 @@ interface ConnectionSectionProps {
   readonly oauth?: DashboardOAuthProviderEdit | undefined;
   readonly provider?: OAuthProvider | undefined;
   readonly onReauthorize?: (() => void) | undefined;
+  /** True when `onReauthorize` would refuse: an outstanding section blocks the save it performs. */
+  readonly isReauthorizeBlocked?: boolean | undefined;
   /** True while an authorization start is in flight: a first authorize in create, a reauthorize in edit. */
   readonly isAuthorizationPending?: boolean | undefined;
   /** OAuth create only: starts the authorization from inside this section. */
@@ -45,6 +47,7 @@ export const ConnectionSection: React.FC<ConnectionSectionProps> = ({
   oauth,
   provider,
   onReauthorize,
+  isReauthorizeBlocked,
   isAuthorizationPending,
   onAuthorize,
   onOptionsValidityChange,
@@ -109,6 +112,7 @@ export const ConnectionSection: React.FC<ConnectionSectionProps> = ({
         accountForm={accountForm}
         onReauthorize={onReauthorize ?? (() => undefined)}
         isReauthorizing={isAuthorizationPending ?? false}
+        isReauthorizeBlocked={isReauthorizeBlocked ?? false}
       />
     ) : null}
   </SectionShell>

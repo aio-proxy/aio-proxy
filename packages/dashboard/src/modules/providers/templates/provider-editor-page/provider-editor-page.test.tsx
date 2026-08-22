@@ -843,9 +843,9 @@ const renderOAuthEditWithTwoAliases = () =>
     onSessionIdChange: rs.fn(),
   });
 
-// Reauthorize is a second caller of save(), and its button is not gated by blockingSections.
-// The collision must be refused inside save() — a test that only clicked Save would stay green
-// against the data-loss path this pin is for.
+// Reauthorize is a second caller of save(), so it has to be refused the same way Save is: the click is
+// gated on the same predicate save() returns on, and the refusal is visible on the button rather than a
+// silent no-op. A test that only clicked Save would stay green against the data-loss path this pin is for.
 test('duplicate alias names stop reauthorize from starting a mutation', async () => {
   renderOAuthEditWithTwoAliases();
 
@@ -857,6 +857,7 @@ test('duplicate alias names stop reauthorize from starting a mutation', async ()
   fireEvent.change(boxes[1]!, { target: { value: 'mini' } });
   expect(saveButton()).toBeDisabled();
 
+  expect(reauthorizeButton()).toBeDisabled();
   fireEvent.click(reauthorizeButton());
   expect(mocks.start).not.toHaveBeenCalled();
 });
@@ -870,6 +871,7 @@ test('resolving a duplicate alias name lets reauthorize start a mutation again',
 
   fireEvent.change(boxes[1]!, { target: { value: 'swift' } });
   expect(saveButton()).toBeEnabled();
+  expect(reauthorizeButton()).toBeEnabled();
 
   fireEvent.click(reauthorizeButton());
   await waitFor(() => expect(mocks.start).toHaveBeenCalled());

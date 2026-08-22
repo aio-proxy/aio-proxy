@@ -22,7 +22,6 @@ export interface RequestTransformStageCardProps {
   readonly canMoveUp: boolean;
   readonly canMoveDown: boolean;
   readonly canRemove: boolean;
-  readonly structuralDisabled: boolean;
   readonly ruleName: string;
   readonly pathInputRef?: RefCallback<HTMLInputElement>;
   readonly onChange: (value: RequestTransformStageDraft) => void;
@@ -38,7 +37,6 @@ export const RequestTransformStageCard: React.FC<RequestTransformStageCardProps>
   canMoveUp,
   canMoveDown,
   canRemove,
-  structuralDisabled,
   ruleName,
   pathInputRef,
   onChange,
@@ -56,7 +54,6 @@ export const RequestTransformStageCard: React.FC<RequestTransformStageCardProps>
   const [contentValid, setContentValid] = useState(true);
   const [draftKind, setDraftKind] = useState(value.kind);
   const stageValid = controlsValid && (draftKind === 'remove' || contentValid);
-  const structureBlocked = structuralDisabled || !stageValid;
   const actionIndex = index + 1;
 
   useEffect(() => onValidityChange(stageValid), [onValidityChange, stageValid]);
@@ -105,11 +102,14 @@ export const RequestTransformStageCard: React.FC<RequestTransformStageCardProps>
         {/* One action cannot be removed or reordered, so the whole group stays out of the row entirely. */}
         {canRemove ? (
           <>
+            {/* Reordering re-emits this action from its last accepted value, so a move while it is
+                mid-edit would silently drop what the user typed — hence its own validity, not the
+                editor's. Remove stays enabled either way: discarding the action is the way out. */}
             <Button
               type="button"
               variant="ghost"
               size="icon-xs"
-              disabled={structureBlocked || !canMoveUp}
+              disabled={!stageValid || !canMoveUp}
               aria-label={m['dashboard.providers.transforms.action.move_up']({ index: actionIndex })}
               onClick={onMoveUp}
             >
@@ -119,7 +119,7 @@ export const RequestTransformStageCard: React.FC<RequestTransformStageCardProps>
               type="button"
               variant="ghost"
               size="icon-xs"
-              disabled={structureBlocked || !canMoveDown}
+              disabled={!stageValid || !canMoveDown}
               aria-label={m['dashboard.providers.transforms.action.move_down']({ index: actionIndex })}
               onClick={onMoveDown}
             >
@@ -129,7 +129,6 @@ export const RequestTransformStageCard: React.FC<RequestTransformStageCardProps>
               type="button"
               variant="ghost"
               size="icon-xs"
-              disabled={structureBlocked}
               aria-label={m['dashboard.providers.transforms.action.remove_button']({ index: actionIndex })}
               onClick={onRemove}
             >
