@@ -256,7 +256,7 @@ protocol adapter 不感知数据库、request log 或 pricing。
 错误分为三类：
 
 1. **入站错误**：JSON、schema、body limit、URL context 等错误，由 protocol error mapper 转成入站协议形状，不进入候选循环。
-2. **raw upstream response**：除 `429`/`5xx` fallback 外保持原始响应；最终候选的响应原样返回。
+2. **raw upstream response**：除 `422`/`429`/`5xx` fallback 外保持原始响应；最终候选的响应原样返回。
 3. **本地/provider 异常**：availability、AI SDK、network 和 unsupported capability 等异常，由 pipeline 判断 fallback；最终通过 protocol error mapper 输出。
 
 错误 mapper 返回 `undefined` 表示不认识该错误，pipeline 必须重新抛出，不能把编程错误伪装成 provider 失败。
@@ -291,8 +291,8 @@ shared pipeline 的接口是主要测试表面。
 - 同协议且有 raw capability 时只调用 raw。
 - 协议不匹配时只调用 model。
 - AI SDK/OAuth provider 即使“语义同协议”也因没有 raw capability 而调用 model。
-- raw `429`/`5xx`、网络异常和 model 首 event 失败按顺序 fallback。
-- raw 普通 `4xx`、inbound abort 和流已提交后不 fallback。
+- raw `422`/`429`/`5xx`、网络异常和 model 首 event 失败按顺序 fallback。
+- raw 普通 `4xx`（`422` 除外）、inbound abort 和流已提交后不 fallback。
 - 最终失败、attempt 顺序和 request outcome 正确。
 
 ### Protocol adapter tests
