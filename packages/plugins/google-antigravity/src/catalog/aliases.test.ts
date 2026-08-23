@@ -182,6 +182,31 @@ test('defaults a split-plus-tiered family to the tiered wire and maps xhigh ther
   });
 });
 
+test('keeps a lone high row when the default is the catalog tiered sibling', () => {
+  const aliases = defaultAntigravityAliases(
+    catalogWithFamilies(
+      ['foo-high', 'foo-tiered'],
+      [
+        {
+          logicalId: 'foo',
+          kind: 'split',
+          thinking: { mode: 'gemini' },
+          base: 'foo-high',
+          variants: [{ effort: 'high', model: 'foo-high' }],
+        },
+      ],
+    ),
+  );
+  expect(aliases['foo']).toEqual({
+    model: 'foo-tiered',
+    preserve: false,
+    variants: [
+      { when: { effort: 'high' }, model: 'foo-high', preserve: false },
+      { when: { effort: 'xhigh' }, model: 'foo-tiered', preserve: false },
+    ],
+  });
+});
+
 test('defaults gemini-3.6-flash to its catalog tiered sibling even when the picker omits it', () => {
   const aliases = defaultAntigravityAliases(
     assembleAntigravityCatalog(
@@ -273,6 +298,34 @@ test('rebuilds leftover thinking siblings from language when stored families omi
     model: 'gemini-2.5-flash',
     preserve: false,
     variants: [{ when: { thinking: true }, model: 'gemini-2.5-flash-thinking', preserve: false }],
+  });
+});
+
+test('attaches a leftover thinking sibling onto an already-stored identity family', () => {
+  const aliases = defaultAntigravityAliases({
+    language: [descriptor('foo', 'Foo'), descriptor('foo-thinking', 'Foo (Thinking)')],
+    image: [],
+    embedding: [],
+    speech: [],
+    transcription: [],
+    reranking: [],
+    metadata: {
+      antigravityFamilies: [
+        {
+          logicalId: 'foo',
+          kind: 'same-wire',
+          thinking: { mode: 'none' },
+          base: 'foo',
+          variants: [],
+        },
+      ],
+    },
+  });
+  expect(aliases).not.toHaveProperty('foo-thinking');
+  expect(aliases['foo']).toEqual({
+    model: 'foo',
+    preserve: false,
+    variants: [{ when: { thinking: true }, model: 'foo-thinking', preserve: false }],
   });
 });
 

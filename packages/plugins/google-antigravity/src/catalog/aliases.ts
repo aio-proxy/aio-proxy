@@ -23,7 +23,7 @@ export function defaultAntigravityAliases(catalog: ModelCatalog): DefaultAliasSu
       (family.suppressedWireIds ?? []).find((id) => id.endsWith('-tiered') && available.has(id)) ??
       (available.has(catalogTiered) ? catalogTiered : undefined);
     const defaultModel = tiered ?? family.base;
-    const variants: DefaultAliasSelectRow[] = routesByEffort(family.base, effortRows)
+    const variants: DefaultAliasSelectRow[] = routesByEffort(defaultModel, effortRows)
       ? [...effortRows, ...xhighRow(tiered ?? high?.model)]
       : [];
     const claimed = new Set([defaultModel, ...variants.map((row) => row.model)]);
@@ -66,15 +66,8 @@ function leftoverThinkingFamilies(
   catalog: ModelCatalog,
   stored: readonly AntigravityFamily[],
 ): readonly AntigravityFamily[] {
-  const claimed = new Set(
-    stored.flatMap((family) => [
-      family.logicalId,
-      family.base,
-      ...family.variants.map((row) => row.model),
-      ...(family.suppressedWireIds ?? []),
-    ]),
-  );
-  const leftover: AntigravityFamily[] = [];
+  const claimed = new Set<string>();
+  const leftover: AntigravityFamily[] = stored.map((family) => withThinkingSibling(family, catalog, claimed));
   for (const { id } of catalog.language) {
     if (!id.endsWith('-thinking')) continue;
     const stem = id.slice(0, -'-thinking'.length);
@@ -91,6 +84,24 @@ function leftoverThinkingFamilies(
     claimed.add(id);
   }
   return leftover;
+}
+
+function withThinkingSibling(
+  family: AntigravityFamily,
+  catalog: ModelCatalog,
+  claimed: Set<string>,
+): AntigravityFamily {
+  const thinkingId = `${family.logicalId}-thinking`;
+  const existing = new Set([
+    family.base,
+    ...family.variants.map((row) => row.model),
+    ...(family.suppressedWireIds ?? []),
+  ]);
+  for (const id of existing) claimed.add(id);
+  claimed.add(family.logicalId);
+  if (!availableHas(catalog, thinkingId) || existing.has(thinkingId) || claimed.has(thinkingId)) return family;
+  claimed.add(thinkingId);
+  return { ...family, suppressedWireIds: [...(family.suppressedWireIds ?? []), thinkingId] };
 }
 
 function availableHas(catalog: ModelCatalog, id: string): boolean {

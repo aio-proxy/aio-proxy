@@ -3,6 +3,8 @@
 '@aio-proxy/plugin-sdk': minor
 '@aio-proxy/core': minor
 '@aio-proxy/server': minor
+'@aio-proxy/types': minor
+'@aio-proxy/dashboard': minor
 'aio-proxy': minor
 ---
 
