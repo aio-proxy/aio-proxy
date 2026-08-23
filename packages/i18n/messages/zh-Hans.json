@@ -910,6 +910,7 @@
         "metadata_extend_loading_placeholder": "正在加载模型目录…",
         "metadata_extend_aria_label": "搜索并选择要继承的 models.dev 模型",
         "metadata_capability_label_reasoning": "推理",
+        "metadata_capability_label_temperature": "温度",
         "metadata_capability_label_tool_call": "工具调用",
         "metadata_capability_label_attachment": "文件附件",
         "metadata_capability_label_structured_output": "结构化输出",

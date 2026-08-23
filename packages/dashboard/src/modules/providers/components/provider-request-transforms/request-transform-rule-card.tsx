@@ -106,7 +106,7 @@ export const RequestTransformRuleCard: React.FC<RequestTransformRuleCardProps> =
           type="button"
           variant="ghost"
           size="icon-xs"
-          disabled={!canMoveUp}
+          disabled={!ruleValid || !canMoveUp}
           aria-label={m['dashboard.providers.transforms.rule.move_up']({ index: ruleIndex })}
           onClick={onMoveUp}
         >
@@ -116,7 +116,7 @@ export const RequestTransformRuleCard: React.FC<RequestTransformRuleCardProps> =
           type="button"
           variant="ghost"
           size="icon-xs"
-          disabled={!canMoveDown}
+          disabled={!ruleValid || !canMoveDown}
           aria-label={m['dashboard.providers.transforms.rule.move_down']({ index: ruleIndex })}
           onClick={onMoveDown}
         >

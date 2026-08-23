@@ -39,6 +39,13 @@ export function resolveProviderDraft(
         delete (restored as Record<string, unknown>)['proxy'];
       }
       candidate = { ...(restored as Record<string, unknown>), enabled: true, id: draft.id };
+    } else {
+      // Destination/proxy/options changed. The edit-view preloads stored secrets into the
+      // draft, so treat those retained values as absent and keep only freshly typed ones.
+      candidate = { ...stripRetainedSecrets(previous, normalizedDraft), enabled: true };
+      if (inheritsProxy) {
+        delete (candidate as Record<string, unknown>)['proxy'];
+      }
     }
   }
 
@@ -58,6 +65,7 @@ function hasSameProviderIdentity(previous: Provider, draft: DashboardProviderDra
     return (
       previous.protocol === draft.protocol &&
       previous.baseURL === draft.baseURL &&
+      isEqual(previous.endpoints, draft.endpoints) &&
       hasSameProxyIdentity(previous.proxy, draft.proxy)
     );
   }
@@ -84,4 +92,34 @@ function hasSameProxyIdentity(previous: string | false | undefined, draft: strin
   if (draft === undefined) resolved = previous;
   else if (draft !== null) resolved = draft;
   return resolved === previous;
+}
+
+function stripRetainedSecrets(previous: Provider, draft: DashboardProviderDraft): DashboardProviderDraft {
+  return stripMatchingSecrets(draft, previous) as DashboardProviderDraft;
+}
+
+function stripMatchingSecrets(submitted: unknown, previous: unknown, key = ''): unknown {
+  if (typeof submitted === 'string') {
+    if (submitted === previous) return isSensitiveDraftKey(key) ? undefined : submitted;
+    return submitted;
+  }
+  if (Array.isArray(submitted)) {
+    const previousItems = Array.isArray(previous) ? previous : [];
+    return submitted.map((value, index) => stripMatchingSecrets(value, previousItems[index]));
+  }
+  if (submitted !== null && typeof submitted === 'object') {
+    const previousRecord =
+      previous !== null && typeof previous === 'object' ? (previous as Record<string, unknown>) : {};
+    const next: Record<string, unknown> = {};
+    for (const [entryKey, value] of Object.entries(submitted as Record<string, unknown>)) {
+      const stripped = stripMatchingSecrets(value, previousRecord[entryKey], entryKey);
+      if (stripped !== undefined) next[entryKey] = stripped;
+    }
+    return next;
+  }
+  return submitted;
+}
+
+function isSensitiveDraftKey(key: string): boolean {
+  return /(?:api[-_]?key|authorization|bearer|credential|password|secret|token|headers|proxy)/i.test(key);
 }

@@ -910,6 +910,7 @@
         "metadata_extend_loading_placeholder": "모델 카탈로그를 불러오는 중…",
         "metadata_extend_aria_label": "상속할 models.dev 모델을 검색하고 선택",
         "metadata_capability_label_reasoning": "추론",
+        "metadata_capability_label_temperature": "온도",
         "metadata_capability_label_tool_call": "도구 호출",
         "metadata_capability_label_attachment": "파일 첨부",
         "metadata_capability_label_structured_output": "구조화된 출력",

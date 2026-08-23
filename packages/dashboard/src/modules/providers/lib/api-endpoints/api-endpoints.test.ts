@@ -88,6 +88,22 @@ describe('apiDraftFromProvider', () => {
       ]),
     );
   });
+
+  test('a legacy pair plus extra endpoints that share the same URL stays separate', () => {
+    expect(
+      apiDraftFromProvider({
+        kind: ProviderKind.Api,
+        protocol: ProviderProtocol.OpenAICompatible,
+        baseURL: 'https://same.example/v1',
+        endpoints: [{ protocol: ProviderProtocol.Anthropic, baseURL: 'https://same.example/v1' }],
+      }),
+    ).toEqual(
+      separate([
+        { protocol: ProviderProtocol.OpenAICompatible, baseURL: 'https://same.example/v1' },
+        { protocol: ProviderProtocol.Anthropic, baseURL: 'https://same.example/v1' },
+      ]),
+    );
+  });
 });
 
 describe('apiDraftToMutation', () => {

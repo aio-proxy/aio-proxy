@@ -14,7 +14,7 @@ import {
 import { toast } from '@aio-proxy/ui/components/toast';
 import { useQuery } from '@tanstack/react-query';
 import { useSelector } from '@tanstack/react-store';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 
 import { useOAuthProviderForm } from '../../hooks/use-oauth-provider-form';
 import {
@@ -24,7 +24,7 @@ import {
   useProviderEditorForm,
 } from '../../hooks/use-provider-editor-form';
 import { useProviderCreate, useProviderUpdate } from '../../hooks/use-provider-mutations';
-import { aliasEditorIssues, serializeAlias, toAliasRecord } from '../../lib/alias-editor';
+import { aliasEditorIssues, serializeAlias, toAliasRecord, toAliasRows } from '../../lib/alias-editor';
 import { ProviderFormMode, PROVIDER_KIND_LABEL } from '../../lib/constants';
 import { exposedModels } from '../../lib/exposed-models';
 import { applyModelRows, toModelRows } from '../../lib/model-rows';
@@ -247,20 +247,6 @@ export const useProviderEditorPage = ({
 }: ProviderEditorPageProps) => {
   const [optionsValid, setOptionsValid] = useState(kind !== 'ai-sdk');
   const [transformsValid, setTransformsValid] = useState(true);
-  const {
-    openPopup,
-    closeUnclaimedPopup,
-    startMutation,
-    callbackMutation,
-    cancelMutation,
-    sessionQuery,
-    session,
-    authorizedProviderId,
-    sessionWarning,
-    persistedId,
-    navigate,
-  } = useOAuthEditorSession(mode, sessionId, onSessionIdChange, providerId);
-
   const form = useProviderEditorForm({ kind, initial });
   const accountForm = useOAuthProviderForm(
     () => undefined,
@@ -274,6 +260,33 @@ export const useProviderEditorPage = ({
         }
       : undefined,
   );
+  const onSessionSucceeded = useCallback(() => {
+    accountForm.setFieldValue('secrets', {});
+    accountForm.setFieldValue('clearSecrets', []);
+    if (oauth !== undefined) {
+      accountForm.setFieldValue('publicValues', oauth.publicValues);
+    }
+    if (initial !== undefined) {
+      form.reset({
+        ...initial,
+        kind,
+        alias: initial.alias === undefined ? undefined : toAliasRows(initial.alias),
+      } as ProviderEditorShape);
+    }
+  }, [accountForm, form, initial, kind, oauth]);
+  const {
+    openPopup,
+    closeUnclaimedPopup,
+    startMutation,
+    callbackMutation,
+    cancelMutation,
+    sessionQuery,
+    session,
+    authorizedProviderId,
+    sessionWarning,
+    persistedId,
+    navigate,
+  } = useOAuthEditorSession(mode, sessionId, onSessionIdChange, providerId, onSessionSucceeded);
 
   const { mutate: createProvider, isPending: isCreating } = useProviderCreate();
   const { mutate: updateProvider, isPending: isUpdating } = useProviderUpdate();

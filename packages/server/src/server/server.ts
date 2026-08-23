@@ -84,8 +84,7 @@ const requireExpectedHost =
     const hostname = host === undefined ? undefined : hostHeaderHostname(host);
     if (
       host !== undefined &&
-      (hostname === undefined ||
-        (hostname !== expectedHost && !canonicalLoopbackOriginHosts.has(hostname) && !hostname.startsWith('127.')))
+      (hostname === undefined || (hostname !== expectedHost && !canonicalLoopbackOriginHosts.has(hostname)))
     ) {
       return context.text('Forbidden', 403);
     }

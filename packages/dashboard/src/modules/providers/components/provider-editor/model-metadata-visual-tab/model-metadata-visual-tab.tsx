@@ -13,10 +13,7 @@ interface ModelMetadataVisualTabProps {
   readonly onChange: (value: Readonly<Record<string, unknown>>) => void;
 }
 
-/**
- * The fields of `ModelMetadataSchema` this tab exposes. Labels follow the demo's prose
- * (`Temperature` stays an English literal). Config key paths appear only in the JSON tab.
- */
+/** The fields of `ModelMetadataSchema` this tab exposes. Config key paths appear only in the JSON tab. */
 const LIMIT_FIELDS = ['context', 'input', 'output'] as const;
 const CAPABILITY_FIELDS = ['reasoning', 'temperature', 'toolCall', 'attachment', 'structuredOutput'] as const;
 const COST_FIELDS = ['input', 'output', 'cacheRead', 'cacheWrite', 'reasoning'] as const;
@@ -29,7 +26,7 @@ const LIMIT_LABEL: Readonly<Record<(typeof LIMIT_FIELDS)[number], () => string>>
 
 const CAPABILITY_LABEL: Readonly<Record<(typeof CAPABILITY_FIELDS)[number], () => string>> = {
   reasoning: m['dashboard.providers.editor.metadata_capability_label_reasoning'],
-  temperature: () => 'Temperature',
+  temperature: m['dashboard.providers.editor.metadata_capability_label_temperature'],
   toolCall: m['dashboard.providers.editor.metadata_capability_label_tool_call'],
   attachment: m['dashboard.providers.editor.metadata_capability_label_attachment'],
   structuredOutput: m['dashboard.providers.editor.metadata_capability_label_structured_output'],

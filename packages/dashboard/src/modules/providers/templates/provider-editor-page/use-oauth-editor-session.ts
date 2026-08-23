@@ -22,6 +22,7 @@ export const useOAuthEditorSession = (
   sessionId: string | undefined,
   onSessionIdChange: (sessionId: string | undefined) => void,
   providerId: string | undefined,
+  onSessionSucceeded?: () => void,
 ) => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -80,7 +81,11 @@ export const useOAuthEditorSession = (
       setAuthorizedProviderId(session.providerId);
       setSessionWarning(session.warning);
       void queryClient.invalidateQueries({ queryKey: queryKeys.providers });
-      void editViewQuery.refetch();
+      void (async () => {
+        await editViewQuery.refetch();
+        await queryClient.invalidateQueries({ queryKey: queryKeys.providerEditView(session.providerId) });
+        onSessionSucceeded?.();
+      })();
       if (mode === ProviderFormMode.Create) {
         void navigate({
           to: '/providers/$id/edit',
@@ -90,7 +95,7 @@ export const useOAuthEditorSession = (
         });
       }
     }
-  }, [closeUnclaimedPopup, editViewQuery, mode, navigate, queryClient, session]);
+  }, [closeUnclaimedPopup, editViewQuery, mode, navigate, onSessionSucceeded, queryClient, session]);
 
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {

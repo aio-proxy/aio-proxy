@@ -48,6 +48,16 @@ describe('dashboard DNS-rebinding guard', () => {
     expect(await res.text()).not.toContain(sentinel);
   });
 
+  test('GET edit-view refuses a 127-prefixed attacker hostname', async () => {
+    const app = await createServer();
+    const res = await app.request(
+      '/dashboard/api/providers/upstream/edit-view',
+      { headers: { host: '127.attacker.example:9317', 'sec-fetch-site': 'same-origin' } },
+      loopbackServer,
+    );
+    expect(res.status).toBe(403);
+    expect(await res.text()).not.toContain(sentinel);
+  });
   test('GET edit-view still serves the real api key to the loopback dashboard', async () => {
     const app = await createServer();
     const res = await app.request(

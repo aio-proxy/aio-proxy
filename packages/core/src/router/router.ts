@@ -4,9 +4,11 @@ import {
   type AliasDimensions,
   type AliasSelectRow,
   type ModelId,
+  type ModelRoute,
   type RouterConfig,
   flattenAliasVariants,
   matchAliasRows,
+  modelRoutes as listedModelRoutes,
 } from '@aio-proxy/types';
 
 import { RouterModelCollisionError, RouterModelNotFoundError } from '../error';
@@ -65,10 +67,7 @@ export type RouterResolveOptions = {
   readonly session?: LogicalRequestContext['session'];
 };
 
-export type ModelRoute = {
-  readonly alias: string;
-  readonly modelId: string;
-};
+export type { ModelRoute };
 
 type ConfiguredRouterRoute<TProvider extends RoutableProvider> = {
   readonly provider: TProvider;
@@ -242,13 +241,7 @@ function stableDraw(sessionKey: string, model: string, priority: number, drawInd
 }
 
 export function modelRoutes(provider: RoutableProvider): ModelRoute[] {
-  const routes = Object.entries(provider.alias ?? {}).map(([alias, config]) => ({ alias, modelId: config.model }));
-  for (const modelId of directModelIds(provider)) {
-    if (!routes.some((route) => route.alias === modelId && route.modelId === modelId)) {
-      routes.push({ alias: modelId, modelId });
-    }
-  }
-  return routes;
+  return listedModelRoutes(provider);
 }
 
 function directModelIds(provider: RoutableProvider): string[] {

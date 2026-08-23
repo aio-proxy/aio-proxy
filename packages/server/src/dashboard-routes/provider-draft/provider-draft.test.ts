@@ -515,6 +515,47 @@ describe('draft Provider catalog and test routes', () => {
     }
   });
 
+  test('prefilled stored credentials are not sent to a changed destination', async () => {
+    let authorization: string | null = null;
+    let savedHeader: string | null = null;
+    const relocated = Bun.serve({
+      hostname: '127.0.0.1',
+      port: 0,
+      fetch(request) {
+        authorization = request.headers.get('authorization');
+        savedHeader = request.headers.get('x-saved-secret');
+        return Response.json({ data: [{ id: 'relocated-model' }] });
+      },
+    });
+
+    try {
+      const response = await routes.request(
+        '/providers/draft/catalog',
+        jsonRequest(
+          {
+            draft: {
+              apiKey: 'saved-secret',
+              baseURL: `http://127.0.0.1:${relocated.port}/v1`,
+              headers: { 'x-saved-secret': 'saved-header' },
+              id: 'saved',
+              kind: 'api',
+              protocol: ProviderProtocol.OpenAICompatible,
+            },
+            persistedProviderId: 'saved',
+          },
+          'QUERY',
+        ),
+      );
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ ok: true, models: ['relocated-model'] });
+      expect(authorization).toBeNull();
+      expect(savedHeader).toBeNull();
+    } finally {
+      await relocated.stop(true);
+    }
+  });
+
   test('restores an unchanged proxy and materializes only explicit changed proxy semantics', () => {
     const baseDraft = {
       baseURL: 'https://saved.example/v1',

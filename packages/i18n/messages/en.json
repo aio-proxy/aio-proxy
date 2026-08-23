@@ -910,6 +910,7 @@
         "metadata_extend_loading_placeholder": "Loading model catalog…",
         "metadata_extend_aria_label": "Search and select a models.dev model to inherit",
         "metadata_capability_label_reasoning": "Reasoning",
+        "metadata_capability_label_temperature": "Temperature",
         "metadata_capability_label_tool_call": "Tool calling",
         "metadata_capability_label_attachment": "File attachments",
         "metadata_capability_label_structured_output": "Structured output",

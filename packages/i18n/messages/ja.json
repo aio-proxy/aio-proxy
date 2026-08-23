@@ -910,6 +910,7 @@
         "metadata_extend_loading_placeholder": "モデルカタログを読み込み中…",
         "metadata_extend_aria_label": "継承する models.dev モデルを検索して選択",
         "metadata_capability_label_reasoning": "推論",
+        "metadata_capability_label_temperature": "温度",
         "metadata_capability_label_tool_call": "ツール呼び出し",
         "metadata_capability_label_attachment": "ファイル添付",
         "metadata_capability_label_structured_output": "構造化出力",

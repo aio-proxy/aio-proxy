@@ -60,6 +60,12 @@ export function apiDraftFromProvider(value: {
     if (only.protocol === '') return emptySharedDraft();
     return { shape: 'shared', baseURL: only.baseURL, protocols: [only.protocol] };
   }
+  // A stored legacy protocol/baseURL pair is origin-mode. Keep it as a separate
+  // first row even when extra endpoints reuse the same URL, so a save does not
+  // collapse the pair into shared SDK-mode endpoints.
+  if (typeof value.protocol === 'string' && typeof value.baseURL === 'string' && Array.isArray(endpoints)) {
+    return { shape: 'separate', entries: rows };
+  }
   const urls = new Set(rows.map((row) => row.baseURL.trim()));
   const hasSpecialAuth = rows.some((row) => row.auth !== undefined && row.auth !== 'x-api-key');
   if (urls.size === 1 && !hasSpecialAuth && rows.every((row) => row.protocol !== '')) {

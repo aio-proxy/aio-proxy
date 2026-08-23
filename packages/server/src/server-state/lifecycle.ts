@@ -245,8 +245,10 @@ export function startLoginSessions(
   const testHooks = internalOptions.__test;
   const { host, port } = (runtime.manager.current() as Snapshot).config.server;
   const completeHost = host === '::' || host === '[::]' ? '[::1]' : host === '0.0.0.0' ? '127.0.0.1' : host;
+  const completeAuthority =
+    completeHost.includes(':') && !completeHost.startsWith('[') ? `[${completeHost}]` : completeHost;
   return createOAuthLoginSessionManager({
-    completeUrl: `http://${completeHost}:${port}/dashboard/oauth/complete`,
+    completeUrl: `http://${completeAuthority}:${port}/dashboard/oauth/complete`,
     configFile: runtime.configFile,
     repository,
     acquireRegistry: () => {
