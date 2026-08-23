@@ -36,7 +36,7 @@ describe('dashboard provider CRUD', () => {
     expect(disk.alias).toMatchObject({
       'gpt-4o': {
         model: 'gpt-4o-upstream',
-        variants: { thinking: { model: 'o3-upstream' } },
+        variants: [{ when: { effort: 'thinking' }, model: 'o3-upstream', preserve: false }],
       },
     });
   });
