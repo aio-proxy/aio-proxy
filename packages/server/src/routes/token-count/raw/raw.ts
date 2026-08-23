@@ -1,4 +1,4 @@
-import type { ProtocolAdapter, RouterResolution } from '@aio-proxy/core';
+import type { ProtocolAdapter, RouterCandidate } from '@aio-proxy/core';
 import type { LogicalRequestContext } from '@aio-proxy/plugin-sdk';
 import { ProviderProtocol } from '@aio-proxy/types';
 
@@ -31,6 +31,7 @@ function discardResponse(response: Response): void {
 export async function attemptRawCount<TRequest, TContext>({
   adapter,
   candidate,
+  attempt,
   attemptIndex,
   rawRequest,
   request,
@@ -39,7 +40,8 @@ export async function attemptRawCount<TRequest, TContext>({
   session,
 }: {
   readonly adapter: ProtocolAdapter<TRequest, TContext>;
-  readonly candidate: RouterResolution<RuntimeProviderInstance>;
+  readonly candidate: RouterCandidate<RuntimeProviderInstance>;
+  readonly attempt: CountAttempt;
   readonly attemptIndex: number;
   readonly rawRequest: Request;
   readonly request: TRequest;
@@ -59,11 +61,6 @@ export async function attemptRawCount<TRequest, TContext>({
   if (raw === undefined) return { kind: 'fallthrough' };
 
   throwIfCountAborted(session, rawRequest.signal);
-  const attempt: CountAttempt = {
-    providerId: candidate.provider.id,
-    modelId: candidate.modelId,
-    providerKind: candidate.provider.kind,
-  };
   const attemptSpan = startAttemptSpan(session, attempt, attemptIndex);
   let response: Response | undefined;
   try {

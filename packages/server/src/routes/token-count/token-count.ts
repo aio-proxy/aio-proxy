@@ -3,29 +3,31 @@ import {
   type ModelInvocation,
   type ProtocolAdapter,
   RequestBodyTooLargeError,
+  type RouterCandidate,
   RouterModelNotFoundError,
-  type RouterResolution,
   UnsupportedContentEncodingError,
 } from '@aio-proxy/core';
 import type { LogicalRequestContext, ProtocolId, TokenCountInput } from '@aio-proxy/plugin-sdk';
 import { context } from '@opentelemetry/api';
 
+import type { LogicalSessionResolution } from '../../logical-session-store';
 import { observeInboundRequest, withAttemptLogContext, withRequestLogContext } from '../../request-logging';
 import { attributeName, type RequestTraceSession } from '../../request-tracing';
 import { isInboundAbort } from '../../route-observation';
 import type { ProviderRouteSource, RuntimeProviderInstance } from '../../runtime';
 import { hasInvalidOrOversizedContentLength, resolveSupportedEffortsForDimensions } from '../pipeline';
 import { prioritizeAffinity } from '../pipeline/affinity';
+import { candidateSelectionSource } from '../pipeline/attempt-base';
 import { failureTerminal } from '../pipeline/failure';
 import { cancelRetainedRequestBody } from '../pipeline/request';
 import { estimateInputTokens } from './estimate';
 import { attemptRawCount } from './raw';
 import {
-  type CountAttempt,
   recordLocalEstimate,
   recordSkippedCandidate,
   startAttemptSpan,
   throwIfCountAborted,
+  toCountAttempt,
 } from './shared';
 
 export type HandleTokenCountOptions<TRequest, TContext> = {
@@ -122,7 +124,9 @@ async function handleTokenCountInContext<TRequest, TContext>(
     }
     const lease = source.acquireProviderSnapshot();
     try {
-      const candidates = lease.snapshot.router.resolve(requestedModel, adapter.dimensions(request, context));
+      const candidates = lease.snapshot.router.resolve(requestedModel, adapter.dimensions(request, context), {
+        session: resolution.context.session,
+      });
       const affinityOrdered =
         resolution.affinity?.active === true
           ? prioritizeAffinity(candidates, resolution.affinity.providerId)
@@ -137,6 +141,7 @@ async function handleTokenCountInContext<TRequest, TContext>(
         invocation,
         rawRequest,
         request,
+        resolution,
         session,
       });
     } catch (error) {
@@ -162,13 +167,14 @@ function finishRejected(session: RequestTraceSession, response: Response, errorC
 
 type CountCandidatesOptions<TRequest, TContext> = {
   readonly adapter: ProtocolAdapter<TRequest, TContext>;
-  readonly candidates: readonly RouterResolution<RuntimeProviderInstance>[];
+  readonly candidates: readonly RouterCandidate<RuntimeProviderInstance>[];
   readonly context: TContext;
   readonly logicalRequest: LogicalRequestContext;
   readonly format: (inputTokens: number) => unknown;
   readonly invocation: ModelInvocation;
   readonly rawRequest: Request;
   readonly request: TRequest;
+  readonly resolution: LogicalSessionResolution;
   readonly session: RequestTraceSession;
 };
 
@@ -181,6 +187,7 @@ async function countCandidates<TRequest, TContext>({
   invocation,
   rawRequest,
   request,
+  resolution,
   session,
 }: CountCandidatesOptions<TRequest, TContext>): Promise<Response> {
   throwIfCountAborted(session, rawRequest.signal);
@@ -190,9 +197,11 @@ async function countCandidates<TRequest, TContext>({
   const dimensions = adapter.dimensions(request, context);
 
   for (const [attemptIndex, candidate] of candidates.entries()) {
+    const attempt = toCountAttempt(candidate, candidateSelectionSource(candidate, resolution));
     const rawResult = await attemptRawCount({
       adapter,
       candidate,
+      attempt,
       attemptIndex,
       rawRequest,
       request,
@@ -204,7 +213,6 @@ async function countCandidates<TRequest, TContext>({
     if (rawResult.kind === 'next') continue;
     // 'fallthrough' → this candidate has no raw transport; try its tokenCount path below.
     const provider = candidate.provider;
-    const attempt: CountAttempt = { providerId: provider.id, modelId: candidate.modelId, providerKind: provider.kind };
     const count = provider.tokenCount;
     if (count === undefined) {
       recordSkippedCandidate(session, attempt, attemptIndex, 'no_capability');

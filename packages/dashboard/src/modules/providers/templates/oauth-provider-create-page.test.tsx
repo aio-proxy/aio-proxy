@@ -1,6 +1,6 @@
 import type { DashboardOAuthCapability, DashboardOAuthSession } from '@aio-proxy/types';
 import { afterEach, expect, rs, test } from '@rstest/core';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 
 import { OAuthProviderCreatePage } from './oauth-provider-create-page';
 
@@ -83,6 +83,36 @@ test('OAuth create page selects a capability and renders its account fields befo
     /Inherit global proxy|继承全局代理/u,
   );
   expect(screen.getByRole('button', { name: /Continue authorization|继续授权/u })).toBeTruthy();
+});
+
+test('OAuth create starts at priority 0 and weight 1, renders both controls, and submits both', async () => {
+  render(<OAuthProviderCreatePage sessionId={undefined} onSessionIdChange={rs.fn()} />);
+
+  const picker = screen.getByRole('combobox', { name: /OAuth provider|OAuth 提供商/u });
+  fireEvent.keyDown(picker, { key: 'ArrowDown' });
+  fireEvent.change(picker, { target: { value: 'Example' } });
+  fireEvent.click(await screen.findByRole('option', { name: /Example OAuth/u }));
+
+  const priority = within(screen.getByTestId('provider-form-field-priority')).getByRole('spinbutton');
+  const weight = within(screen.getByTestId('provider-form-field-weight')).getByRole('spinbutton');
+  expect(priority).toHaveValue(0);
+  expect(weight).toHaveValue(1);
+  expect(priority).toHaveAttribute('step', '1');
+  expect(weight).toHaveAttribute('step', 'any');
+
+  fireEvent.change(priority, { target: { value: '4' } });
+  fireEvent.change(weight, { target: { value: '1.6' } });
+  expect(screen.getByText(/normalize 1\.6 to 2|将 1\.6 规范为 2/u)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: /Continue authorization|继续授权/u }));
+
+  await waitFor(() =>
+    expect(mocks.start).toHaveBeenCalledWith(
+      expect.objectContaining({
+        providerPatch: expect.objectContaining({ enabled: true, priority: 4, weight: 2 }),
+      }),
+      expect.objectContaining({ onError: expect.any(Function) }),
+    ),
+  );
 });
 
 test('OAuth create page submits a typed provider proxy patch without using the stepper', async () => {

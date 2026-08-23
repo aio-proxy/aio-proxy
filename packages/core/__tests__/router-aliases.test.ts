@@ -21,7 +21,7 @@ describe('Router', () => {
     } satisfies ProviderInstance;
     const router = new Router([provider]);
 
-    expect(router.resolve('gpt-5')).toEqual([{ provider, modelId: 'gpt-5' }]);
+    expect(router.resolve('gpt-5')).toMatchObject([{ provider, modelId: 'gpt-5' }]);
   });
 
   test('reuses an explicit self-alias for a preserved variant targeting the same model', () => {
@@ -39,7 +39,7 @@ describe('Router', () => {
     } satisfies ProviderInstance;
     const router = new Router([provider]);
 
-    expect(router.resolve('gpt-5')).toEqual([{ provider, modelId: 'gpt-5' }]);
+    expect(router.resolve('gpt-5')).toMatchObject([{ provider, modelId: 'gpt-5' }]);
   });
 
   test('deduplicates identical preserved routes within a provider', () => {
@@ -53,7 +53,7 @@ describe('Router', () => {
     } satisfies ProviderInstance;
     const router = new Router([provider]);
 
-    expect(router.resolve('gpt-5-mini')).toEqual([{ provider, modelId: 'gpt-5-mini' }]);
+    expect(router.resolve('gpt-5-mini')).toMatchObject([{ provider, modelId: 'gpt-5-mini' }]);
   });
 
   test('rejects an explicit alias that conflicts with a preserved model id', () => {
@@ -80,7 +80,7 @@ describe('Router', () => {
 
     const router = new Router([openai, other]);
 
-    expect(router.resolve('other/mini')).toEqual([{ provider: other, modelId: 'other-mini' }]);
+    expect(router.resolve('other/mini')).toMatchObject([{ provider: other, modelId: 'other-mini' }]);
   });
 
   test('throws a 404 sentinel for a missing alias', () => {
@@ -110,6 +110,6 @@ describe('Router', () => {
 
     const resolved = router.resolve('sonnet');
 
-    expect(resolved).toEqual([{ provider: legacyOAuth, modelId: 'claude-sonnet-4-5' }]);
+    expect(resolved).toMatchObject([{ provider: legacyOAuth, modelId: 'claude-sonnet-4-5' }]);
   });
 });

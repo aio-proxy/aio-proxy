@@ -6,6 +6,7 @@ import type { ReactElement } from 'react';
 
 import { parseProviderFormInitial, useProviderForm } from '../hooks/use-provider-form';
 import { ProviderFormMode } from '../lib/constants';
+import { ProviderCommonFields } from './provider-common-fields';
 import { ProviderFormFieldsApi } from './provider-form-fields-api';
 
 const mocks = rs.hoisted(() => ({ fetchCatalog: rs.fn() }));
@@ -286,5 +287,108 @@ describe('API provider form fields', () => {
     fireEvent.click(within(drawer).getByRole('combobox', { name: /Target Model|目标模型/u }));
     expect(await screen.findByRole('option', { name: 'model-a' })).toBeInTheDocument();
     expect(screen.getByRole('option', { name: 'model-b' })).toBeInTheDocument();
+  });
+
+  test.each([{ kind: ProviderKind.Api }, { kind: ProviderKind.AiSdk }])(
+    'starts a new $kind Provider form at priority 0 and weight 1',
+    ({ kind }) => {
+      const { result } = renderHook(() => useProviderForm({ mode: ProviderFormMode.Create, kind }));
+
+      expect(result.current.state.values.priority).toBe(0);
+      expect(result.current.state.values.weight).toBe(1);
+    },
+  );
+
+  test('routing controls use integer priority and accept fractional authored weight', async () => {
+    const { result } = renderHook(() =>
+      useProviderForm({
+        mode: ProviderFormMode.Create,
+        kind: ProviderKind.Api,
+        initial: {
+          kind: ProviderKind.Api,
+          id: 'api-provider',
+          protocol: ProviderProtocol.OpenAICompatible,
+          baseURL: 'https://api.example/v1',
+        },
+      }),
+    );
+
+    renderWithQueryClient(
+      <ProviderFormFieldsApi
+        form={result.current}
+        mode={ProviderFormMode.Create}
+        activeStep={2}
+        aliasOpen={false}
+        onAliasOpenChange={rs.fn()}
+        onTransformsValidityChange={rs.fn()}
+      />,
+    );
+
+    const priority = within(screen.getByTestId('provider-form-field-priority')).getByRole('spinbutton');
+    const weight = within(screen.getByTestId('provider-form-field-weight')).getByRole('spinbutton');
+    expect(priority).toHaveAttribute('step', '1');
+    expect(weight).toHaveAttribute('step', 'any');
+    fireEvent.change(weight, { target: { value: '1.6' } });
+    expect(result.current.getFieldValue('weight')).toBe(1.6);
+    expect(screen.getByText(/within (this|one) priority|同一优先级/u)).toBeTruthy();
+  });
+
+  test.each([
+    {
+      kind: ProviderKind.Api,
+      initial: {
+        kind: ProviderKind.Api,
+        id: 'api-provider',
+        protocol: ProviderProtocol.OpenAICompatible,
+        baseURL: 'https://api.example/v1',
+        priority: 5,
+        weight: 1.6,
+      },
+    },
+    {
+      kind: ProviderKind.AiSdk,
+      initial: {
+        kind: ProviderKind.AiSdk,
+        id: 'sdk-provider',
+        packageName: '@ai-sdk/openai-compatible',
+        priority: 5,
+        weight: 1.6,
+      },
+    },
+  ])('submits normalized $kind priority and weight', async ({ kind, initial }) => {
+    const onSubmit = rs.fn();
+    const { result } = renderHook(() => useProviderForm({ mode: ProviderFormMode.Edit, kind, initial, onSubmit }));
+
+    await act(async () => result.current.handleSubmit());
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    expect(onSubmit.mock.calls[0]?.[0]).toMatchObject({ priority: 5, weight: 2 });
+  });
+
+  test('recomputes non-blocking normalization copy from the current authored draft', () => {
+    const { result } = renderHook(() =>
+      useProviderForm({
+        mode: ProviderFormMode.Edit,
+        kind: ProviderKind.Api,
+        initial: { kind: ProviderKind.Api, id: 'api-provider', enabled: true, priority: 0, weight: 1 },
+      }),
+    );
+
+    const view = render(<ProviderCommonFields form={result.current} mode={ProviderFormMode.Edit} section="routing" />);
+
+    expect(screen.queryByText(/normalize /u)).toBeNull();
+
+    fireEvent.change(within(screen.getByTestId('provider-form-field-weight')).getByRole('spinbutton'), {
+      target: { value: '1.6' },
+    });
+    view.rerender(<ProviderCommonFields form={result.current} mode={ProviderFormMode.Edit} section="routing" />);
+    const notice = screen.getByText(/normalize 1\.6 to 2|将 1\.6 规范为 2/u);
+    expect(notice.closest('[role="alert"]')).toBeNull();
+
+    fireEvent.change(within(screen.getByTestId('provider-form-field-weight')).getByRole('spinbutton'), {
+      target: { value: '2' },
+    });
+    view.rerender(<ProviderCommonFields form={result.current} mode={ProviderFormMode.Edit} section="routing" />);
+    expect(screen.queryByText(/normalize /u)).toBeNull();
   });
 });

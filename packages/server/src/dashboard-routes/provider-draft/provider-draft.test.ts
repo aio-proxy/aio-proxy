@@ -382,6 +382,8 @@ describe('draft Provider catalog and test routes', () => {
           name: 'changed-sdk',
         },
         packageName: '@ai-sdk/openai-compatible',
+        priority: 0,
+        weight: 1,
       },
     });
   });

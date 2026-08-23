@@ -1,6 +1,9 @@
 import { m } from '@aio-proxy/i18n';
 import type { DashboardOAuthCapability, DashboardOAuthSession } from '@aio-proxy/types';
 import { Button } from '@aio-proxy/ui/components/button';
+import { Field, FieldDescription } from '@aio-proxy/ui/components/field';
+import { Input } from '@aio-proxy/ui/components/input';
+import { Label } from '@aio-proxy/ui/components/label';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { useCallback, useEffect, useRef } from 'react';
@@ -15,6 +18,7 @@ import { ProviderProxyField } from '../components/provider-proxy-field';
 import { useOAuthProviderForm } from '../hooks/use-oauth-provider-form';
 import { ProviderFormMode } from '../lib/constants';
 import { oauthAccountSubmission } from '../lib/oauth-account-submission';
+import { routingDraftNormalization } from '../lib/routing-draft-normalization';
 import {
   cancelOAuthSession,
   oauthCapabilitiesQueryOptions,
@@ -63,6 +67,8 @@ export const OAuthProviderCreatePage: React.FC<OAuthProviderCreatePageProps> = (
         clearSecrets: [...account.clearSecrets],
         providerPatch: {
           enabled: true,
+          ...(value.priority === undefined ? {} : { priority: value.priority }),
+          ...(value.weight === undefined ? {} : { weight: value.weight }),
           ...(value.proxy === undefined ? {} : { proxy: value.proxy }),
         },
       },
@@ -138,6 +144,75 @@ export const OAuthProviderCreatePage: React.FC<OAuthProviderCreatePageProps> = (
                       <form.Field name="proxy">
                         {(field) => <ProviderProxyField field={field} mode={ProviderFormMode.Create} />}
                       </form.Field>
+                    )}
+                    {selected === undefined ? null : (
+                      <>
+                        <div data-testid="provider-form-field-priority">
+                          <form.Field name="priority">
+                            {(field) => {
+                              const notice = routingDraftNormalization('priority', field.state.value);
+                              return (
+                                <Field>
+                                  <Label htmlFor={field.name}>{m['dashboard.providers.form.label_priority']()}</Label>
+                                  <Input
+                                    id={field.name}
+                                    type="number"
+                                    step="1"
+                                    value={field.state.value ?? ''}
+                                    onChange={(event) =>
+                                      field.handleChange(
+                                        event.target.value === '' ? undefined : Number(event.target.value),
+                                      )
+                                    }
+                                  />
+                                  {notice === undefined ? null : (
+                                    <FieldDescription>
+                                      {m['dashboard.providers.form.normalize_notice']({
+                                        authored: notice.authored,
+                                        effective: notice.effective,
+                                      })}
+                                    </FieldDescription>
+                                  )}
+                                </Field>
+                              );
+                            }}
+                          </form.Field>
+                        </div>
+                        <div data-testid="provider-form-field-weight">
+                          <form.Field name="weight">
+                            {(field) => {
+                              const notice = routingDraftNormalization('weight', field.state.value);
+                              return (
+                                <Field>
+                                  <Label htmlFor={field.name}>{m['dashboard.providers.form.label_weight']()}</Label>
+                                  <Input
+                                    id={field.name}
+                                    type="number"
+                                    step="any"
+                                    value={field.state.value ?? ''}
+                                    onChange={(event) =>
+                                      field.handleChange(
+                                        event.target.value === '' ? undefined : Number(event.target.value),
+                                      )
+                                    }
+                                  />
+                                  <FieldDescription>
+                                    {m['dashboard.providers.form.description_weight']()}
+                                  </FieldDescription>
+                                  {notice === undefined ? null : (
+                                    <FieldDescription>
+                                      {m['dashboard.providers.form.normalize_notice']({
+                                        authored: notice.authored,
+                                        effective: notice.effective,
+                                      })}
+                                    </FieldDescription>
+                                  )}
+                                </Field>
+                              );
+                            }}
+                          </form.Field>
+                        </div>
+                      </>
                     )}
                     <Button type="submit" disabled={selected === undefined || startMutation.isPending}>
                       {m['dashboard.providers.oauth.continue']()}

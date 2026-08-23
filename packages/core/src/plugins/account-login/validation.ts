@@ -148,6 +148,7 @@ export function providerEntry(
   patch?: OAuthProviderPatch,
 ): PlainRecord {
   const enabled = patch?.enabled ?? existing?.['enabled'] ?? true;
+  const priority = patch === undefined ? existing?.['priority'] : patch.priority;
   const weight = patch === undefined ? existing?.['weight'] : patch.weight;
   const name = patch === undefined ? existing?.['name'] : patch.name;
   const alias = patch?.alias ?? existing?.['alias'] ?? defaults;
@@ -159,6 +160,7 @@ export function providerEntry(
     capability,
     ...(Object.keys(publicOptions).length === 0 ? {} : { options: publicOptions }),
     enabled,
+    ...(priority === undefined ? {} : { priority }),
     ...(weight === undefined ? {} : { weight }),
     ...(name === undefined ? {} : { name }),
     ...(alias === undefined ? {} : { alias }),

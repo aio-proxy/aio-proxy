@@ -1,4 +1,4 @@
-import type { ModelInvocation, ProtocolAdapter, RouterResolution } from '@aio-proxy/core';
+import type { ModelInvocation, ProtocolAdapter, RouterCandidate } from '@aio-proxy/core';
 import type { LogicalRequestContext } from '@aio-proxy/plugin-sdk';
 import type { ProviderProtocol } from '@aio-proxy/types';
 
@@ -59,12 +59,18 @@ export type AttemptLoopContext<TRequest, TContext> = {
 // Per-candidate facts.
 export type CandidateSlot = {
   readonly index: number;
-  readonly candidate: RouterResolution<RuntimeProviderInstance>;
+  readonly candidate: RouterCandidate<RuntimeProviderInstance>;
   readonly startedAt: number;
   readonly observation: AttemptResponseObservation;
   readonly hasNext: boolean;
   readonly trace: {
-    providerWeight?: AttemptTraceMetadata['providerWeight'];
+    routingContractVersion: AttemptTraceMetadata['routingContractVersion'];
+    providerWeight: AttemptTraceMetadata['providerWeight'];
+    effectivePriority: AttemptTraceMetadata['effectivePriority'];
+    effectiveWeight: AttemptTraceMetadata['effectiveWeight'];
+    prioritySource: AttemptTraceMetadata['prioritySource'];
+    weightSource: AttemptTraceMetadata['weightSource'];
+    selectionSource: AttemptTraceMetadata['selectionSource'];
     transport?: AttemptTraceMetadata['transport'];
     sourceProtocol: AttemptTraceMetadata['sourceProtocol'];
     targetProtocol?: AttemptTraceMetadata['targetProtocol'];

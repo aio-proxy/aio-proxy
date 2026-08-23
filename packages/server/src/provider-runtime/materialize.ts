@@ -43,6 +43,7 @@ export function materializeRuntimeProvider(
       id: provider.id,
       kind: provider.kind,
       enabled: provider.enabled,
+      ...routingDefaults(provider),
       ...(provider.models === undefined ? {} : { models: provider.models }),
       ...(provider.alias === undefined ? {} : { alias: provider.alias }),
       ...(provider.metadata === undefined ? {} : { configMetadata: provider.metadata }),
@@ -146,9 +147,12 @@ export function materializeProviders(config: Config, options: MaterializeProvide
           createObservedFetch(createFetch(effectiveProxy(config.proxy, provider.proxy))),
         );
         const api = createApi(provider, { fetch: providerFetch });
-        const instance = materializeRuntimeProvider(api, {
-          apiBridge: bridgeApiProvider(provider, { fetch: providerFetch }),
-        });
+        const instance = withRoutingDefaults(
+          materializeRuntimeProvider(api, {
+            apiBridge: bridgeApiProvider(provider, { fetch: providerFetch }),
+          }),
+          provider,
+        );
         probes.set(id, () => probeApi(provider, api));
         providers.push(instance);
         summaries.push(providerSummary(instance, provider.name, provider));
@@ -160,7 +164,7 @@ export function materializeProviders(config: Config, options: MaterializeProvide
           createObservedFetch(createFetch(effectiveProxy(config.proxy, provider.proxy))),
         );
         const aiSdk = createAiSdk(provider, { fetch: providerFetch });
-        const instance = materializeRuntimeProvider(aiSdk);
+        const instance = withRoutingDefaults(materializeRuntimeProvider(aiSdk), provider);
         probes.set(id, () => probeAiSdk(aiSdk));
         providers.push(instance);
         summaries.push(providerSummary(instance, provider.name, provider));
@@ -238,12 +242,29 @@ function providerConfigSummary(provider: Provider): ProviderRuntimeSummary {
 
 function providerDisplayFields(
   provider: Provider,
-): Pick<ProviderRuntimeSummary, 'weight' | 'protocol' | 'packageName'> {
+): Pick<ProviderRuntimeSummary, 'priority' | 'weight' | 'protocol' | 'packageName'> {
   return {
-    ...(provider.weight === undefined ? {} : { weight: provider.weight }),
+    ...routingDefaults(provider),
     ...(provider.kind === ProviderKind.Api ? { protocol: apiProviderEndpoints(provider)[0].protocol } : {}),
     ...(provider.kind === ProviderKind.AiSdk ? { packageName: provider.packageName } : {}),
   };
+}
+
+function routingDefaults(provider: { readonly priority?: number; readonly weight?: number }): {
+  readonly priority?: number;
+  readonly weight?: number;
+} {
+  return {
+    ...(provider.priority === undefined ? {} : { priority: provider.priority }),
+    ...(provider.weight === undefined ? {} : { weight: provider.weight }),
+  };
+}
+
+function withRoutingDefaults(
+  instance: RuntimeProviderInstance,
+  provider: Pick<Provider, 'priority' | 'weight'>,
+): RuntimeProviderInstance {
+  return { ...instance, ...routingDefaults(provider) };
 }
 
 function assertNever(value: never): never {

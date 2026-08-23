@@ -23,6 +23,7 @@ export const DashboardProviderSummarySchema = z.object({
   last_latency: z.number().int().min(0).nullable(),
   probe: DashboardProviderProbeSchema.optional(),
   name: z.string().optional(),
+  priority: z.number().optional(),
   weight: z.number().optional(),
   protocol: ProviderProtocolSchema.optional(),
   packageName: z.string().trim().min(1).optional(),

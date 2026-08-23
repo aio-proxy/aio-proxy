@@ -16,10 +16,10 @@ import { LogicalSessionStore } from '../../logical-session-store';
 import type { ProviderRouteSource } from '../../runtime';
 import { handleProtocolRequest } from './index';
 
-test('records raw attempt metadata from the acquired snapshot config', async () => {
-  const raw = rawProvider({ id: 'raw', protocol: ProviderProtocol.OpenAIResponse });
+test('records raw attempt metadata from the Router candidate, not snapshot config weight', async () => {
+  const raw = rawProvider({ id: 'raw', protocol: ProviderProtocol.OpenAIResponse, priority: 4, weight: 17 });
   const route = defineProviderRouteSource([raw]);
-  const source = withSnapshotConfigs(route.source, apiConfig(17), apiConfig(99));
+  const source = withSnapshotConfigs(route.source, apiConfig(99), apiConfig(99));
 
   const response = await request(source, { model: REQUESTED_MODEL, input: 'ping' });
   await response.json();
@@ -29,7 +29,14 @@ test('records raw attempt metadata from the acquired snapshot config', async () 
     expect.objectContaining({
       providerId: 'raw',
       providerWeight: 17,
+      routingContractVersion: 2,
+      effectivePriority: 4,
+      effectiveWeight: 17,
+      prioritySource: 'provider',
+      weightSource: 'provider',
+      selectionSource: 'weighted_random',
       selectionReason: 'weight',
+      attemptIndex: 0,
       sourceProtocol: ProviderProtocol.OpenAIResponse,
       targetProtocol: ProviderProtocol.OpenAIResponse,
       transport: 'raw',
@@ -76,20 +83,37 @@ test('evaluates stream intent once before dispatching attempts', async () => {
   expect(wantsStreamCalls).toBe(1);
 });
 
-test('records active affinity metadata for a model attempt including implicit zero weight', async () => {
+test('records active affinity metadata from candidate routing rather than snapshot config weight', async () => {
   const weighted = modelProvider({
     id: 'weighted',
     targetProtocol: ProviderProtocol.OpenAIResponse,
     invoke: () => textStream('weighted'),
+    weight: 20,
   });
   const affinity = modelProvider({
     id: 'affinity',
     targetProtocol: ProviderProtocol.Anthropic,
     invoke: () => textStream('affinity'),
+    priority: 0,
+    weight: 3,
   });
-  const route = defineProviderRouteSource([weighted, affinity]);
+  const route = defineProviderRouteSource([weighted, affinity], undefined, undefined, {
+    config: ConfigSchema.parse({
+      router: {
+        models: {
+          [REQUESTED_MODEL]: {
+            providers: { affinity: { priority: 5, weight: 8 } },
+          },
+        },
+      },
+      providers: {
+        weighted: { kind: 'ai-sdk', packageName: '@ai-sdk/openai-compatible', weight: 20 },
+        affinity: { kind: 'ai-sdk', packageName: '@ai-sdk/anthropic', weight: 9 },
+      },
+    }),
+  });
   const source = {
-    ...withSnapshotConfigs(route.source, modelConfig('affinity')),
+    ...route.source,
     logicalSessionStore: new LogicalSessionStore({
       repository: {
         resolveResponse: () => undefined,
@@ -105,7 +129,13 @@ test('records active affinity metadata for a model attempt including implicit ze
   expect(route.recording.attempts[0]).toEqual(
     expect.objectContaining({
       providerId: 'affinity',
-      providerWeight: 0,
+      providerWeight: 3,
+      routingContractVersion: 2,
+      effectivePriority: 5,
+      effectiveWeight: 8,
+      prioritySource: 'model',
+      weightSource: 'model',
+      selectionSource: 'session_affinity',
       selectionReason: 'affinity',
       sourceProtocol: ProviderProtocol.OpenAIResponse,
       targetProtocol: ProviderProtocol.Anthropic,
@@ -144,7 +174,12 @@ test('records response owner when response ownership and affinity select the sam
   await settleRecording(route.recording);
 
   expect(route.recording.attempts[0]).toEqual(
-    expect.objectContaining({ providerId: 'owner', selectionReason: 'response_owner' }),
+    expect.objectContaining({
+      providerId: 'owner',
+      selectionReason: 'response_owner',
+      selectionSource: 'response_owner',
+      routingContractVersion: 2,
+    }),
   );
 });
 

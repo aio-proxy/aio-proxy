@@ -82,6 +82,72 @@ test('built-in OAuth commits through the Dashboard session without an authored P
   }
 });
 
+test.each([
+  { authored: 1.6, persisted: 2 },
+  { authored: -3, persisted: 0 },
+  { authored: 10_001, persisted: 10_000 },
+])('dashboard OAuth session persists canonical weight $authored as $persisted', async ({ authored, persisted }) => {
+  const dir = mkdtempSync(join(tmpdir(), 'aio-dashboard-oauth-weight-'));
+  const configPath = join(dir, 'config.json');
+  const packageName = '@example/oauth-weight';
+  writeFileSync(configPath, JSON.stringify({ plugins: [], providers: {} }));
+  const descriptor = definePlugin((api) => {
+    api.oauth.register({
+      id: 'default',
+      displayName: 'Weight OAuth',
+      account: { options: { schema: zod.object({}), form: [] } },
+      credentials: zod.object({ token: zod.string() }),
+      async login() {
+        return { fingerprint: 'weight@example.com', suggestedKey: 'person', credentials: { token: 'hidden' } };
+      },
+      catalog: {
+        policy: { kind: 'static' },
+        async discover() {
+          return { ...emptyModelCatalog, language: [{ id: 'weight-model' }] };
+        },
+      },
+      createRuntime: async () => ({ models: {} }),
+    });
+  });
+  const state = await createServerState({
+    config: ConfigSchema.parse({ plugins: [], providers: {} }),
+    configPath,
+    dbHome: dir,
+    watchConfig: false,
+    builtIns: [{ packageName, version: '1.0.0', descriptor }],
+  });
+  const routes = createDashboardRoutes(state, disabledDashboardAuthentication);
+
+  try {
+    const started = await routes.request('/oauth/sessions', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        ...emptyOAuthInput,
+        capability: { plugin: packageName, capability: 'default' },
+        providerPatch: { enabled: true, weight: authored, proxy: false },
+      }),
+    });
+    expect(started.status).toBe(202);
+    const { session } = (await started.json()) as { session: { id: string } };
+    const completed = await waitFor(
+      async () => {
+        const response = await routes.request(`/oauth/sessions/${session.id}`);
+        return (await response.json()) as { session: { status: string; providerId?: string; code?: string } };
+      },
+      (value) => value.session.status === 'succeeded' || value.session.status === 'failed',
+    );
+
+    expect(completed.session).toMatchObject({ status: 'succeeded', providerId: 'person' });
+    expect(state.currentConfig().providers).toContainEqual(
+      expect.objectContaining({ id: 'person', weight: persisted }),
+    );
+  } finally {
+    state.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('dashboard device-code session can be resumed by id and creates an OAuth provider', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'aio-dashboard-oauth-login-'));
   const configPath = join(dir, 'config.json');
@@ -136,6 +202,8 @@ test('dashboard device-code session can be resumed by id and creates an OAuth pr
         capability: { plugin: '@example/oauth', capability: 'default' },
         providerPatch: {
           enabled: true,
+          priority: 4,
+          weight: 3,
           proxy: 'https://proxy.example:8443',
           transforms: { request: [{ update: [{ $unset: 'request.body.store' }] }] },
         },
@@ -173,6 +241,8 @@ test('dashboard device-code session can be resumed by id and creates an OAuth pr
         kind: 'oauth',
         plugin: '@example/oauth',
         capability: 'default',
+        priority: 4,
+        weight: 3,
         proxy: 'https://proxy.example:8443',
         transforms: { request: [{ update: [{ $unset: 'request.body.store' }] }] },
       }),

@@ -2,6 +2,8 @@ import {
   type DashboardOAuthProviderPatch,
   type DashboardOAuthSessionStart,
   DashboardOAuthSessionStartSchema,
+  RoutingPrioritySchema,
+  RoutingWeightSchema,
 } from '@aio-proxy/types';
 import { type ReactFormExtendedApi, useForm } from '@tanstack/react-form';
 import { z } from 'zod';
@@ -13,6 +15,8 @@ export interface OAuthProviderFormValues {
   readonly clearSecrets: readonly string[];
   readonly jsonValues: Readonly<Record<string, string>>;
   readonly proxy?: DashboardOAuthProviderPatch['proxy'];
+  readonly priority?: number | undefined;
+  readonly weight?: number | undefined;
 }
 
 // The form-api generic uses a non-recursive `publicValues` shape: zod's recursive JSONType
@@ -61,6 +65,8 @@ export const useOAuthProviderForm = (
       secrets: {},
       clearSecrets: [],
       jsonValues: {},
+      priority: 0,
+      weight: 1,
       ...initial,
     } as OAuthProviderFormValues,
     validators: {
@@ -72,6 +78,8 @@ export const useOAuthProviderForm = (
           clearSecrets: value.clearSecrets,
           providerPatch: {
             enabled: true,
+            ...(value.priority === undefined ? {} : { priority: value.priority }),
+            ...(value.weight === undefined ? {} : { weight: value.weight }),
             ...(value.proxy === undefined ? {} : { proxy: value.proxy }),
           },
         });
@@ -79,5 +87,13 @@ export const useOAuthProviderForm = (
         return session.success && jsonValues.success ? undefined : 'INVALID_OAUTH_ACCOUNT_OPTIONS';
       },
     },
-    onSubmit: ({ value }) => onSubmit(value),
+    onSubmit: ({ value }) => {
+      const priority = RoutingPrioritySchema.safeParse(value.priority);
+      const weight = RoutingWeightSchema.safeParse(value.weight);
+      onSubmit({
+        ...value,
+        ...(priority.success ? { priority: priority.data } : {}),
+        ...(weight.success ? { weight: weight.data } : {}),
+      });
+    },
   }) as unknown as OAuthProviderForm;

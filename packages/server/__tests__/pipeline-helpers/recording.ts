@@ -78,9 +78,16 @@ function projectAttempt(span: StoredSpan): RecordedAttempt {
   const attrs = span.attributes;
   const protocol = str(attrs, attributeName.targetProtocol) as ProviderProtocol | undefined;
   const providerWeight = num(attrs, attributeName.providerWeight);
+  const routingContractVersion = num(attrs, attributeName.routingContractVersion);
+  const effectivePriority = num(attrs, attributeName.effectivePriority);
+  const effectiveWeight = num(attrs, attributeName.effectiveWeight);
+  const prioritySource = str(attrs, attributeName.prioritySource) as RecordedAttempt['prioritySource'];
+  const weightSource = str(attrs, attributeName.weightSource) as RecordedAttempt['weightSource'];
+  const selectionSource = str(attrs, attributeName.selectionSource) as RecordedAttempt['selectionSource'];
   const transport = str(attrs, attributeName.transport) as RecordedAttempt['transport'];
   const sourceProtocol = str(attrs, attributeName.sourceProtocol) as ProviderProtocol | undefined;
   const selectionReason = str(attrs, attributeName.selectionReason) as RecordedAttempt['selectionReason'];
+  const attemptIndex = num(attrs, attributeName.attemptIndex);
   const statusCode = num(attrs, attributeName.httpStatusCode);
   const errorCode = str(attrs, attributeName.errorCode);
   const stream = bool(attrs, attributeName.stream);
@@ -102,6 +109,13 @@ function projectAttempt(span: StoredSpan): RecordedAttempt {
     durationMs: Math.max(0, span.endedAt.getTime() - span.startedAt.getTime()),
     outcome: (str(attrs, attributeName.terminationReason) ?? 'success') as RecordedAttempt['outcome'],
     ...(providerWeight === undefined ? {} : { providerWeight }),
+    ...(routingContractVersion === undefined ? {} : { routingContractVersion }),
+    ...(effectivePriority === undefined ? {} : { effectivePriority }),
+    ...(effectiveWeight === undefined ? {} : { effectiveWeight }),
+    ...(prioritySource === undefined ? {} : { prioritySource }),
+    ...(weightSource === undefined ? {} : { weightSource }),
+    ...(selectionSource === undefined ? {} : { selectionSource }),
+    ...(attemptIndex === undefined ? {} : { attemptIndex }),
     ...(transport === undefined ? {} : { transport }),
     ...(sourceProtocol === undefined ? {} : { sourceProtocol }),
     ...(protocol === undefined ? {} : { targetProtocol: protocol }),

@@ -48,6 +48,8 @@ export function rawProvider(options: {
   };
   readonly modelId?: string;
   readonly protocol?: ProviderProtocol;
+  readonly priority?: number;
+  readonly weight?: number;
 }): FakeProvider {
   const calls = providerCalls();
   const protocol = options.protocol ?? ProviderProtocol.OpenAICompatible;
@@ -66,6 +68,7 @@ export function rawProvider(options: {
     protocol,
     raw: { resolve: ({ protocol: inbound }) => (inbound === protocol ? { invoke: rawInvoke } : undefined) },
     ...(model === undefined ? {} : { model }),
+    ...routingFields(options),
   } satisfies RuntimeProviderInstance;
   return { calls, provider };
 }
@@ -76,6 +79,8 @@ export function modelProvider(options: {
   readonly invoke: ModelTransport['invoke'];
   readonly modelId?: string;
   readonly targetProtocol?: ProviderProtocol;
+  readonly priority?: number;
+  readonly weight?: number;
 }): FakeProvider {
   const calls = providerCalls();
   const model = instrumentModel(options, calls);
@@ -87,6 +92,7 @@ export function modelProvider(options: {
     kind: ProviderKind.AiSdk,
     ...(model.ensureAvailable === undefined ? {} : { ensureAvailable: model.ensureAvailable }),
     model,
+    ...routingFields(options),
   } satisfies RuntimeProviderInstance;
   return { calls, provider };
 }
@@ -95,6 +101,7 @@ export function defineProviderRouteSource(
   fixtures: readonly FakeProvider[],
   immediateStreamCompletion?: UsageCompletion,
   debugLogging?: boolean,
+  routing: { readonly config?: Config; readonly random?: () => number } = {},
 ) {
   const providers = fixtures.map((fixture) => fixture.provider);
   const recording = createRecording();
@@ -124,13 +131,23 @@ export function defineProviderRouteSource(
       return captured;
     },
   };
+  const config = routing.config;
+  const router = new Router(providers, {
+    ...(config === undefined ? {} : { models: config.router.models }),
+    random: routing.random ?? (() => 0),
+  });
+  const snapshot = {
+    providers,
+    router,
+    ...(config === undefined ? {} : { config }),
+  };
   const source = {
     acquireProviderSnapshot: () => ({
-      snapshot: { providers, router: new Router(providers) },
+      snapshot,
       release() {},
     }),
     cooldown: new ProviderCooldownStore(),
-    currentProviderSnapshot: () => ({ providers, router: new Router(providers) }),
+    currentProviderSnapshot: () => snapshot,
     ...(debugLogging === undefined ? {} : { debugLogging }),
     logger: (entry) => logs.push(entry),
     logicalSessionStore: new LogicalSessionStore(),
@@ -186,6 +203,13 @@ function instrumentModel(
 
 function routeAlias(model: string) {
   return { [REQUESTED_MODEL]: { model, preserve: false } };
+}
+
+function routingFields(options: { readonly priority?: number; readonly weight?: number }) {
+  return {
+    ...(options.priority === undefined ? {} : { priority: options.priority }),
+    ...(options.weight === undefined ? {} : { weight: options.weight }),
+  };
 }
 
 export function withSnapshotConfigs(

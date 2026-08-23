@@ -22,7 +22,7 @@ export const createDashboardProviderReadRoutes = (state: ServerState) =>
     .get('/providers/package-status', providerPackageQueryValidator, async (context) =>
       context.json(await providerPackageStatus(context.req.valid('query').npm)),
     )
-    .get('/providers/:id/edit-view', (context) => {
+    .get('/providers/:id/edit-view', async (context) => {
       const id = context.req.param('id');
       const data = state.currentConfig().providers.find((entry) => entry.id === id);
       if (data === undefined) {
@@ -35,7 +35,12 @@ export const createDashboardProviderReadRoutes = (state: ServerState) =>
         delete provider.apiKey;
       }
       const oauth = provider.kind === 'oauth' ? state.oauthProviderEditView(id) : undefined;
-      return context.json({ provider, ...(oauth === undefined ? {} : { oauth }) });
+      const routing = await state.modelRouting.providerNumberViews(id);
+      return context.json({
+        provider,
+        ...(oauth === undefined ? {} : { oauth }),
+        ...(routing === undefined ? {} : { routing }),
+      });
     })
     .get('/providers/:id', providerProbeValidator, async (context) => {
       const query = context.req.valid('query');

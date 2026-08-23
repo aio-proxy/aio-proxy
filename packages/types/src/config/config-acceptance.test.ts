@@ -9,7 +9,7 @@ describe('ConfigSchema', () => {
       plugins: [],
       server: defaultServer,
       router: defaultRouter,
-      providers: [{ ...apiProvider, enabled: true, id: 'openai' }],
+      providers: [{ ...apiProvider, enabled: true, id: 'openai', priority: 0, weight: 1 }],
       invalidProviders: [],
     });
   });
@@ -26,7 +26,7 @@ describe('ConfigSchema', () => {
       server: defaultServer,
       router: defaultRouter,
       proxy: 'https://proxy.example:8443',
-      providers: [{ ...provider, enabled: true, id: 'openai' }],
+      providers: [{ ...provider, enabled: true, id: 'openai', priority: 0, weight: 1 }],
       invalidProviders: [],
     });
   });
@@ -36,22 +36,45 @@ describe('ConfigSchema', () => {
       plugins: [],
       server: defaultServer,
       router: defaultRouter,
-      providers: [{ ...apiProvider, enabled: false, id: 'openai' }],
+      providers: [{ ...apiProvider, enabled: false, id: 'openai', priority: 0, weight: 1 }],
       invalidProviders: [],
     });
   });
 
-  test('sorts providers by descending weight and preserves key order for ties', () => {
-    const config = ConfigSchema.parse(
-      providers({
-        first: { ...apiProvider, weight: 10 },
-        second: { ...apiProvider, weight: 20 },
-        third: { ...apiProvider, weight: 10 },
-      }),
-    );
+  test('normalizes Provider routing defaults while preserving authoring order', () => {
+    const config = ConfigSchema.parse({
+      providers: {
+        first: { ...apiProvider, weight: 1.6 },
+        second: { ...apiProvider, priority: 20, weight: 20_000 },
+        third: { ...apiProvider, priority: -3, weight: -2 },
+      },
+    });
 
-    expect(config.providers.map((provider) => provider.id)).toEqual(['second', 'first', 'third']);
-    expect(config.providers.map((provider) => provider.weight)).toEqual([20, 10, 10]);
+    expect(config.providers.map(({ id, priority, weight }) => ({ id, priority, weight }))).toEqual([
+      { id: 'first', priority: 0, weight: 2 },
+      { id: 'second', priority: 20, weight: 10_000 },
+      { id: 'third', priority: 0, weight: 0 },
+    ]);
+  });
+
+  test('parses sparse exact model policies without validating references', () => {
+    const config = ConfigSchema.parse({
+      router: {
+        models: {
+          'openai/gpt-5': {
+            providers: {
+              primary: { priority: 30 },
+              missing: { weight: 0.6 },
+            },
+          },
+        },
+      },
+      providers: { primary: apiProvider },
+    });
+
+    expect(config.router.models['openai/gpt-5']).toEqual({
+      providers: { primary: { priority: 30 }, missing: { weight: 1 } },
+    });
   });
 
   test('round-trips per-model metadata through the full config pipeline', () => {

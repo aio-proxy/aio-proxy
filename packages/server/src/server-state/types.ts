@@ -19,6 +19,7 @@ import type {
 
 import type { ConfigStore } from '../config-store';
 import type { DashboardEventHub, DashboardEventLimits } from '../dashboard-events';
+import type { ModelRoutingControlPlane } from '../model-routing';
 import type { OAuthLoginSessionManager } from '../oauth-login-session/manager';
 import type { PluginControlPlane, PluginControlPlaneOptions } from '../plugin-control-plane';
 import type { OAuthQuotaOperations } from '../plugin-quota';
@@ -46,11 +47,16 @@ export type RecoveryScheduler = {
   readonly setTimeout: (callback: () => void, delayMs: number) => RecoveryTimer;
 };
 
+export type CreateRouter = (
+  providers: readonly RuntimeProviderInstance[],
+  routerConfig: Config['router'],
+) => Router<RuntimeProviderInstance>;
+
 export type ServerStateTestHooks = {
   readonly agentIdentity?: AgentIdentityService;
   readonly failStartupAfter?: 'scheduler' | 'recovery' | 'login_sessions' | 'watcher';
   readonly configFile?: AtomicConfigFile;
-  readonly createRouter?: (providers: readonly RuntimeProviderInstance[]) => Router<RuntimeProviderInstance>;
+  readonly createRouter?: CreateRouter;
   readonly onCatalogJobsReplaced?: (jobs: readonly CatalogJobDescriptor[]) => void;
   readonly reconciliationRetryMs?: number;
   readonly recoveryScheduler?: RecoveryScheduler;
@@ -78,6 +84,7 @@ export type ServerState = ProviderRouteSource & {
   readonly configPath: string | undefined;
   readonly configStore: ConfigStore;
   readonly events: DashboardEventHub;
+  readonly modelRouting: ModelRoutingControlPlane;
   readonly oauthQuota: OAuthQuotaOperations;
   readonly pluginControlPlane: PluginControlPlane;
   readonly oauthCapabilities: () => readonly DashboardOAuthCapability[];

@@ -273,23 +273,26 @@ describe('providers table', () => {
     });
   });
 
-  test('renders an omitted Provider weight as its effective zero default', () => {
+  test('renders omitted Provider routing fields as normalized priority 0 and weight 1', () => {
     renderProvidersTable(
       <ProvidersTable
         providers={[
-          providerStub({ id: 'weight-missing', kind: 'api', protocol: 'openai-response' }),
+          providerStub({ id: 'api', kind: 'api', protocol: 'openai-response' }),
           providerStub({ id: 'weight-zero', kind: 'api', protocol: 'openai-response', weight: 0 }),
         ]}
       />,
     );
 
-    const missing = within(screen.getByTestId('provider-row-weight-missing'));
-    const zero = within(screen.getByTestId('provider-row-weight-zero'));
-    const weightColumnIndex = screen
-      .getAllByRole('columnheader')
-      .indexOf(screen.getByRole('columnheader', { name: /Weight|权重/u }));
-    expect(missing.getAllByRole('cell')[weightColumnIndex]).toHaveTextContent('0');
-    expect(zero.getAllByRole('cell')[weightColumnIndex]).toHaveTextContent('0');
+    const headers = screen.getAllByRole('columnheader');
+    const priorityIndex = headers.indexOf(screen.getByRole('columnheader', { name: /Priority|优先级/u }));
+    const weightIndex = headers.indexOf(screen.getByRole('columnheader', { name: /Weight|权重/u }));
+    expect(priorityIndex).toBeGreaterThan(-1);
+    expect(weightIndex).toBeGreaterThan(priorityIndex);
+    expect(within(screen.getByTestId('provider-row-api')).getAllByRole('cell')[priorityIndex]).toHaveTextContent('0');
+    expect(within(screen.getByTestId('provider-row-api')).getAllByRole('cell')[weightIndex]).toHaveTextContent('1');
+    expect(within(screen.getByTestId('provider-row-weight-zero')).getAllByRole('cell')[weightIndex]).toHaveTextContent(
+      '0',
+    );
   });
 
   test('sorts Providers by 24h request count and exposes table controls', async () => {

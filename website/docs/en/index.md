@@ -18,7 +18,7 @@ features:
     details: Point existing clients at AIO Proxy instead of rewriting calls for every model provider.
     icon: 🔌
   - title: Model-based routing
-    details: Match model aliases across providers, order them by Provider weight, and continue to the next candidate when an upstream fails.
+    details: Match model aliases across providers, try higher Provider priority first, distribute same-priority traffic by Provider weight, and continue to the next candidate when an upstream fails.
     icon: ↗️
   - title: Visible requests
     details: Use the Dashboard to inspect Provider configuration, request records, and runtime status without guesswork.

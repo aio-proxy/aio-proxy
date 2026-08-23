@@ -4,7 +4,6 @@ import type {
   PendingAccountOperation,
   PluginLogSink,
   PluginRepository,
-  Router,
 } from '@aio-proxy/core';
 import { createProxyFetch, OAuthCapabilityUnavailableError, parseRuntimeConfig } from '@aio-proxy/core';
 import type { DatabaseOwnershipLock, OpenDbHandle } from '@aio-proxy/core/db';
@@ -24,13 +23,19 @@ import { createRuntimeFetch } from '../plugin-runtime';
 import type { SnapshotManager } from '../plugin-snapshot';
 import { effectiveProxy, providerDiff } from '../provider-runtime';
 import type { ProviderCooldownStore } from '../routes/pipeline/provider-cooldown';
-import type { RetiredProviderSnapshot, RuntimeProviderInstance } from '../runtime';
+import type { RetiredProviderSnapshot } from '../runtime';
 import type { ServerLogSink } from '../server-log';
 import { oauthCapabilities, oauthProviderEditView } from './oauth-views';
 import { createRecovery } from './recovery';
 import { reloadSnapshot } from './reload';
 import { buildSnapshot, providerConfigRecord, type Snapshot } from './snapshot';
-import type { ConfigReloadResult, InternalServerStateOptions, ServerState, ServerStateOptions } from './types';
+import type {
+  ConfigReloadResult,
+  CreateRouter,
+  InternalServerStateOptions,
+  ServerState,
+  ServerStateOptions,
+} from './types';
 
 export type ServerRuntime = {
   readonly options: ServerStateOptions;
@@ -41,7 +46,7 @@ export type ServerRuntime = {
   readonly logger: ServerLogSink;
   readonly queue: FifoQueue;
   readonly events: DashboardEventHub;
-  readonly createRouter: (providers: readonly RuntimeProviderInstance[]) => Router<RuntimeProviderInstance>;
+  readonly createRouter: CreateRouter;
   manager: SnapshotManager;
   managerReady: boolean;
   closed: boolean;
@@ -118,6 +123,7 @@ export type ServerStateParts = Pick<
   | 'configStore'
   | 'events'
   | 'logicalSessionStore'
+  | 'modelRouting'
   | 'oauthQuota'
   | 'oauthLoginSessions'
   | 'pluginControlPlane'
@@ -171,6 +177,7 @@ export function assembleServerState(runtime: ServerRuntime, parts: ServerStatePa
     debugLogging: options.config.server.logging?.level === 'debug',
     events,
     logicalSessionStore: parts.logicalSessionStore,
+    modelRouting: parts.modelRouting,
     oauthCapabilities: () => oauthCapabilities(manager),
     oauthProviderEditView: (providerId) => oauthProviderEditView(manager, repository, providerId),
     oauthLoginSessions: parts.oauthLoginSessions,

@@ -38,6 +38,12 @@ test('records a skipped-candidate span with the no_capability reason', async () 
   expect(skipped).toHaveLength(1);
   expect(skipped[0]?.attributes[attributeName.providerId]).toBe('no-count');
   expect(skipped[0]?.attributes[attributeName.skipReason]).toBe('no_capability');
+  expect(skipped[0]?.attributes[attributeName.routingContractVersion]).toBe(2);
+  expect(skipped[0]?.attributes[attributeName.effectivePriority]).toBe(0);
+  expect(skipped[0]?.attributes[attributeName.effectiveWeight]).toBe(1);
+  expect(skipped[0]?.attributes[attributeName.prioritySource]).toBe('provider');
+  expect(skipped[0]?.attributes[attributeName.weightSource]).toBe('provider');
+  expect(skipped[0]?.attributes[attributeName.selectionSource]).toBe('weighted_random');
   // The skipped candidate is attributed as a non-success so the dashboard can
   // surface why the loop advanced past it.
   expect(skipped[0]?.attributes[attributeName.terminationReason]).toBe('failure');

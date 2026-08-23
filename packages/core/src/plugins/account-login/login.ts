@@ -60,6 +60,7 @@ export type RenderAccountOptions = (
 export type OAuthProviderPatch = {
   readonly name: string | undefined;
   readonly enabled: boolean;
+  readonly priority?: number | undefined;
   readonly weight: number | undefined;
   readonly proxy?: OAuthProviderMutationBody['proxy'];
   readonly alias: ProviderAlias | undefined;

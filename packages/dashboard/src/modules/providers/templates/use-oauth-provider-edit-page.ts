@@ -22,10 +22,12 @@ import {
   startOAuthSession,
   submitOAuthCallback,
 } from '../services/oauth-service';
+import { type ProviderEditRouting, providerFormRoutingValues } from '../services/providers-service';
 
 interface UseOAuthProviderEditPageArgs {
   readonly provider: OAuthProvider;
   readonly oauth: DashboardOAuthProviderEdit;
+  readonly routing?: ProviderEditRouting;
   readonly sessionId: string | undefined;
   readonly onSessionIdChange: (sessionId: string | undefined) => void;
 }
@@ -33,6 +35,7 @@ interface UseOAuthProviderEditPageArgs {
 export const useOAuthProviderEditPage = ({
   provider,
   oauth,
+  routing,
   sessionId,
   onSessionIdChange,
 }: UseOAuthProviderEditPageArgs) => {
@@ -65,12 +68,14 @@ export const useOAuthProviderEditPage = ({
     onSuccess: () => onSessionIdChange(undefined),
   });
   const sessionQuery = useQuery(oauthSessionQueryOptions(sessionId ?? ''));
+  const routingValues = providerFormRoutingValues(routing);
   const form = useOAuthProviderEditForm(
     {
       id: provider.id,
       name: provider.name,
       enabled: provider.enabled,
-      weight: provider.weight,
+      priority: routingValues.priority ?? provider.priority,
+      weight: routingValues.weight ?? provider.weight,
       proxy: provider.proxy,
       alias: provider.alias,
       transforms: provider.transforms,

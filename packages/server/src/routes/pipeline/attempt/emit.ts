@@ -6,7 +6,7 @@ import {
 } from '../../../request-tracing';
 import type { AttemptResponseObservation } from '../../../response-observation';
 import type { UsageCompletion } from '../../../usage-capture';
-import type { AttemptInfo } from '../attempt-base';
+import { type AttemptInfo, routingSpanAttributes } from '../attempt-base';
 import { completionFinish, completionTerminal } from '../failure';
 import type { AttemptLog } from '../logging';
 import { type OpenSpan, type SpanTerminal, startPipelineSpan } from '../tracing';
@@ -51,7 +51,7 @@ export function createAttemptEmitter(session: RequestTraceSession, streamRequest
         [attributeName.providerKind]: base.providerKind,
         [attributeName.genAiResponseModel]: base.modelId,
         [attributeName.stream]: streamRequested,
-        ...(base.providerWeight === undefined ? {} : { [attributeName.providerWeight]: base.providerWeight }),
+        ...routingSpanAttributes(base),
         ...(base.transport === undefined ? {} : { [attributeName.transport]: base.transport }),
         [attributeName.sourceProtocol]: base.sourceProtocol,
         ...(base.targetProtocol === undefined ? {} : { [attributeName.targetProtocol]: base.targetProtocol }),

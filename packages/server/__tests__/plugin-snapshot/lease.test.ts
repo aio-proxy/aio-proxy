@@ -1,6 +1,9 @@
 import { afterEach, expect, test } from 'bun:test';
+import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 import { Router, type TextStreamPart, type ToolSet } from '@aio-proxy/core';
+import { ConfigSchema } from '@aio-proxy/types';
 
 import { createSnapshotManager } from '../../src/plugin-snapshot';
 import { handleProtocolRequest } from '../../src/routes/pipeline';
@@ -14,9 +17,66 @@ import {
   REQUESTED_MODEL,
   rawProvider,
 } from '../pipeline-helpers';
+import { createServerState, createServerTestHome } from '../server-test-lifecycle';
 import { cleanup, emptyPlugins, snapshot } from './test-support';
 
 afterEach(cleanup);
+
+test('an acquired snapshot keeps the old model routing policy after reload', async () => {
+  const home = createServerTestHome();
+  const configPath = join(home, 'config.json');
+  const shared = 'shared';
+  const providers = {
+    primary: {
+      kind: 'api',
+      protocol: 'openai-compatible',
+      baseURL: 'https://primary.test',
+      models: [shared],
+    },
+    secondary: {
+      kind: 'api',
+      protocol: 'openai-compatible',
+      baseURL: 'https://secondary.test',
+      models: [shared],
+    },
+  };
+  const routingConfig = (primaryPriority: number, secondaryPriority: number) => ({
+    providers,
+    router: {
+      models: {
+        [shared]: {
+          providers: {
+            primary: { priority: primaryPriority },
+            secondary: { priority: secondaryPriority },
+          },
+        },
+      },
+    },
+  });
+  const initial = routingConfig(20, 10);
+  writeFileSync(configPath, JSON.stringify(initial));
+  const state = await createServerState({
+    config: ConfigSchema.parse(initial),
+    configPath,
+    dbHome: home,
+    watchConfig: false,
+  });
+  const lease = state.acquireProviderSnapshot();
+  writeFileSync(configPath, JSON.stringify(routingConfig(10, 20)));
+  expect((await state.reload()).ok).toBe(true);
+
+  expect(lease.snapshot.router.resolve(shared).map((candidate) => candidate.provider.id)).toEqual([
+    'primary',
+    'secondary',
+  ]);
+  expect(
+    state
+      .currentProviderSnapshot()
+      .router.resolve(shared)
+      .map((candidate) => candidate.provider.id),
+  ).toEqual(['secondary', 'primary']);
+  lease.release();
+});
 
 test('an acquired old snapshot drains only after its one-shot lease releases', async () => {
   const manager = createSnapshotManager(snapshot('old'));
