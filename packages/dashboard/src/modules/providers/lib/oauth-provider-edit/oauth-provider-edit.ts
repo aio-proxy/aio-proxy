@@ -1,5 +1,6 @@
 import {
   type DashboardOAuthSessionStart,
+  dashboardOAuthCompleteUrl,
   type ModelMetadata,
   type OAuthProviderMutationBody,
   ProviderKind,
@@ -61,7 +62,9 @@ export const oauthProviderEditAction = (
         publicValues: values.publicValues,
         secrets,
         clearSecrets: [...values.clearSecrets],
-        completeUrl: `${window.location.origin}/dashboard/oauth/complete`,
+        ...(dashboardOAuthCompleteUrl(window.location.origin) === undefined
+          ? {}
+          : { completeUrl: dashboardOAuthCompleteUrl(window.location.origin) }),
         providerPatch,
       },
     };

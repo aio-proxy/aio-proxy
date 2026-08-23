@@ -3,6 +3,7 @@ import {
   type DashboardOAuthCapability,
   type DashboardOAuthProviderEdit,
   type DashboardOAuthSessionStart,
+  dashboardOAuthCompleteUrl,
   type OAuthProvider,
   type ProviderKind,
   type ProviderMutationBody,
@@ -69,7 +70,9 @@ const startCreateAuthorization = (
       capability: { plugin: selected.plugin, capability: selected.capability },
       ...account,
       clearSecrets: [...account.clearSecrets],
-      completeUrl: `${window.location.origin}/dashboard/oauth/complete`,
+      ...(dashboardOAuthCompleteUrl(window.location.origin) === undefined
+        ? {}
+        : { completeUrl: dashboardOAuthCompleteUrl(window.location.origin) }),
       providerPatch: {
         enabled: true,
         ...(values.name === undefined || values.name === '' ? {} : { name: values.name }),
@@ -245,6 +248,7 @@ export const useProviderEditorPage = ({
   const [optionsValid, setOptionsValid] = useState(kind !== 'ai-sdk');
   const [transformsValid, setTransformsValid] = useState(true);
   const {
+    openPopup,
     closeUnclaimedPopup,
     startMutation,
     callbackMutation,
@@ -321,6 +325,8 @@ export const useProviderEditorPage = ({
           : serializeAlias(values.alias, mode === ProviderFormMode.Create ? 'create' : 'edit'),
     };
     if (kind === 'oauth' && mode === ProviderFormMode.Create && !authorized) {
+      if (accountForm.state.isValid === false) return;
+      openPopup();
       startCreateAuthorization(wireValues, accountValues, capabilities, startMutation.mutate, closeUnclaimedPopup);
       return;
     }
@@ -333,7 +339,11 @@ export const useProviderEditorPage = ({
         oauth,
         forceReauthorize,
         updateProvider,
-        startMutation.mutate,
+        (input, options) => {
+          if (accountForm.state.isValid === false) return;
+          openPopup();
+          startMutation.mutate(input, options);
+        },
         closeUnclaimedPopup,
       );
       return;

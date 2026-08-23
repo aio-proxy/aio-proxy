@@ -140,3 +140,10 @@ test('dashboard OAuth session start accepts a loopback dashboard origin', () => 
   expect(() => schema.parse({ ...request, completeUrl: 'javascript:alert(1)' })).toThrow();
   expect(() => schema.parse({ ...request, completeUrl: 'https://evil.example/dashboard/oauth/complete' })).toThrow();
 });
+
+test('dashboardOAuthCompleteUrl keeps loopback origins and omits remote ones', () => {
+  expect(dashboard.dashboardOAuthCompleteUrl('http://localhost:3000')).toBe(
+    'http://localhost:3000/dashboard/oauth/complete',
+  );
+  expect(dashboard.dashboardOAuthCompleteUrl('https://proxy.example')).toBeUndefined();
+});

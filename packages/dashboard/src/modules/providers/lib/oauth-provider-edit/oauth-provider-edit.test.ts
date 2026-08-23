@@ -51,6 +51,7 @@ test('account edits start locked reauthorization and omit blank replacement secr
       publicValues: { tenant: 'personal' },
       secrets: { refreshToken: 'replacement' },
       clearSecrets: ['legacyToken'],
+      completeUrl: `${window.location.origin}/dashboard/oauth/complete`,
       providerPatch: {
         name: 'Personal',
         enabled: true,

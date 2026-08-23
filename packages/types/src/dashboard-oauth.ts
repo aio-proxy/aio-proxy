@@ -123,7 +123,7 @@ export const DashboardOAuthSessionSchema = z.discriminatedUnion('status', [
 const loopbackCompleteHost = (hostname: string): boolean =>
   hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]' || hostname === '::1';
 
-const DashboardOAuthCompleteUrlSchema = z.string().refine((value) => {
+export const DashboardOAuthCompleteUrlSchema = z.string().refine((value) => {
   let url: URL;
   try {
     url = new URL(value);
@@ -165,3 +165,8 @@ export type DashboardOAuthProviderEdit = z.output<typeof DashboardOAuthProviderE
 export type DashboardOAuthSession = z.output<typeof DashboardOAuthSessionSchema>;
 export type DashboardOAuthSessionStart = z.output<typeof DashboardOAuthSessionStartSchema>;
 export type DashboardOAuthProviderPatch = z.output<typeof DashboardOAuthProviderPatchSchema>;
+
+export const dashboardOAuthCompleteUrl = (origin: string): string | undefined => {
+  const completeUrl = `${origin}/dashboard/oauth/complete`;
+  return DashboardOAuthCompleteUrlSchema.safeParse(completeUrl).success ? completeUrl : undefined;
+};

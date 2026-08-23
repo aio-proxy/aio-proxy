@@ -135,7 +135,6 @@ export function createRuntimeProvider(
   };
 }
 
-
 function routingDefaults(config: { readonly priority?: number; readonly weight?: number }): {
   readonly priority?: number;
   readonly weight?: number;
