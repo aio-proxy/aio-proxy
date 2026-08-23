@@ -57,10 +57,10 @@ describe('server routes', () => {
     expect(response.status).toBe(200);
     expect(body).toEqual(
       expectedModelList([
-        expectedModel('gpt-test', 'openai-compatible'),
         expectedModel('gpt-alias', 'openai-compatible'),
-        expectedModel('compatible-test', 'compatible'),
+        expectedModel('gpt-test', 'openai-compatible'),
         expectedModel('compatible', 'compatible'),
+        expectedModel('compatible-test', 'compatible'),
       ]),
     );
   });

@@ -229,7 +229,7 @@ const ApiProviderMutationSharedFields = {
   transforms: ProviderTransformsSchema.optional().describe('Ordered outbound request transforms.'),
 } as const;
 
-export const ApiProviderMutationObjectSchema = z.object({
+export const ApiProviderMutationObjectSchema = z.strictObject({
   ...ApiProviderMutationSharedFields,
   baseURL: z.url().optional(),
   proxy: ProviderMutationProxySchema,
@@ -242,12 +242,14 @@ const ApiProviderMutationAuthoringBodySchema = ApiProviderMutationObjectSchema.o
   proxy: true,
   protocol: true,
   endpoints: true,
-}).extend({
-  protocol: z.union([ProviderProtocolSchema, ConfigTemplateStringSchema]).optional(),
-  baseURL: z.union([z.url(), ConfigTemplateStringSchema]).optional(),
-  endpoints: ApiEndpointsAuthoringInputSchema.optional(),
-  proxy: AuthoringProviderProxySchema.nullable(),
-});
+})
+  .extend({
+    protocol: z.union([ProviderProtocolSchema, ConfigTemplateStringSchema]).optional(),
+    baseURL: z.union([z.url(), ConfigTemplateStringSchema]).optional(),
+    endpoints: ApiEndpointsAuthoringInputSchema.optional(),
+    proxy: AuthoringProviderProxySchema.nullable(),
+  })
+  .superRefine(validateApiEndpoints);
 
 const AiSdkProviderMutationSharedFields = {
   kind: z.literal(ProviderKind.AiSdk),
