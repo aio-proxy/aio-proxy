@@ -208,11 +208,11 @@ test('Enter commits the typed effort, not the first option in the open popup', a
   fireEvent.input(effort(), { target: { value: 'high' }, inputType: 'insertText' });
   fireEvent.keyDown(effort(), { key: 'Enter' });
 
-  // `variants` serializes to the effort-keyed shorthand when effort is the only condition. The
-  // regression writes `none` here — the first option — and leaves that in the input too.
-  expect(latestConfig(onAliasChange)?.variants).toEqual({
-    high: { model: 'claude-sonnet-4-fast', preserve: false },
-  });
+  // Effort-only rows now persist as `{ when, model, preserve }` instead of the compact record.
+  // The regression writes `none` here — the first option — and leaves that in the input too.
+  expect(latestConfig(onAliasChange)?.variants).toEqual([
+    { when: { effort: 'high' }, model: 'claude-sonnet-4-fast', preserve: false },
+  ]);
   expect(effort()).toHaveValue('high');
 });
 
