@@ -61,11 +61,16 @@ export const AliasSelectRowSchema = z.object({
   preserve: z.boolean().default(false).describe('Expose the target model under its original id as well.'),
 });
 
+const AliasVariantsRecordSchema = z.record(z.string().min(1), AliasTargetSchema).transform((variants) =>
+  Object.entries(variants).map(([key, target]) => ({
+    when: { effort: canonicalEffort(key) },
+    model: target.model,
+    preserve: target.preserve,
+  })),
+);
+
 // Array first: Zod 4's z.record rejects arrays outright, so array inputs fall through to the record branch otherwise.
-export const AliasVariantsSchema = z.union([
-  z.array(AliasSelectRowSchema),
-  z.record(z.string().min(1), AliasTargetSchema),
-]);
+export const AliasVariantsSchema = z.union([z.array(AliasSelectRowSchema), AliasVariantsRecordSchema]);
 
 /**
  * The identity the server rejects duplicates on. Exported so an editor can reject the same pair
@@ -80,26 +85,16 @@ export function whenIdentity(when: AliasWhen): string {
 }
 
 function rejectDuplicateWhen(
-  config: { readonly variants?: z.output<typeof AliasVariantsSchema> | undefined },
+  config: { readonly variants?: readonly AliasSelectRow[] | undefined },
   ctx: z.RefinementCtx,
 ): void {
   const variants = config.variants;
   if (variants === undefined) return;
   const seen = new Set<string>();
-  if (Array.isArray(variants)) {
-    for (const [index, row] of variants.entries()) {
-      const id = whenIdentity(row.when);
-      if (seen.has(id)) {
-        ctx.addIssue({ code: 'custom', message: `Duplicate alias when "${id}"`, path: ['variants', index] });
-      }
-      seen.add(id);
-    }
-    return;
-  }
-  for (const key of Object.keys(variants)) {
-    const id = `effort=${canonicalEffort(key)}`;
+  for (const [index, row] of variants.entries()) {
+    const id = whenIdentity(row.when);
     if (seen.has(id)) {
-      ctx.addIssue({ code: 'custom', message: `Duplicate alias when "${id}"`, path: ['variants', key] });
+      ctx.addIssue({ code: 'custom', message: `Duplicate alias when "${id}"`, path: ['variants', index] });
     }
     seen.add(id);
   }

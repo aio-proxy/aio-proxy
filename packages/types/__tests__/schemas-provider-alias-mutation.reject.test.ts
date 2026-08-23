@@ -51,7 +51,7 @@ describe('ConfigSchema', () => {
           'alias',
           'mini',
           'variants',
-          'low',
+          0,
           'model',
         ]);
       }

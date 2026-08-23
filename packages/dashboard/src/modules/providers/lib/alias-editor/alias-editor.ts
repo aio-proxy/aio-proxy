@@ -75,22 +75,8 @@ export function variantRows(config: AliasConfig): readonly AliasSelectRow[] {
   return flattenAliasVariants(config.variants);
 }
 
-const isEffortOnly = (row: AliasSelectRow): boolean =>
-  row.when.thinking === undefined && row.when.speed === undefined && (row.when.effort ?? '') !== '';
-
-/**
- * Every config in the wild uses the record form, so emitting rows unconditionally would rewrite a
- * user's whole `alias` block into the verbose shape on the first save of an unrelated field. Effort-only
- * rows round-trip to the compact shape; anything naming thinking or speed needs rows to survive.
- */
 export function toAliasVariants(rows: readonly AliasSelectRow[]): AliasConfig['variants'] | undefined {
-  if (rows.length === 0) return undefined;
-  // A record is keyed on effort, so two rows whose efforts canonicalize alike (`x-high` and `xhigh`)
-  // would collapse into one entry and drop a row the user authored. Colliding rows stay an array, which
-  // the server's own `rejectDuplicateWhen` refuses out loud instead.
-  const collides = new Set(rows.map((row) => whenIdentity(row.when))).size < rows.length;
-  if (collides || !rows.every(isEffortOnly)) return [...rows];
-  return Object.fromEntries(rows.map((row) => [row.when.effort, { model: row.model, preserve: row.preserve }]));
+  return rows.length === 0 ? undefined : [...rows];
 }
 
 const configWithVariantRows = (config: AliasConfig, rows: readonly AliasSelectRow[]): AliasConfig => {

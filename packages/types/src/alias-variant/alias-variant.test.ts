@@ -165,13 +165,12 @@ describe('AliasConfigSchema', () => {
     expect(Array.isArray(again.variants)).toBe(true);
   });
 
-  test('keeps object variants as objects', () => {
+  test('migrates object variants to array rows', () => {
     const parsed = AliasConfigSchema.parse({
       model: 'gemini-3.5-flash-extra-low',
       variants: { high: 'gemini-3-flash-agent' },
     });
-    expect(Array.isArray(parsed.variants)).toBe(false);
-    expect(parsed.variants).toEqual({ high: { model: 'gemini-3-flash-agent', preserve: false } });
+    expect(parsed.variants).toEqual([{ when: { effort: 'high' }, model: 'gemini-3-flash-agent', preserve: false }]);
   });
 
   test('rejects empty when, unknown when keys, and duplicate canonical when on the schema alone', () => {

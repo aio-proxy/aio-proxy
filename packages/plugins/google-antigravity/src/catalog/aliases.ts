@@ -8,32 +8,93 @@ export function defaultAntigravityAliases(catalog: ModelCatalog): DefaultAliasSu
   const available = new Set(catalog.language.map(({ id }) => id));
   const aliases: Record<string, DefaultAliasSuggestions[string]> = {};
 
-  for (const family of readAntigravityFamilies(catalog.metadata)) {
+  for (const family of familiesForAliases(catalog)) {
     if (!familyTargetsAvailable(family, available)) continue;
-    const variants: DefaultAliasSelectRow[] = family.variants
+    const effortRows = family.variants
       .filter((variant) => EFFORTS.has(variant.effort))
       .map((variant) => ({
         when: { effort: variant.effort },
         model: variant.model,
         preserve: false,
       }));
-    const high = variants.find((variant) => variant.when.effort === 'high');
-    if (high !== undefined) {
-      variants.push({ when: { effort: 'xhigh' }, model: high.model, preserve: false });
-    }
+    const high = effortRows.find((row) => row.when.effort === 'high');
+    const catalogTiered = `${family.logicalId}-tiered`;
+    const tiered =
+      (family.suppressedWireIds ?? []).find((id) => id.endsWith('-tiered') && available.has(id)) ??
+      (available.has(catalogTiered) ? catalogTiered : undefined);
+    const defaultModel = tiered ?? family.base;
+    const variants: DefaultAliasSelectRow[] = routesByEffort(family.base, effortRows)
+      ? [...effortRows, ...xhighRow(tiered ?? high?.model)]
+      : [];
+    const claimed = new Set([defaultModel, ...variants.map((row) => row.model)]);
     for (const id of family.suppressedWireIds ?? []) {
-      if (!available.has(id)) continue;
-      variants.push({ when: { effort: `hidden:${id}` }, model: id, preserve: false });
+      if (!available.has(id) || claimed.has(id)) continue;
+      variants.push({
+        when: id.endsWith('-thinking') ? { thinking: true } : { effort: `hidden:${id}` },
+        model: id,
+        preserve: false,
+      });
+      claimed.add(id);
     }
-    if (isSelfReferentialEmptyWhen(family.logicalId, family.base, variants)) continue;
+    if (isSelfReferentialEmptyWhen(family.logicalId, defaultModel, variants)) continue;
     aliases[family.logicalId] = {
-      model: family.base,
+      model: defaultModel,
       preserve: false,
       ...(variants.length === 0 ? {} : { variants }),
     };
   }
 
   return aliases;
+}
+
+function routesByEffort(base: string, rows: readonly DefaultAliasSelectRow[]): boolean {
+  const models = new Set(rows.map((row) => row.model));
+  return models.size > 1 || (models.size === 1 && !models.has(base));
+}
+
+function xhighRow(model: string | undefined): DefaultAliasSelectRow[] {
+  return model === undefined ? [] : [{ when: { effort: 'xhigh' }, model, preserve: false }];
+}
+
+function familiesForAliases(catalog: ModelCatalog): readonly AntigravityFamily[] {
+  const stored = readAntigravityFamilies(catalog.metadata);
+  const leftover = leftoverThinkingFamilies(catalog, stored);
+  return leftover.length === 0 ? stored : [...stored, ...leftover];
+}
+
+function leftoverThinkingFamilies(
+  catalog: ModelCatalog,
+  stored: readonly AntigravityFamily[],
+): readonly AntigravityFamily[] {
+  const claimed = new Set(
+    stored.flatMap((family) => [
+      family.logicalId,
+      family.base,
+      ...family.variants.map((row) => row.model),
+      ...(family.suppressedWireIds ?? []),
+    ]),
+  );
+  const leftover: AntigravityFamily[] = [];
+  for (const { id } of catalog.language) {
+    if (!id.endsWith('-thinking')) continue;
+    const stem = id.slice(0, -'-thinking'.length);
+    if (!availableHas(catalog, stem) || claimed.has(stem) || claimed.has(id)) continue;
+    leftover.push({
+      logicalId: stem,
+      kind: 'same-wire',
+      thinking: { mode: 'gemini' },
+      base: stem,
+      variants: [],
+      suppressedWireIds: [id],
+    });
+    claimed.add(stem);
+    claimed.add(id);
+  }
+  return leftover;
+}
+
+function availableHas(catalog: ModelCatalog, id: string): boolean {
+  return catalog.language.some((model) => model.id === id);
 }
 
 function familyTargetsAvailable(family: AntigravityFamily, available: ReadonlySet<string>): boolean {

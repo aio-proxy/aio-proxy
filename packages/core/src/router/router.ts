@@ -250,10 +250,7 @@ function directModelIds(provider: RoutableProvider): string[] {
 
   for (const [alias, config] of Object.entries(provider.alias ?? {})) {
     modelIds.delete(alias);
-    if (configuredModelIds.has(alias)) {
-      continue;
-    }
-    if (!config.preserve) {
+    if (!config.preserve && !configuredModelIds.has(alias)) {
       modelIds.delete(config.model);
     }
     for (const target of flattenAliasVariants(config.variants)) {

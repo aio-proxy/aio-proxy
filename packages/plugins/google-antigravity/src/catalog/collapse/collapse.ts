@@ -40,6 +40,13 @@ export function pickerModelIds(input: {
       for (const id of group.modelIds) push(id);
     }
   }
+  for (const id of [...input.languageIds].sort()) {
+    if (!id.endsWith('-thinking')) continue;
+    const stem = id.slice(0, -'-thinking'.length);
+    if (!input.languageIds.has(stem)) continue;
+    push(stem);
+    push(id);
+  }
   return picker;
 }
 

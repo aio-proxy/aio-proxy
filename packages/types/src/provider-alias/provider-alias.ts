@@ -1,9 +1,9 @@
 import { uniqWith } from 'es-toolkit/array';
 import type { z } from 'zod';
 
-import { flattenAliasVariants, isAliasVariantsObject } from '../alias-variant';
+import { flattenAliasVariants } from '../alias-variant';
 import type { AliasConfig } from '../common';
-import { normalizeAliasName, normalizeVariantKey } from '../common';
+import { normalizeAliasName } from '../common';
 
 export type ProviderAlias = Readonly<Record<string, AliasConfig>>;
 
@@ -84,15 +84,10 @@ function validateAliasNames(alias: ProviderAlias, ctx: z.RefinementCtx): void {
   }
 }
 
-// Flattening drops object variant keys, so membership issues walk the raw shape to keep Zod paths exact.
 function eachVariantTarget(config: AliasConfig, visit: (model: string, path: Array<string | number>) => void): void {
-  const variants = config.variants;
-  if (variants === undefined) return;
-  if (Array.isArray(variants)) {
-    for (const [index, row] of variants.entries()) visit(row.model, ['variants', index, 'model']);
-    return;
+  for (const [index, row] of flattenAliasVariants(config.variants).entries()) {
+    visit(row.model, ['variants', index, 'model']);
   }
-  for (const [key, target] of Object.entries(variants)) visit(target.model, ['variants', key, 'model']);
 }
 
 /** Every model id an alias map asks to keep routable under its original id, defaults and variants alike. */
@@ -134,19 +129,7 @@ export function exposedAliases(alias: ProviderAlias, models: readonly string[] |
 }
 
 function normalizeAliasKeys(alias: ProviderAlias): ProviderAlias {
-  return Object.fromEntries(
-    Object.entries(alias).map(([name, config]) => [
-      normalizeAliasName(name),
-      isAliasVariantsObject(config.variants)
-        ? {
-            ...config,
-            variants: Object.fromEntries(
-              Object.entries(config.variants).map(([variant, target]) => [normalizeVariantKey(variant), target]),
-            ),
-          }
-        : config,
-    ]),
-  );
+  return Object.fromEntries(Object.entries(alias).map(([name, config]) => [normalizeAliasName(name), config]));
 }
 
 function normalizeAliasPreserve(alias: ProviderAlias): ProviderAlias {
@@ -198,10 +181,7 @@ export function directModelIds(provider: RoutableModelSource): string[] {
 
   for (const [alias, config] of Object.entries(provider.alias ?? {})) {
     modelIds.delete(alias);
-    if (configuredModelIds.has(alias)) {
-      continue;
-    }
-    if (!config.preserve) {
+    if (!config.preserve && !configuredModelIds.has(alias)) {
       modelIds.delete(config.model);
     }
     for (const target of flattenAliasVariants(config.variants)) {

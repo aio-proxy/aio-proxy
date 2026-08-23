@@ -72,7 +72,7 @@ describe('ConfigSchema', () => {
           mini: {
             model: 'gpt-5-mini',
             preserve: false,
-            variants: { low: { model: 'gpt-5-mini-low', preserve: false } },
+            variants: [{ when: { effort: 'low' }, model: 'gpt-5-mini-low', preserve: false }],
           },
         },
       });
