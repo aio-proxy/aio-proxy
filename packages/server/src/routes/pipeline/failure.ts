@@ -4,7 +4,7 @@ import type { AttemptInfo } from './attempt-base';
 import type { SpanTerminal } from './tracing';
 
 export function shouldFallbackStatus(status: number): boolean {
-  return status === 429 || status >= 500;
+  return status === 422 || status === 429 || status >= 500;
 }
 
 // Terminal, provider-attributed failure. Attempt facts live on the attempt
