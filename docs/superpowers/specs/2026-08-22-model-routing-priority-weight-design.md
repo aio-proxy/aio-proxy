@@ -312,9 +312,9 @@ Every Provider attempt records:
 
 Fallback is not a selection-source enum value. Existing `attemptIndex > 0` identifies fallback attempts independently, allowing an attempt to be both a fallback and ordered by deterministic session, random weight, affinity, or ownership.
 
-The legacy Provider weight trace field is not reinterpreted as the sole source of truth. New nullable route-effective priority/weight, inheritance-source, selection-source, and contract-version attributes are projected and stored separately. Historical rows without contract version `2` retain the documented legacy meaning: their Provider weight represented fixed routing priority. UI and queries never infer v2 semantics from old rows.
+The legacy Provider weight trace field is not reinterpreted as the sole source of truth. Route-effective priority/weight, inheritance-source, selection-source, and contract-version facts are ordinary OTel span attributes stored in `attributes_json`. They are not promoted into typed `trace_span` columns unless a concrete SQL filter, index, or aggregation need appears later. Historical rows without contract version `2` retain the documented legacy meaning: their Provider weight represented fixed routing priority. UI and queries never infer v2 semantics from old rows.
 
-The database change uses additive nullable columns and includes both fresh-database and upgrade-from-existing-database migration tests. Generation and token-count attempts emit the same v2 routing attributes when they attempt an upstream Provider.
+`trace_span` remains a hybrid OTel read model: every attribute is generically supported by `attributes_json`, and only attributes with SQL consumers are projected into typed columns. This release adds no database migration for routing-v2. Generation and token-count attempts emit the same v2 routing attributes when they attempt an upstream Provider, and existing trace readers return those six attributes from JSON.
 
 Unknown model or Provider references in `router.models` do not emit startup warnings, request warnings, or Dashboard warnings.
 
@@ -436,8 +436,8 @@ Tests protect behavior rather than restating schema literals.
 - Matching stable logical sessions produce the same deterministic pre-attempt candidate order for token-count and generation; generated sessions remain independently random.
 - Count capability filtering, local estimation, count failure, generation cooldown, and generation failure may produce different actual Providers without violating the shared-order contract.
 - Token-count does not create or refresh affinity, and a config/catalog change between count and generation is allowed to change the deterministic result.
-- Trace projection records effective values and sources.
-- Trace migration preserves legacy weight semantics, reads an upgraded database, and records v2 attributes for generation and token-count attempts.
+- Trace projection keeps routing-v2 values in generic `attributes_json` and round-trips them on read.
+- Generation and token-count attempts emit the same v2 routing attributes; legacy `providerWeight` and `selectionReason` remain readable without inferring v2 semantics from historical rows.
 - Old and new snapshots may coexist while in-flight requests finish without sharing policy state.
 
 ### Dashboard API and UI

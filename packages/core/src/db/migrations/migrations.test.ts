@@ -28,15 +28,15 @@ function expectCurrentPersistenceContract(sqlite: Database): void {
       expect.objectContaining({ name: 'estimated_cost_nano_usd', type: 'INTEGER' }),
       expect.objectContaining({ name: 'provider_weight', type: 'REAL' }),
       expect.objectContaining({ name: 'selection_reason', type: 'TEXT' }),
-      expect.objectContaining({ name: 'routing_contract_version', type: 'INTEGER' }),
-      expect.objectContaining({ name: 'effective_priority', type: 'INTEGER' }),
-      expect.objectContaining({ name: 'effective_weight', type: 'INTEGER' }),
-      expect.objectContaining({ name: 'priority_source', type: 'TEXT' }),
-      expect.objectContaining({ name: 'weight_source', type: 'TEXT' }),
-      expect.objectContaining({ name: 'selection_source', type: 'TEXT' }),
     ]),
   );
   expect(traceColumns.some(({ name }) => name === 'estimated_cost_usd')).toBeFalse();
+  expect(traceColumns.some(({ name }) => name === 'routing_contract_version')).toBeFalse();
+  expect(traceColumns.some(({ name }) => name === 'effective_priority')).toBeFalse();
+  expect(traceColumns.some(({ name }) => name === 'effective_weight')).toBeFalse();
+  expect(traceColumns.some(({ name }) => name === 'priority_source')).toBeFalse();
+  expect(traceColumns.some(({ name }) => name === 'weight_source')).toBeFalse();
+  expect(traceColumns.some(({ name }) => name === 'selection_source')).toBeFalse();
   expect(dailyColumns).toEqual(
     expect.arrayContaining([
       expect.objectContaining({ name: 'total_tokens', type: 'TEXT' }),
@@ -152,7 +152,7 @@ test('migration 6 preserves schema-5 session affinity data', () => {
   }
 });
 
-test('upgrading a version-six database preserves legacy provider weight and leaves routing v2 columns null', () => {
+test('upgrading a version-six database preserves legacy provider weight without routing v2 columns', () => {
   const home = mkdtempSync(join(tmpdir(), 'aio-proxy-migration-routing-v2-'));
   const path = join(home, 'aio-proxy.db');
   const versionSix = new Database(path);
@@ -169,21 +169,9 @@ test('upgrading a version-six database preserves legacy provider weight and leav
   const handle = openDb({ home });
   try {
     expectCurrentPersistenceContract(handle.sqlite);
-    expect(
-      handle.sqlite
-        .query(
-          'SELECT provider_weight, selection_reason, routing_contract_version, effective_priority, effective_weight, priority_source, weight_source, selection_source FROM trace_span',
-        )
-        .get(),
-    ).toEqual({
+    expect(handle.sqlite.query('SELECT provider_weight, selection_reason FROM trace_span').get()).toEqual({
       provider_weight: 100,
       selection_reason: 'weight',
-      routing_contract_version: null,
-      effective_priority: null,
-      effective_weight: null,
-      priority_source: null,
-      weight_source: null,
-      selection_source: null,
     });
   } finally {
     handle.close();

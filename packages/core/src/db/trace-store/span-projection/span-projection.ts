@@ -21,12 +21,6 @@ const ATTR = {
   sourceProtocol: 'aio_proxy.protocol.source',
   targetProtocol: 'aio_proxy.protocol.target',
   selectionReason: 'aio_proxy.route.selection_reason',
-  routingContractVersion: 'aio_proxy.route.contract_version',
-  effectivePriority: 'aio_proxy.route.effective_priority',
-  effectiveWeight: 'aio_proxy.route.effective_weight',
-  prioritySource: 'aio_proxy.route.priority_source',
-  weightSource: 'aio_proxy.route.weight_source',
-  selectionSource: 'aio_proxy.route.selection_source',
   prepareMode: 'aio_proxy.prepare.mode',
   egressMode: 'aio_proxy.egress.mode',
   errorCode: 'aio_proxy.error.code',
@@ -69,12 +63,6 @@ export type ProjectedColumns = {
   sourceProtocol?: string;
   targetProtocol?: string;
   selectionReason?: string;
-  routingContractVersion?: number;
-  effectivePriority?: number;
-  effectiveWeight?: number;
-  prioritySource?: string;
-  weightSource?: string;
-  selectionSource?: string;
   terminationReason?: string;
   errorType?: string;
   errorCode?: string;
@@ -154,24 +142,6 @@ export function projectAttributes(
       case ATTR.selectionReason:
         setStr('selectionReason', value);
         break;
-      case ATTR.routingContractVersion:
-        setNum('routingContractVersion', value);
-        break;
-      case ATTR.effectivePriority:
-        setNum('effectivePriority', value);
-        break;
-      case ATTR.effectiveWeight:
-        setNum('effectiveWeight', value);
-        break;
-      case ATTR.prioritySource:
-        setStr('prioritySource', value);
-        break;
-      case ATTR.weightSource:
-        setStr('weightSource', value);
-        break;
-      case ATTR.selectionSource:
-        setStr('selectionSource', value);
-        break;
       case ATTR.errorCode:
         setStr('errorCode', value);
         break;
@@ -249,12 +219,6 @@ export function mergeAttributes(
   set(ATTR.sourceProtocol, columns.sourceProtocol);
   set(ATTR.targetProtocol, columns.targetProtocol);
   set(ATTR.selectionReason, columns.selectionReason);
-  set(ATTR.routingContractVersion, columns.routingContractVersion);
-  set(ATTR.effectivePriority, columns.effectivePriority);
-  set(ATTR.effectiveWeight, columns.effectiveWeight);
-  set(ATTR.prioritySource, columns.prioritySource);
-  set(ATTR.weightSource, columns.weightSource);
-  set(ATTR.selectionSource, columns.selectionSource);
   set(ATTR.errorCode, columns.errorCode);
   set(ATTR.terminationReason, columns.terminationReason);
   set(ATTR.genAiRequestModel, isRoot ? columns.requestedModelId : columns.modelId);

@@ -12,7 +12,7 @@ const STARTED_AT = new Date('2026-07-24T10:00:00.000Z');
 const ENDED_AT = new Date('2026-07-24T10:00:00.100Z');
 
 describe('span projection', () => {
-  test('projects routing v2 attributes into typed columns', () => {
+  test('keeps routing v2 attributes in remaining attributes_json', () => {
     const attributes = {
       'aio_proxy.route.contract_version': 2,
       'aio_proxy.route.effective_priority': 30,
@@ -23,15 +23,8 @@ describe('span projection', () => {
     };
 
     const projected = projectAttributes(attributes, false);
-    expect(projected.columns).toMatchObject({
-      routingContractVersion: 2,
-      effectivePriority: 30,
-      effectiveWeight: 6000,
-      prioritySource: 'model',
-      weightSource: 'provider',
-      selectionSource: 'deterministic_session',
-    });
-    expect(projected.remaining).toEqual({});
+    expect(projected.columns).toEqual({});
+    expect(projected.remaining).toEqual(attributes);
     expect(mergeAttributes(projected.columns, projected.remaining, false)).toEqual(attributes);
   });
 
@@ -155,15 +148,23 @@ describe('span projection', () => {
       expect(rootAttrs['long.tail.custom']).toBe('keep-me');
 
       const attemptRow = rows.find((row) => row.spanId === ATTEMPT_SPAN_ID)!;
-      expect(attemptRow.attributes).toEqual({ 'long.tail.attempt': 'also-kept' });
+      expect(attemptRow.attributes).toEqual({
+        'aio_proxy.route.contract_version': 2,
+        'aio_proxy.route.effective_priority': 30,
+        'aio_proxy.route.effective_weight': 6000,
+        'aio_proxy.route.priority_source': 'model',
+        'aio_proxy.route.weight_source': 'provider',
+        'aio_proxy.route.selection_source': 'deterministic_session',
+        'long.tail.attempt': 'also-kept',
+      });
       expect(attemptRow.providerWeight).toBe(100);
       expect(attemptRow.selectionReason).toBe('weight');
-      expect(attemptRow.routingContractVersion).toBe(2);
-      expect(attemptRow.effectivePriority).toBe(30);
-      expect(attemptRow.effectiveWeight).toBe(6000);
-      expect(attemptRow.prioritySource).toBe('model');
-      expect(attemptRow.weightSource).toBe('provider');
-      expect(attemptRow.selectionSource).toBe('deterministic_session');
+      expect(attemptRow).not.toHaveProperty('routingContractVersion');
+      expect(attemptRow).not.toHaveProperty('effectivePriority');
+      expect(attemptRow).not.toHaveProperty('effectiveWeight');
+      expect(attemptRow).not.toHaveProperty('prioritySource');
+      expect(attemptRow).not.toHaveProperty('weightSource');
+      expect(attemptRow).not.toHaveProperty('selectionSource');
 
       const attemptAttrs = detail.spans.find((span) => span.spanId === ATTEMPT_SPAN_ID)!.attributes;
       expect(attemptAttrs['aio_proxy.attempt.index']).toBe(0);

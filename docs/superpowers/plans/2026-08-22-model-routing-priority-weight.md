@@ -4,7 +4,7 @@
 
 **Goal:** Separate Provider priority from same-tier weight, add exact client-model routing policies, apply stable-session weighted ordering across generation and token-count, and expose the complete contract through traces and the Dashboard.
 
-**Architecture:** `@aio-proxy/types` owns normalized routing schemas and Dashboard DTOs. `@aio-proxy/core` owns slash-safe model resolution plus priority-tier/weighted candidate ordering; `@aio-proxy/server` keeps the only sequential attempt loops, builds public/inactive model inventories, persists routing-v2 trace facts, and applies model-policy mutations atomically. The Dashboard edits Provider defaults and one model policy at a time through typed Hono APIs.
+**Architecture:** `@aio-proxy/types` owns normalized routing schemas and Dashboard DTOs. `@aio-proxy/core` owns slash-safe model resolution plus priority-tier/weighted candidate ordering; `@aio-proxy/server` keeps the only sequential attempt loops, builds public/inactive model inventories, records routing-v2 facts as generic OTel span attributes in `attributes_json`, and applies model-policy mutations atomically. The Dashboard edits Provider defaults and one model policy at a time through typed Hono APIs. There is no routing-v2 database migration unless a later SQL query or index needs typed columns.
 
 **Tech Stack:** Bun 1.4, TypeScript 7, Zod 4.4, React 19, Hono, TanStack Query/Form/Table/Router, Drizzle ORM/Drizzle Kit, SQLite, Rstest, oxlint, oxfmt.
 
@@ -472,28 +472,30 @@ rtk git commit -m "feat(core): order model routes by priority and weight" -m "Co
 
 ---
 
-### Task 3: Add routing-v2 trace persistence
+### Task 3: Record routing-v2 facts as generic OTel attributes
 
 **Files:**
-- Modify: `packages/core/src/db/schema/trace-span.ts:45-70`
-- Modify: `packages/core/src/db/trace-store/span-projection/span-projection.ts:8-250`
+- Modify: `packages/core/src/db/trace-store/span-projection/span-projection.ts`
 - Modify: `packages/core/src/db/trace-store/span-projection/span-projection.test.ts`
-- Modify: `packages/core/src/db/trace-store/trace-queries.ts`
-- Modify: `packages/core/src/db/migrations/migrations.test.ts:15-110`
-- Create (generated): `packages/core/src/db/migrations/0006_routing_trace_v2.sql`
-- Create (generated): `packages/core/src/db/migrations/meta/0006_snapshot.json`
-- Modify (generated): `packages/core/src/db/migrations/meta/_journal.json`
-- Modify (generated): `packages/core/src/db/migrations.manifest.ts`
 - Modify: `packages/server/src/request-tracing/semantic.ts:20-75`
 
 **Interfaces:**
-- Produces nullable persisted fields `routingContractVersion`, `effectivePriority`, `effectiveWeight`, `prioritySource`, `weightSource`, and `selectionSource`.
-- Leaves legacy `providerWeight` and `selectionReason` readable; v2 consumers use the new contract-versioned fields.
+- Emits and round-trips these span attributes through generic `attributes_json`:
+  - `aio_proxy.route.contract_version`
+  - `aio_proxy.route.effective_priority`
+  - `aio_proxy.route.effective_weight`
+  - `aio_proxy.route.priority_source`
+  - `aio_proxy.route.weight_source`
+  - `aio_proxy.route.selection_source`
+- Leaves them out of `ProjectedColumns`, `trace_span` typed columns, and any schema migration.
+- Leaves legacy `providerWeight` and `selectionReason` readable; v2 consumers read the contract-versioned attributes from JSON.
 - Task 5 emits the attributes defined here.
 
-- [ ] **Step 1: Write failing projection and migration tests**
+`trace_span` is a hybrid OTel read model: all attributes are generically supported by `attributes_json`, and only attributes with a concrete SQL filter, index, or aggregation need are promoted into typed columns. These six routing-v2 attributes have no SQL consumer, so column promotion is YAGNI. Do not add a database migration unless a later query needs typed columns.
 
-Add projection assertions:
+- [ ] **Step 1: Write failing projection and store tests**
+
+Add projection assertions that keep routing-v2 values in `remaining`:
 
 ```ts
 const attributes = {
@@ -505,42 +507,26 @@ const attributes = {
   'aio_proxy.route.selection_source': 'deterministic_session',
 };
 
-expect(projectAttributes(attributes, false).columns).toMatchObject({
-  routingContractVersion: 2,
-  effectivePriority: 30,
-  effectiveWeight: 6000,
-  prioritySource: 'model',
-  weightSource: 'provider',
-  selectionSource: 'deterministic_session',
-});
+const projected = projectAttributes(attributes, false);
+expect(projected.columns).toEqual({});
+expect(projected.remaining).toEqual(attributes);
 ```
 
-Extend `expectCurrentPersistenceContract()` to require the six new columns. Add an upgrade test that creates a version-six database with a legacy `provider_weight` row, opens it through `openDb`, and verifies the legacy value remains while all new v2 columns are `NULL`.
+Persist an attempt span with those attributes plus a long-tail key. Assert the raw `attributes_json` still contains the six routing-v2 keys, `find()` reconstructs them from JSON, and the row has no typed routing-v2 columns.
 
 - [ ] **Step 2: Run trace tests and confirm failure**
 
 ```bash
-rtk bun test packages/core/src/db/trace-store/span-projection/span-projection.test.ts packages/core/src/db/migrations/migrations.test.ts
+rtk bun test packages/core/src/db/trace-store/span-projection/span-projection.test.ts
 ```
 
-Expected: FAIL because the schema and projection do not contain routing-v2 fields.
+Expected: FAIL if projection still promotes routing-v2 keys into typed columns.
 
-- [ ] **Step 3: Add trace columns and projection mapping**
+- [ ] **Step 3: Keep routing-v2 names on the allowlist without column promotion**
 
-Add nullable columns to `traceSpan`:
+Do not add routing-v2 fields to `ATTR`, `ProjectedColumns`, `projectAttributes`, `mergeAttributes`, `trace-queries.ts`, or `traceSpan`. Do not generate `0006_routing_trace_v2` or any replacement migration.
 
-```ts
-routingContractVersion: integer('routing_contract_version'),
-effectivePriority: integer('effective_priority'),
-effectiveWeight: integer('effective_weight'),
-prioritySource: text('priority_source'),
-weightSource: text('weight_source'),
-selectionSource: text('selection_source'),
-```
-
-Add matching names to `ATTR`, `ProjectedColumns`, `projectAttributes`, `mergeAttributes`, and `trace-queries.ts`. Do not remove `providerWeight` or `selectionReason`; historical rows still use them.
-
-Add the new attribute names to `request-tracing/semantic.ts` and `ALLOWED_ATTRIBUTES`:
+Add the attribute names to `request-tracing/semantic.ts` and `ALLOWED_ATTRIBUTES`:
 
 ```ts
 routingContractVersion: 'aio_proxy.route.contract_version',
@@ -551,31 +537,30 @@ weightSource: 'aio_proxy.route.weight_source',
 selectionSource: 'aio_proxy.route.selection_source',
 ```
 
-- [ ] **Step 4: Generate the named migration and manifest**
+Do not remove `providerWeight` or `selectionReason`; historical rows still use them.
 
-Run from `packages/core`:
+- [ ] **Step 4: Confirm the compiled schema stays at six migrations**
 
 ```bash
-rtk bunx drizzle-kit generate --name routing_trace_v2
-rtk bun scripts/build-migrations.ts
+rtk bun run --filter @aio-proxy/core build:migrations
 ```
 
-Expected: Drizzle creates `src/db/migrations/0006_routing_trace_v2.sql` and `meta/0006_snapshot.json`; the second command verifies no additional schema diff and updates `migrations.manifest.ts` to seven migrations. Do not hand-edit generated SQL, snapshots, journal, or manifest.
+Expected: Drizzle reports no schema diff and the generated manifest still lists the existing six migrations. Do not invent a replacement migration.
 
-- [ ] **Step 5: Run migration, projection, and Core tests**
+- [ ] **Step 5: Run projection, store, and Core tests**
 
 ```bash
 rtk bun test packages/core/src/db/trace-store/span-projection/span-projection.test.ts packages/core/src/db/migrations/migrations.test.ts packages/core/src/db/trace-store/trace-store.test.ts
 rtk bun run --filter @aio-proxy/core build
 ```
 
-Expected: PASS for fresh DB, version-six upgrade, legacy attribute reconstruction, and v2 projection.
+Expected: PASS for JSON round-trip of routing-v2 attributes, fresh DB, version-six upgrade, and legacy `providerWeight` reconstruction.
 
-- [ ] **Step 6: Commit trace persistence**
+- [ ] **Step 6: Commit trace observability**
 
 ```bash
 rtk git add packages/core/src/db packages/server/src/request-tracing/semantic.ts
-rtk git commit -m "feat(core): persist routing v2 trace fields" -m "Co-authored-by: Codex <noreply@openai.com>"
+rtk git commit -m "feat(core): record routing v2 trace attributes" -m "Co-authored-by: Codex <noreply@openai.com>"
 ```
 
 ---
