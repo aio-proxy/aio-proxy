@@ -62,7 +62,7 @@ describe('xAI Grok runtime', () => {
     expect(runtime.raw).toBeUndefined();
   });
 
-  test('injects CLI identity and removes only reasoning.summary', async () => {
+  test('injects CLI identity and sanitizes Responses fields', async () => {
     let captured: Request | undefined;
     let observedSignal: AbortSignal | null | undefined;
     const controller = new AbortController();
@@ -77,7 +77,11 @@ describe('xAI Grok runtime', () => {
     await dynamicFetch('https://cli-chat-proxy.grok.com/v1/responses', {
       method: 'POST',
       headers: { authorization: 'Bearer placeholder', 'x-keep': 'yes' },
-      body: JSON.stringify({ model: 'grok-4.5', reasoning: { effort: 'high', summary: 'auto' } }),
+      body: JSON.stringify({
+        model: 'grok-4.5',
+        previous_response_id: 'resp_old',
+        reasoning: { effort: 'high', summary: 'auto' },
+      }),
       signal: controller.signal,
     });
     expect(captured?.url).toBe('https://cli-chat-proxy.grok.com/v1/responses');

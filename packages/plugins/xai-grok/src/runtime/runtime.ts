@@ -4,6 +4,7 @@ import type { CredentialPort, OAuthRuntimeResult, RuntimeContext } from '@aio-pr
 import { createXAIGrokCLIHeaders, XAI_GROK_CLI_BASE_URL } from '../cli-headers';
 import { currentXAIGrokCredential, type XAIGrokFetch, type XAIGrokOAuthOptions } from '../oauth';
 import type { XAIGrokCredential } from '../schema';
+import { sanitizeXAIGrokResponsesBody } from './sanitize-responses';
 
 export async function createXAIGrokRuntime(
   context: RuntimeContext<XAIGrokCredential, Record<string, never>>,
@@ -61,14 +62,5 @@ async function outgoingBody(request: Request): Promise<BodyInit | undefined> {
   if (request.method === 'GET' || request.method === 'HEAD') return undefined;
   const original = new Uint8Array(await request.arrayBuffer());
   if (!new URL(request.url).pathname.endsWith('/responses')) return original;
-  try {
-    const value: unknown = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(original));
-    if (typeof value !== 'object' || value === null) return original;
-    const reasoning = Reflect.get(value, 'reasoning');
-    if (typeof reasoning !== 'object' || reasoning === null || !Reflect.has(reasoning, 'summary')) return original;
-    Reflect.deleteProperty(reasoning, 'summary');
-    return JSON.stringify(value);
-  } catch {
-    return original;
-  }
+  return sanitizeXAIGrokResponsesBody(original);
 }
