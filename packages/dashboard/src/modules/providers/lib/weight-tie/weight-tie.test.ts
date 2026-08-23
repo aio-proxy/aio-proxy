@@ -25,13 +25,13 @@ describe('hasWeightTie', () => {
   // explicit `0` while providers created before it have no weight key at all, so absent-against-stored-`0`
   // is a config shape that really occurs. Two *absent* weights would not pin this — dropping the `?? 0`
   // leaves `undefined === undefined` true — but here it compares `undefined === 0` and the tie vanishes.
-  test('an absent weight ties with a stored explicit zero', () => {
+  test('an absent weight ties with a stored explicit one', () => {
     expect(
       hasWeightTie({
         selfId: 'self',
         selfWeight: undefined,
         exposedAliases: ['smart'],
-        others: [other('seeded', 0, ['smart'])],
+        others: [other('seeded', 1, ['smart'])],
       }),
     ).toBe(true);
   });

@@ -69,6 +69,7 @@ const runLoginSession = async (
             providerPatch: {
               name: input.providerPatch.name,
               enabled: input.providerPatch.enabled,
+              priority: input.providerPatch.priority,
               weight: input.providerPatch.weight,
               proxy: input.providerPatch.proxy,
               alias: input.providerPatch.alias,

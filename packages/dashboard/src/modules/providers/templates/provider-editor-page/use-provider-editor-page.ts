@@ -72,6 +72,8 @@ const startCreateAuthorization = (
       providerPatch: {
         enabled: true,
         ...(values.name === undefined || values.name === '' ? {} : { name: values.name }),
+        ...(values.priority === undefined ? {} : { priority: values.priority }),
+        ...(values.weight === undefined ? {} : { weight: values.weight }),
         ...(values.proxy === undefined ? {} : { proxy: values.proxy }),
       },
     },
@@ -223,6 +225,7 @@ const editorSectionInput = (
     others: extras.others,
   }),
   enabled: values.enabled,
+  priority: values.priority,
   weight: values.weight,
   headerCount: values.kind === 'api' ? Object.keys(values.headers ?? {}).length : 0,
   proxyCustom: values.proxy !== undefined && values.proxy !== null,

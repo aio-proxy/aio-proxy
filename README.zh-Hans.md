@@ -36,7 +36,7 @@ flowchart LR
 - **插件化接入**：通过插件连接不同模型提供商，支持 AI SDK Provider 包和 OAuth 账号。
 - **丰富可观测性**：集中查看请求量、Token 用量、费用和完整请求链路。
 - **主流协议兼容**：支持 OpenAI Chat Completions、OpenAI Responses、Anthropic Messages 和 Gemini GenerateContent。
-- **多 Provider 路由**：按模型和 Provider weight 选择候选，支持模型别名、故障回退和会话亲和。
+- **多 Provider 路由**：按模型、Provider priority 和 Provider weight 选择候选，支持模型别名、故障回退和会话亲和。
 - **透明协议转换**：协议一致时原始透传，协议不一致时自动转换。
 
 ## 安装
@@ -135,13 +135,54 @@ aio-proxy reload
 
 ## 路由规则
 
-`providers` 对象中的键是稳定的 **Provider ID**。一次请求按以下规则处理：
+`providers` 对象中的键是稳定的 **Provider ID**。**Provider priority** 是整数故障回退层级（`0..10000`，默认 `0`）；数值越大越先尝试。**Provider weight** 在同一 priority 层级内分配流量：它是有限的配置数值，默认 `1`，经 `Math.round` 后钳制到 `0..10000`。现有配置会保留旧的 `weight` 值，但该字段不再表示全局固定顺序。
 
-1. 找出所有提供请求模型或对应别名的 Provider。
-2. 按 Provider weight 从高到低尝试；相同或未设置的 Provider weight 保持配置顺序。
-3. 活动会话优先使用此前成功的 Provider，以保持会话连续性。
-4. 同协议的 `api` Provider 使用原始透传，其他组合通过 AI SDK 转换。
-5. 当前 Provider 失败后尝试下一个候选；全部失败时返回最后一次失败。
+```yaml
+providers:
+  provider-a:
+    priority: 0
+    weight: 1000
+router:
+  models:
+    model-m:
+      providers:
+        provider-a: { priority: 30, weight: 6000 }
+        provider-b: { priority: 30, weight: 4000 }
+        provider-c: { priority: 20 }
+```
+
+`router.models` 的键是精确的客户端请求模型 ID。它们不会创建候选、选择上游目标，也不使用 glob 匹配。缺少的 Provider 条目或字段继承 Provider 默认值。模型上的正数 weight 可以重新启用默认 weight 为零的 Provider。
+
+一次请求按以下规则处理：
+
+1. 先将完整请求模型字符串作为精确的 Provider-qualified 路由匹配。若匹配，直接选择该 Provider，并绕过 Provider priority 和 Provider weight（包括有效 weight 为零）。`enabled: false` 仍会拦截该 Provider，因为已禁用的 Provider 不在路由表中。
+2. 否则将同一完整字符串作为精确的普通客户端模型 ID 匹配，包括包含 `/` 的字符串。
+3. 将 Provider 默认值与该精确模型的稀疏 `providers` 覆盖合并。丢弃 `enabled: false` 或有效 weight 为零的普通候选。
+4. 剩余候选按 Provider priority 从高到低，再在同一 priority 层级内按 Provider weight 排序。配置顺序是目录表示和诊断的确定性平局规则，不再是同一层级中正数 weight 候选的请求顺序。
+5. 稳定（非 generated）逻辑会话使用确定性加权抽取，因此在路由快照未变时，token-count 与生成共用同一预先尝试顺序。generated 会话每次独立随机抽取。
+6. 响应 owner，然后是会话亲和，可将合格的普通候选提前到队首。它们不会复活已禁用或 weight 为零的 Provider。会话亲和仍会覆盖 priority，使会话可以粘在此前成功的 Provider 上（例如 prompt-cache 连续性）。
+7. 同协议的 `api` Provider 使用原始透传，其他组合通过 AI SDK 转换。
+8. 当前 Provider 失败后尝试下一个候选；全部失败时返回最后一次失败。
+
+在上述示例策略中，priority 30 时 `provider-a` 大约 60% 排在第一、`provider-b` 大约 40%。若选中的 Provider 失败，会先尝试同一 priority-30 的另一个 Provider，再尝试 `provider-c`。
+
+若所有普通候选均已禁用或有效 weight 为零，该模型会从 `GET /v1/models` 中省略，普通请求沿用现有的模型不可用/未找到行为。仍启用的 Provider 可通过精确的 Provider-qualified 请求访问。
+
+即使请求选择是加权的，`GET /v1/models` 也是确定性的。公开的代表 Provider 从已启用、有效 weight 为正的候选中选出，依次按最高 Provider priority、最高 Provider weight、原始配置顺序。
+
+### 保留此前以 weight 作为顺序的行为
+
+此前 Provider weight 是全局固定顺序：不同的 weight 从高到低尝试，相同或省略的 weight 保持配置顺序。在新约定下，这些 Provider 的默认 Provider priority 均为 `0`，Provider weight 是同一层级内的流量份额。现有文件不会被改写。
+
+| 旧配置                             | 保留原意的新配置                                                                          |
+| ---------------------------------- | ----------------------------------------------------------------------------------------- |
+| 用互不相同的旧 weight 作为固定顺序 | 把旧 `weight` 复制到 `priority`；把新 `weight` 设为 `1`。                                 |
+| 旧 weight 相同且配置顺序有意义     | 按旧配置顺序显式指定递减的 priority；把 `weight` 设为 `1`。                               |
+| 省略旧 weight                      | 此前在 priority 为零时仍可参与；设置正数的新 weight，通常为 `1`。                         |
+| 小数旧 weight                      | 按旧的从高到低顺序指定 priority；若仍作为流量比例保留，新 weight 会经 `Math.round` 取整。 |
+| 负数或大于 10000 的旧 weight       | 指定范围内的显式 priority 以保留旧的总顺序；不要复制会在钳制后塌缩的值。                  |
+| 旧 `weight: 0`                     | 此前仍是合格的回退候选；把新 `weight` 设为 `1`，并设置预期的 priority。                   |
+| `enabled: false`                   | 无变化；仍是硬禁用。                                                                      |
 
 ## API
 

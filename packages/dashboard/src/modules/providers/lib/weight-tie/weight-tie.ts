@@ -12,9 +12,8 @@ export interface WeightTieInput {
   readonly others: readonly Pick<DashboardProviderSummary, 'id' | 'weight' | 'clientModels' | 'enabled'>[];
 }
 
-// Absent coalesces to 0 at the single ordering point, types/src/config/config.ts:196; matched here so a tie is judged
-// by the same yardstick the router orders by.
-const effectiveWeight = (weight: number | undefined): number => weight ?? 0;
+// Absent coalesces to 1 at the schema default; matched here so a tie is judged by the same yardstick.
+const effectiveWeight = (weight: number | undefined): number => weight ?? 1;
 
 /**
  * Does another materialized provider share this one's weight on an alias they both serve? Feeds

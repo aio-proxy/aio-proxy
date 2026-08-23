@@ -16,6 +16,7 @@ export type OAuthEditorShape = {
   readonly id: string;
   readonly name?: string | undefined;
   readonly enabled?: boolean | undefined;
+  readonly priority?: number | undefined;
   readonly weight?: number | undefined;
   readonly proxy?: OAuthProviderMutationBody['proxy'];
   readonly alias?: readonly AliasRow[] | undefined;

@@ -32,6 +32,7 @@ export interface SectionStatusInput {
   readonly transformCount?: number | undefined;
   readonly weightTie: boolean;
   readonly enabled?: boolean | undefined;
+  readonly priority?: number | undefined;
   readonly weight?: number | undefined;
   readonly headerCount?: number | undefined;
   readonly proxyCustom?: boolean | undefined;

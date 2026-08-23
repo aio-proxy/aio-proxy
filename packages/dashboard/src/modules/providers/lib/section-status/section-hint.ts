@@ -100,11 +100,16 @@ export const routingHint = (input: SectionStatusInput): string => {
   // the other provider in the tie may not even be the user's to change — so this branch is what keeps
   // the advice on screen.
   if (input.weightTie) return m['dashboard.providers.editor.hint_routing_weight_tie']();
-  // Absent coalesces to 0 at the single ordering point, types/src/config/config.ts:196 — but that is ordering, not
-  // readout, and the two are deliberately kept apart here: an absent weight reports "not set", because
-  // printing `0` would make a stored `0` indistinguishable from a key that was never written.
-  if (input.weight === undefined) return m['dashboard.providers.editor.hint_routing_no_weight']();
-  return m['dashboard.providers.editor.hint_routing_weight']({ weight: input.weight });
+  const parts: string[] = [];
+  if (input.priority !== undefined) {
+    parts.push(m['dashboard.providers.editor.hint_routing_priority']({ priority: input.priority }));
+  }
+  if (input.weight === undefined) {
+    parts.push(m['dashboard.providers.editor.hint_routing_no_weight']());
+  } else {
+    parts.push(m['dashboard.providers.editor.hint_routing_weight']({ weight: input.weight }));
+  }
+  return parts.join(' · ');
 };
 
 const transformText = (count: number): string =>

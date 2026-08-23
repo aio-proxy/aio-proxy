@@ -71,10 +71,17 @@ export function withRoutingConfig(
   config: OAuthProvider,
   catalogIds: readonly string[],
 ): RuntimeProviderInstance {
-  const { alias: _previousAlias, configMetadata: _previousConfigMetadata, ...previousProvider } = provider;
+  const {
+    alias: _previousAlias,
+    configMetadata: _previousConfigMetadata,
+    priority: _previousPriority,
+    weight: _previousWeight,
+    ...previousProvider
+  } = provider;
   return {
     ...previousProvider,
     enabled: config.enabled,
+    ...routingDefaults(config),
     models: exposedModelIds(catalogIds, config.models),
     ...(config.alias === undefined ? {} : { alias: config.alias }),
     ...(config.metadata === undefined ? {} : { configMetadata: config.metadata }),
@@ -108,6 +115,7 @@ export function createRuntimeProvider(
     id: config.id,
     kind: ProviderKind.OAuth,
     enabled: config.enabled,
+    ...routingDefaults(config),
     models: exposedModelIds(
       catalog.language.map(({ id }) => id),
       config.models,
@@ -124,6 +132,17 @@ export function createRuntimeProvider(
       supportsProviderTool: (type) => supportedProviderTools.has(type),
       targetProtocol: (modelId) => upstreamMetadata[modelId]?.protocol,
     },
+  };
+}
+
+
+function routingDefaults(config: { readonly priority?: number; readonly weight?: number }): {
+  readonly priority?: number;
+  readonly weight?: number;
+} {
+  return {
+    ...(config.priority === undefined ? {} : { priority: config.priority }),
+    ...(config.weight === undefined ? {} : { weight: config.weight }),
   };
 }
 

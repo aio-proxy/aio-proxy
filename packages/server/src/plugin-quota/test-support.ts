@@ -230,11 +230,12 @@ export function createQuotaFixture(options: QuotaFixtureOptions = {}) {
       }
     : repository;
   const providers = providerIds.map(runtimeProvider);
+  const config = providerConfig(options.provider ?? 'oauth', options.region ?? 'us-east', providerIds, options.proxy);
   const snapshot: ProviderRouteSnapshot = {
-    config: providerConfig(options.provider ?? 'oauth', options.region ?? 'us-east', providerIds, options.proxy),
+    config,
     plugins: plugins as never,
     providers,
-    router: new Router(providers),
+    router: new Router(providers, { models: config.router.models, random: () => 0 }),
     providerStates: new Map(providerIds.map((providerId) => [providerId, { status: 'ready' }] as const)),
   };
   const manager = createSnapshotManager(snapshot);

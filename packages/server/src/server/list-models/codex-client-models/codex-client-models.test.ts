@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { clearModelsCache, fileCacheStorage } from '@aio-proxy/core';
+import { clearModelsCache, fileCacheStorage, Router } from '@aio-proxy/core';
 import { ModelContextAggregation, ProviderKind } from '@aio-proxy/types';
 import type { Model, ProviderMap } from '@opencode-ai/models';
 
@@ -27,11 +27,13 @@ function fakeState(
   providers: readonly RuntimeProviderInstance[] = [provider],
   aggregation?: (typeof ModelContextAggregation)[keyof typeof ModelContextAggregation],
 ): ServerState {
+  const config = aggregation === undefined ? undefined : { router: { modelContextAggregation: aggregation } };
   return {
     acquireProviderSnapshot: () => ({
       snapshot: {
         providers,
-        ...(aggregation === undefined ? {} : { config: { router: { modelContextAggregation: aggregation } } }),
+        router: new Router(providers, { models: config?.router.models }),
+        ...(config === undefined ? {} : { config }),
       },
       release() {},
     }),
@@ -342,12 +344,9 @@ test('config metadata overrides (description) flow into the synthesized case B e
     },
     model: { invoke: async function* () {} },
   } as unknown as RuntimeProviderInstance;
-  const state = {
-    acquireProviderSnapshot: () => ({ snapshot: { providers: [configured] }, release() {} }),
-  } as unknown as ServerState;
 
   const fetchImpl = (async () => Response.json({ models: [upstream] })) as unknown as typeof fetch;
-  const { models } = await codexClientModels(state, { fetchImpl });
+  const { models } = await codexClientModels(fakeState([configured]), { fetchImpl });
 
   const caseB = models.find((m) => m.id === 'my-alias') as Record<string, unknown>;
   expect(caseB.description).toBe('Overridden by config');
@@ -441,14 +440,11 @@ test('synthesized entries get deterministic priorities past the max template pri
     metadata: {},
     model: { invoke: async function* () {} },
   } as unknown as RuntimeProviderInstance;
-  const state = {
-    acquireProviderSnapshot: () => ({ snapshot: { providers: [multi] }, release() {} }),
-  } as unknown as ServerState;
 
   // Template gpt-5.6-sol has priority 1; synthesized entries must sort after it
   // and be spaced 100 apart in display-name order (apple before zebra).
   const fetchImpl = (async () => Response.json({ models: [{ ...upstream, priority: 1 }] })) as unknown as typeof fetch;
-  const { models } = await codexClientModels(state, { fetchImpl });
+  const { models } = await codexClientModels(fakeState([multi]), { fetchImpl });
 
   const bySlug = new Map(models.map((m) => [m.slug as string, m]));
   expect(bySlug.get('gpt-5')?.priority).toBe(1);

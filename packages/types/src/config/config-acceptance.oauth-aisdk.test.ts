@@ -17,7 +17,7 @@ describe('ConfigSchema', () => {
       plugins: [],
       server: defaultServer,
       router: defaultRouter,
-      providers: [{ ...provider, enabled: true, id: 'chatgpt' }],
+      providers: [{ ...provider, enabled: true, id: 'chatgpt', priority: 0, weight: 1 }],
       invalidProviders: [],
     });
   });
@@ -40,6 +40,8 @@ describe('ConfigSchema', () => {
       name: 'My Copilot',
       proxy: 'https://proxy.example:8443',
       enabled: true,
+      priority: 0,
+      weight: 1,
     });
     expect(AiSdkProviderSchema.parse({ kind: 'ai-sdk', id: 'y', name: 'My SDK' })).toEqual({
       kind: 'ai-sdk',
@@ -47,6 +49,8 @@ describe('ConfigSchema', () => {
       name: 'My SDK',
       enabled: true,
       packageName: '@ai-sdk/openai-compatible',
+      priority: 0,
+      weight: 1,
     });
   });
 
@@ -62,7 +66,7 @@ describe('ConfigSchema', () => {
       plugins: [],
       server: defaultServer,
       router: defaultRouter,
-      providers: [{ ...provider, enabled: true, id: 'google' }],
+      providers: [{ ...provider, enabled: true, id: 'google', priority: 0, weight: 1 }],
       invalidProviders: [],
     });
   });
@@ -91,6 +95,8 @@ describe('ConfigSchema', () => {
         enabled: true,
         id: 'compatible',
         packageName: '@ai-sdk/openai-compatible',
+        priority: 0,
+        weight: 1,
       },
     ]);
   });

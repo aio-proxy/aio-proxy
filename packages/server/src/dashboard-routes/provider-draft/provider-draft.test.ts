@@ -590,6 +590,30 @@ describe('draft Provider catalog and test routes', () => {
     });
   });
 
+  test('accepts a freshly entered sensitive AI SDK option for a changed target', () => {
+    const resolved = resolveProviderDraft(
+      state,
+      {
+        id: 'saved-sdk',
+        kind: 'ai-sdk',
+        options: {
+          accessToken: 'fresh-sdk-access-token',
+          apiKey: '****',
+          baseURL: 'http://changed-sdk.example/v1',
+          name: 'changed-sdk',
+        },
+        packageName: '@ai-sdk/openai-compatible',
+      },
+      'saved-sdk',
+    );
+
+    expect(resolved).toMatchObject({
+      ok: true,
+      provider: { options: { accessToken: 'fresh-sdk-access-token' } },
+    });
+  });
+
+
   test('uses only fresh API credentials for a changed destination and proxy', async () => {
     let authorization: string | null = null;
     let freshHeader: string | null = null;

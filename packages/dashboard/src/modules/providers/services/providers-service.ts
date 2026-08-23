@@ -1,12 +1,25 @@
 import type {
   DashboardProviderEnabledMutationBody,
   DashboardProviderSummary,
+  DashboardRoutingNumber,
   ProviderMutationBody,
 } from '@aio-proxy/types';
 import { queryOptions } from '@tanstack/react-query';
 
 import { createDashboardClient } from '@/lib/dashboard-client';
 import { queryKeys } from '@/lib/query-keys';
+
+export type ProviderEditRouting = {
+  readonly priority: DashboardRoutingNumber;
+  readonly weight: DashboardRoutingNumber;
+};
+
+export const providerFormRoutingValues = (
+  routing: ProviderEditRouting | undefined,
+): { readonly priority?: number; readonly weight?: number } => ({
+  ...(routing?.priority.authored === undefined ? {} : { priority: routing.priority.authored }),
+  ...(routing?.weight.authored === undefined ? {} : { weight: routing.weight.authored }),
+});
 
 const dashboardClient = createDashboardClient();
 

@@ -1,0 +1,1 @@
+export { createDashboardRoutingRoutes } from './routing';

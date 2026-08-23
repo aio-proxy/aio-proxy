@@ -51,4 +51,23 @@ describe('ConfigSchema', () => {
       expect(result.error.issues.map((issue) => issue.path)).toContainEqual(['packageName']);
     }
   });
+
+  test('rejects fractional priorities and non-number weights', () => {
+    expect(
+      ProviderMutationBodySchema.safeParse({
+        kind: 'ai-sdk',
+        id: 'x',
+        priority: 1.5,
+        packageName: '@ai-sdk/openai-compatible',
+      }).success,
+    ).toBe(false);
+    expect(
+      ProviderMutationBodySchema.safeParse({
+        kind: 'ai-sdk',
+        id: 'x',
+        weight: '2',
+        packageName: '@ai-sdk/openai-compatible',
+      }).success,
+    ).toBe(false);
+  });
 });

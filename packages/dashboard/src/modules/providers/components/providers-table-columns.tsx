@@ -124,22 +124,23 @@ const modelsColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
   },
 };
 
-const weightColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
-  id: 'weight',
-  meta: { className: 'w-20 text-center', label: () => m['dashboard.providers.table.col_weight']() },
-  // Raw weight on purpose: this feeds sorting, and coalescing an absent weight to 0 here would move
-  // rows. Only the rendered cell distinguishes absent from stored.
-  accessorFn: (row) => concreteProvider(row)?.weight,
-  header: tableHead(() => m['dashboard.providers.table.col_weight']()),
+const numericRoutingColumn = (
+  id: 'priority' | 'weight',
+  label: () => string,
+  fallback: number,
+): ColumnDef<DataTableFeatures, ProviderTableRow> => ({
+  id,
+  meta: { className: 'w-20 text-center', label },
+  accessorFn: (row) => concreteProvider(row)?.[id] ?? fallback,
+  header: tableHead(label),
   cell: ({ row }) => {
     const provider = concreteProvider(row.original);
-    if (provider === undefined) return null;
-    // A stored `0` is a real weight — the lowest priority — so it must not read the same as a key the
-    // config never had. Same em-dash marker as provider-models-cell and model-row-item: a symbol, not
-    // translatable copy.
-    return provider.weight ?? <span className="text-muted-foreground">—</span>;
+    return provider === undefined ? null : (provider[id] ?? fallback);
   },
-};
+});
+
+const priorityColumn = numericRoutingColumn('priority', () => m['dashboard.providers.table.col_priority'](), 0);
+const weightColumn = numericRoutingColumn('weight', () => m['dashboard.providers.table.col_weight'](), 1);
 
 const stateColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
   id: 'state',
@@ -216,6 +217,7 @@ export const createProviderColumns = (
   providerColumn,
   typeColumn,
   modelsColumn,
+  priorityColumn,
   weightColumn,
   stateColumn,
   usageColumn(providerUsage, providerUsageStatus),

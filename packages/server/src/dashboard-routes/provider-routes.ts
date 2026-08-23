@@ -21,7 +21,7 @@ export const createDashboardProviderReadRoutes = (state: ServerState) =>
     .get('/providers/package-status', providerPackageQueryValidator, async (context) =>
       context.json(await providerPackageStatus(context.req.valid('query').npm)),
     )
-    .get('/providers/:id/edit-view', (context) => {
+    .get('/providers/:id/edit-view', async (context) => {
       const id = context.req.param('id');
       // Real values on purpose: the editor round-trips this entry straight back
       // through the mutation endpoint, and every masked field it had to restore
@@ -33,7 +33,12 @@ export const createDashboardProviderReadRoutes = (state: ServerState) =>
         return context.json({ error: 'provider not found' }, 404);
       }
       const oauth = provider.kind === 'oauth' ? state.oauthProviderEditView(id) : undefined;
-      return context.json({ provider, ...(oauth === undefined ? {} : { oauth }) });
+      const routing = await state.modelRouting.providerNumberViews(id);
+      return context.json({
+        provider,
+        ...(oauth === undefined ? {} : { oauth }),
+        ...(routing === undefined ? {} : { routing }),
+      });
     })
     .get('/providers/:id', providerProbeValidator, async (context) => {
       const query = context.req.valid('query');

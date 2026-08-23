@@ -139,3 +139,11 @@ test('the routing hint tells an absent weight apart from a configured zero', () 
   expect(routingHint(input)).toBe(m['dashboard.providers.editor.hint_routing_no_weight']());
   expect(routingHint(input)).not.toBe(m['dashboard.providers.editor.hint_routing_weight']({ weight: 0 }));
 });
+
+test('the routing hint names a configured priority before the weight', () => {
+  const input = { ...base, models: ['m1'], aliasCount: 0, priority: 4, weight: 2 } satisfies SectionStatusInput;
+
+  expect(routingHint(input)).toBe(
+    `${m['dashboard.providers.editor.hint_routing_priority']({ priority: 4 })} · ${m['dashboard.providers.editor.hint_routing_weight']({ weight: 2 })}`,
+  );
+});

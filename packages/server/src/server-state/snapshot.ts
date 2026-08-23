@@ -6,7 +6,6 @@ import {
   type PluginLogSink,
   type PluginRegistrySnapshot,
   type PluginRepository,
-  type Router,
 } from '@aio-proxy/core';
 import {
   type Config,
@@ -38,7 +37,7 @@ import {
 import { createObservedFetch } from '../request-logging';
 import type { ProviderRouteSnapshot, RuntimeProviderInput, RuntimeProviderInstance } from '../runtime';
 import { applyMetadataExtend } from './resolve-extend/index';
-import type { ServerStateOptions } from './types';
+import type { CreateRouter, ServerStateOptions } from './types';
 
 export type Snapshot = ProviderRouteSnapshot & {
   readonly config: Config;
@@ -70,7 +69,7 @@ export async function buildSnapshot(
   diagnostics: DiagnosticFactory,
   logger: PluginLogSink,
   onDiagnosticChanged: () => void,
-  createRouter: (providers: readonly RuntimeProviderInstance[]) => Router<RuntimeProviderInstance>,
+  createRouter: CreateRouter,
 ): Promise<Snapshot> {
   const controlFetch = globalThis.fetch;
   const { plugins, pluginOptionInputs, pluginOptionsDigests } = await loadPlugins(
@@ -132,7 +131,7 @@ export async function buildSnapshot(
     plugins,
     probes: base.probes,
     providers,
-    router: createRouter(providers),
+    router: createRouter(providers, configWithExtend.router),
     summaries,
     catalogJobs: compact(oauth.map((item) => item.catalogJob)),
     runtimeCache: new Map(
@@ -265,7 +264,7 @@ export function providerConfigRecord(config: Config): Record<string, unknown> {
 export function buildSnapshotWithProviders(
   config: Config,
   providers: readonly RuntimeProviderInput[],
-  createRouter: (providers: readonly RuntimeProviderInstance[]) => Router<RuntimeProviderInstance>,
+  createRouter: CreateRouter,
 ): Snapshot {
   const materialized = providers.map((provider) => materializeRuntimeProvider(provider));
   const summaries = materialized.map((provider) => ({
@@ -278,7 +277,7 @@ export function buildSnapshotWithProviders(
     plugins: emptyPluginSnapshot(),
     probes: new Map(),
     providers: materialized,
-    router: createRouter(materialized),
+    router: createRouter(materialized, config.router),
     summaries,
     catalogJobs: [],
     runtimeCache: new Map(),

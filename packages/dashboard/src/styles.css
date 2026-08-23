@@ -1,3 +1,8 @@
 @import '@aio-proxy/ui/styles.css';
 
 @source "./";
+
+body,
+#root {
+  @apply overflow-hidden;
+}

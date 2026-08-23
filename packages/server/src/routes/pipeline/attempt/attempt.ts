@@ -1,4 +1,4 @@
-import { type ProtocolAdapter, type RouterResolution } from '@aio-proxy/core';
+import { type ProtocolAdapter, type RouterCandidate } from '@aio-proxy/core';
 import type { Config } from '@aio-proxy/types';
 
 import type { LogicalSessionResolution } from '../../../logical-session-store';
@@ -7,6 +7,7 @@ import type { RequestTraceSession } from '../../../request-tracing';
 import { createAttemptResponseObservation, withAttemptResponseObservation } from '../../../response-observation';
 import type { ProviderRouteSource, RuntimeProviderInstance } from '../../../runtime';
 import { prioritizeAffinity } from '../affinity';
+import { candidateRoutingTrace, candidateSelectionSource } from '../attempt-base';
 import { type AttemptLog, logProviderAttemptFailed } from '../logging';
 import type { AttemptLoopContext, CandidateSlot, InvocationHolder } from './context';
 import { selectLiveCandidates } from './cooldown-write';
@@ -17,7 +18,7 @@ import { attemptRawCandidate } from './raw';
 
 type AttemptCandidatesOptions<TRequest, TContext> = {
   readonly adapter: ProtocolAdapter<TRequest, TContext>;
-  readonly candidates: readonly RouterResolution<RuntimeProviderInstance>[];
+  readonly candidates: readonly RouterCandidate<RuntimeProviderInstance>[];
   readonly context: TContext;
   readonly config: Config | undefined;
   readonly rawRequest: Request;
@@ -86,12 +87,10 @@ function createAttemptLoopContext<TRequest, TContext>(
 export async function attemptCandidates<TRequest, TContext>(
   options: AttemptCandidatesOptions<TRequest, TContext>,
 ): Promise<Response> {
-  const { adapter, candidates, config, resolution, session } = options;
+  const { adapter, candidates, resolution, session } = options;
   const affinityOrdered =
     resolution.affinity?.active === true ? prioritizeAffinity(candidates, resolution.affinity.providerId) : candidates;
   const ordered = prioritizeAffinity(affinityOrdered, resolution.responseOwner?.providerId);
-  const weightByProviderId =
-    config === undefined ? undefined : new Map(config.providers.map((provider) => [provider.id, provider.weight ?? 0]));
   const ctx = createAttemptLoopContext(options);
 
   const holder: InvocationHolder = { invocation: undefined, invocationUnsupported: undefined };
@@ -128,7 +127,7 @@ export async function attemptCandidates<TRequest, TContext>(
       observation,
       hasNext: index < live.length - 1,
       trace: {
-        ...(weightByProviderId === undefined ? {} : { providerWeight: weightByProviderId.get(provider.id) ?? 0 }),
+        ...candidateRoutingTrace(candidate, candidateSelectionSource(candidate, resolution)),
         sourceProtocol: adapter.protocol,
         selectionReason,
       },

@@ -45,6 +45,7 @@ test('explicit re-login preloads options and secrets, fixes Provider ID, and pre
       providerPatch: {
         name: 'Work',
         enabled: false,
+        priority: 4,
         weight: 9,
         alias: { chat: { model: 'model-1' } },
       },
@@ -61,6 +62,7 @@ test('explicit re-login preloads options and secrets, fixes Provider ID, and pre
   expect(result.providerId).toBe('person');
   expect((configOf(state)['providers'] as Record<string, unknown>)['person']).toMatchObject({
     enabled: false,
+    priority: 4,
     weight: 9,
     name: 'Work',
     proxy: 'https://proxy.example:8443',
@@ -119,6 +121,7 @@ test('explicit re-login atomically applies a requested provider patch with accou
       providerPatch: {
         name: 'Personal',
         enabled: false,
+        priority: 7,
         weight: 4,
         proxy: null,
         alias: { chat: { model: 'model-2' } },
@@ -138,6 +141,7 @@ test('explicit re-login atomically applies a requested provider patch with accou
     capability: 'default',
     name: 'Personal',
     enabled: false,
+    priority: 7,
     weight: 4,
     alias: { chat: { model: 'model-2' } },
     transforms: { request: [{ update: [{ $unset: 'request.body.store' }] }] },

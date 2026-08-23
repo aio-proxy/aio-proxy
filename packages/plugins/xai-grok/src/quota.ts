@@ -1,6 +1,6 @@
 import type { AccountContext, OAuthQuotaItem, OAuthQuotaSnapshot } from '@aio-proxy/plugin-sdk';
 
-import { createXAIGrokCLIHeaders, XAI_GROK_CLI_BASE_URL } from './cli-headers';
+import { createXAIGrokCLIHeaders, XAI_GROK_CLI_BASE_URL } from './cli-headers/index';
 import { currentXAIGrokCredential, type XAIGrokOAuthOptions } from './oauth';
 import type { XAIGrokCredential } from './schema';
 

@@ -66,6 +66,7 @@ test('dashboard OAuth session start accepts a complete routing patch without ide
     providerPatch: {
       name: 'Work',
       enabled: false,
+      priority: 3,
       weight: 7,
       alias: { chat: { model: 'model-1' } },
       proxy: null,
@@ -80,6 +81,14 @@ test('dashboard OAuth session start accepts a complete routing patch without ide
   expect(() =>
     schema.parse({ ...request, providerPatch: { ...request.providerPatch, proxy: 'socks5://localhost:1080' } }),
   ).toThrow();
+});
+
+test('dashboard OAuth provider patch canonicalizes weight and keeps omitted weight optional', () => {
+  const schema = dashboard.DashboardOAuthProviderPatchSchema;
+  expect(schema.parse({ enabled: true, weight: 1.6, proxy: false }).weight).toBe(2);
+  expect(schema.parse({ enabled: true, weight: -3, proxy: false }).weight).toBe(0);
+  expect(schema.parse({ enabled: true, weight: 10_001, proxy: false }).weight).toBe(10_000);
+  expect(schema.parse({ enabled: true, proxy: false }).weight).toBeUndefined();
 });
 
 test('accepts an authorize_url session without a user code', () => {

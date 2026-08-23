@@ -109,13 +109,13 @@ describe('WeightSliderField', () => {
 
   // The display and the body disagree on purpose. An absent weight IS zero to the router, so the box
   // shows `0` beside a thumb already parked at zero; what must never happen is that rendering it
-  // *writes* it. The `onChange` assertion is the whole point of this test — drop it and a `?? 0`
-  // default silently stamps `weight: 0` into every provider the user merely opened.
-  test('an absent weight displays zero without writing one on mount', () => {
+  // *writes* it. The `onChange` assertion is the whole point of this test — drop it and a `?? 1`
+  // default silently stamps `weight: 1` into every provider the user merely opened.
+  test('an absent weight displays one without writing one on mount', () => {
     const onChange = rs.fn();
     render(<WeightSliderField value={undefined} onChange={onChange} />);
 
-    expect(screen.getByRole('spinbutton')).toHaveValue(0);
+    expect(screen.getByRole('spinbutton')).toHaveValue(1);
     expect(onChange).not.toHaveBeenCalled();
   });
 

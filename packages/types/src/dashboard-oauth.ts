@@ -4,7 +4,7 @@ import { AliasConfigSchema, IdSchema } from './common';
 import { DashboardLocalizedTextSchema } from './dashboard-localized-text';
 import { ModelIdSchema } from './model-id';
 import { ModelMetadataSchema } from './model-metadata/index';
-import { ProviderMutationProxySchema } from './provider';
+import { ProviderMutationProxySchema, RoutingPrioritySchema, RoutingWeightSchema } from './provider';
 import { ProviderTransformsSchema } from './provider-transform/index';
 
 const DashboardOAuthFormConditionSchema = z.strictObject({
@@ -70,7 +70,8 @@ const DashboardOAuthSessionCommonSchema = z.object({ id: z.uuid() });
 export const DashboardOAuthProviderPatchSchema = z.strictObject({
   name: z.string().optional(),
   enabled: z.boolean(),
-  weight: z.number().optional(),
+  priority: RoutingPrioritySchema.optional(),
+  weight: RoutingWeightSchema.optional(),
   models: z.array(z.string()).optional(),
   metadata: z
     .record(ModelIdSchema, ModelMetadataSchema)

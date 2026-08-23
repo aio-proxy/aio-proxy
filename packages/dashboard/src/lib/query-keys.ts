@@ -21,6 +21,7 @@ export const queryKeys = {
   providerProbe: (id: string) => ['providers', id, 'probe'],
   providerUsage: ['dashboard', 'providers', 'usage'],
   providers: ['providers'],
+  routingModels: ['routing', 'models'],
   settings: ['settings'],
   // Search shape stays structural: src/lib must not depend on a module's types.
   trace: (traceId: string) => ['dashboard', 'traces', traceId],

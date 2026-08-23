@@ -27,6 +27,15 @@ const apiInitial = (models: readonly string[]) => ({
 });
 
 describe('RoutingSection', () => {
+
+  test('the priority field writes a whole number onto the form', () => {
+    render(<Harness initial={apiInitial(['model-a'])} />);
+
+    fireEvent.change(screen.getByRole('spinbutton', { name: /Priority|优先级|優先/u }), { target: { value: '4' } });
+
+    expect(section.state.values.priority).toBe(4);
+  });
+
   test('the weight slider writes the dragged value onto the form', () => {
     render(<Harness initial={apiInitial(['model-a'])} />);
 

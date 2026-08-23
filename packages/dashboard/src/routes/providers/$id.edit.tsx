@@ -60,6 +60,7 @@ const EditProviderPage: React.FC = () => {
           id: provider.id,
           name: provider.name,
           enabled: provider.enabled,
+          priority: provider.priority,
           weight: provider.weight,
           proxy: provider.proxy,
           alias: provider.alias,

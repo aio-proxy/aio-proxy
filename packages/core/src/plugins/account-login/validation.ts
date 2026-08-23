@@ -175,6 +175,7 @@ export function providerEntry(
   // and the exceptions are enumerated instead. Same rule, opposite defaults, because the contracts
   // differ — a shared helper would have to hide that.
   const enabled = patch?.enabled ?? existing?.['enabled'] ?? true;
+  const priority = patch === undefined ? existing?.['priority'] : patch.priority;
   const weight = patch === undefined ? existing?.['weight'] : patch.weight;
   const name = patch?.name === undefined ? existing?.['name'] : patch.name;
   // `alias` uses a `??` chain unlike the other fields: plugin-generated default aliases must seed
@@ -191,6 +192,7 @@ export function providerEntry(
     capability,
     ...(Object.keys(publicOptions).length === 0 ? {} : { options: publicOptions }),
     enabled,
+    ...(priority === undefined ? {} : { priority }),
     ...(weight === undefined ? {} : { weight }),
     ...(name === undefined || (typeof name === 'string' && name.trim() === '') ? {} : { name }),
     ...(alias === undefined ? {} : { alias }),

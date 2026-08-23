@@ -30,13 +30,13 @@ import { watchConfigFile } from '../config-watcher';
 import { createDashboardEventHub } from '../dashboard-events';
 import { createFifoQueue } from '../fifo-queue';
 import { LogicalSessionStore } from '../logical-session-store';
+import { createModelRoutingControlPlane } from '../model-routing';
 import { createPluginControlPlane } from '../plugin-control-plane';
 import { createOAuthQuotaOperations } from '../plugin-quota';
 import type { SnapshotManager } from '../plugin-snapshot';
 import { createSnapshotManager } from '../plugin-snapshot';
 import { createRequestTraceRecorder } from '../request-tracing';
 import { ProviderCooldownStore } from '../routes/pipeline/provider-cooldown';
-import type { RuntimeProviderInstance } from '../runtime';
 import { createUsageCapture } from '../usage-capture';
 import type { ServerRuntime } from './lifecycle';
 import {
@@ -128,7 +128,7 @@ async function initializeServerState(
     }
   };
   const createRouter =
-    testHooks?.createRouter ?? ((providers: readonly RuntimeProviderInstance[]) => new Router(providers));
+    testHooks?.createRouter ?? ((providers, routerConfig) => new Router(providers, { models: routerConfig.models }));
   const events = createDashboardEventHub(options.eventLimits);
   registerStartupCleanup(() => events.close());
   const repository = options.pluginRepository ?? createPluginRepository(dbHandle.sqlite);
@@ -236,6 +236,12 @@ async function initializeServerState(
   mergeHost.store = configStore;
   failAfter('recovery');
   const pluginControlPlane = createStatePluginControlPlane(runtime, configStore);
+  const modelRouting = createModelRoutingControlPlane({
+    currentConfig: () => (manager.current() as Snapshot).config,
+    currentSummaries: () => (manager.current() as Snapshot).summaries,
+    repository,
+    configStore,
+  });
 
   const providerSummaries = createProviderSummaries(manager);
 
@@ -258,6 +264,7 @@ async function initializeServerState(
     events,
     logicalSessionStore,
     cooldown,
+    modelRouting,
     oauthQuota,
     oauthLoginSessions,
     pluginControlPlane,
