@@ -12,10 +12,10 @@ import type { ServerState } from '../../server-state';
 import { createDashboardRoutes } from '../config';
 import { resolveProviderDraft } from './provider-draft-operations';
 
-const jsonRequest = (body: unknown): RequestInit => ({
+const jsonRequest = (body: unknown, method: 'POST' | 'QUERY' = 'POST'): RequestInit => ({
   body: JSON.stringify(body),
   headers: { 'content-type': 'application/json' },
-  method: 'POST',
+  method,
 });
 
 describe('draft Provider catalog and test routes', () => {
@@ -106,15 +106,18 @@ describe('draft Provider catalog and test routes', () => {
     try {
       const response = await routes.request(
         '/providers/draft/catalog',
-        jsonRequest({
-          draft: {
-            apiKey: 'draft-secret',
-            baseURL: `http://127.0.0.1:${upstream.port}/v1`,
-            id: 'unsaved',
-            kind: 'api',
-            protocol: ProviderProtocol.OpenAICompatible,
+        jsonRequest(
+          {
+            draft: {
+              apiKey: 'draft-secret',
+              baseURL: `http://127.0.0.1:${upstream.port}/v1`,
+              id: 'unsaved',
+              kind: 'api',
+              protocol: ProviderProtocol.OpenAICompatible,
+            },
           },
-        }),
+          'QUERY',
+        ),
       );
       const text = await response.text();
 
@@ -147,14 +150,17 @@ describe('draft Provider catalog and test routes', () => {
     try {
       const response = await routes.request(
         '/providers/draft/catalog',
-        jsonRequest({
-          draft: {
-            baseURL: `http://127.0.0.1:${upstream.port}`,
-            id: 'gemini-draft',
-            kind: 'api',
-            protocol: ProviderProtocol.Gemini,
+        jsonRequest(
+          {
+            draft: {
+              baseURL: `http://127.0.0.1:${upstream.port}`,
+              id: 'gemini-draft',
+              kind: 'api',
+              protocol: ProviderProtocol.Gemini,
+            },
           },
-        }),
+          'QUERY',
+        ),
       );
 
       expect(response.status).toBe(200);
@@ -182,14 +188,17 @@ describe('draft Provider catalog and test routes', () => {
     try {
       const response = await routes.request(
         '/providers/draft/catalog',
-        jsonRequest({
-          draft: {
-            baseURL: `http://127.0.0.1:${upstream.port}`,
-            id: 'gemini-draft',
-            kind: 'api',
-            protocol: ProviderProtocol.Gemini,
+        jsonRequest(
+          {
+            draft: {
+              baseURL: `http://127.0.0.1:${upstream.port}`,
+              id: 'gemini-draft',
+              kind: 'api',
+              protocol: ProviderProtocol.Gemini,
+            },
           },
-        }),
+          'QUERY',
+        ),
       );
 
       expect(await response.json()).toEqual({ ok: true, models: ['gemini-first', 'gemini-second'] });
@@ -215,14 +224,17 @@ describe('draft Provider catalog and test routes', () => {
     try {
       const response = await routes.request(
         '/providers/draft/catalog',
-        jsonRequest({
-          draft: {
-            baseURL: `http://127.0.0.1:${upstream.port}`,
-            id: 'anthropic-draft',
-            kind: 'api',
-            protocol: ProviderProtocol.Anthropic,
+        jsonRequest(
+          {
+            draft: {
+              baseURL: `http://127.0.0.1:${upstream.port}`,
+              id: 'anthropic-draft',
+              kind: 'api',
+              protocol: ProviderProtocol.Anthropic,
+            },
           },
-        }),
+          'QUERY',
+        ),
       );
 
       expect(await response.json()).toEqual({ ok: true, models: ['claude-first', 'claude-second'] });
@@ -241,14 +253,17 @@ describe('draft Provider catalog and test routes', () => {
     try {
       const response = await routes.request(
         '/providers/draft/catalog',
-        jsonRequest({
-          draft: {
-            baseURL: `http://127.0.0.1:${upstream.port}`,
-            id: 'unavailable',
-            kind: 'api',
-            protocol: ProviderProtocol.Anthropic,
+        jsonRequest(
+          {
+            draft: {
+              baseURL: `http://127.0.0.1:${upstream.port}`,
+              id: 'unavailable',
+              kind: 'api',
+              protocol: ProviderProtocol.Anthropic,
+            },
           },
-        }),
+          'QUERY',
+        ),
       );
       const text = await response.text();
 
@@ -266,13 +281,16 @@ describe('draft Provider catalog and test routes', () => {
   test('returns a recoverable unsupported catalog result for an AI SDK draft', async () => {
     const response = await routes.request(
       '/providers/draft/catalog',
-      jsonRequest({
-        draft: {
-          id: 'sdk-draft',
-          kind: 'ai-sdk',
-          packageName: '@ai-sdk/openai-compatible',
+      jsonRequest(
+        {
+          draft: {
+            id: 'sdk-draft',
+            kind: 'ai-sdk',
+            packageName: '@ai-sdk/openai-compatible',
+          },
         },
-      }),
+        'QUERY',
+      ),
     );
 
     expect(response.status).toBe(200);
@@ -297,14 +315,17 @@ describe('draft Provider catalog and test routes', () => {
     try {
       const response = await routes.request(
         '/providers/draft/catalog',
-        jsonRequest({
-          draft: {
-            id: 'unsaved-sdk',
-            kind: 'ai-sdk',
-            packageName: '@ai-sdk/openai-compatible',
-            options: { apiKey: 'sdk-secret', baseURL: `http://127.0.0.1:${upstream.port}/v1` },
+        jsonRequest(
+          {
+            draft: {
+              id: 'unsaved-sdk',
+              kind: 'ai-sdk',
+              packageName: '@ai-sdk/openai-compatible',
+              options: { apiKey: 'sdk-secret', baseURL: `http://127.0.0.1:${upstream.port}/v1` },
+            },
           },
-        }),
+          'QUERY',
+        ),
       );
       expect(response.status).toBe(200);
       expect(await response.json()).toEqual({ ok: true, models: ['sdk-model-a', 'sdk-model-b'] });
@@ -325,7 +346,7 @@ describe('draft Provider catalog and test routes', () => {
   test('an ai-sdk draft with a blank options.baseURL still returns catalog_unsupported', async () => {
     const response = await routes.request(
       '/providers/draft/catalog',
-      jsonRequest({ draft: { id: 'unsaved-sdk', kind: 'ai-sdk', options: { apiKey: 'x', baseURL: '   ' } } }),
+      jsonRequest({ draft: { id: 'unsaved-sdk', kind: 'ai-sdk', options: { apiKey: 'x', baseURL: '   ' } } }, 'QUERY'),
     );
     expect(await response.json()).toEqual({
       ok: false,
@@ -342,9 +363,12 @@ describe('draft Provider catalog and test routes', () => {
     try {
       const response = await routes.request(
         '/providers/draft/catalog',
-        jsonRequest({
-          draft: { id: 'unsaved-sdk', kind: 'ai-sdk', options: { baseURL: `http://127.0.0.1:${upstream.port}/v1` } },
-        }),
+        jsonRequest(
+          {
+            draft: { id: 'unsaved-sdk', kind: 'ai-sdk', options: { baseURL: `http://127.0.0.1:${upstream.port}/v1` } },
+          },
+          'QUERY',
+        ),
       );
       expect(await response.json()).toEqual({
         ok: false,
@@ -373,17 +397,20 @@ describe('draft Provider catalog and test routes', () => {
     try {
       await routes.request(
         '/providers/draft/catalog',
-        jsonRequest({
-          draft: {
-            id: 'unsaved-sdk',
-            kind: 'ai-sdk',
-            options: {
-              apiKey: 'placeholder',
-              baseURL: `http://127.0.0.1:${upstream.port}/v1`,
-              headers: { Authorization: 'Bearer real-token' },
+        jsonRequest(
+          {
+            draft: {
+              id: 'unsaved-sdk',
+              kind: 'ai-sdk',
+              options: {
+                apiKey: 'placeholder',
+                baseURL: `http://127.0.0.1:${upstream.port}/v1`,
+                headers: { Authorization: 'Bearer real-token' },
+              },
             },
           },
-        }),
+          'QUERY',
+        ),
       );
       expect(authorization).toBe('Bearer real-token');
     } finally {
@@ -403,13 +430,16 @@ describe('draft Provider catalog and test routes', () => {
     try {
       const response = await routes.request(
         '/providers/draft/catalog',
-        jsonRequest({
-          draft: {
-            id: 'unsaved-sdk',
-            kind: 'ai-sdk',
-            options: { apiKey: 'wrong-key', baseURL: `http://127.0.0.1:${upstream.port}/v1` },
+        jsonRequest(
+          {
+            draft: {
+              id: 'unsaved-sdk',
+              kind: 'ai-sdk',
+              options: { apiKey: 'wrong-key', baseURL: `http://127.0.0.1:${upstream.port}/v1` },
+            },
           },
-        }),
+          'QUERY',
+        ),
       );
       const text = await response.text();
 
@@ -425,15 +455,18 @@ describe('draft Provider catalog and test routes', () => {
   test('an identity-changing edit reaches the upstream instead of short-circuiting', async () => {
     const response = await routes.request(
       '/providers/draft/catalog',
-      jsonRequest({
-        draft: {
-          baseURL: 'http://127.0.0.1:1/v2',
-          id: 'saved',
-          kind: 'api',
-          protocol: ProviderProtocol.OpenAICompatible,
+      jsonRequest(
+        {
+          draft: {
+            baseURL: 'http://127.0.0.1:1/v2',
+            id: 'saved',
+            kind: 'api',
+            protocol: ProviderProtocol.OpenAICompatible,
+          },
+          persistedProviderId: 'saved',
         },
-        persistedProviderId: 'saved',
-      }),
+        'QUERY',
+      ),
     );
 
     // Reaches the upstream fetch and fails there — no longer short-circuited by fresh_credentials_required.
@@ -459,15 +492,18 @@ describe('draft Provider catalog and test routes', () => {
       // stored apiKey or headers that the edit-view now hands the editor in full.
       const response = await routes.request(
         '/providers/draft/catalog',
-        jsonRequest({
-          draft: {
-            baseURL: `http://127.0.0.1:${relocated.port}/v1`,
-            id: 'saved',
-            kind: 'api',
-            protocol: ProviderProtocol.OpenAICompatible,
+        jsonRequest(
+          {
+            draft: {
+              baseURL: `http://127.0.0.1:${relocated.port}/v1`,
+              id: 'saved',
+              kind: 'api',
+              protocol: ProviderProtocol.OpenAICompatible,
+            },
+            persistedProviderId: 'saved',
           },
-          persistedProviderId: 'saved',
-        }),
+          'QUERY',
+        ),
       );
 
       expect(response.status).toBe(200);
@@ -572,18 +608,21 @@ describe('draft Provider catalog and test routes', () => {
     try {
       const response = await routes.request(
         '/providers/draft/catalog',
-        jsonRequest({
-          draft: {
-            apiKey: 'fresh-secret',
-            baseURL: `http://127.0.0.1:${upstream.port}/v1`,
-            headers: { 'x-fresh': 'fresh-header' },
-            id: 'saved',
-            kind: 'api',
-            protocol: ProviderProtocol.OpenAICompatible,
-            proxy: false,
+        jsonRequest(
+          {
+            draft: {
+              apiKey: 'fresh-secret',
+              baseURL: `http://127.0.0.1:${upstream.port}/v1`,
+              headers: { 'x-fresh': 'fresh-header' },
+              id: 'saved',
+              kind: 'api',
+              protocol: ProviderProtocol.OpenAICompatible,
+              proxy: false,
+            },
+            persistedProviderId: 'saved',
           },
-          persistedProviderId: 'saved',
-        }),
+          'QUERY',
+        ),
       );
       const text = await response.text();
 
@@ -614,16 +653,19 @@ describe('draft Provider catalog and test routes', () => {
     try {
       const response = await routes.request(
         '/providers/draft/catalog',
-        jsonRequest({
-          draft: {
-            baseURL: `http://127.0.0.1:${upstream.port}/v1`,
-            headers: { authorization: 'Bearer fresh-header-secret' },
-            id: 'saved',
-            kind: 'api',
-            protocol: ProviderProtocol.OpenAICompatible,
+        jsonRequest(
+          {
+            draft: {
+              baseURL: `http://127.0.0.1:${upstream.port}/v1`,
+              headers: { authorization: 'Bearer fresh-header-secret' },
+              id: 'saved',
+              kind: 'api',
+              protocol: ProviderProtocol.OpenAICompatible,
+            },
+            persistedProviderId: 'saved',
           },
-          persistedProviderId: 'saved',
-        }),
+          'QUERY',
+        ),
       );
       const text = await response.text();
 

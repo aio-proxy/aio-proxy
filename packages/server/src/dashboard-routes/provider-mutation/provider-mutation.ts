@@ -95,13 +95,10 @@ export function replaceProvider(
   // cannot round-trip or does not own. A common abstraction would have to hide that difference in
   // contract, and hiding it is how a field silently changes sides.
   //
-  // `endpoints` is in the list for exactly the stated reason: the mutation body schema strips it (see
-  // the acceptance test named "mutation body schema silently strips endpoints"), so the editor can
-  // never send one back and every save would otherwise read as "the author deleted it" — deleting a
-  // hand-written multi-protocol list from config.jsonc and answering 200. Retaining it is not the
-  // same as owning it: authoring endpoints from the dashboard is still unimplemented, and until it is,
-  // the only correct thing a save can do with them is leave them alone.
-  for (const key of ['headers', 'metadata', 'proxy', 'transforms', 'endpoints'] as const) {
+  // Omission still means "delete" except for this short list of fields the editor cannot
+  // round-trip or does not own. `endpoints` is no longer here: the mutation body now accepts it,
+  // so a save that omits it is the author deleting the extra protocols.
+  for (const key of ['headers', 'metadata', 'proxy', 'transforms'] as const) {
     if (provider[key] === undefined && previous[key] !== undefined) next[key] = previous[key];
   }
 

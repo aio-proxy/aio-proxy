@@ -211,28 +211,33 @@ const ApiProviderMutationSharedFields = {
   name: z.string().optional(),
   enabled: z.boolean().optional(),
   weight: z.number().optional(),
-  protocol: ProviderProtocolSchema,
+  protocol: ProviderProtocolSchema.optional(),
   apiKey: z.string().optional(),
   headers: ApiHeadersSchema.optional(),
   models: z.array(z.string()).optional(),
+  endpoints: ApiEndpointsInputSchema.optional(),
   ...metadataField,
   alias: z.record(z.string().min(1), AliasConfigSchema).optional().describe('Client-facing model aliases.'),
   transforms: ProviderTransformsSchema.optional().describe('Ordered outbound request transforms.'),
 } as const;
 
-export const ApiProviderMutationBodySchema = z.object({
+export const ApiProviderMutationObjectSchema = z.object({
   ...ApiProviderMutationSharedFields,
-  baseURL: z.url(),
+  baseURL: z.url().optional(),
   proxy: ProviderMutationProxySchema,
 });
 
-const ApiProviderMutationAuthoringBodySchema = ApiProviderMutationBodySchema.omit({
+export const ApiProviderMutationBodySchema = ApiProviderMutationObjectSchema.superRefine(validateApiEndpoints);
+
+const ApiProviderMutationAuthoringBodySchema = ApiProviderMutationObjectSchema.omit({
   baseURL: true,
   proxy: true,
   protocol: true,
+  endpoints: true,
 }).extend({
-  protocol: z.union([ProviderProtocolSchema, ConfigTemplateStringSchema]),
-  baseURL: z.union([z.url(), ConfigTemplateStringSchema]),
+  protocol: z.union([ProviderProtocolSchema, ConfigTemplateStringSchema]).optional(),
+  baseURL: z.union([z.url(), ConfigTemplateStringSchema]).optional(),
+  endpoints: ApiEndpointsAuthoringInputSchema.optional(),
   proxy: AuthoringProviderProxySchema.nullable(),
 });
 

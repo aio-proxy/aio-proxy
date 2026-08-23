@@ -152,20 +152,6 @@ describe('ModelsSection', () => {
     expect(within(screen.getByTestId('model-row-model-a')).getByRole('checkbox')).not.toBeChecked();
   });
 
-  test('a row renders its limit.context override, and an em dash without one', () => {
-    renderSection({
-      kind: ProviderKind.Api,
-      initial: apiInitial(['with-context', 'without-context'], { 'with-context': { limit: { context: 128_000 } } }),
-    });
-
-    expect(within(screen.getByTestId('model-row-with-context')).getByTestId('model-row-context')).toHaveTextContent(
-      '128K',
-    );
-    expect(within(screen.getByTestId('model-row-without-context')).getByTestId('model-row-context')).toHaveTextContent(
-      '—',
-    );
-  });
-
   test('the catalog button sits in the section header, not in the body', () => {
     renderSection({ kind: ProviderKind.Api, initial: apiInitial(['model-a']) });
 

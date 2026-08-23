@@ -1,31 +1,6 @@
 import { expect, test } from '@rstest/core';
 
-import { applyModelRows, modelRowContext, toModelRows } from './model-rows';
-
-// Metadata is user-authored JSON, and the row renders this number as a context badge. Every shape
-// below has to read as "no override" rather than as a badge saying `NaN`, `0`, or crashing the row:
-// `limit` need not be an object, `context` need not be a number, and a number need not be positive.
-test('an unusable limit.context override reads as absent, whatever shape it has', () => {
-  expect(modelRowContext({ limit: { context: 128_000 } })).toBe(128_000);
-  expect(modelRowContext(undefined)).toBeUndefined();
-  // A scalar `limit` does NOT throw on the property read — `(128000)['context']` is `undefined` — so
-  // what rejects it is the `typeof context === 'number'` guard, not the object guard. `limit: null` is
-  // the shape that would actually throw, and it is the half of `typeof limit !== 'object' || limit ===
-  // null` this line pins.
-  expect(modelRowContext({ limit: 128_000 })).toBeUndefined();
-  expect(modelRowContext({ limit: null })).toBeUndefined();
-  // JSON-authored numbers arrive as strings often enough, and the `typeof context` guard is what
-  // rejects them.
-  expect(modelRowContext({ limit: { context: '128000' } })).toBeUndefined();
-  expect(modelRowContext({ limit: { context: Number.NaN } })).toBeUndefined();
-  // `Infinity` is the ONLY input that distinguishes `Number.isFinite` from its absence: `NaN` is
-  // already rejected by `> 0` and a numeric string by `typeof`, so without this line that clause is
-  // unreachable and could be deleted with the suite still green.
-  expect(modelRowContext({ limit: { context: Number.POSITIVE_INFINITY } })).toBeUndefined();
-  // Zero and negatives are not "a small context window", they are noise.
-  expect(modelRowContext({ limit: { context: 0 } })).toBeUndefined();
-  expect(modelRowContext({ limit: { context: -1 } })).toBeUndefined();
-});
+import { applyModelRows, toModelRows } from './model-rows';
 
 test('rows join models with their metadata', () => {
   expect(toModelRows(['a', 'b'], { a: { name: 'A' } })).toEqual([

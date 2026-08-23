@@ -3,6 +3,7 @@ import { type ReactFormExtendedApi, useForm } from '@tanstack/react-form';
 import { useState } from 'react';
 
 import { type AliasRow, toAliasRows } from '../lib/alias-editor';
+import { apiDraftFromProvider, emptySharedDraft } from '../lib/api-endpoints';
 import type { ProviderFormShape } from '../lib/provider-form-value';
 
 /**
@@ -75,6 +76,9 @@ export function useProviderEditorForm({ kind, initial }: UseProviderEditorFormOp
       ({
         ...initial,
         kind,
+        ...(kind === 'api' && initial?.endpoints === undefined
+          ? { endpoints: apiDraftFromProvider({ ...initial, kind }) ?? emptySharedDraft() }
+          : {}),
         alias: initial?.alias === undefined ? undefined : toAliasRows(initial.alias),
       }) as ProviderEditorShape,
   );

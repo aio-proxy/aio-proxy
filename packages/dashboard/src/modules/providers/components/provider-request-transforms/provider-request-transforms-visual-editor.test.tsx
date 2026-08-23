@@ -207,7 +207,7 @@ test('shows and clears an accessible error for an invalid number literal', async
   );
 
   await selectOption(within(stageCard(0)).getByTestId('request-transform-static-type'), /^(Number|数字)$/u);
-  const numberInput = within(stageCard(0)).getByRole('textbox', { name: /Value to set|设置值/u });
+  const numberInput = within(stageCard(0)).getByRole('spinbutton', { name: /Value to set|设置值/u });
   fireEvent.change(numberInput, { target: { value: '' } });
 
   const error = within(stageCard(0)).getByRole('alert');
@@ -262,7 +262,7 @@ test('gates applying JSON on a draft that parses to the selected type', async ()
   fireEvent.click(arrayControl);
 
   const drawer = await screen.findByTestId('request-transform-json-drawer');
-  const jsonDraft = within(drawer).getByTestId('request-transform-json-draft');
+  const jsonDraft = within(drawer).getByRole('textbox', { name: /Value to set|设置值/u });
   const apply = within(drawer).getByTestId('request-transform-json-apply');
   // Exact equality: the drawer seeds the indented form while the button shows the compact one.
   expect(jsonDraft).toHaveValue('[\n  1,\n  2\n]');
@@ -273,7 +273,7 @@ test('gates applying JSON on a draft that parses to the selected type', async ()
   expect(error).toHaveTextContent(/valid JSON array|有效的 JSON 数组/u);
   // The field is named for what it holds, not for the drawer title, and points at its own error.
   expect(jsonDraft).toHaveAccessibleName(/Value to set|设置值/u);
-  expect(jsonDraft).toHaveAttribute('aria-describedby', error.id);
+  expect(error).toHaveAttribute('id', jsonDraft.id + '-error');
 
   fireEvent.change(jsonDraft, { target: { value: '[1]' } });
   expect(apply).not.toBeDisabled();
@@ -527,10 +527,28 @@ test('prefixes each value control with the rule name exactly once', async () => 
   expect(within(stageCard(0)).getByTestId('transform-set-expression-field-kind')).toHaveAccessibleName(
     m['dashboard.providers.transforms.condition.field.title'](),
   );
-  // The argument marker copy in `styles.css` reads this property, so dropping it renders an unprefixed number.
+  // The argument marker copy in `request-transform-expression-tree.css` reads this property, so dropping it renders an unprefixed number.
   expect(within(stageCard(0)).getByTestId('request-transform-expression-tree')).toHaveStyle({
     '--expr-arg-label': `"${m['dashboard.providers.transforms.condition.argument.prefix']()} "`,
   });
+});
+
+test('keeps an incomplete JSON draft in the drawer while it is still being typed', async () => {
+  render(
+    <RequestTransformsHarness
+      initialValue={[{ update: [{ $set: { 'request.body.value': { $literal: { seed: true } } } }] }]}
+      onChange={rs.fn()}
+      onValidityChange={rs.fn()}
+    />,
+  );
+
+  fireEvent.click(within(stageCard(0)).getByRole('button', { name: /Value to set|设置值/u }));
+  const drawer = await screen.findByTestId('request-transform-json-drawer');
+  const jsonDraft = within(drawer).getByRole('textbox', { name: /Value to set|设置值/u });
+  fireEvent.change(jsonDraft, { target: { value: '{' } });
+
+  expect(jsonDraft).toHaveValue('{');
+  expect(within(drawer).getByTestId('request-transform-json-apply')).toBeDisabled();
 });
 
 test('contains a discarded JSON draft inside the drawer instead of the form', async () => {
@@ -546,7 +564,7 @@ test('contains a discarded JSON draft inside the drawer instead of the form', as
   const objectControl = within(stageCard(0)).getByRole('button', { name: /Value to set|设置值/u });
   fireEvent.click(objectControl);
   const drawer = await screen.findByTestId('request-transform-json-drawer');
-  fireEvent.change(within(drawer).getByTestId('request-transform-json-draft'), { target: { value: '{' } });
+  fireEvent.change(within(drawer).getByRole('textbox', { name: /Value to set|设置值/u }), { target: { value: '{' } });
 
   expect(within(drawer).getByTestId('request-transform-json-apply')).toBeDisabled();
   expect(within(drawer).getByRole('alert')).toHaveTextContent(/valid JSON object|有效的 JSON 对象/u);
@@ -561,7 +579,7 @@ test('contains a discarded JSON draft inside the drawer instead of the form', as
   fireEvent.click(within(stageCard(0)).getByRole('button', { name: /Value to set|设置值/u }));
   const reopened = await screen.findByTestId('request-transform-json-drawer');
   expect(
-    JSON.parse((within(reopened).getByTestId('request-transform-json-draft') as HTMLTextAreaElement).value),
+    JSON.parse((within(reopened).getByRole('textbox', { name: /Value to set|设置值/u }) as HTMLTextAreaElement).value),
   ).toEqual({ seed: true });
 });
 

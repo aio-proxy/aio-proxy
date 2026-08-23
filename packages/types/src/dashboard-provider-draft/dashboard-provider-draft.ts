@@ -2,16 +2,17 @@ import { z } from 'zod';
 
 import {
   AiSdkProviderMutationBodySchema,
-  ApiProviderMutationBodySchema,
+  ApiProviderMutationObjectSchema,
   HttpProxyUrlSchema,
   OAuthProviderMutationBodySchema,
 } from '../provider';
+import { validateApiEndpoints } from '../provider-endpoints/index';
 
 const DraftProxySchema = z.union([HttpProxyUrlSchema, z.literal(false), z.null()]).optional();
 
 export const DashboardProviderDraftSchema = z.discriminatedUnion('kind', [
-  ApiProviderMutationBodySchema.extend({ proxy: DraftProxySchema }).strict(),
-  AiSdkProviderMutationBodySchema.extend({ proxy: DraftProxySchema }).strict(),
+  ApiProviderMutationObjectSchema.extend({ proxy: DraftProxySchema }).superRefine(validateApiEndpoints),
+  AiSdkProviderMutationBodySchema.extend({ proxy: DraftProxySchema }),
   OAuthProviderMutationBodySchema.extend({ proxy: DraftProxySchema }),
 ]);
 

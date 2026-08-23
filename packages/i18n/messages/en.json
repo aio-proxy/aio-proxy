@@ -528,7 +528,7 @@
       "providers_title": "Providers",
       "new_provider": "New Provider",
       "edit_loading": "Loading provider…",
-      "edit_unsupported": "This provider uses config the editor cannot represent yet, such as multi-protocol endpoints. Edit it in config.jsonc.",
+      "edit_unsupported": "This provider uses config the editor cannot represent yet. Edit it in config.jsonc.",
       "edit_not_found": "Provider not found",
       "kind_label": {
         "invalid": "Invalid"
@@ -911,6 +911,13 @@
         "id_description_server_assigned": "The authorization flow fills this in.",
         "placeholder_name": "e.g. OpenAI main account",
         "placeholder_protocol": "Select protocol",
+        "endpoints_title": "Protocol endpoints",
+        "endpoints_shared_help": "Several protocols share one Base URL by default.",
+        "endpoints_independent": "Separate addresses",
+        "endpoints_add": "Add endpoint",
+        "endpoints_remove": "Remove endpoint",
+        "endpoints_anthropic_auth": "Anthropic authentication",
+        "endpoints_shared_conversion_blocked": "Unify the Base URL and remove special authentication before switching back to a shared address.",
         "placeholder_base_url": "https://api.example.com/v1",
         "placeholder_api_key": "Optional",
         "placeholder_api_key_configured": "Configured, leave empty to keep",

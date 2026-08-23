@@ -12,6 +12,8 @@ import { QueryBuilderShadcn } from './query-builder';
 import { RequestTransformExpressionEditor } from './request-transform-expression-editor';
 import { RequestTransformStaticValueEditor } from './request-transform-static-value-editor';
 
+import './request-transform-expression-tree.css';
+
 type SetStage = Extract<RequestTransformStageDraft, { kind: 'set' }>;
 
 interface RequestTransformStageValueContentProps {
@@ -43,7 +45,7 @@ export const RequestTransformStageValueContent: React.FC<RequestTransformStageVa
           label: m['dashboard.providers.transforms.value.computed_label'](),
         })}
       >
-        {/* Two-column alignment, argument numbering and connector lines all come from `styles.css`;
+        {/* Two-column alignment, argument numbering and connector lines all come from `request-transform-expression-tree.css`;
             `--expr-arg-label` hands that CSS the localized argument marker prefix to count from. */}
         <div
           className="request-transform-expression-tree"

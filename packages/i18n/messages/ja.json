@@ -528,7 +528,7 @@
       "providers_title": "プロバイダー",
       "new_provider": "新規プロバイダー",
       "edit_loading": "プロバイダーを読み込み中…",
-      "edit_unsupported": "このプロバイダーはエディターがまだ扱えない設定（複数プロトコルの endpoints など）を使用しています。config.jsonc で編集してください。",
+      "edit_unsupported": "このプロバイダーはエディターがまだ扱えない設定を使用しています。config.jsonc で編集してください。",
       "edit_not_found": "プロバイダーが見つかりません",
       "kind_label": {
         "invalid": "無効"
@@ -911,6 +911,13 @@
         "id_description_server_assigned": "認可フローが自動的に入力します。",
         "placeholder_name": "例: OpenAI メインアカウント",
         "placeholder_protocol": "プロトコルを選択",
+        "endpoints_title": "プロトコルエンドポイント",
+        "endpoints_shared_help": "複数のプロトコルは既定で 1 つの Base URL を共有します。",
+        "endpoints_independent": "個別アドレス",
+        "endpoints_add": "エンドポイントを追加",
+        "endpoints_remove": "エンドポイントを削除",
+        "endpoints_anthropic_auth": "Anthropic 認証方式",
+        "endpoints_shared_conversion_blocked": "共有アドレスに戻す前に Base URL を揃え、特殊な認証を外してください。",
         "placeholder_base_url": "https://api.example.com/v1",
         "placeholder_api_key": "任意",
         "placeholder_api_key_configured": "設定済み・空欄で保持",

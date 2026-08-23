@@ -1,10 +1,10 @@
 import { m } from '@aio-proxy/i18n';
 
 import { headerCountText } from '../advanced-summary';
+import { apiConnectionIssues } from '../api-endpoints';
 import { PROVIDER_AI_SDK_DEFAULT_PACKAGE } from '../constants';
 import { exposedModels } from '../exposed-models';
 import type { SectionStatus, SectionStatusInput } from './section-status';
-import { usableBaseURL } from './usable-base-url';
 
 // The finished badge text for each section. A hint always follows the status it accompanies, so it
 // can never name a problem the status does not have.
@@ -34,22 +34,19 @@ export const connectionHint = (input: SectionStatusInput, status: SectionStatus)
     return input.packageName ?? PROVIDER_AI_SDK_DEFAULT_PACKAGE;
   }
   if (status === 'todo') {
-    // S2 gave the section a second way to be `todo`, so the original copy — "needs an address" — was
-    // telling a user who typed `api.example.com` that the address is missing. This badge is the only
-    // explanation they get, since the form carries no validators of its own (D-F12). Empty stays on
-    // the original hint: there the protocol may be the missing half too, and often is.
-    const baseURL = (input.baseURL ?? '').trim();
-    if (baseURL !== '' && !usableBaseURL(baseURL)) {
-      return m['dashboard.providers.editor.hint_connection_bad_base_url']();
-    }
+    const issue = apiConnectionIssues(input.endpoints, {
+      apiKey: input.apiKey ?? '',
+      hasApiKey: input.hasApiKey === true,
+    });
+    if (issue === 'bad-url') return m['dashboard.providers.editor.hint_connection_bad_base_url']();
+    if (issue === 'bearer-key') return m['dashboard.providers.form.api_key_helper_create']();
     return m['dashboard.providers.editor.hint_connection_todo_api']();
   }
-  // No branch for a blank api key: a provider without one is a legitimate configuration, not an
-  // unfinished field (C15 ruling, 2026-08-19), so the badge stays on the address in every mode. In edit
-  // mode an empty field has always meant "keep the stored key" — now create mode reads the same.
-  // Reaching here means the status is `ok`, which for api means `usableBaseURL` passed, so this is
-  // never the empty string.
-  return (input.baseURL ?? '').trim().replace(/^https?:\/\//u, '');
+  const readyUrl =
+    input.endpoints?.shape === 'shared'
+      ? input.endpoints.baseURL
+      : (input.endpoints?.entries[0]?.baseURL ?? input.baseURL ?? '');
+  return readyUrl.trim().replace(/^https?:\/\//u, '');
 };
 
 /**

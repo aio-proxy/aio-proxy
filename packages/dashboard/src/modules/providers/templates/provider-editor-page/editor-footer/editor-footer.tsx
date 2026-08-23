@@ -27,8 +27,11 @@ export const EditorFooter: React.FC<EditorFooterProps> = ({
   const missing = blocking.filter((id) => summaries[id].status === 'todo');
 
   return (
-    <div className="sticky bottom-0 z-20 border-t bg-background/90 backdrop-blur-md" data-testid="editor-footer">
-      <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
+    <div
+      className="sticky bottom-2 z-20 rounded-4xl border bg-background/90 shadow-sm/5 backdrop-blur-md"
+      data-testid="editor-footer"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
         {/* The links live inside the live region on purpose: the announcement is the sentence, and the
             section names are that sentence's object — reading "still missing" without them says nothing.
             Their labels only change when the list does, which is the change worth announcing. */}

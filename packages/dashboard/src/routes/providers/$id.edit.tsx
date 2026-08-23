@@ -75,9 +75,8 @@ const EditProviderPage: React.FC = () => {
 
   const initial = parseProviderFormInitial(provider);
   // The provider exists — the fetch above already proved that. A parse failure here means the stored
-  // entry is valid config the editor's form shape cannot hold: today that is an `endpoints`-only
-  // provider, whose top-level protocol/baseURL pair is absent. "Not found" would be a lie about a
-  // provider the list page just linked to, so say what is actually true and where to edit it.
+  // entry is valid config the editor's form shape still cannot hold. "Not found" would be a lie about
+  // a provider the list page just linked to, so say what is actually true and where to edit it.
   if (initial === undefined) {
     return (
       <PageContainer title={m['dashboard.providers.edit_title']()} breadcrumbs={breadcrumbs}>

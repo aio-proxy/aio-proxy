@@ -15,7 +15,7 @@ import type { ProviderEditorForm } from '../../../hooks/use-provider-editor-form
 import { addManualModels } from '../../../lib/add-manual-models';
 import { aliasEditorIssues, type AliasRow, type ProviderAlias } from '../../../lib/alias-editor';
 import { exposedModels } from '../../../lib/exposed-models';
-import { applyModelRows, modelRowContext, toModelRows, type ModelRow } from '../../../lib/model-rows';
+import { applyModelRows, toModelRows, type ModelRow } from '../../../lib/model-rows';
 import { applicablePluginAliases, mergePluginAliasRows } from '../../../lib/plugin-alias-suggestions';
 import { removeModelFromAliases } from '../../../lib/remove-model-from-aliases';
 import type { SectionSummary } from '../../../lib/section-status';
@@ -235,7 +235,6 @@ export const ModelsSection: React.FC<ModelsSectionProps> = ({
                                     key={row.id}
                                     id={row.id}
                                     enabled={whitelist.has(row.id)}
-                                    context={modelRowContext(row.metadata)}
                                     onToggle={(enabled) => toggle(row.id, enabled)}
                                     onRemove={() => remove(row.id)}
                                     onEditMetadata={() => setMetadataModel(row.id)}

@@ -86,6 +86,7 @@ export const RequestTransformStaticValueInput: React.FC<RequestTransformStaticVa
       ) : (
         <Input
           {...inputProps}
+          type={type === 'number' ? 'number' : 'text'}
           placeholder={type === 'text' ? m['dashboard.providers.transforms.value.placeholder_text']() : '0'}
           className="font-mono text-xs"
         />

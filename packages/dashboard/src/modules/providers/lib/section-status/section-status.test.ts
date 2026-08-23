@@ -9,6 +9,7 @@ const base = {
   id: 'p1',
   baseURL: 'https://x.example/v1',
   protocol: 'openai-compatible',
+  endpoints: { shape: 'shared' as const, baseURL: 'https://x.example/v1', protocols: ['openai-compatible' as const] },
   apiKey: 'sk-test',
   models: ['m1'],
   aliasIssues: [],
@@ -31,36 +32,51 @@ const statuses = (input: SectionStatusInput) => {
 const summary = (status: SectionSummary['status']): SectionSummary => ({ status, hint: '' });
 
 test('an empty baseURL on an api provider is todo and blocks; an empty apiKey is not', () => {
-  const summaries = sectionStatuses({ ...base, baseURL: '' });
+  const summaries = sectionStatuses({
+    ...base,
+    endpoints: { shape: 'shared', baseURL: '', protocols: ['openai-compatible'] },
+  });
   expect(summaries.connection.status).toBe('todo');
   expect(blockingSections(summaries)).toEqual(['connection']);
   expect(statuses(base).connection).toBe('ok');
-  // `baseURL: ''` short-circuits the `||` before `protocol` is read, so the protocol half needs
-  // its own case. Use `undefined`, not `''`: `defaultValues: { ...initial, kind }` leaves the field
-  // absent on a fresh api draft, so `undefined` is the real state AND it also pins the `?? ''`.
-  expect(statuses({ ...base, protocol: undefined }).connection).toBe('todo');
-  // ai-sdk drafts carry neither field; widening the guard to `!== 'oauth'` would make their
-  // connection permanently todo, i.e. an unsaveable-looking draft.
-  expect(statuses({ ...base, kind: 'ai-sdk', baseURL: undefined, protocol: undefined }).connection).toBe('ok');
+  expect(
+    statuses({ ...base, endpoints: { shape: 'shared', baseURL: 'https://x.example/v1', protocols: [] } }).connection,
+  ).toBe('todo');
+  expect(
+    statuses({ ...base, kind: 'ai-sdk', baseURL: undefined, protocol: undefined, endpoints: undefined }).connection,
+  ).toBe('ok');
 });
 
 // The editor form carries no validators by design, so `sectionStatuses` is the only save gate. The
 // body it dispatches parses `baseURL` with `z.url()`, so a non-empty string that is not a URL used to
 // buy a green dot, an enabled Save, and a rejected mutation.
 test('a non-empty but unparseable baseURL is todo, exactly as an empty one is', () => {
-  const summaries = sectionStatuses({ ...base, baseURL: 'api.example.com' });
+  const summaries = sectionStatuses({
+    ...base,
+    endpoints: { shape: 'shared', baseURL: 'api.example.com', protocols: ['openai-compatible'] },
+  });
   expect(summaries.connection.status).toBe('todo');
   expect(summaries.connection.hint).toBe(m['dashboard.providers.editor.hint_connection_bad_base_url']());
   expect(blockingSections(summaries)).toEqual(['connection']);
-  // `{{...}}` is accepted by the authoring schemas but NOT by the mutation body the editor sends, so
-  // tolerating it here would restore the same green-dot-then-toast path.
-  expect(statuses({ ...base, baseURL: '{{env.OPENAI_BASE_URL}}' }).connection).toBe('todo');
-  // Deliberately stricter than `z.url()`, which accepts any scheme: the proxy reaches an upstream over
-  // http(s) only, so an `ftp://` origin is an unconnected section however well it parses.
-  expect(statuses({ ...base, baseURL: 'ftp://x.example' }).connection).toBe('todo');
-  // And the guard must not make every api provider a todo.
+  expect(
+    statuses({
+      ...base,
+      endpoints: { shape: 'shared', baseURL: '{{env.OPENAI_BASE_URL}}', protocols: ['openai-compatible'] },
+    }).connection,
+  ).toBe('todo');
+  expect(
+    statuses({
+      ...base,
+      endpoints: { shape: 'shared', baseURL: 'ftp://x.example', protocols: ['openai-compatible'] },
+    }).connection,
+  ).toBe('todo');
   expect(statuses(base).connection).toBe('ok');
-  expect(statuses({ ...base, baseURL: 'http://localhost:8080/v1' }).connection).toBe('ok');
+  expect(
+    statuses({
+      ...base,
+      endpoints: { shape: 'shared', baseURL: 'http://localhost:8080/v1', protocols: ['openai-compatible'] },
+    }).connection,
+  ).toBe('ok');
 });
 
 test('blocking sections come back in rail order, whatever order the statuses were built in', () => {

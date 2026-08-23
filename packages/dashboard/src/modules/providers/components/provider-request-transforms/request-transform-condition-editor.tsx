@@ -1,3 +1,4 @@
+import { m } from '@aio-proxy/i18n';
 import type { ProviderRequestTransformRule } from '@aio-proxy/types';
 import type { ExpressionNode } from '@react-querybuilder/expr';
 import { QueryBuilderExpressions } from '@react-querybuilder/expr/ui';
@@ -12,7 +13,7 @@ import {
   type DefaultRuleType,
 } from 'react-querybuilder';
 
-import 'react-querybuilder/dist/query-builder.css';
+import './request-transform-expression-tree.css';
 
 import {
   parseRequestTransformCondition,
@@ -184,7 +185,7 @@ export const RequestTransformConditionEditor: React.FC<RequestTransformCondition
         ruleGroup: 'space-y-2 rounded-xl! border border-border! bg-muted/20! p-2.5',
         header: 'flex flex-wrap items-center gap-2',
         body: 'space-y-2',
-        rule: 'flex flex-wrap items-center gap-2 rounded-lg bg-background/70 p-2',
+        rule: 'flex items-start gap-2 rounded-lg bg-background/70 p-2',
       }}
     >
       <QueryBuilderExpressions
@@ -192,21 +193,30 @@ export const RequestTransformConditionEditor: React.FC<RequestTransformCondition
         translations={getRequestTransformExpressionTranslations()}
         allowFunctionsOnLHS={allowRequestTransformFunctionsOnLhs}
       >
-        <QueryBuilder
-          fields={fields}
-          operators={operators}
-          combinators={getRequestTransformCombinators()}
-          query={query}
-          onQueryChange={handleQueryChange}
-          translations={getRequestTransformTranslations()}
-          getOperators={(field) => getRequestTransformOperatorsForField(field, operators)}
-          getValueSources={getRequestTransformValueSources}
-          accessibleDescriptionGenerator={getRequestTransformAccessibleDescription}
-          showNotToggle
-          listsAsArrays
-          resetOnFieldChange={false}
-          enableMountQueryChange={false}
-        />
+        <div
+          className="request-transform-expression-tree w-full min-w-0"
+          style={
+            {
+              '--expr-arg-label': `"${m['dashboard.providers.transforms.condition.argument.prefix']()} "`,
+            } as React.CSSProperties
+          }
+        >
+          <QueryBuilder
+            fields={fields}
+            operators={operators}
+            combinators={getRequestTransformCombinators()}
+            query={query}
+            onQueryChange={handleQueryChange}
+            translations={getRequestTransformTranslations()}
+            getOperators={(field) => getRequestTransformOperatorsForField(field, operators)}
+            getValueSources={getRequestTransformValueSources}
+            accessibleDescriptionGenerator={getRequestTransformAccessibleDescription}
+            showNotToggle
+            listsAsArrays
+            resetOnFieldChange={false}
+            enableMountQueryChange={false}
+          />
+        </div>
       </QueryBuilderExpressions>
     </QueryBuilderShadcn>
   );

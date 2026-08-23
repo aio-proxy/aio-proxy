@@ -31,7 +31,7 @@ import { oauthAccountSubmission } from '../../lib/oauth-account-submission';
 import { capabilityKey } from '../../lib/oauth-capability-key';
 import { oauthProviderEditAction } from '../../lib/oauth-provider-edit';
 import { normalizeProviderFormValue, type ProviderFormShape } from '../../lib/provider-form-value';
-import { blockingSections, sectionStatuses } from '../../lib/section-status';
+import { blockingSections, sectionStatuses, type SectionStatusInput } from '../../lib/section-status';
 import { hasWeightTie } from '../../lib/weight-tie';
 import { oauthCapabilitiesQueryOptions } from '../../services/oauth-service';
 import { providersQueryOptions } from '../../services/providers-service';
@@ -174,6 +174,61 @@ export interface ProviderEditorPageProps {
   readonly onSessionIdChange: (sessionId: string | undefined) => void;
 }
 
+const editorSectionInput = (
+  values: ProviderEditorShape,
+  kind: ProviderKind,
+  mode: ProviderFormMode,
+  extras: {
+    readonly aliasIssues: SectionStatusInput['aliasIssues'];
+    readonly authorized: boolean;
+    readonly capabilityKey: string;
+    readonly discoveredModels: readonly string[] | undefined;
+    readonly hasApiKey: boolean;
+    readonly models: readonly string[];
+    readonly others: Parameters<typeof hasWeightTie>[0]['others'];
+    readonly optionsValid: boolean;
+    readonly transformsValid: boolean;
+    readonly transformCount: number;
+  },
+): SectionStatusInput => ({
+  kind: values.kind ?? kind,
+  mode,
+  id: values.id ?? '',
+  ...(values.kind === 'api'
+    ? {
+        baseURL: values.baseURL,
+        protocol: values.protocol,
+        endpoints: values.endpoints,
+        apiKey: values.apiKey,
+        hasApiKey: extras.hasApiKey,
+      }
+    : {}),
+  capabilityKey: extras.capabilityKey,
+  authorized: extras.authorized,
+  packageName: values.kind === 'ai-sdk' ? values.packageName : undefined,
+  models: extras.models,
+  discoveredModels: extras.discoveredModels,
+  aliasCount: (values.alias ?? []).length,
+  aliasIssues: extras.aliasIssues,
+  transformsValid: extras.transformsValid,
+  transformCount: extras.transformCount,
+  weightTie: hasWeightTie({
+    selfId: values.id ?? '',
+    selfWeight: values.weight,
+    exposedAliases: modelRoutes({
+      enabled: true,
+      models: exposedModels(extras.models, extras.discoveredModels),
+      alias: values.alias === undefined ? undefined : toAliasRecord(values.alias),
+    }).map((route) => route.alias),
+    others: extras.others,
+  }),
+  enabled: values.enabled,
+  weight: values.weight,
+  headerCount: values.kind === 'api' ? Object.keys(values.headers ?? {}).length : 0,
+  proxyCustom: values.proxy !== undefined && values.proxy !== null,
+  optionsValid: extras.optionsValid,
+});
+
 export const useProviderEditorPage = ({
   mode,
   kind,
@@ -229,43 +284,22 @@ export const useProviderEditorPage = ({
   const authorized =
     mode === ProviderFormMode.Edit || authorizedProviderId !== undefined || session?.status === 'succeeded';
   const transforms = values.transforms as ProviderTransforms | undefined;
-  const summaries = sectionStatuses({
-    kind: values.kind ?? kind,
-    mode,
-    id: values.id ?? '',
-    baseURL: values.kind === 'api' ? values.baseURL : undefined,
-    protocol: values.kind === 'api' ? values.protocol : undefined,
-    apiKey: values.kind === 'api' ? values.apiKey : undefined,
-    capabilityKey: accountValues.capabilityKey,
-    authorized,
-    packageName: values.kind === 'ai-sdk' ? values.packageName : undefined,
-    models,
-    discoveredModels: oauth?.models,
-    aliasCount: (values.alias ?? []).length,
-    aliasIssues,
-    transformsValid,
-    transformCount: transforms?.request?.length ?? 0,
-    weightTie: hasWeightTie({
-      selfId: values.id ?? '',
-      selfWeight: values.weight,
-      exposedAliases: modelRoutes({
-        enabled: true,
-        models: exposedModels(models, oauth?.models),
-        alias: values.alias === undefined ? undefined : toAliasRecord(values.alias),
-      }).map((route) => route.alias),
+  const hasApiKey = initial !== undefined && 'apiKey' in initial && (initial.apiKey ?? '') !== '';
+  const summaries = sectionStatuses(
+    editorSectionInput(values, kind, mode, {
+      aliasIssues,
+      authorized,
+      capabilityKey: accountValues.capabilityKey,
+      discoveredModels: oauth?.models,
+      hasApiKey,
+      models,
       others,
+      optionsValid,
+      transformsValid,
+      transformCount: transforms?.request?.length ?? 0,
     }),
-    enabled: values.enabled,
-    weight: values.weight,
-    headerCount: values.kind === 'api' ? Object.keys(values.headers ?? {}).length : 0,
-    // `null`/absent is the inherit default; both `false` and a URL are a deliberate override.
-    proxyCustom: values.proxy !== undefined && values.proxy !== null,
-    optionsValid,
-  });
+  );
 
-  // One predicate for the guard in `save` and for every control that calls it: the footer's Save was
-  // disabled on this, but Reauthorize was not, so clicking it hit the bare `return` with no toast, no
-  // focus move and no explanation. The footer's live region already names the sections at fault.
   const saveBlocked = blockingSections(summaries).length > 0;
   const handleKindChange = (next: ProviderKind) => {
     onKindChange?.(next);
@@ -307,10 +341,6 @@ export const useProviderEditorPage = ({
     }
     saveConfigProvider(mode, wireValues, providerId, initial?.metadata, createProvider, updateProvider);
   };
-
-  // "Already has a key" is a property of what was loaded, not of the live field: the user clearing the
-  // input must not flip the copy to "optional" and lose the promise that an empty save retains the key.
-  const hasApiKey = initial !== undefined && 'apiKey' in initial && (initial.apiKey ?? '') !== '';
 
   const title = editorTitle(mode, values.name);
   const subtitle =

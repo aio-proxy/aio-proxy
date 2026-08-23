@@ -31,6 +31,7 @@ describe('API provider form fields', () => {
 
     const protocolField = screen.getByTestId('provider-form-field-protocol');
     const trigger = within(protocolField).getByRole('combobox');
+    expect(trigger).toHaveAccessibleName(m['dashboard.providers.form.placeholder_protocol']());
     expect(trigger).toHaveTextContent(m['dashboard.providers.form.placeholder_protocol']());
 
     fireEvent.click(trigger);
@@ -45,18 +46,37 @@ describe('API provider form fields', () => {
     expect(trigger.querySelector('img')).toHaveAttribute('alt', '');
   });
 
-  test('pairs the protocol and base URL fields on one row, with the API key below it', () => {
+  test('keeps protocol and address above the API key, with a separate-address switch', () => {
     const { result } = renderHook(() => useProviderEditorForm({ kind: ProviderKind.Api }));
 
     render(<ProviderFormFieldsApi form={result.current} hasApiKey={false} />);
 
-    // jsdom has no layout, so the shared row element and its column template are the only evidence
-    // that these two fields are paired; a stacked layout passes every other assertion here.
-    const row = screen.getByTestId('provider-form-field-protocol').parentElement;
-    expect(screen.getByTestId('provider-form-field-baseURL').parentElement).toBe(row);
-    expect(row?.className).toContain('grid');
-    expect(row?.className).toContain('sm:grid-cols-[minmax(0,15rem)_1fr]');
-    expect(screen.getByTestId('provider-form-field-apiKey').parentElement).not.toBe(row);
+    expect(screen.getByTestId('provider-form-field-endpoints')).toBeInTheDocument();
+    expect(screen.getByRole('switch')).not.toBeChecked();
+    expect(screen.getByTestId('provider-form-field-protocol')).toBeInTheDocument();
+    expect(screen.getByTestId('provider-form-field-baseURL')).toBeInTheDocument();
+    expect(screen.getByTestId('provider-form-field-apiKey')).toBeInTheDocument();
+  });
+
+  test('a separate-address provider shows one row per protocol and an add button', () => {
+    const { result } = renderHook(() =>
+      useProviderEditorForm({
+        kind: ProviderKind.Api,
+        initial: {
+          kind: ProviderKind.Api,
+          id: 'demo',
+          endpoints: {
+            shape: 'separate',
+            entries: [{ protocol: ProviderProtocol.OpenAICompatible, baseURL: 'https://gw.example/v1' }],
+          },
+        },
+      }),
+    );
+
+    render(<ProviderFormFieldsApi form={result.current} hasApiKey={false} />);
+
+    expect(screen.getByRole('switch')).toBeChecked();
+    expect(screen.getByRole('button', { name: m['dashboard.providers.form.endpoints_add']() })).toBeInTheDocument();
   });
 
   test('hydrates the canonical baseURL field and carries an edit into the mutation body', async () => {

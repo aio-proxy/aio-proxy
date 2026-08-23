@@ -11,7 +11,7 @@ rs.mock('@/lib/dashboard-client', () => ({
       api: {
         providers: {
           draft: {
-            catalog: { $post: mocks.catalog },
+            catalog: { $query: mocks.catalog },
             test: { $post: mocks.test },
           },
         },

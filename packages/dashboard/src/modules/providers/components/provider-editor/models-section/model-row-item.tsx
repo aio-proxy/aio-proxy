@@ -7,24 +7,12 @@ import { BracesIcon, Trash2Icon } from 'lucide-react';
 interface ModelRowItemProps {
   readonly id: string;
   readonly enabled: boolean;
-  /** The row's own `limit.context` override in tokens. The catalog endpoint returns slugs only. */
-  readonly context?: number | undefined;
   readonly onToggle: (enabled: boolean) => void;
   readonly onRemove: () => void;
   readonly onEditMetadata: () => void;
 }
 
-// An em dash means "not overridden", never zero tokens.
-const formatContext = (context: number | undefined) => (context === undefined ? '—' : `${Math.round(context / 1000)}K`);
-
-export const ModelRowItem: React.FC<ModelRowItemProps> = ({
-  id,
-  enabled,
-  context,
-  onToggle,
-  onRemove,
-  onEditMetadata,
-}) => {
+export const ModelRowItem: React.FC<ModelRowItemProps> = ({ id, enabled, onToggle, onRemove, onEditMetadata }) => {
   const checkboxId = `model-row-checkbox-${id}`;
 
   return (
@@ -48,12 +36,6 @@ export const ModelRowItem: React.FC<ModelRowItemProps> = ({
         >
           {id}
         </label>
-        <span
-          className="hidden shrink-0 font-mono text-xs text-muted-foreground sm:inline"
-          data-testid="model-row-context"
-        >
-          {formatContext(context)}
-        </span>
         <Button
           type="button"
           variant="ghost"

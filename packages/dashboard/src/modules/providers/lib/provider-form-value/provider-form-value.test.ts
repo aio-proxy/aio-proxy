@@ -44,18 +44,39 @@ describe('parseProviderFormInitial', () => {
     expect(parseProviderFormInitial({ id: 'no-kind' })).toBeUndefined();
   });
 
-  // A multi-protocol provider may omit the top-level protocol/baseURL pair entirely — the first
-  // `endpoints` entry is then the primary endpoint. The form shape has no slot for that, so the parse
-  // must fail rather than invent a pair: the edit route turns this `undefined` into "edit it in
-  // config.jsonc", and inventing a top-level baseURL would silently discard an endpoint path on
-  // passthrough. Delete this case only together with real `endpoints` support in the editor.
-  test('an endpoints-only api provider comes back undefined rather than a fabricated pair', () => {
+  test('an endpoints-only api provider hydrates a draft instead of failing', () => {
     expect(
       parseProviderFormInitial({
         kind: ProviderKind.Api,
         id: 'moonshot',
         endpoints: [{ protocol: 'anthropic', baseURL: 'https://api.moonshot.cn/anthropic/v1' }],
       }),
-    ).toBeUndefined();
+    ).toMatchObject({
+      kind: ProviderKind.Api,
+      id: 'moonshot',
+      endpoints: {
+        shape: 'shared',
+        baseURL: 'https://api.moonshot.cn/anthropic/v1',
+        protocols: ['anthropic'],
+      },
+    });
+  });
+
+  test('a shared multi-protocol draft writes the endpoints object, not a fabricated pair', () => {
+    expect(
+      normalizeProviderFormValue({
+        kind: ProviderKind.Api,
+        id: 'gw',
+        endpoints: {
+          shape: 'shared',
+          baseURL: 'https://gw.example/v1',
+          protocols: ['openai-compatible', 'anthropic'],
+        },
+      } as ProviderFormShape),
+    ).toEqual({
+      kind: ProviderKind.Api,
+      id: 'gw',
+      endpoints: { baseURL: 'https://gw.example/v1', protocol: ['openai-compatible', 'anthropic'] },
+    });
   });
 });

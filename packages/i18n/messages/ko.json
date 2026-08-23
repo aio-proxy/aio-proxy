@@ -528,7 +528,7 @@
       "providers_title": "프로바이더",
       "new_provider": "새 프로바이더",
       "edit_loading": "프로바이더 로딩 중…",
-      "edit_unsupported": "이 프로바이더는 편집기가 아직 표현할 수 없는 설정(다중 프로토콜 endpoints 등)을 사용합니다. config.jsonc에서 편집하세요.",
+      "edit_unsupported": "이 프로바이더는 편집기가 아직 표현할 수 없는 설정을 사용합니다. config.jsonc에서 편집하세요.",
       "edit_not_found": "프로바이더를 찾을 수 없음",
       "kind_label": {
         "invalid": "잘못됨"
@@ -911,6 +911,13 @@
         "id_description_server_assigned": "인증 과정에서 자동으로 입력됩니다.",
         "placeholder_name": "예: OpenAI 기본 계정",
         "placeholder_protocol": "프로토콜 선택",
+        "endpoints_title": "프로토콜 엔드포인트",
+        "endpoints_shared_help": "기본적으로 여러 프로토콜이 하나의 Base URL을 공유합니다.",
+        "endpoints_independent": "독립 주소",
+        "endpoints_add": "엔드포인트 추가",
+        "endpoints_remove": "엔드포인트 삭제",
+        "endpoints_anthropic_auth": "Anthropic 인증 방식",
+        "endpoints_shared_conversion_blocked": "공유 주소로 바꾸기 전에 Base URL을 맞추고 특수 인증을 제거하세요.",
         "placeholder_base_url": "https://api.example.com/v1",
         "placeholder_api_key": "선택 사항",
         "placeholder_api_key_configured": "설정됨, 비워 두면 유지",

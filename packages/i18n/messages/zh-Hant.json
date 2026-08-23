@@ -528,7 +528,7 @@
       "providers_title": "提供商",
       "new_provider": "新增提供商",
       "edit_loading": "正在載入提供商…",
-      "edit_unsupported": "該提供商使用了編輯器尚不支援的設定（例如多協定 endpoints）。請在 config.jsonc 中編輯。",
+      "edit_unsupported": "該提供商使用了編輯器尚不支援的設定。請在 config.jsonc 中編輯。",
       "edit_not_found": "找不到提供商",
       "kind_label": {
         "invalid": "無效"
@@ -911,6 +911,13 @@
         "id_description_server_assigned": "將由授權流程自動填入。",
         "placeholder_name": "例如 OpenAI 主帳號",
         "placeholder_protocol": "選擇協定",
+        "endpoints_title": "協定端點",
+        "endpoints_shared_help": "預設多個協定共用一個 Base URL。",
+        "endpoints_independent": "獨立位址",
+        "endpoints_add": "新增端點",
+        "endpoints_remove": "刪除端點",
+        "endpoints_anthropic_auth": "Anthropic 認證方式",
+        "endpoints_shared_conversion_blocked": "先統一 Base URL 並移除特殊認證，再切換共享位址",
         "placeholder_base_url": "https://api.example.com/v1",
         "placeholder_api_key": "選填",
         "placeholder_api_key_configured": "已設定，留空保留",

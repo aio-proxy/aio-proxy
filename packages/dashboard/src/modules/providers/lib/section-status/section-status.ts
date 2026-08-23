@@ -1,7 +1,7 @@
 import type { AliasEditorIssue } from '../alias-editor';
+import { apiConnectionIssues, type ApiEndpointDraft } from '../api-endpoints';
 import { exposedModels } from '../exposed-models';
 import { advancedHint, blankPackageName, connectionHint, identityHint, modelsHint, routingHint } from './section-hint';
-import { usableBaseURL } from './usable-base-url';
 
 export type SectionId = 'identity' | 'connection' | 'models' | 'routing' | 'advanced';
 export type SectionStatus = 'todo' | 'attention' | 'ok';
@@ -18,7 +18,9 @@ export interface SectionStatusInput {
   readonly id: string;
   readonly baseURL?: string | undefined;
   readonly protocol?: string | undefined;
+  readonly endpoints?: ApiEndpointDraft | undefined;
   readonly apiKey?: string | undefined;
+  readonly hasApiKey?: boolean | undefined;
   readonly capabilityKey?: string | undefined;
   readonly authorized?: boolean | undefined;
   readonly packageName?: string | undefined;
@@ -58,7 +60,11 @@ export function sectionStatuses(input: SectionStatusInput): Readonly<Record<Sect
     input.mode === 'create' && input.kind !== 'oauth' && input.id.trim() === '' ? 'todo' : 'ok';
 
   let connection: SectionStatus = 'ok';
-  if (input.kind === 'api' && (!usableBaseURL((input.baseURL ?? '').trim()) || (input.protocol ?? '') === '')) {
+  if (
+    input.kind === 'api' &&
+    apiConnectionIssues(input.endpoints, { apiKey: input.apiKey ?? '', hasApiKey: input.hasApiKey === true }) !==
+      undefined
+  ) {
     connection = 'todo';
   }
   if (input.kind === 'oauth' && (input.capabilityKey ?? '') === '') connection = 'todo';

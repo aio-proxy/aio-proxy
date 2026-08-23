@@ -7,8 +7,11 @@ import {
   DrawerHeader,
   DrawerTitle,
 } from '@aio-proxy/ui/components/drawer';
-import { Textarea } from '@aio-proxy/ui/components/textarea';
+import { Label } from '@aio-proxy/ui/components/label';
 import { useId, useState } from 'react';
+
+import { JsonEditor } from '@/components/json-editor/json-editor';
+import type { JsonValue } from '@/components/json-editor/json-editor-state';
 
 import { parseCompositeDraft } from './request-transform-composite-draft';
 
@@ -20,6 +23,9 @@ interface RequestTransformJsonDrawerContentProps {
   readonly onApply: (draft: string) => void;
 }
 
+const parseInitialValue = (type: 'object' | 'array', draft: string): JsonValue | undefined =>
+  parseCompositeDraft(type, draft);
+
 export const RequestTransformJsonDrawerContent: React.FC<RequestTransformJsonDrawerContentProps> = ({
   type,
   typeLabel,
@@ -27,10 +33,11 @@ export const RequestTransformJsonDrawerContent: React.FC<RequestTransformJsonDra
   onOpenChange,
   onApply,
 }) => {
+  const editorId = useId();
   const [draft, setDraft] = useState(initialDraft);
-  const errorId = useId();
   const parsed = parseCompositeDraft(type, draft);
   const title = m['dashboard.providers.transforms.value.json_title']({ type: typeLabel });
+  const fieldLabel = m['dashboard.providers.transforms.value.static_label']();
 
   return (
     <DrawerContent className="p-0 sm:w-full sm:max-w-[680px]" data-testid="request-transform-json-drawer">
@@ -41,18 +48,24 @@ export const RequestTransformJsonDrawerContent: React.FC<RequestTransformJsonDra
         </DrawerDescription>
       </DrawerHeader>
       <div className="min-h-0 flex-1 p-4">
-        <Textarea
-          value={draft}
-          rows={22}
-          className="h-full min-h-80 resize-none font-mono text-xs"
-          data-testid="request-transform-json-draft"
-          aria-label={m['dashboard.providers.transforms.value.static_label']()}
-          aria-invalid={parsed === undefined}
-          aria-describedby={parsed === undefined ? errorId : undefined}
-          onChange={(event) => setDraft(event.target.value)}
-        />
+        <Label htmlFor={editorId} className="sr-only">
+          {fieldLabel}
+        </Label>
+        <div data-testid="request-transform-json-draft">
+          <JsonEditor
+            id={editorId}
+            className="min-h-80"
+            value={parseInitialValue(type, initialDraft)}
+            schema={{ type }}
+            externalInvalid={parsed === undefined}
+            onDraftChange={setDraft}
+            onValueChange={(_nextValue, nextDraft) => {
+              setDraft(nextDraft);
+            }}
+          />
+        </div>
         {parsed === undefined ? (
-          <p id={errorId} role="alert" className="mt-2 text-sm text-destructive">
+          <p id={`${editorId}-error`} role="alert" className="mt-2 text-sm text-destructive">
             {type === 'object'
               ? m['dashboard.providers.transforms.value.invalid_object']()
               : m['dashboard.providers.transforms.value.invalid_array']()}

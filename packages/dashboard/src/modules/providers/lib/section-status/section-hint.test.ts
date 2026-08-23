@@ -10,6 +10,7 @@ const base: SectionStatusInput = {
   id: 'p1',
   baseURL: 'https://x.example/v1',
   protocol: 'openai-compatible',
+  endpoints: { shape: 'shared', baseURL: 'https://x.example/v1', protocols: ['openai-compatible'] },
   apiKey: 'sk-test',
   models: ['m1'],
   aliasIssues: [],
@@ -95,19 +96,33 @@ test('a malformed base URL says the address is invalid, not that it is missing',
 
   // Unparseable, and the parseable-but-not-http(s) case the gate also rejects (D-F12). The copy has to
   // be true of both, so both assert the same key.
-  expect(sectionStatuses({ ...base, baseURL: 'api.example.com' }).connection.hint).toBe(badHint);
-  expect(sectionStatuses({ ...base, baseURL: 'ftp://x.example' }).connection.hint).toBe(badHint);
-  expect(sectionStatuses({ ...base, baseURL: '{{env.OPENAI_BASE_URL}}' }).connection.hint).toBe(badHint);
+  expect(
+    sectionStatuses({
+      ...base,
+      endpoints: { shape: 'shared', baseURL: 'api.example.com', protocols: ['openai-compatible'] },
+    }).connection.hint,
+  ).toBe(badHint);
+  expect(
+    sectionStatuses({
+      ...base,
+      endpoints: { shape: 'shared', baseURL: 'ftp://x.example', protocols: ['openai-compatible'] },
+    }).connection.hint,
+  ).toBe(badHint);
+  expect(
+    sectionStatuses({
+      ...base,
+      endpoints: { shape: 'shared', baseURL: '{{env.OPENAI_BASE_URL}}', protocols: ['openai-compatible'] },
+    }).connection.hint,
+  ).toBe(badHint);
 
-  // The other direction, or the branch would just swallow the original hint: an EMPTY address keeps it,
-  // because there the protocol may be the missing half too.
-  expect(sectionStatuses({ ...base, baseURL: '' }).connection.hint).toBe(
-    m['dashboard.providers.editor.hint_connection_todo_api'](),
-  );
-  // And so does a usable address whose protocol is unset — the other input that makes this section todo.
-  expect(sectionStatuses({ ...base, protocol: undefined }).connection.hint).toBe(
-    m['dashboard.providers.editor.hint_connection_todo_api'](),
-  );
+  expect(
+    sectionStatuses({ ...base, endpoints: { shape: 'shared', baseURL: '', protocols: ['openai-compatible'] } })
+      .connection.hint,
+  ).toBe(m['dashboard.providers.editor.hint_connection_todo_api']());
+  expect(
+    sectionStatuses({ ...base, endpoints: { shape: 'shared', baseURL: 'https://x.example/v1', protocols: [] } })
+      .connection.hint,
+  ).toBe(m['dashboard.providers.editor.hint_connection_todo_api']());
   // Keyed off the status, not off `usableBaseURL` alone: the `ok` copy is its own branch, and
   // reordering the guard above it would report a bad address on a section that has none.
   expect(sectionStatuses(base).connection.hint).toBe('x.example/v1');

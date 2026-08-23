@@ -528,7 +528,7 @@
       "providers_title": "提供商",
       "new_provider": "新建提供商",
       "edit_loading": "正在加载提供商…",
-      "edit_unsupported": "该提供商使用了编辑器暂不支持的配置（例如多协议 endpoints）。请在 config.jsonc 中编辑。",
+      "edit_unsupported": "该提供商使用了编辑器暂不支持的配置。请在 config.jsonc 中编辑。",
       "edit_not_found": "未找到提供商",
       "kind_label": {
         "invalid": "无效"
@@ -911,6 +911,13 @@
         "id_description_server_assigned": "将由授权流程自动填入。",
         "placeholder_name": "例如 OpenAI 主账号",
         "placeholder_protocol": "选择协议",
+        "endpoints_title": "协议端点",
+        "endpoints_shared_help": "默认多个协议共享一个 Base URL。",
+        "endpoints_independent": "独立地址",
+        "endpoints_add": "添加端点",
+        "endpoints_remove": "删除端点",
+        "endpoints_anthropic_auth": "Anthropic 认证方式",
+        "endpoints_shared_conversion_blocked": "先统一 Base URL 并移除特殊认证，再切换共享地址",
         "placeholder_base_url": "https://api.example.com/v1",
         "placeholder_api_key": "可选",
         "placeholder_api_key_configured": "已配置，留空保留",
