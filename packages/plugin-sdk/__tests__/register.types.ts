@@ -60,7 +60,7 @@ const aliases: DefaultAliasSuggestions = {
   'gemini-3.5-flash': {
     model: 'gemini-3.5-flash-extra-low',
     preserve: false,
-    variants: { high: { model: 'gemini-3-flash-agent', preserve: false } },
+    variants: [{ when: { effort: 'high' }, model: 'gemini-3-flash-agent', preserve: false }],
   },
 };
 

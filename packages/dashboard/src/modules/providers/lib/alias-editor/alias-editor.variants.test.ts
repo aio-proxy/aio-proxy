@@ -28,15 +28,13 @@ describe('provider alias editor variant rows', () => {
     ]);
   });
 
-  // Every existing config uses the record form. Always emitting rows would rewrite a user's whole
-  // alias block on the first save of an unrelated field, so the compact shape has to survive.
-  test('Given all-effort-only rows When serialized Then the compact record form is kept', () => {
+  test('Given all-effort-only rows When serialized Then they stay array rows', () => {
     const rows = variantRows(alias.mini);
 
-    expect(toAliasVariants(rows)).toEqual({ low: { model: 'gpt-low', preserve: false } });
-    expect(withVariantRows([aliasRow('mini', alias.mini)], 'mini', rows)[0]?.config.variants).toEqual({
-      low: { model: 'gpt-low', preserve: false },
-    });
+    expect(toAliasVariants(rows)).toEqual([{ when: { effort: 'low' }, model: 'gpt-low', preserve: false }]);
+    expect(withVariantRows([aliasRow('mini', alias.mini)], 'mini', rows)[0]?.config.variants).toEqual([
+      { when: { effort: 'low' }, model: 'gpt-low', preserve: false },
+    ]);
   });
 
   // Two rows may legally share a name (X16). Addressing by name would `find` the first `mini`

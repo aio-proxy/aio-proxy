@@ -71,7 +71,7 @@ test('new account stores catalog-derived aliases whose targets exist', async () 
         logical: {
           model: 'wire-low',
           preserve: false,
-          variants: { high: { model: 'wire-high', preserve: false } },
+          variants: [{ when: { effort: 'high' }, model: 'wire-high', preserve: false }],
         },
       },
     },

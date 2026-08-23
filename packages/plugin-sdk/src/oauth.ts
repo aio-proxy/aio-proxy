@@ -22,7 +22,7 @@ export type DefaultAliasSelectRow = {
 };
 
 export type DefaultAliasSuggestion = DefaultAliasTarget & {
-  readonly variants?: Readonly<Record<string, DefaultAliasTarget>> | readonly DefaultAliasSelectRow[];
+  readonly variants?: readonly DefaultAliasSelectRow[];
 };
 
 export type DefaultAliasSuggestions = Readonly<Record<string, DefaultAliasSuggestion>>;

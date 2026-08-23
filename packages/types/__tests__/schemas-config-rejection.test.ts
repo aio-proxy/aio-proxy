@@ -118,7 +118,7 @@ describe('ConfigSchema', () => {
           },
         },
       },
-      ['providers', 'openai', 'alias', 'mini', 'variants', 'low', 'model'],
+      ['providers', 'openai', 'alias', 'mini', 'variants', 0, 'model'],
     );
   });
 });

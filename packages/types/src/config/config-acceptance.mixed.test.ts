@@ -71,10 +71,10 @@ describe('ConfigSchema', () => {
         'gemini-3-flash-agent': {
           model: 'gemini-3.5-flash',
           preserve: false,
-          variants: {
-            medium: { model: 'gemini-3.5-flash-medium', preserve: true },
-            low: { model: 'gemini-3.5-flash-low', preserve: false },
-          },
+          variants: [
+            { when: { effort: 'medium' }, model: 'gemini-3.5-flash-medium', preserve: true },
+            { when: { effort: 'low' }, model: 'gemini-3.5-flash-low', preserve: false },
+          ],
         },
         'gemini-3.5-flash': { model: 'gemini-3.5-flash', preserve: false },
       },

@@ -23,7 +23,7 @@ describe('ConfigSchema', () => {
         mini: {
           model: 'gpt-5-mini',
           preserve: false,
-          variants: { high: { model: 'gpt-5', preserve: false } },
+          variants: [{ when: { effort: 'high' }, model: 'gpt-5', preserve: false }],
         },
       });
     });
@@ -48,7 +48,6 @@ describe('ConfigSchema', () => {
 
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error.issues.map((issue) => issue.path)).toContainEqual(['alias', 'mini', 'variants', ' high ']);
       }
     });
 

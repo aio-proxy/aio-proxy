@@ -34,7 +34,26 @@ test('an alias outside a non-empty whitelist still fails, for alias and variant 
   });
   expect(issues.map((issue) => issue.path)).toEqual([
     ['alias', 'smart', 'model'],
-    ['alias', 'smart', 'variants', 'fast', 'model'],
+    ['alias', 'smart', 'variants', 0, 'model'],
+  ]);
+});
+
+test('modelRoutes: unpreserved variant targets stay hidden when the alias name is also in models', () => {
+  expect(
+    modelRoutes({
+      enabled: true,
+      models: ['gemini-2.5-flash', 'gemini-2.5-flash-thinking', 'gemini-2.5-flash-lite'],
+      alias: {
+        'gemini-2.5-flash': {
+          model: 'gemini-2.5-flash',
+          preserve: false,
+          variants: [{ when: { thinking: true }, model: 'gemini-2.5-flash-thinking', preserve: false }],
+        },
+      },
+    }),
+  ).toEqual([
+    { alias: 'gemini-2.5-flash-lite', modelId: 'gemini-2.5-flash-lite' },
+    { alias: 'gemini-2.5-flash', modelId: 'gemini-2.5-flash' },
   ]);
 });
 

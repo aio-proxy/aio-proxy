@@ -24,7 +24,7 @@ describe('removeModelFromAliases', () => {
       aliasRow('keep', {
         model: 'stay',
         preserve: true,
-        variants: { low: { model: 'stay', preserve: false } },
+        variants: [{ when: { effort: 'low' }, model: 'stay', preserve: false }],
       }),
     ]);
   });
