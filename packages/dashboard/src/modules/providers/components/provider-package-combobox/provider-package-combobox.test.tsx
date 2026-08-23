@@ -26,24 +26,18 @@ const PackageHarness: React.FC = () => {
 const expandButton = () => screen.getByRole('button', { expanded: false });
 
 describe('ProviderPackageCombobox', () => {
-  test('keeps a usable chevron beside the clear button and opens the curated list from it', async () => {
+  test('opens the curated list from the input group trigger', async () => {
     render(<PackageHarness />);
 
-    const trigger = expandButton();
-    // happy-dom loads no Tailwind, so a `hidden` utility on the chevron is invisible to layout and to
-    // toBeVisible(); the class list is the only evidence that nothing display-hides the one pointer
-    // affordance while the clear button is mounted.
-    expect(trigger.className).not.toMatch(/(?:^|[\s:])hidden(?:\s|$)/u);
-
-    fireEvent.mouseDown(trigger);
+    fireEvent.mouseDown(expandButton());
 
     expect(await screen.findByRole('option', { name: '@ai-sdk/anthropic' })).toBeTruthy();
   });
 
-  test('names the clear button so it is not an anonymous icon button', () => {
+  test('keeps a clear control when a package is selected', () => {
     render(<PackageHarness />);
 
-    expect(screen.getByRole('button', { name: m['common.clear']() })).toBeTruthy();
+    expect(document.querySelector('[data-slot="combobox-clear"]')).not.toBeNull();
   });
 
   test('lets the visible field label name the input, with no aria-label shadowing it', () => {

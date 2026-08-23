@@ -124,3 +124,13 @@ test('whitelist round-trips through both action branches', () => {
   expect(reauth.kind).toBe('reauthorize');
   if (reauth.kind === 'reauthorize') expect(reauth.input.providerPatch?.models).toEqual(['m1', 'm2']);
 });
+
+test('a whitespace-only display name is omitted from both action branches', () => {
+  const update = oauthProviderEditAction({ ...values, name: '   ' }, { tenant: 'work' });
+  expect(update.kind).toBe('update');
+  if (update.kind === 'update') expect('name' in update.body).toBe(false);
+
+  const reauth = oauthProviderEditAction({ ...values, name: '   ' }, { tenant: 'work' }, true);
+  expect(reauth.kind).toBe('reauthorize');
+  if (reauth.kind === 'reauthorize') expect(reauth.input.providerPatch).not.toHaveProperty('name');
+});

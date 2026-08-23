@@ -77,11 +77,11 @@ test('renders the authorize_url branch with localized instructions, an open link
     />,
   );
 
-  expect(screen.getByRole('link', { name: /open authorization|打开授权/iu })).toHaveAttribute(
+  expect(screen.getByRole('button', { name: /open authorization page|打开授权页面/iu })).toHaveAttribute(
     'href',
     'https://cursor.com/loginDeepControl',
   );
+  expect(screen.getByDisplayValue('https://cursor.com/loginDeepControl')).toHaveAttribute('readonly');
   expect(screen.getByText(/Finish signing in from the opened page|请在打开的页面中完成登录/u)).toBeInTheDocument();
-  expect(screen.queryByRole('textbox')).toBeNull();
   expect(screen.getByRole('button', { name: /cancel|取消/iu })).toBeInTheDocument();
 });

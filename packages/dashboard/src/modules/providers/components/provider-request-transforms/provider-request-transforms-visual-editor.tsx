@@ -39,8 +39,8 @@ export const ProviderRequestTransformsVisualEditor: React.FC<ProviderRequestTran
             key={index}
             value={rule}
             index={index}
-            canMoveUp={index > 0}
-            canMoveDown={index < value.length - 1}
+            canMoveUp={index > 0 && ruleValidity[index - 1] !== false}
+            canMoveDown={index < value.length - 1 && ruleValidity[index + 1] !== false}
             firstPathInputRef={(element: HTMLInputElement | null) => {
               if (element === null || pendingFocusRule.current !== index) return;
               pendingFocusRule.current = undefined;

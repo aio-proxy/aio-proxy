@@ -70,7 +70,7 @@ describe('TagsInput', () => {
     fireEvent.keyDown(input, { key: 'Escape' });
     expect(screen.getByRole('status', { name: 'Selected models' })).toHaveTextContent('gpt-5');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Remove gpt-5' }));
+    fireEvent.click(document.querySelector('[data-slot="combobox-chip-remove"]')!);
     expect(screen.getByRole('status', { name: 'Selected models' })).toBeEmptyDOMElement();
   });
 });

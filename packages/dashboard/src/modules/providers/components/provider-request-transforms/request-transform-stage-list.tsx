@@ -45,8 +45,8 @@ export const RequestTransformStageList: React.FC<RequestTransformStageListProps>
           key={index}
           value={stage}
           index={index}
-          canMoveUp={index > 0}
-          canMoveDown={index < stages.length - 1}
+          canMoveUp={index > 0 && stageValidity[index - 1] !== false}
+          canMoveDown={index < stages.length - 1 && stageValidity[index + 1] !== false}
           canRemove={stages.length > 1}
           ruleName={ruleName}
           {...(index === 0 && firstPathInputRef !== undefined ? { pathInputRef: firstPathInputRef } : {})}

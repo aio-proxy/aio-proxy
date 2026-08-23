@@ -75,7 +75,7 @@ const startCreateAuthorization = (
         : { completeUrl: dashboardOAuthCompleteUrl(window.location.origin) }),
       providerPatch: {
         enabled: true,
-        ...(values.name === undefined || values.name === '' ? {} : { name: values.name }),
+        ...(values.name === undefined || values.name.trim() === '' ? {} : { name: values.name.trim() }),
         ...(values.priority === undefined ? {} : { priority: values.priority }),
         ...(values.weight === undefined ? {} : { weight: values.weight }),
         ...(values.proxy === undefined ? {} : { proxy: values.proxy }),

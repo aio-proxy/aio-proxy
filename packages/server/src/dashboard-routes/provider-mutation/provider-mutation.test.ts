@@ -127,3 +127,12 @@ describe('replaceProvider', () => {
     expect(result['openai']).not.toHaveProperty('proxy');
   });
 });
+
+test('drops a whitespace-only display name instead of writing it into the config', () => {
+  const result = replaceProvider({ openai: { kind: 'oauth', name: 'Personal' } }, 'openai', {
+    kind: 'oauth',
+    name: '   ',
+  });
+
+  expect(result['openai']).not.toHaveProperty('name');
+});

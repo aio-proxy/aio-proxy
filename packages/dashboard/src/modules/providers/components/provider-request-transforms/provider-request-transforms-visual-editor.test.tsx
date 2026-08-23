@@ -738,7 +738,9 @@ test('keeps per-action and sibling-rule controls usable while one action is inva
     within(stageCard(1)).getByRole('button', {
       name: m['dashboard.providers.transforms.action.move_up']({ index: 2 }),
     }),
-  ).toBeEnabled();
+  ).toBeDisabled();
+  // A healthy neighboring rule must not swap across this unfinished draft either.
+  expect(within(ruleCard(1)).getByRole('button', { name: /Move rule 2 up|上移规则 2/u })).toBeDisabled();
   // Adding to another rule re-emits only that rule's actions, so it is unaffected by this one.
   expect(within(ruleCard(1)).getByRole('button', { name: /Add action|添加操作/u })).toBeEnabled();
 });

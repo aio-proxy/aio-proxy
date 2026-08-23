@@ -34,8 +34,9 @@ export const oauthProviderEditAction = (
   initialPublicValues: DashboardOAuthSessionStart['publicValues'],
   forceReauthorize = false,
 ): OAuthProviderEditAction => {
+  const name = values.name?.trim();
   const providerPatch = {
-    ...(values.name === undefined ? {} : { name: values.name }),
+    ...(name === undefined || name === '' ? {} : { name }),
     enabled: values.enabled,
     ...(values.priority === undefined ? {} : { priority: values.priority }),
     ...(values.weight === undefined ? {} : { weight: values.weight }),
