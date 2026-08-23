@@ -515,6 +515,44 @@ describe('draft Provider catalog and test routes', () => {
     }
   });
 
+  test('a custom stored header is not sent to a changed destination', async () => {
+    let customHeader: string | null = null;
+    const relocated = Bun.serve({
+      hostname: '127.0.0.1',
+      port: 0,
+      fetch(request) {
+        customHeader = request.headers.get('x-auth');
+        return Response.json({ data: [{ id: 'relocated-model' }] });
+      },
+    });
+
+    try {
+      const response = await routes.request(
+        '/providers/draft/catalog',
+        jsonRequest(
+          {
+            draft: {
+              apiKey: 'saved-secret',
+              baseURL: `http://127.0.0.1:${relocated.port}/v1`,
+              headers: { 'x-auth': 'saved-header', 'x-saved-secret': 'saved-header' },
+              id: 'saved',
+              kind: 'api',
+              protocol: ProviderProtocol.OpenAICompatible,
+            },
+            persistedProviderId: 'saved',
+          },
+          'QUERY',
+        ),
+      );
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ ok: true, models: ['relocated-model'] });
+      expect(customHeader).toBeNull();
+    } finally {
+      await relocated.stop(true);
+    }
+  });
+
   test('prefilled stored credentials are not sent to a changed destination', async () => {
     let authorization: string | null = null;
     let savedHeader: string | null = null;
@@ -583,6 +621,26 @@ describe('draft Provider catalog and test routes', () => {
     expect(inherited.ok && inherited.provider.proxy).toBeUndefined();
     expect(disabled.ok && disabled.provider.proxy).toBe(false);
     expect(replaced.ok && replaced.provider.proxy).toBe('https://replacement-proxy.example:9443');
+  });
+
+  test('a shared endpoints object keeps the same identity as an equivalent stored pair', () => {
+    const resolved = resolveProviderDraft(
+      state,
+      {
+        endpoints: { baseURL: 'http://saved.example/v1', protocol: [ProviderProtocol.OpenAICompatible] },
+        id: 'saved',
+        kind: 'api',
+      },
+      'saved',
+    );
+
+    expect(resolved).toMatchObject({
+      ok: true,
+      provider: {
+        apiKey: 'saved-secret',
+        headers: { 'x-saved-secret': 'saved-header' },
+      },
+    });
   });
 
   test('restores omitted saved credentials in memory for an edit draft with the same identity', () => {

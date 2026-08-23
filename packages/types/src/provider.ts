@@ -229,7 +229,7 @@ const ApiProviderMutationSharedFields = {
   transforms: ProviderTransformsSchema.optional().describe('Ordered outbound request transforms.'),
 } as const;
 
-export const ApiProviderMutationObjectSchema = z.strictObject({
+export const ApiProviderMutationObjectSchema = z.object({
   ...ApiProviderMutationSharedFields,
   baseURL: z.url().optional(),
   proxy: ProviderMutationProxySchema,

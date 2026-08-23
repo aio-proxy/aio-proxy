@@ -1,4 +1,10 @@
-import { type DashboardProviderDraft, type Provider, ProviderKind, ProviderSchema } from '@aio-proxy/types';
+import {
+  apiProviderEndpoints,
+  type DashboardProviderDraft,
+  type Provider,
+  ProviderKind,
+  ProviderSchema,
+} from '@aio-proxy/types';
 import { isEqual } from 'es-toolkit/predicate';
 
 import type { ServerState } from '../../server-state';
@@ -62,12 +68,7 @@ export function resolveProviderDraft(
 
 function hasSameProviderIdentity(previous: Provider, draft: DashboardProviderDraft): boolean {
   if (previous.kind === ProviderKind.Api && draft.kind === ProviderKind.Api) {
-    return (
-      previous.protocol === draft.protocol &&
-      previous.baseURL === draft.baseURL &&
-      isEqual(previous.endpoints, draft.endpoints) &&
-      hasSameProxyIdentity(previous.proxy, draft.proxy)
-    );
+    return sameApiDestinations(previous, draft) && hasSameProxyIdentity(previous.proxy, draft.proxy);
   }
 
   if (previous.kind === ProviderKind.AiSdk && draft.kind === ProviderKind.AiSdk) {
@@ -87,6 +88,25 @@ function hasSameProviderIdentity(previous: Provider, draft: DashboardProviderDra
   return false;
 }
 
+function sameApiDestinations(previous: Provider, draft: DashboardProviderDraft): boolean {
+  if (previous.kind !== ProviderKind.Api || draft.kind !== ProviderKind.Api) return false;
+  try {
+    const previousEndpoints = apiProviderEndpoints(previous);
+    const draftEndpoints = apiProviderEndpoints(draft);
+    if (previousEndpoints.length !== draftEndpoints.length) return false;
+    return previousEndpoints.every(
+      (endpoint, index) =>
+        endpoint.protocol === draftEndpoints[index]?.protocol && endpoint.baseURL === draftEndpoints[index]?.baseURL,
+    );
+  } catch {
+    return (
+      previous.protocol === draft.protocol &&
+      previous.baseURL === draft.baseURL &&
+      isEqual(previous.endpoints, draft.endpoints)
+    );
+  }
+}
+
 function hasSameProxyIdentity(previous: string | false | undefined, draft: string | false | null | undefined): boolean {
   let resolved: string | false | undefined;
   if (draft === undefined) resolved = previous;
@@ -95,24 +115,56 @@ function hasSameProxyIdentity(previous: string | false | undefined, draft: strin
 }
 
 function stripRetainedSecrets(previous: Provider, draft: DashboardProviderDraft): DashboardProviderDraft {
-  return stripMatchingSecrets(draft, previous) as DashboardProviderDraft;
+  return stripMatchingSecrets(draft, previous, retainedSecretValues(previous)) as DashboardProviderDraft;
 }
 
-function stripMatchingSecrets(submitted: unknown, previous: unknown, key = ''): unknown {
+function retainedSecretValues(previous: Provider): ReadonlySet<string> {
+  const values = new Set<string>();
+  collectSecretValues(previous, values);
+  return values;
+}
+
+function collectSecretValues(value: unknown, values: Set<string>, key = '', sensitive = false): void {
+  const nestedSensitive = sensitive || isSensitiveDraftKey(key);
+  if (typeof value === 'string') {
+    if (nestedSensitive) values.add(value);
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) collectSecretValues(item, values, key, nestedSensitive);
+    return;
+  }
+  if (value !== null && typeof value === 'object') {
+    for (const [entryKey, entryValue] of Object.entries(value as Record<string, unknown>)) {
+      collectSecretValues(entryValue, values, entryKey, nestedSensitive);
+    }
+  }
+}
+
+function stripMatchingSecrets(
+  submitted: unknown,
+  previous: unknown,
+  retained: ReadonlySet<string>,
+  key = '',
+  sensitive = false,
+): unknown {
+  const nestedSensitive = sensitive || isSensitiveDraftKey(key);
   if (typeof submitted === 'string') {
-    if (submitted === previous) return isSensitiveDraftKey(key) ? undefined : submitted;
-    return submitted;
+    if (!nestedSensitive) return submitted;
+    return submitted === previous || retained.has(submitted) ? undefined : submitted;
   }
   if (Array.isArray(submitted)) {
     const previousItems = Array.isArray(previous) ? previous : [];
-    return submitted.map((value, index) => stripMatchingSecrets(value, previousItems[index]));
+    return submitted.map((value, index) =>
+      stripMatchingSecrets(value, previousItems[index], retained, key, nestedSensitive),
+    );
   }
   if (submitted !== null && typeof submitted === 'object') {
     const previousRecord =
       previous !== null && typeof previous === 'object' ? (previous as Record<string, unknown>) : {};
     const next: Record<string, unknown> = {};
     for (const [entryKey, value] of Object.entries(submitted as Record<string, unknown>)) {
-      const stripped = stripMatchingSecrets(value, previousRecord[entryKey], entryKey);
+      const stripped = stripMatchingSecrets(value, previousRecord[entryKey], retained, entryKey, nestedSensitive);
       if (stripped !== undefined) next[entryKey] = stripped;
     }
     return next;

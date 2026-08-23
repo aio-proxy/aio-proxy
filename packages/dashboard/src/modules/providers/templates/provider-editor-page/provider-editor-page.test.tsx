@@ -204,7 +204,7 @@ const SAVED_LINE = /^(Saved|保存しました|저장됨|已保存|已儲存)$/u
 
 // The success confirmation is the mutation hook's transient toast; the page keeps no "Saved" line of
 // its own, which used to sit there permanently while the footer went back to blocking the next save.
-test('create-api save stays on the page', async () => {
+test('create-api save opens the created provider', async () => {
   const onSessionIdChange = rs.fn();
   renderPage({
     mode: ProviderFormMode.Create,
@@ -223,7 +223,11 @@ test('create-api save stays on the page', async () => {
 
   await waitFor(() => expect(mocks.create).toHaveBeenCalled());
   expect(mocks.update).not.toHaveBeenCalled();
-  expect(mocks.navigate).not.toHaveBeenCalled();
+  expect(mocks.navigate).toHaveBeenCalledWith({
+    to: '/providers/$id/edit',
+    params: { id: 'demo-api' },
+    replace: true,
+  });
   // Ordered after the toast, never after `mocks.create` alone: the line only ever rendered once the
   // mutation had succeeded, so an absence assertion that runs before the success render passes against
   // the reverted code too — a false green that would make this pin worthless.

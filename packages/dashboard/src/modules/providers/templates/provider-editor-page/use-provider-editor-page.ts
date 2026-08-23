@@ -114,13 +114,86 @@ const saveOAuthProvider = (
   startReauthorize(action.input, { onError });
 };
 
+const saveEditor = (
+  forceReauthorize: boolean,
+  ctx: {
+    readonly values: ProviderEditorWire;
+    readonly kind: ProviderKind;
+    readonly mode: ProviderFormMode;
+    readonly authorized: boolean;
+    readonly accountForm: { readonly state: { readonly isValid: boolean } };
+    readonly accountValues: AccountFormValues;
+    readonly capabilities: readonly DashboardOAuthCapability[];
+    readonly oauth: DashboardOAuthProviderEdit | undefined;
+    readonly providerId: string | undefined;
+    readonly initial: ProviderEditorInitial | undefined;
+    readonly openPopup: () => void;
+    readonly closeUnclaimedPopup: () => void;
+    readonly startMutation: {
+      readonly mutate: (input: DashboardOAuthSessionStart, options?: { onError: () => void }) => void;
+    };
+    readonly updateProvider: (input: { id: string; body: ProviderMutationBody }) => void;
+    readonly createProvider: (body: ProviderMutationBody, options?: { readonly onSuccess?: () => void }) => void;
+    readonly navigate: (opts: { to: '/providers/$id/edit'; params: { id: string }; replace: true }) => unknown;
+    readonly saveBlocked: boolean;
+  },
+) => {
+  const wireValues = {
+    ...ctx.values,
+    alias:
+      ctx.values.alias === undefined
+        ? undefined
+        : serializeAlias(ctx.values.alias, ctx.mode === ProviderFormMode.Create ? 'create' : 'edit'),
+  };
+  if (ctx.kind === 'oauth' && ctx.mode === ProviderFormMode.Create && !ctx.authorized) {
+    if (ctx.accountForm.state.isValid === false) return;
+    ctx.openPopup();
+    startCreateAuthorization(
+      wireValues,
+      ctx.accountValues,
+      ctx.capabilities,
+      ctx.startMutation.mutate,
+      ctx.closeUnclaimedPopup,
+    );
+    return;
+  }
+  if (ctx.saveBlocked) return;
+  if (ctx.kind === 'oauth') {
+    if (ctx.oauth === undefined) return;
+    saveOAuthProvider(
+      wireValues,
+      ctx.accountValues,
+      ctx.oauth,
+      forceReauthorize,
+      ctx.updateProvider,
+      (input, options) => {
+        if (ctx.accountForm.state.isValid === false) return;
+        ctx.openPopup();
+        ctx.startMutation.mutate(input, options);
+      },
+      ctx.closeUnclaimedPopup,
+    );
+    return;
+  }
+  saveConfigProvider(
+    ctx.mode,
+    wireValues,
+    ctx.providerId,
+    ctx.initial?.metadata,
+    ctx.createProvider,
+    ctx.updateProvider,
+    (id) => void ctx.navigate({ to: '/providers/$id/edit', params: { id }, replace: true }),
+  );
+};
+
 const saveConfigProvider = (
   mode: ProviderFormMode,
   values: ProviderEditorWire,
   providerId: string | undefined,
   persistedMetadata: ProviderEditorShape['metadata'],
-  createProvider: (body: ProviderMutationBody) => void,
+  createProvider: (body: ProviderMutationBody, options?: { readonly onSuccess?: () => void }) => void,
   updateProvider: (input: { id: string; body: ProviderMutationBody }) => void,
+  onCreated: (id: string) => void,
 ) => {
   const result = ProviderMutationBodySchema.safeParse(normalizeProviderFormValue(values as ProviderFormShape));
   if (!result.success) {
@@ -151,7 +224,9 @@ const saveConfigProvider = (
   const { metadata: _unreconciled, ...parsed } = result.data;
   const body = { ...parsed, ...(metadata === undefined ? {} : { metadata }) };
   if (mode === ProviderFormMode.Create) {
-    createProvider(body);
+    createProvider(body, {
+      onSuccess: () => onCreated(body.id),
+    });
     return;
   }
   updateProvider({ id: providerId ?? values.id, body });
@@ -263,9 +338,7 @@ export const useProviderEditorPage = ({
   const onSessionSucceeded = useCallback(() => {
     accountForm.setFieldValue('secrets', {});
     accountForm.setFieldValue('clearSecrets', []);
-    if (oauth !== undefined) {
-      accountForm.setFieldValue('publicValues', oauth.publicValues);
-    }
+    if (oauth !== undefined) accountForm.setFieldValue('publicValues', oauth.publicValues);
     if (initial !== undefined) {
       form.reset({
         ...initial,
@@ -324,45 +397,29 @@ export const useProviderEditorPage = ({
     setOptionsValid(next !== 'ai-sdk');
     const nextValues = { ...form.state.values, kind: next } as ProviderEditorShape;
     form.reset(nextValues);
-    // reset clears isTouched; without a follow-up write, useForm re-applies
-    // `defaultValues: { ...initial, kind }` on the parent rerender and wipes name/id.
     form.setFieldValue('kind', next);
   };
 
-  const save = (forceReauthorize = false) => {
-    const wireValues = {
-      ...values,
-      alias:
-        values.alias === undefined
-          ? undefined
-          : serializeAlias(values.alias, mode === ProviderFormMode.Create ? 'create' : 'edit'),
-    };
-    if (kind === 'oauth' && mode === ProviderFormMode.Create && !authorized) {
-      if (accountForm.state.isValid === false) return;
-      openPopup();
-      startCreateAuthorization(wireValues, accountValues, capabilities, startMutation.mutate, closeUnclaimedPopup);
-      return;
-    }
-    if (saveBlocked) return;
-    if (kind === 'oauth') {
-      if (oauth === undefined) return;
-      saveOAuthProvider(
-        wireValues,
-        accountValues,
-        oauth,
-        forceReauthorize,
-        updateProvider,
-        (input, options) => {
-          if (accountForm.state.isValid === false) return;
-          openPopup();
-          startMutation.mutate(input, options);
-        },
-        closeUnclaimedPopup,
-      );
-      return;
-    }
-    saveConfigProvider(mode, wireValues, providerId, initial?.metadata, createProvider, updateProvider);
-  };
+  const save = (forceReauthorize = false) =>
+    saveEditor(forceReauthorize, {
+      values,
+      kind,
+      mode,
+      authorized,
+      accountForm,
+      accountValues,
+      capabilities,
+      oauth,
+      providerId,
+      initial,
+      openPopup,
+      closeUnclaimedPopup,
+      startMutation,
+      updateProvider,
+      createProvider,
+      navigate,
+      saveBlocked,
+    });
 
   const title = editorTitle(mode, values.name);
   const subtitle =
@@ -396,9 +453,6 @@ export const useProviderEditorPage = ({
     saveBlocked,
     isReauthorizing: startMutation.isPending,
     pending: isCreating || isUpdating || startMutation.isPending,
-    // One label, as in the demo footer. It used to read "authorize" for an unauthorized oauth draft,
-    // but X9 makes that draft block the save, so the button was permanently disabled in exactly the
-    // state whose action it named. Authorizing is the Connection section's button — same `save(false)`.
     primaryLabel: m['dashboard.providers.editor.footer_save'](),
     title,
     subtitle,
