@@ -211,7 +211,9 @@ export class Router<TProvider extends RoutableProvider = ProviderInstance> {
   }
 
   private effectiveRouting(provider: TProvider, model: string, configurationIndex: number): EffectiveCandidateRouting {
-    const override = this.models[model]?.providers[provider.id];
+    const policy = Object.hasOwn(this.models, model) ? this.models[model] : undefined;
+    const override =
+      policy === undefined || !Object.hasOwn(policy.providers, provider.id) ? undefined : policy.providers[provider.id];
     const defaults = providerDefaults(provider, configurationIndex);
     if (override === undefined) return defaults;
     return {

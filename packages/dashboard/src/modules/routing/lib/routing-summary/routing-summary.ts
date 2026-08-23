@@ -58,7 +58,7 @@ export const effectiveRoutingCandidates = (
       providerId: provider.id,
       priority,
       weight,
-      eligible: provider.enabled && weight > 0,
+      eligible: provider.enabled && provider.state.status === 'ready' && weight > 0,
     };
   });
 

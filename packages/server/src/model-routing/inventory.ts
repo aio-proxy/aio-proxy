@@ -122,12 +122,13 @@ function providerRow(
   const override = overrideView(rawOverride, discloseAuthored);
   const priority = override?.priority?.effective ?? defaults.priority.effective;
   const weight = override?.weight?.effective ?? defaults.weight.effective;
+  const state = summary?.state ?? { status: 'ready' };
   return {
     id: provider.id,
     ...(provider.name === undefined ? {} : { name: provider.name }),
     kind: provider.kind,
     enabled: provider.enabled,
-    state: summary?.state ?? { status: 'ready' },
+    state,
     defaults,
     ...(override === undefined ? {} : { override }),
     effective: {
@@ -135,7 +136,7 @@ function providerRow(
       weight,
       prioritySource: override?.priority === undefined ? 'provider' : 'model',
       weightSource: override?.weight === undefined ? 'provider' : 'model',
-      eligible: provider.enabled && weight > 0,
+      eligible: provider.enabled && state.status === 'ready' && weight > 0,
       share: null,
     },
   };

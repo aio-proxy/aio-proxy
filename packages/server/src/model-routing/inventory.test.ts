@@ -231,7 +231,9 @@ describe('model routing inventory', () => {
     expect(provider(response, 'stale-alias', 'unavailable-oauth')).toMatchObject({
       enabled: true,
       state: unavailable,
+      effective: { eligible: false },
     });
+    expect(provider(response, 'oauth-current', 'unavailable-oauth').effective.eligible).toBe(false);
     expect(provider(response, 'broken-alias', 'broken-oauth')).toMatchObject({
       state: unavailable,
     });

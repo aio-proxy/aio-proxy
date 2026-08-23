@@ -71,3 +71,12 @@ test('ranks catalog candidates by priority, weight, then configuration order', (
   expect(router.catalogCandidates('shared').map((item) => item.provider.id)).toEqual(['high-a', 'high-b', 'low']);
   expect(router.modelIds()).toEqual(['shared']);
 });
+
+test('resolves prototype-named models and Provider IDs without a router policy', () => {
+  for (const modelId of ['constructor', 'toString', '__proto__']) {
+    const named = provider('a', { [modelId]: { model: `${modelId}-wire`, preserve: false } });
+    expect(new Router([named]).resolve(modelId)[0]?.modelId).toBe(`${modelId}-wire`);
+  }
+  const ctorProvider = provider('constructor', { shared: { model: 'ctor-wire', preserve: false } });
+  expect(new Router([ctorProvider]).resolve('shared')[0]?.provider.id).toBe('constructor');
+});

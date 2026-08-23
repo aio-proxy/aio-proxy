@@ -1,6 +1,7 @@
+import { ProviderKind } from '@aio-proxy/types';
 import { expect, test } from '@rstest/core';
 
-import { buildRoutingTiers } from './routing-summary';
+import { buildRoutingTiers, effectiveRoutingCandidates } from './routing-summary';
 
 const effective = (providerId: string, priority: number, weight: number) => ({
   providerId,
@@ -40,4 +41,34 @@ test('omits Providers that are known but not eligible even when weight is positi
 
 test('returns no tiers when every Provider is ineligible', () => {
   expect(buildRoutingTiers([effective('off', 50, 0)])).toEqual([]);
+});
+
+test('live preview excludes unavailable Providers from eligible tiers', () => {
+  const number = { effective: 1, wasNormalized: false };
+  const provider = {
+    id: 'oauth',
+    kind: ProviderKind.OAuth,
+    enabled: true,
+    state: {
+      status: 'unavailable' as const,
+      diagnostic: {
+        code: 'CATALOG_UNAVAILABLE' as const,
+        summary: 'Catalog unavailable',
+        retryable: true,
+        occurredAt: '2026-08-22T00:00:00.000Z',
+      },
+    },
+    defaults: { priority: { effective: 20, wasNormalized: false }, weight: number },
+    effective: {
+      priority: 20,
+      weight: 1,
+      prioritySource: 'provider' as const,
+      weightSource: 'provider' as const,
+      eligible: true,
+      share: null,
+    },
+  };
+  expect(effectiveRoutingCandidates([provider], {})).toEqual([
+    { providerId: 'oauth', priority: 20, weight: 1, eligible: false },
+  ]);
 });

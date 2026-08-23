@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 
 import { digestProviderEntry } from '@aio-proxy/core';
 
-import { applyRoutingMutation, ModelRoutingStaleRevisionError } from './mutation';
+import { applyRoutingMutation, ModelRoutingStaleRevisionError, readRawModelPolicy } from './mutation';
 
 test('replaces only baseline Provider entries and preserves newly known or unknown entries', async () => {
   const originalPolicy = {
@@ -94,4 +94,11 @@ test('deletes empty model and router containers while preserving future fields',
     },
   );
   expect(emptied).toEqual({ providers: {} });
+});
+
+test('does not inherit Object.prototype as a missing model policy', () => {
+  const current = { router: { models: {} }, providers: {} };
+  expect(readRawModelPolicy(current, 'constructor')).toBeUndefined();
+  expect(readRawModelPolicy(current, 'toString')).toBeUndefined();
+  expect(digestProviderEntry(readRawModelPolicy(current, 'constructor') ?? null)).toBe(digestProviderEntry(null));
 });

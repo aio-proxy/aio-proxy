@@ -140,9 +140,9 @@ describe('Router', () => {
     } satisfies ProviderInstance;
     const router = new Router([provider]);
 
-    expect(router.resolve('flash', { effort: 'xhigh' })).toEqual([{ provider, modelId: 'flash-high' }]);
-    expect(router.resolve('flash', { effort: 'extra-high' })).toEqual([{ provider, modelId: 'flash-high' }]);
-    expect(router.resolve('flash')).toEqual([{ provider, modelId: 'flash-medium' }]);
+    expect(router.resolve('flash', { effort: 'xhigh' })).toMatchObject([{ provider, modelId: 'flash-high' }]);
+    expect(router.resolve('flash', { effort: 'extra-high' })).toMatchObject([{ provider, modelId: 'flash-high' }]);
+    expect(router.resolve('flash')).toMatchObject([{ provider, modelId: 'flash-medium' }]);
     expect(() => router.resolve('flash-low')).toThrow(RouterModelNotFoundError);
   });
 

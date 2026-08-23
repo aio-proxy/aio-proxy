@@ -29,7 +29,7 @@ export function readRawModelPolicy(current: Record<string, unknown>, modelId: st
   if (!isPlainObject(router)) return undefined;
   const models = router['models'];
   if (!isPlainObject(models)) return undefined;
-  return models[modelId];
+  return Object.hasOwn(models, modelId) ? models[modelId] : undefined;
 }
 
 export function writeRawModelPolicy(
