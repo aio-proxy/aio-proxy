@@ -1,7 +1,7 @@
 import { ProviderKind } from '@aio-proxy/types';
 import { expect, test } from '@rstest/core';
 
-import { buildRoutingTiers, effectiveRoutingCandidates } from './routing-summary';
+import { buildRoutingTiers, effectiveRoutingCandidates, explicitRoutingOverrides } from './routing-summary';
 
 const effective = (providerId: string, priority: number, weight: number) => ({
   providerId,
@@ -71,4 +71,17 @@ test('live preview excludes unavailable Providers from eligible tiers', () => {
   expect(effectiveRoutingCandidates([provider], {})).toEqual([
     { providerId: 'oauth', priority: 20, weight: 1, eligible: false },
   ]);
+});
+
+test('preserves a __proto__ Provider override in the Save payload', () => {
+  const draft = Object.defineProperty({}, '__proto__', {
+    configurable: true,
+    enumerable: true,
+    writable: true,
+    value: { priority: 30 },
+  });
+  const providers = explicitRoutingOverrides(draft);
+  expect(Object.hasOwn(providers, '__proto__')).toBe(true);
+  expect(Object.getPrototypeOf(providers)).toBe(Object.prototype);
+  expect(providers['__proto__']).toEqual({ priority: 30 });
 });

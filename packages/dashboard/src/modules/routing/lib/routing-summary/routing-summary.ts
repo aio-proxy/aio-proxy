@@ -88,16 +88,20 @@ export const routingDraftNormalization = (
 
 export const explicitRoutingOverrides = (
   draft: Readonly<Record<string, RoutingProviderDraft>>,
-): Readonly<Record<string, RouterProviderOverride>> => {
-  const providers: Record<string, RouterProviderOverride> = {};
-  for (const [providerId, value] of Object.entries(draft)) {
-    const priority = optionalParsed('priority', value.priority);
-    const weight = optionalParsed('weight', value.weight);
-    if (priority === undefined && weight === undefined) continue;
-    providers[providerId] = {
-      ...(priority === undefined ? {} : { priority }),
-      ...(weight === undefined ? {} : { weight }),
-    };
-  }
-  return providers;
-};
+): Readonly<Record<string, RouterProviderOverride>> =>
+  Object.fromEntries(
+    Object.entries(draft).flatMap(([providerId, value]) => {
+      const priority = optionalParsed('priority', value.priority);
+      const weight = optionalParsed('weight', value.weight);
+      if (priority === undefined && weight === undefined) return [];
+      return [
+        [
+          providerId,
+          {
+            ...(priority === undefined ? {} : { priority }),
+            ...(weight === undefined ? {} : { weight }),
+          },
+        ],
+      ];
+    }),
+  );

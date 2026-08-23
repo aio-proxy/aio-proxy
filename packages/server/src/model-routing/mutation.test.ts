@@ -102,3 +102,17 @@ test('does not inherit Object.prototype as a missing model policy', () => {
   expect(readRawModelPolicy(current, 'toString')).toBeUndefined();
   expect(digestProviderEntry(readRawModelPolicy(current, 'constructor') ?? null)).toBe(digestProviderEntry(null));
 });
+
+test('writes a __proto__ model policy as an own data property', () => {
+  const current = { router: { models: {} }, providers: {} };
+  const next = applyRoutingMutation(current, {
+    modelId: '__proto__',
+    revision: digestProviderEntry(null),
+    baselineProviderIds: ['a'],
+    providers: { a: { priority: 30 } },
+  });
+  const models = (next as { router: { models: Record<string, unknown> } }).router.models;
+  expect(Object.hasOwn(models, '__proto__')).toBe(true);
+  expect(Object.getPrototypeOf(models)).toBe(Object.prototype);
+  expect(models['__proto__']).toEqual({ providers: { a: { priority: 30 } } });
+});

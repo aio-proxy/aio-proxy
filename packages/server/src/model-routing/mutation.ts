@@ -46,10 +46,15 @@ export function writeRawModelPolicy(
 
   if (!hasProviders && !hasFuturePolicy) delete currentModels[modelId];
   else {
-    currentModels[modelId] = {
-      ...futurePolicyFields,
-      ...(hasProviders ? { providers } : {}),
-    };
+    Object.defineProperty(currentModels, modelId, {
+      configurable: true,
+      enumerable: true,
+      writable: true,
+      value: {
+        ...futurePolicyFields,
+        ...(hasProviders ? { providers } : {}),
+      },
+    });
   }
 
   const { models: _models, ...futureRouterFields } = currentRouter;
