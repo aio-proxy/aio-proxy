@@ -3,7 +3,6 @@ import { validator } from 'hono/validator';
 
 import type { ServerState } from '../server-state';
 import { providerPackageQueryValidator, providerPackageStatus } from './provider-package-metadata';
-import { redactSecrets } from './provider-secrets';
 
 const probeKey = 'probe';
 
@@ -24,15 +23,14 @@ export const createDashboardProviderReadRoutes = (state: ServerState) =>
     )
     .get('/providers/:id/edit-view', async (context) => {
       const id = context.req.param('id');
-      const data = state.currentConfig().providers.find((entry) => entry.id === id);
-      if (data === undefined) {
+      // Real values on purpose: the editor round-trips this entry straight back
+      // through the mutation endpoint, and every masked field it had to restore
+      // was a source of Bearer '****' bugs. GET /config and the CLI still mask.
+      // Pre-extend on purpose: the editor writes this entry straight back, so a resolved
+      // `metadata.extend` would land on disk as a frozen copy of its models.dev entry.
+      const provider = state.configBeforeExtend().providers.find((entry) => entry.id === id);
+      if (provider === undefined) {
         return context.json({ error: 'provider not found' }, 404);
-      }
-      const provider = redactSecrets(data) as typeof data & { hasApiKey: boolean };
-      provider.hasApiKey = false;
-      if ('apiKey' in provider) {
-        provider.hasApiKey = typeof provider.apiKey === 'string' && provider.apiKey !== '';
-        delete provider.apiKey;
       }
       const oauth = provider.kind === 'oauth' ? state.oauthProviderEditView(id) : undefined;
       const routing = await state.modelRouting.providerNumberViews(id);

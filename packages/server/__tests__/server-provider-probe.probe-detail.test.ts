@@ -76,7 +76,7 @@ describe('server routes', () => {
         priority: 0,
         weight: 1,
         protocol: ProviderProtocol.OpenAICompatible,
-        clientModels: ['gpt-alias', 'gpt-test'],
+        clientModels: ['gpt-test', 'gpt-alias'],
         hasApiKey: true,
         state: { status: 'ready' },
       },

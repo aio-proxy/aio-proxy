@@ -10,7 +10,7 @@ import { dashboardClient } from '@/lib/dashboard-client';
 export const fetchProviderDraftCatalog = async (
   input: DashboardProviderDraftCatalogRequest,
 ): Promise<DashboardProviderDraftCatalogResponse> => {
-  const response = await dashboardClient.dashboard.api.providers.draft.catalog.$post({ json: input });
+  const response = await dashboardClient.dashboard.api.providers.draft.catalog.$query({ json: input });
   return response.json();
 };
 

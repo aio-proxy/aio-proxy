@@ -67,7 +67,11 @@ export const AliasVariantsSchema = z.union([
   z.record(z.string().min(1), AliasTargetSchema),
 ]);
 
-function whenIdentity(when: AliasWhen): string {
+/**
+ * The identity the server rejects duplicates on. Exported so an editor can reject the same pair
+ * before it builds a payload `rejectDuplicateWhen` would refuse.
+ */
+export function whenIdentity(when: AliasWhen): string {
   const parts: string[] = [];
   if (when.thinking !== undefined) parts.push(`thinking=${when.thinking}`);
   if (when.effort !== undefined) parts.push(`effort=${canonicalEffort(when.effort)}`);
@@ -188,7 +192,11 @@ function isStrictSubset(inner: AliasWhen, outer: AliasWhen): boolean {
   return true;
 }
 
-function rank(when: AliasWhen): number {
+/**
+ * Match precedence between two rows that both match a request. Exported so an editor can show rows
+ * in the order they actually win in, rather than inventing a second scoring rule that drifts.
+ */
+export function whenRank(when: AliasWhen): number {
   return (
     (when.thinking === undefined ? 0 : 4) + (when.effort === undefined ? 0 : 2) + (when.speed === undefined ? 0 : 1)
   );
@@ -207,7 +215,7 @@ export function matchAliasRows(
   );
   let winner = maximal[0]!;
   for (const row of maximal.slice(1)) {
-    if (rank(row.when) > rank(winner.when)) winner = row;
+    if (whenRank(row.when) > whenRank(winner.when)) winner = row;
   }
   return { model: winner.model, preserve: winner.preserve };
 }

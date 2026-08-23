@@ -2,6 +2,8 @@ import { z } from 'zod';
 
 import { AliasConfigSchema, IdSchema } from './common';
 import { DashboardLocalizedTextSchema } from './dashboard-localized-text';
+import { ModelIdSchema } from './model-id';
+import { ModelMetadataSchema } from './model-metadata/index';
 import { ProviderMutationProxySchema, RoutingPrioritySchema, RoutingWeightSchema } from './provider';
 import { ProviderTransformsSchema } from './provider-transform/index';
 
@@ -60,6 +62,7 @@ export const DashboardOAuthProviderEditSchema = z.strictObject({
   publicValues: z.record(z.string(), z.json()),
   form: z.array(DashboardOAuthFormFieldSchema),
   models: z.array(z.string()),
+  pluginAliases: z.record(z.string().min(1), AliasConfigSchema).optional(),
 });
 
 const DashboardOAuthSessionCommonSchema = z.object({ id: z.uuid() });
@@ -69,6 +72,11 @@ export const DashboardOAuthProviderPatchSchema = z.strictObject({
   enabled: z.boolean(),
   priority: RoutingPrioritySchema.optional(),
   weight: RoutingWeightSchema.optional(),
+  models: z.array(z.string()).optional(),
+  metadata: z
+    .record(ModelIdSchema, ModelMetadataSchema)
+    .optional()
+    .describe('Per-model metadata overrides keyed by upstream model id.'),
   proxy: ProviderMutationProxySchema,
   alias: z.record(z.string().min(1), AliasConfigSchema).optional(),
   transforms: ProviderTransformsSchema.optional().describe('Ordered outbound request transforms.'),
@@ -112,6 +120,27 @@ export const DashboardOAuthSessionSchema = z.discriminatedUnion('status', [
   z.strictObject({ ...DashboardOAuthSessionCommonSchema.shape, status: z.literal('cancelled') }),
 ]);
 
+const loopbackCompleteHost = (hostname: string): boolean =>
+  hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]' || hostname === '::1';
+
+export const DashboardOAuthCompleteUrlSchema = z.string().refine((value) => {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return false;
+  }
+  return (
+    url.protocol === 'http:' &&
+    loopbackCompleteHost(url.hostname) &&
+    url.pathname === '/dashboard/oauth/complete' &&
+    url.search === '' &&
+    url.hash === '' &&
+    url.username === '' &&
+    url.password === ''
+  );
+});
+
 export const DashboardOAuthSessionStartSchema = z
   .strictObject({
     capability: z.strictObject({ plugin: z.string().min(1), capability: z.string().min(1) }).optional(),
@@ -120,6 +149,7 @@ export const DashboardOAuthSessionStartSchema = z
     secrets: z.record(z.string(), z.string()).default({}),
     clearSecrets: z.array(z.string().min(1)).default([]),
     providerPatch: DashboardOAuthProviderPatchSchema.optional(),
+    completeUrl: DashboardOAuthCompleteUrlSchema.optional(),
   })
   .refine((value) => value.capability !== undefined || value.targetProviderId !== undefined, {
     message: 'capability or targetProviderId is required',
@@ -135,3 +165,8 @@ export type DashboardOAuthProviderEdit = z.output<typeof DashboardOAuthProviderE
 export type DashboardOAuthSession = z.output<typeof DashboardOAuthSessionSchema>;
 export type DashboardOAuthSessionStart = z.output<typeof DashboardOAuthSessionStartSchema>;
 export type DashboardOAuthProviderPatch = z.output<typeof DashboardOAuthProviderPatchSchema>;
+
+export const dashboardOAuthCompleteUrl = (origin: string): string | undefined => {
+  const completeUrl = `${origin}/dashboard/oauth/complete`;
+  return DashboardOAuthCompleteUrlSchema.safeParse(completeUrl).success ? completeUrl : undefined;
+};

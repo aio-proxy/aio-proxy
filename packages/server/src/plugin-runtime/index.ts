@@ -3,6 +3,7 @@ import type { ProviderProtocol } from '@aio-proxy/types';
 
 import { pluginProtocol } from './capabilities';
 
+export { exposedModelIds } from './capabilities';
 export { pluginOptionsIdentityDigest } from './identity';
 export { materializePluginProvider } from './materialize';
 export { createRuntimeFetch, type RuntimeFetchInput } from './runtime-fetch';

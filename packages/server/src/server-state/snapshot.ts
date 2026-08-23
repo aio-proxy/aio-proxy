@@ -41,6 +41,12 @@ import type { CreateRouter, ServerStateOptions } from './types';
 
 export type Snapshot = ProviderRouteSnapshot & {
   readonly config: Config;
+  /**
+   * `config` before `metadata[model].extend` was resolved into a flat copy of its models.dev entry.
+   * Round-trip surfaces — the provider editor's edit-view — must read this one: handing back the
+   * resolved copy would replace the inheritance with a frozen snapshot of a moving catalog.
+   */
+  readonly configBeforeExtend: Config;
   readonly plugins: PluginRegistrySnapshot;
   readonly probes: ReadonlyMap<string, ProviderProbe>;
   readonly summaries: readonly DashboardProviderSummary[];
@@ -121,6 +127,7 @@ export async function buildSnapshot(
   );
   return {
     config: configWithExtend,
+    configBeforeExtend: config,
     plugins,
     probes: base.probes,
     providers,
@@ -266,6 +273,7 @@ export function buildSnapshotWithProviders(
   }));
   return {
     config,
+    configBeforeExtend: config,
     plugins: emptyPluginSnapshot(),
     probes: new Map(),
     providers: materialized,

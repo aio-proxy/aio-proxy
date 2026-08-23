@@ -7,9 +7,10 @@ import { OAuthAccountField } from './oauth-account-field';
 interface OAuthAccountFieldsProps {
   readonly fields: readonly DashboardOAuthFormField[];
   readonly form: OAuthProviderForm;
+  readonly locked?: boolean;
 }
 
-export const OAuthAccountFields: React.FC<OAuthAccountFieldsProps> = ({ fields, form }) => (
+export const OAuthAccountFields: React.FC<OAuthAccountFieldsProps> = ({ fields, form, locked = false }) => (
   <form.Field name="publicValues">
     {(publicField: AnyFieldApi) => (
       <form.Field name="secrets">
@@ -28,6 +29,7 @@ export const OAuthAccountFields: React.FC<OAuthAccountFieldsProps> = ({ fields, 
                       secretField={secretField}
                       jsonField={jsonField}
                       form={form}
+                      locked={locked}
                     />
                   ))}
                 </div>

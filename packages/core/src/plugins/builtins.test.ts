@@ -7,12 +7,12 @@ import { BUILT_IN_PLUGIN_PACKAGE_NAMES, createEmbeddedBuiltIns } from './builtin
 import { loadPluginRegistry } from './loader/index';
 
 const expectedBuiltIns = [
+  '@aio-proxy/plugin-cursor',
   '@aio-proxy/plugin-github-copilot',
-  '@aio-proxy/plugin-openai-chatgpt',
   '@aio-proxy/plugin-google-antigravity',
   '@aio-proxy/plugin-kimi-code',
+  '@aio-proxy/plugin-openai-chatgpt',
   '@aio-proxy/plugin-xai-grok',
-  '@aio-proxy/plugin-cursor',
 ] as const;
 
 const diagnostics = (code: string) => ({

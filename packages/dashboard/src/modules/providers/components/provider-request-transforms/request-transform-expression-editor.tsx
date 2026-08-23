@@ -9,7 +9,7 @@ import {
   requestTransformFunctionMeta,
   serializeRequestTransformStages,
 } from '../../lib/request-transforms';
-import { getRequestTransformFields } from './request-transform-condition-metadata';
+import { getRequestTransformExpressionFields } from './request-transform-condition-metadata';
 
 const emptyQuery: DefaultRuleGroupType = { combinator: 'and', rules: [] };
 const ignoreQueryChange = () => undefined;
@@ -45,7 +45,7 @@ export const RequestTransformExpressionEditor: React.FC<RequestTransformExpressi
   const [draft, setDraft] = useState(expression);
   const expectedExpression = useRef(expression);
   const { schema } = useQueryBuilder({
-    fields: getRequestTransformFields(),
+    fields: getRequestTransformExpressionFields(),
     query: emptyQuery,
     onQueryChange: ignoreQueryChange,
     enableMountQueryChange: false,

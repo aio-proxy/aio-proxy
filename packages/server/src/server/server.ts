@@ -51,6 +51,46 @@ const loopbackOriginHostname = (host: string): string => {
   return canonical === '::1' ? '[::1]' : canonical;
 };
 
+const hostHeaderHostname = (host: string): string | undefined => {
+  try {
+    // Host is authority-only; wrapping it in a scheme lets URL handle the bracketed IPv6 form.
+    return new URL(`http://${host}`).hostname || undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+/**
+ * DNS rebinding defence for the unauthenticated dashboard. An attacker page whose name resolves to
+ * 127.0.0.1 arrives over a loopback socket and reports `sec-fetch-site: same-origin`, so neither the
+ * peer address nor the fetch metadata can tell it apart from the real dashboard. Its `Host` header
+ * still carries the attacker's name, and the real dashboard always addresses the server by its
+ * loopback host, so that is the only signal separating them.
+ *
+ * Applies to every method, because the Origin/CSRF guard covers writes only and it is the
+ * unauthenticated reads that disclose provider credentials. Only enforced while no dashboard
+ * password is configured: a remote password-protected dashboard is a supported deployment addressed
+ * by its own hostname, and there a rebound page is already stopped by the bearer check, since it
+ * cannot read the real origin's token.
+ *
+ * A missing `Host` is allowed. Browsers always send it and cannot forge it, which is the entire
+ * threat being closed here; a client that omits it is not a browser and could equally have sent the
+ * expected value.
+ */
+const requireExpectedHost =
+  (expectedHost: string): MiddlewareHandler =>
+  async (context, next) => {
+    const host = context.req.header('host');
+    const hostname = host === undefined ? undefined : hostHeaderHostname(host);
+    if (
+      host !== undefined &&
+      (hostname === undefined || (hostname !== expectedHost && !canonicalLoopbackOriginHosts.has(hostname)))
+    ) {
+      return context.text('Forbidden', 403);
+    }
+    await next();
+  };
+
 const hasLoopbackOrigin = (context: Context, expectedHost: string, expectedPort: number): boolean => {
   const origin = context.req.header('origin');
   if (origin === undefined) return false;
@@ -265,6 +305,15 @@ const createRoutes = (
     }
     return context.notFound();
   };
+  const expectedHost = requireExpectedHost(expectedLoopbackHost);
+  const requireLoopbackHost: MiddlewareHandler = async (context, next) => {
+    if (dashboardAuth.enabled()) {
+      await next();
+      return;
+    }
+    return expectedHost(context, next);
+  };
+  app.use('/admin/*', requireLoopbackHost);
   mountAdminControlPlane(
     app,
     state,
@@ -276,6 +325,7 @@ const createRoutes = (
   app.use('/dashboard', requireDashboardAccess);
   app.use('/dashboard/*', requireDashboardAccess);
 
+  app.use('/dashboard/api/*', requireLoopbackHost);
   app.use('/dashboard/api/*', async (context, next) => {
     if (dashboardAuth.enabled()) {
       await next();

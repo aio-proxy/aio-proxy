@@ -28,6 +28,14 @@ const PROTOCOL_LABELS = {
   },
 } as const;
 
+/**
+ * Protocol order for pickers. Declaration order above, not `Object.values(ProviderProtocol)`: the enum
+ * declares `openai-response` first, while OpenAI Compatible is what most third-party gateways speak and
+ * so is what a protocol dropdown should open on. Indexing `PROTOCOL_LABELS` by a `ProviderProtocol`
+ * below is what keeps this list exhaustive — a new protocol fails to compile until it is listed.
+ */
+export const PROTOCOL_ORDER = Object.keys(PROTOCOL_LABELS) as readonly ProviderProtocol[];
+
 const isProviderProtocol = (value: string): value is ProviderProtocol =>
   Object.values(ProviderProtocol).includes(value as ProviderProtocol);
 

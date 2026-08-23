@@ -1,0 +1,94 @@
+import { m } from '@aio-proxy/i18n';
+import { Button } from '@aio-proxy/ui/components/button';
+import {
+  DrawerContent,
+  DrawerDescription,
+  DrawerFooter,
+  DrawerHeader,
+  DrawerTitle,
+} from '@aio-proxy/ui/components/drawer';
+import { Label } from '@aio-proxy/ui/components/label';
+import { useId, useState } from 'react';
+
+import { JsonEditor } from '@/components/json-editor/json-editor';
+import type { JsonValue } from '@/components/json-editor/json-editor-state';
+
+import { parseCompositeDraft } from './request-transform-composite-draft';
+
+interface RequestTransformJsonDrawerContentProps {
+  readonly type: 'object' | 'array';
+  readonly typeLabel: string;
+  readonly initialDraft: string;
+  readonly onOpenChange: (open: boolean) => void;
+  readonly onApply: (draft: string) => void;
+}
+
+const parseInitialValue = (type: 'object' | 'array', draft: string): JsonValue | undefined =>
+  parseCompositeDraft(type, draft);
+
+export const RequestTransformJsonDrawerContent: React.FC<RequestTransformJsonDrawerContentProps> = ({
+  type,
+  typeLabel,
+  initialDraft,
+  onOpenChange,
+  onApply,
+}) => {
+  const editorId = useId();
+  const [draft, setDraft] = useState(initialDraft);
+  const parsed = parseCompositeDraft(type, draft);
+  const title = m['dashboard.providers.transforms.value.json_title']({ type: typeLabel });
+  const fieldLabel = m['dashboard.providers.transforms.value.static_label']();
+
+  return (
+    <DrawerContent className="p-0 sm:w-full sm:max-w-[680px]" data-testid="request-transform-json-drawer">
+      <DrawerHeader>
+        <DrawerTitle>{title}</DrawerTitle>
+        <DrawerDescription>
+          {m['dashboard.providers.transforms.value.json_description']({ type: typeLabel })}
+        </DrawerDescription>
+      </DrawerHeader>
+      <div className="min-h-0 flex-1 p-4">
+        <Label htmlFor={editorId} className="sr-only">
+          {fieldLabel}
+        </Label>
+        <div data-testid="request-transform-json-draft">
+          <JsonEditor
+            id={editorId}
+            className="min-h-80"
+            value={parseInitialValue(type, initialDraft)}
+            schema={{ type }}
+            externalInvalid={parsed === undefined}
+            onDraftChange={setDraft}
+            onValueChange={(_nextValue, nextDraft) => {
+              setDraft(nextDraft);
+            }}
+          />
+        </div>
+        {parsed === undefined ? (
+          <p id={`${editorId}-error`} role="alert" className="mt-2 text-sm text-destructive">
+            {type === 'object'
+              ? m['dashboard.providers.transforms.value.invalid_object']()
+              : m['dashboard.providers.transforms.value.invalid_array']()}
+          </p>
+        ) : null}
+      </div>
+      <DrawerFooter className="flex-row justify-end border-t pt-4">
+        <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+          {m['dashboard.providers.actions.cancel']()}
+        </Button>
+        <Button
+          type="button"
+          data-testid="request-transform-json-apply"
+          disabled={parsed === undefined}
+          onClick={() => {
+            if (parsed === undefined) return;
+            onApply(JSON.stringify(parsed, null, 2));
+            onOpenChange(false);
+          }}
+        >
+          {m['dashboard.providers.transforms.value.json_apply']()}
+        </Button>
+      </DrawerFooter>
+    </DrawerContent>
+  );
+};

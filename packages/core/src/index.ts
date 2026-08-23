@@ -120,6 +120,7 @@ export {
   catalogModelToMetadata,
   clearModelsCache,
   findModelPrice,
+  getCachedModelSlugs,
   getModels,
   getModelsCachedOnly,
   hasCachedModelsCatalog,

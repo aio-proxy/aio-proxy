@@ -115,17 +115,32 @@ describe('endpoints acceptance', () => {
     expect(config.invalidProviders[0]?.issuePaths).toContainEqual(['endpoints', 0, 'auth']);
   });
 
-  test('mutation body schema silently strips endpoints (documented dashboard limitation)', async () => {
+  test('mutation body schema keeps a shared endpoints object', async () => {
     const { ProviderMutationBodySchema } = await import('../provider');
     const parsed = ProviderMutationBodySchema.parse({
       kind: 'api',
       id: 'p',
-      protocol: 'openai-response',
-      baseURL: 'https://api.openai.com/v1',
-      proxy: null,
+      endpoints: { baseURL: 'https://gw.example.com/v1', protocol: ['openai-response', 'anthropic'] },
+    });
+    expect(parsed).toMatchObject({
+      kind: 'api',
+      id: 'p',
+      endpoints: { baseURL: 'https://gw.example.com/v1', protocol: ['openai-response', 'anthropic'] },
+    });
+    expect(parsed).not.toHaveProperty('protocol');
+    expect(parsed).not.toHaveProperty('baseURL');
+  });
+
+  test('mutation body schema keeps a per-protocol endpoints array', async () => {
+    const { ProviderMutationBodySchema } = await import('../provider');
+    const parsed = ProviderMutationBodySchema.parse({
+      kind: 'api',
+      id: 'p',
       endpoints: [{ protocol: 'anthropic', baseURL: 'https://a.test/v1' }],
     });
-    expect('endpoints' in parsed).toBeFalse();
+    expect(parsed).toMatchObject({
+      endpoints: [{ protocol: 'anthropic', baseURL: 'https://a.test/v1' }],
+    });
   });
 
   test('authoring schema accepts template strings inside endpoints', async () => {

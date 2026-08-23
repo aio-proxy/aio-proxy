@@ -1,0 +1,59 @@
+import { m } from '@aio-proxy/i18n';
+import { Label } from '@aio-proxy/ui/components/label';
+import { describe, expect, test } from '@rstest/core';
+import { fireEvent, render, screen } from '@testing-library/react';
+import { useState } from 'react';
+
+import { PROVIDER_AI_SDK_DEFAULT_PACKAGE } from '../../lib/constants';
+import { ProviderPackageCombobox } from './provider-package-combobox';
+
+// Mirrors provider-form-fields-ai-sdk.tsx: a visible <Label htmlFor> paired with the combobox's own
+// id, and a value that is never empty because the field falls back to the bundled package. Rendering
+// the real fields component would need a QueryClientProvider and the package-status endpoint, which
+// says nothing extra about the label association or the pointer affordance.
+const PackageHarness: React.FC = () => {
+  const [value, setValue] = useState<string>(PROVIDER_AI_SDK_DEFAULT_PACKAGE);
+  return (
+    <>
+      <Label htmlFor="packageName">{m['dashboard.providers.form.label_package_name']()}</Label>
+      <ProviderPackageCombobox id="packageName" value={value} onValueChange={setValue} onCommit={setValue} />
+    </>
+  );
+};
+
+// Base UI's trigger toggles on mousedown (`useClick({ event: 'mousedown' })`), and it is the only
+// button in the group carrying aria-expanded.
+const expandButton = () => screen.getByRole('button', { expanded: false });
+
+describe('ProviderPackageCombobox', () => {
+  test('opens the curated list from the input group trigger', async () => {
+    render(<PackageHarness />);
+
+    fireEvent.mouseDown(expandButton());
+
+    expect(await screen.findByRole('option', { name: '@ai-sdk/anthropic' })).toBeTruthy();
+  });
+
+  test('keeps a clear control when a package is selected', () => {
+    render(<PackageHarness />);
+
+    expect(document.querySelector('[data-slot="combobox-clear"]')).not.toBeNull();
+  });
+
+  test('lets the visible field label name the input, with no aria-label shadowing it', () => {
+    render(<PackageHarness />);
+
+    const input = screen.getByRole('combobox', { name: m['dashboard.providers.form.label_package_name']() });
+    expect(input).not.toHaveAttribute('aria-label');
+  });
+
+  test('marks the empty field with an example rather than a package name', () => {
+    render(<PackageHarness />);
+
+    // The placeholder used to be the bundled package name verbatim, so a cleared field read as
+    // already filled with it — and saving that empty value hit the schema's min(1) instead.
+    const placeholder = screen.getByRole('combobox').getAttribute('placeholder');
+    expect(placeholder).toBeTruthy();
+    expect(placeholder).not.toBe(PROVIDER_AI_SDK_DEFAULT_PACKAGE);
+  });
+});

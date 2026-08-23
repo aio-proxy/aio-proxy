@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { parseRuntimeConfig } from '@aio-proxy/core';
+import { clearModelsCache, fileCacheStorage, parseRuntimeConfig } from '@aio-proxy/core';
 
 import { createServerState } from '#server-test-lifecycle';
 
@@ -79,7 +79,7 @@ function onDisk(configPath: string) {
   return JSON.parse(readFileSync(configPath, 'utf8')) as typeof authoredConfig;
 }
 
-test('GET /config and edit-view redact proxy credentials and header values', async () => {
+test('GET /config redacts proxy credentials and header values that edit-view returns in full', async () => {
   await withNetworkFixture(async (routes) => {
     const configResponse = await routes.request('/config');
     expect(configResponse.status).toBe(200);
@@ -87,12 +87,16 @@ test('GET /config and edit-view redact proxy credentials and header values', asy
     expect(configText).not.toMatch(/user:password|expanded-secret|expanded-tenant/u);
     expect(configText).toMatch(/"proxy"\s*:\s*"\*\*\*\*"/u);
 
+    // The editor round-trips edit-view straight back through the mutation endpoint,
+    // so it gets the expanded truth; only /config and the CLI mask.
     const editResponse = await routes.request('/providers/api/edit-view');
     expect(editResponse.status).toBe(200);
-    const editText = await editResponse.text();
-    expect(editText).not.toMatch(/user:password|expanded-secret|expanded-tenant/u);
-    expect(editText).toMatch(/"proxy"\s*:\s*"\*\*\*\*"/u);
-    expect(editText).toMatch(/"Authorization"\s*:\s*"\*\*\*\*"/u);
+    const edit = (await editResponse.json()) as {
+      readonly provider: { readonly proxy: string; readonly headers: Record<string, string>; readonly apiKey: string };
+    };
+    expect(edit.provider.proxy).toBe('http://user:password@provider.proxy:8080');
+    expect(edit.provider.headers).toEqual({ Authorization: 'Bearer expanded-secret', 'X-Tenant': 'expanded-tenant' });
+    expect(edit.provider.apiKey).toBe('sk-preserved-value');
   });
 });
 
@@ -145,21 +149,20 @@ test('an explicit null provider proxy clears the override and inherits the globa
   });
 });
 
-test('submitting **** retains raw proxy and header templates', async () => {
+test('round-tripping the edit-view body back through PUT retains every authored template', async () => {
   await withNetworkFixture(async (routes, configPath) => {
+    // The whole point of the un-masked edit-view: the editor submits the expanded
+    // values it was handed straight back, and the file must keep its {{env.*}} authoring.
+    const editResponse = await routes.request('/providers/api/edit-view');
+    expect(editResponse.status).toBe(200);
+    const { provider } = (await editResponse.json()) as { readonly provider: Record<string, unknown> };
+    expect(provider['proxy']).toBe('http://user:password@provider.proxy:8080');
+    expect(provider['headers']).toEqual({ Authorization: 'Bearer expanded-secret', 'X-Tenant': 'expanded-tenant' });
+
     const response = await routes.request('/providers/api', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        kind: 'api',
-        id: 'api',
-        protocol: 'openai-response',
-        baseURL: 'https://api.example/v1',
-        proxy: '****',
-        headers: { Authorization: '****', 'X-Tenant': '****' },
-        models: ['gpt-test'],
-        enabled: true,
-      }),
+      body: JSON.stringify(provider),
     });
     expect(response.status).toBe(200);
 
@@ -169,6 +172,8 @@ test('submitting **** retains raw proxy and header templates', async () => {
       Authorization: 'Bearer {{env.UPSTREAM_TOKEN}}',
       'X-Tenant': '{{env.TENANT}}',
     });
+    expect(disk.providers.api.baseURL).toBe('{{env.API_BASE_URL}}');
+    expect(disk.providers.api.apiKey).toBe('sk-preserved-value');
   });
 });
 
@@ -227,4 +232,84 @@ test('malformed template or expanded SOCKS proxy returns 422 without altering th
     expect(socks.status).toBe(422);
     expect(readFileSync(configPath, 'utf8')).toBe(before);
   });
+});
+
+// `metadata[model].extend` is the same round-trip hazard as `{{env.*}}`: the snapshot the editor
+// reads from has already resolved it into a flat copy of the models.dev entry, so handing that copy
+// back through PUT would replace a one-line inheritance with a frozen snapshot of a catalog that
+// keeps moving. The editor is a round-trip surface — what it renders must be what the file says.
+test('the edit-view serves metadata.extend unresolved so a round trip cannot freeze it', async () => {
+  const previousHome = process.env['AIO_PROXY_HOME'];
+  const home = mkdtempSync(join(tmpdir(), 'aio-extend-edit-view-'));
+  const dir = mkdtempSync(join(tmpdir(), 'aio-extend-config-'));
+  const configPath = join(dir, 'config.json');
+  const authored = {
+    providers: {
+      api: {
+        kind: 'api',
+        protocol: 'openai-response',
+        baseURL: 'https://api.example/v1',
+        models: ['gpt-test'],
+        metadata: { 'gpt-test': { extend: 'openai/gpt-5.5', name: 'My name wins' } },
+        enabled: true,
+      },
+    },
+  };
+  writeFileSync(configPath, JSON.stringify(authored, null, 2));
+  process.env['AIO_PROXY_HOME'] = home;
+  clearModelsCache();
+  await fileCacheStorage.setItem('models-dev-providers', {
+    openai: {
+      models: {
+        'gpt-5.5': {
+          id: 'gpt-5.5',
+          name: 'GPT-5.5 (catalog)',
+          attachment: true,
+          reasoning: true,
+          tool_call: true,
+          structured_output: true,
+          modalities: { input: ['text'], output: ['text'] },
+          open_weights: false,
+          limit: { context: 400_000, input: 300_000, output: 128_000 },
+          cost: { input: 1.25, output: 10 },
+        },
+      },
+    },
+  });
+
+  const state = await createServerState({
+    config: parseRuntimeConfig(authored),
+    configPath,
+    watchConfig: false,
+  });
+  const routes = createDashboardRoutes(state, disabledDashboardAuthentication);
+
+  try {
+    // The runtime still sees the merged entry — resolution is not being turned off, only kept out
+    // of the surface that writes back.
+    const runtime = state.currentConfig().providers[0];
+    expect(runtime?.metadata?.['gpt-test']).toMatchObject({ name: 'My name wins', cost: { input: 1.25 } });
+
+    const editResponse = await routes.request('/providers/api/edit-view');
+    expect(editResponse.status).toBe(200);
+    const { provider } = (await editResponse.json()) as { readonly provider: Record<string, unknown> };
+    expect(provider['metadata']).toEqual({ 'gpt-test': { extend: 'openai/gpt-5.5', name: 'My name wins' } });
+
+    const response = await routes.request('/providers/api', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(provider),
+    });
+    expect(response.status).toBe(200);
+    expect(JSON.parse(readFileSync(configPath, 'utf8')).providers.api.metadata).toEqual({
+      'gpt-test': { extend: 'openai/gpt-5.5', name: 'My name wins' },
+    });
+  } finally {
+    state.close();
+    clearModelsCache();
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true });
+    if (previousHome === undefined) delete process.env['AIO_PROXY_HOME'];
+    else process.env['AIO_PROXY_HOME'] = previousHome;
+  }
 });

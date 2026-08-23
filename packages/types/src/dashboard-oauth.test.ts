@@ -66,6 +66,7 @@ test('dashboard OAuth session start accepts a complete routing patch without ide
     providerPatch: {
       name: 'Work',
       enabled: false,
+      priority: 3,
       weight: 7,
       alias: { chat: { model: 'model-1' } },
       proxy: null,
@@ -107,4 +108,42 @@ test('rejects an authorize_url session with a non-URL', () => {
       url: 'not-a-url',
     }),
   ).toThrow();
+});
+
+// The edit view carries the plugin's default aliases so the editor can offer them, but a plugin that
+// has none must keep the field absent rather than send an empty object — and the shape is the same
+// `AliasConfig` the provider stores, so `preserve` defaults here exactly as it does on save.
+test('provider edit view carries optional plugin default aliases as alias configs', () => {
+  expect(dashboard).toHaveProperty('DashboardOAuthProviderEditSchema');
+  const schema = Reflect.get(dashboard, 'DashboardOAuthProviderEditSchema') as ZodType;
+  const view = { accountLabel: 'Work', publicValues: {}, form: [], models: ['model-1'] };
+
+  expect(schema.parse(view)).toEqual(view);
+  expect(schema.parse({ ...view, pluginAliases: { chat: { model: 'model-1' } } })).toEqual({
+    ...view,
+    pluginAliases: { chat: { model: 'model-1', preserve: false } },
+  });
+  expect(schema.safeParse({ ...view, pluginAliases: { chat: { model: 42 } } }).success).toBe(false);
+  expect(schema.safeParse({ ...view, pluginAlias: {} }).success).toBe(false);
+});
+
+test('dashboard OAuth session start accepts a loopback dashboard origin', () => {
+  const schema = dashboard.DashboardOAuthSessionStartSchema;
+  const request = {
+    capability: { plugin: '@example/oauth', capability: 'default' },
+    publicValues: {},
+    secrets: {},
+    clearSecrets: [],
+    completeUrl: 'http://localhost:3000/dashboard/oauth/complete',
+  };
+  expect(schema.parse(request).completeUrl).toBe(request.completeUrl);
+  expect(() => schema.parse({ ...request, completeUrl: 'javascript:alert(1)' })).toThrow();
+  expect(() => schema.parse({ ...request, completeUrl: 'https://evil.example/dashboard/oauth/complete' })).toThrow();
+});
+
+test('dashboardOAuthCompleteUrl keeps loopback origins and omits remote ones', () => {
+  expect(dashboard.dashboardOAuthCompleteUrl('http://localhost:3000')).toBe(
+    'http://localhost:3000/dashboard/oauth/complete',
+  );
+  expect(dashboard.dashboardOAuthCompleteUrl('https://proxy.example')).toBeUndefined();
 });

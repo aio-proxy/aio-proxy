@@ -1,5 +1,6 @@
 /* oxlint-disable max-lines */
 
+import { m } from '@aio-proxy/i18n';
 import type { ProviderRequestTransformRule } from '@aio-proxy/types';
 import { expect, rs, test } from '@rstest/core';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
@@ -43,6 +44,14 @@ const andClauses = (condition: Condition): unknown[] => {
 
 const requestHeader = (name: string) => ({ $getField: { field: name, input: '$request.headers' } });
 
+// Field and expression-kind labels are read from the messages instead of hardcoded, so a copy change
+// cannot turn a decoding assertion red; what these lines protect is which field a clause decodes to.
+const currentBodyField = m['dashboard.providers.transforms.condition.field.current_body']();
+const originalBodyField = m['dashboard.providers.transforms.condition.field.original_body']();
+const currentHeaderField = m['dashboard.providers.transforms.condition.field.current_header']();
+const originalHeaderField = m['dashboard.providers.transforms.condition.field.original_header']();
+const fixedValueKind = m['dashboard.providers.transforms.condition.expression_kind.value']();
+
 test('decodes and edits Pattern, Header, Regex, and arithmetic conditions without changing their AST forms', async () => {
   const initialValue = {
     $and: [
@@ -77,25 +86,23 @@ test('decodes and edits Pattern, Header, Regex, and arithmetic conditions withou
   expect(within(rules[0]!).getByTestId('operators')).toHaveTextContent(/Matches pattern|匹配模式/u);
   expect(within(rules[0]!).getByTestId('value-editor')).toHaveValue('gpt-*');
 
-  expect(within(rules[1]!).getByTestId('fields-kind')).toHaveTextContent(/Current header|当前请求头/u);
+  expect(within(rules[1]!).getByTestId('fields-kind')).toHaveTextContent(currentHeaderField);
   expect(within(rules[1]!).getByTestId('fields-suffix')).toHaveValue('x-route');
   expect(within(rules[1]!).getByTestId('operators')).toHaveTextContent(/Equals|等于/u);
   expect(within(rules[1]!).getByTestId('value-editor')).toHaveValue('blue');
 
-  expect(within(rules[2]!).getByTestId('fields-kind')).toHaveTextContent(/Original header|原始请求头/u);
+  expect(within(rules[2]!).getByTestId('fields-kind')).toHaveTextContent(originalHeaderField);
   expect(within(rules[2]!).getByTestId('fields-suffix')).toHaveValue('x-origin');
   expect(within(rules[2]!).getByTestId('operators')).toHaveTextContent(/Regex|正则/u);
   expect(within(rules[2]!).getByTestId('value-editor-regex')).toHaveValue('^team-');
   expect(within(rules[2]!).getByTestId('value-editor-options')).toHaveValue('');
 
-  expect(within(rules[3]!).getByTestId('expr-lhs-fn-selector')).toHaveTextContent(/Add|加法/u);
-  expect(within(rules[3]!).getByTestId('fields-kind')).toHaveTextContent(/Current body field|当前请求体字段/u);
+  expect(within(rules[3]!).getByTestId('expr-lhs-fn-selector')).toHaveTextContent('+');
+  expect(within(rules[3]!).getByTestId('fields-kind')).toHaveTextContent(currentBodyField);
   expect(within(rules[3]!).getByTestId('fields-suffix')).toHaveValue('input');
-  expect(within(rules[3]!).getByTestId('expr-lhs-arg-editor-1-kind')).toHaveTextContent(/Value|值/u);
+  expect(within(rules[3]!).getByTestId('expr-lhs-arg-editor-1-kind')).toHaveTextContent(fixedValueKind);
   expect(within(rules[3]!).getByTestId('expr-lhs-arg-editor-1-value')).toHaveValue('1');
-  expect(within(rules[3]!).getByTestId('expr-rhs-editor-field-kind')).toHaveTextContent(
-    /Original body field|原始请求体字段/u,
-  );
+  expect(within(rules[3]!).getByTestId('expr-rhs-editor-field-kind')).toHaveTextContent(originalBodyField);
   expect(within(rules[3]!).getByTestId('expr-rhs-editor-field-suffix')).toHaveValue('limit');
 
   fireEvent.click(within(rules[1]!).getByTestId('operators'));
@@ -177,7 +184,7 @@ test('builds a numeric comparison for an arbitrary current body path', async () 
   fireEvent.click(screen.getByRole('button', { name: /Add condition|添加条件/u }));
   const rule = await screen.findByTestId('rule');
   onChange.mockClear();
-  await selectOption(within(rule).getByTestId('fields-kind'), /Current body field|当前请求体字段/u);
+  await selectOption(within(rule).getByTestId('fields-kind'), currentBodyField);
   expect(onChange).not.toHaveBeenCalled();
   fireEvent.change(await screen.findByTestId('fields-suffix'), {
     target: { value: 'max_output_tokens' },
@@ -186,6 +193,30 @@ test('builds a numeric comparison for an arbitrary current body path', async () 
   fireEvent.change(within(screen.getByTestId('rule')).getByTestId('value-editor'), { target: { value: '8192' } });
 
   await waitFor(() => expect(latestValue(onChange)).toEqual({ 'request.body.max_output_tokens': { $gt: 8192 } }));
+});
+
+test('shows a short remove label on a condition row while keeping the full title', () => {
+  render(<ConditionEditorHarness initialValue={{ 'request.model': 'gpt-4' }} onChange={rs.fn()} />);
+
+  const remove = within(screen.getByTestId('rule')).getByRole('button');
+  // Exact text, not `toHaveTextContent`: the long title is a superstring of the short label.
+  expect(remove.textContent).toBe(m['dashboard.providers.transforms.condition.action.remove']());
+  expect(remove).toHaveAttribute('title', m['dashboard.providers.transforms.condition.action.remove_condition']());
+});
+
+test('leaves a condition row with remove as its only action button', () => {
+  render(
+    <ConditionEditorHarness
+      initialValue={{ $and: [{ 'request.model': 'gpt-4' }, { 'request.url': 'a' }] }}
+      onChange={rs.fn()}
+    />,
+  );
+
+  for (const rule of screen.getAllByTestId('rule')) {
+    const actions = within(rule).getAllByRole('button');
+    expect(actions).toHaveLength(1);
+    expect(actions[0]).toHaveAccessibleName(m['dashboard.providers.transforms.condition.action.remove_condition']());
+  }
 });
 
 test('preserves the active value editor while accepting controlled character-by-character updates', async () => {

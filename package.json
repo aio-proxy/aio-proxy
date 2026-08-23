@@ -38,7 +38,7 @@
       "lru-cache": "^11.5.2",
       "jose": "^6.2.3",
       "zod": "^4.4.3",
-      "hono": "^4.12.27",
+      "hono": "^4.13.3",
       "openai": "6.46.0",
       "drizzle-orm": "^0.45.2",
       "eventsource-parser": "^3.1.0",

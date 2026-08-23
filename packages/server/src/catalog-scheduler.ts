@@ -86,7 +86,7 @@ export function mergeCatalogDefaultAliases(
   const entry = structuredEntry(providers[providerId]);
   if (entry === null || !sameCapability(capabilityOf(entry), identity)) return providers;
   const existingAlias = isPlainObject(entry['alias']) ? (entry['alias'] as ProviderAlias) : {};
-  const alias = insertMissingAliases(existingAlias, suggestions);
+  const alias = insertMissingAliases(existingAlias, suggestions, entry['models']);
   if (alias === existingAlias) return providers;
   return { ...providers, [providerId]: { ...entry, alias } };
 }

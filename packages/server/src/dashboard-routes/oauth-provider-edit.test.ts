@@ -5,7 +5,7 @@ import { join } from 'node:path';
 
 import { createPluginRepository } from '@aio-proxy/core';
 import { openDb } from '@aio-proxy/core/db';
-import { definePlugin, zod } from '@aio-proxy/plugin-sdk';
+import { definePlugin, zod, type DefaultAliasSuggestion, type OAuthAdapter } from '@aio-proxy/plugin-sdk';
 import { ConfigSchema } from '@aio-proxy/types';
 
 import { createServerState } from '#server-test-lifecycle';
@@ -13,7 +13,7 @@ import { createServerState } from '#server-test-lifecycle';
 import { disabledDashboardAuthentication } from '../dashboard-auth/test-support';
 import { createDashboardRoutes } from './config';
 
-async function createOAuthEditFixture() {
+async function createOAuthEditFixture(defaultAliases?: OAuthAdapter['catalog']['defaultAliases']) {
   const dir = mkdtempSync(join(tmpdir(), 'aio-dashboard-oauth-edit-'));
   const configPath = join(dir, 'config.json');
   const input = {
@@ -86,6 +86,7 @@ async function createOAuthEditFixture() {
         async discover() {
           throw new Error('not used');
         },
+        ...(defaultAliases === undefined ? {} : { defaultAliases }),
       },
       async createRuntime() {
         throw new Error('not used');
@@ -111,7 +112,7 @@ async function createOAuthEditFixture() {
   };
 }
 
-test('OAuth edit-view is secret-safe and common edits preserve account identity and options', async () => {
+test('OAuth edit-view returns the real proxy but never account secrets, and common edits preserve account identity and options', async () => {
   const { configPath, routes, cleanup } = await createOAuthEditFixture();
 
   try {
@@ -124,7 +125,7 @@ test('OAuth edit-view is secret-safe and common edits preserve account identity 
         kind: 'oauth',
         plugin: '@example/oauth',
         capability: 'default',
-        proxy: '****',
+        proxy: 'https://old-proxy.example:8443',
       },
       oauth: {
         accountLabel: 'person@example.com',
@@ -168,7 +169,7 @@ test('OAuth edit-view is secret-safe and common edits preserve account identity 
   }
 });
 
-test('OAuth provider updates persist every proxy override state without exposing credentials', async () => {
+test('OAuth provider updates persist every proxy override state and edit-view returns the current one', async () => {
   const { configPath, routes, cleanup } = await createOAuthEditFixture();
   const update = async (proxy: null | false | string) =>
     routes.request('/providers/person', {
@@ -192,8 +193,47 @@ test('OAuth provider updates persist every proxy override state without exposing
     expect(providerOnDisk()).toMatchObject({ proxy: 'http://new-proxy.example:8080' });
 
     const edit = await (await routes.request('/providers/person/edit-view')).json();
-    expect(edit).toMatchObject({ provider: { proxy: '****' } });
-    expect(JSON.stringify(edit)).not.toContain('new-proxy.example');
+    expect(edit).toMatchObject({ provider: { proxy: 'http://new-proxy.example:8080' } });
+  } finally {
+    cleanup();
+  }
+});
+
+// Filtered per entry, not collectively: one unroutable target and one malformed config must not cost
+// the user the suggestion beside them that this catalog can actually serve. `bogus` is the entry the
+// per-entry parse exists for — its target is routable, so nothing else stops it, and unparsed it
+// would reach the response schema and fail the whole edit-view with a 500.
+test('edit-view offers only the plugin default aliases this catalog can route', async () => {
+  const { routes, cleanup } = await createOAuthEditFixture(() => ({
+    chat: { model: 'model-1' },
+    gone: { model: 'not-in-catalog' },
+    // A plugin is third-party JavaScript; its declared type does not stop it shipping these.
+    broken: { model: 42 } as unknown as DefaultAliasSuggestion,
+    bogus: { model: 'model-1', preserve: 'yes' } as unknown as DefaultAliasSuggestion,
+  }));
+
+  try {
+    const response = await routes.request('/providers/person/edit-view');
+    expect(response.status).toBe(200);
+    const edit = (await response.json()) as { oauth: { pluginAliases?: unknown } };
+    expect(edit.oauth.pluginAliases).toEqual({ chat: { model: 'model-1', preserve: false } });
+  } finally {
+    cleanup();
+  }
+});
+
+// Suggestions are a convenience. A plugin that throws while producing them must cost the user the
+// suggestions only — this runs inside the edit-view, so propagating would make the page unopenable.
+test('a throwing defaultAliases costs the suggestions, not the editor page', async () => {
+  const { routes, cleanup } = await createOAuthEditFixture(() => {
+    throw new Error('plugin exploded');
+  });
+
+  try {
+    const response = await routes.request('/providers/person/edit-view');
+    expect(response.status).toBe(200);
+    const edit = (await response.json()) as { oauth: Record<string, unknown> };
+    expect(edit.oauth).not.toHaveProperty('pluginAliases');
   } finally {
     cleanup();
   }

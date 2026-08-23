@@ -1,5 +1,5 @@
 import { m } from '@aio-proxy/i18n';
-import { ProviderProtocol, type OtelSpanStatusCode } from '@aio-proxy/types';
+import type { OtelSpanStatusCode } from '@aio-proxy/types';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@aio-proxy/ui/components/accordion';
 import { Button } from '@aio-proxy/ui/components/button';
 import { Field, FieldLabel } from '@aio-proxy/ui/components/field';
@@ -14,7 +14,7 @@ import { useEffect } from 'react';
 import { z } from 'zod';
 
 import { DateTimeRangePicker } from '@/components/date-time-range-picker';
-import { ProtocolLabel } from '@/components/protocol-label';
+import { PROTOCOL_ORDER, ProtocolLabel } from '@/components/protocol-label';
 
 import {
   createDefaultTraceSearch,
@@ -143,7 +143,7 @@ export const TracesFilters: React.FC<TracesFiltersProps> = ({
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="">{m['dashboard.traces.all']()}</SelectItem>
-                          {Object.values(ProviderProtocol).map((protocol) => (
+                          {PROTOCOL_ORDER.map((protocol) => (
                             <SelectItem key={protocol} value={protocol}>
                               <ProtocolLabel protocol={protocol} />
                             </SelectItem>

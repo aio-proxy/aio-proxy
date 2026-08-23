@@ -1,5 +1,6 @@
 import type { CredentialPort, OAuthAdapter, OAuthLoginResult } from '@aio-proxy/plugin-sdk';
 import { OAuthPluginProviderSchema, type ProviderAlias } from '@aio-proxy/types';
+import { z } from 'zod';
 
 import { parseRuntimeConfig } from '../../config';
 import type { StoredAccount } from '../repository/index';
@@ -49,7 +50,20 @@ export function validateStagedOAuthWrite(candidate: ConfigRecord): void {
   const legacyProviders: Record<string, unknown> = {};
   for (const [id, value] of Object.entries(providers)) {
     if (isRecord(value) && value['kind'] === 'oauth' && !Object.hasOwn(value, 'vendor')) {
-      OAuthPluginProviderSchema.parse({ ...value, id });
+      const parsed = OAuthPluginProviderSchema.safeParse({ ...value, id });
+      // A hand-edited `models` on an oauth provider is validated as of this branch, so this rejection is
+      // reachable from an ordinary re-login. Standalone issue paths read `["models", 0]` and never say
+      // which provider — unactionable in a config with several — so re-throw them rooted at the entry.
+      // `ZodRealError` is the constructor `safeParse` itself uses, and unlike a bare `new z.ZodError` it
+      // produces a true `instanceof Error` with a stack — which the log sites that record
+      // `error instanceof Error ? error.name : ...` need to report `ZodError` rather than `Error`/`object`.
+      // It has to be a fresh error rather than a mutated `parsed.error`: `message` is stringified once at
+      // construction, so re-rooting the paths afterwards would leave the rendered message unprefixed.
+      if (!parsed.success) {
+        throw new z.ZodRealError(
+          parsed.error.issues.map((issue) => ({ ...issue, path: ['providers', id, ...issue.path] })),
+        );
+      }
     } else {
       legacyProviders[id] = value;
     }
@@ -147,13 +161,31 @@ export function providerEntry(
   defaults?: ProviderAlias,
   patch?: OAuthProviderPatch,
 ): PlainRecord {
+  // Retention is per-field: a patch that omits a field keeps the stored value, because a re-login or a
+  // partial edit surface must not delete config the user authored elsewhere. `weight` is the deliberate
+  // exception — `{ weight: undefined }` is `{}` after JSON, so an omitted key is the only "absent" signal
+  // a caller has, and retaining it would make a cleared weight unreachable over the wire. `name` gets the
+  // same treatment via a blank-after-trim value, its own surviving clear signal (see the entry spread
+  // below).
+  //
+  // `replaceProvider` in server's dashboard-routes/provider-mutation answers the same question for the
+  // config-provider PUT path, with a much shorter field list, and the two are deliberately not unified.
+  // Its input is a full authored replacement body, so omission there means "delete" and only the fields
+  // the editor cannot round-trip are retained; this input is a partial patch, so omission means "keep"
+  // and the exceptions are enumerated instead. Same rule, opposite defaults, because the contracts
+  // differ — a shared helper would have to hide that.
   const enabled = patch?.enabled ?? existing?.['enabled'] ?? true;
   const priority = patch === undefined ? existing?.['priority'] : patch.priority;
   const weight = patch === undefined ? existing?.['weight'] : patch.weight;
-  const name = patch === undefined ? existing?.['name'] : patch.name;
+  const name = patch?.name === undefined ? existing?.['name'] : patch.name;
+  // `alias` uses a `??` chain unlike the other fields: plugin-generated default aliases must seed
+  // on first login even when the caller brings a patch (`defaults` is only computed in `login/stage.ts`
+  // when `currentAccount === null`).
   const alias = patch?.alias ?? existing?.['alias'] ?? defaults;
+  const models = patch?.models === undefined ? existing?.['models'] : patch.models;
   const proxy = patch?.proxy === undefined ? existing?.['proxy'] : patch.proxy;
   const transforms = patch?.transforms === undefined ? existing?.['transforms'] : patch.transforms;
+  const metadata = patch?.metadata === undefined ? existing?.['metadata'] : patch.metadata;
   return {
     kind: 'oauth',
     plugin,
@@ -162,8 +194,10 @@ export function providerEntry(
     enabled,
     ...(priority === undefined ? {} : { priority }),
     ...(weight === undefined ? {} : { weight }),
-    ...(name === undefined ? {} : { name }),
+    ...(name === undefined || (typeof name === 'string' && name.trim() === '') ? {} : { name }),
     ...(alias === undefined ? {} : { alias }),
+    ...(models === undefined ? {} : { models }),
+    ...(metadata === undefined ? {} : { metadata }),
     ...(proxy === undefined || proxy === null ? {} : { proxy }),
     ...(transforms === undefined ? {} : { transforms }),
   };

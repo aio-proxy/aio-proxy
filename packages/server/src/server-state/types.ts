@@ -93,6 +93,11 @@ export type ServerState = ProviderRouteSource & {
   readonly providerSummaries: (options: ProviderSummaryOptions) => Promise<readonly DashboardProviderSummary[]>;
   readonly reload: () => Promise<ConfigReloadResult>;
   readonly currentConfig: () => Config;
+  /**
+   * The current config with `metadata[model].extend` left unresolved, for surfaces that write back
+   * what they read. Everything that consumes effective metadata wants `currentConfig` instead.
+   */
+  readonly configBeforeExtend: () => Config;
   readonly traceStore: TraceStore;
 };
 

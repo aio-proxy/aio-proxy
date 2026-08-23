@@ -1,107 +1,48 @@
 import { m } from '@aio-proxy/i18n';
-import { Button } from '@aio-proxy/ui/components/button';
-import { Empty, EmptyContent, EmptyHeader, EmptyMedia, EmptyTitle } from '@aio-proxy/ui/components/empty';
-import { PlusIcon, WaypointsIcon } from 'lucide-react';
 import type { FC } from 'react';
 
-import type { AliasDraft, AliasEditorIssue, AliasEditResult, ProviderAlias } from '../../lib/alias-editor';
+import type { AliasEditorIssue, AliasRow } from '../../lib/alias-editor';
 import { ProviderAliasCard } from './provider-alias-card';
-import { ProviderAliasDraft } from './provider-alias-draft';
 
-type Props = {
-  readonly alias: ProviderAlias;
+interface ProviderAliasListProps {
+  readonly alias: readonly AliasRow[];
   readonly models: readonly string[];
   readonly issues: readonly AliasEditorIssue[];
-  readonly aliasDraftIds: readonly string[];
-  readonly aliasIds: Readonly<Record<string, string>>;
-  readonly variantDrafts: Readonly<Record<string, readonly string[]>>;
-  readonly onAliasChange: (alias: ProviderAlias) => void;
-  readonly onAddAliasDraft: () => void;
-  readonly onCommitAliasDraft: (id: string, draft: AliasDraft) => AliasEditResult;
-  readonly onDiscardDraft: (id: string) => void;
-  readonly onRenameAlias: (alias: string, name: string) => AliasEditResult;
-  readonly onRemoveAlias: (alias: string) => void;
-  readonly onAddVariantDraft: (alias: string) => void;
-  readonly onDraftDirtyChange: (id: string, dirty: boolean) => void;
-};
+  readonly onAliasChange: (alias: readonly AliasRow[]) => void;
+  readonly onRenameAlias: (id: string, name: string) => void;
+  readonly onRemoveAlias: (id: string) => void;
+}
 
-export const ProviderAliasList: FC<Props> = ({
+export const ProviderAliasList: FC<ProviderAliasListProps> = ({
   alias,
   models,
   issues,
-  aliasDraftIds,
-  aliasIds,
-  variantDrafts,
   onAliasChange,
-  onAddAliasDraft,
-  onCommitAliasDraft,
-  onDiscardDraft,
   onRenameAlias,
   onRemoveAlias,
-  onAddVariantDraft,
-  onDraftDirtyChange,
 }) => {
-  if (models.length === 0) {
+  if (alias.length === 0) {
     return (
-      <Empty className="border">
-        <EmptyHeader>
-          <EmptyMedia variant="icon">
-            <WaypointsIcon />
-          </EmptyMedia>
-          <EmptyTitle>{m['dashboard.providers.form.aliases_empty_models']()}</EmptyTitle>
-        </EmptyHeader>
-      </Empty>
-    );
-  }
-
-  if (Object.keys(alias).length === 0 && aliasDraftIds.length === 0) {
-    return (
-      <Empty className="border">
-        <EmptyHeader>
-          <EmptyMedia variant="icon">
-            <WaypointsIcon />
-          </EmptyMedia>
-          <EmptyTitle>{m['dashboard.providers.form.aliases_empty']()}</EmptyTitle>
-        </EmptyHeader>
-        <EmptyContent>
-          <Button type="button" onClick={onAddAliasDraft}>
-            <PlusIcon data-icon="inline-start" />
-            {m['dashboard.providers.form.add_alias']()}
-          </Button>
-        </EmptyContent>
-      </Empty>
+      <p className="rounded-xl bg-muted/40 px-3 py-2.5 text-xs text-muted-foreground">
+        {m['dashboard.providers.form.aliases_empty']()}
+      </p>
     );
   }
 
   return (
-    <>
-      {Object.entries(alias).map(([aliasName, config]) => (
+    <div className="space-y-2">
+      {alias.map((row) => (
         <ProviderAliasCard
-          key={aliasIds[aliasName] ?? aliasName}
+          key={row.id}
           alias={alias}
-          aliasName={aliasName}
-          config={config}
+          row={row}
           models={models}
-          issues={issues.filter((issue) => issue.alias === aliasName)}
-          variantDraftIds={variantDrafts[aliasName] ?? []}
+          issues={issues.filter((issue) => issue.alias === row.id)}
           onAliasChange={onAliasChange}
-          onRename={(name) => onRenameAlias(aliasName, name)}
-          onRemove={() => onRemoveAlias(aliasName)}
-          onAddVariantDraft={() => onAddVariantDraft(aliasName)}
-          onDiscardVariantDraft={onDiscardDraft}
-          onDraftDirtyChange={onDraftDirtyChange}
+          onRename={(name) => onRenameAlias(row.id, name)}
+          onRemove={() => onRemoveAlias(row.id)}
         />
       ))}
-      {aliasDraftIds.map((id) => (
-        <ProviderAliasDraft
-          key={id}
-          id={id}
-          models={models}
-          onDirtyChange={onDraftDirtyChange}
-          onDiscard={() => onDiscardDraft(id)}
-          onCommit={(draft) => onCommitAliasDraft(id, draft)}
-        />
-      ))}
-    </>
+    </div>
   );
 };

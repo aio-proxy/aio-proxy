@@ -6,7 +6,7 @@ import { PluginIcon } from './plugin-icon';
 test('renders Lobe keys and removes failed URL icons', () => {
   const { rerender } = render(<PluginIcon icon="openai" size={16} />);
 
-  expect(screen.getByRole('img', { hidden: true })).toHaveAttribute('src', expect.stringContaining('openai.svg'));
+  expect(screen.getByRole('img', { hidden: true })).toHaveAttribute('src', expect.stringContaining('openai.png'));
 
   rerender(<PluginIcon icon="https://example.com/openai.svg" size={16} />);
   const image = screen.getByRole('img', { hidden: true });

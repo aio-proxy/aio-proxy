@@ -1,5 +1,7 @@
 import {
   type DashboardOAuthSessionStart,
+  dashboardOAuthCompleteUrl,
+  type ModelMetadata,
   type OAuthProviderMutationBody,
   ProviderKind,
   type ProviderAlias,
@@ -15,7 +17,9 @@ export interface OAuthProviderEditValues {
   readonly weight?: number | undefined;
   readonly proxy?: OAuthProviderMutationBody['proxy'];
   readonly alias?: ProviderAlias | undefined;
+  readonly models?: readonly string[] | undefined;
   readonly transforms?: ProviderTransforms | undefined;
+  readonly metadata?: Record<string, ModelMetadata> | undefined;
   readonly publicValues: DashboardOAuthSessionStart['publicValues'];
   readonly secrets: DashboardOAuthSessionStart['secrets'];
   readonly clearSecrets: readonly string[];
@@ -30,14 +34,19 @@ export const oauthProviderEditAction = (
   initialPublicValues: DashboardOAuthSessionStart['publicValues'],
   forceReauthorize = false,
 ): OAuthProviderEditAction => {
+  const name = values.name?.trim();
   const providerPatch = {
-    ...(values.name === undefined ? {} : { name: values.name }),
+    ...(name === undefined || name === '' ? {} : { name }),
     enabled: values.enabled,
     ...(values.priority === undefined ? {} : { priority: values.priority }),
     ...(values.weight === undefined ? {} : { weight: values.weight }),
     ...(values.proxy === undefined ? {} : { proxy: values.proxy }),
     ...(values.alias === undefined ? {} : { alias: values.alias }),
+    ...(values.models === undefined ? {} : { models: [...values.models] }),
     ...(values.transforms === undefined ? {} : { transforms: values.transforms }),
+    // Always present, both branches: the editor owns the whole map, and a save that reauthorizes
+    // must carry the metadata edits made alongside the credential change instead of dropping them.
+    metadata: values.metadata ?? {},
   };
   const secrets = Object.fromEntries(Object.entries(values.secrets).filter(([, value]) => value !== ''));
   const requiresReauthorization =
@@ -54,10 +63,16 @@ export const oauthProviderEditAction = (
         publicValues: values.publicValues,
         secrets,
         clearSecrets: [...values.clearSecrets],
+        ...(dashboardOAuthCompleteUrl(window.location.origin) === undefined
+          ? {}
+          : { completeUrl: dashboardOAuthCompleteUrl(window.location.origin) }),
         providerPatch,
       },
     };
   }
 
-  return { kind: 'update', body: { kind: ProviderKind.OAuth, id: values.id, ...providerPatch } };
+  return {
+    kind: 'update',
+    body: { kind: ProviderKind.OAuth, id: values.id, ...providerPatch },
+  };
 };

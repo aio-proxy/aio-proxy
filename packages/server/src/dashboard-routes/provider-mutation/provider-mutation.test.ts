@@ -70,6 +70,45 @@ describe('replaceProvider', () => {
     expect(result['openai']).toMatchObject({ baseURL: 'https://new.example/v1', transforms });
   });
 
+  test('replaces a stored endpoints list when the client sends a new one', () => {
+    const result = replaceProvider(
+      {
+        openai: {
+          kind: 'api',
+          baseURL: 'https://old.example/v1',
+          endpoints: [{ protocol: 'anthropic', baseURL: 'https://a.test/v1' }],
+        },
+      },
+      'openai',
+      {
+        kind: 'api',
+        endpoints: { baseURL: 'https://gw.example/v1', protocol: ['openai-response', 'anthropic'] },
+      },
+    );
+
+    expect(result['openai']).toMatchObject({
+      endpoints: { baseURL: 'https://gw.example/v1', protocol: ['openai-response', 'anthropic'] },
+    });
+    expect(result['openai']).not.toHaveProperty('baseURL');
+  });
+
+  test('clears a stored endpoints list when the client omits it', () => {
+    const result = replaceProvider(
+      {
+        openai: {
+          kind: 'api',
+          baseURL: 'https://old.example/v1',
+          endpoints: [{ protocol: 'anthropic', baseURL: 'https://a.test/v1' }],
+        },
+      },
+      'openai',
+      { kind: 'api', protocol: 'openai-response', baseURL: 'https://new.example/v1' },
+    );
+
+    expect(result['openai']).toMatchObject({ protocol: 'openai-response', baseURL: 'https://new.example/v1' });
+    expect(result['openai']).not.toHaveProperty('endpoints');
+  });
+
   test('clears existing transforms when the client sends an empty request list', () => {
     const result = replaceProvider({ openai: { kind: 'api', transforms } }, 'openai', {
       kind: 'api',
@@ -87,4 +126,13 @@ describe('replaceProvider', () => {
 
     expect(result['openai']).not.toHaveProperty('proxy');
   });
+});
+
+test('drops a whitespace-only display name instead of writing it into the config', () => {
+  const result = replaceProvider({ openai: { kind: 'oauth', name: 'Personal' } }, 'openai', {
+    kind: 'oauth',
+    name: '   ',
+  });
+
+  expect(result['openai']).not.toHaveProperty('name');
 });

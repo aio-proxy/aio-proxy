@@ -17,6 +17,7 @@ interface RequestTransformStageValueEditorProps {
   readonly form: RequestTransformStageForm;
   readonly acceptedStage: RequestTransformStageDraft;
   readonly valueModeId: string;
+  readonly ruleName: string;
   readonly onCommitControls: (controls: RequestTransformStageControlValues) => void;
   readonly onCommitContent: (stage: RequestTransformStageDraft) => void;
   readonly onContentValidityChange: (valid: boolean) => void;
@@ -26,20 +27,25 @@ export const RequestTransformStageValueEditor: React.FC<RequestTransformStageVal
   form,
   acceptedStage,
   valueModeId,
+  ruleName,
   onCommitControls,
   onCommitContent,
   onContentValidityChange,
 }) => (
   <form.Subscribe selector={(state) => [state.values.kind, state.values.valueMode] as const}>
     {([kind, valueMode]) => {
-      if (kind === 'remove') return null;
+      if (kind === 'remove') {
+        return <p className="text-xs text-muted-foreground">{m['dashboard.providers.transforms.action.no_value']()}</p>;
+      }
       const setStage = buildRequestTransformStageDraft({ ...form.state.values, valueMode }, acceptedStage) as SetStage;
       return (
-        <div className="space-y-4">
+        <div className="space-y-3">
           <form.Field name="valueMode">
             {(field) => (
-              <div className="space-y-2">
-                <Label htmlFor={valueModeId}>{m['dashboard.providers.transforms.value.mode']()}</Label>
+              <div className="space-y-1.5">
+                <Label htmlFor={valueModeId} className="text-xs text-muted-foreground">
+                  {m['dashboard.providers.transforms.value.mode']()}
+                </Label>
                 <Select
                   value={field.state.value}
                   onValueChange={(nextMode) => {
@@ -49,7 +55,15 @@ export const RequestTransformStageValueEditor: React.FC<RequestTransformStageVal
                     onCommitControls({ ...form.state.values, valueMode: nextMode });
                   }}
                 >
-                  <SelectTrigger id={valueModeId} data-testid="request-transform-value-mode" className="w-full">
+                  <SelectTrigger
+                    id={valueModeId}
+                    data-testid="request-transform-value-mode"
+                    className="w-full sm:w-40"
+                    aria-label={m['dashboard.providers.transforms.value.scoped_label']({
+                      name: ruleName,
+                      label: m['dashboard.providers.transforms.value.mode'](),
+                    })}
+                  >
                     <SelectValue>
                       {() =>
                         field.state.value === 'static'
@@ -68,6 +82,7 @@ export const RequestTransformStageValueEditor: React.FC<RequestTransformStageVal
           </form.Field>
           <RequestTransformStageValueContent
             value={setStage}
+            ruleName={ruleName}
             onChange={onCommitContent}
             onValidityChange={onContentValidityChange}
           />

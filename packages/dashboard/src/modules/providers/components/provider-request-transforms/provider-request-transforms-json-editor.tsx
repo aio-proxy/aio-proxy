@@ -46,6 +46,7 @@ export const ProviderRequestTransformsJsonEditor: React.FC<ProviderRequestTransf
 }) => {
   const editorId = useId();
   const [semanticIssue, setSemanticIssue] = useState<SemanticIssueState>();
+  const [topLevelNotArray, setTopLevelNotArray] = useState(false);
   const canonicalDraft = JSON.stringify(value, null, 2);
   const [initialCandidate] = useState<ValidCandidate>(() => ({ draft: canonicalDraft, value }));
   const canonicalDraftRef = useRef(canonicalDraft);
@@ -71,6 +72,7 @@ export const ProviderRequestTransformsJsonEditor: React.FC<ProviderRequestTransf
       latestDraft.current = draft;
       candidate.current = undefined;
       setSemanticIssue(undefined);
+      setTopLevelNotArray(false);
       onValidityChange(false);
     },
     [onValidityChange],
@@ -98,6 +100,13 @@ export const ProviderRequestTransformsJsonEditor: React.FC<ProviderRequestTransf
 
   const handleValidationChange = useCallback(
     (validation: JsonEditorValidation, draft: string) => {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(draft);
+      } catch {
+        parsed = undefined;
+      }
+      setTopLevelNotArray(parsed !== undefined && !Array.isArray(parsed));
       let current = candidate.current;
       if (draft === canonicalDraftRef.current && latestDraft.current !== draft) {
         current = { draft, value: canonicalValue.current };
@@ -127,12 +136,14 @@ export const ProviderRequestTransformsJsonEditor: React.FC<ProviderRequestTransf
         id={editorId}
         value={value as unknown as JsonValue}
         schema={ProviderRequestTransformRulesJsonSchema}
-        externalInvalid={visibleSemanticIssue !== undefined}
+        externalInvalid={visibleSemanticIssue !== undefined || topLevelNotArray}
         onDraftChange={handleDraftChange}
         onValueChange={handleValueChange}
         onValidationChange={handleValidationChange}
       />
-      {visibleSemanticIssue === undefined ? null : (
+      {topLevelNotArray ? (
+        <FieldError id={`${editorId}-error`}>{m['dashboard.providers.transforms.invalid_array']()}</FieldError>
+      ) : visibleSemanticIssue === undefined ? null : (
         <FieldError id={`${editorId}-error`}>
           {m['dashboard.providers.transforms.invalid'](visibleSemanticIssue)}
         </FieldError>

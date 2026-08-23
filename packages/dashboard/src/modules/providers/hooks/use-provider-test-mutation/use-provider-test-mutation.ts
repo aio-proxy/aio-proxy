@@ -1,18 +1,41 @@
-import { DashboardProviderDraftSchema, type DashboardProviderDraftTestResponse } from '@aio-proxy/types';
+import { DashboardProviderDraftSchema, ProviderKind, type DashboardProviderDraftTestResponse } from '@aio-proxy/types';
 import { useMutation } from '@tanstack/react-query';
 
+import { serializeAlias } from '../../lib/alias-editor';
+import { normalizeProviderFormValue, type ProviderFormShape } from '../../lib/provider-form-value';
 import { testProviderDraftModel } from '../../services/provider-draft';
-import { normalizeProviderFormValue, type ProviderForm } from '../use-provider-form';
+import type { ProviderEditorForm, ProviderEditorShape } from '../use-provider-editor-form';
 
 interface ProviderTestResult {
   readonly model: string;
   readonly result: DashboardProviderDraftTestResponse;
 }
 
-export const useProviderTestMutation = (form: ProviderForm, persistedProviderId?: string) =>
+type OAuthEditorValues = Extract<ProviderEditorShape, { kind: ProviderKind.OAuth }>;
+
+// Five fields only. Spreading OAuthEditorShape leaks `validationModel`, which the strict oauth
+// draft arm rejects as unrecognized_keys → invalid_draft, and the panel never reaches the network.
+const oauthDraftBody = (values: OAuthEditorValues) => ({
+  kind: ProviderKind.OAuth,
+  id: values.id,
+  enabled: values.enabled,
+  proxy: null,
+  models: values.models,
+});
+
+export const useProviderTestMutation = (form: ProviderEditorForm, persistedProviderId?: string) =>
   useMutation<ProviderTestResult, Error, string>({
     mutationFn: async (model) => {
-      const draft = DashboardProviderDraftSchema.safeParse(normalizeProviderFormValue(form.state.values));
+      const values = form.state.values;
+      const draft =
+        values.kind === ProviderKind.OAuth
+          ? DashboardProviderDraftSchema.safeParse(oauthDraftBody(values))
+          : DashboardProviderDraftSchema.safeParse(
+              normalizeProviderFormValue({
+                ...(values as ProviderFormShape),
+                alias: values.alias === undefined ? undefined : serializeAlias(values.alias, 'edit'),
+              }),
+            );
       if (!draft.success) {
         return { model, result: { ok: false, error: { code: 'invalid_draft', recoverable: true } } };
       }

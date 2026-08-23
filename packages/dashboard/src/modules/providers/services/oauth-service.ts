@@ -43,11 +43,17 @@ export const oauthSessionQueryOptions = (id: string) =>
     },
   });
 
+const oauthRequestError = async (response: Response, fallback: string): Promise<never> => {
+  const body = (await response.json().catch(() => undefined)) as { readonly error?: unknown } | undefined;
+  const detail = typeof body?.error === 'string' && body.error.trim() !== '' ? body.error : undefined;
+  throw new Error(detail ?? `${fallback}: ${response.status}`);
+};
+
 export const startOAuthSession = async (
   input: DashboardOAuthSessionStart,
 ): Promise<{ session: DashboardOAuthSession }> => {
   const response = await dashboardClient.dashboard.api.oauth.sessions.$post({ json: input });
-  if (!response.ok) throw new Error(`start OAuth session failed: ${response.status}`);
+  if (!response.ok) return oauthRequestError(response, 'start OAuth session failed');
   return response.json();
 };
 

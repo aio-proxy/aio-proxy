@@ -1,10 +1,10 @@
 import type { ProviderTransforms } from '@aio-proxy/types';
 
-import type { ProviderForm } from '../../hooks/use-provider-form';
+import type { ProviderEditorForm } from '../../hooks/use-provider-editor-form';
 import { ProviderRequestTransformsEditor } from './provider-request-transforms-editor';
 
 interface ProviderRequestTransformsFormFieldProps {
-  readonly form: ProviderForm;
+  readonly form: ProviderEditorForm;
   readonly onValidityChange: (valid: boolean) => void;
 }
 

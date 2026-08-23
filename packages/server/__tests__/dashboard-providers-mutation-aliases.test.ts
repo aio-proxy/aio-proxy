@@ -68,7 +68,7 @@ describe('dashboard provider CRUD', () => {
     expect(ai.name).toBe('My Display Name');
   });
 
-  test('20. GET edit-view redacts nested ai-sdk options secrets', async () => {
+  test('20. GET edit-view returns nested ai-sdk options secrets', async () => {
     const put = await req('PUT', '/providers/seed-ai', {
       kind: 'ai-sdk',
       id: 'seed-ai',
@@ -79,6 +79,6 @@ describe('dashboard provider CRUD', () => {
     const res = await req('GET', '/providers/seed-ai/edit-view');
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.provider.options.headers.Authorization).toBe('****');
+    expect(body.provider.options.headers.Authorization).toBe('Bearer nested-secret');
   });
 });

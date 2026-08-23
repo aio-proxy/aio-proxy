@@ -1,3 +1,4 @@
+import { m } from '@aio-proxy/i18n';
 import type { ProviderRequestTransformRule } from '@aio-proxy/types';
 import type { ExpressionNode } from '@react-querybuilder/expr';
 import { QueryBuilderExpressions } from '@react-querybuilder/expr/ui';
@@ -12,17 +13,20 @@ import {
   type DefaultRuleType,
 } from 'react-querybuilder';
 
-import 'react-querybuilder/dist/query-builder.css';
+import './request-transform-expression-tree.css';
 
-import { parseRequestTransformCondition, serializeRequestTransformCondition } from '../../lib/request-transforms';
+import {
+  parseRequestTransformCondition,
+  requestTransformFunctionMeta,
+  serializeRequestTransformCondition,
+} from '../../lib/request-transforms';
 import { QueryBuilderShadcn } from './query-builder';
 import {
   allowRequestTransformFunctionsOnLhs,
-  getLocalizedRequestTransformFunctionMeta,
   getRequestTransformAccessibleDescription,
   getRequestTransformCombinators,
+  getRequestTransformConditionFields,
   getRequestTransformExpressionTranslations,
-  getRequestTransformFields,
   getRequestTransformOperators,
   getRequestTransformOperatorsForField,
   getRequestTransformTranslations,
@@ -147,7 +151,7 @@ export const RequestTransformConditionEditor: React.FC<RequestTransformCondition
 }) => {
   const [query, setQuery] = useState(() => prepareConditionQuery(value));
   const expectedValue = useRef(value);
-  const fields = getRequestTransformFields();
+  const fields = getRequestTransformConditionFields();
   const operators = getRequestTransformOperators();
 
   useEffect(() => {
@@ -173,22 +177,29 @@ export const RequestTransformConditionEditor: React.FC<RequestTransformCondition
   };
 
   return (
-    <div className="overflow-x-auto">
-      <QueryBuilderShadcn
-        controlElements={{ fieldSelector: RequestTransformFieldSelector }}
-        controlClassnames={{
-          queryBuilder: 'min-w-3xl space-y-3',
-          ruleGroup: 'space-y-3 rounded-2xl border p-3',
-          header: 'flex flex-wrap items-center gap-2',
-          body: 'space-y-2',
-          rule: 'flex flex-wrap items-center gap-2',
-          shiftActions: 'inline-flex items-center',
-        }}
+    <QueryBuilderShadcn
+      controlElements={{ fieldSelector: RequestTransformFieldSelector }}
+      controlClassnames={{
+        queryBuilder: 'space-y-2',
+        // `!` overrides `react-querybuilder/dist/query-builder.css`'s own `.ruleGroup` rules.
+        ruleGroup: 'space-y-2 rounded-xl! border border-border! bg-muted/20! p-2.5',
+        header: 'flex flex-wrap items-center gap-2',
+        body: 'space-y-2',
+        rule: 'flex items-start gap-2 rounded-lg bg-background/70 p-2',
+      }}
+    >
+      <QueryBuilderExpressions
+        functions={requestTransformFunctionMeta}
+        translations={getRequestTransformExpressionTranslations()}
+        allowFunctionsOnLHS={allowRequestTransformFunctionsOnLhs}
       >
-        <QueryBuilderExpressions
-          functions={getLocalizedRequestTransformFunctionMeta()}
-          translations={getRequestTransformExpressionTranslations()}
-          allowFunctionsOnLHS={allowRequestTransformFunctionsOnLhs}
+        <div
+          className="request-transform-expression-tree w-full min-w-0"
+          style={
+            {
+              '--expr-arg-label': `"${m['dashboard.providers.transforms.condition.argument.prefix']()} "`,
+            } as React.CSSProperties
+          }
         >
           <QueryBuilder
             fields={fields}
@@ -201,13 +212,12 @@ export const RequestTransformConditionEditor: React.FC<RequestTransformCondition
             getValueSources={getRequestTransformValueSources}
             accessibleDescriptionGenerator={getRequestTransformAccessibleDescription}
             showNotToggle
-            showShiftActions
             listsAsArrays
             resetOnFieldChange={false}
             enableMountQueryChange={false}
           />
-        </QueryBuilderExpressions>
-      </QueryBuilderShadcn>
-    </div>
+        </div>
+      </QueryBuilderExpressions>
+    </QueryBuilderShadcn>
   );
 };

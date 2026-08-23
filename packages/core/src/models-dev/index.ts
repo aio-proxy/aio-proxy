@@ -69,6 +69,25 @@ export async function hasCachedModelsCatalog(): Promise<boolean> {
   return (await readCachedProviderMap()) !== undefined;
 }
 
+/** Flattened `providerId/modelId` slugs from the cached models.dev catalog.
+ * Cached-only by design: a cold cache yields [] instead of blocking the drawer. */
+export async function getCachedModelSlugs(): Promise<string[]> {
+  const providerMap = await readCachedProviderMap();
+  if (providerMap === undefined) return [];
+  return (
+    Object.entries(providerMap)
+      // `provider.models` is a compile-time fiction: readCachedProviderMap never
+      // passes a `schema` (see it above in this file) and cache/file.ts:66 is a bare
+      // `return value as T`, so a hand-edited cache file really can hold
+      // a provider with no `models` — and `Object.keys(undefined)` throws. The test's
+      // `broken: {}` fixture pins this guard. resolve.ts:38 guards the same way.
+      .flatMap(([providerId, provider]) =>
+        Object.keys(provider.models ?? {}).map((modelId) => `${providerId}/${modelId}`),
+      )
+      .sort()
+  );
+}
+
 export async function getProviders(options?: RequestOptions): Promise<ProviderMap> {
   const cached = await readCachedProviderMap();
   if (cached) return cached;

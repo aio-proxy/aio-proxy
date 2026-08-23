@@ -88,3 +88,29 @@ test('probe follows sdk base URL semantics for an endpoints-only provider', asyn
   expect(requested).toBe('https://g.example.com/v1beta/models/gemini-pro:generateContent');
   expect(apiKeyHeader).toBe('k');
 });
+
+test('a model test probe waits ten seconds, not one', async () => {
+  let timeoutMs: number | undefined;
+  const original = AbortSignal.timeout;
+  AbortSignal.timeout = ((ms: number) => {
+    timeoutMs = ms;
+    return original(ms);
+  }) as typeof AbortSignal.timeout;
+  const provider = {
+    apiKey: 'k',
+    enabled: true,
+    endpoints: { baseURL: 'https://gw.example/v1', protocol: [ProviderProtocol.OpenAICompatible] },
+    id: 'slow-gateway',
+    kind: ProviderKind.Api,
+    models: ['slow-model'],
+  } satisfies Provider;
+  try {
+    const instance = createApiProvider(provider, {
+      fetch: (async () => new Response('{}', { status: 200 })) as typeof globalThis.fetch,
+    });
+    expect(await probeApi(provider, instance)).toBe('OK');
+    expect(timeoutMs).toBe(10_000);
+  } finally {
+    AbortSignal.timeout = original;
+  }
+});

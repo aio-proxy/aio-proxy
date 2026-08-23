@@ -64,6 +64,8 @@ export type OAuthProviderPatch = {
   readonly weight: number | undefined;
   readonly proxy?: OAuthProviderMutationBody['proxy'];
   readonly alias: ProviderAlias | undefined;
+  readonly models?: readonly string[] | undefined;
+  readonly metadata?: OAuthProviderMutationBody['metadata'];
   readonly transforms?: ProviderTransforms | undefined;
 };
 export type LoginOAuthAccountOptions = {
@@ -227,7 +229,7 @@ function mergeInsertedAliases(
     return { next: current, result: undefined };
   }
   const existingAlias = isRecord(entry['alias']) ? (entry['alias'] as ProviderAlias) : {};
-  const alias = insertMissingAliases(existingAlias, suggestions);
+  const alias = insertMissingAliases(existingAlias, suggestions, entry['models']);
   if (alias === existingAlias) return { next: current, result: undefined };
   return {
     next: { ...current, providers: { ...providers, [providerId]: { ...entry, alias } } },

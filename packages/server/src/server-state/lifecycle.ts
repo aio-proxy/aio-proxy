@@ -184,6 +184,7 @@ export function assembleServerState(runtime: ServerRuntime, parts: ServerStatePa
     pluginControlPlane: parts.pluginControlPlane,
     providerSummaries: parts.providerSummaries,
     currentConfig: () => (manager.current() as Snapshot).config,
+    configBeforeExtend: () => (manager.current() as Snapshot).configBeforeExtend,
     oauthQuota: parts.oauthQuota,
     reload: parts.reload,
     traceStore: parts.traceStore,
@@ -242,7 +243,12 @@ export function startLoginSessions(
 ): OAuthLoginSessionManager {
   const { manager, repository, diagnostics, pluginLogger, internalOptions } = runtime;
   const testHooks = internalOptions.__test;
+  const { host, port } = (runtime.manager.current() as Snapshot).config.server;
+  const completeHost = host === '::' || host === '[::]' ? '[::1]' : host === '0.0.0.0' ? '127.0.0.1' : host;
+  const completeAuthority =
+    completeHost.includes(':') && !completeHost.startsWith('[') ? `[${completeHost}]` : completeHost;
   return createOAuthLoginSessionManager({
+    completeUrl: `http://${completeAuthority}:${port}/dashboard/oauth/complete`,
     configFile: runtime.configFile,
     repository,
     acquireRegistry: () => {

@@ -1,10 +1,12 @@
 import { m } from '@aio-proxy/i18n';
 import { Button } from '@aio-proxy/ui/components/button';
 import { isEqual } from 'es-toolkit/predicate';
+import { ArrowDownIcon, ArrowUpIcon, Trash2Icon } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
 import type { RefCallback } from 'react';
 
 import type { RequestTransformStageDraft } from '../../lib/request-transforms';
+import { RequestTransformStageControlsRow } from './request-transform-stage-controls-row';
 import {
   buildRequestTransformStageDraft,
   requestTransformStageControlValues,
@@ -12,8 +14,6 @@ import {
   validateRequestTransformStageDraft,
 } from './request-transform-stage-draft';
 import { useRequestTransformStageForm } from './request-transform-stage-form';
-import { RequestTransformStagePathControl } from './request-transform-stage-path-control';
-import { RequestTransformStagePrimaryControls } from './request-transform-stage-primary-controls';
 import { RequestTransformStageValueEditor } from './request-transform-stage-value-editor';
 
 export interface RequestTransformStageCardProps {
@@ -22,7 +22,7 @@ export interface RequestTransformStageCardProps {
   readonly canMoveUp: boolean;
   readonly canMoveDown: boolean;
   readonly canRemove: boolean;
-  readonly structuralDisabled: boolean;
+  readonly ruleName: string;
   readonly pathInputRef?: RefCallback<HTMLInputElement>;
   readonly onChange: (value: RequestTransformStageDraft) => void;
   readonly onValidityChange: (valid: boolean) => void;
@@ -37,7 +37,7 @@ export const RequestTransformStageCard: React.FC<RequestTransformStageCardProps>
   canMoveUp,
   canMoveDown,
   canRemove,
-  structuralDisabled,
+  ruleName,
   pathInputRef,
   onChange,
   onValidityChange,
@@ -46,7 +46,6 @@ export const RequestTransformStageCard: React.FC<RequestTransformStageCardProps>
   onMoveDown,
 }) => {
   const actionId = useId();
-  const targetId = useId();
   const pathId = useId();
   const valueModeId = useId();
   const form = useRequestTransformStageForm(value);
@@ -54,8 +53,12 @@ export const RequestTransformStageCard: React.FC<RequestTransformStageCardProps>
   const [controlsValid, setControlsValid] = useState(true);
   const [contentValid, setContentValid] = useState(true);
   const [draftKind, setDraftKind] = useState(value.kind);
+  // Bumped only when the parent hands this card an action it did not emit, which is what a reorder or an
+  // earlier action's removal does: both lists key rows by index, so the next action slides into this one's
+  // row. The controls row holds the only copy of path text no prefix parses out of, and resetting the form
+  // does not reach it, so it kept displaying the previous action's unfinished path. Remounting drops it.
+  const [controlsKey, setControlsKey] = useState(0);
   const stageValid = controlsValid && (draftKind === 'remove' || contentValid);
-  const structureBlocked = structuralDisabled || !stageValid;
   const actionIndex = index + 1;
 
   useEffect(() => onValidityChange(stageValid), [onValidityChange, stageValid]);
@@ -67,6 +70,7 @@ export const RequestTransformStageCard: React.FC<RequestTransformStageCardProps>
     setDraftKind(controls.kind);
     setControlsValid(true);
     setContentValid(true);
+    setControlsKey((key) => key + 1);
   }, [form, value]);
 
   const emit = (nextStage: RequestTransformStageDraft) => {
@@ -87,54 +91,68 @@ export const RequestTransformStageCard: React.FC<RequestTransformStageCardProps>
   };
 
   return (
-    <div className="space-y-4 rounded-lg border p-3" data-testid={`request-transform-stage-${index}`}>
-      <p className="text-sm font-medium">{m['dashboard.providers.transforms.action.label']({ index: actionIndex })}</p>
-      <div className="space-y-4">
-        <RequestTransformStagePrimaryControls
-          form={form}
-          actionId={actionId}
-          targetId={targetId}
-          onCommit={commitControls}
-          onResetContentValidity={() => setContentValid(true)}
-        />
-        <RequestTransformStagePathControl
-          form={form}
-          pathId={pathId}
-          {...(pathInputRef === undefined ? {} : { pathInputRef })}
-          onCommit={commitControls}
-        />
-        <RequestTransformStageValueEditor
-          form={form}
-          acceptedStage={value}
-          valueModeId={valueModeId}
-          onCommitControls={commitControls}
-          onCommitContent={commitContent}
-          onContentValidityChange={setContentValid}
-        />
+    <div className="space-y-2" data-testid={`request-transform-stage-${index}`}>
+      <div className="flex items-center gap-2">
+        <div className="min-w-0 flex-1">
+          <RequestTransformStageControlsRow
+            key={controlsKey}
+            form={form}
+            index={index}
+            actionId={actionId}
+            pathId={pathId}
+            invalid={!controlsValid}
+            {...(pathInputRef === undefined ? {} : { pathInputRef })}
+            onCommit={commitControls}
+            onResetContentValidity={() => setContentValid(true)}
+          />
+        </div>
+        {/* One action cannot be removed or reordered, so the whole group stays out of the row entirely. */}
+        {canRemove ? (
+          <>
+            {/* Reordering re-emits this action from its last accepted value, so a move while it is
+                mid-edit would silently drop what the user typed — hence its own validity, not the
+                editor's. Remove stays enabled either way: discarding the action is the way out. */}
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              disabled={!stageValid || !canMoveUp}
+              aria-label={m['dashboard.providers.transforms.action.move_up']({ index: actionIndex })}
+              onClick={onMoveUp}
+            >
+              <ArrowUpIcon />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              disabled={!stageValid || !canMoveDown}
+              aria-label={m['dashboard.providers.transforms.action.move_down']({ index: actionIndex })}
+              onClick={onMoveDown}
+            >
+              <ArrowDownIcon />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              aria-label={m['dashboard.providers.transforms.action.remove_button']({ index: actionIndex })}
+              onClick={onRemove}
+            >
+              <Trash2Icon />
+            </Button>
+          </>
+        ) : null}
       </div>
-      <div className="flex flex-wrap gap-2">
-        <Button
-          type="button"
-          variant="destructive"
-          size="sm"
-          disabled={structureBlocked || !canRemove}
-          onClick={onRemove}
-        >
-          {m['dashboard.providers.transforms.action.remove_button']({ index: actionIndex })}
-        </Button>
-        <Button type="button" variant="outline" size="sm" disabled={structureBlocked || !canMoveUp} onClick={onMoveUp}>
-          {m['dashboard.providers.transforms.action.move_up']({ index: actionIndex })}
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={structureBlocked || !canMoveDown}
-          onClick={onMoveDown}
-        >
-          {m['dashboard.providers.transforms.action.move_down']({ index: actionIndex })}
-        </Button>
-      </div>
+      <RequestTransformStageValueEditor
+        form={form}
+        acceptedStage={value}
+        valueModeId={valueModeId}
+        ruleName={ruleName}
+        onCommitControls={commitControls}
+        onCommitContent={commitContent}
+        onContentValidityChange={setContentValid}
+      />
     </div>
   );
 };
