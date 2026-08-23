@@ -1,10 +1,10 @@
 import { createOpenAI } from '@ai-sdk/openai';
 import type { CredentialPort, OAuthRuntimeResult, RuntimeContext } from '@aio-proxy/plugin-sdk';
 
-import { createXAIGrokCLIHeaders, XAI_GROK_CLI_BASE_URL } from '../cli-headers';
+import { createXAIGrokCLIHeaders, XAI_GROK_CLI_BASE_URL } from '../cli-headers/index';
 import { currentXAIGrokCredential, type XAIGrokFetch, type XAIGrokOAuthOptions } from '../oauth';
 import type { XAIGrokCredential } from '../schema';
-import { sanitizeXAIGrokResponsesBody } from './sanitize-responses';
+import { sanitizeXAIGrokResponsesBody } from './sanitize-responses/index';
 
 export async function createXAIGrokRuntime(
   context: RuntimeContext<XAIGrokCredential, Record<string, never>>,
@@ -61,6 +61,8 @@ function unsupported(surface: string): never {
 async function outgoingBody(request: Request): Promise<BodyInit | undefined> {
   if (request.method === 'GET' || request.method === 'HEAD') return undefined;
   const original = new Uint8Array(await request.arrayBuffer());
-  if (!new URL(request.url).pathname.endsWith('/responses')) return original;
-  return sanitizeXAIGrokResponsesBody(original);
+  const bytes = new URL(request.url).pathname.endsWith('/responses')
+    ? sanitizeXAIGrokResponsesBody(original)
+    : original;
+  return new Uint8Array(bytes);
 }

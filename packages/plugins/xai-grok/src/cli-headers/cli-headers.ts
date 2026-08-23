@@ -1,4 +1,4 @@
-import type { XAIGrokCredential } from './schema';
+import type { XAIGrokCredential } from '../schema';
 
 export const XAI_GROK_CLI_BASE_URL = 'https://cli-chat-proxy.grok.com/v1';
 export const XAI_GROK_CLI_CLIENT_VERSION = '0.2.120';
