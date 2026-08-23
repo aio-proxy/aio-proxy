@@ -37,8 +37,10 @@ test('reads weekly and monthly Grok billing through the CLI proxy', async () => 
     expect(request.method).toBe('GET');
     expect(request.headers.get('authorization')).toBe('Bearer access-token');
     expect(request.headers.get('x-xai-token-auth')).toBe('xai-grok-cli');
-    expect(request.headers.get('x-grok-client-version')).toBe('0.2.93');
-    expect(request.headers.get('user-agent')).toBe('xai-grok-workspace/0.2.93');
+    expect(request.headers.get('x-grok-client-version')).toBe('0.2.120');
+    expect(request.headers.get('x-grok-client-identifier')).toBe('grok-shell');
+    expect(request.headers.get('x-authenticateresponse')).toBe('authenticate-response');
+    expect(request.headers.get('user-agent')).toBe('xai-grok-workspace/0.2.120');
     expect(request.headers.get('x-userid')).toBe('user-123');
   }
   expect(snapshot).toEqual({
