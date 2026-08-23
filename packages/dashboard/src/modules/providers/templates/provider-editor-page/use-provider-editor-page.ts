@@ -69,6 +69,7 @@ const startCreateAuthorization = (
       capability: { plugin: selected.plugin, capability: selected.capability },
       ...account,
       clearSecrets: [...account.clearSecrets],
+      completeUrl: `${window.location.origin}/dashboard/oauth/complete`,
       providerPatch: {
         enabled: true,
         ...(values.name === undefined || values.name === '' ? {} : { name: values.name }),
@@ -88,7 +89,6 @@ const saveOAuthProvider = (
   forceReauthorize: boolean,
   updateProvider: (input: { id: string; body: ProviderMutationBody }) => void,
   startReauthorize: (input: DashboardOAuthSessionStart, options: { onError: () => void }) => void,
-  openPopup: () => void,
   onError: () => void,
 ) => {
   const account = oauthAccountSubmission(oauth.form, accountDraft(accountValues));
@@ -108,7 +108,6 @@ const saveOAuthProvider = (
     updateProvider({ id: values.id, body: action.body });
     return;
   }
-  openPopup();
   startReauthorize(action.input, { onError });
 };
 
@@ -246,7 +245,6 @@ export const useProviderEditorPage = ({
   const [optionsValid, setOptionsValid] = useState(kind !== 'ai-sdk');
   const [transformsValid, setTransformsValid] = useState(true);
   const {
-    openPopup,
     closeUnclaimedPopup,
     startMutation,
     callbackMutation,
@@ -323,7 +321,6 @@ export const useProviderEditorPage = ({
           : serializeAlias(values.alias, mode === ProviderFormMode.Create ? 'create' : 'edit'),
     };
     if (kind === 'oauth' && mode === ProviderFormMode.Create && !authorized) {
-      openPopup();
       startCreateAuthorization(wireValues, accountValues, capabilities, startMutation.mutate, closeUnclaimedPopup);
       return;
     }
@@ -337,7 +334,6 @@ export const useProviderEditorPage = ({
         forceReauthorize,
         updateProvider,
         startMutation.mutate,
-        openPopup,
         closeUnclaimedPopup,
       );
       return;
@@ -349,7 +345,7 @@ export const useProviderEditorPage = ({
   const subtitle =
     mode === ProviderFormMode.Create
       ? m['dashboard.providers.editor.header_create_subtitle']()
-      : `${providerId ?? values.id} · ${PROVIDER_KIND_LABEL[kind]}`;
+      : `${PROVIDER_KIND_LABEL[kind]} · ${providerId ?? values.id}`;
 
   return {
     form,

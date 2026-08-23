@@ -25,12 +25,13 @@ export interface OAuthAccountFieldProps {
   readonly secretField: FieldApi<OAuthProviderFormValues['secrets']>;
   readonly jsonField: FieldApi<OAuthProviderFormValues['jsonValues']>;
   readonly form: OAuthProviderForm;
+  readonly locked?: boolean;
 }
 
 const selectPlaceholder = () => m['dashboard.providers.oauth.account_select_placeholder']();
 
 export const OAuthAccountField: React.FC<OAuthAccountFieldProps> = (props) => {
-  const { field, combined, publicField, jsonField } = props;
+  const { field, combined, publicField, jsonField, locked = false } = props;
   if (field.when !== undefined && combined[field.when.key] !== field.when.equals) return null;
   // `description` sits on the base schema, so every one of the six variants can carry one and every
   // branch below has to render it and point its control at it.
@@ -56,6 +57,7 @@ export const OAuthAccountField: React.FC<OAuthAccountFieldProps> = (props) => {
         description={description}
         secretField={props.secretField}
         form={props.form}
+        locked={locked}
       />
     );
   }
@@ -70,6 +72,7 @@ export const OAuthAccountField: React.FC<OAuthAccountFieldProps> = (props) => {
           id={controlId}
           aria-describedby={descriptionId}
           checked={Boolean(current ?? field.defaultValue)}
+          disabled={locked}
           onCheckedChange={(checked) => setPublic(Boolean(checked))}
         />
       </Field>
@@ -85,6 +88,7 @@ export const OAuthAccountField: React.FC<OAuthAccountFieldProps> = (props) => {
         <Label htmlFor={controlId}>{label}</Label>
         <Select
           value={current === undefined ? '' : optionValue(current as string | number | boolean)}
+          disabled={locked}
           onValueChange={(value) => setPublic(value === null ? undefined : JSON.parse(value))}
         >
           <SelectTrigger id={controlId} aria-describedby={descriptionId}>
@@ -118,6 +122,7 @@ export const OAuthAccountField: React.FC<OAuthAccountFieldProps> = (props) => {
           value={value}
           aria-invalid={invalid}
           aria-describedby={describedBy}
+          disabled={locked}
           placeholder={field.placeholder === undefined ? undefined : resolveDashboardText(field.placeholder)}
           onChange={(event) => {
             const next = event.target.value;
@@ -142,6 +147,7 @@ export const OAuthAccountField: React.FC<OAuthAccountFieldProps> = (props) => {
         aria-describedby={descriptionId}
         type={field.type === 'number' ? 'number' : 'text'}
         value={typeof current === 'string' || typeof current === 'number' ? current : ''}
+        disabled={locked}
         placeholder={field.placeholder === undefined ? undefined : resolveDashboardText(field.placeholder)}
         onChange={(event) => {
           let value: string | number | undefined = event.target.value;

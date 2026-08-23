@@ -17,6 +17,7 @@ export interface SecretAccountFieldProps {
     readonly handleChange: (value: OAuthProviderFormValues['secrets']) => void;
   };
   readonly form: OAuthProviderForm;
+  readonly locked?: boolean;
 }
 
 export const SecretAccountField: React.FC<SecretAccountFieldProps> = ({
@@ -25,6 +26,7 @@ export const SecretAccountField: React.FC<SecretAccountFieldProps> = ({
   description,
   secretField,
   form,
+  locked = false,
 }) => {
   const controlId = `oauth-${field.key}`;
   const descriptionId = description === undefined ? undefined : `${controlId}-description`;
@@ -39,6 +41,7 @@ export const SecretAccountField: React.FC<SecretAccountFieldProps> = ({
         type="password"
         aria-describedby={describedBy}
         value={secretField.state.value[field.key] ?? ''}
+        disabled={locked}
         onChange={(event) => secretField.handleChange({ ...secretField.state.value, [field.key]: event.target.value })}
       />
       {description === undefined ? null : <FieldDescription id={descriptionId}>{description}</FieldDescription>}
@@ -50,6 +53,7 @@ export const SecretAccountField: React.FC<SecretAccountFieldProps> = ({
               <Label className="flex items-center gap-2">
                 <Checkbox
                   checked={clearField.state.value.includes(field.key)}
+                  disabled={locked}
                   onCheckedChange={(checked) =>
                     clearField.handleChange(
                       checked

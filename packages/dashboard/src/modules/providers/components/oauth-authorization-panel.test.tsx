@@ -77,7 +77,7 @@ test('renders the authorize_url branch with localized instructions, an open link
     />,
   );
 
-  expect(screen.getByRole('button', { name: /open authorization|打开授权/iu })).toHaveAttribute(
+  expect(screen.getByRole('link', { name: /open authorization|打开授权/iu })).toHaveAttribute(
     'href',
     'https://cursor.com/loginDeepControl',
   );

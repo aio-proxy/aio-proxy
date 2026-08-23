@@ -657,7 +657,10 @@
         "account_fields_title": "Account settings",
         "account_select_placeholder": "Select an option",
         "models_title": "Discovered models",
-        "reauthorize_helper": "Account setting changes are saved only after authorization succeeds"
+        "reauthorize_helper": "Account setting changes are saved only after authorization succeeds",
+        "copied_device_code": "Copied the device code to the clipboard",
+        "open_authorization_aria": "Open authorization page",
+        "start_failed": "Authorization could not be started. Check the server and try again."
       },
       "transforms": {
         "description": "Customize the request rewrites applied before the request goes upstream. Match conditions and update actions run in rule order, so later rules see the results of earlier ones.",
@@ -931,7 +934,8 @@
         "validate_failed": "Request failed ({code}). You can still save this provider.",
         "validate_unavailable": "Enable at least one model before you can test a request.",
         "validate_invalid": "Complete the provider configuration before testing",
-        "hint_routing_priority": "Priority {priority}"
+        "hint_routing_priority": "Priority {priority}",
+        "routing_out_of_range": "Stored value {value} is outside the slider range; use the number field to change it"
       },
       "form": {
         "label_id": "Provider ID",
@@ -1292,6 +1296,12 @@
       "usage_provider": "Usage provider",
       "usage_model": "Usage model",
       "price_model_id": "Price model ID"
+    },
+    "oauth_complete": {
+      "title": "Authorization complete",
+      "description": "You can close this window. The original Dashboard tab will continue automatically.",
+      "close": "Close window",
+      "close_unavailable": "This browser blocked automatic close. You can close the tab yourself."
     }
   }
 }

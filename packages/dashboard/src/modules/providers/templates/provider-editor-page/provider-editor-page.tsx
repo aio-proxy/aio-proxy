@@ -4,7 +4,6 @@ import { Card, CardContent } from '@aio-proxy/ui/components/card';
 
 import { PageContainer } from '@/components/page-container';
 
-import { OAuthAuthorizationPanel } from '../../components/oauth-authorization-panel';
 import { AdvancedSection } from '../../components/provider-editor/advanced-section';
 import { ConnectionSection } from '../../components/provider-editor/connection-section';
 import { ExposurePanel } from '../../components/provider-editor/exposure-panel';
@@ -96,7 +95,7 @@ export const ProviderEditorPage: React.FC<ProviderEditorPageProps> = (props) => 
           the fields, has to survive a `pending` state, and must not fire on an Enter keypress in a
           field the user is still editing. */}
       <form onSubmit={(event) => event.preventDefault()}>
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
+        <div className="grid gap-4 pb-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
           <div className="min-w-0 space-y-4">
             {/* Above Identity and outside the nav: the kind is what decides which fields the sections
                 below even contain, so it is not one of the provider's attributes (D-F11). */}
@@ -111,12 +110,52 @@ export const ProviderEditorPage: React.FC<ProviderEditorPageProps> = (props) => 
               capabilities={capabilities}
               oauth={oauth}
               provider={provider}
+              accountLocked={
+                kind === ProviderKind.OAuth &&
+                (isReauthorizing ||
+                  (mode === ProviderFormMode.Create && authorized) ||
+                  (session !== undefined &&
+                    session.status !== 'failed' &&
+                    session.status !== 'cancelled' &&
+                    session.status !== 'succeeded'))
+              }
               onReauthorize={() => save(true)}
               isReauthorizeBlocked={saveBlocked}
               isAuthorizationPending={isReauthorizing}
               onAuthorize={() => save(false)}
               onOptionsValidityChange={setOptionsValid}
               summary={summaries.connection}
+              session={
+                props.sessionId !== undefined && session !== undefined && session.status !== 'succeeded'
+                  ? session
+                  : undefined
+              }
+              isSessionPending={callbackMutation.isPending || cancelMutation.isPending}
+              onSubmitCallback={(callbackUrl) =>
+                session === undefined
+                  ? undefined
+                  : callbackMutation.mutate(
+                      { id: session.id, callbackUrl },
+                      { onSuccess: () => sessionQuery.refetch() },
+                    )
+              }
+              onClearSession={() => {
+                if (session === undefined) return;
+                if (session.status === 'failed' || session.status === 'cancelled') {
+                  onSessionIdChange(undefined);
+                  return;
+                }
+                cancelMutation.mutate(session.id);
+              }}
+              onCancelSession={() => {
+                if (session === undefined) return;
+                if (session.status === 'failed' || session.status === 'cancelled') {
+                  onSessionIdChange(undefined);
+                  save(false);
+                  return;
+                }
+                cancelMutation.mutate(session.id);
+              }}
             />
             {locked ? (
               <>
@@ -159,26 +198,6 @@ export const ProviderEditorPage: React.FC<ProviderEditorPageProps> = (props) => 
             </Card>
           </aside>
         </div>
-        {/* Before the footer, not after it: this panel is inline markup, not a portal, and the footer is
-            `sticky bottom-0`. Rendered after it, the device code and the manual-callback field sat in the
-            band the footer is pinned over, and scrolling to the true bottom un-pinned the footer into the
-            middle of the page, above the panel. Everything below this point must portal. */}
-        {props.sessionId !== undefined && session !== undefined && session.status !== 'succeeded' ? (
-          <OAuthAuthorizationPanel
-            session={session}
-            isPending={callbackMutation.isPending || cancelMutation.isPending}
-            onSubmitCallback={(callbackUrl) =>
-              callbackMutation.mutate({ id: session.id, callbackUrl }, { onSuccess: () => sessionQuery.refetch() })
-            }
-            onCancel={() => {
-              if (session.status === 'failed' || session.status === 'cancelled') {
-                onSessionIdChange(undefined);
-                return;
-              }
-              cancelMutation.mutate(session.id);
-            }}
-          />
-        ) : null}
         <EditorFooter
           summaries={summaries}
           primaryLabel={primaryLabel}

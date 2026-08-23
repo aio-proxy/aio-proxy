@@ -60,3 +60,21 @@
 .code-editor :global(.cm-scroller) {
   @apply rounded-3xl font-mono;
 }
+
+:global(.cm-tooltip.cm-completionInfo),
+:global(.cm-tooltip.cm-tooltip-hover) {
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
+:global(.cm-tooltip.cm-completionInfo .typeset),
+:global(.cm-tooltip.cm-tooltip-hover .typeset) {
+  font-size: inherit;
+  line-height: inherit;
+}
+
+:global(.cm-tooltip.cm-completionInfo p),
+:global(.cm-tooltip.cm-tooltip-hover p) {
+  font-size: inherit;
+  line-height: inherit;
+}

@@ -657,7 +657,10 @@
         "account_fields_title": "账户设置",
         "account_select_placeholder": "请选择",
         "models_title": "已发现模型",
-        "reauthorize_helper": "账户设置变更只会在授权成功后保存"
+        "reauthorize_helper": "账户设置变更只会在授权成功后保存",
+        "copied_device_code": "已将设备码复制到剪贴板",
+        "open_authorization_aria": "打开授权页面",
+        "start_failed": "无法开始授权。请检查服务端后重试。"
       },
       "transforms": {
         "description": "自定义发往上游前的请求改写。匹配条件与更新动作按规则顺序执行，后面的规则会看到前面规则的结果。",
@@ -931,7 +934,8 @@
         "validate_failed": "请求失败（{code}）。你仍可保存此提供商。",
         "validate_unavailable": "先启用至少一个模型，才能测试请求。",
         "validate_invalid": "请先完成提供商配置再测试",
-        "hint_routing_priority": "优先级 {priority}"
+        "hint_routing_priority": "优先级 {priority}",
+        "routing_out_of_range": "已保存的值 {value} 超出滑块范围；请用数字框修改"
       },
       "form": {
         "label_id": "提供商 ID",
@@ -1292,6 +1296,12 @@
       "usage_provider": "用量提供商",
       "usage_model": "用量模型",
       "price_model_id": "计价模型 ID"
+    },
+    "oauth_complete": {
+      "title": "授权已完成",
+      "description": "可以关闭此窗口。原来的 Dashboard 标签页会自动继续。",
+      "close": "关闭窗口",
+      "close_unavailable": "浏览器阻止了自动关闭，请手动关闭此标签页。"
     }
   }
 }

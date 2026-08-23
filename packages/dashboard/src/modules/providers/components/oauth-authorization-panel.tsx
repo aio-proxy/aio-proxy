@@ -5,9 +5,13 @@ import { Field } from '@aio-proxy/ui/components/field';
 import { Input } from '@aio-proxy/ui/components/input';
 import { Label } from '@aio-proxy/ui/components/label';
 import { Spinner } from '@aio-proxy/ui/components/spinner';
+import { toast } from '@aio-proxy/ui/components/toast';
 import { useForm } from '@tanstack/react-form';
+import { useEffect, useRef } from 'react';
 
 import { resolveDashboardText } from '@/lib/localized-text';
+
+import { OAuthAuthorizationUrlField } from './oauth-authorization-url-field';
 
 interface OAuthAuthorizationPanelProps {
   readonly session: DashboardOAuthSession;
@@ -15,6 +19,12 @@ interface OAuthAuthorizationPanelProps {
   readonly onCancel: () => void;
   readonly isPending: boolean;
 }
+
+const authorizationUrl = (session: DashboardOAuthSession): string | undefined => {
+  if (session.status === 'device_code' || session.status === 'authorize_url') return session.url;
+  if (session.status === 'loopback') return session.authorizationUrl;
+  return undefined;
+};
 
 export const OAuthAuthorizationPanel: React.FC<OAuthAuthorizationPanelProps> = ({
   session,
@@ -40,8 +50,22 @@ export const OAuthAuthorizationPanel: React.FC<OAuthAuthorizationPanelProps> = (
     }
   }
 
+  const presentedUrl = useRef<string | undefined>(undefined);
+  const url = authorizationUrl(session);
+  useEffect(() => {
+    if (url === undefined || presentedUrl.current === url) return;
+    presentedUrl.current = url;
+    if (session.status === 'device_code') {
+      void navigator.clipboard.writeText(session.userCode).then(
+        () => toast.add({ type: 'success', title: m['dashboard.providers.oauth.copied_device_code']() }),
+        () => undefined,
+      );
+    }
+    window.open(url, '_blank', 'noopener,noreferrer');
+  }, [session, url]);
+
   return (
-    <div className="space-y-4 rounded-lg border p-4">
+    <div className="space-y-4 rounded-2xl bg-input/50 p-4">
       {session.status === 'preparing' || session.status === 'discovering' ? (
         <div className="flex items-center gap-2">
           <Spinner /> {m['dashboard.providers.oauth.preparing']()}
@@ -51,26 +75,20 @@ export const OAuthAuthorizationPanel: React.FC<OAuthAuthorizationPanelProps> = (
         <div className="space-y-3">
           <h2 className="font-semibold">{m['dashboard.providers.oauth.device_code_title']()}</h2>
           <code className="block text-lg">{session.userCode}</code>
-          <Button nativeButton={false} render={<a href={session.url} target="_blank" rel="noreferrer" />}>
-            {m['dashboard.providers.oauth.open_authorization']()}
-          </Button>
+          <OAuthAuthorizationUrlField url={session.url} />
         </div>
       ) : null}
       {session.status === 'authorize_url' ? (
         <div className="space-y-3">
           <h2 className="font-semibold">{m['dashboard.providers.oauth.authorize_url_title']()}</h2>
           {session.instructions === undefined ? null : <p>{resolveDashboardText(session.instructions)}</p>}
-          <Button nativeButton={false} render={<a href={session.url} target="_blank" rel="noreferrer" />}>
-            {m['dashboard.providers.oauth.open_authorization']()}
-          </Button>
+          <OAuthAuthorizationUrlField url={session.url} />
         </div>
       ) : null}
       {session.status === 'loopback' ? (
         <div className="space-y-3">
           <h2 className="font-semibold">{m['dashboard.providers.oauth.loopback_title']()}</h2>
-          <Button nativeButton={false} render={<a href={session.authorizationUrl} target="_blank" rel="noreferrer" />}>
-            {m['dashboard.providers.oauth.open_authorization']()}
-          </Button>
+          <OAuthAuthorizationUrlField url={session.authorizationUrl} />
           {session.allowManualCallback ? (
             <form
               className="space-y-3"

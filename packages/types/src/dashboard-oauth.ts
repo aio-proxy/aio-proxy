@@ -120,6 +120,27 @@ export const DashboardOAuthSessionSchema = z.discriminatedUnion('status', [
   z.strictObject({ ...DashboardOAuthSessionCommonSchema.shape, status: z.literal('cancelled') }),
 ]);
 
+const loopbackCompleteHost = (hostname: string): boolean =>
+  hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]' || hostname === '::1';
+
+const DashboardOAuthCompleteUrlSchema = z.string().refine((value) => {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return false;
+  }
+  return (
+    url.protocol === 'http:' &&
+    loopbackCompleteHost(url.hostname) &&
+    url.pathname === '/dashboard/oauth/complete' &&
+    url.search === '' &&
+    url.hash === '' &&
+    url.username === '' &&
+    url.password === ''
+  );
+});
+
 export const DashboardOAuthSessionStartSchema = z
   .strictObject({
     capability: z.strictObject({ plugin: z.string().min(1), capability: z.string().min(1) }).optional(),
@@ -128,6 +149,7 @@ export const DashboardOAuthSessionStartSchema = z
     secrets: z.record(z.string(), z.string()).default({}),
     clearSecrets: z.array(z.string().min(1)).default([]),
     providerPatch: DashboardOAuthProviderPatchSchema.optional(),
+    completeUrl: DashboardOAuthCompleteUrlSchema.optional(),
   })
   .refine((value) => value.capability !== undefined || value.targetProviderId !== undefined, {
     message: 'capability or targetProviderId is required',

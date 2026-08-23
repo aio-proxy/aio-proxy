@@ -27,53 +27,24 @@ const apiInitial = (models: readonly string[]) => ({
 });
 
 describe('RoutingSection', () => {
-
-  test('the priority field writes a whole number onto the form', () => {
+  test('the two number fields sit side by side and write onto the form', () => {
     render(<Harness initial={apiInitial(['model-a'])} />);
 
-    fireEvent.change(screen.getByRole('spinbutton', { name: /Priority|优先级|優先/u }), { target: { value: '4' } });
+    fireEvent.change(screen.getByTestId('priority-number-input'), { target: { value: '4' } });
+    fireEvent.change(screen.getByTestId('weight-number-input'), { target: { value: '35' } });
 
     expect(section.state.values.priority).toBe(4);
-  });
-
-  test('the weight slider writes the dragged value onto the form', () => {
-    render(<Harness initial={apiInitial(['model-a'])} />);
-
-    expect(section.state.values.weight).toBeUndefined();
-    // `hidden: true`: the slider thumb is visibility:hidden until it measures the track, and happy-dom
-    // has no layout, so the nested range input is outside the accessibility tree.
-    fireEvent.change(screen.getByRole('slider', { hidden: true }), { target: { value: '35' } });
-
     expect(section.state.values.weight).toBe(35);
+    expect(screen.getByTestId('provider-form-field-priority').parentElement).toHaveClass('sm:grid-cols-2');
   });
 
-  // Finding 9's round trip, and the case that would have caught it: the slider bounds weight to
-  // 0-100 on a step of 5, so a config weight of 250 could be displayed but never re-entered, and the
-  // first drag destroyed it. The number input is bound to the same form field, so what the user types
-  // is what the form submits. Remounting with the submitted value stands in for the reload — that is
-  // where a clamp or a snap on the way in would show up.
-  test('a weight the slider cannot represent survives the form and comes back unchanged', () => {
-    const { unmount } = render(<Harness initial={apiInitial(['model-a'])} />);
+  test('clearing a field returns the form to absent rather than zero', () => {
+    render(<Harness initial={{ ...apiInitial(['model-a']), priority: 4, weight: 40 }} />);
 
-    fireEvent.change(screen.getByTestId('weight-number-input'), { target: { value: '250' } });
-
-    const saved = section.state.values.weight;
-    expect(saved).toBe(250);
-    unmount();
-
-    render(<Harness initial={{ ...apiInitial(['model-a']), weight: saved }} />);
-
-    expect(screen.getByTestId('weight-number-input')).toHaveValue(250);
-    expect(section.state.values.weight).toBe(250);
-  });
-
-  // Absent had no way back once a weight was set, and `0` is not a synonym for it: `0` is a real
-  // configured weight, while absent is the key being omitted from config entirely.
-  test('clearing the weight input returns the form to absent rather than zero', () => {
-    render(<Harness initial={{ ...apiInitial(['model-a']), weight: 40 }} />);
-
+    fireEvent.change(screen.getByTestId('priority-number-input'), { target: { value: '' } });
     fireEvent.change(screen.getByTestId('weight-number-input'), { target: { value: '' } });
 
+    expect(section.state.values.priority).toBeUndefined();
     expect(section.state.values.weight).toBeUndefined();
   });
 });

@@ -130,11 +130,11 @@ export const ProviderFormFieldsApi: React.FC<ProviderFormFieldsApiProps> = ({ fo
                   </div>
                 </div>
               ) : (
-                <div className="space-y-3">
+                <div className="space-y-2">
                   {draft.entries.map((entry, index) => (
                     <div
                       key={`${entry.protocol}-${index}`}
-                      className={`grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-xl bg-muted/40 p-3 ${entry.protocol === 'anthropic' ? 'sm:grid-cols-[minmax(0,12rem)_minmax(0,1fr)_minmax(0,9rem)_auto]' : 'sm:grid-cols-[minmax(0,13rem)_minmax(0,1fr)_auto]'}`}
+                      className={`grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-xl bg-muted/40 px-3 py-2 ${entry.protocol === 'anthropic' ? 'sm:grid-cols-[minmax(0,12rem)_minmax(0,1fr)_minmax(0,9rem)_auto]' : 'sm:grid-cols-[minmax(0,13rem)_minmax(0,1fr)_auto]'}`}
                     >
                       <Select
                         value={entry.protocol === '' ? null : entry.protocol}

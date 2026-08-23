@@ -1,5 +1,10 @@
 import { m } from '@aio-proxy/i18n';
-import type { DashboardOAuthCapability, DashboardOAuthProviderEdit, OAuthProvider } from '@aio-proxy/types';
+import type {
+  DashboardOAuthCapability,
+  DashboardOAuthProviderEdit,
+  DashboardOAuthSession,
+  OAuthProvider,
+} from '@aio-proxy/types';
 import { ProviderKind } from '@aio-proxy/types';
 import { Button } from '@aio-proxy/ui/components/button';
 import { Spinner } from '@aio-proxy/ui/components/spinner';
@@ -10,6 +15,7 @@ import { ProviderFormMode } from '../../../lib/constants';
 import { capabilityKey } from '../../../lib/oauth-capability-key';
 import type { SectionSummary } from '../../../lib/section-status';
 import { OAuthAccountFields } from '../../oauth-account-fields';
+import { OAuthAuthorizationPanel } from '../../oauth-authorization-panel';
 import { OAuthCapabilityCombobox } from '../../oauth-capability-combobox';
 import { OAuthProviderEditFields } from '../../oauth-provider-edit-fields';
 import { ProviderFormFieldsAiSdk } from '../../provider-form-fields-ai-sdk';
@@ -35,6 +41,12 @@ interface ConnectionSectionProps {
   readonly onAuthorize?: (() => void) | undefined;
   readonly onOptionsValidityChange?: ((valid: boolean) => void) | undefined;
   readonly summary: SectionSummary;
+  readonly session?: DashboardOAuthSession | undefined;
+  readonly isSessionPending?: boolean | undefined;
+  readonly onSubmitCallback?: ((callbackUrl: string) => void) | undefined;
+  readonly onCancelSession?: (() => void) | undefined;
+  readonly onClearSession?: (() => void) | undefined;
+  readonly accountLocked?: boolean | undefined;
 }
 
 export const ConnectionSection: React.FC<ConnectionSectionProps> = ({
@@ -52,6 +64,12 @@ export const ConnectionSection: React.FC<ConnectionSectionProps> = ({
   onAuthorize,
   onOptionsValidityChange,
   summary,
+  session,
+  isSessionPending,
+  onSubmitCallback,
+  onCancelSession,
+  onClearSession,
+  accountLocked = false,
 }) => (
   <SectionShell
     id="connection"
@@ -73,22 +91,26 @@ export const ConnectionSection: React.FC<ConnectionSectionProps> = ({
               <OAuthCapabilityCombobox
                 capabilities={capabilities ?? []}
                 value={selected ?? null}
+                disabled={accountLocked}
                 onValueChange={(value) => {
                   field.handleChange(value === null ? '' : capabilityKey(value));
                   accountForm.setFieldValue('publicValues', value?.defaults ?? {});
                   accountForm.setFieldValue('secrets', {});
                   accountForm.setFieldValue('clearSecrets', []);
                   accountForm.setFieldValue('jsonValues', {});
+                  onClearSession?.();
                 }}
               />
-              {selected === undefined ? null : <OAuthAccountFields fields={selected.form} form={accountForm} />}
+              {selected === undefined ? null : (
+                <OAuthAccountFields fields={selected.form} form={accountForm} locked={accountLocked} />
+              )}
               {/* Below the account fields it submits: this button posts them, so it cannot sit above. */}
               <div className="flex flex-wrap items-center gap-3">
                 <Button
                   type="button"
                   data-testid="connection-authorize"
                   size="sm"
-                  disabled={field.state.value === '' || isAuthorizationPending === true}
+                  disabled={field.state.value === '' || isAuthorizationPending === true || accountLocked}
                   onClick={onAuthorize}
                 >
                   {isAuthorizationPending === true ? <Spinner data-icon="inline-start" /> : null}
@@ -113,6 +135,18 @@ export const ConnectionSection: React.FC<ConnectionSectionProps> = ({
         onReauthorize={onReauthorize ?? (() => undefined)}
         isReauthorizing={isAuthorizationPending ?? false}
         isReauthorizeBlocked={isReauthorizeBlocked ?? false}
+        accountLocked={accountLocked}
+      />
+    ) : null}
+    {session !== undefined &&
+    session.status !== 'succeeded' &&
+    onSubmitCallback !== undefined &&
+    onCancelSession !== undefined ? (
+      <OAuthAuthorizationPanel
+        session={session}
+        isPending={isSessionPending ?? false}
+        onSubmitCallback={onSubmitCallback}
+        onCancel={onCancelSession}
       />
     ) : null}
   </SectionShell>

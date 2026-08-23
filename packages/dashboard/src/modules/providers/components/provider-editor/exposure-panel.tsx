@@ -34,7 +34,7 @@ export const ExposurePanel: React.FC<ExposurePanelProps> = ({ models, alias, ena
           {m['dashboard.providers.editor.exposure_empty']()}
         </p>
       ) : (
-        <ul className={cn('space-y-1', enabled ? undefined : 'opacity-60')}>
+        <ul className={cn('max-h-72 space-y-1 overflow-y-auto', enabled ? undefined : 'opacity-60')}>
           {routes.map((route) => {
             // Structural, not `alias !== modelId`: a name is an alias because it was configured as one,
             // and a direct row still has to say the name is the upstream's own id. `hasOwn`, not a

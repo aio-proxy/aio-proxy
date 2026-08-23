@@ -1,19 +1,38 @@
 import { m } from '@aio-proxy/i18n';
 import { ProviderKind, type OAuthProvider } from '@aio-proxy/types';
 import { expect, rs, test } from '@rstest/core';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, renderHook, screen } from '@testing-library/react';
+import type { ReactNode } from 'react';
 
 import { useOAuthProviderForm } from '../hooks/use-oauth-provider-form';
+import { providerPluginPresentationsQueryOptions } from '../services/provider-plugin-labels';
 import { OAuthProviderEditFields } from './oauth-provider-edit-fields';
 
 const PROVIDER = {
   kind: ProviderKind.OAuth,
-  plugin: '@aio-proxy/plugin-codex',
-  capability: 'codex',
+  plugin: '@aio-proxy/plugin-google-antigravity',
+  capability: 'default',
 } as OAuthProvider;
 
-test('confirms the connected account once, as a status, without dropping the save-semantics helper', () => {
-  const { result } = renderHook(() => useOAuthProviderForm(() => undefined, undefined));
+const queryClient = new QueryClient({
+  defaultOptions: { mutations: { retry: false }, queries: { retry: false } },
+});
+queryClient.setQueryData(providerPluginPresentationsQueryOptions().queryKey, {
+  plugins: [
+    {
+      packageName: '@aio-proxy/plugin-google-antigravity',
+      displayName: 'Google Antigravity',
+      icon: 'antigravity-color',
+    },
+  ],
+});
+const wrapper = ({ children }: { readonly children: ReactNode }) => (
+  <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+);
+
+test('shows the plugin name and icon instead of the package id', () => {
+  const { result } = renderHook(() => useOAuthProviderForm(() => undefined, undefined), { wrapper });
 
   render(
     <OAuthProviderEditFields
@@ -24,12 +43,13 @@ test('confirms the connected account once, as a status, without dropping the sav
       isReauthorizing={false}
       isReauthorizeBlocked={false}
     />,
+    { wrapper },
   );
 
-  // A screen reader is told the provider is connected; before this there was no positive signal in
-  // the section at all, only copy about when account edits are persisted.
+  expect(screen.getByText('Google Antigravity')).toBeInTheDocument();
+  expect(screen.queryByText(/@aio-proxy\/plugin-google-antigravity/u)).toBeNull();
+  expect(screen.getByRole('img', { hidden: true })).toBeTruthy();
   expect(screen.getByRole('status')).toHaveTextContent('ops@acme.dev');
   expect(screen.getByText(m['dashboard.providers.oauth.reauthorize_helper']())).toBeTruthy();
-  // Once: the read-only table above the row used to repeat the account name.
   expect(screen.getAllByText(/ops@acme\.dev/u)).toHaveLength(1);
 });

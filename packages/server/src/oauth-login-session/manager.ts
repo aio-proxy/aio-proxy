@@ -36,6 +36,7 @@ type LoginSessionDeps = {
   readonly reload: () => Promise<unknown>;
   readonly createFetch?: (input: DashboardOAuthSessionStart) => RuntimeFetch;
   readonly publish: (session: InternalSession, snapshot: DashboardOAuthSession) => void;
+  readonly completeUrl?: string;
 };
 
 export type OAuthLoginSessionManager = ReturnType<typeof createOAuthLoginSessionManager>;
@@ -57,6 +58,9 @@ const runLoginSession = async (
     sessionId: id,
     signal: session.controller.signal,
     publish: (snapshot) => deps.publish(session, snapshot),
+    ...(input.completeUrl === undefined && deps.completeUrl === undefined
+      ? {}
+      : { completeUrl: input.completeUrl ?? deps.completeUrl }),
   });
   session.authorization = authorization;
   try {
@@ -134,6 +138,7 @@ export const createOAuthLoginSessionManager = (options: {
   readonly createFetch?: (input: DashboardOAuthSessionStart) => RuntimeFetch;
   readonly now?: () => number;
   readonly terminalSessionTtlMs?: number;
+  readonly completeUrl?: string;
 }) => {
   const sessions = new Map<string, InternalSession>();
   const now = options.now ?? Date.now;
@@ -186,6 +191,7 @@ export const createOAuthLoginSessionManager = (options: {
         validateProviderCommit: options.validateProviderCommit,
         reload: options.reload,
         ...(options.createFetch === undefined ? {} : { createFetch: options.createFetch }),
+        ...(options.completeUrl === undefined ? {} : { completeUrl: options.completeUrl }),
         publish,
       },
       session,

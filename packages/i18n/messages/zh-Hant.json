@@ -657,7 +657,10 @@
         "account_fields_title": "帳戶設定",
         "account_select_placeholder": "請選擇",
         "models_title": "已探索模型",
-        "reauthorize_helper": "帳戶設定變更只會在授權成功後儲存"
+        "reauthorize_helper": "帳戶設定變更只會在授權成功後儲存",
+        "copied_device_code": "已將裝置碼複製到剪貼簿",
+        "open_authorization_aria": "開啟授權頁面",
+        "start_failed": "無法開始授權。請檢查伺服器後重試。"
       },
       "transforms": {
         "description": "自訂發往上游前的請求改寫。比對條件與更新動作按規則順序執行，後面的規則會看到前面規則的結果。",
@@ -931,7 +934,8 @@
         "validate_failed": "請求失敗（{code}）。你仍可儲存此提供商。",
         "validate_unavailable": "先啟用至少一個模型，才能測試請求。",
         "validate_invalid": "請先完成提供商設定再測試",
-        "hint_routing_priority": "優先級 {priority}"
+        "hint_routing_priority": "優先級 {priority}",
+        "routing_out_of_range": "已儲存的值 {value} 超出滑桿範圍；請用數字框修改"
       },
       "form": {
         "label_id": "提供商 ID",
@@ -1292,6 +1296,12 @@
       "usage_provider": "用量提供商",
       "usage_model": "用量模型",
       "price_model_id": "計價模型 ID"
+    },
+    "oauth_complete": {
+      "title": "授權已完成",
+      "description": "可以關閉此視窗。原本的 Dashboard 分頁會自動繼續。",
+      "close": "關閉視窗",
+      "close_unavailable": "瀏覽器阻止了自動關閉，請自行關閉此分頁。"
     }
   }
 }

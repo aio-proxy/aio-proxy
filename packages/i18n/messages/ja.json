@@ -657,7 +657,10 @@
         "account_fields_title": "アカウント設定",
         "account_select_placeholder": "選択してください",
         "models_title": "検出されたモデル",
-        "reauthorize_helper": "アカウント設定の変更は認可が成功した後にのみ保存されます"
+        "reauthorize_helper": "アカウント設定の変更は認可が成功した後にのみ保存されます",
+        "copied_device_code": "デバイスコードをクリップボードにコピーしました",
+        "open_authorization_aria": "認可ページを開く",
+        "start_failed": "認可を開始できませんでした。サーバーを確認して再試行してください。"
       },
       "transforms": {
         "description": "上流に送信する前に適用するリクエストの書き換えをカスタマイズします。一致条件と更新アクションはルールの順に実行されるため、後のルールは前のルールの結果を参照します。",
@@ -931,7 +934,8 @@
         "validate_failed": "リクエストに失敗しました（{code}）。このプロバイダーは引き続き保存できます。",
         "validate_unavailable": "少なくとも1つのモデルを有効にしてから、リクエストをテストできます。",
         "validate_invalid": "テストする前にプロバイダー設定を完了してください",
-        "hint_routing_priority": "優先度 {priority}"
+        "hint_routing_priority": "優先度 {priority}",
+        "routing_out_of_range": "保存された値 {value} はスライダーの範囲外です。数値入力で変更してください"
       },
       "form": {
         "label_id": "Provider ID",
@@ -1292,6 +1296,12 @@
       "usage_provider": "使用状況プロバイダー",
       "usage_model": "使用状況モデル",
       "price_model_id": "価格モデル ID"
+    },
+    "oauth_complete": {
+      "title": "認証が完了しました",
+      "description": "このウィンドウを閉じてください。元の Dashboard タブが自動的に続きます。",
+      "close": "ウィンドウを閉じる",
+      "close_unavailable": "ブラウザーが自動クローズをブロックしました。このタブを手動で閉じてください。"
     }
   }
 }

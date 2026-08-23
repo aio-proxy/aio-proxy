@@ -126,3 +126,17 @@ test('provider edit view carries optional plugin default aliases as alias config
   expect(schema.safeParse({ ...view, pluginAliases: { chat: { model: 42 } } }).success).toBe(false);
   expect(schema.safeParse({ ...view, pluginAlias: {} }).success).toBe(false);
 });
+
+test('dashboard OAuth session start accepts a loopback dashboard origin', () => {
+  const schema = dashboard.DashboardOAuthSessionStartSchema;
+  const request = {
+    capability: { plugin: '@example/oauth', capability: 'default' },
+    publicValues: {},
+    secrets: {},
+    clearSecrets: [],
+    completeUrl: 'http://localhost:3000/dashboard/oauth/complete',
+  };
+  expect(schema.parse(request).completeUrl).toBe(request.completeUrl);
+  expect(() => schema.parse({ ...request, completeUrl: 'javascript:alert(1)' })).toThrow();
+  expect(() => schema.parse({ ...request, completeUrl: 'https://evil.example/dashboard/oauth/complete' })).toThrow();
+});

@@ -11,14 +11,15 @@ import { OAuthAccountFields } from './oauth-account-fields';
 const Harness: React.FC<{
   readonly fields: readonly DashboardOAuthFormField[];
   readonly initialPublic?: Record<string, unknown>;
-}> = ({ fields, initialPublic }) => {
+  readonly locked?: boolean;
+}> = ({ fields, initialPublic, locked = false }) => {
   const form = useOAuthProviderForm(
     () => undefined,
     initialPublic === undefined ? undefined : { publicValues: initialPublic },
   );
   return (
     <>
-      <OAuthAccountFields fields={fields} form={form} />
+      <OAuthAccountFields fields={fields} form={form} locked={locked} />
       <button type="button" onClick={() => publish(form.getFieldValue('publicValues'))}>
         publish
       </button>
@@ -133,6 +134,23 @@ describe('OAuthAccountField', () => {
     const values = publishedValues();
     expect(Object.keys(values).sort()).toEqual(['tenant']);
     expect(values['tenant']).toBe('acme');
+  });
+
+  test('locks every control once authorization has started', () => {
+    render(
+      <Harness
+        fields={variants.map((variant) => variant.field)}
+        initialPublic={{ tenant: 'acme', seats: 4, host: 'github.com', extra: { scope: 'repo' } }}
+        locked
+      />,
+    );
+
+    expect(screen.getByLabelText('Tenant')).toBeDisabled();
+    expect(screen.getByLabelText('Seats')).toBeDisabled();
+    expect(screen.getByLabelText('Token')).toBeDisabled();
+    expect(screen.getByRole('switch', { name: 'Beta' })).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByLabelText('Host')).toBeDisabled();
+    expect(screen.getByLabelText('Extra')).toBeDisabled();
   });
 
   test('emptying a json field removes its key instead of writing undefined', () => {

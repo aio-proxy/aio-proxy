@@ -22,7 +22,7 @@ interface SectionNavProps {
 // content container to hang `pt-8` on — the nav lives inside `PageContainer`'s `<main>` — so the lower
 // half is a margin here.
 export const SectionNav: React.FC<SectionNavProps> = ({ summaries, activeId }) => (
-  <div className="sticky top-0 z-20 mb-8 border-b bg-page-background/85 pb-2 backdrop-blur-md">
+  <div className="sticky top-0 z-20 -mx-2 mb-2 bg-page-background/90 p-2 backdrop-blur-md">
     <nav aria-label={m['dashboard.providers.editor.section_nav_label']()} className="flex gap-1 overflow-x-auto">
       {SECTION_ORDER.map((id) => (
         <a

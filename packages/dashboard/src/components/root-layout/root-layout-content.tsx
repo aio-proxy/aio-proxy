@@ -2,15 +2,27 @@ import { m } from '@aio-proxy/i18n';
 import { SidebarInset, SidebarProvider } from '@aio-proxy/ui/components/sidebar';
 import { Skeleton } from '@aio-proxy/ui/components/skeleton';
 import { Toaster } from '@aio-proxy/ui/components/toast';
-import { Outlet } from '@tanstack/react-router';
+import { Outlet, useRouterState } from '@tanstack/react-router';
 
 import { SideMenu } from '@/components/side-menu';
 import { useDashboardAuthSession } from '@/modules/auth/hooks/use-dashboard-auth-session';
 import { DashboardUnavailable } from '@/modules/auth/templates/dashboard-unavailable';
 import { LoginPage } from '@/modules/auth/templates/login-page';
 
+const standalonePath = (pathname: string): boolean =>
+  pathname === '/oauth/complete' || pathname === '/agents/authorize';
+
 export const RootLayoutContent: React.FC = () => {
   const session = useDashboardAuthSession();
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
+
+  if (standalonePath(pathname)) {
+    return (
+      <div className="min-h-dvh bg-page-background">
+        <Outlet />
+      </div>
+    );
+  }
 
   if (session.isPending) {
     return (

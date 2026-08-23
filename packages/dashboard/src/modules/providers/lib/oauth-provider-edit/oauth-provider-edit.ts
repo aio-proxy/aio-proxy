@@ -61,6 +61,7 @@ export const oauthProviderEditAction = (
         publicValues: values.publicValues,
         secrets,
         clearSecrets: [...values.clearSecrets],
+        completeUrl: `${window.location.origin}/dashboard/oauth/complete`,
         providerPatch,
       },
     };
