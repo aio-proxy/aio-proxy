@@ -81,6 +81,7 @@ export function createConfigStore(options: ConfigStoreOptions): ConfigStore {
         async (current) => {
           const providers = asProviderRecord(current['providers']);
           const nextProviders = fn(providers);
+          if (nextProviders === providers) return { next: current, result: undefined };
           staged.push(...accountRemovals.stageRemoved(providers, nextProviders));
           return { next: { ...current, providers: nextProviders }, result: undefined };
         },

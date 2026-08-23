@@ -33,6 +33,42 @@ test('reuses identity across short retry, endpoint fallback, and one forced refr
   ]);
 });
 
+test('applies catalog wire profiles on the initial envelope and the retry envelope', async () => {
+  const seen: Request[] = [];
+  const transport = new AntigravityTransport({
+    credentials: credentialSource(),
+    descriptorById: new Map([
+      [
+        'gemini-4.0-flash-preview',
+        {
+          id: 'gemini-4.0-flash-preview',
+          metadata: { antigravity: { modelEnum: 'MODEL_GEMINI_4_FLASH', maxOutputTokens: 8192 } },
+        },
+      ],
+    ]),
+    familyByWireId: () => undefined,
+    fetch: async (input, init) => {
+      seen.push(new Request(input, init));
+      if (seen.length === 1) return Response.json({}, { status: 401 });
+      return Response.json({ response: {} });
+    },
+  });
+
+  await transport.execute(executeInput({ modelId: 'gemini-4.0-flash-preview' }));
+
+  expect(seen).toHaveLength(2);
+  const envelopes = await Promise.all(seen.map((request) => request.clone().json()));
+  for (const envelope of envelopes) {
+    expect(envelope).toMatchObject({
+      model: 'gemini-4.0-flash-preview',
+      request: {
+        generationConfig: { maxOutputTokens: 8192 },
+        labels: { model_enum: 'MODEL_GEMINI_4_FLASH' },
+      },
+    });
+  }
+});
+
 test('forces refresh once and returns a second authorization failure', async () => {
   const fixture = fixtureTransport([Response.json({}, { status: 403 }), Response.json({}, { status: 401 })], []);
 

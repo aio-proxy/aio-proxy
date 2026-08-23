@@ -76,6 +76,7 @@ export function runtimeFixture(
     readonly catalog?: ModelCatalog | null;
     readonly createRuntime?: OAuthAdapter['createRuntime'];
     readonly discover?: OAuthAdapter['catalog']['discover'];
+    readonly defaultAliases?: OAuthAdapter['catalog']['defaultAliases'];
     readonly providerId?: string;
     readonly supportsProxy?: boolean;
   } = {},
@@ -128,6 +129,7 @@ export function runtimeFixture(
     catalog: {
       policy,
       discover: overrides.discover ?? (async () => fixtureCatalog ?? catalog),
+      ...(overrides.defaultAliases === undefined ? {} : { defaultAliases: overrides.defaultAliases }),
     },
     async createRuntime(context) {
       calls++;

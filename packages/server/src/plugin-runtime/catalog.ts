@@ -79,6 +79,7 @@ export function catalogFreshness(
   unavailable: Diagnostic | undefined,
 ): 'fresh' | 'stale' {
   if (unavailable !== undefined) return 'stale';
+  if (policy.kind === 'ttl' && stored.revision === 0) return 'stale';
   return policy.kind === 'ttl' && stored.refreshedAt + policy.ttlMs <= Date.now() ? 'stale' : 'fresh';
 }
 

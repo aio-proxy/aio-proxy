@@ -146,23 +146,35 @@ test('valid empty discovery never becomes snapshot-eligible', async () => {
   expect(error).toMatchObject({ kind: 'empty', snapshotEligible: false });
 });
 
-test('filters internal, denied, blank, and retired IDs but retains live effort targets', () => {
-  const catalog = normalizeDiscoveredModels({
-    chat_20706: {},
-    chat_23310: {},
-    tab_flash_lite_preview: {},
-    tab_jump_flash_lite_preview: {},
-    'gemini-2.5-pro': {},
-    internal: { isInternal: true },
-    ' ': {},
-    'gemini-3.1-pro-high': {},
-    'gemini-pro-agent': { supportsThinking: true },
-    'gemini-2.5-flash-thinking': { supportsThinking: true },
-  });
+test('filters internal, denied, blank, and deprecated old keys but retains live effort targets', () => {
+  const catalog = normalizeDiscoveredModels(
+    {
+      chat_20706: {},
+      chat_23310: {},
+      tab_flash_lite_preview: {},
+      tab_jump_flash_lite_preview: {},
+      'gemini-2.5-pro': {},
+      internal: { isInternal: true },
+      ' ': {},
+      'gemini-3.1-pro-high': {},
+      'gemini-pro-agent': { supportsThinking: true },
+      'gemini-2.5-flash-thinking': { supportsThinking: true },
+    },
+    [],
+    new Set(['gemini-3.1-pro-high']),
+  );
   expect(catalog.map(({ id }) => id)).toEqual(['gemini-2.5-flash-thinking', 'gemini-pro-agent']);
 });
 
-test('normalizes discovery capability metadata with positive defaults and web-search hints', () => {
+test('keeps a previously retired id when it is not a deprecated old key', () => {
+  const catalog = normalizeDiscoveredModels({
+    'gemini-3.1-pro-high': {},
+    'gemini-pro-agent': {},
+  });
+  expect(catalog.map(({ id }) => id)).toEqual(['gemini-3.1-pro-high', 'gemini-pro-agent']);
+});
+
+test('omits maxOutputTokens when upstream is missing or non-positive', () => {
   const [model] = normalizeDiscoveredModels(
     {
       model: {
@@ -184,22 +196,131 @@ test('normalizes discovery capability metadata with positive defaults and web-se
         supportsThinking: true,
         supportsWebSearch: true,
         contextWindow: 200_000,
-        maxOutputTokens: 64_000,
       },
     },
   });
 });
 
-test('the static snapshot contains only the seven verified wire profiles', () => {
+test('persists thinking budgets, providers, and modelEnum on descriptor metadata', () => {
+  const [model] = normalizeDiscoveredModels({
+    model: {
+      displayName: 'Model',
+      thinkingBudget: -1,
+      minThinkingBudget: 128,
+      apiProvider: 'gemini',
+      modelProvider: 'GEMINI_API',
+      model: 'MODEL_PLACEHOLDER_M99',
+      maxOutputTokens: 8192,
+    },
+  });
+  expect(model?.metadata).toEqual({
+    antigravity: {
+      supportsImages: false,
+      supportsThinking: false,
+      supportsWebSearch: false,
+      contextWindow: 200_000,
+      maxOutputTokens: 8192,
+      thinkingBudget: -1,
+      minThinkingBudget: 128,
+      apiProvider: 'gemini',
+      modelProvider: 'GEMINI_API',
+      modelEnum: 'MODEL_PLACEHOLDER_M99',
+    },
+  });
+});
+
+test('parses picker fields and attaches collapsed families on the catalog', async () => {
+  const catalog = await discoverAntigravityCatalog(context(), {
+    fetch: async () =>
+      Response.json({
+        models: {
+          'gemini-3.8-flash-low': {
+            displayName: 'Gemini 3.8 Flash (Low)',
+            apiProvider: 'gemini',
+            thinkingBudget: -1,
+          },
+          'gemini-3.8-flash-medium': { displayName: 'Gemini 3.8 Flash (Medium)', apiProvider: 'gemini' },
+          'gemini-3.8-flash-high': { displayName: 'Gemini 3.8 Flash (High)', apiProvider: 'gemini' },
+          'gemini-3.1-pro-high': { displayName: 'Gemini 3.1 Pro (High)', apiProvider: 'gemini' },
+          chat_20706: {},
+          internal: { isInternal: true },
+        },
+        agentModelSorts: [
+          {
+            displayName: 'Recommended',
+            groups: [
+              {
+                modelIds: ['gemini-3.8-flash-low', 'gemini-3.8-flash-medium', 'gemini-3.8-flash-high'],
+              },
+            ],
+          },
+        ],
+        tieredModelIds: { flash: ['gemini-3.7-flash-tiered'], flashLite: ['flash-lite'] },
+        deprecatedModelIds: { 'gemini-3.1-pro-high': { newModelId: 'gemini-pro-agent' } },
+      }),
+  });
+  expect(catalog.language.map(({ id }) => id)).toEqual([
+    'gemini-3.8-flash-high',
+    'gemini-3.8-flash-low',
+    'gemini-3.8-flash-medium',
+  ]);
+  expect(catalog.metadata).toEqual({
+    antigravityPicker: {
+      agentModelSorts: [
+        {
+          displayName: 'Recommended',
+          groups: [
+            {
+              modelIds: ['gemini-3.8-flash-low', 'gemini-3.8-flash-medium', 'gemini-3.8-flash-high'],
+            },
+          ],
+        },
+      ],
+      tieredModelIds: { flash: ['gemini-3.7-flash-tiered'], flashLite: ['flash-lite'] },
+      deprecatedModelIds: { 'gemini-3.1-pro-high': { newModelId: 'gemini-pro-agent' } },
+    },
+    antigravityFamilies: [
+      {
+        logicalId: 'gemini-3.8-flash',
+        kind: 'split',
+        thinking: { mode: 'gemini' },
+        base: 'gemini-3.8-flash-medium',
+        variants: [
+          { effort: 'low', model: 'gemini-3.8-flash-low' },
+          { effort: 'medium', model: 'gemini-3.8-flash-medium' },
+          { effort: 'high', model: 'gemini-3.8-flash-high' },
+        ],
+      },
+    ],
+  });
+  expect(catalog.language.find((model) => model.id === 'gemini-3.8-flash-low')?.metadata).toEqual({
+    antigravity: {
+      supportsImages: false,
+      supportsThinking: false,
+      supportsWebSearch: false,
+      contextWindow: 200_000,
+      thinkingBudget: -1,
+      apiProvider: 'gemini',
+    },
+  });
+});
+
+test('the static snapshot includes live-shaped wires and empty non-language modalities', () => {
   const catalog = staticAntigravityCatalog();
   expect(catalog.language.map(({ id }) => id)).toEqual([
-    'claude-opus-4-6-thinking',
-    'claude-sonnet-4-6',
-    'gemini-3-flash-agent',
-    'gemini-3.1-pro-low',
+    'gemini-3.7-flash-tiered',
+    'gemini-3.6-flash-low',
+    'gemini-3.6-flash-medium',
+    'gemini-3.6-flash-high',
+    'gemini-3.6-flash-tiered',
     'gemini-3.5-flash-extra-low',
     'gemini-3.5-flash-low',
+    'gemini-3-flash-agent',
+    'gemini-3.1-pro-low',
     'gemini-pro-agent',
+    'claude-sonnet-4-6',
+    'claude-opus-4-6-thinking',
+    'gpt-oss-120b',
   ]);
   expect(emptyModalities(catalog)).toBe(true);
 });

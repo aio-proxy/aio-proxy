@@ -43,6 +43,13 @@
       "when": 1787083597461,
       "tag": "0005_material_xavin",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1787258060254,
+      "tag": "0006_furry_mastermind",
+      "breakpoints": true
     }
   ]
 }

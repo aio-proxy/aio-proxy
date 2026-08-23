@@ -9,12 +9,9 @@
 
 **2026-08-21 a.** 产品决定：新生成 alias / variant **不保留原始模型 ID**。`preserve` 一律 `false`。客户端只认 logical alias + effort 维度；被当成 target 的 wire slug 不再独立可路由。
 
-**2026-08-21 b.** 第二轮 Codex 仍开的实现洞：
+**2026-08-21 b.** 第二轮：OpenAI reasoning 在 codec 之前截住；`minimal` 仅 `-extra-low`；re-login 先提交 catalog 再 insert-only。
 
-- OpenAI `reasoning` 必须在 Google codec **之前**收成插件 thinking，禁止从 codec 写出来的 `thinkingLevel` / `thinkingBudget` 反推 effort（`none → minimal`、非 `gemini-3*` 会变数字 budget）。
-- `minimal` 只对当前 wire id 以 `-extra-low` 结尾成立；不得用「有正数 thinkingBudget」当门闩。
-- catalog 写入改为 `compareAndSwapCatalog`；merge 必须核对仍是自己写下的 `refreshedAt`。
-- TTL 回调带 plugin / capability / `defaultAliases`；re-login 的 catalog 提交与 alias insert 拆开，insert 失败不得拖垮 catalog。
+**2026-08-21 c.** 第三轮：TTL fence 必须同时卡住 **账号世代** 与 **pending account operation**。`runtimeRevision` 只在 login/re-login 的 `stageAccountOperation` 递增，credential refresh 只加 `revision`。先前「不要用 runtimeRevision」写错了。所有权 token 用单调 `catalog.revision`，不用毫秒 `refreshedAt`。Gemini `same-wire` 的 thinking 跟 `tiered`。
 
 ## 背景
 
@@ -64,7 +61,7 @@
 | Deprecated | 以响应 `deprecatedModelIds` 为准，不再手写 retired 集合 |
 | Alias 写入 | 新建账号：全量 suggestions。re-login 与 TTL refresh：**insert-only**，且在 catalog 提交之后 |
 | Host 范围 | insert-only 对所有带 `defaultAliases` 的 OAuth 插件生效（含 Cursor） |
-| Catalog 并发 | `compareAndSwapCatalog`：仅当已有 `refreshedAt < startedAt`（或无行）才写入 |
+| Catalog 并发 | TTL CAS：无 pending account op，且 `runtimeRevision` 仍是 job 捕获值，且 `refreshedAt < startedAt`；所有权看 `catalog.revision` |
 
 ## 发现契约
 
@@ -114,7 +111,7 @@ Picker 输入与折叠结果写在 `ModelCatalog.metadata`（不是公开 `/v1/m
 
 - 命中：family stem = 捕获组 1，effort = 捕获组 2 的小写（`low` / `medium` / `high`）。同一 stem 的多个 slug 合成一个 family。同一 effort 出现多个 slug 时：优先仍在 picker 名单中的 id，其次 `deprecatedModelIds` 的 `newModelId`，再其次字典序较小者。`kind = split`。
 - 未命中且 id 以 `-tiered` 结尾：自成 family，三个 effort 都指向该 id，`kind = tiered`。
-- 未命中且不是 `-tiered`：自成 family，`kind = same-wire`，写出 low/medium/high 三行且都指向该 id（Claude `(Thinking)` 走这条）。
+- 未命中且不是 `-tiered`：自成 family，`kind = same-wire`，写出 low/medium/high 三行且都指向该 id（Claude `(Thinking)` 走这条）。Gemini `same-wire` 的 thinking 与 `tiered` 相同：三档都允许指向该 wire。
 - 命中正则但只有一档（如 `GPT-OSS 120B (Medium)`）仍走第一条，只发出实际存在的那一档，不补另外两档。
 
 丢弃规则（先算完所有候选，再按 logicalId 去重）：
@@ -183,7 +180,7 @@ Runtime 已经持有 `RuntimeContext.catalog`。查 family 用 `metadata.antigra
 
 - 入站 effort 规范化为小写。`xhigh` 按 core reasoning ladder 折成 `high`。其它不在 `{ off, none, minimal, low, medium, high }` 的值拒绝。
 - `split`：该 effort 对应的 variant.model 必须等于当前 wire id，否则拒绝。`minimal` / `off` / `none` 不走这条 variant 表（见下方兼容）。
-- `tiered`：`low` / `medium` / `high` 都允许指向同一 wire。
+- `tiered` 与 Gemini `same-wire`：`low` / `medium` / `high` 都允许指向同一 wire。
 - budget：descriptor `thinkingBudget` 为正数则写成 CCA `thinkingBudget`；缺失或 `-1` 则把规范化后的 `thinkingLevel` 留给上游，不编 10000 这类手写数。`split` 与 `tiered` 同一条规则。
 - 不在任何 family 中的 Gemini wire：不按 variant 表拒绝；`low`/`medium`/`high` 有正数 `thinkingBudget` 则用它，否则保持上游字段。
 
@@ -251,34 +248,48 @@ raw Gemini：继续在 `normalizeGeminiThinking` 里用 body 的 `thinkingLevel`
 2. helper 仍拒绝指向 catalog 中不存在的 target。
 3. 按「alias 底图」做 insert-only。
 4. catalog CAS 成功优先：merge 失败只记日志，不得回滚 catalog、不得标 `CATALOG_UNAVAILABLE`。
-5. `CatalogScheduler` 注入 `mergeDefaultAliases(providerId, catalog, identity)`。`identity` 至少含 `plugin`、`capability`、`writtenRefreshedAt`。回调走与 Dashboard 改 alias 相同的 config 事务；有插入则随后 `rebuild`。
-6. 事务内：账号不存在、或 `plugin`/`capability` 与当前 provider / account 不一致 → **跳过 merge**。不要用 `runtimeRevision` 精确相等（credential refresh 会变）。
-7. 事务内再 `readCatalog`：若 `refreshedAt !== writtenRefreshedAt`，跳过 merge（re-login 已写入更新 catalog）。
-8. `CatalogScheduler` 可以早于 `ConfigStore` 构造。回调必须晚绑定：store 尚未 ready 时 **跳过 merge**（catalog 已写入），不得抛错、不得阻塞 refresh。
+5. `CatalogScheduler` 注入 `mergeDefaultAliases(providerId, catalog, identity)`。`identity` 至少含 `plugin`、`capability`、`accountRuntimeRevision`、`writtenCatalogRevision`。回调走与 Dashboard 改 alias 相同的 config 事务；有插入则随后 `rebuild`。
+6. 事务内跳过 merge 若：账号不存在；`plugin`/`capability` 不一致；存在 pending account operation；`account.runtimeRevision !== accountRuntimeRevision`；`stored.revision !== writtenCatalogRevision`。
+7. `CatalogScheduler` 可以早于 `ConfigStore` 构造。回调必须晚绑定：store 尚未 ready 时 **跳过 merge**（catalog 已写入），不得抛错、不得阻塞 refresh。
 
 `CatalogJobDescriptor` 增补（materialize 时从当前 adapter / account 填入）：
 
 - `plugin` / `capability`
+- `accountRuntimeRevision`：当时账号的 `runtimeRevision`（login/re-login 世代；credential refresh 不增加它）
 - `defaultAliases`：`adapter.catalog.defaultAliases` 的绑定函数；没有则 TTL 只写 catalog
 
 re-login 测试从「不调用 `defaultAliases`」改为「catalog 提交不依赖 suggestions；提交后 insert-only，且不得覆盖已有 key」。另测：`defaultAliases` 抛错时 catalog / credential 仍提交。
 
 ### Catalog generation fence
 
-`PluginRepository` 增加原子方法，现有无条件 `writeCatalog` 留给 re-login 账号事务（用户发起的 discover 覆盖过期 TTL）：
+`StoredCatalog` 增加单调 `revision`（每成功写一次 +1；旧行视为 0）。`refreshedAt` 仍是时间，**不作**所有权 token。
+
+凡是替换 catalog 行的路径都必须分配 **新的** `revision = (current ?? 0) + 1`，包括 re-login 的 `applyCatalog`、compensation 的 `replaceCatalog`、以及公开 `writeCatalog` / `compareAndSwapCatalog`。回滚恢复的是 catalog **内容**，不得把 `revision` 倒回去（否则 TTL 的 `writtenCatalogRevision` 会撞号）。
+
+`PluginRepository` 增加原子方法。现有无条件 `writeCatalog` 只给 re-login 账号事务用（用户发起的 discover 覆盖过期 TTL），且每次写入也 +1 `revision`。
 
 ```text
-compareAndSwapCatalog(providerId, catalog, refreshedAt, startedAt): boolean
+compareAndSwapCatalog(input): { ok: false } | { ok: true, revision: number }
+input = {
+  providerId, catalog, refreshedAt, startedAt,
+  plugin, capability, accountRuntimeRevision
+}
 ```
 
-在同一 SQLite 事务里：无行或 `stored.refreshedAt < startedAt` 才 `replace`；否则返回 `false`。禁止 read-再-write。
+同一 SQLite 事务里全部检查后才写（禁止 read-再-write）：
+
+1. 该 `providerId` **没有** pending account operation。
+2. 账号存在，且 `plugin`/`capability`/`runtimeRevision` 与 input 一致。
+3. 无 catalog 行，或 `stored.refreshedAt < startedAt`。
+4. 成功则 `revision = (stored.revision ?? 0) + 1`，写入 catalog，并 `clearDiagnostic(CATALOG_UNAVAILABLE)`。失败返回 `{ ok: false }`，**不得**写 catalog，也不得写/清 diagnostic。
+
+TTL 失败路径不得再直接 `writeDiagnostic`。增加同一事务方法 `writeCatalogUnavailableIfCurrent(input)`：检查 pending op、plugin/capability/`runtimeRevision` 与账号仍在之后才 upsert `CATALOG_UNAVAILABLE`；失败则 no-op。否则会改 pending 操作的 child snapshot，补偿变成 `superseded` 而滚不回去。
 
 TTL：
 
-1. 开始 discover **之前** 记下 `startedAt`。
-2. discover 成功后调用 `compareAndSwapCatalog(..., now(), startedAt)`。`false` → 跳过 merge。
-3. `true` → `writtenRefreshedAt =` 刚才写入的 `now()`，再 merge。merge 前按上面第 7 条再核对 `refreshedAt`。
-4. `replaceJobs` 仍用现有 generation 中止被替换的 in-flight job。CAS 补的是「re-login 已写更新 catalog，TTL 描述符还没被 replace」以及「read 与 write 之间插入更新写入」。
+1. 开始 discover **之前** 记下 `startedAt`。job 已带 `accountRuntimeRevision`。
+2. 成功：`compareAndSwapCatalog(...)`。`ok: false` → 跳过 merge。`ok: true` → 用返回的 `revision` 做 merge 所有权。
+3. `replaceJobs` 仍用现有 generation 中止被替换的 in-flight job。
 
 ## 静态 snapshot
 
@@ -299,8 +310,10 @@ snapshot 仍只用于首次登录的可重试发现失败。必须能走 **同�
 - denylist / internal / deprecated old id 不进 catalog、不当 alias target。
 - first-login 仍拒绝缺 target 的 suggestion。
 - re-login：账号事务不调用 `defaultAliases`；提交后已有 key 不变，新 logical id 被插入。`providerPatch.alias` 作为底图后再 insert-only。`defaultAliases` 抛错时 catalog / credential 仍在。
-- catalog refresh：insert-only；merge 抛错时 catalog 仍更新；config store 未 ready 时只写 catalog。plugin/capability 不匹配或 `refreshedAt` 已变则不 insert。
-- `compareAndSwapCatalog`：已有 `refreshedAt >= startedAt` 时不覆盖；并发插入更新 `refreshedAt` 时旧 writer 失败。
+- catalog refresh：insert-only；merge 抛错时 catalog 仍更新；config store 未 ready 时只写 catalog。plugin/capability/`runtimeRevision` 不匹配、有 pending op、或 `catalog.revision` 已变则不 insert。
+- `compareAndSwapCatalog`：已有 `refreshedAt >= startedAt`、`runtimeRevision` 已变、或存在 pending account op 时不覆盖、不写 diagnostic。
+- re-login 进行中（pending update，且 discover 失败保留旧 `refreshedAt`）时，旧 TTL job 不得写入 catalog / diagnostic。
+- Gemini `same-wire` + `thinkingLevel=high` 与 `tiered` 一样放行（同一 wire）。
 - Gemini split：`thinkingLevel` 与当前 wire 的 effort 不一致则拒绝；一致且 catalog budget 为正数则使用该 budget。
 - Gemini tiered + `thinkingBudget: -1`：请求带上 `thinkingLevel`，不编造正数 budget。
 - 旧 3.5 alias 的 `minimal`（打到 `…-extra-low`）/ `off` 仍能出正确 CCA thinking。
@@ -322,4 +335,4 @@ plugin 行为变更 + 宿主 alias 写入规则变更。Changeset：`@aio-proxy/
 ## 实现顺序
 
 1. 插件：parse 字段、collapse、aliases（`preserve: false`）、thinking mapper、**codec 之前**收 OpenAI reasoning、envelope 改读 catalog、snapshot / picker metadata、fixture 测试。此步即可让 **新登录** 跟上上游。
-2. 宿主：`compareAndSwapCatalog`；抽出 alias helper；re-login 先提交 catalog 再 insert-only；TTL 回调带 plugin/capability/`defaultAliases`。此步让 **已有账号** 在 TTL 后得到新 logical id。
+2. 宿主：`StoredCatalog.revision` + `compareAndSwapCatalog`（含 `runtimeRevision` / pending op fence）；抽出 alias helper；re-login 先提交 catalog 再 insert-only。此步让 **已有账号** 在 TTL 后得到新 logical id。

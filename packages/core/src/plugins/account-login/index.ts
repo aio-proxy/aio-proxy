@@ -23,6 +23,7 @@ export {
   type RenderAccountOptions,
   type RenderAccountOptionsInput,
 } from './login';
+export { capabilityOf, sameCapability, structuredEntry } from './validation';
 export {
   ABSENT_PROVIDER_DIGEST,
   type DeleteOAuthAccountOptions,

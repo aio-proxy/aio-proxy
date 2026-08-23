@@ -1,11 +1,12 @@
-import type { LogicalRequestContext, RuntimeFetch } from '@aio-proxy/plugin-sdk';
+import type { LogicalRequestContext, ModelDescriptor, RuntimeFetch } from '@aio-proxy/plugin-sdk';
 
+import type { AntigravityFamily } from '../catalog/collapse';
 import { ANTIGRAVITY_DAILY, ANTIGRAVITY_PROD } from '../oauth/constants';
 import { antigravityReplayCache, type ReasoningReplayCache } from '../protocol/replay-cache';
 import type { GoogleAntigravityAccountOptions } from '../schema';
 import type { AntigravityCredentialSource } from './credential';
 import { antigravityEndpoints } from './endpoints';
-import { type CcaRequestType, createCcaEnvelope } from './envelope';
+import { type CcaRequestType, type CcaWireLookups, createCcaEnvelope } from './envelope';
 import { hasExplicitNoCapacity } from './error-response';
 import { type AntigravityEndpointCategory, type AntigravityFailureReason, AntigravityUpstreamError } from './errors';
 import { createCcaHeaders } from './headers';
@@ -33,6 +34,8 @@ export type AntigravityTransportDependencies = {
   readonly fetch?: RuntimeFetch;
   readonly replayCache?: ReasoningReplayCache;
   readonly sleep?: (milliseconds: number) => Promise<void>;
+  readonly descriptorById?: ReadonlyMap<string, ModelDescriptor>;
+  readonly familyByWireId?: (modelId: string) => AntigravityFamily | undefined;
 };
 
 export type CcaTransport = {
@@ -45,6 +48,7 @@ export class AntigravityTransport implements CcaTransport {
   readonly #fetch: RuntimeFetch;
   readonly #replayCache: ReasoningReplayCache;
   readonly #sleep: (milliseconds: number) => Promise<void>;
+  readonly #lookups: CcaWireLookups;
 
   constructor(dependencies: AntigravityTransportDependencies) {
     this.#credentials = dependencies.credentials;
@@ -52,6 +56,10 @@ export class AntigravityTransport implements CcaTransport {
     this.#fetch = dependencies.fetch ?? globalThis.fetch;
     this.#replayCache = dependencies.replayCache ?? antigravityReplayCache;
     this.#sleep = dependencies.sleep ?? Bun.sleep;
+    this.#lookups = {
+      descriptorById: dependencies.descriptorById ?? new Map(),
+      familyByWireId: dependencies.familyByWireId ?? (() => undefined),
+    };
   }
 
   async execute(input: AntigravityExecuteInput): Promise<Response> {
@@ -60,7 +68,7 @@ export class AntigravityTransport implements CcaTransport {
     throwIfCallerAborted(input.signal);
     const scope = this.#replayCache.begin(input.modelId, input.context.session.key, input.context.requestId);
     const replayBody = prepareReasoningReplay(input.body, input.modelId, this.#replayCache.read(scope.key));
-    let body = JSON.stringify(createCcaEnvelope({ ...input, body: replayBody, credential }));
+    let body = JSON.stringify(createCcaEnvelope({ ...input, ...this.#lookups, body: replayBody, credential }));
     let authRefreshUsed = false;
     let lastFailure: AntigravityUpstreamError | undefined;
     let signatureRetryUsed = false;
@@ -113,7 +121,7 @@ export class AntigravityTransport implements CcaTransport {
           this.#replayCache.clear(scope);
           await discard(response);
           signatureRetryUsed = true;
-          body = JSON.stringify(createCcaEnvelope({ ...input, credential, body: input.body }));
+          body = JSON.stringify(createCcaEnvelope({ ...input, ...this.#lookups, credential, body: input.body }));
           continue;
         }
 

@@ -1,8 +1,8 @@
 import type { GoogleProviderSettings } from '@ai-sdk/google';
-import type { JsonValue, LogicalRequestContext, ProviderExecutedTool } from '@aio-proxy/plugin-sdk';
+import type { JsonValue, LogicalRequestContext, ModelCatalog, ProviderExecutedTool } from '@aio-proxy/plugin-sdk';
 
 import { repairGroundingSse, repairGroundingUrls } from '../protocol/grounding-urls';
-import { type AntigravityThinkingOption, applyAntigravityThinking } from '../protocol/thinking';
+import { type AntigravityThinkingOption, bindAntigravityThinking } from '../protocol/thinking';
 import { AntigravityToolSchemaValidationError } from '../protocol/tool-schema';
 import { ccaGoogleSearch, ccaWebSearchInstruction } from '../protocol/web-search';
 import { createGeminiErrorResponse, unwrapCcaJson } from './raw';
@@ -10,11 +10,13 @@ import { unwrapCcaSse } from './stream';
 import type { CcaTransport } from './transport';
 
 export type AntigravityGoogleFetchContext = {
+  readonly catalog?: ModelCatalog;
   readonly context: LogicalRequestContext;
   readonly fetch?: typeof globalThis.fetch;
   readonly modelMetadata?: JsonValue;
   readonly providerTools?: readonly ProviderExecutedTool[];
   readonly thinking?: AntigravityThinkingOption;
+  readonly thinkingBinder?: ReturnType<typeof bindAntigravityThinking>;
   readonly transport: CcaTransport;
 };
 
@@ -26,7 +28,7 @@ export function createAntigravityGoogleFetch(
     const request = new Request(input, init);
     const target = parseGoogleTarget(request.url, modelId);
     const body = applyProviderTools(
-      applyPrivateThinking(await readGoogleBody(request), modelId, call.thinking),
+      applyPrivateThinking(await readGoogleBody(request), modelId, call),
       call.providerTools,
       call.modelMetadata,
     );
@@ -117,15 +119,17 @@ function repairDependencies(call: AntigravityGoogleFetchContext, signal: AbortSi
 function applyPrivateThinking(
   body: Record<string, unknown>,
   modelId: string,
-  thinking: AntigravityThinkingOption | undefined,
+  call: AntigravityGoogleFetchContext,
 ): Record<string, unknown> {
-  if (thinking === undefined) return body;
+  if (call.thinking === undefined) return body;
+  const apply =
+    call.thinkingBinder?.applyAntigravityThinking ?? bindAntigravityThinking(call.catalog).applyAntigravityThinking;
   const generationConfig = record(Reflect.get(body, 'generationConfig'));
   return {
     ...body,
     generationConfig: {
       ...generationConfig,
-      thinkingConfig: applyAntigravityThinking(modelId, thinking),
+      thinkingConfig: apply(modelId, call.thinking),
     },
   };
 }

@@ -19,7 +19,28 @@ export type StoredAccount = {
 };
 
 export type StoredAccountSummary = Omit<StoredAccount, 'options' | 'secrets' | 'credential'>;
-export type StoredCatalog = { readonly catalog: ModelCatalog; readonly refreshedAt: number };
+export type StoredCatalog = {
+  readonly catalog: ModelCatalog;
+  readonly refreshedAt: number;
+  readonly revision: number;
+};
+export type CatalogWrite = Omit<StoredCatalog, 'revision'>;
+export type CompareAndSwapCatalogInput = {
+  readonly providerId: string;
+  readonly catalog: ModelCatalog;
+  readonly refreshedAt: number;
+  readonly startedAt: number;
+  readonly plugin: string;
+  readonly capability: string;
+  readonly accountRuntimeRevision: number;
+};
+export type WriteCatalogUnavailableIfCurrentInput = {
+  readonly providerId: string;
+  readonly plugin: string;
+  readonly capability: string;
+  readonly accountRuntimeRevision: number;
+  readonly diagnostic: Diagnostic;
+};
 
 export type PendingAccountOperation = {
   readonly operationId: string;
@@ -42,7 +63,7 @@ export type AccountWrite = {
   readonly label?: string;
   readonly expiresAt?: number;
   readonly catalog:
-    | { readonly kind: 'replace'; readonly value: StoredCatalog }
+    | { readonly kind: 'replace'; readonly value: CatalogWrite }
     | { readonly kind: 'preserve'; readonly diagnostic: Diagnostic }
     | { readonly kind: 'missing'; readonly diagnostic: Diagnostic };
 };
@@ -81,6 +102,10 @@ export type PluginRepository = {
   readonly listAccounts: () => readonly StoredAccountSummary[];
   readonly readCatalog: (providerId: string) => StoredCatalog | null;
   readonly writeCatalog: (providerId: string, catalog: ModelCatalog, refreshedAt: number) => void;
+  readonly compareAndSwapCatalog: (
+    input: CompareAndSwapCatalogInput,
+  ) => { readonly ok: false } | { readonly ok: true; readonly revision: number };
+  readonly writeCatalogUnavailableIfCurrent: (input: WriteCatalogUnavailableIfCurrentInput) => boolean;
   readonly readDiagnostics: (providerId: string) => readonly Diagnostic[];
   readonly writeDiagnostic: (providerId: string, diagnostic: Diagnostic) => boolean;
   readonly clearDiagnostic: (providerId: string, code: DiagnosticCode) => boolean;

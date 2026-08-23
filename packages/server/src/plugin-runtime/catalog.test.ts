@@ -2,9 +2,53 @@ import { afterEach, expect, test } from 'bun:test';
 
 import { ProviderKind } from '@aio-proxy/types';
 
-import { cleanup, diagnostics, materializePluginProvider, runtimeFixture } from './test-support';
+import { catalogFreshness } from './catalog';
+import { catalog, cleanup, diagnostics, materializePluginProvider, runtimeFixture } from './test-support';
 
 afterEach(cleanup);
+
+test('a migrated catalog with revision 0 is stale even inside the TTL window', () => {
+  expect(
+    catalogFreshness(
+      { kind: 'ttl', ttlMs: 6 * 60 * 60_000 },
+      { catalog, refreshedAt: Date.now(), revision: 0 },
+      undefined,
+    ),
+  ).toBe('stale');
+});
+
+test('a migrated static catalog with revision 0 stays fresh', () => {
+  expect(catalogFreshness({ kind: 'static' }, { catalog, refreshedAt: Date.now(), revision: 0 }, undefined)).toBe(
+    'fresh',
+  );
+});
+
+test('materialize binds plugin capability runtimeRevision and defaultAliases onto the catalog job', async () => {
+  const defaultAliases = () => ({ logical: { model: 'model' } });
+  const fixture = runtimeFixture({ kind: 'ttl', ttlMs: 1 }, { defaultAliases });
+  const account = fixture.repository.readAccount('person');
+
+  const result = await materializePluginProvider({
+    config: {
+      id: 'person',
+      kind: ProviderKind.OAuth,
+      enabled: true,
+      plugin: '@example/oauth',
+      capability: 'default',
+    },
+    plugins: fixture.plugins,
+    repository: fixture.repository,
+    diagnostics,
+    logger: () => {},
+    onDiagnosticChanged: () => {},
+  });
+
+  expect(result.catalogJob?.plugin).toBe('@example/oauth');
+  expect(result.catalogJob?.capability).toBe('default');
+  expect(result.catalogJob?.accountRuntimeRevision).toBe(account?.runtimeRevision);
+  expect(result.catalogJob?.defaultAliases).toBeDefined();
+  expect(result.catalogJob?.defaultAliases?.(catalog)).toEqual({ logical: { model: 'model' } });
+});
 
 test('an expired TTL catalog is ready but stale before a refresh diagnostic exists', async () => {
   const fixture = runtimeFixture({ kind: 'ttl', ttlMs: 1 });

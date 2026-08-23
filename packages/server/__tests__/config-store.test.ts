@@ -40,6 +40,26 @@ describe('createConfigStore mutex', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
+  test('returning the input providers object does not write or verify', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'aio-store-noop-'));
+    const configPath = join(dir, 'config.json');
+    const original = JSON.stringify({ providers: { a: { kind: 'api' } } }, null, 2);
+    writeFileSync(configPath, original);
+    let verifies = 0;
+    const store = createConfigStore({
+      getConfigPath: () => configPath,
+      verify: async () => {
+        verifies += 1;
+      },
+    });
+
+    await store.mutateProviders((providers) => providers);
+
+    expect(readFileSync(configPath, 'utf8')).toBe(original);
+    expect(verifies).toBe(0);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
   test('rejects and rolls back to the prior config when reload reports failure', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'aio-store-'));
     const configPath = join(dir, 'config.json');
