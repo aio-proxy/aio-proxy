@@ -5,7 +5,7 @@ import { Card, CardContent } from '@aio-proxy/ui/components/card';
 import { Empty } from '@aio-proxy/ui/components/empty';
 import { Skeleton } from '@aio-proxy/ui/components/skeleton';
 import { Link } from '@tanstack/react-router';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 
 import { PageContainer } from '@/components/page-container';
 
@@ -16,8 +16,16 @@ import { useRoutingQuery } from '../hooks/use-routing-query';
 export const RoutingPage: React.FC = () => {
   const query = useRoutingQuery();
   const [selected, setSelected] = useState<DashboardRoutingModel | null>(null);
+  const editorGeneration = useRef(0);
   const models = query.data?.models ?? [];
   const writable = query.data?.writable ?? false;
+
+  const selectModel = (model: DashboardRoutingModel | null) => {
+    setSelected((current) => {
+      if (current?.modelId !== model?.modelId) editorGeneration.current += 1;
+      return model;
+    });
+  };
 
   const content = (() => {
     if (query.isLoading) {
@@ -49,7 +57,7 @@ export const RoutingPage: React.FC = () => {
         </Empty>
       );
     }
-    return <RoutingTable models={models} onEdit={setSelected} />;
+    return <RoutingTable models={models} onEdit={selectModel} />;
   })();
 
   return (
@@ -71,12 +79,16 @@ export const RoutingPage: React.FC = () => {
         model={selected}
         writable={writable}
         onOpenChange={(open) => {
-          if (!open) setSelected(null);
+          if (!open) selectModel(null);
         }}
         onReload={async () => {
+          const generation = editorGeneration.current;
+          const initiatedId = selected?.modelId;
+          if (initiatedId === undefined) return null;
           const result = await query.refetch();
-          if (selected === null) return null;
-          const next = result.data?.models.find((model) => model.modelId === selected.modelId) ?? selected;
+          if (editorGeneration.current !== generation) return null;
+          const next = result.data?.models.find((model) => model.modelId === initiatedId);
+          if (next === undefined) return null;
           setSelected(next);
           return next;
         }}

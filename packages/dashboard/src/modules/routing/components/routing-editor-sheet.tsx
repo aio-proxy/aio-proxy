@@ -9,7 +9,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@aio-proxy/ui/components/sheet';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 
 import { reconcileRoutingFormRows, routingDraftRecord, useRoutingForm } from '../hooks/use-routing-form';
 import { useRoutingMutation } from '../hooks/use-routing-mutation';
@@ -32,6 +32,7 @@ interface RoutingEditorSheetProps {
 export const RoutingEditorSheet: React.FC<RoutingEditorSheetProps> = ({ model, writable, onOpenChange, onReload }) => {
   const mutation = useRoutingMutation();
   const [stale, setStale] = useState(false);
+  const reloadGeneration = useRef(0);
   const form = useRoutingForm(model, (value) => {
     if (model === null) return;
     mutation.mutate(
@@ -55,14 +56,18 @@ export const RoutingEditorSheet: React.FC<RoutingEditorSheetProps> = ({ model, w
   });
 
   const close = () => {
+    reloadGeneration.current += 1;
     setStale(false);
     mutation.reset();
     onOpenChange(false);
   };
 
   const reloadEditor = () => {
+    const generation = ++reloadGeneration.current;
+    const initiatedId = model?.modelId;
     void Promise.resolve(onReload()).then((next) => {
-      if (next == null) return;
+      if (generation !== reloadGeneration.current) return;
+      if (next == null || next.modelId !== initiatedId) return;
       form.setFieldValue('providers', reconcileRoutingFormRows(form.getFieldValue('providers') ?? [], next));
     });
   };

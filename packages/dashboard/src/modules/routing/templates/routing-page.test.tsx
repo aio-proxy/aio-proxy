@@ -395,3 +395,142 @@ test('explicit reload drops a disappeared Provider from the visible Save payload
     expect.objectContaining({ providers: expect.objectContaining({ gone: expect.anything() }) }),
   );
 });
+
+const deferRefetch = () => {
+  let resolveRefetch!: (value: { data: DashboardRoutingModelsResponse | undefined }) => void;
+  const pending = new Promise<{ data: DashboardRoutingModelsResponse | undefined }>((resolve) => {
+    resolveRefetch = resolve;
+  });
+  mocks.query.refetch.mockImplementation(() => pending);
+  return () => resolveRefetch({ data: mocks.query.data });
+};
+
+test('pending Reload does not reopen the editor after it is closed', async () => {
+  mocks.mutate.mockImplementation((_body: unknown, callbacks?: { onError?: (error: Error) => void }) => {
+    const error = Object.assign(new Error('stale routing model'), { code: 'stale_revision' });
+    mocks.mutationError = error;
+    callbacks?.onError?.(error);
+  });
+  mocks.query.data = {
+    writable: true,
+    models: [
+      model({
+        modelId: 'model-a',
+        revision: 'rev-1',
+        baselineProviderIds: ['a-provider'],
+        providers: [provider({ id: 'a-provider' })],
+      }),
+    ],
+  };
+  const resolveRefetch = deferRefetch();
+
+  render(<RoutingPage />);
+  fireEvent.click(
+    within(screen.getByTestId('routing-row-model-a')).getByRole('button', { name: /Edit|編集|편집|编辑|編輯/u }),
+  );
+  fireEvent.change(screen.getByTestId('routing-override-weight-a-provider'), { target: { value: '9' } });
+  fireEvent.click(screen.getByTestId('routing-save'));
+  expect(await screen.findByRole('button', { name: /Reload|再読|다시|重新|重新/u })).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole('button', { name: /Reload|再読|다시|重新|重新/u }));
+  fireEvent.click(screen.getByRole('button', { name: /Cancel|キャンセル|취소|取消/u }));
+  expect(screen.queryByTestId('routing-editor-sheet')).not.toBeInTheDocument();
+
+  mocks.query.data = {
+    writable: true,
+    models: [
+      model({
+        modelId: 'model-a',
+        revision: 'rev-2',
+        baselineProviderIds: ['a-provider'],
+        providers: [provider({ id: 'a-provider' })],
+      }),
+    ],
+  };
+  await act(async () => {
+    resolveRefetch();
+  });
+
+  expect(screen.queryByTestId('routing-editor-sheet')).not.toBeInTheDocument();
+});
+
+test('pending Reload for one model does not replace another open editor draft', async () => {
+  mocks.mutate.mockImplementation((_body: unknown, callbacks?: { onError?: (error: Error) => void }) => {
+    const error = Object.assign(new Error('stale routing model'), { code: 'stale_revision' });
+    mocks.mutationError = error;
+    callbacks?.onError?.(error);
+  });
+  mocks.query.data = {
+    writable: true,
+    models: [
+      model({
+        modelId: 'model-a',
+        revision: 'rev-a-1',
+        baselineProviderIds: ['a-provider'],
+        providers: [overriddenProvider('a-provider', 10, 1000)],
+      }),
+      model({
+        modelId: 'model-b',
+        revision: 'rev-b-1',
+        baselineProviderIds: ['b-provider'],
+        providers: [overriddenProvider('b-provider', 20, 2000)],
+      }),
+    ],
+  };
+  const resolveRefetch = deferRefetch();
+
+  render(<RoutingPage />);
+  fireEvent.click(
+    within(screen.getByTestId('routing-row-model-a')).getByRole('button', { name: /Edit|編集|편집|编辑|編輯/u }),
+  );
+  fireEvent.click(screen.getByTestId('routing-save'));
+  expect(await screen.findByRole('button', { name: /Reload|再読|다시|重新|重新/u })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: /Reload|再読|다시|重新|重新/u }));
+
+  fireEvent.click(
+    within(screen.getByTestId('routing-row-model-b')).getByRole('button', {
+      hidden: true,
+      name: /Edit|編集|편집|编辑|編輯/u,
+    }),
+  );
+  expect(screen.getByTestId('routing-override-weight-b-provider')).toHaveValue(2000);
+  fireEvent.change(screen.getByTestId('routing-override-weight-b-provider'), { target: { value: '7' } });
+
+  mocks.query.data = {
+    writable: true,
+    models: [
+      model({
+        modelId: 'model-a',
+        revision: 'rev-a-2',
+        baselineProviderIds: ['a-provider', 'added'],
+        providers: [overriddenProvider('a-provider', 10, 1000), overriddenProvider('added', 30, 4000)],
+      }),
+      model({
+        modelId: 'model-b',
+        revision: 'rev-b-1',
+        baselineProviderIds: ['b-provider'],
+        providers: [overriddenProvider('b-provider', 20, 2000)],
+      }),
+    ],
+  };
+  await act(async () => {
+    resolveRefetch();
+  });
+
+  expect(screen.getByTestId('routing-override-weight-b-provider')).toHaveValue(7);
+  expect(screen.queryByTestId('routing-override-weight-a-provider')).not.toBeInTheDocument();
+  expect(screen.queryByTestId('routing-provider-added')).not.toBeInTheDocument();
+
+  fireEvent.click(screen.getByTestId('routing-save'));
+  await waitFor(() => {
+    expect(mocks.mutate).toHaveBeenCalledWith(
+      {
+        modelId: 'model-b',
+        revision: 'rev-b-1',
+        baselineProviderIds: ['b-provider'],
+        providers: { 'b-provider': { priority: 20, weight: 7 } },
+      },
+      expect.any(Object),
+    );
+  });
+});
