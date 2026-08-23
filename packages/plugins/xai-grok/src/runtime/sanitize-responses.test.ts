@@ -71,6 +71,18 @@ describe('sanitizeXAIGrokResponsesBody', () => {
     });
   });
 
+  test('leaves a top-level automation_update tool unchanged', () => {
+    const tool = {
+      type: 'function',
+      name: 'automation_update',
+      strict: true,
+      parameters: { type: 'object', properties: { cron: { type: 'string' } } },
+    };
+    const cleaned = decode(sanitizeXAIGrokResponsesBody(encode({ tools: [tool] })));
+
+    expect(cleaned.tools).toEqual([tool]);
+  });
+
   test('leaves invalid JSON unchanged', () => {
     const original = new TextEncoder().encode('{not-json');
     expect(sanitizeXAIGrokResponsesBody(original)).toEqual(original);

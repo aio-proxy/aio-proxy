@@ -25,21 +25,22 @@ export function sanitizeXAIGrokResponsesBody(bytes: Uint8Array): Uint8Array {
   }
 }
 
-function sanitizeTools(tools: unknown): void {
+function sanitizeTools(tools: unknown, namespace?: string): void {
   if (!Array.isArray(tools)) return;
   for (const tool of tools) {
     if (typeof tool !== 'object' || tool === null) continue;
     const record = tool as Record<string, unknown>;
-    if (record.type === 'namespace' && record.name === 'codex_app') sanitizeTools(record.tools);
-    if (isAutomationUpdate(record)) {
+    if (record.type === 'namespace' && record.name === 'codex_app') sanitizeTools(record.tools, 'codex_app');
+    if (isAutomationUpdate(record, namespace)) {
       record.parameters = { ...SAFE_PARAMETERS };
       if (record.strict === true) record.strict = false;
     }
   }
 }
 
-function isAutomationUpdate(tool: Record<string, unknown>): boolean {
+function isAutomationUpdate(tool: Record<string, unknown>, namespace?: string): boolean {
   return (
-    tool.type === 'function' && (tool.name === 'automation_update' || tool.name === 'codex_app__automation_update')
+    tool.type === 'function' &&
+    (tool.name === 'codex_app__automation_update' || (tool.name === 'automation_update' && namespace === 'codex_app'))
   );
 }

@@ -95,6 +95,22 @@ describe('xAI Grok runtime', () => {
     expect(await captured?.json()).toEqual({ model: 'grok-4.5', reasoning: { effort: 'high' } });
     expect(observedSignal).toBe(controller.signal);
   });
+
+  test('forwards non-Responses request bodies unchanged', async () => {
+    let captured: Request | undefined;
+    const body = JSON.stringify({ tools: [{ type: 'function', name: 'automation_update', strict: true }] });
+    const dynamicFetch = createXAIGrokDynamicFetch(port(), {
+      fetch: async (input, init) => {
+        captured = new Request(input, init);
+        return new Response(null, { status: 200 });
+      },
+      now: () => 0,
+    });
+
+    await dynamicFetch('https://cli-chat-proxy.grok.com/v1/chat/completions', { method: 'POST', body });
+
+    expect(await captured?.text()).toBe(body);
+  });
 });
 
 function port(): CredentialPort<XAIGrokCredential> {
