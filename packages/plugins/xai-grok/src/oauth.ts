@@ -193,6 +193,20 @@ async function discover(fetcher: XAIGrokFetch, signal: AbortSignal) {
   };
 }
 
+export function xaiLoginResult(credentials: XAIGrokCredential) {
+  let identity = `refresh:${credentials.refreshToken}`;
+  if (credentials.email !== undefined) identity = `email:${credentials.email.toLowerCase()}`;
+  if (credentials.subject !== undefined) identity = `sub:${credentials.subject}`;
+  const digest = new Bun.CryptoHasher('sha256').update(identity).digest('hex');
+  return {
+    fingerprint: `sha256:${digest}`,
+    suggestedKey: `grok-${digest.slice(0, 12)}`,
+    accountLabel: credentials.email ?? credentials.subject ?? 'xAI Grok',
+    credentials,
+    expiresAt: credentials.expiresAt,
+  };
+}
+
 function loginResult(body: zod.infer<typeof tokenSchema>, now: number) {
   const accessToken = body.access_token?.trim();
   const refreshToken = body.refresh_token?.trim();
@@ -202,25 +216,13 @@ function loginResult(body: zod.infer<typeof tokenSchema>, now: number) {
   const claims = readClaims(body.id_token ?? accessToken);
   const email = readClaim(claims, 'email');
   const subject = readClaim(claims, 'sub');
-  let identity = `refresh:${refreshToken}`;
-  if (email !== undefined) identity = `email:${email.toLowerCase()}`;
-  if (subject !== undefined) identity = `sub:${subject}`;
-  const digest = new Bun.CryptoHasher('sha256').update(identity).digest('hex');
-  const expiresAt = now + body.expires_in * 1_000;
-  const credentials = {
+  return xaiLoginResult({
     accessToken,
     refreshToken,
-    expiresAt,
+    expiresAt: now + body.expires_in * 1_000,
     ...(email === undefined ? {} : { email }),
     ...(subject === undefined ? {} : { subject }),
-  };
-  return {
-    fingerprint: `sha256:${digest}`,
-    suggestedKey: `grok-${digest.slice(0, 12)}`,
-    accountLabel: email ?? subject ?? 'xAI Grok',
-    credentials,
-    expiresAt,
-  };
+  });
 }
 
 function readClaims(token: string): Record<string, unknown> {

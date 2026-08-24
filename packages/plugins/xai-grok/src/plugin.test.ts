@@ -4,6 +4,7 @@ import type { OAuthAdapter, PluginDescriptor } from '@aio-proxy/plugin-sdk';
 
 import xaiGrokPlugin, { createXAIGrokPlugin, XAI_GROK_PLUGIN_VERSION } from '.';
 import packageJson from '../package.json' with { type: 'json' };
+import { xaiLoginResult } from './oauth';
 import type { XAIGrokCredential } from './schema';
 
 test('exports a versioned xAI Grok OAuth descriptor', async () => {
@@ -30,6 +31,55 @@ test('accepts localized copy without adding account options', async () => {
   );
   expect(adapter.displayName).toBe('Connexion Grok');
   await expect(adapter.account.options.schema.parseAsync({})).resolves.toEqual({});
+});
+
+test('imports CPA xai credentials with native identity precedence', async () => {
+  const adapter = await adapterFrom(createXAIGrokPlugin());
+  const importer = adapter.credentialImports?.cpa;
+  if (importer === undefined) throw new Error('CPA importer not registered');
+  const context = { progress: () => {}, signal: new AbortController().signal };
+  const imported = await importer.import(
+    context,
+    {},
+    {
+      type: 'xai',
+      access_token: 'access-1',
+      refresh_token: 'refresh-1',
+      expired: '2026-08-24T12:00:00Z',
+      email: 'Person@Example.com',
+      sub: 'subject-1',
+      id_token: 'must-not-persist',
+      base_url: 'must-not-persist',
+    },
+  );
+  const credentials = {
+    accessToken: 'access-1',
+    refreshToken: 'refresh-1',
+    expiresAt: Date.parse('2026-08-24T12:00:00Z'),
+    email: 'Person@Example.com',
+    subject: 'subject-1',
+  };
+  expect(imported).toEqual(xaiLoginResult(credentials));
+  expect(Object.keys(imported.credentials).toSorted()).toEqual([
+    'accessToken',
+    'email',
+    'expiresAt',
+    'refreshToken',
+    'subject',
+  ]);
+
+  const invalidExpiry = await importer.import(
+    context,
+    {},
+    {
+      type: 'xai',
+      access_token: 'access-1',
+      refresh_token: 'refresh-1',
+      expired: 'invalid',
+    },
+  );
+  expect(invalidExpiry.expiresAt).toBe(0);
+  expect(invalidExpiry.credentials.expiresAt).toBe(0);
 });
 
 async function adapterFrom(

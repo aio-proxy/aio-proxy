@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { loginXAIGrok, validateXAIEndpoint } from './oauth';
+import { loginXAIGrok, validateXAIEndpoint, xaiLoginResult } from './oauth';
 import { DEVICE, DISCOVERY, jwt, loginContext, sequenceFetch, TOKEN } from './oauth.test-support';
 
 describe('xAI Grok OAuth', () => {
@@ -59,6 +59,24 @@ describe('xAI Grok OAuth', () => {
         email: 'Person@Example.com',
         subject: 'subject-1',
       },
+      expiresAt: 1_700_003_600_000,
+    });
+  });
+
+  test('shares native identity precedence with CPA import', () => {
+    const credentials = {
+      accessToken: 'access-1',
+      refreshToken: 'refresh-1',
+      expiresAt: 1_700_003_600_000,
+      email: 'Person@Example.com',
+      subject: 'subject-1',
+    };
+    const digest = new Bun.CryptoHasher('sha256').update('sub:subject-1').digest('hex');
+    expect(xaiLoginResult(credentials)).toEqual({
+      fingerprint: `sha256:${digest}`,
+      suggestedKey: `grok-${digest.slice(0, 12)}`,
+      accountLabel: 'Person@Example.com',
+      credentials,
       expiresAt: 1_700_003_600_000,
     });
   });
