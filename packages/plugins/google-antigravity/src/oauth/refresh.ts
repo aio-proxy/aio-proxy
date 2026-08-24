@@ -16,10 +16,17 @@ type CredentialSource =
   | CredentialPort<GoogleAntigravityCredential>
   | Pick<RuntimeContext<GoogleAntigravityCredential, GoogleAntigravityAccountOptions>, 'credentials'>;
 
-export async function refreshGoogleCredential(
-  credential: GoogleAntigravityCredential,
+export type GoogleTokenRefreshInput = Pick<GoogleAntigravityCredential, 'refreshToken' | 'tokenType' | 'scope'>;
+
+export type GoogleTokenRefreshResult = Pick<
+  GoogleAntigravityCredential,
+  'accessToken' | 'refreshToken' | 'expiresAt' | 'tokenType' | 'scope'
+>;
+
+export async function exchangeGoogleRefreshToken(
+  current: GoogleTokenRefreshInput,
   options: OAuthHttpOptions = {},
-): Promise<GoogleAntigravityCredential> {
+): Promise<GoogleTokenRefreshResult> {
   const fetcher: RuntimeFetch = options.fetch ?? globalThis.fetch;
   let response: Response;
   try {
@@ -29,7 +36,7 @@ export async function refreshGoogleCredential(
       body: new URLSearchParams({
         client_id: GOOGLE_CLIENT_ID,
         client_secret: GOOGLE_CLIENT_SECRET,
-        refresh_token: credential.refreshToken,
+        refresh_token: current.refreshToken,
         grant_type: 'refresh_token',
       }),
       aioProxy: { traffic: 'control' },
@@ -38,7 +45,6 @@ export async function refreshGoogleCredential(
   } catch {
     throw refreshError(true, 'network');
   }
-
   if (!response.ok) throw classifyResponse(response.status, await readErrorPayload(response));
   const payload = await readPayload(response);
   const accessToken = readString(payload, 'access_token');
@@ -46,17 +52,27 @@ export async function refreshGoogleCredential(
   if (accessToken === undefined || typeof expiresIn !== 'number' || !Number.isFinite(expiresIn) || expiresIn < 0) {
     throw refreshError(false, 'invalid_payload');
   }
-  const refreshToken = readString(payload, 'refresh_token') ?? credential.refreshToken;
-  const tokenType = readString(payload, 'token_type') ?? credential.tokenType;
-  const scope = readString(payload, 'scope') ?? credential.scope;
+  const refreshToken = readString(payload, 'refresh_token') ?? current.refreshToken;
+  const tokenType = readString(payload, 'token_type') ?? current.tokenType;
+  const scope = readString(payload, 'scope') ?? current.scope;
   return {
     accessToken,
     refreshToken,
     expiresAt: (options.now ?? Date.now)() + expiresIn * 1_000,
-    email: credential.email,
-    projectId: credential.projectId,
     ...(tokenType === undefined ? {} : { tokenType }),
     ...(scope === undefined ? {} : { scope }),
+  };
+}
+
+export async function refreshGoogleCredential(
+  credential: GoogleAntigravityCredential,
+  options: OAuthHttpOptions = {},
+): Promise<GoogleAntigravityCredential> {
+  const token = await exchangeGoogleRefreshToken(credential, options);
+  return {
+    ...token,
+    email: credential.email,
+    projectId: credential.projectId,
   };
 }
 

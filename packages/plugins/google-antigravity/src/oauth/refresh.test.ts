@@ -8,7 +8,12 @@ import {
 } from '@aio-proxy/plugin-sdk';
 
 import type { GoogleAntigravityCredential } from '../schema';
-import { currentGoogleCredential, forceRefreshGoogleCredential, refreshGoogleCredential } from './refresh';
+import {
+  currentGoogleCredential,
+  exchangeGoogleRefreshToken,
+  forceRefreshGoogleCredential,
+  refreshGoogleCredential,
+} from './refresh';
 
 test('refresh keeps the prior refresh token and project identity', async () => {
   const refreshed = await refreshGoogleCredential(credentialFixture(), {
@@ -22,6 +27,33 @@ test('refresh keeps the prior refresh token and project identity', async () => {
     projectId: 'project-1',
     expiresAt: 1_700_003_600_000,
   });
+});
+
+test('token refresh keeps the prior refresh token type and scope', async () => {
+  const signal = new AbortController().signal;
+  let traffic: 'control' | 'model' | undefined;
+  let received: AbortSignal | undefined;
+  const refreshed = await exchangeGoogleRefreshToken(
+    { refreshToken: 'refresh-1', tokenType: 'Bearer', scope: 'scope-1' },
+    {
+      fetch: async (_input, init) => {
+        traffic = (init as RuntimeRequestInit | undefined)?.aioProxy?.traffic ?? 'model';
+        received = init?.signal;
+        return Response.json({ access_token: 'new-access', expires_in: 3600 });
+      },
+      now: () => 1_700_000_000_000,
+      signal,
+    },
+  );
+  expect(refreshed).toEqual({
+    accessToken: 'new-access',
+    refreshToken: 'refresh-1',
+    expiresAt: 1_700_003_600_000,
+    tokenType: 'Bearer',
+    scope: 'scope-1',
+  });
+  expect(traffic).toBe('control');
+  expect(received).toBe(signal);
 });
 
 test('refresh sends the Google refresh grant as form data', async () => {

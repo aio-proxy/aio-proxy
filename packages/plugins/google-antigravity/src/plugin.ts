@@ -4,6 +4,7 @@ import {
   type LocalizedText,
   type OAuthAdapter,
   type PluginDescriptor,
+  zod,
 } from '@aio-proxy/plugin-sdk';
 
 import { defaultAntigravityAliases } from './catalog/aliases';
@@ -12,6 +13,7 @@ import { CatalogDiscoveryError } from './catalog/errors';
 import { staticAntigravityCatalog } from './catalog/snapshot';
 import { buildGoogleAuthorizationUrl, exchangeAuthorizationCode } from './oauth/flow';
 import { initializeAntigravityProject, type ProjectInitializationDependencies } from './oauth/project';
+import { exchangeGoogleRefreshToken } from './oauth/refresh';
 import { fetchGoogleEmail } from './oauth/userinfo';
 import { createGoogleAntigravityRuntime } from './runtime/provider';
 import {
@@ -20,6 +22,31 @@ import {
   type GoogleAntigravityAccountOptions,
   type GoogleAntigravityCredential,
 } from './schema';
+
+const cpaAntigravitySchema = zod
+  .object({
+    type: zod.literal('antigravity'),
+    access_token: zod.string().trim().min(1),
+    refresh_token: zod.string().trim().min(1),
+    email: zod.email(),
+    project_id: zod.string().trim().min(1).optional(),
+    expired: zod.unknown().optional(),
+    timestamp: zod.number().finite().optional(),
+    expires_in: zod.number().finite().nonnegative().optional(),
+    token_type: zod.string().trim().min(1).optional(),
+    scope: zod.string().trim().min(1).optional(),
+  })
+  .loose();
+
+function antigravityExpiry(source: zod.infer<typeof cpaAntigravitySchema>): number {
+  const parsed = typeof source.expired === 'string' ? Date.parse(source.expired) : Number.NaN;
+  if (Number.isFinite(parsed)) return parsed;
+  if (source.timestamp !== undefined && source.expires_in !== undefined) {
+    const fallback = source.timestamp + source.expires_in * 1_000;
+    return Number.isFinite(fallback) ? fallback : 0;
+  }
+  return 0;
+}
 
 export type GoogleAntigravityPresentationText = {
   readonly pluginLabel?: LocalizedText;
@@ -98,6 +125,44 @@ export function createGoogleAntigravityPlugin(
         credentials: { ...token, email, projectId },
         expiresAt: token.expiresAt,
       };
+    },
+    credentialImports: {
+      cpa: {
+        types: ['antigravity'],
+        async import(context, options, raw) {
+          const parsedOptions = await accountOptions.schema.parseAsync(options);
+          const source = cpaAntigravitySchema.parse(raw);
+          const now = dependencies.now ?? Date.now;
+          let token = {
+            accessToken: source.access_token,
+            refreshToken: source.refresh_token,
+            expiresAt: antigravityExpiry(source),
+            ...(source.token_type === undefined ? {} : { tokenType: source.token_type }),
+            ...(source.scope === undefined ? {} : { scope: source.scope }),
+          };
+          if (source.project_id === undefined && token.expiresAt <= now()) {
+            token = await exchangeGoogleRefreshToken(token, {
+              fetch: dependencies.fetch ?? context.fetch,
+              now: dependencies.now,
+              signal: context.signal,
+            });
+          }
+          const projectId =
+            source.project_id ??
+            (await initializeAntigravityProject(token.accessToken, parsedOptions, {
+              fetch: dependencies.fetch ?? context.fetch,
+              sleep: dependencies.sleep,
+              signal: context.signal,
+            }));
+          return {
+            fingerprint: source.email,
+            suggestedKey: `antigravity-${source.email}`,
+            accountLabel: source.email,
+            credentials: { ...token, email: source.email, projectId },
+            expiresAt: token.expiresAt,
+          };
+        },
+      },
     },
     catalog: {
       policy: { kind: 'ttl', ttlMs: 6 * 60 * 60 * 1_000 },
