@@ -4,7 +4,7 @@ export const defaultServer = {
   host: '127.0.0.1',
   port: 9_317,
   apiKeys: [],
-  logging: { enabled: false, retentionDays: 14, level: 'info' },
+  logging: { enabled: false, retentionDays: 3, level: 'info' },
   retry: { retryAfterCapMs: 30_000 },
 } as const;
 

@@ -22,7 +22,7 @@ rs.mock('../../hooks/use-settings-mutation', () => ({
 const settings: DashboardSettingsView = {
   hasPassword: true,
   host: '127.0.0.1',
-  logging: { enabled: true, level: 'info', retentionDays: 14 },
+  logging: { enabled: true, level: 'info', retentionDays: 3 },
   port: 9317,
   proxy: '****',
   retryAfterCapMs: 30_000,
