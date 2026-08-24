@@ -1,5 +1,19 @@
 # aio-proxy
 
+## 0.9.1
+
+### Patch Changes
+
+- [#199](https://github.com/aio-proxy/aio-proxy/pull/199) [`2e19250`](https://github.com/aio-proxy/aio-proxy/commit/2e192507075833219fff1bec8379f4144b383c84) Thanks [@baranwang](https://github.com/baranwang)! - Return upstream model errors before committing a streaming response when AI SDK startup emits a start event first.
+
+- [#198](https://github.com/aio-proxy/aio-proxy/pull/198) [`af389a5`](https://github.com/aio-proxy/aio-proxy/commit/af389a50b57f123c71965cd337185cb8185629e1) Thanks [@baranwang](https://github.com/baranwang)! - Serve dashboard public files such as `/dashboard/favicon.svg` from the built assets instead of the SPA fallback.
+
+- [#199](https://github.com/aio-proxy/aio-proxy/pull/199) [`fcef8e5`](https://github.com/aio-proxy/aio-proxy/commit/fcef8e5af578aee26df0db1b2ebb30bd6e50d3a0) Thanks [@baranwang](https://github.com/baranwang)! - Keep OpenAI Responses reasoning summaries with preceding tool calls so cross-protocol tool results remain adjacent.
+
+- [#195](https://github.com/aio-proxy/aio-proxy/pull/195) [`1a1c519`](https://github.com/aio-proxy/aio-proxy/commit/1a1c519422c9be44a770646539803c929b5b9e43) Thanks [@baranwang](https://github.com/baranwang)! - Change the default local log retention from 14 days to 3 days.
+
+- [#197](https://github.com/aio-proxy/aio-proxy/pull/197) [`c9fe40d`](https://github.com/aio-proxy/aio-proxy/commit/c9fe40dfb7b1ad7fbadb94f4c9ce64ced43dc294) Thanks [@baranwang](https://github.com/baranwang)! - Compile OpenAI Responses custom tools to Grok-compatible function tools for xAI OAuth providers while preserving custom tool responses for clients.
+
 ## 0.9.0
 
 ### Minor Changes

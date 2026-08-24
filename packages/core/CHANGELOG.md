@@ -1,5 +1,22 @@
 # @aio-proxy/core
 
+## 0.9.1
+
+### Patch Changes
+
+- [#199](https://github.com/aio-proxy/aio-proxy/pull/199) [`fcef8e5`](https://github.com/aio-proxy/aio-proxy/commit/fcef8e5af578aee26df0db1b2ebb30bd6e50d3a0) Thanks [@baranwang](https://github.com/baranwang)! - Keep OpenAI Responses reasoning summaries with preceding tool calls so cross-protocol tool results remain adjacent.
+- Updated dependencies [[`1a1c519`](https://github.com/aio-proxy/aio-proxy/commit/1a1c519422c9be44a770646539803c929b5b9e43), [`c9fe40d`](https://github.com/aio-proxy/aio-proxy/commit/c9fe40dfb7b1ad7fbadb94f4c9ce64ced43dc294)]:
+  - @aio-proxy/types@0.9.1
+  - @aio-proxy/logger@0.9.1
+  - @aio-proxy/plugin-xai-grok@0.9.1
+  - @aio-proxy/plugin-cursor@0.9.1
+  - @aio-proxy/plugin-openai-chatgpt@0.9.1
+  - @aio-proxy/i18n@0.9.1
+  - @aio-proxy/plugin-github-copilot@0.9.1
+  - @aio-proxy/plugin-google-antigravity@0.9.1
+  - @aio-proxy/plugin-kimi-code@0.9.1
+  - @aio-proxy/plugin-sdk@0.9.1
+
 ## 0.9.0
 
 ### Minor Changes

@@ -1,5 +1,13 @@
 # @aio-proxy/plugin-xai-grok
 
+## 0.9.1
+
+### Patch Changes
+
+- [#197](https://github.com/aio-proxy/aio-proxy/pull/197) [`c9fe40d`](https://github.com/aio-proxy/aio-proxy/commit/c9fe40dfb7b1ad7fbadb94f4c9ce64ced43dc294) Thanks [@baranwang](https://github.com/baranwang)! - Compile OpenAI Responses custom tools to Grok-compatible function tools for xAI OAuth providers while preserving custom tool responses for clients.
+- Updated dependencies []:
+  - @aio-proxy/plugin-sdk@0.9.1
+
 ## 0.9.0
 
 ### Minor Changes

@@ -1,5 +1,19 @@
 # @aio-proxy/server
 
+## 0.9.1
+
+### Patch Changes
+
+- [#199](https://github.com/aio-proxy/aio-proxy/pull/199) [`2e19250`](https://github.com/aio-proxy/aio-proxy/commit/2e192507075833219fff1bec8379f4144b383c84) Thanks [@baranwang](https://github.com/baranwang)! - Return upstream model errors before committing a streaming response when AI SDK startup emits a start event first.
+
+- [#198](https://github.com/aio-proxy/aio-proxy/pull/198) [`af389a5`](https://github.com/aio-proxy/aio-proxy/commit/af389a50b57f123c71965cd337185cb8185629e1) Thanks [@baranwang](https://github.com/baranwang)! - Serve dashboard public files such as `/dashboard/favicon.svg` from the built assets instead of the SPA fallback.
+- Updated dependencies [[`fcef8e5`](https://github.com/aio-proxy/aio-proxy/commit/fcef8e5af578aee26df0db1b2ebb30bd6e50d3a0), [`1a1c519`](https://github.com/aio-proxy/aio-proxy/commit/1a1c519422c9be44a770646539803c929b5b9e43)]:
+  - @aio-proxy/core@0.9.1
+  - @aio-proxy/types@0.9.1
+  - @aio-proxy/logger@0.9.1
+  - @aio-proxy/i18n@0.9.1
+  - @aio-proxy/plugin-sdk@0.9.1
+
 ## 0.9.0
 
 ### Minor Changes
