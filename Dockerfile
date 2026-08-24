@@ -32,10 +32,11 @@ RUN case "$TARGETARCH" in \
     esac; \
     bun packages/cli/scripts/build-binary.ts "$SUFFIX" /out/aio-proxy
 
-# Runtime stage: minimal alpine. The binary is musl-linked and self-contained.
+# Runtime stage: minimal alpine. bun --compile musl still needs libgcc/libstdc++
+# (same packages as oven/bun:alpine); it is not a static FROM scratch binary.
 FROM alpine:3.20
 # wget (busybox) drives the HEALTHCHECK; ca-certificates for upstream TLS.
-RUN apk add --no-cache ca-certificates \
+RUN apk add --no-cache ca-certificates libgcc libstdc++ \
     && adduser -D -u 10001 aioproxy \
     && mkdir -p /data /usr/share/licenses/aio-proxy \
     && chown aioproxy:aioproxy /data
