@@ -56,8 +56,8 @@ const provider = (
 const gpt5 = (): DashboardRoutingModel => ({
   modelId: 'openai/gpt-5',
   revision: 'rev-1',
-  baselineProviderIds: ['a', 'b', 'c'],
-  providerCount: 3,
+  baselineProviderIds: ['a', 'b', 'c', 'd'],
+  providerCount: 4,
   eligibleProviderCount: 2,
   hasOverrides: true,
   tiers: [
@@ -111,6 +111,21 @@ const gpt5 = (): DashboardRoutingModel => ({
         share: null,
       },
     }),
+    provider({
+      id: 'd',
+      name: 'Blocked',
+      enabled: false,
+      defaults: { priority: routingNumber(0), weight: routingNumber(1) },
+      override: { weight: routingNumber(5, 5) },
+      effective: {
+        priority: 0,
+        weight: 5,
+        prioritySource: 'provider',
+        weightSource: 'model',
+        eligible: false,
+        share: null,
+      },
+    }),
   ],
 });
 
@@ -135,6 +150,23 @@ test('renders Providers as a priority board with live shares', () => {
   expect(screen.getByTestId('routing-disabled-c')).toBeInTheDocument();
 });
 
+test('Reset stays available for a blocked Provider with a leftover override', async () => {
+  renderDrawer();
+
+  expect(screen.getByTestId('routing-list-blocked')).toBeInTheDocument();
+  fireEvent.click(screen.getByTestId('routing-reset-d'));
+  fireEvent.click(screen.getByTestId('routing-save'));
+
+  await waitFor(() => {
+    expect(mocks.mutate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        providers: { a: { priority: 30, weight: 6000 }, c: { weight: 0 } },
+      }),
+      expect.any(Object),
+    );
+  });
+});
+
 test('Reset clears one Provider override back to inherit', async () => {
   renderDrawer();
 
@@ -144,7 +176,7 @@ test('Reset clears one Provider override back to inherit', async () => {
   await waitFor(() => {
     expect(mocks.mutate).toHaveBeenCalledWith(
       expect.objectContaining({
-        providers: { c: { weight: 0 } },
+        providers: { c: { weight: 0 }, d: { weight: 5 } },
       }),
       expect.any(Object),
     );
@@ -161,10 +193,11 @@ test('Save sends the exact revision, baseline Provider IDs, and explicit overrid
       {
         modelId: 'openai/gpt-5',
         revision: 'rev-1',
-        baselineProviderIds: ['a', 'b', 'c'],
+        baselineProviderIds: ['a', 'b', 'c', 'd'],
         providers: {
           a: { priority: 30, weight: 6000 },
           c: { weight: 0 },
+          d: { weight: 5 },
         },
       },
       expect.any(Object),

@@ -162,7 +162,7 @@ export const RoutingBoardCanvas: React.FC<RoutingBoardCanvasProps> = ({ form, mo
             rowsById={rowsById}
             variant="unused"
             unused
-            writable={false}
+            writable={writable}
             droppable={false}
           />
         )}
