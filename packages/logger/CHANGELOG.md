@@ -1,5 +1,13 @@
 # @aio-proxy/logger
 
+## 0.9.1
+
+### Patch Changes
+
+- [#195](https://github.com/aio-proxy/aio-proxy/pull/195) [`1a1c519`](https://github.com/aio-proxy/aio-proxy/commit/1a1c519422c9be44a770646539803c929b5b9e43) Thanks [@baranwang](https://github.com/baranwang)! - Change the default local log retention from 14 days to 3 days.
+- Updated dependencies []:
+  - @aio-proxy/plugin-sdk@0.9.1
+
 ## 0.9.0
 
 ### Patch Changes
