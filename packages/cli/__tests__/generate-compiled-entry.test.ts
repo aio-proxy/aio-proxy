@@ -10,9 +10,10 @@ describe('listAssetPaths', () => {
     const dir = mkdtempSync(join(tmpdir(), 'aio-proxy-gen-'));
     mkdirSync(join(dir, 'static', 'js'), { recursive: true });
     writeFileSync(join(dir, 'index.html'), 'x');
+    writeFileSync(join(dir, 'favicon.svg'), 'x');
     writeFileSync(join(dir, 'static', 'js', 'app.js'), 'x');
     try {
-      expect(listAssetPaths(dir)).toEqual(['index.html', 'static/js/app.js']);
+      expect(listAssetPaths(dir)).toEqual(['favicon.svg', 'index.html', 'static/js/app.js']);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

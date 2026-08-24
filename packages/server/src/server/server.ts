@@ -373,20 +373,29 @@ const createRoutes = (
     .route('/dashboard/api', dashboardRoutes);
 
   if (dashboardAssets !== undefined) {
-    const dashboardIndex = async (context: Context) => (await dashboardAssets('index.html')) ?? context.notFound();
-    routes
-      .get('/dashboard', dashboardIndex)
-      .get('/dashboard/', dashboardIndex)
-      .get('/dashboard/static/*', async (context) => {
-        const asset = await dashboardAssets(context.req.path.replace(/^\/dashboard\//u, ''));
-        if (asset === null || asset === undefined) return context.notFound();
-        asset.headers.set('cache-control', 'public, max-age=31536000, immutable');
+    const serveDashboardArtifact = async (context: Context) => {
+      const assetKey =
+        context.req.path === '/dashboard' || context.req.path === '/dashboard/'
+          ? 'index.html'
+          : context.req.path.replace(/^\/dashboard\//u, '');
+      const asset = await dashboardAssets(assetKey);
+      if (asset !== null && asset !== undefined) {
+        if (assetKey.startsWith('static/')) {
+          asset.headers.set('cache-control', 'public, max-age=31536000, immutable');
+        }
         return asset;
-      })
-      .all('/dashboard/static/*', (context) => context.notFound())
+      }
+      if (assetKey.startsWith('static/')) return context.notFound();
+      const index = await dashboardAssets('index.html');
+      return index ?? context.notFound();
+    };
+    routes
+      .get('/dashboard', serveDashboardArtifact)
+      .get('/dashboard/', serveDashboardArtifact)
       .all('/dashboard/api', (context) => context.notFound())
       .all('/dashboard/api/*', (context) => context.notFound())
-      .get('/dashboard/*', dashboardIndex);
+      .get('/dashboard/*', serveDashboardArtifact)
+      .all('/dashboard/static/*', (context) => context.notFound());
   }
 
   return routes;
