@@ -11,8 +11,9 @@ import {
   createAccount,
   deleteOAuthAccount,
   emptyCatalog,
-  expect,
   fixture,
+  importOAuthAccount,
+  importOptions,
   loginOAuthAccount,
   options,
   type PluginLogSink,
@@ -363,4 +364,75 @@ test('duplicate fingerprint reports canonical re-login only for a live structure
     },
   }));
   await expect(createAccount(pending)).rejects.toBeInstanceOf(AccountCleanupPendingError);
+});
+
+test('imports a plugin-produced login result through normal account persistence', async () => {
+  const state = fixture();
+  const raw = { type: 'example', token: 'imported' };
+  let seen: unknown;
+  const result = await importOAuthAccount(
+    importOptions(state, {
+      raw,
+      registry: registry({
+        credentialImport: {
+          types: ['example'],
+          async import(context, accountOptions, input) {
+            seen = { context, accountOptions, input };
+            return {
+              fingerprint: 'imported@example.com',
+              suggestedKey: 'imported',
+              accountLabel: 'Imported account',
+              credentials: { token: 'imported' },
+              expiresAt: 123,
+            };
+          },
+        },
+      }),
+    }),
+  );
+
+  expect(result).toEqual({ providerId: 'imported' });
+  expect(seen).toMatchObject({ accountOptions: {}, input: raw });
+  expect(state.repository.readAccount('imported')).toMatchObject({
+    fingerprint: 'imported@example.com',
+    label: 'Imported account',
+    credential: { token: 'imported' },
+    expiresAt: 123,
+  });
+  expect(configOf(state)['providers']).toMatchObject({
+    imported: { kind: 'oauth', plugin: '@example/oauth', capability: 'default', enabled: true },
+  });
+});
+
+test('reports an imported fingerprint duplicate without changing the account', async () => {
+  const state = fixture();
+  await createAccount(state);
+  await expect(
+    importOAuthAccount(
+      importOptions(state, {
+        registry: registry({
+          credentialImport: {
+            types: ['example'],
+            async import() {
+              return {
+                fingerprint: 'person@example.com',
+                suggestedKey: 'person',
+                credentials: { token: 'ignored' },
+              };
+            },
+          },
+        }),
+      }),
+    ),
+  ).rejects.toMatchObject({ name: 'ProviderAccountAlreadyExistsError', existingProviderId: 'person' });
+  expect(state.repository.readAccount('person')?.credential).toEqual({ token: 'new' });
+});
+
+test('rejects a CPA type with no registered importer', async () => {
+  const state = fixture();
+  await expect(importOAuthAccount(importOptions(state, { type: 'unknown' }))).rejects.toMatchObject({
+    name: 'OAuthCredentialImportUnsupportedError',
+    source: 'cpa',
+    type: 'unknown',
+  });
 });

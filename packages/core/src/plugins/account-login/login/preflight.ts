@@ -5,7 +5,7 @@ import {
   OAuthCapabilityRequiredError,
   ProviderCapabilityTargetMismatchError,
 } from '../errors';
-import type { LoginOAuthAccountOptions } from '../login';
+import type { OAuthAccountWriteOptions } from '../login';
 import { accountMatches, capabilityOf, isRecord, providerRecord, sameCapability, structuredEntry } from '../validation';
 
 export type Preflight = {
@@ -21,7 +21,7 @@ export type Preflight = {
 function hasEffectiveProxy(
   current: Readonly<Record<string, unknown>>,
   entry: Readonly<Record<string, unknown>> | null,
-  patch: LoginOAuthAccountOptions['providerPatch'],
+  patch: OAuthAccountWriteOptions['providerPatch'],
 ): boolean {
   const configuredProxy = entry?.['proxy'];
   const providerProxy = patch?.proxy === null ? undefined : (patch?.proxy ?? configuredProxy);
@@ -29,7 +29,7 @@ function hasEffectiveProxy(
   return typeof providerProxy === 'string' || typeof current['proxy'] === 'string';
 }
 
-export async function preflight(options: LoginOAuthAccountOptions, signal: AbortSignal): Promise<Preflight> {
+export async function preflight(options: OAuthAccountWriteOptions, signal: AbortSignal): Promise<Preflight> {
   signal.throwIfAborted();
   const providerId = options.targetProviderId;
   if (providerId === undefined) {

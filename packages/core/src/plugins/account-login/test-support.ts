@@ -11,6 +11,8 @@ import {
   AccountCleanupPendingError,
   deleteOAuthAccount,
   LOGIN_TIMEOUT_MS,
+  type ImportOAuthAccountOptions,
+  importOAuthAccount,
   type LoginOAuthAccountOptions,
   loginOAuthAccount,
   OAuthLoginResultValidationError,
@@ -91,6 +93,9 @@ type AdapterControls = {
   >['catalog']['defaultAliases'];
   credentialSchema?: OAuthAdapter<Record<string, unknown>, { token: string; refresh?: string }>['credentials'];
   accountSchema?: OAuthAdapter<Record<string, unknown>, unknown>['account']['options']['schema'];
+  credentialImport?: NonNullable<
+    NonNullable<OAuthAdapter<Record<string, unknown>, { token: string; refresh?: string }>['credentialImports']>['cpa']
+  >;
 };
 
 type LoginOverrides = Partial<Omit<LoginOAuthAccountOptions, 'capability'>> & {
@@ -106,7 +111,11 @@ function registry(controls: AdapterControls = {}): PluginRegistry {
     ...(controls.supportsProxy === undefined ? {} : { supportsProxy: controls.supportsProxy }),
     account: {
       options: {
-        schema: controls.accountSchema ?? zod.object({ tenant: zod.string(), secret: zod.string() }),
+        schema:
+          controls.accountSchema ??
+          (controls.credentialImport === undefined
+            ? zod.object({ tenant: zod.string(), secret: zod.string() })
+            : zod.object({})),
         form: [
           { type: 'text', key: 'tenant', label: 'Tenant' },
           { type: 'secret', key: 'secret', label: 'Secret' },
@@ -123,6 +132,7 @@ function registry(controls: AdapterControls = {}): PluginRegistry {
       ...(controls.initialFallback === undefined ? {} : { initialFallback: controls.initialFallback }),
       ...(controls.defaultAliases === undefined ? {} : { defaultAliases: controls.defaultAliases }),
     },
+    ...(controls.credentialImport === undefined ? {} : { credentialImports: { cpa: controls.credentialImport } }),
     async createRuntime() {
       throw new Error('not used');
     },
@@ -158,6 +168,27 @@ function options(state: ReturnType<typeof fixture>, overrides: LoginOverrides = 
   return result as LoginOAuthAccountOptions;
 }
 
+function importOptions(
+  state: ReturnType<typeof fixture>,
+  overrides: Partial<ImportOAuthAccountOptions> = {},
+): ImportOAuthAccountOptions {
+  const login = options(state, { registry: registry({ accountSchema: zod.object({}) }) });
+  return {
+    source: 'cpa',
+    type: 'example',
+    raw: { type: 'example', token: 'imported' },
+    config: login.config,
+    repository: login.repository,
+    registry: login.registry,
+    diagnostics: login.diagnostics,
+    logger: login.logger,
+    ...(login.fetch === undefined ? {} : { fetch: login.fetch }),
+    ...(login.signal === undefined ? {} : { signal: login.signal }),
+    ...(login.now === undefined ? {} : { now: login.now }),
+    ...overrides,
+  };
+}
+
 async function createAccount(state: ReturnType<typeof fixture>, overrides: LoginOverrides = {}) {
   return loginOAuthAccount(options(state, overrides));
 }
@@ -189,6 +220,8 @@ export {
   expect,
   fixture,
   LOGIN_TIMEOUT_MS,
+  importOAuthAccount,
+  importOptions,
   loginOAuthAccount,
   OAuthLoginResultValidationError,
   ORPHAN_ACCOUNT_GRACE_MS,

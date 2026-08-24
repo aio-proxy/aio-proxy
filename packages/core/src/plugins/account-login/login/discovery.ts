@@ -3,7 +3,7 @@ import type { CredentialPort, OAuthAdapter } from '@aio-proxy/plugin-sdk';
 import { validateModelCatalog } from '../../catalog';
 import { collectSecretStrings, redactPluginError } from '../../diagnostic/index';
 import { withAbort } from '../deadline';
-import type { LoginOAuthAccountOptions } from '../login';
+import type { OAuthAccountWriteOptions } from '../login';
 import type { Preflight } from './preflight';
 import type { CatalogDiscovery } from './stage';
 
@@ -12,7 +12,7 @@ type Deadline = { readonly signal: AbortSignal; readonly close: () => void };
 export type DiscoverCatalogInput = {
   readonly adapter: OAuthAdapter;
   readonly initial: Preflight;
-  readonly options: LoginOAuthAccountOptions;
+  readonly options: OAuthAccountWriteOptions;
   readonly secrets: unknown;
   readonly credentialPort: CredentialPort<unknown>;
   readonly currentCredential: () => unknown;
