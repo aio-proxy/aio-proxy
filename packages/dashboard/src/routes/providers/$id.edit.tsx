@@ -5,11 +5,10 @@ import { useQuery } from '@tanstack/react-query';
 import { createFileRoute, useNavigate, useParams, useSearch } from '@tanstack/react-router';
 
 import { PageContainer } from '@/components/page-container';
-import { parseProviderFormInitial } from '@/modules/providers/hooks/use-provider-form';
 import { ProviderFormMode } from '@/modules/providers/lib/constants';
+import { parseProviderFormInitial } from '@/modules/providers/lib/provider-form-value';
 import { providerEditViewQueryOptions } from '@/modules/providers/services/providers-service';
-import { OAuthProviderEditPage } from '@/modules/providers/templates/oauth-provider-edit-page';
-import { ProviderFormPage } from '@/modules/providers/templates/provider-form-page';
+import { ProviderEditorPage } from '@/modules/providers/templates/provider-editor-page';
 
 const EditProviderPage: React.FC = () => {
   const { id } = useParams({ from: '/providers/$id/edit' });
@@ -21,6 +20,8 @@ const EditProviderPage: React.FC = () => {
     { label: m['dashboard.providers.list_title'](), to: '/providers' },
     { label: m['dashboard.providers.edit_title']() },
   ] as const;
+  const onSessionIdChange = (next: string | undefined) =>
+    void navigate({ search: next === undefined ? {} : { session: next }, replace: true });
 
   if (isLoading) {
     return (
@@ -49,27 +50,52 @@ const EditProviderPage: React.FC = () => {
       );
     }
     return (
-      <OAuthProviderEditPage
+      <ProviderEditorPage
+        mode={ProviderFormMode.Edit}
+        kind={provider.kind}
+        providerId={id}
         provider={provider as unknown as OAuthProvider}
         oauth={data.oauth as unknown as DashboardOAuthProviderEdit}
+        initial={{
+          id: provider.id,
+          name: provider.name,
+          enabled: provider.enabled,
+          priority: provider.priority,
+          weight: provider.weight,
+          proxy: provider.proxy,
+          alias: provider.alias,
+          transforms: provider.transforms,
+          models: provider.models ?? [],
+          metadata: provider.metadata,
+        }}
         sessionId={session}
-        onSessionIdChange={(next) =>
-          void navigate({ search: next === undefined ? {} : { session: next }, replace: true })
-        }
+        onSessionIdChange={onSessionIdChange}
       />
     );
   }
 
   const initial = parseProviderFormInitial(provider);
+  // The provider exists — the fetch above already proved that. A parse failure here means the stored
+  // entry is valid config the editor's form shape still cannot hold. "Not found" would be a lie about
+  // a provider the list page just linked to, so say what is actually true and where to edit it.
   if (initial === undefined) {
     return (
       <PageContainer title={m['dashboard.providers.edit_title']()} breadcrumbs={breadcrumbs}>
-        <Empty data-testid="not-found">{m['dashboard.providers.edit_not_found']()}</Empty>
+        <Empty data-testid="edit-unsupported">{m['dashboard.providers.edit_unsupported']()}</Empty>
       </PageContainer>
     );
   }
 
-  return <ProviderFormPage mode={ProviderFormMode.Edit} kind={provider.kind} initial={initial} providerId={id} />;
+  return (
+    <ProviderEditorPage
+      mode={ProviderFormMode.Edit}
+      kind={provider.kind}
+      providerId={id}
+      initial={initial}
+      sessionId={session}
+      onSessionIdChange={onSessionIdChange}
+    />
+  );
 };
 
 export const Route = createFileRoute('/providers/$id/edit')({

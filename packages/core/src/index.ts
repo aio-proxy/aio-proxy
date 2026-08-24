@@ -1,5 +1,17 @@
 import type { ProviderProtocol } from '@aio-proxy/types';
 
+export {
+  AgentInstallationTargetMismatchError,
+  createAgentIdentityService,
+  type AgentAccessAuthentication,
+  type AgentAccessGrant,
+  type AgentCredentialIssueInput,
+  type AgentIdentityService,
+  type AgentRefreshInput,
+  type AgentRefreshResult,
+  type AgentRefreshSuccess,
+  type IssuedAgentCredential,
+} from './agent-identity';
 export type {
   AiSdkLanguageModel,
   AiSdkCallSettings,
@@ -108,6 +120,7 @@ export {
   catalogModelToMetadata,
   clearModelsCache,
   findModelPrice,
+  getCachedModelSlugs,
   getModels,
   getModelsCachedOnly,
   hasCachedModelsCatalog,
@@ -125,6 +138,7 @@ export {
   withNpmPackageLifecycle,
 } from './npm';
 export { type InstalledNpmPackage, listInstalledNpmPackages } from './npm-list';
+export { canonicalizeLoopbackHost } from './network/index';
 export { aioHome, configPath, dbPath, packagesDir } from './paths/index';
 export * from './plugins';
 export * from './protocol';
@@ -157,13 +171,19 @@ export { bridgeApiProviderToAiSdk, resolveOpenAIResponsesModel } from './provide
 export { createProviderV4Invoke, validateProviderV4 } from './provider/provider-v4';
 export { createProxyFetch, type ProviderFetch } from './provider/proxy-fetch';
 export {
+  type EffectiveCandidateRouting,
   type ModelRoute,
   modelRoutes,
   type ProviderInstance,
   type RoutableProvider,
   Router,
   type RouterCandidate,
+  type RouterCatalogCandidate,
+  type RouterOptions,
   type RouterResolution,
+  type RouterResolveOptions,
+  type RouterSelectionSource,
+  type RoutingValueSource,
 } from './router';
 export {
   type AnthropicMessagesFromModelMessages,

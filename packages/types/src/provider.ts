@@ -28,7 +28,17 @@ import { CapabilityIdSchema, PluginPackageNameSchema } from './plugin';
 import { normalizeProviderAlias, normalizeProviderAliasKeys, validateAliasTargets } from './provider-alias';
 import { ProviderTransformsSchema } from './provider-transform/index';
 
-export { type ProviderAlias, validateAliasTargets } from './provider-alias';
+export {
+  aliasTargetModels,
+  directModelIds,
+  exposedAliases,
+  type ModelRoute,
+  modelRoutes,
+  preservedAliasModels,
+  type ProviderAlias,
+  sameRouteTargets,
+  validateAliasTargets,
+} from './provider-alias';
 
 export enum ProviderKind {
   Api = 'api',
@@ -66,10 +76,17 @@ const ApiHeadersSchema = z
   })
   .readonly();
 
+export const ROUTING_VALUE_MAX = 10_000;
+const clampRoutingValue = (value: number): number => Math.min(ROUTING_VALUE_MAX, Math.max(0, value));
+
+export const RoutingPrioritySchema = z.int().transform(clampRoutingValue);
+export const RoutingWeightSchema = z.number().transform((value) => clampRoutingValue(Math.round(value)));
+
 const SharedProviderSchemaBase = {
   id: z.string().describe('Stable provider id used in routing.'),
   enabled: z.boolean().default(true).describe('Whether this provider participates in routing.'),
-  weight: z.number().optional().describe('Provider priority; higher weights are tried first.'),
+  priority: RoutingPrioritySchema.prefault(0).describe('Provider failover priority; higher values are tried first.'),
+  weight: RoutingWeightSchema.prefault(1).describe('Same-priority traffic weight; zero disables normal routing.'),
   alias: z.record(z.string().min(1), AliasConfigSchema).optional().describe('Client-facing model aliases.'),
   name: z.string().optional().describe('Display name shown in the dashboard.'),
   transforms: ProviderTransformsSchema.optional().describe('Ordered outbound request transforms.'),
@@ -142,6 +159,7 @@ export const ApiProviderAuthoringSchema = ApiProviderAuthoringObjectSchema.super
 export const OAuthPluginProviderSchema = z.object({
   kind: z.literal(ProviderKind.OAuth).describe('Provider backed by a plugin OAuth account.'),
   ...SharedProviderSchemaBase,
+  ...modelsField,
   ...metadataField,
   plugin: PluginPackageNameSchema,
   capability: CapabilityIdSchema,
@@ -199,38 +217,47 @@ const ApiProviderMutationSharedFields = {
   id: z.string().min(1),
   name: z.string().optional(),
   enabled: z.boolean().optional(),
-  weight: z.number().optional(),
-  protocol: ProviderProtocolSchema,
+  priority: RoutingPrioritySchema.optional(),
+  weight: RoutingWeightSchema.optional(),
+  protocol: ProviderProtocolSchema.optional(),
   apiKey: z.string().optional(),
   headers: ApiHeadersSchema.optional(),
   models: z.array(z.string()).optional(),
+  endpoints: ApiEndpointsInputSchema.optional(),
   ...metadataField,
   alias: z.record(z.string().min(1), AliasConfigSchema).optional().describe('Client-facing model aliases.'),
   transforms: ProviderTransformsSchema.optional().describe('Ordered outbound request transforms.'),
 } as const;
 
-export const ApiProviderMutationBodySchema = z.object({
+export const ApiProviderMutationObjectSchema = z.object({
   ...ApiProviderMutationSharedFields,
-  baseURL: z.url(),
+  baseURL: z.url().optional(),
   proxy: ProviderMutationProxySchema,
 });
 
-const ApiProviderMutationAuthoringBodySchema = ApiProviderMutationBodySchema.omit({
+export const ApiProviderMutationBodySchema = ApiProviderMutationObjectSchema.superRefine(validateApiEndpoints);
+
+const ApiProviderMutationAuthoringBodySchema = ApiProviderMutationObjectSchema.omit({
   baseURL: true,
   proxy: true,
   protocol: true,
-}).extend({
-  protocol: z.union([ProviderProtocolSchema, ConfigTemplateStringSchema]),
-  baseURL: z.union([z.url(), ConfigTemplateStringSchema]),
-  proxy: AuthoringProviderProxySchema.nullable(),
-});
+  endpoints: true,
+})
+  .extend({
+    protocol: z.union([ProviderProtocolSchema, ConfigTemplateStringSchema]).optional(),
+    baseURL: z.union([z.url(), ConfigTemplateStringSchema]).optional(),
+    endpoints: ApiEndpointsAuthoringInputSchema.optional(),
+    proxy: AuthoringProviderProxySchema.nullable(),
+  })
+  .superRefine(validateApiEndpoints);
 
 const AiSdkProviderMutationSharedFields = {
   kind: z.literal(ProviderKind.AiSdk),
   id: z.string().min(1),
   name: z.string().optional(),
   enabled: z.boolean().optional(),
-  weight: z.number().optional(),
+  priority: RoutingPrioritySchema.optional(),
+  weight: RoutingWeightSchema.optional(),
   packageName: AiSdkPackageNameSchema.optional(),
   options: z.record(z.string(), z.unknown()).optional(),
   parseReasoningContent: z.boolean().optional(),
@@ -258,7 +285,9 @@ export const OAuthProviderMutationBodySchema = z.strictObject({
   id: z.string().min(1),
   name: z.string().optional(),
   enabled: z.boolean().optional(),
-  weight: z.number().optional(),
+  priority: RoutingPrioritySchema.optional(),
+  weight: RoutingWeightSchema.optional(),
+  models: z.array(z.string()).optional(),
   proxy: ProviderMutationProxySchema,
   ...metadataField,
   alias: z.record(z.string().min(1), AliasConfigSchema).optional().describe('Client-facing model aliases.'),

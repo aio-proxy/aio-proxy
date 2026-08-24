@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { createServer } from '@aio-proxy/server';
+import { createServer } from '#server-test-lifecycle';
 
 import { aiSdkProvider, responsesRequest, textStream } from './openai-responses.test-support';
 

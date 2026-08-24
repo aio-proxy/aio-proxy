@@ -13,11 +13,15 @@ export type DashboardAuthorization = {
   readonly close: () => void;
 };
 
+export const dashboardOAuthCompleteUrl = (port: number): string => `http://127.0.0.1:${port}/dashboard/oauth/complete`;
+
 export const createDashboardAuthorization = (options: {
   readonly sessionId: string;
   readonly signal: AbortSignal;
   readonly publish: (session: DashboardOAuthSession) => void;
+  readonly completeUrl?: string;
 }): DashboardAuthorization => {
+  const completeUrl = options.completeUrl ?? dashboardOAuthCompleteUrl(9317);
   let submit: ((raw: string) => void) | undefined;
   let closeCurrent = () => {};
 
@@ -67,9 +71,7 @@ export const createDashboardAuthorization = (options: {
             }
             try {
               accept(incoming.url);
-              return new Response(m['cli.oauth.success_html'](), {
-                headers: { 'content-type': 'text/html; charset=utf-8' },
-              });
+              return Response.redirect(completeUrl, 302);
             } catch {
               return new Response(m['cli.oauth.invalid_callback_response'](), { status: 400 });
             }

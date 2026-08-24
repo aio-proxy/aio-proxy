@@ -9,18 +9,28 @@ import { createXAIGrokPlugin, XAI_GROK_PLUGIN_VERSION } from '@aio-proxy/plugin-
 import type { BuiltInPluginDefinition } from './loader/index';
 
 export const BUILT_IN_PLUGIN_PACKAGE_NAMES = [
+  '@aio-proxy/plugin-cursor',
   '@aio-proxy/plugin-github-copilot',
-  '@aio-proxy/plugin-openai-chatgpt',
   '@aio-proxy/plugin-google-antigravity',
   '@aio-proxy/plugin-kimi-code',
+  '@aio-proxy/plugin-openai-chatgpt',
   '@aio-proxy/plugin-xai-grok',
-  '@aio-proxy/plugin-cursor',
 ] as const;
 
 const localized = (english: string, chinese: string) => ({ default: english, 'zh-Hans': chinese }) as const;
 
 export function createEmbeddedBuiltIns(): readonly BuiltInPluginDefinition[] {
   return [
+    {
+      packageName: '@aio-proxy/plugin-cursor',
+      version: CURSOR_PLUGIN_VERSION,
+      descriptor: createCursorPlugin({
+        pluginLabel: localized('Cursor', 'Cursor'),
+        pluginDescription: localized('Use a Cursor account to access models', '使用 Cursor 账号访问模型'),
+        adapterLabel: localized('Login with Cursor', '使用 Cursor 登录'),
+        waitingForAuthorization: localized('Waiting for Cursor authorization', '正在等待 Cursor 授权'),
+      }) as unknown as PluginDescriptor<unknown>,
+    },
     {
       packageName: '@aio-proxy/plugin-github-copilot',
       version: GITHUB_COPILOT_PLUGIN_VERSION,
@@ -45,18 +55,6 @@ export function createEmbeddedBuiltIns(): readonly BuiltInPluginDefinition[] {
         deviceInstructions: localized('Enter code', '输入代码'),
         refreshingToken: localized('Refreshing GitHub Copilot token', '正在刷新 GitHub Copilot 令牌'),
         waitingForAuthorization: localized('Waiting for GitHub authorization', '正在等待 GitHub 授权'),
-      }) as unknown as PluginDescriptor<unknown>,
-    },
-    {
-      packageName: '@aio-proxy/plugin-openai-chatgpt',
-      version: OPENAI_CHATGPT_PLUGIN_VERSION,
-      descriptor: createOpenAIChatGPTPlugin({
-        pluginLabel: localized('OpenAI ChatGPT', 'OpenAI ChatGPT'),
-        pluginDescription: localized(
-          'Use a ChatGPT Plus or Pro account to access models',
-          '使用 ChatGPT Plus 或 Pro 账号访问模型',
-        ),
-        adapterLabel: localized('Login with ChatGPT (Plus/Pro)', '使用 ChatGPT（Plus/Pro）登录'),
       }) as unknown as PluginDescriptor<unknown>,
     },
     {
@@ -85,6 +83,18 @@ export function createEmbeddedBuiltIns(): readonly BuiltInPluginDefinition[] {
       }) as unknown as PluginDescriptor<unknown>,
     },
     {
+      packageName: '@aio-proxy/plugin-openai-chatgpt',
+      version: OPENAI_CHATGPT_PLUGIN_VERSION,
+      descriptor: createOpenAIChatGPTPlugin({
+        pluginLabel: localized('OpenAI ChatGPT', 'OpenAI ChatGPT'),
+        pluginDescription: localized(
+          'Use a ChatGPT Plus or Pro account to access models',
+          '使用 ChatGPT Plus 或 Pro 账号访问模型',
+        ),
+        adapterLabel: localized('Login with ChatGPT (Plus/Pro)', '使用 ChatGPT（Plus/Pro）登录'),
+      }) as unknown as PluginDescriptor<unknown>,
+    },
+    {
       packageName: '@aio-proxy/plugin-xai-grok',
       version: XAI_GROK_PLUGIN_VERSION,
       descriptor: createXAIGrokPlugin({
@@ -96,16 +106,6 @@ export function createEmbeddedBuiltIns(): readonly BuiltInPluginDefinition[] {
         adapterLabel: localized('Login with xAI Grok', '使用 xAI Grok 登录'),
         deviceInstructions: localized('Enter code', '输入代码'),
         waitingForAuthorization: localized('Waiting for xAI authorization', '正在等待 xAI 授权'),
-      }) as unknown as PluginDescriptor<unknown>,
-    },
-    {
-      packageName: '@aio-proxy/plugin-cursor',
-      version: CURSOR_PLUGIN_VERSION,
-      descriptor: createCursorPlugin({
-        pluginLabel: localized('Cursor', 'Cursor'),
-        pluginDescription: localized('Use a Cursor account to access models', '使用 Cursor 账号访问模型'),
-        adapterLabel: localized('Login with Cursor', '使用 Cursor 登录'),
-        waitingForAuthorization: localized('Waiting for Cursor authorization', '正在等待 Cursor 授权'),
       }) as unknown as PluginDescriptor<unknown>,
     },
   ];

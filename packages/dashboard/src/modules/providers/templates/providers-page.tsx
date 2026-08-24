@@ -1,21 +1,15 @@
 import { m } from '@aio-proxy/i18n';
 import { Button } from '@aio-proxy/ui/components/button';
 import { Card, CardContent } from '@aio-proxy/ui/components/card';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@aio-proxy/ui/components/dropdown-menu';
 import { Skeleton } from '@aio-proxy/ui/components/skeleton';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
+import { RotateCwIcon } from 'lucide-react';
 import type React from 'react';
 
 import { PageContainer } from '@/components/page-container';
 
 import { ProvidersTable } from '../components/providers-table';
-import { PROVIDER_KIND_LABEL } from '../lib/constants';
 import { providersQueryOptions } from '../services/providers-service';
 
 interface ProvidersPageProps {
@@ -32,22 +26,9 @@ export const ProvidersPage: React.FC<ProvidersPageProps> = ({ focusProviderId, w
       title={m['dashboard.providers.list_title']()}
       breadcrumbs={[{ label: m['dashboard.menus.configuration']() }, { label: m['dashboard.providers.list_title']() }]}
       extra={
-        <DropdownMenu>
-          <DropdownMenuTrigger render={<Button data-testid="new-provider-button" />}>
-            {m['dashboard.providers.new_provider']()}
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem render={<Link preload="intent" to="/providers/new/$kind" params={{ kind: 'api' }} />}>
-              {PROVIDER_KIND_LABEL.api}
-            </DropdownMenuItem>
-            <DropdownMenuItem render={<Link preload="intent" to="/providers/new/$kind" params={{ kind: 'oauth' }} />}>
-              {PROVIDER_KIND_LABEL.oauth}
-            </DropdownMenuItem>
-            <DropdownMenuItem render={<Link preload="intent" to="/providers/new/$kind" params={{ kind: 'ai-sdk' }} />}>
-              {PROVIDER_KIND_LABEL['ai-sdk']}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <Button render={<Link preload="intent" to="/providers/new" />} data-testid="new-provider-button">
+          {m['dashboard.providers.new_provider']()}
+        </Button>
       }
     >
       <Card>
@@ -62,6 +43,22 @@ export const ProvidersPage: React.FC<ProvidersPageProps> = ({ focusProviderId, w
               {Array.from({ length: 3 }).map((_, index) => (
                 <Skeleton key={index} className="h-12 w-full" />
               ))}
+            </div>
+          ) : providersQuery.isError ? (
+            // Without this branch a failed query falls through to the table's own empty state, which
+            // tells a user whose backend is down that they have no providers configured.
+            <div className="flex flex-wrap items-center gap-2" role="alert" data-testid="providers-load-error">
+              <p className="text-sm text-destructive">{m['dashboard.providers.list_load_failed']()}</p>
+              <Button
+                type="button"
+                size="xs"
+                variant="ghost"
+                data-testid="providers-load-retry"
+                onClick={() => void providersQuery.refetch()}
+              >
+                <RotateCwIcon data-icon="inline-start" aria-hidden="true" />
+                {m['dashboard.providers.list_retry']()}
+              </Button>
             </div>
           ) : (
             <ProvidersTable providers={providers} focusProviderId={focusProviderId} />

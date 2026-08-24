@@ -44,7 +44,7 @@ const testValidator = validator('json', (raw, context) => {
 
 export const createDashboardProviderDraftRoutes = (state: ServerState) =>
   new Hono()
-    .post('/providers/draft/catalog', catalogValidator, async (context) => {
+    .query('/providers/draft/catalog', catalogValidator, async (context) => {
       const { draft, persistedProviderId } = context.req.valid('json');
       const resolved = resolveProviderDraft(state, draft, persistedProviderId);
       if (!resolved.ok) {

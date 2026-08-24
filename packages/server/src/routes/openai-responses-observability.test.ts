@@ -3,8 +3,9 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { REQUEST_BODY_LIMITS } from '@aio-proxy/core';
 import { ProviderProtocol } from '@aio-proxy/types';
 
+import { createServer } from '#server-test-lifecycle';
+
 import { createTempHomes, recorded } from '../../__tests__/openai-responses.test-support';
-import { createServer } from '../server';
 import type { ServerLog } from '../server-log';
 
 const homes = createTempHomes('aio-proxy-responses-early-logs-');

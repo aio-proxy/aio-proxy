@@ -3,8 +3,9 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { createServer as createBaseServer } from '@aio-proxy/server';
 import { ProviderProtocol } from '@aio-proxy/types';
+
+import { createServer as createBaseServer } from '#server-test-lifecycle';
 
 import { loopbackServer } from '../src/dashboard-auth/test-support';
 
@@ -62,6 +63,7 @@ describe('server routes', () => {
             passthrough: true,
             last_status: 'unknown',
             last_latency: null,
+            priority: 0,
             weight: 7,
             protocol: ProviderProtocol.OpenAICompatible,
             clientModels: ['gpt-test'],

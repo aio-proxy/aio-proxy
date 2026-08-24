@@ -1,10 +1,12 @@
 /* oxlint-disable max-lines, max-lines-per-function */
 
+import { m } from '@aio-proxy/i18n';
 import { ProviderRequestTransformRulesSchema, type ProviderRequestTransformRule } from '@aio-proxy/types';
 import { expect, rs, test } from '@rstest/core';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { useEffect, useState } from 'react';
 
+import { requestTransformFunctionMeta } from '../../lib/request-transforms';
 import { ProviderRequestTransformsEditor } from './provider-request-transforms-editor';
 
 rs.mock('@/components/json-editor/json-schema-registry', () => ({
@@ -104,6 +106,23 @@ const latestValue = (onChange: ReturnType<typeof rs.fn>) =>
 const ruleCard = (index: number) => screen.getByTestId(`request-transform-rule-${index}`);
 const stageCard = (index: number) => within(ruleCard(0)).getByTestId(`request-transform-stage-${index}`);
 
+// Read from the messages so a copy change cannot turn these field-decoding assertions red.
+const currentBodyField = m['dashboard.providers.transforms.condition.field.current_body']();
+const originalBodyField = m['dashboard.providers.transforms.condition.field.original_body']();
+
+// Value controls are named `<rule name> <label>`; the harness rules are unnamed, so the prefix is `Rule 1`.
+const scopedValueLabel = (label: string) =>
+  m['dashboard.providers.transforms.value.scoped_label']({
+    name: m['dashboard.providers.transforms.rule.label']({ index: 1 }),
+    label,
+  });
+
+const argumentPathLabel = (...indexes: readonly number[]) =>
+  [
+    ...indexes.map((index) => m['dashboard.providers.transforms.condition.argument.label']({ index })),
+    m['dashboard.providers.transforms.condition.field.title'](),
+  ].join(' → ');
+
 test('labels unnamed rules by index and renders Add rule after the rule list', () => {
   render(
     <RequestTransformsHarness
@@ -114,9 +133,47 @@ test('labels unnamed rules by index and renders Add rule after the rule list', (
   );
 
   const rule = ruleCard(0);
-  expect(within(rule).getByText(/^Rule 1$|^规则 1$/u)).toBeInTheDocument();
+  // The index label hints through the placeholder only; materializing it would save a name nobody typed.
+  const name = within(rule).getByRole('textbox', { name: /Rule 1 name|规则 1 名称/u }) as HTMLInputElement;
+  expect(name.placeholder).toMatch(/^Rule 1$|^规则 1$/u);
+  expect(name).toHaveValue('');
   const addRule = screen.getByRole('button', { name: /Add rule|添加规则/u });
   expect(rule.compareDocumentPosition(addRule) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+});
+
+test('seeds and strips the rule condition from the conditional toggle', async () => {
+  const onChange = rs.fn();
+  render(
+    <RequestTransformsHarness
+      initialValue={[{ update: [{ $unset: 'request.body.value' }] }]}
+      onChange={onChange}
+      onValidityChange={rs.fn()}
+    />,
+  );
+
+  const alwaysApplies = /runs on every request|每次请求都会执行这条规则/u;
+  const conditionalCopy = /Only run when conditions match|仅在满足条件时执行/u;
+  const toggle = () => within(ruleCard(0)).getByText(conditionalCopy);
+  expect(within(ruleCard(0)).getByText(alwaysApplies)).toBeInTheDocument();
+
+  // Click the enclosing label, not the switch: the product markup is correct (Base UI's own endorsed pattern)
+  // but happy-dom double-toggles a click on the switch itself. SwitchRoot.js:142 calls preventDefault() to
+  // suppress the label's forwarding, which works in a browser because it lands before the label's default
+  // action; happy-dom's HTMLLabelElement.dispatchEvent forwards to the control *during* dispatch, before
+  // React's root-level handler has run, so the forward happens anyway and onCheckedChange fires twice.
+  // Verified in a real browser: one click, one toggle, from both the switch and the label.
+  fireEvent.click(toggle());
+  // The seeded condition has to be one the builder can reopen, not just one the schema accepts.
+  await waitFor(() => expect(latestValue(onChange)[0]?.when).toEqual({ 'request.model': { $regex: '' } }));
+  expect(within(ruleCard(0)).getByTestId('fields-kind')).toHaveTextContent(/Current model|当前模型/u);
+  expect(within(ruleCard(0)).getByRole('switch', { name: conditionalCopy })).toBeChecked();
+  expect(within(ruleCard(0)).getByRole('button', { name: /Add condition|添加条件/u })).toBeInTheDocument();
+  expect(within(ruleCard(0)).queryByText(alwaysApplies)).toBeNull();
+
+  fireEvent.click(toggle());
+  await waitFor(() => expect(latestValue(onChange)[0]).not.toHaveProperty('when'));
+  expect(within(ruleCard(0)).queryByRole('button', { name: /Add condition|添加条件/u })).toBeNull();
+  expect(within(ruleCard(0)).getByText(alwaysApplies)).toBeInTheDocument();
 });
 
 test('directly adds one Set action and stores an explicitly selected null', async () => {
@@ -135,7 +192,7 @@ test('directly adds one Set action and stores an explicitly selected null', asyn
 
   await selectOption(within(stageCard(0)).getByTestId('request-transform-static-type'), /^(Null|空值)$/u);
   await waitFor(() => expect(latestValue(onChange)[0]?.update[0]).toEqual({ $set: { 'request.body.value': null } }));
-  expect(within(stageCard(0)).queryByRole('textbox', { name: /Static value|静态值/u })).toBeNull();
+  expect(within(stageCard(0)).queryByRole('textbox', { name: /Value to set|设置值/u })).toBeNull();
 });
 
 test('shows and clears an accessible error for an invalid number literal', async () => {
@@ -150,7 +207,7 @@ test('shows and clears an accessible error for an invalid number literal', async
   );
 
   await selectOption(within(stageCard(0)).getByTestId('request-transform-static-type'), /^(Number|数字)$/u);
-  const numberInput = within(stageCard(0)).getByRole('spinbutton', { name: /Static value|静态值/u });
+  const numberInput = within(stageCard(0)).getByRole('spinbutton', { name: /Value to set|设置值/u });
   fireEvent.change(numberInput, { target: { value: '' } });
 
   const error = within(stageCard(0)).getByRole('alert');
@@ -166,31 +223,65 @@ test('shows and clears an accessible error for an invalid number literal', async
   expect(within(stageCard(0)).queryByRole('alert')).toBeNull();
 });
 
-test('shows the JSON array-specific error and clears it after recovery', async () => {
+test('offers booleans as a true/false select rather than a checkbox', async () => {
   const onChange = rs.fn();
   render(
     <RequestTransformsHarness
-      initialValue={[{ update: [{ $set: { 'request.body.value': { $literal: [] } } }] }]}
+      initialValue={[{ update: [{ $set: { 'request.body.value': 'seed' } }] }]}
       onChange={onChange}
       onValidityChange={rs.fn()}
     />,
   );
 
-  const arrayInput = within(stageCard(0)).getByRole('textbox', { name: /Static value|静态值/u });
-  fireEvent.change(arrayInput, { target: { value: '{}' } });
+  // By accessible name, not testid: the type select's own label pairing has to keep working.
+  const typeSelect = within(stageCard(0)).getByRole('combobox', {
+    name: scopedValueLabel(m['dashboard.providers.transforms.value.type']()),
+  });
+  await selectOption(typeSelect, /^(Boolean|布尔值)$/u);
+  const booleanControl = within(stageCard(0)).getByRole('combobox', { name: /Value to set|设置值/u });
+  expect(booleanControl).toHaveAttribute('data-testid', 'request-transform-static-boolean');
+  expect(within(stageCard(0)).queryByRole('checkbox')).toBeNull();
 
-  const error = within(stageCard(0)).getByRole('alert');
+  await selectOption(booleanControl, /^true$/u);
+  // `staticExpression` only wraps arrays, objects and `$`-prefixed strings, so a boolean stays bare.
+  await waitFor(() => expect(latestValue(onChange)[0]?.update[0]).toEqual({ $set: { 'request.body.value': true } }));
+});
+
+test('gates applying JSON on a draft that parses to the selected type', async () => {
+  const onChange = rs.fn();
+  render(
+    <RequestTransformsHarness
+      initialValue={[{ update: [{ $set: { 'request.body.value': { $literal: [1, 2] } } }] }]}
+      onChange={onChange}
+      onValidityChange={rs.fn()}
+    />,
+  );
+
+  // The name anchors the label and the compact value, so losing either half fails here.
+  const arrayControl = within(stageCard(0)).getByRole('button', { name: /(Value to set|设置值)\s*\[1,2\]/u });
+  fireEvent.click(arrayControl);
+
+  const drawer = await screen.findByTestId('request-transform-json-drawer');
+  const jsonDraft = within(drawer).getByRole('textbox', { name: /Value to set|设置值/u });
+  const apply = within(drawer).getByTestId('request-transform-json-apply');
+  // Exact equality: the drawer seeds the indented form while the button shows the compact one.
+  expect(jsonDraft).toHaveValue('[\n  1,\n  2\n]');
+  fireEvent.change(jsonDraft, { target: { value: '{}' } });
+
+  expect(apply).toBeDisabled();
+  const error = within(drawer).getByRole('alert');
   expect(error).toHaveTextContent(/valid JSON array|有效的 JSON 数组/u);
-  expect(arrayInput).toHaveAttribute('aria-invalid', 'true');
-  expect(arrayInput).toHaveAttribute('aria-describedby', error.id);
+  // The field is named for what it holds, not for the drawer title, and points at its own error.
+  expect(jsonDraft).toHaveAccessibleName(/Value to set|设置值/u);
+  expect(error).toHaveAttribute('id', jsonDraft.id + '-error');
 
-  fireEvent.change(arrayInput, { target: { value: '[1]' } });
+  fireEvent.change(jsonDraft, { target: { value: '[1]' } });
+  expect(apply).not.toBeDisabled();
+  fireEvent.click(apply);
   await waitFor(() =>
     expect(latestValue(onChange)[0]?.update[0]).toEqual({ $set: { 'request.body.value': { $literal: [1] } } }),
   );
-  expect(arrayInput).toHaveAttribute('aria-invalid', 'false');
-  expect(arrayInput).not.toHaveAttribute('aria-describedby');
-  expect(within(stageCard(0)).queryByRole('alert')).toBeNull();
+  expect(screen.queryByTestId('request-transform-json-drawer')).toBeNull();
 });
 
 test('edits ordered Set and Remove actions losslessly across Visual and JSON modes', async () => {
@@ -204,17 +295,21 @@ test('edits ordered Set and Remove actions losslessly across Visual and JSON mod
   let stages = within(ruleCard(0)).getAllByTestId(/request-transform-stage-/u);
   expect(stages).toHaveLength(4);
   expect(within(stages[0]!).getByTestId('request-transform-action')).toHaveTextContent(/Set|设置/u);
-  expect(within(stages[0]!).getByTestId('request-transform-target')).toHaveTextContent(/Body|请求体/u);
-  expect(within(stages[0]!).getByRole('textbox', { name: /Body path|请求体路径/u })).toHaveValue('value');
-  expect(within(stages[0]!).getByTestId('request-transform-value-mode')).toHaveTextContent(/Static|静态/u);
-  expect(within(stages[0]!).getByRole('textbox', { name: /Static value|静态值/u })).toHaveValue('$seed');
-  expect(within(stages[1]!).getByTestId('request-transform-target')).toHaveTextContent(/Header|请求头/u);
-  expect(within(stages[1]!).getByRole('textbox', { name: /Header name|请求头名称/u })).toHaveValue('x-route');
+  expect(within(stages[0]!).getByRole('textbox', { name: /Body path|请求体路径/u })).toHaveValue('request.body.value');
+  expect(within(stages[0]!).getByTestId('request-transform-value-mode')).toHaveTextContent(/Fixed value|固定值/u);
+  expect(within(stages[0]!).getByRole('textbox', { name: /Value to set|设置值/u })).toHaveValue('$seed');
+  expect(within(stages[1]!).getByRole('textbox', { name: /Header name|请求头名称/u })).toHaveValue(
+    'request.headers.x-route',
+  );
   expect(within(stages[1]!).getByTestId('request-transform-value-mode')).toHaveTextContent(/Computed|计算/u);
-  expect(within(stages[1]!).getByTestId('transform-set-expression-fn')).toHaveTextContent(/CONCAT/u);
-  expect(within(stages[2]!).getByTestId('request-transform-action')).toHaveTextContent(/Remove|移除/u);
-  expect(within(stages[2]!).getByRole('textbox', { name: /Body path|请求体路径/u })).toHaveValue('value');
-  expect(within(stages[3]!).getByRole('textbox', { name: /Header name|请求头名称/u })).toHaveValue('x-route');
+  expect(within(stages[1]!).getByTestId('transform-set-expression-fn')).toHaveTextContent(/CONCAT|Concatenate|拼接/u);
+  expect(within(stages[2]!).getByTestId('request-transform-action')).toHaveTextContent(/Remove|删除/u);
+  expect(within(stages[2]!).getByRole('textbox', { name: /Body path|请求体路径/u })).toHaveValue('request.body.value');
+  // A Remove action has no value slot, so it explains the gap instead of leaving one.
+  expect(within(stages[2]!).getByText(/Remove actions need no value\.|删除字段无需填写值。/u)).toBeInTheDocument();
+  expect(within(stages[3]!).getByRole('textbox', { name: /Header name|请求头名称/u })).toHaveValue(
+    'request.headers.x-route',
+  );
 
   fireEvent.click(screen.getByRole('button', { name: /Add rule|添加规则/u }));
   await waitFor(() => expect(screen.getAllByTestId(/request-transform-rule-/u)).toHaveLength(2));
@@ -222,8 +317,12 @@ test('edits ordered Set and Remove actions losslessly across Visual and JSON mod
   const addedPath = within(addedRule).getByRole('textbox', { name: /Body path|请求体路径/u });
   expect(document.activeElement).toBe(addedPath);
   expect((addedPath as HTMLInputElement).selectionStart).toBe(0);
-  expect((addedPath as HTMLInputElement).selectionEnd).toBe('value'.length);
-  expect(within(addedRule).getByRole('button', { name: /Remove action 1|删除操作 1/u })).toBeDisabled();
+  expect((addedPath as HTMLInputElement).selectionEnd).toBe('request.body.value'.length);
+  // The only action still cannot be removed; it now says so by offering no control at all. The action select
+  // anchors the assertion so it cannot pass by the whole stage row having disappeared.
+  const addedStage = within(addedRule).getByTestId('request-transform-stage-0');
+  expect(within(addedStage).getByRole('combobox', { name: /^(Action|操作)$/u })).toBeInTheDocument();
+  expect(within(addedStage).queryByRole('button', { name: /Remove action 1|删除操作 1/u })).toBeNull();
   fireEvent.change(within(addedRule).getByRole('textbox', { name: /Rule 2 name|规则 2 名称/u }), {
     target: { value: 'fallback' },
   });
@@ -241,9 +340,8 @@ test('edits ordered Set and Remove actions losslessly across Visual and JSON mod
   fireEvent.click(within(stageCard(4)).getByRole('button', { name: /Remove action 5|删除操作 5/u }));
   await waitFor(() => expect(latestValue(onChange)[0]?.update).toHaveLength(4));
 
-  await selectOption(within(stageCard(0)).getByTestId('request-transform-target'), /^(Header|请求头)$/u);
-  fireEvent.change(within(stageCard(0)).getByRole('textbox', { name: /Header name|请求头名称/u }), {
-    target: { value: 'X-Test' },
+  fireEvent.change(within(stageCard(0)).getByRole('textbox', { name: /Body path|请求体路径/u }), {
+    target: { value: 'request.headers.X-Test' },
   });
   await waitFor(() =>
     expect(latestValue(onChange)[0]?.update[0]).toEqual({
@@ -254,9 +352,8 @@ test('edits ordered Set and Remove actions losslessly across Visual and JSON mod
       },
     }),
   );
-  await selectOption(within(stageCard(0)).getByTestId('request-transform-target'), /^(Body|请求体)$/u);
-  fireEvent.change(within(stageCard(0)).getByRole('textbox', { name: /Body path|请求体路径/u }), {
-    target: { value: 'value' },
+  fireEvent.change(within(stageCard(0)).getByRole('textbox', { name: /Header name|请求头名称/u }), {
+    target: { value: 'request.body.value' },
   });
 
   fireEvent.click(within(stageCard(2)).getByRole('button', { name: /Move action 3 up|上移操作 3/u }));
@@ -275,10 +372,7 @@ test('edits ordered Set and Remove actions losslessly across Visual and JSON mod
   );
   await selectOption(within(stageCard(0)).getByTestId('transform-set-expression-kind'), /^(Function|函数)$/u);
   await selectOption(within(stageCard(0)).getByTestId('transform-set-expression-fn'), /^(CONCAT|Concatenate|拼接)$/u);
-  await selectOption(
-    within(stageCard(0)).getByTestId('transform-set-expression-arg0-field-kind'),
-    /Current body field|当前请求体字段/u,
-  );
+  await selectOption(within(stageCard(0)).getByTestId('transform-set-expression-arg0-field-kind'), currentBodyField);
   fireEvent.change(within(stageCard(0)).getByTestId('transform-set-expression-arg0-field-suffix'), {
     target: { value: 'name' },
   });
@@ -289,7 +383,7 @@ test('edits ordered Set and Remove actions losslessly across Visual and JSON mod
   );
   await selectOption(
     within(stageCard(0)).getByTestId('transform-set-expression-arg1-arg0-field-kind'),
-    /Original body field|原始请求体字段/u,
+    originalBodyField,
   );
   fireEvent.change(within(stageCard(0)).getByTestId('transform-set-expression-arg1-arg0-field-suffix'), {
     target: { value: 'suffix' },
@@ -302,9 +396,9 @@ test('edits ordered Set and Remove actions losslessly across Visual and JSON mod
     }),
   );
 
-  await selectOption(within(stageCard(0)).getByTestId('request-transform-value-mode'), /^(Static|静态)$/u);
+  await selectOption(within(stageCard(0)).getByTestId('request-transform-value-mode'), /^(Fixed value|固定值)$/u);
   await selectOption(within(stageCard(0)).getByTestId('request-transform-static-type'), /^(Text|文本)$/u);
-  const staticEditor = within(stageCard(0)).getByRole('textbox', { name: /Static value|静态值/u });
+  const staticEditor = within(stageCard(0)).getByRole('textbox', { name: /Value to set|设置值/u });
   fireEvent.change(staticEditor, { target: { value: '$literal' } });
   await waitFor(() =>
     expect(latestValue(onChange)[0]?.update[0]).toEqual({
@@ -315,7 +409,7 @@ test('edits ordered Set and Remove actions losslessly across Visual and JSON mod
   const canonical = JSON.stringify(latestValue(onChange));
   const changeCount = onChange.mock.calls.length;
   fireEvent.click(screen.getByRole('tab', { name: /JSON/u }));
-  const jsonEditor = await screen.findByRole('textbox', { name: /request transforms json/i });
+  const jsonEditor = await screen.findByRole('textbox', { name: /request rewrites json/i });
   expect(JSON.stringify(JSON.parse((jsonEditor as HTMLTextAreaElement).value))).toBe(canonical);
   await waitFor(() => expect(onValidityChange).toHaveBeenLastCalledWith(true));
   fireEvent.click(screen.getByRole('tab', { name: /Visual|可视化/u }));
@@ -332,18 +426,13 @@ test('retains unsafe stage control drafts until shared rule validation accepts t
   );
 
   const bodyPath = within(stageCard(0)).getByRole('textbox', { name: /Body path|请求体路径/u });
-  fireEvent.change(bodyPath, { target: { value: '__proto__' } });
+  fireEvent.change(bodyPath, { target: { value: 'request.body.__proto__' } });
 
-  expect(bodyPath).toHaveValue('__proto__');
+  expect(bodyPath).toHaveValue('request.body.__proto__');
   await waitFor(() => expect(onValidityChange).toHaveBeenLastCalledWith(false));
   expect(onChange).not.toHaveBeenCalled();
 
-  await selectOption(within(stageCard(0)).getByTestId('request-transform-target'), /^(Header|请求头)$/u);
-  const headerName = within(stageCard(0)).getByRole('textbox', { name: /Header name|请求头名称/u });
-  expect(headerName).toHaveValue('__proto__');
-  expect(onChange).not.toHaveBeenCalled();
-
-  fireEvent.change(headerName, { target: { value: 'X-Good' } });
+  fireEvent.change(bodyPath, { target: { value: 'request.headers.X-Good' } });
   await waitFor(() =>
     expect(latestValue(onChange)[0]?.update[0]).toEqual({
       $set: {
@@ -353,52 +442,145 @@ test('retains unsafe stage control drafts until shared rule validation accepts t
       },
     }),
   );
-  expect(headerName).toHaveValue('x-good');
+  expect(bodyPath).toHaveValue('request.headers.x-good');
   expect(onValidityChange).toHaveBeenLastCalledWith(true);
 });
 
-test('keeps malformed static JSON visible and blocks switching modes until it is valid', async () => {
+test('seeds a refused computed stage with an editable body field', async () => {
+  const onChange = rs.fn();
+  render(<RequestTransformsHarness initialValue={initialValue} onChange={onChange} onValidityChange={rs.fn()} />);
+
+  // A refused commit never round trips through the codec, so the seeded default is observable as authored.
+  fireEvent.change(within(stageCard(0)).getByRole('textbox', { name: /Body path|请求体路径/u }), {
+    target: { value: 'request.body.__proto__' },
+  });
+  await selectOption(within(stageCard(0)).getByTestId('request-transform-value-mode'), /^(Computed|计算)$/u);
+
+  expect(within(stageCard(0)).getByTestId('transform-set-expression-field-suffix')).toHaveValue('value');
+  expect(within(stageCard(0)).getByTestId('transform-set-expression-field-kind')).toHaveTextContent(currentBodyField);
+  expect(onChange).not.toHaveBeenCalled();
+});
+
+test('names every nested expression argument by its argument path', () => {
+  const nestedValue = [
+    {
+      update: [
+        {
+          $set: {
+            'request.body.value': { $concat: ['$request.body.a', { $min: ['$request.body.b', 1] }] },
+          },
+        },
+      ],
+    },
+  ] satisfies readonly ProviderRequestTransformRule[];
+  render(<RequestTransformsHarness initialValue={nestedValue} onChange={rs.fn()} onValidityChange={rs.fn()} />);
+
+  const outer = screen.getByRole('combobox', { name: argumentPathLabel(1) });
+  const inner = screen.getByRole('combobox', { name: argumentPathLabel(2, 1) });
+  expect(outer).toHaveAttribute('data-testid', 'transform-set-expression-arg0-field-kind');
+  expect(inner).toHaveAttribute('data-testid', 'transform-set-expression-arg1-arg0-field-kind');
+});
+
+test('prints the same function label in the expression preview and the function selector', () => {
+  const computedValue = [
+    { update: [{ $set: { 'request.body.value': { $concat: ['$request.body.a', 'b'] } } }] },
+  ] satisfies readonly ProviderRequestTransformRule[];
+  render(<RequestTransformsHarness initialValue={computedValue} onChange={rs.fn()} onValidityChange={rs.fn()} />);
+
+  // One source for both: the registry label. A localized copy of it would drift from the preview.
+  const label = requestTransformFunctionMeta.concat.label;
+  expect(within(stageCard(0)).getByTestId('transform-set-expression-fn')).toHaveTextContent(label);
+  expect(
+    within(stageCard(0)).getByLabelText(
+      m['dashboard.providers.transforms.value.preview_label']({
+        name: m['dashboard.providers.transforms.rule.label']({ index: 1 }),
+      }),
+    ),
+  ).toHaveTextContent(`${label}(request.body.a, "b")`);
+});
+
+test('prefixes each value control with the rule name exactly once', async () => {
+  render(
+    <RequestTransformsHarness
+      initialValue={[{ update: [{ $set: { 'request.body.value': 'seed' } }] }]}
+      onChange={rs.fn()}
+      onValidityChange={rs.fn()}
+    />,
+  );
+
+  // Exact accessible names: a missing prefix and a doubled one both fail here.
+  expect(within(stageCard(0)).getByTestId('request-transform-value-mode')).toHaveAccessibleName(
+    scopedValueLabel(m['dashboard.providers.transforms.value.mode']()),
+  );
+  expect(within(stageCard(0)).getByTestId('request-transform-static-type')).toHaveAccessibleName(
+    scopedValueLabel(m['dashboard.providers.transforms.value.type']()),
+  );
+  expect(
+    within(stageCard(0)).getByLabelText(scopedValueLabel(m['dashboard.providers.transforms.value.static_label']())),
+  ).toHaveValue('seed');
+
+  await selectOption(within(stageCard(0)).getByTestId('request-transform-value-mode'), /^(Computed|计算)$/u);
+  // The tree container holds the only prefix; nested controls keep their argument-path names.
+  expect(
+    within(stageCard(0)).getByLabelText(scopedValueLabel(m['dashboard.providers.transforms.value.computed_label']())),
+  ).toBeTruthy();
+  expect(within(stageCard(0)).getByTestId('transform-set-expression-field-kind')).toHaveAccessibleName(
+    m['dashboard.providers.transforms.condition.field.title'](),
+  );
+  // The argument marker copy in `request-transform-expression-tree.css` reads this property, so dropping it renders an unprefixed number.
+  expect(within(stageCard(0)).getByTestId('request-transform-expression-tree')).toHaveStyle({
+    '--expr-arg-label': `"${m['dashboard.providers.transforms.condition.argument.prefix']()} "`,
+  });
+});
+
+test('keeps an incomplete JSON draft in the drawer while it is still being typed', async () => {
+  render(
+    <RequestTransformsHarness
+      initialValue={[{ update: [{ $set: { 'request.body.value': { $literal: { seed: true } } } }] }]}
+      onChange={rs.fn()}
+      onValidityChange={rs.fn()}
+    />,
+  );
+
+  fireEvent.click(within(stageCard(0)).getByRole('button', { name: /Value to set|设置值/u }));
+  const drawer = await screen.findByTestId('request-transform-json-drawer');
+  const jsonDraft = within(drawer).getByRole('textbox', { name: /Value to set|设置值/u });
+  fireEvent.change(jsonDraft, { target: { value: '{' } });
+
+  expect(jsonDraft).toHaveValue('{');
+  expect(within(drawer).getByTestId('request-transform-json-apply')).toBeDisabled();
+});
+
+test('contains a discarded JSON draft inside the drawer instead of the form', async () => {
   const objectValue = [
     { update: [{ $set: { 'request.body.value': { $literal: { seed: true } } } }] },
   ] satisfies readonly ProviderRequestTransformRule[];
   const onChange = rs.fn();
   const onValidityChange = rs.fn();
-  const { rerender } = render(
+  render(
     <RequestTransformsHarness initialValue={objectValue} onChange={onChange} onValidityChange={onValidityChange} />,
   );
 
-  const staticEditor = within(stageCard(0)).getByRole('textbox', { name: /Static value|静态值/u });
-  fireEvent.change(staticEditor, { target: { value: '{' } });
+  const objectControl = within(stageCard(0)).getByRole('button', { name: /Value to set|设置值/u });
+  fireEvent.click(objectControl);
+  const drawer = await screen.findByTestId('request-transform-json-drawer');
+  fireEvent.change(within(drawer).getByRole('textbox', { name: /Value to set|设置值/u }), { target: { value: '{' } });
 
-  await waitFor(() => expect(onValidityChange).toHaveBeenLastCalledWith(false));
-  const error = within(stageCard(0)).getByRole('alert');
-  expect(error).toHaveTextContent(/valid JSON object|有效的 JSON 对象/u);
-  expect(staticEditor).toHaveAttribute('aria-invalid', 'true');
-  expect(staticEditor).toHaveAttribute('aria-describedby', error.id);
-  const jsonTab = screen.getByRole('tab', { name: /JSON/u });
-  expect(jsonTab).toHaveAttribute('aria-disabled', 'true');
-  fireEvent.click(jsonTab);
-  expect(screen.getByTestId('request-transform-rule-0')).toBeInTheDocument();
-  expect(screen.queryByRole('textbox', { name: /request transforms json/i })).toBeNull();
+  expect(within(drawer).getByTestId('request-transform-json-apply')).toBeDisabled();
+  expect(within(drawer).getByRole('alert')).toHaveTextContent(/valid JSON object|有效的 JSON 对象/u);
+
+  fireEvent.click(within(drawer).getByRole('button', { name: /Cancel|取消/u }));
+
+  // The unparseable text never left the drawer, so the form still holds the committed object.
   expect(onChange).not.toHaveBeenCalled();
+  expect(onValidityChange).not.toHaveBeenCalledWith(false);
+  expect(screen.getByRole('tab', { name: /JSON/u })).not.toHaveAttribute('aria-disabled', 'true');
 
-  rerender(
-    <RequestTransformsHarness initialValue={objectValue} onChange={onChange} onValidityChange={onValidityChange} />,
-  );
-  const retainedDraft = within(stageCard(0)).getByRole('textbox', { name: /Static value|静态值/u });
-  expect(retainedDraft).toHaveValue('{');
-
-  fireEvent.change(retainedDraft, { target: { value: '{"ok":true}' } });
-  await waitFor(() =>
-    expect(latestValue(onChange)[0]?.update[0]).toEqual({
-      $set: { 'request.body.value': { $literal: { ok: true } } },
-    }),
-  );
-  expect(onValidityChange).toHaveBeenLastCalledWith(true);
-  expect(retainedDraft).toHaveAttribute('aria-invalid', 'false');
-  expect(retainedDraft).not.toHaveAttribute('aria-describedby');
-  expect(within(stageCard(0)).queryByRole('alert')).toBeNull();
-  expect(jsonTab).not.toHaveAttribute('aria-disabled', 'true');
+  fireEvent.click(within(stageCard(0)).getByRole('button', { name: /Value to set|设置值/u }));
+  const reopened = await screen.findByTestId('request-transform-json-drawer');
+  expect(
+    JSON.parse((within(reopened).getByRole('textbox', { name: /Value to set|设置值/u }) as HTMLTextAreaElement).value),
+  ).toEqual({ seed: true });
 });
 
 test('retains incomplete computed fields and blocks switching modes until the expression is valid', async () => {
@@ -418,10 +600,7 @@ test('retains incomplete computed fields and blocks switching modes until the ex
   onChange.mockClear();
   onValidityChange.mockClear();
 
-  await selectOption(
-    within(stageCard(0)).getByTestId('transform-set-expression-field-kind'),
-    /Current body field|当前请求体字段/u,
-  );
+  await selectOption(within(stageCard(0)).getByTestId('transform-set-expression-field-kind'), currentBodyField);
   const suffix = within(stageCard(0)).getByTestId('transform-set-expression-field-suffix');
   expect(suffix).toHaveValue('');
   await waitFor(() => expect(onValidityChange).toHaveBeenLastCalledWith(false));
@@ -439,4 +618,164 @@ test('retains incomplete computed fields and blocks switching modes until the ex
   );
   expect(onValidityChange).toHaveBeenLastCalledWith(true);
   expect(jsonTab).not.toHaveAttribute('aria-disabled', 'true');
+});
+
+test('maps dotted body and header paths onto the stored stage wire format', async () => {
+  const onChange = rs.fn();
+  render(
+    <RequestTransformsHarness
+      initialValue={[{ update: [{ $set: { 'request.body.value': { $literal: '$seed' } } }] }]}
+      onChange={onChange}
+      onValidityChange={rs.fn()}
+    />,
+  );
+
+  fireEvent.change(within(stageCard(0)).getByRole('textbox', { name: /Body path|请求体路径/u }), {
+    target: { value: 'request.headers.X-Trace-Id' },
+  });
+  await waitFor(() =>
+    expect(latestValue(onChange)[0]?.update[0]).toEqual({
+      $set: {
+        'request.headers': {
+          $setField: { field: 'x-trace-id', input: '$request.headers', value: { $literal: '$seed' } },
+        },
+      },
+    }),
+  );
+
+  fireEvent.change(within(stageCard(0)).getByRole('textbox', { name: /Header name|请求头名称/u }), {
+    target: { value: 'request.body.temperature' },
+  });
+  await waitFor(() =>
+    expect(latestValue(onChange)[0]?.update[0]).toEqual({
+      $set: { 'request.body.temperature': { $literal: '$seed' } },
+    }),
+  );
+});
+
+test('persists a generated name on a new rule and drops it when cleared', async () => {
+  const onChange = rs.fn();
+  render(<RequestTransformsHarness initialValue={[]} onChange={onChange} onValidityChange={rs.fn()} />);
+
+  fireEvent.click(screen.getByRole('button', { name: /Add rule|添加规则/u }));
+  await waitFor(() =>
+    expect(latestValue(onChange).at(-1)?.name).toBe(m['dashboard.providers.transforms.rule.label']({ index: 1 })),
+  );
+
+  fireEvent.change(within(ruleCard(0)).getByRole('textbox', { name: /Rule 1 name|规则 1 名称/u }), {
+    target: { value: '' },
+  });
+  await waitFor(() => expect(latestValue(onChange)[0]).not.toHaveProperty('name'));
+});
+
+test('removes a structurally invalid rule without requiring it to become valid first', async () => {
+  const onChange = rs.fn();
+  render(<RequestTransformsHarness initialValue={initialValue} onChange={onChange} onValidityChange={rs.fn()} />);
+
+  fireEvent.change(within(stageCard(0)).getByRole('textbox', { name: /Body path|请求体路径/u }), {
+    target: { value: '' },
+  });
+  await waitFor(() => expect(within(stageCard(0)).getByRole('alert')).toBeInTheDocument());
+  expect(onChange).not.toHaveBeenCalled();
+
+  fireEvent.click(within(ruleCard(0)).getByRole('button', { name: /Remove rule 1|删除规则 1/u }));
+  await waitFor(() => expect(onChange).toHaveBeenLastCalledWith([]));
+});
+
+test('does not replace the whole body when a path input is cleared', async () => {
+  const onChange = rs.fn();
+  render(
+    <RequestTransformsHarness
+      initialValue={[{ update: [{ $set: { 'request.body.value': { $literal: '$seed' } } }] }]}
+      onChange={onChange}
+      onValidityChange={rs.fn()}
+    />,
+  );
+
+  const path = within(stageCard(0)).getByRole('textbox', { name: /Body path|请求体路径/u });
+  fireEvent.change(path, { target: { value: '' } });
+  await waitFor(() => expect(within(stageCard(0)).getByRole('alert')).toBeInTheDocument());
+  expect(path).toHaveValue('');
+  expect(
+    onChange.mock.calls.some(([rules]) =>
+      (rules as readonly ProviderRequestTransformRule[]).some((rule) =>
+        rule.update.some((stage) => '$set' in stage && Object.hasOwn(stage.$set as object, 'request.body')),
+      ),
+    ),
+  ).toBe(false);
+});
+
+/** An unfinished action is exactly when a user reaches for these buttons. Deriving them from the editor's
+ * overall validity froze every action in every rule — including the offending one — while the JSON tab was
+ * disabled for the same reason, so the only way out was to finish a stage the user wanted to discard. */
+test('keeps per-action and sibling-rule controls usable while one action is invalid', async () => {
+  render(
+    <RequestTransformsHarness
+      initialValue={[
+        { update: [{ $set: { 'request.body.value': 'seed' } }, { $unset: 'request.body.legacy' }] },
+        { update: [{ $unset: 'request.body.other' }] },
+      ]}
+      onChange={rs.fn()}
+      onValidityChange={rs.fn()}
+    />,
+  );
+
+  const path = within(stageCard(0)).getByRole('textbox', { name: /Body path|请求体路径/u });
+  fireEvent.change(path, { target: { value: '' } });
+  await waitFor(() => expect(within(stageCard(0)).getByRole('alert')).toBeInTheDocument());
+
+  const removeAction = (index: number) => m['dashboard.providers.transforms.action.remove_button']({ index });
+  // The offending action stays discardable, and a healthy sibling never notices.
+  expect(within(stageCard(0)).getByRole('button', { name: removeAction(1) })).toBeEnabled();
+  expect(within(stageCard(1)).getByRole('button', { name: removeAction(2) })).toBeEnabled();
+  // Reordering re-emits the action from its last accepted value, so only the unfinished action loses it.
+  expect(
+    within(stageCard(0)).getByRole('button', {
+      name: m['dashboard.providers.transforms.action.move_down']({ index: 1 }),
+    }),
+  ).toBeDisabled();
+  expect(
+    within(stageCard(1)).getByRole('button', {
+      name: m['dashboard.providers.transforms.action.move_up']({ index: 2 }),
+    }),
+  ).toBeDisabled();
+  // A healthy neighboring rule must not swap across this unfinished draft either.
+  expect(within(ruleCard(1)).getByRole('button', { name: /Move rule 2 up|上移规则 2/u })).toBeDisabled();
+  // Adding to another rule re-emits only that rule's actions, so it is unaffected by this one.
+  expect(within(ruleCard(1)).getByRole('button', { name: /Add action|添加操作/u })).toBeEnabled();
+});
+
+/** Text no prefix parses out of is held in the row's own state, and both lists key rows by index, so
+ * removing an earlier action slides the next one into a row still displaying the previous action's
+ * unfinished path — a path that action never had. */
+test('does not carry an unfinished path over to the action that takes its row', async () => {
+  render(
+    <RequestTransformsHarness
+      initialValue={[
+        {
+          update: [
+            { $set: { 'request.body.first': 'a' } },
+            { $set: { 'request.body.second': 'b' } },
+            { $set: { 'request.body.third': 'c' } },
+          ],
+        },
+      ]}
+      onChange={rs.fn()}
+      onValidityChange={rs.fn()}
+    />,
+  );
+
+  const bodyPath = (stage: number) =>
+    within(stageCard(stage)).getByRole('textbox', { name: /Body path|请求体路径/u }) as HTMLInputElement;
+  fireEvent.change(bodyPath(1), { target: { value: 'nope' } });
+  expect(bodyPath(1)).toHaveValue('nope');
+
+  fireEvent.click(
+    within(stageCard(0)).getByRole('button', {
+      name: m['dashboard.providers.transforms.action.remove_button']({ index: 1 }),
+    }),
+  );
+
+  await waitFor(() => expect(bodyPath(0)).toHaveValue('request.body.second'));
+  expect(bodyPath(1)).toHaveValue('request.body.third');
 });

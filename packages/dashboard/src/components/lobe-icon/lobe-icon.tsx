@@ -1,3 +1,5 @@
+import { useTheme } from 'next-themes';
+
 interface LobeIconProps {
   slug: string;
   size?: number;
@@ -5,18 +7,16 @@ interface LobeIconProps {
 }
 
 export const LobeIcon: React.FC<LobeIconProps> = ({ slug, size, className }) => {
+  const { resolvedTheme } = useTheme();
+  const theme = resolvedTheme === 'dark' ? 'dark' : 'light';
   return (
     <picture>
       <source
-        srcSet={`https://fastly.jsdelivr.net/npm/@lobehub/icons-static-svg@latest/icons/${slug}.svg`}
-        type="image/svg+xml"
-      />
-      <source
-        srcSet={`https://cdn.jsdelivr.net/npm/@lobehub/icons-static-svg@latest/icons/${slug}.svg`}
-        type="image/svg+xml"
+        srcSet={`https://fastly.jsdelivr.net/npm/@lobehub/icons-static-webp@latest/${theme}/${slug}.webp`}
+        type="image/webp"
       />
       <img
-        src={`https://unpkg.com/@lobehub/icons-static-svg@latest/icons/${slug}.svg`}
+        src={`https://fastly.jsdelivr.net/npm/@lobehub/icons-static-png@latest/${theme}/${slug}.png`}
         width={size}
         height={size}
         className={className}

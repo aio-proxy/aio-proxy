@@ -12,10 +12,13 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as TracesIndexRouteImport } from './routes/traces/index'
 import { Route as SettingsIndexRouteImport } from './routes/settings/index'
+import { Route as RoutingIndexRouteImport } from './routes/routing/index'
 import { Route as ProvidersIndexRouteImport } from './routes/providers/index'
 import { Route as PluginsIndexRouteImport } from './routes/plugins/index'
 import { Route as TracesTraceIdRouteImport } from './routes/traces/$traceId'
-import { Route as ProvidersNewKindRouteImport } from './routes/providers/new.$kind'
+import { Route as ProvidersNewRouteImport } from './routes/providers/new'
+import { Route as OauthCompleteRouteImport } from './routes/oauth/complete'
+import { Route as AgentsAuthorizeRouteImport } from './routes/agents/authorize'
 import { Route as ProvidersIdEditRouteImport } from './routes/providers/$id.edit'
 
 const IndexRoute = IndexRouteImport.update({
@@ -33,6 +36,11 @@ const SettingsIndexRoute = SettingsIndexRouteImport.update({
   path: '/settings/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const RoutingIndexRoute = RoutingIndexRouteImport.update({
+  id: '/routing/',
+  path: '/routing/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ProvidersIndexRoute = ProvidersIndexRouteImport.update({
   id: '/providers/',
   path: '/providers/',
@@ -48,9 +56,19 @@ const TracesTraceIdRoute = TracesTraceIdRouteImport.update({
   path: '/traces/$traceId',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ProvidersNewKindRoute = ProvidersNewKindRouteImport.update({
-  id: '/providers/new/$kind',
-  path: '/providers/new/$kind',
+const ProvidersNewRoute = ProvidersNewRouteImport.update({
+  id: '/providers/new',
+  path: '/providers/new',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OauthCompleteRoute = OauthCompleteRouteImport.update({
+  id: '/oauth/complete',
+  path: '/oauth/complete',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AgentsAuthorizeRoute = AgentsAuthorizeRouteImport.update({
+  id: '/agents/authorize',
+  path: '/agents/authorize',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ProvidersIdEditRoute = ProvidersIdEditRouteImport.update({
@@ -61,77 +79,98 @@ const ProvidersIdEditRoute = ProvidersIdEditRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/agents/authorize': typeof AgentsAuthorizeRoute
+  '/oauth/complete': typeof OauthCompleteRoute
+  '/providers/new': typeof ProvidersNewRoute
   '/traces/$traceId': typeof TracesTraceIdRoute
   '/plugins/': typeof PluginsIndexRoute
   '/providers/': typeof ProvidersIndexRoute
+  '/routing/': typeof RoutingIndexRoute
   '/settings/': typeof SettingsIndexRoute
   '/traces/': typeof TracesIndexRoute
   '/providers/$id/edit': typeof ProvidersIdEditRoute
-  '/providers/new/$kind': typeof ProvidersNewKindRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/agents/authorize': typeof AgentsAuthorizeRoute
+  '/oauth/complete': typeof OauthCompleteRoute
+  '/providers/new': typeof ProvidersNewRoute
   '/traces/$traceId': typeof TracesTraceIdRoute
   '/plugins': typeof PluginsIndexRoute
   '/providers': typeof ProvidersIndexRoute
+  '/routing': typeof RoutingIndexRoute
   '/settings': typeof SettingsIndexRoute
   '/traces': typeof TracesIndexRoute
   '/providers/$id/edit': typeof ProvidersIdEditRoute
-  '/providers/new/$kind': typeof ProvidersNewKindRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/agents/authorize': typeof AgentsAuthorizeRoute
+  '/oauth/complete': typeof OauthCompleteRoute
+  '/providers/new': typeof ProvidersNewRoute
   '/traces/$traceId': typeof TracesTraceIdRoute
   '/plugins/': typeof PluginsIndexRoute
   '/providers/': typeof ProvidersIndexRoute
+  '/routing/': typeof RoutingIndexRoute
   '/settings/': typeof SettingsIndexRoute
   '/traces/': typeof TracesIndexRoute
   '/providers/$id/edit': typeof ProvidersIdEditRoute
-  '/providers/new/$kind': typeof ProvidersNewKindRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/agents/authorize'
+    | '/oauth/complete'
+    | '/providers/new'
     | '/traces/$traceId'
     | '/plugins/'
     | '/providers/'
+    | '/routing/'
     | '/settings/'
     | '/traces/'
     | '/providers/$id/edit'
-    | '/providers/new/$kind'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/agents/authorize'
+    | '/oauth/complete'
+    | '/providers/new'
     | '/traces/$traceId'
     | '/plugins'
     | '/providers'
+    | '/routing'
     | '/settings'
     | '/traces'
     | '/providers/$id/edit'
-    | '/providers/new/$kind'
   id:
     | '__root__'
     | '/'
+    | '/agents/authorize'
+    | '/oauth/complete'
+    | '/providers/new'
     | '/traces/$traceId'
     | '/plugins/'
     | '/providers/'
+    | '/routing/'
     | '/settings/'
     | '/traces/'
     | '/providers/$id/edit'
-    | '/providers/new/$kind'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AgentsAuthorizeRoute: typeof AgentsAuthorizeRoute
+  OauthCompleteRoute: typeof OauthCompleteRoute
+  ProvidersNewRoute: typeof ProvidersNewRoute
   TracesTraceIdRoute: typeof TracesTraceIdRoute
   PluginsIndexRoute: typeof PluginsIndexRoute
   ProvidersIndexRoute: typeof ProvidersIndexRoute
+  RoutingIndexRoute: typeof RoutingIndexRoute
   SettingsIndexRoute: typeof SettingsIndexRoute
   TracesIndexRoute: typeof TracesIndexRoute
   ProvidersIdEditRoute: typeof ProvidersIdEditRoute
-  ProvidersNewKindRoute: typeof ProvidersNewKindRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -157,6 +196,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/routing/': {
+      id: '/routing/'
+      path: '/routing'
+      fullPath: '/routing/'
+      preLoaderRoute: typeof RoutingIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/providers/': {
       id: '/providers/'
       path: '/providers'
@@ -178,11 +224,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TracesTraceIdRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/providers/new/$kind': {
-      id: '/providers/new/$kind'
-      path: '/providers/new/$kind'
-      fullPath: '/providers/new/$kind'
-      preLoaderRoute: typeof ProvidersNewKindRouteImport
+    '/providers/new': {
+      id: '/providers/new'
+      path: '/providers/new'
+      fullPath: '/providers/new'
+      preLoaderRoute: typeof ProvidersNewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/oauth/complete': {
+      id: '/oauth/complete'
+      path: '/oauth/complete'
+      fullPath: '/oauth/complete'
+      preLoaderRoute: typeof OauthCompleteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/agents/authorize': {
+      id: '/agents/authorize'
+      path: '/agents/authorize'
+      fullPath: '/agents/authorize'
+      preLoaderRoute: typeof AgentsAuthorizeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/providers/$id/edit': {
@@ -197,13 +257,16 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AgentsAuthorizeRoute: AgentsAuthorizeRoute,
+  OauthCompleteRoute: OauthCompleteRoute,
+  ProvidersNewRoute: ProvidersNewRoute,
   TracesTraceIdRoute: TracesTraceIdRoute,
   PluginsIndexRoute: PluginsIndexRoute,
   ProvidersIndexRoute: ProvidersIndexRoute,
+  RoutingIndexRoute: RoutingIndexRoute,
   SettingsIndexRoute: SettingsIndexRoute,
   TracesIndexRoute: TracesIndexRoute,
   ProvidersIdEditRoute: ProvidersIdEditRoute,
-  ProvidersNewKindRoute: ProvidersNewKindRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

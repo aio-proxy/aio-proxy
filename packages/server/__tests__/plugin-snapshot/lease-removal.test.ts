@@ -7,11 +7,12 @@ import { AtomicConfigFile, createPluginRepository, recoverPendingAccountOperatio
 import { openDb } from '@aio-proxy/core/db';
 import { ConfigSchema } from '@aio-proxy/types';
 
+import { createServerState } from '#server-test-lifecycle';
+
 import { createAccountRemovalCoordinator } from '../../src/account-removal';
 import { disabledDashboardAuthentication } from '../../src/dashboard-auth/test-support';
 import { createDashboardRoutes } from '../../src/dashboard-routes/config';
 import { createSnapshotManager } from '../../src/plugin-snapshot';
-import { createServerState } from '../../src/server-state';
 import { cleanup, flushMicrotasks, routedOAuthDescriptor, seedOAuthAccount, snapshot, waitUntil } from './test-support';
 
 afterEach(cleanup);

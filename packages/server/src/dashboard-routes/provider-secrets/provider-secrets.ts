@@ -59,13 +59,6 @@ export const redactSecrets = (value: unknown, key = '', insideSecretBoundary = f
   return value;
 };
 
-export function retainRedactedSecrets(
-  previous: Record<string, unknown>,
-  submitted: Record<string, unknown>,
-): Record<string, unknown> {
-  return mergeRecord(previous, submitted, false);
-}
-
 export function retainAuthoredTemplateStrings(
   authored: unknown,
   submitted: unknown,
@@ -87,39 +80,6 @@ export function retainAuthoredTemplateStrings(
   if (isPlainObject(submitted)) {
     const previous = isPlainObject(authored) ? authored : {};
     return mapValues(submitted, (value, key) => retainAuthoredTemplateStrings(previous[key], value, env));
-  }
-
-  return submitted;
-}
-
-function mergeRecord(
-  previous: Record<string, unknown>,
-  submitted: Record<string, unknown>,
-  insideSecretBoundary: boolean,
-): Record<string, unknown> {
-  return mapValues(submitted, (value, key) =>
-    mergeValue(
-      previous[key],
-      value,
-      key,
-      insideSecretBoundary || key.toLowerCase() === 'headers' || key.toLowerCase() === 'proxy',
-    ),
-  );
-}
-
-function mergeValue(previous: unknown, submitted: unknown, key: string, insideSecretBoundary: boolean): unknown {
-  if (typeof previous === 'string' && typeof submitted === 'string') {
-    const redacted = insideSecretBoundary ? '****' : maskSecret(key, previous);
-    return redacted !== previous && submitted === redacted ? previous : submitted;
-  }
-
-  if (Array.isArray(submitted)) {
-    const previousItems = Array.isArray(previous) ? previous : [];
-    return submitted.map((value, index) => mergeValue(previousItems[index], value, key, insideSecretBoundary));
-  }
-
-  if (isPlainObject(submitted)) {
-    return mergeRecord(isPlainObject(previous) ? previous : {}, submitted, insideSecretBoundary);
   }
 
   return submitted;

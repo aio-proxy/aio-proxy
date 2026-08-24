@@ -24,9 +24,19 @@ function expectCurrentPersistenceContract(sqlite: Database): void {
   expect(tables).not.toContain('usage');
   expect(tables).toEqual(expect.arrayContaining(['trace_span', 'usage_daily', 'session_affinity', 'session_response']));
   expect(traceColumns).toEqual(
-    expect.arrayContaining([expect.objectContaining({ name: 'estimated_cost_nano_usd', type: 'INTEGER' })]),
+    expect.arrayContaining([
+      expect.objectContaining({ name: 'estimated_cost_nano_usd', type: 'INTEGER' }),
+      expect.objectContaining({ name: 'provider_weight', type: 'REAL' }),
+      expect.objectContaining({ name: 'selection_reason', type: 'TEXT' }),
+    ]),
   );
   expect(traceColumns.some(({ name }) => name === 'estimated_cost_usd')).toBeFalse();
+  expect(traceColumns.some(({ name }) => name === 'routing_contract_version')).toBeFalse();
+  expect(traceColumns.some(({ name }) => name === 'effective_priority')).toBeFalse();
+  expect(traceColumns.some(({ name }) => name === 'effective_weight')).toBeFalse();
+  expect(traceColumns.some(({ name }) => name === 'priority_source')).toBeFalse();
+  expect(traceColumns.some(({ name }) => name === 'weight_source')).toBeFalse();
+  expect(traceColumns.some(({ name }) => name === 'selection_source')).toBeFalse();
   expect(dailyColumns).toEqual(
     expect.arrayContaining([
       expect.objectContaining({ name: 'total_tokens', type: 'TEXT' }),
@@ -103,6 +113,65 @@ test('upgrading a version-two database removes legacy history and preserves trac
     });
     expect(handle.sqlite.query('SELECT provider_id FROM session_response').get()).toEqual({
       provider_id: 'provider-1',
+    });
+  } finally {
+    handle.close();
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('migration 6 preserves schema-5 session affinity data', () => {
+  const home = mkdtempSync(join(tmpdir(), 'aio-proxy-migration-agent-'));
+  const path = join(home, 'aio-proxy.db');
+  const versionFive = new Database(path);
+  try {
+    for (const migration of MIGRATIONS.slice(0, 5)) versionFive.run(migration.sql);
+    versionFive.run('PRAGMA user_version = 5');
+    versionFive.run(`INSERT INTO session_affinity
+      (session_source, session_id, requested_model_id, provider_id, revision, expires_at, updated_at)
+      VALUES ('header', 'session-1', 'gpt-x', 'provider-a', 1, 999999, 1000)`);
+  } finally {
+    versionFive.close();
+  }
+
+  const handle = openDb({ home });
+  try {
+    expect(
+      handle.sqlite
+        .query("SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'agent_%' ORDER BY name")
+        .all(),
+    ).toHaveLength(4);
+    expect(
+      handle.sqlite.query("SELECT provider_id FROM session_affinity WHERE session_id = 'session-1'").get(),
+    ).toEqual({
+      provider_id: 'provider-a',
+    });
+  } finally {
+    handle.close();
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('upgrading a version-six database preserves legacy provider weight without routing v2 columns', () => {
+  const home = mkdtempSync(join(tmpdir(), 'aio-proxy-migration-routing-v2-'));
+  const path = join(home, 'aio-proxy.db');
+  const versionSix = new Database(path);
+  try {
+    for (const migration of MIGRATIONS.slice(0, 6)) versionSix.run(migration.sql);
+    versionSix.run('PRAGMA user_version = 6');
+    versionSix.run(
+      "INSERT INTO trace_span (trace_id, span_id, name, kind, started_at, status_code, attributes_json, events_json, links_json, provider_weight, selection_reason) VALUES ('trace-legacy', 'span-legacy', 'aio_proxy.provider.attempt', 1, 1, 0, '{}', '[]', '[]', 100, 'weight')",
+    );
+  } finally {
+    versionSix.close();
+  }
+
+  const handle = openDb({ home });
+  try {
+    expectCurrentPersistenceContract(handle.sqlite);
+    expect(handle.sqlite.query('SELECT provider_weight, selection_reason FROM trace_span').get()).toEqual({
+      provider_weight: 100,
+      selection_reason: 'weight',
     });
   } finally {
     handle.close();

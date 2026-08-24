@@ -1,22 +1,17 @@
 import { m } from '@aio-proxy/i18n';
-import { Field } from '@aio-proxy/ui/components/field';
-import { Input } from '@aio-proxy/ui/components/input';
+import { Field, FieldDescription } from '@aio-proxy/ui/components/field';
 import { Label } from '@aio-proxy/ui/components/label';
 import { Switch } from '@aio-proxy/ui/components/switch';
 import type React from 'react';
 import { useEffect, useRef } from 'react';
 
-import type { useProviderForm } from '../hooks/use-provider-form';
+import type { ProviderEditorForm } from '../hooks/use-provider-editor-form';
 import { useProviderOptionsSchema } from '../hooks/use-provider-options-schema';
-import { type ProviderFormMode, type ProviderFormStep } from '../lib/constants';
-import { ProviderAliasFields } from './provider-alias';
-import { ProviderCommonFields } from './provider-common-fields';
-import { ProviderModelsField } from './provider-models-field';
+import { PROVIDER_AI_SDK_DEFAULT_PACKAGE as DEFAULT_AI_SDK_PACKAGE } from '../lib/constants';
 import { ProviderOptionsEditor } from './provider-options-editor';
-import { ProviderProxyField } from './provider-proxy-field';
-import { ProviderRequestTransformsFormField } from './provider-request-transforms';
+import { ProviderPackageCombobox } from './provider-package-combobox';
 
-const DEFAULT_AI_SDK_PACKAGE = '@ai-sdk/openai-compatible';
+const IGNORE_VALIDITY = () => undefined;
 
 type PackageCommitRef = { current: string | null };
 
@@ -32,28 +27,13 @@ export const commitProviderPackageOnce = (
 };
 
 interface ProviderFormFieldsAiSdkProps {
-  form: ReturnType<typeof useProviderForm>;
-  mode: ProviderFormMode;
-  providerId?: string | undefined;
-  activeStep?: ProviderFormStep;
-  aliasOpen: boolean;
-  onAliasOpenChange: (open: boolean) => void;
-  onOptionsValidityChange: (valid: boolean) => void;
-  onTransformsValidityChange: (valid: boolean) => void;
+  form: ProviderEditorForm;
+  onOptionsValidityChange?: ((valid: boolean) => void) | undefined;
 }
 
-export const ProviderFormFieldsAiSdk: React.FC<ProviderFormFieldsAiSdkProps> = ({
-  form,
-  mode,
-  providerId,
-  activeStep = 0,
-  aliasOpen,
-  onAliasOpenChange,
-  onOptionsValidityChange,
-  onTransformsValidityChange,
-}) => {
+export const ProviderFormFieldsAiSdk: React.FC<ProviderFormFieldsAiSdkProps> = ({ form, onOptionsValidityChange }) => {
   const schemaState = useProviderOptionsSchema();
-  const initialPackageName = useRef<string>();
+
   const initialPackageSynchronized = useRef(false);
   const lastCommittedPackage = useRef<string | null>(null);
   const commitUserPackage = (packageName: string) =>
@@ -64,98 +44,67 @@ export const ProviderFormFieldsAiSdk: React.FC<ProviderFormFieldsAiSdkProps> = (
   useEffect(() => {
     if (initialPackageSynchronized.current) return;
     initialPackageSynchronized.current = true;
-    initialPackageName.current = form.getFieldValue('packageName') ?? DEFAULT_AI_SDK_PACKAGE;
-    schemaState.commitPackage(initialPackageName.current, false);
+    const initialPackage = form.getFieldValue('packageName') ?? DEFAULT_AI_SDK_PACKAGE;
+    // Arming commitProviderPackageOnce's equality guard is the point: without it a focus+blur with no
+    // keystroke is not recognized as a repeat of this commit, and re-commits with automatic install
+    // allowed — npm-installing a package the user only looked at. A real edit clears the ref in
+    // onValueChange below, so a genuinely changed package still installs.
+    lastCommittedPackage.current = initialPackage;
+    schemaState.commitPackage(initialPackage, false);
   }, [form, schemaState.commitPackage]);
 
-  if (activeStep === 0) {
-    return (
-      <section className="space-y-5" aria-labelledby="provider-ai-sdk-connection-heading">
-        <h2 id="provider-ai-sdk-connection-heading" className="text-base font-semibold">
-          {m['dashboard.providers.editor.step_connection']()}
-        </h2>
-        <ProviderCommonFields form={form} mode={mode} section="connection" />
-        <div data-testid="provider-form-field-packageName">
-          <form.Field name="packageName">
-            {(field) => (
-              <Field>
-                <Label htmlFor={field.name}>{m['dashboard.providers.form.label_package_name']()}</Label>
-                <Input
-                  id={field.name}
-                  value={field.state.value ?? DEFAULT_AI_SDK_PACKAGE}
-                  onChange={(event) => {
-                    field.handleChange(event.target.value);
-                    lastCommittedPackage.current = null;
-                    schemaState.changePackage(event.target.value);
-                  }}
-                  onBlur={() => commitUserPackage(field.state.value ?? DEFAULT_AI_SDK_PACKAGE)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter') {
-                      event.preventDefault();
-                      commitUserPackage(field.state.value ?? DEFAULT_AI_SDK_PACKAGE);
-                    }
-                  }}
-                  placeholder={DEFAULT_AI_SDK_PACKAGE}
-                />
-              </Field>
-            )}
-          </form.Field>
-        </div>
-        <div data-testid="provider-form-field-options">
-          <form.Field name="options">
-            {(field) => (
-              <ProviderOptionsEditor
-                field={field}
-                schemaState={schemaState}
-                onValidityChange={onOptionsValidityChange}
+  return (
+    <>
+      <div data-testid="provider-form-field-packageName">
+        <form.Field name="packageName">
+          {(field) => (
+            <Field>
+              <Label htmlFor={field.name}>{m['dashboard.providers.form.label_package_name']()}</Label>
+              <ProviderPackageCombobox
+                id={field.name}
+                value={field.state.value ?? DEFAULT_AI_SDK_PACKAGE}
+                onValueChange={(packageName) => {
+                  field.handleChange(packageName);
+                  // Picking from the list also re-emits the picked text as an input change. Resetting
+                  // on that echo would throw away the commit the pick just made, so it is ignored.
+                  if (packageName === lastCommittedPackage.current) return;
+                  lastCommittedPackage.current = null;
+                  schemaState.changePackage(packageName);
+                }}
+                onCommit={commitUserPackage}
               />
-            )}
-          </form.Field>
-        </div>
-        <div data-testid="provider-form-field-parseReasoningContent">
-          <form.Field name="parseReasoningContent">
-            {(field) => (
-              <Field>
-                <div className="flex items-center gap-2">
-                  <Switch
-                    id={field.name}
-                    checked={field.state.value ?? false}
-                    onCheckedChange={(checked) => field.handleChange(Boolean(checked))}
-                  />
-                  <Label htmlFor={field.name}>{m['dashboard.providers.form.label_parse_reasoning']()}</Label>
-                </div>
-              </Field>
-            )}
-          </form.Field>
-        </div>
-        <form.Field name="proxy">{(field) => <ProviderProxyField field={field} mode={mode} />}</form.Field>
-      </section>
-    );
-  }
-
-  if (activeStep === 1) {
-    return (
-      <section className="space-y-5" aria-labelledby="provider-ai-sdk-models-heading">
-        <h2 id="provider-ai-sdk-models-heading" className="text-base font-semibold">
-          {m['dashboard.providers.editor.step_models']()}
-        </h2>
-        <ProviderModelsField form={form} {...(providerId === undefined ? {} : { persistedProviderId: providerId })} />
-        <ProviderAliasFields form={form} mode={mode} open={aliasOpen} onOpenChange={onAliasOpenChange} />
-      </section>
-    );
-  }
-
-  if (activeStep === 2) {
-    return (
-      <section className="space-y-5" aria-labelledby="provider-ai-sdk-routing-heading">
-        <h2 id="provider-ai-sdk-routing-heading" className="text-base font-semibold">
-          {m['dashboard.providers.editor.step_routing']()}
-        </h2>
-        <ProviderCommonFields form={form} mode={mode} section="routing" />
-        <ProviderRequestTransformsFormField form={form} onValidityChange={onTransformsValidityChange} />
-      </section>
-    );
-  }
-
-  return null;
+              <FieldDescription>{m['dashboard.providers.form.package_name_description']()}</FieldDescription>
+            </Field>
+          )}
+        </form.Field>
+      </div>
+      <div data-testid="provider-form-field-options">
+        <form.Field name="options">
+          {(field) => (
+            <ProviderOptionsEditor
+              field={field}
+              schemaState={schemaState}
+              onValidityChange={onOptionsValidityChange ?? IGNORE_VALIDITY}
+            />
+          )}
+        </form.Field>
+      </div>
+      <div data-testid="provider-form-field-parseReasoningContent">
+        <form.Field name="parseReasoningContent">
+          {(field) => (
+            // Same horizontal Field as the routing switch, rather than a nested flex row: the switch
+            // then its label, on the vertical rhythm the two fields above sit on.
+            <Field orientation="horizontal">
+              <Switch
+                id={field.name}
+                checked={field.state.value ?? false}
+                onCheckedChange={(checked) => field.handleChange(Boolean(checked))}
+              />
+              <Label htmlFor={field.name}>{m['dashboard.providers.form.label_parse_reasoning']()}</Label>
+            </Field>
+          )}
+        </form.Field>
+      </div>
+    </>
+  );
 };

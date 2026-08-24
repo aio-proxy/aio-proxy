@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import type { AiSdkProviderInstance, ApiProviderInstance } from '@aio-proxy/core';
-import { createServer } from '@aio-proxy/server';
 import { ProviderProtocol } from '@aio-proxy/types';
+
+import { createServer } from '#server-test-lifecycle';
 
 import { createTempHomes, messagesRequest, recorded, textStream } from './anthropic-messages.test-support';
 import { clearModelsDevCatalog, modelsDevModel, seedModelsDevCatalog } from './server.test-support';

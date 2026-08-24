@@ -1,3 +1,4 @@
+export * from './agent-integration/index';
 export * from './aio';
 export {
   canonicalEffort,
@@ -6,6 +7,8 @@ export {
   isAliasVariantSelect,
   isAliasVariantsObject,
   matchAliasRows,
+  whenIdentity,
+  whenRank,
 } from './alias-variant';
 export type { AliasDimensions, AliasSelectRow, AliasSpeed, AliasWhen } from './alias-variant';
 export * from './codex-model/index';
@@ -13,6 +16,7 @@ export * from './commands';
 export * from './common';
 export * from './config/index';
 export * from './dashboard/index';
+export * from './dashboard/routing/index';
 export * from './dashboard-localized-text';
 export * from './dashboard-oauth';
 export * from './dashboard-provider-mutation';

@@ -7,7 +7,12 @@ import {
   zod,
 } from '@aio-proxy/plugin-sdk';
 
-import { CURSOR_CATALOG_TTL_MS, discoverCursorCatalog, initialCursorCatalogFallback } from '../catalog';
+import {
+  CURSOR_CATALOG_TTL_MS,
+  defaultCursorAliases,
+  discoverCursorCatalog,
+  initialCursorCatalogFallback,
+} from '../catalog';
 import { loginCursor } from '../oauth';
 import { createCursorRuntime, type CursorRuntimeDependencies } from '../runtime';
 import { credentialSchema, type CursorCredential } from '../schema';
@@ -45,6 +50,7 @@ export function createCursorPlugin(
       policy: { kind: 'ttl', ttlMs: CURSOR_CATALOG_TTL_MS },
       discover: (context) => discoverCursorCatalog(context, dependencies),
       initialFallback: initialCursorCatalogFallback,
+      defaultAliases: defaultCursorAliases,
     },
     createRuntime: (context) => createCursorRuntime(context, dependencies),
   };

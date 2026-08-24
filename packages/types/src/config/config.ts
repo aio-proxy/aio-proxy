@@ -1,6 +1,7 @@
 import { isPlainObject } from 'es-toolkit/predicate';
 import { z } from 'zod';
 
+import { hasReservedAgentTokenPrefix } from '../agent-integration';
 import type { InvalidProviderConfig } from '../plugin';
 import { PluginPackageNameSchema } from '../plugin';
 import {
@@ -15,26 +16,35 @@ import {
   type Provider,
   ProviderKind,
   ProviderSchema,
+  RoutingPrioritySchema,
+  RoutingWeightSchema,
   validateAliasTargets,
   validateApiEndpoints,
 } from '../provider';
 
 const ServerHostSchema = z.string().min(1);
 
+const StaticApiKeySchema = z
+  .string()
+  .min(1)
+  .refine(
+    (value) => !hasReservedAgentTokenPrefix(value),
+    'Static API keys cannot use reserved aio_agent_at_ or aio_agent_rt_ prefixes',
+  );
+
 const ApiKeySchema = z.object({
-  key: z.string().min(1),
+  key: StaticApiKeySchema,
   label: z.string().min(1).optional(),
 });
-
 const ApiKeyAuthoringSchema = z.object({
-  key: z.union([z.string().min(1), ConfigTemplateStringSchema]),
+  key: z.union([ConfigTemplateStringSchema, StaticApiKeySchema]),
   label: z.string().min(1).optional(),
 });
 
 export const ServerLoggingSchema = z.object({
   enabled: z.boolean().default(false),
   dir: z.string().min(1).optional(),
-  retentionDays: z.number().int().min(1).max(365).default(14),
+  retentionDays: z.number().int().min(1).max(365).default(3),
   level: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
 });
 
@@ -128,11 +138,21 @@ const CONFIG_PROXY_DESCRIPTION = 'Default HTTP(S) proxy URL inherited by provide
 
 export const ModelContextAggregation = { Min: 'min', Max: 'max' } as const;
 
+export const RouterProviderOverrideSchema = z.object({
+  priority: RoutingPrioritySchema.optional(),
+  weight: RoutingWeightSchema.optional(),
+});
+
+export const RouterModelPolicySchema = z.object({
+  providers: z.record(z.string().min(1), RouterProviderOverrideSchema).default({}),
+});
+
 export const RouterConfigSchema = z.object({
   modelContextAggregation: z
     .enum([ModelContextAggregation.Min, ModelContextAggregation.Max])
     .default(ModelContextAggregation.Min)
     .describe('How to reconcile a public slug context window across providers: min (safe) or max.'),
+  models: z.record(z.string().min(1), RouterModelPolicySchema).default({}),
 });
 
 export const ConfigAuthoringSchema = z.object({
@@ -193,7 +213,6 @@ export const ConfigSchema = ConfigEnvelopeSchema.transform((input) => {
     }
     providers.push(ProviderSchema.parse({ ...result.data, id }));
   }
-  providers.sort((left, right) => (right.weight ?? 0) - (left.weight ?? 0));
   return {
     server: input.server,
     plugins: input.plugins,
@@ -206,5 +225,8 @@ export const ConfigSchema = ConfigEnvelopeSchema.transform((input) => {
 
 export type ServerConfigInput = z.input<typeof ServerConfigSchema>;
 export type ServerConfig = z.output<typeof ServerConfigSchema>;
+export type RouterProviderOverride = z.output<typeof RouterProviderOverrideSchema>;
+export type RouterModelPolicy = z.output<typeof RouterModelPolicySchema>;
+export type RouterConfig = z.output<typeof RouterConfigSchema>;
 export type ConfigInput = z.input<typeof ConfigAuthoringSchema>;
 export type Config = z.output<typeof ConfigSchema>;

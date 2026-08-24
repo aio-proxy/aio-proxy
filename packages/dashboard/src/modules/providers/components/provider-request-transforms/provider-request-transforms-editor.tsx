@@ -47,29 +47,24 @@ export const ProviderRequestTransformsEditor: React.FC<ProviderRequestTransforms
   };
 
   return (
-    <section className="space-y-4 border-t pt-6" aria-labelledby="provider-request-transforms-heading">
-      <div className="space-y-1">
-        <h2 id="provider-request-transforms-heading" className="text-base font-semibold">
-          {m['dashboard.providers.transforms.section']()}
-        </h2>
-        <p className="text-sm text-muted-foreground">{m['dashboard.providers.transforms.description']()}</p>
-      </div>
-      <Tabs value={activeMode} onValueChange={changeMode}>
-        <TabsList>
-          <TabsTrigger value="visual" disabled={!jsonValid || !visualCompatible}>
-            {m['dashboard.providers.transforms.mode.visual']()}
-          </TabsTrigger>
-          <TabsTrigger value="json" disabled={!visualValid}>
-            JSON
-          </TabsTrigger>
-        </TabsList>
-        <TabsContent value="visual">
-          <ProviderRequestTransformsVisualEditor value={value} onChange={onChange} onValidityChange={setVisualValid} />
-        </TabsContent>
-        <TabsContent value="json">
-          <ProviderRequestTransformsJsonEditor value={value} onChange={onChange} onValidityChange={setJsonValid} />
-        </TabsContent>
-      </Tabs>
-    </section>
+    <Tabs value={activeMode} onValueChange={changeMode}>
+      <TabsList>
+        <TabsTrigger value="visual" disabled={!jsonValid || !visualCompatible}>
+          {m['dashboard.providers.transforms.mode.visual']()}
+        </TabsTrigger>
+        <TabsTrigger value="json" disabled={!visualValid}>
+          JSON
+        </TabsTrigger>
+      </TabsList>
+      <TabsContent value="visual" className="space-y-3 pt-2">
+        <ProviderRequestTransformsVisualEditor value={value} onChange={onChange} onValidityChange={setVisualValid} />
+      </TabsContent>
+      <TabsContent value="json" className="pt-2">
+        <ProviderRequestTransformsJsonEditor value={value} onChange={onChange} onValidityChange={setJsonValid} />
+        {visualCompatible ? null : (
+          <p className="mt-2 text-sm text-muted-foreground">{m['dashboard.providers.transforms.unsupported']()}</p>
+        )}
+      </TabsContent>
+    </Tabs>
   );
 };

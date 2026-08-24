@@ -60,9 +60,18 @@ const aliases: DefaultAliasSuggestions = {
   'gemini-3.5-flash': {
     model: 'gemini-3.5-flash-extra-low',
     preserve: false,
-    variants: { high: { model: 'gemini-3-flash-agent', preserve: false } },
+    variants: [{ when: { effort: 'high' }, model: 'gemini-3-flash-agent', preserve: false }],
   },
 };
+
+const cursorAliases: DefaultAliasSuggestions = {
+  'claude-opus-4-8': {
+    model: 'claude-opus-4-8-medium',
+    preserve: false,
+    variants: [{ when: { thinking: true, effort: 'high' }, model: 'claude-opus-4-8-thinking-high', preserve: false }],
+  },
+};
+void cursorAliases;
 
 adapter.catalog.defaultAliases?.({
   language: [],

@@ -10,18 +10,13 @@
 # builder, so buildx produces linux/amd64 and linux/arm64 without QEMU emulating
 # the build. Dashboard assets are embedded into the binary by the compiled entry,
 # so the runtime stage needs only the binary and its third-party notice.
-# Pinned to Bun 1.3.14 (reproducible stable). The Bun 1.3.x bug where fetch with
-# a proxy drops a ReadableStream request body is worked around in
-# createProxyFetch (packages/core/src/provider/proxy-fetch.ts), not by the
-# runtime. TODO(bun-1.4.0, issue #128): bump to oven/bun:1.4.0-alpine and remove
-# that workaround once Bun 1.4.0 stable is released.
-FROM --platform=$BUILDPLATFORM oven/bun:1.3.14-alpine AS prune
+FROM --platform=$BUILDPLATFORM oven/bun:1.4.0-alpine AS prune
 WORKDIR /src
 COPY . .
 # bunx runs turbo without a global install layer; pin the repo's major.
 RUN bunx turbo@2 prune @aio-proxy/cli --docker
 
-FROM --platform=$BUILDPLATFORM oven/bun:1.3.14-alpine AS build
+FROM --platform=$BUILDPLATFORM oven/bun:1.4.0-alpine AS build
 ARG TARGETARCH
 WORKDIR /src
 # Manifests + lockfile only: this layer is cached until a package.json/lock changes.

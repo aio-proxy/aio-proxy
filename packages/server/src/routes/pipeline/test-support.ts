@@ -1,4 +1,5 @@
 import { REQUEST_BODY_LIMITS } from '@aio-proxy/core';
+import type { Config } from '@aio-proxy/types';
 
 import {
   createProtocolContext,
@@ -17,11 +18,16 @@ export function pipeline(
     readonly adapter?: ReturnType<typeof defineProtocolAdapter>;
     readonly debugLogging?: boolean;
     readonly immediateStreamCompletion?: UsageCompletion;
+    readonly config?: Config;
+    readonly random?: () => number;
   } = {},
 ) {
   const adapter = options.adapter ?? defineProtocolAdapter();
   const context = createProtocolContext();
-  const route = defineProviderRouteSource(fixtures, options.immediateStreamCompletion, options.debugLogging);
+  const route = defineProviderRouteSource(fixtures, options.immediateStreamCompletion, options.debugLogging, {
+    config: options.config,
+    random: options.random,
+  });
   return {
     ...route,
     adapter,

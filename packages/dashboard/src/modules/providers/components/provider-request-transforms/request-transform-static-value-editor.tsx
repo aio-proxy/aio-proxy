@@ -6,6 +6,7 @@ import { useForm } from '@tanstack/react-form';
 import { isEqual } from 'es-toolkit/predicate';
 import { useEffect, useId, useRef, useState } from 'react';
 
+import { parseCompositeDraft } from './request-transform-composite-draft';
 import {
   type InvalidStaticValueType,
   RequestTransformStaticValueInput,
@@ -14,6 +15,7 @@ import {
 
 export interface RequestTransformStaticValueEditorProps {
   readonly value: JsonValue;
+  readonly ruleName: string;
   readonly onChange: (value: JsonValue) => void;
   readonly onValidityChange: (valid: boolean) => void;
 }
@@ -50,18 +52,9 @@ const staticTypeLabel = (type: StaticValueType): string => {
   return m['dashboard.providers.transforms.value.type_array']();
 };
 
-const parseCompositeDraft = (type: 'object' | 'array', draft: string): JsonValue | undefined => {
-  try {
-    const parsed = JSON.parse(draft) as JsonValue;
-    if (type === 'array') return Array.isArray(parsed) ? parsed : undefined;
-    return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed) ? parsed : undefined;
-  } catch {
-    return undefined;
-  }
-};
-
 export const RequestTransformStaticValueEditor: React.FC<RequestTransformStaticValueEditorProps> = ({
   value,
+  ruleName,
   onChange,
   onValidityChange,
 }) => {
@@ -102,11 +95,16 @@ export const RequestTransformStaticValueEditor: React.FC<RequestTransformStaticV
     emit(parsed as JsonValue);
   };
   return (
-    <div className="space-y-4">
+    <div className="grid min-w-0 gap-2 sm:grid-cols-[6.5rem_minmax(0,1fr)]">
       <form.Field name="type">
         {(field) => (
-          <div className="space-y-2">
-            <Label htmlFor={typeId}>{m['dashboard.providers.transforms.value.type']()}</Label>
+          <div>
+            <Label htmlFor={typeId} className="sr-only">
+              {m['dashboard.providers.transforms.value.scoped_label']({
+                name: ruleName,
+                label: m['dashboard.providers.transforms.value.type'](),
+              })}
+            </Label>
             <Select
               value={field.state.value}
               onValueChange={(nextType) => {
@@ -143,6 +141,7 @@ export const RequestTransformStaticValueEditor: React.FC<RequestTransformStaticV
                 return (
                   <RequestTransformStaticValueInput
                     type={type}
+                    ruleName={ruleName}
                     draft={field.state.value}
                     valueId={valueId}
                     errorId={errorId}

@@ -1,142 +1,116 @@
 import { m } from '@aio-proxy/i18n';
-import type { AliasConfig, AliasTarget } from '@aio-proxy/types';
-import { Badge } from '@aio-proxy/ui/components/badge';
 import { Button } from '@aio-proxy/ui/components/button';
-import { FieldDescription } from '@aio-proxy/ui/components/field';
-import { Separator } from '@aio-proxy/ui/components/separator';
-import { omit } from 'es-toolkit/object';
-import { ChevronDownIcon, ChevronUpIcon, PlusIcon } from 'lucide-react';
-import { type FC, useState } from 'react';
+import { Switch } from '@aio-proxy/ui/components/switch';
+import { PlusIcon } from 'lucide-react';
+import type { FC } from 'react';
 
 import {
+  addVariantRow,
   type AliasEditorIssue,
-  type AliasEditResult,
-  commitVariantDraft,
-  type ProviderAlias,
-  renameVariant,
+  type AliasRow,
+  blankVariantRow,
+  variantRows,
+  withVariantRows,
 } from '../../lib/alias-editor';
-import { ProviderVariantDraft } from '../provider-variant-draft';
+import { aliasIssueMessage } from '../../lib/alias-editor-copy';
 import { ProviderVariantRow } from '../provider-variant-row';
+import { useVariantRowKeys } from './use-variant-row-keys';
 
-type Props = {
-  readonly alias: ProviderAlias;
-  readonly aliasName: string;
-  readonly config: AliasConfig;
+interface ProviderAliasVariantsProps {
+  readonly alias: readonly AliasRow[];
+  readonly row: AliasRow;
   readonly models: readonly string[];
   readonly issues: readonly AliasEditorIssue[];
-  readonly draftIds: readonly string[];
-  readonly onAliasChange: (alias: ProviderAlias) => void;
-  readonly onAddDraft: () => void;
-  readonly onDiscardDraft: (id: string) => void;
-  readonly onDraftDirtyChange: (id: string, dirty: boolean) => void;
-};
+  readonly onAliasChange: (alias: readonly AliasRow[]) => void;
+}
 
-export const ProviderAliasVariants: FC<Props> = ({
+export const ProviderAliasVariants: FC<ProviderAliasVariantsProps> = ({
   alias,
-  aliasName,
-  config,
+  row,
   models,
   issues,
-  draftIds,
   onAliasChange,
-  onAddDraft,
-  onDiscardDraft,
-  onDraftDirtyChange,
 }) => {
-  const variants = config.variants ?? {};
-  const [open, setOpen] = useState(issues.length > 0 || draftIds.length > 0);
-  const expanded = open || issues.length > 0 || draftIds.length > 0;
-  const canCollapse = issues.length === 0 && draftIds.length === 0;
+  const rows = variantRows(row.config);
+  const { keys, appendKey, dropKey } = useVariantRowKeys(rows.length);
+  // Two rows can fail the same way; the list names each problem once, and `aria-invalid` on the
+  // offending controls is what points at which row it came from.
+  const messages = [...new Set(issues.map(aliasIssueMessage))];
 
   return (
     <>
-      <Separator />
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <Button
-            type="button"
-            variant="ghost"
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-3">
+        {/* The alias-level preserve switch shares this row with the add button: one divider, two blocks
+            per card. It reads the stored config, like the switch on every variant row. */}
+        <label className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Switch
             size="sm"
-            disabled={expanded && !canCollapse}
-            aria-expanded={expanded}
-            aria-label={
-              expanded
-                ? m['dashboard.providers.form.collapse_variants']({ alias: aliasName })
-                : m['dashboard.providers.form.expand_variants']({ alias: aliasName })
+            checked={row.config.preserve}
+            onCheckedChange={(preserve) =>
+              onAliasChange(
+                alias.map((item) =>
+                  item.id === row.id ? { ...item, config: { ...item.config, preserve: Boolean(preserve) } } : item,
+                ),
+              )
             }
-            onClick={() => setOpen((current) => !current)}
-          >
-            {expanded ? <ChevronUpIcon data-icon="inline-start" /> : <ChevronDownIcon data-icon="inline-start" />}
-            {m['dashboard.providers.form.label_variants']()}
-          </Button>
-          <Badge variant="secondary">{Object.keys(variants).length + draftIds.length}</Badge>
-        </div>
+          />
+          {m['dashboard.providers.form.alias_preserve']()}
+        </label>
         <Button
           type="button"
-          variant="outline"
-          size="sm"
+          variant="ghost"
+          size="xs"
           onClick={() => {
-            setOpen(true);
-            onAddDraft();
+            appendKey();
+            // A new condition starts on the alias's own target, which is what the user meant most of
+            // the time; the first enabled model was a coin flip they had to correct.
+            onAliasChange(addVariantRow(alias, row.id, blankVariantRow(row.config.model)));
           }}
         >
           <PlusIcon data-icon="inline-start" />
           {m['dashboard.providers.form.add_variant']()}
         </Button>
       </div>
-      {expanded && (
-        <div className="flex flex-col gap-3">
-          <FieldDescription>{m['dashboard.providers.form.variants_helper']()}</FieldDescription>
-          {Object.entries(variants).map(([variantName, target]) => (
+      {rows.length > 0 && (
+        <div className="space-y-2 rounded-xl bg-muted/40 p-2.5">
+          {rows.map((variant, index) => (
             <ProviderVariantRow
-              key={variantName}
-              alias={alias}
-              aliasName={aliasName}
-              variantName={variantName}
-              target={target}
+              key={keys[index] ?? index}
+              rowId={row.id}
+              aliasName={row.name}
+              index={index}
+              row={variant}
               models={models}
-              issues={issues.filter((issue) => issue.variant === variantName)}
-              onChange={(nextTarget: AliasTarget) =>
-                onAliasChange({
-                  ...alias,
-                  [aliasName]: { ...config, variants: { ...variants, [variantName]: nextTarget } },
-                })
+              issues={issues.filter((issue) => issue.variant === index)}
+              onChange={(next) =>
+                onAliasChange(
+                  withVariantRows(
+                    alias,
+                    row.id,
+                    rows.map((current, position) => (position === index ? next : current)),
+                  ),
+                )
               }
-              onRename={(name): AliasEditResult => {
-                const result = renameVariant(alias, { alias: aliasName, variant: variantName, name });
-                if (result.ok) onAliasChange(result.alias);
-                return result;
-              }}
               onRemove={() => {
-                const nextVariants = omit(variants, [variantName]);
-                onAliasChange({
-                  ...alias,
-                  [aliasName]: {
-                    ...config,
-                    variants: Object.keys(nextVariants).length === 0 ? undefined : nextVariants,
-                  },
-                });
-              }}
-            />
-          ))}
-          {draftIds.map((id) => (
-            <ProviderVariantDraft
-              key={id}
-              id={id}
-              models={models}
-              onDirtyChange={onDraftDirtyChange}
-              onDiscard={() => onDiscardDraft(id)}
-              onCommit={(draft) => {
-                const result = commitVariantDraft(alias, aliasName, draft);
-                if (result.ok) {
-                  onAliasChange(result.alias);
-                  onDiscardDraft(id);
-                }
-                return result;
+                dropKey(index);
+                onAliasChange(
+                  withVariantRows(
+                    alias,
+                    row.id,
+                    rows.filter((_, position) => position !== index),
+                  ),
+                );
               }}
             />
           ))}
         </div>
+      )}
+      {messages.length > 0 && (
+        <ul role="alert" className="space-y-1 text-xs text-destructive">
+          {messages.map((message) => (
+            <li key={message}>{message}</li>
+          ))}
+        </ul>
       )}
     </>
   );

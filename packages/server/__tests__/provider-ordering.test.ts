@@ -3,17 +3,19 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { createPluginRepository, geminiGenerateContentAdapter } from '@aio-proxy/core';
+import { createPluginRepository, geminiGenerateContentAdapter, Router } from '@aio-proxy/core';
 import { openDb } from '@aio-proxy/core/db';
 import { definePlugin, type ModelCatalog, type OAuthAdapter, type RawResolver, zod } from '@aio-proxy/plugin-sdk';
 import { ConfigSchema, ProviderProtocol } from '@aio-proxy/types';
 
+import { createServerState } from '#server-test-lifecycle';
+
 import { handleProtocolRequest } from '../src/routes/pipeline';
-import { createServerState } from '../src/server-state';
+import type { CreateRouter } from '../src/server-state/types';
 
 const antigravityPackage = '@aio-proxy/plugin-google-antigravity';
 
-test('orders Antigravity accounts by Provider weight and preserves equal-weight config order', async () => {
+test('orders Antigravity accounts by Provider priority and preserves equal-tier config order', async () => {
   const home = mkdtempSync(join(tmpdir(), 'aio-proxy-provider-ordering-'));
   const handle = openDb({ home });
   const repository = createPluginRepository(handle.sqlite);
@@ -25,6 +27,7 @@ test('orders Antigravity accounts by Provider weight and preserves equal-weight 
     providers: {
       'api-low': {
         kind: 'api',
+        priority: 0,
         weight: 1,
         protocol: ProviderProtocol.OpenAICompatible,
         baseURL: 'https://api.example.test',
@@ -32,18 +35,21 @@ test('orders Antigravity accounts by Provider weight and preserves equal-weight 
       },
       'antigravity-high': {
         kind: 'oauth',
+        priority: 20,
         weight: 10,
         plugin: antigravityPackage,
         capability: 'default',
       },
       'antigravity-equal-first': {
         kind: 'oauth',
+        priority: 10,
         weight: 5,
         plugin: antigravityPackage,
         capability: 'default',
       },
       'sdk-equal-second': {
         kind: 'ai-sdk',
+        priority: 10,
         weight: 5,
         packageName: '@ai-sdk/openai-compatible',
         options: { baseURL: 'https://sdk.example.test', name: 'sdk-equal-second' },
@@ -55,6 +61,10 @@ test('orders Antigravity accounts by Provider weight and preserves equal-weight 
     config,
     dbHome: home,
     builtIns: [{ packageName: antigravityPackage, version: '1.0.0', descriptor: oauthDescriptor() }],
+    __test: {
+      createRouter: ((providers, routerConfig) =>
+        new Router(providers, { models: routerConfig.models, random: () => 0 })) satisfies CreateRouter,
+    },
   } as never);
 
   try {

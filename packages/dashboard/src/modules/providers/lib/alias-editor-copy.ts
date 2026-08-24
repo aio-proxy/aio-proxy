@@ -1,32 +1,21 @@
 import { m } from '@aio-proxy/i18n';
 
-import type { AliasEditorIssue, AliasEditResult, AliasSummary } from './alias-editor';
-
-export type VisibleEditError = Exclude<Extract<AliasEditResult, { readonly ok: false }>['code'], 'alias-missing'>;
-
-export function aliasEditErrorMessage(code: VisibleEditError): string {
-  switch (code) {
-    case 'name-duplicate':
-      return m['dashboard.providers.form.error_name_duplicate']();
-    case 'name-required':
-      return m['dashboard.providers.form.error_name_required']();
-    case 'target-required':
-      return m['dashboard.providers.form.error_target_required']();
-  }
-}
+import type { AliasEditorIssue, AliasSummary } from './alias-editor';
 
 export function aliasIssueMessage(issue: AliasEditorIssue): string {
   switch (issue.code) {
     case 'alias-name-duplicate':
-    case 'variant-name-duplicate':
       return m['dashboard.providers.form.error_name_duplicate']();
     case 'alias-name-required':
-    case 'variant-name-required':
       return m['dashboard.providers.form.error_name_required']();
     case 'preserved-route-conflict':
       return m['dashboard.providers.form.error_preserved_route_conflict']();
     case 'target-missing':
       return m['dashboard.providers.form.error_target_missing']();
+    case 'variant-when-duplicate':
+      return m['dashboard.providers.form.variant_when_duplicate']();
+    case 'variant-when-required':
+      return m['dashboard.providers.form.variant_when_required']();
   }
 }
 

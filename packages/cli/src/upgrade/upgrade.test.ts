@@ -1,4 +1,4 @@
-import { expect, test } from 'bun:test';
+import { expect, mock, test } from 'bun:test';
 import { mkdtempSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -160,19 +160,34 @@ test('fetchLatestVersion throws on non-ok', async () => {
 });
 
 import { CliExit, EXIT } from '../exit';
-import type { UpgradeTarget } from './constants';
+import type { AgentPostUpgradePayload } from './post-upgrade-agents';
 import { runUpgradeCommand } from './upgrade';
 
-type Deps = Parameters<typeof runUpgradeCommand>[2];
-const makeDeps = (over: Partial<NonNullable<Deps>> = {}): NonNullable<Deps> => ({
-  resolveTarget: async () => ({ method: 'bun' }) as UpgradeTarget,
-  fetchLatest: async () => '1.0.0',
+const PAYLOAD = {
+  format: 1,
+  targets: [
+    {
+      target: 'opencode',
+      managedDir: '/tmp/opencode/plugins/aio-proxy',
+      adjacentEntry: '/tmp/opencode/plugins/aio-proxy.js',
+    },
+  ],
+} as const satisfies AgentPostUpgradePayload;
+
+type UpgradeDeps = NonNullable<Parameters<typeof runUpgradeCommand>[2]>;
+const makeDeps = (overrides: Partial<UpgradeDeps> = {}): UpgradeDeps => ({
+  resolveTarget: async () => ({ method: 'bun' }),
+  fetchLatest: async () => '2.0.0',
   currentVersion: '1.0.0',
   install: async () => {},
+  captureAgentTargets: async () => ({ format: 1, targets: [] }),
+  isEffectiveUserRoot: () => false,
+  resolveNewBinary: async () => '/new/aio-proxy',
+  invokeAgentPostUpgrade: async () => [],
   isDaemonRunning: async () => false,
   isServiceManaged: () => true,
   restartService: async () => {},
-  ...over,
+  ...overrides,
 });
 
 test('--check reports up-to-date without installing', async () => {
@@ -295,4 +310,119 @@ test('a stopped daemon needs no restart', async () => {
   });
   await done;
   expect(restarted).toBe(false);
+});
+
+test('successful install invokes the newly resolved binary with pre-install targets', async () => {
+  const events: string[] = [];
+  const deps = makeDeps({
+    captureAgentTargets: async () => {
+      events.push('capture');
+      return PAYLOAD;
+    },
+    install: async () => {
+      events.push('install');
+    },
+    resolveNewBinary: async (_target, version) => {
+      events.push(`resolve:${version}`);
+      return '/new/aio-proxy';
+    },
+    invokeAgentPostUpgrade: async (binary, payload) => {
+      events.push(`post:${binary}`);
+      expect(payload).toEqual(PAYLOAD);
+      return [];
+    },
+  });
+  await runUpgradeCommand({}, () => {}, deps);
+  expect(events).toEqual(['capture', 'install', 'resolve:2.0.0', 'post:/new/aio-proxy']);
+});
+
+test('a failed Agent post-upgrade handshake prints a localized protocol warning', async () => {
+  const { setLocale } = await import('@aio-proxy/i18n');
+  await setLocale('zh-Hans');
+  try {
+    const lines: string[] = [];
+    await runUpgradeCommand(
+      {},
+      (line) => lines.push(line),
+      makeDeps({
+        invokeAgentPostUpgrade: async () => {
+          throw new Error('handshake failed');
+        },
+      }),
+    );
+    const text = lines.join('\n');
+    expect(text).toContain('handshake failed');
+    expect(text).not.toContain('aio-proxy upgraded, but Agent integrations could not be updated');
+  } finally {
+    await setLocale('en');
+  }
+});
+
+test('adapter warning does not roll back a successful aio-proxy upgrade', async () => {
+  const lines: string[] = [];
+  await runUpgradeCommand(
+    {},
+    (line) => lines.push(line),
+    makeDeps({
+      invokeAgentPostUpgrade: async () => [{ target: 'omp', status: 'warning', reason: 'entry conflict' }],
+    }),
+  );
+  expect(lines.join('\n')).toContain('aio-proxy agent configure omp');
+});
+
+test('a root effective user is warned and still updates only that effective users targets', async () => {
+  const lines: string[] = [];
+  const post = mock(async () => []);
+  await runUpgradeCommand(
+    {},
+    (line) => lines.push(line),
+    makeDeps({
+      isEffectiveUserRoot: () => true,
+      captureAgentTargets: async () => PAYLOAD,
+      invokeAgentPostUpgrade: post,
+    }),
+  );
+  expect(lines.join('\n')).toContain('root');
+  expect(lines.join('\n')).toContain('aio-proxy agent configure <target>');
+  expect(post).toHaveBeenCalledTimes(1);
+});
+
+test('--check never invokes post-upgrade', async () => {
+  const post = mock(async () => []);
+  await runUpgradeCommand({ check: true }, () => {}, makeDeps({ invokeAgentPostUpgrade: post }));
+  expect(post).not.toHaveBeenCalled();
+});
+
+test('an up-to-date upgrade never invokes post-upgrade', async () => {
+  const post = mock(async () => []);
+  await runUpgradeCommand(
+    {},
+    () => {},
+    makeDeps({
+      fetchLatest: async () => '1.0.0',
+      currentVersion: '1.0.0',
+      invokeAgentPostUpgrade: post,
+    }),
+  );
+  expect(post).not.toHaveBeenCalled();
+});
+
+test('managed service is restarted after post-upgrade finishes', async () => {
+  const events: string[] = [];
+  await runUpgradeCommand(
+    {},
+    () => {},
+    makeDeps({
+      invokeAgentPostUpgrade: async () => {
+        events.push('post');
+        return [];
+      },
+      isDaemonRunning: async () => true,
+      isServiceManaged: () => true,
+      restartService: async () => {
+        events.push('restart');
+      },
+    }),
+  );
+  expect(events).toEqual(['post', 'restart']);
 });

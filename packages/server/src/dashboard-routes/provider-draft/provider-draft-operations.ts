@@ -1,3 +1,4 @@
+import { createProxyFetch } from '@aio-proxy/core';
 import {
   apiProviderEndpoints,
   type DashboardProviderDraftCatalogResponse,
@@ -7,8 +8,10 @@ import {
   ProviderProtocol,
   ProviderSchema,
 } from '@aio-proxy/types';
+import { isPlainObject } from 'es-toolkit/predicate';
 
-import { materializeProviders } from '../../provider-runtime';
+import { exposedModelIds } from '../../plugin-runtime';
+import { effectiveProxy, materializeProviders } from '../../provider-runtime';
 import { withAttemptLogContext, withRequestLogContext } from '../../request-logging';
 import type { RuntimeProviderInstance } from '../../runtime';
 import type { ServerState } from '../../server-state';
@@ -22,9 +25,11 @@ const failure = <Code extends string>(code: Code) => ({
 
 export async function loadProviderDraftCatalog(
   state: ServerState,
-  provider: Exclude<Provider, { kind: ProviderKind.OAuth }>,
+  provider: Provider,
 ): Promise<DashboardProviderDraftCatalogResponse> {
-  if (provider.kind === ProviderKind.AiSdk) return failure('catalog_unsupported');
+  // OAuth candidates come from oauthProviderEditView, not the draft catalog endpoint.
+  if (provider.kind === ProviderKind.OAuth) return failure('catalog_unsupported');
+  if (provider.kind === ProviderKind.AiSdk) return loadAiSdkDraftCatalog(state, provider);
 
   try {
     const primary = apiProviderEndpoints(provider)[0];
@@ -52,15 +57,72 @@ export async function loadProviderDraftCatalog(
   }
 }
 
+// ai-sdk runtimes expose no raw capability and no protocol field, so the api
+// loader cannot serve them. Convention over schema: baseURL/apiKey/headers are the
+// @ai-sdk/openai-compatible option keys, and the listing must be OpenAI-shaped.
+async function loadAiSdkDraftCatalog(
+  state: ServerState,
+  provider: Extract<Provider, { kind: ProviderKind.AiSdk }>,
+): Promise<DashboardProviderDraftCatalogResponse> {
+  const baseURL = provider.options?.['baseURL'];
+  if (typeof baseURL !== 'string' || baseURL.trim() === '') return failure('catalog_unsupported');
+  // Proxy only. The runtime path also wraps this in createProviderRequestTransformFetch +
+  // createObservedFetch (materialize.ts:156-159), but both are provably inert here: the
+  // transform fetch returns early unless currentProviderAttemptContext() names this
+  // provider, and createObservedFetch passes through with neither a debug scope nor an
+  // attempt response observation. Draft catalog loading establishes none of the three —
+  // the api loader above has the same gap. Wiring them in would look like transform
+  // support without providing any.
+  const fetchWithProxy = createProxyFetch(effectiveProxy(state.currentConfig().proxy, provider.proxy));
+  try {
+    const response = await fetchWithProxy(`${baseURL.replace(/\/+$/u, '')}/models`, {
+      signal: AbortSignal.timeout(5_000),
+      headers: catalogHeaders(provider.options),
+    });
+    if (!response.ok) {
+      await response.body?.cancel();
+      return failure('catalog_unavailable');
+    }
+    const page = catalogPage(ProviderProtocol.OpenAICompatible, await response.json());
+    return { ok: true, models: [...new Set(page.models)] };
+  } catch {
+    return failure('catalog_unavailable');
+  }
+}
+
+// apiKey first, configured headers second — `upstreamHeaders` (core/.../api.ts:98-104),
+// the schema contract at types/provider.ts:94 ("configured values win"), and
+// @ai-sdk/openai-compatible itself all resolve the collision this way. A gateway whose
+// real credential lives in options.headers must authenticate here exactly as it does in
+// the proxy, or Load models reports catalog_unavailable for a provider that works.
+// Headers.set is case-insensitive, so a configured `Authorization` in any casing replaces
+// the bearer instead of being comma-joined onto it the way an object spread would.
+function catalogHeaders(options: Readonly<Record<string, unknown>> | undefined): Headers {
+  const headers = new Headers();
+  const apiKey = options?.['apiKey'];
+  if (typeof apiKey === 'string' && apiKey !== '') headers.set('authorization', `Bearer ${apiKey}`);
+  const configured = options?.['headers'];
+  // isPlainObject, not `typeof === 'object'`: the native check admits an array, which
+  // would spread into a bogus `0:` header.
+  if (isPlainObject(configured)) {
+    for (const [name, value] of Object.entries(configured)) headers.set(name, String(value));
+  }
+  return headers;
+}
+
 export async function testProviderDraft(
   state: ServerState,
-  provider: Exclude<Provider, { kind: ProviderKind.OAuth }>,
+  provider: Provider,
   modelId: string,
 ): Promise<DashboardProviderDraftTestResponse> {
+  if (provider.kind === ProviderKind.OAuth) return testOAuthProvider(state, provider, modelId);
   if (!provider.models?.includes(modelId)) return failure('model_not_enabled');
 
   try {
     const testProvider = ProviderSchema.parse({ ...provider, alias: undefined, enabled: true, models: [modelId] });
+    // Unreachable: the entry point routes oauth to testOAuthProvider. Kept because
+    // ProviderSchema.parse returns the full union — this narrows testProvider for
+    // materializeDraftRuntime's Exclude<Provider, { kind: OAuth }> parameter.
     if (testProvider.kind === ProviderKind.OAuth) return failure('test_request_failed');
     const runtime = materializeDraftRuntime(state, testProvider);
     const targetProtocol =
@@ -95,6 +157,52 @@ export async function testProviderDraft(
   }
 }
 
+// Borrows the live runtime: an oauth provider cannot exist unsaved, and a
+// one-shot materialization would drive plugin auth (and can rewrite stored
+// credentials) from a read-only test button. Unsaved draft transforms are
+// therefore NOT exercised here; the editor's rail copy says so.
+async function testOAuthProvider(
+  state: ServerState,
+  provider: Extract<Provider, { kind: ProviderKind.OAuth }>,
+  modelId: string,
+): Promise<DashboardProviderDraftTestResponse> {
+  const lease = state.acquireProviderSnapshot();
+  try {
+    const runtime = lease.snapshot.providers.find((candidate) => candidate.id === provider.id);
+    const transport = runtime?.model;
+    if (runtime === undefined || transport === undefined) return failure('test_request_failed');
+    const catalogIds = Object.keys(runtime.upstreamMetadata ?? {});
+    // Gate on the DRAFT whitelist over the full discovered catalog, so an
+    // unsaved whitelist edit is honored and an empty whitelist exposes everything.
+    if (!new Set(exposedModelIds(catalogIds, provider.models)).has(modelId)) {
+      return failure('model_not_enabled');
+    }
+    const passed = await withDraftAttempt(provider, modelId, transport.targetProtocol?.(modelId), async () => {
+      await transport.ensureAvailable?.();
+      const signal = AbortSignal.timeout(10_000);
+      const stream = transport.invoke({
+        context: {
+          requestId: crypto.randomUUID(),
+          session: { key: `sha256:${'0'.repeat(64)}`, source: 'internal' },
+        },
+        messages: [{ role: 'user', content: 'ping' }],
+        modelId,
+        settings: { maxOutputTokens: 1 },
+        signal,
+      });
+      for await (const _part of stream) {
+        // Fully consume the single validation request so provider stream errors are observed.
+      }
+      return true;
+    });
+    return passed ? { ok: true } : failure('test_request_failed');
+  } catch {
+    return failure('test_request_failed');
+  } finally {
+    lease.release();
+  }
+}
+
 function materializeDraftRuntime(
   state: ServerState,
   provider: Exclude<Provider, { kind: ProviderKind.OAuth }>,
@@ -114,7 +222,7 @@ function materializeDraft(
 }
 
 function withDraftAttempt<T>(
-  provider: Exclude<Provider, { kind: ProviderKind.OAuth }>,
+  provider: Provider,
   modelId: string,
   targetProtocol: ProviderProtocol | undefined,
   operation: () => Promise<T>,

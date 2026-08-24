@@ -4,10 +4,9 @@ import type {
   PendingAccountOperation,
   PluginLogSink,
   PluginRepository,
-  Router,
 } from '@aio-proxy/core';
 import { createProxyFetch, OAuthCapabilityUnavailableError, parseRuntimeConfig } from '@aio-proxy/core';
-import type { OpenDbHandle } from '@aio-proxy/core/db';
+import type { DatabaseOwnershipLock, OpenDbHandle } from '@aio-proxy/core/db';
 import type { Config } from '@aio-proxy/types';
 
 import type { AccountRemovalCoordinator } from '../account-removal';
@@ -24,13 +23,19 @@ import { createRuntimeFetch } from '../plugin-runtime';
 import type { SnapshotManager } from '../plugin-snapshot';
 import { effectiveProxy, providerDiff } from '../provider-runtime';
 import type { ProviderCooldownStore } from '../routes/pipeline/provider-cooldown';
-import type { RetiredProviderSnapshot, RuntimeProviderInstance } from '../runtime';
+import type { RetiredProviderSnapshot } from '../runtime';
 import type { ServerLogSink } from '../server-log';
 import { oauthCapabilities, oauthProviderEditView } from './oauth-views';
 import { createRecovery } from './recovery';
 import { reloadSnapshot } from './reload';
 import { buildSnapshot, providerConfigRecord, type Snapshot } from './snapshot';
-import type { ConfigReloadResult, InternalServerStateOptions, ServerState, ServerStateOptions } from './types';
+import type {
+  ConfigReloadResult,
+  CreateRouter,
+  InternalServerStateOptions,
+  ServerState,
+  ServerStateOptions,
+} from './types';
 
 export type ServerRuntime = {
   readonly options: ServerStateOptions;
@@ -41,7 +46,7 @@ export type ServerRuntime = {
   readonly logger: ServerLogSink;
   readonly queue: FifoQueue;
   readonly events: DashboardEventHub;
-  readonly createRouter: (providers: readonly RuntimeProviderInstance[]) => Router<RuntimeProviderInstance>;
+  readonly createRouter: CreateRouter;
   manager: SnapshotManager;
   managerReady: boolean;
   closed: boolean;
@@ -114,9 +119,11 @@ export function reloadNow(
 
 export type ServerStateParts = Pick<
   ServerState,
+  | 'agentIdentity'
   | 'configStore'
   | 'events'
   | 'logicalSessionStore'
+  | 'modelRouting'
   | 'oauthQuota'
   | 'oauthLoginSessions'
   | 'pluginControlPlane'
@@ -134,22 +141,35 @@ export type ServerStateParts = Pick<
   readonly cooldown: ProviderCooldownStore;
   readonly watcher: { readonly close: () => void } | undefined;
   readonly closeRecovery: () => void;
+  readonly databaseOwnership: DatabaseOwnershipLock;
 };
 export function assembleServerState(runtime: ServerRuntime, parts: ServerStateParts): ServerState {
   const { manager, dbHandle } = parts;
   const { events, repository, options, logger } = runtime;
   return {
+    agentIdentity: parts.agentIdentity,
     acquireProviderSnapshot: manager.acquire,
     cooldown: parts.cooldown,
     close() {
       if (runtime.closed) return;
       runtime.closed = true;
-      parts.watcher?.close();
-      runtime.scheduler.close();
-      parts.closeRecovery();
-      parts.oauthLoginSessions.close();
-      events.close();
-      dbHandle.close();
+      const failures: unknown[] = [];
+      for (const close of [
+        () => parts.watcher?.close(),
+        () => runtime.scheduler.close(),
+        parts.closeRecovery,
+        () => parts.oauthLoginSessions.close(),
+        () => events.close(),
+        () => dbHandle.close(),
+        parts.databaseOwnership.release,
+      ]) {
+        try {
+          close();
+        } catch (error) {
+          failures.push(error);
+        }
+      }
+      if (failures[0] !== undefined) throw failures[0];
     },
     configPath: options.configPath,
     configStore: parts.configStore,
@@ -157,12 +177,14 @@ export function assembleServerState(runtime: ServerRuntime, parts: ServerStatePa
     debugLogging: options.config.server.logging?.level === 'debug',
     events,
     logicalSessionStore: parts.logicalSessionStore,
+    modelRouting: parts.modelRouting,
     oauthCapabilities: () => oauthCapabilities(manager),
     oauthProviderEditView: (providerId) => oauthProviderEditView(manager, repository, providerId),
     oauthLoginSessions: parts.oauthLoginSessions,
     pluginControlPlane: parts.pluginControlPlane,
     providerSummaries: parts.providerSummaries,
     currentConfig: () => (manager.current() as Snapshot).config,
+    configBeforeExtend: () => (manager.current() as Snapshot).configBeforeExtend,
     oauthQuota: parts.oauthQuota,
     reload: parts.reload,
     traceStore: parts.traceStore,
@@ -186,6 +208,7 @@ export async function startRecovery(
     readonly recoveryScheduler: Parameters<typeof createRecovery>[0]['scheduler'];
     readonly reconciliationRetryMs: number;
   },
+  registerStartupCleanup: (cleanup: () => void) => void,
 ): Promise<ConfigStore> {
   const recovery = createRecovery({
     configFile: runtime.configFile,
@@ -200,6 +223,7 @@ export async function startRecovery(
     reloadNow: (operations) => reloadNow(runtime, operations),
   });
   runtime.recovery = recovery;
+  registerStartupCleanup(() => recovery.close());
   await recovery.start();
   return createConfigStore({
     getConfigPath: () => runtime.options.configPath,
@@ -219,7 +243,12 @@ export function startLoginSessions(
 ): OAuthLoginSessionManager {
   const { manager, repository, diagnostics, pluginLogger, internalOptions } = runtime;
   const testHooks = internalOptions.__test;
+  const { host, port } = (runtime.manager.current() as Snapshot).config.server;
+  const completeHost = host === '::' || host === '[::]' ? '[::1]' : host === '0.0.0.0' ? '127.0.0.1' : host;
+  const completeAuthority =
+    completeHost.includes(':') && !completeHost.startsWith('[') ? `[${completeHost}]` : completeHost;
   return createOAuthLoginSessionManager({
+    completeUrl: `http://${completeAuthority}:${port}/dashboard/oauth/complete`,
     configFile: runtime.configFile,
     repository,
     acquireRegistry: () => {

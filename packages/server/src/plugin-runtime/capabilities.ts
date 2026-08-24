@@ -57,11 +57,32 @@ function rawCapability(rawResolver: RawResolver | undefined, catalog: ModelCatal
   };
 }
 
-export function withRoutingConfig(provider: RuntimeProviderInstance, config: OAuthProvider): RuntimeProviderInstance {
-  const { alias: _previousAlias, configMetadata: _previousConfigMetadata, ...previousProvider } = provider;
+// One rule, two call sites (fresh + cached). Absent or empty whitelist means
+// expose everything so existing oauth configs keep working; stale whitelist
+// entries are dropped so they cannot create dead routes.
+export function exposedModelIds(catalogIds: readonly string[], whitelist: readonly string[] | undefined): string[] {
+  if (whitelist === undefined || whitelist.length === 0) return [...catalogIds];
+  const allowed = new Set(whitelist);
+  return catalogIds.filter((id) => allowed.has(id));
+}
+
+export function withRoutingConfig(
+  provider: RuntimeProviderInstance,
+  config: OAuthProvider,
+  catalogIds: readonly string[],
+): RuntimeProviderInstance {
+  const {
+    alias: _previousAlias,
+    configMetadata: _previousConfigMetadata,
+    priority: _previousPriority,
+    weight: _previousWeight,
+    ...previousProvider
+  } = provider;
   return {
     ...previousProvider,
     enabled: config.enabled,
+    ...routingDefaults(config),
+    models: exposedModelIds(catalogIds, config.models),
     ...(config.alias === undefined ? {} : { alias: config.alias }),
     ...(config.metadata === undefined ? {} : { configMetadata: config.metadata }),
   };
@@ -94,7 +115,11 @@ export function createRuntimeProvider(
     id: config.id,
     kind: ProviderKind.OAuth,
     enabled: config.enabled,
-    models: catalog.language.map(({ id }) => id),
+    ...routingDefaults(config),
+    models: exposedModelIds(
+      catalog.language.map(({ id }) => id),
+      config.models,
+    ),
     ...(config.alias === undefined ? {} : { alias: config.alias }),
     ...(config.metadata === undefined ? {} : { configMetadata: config.metadata }),
     upstreamMetadata,
@@ -107,6 +132,16 @@ export function createRuntimeProvider(
       supportsProviderTool: (type) => supportedProviderTools.has(type),
       targetProtocol: (modelId) => upstreamMetadata[modelId]?.protocol,
     },
+  };
+}
+
+function routingDefaults(config: { readonly priority?: number; readonly weight?: number }): {
+  readonly priority?: number;
+  readonly weight?: number;
+} {
+  return {
+    ...(config.priority === undefined ? {} : { priority: config.priority }),
+    ...(config.weight === undefined ? {} : { weight: config.weight }),
   };
 }
 

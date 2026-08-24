@@ -6,6 +6,8 @@ import {
 import { type ReactFormExtendedApi, useForm } from '@tanstack/react-form';
 import { z } from 'zod';
 
+import { isValidJson } from '@/lib/json-form-value';
+
 export interface OAuthProviderFormValues {
   readonly capabilityKey: string;
   readonly publicValues: DashboardOAuthSessionStart['publicValues'];
@@ -37,18 +39,7 @@ export type OAuthProviderForm = ReactFormExtendedApi<
   any
 >;
 
-const OAuthJsonValuesSchema = z.record(
-  z.string(),
-  z.string().refine((value) => {
-    if (value === '') return true;
-    try {
-      JSON.parse(value);
-      return true;
-    } catch {
-      return false;
-    }
-  }),
-);
+const OAuthJsonValuesSchema = z.record(z.string(), z.string().refine(isValidJson));
 
 export const useOAuthProviderForm = (
   onSubmit: (value: OAuthProviderFormValues) => void,

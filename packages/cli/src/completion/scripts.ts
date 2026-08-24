@@ -1,7 +1,7 @@
 // Static shell-completion scripts for the top-level `aio-proxy` commands.
 // Static (rather than reflected from commander) keeps output deterministic and
 // decoupled from internal command wiring.
-const COMMANDS = 'run reload status config dashboard provider plugin service doctor completion';
+const COMMANDS = 'run reload status config dashboard provider plugin service doctor completion agent';
 
 const bash = `# aio-proxy bash completion
 # Install: aio-proxy completion bash > /etc/bash_completion.d/aio-proxy

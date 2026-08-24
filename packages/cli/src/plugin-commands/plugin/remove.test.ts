@@ -73,7 +73,7 @@ describe('plugin list', () => {
       );
       writeFileSync(
         join(packageDir, 'index.js'),
-        'const brand = Symbol.for("@aio-proxy/plugin-sdk/descriptor/v2");\nexport default { [brand]: true, apiVersion: 2, metadata: {}, setup() {} };\n',
+        'const brand = Symbol.for("@aio-proxy/plugin-sdk/descriptor/v1");\nexport default { [brand]: true, apiVersion: 1, metadata: {}, setup() {} };\n',
       );
       await pluginList({});
       expect(lines.join('\n')).toContain(`${packageName} configured`);

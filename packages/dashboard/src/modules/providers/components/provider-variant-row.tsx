@@ -1,102 +1,107 @@
 import { m } from '@aio-proxy/i18n';
-import type { AliasTarget } from '@aio-proxy/types';
+import type { AliasSelectRow } from '@aio-proxy/types';
 import { Button } from '@aio-proxy/ui/components/button';
-import { Card, CardAction, CardContent, CardHeader, CardTitle } from '@aio-proxy/ui/components/card';
-import { useForm } from '@tanstack/react-form';
-import { Trash2Icon } from 'lucide-react';
-import { type FC, useState } from 'react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@aio-proxy/ui/components/select';
+import { Switch } from '@aio-proxy/ui/components/switch';
+import { ArrowRightIcon, Trash2Icon } from 'lucide-react';
+import type { FC } from 'react';
 
 import {
-  type AliasDraft,
   type AliasEditorIssue,
-  type AliasEditResult,
+  type AliasRowDraft,
   aliasControlId,
-  type ProviderAlias,
-  preserveReferenceCount,
+  fromRowDraft,
+  toRowDraft,
 } from '../lib/alias-editor';
-import { aliasEditErrorMessage, aliasIssueMessage, type VisibleEditError } from '../lib/alias-editor-copy';
-import { ProviderVariantFields } from './provider-variant-fields';
+import { ProviderVariantConditions } from './provider-variant-conditions';
 
-type Props = {
-  readonly alias: ProviderAlias;
+interface ProviderVariantRowProps {
+  /** Stable alias row id — used for control ids so two same-named aliases do not collide. */
+  readonly rowId: string;
   readonly aliasName: string;
-  readonly variantName: string;
-  readonly target: AliasTarget;
+  /** Index into the stored rows: the row's identity for edits and for issue anchors. */
+  readonly index: number;
+  readonly row: AliasSelectRow;
   readonly models: readonly string[];
   readonly issues: readonly AliasEditorIssue[];
-  readonly onChange: (target: AliasTarget) => void;
-  readonly onRename: (name: string) => AliasEditResult;
+  readonly onChange: (row: AliasSelectRow) => void;
   readonly onRemove: () => void;
-};
+}
 
-export const ProviderVariantRow: FC<Props> = ({
-  alias,
+/**
+ * Every control reads the stored row, so the row prop is the only state. A per-row form would be a second
+ * copy of it, with nothing to keep the two in step once the row changes underneath. Nothing to go stale.
+ */
+export const ProviderVariantRow: FC<ProviderVariantRowProps> = ({
+  rowId,
   aliasName,
-  variantName,
-  target,
+  index,
+  row,
   models,
   issues,
   onChange,
-  onRename,
   onRemove,
 }) => {
-  const [editError, setEditError] = useState<VisibleEditError | null>(null);
-  const form = useForm({
-    defaultValues: { name: variantName, model: target.model, preserve: target.preserve } satisfies AliasDraft,
-  });
-  const issue = issues[0];
-  const issueMessage = issue === undefined ? null : aliasIssueMessage(issue);
-  const errorMessage = editError === null ? issueMessage : aliasEditErrorMessage(editError);
-  const nameInvalid =
-    editError === 'name-required' || editError === 'name-duplicate' || (issue?.code.includes('name-') ?? false);
-  const targetInvalid = editError === 'target-required' || issue?.code === 'target-missing';
-  const preserveCount = preserveReferenceCount(alias, target.model) - (target.preserve ? 1 : 0);
-  const nameId = aliasControlId(aliasName, variantName);
-  const targetId = `${nameId}-target`;
-  const preserveId = `${nameId}-preserve`;
-
-  const commitName = (name: string) => {
-    const result = onRename(name);
-    if (result.ok) {
-      setEditError(null);
-    } else if (result.code !== 'alias-missing') {
-      setEditError(result.code);
-    }
-  };
+  const draft = toRowDraft(row);
+  const codes = new Set(issues.map((issue) => issue.code));
+  const controlId = aliasControlId(rowId, index);
+  const commit = (patch: Partial<AliasRowDraft>) => onChange(fromRowDraft({ ...draft, ...patch }));
 
   return (
-    <Card size="sm" data-testid="provider-variant-row">
-      <CardHeader>
-        <CardTitle>{variantName}</CardTitle>
-        <CardAction>
+    <div className="space-y-2 border-b pb-3 last:border-b-0 last:pb-0" data-testid="provider-variant-row">
+      <div className="grid items-center gap-2 lg:grid-cols-[repeat(3,minmax(0,1fr))_auto_minmax(0,1.25fr)_auto]">
+        <ProviderVariantConditions
+          draft={draft}
+          aliasName={aliasName}
+          controlId={controlId}
+          invalid={codes.has('variant-when-required') || codes.has('variant-when-duplicate')}
+          onCommit={commit}
+        />
+        <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 lg:contents">
+          <ArrowRightIcon className="mx-auto size-3.5 text-muted-foreground" aria-hidden="true" />
+          <Select
+            value={draft.model}
+            onValueChange={(model) => {
+              if (model === null) return;
+              commit({ model });
+            }}
+          >
+            <SelectTrigger
+              id={`${controlId}-target`}
+              size="sm"
+              className="w-full font-mono"
+              aria-label={m['dashboard.providers.form.variant_target']()}
+              aria-invalid={codes.has('target-missing')}
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {models.map((model) => (
+                <SelectItem key={model} value={model}>
+                  {model}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Button
             type="button"
             variant="ghost"
-            size="icon-sm"
+            size="icon-xs"
             aria-label={m['dashboard.providers.form.remove_variant']()}
             onClick={onRemove}
           >
             <Trash2Icon />
           </Button>
-        </CardAction>
-      </CardHeader>
-      <CardContent>
-        <ProviderVariantFields
-          form={form}
-          target={target}
-          models={models}
-          nameId={nameId}
-          targetId={targetId}
-          preserveId={preserveId}
-          nameInvalid={nameInvalid}
-          targetInvalid={targetInvalid}
-          preserveCount={preserveCount}
-          errorMessage={errorMessage}
-          setEditError={setEditError}
-          onChange={onChange}
-          commitName={commitName}
+        </div>
+      </div>
+      <label className="flex items-center gap-2 text-xs text-muted-foreground">
+        <Switch
+          size="sm"
+          checked={draft.preserve}
+          onCheckedChange={(preserve) => commit({ preserve: Boolean(preserve) })}
         />
-      </CardContent>
-    </Card>
+        {m['dashboard.providers.form.variant_preserve']()}
+      </label>
+    </div>
   );
 };

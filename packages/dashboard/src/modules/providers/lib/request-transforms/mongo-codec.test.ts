@@ -57,6 +57,20 @@ describe('request transform condition codec', () => {
     expect(roundTrip(flags)).toEqual({ 'request.model': { $regex: '^gpt-', $options: 'imsu' } });
   });
 
+  test('decodes the condition toggle seed into one editable regex row', () => {
+    // The rule card commits this document when its condition switch is turned on. If the decode ever stops
+    // producing a row, the switch turns on and the user stares at an empty builder.
+    const seed = { 'request.model': { $regex: '' } } satisfies Condition;
+
+    expect(parseRequestTransformCondition(seed).rules).toEqual([
+      { field: 'request.model', operator: 'regex', value: { regex: '', options: '' } },
+    ]);
+    // Serializing supplies the $options the seed omits, and is a fixed point from there on.
+    const serialized = roundTrip(seed);
+    expect(serialized).toEqual({ 'request.model': { $regex: '', $options: '' } });
+    expect(roundTrip(serialized)).toEqual(serialized);
+  });
+
   test('round-trips negated groups and existence conditions', () => {
     const when = {
       $nor: [{ 'request.body.debug': { $exists: true } }, { 'original.body.limit': { $lt: 1 } }],

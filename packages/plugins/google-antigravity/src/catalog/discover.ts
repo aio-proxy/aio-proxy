@@ -1,6 +1,7 @@
 import {
   type AccountContext,
   CATALOG_DISCOVERY_TIMEOUT_MS,
+  type JsonValue,
   type ModelCatalog,
   type ModelDescriptor,
   zod,
@@ -10,8 +11,8 @@ import { currentGoogleCredential } from '../oauth/refresh';
 import { antigravityEndpoints } from '../runtime/endpoints';
 import { antigravityUserAgent } from '../runtime/hub-version';
 import type { GoogleAntigravityAccountOptions, GoogleAntigravityCredential } from '../schema';
+import { collapseAntigravityFamilies, pickerModelIds } from './collapse';
 import { CatalogDiscoveryError } from './errors';
-import { ANTIGRAVITY_RETIRED_MODEL_IDS } from './families';
 
 const DISCOVERY_PATH = '/v1internal:fetchAvailableModels';
 const DISCOVERY_ENDPOINT_TIMEOUT_MS = CATALOG_DISCOVERY_TIMEOUT_MS / 3;
@@ -30,6 +31,10 @@ const discoveredModelSchema = zod
     supportsImages: zod.boolean().optional(),
     supportsThinking: zod.boolean().optional(),
     thinkingBudget: zod.number().optional(),
+    minThinkingBudget: zod.number().optional(),
+    apiProvider: zod.string().optional(),
+    modelProvider: zod.string().optional(),
+    model: zod.string().optional(),
     maxTokens: zod.number().optional(),
     maxOutputTokens: zod.number().optional(),
     isInternal: zod.boolean().optional(),
@@ -37,12 +42,45 @@ const discoveredModelSchema = zod
   })
   .loose();
 
+const agentModelGroupSchema = zod
+  .object({
+    displayName: zod.string().optional(),
+    modelIds: zod.array(zod.string()).default([]),
+  })
+  .loose();
+
+const agentModelSortSchema = zod
+  .object({
+    displayName: zod.string().optional(),
+    groups: zod.array(agentModelGroupSchema).default([]),
+  })
+  .loose();
+
+const tieredModelIdsSchema = zod
+  .object({
+    flash: zod.array(zod.string()).optional(),
+    flashLite: zod.array(zod.string()).optional(),
+    pro: zod.array(zod.string()).optional(),
+  })
+  .loose();
+
+const deprecatedModelEntrySchema = zod.object({ newModelId: zod.string().optional() }).loose();
+
 const discoverySchema = zod
   .object({
     models: zod.record(zod.string(), discoveredModelSchema),
     webSearchModelIds: zod.array(zod.string()).optional(),
+    agentModelSorts: zod.array(agentModelSortSchema).optional(),
+    tieredModelIds: tieredModelIdsSchema.optional(),
+    deprecatedModelIds: zod.record(zod.string(), deprecatedModelEntrySchema).optional(),
   })
   .loose();
+
+export type AntigravityPickerFields = {
+  readonly agentModelSorts?: zod.infer<typeof discoverySchema>['agentModelSorts'];
+  readonly tieredModelIds?: zod.infer<typeof discoverySchema>['tieredModelIds'];
+  readonly deprecatedModelIds?: zod.infer<typeof discoverySchema>['deprecatedModelIds'];
+};
 
 export type DiscoveredAntigravityModel = zod.infer<typeof discoveredModelSchema>;
 
@@ -82,8 +120,10 @@ export async function discoverAntigravityCatalog(
 export function normalizeDiscoveredModels(
   models: Readonly<Record<string, DiscoveredAntigravityModel>>,
   webSearchModelIds: readonly string[] = [],
+  deprecatedModelIds: ReadonlySet<string> | readonly string[] = [],
 ): ModelDescriptor[] {
   const webSearchIds = new Set(webSearchModelIds.map((id) => id.trim()).filter(Boolean));
+  const deprecatedIds = deprecatedModelIds instanceof Set ? deprecatedModelIds : new Set(deprecatedModelIds);
   const descriptors = new Map<string, ModelDescriptor>();
 
   for (const [rawModelId, model] of Object.entries(models)) {
@@ -92,7 +132,7 @@ export function normalizeDiscoveredModels(
       modelId === '' ||
       model.isInternal === true ||
       ANTIGRAVITY_MODEL_DENYLIST.has(modelId) ||
-      ANTIGRAVITY_RETIRED_MODEL_IDS.has(modelId)
+      deprecatedIds.has(modelId)
     ) {
       continue;
     }
@@ -148,9 +188,50 @@ async function discoverEndpoint(
   throwIfRequestAborted(callerSignal, timeoutSignal);
   const parsed = discoverySchema.safeParse(payload);
   if (!parsed.success) throw new CatalogDiscoveryError('retryable');
-  const language = normalizeDiscoveredModels(parsed.data.models, parsed.data.webSearchModelIds);
+  const language = normalizeDiscoveredModels(
+    parsed.data.models,
+    parsed.data.webSearchModelIds,
+    Object.keys(parsed.data.deprecatedModelIds ?? {}),
+  );
   if (language.length === 0) throw new CatalogDiscoveryError('empty');
-  return { language, image: [], embedding: [], speech: [], transcription: [], reranking: [] };
+  return assembleAntigravityCatalog(language, {
+    agentModelSorts: parsed.data.agentModelSorts,
+    tieredModelIds: parsed.data.tieredModelIds,
+    deprecatedModelIds: parsed.data.deprecatedModelIds,
+  });
+}
+
+export function assembleAntigravityCatalog(
+  language: readonly ModelDescriptor[],
+  picker: AntigravityPickerFields = {},
+): ModelCatalog {
+  const languageIds = new Set(language.map((model) => model.id));
+  const pickerIds = pickerModelIds({
+    languageIds,
+    tieredModelIds: picker.tieredModelIds,
+    agentModelSorts: picker.agentModelSorts,
+  });
+  const descriptorsById = new Map(language.map((model) => [model.id, model]));
+  return {
+    language,
+    image: [],
+    embedding: [],
+    speech: [],
+    transcription: [],
+    reranking: [],
+    metadata: {
+      antigravityPicker: {
+        ...(picker.agentModelSorts === undefined ? {} : { agentModelSorts: picker.agentModelSorts }),
+        ...(picker.tieredModelIds === undefined ? {} : { tieredModelIds: picker.tieredModelIds }),
+        ...(picker.deprecatedModelIds === undefined ? {} : { deprecatedModelIds: picker.deprecatedModelIds }),
+      },
+      antigravityFamilies: collapseAntigravityFamilies({
+        pickerIds,
+        descriptorsById,
+        deprecatedModelIds: picker.deprecatedModelIds,
+      }),
+    } as JsonValue,
+  };
 }
 
 function classifyStatus(status: number): CatalogDiscoveryError {
@@ -160,12 +241,23 @@ function classifyStatus(status: number): CatalogDiscoveryError {
 }
 
 function discoveredCapabilities(model: DiscoveredAntigravityModel, supportsWebSearch: boolean) {
+  const maxOutputTokens = finitePositive(model.maxOutputTokens);
+  const thinkingBudget = finiteNumber(model.thinkingBudget);
+  const minThinkingBudget = finiteNumber(model.minThinkingBudget);
+  const apiProvider = nonEmpty(model.apiProvider);
+  const modelProvider = nonEmpty(model.modelProvider);
+  const modelEnum = nonEmpty(model.model);
   return {
     supportsImages: model.supportsImages === true,
     supportsThinking: model.supportsThinking === true,
     supportsWebSearch,
     contextWindow: positive(model.maxTokens, 200_000),
-    maxOutputTokens: positive(model.maxOutputTokens, 64_000),
+    ...(maxOutputTokens === undefined ? {} : { maxOutputTokens }),
+    ...(thinkingBudget === undefined ? {} : { thinkingBudget }),
+    ...(minThinkingBudget === undefined ? {} : { minThinkingBudget }),
+    ...(apiProvider === undefined ? {} : { apiProvider }),
+    ...(modelProvider === undefined ? {} : { modelProvider }),
+    ...(modelEnum === undefined ? {} : { modelEnum }),
   };
 }
 
@@ -181,5 +273,18 @@ function throwIfCallerAborted(signal: AbortSignal): void {
 }
 
 function positive(value: number | undefined, fallback: number): number {
-  return value !== undefined && Number.isFinite(value) && value > 0 ? value : fallback;
+  return finitePositive(value) ?? fallback;
+}
+
+function finitePositive(value: number | undefined): number | undefined {
+  return value !== undefined && Number.isFinite(value) && value > 0 ? value : undefined;
+}
+
+function finiteNumber(value: number | undefined): number | undefined {
+  return value !== undefined && Number.isFinite(value) ? value : undefined;
+}
+
+function nonEmpty(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed === undefined || trimmed === '' ? undefined : trimmed;
 }

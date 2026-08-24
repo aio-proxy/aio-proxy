@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
+import { createServer } from '#server-test-lifecycle';
+
 import {
   aiSdkProvider,
   responsesRequest,
@@ -7,7 +9,6 @@ import {
   unsupportedBeforeProviderInvocationCases,
   unsupportedEnvelope,
 } from '../../__tests__/openai-responses.test-support';
-import { createServer } from '../server';
 
 describe('OpenAI Responses routes', () => {
   for (const scenario of unsupportedBeforeProviderInvocationCases) {

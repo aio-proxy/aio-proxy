@@ -5,8 +5,10 @@ import { join } from 'node:path';
 
 import { parseRuntimeConfig, Router } from '@aio-proxy/core';
 
+import { createServerState } from '#server-test-lifecycle';
+
 import { disabledDashboardAuthentication } from '../../dashboard-auth/test-support';
-import { createServerState, type ServerState } from '../../server-state';
+import type { ServerState } from '../../server-state';
 import { createDashboardRoutes } from '../config';
 
 const authoredConfig = {
@@ -23,7 +25,7 @@ const authoredConfig = {
       enabled: false,
       futureLogging: 'logging-preserved',
       level: 'info',
-      retentionDays: 14,
+      retentionDays: 3,
     },
     password: 'password-preserved',
     port: 9_317,
@@ -105,7 +107,7 @@ test('GET /settings returns only the redacted typed settings view', async () => 
     expect(JSON.parse(text)).toEqual({
       hasPassword: true,
       host: '127.0.0.1',
-      logging: { enabled: false, level: 'info', retentionDays: 14 },
+      logging: { enabled: false, level: 'info', retentionDays: 3 },
       port: 9_317,
       proxy: '****',
       retryAfterCapMs: 30_000,

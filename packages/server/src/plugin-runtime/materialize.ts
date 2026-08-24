@@ -191,11 +191,16 @@ export async function materializePluginProvider(
       ...accountSummary,
       ...(catalog === null ? {} : { catalogLastSuccessAt: new Date(catalog.refreshedAt).toISOString() }),
     });
+  const defaultAliases = adapter.catalog.defaultAliases;
   const catalogJobFor = (credentials: CredentialPort<unknown>): CatalogJobDescriptor => ({
     providerId: config.id,
+    plugin: account.plugin,
+    capability: account.capability,
+    accountRuntimeRevision: account.runtimeRevision,
     policy: adapter.catalog.policy,
     stored: storedCatalog,
     ...(unavailable === undefined ? {} : { unavailableOccurredAt: Date.parse(unavailable.occurredAt) }),
+    ...(defaultAliases === undefined ? {} : { defaultAliases }),
     discover: (signal) =>
       adapter.catalog.discover({
         credentials: credentials as never,
@@ -230,7 +235,14 @@ export async function materializePluginProvider(
   if (!config.enabled) {
     const cacheEntry =
       options.previous?.identity === identity
-        ? { ...options.previous, provider: withRoutingConfig(options.previous.provider, config) }
+        ? {
+            ...options.previous,
+            provider: withRoutingConfig(
+              options.previous.provider,
+              config,
+              storedCatalog.catalog.language.map(({ id }) => id),
+            ),
+          }
         : undefined;
     return {
       summary: persistedSummary(undefined, storedCatalog),
@@ -241,7 +253,11 @@ export async function materializePluginProvider(
   const credentials = options.previous?.identity === identity ? options.previous.credentials : createCredentials();
   const catalogJob = catalogJobFor(credentials);
   if (options.previous?.identity === identity) {
-    const provider = withRoutingConfig(options.previous.provider, config);
+    const provider = withRoutingConfig(
+      options.previous.provider,
+      config,
+      storedCatalog.catalog.language.map(({ id }) => id),
+    );
     const cacheEntry = { ...options.previous, provider };
     return { provider, summary: persistedSummary(provider, storedCatalog), state, catalogJob, cacheEntry };
   }

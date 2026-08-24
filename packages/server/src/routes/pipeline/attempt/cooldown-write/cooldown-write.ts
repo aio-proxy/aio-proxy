@@ -1,10 +1,10 @@
-import type { RouterResolution } from '@aio-proxy/core';
+import type { RouterCandidate } from '@aio-proxy/core';
 import { retryAfterMilliseconds } from '@aio-proxy/plugin-sdk';
 
 import type { RuntimeProviderInstance } from '../../../../runtime';
 import type { ProviderCooldownStore } from '../../provider-cooldown';
 
-type Candidate = RouterResolution<RuntimeProviderInstance>;
+type Candidate = RouterCandidate<RuntimeProviderInstance>;
 
 // TTL (ms) to cool a (provider, model) after a failed attempt, or 0 when the
 // failure should not cool. Only a 429 with a parseable, positive Retry-After

@@ -1,9 +1,10 @@
 import { createOpenAI } from '@ai-sdk/openai';
 import type { CredentialPort, OAuthRuntimeResult, RuntimeContext } from '@aio-proxy/plugin-sdk';
 
-import { createXAIGrokCLIHeaders, XAI_GROK_CLI_BASE_URL } from '../cli-headers';
+import { createXAIGrokCLIHeaders, XAI_GROK_CLI_BASE_URL } from '../cli-headers/index';
 import { currentXAIGrokCredential, type XAIGrokFetch, type XAIGrokOAuthOptions } from '../oauth';
 import type { XAIGrokCredential } from '../schema';
+import { sanitizeXAIGrokResponsesBody } from './sanitize-responses/index';
 
 export async function createXAIGrokRuntime(
   context: RuntimeContext<XAIGrokCredential, Record<string, never>>,
@@ -73,20 +74,16 @@ function unsupportedGrammarCustomTool(): Response {
 async function outgoingBody(request: Request): Promise<BodyInit | Response | undefined> {
   if (request.method === 'GET' || request.method === 'HEAD') return undefined;
   const original = new Uint8Array(await request.arrayBuffer());
-  if (!new URL(request.url).pathname.endsWith('/responses')) return original;
+  if (!new URL(request.url).pathname.endsWith('/responses')) return new Uint8Array(original);
+  const bytes = sanitizeXAIGrokResponsesBody(original);
   try {
-    const value: unknown = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(original));
-    if (typeof value !== 'object' || value === null) return original;
-    const reasoning = Reflect.get(value, 'reasoning');
-    const stripped =
-      typeof reasoning === 'object' && reasoning !== null && Reflect.has(reasoning, 'summary')
-        ? Reflect.deleteProperty(reasoning, 'summary')
-        : false;
+    const value: unknown = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
+    if (typeof value !== 'object' || value === null) return new Uint8Array(bytes);
     const compiled = compileCompatibleCustomTools(value);
     if (compiled instanceof Response) return compiled;
-    return compiled || stripped ? JSON.stringify(value) : original;
+    return compiled ? JSON.stringify(value) : new Uint8Array(bytes);
   } catch {
-    return original;
+    return new Uint8Array(bytes);
   }
 }
 

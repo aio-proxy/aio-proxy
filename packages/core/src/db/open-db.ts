@@ -76,7 +76,7 @@ function borrow(entry: RegistryEntry): OpenDbHandle {
   };
 }
 
-function resolveDbPath(options: OpenDbOptions): string {
+export function resolveDbPath(options: OpenDbOptions): string {
   if (options.home !== undefined) {
     return resolve(options.home, 'aio-proxy.db');
   }

@@ -29,13 +29,15 @@ Releases are driven by Changesets. All workspace packages share one lockstep ver
 - Never write a changeset that targets ONLY an internal or platform-binary package (`@aio-proxy/core`, `server`, `cli`, the plugins, `@aio-proxy/cli-*`). The `fixed` group still bumps `aio-proxy`, but its CHANGELOG entry would be empty, so `scripts/release.ts` skips its GitHub Release and the notes silently vanish.
 - Keep the product package's bump level equal to the internal package's (internal `minor` -> `aio-proxy` `minor`).
 - Use `bun changeset` to author them; commit the generated `.changeset/*.md` alongside the change. Do not run `changeset version`/`publish` by hand — CI owns both.
+- A pending note describes the shipped state, not the state when it was written. When a change reverses, replaces, or drops something an earlier unreleased note announced, grep `.changeset/` for that behavior and correct or delete the stale note in the same commit. Notes are authored per task and released in one batch, so an unrevisited note ships as a Release describing a feature the code does not have.
 
 ## Domain Language
 
 Use these terms in code, docs, and discussion; avoid the listed synonyms.
 
 - **Provider ID**: a stable identifier for an upstream provider. In user config, it is the key in the `providers` object. Avoid: provider name, provider key.
-- **Provider weight**: a numeric priority for provider selection. Higher weights are tried before lower weights. Avoid: order, rank.
+- **Provider priority**: an integer failover tier (`0..10000`, default `0`). Higher values are tried first. Avoid: order, rank.
+- **Provider weight**: a finite authored number for same-priority traffic (default `1`, then `Math.round` and clamp to `0..10000`). Larger effective values receive more same-tier traffic. Avoid: order, rank.
 
 ## Coding Standards
 
@@ -118,12 +120,15 @@ foo/
 
 ## Cross-Protocol Routing
 
-Provider selection is model-first:
+Provider selection is model-first. After parsing the inbound request enough to get the requested model:
 
-1. Parse the inbound request enough to get the requested model.
-2. Resolve every provider that exposes that model alias.
-3. Order candidates by descending configured `weight`; equal or absent weights preserve config order.
-4. When an active session affinity binds the session to a provider, move that provider to the front and keep the remaining candidates in weight order. Session affinity intentionally overrides weight ordering so a session sticks to its previously successful provider (e.g. for prompt-cache continuity); a lower-weight bound provider is therefore tried before higher-weight candidates.
+1. Resolve the exact Provider-qualified route first, then the exact normal model.
+2. Merge Provider defaults with exact model overrides.
+3. Remove normal candidates with effective weight zero.
+4. Order priority tiers descending and weight within the tier.
+5. Stable sessions use deterministic draws; generated sessions use random draws.
+6. Response owner and session affinity override candidate order only for eligible normal candidates.
+7. The server pipeline remains the only generation candidate loop.
 
 For each candidate:
 

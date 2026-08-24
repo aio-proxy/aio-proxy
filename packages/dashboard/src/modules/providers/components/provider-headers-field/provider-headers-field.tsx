@@ -1,8 +1,6 @@
 import { m } from '@aio-proxy/i18n';
 import { Button } from '@aio-proxy/ui/components/button';
-import { Field } from '@aio-proxy/ui/components/field';
 import { Input } from '@aio-proxy/ui/components/input';
-import { Label } from '@aio-proxy/ui/components/label';
 import { PlusIcon, Trash2Icon } from 'lucide-react';
 import { useRef, useState } from 'react';
 
@@ -35,46 +33,43 @@ export const ProviderHeadersField: React.FC<ProviderHeadersFieldProps> = ({ valu
   };
 
   return (
-    <div data-testid="provider-form-field-headers" className="space-y-3">
-      <Label>{m['dashboard.providers.form.label_headers']()}</Label>
-      {rows.map((row, index) => {
-        const keyId = `provider-header-key-${row.id}`;
-        const valueId = `provider-header-value-${row.id}`;
+    <div data-testid="provider-form-field-headers" className="space-y-2">
+      {rows.map((row) => {
         return (
-          <div key={row.id} className="grid items-end gap-2 sm:grid-cols-[1fr_1fr_auto]">
-            <Field>
-              <Label htmlFor={keyId}>{m['dashboard.providers.form.label_header_key']()}</Label>
-              <Input
-                id={keyId}
-                value={row.key}
-                onChange={(event) =>
-                  changeRows((current) =>
-                    current.map((candidate) =>
-                      candidate.id === row.id ? { ...candidate, key: event.target.value } : candidate,
-                    ),
-                  )
-                }
-              />
-            </Field>
-            <Field>
-              <Label htmlFor={valueId}>{m['dashboard.providers.form.label_header_value']()}</Label>
-              <Input
-                id={valueId}
-                value={row.value}
-                onChange={(event) =>
-                  changeRows((current) =>
-                    current.map((candidate) =>
-                      candidate.id === row.id ? { ...candidate, value: event.target.value } : candidate,
-                    ),
-                  )
-                }
-              />
-            </Field>
+          <div key={row.id} className="flex items-center gap-2">
+            <Input
+              value={row.key}
+              onChange={(event) =>
+                changeRows((current) =>
+                  current.map((candidate) =>
+                    candidate.id === row.id ? { ...candidate, key: event.target.value } : candidate,
+                  ),
+                )
+              }
+              placeholder="X-Header"
+              aria-label={m['dashboard.providers.form.label_header_key']()}
+              className="h-7 flex-1 font-mono text-xs"
+            />
+            <Input
+              value={row.value}
+              onChange={(event) =>
+                changeRows((current) =>
+                  current.map((candidate) =>
+                    candidate.id === row.id ? { ...candidate, value: event.target.value } : candidate,
+                  ),
+                )
+              }
+              placeholder={m['dashboard.providers.form.label_header_value']()}
+              aria-label={m['dashboard.providers.form.label_header_value']()}
+              className="h-7 flex-1 font-mono text-xs"
+            />
             <Button
               type="button"
               variant="ghost"
-              size="icon"
-              aria-label={m['dashboard.providers.form.remove_header']({ key: row.key || String(index + 1) })}
+              size="icon-xs"
+              aria-label={m['dashboard.providers.form.remove_header']({
+                key: row.key || m['dashboard.providers.form.header_unnamed'](),
+              })}
               onClick={() => changeRows((current) => current.filter((candidate) => candidate.id !== row.id))}
             >
               <Trash2Icon />
@@ -84,8 +79,8 @@ export const ProviderHeadersField: React.FC<ProviderHeadersFieldProps> = ({ valu
       })}
       <Button
         type="button"
-        variant="outline"
-        size="sm"
+        variant="ghost"
+        size="xs"
         onClick={() => {
           const id = nextId.current++;
           changeRows((current) => [...current, { id, key: '', value: '' }]);

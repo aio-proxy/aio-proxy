@@ -4,7 +4,7 @@ import { jsonRequest, REQUESTED_MODEL, rawProvider, settleRecording } from '../.
 import { attemptsOf, pipeline } from './test-support';
 
 describe('shared protocol routing pipeline raw fallback', () => {
-  test.each([429, 503])('falls back after raw status %d', async (status) => {
+  test.each([422, 429, 503])('falls back after raw status %d', async (status) => {
     const bodySecret = `upstream-body-must-not-be-logged-${status}`;
     const primary = rawProvider({
       id: 'primary',

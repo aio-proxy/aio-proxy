@@ -22,7 +22,7 @@ export async function probeApi(
         body: JSON.stringify(request.body),
         headers: { 'content-type': 'application/json' },
         method: 'POST',
-        signal: AbortSignal.timeout(1_000),
+        signal: AbortSignal.timeout(10_000),
       }),
       { upstreamStream: false },
     );

@@ -7,7 +7,8 @@ import { loadPluginRegistry, Router } from '@aio-proxy/core';
 import { definePlugin, type RuntimeFetch, zod } from '@aio-proxy/plugin-sdk';
 import { ConfigSchema, ProviderKind } from '@aio-proxy/types';
 
-import { createServerState } from '../server-state';
+import { createServerState } from '#server-test-lifecycle';
+
 import { cleanup, diagnostics, homes, materializePluginProvider, runtimeFixture } from './test-support';
 
 afterEach(cleanup);

@@ -5,8 +5,9 @@ import { join } from 'node:path';
 
 import { ConfigSchema } from '@aio-proxy/types';
 
+import { createServerState } from '#server-test-lifecycle';
+
 import { OAuthQuotaCapabilityUnavailableError } from '../plugin-quota';
-import { createServerState } from './index';
 
 const homes: string[] = [];
 

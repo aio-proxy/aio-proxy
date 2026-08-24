@@ -1,5 +1,8 @@
+import type { RouterCandidate } from '@aio-proxy/core';
+
 import { attributeName, type RequestTraceSession, spanName } from '../../request-tracing';
 import type { RuntimeProviderInstance } from '../../runtime';
+import { type AttemptSelectionSource, candidateRoutingTrace, routingSpanAttributes } from '../pipeline/attempt-base';
 import { type OpenSpan, startPipelineSpan } from '../pipeline/tracing';
 
 // Attempt identity shared by the raw-forward and tokenCount paths.
@@ -7,15 +10,41 @@ export type CountAttempt = {
   readonly providerId: string;
   readonly modelId: string;
   readonly providerKind: RuntimeProviderInstance['kind'];
+  readonly routingContractVersion: 2;
+  readonly providerWeight: number;
+  readonly effectivePriority: number;
+  readonly effectiveWeight: number;
+  readonly prioritySource: 'provider' | 'model';
+  readonly weightSource: 'provider' | 'model';
+  readonly selectionSource: AttemptSelectionSource;
 };
+
+export function toCountAttempt(
+  candidate: RouterCandidate<RuntimeProviderInstance>,
+  selectionSource: AttemptSelectionSource,
+): CountAttempt {
+  return {
+    providerId: candidate.provider.id,
+    modelId: candidate.modelId,
+    providerKind: candidate.provider.kind,
+    ...candidateRoutingTrace(candidate, selectionSource),
+  };
+}
+
+function countIdentityAttributes(attempt: CountAttempt) {
+  return {
+    [attributeName.providerId]: attempt.providerId,
+    [attributeName.providerKind]: attempt.providerKind,
+    [attributeName.genAiResponseModel]: attempt.modelId,
+    ...routingSpanAttributes(attempt),
+  };
+}
 
 export function startAttemptSpan(session: RequestTraceSession, attempt: CountAttempt, index: number): OpenSpan {
   return startPipelineSpan(session.rootContext, spanName.attempt, {
     attributes: {
       [attributeName.attemptIndex]: index,
-      [attributeName.providerId]: attempt.providerId,
-      [attributeName.providerKind]: attempt.providerKind,
-      [attributeName.genAiResponseModel]: attempt.modelId,
+      ...countIdentityAttributes(attempt),
     },
   });
 }
@@ -37,9 +66,7 @@ export function recordSkippedCandidate(
   const span = startPipelineSpan(session.rootContext, spanName.candidateSkipped, {
     attributes: {
       [attributeName.attemptIndex]: index,
-      [attributeName.providerId]: attempt.providerId,
-      [attributeName.providerKind]: attempt.providerKind,
-      [attributeName.genAiResponseModel]: attempt.modelId,
+      ...countIdentityAttributes(attempt),
       [attributeName.skipReason]: reason,
     },
   });

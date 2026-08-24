@@ -4,7 +4,25 @@ import { ProviderProtocol } from '../provider';
 import { DashboardProviderDraftSchema } from './dashboard-provider-draft';
 
 describe('DashboardProviderDraftSchema', () => {
-  test('rejects misspelled fields on API drafts instead of stripping them', () => {
+  test('strips leftover API fields on an AI SDK draft instead of rejecting it', () => {
+    const result = DashboardProviderDraftSchema.safeParse({
+      baseURL: 'https://api.example/v1',
+      headers: { Authorization: 'Bearer leftover' },
+      id: 'sdk-draft',
+      kind: 'ai-sdk',
+      packageName: '@ai-sdk/openai-compatible',
+    });
+
+    expect(result.success).toBeTrue();
+    if (!result.success) return;
+    expect(result.data).toEqual({
+      id: 'sdk-draft',
+      kind: 'ai-sdk',
+      packageName: '@ai-sdk/openai-compatible',
+    });
+  });
+
+  test('strips a misspelled API field instead of rejecting the draft', () => {
     const result = DashboardProviderDraftSchema.safeParse({
       baseURL: 'https://api.example/v1',
       baseUrl: 'https://misspelled.example/v1',
@@ -13,27 +31,35 @@ describe('DashboardProviderDraftSchema', () => {
       protocol: ProviderProtocol.OpenAICompatible,
     });
 
-    expect(result.success).toBeFalse();
+    expect(result.success).toBeTrue();
+    if (!result.success) return;
+    expect('baseUrl' in result.data).toBe(false);
+    expect(result.data).toMatchObject({
+      baseURL: 'https://api.example/v1',
+      id: 'api-draft',
+      kind: 'api',
+      protocol: ProviderProtocol.OpenAICompatible,
+    });
   });
 
-  test('rejects API-only fields on AI SDK drafts instead of stripping them', () => {
+  test('accepts an oauth draft with a whitelist', () => {
+    const result = DashboardProviderDraftSchema.safeParse({
+      kind: 'oauth',
+      id: 'oauth-p',
+      enabled: true,
+      proxy: null,
+      models: ['m1'],
+    });
+    expect(result.success).toBeTrue();
+  });
+
+  test('rejects a redacted proxy sentinel instead of accepting it as an unchanged marker', () => {
     const result = DashboardProviderDraftSchema.safeParse({
       baseURL: 'https://api.example/v1',
-      id: 'sdk-draft',
-      kind: 'ai-sdk',
-      packageName: '@ai-sdk/openai-compatible',
-    });
-
-    expect(result.success).toBeFalse();
-  });
-
-  test('rejects OAuth-only fields on non-OAuth drafts instead of stripping them', () => {
-    const result = DashboardProviderDraftSchema.safeParse({
-      capability: 'account',
-      id: 'sdk-draft',
-      kind: 'ai-sdk',
-      packageName: '@ai-sdk/openai-compatible',
-      plugin: '@aio-proxy/plugin-example',
+      id: 'api-draft',
+      kind: 'api',
+      protocol: ProviderProtocol.OpenAICompatible,
+      proxy: '****',
     });
 
     expect(result.success).toBeFalse();

@@ -58,6 +58,73 @@ test('create and update pending rows retain rollback state and use credential re
   }
 });
 
+test('compensation treats a pre-migration catalog snapshot as equal to a migrated revision 0 row', () => {
+  const { handle, repository } = openRepository();
+  try {
+    createAccount(repository);
+    const pending = repository.stageAccountOperation({
+      kind: 'update',
+      targetDigest: 'digest:update',
+      expectedRuntimeRevision: 1,
+      account: account('provider-1', {
+        catalog: { kind: 'replace', value: { catalog: catalog('model-2'), refreshedAt: 200 } },
+      }),
+    });
+    const raw = handle.sqlite
+      .query('SELECT rollback_json FROM oauth_pending_operation WHERE operation_id = ?')
+      .get(pending.operationId) as { rollback_json: string };
+    const rollback = JSON.parse(raw.rollback_json) as {
+      applied: { catalog: { catalog: unknown; refreshedAt: number; revision?: number }; diagnostics: unknown };
+    };
+    const appliedCatalog = { ...rollback.applied.catalog };
+    delete appliedCatalog.revision;
+    rollback.applied.catalog = appliedCatalog;
+    handle.sqlite
+      .query('UPDATE oauth_pending_operation SET rollback_json = ? WHERE operation_id = ?')
+      .run(JSON.stringify(rollback), pending.operationId);
+    handle.sqlite.query('UPDATE oauth_catalog SET revision = 0 WHERE provider_id = ?').run('provider-1');
+
+    const live = {
+      catalog: repository.readCatalog('provider-1'),
+      diagnostics: repository.readDiagnostics('provider-1'),
+    };
+    expect(JSON.stringify(live) === JSON.stringify(rollback.applied)).toBe(false);
+
+    expect(repository.compensateAccountOperation(pending.operationId)).toBe('compensated');
+    expect(repository.readCatalog('provider-1')).toMatchObject({
+      catalog: catalog(),
+      refreshedAt: 100,
+    });
+  } finally {
+    handle.close();
+  }
+});
+
+test('compensation restores catalog content without rewinding revision', () => {
+  const { handle, repository } = openRepository();
+  try {
+    createAccount(repository);
+    expect(repository.readCatalog('provider-1')).toEqual({ catalog: catalog(), refreshedAt: 100, revision: 1 });
+    const pending = repository.stageAccountOperation({
+      kind: 'update',
+      targetDigest: 'digest:update',
+      expectedRuntimeRevision: 1,
+      account: account('provider-1', {
+        catalog: { kind: 'replace', value: { catalog: catalog('model-2'), refreshedAt: 200 } },
+      }),
+    });
+    expect(repository.readCatalog('provider-1')).toEqual({
+      catalog: catalog('model-2'),
+      refreshedAt: 200,
+      revision: 2,
+    });
+    expect(repository.compensateAccountOperation(pending.operationId)).toBe('compensated');
+    expect(repository.readCatalog('provider-1')).toEqual({ catalog: catalog(), refreshedAt: 100, revision: 3 });
+  } finally {
+    handle.close();
+  }
+});
+
 test('compensation refuses to overwrite a concurrent credential refresh', () => {
   const { handle, repository } = openRepository();
   try {

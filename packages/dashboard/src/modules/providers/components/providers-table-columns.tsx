@@ -1,6 +1,7 @@
 import { m } from '@aio-proxy/i18n';
+import type { DashboardProviderSummary } from '@aio-proxy/types';
 import { Link } from '@tanstack/react-router';
-import type { ColumnDef, RowData } from '@tanstack/react-table';
+import type { ColumnDef } from '@tanstack/react-table';
 import { startCase } from 'es-toolkit/string';
 
 import { tableHead } from '@/components/data-table/table-head';
@@ -23,13 +24,6 @@ export const formatProviderUsage = (status: ProviderUsageStatus, requests: bigin
   if (status === 'unavailable') return 'N/A';
   return formatCompactTokenCount(requests);
 };
-
-declare module '@tanstack/react-table' {
-  interface ColumnMeta<TData extends RowData, TValue> {
-    readonly className?: string;
-    readonly label?: () => string;
-  }
-}
 
 const uneditableDiagnosticCodes = new Set(['PROVIDER_CONFIG_INVALID', 'LEGACY_OAUTH_CONFIG_UNSUPPORTED']);
 
@@ -130,16 +124,23 @@ const modelsColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
   },
 };
 
-const weightColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
-  id: 'weight',
-  meta: { className: 'w-20 text-center', label: () => m['dashboard.providers.table.col_weight']() },
-  accessorFn: (row) => concreteProvider(row)?.weight,
-  header: tableHead(() => m['dashboard.providers.table.col_weight']()),
+const numericRoutingColumn = (
+  id: 'priority' | 'weight',
+  label: () => string,
+  fallback: number,
+): ColumnDef<DataTableFeatures, ProviderTableRow> => ({
+  id,
+  meta: { className: 'w-20 text-center', label },
+  accessorFn: (row) => concreteProvider(row)?.[id] ?? fallback,
+  header: tableHead(label),
   cell: ({ row }) => {
     const provider = concreteProvider(row.original);
-    return provider === undefined ? null : (provider.weight ?? 0);
+    return provider === undefined ? null : (provider[id] ?? fallback);
   },
-};
+});
+
+const priorityColumn = numericRoutingColumn('priority', () => m['dashboard.providers.table.col_priority'](), 0);
+const weightColumn = numericRoutingColumn('weight', () => m['dashboard.providers.table.col_weight'](), 1);
 
 const stateColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
   id: 'state',
@@ -216,6 +217,7 @@ export const createProviderColumns = (
   providerColumn,
   typeColumn,
   modelsColumn,
+  priorityColumn,
   weightColumn,
   stateColumn,
   usageColumn(providerUsage, providerUsageStatus),

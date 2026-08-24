@@ -7,7 +7,8 @@ import { AtomicConfigFile, createPluginRepository } from '@aio-proxy/core';
 import { openDb } from '@aio-proxy/core/db';
 import { ConfigSchema } from '@aio-proxy/types';
 
-import { createServerState } from '../src/server-state';
+import { createServerState } from '#server-test-lifecycle';
+
 import { seedOAuthAccount, settleWatcher, waitUntil, writeConfig } from './server-reload.oauth.test-support';
 
 describe('server OAuth reload', () => {

@@ -2,6 +2,7 @@ import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import type { LanguageModelV4 } from '@ai-sdk/provider';
 import type { LogicalRequestContext } from '@aio-proxy/plugin-sdk';
 
+import type { AntigravityThinkingOption } from '../protocol/thinking';
 import { type AntigravityGoogleFetchContext, createAntigravityGoogleFetch } from './google-fetch';
 import { takeAioProxyOptions } from './private-options';
 import { bridgeLateReasoningSignatures } from './reasoning-signature-stream';
@@ -24,21 +25,25 @@ export function createAntigravityLanguageModel(
     supportedUrls: shape.supportedUrls,
     async doGenerate(options) {
       const split = takeAioProxyOptions(options.providerOptions);
+      const thinking = synthesizeThinking(split.privateOptions.thinking, options.reasoning);
       return await googleDelegate(modelId, {
         ...runtime.call(split.context),
-        ...(split.privateOptions.thinking === undefined ? {} : { thinking: split.privateOptions.thinking }),
+        ...(thinking === undefined ? {} : { thinking }),
       }).doGenerate({
         ...options,
+        reasoning: 'provider-default',
         providerOptions: split.providerOptions,
       });
     },
     async doStream(options) {
       const split = takeAioProxyOptions(options.providerOptions);
+      const thinking = synthesizeThinking(split.privateOptions.thinking, options.reasoning);
       const result = await googleDelegate(modelId, {
         ...runtime.call(split.context),
-        ...(split.privateOptions.thinking === undefined ? {} : { thinking: split.privateOptions.thinking }),
+        ...(thinking === undefined ? {} : { thinking }),
       }).doStream({
         ...options,
+        reasoning: 'provider-default',
         includeRawChunks: true,
         providerOptions: split.providerOptions,
       });
@@ -48,6 +53,15 @@ export function createAntigravityLanguageModel(
       };
     },
   };
+}
+
+export function synthesizeThinking(
+  existing: AntigravityThinkingOption | undefined,
+  reasoning: unknown,
+): AntigravityThinkingOption | undefined {
+  if (existing !== undefined) return existing;
+  if (typeof reasoning !== 'string' || reasoning === 'provider-default') return undefined;
+  return reasoning === 'none' ? { mode: 'disabled' } : { mode: 'adaptive', effort: reasoning };
 }
 
 function googleDelegate(modelId: string, call?: AntigravityGoogleFetchContext): LanguageModelV4 {

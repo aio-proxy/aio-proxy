@@ -1,3 +1,4 @@
+export { agentAccessToken, agentInstallation, agentRefreshToken, agentTokenFamily } from './agent-identity';
 export {
   oauthAccount,
   oauthAccountDiagnostic,

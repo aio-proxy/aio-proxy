@@ -1,3 +1,4 @@
+import { getCachedModelSlugs } from '@aio-proxy/core';
 import { UsageOverviewGroupBySchema, UsageOverviewMetricSchema, UsageOverviewRangeSchema } from '@aio-proxy/types';
 import { Hono } from 'hono';
 import { validator } from 'hono/validator';
@@ -13,6 +14,7 @@ import { createDashboardProviderDraftRoutes } from './provider-draft';
 import { createDashboardProviderReadRoutes } from './provider-routes';
 import { redactSecrets } from './provider-secrets';
 import { createDashboardProviderWriteRoutes } from './provider-write-routes';
+import { createDashboardRoutingRoutes } from './routing';
 import { createDashboardSettingsRoute } from './settings';
 import { createDashboardTraceRoutes } from './traces';
 
@@ -33,11 +35,13 @@ const usageOverviewValidator = validator('query', (raw, context) => {
 export const createDashboardRoutes = (state: ServerState, auth: DashboardAuthentication) =>
   new Hono()
     .get('/config', (context) => context.json(redactSecrets(state.currentConfig())))
+    .get('/models-dev/slugs', async (context) => context.json({ slugs: await getCachedModelSlugs() }))
     .get('/oauth/capabilities', (context) => context.json({ capabilities: state.oauthCapabilities() }))
     .route('/oauth', createDashboardOAuthLoginRoutes(state))
     .route('/', createDashboardProviderReadRoutes(state))
     .route('/', createDashboardProviderDraftRoutes(state))
     .route('/', createDashboardProviderWriteRoutes(state))
+    .route('/', createDashboardRoutingRoutes(state))
     .get('/usage', usageOverviewValidator, (context) => {
       const query = context.req.valid('query');
       const { maxResults, ...required } = query;

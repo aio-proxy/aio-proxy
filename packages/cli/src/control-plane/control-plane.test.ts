@@ -87,3 +87,32 @@ test('a malformed config falls back to the loopback defaults instead of throwing
     },
   );
 });
+
+test('the shared control address resolves host and port templates from service.env', async () => {
+  const previousHost = process.env.AGENT_BIND_HOST;
+  const previousPort = process.env.AGENT_BIND_PORT;
+  try {
+    delete process.env.AGENT_BIND_HOST;
+    delete process.env.AGENT_BIND_PORT;
+    await withHome(
+      (home) => {
+        writeFileSync(
+          join(home, 'config.jsonc'),
+          JSON.stringify({
+            server: { host: '{{env.AGENT_BIND_HOST}}', port: '{{env.AGENT_BIND_PORT}}' },
+            providers: {},
+          }),
+        );
+        writeFileSync(join(home, 'service.env'), 'AGENT_BIND_HOST=127.0.0.9\nAGENT_BIND_PORT=9417\n');
+      },
+      async () => {
+        await expect(resolveControlAddress({})).resolves.toEqual({ host: '127.0.0.9', port: '9417' });
+      },
+    );
+  } finally {
+    if (previousHost === undefined) delete process.env.AGENT_BIND_HOST;
+    else process.env.AGENT_BIND_HOST = previousHost;
+    if (previousPort === undefined) delete process.env.AGENT_BIND_PORT;
+    else process.env.AGENT_BIND_PORT = previousPort;
+  }
+});

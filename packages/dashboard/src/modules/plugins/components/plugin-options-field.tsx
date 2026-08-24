@@ -7,6 +7,7 @@ import { Switch } from '@aio-proxy/ui/components/switch';
 import { Textarea } from '@aio-proxy/ui/components/textarea';
 import type { AnyFieldApi } from '@tanstack/react-form';
 
+import { isValidJson, optionValue } from '@/lib/json-form-value';
 import { resolveDashboardText } from '@/lib/localized-text';
 
 import type { PluginOptionsForm } from '../hooks/use-plugin-options-form';
@@ -20,17 +21,6 @@ interface PluginOptionsFieldProps {
   readonly publicField: AnyFieldApi;
   readonly secretField: AnyFieldApi;
 }
-
-const optionValue = (value: string | number | boolean) => JSON.stringify(value);
-const isValidJson = (value: string) => {
-  if (value === '') return true;
-  try {
-    JSON.parse(value);
-    return true;
-  } catch {
-    return false;
-  }
-};
 
 const setPublicOptionValue = (publicField: AnyFieldApi, key: string, value: unknown) => {
   const next = { ...publicField.state.value };

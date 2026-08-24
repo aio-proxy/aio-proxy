@@ -44,8 +44,10 @@ describe('xAI Grok runtime', () => {
     expect(request?.url).toBe('https://cli-chat-proxy.grok.com/v1/responses');
     expect(request?.headers.get('authorization')).toBe('Bearer access-token');
     expect(request?.headers.get('x-xai-token-auth')).toBe('xai-grok-cli');
-    expect(request?.headers.get('x-grok-client-version')).toBe('0.2.93');
-    expect(request?.headers.get('user-agent')).toBe('xai-grok-workspace/0.2.93');
+    expect(request?.headers.get('x-grok-client-version')).toBe('0.2.120');
+    expect(request?.headers.get('x-grok-client-identifier')).toBe('grok-shell');
+    expect(request?.headers.get('x-authenticateresponse')).toBe('authenticate-response');
+    expect(request?.headers.get('user-agent')).toBe('xai-grok-workspace/0.2.120');
   });
 
   test('exposes Responses language models without raw capability', async () => {
@@ -60,7 +62,7 @@ describe('xAI Grok runtime', () => {
     expect(runtime.raw).toBeUndefined();
   });
 
-  test('injects CLI identity and compiles custom Responses tools before dispatch', async () => {
+  test('injects CLI identity, sanitizes Responses fields, and compiles custom tools before dispatch', async () => {
     let captured: Request | undefined;
     let observedSignal: AbortSignal | null | undefined;
     const controller = new AbortController();
@@ -77,6 +79,7 @@ describe('xAI Grok runtime', () => {
       headers: { authorization: 'Bearer placeholder', 'x-keep': 'yes' },
       body: JSON.stringify({
         model: 'grok-4.5',
+        previous_response_id: 'resp_old',
         reasoning: { effort: 'high', summary: 'auto' },
         tools: [
           { type: 'custom', name: 'exec', format: { type: 'text' } },
@@ -93,8 +96,10 @@ describe('xAI Grok runtime', () => {
     expect(captured?.url).toBe('https://cli-chat-proxy.grok.com/v1/responses');
     expect(captured?.headers.get('authorization')).toBe('Bearer access-token');
     expect(captured?.headers.get('x-xai-token-auth')).toBe('xai-grok-cli');
-    expect(captured?.headers.get('x-grok-client-version')).toBe('0.2.93');
-    expect(captured?.headers.get('user-agent')).toBe('xai-grok-workspace/0.2.93');
+    expect(captured?.headers.get('x-grok-client-version')).toBe('0.2.120');
+    expect(captured?.headers.get('x-grok-client-identifier')).toBe('grok-shell');
+    expect(captured?.headers.get('x-authenticateresponse')).toBe('authenticate-response');
+    expect(captured?.headers.get('user-agent')).toBe('xai-grok-workspace/0.2.120');
     expect(captured?.headers.get('x-keep')).toBe('yes');
     expect(await captured?.json()).toEqual({
       model: 'grok-4.5',
@@ -152,6 +157,22 @@ describe('xAI Grok runtime', () => {
         message: 'xAI Grok OAuth cannot represent custom tool grammar format',
       },
     });
+  });
+
+  test('forwards non-Responses request bodies unchanged', async () => {
+    let captured: Request | undefined;
+    const body = JSON.stringify({ tools: [{ type: 'function', name: 'automation_update', strict: true }] });
+    const dynamicFetch = createXAIGrokDynamicFetch(port(), {
+      fetch: async (input, init) => {
+        captured = new Request(input, init);
+        return new Response(null, { status: 200 });
+      },
+      now: () => 0,
+    });
+
+    await dynamicFetch('https://cli-chat-proxy.grok.com/v1/chat/completions', { method: 'POST', body });
+
+    expect(await captured?.text()).toBe(body);
   });
 });
 

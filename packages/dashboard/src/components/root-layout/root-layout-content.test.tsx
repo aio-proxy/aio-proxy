@@ -7,7 +7,12 @@ import { RootLayoutContent } from './root-layout-content';
 const mocks = rs.hoisted(() => ({ status: 'unauthenticated' }));
 
 rs.mock('@aio-proxy/i18n', () => ({ m: { 'dashboard.auth.loading': () => 'Loading Dashboard' } }));
-rs.mock('@tanstack/react-router', () => ({ Outlet: () => <div>Protected content</div> }));
+const router = rs.hoisted(() => ({ pathname: '/' }));
+rs.mock('@tanstack/react-router', () => ({
+  Outlet: () => <div>Protected content</div>,
+  useRouterState: ({ select }: { select: (state: { location: { pathname: string } }) => string }) =>
+    select({ location: { pathname: router.pathname } }),
+}));
 rs.mock('@/components/side-menu', () => ({ SideMenu: () => <nav>Sidebar</nav> }));
 rs.mock('@aio-proxy/ui/components/sidebar', () => ({
   SidebarInset: ({ children }: React.PropsWithChildren) => <div>{children}</div>,
@@ -38,4 +43,12 @@ test('renders only the surface allowed by the Dashboard auth status', async () =
   const toastId = toast.add({ type: 'success', title: 'Toast ready' });
   await waitFor(() => expect(screen.getByText('Toast ready')).toBeInTheDocument());
   toast.close(toastId);
+});
+
+test('oauth complete is a standalone page without the sidebar', () => {
+  router.pathname = '/oauth/complete';
+  mocks.status = 'authenticated';
+  render(<RootLayoutContent />);
+  expect(screen.getByText('Protected content')).toBeInTheDocument();
+  expect(screen.queryByText('Sidebar')).not.toBeInTheDocument();
 });

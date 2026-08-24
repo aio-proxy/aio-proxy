@@ -6,7 +6,6 @@ import {
   type PluginLogSink,
   type PluginRegistrySnapshot,
   type PluginRepository,
-  type Router,
 } from '@aio-proxy/core';
 import {
   type Config,
@@ -38,10 +37,16 @@ import {
 import { createObservedFetch } from '../request-logging';
 import type { ProviderRouteSnapshot, RuntimeProviderInput, RuntimeProviderInstance } from '../runtime';
 import { applyMetadataExtend } from './resolve-extend/index';
-import type { ServerStateOptions } from './types';
+import type { CreateRouter, ServerStateOptions } from './types';
 
 export type Snapshot = ProviderRouteSnapshot & {
   readonly config: Config;
+  /**
+   * `config` before `metadata[model].extend` was resolved into a flat copy of its models.dev entry.
+   * Round-trip surfaces — the provider editor's edit-view — must read this one: handing back the
+   * resolved copy would replace the inheritance with a frozen snapshot of a moving catalog.
+   */
+  readonly configBeforeExtend: Config;
   readonly plugins: PluginRegistrySnapshot;
   readonly probes: ReadonlyMap<string, ProviderProbe>;
   readonly summaries: readonly DashboardProviderSummary[];
@@ -64,7 +69,7 @@ export async function buildSnapshot(
   diagnostics: DiagnosticFactory,
   logger: PluginLogSink,
   onDiagnosticChanged: () => void,
-  createRouter: (providers: readonly RuntimeProviderInstance[]) => Router<RuntimeProviderInstance>,
+  createRouter: CreateRouter,
 ): Promise<Snapshot> {
   const controlFetch = globalThis.fetch;
   const { plugins, pluginOptionInputs, pluginOptionsDigests } = await loadPlugins(
@@ -122,10 +127,11 @@ export async function buildSnapshot(
   );
   return {
     config: configWithExtend,
+    configBeforeExtend: config,
     plugins,
     probes: base.probes,
     providers,
-    router: createRouter(providers),
+    router: createRouter(providers, configWithExtend.router),
     summaries,
     catalogJobs: compact(oauth.map((item) => item.catalogJob)),
     runtimeCache: new Map(
@@ -258,7 +264,7 @@ export function providerConfigRecord(config: Config): Record<string, unknown> {
 export function buildSnapshotWithProviders(
   config: Config,
   providers: readonly RuntimeProviderInput[],
-  createRouter: (providers: readonly RuntimeProviderInstance[]) => Router<RuntimeProviderInstance>,
+  createRouter: CreateRouter,
 ): Snapshot {
   const materialized = providers.map((provider) => materializeRuntimeProvider(provider));
   const summaries = materialized.map((provider) => ({
@@ -267,10 +273,11 @@ export function buildSnapshotWithProviders(
   }));
   return {
     config,
+    configBeforeExtend: config,
     plugins: emptyPluginSnapshot(),
     probes: new Map(),
     providers: materialized,
-    router: createRouter(materialized),
+    router: createRouter(materialized, config.router),
     summaries,
     catalogJobs: [],
     runtimeCache: new Map(),

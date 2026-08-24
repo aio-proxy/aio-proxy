@@ -1,9 +1,19 @@
 import { expect, test } from 'bun:test';
 
-import { geminiGenerateContentAdapter } from '@aio-proxy/core';
+import { anthropicMessagesAdapter, geminiGenerateContentAdapter } from '@aio-proxy/core';
+import { ConfigSchema } from '@aio-proxy/types';
 
+import {
+  defineProviderRouteSource,
+  modelProvider,
+  settleRecording,
+  textStream,
+} from '../../../__tests__/pipeline-helpers';
 import { LogicalSessionStore } from '../../logical-session-store';
+import { attributeName, spanName } from '../../request-tracing';
+import type { ModelTransport } from '../../runtime';
 import { createGeminiGenerateContentRoutes } from '../gemini-generate-content';
+import { handleProtocolRequest } from '../pipeline';
 import {
   anthropicRequest,
   configOrderedProviders,
@@ -56,17 +66,31 @@ test('opens the attempt span before the counter runs so the provider attempt get
   expect(fixture.recording.attempts[0]?.durationMs).toBeGreaterThanOrEqual(10);
 });
 
-test('uses descending Provider weight before lower configured candidates', async () => {
+test('uses higher-priority Providers before a lower tier', async () => {
   const calls: string[] = [];
   const fixture = countFixture(
     configOrderedProviders([
-      { provider: provider({ id: 'low', tokenCount: counter('low', 22, calls) }), weight: 1 },
-      { provider: provider({ id: 'high', tokenCount: counter('high', 11, calls) }), weight: 10 },
+      { provider: provider({ id: 'low', tokenCount: counter('low', 22, calls) }), priority: 10, weight: 1 },
+      { provider: provider({ id: 'high', tokenCount: counter('high', 11, calls) }), priority: 20, weight: 1 },
     ]),
   );
 
   expect(await (await fixture.gemini()).json()).toEqual({ totalTokens: 11 });
   expect(calls).toEqual(['high']);
+});
+
+test('uses an injected same-tier weight draw for token-count', async () => {
+  const calls: string[] = [];
+  const fixture = countFixture(
+    configOrderedProviders([
+      { provider: provider({ id: 'heavy', tokenCount: counter('heavy', 11, calls) }), weight: 3 },
+      { provider: provider({ id: 'light', tokenCount: counter('light', 22, calls) }), weight: 1 },
+    ]),
+    { random: () => 0.9 },
+  );
+
+  expect(await (await fixture.gemini()).json()).toEqual({ totalTokens: 22 });
+  expect(calls).toEqual(['light']);
 });
 
 test('preserves config order for equal Provider weights', async () => {
@@ -264,6 +288,93 @@ test('routes Gemini countTokens and preserves a provider-qualified model resourc
   expect(modelIds).toEqual(['gemini-wire']);
 });
 
+test('count and generation share pre-attempt Router order for a stable session', async () => {
+  const config = routingPolicy({
+    a: { priority: 20, weight: 3 },
+    b: { priority: 20, weight: 1 },
+  });
+  const random = () => 0.99;
+  const count = countFixture(
+    [provider({ id: 'a' }), provider({ id: 'b', tokenCount: async () => ({ inputTokens: 7 }) })],
+    { config, random },
+  );
+  const generation = defineProviderRouteSource(
+    [
+      countModel({
+        id: 'a',
+        invoke: () => {
+          throw new Error('a failed');
+        },
+      }),
+      countModel({ id: 'b', invoke: () => textStream('b') }),
+    ],
+    undefined,
+    undefined,
+    { config, random },
+  );
+  const sessionId = 's0';
+
+  expect(await (await count.anthropic(anthropicRequest({ session_id: sessionId }))).json()).toEqual({
+    input_tokens: 7,
+  });
+  const skipped = count.recording.spans.filter((span) => span.name === spanName.candidateSkipped);
+  expect(skipped).toHaveLength(1);
+  expect(skipped[0]?.attributes[attributeName.providerId]).toBe('a');
+  expect(skipped[0]?.attributes[attributeName.routingContractVersion]).toBe(2);
+  expect(skipped[0]?.attributes[attributeName.selectionSource]).toBe('deterministic_session');
+  expect(count.recording.attempts[0]).toEqual(
+    expect.objectContaining({
+      providerId: 'b',
+      routingContractVersion: 2,
+      selectionSource: 'deterministic_session',
+      attemptIndex: 1,
+    }),
+  );
+
+  const generated = await handleProtocolRequest({
+    adapter: anthropicMessagesAdapter,
+    context: {},
+    rawRequest: anthropicGenerateRequest(sessionId),
+    source: generation.source,
+  });
+  expect(generated.status).toBe(200);
+  await settleRecording(generation.recording);
+  expect(generation.recording.attempts.map(({ providerId }) => providerId)).toEqual(['a', 'b']);
+});
+
+test('generated sessions order independently from an injected random source', async () => {
+  const config = routingPolicy({
+    a: { priority: 20, weight: 3 },
+    b: { priority: 20, weight: 1 },
+  });
+  const countCalls: string[] = [];
+  const count = countFixture(
+    configOrderedProviders([
+      { provider: provider({ id: 'a', tokenCount: counter('a', 11, countCalls) }), weight: 3 },
+      { provider: provider({ id: 'b', tokenCount: counter('b', 22, countCalls) }), weight: 1 },
+    ]),
+    { config, random: () => 0.99 },
+  );
+  expect(await (await count.anthropic()).json()).toEqual({ input_tokens: 22 });
+  expect(countCalls).toEqual(['b']);
+
+  const generation = defineProviderRouteSource(
+    [countModel({ id: 'a', invoke: () => textStream('a') }), countModel({ id: 'b', invoke: () => textStream('b') })],
+    undefined,
+    undefined,
+    { config, random: () => 0 },
+  );
+  const response = await handleProtocolRequest({
+    adapter: anthropicMessagesAdapter,
+    context: {},
+    rawRequest: anthropicGenerateRequest(),
+    source: generation.source,
+  });
+  expect(response.status).toBe(200);
+  await settleRecording(generation.recording);
+  expect(generation.recording.attempts.map(({ providerId }) => providerId)).toEqual(['a']);
+});
+
 test('fallback returns a character-class estimate, not bytes/64', async () => {
   const fixture = countFixture([provider({ id: 'no-count' })]); // provider() with no tokenCount => fallback
   const cjkBody = {
@@ -283,3 +394,34 @@ test('fallback returns a character-class estimate, not bytes/64', async () => {
   // 12 CJK chars * 1.21 ~ 15 tokens. bytes/64 of this JSON would be ~2. Guard the density.
   expect(json.input_tokens).toBeGreaterThanOrEqual(10);
 });
+
+function routingPolicy(providers: Record<string, { readonly priority?: number; readonly weight?: number }>) {
+  return ConfigSchema.parse({
+    router: { models: { [requestedModel]: { providers } } },
+    providers: {},
+  });
+}
+
+function countModel(options: { readonly id: string; readonly invoke: ModelTransport['invoke'] }) {
+  const fixture = modelProvider({ id: options.id, invoke: options.invoke });
+  return {
+    ...fixture,
+    provider: {
+      ...fixture.provider,
+      alias: { [requestedModel]: { model: `${options.id}-wire`, preserve: false } },
+    },
+  };
+}
+
+function anthropicGenerateRequest(sessionId?: string): Request {
+  return new Request('https://proxy.test/v1/messages', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      model: requestedModel,
+      max_tokens: 16,
+      messages: [{ role: 'user', content: 'hello' }],
+      ...(sessionId === undefined ? {} : { session_id: sessionId }),
+    }),
+  });
+}

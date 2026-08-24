@@ -33,6 +33,7 @@ export function summary(
     last_status: 'unknown',
     last_latency: null,
     name: config.name,
+    ...(config.priority === undefined ? {} : { priority: config.priority }),
     ...(config.weight === undefined ? {} : { weight: config.weight }),
     clientModels: provider === undefined ? [] : [...new Set(modelRoutes(provider).map((route) => route.alias))],
     plugin: config.plugin,
@@ -78,6 +79,7 @@ export function catalogFreshness(
   unavailable: Diagnostic | undefined,
 ): 'fresh' | 'stale' {
   if (unavailable !== undefined) return 'stale';
+  if (policy.kind === 'ttl' && stored.revision === 0) return 'stale';
   return policy.kind === 'ttl' && stored.refreshedAt + policy.ttlMs <= Date.now() ? 'stale' : 'fresh';
 }
 

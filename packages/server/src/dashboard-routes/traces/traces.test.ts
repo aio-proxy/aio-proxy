@@ -6,8 +6,9 @@ import { join } from 'node:path';
 import { createTraceStore, openDb } from '@aio-proxy/core/db';
 import { DashboardTraceDetailSchema, DashboardTracesResponseSchema } from '@aio-proxy/types';
 
+import { createServer } from '#server-test-lifecycle';
+
 import { loopbackServer } from '../../dashboard-auth/test-support';
-import { createServer } from '../../index';
 
 const TRACE_ID = 'a'.repeat(32);
 const ROOT_SPAN_ID = 'b'.repeat(16);

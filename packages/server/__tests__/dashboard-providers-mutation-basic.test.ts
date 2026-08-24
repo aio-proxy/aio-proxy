@@ -1,11 +1,19 @@
-import { afterAll, describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
 import { createDashboardProviderFixture } from './dashboard-providers-mutation.test-support';
 
-const { cleanup, onDisk, req } = await createDashboardProviderFixture('aio-dashboard-provider-basic-');
+let cleanup: () => void;
+let onDisk: Awaited<ReturnType<typeof createDashboardProviderFixture>>['onDisk'];
+let req: Awaited<ReturnType<typeof createDashboardProviderFixture>>['req'];
 const postProvider = (body: unknown) => req('POST', '/providers', body);
 
-afterAll(cleanup);
+beforeEach(async () => {
+  const fixture = await createDashboardProviderFixture('aio-dashboard-provider-basic-');
+  cleanup = fixture.cleanup;
+  onDisk = fixture.onDisk;
+  req = fixture.req;
+});
+afterEach(() => cleanup());
 
 describe('dashboard provider CRUD', () => {
   test('1. GET /providers list carries clientModels and hasApiKey fields', async () => {

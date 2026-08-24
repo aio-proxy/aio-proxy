@@ -5,7 +5,7 @@ import { join } from 'node:path';
 
 import { ConfigSchema } from '@aio-proxy/types';
 
-import { createServerState } from '../src/server-state';
+import { createServerState } from '#server-test-lifecycle';
 
 const decoder = new TextDecoder();
 

@@ -1,1 +1,1 @@
-export { ProtocolLabel } from './protocol-label';
+export { PROTOCOL_ORDER, ProtocolLabel } from './protocol-label';

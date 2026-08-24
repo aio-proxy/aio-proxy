@@ -40,6 +40,33 @@ test('accepts labeled caller API keys and authoring templates', () => {
   ).toBe(true);
 });
 
+test.each(['aio_agent_at_v1_static', 'aio_agent_rt_v1_static'])(
+  'rejects reserved Agent prefix %s as a static API key',
+  (key) => {
+    const input = { server: { apiKeys: [{ key }] }, providers: {} };
+    expect(ConfigSchema.safeParse(input).success).toBe(false);
+    expect(ConfigAuthoringSchema.safeParse(input).success).toBe(false);
+  },
+);
+
+test.each(['aio_agent_at_v1_static', 'aio_agent_rt_v1_static'])(
+  'rejects reserved Agent prefix %s as a labeled static API key on both config schemas',
+  (key) => {
+    const input = { server: { apiKeys: [{ key, label: 'CI' }] }, providers: {} };
+    const runtime = ConfigSchema.safeParse(input);
+    const authoring = ConfigAuthoringSchema.safeParse(input);
+    expect(runtime.success).toBe(false);
+    expect(authoring.success).toBe(false);
+    expect(runtime.error?.issues.some((issue) => issue.path.join('.') === 'server.apiKeys.0.key')).toBe(true);
+    expect(authoring.error?.issues.some((issue) => issue.path.join('.') === 'server.apiKeys.0.key')).toBe(true);
+  },
+);
+
+test('keeps unresolved API-key templates valid in the authoring schema', () => {
+  const input = { server: { apiKeys: [{ key: '{{ env.AIO_PROXY_API_KEY }}' }] }, providers: {} };
+  expect(ConfigAuthoringSchema.safeParse(input).success).toBe(true);
+});
+
 test('defaults server.retry.retryAfterCapMs', () => {
   expect(ConfigSchema.parse({ server: {}, providers: {} }).server.retry).toEqual({ retryAfterCapMs: 30_000 });
 });

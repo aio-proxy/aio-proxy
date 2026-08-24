@@ -4,7 +4,6 @@ import { createGoogleAntigravityPlugin, englishPresentationText } from './plugin
 export * from './catalog/aliases';
 export * from './catalog/discover';
 export * from './catalog/errors';
-export * from './catalog/families';
 export * from './catalog/snapshot';
 export {
   ANTIGRAVITY_DAILY,

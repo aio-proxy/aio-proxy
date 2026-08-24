@@ -1,156 +1,93 @@
 import { m } from '@aio-proxy/i18n';
-import type { AliasConfig } from '@aio-proxy/types';
-import { normalizeAliasName } from '@aio-proxy/types';
-import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from '@aio-proxy/ui/components/field';
+import { Button } from '@aio-proxy/ui/components/button';
+import { FieldError } from '@aio-proxy/ui/components/field';
 import { Input } from '@aio-proxy/ui/components/input';
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@aio-proxy/ui/components/select';
-import { Switch } from '@aio-proxy/ui/components/switch';
-import { useForm } from '@tanstack/react-form';
-import { type FC, useState } from 'react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@aio-proxy/ui/components/select';
+import { ArrowRightIcon, Trash2Icon } from 'lucide-react';
+import type { FC } from 'react';
 
-import {
-  type AliasDraft,
-  type AliasEditorIssue,
-  type AliasEditResult,
-  aliasControlId,
-  type ProviderAlias,
-  preserveReferenceCount,
-} from '../../lib/alias-editor';
-import { aliasEditErrorMessage, aliasIssueMessage, type VisibleEditError } from '../../lib/alias-editor-copy';
+import { type AliasEditorIssue, type AliasRow, aliasControlId } from '../../lib/alias-editor';
+import { aliasIssueMessage } from '../../lib/alias-editor-copy';
 
-type Props = {
-  readonly alias: ProviderAlias;
-  readonly aliasName: string;
-  readonly config: AliasConfig;
+interface ProviderAliasConfigFieldsProps {
+  readonly alias: readonly AliasRow[];
+  readonly row: AliasRow;
   readonly models: readonly string[];
-  readonly issue: AliasEditorIssue | undefined;
-  readonly onAliasChange: (alias: ProviderAlias) => void;
-  readonly onRename: (name: string) => AliasEditResult;
-};
+  readonly issues: readonly AliasEditorIssue[];
+  readonly onAliasChange: (alias: readonly AliasRow[]) => void;
+  readonly onRename: (name: string) => void;
+  readonly onRemove: () => void;
+}
 
-export const ProviderAliasConfigFields: FC<Props> = ({
+export const ProviderAliasConfigFields: FC<ProviderAliasConfigFieldsProps> = ({
   alias,
-  aliasName,
-  config,
+  row,
   models,
-  issue,
+  issues,
   onAliasChange,
   onRename,
+  onRemove,
 }) => {
-  const [editError, setEditError] = useState<VisibleEditError | null>(null);
-  const form = useForm({
-    defaultValues: { name: aliasName, model: config.model, preserve: config.preserve } satisfies AliasDraft,
-  });
-  const errorMessage =
-    editError === null ? (issue ? aliasIssueMessage(issue) : null) : aliasEditErrorMessage(editError);
-  const nameInvalid =
-    editError === 'name-required' ||
-    editError === 'name-duplicate' ||
-    issue?.code === 'alias-name-required' ||
-    issue?.code === 'alias-name-duplicate' ||
-    issue?.code === 'preserved-route-conflict';
-  const targetInvalid = editError === 'target-required' || issue?.code === 'target-missing';
-  const preserveCount = preserveReferenceCount(alias, config.model) - (config.preserve ? 1 : 0);
-  const nameId = aliasControlId(aliasName);
-  const targetId = `${nameId}-target`;
-  const preserveId = `${nameId}-preserve`;
-
-  const commitName = (name: string) => {
-    const result = onRename(name);
-    if (result.ok) {
-      setEditError(null);
-      form.setFieldValue('name', normalizeAliasName(name));
-    } else if (result.code !== 'alias-missing') {
-      setEditError(result.code);
-    }
-  };
+  const codes = new Set(issues.map((issue) => issue.code));
+  // The duplicate is reported once, at the list level, so the card only points at it. Anything else is
+  // this row's own problem and stays in the card.
+  const cardIssue = issues.find((issue) => issue.code !== 'alias-name-duplicate');
+  const duplicateName = codes.has('alias-name-duplicate');
+  const nameFlagged = duplicateName || codes.has('alias-name-required') || codes.has('preserved-route-conflict');
+  const errorMessage = cardIssue === undefined ? null : aliasIssueMessage(cardIssue);
+  const targetInvalid = codes.has('target-missing');
+  const nameId = aliasControlId(row.id);
 
   return (
     <>
-      <FieldGroup className="gap-4 md:grid md:grid-cols-2">
-        <form.Field name="name">
-          {(field) => (
-            <Field data-invalid={nameInvalid}>
-              <FieldLabel htmlFor={nameId}>{m['dashboard.providers.form.alias_name']()}</FieldLabel>
-              <Input
-                id={nameId}
-                value={field.state.value}
-                aria-invalid={nameInvalid}
-                onChange={(event) => {
-                  field.handleChange(event.target.value);
-                  setEditError(null);
-                }}
-                onBlur={() => {
-                  field.handleBlur();
-                  commitName(field.state.value);
-                }}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') {
-                    event.preventDefault();
-                    commitName(field.state.value);
-                  }
-                }}
-              />
-            </Field>
-          )}
-        </form.Field>
-        <form.Field name="model">
-          {(field) => (
-            <Field data-invalid={targetInvalid}>
-              <FieldLabel htmlFor={targetId}>{m['dashboard.providers.form.alias_target']()}</FieldLabel>
-              <Select
-                value={field.state.value}
-                onValueChange={(model) => {
-                  if (model === null) return;
-                  field.handleChange(model);
-                  setEditError(null);
-                  onAliasChange({ ...alias, [aliasName]: { ...config, model } });
-                }}
-              >
-                <SelectTrigger id={targetId} className="w-full" aria-invalid={targetInvalid}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    {models.map((model) => (
-                      <SelectItem key={model} value={model}>
-                        {model}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-            </Field>
-          )}
-        </form.Field>
-        <form.Field name="preserve">
-          {(field) => (
-            <Field orientation="horizontal">
-              <Switch
-                id={preserveId}
-                checked={field.state.value}
-                onCheckedChange={(preserve) => {
-                  const checked = Boolean(preserve);
-                  field.handleChange(checked);
-                  onAliasChange({ ...alias, [aliasName]: { ...config, preserve: checked } });
-                }}
-              />
-              <FieldLabel htmlFor={preserveId}>{m['dashboard.providers.form.alias_preserve']()}</FieldLabel>
-            </Field>
-          )}
-        </form.Field>
-        <FieldDescription>{m['dashboard.providers.form.preserve_helper']()}</FieldDescription>
-        {preserveCount > 0 && (
-          <FieldDescription>{m['dashboard.providers.form.preserve_shared']({ count: preserveCount })}</FieldDescription>
-        )}
-      </FieldGroup>
+      <div className="grid items-center gap-2 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto]">
+        <Input
+          id={nameId}
+          value={row.name}
+          aria-label={m['dashboard.providers.form.alias_name']()}
+          // Unnamed is incomplete, whoever is looking: the row reports it before any save attempt.
+          aria-invalid={row.name.trim() === '' || nameFlagged}
+          aria-describedby={duplicateName ? 'alias-name-duplicate-error' : undefined}
+          placeholder={m['dashboard.providers.form.alias_name_placeholder']()}
+          className="font-mono text-sm"
+          onChange={(event) => onRename(event.target.value)}
+        />
+        <ArrowRightIcon className="mx-auto size-4 text-muted-foreground" aria-hidden="true" />
+        <Select
+          value={row.config.model}
+          onValueChange={(model) => {
+            if (model === null) return;
+            onAliasChange(
+              alias.map((item) => (item.id === row.id ? { ...item, config: { ...item.config, model } } : item)),
+            );
+          }}
+        >
+          <SelectTrigger
+            id={`${nameId}-target`}
+            className="w-full font-mono"
+            aria-label={m['dashboard.providers.form.alias_target']()}
+            aria-invalid={targetInvalid}
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {models.map((model) => (
+              <SelectItem key={model} value={model}>
+                {model}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-xs"
+          aria-label={m['dashboard.providers.form.remove_alias_named']({ alias: row.name })}
+          onClick={onRemove}
+        >
+          <Trash2Icon />
+        </Button>
+      </div>
       {errorMessage !== null && <FieldError>{errorMessage}</FieldError>}
     </>
   );

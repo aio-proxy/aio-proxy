@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { clearModelsCache, fileCacheStorage, type ModelsDevModel } from '@aio-proxy/core';
+import { clearModelsCache, fileCacheStorage, Router, type ModelsDevModel } from '@aio-proxy/core';
 import { ModelContextAggregation, ProviderKind } from '@aio-proxy/types';
 
 import type { RuntimeProviderInstance } from '../../runtime';
@@ -94,11 +94,13 @@ function fakeState(
   providers: readonly RuntimeProviderInstance[],
   aggregation?: (typeof ModelContextAggregation)[keyof typeof ModelContextAggregation],
 ): ServerState {
+  const config = aggregation === undefined ? undefined : { router: { modelContextAggregation: aggregation } };
   return {
     acquireProviderSnapshot: () => ({
       snapshot: {
         providers,
-        ...(aggregation === undefined ? {} : { config: { router: { modelContextAggregation: aggregation } } }),
+        router: new Router(providers, { models: config?.router.models }),
+        ...(config === undefined ? {} : { config }),
       },
       release() {},
     }),
@@ -112,6 +114,7 @@ function slugProvider(
   slug: string,
   modelId: string,
   limit?: { context?: number; input?: number; output?: number },
+  routing?: { readonly priority?: number; readonly weight?: number },
 ): RuntimeProviderInstance {
   return {
     id,
@@ -119,6 +122,7 @@ function slugProvider(
     enabled: true,
     alias: { [slug]: { model: modelId, preserve: false } },
     ...(limit === undefined ? {} : { configMetadata: { [modelId]: { limit } } }),
+    ...routing,
     model: { invoke: async function* () {} },
   } as unknown as RuntimeProviderInstance;
 }
@@ -272,6 +276,26 @@ test('treats a malformed cached models.dev row as missing metadata', async () =>
   expect(resolved).toHaveLength(1);
   expect(resolved[0]?.slug).toBe('broken');
   expect(resolved[0]?.fallbackMetadata).toBeUndefined();
+});
+
+test('chooses the deterministic representative by priority then weight then config order', async () => {
+  const first = slugProvider('first', 'shared', 'a', undefined, { priority: 10, weight: 1 });
+  const second = slugProvider('second', 'shared', 'b', undefined, { priority: 20, weight: 1 });
+  const model = (await resolveEnabledModels(fakeState([first, second])))[0]!;
+  expect(model.provider.id).toBe('second');
+});
+
+test('excludes zero-weight candidates from limit aggregation', async () => {
+  const positiveLimit = slugProvider('positive', 'shared', 'up-positive', { context: 400_000 }, { weight: 1 });
+  const zeroWeightSmallLimit = slugProvider('zero', 'shared', 'up-zero', { context: 8_000 }, { weight: 0 });
+  const model = (await resolveEnabledModels(fakeState([positiveLimit, zeroWeightSmallLimit])))[0]!;
+  expect(resolveAggregatedLimit(model, 'context')).toBe(400_000);
+});
+
+test('omits a model when every normal candidate has zero weight', async () => {
+  const zeroA = slugProvider('a', 'shared', 'up-a', undefined, { weight: 0 });
+  const zeroB = slugProvider('b', 'shared', 'up-b', undefined, { weight: 0 });
+  expect(await resolveEnabledModels(fakeState([zeroA, zeroB]))).toEqual([]);
 });
 
 test('capability resolution preserves false and replaces arrays wholesale', async () => {

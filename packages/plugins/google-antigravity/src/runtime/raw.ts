@@ -1,12 +1,18 @@
-import type { RawResolver } from '@aio-proxy/plugin-sdk';
+import type { ModelCatalog, RawResolver } from '@aio-proxy/plugin-sdk';
 
-import { AntigravityThinkingError, geminiThinkingConfig } from '../protocol/thinking';
+import { AntigravityThinkingError, bindAntigravityThinking } from '../protocol/thinking';
 import { AntigravityToolSchemaValidationError } from '../protocol/tool-schema';
 import { AntigravityUpstreamError } from './errors';
 import { unwrapCcaSse } from './stream';
 import type { CcaTransport } from './transport';
 
-export function createGeminiRawResolver(transport: CcaTransport): RawResolver {
+type ThinkingBinder = ReturnType<typeof bindAntigravityThinking>;
+
+export function createGeminiRawResolver(
+  transport: CcaTransport,
+  catalogOrBinder?: ModelCatalog | ThinkingBinder,
+): RawResolver {
+  const { geminiThinkingConfig } = resolveThinkingBinder(catalogOrBinder);
   return ({ protocol, modelId }) => {
     if (protocol !== 'gemini') return undefined;
     return {
@@ -19,7 +25,7 @@ export function createGeminiRawResolver(transport: CcaTransport): RawResolver {
         if (parsedBody === undefined) return createGeminiErrorResponse(400);
         let body: Record<string, unknown>;
         try {
-          body = normalizeGeminiThinking(parsedBody, modelId);
+          body = normalizeGeminiThinking(parsedBody, modelId, geminiThinkingConfig);
         } catch {
           return createGeminiErrorResponse(400);
         }
@@ -68,7 +74,25 @@ export function createGeminiRawResolver(transport: CcaTransport): RawResolver {
   };
 }
 
-function normalizeGeminiThinking(body: Record<string, unknown>, modelId: string): Record<string, unknown> {
+function resolveThinkingBinder(catalogOrBinder: ModelCatalog | ThinkingBinder | undefined): ThinkingBinder {
+  if (
+    catalogOrBinder !== undefined &&
+    'geminiThinkingConfig' in catalogOrBinder &&
+    typeof catalogOrBinder.geminiThinkingConfig === 'function'
+  ) {
+    return catalogOrBinder;
+  }
+  return bindAntigravityThinking(catalogOrBinder as ModelCatalog | undefined);
+}
+
+function normalizeGeminiThinking(
+  body: Record<string, unknown>,
+  modelId: string,
+  geminiThinkingConfig: (
+    modelId: string,
+    thinkingConfig: Readonly<Record<string, unknown>>,
+  ) => Readonly<Record<string, unknown>>,
+): Record<string, unknown> {
   const generationConfig = record(Reflect.get(body, 'generationConfig'));
   if (generationConfig === undefined || !Object.hasOwn(generationConfig, 'thinkingConfig')) return body;
   const thinkingConfig = record(Reflect.get(generationConfig, 'thinkingConfig'));

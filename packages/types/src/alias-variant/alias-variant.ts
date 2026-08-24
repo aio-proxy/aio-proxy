@@ -6,6 +6,7 @@ export const EFFORT_SPELLING: Readonly<Record<string, string>> = {
   'x-high': 'xhigh',
   x_high: 'xhigh',
   extrahigh: 'xhigh',
+  'extra-high': 'xhigh',
 };
 
 export function foldEffortSpelling(lowercased: string): string {
@@ -60,13 +61,22 @@ export const AliasSelectRowSchema = z.object({
   preserve: z.boolean().default(false).describe('Expose the target model under its original id as well.'),
 });
 
-// Array first: Zod 4's z.record rejects arrays outright, so array inputs fall through to the record branch otherwise.
-export const AliasVariantsSchema = z.union([
-  z.array(AliasSelectRowSchema),
-  z.record(z.string().min(1), AliasTargetSchema),
-]);
+const AliasVariantsRecordSchema = z.record(z.string().min(1), AliasTargetSchema).transform((variants) =>
+  Object.entries(variants).map(([key, target]) => ({
+    when: { effort: canonicalEffort(key) },
+    model: target.model,
+    preserve: target.preserve,
+  })),
+);
 
-function whenIdentity(when: AliasWhen): string {
+// Array first: Zod 4's z.record rejects arrays outright, so array inputs fall through to the record branch otherwise.
+export const AliasVariantsSchema = z.union([z.array(AliasSelectRowSchema), AliasVariantsRecordSchema]);
+
+/**
+ * The identity the server rejects duplicates on. Exported so an editor can reject the same pair
+ * before it builds a payload `rejectDuplicateWhen` would refuse.
+ */
+export function whenIdentity(when: AliasWhen): string {
   const parts: string[] = [];
   if (when.thinking !== undefined) parts.push(`thinking=${when.thinking}`);
   if (when.effort !== undefined) parts.push(`effort=${canonicalEffort(when.effort)}`);
@@ -75,26 +85,16 @@ function whenIdentity(when: AliasWhen): string {
 }
 
 function rejectDuplicateWhen(
-  config: { readonly variants?: z.output<typeof AliasVariantsSchema> | undefined },
+  config: { readonly variants?: readonly AliasSelectRow[] | undefined },
   ctx: z.RefinementCtx,
 ): void {
   const variants = config.variants;
   if (variants === undefined) return;
   const seen = new Set<string>();
-  if (Array.isArray(variants)) {
-    for (const [index, row] of variants.entries()) {
-      const id = whenIdentity(row.when);
-      if (seen.has(id)) {
-        ctx.addIssue({ code: 'custom', message: `Duplicate alias when "${id}"`, path: ['variants', index] });
-      }
-      seen.add(id);
-    }
-    return;
-  }
-  for (const key of Object.keys(variants)) {
-    const id = `effort=${canonicalEffort(key)}`;
+  for (const [index, row] of variants.entries()) {
+    const id = whenIdentity(row.when);
     if (seen.has(id)) {
-      ctx.addIssue({ code: 'custom', message: `Duplicate alias when "${id}"`, path: ['variants', key] });
+      ctx.addIssue({ code: 'custom', message: `Duplicate alias when "${id}"`, path: ['variants', index] });
     }
     seen.add(id);
   }
@@ -187,7 +187,11 @@ function isStrictSubset(inner: AliasWhen, outer: AliasWhen): boolean {
   return true;
 }
 
-function rank(when: AliasWhen): number {
+/**
+ * Match precedence between two rows that both match a request. Exported so an editor can show rows
+ * in the order they actually win in, rather than inventing a second scoring rule that drifts.
+ */
+export function whenRank(when: AliasWhen): number {
   return (
     (when.thinking === undefined ? 0 : 4) + (when.effort === undefined ? 0 : 2) + (when.speed === undefined ? 0 : 1)
   );
@@ -206,7 +210,7 @@ export function matchAliasRows(
   );
   let winner = maximal[0]!;
   for (const row of maximal.slice(1)) {
-    if (rank(row.when) > rank(winner.when)) winner = row;
+    if (whenRank(row.when) > whenRank(winner.when)) winner = row;
   }
   return { model: winner.model, preserve: winner.preserve };
 }

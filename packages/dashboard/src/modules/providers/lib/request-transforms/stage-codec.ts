@@ -1,6 +1,7 @@
 import type { JsonValue } from '@aio-proxy/plugin-sdk';
 import { ProviderRequestTransformRulesSchema, type ProviderRequestTransformStage } from '@aio-proxy/types';
 import type { ExpressionNode } from '@react-querybuilder/expr';
+import { z } from 'zod';
 
 import { parseRequestTransformExpression, serializeRequestTransformExpression } from './mongo-codec';
 
@@ -39,7 +40,7 @@ const parseValue = (value: unknown): Extract<RequestTransformStageDraft, { kind:
 };
 
 const bodyPath = (target: string): string | undefined => {
-  if (target === 'request.body') return '';
+  if (target === 'request.body') return undefined;
   return target.startsWith('request.body.') ? target.slice('request.body.'.length) : undefined;
 };
 
@@ -84,32 +85,35 @@ const staticExpression = (value: JsonValue): JsonValue =>
     ? { $literal: value }
     : value;
 
+const stageDocument = z.record(z.string(), z.json());
+const stage = (value: unknown): ProviderRequestTransformStage => stageDocument.parse(value);
+
 export const serializeRequestTransformStages = (
   drafts: readonly RequestTransformStageDraft[],
 ): ProviderRequestTransformStage[] =>
   drafts.map((draft) => {
     if (draft.kind === 'remove') {
       return draft.target === 'body'
-        ? { $unset: draft.path === '' ? 'request.body' : `request.body.${draft.path}` }
-        : {
+        ? stage({ $unset: `request.body.${draft.path}` })
+        : stage({
             $set: {
               'request.headers': {
                 $unsetField: { field: draft.path, input: '$request.headers' },
               },
             },
-          };
+          });
     }
     const value =
       draft.value.kind === 'static'
         ? staticExpression(draft.value.value)
         : serializeRequestTransformExpression(draft.value.expression);
     return draft.target === 'body'
-      ? { $set: { [draft.path === '' ? 'request.body' : `request.body.${draft.path}`]: value } }
-      : {
+      ? stage({ $set: { [`request.body.${draft.path}`]: value } })
+      : stage({
           $set: {
             'request.headers': {
               $setField: { field: draft.path, input: '$request.headers', value },
             },
           },
-        };
-  }) as ProviderRequestTransformStage[];
+        });
+  });

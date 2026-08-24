@@ -15,10 +15,10 @@ export function setDashboardUnavailableHandler(handler: () => void): void {
 }
 
 const dashboardFetch = (async (input, init) => {
-  const url = new URL(typeof input === 'string' ? input : input.url, globalThis.location?.origin);
+  const url = new URL(input instanceof Request ? input.url : input, globalThis.location?.origin);
   const token = readDashboardAuthToken();
   const shouldAuthenticate = url.pathname.startsWith('/dashboard/api/') && url.pathname !== '/dashboard/api/auth/login';
-  const headers = new Headers(init?.headers ?? (typeof input === 'string' ? undefined : input.headers));
+  const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined));
   if (shouldAuthenticate && token !== undefined) headers.set('authorization', `Bearer ${token}`);
   const response = await fetch(input, { ...init, headers });
   if (response.status === 401) handleDashboardUnauthorized();
