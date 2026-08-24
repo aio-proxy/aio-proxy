@@ -42,6 +42,7 @@ export function createXAIGrokDynamicFetch(
     const headers = createXAIGrokCLIHeaders(credential, request.headers);
     headers.delete('content-length');
     const body = await outgoingBody(request);
+    if (body instanceof Response) return body;
     return await fetch(request.url, {
       method: request.method,
       headers,
@@ -57,7 +58,19 @@ function unsupported(surface: string): never {
   throw new Error(`xAI Grok OAuth does not support ${surface}`);
 }
 
-async function outgoingBody(request: Request): Promise<BodyInit | undefined> {
+function unsupportedGrammarCustomTool(): Response {
+  return Response.json(
+    {
+      error: {
+        code: 'unsupported_feature',
+        message: 'xAI Grok OAuth cannot represent custom tool grammar format',
+      },
+    },
+    { status: 501 },
+  );
+}
+
+async function outgoingBody(request: Request): Promise<BodyInit | Response | undefined> {
   if (request.method === 'GET' || request.method === 'HEAD') return undefined;
   const original = new Uint8Array(await request.arrayBuffer());
   if (!new URL(request.url).pathname.endsWith('/responses')) return original;
@@ -69,17 +82,23 @@ async function outgoingBody(request: Request): Promise<BodyInit | undefined> {
       typeof reasoning === 'object' && reasoning !== null && Reflect.has(reasoning, 'summary')
         ? Reflect.deleteProperty(reasoning, 'summary')
         : false;
-    return compileCompatibleCustomTools(value) || stripped ? JSON.stringify(value) : original;
+    const compiled = compileCompatibleCustomTools(value);
+    if (compiled instanceof Response) return compiled;
+    return compiled || stripped ? JSON.stringify(value) : original;
   } catch {
     return original;
   }
 }
 
-function compileCompatibleCustomTools(value: object): boolean {
+function compileCompatibleCustomTools(value: object): boolean | Response {
   let changed = false;
   const tools = Reflect.get(value, 'tools');
   if (Array.isArray(tools)) {
-    for (const tool of tools) changed = compileCustomDeclaration(tool) || changed;
+    for (const tool of tools) {
+      const compiled = compileCustomDeclaration(tool);
+      if (compiled instanceof Response) return compiled;
+      changed = compiled || changed;
+    }
   }
   const choice = Reflect.get(value, 'tool_choice');
   if (typeof choice === 'object' && choice !== null && Reflect.get(choice, 'type') === 'custom') {
@@ -93,9 +112,12 @@ function compileCompatibleCustomTools(value: object): boolean {
   return changed;
 }
 
-function compileCustomDeclaration(tool: unknown): boolean {
+function compileCustomDeclaration(tool: unknown): boolean | Response {
   if (typeof tool !== 'object' || tool === null || Reflect.get(tool, 'type') !== 'custom') return false;
   const format = Reflect.get(tool, 'format');
+  if (typeof format === 'object' && format !== null && Reflect.get(format, 'type') === 'grammar') {
+    return unsupportedGrammarCustomTool();
+  }
   if (
     format !== undefined &&
     (typeof format !== 'object' || format === null || Reflect.get(format, 'type') !== 'text')

@@ -120,6 +120,39 @@ describe('xAI Grok runtime', () => {
     });
     expect(observedSignal).toBe(controller.signal);
   });
+
+  test('rejects grammar custom tools locally without calling Grok', async () => {
+    let hostCalls = 0;
+    const dynamicFetch = createXAIGrokDynamicFetch(port(), {
+      fetch: async () => {
+        hostCalls += 1;
+        return new Response(null, { status: 200 });
+      },
+      now: () => 0,
+    });
+    const response = await dynamicFetch('https://cli-chat-proxy.grok.com/v1/responses', {
+      method: 'POST',
+      headers: { authorization: 'Bearer placeholder' },
+      body: JSON.stringify({
+        model: 'grok-4.5',
+        tools: [
+          {
+            type: 'custom',
+            name: 'exec',
+            format: { type: 'grammar', syntax: 'regex', definition: '.*' },
+          },
+        ],
+      }),
+    });
+    expect(hostCalls).toBe(0);
+    expect(response.status).toBe(501);
+    expect(await response.json()).toEqual({
+      error: {
+        code: 'unsupported_feature',
+        message: 'xAI Grok OAuth cannot represent custom tool grammar format',
+      },
+    });
+  });
 });
 
 function port(): CredentialPort<XAIGrokCredential> {
