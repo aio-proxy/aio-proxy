@@ -115,8 +115,8 @@ test('share slider keeps sibling ratios while changing one Provider percent', ()
       percent: 70,
     }),
   ).toEqual([
-    { providerId: 'a', priority: 30, weight: 70 },
-    { providerId: 'b', weight: 30 },
+    { providerId: 'a', priority: 30, weight: 7000 },
+    { providerId: 'b', weight: 3000 },
     { providerId: 'c', weight: 0 },
   ]);
 });
@@ -271,7 +271,7 @@ test('preserves a blocked Provider row when another Provider is dragged', () => 
   ]);
 });
 
-test('share slider keeps a fixed 100 total when three Providers share a tier', () => {
+test('share slider keeps every tier member positive on the 10000 weight scale', () => {
   const three = [
     ...providers.slice(0, 2),
     provider({
@@ -296,8 +296,8 @@ test('share slider keeps a fixed 100 total when three Providers share a tier', (
       percent: 99,
     }),
   ).toEqual([
-    { providerId: 'a', priority: 30, weight: 99 },
-    { providerId: 'b', weight: 1 },
-    { providerId: 'e', weight: 0 },
+    { providerId: 'a', priority: 30, weight: 9900 },
+    { providerId: 'b', weight: 80 },
+    { providerId: 'e', weight: 20 },
   ]);
 });

@@ -250,9 +250,11 @@ export const applyRoutingShare = ({
     return weight > 0 ? weight : 1;
   });
   const otherTotal = otherWeights.reduce((sum, weight) => sum + weight, 0);
-  const remaining = 100 - clamped;
+  const requested = Math.round((clamped / 100) * ROUTING_VALUE_MAX);
+  const selected = Math.min(requested, ROUTING_VALUE_MAX - others.length);
+  const remaining = ROUTING_VALUE_MAX - selected;
   const distributed = distributeRemainder(remaining, otherTotal === 0 ? others.map(() => 1) : otherWeights);
-  const nextWeights = new Map<string, number>([[providerId, clamped]]);
+  const nextWeights = new Map<string, number>([[providerId, selected]]);
   others.forEach((id, index) => {
     nextWeights.set(id, distributed[index] ?? 0);
   });

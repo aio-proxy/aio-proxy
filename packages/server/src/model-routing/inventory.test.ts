@@ -324,6 +324,38 @@ describe('model routing inventory', () => {
     expect(provider(response, 'oauth-alias', 'disabled-oauth').name).toBe('octocat');
   });
 
+  test('reads each OAuth account once across model routes', async () => {
+    const rawRecord = structuredClone(authoredRecord) as Record<string, unknown>;
+    const providers = rawRecord['providers'];
+    if (providers === null || typeof providers !== 'object') throw new Error('providers');
+    const oauth = (providers as Record<string, unknown>)['disabled-oauth'];
+    if (oauth === null || typeof oauth !== 'object') throw new Error('oauth');
+    (oauth as Record<string, unknown>)['alias'] = {
+      'oauth-alias': { model: 'oauth-kept', preserve: true },
+      'oauth-alias-2': { model: 'oauth-kept', preserve: true },
+    };
+    const base = catalogRepository();
+    const reads: string[] = [];
+    const config = parseRuntimeConfig(rawRecord);
+    await assembleRoutingInventory({
+      rawRecord,
+      config,
+      summaries: summariesFrom(config, {
+        'unavailable-oauth': unavailable,
+        'broken-oauth': unavailable,
+      }),
+      repository: {
+        ...base,
+        readAccount(providerId: string) {
+          reads.push(providerId);
+          return base.readAccount(providerId);
+        },
+      },
+      writable: true,
+    });
+    expect(reads.filter((id) => id === 'disabled-oauth')).toEqual(['disabled-oauth']);
+  });
+
   test('returns a read-only inventory when the config path is missing', async () => {
     const response = await inventory({ writable: false });
     expect(response.writable).toBe(false);

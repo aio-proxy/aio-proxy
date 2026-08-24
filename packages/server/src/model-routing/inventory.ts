@@ -38,6 +38,7 @@ export async function assembleRoutingInventory(input: RoutingInventoryInput): Pr
 
   for (const provider of providers) {
     const source = await syntheticSource(provider, input.repository);
+    const name = routingProviderName(provider, summaries.get(provider.id), input.repository);
     for (const route of modelRoutes(source)) {
       let model = models.get(route.alias);
       if (model === undefined) {
@@ -51,7 +52,7 @@ export async function assembleRoutingInventory(input: RoutingInventoryInput): Pr
           rawProviders[provider.id],
           rawPolicyProviders(readRawModelPolicy(input.rawRecord, route.alias))[provider.id],
           input.writable,
-          input.repository,
+          name,
         ),
       );
     }
@@ -124,7 +125,7 @@ function providerRow(
   rawProvider: unknown,
   rawOverride: unknown,
   discloseAuthored: boolean,
-  repository: Pick<PluginRepository, 'readAccount'>,
+  name: string | undefined,
 ): DashboardRoutingProvider {
   const raw = isPlainObject(rawProvider) ? rawProvider : {};
   const defaults = {
@@ -135,7 +136,6 @@ function providerRow(
   const priority = override?.priority?.effective ?? defaults.priority.effective;
   const weight = override?.weight?.effective ?? defaults.weight.effective;
   const state = summary?.state ?? { status: 'ready' };
-  const name = routingProviderName(provider, summary, repository);
   return {
     id: provider.id,
     ...(name === undefined ? {} : { name }),
