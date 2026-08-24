@@ -8,7 +8,8 @@ import {
 } from '@aio-proxy/plugin-sdk';
 
 import { discoverKimiCatalog, KIMI_CATALOG_TTL_MS, staticKimiCatalog } from './catalog';
-import { type KimiCredential, type KimiOAuthDependencies, loginKimi } from './oauth';
+import { kimiLoginResult, loginKimi } from './oauth';
+import type { KimiCredential, KimiOAuthDependencies } from './oauth';
 import { readKimiQuota } from './quota';
 import { createKimiRuntime } from './runtime/index';
 
@@ -27,6 +28,21 @@ export const englishPresentationText: KimiCodePresentationText = {
   deviceInstructions: 'Enter code',
   waitingForAuthorization: 'Waiting for Kimi authorization',
 };
+
+const cpaKimiSchema = zod
+  .object({
+    type: zod.literal('kimi'),
+    access_token: zod.string().trim().min(1),
+    refresh_token: zod.string().trim().min(1),
+    device_id: zod.string().trim().min(1).optional(),
+    expired: zod.unknown().optional(),
+  })
+  .loose();
+
+function cpaExpiresAt(value: unknown): number {
+  const parsed = typeof value === 'string' ? Date.parse(value) : Number.NaN;
+  return Number.isFinite(parsed) ? parsed : 0;
+}
 
 export function createKimiCodePlugin(
   presentationText: KimiCodePresentationText = englishPresentationText,
@@ -59,6 +75,21 @@ export function createKimiCodePlugin(
           ...(dependencies.fetch === undefined && context.fetch !== undefined ? { fetch: context.fetch } : {}),
         },
       );
+    },
+    credentialImports: {
+      cpa: {
+        types: ['kimi'],
+        async import(_context, options, raw) {
+          await accountOptions.schema.parseAsync(options);
+          const source = cpaKimiSchema.parse(raw);
+          return await kimiLoginResult({
+            accessToken: source.access_token,
+            refreshToken: source.refresh_token,
+            expiresAt: cpaExpiresAt(source.expired),
+            deviceId: source.device_id ?? dependencies.deviceId?.() ?? crypto.randomUUID().replaceAll('-', ''),
+          });
+        },
+      },
     },
     catalog: {
       policy: { kind: 'ttl', ttlMs: KIMI_CATALOG_TTL_MS },

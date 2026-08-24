@@ -8,12 +8,27 @@ import {
 } from '@aio-proxy/plugin-sdk';
 
 import { kimiClientId } from '../rslib.config';
-import { currentKimiCredential, type KimiCredential, loginKimi, refreshKimiCredential } from './oauth';
+import { currentKimiCredential, type KimiCredential, kimiLoginResult, loginKimi, refreshKimiCredential } from './oauth';
 
 type FetchCall = { readonly url: string; readonly init?: RuntimeRequestInit };
 type RefreshExchange = Parameters<CredentialPort<KimiCredential>['refresh']>[1];
 
 const presentation = { instructions: 'Open Kimi', waiting: 'Waiting' } as const;
+
+test('builds a shared SHA-256 login result from a Kimi credential', async () => {
+  const result = await kimiLoginResult({
+    accessToken: 'access',
+    refreshToken: 'refresh',
+    expiresAt: 123,
+    deviceId: 'device-1',
+  });
+  expect(result).toMatchObject({
+    fingerprint: expect.stringMatching(/^[a-f0-9]{64}$/u),
+    suggestedKey: expect.stringMatching(/^kimi-[a-f0-9]{12}$/u),
+    accountLabel: 'Kimi Code',
+    expiresAt: 123,
+  });
+});
 
 function sequence(responses: readonly (Response | Error)[], calls: FetchCall[] = []): typeof fetch {
   let index = 0;
