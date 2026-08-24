@@ -83,6 +83,21 @@ export type OAuthLoginResult<Credential> = {
   readonly expiresAt?: number;
 };
 
+export type OAuthCredentialImportContext = {
+  readonly progress: (message: LocalizedText) => void;
+  readonly signal: AbortSignal;
+  readonly fetch?: RuntimeFetch;
+};
+
+export type OAuthCredentialImporter<AccountOptions, Credential> = {
+  readonly types: readonly [string, ...string[]];
+  readonly import: (
+    context: OAuthCredentialImportContext,
+    options: AccountOptions,
+    raw: unknown,
+  ) => Promise<OAuthLoginResult<Credential>>;
+};
+
 export type CredentialSnapshot<Credential> = {
   readonly value: Credential;
   readonly revision: number;
@@ -166,6 +181,9 @@ export type OAuthAdapter<AccountOptions = unknown, Credential = unknown> = {
   readonly account: { readonly options: ConfigSpec<AccountOptions> };
   readonly credentials: ZodType<Credential>;
   readonly login: (context: OAuthLoginContext, options: AccountOptions) => Promise<OAuthLoginResult<Credential>>;
+  readonly credentialImports?: {
+    readonly cpa?: OAuthCredentialImporter<AccountOptions, Credential>;
+  };
   readonly catalog: {
     readonly policy: { readonly kind: 'static' } | { readonly kind: 'ttl'; readonly ttlMs: number };
     readonly discover: (context: AccountContext<Credential, AccountOptions>) => Promise<ModelCatalog>;

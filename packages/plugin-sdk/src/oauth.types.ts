@@ -1,6 +1,8 @@
 import type {
   CredentialPort,
   OAuthAdapter,
+  OAuthCredentialImportContext,
+  OAuthCredentialImporter,
   OAuthLoginResult,
   OAuthQuotaItem,
   PluginApi,
@@ -67,6 +69,33 @@ const quotaAdapter: OAuthAdapter<MyOptions, MyCredential> = {
 };
 
 api.oauth.register(quotaAdapter);
+
+declare const importContext: OAuthCredentialImportContext;
+
+const cpaImporter: OAuthCredentialImporter<MyOptions, MyCredential> = {
+  types: ['example'],
+  async import(context, options, raw) {
+    const input: unknown = raw;
+    context.progress(`Importing ${options.baseURL}`);
+    context.signal.throwIfAborted();
+    await context.fetch?.('https://provider.example/import');
+    void input;
+    return { fingerprint: 'account', suggestedKey: 'account', credentials: { accessToken: 'token' } };
+  },
+};
+
+const importerAdapter: OAuthAdapter<MyOptions, MyCredential> = {
+  ...quotaAdapter,
+  id: 'importer',
+  credentialImports: { cpa: cpaImporter },
+};
+
+void cpaImporter.import(importContext, { baseURL: 'https://provider.example' }, {});
+api.oauth.register(importerAdapter);
+
+// @ts-expect-error an importer must claim at least one type
+const emptyImporter: OAuthCredentialImporter<MyOptions, MyCredential> = { types: [], import: cpaImporter.import };
+void emptyImporter;
 
 const proxyUnsupportedAdapter: OAuthAdapter<MyOptions, MyCredential> = {
   ...quotaAdapter,
