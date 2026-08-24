@@ -118,6 +118,58 @@ describe('OpenAI ChatGPT plugin', () => {
     });
     expect(adapter.catalog.policy).toEqual({ kind: 'ttl', ttlMs: 6 * 60 * 60_000 });
   });
+
+  test('imports a CPA Codex auth file with native account identity', async () => {
+    const adapter = await adapterFrom(openAIChatGPTPlugin);
+    const importer = adapter.credentialImports?.cpa;
+    if (importer === undefined) throw new Error('CPA importer not registered');
+    const accessToken = buildJwt({ chatgpt_account_id: 'account-123' });
+
+    await expect(
+      importer.import(
+        { progress: () => {}, signal: new AbortController().signal },
+        {},
+        {
+          type: 'codex',
+          access_token: accessToken,
+          refresh_token: 'refresh-123',
+          expired: '2026-08-24T12:00:00Z',
+          email: 'ignored@example.com',
+          id_token: 'ignored-id-token',
+        },
+      ),
+    ).resolves.toEqual({
+      fingerprint: 'account-123',
+      suggestedKey: 'chatgpt-account-123',
+      accountLabel: 'account-123',
+      credentials: {
+        accessToken,
+        accountId: 'account-123',
+        refreshToken: 'refresh-123',
+        expiresAt: Date.parse('2026-08-24T12:00:00Z'),
+      },
+      expiresAt: Date.parse('2026-08-24T12:00:00Z'),
+    });
+  });
+
+  test('uses explicit CPA account_id and treats invalid expiry as expired', async () => {
+    const adapter = await adapterFrom(openAIChatGPTPlugin);
+    const importer = adapter.credentialImports?.cpa;
+    if (importer === undefined) throw new Error('CPA importer not registered');
+    const result = await importer.import(
+      { progress: () => {}, signal: new AbortController().signal },
+      {},
+      {
+        type: 'codex',
+        access_token: 'opaque-access',
+        refresh_token: 'refresh-123',
+        account_id: 'explicit-account',
+        expired: 'invalid',
+      },
+    );
+    expect(result).toMatchObject({ fingerprint: 'explicit-account', expiresAt: 0 });
+    expect(result.credentials).not.toHaveProperty('idToken');
+  });
 });
 
 async function adapterFrom(descriptor: PluginDescriptor): Promise<OAuthAdapter<Record<string, never>, unknown>> {

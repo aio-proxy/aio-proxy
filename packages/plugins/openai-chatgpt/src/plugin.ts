@@ -8,7 +8,8 @@ import {
 } from '@aio-proxy/plugin-sdk';
 
 import { CHATGPT_CATALOG_TTL_MS, discoverOpenAIChatGPTModels } from './catalog';
-import { CHATGPT_CLIENT_ID, exchangeCodeForTokens } from './oauth-flow';
+import { extractAccountId } from './jwt';
+import { ChatGPTAccountIdMissingError, CHATGPT_CLIENT_ID, exchangeCodeForTokens } from './oauth-flow';
 import { generatePKCE, generateState } from './pkce';
 import { createOpenAIChatGPTRuntime } from './runtime/index';
 import type { ChatGPTCredential } from './schema';
@@ -16,6 +17,21 @@ import type { ChatGPTCredential } from './schema';
 const CHATGPT_AUTHORIZATION_ENDPOINT = 'https://auth.openai.com/oauth/authorize' as const;
 const CHATGPT_SCOPE = 'openid profile email offline_access' as const;
 const CHATGPT_ORIGINATOR = 'codex_cli_rs' as const;
+
+const cpaCodexSchema = zod
+  .object({
+    type: zod.literal('codex'),
+    access_token: zod.string().trim().min(1),
+    refresh_token: zod.string().trim().min(1),
+    account_id: zod.string().trim().min(1).optional(),
+    expired: zod.unknown().optional(),
+  })
+  .loose();
+
+function cpaExpiresAt(value: unknown): number {
+  const parsed = typeof value === 'string' ? Date.parse(value) : Number.NaN;
+  return Number.isFinite(parsed) ? parsed : 0;
+}
 
 export type OpenAIChatGPTPresentationText = {
   readonly pluginLabel?: LocalizedText;
@@ -74,6 +90,30 @@ export function createOpenAIChatGPTPlugin(
         credentials: token,
         expiresAt: token.expiresAt,
       };
+    },
+    credentialImports: {
+      cpa: {
+        types: ['codex'],
+        async import(_context, options, raw) {
+          await accountOptions.schema.parseAsync(options);
+          const source = cpaCodexSchema.parse(raw);
+          const accountId = source.account_id ?? extractAccountId(source.access_token);
+          if (accountId === undefined) throw new ChatGPTAccountIdMissingError();
+          const expiresAt = cpaExpiresAt(source.expired);
+          return {
+            fingerprint: accountId,
+            suggestedKey: `chatgpt-${accountId}`,
+            accountLabel: accountId,
+            credentials: {
+              accessToken: source.access_token,
+              accountId,
+              expiresAt,
+              refreshToken: source.refresh_token,
+            },
+            expiresAt,
+          };
+        },
+      },
     },
     catalog: {
       policy: { kind: 'ttl', ttlMs: CHATGPT_CATALOG_TTL_MS },
