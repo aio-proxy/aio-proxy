@@ -33,6 +33,7 @@ export default defineConfig({
     title: 'AIO Proxy Dashboard',
   },
   server: {
+    base: '/dashboard/',
     host: '127.0.0.1',
     port: 3000,
     strictPort: true,
