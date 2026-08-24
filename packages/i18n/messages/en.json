@@ -543,7 +543,7 @@
       },
       "editor": {
         "title": "Edit routing for {modelId}",
-        "description": "Drag a Provider to another tier to change priority. Reorder within a tier to change traffic share. Save replaces this model's visible overrides in one step.",
+        "description": "Drag a Provider to another tier to change priority. Use the slider to change traffic share. Save replaces this model's visible overrides in one step.",
         "preview": "Live route",
         "preview_empty": "No eligible Providers. This model is disabled for normal routing.",
         "inherit": "Inherit",
@@ -573,7 +573,7 @@
         "slot_high": "Drop to try first",
         "slot_low": "Drop to try last",
         "slot_insert": "Drop to add a priority",
-        "drag_handle": "Drag to reorder",
+        "drag_handle": "Drag to change priority",
         "share": "{value}%",
         "blocked": "Unavailable Providers",
         "new_priority": "New priority",

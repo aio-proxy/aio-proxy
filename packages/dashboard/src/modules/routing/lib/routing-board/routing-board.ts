@@ -181,11 +181,8 @@ export const applyRoutingBoardMove = ({
   for (const provider of providers) {
     const from = listOf(provider.id, previousLists);
     const to = listOf(provider.id, nextLists);
+    if (to === undefined || to === ROUTING_BOARD_UNUSED) continue;
     const current = previousEffective.get(provider.id)?.weight ?? provider.defaults.weight.effective;
-    if (to === undefined || to === ROUTING_BOARD_UNUSED) {
-      weights.set(provider.id, 0);
-      continue;
-    }
     if (current > 0) {
       weights.set(provider.id, current);
       continue;
@@ -201,11 +198,32 @@ export const applyRoutingBoardMove = ({
   });
   return providers.map((provider) => {
     const to = listOf(provider.id, nextLists);
-    if (to === undefined || to === ROUTING_BOARD_UNUSED) {
+    if (to === undefined) return previousById.get(provider.id) ?? { providerId: provider.id };
+    if (to === ROUTING_BOARD_UNUSED) {
       return omitDefault(provider, previousById.get(provider.id)?.priority, 0);
     }
     return omitDefault(provider, assignedPriority.get(provider.id), weights.get(provider.id));
   });
+};
+
+const distributeRemainder = (total: number, parts: readonly number[]): number[] => {
+  if (parts.length === 0) return [];
+  const sum = parts.reduce((acc, part) => acc + part, 0);
+  const raw = parts.map((part) => (sum === 0 ? total / parts.length : (part / sum) * total));
+  const floors = raw.map((value) => Math.floor(value));
+  let leftover = total - floors.reduce((acc, value) => acc + value, 0);
+  const order = floors
+    .map((_, index) => index)
+    .sort((left, right) => {
+      const delta = (raw[right] ?? 0) - (floors[right] ?? 0) - ((raw[left] ?? 0) - (floors[left] ?? 0));
+      return delta !== 0 ? delta : left - right;
+    });
+  for (const index of order) {
+    if (leftover <= 0) break;
+    floors[index] = (floors[index] ?? 0) + 1;
+    leftover -= 1;
+  }
+  return floors;
 };
 
 export const applyRoutingShare = ({
@@ -233,10 +251,10 @@ export const applyRoutingShare = ({
   });
   const otherTotal = otherWeights.reduce((sum, weight) => sum + weight, 0);
   const remaining = 100 - clamped;
+  const distributed = distributeRemainder(remaining, otherTotal === 0 ? others.map(() => 1) : otherWeights);
   const nextWeights = new Map<string, number>([[providerId, clamped]]);
   others.forEach((id, index) => {
-    const share = otherTotal === 0 ? 1 / Math.max(others.length, 1) : (otherWeights[index] ?? 1) / otherTotal;
-    nextWeights.set(id, Math.max(1, Math.round(remaining * share)));
+    nextWeights.set(id, distributed[index] ?? 0);
   });
   return providers.map((provider) => {
     const weight = nextWeights.get(provider.id);

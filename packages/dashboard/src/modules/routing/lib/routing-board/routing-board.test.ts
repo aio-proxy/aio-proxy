@@ -232,3 +232,72 @@ test('compacts priorities when neighboring tiers have no integer gap', () => {
     { providerId: 'c', priority: 20 },
   ]);
 });
+
+test('preserves a blocked Provider row when another Provider is dragged', () => {
+  const withBlocked = [
+    ...providers,
+    provider({
+      id: 'd',
+      enabled: false,
+      effective: {
+        priority: 0,
+        weight: 1,
+        prioritySource: 'provider',
+        weightSource: 'provider',
+        eligible: false,
+        share: null,
+      },
+    }),
+  ];
+  const previousRows = [...rows, { providerId: 'd' }];
+  const previousLists = listsFromBoard(buildRoutingBoard(withBlocked, previousRows));
+  expect(previousLists[ROUTING_BOARD_UNUSED]).toEqual(['c']);
+  expect(
+    applyRoutingBoardMove({
+      providers: withBlocked,
+      previousRows,
+      previousLists,
+      nextLists: {
+        ...previousLists,
+        [routingBoardTierListId(30)]: ['b'],
+        [routingBoardAfterListId(30)]: ['a'],
+      },
+    }),
+  ).toEqual([
+    { providerId: 'a', priority: 20, weight: 6000 },
+    { providerId: 'b' },
+    { providerId: 'c', weight: 0 },
+    { providerId: 'd' },
+  ]);
+});
+
+test('share slider keeps a fixed 100 total when three Providers share a tier', () => {
+  const three = [
+    ...providers.slice(0, 2),
+    provider({
+      id: 'e',
+      defaults: { priority: routingNumber(30), weight: routingNumber(1000) },
+      effective: {
+        priority: 30,
+        weight: 1000,
+        prioritySource: 'provider',
+        weightSource: 'provider',
+        eligible: true,
+        share: 0.1,
+      },
+    }),
+  ];
+  expect(
+    applyRoutingShare({
+      providers: three,
+      rows: [{ providerId: 'a', priority: 30, weight: 6000 }, { providerId: 'b' }, { providerId: 'e' }],
+      memberIds: ['a', 'b', 'e'],
+      providerId: 'a',
+      percent: 99,
+    }),
+  ).toEqual([
+    { providerId: 'a', priority: 30, weight: 99 },
+    { providerId: 'b', weight: 1 },
+    { providerId: 'e', weight: 0 },
+  ]);
+});

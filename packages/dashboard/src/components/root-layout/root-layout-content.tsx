@@ -27,7 +27,7 @@ export const RootLayoutContent: React.FC = () => {
   if (session.isPending) {
     return (
       <main
-        aria-label={m['dashboard.auth.loading']?.() ?? 'Loading Dashboard'}
+        aria-label={m['dashboard.auth.loading']()}
         className="flex min-h-dvh items-center justify-center bg-page-background px-4"
       >
         <div className="w-full max-w-sm space-y-4" role="status">

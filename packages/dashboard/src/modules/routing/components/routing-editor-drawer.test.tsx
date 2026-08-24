@@ -194,7 +194,9 @@ test('disables Save when writable is false while keeping read-only inspection', 
 
   expect(screen.getByTestId('routing-save')).toBeDisabled();
   expect(
-    screen.queryByLabelText(/Drag to reorder|拖动以调整|拖曳以調整|ドラッグして並び替え|드래그하여 순서 변경/u),
+    screen.queryByLabelText(
+      /Drag to change priority|拖动以调整优先级|拖曳以調整優先順序|ドラッグして優先度を変更|드래그하여 우선순위 변경/u,
+    ),
   ).not.toBeInTheDocument();
   expect(screen.getByTestId('routing-share-a')).toHaveTextContent('60%');
   expect(screen.getByTestId('routing-provider-a')).toBeInTheDocument();
