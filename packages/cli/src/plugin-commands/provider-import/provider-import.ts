@@ -119,10 +119,13 @@ async function importOneFile(file: string, deps: ProviderImportDeps, counts: Imp
     return;
   }
 
+  const type = parsed['type'].trim();
+  parsed['type'] = type;
+
   try {
     const result = await deps.importAccount({
       source: 'cpa',
-      type: parsed['type'].trim(),
+      type,
       raw: parsed,
       registry: deps.registry,
       repository: deps.repository,
@@ -144,7 +147,12 @@ async function importOneFile(file: string, deps: ProviderImportDeps, counts: Imp
       return;
     }
     counts.failed += 1;
-    deps.print(m['cli.provider.import.status_failed']({ path: file, reason: safeReason(error) }));
+    deps.print(
+      m['cli.provider.import.status_failed']({
+        path: file,
+        reason: m['cli.provider.import.reason_unknown'](),
+      }),
+    );
   }
 }
 

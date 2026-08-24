@@ -64,7 +64,7 @@ function createDeps(overrides: Partial<ProviderImportDeps> = {}): ProviderImport
       const { type } = options;
       if (type === 'duplicate') throw new ProviderAccountAlreadyExistsError('existing-provider');
       if (type === 'unsupported') throw new OAuthCredentialImportUnsupportedError('cpa', type);
-      if (type === 'broken') throw new Error('credential conversion failed');
+      if (type === 'broken') throw new Error('credential conversion failed PLANTED_SECRET');
       return { providerId: `provider-${type}` };
     },
     cwd: () => {
@@ -139,6 +139,18 @@ describe('provider import file discovery', () => {
     expect((uninjected as CliExit).code).toBe(1);
     expect((uninjected as CliExit).message).toBe(`Import path does not exist: ${resolve(missing)}`);
   });
+
+  test('empty directory prints all-zero summary and succeeds', async () => {
+    const root = tempDir();
+    const deps = createDeps();
+
+    await providerImport(root, deps);
+
+    expect(deps.recoverCalls).toBe(1);
+    expect(deps.closes).toBe(0);
+    expect(deps.imported).toEqual([]);
+    expect(deps.printed).toEqual(['Import summary: imported 0, duplicate 0, skipped 0, failed 0']);
+  });
 });
 
 describe('provider import outcomes', () => {
@@ -168,6 +180,43 @@ describe('provider import outcomes', () => {
       'Import summary: imported 1, duplicate 1, skipped 1, failed 2',
     ]);
     expect(deps.printed.join('\n')).not.toContain('SECRET_TOKEN_VALUE');
+    assertUnchanged(originals);
+  });
+
+  test('whitespace-padded supported type reaches importAccount as canonical', async () => {
+    const root = tempDir();
+    const file = write(root, 'padded.json', '{"type":"  ok  "}');
+    const originals = snapshot([file]);
+    const deps = createDeps();
+
+    await providerImport(file, deps);
+
+    expect(deps.imported).toHaveLength(1);
+    const entry = deps.imported[0] as { type: string; raw: { type: string } };
+    expect(entry.type).toBe('ok');
+    expect(entry.raw.type).toBe('ok');
+    expect(deps.printed).toEqual([
+      `Imported ${file} as provider provider-ok`,
+      'Import summary: imported 1, duplicate 0, skipped 0, failed 0',
+    ]);
+    assertUnchanged(originals);
+  });
+
+  test('conversion failure increments failed without printing the error secret', async () => {
+    const root = tempDir();
+    const file = write(root, 'broken.json', '{"type":"broken"}');
+    const originals = snapshot([file]);
+    const deps = createDeps();
+
+    const error = await providerImport(root, deps).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(CliExit);
+    expect((error as CliExit).code).toBe(1);
+    expect((error as CliExit).message).toBe('');
+    expect(deps.printed).toEqual([
+      `Failed ${file}: credential import failed`,
+      'Import summary: imported 0, duplicate 0, skipped 0, failed 1',
+    ]);
+    expect(deps.printed.join('\n')).not.toContain('PLANTED_SECRET');
     assertUnchanged(originals);
   });
 });
