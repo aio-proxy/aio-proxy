@@ -1,7 +1,9 @@
 import { describe, expect, test } from 'bun:test';
 
+import { APICallError } from '@ai-sdk/provider';
 import {
   type ModelEventStream,
+  AiSdkProviderError,
   openAICompletionsAdapter,
   openAIResponsesAdapter,
   type TextStreamPart,
@@ -226,6 +228,60 @@ describe('shared protocol routing pipeline model stream lifecycle', () => {
     // it was opened only after the provider call returned.
     expect(harness.recording.attempts[0]?.durationMs).toBeGreaterThanOrEqual(10);
   });
+
+  test('falls back before commit when only an AI SDK start event precedes a stream error', async () => {
+    const error = new Error('upstream rejected the request');
+    const primary = modelProvider({ id: 'primary', invoke: () => startThenErrorStream(error) });
+    const backup = modelProvider({ id: 'backup', invoke: () => textStream('fallback') });
+    const harness = pipeline([primary, backup]);
+
+    const response = await harness.run(jsonRequest({ model: REQUESTED_MODEL, stream: true }));
+
+    expect(await response.text()).toContain('fallback');
+    await settleRecording(harness.recording);
+    expect(primary.calls.model).toHaveLength(1);
+    expect(backup.calls.model).toHaveLength(1);
+    expect(attemptsOf(harness.recording)).toEqual([
+      { outcome: 'failure', providerId: 'primary', statusCode: 502 },
+      { outcome: 'success', providerId: 'backup', statusCode: undefined },
+    ]);
+    expect(harness.usage.capturedStreams.every((stream) => !stream.locked)).toBe(true);
+  });
+
+  test('returns an upstream error instead of committing Responses SSE after a start event', async () => {
+    const upstream = new AiSdkProviderError(
+      'primary',
+      new APICallError({
+        message: 'invalid tool history',
+        url: 'https://upstream.example.test/v1/chat/completions',
+        requestBodyValues: {},
+        responseHeaders: {},
+        statusCode: 400,
+      }),
+    );
+    const provider = modelProvider({ id: 'primary', invoke: () => startThenErrorStream(upstream) });
+    const route = defineProviderRouteSource([provider]);
+
+    const response = await handleProtocolRequest({
+      adapter: openAIResponsesAdapter,
+      context: {},
+      rawRequest: jsonRequest({ model: REQUESTED_MODEL, input: 'ping', stream: true }),
+      source: route.source,
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.headers.get('content-type')).toContain('application/json');
+    expect(await response.json()).toEqual({
+      error: {
+        code: 'upstream_error',
+        message: 'invalid tool history',
+        type: 'invalid_request_error',
+      },
+    });
+    await settleRecording(route.recording);
+    expect(provider.calls.model).toHaveLength(1);
+    expect(route.usage.capturedStreams[0]?.locked).toBe(false);
+  });
 });
 
 function contentDeltaStream(): ModelEventStream {
@@ -247,6 +303,20 @@ function contentDeltaStream(): ModelEventStream {
         },
       });
       controller.close();
+    },
+  });
+}
+
+function startThenErrorStream(error: unknown): ModelEventStream {
+  let startSent = false;
+  return new ReadableStream<TextStreamPart<ToolSet>>({
+    pull(controller) {
+      if (!startSent) {
+        startSent = true;
+        controller.enqueue({ type: 'start' });
+        return;
+      }
+      controller.error(error);
     },
   });
 }
