@@ -13,26 +13,25 @@ const config = { providers: {} } as const;
 
 describe('dashboard static routes', () => {
   test('Given built dashboard assets When dashboard paths are requested Then static app and API are separated', async () => {
-    // Given
     const dir = mkdtempSync(join(tmpdir(), 'aio-proxy-dashboard-'));
     mkdirSync(join(dir, 'static'));
     writeFileSync(join(dir, 'index.html'), '<div id="root"></div><script src="/dashboard/static/app.js"></script>');
     writeFileSync(join(dir, 'static', 'app.js'), "console.log('dashboard');");
+    writeFileSync(join(dir, 'favicon.svg'), '<svg xmlns="http://www.w3.org/2000/svg"></svg>');
     const app = await createServer({ config, dashboardAssets: directoryDashboardAssets(dir), dbHome: dir });
 
     try {
-      // When
       const dashboard = await app.request('/dashboard', undefined, loopbackServer);
       const dashboardSlash = await app.request('/dashboard/', undefined, loopbackServer);
       const asset = await app.request('/dashboard/static/app.js', undefined, loopbackServer);
       const missingAsset = await app.request('/dashboard/static/missing.js', undefined, loopbackServer);
       const frontendRoute = await app.request('/dashboard/providers', undefined, loopbackServer);
+      const favicon = await app.request('/dashboard/favicon.svg', undefined, loopbackServer);
       const api = await app.request('/dashboard/api/config', undefined, loopbackServer);
       const missingApi = await app.request('/dashboard/api/missing', undefined, loopbackServer);
       const retiredLogsApi = await app.request(['', 'dashboard', 'api', 'logs'].join('/'), undefined, loopbackServer);
       const oldApi = await app.request('/dashboard/config', undefined, loopbackServer);
 
-      // Then
       expect(dashboard.status).toBe(200);
       expect(await dashboard.text()).toContain('/dashboard/static/app.js');
       expect(dashboardSlash.status).toBe(200);
@@ -43,6 +42,9 @@ describe('dashboard static routes', () => {
       expect(missingAsset.status).toBe(404);
       expect(frontendRoute.status).toBe(200);
       expect(await frontendRoute.text()).toContain('root');
+      expect(favicon.status).toBe(200);
+      expect(await favicon.text()).toBe('<svg xmlns="http://www.w3.org/2000/svg"></svg>');
+      expect(favicon.headers.get('cache-control')).not.toBe('public, max-age=31536000, immutable');
       expect(api.status).toBe(200);
       expect(await api.json()).toMatchObject({ providers: expect.any(Array) });
       expect(missingApi.status).toBe(404);
