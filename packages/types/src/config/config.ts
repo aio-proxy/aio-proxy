@@ -34,7 +34,7 @@ const ApiKeyAuthoringSchema = z.object({
 export const ServerLoggingSchema = z.object({
   enabled: z.boolean().default(false),
   dir: z.string().min(1).optional(),
-  retentionDays: z.number().int().min(1).max(365).default(14),
+  retentionDays: z.number().int().min(1).max(365).default(3),
   level: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
 });
 

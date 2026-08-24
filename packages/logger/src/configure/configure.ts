@@ -32,7 +32,7 @@ export async function configureLogging(config: LoggingConfig): Promise<void> {
     sinks['file'] = getTimeRotatingFileSink({
       directory: config.dir,
       formatter: jsonLinesFormatter,
-      maxAgeMs: (config.retentionDays ?? 14) * DAY_MS,
+      maxAgeMs: (config.retentionDays ?? 3) * DAY_MS,
     });
     sinkIds.push('file');
   }

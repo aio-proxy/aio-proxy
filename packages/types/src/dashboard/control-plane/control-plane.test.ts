@@ -13,7 +13,7 @@ const settings = {
   host: '127.0.0.1',
   port: 9317,
   proxy: 'https://proxy.example',
-  logging: { enabled: true, retentionDays: 14, level: 'info' },
+  logging: { enabled: true, retentionDays: 3, level: 'info' },
   retryAfterCapMs: 30_000,
   hasPassword: true,
 } as const;
