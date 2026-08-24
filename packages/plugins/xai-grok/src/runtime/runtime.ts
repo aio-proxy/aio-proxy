@@ -65,10 +65,66 @@ async function outgoingBody(request: Request): Promise<BodyInit | undefined> {
     const value: unknown = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(original));
     if (typeof value !== 'object' || value === null) return original;
     const reasoning = Reflect.get(value, 'reasoning');
-    if (typeof reasoning !== 'object' || reasoning === null || !Reflect.has(reasoning, 'summary')) return original;
-    Reflect.deleteProperty(reasoning, 'summary');
-    return JSON.stringify(value);
+    const stripped =
+      typeof reasoning === 'object' && reasoning !== null && Reflect.has(reasoning, 'summary')
+        ? Reflect.deleteProperty(reasoning, 'summary')
+        : false;
+    return compileCompatibleCustomTools(value) || stripped ? JSON.stringify(value) : original;
   } catch {
     return original;
   }
+}
+
+function compileCompatibleCustomTools(value: object): boolean {
+  let changed = false;
+  const tools = Reflect.get(value, 'tools');
+  if (Array.isArray(tools)) {
+    for (const tool of tools) changed = compileCustomDeclaration(tool) || changed;
+  }
+  const choice = Reflect.get(value, 'tool_choice');
+  if (typeof choice === 'object' && choice !== null && Reflect.get(choice, 'type') === 'custom') {
+    Reflect.set(choice, 'type', 'function');
+    changed = true;
+  }
+  const input = Reflect.get(value, 'input');
+  if (Array.isArray(input)) {
+    for (const item of input) changed = compileHistoryRecord(item) || changed;
+  }
+  return changed;
+}
+
+function compileCustomDeclaration(tool: unknown): boolean {
+  if (typeof tool !== 'object' || tool === null || Reflect.get(tool, 'type') !== 'custom') return false;
+  const format = Reflect.get(tool, 'format');
+  if (
+    format !== undefined &&
+    (typeof format !== 'object' || format === null || Reflect.get(format, 'type') !== 'text')
+  ) {
+    return false;
+  }
+  Reflect.set(tool, 'type', 'function');
+  Reflect.set(tool, 'parameters', {
+    type: 'object',
+    properties: { input: { type: 'string' } },
+    required: ['input'],
+    additionalProperties: false,
+  });
+  Reflect.deleteProperty(tool, 'format');
+  return true;
+}
+
+function compileHistoryRecord(item: unknown): boolean {
+  if (typeof item !== 'object' || item === null) return false;
+  const type = Reflect.get(item, 'type');
+  if (type === 'custom_tool_call') {
+    const input = Reflect.get(item, 'input');
+    if (typeof input !== 'string') return false;
+    Reflect.set(item, 'type', 'function_call');
+    Reflect.set(item, 'arguments', JSON.stringify({ input }));
+    Reflect.deleteProperty(item, 'input');
+    return true;
+  }
+  if (type !== 'custom_tool_call_output') return false;
+  Reflect.set(item, 'type', 'function_call_output');
+  return true;
 }

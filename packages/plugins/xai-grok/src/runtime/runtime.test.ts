@@ -60,7 +60,7 @@ describe('xAI Grok runtime', () => {
     expect(runtime.raw).toBeUndefined();
   });
 
-  test('injects CLI identity and removes only reasoning.summary', async () => {
+  test('injects CLI identity and compiles custom Responses tools before dispatch', async () => {
     let captured: Request | undefined;
     let observedSignal: AbortSignal | null | undefined;
     const controller = new AbortController();
@@ -75,7 +75,19 @@ describe('xAI Grok runtime', () => {
     await dynamicFetch('https://cli-chat-proxy.grok.com/v1/responses', {
       method: 'POST',
       headers: { authorization: 'Bearer placeholder', 'x-keep': 'yes' },
-      body: JSON.stringify({ model: 'grok-4.5', reasoning: { effort: 'high', summary: 'auto' } }),
+      body: JSON.stringify({
+        model: 'grok-4.5',
+        reasoning: { effort: 'high', summary: 'auto' },
+        tools: [
+          { type: 'custom', name: 'exec', format: { type: 'text' } },
+          { type: 'function', name: 'lookup', parameters: { type: 'object' } },
+        ],
+        tool_choice: { type: 'custom', name: 'exec' },
+        input: [
+          { type: 'custom_tool_call', call_id: 'call_1', name: 'exec', input: 'pwd' },
+          { type: 'custom_tool_call_output', call_id: 'call_1', output: 'done' },
+        ],
+      }),
       signal: controller.signal,
     });
     expect(captured?.url).toBe('https://cli-chat-proxy.grok.com/v1/responses');
@@ -84,7 +96,28 @@ describe('xAI Grok runtime', () => {
     expect(captured?.headers.get('x-grok-client-version')).toBe('0.2.93');
     expect(captured?.headers.get('user-agent')).toBe('xai-grok-workspace/0.2.93');
     expect(captured?.headers.get('x-keep')).toBe('yes');
-    expect(await captured?.json()).toEqual({ model: 'grok-4.5', reasoning: { effort: 'high' } });
+    expect(await captured?.json()).toEqual({
+      model: 'grok-4.5',
+      reasoning: { effort: 'high' },
+      tools: [
+        {
+          type: 'function',
+          name: 'exec',
+          parameters: {
+            type: 'object',
+            properties: { input: { type: 'string' } },
+            required: ['input'],
+            additionalProperties: false,
+          },
+        },
+        { type: 'function', name: 'lookup', parameters: { type: 'object' } },
+      ],
+      tool_choice: { type: 'function', name: 'exec' },
+      input: [
+        { type: 'function_call', call_id: 'call_1', name: 'exec', arguments: '{"input":"pwd"}' },
+        { type: 'function_call_output', call_id: 'call_1', output: 'done' },
+      ],
+    });
     expect(observedSignal).toBe(controller.signal);
   });
 });
