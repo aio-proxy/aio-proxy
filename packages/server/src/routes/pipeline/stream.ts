@@ -45,7 +45,9 @@ export function retainResponseBody(response: Response, release: () => void): Res
   return new Response(body, { headers: response.headers, status: response.status, statusText: response.statusText });
 }
 
-export async function preflightStream<T>(stream: ReadableStream<T>): Promise<ReadableStream<T>> {
+export async function preflightStream<T extends { readonly type: string }>(
+  stream: ReadableStream<T>,
+): Promise<ReadableStream<T>> {
   const reader = stream.getReader();
   let released = false;
   const releaseReader = () => {
@@ -56,7 +58,9 @@ export async function preflightStream<T>(stream: ReadableStream<T>): Promise<Rea
   };
   let first: Awaited<ReturnType<ReadableStreamDefaultReader<T>['read']>>;
   try {
-    first = await reader.read();
+    do {
+      first = await reader.read();
+    } while (!first.done && first.value.type === 'start');
   } catch (error) {
     releaseReader();
     throw error;
