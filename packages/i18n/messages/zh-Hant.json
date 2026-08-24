@@ -543,7 +543,7 @@
       },
       "editor": {
         "title": "編輯 {modelId} 的路由",
-        "description": "空白欄位會繼承 Provider 預設值。儲存會一次取代此模型的可見覆寫。",
+        "description": "拖到另一層可改優先順序，層內拖動可改流量占比。儲存會一次取代此模型的可見覆寫。",
         "preview": "即時路由",
         "preview_empty": "沒有可用 Provider。此模型已對一般路由停用。",
         "inherit": "繼承",
@@ -566,7 +566,18 @@
         "override_weight": "權重覆寫",
         "provider_ready": "就緒",
         "provider_unavailable": "無法使用",
-        "provider_disabled": "Provider 已停用"
+        "provider_disabled": "Provider 已停用",
+        "board_help": "越上方的層越先嘗試。同一層內用滑桿調整流量占比。",
+        "tier": "優先順序 {value}",
+        "unused": "不參與此模型",
+        "slot_high": "拖到這裡最先嘗試",
+        "slot_low": "拖到這裡最後嘗試",
+        "slot_insert": "拖到這裡新增優先順序",
+        "drag_handle": "拖曳以調整",
+        "share": "{value}%",
+        "blocked": "無法使用的 Provider",
+        "new_priority": "新優先順序",
+        "share_control": "流量占比"
       }
     },
     "pagination": {

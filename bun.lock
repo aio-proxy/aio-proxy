@@ -22,7 +22,7 @@
     },
     "npm/aio-proxy": {
       "name": "aio-proxy",
-      "version": "0.8.0",
+      "version": "0.9.1",
       "bin": {
         "aio-proxy": "bin/aio-proxy.js",
       },
@@ -35,23 +35,23 @@
     },
     "npm/cli-darwin-arm64": {
       "name": "@aio-proxy/cli-darwin-arm64",
-      "version": "0.8.0",
+      "version": "0.9.1",
     },
     "npm/cli-darwin-x64": {
       "name": "@aio-proxy/cli-darwin-x64",
-      "version": "0.8.0",
+      "version": "0.9.1",
     },
     "npm/cli-linux-arm64": {
       "name": "@aio-proxy/cli-linux-arm64",
-      "version": "0.8.0",
+      "version": "0.9.1",
     },
     "npm/cli-linux-x64": {
       "name": "@aio-proxy/cli-linux-x64",
-      "version": "0.8.0",
+      "version": "0.9.1",
     },
     "packages/agent-provider/opencode": {
       "name": "@aio-proxy/opencode-provider",
-      "version": "0.8.0",
+      "version": "0.9.1",
       "dependencies": {
         "@aio-proxy/agent-provider-runtime": "workspace:*",
         "@aio-proxy/types": "workspace:*",
@@ -66,7 +66,7 @@
     },
     "packages/agent-provider/pi": {
       "name": "@aio-proxy/pi-provider",
-      "version": "0.8.0",
+      "version": "0.9.1",
       "dependencies": {
         "@aio-proxy/agent-provider-runtime": "workspace:*",
         "@aio-proxy/types": "workspace:*",
@@ -82,7 +82,7 @@
     },
     "packages/agent-provider/runtime": {
       "name": "@aio-proxy/agent-provider-runtime",
-      "version": "0.8.0",
+      "version": "0.9.1",
       "dependencies": {
         "@aio-proxy/types": "workspace:*",
       },
@@ -95,7 +95,7 @@
     },
     "packages/cli": {
       "name": "@aio-proxy/cli",
-      "version": "0.8.0",
+      "version": "0.9.1",
       "dependencies": {
         "@aio-proxy/core": "workspace:*",
         "@aio-proxy/dashboard": "workspace:*",
@@ -119,7 +119,7 @@
     },
     "packages/core": {
       "name": "@aio-proxy/core",
-      "version": "0.8.0",
+      "version": "0.9.1",
       "dependencies": {
         "@ai-sdk/anthropic": "catalog:",
         "@ai-sdk/google": "catalog:",
@@ -162,7 +162,7 @@
     },
     "packages/dashboard": {
       "name": "@aio-proxy/dashboard",
-      "version": "0.8.0",
+      "version": "0.9.1",
       "dependencies": {
         "@aio-proxy/i18n": "workspace:*",
         "@aio-proxy/plugin-sdk": "workspace:*",
@@ -177,6 +177,9 @@
         "@codemirror/lint": "^6.9.2",
         "@codemirror/state": "^6.5.2",
         "@codemirror/view": "^6.39.4",
+        "@dnd-kit/dom": "0.5.0",
+        "@dnd-kit/helpers": "0.5.0",
+        "@dnd-kit/react": "0.5.0",
         "@lezer/highlight": "^1.2.3",
         "@lobehub/icons-static-svg": "catalog:",
         "@number-flow/react": "^0.6.2",
@@ -226,7 +229,7 @@
     },
     "packages/i18n": {
       "name": "@aio-proxy/i18n",
-      "version": "0.8.0",
+      "version": "0.9.1",
       "dependencies": {
         "@inlang/paraglide-js": "catalog:",
         "date-fns": "catalog:",
@@ -242,7 +245,7 @@
     },
     "packages/infra": {
       "name": "@aio-proxy/infra",
-      "version": "0.8.0",
+      "version": "0.9.1",
       "dependencies": {
         "@rslib/core": "catalog:",
       },
@@ -252,7 +255,7 @@
     },
     "packages/logger": {
       "name": "@aio-proxy/logger",
-      "version": "0.8.0",
+      "version": "0.9.1",
       "dependencies": {
         "@aio-proxy/plugin-sdk": "workspace:*",
         "@logtape/file": "2.2.4",
@@ -266,7 +269,7 @@
     },
     "packages/plugin-sdk": {
       "name": "@aio-proxy/plugin-sdk",
-      "version": "0.8.0",
+      "version": "0.9.1",
       "dependencies": {
         "@ai-sdk/provider": "catalog:",
         "@date-fns/tz": "catalog:",
@@ -285,7 +288,7 @@
     },
     "packages/plugins/cursor": {
       "name": "@aio-proxy/plugin-cursor",
-      "version": "0.8.0",
+      "version": "0.9.1",
       "dependencies": {
         "@ai-sdk/provider": "catalog:",
         "@aio-proxy/plugin-sdk": "workspace:*",
@@ -302,7 +305,7 @@
     },
     "packages/plugins/github-copilot": {
       "name": "@aio-proxy/plugin-github-copilot",
-      "version": "0.8.0",
+      "version": "0.9.1",
       "dependencies": {
         "@ai-sdk/anthropic": "catalog:",
         "@ai-sdk/openai": "catalog:",
@@ -318,7 +321,7 @@
     },
     "packages/plugins/google-antigravity": {
       "name": "@aio-proxy/plugin-google-antigravity",
-      "version": "0.8.0",
+      "version": "0.9.1",
       "dependencies": {
         "@ai-sdk/google": "catalog:",
         "@ai-sdk/provider": "catalog:",
@@ -336,7 +339,7 @@
     },
     "packages/plugins/kimi-code": {
       "name": "@aio-proxy/plugin-kimi-code",
-      "version": "0.8.0",
+      "version": "0.9.1",
       "dependencies": {
         "@ai-sdk/anthropic": "catalog:",
         "@ai-sdk/openai-compatible": "catalog:",
@@ -351,7 +354,7 @@
     },
     "packages/plugins/openai-chatgpt": {
       "name": "@aio-proxy/plugin-openai-chatgpt",
-      "version": "0.8.0",
+      "version": "0.9.1",
       "dependencies": {
         "@ai-sdk/openai": "catalog:",
         "@aio-proxy/plugin-sdk": "workspace:*",
@@ -368,7 +371,7 @@
     },
     "packages/plugins/xai-grok": {
       "name": "@aio-proxy/plugin-xai-grok",
-      "version": "0.8.0",
+      "version": "0.9.1",
       "dependencies": {
         "@ai-sdk/openai": "catalog:",
         "@aio-proxy/plugin-sdk": "workspace:*",
@@ -382,7 +385,7 @@
     },
     "packages/server": {
       "name": "@aio-proxy/server",
-      "version": "0.8.0",
+      "version": "0.9.1",
       "dependencies": {
         "@aio-proxy/core": "workspace:*",
         "@aio-proxy/i18n": "workspace:*",
@@ -415,7 +418,7 @@
     },
     "packages/types": {
       "name": "@aio-proxy/types",
-      "version": "0.8.0",
+      "version": "0.9.1",
       "dependencies": {
         "es-toolkit": "catalog:",
         "zod": "catalog:",
@@ -428,7 +431,7 @@
     },
     "packages/ui": {
       "name": "@aio-proxy/ui",
-      "version": "0.8.0",
+      "version": "0.9.1",
       "dependencies": {
         "@base-ui/react": "^1.6.0",
         "@fontsource-variable/jetbrains-mono": "^5.3.0",
@@ -825,6 +828,20 @@
     "@conventional-changelog/template": ["@conventional-changelog/template@1.2.0", "", {}, "sha512-12qHxvlKjHmP0PQ+17EREgC7lWyLwbph1RKcZQZ7k7ZWGmrxfxC9gadHGfvzr0g0u8BhiBGg3tks93txodlyRQ=="],
 
     "@date-fns/tz": ["@date-fns/tz@1.5.0", "", {}, "sha512-lwYN/vDPeNRULcepoE/LO2Pgx+7/RV+S9ARfbc9lr2DtGkOD7pAiruHvbR1RX3Qyf6ja47EWJDMsNK5vK08DJg=="],
+
+    "@dnd-kit/abstract": ["@dnd-kit/abstract@0.5.0", "", { "dependencies": { "@dnd-kit/geometry": "^0.5.0", "@dnd-kit/state": "^0.5.0", "tslib": "^2.6.2" } }, "sha512-hi13iMJgjPX/KDYVKg5VeDIhmYiV6buc9bAX+tCLYf4QdyYjPbsXjn2sPo6m7fQ6SGJBEFgHJ2PemeKDUbwBaA=="],
+
+    "@dnd-kit/collision": ["@dnd-kit/collision@0.5.0", "", { "dependencies": { "@dnd-kit/abstract": "^0.5.0", "@dnd-kit/geometry": "^0.5.0", "tslib": "^2.6.2" } }, "sha512-xUqRn3lS7oqLkT0AnnHS/STh/Czvwe1UapZFYiLbsUGxopMsQd4teaPCzPouOThoMdGEe+dHWjfqJl6t9iG4mQ=="],
+
+    "@dnd-kit/dom": ["@dnd-kit/dom@0.5.0", "", { "dependencies": { "@dnd-kit/abstract": "^0.5.0", "@dnd-kit/collision": "^0.5.0", "@dnd-kit/geometry": "^0.5.0", "@dnd-kit/state": "^0.5.0", "tslib": "^2.6.2" } }, "sha512-f2xFJp5SYQ8EW/Fbtaa8iBb66hpkWc7qa8vU826KW11/tb44sH+AisZnGtwOOTWTQ0GraqBDr5ixTErww+eKXw=="],
+
+    "@dnd-kit/geometry": ["@dnd-kit/geometry@0.5.0", "", { "dependencies": { "@dnd-kit/state": "^0.5.0", "tslib": "^2.6.2" } }, "sha512-ubHQS1CiSDH8ssYH2xG5BnpwPSFP1tStXXjug7/Ba6qnQdu/EUH47l6QXKIksQnnanfVfDf0aGeevRxgZlj28A=="],
+
+    "@dnd-kit/helpers": ["@dnd-kit/helpers@0.5.0", "", { "dependencies": { "@dnd-kit/abstract": "^0.5.0", "tslib": "^2.6.2" } }, "sha512-i4y+51/icSw+OHMr/su19qhnmNhAzh8PnBwXvapFYTd+64oodIyJRiRkB+hhfxAfnur7RYSW8qacDTrXjg2XOg=="],
+
+    "@dnd-kit/react": ["@dnd-kit/react@0.5.0", "", { "dependencies": { "@dnd-kit/abstract": "^0.5.0", "@dnd-kit/dom": "^0.5.0", "@dnd-kit/state": "^0.5.0", "tslib": "^2.6.2" }, "peerDependencies": { "react": "^18.0.0 || ^19.0.0", "react-dom": "^18.0.0 || ^19.0.0" } }, "sha512-abQPLI8lmfVE+v/n+pqy5WFxrw6T2Yg0UQZsL78dp5DKci7dKTVDjvLWqvass+XTFtzJmsZEjk1NdqE6xG8Jiw=="],
+
+    "@dnd-kit/state": ["@dnd-kit/state@0.5.0", "", { "dependencies": { "@preact/signals-core": "^1.10.0", "tslib": "^2.6.2" } }, "sha512-y7XbabQqjF58Lk8YmDQuR8l6QjN+Kh4qlGEjUvHuIeasLk1QP+9L5diXS98VMxQIivyMmUtX2//f+3N7qPJX4w=="],
 
     "@dotenvx/dotenvx": ["@dotenvx/dotenvx@1.75.1", "", { "dependencies": { "@dotenvx/primitives": "^0.8.0", "commander": "^11.1.0", "conf": "^10.2.0", "dotenv": "^17.2.1", "enquirer": "^2.4.1", "env-paths": "^2.2.1", "execa": "^5.1.1", "fdir": "^6.2.0", "ignore": "^5.3.0", "object-treeify": "1.1.33", "open": "^8.4.2", "picomatch": "^4.0.4", "systeminformation": "^5.22.11", "undici": "^7.11.0", "which": "^4.0.0", "yocto-spinner": "^1.1.0" }, "bin": { "dotenvx": "src/cli/dotenvx.js" } }, "sha512-/BITOC9dmS/edY2zQwZNicQ059O6RKabtQfyEafV0nGtfYRNHYy1DIPiYVcov40+tob9hfmBnbR963dS+EQ1DQ=="],
 
@@ -1291,6 +1308,8 @@
     "@oxlint/binding-win32-x64-msvc": ["@oxlint/binding-win32-x64-msvc@1.74.0", "", { "os": "win32", "cpu": "x64" }, "sha512-VTC9IYTIMrVUk/i6Ms1ohzzDKZFkWn0KU2OBbPBzgmVZ2V30165T/zK4LztTr0Xgp9fZ1qQZ1rsZAu/rEmySlA=="],
 
     "@pnpm/deps.graph-sequencer": ["@pnpm/deps.graph-sequencer@1100.0.1", "", {}, "sha512-pOr5+q1fLYKwFN3LAJuGZEnfXDcQ73zqgDHMtGy+K+uIoUqyY+6MeDCWFwfu+4EFuq76I5EPFofoNAI+Bmmq4A=="],
+
+    "@preact/signals-core": ["@preact/signals-core@1.14.4", "", {}, "sha512-HNB6HYeYKhQbJ1aKl+YRjrS4+QWHLKX6qKoUsfS/m0vqzsVaEBiZiaKbG/e+NKk2ch5ALQr/ihWaMHxiCuuWHA=="],
 
     "@protobufjs/aspromise": ["@protobufjs/aspromise@1.1.2", "", {}, "sha512-j+gKExEuLmKwvz3OgROXtrJ2UG2x8Ch2YZUxahh+s1F2HZ+wAceUNLkvy6zKCPVRkU++ZWQrdxsUeQXmcg4uoQ=="],
 

@@ -135,6 +135,22 @@ function summariesFrom(config: Config, states: Readonly<Record<string, ProviderS
 
 function catalogRepository() {
   return {
+    readAccount(providerId: string) {
+      if (providerId !== 'disabled-oauth') return null;
+      return {
+        providerId,
+        plugin: '@example/oauth',
+        capability: 'default',
+        fingerprint: 'octocat@example.com',
+        options: {},
+        secrets: {},
+        credential: {},
+        revision: 1,
+        runtimeRevision: 1,
+        label: 'octocat',
+        updatedAt: 1,
+      };
+    },
     readCatalog(providerId: string) {
       if (providerId === 'broken-oauth') throw new Error('catalog read failed');
       if (providerId === 'invalid-oauth') {
@@ -301,6 +317,11 @@ describe('model routing inventory', () => {
       expect.arrayContaining(['invalid-alias', 'broken-alias', 'api-alias', 'shared']),
     );
     expect(provider(response, 'invalid-alias', 'invalid-oauth').state).toEqual(unavailable);
+  });
+
+  test('uses the OAuth account label as the routing Provider name', async () => {
+    const response = await inventory();
+    expect(provider(response, 'oauth-alias', 'disabled-oauth').name).toBe('octocat');
   });
 
   test('returns a read-only inventory when the config path is missing', async () => {

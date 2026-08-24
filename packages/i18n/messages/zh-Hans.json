@@ -543,7 +543,7 @@
       },
       "editor": {
         "title": "编辑 {modelId} 的路由",
-        "description": "空白字段继承 Provider 默认值。保存会一次性替换此模型的可见覆盖。",
+        "description": "拖到另一层可改优先级，层内拖动可改流量占比。保存会一次性替换此模型的可见覆盖。",
         "preview": "实时路由",
         "preview_empty": "没有可用 Provider。此模型已对普通路由禁用。",
         "inherit": "继承",
@@ -566,7 +566,18 @@
         "override_weight": "权重覆盖",
         "provider_ready": "就绪",
         "provider_unavailable": "不可用",
-        "provider_disabled": "Provider 已禁用"
+        "provider_disabled": "Provider 已禁用",
+        "board_help": "越靠上的层越先尝试。同一层内用滑块调整流量占比。",
+        "tier": "优先级 {value}",
+        "unused": "不参与此模型",
+        "slot_high": "拖到这里最先尝试",
+        "slot_low": "拖到这里最后尝试",
+        "slot_insert": "拖到这里新增优先级",
+        "drag_handle": "拖动以调整",
+        "share": "{value}%",
+        "blocked": "不可用的 Provider",
+        "new_priority": "新优先级",
+        "share_control": "流量占比"
       }
     },
     "pagination": {

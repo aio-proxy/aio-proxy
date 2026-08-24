@@ -26,7 +26,7 @@ export type RoutingInventoryInput = {
   readonly rawRecord: Readonly<Record<string, unknown>>;
   readonly config: Config;
   readonly summaries: readonly DashboardProviderSummary[];
-  readonly repository: Pick<PluginRepository, 'readCatalog'>;
+  readonly repository: Pick<PluginRepository, 'readCatalog' | 'readAccount'>;
   readonly writable: boolean;
 };
 
@@ -51,6 +51,7 @@ export async function assembleRoutingInventory(input: RoutingInventoryInput): Pr
           rawProviders[provider.id],
           rawPolicyProviders(readRawModelPolicy(input.rawRecord, route.alias))[provider.id],
           input.writable,
+          input.repository,
         ),
       );
     }
@@ -107,12 +108,23 @@ function finalizeModel(model: WritableModel): DashboardRoutingModel {
   };
 }
 
+function routingProviderName(
+  provider: Provider,
+  summary: DashboardProviderSummary | undefined,
+  repository: Pick<PluginRepository, 'readAccount'>,
+): string | undefined {
+  if (provider.kind !== ProviderKind.OAuth) return provider.name ?? summary?.name;
+  const account = repository.readAccount(provider.id);
+  return account?.label ?? account?.fingerprint ?? summary?.accountLabel ?? provider.name ?? summary?.name;
+}
+
 function providerRow(
   provider: Provider,
   summary: DashboardProviderSummary | undefined,
   rawProvider: unknown,
   rawOverride: unknown,
   discloseAuthored: boolean,
+  repository: Pick<PluginRepository, 'readAccount'>,
 ): DashboardRoutingProvider {
   const raw = isPlainObject(rawProvider) ? rawProvider : {};
   const defaults = {
@@ -123,9 +135,10 @@ function providerRow(
   const priority = override?.priority?.effective ?? defaults.priority.effective;
   const weight = override?.weight?.effective ?? defaults.weight.effective;
   const state = summary?.state ?? { status: 'ready' };
+  const name = routingProviderName(provider, summary, repository);
   return {
     id: provider.id,
-    ...(provider.name === undefined ? {} : { name: provider.name }),
+    ...(name === undefined ? {} : { name }),
     kind: provider.kind,
     enabled: provider.enabled,
     state,

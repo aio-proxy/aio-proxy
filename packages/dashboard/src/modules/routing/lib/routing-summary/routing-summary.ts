@@ -1,3 +1,4 @@
+import { m } from '@aio-proxy/i18n';
 import type { DashboardRoutingProvider, RouterProviderOverride } from '@aio-proxy/types';
 import { RoutingPrioritySchema, RoutingWeightSchema } from '@aio-proxy/types';
 
@@ -70,7 +71,7 @@ export const formatRoutingTiers = (tiers: readonly RoutingTier[]): string =>
           tier.providers.length === 1 ? entry.providerId : `${entry.providerId} ${Math.round(entry.share * 100)}%`,
         )
         .join(' / ');
-      return `P${tier.priority}: ${members}`;
+      return `${m['dashboard.routing.editor.tier']({ value: tier.priority })}: ${members}`;
     })
     .join(' → ');
 

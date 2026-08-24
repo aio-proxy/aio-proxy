@@ -9,7 +9,7 @@ import { useRef, useState } from 'react';
 
 import { PageContainer } from '@/components/page-container';
 
-import { RoutingEditorSheet } from '../components/routing-editor-sheet';
+import { RoutingEditorDrawer } from '../components/routing-editor-drawer';
 import { RoutingTable } from '../components/routing-table';
 import { useRoutingQuery } from '../hooks/use-routing-query';
 
@@ -74,7 +74,7 @@ export const RoutingPage: React.FC = () => {
       <Card>
         <CardContent>{content}</CardContent>
       </Card>
-      <RoutingEditorSheet
+      <RoutingEditorDrawer
         key={selected?.modelId ?? 'closed'}
         model={selected}
         writable={writable}

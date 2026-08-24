@@ -543,7 +543,7 @@
       },
       "editor": {
         "title": "{modelId} 라우팅 편집",
-        "description": "빈 필드는 Provider 기본값을 상속합니다. 저장하면 이 모델의 표시된 재정의를 한 번에 바꿉니다.",
+        "description": "다른 계층으로 드래그하면 우선순위가 바뀌고, 같은 계층에서 순서를 바꾸면 트래픽 비중이 바뀝니다. 저장하면 이 모델의 표시된 재정의가 한 번에 교체됩니다.",
         "preview": "실시간 라우트",
         "preview_empty": "대상 Provider가 없습니다. 이 모델은 일반 라우팅에서 사용되지 않습니다.",
         "inherit": "상속",
@@ -566,7 +566,18 @@
         "override_weight": "가중치 재정의",
         "provider_ready": "준비됨",
         "provider_unavailable": "사용 불가",
-        "provider_disabled": "Provider 사용 안 함"
+        "provider_disabled": "Provider 사용 안 함",
+        "board_help": "위쪽 계층부터 시도됩니다. 같은 계층의 비중은 슬라이더로 조정합니다.",
+        "tier": "우선순위 {value}",
+        "unused": "이 모델에서 사용 안 함",
+        "slot_high": "여기에 놓아 먼저 시도",
+        "slot_low": "여기에 놓아 마지막에 시도",
+        "slot_insert": "여기에 놓아 우선순위 추가",
+        "drag_handle": "드래그하여 순서 변경",
+        "share": "{value}%",
+        "blocked": "사용할 수 없는 Provider",
+        "new_priority": "새 우선순위",
+        "share_control": "트래픽 비중"
       }
     },
     "pagination": {
