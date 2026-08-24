@@ -102,6 +102,19 @@
         "description": "Probe a single provider by id",
         "option_url_description": "Dashboard URL"
       },
+      "import": {
+        "description": "Import CPA OAuth auth files from a file or directory",
+        "error_path_not_found": "Import path does not exist: {path}",
+        "error_path_kind": "Import path is not a regular file or directory: {path}",
+        "status_imported": "Imported {path} as provider {provider}",
+        "status_duplicate": "Skipped duplicate {path}; provider {provider} already exists",
+        "status_skipped": "Skipped {path}: unsupported auth type {type}",
+        "status_failed": "Failed {path}: {reason}",
+        "reason_invalid_json": "invalid JSON",
+        "reason_invalid_type": "missing or invalid top-level type",
+        "reason_unknown": "credential import failed",
+        "summary": "Import summary: imported {imported}, duplicate {duplicate}, skipped {skipped}, failed {failed}"
+      },
       "package_installed": "Installed provider package {package}. Reference it from an `ai-sdk` provider in your config"
     },
     "oauth": {
