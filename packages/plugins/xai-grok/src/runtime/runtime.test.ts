@@ -62,7 +62,7 @@ describe('xAI Grok runtime', () => {
     expect(runtime.raw).toBeUndefined();
   });
 
-  test('injects CLI identity and sanitizes Responses fields', async () => {
+  test('injects CLI identity, sanitizes Responses fields, and compiles custom tools before dispatch', async () => {
     let captured: Request | undefined;
     let observedSignal: AbortSignal | null | undefined;
     const controller = new AbortController();
@@ -81,6 +81,15 @@ describe('xAI Grok runtime', () => {
         model: 'grok-4.5',
         previous_response_id: 'resp_old',
         reasoning: { effort: 'high', summary: 'auto' },
+        tools: [
+          { type: 'custom', name: 'exec', format: { type: 'text' } },
+          { type: 'function', name: 'lookup', parameters: { type: 'object' } },
+        ],
+        tool_choice: { type: 'custom', name: 'exec' },
+        input: [
+          { type: 'custom_tool_call', call_id: 'call_1', name: 'exec', input: 'pwd' },
+          { type: 'custom_tool_call_output', call_id: 'call_1', output: 'done' },
+        ],
       }),
       signal: controller.signal,
     });
@@ -92,8 +101,178 @@ describe('xAI Grok runtime', () => {
     expect(captured?.headers.get('x-authenticateresponse')).toBe('authenticate-response');
     expect(captured?.headers.get('user-agent')).toBe('xai-grok-workspace/0.2.120');
     expect(captured?.headers.get('x-keep')).toBe('yes');
-    expect(await captured?.json()).toEqual({ model: 'grok-4.5', reasoning: { effort: 'high' } });
+    expect(await captured?.json()).toEqual({
+      model: 'grok-4.5',
+      reasoning: { effort: 'high' },
+      tools: [
+        {
+          type: 'function',
+          name: 'exec',
+          parameters: {
+            type: 'object',
+            properties: { input: { type: 'string' } },
+            required: ['input'],
+            additionalProperties: false,
+          },
+        },
+        { type: 'function', name: 'lookup', parameters: { type: 'object' } },
+      ],
+      tool_choice: { type: 'function', name: 'exec' },
+      input: [
+        { type: 'function_call', call_id: 'call_1', name: 'exec', arguments: '{"input":"pwd"}' },
+        { type: 'function_call_output', call_id: 'call_1', output: 'done' },
+      ],
+    });
     expect(observedSignal).toBe(controller.signal);
+  });
+
+  test('compiles nested namespace and additional_tools custom declarations before dispatch', async () => {
+    let captured: Request | undefined;
+    const dynamicFetch = createXAIGrokDynamicFetch(port(), {
+      fetch: async (input, init) => {
+        captured = new Request(input, init);
+        return new Response(null, { status: 200 });
+      },
+      now: () => 0,
+    });
+    await dynamicFetch('https://cli-chat-proxy.grok.com/v1/responses', {
+      method: 'POST',
+      body: JSON.stringify({
+        model: 'grok-4.5',
+        tools: [
+          {
+            type: 'namespace',
+            name: 'shell',
+            tools: [
+              { type: 'custom', name: 'exec', format: { type: 'text' } },
+              { type: 'function', name: 'lookup', parameters: { type: 'object' } },
+            ],
+          },
+        ],
+        input: [
+          {
+            type: 'additional_tools',
+            role: 'developer',
+            tools: [
+              { type: 'custom', name: 'apply_patch', format: { type: 'text' } },
+              { type: 'function', name: 'search', parameters: { type: 'object' } },
+            ],
+          },
+        ],
+      }),
+    });
+    expect(await captured?.json()).toEqual({
+      model: 'grok-4.5',
+      tools: [
+        {
+          type: 'namespace',
+          name: 'shell',
+          tools: [
+            {
+              type: 'function',
+              name: 'exec',
+              parameters: {
+                type: 'object',
+                properties: { input: { type: 'string' } },
+                required: ['input'],
+                additionalProperties: false,
+              },
+            },
+            { type: 'function', name: 'lookup', parameters: { type: 'object' } },
+          ],
+        },
+      ],
+      input: [
+        {
+          type: 'additional_tools',
+          role: 'developer',
+          tools: [
+            {
+              type: 'function',
+              name: 'apply_patch',
+              parameters: {
+                type: 'object',
+                properties: { input: { type: 'string' } },
+                required: ['input'],
+                additionalProperties: false,
+              },
+            },
+            { type: 'function', name: 'search', parameters: { type: 'object' } },
+          ],
+        },
+      ],
+    });
+  });
+
+  test('rejects grammar custom tools locally without calling Grok', async () => {
+    let hostCalls = 0;
+    const dynamicFetch = createXAIGrokDynamicFetch(port(), {
+      fetch: async () => {
+        hostCalls += 1;
+        return new Response(null, { status: 200 });
+      },
+      now: () => 0,
+    });
+    const response = await dynamicFetch('https://cli-chat-proxy.grok.com/v1/responses', {
+      method: 'POST',
+      headers: { authorization: 'Bearer placeholder' },
+      body: JSON.stringify({
+        model: 'grok-4.5',
+        tools: [
+          {
+            type: 'custom',
+            name: 'exec',
+            format: { type: 'grammar', syntax: 'regex', definition: '.*' },
+          },
+        ],
+      }),
+    });
+    expect(hostCalls).toBe(0);
+    expect(response.status).toBe(501);
+    expect(await response.json()).toEqual({
+      error: {
+        code: 'unsupported_feature',
+        message: 'xAI Grok OAuth cannot represent custom tool grammar format',
+      },
+    });
+  });
+
+  test('rejects nested grammar custom tools locally without calling Grok', async () => {
+    let hostCalls = 0;
+    const dynamicFetch = createXAIGrokDynamicFetch(port(), {
+      fetch: async () => {
+        hostCalls += 1;
+        return new Response(null, { status: 200 });
+      },
+      now: () => 0,
+    });
+    const response = await dynamicFetch('https://cli-chat-proxy.grok.com/v1/responses', {
+      method: 'POST',
+      body: JSON.stringify({
+        model: 'grok-4.5',
+        tools: [
+          {
+            type: 'namespace',
+            name: 'shell',
+            tools: [
+              {
+                type: 'custom',
+                name: 'exec',
+                format: { type: 'grammar', syntax: 'regex', definition: '.*' },
+              },
+            ],
+          },
+        ],
+      }),
+    });
+    expect(hostCalls).toBe(0);
+    expect(response.status).toBe(501);
+    expect(await response.json()).toEqual({
+      error: {
+        code: 'unsupported_feature',
+        message: 'xAI Grok OAuth cannot represent custom tool grammar format',
+      },
+    });
   });
 
   test('forwards non-Responses request bodies unchanged', async () => {
