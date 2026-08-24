@@ -12,7 +12,7 @@ import { type CliDeps, defaultCliDeps } from './dashboard-assets';
 import { doctorCommand } from './doctor';
 import { isKnownCliUserError, toExitCode } from './exit';
 import { pluginAdd, pluginConfig, pluginList, pluginPrune, pluginRemove } from './plugin-commands';
-import { providerList, providerLogin, providerTest } from './provider-commands';
+import { providerImport, providerList, providerLogin, providerTest } from './provider-commands';
 import { reloadCommand } from './reload';
 import { run, validatePortArgv } from './run';
 import { serviceInstall, serviceRestart, serviceStart, serviceStatus, serviceStop, serviceUninstall } from './service';
@@ -123,6 +123,10 @@ export const buildProgram = (deps: CliDeps = defaultCliDeps) => {
     .description(m['cli.provider.login.description']())
     .option('--provider <id>', m['cli.provider.login.option_provider_description']())
     .action(providerLogin);
+  provider
+    .command('import [path]')
+    .description(m['cli.provider.import.description']())
+    .action((path) => providerImport(path));
   provider
     .command('test <provider-id>')
     .description(m['cli.provider.test.description']())
