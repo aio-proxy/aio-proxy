@@ -126,6 +126,42 @@ test('converts function-call history', () => {
   ]);
 });
 
+test('keeps a reasoning summary with its preceding function call', () => {
+  const request = parseOpenAIResponses({
+    model: 'gpt-5.6-terra',
+    input: [
+      { type: 'function_call', call_id: 'call_1', name: 'read_file', arguments: '{"path":"README.md"}' },
+      {
+        type: 'reasoning',
+        summary: [{ type: 'summary_text', text: 'I will inspect the requested file.' }],
+      },
+      { type: 'function_call_output', call_id: 'call_1', output: 'contents' },
+    ],
+  });
+
+  const messages = openAIResponsesToModelMessages(request).messages;
+
+  expect(messages.map((message) => message.role)).toEqual(['assistant', 'tool']);
+  expect(messages[0]).toMatchObject({
+    role: 'assistant',
+    content: [
+      { type: 'tool-call', toolCallId: 'call_1', toolName: 'read_file', input: { path: 'README.md' } },
+      { type: 'reasoning', text: 'I will inspect the requested file.' },
+    ],
+  });
+  expect(messages[1]).toMatchObject({
+    role: 'tool',
+    content: [
+      {
+        type: 'tool-result',
+        toolCallId: 'call_1',
+        toolName: 'read_file',
+        output: { type: 'text', value: 'contents' },
+      },
+    ],
+  });
+});
+
 test('converts reasoning summary and drops encrypted content on the model path', () => {
   const warn = spyOn(console, 'warn').mockImplementation(() => {});
   const reasoning = {

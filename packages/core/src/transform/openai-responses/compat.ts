@@ -127,7 +127,7 @@ function convertReasoning(state: ConvertState, item: ReasoningItem, index: numbe
         ...(item.status === undefined ? {} : { status: item.status }),
       }),
     };
-    state.messages.push({ role: 'assistant', content: [part] });
+    appendAssistantPart(state.messages, state.previous, part);
   }
   state.previous = undefined;
 }
