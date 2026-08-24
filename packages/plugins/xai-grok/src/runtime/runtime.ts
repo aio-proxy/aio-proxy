@@ -89,14 +89,9 @@ async function outgoingBody(request: Request): Promise<BodyInit | Response | und
 
 function compileCompatibleCustomTools(value: object): boolean | Response {
   let changed = false;
-  const tools = Reflect.get(value, 'tools');
-  if (Array.isArray(tools)) {
-    for (const tool of tools) {
-      const compiled = compileCustomDeclaration(tool);
-      if (compiled instanceof Response) return compiled;
-      changed = compiled || changed;
-    }
-  }
+  const compiledTools = compileToolList(Reflect.get(value, 'tools'));
+  if (compiledTools instanceof Response) return compiledTools;
+  changed = compiledTools || changed;
   const choice = Reflect.get(value, 'tool_choice');
   if (typeof choice === 'object' && choice !== null && Reflect.get(choice, 'type') === 'custom') {
     Reflect.set(choice, 'type', 'function');
@@ -104,7 +99,32 @@ function compileCompatibleCustomTools(value: object): boolean | Response {
   }
   const input = Reflect.get(value, 'input');
   if (Array.isArray(input)) {
-    for (const item of input) changed = compileHistoryRecord(item) || changed;
+    for (const item of input) {
+      if (typeof item === 'object' && item !== null && Reflect.get(item, 'type') === 'additional_tools') {
+        const compiled = compileToolList(Reflect.get(item, 'tools'));
+        if (compiled instanceof Response) return compiled;
+        changed = compiled || changed;
+        continue;
+      }
+      changed = compileHistoryRecord(item) || changed;
+    }
+  }
+  return changed;
+}
+
+function compileToolList(tools: unknown): boolean | Response {
+  if (!Array.isArray(tools)) return false;
+  let changed = false;
+  for (const tool of tools) {
+    if (typeof tool === 'object' && tool !== null && Reflect.get(tool, 'type') === 'namespace') {
+      const compiled = compileToolList(Reflect.get(tool, 'tools'));
+      if (compiled instanceof Response) return compiled;
+      changed = compiled || changed;
+      continue;
+    }
+    const compiled = compileCustomDeclaration(tool);
+    if (compiled instanceof Response) return compiled;
+    changed = compiled || changed;
   }
   return changed;
 }
