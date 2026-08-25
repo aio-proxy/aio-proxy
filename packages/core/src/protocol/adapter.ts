@@ -105,6 +105,14 @@ export type EmbeddingResult = {
   readonly usage?: { readonly tokens?: number };
 };
 
+export type EmbeddingEgressContext = {
+  readonly modelId: string;
+  // OpenAI-only: whether the vectors are written as float arrays or base64.
+  readonly encodingFormat?: 'float' | 'base64';
+  // Gemini-only: single versus batch response envelope.
+  readonly action?: 'embedContent' | 'batchEmbedContents';
+};
+
 export type EmbeddingProtocolAdapter<TRequest, TContext> = Readonly<{
   capability: 'embedding';
   protocol: ProviderProtocol;
@@ -112,17 +120,30 @@ export type EmbeddingProtocolAdapter<TRequest, TContext> = Readonly<{
   model: (request: TRequest, context: TContext) => string;
   dimensions: (request: TRequest, context: TContext) => AliasDimensions;
   requestDiagnostics: (request: TRequest, context: TContext) => readonly ProtocolRequestDiagnostic[];
+  // Embeddings never resolve a logical session; every request uses a generated
+  // one. Declared so the shared pipeline can read `session` off either adapter.
+  session?: undefined;
   wantsStream: (request: TRequest, context: TContext) => boolean;
   rawRequest: (raw: Request, request: TRequest, resolvedModel: string, context: TContext) => Promise<Request>;
   embeddingInvocation: (request: TRequest, context: TContext) => EmbeddingInvocation;
-  embeddingJson: (result: EmbeddingResult, context: { readonly modelId: string }) => unknown;
+  embeddingJson: (result: EmbeddingResult, context: EmbeddingEgressContext) => unknown;
   errors: ProtocolErrorMapper;
 }>;
+
+export type AnyProtocolAdapter<TRequest, TContext> =
+  | ProtocolAdapter<TRequest, TContext>
+  | EmbeddingProtocolAdapter<TRequest, TContext>;
+
+export function isEmbeddingProtocolAdapter<TRequest, TContext>(
+  adapter: AnyProtocolAdapter<TRequest, TContext>,
+): adapter is EmbeddingProtocolAdapter<TRequest, TContext> {
+  return 'capability' in adapter && adapter.capability === 'embedding';
+}
 
 export function defineEmbeddingProtocolAdapter<TRequest, TContext>(
   definition: Omit<
     EmbeddingProtocolAdapter<TRequest, TContext>,
-    'dimensions' | 'requestDiagnostics' | 'wantsStream'
+    'dimensions' | 'requestDiagnostics' | 'session' | 'wantsStream'
   > & {
     readonly dimensions?: EmbeddingProtocolAdapter<TRequest, TContext>['dimensions'];
     readonly requestDiagnostics?: EmbeddingProtocolAdapter<TRequest, TContext>['requestDiagnostics'];

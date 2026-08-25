@@ -6,6 +6,7 @@ import {
   AiSdkProviderError,
   AnthropicMessagesTransformError,
   EmbeddingConvertUnsupportedError,
+  EmbeddingUsageRequiredError,
   GeminiGenerateContentTransformError,
   GeminiInlineDataTooLargeError,
   ImageInputUnsupportedError,
@@ -103,7 +104,12 @@ export const openAIEmbeddingsErrors: ProtocolErrorMapper = {
   unsupportedContentEncoding: () => openAIInvalid(415, 'unsupported_content_encoding', 'Unsupported Content-Encoding'),
   unsupported: () =>
     openAIInvalid(501, 'not_implemented', 'Provider does not support OpenAI Embeddings transform dispatch'),
-  provider: openAIProviderError,
+  // OpenAI embeddings egress requires prompt/total tokens, so an upstream that
+  // never reported them is an upstream failure, not an internal one.
+  provider: (error) =>
+    error instanceof EmbeddingUsageRequiredError
+      ? openAIInvalid(502, 'upstream_error', error.message)
+      : openAIProviderError(error),
   rateLimited: openAIRateLimited,
 };
 

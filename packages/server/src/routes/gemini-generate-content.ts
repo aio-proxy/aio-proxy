@@ -34,7 +34,7 @@ export function createGeminiGenerateContentRoutes(source: ProviderRouteSource) {
     }
     if (target.kind === 'embed') {
       return handleProtocolRequest({
-        adapter: geminiEmbeddingsAdapter as never,
+        adapter: geminiEmbeddingsAdapter,
         context: { model: target.model, action: target.action },
         rawRequest: context.req.raw,
         source,

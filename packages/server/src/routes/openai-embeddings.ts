@@ -7,7 +7,7 @@ import { handleProtocolRequest } from './pipeline';
 export function createOpenAIEmbeddingsRoutes(source: ProviderRouteSource) {
   return new Hono().post('/v1/embeddings', (context) =>
     handleProtocolRequest({
-      adapter: openAIEmbeddingsAdapter as never,
+      adapter: openAIEmbeddingsAdapter,
       context: {},
       rawRequest: context.req.raw,
       source,
