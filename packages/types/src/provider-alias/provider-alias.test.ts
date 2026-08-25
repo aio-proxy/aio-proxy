@@ -3,7 +3,7 @@ import { expect, test } from 'bun:test';
 import { z } from 'zod';
 
 import * as types from '../index';
-import { modelRoutes, validateAliasTargets } from './provider-alias';
+import { directModelIds, modelRoutes, validateAliasTargets } from './provider-alias';
 
 const issuesFor = (provider: {
   models?: readonly string[];
@@ -161,4 +161,12 @@ test('whenIdentity folds effort spelling and ignores key order', () => {
     types.whenIdentity({ effort: 'low', thinking: true }),
   );
   expect(types.whenIdentity({ thinking: false })).not.toBe(types.whenIdentity({}));
+});
+
+test('directModelIds: metadata keys register as direct routes', () => {
+  expect(directModelIds({ enabled: true, metadata: { 'gpt-image-2': {} } })).toEqual(['gpt-image-2']);
+});
+
+test('directModelIds: absent models alias and metadata yield no direct routes', () => {
+  expect(directModelIds({ enabled: true })).toEqual([]);
 });

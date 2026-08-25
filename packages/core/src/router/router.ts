@@ -26,6 +26,8 @@ export type RoutableProvider = {
   readonly weight?: number | undefined;
   readonly models?: readonly ModelId[] | undefined;
   readonly alias?: Readonly<Record<string, AliasConfig>> | undefined;
+  readonly configMetadata?: Readonly<Record<string, unknown>> | undefined;
+  readonly upstreamMetadata?: Readonly<Record<string, unknown>> | undefined;
 };
 
 export type ProviderInstance = RoutableProvider &
@@ -263,6 +265,8 @@ function directModelIds(provider: RoutableProvider): string[] {
   for (const modelId of preservedModelIds(provider)) {
     modelIds.add(modelId);
   }
+  for (const modelId of Object.keys(provider.configMetadata ?? {})) modelIds.add(modelId);
+  for (const modelId of Object.keys(provider.upstreamMetadata ?? {})) modelIds.add(modelId);
   return [...modelIds];
 }
 

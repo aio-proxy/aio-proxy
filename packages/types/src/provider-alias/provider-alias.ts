@@ -152,6 +152,7 @@ type RoutableModelSource = {
   readonly enabled: boolean;
   readonly models?: readonly string[] | undefined;
   readonly alias?: ProviderAlias | undefined;
+  readonly metadata?: Readonly<Record<string, unknown>> | undefined;
 };
 
 export type ModelRoute = {
@@ -194,6 +195,7 @@ export function directModelIds(provider: RoutableModelSource): string[] {
   for (const modelId of preservedModelIds(provider)) {
     modelIds.add(modelId);
   }
+  for (const modelId of Object.keys(provider.metadata ?? {})) modelIds.add(modelId);
   return [...modelIds];
 }
 

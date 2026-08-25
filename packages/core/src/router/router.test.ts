@@ -80,3 +80,20 @@ test('resolves prototype-named models and Provider IDs without a router policy',
   const ctorProvider = provider('constructor', { shared: { model: 'ctor-wire', preserve: false } });
   expect(new Router([ctorProvider]).resolve('shared')[0]?.provider.id).toBe('constructor');
 });
+
+test('registers metadata keys as direct routes', () => {
+  const router = new Router([
+    {
+      id: 'openai',
+      enabled: true,
+      kind: ProviderKind.Api,
+      configMetadata: { 'gpt-image-2': {} },
+    },
+  ]);
+  expect(router.resolve('gpt-image-2')[0]?.modelId).toBe('gpt-image-2');
+});
+
+test('does not wildcard when models alias and metadata are empty', () => {
+  const router = new Router([{ id: 'openai', enabled: true, kind: ProviderKind.Api }]);
+  expect(() => router.resolve('gpt-image-2')).toThrow();
+});
