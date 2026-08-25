@@ -226,6 +226,34 @@ const distributeRemainder = (total: number, parts: readonly number[]): number[] 
   return floors;
 };
 
+const allocateBounded = (total: number, parts: readonly number[]): number[] => {
+  if (parts.length === 0) return [];
+  const result = parts.map(() => 1);
+  let remaining = total - result.length;
+  let open = result.map((_, index) => index);
+  while (remaining > 0 && open.length > 0) {
+    const extras = distributeRemainder(
+      remaining,
+      open.map((index) => parts[index] ?? 1),
+    );
+    remaining = 0;
+    const nextOpen: number[] = [];
+    open.forEach((index, order) => {
+      const next = (result[index] ?? 1) + (extras[order] ?? 0);
+      if (next > ROUTING_VALUE_MAX) {
+        remaining += next - ROUTING_VALUE_MAX;
+        result[index] = ROUTING_VALUE_MAX;
+        return;
+      }
+      result[index] = next;
+      nextOpen.push(index);
+    });
+    if (nextOpen.length === open.length) break;
+    open = nextOpen;
+  }
+  return result;
+};
+
 export const applyRoutingShare = ({
   providers,
   rows,
@@ -253,12 +281,7 @@ export const applyRoutingShare = ({
   const total = memberWeight(providerId) + otherTotal;
   const selected = Math.min(Math.max(1, Math.round(weight)), Math.min(ROUTING_VALUE_MAX, total - others.length));
   const remaining = total - selected;
-  const leftover = remaining - others.length;
-  const distributed = (
-    leftover <= 0
-      ? others.map(() => 0)
-      : distributeRemainder(leftover, otherTotal === 0 ? others.map(() => 1) : otherWeights)
-  ).map((value) => Math.min(ROUTING_VALUE_MAX, value + 1));
+  const distributed = allocateBounded(remaining, otherTotal === 0 ? others.map(() => 1) : otherWeights);
   const nextWeights = new Map<string, number>([[providerId, selected]]);
   others.forEach((id, index) => {
     nextWeights.set(id, distributed[index] ?? 0);
