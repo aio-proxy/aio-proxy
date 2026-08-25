@@ -179,7 +179,12 @@ export {
   resolveApiKey,
 } from './provider/api/index';
 export { bridgeApiProviderToAiSdk, resolveOpenAIResponsesModel } from './provider/api-bridge/index';
-export { createProviderV4Invoke, validateProviderV4 } from './provider/provider-v4';
+export {
+  createProviderV4Embed,
+  createProviderV4Invoke,
+  type ProviderV4Embed,
+  validateProviderV4,
+} from './provider/provider-v4';
 export { createProxyFetch, type ProviderFetch } from './provider/proxy-fetch';
 export {
   type EffectiveCandidateRouting,

@@ -85,7 +85,7 @@ export function catalogFreshness(
 
 export function modelMetadataRecord(catalog: ModelCatalog): Readonly<Record<string, RuntimeModelMetadata>> {
   return Object.fromEntries(
-    catalog.language.map((descriptor) => {
+    [...catalog.language, ...catalog.embedding].map((descriptor) => {
       const protocol = metadataProtocol(descriptor.metadata);
       return [
         descriptor.id,

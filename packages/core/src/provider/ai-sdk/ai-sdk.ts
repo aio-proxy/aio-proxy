@@ -13,16 +13,19 @@ import type {
   AiSdkCallSettings,
   LoadedAiSdkRuntimeProvider,
   ModelMessage,
+  ProviderV4,
   TextStreamPart,
   ToolSet,
 } from '../../ai-sdk-bridge';
 import { streamAiSdkText } from '../../ai-sdk-bridge';
 import { AiSdkProviderError, ProviderNotInstalledError } from '../../error';
 import { imageTargetProtocolForPackage } from '../../image-input';
+import type { EmbeddingInvocation, EmbeddingResult } from '../../protocol/adapter';
 import type { AiSdkProviderLoadOptions } from '../ai-sdk-loader/index';
 import { loadAiSdkProvider } from '../ai-sdk-loader/index';
 import { createAiSdkReasoningAdapter, parsesDeepSeekReasoning } from '../ai-sdk-reasoning';
 import { wrapOpenAIPackageFetch } from '../openai-stream-fetch';
+import { createProviderV4Embed } from '../provider-v4';
 import type { ProviderFetch } from '../proxy-fetch';
 
 type AiSdkProviderOptions = Readonly<Record<string, Readonly<Record<string, unknown>>>> & {
@@ -74,6 +77,10 @@ export type AiSdkProviderInstance = {
   readonly ensureAvailable?: () => Promise<void>;
   readonly invoke: (request: AiSdkProviderInvokeRequest) => ReadableStream<TextStreamPart<ToolSet>>;
   readonly targetProtocol?: ProviderProtocol;
+  readonly embed?: (
+    invocation: EmbeddingInvocation,
+    options: { readonly modelId: string; readonly signal?: AbortSignal; readonly logicalRequest?: unknown },
+  ) => Promise<EmbeddingResult>;
 };
 
 type LanguageModelShape = {
@@ -156,6 +163,19 @@ export function createAiSdkProvider(
           }
         },
       });
+    },
+    async embed(invocation, embedOptions) {
+      const provider = await providerTask();
+      if (provider === null) {
+        throw new ProviderNotInstalledError(config.id, config.packageName);
+      }
+      if (typeof Reflect.get(provider, 'embeddingModel') !== 'function') {
+        throw new AiSdkProviderError(
+          config.id,
+          `ai-sdk provider "${config.packageName}" does not expose an embedding model resolver`,
+        );
+      }
+      return createProviderV4Embed(config.id, provider as ProviderV4)(invocation, embedOptions);
     },
   };
 }
