@@ -70,7 +70,7 @@ export const RoutingBoardList: React.FC<RoutingBoardListProps> = ({
                 onShareChange={
                   unused || items.length < 2
                     ? undefined
-                    : (percent) => {
+                    : (weight) => {
                         form.setFieldValue(
                           'providers',
                           applyRoutingShare({
@@ -78,7 +78,7 @@ export const RoutingBoardList: React.FC<RoutingBoardListProps> = ({
                             rows: form.getFieldValue('providers') ?? [],
                             memberIds: items.map((entry) => entry.providerId),
                             providerId: item.providerId,
-                            percent,
+                            weight,
                           }),
                         );
                       }

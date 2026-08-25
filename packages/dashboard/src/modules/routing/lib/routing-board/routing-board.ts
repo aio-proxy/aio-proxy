@@ -231,27 +231,25 @@ export const applyRoutingShare = ({
   rows,
   memberIds,
   providerId,
-  percent,
+  weight,
 }: {
   readonly providers: readonly DashboardRoutingProvider[];
   readonly rows: readonly RoutingBoardDraftRow[];
   readonly memberIds: readonly string[];
   readonly providerId: string;
-  readonly percent: number;
+  readonly weight: number;
 }): RoutingBoardDraftRow[] => {
   const previousById = new Map(rows.map((row) => [row.providerId, row]));
   const effective = new Map(
     effectiveRoutingCandidates(providers, draftRecord(rows)).map((candidate) => [candidate.providerId, candidate]),
   );
-  const clamped = Math.min(99, Math.max(1, Math.round(percent)));
   const others = memberIds.filter((id) => id !== providerId);
   const otherWeights = others.map((id) => {
-    const weight = effective.get(id)?.weight ?? 0;
-    return weight > 0 ? weight : 1;
+    const current = effective.get(id)?.weight ?? 0;
+    return current > 0 ? current : 1;
   });
-  const otherTotal = otherWeights.reduce((sum, weight) => sum + weight, 0);
-  const requested = Math.round((clamped / 100) * ROUTING_VALUE_MAX);
-  const selected = Math.min(requested, ROUTING_VALUE_MAX - others.length);
+  const otherTotal = otherWeights.reduce((sum, value) => sum + value, 0);
+  const selected = Math.min(Math.max(1, Math.round(weight)), ROUTING_VALUE_MAX - others.length);
   const remaining = ROUTING_VALUE_MAX - selected;
   const distributed = distributeRemainder(remaining, otherTotal === 0 ? others.map(() => 1) : otherWeights);
   const nextWeights = new Map<string, number>([[providerId, selected]]);

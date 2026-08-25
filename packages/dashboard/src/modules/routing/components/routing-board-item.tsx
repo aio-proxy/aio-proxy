@@ -1,5 +1,5 @@
 import { m } from '@aio-proxy/i18n';
-import type { DashboardRoutingProvider } from '@aio-proxy/types';
+import { ROUTING_VALUE_MAX, type DashboardRoutingProvider } from '@aio-proxy/types';
 import { Badge } from '@aio-proxy/ui/components/badge';
 import { Button } from '@aio-proxy/ui/components/button';
 import { Slider } from '@aio-proxy/ui/components/slider';
@@ -17,7 +17,7 @@ interface RoutingBoardItemProps {
   readonly writable: boolean;
   readonly draggable: boolean;
   readonly hasOverride: boolean;
-  readonly onShareChange?: (percent: number) => void;
+  readonly onShareChange?: (weight: number) => void;
 }
 
 export const RoutingBoardItem: React.FC<RoutingBoardItemProps> = ({
@@ -40,8 +40,11 @@ export const RoutingBoardItem: React.FC<RoutingBoardItemProps> = ({
     provider.state.status === 'unavailable'
       ? m['dashboard.routing.editor.provider_unavailable']()
       : m['dashboard.routing.editor.provider_ready']();
-  const percent = share === null ? null : Math.round(share * 100);
-  const showShareControl = writable && !unused && onShareChange !== undefined && percent !== null;
+  const draft = form.getFieldValue(`providers[${index}]`);
+  const weight = draft?.weight ?? provider.defaults.weight.effective;
+  const units = share === null ? null : Math.round(share * ROUTING_VALUE_MAX);
+  const showShareControl = writable && !unused && onShareChange !== undefined && units !== null;
+  const shareLabel = share === null ? null : Math.round(share * 10_000) / 100;
 
   return (
     <div
@@ -73,14 +76,14 @@ export const RoutingBoardItem: React.FC<RoutingBoardItemProps> = ({
           {provider.enabled ? null : (
             <Badge variant="secondary">{m['dashboard.routing.editor.provider_disabled']()}</Badge>
           )}
-          {unused ? (
+          {weight === 0 ? (
             <Badge data-testid={`routing-disabled-${provider.id}`} variant="outline">
               {m['dashboard.routing.editor.disabled_for_model']()}
             </Badge>
           ) : null}
-          {percent === null ? null : (
+          {shareLabel === null ? null : (
             <span className="text-sm text-muted-foreground" data-testid={`routing-share-${provider.id}`}>
-              {m['dashboard.routing.editor.share']({ value: percent })}
+              {m['dashboard.routing.editor.share']({ value: shareLabel })}
             </span>
           )}
           {writable && hasOverride ? (
@@ -101,8 +104,8 @@ export const RoutingBoardItem: React.FC<RoutingBoardItemProps> = ({
           aria-label={m['dashboard.routing.editor.share_control']()}
           data-testid={`routing-share-slider-${provider.id}`}
           min={1}
-          max={99}
-          value={percent}
+          max={ROUTING_VALUE_MAX - 1}
+          value={units}
           onValueChange={(value) => {
             const next = Array.isArray(value) ? value[0] : value;
             if (typeof next === 'number') onShareChange?.(next);

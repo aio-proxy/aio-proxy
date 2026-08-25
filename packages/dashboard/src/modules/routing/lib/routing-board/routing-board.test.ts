@@ -112,7 +112,7 @@ test('share slider keeps sibling ratios while changing one Provider percent', ()
       rows,
       memberIds: ['a', 'b'],
       providerId: 'a',
-      percent: 70,
+      weight: 7000,
     }),
   ).toEqual([
     { providerId: 'a', priority: 30, weight: 7000 },
@@ -293,11 +293,27 @@ test('share slider keeps every tier member positive on the 10000 weight scale', 
       rows: [{ providerId: 'a', priority: 30, weight: 6000 }, { providerId: 'b' }, { providerId: 'e' }],
       memberIds: ['a', 'b', 'e'],
       providerId: 'a',
-      percent: 99,
+      weight: 9900,
     }),
   ).toEqual([
     { providerId: 'a', priority: 30, weight: 9900 },
     { providerId: 'b', weight: 80 },
     { providerId: 'e', weight: 20 },
+  ]);
+});
+
+test('share slider can assign a 1-unit weight without rounding it away', () => {
+  expect(
+    applyRoutingShare({
+      providers,
+      rows,
+      memberIds: ['a', 'b'],
+      providerId: 'a',
+      weight: 1,
+    }),
+  ).toEqual([
+    { providerId: 'a', priority: 30 },
+    { providerId: 'b', weight: 9999 },
+    { providerId: 'c', weight: 0 },
   ]);
 });

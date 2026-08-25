@@ -154,6 +154,8 @@ test('Reset stays available for a blocked Provider with a leftover override', as
   renderDrawer();
 
   expect(screen.getByTestId('routing-list-blocked')).toBeInTheDocument();
+  expect(screen.queryByTestId('routing-disabled-d')).not.toBeInTheDocument();
+  expect(screen.getByTestId('routing-disabled-c')).toBeInTheDocument();
   fireEvent.click(screen.getByTestId('routing-reset-d'));
   fireEvent.click(screen.getByTestId('routing-save'));
 
