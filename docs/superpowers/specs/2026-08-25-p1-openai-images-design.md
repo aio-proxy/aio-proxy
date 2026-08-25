@@ -587,7 +587,9 @@ Adapter (colocated with the new protocol module):
   - `router.resolve` lookup is `gpt-image-2`
   - with no alias, raw outbound `model` and convert invoke are `gpt-image-2`
   - GPT-only fields do **not** change this default and do **not** 400
-- multipart blank-model matrix — missing / empty / whitespace `model` default as above; literal form `null` is **not** defaulted (lookup / raw / convert stay `"null"`)
+- multipart blank-model matrix — missing / empty / whitespace `model` default as above; literal form `null` is **not** defaulted (it is explicit id `"null"`)
+- multipart literal `null`, **no alias** — `router.resolve` lookup, raw outbound `model`, and convert invoke all stay `"null"`
+- multipart literal `null`, **with alias** — lookup is `"null"`; raw outbound `model` and convert invoke are the **resolved** candidate target, not `"null"` (same explicit-id rewrite as any other nonempty model)
 - defaulted-request alias — for **each** of generations JSON, edits JSON, and edits multipart (missing `model`): alias `gpt-image-2` → a different provider-specific target; lookup is still `gpt-image-2`; raw outbound `model` and convert invoke are that **resolved** target, not `gpt-image-2`
 - explicit non-empty `model` raw is a byte no-op (no JSON round-trip) when routing does not rewrite the id
 - convert `null` on optional `n` / `size` / `quality` / `response_format` / `stream` / `partial_images` = omitted/default; raw keeps those `null`s (JSON `model` is the exception above)
@@ -626,7 +628,7 @@ Edits, when implemented in this issue:
 - official edits JSON `17 * 20_971_520 + 1 MiB` (`357_564_416`) is accepted by preflight (not the 64 MiB language gate)
 - 50 MiB (`52_428_800`) file is 413 on convert, not treated as official-legal
 - convert mask: same format/size + alpha passes; missing alpha, dimension mismatch, or format mismatch → 400 before `generateImage`
-- JSON omitted / `null` / empty / whitespace and multipart missing / empty / whitespace `model` matrices as above; multipart literal `null` is not defaulted; defaulted-request alias uses the resolved id
+- JSON omitted / `null` / empty / whitespace and multipart missing / empty / whitespace `model` matrices as above; multipart literal `null` is an explicit id (no-alias stays `"null"`; alias uses the resolved target)
 - no default lower operator DoS cap; a future smaller ceiling is off unless an explicit deployment extension is configured
 
 Do not add convert SSE schema tests in P1.
