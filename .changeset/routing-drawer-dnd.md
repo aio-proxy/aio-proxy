@@ -1,5 +1,6 @@
 ---
 '@aio-proxy/dashboard': minor
+'@aio-proxy/i18n': minor
 'aio-proxy': minor
 ---
 

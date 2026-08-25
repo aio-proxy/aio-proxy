@@ -324,6 +324,28 @@ describe('model routing inventory', () => {
     expect(provider(response, 'oauth-alias', 'disabled-oauth').name).toBe('octocat');
   });
 
+  test('keeps assembling inventory when an OAuth account cannot be read', async () => {
+    const rawRecord = structuredClone(authoredRecord) as Record<string, unknown>;
+    const config = parseRuntimeConfig(rawRecord);
+    const response = await assembleRoutingInventory({
+      rawRecord,
+      config,
+      summaries: summariesFrom(config, {
+        'unavailable-oauth': unavailable,
+        'broken-oauth': unavailable,
+      }),
+      repository: {
+        ...catalogRepository(),
+        readAccount() {
+          throw new Error('invalid stored account');
+        },
+      },
+      writable: true,
+    });
+    expect(provider(response, 'oauth-alias', 'disabled-oauth').name).toBeUndefined();
+    expect(response.models.map((entry) => entry.modelId)).toEqual(expect.arrayContaining(['oauth-alias']));
+  });
+
   test('reads each OAuth account once across model routes', async () => {
     const rawRecord = structuredClone(authoredRecord) as Record<string, unknown>;
     const providers = rawRecord['providers'];

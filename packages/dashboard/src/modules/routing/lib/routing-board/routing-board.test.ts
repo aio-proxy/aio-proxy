@@ -297,8 +297,8 @@ test('share slider keeps every tier member positive on the 10000 weight scale', 
     }),
   ).toEqual([
     { providerId: 'a', priority: 30, weight: 9900 },
-    { providerId: 'b', weight: 80 },
-    { providerId: 'e', weight: 20 },
+    { providerId: 'b', weight: 79 },
+    { providerId: 'e', weight: 21 },
   ]);
 });
 
@@ -316,4 +316,35 @@ test('share slider can assign a 1-unit weight without rounding it away', () => {
     { providerId: 'b', weight: 9999 },
     { providerId: 'c', weight: 0 },
   ]);
+});
+
+test('reserves one weight unit for every sibling when the leftover is skewed', () => {
+  const three = [
+    ...providers.slice(0, 2),
+    provider({
+      id: 'e',
+      defaults: { priority: routingNumber(30), weight: routingNumber(1) },
+      effective: {
+        priority: 30,
+        weight: 1,
+        prioritySource: 'provider',
+        weightSource: 'provider',
+        eligible: true,
+        share: 0.0001,
+      },
+    }),
+  ];
+  expect(
+    applyRoutingShare({
+      providers: three,
+      rows: [
+        { providerId: 'a', priority: 30, weight: 9999 },
+        { providerId: 'b', weight: 9999 },
+        { providerId: 'e', weight: 1 },
+      ],
+      memberIds: ['a', 'b', 'e'],
+      providerId: 'a',
+      weight: 9900,
+    }),
+  ).toEqual([{ providerId: 'a', priority: 30, weight: 9900 }, { providerId: 'b', weight: 99 }, { providerId: 'e' }]);
 });

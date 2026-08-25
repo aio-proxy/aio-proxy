@@ -115,8 +115,12 @@ function routingProviderName(
   repository: Pick<PluginRepository, 'readAccount'>,
 ): string | undefined {
   if (provider.kind !== ProviderKind.OAuth) return provider.name ?? summary?.name;
-  const account = repository.readAccount(provider.id);
-  return account?.label ?? account?.fingerprint ?? summary?.accountLabel ?? provider.name ?? summary?.name;
+  try {
+    const account = repository.readAccount(provider.id);
+    return account?.label ?? account?.fingerprint ?? summary?.accountLabel ?? provider.name ?? summary?.name;
+  } catch {
+    return summary?.accountLabel ?? provider.name ?? summary?.name;
+  }
 }
 
 function providerRow(
