@@ -34,6 +34,7 @@ export {
   writeAnthropicMessagesSSE,
 } from './egress/anthropic-messages';
 export { writeGeminiGenerateContentResponse, writeGeminiGenerateContentSSE } from './egress/gemini-generate-content';
+export { writeGeminiInteractionsResponse, writeGeminiInteractionsSSE } from './egress/gemini-interactions';
 export { writeOpenAICompletionsResponse, writeOpenAICompletionsSSE } from './egress/openai-completions';
 export {
   type OpenAIResponsesResponse,

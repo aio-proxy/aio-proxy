@@ -2,11 +2,12 @@ import { expect, test } from 'bun:test';
 
 import { z } from 'zod';
 
-import { ImageInputUnsupportedError } from '../error';
+import { GeminiInteractionsUnsupportedFeatureError, ImageInputUnsupportedError } from '../error';
 import type { ProtocolErrorMapper } from './adapter';
 import {
   anthropicMessagesErrors,
   geminiGenerateContentErrors,
+  geminiInteractionsErrors,
   openAICompletionsErrors,
   openAIResponsesErrors,
 } from './errors';
@@ -50,6 +51,12 @@ const cases = [
     geminiGenerateContentErrors,
     { error: { code: 415, message: 'Unsupported Content-Encoding', status: 'INVALID_ARGUMENT' } },
     { error: { code: 400, message: 'Invalid Gemini request', status: 'INVALID_ARGUMENT' } },
+  ],
+  [
+    'Gemini Interactions',
+    geminiInteractionsErrors,
+    { error: { code: 415, message: 'Unsupported Content-Encoding', status: 'INVALID_ARGUMENT' } },
+    { error: { code: 400, message: 'Invalid Gemini Interactions request', status: 'INVALID_ARGUMENT' } },
   ],
 ] as const satisfies readonly (readonly [string, ProtocolErrorMapper, unknown, unknown])[];
 
@@ -120,6 +127,13 @@ test.each([
       error: { code: 409, message: 'previous_response_id matches multiple providers', status: 'ABORTED' },
     },
   ],
+  [
+    'Gemini Interactions',
+    geminiInteractionsErrors,
+    {
+      error: { code: 409, message: 'previous_response_id matches multiple providers', status: 'ABORTED' },
+    },
+  ],
 ] as const)('maps ambiguous previous responses for %s', async (_name, mapper, expected) => {
   const conflict = (mapper as ProtocolErrorMapper & { previousResponseConflict?: () => Response })
     .previousResponseConflict;
@@ -138,6 +152,7 @@ test('maps image compatibility errors into every inbound protocol shape', async 
     [openAIResponsesErrors, 501, 'unsupported_feature'],
     [anthropicMessagesErrors, 501, 'invalid_request_error'],
     [geminiGenerateContentErrors, 501, 'UNIMPLEMENTED'],
+    [geminiInteractionsErrors, 501, 'UNIMPLEMENTED'],
   ] as const;
 
   for (const [mapper, status, marker] of cases) {
@@ -184,5 +199,15 @@ test('gemini rateLimited builds a native 429 with Retry-After', async () => {
   expect(r.headers.get('retry-after')).toBe('3');
   expect(await r.json()).toEqual({
     error: { code: 429, message: expect.any(String), status: 'RESOURCE_EXHAUSTED' },
+  });
+});
+
+test('interactions modelUnsupported maps agent and not requestError', async () => {
+  const error = new GeminiInteractionsUnsupportedFeatureError('agent', 'agent');
+  expect(geminiInteractionsErrors.requestError(error)).toBeUndefined();
+  const response = geminiInteractionsErrors.modelUnsupported?.(error);
+  expect(response?.status).toBe(501);
+  expect(await response?.json()).toMatchObject({
+    error: { code: 501, status: 'UNIMPLEMENTED', message: 'agent is only supported for native Interactions execution' },
   });
 });

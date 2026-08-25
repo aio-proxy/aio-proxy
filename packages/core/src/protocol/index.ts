@@ -3,6 +3,7 @@ export * from './anthropic-messages/index';
 export * from './anthropic-thinking';
 export * from './errors';
 export * from './gemini-generate-content';
+export * from './gemini-interactions';
 export * from './openai-completions';
 export * from './openai-responses';
 export * from './request';
