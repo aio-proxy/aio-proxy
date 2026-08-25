@@ -119,6 +119,7 @@ test('materializes an enabled image-only API provider without a language transpo
   const provider = runtime.providers[0];
 
   expect(provider?.raw).toBeDefined();
+  expect(provider?.image).toBeDefined();
   expect(provider?.model).toBeUndefined();
   expect(supportsImage(provider!.capabilityIndex, 'gpt-image-2')).toBe(true);
   expect(supportsLanguage(provider!.capabilityIndex, 'gpt-image-2')).toBe(false);

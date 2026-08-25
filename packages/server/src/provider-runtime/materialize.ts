@@ -7,7 +7,7 @@ import {
   modelRoutes,
 } from '@aio-proxy/core';
 import type { AliasConfig, Config, DashboardProviderSummary, ModelMetadata, Provider } from '@aio-proxy/types';
-import { apiProviderEndpoints, preservedAliasModels, ProviderKind, ProviderProtocol } from '@aio-proxy/types';
+import { aliasTargetModels, apiProviderEndpoints, ProviderKind, ProviderProtocol } from '@aio-proxy/types';
 
 import { createProviderRequestTransformFetch } from '../provider-request-transform';
 import { createObservedFetch } from '../request-logging';
@@ -20,6 +20,7 @@ import type {
   RuntimeRawCapability,
 } from '../runtime';
 import { buildModelCapabilityIndex } from './capability-index';
+import { attachImageTransport } from './materialize-image';
 import { probeAiSdk, probeApi, type ProviderProbe } from './probe';
 
 export type MaterializeProvidersOptions = {
@@ -166,8 +167,12 @@ function capabilityIndexFromRoutable(provider: {
     metadata: provider.metadata,
     primaryProtocol: provider.primaryProtocol,
     extraProtocols: provider.extraProtocols,
-    preservedAliasTargets: provider.alias === undefined ? undefined : [...preservedAliasModels(provider.alias)],
+    aliasTargets: provider.alias === undefined ? undefined : aliasTargets(provider.alias),
   });
+}
+
+function aliasTargets(alias: Readonly<Record<string, AliasConfig>>): string[] {
+  return [...new Set(Object.values(alias).flatMap(aliasTargetModels))];
 }
 
 /** `false` disables the top-level proxy for this provider; omitted inherits it. */
@@ -203,11 +208,14 @@ export function materializeProviders(config: Config, options: MaterializeProvide
         const api = createApi(provider, { fetch: providerFetch });
         const primaryProtocol = apiProviderEndpoints(provider)[0].protocol;
         const instance = withRoutingDefaults(
-          materializeRuntimeProvider(api, {
-            ...(primaryProtocol === ProviderProtocol.OpenAIImage
-              ? {}
-              : { apiBridge: bridgeApiProvider(provider, { fetch: providerFetch }) }),
-          }),
+          attachImageTransport(
+            materializeRuntimeProvider(api, {
+              ...(primaryProtocol === ProviderProtocol.OpenAIImage
+                ? {}
+                : { apiBridge: bridgeApiProvider(provider, { fetch: providerFetch }) }),
+            }),
+            { config: provider, fetch: providerFetch },
+          ),
           provider,
         );
         probes.set(id, () => probeApi(provider, api));
@@ -221,7 +229,10 @@ export function materializeProviders(config: Config, options: MaterializeProvide
           createObservedFetch(createFetch(effectiveProxy(config.proxy, provider.proxy))),
         );
         const aiSdk = createAiSdk(provider, { fetch: providerFetch });
-        const instance = withRoutingDefaults(materializeRuntimeProvider(aiSdk), provider);
+        const instance = withRoutingDefaults(
+          attachImageTransport(materializeRuntimeProvider(aiSdk), { config: provider, fetch: providerFetch }),
+          provider,
+        );
         probes.set(id, () => probeAiSdk(aiSdk));
         providers.push(instance);
         summaries.push(providerSummary(instance, provider.name, provider));

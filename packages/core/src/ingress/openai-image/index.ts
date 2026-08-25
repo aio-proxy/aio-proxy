@@ -1,4 +1,8 @@
-export { assertEditsMultipartCounters, parseOpenAIImageEditsMultipart } from './multipart';
+export {
+  assertEditsMultipartCounters,
+  EDITS_MULTIPART_ENCODED_LIMIT,
+  parseOpenAIImageEditsMultipart,
+} from './multipart';
 export {
   CPA_DEFAULT_IMAGE_MODEL,
   parseOpenAIImageEdits,

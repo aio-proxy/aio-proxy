@@ -102,6 +102,7 @@ export {
 } from './ingress/openai-completions';
 export {
   CPA_DEFAULT_IMAGE_MODEL,
+  EDITS_MULTIPART_ENCODED_LIMIT,
   parseOpenAIImageEdits,
   parseOpenAIImageGenerations,
   type OpenAIImageRequest,
