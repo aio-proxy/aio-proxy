@@ -116,6 +116,23 @@ test('attaches embedding convert when an AI SDK instance exposes embed', () => {
   expect(runtime.embedding?.embed).toBe(embed);
 });
 
+test('omits embedding convert when an Anthropic-primary API provider has no embeddingModel', () => {
+  const config = ConfigSchema.parse({
+    providers: {
+      api: {
+        baseURL: 'https://api.anthropic.com',
+        kind: ProviderKind.Api,
+        models: ['claude-sonnet-4-0'],
+        protocol: ProviderProtocol.Anthropic,
+      },
+    },
+  });
+
+  const runtime = materializeProviders(config);
+
+  expect(runtime.providers[0]?.embedding).toBeUndefined();
+});
+
 test('materializes a configured API provider with raw and bridged model capabilities once', () => {
   const config = ConfigSchema.parse({
     providers: {

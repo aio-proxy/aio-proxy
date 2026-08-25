@@ -103,6 +103,20 @@ export function createAiSdkProvider(
     return loadedProviderTask;
   }
 
+  const embed: NonNullable<AiSdkProviderInstance['embed']> = async (invocation, embedOptions) => {
+    const provider = await providerTask();
+    if (provider === null) {
+      throw new ProviderNotInstalledError(config.id, config.packageName);
+    }
+    if (typeof Reflect.get(provider, 'embeddingModel') !== 'function') {
+      throw new AiSdkProviderError(
+        config.id,
+        `ai-sdk provider "${config.packageName}" does not expose an embedding model resolver`,
+      );
+    }
+    return createProviderV4Embed(config.id, provider as ProviderV4)(invocation, embedOptions);
+  };
+
   return {
     enabled: config.enabled,
     id: config.id,
@@ -164,20 +178,21 @@ export function createAiSdkProvider(
         },
       });
     },
-    async embed(invocation, embedOptions) {
-      const provider = await providerTask();
-      if (provider === null) {
-        throw new ProviderNotInstalledError(config.id, config.packageName);
-      }
-      if (typeof Reflect.get(provider, 'embeddingModel') !== 'function') {
-        throw new AiSdkProviderError(
-          config.id,
-          `ai-sdk provider "${config.packageName}" does not expose an embedding model resolver`,
-        );
-      }
-      return createProviderV4Embed(config.id, provider as ProviderV4)(invocation, embedOptions);
-    },
+    ...(packageExposesEmbeddingModel(config.packageName) ? { embed } : {}),
   };
+}
+
+/** Provider V4 always installs `embeddingModel`; these bundled packages only throw `NoSuchModelError`. */
+function packageExposesEmbeddingModel(packageName: string): boolean {
+  switch (packageName) {
+    case '@ai-sdk/anthropic':
+    case '@ai-sdk/groq':
+    case '@ai-sdk/xai':
+    case '@openrouter/ai-sdk-provider':
+      return false;
+    default:
+      return true;
+  }
 }
 
 async function resolveProviderModel(
