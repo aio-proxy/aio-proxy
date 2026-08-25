@@ -183,6 +183,7 @@ function antigravityProvider(rawAvailable: boolean): {
     value: {
       alias: { m: { model: 'm', preserve: false } },
       capability: 'default',
+      capabilityIndex: { m: new Set(['language']) },
       enabled: true,
       id: 'antigravity',
       kind: ProviderKind.OAuth,
@@ -212,6 +213,7 @@ function provider(
     value: {
       alias: { m: { model: 'm', preserve: false } },
       baseURL: `https://${id}.example.test`,
+      capabilityIndex: { m: new Set(['language']) },
       enabled: true,
       endpointTransports: [{ protocol, passthrough: raw }],
       id,

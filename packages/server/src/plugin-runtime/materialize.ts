@@ -8,7 +8,7 @@ import {
   prepareOAuthPluginAccount,
 } from '../plugin-account';
 import type { RuntimeProviderInstance } from '../runtime';
-import { createRuntimeProvider, withRoutingConfig } from './capabilities';
+import { catalogModelIds, createRuntimeProvider, withRoutingConfig } from './capabilities';
 import {
   catalogDiagnostic,
   catalogFreshness,
@@ -237,11 +237,7 @@ export async function materializePluginProvider(
       options.previous?.identity === identity
         ? {
             ...options.previous,
-            provider: withRoutingConfig(
-              options.previous.provider,
-              config,
-              storedCatalog.catalog.language.map(({ id }) => id),
-            ),
+            provider: withRoutingConfig(options.previous.provider, config, catalogModelIds(storedCatalog.catalog)),
           }
         : undefined;
     return {
@@ -253,11 +249,7 @@ export async function materializePluginProvider(
   const credentials = options.previous?.identity === identity ? options.previous.credentials : createCredentials();
   const catalogJob = catalogJobFor(credentials);
   if (options.previous?.identity === identity) {
-    const provider = withRoutingConfig(
-      options.previous.provider,
-      config,
-      storedCatalog.catalog.language.map(({ id }) => id),
-    );
+    const provider = withRoutingConfig(options.previous.provider, config, catalogModelIds(storedCatalog.catalog));
     const cacheEntry = { ...options.previous, provider };
     return { provider, summary: persistedSummary(provider, storedCatalog), state, catalogJob, cacheEntry };
   }

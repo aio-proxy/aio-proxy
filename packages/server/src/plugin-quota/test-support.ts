@@ -111,6 +111,7 @@ function runtimeProvider(id: string): RuntimeProviderInstance {
     kind: ProviderKind.OAuth,
     enabled: true,
     models: ['model'],
+    capabilityIndex: { model: new Set(['language']) },
     plugin: PLUGIN,
     capability: CAPABILITY,
   } as Record<string, unknown>;

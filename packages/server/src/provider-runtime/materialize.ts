@@ -6,12 +6,20 @@ import {
   createProxyFetch,
   modelRoutes,
 } from '@aio-proxy/core';
-import type { Config, DashboardProviderSummary, Provider } from '@aio-proxy/types';
-import { apiProviderEndpoints, ProviderKind } from '@aio-proxy/types';
+import type { AliasConfig, Config, DashboardProviderSummary, ModelMetadata, Provider } from '@aio-proxy/types';
+import { apiProviderEndpoints, preservedAliasModels, ProviderKind, type ProviderProtocol } from '@aio-proxy/types';
 
 import { createProviderRequestTransformFetch } from '../provider-request-transform';
 import { createObservedFetch } from '../request-logging';
-import type { ModelTransport, RuntimeProviderInput, RuntimeProviderInstance, RuntimeRawCapability } from '../runtime';
+import type {
+  ImageTransport,
+  ModelCapabilityIndex,
+  ModelTransport,
+  RuntimeProviderInput,
+  RuntimeProviderInstance,
+  RuntimeRawCapability,
+} from '../runtime';
+import { buildModelCapabilityIndex } from './capability-index';
 import { probeAiSdk, probeApi, type ProviderProbe } from './probe';
 
 export type MaterializeProvidersOptions = {
@@ -39,6 +47,7 @@ export function materializeRuntimeProvider(
 
   const { apiBridge } = options;
   if (provider.kind === ProviderKind.Api) {
+    const [primary, ...rest] = provider.endpointTransports;
     return {
       id: provider.id,
       kind: provider.kind,
@@ -47,6 +56,13 @@ export function materializeRuntimeProvider(
       ...(provider.models === undefined ? {} : { models: provider.models }),
       ...(provider.alias === undefined ? {} : { alias: provider.alias }),
       ...(provider.metadata === undefined ? {} : { configMetadata: provider.metadata }),
+      capabilityIndex: capabilityIndexFromRoutable({
+        models: provider.models,
+        alias: provider.alias,
+        metadata: provider.metadata,
+        primaryProtocol: primary.protocol,
+        extraProtocols: rest.map((endpoint) => endpoint.protocol),
+      }),
       hasApiKey: provider.apiKey !== undefined,
       raw: {
         resolve: ({ protocol }) => {
@@ -76,6 +92,12 @@ export function materializeRuntimeProvider(
       ...(provider.models === undefined ? {} : { models: provider.models }),
       ...(provider.alias === undefined ? {} : { alias: provider.alias }),
       ...(provider.metadata === undefined ? {} : { configMetadata: provider.metadata }),
+      capabilityIndex: capabilityIndexFromRoutable({
+        models: provider.models,
+        alias: provider.alias,
+        metadata: provider.metadata,
+        primaryProtocol: provider.targetProtocol,
+      }),
       model: {
         ...(provider.ensureAvailable === undefined ? {} : { ensureAvailable: provider.ensureAvailable }),
         invoke: provider.invoke,
@@ -84,19 +106,23 @@ export function materializeRuntimeProvider(
     };
   }
 
-  throw new TypeError('Runtime provider must expose a raw or model capability');
+  throw new TypeError('Runtime provider must expose a raw, model, or image capability');
 }
 
 function isMaterializedRuntimeProvider(provider: RuntimeProviderInput): provider is RuntimeProviderInstance {
   const raw = Object.hasOwn(provider, 'raw') ? (provider as { readonly raw?: unknown }).raw : undefined;
   const model = Object.hasOwn(provider, 'model') ? (provider as { readonly model?: unknown }).model : undefined;
+  const image = Object.hasOwn(provider, 'image') ? (provider as { readonly image?: unknown }).image : undefined;
   if (raw !== undefined && !isRuntimeRawCapability(raw)) {
     throw new TypeError(`Runtime provider ${provider.id} has an invalid raw capability`);
   }
   if (model !== undefined && !isModelTransport(model)) {
     throw new TypeError(`Runtime provider ${provider.id} has an invalid model capability`);
   }
-  return raw !== undefined || model !== undefined;
+  if (image !== undefined && !isImageTransport(image)) {
+    throw new TypeError(`Runtime provider ${provider.id} has an invalid image capability`);
+  }
+  return raw !== undefined || model !== undefined || image !== undefined;
 }
 
 function isRuntimeRawCapability(value: unknown): value is RuntimeRawCapability {
@@ -114,6 +140,34 @@ function isModelTransport(value: unknown): value is ModelTransport {
       typeof value.ensureAvailable === 'function') &&
     (!('targetProtocol' in value) || value.targetProtocol === undefined || typeof value.targetProtocol === 'function')
   );
+}
+
+function isImageTransport(value: unknown): value is ImageTransport {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'invoke' in value &&
+    typeof value.invoke === 'function' &&
+    (!('ensureAvailable' in value) ||
+      value.ensureAvailable === undefined ||
+      typeof value.ensureAvailable === 'function')
+  );
+}
+
+function capabilityIndexFromRoutable(provider: {
+  readonly models?: readonly string[];
+  readonly alias?: Readonly<Record<string, AliasConfig>>;
+  readonly metadata?: Readonly<Record<string, ModelMetadata>>;
+  readonly primaryProtocol?: ProviderProtocol;
+  readonly extraProtocols?: readonly ProviderProtocol[];
+}): ModelCapabilityIndex {
+  return buildModelCapabilityIndex({
+    models: provider.models,
+    metadata: provider.metadata,
+    primaryProtocol: provider.primaryProtocol,
+    extraProtocols: provider.extraProtocols,
+    preservedAliasTargets: provider.alias === undefined ? undefined : [...preservedAliasModels(provider.alias)],
+  });
 }
 
 /** `false` disables the top-level proxy for this provider; omitted inherits it. */

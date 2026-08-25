@@ -1,4 +1,11 @@
-import type { AiSdkProviderInstance, ApiProviderInstance, PluginRegistrySnapshot, Router } from '@aio-proxy/core';
+import type {
+  AiSdkProviderInstance,
+  ApiProviderInstance,
+  ImageInvocation,
+  ImageTransportResult,
+  PluginRegistrySnapshot,
+  Router,
+} from '@aio-proxy/core';
 import type { LogicalRequestContext, ProviderExecutedTool, TokenCountCapability } from '@aio-proxy/plugin-sdk';
 import type {
   AliasConfig,
@@ -44,6 +51,20 @@ export type ModelTransport = {
   readonly targetProtocol?: (modelId: string) => ProviderProtocol | undefined;
 };
 
+export type InboundCapability = 'language' | 'image';
+export type ModelCapabilityIndex = Readonly<Record<string, ReadonlySet<InboundCapability>>>;
+
+export type ImageTransportInvokeRequest = {
+  readonly modelId: string;
+  readonly invocation: ImageInvocation;
+  readonly signal?: AbortSignal;
+};
+
+export type ImageTransport = {
+  readonly ensureAvailable?: () => Promise<void>;
+  readonly invoke: (request: ImageTransportInvokeRequest) => Promise<ImageTransportResult>;
+};
+
 export type LegacyRuntimeProviderInstance = ApiProviderInstance | AiSdkProviderInstance;
 type RuntimeProviderBase = {
   readonly id: string;
@@ -60,10 +81,12 @@ type RuntimeProviderBase = {
   readonly hasApiKey?: boolean;
   readonly tokenCount?: TokenCountCapability;
 };
-export type RuntimeProviderInstance = RuntimeProviderBase &
-  (
-    | { readonly raw: RuntimeRawCapability; readonly model?: ModelTransport }
-    | { readonly raw?: RuntimeRawCapability; readonly model: ModelTransport }
+export type RuntimeProviderInstance = RuntimeProviderBase & {
+  readonly capabilityIndex: ModelCapabilityIndex;
+} & (
+    | { readonly raw: RuntimeRawCapability; readonly model?: ModelTransport; readonly image?: ImageTransport }
+    | { readonly raw?: RuntimeRawCapability; readonly model: ModelTransport; readonly image?: ImageTransport }
+    | { readonly raw?: RuntimeRawCapability; readonly model?: ModelTransport; readonly image: ImageTransport }
   );
 export type RuntimeProviderInput = LegacyRuntimeProviderInstance | RuntimeProviderInstance;
 

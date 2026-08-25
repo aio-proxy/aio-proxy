@@ -6,7 +6,13 @@ import { ConfigSchema, type Config, ProviderKind, ProviderProtocol } from '@aio-
 
 import { LogicalSessionStore } from '../../src/logical-session-store';
 import { ProviderCooldownStore } from '../../src/routes/pipeline/provider-cooldown';
-import type { ModelTransport, ProviderRouteSource, RawTransport, RuntimeProviderInstance } from '../../src/runtime';
+import type {
+  ModelCapabilityIndex,
+  ModelTransport,
+  ProviderRouteSource,
+  RawTransport,
+  RuntimeProviderInstance,
+} from '../../src/runtime';
 import {
   createUsageCapture,
   type PassthroughUsageOptions,
@@ -58,9 +64,11 @@ export function rawProvider(options: {
     return options.invoke?.(request, context, transportOptions) ?? Response.json({ provider: options.id });
   };
   const model = options.model === undefined ? undefined : instrumentModel(options.model, calls);
+  const modelId = options.modelId ?? `${options.id}-model`;
   const provider = {
-    alias: routeAlias(options.modelId ?? `${options.id}-model`),
+    alias: routeAlias(modelId),
     baseURL: `https://${options.id}.example.test/v1`,
+    capabilityIndex: languageCapabilityIndex(modelId),
     enabled: true,
     id: options.id,
     kind: ProviderKind.Api,
@@ -84,8 +92,10 @@ export function modelProvider(options: {
 }): FakeProvider {
   const calls = providerCalls();
   const model = instrumentModel(options, calls);
+  const modelId = options.modelId ?? `${options.id}-model`;
   const provider = {
-    alias: routeAlias(options.modelId ?? `${options.id}-model`),
+    alias: routeAlias(modelId),
+    capabilityIndex: languageCapabilityIndex(modelId),
     enabled: true,
     id: options.id,
     invoke: model.invoke,
@@ -199,6 +209,10 @@ function instrumentModel(
       return model.invoke(request);
     },
   };
+}
+
+function languageCapabilityIndex(...modelIds: readonly string[]): ModelCapabilityIndex {
+  return Object.fromEntries(modelIds.map((id) => [id, new Set(['language'] as const)]));
 }
 
 function routeAlias(model: string) {

@@ -222,6 +222,7 @@ test.each(abortReasons)('maps no fake provider error for an exact %s abort reaso
 function countProvider(countTokens: TokenCountCapability['countTokens'], id = 'counter'): RuntimeProviderInstance {
   return {
     alias: { 'count-model': { model: `${id}-wire`, preserve: false } },
+    capabilityIndex: { [`${id}-wire`]: new Set(['language']) },
     enabled: true,
     id,
     kind: ProviderKind.OAuth,

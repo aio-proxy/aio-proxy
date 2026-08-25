@@ -10,7 +10,9 @@ import type {
   TokenCountCapability,
 } from '@aio-proxy/plugin-sdk';
 import { type OAuthProvider, ProviderKind, type ProviderProtocol } from '@aio-proxy/types';
+import { uniq } from 'es-toolkit/array';
 
+import { buildModelCapabilityIndex } from '../provider-runtime/capability-index';
 import type { RuntimeProviderInstance } from '../runtime';
 import { modelMetadataRecord } from './catalog';
 import { PluginRawResolverError, PluginRawTransportError } from './types';
@@ -23,12 +25,17 @@ export const pluginProtocol = {
   'openai-image': 'openai-image',
 } as const satisfies Record<ProviderProtocol, ProtocolId>;
 
+export function catalogModelIds(catalog: Pick<ModelCatalog, 'language' | 'image'>): string[] {
+  return uniq([...catalog.language.map(({ id }) => id), ...catalog.image.map(({ id }) => id)]);
+}
+
 function rawCapability(rawResolver: RawResolver | undefined, catalog: ModelCatalog) {
   if (rawResolver === undefined) return undefined;
   const languageCatalogById = new Map(catalog.language.map((descriptor) => [descriptor.id, descriptor]));
+  const imageCatalogById = new Map(catalog.image.map((descriptor) => [descriptor.id, descriptor]));
   return {
     resolve({ protocol, modelId }: { readonly protocol: ProviderProtocol; readonly modelId: string }) {
-      const descriptor = languageCatalogById.get(modelId);
+      const descriptor = imageCatalogById.get(modelId) ?? languageCatalogById.get(modelId);
       const transport = rawResolver({
         protocol: pluginProtocol[protocol],
         modelId,
@@ -112,28 +119,43 @@ export function createRuntimeProvider(
   const supportedProviderTools = new Set(providerTools?.supported);
   const tokenCount = tokenCountCapability(Reflect.get(result, 'tokenCount'));
   const upstreamMetadata = modelMetadataRecord(catalog);
-  return {
+  const models = exposedModelIds(catalogModelIds(catalog), config.models);
+  const capabilityIndex = buildModelCapabilityIndex({
+    catalog,
+    models,
+    metadata: config.metadata,
+    configMetadata: config.metadata,
+    upstreamMetadata,
+  });
+  const base = {
     id: config.id,
     kind: ProviderKind.OAuth,
     enabled: config.enabled,
     ...routingDefaults(config),
-    models: exposedModelIds(
-      catalog.language.map(({ id }) => id),
-      config.models,
-    ),
+    models,
+    capabilityIndex,
     ...(config.alias === undefined ? {} : { alias: config.alias }),
     ...(config.metadata === undefined ? {} : { configMetadata: config.metadata }),
     upstreamMetadata,
     plugin: config.plugin,
     capability: config.capability,
-    ...(raw === undefined ? {} : { raw }),
     ...(tokenCount === undefined ? {} : { tokenCount }),
-    model: {
-      invoke: createProviderV4Invoke(config.id, result.provider),
-      supportsProviderTool: (type) => supportedProviderTools.has(type),
-      targetProtocol: (modelId) => upstreamMetadata[modelId]?.protocol,
-    },
   };
+  if (catalog.language.length > 0) {
+    return {
+      ...base,
+      ...(raw === undefined ? {} : { raw }),
+      model: {
+        invoke: createProviderV4Invoke(config.id, result.provider),
+        supportsProviderTool: (type) => supportedProviderTools.has(type),
+        targetProtocol: (modelId) => upstreamMetadata[modelId]?.protocol,
+      },
+    };
+  }
+  if (raw !== undefined) {
+    return { ...base, raw };
+  }
+  throw new Error('Invalid ProviderV4 runtime');
 }
 
 function routingDefaults(config: { readonly priority?: number; readonly weight?: number }): {

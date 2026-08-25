@@ -99,6 +99,7 @@ export function provider(options: {
 }): RuntimeProviderInstance {
   return {
     alias: { [requestedModel]: { model: `${options.id}-wire`, preserve: false } },
+    capabilityIndex: { [`${options.id}-wire`]: new Set(['language']) },
     enabled: true,
     id: options.id,
     kind: ProviderKind.OAuth,

@@ -3,6 +3,7 @@ import { afterEach, expect, test } from 'bun:test';
 import type { LogicalRequestContext, RawResolver, RawTransportOptions } from '@aio-proxy/plugin-sdk';
 import { ProviderKind, ProviderProtocol } from '@aio-proxy/types';
 
+import { supportsImage } from '../provider-runtime/capability-index';
 import { exposedModelIds, withRoutingConfig } from './capabilities';
 import { PluginRawResolverError, PluginRawTransportError, validatePluginProtocolMap } from './index';
 import { catalog, cleanup, diagnostics, materializePluginProvider, runtimeFixture } from './test-support';
@@ -46,6 +47,7 @@ test('maps every internal provider protocol to the plugin SDK protocol', () => {
     [ProviderProtocol.OpenAIResponse]: 'openai-response',
     [ProviderProtocol.Anthropic]: 'anthropic',
     [ProviderProtocol.Gemini]: 'gemini',
+    [ProviderProtocol.OpenAIImage]: 'openai-image',
   });
 });
 
@@ -290,4 +292,31 @@ test('withRoutingConfig re-derives models from the unfiltered catalog ids', () =
   const next = withRoutingConfig(cached, { ...providerConfig, models: ['b'] } as never, ['a', 'b']);
 
   expect(next.models).toEqual(['b']);
+});
+
+test('createRuntimeProvider exposes catalog.image ids and does not synthesize language transport when language is empty', async () => {
+  const imageCatalog = {
+    ...catalog,
+    language: [],
+    image: [{ id: 'gpt-image-2' }],
+  };
+  const fixture = runtimeFixture(
+    { kind: 'static' },
+    {
+      catalog: imageCatalog,
+      createRuntime: async () => ({
+        provider: providerV4(),
+        raw: ({ protocol }: { readonly protocol: string }) =>
+          protocol === 'openai-image' ? { invoke: async () => new Response('ok') } : undefined,
+      }),
+    },
+  );
+
+  const result = await materializeFixture(fixture);
+  const provider = result.provider;
+
+  expect(provider?.models).toContain('gpt-image-2');
+  expect(provider?.model).toBeUndefined();
+  expect(supportsImage(provider!.capabilityIndex, 'gpt-image-2')).toBe(true);
+  expect(provider?.raw?.resolve({ protocol: ProviderProtocol.OpenAIImage, modelId: 'gpt-image-2' })).toBeDefined();
 });

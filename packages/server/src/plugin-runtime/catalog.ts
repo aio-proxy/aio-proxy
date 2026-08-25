@@ -85,7 +85,7 @@ export function catalogFreshness(
 
 export function modelMetadataRecord(catalog: ModelCatalog): Readonly<Record<string, RuntimeModelMetadata>> {
   return Object.fromEntries(
-    catalog.language.map((descriptor) => {
+    [...catalog.language, ...catalog.image].map((descriptor) => {
       const protocol = metadataProtocol(descriptor.metadata);
       return [
         descriptor.id,
@@ -106,6 +106,7 @@ function metadataProtocol(metadata: unknown): ProviderProtocol | undefined {
     case ProviderProtocol.OpenAIResponse:
     case ProviderProtocol.Anthropic:
     case ProviderProtocol.Gemini:
+    case ProviderProtocol.OpenAIImage:
       return protocol;
     default:
       return undefined;

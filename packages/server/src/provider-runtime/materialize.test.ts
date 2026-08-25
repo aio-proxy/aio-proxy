@@ -41,7 +41,7 @@ function withModelAttempt<T>(
 }
 
 function assertRuntimeProviderRequiresCapability(provider: AiSdkProviderInstance): void {
-  // @ts-expect-error a materialized runtime provider must expose raw or model
+  // @ts-expect-error a materialized runtime provider must expose raw, model, or image
   const runtime: RuntimeProviderInstance = provider;
   void runtime;
 }
@@ -395,14 +395,14 @@ test('materializes AI SDK inputs with model capabilities only', () => {
   expect(aiSdkRuntime).not.toHaveProperty('weight');
 });
 
-test('rejects an injected runtime provider without raw or model capabilities', () => {
+test('rejects an injected runtime provider without raw, model, or image capabilities', () => {
   expect(() =>
     materializeRuntimeProvider({
       enabled: true,
       id: 'invalid',
       kind: ProviderKind.OAuth,
     } as never),
-  ).toThrow('must expose a raw or model capability');
+  ).toThrow('must expose a raw, model, or image capability');
 });
 
 test('materializes an API input whose raw placeholder is undefined', async () => {
@@ -503,6 +503,7 @@ test('materializes an injected API test double without baseURL through the snaps
 test('returns an already materialized provider unchanged', () => {
   const invoke = () => new ReadableStream();
   const provider = {
+    capabilityIndex: { ready: new Set(['language']) },
     enabled: true,
     id: 'ready',
     invoke,
