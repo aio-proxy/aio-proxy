@@ -289,9 +289,35 @@ test('withRoutingConfig re-derives models from the unfiltered catalog ids', () =
     },
   } as never;
 
-  const next = withRoutingConfig(cached, { ...providerConfig, models: ['b'] } as never, ['a', 'b']);
+  const next = withRoutingConfig(cached, { ...providerConfig, models: ['b'] } as never, {
+    ...catalog,
+    language: [{ id: 'a' }, { id: 'b' }],
+  });
 
   expect(next.models).toEqual(['b']);
+});
+
+test('withRoutingConfig rebuilds capabilityIndex when catalog.image gains an id', () => {
+  const cached = {
+    id: 'person',
+    kind: ProviderKind.OAuth,
+    enabled: true,
+    models: ['gpt-5'],
+    capabilityIndex: { 'gpt-5': new Set(['language']) },
+    model: {
+      invoke: () => {
+        throw new Error('unused');
+      },
+    },
+  } as never;
+
+  const next = withRoutingConfig(cached, providerConfig as never, {
+    ...catalog,
+    language: [{ id: 'gpt-5' }],
+    image: [{ id: 'gpt-image-2' }],
+  });
+
+  expect(supportsImage(next.capabilityIndex, 'gpt-image-2')).toBe(true);
 });
 
 test('createRuntimeProvider exposes catalog.image ids and does not synthesize language transport when language is empty', async () => {

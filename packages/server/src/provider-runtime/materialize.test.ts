@@ -12,6 +12,7 @@ import { createServerState } from '#server-test-lifecycle';
 
 import { withAttemptLogContext, withRequestLogContext } from '../request-logging';
 import type { RuntimeProviderInstance } from '../runtime';
+import { supportsImage } from './capability-index';
 import { materializeProviders, materializeRuntimeProvider, providerSummary } from './materialize';
 
 const headerSet = (field: string, value: unknown) => ({
@@ -82,6 +83,27 @@ test('materializes a configured API provider with raw and bridged model capabili
     }),
   ).toBeDefined();
   expect(runtime.providers[0]?.model?.invoke).toBe(bridge.invoke);
+});
+
+test('materializes an enabled image-only API provider without a language transport', () => {
+  const config = ConfigSchema.parse({
+    providers: {
+      images: {
+        baseURL: 'https://api.openai.com/v1',
+        kind: ProviderKind.Api,
+        models: ['gpt-image-2'],
+        protocol: ProviderProtocol.OpenAIImage,
+      },
+    },
+  });
+
+  const runtime = materializeProviders(config);
+  const provider = runtime.providers[0];
+
+  expect(provider?.raw).toBeDefined();
+  expect(provider?.model).toBeUndefined();
+  expect(supportsImage(provider!.capabilityIndex, 'gpt-image-2')).toBe(true);
+  expect(provider?.raw?.resolve({ protocol: ProviderProtocol.OpenAIImage, modelId: 'gpt-image-2' })).toBeDefined();
 });
 
 test('api provider raw capability resolves any declared endpoint protocol', () => {

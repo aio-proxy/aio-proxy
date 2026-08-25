@@ -7,7 +7,7 @@ import {
   modelRoutes,
 } from '@aio-proxy/core';
 import type { AliasConfig, Config, DashboardProviderSummary, ModelMetadata, Provider } from '@aio-proxy/types';
-import { apiProviderEndpoints, preservedAliasModels, ProviderKind, type ProviderProtocol } from '@aio-proxy/types';
+import { apiProviderEndpoints, preservedAliasModels, ProviderKind, ProviderProtocol } from '@aio-proxy/types';
 
 import { createProviderRequestTransformFetch } from '../provider-request-transform';
 import { createObservedFetch } from '../request-logging';
@@ -201,9 +201,12 @@ export function materializeProviders(config: Config, options: MaterializeProvide
           createObservedFetch(createFetch(effectiveProxy(config.proxy, provider.proxy))),
         );
         const api = createApi(provider, { fetch: providerFetch });
+        const primaryProtocol = apiProviderEndpoints(provider)[0].protocol;
         const instance = withRoutingDefaults(
           materializeRuntimeProvider(api, {
-            apiBridge: bridgeApiProvider(provider, { fetch: providerFetch }),
+            ...(primaryProtocol === ProviderProtocol.OpenAIImage
+              ? {}
+              : { apiBridge: bridgeApiProvider(provider, { fetch: providerFetch }) }),
           }),
           provider,
         );

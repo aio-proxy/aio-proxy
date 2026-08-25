@@ -77,20 +77,26 @@ export function exposedModelIds(catalogIds: readonly string[], whitelist: readon
 export function withRoutingConfig(
   provider: RuntimeProviderInstance,
   config: OAuthProvider,
-  catalogIds: readonly string[],
+  catalog: ModelCatalog,
 ): RuntimeProviderInstance {
   const {
     alias: _previousAlias,
     configMetadata: _previousConfigMetadata,
     priority: _previousPriority,
     weight: _previousWeight,
+    capabilityIndex: _previousCapabilityIndex,
+    upstreamMetadata: _previousUpstreamMetadata,
     ...previousProvider
   } = provider;
+  const models = exposedModelIds(catalogModelIds(catalog), config.models);
+  const { capabilityIndex, upstreamMetadata } = routingCapabilities(config, catalog, models);
   return {
     ...previousProvider,
     enabled: config.enabled,
     ...routingDefaults(config),
-    models: exposedModelIds(catalogIds, config.models),
+    models,
+    capabilityIndex,
+    upstreamMetadata,
     ...(config.alias === undefined ? {} : { alias: config.alias }),
     ...(config.metadata === undefined ? {} : { configMetadata: config.metadata }),
   };
@@ -118,15 +124,8 @@ export function createRuntimeProvider(
   const providerTools = providerToolCapability(Reflect.get(result, 'providerTools'));
   const supportedProviderTools = new Set(providerTools?.supported);
   const tokenCount = tokenCountCapability(Reflect.get(result, 'tokenCount'));
-  const upstreamMetadata = modelMetadataRecord(catalog);
   const models = exposedModelIds(catalogModelIds(catalog), config.models);
-  const capabilityIndex = buildModelCapabilityIndex({
-    catalog,
-    models,
-    metadata: config.metadata,
-    configMetadata: config.metadata,
-    upstreamMetadata,
-  });
+  const { capabilityIndex, upstreamMetadata } = routingCapabilities(config, catalog, models);
   const base = {
     id: config.id,
     kind: ProviderKind.OAuth,
@@ -156,6 +155,27 @@ export function createRuntimeProvider(
     return { ...base, raw };
   }
   throw new Error('Invalid ProviderV4 runtime');
+}
+
+function routingCapabilities(
+  config: OAuthProvider,
+  catalog: ModelCatalog,
+  models: readonly string[],
+): {
+  readonly capabilityIndex: ReturnType<typeof buildModelCapabilityIndex>;
+  readonly upstreamMetadata: ReturnType<typeof modelMetadataRecord>;
+} {
+  const upstreamMetadata = modelMetadataRecord(catalog);
+  return {
+    capabilityIndex: buildModelCapabilityIndex({
+      catalog,
+      models,
+      metadata: config.metadata,
+      configMetadata: config.metadata,
+      upstreamMetadata,
+    }),
+    upstreamMetadata,
+  };
 }
 
 function routingDefaults(config: { readonly priority?: number; readonly weight?: number }): {
