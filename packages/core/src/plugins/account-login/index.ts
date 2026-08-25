@@ -8,6 +8,7 @@ export {
   OAuthCatalogDiscoveryTimeoutError,
   OAuthLoginResultValidationError,
   OAuthLoginTimeoutError,
+  OAuthCredentialImportUnsupportedError,
   OAuthProxyUnsupportedError,
   ProviderAccountAlreadyExistsError,
   ProviderAccountChangedError,
@@ -16,6 +17,9 @@ export {
   ProviderFingerprintMismatchError,
 } from './errors';
 export {
+  type ImportOAuthAccountOptions,
+  type ImportOAuthAccountResult,
+  importOAuthAccount,
   type LoginOAuthAccountOptions,
   type LoginOAuthAccountResult,
   loginOAuthAccount,

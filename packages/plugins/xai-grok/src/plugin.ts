@@ -8,7 +8,7 @@ import {
 } from '@aio-proxy/plugin-sdk';
 
 import { discoverXAIGrokModels, initialXAIGrokCatalogFallback, XAI_GROK_CATALOG_TTL_MS } from './catalog';
-import { loginXAIGrok, type XAIGrokOAuthOptions } from './oauth';
+import { loginXAIGrok, type XAIGrokOAuthOptions, xaiLoginResult } from './oauth';
 import { readXAIGrokQuota } from './quota';
 import { createXAIGrokRuntime } from './runtime/index';
 import { credentialSchema, type XAIGrokCredential } from './schema';
@@ -28,6 +28,22 @@ export const englishPresentationText: XAIGrokPresentationText = {
   deviceInstructions: 'Enter code',
   waitingForAuthorization: 'Waiting for xAI authorization',
 };
+
+const cpaXAISchema = zod
+  .object({
+    type: zod.literal('xai'),
+    access_token: zod.string().trim().min(1),
+    refresh_token: zod.string().trim().min(1),
+    expired: zod.unknown().optional(),
+    email: zod.string().trim().min(1).optional(),
+    sub: zod.string().trim().min(1).optional(),
+  })
+  .loose();
+
+function cpaExpiresAt(value: unknown): number {
+  const parsed = typeof value === 'string' ? Date.parse(value) : Number.NaN;
+  return Number.isFinite(parsed) ? parsed : 0;
+}
 
 export function createXAIGrokPlugin(
   presentationText: XAIGrokPresentationText = englishPresentationText,
@@ -50,6 +66,22 @@ export function createXAIGrokPlugin(
         deviceInstructions: presentationText.deviceInstructions,
         waitingForAuthorization: presentationText.waitingForAuthorization,
       });
+    },
+    credentialImports: {
+      cpa: {
+        types: ['xai'],
+        async import(_context, options, raw) {
+          await accountOptions.schema.parseAsync(options);
+          const source = cpaXAISchema.parse(raw);
+          return xaiLoginResult({
+            accessToken: source.access_token,
+            refreshToken: source.refresh_token,
+            expiresAt: cpaExpiresAt(source.expired),
+            ...(source.email === undefined ? {} : { email: source.email }),
+            ...(source.sub === undefined ? {} : { subject: source.sub }),
+          });
+        },
+      },
     },
     catalog: {
       policy: { kind: 'ttl', ttlMs: XAI_GROK_CATALOG_TTL_MS },

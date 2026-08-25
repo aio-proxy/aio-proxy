@@ -102,6 +102,19 @@
         "description": "ID로 단일 프로바이더 프로브",
         "option_url_description": "대시보드 URL"
       },
+      "import": {
+        "description": "파일 또는 디렉터리에서 CPA OAuth 인증 파일 가져오기",
+        "error_path_not_found": "가져오기 경로가 없습니다: {path}",
+        "error_path_kind": "가져오기 경로가 일반 파일 또는 디렉터리가 아닙니다: {path}",
+        "status_imported": "{path} 파일을 공급자 {provider}(으)로 가져왔습니다",
+        "status_duplicate": "중복 파일 {path}을(를) 건너뛰었습니다. 공급자 {provider}이(가) 이미 있습니다",
+        "status_skipped": "{path}을(를) 건너뛰었습니다: 지원하지 않는 인증 유형 {type}",
+        "status_failed": "{path} 가져오기 실패: {reason}",
+        "reason_invalid_json": "잘못된 JSON",
+        "reason_invalid_type": "유효한 최상위 type 필드가 없습니다",
+        "reason_unknown": "자격 증명 가져오기에 실패했습니다",
+        "summary": "가져오기 요약: 성공 {imported}, 중복 {duplicate}, 건너뜀 {skipped}, 실패 {failed}"
+      },
       "package_installed": "프로바이더 패키지 {package}을(를) 설치했습니다. 구성에서 `ai-sdk` 프로바이더로 참조하세요"
     },
     "oauth": {

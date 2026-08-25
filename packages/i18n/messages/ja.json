@@ -102,6 +102,19 @@
         "description": "指定した ID のプロバイダーを 1 つプローブします",
         "option_url_description": "ダッシュボード URL"
       },
+      "import": {
+        "description": "ファイルまたはディレクトリから CPA OAuth 認証ファイルをインポート",
+        "error_path_not_found": "インポートパスが存在しません: {path}",
+        "error_path_kind": "インポートパスは通常ファイルでもディレクトリでもありません: {path}",
+        "status_imported": "{path} をプロバイダー {provider} としてインポートしました",
+        "status_duplicate": "重複する {path} をスキップしました。プロバイダー {provider} は既に存在します",
+        "status_skipped": "{path} をスキップしました: 未対応の認証タイプ {type}",
+        "status_failed": "{path} のインポートに失敗しました: {reason}",
+        "reason_invalid_json": "無効な JSON",
+        "reason_invalid_type": "有効なトップレベル type がありません",
+        "reason_unknown": "認証情報のインポートに失敗しました",
+        "summary": "インポート結果: 成功 {imported}、重複 {duplicate}、スキップ {skipped}、失敗 {failed}"
+      },
       "package_installed": "プロバイダーパッケージ {package} をインストールしました。設定内の `ai-sdk` プロバイダーから参照してください"
     },
     "oauth": {

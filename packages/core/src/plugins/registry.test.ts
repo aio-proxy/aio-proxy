@@ -100,6 +100,47 @@ describe('PluginRegistry staging', () => {
     expect(snapshot.registry.oauthCapabilities()).toHaveLength(0);
   });
 
+  test('duplicate CPA type rejects the whole second plugin', async () => {
+    const importer = {
+      types: ['codex'],
+      async import() {
+        return { fingerprint: 'x', suggestedKey: 'x', credentials: { token: 'x' } };
+      },
+    };
+    const snapshot = await loadPluginRegistry({
+      ...base,
+      builtIns: [
+        {
+          packageName: '@example/cpa-first',
+          version: '1.0.0',
+          descriptor: definePlugin((api) =>
+            api.oauth.register(fakeAdapter('first', { credentialImports: { cpa: importer } })),
+          ),
+        },
+        {
+          packageName: '@example/cpa-second',
+          version: '1.0.0',
+          descriptor: definePlugin((api) => {
+            api.oauth.register(fakeAdapter('unrelated'));
+            api.oauth.register(fakeAdapter('second', { credentialImports: { cpa: importer } }));
+          }),
+        },
+      ],
+      enablements: [{ packageName: '@example/cpa-first' }, { packageName: '@example/cpa-second' }],
+      importPackage: async () => {
+        throw new Error('must not import');
+      },
+    });
+
+    expect(snapshot.registry.resolveOAuth('@example/cpa-first', 'first')).toBeDefined();
+    expect(snapshot.registry.resolveOAuth('@example/cpa-second', 'unrelated')).toBeUndefined();
+    expect(snapshot.registry.resolveOAuth('@example/cpa-second', 'second')).toBeUndefined();
+    expect(snapshot.plugins.get('@example/cpa-second')?.state).toMatchObject({
+      status: 'failed',
+      diagnostic: { code: 'PLUGIN_LOAD_FAILED' },
+    });
+  });
+
   test('preserves class adapter, catalog, and quota method receivers', async () => {
     class Catalog {
       readonly policy = { kind: 'static' } as const;
@@ -135,6 +176,20 @@ describe('PluginRegistry staging', () => {
         }
       })();
       readonly #token = 'private-token';
+      readonly credentialImports = {
+        cpa: new (class {
+          readonly types = ['class-auth'] as const;
+          readonly #token = 'private-import-token';
+
+          async import() {
+            return {
+              fingerprint: 'class-import',
+              suggestedKey: 'class-import',
+              credentials: { token: this.#token },
+            };
+          }
+        })(),
+      };
 
       async login() {
         return {
@@ -188,5 +243,8 @@ describe('PluginRegistry staging', () => {
     await expect(resolved.quota.read({} as never)).resolves.toMatchObject({
       items: [{ remainingRatio: 1 }],
     });
+    await expect(
+      resolved.credentialImports?.cpa?.import({ progress: () => {}, signal: new AbortController().signal }, {}, {}),
+    ).resolves.toMatchObject({ credentials: { token: 'private-import-token' } });
   });
 });

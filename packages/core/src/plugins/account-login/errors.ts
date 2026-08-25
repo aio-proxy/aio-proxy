@@ -85,6 +85,16 @@ export class OAuthProxyUnsupportedError extends Error {
     super('PROXY_UNSUPPORTED');
   }
 }
+
+export class OAuthCredentialImportUnsupportedError extends Error {
+  override readonly name = 'OAuthCredentialImportUnsupportedError';
+  constructor(
+    readonly source: 'cpa',
+    readonly type: string,
+  ) {
+    super('OAUTH_CREDENTIAL_IMPORT_UNSUPPORTED');
+  }
+}
 export class ProviderConfigInvalidError extends Error {
   override readonly name = 'ProviderConfigInvalidError';
   constructor() {

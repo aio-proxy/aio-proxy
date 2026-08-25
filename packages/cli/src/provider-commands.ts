@@ -15,6 +15,7 @@ import {
 } from '@aio-proxy/types';
 
 import { ProviderDashboardError } from './errors';
+import { providerImport as pluginProviderImport } from './plugin-commands/provider-import';
 import { type ProviderLoginOptions, providerLogin as pluginProviderLogin } from './plugin-commands/provider-login';
 
 export type ProviderListOptions = {
@@ -35,6 +36,10 @@ export const providerErrors = [
 
 export async function providerLogin(capability: string | undefined, options: ProviderLoginOptions): Promise<void> {
   await pluginProviderLogin(capability, options);
+}
+
+export async function providerImport(path: string | undefined): Promise<void> {
+  await pluginProviderImport(path);
 }
 
 export async function providerList(options: ProviderListOptions): Promise<void> {

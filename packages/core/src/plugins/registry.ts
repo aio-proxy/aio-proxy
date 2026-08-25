@@ -41,6 +41,34 @@ function validateQuota(value: unknown): NonNullable<OAuthAdapter['quota']> | und
   };
 }
 
+function validateCredentialImports(value: unknown): OAuthAdapter['credentialImports'] | undefined {
+  if (value === undefined) return undefined;
+  if (!isRecord(value)) throw new Error('Invalid OAuth adapter');
+  const cpa = value['cpa'];
+  if (cpa === undefined) return {};
+  if (!isRecord(cpa)) throw new Error('Invalid OAuth adapter');
+  const types = cpa['types'];
+  const importCredential = cpa['import'];
+  if (!Array.isArray(types) || types.length === 0 || typeof importCredential !== 'function') {
+    throw new Error('Invalid OAuth adapter');
+  }
+  const validatedTypes: string[] = [];
+  for (const type of types) {
+    if (typeof type !== 'string' || type === '' || type !== type.trim() || validatedTypes.includes(type)) {
+      throw new Error('Invalid OAuth adapter');
+    }
+    validatedTypes.push(type);
+  }
+  return {
+    cpa: {
+      types: validatedTypes as [string, ...string[]],
+      import: importCredential.bind(cpa) as NonNullable<
+        NonNullable<OAuthAdapter['credentialImports']>['cpa']
+      >['import'],
+    },
+  };
+}
+
 function validateAdapter(value: unknown): { readonly id: string; readonly adapter: OAuthAdapter } {
   if (!isRecord(value)) throw new Error('Invalid OAuth adapter');
   const {
@@ -54,6 +82,7 @@ function validateAdapter(value: unknown): { readonly id: string; readonly adapte
     createRuntime,
     catalog,
     quota,
+    credentialImports,
   } = value;
   const id = CapabilityIdSchema.parse(rawId);
   const validatedDisplayName = LocalizedTextSchema.safeParse(displayName);
@@ -68,6 +97,7 @@ function validateAdapter(value: unknown): { readonly id: string; readonly adapte
   if (!isPluginZodSchema(credentials)) throw new Error('Invalid OAuth adapter');
   if (typeof login !== 'function' || typeof createRuntime !== 'function') throw new Error('Invalid OAuth adapter');
   const validatedQuota = validateQuota(quota);
+  const validatedCredentialImports = validateCredentialImports(credentialImports);
   if (!isRecord(catalog)) throw new Error('Invalid OAuth adapter');
   const { discover, policy, initialFallback, defaultAliases } = catalog;
   if (
@@ -114,6 +144,7 @@ function validateAdapter(value: unknown): { readonly id: string; readonly adapte
       },
       createRuntime: createRuntime.bind(value) as OAuthAdapter['createRuntime'],
       ...(validatedQuota === undefined ? {} : { quota: validatedQuota }),
+      ...(validatedCredentialImports === undefined ? {} : { credentialImports: validatedCredentialImports }),
     },
   };
 }
@@ -138,6 +169,7 @@ export function createPluginRegistryHost(createPluginLogger: PluginLoggerFactory
   readonly stage: (plugin: string, options?: PluginStagingOptions) => PluginStagingRegistry;
 } {
   const committed = new Map<string, OAuthCapability>();
+  const committedCpaTypes = new Map<string, string>();
   const registry: PluginRegistry = {
     resolveOAuth(plugin, capability) {
       return committed.get(`${plugin}\0${capability}`)?.adapter;
@@ -151,6 +183,7 @@ export function createPluginRegistryHost(createPluginLogger: PluginLoggerFactory
     registry,
     stage(plugin, options = {}) {
       const staged = new Map<string, OAuthCapability>();
+      const stagedCpaTypes = new Set<string>();
       let sealed = false;
       return {
         api: {
@@ -160,6 +193,12 @@ export function createPluginRegistryHost(createPluginLogger: PluginLoggerFactory
               if (sealed) throw new Error('Plugin staging registry is sealed');
               const { id, adapter } = validateAdapter(value);
               if (staged.has(id)) throw new Error('Duplicate OAuth capability');
+              for (const type of adapter.credentialImports?.cpa?.types ?? []) {
+                if (stagedCpaTypes.has(type) || committedCpaTypes.has(type)) {
+                  throw new Error(`Duplicate OAuth credential import type: ${type}`);
+                }
+                stagedCpaTypes.add(type);
+              }
               staged.set(id, { plugin, capability: id, adapter });
             },
           },
@@ -171,6 +210,9 @@ export function createPluginRegistryHost(createPluginLogger: PluginLoggerFactory
           if (!sealed) throw new Error('Plugin staging registry must be sealed before commit');
           for (const capability of staged.values()) {
             committed.set(`${plugin}\0${capability.capability}`, capability);
+            for (const type of capability.adapter.credentialImports?.cpa?.types ?? []) {
+              committedCpaTypes.set(type, `${plugin}#${capability.capability}`);
+            }
           }
         },
       };

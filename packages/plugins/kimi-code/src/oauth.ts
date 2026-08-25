@@ -45,6 +45,17 @@ type TokenResponse = {
   readonly interval: number | undefined;
 };
 
+export async function kimiLoginResult(credential: KimiCredential) {
+  const fingerprint = await sha256(credential.refreshToken);
+  return {
+    fingerprint,
+    suggestedKey: `kimi-${fingerprint.slice(0, 12)}`,
+    accountLabel: 'Kimi Code',
+    credentials: credential,
+    expiresAt: credential.expiresAt,
+  };
+}
+
 export async function loginKimi(
   context: OAuthLoginContext,
   presentation: KimiLoginPresentation,
@@ -70,15 +81,7 @@ export async function loginKimi(
       device_code: device.deviceCode,
     });
     if (token.accessToken !== undefined) {
-      const credential = completeCredential(token, deviceId, now());
-      const fingerprint = await sha256(credential.refreshToken);
-      return {
-        fingerprint,
-        suggestedKey: `kimi-${fingerprint.slice(0, 12)}`,
-        accountLabel: 'Kimi Code',
-        credentials: credential,
-        expiresAt: credential.expiresAt,
-      };
+      return await kimiLoginResult(completeCredential(token, deviceId, now()));
     }
     if (token.error === 'authorization_pending') {
       context.progress(presentation.waiting);

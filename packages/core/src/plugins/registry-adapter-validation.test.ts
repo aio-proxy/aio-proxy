@@ -84,6 +84,53 @@ describe('PluginRegistry staging', () => {
     ['non-function quota read', fakeAdapter('quota-read-invalid', { quota: { read: 'invalid' } })],
     ['non-function quota reset', fakeAdapter('quota-reset-invalid', { quota: { read() {}, reset: 'invalid' } })],
     ['non-boolean proxy support', fakeAdapter('proxy-support-invalid', { supportsProxy: 'false' })],
+    ['null credential imports', fakeAdapter('imports-null', { credentialImports: null })],
+    ['array credential imports', fakeAdapter('imports-array', { credentialImports: [] })],
+    [
+      'missing CPA import method',
+      fakeAdapter('imports-method', {
+        credentialImports: { cpa: { types: ['codex'] } },
+      }),
+    ],
+    [
+      'blank CPA type',
+      fakeAdapter('imports-blank', {
+        credentialImports: {
+          cpa: {
+            types: [' '],
+            async import() {
+              return { fingerprint: 'x', suggestedKey: 'x', credentials: { token: 'x' } };
+            },
+          },
+        },
+      }),
+    ],
+    [
+      'whitespace-padded CPA type',
+      fakeAdapter('imports-padded', {
+        credentialImports: {
+          cpa: {
+            types: [' codex'],
+            async import() {
+              return { fingerprint: 'x', suggestedKey: 'x', credentials: { token: 'x' } };
+            },
+          },
+        },
+      }),
+    ],
+    [
+      'duplicate CPA type',
+      fakeAdapter('imports-duplicate', {
+        credentialImports: {
+          cpa: {
+            types: ['codex', 'codex'],
+            async import() {
+              return { fingerprint: 'x', suggestedKey: 'x', credentials: { token: 'x' } };
+            },
+          },
+        },
+      }),
+    ],
   ])('rejects %s atomically', async (_name, adapter) => {
     const snapshot = await loadPluginRegistry({
       ...base,

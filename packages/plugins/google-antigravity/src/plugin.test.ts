@@ -77,6 +77,71 @@ test('uses the fixed loopback callback and returns a complete stable account ide
   expect(requests).toHaveLength(3);
 });
 
+test('imports an expired CPA file and recovers a missing project id', async () => {
+  const requests: string[] = [];
+  const adapter = await adapterFrom(
+    createGoogleAntigravityPlugin(undefined, {
+      fetch: async (input, init) => {
+        const request = new Request(input, init);
+        requests.push(request.url);
+        if (request.url.includes('oauth2.googleapis.com/token')) {
+          return Response.json({ access_token: 'fresh-access', expires_in: 3600 });
+        }
+        return Response.json({ cloudaicompanionProject: 'project-1' });
+      },
+      now: () => 1_700_000_000_000,
+      sleep: async () => {},
+    }),
+  );
+  const importer = adapter.credentialImports?.cpa;
+  if (importer === undefined) throw new Error('CPA importer not registered');
+
+  const result = await importer.import(
+    { progress: () => {}, signal: new AbortController().signal },
+    {},
+    {
+      type: 'antigravity',
+      access_token: 'stale-access',
+      refresh_token: 'refresh-1',
+      email: 'person@example.com',
+      expired: '2020-01-01T00:00:00.000Z',
+    },
+  );
+
+  expect(requests).toEqual([
+    'https://oauth2.googleapis.com/token',
+    'https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist',
+  ]);
+  expect(result).toEqual({
+    fingerprint: 'person@example.com',
+    suggestedKey: 'antigravity-person@example.com',
+    accountLabel: 'person@example.com',
+    credentials: {
+      accessToken: 'fresh-access',
+      refreshToken: 'refresh-1',
+      expiresAt: 1_700_003_600_000,
+      email: 'person@example.com',
+      projectId: 'project-1',
+    },
+    expiresAt: 1_700_003_600_000,
+  });
+
+  const beforeExisting = requests.length;
+  await importer.import(
+    { progress: () => {}, signal: new AbortController().signal },
+    {},
+    {
+      type: 'antigravity',
+      access_token: 'access-1',
+      refresh_token: 'refresh-1',
+      email: 'person@example.com',
+      project_id: 'project-1',
+      expired: '2026-08-24T12:00:00.000Z',
+    },
+  );
+  expect(requests.slice(beforeExisting).some((url) => url.includes('loadCodeAssist'))).toBe(false);
+});
+
 test('rejects missing callback code before token exchange', async () => {
   let fetched = false;
   const adapter = await adapterFrom(

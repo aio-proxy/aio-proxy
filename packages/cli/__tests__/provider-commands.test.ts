@@ -60,4 +60,23 @@ describe('provider commands', () => {
       rmSync(home, { recursive: true, force: true });
     }
   });
+
+  test('provider import exposes an optional path', () => {
+    const result = runCli(['provider', 'import', '--help']);
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout.toString()).toContain('[path]');
+    expect(result.stdout.toString()).toContain('Import CPA OAuth auth files');
+  });
+
+  test('provider import rejects a supplied nonexistent path', () => {
+    const root = mkdtempSync(join(tmpdir(), 'aio-proxy-cli-import-'));
+    try {
+      const missing = join(root, 'missing');
+      const result = runCli(['provider', 'import', missing]);
+      expect(result.exitCode).toBe(1);
+      expect(`${result.stdout}${result.stderr}`).toContain(`Import path does not exist: ${missing}`);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 });

@@ -102,6 +102,19 @@
         "description": "TODO(i18n): Probe a single provider by id",
         "option_url_description": "TODO(i18n): Dashboard URL"
       },
+      "import": {
+        "description": "從檔案或目錄匯入 CPA OAuth 驗證檔案",
+        "error_path_not_found": "匯入路徑不存在：{path}",
+        "error_path_kind": "匯入路徑不是一般檔案或目錄：{path}",
+        "status_imported": "已從 {path} 匯入提供者 {provider}",
+        "status_duplicate": "已略過重複檔案 {path}；提供者 {provider} 已存在",
+        "status_skipped": "已略過 {path}：不支援驗證類型 {type}",
+        "status_failed": "匯入 {path} 失敗：{reason}",
+        "reason_invalid_json": "JSON 無效",
+        "reason_invalid_type": "缺少有效的頂層 type 欄位",
+        "reason_unknown": "憑證匯入失敗",
+        "summary": "匯入摘要：成功 {imported}，重複 {duplicate}，略過 {skipped}，失敗 {failed}"
+      },
       "package_installed": "已安裝 provider 套件 {package}。請在設定中透過 `ai-sdk` 類型的 provider 引用它"
     },
     "oauth": {

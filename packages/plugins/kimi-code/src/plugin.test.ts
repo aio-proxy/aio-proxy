@@ -5,6 +5,7 @@ import type { AccountContext, OAuthAdapter, OAuthLoginContext, PluginDescriptor 
 import kimiCodePlugin, { createKimiCodePlugin, KIMI_CODE_PLUGIN_VERSION } from '.';
 import packageJson from '../package.json' with { type: 'json' };
 import { KIMI_CATALOG_TTL_MS, staticKimiCatalog } from './catalog';
+import { kimiLoginResult } from './oauth';
 import type { KimiCredential } from './oauth';
 
 test('exports a versioned default descriptor with the complete OAuth adapter contract', async () => {
@@ -19,6 +20,45 @@ test('exports a versioned default descriptor with the complete OAuth adapter con
   expect(adapter.catalog.initialFallback?.(new DOMException('cancelled', 'AbortError'))).toBeUndefined();
   expect(adapter.quota?.reset).toBeUndefined();
   expect(KIMI_CODE_PLUGIN_VERSION).toBe(packageJson.version);
+});
+
+test('imports CPA kimi credentials with native device and fingerprint rules', async () => {
+  const adapter = await adapterFrom(createKimiCodePlugin(undefined, { deviceId: () => 'generated-device' }));
+  const importer = adapter.credentialImports?.cpa;
+  if (importer === undefined) throw new Error('CPA importer not registered');
+  const context = { progress: () => {}, signal: new AbortController().signal };
+
+  const generated = await importer.import(
+    context,
+    {},
+    {
+      type: 'kimi',
+      access_token: 'access',
+      refresh_token: 'refresh',
+      expired: 'invalid',
+    },
+  );
+  const shared = await kimiLoginResult({
+    accessToken: 'access',
+    refreshToken: 'refresh',
+    expiresAt: 0,
+    deviceId: 'generated-device',
+  });
+  expect(generated.credentials.deviceId).toBe('generated-device');
+  expect(generated.expiresAt).toBe(0);
+  expect(generated.fingerprint).toBe(shared.fingerprint);
+
+  const explicit = await importer.import(
+    context,
+    {},
+    {
+      type: 'kimi',
+      access_token: 'access',
+      refresh_token: 'refresh',
+      device_id: 'explicit-device',
+    },
+  );
+  expect(explicit.credentials.deviceId).toBe('explicit-device');
 });
 
 test('preserves localized login and quota presentation values', async () => {

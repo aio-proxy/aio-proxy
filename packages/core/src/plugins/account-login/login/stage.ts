@@ -5,7 +5,7 @@ import type { DiagnosticFactory } from '../../diagnostic/index';
 import { resolveProviderId } from '../../provider-id';
 import type { PendingAccountOperation, StoredAccount } from '../../repository/index';
 import { AccountCleanupPendingError, ProviderAccountChangedError, ProviderFingerprintMismatchError } from '../errors';
-import type { LoginOAuthAccountOptions } from '../login';
+import type { OAuthAccountWriteOptions } from '../login';
 import {
   accountMatches,
   capabilityOf,
@@ -25,7 +25,7 @@ export type CatalogDiscovery =
   | { readonly kind: 'failure'; readonly error: unknown };
 
 export type StageContext = {
-  readonly options: LoginOAuthAccountOptions;
+  readonly options: OAuthAccountWriteOptions;
   readonly initial: Preflight;
   readonly adapter: OAuthAdapter;
   readonly discovered: CatalogDiscovery;
