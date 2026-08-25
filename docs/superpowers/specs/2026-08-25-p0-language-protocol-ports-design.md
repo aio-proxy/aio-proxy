@@ -4,7 +4,7 @@ GitHub: [#205](https://github.com/aio-proxy/aio-proxy/issues/205) (parent [#204]
 
 Date: 2026-08-25
 
-Status: awaiting review (revised after Sol review)
+Status: awaiting review (revised after Sol review, round 3). Compact `model: null` needs user confirmation (A vs B).
 
 ## Goal
 
@@ -41,7 +41,7 @@ Shared pipeline behavior that this design relies on and must not change:
 | Completions adapters | Two `defineProtocolAdapter` instances from shared Completions internals: chat keeps `openAICompletionsAdapter` and its `chat.completion` writers; legacy is `openAILegacyCompletionsAdapter` with fixed `text_completion` writers. Do not extend the pipeline egress seam. |
 | Completions ingress | Accept the official Completions wire schema, including every official `prompt` shape and `n`. Ingress must not reject options that a same-protocol raw provider can serve. |
 | Completions transform | In `modelInvocation`, 501 any option the `languageModel` path cannot honor without changing output cardinality or dropping requested behavior. Do not join multi-prompts. Do not convert omitted/`null` `prompt` into an empty user message. Do not silently drop `stop`, `echo`, `suffix`, any non-null `logprobs` (including `0`), `best_of`, or `stream_options`. |
-| Compact ingress | Dedicated compact parser. Do not reuse the create parser. Official compact `input` may be omitted or `null`; that must parse and raw-forward. |
+| Compact ingress | Dedicated compact parser. Do not reuse the create parser. Official compact `input` may be omitted or `null`; that must parse and raw-forward when `model` is a non-empty string. Official compact `model` is required-but-nullable; routing that case is an open scope choice below, not a silent complete-ingress claim. |
 | Compact transform | Same-protocol raw only. Cross-protocol is an explicit 501. Do not invent a local summarizer or a fake `compaction` item. Compact may keep one Responses adapter because its 501 happens in `modelInvocation`, which already receives `TContext`, and compact never uses create egress writers. |
 | Create-time `store` / `background` | Unchanged. Do not 501 `POST /v1/responses` when those fields are present. |
 | Resource 501s | Explicit official resource routes only. Replace the earlier non-official list route with delete. No catch-all `/v1/responses/*`. |
@@ -152,17 +152,31 @@ Transform is faithful only when the request is a single text prompt and does not
 | `prompt` is `string[]` with length 1 | Same as a single string. This is one prompt, not a join. |
 | `prompt` is `string[]` with length != 1 | 501 `prompt_array`. Do not join with newlines. |
 | `prompt` is a token array or array of token arrays | 501 `prompt_tokens`. |
-| `n` omitted or `1` | One choice. |
-| `n` present and not `1` | 501 `n`. |
+| `n == null \|\| n === 1` (including omitted) | One choice. |
+| `n` is a number other than `1` | 501 `n`. |
 | `stop` present and not `null` | 501 `stop`. |
 | `echo === true` | 501 `echo`. |
 | `suffix` present and not `null` / `""` | 501 `suffix`. |
 | `logprobs` is not `null` and not omitted, including `0` | 501 `logprobs`. Official `logprobs: 0` still requests the sampled-token logprob. The legacy writer always emits `choices[].logprobs: null`, so any non-null request is unfaithful unless a later change implements the matching egress. |
-| `best_of` present and not `1` | 501 `best_of`. |
-| `logit_bias` present and not empty | 501 `logit_bias`. |
+| `best_of == null \|\| best_of === 1` (including omitted) | One candidate. |
+| `best_of` is a number other than `1` | 501 `best_of`. |
+| `logit_bias` omitted, `null`, or `{}` | No bias. |
+| `logit_bias` is a non-empty object | 501 `logit_bias`. |
 | `stream_options` present and not `null` | 501 `stream_options`. `include_usage` and `include_obfuscation` change the Completions SSE contract. This issue does not implement those fields on the model path. |
 
-`temperature`, `top_p`, `max_tokens`, `stream`, `seed`, `presence_penalty`, and `frequency_penalty` may be forwarded onto existing `AiSdkCallSettings` when present. Do not forward `user`: `AiSdkCallSettings` has no `user` field. Raw keeps `user`. The model path does not 501 `user`; it is an identity field, not a sampling or SSE-contract field.
+Before the table, normalize official JSON `null` to omitted on the model path only. Raw still preserves `null` bytes.
+
+| Wire field | Model-path normalization |
+| --- | --- |
+| `n` | `null` means omitted. Faithful when `n == null \|\| n === 1`. 501 only when `n` is a number other than `1`. |
+| `best_of` | `null` means omitted. Faithful when `best_of == null \|\| best_of === 1`. 501 only when `best_of` is a number other than `1`. |
+| `logit_bias` | `null` means empty. 501 only when the object is present and has at least one key. |
+| `stop`, `echo`, `suffix`, `logprobs`, `stream_options` | `null` means omitted. Apply the 501 table only to non-null values. |
+| `temperature`, `top_p`, `max_tokens`, `seed`, `presence_penalty`, `frequency_penalty` | Map only non-null values onto `AiSdkCallSettings`. Do not pass `null`. |
+
+`stream` is not an `AiSdkCallSettings` field. Do not put it in `settings`. The legacy adapter sets `wantsStream: (request) => request.stream === true`. `stream: true` uses SSE writers. `stream` omitted, `null`, or `false` uses JSON writers.
+
+Do not forward `user`: `AiSdkCallSettings` has no `user` field. Raw keeps `user`. The model path does not 501 `user`; it is an identity field, not a sampling or SSE-contract field.
 
 Do not invent tools, `response_format`, or reasoning settings.
 
@@ -233,14 +247,27 @@ Do not call `parseOpenAIResponses`. Create ingress requires `input` as a non-emp
 
 Add `parseOpenAIResponsesCompact` / `OpenAIResponsesCompactRequest`:
 
-- `model` remains required and non-empty.
-- `input` is omitted, `null`, a string (including `""`), or an item array. Empty arrays are valid compact wire and must not 400.
+- Official compact `model` is required but nullable. See the open scope choice below; do not treat `model: null` as a malformed body of a different type.
+- Official compact `input` is omitted, `null`, a string (including `""`), or an item array. Empty arrays are valid compact wire and must not 400.
 - Extra compact fields survive `.loose()`, same as create.
 - Compact parse does not require a semantic item.
 
 `openAIResponsesAdapter.parse` dispatches on `context.operation`: create stays on `parseOpenAIResponses`; compact uses the compact parser. Create and compact do not share one Zod object.
 
-Raw compact must preserve omitted and `null` `input` bytes. Do not insert `input: []` or `input: ""`.
+When `model` is a non-empty string, raw compact must preserve omitted and `null` `input` bytes. Do not insert `input: []` or `input: ""`.
+
+### Compact `model: null` — needs user confirmation
+
+Official compact `model` is required but nullable. aio-proxy routing is model-first: `adapter.model()` must return a client model id before the candidate loop. `model: null` therefore cannot raw-forward on the current pipeline unless this issue adds a non-model route source.
+
+Do not keep both claims at once: “complete official compact ingress” and “`model` is a non-empty string.”
+
+| Option | Behavior | Cost |
+| --- | --- | --- |
+| **A. New route source** | Parse `model: null`. Resolve candidates from another official compact field (the only plausible one is `previous_response_id` owner) and allow same-protocol raw. | New route-source seam. Conflicts with this issue’s non-goal of retrieve / `previous_response_id` replay. |
+| **B. Known model-first deviation (recommended pending confirmation)** | Dedicated compact ingress still accepts omitted/`null` `input`. `model: null` / omitted / `""` is documented as out of scope: fail closed before the candidate loop with Completions/Responses-shaped 400 `invalid_request`. Same-protocol raw for non-empty `model` is unchanged. Stop claiming complete official compact ingress. | No pipeline change. Official `model: null` compact clients still cannot pass through aio-proxy. |
+
+Pending user confirmation, the spec’s working choice is **B**. Implementation must not invent option A.
 
 ### Same-protocol raw
 
@@ -309,12 +336,12 @@ Do not add invented `/store`, `/background`, or list URLs.
 
 ### Adapter
 
-- Legacy Completions parse accepts omitted/`null` `prompt`, `string`, `string[]`, token arrays, `n > 1`, `logprobs: 0`, and `stream_options`. It does not 400 those official shapes or rewrite omitted/`null` `prompt` to `""`.
+- Legacy Completions parse accepts omitted/`null` `prompt`, `string`, `string[]`, token arrays, `n > 1`, `n: null`, `best_of: null`, `logprobs: 0`, and `stream_options`. It does not 400 those official shapes or rewrite omitted/`null` `prompt` to `""`.
 - Legacy `rawRequest` rewrites only `model` when needed and forwards official Completions fields including omitted/`null` `prompt`, `prompt` arrays, `n`, `stop`, `echo`, `suffix`, `logprobs` (including `0`), `best_of`, and `stream_options`.
-- Legacy `modelInvocation` converts a single string prompt (or a one-element `string[]`) to one user message. Omitted/`null` `prompt` is 501 `prompt_omitted`. Multi-prompt arrays, token prompts, `n !== 1`, `stop`, `echo: true`, `suffix`, any non-null `logprobs` including `0`, `best_of !== 1`, and `stream_options` throw `OpenAICompletionsUnsupportedFeatureError` and map through `modelUnsupported` (fallback-capable 501). They are not joined, emptied, or dropped.
+- Legacy `modelInvocation` converts a single string prompt (or a one-element `string[]`) to one user message. `n: null` and `best_of: null` do not 501. Omitted/`null` `prompt` is 501 `prompt_omitted`. Multi-prompt arrays, token prompts, numeric `n !== 1`, `stop`, `echo: true`, `suffix`, any non-null `logprobs` including `0`, numeric `best_of !== 1`, and non-null `stream_options` throw `OpenAICompletionsUnsupportedFeatureError` and map through `modelUnsupported`. Sampling `null`s are omitted from `AiSdkCallSettings`. `wantsStream` is `request.stream === true` only; `stream` is not copied into settings.
 - Legacy writers emit `text_completion` with top-level `created` and `model`; `choices[].index`; `choices[].logprobs` (`null` when unavailable). SSE chunks carry the same identity fields on every event.
 - Chat instance regression: existing Completions adapter tests still pass and still emit `chat.completion`.
-- Compact parse accepts omitted and `null` `input` and does not use the create parser. Create parse still rejects missing/empty `input`.
+- Compact parse accepts omitted and `null` `input` and does not use the create parser. Create parse still rejects missing/empty `input`. Compact `model: null` follows the confirmed A/B choice; until confirmed, tests lock B: 400 before any provider call, not raw-forward.
 - Compact `rawRequest` preserves omitted/`null` `input` and the compact path, and still clamps `model` / effort.
 - Compact `operation: 'compact'` throws `OpenAIResponsesUnsupportedFeatureError('responses_compact')` from `modelInvocation` and does not build a model ToolSet.
 - Create surface is unchanged when `operation` is omitted.
@@ -364,7 +391,7 @@ Do not document `GET /v1/responses` as a list port. Do not list Images, Embeddin
 - A Completions client can `POST /v1/completions` with an official wire body and receive same-protocol raw Completions, including `prompt` arrays and `n`, when an `openai-compatible` raw candidate exists.
 - A single-string Completions request can be served cross-protocol as `text_completion` from `languageModel`, with `created`, `model`, `choices[].index`, and `choices[].logprobs`.
 - Unfaithful Completions transform options 501 from `modelInvocation` without blocking a later raw candidate, and without joining multi-prompts, converting omitted/`null` `prompt` into an empty user, or dropping `stop` / `echo` / `suffix` / non-null `logprobs` / `best_of` / `stream_options`.
-- A compact client can `POST /v1/responses/compact` against an `openai-response` raw candidate without a new protocol enum, including omitted/`null` `input`.
+- A compact client can `POST /v1/responses/compact` with a non-empty `model` against an `openai-response` raw candidate without a new protocol enum, including omitted/`null` `input`. Official `model: null` follows the confirmed A/B choice and is not claimed as complete ingress until that choice is confirmed.
 - Cross-protocol compact is 501 `responses_compact`, not a converted `response`.
 - Retrieve stays 501; delete, cancel, and input_items are 501 instead of 404. `GET /v1/responses` is not treated as a list port.
 - Adapter tests, dispatch-matrix coverage, and both README inbound tables match the ports above.
