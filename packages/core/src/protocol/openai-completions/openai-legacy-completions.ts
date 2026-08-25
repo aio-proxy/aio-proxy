@@ -66,8 +66,8 @@ export const openAILegacyCompletionsAdapter = defineProtocolAdapter<
       messages: [{ role: 'user', content }],
       settings: {
         ...(request.temperature != null ? { temperature: request.temperature } : {}),
-        ...(request.top_p != null ? { top_p: request.top_p } : {}),
-        ...(request.max_tokens != null ? { maxTokens: request.max_tokens } : {}),
+        ...(request.top_p != null ? { topP: request.top_p } : {}),
+        ...(request.max_tokens != null ? { maxOutputTokens: request.max_tokens } : {}),
         ...(request.seed != null ? { seed: request.seed } : {}),
         ...(request.presence_penalty != null ? { presencePenalty: request.presence_penalty } : {}),
         ...(request.frequency_penalty != null ? { frequencyPenalty: request.frequency_penalty } : {}),

@@ -41,7 +41,7 @@ export const OpenAILegacyCompletionsRequestSchema = z
     session_id: z.string().optional(),
     conversation_id: z.string().optional(),
   })
-  .passthrough();
+  .loose();
 
 export type OpenAILegacyCompletionsRequest = z.output<typeof OpenAILegacyCompletionsRequestSchema>;
 

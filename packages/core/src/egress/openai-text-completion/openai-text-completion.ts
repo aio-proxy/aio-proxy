@@ -1,31 +1,21 @@
 import type { Completion, CompletionUsage } from 'openai/resources/completions';
 
-import type {
-  LanguageModelV2FinishReason,
-  LanguageModelV2StreamPart,
-  TextStreamPart,
-  ToolSet,
-} from '../../ai-sdk-bridge';
 import type { ModelEgressContext, ModelSseStream } from '../../protocol/adapter';
 import { createCancellableEgressStream } from '../cancellable-stream';
+import {
+  completionFinishUsage,
+  completionTextDelta,
+  generatedMetadata,
+  openAICompletionUsage,
+  type OpenAICompletionFinishReason,
+  type OpenAICompletionMetadata,
+  type OpenAICompletionStreamPart,
+  upstreamMetadata,
+} from '../openai-completion-metadata/index';
 
 const encoder = new TextEncoder();
+const COMPLETION_ID_PREFIX = 'cmpl-';
 
-type OpenAITextCompletionStreamPart = LanguageModelV2StreamPart | TextStreamPart<ToolSet>;
-type TextDeltaPart = Extract<OpenAITextCompletionStreamPart, { type: 'text-delta' }>;
-type FinishPart = Extract<OpenAITextCompletionStreamPart, { type: 'finish' }>;
-type FinishStepPart = Extract<OpenAITextCompletionStreamPart, { type: 'finish-step' }>;
-type FinishReason = FinishPart['finishReason'] | LanguageModelV2FinishReason;
-type TokenUsage = {
-  readonly inputTokens?: number | undefined;
-  readonly outputTokens?: number | undefined;
-  readonly totalTokens?: number | undefined;
-};
-type ResponseMetadata = {
-  readonly id: string;
-  readonly model: string;
-  readonly created: number;
-};
 type CompletionFinishReason = Completion['choices'][number]['finish_reason'];
 type TextCompletionChunk = Omit<Completion, 'choices'> & {
   choices: Array<{
@@ -37,18 +27,25 @@ type TextCompletionChunk = Omit<Completion, 'choices'> & {
 };
 
 export function writeOpenAITextCompletionSSE(
-  stream: ReadableStream<OpenAITextCompletionStreamPart>,
+  stream: ReadableStream<OpenAICompletionStreamPart>,
   context: ModelEgressContext,
 ): ModelSseStream {
-  const metadata = fallbackMetadata(context.modelId);
+  const metadata = generatedMetadata(COMPLETION_ID_PREFIX, context.modelId);
   return createCancellableEgressStream(stream, async ({ parts, enqueue }) => {
     for await (const part of parts) {
       switch (part.type) {
         case 'text-delta':
-          enqueue(frame(metadata, textDelta(part)));
+          enqueue(frame(metadata, completionTextDelta(part)));
           break;
         case 'finish':
-          enqueue(frame(metadata, '', openAIFinishReason(part.finishReason), openAIUsage(finishUsage(part))));
+          enqueue(
+            frame(
+              metadata,
+              '',
+              openAIFinishReason(part.finishReason),
+              openAICompletionUsage(completionFinishUsage(part)),
+            ),
+          );
           break;
         default:
           break;
@@ -60,25 +57,25 @@ export function writeOpenAITextCompletionSSE(
 }
 
 export async function writeOpenAITextCompletionResponse(
-  stream: ReadableStream<OpenAITextCompletionStreamPart>,
+  stream: ReadableStream<OpenAICompletionStreamPart>,
   context: ModelEgressContext,
 ): Promise<Completion> {
   const text: string[] = [];
   let finishReason: CompletionFinishReason = 'stop';
   let usage: CompletionUsage | undefined;
-  let metadata = fallbackMetadata(context.modelId);
+  let metadata = generatedMetadata(COMPLETION_ID_PREFIX, context.modelId);
 
   for await (const part of stream) {
     switch (part.type) {
       case 'text-delta':
-        text.push(textDelta(part));
+        text.push(completionTextDelta(part));
         break;
       case 'finish-step':
-        metadata = upstreamMetadata(part, metadata);
+        metadata = withCompletionId(upstreamMetadata(part, metadata), metadata.id);
         break;
       case 'finish':
         finishReason = openAIFinishReason(part.finishReason);
-        usage = openAIUsage(finishUsage(part));
+        usage = openAICompletionUsage(completionFinishUsage(part));
         break;
       default:
         break;
@@ -102,29 +99,16 @@ export async function writeOpenAITextCompletionResponse(
   };
 }
 
-function fallbackMetadata(model: string): ResponseMetadata {
-  return { id: completionId(), model, created: Math.floor(Date.now() / 1000) };
-}
-
-function upstreamMetadata(part: FinishStepPart, fallback: ResponseMetadata): ResponseMetadata {
-  if (!('response' in part)) return fallback;
-  return {
-    id: part.response.id,
-    model: part.response.modelId,
-    created: Math.floor(part.response.timestamp.getTime() / 1000),
-  };
-}
-
-function textDelta(part: TextDeltaPart): string {
-  return 'delta' in part ? part.delta : part.text;
-}
-
-function finishUsage(part: FinishPart): TokenUsage {
-  return 'usage' in part ? part.usage : part.totalUsage;
+// Upstream model and timestamp are worth adopting, but the id is not: a
+// cross-protocol candidate reports a `chatcmpl-` id, and the SSE writer never
+// sees `finish-step`, so borrowing it would break both the `text_completion` id
+// contract and the agreement between the two writers.
+function withCompletionId(metadata: OpenAICompletionMetadata, generatedId: string): OpenAICompletionMetadata {
+  return metadata.id.startsWith(COMPLETION_ID_PREFIX) ? metadata : { ...metadata, id: generatedId };
 }
 
 function frame(
-  metadata: ResponseMetadata,
+  metadata: OpenAICompletionMetadata,
   text: string,
   finishReason: CompletionFinishReason | null = null,
   usage?: CompletionUsage,
@@ -140,11 +124,7 @@ function frame(
   return encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`);
 }
 
-function completionId(): string {
-  return `cmpl-${crypto.randomUUID()}`;
-}
-
-function openAIFinishReason(finishReason: FinishReason): CompletionFinishReason {
+function openAIFinishReason(finishReason: OpenAICompletionFinishReason): CompletionFinishReason {
   switch (finishReason) {
     case 'content-filter':
       return 'content_filter';
@@ -157,17 +137,4 @@ function openAIFinishReason(finishReason: FinishReason): CompletionFinishReason 
     case 'unknown':
       return 'stop';
   }
-}
-
-function openAIUsage(usage: TokenUsage): CompletionUsage | undefined {
-  if (usage.inputTokens === undefined && usage.outputTokens === undefined && usage.totalTokens === undefined) {
-    return undefined;
-  }
-  const promptTokens = usage.inputTokens ?? 0;
-  const completionTokens = usage.outputTokens ?? 0;
-  return {
-    prompt_tokens: promptTokens,
-    completion_tokens: completionTokens,
-    total_tokens: usage.totalTokens ?? promptTokens + completionTokens,
-  };
 }

@@ -38,6 +38,30 @@ test('writes official text_completion JSON from a one-delta finish stream', asyn
   expect(json.choices[0]).toMatchObject({ text: 'hello', index: 0, logprobs: null });
 });
 
+test('adopts upstream model and created but keeps the cmpl- id contract', async () => {
+  const stream = new ReadableStream<TextStreamPart<ToolSet>>({
+    start(controller) {
+      controller.enqueue({ type: 'text-delta', id: 'text-1', text: 'hello' });
+      controller.enqueue({
+        type: 'finish-step',
+        response: {
+          id: 'chatcmpl-upstream',
+          modelId: 'gpt-upstream',
+          timestamp: new Date('2026-07-12T00:00:05.000Z'),
+        },
+      } as never);
+      controller.enqueue({ type: 'finish', finishReason: 'stop', rawFinishReason: 'stop', totalUsage: {} });
+      controller.close();
+    },
+  });
+
+  const json = await writeOpenAITextCompletionResponse(stream, { modelId: 'davinci' });
+
+  expect(json.model).toBe('gpt-upstream');
+  expect(json.created).toBe(1_783_814_405);
+  expect(json.id.startsWith('cmpl-')).toBe(true);
+});
+
 test('writes official text_completion SSE identity fields and ends with [DONE]', async () => {
   const text = await decodeSse(writeOpenAITextCompletionSSE(oneDeltaFinishStream(), { modelId: 'davinci' }));
 

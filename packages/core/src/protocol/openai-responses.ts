@@ -208,12 +208,15 @@ function openAIResponsesMessages(messages: readonly ModelMessage[]): readonly Mo
 const jsonObjectSchema = z.object({}).catchall(z.unknown());
 
 async function rewriteOpenAIResponsesCompactRequest(raw: Request, resolvedModel: string): Promise<Request> {
+  // Read the decoded body once so a no-op rewrite forwards it verbatim instead
+  // of round-tripping through JSON, which would silently truncate large
+  // integers and drop the client's exact byte representation.
   const bodyText = await readRequestText(raw);
   const body = jsonObjectSchema.parse(JSON.parse(bodyText));
   const headers = new Headers(raw.headers);
   headers.delete('content-encoding');
   headers.delete('content-length');
-  if (body.model === resolvedModel && !Object.hasOwn(body, 'stream')) {
+  if (body['model'] === resolvedModel && !Object.hasOwn(body, 'stream')) {
     return new Request(raw, { method: raw.method, body: bodyText, headers });
   }
   const { stream: _stream, ...bodyWithoutStream } = body;

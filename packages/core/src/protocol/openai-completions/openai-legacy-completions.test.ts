@@ -55,3 +55,34 @@ test.each([
 test('one-element string array is one prompt and n/best_of null do not 501', () => {
   expect(invoke({ prompt: ['hello'], n: null, best_of: null }).messages).toEqual([{ role: 'user', content: 'hello' }]);
 });
+
+test.each([
+  [{ prompt: '' }],
+  [{ prompt: 'x', suffix: '' }],
+  [{ prompt: 'x', logit_bias: {} }],
+  [{ prompt: 'x', n: 1 }],
+  [{ prompt: 'x', best_of: 1 }],
+] as const)('faithful row %o reaches the model without a 501', (body) => {
+  expect(invoke(body).messages).toHaveLength(1);
+});
+
+test('sampling and length controls land on the AI SDK call settings keys', () => {
+  expect(
+    invoke({
+      prompt: 'hello',
+      temperature: 0.25,
+      top_p: 0.9,
+      max_tokens: 128,
+      seed: 7,
+      presence_penalty: 0.5,
+      frequency_penalty: -0.5,
+    }).settings,
+  ).toEqual({
+    temperature: 0.25,
+    topP: 0.9,
+    maxOutputTokens: 128,
+    seed: 7,
+    presencePenalty: 0.5,
+    frequencyPenalty: -0.5,
+  });
+});

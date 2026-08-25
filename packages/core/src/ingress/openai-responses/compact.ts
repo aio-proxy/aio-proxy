@@ -14,7 +14,7 @@ const OpenAIResponsesCompactRequestSchema = z
     service_tier: z.string().nullable().optional(),
     stream: z.boolean().nullable().optional(),
   })
-  .passthrough();
+  .loose();
 
 export type OpenAIResponsesCompactRequest = Omit<z.output<typeof OpenAIResponsesCompactRequestSchema>, 'model'> & {
   model: string;
