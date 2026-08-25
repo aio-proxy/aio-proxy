@@ -16,7 +16,7 @@ The shared pipeline today only invokes `languageModel`. This issue is the first 
 
 ## Live baseline (this worktree)
 
-These facts are from `codex/p1-openai-images` at `3332e353` (parent `55ebd88e`), not from the older image-endpoint research notes.
+These facts are from `codex/p1-openai-images` at `87719102` (parent `55ebd88e`), not from the older image-endpoint research notes.
 
 - Inbound protocols are only `openai-response`, `openai-compatible`, `anthropic`, and `gemini`.
 - Each inbound protocol is one `defineProtocolAdapter`, one thin Hono route, adapter tests, and a row in `packages/server/__tests__/cross-protocol-routing.test.ts`.
@@ -27,8 +27,9 @@ These facts are from `codex/p1-openai-images` at `3332e353` (parent `55ebd88e`),
 - `UsageRow` already has `imageCount`. Usage capture comments already say image endpoints should pass a larger idle timeout.
 - Primary API endpoint raw passthrough joins the provider origin with the inbound request path. Reusing `openai-compatible` as the Images protocol would POST `/v1/images/generations` at every Chat Completions provider.
 - `Router` only adds a direct route for `provider.models` and preserved alias targets (`directModelIds`). Omitted `models` plus no `alias`/`metadata` ids means `dall-e-2` is not registered; `router.resolve('dall-e-2')` is 404 before any capability filter. Metadata keys are not routes today.
-- Pipeline preflight `hasInvalidOrOversizedContentLength` is hardcoded to `REQUEST_BODY_LIMITS.encoded` (64 MiB) in `packages/server/src/routes/pipeline/request.ts`, before adapter parse. A later edits-only 850 MiB table cannot take effect unless this gate reads adapter/route limits.
-- Official edits allow up to 16 images, each < 50 MB (plus an optional mask). Multipart framing, headers, and text fields make an encoded body larger than the decoded file aggregate. Provider V4 `generateImage` returns `string | Uint8Array` images; the OpenAI adapter is `b64_json`. There is no standard URL field to extract.
+- Pipeline preflight `hasInvalidOrOversizedContentLength` is hardcoded to `REQUEST_BODY_LIMITS.encoded` (64 MiB) in `packages/server/src/routes/pipeline/request.ts`, before adapter parse. Edits official `< 50_000_000` file limits cannot take effect unless this gate reads adapter/route limits.
+- Official edits: at most 16 images plus optional mask; each image/mask is **< 50 MB decimal** (`size >= 50_000_000` is over). Mask must match the edited image's format and pixel size and must have an alpha channel. Official generate `n` is 1–10 except `dall-e-3` (`n=1` only). Official omitted-`model` defaults do not mention JSON `null` or empty string.
+- Multipart framing makes encoded bodies larger than decoded file bytes. Provider V4 `generateImage` returns `string | Uint8Array`; there is no standard URL field.
 - Generic AI SDK `generateImage({ size })` accepts `{width}x{height}` only. `auto` is not a valid SDK size.
 - Official Images: generations omit `model` → `dall-e-2` (unless a GPT-image-only parameter is used); edits omit `model` → `gpt-image-1.5`. Official `image_generation.completed` requires `b64_json`, `background`, `created_at`, `output_format`, `quality`, `size`, `usage`, and is one image per event.
 - README inbound tables list only the language ports.
@@ -237,20 +238,24 @@ Fallback among eligible candidates is unchanged: raw `422` / `429` / `>= 500` an
 
 ## Request contract
 
-### Official omitted-model defaults
+### Official omission defaults and compatibility normalization
 
 Parse **before** `adapter.model()` / `router.resolve`.
 
-| Route | `model` omitted or JSON/`multipart` `null` / empty | Routing id |
-| --- | --- | --- |
-| `POST /v1/images/generations` | yes | `dall-e-2` |
-| `POST /v1/images/edits` | yes | `gpt-image-1.5` |
+**Official** (OpenAI Images): only an **omitted** `model` field has a default — generations `dall-e-2`, edits `gpt-image-1.5`. Official docs do not define JSON `null`, `""`, or whitespace-only `model`.
 
-`adapter.model()` returns that routing id. Missing `prompt` is still `400`.
+**Compatibility normalization** (aio-proxy, same spirit as CLIProxyAPI blank/null tolerance, not official): JSON/`multipart` `null`, `""`, and whitespace-only `model` are treated as omitted **for routing only**. `adapter.model()` returns the same routing id as an omitted field.
 
-Raw same-protocol rewrite **must not insert** the default. If the client omitted `model` or sent `null`, the forwarded JSON/form keeps that omission so the official upstream can apply its own default, including generate's "unless a GPT-image-only parameter is used" clause. If the client sent a model id and routing resolved a different upstream id, rewrite that field as Chat Completions does today.
+| Client `model` | Official? | Routing id | Raw forward |
+| --- | --- | --- | --- |
+| field omitted | yes | generations `dall-e-2` / edits `gpt-image-1.5` | keep omitted; do not insert a default |
+| JSON `null` / empty form value | compatibility | same as omitted | keep `null` / empty as sent; do not insert a default; do not rewrite to omitted |
+| `""` or whitespace-only string | compatibility | same as omitted | keep the client's exact string; do not insert a default |
+| non-empty string | yes | that id (then aliases) | rewrite only if routing resolved a different upstream id |
 
-Convert uses the routing id (`dall-e-2` / `gpt-image-1.5` when omitted).
+Missing `prompt` is still `400`. Convert always uses the routing id.
+
+If the client sent a real model id and routing resolved a different upstream id, rewrite that field as Chat Completions does today.
 
 ### First cut — `POST /v1/images/generations`
 
@@ -258,9 +263,9 @@ JSON only. `prompt` is required. `model` is optional because of the official def
 
 | Field | Convert behavior |
 | --- | --- |
-| `model` | routing key after defaulting; raw preserves omit/`null` |
+| `model` | routing key after omission/compatibility normalization; raw preserves omit/`null`/empty |
 | `prompt` | `generateImage({ prompt })` |
-| `n` | passed through; default 1; convert `n` is 1..10 |
+| `n` | default 1; convert `n` is **1** when the effective base id is `dall-e-3`, otherwise 1..10; invalid `n` is `400` (see below) |
 | `size` | `{width}x{height}` → SDK `size`; `auto` or omitted → **omit** SDK `size`; never pass `auto` to generic AI SDK `size` |
 | `quality` | `providerOptions` |
 | `response_format` | convert `url` → skip/501 (below); `b64_json` / omitted → bytes |
@@ -274,7 +279,7 @@ JSON only. `prompt` is required. `model` is optional because of the official def
 | `partial_images` | raw keeps it; convert unused because convert streaming is 501 |
 | unknown fields | raw keeps bytes; convert drops them |
 
-Raw rewrite: if the client body should be forwarded verbatim (model omitted/null unchanged, or model string unchanged), keep the client's exact JSON bytes; otherwise re-serialize. Strip `content-encoding` / `content-length` on rewrite.
+Raw rewrite: if the client body should be forwarded verbatim (model omitted/`null`/empty unchanged, or a non-empty model string unchanged), keep the client's exact JSON bytes; otherwise re-serialize. Strip `content-encoding` / `content-length` on rewrite.
 
 ### Later in this issue — `POST /v1/images/edits`
 
@@ -309,28 +314,28 @@ readonly bodyLimits: (raw: Request, context: TContext) => RequestBodyLimits;
 | --- | --- | --- |
 | Generations JSON | 64 MiB (unchanged) | 128 MiB decoded JSON (unchanged) |
 | Edits JSON | 64 MiB | 128 MiB decoded JSON. Convert still 501s `image_url` / `file_id`. |
-| Edits multipart | `850 MiB + 1 MiB` framing allowance = **851 MiB** | Stream-parse parts; see below. **Do not** set encoded == 850 MiB file aggregate. |
+| Edits multipart | official file aggregate + 1 MiB framing (below) | Stream-parse parts. **Do not** set encoded equal to the file aggregate. |
 
-Official edits: at most 16 images, each < 50 MB, plus optional mask.
+Do **not** call these official-compatible. Official is decimal **< 50 MB** per image/mask (`50_000_000` exclusive). 50 MiB (`52_428_800`) and `16 * 50 MiB + 50 MiB` are larger than official and must not be labeled as matching OpenAI.
 
-Edits multipart **file** policy (counted while streaming parts, not from `Content-Length` alone):
+Edits multipart **official convert/file policy** (counted while streaming parts):
 
-| Limit | Value |
-| --- | --- |
-| Max images | 16 |
-| Max masks | 1 |
-| Per-file payload | 50 MiB |
-| Aggregate decoded file payloads (images + mask) | 850 MiB (`16 * 50 + 50`) |
-| Non-file form allowance (prompt, model, size, quality, boundaries, part headers) | 1 MiB |
-| Encoded `Content-Length` preflight | 851 MiB |
+| Limit | Value | On exceed |
+| --- | --- | --- |
+| Max images | 16 | `413` |
+| Max masks | 1 | `413` |
+| Per-file payload | `size >= 50_000_000` is over | `413` |
+| Aggregate decoded file payloads | `17 * 49_999_999` = `849_999_983` | `413` |
+| Non-file form allowance (prompt, model, fields, boundaries, part headers) | 1 MiB **proxy** framing, not official | `413` |
+| Encoded `Content-Length` preflight | `849_999_983 + 1_048_576` = `851_048_559` | `413` |
 
-A legal official-max upload (850 MiB files plus multipart framing) must not 413 on the 64 MiB language gate, and must not 413 just because encoded bytes exceed 850 MiB.
+A request whose files are all `< 50_000_000` and whose encoded size is official-max files plus small framing must not 413 on the 64 MiB language gate.
 
-Exceeding any limit is `413 request_too_large`.
+If a later proxy resource ceiling in MiB is added, it is a **DoS ceiling only** and must sit strictly above these official convert limits, never replace them.
 
-Raw edits may stream-forward when `model` is omitted/unchanged. If a present `model` field must be rewritten, buffer only under the edits encoded limit.
+Raw edits may stream-forward when `model` is omitted/unchanged. If a present `model` field must be rewritten, buffer only under the edits encoded preflight.
 
-Whether operators later want a **lower** configurable edits cap is a product choice (see Open questions).
+Whether operators want an additional lower proxy cap is a product choice (see Open questions).
 
 ### Explicitly not routed
 
@@ -357,14 +362,44 @@ type ImageInvocation = {
 
 type ImageBytesRef = {
   readonly type: 'bytes';
-  readonly mediaType: string;
+  readonly mediaType: string; // client header, untrusted
   readonly data: Uint8Array;
+  readonly byteLength: number;
+  readonly format: 'png' | 'jpeg' | 'webp';
+  readonly width: number;
+  readonly height: number;
+  readonly hasAlpha: boolean;
 };
 ```
 
+Populate `format` / `width` / `height` / `hasAlpha` by **decoding the bytes**, not by trusting `Content-Type` or the filename. `byteLength` is `data.byteLength` and is the official size check input.
+
 There is no `stream` field on the convert IR. `stream: true` is valid parse: `wantsStream` stays true so raw passthrough can stream. A convert candidate with `stream: true` is skipped (not invoked). If no raw image candidate remains, the request is `501 unsupported_feature` (`stream`).
 
-`imageModel` / `generateImage` is the only convert implementation. Do not rebuild Images HTTP by hand, do not emit Responses `image_generation` tool calls, and do not download client URLs.
+`imageModel` / `generateImage` is the only convert implementation. Do not rebuild Images HTTP by hand, do not emit Responses `image_generation` tool calls, and do not download client URLs. AI SDK `normalizePrompt` only forwards files/mask — it does **not** enforce official mask or `n` rules. aio-proxy must validate those **before** `imageModel` / `generateImage`.
+
+### Convert `n`
+
+After routing, take the effective upstream model id (candidate `modelId`). Provider-qualified inbound ids such as `openai/dall-e-3` use the base id after the first `/` when the prefix is a provider id; `dall-e-3` and `*/dall-e-3` are the same model.
+
+| Effective base id | Allowed convert `n` |
+| --- | --- |
+| `dall-e-3` | **exactly 1** |
+| any other image model | 1..10 |
+
+Omitted `n` is 1. Convert `n` outside that set is `400 invalid_request` for the whole request (not a per-candidate skip). Do not call `generateImage` with `n > 1` on `dall-e-3` — the SDK would split into multiple calls and wrongly succeed.
+
+### Convert mask (edits only)
+
+Official GPT Image mask rules, checked on convert after decoding, before invoke:
+
+- every source image and the mask have `byteLength < 50_000_000` (already 413 if not)
+- when a mask is present, **every** source image and the mask share `format` and decoded `width`×`height`
+- the mask `hasAlpha === true`
+
+Failure is `400 invalid_request` (`mask`). Undecodable bytes are `400 invalid_request` (`image`). Raw does not decode or enforce this; upstream does.
+
+No mask → do not require images to share size/format with each other.
 
 ### `size`
 
@@ -432,6 +467,8 @@ New `openAIImagesErrors` using the existing OpenAI envelope (`error: { code, mes
 | Case | Status | `type` / `code` |
 | --- | --- | --- |
 | parse / Zod / missing `prompt` | 400 | `invalid_request_error` / `invalid_request` |
+| convert `n` invalid for effective model (`dall-e-3` and `n !== 1`, or `n` not in 1..10) | 400 | `invalid_request_error` / `invalid_request` |
+| convert mask missing alpha, or format/size mismatch, or undecodable image | 400 | `invalid_request_error` / `invalid_request` |
 | unknown routing id (`router.resolve` empty after defaulting) | 404 | `invalid_request_error` / `model_not_found` |
 | known id, zero image-capable candidates | 501 | `invalid_request_error` / `not_implemented` |
 | convert `stream: true` | 501 | `invalid_request_error` / `unsupported_feature` |
@@ -462,10 +499,11 @@ Protect user-visible behavior, not literals.
 
 Adapter (colocated with the new protocol module):
 
-- valid generations parse; missing `prompt` rejects; omitted/`null` `model` parses
-- generations omitted/`null` `model` → routing id `dall-e-2`; raw body still omits/`null`
-- edits omitted/`null` `model` → routing id `gpt-image-1.5`; raw body/form still omits/`null`
-- raw rewrite changes only a **present** `model` string and otherwise preserves bytes
+- valid generations parse; missing `prompt` rejects
+- omitted `model` → official routing defaults; raw body still omits the field
+- JSON `null` / `""` `model` → same routing ids (compatibility); raw still forwards `null` / `""`, not a default string and not rewritten to omitted
+- raw rewrite changes only a **present non-empty** `model` string and otherwise preserves bytes
+- convert `dall-e-3` and `provider/dall-e-3` with `n=2` → `400`; `n=1` allowed; other models accept 1..10
 - convert `size: "auto"` omits SDK `size`; raw keeps `auto`; `{w}x{h}` passes through
 - convert `response_format=url` → skip / 501; never emit `data[].url` from convert
 - convert `stream: true` → 501; no convert SSE frames
@@ -492,9 +530,11 @@ Edits, when implemented in this issue:
 
 - JSON + multipart parse
 - convert `file_id` / `image_url` → 501
-- per-file 50 MiB and aggregate 850 MiB file payload → 413
-- edits multipart `Content-Length` of 850 MiB + small framing is accepted by preflight (not the 64 MiB language gate, and not an encoded cap equal to 850 MiB)
-- omitted/`null` model tests as above
+- convert/file `byteLength >= 50_000_000` → 413; `49_999_999` is accepted
+- official aggregate `849_999_983` + 1 MiB framing is accepted by preflight (not the 64 MiB language gate)
+- 50 MiB (`52_428_800`) file is 413 on convert, not treated as official-legal
+- convert mask: same format/size + alpha passes; missing alpha, dimension mismatch, or format mismatch → 400 before `generateImage`
+- omitted/`null`/`""` model tests as above
 
 Do not add convert SSE schema tests in P1.
 
@@ -510,7 +550,7 @@ Add rows to both README inbound tables:
 Document that:
 
 - raw Images requires an `openai-image` endpoint (or primary protocol)
-- omitted generate `model` routes as `dall-e-2` and omitted edits `model` routes as `gpt-image-1.5`, while raw keeps the omission
+- omitted generate `model` routes as `dall-e-2` and omitted edits `model` routes as `gpt-image-1.5`; `null`/empty are compatibility-only and raw-forwarded as sent
 - convert does not stream, does not fetch `image_url`, and does not honor `response_format=url`
 - non-catalog Images providers need a finite `models` / preserved alias / metadata id set; the example includes `dall-e-2` and `gpt-image-1.5`
 
@@ -533,12 +573,12 @@ An OpenAI Images client can:
 1. generate via raw passthrough to a provider that declares `openai-image` for an **image-capable** model
 2. generate via at least one `imageModel` convert path for a model in the image capability set
 3. route an image-only `catalog.image` id (no 404) and skip dummy `imageModel` / language-only ids
-4. omit `model` on generations and still route as `dall-e-2`, with the raw body left omitted
+4. omit `model` on generations and still route as `dall-e-2`, with the raw body left omitted; `null`/empty still route but are forwarded unchanged
 5. receive Images-shaped **JSON** on convert, or raw SSE when the client streamed to a raw candidate, plus recorded usage
 
-Edits can ship in a follow-up change on the same protocol; they are not required for the generations first cut to be reviewable or implementable. When they ship, they inherit omitted-model `gpt-image-1.5`, convert URL 501, and the multipart size policy.
+Edits can ship in a follow-up change on the same protocol; they are not required for the generations first cut to be reviewable or implementable. When they ship, they inherit omitted-model `gpt-image-1.5`, convert URL 501, official `< 50_000_000` file limits, and convert mask/`n` checks.
 
 ## Open questions (product only)
 
 1. **Generate omit `model` plus GPT-image-only fields** (`background`, `output_format`, `moderation`, `stream`, …). Official generate says default is `dall-e-2` *unless* a GPT-image-only parameter is used, but does not name the alternate default. This spec follows Sol: convert/routing always use `dall-e-2` when `model` is omitted; raw keeps the omission so official upstream can apply its own clause. Confirm if convert should instead 400 or pick a GPT-image default in that combo.
-2. **Edits official-max body (850 MiB)** vs a lower proxy cap for DoS. This spec uses official-compatible 50 MiB per file / 850 MiB aggregate on the edits routes only. Confirm if P1 should ship that raise or a smaller cap.
+2. **Edits preflight** uses official `< 50_000_000` file math plus 1 MiB proxy framing (`851_048_559` encoded). Confirm if P1 should also add a lower operator DoS cap.
