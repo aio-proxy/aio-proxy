@@ -1,5 +1,5 @@
 import {
-  type ProtocolAdapter,
+  type InboundProtocolAdapter,
   RequestBodyTooLargeError,
   RouterModelNotFoundError,
   UnsupportedContentEncodingError,
@@ -12,11 +12,12 @@ import type { RequestTraceSession } from '../../request-tracing';
 import { isInboundAbort } from '../../route-observation';
 import type { ProviderRouteSource } from '../../runtime';
 import { attemptCandidates } from './attempt';
+import { filterCandidatesByCapability } from './attempt/capability-filter';
 import { logRequestDiagnostics, logRequestFailed, logRequestRejected } from './logging';
 import { cancelRetainedRequestBody, hasInvalidOrOversizedContentLength } from './request';
 
 export type HandleProtocolRequestOptions<TRequest, TContext> = {
-  readonly adapter: ProtocolAdapter<TRequest, TContext>;
+  readonly adapter: InboundProtocolAdapter<TRequest, TContext>;
   readonly context: TContext;
   readonly rawRequest: Request;
   readonly source: ProviderRouteSource;
@@ -58,7 +59,8 @@ async function handleProtocolRequestInContext<TRequest, TContext>(
       await cancelRetainedRequestBody(rawRequest, error);
       throw error;
     }
-    if (hasInvalidOrOversizedContentLength(rawRequest)) {
+    const limits = adapter.bodyLimits(rawRequest, context);
+    if (hasInvalidOrOversizedContentLength(rawRequest, limits)) {
       const error = new RequestBodyTooLargeError('Request body too large');
       await cancelRetainedRequestBody(rawRequest, error);
       return rejectRequest({
@@ -153,7 +155,7 @@ type ParsedProtocolRequest<TRequest> =
   | { readonly request?: undefined; readonly response: Response };
 
 async function parseProtocolRequest<TRequest, TContext>(options: {
-  readonly adapter: ProtocolAdapter<TRequest, TContext>;
+  readonly adapter: InboundProtocolAdapter<TRequest, TContext>;
   readonly context: TContext;
   readonly inboundProtocol: ProviderProtocol;
   readonly rawRequest: Request;
@@ -197,7 +199,7 @@ function rejectParsedRequest<TRequest, TContext>(
     session,
     source,
   }: {
-    readonly adapter: ProtocolAdapter<TRequest, TContext>;
+    readonly adapter: InboundProtocolAdapter<TRequest, TContext>;
     readonly context: TContext;
     readonly inboundProtocol: ProviderProtocol;
     readonly rawRequest: Request;
@@ -209,7 +211,7 @@ function rejectParsedRequest<TRequest, TContext>(
 }
 
 async function attemptResolvedRequest<TRequest, TContext>(options: {
-  readonly adapter: ProtocolAdapter<TRequest, TContext>;
+  readonly adapter: InboundProtocolAdapter<TRequest, TContext>;
   readonly context: TContext;
   readonly inboundProtocol: ProviderProtocol;
   readonly rawRequest: Request;
@@ -241,9 +243,21 @@ async function attemptResolvedRequest<TRequest, TContext>(options: {
     const candidates = lease.snapshot.router.resolve(requestedModel, adapter.dimensions(request, context), {
       session: resolution.context.session,
     });
+    const eligible = filterCandidatesByCapability(candidates, adapter.capability);
+    if (eligible.length === 0) {
+      return rejectRequest({
+        source,
+        session,
+        rawRequest,
+        inboundProtocol,
+        requestedModelId: requestedModel,
+        response: adapter.errors.unsupported(adapter.capability === 'image' ? 'images' : 'transform_dispatch'),
+        errorCode: 'not_implemented',
+      });
+    }
     return await attemptCandidates({
       adapter,
-      candidates,
+      candidates: eligible,
       config: lease.snapshot.config,
       context,
       deferRelease,

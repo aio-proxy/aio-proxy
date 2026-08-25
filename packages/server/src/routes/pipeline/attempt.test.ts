@@ -24,6 +24,38 @@ import {
 } from '../../../__tests__/pipeline-helpers';
 import { LogicalSessionStore } from '../../logical-session-store';
 
+test('language inbound does not attempt an image-only catalog id', async () => {
+  const imageOnly = modelProvider({
+    id: 'images',
+    modelId: 'gpt-image-2',
+    invoke: () => textStream('should not run'),
+  });
+  const route = defineProviderRouteSource([
+    {
+      ...imageOnly,
+      provider: {
+        ...imageOnly.provider,
+        capabilityIndex: { 'gpt-image-2': new Set(['image']) },
+      },
+    },
+  ]);
+  const response = await handleProtocolRequest({
+    adapter: openAIResponsesAdapter,
+    context: {},
+    rawRequest: new Request('https://proxy.test/v1/responses', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ model: REQUESTED_MODEL, input: 'draw a cat' }),
+    }),
+    source: route.source,
+  });
+  expect(response.status).toBe(501);
+  expect(await response.json()).toMatchObject({
+    error: { message: expect.stringContaining('transform_dispatch') },
+  });
+  expect(imageOnly.calls.model).toHaveLength(0);
+});
+
 test('converts portable reasoning and uses the model candidate', async () => {
   const model = modelProvider({ id: 'model', invoke: () => textStream('model response') });
   const raw = rawProvider({ id: 'raw', protocol: ProviderProtocol.OpenAIResponse });

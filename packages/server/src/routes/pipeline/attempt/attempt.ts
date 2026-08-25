@@ -1,4 +1,4 @@
-import { type ProtocolAdapter, type RouterCandidate } from '@aio-proxy/core';
+import { type InboundProtocolAdapter, type RouterCandidate } from '@aio-proxy/core';
 import type { Config } from '@aio-proxy/types';
 
 import type { LogicalSessionResolution } from '../../../logical-session-store';
@@ -17,7 +17,7 @@ import { attemptModelCandidate } from './model';
 import { attemptRawCandidate } from './raw';
 
 type AttemptCandidatesOptions<TRequest, TContext> = {
-  readonly adapter: ProtocolAdapter<TRequest, TContext>;
+  readonly adapter: InboundProtocolAdapter<TRequest, TContext>;
   readonly candidates: readonly RouterCandidate<RuntimeProviderInstance>[];
   readonly context: TContext;
   readonly config: Config | undefined;
@@ -156,10 +156,10 @@ export async function attemptCandidates<TRequest, TContext>(
       let step;
       if (raw !== undefined) {
         step = await attemptRawCandidate(ctx, slot, raw);
-      } else if (provider.model !== undefined) {
+      } else if (adapter.capability === 'language' && provider.model !== undefined) {
         slot.trace.transport = 'ai_sdk';
         slot.trace.targetProtocol = undefined;
-        step = await attemptModelCandidate(ctx, slot, provider.model, holder);
+        step = await attemptModelCandidate({ ...ctx, adapter }, slot, provider.model, holder);
       } else {
         slot.trace.transport = undefined;
         slot.trace.targetProtocol = undefined;

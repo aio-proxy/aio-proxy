@@ -4,13 +4,13 @@ import { terminalCompletion } from '../../../route-observation';
 import type { ModelTransport } from '../../../runtime';
 import { attemptBase, candidateConfigPrice } from '../attempt-base';
 import { createSseResponse, preflightStream } from '../stream';
-import type { AttemptLoopContext, AttemptStep, CandidateSlot, InvocationHolder } from './context';
+import type { AttemptStep, CandidateSlot, InvocationHolder, LanguageAttemptLoopContext } from './context';
 import { assertCandidateSupported, prepareModelInvocation } from './model-prepare';
 
 // Model dispatch for one candidate. The attempt span opens before the provider
 // invocation so buffered (non-stream) requests still get a real span duration.
 export async function attemptModelCandidate<TRequest, TContext>(
-  ctx: AttemptLoopContext<TRequest, TContext>,
+  ctx: LanguageAttemptLoopContext<TRequest, TContext>,
   slot: CandidateSlot,
   model: ModelTransport,
   holder: InvocationHolder,

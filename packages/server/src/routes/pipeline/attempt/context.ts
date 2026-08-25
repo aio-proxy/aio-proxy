@@ -1,4 +1,4 @@
-import type { ModelInvocation, ProtocolAdapter, RouterCandidate } from '@aio-proxy/core';
+import type { InboundProtocolAdapter, ModelInvocation, ProtocolAdapter, RouterCandidate } from '@aio-proxy/core';
 import type { LogicalRequestContext } from '@aio-proxy/plugin-sdk';
 import type { ProviderProtocol } from '@aio-proxy/types';
 
@@ -35,7 +35,7 @@ export type LogAttemptFailure = (
 
 // Invariants shared by every candidate attempt in one request.
 export type AttemptLoopContext<TRequest, TContext> = {
-  readonly adapter: ProtocolAdapter<TRequest, TContext>;
+  readonly adapter: InboundProtocolAdapter<TRequest, TContext>;
   readonly context: TContext;
   readonly rawRequest: Request;
   readonly request: TRequest;
@@ -54,6 +54,10 @@ export type AttemptLoopContext<TRequest, TContext> = {
   readonly logFailure: LogAttemptFailure;
   readonly cooldown: ProviderCooldownStore;
   readonly retryAfterCapMs: number;
+};
+
+export type LanguageAttemptLoopContext<TRequest, TContext> = Omit<AttemptLoopContext<TRequest, TContext>, 'adapter'> & {
+  readonly adapter: ProtocolAdapter<TRequest, TContext>;
 };
 
 // Per-candidate facts.

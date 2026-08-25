@@ -2,6 +2,7 @@ import {
   assertImageInputSupported,
   type ModelInvocation,
   type ProtocolAdapter,
+  REQUEST_BODY_LIMITS,
   RequestBodyTooLargeError,
   type RouterCandidate,
   RouterModelNotFoundError,
@@ -85,7 +86,7 @@ async function handleTokenCountInContext<TRequest, TContext>(
     await cancelRetainedRequestBody(rawRequest, error);
     throw error;
   }
-  if (hasInvalidOrOversizedContentLength(rawRequest)) {
+  if (hasInvalidOrOversizedContentLength(rawRequest, REQUEST_BODY_LIMITS)) {
     await cancelRetainedRequestBody(rawRequest, new RequestBodyTooLargeError('Request body too large'));
     return finishRejected(session, adapter.errors.tooLarge(), 'request_too_large');
   }

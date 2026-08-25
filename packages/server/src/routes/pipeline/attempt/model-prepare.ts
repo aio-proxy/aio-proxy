@@ -5,7 +5,13 @@ import type { ModelTransport } from '../../../runtime';
 import { attemptBase } from '../attempt-base';
 import { failureTerminal, finalFailure } from '../failure';
 import { logRequestRejected } from '../logging';
-import type { AttemptLoopContext, AttemptStep, CandidateSlot, InvocationHolder } from './context';
+import type {
+  AttemptLoopContext,
+  AttemptStep,
+  CandidateSlot,
+  InvocationHolder,
+  LanguageAttemptLoopContext,
+} from './context';
 import { resolveSupportedEffortsForDimensions } from './effort-capability';
 
 export type PreparedInvocation =
@@ -65,7 +71,7 @@ export function assertCandidateSupported<TRequest, TContext>(
 // materializes the invocation. Keeps the effort-capability lookup (a hot-path
 // concern) out of the attempt orchestration in attemptModelCandidate.
 export async function prepareModelInvocation<TRequest, TContext>(
-  ctx: AttemptLoopContext<TRequest, TContext>,
+  ctx: LanguageAttemptLoopContext<TRequest, TContext>,
   slot: CandidateSlot,
   model: ModelTransport,
   holder: InvocationHolder,
@@ -84,7 +90,7 @@ export async function prepareModelInvocation<TRequest, TContext>(
 // Materializes the model invocation once and reuses it across candidates,
 // mapping conversion failures onto the protocol's error shapes.
 export function resolveInvocation<TRequest, TContext>(
-  ctx: AttemptLoopContext<TRequest, TContext>,
+  ctx: LanguageAttemptLoopContext<TRequest, TContext>,
   slot: CandidateSlot,
   holder: InvocationHolder,
   targetProtocol: ProviderProtocol | undefined,
