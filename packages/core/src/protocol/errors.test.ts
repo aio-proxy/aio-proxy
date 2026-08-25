@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 
 import { z } from 'zod';
 
-import { ImageInputUnsupportedError } from '../error';
+import { ImageInputUnsupportedError, OpenAICompletionsUnsupportedFeatureError } from '../error';
 import type { ProtocolErrorMapper } from './adapter';
 import {
   anthropicMessagesErrors,
@@ -129,6 +129,20 @@ test.each([
   const response = conflict();
   expect(response.status).toBe(409);
   expect(await response.json()).toEqual(expected);
+});
+
+test('maps Completions unsupported features through modelUnsupported as 501', async () => {
+  const response = openAICompletionsErrors.modelUnsupported?.(
+    new OpenAICompletionsUnsupportedFeatureError('prompt_array', 'prompt'),
+  );
+  expect(response?.status).toBe(501);
+  expect(await response?.json()).toEqual({
+    error: {
+      code: 'unsupported_feature',
+      message: 'OpenAI Completions feature is not supported: prompt_array',
+      type: 'invalid_request_error',
+    },
+  });
 });
 
 test('maps image compatibility errors into every inbound protocol shape', async () => {

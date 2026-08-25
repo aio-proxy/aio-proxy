@@ -9,6 +9,7 @@ import {
   GeminiInlineDataTooLargeError,
   ImageInputUnsupportedError,
   OpenAICompletionsTransformError,
+  OpenAICompletionsUnsupportedFeatureError,
   OpenAIResponsesTransformError,
   OpenAIResponsesUnsupportedFeatureError,
   ProviderNotInstalledError,
@@ -26,10 +27,14 @@ function withZodDetail(base: string, error: unknown): string {
 }
 
 export const openAICompletionsErrors: ProtocolErrorMapper = {
-  modelUnsupported: (error) =>
-    error instanceof ImageInputUnsupportedError
+  modelUnsupported: (error) => {
+    if (error instanceof OpenAICompletionsUnsupportedFeatureError) {
+      return openAIInvalid(501, 'unsupported_feature', `OpenAI Completions feature is not supported: ${error.feature}`);
+    }
+    return error instanceof ImageInputUnsupportedError
       ? openAIInvalid(501, 'unsupported_feature', 'Image input cannot be represented by this provider')
-      : undefined,
+      : undefined;
+  },
   requestError: (error) =>
     error instanceof SyntaxError ||
     error instanceof ZodError ||
