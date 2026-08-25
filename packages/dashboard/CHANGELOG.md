@@ -1,5 +1,20 @@
 # @aio-proxy/dashboard
 
+## 0.10.0
+
+### Minor Changes
+
+- [#202](https://github.com/aio-proxy/aio-proxy/pull/202) [`6880a93`](https://github.com/aio-proxy/aio-proxy/commit/6880a93b087b81aaade64a95a6bd14fe7db4c8f1) Thanks [@baranwang](https://github.com/baranwang)! - dashboard: edit model routing in a drawer by dragging priority tiers and traffic weights
+
+### Patch Changes
+
+- Updated dependencies [[`076c67b`](https://github.com/aio-proxy/aio-proxy/commit/076c67ba698c4cd7a3756ef370adc7a62a530402), [`6880a93`](https://github.com/aio-proxy/aio-proxy/commit/6880a93b087b81aaade64a95a6bd14fe7db4c8f1), [`6880a93`](https://github.com/aio-proxy/aio-proxy/commit/6880a93b087b81aaade64a95a6bd14fe7db4c8f1)]:
+  - @aio-proxy/plugin-sdk@0.10.0
+  - @aio-proxy/i18n@0.10.0
+  - @aio-proxy/server@0.10.0
+  - @aio-proxy/types@0.10.0
+  - @aio-proxy/ui@0.10.0
+
 ## 0.9.1
 
 ### Patch Changes
