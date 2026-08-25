@@ -22,5 +22,8 @@ export function createOpenAIResponsesRoutes(source: ProviderRouteSource) {
         source,
       }),
     )
-    .get('/v1/responses/:id', () => openAIResponsesAdapter.errors.unsupported('response_retrieval'));
+    .get('/v1/responses/:id', () => openAIResponsesAdapter.errors.unsupported('response_retrieval'))
+    .delete('/v1/responses/:id', () => openAIResponsesAdapter.errors.unsupported('response_delete'))
+    .post('/v1/responses/:id/cancel', () => openAIResponsesAdapter.errors.unsupported('response_cancel'))
+    .get('/v1/responses/:id/input_items', () => openAIResponsesAdapter.errors.unsupported('response_input_items'));
 }
