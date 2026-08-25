@@ -223,16 +223,16 @@ Usage mapping from `languageModel` finish usage:
 
 Do **not** emit `usage.input_tokens` or `usage.output_tokens`. Modality breakdown arrays are omitted unless the SDK supplies them.
 
-JSON and convert SSE use the same Interaction `status` mapping from `languageModel` finish + egressed steps (first match wins):
+JSON and convert SSE use the same Interaction `status` mapping from `languageModel` finish + egressed steps (first match wins). Cover every AI SDK unified finish reason (`stop` / `length` / `content-filter` / `tool-calls` / `error` / `other`; V2 also `unknown`). V4 uses `finishReason.unified`.
 
 | Condition | `status` / stream outcome |
 | --- | --- |
-| Convert egress failure, or finish reason `error` | No Interaction JSON. SSE: `event: error`, then `event: done` / `[DONE]`. Never emit `interaction.completed`. |
+| Convert egress failure, or finish reason `error` / `other` / `unknown` | No Interaction JSON. SSE: `event: error`, then `event: done` / `[DONE]`. Never emit `interaction.completed`. |
 | Unmatched `function_call` (no `function_result.call_id`) **or** finish reason `tool-calls` | `requires_action`. Text/`thought` steps do not suppress this. |
-| Finish reason `length` | `incomplete` (official: completed with incomplete results, e.g. max_tokens). Do **not** label `completed`. |
+| Finish reason `length` or `content-filter` | `incomplete` (official: completed with incomplete results, e.g. max_tokens / safety stop). Do **not** label `completed`. |
 | Finish reason `stop` (and none of the above) | `completed`. |
 
-Do not require “function calls are the only terminal output.” Thought + text + tool calls is still `requires_action`. A `length` finish with no unmatched tool call is `incomplete`, never `completed`.
+Do not require “function calls are the only terminal output.” Thought + text + tool calls is still `requires_action`. `length` and `content-filter` without an unmatched tool call are `incomplete`, never `completed`. Do not treat `other` / `unknown` as `completed`.
 
 Agent convert never reaches egress (501 first). When `model` was authored, echo it on the resource; do not invent an `agent` field.
 
@@ -263,7 +263,7 @@ Each JSON payload still includes `event_type` (except the `done` sentinel, whose
 | `step.stop` | `event_id`, `event_type`, `index` | After that step's deltas. Official optional `step_usage` is omitted on convert. |
 | `interaction.completed` | `event_id`, `event_type`, `interaction` (full resource: `id`, `object`, `model`, `status`, `steps`, `usage`, `created`, `updated`) | Last **JSON** event on success. `status` uses the same mapping as non-stream JSON. |
 | `done` | SSE `event: done` and `data: [DONE]` (not JSON) | After `interaction.completed` on success, and after `error` when the stream already opened. |
-| `error` | `event_type` (`"error"`), `error` (`code`, `message`), `event_id` if one was already allocated | Instead of `interaction.completed` when convert egress fails or finish reason is `error`. |
+| `error` | `event_type` (`"error"`), `error` (`code`, `message`), `event_id` if one was already allocated | Instead of `interaction.completed` when convert egress fails or finish reason is `error` / `other` / `unknown`. |
 
 Convert does not emit audio / image / video / document / google_search / mcp deltas. Those request features 501 before invoke.
 
@@ -537,7 +537,7 @@ Convert / egress tests:
 - Maps string `input` + string `system_instruction` + function tools + `thinking_level` + `store: false` + text/plain `response_format`, including a one-element eligible text/plain array and `tool_choice` object `{ "allowed_tools": { "mode": "auto" } }`.
 - Throws 501-mapped (`modelUnsupported`, not `requestError`) errors for agent, omitted `store`, `store: true`, JSON `response_format` (schema or object mode), `response_format` image/audio/video, empty or multi-element `response_format` arrays, `google_search` tools, audio/video input parts, `previous_interaction_id`, unknown `generation_config` members (`temperature`), `thinking_summaries: "auto"`, and `tool_choice` object with `tools`.
 - JSON usage uses `total_input_tokens` / `total_output_tokens` / `total_tokens`, never `input_tokens` / `output_tokens`.
-- `status` mapping (JSON and `interaction.completed`): unmatched `function_call` / `tool-calls` → `requires_action`; `length` → `incomplete` (regression: not `completed`); `error` → protocol/SSE error without `interaction.completed`; `stop` → `completed`.
+- `status` mapping (JSON and `interaction.completed`): unmatched `function_call` / `tool-calls` → `requires_action`; `length` **and** `content-filter` → `incomplete` (regression: not `completed`); `error` / `other` / `unknown` → protocol/SSE error without `interaction.completed`; `stop` → `completed`.
 - SSE uses named `event:` lines, one `status_update` (`in_progress`) after created, no terminal `status_update`, and `event: done` / `[DONE]` after `interaction.completed`.
 - Schema-level: a `function_call` `step.start` missing `id`, `name`, or `arguments` fails. Happy path start is `{ type: "function_call", id, name, arguments: {} }`. Missing id/name fails egress instead of emitting the step.
 - Schema-level: a final `thought` step with `content` fails; it must be `{ type: "thought", summary: [{ type: "text", text }] }`. Streaming `thought_summary` deltas still use `delta.content`.
