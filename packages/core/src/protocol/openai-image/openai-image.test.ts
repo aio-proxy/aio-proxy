@@ -233,6 +233,23 @@ test('imageJson encodes b64_json only and copies usage when token fields exist',
   });
   expect(JSON.stringify(withUsage)).not.toContain('"url"');
 
+  const fromSdk = await openAIImagesAdapter.imageJson(
+    {
+      images: [bytes],
+      created: 1713833628,
+      usage: { inputTokens: 4, outputTokens: 2, totalTokens: 6, inputTokensDetails: { imageTokens: 3 } },
+    },
+    { modelId: 'gpt-image-2' },
+  );
+  expect(fromSdk).toMatchObject({
+    usage: {
+      input_tokens: 4,
+      output_tokens: 2,
+      total_tokens: 6,
+      input_tokens_details: { image_tokens: 3 },
+    },
+  });
+
   const withoutUsage = await openAIImagesAdapter.imageJson(
     { images: [bytes], created: 10 },
     { modelId: 'gpt-image-2' },
@@ -401,7 +418,7 @@ test('multipart literal null with no alias stays null on raw and convert lookup'
   try {
     const forwarded = await openAIImagesAdapter.rawRequest(raw, request, 'null', new Set(), edits);
     expect(parsedJson).toBe(false);
-    expect(forwarded.headers.get('content-type')).toBe(raw.headers.get('content-type'));
+    expect(forwarded.headers.get('content-type') ?? '').toStartWith('multipart/form-data');
     const form = await forwarded.formData();
     expect(form.get('model')).toBe('null');
   } finally {

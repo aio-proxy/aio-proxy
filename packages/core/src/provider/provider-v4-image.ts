@@ -2,17 +2,13 @@ import type { ProviderV4 } from '@ai-sdk/provider';
 import { generateImage } from 'ai';
 
 import { AiSdkProviderError } from '../error';
-import type { ImageInvocation, ImageTransportResult } from '../protocol/image-adapter';
+import { officialImageUsage, type ImageInvocation, type ImageTransportResult } from '../protocol/image-adapter';
 
 export type GenerateImageFn = (options: {
   readonly model: unknown;
-  readonly prompt:
-    | string
-    | {
-        readonly images: readonly Uint8Array[];
-        readonly text?: string;
-        readonly mask?: Uint8Array;
-      };
+  readonly prompt: string;
+  readonly files?: readonly Uint8Array[];
+  readonly mask?: Uint8Array;
   readonly n?: number;
   readonly size?: `${number}x${number}`;
   readonly providerOptions?: ImageInvocation['providerOptions'];
@@ -29,7 +25,22 @@ export type ProviderV4ImageInvoke = (request: {
   readonly signal?: AbortSignal;
 }) => Promise<ImageTransportResult>;
 
-const defaultGenerate: GenerateImageFn = (options) => generateImage(options as never);
+const defaultGenerate: GenerateImageFn = (options) =>
+  generateImage({
+    model: options.model as Parameters<typeof generateImage>[0]['model'],
+    prompt:
+      options.files === undefined
+        ? options.prompt
+        : {
+            text: options.prompt,
+            images: [...options.files],
+            ...(options.mask === undefined ? {} : { mask: options.mask }),
+          },
+    n: options.n,
+    ...(options.size === undefined ? {} : { size: options.size }),
+    ...(options.providerOptions === undefined ? {} : { providerOptions: options.providerOptions }),
+    ...(options.abortSignal === undefined ? {} : { abortSignal: options.abortSignal }),
+  });
 
 export function createProviderV4ImageInvoke(
   providerId: string,
@@ -40,7 +51,8 @@ export function createProviderV4ImageInvoke(
     try {
       const result = await generate({
         model: provider.imageModel(request.modelId),
-        prompt: imagePrompt(request.invocation),
+        prompt: request.invocation.prompt,
+        ...(request.invocation.operation === 'edit' ? editFiles(request.invocation) : {}),
         n: request.invocation.n,
         ...(request.invocation.size === undefined ? {} : { size: request.invocation.size }),
         ...(request.invocation.providerOptions === undefined
@@ -48,7 +60,7 @@ export function createProviderV4ImageInvoke(
           : { providerOptions: request.invocation.providerOptions }),
         ...(request.signal === undefined ? {} : { abortSignal: request.signal }),
       });
-      const usage = result.usage;
+      const usage = officialImageUsage(result.usage);
       const created = unixCreated(result.responses);
       return {
         images: result.images.map(imageBytes),
@@ -61,11 +73,9 @@ export function createProviderV4ImageInvoke(
   };
 }
 
-function imagePrompt(invocation: ImageInvocation): Parameters<GenerateImageFn>[0]['prompt'] {
-  if (invocation.operation !== 'edit') return invocation.prompt;
+function editFiles(invocation: ImageInvocation): { readonly files: readonly Uint8Array[]; readonly mask?: Uint8Array } {
   return {
-    text: invocation.prompt,
-    images: (invocation.images ?? []).map((image) => image.data),
+    files: (invocation.images ?? []).map((image) => image.data),
     ...(invocation.mask === undefined ? {} : { mask: invocation.mask.data }),
   };
 }

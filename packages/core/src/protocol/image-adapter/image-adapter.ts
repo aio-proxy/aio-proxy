@@ -39,11 +39,46 @@ export type ImageTransportResult = {
   readonly created?: number;
 };
 
+export function officialImageUsage(
+  usage: Readonly<Record<string, unknown>> | undefined,
+): Record<string, unknown> | undefined {
+  if (usage === undefined) return undefined;
+  const inputTokens = numberField(usage, 'input_tokens') ?? numberField(usage, 'inputTokens');
+  const outputTokens = numberField(usage, 'output_tokens') ?? numberField(usage, 'outputTokens');
+  const totalTokens = numberField(usage, 'total_tokens') ?? numberField(usage, 'totalTokens');
+  const details = officialInputTokenDetails(usage['input_tokens_details'] ?? usage['inputTokensDetails']);
+  const official = {
+    ...(inputTokens === undefined ? {} : { input_tokens: inputTokens }),
+    ...(outputTokens === undefined ? {} : { output_tokens: outputTokens }),
+    ...(totalTokens === undefined ? {} : { total_tokens: totalTokens }),
+    ...(details === undefined ? {} : { input_tokens_details: details }),
+  };
+  return Object.keys(official).length === 0 ? undefined : official;
+}
+
+function officialInputTokenDetails(value: unknown): Record<string, unknown> | undefined {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined;
+  const record = value as Record<string, unknown>;
+  const textTokens = numberField(record, 'text_tokens') ?? numberField(record, 'textTokens');
+  const imageTokens = numberField(record, 'image_tokens') ?? numberField(record, 'imageTokens');
+  const details = {
+    ...(textTokens === undefined ? {} : { text_tokens: textTokens }),
+    ...(imageTokens === undefined ? {} : { image_tokens: imageTokens }),
+  };
+  return Object.keys(details).length === 0 ? undefined : details;
+}
+
+function numberField(record: Readonly<Record<string, unknown>>, key: string): number | undefined {
+  const value = record[key];
+  return typeof value === 'number' ? value : undefined;
+}
+
 export type ImageProtocolAdapter<TRequest, TContext> = SharedProtocolAdapter<TRequest, TContext> &
   Readonly<{
     capability: 'image';
     imageInvocation: (request: TRequest, context: TContext) => ImageInvocation;
     imageJson: (result: ImageTransportResult, context: ModelEgressContext) => Promise<unknown>;
+    convertSkipReason?: (request: TRequest, resolvedModelId: string) => string | undefined;
   }>;
 
 export type InboundProtocolAdapter<TRequest, TContext> =

@@ -26,8 +26,9 @@ const OPTIONAL_STRING_FIELDS = [
 export async function parseOpenAIImageEditsMultipart(raw: Request): Promise<OpenAIImageRequest> {
   const boundary = multipartBoundary(raw.headers.get('content-type') ?? '');
   if (boundary === undefined) throw new SyntaxError('Invalid OpenAI Images multipart request');
+  await acquireMultipartSlot();
   try {
-    const { fields, uploads, maskUpload } = await parseMultipartStream(raw.clone().body, boundary);
+    const { fields, uploads, maskUpload } = await parseMultipartStream(raw.body, boundary);
     if (uploads.length === 0) throw new SyntaxError('Invalid OpenAI Images multipart request');
     return {
       ...parseOpenAIImageGenerations(generationsInputFromFields(fields)),
@@ -38,7 +39,29 @@ export async function parseOpenAIImageEditsMultipart(raw: Request): Promise<Open
   } catch (error) {
     void raw.body?.cancel(error).catch(() => undefined);
     throw error;
+  } finally {
+    releaseMultipartSlot();
   }
+}
+
+// Process-protection cap on concurrent official-max edits parses. This is not a
+// compatibility ceiling and does not shrink the per-request encoded limit.
+const MAX_IN_FLIGHT_MULTIPART_PARSES = 2;
+let inFlightMultipartParses = 0;
+const multipartWaiters: Array<() => void> = [];
+
+async function acquireMultipartSlot(): Promise<void> {
+  if (inFlightMultipartParses >= MAX_IN_FLIGHT_MULTIPART_PARSES) {
+    await new Promise<void>((resolve) => {
+      multipartWaiters.push(resolve);
+    });
+  }
+  inFlightMultipartParses += 1;
+}
+
+function releaseMultipartSlot(): void {
+  inFlightMultipartParses -= 1;
+  multipartWaiters.shift()?.();
 }
 
 function generationsInputFromFields(fields: Record<string, string>): Record<string, unknown> {

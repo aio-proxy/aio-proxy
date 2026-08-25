@@ -4,14 +4,9 @@ import type { UsageRow } from '@aio-proxy/types';
 import { finalizeUsage } from '../usage-validation';
 
 const TOKEN_FIELDS = [
-  'inputTokens',
-  'outputTokens',
-  'totalTokens',
-  'cacheReadTokens',
-  'cacheWriteTokens',
-  'reasoningTokens',
-  'inputAudioTokens',
-  'outputAudioTokens',
+  ['input_tokens', 'inputTokens'],
+  ['output_tokens', 'outputTokens'],
+  ['total_tokens', 'totalTokens'],
 ] as const;
 
 export async function captureImageUsage(options: {
@@ -22,10 +17,10 @@ export async function captureImageUsage(options: {
   readonly usage?: Readonly<Record<string, unknown>>;
   readonly configPrice?: OpenRouterModelPrice;
 }): Promise<UsageRow | undefined> {
-  const tokens: { [K in (typeof TOKEN_FIELDS)[number]]?: number } = {};
-  for (const field of TOKEN_FIELDS) {
-    const value = options.usage?.[field];
-    if (typeof value === 'number') tokens[field] = value;
+  const tokens: { inputTokens?: number; outputTokens?: number; totalTokens?: number } = {};
+  for (const [official, row] of TOKEN_FIELDS) {
+    const value = options.usage?.[official];
+    if (typeof value === 'number') tokens[row] = value;
   }
   return finalizeUsage({
     usage: {

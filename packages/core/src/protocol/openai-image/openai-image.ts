@@ -10,7 +10,12 @@ import {
   type OpenAIImageUpload,
 } from '../../ingress/openai-image';
 import { openAIImagesErrors } from '../errors';
-import { defineImageProtocolAdapter, type ImageInvocation, type ImageTransportResult } from '../image-adapter';
+import {
+  defineImageProtocolAdapter,
+  officialImageUsage,
+  type ImageInvocation,
+  type ImageTransportResult,
+} from '../image-adapter';
 import { REQUEST_BODY_LIMITS, type RequestBodyLimits, readJsonRequest, readRequestText } from '../request';
 import { assertConvertMask, decodeImageBytes } from './mask';
 
@@ -93,6 +98,7 @@ export const openAIImagesAdapter = defineImageProtocolAdapter<OpenAIImageRequest
   imageInvocation: (request, context) =>
     context.operation === 'edits' ? imageEditsInvocation(request) : imageGenerationsInvocation(request),
   imageJson: async (result) => imageJson(result),
+  convertSkipReason: (request, resolvedModelId) => imageConvertSkipReason({ request, resolvedModelId }),
   errors: openAIImagesErrors,
 });
 
@@ -105,19 +111,8 @@ function isMultipartRequest(raw: Request): boolean {
   return (raw.headers.get('content-type') ?? '').startsWith('multipart/form-data');
 }
 
-async function rewriteMultipartRawRequest(
-  raw: Request,
-  request: OpenAIImageRequest,
-  resolvedModel: string,
-): Promise<Request> {
-  const rewrite = request.modelDefaulted || request.clientModel !== resolvedModel;
+function rewriteMultipartRawRequest(raw: Request, request: OpenAIImageRequest, resolvedModel: string): Request {
   const headers = stripHopHeaders(raw.headers);
-  if (!rewrite) {
-    return new Request(raw, {
-      method: raw.method,
-      headers,
-    });
-  }
   headers.delete('content-type');
   return new Request(raw.url, {
     method: raw.method,
@@ -229,7 +224,7 @@ function imageJson(result: ImageTransportResult): {
   readonly data: readonly { readonly b64_json: string }[];
   readonly usage?: Readonly<Record<string, unknown>>;
 } {
-  const usage = result.usage !== undefined && Object.keys(result.usage).length > 0 ? result.usage : undefined;
+  const usage = officialImageUsage(result.usage);
   return {
     created: result.created ?? Math.floor(Date.now() / 1000),
     data: result.images.map((bytes) => ({ b64_json: Buffer.from(bytes).toString('base64') })),

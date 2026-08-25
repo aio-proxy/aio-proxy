@@ -57,6 +57,11 @@ function imageAdapter() {
         headers,
       });
     },
+    convertSkipReason: (request) => {
+      if (request.stream === true) return 'stream';
+      if (request.response_format === 'url') return 'response_format=url';
+      return undefined;
+    },
     imageInvocation: (request) => ({
       operation: 'generate',
       prompt: request.prompt,
@@ -113,7 +118,7 @@ function convertProvider(options: {
     image: {
       async invoke(request: ImageTransportInvokeRequest) {
         imageCalls.push(request);
-        return options.invoke?.(request) ?? { images: [new Uint8Array([1, 2, 3])], usage: { inputTokens: 11 } };
+        return options.invoke?.(request) ?? { images: [new Uint8Array([1, 2, 3])], usage: { input_tokens: 11 } };
       },
     },
     ...(options.modelInvoke === undefined

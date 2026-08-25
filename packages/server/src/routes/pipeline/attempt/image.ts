@@ -1,4 +1,4 @@
-import { imageConvertSkipReason, type ImageProtocolAdapter, type OpenAIImageRequest } from '@aio-proxy/core';
+import type { ImageProtocolAdapter } from '@aio-proxy/core';
 
 import { supportsImageConvert, supportsImageRaw } from '../../../provider-runtime';
 import { terminalCompletion } from '../../../route-observation';
@@ -47,10 +47,7 @@ export async function attemptImageCandidate<TRequest, TContext>(
   const { adapter, context, rawRequest, request, session } = ctx;
   const { index, candidate, startedAt, observation, inAttempt } = slot;
   const provider = candidate.provider;
-  const skipReason = imageConvertSkipReason({
-    request: request as OpenAIImageRequest,
-    resolvedModelId: candidate.modelId,
-  });
+  const skipReason = adapter.convertSkipReason?.(request, candidate.modelId);
   if (skipReason !== undefined) return { kind: 'skip', reason: skipReason };
 
   slot.trace.transport = 'image';

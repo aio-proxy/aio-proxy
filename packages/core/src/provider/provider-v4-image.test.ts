@@ -1,7 +1,11 @@
 import { expect, test } from 'bun:test';
 
+import { generateImage } from 'ai';
+
 import { AiSdkProviderError } from '../error';
 import { createProviderV4ImageInvoke } from './provider-v4-image';
+
+type GenerateImageOptions = Parameters<typeof generateImage>[0];
 
 function providerV4(imageModel: (modelId: string) => unknown) {
   return {
@@ -42,7 +46,9 @@ test('forwards n and size to generateImage and never calls languageModel', async
     size: '1024x1024',
   });
   expect(result.images).toEqual([new Uint8Array([1, 2, 3])]);
-  expect(result.usage).toEqual({ inputTokens: 4 });
+  expect(result.usage).toEqual({
+    input_tokens: 4,
+  });
 });
 
 test('omits size when invocation has no size so auto is not passed', async () => {
@@ -82,15 +88,18 @@ test('treats string image results as base64 payloads not URLs', async () => {
   expect(Buffer.from(result.images[0]!).toString('utf8')).not.toContain('data:');
 });
 
-test('edit invocation remaps prompt to text images and mask bytes', async () => {
+test('edit invocation passes a string prompt plus files and mask', async () => {
   const image = new Uint8Array([1, 2, 3]);
   const mask = new Uint8Array([4, 5, 6]);
-  let generateArgs: Record<string, unknown> | undefined;
+  let generateArgs: GenerateImageOptions | undefined;
   const invoke = createProviderV4ImageInvoke(
     'openai',
     providerV4(() => ({ modelId: 'gpt-image-2' })) as never,
     async (options) => {
-      generateArgs = options as Record<string, unknown>;
+      if (typeof options.prompt !== 'string') {
+        throw new TypeError('generateImage prompt must be a string');
+      }
+      generateArgs = options;
       return { images: [new Uint8Array([9])] };
     },
   );
@@ -128,7 +137,9 @@ test('edit invocation remaps prompt to text images and mask bytes', async () => 
   });
 
   expect(generateArgs).toMatchObject({
-    prompt: { text: 'make it night', images: [image], mask },
+    prompt: 'make it night',
+    files: [image],
+    mask,
   });
 });
 

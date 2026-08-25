@@ -203,6 +203,16 @@ test('413s the first oversized file without requiring later official-max parts',
   ).rejects.toBeInstanceOf(RequestBodyTooLargeError);
 });
 
+test('parses the original multipart body without cloning it', async () => {
+  const raw = editsMultipartRequest({
+    prompt: 'make it night',
+    image: blobFrom(PNG_1X1_RGBA),
+  });
+  const parsed = await parseOpenAIImageEditsMultipart(raw);
+  expect(parsed.prompt).toBe('make it night');
+  expect(raw.bodyUsed).toBe(true);
+});
+
 test('counts unnamed parts toward the 1 MiB framing allowance', async () => {
   const boundary = '----unnamed';
   const unnamed = 'u'.repeat(1_048_577);
