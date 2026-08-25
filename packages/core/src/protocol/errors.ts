@@ -80,18 +80,7 @@ export const openAIEmbeddingsErrors: ProtocolErrorMapper = {
       ? openAIInvalid(501, 'unsupported_feature', 'Image input cannot be represented by this provider')
       : undefined,
   requestError: (error) => {
-    if (error instanceof EmbeddingConvertUnsupportedError) {
-      return Response.json(
-        {
-          error: {
-            code: 'not_implemented',
-            message: error.message,
-            type: 'unsupported_feature',
-          },
-        },
-        { status: 501 },
-      );
-    }
+    if (error instanceof EmbeddingConvertUnsupportedError) return openAIEmbeddingConvertUnsupported(error);
     return error instanceof SyntaxError ||
       error instanceof ZodError ||
       error instanceof InvalidCompressedRequestBodyError
@@ -105,11 +94,14 @@ export const openAIEmbeddingsErrors: ProtocolErrorMapper = {
   unsupported: () =>
     openAIInvalid(501, 'not_implemented', 'Provider does not support OpenAI Embeddings transform dispatch'),
   // OpenAI embeddings egress requires prompt/total tokens, so an upstream that
-  // never reported them is an upstream failure, not an internal one.
-  provider: (error) =>
-    error instanceof EmbeddingUsageRequiredError
+  // never reported them is an upstream failure, not an internal one. Convert-gap
+  // throws from the transport still surface as 501, not a generic provider 500.
+  provider: (error) => {
+    if (error instanceof EmbeddingConvertUnsupportedError) return openAIEmbeddingConvertUnsupported(error);
+    return error instanceof EmbeddingUsageRequiredError
       ? openAIInvalid(502, 'upstream_error', error.message)
-      : openAIProviderError(error),
+      : openAIProviderError(error);
+  },
   rateLimited: openAIRateLimited,
 };
 
@@ -170,10 +162,14 @@ export const geminiEmbeddingsErrors: ProtocolErrorMapper = {
     error instanceof ImageInputUnsupportedError
       ? geminiError(501, 'UNIMPLEMENTED', 'Image input cannot be represented by this provider')
       : undefined,
-  requestError: (error) =>
-    error instanceof SyntaxError || error instanceof ZodError || error instanceof InvalidCompressedRequestBodyError
+  requestError: (error) => {
+    if (error instanceof EmbeddingConvertUnsupportedError) return geminiEmbeddingConvertUnsupported(error);
+    return error instanceof SyntaxError ||
+      error instanceof ZodError ||
+      error instanceof InvalidCompressedRequestBodyError
       ? geminiError(400, 'INVALID_ARGUMENT', withZodDetail('Invalid Gemini Embeddings request', error))
-      : undefined,
+      : undefined;
+  },
   modelNotFound: (message) => geminiError(404, 'NOT_FOUND', message),
   previousResponseConflict: () => geminiError(409, 'ABORTED', PREVIOUS_RESPONSE_CONFLICT_MESSAGE),
   tooLarge: () => geminiError(413, 'RESOURCE_EXHAUSTED', 'Request body too large'),
@@ -181,9 +177,11 @@ export const geminiEmbeddingsErrors: ProtocolErrorMapper = {
   unsupported: () =>
     geminiError(501, 'UNIMPLEMENTED', 'Provider does not support Gemini embeddings transform dispatch'),
   provider: (error) =>
-    genericProviderError(error, (status, message) =>
-      status === 499 ? geminiError(499, 'CANCELLED', message) : geminiError(status, 'UNAVAILABLE', message),
-    ),
+    error instanceof EmbeddingConvertUnsupportedError
+      ? geminiEmbeddingConvertUnsupported(error)
+      : genericProviderError(error, (status, message) =>
+          status === 499 ? geminiError(499, 'CANCELLED', message) : geminiError(status, 'UNAVAILABLE', message),
+        ),
   rateLimited: geminiRateLimited,
 };
 
@@ -253,6 +251,23 @@ function statusCode(error: unknown): number | undefined {
 function isAbort(error: unknown): boolean {
   const cause = error instanceof AiSdkProviderError ? error.cause : error;
   return cause instanceof Error && cause.name === 'AbortError';
+}
+
+function openAIEmbeddingConvertUnsupported(error: EmbeddingConvertUnsupportedError): Response {
+  return Response.json(
+    {
+      error: {
+        code: 'not_implemented',
+        message: error.message,
+        type: 'unsupported_feature',
+      },
+    },
+    { status: 501 },
+  );
+}
+
+function geminiEmbeddingConvertUnsupported(error: EmbeddingConvertUnsupportedError): Response {
+  return geminiError(501, 'UNIMPLEMENTED', error.message);
 }
 
 function openAIUnsupported(feature: string): Response {

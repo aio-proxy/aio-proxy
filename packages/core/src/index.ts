@@ -180,6 +180,7 @@ export {
 } from './provider/api/index';
 export { bridgeApiProviderToAiSdk, resolveOpenAIResponsesModel } from './provider/api-bridge/index';
 export {
+  assertConvertSupported,
   createProviderV4Embed,
   createProviderV4Invoke,
   type ProviderV4Embed,

@@ -159,6 +159,49 @@ test('OpenAI convert with unknown usage after recovery is 502 and can fallback',
   expect(await failure?.json()).toMatchObject({ error: { code: 'upstream_error' } });
 });
 
+test('raw non-fallback status does not retry convert on the same candidate', async () => {
+  const embed = mock(async () => ({ embeddings: [[0.1]], usage: { tokens: 2 } }));
+  const provider = {
+    id: 'compatible',
+    kind: ProviderKind.Api,
+    enabled: true,
+    raw: {
+      resolve: () => ({
+        invoke: async () => new Response('bad request', { status: 400 }),
+      }),
+    },
+    embedding: { embed },
+  } satisfies RuntimeProviderInstance;
+
+  const step = await attemptEmbeddingCandidate(ctx(openAIEmbeddingsAdapter), slot(provider, { hasNext: true }));
+
+  expect(step.kind).toBe('return');
+  expect(step.kind === 'return' ? step.response.status : undefined).toBe(400);
+  expect(embed).not.toHaveBeenCalled();
+});
+
+test('raw throw does not retry convert on the same candidate', async () => {
+  const embed = mock(async () => ({ embeddings: [[0.1]], usage: { tokens: 2 } }));
+  const provider = {
+    id: 'compatible',
+    kind: ProviderKind.Api,
+    enabled: true,
+    raw: {
+      resolve: () => ({
+        invoke: async () => {
+          throw new Error('raw transport failed');
+        },
+      }),
+    },
+    embedding: { embed },
+  } satisfies RuntimeProviderInstance;
+
+  await expect(
+    attemptEmbeddingCandidate(ctx(openAIEmbeddingsAdapter), slot(provider, { hasNext: true })),
+  ).rejects.toThrow('raw transport failed');
+  expect(embed).not.toHaveBeenCalled();
+});
+
 test('same-protocol embedding raw passes through without converting', async () => {
   const embed = mock(async () => ({ embeddings: [[0.1]], usage: { tokens: 2 } }));
   const forwarded: Request[] = [];

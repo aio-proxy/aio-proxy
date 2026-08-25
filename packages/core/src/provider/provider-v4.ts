@@ -163,7 +163,9 @@ async function embedGroup(
   return recoverTokens(result.usage?.tokens, embedManyPromptTokenCount(result.responses));
 }
 
-function assertConvertSupported(values: readonly EmbeddingValue[]): void {
+// `@ai-sdk/google` parses neither option and never writes it onto the upstream
+// body, so converting a request that carries one would silently drop it.
+export function assertConvertSupported(values: readonly EmbeddingValue[]): void {
   for (const value of values) {
     const google = value.providerOptions?.['google'];
     if (google === undefined) continue;

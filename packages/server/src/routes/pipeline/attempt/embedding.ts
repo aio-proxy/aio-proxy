@@ -1,4 +1,5 @@
 import {
+  assertConvertSupported,
   EmbeddingConvertUnsupportedError,
   type EmbeddingEgressContext,
   type EmbeddingInvocation,
@@ -12,10 +13,6 @@ import { attemptBase, candidateConfigPrice } from '../attempt-base';
 import type { AttemptStep, CandidateSlot, EmbeddingAttemptLoopContext } from './context';
 import { emitReject, handleAttemptError, unsupportedDispatch } from './error';
 import { completeRawAttempt, startRawAttempt } from './raw';
-
-// `@ai-sdk/google` parses neither option and never writes it onto the upstream
-// body, so converting a request that carries one would silently drop it.
-const UNCONVERTIBLE_GOOGLE_OPTIONS = ['title', 'autoTruncate'] as const;
 
 // Embedding dispatch for one candidate. Same-protocol raw wins, otherwise the
 // request converts into an embedding invocation. A language model transport is
@@ -62,7 +59,7 @@ async function convertEmbeddingCandidate<TRequest, TContext>(
   let invocation: EmbeddingInvocation;
   try {
     invocation = adapter.embeddingInvocation(request, context);
-    assertConvertibleInvocation(invocation);
+    assertConvertSupported(invocation.values);
   } catch (error) {
     if (!(error instanceof EmbeddingConvertUnsupportedError)) throw error;
     return emitReject(ctx, slot, adapter.errors.unsupported(error.feature), 'unsupported_feature');
@@ -115,18 +112,6 @@ async function convertEmbeddingCandidate<TRequest, TContext>(
     ),
   );
   return { kind: 'return', response };
-}
-
-// Rejects convert-only gaps before the transport is touched, so the candidate
-// falls back with a 501 instead of a provider error.
-function assertConvertibleInvocation(invocation: EmbeddingInvocation): void {
-  for (const value of invocation.values) {
-    const google = value.providerOptions?.['google'];
-    if (google === undefined) continue;
-    for (const option of UNCONVERTIBLE_GOOGLE_OPTIONS) {
-      if (google[option] !== undefined) throw new EmbeddingConvertUnsupportedError(option);
-    }
-  }
 }
 
 function egressContext(modelId: string, invocation: EmbeddingInvocation, context: unknown): EmbeddingEgressContext {

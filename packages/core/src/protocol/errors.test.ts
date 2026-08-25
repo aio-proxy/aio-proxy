@@ -242,6 +242,31 @@ test('maps EmbeddingConvertUnsupportedError to 501 so parse stays 400-only', asy
   });
 });
 
+test('maps a transport-side EmbeddingConvertUnsupportedError to 501 for OpenAI embeddings', async () => {
+  const response = openAIEmbeddingsErrors.provider(new EmbeddingConvertUnsupportedError('title'));
+
+  expect(response?.status).toBe(501);
+  expect(await response?.json()).toEqual({
+    error: {
+      code: 'not_implemented',
+      message: 'Embedding convert does not support title',
+      type: 'unsupported_feature',
+    },
+  });
+});
+
+test('maps a transport-side EmbeddingConvertUnsupportedError to 501 for Gemini embeddings', async () => {
+  const error = new EmbeddingConvertUnsupportedError('autoTruncate');
+  const request = geminiEmbeddingsErrors.requestError(error);
+  const provider = geminiEmbeddingsErrors.provider(error);
+
+  expect(request?.status).toBe(501);
+  expect(provider?.status).toBe(501);
+  expect(await provider?.json()).toEqual({
+    error: { code: 501, message: 'Embedding convert does not support autoTruncate', status: 'UNIMPLEMENTED' },
+  });
+});
+
 test('embeddings unsupported names transform dispatch', async () => {
   const response = openAIEmbeddingsErrors.unsupported('token-id');
 
