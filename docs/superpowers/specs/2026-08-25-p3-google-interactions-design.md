@@ -40,7 +40,7 @@ Done means:
 - Token counting for Interactions.
 - Teaching Antigravity / other OAuth plugins a native Interactions raw transport. They keep today's GenerateContent raw resolver; Interactions inbound reaches them through convert, or 501s when convert refuses.
 - CLIProxyAPI's separate `interactions-api-key` config surface. aio-proxy uses the existing API-provider / OAuth credential model.
-- Pretending Interactions `store=true` / `previous_interaction_id` / `background=true` / retrieve are implemented.
+- Pretending Interactions storage (`store` omitted/`true`) / `previous_interaction_id` / `background=true` / retrieve are implemented.
 
 ## Approaches considered
 
@@ -63,9 +63,9 @@ Done means:
 | Routing id | Authored `model` or `agent` string after trim. Strip a `models/` prefix from `model` only. Agent ids are bare (`deep-research-preview-04-2026`), never `agents/...`. |
 | Raw rewrite | Write `resolvedModel` (`candidate.modelId`) back into the **same XOR field the client sent**. Agent is not exempt from alias rewrite. |
 | Same-protocol raw | `provider.raw.resolve({ protocol: 'gemini-interactions' })` hits. URL stays `/v1beta/interactions`. |
-| Convert capability | Existing `languageModel`. No new pipeline capability. |
+| Convert capability | Existing `languageModel`. This issue does not extend `streamAiSdkText` with AI SDK `output`. |
 | Convert eligibility | Closed field table below. Mapped or per-candidate 501. No silent drop. |
-| Convert `store` omitted | Convert (stateless). Official default is `store=true`; this is an explicit proxy divergence, not a silent drop of a request field. |
+| Convert `store` | Only explicit `store: false` converts. Omitted and `store: true` are per-candidate 501 (`modelUnsupported`). |
 | Convert JSON usage | Official `Usage`: `total_input_tokens`, `total_output_tokens`, `total_tokens`, plus optional `total_thought_tokens` / `total_cached_tokens` / `total_tool_use_tokens`. Never `input_tokens` / `output_tokens`. |
 | Convert SSE | Full `event_type` contract and order in the SSE section. Not a generic delta/completed stream. |
 | Error envelope | Gemini-style `{ error: { code, message, status } }`. |
@@ -112,7 +112,7 @@ Official `interactions.create` request body ([reference](https://ai.google.dev/a
 | `response_format` | `ResponseFormat` or array | Optional. Convert table below. |
 | `generation_config` | object, model-only | Optional. Convert table below. |
 | `agent_config` | object, agent-only | Optional. Convert 501. |
-| `store` | boolean | Optional. Official default is `true`. Convert table below. |
+| `store` | boolean | Optional. Official omitted ≡ `true` ([data storage](https://ai.google.dev/gemini-api/docs/interactions#data-storage-retention)). Convert table below. |
 | `background` | boolean | Optional. Convert 501 when `true`. |
 | `previous_interaction_id` | string | Optional. Convert 501 when present. |
 | `environment` | object or string | Optional. Convert 501 when present. |
@@ -156,15 +156,16 @@ Rules:
    - Authored `model` → set body `model` to `resolvedModel` when it differs from the current `model` string.
    - Authored `agent` → set body `agent` to `resolvedModel` when it differs from the current `agent` string.
    - Never copy `model` onto `agent` or the reverse.
-4. If neither XOR field needs rewriting (resolved id equals the current field value) **and** no other raw rewrite applied, forward the original body bytes verbatim (same as GenerateContent).
-5. Pathname is always `/v1beta/interactions`. Query, abort signal, and `content-encoding` / `content-length` handling match GenerateContent.
+4. If neither XOR field needs rewriting (resolved id equals the current field value) **and** no other JSON rewrite applied, forward the **decoded body text** from `readRequestText` (same as GenerateContent). That helper decompresses `content-encoding` then decodes UTF-8. Compressed wire bytes are **not** preserved. Always drop `content-encoding` and `content-length` on the rewritten `Request` (the forwarded body is uncompressed text).
+5. Pathname is always `/v1beta/interactions`. Query and inbound abort signal are preserved.
 
 Raw tests that must exist:
 
-- Model unchanged → original body bytes preserved, including `models/` spelling if it already matched `resolvedModel`.
-- Model alias / provider-qualified id → rewrite `model` only.
-- `models/gemini-3.5-flash` routing id is `gemini-3.5-flash`; if `resolvedModel` is `gemini-3.5-flash` and the body still has the prefix, rewrite `model` to the resolved bare id (official ModelOption has no `models/` prefix).
-- Agent unchanged → original body bytes preserved.
+- Model unchanged → decoded body **text** preserved, including `models/` spelling if it already matched `resolvedModel`. Do not assert equality of inbound compressed bytes.
+- Gzip/br/zstd inbound → forwarded body is the decoded JSON text; outbound headers have no `content-encoding` / `content-length`.
+- Model alias / provider-qualified id → rewrite `model` only (re-serialized JSON of the decoded object).
+- `models/gemini-3.5-flash` routing id is `gemini-3.5-flash`; if `resolvedModel` is `gemini-3.5-flash` and the decoded body still has the prefix, rewrite `model` to the resolved bare id (official ModelOption has no `models/` prefix).
+- Agent unchanged → decoded body text preserved.
 - Agent alias → rewrite `agent` to `candidate.modelId`. This is the test that forbids “agent never rewrite”.
 - Agent request never writes a `model` field.
 
@@ -222,7 +223,14 @@ Usage mapping from `languageModel` finish usage:
 
 Do **not** emit `usage.input_tokens` or `usage.output_tokens`. Modality breakdown arrays are omitted unless the SDK supplies them.
 
-`status` is `requires_action` when the only terminal model output is function calls; otherwise `completed`.
+`status` is `requires_action` when **either**:
+
+- the egressed `steps` contain a `function_call` whose `id` has no matching `function_result.call_id` in those steps, or
+- the `languageModel` finish reason is `tool-calls`.
+
+Text and `thought` steps do **not** suppress that. `completed` only when neither condition holds.
+
+Do not require “function calls are the only terminal output.” A model that emits thought + text + tool calls is still `requires_action`.
 
 Agent convert never reaches egress (501 first). When `model` was authored, echo it on the resource; do not invent an `agent` field.
 
@@ -240,13 +248,27 @@ Convert `modelSse` writes SSE **data frames** (`data: <json>\n\n`). The JSON alw
 | --- | --- | --- |
 | `interaction.created` | `event_id`, `event_type`, `interaction` (`id`, `object: "interaction"`, `model`, `status: "in_progress"`) | First event. |
 | `interaction.status_update` | `event_id`, `event_type`, `interaction_id`, `status` | Immediately after created (`in_progress`); again after the last `step.stop` with `completed` or `requires_action`. |
-| `step.start` | `event_id`, `event_type`, `index`, `step` (`type`; for `function_call` also `name` and `id` when known) | Before deltas of that step. |
+| `step.start` | `event_id`, `event_type`, `index`, `step` (see FunctionCallStep below) | Before deltas of that step. |
 | `step.delta` | `event_id`, `event_type`, `index`, `delta` | Zero or more per step. Official `metadata` (including `total_usage`) is omitted on convert. |
 | `step.stop` | `event_id`, `event_type`, `index` | After that step's deltas. Official optional `step_usage` is omitted on convert. |
 | `interaction.completed` | `event_id`, `event_type`, `interaction` (full resource: `id`, `object`, `model`, `status`, `steps`, `usage`, `created`, `updated`) | Last event on success. |
 | `error` | `event_type` (`"error"`), `error` (`code`, `message`), `event_id` if one was already allocated | Instead of `interaction.completed` when convert egress fails after the stream opened. |
 
 Convert does not emit audio / image / video / document / google_search / mcp deltas. Those request features 501 before invoke.
+
+### `function_call` `step.start`
+
+Official `FunctionCallStep` requires `type`, `id`, `name`, and `arguments` ([InteractionSseEvent](https://ai.google.dev/api/interactions-api)). Convert must not emit a start whose `step` omits any of them.
+
+On AI SDK `tool-input-start` (id + `toolName` present):
+
+```json
+{"event_id":"evt_N","event_type":"step.start","index":1,"step":{"type":"function_call","id":"<toolCallId>","name":"<toolName>","arguments":{}}}
+```
+
+`arguments` at start is `{}`. Later `step.delta` `arguments_delta` fragments fill the object. The JSON / `interaction.completed` `function_call` step must still include the required keys; merged `arguments` may be `{}` if no deltas arrived.
+
+If `id` or `name` is missing, **do not emit** that `step.start` (and no deltas/stop for it). Convert egress fails: non-stream returns a protocol error instead of an Interaction; stream already opened emits `error` and must not emit `interaction.completed`. Do not invent ids. A schema-level test must reject a `function_call` start missing `id`, `name`, or `arguments`.
 
 ### `delta` shapes convert may emit
 
@@ -317,7 +339,7 @@ Apply this at `modelInvocation` / transform time so raw can still forward agent 
 
 ### Convert (language subset, `model` set, `agent` absent)
 
-Map onto `ModelMessage` + `AiSdkCallSettings` + function `ToolSet` (+ optional `responseFormat`), then invoke `languageModel` and egress as Interactions.
+Map onto `ModelMessage` + `AiSdkCallSettings` + function `ToolSet`, then invoke `languageModel` and egress as Interactions. Do not put structured output on `AiSdkCallSettings`.
 
 | Inbound | Mapping |
 | --- | --- |
@@ -334,20 +356,19 @@ Map onto `ModelMessage` + `AiSdkCallSettings` + function `ToolSet` (+ optional `
 | `generation_config.tool_choice` `"auto"` / `"none"` | matching tool choice when the SDK has it |
 | `generation_config.tool_choice` `{ "allowed_tools": { "mode": "auto" } }` or `{ "allowed_tools": { "mode": "none" } }` with `tools` absent or `[]` | same as the matching string enum |
 | `response_format` `{ "type": "text" }` with `mime_type` omitted or `"text/plain"` and no `schema` | no structured-output setting |
-| `response_format` `{ "type": "text", "mime_type": "application/json", "schema" }` | AI SDK JSON `responseFormat` / schema |
-| `response_format` `{ "type": "text", "mime_type": "application/json" }` without schema | JSON object mode |
-| `response_format` array of length 1 whose only member is eligible | same as that object |
+| `response_format` array of length 1 whose only member is that text/plain object | same as that object |
 | `stream: true` | `wantsStream` true |
 | `stream` absent / false | non-stream |
-| `store: false` | convert; convert is always stateless |
-| `store` omitted | convert; convert is always stateless (see divergence note) |
+| `store: false` | convert (stateless language call) |
 | `background` absent or `false` | convert |
 
 `thinking_level` uses Google's Interactions enum only (`minimal` / `low` / `medium` / `high`). There is no Interactions `none` / `xhigh` / `off` on this wire. Dimensions: `{ thinking: true, effort }` from that enum.
 
 Official `TextResponseFormat` extra keys besides `type` / `mime_type` / `schema` → 501. `schema` on `text/plain` → 501.
 
-**`store` omitted (explicit divergence):** Google's Interactions overview defaults omitted `store` to `store=true` (server-side retention, `previous_interaction_id`, background). Convert cannot implement that product backend. aio-proxy still converts an omitted `store` as a **stateless** language call, same as `store: false`. This is not a silent field drop: the key is absent. It is a default-semantics divergence. `store: true` remains per-candidate 501. If product later wants Google-default fidelity, change omitted `store` to 501; do not start storing.
+**JSON `response_format` (no bridge expansion):** `AiSdkCallSettings` is `LanguageModelCallOptions` plus request controls. It has no `responseFormat`. `streamAiSdkText` spreads settings into `streamText` and does not pass AI SDK `output` (`Output.object({ schema })` / `Output.json()`). This issue does not extend that typed-output path. Therefore `mime_type: "application/json"` (with or without `schema`) is convert-ineligible: per-candidate 501. Do not map it onto a non-existent settings field and do not drop it.
+
+**`store` (official default):** omitted `store` ≡ `store: true` (server-side retention, `previous_interaction_id`, background). Convert cannot implement that backend and must not return a non-retrievable fake Interaction id. Only explicit `store: false` converts. Omitted and `true` throw the unsupported-feature error (`modelUnsupported` 501) so a later native Interactions raw candidate can still run.
 
 The Interactions overview mentions `generation_config.temperature`. The official `GenerationConfig` object does **not** include `temperature` or `top_p`. Those keys are extra members → 501.
 
@@ -359,7 +380,7 @@ Targets: any candidate with a `languageModel` capability — `openai-response`, 
 | --- | --- |
 | `agent` | Native Interactions only. 501, not 400. |
 | `agent_config` | Agent-only. |
-| `store: true` | Convert cannot implement official storage / `previous_interaction_id` continuation. |
+| `store` omitted or `store: true` | Official omitted ≡ stored Interaction. Convert cannot store or mint a retrievable id. |
 | `background: true` | Background execution is a product backend. |
 | `previous_interaction_id` | Stateful retrieve. |
 | `environment`, `labels`, `safety_settings`, `service_tier`, `webhook_config` | No `languageModel` mapping. |
@@ -369,6 +390,7 @@ Targets: any candidate with a `languageModel` capability — `openai-response`, 
 | `generation_config.tool_choice` object with `tools` names, extra keys, or mode other than `auto`/`none` | No faithful mapping. |
 | Any other `generation_config` member (`temperature`, `top_p`, …) | Not on the official Interactions `GenerationConfig`; do not silently ignore. Empty `generation_config: {}` converts. |
 | `response_format` `type` `image` / `audio` / `video` | Images / Audio / Videos out of scope. |
+| `response_format` `type: "text"` with `mime_type: "application/json"` (schema or not) | No `streamAiSdkText` `output` in this issue. |
 | `response_format` missing `type`, or `type: "text"` with unknown keys / `schema` on `text/plain` | Closed policy. |
 | `response_format` array of length 0, length > 1, or containing any ineligible member | Whole field 501. Do not take the first eligible member and drop the rest. |
 | `tools` that are not function declarations (`google_search`, `google_maps`, MCP, code execution, file search, url_context, retrieval, …) | Not function `ToolSet`. |
@@ -381,7 +403,7 @@ Pipeline mapping that implementers must not invert (`resolveInvocation` in `pack
 
 - Convert-ineligible features throw a dedicated unsupported-feature error. `errors.modelUnsupported` maps it to 501. The pipeline stores `invocationUnsupported` and `emitReject`s **that candidate**, so a later Interactions-raw candidate can still run.
 - This adapter's `errors.requestError` is **400 only** (Zod / syntax / XOR / missing `input` / stream type / `system_instruction` type / empty convertible transcript). Empty transcript is request-terminal because no candidate can invent messages.
-- Never put `agent`, `response_format`, `store: true`, tools, or other convert-ineligible features on `requestError`. OpenAI Responses currently dual-maps some unsupported features onto `requestError` (501, request-terminal) **and** `modelUnsupported`; Interactions must not copy that. `modelUnsupported` is checked first; relying on `requestError` for 501 would still terminate the whole request if `modelUnsupported` missed the class.
+- Never put `agent`, JSON/`image` `response_format`, omitted/`true` `store`, tools, or other convert-ineligible features on `requestError`. OpenAI Responses currently dual-maps some unsupported features onto `requestError` (501, request-terminal) **and** `modelUnsupported`; Interactions must not copy that. `modelUnsupported` is checked first; relying on `requestError` for 501 would still terminate the whole request if `modelUnsupported` missed the class.
 - `errors.unsupported('transform_dispatch')` stays the no-capability 501, also per-candidate.
 
 ### 400 `INVALID_ARGUMENT`
@@ -414,7 +436,7 @@ Reuse the Gemini JSON error envelope already used by generateContent:
 | `previousResponseConflict` | 409 `ABORTED` |
 | `tooLarge` | 413 `RESOURCE_EXHAUSTED` |
 | `unsupportedContentEncoding` | 415 `INVALID_ARGUMENT` |
-| `modelUnsupported` | 501 `UNIMPLEMENTED` (agent / `store: true` / ineligible `response_format` / non-function tools / unknown fields) |
+| `modelUnsupported` | 501 `UNIMPLEMENTED` (agent / omitted or `true` `store` / JSON or image `response_format` / non-function tools / unknown fields) |
 | `unsupported` | 501 `UNIMPLEMENTED` (no model capability: `transform_dispatch`) |
 | `rateLimited` | 429 `RESOURCE_EXHAUSTED` + `Retry-After` |
 | provider abort | 499 `CANCELLED` |
@@ -457,7 +479,7 @@ Follow-through required for a compiling tree, not a dashboard redesign:
 - `PROTOCOL_LABELS` / `PROTOCOL_ORDER`: label `Gemini Interactions`, same Gemini icon.
 - `SDK_VERSION_PREFIXES['gemini-interactions'] = '/v1beta'`.
 - API raw auth: `x-goog-api-key`.
-- Probe of a **primary** `gemini-interactions` endpoint: `POST /v1beta/interactions` with `{ model, input: "ping" }` using `providerProbeModel()`. Probe does not send `agent`. If `models[0]` is only an agent id, probe may FAIL; that is acceptable.
+- Probe of a **primary** `gemini-interactions` endpoint: `POST /v1beta/interactions` with `{ model, input: "ping", store: false }` using `providerProbeModel()`. `store: false` is required so a successful probe does not persist an Interaction on Google. Probe does not send `agent`. If `models[0]` is only an agent id, probe may FAIL; that is acceptable.
 
 No new CLIProxyAPI-style `interactions-api-key` list.
 
@@ -476,27 +498,31 @@ Adapter / ingress tests (colocated, not under legacy `_test/`):
 `rawRequest` tests:
 
 - Pathname `/v1beta/interactions`, query preserved.
-- Model id unchanged → original body bytes.
+- Model id unchanged → decoded body text preserved (not inbound compressed bytes).
+- Compressed inbound → decode, then forward uncompressed text; drop `content-encoding` / `content-length`.
 - `models/` prefix rewritten to resolved bare model id.
 - Model alias / provider-qualified `resolvedModel` rewrites `model` only.
-- Agent id unchanged → original body bytes.
+- Agent id unchanged → decoded body text preserved.
 - Agent alias rewrites `agent` to `candidate.modelId` and does not add `model`.
 
 Convert / egress tests:
 
-- Maps string `input` + string `system_instruction` + function tools + `thinking_level` + JSON `response_format`, including a one-element eligible `response_format` array and `tool_choice` object `{ "allowed_tools": { "mode": "auto" } }`.
-- Throws 501-mapped (`modelUnsupported`, not `requestError`) errors for agent, `store: true`, `response_format` image/audio/video, empty or multi-element `response_format` arrays, `google_search` tools, audio/video input parts, `previous_interaction_id`, unknown `generation_config` members (`temperature`), `thinking_summaries: "auto"`, and `tool_choice` object with `tools`.
+- Maps string `input` + string `system_instruction` + function tools + `thinking_level` + `store: false` + text/plain `response_format`, including a one-element eligible text/plain array and `tool_choice` object `{ "allowed_tools": { "mode": "auto" } }`.
+- Throws 501-mapped (`modelUnsupported`, not `requestError`) errors for agent, omitted `store`, `store: true`, JSON `response_format` (schema or object mode), `response_format` image/audio/video, empty or multi-element `response_format` arrays, `google_search` tools, audio/video input parts, `previous_interaction_id`, unknown `generation_config` members (`temperature`), `thinking_summaries: "auto"`, and `tool_choice` object with `tools`.
 - JSON usage uses `total_input_tokens` / `total_output_tokens` / `total_tokens`, never `input_tokens` / `output_tokens`.
+- `status` is `requires_action` when steps include an unmatched `function_call` **or** finish reason is `tool-calls`, even if text/thought steps exist.
 - SSE sequence, `event_id`, `index`, and `delta` shapes match the SSE contract. Writers are Interactions, not generateContent.
+- Schema-level: a `function_call` `step.start` missing `id`, `name`, or `arguments` fails. Happy path start is `{ type: "function_call", id, name, arguments: {} }`. Missing id/name fails egress instead of emitting the step.
 
 Dispatch matrix (`packages/server/__tests__/cross-protocol-routing.test.ts`):
 
-- Add inbound `{ protocol: gemini-interactions, path: '/v1beta/interactions', body: { model: 'm', input: 'hello' } }`.
+- Add inbound `{ protocol: gemini-interactions, path: '/v1beta/interactions', body: { model: 'm', input: 'hello', store: false } }` so convert cells are eligible.
 - Add `ProviderProtocol.GeminiInteractions` to the provider-protocol list.
 - Existing 4×4 cells stay: raw iff inbound protocol equals provider protocol.
 - New row/column: Interactions inbound raw only against `gemini-interactions`; convert against `gemini` / `openai-response` / `openai-compatible` / `anthropic`.
 - Convert response shape is Interactions (`object: "interaction"`, `steps`, `usage.total_input_tokens`), never GenerateContent `candidates`.
-- Antigravity fixture still raw-resolves only `gemini`. Interactions inbound against Antigravity is convert (`model`), not raw.
+- Antigravity fixture still raw-resolves only `gemini`. Interactions inbound against Antigravity is convert (`model` + `store: false`), not raw.
+- Omitted or `store: true` inbound 501s on language-only / Antigravity convert; a later `gemini-interactions` raw candidate still raws.
 - Agent inbound against a language-only provider 501s; against a `gemini-interactions` raw provider raws, including after an agent alias rewrite.
 
 README (both `README.md` and `README.zh-Hans.md`):
