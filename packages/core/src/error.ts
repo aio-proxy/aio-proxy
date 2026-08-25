@@ -150,6 +150,15 @@ export class OpenAIResponsesUnsupportedFeatureError extends AioProxyError {
   }
 }
 
+export class OpenAIImagesUnsupportedFeatureError extends AioProxyError {
+  readonly code = 'UNSUPPORTED_OPENAI_IMAGES_FEATURE';
+  readonly status = 501;
+
+  constructor(readonly feature: 'image_url' | 'files') {
+    super('OpenAIImagesUnsupportedFeatureError', `OpenAI Images feature is not supported: ${feature}`);
+  }
+}
+
 export type ImageInputUnsupportedReason =
   | 'assistant-image'
   | 'gemini-assistant-url'

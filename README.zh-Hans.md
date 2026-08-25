@@ -198,6 +198,7 @@ router:
 | Gemini 流式生成           | `POST /v1beta/models/{model}:streamGenerateContent` |
 | Gemini Token Counting     | `POST /v1beta/models/{model}:countTokens`           |
 | OpenAI Images generations | `POST /v1/images/generations`                       |
+| OpenAI Images edits       | `POST /v1/images/edits`                             |
 
 Images 说明：
 
@@ -206,6 +207,7 @@ Images 说明：
 - 入站模型是 OpenAI id，外加现有的 `providerId/` 限定符，不是 OmniRoute 的 `provider/model`。
 - 转换路径不流式输出，也不会去拉取 `image_url`。
 - DALL·E 省略/`null`/`url` 会跳过转换；GPT Image 省略时编码为 `b64_json`；自定义模型省略时的 `b64_json` 是 aio-proxy 扩展。
+- Edits JSON 接受官方上限信封（`357_564_416`）；P1 没有更低的默认 DoS 上限。
 - 无目录的 Images Provider 需要有限 id 集合（`models`、保留的别名目标或 metadata 键），其中须包含 `gpt-image-2` 才能使用 CPA 默认值。
 
 调用 OpenAI Responses 入口：

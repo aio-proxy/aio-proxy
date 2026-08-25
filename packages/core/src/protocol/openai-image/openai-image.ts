@@ -1,7 +1,8 @@
 import { ProviderProtocol } from '@aio-proxy/types';
-import { z } from 'zod';
 
+import { OpenAIImagesUnsupportedFeatureError } from '../../error';
 import {
+  parseOpenAIImageEdits,
   parseOpenAIImageGenerations,
   stripOneProviderPrefix,
   type OpenAIImageRequest,
@@ -22,7 +23,6 @@ export type OpenAIImageContext = {
 const DALLE_IDS = new Set(['dall-e-2', 'dall-e-3']);
 const SIZE_PATTERN = /^(\d+)x(\d+)$/u;
 const EDITS_JSON_LIMITS = Object.freeze({ encoded: 357_564_416, decoded: 357_564_416 });
-const EDITS_MULTIPART_LIMITS = Object.freeze({ encoded: 851_048_559, decoded: 851_048_559 });
 const PROVIDER_OPTION_KEYS = [
   'quality',
   'output_format',
@@ -36,9 +36,11 @@ const PROVIDER_OPTION_KEYS = [
 export function imageConvertSkipReason(input: {
   readonly request: OpenAIImageRequest;
   readonly resolvedModelId: string;
-}): 'stream' | 'response_format=url' | 'dall-e-3-n' | undefined {
+}): 'stream' | 'response_format=url' | 'dall-e-3-n' | 'image_url' | 'files' | undefined {
   const { request, resolvedModelId } = input;
   if (request.stream === true) return 'stream';
+  const editsFeature = editsConvertUnsupportedFeature(request);
+  if (editsFeature !== undefined) return editsFeature;
   const baseId = stripOneProviderPrefix(resolvedModelId);
   const n = request.n ?? 1;
   if (baseId === 'dall-e-3' && n > 1 && stripOneProviderPrefix(request.model) !== 'dall-e-3') return 'dall-e-3-n';
@@ -50,10 +52,8 @@ export const openAIImagesAdapter = defineImageProtocolAdapter<OpenAIImageRequest
   protocol: ProviderProtocol.OpenAIImage,
   bodyLimits: openaiImageBodyLimits,
   async parse(raw, context) {
-    if (context.operation !== 'generations') {
-      z.literal('generations').parse(context.operation);
-    }
-    return parseOpenAIImageGenerations(await readJsonRequest(raw, openaiImageBodyLimits(raw, context)));
+    const body = await readJsonRequest(raw, openaiImageBodyLimits(raw, context));
+    return context.operation === 'edits' ? parseOpenAIImageEdits(body) : parseOpenAIImageGenerations(body);
   },
   model: (request) => request.model,
   wantsStream: (request) => request.stream === true,
@@ -72,15 +72,37 @@ export const openAIImagesAdapter = defineImageProtocolAdapter<OpenAIImageRequest
       headers,
     });
   },
-  imageInvocation: (request) => imageGenerationsInvocation(request),
+  imageInvocation: (request, context) =>
+    context.operation === 'edits' ? imageEditsInvocation(request) : imageGenerationsInvocation(request),
   imageJson: async (result) => imageJson(result),
   errors: openAIImagesErrors,
 });
 
-function openaiImageBodyLimits(raw: Request, context: OpenAIImageContext): RequestBodyLimits {
-  if (context.operation === 'generations') return REQUEST_BODY_LIMITS;
-  const contentType = raw.headers.get('content-type') ?? '';
-  return contentType.toLowerCase().includes('multipart/form-data') ? EDITS_MULTIPART_LIMITS : EDITS_JSON_LIMITS;
+function openaiImageBodyLimits(_raw: Request, context: OpenAIImageContext): RequestBodyLimits {
+  if (context.operation === 'edits') return EDITS_JSON_LIMITS;
+  return REQUEST_BODY_LIMITS;
+}
+
+function imageEditsInvocation(request: OpenAIImageRequest): ImageInvocation {
+  const feature = editsConvertUnsupportedFeature(request);
+  if (feature !== undefined) throw new OpenAIImagesUnsupportedFeatureError(feature);
+  const size = convertSize(request.size);
+  const providerOptions = convertProviderOptions(request);
+  return {
+    operation: 'edit',
+    prompt: request.prompt,
+    n: request.n ?? 1,
+    ...(size === undefined ? {} : { size }),
+    responseFormat: 'b64_json',
+    ...(providerOptions === undefined ? {} : { providerOptions }),
+  };
+}
+
+function editsConvertUnsupportedFeature(request: OpenAIImageRequest): 'image_url' | 'files' | undefined {
+  const sources = [...(request.images ?? []), ...(request.mask === undefined ? [] : [request.mask])];
+  if (sources.some((source) => source.image_url !== undefined)) return 'image_url';
+  if (sources.some((source) => source.file_id !== undefined)) return 'files';
+  return undefined;
 }
 
 function imageGenerationsInvocation(request: OpenAIImageRequest): ImageInvocation {

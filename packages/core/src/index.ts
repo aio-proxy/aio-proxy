@@ -58,6 +58,7 @@ export {
   NpmPackageNameError,
   OpenAICompletionsTransformError,
   OpenAIResponsesTransformError,
+  OpenAIImagesUnsupportedFeatureError,
   OpenAIResponsesUnsupportedFeatureError,
   ProviderNotInstalledError,
   RouterModelCollisionError,
@@ -98,7 +99,13 @@ export {
   OpenAICompletionsRequestSchema,
   parseOpenAICompletions,
 } from './ingress/openai-completions';
-export { CPA_DEFAULT_IMAGE_MODEL, parseOpenAIImageGenerations, type OpenAIImageRequest } from './ingress/openai-image';
+export {
+  CPA_DEFAULT_IMAGE_MODEL,
+  parseOpenAIImageEdits,
+  parseOpenAIImageGenerations,
+  type OpenAIImageRequest,
+  type OpenAIImageSourceRef,
+} from './ingress/openai-image';
 export {
   type OpenAIResponsesCustomTool,
   type OpenAIResponsesExecutableTool,

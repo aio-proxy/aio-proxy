@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 
 import { ZodError } from 'zod';
 
-import { CPA_DEFAULT_IMAGE_MODEL, parseOpenAIImageGenerations } from './openai-image';
+import { CPA_DEFAULT_IMAGE_MODEL, parseOpenAIImageEdits, parseOpenAIImageGenerations } from './openai-image';
 
 test('parses a valid generations body and keeps the explicit model', () => {
   expect(parseOpenAIImageGenerations({ model: 'gpt-image-1', prompt: 'a cat', n: 2 })).toEqual({
@@ -86,4 +86,46 @@ test('rejects convert n outside 1 through 10 on other models', () => {
 test('stores omitted and JSON-null n as null', () => {
   expect(parseOpenAIImageGenerations({ prompt: 'a cat' }).n).toBeNull();
   expect(parseOpenAIImageGenerations({ prompt: 'a cat', n: null }).n).toBeNull();
+});
+
+const imageUrl = { image_url: 'https://example.com/cat.png' };
+
+test('parses JSON edits with prompt and image_url', () => {
+  expect(parseOpenAIImageEdits({ prompt: 'make it night', images: [imageUrl] })).toEqual({
+    model: CPA_DEFAULT_IMAGE_MODEL,
+    modelDefaulted: true,
+    prompt: 'make it night',
+    n: null,
+    images: [imageUrl],
+  });
+});
+
+test('parses JSON edits file_id and optional URL mask', () => {
+  const parsed = parseOpenAIImageEdits({
+    model: 'gpt-image-2',
+    prompt: 'make it night',
+    images: [{ file_id: 'file-abc' }],
+    mask: { image_url: 'https://example.com/mask.png' },
+  });
+  expect(parsed.images).toEqual([{ file_id: 'file-abc' }]);
+  expect(parsed.mask).toEqual({ image_url: 'https://example.com/mask.png' });
+  expect(parsed.modelDefaulted).toBe(false);
+});
+
+test.each([
+  ['omitted', {}],
+  ['JSON null', { model: null }],
+  ['empty string', { model: '' }],
+  ['whitespace', { model: '  \t' }],
+] as const)('defaults edits %s model to gpt-image-2', (_name, extra) => {
+  const parsed = parseOpenAIImageEdits({ ...extra, prompt: 'make it night', images: [imageUrl] });
+  expect(parsed.model).toBe(CPA_DEFAULT_IMAGE_MODEL);
+  expect(parsed.modelDefaulted).toBe(true);
+  expect(parsed.clientModel).toBeUndefined();
+});
+
+test('rejects edits missing prompt or images', () => {
+  expect(() => parseOpenAIImageEdits({ images: [imageUrl] })).toThrow(ZodError);
+  expect(() => parseOpenAIImageEdits({ prompt: 'make it night' })).toThrow(ZodError);
+  expect(() => parseOpenAIImageEdits({ prompt: 'make it night', images: [] })).toThrow(ZodError);
 });

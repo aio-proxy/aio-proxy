@@ -1,7 +1,6 @@
 import { expect, test } from 'bun:test';
 
-import { ZodError } from 'zod';
-
+import { REQUEST_BODY_LIMITS } from '../request';
 import {
   CPA_DEFAULT_IMAGE_MODEL,
   imageConvertSkipReason,
@@ -21,9 +20,26 @@ function generationsRequest(body: unknown): Request {
   });
 }
 
+function editsRequest(body: unknown): Request {
+  return new Request('https://x/v1/images/edits', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
 async function parseGenerations(body: unknown): Promise<OpenAIImageRequest> {
   return openAIImagesAdapter.parse(generationsRequest(body), generations);
 }
+
+async function parseEdits(body: unknown): Promise<OpenAIImageRequest> {
+  return openAIImagesAdapter.parse(editsRequest(body), edits);
+}
+
+const editsImageUrl = {
+  prompt: 'make it night',
+  images: [{ image_url: 'https://example.com/cat.png' }],
+};
 
 test('adapter model returns the CPA lookup id after defaulting', async () => {
   const request = await parseGenerations({ prompt: 'a cat' });
@@ -227,10 +243,88 @@ test('imageJson encodes b64_json only and copies usage when token fields exist',
   });
 });
 
-test('edits parse rejects until the edits adapter ships', async () => {
-  await expect(openAIImagesAdapter.parse(generationsRequest({ prompt: 'a cat' }), edits)).rejects.toBeInstanceOf(
-    ZodError,
+test('JSON edits with image_url parse for raw and convert 501s image_url', async () => {
+  const raw = editsRequest(editsImageUrl);
+  const request = await openAIImagesAdapter.parse(raw, edits);
+  expect(request.prompt).toBe('make it night');
+  expect(request.images).toEqual([{ image_url: 'https://example.com/cat.png' }]);
+  const forwarded = await openAIImagesAdapter.rawRequest(raw, request, 'gpt-image-2', new Set(), edits);
+  expect(await forwarded.json()).toMatchObject(editsImageUrl);
+  expect(imageConvertSkipReason({ request, resolvedModelId: 'gpt-image-2' })).toBe('image_url');
+  expect(() => openAIImagesAdapter.imageInvocation(request, edits)).toThrow(/image_url/u);
+  const response = openAIImagesErrors.unsupported('image_url');
+  expect(response.status).toBe(501);
+  expect(await response.json()).toEqual({
+    error: {
+      code: 'unsupported_feature',
+      message: 'OpenAI Images feature is not supported: image_url',
+      type: 'invalid_request_error',
+    },
+  });
+});
+
+test('JSON edits file_id convert 501s files', async () => {
+  const request = await parseEdits({ prompt: 'make it night', images: [{ file_id: 'file-abc' }] });
+  expect(imageConvertSkipReason({ request, resolvedModelId: 'gpt-image-2' })).toBe('files');
+  expect(() => openAIImagesAdapter.imageInvocation(request, edits)).toThrow(/files/u);
+  const response = openAIImagesErrors.unsupported('files');
+  expect(response.status).toBe(501);
+  expect(await response.json()).toMatchObject({
+    error: { code: 'unsupported_feature', type: 'invalid_request_error' },
+  });
+});
+
+test('JSON edits URL mask convert 501s image_url even when images use file_id', async () => {
+  const request = await parseEdits({
+    prompt: 'make it night',
+    images: [{ file_id: 'file-abc' }],
+    mask: { image_url: 'https://example.com/mask.png' },
+  });
+  expect(imageConvertSkipReason({ request, resolvedModelId: 'gpt-image-2' })).toBe('image_url');
+});
+
+test.each([
+  ['omitted', { prompt: 'make it night', images: [{ image_url: 'https://example.com/cat.png' }] }],
+  ['JSON null', { model: null, prompt: 'make it night', images: [{ image_url: 'https://example.com/cat.png' }] }],
+  ['empty string', { model: '', prompt: 'make it night', images: [{ image_url: 'https://example.com/cat.png' }] }],
+  ['whitespace', { model: '   ', prompt: 'make it night', images: [{ image_url: 'https://example.com/cat.png' }] }],
+] as const)('defaults edits %s model lookup to gpt-image-2', async (_name, body) => {
+  const raw = editsRequest(body);
+  const request = await openAIImagesAdapter.parse(raw, edits);
+  expect(request.model).toBe(CPA_DEFAULT_IMAGE_MODEL);
+  expect(request.modelDefaulted).toBe(true);
+  const forwarded = await openAIImagesAdapter.rawRequest(raw, request, 'gpt-image-2', new Set(), edits);
+  expect(await forwarded.json()).toMatchObject({ model: 'gpt-image-2', prompt: 'make it night' });
+});
+
+test('edits JSON bodyLimits accept the official-max envelope', () => {
+  expect(openAIImagesAdapter.bodyLimits(editsRequest(editsImageUrl), edits)).toEqual({
+    encoded: 357_564_416,
+    decoded: 357_564_416,
+  });
+  expect(openAIImagesAdapter.bodyLimits(generationsRequest({ prompt: 'a cat' }), generations)).toEqual(
+    REQUEST_BODY_LIMITS,
   );
+});
+
+test('rewrites a defaulted edits request to the resolved alias target', async () => {
+  const raw = editsRequest(editsImageUrl);
+  const request = await openAIImagesAdapter.parse(raw, edits);
+  const forwarded = await openAIImagesAdapter.rawRequest(raw, request, 'acme-image-2', new Set(), edits);
+  expect(await forwarded.json()).toMatchObject({ model: 'acme-image-2' });
+});
+
+test('forwards explicit same-id edits raw bytes without a JSON round-trip', async () => {
+  const bodyText =
+    '{"model":"gpt-image-2","seed":9007199254740993,"prompt":"make it night","images":[{"image_url":"https://example.com/cat.png"}]}';
+  const raw = new Request('https://x/v1/images/edits', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: bodyText,
+  });
+  const request = await openAIImagesAdapter.parse(raw, edits);
+  const forwarded = await openAIImagesAdapter.rawRequest(raw, request, 'gpt-image-2', new Set(), edits);
+  expect(await forwarded.text()).toBe(bodyText);
 });
 
 test('maps protocol-shaped Images errors', async () => {

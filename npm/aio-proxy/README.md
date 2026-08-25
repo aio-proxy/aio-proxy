@@ -281,6 +281,7 @@ Previously, Provider weight was a global fixed order: unique weights were tried 
 | Gemini streaming          | `POST /v1beta/models/{model}:streamGenerateContent` |
 | Gemini Token Counting     | `POST /v1beta/models/{model}:countTokens`           |
 | OpenAI Images generations | `POST /v1/images/generations`                       |
+| OpenAI Images edits       | `POST /v1/images/edits`                             |
 
 Images notes:
 
@@ -289,6 +290,7 @@ Images notes:
 - Inbound model is the OpenAI id plus the existing `providerId/` qualifier, not OmniRoute `provider/model`.
 - Convert does not stream and does not fetch `image_url`.
 - DALL·E omitted/`null`/`url` skips convert; GPT Image omitted encodes `b64_json`; custom omitted `b64_json` is an aio-proxy extension.
+- Edits JSON accepts official-max envelopes (`357_564_416`); P1 has no lower default DoS cap.
 - Non-catalog Images providers need a finite id set (`models`, preserved alias targets, or metadata keys) including `gpt-image-2` for the CPA default.
 
 Call the OpenAI Responses endpoint:

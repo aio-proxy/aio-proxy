@@ -9,6 +9,7 @@ import {
   GeminiInlineDataTooLargeError,
   ImageInputUnsupportedError,
   OpenAICompletionsTransformError,
+  OpenAIImagesUnsupportedFeatureError,
   OpenAIResponsesTransformError,
   OpenAIResponsesUnsupportedFeatureError,
   ProviderNotInstalledError,
@@ -99,23 +100,29 @@ const IMAGES_NOT_IMPLEMENTED_MESSAGE = 'No configured provider can generate imag
 const IMAGES_UNSUPPORTED_FEATURES = new Set(['stream', 'response_format=url', 'image_url', 'files']);
 
 export const openAIImagesErrors: ProtocolErrorMapper = {
-  requestError: (error) =>
-    error instanceof SyntaxError || error instanceof ZodError || error instanceof InvalidCompressedRequestBodyError
+  requestError: (error) => {
+    if (error instanceof OpenAIImagesUnsupportedFeatureError) return openAIImagesUnsupported(error.feature);
+    return error instanceof SyntaxError ||
+      error instanceof ZodError ||
+      error instanceof InvalidCompressedRequestBodyError
       ? openAIInvalid(400, 'invalid_request', withZodDetail('Invalid OpenAI Images request', error))
-      : undefined,
+      : undefined;
+  },
   modelNotFound: (message) => openAIInvalid(404, 'model_not_found', message),
   previousResponseConflict: () => openAIInvalid(409, 'previous_response_conflict', PREVIOUS_RESPONSE_CONFLICT_MESSAGE),
   tooLarge: () => openAIInvalid(413, 'request_too_large', 'Request body too large'),
   unsupportedContentEncoding: () => openAIInvalid(415, 'unsupported_content_encoding', 'Unsupported Content-Encoding'),
-  unsupported: (feature) =>
-    feature === 'images'
-      ? openAIInvalid(501, 'not_implemented', IMAGES_NOT_IMPLEMENTED_MESSAGE)
-      : IMAGES_UNSUPPORTED_FEATURES.has(feature)
-        ? openAIInvalid(501, 'unsupported_feature', `OpenAI Images feature is not supported: ${feature}`)
-        : openAIInvalid(501, 'not_implemented', 'Provider does not support OpenAI Images transform dispatch'),
+  unsupported: openAIImagesUnsupported,
   provider: openAIProviderError,
   rateLimited: openAIRateLimited,
 };
+
+function openAIImagesUnsupported(feature: string): Response {
+  if (feature === 'images') return openAIInvalid(501, 'not_implemented', IMAGES_NOT_IMPLEMENTED_MESSAGE);
+  return IMAGES_UNSUPPORTED_FEATURES.has(feature)
+    ? openAIInvalid(501, 'unsupported_feature', `OpenAI Images feature is not supported: ${feature}`)
+    : openAIInvalid(501, 'not_implemented', 'Provider does not support OpenAI Images transform dispatch');
+}
 
 export const geminiGenerateContentErrors: ProtocolErrorMapper = {
   modelUnsupported: (error) =>
