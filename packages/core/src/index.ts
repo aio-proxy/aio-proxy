@@ -33,6 +33,7 @@ export {
   writeAnthropicMessagesResponse,
   writeAnthropicMessagesSSE,
 } from './egress/anthropic-messages';
+export { writeGeminiEmbeddingsResponse } from './egress/gemini-embeddings';
 export { writeGeminiGenerateContentResponse, writeGeminiGenerateContentSSE } from './egress/gemini-generate-content';
 export { writeOpenAICompletionsResponse, writeOpenAICompletionsSSE } from './egress/openai-completions';
 export { writeOpenAIEmbeddingsResponse } from './egress/openai-embeddings';
@@ -88,6 +89,12 @@ export {
   type AnthropicToolUseBlock,
   parseAnthropicMessages,
 } from './ingress/anthropic-messages/index';
+export {
+  type GeminiBatchEmbedContentsRequest,
+  type GeminiEmbedContentRequest,
+  parseGeminiBatchEmbedContents,
+  parseGeminiEmbedContent,
+} from './ingress/gemini-embeddings';
 export {
   type GeminiGenerateContentParseResult,
   type GeminiGenerateContentPart,

@@ -6,6 +6,7 @@ import { EmbeddingConvertUnsupportedError, ImageInputUnsupportedError } from '..
 import type { ProtocolErrorMapper } from './adapter';
 import {
   anthropicMessagesErrors,
+  geminiEmbeddingsErrors,
   geminiGenerateContentErrors,
   openAICompletionsErrors,
   openAIEmbeddingsErrors,
@@ -65,6 +66,12 @@ const cases = [
     {
       error: { code: 'invalid_request', message: 'Invalid OpenAI Embeddings request', type: 'invalid_request_error' },
     },
+  ],
+  [
+    'Gemini embeddings',
+    geminiEmbeddingsErrors,
+    { error: { code: 415, message: 'Unsupported Content-Encoding', status: 'INVALID_ARGUMENT' } },
+    { error: { code: 400, message: 'Invalid Gemini Embeddings request', status: 'INVALID_ARGUMENT' } },
   ],
 ] as const satisfies readonly (readonly [string, ProtocolErrorMapper, unknown, unknown])[];
 
@@ -146,6 +153,13 @@ test.each([
       },
     },
   ],
+  [
+    'Gemini embeddings',
+    geminiEmbeddingsErrors,
+    {
+      error: { code: 409, message: 'previous_response_id matches multiple providers', status: 'ABORTED' },
+    },
+  ],
 ] as const)('maps ambiguous previous responses for %s', async (_name, mapper, expected) => {
   const conflict = (mapper as ProtocolErrorMapper & { previousResponseConflict?: () => Response })
     .previousResponseConflict;
@@ -165,6 +179,7 @@ test('maps image compatibility errors into every inbound protocol shape', async 
     [openAIEmbeddingsErrors, 501, 'unsupported_feature'],
     [anthropicMessagesErrors, 501, 'invalid_request_error'],
     [geminiGenerateContentErrors, 501, 'UNIMPLEMENTED'],
+    [geminiEmbeddingsErrors, 501, 'UNIMPLEMENTED'],
   ] as const;
 
   for (const [mapper, status, marker] of cases) {
@@ -236,6 +251,19 @@ test('embeddings unsupported names transform dispatch', async () => {
       code: 'not_implemented',
       message: 'Provider does not support OpenAI Embeddings transform dispatch',
       type: 'invalid_request_error',
+    },
+  });
+});
+
+test('gemini embeddings unsupported names transform dispatch', async () => {
+  const response = geminiEmbeddingsErrors.unsupported('title');
+
+  expect(response.status).toBe(501);
+  expect(await response.json()).toEqual({
+    error: {
+      code: 501,
+      message: 'Provider does not support Gemini embeddings transform dispatch',
+      status: 'UNIMPLEMENTED',
     },
   });
 });

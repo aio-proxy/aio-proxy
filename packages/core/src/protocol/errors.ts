@@ -159,6 +159,28 @@ export const geminiGenerateContentErrors: ProtocolErrorMapper = {
   rateLimited: geminiRateLimited,
 };
 
+export const geminiEmbeddingsErrors: ProtocolErrorMapper = {
+  modelUnsupported: (error) =>
+    error instanceof ImageInputUnsupportedError
+      ? geminiError(501, 'UNIMPLEMENTED', 'Image input cannot be represented by this provider')
+      : undefined,
+  requestError: (error) =>
+    error instanceof SyntaxError || error instanceof ZodError || error instanceof InvalidCompressedRequestBodyError
+      ? geminiError(400, 'INVALID_ARGUMENT', withZodDetail('Invalid Gemini Embeddings request', error))
+      : undefined,
+  modelNotFound: (message) => geminiError(404, 'NOT_FOUND', message),
+  previousResponseConflict: () => geminiError(409, 'ABORTED', PREVIOUS_RESPONSE_CONFLICT_MESSAGE),
+  tooLarge: () => geminiError(413, 'RESOURCE_EXHAUSTED', 'Request body too large'),
+  unsupportedContentEncoding: () => geminiError(415, 'INVALID_ARGUMENT', 'Unsupported Content-Encoding'),
+  unsupported: () =>
+    geminiError(501, 'UNIMPLEMENTED', 'Provider does not support Gemini embeddings transform dispatch'),
+  provider: (error) =>
+    genericProviderError(error, (status, message) =>
+      status === 499 ? geminiError(499, 'CANCELLED', message) : geminiError(status, 'UNAVAILABLE', message),
+    ),
+  rateLimited: geminiRateLimited,
+};
+
 function openAIProviderError(error: unknown): Response | undefined {
   const cause = error instanceof AiSdkProviderError ? error.cause : error;
   const missing = providerNotInstalled(error);
