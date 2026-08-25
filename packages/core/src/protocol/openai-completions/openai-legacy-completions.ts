@@ -1,6 +1,6 @@
 import { ProviderProtocol } from '@aio-proxy/types';
 
-import { writeOpenAICompletionsResponse, writeOpenAICompletionsSSE } from '../../egress/openai-completions';
+import { writeOpenAITextCompletionResponse, writeOpenAITextCompletionSSE } from '../../egress/openai-text-completion';
 import { OpenAICompletionsUnsupportedFeatureError } from '../../error';
 import {
   type OpenAILegacyCompletionsRequest,
@@ -74,8 +74,8 @@ export const openAILegacyCompletionsAdapter = defineProtocolAdapter<
       },
     };
   },
-  modelJson: writeOpenAICompletionsResponse,
-  modelSse: writeOpenAICompletionsSSE,
+  modelJson: writeOpenAITextCompletionResponse,
+  modelSse: writeOpenAITextCompletionSSE,
   errors: openAICompletionsErrors,
 });
 
