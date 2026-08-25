@@ -87,3 +87,52 @@ export function defineProtocolAdapter<TRequest, TContext>(
     requestDiagnostics: definition.requestDiagnostics ?? noRequestDiagnostics,
   });
 }
+
+export type EmbeddingProviderOptions = Readonly<Record<string, Readonly<Record<string, unknown>>>>;
+
+export type EmbeddingValue = {
+  readonly value: string;
+  readonly providerOptions?: EmbeddingProviderOptions;
+};
+
+export type EmbeddingInvocation = {
+  readonly values: readonly EmbeddingValue[];
+  readonly encodingFormat?: 'float' | 'base64';
+};
+
+export type EmbeddingResult = {
+  readonly embeddings: readonly (readonly number[])[];
+  readonly usage?: { readonly tokens?: number };
+};
+
+export type EmbeddingProtocolAdapter<TRequest, TContext> = Readonly<{
+  capability: 'embedding';
+  protocol: ProviderProtocol;
+  parse: (raw: Request, context: TContext) => Promise<TRequest>;
+  model: (request: TRequest, context: TContext) => string;
+  dimensions: (request: TRequest, context: TContext) => AliasDimensions;
+  requestDiagnostics: (request: TRequest, context: TContext) => readonly ProtocolRequestDiagnostic[];
+  wantsStream: (request: TRequest, context: TContext) => boolean;
+  rawRequest: (raw: Request, request: TRequest, resolvedModel: string, context: TContext) => Promise<Request>;
+  embeddingInvocation: (request: TRequest, context: TContext) => EmbeddingInvocation;
+  embeddingJson: (result: EmbeddingResult, context: { readonly modelId: string }) => unknown;
+  errors: ProtocolErrorMapper;
+}>;
+
+export function defineEmbeddingProtocolAdapter<TRequest, TContext>(
+  definition: Omit<
+    EmbeddingProtocolAdapter<TRequest, TContext>,
+    'dimensions' | 'requestDiagnostics' | 'wantsStream'
+  > & {
+    readonly dimensions?: EmbeddingProtocolAdapter<TRequest, TContext>['dimensions'];
+    readonly requestDiagnostics?: EmbeddingProtocolAdapter<TRequest, TContext>['requestDiagnostics'];
+    readonly wantsStream?: EmbeddingProtocolAdapter<TRequest, TContext>['wantsStream'];
+  },
+): EmbeddingProtocolAdapter<TRequest, TContext> {
+  return Object.freeze({
+    ...definition,
+    dimensions: definition.dimensions ?? noDimensions,
+    requestDiagnostics: definition.requestDiagnostics ?? noRequestDiagnostics,
+    wantsStream: definition.wantsStream ?? (() => false),
+  });
+}
