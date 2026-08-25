@@ -261,7 +261,7 @@ Raw rewrite is not URL-only. Google requires every `EmbedContentRequest.model` t
 
 Convert never speaks another vendor HTTP API. It folds the inbound body into `EmbeddingInvocation`, calls `embeddingModel`, and the **inbound** adapter writes its own client envelope.
 
-AI SDK Provider V4 `embed` / `embedMany` accept only `values` plus `providerOptions`. There is no top-level `dimensions` bag on the SDK call. Convert therefore writes settings onto per-value `providerOptions` under the namespaces the target packages read:
+AI SDK Provider V4 has two call shapes. `embed` takes `{ model, value, providerOptions, abortSignal }` (singular `value`). `embedMany` takes `{ model, values, providerOptions, abortSignal }`. Neither accepts a top-level `dimensions` bag. Convert therefore writes settings onto per-value `providerOptions` under the namespaces the target packages read:
 
 | Inbound field | `EmbeddingInvocation` |
 | --- | --- |
@@ -294,9 +294,9 @@ Gemini per-item options are normalized before mapping:
 
 - Group `EmbeddingValue`s that share structurally equal normalized `providerOptions` (same keys and values; omit empty namespaces).
 - If any value's normalized options include `title`, fail the whole convert attempt with 501 and fallback if `hasNext`. Do not embed a subset.
-- Call `embed` for a one-value group and `embedMany` for a multi-value group.
+- Call `embed({ model, value, providerOptions, abortSignal })` for a one-value group. Call `embedMany({ model, values, providerOptions, abortSignal })` only when the group has two or more values. Do not pass `values` to `embed`, and do not pass a lone `value` to `embedMany`.
 - Restore the original request order when assembling `EmbeddingResult.embeddings`.
-- After each group, accept `usage.tokens` only when it is a finite non-negative safe integer (`Number.isSafeInteger(tokens) && tokens >= 0`). If any group is missing, `undefined`, `NaN`, non-finite, or out of range, omit `EmbeddingResult.usage` entirely. Do not record NaN and do not sum a partial aggregate.
+- After each group, accept `usage.tokens` only when it is a finite non-negative safe integer (`Number.isSafeInteger(tokens) && tokens >= 0`). Then add it to a running total and require `Number.isSafeInteger(total) && total >= 0` after that add (or once more on the final total). If any group is missing, `undefined`, `NaN`, non-finite, or out of range, or if the running/final total overflows `Number.MAX_SAFE_INTEGER`, omit `EmbeddingResult.usage` entirely. Do not record NaN and do not persist a partial or overflowing aggregate.
 
 Grouping lives inside the embedding transport. `attemptCandidates` still makes one convert attempt per candidate. Do not reopen the candidate loop. Do not 501 a heterogeneous Gemini batch solely because `taskType` or `outputDimensionality` differs across items. Silent drop of a differing item's `taskType` / `outputDimensionality` is forbidden. `title` is the 501 exception above, not a drop.
 
@@ -314,7 +314,7 @@ For an embeddings adapter, each live candidate:
 
 Language requests are unchanged: they never see the embedding branch. They pass `capability: 'language'` (or omit it, which resolvers treat as language).
 
-`createProviderV4Invoke` remains language-only. Add `createProviderV4Embed(providerId, provider)` that calls `provider.embeddingModel(modelId)` and AI SDK `embed` / `embedMany`. Pass `values` plus the group's `providerOptions` (`openai` / `openaiCompatible` / `google`). Return `embeddings` in the original inbound order. Attach `usage` only when every group reported a valid token count; otherwise omit it. A thrown "does not support embedding" is a candidate failure, not a materialization failure.
+`createProviderV4Invoke` remains language-only. Add `createProviderV4Embed(providerId, provider)` that calls `provider.embeddingModel(modelId)` and then AI SDK `embed` or `embedMany` with the matching call shape above. Pass the group's `providerOptions` (`openai` / `openaiCompatible` / `google`). Return `embeddings` in the original inbound order. Attach `usage` only when every group token count is valid and the summed total is still a non-negative safe integer; otherwise omit it. A thrown "does not support embedding" is a candidate failure, not a materialization failure.
 
 ### Runtime shape
 
@@ -343,7 +343,7 @@ Raw: existing `usageCapture.passthrough` with the adapter's wire-family protocol
 - OpenAI embeddings `usage.prompt_tokens` / `usage.total_tokens` already map through `openai-compatible` extraction. `completion_tokens` is absent.
 - Gemini embed `usageMetadata` maps through the existing Gemini extractor when present. Missing usage is allowed.
 
-Convert: do not reuse `usageCapture.stream`. Add a non-stream capture that records `inputTokens` and `totalTokens` from `EmbeddingResult.usage.tokens` only when that object is present. `UsageRow` token fields are finite non-negative safe integers. AI SDK `embed` / `embedMany` do `usage = modelResponse.usage ?? { tokens: NaN }`, and `@ai-sdk/google` `doEmbed` currently returns `usage: undefined`. Never persist NaN or a partial group sum. If usage is omitted, the convert still succeeds; missing usage is allowed, same as Gemini raw without `usageMetadata`. No TTFT. No image/web-search event counts. Pricing uses the existing `input` token price when configured; do not add an embeddings-specific price field.
+Convert: do not reuse `usageCapture.stream`. Add a non-stream capture that records `inputTokens` and `totalTokens` from `EmbeddingResult.usage.tokens` only when that object is present. `UsageRow` token fields are finite non-negative safe integers, including the final stored total. AI SDK `embed` / `embedMany` do `usage = modelResponse.usage ?? { tokens: NaN }`, and `@ai-sdk/google` `doEmbed` currently returns `usage: undefined`. Never persist NaN, a partial group sum, or a total that overflowed `Number.MAX_SAFE_INTEGER`. If usage is omitted, the convert still succeeds; missing usage is allowed, same as Gemini raw without `usageMetadata`. No TTFT. No image/web-search event counts. Pricing uses the existing `input` token price when configured; do not add an embeddings-specific price field.
 
 ## Errors
 
@@ -373,6 +373,8 @@ Adapter tests (colocated with the new modules):
 - Gemini parse: single text, batch, non-text part rejection, empty joined text, `embedContentConfig` plus legacy aliases, path action + model context
 - Gemini raw: alias and provider-qualified `:batchEmbedContents` rewrite every `requests[i].model` to `models/<resolvedModel>`, including items that omitted `model` or sent a leftover client model
 - Convert: OpenAI `dimensions` and Gemini `taskType` appear on `providerOptions.openai` / `openaiCompatible` / `google` as specified; a heterogeneous Gemini batch is grouped, order is restored, and no item's `taskType` / `outputDimensionality` is dropped
+- Convert call shape: a one-value group calls `embed` with singular `value`; a multi-value group calls `embedMany` with `values`. Tests assert both shapes separately
+- Convert usage: Google convert with undefined provider usage omits tokens; each-group-valid but summed total overflowing `Number.MAX_SAFE_INTEGER` also omits `EmbeddingResult.usage`
 - Convert title: a title-bearing Gemini request converting through `@ai-sdk/google` is 501 + fallback. A title-capable transport, if added later, must assert the Google upstream JSON body contains `title`, not merely that `embed()` received it
 - Egress: index order, float vs base64, Gemini single vs batch envelopes
 
@@ -391,7 +393,7 @@ Dispatch matrix (server, next to `cross-protocol-routing.test.ts`, embeddings-sp
 | Either | OAuth that throws unsupported | fallback to next candidate |
 | Gemini unknown action | any | 404, unchanged |
 
-Also: usage maps valid `prompt_tokens` / `usage.tokens` onto the usage row; Google convert with undefined provider usage omits the row tokens and must not persist NaN; README table lists the three new rows.
+Also: usage maps valid `prompt_tokens` / `usage.tokens` onto the usage row and must not persist NaN or an overflowing total; README table lists the three new rows.
 
 ## README
 
