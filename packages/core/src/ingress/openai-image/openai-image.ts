@@ -39,6 +39,11 @@ export type OpenAIImageSourceRef = {
   readonly file_id?: string;
 };
 
+export type OpenAIImageUpload = {
+  readonly data: Uint8Array;
+  readonly byteLength: number;
+};
+
 export type OpenAIImageRequest = {
   readonly model: string;
   readonly modelDefaulted: boolean;
@@ -58,6 +63,8 @@ export type OpenAIImageRequest = {
   readonly user?: string | null;
   readonly images?: readonly OpenAIImageSourceRef[];
   readonly mask?: OpenAIImageSourceRef;
+  readonly uploads?: readonly OpenAIImageUpload[];
+  readonly maskUpload?: OpenAIImageUpload;
 };
 
 export function parseOpenAIImageGenerations(input: unknown): OpenAIImageRequest {

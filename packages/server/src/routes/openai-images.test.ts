@@ -22,6 +22,19 @@ test('official-max Content-Length is accepted for edits JSON and rejected by lan
   expect(hasInvalidOrOversizedContentLength(raw, REQUEST_BODY_LIMITS)).toBe(true);
 });
 
+test('official-max Content-Length is accepted for edits multipart and rejected by language limits', () => {
+  const raw = new Request('https://x/v1/images/edits', {
+    method: 'POST',
+    headers: { 'content-length': '851048559', 'content-type': 'multipart/form-data; boundary=x' },
+    body: '--x--',
+  });
+  const multipartMax = { encoded: 851_048_559, decoded: 851_048_559 };
+  expect(openAIImagesAdapter.bodyLimits(raw, edits)).toEqual(multipartMax);
+  expect(hasInvalidOrOversizedContentLength(raw, multipartMax)).toBe(false);
+  expect(hasInvalidOrOversizedContentLength(raw, officialMax)).toBe(true);
+  expect(hasInvalidOrOversizedContentLength(raw, REQUEST_BODY_LIMITS)).toBe(true);
+});
+
 test('POST /v1/images/variations stays 404', async () => {
   const app = await createServer({ config: { providers: {} } });
   const response = await app.request('/v1/images/variations', {

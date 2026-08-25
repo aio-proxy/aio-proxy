@@ -159,6 +159,15 @@ export class OpenAIImagesUnsupportedFeatureError extends AioProxyError {
   }
 }
 
+export class OpenAIImagesInvalidRequestError extends AioProxyError {
+  readonly code = 'INVALID_OPENAI_IMAGES_REQUEST';
+  readonly status = 400;
+
+  constructor(readonly param: 'image' | 'mask') {
+    super('OpenAIImagesInvalidRequestError', `Invalid OpenAI Images request: ${param}`);
+  }
+}
+
 export type ImageInputUnsupportedReason =
   | 'assistant-image'
   | 'gemini-assistant-url'

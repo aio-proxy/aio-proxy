@@ -286,11 +286,11 @@ Previously, Provider weight was a global fixed order: unique weights were tried 
 Images notes:
 
 - Raw Images needs an `openai-image` endpoint (or primary protocol).
-- Blank JSON `model` looks up `gpt-image-2` (CPA-compatible, not official `dall-e-2` / `gpt-image-1.5`) and raw injects the resolved candidate id.
+- Blank JSON `model` and multipart missing/empty/whitespace `model` look up `gpt-image-2` (CPA-compatible, not official `dall-e-2` / `gpt-image-1.5`). Multipart literal form `null` is the model id `"null"` and is not defaulted. Raw injects the resolved candidate id.
 - Inbound model is the OpenAI id plus the existing `providerId/` qualifier, not OmniRoute `provider/model`.
 - Convert does not stream and does not fetch `image_url`.
 - DALL·E omitted/`null`/`url` skips convert; GPT Image omitted encodes `b64_json`; custom omitted `b64_json` is an aio-proxy extension.
-- Edits JSON accepts official-max envelopes (`357_564_416`); P1 has no lower default DoS cap.
+- Edits accept official-max envelopes (`357_564_416` JSON, `851_048_559` multipart). P1 has no lower default DoS cap; a future smaller ceiling is an explicit deployment extension.
 - Non-catalog Images providers need a finite id set (`models`, preserved alias targets, or metadata keys) including `gpt-image-2` for the CPA default.
 
 Call the OpenAI Responses endpoint:

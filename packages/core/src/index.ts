@@ -58,6 +58,7 @@ export {
   NpmPackageNameError,
   OpenAICompletionsTransformError,
   OpenAIResponsesTransformError,
+  OpenAIImagesInvalidRequestError,
   OpenAIImagesUnsupportedFeatureError,
   OpenAIResponsesUnsupportedFeatureError,
   ProviderNotInstalledError,
@@ -105,6 +106,7 @@ export {
   parseOpenAIImageGenerations,
   type OpenAIImageRequest,
   type OpenAIImageSourceRef,
+  type OpenAIImageUpload,
 } from './ingress/openai-image';
 export {
   type OpenAIResponsesCustomTool,

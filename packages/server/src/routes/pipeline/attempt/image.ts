@@ -5,6 +5,8 @@ import { terminalCompletion } from '../../../route-observation';
 import type { ImageTransport } from '../../../runtime';
 import { captureImageUsage } from '../../../usage-capture/image-capture';
 import { attemptBase, candidateConfigPrice } from '../attempt-base';
+import { failureTerminal, finalFailure } from '../failure';
+import { logRequestRejected } from '../logging';
 import type { AttemptLoopContext, AttemptStep, CandidateSlot } from './context';
 import { unsupportedDispatch } from './error';
 import { attemptRawCandidate } from './raw';
@@ -54,7 +56,28 @@ export async function attemptImageCandidate<TRequest, TContext>(
   slot.trace.transport = 'image';
   slot.trace.targetProtocol = undefined;
 
-  const invocation = adapter.imageInvocation(request, context);
+  let invocation;
+  try {
+    invocation = adapter.imageInvocation(request, context);
+  } catch (error) {
+    const mapped = adapter.errors.requestError(error);
+    if (mapped === undefined) throw error;
+    const errorCode = mapped.status === 501 ? 'unsupported_feature' : 'invalid_request';
+    const base = attemptBase(provider, candidate.modelId, startedAt, slot.trace);
+    ctx.emitter.emitAttempt(base, index, slot.observation, failureTerminal(mapped.status, errorCode));
+    session.finish({ ...finalFailure(base, mapped.status, errorCode), clientResponse: mapped });
+    logRequestRejected({
+      source: ctx.source,
+      requestId: session.requestId,
+      rawRequest,
+      inboundProtocol: adapter.protocol,
+      requestedModelId: ctx.requestedModelId,
+      statusCode: mapped.status,
+      errorCode,
+      error,
+    });
+    return { kind: 'return', response: mapped };
+  }
   const base = attemptBase(provider, candidate.modelId, startedAt, slot.trace);
   const attemptSpan = ctx.emitter.startAttempt(base, index);
   slot.spanRef.current = attemptSpan;

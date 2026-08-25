@@ -9,6 +9,7 @@ import {
   GeminiInlineDataTooLargeError,
   ImageInputUnsupportedError,
   OpenAICompletionsTransformError,
+  OpenAIImagesInvalidRequestError,
   OpenAIImagesUnsupportedFeatureError,
   OpenAIResponsesTransformError,
   OpenAIResponsesUnsupportedFeatureError,
@@ -102,6 +103,7 @@ const IMAGES_UNSUPPORTED_FEATURES = new Set(['stream', 'response_format=url', 'i
 export const openAIImagesErrors: ProtocolErrorMapper = {
   requestError: (error) => {
     if (error instanceof OpenAIImagesUnsupportedFeatureError) return openAIImagesUnsupported(error.feature);
+    if (error instanceof OpenAIImagesInvalidRequestError) return openAIInvalid(400, 'invalid_request', error.message);
     return error instanceof SyntaxError ||
       error instanceof ZodError ||
       error instanceof InvalidCompressedRequestBodyError

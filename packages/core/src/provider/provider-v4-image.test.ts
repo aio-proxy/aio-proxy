@@ -82,6 +82,56 @@ test('treats string image results as base64 payloads not URLs', async () => {
   expect(Buffer.from(result.images[0]!).toString('utf8')).not.toContain('data:');
 });
 
+test('edit invocation remaps prompt to text images and mask bytes', async () => {
+  const image = new Uint8Array([1, 2, 3]);
+  const mask = new Uint8Array([4, 5, 6]);
+  let generateArgs: Record<string, unknown> | undefined;
+  const invoke = createProviderV4ImageInvoke(
+    'openai',
+    providerV4(() => ({ modelId: 'gpt-image-2' })) as never,
+    async (options) => {
+      generateArgs = options as Record<string, unknown>;
+      return { images: [new Uint8Array([9])] };
+    },
+  );
+
+  await invoke({
+    modelId: 'gpt-image-2',
+    invocation: {
+      operation: 'edit',
+      prompt: 'make it night',
+      n: 1,
+      responseFormat: 'b64_json',
+      images: [
+        {
+          type: 'bytes',
+          mediaType: 'image/png',
+          data: image,
+          byteLength: image.byteLength,
+          format: 'png',
+          width: 1,
+          height: 1,
+          hasAlpha: true,
+        },
+      ],
+      mask: {
+        type: 'bytes',
+        mediaType: 'image/png',
+        data: mask,
+        byteLength: mask.byteLength,
+        format: 'png',
+        width: 1,
+        height: 1,
+        hasAlpha: true,
+      },
+    },
+  });
+
+  expect(generateArgs).toMatchObject({
+    prompt: { text: 'make it night', images: [image], mask },
+  });
+});
+
 test('wraps generateImage failures with AiSdkProviderError', async () => {
   const invoke = createProviderV4ImageInvoke(
     'openai',

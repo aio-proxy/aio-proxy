@@ -327,6 +327,138 @@ test('forwards explicit same-id edits raw bytes without a JSON round-trip', asyn
   expect(await forwarded.text()).toBe(bodyText);
 });
 
+const PNG_1X1_RGBA = Uint8Array.from(
+  Buffer.from(
+    '89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000a49444154789c63000100000500010d0a2db40000000049454e44ae426082',
+    'hex',
+  ),
+);
+
+function editsMultipartRequest(fields: Record<string, string | Blob | readonly Blob[]>): Request {
+  const form = new FormData();
+  for (const [name, value] of Object.entries(fields)) {
+    if (typeof value === 'string') {
+      form.append(name, value);
+      continue;
+    }
+    if (Array.isArray(value)) {
+      for (const item of value) form.append(name, item);
+      continue;
+    }
+    form.append(name, value);
+  }
+  return new Request('https://x/v1/images/edits', { method: 'POST', body: form });
+}
+
+function pngBlob(): Blob {
+  return new Blob([PNG_1X1_RGBA], { type: 'application/octet-stream' });
+}
+
+test('edits multipart bodyLimits accept the official-max envelope and not the language gate', () => {
+  const raw = new Request('https://x/v1/images/edits', {
+    method: 'POST',
+    headers: { 'content-type': 'multipart/form-data; boundary=x', 'content-length': '851048559' },
+    body: '--x--',
+  });
+  expect(openAIImagesAdapter.bodyLimits(raw, edits)).toEqual({
+    encoded: 851_048_559,
+    decoded: 851_048_559,
+  });
+  expect(openAIImagesAdapter.bodyLimits(editsRequest(editsImageUrl), edits)).toEqual({
+    encoded: 357_564_416,
+    decoded: 357_564_416,
+  });
+});
+
+test.each([
+  ['missing', {}],
+  ['empty', { model: '' }],
+  ['whitespace', { model: '   ' }],
+] as const)('defaults edits multipart %s model lookup to gpt-image-2', async (_name, extra) => {
+  const raw = editsMultipartRequest({ ...extra, prompt: 'make it night', image: pngBlob() });
+  const request = await openAIImagesAdapter.parse(raw, edits);
+  expect(request.model).toBe(CPA_DEFAULT_IMAGE_MODEL);
+  expect(request.modelDefaulted).toBe(true);
+  const forwarded = await openAIImagesAdapter.rawRequest(raw, request, 'gpt-image-2', new Set(), edits);
+  expect(forwarded.headers.get('content-type') ?? '').toStartWith('multipart/form-data');
+  const form = await forwarded.formData();
+  expect(form.get('model')).toBe('gpt-image-2');
+  expect(form.get('prompt')).toBe('make it night');
+});
+
+test('multipart literal null with no alias stays null on raw and convert lookup', async () => {
+  const raw = editsMultipartRequest({ model: 'null', prompt: 'make it night', image: pngBlob() });
+  const request = await openAIImagesAdapter.parse(raw, edits);
+  expect(request.model).toBe('null');
+  expect(request.modelDefaulted).toBe(false);
+  expect(openAIImagesAdapter.model(request, edits)).toBe('null');
+  const original = JSON.parse;
+  let parsedJson = false;
+  JSON.parse = ((...args: Parameters<typeof JSON.parse>) => {
+    parsedJson = true;
+    return original(...args);
+  }) as typeof JSON.parse;
+  try {
+    const forwarded = await openAIImagesAdapter.rawRequest(raw, request, 'null', new Set(), edits);
+    expect(parsedJson).toBe(false);
+    expect(forwarded.headers.get('content-type') ?? '').toStartWith('multipart/form-data');
+    const form = await forwarded.formData();
+    expect(form.get('model')).toBe('null');
+  } finally {
+    JSON.parse = original;
+  }
+});
+
+test('multipart literal null with alias rewrites raw to the resolved target', async () => {
+  const raw = editsMultipartRequest({ model: 'null', prompt: 'make it night', image: pngBlob() });
+  const request = await openAIImagesAdapter.parse(raw, edits);
+  expect(request.model).toBe('null');
+  const forwarded = await openAIImagesAdapter.rawRequest(raw, request, 'acme-null', new Set(), edits);
+  const form = await forwarded.formData();
+  expect(form.get('model')).toBe('acme-null');
+});
+
+test('rewrites a defaulted multipart edits request to the resolved alias target', async () => {
+  const raw = editsMultipartRequest({ prompt: 'make it night', image: pngBlob() });
+  const request = await openAIImagesAdapter.parse(raw, edits);
+  expect(request.model).toBe('gpt-image-2');
+  const forwarded = await openAIImagesAdapter.rawRequest(raw, request, 'acme-image-2', new Set(), edits);
+  const form = await forwarded.formData();
+  expect(form.get('model')).toBe('acme-image-2');
+  expect(form.get('prompt')).toBe('make it night');
+});
+
+test('imageInvocation 400s an undecodable multipart image', async () => {
+  const raw = editsMultipartRequest({
+    prompt: 'make it night',
+    image: new Blob([new Uint8Array([0, 1, 2, 3])], { type: 'image/png' }),
+  });
+  const request = await openAIImagesAdapter.parse(raw, edits);
+  expect(() => openAIImagesAdapter.imageInvocation(request, edits)).toThrow(/image/u);
+});
+
+test('imageInvocation attaches decoded multipart bytes and a valid mask', async () => {
+  const raw = editsMultipartRequest({
+    prompt: 'make it night',
+    image: pngBlob(),
+    mask: pngBlob(),
+  });
+  const request = await openAIImagesAdapter.parse(raw, edits);
+  const invocation = openAIImagesAdapter.imageInvocation(request, edits);
+  expect(invocation.operation).toBe('edit');
+  expect(invocation.prompt).toBe('make it night');
+  expect(invocation.images).toHaveLength(1);
+  expect(invocation.images?.[0]).toMatchObject({
+    type: 'bytes',
+    format: 'png',
+    width: 1,
+    height: 1,
+    hasAlpha: true,
+  });
+  expect(invocation.mask).toMatchObject({ format: 'png', width: 1, height: 1, hasAlpha: true });
+  expect(invocation.images?.[0]?.data).toEqual(PNG_1X1_RGBA);
+});
+
 test('maps protocol-shaped Images errors', async () => {
   const missing = openAIImagesErrors.modelNotFound('unknown-model');
   expect(missing.status).toBe(404);
