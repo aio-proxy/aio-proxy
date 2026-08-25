@@ -59,7 +59,17 @@ export const openAIResponsesAdapter = defineProtocolAdapter<
     };
   },
   wantsStream: (request, context) => context.operation !== 'compact' && request.stream === true,
-  rawRequest(raw, _request, resolvedModel, supportedEfforts) {
+  async rawRequest(raw, _request, resolvedModel, supportedEfforts, context) {
+    if (context.operation === 'compact') {
+      const headers = new Headers(raw.headers);
+      headers.delete('content-encoding');
+      headers.delete('content-length');
+      return new Request(raw, {
+        method: raw.method,
+        body: await readRequestText(raw),
+        headers,
+      });
+    }
     return rewriteOpenAIResponsesRequest(raw, resolvedModel, supportedEfforts);
   },
   modelInvocation(request, context) {
