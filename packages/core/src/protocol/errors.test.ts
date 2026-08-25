@@ -8,6 +8,7 @@ import {
   anthropicMessagesErrors,
   geminiGenerateContentErrors,
   openAICompletionsErrors,
+  openAIImagesErrors,
   openAIResponsesErrors,
 } from './errors';
 import { InvalidCompressedRequestBodyError } from './request';
@@ -25,6 +26,20 @@ const cases = [
     },
     {
       error: { code: 'invalid_request', message: 'Invalid OpenAI Completions request', type: 'invalid_request_error' },
+    },
+  ],
+  [
+    'OpenAI Images',
+    openAIImagesErrors,
+    {
+      error: {
+        code: 'unsupported_content_encoding',
+        message: 'Unsupported Content-Encoding',
+        type: 'invalid_request_error',
+      },
+    },
+    {
+      error: { code: 'invalid_request', message: 'Invalid OpenAI Images request', type: 'invalid_request_error' },
     },
   ],
   [
@@ -95,6 +110,17 @@ test.each([
     },
   ],
   [
+    'OpenAI Images',
+    openAIImagesErrors,
+    {
+      error: {
+        code: 'previous_response_conflict',
+        message: 'previous_response_id matches multiple providers',
+        type: 'invalid_request_error',
+      },
+    },
+  ],
+  [
     'OpenAI Responses',
     openAIResponsesErrors,
     {
@@ -152,6 +178,15 @@ test('maps image compatibility errors into every inbound protocol shape', async 
 
 test('openai completions rateLimited builds a native 429 with Retry-After', async () => {
   const r = openAICompletionsErrors.rateLimited(3);
+  expect(r.status).toBe(429);
+  expect(r.headers.get('retry-after')).toBe('3');
+  expect(await r.json()).toEqual({
+    error: { code: 'rate_limit_exceeded', message: expect.any(String), type: 'rate_limit_error' },
+  });
+});
+
+test('openai images rateLimited builds a native 429 with Retry-After', async () => {
+  const r = openAIImagesErrors.rateLimited(3);
   expect(r.status).toBe(429);
   expect(r.headers.get('retry-after')).toBe('3');
   expect(await r.json()).toEqual({

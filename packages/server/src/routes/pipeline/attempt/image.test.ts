@@ -39,6 +39,10 @@ function imageAdapter() {
         model: value.model,
         prompt: 'prompt' in value && typeof value.prompt === 'string' ? value.prompt : 'ping',
         stream: 'stream' in value && value.stream === true,
+        ...('response_format' in value && (value.response_format === 'url' || value.response_format === 'b64_json')
+          ? { response_format: value.response_format }
+          : {}),
+        ...('n' in value && typeof value.n === 'number' ? { n: value.n } : {}),
       };
     },
     model: (request) => request.model,
@@ -174,6 +178,32 @@ test('image inbound convert calls image transport not language model', async () 
   ]);
   expect(route.recording.finals.at(-1)?.usage?.imageCount).toBe(1);
   expect(route.recording.finals.at(-1)?.usage?.inputTokens).toBe(11);
+});
+
+test('image inbound convert skip for url response_format does not invoke or trace', async () => {
+  const convert = convertProvider({ id: 'convert' });
+  const route = pipeline([convert], { adapter: imageAdapter() });
+
+  const response = await route.run(jsonRequest({ model: REQUESTED_MODEL, prompt: 'a cat', response_format: 'url' }));
+
+  expect(response.status).toBe(501);
+  expect(await response.json()).toEqual({ error: { code: 'unsupported', message: 'response_format=url' } });
+  expect(convert.imageCalls).toHaveLength(0);
+  await settleRecording(route.recording);
+  expect(route.recording.attempts).toEqual([]);
+});
+
+test('image inbound stream skip without raw is 501 stream not transform_dispatch', async () => {
+  const convert = convertProvider({ id: 'convert' });
+  const route = pipeline([convert], { adapter: imageAdapter() });
+
+  const response = await route.run(jsonRequest({ model: REQUESTED_MODEL, prompt: 'a cat', stream: true }));
+
+  expect(response.status).toBe(501);
+  expect(await response.json()).toEqual({ error: { code: 'unsupported', message: 'stream' } });
+  expect(convert.imageCalls).toHaveLength(0);
+  await settleRecording(route.recording);
+  expect(route.recording.attempts).toEqual([]);
 });
 
 test('image inbound skips dummy convert when stream is true and falls through', async () => {

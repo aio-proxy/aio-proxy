@@ -16,7 +16,8 @@ import type { AttemptEmitter } from './emit';
 // fall back to the next candidate. Thrown errors are handled by the loop.
 export type AttemptStep =
   | { readonly kind: 'return'; readonly response: Response }
-  | { readonly kind: 'fallback'; readonly lastFailure: Response };
+  | { readonly kind: 'fallback'; readonly lastFailure: Response }
+  | { readonly kind: 'skip'; readonly reason: string };
 
 // Model invocation is materialized lazily on the first model candidate and
 // reused across candidates; both fields are mutated in place by the model path.

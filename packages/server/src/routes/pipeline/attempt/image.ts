@@ -1,4 +1,4 @@
-import type { ImageProtocolAdapter } from '@aio-proxy/core';
+import { imageConvertSkipReason, type ImageProtocolAdapter, type OpenAIImageRequest } from '@aio-proxy/core';
 
 import { supportsImageConvert, supportsImageRaw } from '../../../provider-runtime';
 import { terminalCompletion } from '../../../route-observation';
@@ -18,7 +18,7 @@ type ImageAttemptLoopContext<TRequest, TContext> = Omit<AttemptLoopContext<TRequ
 export async function dispatchImageCandidate<TRequest, TContext>(
   ctx: AttemptLoopContext<TRequest, TContext>,
   slot: CandidateSlot,
-): Promise<AttemptStep | undefined> {
+): Promise<AttemptStep> {
   const provider = slot.candidate.provider;
   if (supportsImageRaw(provider, slot.candidate.modelId)) {
     const raw = provider.raw?.resolve({ protocol: ctx.adapter.protocol, modelId: slot.candidate.modelId });
@@ -27,7 +27,7 @@ export async function dispatchImageCandidate<TRequest, TContext>(
     slot.trace.targetProtocol = ctx.adapter.protocol;
     return attemptRawCandidate(ctx, slot, raw, ctx.streamRequested ? { idleTimeoutMs: IMAGE_RAW_IDLE_TIMEOUT_MS } : {});
   }
-  if (ctx.streamRequested) return undefined;
+  if (ctx.streamRequested) return { kind: 'skip', reason: 'stream' };
   if (supportsImageConvert(provider, slot.candidate.modelId) && provider.image !== undefined) {
     if (ctx.adapter.capability !== 'image') return unsupportedDispatch(ctx, slot);
     return attemptImageCandidate({ ...ctx, adapter: ctx.adapter }, slot, provider.image);
@@ -45,6 +45,11 @@ export async function attemptImageCandidate<TRequest, TContext>(
   const { adapter, context, rawRequest, request, session } = ctx;
   const { index, candidate, startedAt, observation, inAttempt } = slot;
   const provider = candidate.provider;
+  const skipReason = imageConvertSkipReason({
+    request: request as OpenAIImageRequest,
+    resolvedModelId: candidate.modelId,
+  });
+  if (skipReason !== undefined) return { kind: 'skip', reason: skipReason };
 
   slot.trace.transport = 'image';
   slot.trace.targetProtocol = undefined;

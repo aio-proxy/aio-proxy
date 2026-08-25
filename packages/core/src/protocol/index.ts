@@ -5,6 +5,7 @@ export * from './errors';
 export * from './gemini-generate-content';
 export * from './image-adapter';
 export * from './openai-completions';
+export * from './openai-image';
 export * from './openai-responses';
 export * from './request';
 export * from './session';

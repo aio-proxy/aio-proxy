@@ -96,6 +96,7 @@ export async function attemptCandidates<TRequest, TContext>(
 
   const holder: InvocationHolder = { invocation: undefined, invocationUnsupported: undefined };
   let lastFailure: Response | undefined;
+  let lastSkipReason: string | undefined;
 
   const selection = selectLiveCandidates(ctx.cooldown, ordered);
   if (selection.kind === 'all-cooled') {
@@ -152,7 +153,6 @@ export async function attemptCandidates<TRequest, TContext>(
       let step;
       if (adapter.capability === 'image') {
         step = await dispatchImageCandidate(ctx, slot);
-        if (step === undefined) continue;
       } else {
         if (provider.raw !== undefined) {
           slot.trace.transport = 'raw';
@@ -172,15 +172,24 @@ export async function attemptCandidates<TRequest, TContext>(
         }
       }
       if (step.kind === 'return') return step.response;
+      if (step.kind === 'skip') {
+        lastSkipReason = step.reason;
+        continue;
+      }
       lastFailure = step.lastFailure;
     } catch (error) {
       const step = handleAttemptError(ctx, slot, error);
       if (step.kind === 'return') return step.response;
+      if (step.kind === 'skip') {
+        lastSkipReason = step.reason;
+        continue;
+      }
       lastFailure = step.lastFailure;
     }
   }
 
-  const response = lastFailure ?? adapter.errors.unsupported('transform_dispatch');
+  const response =
+    lastFailure ?? adapter.errors.unsupported(lastSkipReason === undefined ? 'transform_dispatch' : lastSkipReason);
   session.finish({ outcome: 'failure', finalHttpStatus: response.status, clientResponse: response });
   return response;
 }

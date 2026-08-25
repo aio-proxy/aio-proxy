@@ -98,6 +98,7 @@ export {
   OpenAICompletionsRequestSchema,
   parseOpenAICompletions,
 } from './ingress/openai-completions';
+export { CPA_DEFAULT_IMAGE_MODEL, parseOpenAIImageGenerations, type OpenAIImageRequest } from './ingress/openai-image';
 export {
   type OpenAIResponsesCustomTool,
   type OpenAIResponsesExecutableTool,
