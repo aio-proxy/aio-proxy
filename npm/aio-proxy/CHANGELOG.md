@@ -1,5 +1,19 @@
 # aio-proxy
 
+## 0.10.0
+
+### Minor Changes
+
+- [#203](https://github.com/aio-proxy/aio-proxy/pull/203) [`076c67b`](https://github.com/aio-proxy/aio-proxy/commit/076c67ba698c4cd7a3756ef370adc7a62a530402) Thanks [@baranwang](https://github.com/baranwang)! - Add `aio-proxy provider import [path]` to copy supported CPA OAuth auth files into aio-proxy accounts. OAuth plugins can declare typed CPA credential importers through the plugin SDK, and the built-in ChatGPT, Google Antigravity, Kimi Code, and xAI Grok plugins now provide them.
+
+- [#202](https://github.com/aio-proxy/aio-proxy/pull/202) [`6880a93`](https://github.com/aio-proxy/aio-proxy/commit/6880a93b087b81aaade64a95a6bd14fe7db4c8f1) Thanks [@baranwang](https://github.com/baranwang)! - dashboard: edit model routing in a drawer by dragging priority tiers and traffic weights
+
+### Patch Changes
+
+- [#200](https://github.com/aio-proxy/aio-proxy/pull/200) [`47257a0`](https://github.com/aio-proxy/aio-proxy/commit/47257a0ce6cde53c542f3886edffe28802c07325) Thanks [@baranwang](https://github.com/baranwang)! - Docker: install Alpine libgcc/libstdc++ so the compiled musl CLI can start
+
+- [#202](https://github.com/aio-proxy/aio-proxy/pull/202) [`6880a93`](https://github.com/aio-proxy/aio-proxy/commit/6880a93b087b81aaade64a95a6bd14fe7db4c8f1) Thanks [@baranwang](https://github.com/baranwang)! - dashboard: show OAuth account labels on model routing Providers
+
 ## 0.9.1
 
 ### Patch Changes

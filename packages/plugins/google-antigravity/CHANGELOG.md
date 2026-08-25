@@ -1,5 +1,16 @@
 # @aio-proxy/plugin-google-antigravity
 
+## 0.10.0
+
+### Minor Changes
+
+- [#203](https://github.com/aio-proxy/aio-proxy/pull/203) [`076c67b`](https://github.com/aio-proxy/aio-proxy/commit/076c67ba698c4cd7a3756ef370adc7a62a530402) Thanks [@baranwang](https://github.com/baranwang)! - Add `aio-proxy provider import [path]` to copy supported CPA OAuth auth files into aio-proxy accounts. OAuth plugins can declare typed CPA credential importers through the plugin SDK, and the built-in ChatGPT, Google Antigravity, Kimi Code, and xAI Grok plugins now provide them.
+
+### Patch Changes
+
+- Updated dependencies [[`076c67b`](https://github.com/aio-proxy/aio-proxy/commit/076c67ba698c4cd7a3756ef370adc7a62a530402)]:
+  - @aio-proxy/plugin-sdk@0.10.0
+
 ## 0.9.1
 
 ### Patch Changes

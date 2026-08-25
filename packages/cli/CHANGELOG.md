@@ -1,5 +1,24 @@
 # @aio-proxy/cli
 
+## 0.10.0
+
+### Minor Changes
+
+- [#203](https://github.com/aio-proxy/aio-proxy/pull/203) [`076c67b`](https://github.com/aio-proxy/aio-proxy/commit/076c67ba698c4cd7a3756ef370adc7a62a530402) Thanks [@baranwang](https://github.com/baranwang)! - Add `aio-proxy provider import [path]` to copy supported CPA OAuth auth files into aio-proxy accounts. OAuth plugins can declare typed CPA credential importers through the plugin SDK, and the built-in ChatGPT, Google Antigravity, Kimi Code, and xAI Grok plugins now provide them.
+
+### Patch Changes
+
+- Updated dependencies [[`076c67b`](https://github.com/aio-proxy/aio-proxy/commit/076c67ba698c4cd7a3756ef370adc7a62a530402), [`6880a93`](https://github.com/aio-proxy/aio-proxy/commit/6880a93b087b81aaade64a95a6bd14fe7db4c8f1), [`6880a93`](https://github.com/aio-proxy/aio-proxy/commit/6880a93b087b81aaade64a95a6bd14fe7db4c8f1)]:
+  - @aio-proxy/plugin-sdk@0.10.0
+  - @aio-proxy/core@0.10.0
+  - @aio-proxy/i18n@0.10.0
+  - @aio-proxy/dashboard@0.10.0
+  - @aio-proxy/server@0.10.0
+  - @aio-proxy/logger@0.10.0
+  - @aio-proxy/types@0.10.0
+  - @aio-proxy/opencode-provider@0.10.0
+  - @aio-proxy/pi-provider@0.10.0
+
 ## 0.9.1
 
 ### Patch Changes
