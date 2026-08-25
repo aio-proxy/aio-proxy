@@ -1,4 +1,4 @@
-import type { AliasDimensions } from '@aio-proxy/types';
+import { type AliasDimensions, canonicalEffort } from '@aio-proxy/types';
 
 import type { AiSdkCallSettings, ModelMessage } from '../../ai-sdk-bridge';
 import type { GeminiInteractionsBody, GeminiInteractionsRequest } from '../../ingress/gemini-interactions/index';
@@ -24,18 +24,22 @@ export type GeminiInteractionsModelMessages = {
   readonly messages: readonly ModelMessage[];
   readonly tools?: readonly GeminiInteractionsTransformTool[];
   readonly settings: GeminiInteractionsTransformSettings;
-  readonly dimensions: AliasDimensions;
 };
+
+export function geminiInteractionsDimensions(request: GeminiInteractionsRequest): AliasDimensions {
+  const config = request.body.generation_config;
+  if (!isRecord(config)) return {};
+  const thinkingLevel = config['thinking_level'];
+  return typeof thinkingLevel === 'string' ? { thinking: true, effort: canonicalEffort(thinkingLevel) } : {};
+}
 
 export function geminiInteractionsToModelMessages(request: GeminiInteractionsRequest): GeminiInteractionsModelMessages {
   assertGeminiInteractionsConvertible(request);
   const tools = functionTools(request.body.tools);
-  const { settings, dimensions } = callSettings(request.body.generation_config);
   return {
     messages: geminiInteractionsInputToMessages(request),
     ...(tools === undefined ? {} : { tools }),
-    settings,
-    dimensions,
+    settings: callSettings(request.body.generation_config),
   };
 }
 
@@ -54,24 +58,16 @@ function functionTools(value: GeminiInteractionsBody['tools']): readonly GeminiI
   });
 }
 
-function callSettings(value: GeminiInteractionsBody['generation_config']): {
-  readonly settings: GeminiInteractionsTransformSettings;
-  readonly dimensions: AliasDimensions;
-} {
-  if (!isRecord(value)) return { settings: {}, dimensions: {} };
+function callSettings(value: GeminiInteractionsBody['generation_config']): GeminiInteractionsTransformSettings {
+  if (!isRecord(value)) return {};
   const toolChoice = toolChoiceSetting(value['tool_choice']);
   const thinkingLevel = typeof value['thinking_level'] === 'string' ? value['thinking_level'] : undefined;
   return {
-    settings: {
-      ...(typeof value['max_output_tokens'] === 'number' ? { maxOutputTokens: value['max_output_tokens'] } : {}),
-      ...(typeof value['seed'] === 'number' ? { seed: value['seed'] } : {}),
-      ...(Array.isArray(value['stop_sequences']) ? { stopSequences: value['stop_sequences'] as string[] } : {}),
-      ...(thinkingLevel === undefined
-        ? {}
-        : { reasoning: thinkingLevel as NonNullable<AiSdkCallSettings['reasoning']> }),
-      ...(toolChoice === undefined ? {} : { toolChoice }),
-    },
-    dimensions: thinkingLevel === undefined ? {} : { thinking: true, effort: thinkingLevel },
+    ...(typeof value['max_output_tokens'] === 'number' ? { maxOutputTokens: value['max_output_tokens'] } : {}),
+    ...(typeof value['seed'] === 'number' ? { seed: value['seed'] } : {}),
+    ...(Array.isArray(value['stop_sequences']) ? { stopSequences: value['stop_sequences'] as string[] } : {}),
+    ...(thinkingLevel === undefined ? {} : { reasoning: thinkingLevel as NonNullable<AiSdkCallSettings['reasoning']> }),
+    ...(toolChoice === undefined ? {} : { toolChoice }),
   };
 }
 

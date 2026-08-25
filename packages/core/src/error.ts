@@ -217,6 +217,12 @@ export class GeminiInteractionsTransformError extends AioProxyError {
   }
 }
 
+export class GeminiInteractionsEgressError extends AioProxyError {
+  constructor(readonly finishReason: string) {
+    super('GeminiInteractionsEgressError', `Gemini Interactions convert finished with ${finishReason}`);
+  }
+}
+
 function errorMessage(error: unknown): string {
   if (error instanceof Error) {
     return error.message;

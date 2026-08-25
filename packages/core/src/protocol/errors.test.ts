@@ -2,7 +2,11 @@ import { expect, test } from 'bun:test';
 
 import { z } from 'zod';
 
-import { GeminiInteractionsUnsupportedFeatureError, ImageInputUnsupportedError } from '../error';
+import {
+  GeminiInteractionsEgressError,
+  GeminiInteractionsUnsupportedFeatureError,
+  ImageInputUnsupportedError,
+} from '../error';
 import type { ProtocolErrorMapper } from './adapter';
 import {
   anthropicMessagesErrors,
@@ -210,4 +214,10 @@ test('interactions modelUnsupported maps agent and not requestError', async () =
   expect(await response?.json()).toMatchObject({
     error: { code: 501, status: 'UNIMPLEMENTED', message: 'agent is only supported for native Interactions execution' },
   });
+});
+
+test('interactions provider does not treat convert-egress unlabeled finish as upstream failure', () => {
+  const error = new GeminiInteractionsEgressError('other');
+  expect(geminiInteractionsErrors.provider(error)).toBeUndefined();
+  expect(geminiInteractionsErrors.requestError(error)).toBeUndefined();
 });

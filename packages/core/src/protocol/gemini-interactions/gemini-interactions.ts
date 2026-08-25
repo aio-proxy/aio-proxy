@@ -1,4 +1,4 @@
-import { type AliasDimensions, ProviderProtocol } from '@aio-proxy/types';
+import { ProviderProtocol } from '@aio-proxy/types';
 import { z } from 'zod';
 
 import type { AiSdkCallSettings } from '../../ai-sdk-bridge';
@@ -6,6 +6,7 @@ import { writeGeminiInteractionsResponse, writeGeminiInteractionsSSE } from '../
 import { type GeminiInteractionsRequest, parseGeminiInteractions } from '../../ingress/gemini-interactions/index';
 import {
   type GeminiInteractionsTransformSettings,
+  geminiInteractionsDimensions,
   geminiInteractionsToModelMessages,
 } from '../../transform/gemini-interactions/index';
 import { defineProtocolAdapter, type EmptyProtocolContext } from '../adapter';
@@ -22,7 +23,7 @@ export const geminiInteractionsAdapter = defineProtocolAdapter<GeminiInteraction
     return parseGeminiInteractions(await readJsonRequest(raw));
   },
   model: (request) => request.routingId,
-  dimensions: (request) => interactionDimensions(request),
+  dimensions: (request) => geminiInteractionsDimensions(request),
   wantsStream: (request) => request.body.stream === true,
   async rawRequest(raw, request, resolvedModel) {
     const bodyText = await readRequestText(raw);
@@ -56,17 +57,6 @@ export const geminiInteractionsAdapter = defineProtocolAdapter<GeminiInteraction
   modelSse: writeGeminiInteractionsSSE,
   errors: geminiInteractionsErrors,
 });
-
-function interactionDimensions(request: GeminiInteractionsRequest): AliasDimensions {
-  const config = request.body.generation_config;
-  if (!isRecord(config)) return {};
-  const thinkingLevel = config['thinking_level'];
-  return typeof thinkingLevel === 'string' ? { thinking: true, effort: thinkingLevel } : {};
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
 
 function rewriteAuthoredId(
   body: Record<string, unknown>,

@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 
 import { GeminiInteractionsTransformError, GeminiInteractionsUnsupportedFeatureError } from '../../error';
 import { parseGeminiInteractions } from '../../ingress/gemini-interactions/index';
-import { geminiInteractionsToModelMessages } from './gemini-interactions';
+import { geminiInteractionsDimensions, geminiInteractionsToModelMessages } from './gemini-interactions';
 
 const convert = (body: unknown) => geminiInteractionsToModelMessages(parseGeminiInteractions(body));
 
@@ -38,8 +38,24 @@ describe('geminiInteractionsToModelMessages', () => {
       reasoning: 'low',
       toolChoice: 'auto',
     });
-    expect(result.dimensions).toEqual({ thinking: true, effort: 'low' });
+    expect(result).not.toHaveProperty('dimensions');
     expect(result.settings).not.toHaveProperty('responseFormat');
+  });
+
+  test('dimensions helper canonicalizes thinking_level without convert eligibility', () => {
+    const high = parseGeminiInteractions({
+      model: 'm',
+      input: 'hi',
+      generation_config: { thinking_level: 'HIGH' },
+    });
+    expect(geminiInteractionsDimensions(high)).toEqual({ thinking: true, effort: 'high' });
+
+    const agent = parseGeminiInteractions({
+      agent: 'deep-research-preview-04-2026',
+      input: 'hi',
+      generation_config: { thinking_level: ' high ' },
+    });
+    expect(geminiInteractionsDimensions(agent)).toEqual({ thinking: true, effort: 'high' });
   });
 
   test('maps thought summary and function history', () => {

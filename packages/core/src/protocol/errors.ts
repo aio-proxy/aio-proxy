@@ -6,6 +6,7 @@ import {
   AiSdkProviderError,
   AnthropicMessagesTransformError,
   GeminiGenerateContentTransformError,
+  GeminiInteractionsEgressError,
   GeminiInteractionsTransformError,
   GeminiInteractionsUnsupportedFeatureError,
   GeminiInlineDataTooLargeError,
@@ -150,9 +151,11 @@ export const geminiInteractionsErrors: ProtocolErrorMapper = {
   unsupported: () =>
     geminiError(501, 'UNIMPLEMENTED', 'Provider does not support Gemini Interactions transform dispatch'),
   provider: (error) =>
-    genericProviderError(error, (status, message) =>
-      status === 499 ? geminiError(499, 'CANCELLED', message) : geminiError(status, 'UNAVAILABLE', message),
-    ),
+    error instanceof GeminiInteractionsEgressError
+      ? undefined
+      : genericProviderError(error, (status, message) =>
+          status === 499 ? geminiError(499, 'CANCELLED', message) : geminiError(status, 'UNAVAILABLE', message),
+        ),
   rateLimited: geminiRateLimited,
 };
 

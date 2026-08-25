@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'bun:test';
 
 import type { TextStreamPart, ToolSet } from '../../ai-sdk-bridge';
+import { GeminiInteractionsEgressError } from '../../error';
+import { geminiInteractionsErrors } from '../../protocol/errors';
 import { writeGeminiInteractionsResponse } from './json';
 import { writeGeminiInteractionsSSE } from './sse';
 import { interactionStatus } from './status';
@@ -131,6 +133,25 @@ describe('writeGeminiInteractionsResponse', () => {
       }),
     ).rejects.toThrow();
   });
+
+  test.each(['other', 'unknown'] as const)(
+    'finish %s with text is a typed egress error, not a provider Error',
+    async (reason) => {
+      let caught: unknown;
+      try {
+        await writeGeminiInteractionsResponse(streamOf({ type: 'text-delta', id: 't', text: 'x' }, finish(reason)), {
+          modelId: 'm',
+        });
+      } catch (error) {
+        caught = error;
+      }
+      expect(caught).toBeInstanceOf(GeminiInteractionsEgressError);
+      expect(geminiInteractionsErrors.provider(caught)).toBeUndefined();
+      expect(
+        geminiInteractionsErrors.provider(new Error(`Gemini Interactions convert finished with ${reason}`)),
+      ).toBeDefined();
+    },
+  );
 });
 
 async function readSse(stream: ReadableStream<Uint8Array>): Promise<string> {

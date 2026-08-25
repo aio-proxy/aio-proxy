@@ -48,6 +48,7 @@ export {
   AnthropicMessagesTransformError,
   DatabaseSchemaTooNewError,
   GeminiGenerateContentTransformError,
+  GeminiInteractionsEgressError,
   GeminiInteractionsTransformError,
   GeminiInteractionsUnsupportedFeatureError,
   GeminiInlineDataTooLargeError,
@@ -214,6 +215,7 @@ export {
   type GeminiInteractionsModelMessages,
   type GeminiInteractionsTransformSettings,
   type GeminiInteractionsTransformTool,
+  geminiInteractionsDimensions,
   geminiInteractionsToModelMessages,
 } from './transform/gemini-interactions/index';
 export {

@@ -1,4 +1,5 @@
 import type { TextStreamPart, ToolSet } from '../../ai-sdk-bridge';
+import { GeminiInteractionsEgressError } from '../../error';
 import type { ModelEgressContext } from '../../protocol/adapter';
 import { interactionStatus, type InteractionStatus } from './status';
 import { interactionUsage, type InteractionUsage } from './usage';
@@ -88,7 +89,7 @@ export async function writeGeminiInteractionsResponse(
   const steps = interactionSteps(text.join(''), reasoning.join(''), functionCalls);
   const status = interactionStatus(finishReason, functionCalls.length > 0);
   if (status === 'error') {
-    throw new Error(`Gemini Interactions convert finished with ${finishReason}`);
+    throw new GeminiInteractionsEgressError(finishReason);
   }
 
   const created = new Date().toISOString();

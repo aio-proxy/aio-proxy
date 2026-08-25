@@ -68,6 +68,14 @@ describe('geminiInteractionsAdapter', () => {
     });
     expect(geminiInteractionsAdapter.dimensions(convertible, {})).toEqual({ thinking: true, effort: 'low' });
 
+    const high = parseGeminiInteractions({
+      model: 'm',
+      input: 'hi',
+      store: false,
+      generation_config: { thinking_level: 'HIGH' },
+    });
+    expect(geminiInteractionsAdapter.dimensions(high, {})).toEqual({ thinking: true, effort: 'high' });
+
     const agent = parseGeminiInteractions({ agent: 'deep-research-preview-04-2026', input: 'hi' });
     expect(geminiInteractionsAdapter.dimensions(agent, {})).toEqual({});
   });
