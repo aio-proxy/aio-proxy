@@ -194,6 +194,18 @@ export class GeminiGenerateContentTransformError extends AioProxyError {
   }
 }
 
+export class EmbeddingConvertUnsupportedError extends AioProxyError {
+  constructor(readonly feature: string) {
+    super('EmbeddingConvertUnsupportedError', `Embedding convert does not support ${feature}`);
+  }
+}
+
+export class EmbeddingUsageRequiredError extends AioProxyError {
+  constructor() {
+    super('EmbeddingUsageRequiredError', 'Embedding usage was not reported');
+  }
+}
+
 function errorMessage(error: unknown): string {
   if (error instanceof Error) {
     return error.message;

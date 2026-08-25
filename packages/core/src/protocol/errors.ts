@@ -5,6 +5,7 @@ import { prettifyError, ZodError } from 'zod';
 import {
   AiSdkProviderError,
   AnthropicMessagesTransformError,
+  EmbeddingConvertUnsupportedError,
   GeminiGenerateContentTransformError,
   GeminiInlineDataTooLargeError,
   ImageInputUnsupportedError,
@@ -68,6 +69,40 @@ export const openAIResponsesErrors: ProtocolErrorMapper = {
   tooLarge: () => openAIInvalid(413, 'request_too_large', 'Request body too large'),
   unsupportedContentEncoding: () => openAIInvalid(415, 'unsupported_content_encoding', 'Unsupported Content-Encoding'),
   unsupported: openAIUnsupported,
+  provider: openAIProviderError,
+  rateLimited: openAIRateLimited,
+};
+
+export const openAIEmbeddingsErrors: ProtocolErrorMapper = {
+  modelUnsupported: (error) =>
+    error instanceof ImageInputUnsupportedError
+      ? openAIInvalid(501, 'unsupported_feature', 'Image input cannot be represented by this provider')
+      : undefined,
+  requestError: (error) => {
+    if (error instanceof EmbeddingConvertUnsupportedError) {
+      return Response.json(
+        {
+          error: {
+            code: 'not_implemented',
+            message: error.message,
+            type: 'unsupported_feature',
+          },
+        },
+        { status: 501 },
+      );
+    }
+    return error instanceof SyntaxError ||
+      error instanceof ZodError ||
+      error instanceof InvalidCompressedRequestBodyError
+      ? openAIInvalid(400, 'invalid_request', withZodDetail('Invalid OpenAI Embeddings request', error))
+      : undefined;
+  },
+  modelNotFound: (message) => openAIInvalid(404, 'model_not_found', message),
+  previousResponseConflict: () => openAIInvalid(409, 'previous_response_conflict', PREVIOUS_RESPONSE_CONFLICT_MESSAGE),
+  tooLarge: () => openAIInvalid(413, 'request_too_large', 'Request body too large'),
+  unsupportedContentEncoding: () => openAIInvalid(415, 'unsupported_content_encoding', 'Unsupported Content-Encoding'),
+  unsupported: () =>
+    openAIInvalid(501, 'not_implemented', 'Provider does not support OpenAI Embeddings transform dispatch'),
   provider: openAIProviderError,
   rateLimited: openAIRateLimited,
 };

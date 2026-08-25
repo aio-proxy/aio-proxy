@@ -35,6 +35,7 @@ export {
 } from './egress/anthropic-messages';
 export { writeGeminiGenerateContentResponse, writeGeminiGenerateContentSSE } from './egress/gemini-generate-content';
 export { writeOpenAICompletionsResponse, writeOpenAICompletionsSSE } from './egress/openai-completions';
+export { writeOpenAIEmbeddingsResponse } from './egress/openai-embeddings';
 export {
   type OpenAIResponsesResponse,
   writeOpenAIResponsesResponse,
@@ -46,6 +47,8 @@ export {
   AiSdkProviderLoaderError,
   AnthropicMessagesTransformError,
   DatabaseSchemaTooNewError,
+  EmbeddingConvertUnsupportedError,
+  EmbeddingUsageRequiredError,
   GeminiGenerateContentTransformError,
   GeminiInlineDataTooLargeError,
   ImageInputUnsupportedError,
@@ -98,6 +101,7 @@ export {
   OpenAICompletionsRequestSchema,
   parseOpenAICompletions,
 } from './ingress/openai-completions';
+export { type OpenAIEmbeddingsRequest, parseOpenAIEmbeddings } from './ingress/openai-embeddings';
 export {
   type OpenAIResponsesCustomTool,
   type OpenAIResponsesExecutableTool,

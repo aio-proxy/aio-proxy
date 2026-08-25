@@ -4,6 +4,7 @@ export * from './anthropic-thinking';
 export * from './errors';
 export * from './gemini-generate-content';
 export * from './openai-completions';
+export * from './openai-embeddings';
 export * from './openai-responses';
 export * from './request';
 export * from './session';
