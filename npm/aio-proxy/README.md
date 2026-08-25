@@ -35,7 +35,7 @@ flowchart LR
 
 - **Plugin-based integrations**: Connect different model providers through plugins, including AI SDK Provider packages and OAuth accounts.
 - **Rich observability**: Track requests, token usage, cost, and complete request traces in one place.
-- **Major protocol support**: Accept OpenAI Chat Completions, OpenAI Responses, Anthropic Messages, and Gemini GenerateContent requests.
+- **Major protocol support**: Accept OpenAI Chat Completions, OpenAI Responses, OpenAI Images, Anthropic Messages, and Gemini GenerateContent requests.
 - **Multi-Provider routing**: Select candidates by model, Provider priority, and Provider weight, with model aliases, failover, and session affinity.
 - **Transparent protocol conversion**: Use raw passthrough for matching protocols and automatic conversion for cross-protocol requests.
 
@@ -269,17 +269,27 @@ Previously, Provider weight was a global fixed order: unique weights were tried 
 
 ## API
 
-| Protocol or purpose      | Method and path                                     |
-| ------------------------ | --------------------------------------------------- |
-| Health check             | `GET /health`                                       |
-| Model list               | `GET /v1/models`                                    |
-| OpenAI Chat Completions  | `POST /v1/chat/completions`                         |
-| OpenAI Responses         | `POST /v1/responses`                                |
-| Anthropic Messages       | `POST /v1/messages`                                 |
-| Anthropic Token Counting | `POST /v1/messages/count_tokens`                    |
-| Gemini                   | `POST /v1beta/models/{model}:generateContent`       |
-| Gemini streaming         | `POST /v1beta/models/{model}:streamGenerateContent` |
-| Gemini Token Counting    | `POST /v1beta/models/{model}:countTokens`           |
+| Protocol or purpose       | Method and path                                     |
+| ------------------------- | --------------------------------------------------- |
+| Health check              | `GET /health`                                       |
+| Model list                | `GET /v1/models`                                    |
+| OpenAI Chat Completions   | `POST /v1/chat/completions`                         |
+| OpenAI Responses          | `POST /v1/responses`                                |
+| Anthropic Messages        | `POST /v1/messages`                                 |
+| Anthropic Token Counting  | `POST /v1/messages/count_tokens`                    |
+| Gemini                    | `POST /v1beta/models/{model}:generateContent`       |
+| Gemini streaming          | `POST /v1beta/models/{model}:streamGenerateContent` |
+| Gemini Token Counting     | `POST /v1beta/models/{model}:countTokens`           |
+| OpenAI Images generations | `POST /v1/images/generations`                       |
+
+Images notes:
+
+- Raw Images needs an `openai-image` endpoint (or primary protocol).
+- Blank JSON `model` looks up `gpt-image-2` (CPA-compatible, not official `dall-e-2` / `gpt-image-1.5`) and raw injects the resolved candidate id.
+- Inbound model is the OpenAI id plus the existing `providerId/` qualifier, not OmniRoute `provider/model`.
+- Convert does not stream and does not fetch `image_url`.
+- DALL·E omitted/`null`/`url` skips convert; GPT Image omitted encodes `b64_json`; custom omitted `b64_json` is an aio-proxy extension.
+- Non-catalog Images providers need a finite id set (`models`, preserved alias targets, or metadata keys) including `gpt-image-2` for the CPA default.
 
 Call the OpenAI Responses endpoint:
 
