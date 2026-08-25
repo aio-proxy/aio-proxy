@@ -57,7 +57,10 @@ export async function createKimiRuntime(
         input.protocol === 'anthropic' || input.protocol === 'openai-compatible' ? input.protocol : undefined;
       if (protocol === undefined) return undefined;
       return {
-        invoke: async (request) => dynamicFetch(rewriteRawRequest(request, protocol)),
+        invoke: async (request) => {
+          const upstream = rewriteRawRequest(request, protocol);
+          return upstream === undefined ? unsupportedRawPath(protocol) : dynamicFetch(upstream);
+        },
       };
     },
     tokenCount: {
@@ -125,13 +128,29 @@ export function createKimiDynamicFetch(
   return Object.assign(fetchWithCredential, { preconnect: globalThis.fetch.preconnect });
 }
 
-function rewriteRawRequest(request: Request, protocol: KimiProtocol): Request {
+// Undefined when the inbound endpoint has no Kimi Code counterpart. Kimi Code
+// only serves Chat Completions and Anthropic Messages, so inbound endpoints such
+// as legacy `/v1/completions` must not be guessed onto an upstream path.
+function rewriteRawRequest(request: Request, protocol: KimiProtocol): Request | undefined {
   const source = new URL(request.url);
   const expectedPath = protocol === 'anthropic' ? '/v1/messages' : '/v1/chat/completions';
-  if (source.pathname !== expectedPath) throw new Error('Unsupported Kimi raw path');
+  if (source.pathname !== expectedPath) return undefined;
   const target = new URL(`https://api.kimi.com/coding${expectedPath}`);
   target.search = source.search;
   return new Request(target, request);
+}
+
+// Declining raw as an upstream-shaped 501 keeps the inbound protocol's error
+// contract and stays fallback-eligible, unlike a thrown error that the pipeline
+// can only report as a generic 500. The message repeats no inbound detail.
+function unsupportedRawPath(protocol: KimiProtocol): Response {
+  const message = 'Kimi Code does not serve this endpoint';
+  return protocol === 'anthropic'
+    ? Response.json({ type: 'error', error: { type: 'invalid_request_error', message } }, { status: 501 })
+    : Response.json(
+        { error: { code: 'unsupported_endpoint', message, type: 'invalid_request_error' } },
+        { status: 501 },
+      );
 }
 
 function catalogProtocol(metadata: unknown): KimiProtocol | undefined {

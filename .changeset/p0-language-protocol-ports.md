@@ -1,8 +1,10 @@
 ---
 '@aio-proxy/core': minor
+'@aio-proxy/plugin-kimi-code': minor
+'@aio-proxy/plugin-openai-chatgpt': minor
 'aio-proxy': minor
 ---
 
 openai: add Completions and Responses compact ports
 
-`POST /v1/completions` and `POST /v1/responses/compact` now use the existing language-generation pipeline. Remaining official Responses resource operations return a protocol-shaped 501 instead of a generic 404.
+`POST /v1/completions` and `POST /v1/responses/compact` now use the existing language-generation pipeline. Remaining official Responses resource operations return a protocol-shaped 501 instead of a generic 404. ChatGPT OAuth providers forward compact to the Codex compaction endpoint, and Kimi Code providers decline endpoints it does not serve so the request falls back instead of failing as an internal error.
