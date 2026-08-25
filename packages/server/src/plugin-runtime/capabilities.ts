@@ -9,7 +9,7 @@ import type {
   RawTransportOptions,
   TokenCountCapability,
 } from '@aio-proxy/plugin-sdk';
-import { type OAuthProvider, ProviderKind, type ProviderProtocol } from '@aio-proxy/types';
+import { aliasTargetModels, type OAuthProvider, ProviderKind, type ProviderProtocol } from '@aio-proxy/types';
 import { uniq } from 'es-toolkit/array';
 
 import { buildModelCapabilityIndex } from '../provider-runtime/capability-index';
@@ -179,6 +179,8 @@ function routingCapabilities(
       metadata: config.metadata,
       configMetadata: config.metadata,
       upstreamMetadata,
+      aliasTargets:
+        config.alias === undefined ? undefined : [...new Set(Object.values(config.alias).flatMap(aliasTargetModels))],
     }),
     upstreamMetadata,
   };

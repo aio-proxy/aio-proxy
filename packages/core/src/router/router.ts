@@ -249,6 +249,8 @@ export function modelRoutes(provider: RoutableProvider): ModelRoute[] {
 function directModelIds(provider: RoutableProvider): string[] {
   const configuredModelIds = new Set<string>('models' in provider ? (provider.models ?? []) : []);
   const modelIds = new Set(configuredModelIds);
+  for (const modelId of Object.keys(provider.configMetadata ?? {})) modelIds.add(modelId);
+  for (const modelId of Object.keys(provider.upstreamMetadata ?? {})) modelIds.add(modelId);
 
   for (const [alias, config] of Object.entries(provider.alias ?? {})) {
     modelIds.delete(alias);
@@ -265,8 +267,6 @@ function directModelIds(provider: RoutableProvider): string[] {
   for (const modelId of preservedModelIds(provider)) {
     modelIds.add(modelId);
   }
-  for (const modelId of Object.keys(provider.configMetadata ?? {})) modelIds.add(modelId);
-  for (const modelId of Object.keys(provider.upstreamMetadata ?? {})) modelIds.add(modelId);
   return [...modelIds];
 }
 

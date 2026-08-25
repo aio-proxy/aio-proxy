@@ -103,6 +103,15 @@ describe('buildModelCapabilityIndex', () => {
     expect(supportsImage(index, 'gpt-5')).toBe(false);
   });
 
+  test('seeds non-preserving alias targets as language on a chat primary', () => {
+    const index = buildModelCapabilityIndex({
+      primaryProtocol: ProviderProtocol.OpenAICompatible,
+      aliasTargets: ['gpt-4o-mini'],
+    });
+    expect(supportsLanguage(index, 'gpt-4o-mini')).toBe(true);
+    expect(supportsImage(index, 'gpt-4o-mini')).toBe(false);
+  });
+
   test('openai-image endpoint on a chat-primary provider does not mark every models id as image', () => {
     const index = buildModelCapabilityIndex({
       primaryProtocol: ProviderProtocol.OpenAICompatible,

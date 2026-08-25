@@ -19,6 +19,7 @@ export type CapabilityIndexInput = {
   readonly hasImageModel?: boolean;
   readonly primaryProtocol?: ProviderProtocol;
   readonly extraProtocols?: readonly ProviderProtocol[];
+  readonly aliasTargets?: readonly string[];
   readonly preservedAliasTargets?: readonly string[];
 };
 
@@ -49,6 +50,7 @@ export function buildModelCapabilityIndex(input: CapabilityIndexInput): ModelCap
 function finiteNonCatalogIds(input: CapabilityIndexInput): Set<string> {
   return new Set([
     ...(input.models ?? []),
+    ...(input.aliasTargets ?? []),
     ...(input.preservedAliasTargets ?? []),
     ...Object.keys(input.metadata ?? {}),
     ...Object.keys(input.configMetadata ?? {}),

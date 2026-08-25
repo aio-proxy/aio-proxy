@@ -93,6 +93,20 @@ test('registers metadata keys as direct routes', () => {
   expect(router.resolve('gpt-image-2')[0]?.modelId).toBe('gpt-image-2');
 });
 
+test('metadata on a hidden alias target does not make that id routable', () => {
+  const router = new Router([
+    {
+      id: 'openai',
+      enabled: true,
+      kind: ProviderKind.Api,
+      alias: { public: { model: 'secret-internal', preserve: false } },
+      configMetadata: { 'secret-internal': { capabilities: { modalities: { output: ['image'] } } } },
+    },
+  ]);
+  expect(router.resolve('public')[0]?.modelId).toBe('secret-internal');
+  expect(() => router.resolve('secret-internal')).toThrow();
+});
+
 test('does not wildcard when models alias and metadata are empty', () => {
   const router = new Router([{ id: 'openai', enabled: true, kind: ProviderKind.Api }]);
   expect(() => router.resolve('gpt-image-2')).toThrow();
