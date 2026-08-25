@@ -9,5 +9,6 @@ export {
   type ThoughtStep,
   writeGeminiInteractionsResponse,
 } from './json';
+export { writeGeminiInteractionsSSE } from './sse';
 export { interactionStatus, type InteractionStatus } from './status';
 export { interactionUsage, type InteractionUsage } from './usage';

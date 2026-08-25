@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 
 import type { TextStreamPart, ToolSet } from '../../ai-sdk-bridge';
 import { writeGeminiInteractionsResponse } from './json';
+import { writeGeminiInteractionsSSE } from './sse';
 import { interactionStatus } from './status';
 
 const empty = { cacheReadTokens: 0, cacheWriteTokens: 0, noCacheTokens: 0 };
@@ -129,5 +130,106 @@ describe('writeGeminiInteractionsResponse', () => {
         modelId: 'm',
       }),
     ).rejects.toThrow();
+  });
+});
+
+async function readSse(stream: ReadableStream<Uint8Array>): Promise<string> {
+  return new Response(stream).text();
+}
+
+function completedUsage(text: string): Record<string, unknown> {
+  const match = text.match(/event: interaction\.completed\ndata: (\{.*\})\n/);
+  const payload: unknown = JSON.parse(match?.[1] ?? '{}');
+  const interaction =
+    typeof payload === 'object' && payload !== null && 'interaction' in payload
+      ? (payload as { interaction?: { usage?: unknown } }).interaction
+      : undefined;
+  const usage = interaction?.usage;
+  return typeof usage === 'object' && usage !== null ? (usage as Record<string, unknown>) : {};
+}
+
+describe('writeGeminiInteractionsSSE', () => {
+  test('emits named events in official order', async () => {
+    const text = await readSse(
+      writeGeminiInteractionsSSE(streamOf({ type: 'text-delta', id: 't', text: 'Hello' }, finish('stop')), {
+        modelId: 'gemini-3.5-flash',
+      }),
+    );
+    expect(text).toContain('event: interaction.created');
+    expect(text).toContain('event: interaction.status_update');
+    expect(text).toContain('event: step.start');
+    expect(text).toContain('event: step.delta');
+    expect(text).toContain('event: step.stop');
+    expect(text).toContain('event: interaction.completed');
+    expect(text).toContain('event: done');
+    expect(text).toContain('data: [DONE]');
+    expect(text).toContain('"event_id":"evt_1"');
+    expect(text).toContain('"event_id":"evt_2"');
+    expect(text).toContain('"event_type":"step.start","index":0');
+    expect(text).toContain('"event_type":"step.delta","index":0');
+    expect(text).toContain('"event_type":"step.stop","index":0');
+    expect(text.match(/event: interaction.status_update/g)?.length).toBe(1);
+    expect(text).not.toContain('"status":"completed"\n\nevent: interaction.status_update');
+    const usage = completedUsage(text);
+    expect(usage).toMatchObject({
+      total_input_tokens: 7,
+      total_output_tokens: 20,
+      total_thought_tokens: 22,
+      total_cached_tokens: 0,
+      total_tool_use_tokens: 0,
+      total_tokens: 49,
+    });
+    expect(usage).not.toHaveProperty('input_tokens');
+    expect(usage).not.toHaveProperty('output_tokens');
+    expect(Object.keys(usage)).not.toContain('input_tokens');
+    expect(Object.keys(usage)).not.toContain('output_tokens');
+    expect(text).not.toContain('"candidates"');
+    const createdIdx = text.indexOf('event: interaction.created');
+    const updateIdx = text.indexOf('event: interaction.status_update');
+    const completedIdx = text.indexOf('event: interaction.completed');
+    const doneIdx = text.indexOf('event: done');
+    expect(createdIdx).toBeGreaterThan(-1);
+    expect(updateIdx).toBeGreaterThan(createdIdx);
+    expect(completedIdx).toBeGreaterThan(updateIdx);
+    expect(doneIdx).toBeGreaterThan(completedIdx);
+  });
+
+  test('function_call start includes id name and empty arguments', async () => {
+    const text = await readSse(
+      writeGeminiInteractionsSSE(
+        streamOf(
+          { type: 'tool-input-start', id: 'c1', toolName: 'get_weather' },
+          { type: 'tool-input-delta', id: 'c1', delta: '{"location":"Boston, MA"}' },
+          finish('tool-calls'),
+        ),
+        { modelId: 'm' },
+      ),
+    );
+    expect(text).toContain('"step":{"type":"function_call","id":"c1","name":"get_weather","arguments":{}}');
+    expect(text).toContain('"status":"requires_action"');
+  });
+
+  test('error finish emits error then done and never completed', async () => {
+    const text = await readSse(
+      writeGeminiInteractionsSSE(streamOf({ type: 'text-delta', id: 't', text: 'x' }, finish('error')), {
+        modelId: 'm',
+      }),
+    );
+    expect(text).toContain('event: error');
+    expect(text).toContain('event: done');
+    expect(text).not.toContain('event: interaction.completed');
+  });
+
+  test('missing function_call id or name emits error then done', async () => {
+    const text = await readSse(
+      writeGeminiInteractionsSSE(streamOf({ type: 'tool-input-start', id: '', toolName: 't' }, finish('tool-calls')), {
+        modelId: 'm',
+      }),
+    );
+    expect(text).toContain('event: error');
+    expect(text).toContain('event: done');
+    expect(text).toContain('data: [DONE]');
+    expect(text).not.toContain('event: interaction.completed');
+    expect(text).not.toContain('"type":"function_call"');
   });
 });

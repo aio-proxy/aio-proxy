@@ -135,7 +135,7 @@ export function assertThoughtStep(step: unknown): asserts step is ThoughtStep {
   }
 }
 
-function interactionSteps(
+export function interactionSteps(
   outputText: string,
   thoughtText: string,
   functionCalls: readonly FunctionCallStep[],
@@ -153,7 +153,11 @@ function interactionSteps(
   return steps;
 }
 
-function functionCallStep(tool: ToolState): FunctionCallStep {
+export function functionCallStep(tool: {
+  readonly id: string;
+  readonly name: string;
+  readonly input: string;
+}): FunctionCallStep {
   const step = {
     type: 'function_call' as const,
     id: tool.id,
