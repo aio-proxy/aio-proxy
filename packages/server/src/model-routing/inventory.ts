@@ -26,7 +26,7 @@ export type RoutingInventoryInput = {
   readonly rawRecord: Readonly<Record<string, unknown>>;
   readonly config: Config;
   readonly summaries: readonly DashboardProviderSummary[];
-  readonly repository: Pick<PluginRepository, 'readCatalog'>;
+  readonly repository: Pick<PluginRepository, 'readCatalog' | 'readAccount'>;
   readonly writable: boolean;
 };
 
@@ -38,6 +38,7 @@ export async function assembleRoutingInventory(input: RoutingInventoryInput): Pr
 
   for (const provider of providers) {
     const source = await syntheticSource(provider, input.repository);
+    const name = routingProviderName(provider, summaries.get(provider.id), input.repository);
     for (const route of modelRoutes(source)) {
       let model = models.get(route.alias);
       if (model === undefined) {
@@ -51,6 +52,7 @@ export async function assembleRoutingInventory(input: RoutingInventoryInput): Pr
           rawProviders[provider.id],
           rawPolicyProviders(readRawModelPolicy(input.rawRecord, route.alias))[provider.id],
           input.writable,
+          name,
         ),
       );
     }
@@ -107,12 +109,27 @@ function finalizeModel(model: WritableModel): DashboardRoutingModel {
   };
 }
 
+function routingProviderName(
+  provider: Provider,
+  summary: DashboardProviderSummary | undefined,
+  repository: Pick<PluginRepository, 'readAccount'>,
+): string | undefined {
+  if (provider.kind !== ProviderKind.OAuth) return provider.name ?? summary?.name;
+  try {
+    const account = repository.readAccount(provider.id);
+    return account?.label ?? account?.fingerprint ?? summary?.accountLabel ?? provider.name ?? summary?.name;
+  } catch {
+    return summary?.accountLabel ?? provider.name ?? summary?.name;
+  }
+}
+
 function providerRow(
   provider: Provider,
   summary: DashboardProviderSummary | undefined,
   rawProvider: unknown,
   rawOverride: unknown,
   discloseAuthored: boolean,
+  name: string | undefined,
 ): DashboardRoutingProvider {
   const raw = isPlainObject(rawProvider) ? rawProvider : {};
   const defaults = {
@@ -125,7 +142,7 @@ function providerRow(
   const state = summary?.state ?? { status: 'ready' };
   return {
     id: provider.id,
-    ...(provider.name === undefined ? {} : { name: provider.name }),
+    ...(name === undefined ? {} : { name }),
     kind: provider.kind,
     enabled: provider.enabled,
     state,

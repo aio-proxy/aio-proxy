@@ -136,7 +136,11 @@ test('renders every known model including zero-eligible and single-Provider rout
   expect(screen.getByTestId('routing-row-openai/gpt-5')).toBeInTheDocument();
   expect(screen.getByTestId('routing-row-solo-model')).toBeInTheDocument();
   expect(screen.getByTestId('routing-row-disabled-model')).toBeInTheDocument();
-  expect(within(screen.getByTestId('routing-row-openai/gpt-5')).getByText(/P30/u)).toBeInTheDocument();
+  expect(
+    within(screen.getByTestId('routing-row-openai/gpt-5')).getByText(
+      /Priority 30|優先度 30|우선순위 30|优先级 30|優先順序 30/u,
+    ),
+  ).toBeInTheDocument();
   expect(within(screen.getByTestId('routing-row-disabled-model')).getByText(/0\s*\/\s*1/u)).toBeInTheDocument();
 });
 

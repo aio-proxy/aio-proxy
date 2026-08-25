@@ -9,7 +9,7 @@ export {
 } from './errors';
 export { type FormattedUserError, formatUserError } from './format-error';
 export { getLocaleName } from './locale-name';
-export { m } from './paraglide/messages';
+export { m } from './m';
 export { getLocale, locales } from './paraglide/runtime';
 export { type Locale, resolveLocale, resolveLocaleFromArgv } from './resolve';
 export { setLocale } from './runtime';

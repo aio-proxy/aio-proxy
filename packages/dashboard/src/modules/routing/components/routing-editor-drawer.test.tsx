@@ -1,10 +1,9 @@
-/* oxlint-disable max-lines */
 import type { DashboardRoutingModel, DashboardRoutingProvider } from '@aio-proxy/types';
 import { ProviderKind } from '@aio-proxy/types';
 import { afterEach, expect, rs, test } from '@rstest/core';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 
-import { RoutingEditorSheet } from './routing-editor-sheet';
+import { RoutingEditorDrawer } from './routing-editor-drawer';
 
 const mocks = rs.hoisted(() => ({
   mutate: rs.fn(),
@@ -57,8 +56,8 @@ const provider = (
 const gpt5 = (): DashboardRoutingModel => ({
   modelId: 'openai/gpt-5',
   revision: 'rev-1',
-  baselineProviderIds: ['a', 'b', 'c'],
-  providerCount: 3,
+  baselineProviderIds: ['a', 'b', 'c', 'd'],
+  providerCount: 4,
   eligibleProviderCount: 2,
   hasOverrides: true,
   tiers: [
@@ -112,14 +111,29 @@ const gpt5 = (): DashboardRoutingModel => ({
         share: null,
       },
     }),
+    provider({
+      id: 'd',
+      name: 'Blocked',
+      enabled: false,
+      defaults: { priority: routingNumber(0), weight: routingNumber(1) },
+      override: { weight: routingNumber(5, 5) },
+      effective: {
+        priority: 0,
+        weight: 5,
+        prioritySource: 'provider',
+        weightSource: 'model',
+        eligible: false,
+        share: null,
+      },
+    }),
   ],
 });
 
-const renderSheet = (
+const renderDrawer = (
   options: { readonly writable?: boolean; readonly onReload?: () => void; readonly model?: DashboardRoutingModel } = {},
 ) =>
   render(
-    <RoutingEditorSheet
+    <RoutingEditorDrawer
       model={options.model ?? gpt5()}
       writable={options.writable ?? true}
       onOpenChange={rs.fn()}
@@ -127,53 +141,52 @@ const renderSheet = (
     />,
   );
 
-const overridePriority = (id: string) => screen.getByTestId(`routing-override-priority-${id}`);
-const overrideWeight = (id: string) => screen.getByTestId(`routing-override-weight-${id}`);
+test('renders Providers as a priority board with live shares', () => {
+  renderDrawer();
 
-test('treats blank priority and weight fields as inherit', () => {
-  renderSheet();
-
-  expect(overridePriority('b')).toHaveValue(null);
-  expect(overrideWeight('b')).toHaveValue(null);
-  expect(
-    within(screen.getByTestId('routing-provider-b')).getAllByText(/inherit|継承|상속|继承|繼承/iu).length,
-  ).toBeGreaterThan(0);
-});
-
-test('labels a Provider as disabled for the model when effective weight is zero', () => {
-  renderSheet();
-
+  expect(screen.getByTestId('routing-board')).toBeInTheDocument();
+  expect(screen.getByTestId('routing-share-a')).toHaveTextContent('60%');
+  expect(screen.getByTestId('routing-share-b')).toHaveTextContent('40%');
   expect(screen.getByTestId('routing-disabled-c')).toBeInTheDocument();
-  expect(overrideWeight('c')).toHaveValue(0);
 });
 
-test('recomputes live tier shares when draft weights change', async () => {
-  renderSheet();
+test('Reset stays available for a blocked Provider with a leftover override', async () => {
+  renderDrawer();
 
-  const preview = screen.getByTestId('routing-preview');
-  expect(preview).toHaveTextContent('a');
-  expect(preview).toHaveTextContent('60%');
-  expect(preview).toHaveTextContent('40%');
-
-  fireEvent.change(overrideWeight('a'), { target: { value: '1000' } });
+  expect(screen.getByTestId('routing-list-blocked')).toBeInTheDocument();
+  expect(screen.queryByTestId('routing-disabled-d')).not.toBeInTheDocument();
+  expect(screen.getByTestId('routing-disabled-c')).toBeInTheDocument();
+  fireEvent.click(screen.getByTestId('routing-reset-d'));
+  fireEvent.click(screen.getByTestId('routing-save'));
 
   await waitFor(() => {
-    expect(screen.getByTestId('routing-preview')).toHaveTextContent('20%');
-    expect(screen.getByTestId('routing-preview')).toHaveTextContent('80%');
+    expect(mocks.mutate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        providers: { a: { priority: 30, weight: 6000 }, c: { weight: 0 } },
+      }),
+      expect.any(Object),
+    );
   });
 });
 
 test('Reset clears one Provider override back to inherit', async () => {
-  renderSheet();
+  renderDrawer();
 
-  expect(overridePriority('a')).toHaveValue(30);
   fireEvent.click(screen.getByTestId('routing-reset-a'));
-  expect(overridePriority('a')).toHaveValue(null);
-  expect(overrideWeight('a')).toHaveValue(null);
+  fireEvent.click(screen.getByTestId('routing-save'));
+
+  await waitFor(() => {
+    expect(mocks.mutate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        providers: { c: { weight: 0 }, d: { weight: 5 } },
+      }),
+      expect.any(Object),
+    );
+  });
 });
 
 test('Save sends the exact revision, baseline Provider IDs, and explicit override map', async () => {
-  renderSheet();
+  renderDrawer();
 
   fireEvent.click(screen.getByTestId('routing-save'));
 
@@ -182,10 +195,11 @@ test('Save sends the exact revision, baseline Provider IDs, and explicit overrid
       {
         modelId: 'openai/gpt-5',
         revision: 'rev-1',
-        baselineProviderIds: ['a', 'b', 'c'],
+        baselineProviderIds: ['a', 'b', 'c', 'd'],
         providers: {
           a: { priority: 30, weight: 6000 },
           c: { weight: 0 },
+          d: { weight: 5 },
         },
       },
       expect.any(Object),
@@ -193,65 +207,39 @@ test('Save sends the exact revision, baseline Provider IDs, and explicit overrid
   });
 });
 
-test('omits a Provider from Save after Reset leaves both fields blank', async () => {
-  renderSheet();
-
-  fireEvent.click(screen.getByTestId('routing-reset-a'));
-  fireEvent.click(screen.getByTestId('routing-save'));
-
-  await waitFor(() => {
-    expect(mocks.mutate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        providers: { c: { weight: 0 } },
-      }),
-      expect.any(Object),
-    );
-  });
-});
-
-test('shows a field error and does not save when priority is fractional', async () => {
-  renderSheet();
-
-  fireEvent.change(overridePriority('a'), { target: { value: '1.5' } });
-  fireEvent.click(screen.getByTestId('routing-save'));
-
-  const field = within(screen.getByTestId('routing-provider-a'));
-  expect(await field.findByRole('alert')).toHaveTextContent(/whole number|integer|整数|정수|整數/iu);
-  expect(overridePriority('a')).toHaveAttribute('aria-invalid', 'true');
-  expect(mocks.mutate).not.toHaveBeenCalled();
-});
-
-test('keeps the Sheet open on 409 stale_revision and offers reload', async () => {
+test('keeps the drawer open on 409 stale_revision and offers reload', async () => {
   const onReload = rs.fn();
   mocks.mutate.mockImplementation((_body: unknown, callbacks?: { onError?: (error: Error) => void }) => {
     const error = Object.assign(new Error('stale routing model'), { code: 'stale_revision' });
     mocks.error = error;
     callbacks?.onError?.(error);
   });
-  renderSheet({ onReload });
+  renderDrawer({ onReload });
 
-  fireEvent.change(overrideWeight('a'), { target: { value: '1000' } });
   fireEvent.click(screen.getByTestId('routing-save'));
 
   expect(await screen.findByRole('alert')).toBeInTheDocument();
-  expect(screen.getByTestId('routing-editor-sheet')).toBeInTheDocument();
-  expect(overrideWeight('a')).toHaveValue(1000);
+  expect(screen.getByTestId('routing-editor-drawer')).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: /Reload|再読|다시|重新|重新/u }));
   expect(onReload).toHaveBeenCalled();
 });
 
 test('disables Save when writable is false while keeping read-only inspection', () => {
-  renderSheet({ writable: false });
+  renderDrawer({ writable: false });
 
   expect(screen.getByTestId('routing-save')).toBeDisabled();
-  expect(overridePriority('a')).toBeDisabled();
-  expect(screen.getByTestId('routing-preview')).toHaveTextContent('a');
+  expect(
+    screen.queryByLabelText(
+      /Drag to change priority|拖动以调整优先级|拖曳以調整優先順序|ドラッグして優先度を変更|드래그하여 우선순위 변경/u,
+    ),
+  ).not.toBeInTheDocument();
+  expect(screen.getByTestId('routing-share-a')).toHaveTextContent('60%');
   expect(screen.getByTestId('routing-provider-a')).toBeInTheDocument();
 });
 
 test('disables duplicate Save while a mutation is pending', () => {
   mocks.isPending = true;
-  renderSheet();
+  renderDrawer();
 
   expect(screen.getByTestId('routing-save')).toBeDisabled();
 });
@@ -302,21 +290,11 @@ const dottedModel = (): DashboardRoutingModel => ({
   ],
 });
 
-test('edits dotted and bracketed Provider IDs and saves them as exact payload keys', async () => {
-  renderSheet({ model: dottedModel() });
+test('saves dotted and bracketed Provider IDs as exact payload keys', async () => {
+  renderDrawer({ model: dottedModel() });
 
-  expect(overridePriority('acme.us')).toHaveValue(30);
-  expect(overrideWeight('edge[west]')).toHaveValue(4000);
-
-  fireEvent.change(overrideWeight('acme.us'), { target: { value: '1000' } });
-
-  await waitFor(() => {
-    expect(screen.getByTestId('routing-preview')).toHaveTextContent('acme.us');
-    expect(screen.getByTestId('routing-preview')).toHaveTextContent('20%');
-    expect(screen.getByTestId('routing-preview')).toHaveTextContent('edge[west]');
-    expect(screen.getByTestId('routing-preview')).toHaveTextContent('80%');
-  });
-
+  expect(screen.getByTestId('routing-provider-acme.us')).toBeInTheDocument();
+  expect(screen.getByTestId('routing-provider-edge[west]')).toBeInTheDocument();
   fireEvent.click(screen.getByTestId('routing-save'));
 
   await waitFor(() => {
@@ -326,7 +304,7 @@ test('edits dotted and bracketed Provider IDs and saves them as exact payload ke
         revision: 'rev-1',
         baselineProviderIds: ['acme.us', 'edge[west]'],
         providers: {
-          'acme.us': { priority: 30, weight: 1000 },
+          'acme.us': { priority: 30, weight: 6000 },
           'edge[west]': { priority: 30, weight: 4000 },
         },
       },
@@ -337,16 +315,10 @@ test('edits dotted and bracketed Provider IDs and saves them as exact payload ke
 });
 
 test('Reset on dotted and bracketed Provider IDs omits those keys from Save', async () => {
-  renderSheet({ model: dottedModel() });
+  renderDrawer({ model: dottedModel() });
 
   fireEvent.click(screen.getByTestId('routing-reset-acme.us'));
-  expect(overridePriority('acme.us')).toHaveValue(null);
-  expect(overrideWeight('acme.us')).toHaveValue(null);
-
   fireEvent.click(screen.getByTestId('routing-reset-edge[west]'));
-  expect(overridePriority('edge[west]')).toHaveValue(null);
-  expect(overrideWeight('edge[west]')).toHaveValue(null);
-
   fireEvent.click(screen.getByTestId('routing-save'));
 
   await waitFor(() => {
