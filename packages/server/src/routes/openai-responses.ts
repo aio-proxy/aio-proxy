@@ -14,5 +14,13 @@ export function createOpenAIResponsesRoutes(source: ProviderRouteSource) {
         source,
       }),
     )
+    .post('/v1/responses/compact', (context) =>
+      handleProtocolRequest({
+        adapter: openAIResponsesAdapter,
+        context: { operation: 'compact' },
+        rawRequest: context.req.raw,
+        source,
+      }),
+    )
     .get('/v1/responses/:id', () => openAIResponsesAdapter.errors.unsupported('response_retrieval'));
 }
