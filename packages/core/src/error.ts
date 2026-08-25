@@ -194,6 +194,29 @@ export class GeminiGenerateContentTransformError extends AioProxyError {
   }
 }
 
+export class GeminiInteractionsUnsupportedFeatureError extends AioProxyError {
+  readonly code = 'UNSUPPORTED_GEMINI_INTERACTIONS_FEATURE';
+  readonly status = 501;
+
+  constructor(
+    readonly feature: string,
+    readonly path: string,
+  ) {
+    super(
+      'GeminiInteractionsUnsupportedFeatureError',
+      feature === 'agent'
+        ? 'agent is only supported for native Interactions execution'
+        : `Gemini Interactions feature is not supported: ${feature} at ${path}`,
+    );
+  }
+}
+
+export class GeminiInteractionsTransformError extends AioProxyError {
+  constructor(readonly path: string) {
+    super('GeminiInteractionsTransformError', `Invalid Gemini Interactions request at ${path}`);
+  }
+}
+
 function errorMessage(error: unknown): string {
   if (error instanceof Error) {
     return error.message;

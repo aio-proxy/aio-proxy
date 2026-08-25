@@ -47,6 +47,8 @@ export {
   AnthropicMessagesTransformError,
   DatabaseSchemaTooNewError,
   GeminiGenerateContentTransformError,
+  GeminiInteractionsTransformError,
+  GeminiInteractionsUnsupportedFeatureError,
   GeminiInlineDataTooLargeError,
   ImageInputUnsupportedError,
   type ImageInputUnsupportedReason,
@@ -207,6 +209,12 @@ export {
   geminiGenerateContentToModelMessages,
   modelMessagesToGeminiGenerateContent,
 } from './transform/gemini-generate-content/index';
+export {
+  type GeminiInteractionsModelMessages,
+  type GeminiInteractionsTransformSettings,
+  type GeminiInteractionsTransformTool,
+  geminiInteractionsToModelMessages,
+} from './transform/gemini-interactions/index';
 export {
   type OpenAICompletionsFromModelMessages,
   type OpenAICompletionsModelMessages,
