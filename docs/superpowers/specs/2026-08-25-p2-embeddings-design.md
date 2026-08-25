@@ -166,7 +166,7 @@ Defaults:
 - `wantsStream` is always false. There is no SSE egress.
 - `session` is omitted. Empty candidates fall through to a generated session unless the client sent an existing session header. Embeddings do not hash the input text as a transcript key and do not commit response ownership.
 - `dimensions()` (alias effort bag) is empty. Embeddings do not clamp reasoning effort.
-- `requestDiagnostics` is empty. Convert does not silently drop representable embed settings. `dimensions` / `outputDimensionality`, Gemini `taskType`, and OpenAI `user` are normalized onto per-value `providerOptions`. Gemini `title` is kept for grouping and is 501 on convert unless a transport is proven to put it on the Google upstream body. `encoding_format` is egress-only and is never sent to the SDK.
+- `requestDiagnostics` is empty. Convert does not silently drop representable embed settings. `dimensions` / `outputDimensionality`, Gemini `taskType`, and OpenAI `user` are normalized onto per-value `providerOptions`. Gemini `title` and `autoTruncate` are kept for grouping and are 501 on convert unless a transport is proven to put them on the Google upstream body. OpenAI token-id `input` is parse-legal and raw-forwarded; convert is 501 because AI SDK embed is string-only. `encoding_format` is egress-only and is never sent to the SDK.
 
 Language adapters do not grow a `capability` field in this issue. The pipeline distinguishes embeddings by adapter kind / `capability: 'embedding'`, not by route path string matching inside `attemptCandidates`.
 
@@ -177,7 +177,7 @@ Language adapters do not grow a `capability` field in this issue. The pipeline d
 Request (supported):
 
 - `model` (required)
-- `input`: string or string[] of text (required). Every string — the lone string and every array member — must have length ≥ 1. An empty array is not allowed. An array may contain at most 2048 strings. This is an item cap, not the `dimensions` field.
+- `input` (required): the official union — a nonempty string, a `string[]` of nonempty strings, a token-id `number[]`, or a `number[][]` of token-id arrays. An empty array is not allowed. A multi-input array (`string[]` or `number[][]`) may contain at most 2048 items. This is an item cap, not the `dimensions` field and not a token-count cap.
 - `encoding_format`: `float` (default) or `base64`
 - `dimensions`: optional positive integer
 - `user`: optional; raw forwards; convert maps it into target `providerOptions`
@@ -189,11 +189,12 @@ Rejected at parse (400, OpenAI error shape):
 - empty string `input` (`""`)
 - empty-string array member (`["ok", ""]`)
 - empty array `input`
-- `input` array longer than 2048
-- token-id input (`number[]` or `number[][]`)
+- multi-input array longer than 2048
 - `encoding_format` other than `float` / `base64`
 
-Official create-embeddings contract: `input` cannot be an empty string, and an array is at most 2048 items. Rejecting those at parse keeps `embedMany` from splitting an already-invalid request into multiple upstream calls.
+Do **not** 400 token-id `input` at parse. Official create-embeddings accepts a string, an array of strings, an array of tokens, or an array of token arrays. Same-protocol raw forwards the original token IDs. Convert is fallback-capable 501 because AI SDK `embed` / `embedMany` are string-only.
+
+Parse-time nonempty-string and 2048-item checks are a subset of the official contract, not the whole thing. Official also has a per-input 8192-token limit and a 300000-token request total. aio-proxy does not introduce a model tokenizer in P2, so those limits are enforced by raw/upstream (and, on convert, by the target). Cross-protocol failures follow existing provider mapping into the inbound error shape. Do not preflight-guess token counts.
 
 Response:
 
@@ -217,23 +218,26 @@ Context from the path: `{ model, action: 'embedContent' }`.
 Supported body:
 
 - `content.parts` with text only. Multiple text parts become one value, concatenated in order with no separator. The joined value must be a non-empty string.
-- `embedContentConfig` when present: `taskType`, `title`, `outputDimensionality`. `mimeType` is ignored because this inbound surface rejects non-text parts.
-- legacy top-level aliases `taskType`, `title`, `outputDimensionality` when the corresponding `embedContentConfig` key is absent. If both are present, the config object wins per key.
+- `embedContentConfig` when present, matching official `EmbedContentConfig`: `taskType`, `title`, `outputDimensionality`, `autoTruncate`, `audioTrackExtraction`, `documentOcr`. There is no `mimeType` on this config object.
+- legacy top-level aliases `taskType`, `title`, `outputDimensionality` (and the same extra keys if a client still sends them at the top level) when the corresponding `embedContentConfig` key is absent. If both are present, the config object wins per key.
 
 Rejected at parse (400, Gemini error shape):
 
 - no text
 - joined text is `""`
 - non-text parts (inline images, file data, video). Text in, vectors out.
+- `audioTrackExtraction` or `documentOcr` present on config or as a top-level alias. These are outside the text-only scope; do not strip them and continue.
 - empty model segment
 
-Response:
+Response (convert, usage known):
 
 ```json
-{ "embedding": { "values": [0.1, 0.2] } }
+{ "embedding": { "values": [0.1, 0.2] }, "usageMetadata": { "promptTokenCount": 8 } }
 ```
 
-Raw rewrite: set path to `/v1beta/models/{resolvedModel}:embedContent`. If the body already has `model`, rewrite it to `models/<resolvedModel>`. Forward the original body bytes when the body is unchanged.
+Omit `usageMetadata` when convert usage is unknown. Raw egress is the upstream body; do not strip a present `usageMetadata`.
+
+Raw rewrite: set path to `/v1beta/models/{resolvedModel}:embedContent`. Official `EmbedContentRequest.model` is required. Always write body `model` to `models/<resolvedModel>`, including when the client omitted it. `.reference/new-api` does the same via `SetModelName` on both single and batch. URL-only rewrite would 400 upstream, and raw 4xx does not fallback. Preserve every accepted official config field on the forwarded body.
 
 ### Gemini `:batchEmbedContents`
 
@@ -243,19 +247,22 @@ Supported body: `requests` array, each item a single-embed request. The URL mode
 
 Rejected: empty `requests`, any item that would fail single-embed parse.
 
-Response:
+Response (convert, usage known):
 
 ```json
-{ "embeddings": [{ "values": [0.1] }, { "values": [0.2] }] }
+{ "embeddings": [{ "values": [0.1] }, { "values": [0.2] }], "usageMetadata": { "promptTokenCount": 8 } }
 ```
+
+Omit `usageMetadata` when convert usage is unknown. Raw egress is the upstream body.
 
 Raw rewrite is not URL-only. Google requires every `EmbedContentRequest.model` to equal the batch path model (`models/{model}`).
 
 - Path: `/v1beta/models/{resolvedModel}:batchEmbedContents`
 - Every `requests[i].model`, including omitted entries, is set to `models/<resolvedModel>`
 - Alias and provider-qualified routes use the same `resolvedModel` as the path. Leftover client model strings and missing models must not survive
+- Preserve each item's accepted official `embedContentConfig` / legacy fields
 
-`:embedContent` rewrites the path the same way. If that single body already has `model`, rewrite it to `models/<resolvedModel>`; do not invent a body `model` when the client omitted it.
+`:embedContent` is the same rule: always write body `model` to `models/<resolvedModel>`, including when the client omitted it.
 
 ### Convert mapping
 
@@ -267,38 +274,40 @@ AI SDK Provider V4 has two call shapes. `embed` takes `{ model, value, providerO
 | --- | --- |
 | OpenAI `input` string | `values: [{ value: input, providerOptions }]` |
 | OpenAI `input` string[] | one `EmbeddingValue` per string, same `providerOptions` |
+| OpenAI token-id `number[]` / `number[][]` | no convert values; fallback-capable 501 |
 | Gemini single text / joined text parts | `values: [{ value: text, providerOptions }]` |
 | Gemini batch | one `EmbeddingValue` per item, in request order, each with that item's normalized options |
 | OpenAI `dimensions` / Gemini `outputDimensionality` | `providerOptions.openai.dimensions`, `providerOptions.openaiCompatible.dimensions`, and `providerOptions.google.outputDimensionality` |
 | OpenAI `user` | `providerOptions.openai.user` and `providerOptions.openaiCompatible.user` |
-| Gemini `taskType` | `providerOptions.google.taskType` |
-| Gemini `title` | kept on the normalized per-item options for grouping / 501; not a silent `@ai-sdk/google` pass-through |
+| Gemini `taskType` | `providerOptions.google.taskType`, after mapping `TASK_TYPE_UNSPECIFIED` to omitted |
+| Gemini `title` / `autoTruncate` | kept on the normalized per-item options for grouping / 501; not a silent `@ai-sdk/google` pass-through |
 | OpenAI `encoding_format` | `encodingFormat` (egress only) |
 
 The adapter is target-agnostic: it fills every namespace that can represent a field. Use `openaiCompatible`, not the deprecated `'openai-compatible'` key (`@ai-sdk/openai-compatible` still parses the old key and emits a deprecation warning). `@ai-sdk/openai` / `@ai-sdk/openai-compatible` / `@ai-sdk/google` read their own key and ignore the others. That is how convert avoids a silent drop of representable fields without adding `embeddingInvocationForTarget`.
 
-`title` is different. Official `EmbedContentConfig` supports `title`. The `@ai-sdk/google` embedding options schema in this checkout only parses `outputDimensionality`, `taskType`, and `content`, and `doEmbed` never writes `title` onto the upstream `:embedContent` / `:batchEmbedContents` body. Putting `title` in `providerOptions.google` is therefore a silent drop.
+`title` and `autoTruncate` are different. Official `EmbedContentConfig` supports both. The `@ai-sdk/google` embedding options schema in this checkout only parses `outputDimensionality`, `taskType`, and `content`, and `doEmbed` never writes `title` or `autoTruncate` onto the upstream body. Putting them only in `providerOptions.google` would be a silent drop.
 
-- Gemini raw continues to forward `title` in the original body.
-- Convert of any invocation whose normalized options include `title` is `adapter.errors.unsupported` (501), then fallback if `hasNext`.
-- Do not call `embed` / `embedMany` for a title-bearing group.
-- A later SDK upgrade or a title-capable transport may convert `title` only if tests assert the actual Google upstream JSON body contains `title`. Asserting `embed({ providerOptions })` is not enough.
+- Gemini raw continues to forward accepted official config fields, including `title` and `autoTruncate`.
+- Convert of any invocation whose normalized options include `title` or `autoTruncate` is `adapter.errors.unsupported` (501), then fallback if `hasNext`.
+- Do not call `embed` / `embedMany` for a title- or autoTruncate-bearing group.
+- A later SDK upgrade or a capable transport may convert those fields only if tests assert the actual Google upstream JSON body contains them. Asserting `embed({ providerOptions })` is not enough.
 
 Gemini per-item options are normalized before mapping:
 
 1. Start from `embedContentConfig` when present.
-2. Fill missing `taskType` / `title` / `outputDimensionality` from the legacy top-level aliases.
-3. Ignore `mimeType`. Non-text parts are already 400.
+2. Fill missing `taskType` / `title` / `outputDimensionality` / `autoTruncate` from legacy top-level aliases.
+3. Map `taskType` `TASK_TYPE_UNSPECIFIED` to omitted.
+4. `audioTrackExtraction` / `documentOcr` never reach this step: parse already rejected them. Do not strip and continue.
 
 `createProviderV4Embed` must not flatten a heterogeneous batch into one `embedMany` with a single `providerOptions`. AI SDK applies one options object to every value in a call.
 
 - Group `EmbeddingValue`s that share structurally equal normalized `providerOptions` (same keys and values; omit empty namespaces).
-- If any value's normalized options include `title`, fail the whole convert attempt with 501 and fallback if `hasNext`. Do not embed a subset.
+- If any value's normalized options include `title` or `autoTruncate`, fail the whole convert attempt with 501 and fallback if `hasNext`. Do not embed a subset.
 - Call `embed({ model, value, providerOptions, abortSignal })` for a one-value group. Call `embedMany({ model, values, providerOptions, abortSignal })` only when the group has two or more values. Do not pass `values` to `embed`, and do not pass a lone `value` to `embedMany`.
 - Restore the original request order when assembling `EmbeddingResult.embeddings`.
 - After each group, accept `usage.tokens` only when it is a finite non-negative safe integer (`Number.isSafeInteger(tokens) && tokens >= 0`). Then add it to a running total and require `Number.isSafeInteger(total) && total >= 0` after that add (or once more on the final total). If any group is missing, `undefined`, `NaN`, non-finite, or out of range, or if the running/final total overflows `Number.MAX_SAFE_INTEGER`, omit `EmbeddingResult.usage` entirely. Do not record NaN and do not persist a partial or overflowing aggregate.
 
-Grouping lives inside the embedding transport. `attemptCandidates` still makes one convert attempt per candidate. Do not reopen the candidate loop. Do not 501 a heterogeneous Gemini batch solely because `taskType` or `outputDimensionality` differs across items. Silent drop of a differing item's `taskType` / `outputDimensionality` is forbidden. `title` is the 501 exception above, not a drop.
+Grouping lives inside the embedding transport. `attemptCandidates` still makes one convert attempt per candidate. Do not reopen the candidate loop. Do not 501 a heterogeneous Gemini batch solely because `taskType` or `outputDimensionality` differs across items. Silent drop of a differing item's `taskType` / `outputDimensionality` is forbidden. `title` and `autoTruncate` are the 501 exception above, not a drop.
 
 Anthropic candidates have no embedding convert. They fail this branch and fallback if another candidate exists.
 
@@ -308,13 +317,13 @@ Keep `handleProtocolRequest` as the entry. Its options type becomes a discrimina
 
 For an embeddings adapter, each live candidate:
 
-1. **Raw** if `provider.raw.resolve({ protocol: adapter.protocol, modelId, capability: 'embedding' })` returns a transport. Language-only resolvers must return `undefined` here. `rawRequest` has already rewritten the embeddings path and, for `:batchEmbedContents`, every `requests[i].model`. Existing fallback statuses apply (`422`, `429`, `>= 500` when `hasNext`). A raw throw or non-fallback status does not retry this candidate's embedding convert.
-2. **Embedding convert** if the candidate exposes `embedding`. Call `embedding.embed(invocation, { modelId, signal, logicalRequest })`. Do not call `provider.model.invoke`. Title-bearing convert is 501 as specified above, then fallback if `hasNext`.
+1. **Raw** if `provider.raw.resolve({ protocol: adapter.protocol, modelId, capability: 'embedding' })` returns a transport. Language-only resolvers must return `undefined` here. `rawRequest` has already rewritten the embeddings path and written every Gemini body `model` (`:embedContent` and every `:batchEmbedContents` item) to `models/<resolvedModel>`. Existing fallback statuses apply (`422`, `429`, `>= 500` when `hasNext`). A raw throw or non-fallback status does not retry this candidate's embedding convert.
+2. **Embedding convert** if the candidate exposes `embedding`. Call `embedding.embed(invocation, { modelId, signal, logicalRequest })`. Do not call `provider.model.invoke`. Token-id OpenAI input, and Gemini `title` / `autoTruncate`, are 501 as specified above, then fallback if `hasNext`.
 3. **Unsupported** otherwise (`adapter.errors.unsupported`), then fallback if `hasNext`.
 
 Language requests are unchanged: they never see the embedding branch. They pass `capability: 'language'` (or omit it, which resolvers treat as language).
 
-`createProviderV4Invoke` remains language-only. Add `createProviderV4Embed(providerId, provider)` that calls `provider.embeddingModel(modelId)` and then AI SDK `embed` or `embedMany` with the matching call shape above. Pass the group's `providerOptions` (`openai` / `openaiCompatible` / `google`). Return `embeddings` in the original inbound order. Attach `usage` only when every group token count is valid and the summed total is still a non-negative safe integer; otherwise omit it. A thrown "does not support embedding" is a candidate failure, not a materialization failure.
+`createProviderV4Invoke` remains language-only. Add `createProviderV4Embed(providerId, provider)` that calls `provider.embeddingModel(modelId)` and then AI SDK `embed` or `embedMany` with the matching call shape above. Pass the group's `providerOptions` (`openai` / `openaiCompatible` / `google`). Return `embeddings` in the original inbound order. Attach `usage` only when every group token count is valid and the summed total is still a non-negative safe integer; otherwise omit it. Gemini inbound `embeddingJson` writes `usageMetadata: { promptTokenCount: tokens }` on both single and batch envelopes when that usage is present, and omits it when usage is unknown. A thrown "does not support embedding" is a candidate failure, not a materialization failure.
 
 ### Runtime shape
 
@@ -358,7 +367,8 @@ Reuse `ProtocolErrorMapper`. Shapes:
 | Unknown model (router miss) | 404 |
 | Body too large / bad content-encoding | 413 / 415 (existing helpers) |
 | Candidate has no embedding convert and no raw | 501 unsupported, then fallback if `hasNext` |
-| Title-bearing convert without a title-capable transport | 501 unsupported, then fallback if `hasNext` |
+| Title- or autoTruncate-bearing convert without a capable transport | 501 unsupported, then fallback if `hasNext` |
+| OpenAI token-id `input` on convert | 501 unsupported, then fallback if `hasNext` |
 | Upstream / plugin throw | existing provider mapping, then fallback if eligible |
 
 Embeddings have no `previous_response_id`, so the conflict mapper is unused.
@@ -369,13 +379,14 @@ Protect user-visible behavior, not factory literals.
 
 Adapter tests (colocated with the new modules):
 
-- OpenAI parse: string, string[], empty-string rejection (scalar `""` and array member), empty-array rejection, 2048 items accepted / 2049 rejected, token-id rejection, `encoding_format`, model rewrite on raw
-- Gemini parse: single text, batch, non-text part rejection, empty joined text, `embedContentConfig` plus legacy aliases, path action + model context
-- Gemini raw: alias and provider-qualified `:batchEmbedContents` rewrite every `requests[i].model` to `models/<resolvedModel>`, including items that omitted `model` or sent a leftover client model
-- Convert: OpenAI `dimensions` and Gemini `taskType` appear on `providerOptions.openai` / `openaiCompatible` / `google` as specified; a heterogeneous Gemini batch is grouped, order is restored, and no item's `taskType` / `outputDimensionality` is dropped
+- OpenAI parse: string, string[], empty-string rejection (scalar `""` and array member), empty-array rejection, 2048 items accepted / 2049 rejected, token-id `number[]` / `number[][]` accepted, `encoding_format`, model rewrite on raw
+- OpenAI raw: token-id `input` is forwarded unchanged; convert of the same body is 501 + fallback
+- Gemini parse: single text, batch, non-text part rejection, empty joined text, official `embedContentConfig` fields plus legacy aliases, `audioTrackExtraction` / `documentOcr` rejected rather than stripped, path action + model context
+- Gemini raw: alias and provider-qualified `:embedContent` / `:batchEmbedContents` write body `model` to `models/<resolvedModel>` even when the client omitted it, and rewrite leftover client models
+- Convert: OpenAI `dimensions` and Gemini `taskType` appear on `providerOptions.openai` / `openaiCompatible` / `google` as specified; `TASK_TYPE_UNSPECIFIED` is omitted; a heterogeneous Gemini batch is grouped, order is restored, and no item's `taskType` / `outputDimensionality` is dropped
 - Convert call shape: a one-value group calls `embed` with singular `value`; a multi-value group calls `embedMany` with `values`. Tests assert both shapes separately
-- Convert usage: Google convert with undefined provider usage omits tokens; each-group-valid but summed total overflowing `Number.MAX_SAFE_INTEGER` also omits `EmbeddingResult.usage`
-- Convert title: a title-bearing Gemini request converting through `@ai-sdk/google` is 501 + fallback. A title-capable transport, if added later, must assert the Google upstream JSON body contains `title`, not merely that `embed()` received it
+- Convert usage: Google convert with undefined provider usage omits tokens; each-group-valid but summed total overflowing `Number.MAX_SAFE_INTEGER` also omits `EmbeddingResult.usage`; Gemini convert egress writes `usageMetadata.promptTokenCount` when usage is valid and omits it when unknown
+- Convert title / autoTruncate: converting through `@ai-sdk/google` is 501 + fallback. A capable transport, if added later, must assert the Google upstream JSON body contains the field, not merely that `embed()` received it
 - Egress: index order, float vs base64, Gemini single vs batch envelopes
 
 Dispatch matrix (server, next to `cross-protocol-routing.test.ts`, embeddings-specific so the language matrix stays language-only):
