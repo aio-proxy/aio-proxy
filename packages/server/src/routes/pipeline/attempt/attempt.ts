@@ -13,6 +13,7 @@ import type { AttemptLoopContext, CandidateSlot, InvocationHolder } from './cont
 import { selectLiveCandidates } from './cooldown-write';
 import { createAttemptEmitter } from './emit';
 import { handleAttemptError, unsupportedDispatch } from './error';
+import { dispatchImageCandidate } from './image';
 import { attemptModelCandidate } from './model';
 import { attemptRawCandidate } from './raw';
 
@@ -148,22 +149,27 @@ export async function attemptCandidates<TRequest, TContext>(
       spanRef: { current: undefined },
     };
     try {
-      if (provider.raw !== undefined) {
-        slot.trace.transport = 'raw';
-        slot.trace.targetProtocol = adapter.protocol;
-      }
-      const raw = provider.raw?.resolve({ protocol: adapter.protocol, modelId: candidate.modelId });
       let step;
-      if (raw !== undefined) {
-        step = await attemptRawCandidate(ctx, slot, raw);
-      } else if (adapter.capability === 'language' && provider.model !== undefined) {
-        slot.trace.transport = 'ai_sdk';
-        slot.trace.targetProtocol = undefined;
-        step = await attemptModelCandidate({ ...ctx, adapter }, slot, provider.model, holder);
+      if (adapter.capability === 'image') {
+        step = await dispatchImageCandidate(ctx, slot);
+        if (step === undefined) continue;
       } else {
-        slot.trace.transport = undefined;
-        slot.trace.targetProtocol = undefined;
-        step = unsupportedDispatch(ctx, slot);
+        if (provider.raw !== undefined) {
+          slot.trace.transport = 'raw';
+          slot.trace.targetProtocol = adapter.protocol;
+        }
+        const raw = provider.raw?.resolve({ protocol: adapter.protocol, modelId: candidate.modelId });
+        if (raw !== undefined) {
+          step = await attemptRawCandidate(ctx, slot, raw);
+        } else if (adapter.capability === 'language' && provider.model !== undefined) {
+          slot.trace.transport = 'ai_sdk';
+          slot.trace.targetProtocol = undefined;
+          step = await attemptModelCandidate({ ...ctx, adapter }, slot, provider.model, holder);
+        } else {
+          slot.trace.transport = undefined;
+          slot.trace.targetProtocol = undefined;
+          step = unsupportedDispatch(ctx, slot);
+        }
       }
       if (step.kind === 'return') return step.response;
       lastFailure = step.lastFailure;

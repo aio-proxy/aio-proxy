@@ -1,6 +1,5 @@
 import type { AliasDimensions } from '@aio-proxy/types';
 
-import type { AiSdkCallSettings } from '../../ai-sdk-bridge';
 import type {
   LanguageProtocolAdapter,
   ModelEgressContext,
@@ -20,6 +19,9 @@ export type ImageBytesRef = {
   readonly hasAlpha: boolean;
 };
 
+// generateImage accepts ProviderOptions; AiSdkCallSettings has no providerOptions field.
+export type ImageProviderOptions = Readonly<Record<string, Readonly<Record<string, unknown>>>>;
+
 export type ImageInvocation = {
   readonly operation: 'generate' | 'edit';
   readonly prompt: string;
@@ -28,7 +30,7 @@ export type ImageInvocation = {
   readonly responseFormat: 'b64_json';
   readonly images?: readonly ImageBytesRef[];
   readonly mask?: ImageBytesRef;
-  readonly providerOptions?: AiSdkCallSettings['providerOptions'];
+  readonly providerOptions?: ImageProviderOptions;
 };
 
 export type ImageTransportResult = {

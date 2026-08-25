@@ -15,6 +15,7 @@ export async function attemptRawCandidate<TRequest, TContext>(
   ctx: AttemptLoopContext<TRequest, TContext>,
   slot: CandidateSlot,
   raw: RawTransport,
+  options: { readonly idleTimeoutMs?: number } = {},
 ): Promise<AttemptStep> {
   const { adapter, context, rawRequest, request, session, source, logicalRequest, release, deferRelease, logFailure } =
     ctx;
@@ -69,6 +70,7 @@ export async function attemptRawCandidate<TRequest, TContext>(
     observation,
     ...(configPrice === undefined ? {} : { configPrice }),
     ...(ctx.streamRequested ? { startedAt } : {}),
+    ...(options.idleTimeoutMs === undefined ? {} : { idleTimeoutMs: options.idleTimeoutMs }),
     ...(adapter.session === undefined
       ? {}
       : {

@@ -1,4 +1,4 @@
-import { createProviderV4Invoke, validateProviderV4 } from '@aio-proxy/core';
+import { createProviderV4ImageInvoke, createProviderV4Invoke, validateProviderV4 } from '@aio-proxy/core';
 import type {
   LogicalRequestContext,
   ModelCatalog,
@@ -126,6 +126,8 @@ export function createRuntimeProvider(
   const tokenCount = tokenCountCapability(Reflect.get(result, 'tokenCount'));
   const models = exposedModelIds(catalogModelIds(catalog), config.models);
   const { capabilityIndex, upstreamMetadata } = routingCapabilities(config, catalog, models);
+  const image =
+    catalog.image.length > 0 ? { invoke: createProviderV4ImageInvoke(config.id, result.provider) } : undefined;
   const base = {
     id: config.id,
     kind: ProviderKind.OAuth,
@@ -144,12 +146,16 @@ export function createRuntimeProvider(
     return {
       ...base,
       ...(raw === undefined ? {} : { raw }),
+      ...(image === undefined ? {} : { image }),
       model: {
         invoke: createProviderV4Invoke(config.id, result.provider),
         supportsProviderTool: (type) => supportedProviderTools.has(type),
         targetProtocol: (modelId) => upstreamMetadata[modelId]?.protocol,
       },
     };
+  }
+  if (image !== undefined) {
+    return { ...base, image, ...(raw === undefined ? {} : { raw }) };
   }
   if (raw !== undefined) {
     return { ...base, raw };

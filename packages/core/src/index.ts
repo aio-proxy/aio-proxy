@@ -168,6 +168,7 @@ export {
   resolveApiKey,
 } from './provider/api/index';
 export { bridgeApiProviderToAiSdk, resolveOpenAIResponsesModel } from './provider/api-bridge/index';
+export { createProviderV4ImageInvoke } from './provider/provider-v4-image';
 export { createProviderV4Invoke, validateProviderV4 } from './provider/provider-v4';
 export { createProxyFetch, type ProviderFetch } from './provider/proxy-fetch';
 export {

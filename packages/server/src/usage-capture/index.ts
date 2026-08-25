@@ -1,3 +1,4 @@
+export { captureImageUsage } from './image-capture';
 export {
   createUsageCapture,
   type Captured,

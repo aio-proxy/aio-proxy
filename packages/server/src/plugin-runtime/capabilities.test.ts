@@ -343,6 +343,7 @@ test('createRuntimeProvider exposes catalog.image ids and does not synthesize la
 
   expect(provider?.models).toContain('gpt-image-2');
   expect(provider?.model).toBeUndefined();
+  expect(provider?.image).toBeDefined();
   expect(supportsImage(provider!.capabilityIndex, 'gpt-image-2')).toBe(true);
   expect(provider?.raw?.resolve({ protocol: ProviderProtocol.OpenAIImage, modelId: 'gpt-image-2' })).toBeDefined();
 });
