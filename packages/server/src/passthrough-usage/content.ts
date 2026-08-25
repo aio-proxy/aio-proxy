@@ -15,6 +15,12 @@ export function hasContentDelta(protocol: ProviderProtocol, eventType: string | 
       return anthropicContent(value);
     case ProviderProtocol.Gemini:
       return geminiContent(value);
+    case ProviderProtocol.GeminiInteractions: {
+      const type = eventType ?? (isRecord(value) ? value['event_type'] : undefined);
+      if (type !== 'step.delta' || !isRecord(value)) return false;
+      const delta = value['delta'];
+      return isRecord(delta) && (delta['type'] === 'text' || delta['type'] === 'thought_summary');
+    }
     default:
       return assertNever(protocol);
   }

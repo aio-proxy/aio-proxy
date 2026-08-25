@@ -147,4 +147,29 @@ describe('passthrough usage extraction', () => {
     expect(usage).not.toHaveProperty('inputAudioTokens');
     expect(usage).not.toHaveProperty('outputAudioTokens');
   });
+
+  test('extracts Interactions official usage field names and never input_tokens', () => {
+    const usage = extractPassthroughUsage(
+      ProviderProtocol.GeminiInteractions,
+      JSON.stringify({
+        usage: {
+          total_input_tokens: 7,
+          total_output_tokens: 20,
+          total_thought_tokens: 22,
+          total_cached_tokens: 3,
+          total_tool_use_tokens: 0,
+          total_tokens: 49,
+          input_tokens: 99,
+          output_tokens: 99,
+        },
+      }),
+    );
+    expect(usage).toEqual({
+      inputTokens: 7,
+      outputTokens: 20,
+      totalTokens: 49,
+      reasoningTokens: 22,
+      cacheReadTokens: 3,
+    });
+  });
 });

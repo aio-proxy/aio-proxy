@@ -9,6 +9,7 @@ const protocols = [
   ProviderProtocol.OpenAIResponse,
   ProviderProtocol.Anthropic,
   ProviderProtocol.Gemini,
+  ProviderProtocol.GeminiInteractions,
 ] as const;
 const credentialHeaders = ['authorization', 'proxy-authorization', 'cookie', 'x-api-key', 'x-goog-api-key'];
 
@@ -58,6 +59,7 @@ describe('createApiProvider', () => {
     [ProviderProtocol.OpenAIResponse, 'authorization', 'Bearer provider-key'],
     [ProviderProtocol.Anthropic, 'x-api-key', 'provider-key'],
     [ProviderProtocol.Gemini, 'x-goog-api-key', 'provider-key'],
+    [ProviderProtocol.GeminiInteractions, 'x-goog-api-key', 'provider-key'],
   ] as const)('owns the configured upstream credential for %s', async (protocol, headerName, headerValue) => {
     let seen: Headers | undefined;
     const upstream = Bun.serve({

@@ -65,6 +65,7 @@ const SDK_VERSION_PREFIXES: Record<ProviderProtocol, string> = {
   [ProviderProtocol.OpenAICompatible]: '/v1',
   [ProviderProtocol.Anthropic]: '/v1',
   [ProviderProtocol.Gemini]: '/v1beta',
+  [ProviderProtocol.GeminiInteractions]: '/v1beta',
 };
 
 function endpointTransport(
@@ -127,7 +128,10 @@ function upstreamHeaders(
   if (apiKey !== undefined) {
     if (endpoint.protocol === ProviderProtocol.Anthropic && endpoint.auth !== 'bearer') {
       headers.set('x-api-key', apiKey);
-    } else if (endpoint.protocol === ProviderProtocol.Gemini) {
+    } else if (
+      endpoint.protocol === ProviderProtocol.Gemini ||
+      endpoint.protocol === ProviderProtocol.GeminiInteractions
+    ) {
       headers.set('x-goog-api-key', apiKey);
     } else {
       headers.set('authorization', `Bearer ${apiKey}`);

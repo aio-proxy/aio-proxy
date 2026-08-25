@@ -106,6 +106,7 @@ function metadataProtocol(metadata: unknown): ProviderProtocol | undefined {
     case ProviderProtocol.OpenAIResponse:
     case ProviderProtocol.Anthropic:
     case ProviderProtocol.Gemini:
+    case ProviderProtocol.GeminiInteractions:
       return protocol;
     default:
       return undefined;

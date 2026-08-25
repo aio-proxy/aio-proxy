@@ -249,6 +249,10 @@ function isSuccessTerminal(protocol: ProviderProtocol, eventType: string | undef
       // which observes the fully merged usage.
       return false;
     }
+    case ProviderProtocol.GeminiInteractions: {
+      const type = eventType ?? (isRecord(value) ? value['event_type'] : undefined);
+      return type === 'interaction.completed';
+    }
     default:
       return assertNever(protocol);
   }

@@ -20,6 +20,7 @@ export const pluginProtocol = {
   'openai-response': 'openai-response',
   anthropic: 'anthropic',
   gemini: 'gemini',
+  'gemini-interactions': 'gemini-interactions',
 } as const satisfies Record<ProviderProtocol, ProtocolId>;
 
 function rawCapability(rawResolver: RawResolver | undefined, catalog: ModelCatalog) {

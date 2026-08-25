@@ -26,6 +26,10 @@ const PROTOCOL_LABELS = {
     label: 'Gemini',
     icon: withLobeIcon('gemini-color'),
   },
+  [ProviderProtocol.GeminiInteractions]: {
+    label: 'Gemini Interactions',
+    icon: withLobeIcon('gemini-color'),
+  },
 } as const;
 
 /**

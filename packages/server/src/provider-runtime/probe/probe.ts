@@ -71,6 +71,11 @@ export function providerProbeRequest(
         },
         path: `/v1beta/models/${model}:generateContent`,
       };
+    case ProviderProtocol.GeminiInteractions:
+      return {
+        body: { model, input: 'ping', store: false },
+        path: '/v1beta/interactions',
+      };
     default:
       return assertNever(primary.protocol);
   }

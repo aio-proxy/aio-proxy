@@ -22,9 +22,25 @@ export function usageFromJson(protocol: ProviderProtocol, value: unknown): Usage
       return anthropicUsage(value);
     case ProviderProtocol.Gemini:
       return geminiUsage(value);
+    case ProviderProtocol.GeminiInteractions:
+      return interactionsUsage(value);
     default:
       return assertNever(protocol);
   }
+}
+
+function interactionsUsage(value: unknown): UsageExtraction {
+  const root = isRecord(value) ? value : undefined;
+  const interaction = isRecord(root?.['interaction']) ? root['interaction'] : root;
+  if (!isRecord(interaction) || !isRecord(interaction['usage'])) return { kind: 'absent' };
+  const usage = interaction['usage'];
+  return tokenUsage({
+    inputTokens: numberField(usage, 'total_input_tokens', 'inputTokens'),
+    outputTokens: numberField(usage, 'total_output_tokens', 'outputTokens'),
+    totalTokens: numberField(usage, 'total_tokens', 'totalTokens'),
+    cacheReadTokens: numberField(usage, 'total_cached_tokens', 'cacheReadTokens'),
+    reasoningTokens: numberField(usage, 'total_thought_tokens', 'reasoningTokens'),
+  });
 }
 
 function openAICompatibleUsage(value: unknown): UsageExtraction {
