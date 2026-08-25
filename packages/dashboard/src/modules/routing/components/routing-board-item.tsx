@@ -108,7 +108,7 @@ export const RoutingBoardItem: React.FC<RoutingBoardItemProps> = ({
           data-testid={`routing-share-slider-${provider.id}`}
           min={1}
           max={shareMax}
-          value={weight}
+          value={[weight]}
           onValueChange={(value) => {
             const next = Array.isArray(value) ? value[0] : value;
             if (typeof next === 'number') onShareChange?.(next);
