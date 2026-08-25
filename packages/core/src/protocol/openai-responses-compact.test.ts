@@ -51,3 +51,23 @@ test('compact modelInvocation is 501 responses_compact', async () => {
     expect(openAIResponsesErrors.modelUnsupported?.(error)?.status).toBe(501);
   }
 });
+
+test('compact raw no-op forwards original decoded bytes including a large integer', async () => {
+  const bodyText =
+    '{"model":"gpt-5.1-codex-max","seed":9007199254740993,"previous_response_id":null,"background":true}';
+  const raw = new Request('https://proxy.test/v1/responses/compact', { method: 'POST', body: bodyText });
+  const parsed = await openAIResponsesAdapter.parse(raw, compactCtx);
+  const forwarded = await openAIResponsesAdapter.rawRequest(raw, parsed, 'gpt-5.1-codex-max', new Set(), compactCtx);
+  expect(await forwarded.text()).toBe(bodyText);
+  expect(new URL(forwarded.url).pathname).toBe('/v1/responses/compact');
+});
+
+test('compact raw strips leftover stream and rewrites model only then', async () => {
+  const raw = new Request('https://proxy.test/v1/responses/compact', {
+    method: 'POST',
+    body: JSON.stringify({ model: 'src', stream: false, input: null, background: true }),
+  });
+  const parsed = await openAIResponsesAdapter.parse(raw, compactCtx);
+  const forwarded = await openAIResponsesAdapter.rawRequest(raw, parsed, 'upstream', new Set(['low']), compactCtx);
+  expect(await forwarded.json()).toEqual({ model: 'upstream', input: null, background: true });
+});

@@ -61,14 +61,7 @@ export const openAIResponsesAdapter = defineProtocolAdapter<
   wantsStream: (request, context) => context.operation !== 'compact' && request.stream === true,
   async rawRequest(raw, _request, resolvedModel, supportedEfforts, context) {
     if (context.operation === 'compact') {
-      const headers = new Headers(raw.headers);
-      headers.delete('content-encoding');
-      headers.delete('content-length');
-      return new Request(raw, {
-        method: raw.method,
-        body: await readRequestText(raw),
-        headers,
-      });
+      return rewriteOpenAIResponsesCompactRequest(raw, resolvedModel);
     }
     return rewriteOpenAIResponsesRequest(raw, resolvedModel, supportedEfforts);
   },
@@ -213,6 +206,23 @@ function openAIResponsesMessages(messages: readonly ModelMessage[]): readonly Mo
 }
 
 const jsonObjectSchema = z.object({}).catchall(z.unknown());
+
+async function rewriteOpenAIResponsesCompactRequest(raw: Request, resolvedModel: string): Promise<Request> {
+  const bodyText = await readRequestText(raw);
+  const body = jsonObjectSchema.parse(JSON.parse(bodyText));
+  const headers = new Headers(raw.headers);
+  headers.delete('content-encoding');
+  headers.delete('content-length');
+  if (body.model === resolvedModel && !Object.hasOwn(body, 'stream')) {
+    return new Request(raw, { method: raw.method, body: bodyText, headers });
+  }
+  const { stream: _stream, ...bodyWithoutStream } = body;
+  return new Request(raw, {
+    method: raw.method,
+    body: JSON.stringify({ ...bodyWithoutStream, model: resolvedModel }),
+    headers,
+  });
+}
 
 async function rewriteOpenAIResponsesRequest(
   raw: Request,
