@@ -67,7 +67,7 @@ Done means:
 | Convert eligibility | Closed field table below. Mapped or per-candidate 501. No silent drop. |
 | Convert `store` | Only explicit `store: false` converts. Omitted and `store: true` are per-candidate 501 (`modelUnsupported`). |
 | Convert JSON usage | Official `Usage`: `total_input_tokens`, `total_output_tokens`, `total_tokens`, plus optional `total_thought_tokens` / `total_cached_tokens` / `total_tool_use_tokens`. Never `input_tokens` / `output_tokens`. |
-| Convert SSE | Full `event_type` contract and order in the SSE section. Not a generic delta/completed stream. |
+| Convert SSE | Named `event: <event_type>` frames, one `status_update:in_progress` after created, `interaction.completed` then `event: done` / `[DONE]`. |
 | Error envelope | Gemini-style `{ error: { code, message, status } }`. |
 | Auth for API raw | Same as `gemini`: `x-goog-api-key`. SDK path prefix `/v1beta`. |
 | Plugins | No plugin is Interactions-capable until its raw resolver accepts `gemini-interactions`. Antigravity today only raw-resolves `gemini`. |
@@ -186,7 +186,7 @@ Non-stream convert returns an official-shaped `Interaction` resource. Minimum:
   "steps": [
     {
       "type": "thought",
-      "content": [{ "type": "text", "text": "..." }]
+      "summary": [{ "type": "text", "text": "..." }]
     },
     {
       "type": "model_output",
@@ -223,20 +223,30 @@ Usage mapping from `languageModel` finish usage:
 
 Do **not** emit `usage.input_tokens` or `usage.output_tokens`. Modality breakdown arrays are omitted unless the SDK supplies them.
 
-`status` is `requires_action` when **either**:
+JSON and convert SSE use the same Interaction `status` mapping from `languageModel` finish + egressed steps (first match wins):
 
-- the egressed `steps` contain a `function_call` whose `id` has no matching `function_result.call_id` in those steps, or
-- the `languageModel` finish reason is `tool-calls`.
+| Condition | `status` / stream outcome |
+| --- | --- |
+| Convert egress failure, or finish reason `error` | No Interaction JSON. SSE: `event: error`, then `event: done` / `[DONE]`. Never emit `interaction.completed`. |
+| Unmatched `function_call` (no `function_result.call_id`) **or** finish reason `tool-calls` | `requires_action`. Text/`thought` steps do not suppress this. |
+| Finish reason `length` | `incomplete` (official: completed with incomplete results, e.g. max_tokens). Do **not** label `completed`. |
+| Finish reason `stop` (and none of the above) | `completed`. |
 
-Text and `thought` steps do **not** suppress that. `completed` only when neither condition holds.
-
-Do not require “function calls are the only terminal output.” A model that emits thought + text + tool calls is still `requires_action`.
+Do not require “function calls are the only terminal output.” Thought + text + tool calls is still `requires_action`. A `length` finish with no unmatched tool call is `incomplete`, never `completed`.
 
 Agent convert never reaches egress (501 first). When `model` was authored, echo it on the resource; do not invent an `agent` field.
 
 ## Convert SSE contract
 
-Convert `modelSse` writes SSE **data frames** (`data: <json>\n\n`). The JSON always has `event_type`. Convert does not use SSE `event:` lines. Raw forwards upstream bytes unchanged.
+Convert `modelSse` writes **named** SSE events, matching CLIProxyAPI `SSEEventData` and the `@google/genai` `[DONE]` parser:
+
+```text
+event: <event_type>
+data: <json-or-sentinel>
+
+```
+
+Each JSON payload still includes `event_type` (except the `done` sentinel, whose data is the literal `[DONE]`). Raw forwards upstream bytes unchanged.
 
 `event_id` is an opaque resume token. Convert assigns `evt_1`, `evt_2`, … in emission order. `GET …?last_event_id=` resume remains out of scope; the field is still present so a client can ignore it.
 
@@ -247,12 +257,13 @@ Convert `modelSse` writes SSE **data frames** (`data: <json>\n\n`). The JSON alw
 | `event_type` | Required fields | When |
 | --- | --- | --- |
 | `interaction.created` | `event_id`, `event_type`, `interaction` (`id`, `object: "interaction"`, `model`, `status: "in_progress"`) | First event. |
-| `interaction.status_update` | `event_id`, `event_type`, `interaction_id`, `status` | Immediately after created (`in_progress`); again after the last `step.stop` with `completed` or `requires_action`. |
+| `interaction.status_update` | `event_id`, `event_type`, `interaction_id`, `status` | Once, immediately after created, `status: "in_progress"` only. No terminal `status_update`. |
 | `step.start` | `event_id`, `event_type`, `index`, `step` (see FunctionCallStep below) | Before deltas of that step. |
 | `step.delta` | `event_id`, `event_type`, `index`, `delta` | Zero or more per step. Official `metadata` (including `total_usage`) is omitted on convert. |
 | `step.stop` | `event_id`, `event_type`, `index` | After that step's deltas. Official optional `step_usage` is omitted on convert. |
-| `interaction.completed` | `event_id`, `event_type`, `interaction` (full resource: `id`, `object`, `model`, `status`, `steps`, `usage`, `created`, `updated`) | Last event on success. |
-| `error` | `event_type` (`"error"`), `error` (`code`, `message`), `event_id` if one was already allocated | Instead of `interaction.completed` when convert egress fails after the stream opened. |
+| `interaction.completed` | `event_id`, `event_type`, `interaction` (full resource: `id`, `object`, `model`, `status`, `steps`, `usage`, `created`, `updated`) | Last **JSON** event on success. `status` uses the same mapping as non-stream JSON. |
+| `done` | SSE `event: done` and `data: [DONE]` (not JSON) | After `interaction.completed` on success, and after `error` when the stream already opened. |
+| `error` | `event_type` (`"error"`), `error` (`code`, `message`), `event_id` if one was already allocated | Instead of `interaction.completed` when convert egress fails or finish reason is `error`. |
 
 Convert does not emit audio / image / video / document / google_search / mcp deltas. Those request features 501 before invoke.
 
@@ -275,39 +286,53 @@ If `id` or `name` is missing, **do not emit** that `step.start` (and no deltas/s
 | `delta.type` | Fields | From |
 | --- | --- | --- |
 | `text` | `text` | assistant text / model_output |
-| `thought_summary` | `content` (text Content) | reasoning text on a `thought` step |
+| `thought_summary` | `content` (text Content) | reasoning text on a `thought` step. Accumulate into the final step `summary`; never copy `content` onto the finished ThoughtStep. |
 | `arguments_delta` | `arguments` (string fragment) | function-call argument streaming |
 
 ### Order (success)
 
 ```text
-interaction.created
-interaction.status_update   status=in_progress
+event: interaction.created
+event: interaction.status_update   status=in_progress   (exactly once)
 [ for each output step i = 0..n-1 ]
-    step.start              index=i
-    step.delta*             index=i
-    step.stop               index=i
-interaction.status_update   status=completed | requires_action
-interaction.completed
+    event: step.start              index=i
+    event: step.delta*             index=i
+    event: step.stop               index=i
+event: interaction.completed       status=completed | requires_action | incomplete
+event: done
+data: [DONE]
 ```
 
 Skip a step type that the model did not produce. Do not emit empty `model_output` steps.
 
 Step `type` values convert produces: `thought`, `model_output`, `function_call`.
 
-Examples (convert):
+Examples (convert frames, including `event:` lines):
 
-```json
-{"event_id":"evt_1","event_type":"interaction.created","interaction":{"id":"…","model":"gemini-3.5-flash","object":"interaction","status":"in_progress"}}
-{"event_id":"evt_2","event_type":"interaction.status_update","interaction_id":"…","status":"in_progress"}
-{"event_id":"evt_3","event_type":"step.start","index":0,"step":{"type":"model_output"}}
-{"event_id":"evt_4","event_type":"step.delta","index":0,"delta":{"type":"text","text":"Hello"}}
-{"event_id":"evt_5","event_type":"step.stop","index":0}
-{"event_id":"evt_6","event_type":"interaction.status_update","interaction_id":"…","status":"completed"}
-{"event_id":"evt_7","event_type":"interaction.completed","interaction":{"id":"…","object":"interaction","model":"gemini-3.5-flash","status":"completed","steps":[{"type":"model_output","content":[{"type":"text","text":"Hello"}]}],"usage":{"total_input_tokens":1,"total_output_tokens":1,"total_thought_tokens":0,"total_cached_tokens":0,"total_tool_use_tokens":0,"total_tokens":2}}}
+```text
+event: interaction.created
+data: {"event_id":"evt_1","event_type":"interaction.created","interaction":{"id":"…","model":"gemini-3.5-flash","object":"interaction","status":"in_progress"}}
+
+event: interaction.status_update
+data: {"event_id":"evt_2","event_type":"interaction.status_update","interaction_id":"…","status":"in_progress"}
+
+event: step.start
+data: {"event_id":"evt_3","event_type":"step.start","index":0,"step":{"type":"model_output"}}
+
+event: step.delta
+data: {"event_id":"evt_4","event_type":"step.delta","index":0,"delta":{"type":"text","text":"Hello"}}
+
+event: step.stop
+data: {"event_id":"evt_5","event_type":"step.stop","index":0}
+
+event: interaction.completed
+data: {"event_id":"evt_6","event_type":"interaction.completed","interaction":{"id":"…","object":"interaction","model":"gemini-3.5-flash","status":"completed","steps":[{"type":"model_output","content":[{"type":"text","text":"Hello"}]}],"usage":{"total_input_tokens":1,"total_output_tokens":1,"total_thought_tokens":0,"total_cached_tokens":0,"total_tool_use_tokens":0,"total_tokens":2}}}
+
+event: done
+data: [DONE]
 ```
 
-SSE tests must assert this `event_type` sequence, monotonic `event_id`, shared `index` across start/delta/stop, and `usage` field names on `interaction.completed`. They must fail if egress emits GenerateContent candidates or `input_tokens`.
+SSE tests must assert named `event:` lines, this sequence, **no second** `status_update`, `done` / `[DONE]` after `interaction.completed`, monotonic `event_id` on JSON events, shared `index`, and `usage` field names on `interaction.completed`. They must fail if egress emits data-only frames, a terminal `status_update`, GenerateContent candidates, or `input_tokens`.
 
 ## Same-protocol raw
 
@@ -345,7 +370,8 @@ Map onto `ModelMessage` + `AiSdkCallSettings` + function `ToolSet`, then invoke 
 | --- | --- |
 | `input` string | one user text message |
 | `input` `Content` / `Content[]` with `type: "text"` parts | user text |
-| `input` steps `user_input` / `model_output` / `thought` / `function_call` / `function_result` with text or function payloads | user / assistant / tool messages |
+| `input` steps `user_input` / `model_output` / `function_call` / `function_result` with text or function payloads | user / assistant / tool messages |
+| `input` step `thought` | read `summary` (text Content → reasoning/text). `content` on a thought step is not official → 501 |
 | `system_instruction` string | system message |
 | `tools` entries that are function declarations | function `ToolSet` |
 | `generation_config.max_output_tokens` | `maxOutputTokens` |
@@ -395,6 +421,7 @@ Targets: any candidate with a `languageModel` capability — `openai-response`, 
 | `response_format` array of length 0, length > 1, or containing any ineligible member | Whole field 501. Do not take the first eligible member and drop the rest. |
 | `tools` that are not function declarations (`google_search`, `google_maps`, MCP, code execution, file search, url_context, retrieval, …) | Not function `ToolSet`. |
 | Audio / video / image / document `Content` parts in `input` | Images / Audio out of scope. |
+| `thought` step carrying `content` instead of / in addition to `summary` | Official ThoughtStep is `summary`, not `content`. |
 | Step types other than `user_input` / `model_output` / `thought` / `function_call` / `function_result` | No ModelMessage mapping. |
 | Unknown top-level field | Closed policy. |
 | No model capability and no Interactions raw | Existing `errors.unsupported('transform_dispatch')`. |
@@ -510,9 +537,10 @@ Convert / egress tests:
 - Maps string `input` + string `system_instruction` + function tools + `thinking_level` + `store: false` + text/plain `response_format`, including a one-element eligible text/plain array and `tool_choice` object `{ "allowed_tools": { "mode": "auto" } }`.
 - Throws 501-mapped (`modelUnsupported`, not `requestError`) errors for agent, omitted `store`, `store: true`, JSON `response_format` (schema or object mode), `response_format` image/audio/video, empty or multi-element `response_format` arrays, `google_search` tools, audio/video input parts, `previous_interaction_id`, unknown `generation_config` members (`temperature`), `thinking_summaries: "auto"`, and `tool_choice` object with `tools`.
 - JSON usage uses `total_input_tokens` / `total_output_tokens` / `total_tokens`, never `input_tokens` / `output_tokens`.
-- `status` is `requires_action` when steps include an unmatched `function_call` **or** finish reason is `tool-calls`, even if text/thought steps exist.
-- SSE sequence, `event_id`, `index`, and `delta` shapes match the SSE contract. Writers are Interactions, not generateContent.
+- `status` mapping (JSON and `interaction.completed`): unmatched `function_call` / `tool-calls` → `requires_action`; `length` → `incomplete` (regression: not `completed`); `error` → protocol/SSE error without `interaction.completed`; `stop` → `completed`.
+- SSE uses named `event:` lines, one `status_update` (`in_progress`) after created, no terminal `status_update`, and `event: done` / `[DONE]` after `interaction.completed`.
 - Schema-level: a `function_call` `step.start` missing `id`, `name`, or `arguments` fails. Happy path start is `{ type: "function_call", id, name, arguments: {} }`. Missing id/name fails egress instead of emitting the step.
+- Schema-level: a final `thought` step with `content` fails; it must be `{ type: "thought", summary: [{ type: "text", text }] }`. Streaming `thought_summary` deltas still use `delta.content`.
 
 Dispatch matrix (`packages/server/__tests__/cross-protocol-routing.test.ts`):
 
