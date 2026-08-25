@@ -2,7 +2,7 @@ import type { ProviderV4 } from '@ai-sdk/provider';
 import { isEqual, isPlainObject } from 'es-toolkit/predicate';
 
 import { embed, embedMany, streamAiSdkText } from '../ai-sdk-bridge';
-import { AiSdkProviderError, EmbeddingConvertUnsupportedError } from '../error';
+import { AiSdkProviderError, EmbeddingConvertUnsupportedError, EmbeddingCountMismatchError } from '../error';
 import type {
   EmbeddingInvocation,
   EmbeddingProviderOptions,
@@ -148,6 +148,7 @@ async function embedGroup(
     const item = group.items[0];
     if (item === undefined) return undefined;
     const result = await context.embedFn({ ...shared, value: item.value } as SdkEmbedArgs);
+    if (result.embedding === undefined) throw new EmbeddingCountMismatchError(1, 0);
     context.embeddings[item.index] = result.embedding;
     return recoverTokens(result.usage?.tokens, promptTokenCount(result.response?.body));
   }
@@ -156,9 +157,15 @@ async function embedGroup(
     ...shared,
     values: group.items.map((item) => item.value),
   } as SdkEmbedManyArgs);
+  // A short or padded batch would otherwise leave holes in the preallocated
+  // array and reach egress as a corrupt body or a TypeError.
+  if (result.embeddings.length !== group.items.length) {
+    throw new EmbeddingCountMismatchError(group.items.length, result.embeddings.length);
+  }
   for (const [offset, item] of group.items.entries()) {
     const embedding = result.embeddings[offset];
-    if (embedding !== undefined) context.embeddings[item.index] = embedding;
+    if (embedding === undefined) throw new EmbeddingCountMismatchError(group.items.length, offset);
+    context.embeddings[item.index] = embedding;
   }
   return recoverTokens(result.usage?.tokens, embedManyPromptTokenCount(result.responses));
 }

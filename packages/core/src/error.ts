@@ -200,6 +200,15 @@ export class EmbeddingConvertUnsupportedError extends AioProxyError {
   }
 }
 
+export class EmbeddingCountMismatchError extends AioProxyError {
+  constructor(
+    readonly expected: number,
+    readonly received: number,
+  ) {
+    super('EmbeddingCountMismatchError', `Embedding upstream returned ${received} vectors for ${expected} inputs`);
+  }
+}
+
 export class EmbeddingUsageRequiredError extends AioProxyError {
   constructor() {
     super('EmbeddingUsageRequiredError', 'Embedding usage was not reported');

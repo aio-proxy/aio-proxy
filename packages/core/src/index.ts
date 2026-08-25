@@ -49,6 +49,7 @@ export {
   AnthropicMessagesTransformError,
   DatabaseSchemaTooNewError,
   EmbeddingConvertUnsupportedError,
+  EmbeddingCountMismatchError,
   EmbeddingUsageRequiredError,
   GeminiGenerateContentTransformError,
   GeminiInlineDataTooLargeError,

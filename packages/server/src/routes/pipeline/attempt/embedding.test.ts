@@ -282,6 +282,30 @@ test('Gemini convert omits usageMetadata instead of failing when usage is unknow
   expect(body).toEqual({ embedding: { values: [0.1, 0.2] } });
 });
 
+test('bills the configured per-request fee when the upstream reported no tokens', async () => {
+  const provider = {
+    id: 'google',
+    kind: ProviderKind.Api,
+    enabled: true,
+    configMetadata: { [MODEL_ID]: { cost: { request: 0.02 } } },
+    embedding: { embed: async () => ({ embeddings: [[0.1, 0.2]] }) },
+  } satisfies RuntimeProviderInstance;
+  const { ctx: geminiCtx, route } = geminiHarness(parseGeminiEmbedContent({ content: { parts: [{ text: 'doc' }] } }));
+
+  const step = await attemptEmbeddingCandidate(geminiCtx, slot(provider));
+  expect(step.kind).toBe('return');
+  // The wire body still omits usageMetadata; only billing sees the fee.
+  expect(step.kind === 'return' ? await step.response.json() : undefined).toEqual({
+    embedding: { values: [0.1, 0.2] },
+  });
+  await settleRecording(route.recording);
+
+  expect(route.recording.finals[0]).toMatchObject({
+    outcome: 'success',
+    usage: { estimatedCostUsd: 0.02, priceSource: 'config' },
+  });
+});
+
 test('Gemini batch convert writes the batch envelope from the request action', async () => {
   const provider = {
     id: 'google',

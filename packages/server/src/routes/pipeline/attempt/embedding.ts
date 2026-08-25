@@ -92,16 +92,15 @@ async function convertEmbeddingCandidate<TRequest, TContext>(
   const response = Response.json(payload);
   slot.spanRef.current = undefined;
   const configPrice = candidateConfigPrice(provider, candidate.modelId);
-  const completion: Promise<UsageCompletion> =
-    result.usage === undefined
-      ? Promise.resolve({ outcome: 'success' })
-      : source.usageCapture.embedding({
-          usage: result.usage,
-          providerId: provider.id,
-          modelId: candidate.modelId,
-          requestedModelId: ctx.requestedModelId,
-          ...(configPrice === undefined ? {} : { configPrice }),
-        });
+  // Capture runs even without a token count: a per-request fee still bills off
+  // configPrice, and finalizeUsage drops the row when there is nothing to price.
+  const completion: Promise<UsageCompletion> = source.usageCapture.embedding({
+    usage: result.usage,
+    providerId: provider.id,
+    modelId: candidate.modelId,
+    requestedModelId: ctx.requestedModelId,
+    ...(configPrice === undefined ? {} : { configPrice }),
+  });
   session.finishFrom(
     ctx.emitter.settleSuccess(
       attemptSpan,

@@ -123,6 +123,34 @@ test('throws autoTruncate unsupported before calling the SDK', async () => {
   expect(called).toBe(false);
 });
 
+test('rejects a batch that returns fewer vectors than inputs', async () => {
+  const run = createProviderV4Embed('p', providerFixture(), {
+    embed: async () => {
+      throw new Error('embed');
+    },
+    embedMany: (async () => ({ embeddings: [[0.1]], usage: { tokens: 4 }, responses: [{ body: {} }] })) as never,
+  });
+  await expect(run({ values: [{ value: 'a' }, { value: 'b' }] }, { modelId: 'm' })).rejects.toBeInstanceOf(
+    AiSdkProviderError,
+  );
+});
+
+test('rejects a batch that returns more vectors than inputs', async () => {
+  const run = createProviderV4Embed('p', providerFixture(), {
+    embed: async () => {
+      throw new Error('embed');
+    },
+    embedMany: (async () => ({
+      embeddings: [[0.1], [0.2], [0.3]],
+      usage: { tokens: 4 },
+      responses: [{ body: {} }],
+    })) as never,
+  });
+  await expect(run({ values: [{ value: 'a' }, { value: 'b' }] }, { modelId: 'm' })).rejects.toMatchObject({
+    cause: { expected: 2, received: 3 },
+  });
+});
+
 test('wraps thrown SDK errors in AiSdkProviderError', async () => {
   const run = createProviderV4Embed('p', providerFixture(), {
     embed: async () => {
