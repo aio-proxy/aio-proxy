@@ -60,7 +60,7 @@ Recommendation: **A**.
 
 ### Units
 
-1. **Inbound adapter** (`openai-image`) — parse (including the CPA omitted-model default `gpt-image-2`), model id used for routing, route-specific `bodyLimits`, raw rewrite that **injects** `model: gpt-image-2` when the client omitted/blanked it, image invocation, non-stream Images egress, OpenAI-shaped errors. No candidate loop.
+1. **Inbound adapter** (`openai-image`) — parse (including the CPA omitted-model **lookup** default `gpt-image-2`), model id used for routing, route-specific `bodyLimits`, raw rewrite that injects the **candidate resolved** model id when the client omitted/blanked `model`, image invocation, non-stream Images egress, OpenAI-shaped errors. No candidate loop.
 2. **Thin routes** — `POST /v1/images/generations` first; `POST /v1/images/edits` later in this same issue. Each route passes `{ operation: 'generations' | 'edits' }` as adapter context so limits and parse differ. No `/v1/images/variations` and no `/v1/images*`.
 3. **Shared pipeline** — still the only loop. It gains an adapter capability, adapter `bodyLimits` for the Content-Length preflight, a per-model capability set, inbound capability filtering, and an image attempt path. It does not grow provider-kind branching.
 4. **Image transport** — runtime capability that calls `imageModel` / `generateImage` only after the support predicate passes. Distinct from language `ModelTransport`.
@@ -246,20 +246,32 @@ Parse **before** `adapter.model()` / `router.resolve`. This is **not** the offic
 
 **Official wire (documented, not P1's proxy default):** generations omit `model` → `dall-e-2` unless a GPT-image-only parameter is used (the alternate is unnamed); edits omit `model` → `gpt-image-1.5`. Official JSON Schema allows `model: null`. Official docs do not define empty or whitespace `model`.
 
-**P1 policy (CPA-compatible aio-proxy, not official):** `POST /v1/images/generations`, JSON `POST /v1/images/edits`, and multipart `POST /v1/images/edits` share one ingress rule. After reading `model`, if it is omitted, JSON/`multipart` `null`, `""`, or whitespace-only (`trim` is empty), the **effective model is `gpt-image-2`**. The rule is **unconditional**. CLIProxyAPI does the same on ImagesGenerations, JSON edits, and multipart edits: trim-empty → `gpt-image-2`, without consulting `background` / `output_format` / `moderation` / `stream` or any other GPT-only field. Later CPA routing and Responses image-tool mapping use that default; P1 uses it for candidate resolution and convert invoke.
+**P1 policy (CPA-compatible aio-proxy, not official):** blank `model` is defaulted **before** `adapter.model()` / `router.resolve`. The default is **unconditional** (GPT-only fields are not consulted). CLIProxyAPI does the same on ImagesGenerations, JSON edits, and multipart PostForm: trim-empty → `gpt-image-2`. P1 uses that string only as the **route lookup id**.
 
-Do **not** add a configurable default-model setting. The id is fixed P1 policy.
+Do **not** add a configurable default-model setting. The lookup id is fixed P1 policy.
 
-| Client `model` | Kind | Routing / convert id | Raw forward |
-| --- | --- | --- | --- |
-| field omitted | CPA default | `gpt-image-2` | rewrite and **inject** `model: "gpt-image-2"` |
-| JSON / empty-form `null` | CPA default | `gpt-image-2` | rewrite and **inject** `model: "gpt-image-2"` |
-| `""` or whitespace-only string | CPA default | `gpt-image-2` | rewrite and **inject** `model: "gpt-image-2"` |
-| non-empty string | official client id | that id (then aliases) | **no-op bytes** when the string already is the resolved upstream id; rewrite only if routing resolved a different id |
+**Lookup vs resolved id.** `gpt-image-2` is the id passed to `router.resolve`. After resolve, raw injection and convert invoke **must** use that candidate's **resolved** model id (alias target / provider-specific id). If there is no alias, the resolved id is still `gpt-image-2`. If `gpt-image-2` aliases to e.g. `acme-image-2`, lookup stays `gpt-image-2` and raw/convert use `acme-image-2`. Never forward or invoke the lookup alias when the candidate target differs.
 
-Raw injection is required. Routing as `gpt-image-2` while forwarding an omitted/`null`/blank `model` would let a same-protocol official upstream apply `dall-e-2`, `gpt-image-1.5`, or its unpublished GPT-only clause — a semantic fork. JSON rewrite inserts the field. Multipart rewrite inserts or replaces the `model` form field. Strip `content-encoding` / `content-length` on rewrite.
+**Blank `model` by wire** (do not share one matrix):
 
-An **explicit** non-empty `model` keeps field/byte semantics. Do **not** JSON-round-trip a raw no-op.
+| Wire | Defaulted (lookup `gpt-image-2`) | Not defaulted |
+| --- | --- | --- |
+| Generations JSON / edits JSON | field omitted, JSON `null`, `""`, whitespace-only (`trim` empty) | any non-empty string, including the four-character string `"null"` |
+| Edits multipart | field **missing**, empty form value, whitespace-only (`trim` empty) — CPA PostForm | literal form string `null` (nonempty model id `"null"`). Multipart has no JSON `null`. |
+
+P1 does **not** treat multipart `model=null` as blank. That would be an aio-proxy deviation from CPA and is out of P1. Do not claim CPA alignment for multipart `null`.
+
+| Client `model` | Wire | Kind | `router.resolve` lookup | After resolve: raw + convert |
+| --- | --- | --- | --- | --- |
+| omitted / missing | JSON and multipart | CPA default | `gpt-image-2` | inject / invoke the **candidate resolved** id |
+| JSON `null` | JSON only | CPA default | `gpt-image-2` | inject / invoke the candidate resolved id |
+| `""` / whitespace | JSON and multipart | CPA default | `gpt-image-2` | inject / invoke the candidate resolved id |
+| literal form `null` | multipart only | nonempty client id | `"null"` | not defaulted; same explicit-id rules as any other string |
+| other non-empty string | both | official client id | that id (then aliases) | **no-op bytes** when it already equals the resolved id; rewrite only if routing resolved a different id |
+
+Raw rewrite of a defaulted request is required even when the resolved id is still `gpt-image-2`. Forwarding an omitted/blank `model` would let a same-protocol official upstream apply `dall-e-2`, `gpt-image-1.5`, or its unpublished GPT-only clause. The injected value is the **resolved** id, not a hardcoded `"gpt-image-2"` after an alias. JSON inserts/replaces the field. Multipart inserts/replaces the form field. Strip `content-encoding` / `content-length` on rewrite.
+
+An **explicit** non-empty `model` that routing does not change keeps field/byte semantics. Do **not** JSON-round-trip a raw no-op.
 
 Missing `prompt` is still `400`.
 
@@ -285,13 +297,13 @@ CLIProxyAPI (user-verified, P1 source of the default): ImagesGenerations, JSON e
 | Source | Missing / empty `model` | GPT-only fields without a model | What this is |
 | --- | --- | --- | --- |
 | Official Images | omitted → generations `dall-e-2` unless a GPT-only param is used (alternate unnamed); edits `gpt-image-1.5` | unnamed | wire contract, **not** P1's proxy default |
-| CLIProxyAPI / sub2api | unconditional `gpt-image-2` after trim-empty | ignored; still `gpt-image-2` | their product default — **P1 aligns here** |
+| CLIProxyAPI / sub2api | JSON: omitted/`null`/trim-empty → `gpt-image-2`. Multipart PostForm: missing/empty/whitespace → `gpt-image-2`; literal `null` is a model | ignored; still that default | their product default — **P1 aligns here**, including the multipart-`null` split |
 | new-api | explicit reject; client must send `model` | no inferred GPT default | their product |
 | OmniRoute | schema 400 `"Model is required"` | still not inferred; unresolved id 400 | their product |
-| aio-proxy P1 convert | effective model `gpt-image-2` | same unconditional default; convert proceeds as GPT Image | this spec |
-| aio-proxy P1 raw | rewrite / inject `model: "gpt-image-2"` | same injected body; no omitted-model semantic fork | this spec |
+| aio-proxy P1 convert | lookup `gpt-image-2`; invoke the **resolved** candidate id | same unconditional lookup; convert uses resolved id | this spec |
+| aio-proxy P1 raw | inject the **resolved** candidate id (not a leftover omission) | same; no omitted-model semantic fork | this spec |
 
-**Conclusion:** P1 aligns with CLIProxyAPI on omitted/`null`/blank `model`. OmniRoute and new-api refuse; that reject is **not** P1. Official omitted `dall-e-2` / `gpt-image-1.5` is **not** the proxy default. Do **not** follow OmniRoute's `provider/model` client form. That is OmniRoute's product naming / registry contract, not the OpenAI Images wire. aio-proxy inbound model ids stay official (`gpt-image-2`, `dall-e-2`, `gpt-image-1.5`, …). Existing aio-proxy `providerId/modelId` qualification remains the routing qualifier it already is for other ports, not an OmniRoute import.
+**Conclusion:** P1 aligns with CLIProxyAPI on blank `model`, **including** JSON `null` vs multipart literal `null`. OmniRoute and new-api refuse; that reject is **not** P1. Official omitted `dall-e-2` / `gpt-image-1.5` is **not** the proxy default. Lookup is `gpt-image-2`; raw and convert then follow the candidate's resolved id. Do **not** follow OmniRoute's `provider/model` client form. That is OmniRoute's product naming / registry contract, not the OpenAI Images wire. aio-proxy inbound model ids stay official (`gpt-image-2`, `dall-e-2`, `gpt-image-1.5`, …). Existing aio-proxy `providerId/modelId` qualification remains the routing qualifier it already is for other ports, not an OmniRoute import.
 
 GPT-image-only fields (`background`, `output_format`, `output_compression`, `moderation`, `stream`, `partial_images`) do **not** change the omitted-model default and do **not** 400 convert. After the default, they are ordinary GPT Image fields: convert `providerOptions` / convert-stream `501` as elsewhere.
 
@@ -301,23 +313,23 @@ JSON only. `prompt` is required. `model` is optional because of the CPA default 
 
 | Field | Convert behavior |
 | --- | --- |
-| `model` | omitted / `null` / empty / whitespace → effective `gpt-image-2` before routing; raw injects the same string |
+| `model` | JSON omitted / `null` / empty / whitespace → lookup `gpt-image-2` before routing; raw injects the **resolved** candidate id |
 | `prompt` | `generateImage({ prompt })` |
 | `n` | convert `null` = omitted = 1; see Convert `n` (explicit `dall-e-3` vs alias mix) |
 | `size` | convert `null`/`auto`/omitted → **omit** SDK `size`; `{width}x{height}` passes through; never pass `auto` to generic AI SDK `size` |
 | `quality` | convert `null` = omitted; else `providerOptions` |
-| `response_format` | family-specific on the **effective** id; CPA default `gpt-image-2` is GPT Image (omitted/`null` → `b64_json`) |
+| `response_format` | family-specific on the **resolved** candidate base id; a defaulted request that stays `gpt-image-2` is GPT Image (omitted/`null` → `b64_json`) |
 | `output_format` | `providerOptions` after the CPA default (or an explicit GPT Image model) |
 | `output_compression` | `providerOptions` |
 | `background` | `providerOptions` |
 | `moderation` | `providerOptions` |
 | `style` | `providerOptions` (DALL·E 3; unused on the CPA default) |
 | `user` | `providerOptions`; not a session key |
-| `stream` | convert `true` → `501` (see Streaming), including after CPA defaulting to `gpt-image-2`. Raw keeps `stream` and injects `model` when it was absent/blank. |
+| `stream` | convert `true` → `501` (see Streaming), including after a CPA-defaulted lookup. Raw keeps `stream` and injects the resolved `model` when the client omitted/blanked it. |
 | `partial_images` | raw keeps it; convert unused because convert streaming is 501 |
 | unknown fields | raw keeps bytes except the injected `model`; convert drops them |
 
-Raw rewrite: inject `model: "gpt-image-2"` when the client omitted/`null`/blanked it. If the client sent a present non-empty `model` that routing did not change, keep the client's exact JSON bytes (no round-trip). Otherwise re-serialize. Strip `content-encoding` / `content-length` on rewrite.
+Raw rewrite: on a defaulted JSON request, insert `model` set to the **candidate resolved** id. If the client sent a present non-empty `model` that routing did not change, keep the client's exact JSON bytes (no round-trip). Otherwise re-serialize. Strip `content-encoding` / `content-length` on rewrite.
 
 ### Later in this issue — `POST /v1/images/edits`
 
@@ -333,7 +345,7 @@ Same adapter, same protocol id, second route. Parse two content types:
 - returns `501 unsupported_feature` (`files`) for `file_id`
 - does **not** call AI SDK / `@ai-sdk/openai` URL download helpers
 
-Raw path forwards the original content type, including JSON URLs and `file_id`, for the official upstream to fetch. Multipart raw rewrite **inserts or replaces** `model` with `gpt-image-2` when the form omitted/`null`/blanked it. An explicit non-empty `model` may be replaced only when routing resolved a different upstream id; a no-op must not JSON-parse the body.
+Raw path forwards the original content type, including JSON URLs and `file_id`, for the official upstream to fetch. Multipart raw rewrite **inserts or replaces** `model` with the **candidate resolved** id when the form is missing/empty/whitespace. Literal form `null` is an explicit id and is not defaulted. An explicit non-empty `model` may be replaced only when routing resolved a different upstream id; a no-op must not JSON-parse the body.
 
 #### Body limits (adapter-specific; pipeline must honor them)
 
@@ -389,7 +401,7 @@ Edits multipart **official convert/file policy** (counted while streaming parts)
 
 A request whose files are all `< 50_000_000` and whose encoded size is official-max files plus small framing must not 413 on the 64 MiB language gate.
 
-Raw edits may stream-forward only when an **explicit** non-empty `model` is unchanged. Omitted/`null`/blank `model` must be rewritten to inject `gpt-image-2` and therefore cannot stream-forward the original bytes. Buffer rewrites only under the edits encoded preflight (`851_048_559` multipart / `357_564_416` JSON).
+Raw edits may stream-forward only when an **explicit** non-empty `model` is unchanged (including multipart literal `null`). A defaulted missing/empty/whitespace `model` must be rewritten to inject the resolved id and therefore cannot stream-forward the original bytes. Buffer rewrites only under the edits encoded preflight (`851_048_559` multipart / `357_564_416` JSON).
 
 ### Explicitly not routed
 
@@ -549,7 +561,7 @@ New `openAIImagesErrors` using the existing OpenAI envelope (`error: { code, mes
 | provider/SDK failure | 499/5xx | existing OpenAI provider mapping |
 | all candidates cooling | 429 | existing `rateLimited` |
 
-Omitted / `null` / blank `model` is **not** a 400. It becomes effective `gpt-image-2`. Official `model: null` is also **not** a 400.
+JSON omitted / `null` / blank `model`, and multipart missing / empty / whitespace `model`, are **not** a 400. They look up `gpt-image-2`. Multipart literal `null` is also **not** a 400; it is model id `"null"`.
 
 A mixed-alias convert candidate whose effective base id happens to be `dall-e-3` while `n > 1` is **skipped**, not a request-level 400. Only an explicitly requested `dall-e-3` makes `n !== 1` fail the whole request.
 
@@ -571,14 +583,15 @@ Protect user-visible behavior, not literals.
 Adapter (colocated with the new protocol module):
 
 - valid generations parse; missing `prompt` rejects
-- CPA omitted-model matrix — for **each** of generations JSON, edits JSON, and edits multipart, and for **each** of omitted / `null` / `""` / whitespace `model`:
-  - route model is `gpt-image-2`
-  - raw outbound body has `model: "gpt-image-2"` (JSON field or multipart form field)
-  - convert invocation uses `gpt-image-2`
+- JSON blank-model matrix — for **each** of generations JSON and edits JSON, and for **each** of omitted / JSON `null` / `""` / whitespace `model`:
+  - `router.resolve` lookup is `gpt-image-2`
+  - with no alias, raw outbound `model` and convert invoke are `gpt-image-2`
   - GPT-only fields do **not** change this default and do **not** 400
+- multipart blank-model matrix — missing / empty / whitespace `model` default as above; literal form `null` is **not** defaulted (lookup / raw / convert stay `"null"`)
+- defaulted-request alias — for **each** of generations JSON, edits JSON, and edits multipart (missing `model`): alias `gpt-image-2` → a different provider-specific target; lookup is still `gpt-image-2`; raw outbound `model` and convert invoke are that **resolved** target, not `gpt-image-2`
 - explicit non-empty `model` raw is a byte no-op (no JSON round-trip) when routing does not rewrite the id
-- convert `null` on optional `n` / `size` / `quality` / `response_format` / `stream` / `partial_images` = omitted/default; raw keeps those `null`s (`model` is the exception above)
-- omitted `model` + `stream: true` convert is the stream `501` after defaulting to `gpt-image-2`, not a missing-model `400`
+- convert `null` on optional `n` / `size` / `quality` / `response_format` / `stream` / `partial_images` = omitted/default; raw keeps those `null`s (JSON `model` is the exception above)
+- omitted JSON `model` + `stream: true` convert is the stream `501` after the CPA lookup, not a missing-model `400`
 - client explicitly requested `dall-e-3` or `provider/dall-e-3` with `n=2` → `400`; `n=1` allowed; other **requested** models accept convert `n` 1..10
 - mixed alias: requested non-`dall-e-3` id, `n=2`, one convert candidate effective `dall-e-3` → skip that candidate and continue; do not 400 the request
 - DALL·E 2/3 omitted / `null` / `url` `response_format` → skip convert; `501` if no raw remains; never emit `data[].url` from convert
@@ -613,7 +626,7 @@ Edits, when implemented in this issue:
 - official edits JSON `17 * 20_971_520 + 1 MiB` (`357_564_416`) is accepted by preflight (not the 64 MiB language gate)
 - 50 MiB (`52_428_800`) file is 413 on convert, not treated as official-legal
 - convert mask: same format/size + alpha passes; missing alpha, dimension mismatch, or format mismatch → 400 before `generateImage`
-- omitted / `null` / empty / whitespace `model` matrix as above (route + raw body + convert all `gpt-image-2`)
+- JSON omitted / `null` / empty / whitespace and multipart missing / empty / whitespace `model` matrices as above; multipart literal `null` is not defaulted; defaulted-request alias uses the resolved id
 - no default lower operator DoS cap; a future smaller ceiling is off unless an explicit deployment extension is configured
 
 Do not add convert SSE schema tests in P1.
@@ -630,7 +643,7 @@ Add rows to both README inbound tables:
 Document that:
 
 - raw Images requires an `openai-image` endpoint (or primary protocol)
-- omitted / `null` / empty / whitespace Images `model` is a CPA-compatible default to `gpt-image-2` (not the official `dall-e-2` / `gpt-image-1.5` omission). Raw injects the same id so same-protocol upstream cannot apply a different default
+- JSON omitted / `null` / empty / whitespace, and multipart missing / empty / whitespace, Images `model` look up `gpt-image-2` (CPA-compatible, not official `dall-e-2` / `gpt-image-1.5`). Raw injects the **resolved** candidate id. Multipart literal `null` is not defaulted
 - inbound Images `model` is the OpenAI id (plus aio-proxy's existing `providerId/` qualifier). Do not require OmniRoute `provider/model` as the wire contract
 - convert does not stream (no AI SDK partial-stream transport; P1 does not synthesize SSE)
 - convert does not fetch `image_url`
@@ -658,14 +671,14 @@ An OpenAI Images client can:
 1. generate via raw passthrough to a provider that declares `openai-image` for an **image-capable** model
 2. generate via at least one `imageModel` convert path for a model in the image capability set
 3. route an image-only `catalog.image` id (no 404) and skip dummy `imageModel` / language-only ids
-4. omit / `null` / empty / whitespace `model` on generations and still route, raw-forward, and convert as `gpt-image-2`; an explicit `model` raw no-op does not JSON-round-trip
+4. omit / `null` / empty / whitespace `model` on generations and still look up `gpt-image-2`, then raw-forward and convert the **resolved** candidate id; an explicit `model` raw no-op does not JSON-round-trip
 5. receive Images-shaped **JSON** on convert, or raw SSE when the client streamed to a raw candidate, plus recorded usage
 
-Edits can ship in a follow-up change on the same protocol; they are not required for the generations first cut to be reviewable or implementable. When they ship, they inherit the same CPA omitted-model default `gpt-image-2` (JSON and multipart), convert URL 501, official `< 50_000_000` file limits, official-max JSON/multipart envelopes (`357_564_416` / `851_048_559`), convert mask checks, explicit-request `dall-e-3` `n === 1`, and mixed-candidate `dall-e-3` skip.
+Edits can ship in a follow-up change on the same protocol; they are not required for the generations first cut to be reviewable or implementable. When they ship, they inherit the same CPA lookup default `gpt-image-2` (JSON omitted/`null`/blank; multipart missing/empty/whitespace — not multipart literal `null`), resolved-id raw/convert, convert URL 501, official `< 50_000_000` file limits, official-max JSON/multipart envelopes (`357_564_416` / `851_048_559`), convert mask checks, explicit-request `dall-e-3` `n === 1`, and mixed-candidate `dall-e-3` skip.
 
 ## Open questions
 
 None. Both product questions are closed:
 
-1. **Omitted / `null` / blank `model`:** CPA-compatible default `gpt-image-2` on generations, JSON edits, and multipart edits, before routing. Raw injects the same id. Not official OpenAI omission. No configurable default-model setting. OmniRoute/new-api reject is documented and not followed.
+1. **Blank `model`:** CPA-compatible lookup `gpt-image-2` (JSON omitted/`null`/blank; multipart missing/empty/whitespace). Raw and convert then use the candidate **resolved** id. Multipart literal `null` is not defaulted. Not official OpenAI omission. No configurable default-model setting. OmniRoute/new-api reject is documented and not followed.
 2. **Edits body-size:** official-max compatibility (~357 MB JSON, ~851 MB multipart). No lower default operator DoS cap. A future smaller ceiling is only an explicit configurable deployment extension and an intentional compatibility deviation.
