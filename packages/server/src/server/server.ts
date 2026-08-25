@@ -24,6 +24,7 @@ import type { DashboardEventLimits } from '../dashboard-events';
 import { createDashboardRoutes } from '../dashboard-routes/config';
 import { createAnthropicMessagesRoutes } from '../routes/anthropic-messages';
 import { createGeminiGenerateContentRoutes } from '../routes/gemini-generate-content';
+import { createGeminiInteractionsRoutes } from '../routes/gemini-interactions';
 import { createOpenAICompletionsRoutes } from '../routes/openai-completions';
 import { createOpenAIResponsesRoutes } from '../routes/openai-responses';
 import type { RuntimeProviderInput } from '../runtime';
@@ -359,6 +360,7 @@ const createRoutes = (
   const dashboardAuthRoutes = createDashboardAuthRoutes(dashboardAuth);
   const anthropicMessagesRoutes = createAnthropicMessagesRoutes(state);
   const geminiGenerateContentRoutes = createGeminiGenerateContentRoutes(state);
+  const geminiInteractionsRoutes = createGeminiInteractionsRoutes(state);
   const openAICompletionsRoutes = createOpenAICompletionsRoutes(state);
   const openAIResponsesRoutes = createOpenAIResponsesRoutes(state);
   const routes = app
@@ -367,6 +369,7 @@ const createRoutes = (
     .route('/admin/agent-installations', agentAdminRoutes)
     .route('/', anthropicMessagesRoutes)
     .route('/', geminiGenerateContentRoutes)
+    .route('/', geminiInteractionsRoutes)
     .route('/', openAICompletionsRoutes)
     .route('/', openAIResponsesRoutes)
     .route('/dashboard/api/auth', dashboardAuthRoutes)

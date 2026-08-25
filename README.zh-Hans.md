@@ -197,6 +197,7 @@ router:
 | Gemini                   | `POST /v1beta/models/{model}:generateContent`       |
 | Gemini 流式生成          | `POST /v1beta/models/{model}:streamGenerateContent` |
 | Gemini Token Counting    | `POST /v1beta/models/{model}:countTokens`           |
+| Gemini Interactions      | `POST /v1beta/interactions`                         |
 
 调用 OpenAI Responses 入口：
 
