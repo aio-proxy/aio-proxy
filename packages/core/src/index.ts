@@ -94,6 +94,13 @@ export {
   safeParseGeminiGenerateContent,
 } from './ingress/gemini-generate-content/index';
 export {
+  type GeminiInteractionsBody,
+  type GeminiInteractionsParseResult,
+  type GeminiInteractionsRequest,
+  parseGeminiInteractions,
+  safeParseGeminiInteractions,
+} from './ingress/gemini-interactions/index';
+export {
   type OpenAICompletionsRequest,
   OpenAICompletionsRequestSchema,
   parseOpenAICompletions,
