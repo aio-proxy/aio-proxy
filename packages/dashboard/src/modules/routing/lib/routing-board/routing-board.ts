@@ -243,20 +243,22 @@ export const applyRoutingShare = ({
   const effective = new Map(
     effectiveRoutingCandidates(providers, draftRecord(rows)).map((candidate) => [candidate.providerId, candidate]),
   );
-  const others = memberIds.filter((id) => id !== providerId);
-  const otherWeights = others.map((id) => {
+  const memberWeight = (id: string): number => {
     const current = effective.get(id)?.weight ?? 0;
     return current > 0 ? current : 1;
-  });
+  };
+  const others = memberIds.filter((id) => id !== providerId);
+  const otherWeights = others.map(memberWeight);
   const otherTotal = otherWeights.reduce((sum, value) => sum + value, 0);
-  const selected = Math.min(Math.max(1, Math.round(weight)), ROUTING_VALUE_MAX - others.length);
-  const remaining = ROUTING_VALUE_MAX - selected;
+  const total = memberWeight(providerId) + otherTotal;
+  const selected = Math.min(Math.max(1, Math.round(weight)), Math.min(ROUTING_VALUE_MAX, total - others.length));
+  const remaining = total - selected;
   const leftover = remaining - others.length;
   const distributed = (
     leftover <= 0
       ? others.map(() => 0)
       : distributeRemainder(leftover, otherTotal === 0 ? others.map(() => 1) : otherWeights)
-  ).map((value) => value + 1);
+  ).map((value) => Math.min(ROUTING_VALUE_MAX, value + 1));
   const nextWeights = new Map<string, number>([[providerId, selected]]);
   others.forEach((id, index) => {
     nextWeights.set(id, distributed[index] ?? 0);

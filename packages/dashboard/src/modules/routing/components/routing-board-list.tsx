@@ -1,4 +1,4 @@
-import type { DashboardRoutingProvider } from '@aio-proxy/types';
+import { ROUTING_VALUE_MAX, type DashboardRoutingProvider } from '@aio-proxy/types';
 import { useDroppable } from '@dnd-kit/react';
 
 import type { useRoutingForm } from '../hooks/use-routing-form';
@@ -33,6 +33,14 @@ export const RoutingBoardList: React.FC<RoutingBoardListProps> = ({
   droppable,
 }) => {
   const { ref, isDropTarget } = useDroppable({ id: listId, accept: 'provider', type: 'list', disabled: !droppable });
+  const formRows = form.getFieldValue('providers') ?? [];
+  const total = items.reduce((sum, entry) => {
+    const entryProvider = providersById.get(entry.providerId);
+    const entryRow = formRows.find((candidate) => candidate.providerId === entry.providerId);
+    const entryWeight = entryRow?.weight ?? entryProvider?.defaults.weight.effective ?? 0;
+    return sum + (entryWeight > 0 ? entryWeight : 0);
+  }, 0);
+  const shareMax = Math.max(1, Math.min(ROUTING_VALUE_MAX, total - (items.length - 1)));
   const slotClass =
     items.length === 0
       ? 'h-2 rounded-md data-drop-target:border data-drop-target:border-dashed data-drop-target:border-border'
@@ -67,6 +75,7 @@ export const RoutingBoardList: React.FC<RoutingBoardListProps> = ({
                 writable={writable}
                 draggable={item.draggable}
                 hasOverride={row.hasOverride}
+                shareMax={shareMax}
                 onShareChange={
                   unused || items.length < 2
                     ? undefined

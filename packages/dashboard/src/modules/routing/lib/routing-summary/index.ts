@@ -3,6 +3,7 @@ export {
   effectiveRoutingCandidates,
   explicitRoutingOverrides,
   formatRoutingShare,
+  formatRoutingShareValue,
   formatRoutingTiers,
   routingDraftNormalization,
   type RoutingProviderDraft,

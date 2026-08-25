@@ -271,7 +271,7 @@ test('preserves a blocked Provider row when another Provider is dragged', () => 
   ]);
 });
 
-test('share slider keeps every tier member positive on the 10000 weight scale', () => {
+test('share slider keeps every tier member positive on the current tier total', () => {
   const three = [
     ...providers.slice(0, 2),
     provider({
@@ -297,8 +297,8 @@ test('share slider keeps every tier member positive on the 10000 weight scale', 
     }),
   ).toEqual([
     { providerId: 'a', priority: 30, weight: 9900 },
-    { providerId: 'b', weight: 79 },
-    { providerId: 'e', weight: 21 },
+    { providerId: 'b', weight: 879 },
+    { providerId: 'e', weight: 221 },
   ]);
 });
 
@@ -346,5 +346,35 @@ test('reserves one weight unit for every sibling when the leftover is skewed', (
       providerId: 'a',
       weight: 9900,
     }),
-  ).toEqual([{ providerId: 'a', priority: 30, weight: 9900 }, { providerId: 'b', weight: 99 }, { providerId: 'e' }]);
+  ).toEqual([
+    { providerId: 'a', priority: 30, weight: 9900 },
+    { providerId: 'b', weight: 10000 },
+    { providerId: 'e', weight: 2 },
+  ]);
+});
+
+test('preserves a 1-unit share when the tier total exceeds 10000', () => {
+  const three = [
+    provider({
+      id: 'a',
+      override: { priority: routingNumber(30, 30), weight: routingNumber(1, 1) },
+    }),
+    provider({
+      id: 'b',
+      defaults: { priority: routingNumber(30), weight: routingNumber(10000) },
+    }),
+    provider({
+      id: 'e',
+      defaults: { priority: routingNumber(30), weight: routingNumber(10000) },
+    }),
+  ];
+  expect(
+    applyRoutingShare({
+      providers: three,
+      rows: [{ providerId: 'a', priority: 30, weight: 1 }, { providerId: 'b' }, { providerId: 'e' }],
+      memberIds: ['a', 'b', 'e'],
+      providerId: 'a',
+      weight: 1,
+    }),
+  ).toEqual([{ providerId: 'a', priority: 30 }, { providerId: 'b' }, { providerId: 'e' }]);
 });

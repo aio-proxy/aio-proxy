@@ -1,5 +1,5 @@
 import { m } from '@aio-proxy/i18n';
-import { ROUTING_VALUE_MAX, type DashboardRoutingProvider } from '@aio-proxy/types';
+import type { DashboardRoutingProvider } from '@aio-proxy/types';
 import { Badge } from '@aio-proxy/ui/components/badge';
 import { Button } from '@aio-proxy/ui/components/button';
 import { Slider } from '@aio-proxy/ui/components/slider';
@@ -7,6 +7,7 @@ import { useDraggable } from '@dnd-kit/react';
 import { GripVertical } from 'lucide-react';
 
 import type { useRoutingForm } from '../hooks/use-routing-form';
+import { formatRoutingShareValue } from '../lib/routing-summary';
 
 interface RoutingBoardItemProps {
   readonly form: ReturnType<typeof useRoutingForm>;
@@ -17,6 +18,7 @@ interface RoutingBoardItemProps {
   readonly writable: boolean;
   readonly draggable: boolean;
   readonly hasOverride: boolean;
+  readonly shareMax?: number;
   readonly onShareChange?: (weight: number) => void;
 }
 
@@ -29,6 +31,7 @@ export const RoutingBoardItem: React.FC<RoutingBoardItemProps> = ({
   writable,
   draggable,
   hasOverride,
+  shareMax,
   onShareChange,
 }) => {
   const { ref, handleRef, isDragging } = useDraggable({
@@ -42,9 +45,9 @@ export const RoutingBoardItem: React.FC<RoutingBoardItemProps> = ({
       : m['dashboard.routing.editor.provider_ready']();
   const draft = form.getFieldValue(`providers[${index}]`);
   const weight = draft?.weight ?? provider.defaults.weight.effective;
-  const units = share === null ? null : Math.round(share * ROUTING_VALUE_MAX);
-  const showShareControl = writable && !unused && onShareChange !== undefined && units !== null;
-  const shareLabel = share === null ? null : Math.round(share * 10_000) / 100;
+  const showShareControl =
+    writable && !unused && onShareChange !== undefined && share !== null && shareMax !== undefined;
+  const shareLabel = share === null ? null : formatRoutingShareValue(share);
 
   return (
     <div
@@ -104,8 +107,8 @@ export const RoutingBoardItem: React.FC<RoutingBoardItemProps> = ({
           aria-label={m['dashboard.routing.editor.share_control']()}
           data-testid={`routing-share-slider-${provider.id}`}
           min={1}
-          max={ROUTING_VALUE_MAX - 1}
-          value={units}
+          max={shareMax}
+          value={weight}
           onValueChange={(value) => {
             const next = Array.isArray(value) ? value[0] : value;
             if (typeof next === 'number') onShareChange?.(next);

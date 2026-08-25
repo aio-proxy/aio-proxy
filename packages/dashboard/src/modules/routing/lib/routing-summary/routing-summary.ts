@@ -75,10 +75,13 @@ export const formatRoutingTiers = (tiers: readonly RoutingTier[]): string =>
     })
     .join(' → ');
 
-export const formatRoutingShare = (share: number): string => {
+export const formatRoutingShareValue = (share: number): number | string => {
   const hundredths = Math.round(share * 10_000) / 100;
-  return `${Number.isInteger(hundredths) ? hundredths : hundredths.toFixed(2)}%`;
+  if (hundredths > 0) return Number.isInteger(hundredths) ? hundredths : hundredths.toFixed(2);
+  return (Math.round(share * 1_000_000) / 10_000).toFixed(4);
 };
+
+export const formatRoutingShare = (share: number): string => `${formatRoutingShareValue(share)}%`;
 
 export const routingDraftNormalization = (
   kind: 'priority' | 'weight',
