@@ -128,11 +128,16 @@ OAuth raw resolvers that only accept language paths (ChatGPT Responses, Kimi `/v
 Do not extend language `ModelInvocation`. Add a parallel factory, `defineEmbeddingProtocolAdapter`, with a smaller surface:
 
 ```ts
+type EmbeddingProviderOptions = Readonly<Record<string, Readonly<Record<string, unknown>>>>;
+
+type EmbeddingValue = {
+  readonly value: string;
+  readonly providerOptions?: EmbeddingProviderOptions;
+};
+
 type EmbeddingInvocation = {
-  readonly values: readonly string[];
-  readonly dimensions?: number;
+  readonly values: readonly EmbeddingValue[];
   readonly encodingFormat?: 'float' | 'base64';
-  readonly providerOptions?: Readonly<Record<string, unknown>>;
 };
 
 type EmbeddingResult = {
@@ -157,7 +162,7 @@ Defaults:
 - `wantsStream` is always false. There is no SSE egress.
 - `session` is omitted. Empty candidates fall through to a generated session unless the client sent an existing session header. Embeddings do not hash the input text as a transcript key and do not commit response ownership.
 - `dimensions()` (alias effort bag) is empty. Embeddings do not clamp reasoning effort.
-- `requestDiagnostics` is empty. Optional fields that cannot be represented on convert are dropped silently, same as other lossy converts.
+- `requestDiagnostics` is empty. Convert does not silently drop representable embed settings. `dimensions` / `outputDimensionality`, Gemini `taskType` / `title`, and OpenAI `user` are normalized onto per-value `providerOptions`. `encoding_format` is egress-only and is never sent to the SDK.
 
 Language adapters do not grow a `capability` field in this issue. The pipeline distinguishes embeddings by adapter kind / `capability: 'embedding'`, not by route path string matching inside `attemptCandidates`.
 
@@ -168,18 +173,23 @@ Language adapters do not grow a `capability` field in this issue. The pipeline d
 Request (supported):
 
 - `model` (required)
-- `input`: string or string[] of text (required). A single empty string is allowed. An empty array is not.
+- `input`: string or string[] of text (required). Every string — the lone string and every array member — must have length ≥ 1. An empty array is not allowed. An array may contain at most 2048 strings. This is an item cap, not the `dimensions` field.
 - `encoding_format`: `float` (default) or `base64`
 - `dimensions`: optional positive integer
-- `user`: optional; raw forwards; convert drops
+- `user`: optional; raw forwards; convert maps it into target `providerOptions`
 
 Rejected at parse (400, OpenAI error shape):
 
 - missing / empty `model`
 - missing `input`
+- empty string `input` (`""`)
+- empty-string array member (`["ok", ""]`)
 - empty array `input`
+- `input` array longer than 2048
 - token-id input (`number[]` or `number[][]`)
 - `encoding_format` other than `float` / `base64`
+
+Official create-embeddings contract: `input` cannot be an empty string, and an array is at most 2048 items. Rejecting those at parse keeps `embedMany` from splitting an already-invalid request into multiple upstream calls.
 
 Response:
 
@@ -202,12 +212,14 @@ Context from the path: `{ model, action: 'embedContent' }`.
 
 Supported body:
 
-- `content.parts` with text only. Multiple text parts become one value, concatenated in order with no separator.
-- optional `taskType`, `title`, `outputDimensionality`
+- `content.parts` with text only. Multiple text parts become one value, concatenated in order with no separator. The joined value must be a non-empty string.
+- `embedContentConfig` when present: `taskType`, `title`, `outputDimensionality`. `mimeType` is ignored because this inbound surface rejects non-text parts.
+- legacy top-level aliases `taskType`, `title`, `outputDimensionality` when the corresponding `embedContentConfig` key is absent. If both are present, the config object wins per key.
 
 Rejected at parse (400, Gemini error shape):
 
 - no text
+- joined text is `""`
 - non-text parts (inline images, file data, video). Text in, vectors out.
 - empty model segment
 
@@ -217,13 +229,13 @@ Response:
 { "embedding": { "values": [0.1, 0.2] } }
 ```
 
-Raw rewrite: set path to `/v1beta/models/{resolvedModel}:embedContent`. Forward the original body when unchanged.
+Raw rewrite: set path to `/v1beta/models/{resolvedModel}:embedContent`. If the body already has `model`, rewrite it to `models/<resolvedModel>`. Forward the original body bytes when the body is unchanged.
 
 ### Gemini `:batchEmbedContents`
 
 Context: `{ model, action: 'batchEmbedContents' }`.
 
-Supported body: `requests` array, each item a single-embed request. The URL model is authoritative, matching generateContent. Per-item `model` is ignored for routing and, on convert, not required.
+Supported body: `requests` array, each item a single-embed request. The URL model is authoritative for routing, matching generateContent. Per-item `model` is ignored for routing and, on convert, not required. Per-item `embedContentConfig` / legacy aliases are normalized independently.
 
 Rejected: empty `requests`, any item that would fail single-embed parse.
 
@@ -233,21 +245,48 @@ Response:
 { "embeddings": [{ "values": [0.1] }, { "values": [0.2] }] }
 ```
 
-Raw rewrite: `/v1beta/models/{resolvedModel}:batchEmbedContents`.
+Raw rewrite is not URL-only. Google requires every `EmbedContentRequest.model` to equal the batch path model (`models/{model}`).
+
+- Path: `/v1beta/models/{resolvedModel}:batchEmbedContents`
+- Every `requests[i].model`, including omitted entries, is set to `models/<resolvedModel>`
+- Alias and provider-qualified routes use the same `resolvedModel` as the path. Leftover client model strings and missing models must not survive
+
+`:embedContent` rewrites the path the same way. If that single body already has `model`, rewrite it to `models/<resolvedModel>`; do not invent a body `model` when the client omitted it.
 
 ### Convert mapping
 
 Convert never speaks another vendor HTTP API. It folds the inbound body into `EmbeddingInvocation`, calls `embeddingModel`, and the **inbound** adapter writes its own client envelope.
 
+AI SDK Provider V4 `embed` / `embedMany` accept only `values` plus `providerOptions`. There is no top-level `dimensions` bag on the SDK call. Convert therefore writes settings onto per-value `providerOptions` under the namespaces the target packages read:
+
 | Inbound field | `EmbeddingInvocation` |
 | --- | --- |
-| OpenAI `input` string | `values: [input]` |
-| OpenAI `input` string[] | `values: input` |
-| Gemini single text / joined text parts | `values: [text]` |
-| Gemini batch | `values` in request order |
-| OpenAI `dimensions` / Gemini `outputDimensionality` | `dimensions` |
+| OpenAI `input` string | `values: [{ value: input, providerOptions }]` |
+| OpenAI `input` string[] | one `EmbeddingValue` per string, same `providerOptions` |
+| Gemini single text / joined text parts | `values: [{ value: text, providerOptions }]` |
+| Gemini batch | one `EmbeddingValue` per item, in request order, each with that item's normalized options |
+| OpenAI `dimensions` / Gemini `outputDimensionality` | `providerOptions.openai.dimensions`, `providerOptions['openai-compatible'].dimensions`, and `providerOptions.google.outputDimensionality` |
+| OpenAI `user` | `providerOptions.openai.user` and `providerOptions['openai-compatible'].user` |
+| Gemini `taskType` | `providerOptions.google.taskType` |
+| Gemini `title` | `providerOptions.google.title` (keep it on the invocation even if the current `@ai-sdk/google` options type omits `title`) |
 | OpenAI `encoding_format` | `encodingFormat` (egress only) |
-| Gemini `taskType` / `title`, OpenAI `user` | drop |
+
+The adapter is target-agnostic: it fills every namespace that can represent a field. `@ai-sdk/openai` / `@ai-sdk/openai-compatible` / `@ai-sdk/google` read their own key and ignore the others. That is how convert avoids a silent drop without adding `embeddingInvocationForTarget`.
+
+Gemini per-item options are normalized before mapping:
+
+1. Start from `embedContentConfig` when present.
+2. Fill missing `taskType` / `title` / `outputDimensionality` from the legacy top-level aliases.
+3. Ignore `mimeType`. Non-text parts are already 400.
+
+`createProviderV4Embed` must not flatten a heterogeneous batch into one `embedMany` with a single `providerOptions`. AI SDK applies one options object to every value in a call.
+
+- Group `EmbeddingValue`s that share structurally equal normalized `providerOptions` (same keys and values; omit empty namespaces).
+- Call `embed` for a one-value group and `embedMany` for a multi-value group.
+- Restore the original request order when assembling `EmbeddingResult.embeddings`.
+- Sum `usage.tokens` across groups.
+
+Grouping lives inside the embedding transport. `attemptCandidates` still makes one convert attempt per candidate. Do not reopen the candidate loop. Do not 501 a heterogeneous Gemini batch solely because `taskType` differs across items. Silent drop of a differing item's `taskType` / `title` / `outputDimensionality` is forbidden.
 
 Anthropic candidates have no embedding convert. They fail this branch and fallback if another candidate exists.
 
@@ -257,13 +296,13 @@ Keep `handleProtocolRequest` as the entry. Its options type becomes a discrimina
 
 For an embeddings adapter, each live candidate:
 
-1. **Raw** if `provider.raw.resolve({ protocol: adapter.protocol, modelId })` returns a transport. `rawRequest` has already rewritten the embeddings path. Existing fallback statuses apply (`422`, `429`, `>= 500` when `hasNext`).
+1. **Raw** if `provider.raw.resolve({ protocol: adapter.protocol, modelId })` returns a transport. `rawRequest` has already rewritten the embeddings path and, for `:batchEmbedContents`, every `requests[i].model`. Existing fallback statuses apply (`422`, `429`, `>= 500` when `hasNext`).
 2. **Embedding convert** if the candidate exposes `embedding`. Call `embedding.embed(invocation, { modelId, signal, logicalRequest })`. Do not call `provider.model.invoke`.
 3. **Unsupported** otherwise (`adapter.errors.unsupported`), then fallback if `hasNext`.
 
 Language requests are unchanged: they never see the embedding branch.
 
-`createProviderV4Invoke` remains language-only. Add `createProviderV4Embed(providerId, provider)` that calls `provider.embeddingModel(modelId)` and `embed` / `embedMany` from the AI SDK (`values` in, `embeddings` + `usage.tokens` out). A thrown "does not support embedding" is a candidate failure, not a materialization failure.
+`createProviderV4Invoke` remains language-only. Add `createProviderV4Embed(providerId, provider)` that calls `provider.embeddingModel(modelId)` and AI SDK `embed` / `embedMany`. Pass `values` plus the group's `providerOptions`. Return `embeddings` in the original inbound order and `usage.tokens` as the sum across groups. A thrown "does not support embedding" is a candidate failure, not a materialization failure.
 
 ### Runtime shape
 
@@ -317,8 +356,10 @@ Protect user-visible behavior, not factory literals.
 
 Adapter tests (colocated with the new modules):
 
-- OpenAI parse: string, string[], empty input, token-id rejection, `encoding_format`, model rewrite on raw
-- Gemini parse: single text, batch, non-text part rejection, path action + model context
+- OpenAI parse: string, string[], empty-string rejection (scalar `""` and array member), empty-array rejection, 2048 items accepted / 2049 rejected, token-id rejection, `encoding_format`, model rewrite on raw
+- Gemini parse: single text, batch, non-text part rejection, empty joined text, `embedContentConfig` plus legacy aliases, path action + model context
+- Gemini raw: alias and provider-qualified `:batchEmbedContents` rewrite every `requests[i].model` to `models/<resolvedModel>`, including items that omitted `model` or sent a leftover client model
+- Convert: OpenAI `dimensions` and Gemini `taskType` appear on the target `providerOptions` passed to `embed` / `embedMany`; a heterogeneous Gemini batch is grouped, order is restored, and no item's `taskType` / `title` / `outputDimensionality` is dropped
 - Egress: index order, float vs base64, Gemini single vs batch envelopes
 
 Dispatch matrix (server, next to `cross-protocol-routing.test.ts`, embeddings-specific so the language matrix stays language-only):
