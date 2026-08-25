@@ -72,7 +72,7 @@ export function providerProbeRequest(
         path: `/v1beta/models/${model}:generateContent`,
       };
     case ProviderProtocol.OpenAIImage:
-      return assertNever(primary.protocol);
+      throw new Error(`Unsupported provider protocol: ${ProviderProtocol.OpenAIImage}`);
     default:
       return assertNever(primary.protocol);
   }
