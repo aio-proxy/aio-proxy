@@ -16,7 +16,7 @@ The shared pipeline today only invokes `languageModel`. This issue is the first 
 
 ## Live baseline (this worktree)
 
-These facts are from `codex/p1-openai-images` at `575e1263` (parent `55ebd88e`), not from the older image-endpoint research notes.
+These facts are from `codex/p1-openai-images` at `3332e353` (parent `55ebd88e`), not from the older image-endpoint research notes.
 
 - Inbound protocols are only `openai-response`, `openai-compatible`, `anthropic`, and `gemini`.
 - Each inbound protocol is one `defineProtocolAdapter`, one thin Hono route, adapter tests, and a row in `packages/server/__tests__/cross-protocol-routing.test.ts`.
@@ -26,7 +26,9 @@ These facts are from `codex/p1-openai-images` at `575e1263` (parent `55ebd88e`),
 - Plugin catalogs already have `image: readonly ModelDescriptor[]`, but OAuth materialization, dashboard edit-view models, alias narrowing, and `modelMetadataRecord` consume **only** `catalog.language` (`packages/server/src/plugin-runtime/materialize.ts`, `packages/server/src/plugin-runtime/catalog.ts`, `packages/server/src/server-state/oauth-views.ts`). An image-only catalog id is not a router candidate today; Images inbound would 404 before any eligibility filter.
 - `UsageRow` already has `imageCount`. Usage capture comments already say image endpoints should pass a larger idle timeout.
 - Primary API endpoint raw passthrough joins the provider origin with the inbound request path. Reusing `openai-compatible` as the Images protocol would POST `/v1/images/generations` at every Chat Completions provider.
-- Language body limits are 64 MiB encoded / 128 MiB decoded. Official edits allow up to 16 images, each < 50 MB (plus an optional mask). Those limits do **not** cover official-max edits, and AI SDK OpenAI URL download is not a safe prefetch (no abort, no 50 MB cap; helper defaults can reach 2 GiB per file).
+- `Router` only adds a direct route for `provider.models` and preserved alias targets (`directModelIds`). Omitted `models` plus no `alias`/`metadata` ids means `dall-e-2` is not registered; `router.resolve('dall-e-2')` is 404 before any capability filter. Metadata keys are not routes today.
+- Pipeline preflight `hasInvalidOrOversizedContentLength` is hardcoded to `REQUEST_BODY_LIMITS.encoded` (64 MiB) in `packages/server/src/routes/pipeline/request.ts`, before adapter parse. A later edits-only 850 MiB table cannot take effect unless this gate reads adapter/route limits.
+- Official edits allow up to 16 images, each < 50 MB (plus an optional mask). Multipart framing, headers, and text fields make an encoded body larger than the decoded file aggregate. Provider V4 `generateImage` returns `string | Uint8Array` images; the OpenAI adapter is `b64_json`. There is no standard URL field to extract.
 - Generic AI SDK `generateImage({ size })` accepts `{width}x{height}` only. `auto` is not a valid SDK size.
 - Official Images: generations omit `model` → `dall-e-2` (unless a GPT-image-only parameter is used); edits omit `model` → `gpt-image-1.5`. Official `image_generation.completed` requires `b64_json`, `background`, `created_at`, `output_format`, `quality`, `size`, `usage`, and is one image per event.
 - README inbound tables list only the language ports.
@@ -56,9 +58,9 @@ Recommendation: **A**.
 
 ### Units
 
-1. **Inbound adapter** (`openai-image`) — parse (including official omitted-model defaults), model id used for routing, raw rewrite that preserves an omitted `model`, image invocation, non-stream Images egress, OpenAI-shaped errors. No candidate loop.
-2. **Thin routes** — `POST /v1/images/generations` first; `POST /v1/images/edits` later in this same issue. No `/v1/images/variations` and no `/v1/images*`.
-3. **Shared pipeline** — still the only loop. It gains an adapter capability, a per-model capability set, inbound capability filtering, and an image attempt path. It does not grow provider-kind branching.
+1. **Inbound adapter** (`openai-image`) — parse (including official omitted-model defaults), model id used for routing, route-specific `bodyLimits`, raw rewrite that preserves an omitted `model`, image invocation, non-stream Images egress, OpenAI-shaped errors. No candidate loop.
+2. **Thin routes** — `POST /v1/images/generations` first; `POST /v1/images/edits` later in this same issue. Each route passes `{ operation: 'generations' | 'edits' }` as adapter context so limits and parse differ. No `/v1/images/variations` and no `/v1/images*`.
+3. **Shared pipeline** — still the only loop. It gains an adapter capability, adapter `bodyLimits` for the Content-Length preflight, a per-model capability set, inbound capability filtering, and an image attempt path. It does not grow provider-kind branching.
 4. **Image transport** — runtime capability that calls `imageModel` / `generateImage` only after the support predicate passes. Distinct from language `ModelTransport`.
 5. **Support predicates** — decide whether a (provider, model id) pair may serve an inbound capability. Method presence is not a predicate.
 
@@ -66,7 +68,7 @@ Recommendation: **A**.
 
 Do not stretch `ModelInvocation.messages` to carry prompts and PNG bytes.
 
-Keep `defineProtocolAdapter` for language adapters (`capability: 'language'`). Add `defineImageProtocolAdapter` for Images (`capability: 'image'`). The public adapter type is a discriminated union that shares parse / model / dimensions / session / wantsStream / rawRequest / errors:
+Keep `defineProtocolAdapter` for language adapters (`capability: 'language'`). Add `defineImageProtocolAdapter` for Images (`capability: 'image'`). Language factory default `bodyLimits` is today's `REQUEST_BODY_LIMITS`. The public adapter type is a discriminated union that shares parse / model / dimensions / session / wantsStream / rawRequest / errors / `bodyLimits`:
 
 - language: `modelInvocation`, `modelJson`, `modelSse` (unchanged)
 - image: `imageInvocation`, `imageJson`
@@ -115,7 +117,7 @@ Update plugin-sdk `ProtocolId` in lockstep so an OAuth `raw` resolver can later 
 
 Same rule as today's extra endpoints: inbound protocol must match a declared endpoint.
 
-Typical OpenAI API provider stays `openai-response` or `openai-compatible` for chat. To raw-proxy Images, add an `openai-image` endpoint:
+Typical OpenAI API provider stays `openai-response` or `openai-compatible` for chat. To raw-proxy Images, add an `openai-image` endpoint **and** a finite model-id set that includes the official omitted-model defaults:
 
 ```jsonc
 {
@@ -123,11 +125,30 @@ Typical OpenAI API provider stays `openai-response` or `openai-compatible` for c
   "kind": "api",
   "protocol": "openai-response",
   "baseURL": "https://api.openai.com/v1",
+  "models": ["dall-e-2", "gpt-image-1.5"],
+  "metadata": {
+    "dall-e-2": { "capabilities": { "modalities": { "output": ["image"] } } },
+    "gpt-image-1.5": { "capabilities": { "modalities": { "output": ["image"] } } }
+  },
   "endpoints": { "baseURL": "https://api.openai.com/v1", "protocol": ["openai-image"] }
 }
 ```
 
-An image-only API provider may use `openai-image` as its primary protocol. In that case do not synthesize a language `ModelTransport`.
+`models` (or preserved alias / metadata keys) make the official defaults **routable**. `metadata.capabilities.modalities.output: ["image"]` makes them **image-capable**. An extra `openai-image` endpoint does not mark every `models[]` id as image — a mixed list such as `["gpt-5", "dall-e-2"]` must not treat `gpt-5` as Images.
+
+An `openai-image` endpoint alone is not enough. `Router` does not register a direct route when `models` is omitted, so omitted-`model` generations (`dall-e-2`) and edits (`gpt-image-1.5`) 404 before the capability filter.
+
+Non-catalog providers (API / AI SDK) must supply a **finite** image-routable id set from at least one of:
+
+1. `models`
+2. alias targets with `preserve: true`
+3. `metadata` object keys
+
+P1 registers all three as direct routes. There is **no wildcard** and no “every id this origin might serve.” An empty finite set cannot route the official defaults.
+
+Catalog providers keep using `catalog.language ∪ catalog.image` as their finite set.
+
+An image-only API provider may use `openai-image` as its primary protocol. In that case do not synthesize a language `ModelTransport`. It still needs the finite id set above.
 
 `auth` remains Anthropic-only.
 
@@ -155,7 +176,7 @@ For each configured or catalogued model id, compute `Set<InboundCapability>` fro
 | Same id in both buckets | union |
 | Config / upstream metadata `capabilities.modalities.output` includes `image` | `image` |
 | Config / upstream metadata `capabilities.modalities.output` is present and is text-only | does **not** add `image`; does not remove a catalog.image membership |
-| Provider primary protocol is `openai-image` and the id is in the provider model list, with no catalog/metadata signal | `image` |
+| Provider primary protocol is `openai-image` and the id is in the **finite** non-catalog set (`models`, preserved alias targets, or `metadata` keys) | `image` |
 
 `imageModel` / `embeddingModel` / `languageModel` **function existence never adds a capability**. A dummy V4 `imageModel` that throws `NoSuchModelError` is not image support.
 
@@ -242,7 +263,7 @@ JSON only. `prompt` is required. `model` is optional because of the official def
 | `n` | passed through; default 1; convert `n` is 1..10 |
 | `size` | `{width}x{height}` → SDK `size`; `auto` or omitted → **omit** SDK `size`; never pass `auto` to generic AI SDK `size` |
 | `quality` | `providerOptions` |
-| `response_format` | `url` vs `b64_json` mapping below |
+| `response_format` | convert `url` → skip/501 (below); `b64_json` / omitted → bytes |
 | `output_format` | `providerOptions` |
 | `output_compression` | `providerOptions` |
 | `background` | `providerOptions` |
@@ -271,27 +292,45 @@ Same adapter, same protocol id, second route. Parse two content types:
 
 Raw path forwards the original content type, including JSON URLs and `file_id`, for the official upstream to fetch. Multipart raw rewrite may replace a present `model` form field; it must not insert a missing one; it must not JSON-parse the body.
 
-#### Multipart and size policy (edits)
+#### Body limits (adapter-specific; pipeline must honor them)
+
+The current preflight is a **language** gate: `hasInvalidOrOversizedContentLength` compares `Content-Length` to `REQUEST_BODY_LIMITS.encoded` (64 MiB) before `adapter.parse`. P1 adds adapter/route body limits and the pipeline preflight **must use those**, not the global constant.
+
+```ts
+type RequestBodyLimits = { readonly encoded: number; readonly decoded: number };
+
+// on both language and image adapters; language keeps today's 64 / 128 MiB
+readonly bodyLimits: (raw: Request, context: TContext) => RequestBodyLimits;
+```
+
+`handleProtocolRequestInContext` and `readRequestBytes` / parse helpers take `adapter.bodyLimits(raw, context)`. Token-count stays on the language limits.
+
+| Route | Encoded preflight | Decoded / file policy |
+| --- | --- | --- |
+| Generations JSON | 64 MiB (unchanged) | 128 MiB decoded JSON (unchanged) |
+| Edits JSON | 64 MiB | 128 MiB decoded JSON. Convert still 501s `image_url` / `file_id`. |
+| Edits multipart | `850 MiB + 1 MiB` framing allowance = **851 MiB** | Stream-parse parts; see below. **Do not** set encoded == 850 MiB file aggregate. |
 
 Official edits: at most 16 images, each < 50 MB, plus optional mask.
 
-Language `REQUEST_BODY_LIMITS` (64 / 128 MiB) are **not** sufficient and must not be cited as Images-edits coverage.
-
-Images edits use a dedicated limit, applied only on these routes:
+Edits multipart **file** policy (counted while streaming parts, not from `Content-Length` alone):
 
 | Limit | Value |
 | --- | --- |
 | Max images | 16 |
 | Max masks | 1 |
-| Per-file | 50 MiB |
-| Aggregate decoded files (images + mask) | 850 MiB (`16 * 50 + 50`) |
-| Encoded body | 850 MiB |
+| Per-file payload | 50 MiB |
+| Aggregate decoded file payloads (images + mask) | 850 MiB (`16 * 50 + 50`) |
+| Non-file form allowance (prompt, model, size, quality, boundaries, part headers) | 1 MiB |
+| Encoded `Content-Length` preflight | 851 MiB |
 
-Exceeding any of these is `413 request_too_large`.
+A legal official-max upload (850 MiB files plus multipart framing) must not 413 on the 64 MiB language gate, and must not 413 just because encoded bytes exceed 850 MiB.
 
-Generations stay on the language 64 / 128 MiB JSON limits.
+Exceeding any limit is `413 request_too_large`.
 
-Whether operators later want a **lower** configurable edits cap is a product choice (see Open questions). The spec contract is the official-compatible table above.
+Raw edits may stream-forward when `model` is omitted/unchanged. If a present `model` field must be rewritten, buffer only under the edits encoded limit.
+
+Whether operators later want a **lower** configurable edits cap is a product choice (see Open questions).
 
 ### Explicitly not routed
 
@@ -310,7 +349,7 @@ type ImageInvocation = {
   readonly prompt: string;
   readonly n: number;
   readonly size?: `${number}x${number}`; // omitted when client sent auto / omitted
-  readonly responseFormat: 'url' | 'b64_json';
+  readonly responseFormat: 'b64_json';
   readonly images?: readonly ImageBytesRef[];
   readonly mask?: ImageBytesRef;
   readonly providerOptions?: AiSdkProviderOptions;
@@ -335,11 +374,18 @@ There is no `stream` field on the convert IR. `stream: true` is valid parse: `wa
 | `auto` | keep `auto` | omit |
 | `1024x1024` (or any `{w}x{h}`) | keep | pass through |
 
-### URL vs `b64_json`
+### `response_format`
 
-- Omitted `response_format` on convert: `b64_json`
-- `b64_json`: encode each SDK image as `data[].b64_json`
-- `url`: use a provider/SDK URL when one exists; if the convert result is only bytes, `501 unsupported_feature` (`response_format=url`). Do not invent a `data:` URL.
+Provider V4 / `generateImage` only guarantees `string | Uint8Array` images. The OpenAI image adapter returns `b64_json`. There is no cross-provider URL field and P1 must not guess a URL out of `providerMetadata`.
+
+| Client `response_format` | Raw | Convert |
+| --- | --- | --- |
+| omitted / `b64_json` | passthrough | encode each image as `data[].b64_json` |
+| `url` | passthrough | **skip** this candidate; `501 unsupported_feature` (`response_format=url`) if no raw image candidate remains |
+
+Do not invent a `data:` URL. Do not treat a string image as a URL (it may be base64).
+
+A later URL convert requires an explicit `ImageTransportResult` variant (`{ kind: 'url', url: string } | { kind: 'bytes', data: Uint8Array, mediaType: string }`) produced by a provider-specific transport. That is out of P1.
 
 Raw responses are unmodified.
 
@@ -389,7 +435,7 @@ New `openAIImagesErrors` using the existing OpenAI envelope (`error: { code, mes
 | unknown routing id (`router.resolve` empty after defaulting) | 404 | `invalid_request_error` / `model_not_found` |
 | known id, zero image-capable candidates | 501 | `invalid_request_error` / `not_implemented` |
 | convert `stream: true` | 501 | `invalid_request_error` / `unsupported_feature` |
-| convert `response_format=url` with bytes-only result | 501 | `invalid_request_error` / `unsupported_feature` |
+| convert `response_format=url` | 501 | `invalid_request_error` / `unsupported_feature` |
 | convert `image_url` / URL mask | 501 | `invalid_request_error` / `unsupported_feature` |
 | convert `file_id` | 501 | `invalid_request_error` / `unsupported_feature` |
 | body / per-file / aggregate too large | 413 | `invalid_request_error` / `request_too_large` |
@@ -407,7 +453,7 @@ Raw upstream moderation errors (`image_generation_user_error`, `moderation_block
 
 - Raw: existing `usageCapture.passthrough` with `protocol: openai-image`. Parse Images JSON/`completed` usage when present.
 - Convert: do not wrap image bytes in a fake `TextStreamPart` language stream. Add an image capture helper that records `UsageRow` from provider usage plus `imageCount` (number of returned images).
-- Traces: inbound protocol is `openai-image`; transport is `raw` or `image`. Never record a language `ai_sdk` invoke for an Images convert. Never record an image convert attempt for `stream: true` (rejected first).
+- Traces: inbound protocol is `openai-image`; transport is `raw` or `image`. Never record a language `ai_sdk` invoke for an Images convert. Never record an image convert attempt for `stream: true` or convert `response_format=url` (those candidates are skipped).
 - Images is stateless. No `session()` hints. `user` is not a session key.
 
 ## Testing
@@ -421,7 +467,7 @@ Adapter (colocated with the new protocol module):
 - edits omitted/`null` `model` → routing id `gpt-image-1.5`; raw body/form still omits/`null`
 - raw rewrite changes only a **present** `model` string and otherwise preserves bytes
 - convert `size: "auto"` omits SDK `size`; raw keeps `auto`; `{w}x{h}` passes through
-- `b64_json` vs `url` mapping, including bytes-only `url` → 501
+- convert `response_format=url` → skip / 501; never emit `data[].url` from convert
 - convert `stream: true` → 501; no convert SSE frames
 - protocol-shaped errors
 
@@ -432,6 +478,8 @@ Dispatch / capability:
 - dummy V4 `imageModel` (throws `NoSuchModelError`) + language-only catalog → skipped, no invoke
 - OAuth `catalog.image` membership is sufficient for `supportsImage` when an image transport exists
 - same-protocol `openai-image` uses raw; other provider protocols do not raw-receive Images
+- the documented example (`models` + image metadata + `openai-image` endpoint) routes omitted-model generations to `dall-e-2` and omitted-model edits to `gpt-image-1.5`; the same provider **without** those finite ids 404s the defaults; a sibling `gpt-5` in `models` is not image-capable unless metadata/catalog says so
+- a non-catalog provider with only an `openai-image` endpoint and no finite ids does not wildcard-route
 - language inbound cases must not start calling `image`
 
 Pipeline / usage:
@@ -444,7 +492,8 @@ Edits, when implemented in this issue:
 
 - JSON + multipart parse
 - convert `file_id` / `image_url` → 501
-- per-file 50 MiB and aggregate 850 MiB → 413
+- per-file 50 MiB and aggregate 850 MiB file payload → 413
+- edits multipart `Content-Length` of 850 MiB + small framing is accepted by preflight (not the 64 MiB language gate, and not an encoded cap equal to 850 MiB)
 - omitted/`null` model tests as above
 
 Do not add convert SSE schema tests in P1.
@@ -462,14 +511,15 @@ Document that:
 
 - raw Images requires an `openai-image` endpoint (or primary protocol)
 - omitted generate `model` routes as `dall-e-2` and omitted edits `model` routes as `gpt-image-1.5`, while raw keeps the omission
-- convert does not stream and does not fetch `image_url`
+- convert does not stream, does not fetch `image_url`, and does not honor `response_format=url`
+- non-catalog Images providers need a finite `models` / preserved alias / metadata id set; the example includes `dall-e-2` and `gpt-image-1.5`
 
 ## Out of scope
 
 - Videos, Realtime, Midjourney, Kling, vendor-only image HTTP APIs
 - `/v1/images/variations` and any Images catch-all
 - Files / Assistants / convert `file_id` resolution
-- Convert `image_url` fetch and any SSRF-safe URL prefetch (that is a later, explicit loader)
+- Convert `image_url` fetch, convert `response_format=url`, and any `ImageTransportResult` URL variant
 - Synthesizing official Images SSE from `generateImage` bytes
 - Rewriting Images into Responses `image_generation`
 - Embeddings, audio, or a generic "all non-language" adapter beyond the capability seam
