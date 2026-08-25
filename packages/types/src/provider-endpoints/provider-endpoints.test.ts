@@ -6,8 +6,14 @@ import {
   ApiEndpointsInputSchema,
   apiProviderEndpoints,
   ProviderProtocol,
+  ProviderProtocolSchema,
   validateApiEndpoints,
 } from './provider-endpoints';
+
+test('accepts openai-image as a provider protocol', () => {
+  expect(ProviderProtocol.OpenAIImage).toBe('openai-image');
+  expect(ProviderProtocolSchema.parse('openai-image')).toBe(ProviderProtocol.OpenAIImage);
+});
 
 const issuesOf = (provider: unknown): readonly string[] => {
   const collected: string[] = [];

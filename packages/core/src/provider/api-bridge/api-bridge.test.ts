@@ -37,6 +37,18 @@ async function capturedUpstreamRequest(
 }
 
 describe('bridgeApiProviderToAiSdk', () => {
+  test('does not invent a language bridge for primary openai-image', () => {
+    const provider = {
+      kind: ProviderKind.Api,
+      id: 'images-only',
+      enabled: true,
+      protocol: ProviderProtocol.OpenAIImage,
+      baseURL: 'https://api.openai.com/v1',
+      models: ['gpt-image-2'],
+    };
+    expect(() => bridgeApiProviderToAiSdk(provider as never)).toThrow('Unsupported provider protocol: openai-image');
+  });
+
   test('Given api provider protocols When bridged Then package and options are forwarded', async () => {
     // Given
     const previousKey = process.env.AIO_PROXY_BRIDGE_KEY;

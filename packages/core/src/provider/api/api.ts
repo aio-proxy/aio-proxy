@@ -65,6 +65,7 @@ const SDK_VERSION_PREFIXES: Record<ProviderProtocol, string> = {
   [ProviderProtocol.OpenAICompatible]: '/v1',
   [ProviderProtocol.Anthropic]: '/v1',
   [ProviderProtocol.Gemini]: '/v1beta',
+  [ProviderProtocol.OpenAIImage]: '/v1',
 };
 
 function endpointTransport(

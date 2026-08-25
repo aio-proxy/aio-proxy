@@ -69,6 +69,8 @@ function bridgeMapping(provider: ApiProvider, primary: NormalizedApiEndpoint, pr
       return { packageName: '@ai-sdk/google', options: sharedOptions };
     case ProviderProtocol.OpenAIResponse:
       return { packageName: '@ai-sdk/openai', options: sharedOptions, resolveModel: resolveOpenAIResponsesModel };
+    case ProviderProtocol.OpenAIImage:
+      throw new Error(`Unsupported provider protocol: ${ProviderProtocol.OpenAIImage}`);
     default:
       return assertNever(primary.protocol);
   }

@@ -22,6 +22,8 @@ export function usageFromJson(protocol: ProviderProtocol, value: unknown): Usage
       return anthropicUsage(value);
     case ProviderProtocol.Gemini:
       return geminiUsage(value);
+    case ProviderProtocol.OpenAIImage:
+      return { kind: 'absent' };
     default:
       return assertNever(protocol);
   }

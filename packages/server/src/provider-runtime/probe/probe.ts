@@ -71,6 +71,8 @@ export function providerProbeRequest(
         },
         path: `/v1beta/models/${model}:generateContent`,
       };
+    case ProviderProtocol.OpenAIImage:
+      return assertNever(primary.protocol);
     default:
       return assertNever(primary.protocol);
   }

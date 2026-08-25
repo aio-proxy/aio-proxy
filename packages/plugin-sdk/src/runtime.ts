@@ -3,7 +3,7 @@ import type { LanguageModelCallOptions, ModelMessage, RequestOptions, ToolSet } 
 
 import type { JsonValue } from './json';
 
-export type ProtocolId = 'openai-compatible' | 'openai-response' | 'anthropic' | 'gemini';
+export type ProtocolId = 'openai-compatible' | 'openai-response' | 'anthropic' | 'gemini' | 'openai-image';
 
 /** Non-deprecated replacement for the AI SDK `CallSettings` type. */
 export type AiSdkCallSettings = LanguageModelCallOptions &

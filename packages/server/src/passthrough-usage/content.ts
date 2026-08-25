@@ -15,6 +15,8 @@ export function hasContentDelta(protocol: ProviderProtocol, eventType: string | 
       return anthropicContent(value);
     case ProviderProtocol.Gemini:
       return geminiContent(value);
+    case ProviderProtocol.OpenAIImage:
+      return false;
     default:
       return assertNever(protocol);
   }
