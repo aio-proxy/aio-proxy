@@ -5,9 +5,9 @@ import {
   parseOpenAIImageEdits,
   parseOpenAIImageEditsMultipart,
   parseOpenAIImageGenerations,
-  readEditsMultipartBody,
   stripOneProviderPrefix,
   type OpenAIImageRequest,
+  type OpenAIImageUpload,
 } from '../../ingress/openai-image';
 import { openAIImagesErrors } from '../errors';
 import { defineImageProtocolAdapter, type ImageInvocation, type ImageTransportResult } from '../image-adapter';
@@ -113,9 +113,8 @@ async function rewriteMultipartRawRequest(
   const rewrite = request.modelDefaulted || request.clientModel !== resolvedModel;
   const headers = stripHopHeaders(raw.headers);
   if (!rewrite) {
-    return new Request(raw.url, {
+    return new Request(raw, {
       method: raw.method,
-      body: Buffer.from(await readEditsMultipartBody(raw)),
       headers,
     });
   }
@@ -129,17 +128,39 @@ async function rewriteMultipartRawRequest(
 
 function rebuildMultipartForm(request: OpenAIImageRequest, resolvedModel: string): FormData {
   const form = new FormData();
-  form.set('model', resolvedModel);
-  form.set('prompt', request.prompt);
-  for (const key of MULTIPART_REPLAY_FIELDS) {
-    const value = request[key];
-    if (value != null) form.set(key, String(value));
+  const fields = request.formFields;
+  if (fields === undefined) {
+    form.set('model', resolvedModel);
+    form.set('prompt', request.prompt);
+    for (const key of MULTIPART_REPLAY_FIELDS) {
+      const value = request[key];
+      if (value != null) form.set(key, String(value));
+    }
+  } else {
+    let wroteModel = false;
+    for (const [name, value] of Object.entries(fields)) {
+      if (name === 'model') {
+        form.append('model', resolvedModel);
+        wroteModel = true;
+        continue;
+      }
+      form.append(name, value);
+    }
+    if (!wroteModel) form.set('model', resolvedModel);
   }
   for (const upload of request.uploads ?? []) {
-    form.append('image', new Blob([Buffer.from(upload.data)]));
+    appendUpload(form, upload.fieldName ?? 'image', upload);
   }
-  if (request.maskUpload !== undefined) form.set('mask', new Blob([Buffer.from(request.maskUpload.data)]));
+  if (request.maskUpload !== undefined) {
+    appendUpload(form, request.maskUpload.fieldName ?? 'mask', request.maskUpload);
+  }
   return form;
+}
+
+function appendUpload(form: FormData, name: string, upload: OpenAIImageUpload): void {
+  const bytes = Buffer.from(upload.data);
+  if (upload.filename !== undefined) form.append(name, new File([bytes], upload.filename));
+  else form.append(name, new Blob([bytes]));
 }
 
 function stripHopHeaders(source: Headers): Headers {

@@ -166,3 +166,68 @@ test('rejects multipart edits missing prompt or image', async () => {
   ).rejects.toThrow();
   await expect(parseOpenAIImageEditsMultipart(editsMultipartRequest({ prompt: 'make it night' }))).rejects.toThrow();
 });
+
+test('413s the first oversized file without requiring later official-max parts', async () => {
+  const boundary = '----oversized';
+  const header = new TextEncoder().encode(
+    `--${boundary}\r\nContent-Disposition: form-data; name="image"; filename="big.png"\r\nContent-Type: application/octet-stream\r\n\r\n`,
+  );
+  const chunk = new Uint8Array(64 * 1024);
+  let sentFileBytes = 0;
+  let headerSent = false;
+  const stream = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      if (!headerSent) {
+        headerSent = true;
+        controller.enqueue(header);
+        return;
+      }
+      if (sentFileBytes < 50_000_000) {
+        const next = Math.min(chunk.byteLength, 50_000_000 - sentFileBytes);
+        sentFileBytes += next;
+        controller.enqueue(next === chunk.byteLength ? chunk : chunk.subarray(0, next));
+        return;
+      }
+      controller.close();
+    },
+  });
+
+  await expect(
+    parseOpenAIImageEditsMultipart(
+      new Request('https://x/v1/images/edits', {
+        method: 'POST',
+        headers: { 'content-type': `multipart/form-data; boundary=${boundary}` },
+        body: stream,
+      }),
+    ),
+  ).rejects.toBeInstanceOf(RequestBodyTooLargeError);
+});
+
+test('counts unnamed parts toward the 1 MiB framing allowance', async () => {
+  const boundary = '----unnamed';
+  const unnamed = 'u'.repeat(1_048_577);
+  const header = Buffer.from(
+    `--${boundary}\r\nContent-Disposition: form-data; name="prompt"\r\n\r\nmake it night\r\n--${boundary}\r\nContent-Disposition: form-data\r\n\r\n${unnamed}\r\n--${boundary}\r\nContent-Disposition: form-data; name="image"; filename="cat.png"\r\nContent-Type: application/octet-stream\r\n\r\n`,
+  );
+  const encoded = Buffer.concat([header, Buffer.from(PNG_1X1_RGBA), Buffer.from(`\r\n--${boundary}--\r\n`)]);
+  await expect(
+    parseOpenAIImageEditsMultipart(
+      new Request('https://x/v1/images/edits', {
+        method: 'POST',
+        headers: { 'content-type': `multipart/form-data; boundary=${boundary}` },
+        body: encoded,
+      }),
+    ),
+  ).rejects.toBeInstanceOf(RequestBodyTooLargeError);
+});
+
+test('counts boundaries and part headers toward the 1 MiB framing allowance', async () => {
+  await expect(
+    parseOpenAIImageEditsMultipart(
+      editsMultipartRequest({
+        prompt: 'p'.repeat(1_048_576),
+        image: blobFrom(PNG_1X1_RGBA),
+      }),
+    ),
+  ).rejects.toBeInstanceOf(RequestBodyTooLargeError);
+});

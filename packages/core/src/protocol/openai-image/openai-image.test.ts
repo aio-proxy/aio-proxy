@@ -401,12 +401,30 @@ test('multipart literal null with no alias stays null on raw and convert lookup'
   try {
     const forwarded = await openAIImagesAdapter.rawRequest(raw, request, 'null', new Set(), edits);
     expect(parsedJson).toBe(false);
-    expect(forwarded.headers.get('content-type') ?? '').toStartWith('multipart/form-data');
+    expect(forwarded.headers.get('content-type')).toBe(raw.headers.get('content-type'));
     const form = await forwarded.formData();
     expect(form.get('model')).toBe('null');
   } finally {
     JSON.parse = original;
   }
+});
+
+test('multipart rewrite preserves filenames, image[] names, and extra fields', async () => {
+  const form = new FormData();
+  form.append('model', 'gpt-image-2');
+  form.append('prompt', 'make it night');
+  form.append('image[]', new File([PNG_1X1_RGBA], 'cat.png', { type: 'image/png' }));
+  form.append('seed', '42');
+  const raw = new Request('https://x/v1/images/edits', { method: 'POST', body: form });
+  const request = await openAIImagesAdapter.parse(raw, edits);
+  const forwarded = await openAIImagesAdapter.rawRequest(raw, request, 'acme-image-2', new Set(), edits);
+  const rewritten = await forwarded.formData();
+  expect(rewritten.get('model')).toBe('acme-image-2');
+  expect(rewritten.get('prompt')).toBe('make it night');
+  expect(rewritten.get('seed')).toBe('42');
+  expect(rewritten.get('image[]')).toBeInstanceOf(File);
+  expect((rewritten.get('image[]') as File).name).toBe('cat.png');
+  expect(rewritten.get('image')).toBeNull();
 });
 
 test('multipart literal null with alias rewrites raw to the resolved target', async () => {
