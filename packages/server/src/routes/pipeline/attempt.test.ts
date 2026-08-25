@@ -7,7 +7,7 @@ import {
   geminiGenerateContentAdapter,
   openAIResponsesAdapter,
 } from '@aio-proxy/core';
-import { ProviderProtocol } from '@aio-proxy/types';
+import { ConfigSchema, ProviderKind, ProviderProtocol } from '@aio-proxy/types';
 import { RetryError } from 'ai';
 
 import { handleProtocolRequest } from '.';
@@ -23,6 +23,45 @@ import {
   withSnapshotConfigs,
 } from '../../../__tests__/pipeline-helpers';
 import { LogicalSessionStore } from '../../logical-session-store';
+import { materializeProviders } from '../../provider-runtime/materialize';
+
+test('chat-primary API models[] language inbound is not empty-filtered', async () => {
+  const config = ConfigSchema.parse({
+    providers: {
+      api: {
+        baseURL: 'https://api.example.com',
+        kind: ProviderKind.Api,
+        models: ['gpt-5'],
+        protocol: ProviderProtocol.OpenAICompatible,
+      },
+    },
+  });
+  const provider = materializeProviders(config, {
+    bridgeApiProvider() {
+      return {
+        enabled: true,
+        id: 'api:bridge',
+        kind: ProviderKind.AiSdk,
+        invoke: () => textStream('ok'),
+      };
+    },
+  }).providers[0]!;
+  const route = defineProviderRouteSource([{ calls: { ensure: 0, model: [], raw: [] }, provider }]);
+
+  const response = await handleProtocolRequest({
+    adapter: openAIResponsesAdapter,
+    context: {},
+    rawRequest: new Request('https://proxy.test/v1/responses', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ model: 'gpt-5', input: 'hello' }),
+    }),
+    source: route.source,
+  });
+
+  expect(response.status).not.toBe(501);
+  expect(await response.json()).toMatchObject({ output_text: 'ok', status: 'completed' });
+});
 
 test('language inbound does not attempt an image-only catalog id', async () => {
   const imageOnly = modelProvider({

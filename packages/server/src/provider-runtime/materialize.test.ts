@@ -12,7 +12,7 @@ import { createServerState } from '#server-test-lifecycle';
 
 import { withAttemptLogContext, withRequestLogContext } from '../request-logging';
 import type { RuntimeProviderInstance } from '../runtime';
-import { supportsImage } from './capability-index';
+import { supportsImage, supportsLanguage } from './capability-index';
 import { materializeProviders, materializeRuntimeProvider, providerSummary } from './materialize';
 
 const headerSet = (field: string, value: unknown) => ({
@@ -85,6 +85,24 @@ test('materializes a configured API provider with raw and bridged model capabili
   expect(runtime.providers[0]?.model?.invoke).toBe(bridge.invoke);
 });
 
+test('chat-primary API models[] ids support language without a catalog', () => {
+  const config = ConfigSchema.parse({
+    providers: {
+      api: {
+        baseURL: 'https://api.example.com',
+        kind: ProviderKind.Api,
+        models: ['gpt-5'],
+        protocol: ProviderProtocol.OpenAICompatible,
+      },
+    },
+  });
+
+  const provider = materializeProviders(config).providers[0];
+
+  expect(supportsLanguage(provider!.capabilityIndex, 'gpt-5')).toBe(true);
+  expect(supportsImage(provider!.capabilityIndex, 'gpt-5')).toBe(false);
+});
+
 test('materializes an enabled image-only API provider without a language transport', () => {
   const config = ConfigSchema.parse({
     providers: {
@@ -103,6 +121,7 @@ test('materializes an enabled image-only API provider without a language transpo
   expect(provider?.raw).toBeDefined();
   expect(provider?.model).toBeUndefined();
   expect(supportsImage(provider!.capabilityIndex, 'gpt-image-2')).toBe(true);
+  expect(supportsLanguage(provider!.capabilityIndex, 'gpt-image-2')).toBe(false);
   expect(provider?.raw?.resolve({ protocol: ProviderProtocol.OpenAIImage, modelId: 'gpt-image-2' })).toBeDefined();
 });
 

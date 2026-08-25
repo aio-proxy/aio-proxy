@@ -25,15 +25,8 @@ export type CapabilityIndexInput = {
 export function buildModelCapabilityIndex(input: CapabilityIndexInput): ModelCapabilityIndex {
   const languageIds = new Set((input.catalog?.language ?? []).map((descriptor) => descriptor.id));
   const imageIds = new Set((input.catalog?.image ?? []).map((descriptor) => descriptor.id));
-  const ids = new Set<string>([
-    ...languageIds,
-    ...imageIds,
-    ...(input.models ?? []),
-    ...(input.preservedAliasTargets ?? []),
-    ...Object.keys(input.metadata ?? {}),
-    ...Object.keys(input.configMetadata ?? {}),
-    ...Object.keys(input.upstreamMetadata ?? {}),
-  ]);
+  const finiteIds = finiteNonCatalogIds(input);
+  const ids = new Set<string>([...languageIds, ...imageIds, ...finiteIds]);
   const index: Record<string, Set<InboundCapability>> = {};
   for (const id of ids) {
     const capabilities = new Set<InboundCapability>();
@@ -47,9 +40,25 @@ export function buildModelCapabilityIndex(input: CapabilityIndexInput): ModelCap
       capabilities.add('image');
     }
     if (input.primaryProtocol === ProviderProtocol.OpenAIImage) capabilities.add('image');
+    if (finiteIds.has(id) && synthesizesLanguage(input)) capabilities.add('language');
     if (capabilities.size > 0) index[id] = capabilities;
   }
   return index;
+}
+
+function finiteNonCatalogIds(input: CapabilityIndexInput): Set<string> {
+  return new Set([
+    ...(input.models ?? []),
+    ...(input.preservedAliasTargets ?? []),
+    ...Object.keys(input.metadata ?? {}),
+    ...Object.keys(input.configMetadata ?? {}),
+    ...Object.keys(input.upstreamMetadata ?? {}),
+  ]);
+}
+
+function synthesizesLanguage(input: CapabilityIndexInput): boolean {
+  if (input.primaryProtocol === ProviderProtocol.OpenAIImage) return false;
+  return input.primaryProtocol !== undefined || input.catalog === undefined;
 }
 
 export function supportsLanguage(index: ModelCapabilityIndex, modelId: string): boolean {

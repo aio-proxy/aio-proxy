@@ -19,6 +19,8 @@ import {
 // | configMetadata / upstreamMetadata capabilities.modalities.output includes image | image |
 // | modalities.output present and text-only | does not add image; does not remove catalog.image |
 // | primary protocol openai-image and id in finite non-catalog set (models, preserved alias targets, metadata keys) | image |
+// | chat primary (openai-compatible, openai-response, anthropic, gemini) and id in finite non-catalog set | language |
+// | API/ai-sdk finite ids with no catalog and a non-openai-image primary | language |
 // | V4 imageModel function exists | never |
 
 describe('buildModelCapabilityIndex', () => {
@@ -84,6 +86,21 @@ describe('buildModelCapabilityIndex', () => {
     expect(supportsImage(index, 'gpt-5')).toBe(true);
     expect(supportsImage(index, 'extra-image')).toBe(true);
     expect(supportsImage(index, 'alias-target')).toBe(true);
+    expect(supportsLanguage(index, 'gpt-5')).toBe(false);
+    expect(supportsLanguage(index, 'gpt-image-2')).toBe(false);
+  });
+
+  test('chat-primary finite non-catalog ids support language', () => {
+    const index = buildModelCapabilityIndex({
+      primaryProtocol: ProviderProtocol.OpenAICompatible,
+      models: ['gpt-5'],
+      metadata: { 'meta-id': {} },
+      preservedAliasTargets: ['alias-target'],
+    });
+    expect(supportsLanguage(index, 'gpt-5')).toBe(true);
+    expect(supportsLanguage(index, 'meta-id')).toBe(true);
+    expect(supportsLanguage(index, 'alias-target')).toBe(true);
+    expect(supportsImage(index, 'gpt-5')).toBe(false);
   });
 
   test('openai-image endpoint on a chat-primary provider does not mark every models id as image', () => {
@@ -97,7 +114,7 @@ describe('buildModelCapabilityIndex', () => {
     });
     expect(supportsImage(index, 'gpt-image-2')).toBe(true);
     expect(supportsImage(index, 'gpt-5')).toBe(false);
-    expect(supportsLanguage(index, 'gpt-5')).toBe(false);
+    expect(supportsLanguage(index, 'gpt-5')).toBe(true);
   });
 });
 
