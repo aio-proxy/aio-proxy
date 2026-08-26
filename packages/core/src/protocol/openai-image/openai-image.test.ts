@@ -465,6 +465,39 @@ test('mixed-case multipart Content-Type uses edits multipart limits and parses',
   expect(request.prompt).toBe('make it night');
 });
 
+test('forwards explicit same-id multipart raw bytes without a FormData rebuild', async () => {
+  const boundary = 'x';
+  const encoded = Buffer.concat([
+    Buffer.from(
+      `--${boundary}\r\nContent-Disposition: form-data; name="model"\r\n\r\ngpt-image-2\r\n--${boundary}\r\nContent-Disposition: form-data; name="prompt"\r\n\r\nmake it night\r\n--${boundary}\r\nContent-Disposition: form-data; name="image"; filename="cat.bin"\r\nContent-Type: application/octet-stream\r\n\r\n`,
+    ),
+    PNG_1X1_RGBA,
+    Buffer.from(`\r\n--${boundary}--\r\n`),
+  ]);
+  const raw = new Request('https://x/v1/images/edits', {
+    method: 'POST',
+    headers: {
+      'content-type': `multipart/form-data; boundary=${boundary}`,
+      'content-md5': 'abc',
+      digest: 'SHA-256=xyz',
+      'content-digest': 'sha-256=:abc:',
+    },
+    body: encoded,
+  });
+  const request = await openAIImagesAdapter.parse(raw, edits);
+  expect(request.model).toBe('gpt-image-2');
+  expect(request.modelDefaulted).toBe(false);
+  expect(raw.bodyUsed).toBe(false);
+  const forwarded = await openAIImagesAdapter.rawRequest(raw, request, 'gpt-image-2', new Set(), edits);
+  expect(forwarded.headers.get('content-type')).toBe(`multipart/form-data; boundary=${boundary}`);
+  expect(forwarded.headers.get('content-md5')).toBe('abc');
+  expect(forwarded.headers.get('digest')).toBe('SHA-256=xyz');
+  expect(forwarded.headers.get('content-digest')).toBe('sha-256=:abc:');
+  expect(new Uint8Array(await forwarded.arrayBuffer())).toEqual(new Uint8Array(encoded));
+  const second = await openAIImagesAdapter.rawRequest(raw, request, 'gpt-image-2', new Set(), edits);
+  expect(new Uint8Array(await second.arrayBuffer())).toEqual(new Uint8Array(encoded));
+});
+
 test('rewritten multipart raw drops body integrity headers', async () => {
   const form = new FormData();
   form.append('prompt', 'make it night');

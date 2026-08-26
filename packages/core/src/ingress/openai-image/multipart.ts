@@ -38,8 +38,9 @@ export async function parseOpenAIImageEditsMultipart(
   if (boundary === undefined) throw new SyntaxError('Invalid OpenAI Images multipart request');
   const idleTimeoutMs = options?.idleTimeoutMs ?? MULTIPART_IDLE_TIMEOUT_MS;
   await acquireMultipartSlot(raw.signal);
+  const branch = raw.clone();
   try {
-    const body = await decodedRequestStream(raw, MULTIPART_DECODE_LIMITS, {
+    const body = await decodedRequestStream(branch, MULTIPART_DECODE_LIMITS, {
       signal: raw.signal,
       idleTimeoutMs,
     });
@@ -52,6 +53,7 @@ export async function parseOpenAIImageEditsMultipart(
       formFields: fields,
     };
   } catch (error) {
+    void branch.body?.cancel(error).catch(() => undefined);
     void raw.body?.cancel(error).catch(() => undefined);
     throw error;
   } finally {

@@ -307,14 +307,14 @@ test('rejects an unsupported multipart content encoding before parsing', async (
   ).rejects.toBeInstanceOf(UnsupportedContentEncodingError);
 });
 
-test('parses the original multipart body without cloning it', async () => {
+test('leaves the original multipart body unread after parse', async () => {
   const raw = editsMultipartRequest({
     prompt: 'make it night',
     image: blobFrom(PNG_1X1_RGBA),
   });
   const parsed = await parseOpenAIImageEditsMultipart(raw);
   expect(parsed.prompt).toBe('make it night');
-  expect(raw.bodyUsed).toBe(true);
+  expect(raw.bodyUsed).toBe(false);
 });
 
 test('skips preamble text that contains a non-delimiter boundary prefix', async () => {
