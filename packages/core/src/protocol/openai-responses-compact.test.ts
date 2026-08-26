@@ -40,6 +40,25 @@ test('compact optional nulls do not enter session or dimensions', async () => {
   expect(openAIResponsesAdapter.requestDiagnostics(parsed, compactCtx)).toEqual([]);
 });
 
+test('compact session omits previousResponseId and raw keeps the wire field', async () => {
+  const body = { model: 'gpt-5.1-codex-max', previous_response_id: 'resp_owned' };
+  const parsed = await compactRequest(body);
+  expect(openAIResponsesAdapter.session?.(parsed, compactCtx)?.previousResponseId).toBeUndefined();
+
+  const raw = new Request('https://proxy.test/v1/responses/compact', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+  const forwarded = await openAIResponsesAdapter.rawRequest(
+    raw,
+    await openAIResponsesAdapter.parse(raw, compactCtx),
+    'gpt-5.1-codex-max',
+    new Set(),
+    compactCtx,
+  );
+  expect(await forwarded.json()).toEqual(body);
+});
+
 test('compact modelInvocation is 501 responses_compact', async () => {
   const parsed = await compactRequest({ model: 'gpt-5.1-codex-max' });
   expect(() => openAIResponsesAdapter.modelInvocation(parsed, compactCtx)).toThrow(

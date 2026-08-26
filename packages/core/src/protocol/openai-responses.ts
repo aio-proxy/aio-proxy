@@ -43,8 +43,8 @@ export const openAIResponsesAdapter = defineProtocolAdapter<
       : request.background === true
         ? [{ feature: 'background', action: 'dropped', effectiveMode: 'synchronous' }]
         : [],
-  session: (request) => {
-    const previousResponseId = optionalText(request.previous_response_id);
+  session: (request, context) => {
+    const previousResponseId = context.operation === 'compact' ? undefined : optionalText(request.previous_response_id);
     return {
       candidates: [
         candidate('openai-conversation', conversationId(request.conversation)),
