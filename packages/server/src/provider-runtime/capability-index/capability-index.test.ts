@@ -109,6 +109,27 @@ describe('buildModelCapabilityIndex', () => {
     expect(supportsLanguage(index, 'gpt-image-2')).toBe(false);
   });
 
+  test('image-primary extra language protocol keeps finite ids chat-capable', () => {
+    const index = buildModelCapabilityIndex({
+      primaryProtocol: ProviderProtocol.OpenAIImage,
+      extraProtocols: [ProviderProtocol.OpenAICompatible],
+      models: ['gpt-5', 'gpt-image-2'],
+      catalog: {
+        language: [],
+        image: [{ id: 'catalog-image-only' }],
+        embedding: [],
+        speech: [],
+        transcription: [],
+        reranking: [],
+      },
+    });
+    expect(supportsLanguage(index, 'gpt-5')).toBe(true);
+    expect(supportsImage(index, 'gpt-5')).toBe(true);
+    expect(supportsLanguage(index, 'gpt-image-2')).toBe(true);
+    expect(supportsLanguage(index, 'catalog-image-only')).toBe(false);
+    expect(supportsImage(index, 'catalog-image-only')).toBe(true);
+  });
+
   test('chat-primary finite non-catalog ids support language', () => {
     const index = buildModelCapabilityIndex({
       primaryProtocol: ProviderProtocol.OpenAICompatible,

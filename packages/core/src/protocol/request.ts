@@ -24,6 +24,38 @@ export class RequestBodyIdleTimeoutError extends Error {
     this.name = 'RequestBodyIdleTimeoutError';
   }
 }
+
+export type RequestBodyReadOptions = {
+  readonly signal?: AbortSignal;
+  readonly idleTimeoutMs?: number;
+};
+
+export async function withAbortAndIdle<T>(
+  task: Promise<T>,
+  signal: AbortSignal | undefined,
+  idleTimeoutMs: number,
+): Promise<T> {
+  if (signal?.aborted) throw abortError(signal.reason);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let abort: (() => void) | undefined;
+  try {
+    return await new Promise<T>((resolve, reject) => {
+      timer = setTimeout(() => reject(new RequestBodyIdleTimeoutError()), idleTimeoutMs);
+      abort = () => reject(abortError(signal?.reason));
+      signal?.addEventListener('abort', abort, { once: true });
+      void task.then(resolve, reject);
+    });
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+    if (abort !== undefined) signal?.removeEventListener('abort', abort);
+  }
+}
+
+export function abortError(reason: unknown): Error {
+  if (reason instanceof Error) return reason;
+  return new DOMException('The operation was aborted.', 'AbortError');
+}
+
 export class InvalidCompressedRequestBodyError extends Error {}
 export class UnsupportedContentEncodingError extends Error {
   constructor(readonly encoding: string) {
@@ -41,11 +73,12 @@ export async function readJsonRequest(raw: Request, limits: RequestBodyLimits = 
 export async function decodedRequestStream(
   raw: Request,
   limits: RequestBodyLimits = REQUEST_BODY_LIMITS,
+  options?: RequestBodyReadOptions,
 ): Promise<ReadableStream<Uint8Array> | null> {
   try {
     const encoding = requestContentEncoding(raw.headers.get('content-encoding'));
     if (encoding === undefined) return raw.body;
-    const encoded = await readRequestBytes(raw.body, limits.encoded);
+    const encoded = await readRequestBytes(raw.body, limits.encoded, options);
     const bytes = await decodeRequestBytes(encoded, encoding, limits.decoded);
     const copy = new Uint8Array(new ArrayBuffer(bytes.byteLength));
     copy.set(bytes);
@@ -151,6 +184,7 @@ function errorCode(error: unknown): string | undefined {
 async function readRequestBytes(
   body: ReadableStream<Uint8Array> | null | undefined,
   maxBytes: number,
+  options?: RequestBodyReadOptions,
 ): Promise<Uint8Array<ArrayBuffer>> {
   const reader = body?.getReader();
   if (reader === undefined) return new Uint8Array();
@@ -158,7 +192,10 @@ async function readRequestBytes(
   let total = 0;
   try {
     while (true) {
-      const next = await reader.read();
+      const next =
+        options?.idleTimeoutMs === undefined
+          ? await reader.read()
+          : await withAbortAndIdle(reader.read(), options.signal, options.idleTimeoutMs);
       if (next.done) break;
       total += next.value.byteLength;
       if (total > maxBytes) {

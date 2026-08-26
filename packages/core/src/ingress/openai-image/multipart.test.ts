@@ -248,6 +248,37 @@ test('413s the first oversized file without requiring later official-max parts',
   ).rejects.toBeInstanceOf(RequestBodyTooLargeError);
 });
 
+test('gzip multipart idle timeout resets around each encoded read', async () => {
+  const raw = editsMultipartRequest({
+    prompt: 'make it night',
+    image: blobFrom(PNG_1X1_RGBA),
+  });
+  const contentType = raw.headers.get('content-type') ?? '';
+  const gzipped = Bun.gzipSync(new Uint8Array(await raw.arrayBuffer()));
+  let offset = 0;
+  const chunk = Math.ceil(gzipped.byteLength / 2);
+  const stream = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      if (offset >= gzipped.byteLength) {
+        controller.close();
+        return;
+      }
+      await Bun.sleep(25);
+      controller.enqueue(gzipped.subarray(offset, offset + chunk));
+      offset += chunk;
+    },
+  });
+  const parsed = await parseOpenAIImageEditsMultipart(
+    new Request('https://x/v1/images/edits', {
+      method: 'POST',
+      headers: { 'content-type': contentType, 'content-encoding': 'gzip' },
+      body: stream,
+    }),
+    { idleTimeoutMs: 40 },
+  );
+  expect(parsed.prompt).toBe('make it night');
+});
+
 test('decodes gzip multipart edits before finding the boundary', async () => {
   const raw = editsMultipartRequest({
     prompt: 'make it night',

@@ -1,6 +1,6 @@
-import { decodedRequestStream, type RequestBodyLimits } from '../../protocol/request';
+import { abortError, decodedRequestStream, type RequestBodyLimits } from '../../protocol/request';
 import { EDITS_MULTIPART_ENCODED_LIMIT } from './multipart-counters';
-import { abortError, parseMultipartStream, withAbortAndIdle } from './multipart-stream';
+import { parseMultipartStream } from './multipart-stream';
 import { parseOpenAIImageGenerations, type OpenAIImageRequest } from './openai-image';
 
 const MULTIPART_DECODE_LIMITS = Object.freeze({
@@ -39,7 +39,10 @@ export async function parseOpenAIImageEditsMultipart(
   const idleTimeoutMs = options?.idleTimeoutMs ?? MULTIPART_IDLE_TIMEOUT_MS;
   await acquireMultipartSlot(raw.signal);
   try {
-    const body = await withAbortAndIdle(decodedRequestStream(raw, MULTIPART_DECODE_LIMITS), raw.signal, idleTimeoutMs);
+    const body = await decodedRequestStream(raw, MULTIPART_DECODE_LIMITS, {
+      signal: raw.signal,
+      idleTimeoutMs,
+    });
     const { fields, uploads, maskUpload } = await parseMultipartStream(body, boundary, raw.signal, idleTimeoutMs);
     if (uploads.length === 0) throw new SyntaxError('Invalid OpenAI Images multipart request');
     return {
