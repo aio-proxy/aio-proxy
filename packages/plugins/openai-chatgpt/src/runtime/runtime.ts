@@ -33,10 +33,12 @@ export async function createOpenAIChatGPTRuntime(
       embeddingModel: (modelId) => openAI.embeddingModel(modelId),
       imageModel: (modelId) => openAI.imageModel(modelId),
     },
-    raw: ({ protocol }) =>
-      protocol === 'openai-response'
-        ? { invoke: (request, _context, options) => dynamicFetch(request, undefined, options) }
-        : undefined,
+    raw: ({ protocol, capability }) =>
+      capability === 'embedding'
+        ? undefined
+        : protocol === 'openai-response'
+          ? { invoke: (request, _context, options) => dynamicFetch(request, undefined, options) }
+          : undefined,
   };
 }
 

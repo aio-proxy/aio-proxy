@@ -13,7 +13,9 @@ export function createGeminiRawResolver(
   catalogOrBinder?: ModelCatalog | ThinkingBinder,
 ): RawResolver {
   const { geminiThinkingConfig } = resolveThinkingBinder(catalogOrBinder);
-  return ({ protocol, modelId }) => {
+  return ({ protocol, modelId, capability }) => {
+    // Language-only upstream: decline embeddings so the candidate can convert.
+    if (capability === 'embedding') return undefined;
     if (protocol !== 'gemini') return undefined;
     return {
       async invoke(request, context) {

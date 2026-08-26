@@ -199,6 +199,9 @@ router:
 | Gemini                   | `POST /v1beta/models/{model}:generateContent`       |
 | Gemini 流式生成          | `POST /v1beta/models/{model}:streamGenerateContent` |
 | Gemini Token Counting    | `POST /v1beta/models/{model}:countTokens`           |
+| OpenAI Embeddings        | `POST /v1/embeddings`                               |
+| Gemini embed             | `POST /v1beta/models/{model}:embedContent`          |
+| Gemini batch embed       | `POST /v1beta/models/{model}:batchEmbedContents`    |
 
 其余官方 Responses 资源操作（`GET /v1/responses/:id`、`DELETE /v1/responses/:id`、`POST /v1/responses/:id/cancel`、`GET /v1/responses/:id/input_items`）返回协议形 501。
 

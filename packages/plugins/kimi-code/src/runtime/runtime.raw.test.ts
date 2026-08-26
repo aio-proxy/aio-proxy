@@ -15,6 +15,16 @@ describe('Kimi Code runtime', () => {
     expect(runtime.raw?.({ protocol: 'anthropic', modelId: 'missing' })).toBeUndefined();
   });
 
+  test('declines embeddings so convert can run on the same candidate', async () => {
+    const runtime = await createKimiRuntime(context(validCredential(), catalog()));
+    expect(
+      runtime.raw?.({ protocol: 'openai-compatible', modelId: 'openai-model', capability: 'embedding' }),
+    ).toBeUndefined();
+    expect(
+      runtime.raw?.({ protocol: 'openai-compatible', modelId: 'openai-model', capability: 'language' }),
+    ).toBeDefined();
+  });
+
   for (const scenario of [
     { protocol: 'openai-compatible', path: '/v1/chat/completions' },
     { protocol: 'anthropic', path: '/v1/messages' },

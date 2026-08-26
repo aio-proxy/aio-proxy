@@ -2,12 +2,18 @@ import { expect, test } from 'bun:test';
 
 import { z } from 'zod';
 
-import { ImageInputUnsupportedError, OpenAICompletionsUnsupportedFeatureError } from '../error';
+import {
+  EmbeddingConvertUnsupportedError,
+  ImageInputUnsupportedError,
+  OpenAICompletionsUnsupportedFeatureError,
+} from '../error';
 import type { ProtocolErrorMapper } from './adapter';
 import {
   anthropicMessagesErrors,
+  geminiEmbeddingsErrors,
   geminiGenerateContentErrors,
   openAICompletionsErrors,
+  openAIEmbeddingsErrors,
   openAIResponsesErrors,
 } from './errors';
 import { InvalidCompressedRequestBodyError } from './request';
@@ -50,6 +56,26 @@ const cases = [
     geminiGenerateContentErrors,
     { error: { code: 415, message: 'Unsupported Content-Encoding', status: 'INVALID_ARGUMENT' } },
     { error: { code: 400, message: 'Invalid Gemini request', status: 'INVALID_ARGUMENT' } },
+  ],
+  [
+    'OpenAI Embeddings',
+    openAIEmbeddingsErrors,
+    {
+      error: {
+        code: 'unsupported_content_encoding',
+        message: 'Unsupported Content-Encoding',
+        type: 'invalid_request_error',
+      },
+    },
+    {
+      error: { code: 'invalid_request', message: 'Invalid OpenAI Embeddings request', type: 'invalid_request_error' },
+    },
+  ],
+  [
+    'Gemini embeddings',
+    geminiEmbeddingsErrors,
+    { error: { code: 415, message: 'Unsupported Content-Encoding', status: 'INVALID_ARGUMENT' } },
+    { error: { code: 400, message: 'Invalid Gemini Embeddings request', status: 'INVALID_ARGUMENT' } },
   ],
 ] as const satisfies readonly (readonly [string, ProtocolErrorMapper, unknown, unknown])[];
 
@@ -120,6 +146,24 @@ test.each([
       error: { code: 409, message: 'previous_response_id matches multiple providers', status: 'ABORTED' },
     },
   ],
+  [
+    'OpenAI Embeddings',
+    openAIEmbeddingsErrors,
+    {
+      error: {
+        code: 'previous_response_conflict',
+        message: 'previous_response_id matches multiple providers',
+        type: 'invalid_request_error',
+      },
+    },
+  ],
+  [
+    'Gemini embeddings',
+    geminiEmbeddingsErrors,
+    {
+      error: { code: 409, message: 'previous_response_id matches multiple providers', status: 'ABORTED' },
+    },
+  ],
 ] as const)('maps ambiguous previous responses for %s', async (_name, mapper, expected) => {
   const conflict = (mapper as ProtocolErrorMapper & { previousResponseConflict?: () => Response })
     .previousResponseConflict;
@@ -150,8 +194,10 @@ test('maps image compatibility errors into every inbound protocol shape', async 
   const cases = [
     [openAICompletionsErrors, 501, 'unsupported_feature'],
     [openAIResponsesErrors, 501, 'unsupported_feature'],
+    [openAIEmbeddingsErrors, 501, 'unsupported_feature'],
     [anthropicMessagesErrors, 501, 'invalid_request_error'],
     [geminiGenerateContentErrors, 501, 'UNIMPLEMENTED'],
+    [geminiEmbeddingsErrors, 501, 'UNIMPLEMENTED'],
   ] as const;
 
   for (const [mapper, status, marker] of cases) {
@@ -198,5 +244,69 @@ test('gemini rateLimited builds a native 429 with Retry-After', async () => {
   expect(r.headers.get('retry-after')).toBe('3');
   expect(await r.json()).toEqual({
     error: { code: 429, message: expect.any(String), status: 'RESOURCE_EXHAUSTED' },
+  });
+});
+
+test('maps EmbeddingConvertUnsupportedError to 501 so parse stays 400-only', async () => {
+  const response = openAIEmbeddingsErrors.requestError(new EmbeddingConvertUnsupportedError('token-id'));
+
+  expect(response?.status).toBe(501);
+  expect(await response?.json()).toEqual({
+    error: {
+      code: 'not_implemented',
+      message: 'Embedding convert does not support token-id',
+      type: 'unsupported_feature',
+    },
+  });
+});
+
+test('maps a transport-side EmbeddingConvertUnsupportedError to 501 for OpenAI embeddings', async () => {
+  const response = openAIEmbeddingsErrors.provider(new EmbeddingConvertUnsupportedError('title'));
+
+  expect(response?.status).toBe(501);
+  expect(await response?.json()).toEqual({
+    error: {
+      code: 'not_implemented',
+      message: 'Embedding convert does not support title',
+      type: 'unsupported_feature',
+    },
+  });
+});
+
+test('maps a transport-side EmbeddingConvertUnsupportedError to 501 for Gemini embeddings', async () => {
+  const error = new EmbeddingConvertUnsupportedError('autoTruncate');
+  const request = geminiEmbeddingsErrors.requestError(error);
+  const provider = geminiEmbeddingsErrors.provider(error);
+
+  expect(request?.status).toBe(501);
+  expect(provider?.status).toBe(501);
+  expect(await provider?.json()).toEqual({
+    error: { code: 501, message: 'Embedding convert does not support autoTruncate', status: 'UNIMPLEMENTED' },
+  });
+});
+
+test('embeddings unsupported names transform dispatch', async () => {
+  const response = openAIEmbeddingsErrors.unsupported('token-id');
+
+  expect(response.status).toBe(501);
+  expect(await response.json()).toEqual({
+    error: {
+      code: 'not_implemented',
+      message: 'Provider does not support OpenAI Embeddings transform dispatch',
+      type: 'invalid_request_error',
+    },
+  });
+});
+
+test('gemini embeddings unsupported names transform dispatch', async () => {
+  const response = geminiEmbeddingsErrors.unsupported('title');
+
+  expect(response.status).toBe(501);
+  expect(await response.json()).toEqual({
+    error: {
+      code: 501,
+      message: 'Provider does not support Gemini embeddings transform dispatch',
+      status: 'UNIMPLEMENTED',
+    },
   });
 });

@@ -52,6 +52,7 @@ export async function createKimiRuntime(
       imageModel: (modelId) => openai.imageModel(modelId),
     },
     raw(input) {
+      if (input.capability === 'embedding') return undefined;
       if (!modelIds.has(input.modelId)) return undefined;
       const protocol =
         input.protocol === 'anthropic' || input.protocol === 'openai-compatible' ? input.protocol : undefined;

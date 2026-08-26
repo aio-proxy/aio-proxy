@@ -1,6 +1,7 @@
 export {
   createUsageCapture,
   type Captured,
+  type EmbeddingUsageOptions,
   type PassthroughUsageOptions,
   type StreamUsageOptions,
   type UsageCapture,

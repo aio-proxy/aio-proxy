@@ -1,4 +1,4 @@
-import { type ProtocolAdapter, type RouterCandidate } from '@aio-proxy/core';
+import { type AnyProtocolAdapter, isEmbeddingProtocolAdapter, type RouterCandidate } from '@aio-proxy/core';
 import type { Config } from '@aio-proxy/types';
 
 import type { LogicalSessionResolution } from '../../../logical-session-store';
@@ -9,15 +9,23 @@ import type { ProviderRouteSource, RuntimeProviderInstance } from '../../../runt
 import { prioritizeAffinity } from '../affinity';
 import { candidateRoutingTrace, candidateSelectionSource } from '../attempt-base';
 import { type AttemptLog, logProviderAttemptFailed } from '../logging';
-import type { AttemptLoopContext, CandidateSlot, InvocationHolder } from './context';
+import type {
+  AnyAttemptLoopContext,
+  AttemptLoopContext,
+  AttemptStep,
+  CandidateSlot,
+  EmbeddingAttemptLoopContext,
+  InvocationHolder,
+} from './context';
 import { selectLiveCandidates } from './cooldown-write';
+import { attemptEmbeddingCandidate } from './embedding';
 import { createAttemptEmitter } from './emit';
 import { handleAttemptError, unsupportedDispatch } from './error';
 import { attemptModelCandidate } from './model';
 import { attemptRawCandidate } from './raw';
 
 type AttemptCandidatesOptions<TRequest, TContext> = {
-  readonly adapter: ProtocolAdapter<TRequest, TContext>;
+  readonly adapter: AnyProtocolAdapter<TRequest, TContext>;
   readonly candidates: readonly RouterCandidate<RuntimeProviderInstance>[];
   readonly context: TContext;
   readonly config: Config | undefined;
@@ -34,7 +42,7 @@ type AttemptCandidatesOptions<TRequest, TContext> = {
 
 function createAttemptLoopContext<TRequest, TContext>(
   options: AttemptCandidatesOptions<TRequest, TContext>,
-): AttemptLoopContext<TRequest, TContext> {
+): AnyAttemptLoopContext<TRequest, TContext> {
   const {
     adapter,
     config,
@@ -84,6 +92,44 @@ function createAttemptLoopContext<TRequest, TContext>(
   };
 }
 
+type AttemptDispatch<TRequest, TContext> =
+  | { readonly kind: 'embedding'; readonly ctx: EmbeddingAttemptLoopContext<TRequest, TContext> }
+  | { readonly kind: 'language'; readonly ctx: AttemptLoopContext<TRequest, TContext> };
+
+// The inbound capability, not the provider kind, decides which transports a
+// candidate may use. Resolved once per request so the loop below stays one loop.
+function attemptDispatch<TRequest, TContext>(
+  ctx: AnyAttemptLoopContext<TRequest, TContext>,
+): AttemptDispatch<TRequest, TContext> {
+  const { adapter } = ctx;
+  return isEmbeddingProtocolAdapter(adapter)
+    ? { kind: 'embedding', ctx: { ...ctx, adapter } }
+    : { kind: 'language', ctx: { ...ctx, adapter } };
+}
+
+// Same-protocol raw wins, then the AI SDK model transport, then nothing.
+async function attemptLanguageCandidate<TRequest, TContext>(
+  ctx: AttemptLoopContext<TRequest, TContext>,
+  slot: CandidateSlot,
+  holder: InvocationHolder,
+): Promise<AttemptStep> {
+  const provider = slot.candidate.provider;
+  if (provider.raw !== undefined) {
+    slot.trace.transport = 'raw';
+    slot.trace.targetProtocol = ctx.adapter.protocol;
+  }
+  const raw = provider.raw?.resolve({ protocol: ctx.adapter.protocol, modelId: slot.candidate.modelId });
+  if (raw !== undefined) return await attemptRawCandidate(ctx, slot, raw);
+  if (provider.model !== undefined) {
+    slot.trace.transport = 'ai_sdk';
+    slot.trace.targetProtocol = undefined;
+    return await attemptModelCandidate(ctx, slot, provider.model, holder);
+  }
+  slot.trace.transport = undefined;
+  slot.trace.targetProtocol = undefined;
+  return unsupportedDispatch(ctx, slot);
+}
+
 export async function attemptCandidates<TRequest, TContext>(
   options: AttemptCandidatesOptions<TRequest, TContext>,
 ): Promise<Response> {
@@ -92,6 +138,7 @@ export async function attemptCandidates<TRequest, TContext>(
     resolution.affinity?.active === true ? prioritizeAffinity(candidates, resolution.affinity.providerId) : candidates;
   const ordered = prioritizeAffinity(affinityOrdered, resolution.responseOwner?.providerId);
   const ctx = createAttemptLoopContext(options);
+  const dispatch = attemptDispatch(ctx);
 
   const holder: InvocationHolder = { invocation: undefined, invocationUnsupported: undefined };
   let lastFailure: Response | undefined;
@@ -148,23 +195,10 @@ export async function attemptCandidates<TRequest, TContext>(
       spanRef: { current: undefined },
     };
     try {
-      if (provider.raw !== undefined) {
-        slot.trace.transport = 'raw';
-        slot.trace.targetProtocol = adapter.protocol;
-      }
-      const raw = provider.raw?.resolve({ protocol: adapter.protocol, modelId: candidate.modelId });
-      let step;
-      if (raw !== undefined) {
-        step = await attemptRawCandidate(ctx, slot, raw);
-      } else if (provider.model !== undefined) {
-        slot.trace.transport = 'ai_sdk';
-        slot.trace.targetProtocol = undefined;
-        step = await attemptModelCandidate(ctx, slot, provider.model, holder);
-      } else {
-        slot.trace.transport = undefined;
-        slot.trace.targetProtocol = undefined;
-        step = unsupportedDispatch(ctx, slot);
-      }
+      const step =
+        dispatch.kind === 'embedding'
+          ? await attemptEmbeddingCandidate(dispatch.ctx, slot)
+          : await attemptLanguageCandidate(dispatch.ctx, slot, holder);
       if (step.kind === 'return') return step.response;
       lastFailure = step.lastFailure;
     } catch (error) {

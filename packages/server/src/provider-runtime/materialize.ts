@@ -11,7 +11,13 @@ import { apiProviderEndpoints, ProviderKind } from '@aio-proxy/types';
 
 import { createProviderRequestTransformFetch } from '../provider-request-transform';
 import { createObservedFetch } from '../request-logging';
-import type { ModelTransport, RuntimeProviderInput, RuntimeProviderInstance, RuntimeRawCapability } from '../runtime';
+import type {
+  EmbeddingTransport,
+  ModelTransport,
+  RuntimeProviderInput,
+  RuntimeProviderInstance,
+  RuntimeRawCapability,
+} from '../runtime';
 import { probeAiSdk, probeApi, type ProviderProbe } from './probe';
 
 export type MaterializeProvidersOptions = {
@@ -65,6 +71,7 @@ export function materializeRuntimeProvider(
               ...(apiBridge.targetProtocol === undefined ? {} : { targetProtocol: () => apiBridge.targetProtocol }),
             },
           }),
+      ...embeddingTransport(apiBridge),
     };
   }
 
@@ -81,22 +88,29 @@ export function materializeRuntimeProvider(
         invoke: provider.invoke,
         ...(provider.targetProtocol === undefined ? {} : { targetProtocol: () => provider.targetProtocol }),
       },
+      ...embeddingTransport(provider),
     };
   }
 
-  throw new TypeError('Runtime provider must expose a raw or model capability');
+  throw new TypeError('Runtime provider must expose a raw, model, or embedding capability');
 }
 
 function isMaterializedRuntimeProvider(provider: RuntimeProviderInput): provider is RuntimeProviderInstance {
   const raw = Object.hasOwn(provider, 'raw') ? (provider as { readonly raw?: unknown }).raw : undefined;
   const model = Object.hasOwn(provider, 'model') ? (provider as { readonly model?: unknown }).model : undefined;
+  const embedding = Object.hasOwn(provider, 'embedding')
+    ? (provider as { readonly embedding?: unknown }).embedding
+    : undefined;
   if (raw !== undefined && !isRuntimeRawCapability(raw)) {
     throw new TypeError(`Runtime provider ${provider.id} has an invalid raw capability`);
   }
   if (model !== undefined && !isModelTransport(model)) {
     throw new TypeError(`Runtime provider ${provider.id} has an invalid model capability`);
   }
-  return raw !== undefined || model !== undefined;
+  if (embedding !== undefined && !isEmbeddingTransport(embedding)) {
+    throw new TypeError(`Runtime provider ${provider.id} has an invalid embedding capability`);
+  }
+  return raw !== undefined || model !== undefined || embedding !== undefined;
 }
 
 function isRuntimeRawCapability(value: unknown): value is RuntimeRawCapability {
@@ -114,6 +128,16 @@ function isModelTransport(value: unknown): value is ModelTransport {
       typeof value.ensureAvailable === 'function') &&
     (!('targetProtocol' in value) || value.targetProtocol === undefined || typeof value.targetProtocol === 'function')
   );
+}
+
+function isEmbeddingTransport(value: unknown): value is EmbeddingTransport {
+  return typeof value === 'object' && value !== null && 'embed' in value && typeof value.embed === 'function';
+}
+
+function embeddingTransport(
+  source: { readonly embed?: EmbeddingTransport['embed'] } | undefined,
+): { readonly embedding: EmbeddingTransport } | Record<never, never> {
+  return source?.embed === undefined ? {} : { embedding: { embed: source.embed } };
 }
 
 /** `false` disables the top-level proxy for this provider; omitted inherits it. */

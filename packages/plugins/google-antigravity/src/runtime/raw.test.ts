@@ -14,6 +14,13 @@ describe('Gemini raw resolver', () => {
     expect(resolve(resolver, 'openai-response')).toBeUndefined();
   });
 
+  test('declines embeddings so convert can run on the same candidate', () => {
+    const resolver = createGeminiRawResolver({ execute: async () => Response.json({ response: {} }) });
+
+    expect(resolver({ protocol: 'gemini', modelId: 'gemini-3-flash-agent', capability: 'embedding' })).toBeUndefined();
+    expect(resolver({ protocol: 'gemini', modelId: 'gemini-3-flash-agent', capability: 'language' })).toBeDefined();
+  });
+
   test('wraps the rewritten Gemini request and unwraps CCA JSON', async () => {
     let upstream: Request | undefined;
     const resolver = createGeminiRawResolver(
