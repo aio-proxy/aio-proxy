@@ -49,6 +49,16 @@ function bytesRef(
   };
 }
 
+test('JPEG fill bytes before a segment marker still reach SOF', () => {
+  const sof = JPEG_1X1.indexOf(0xc0);
+  expect(JPEG_1X1[sof - 1]).toBe(0xff);
+  const filled = new Uint8Array(JPEG_1X1.length + 1);
+  filled.set(JPEG_1X1.subarray(0, sof));
+  filled[sof] = 0xff;
+  filled.set(JPEG_1X1.subarray(sof), sof + 1);
+  expect(decodeImageBytes(filled)).toMatchObject({ format: 'jpeg', width: 1, height: 1 });
+});
+
 test('decodes PNG JPEG and WebP dimensions from bytes not Content-Type', () => {
   expect(decodeImageBytes(PNG_1X1_RGBA, 'image/jpeg')).toMatchObject({
     format: 'png',

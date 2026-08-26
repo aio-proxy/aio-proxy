@@ -1,5 +1,12 @@
+import { decodedRequestStream, type RequestBodyLimits } from '../../protocol/request';
+import { EDITS_MULTIPART_ENCODED_LIMIT } from './multipart-counters';
 import { parseMultipartStream } from './multipart-stream';
 import { parseOpenAIImageGenerations, type OpenAIImageRequest } from './openai-image';
+
+const MULTIPART_DECODE_LIMITS = Object.freeze({
+  encoded: EDITS_MULTIPART_ENCODED_LIMIT,
+  decoded: EDITS_MULTIPART_ENCODED_LIMIT,
+}) satisfies RequestBodyLimits;
 
 export {
   EDITS_MULTIPART_AGGREGATE_LIMIT,
@@ -28,7 +35,8 @@ export async function parseOpenAIImageEditsMultipart(raw: Request): Promise<Open
   if (boundary === undefined) throw new SyntaxError('Invalid OpenAI Images multipart request');
   await acquireMultipartSlot();
   try {
-    const { fields, uploads, maskUpload } = await parseMultipartStream(raw.body, boundary);
+    const body = await decodedRequestStream(raw, MULTIPART_DECODE_LIMITS);
+    const { fields, uploads, maskUpload } = await parseMultipartStream(body, boundary);
     if (uploads.length === 0) throw new SyntaxError('Invalid OpenAI Images multipart request');
     return {
       ...parseOpenAIImageGenerations(generationsInputFromFields(fields)),

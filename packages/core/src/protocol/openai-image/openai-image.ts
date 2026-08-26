@@ -117,7 +117,8 @@ function openaiImageBodyLimits(raw: Request, context: OpenAIImageContext): Reque
 }
 
 function isMultipartRequest(raw: Request): boolean {
-  return (raw.headers.get('content-type') ?? '').startsWith('multipart/form-data');
+  const mediaType = (raw.headers.get('content-type') ?? '').split(';', 1)[0]?.trim().toLowerCase();
+  return mediaType === 'multipart/form-data';
 }
 
 function rewriteMultipartRawRequest(raw: Request, request: OpenAIImageRequest, resolvedModel: string): Request {
@@ -127,6 +128,7 @@ function rewriteMultipartRawRequest(raw: Request, request: OpenAIImageRequest, r
     method: raw.method,
     body: rebuildMultipartForm(request, resolvedModel),
     headers,
+    signal: raw.signal,
   });
 }
 

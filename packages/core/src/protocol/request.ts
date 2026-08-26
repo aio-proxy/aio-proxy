@@ -29,6 +29,25 @@ export async function readJsonRequest(raw: Request, limits: RequestBodyLimits = 
   return JSON.parse(await readRequestText(raw, limits));
 }
 
+// Decode a compressed request into a stream. Unencoded bodies stay streamed so
+// official-max multipart edits are not buffered. Unknown encodings throw
+// UnsupportedContentEncodingError before any parse.
+export async function decodedRequestStream(
+  raw: Request,
+  limits: RequestBodyLimits = REQUEST_BODY_LIMITS,
+): Promise<ReadableStream<Uint8Array> | null> {
+  try {
+    const encoding = requestContentEncoding(raw.headers.get('content-encoding'));
+    if (encoding === undefined) return raw.body;
+    const encoded = await readRequestBytes(raw.body, limits.encoded);
+    const bytes = await decodeRequestBytes(encoded, encoding, limits.decoded);
+    return new Blob([bytes]).stream();
+  } catch (error) {
+    await cancelRequestBody(raw, error);
+    throw error;
+  }
+}
+
 // Read and decode a request body to text, honoring content-encoding. Callers
 // that must forward the client's exact bytes (e.g. Gemini raw passthrough, which
 // rewrites the model in the URL rather than the body) reuse this text verbatim.

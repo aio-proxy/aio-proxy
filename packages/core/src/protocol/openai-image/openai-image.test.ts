@@ -381,6 +381,35 @@ function pngBlob(): Blob {
   return new Blob([PNG_1X1_RGBA], { type: 'application/octet-stream' });
 }
 
+test('mixed-case multipart Content-Type uses edits multipart limits and parses', async () => {
+  const raw = editsMultipartRequest({ prompt: 'make it night', image: pngBlob() });
+  const contentType = (raw.headers.get('content-type') ?? '').replace('multipart/form-data', 'Multipart/Form-Data');
+  const mixed = new Request(raw.url, {
+    method: 'POST',
+    headers: { 'content-type': contentType },
+    body: raw.body,
+  });
+  expect(openAIImagesAdapter.bodyLimits(mixed, edits)).toEqual({
+    encoded: 851_048_559,
+    decoded: 851_048_559,
+  });
+  const request = await openAIImagesAdapter.parse(mixed, edits);
+  expect(request.prompt).toBe('make it night');
+});
+
+test('multipart raw rewrite inherits the inbound abort signal', async () => {
+  const controller = new AbortController();
+  const form = new FormData();
+  form.append('prompt', 'make it night');
+  form.append('image', pngBlob());
+  const raw = new Request('https://x/v1/images/edits', { method: 'POST', body: form, signal: controller.signal });
+  const request = await openAIImagesAdapter.parse(raw, edits);
+  const forwarded = await openAIImagesAdapter.rawRequest(raw, request, 'gpt-image-2', new Set(), edits);
+  expect(forwarded.signal.aborted).toBe(false);
+  controller.abort();
+  expect(forwarded.signal.aborted).toBe(true);
+});
+
 test('edits multipart bodyLimits accept the official-max envelope and not the language gate', () => {
   const raw = new Request('https://x/v1/images/edits', {
     method: 'POST',

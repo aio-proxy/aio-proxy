@@ -54,21 +54,25 @@ function hasPngTransparency(data: Uint8Array): boolean {
 function decodeJpeg(data: Uint8Array): Omit<ImageBytesRef, 'type' | 'mediaType' | 'data' | 'byteLength'> | undefined {
   if (data.byteLength < 4 || data[0] !== 0xff || data[1] !== 0xd8) return undefined;
   let offset = 2;
-  while (offset + 8 < data.byteLength) {
+  while (offset + 1 < data.byteLength) {
     if (data[offset] !== 0xff) return undefined;
-    const marker = data[offset + 1];
-    if (marker === undefined || marker === 0xd8) {
-      offset += 1;
+    let markerOffset = offset + 1;
+    while (markerOffset < data.byteLength && data[markerOffset] === 0xff) markerOffset += 1;
+    const marker = data[markerOffset];
+    if (marker === undefined) return undefined;
+    if (marker === 0xd8) {
+      offset = markerOffset + 1;
       continue;
     }
     if (marker === 0xd9 || marker === 0xda) return undefined;
-    const size = ((data[offset + 2] ?? 0) << 8) | (data[offset + 3] ?? 0);
-    if (isJpegSof(marker) && offset + 8 < data.byteLength) {
-      const height = ((data[offset + 5] ?? 0) << 8) | (data[offset + 6] ?? 0);
-      const width = ((data[offset + 7] ?? 0) << 8) | (data[offset + 8] ?? 0);
+    if (markerOffset + 3 >= data.byteLength) return undefined;
+    const size = ((data[markerOffset + 1] ?? 0) << 8) | (data[markerOffset + 2] ?? 0);
+    if (isJpegSof(marker) && markerOffset + 7 < data.byteLength) {
+      const height = ((data[markerOffset + 4] ?? 0) << 8) | (data[markerOffset + 5] ?? 0);
+      const width = ((data[markerOffset + 6] ?? 0) << 8) | (data[markerOffset + 7] ?? 0);
       return { format: 'jpeg', width, height, hasAlpha: false };
     }
-    offset += 2 + size;
+    offset = markerOffset + 1 + size;
   }
   return undefined;
 }

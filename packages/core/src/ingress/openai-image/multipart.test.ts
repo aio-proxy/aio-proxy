@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 
-import { RequestBodyTooLargeError } from '../../protocol/request';
+import { RequestBodyTooLargeError, UnsupportedContentEncodingError } from '../../protocol/request';
 import { assertEditsMultipartCounters, parseOpenAIImageEditsMultipart } from './multipart';
 import { CPA_DEFAULT_IMAGE_MODEL } from './openai-image';
 
@@ -201,6 +201,34 @@ test('413s the first oversized file without requiring later official-max parts',
       }),
     ),
   ).rejects.toBeInstanceOf(RequestBodyTooLargeError);
+});
+
+test('decodes gzip multipart edits before finding the boundary', async () => {
+  const raw = editsMultipartRequest({
+    prompt: 'make it night',
+    image: blobFrom(PNG_1X1_RGBA),
+  });
+  const contentType = raw.headers.get('content-type') ?? '';
+  const gzipped = new Request(raw.url, {
+    method: 'POST',
+    headers: { 'content-type': contentType, 'content-encoding': 'gzip' },
+    body: Bun.gzipSync(new Uint8Array(await raw.arrayBuffer())),
+  });
+  const parsed = await parseOpenAIImageEditsMultipart(gzipped);
+  expect(parsed.prompt).toBe('make it night');
+  expect(parsed.uploads).toHaveLength(1);
+});
+
+test('rejects an unsupported multipart content encoding before parsing', async () => {
+  await expect(
+    parseOpenAIImageEditsMultipart(
+      new Request('https://x/v1/images/edits', {
+        method: 'POST',
+        headers: { 'content-type': 'multipart/form-data; boundary=x', 'content-encoding': 'compress' },
+        body: '--x--',
+      }),
+    ),
+  ).rejects.toBeInstanceOf(UnsupportedContentEncodingError);
 });
 
 test('parses the original multipart body without cloning it', async () => {
