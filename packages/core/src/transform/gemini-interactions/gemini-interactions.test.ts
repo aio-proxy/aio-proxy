@@ -121,6 +121,18 @@ describe('geminiInteractionsToModelMessages', () => {
     [
       {
         model: 'm',
+        input: 'x',
+        store: false,
+        tools: [
+          { name: 't', parameters: { type: 'object', properties: { a: {} } } },
+          { name: 't', parameters: { type: 'object', properties: { b: {} } } },
+        ],
+      },
+      'tools',
+    ],
+    [
+      {
+        model: 'm',
         input: [
           { type: 'text', text: 'ok' },
           { type: 'text', text: 123 },

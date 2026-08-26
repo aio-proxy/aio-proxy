@@ -126,6 +126,12 @@ function isTextPlainFormat(value: unknown): boolean {
 function assertTools(value: GeminiInteractionsBody['tools']): void {
   if (value === undefined) return;
   if (!Array.isArray(value) || !value.every(isFunctionTool)) unsupported('tools', 'tools');
+  const names = new Set<string>();
+  for (const tool of value) {
+    const name = isRecord(tool) && typeof tool['name'] === 'string' ? tool['name'] : '';
+    if (names.has(name)) unsupported('tools', 'tools');
+    names.add(name);
+  }
 }
 
 function isFunctionTool(value: unknown): boolean {

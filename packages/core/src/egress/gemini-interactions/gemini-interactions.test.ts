@@ -94,6 +94,22 @@ describe('writeGeminiInteractionsResponse', () => {
     });
   });
 
+  test('non-stream steps follow part-start order', async () => {
+    const interaction = await writeGeminiInteractionsResponse(
+      streamOf(
+        { type: 'tool-input-start', id: 'c1', toolName: 'get_weather' },
+        { type: 'tool-input-delta', id: 'c1', delta: '{"location":"Boston, MA"}' },
+        { type: 'text-delta', id: 't', text: 'Hello' },
+        finish('tool-calls'),
+      ),
+      { modelId: 'm' },
+    );
+    expect(interaction.steps).toEqual([
+      { type: 'function_call', id: 'c1', name: 'get_weather', arguments: { location: 'Boston, MA' } },
+      { type: 'model_output', content: [{ type: 'text', text: 'Hello' }] },
+    ]);
+  });
+
   test('thought step is summary-only', async () => {
     const interaction = await writeGeminiInteractionsResponse(
       streamOf(

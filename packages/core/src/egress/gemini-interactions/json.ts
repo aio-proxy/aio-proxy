@@ -48,12 +48,17 @@ export type Interaction = {
   readonly usage: InteractionUsage;
 };
 
+type StartedJsonStep = {
+  readonly kind: 'thought' | 'model_output' | 'function_call';
+  readonly id?: string;
+  readonly text: string[];
+};
+
 export async function writeGeminiInteractionsResponse(
   stream: ReadableStream<GeminiInteractionsStreamPart>,
   context: ModelEgressContext,
 ): Promise<Interaction> {
-  const text: string[] = [];
-  const reasoning: string[] = [];
+  const started: StartedJsonStep[] = [];
   const tools = new Map<string, ToolState>();
   let finishReason = 'unknown';
   let usage: TokenUsage | undefined;
@@ -61,13 +66,14 @@ export async function writeGeminiInteractionsResponse(
   for await (const part of stream) {
     switch (part.type) {
       case 'text-delta':
-        text.push(part.text);
+        appendJsonText(started, 'model_output', part.text);
         break;
       case 'reasoning-delta':
-        reasoning.push(part.text);
+        appendJsonText(started, 'thought', part.text);
         break;
       case 'tool-input-start':
         tools.set(part.id, { id: part.id, name: part.toolName, input: '' });
+        started.push({ kind: 'function_call', id: part.id, text: [] });
         break;
       case 'tool-input-delta': {
         const tool = tools.get(part.id);
@@ -86,7 +92,7 @@ export async function writeGeminiInteractionsResponse(
   }
 
   const functionCalls = Array.from(tools.values()).map(functionCallStep);
-  const steps = interactionSteps(text.join(''), reasoning.join(''), functionCalls);
+  const steps = orderedJsonSteps(started, tools);
   const status = interactionStatus(finishReason, functionCalls.length > 0);
   if (status === 'error') {
     throw new GeminiInteractionsEgressError(finishReason);
@@ -136,21 +142,37 @@ export function assertThoughtStep(step: unknown): asserts step is ThoughtStep {
   }
 }
 
-export function interactionSteps(
-  outputText: string,
-  thoughtText: string,
-  functionCalls: readonly FunctionCallStep[],
+function appendJsonText(started: StartedJsonStep[], kind: 'thought' | 'model_output', text: string): void {
+  const last = started.at(-1);
+  if (last?.kind === kind) {
+    last.text.push(text);
+    return;
+  }
+  started.push({ kind, text: [text] });
+}
+
+function orderedJsonSteps(
+  started: readonly StartedJsonStep[],
+  tools: ReadonlyMap<string, ToolState>,
 ): InteractionStep[] {
+  const calls = new Map(Array.from(tools.values(), (tool) => [tool.id, functionCallStep(tool)]));
   const steps: InteractionStep[] = [];
-  if (thoughtText.length > 0) {
-    const thought = { type: 'thought' as const, summary: [{ type: 'text' as const, text: thoughtText }] };
-    assertThoughtStep(thought);
-    steps.push(thought);
+  for (const item of started) {
+    const text = item.text.join('');
+    if (item.kind === 'thought') {
+      if (text.length === 0) continue;
+      const thought = { type: 'thought' as const, summary: [{ type: 'text' as const, text }] };
+      assertThoughtStep(thought);
+      steps.push(thought);
+      continue;
+    }
+    if (item.kind === 'model_output') {
+      if (text.length > 0) steps.push({ type: 'model_output', content: [{ type: 'text', text }] });
+      continue;
+    }
+    const call = item.id === undefined ? undefined : calls.get(item.id);
+    if (call !== undefined) steps.push(call);
   }
-  if (outputText.length > 0) {
-    steps.push({ type: 'model_output', content: [{ type: 'text', text: outputText }] });
-  }
-  steps.push(...functionCalls);
   return steps;
 }
 
