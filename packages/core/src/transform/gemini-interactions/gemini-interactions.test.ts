@@ -79,6 +79,28 @@ describe('geminiInteractionsToModelMessages', () => {
     ]);
   });
 
+  test('preserves a JSON-null function result', () => {
+    const result = convert({
+      model: 'm',
+      store: false,
+      input: [
+        { type: 'function_call', id: 'c1', name: 't', arguments: {} },
+        { type: 'function_result', call_id: 'c1', result: null },
+      ],
+    });
+    expect(result.messages[1]).toEqual({
+      role: 'tool',
+      content: [
+        {
+          type: 'tool-result',
+          toolCallId: 'c1',
+          toolName: 't',
+          output: { type: 'json', value: null },
+        },
+      ],
+    });
+  });
+
   test('groups consecutive parallel function calls and results', () => {
     const result = convert({
       model: 'm',

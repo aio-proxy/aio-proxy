@@ -110,6 +110,18 @@ describe('writeGeminiInteractionsResponse', () => {
     ]);
   });
 
+  test('omits thought summaries when the client opted out', async () => {
+    const interaction = await writeGeminiInteractionsResponse(
+      streamOf(
+        { type: 'reasoning-delta', id: 'r', text: 'plan' },
+        { type: 'text-delta', id: 't', text: 'hi' },
+        finish('stop'),
+      ),
+      { modelId: 'm', omitThoughtSummaries: true },
+    );
+    expect(interaction.steps).toEqual([{ type: 'model_output', content: [{ type: 'text', text: 'hi' }] }]);
+  });
+
   test('thought step is summary-only', async () => {
     const interaction = await writeGeminiInteractionsResponse(
       streamOf(
@@ -378,6 +390,22 @@ describe('writeGeminiInteractionsSSE', () => {
       { type: 'function_call', id: 'c1', name: 'get_weather', arguments: { location: 'Boston, MA' } },
       { type: 'model_output', content: [{ type: 'text', text: 'B' }] },
     ]);
+  });
+
+  test('omits thought summaries when the client opted out', async () => {
+    const text = await readSse(
+      writeGeminiInteractionsSSE(
+        streamOf(
+          { type: 'reasoning-delta', id: 'r', text: 'plan' },
+          { type: 'text-delta', id: 't', text: 'hi' },
+          finish('stop'),
+        ),
+        { modelId: 'm', omitThoughtSummaries: true },
+      ),
+    );
+    expect(text).not.toContain('thought_summary');
+    expect(text).not.toContain('"type":"thought"');
+    expect(completedSteps(text)).toEqual([{ type: 'model_output', content: [{ type: 'text', text: 'hi' }] }]);
   });
 
   test('error finish emits error then done and never completed', async () => {

@@ -138,7 +138,8 @@ function textFromContents(value: unknown): string | undefined {
 
 function toolOutput(result: unknown): ToolResultOutput {
   if (typeof result === 'string') return { type: 'text', value: result };
-  if (result === undefined || result === null) return { type: 'json', value: {} };
+  if (result === undefined) return { type: 'json', value: {} };
+  if (result === null) return { type: 'json', value: null };
   try {
     return { type: 'json', value: JSON.parse(JSON.stringify(result)) };
   } catch {

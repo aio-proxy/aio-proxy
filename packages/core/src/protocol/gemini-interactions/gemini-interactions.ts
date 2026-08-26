@@ -55,6 +55,7 @@ export const geminiInteractionsAdapter = defineProtocolAdapter<GeminiInteraction
   },
   modelJson: writeGeminiInteractionsResponse,
   modelSse: writeGeminiInteractionsSSE,
+  egressContext: (request) => ({ omitThoughtSummaries: thinkingSummariesNone(request.body.generation_config) }),
   errors: geminiInteractionsErrors,
 });
 
@@ -70,6 +71,14 @@ function rewriteAuthoredId(
     return { ...body, agent: resolvedModel };
   }
   return body;
+}
+
+function thinkingSummariesNone(value: GeminiInteractionsRequest['body']['generation_config']): boolean {
+  return isRecord(value) && value['thinking_summaries'] === 'none';
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function aiSdkSettings(settings: GeminiInteractionsTransformSettings): AiSdkCallSettings {

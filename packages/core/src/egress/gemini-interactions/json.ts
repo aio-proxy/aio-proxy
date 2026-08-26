@@ -69,7 +69,7 @@ export async function writeGeminiInteractionsResponse(
         appendJsonText(started, 'model_output', part.text);
         break;
       case 'reasoning-delta':
-        appendJsonText(started, 'thought', part.text);
+        if (context.omitThoughtSummaries !== true) appendJsonText(started, 'thought', part.text);
         break;
       case 'tool-input-start':
         tools.set(part.id, { id: part.id, name: part.toolName, input: '' });

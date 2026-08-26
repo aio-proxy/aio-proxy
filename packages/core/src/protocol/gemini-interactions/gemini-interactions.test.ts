@@ -80,6 +80,22 @@ describe('geminiInteractionsAdapter', () => {
     expect(geminiInteractionsAdapter.dimensions(agent, {})).toEqual({});
   });
 
+  test('egressContext opts out of thought summaries only when requested', () => {
+    const none = parseGeminiInteractions({
+      model: 'm',
+      input: 'hi',
+      generation_config: { thinking_level: 'low', thinking_summaries: 'none' },
+    });
+    expect(geminiInteractionsAdapter.egressContext?.(none, {})).toEqual({ omitThoughtSummaries: true });
+
+    const omitted = parseGeminiInteractions({
+      model: 'm',
+      input: 'hi',
+      generation_config: { thinking_level: 'low' },
+    });
+    expect(geminiInteractionsAdapter.egressContext?.(omitted, {})).toEqual({ omitThoughtSummaries: false });
+  });
+
   test('rewrites agent alias and never writes model', async () => {
     const parsed = parseGeminiInteractions({ agent: 'deep-research-preview-04-2026', input: 'hi' });
     const forwarded = await geminiInteractionsAdapter.rawRequest(

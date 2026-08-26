@@ -81,7 +81,7 @@ export function writeGeminiInteractionsSSE(
 
     for await (const part of parts) {
       if (state.failed) break;
-      handlePart(state, part);
+      handlePart(state, part, context.omitThoughtSummaries === true);
     }
     if (state.failed) return;
 
@@ -113,10 +113,10 @@ export function writeGeminiInteractionsSSE(
   });
 }
 
-function handlePart(state: SseState, part: GeminiInteractionsStreamPart): void {
+function handlePart(state: SseState, part: GeminiInteractionsStreamPart, omitThoughtSummaries: boolean): void {
   switch (part.type) {
     case 'reasoning-delta':
-      emitThoughtDelta(state, part.text);
+      if (!omitThoughtSummaries) emitThoughtDelta(state, part.text);
       break;
     case 'text-delta':
       emitTextDelta(state, part.text);
