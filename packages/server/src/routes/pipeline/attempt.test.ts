@@ -60,12 +60,14 @@ test('converts portable reasoning and uses the model candidate', async () => {
 test('preserves exact raw bytes before model fallback drops safe hosted-search history', async () => {
   const sensitiveQuery = 'private-search-marker';
   const sensitiveGrammar = 'private-grammar-marker';
+  const requestedModelId = 'private-requested-model-marker';
+  const upstreamModelId = 'private-upstream-model-marker';
   const rawText =
-    '{  "tools" : [{"type":"custom","name":"apply_patch","format":{"type":"grammar","syntax":"lark","definition":"private-grammar-marker"}}], "input" : [{"type":"web_search_call","status":"completed","action":{"type":"search","query":"private-search-marker"}},{"role":"assistant","content":"Prior answer."},{"role":"user","content":"Continue."}], "seed":9007199254740993, "model" : "requested-model" }';
+    '{  "tools" : [{"type":"custom","name":"apply_patch","format":{"type":"grammar","syntax":"lark","definition":"private-grammar-marker"}}], "input" : [{"type":"web_search_call","status":"completed","action":{"type":"search","query":"private-search-marker"}},{"role":"assistant","content":"Prior answer."},{"role":"user","content":"Continue."}], "seed":9007199254740993, "model" : "private-requested-model-marker" }';
   const originalBytes = new TextEncoder().encode(rawText);
   const raw = rawProvider({
     id: 'raw',
-    modelId: 'requested-model',
+    modelId: requestedModelId,
     protocol: ProviderProtocol.OpenAIResponse,
     invoke: async (request) => {
       expect(new Uint8Array(await request.clone().arrayBuffer())).toEqual(originalBytes);
@@ -74,13 +76,14 @@ test('preserves exact raw bytes before model fallback drops safe hosted-search h
   });
   const model = modelProvider({
     id: 'model',
-    modelId: 'requested-model',
+    modelId: upstreamModelId,
     invoke: () => textStream('model response'),
   });
-  const alias = { 'requested-model': { model: 'requested-model', preserve: false } } as const;
+  const rawAlias = { [requestedModelId]: { model: requestedModelId, preserve: false } } as const;
+  const modelAlias = { [requestedModelId]: { model: upstreamModelId, preserve: false } } as const;
   const route = defineProviderRouteSource([
-    { ...raw, provider: { ...raw.provider, alias } },
-    { ...model, provider: { ...model.provider, alias } },
+    { ...raw, provider: { ...raw.provider, alias: rawAlias } },
+    { ...model, provider: { ...model.provider, alias: modelAlias } },
   ]);
   const rawRequest = new Request('https://proxy.test/v1/responses', {
     method: 'POST',
@@ -134,20 +137,20 @@ test('preserves exact raw bytes before model fallback drops safe hosted-search h
       event: 'request.feature_downgraded',
       requestId: 'request-1',
       inboundProtocol: ProviderProtocol.OpenAIResponse,
-      requestedModelId: 'requested-model',
       path: '/v1/responses',
       feature: 'web_search_call',
       action: 'dropped',
       reason: 'completed_without_results_or_sources',
       inputIndex: 0,
       providerId: 'model',
-      modelId: 'requested-model',
       attemptIndex: 1,
     },
   ]);
   const serializedDowngrades = JSON.stringify(downgradeEvents);
   expect(serializedDowngrades).not.toContain(sensitiveQuery);
   expect(serializedDowngrades).not.toContain(sensitiveGrammar);
+  expect(serializedDowngrades).not.toContain(requestedModelId);
+  expect(serializedDowngrades).not.toContain(upstreamModelId);
 });
 
 test('rejects an item reference before invoking a model', async () => {

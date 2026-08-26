@@ -130,14 +130,12 @@ test('createServerLogSink forwards the complete entry at the mapped level', () =
       event: 'request.feature_downgraded',
       requestId: 'hosted-search-downgraded',
       inboundProtocol: 'openai-response',
-      requestedModelId: 'requested-model',
       path: '/v1/responses',
       feature: 'web_search_call',
       action: 'dropped',
       reason: 'completed_without_results_or_sources',
       inputIndex: 2,
       providerId: 'provider',
-      modelId: 'provider-model',
       attemptIndex: 1,
     },
   ];
@@ -154,6 +152,49 @@ test('createServerLogSink forwards the complete entry at the mapped level', () =
   expect(SERVER_LOG_LEVEL['request.body_chunk']).toBe('debug');
   expect(SERVER_LOG_LEVEL['request.body_terminal']).toBe('debug');
   expect(SERVER_LOG_LEVEL['request.feature_downgraded']).toBe('info');
+});
+
+test('createServerLogSink strips model IDs from hosted-search downgrade events', () => {
+  const calls: LogCall[] = [];
+  const sink = createServerLogSink(fakeLogger(calls));
+  const requestedModelId = 'private-requested-model-marker';
+  const upstreamModelId = 'private-upstream-model-marker';
+  const unsafeEntry = {
+    event: 'request.feature_downgraded',
+    requestId: 'hosted-search-downgraded',
+    inboundProtocol: 'openai-response',
+    requestedModelId,
+    path: '/v1/responses',
+    feature: 'web_search_call',
+    action: 'dropped',
+    reason: 'completed_without_results_or_sources',
+    inputIndex: 2,
+    providerId: 'provider',
+    modelId: upstreamModelId,
+    attemptIndex: 1,
+  } as unknown as ServerLog;
+
+  withRequestLogContext({ requestId: 'trusted-request', debug: false, logger: () => {} }, () =>
+    withAttemptLogContext({ attemptIndex: 1, providerId: 'provider', modelId: upstreamModelId }, () =>
+      sink(unsafeEntry),
+    ),
+  );
+
+  const serialized = JSON.stringify(calls);
+  expect(serialized).not.toContain(requestedModelId);
+  expect(serialized).not.toContain(upstreamModelId);
+  expect(calls[0]?.messageOrProps).toEqual({
+    event: 'request.feature_downgraded',
+    requestId: 'trusted-request',
+    inboundProtocol: 'openai-response',
+    path: '/v1/responses',
+    feature: 'web_search_call',
+    action: 'dropped',
+    reason: 'completed_without_results_or_sources',
+    inputIndex: 2,
+    providerId: 'provider',
+    attemptIndex: 1,
+  });
 });
 
 test('createPluginLogSink preserves the structured redacted entry', () => {

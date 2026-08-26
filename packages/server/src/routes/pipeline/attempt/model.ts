@@ -32,10 +32,8 @@ export async function attemptModelCandidate<TRequest, TContext>(
     requestId: session.requestId,
     rawRequest,
     inboundProtocol: adapter.protocol,
-    requestedModelId: ctx.requestedModelId,
     diagnostics: candidateInvocation.diagnostics ?? [],
     providerId: provider.id,
-    modelId: candidate.modelId,
     attemptIndex: index,
   });
   const base = attemptBase(provider, candidate.modelId, startedAt, slot.trace);

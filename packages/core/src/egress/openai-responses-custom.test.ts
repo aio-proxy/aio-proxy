@@ -40,6 +40,25 @@ test('emits a custom_tool_call JSON item from tool metadata', async () => {
   );
 });
 
+test('emits native custom-tool string input from tool metadata', async () => {
+  const response = await writeOpenAIResponsesResponse(
+    aiSdkPartStream([
+      { type: 'tool-input-start', id: 'call_1', toolName: 'exec', toolMetadata: metadata },
+      { type: 'tool-input-delta', id: 'call_1', delta: '"pwd"' },
+      { type: 'tool-input-end', id: 'call_1' },
+    ]),
+    { modelId: 'test-model' },
+  );
+
+  expect(response.output).toContainEqual(
+    expect.objectContaining({
+      type: 'custom_tool_call',
+      name: 'exec',
+      input: 'pwd',
+    }),
+  );
+});
+
 test.each([
   ['missing input', '{}'],
   ['non-string input', '{"input":42}'],

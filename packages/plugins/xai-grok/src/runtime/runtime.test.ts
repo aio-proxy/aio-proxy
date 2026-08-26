@@ -2,6 +2,10 @@ import { describe, expect, spyOn, test } from 'bun:test';
 
 import type { CredentialPort, ModelCatalog, RuntimeFetch, RuntimeRequestInit } from '@aio-proxy/plugin-sdk';
 
+import { streamAiSdkText } from '../../../../core/src/ai-sdk-bridge';
+import { writeOpenAIResponsesResponse } from '../../../../core/src/egress/openai-responses';
+import { openAIResponsesAdapter } from '../../../../core/src/protocol/openai-responses';
+import { ProviderProtocol } from '../../../../types/src';
 import type { XAIGrokCredential } from '../schema';
 import { createXAIGrokDynamicFetch, createXAIGrokRuntime } from './runtime';
 
@@ -268,6 +272,73 @@ describe('xAI Grok runtime', () => {
     });
   });
 
+  test('round trips a target-materialized grammar tool through the xAI function fallback', async () => {
+    let captured: Request | undefined;
+    const runtime = await createXAIGrokRuntime({
+      credentials: port(),
+      options: {},
+      catalog: emptyCatalog(),
+      fetch: (async (input: RequestInfo | URL, init?: RuntimeRequestInit) => {
+        captured = new Request(input, init);
+        return functionCallStream('apply_patch', '{"input":"*** Begin Patch"}');
+      }) as RuntimeFetch,
+    });
+    const raw = new Request('https://proxy.test/v1/responses', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: 'grok-4.6',
+        input: 'apply a patch',
+        stream: true,
+        tools: [
+          {
+            type: 'custom',
+            name: 'apply_patch',
+            description: 'Apply a short patch',
+            format: { type: 'grammar', syntax: 'lark', definition: 'start: PATCH' },
+          },
+        ],
+      }),
+    });
+    const parsed = await openAIResponsesAdapter.parse(raw, {});
+    const invocation = openAIResponsesAdapter.modelInvocationForTarget(
+      openAIResponsesAdapter.modelInvocation(parsed, {}),
+      ProviderProtocol.OpenAIResponse,
+      new Set(),
+    );
+    const result = streamAiSdkText({
+      model: runtime.provider.languageModel('grok-4.6'),
+      messages: invocation.messages,
+      settings: invocation.settings,
+      tools: invocation.tools,
+    });
+
+    const response = await writeOpenAIResponsesResponse(result.fullStream, { modelId: 'grok-4.6' });
+    const hostBody = (await captured?.json()) as { tools?: unknown[] };
+
+    expect(hostBody.tools).toEqual([
+      {
+        type: 'function',
+        name: 'apply_patch',
+        description: 'Apply a short patch',
+        parameters: {
+          type: 'object',
+          properties: { input: { type: 'string' } },
+          required: ['input'],
+          additionalProperties: false,
+        },
+      },
+    ]);
+    expect(JSON.stringify(hostBody)).not.toContain('start: PATCH');
+    expect(response.output).toContainEqual(
+      expect.objectContaining({
+        type: 'custom_tool_call',
+        name: 'apply_patch',
+        input: '*** Begin Patch',
+      }),
+    );
+  });
+
   test('compiles nested grammar custom tools before dispatch', async () => {
     let hostCalls = 0;
     let captured: Request | undefined;
@@ -480,4 +551,66 @@ function openAIResponse() {
     user: null,
     metadata: {},
   };
+}
+
+function functionCallStream(name: string, argumentsText: string): Response {
+  const response = {
+    id: 'resp_test',
+    object: 'response',
+    created_at: 1,
+    status: 'completed',
+    error: null,
+    incomplete_details: null,
+    instructions: null,
+    max_output_tokens: null,
+    model: 'grok-4.6',
+    output: [
+      {
+        id: 'fc_test',
+        type: 'function_call',
+        call_id: 'call_1',
+        name,
+        arguments: argumentsText,
+        status: 'completed',
+      },
+    ],
+    parallel_tool_calls: true,
+    previous_response_id: null,
+    reasoning: { effort: null, summary: null },
+    store: false,
+    temperature: 1,
+    text: { format: { type: 'text' }, verbosity: 'medium' },
+    tool_choice: 'auto',
+    tools: [],
+    top_p: 1,
+    truncation: 'disabled',
+    usage: {
+      input_tokens: 1,
+      input_tokens_details: { cached_tokens: 0 },
+      output_tokens: 1,
+      output_tokens_details: { reasoning_tokens: 0 },
+      total_tokens: 2,
+    },
+    user: null,
+    metadata: {},
+  };
+  const events = [
+    { type: 'response.created', response: { id: response.id, created_at: response.created_at, model: response.model } },
+    {
+      type: 'response.output_item.added',
+      output_index: 0,
+      item: { id: 'fc_test', type: 'function_call', call_id: 'call_1', name, arguments: '' },
+    },
+    {
+      type: 'response.function_call_arguments.delta',
+      item_id: 'fc_test',
+      output_index: 0,
+      delta: argumentsText,
+    },
+    { type: 'response.output_item.done', output_index: 0, item: response.output[0] },
+    { type: 'response.completed', response },
+  ];
+  return new Response(events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(''), {
+    headers: { 'content-type': 'text/event-stream' },
+  });
 }

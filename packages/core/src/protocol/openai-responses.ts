@@ -143,10 +143,13 @@ function responsesToolSet(tools: ToolSet | undefined): ToolSet | undefined {
   for (const [name, tool] of Object.entries(tools)) {
     const metadata = readOpenAIResponsesWireMetadata(tool.metadata);
     if (metadata?.wireToolType === 'custom') {
-      result[name] = openai.tools.customTool({
-        ...(typeof tool.description === 'string' ? { description: tool.description } : {}),
-        ...(metadata.format === undefined ? {} : { format: metadata.format }),
-      });
+      result[name] = {
+        ...openai.tools.customTool({
+          ...(typeof tool.description === 'string' ? { description: tool.description } : {}),
+          ...(metadata.format === undefined ? {} : { format: metadata.format }),
+        }),
+        metadata: tool.metadata,
+      };
     } else {
       result[name] = tool;
     }

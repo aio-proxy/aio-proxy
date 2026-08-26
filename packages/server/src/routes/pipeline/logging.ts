@@ -36,10 +36,8 @@ export function logModelInvocationDiagnostics(options: {
   readonly requestId: string;
   readonly rawRequest: Request;
   readonly inboundProtocol: string;
-  readonly requestedModelId: string;
   readonly diagnostics: readonly ModelInvocationDiagnostic[];
   readonly providerId: string;
-  readonly modelId: string;
   readonly attemptIndex: number;
 }): void {
   for (const diagnostic of options.diagnostics) {
@@ -47,10 +45,8 @@ export function logModelInvocationDiagnostics(options: {
       event: 'request.feature_downgraded',
       requestId: options.requestId,
       inboundProtocol: options.inboundProtocol,
-      requestedModelId: options.requestedModelId,
       path: new URL(options.rawRequest.url).pathname,
       providerId: options.providerId,
-      modelId: options.modelId,
       attemptIndex: options.attemptIndex,
       ...diagnostic,
     });

@@ -111,27 +111,24 @@ type RequestFeatureDowngradedIdentity = {
   readonly event: 'request.feature_downgraded';
   readonly requestId: string;
   readonly inboundProtocol: string;
-  readonly requestedModelId: string;
   readonly path: string;
 };
 
-export type RequestFeatureDowngradedLog = RequestFeatureDowngradedIdentity &
-  (
-    | {
-        readonly feature: 'background';
-        readonly action: 'dropped';
-        readonly effectiveMode: 'synchronous';
-      }
-    | {
-        readonly feature: 'web_search_call';
-        readonly action: 'dropped';
-        readonly reason: 'completed_without_results_or_sources';
-        readonly inputIndex: number;
-        readonly providerId: string;
-        readonly modelId: string;
-        readonly attemptIndex: number;
-      }
-  );
+export type RequestFeatureDowngradedLog =
+  | (RequestFeatureDowngradedIdentity & {
+      readonly requestedModelId: string;
+      readonly feature: 'background';
+      readonly action: 'dropped';
+      readonly effectiveMode: 'synchronous';
+    })
+  | (RequestFeatureDowngradedIdentity & {
+      readonly feature: 'web_search_call';
+      readonly action: 'dropped';
+      readonly reason: 'completed_without_results_or_sources';
+      readonly inputIndex: number;
+      readonly providerId: string;
+      readonly attemptIndex: number;
+    });
 
 export type TracePersistenceFailedLog = {
   readonly event: 'trace.persistence_failed';

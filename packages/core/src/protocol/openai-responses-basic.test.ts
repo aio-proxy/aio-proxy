@@ -88,6 +88,7 @@ describe('openAIResponsesAdapter', () => {
       role: 'assistant',
       content: [{ type: 'tool-call', toolCallId: 'call_1', toolName: 'emit_raw', input: 'pwd' }],
     });
+    expect(specialized.tools?.emit_raw?.metadata).toBe(portableTool?.metadata);
     expect(base.messages[0]).toBe(portableMessage);
     expect(base.tools?.emit_raw).toBe(portableTool);
   });
