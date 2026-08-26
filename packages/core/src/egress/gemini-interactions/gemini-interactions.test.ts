@@ -230,6 +230,32 @@ describe('writeGeminiInteractionsSSE', () => {
     expect(text).toContain('"status":"requires_action"');
   });
 
+  test('retains argument deltas after a later parallel function_call starts', async () => {
+    const text = await readSse(
+      writeGeminiInteractionsSSE(
+        streamOf(
+          { type: 'tool-input-start', id: 'c1', toolName: 'get_weather' },
+          { type: 'tool-input-start', id: 'c2', toolName: 'get_time' },
+          { type: 'tool-input-delta', id: 'c1', delta: '{"location":"Boston, MA"}' },
+          { type: 'tool-input-delta', id: 'c2', delta: '{"tz":"ET"}' },
+          finish('tool-calls'),
+        ),
+        { modelId: 'm' },
+      ),
+    );
+    expect(text).toContain(
+      '"event_type":"step.delta","index":0,"delta":{"type":"arguments_delta","arguments":"{\\"location\\":\\"Boston, MA\\"}"}',
+    );
+    expect(text).toContain(
+      '"event_type":"step.delta","index":1,"delta":{"type":"arguments_delta","arguments":"{\\"tz\\":\\"ET\\"}"}',
+    );
+    expect(text).toContain(
+      '"type":"function_call","id":"c1","name":"get_weather","arguments":{"location":"Boston, MA"}',
+    );
+    expect(text).toContain('"type":"function_call","id":"c2","name":"get_time","arguments":{"tz":"ET"}');
+    expect(text).toContain('"status":"requires_action"');
+  });
+
   test('error finish emits error then done and never completed', async () => {
     const text = await readSse(
       writeGeminiInteractionsSSE(streamOf({ type: 'text-delta', id: 't', text: 'x' }, finish('error')), {

@@ -20,7 +20,9 @@ type OpenStep = {
 type ToolState = {
   readonly id: string;
   readonly name: string;
+  readonly index: number;
   input: string;
+  stopped: boolean;
 };
 
 type SseState = {
@@ -72,7 +74,7 @@ export function writeGeminiInteractionsSSE(
     }
     if (state.failed) return;
 
-    closeOpen(state);
+    closeRemaining(state);
     const functionCalls = Array.from(state.tools.values()).map(functionCallStep);
     const status = interactionStatus(state.finishReason, functionCalls.length > 0);
     if (status === 'error') {
@@ -111,7 +113,7 @@ function handlePart(state: SseState, part: GeminiInteractionsStreamPart): void {
       emitArgumentDelta(state, part.id, part.delta);
       break;
     case 'tool-input-end':
-      if (state.open?.kind === 'function_call' && state.open.id === part.id) closeOpen(state);
+      closeFunctionCall(state, part.id);
       break;
     case 'error':
       emitError(state, errorMessage(part.error));
@@ -154,38 +156,57 @@ function startFunctionCall(state: SseState, id: string, name: string): void {
     emitError(state, id.length === 0 ? 'function_call step is missing id' : 'function_call step is missing name');
     return;
   }
-  closeOpen(state);
+  if (state.open !== undefined && state.open.kind !== 'function_call') closeOpen(state);
   const step = { type: 'function_call' as const, id, name, arguments: {} };
   assertFunctionCallStep(step);
   const index = state.nextIndex++;
   state.open = { kind: 'function_call', index, id };
-  state.tools.set(id, { id, name, input: '' });
+  state.tools.set(id, { id, name, index, input: '', stopped: false });
   emitJson(state, 'step.start', { event_type: 'step.start', index, step });
 }
 
 function emitArgumentDelta(state: SseState, id: string, delta: string): void {
   const tool = state.tools.get(id);
-  if (tool === undefined || state.open?.kind !== 'function_call' || state.open.id !== id) return;
+  if (tool === undefined || tool.stopped) return;
   tool.input += delta;
   emitJson(state, 'step.delta', {
     event_type: 'step.delta',
-    index: state.open.index,
+    index: tool.index,
     delta: { type: 'arguments_delta', arguments: delta },
   });
 }
 
 function ensureStep(state: SseState, kind: Exclude<StepKind, 'function_call'>): void {
   if (state.open?.kind === kind) return;
-  closeOpen(state);
+  closeRemaining(state);
   const index = state.nextIndex++;
   state.open = { kind, index };
   emitJson(state, 'step.start', { event_type: 'step.start', index, step: { type: kind } });
 }
 
+function closeFunctionCall(state: SseState, id: string): void {
+  const tool = state.tools.get(id);
+  if (tool === undefined || tool.stopped) return;
+  emitJson(state, 'step.stop', { event_type: 'step.stop', index: tool.index });
+  tool.stopped = true;
+  if (state.open?.kind === 'function_call' && state.open.id === id) state.open = undefined;
+}
+
 function closeOpen(state: SseState): void {
   if (state.open === undefined) return;
+  if (state.open.kind === 'function_call') {
+    closeFunctionCall(state, state.open.id ?? '');
+    return;
+  }
   emitJson(state, 'step.stop', { event_type: 'step.stop', index: state.open.index });
   state.open = undefined;
+}
+
+function closeRemaining(state: SseState): void {
+  closeOpen(state);
+  for (const tool of state.tools.values()) {
+    if (!tool.stopped) closeFunctionCall(state, tool.id);
+  }
 }
 
 function emitJson(state: SseState, eventType: string, payload: Record<string, unknown>): void {
@@ -197,7 +218,7 @@ function emitJson(state: SseState, eventType: string, payload: Record<string, un
 function emitError(state: SseState, message: string): void {
   if (state.failed) return;
   state.failed = true;
-  closeOpen(state);
+  closeRemaining(state);
   emitJson(state, 'error', {
     event_type: 'error',
     error: { code: 500, message, status: 'INTERNAL' },
