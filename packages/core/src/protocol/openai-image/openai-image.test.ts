@@ -149,8 +149,8 @@ test('copies present provider options and drops unknown fields on convert', asyn
   expect(openAIImagesAdapter.imageInvocation(request, generations).providerOptions).toEqual({
     openai: {
       quality: 'high',
-      output_format: 'webp',
-      output_compression: 50,
+      outputFormat: 'webp',
+      outputCompression: 50,
       background: 'opaque',
       moderation: 'low',
       style: 'vivid',

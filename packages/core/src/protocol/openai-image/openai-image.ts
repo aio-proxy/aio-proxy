@@ -55,6 +55,15 @@ const PROVIDER_OPTION_KEYS = [
   'style',
   'user',
 ] as const satisfies readonly (keyof OpenAIImageRequest)[];
+const PROVIDER_OPTION_AI_SDK_KEYS = {
+  quality: 'quality',
+  output_format: 'outputFormat',
+  output_compression: 'outputCompression',
+  background: 'background',
+  moderation: 'moderation',
+  style: 'style',
+  user: 'user',
+} as const satisfies Record<(typeof PROVIDER_OPTION_KEYS)[number], string>;
 
 export function imageConvertSkipReason(input: {
   readonly request: OpenAIImageRequest;
@@ -215,7 +224,7 @@ function convertProviderOptions(request: OpenAIImageRequest): ImageInvocation['p
   const openai: Record<string, unknown> = {};
   for (const key of PROVIDER_OPTION_KEYS) {
     const value = request[key];
-    if (value != null) openai[key] = value;
+    if (value != null) openai[PROVIDER_OPTION_AI_SDK_KEYS[key]] = value;
   }
   return Object.keys(openai).length === 0 ? undefined : { openai };
 }

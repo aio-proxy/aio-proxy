@@ -181,4 +181,15 @@ describe('passthrough usage extraction', () => {
       ),
     ).toEqual({ inputTokens: 2, outputTokens: 3, totalTokens: 5, imageCount: 1, webSearchCount: 2 });
   });
+
+  test('counts Images SSE completed events alongside official tokens', () => {
+    expect(
+      extractPassthroughUsage(
+        ProviderProtocol.OpenAIImage,
+        'event: image_generation.partial_image\ndata: {"type":"image_generation.partial_image","b64_json":"p"}\n\n' +
+          'event: image_generation.completed\ndata: {"type":"image_generation.completed","b64_json":"a"}\n\n' +
+          'event: image_generation.completed\ndata: {"type":"image_generation.completed","b64_json":"b","usage":{"input_tokens":8,"output_tokens":16,"total_tokens":24}}\n\n',
+      ),
+    ).toEqual({ inputTokens: 8, outputTokens: 16, totalTokens: 24, imageCount: 2 });
+  });
 });
