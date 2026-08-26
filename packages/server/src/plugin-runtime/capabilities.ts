@@ -1,4 +1,9 @@
-import { createProviderV4ImageInvoke, createProviderV4Invoke, validateProviderV4 } from '@aio-proxy/core';
+import {
+  createProviderV4Embed,
+  createProviderV4ImageInvoke,
+  createProviderV4Invoke,
+  validateProviderV4,
+} from '@aio-proxy/core';
 import type {
   LogicalRequestContext,
   ModelCatalog,
@@ -14,7 +19,7 @@ import {
   type OAuthProvider,
   preservedAliasModels,
   ProviderKind,
-  type ProviderProtocol,
+  ProviderProtocol,
 } from '@aio-proxy/types';
 import { uniq } from 'es-toolkit/array';
 
@@ -31,21 +36,40 @@ export const pluginProtocol = {
   'openai-image': 'openai-image',
 } as const satisfies Record<ProviderProtocol, ProtocolId>;
 
-export function catalogModelIds(catalog: Pick<ModelCatalog, 'language' | 'image'>): string[] {
-  return uniq([...catalog.language.map(({ id }) => id), ...catalog.image.map(({ id }) => id)]);
+export function catalogModelIds(catalog: Pick<ModelCatalog, 'language' | 'image' | 'embedding'>): string[] {
+  return uniq([
+    ...catalog.language.map(({ id }) => id),
+    ...catalog.image.map(({ id }) => id),
+    ...catalog.embedding.map(({ id }) => id),
+  ]);
 }
 
 function rawCapability(rawResolver: RawResolver | undefined, catalog: ModelCatalog) {
   if (rawResolver === undefined) return undefined;
   const languageCatalogById = new Map(catalog.language.map((descriptor) => [descriptor.id, descriptor]));
   const imageCatalogById = new Map(catalog.image.map((descriptor) => [descriptor.id, descriptor]));
+  const embeddingCatalogById = new Map(catalog.embedding.map((descriptor) => [descriptor.id, descriptor]));
   return {
-    resolve({ protocol, modelId }: { readonly protocol: ProviderProtocol; readonly modelId: string }) {
-      const descriptor = imageCatalogById.get(modelId) ?? languageCatalogById.get(modelId);
+    resolve({
+      protocol,
+      modelId,
+      capability,
+    }: {
+      readonly protocol: ProviderProtocol;
+      readonly modelId: string;
+      readonly capability?: 'language' | 'embedding';
+    }) {
+      const descriptor =
+        capability === 'embedding'
+          ? (embeddingCatalogById.get(modelId) ?? languageCatalogById.get(modelId) ?? imageCatalogById.get(modelId))
+          : protocol === ProviderProtocol.OpenAIImage
+            ? (imageCatalogById.get(modelId) ?? languageCatalogById.get(modelId) ?? embeddingCatalogById.get(modelId))
+            : (languageCatalogById.get(modelId) ?? imageCatalogById.get(modelId) ?? embeddingCatalogById.get(modelId));
       const transport = rawResolver({
         protocol: pluginProtocol[protocol],
         modelId,
         ...(descriptor?.metadata === undefined ? {} : { metadata: descriptor.metadata }),
+        ...(capability === undefined ? {} : { capability }),
       });
       if (transport === undefined) return undefined;
       if (
@@ -134,6 +158,8 @@ export function createRuntimeProvider(
   const { capabilityIndex, configMetadata, upstreamMetadata } = routingCapabilities(config, catalog, models);
   const image =
     catalog.image.length > 0 ? { invoke: createProviderV4ImageInvoke(config.id, result.provider) } : undefined;
+  const embedding =
+    catalog.embedding.length > 0 ? { embed: createProviderV4Embed(config.id, result.provider) } : undefined;
   const base = {
     id: config.id,
     kind: ProviderKind.OAuth,
@@ -153,6 +179,7 @@ export function createRuntimeProvider(
       ...base,
       ...(raw === undefined ? {} : { raw }),
       ...(image === undefined ? {} : { image }),
+      ...(embedding === undefined ? {} : { embedding }),
       model: {
         invoke: createProviderV4Invoke(config.id, result.provider),
         supportsProviderTool: (type) => supportedProviderTools.has(type),
@@ -161,7 +188,15 @@ export function createRuntimeProvider(
     };
   }
   if (image !== undefined) {
-    return { ...base, image, ...(raw === undefined ? {} : { raw }) };
+    return {
+      ...base,
+      image,
+      ...(embedding === undefined ? {} : { embedding }),
+      ...(raw === undefined ? {} : { raw }),
+    };
+  }
+  if (embedding !== undefined) {
+    return { ...base, embedding, ...(raw === undefined ? {} : { raw }) };
   }
   if (raw !== undefined) {
     return { ...base, raw };

@@ -75,6 +75,7 @@ export type RawResolver = (input: {
   readonly protocol: ProtocolId;
   readonly modelId: string;
   readonly metadata?: JsonValue;
+  readonly capability?: 'language' | 'embedding';
 }) => RawTransport | undefined;
 
 export type ModelDescriptor = {

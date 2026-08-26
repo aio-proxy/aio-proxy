@@ -4,14 +4,14 @@ import { isInboundAbort } from '../../../route-observation';
 import { type AttemptInfo, attemptBase } from '../attempt-base';
 import { failureTerminal, finalFailure } from '../failure';
 import type { SpanTerminal } from '../tracing';
-import type { AttemptLoopContext, AttemptStep, CandidateSlot } from './context';
+import type { AnyAttemptLoopContext, AttemptStep, CandidateSlot } from './context';
 import { cooldownTtlMs } from './cooldown-write';
 import { attemptLog } from './emit';
 
 // Ends the candidate's attempt span: reuses the span opened before the provider
 // call when present, otherwise opens and closes one for pre-invocation failures.
 function endAttemptSpan<TRequest, TContext>(
-  ctx: AttemptLoopContext<TRequest, TContext>,
+  ctx: AnyAttemptLoopContext<TRequest, TContext>,
   slot: CandidateSlot,
   base: AttemptInfo,
   terminal: SpanTerminal,
@@ -25,26 +25,36 @@ function endAttemptSpan<TRequest, TContext>(
   ctx.emitter.emitAttempt(base, slot.index, slot.observation, terminal);
 }
 
-// No raw or model capability matched the inbound protocol for this candidate.
+// Terminates a candidate attempt on a rejection Response: falls back to the next
+// candidate when one exists, otherwise finishes the request as terminal failure.
+export function emitReject<TRequest, TContext>(
+  ctx: AnyAttemptLoopContext<TRequest, TContext>,
+  slot: CandidateSlot,
+  response: Response,
+  errorCode?: string,
+): AttemptStep {
+  const { candidate, startedAt, hasNext } = slot;
+  const base = attemptBase(candidate.provider, candidate.modelId, startedAt, slot.trace);
+  endAttemptSpan(ctx, slot, base, failureTerminal(response.status, errorCode));
+  if (hasNext) {
+    return { kind: 'fallback', lastFailure: response };
+  }
+  ctx.session.finish({ ...finalFailure(base, response.status, errorCode), clientResponse: response });
+  return { kind: 'return', response };
+}
+
+// No transport on this candidate matched the inbound protocol's capability.
 export function unsupportedDispatch<TRequest, TContext>(
-  ctx: AttemptLoopContext<TRequest, TContext>,
+  ctx: AnyAttemptLoopContext<TRequest, TContext>,
   slot: CandidateSlot,
 ): AttemptStep {
-  const { candidate, startedAt, hasNext, index } = slot;
-  const unsupported = ctx.adapter.errors.unsupported('transform_dispatch');
-  const base = attemptBase(candidate.provider, candidate.modelId, startedAt, slot.trace);
-  ctx.emitter.emitAttempt(base, index, slot.observation, failureTerminal(unsupported.status));
-  if (hasNext) {
-    return { kind: 'fallback', lastFailure: unsupported };
-  }
-  ctx.session.finish({ ...finalFailure(base, unsupported.status), clientResponse: unsupported });
-  return { kind: 'return', response: unsupported };
+  return emitReject(ctx, slot, ctx.adapter.errors.unsupported('transform_dispatch'));
 }
 
 // Maps a thrown provider error onto a protocol error response, distinguishing
 // inbound cancellation from genuine failure and honoring fallback.
 export function handleAttemptError<TRequest, TContext>(
-  ctx: AttemptLoopContext<TRequest, TContext>,
+  ctx: AnyAttemptLoopContext<TRequest, TContext>,
   slot: CandidateSlot,
   error: unknown,
 ): AttemptStep {

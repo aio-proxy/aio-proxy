@@ -4,7 +4,8 @@ import type { RawTransport } from '../../../runtime';
 import { attemptBase, candidateConfigPrice } from '../attempt-base';
 import { failureTerminal, finalFailure, shouldFallbackStatus } from '../failure';
 import { retainResponseBody } from '../stream';
-import type { AttemptLoopContext, AttemptStep, CandidateSlot } from './context';
+import type { OpenSpan } from '../tracing';
+import type { AnyAttemptLoopContext, AttemptLoopContext, AttemptStep, CandidateSlot } from './context';
 import { cooldownTtlMs } from './cooldown-write';
 import { resolveSupportedEffortsForDimensions } from './effort-capability';
 import { attemptLog } from './emit';
@@ -17,20 +18,47 @@ export async function attemptRawCandidate<TRequest, TContext>(
   raw: RawTransport,
   options: { readonly idleTimeoutMs?: number } = {},
 ): Promise<AttemptStep> {
-  const { adapter, context, rawRequest, request, session, source, logicalRequest, release, deferRelease, logFailure } =
-    ctx;
-  const { index, candidate, startedAt, observation, hasNext, inAttempt } = slot;
-  const provider = candidate.provider;
-  const attemptSpan = ctx.emitter.startAttempt(attemptBase(provider, candidate.modelId, startedAt, slot.trace), index);
-  slot.spanRef.current = attemptSpan;
-
+  const { adapter, context, rawRequest, request } = ctx;
+  const attemptSpan = startRawAttempt(ctx, slot);
   // Capabilities are only resolved when the request carries an effort to
   // clamp; otherwise the helper returns an empty set without a catalog read.
   const supportedEfforts = await resolveSupportedEffortsForDimensions(
     adapter.dimensions(request, context),
-    candidate.modelId,
+    slot.candidate.modelId,
   );
-  const upstream = await adapter.rawRequest(rawRequest, request, candidate.modelId, supportedEfforts, context);
+  const upstream = await adapter.rawRequest(rawRequest, request, slot.candidate.modelId, supportedEfforts, context);
+  return await completeRawAttempt(ctx, slot, raw, upstream, attemptSpan, options);
+}
+
+// Opens the attempt span before the rewritten request is built, so the span
+// duration covers request rewriting as well as the upstream call.
+export function startRawAttempt<TRequest, TContext>(
+  ctx: AnyAttemptLoopContext<TRequest, TContext>,
+  slot: CandidateSlot,
+): OpenSpan {
+  const { candidate, startedAt, index } = slot;
+  const attemptSpan = ctx.emitter.startAttempt(
+    attemptBase(candidate.provider, candidate.modelId, startedAt, slot.trace),
+    index,
+  );
+  slot.spanRef.current = attemptSpan;
+  return attemptSpan;
+}
+
+// Invokes the raw transport and applies the shared success / fallback status
+// rules. Every inbound capability that passes a request through untouched uses
+// this, so the fallback statuses and cooldown writes stay identical.
+export async function completeRawAttempt<TRequest, TContext>(
+  ctx: AnyAttemptLoopContext<TRequest, TContext>,
+  slot: CandidateSlot,
+  raw: RawTransport,
+  upstream: Request,
+  attemptSpan: OpenSpan,
+  options: { readonly idleTimeoutMs?: number } = {},
+): Promise<AttemptStep> {
+  const { adapter, rawRequest, session, source, logicalRequest, release, deferRelease, logFailure } = ctx;
+  const { index, candidate, startedAt, observation, hasNext, inAttempt } = slot;
+  const provider = candidate.provider;
   observation.markTransportUnavailable();
   const response = await inAttempt(adapter.protocol, () =>
     raw.invoke(upstream, logicalRequest, { upstreamStream: ctx.streamRequested }),
@@ -112,7 +140,7 @@ function withEventStreamContentType(response: Response, streamRequested: boolean
 
 function retainedFailure<TRequest, TContext>(
   response: Response,
-  ctx: AttemptLoopContext<TRequest, TContext>,
+  ctx: AnyAttemptLoopContext<TRequest, TContext>,
 ): Response {
   const retained = retainResponseBody(response, ctx.release);
   if (retained !== response) ctx.deferRelease();

@@ -15,6 +15,11 @@ test('image inbound filters out a language-only id', () => {
   expect(filterCandidatesByCapability(candidates, 'image')).toEqual([]);
 });
 
+test('embedding inbound keeps router-resolved candidates without a language/image index', () => {
+  const candidates = [candidate('embed', {})];
+  expect(filterCandidatesByCapability(candidates, 'embedding')).toEqual(candidates);
+});
+
 test('matching inbound capability keeps the candidate', () => {
   const language = candidate('gpt-5', { 'gpt-5': new Set(['language']) });
   const image = candidate('gpt-image-2', { 'gpt-image-2': new Set(['image']) });

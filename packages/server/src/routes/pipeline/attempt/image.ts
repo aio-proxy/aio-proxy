@@ -7,7 +7,7 @@ import { captureImageUsage } from '../../../usage-capture/image-capture';
 import { attemptBase, candidateConfigPrice } from '../attempt-base';
 import { failureTerminal, finalFailure } from '../failure';
 import { logRequestRejected } from '../logging';
-import type { AttemptLoopContext, AttemptStep, CandidateSlot } from './context';
+import type { AnyAttemptLoopContext, AttemptLoopContext, AttemptStep, CandidateSlot } from './context';
 import { unsupportedDispatch } from './error';
 import { attemptRawCandidate } from './raw';
 
@@ -18,7 +18,7 @@ type ImageAttemptLoopContext<TRequest, TContext> = Omit<AttemptLoopContext<TRequ
 };
 
 export async function dispatchImageCandidate<TRequest, TContext>(
-  ctx: AttemptLoopContext<TRequest, TContext>,
+  ctx: AnyAttemptLoopContext<TRequest, TContext>,
   slot: CandidateSlot,
 ): Promise<AttemptStep> {
   const provider = slot.candidate.provider;

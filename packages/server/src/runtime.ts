@@ -1,6 +1,8 @@
 import type {
   AiSdkProviderInstance,
   ApiProviderInstance,
+  EmbeddingInvocation,
+  EmbeddingResult,
   ImageInvocation,
   ImageTransportResult,
   PluginRegistrySnapshot,
@@ -41,7 +43,19 @@ export type RuntimeRawCapability = {
   readonly resolve: (input: {
     readonly protocol: ProviderProtocol;
     readonly modelId: string;
+    readonly capability?: 'language' | 'embedding';
   }) => RawTransport | undefined;
+};
+
+export type EmbeddingTransport = {
+  readonly embed: (
+    invocation: EmbeddingInvocation,
+    options: {
+      readonly modelId: string;
+      readonly signal?: AbortSignal;
+      readonly logicalRequest: LogicalRequestContext;
+    },
+  ) => Promise<EmbeddingResult>;
 };
 
 export type ModelTransport = {
@@ -84,9 +98,30 @@ type RuntimeProviderBase = {
 export type RuntimeProviderInstance = RuntimeProviderBase & {
   readonly capabilityIndex: ModelCapabilityIndex;
 } & (
-    | { readonly raw: RuntimeRawCapability; readonly model?: ModelTransport; readonly image?: ImageTransport }
-    | { readonly raw?: RuntimeRawCapability; readonly model: ModelTransport; readonly image?: ImageTransport }
-    | { readonly raw?: RuntimeRawCapability; readonly model?: ModelTransport; readonly image: ImageTransport }
+    | {
+        readonly raw: RuntimeRawCapability;
+        readonly model?: ModelTransport;
+        readonly image?: ImageTransport;
+        readonly embedding?: EmbeddingTransport;
+      }
+    | {
+        readonly raw?: RuntimeRawCapability;
+        readonly model: ModelTransport;
+        readonly image?: ImageTransport;
+        readonly embedding?: EmbeddingTransport;
+      }
+    | {
+        readonly raw?: RuntimeRawCapability;
+        readonly model?: ModelTransport;
+        readonly image: ImageTransport;
+        readonly embedding?: EmbeddingTransport;
+      }
+    | {
+        readonly raw?: RuntimeRawCapability;
+        readonly model?: ModelTransport;
+        readonly image?: ImageTransport;
+        readonly embedding: EmbeddingTransport;
+      }
   );
 export type RuntimeProviderInput = LegacyRuntimeProviderInstance | RuntimeProviderInstance;
 

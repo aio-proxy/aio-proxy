@@ -42,11 +42,97 @@ function withModelAttempt<T>(
 }
 
 function assertRuntimeProviderRequiresCapability(provider: AiSdkProviderInstance): void {
-  // @ts-expect-error a materialized runtime provider must expose raw, model, or image
+  // @ts-expect-error a materialized runtime provider must expose raw, model, image, or embedding
   const runtime: RuntimeProviderInstance = provider;
   void runtime;
 }
 void assertRuntimeProviderRequiresCapability;
+
+test('attaches embedding convert when an OpenAI-compatible API bridge exposes embed', () => {
+  const embed = async () => ({ embeddings: [[0.1]] });
+  const config = ConfigSchema.parse({
+    providers: {
+      api: {
+        baseURL: 'https://api.example.com',
+        kind: ProviderKind.Api,
+        models: ['text-embedding-3-small'],
+        protocol: ProviderProtocol.OpenAICompatible,
+      },
+    },
+  });
+
+  const runtime = materializeProviders(config, {
+    bridgeApiProvider() {
+      return {
+        enabled: true,
+        id: 'api:bridge',
+        kind: ProviderKind.AiSdk,
+        invoke: () => new ReadableStream(),
+        embed,
+      } satisfies AiSdkProviderInstance;
+    },
+  });
+
+  expect(runtime.providers[0]?.embedding?.embed).toBe(embed);
+});
+
+test('attaches embedding convert when a Gemini API bridge exposes embed', () => {
+  const embed = async () => ({ embeddings: [[0.2]] });
+  const config = ConfigSchema.parse({
+    providers: {
+      api: {
+        baseURL: 'https://generativelanguage.googleapis.com/v1beta',
+        kind: ProviderKind.Api,
+        models: ['gemini-embedding-001'],
+        protocol: ProviderProtocol.Gemini,
+      },
+    },
+  });
+
+  const runtime = materializeProviders(config, {
+    bridgeApiProvider() {
+      return {
+        enabled: true,
+        id: 'api:bridge',
+        kind: ProviderKind.AiSdk,
+        invoke: () => new ReadableStream(),
+        embed,
+      } satisfies AiSdkProviderInstance;
+    },
+  });
+
+  expect(runtime.providers[0]?.embedding?.embed).toBe(embed);
+});
+
+test('attaches embedding convert when an AI SDK instance exposes embed', () => {
+  const embed = async () => ({ embeddings: [[0.3]] });
+  const runtime = materializeRuntimeProvider({
+    enabled: true,
+    embed,
+    id: 'sdk',
+    invoke: () => new ReadableStream(),
+    kind: ProviderKind.AiSdk,
+  } satisfies AiSdkProviderInstance);
+
+  expect(runtime.embedding?.embed).toBe(embed);
+});
+
+test('omits embedding convert when an Anthropic-primary API provider has no embeddingModel', () => {
+  const config = ConfigSchema.parse({
+    providers: {
+      api: {
+        baseURL: 'https://api.anthropic.com',
+        kind: ProviderKind.Api,
+        models: ['claude-sonnet-4-0'],
+        protocol: ProviderProtocol.Anthropic,
+      },
+    },
+  });
+
+  const runtime = materializeProviders(config);
+
+  expect(runtime.providers[0]?.embedding).toBeUndefined();
+});
 
 test('materializes a configured API provider with raw and bridged model capabilities once', () => {
   const config = ConfigSchema.parse({
@@ -437,14 +523,14 @@ test('materializes AI SDK inputs with model capabilities only', () => {
   expect(aiSdkRuntime).not.toHaveProperty('weight');
 });
 
-test('rejects an injected runtime provider without raw, model, or image capabilities', () => {
+test('rejects an injected runtime provider without raw, model, image, or embedding capabilities', () => {
   expect(() =>
     materializeRuntimeProvider({
       enabled: true,
       id: 'invalid',
       kind: ProviderKind.OAuth,
     } as never),
-  ).toThrow('must expose a raw, model, or image capability');
+  ).toThrow('must expose a raw, model, image, or embedding capability');
 });
 
 test('materializes an API input whose raw placeholder is undefined', async () => {

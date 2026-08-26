@@ -13,6 +13,7 @@ import type {
   LanguageAttemptLoopContext,
 } from './context';
 import { resolveSupportedEffortsForDimensions } from './effort-capability';
+import { emitReject } from './error';
 
 export type PreparedInvocation =
   | {
@@ -21,24 +22,6 @@ export type PreparedInvocation =
       readonly targetProtocol: ProviderProtocol | undefined;
     }
   | { readonly kind: 'step'; readonly step: AttemptStep };
-
-// Terminates a candidate attempt on a rejection Response: falls back to the next
-// candidate when one exists, otherwise finishes the request as terminal failure.
-export function emitReject<TRequest, TContext>(
-  ctx: AttemptLoopContext<TRequest, TContext>,
-  slot: CandidateSlot,
-  response: Response,
-  errorCode?: string,
-): AttemptStep {
-  const { index, candidate, startedAt, hasNext } = slot;
-  const base = attemptBase(candidate.provider, candidate.modelId, startedAt, slot.trace);
-  ctx.emitter.emitAttempt(base, index, slot.observation, failureTerminal(response.status, errorCode));
-  if (hasNext) {
-    return { kind: 'fallback', lastFailure: response };
-  }
-  ctx.session.finish({ ...finalFailure(base, response.status, errorCode), clientResponse: response });
-  return { kind: 'return', response };
-}
 
 // Rejects a candidate whose materialized invocation needs a capability this
 // provider lacks (image input or a provider-native tool). Returns an early

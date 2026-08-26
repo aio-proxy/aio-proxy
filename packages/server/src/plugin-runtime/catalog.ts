@@ -84,18 +84,35 @@ export function catalogFreshness(
 }
 
 export function modelMetadataRecord(catalog: ModelCatalog): Readonly<Record<string, RuntimeModelMetadata>> {
-  return Object.fromEntries(
-    [...catalog.language, ...catalog.image].map((descriptor) => {
-      const protocol = metadataProtocol(descriptor.metadata);
-      return [
-        descriptor.id,
-        {
-          ...(descriptor.displayName === undefined ? {} : { name: descriptor.displayName }),
-          ...(protocol === undefined ? {} : { protocol }),
-        },
-      ];
-    }),
-  );
+  const record: Record<string, RuntimeModelMetadata> = {};
+  for (const descriptor of [...catalog.embedding, ...catalog.image]) {
+    record[descriptor.id] = descriptorMetadata(descriptor);
+  }
+  for (const descriptor of catalog.language) {
+    const next = descriptorMetadata(descriptor);
+    const existing = record[descriptor.id];
+    if (existing === undefined) {
+      record[descriptor.id] = next;
+      continue;
+    }
+    // Language owns targetProtocol. Image/embed convert do not read this record
+    // for dispatch, so an overlapping non-language descriptor must not replace
+    // or invent a protocol.
+    record[descriptor.id] = {
+      ...(existing.name === undefined ? {} : { name: existing.name }),
+      ...(next.name === undefined ? {} : { name: next.name }),
+      ...(next.protocol === undefined ? {} : { protocol: next.protocol }),
+    };
+  }
+  return record;
+}
+
+function descriptorMetadata(descriptor: ModelCatalog['language'][number]): RuntimeModelMetadata {
+  const protocol = metadataProtocol(descriptor.metadata);
+  return {
+    ...(descriptor.displayName === undefined ? {} : { name: descriptor.displayName }),
+    ...(protocol === undefined ? {} : { protocol }),
+  };
 }
 
 function metadataProtocol(metadata: unknown): ProviderProtocol | undefined {

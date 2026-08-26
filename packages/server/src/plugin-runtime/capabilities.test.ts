@@ -388,3 +388,124 @@ test('createRuntimeProvider exposes catalog.image ids and does not synthesize la
   expect(supportsImage(provider!.capabilityIndex, 'gpt-image-2')).toBe(true);
   expect(provider?.raw?.resolve({ protocol: ProviderProtocol.OpenAIImage, modelId: 'gpt-image-2' })).toBeDefined();
 });
+
+test('shared language and image catalog ids keep language targetProtocol and image capability', () => {
+  const cached = {
+    id: 'person',
+    kind: ProviderKind.OAuth,
+    enabled: true,
+    models: ['shared'],
+    capabilityIndex: { shared: new Set(['language']) },
+    model: {
+      invoke: () => {
+        throw new Error('unused');
+      },
+    },
+  } as never;
+
+  const next = withRoutingConfig(cached, providerConfig as never, {
+    ...catalog,
+    language: [{ id: 'shared', displayName: 'Chat', metadata: { protocol: 'anthropic' } }],
+    image: [{ id: 'shared', displayName: 'Image', metadata: { protocol: 'openai-image' } }],
+  });
+
+  expect(next.upstreamMetadata?.shared).toEqual({
+    name: 'Chat',
+    protocol: ProviderProtocol.Anthropic,
+  });
+  expect(supportsImage(next.capabilityIndex, 'shared')).toBe(true);
+  expect(next.capabilityIndex.shared?.has('language')).toBe(true);
+});
+
+test('unions catalog language and embedding into models and attaches embedding convert', async () => {
+  const fixture = runtimeFixture({ kind: 'static' }, { createRuntime: async () => ({ provider: providerV4() }) });
+  fixture.repository.writeCatalog(
+    'person',
+    {
+      ...catalog,
+      language: [{ id: 'chat' }, { id: 'shared' }],
+      embedding: [{ id: 'embed', displayName: 'Embed Model', metadata: { protocol: 'gemini' } }, { id: 'shared' }],
+    },
+    1_000,
+  );
+
+  const first = await materializeFixture(fixture);
+
+  expect(first.provider?.models).toEqual(['chat', 'shared', 'embed']);
+  expect(typeof first.provider?.embedding?.embed).toBe('function');
+  expect(first.provider?.upstreamMetadata?.embed).toEqual({
+    name: 'Embed Model',
+    protocol: ProviderProtocol.Gemini,
+  });
+
+  const second = await materializePluginProvider({
+    config: { ...providerConfig, models: ['embed'] },
+    plugins: fixture.plugins,
+    repository: fixture.repository,
+    diagnostics,
+    logger: () => {},
+    onDiagnosticChanged: () => {},
+    previous: first.cacheEntry,
+  });
+
+  expect(second.cacheEntry?.identity).toBe(first.cacheEntry?.identity);
+  expect(second.provider?.models).toEqual(['embed']);
+
+  const third = await materializePluginProvider({
+    config: providerConfig,
+    plugins: fixture.plugins,
+    repository: fixture.repository,
+    diagnostics,
+    logger: () => {},
+    onDiagnosticChanged: () => {},
+    previous: second.cacheEntry,
+  });
+
+  expect(third.provider?.models).toEqual(['chat', 'shared', 'embed']);
+});
+
+test('forwards embedding capability and catalog metadata to the plugin raw resolver', async () => {
+  const observed: unknown[] = [];
+  const fixture = runtimeFixture(
+    { kind: 'static' },
+    {
+      catalog: {
+        ...catalog,
+        language: [{ id: 'chat' }],
+        embedding: [{ id: 'embed', metadata: { region: 'us', protocol: 'gemini' } }],
+      },
+      createRuntime: async () =>
+        ({
+          provider: providerV4(),
+          raw(input: Parameters<RawResolver>[0]) {
+            observed.push(input);
+            return { invoke: async () => new Response('ok') };
+          },
+        }) as never,
+    },
+  );
+  fixture.repository.writeCatalog(
+    'person',
+    {
+      ...catalog,
+      language: [{ id: 'chat' }],
+      embedding: [{ id: 'embed', metadata: { region: 'us', protocol: 'gemini' } }],
+    },
+    1_000,
+  );
+
+  const result = await materializeFixture(fixture);
+  const transport = result.provider?.raw?.resolve({
+    protocol: ProviderProtocol.Gemini,
+    modelId: 'embed',
+    capability: 'embedding',
+  });
+
+  expect(await transport?.invoke(new Request('https://example.test'))).toBeInstanceOf(Response);
+  expect(observed[0]).toEqual({
+    protocol: 'gemini',
+    modelId: 'embed',
+    metadata: { region: 'us', protocol: 'gemini' },
+    capability: 'embedding',
+  });
+});

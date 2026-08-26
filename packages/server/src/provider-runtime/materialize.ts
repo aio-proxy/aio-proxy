@@ -12,6 +12,7 @@ import { aliasTargetModels, apiProviderEndpoints, ProviderKind, ProviderProtocol
 import { createProviderRequestTransformFetch } from '../provider-request-transform';
 import { createObservedFetch } from '../request-logging';
 import type {
+  EmbeddingTransport,
   ImageTransport,
   ModelCapabilityIndex,
   ModelTransport,
@@ -91,6 +92,7 @@ export function materializeRuntimeProvider(
               ...(apiBridge.targetProtocol === undefined ? {} : { targetProtocol: () => apiBridge.targetProtocol }),
             },
           }),
+      ...embeddingTransport(apiBridge),
     };
   }
 
@@ -113,16 +115,20 @@ export function materializeRuntimeProvider(
         invoke: provider.invoke,
         ...(provider.targetProtocol === undefined ? {} : { targetProtocol: () => provider.targetProtocol }),
       },
+      ...embeddingTransport(provider),
     };
   }
 
-  throw new TypeError('Runtime provider must expose a raw, model, or image capability');
+  throw new TypeError('Runtime provider must expose a raw, model, image, or embedding capability');
 }
 
 function isMaterializedRuntimeProvider(provider: RuntimeProviderInput): provider is RuntimeProviderInstance {
   const raw = Object.hasOwn(provider, 'raw') ? (provider as { readonly raw?: unknown }).raw : undefined;
   const model = Object.hasOwn(provider, 'model') ? (provider as { readonly model?: unknown }).model : undefined;
   const image = Object.hasOwn(provider, 'image') ? (provider as { readonly image?: unknown }).image : undefined;
+  const embedding = Object.hasOwn(provider, 'embedding')
+    ? (provider as { readonly embedding?: unknown }).embedding
+    : undefined;
   if (raw !== undefined && !isRuntimeRawCapability(raw)) {
     throw new TypeError(`Runtime provider ${provider.id} has an invalid raw capability`);
   }
@@ -132,7 +138,10 @@ function isMaterializedRuntimeProvider(provider: RuntimeProviderInput): provider
   if (image !== undefined && !isImageTransport(image)) {
     throw new TypeError(`Runtime provider ${provider.id} has an invalid image capability`);
   }
-  return raw !== undefined || model !== undefined || image !== undefined;
+  if (embedding !== undefined && !isEmbeddingTransport(embedding)) {
+    throw new TypeError(`Runtime provider ${provider.id} has an invalid embedding capability`);
+  }
+  return raw !== undefined || model !== undefined || image !== undefined || embedding !== undefined;
 }
 
 function isRuntimeRawCapability(value: unknown): value is RuntimeRawCapability {
@@ -162,6 +171,16 @@ function isImageTransport(value: unknown): value is ImageTransport {
       value.ensureAvailable === undefined ||
       typeof value.ensureAvailable === 'function')
   );
+}
+
+function isEmbeddingTransport(value: unknown): value is EmbeddingTransport {
+  return typeof value === 'object' && value !== null && 'embed' in value && typeof value.embed === 'function';
+}
+
+function embeddingTransport(
+  source: { readonly embed?: EmbeddingTransport['embed'] } | undefined,
+): { readonly embedding: EmbeddingTransport } | Record<never, never> {
+  return source?.embed === undefined ? {} : { embedding: { embed: source.embed } };
 }
 
 function capabilityIndexFromRoutable(provider: {

@@ -7,6 +7,7 @@ export function filterCandidatesByCapability<T extends { provider: RuntimeProvid
   candidates: readonly T[],
   capability: InboundCapability,
 ): T[] {
+  if (capability === 'embedding') return [...candidates];
   return candidates.filter((candidate) =>
     capability === 'image'
       ? supportsImage(candidate.provider.capabilityIndex, candidate.modelId)

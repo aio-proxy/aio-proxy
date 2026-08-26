@@ -96,11 +96,11 @@ function parseOptionalNumber(value: string | undefined): number | undefined {
   return Number.isFinite(parsed) ? parsed : Number.NaN;
 }
 
-function parseOptionalBoolean(value: string | undefined): boolean | undefined {
+function parseOptionalBoolean(value: string | undefined): boolean | string | undefined {
   if (value === undefined) return undefined;
   if (value === 'true') return true;
   if (value === 'false') return false;
-  return undefined;
+  return value;
 }
 
 function multipartBoundary(contentType: string): string | undefined {

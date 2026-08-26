@@ -1,5 +1,6 @@
 import {
-  type InboundProtocolAdapter,
+  type AnyProtocolAdapter,
+  type ImageProtocolAdapter,
   RequestBodyTooLargeError,
   RouterModelNotFoundError,
   UnsupportedContentEncodingError,
@@ -17,7 +18,7 @@ import { logRequestDiagnostics, logRequestFailed, logRequestRejected } from './l
 import { cancelRetainedRequestBody, hasInvalidOrOversizedContentLength } from './request';
 
 export type HandleProtocolRequestOptions<TRequest, TContext> = {
-  readonly adapter: InboundProtocolAdapter<TRequest, TContext>;
+  readonly adapter: AnyProtocolAdapter<TRequest, TContext> | ImageProtocolAdapter<TRequest, TContext>;
   readonly context: TContext;
   readonly rawRequest: Request;
   readonly source: ProviderRouteSource;
@@ -155,7 +156,7 @@ type ParsedProtocolRequest<TRequest> =
   | { readonly request?: undefined; readonly response: Response };
 
 async function parseProtocolRequest<TRequest, TContext>(options: {
-  readonly adapter: InboundProtocolAdapter<TRequest, TContext>;
+  readonly adapter: AnyProtocolAdapter<TRequest, TContext> | ImageProtocolAdapter<TRequest, TContext>;
   readonly context: TContext;
   readonly inboundProtocol: ProviderProtocol;
   readonly rawRequest: Request;
@@ -199,7 +200,7 @@ function rejectParsedRequest<TRequest, TContext>(
     session,
     source,
   }: {
-    readonly adapter: InboundProtocolAdapter<TRequest, TContext>;
+    readonly adapter: AnyProtocolAdapter<TRequest, TContext> | ImageProtocolAdapter<TRequest, TContext>;
     readonly context: TContext;
     readonly inboundProtocol: ProviderProtocol;
     readonly rawRequest: Request;
@@ -211,7 +212,7 @@ function rejectParsedRequest<TRequest, TContext>(
 }
 
 async function attemptResolvedRequest<TRequest, TContext>(options: {
-  readonly adapter: InboundProtocolAdapter<TRequest, TContext>;
+  readonly adapter: AnyProtocolAdapter<TRequest, TContext> | ImageProtocolAdapter<TRequest, TContext>;
   readonly context: TContext;
   readonly inboundProtocol: ProviderProtocol;
   readonly rawRequest: Request;

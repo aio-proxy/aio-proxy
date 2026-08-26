@@ -1,4 +1,11 @@
-import type { InboundProtocolAdapter, ModelInvocation, ProtocolAdapter, RouterCandidate } from '@aio-proxy/core';
+import type {
+  AnyProtocolAdapter,
+  EmbeddingProtocolAdapter,
+  ImageProtocolAdapter,
+  ModelInvocation,
+  ProtocolAdapter,
+  RouterCandidate,
+} from '@aio-proxy/core';
 import type { LogicalRequestContext } from '@aio-proxy/plugin-sdk';
 import type { ProviderProtocol } from '@aio-proxy/types';
 
@@ -34,9 +41,19 @@ export type LogAttemptFailure = (
   detail?: { readonly response?: Response; readonly error?: unknown },
 ) => void;
 
-// Invariants shared by every candidate attempt in one request.
-export type AttemptLoopContext<TRequest, TContext> = {
-  readonly adapter: InboundProtocolAdapter<TRequest, TContext>;
+export type PipelineAdapter<TRequest, TContext> =
+  | AnyProtocolAdapter<TRequest, TContext>
+  | ImageProtocolAdapter<TRequest, TContext>;
+
+// Invariants shared by every candidate attempt in one request. TAdapter keeps
+// the language, image, and embedding attempt paths from seeing each other's
+// adapter surface while the loop itself stays capability-agnostic.
+export type AttemptLoopContext<
+  TRequest,
+  TContext,
+  TAdapter extends PipelineAdapter<TRequest, TContext> = ProtocolAdapter<TRequest, TContext>,
+> = {
+  readonly adapter: TAdapter;
   readonly context: TContext;
   readonly rawRequest: Request;
   readonly request: TRequest;
@@ -60,6 +77,20 @@ export type AttemptLoopContext<TRequest, TContext> = {
 export type LanguageAttemptLoopContext<TRequest, TContext> = Omit<AttemptLoopContext<TRequest, TContext>, 'adapter'> & {
   readonly adapter: ProtocolAdapter<TRequest, TContext>;
 };
+
+export type EmbeddingAttemptLoopContext<TRequest, TContext> = AttemptLoopContext<
+  TRequest,
+  TContext,
+  EmbeddingProtocolAdapter<TRequest, TContext>
+>;
+
+// Accepted by helpers that only touch capability-agnostic context (protocol,
+// error mapper, emitter, session).
+export type AnyAttemptLoopContext<TRequest, TContext> = AttemptLoopContext<
+  TRequest,
+  TContext,
+  PipelineAdapter<TRequest, TContext>
+>;
 
 // Per-candidate facts.
 export type CandidateSlot = {

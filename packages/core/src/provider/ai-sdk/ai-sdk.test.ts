@@ -95,6 +95,27 @@ describe('createAiSdkProvider', () => {
     expect(typeof optionsSeen?.['fetch']).toBe('function');
   });
 
+  test('omits embed when the package does not expose an embedding model', () => {
+    const provider = createAiSdkProvider({
+      kind: 'ai-sdk',
+      id: 'anthropic',
+      packageName: '@ai-sdk/anthropic',
+    });
+
+    expect(provider.embed).toBeUndefined();
+  });
+
+  test('exposes embed when the package has an embedding model', () => {
+    const provider = createAiSdkProvider({
+      kind: 'ai-sdk',
+      id: 'carpool',
+      packageName: '@ai-sdk/openai-compatible',
+      options: { baseURL: 'https://example.test/v1' },
+    });
+
+    expect(typeof provider.embed).toBe('function');
+  });
+
   test('forwards injected fetch and wins over serializable options.fetch', async () => {
     let decompressSeen: boolean | undefined;
     let acceptEncodingSeen: string | null = null;

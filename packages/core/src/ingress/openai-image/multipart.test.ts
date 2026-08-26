@@ -167,6 +167,42 @@ test('rejects multipart edits missing prompt or image', async () => {
   await expect(parseOpenAIImageEditsMultipart(editsMultipartRequest({ prompt: 'make it night' }))).rejects.toThrow();
 });
 
+test.each(['yes', '1', '', 'null'] as const)('rejects invalid multipart stream=%s', async (stream) => {
+  await expect(
+    parseOpenAIImageEditsMultipart(
+      editsMultipartRequest({
+        prompt: 'make it night',
+        image: blobFrom(PNG_1X1_RGBA),
+        stream,
+      }),
+    ),
+  ).rejects.toThrow();
+});
+
+test.each([
+  ['true', true],
+  ['false', false],
+] as const)('parses multipart stream=%s', async (value, expected) => {
+  const parsed = await parseOpenAIImageEditsMultipart(
+    editsMultipartRequest({
+      prompt: 'make it night',
+      image: blobFrom(PNG_1X1_RGBA),
+      stream: value,
+    }),
+  );
+  expect(parsed.stream).toBe(expected);
+});
+
+test('omits stream when the multipart field is absent', async () => {
+  const parsed = await parseOpenAIImageEditsMultipart(
+    editsMultipartRequest({
+      prompt: 'make it night',
+      image: blobFrom(PNG_1X1_RGBA),
+    }),
+  );
+  expect(parsed.stream).toBeUndefined();
+});
+
 test('413s the first oversized file without requiring later official-max parts', async () => {
   const boundary = '----oversized';
   const header = new TextEncoder().encode(

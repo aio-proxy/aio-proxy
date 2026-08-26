@@ -15,6 +15,7 @@ import type {
 } from '../../src/runtime';
 import {
   createUsageCapture,
+  type EmbeddingUsageOptions,
   type PassthroughUsageOptions,
   type StreamUsageOptions,
   type UsageCapture,
@@ -119,11 +120,18 @@ export function defineProviderRouteSource(
   const realUsageCapture = createUsageCapture();
   const usage = {
     capturedStreams: [] as ModelEventStream[],
+    embedding: [] as EmbeddingUsageOptions[],
     passthrough: [] as PassthroughUsageOptions[],
     stream: [] as StreamUsageOptions[],
   };
   const logs: unknown[] = [];
   const usageCapture: UsageCapture = {
+    // Embedding usage has no transport to stub out, so record the call and let
+    // the real helper validate and price the row.
+    embedding(options) {
+      usage.embedding.push(options);
+      return realUsageCapture.embedding(options);
+    },
     passthrough(options) {
       usage.passthrough.push(options);
       return {
