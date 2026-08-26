@@ -19,7 +19,13 @@ export function hasContentDelta(protocol: ProviderProtocol, eventType: string | 
       const type = eventType ?? (isRecord(value) ? value['event_type'] : undefined);
       if (type !== 'step.delta' || !isRecord(value)) return false;
       const delta = value['delta'];
-      return isRecord(delta) && (delta['type'] === 'text' || delta['type'] === 'thought_summary');
+      if (!isRecord(delta)) return false;
+      if (delta['type'] === 'text') return nonEmptyString(delta['text']);
+      if (delta['type'] === 'thought_summary') {
+        const content = delta['content'];
+        return isRecord(content) && nonEmptyString(content['text']);
+      }
+      return false;
     }
     default:
       return assertNever(protocol);

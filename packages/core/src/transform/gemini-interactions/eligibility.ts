@@ -181,7 +181,9 @@ function assertStep(step: Record<string, unknown>, callIds: Set<string>): void {
   }
   if (type === 'function_call') {
     assertFunctionCall(step);
-    callIds.add(step['id'] as string);
+    const id = step['id'] as string;
+    if (callIds.has(id)) unsupported('input', 'input');
+    callIds.add(id);
     return;
   }
   assertFunctionResult(step, callIds);
@@ -195,6 +197,7 @@ function assertFunctionCall(step: Record<string, unknown>): void {
 
 function assertFunctionResult(step: Record<string, unknown>, callIds: Set<string>): void {
   if (typeof step['call_id'] !== 'string' || step['call_id'] === '') unsupported('input', 'input');
+  if (!('result' in step)) unsupported('input', 'input');
   if (!callIds.has(step['call_id'])) unsupported('input', 'input');
 }
 

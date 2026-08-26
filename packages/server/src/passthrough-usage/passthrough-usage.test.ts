@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 
 import { ProviderProtocol } from '@aio-proxy/types';
 
-import { extractPassthroughObservation, extractPassthroughUsage } from './index';
+import { createPassthroughSseUsageObserver, extractPassthroughObservation, extractPassthroughUsage } from './index';
 
 describe('passthrough usage extraction', () => {
   test('extracts OpenAI Chat JSON usage', () => {
@@ -180,5 +180,28 @@ describe('passthrough usage extraction', () => {
           'event: response.completed\ndata: {"type":"response.completed","response":{"status":"completed","usage":{"input_tokens":2,"output_tokens":3,"total_tokens":5}}}\n\n',
       ),
     ).toEqual({ inputTokens: 2, outputTokens: 3, totalTokens: 5, imageCount: 1, webSearchCount: 2 });
+  });
+
+  test('Interactions TTFT waits for a non-empty text or thought payload', () => {
+    let content = 0;
+    const observer = createPassthroughSseUsageObserver(ProviderProtocol.GeminiInteractions, {
+      onContent: () => {
+        content += 1;
+      },
+    });
+    observer.feed('event: step.delta\ndata: {"event_type":"step.delta","delta":{"type":"text","text":""}}\n\n');
+    observer.feed(
+      'event: step.delta\ndata: {"event_type":"step.delta","delta":{"type":"thought_summary","content":{"type":"text","text":""}}}\n\n',
+    );
+    observer.feed(
+      'event: step.delta\ndata: {"event_type":"step.delta","delta":{"type":"arguments_delta","arguments":"{"}}\n\n',
+    );
+    expect(content).toBe(0);
+    observer.feed('event: step.delta\ndata: {"event_type":"step.delta","delta":{"type":"text","text":"hi"}}\n\n');
+    expect(content).toBe(1);
+    observer.feed(
+      'event: step.delta\ndata: {"event_type":"step.delta","delta":{"type":"thought_summary","content":{"type":"text","text":"plan"}}}\n\n',
+    );
+    expect(content).toBe(2);
   });
 });

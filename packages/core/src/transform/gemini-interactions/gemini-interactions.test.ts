@@ -222,6 +222,29 @@ describe('geminiInteractionsToModelMessages', () => {
       },
       'input',
     ],
+    [
+      {
+        model: 'm',
+        store: false,
+        input: [
+          { type: 'function_call', id: 'c1', name: 't', arguments: {} },
+          { type: 'function_call', id: 'c1', name: 'u', arguments: {} },
+        ],
+      },
+      'input',
+    ],
+    [
+      {
+        model: 'm',
+        store: false,
+        input: [
+          { type: 'user_input', content: [{ type: 'text', text: 'hi' }] },
+          { type: 'function_call', id: 'c1', name: 't', arguments: {} },
+          { type: 'function_result', call_id: 'c1' },
+        ],
+      },
+      'input',
+    ],
     [{ model: 'm', input: [{ type: 'thought', content: [{ type: 'text', text: 'x' }] }], store: false }, 'input'],
     [{ model: 'm', input: 'x', store: false, labels: {} }, 'labels'],
   ])('throws modelUnsupported for %j', (body, feature) => {
