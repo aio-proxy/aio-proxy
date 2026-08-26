@@ -187,6 +187,11 @@ export function assertConvertSupported(values: readonly EmbeddingValue[]): void 
   }
 }
 
+type ResolvedProviderOptions = {
+  readonly key: string;
+  readonly providerOptions: EmbeddingProviderOptions | undefined;
+};
+
 function groupByProviderOptions(values: readonly EmbeddingValue[]): readonly EmbeddingGroup[] {
   const groups = new Map<
     string,
@@ -195,19 +200,37 @@ function groupByProviderOptions(values: readonly EmbeddingValue[]): readonly Emb
       providerOptions: EmbeddingProviderOptions | undefined;
     }
   >();
+  // OpenAI convert shares one options object across every input. Fingerprint it
+  // once; canonicalize+stringify per value is a sync DoS on a large `user`.
+  const resolvedBySource = new WeakMap<EmbeddingProviderOptions, ResolvedProviderOptions>();
 
   for (const [index, value] of values.entries()) {
-    const providerOptions = normalizeProviderOptions(value.providerOptions);
-    const key = providerOptionsKey(providerOptions);
-    const existing = groups.get(key);
+    const resolved = resolveProviderOptions(value.providerOptions, resolvedBySource);
+    const existing = groups.get(resolved.key);
     if (existing === undefined) {
-      groups.set(key, { items: [{ index, value: value.value }], providerOptions });
+      groups.set(resolved.key, {
+        items: [{ index, value: value.value }],
+        providerOptions: resolved.providerOptions,
+      });
       continue;
     }
     existing.items.push({ index, value: value.value });
   }
 
   return [...groups.values()];
+}
+
+function resolveProviderOptions(
+  source: EmbeddingProviderOptions | undefined,
+  cache: WeakMap<EmbeddingProviderOptions, ResolvedProviderOptions>,
+): ResolvedProviderOptions {
+  if (source === undefined) return { key: '', providerOptions: undefined };
+  const cached = cache.get(source);
+  if (cached !== undefined) return cached;
+  const providerOptions = normalizeProviderOptions(source);
+  const resolved = { key: providerOptionsKey(providerOptions), providerOptions };
+  cache.set(source, resolved);
+  return resolved;
 }
 
 function providerOptionsKey(options: EmbeddingProviderOptions | undefined): string {

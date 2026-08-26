@@ -36,6 +36,32 @@ test('one-value group calls embed with singular value', async () => {
   expect(result.usage).toEqual({ tokens: 3 });
 });
 
+test('2048 values that share one providerOptions object call embedMany once', async () => {
+  const providerOptions = {
+    openai: { user: 'u'.repeat(4096) },
+    openaiCompatible: { user: 'u'.repeat(4096) },
+  };
+  const calls: Array<{ values: string[] }> = [];
+  const run = createProviderV4Embed('p', providerFixture(), {
+    embed: async () => {
+      throw new Error('embed');
+    },
+    embedMany: async (args: { values: string[] }) => {
+      calls.push(args);
+      return {
+        embeddings: args.values.map(() => [0.1]),
+        usage: { tokens: args.values.length },
+        responses: [{ body: {} }],
+      };
+    },
+  });
+  const values = Array.from({ length: 2048 }, (_, index) => ({ value: `t${index}`, providerOptions }));
+  const result = await run({ values }, { modelId: 'm' });
+  expect(calls).toHaveLength(1);
+  expect(calls[0]?.values).toHaveLength(2048);
+  expect(result.embeddings).toHaveLength(2048);
+});
+
 test('groups equal providerOptions even when namespace key order differs', async () => {
   const calls: Array<{ values: string[] }> = [];
   const run = createProviderV4Embed('p', providerFixture(), {
