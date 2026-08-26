@@ -38,14 +38,9 @@ export function writeOpenAITextCompletionSSE(
           enqueue(frame(metadata, completionTextDelta(part)));
           break;
         case 'finish':
-          enqueue(
-            frame(
-              metadata,
-              '',
-              openAIFinishReason(part.finishReason),
-              openAICompletionUsage(completionFinishUsage(part)),
-            ),
-          );
+          // Legacy Completions streams omit usage unless the client opts in via
+          // stream_options.include_usage, which this adapter rejects as 501.
+          enqueue(frame(metadata, '', openAIFinishReason(part.finishReason)));
           break;
         default:
           break;

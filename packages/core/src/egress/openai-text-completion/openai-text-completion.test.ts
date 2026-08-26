@@ -62,6 +62,26 @@ test('adopts upstream model and created but keeps the cmpl- id contract', async 
   expect(json.id.startsWith('cmpl-')).toBe(true);
 });
 
+test('omits unrequested usage from official text_completion SSE', async () => {
+  const stream = new ReadableStream<TextStreamPart<ToolSet>>({
+    start(controller) {
+      controller.enqueue({ type: 'text-delta', id: 'text-1', text: 'hello' });
+      controller.enqueue({
+        type: 'finish',
+        finishReason: 'stop',
+        rawFinishReason: 'stop',
+        totalUsage: { inputTokens: 3, outputTokens: 2, totalTokens: 5 },
+      });
+      controller.close();
+    },
+  });
+
+  const text = await decodeSse(writeOpenAITextCompletionSSE(stream, { modelId: 'davinci' }));
+
+  expect(text).not.toContain('"usage"');
+  expect(text.endsWith('data: [DONE]\n\n')).toBe(true);
+});
+
 test('writes official text_completion SSE identity fields and ends with [DONE]', async () => {
   const text = await decodeSse(writeOpenAITextCompletionSSE(oneDeltaFinishStream(), { modelId: 'davinci' }));
 

@@ -52,14 +52,31 @@ describe('GitHub Copilot runtime', () => {
     {
       protocol: 'openai-compatible' as const,
       modelId: 'gpt-chat',
+      path: '/v1/completions',
       url: 'https://secret-host.example/v1/completions',
     },
     {
       protocol: 'openai-response' as const,
       modelId: 'gpt-response',
+      path: '/v1/responses/compact',
       url: 'https://secret-host.example/v1/responses/compact',
     },
   ]) {
+    test(`declines a non-advertised ${scenario.protocol} raw path so convert can run`, async () => {
+      const credentials = credentialPort(validCredential('raw-token'));
+      const runtime = await createGitHubCopilotRuntime({
+        credentials: credentials.port,
+        options: { deploymentType: 'github.com' },
+        catalog: catalog(),
+        fetch: forwardFetch,
+      });
+
+      expect(
+        runtime.raw?.({ protocol: scenario.protocol, modelId: scenario.modelId, requestPath: scenario.path }),
+      ).toBeUndefined();
+      expect(runtime.raw?.({ protocol: scenario.protocol, modelId: scenario.modelId })).toBeDefined();
+    });
+
     test(`declines a non-advertised ${scenario.protocol} raw path with a protocol-shaped 501`, async () => {
       let calls = 0;
       const credentials = credentialPort(validCredential('raw-token'));

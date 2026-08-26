@@ -57,6 +57,9 @@ export async function createKimiRuntime(
       const protocol =
         input.protocol === 'anthropic' || input.protocol === 'openai-compatible' ? input.protocol : undefined;
       if (protocol === undefined) return undefined;
+      if (input.requestPath !== undefined && !advertisedRawPath(protocol, input.requestPath)) {
+        return undefined;
+      }
       return {
         invoke: async (request) => {
           const upstream = rewriteRawRequest(request, protocol);
@@ -132,10 +135,14 @@ export function createKimiDynamicFetch(
 // Undefined when the inbound endpoint has no Kimi Code counterpart. Kimi Code
 // only serves Chat Completions and Anthropic Messages, so inbound endpoints such
 // as legacy `/v1/completions` must not be guessed onto an upstream path.
+function advertisedRawPath(protocol: KimiProtocol, pathname: string): boolean {
+  return pathname === (protocol === 'anthropic' ? '/v1/messages' : '/v1/chat/completions');
+}
+
 function rewriteRawRequest(request: Request, protocol: KimiProtocol): Request | undefined {
   const source = new URL(request.url);
+  if (!advertisedRawPath(protocol, source.pathname)) return undefined;
   const expectedPath = protocol === 'anthropic' ? '/v1/messages' : '/v1/chat/completions';
-  if (source.pathname !== expectedPath) return undefined;
   const target = new URL(`https://api.kimi.com/coding${expectedPath}`);
   target.search = source.search;
   return new Request(target, request);

@@ -75,6 +75,9 @@ export async function createGitHubCopilotRuntime(
       // Language-only catalog: decline embeddings so the candidate can convert.
       if (input.capability === 'embedding') return undefined;
       if (protocolByModelId.get(input.modelId) !== input.protocol) return undefined;
+      if (input.requestPath !== undefined && !advertisedRawPath(input.protocol, input.requestPath)) {
+        return undefined;
+      }
       return {
         invoke: async (request) => {
           if (!advertisedRawPath(input.protocol, new URL(request.url).pathname)) {

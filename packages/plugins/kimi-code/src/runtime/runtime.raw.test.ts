@@ -78,6 +78,14 @@ describe('Kimi Code runtime', () => {
     { protocol: 'anthropic', url: 'https://secret-host.example/v1/messages/client-secret-path' },
     { protocol: 'openai-compatible', url: 'https://secret-host.example/v1/completions' },
   ] as const) {
+    test(`declines a non-allowlisted ${scenario.protocol} raw path so convert can run`, async () => {
+      const runtime = await createKimiRuntime(context(validCredential(), catalog()));
+      const requestPath = new URL(scenario.url).pathname;
+
+      expect(runtime.raw?.({ protocol: scenario.protocol, modelId: 'openai-model', requestPath })).toBeUndefined();
+      expect(runtime.raw?.({ protocol: scenario.protocol, modelId: 'openai-model' })).toBeDefined();
+    });
+
     test(`declines a non-allowlisted ${scenario.protocol} raw path with a protocol-shaped 501`, async () => {
       let calls = 0;
       const runtime = await createKimiRuntime(context(validCredential(), catalog()), {

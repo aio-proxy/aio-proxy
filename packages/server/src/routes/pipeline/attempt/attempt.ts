@@ -23,6 +23,7 @@ import { createAttemptEmitter } from './emit';
 import { handleAttemptError, unsupportedDispatch } from './error';
 import { attemptModelCandidate } from './model';
 import { attemptRawCandidate } from './raw';
+import { requestPathProperty } from './request-path';
 
 type AttemptCandidatesOptions<TRequest, TContext> = {
   readonly adapter: AnyProtocolAdapter<TRequest, TContext>;
@@ -118,7 +119,11 @@ async function attemptLanguageCandidate<TRequest, TContext>(
     slot.trace.transport = 'raw';
     slot.trace.targetProtocol = ctx.adapter.protocol;
   }
-  const raw = provider.raw?.resolve({ protocol: ctx.adapter.protocol, modelId: slot.candidate.modelId });
+  const raw = provider.raw?.resolve({
+    protocol: ctx.adapter.protocol,
+    modelId: slot.candidate.modelId,
+    ...requestPathProperty(ctx.rawRequest),
+  });
   if (raw !== undefined) return await attemptRawCandidate(ctx, slot, raw);
   if (provider.model !== undefined) {
     slot.trace.transport = 'ai_sdk';
