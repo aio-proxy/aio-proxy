@@ -143,6 +143,38 @@ test('edit invocation passes a string prompt plus files and mask', async () => {
   });
 });
 
+test('aliases openaiCompatible options onto the image model provider namespace', async () => {
+  let generateArgs: Record<string, unknown> | undefined;
+  const invoke = createProviderV4ImageInvoke(
+    'acme',
+    providerV4(() => ({ modelId: 'gpt-image-2', provider: 'acme.image' })) as never,
+    async (options) => {
+      generateArgs = options as Record<string, unknown>;
+      return { images: [new Uint8Array([1])] };
+    },
+  );
+
+  await invoke({
+    modelId: 'gpt-image-2',
+    invocation: {
+      operation: 'generate',
+      prompt: 'a cat',
+      n: 1,
+      responseFormat: 'b64_json',
+      providerOptions: {
+        openai: { quality: 'high', outputFormat: 'webp' },
+        openaiCompatible: { quality: 'high', output_format: 'webp' },
+      },
+    },
+  });
+
+  expect(generateArgs?.['providerOptions']).toEqual({
+    openai: { quality: 'high', outputFormat: 'webp' },
+    openaiCompatible: { quality: 'high', output_format: 'webp' },
+    acme: { quality: 'high', output_format: 'webp' },
+  });
+});
+
 test('wraps generateImage failures with AiSdkProviderError', async () => {
   const invoke = createProviderV4ImageInvoke(
     'openai',

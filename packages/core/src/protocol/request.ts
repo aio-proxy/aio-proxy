@@ -18,6 +18,12 @@ export const REQUEST_BODY_LIMITS = Object.freeze({
 export type RequestBodyLimits = Readonly<{ encoded: number; decoded: number }>;
 
 export class RequestBodyTooLargeError extends Error {}
+export class RequestBodyIdleTimeoutError extends Error {
+  constructor() {
+    super('Request body timed out');
+    this.name = 'RequestBodyIdleTimeoutError';
+  }
+}
 export class InvalidCompressedRequestBodyError extends Error {}
 export class UnsupportedContentEncodingError extends Error {
   constructor(readonly encoding: string) {

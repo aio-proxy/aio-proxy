@@ -183,6 +183,15 @@ test('copies present provider options and drops unknown fields on convert', asyn
       style: 'vivid',
       user: 'u1',
     },
+    openaiCompatible: {
+      quality: 'high',
+      output_format: 'webp',
+      output_compression: 50,
+      background: 'opaque',
+      moderation: 'low',
+      style: 'vivid',
+      user: 'u1',
+    },
   });
 });
 

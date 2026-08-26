@@ -1,6 +1,6 @@
 import { decodedRequestStream, type RequestBodyLimits } from '../../protocol/request';
 import { EDITS_MULTIPART_ENCODED_LIMIT } from './multipart-counters';
-import { parseMultipartStream } from './multipart-stream';
+import { abortError, parseMultipartStream, withAbortAndIdle } from './multipart-stream';
 import { parseOpenAIImageGenerations, type OpenAIImageRequest } from './openai-image';
 
 const MULTIPART_DECODE_LIMITS = Object.freeze({
@@ -30,13 +30,17 @@ const OPTIONAL_STRING_FIELDS = [
   'user',
 ] as const;
 
-export async function parseOpenAIImageEditsMultipart(raw: Request): Promise<OpenAIImageRequest> {
+export async function parseOpenAIImageEditsMultipart(
+  raw: Request,
+  options?: { readonly idleTimeoutMs?: number },
+): Promise<OpenAIImageRequest> {
   const boundary = multipartBoundary(raw.headers.get('content-type') ?? '');
   if (boundary === undefined) throw new SyntaxError('Invalid OpenAI Images multipart request');
-  await acquireMultipartSlot();
+  const idleTimeoutMs = options?.idleTimeoutMs ?? MULTIPART_IDLE_TIMEOUT_MS;
+  await acquireMultipartSlot(raw.signal);
   try {
-    const body = await decodedRequestStream(raw, MULTIPART_DECODE_LIMITS);
-    const { fields, uploads, maskUpload } = await parseMultipartStream(body, boundary);
+    const body = await withAbortAndIdle(decodedRequestStream(raw, MULTIPART_DECODE_LIMITS), raw.signal, idleTimeoutMs);
+    const { fields, uploads, maskUpload } = await parseMultipartStream(body, boundary, raw.signal, idleTimeoutMs);
     if (uploads.length === 0) throw new SyntaxError('Invalid OpenAI Images multipart request');
     return {
       ...parseOpenAIImageGenerations(generationsInputFromFields(fields)),
@@ -55,16 +59,36 @@ export async function parseOpenAIImageEditsMultipart(raw: Request): Promise<Open
 // Process-protection cap on concurrent official-max edits parses. This is not a
 // compatibility ceiling and does not shrink the per-request encoded limit.
 const MAX_IN_FLIGHT_MULTIPART_PARSES = 2;
+const MULTIPART_IDLE_TIMEOUT_MS = 600_000;
 let inFlightMultipartParses = 0;
 const multipartWaiters: Array<() => void> = [];
 
-async function acquireMultipartSlot(): Promise<void> {
-  if (inFlightMultipartParses >= MAX_IN_FLIGHT_MULTIPART_PARSES) {
-    await new Promise<void>((resolve) => {
-      multipartWaiters.push(resolve);
-    });
+async function acquireMultipartSlot(signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) throw abortError(signal.reason);
+  if (inFlightMultipartParses < MAX_IN_FLIGHT_MULTIPART_PARSES) {
+    inFlightMultipartParses += 1;
+    return;
   }
-  inFlightMultipartParses += 1;
+  await new Promise<void>((resolve, reject) => {
+    let settled = false;
+    const waiter = () => {
+      if (settled) return;
+      settled = true;
+      signal?.removeEventListener('abort', onAbort);
+      inFlightMultipartParses += 1;
+      resolve();
+    };
+    const onAbort = () => {
+      if (settled) return;
+      settled = true;
+      const index = multipartWaiters.indexOf(waiter);
+      if (index !== -1) multipartWaiters.splice(index, 1);
+      reject(abortError(signal?.reason));
+    };
+    multipartWaiters.push(waiter);
+    signal?.addEventListener('abort', onAbort, { once: true });
+    if (signal?.aborted) onAbort();
+  });
 }
 
 function releaseMultipartSlot(): void {

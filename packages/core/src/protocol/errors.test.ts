@@ -13,7 +13,7 @@ import {
   openAIImagesErrors,
   openAIResponsesErrors,
 } from './errors';
-import { InvalidCompressedRequestBodyError } from './request';
+import { InvalidCompressedRequestBodyError, RequestBodyIdleTimeoutError } from './request';
 
 const cases = [
   [
@@ -225,6 +225,15 @@ test('openai completions rateLimited builds a native 429 with Retry-After', asyn
   expect(await r.json()).toEqual({
     error: { code: 'rate_limit_exceeded', message: expect.any(String), type: 'rate_limit_error' },
   });
+});
+
+test('openai images maps stalled multipart reads to 408 and abort to 499', async () => {
+  const timeout = openAIImagesErrors.requestError(new RequestBodyIdleTimeoutError());
+  expect(timeout?.status).toBe(408);
+  expect(await timeout?.json()).toMatchObject({ error: { code: 'request_timeout' } });
+  const aborted = openAIImagesErrors.requestError(new DOMException('The operation was aborted.', 'AbortError'));
+  expect(aborted?.status).toBe(499);
+  expect(await aborted?.json()).toMatchObject({ error: { code: 'aborted' } });
 });
 
 test('openai images rateLimited builds a native 429 with Retry-After', async () => {

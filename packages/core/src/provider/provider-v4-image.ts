@@ -53,15 +53,15 @@ export function createProviderV4ImageInvoke(
 ): ProviderV4ImageInvoke {
   return async (request) => {
     try {
+      const model = provider.imageModel(request.modelId);
+      const providerOptions = imageProviderOptions(request.invocation.providerOptions, model);
       const result = await generate({
-        model: provider.imageModel(request.modelId),
+        model,
         prompt: request.invocation.prompt,
         ...(request.invocation.operation === 'edit' ? editFiles(request.invocation) : {}),
         n: request.invocation.n,
         ...(request.invocation.size === undefined ? {} : { size: request.invocation.size }),
-        ...(request.invocation.providerOptions === undefined
-          ? {}
-          : { providerOptions: request.invocation.providerOptions }),
+        ...(providerOptions === undefined ? {} : { providerOptions }),
         ...(request.signal === undefined ? {} : { abortSignal: request.signal }),
       });
       const usage = officialImageUsage(result.usage);
@@ -75,6 +75,30 @@ export function createProviderV4ImageInvoke(
       throw new AiSdkProviderError(providerId, error);
     }
   };
+}
+
+function imageProviderOptions(
+  options: ImageInvocation['providerOptions'] | undefined,
+  model: ReturnType<ProviderV4['imageModel']>,
+): ImageInvocation['providerOptions'] | undefined {
+  const compatible = options?.['openaiCompatible'];
+  const namespace = imageProviderNamespace(model);
+  if (
+    options === undefined ||
+    compatible === undefined ||
+    namespace === undefined ||
+    options[namespace] !== undefined
+  ) {
+    return options;
+  }
+  return { ...options, [namespace]: compatible };
+}
+
+function imageProviderNamespace(model: ReturnType<ProviderV4['imageModel']>): string | undefined {
+  const provider = Reflect.get(model, 'provider');
+  if (typeof provider !== 'string') return undefined;
+  const namespace = provider.split('.')[0]?.trim();
+  return namespace === undefined || namespace === '' ? undefined : namespace;
 }
 
 function editFiles(invocation: ImageInvocation): { readonly files: readonly Uint8Array[]; readonly mask?: Uint8Array } {

@@ -38,6 +38,15 @@ function editsMultipartRequest(
   });
 }
 
+function hungMultipartRequest(signal?: AbortSignal): Request {
+  return new Request('https://x/v1/images/edits', {
+    method: 'POST',
+    headers: { 'content-type': 'multipart/form-data; boundary=----hung' },
+    body: new ReadableStream<Uint8Array>(),
+    ...(signal === undefined ? {} : { signal }),
+  });
+}
+
 test.each([
   ['missing', {}],
   ['empty', { model: '' }],
@@ -293,6 +302,42 @@ test('counts unnamed parts toward the 1 MiB framing allowance', async () => {
       }),
     ),
   ).rejects.toBeInstanceOf(RequestBodyTooLargeError);
+});
+
+test('releases a queued waiter when the waiting request is aborted', async () => {
+  const holders = [new AbortController(), new AbortController()] as const;
+  const waiter = new AbortController();
+  const held = holders.map((controller) =>
+    parseOpenAIImageEditsMultipart(hungMultipartRequest(controller.signal), { idleTimeoutMs: 30_000 }),
+  );
+  await Bun.sleep(5);
+  const waiting = parseOpenAIImageEditsMultipart(hungMultipartRequest(waiter.signal), { idleTimeoutMs: 30_000 });
+  waiter.abort();
+  await expect(waiting).rejects.toMatchObject({ name: 'AbortError' });
+  for (const controller of holders) controller.abort();
+  await Promise.allSettled(held);
+  const parsed = await parseOpenAIImageEditsMultipart(
+    editsMultipartRequest({
+      prompt: 'make it night',
+      image: blobFrom(PNG_1X1_RGBA),
+    }),
+  );
+  expect(parsed.prompt).toBe('make it night');
+});
+
+test('idle-times out a stalled multipart body and releases the parse slot', async () => {
+  const stalled = Array.from({ length: 2 }, () =>
+    parseOpenAIImageEditsMultipart(hungMultipartRequest(), { idleTimeoutMs: 20 }),
+  );
+  const results = await Promise.allSettled(stalled);
+  expect(results.every((result) => result.status === 'rejected')).toBe(true);
+  const parsed = await parseOpenAIImageEditsMultipart(
+    editsMultipartRequest({
+      prompt: 'make it night',
+      image: blobFrom(PNG_1X1_RGBA),
+    }),
+  );
+  expect(parsed.prompt).toBe('make it night');
 });
 
 test('counts boundaries and part headers toward the 1 MiB framing allowance', async () => {

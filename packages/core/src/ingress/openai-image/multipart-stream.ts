@@ -1,3 +1,4 @@
+import { RequestBodyIdleTimeoutError } from '../../protocol/request';
 import { EDITS_MULTIPART_ENCODED_LIMIT, assertEditsMultipartCounters, tooLarge } from './multipart-counters';
 import { type OpenAIImageUpload } from './openai-image';
 
@@ -25,6 +26,8 @@ type OpenPart = {
 export async function parseMultipartStream(
   body: ReadableStream<Uint8Array> | null,
   boundary: string,
+  signal?: AbortSignal,
+  idleTimeoutMs = 600_000,
 ): Promise<ParsedEditsMultipart> {
   const reader = body?.getReader();
   if (reader === undefined) throw syntax();
@@ -42,6 +45,17 @@ export async function parseMultipartStream(
   const fields: Record<string, string> = {};
   const uploads: OpenAIImageUpload[] = [];
   let maskUpload: OpenAIImageUpload | undefined;
+  const readChunk = () =>
+    readEncodedChunk(
+      reader,
+      window,
+      () => encoded,
+      (total) => {
+        encoded = total;
+      },
+      signal,
+      idleTimeoutMs,
+    );
 
   const addFraming = (bytes: number): void => {
     framing += bytes;
@@ -79,14 +93,7 @@ export async function parseMultipartStream(
         if (index === -1) {
           const flushed = window.flushExcept(window.delimiterOverlap(firstBoundary));
           if (flushed !== undefined) addFraming(flushed.byteLength);
-          await readEncodedChunk(
-            reader,
-            window,
-            () => encoded,
-            (total) => {
-              encoded = total;
-            },
-          );
+          await readChunk();
           continue;
         }
         addFraming(index + firstBoundary.byteLength);
@@ -97,14 +104,7 @@ export async function parseMultipartStream(
 
       if (state === 'afterBoundary') {
         if (window.byteLength < 2) {
-          await readEncodedChunk(
-            reader,
-            window,
-            () => encoded,
-            (total) => {
-              encoded = total;
-            },
-          );
+          await readChunk();
           continue;
         }
         const head = window.bytes();
@@ -126,14 +126,7 @@ export async function parseMultipartStream(
         const index = window.indexOf(CRLF_CRLF);
         if (index === -1) {
           assertEditsMultipartCounters({ nonFileFormBytes: framing + window.byteLength });
-          await readEncodedChunk(
-            reader,
-            window,
-            () => encoded,
-            (total) => {
-              encoded = total;
-            },
-          );
+          await readChunk();
           continue;
         }
         const headerBytes = window.consume(index + 4);
@@ -158,14 +151,7 @@ export async function parseMultipartStream(
       if (index === -1) {
         const flushed = window.flushExcept(window.delimiterOverlap(nextBoundary));
         if (flushed !== undefined) appendPartBytes(current, flushed);
-        await readEncodedChunk(
-          reader,
-          window,
-          () => encoded,
-          (total) => {
-            encoded = total;
-          },
-        );
+        await readChunk();
         continue;
       }
       appendPartBytes(current, window.consume(index));
@@ -190,13 +176,41 @@ async function readEncodedChunk(
   window: ByteWindow,
   encoded: () => number,
   setEncoded: (total: number) => void,
+  signal: AbortSignal | undefined,
+  idleTimeoutMs: number,
 ): Promise<void> {
-  const next = await reader.read();
+  const next = await withAbortAndIdle(reader.read(), signal, idleTimeoutMs);
   if (next.done) throw syntax();
   const total = encoded() + next.value.byteLength;
   if (total > EDITS_MULTIPART_ENCODED_LIMIT) throw tooLarge();
   setEncoded(total);
   window.append(next.value);
+}
+
+export async function withAbortAndIdle<T>(
+  task: Promise<T>,
+  signal: AbortSignal | undefined,
+  idleTimeoutMs: number,
+): Promise<T> {
+  if (signal?.aborted) throw abortError(signal.reason);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let abort: (() => void) | undefined;
+  try {
+    return await new Promise<T>((resolve, reject) => {
+      timer = setTimeout(() => reject(new RequestBodyIdleTimeoutError()), idleTimeoutMs);
+      abort = () => reject(abortError(signal?.reason));
+      signal?.addEventListener('abort', abort, { once: true });
+      void task.then(resolve, reject);
+    });
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+    if (abort !== undefined) signal?.removeEventListener('abort', abort);
+  }
+}
+
+export function abortError(reason: unknown): Error {
+  if (reason instanceof Error) return reason;
+  return new DOMException('The operation was aborted.', 'AbortError');
 }
 
 function startPart(headers: string, onImage: () => void, onMask: () => void): OpenPart {

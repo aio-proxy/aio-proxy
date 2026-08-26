@@ -18,7 +18,7 @@ import {
   ProviderNotInstalledError,
 } from '../error';
 import type { ProtocolErrorMapper } from './adapter';
-import { InvalidCompressedRequestBodyError } from './request';
+import { InvalidCompressedRequestBodyError, RequestBodyIdleTimeoutError } from './request';
 
 const PREVIOUS_RESPONSE_CONFLICT_MESSAGE = 'previous_response_id matches multiple providers';
 
@@ -137,6 +137,8 @@ export const openAIImagesErrors: ProtocolErrorMapper = {
   requestError: (error) => {
     if (error instanceof OpenAIImagesUnsupportedFeatureError) return openAIImagesUnsupported(error.feature);
     if (error instanceof OpenAIImagesInvalidRequestError) return openAIInvalid(400, 'invalid_request', error.message);
+    if (error instanceof RequestBodyIdleTimeoutError) return openAIInvalid(408, 'request_timeout', error.message);
+    if (error instanceof Error && error.name === 'AbortError') return openAIInvalid(499, 'aborted', error.message);
     return error instanceof SyntaxError ||
       error instanceof ZodError ||
       error instanceof InvalidCompressedRequestBodyError

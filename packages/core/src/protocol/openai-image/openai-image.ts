@@ -223,11 +223,14 @@ function convertSize(size: string | null | undefined): `${number}x${number}` | u
 
 function convertProviderOptions(request: OpenAIImageRequest): ImageInvocation['providerOptions'] | undefined {
   const openai: Record<string, unknown> = {};
+  const openaiCompatible: Record<string, unknown> = {};
   for (const key of PROVIDER_OPTION_KEYS) {
     const value = request[key];
-    if (value != null) openai[PROVIDER_OPTION_AI_SDK_KEYS[key]] = value;
+    if (value == null) continue;
+    openai[PROVIDER_OPTION_AI_SDK_KEYS[key]] = value;
+    openaiCompatible[key] = value;
   }
-  return Object.keys(openai).length === 0 ? undefined : { openai };
+  return Object.keys(openai).length === 0 ? undefined : { openai, openaiCompatible };
 }
 
 function imageJson(result: ImageTransportResult): {
