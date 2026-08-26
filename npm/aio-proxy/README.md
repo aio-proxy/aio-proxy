@@ -275,6 +275,8 @@ Previously, Provider weight was a global fixed order: unique weights were tried 
 | Model list               | `GET /v1/models`                                    |
 | OpenAI Chat Completions  | `POST /v1/chat/completions`                         |
 | OpenAI Responses         | `POST /v1/responses`                                |
+| OpenAI Completions       | `POST /v1/completions`                              |
+| OpenAI Responses compact | `POST /v1/responses/compact`                        |
 | Anthropic Messages       | `POST /v1/messages`                                 |
 | Anthropic Token Counting | `POST /v1/messages/count_tokens`                    |
 | Gemini                   | `POST /v1beta/models/{model}:generateContent`       |
@@ -283,6 +285,8 @@ Previously, Provider weight was a global fixed order: unique weights were tried 
 | OpenAI Embeddings        | `POST /v1/embeddings`                               |
 | Gemini embed             | `POST /v1beta/models/{model}:embedContent`          |
 | Gemini batch embed       | `POST /v1beta/models/{model}:batchEmbedContents`    |
+
+Remaining official Responses resource operations (`GET /v1/responses/:id`, `DELETE /v1/responses/:id`, `POST /v1/responses/:id/cancel`, `GET /v1/responses/:id/input_items`) return a protocol-shaped 501.
 
 Call the OpenAI Responses endpoint:
 

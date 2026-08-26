@@ -37,12 +37,15 @@ export type RawTransport = {
   ) => Promise<Response>;
 };
 
+export type RawResolveInput = {
+  readonly protocol: ProviderProtocol;
+  readonly modelId: string;
+  readonly capability?: 'language' | 'embedding';
+  readonly requestPath?: string;
+};
+
 export type RuntimeRawCapability = {
-  readonly resolve: (input: {
-    readonly protocol: ProviderProtocol;
-    readonly modelId: string;
-    readonly capability?: 'language' | 'embedding';
-  }) => RawTransport | undefined;
+  readonly resolve: (input: RawResolveInput) => RawTransport | undefined;
 };
 
 export type EmbeddingTransport = {

@@ -75,8 +75,14 @@ export async function createGitHubCopilotRuntime(
       // Language-only catalog: decline embeddings so the candidate can convert.
       if (input.capability === 'embedding') return undefined;
       if (protocolByModelId.get(input.modelId) !== input.protocol) return undefined;
+      if (input.requestPath !== undefined && !advertisedRawPath(input.protocol, input.requestPath)) {
+        return undefined;
+      }
       return {
         invoke: async (request) => {
+          if (!advertisedRawPath(input.protocol, new URL(request.url).pathname)) {
+            return unsupportedRawPath(input.protocol);
+          }
           const credential = await currentGitHubCopilotCredential(context.credentials, context.fetch);
           return await fetchWithCredential(request, undefined, credential, context.fetch);
         },
@@ -125,4 +131,30 @@ function catalogProtocol(metadata: unknown): ProtocolId | undefined {
   return protocol === 'openai-compatible' || protocol === 'anthropic' || protocol === 'openai-response'
     ? protocol
     : undefined;
+}
+
+// Catalog protocol is derived from advertised endpoints (`/chat/completions`,
+// `/responses`, `/v1/messages`). Raw must not invent sibling paths such as
+// legacy Completions or Responses compact; those 404s are not fallback-eligible.
+function advertisedRawPath(protocol: ProtocolId, pathname: string): boolean {
+  switch (protocol) {
+    case 'openai-compatible':
+      return pathname.endsWith('/chat/completions');
+    case 'openai-response':
+      return pathname.endsWith('/responses');
+    case 'anthropic':
+      return pathname.endsWith('/messages');
+    default:
+      return false;
+  }
+}
+
+function unsupportedRawPath(protocol: ProtocolId): Response {
+  const message = 'GitHub Copilot does not serve this endpoint';
+  return protocol === 'anthropic'
+    ? Response.json({ type: 'error', error: { type: 'invalid_request_error', message } }, { status: 501 })
+    : Response.json(
+        { error: { code: 'unsupported_endpoint', message, type: 'invalid_request_error' } },
+        { status: 501 },
+      );
 }

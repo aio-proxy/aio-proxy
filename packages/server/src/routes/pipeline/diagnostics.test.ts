@@ -45,4 +45,23 @@ describe('shared protocol pipeline diagnostics', () => {
     expect(await provider.calls.raw[0]?.json()).toEqual({ model: REQUESTED_MODEL, input: 'hello' });
     expect(route.recording.finals).toEqual([expect.objectContaining({ outcome: 'success' })]);
   });
+
+  test('does not log background downgrade for compact operation', async () => {
+    const provider = rawProvider({
+      id: 'responses',
+      modelId: REQUESTED_MODEL,
+      protocol: ProviderProtocol.OpenAIResponse,
+    });
+    const route = defineProviderRouteSource([provider]);
+
+    await handleProtocolRequest({
+      adapter: openAIResponsesAdapter,
+      context: { operation: 'compact' },
+      rawRequest: jsonRequest({ model: REQUESTED_MODEL, input: 'hello', background: true }),
+      source: route.source,
+    });
+    await settleRecording(route.recording);
+
+    expect(route.logs).not.toContainEqual(expect.objectContaining({ event: 'request.feature_downgraded' }));
+  });
 });

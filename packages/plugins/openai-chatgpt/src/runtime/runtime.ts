@@ -11,6 +11,7 @@ import type { ChatGPTCredential } from '../schema';
 
 const CHATGPT_CODEX_BASE_URL = 'https://chatgpt.com/backend-api/codex' as const;
 const CHATGPT_CODEX_RESPONSES_ENDPOINT = `${CHATGPT_CODEX_BASE_URL}/responses` as const;
+const CHATGPT_CODEX_COMPACT_ENDPOINT = `${CHATGPT_CODEX_RESPONSES_ENDPOINT}/compact` as const;
 const CHATGPT_USER_AGENT = 'codex-tui/0.135.0 (Mac OS 26.5.0; arm64) iTerm.app/3.6.10 (codex-tui; 0.135.0)' as const;
 const PLACEHOLDER_CREDENTIAL = 'dynamic-credential' as const;
 
@@ -82,6 +83,8 @@ export function createOpenAIChatGPTDynamicFetch(
   return dynamicFetch as OpenAIStreamFetch;
 }
 
+// Only the create endpoint. Compaction is stateless and takes no `store`, so
+// `/responses/compact` bodies are forwarded exactly as the proxy produced them.
 function shouldRewriteResponsesBody(request: Request): boolean {
   return (
     request.method !== 'GET' &&
@@ -125,14 +128,21 @@ export async function currentCredential(
 
 function rewriteCodexUrl(input: string): string {
   const target = new URL(input);
-  if (shouldRewriteCodexPath(target.pathname)) {
-    const endpoint = new URL(CHATGPT_CODEX_RESPONSES_ENDPOINT);
-    endpoint.search = target.search;
-    return endpoint.toString();
-  }
-  return target.toString();
+  const codexEndpoint = codexEndpointFor(target.pathname);
+  if (codexEndpoint === undefined) return target.toString();
+  const endpoint = new URL(codexEndpoint);
+  endpoint.search = target.search;
+  return endpoint.toString();
 }
 
-function shouldRewriteCodexPath(pathname: string): boolean {
-  return pathname.endsWith('/responses') || pathname.endsWith('/chat/completions');
+// The Codex backend exposes both the streaming create endpoint and the
+// stateless compaction endpoint, so an inbound `/responses/compact` must land on
+// its own upstream path instead of collapsing onto create — otherwise the
+// rewrite would leave the proxy's own inbound URL and the request would loop.
+function codexEndpointFor(pathname: string): string | undefined {
+  if (pathname.endsWith('/responses/compact')) return CHATGPT_CODEX_COMPACT_ENDPOINT;
+  if (pathname.endsWith('/responses') || pathname.endsWith('/chat/completions')) {
+    return CHATGPT_CODEX_RESPONSES_ENDPOINT;
+  }
+  return undefined;
 }

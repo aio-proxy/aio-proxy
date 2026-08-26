@@ -154,6 +154,22 @@ test('normalizes Responses requests for the Codex backend', async () => {
   expect(call.headers.get('content-length')).toBeNull();
 });
 
+test('routes compact to the Codex compaction endpoint and forwards its body verbatim', async () => {
+  const calls: FetchCall[] = [];
+  const dynamicFetch = createOpenAIChatGPTDynamicFetch(staticCredentialPort(credential()), captureFetch(calls));
+  const body = JSON.stringify({
+    model: 'gpt-5.1-codex-max',
+    instructions: 'summarize',
+    input: [{ role: 'user', content: [{ type: 'input_text', text: 'hello' }] }],
+  });
+
+  await dynamicFetch('https://proxy.local/v1/responses/compact?trace=1', { method: 'POST', body });
+
+  const call = requiredCall(calls, 0);
+  expect(call.url).toBe('https://chatgpt.com/backend-api/codex/responses/compact?trace=1');
+  expect(call.body).toBe(body);
+});
+
 function credential(overrides: Partial<ChatGPTCredential> = {}): ChatGPTCredential {
   return {
     accessToken: 'access-token',

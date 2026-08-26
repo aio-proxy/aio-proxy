@@ -192,6 +192,8 @@ router:
 | 模型列表                 | `GET /v1/models`                                    |
 | OpenAI Chat Completions  | `POST /v1/chat/completions`                         |
 | OpenAI Responses         | `POST /v1/responses`                                |
+| OpenAI Completions       | `POST /v1/completions`                              |
+| OpenAI Responses compact | `POST /v1/responses/compact`                        |
 | Anthropic Messages       | `POST /v1/messages`                                 |
 | Anthropic Token Counting | `POST /v1/messages/count_tokens`                    |
 | Gemini                   | `POST /v1beta/models/{model}:generateContent`       |
@@ -200,6 +202,8 @@ router:
 | OpenAI Embeddings        | `POST /v1/embeddings`                               |
 | Gemini embed             | `POST /v1beta/models/{model}:embedContent`          |
 | Gemini batch embed       | `POST /v1beta/models/{model}:batchEmbedContents`    |
+
+其余官方 Responses 资源操作（`GET /v1/responses/:id`、`DELETE /v1/responses/:id`、`POST /v1/responses/:id/cancel`、`GET /v1/responses/:id/input_items`）返回协议形 501。
 
 调用 OpenAI Responses 入口：
 

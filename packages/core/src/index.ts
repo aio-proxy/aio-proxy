@@ -63,6 +63,7 @@ export {
   NpmPackageNameError,
   OpenAICompletionsTransformError,
   OpenAIResponsesTransformError,
+  OpenAICompletionsUnsupportedFeatureError,
   OpenAIResponsesUnsupportedFeatureError,
   ProviderNotInstalledError,
   RouterModelCollisionError,
