@@ -1,5 +1,6 @@
 export {
   buildModelCapabilityIndex,
+  supportsEmbedding,
   supportsImage,
   supportsImageConvert,
   supportsImageRaw,

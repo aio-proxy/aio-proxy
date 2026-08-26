@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test';
+import { gzipSync } from 'node:zlib';
 
 import { OpenAIImagesInvalidRequestError } from '../../error';
 import { REQUEST_BODY_LIMITS } from '../request';
@@ -84,7 +85,23 @@ test('forwards explicit same-id raw bytes without a JSON round-trip', async () =
   });
   const request = await openAIImagesAdapter.parse(raw, generations);
   const forwarded = await openAIImagesAdapter.rawRequest(raw, request, 'gpt-image-2', new Set(), generations);
+  expect(forwarded).toBe(raw);
   expect(await forwarded.text()).toBe(bodyText);
+});
+
+test('reuses the original gzip body when the explicit model is unchanged', async () => {
+  const bodyText = '{"model":"gpt-image-2","prompt":"a cat"}';
+  const encoded = gzipSync(Buffer.from(bodyText));
+  const raw = new Request('https://x/v1/images/generations', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'content-encoding': 'gzip' },
+    body: new Uint8Array(encoded),
+  });
+  const request = await openAIImagesAdapter.parse(raw, generations);
+  const forwarded = await openAIImagesAdapter.rawRequest(raw, request, 'gpt-image-2', new Set(), generations);
+  expect(forwarded).toBe(raw);
+  expect(forwarded.headers.get('content-encoding')).toBe('gzip');
+  expect(new Uint8Array(await forwarded.arrayBuffer())).toEqual(new Uint8Array(encoded));
 });
 
 test('rewrites even when the defaulted lookup still resolves to gpt-image-2', async () => {

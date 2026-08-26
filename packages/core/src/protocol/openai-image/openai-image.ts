@@ -92,15 +92,13 @@ export const openAIImagesAdapter = defineImageProtocolAdapter<OpenAIImageRequest
   wantsStream: (request) => request.stream === true,
   async rawRequest(raw, request, resolvedModel, _supportedEfforts, context) {
     if (isMultipartRequest(raw)) return rewriteMultipartRawRequest(raw, request, resolvedModel);
-    const bodyText = await readRequestText(raw, openaiImageBodyLimits(raw, context));
     const rewrite = request.modelDefaulted || request.clientModel !== resolvedModel;
+    if (!rewrite) return raw;
+    const bodyText = await readRequestText(raw, openaiImageBodyLimits(raw, context));
     const headers = stripHopHeaders(raw.headers);
-    const forwardedBody = rewrite
-      ? JSON.stringify({ ...(JSON.parse(bodyText) as Record<string, unknown>), model: resolvedModel })
-      : bodyText;
     return new Request(raw, {
       method: raw.method,
-      body: forwardedBody,
+      body: JSON.stringify({ ...(JSON.parse(bodyText) as Record<string, unknown>), model: resolvedModel }),
       headers,
     });
   },

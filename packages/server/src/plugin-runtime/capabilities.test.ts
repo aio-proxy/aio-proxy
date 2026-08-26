@@ -3,7 +3,7 @@ import { afterEach, expect, test } from 'bun:test';
 import type { LogicalRequestContext, RawResolver, RawTransportOptions } from '@aio-proxy/plugin-sdk';
 import { ProviderKind, ProviderProtocol } from '@aio-proxy/types';
 
-import { supportsImage } from '../provider-runtime/capability-index';
+import { supportsEmbedding, supportsImage } from '../provider-runtime/capability-index';
 import { exposedModelIds, withRoutingConfig } from './capabilities';
 import { PluginRawResolverError, PluginRawTransportError, validatePluginProtocolMap } from './index';
 import { catalog, cleanup, diagnostics, materializePluginProvider, runtimeFixture } from './test-support';
@@ -387,6 +387,30 @@ test('createRuntimeProvider exposes catalog.image ids and does not synthesize la
   expect(provider?.image).toBeDefined();
   expect(supportsImage(provider!.capabilityIndex, 'gpt-image-2')).toBe(true);
   expect(provider?.raw?.resolve({ protocol: ProviderProtocol.OpenAIImage, modelId: 'gpt-image-2' })).toBeDefined();
+});
+
+test('image-only catalog ids are not embedding-capable when the catalog also has embeddings', async () => {
+  const mixedCatalog = {
+    ...catalog,
+    language: [],
+    image: [{ id: 'gpt-image-2' }],
+    embedding: [{ id: 'embed' }],
+  };
+  const fixture = runtimeFixture(
+    { kind: 'static' },
+    {
+      catalog: mixedCatalog,
+      createRuntime: async () => ({ provider: providerV4() }),
+    },
+  );
+
+  const result = await materializeFixture(fixture);
+  const provider = result.provider;
+
+  expect(provider?.models).toEqual(expect.arrayContaining(['gpt-image-2', 'embed']));
+  expect(supportsImage(provider!.capabilityIndex, 'gpt-image-2')).toBe(true);
+  expect(supportsEmbedding(provider!.capabilityIndex, 'gpt-image-2')).toBe(false);
+  expect(supportsEmbedding(provider!.capabilityIndex, 'embed')).toBe(true);
 });
 
 test('shared language and image catalog ids keep language targetProtocol and image capability', () => {

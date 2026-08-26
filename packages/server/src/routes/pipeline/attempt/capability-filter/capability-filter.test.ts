@@ -15,16 +15,23 @@ test('image inbound filters out a language-only id', () => {
   expect(filterCandidatesByCapability(candidates, 'image')).toEqual([]);
 });
 
-test('embedding inbound keeps router-resolved candidates without a language/image index', () => {
-  const candidates = [candidate('embed', {})];
+test('embedding inbound drops an image-only catalog id', () => {
+  const candidates = [candidate('gpt-image-2', { 'gpt-image-2': new Set(['image']) })];
+  expect(filterCandidatesByCapability(candidates, 'embedding')).toEqual([]);
+});
+
+test('embedding inbound keeps an embedding catalog id', () => {
+  const candidates = [candidate('embed', { embed: new Set(['embedding']) })];
   expect(filterCandidatesByCapability(candidates, 'embedding')).toEqual(candidates);
 });
 
 test('matching inbound capability keeps the candidate', () => {
   const language = candidate('gpt-5', { 'gpt-5': new Set(['language']) });
   const image = candidate('gpt-image-2', { 'gpt-image-2': new Set(['image']) });
+  const embedding = candidate('embed', { embed: new Set(['embedding']) });
   expect(filterCandidatesByCapability([language], 'language')).toEqual([language]);
   expect(filterCandidatesByCapability([image], 'image')).toEqual([image]);
+  expect(filterCandidatesByCapability([embedding], 'embedding')).toEqual([embedding]);
 });
 
 function candidate(modelId: string, capabilityIndex: ModelCapabilityIndex) {

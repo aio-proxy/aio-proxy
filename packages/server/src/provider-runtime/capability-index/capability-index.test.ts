@@ -5,6 +5,7 @@ import { ProviderKind, ProviderProtocol } from '@aio-proxy/types';
 import type { RuntimeProviderInstance } from '../../runtime';
 import {
   buildModelCapabilityIndex,
+  supportsEmbedding,
   supportsImage,
   supportsImageConvert,
   supportsImageRaw,
@@ -39,6 +40,24 @@ describe('buildModelCapabilityIndex', () => {
     expect([...index['gpt-5']!]).toEqual(['language']);
     expect([...index['gpt-image-2']!]).toEqual(['image']);
     expect(new Set(index['shared']!)).toEqual(new Set(['language', 'image']));
+  });
+
+  test('catalog embedding membership does not mark image-only ids as embedding', () => {
+    const index = buildModelCapabilityIndex({
+      catalog: {
+        language: [{ id: 'chat' }],
+        image: [{ id: 'gpt-image-2' }, { id: 'shared' }],
+        embedding: [{ id: 'embed' }, { id: 'shared' }],
+        speech: [],
+        transcription: [],
+        reranking: [],
+      },
+      models: ['gpt-image-2', 'embed', 'shared'],
+    });
+    expect(supportsEmbedding(index, 'embed')).toBe(true);
+    expect(supportsEmbedding(index, 'shared')).toBe(true);
+    expect(supportsEmbedding(index, 'gpt-image-2')).toBe(false);
+    expect(supportsImage(index, 'gpt-image-2')).toBe(true);
   });
 
   test('adds image from metadata modalities and does not infer from imageModel', () => {
