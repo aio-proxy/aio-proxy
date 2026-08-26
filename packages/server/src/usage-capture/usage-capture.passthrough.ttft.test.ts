@@ -118,6 +118,33 @@ describe('usage capture passthrough ttft', () => {
     expect('ttftMs' in completion ? completion.ttftMs : undefined).toBeUndefined();
   });
 
+  test('records ttft from legacy Completions text chunks, not empty finish frames', async () => {
+    const captured = ssePassthrough(
+      'data: {"object":"text_completion","choices":[{"text":"hi","index":0,"logprobs":null,"finish_reason":null}]}\n\n' +
+        'data: {"object":"text_completion","choices":[{"text":"","index":0,"logprobs":null,"finish_reason":"stop"}]}\n\n' +
+        'data: [DONE]\n\n',
+    );
+    await drain(captured.value);
+    const completion = await captured.completion;
+
+    expect(completion.outcome).toBe('success');
+    const ttftMs = 'ttftMs' in completion ? completion.ttftMs : undefined;
+    expect(typeof ttftMs).toBe('number');
+    expect(ttftMs).toBeGreaterThanOrEqual(0);
+  });
+
+  test('omits ttft for a legacy Completions stream that only emits empty text frames', async () => {
+    const captured = ssePassthrough(
+      'data: {"object":"text_completion","choices":[{"text":"","index":0,"logprobs":null,"finish_reason":"stop"}]}\n\n' +
+        'data: [DONE]\n\n',
+    );
+    await drain(captured.value);
+    const completion = await captured.completion;
+
+    expect(completion.outcome).toBe('success');
+    expect('ttftMs' in completion ? completion.ttftMs : undefined).toBeUndefined();
+  });
+
   test('ignores Anthropic tool-argument deltas and records ttft on the first text delta', async () => {
     const captured = ssePassthrough(
       // input_json_delta carries tool arguments, not generated content: no ttft.
