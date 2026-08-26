@@ -1,6 +1,6 @@
 import type { ImageProtocolAdapter } from '@aio-proxy/core';
 
-import { supportsImageConvert, supportsImageRaw } from '../../../provider-runtime';
+import { supportsImage, supportsImageConvert } from '../../../provider-runtime';
 import { terminalCompletion } from '../../../route-observation';
 import type { ImageTransport } from '../../../runtime';
 import { captureImageUsage } from '../../../usage-capture/image-capture';
@@ -10,6 +10,7 @@ import { logRequestRejected } from '../logging';
 import type { AnyAttemptLoopContext, AttemptLoopContext, AttemptStep, CandidateSlot } from './context';
 import { unsupportedDispatch } from './error';
 import { attemptRawCandidate } from './raw';
+import { requestPathProperty } from './request-path';
 
 export const IMAGE_RAW_IDLE_TIMEOUT_MS = 600_000;
 
@@ -22,9 +23,14 @@ export async function dispatchImageCandidate<TRequest, TContext>(
   slot: CandidateSlot,
 ): Promise<AttemptStep> {
   const provider = slot.candidate.provider;
-  if (supportsImageRaw(provider, slot.candidate.modelId)) {
-    const raw = provider.raw?.resolve({ protocol: ctx.adapter.protocol, modelId: slot.candidate.modelId });
-    if (raw === undefined) return unsupportedDispatch(ctx, slot);
+  const raw = supportsImage(provider.capabilityIndex, slot.candidate.modelId)
+    ? provider.raw?.resolve({
+        protocol: ctx.adapter.protocol,
+        modelId: slot.candidate.modelId,
+        ...requestPathProperty(ctx.rawRequest),
+      })
+    : undefined;
+  if (raw !== undefined) {
     slot.trace.transport = 'raw';
     slot.trace.targetProtocol = ctx.adapter.protocol;
     return attemptRawCandidate(ctx, slot, raw, ctx.streamRequested ? { idleTimeoutMs: IMAGE_RAW_IDLE_TIMEOUT_MS } : {});

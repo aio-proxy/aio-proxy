@@ -135,6 +135,52 @@ function convertProvider(options: {
   return { calls, imageCalls, provider };
 }
 
+test('image inbound raw resolve receives the inbound request path', async () => {
+  const resolvePaths: Array<string | undefined> = [];
+  const allowed = '/v1/images/generations';
+  const modelId = 'path-raw-model';
+  const invoke = async () => Response.json({ provider: 'path-raw' });
+  const fixture = {
+    calls: { ensure: 0, model: [], raw: [] },
+    provider: {
+      alias: { [REQUESTED_MODEL]: { model: modelId, preserve: false } },
+      capabilityIndex: { [modelId]: new Set(['image'] as const) },
+      enabled: true,
+      id: 'path-raw',
+      kind: ProviderKind.Api,
+      raw: {
+        resolve: ({ protocol, requestPath }: { protocol: ProviderProtocol; requestPath?: string }) => {
+          resolvePaths.push(requestPath);
+          if (protocol !== ProviderProtocol.OpenAIImage || requestPath !== allowed) return undefined;
+          return { invoke };
+        },
+      },
+    } satisfies RuntimeProviderInstance,
+  };
+  const route = pipeline([fixture], { adapter: imageAdapter() });
+
+  const generations = await route.run(
+    new Request('http://localhost/v1/images/generations', {
+      body: JSON.stringify({ model: REQUESTED_MODEL, prompt: 'a cat' }),
+      headers: { 'content-type': 'application/json' },
+      method: 'POST',
+    }),
+  );
+  expect(generations.status).toBe(200);
+  expect(await generations.json()).toEqual({ provider: 'path-raw' });
+  expect(resolvePaths).toEqual([allowed]);
+
+  const edits = await route.run(
+    new Request('http://localhost/v1/images/edits', {
+      body: JSON.stringify({ model: REQUESTED_MODEL, prompt: 'a cat' }),
+      headers: { 'content-type': 'application/json' },
+      method: 'POST',
+    }),
+  );
+  expect(edits.status).toBe(501);
+  expect(resolvePaths).toEqual([allowed, '/v1/images/edits']);
+});
+
 test('image inbound uses raw when openai-image resolves', async () => {
   const raw = withImageIndex(
     rawProvider({

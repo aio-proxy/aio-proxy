@@ -44,10 +44,11 @@ export function buildModelCapabilityIndex(input: CapabilityIndexInput): ModelCap
       capabilities.add('image');
     }
     if (input.primaryProtocol === ProviderProtocol.OpenAIImage) capabilities.add('image');
-    // Catalog image-only ids stay image-only even when OAuth `models` unions them
-    // with language catalog ids (that union is how finiteIds gets the image id).
+    // Catalog image/embedding ids stay out of synthesized language even when
+    // OAuth `models` unions them with language catalog ids.
     const imageOnly = imageIds.has(id) && !languageIds.has(id) && !embeddingIds.has(id);
-    if (finiteIds.has(id) && synthesizesLanguage(input) && !imageOnly) capabilities.add('language');
+    const catalogNonLanguage = !languageIds.has(id) && (imageIds.has(id) || embeddingIds.has(id));
+    if (finiteIds.has(id) && synthesizesLanguage(input) && !catalogNonLanguage) capabilities.add('language');
     if (finiteIds.has(id) && synthesizesEmbedding(input) && !imageOnly) capabilities.add('embedding');
     if (capabilities.size > 0) index[id] = capabilities;
   }
