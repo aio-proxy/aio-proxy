@@ -4,6 +4,12 @@ import { ZodError } from 'zod';
 
 import { parseGeminiBatchEmbedContents, parseGeminiEmbedContent } from './gemini-embeddings';
 
+function batchRequests(count: number) {
+  return {
+    requests: Array.from({ length: count }, () => ({ content: { parts: [{ text: 'x' }] } })),
+  };
+}
+
 test('accepts a single text part', () => {
   const parsed = parseGeminiEmbedContent({
     content: { parts: [{ text: 'hello' }] },
@@ -102,6 +108,11 @@ test('does not treat top-level autoTruncate as a legacy alias', () => {
 
 test('rejects empty batch requests', () => {
   expect(() => parseGeminiBatchEmbedContents({ requests: [] })).toThrow(ZodError);
+});
+
+test('accepts 100 batch requests and rejects 101', () => {
+  expect(parseGeminiBatchEmbedContents(batchRequests(100)).requests).toHaveLength(100);
+  expect(() => parseGeminiBatchEmbedContents(batchRequests(101))).toThrow(ZodError);
 });
 
 test('batch item inherits single-item rules', () => {

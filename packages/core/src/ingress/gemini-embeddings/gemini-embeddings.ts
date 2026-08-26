@@ -53,7 +53,8 @@ export const GeminiEmbedContentRequestSchema = z
   .strip();
 
 export const GeminiBatchEmbedContentsRequestSchema = z.object({
-  requests: z.array(GeminiEmbedContentRequestSchema).min(1),
+  // Official Gemini batchEmbedContents: at most 100 requests in one batch.
+  requests: z.array(GeminiEmbedContentRequestSchema).min(1).max(100),
 });
 
 export type GeminiEmbedContentRequest = z.output<typeof GeminiEmbedContentRequestSchema>;
