@@ -1,11 +1,51 @@
 import { afterEach, expect, test } from 'bun:test';
 
-import { ProviderKind } from '@aio-proxy/types';
+import type { ModelCatalog } from '@aio-proxy/plugin-sdk';
+import { ProviderKind, ProviderProtocol } from '@aio-proxy/types';
 
-import { catalogFreshness } from './catalog';
+import { catalogFreshness, modelMetadataRecord } from './catalog';
 import { catalog, cleanup, diagnostics, materializePluginProvider, runtimeFixture } from './test-support';
 
+const emptyFamilies = {
+  image: [],
+  speech: [],
+  transcription: [],
+  reranking: [],
+} as const satisfies Pick<ModelCatalog, 'image' | 'speech' | 'transcription' | 'reranking'>;
+
 afterEach(cleanup);
+
+test('overlapping catalog IDs keep the language protocol for language targetProtocol', () => {
+  expect(
+    modelMetadataRecord({
+      ...emptyFamilies,
+      language: [
+        { id: 'shared', displayName: 'Chat', metadata: { protocol: ProviderProtocol.OpenAIResponse } },
+        { id: 'chat-only', metadata: { protocol: ProviderProtocol.Anthropic } },
+      ],
+      embedding: [
+        { id: 'shared', displayName: 'Embed', metadata: { protocol: ProviderProtocol.Gemini } },
+        { id: 'embed-only', metadata: { protocol: ProviderProtocol.OpenAICompatible } },
+      ],
+    }),
+  ).toEqual({
+    'chat-only': { protocol: ProviderProtocol.Anthropic },
+    'embed-only': { protocol: ProviderProtocol.OpenAICompatible },
+    shared: { name: 'Chat', protocol: ProviderProtocol.OpenAIResponse },
+  });
+});
+
+test('overlapping catalog IDs drop embedding protocol when language omits it', () => {
+  expect(
+    modelMetadataRecord({
+      ...emptyFamilies,
+      language: [{ id: 'shared' }],
+      embedding: [{ id: 'shared', displayName: 'Embed', metadata: { protocol: ProviderProtocol.Gemini } }],
+    }),
+  ).toEqual({
+    shared: { name: 'Embed' },
+  });
+});
 
 test('a migrated catalog with revision 0 is stale even inside the TTL window', () => {
   expect(
