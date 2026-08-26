@@ -1,4 +1,4 @@
-import { createProviderV4Invoke, validateProviderV4 } from '@aio-proxy/core';
+import { createProviderV4Embed, createProviderV4Invoke, validateProviderV4 } from '@aio-proxy/core';
 import type {
   LogicalRequestContext,
   ModelCatalog,
@@ -10,6 +10,7 @@ import type {
   TokenCountCapability,
 } from '@aio-proxy/plugin-sdk';
 import { type OAuthProvider, ProviderKind, type ProviderProtocol } from '@aio-proxy/types';
+import { uniq } from 'es-toolkit/array';
 
 import type { RuntimeProviderInstance } from '../runtime';
 import { modelMetadataRecord } from './catalog';
@@ -26,13 +27,26 @@ export const pluginProtocol = {
 function rawCapability(rawResolver: RawResolver | undefined, catalog: ModelCatalog) {
   if (rawResolver === undefined) return undefined;
   const languageCatalogById = new Map(catalog.language.map((descriptor) => [descriptor.id, descriptor]));
+  const embeddingCatalogById = new Map(catalog.embedding.map((descriptor) => [descriptor.id, descriptor]));
   return {
-    resolve({ protocol, modelId }: { readonly protocol: ProviderProtocol; readonly modelId: string }) {
-      const descriptor = languageCatalogById.get(modelId);
+    resolve({
+      protocol,
+      modelId,
+      capability,
+    }: {
+      readonly protocol: ProviderProtocol;
+      readonly modelId: string;
+      readonly capability?: 'language' | 'embedding';
+    }) {
+      const descriptor =
+        capability === 'embedding'
+          ? (embeddingCatalogById.get(modelId) ?? languageCatalogById.get(modelId))
+          : (languageCatalogById.get(modelId) ?? embeddingCatalogById.get(modelId));
       const transport = rawResolver({
         protocol: pluginProtocol[protocol],
         modelId,
         ...(descriptor?.metadata === undefined ? {} : { metadata: descriptor.metadata }),
+        ...(capability === undefined ? {} : { capability }),
       });
       if (transport === undefined) return undefined;
       if (
@@ -65,6 +79,10 @@ export function exposedModelIds(catalogIds: readonly string[], whitelist: readon
   if (whitelist === undefined || whitelist.length === 0) return [...catalogIds];
   const allowed = new Set(whitelist);
   return catalogIds.filter((id) => allowed.has(id));
+}
+
+export function catalogRouteIds(catalog: ModelCatalog): string[] {
+  return uniq([...catalog.language, ...catalog.embedding].map((item) => item.id));
 }
 
 export function withRoutingConfig(
@@ -117,10 +135,7 @@ export function createRuntimeProvider(
     kind: ProviderKind.OAuth,
     enabled: config.enabled,
     ...routingDefaults(config),
-    models: exposedModelIds(
-      catalog.language.map(({ id }) => id),
-      config.models,
-    ),
+    models: exposedModelIds(catalogRouteIds(catalog), config.models),
     ...(config.alias === undefined ? {} : { alias: config.alias }),
     ...(config.metadata === undefined ? {} : { configMetadata: config.metadata }),
     upstreamMetadata,
@@ -133,6 +148,7 @@ export function createRuntimeProvider(
       supportsProviderTool: (type) => supportedProviderTools.has(type),
       targetProtocol: (modelId) => upstreamMetadata[modelId]?.protocol,
     },
+    embedding: { embed: createProviderV4Embed(config.id, result.provider) },
   };
 }
 

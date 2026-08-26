@@ -33,9 +33,11 @@ export {
   writeAnthropicMessagesResponse,
   writeAnthropicMessagesSSE,
 } from './egress/anthropic-messages';
+export { writeGeminiEmbeddingsResponse } from './egress/gemini-embeddings';
 export { writeGeminiGenerateContentResponse, writeGeminiGenerateContentSSE } from './egress/gemini-generate-content';
 export { writeGeminiInteractionsResponse, writeGeminiInteractionsSSE } from './egress/gemini-interactions';
 export { writeOpenAICompletionsResponse, writeOpenAICompletionsSSE } from './egress/openai-completions';
+export { writeOpenAIEmbeddingsResponse } from './egress/openai-embeddings';
 export {
   type OpenAIResponsesResponse,
   writeOpenAIResponsesResponse,
@@ -47,6 +49,9 @@ export {
   AiSdkProviderLoaderError,
   AnthropicMessagesTransformError,
   DatabaseSchemaTooNewError,
+  EmbeddingConvertUnsupportedError,
+  EmbeddingCountMismatchError,
+  EmbeddingUsageRequiredError,
   GeminiGenerateContentTransformError,
   GeminiInteractionsEgressError,
   GeminiInteractionsTransformError,
@@ -90,6 +95,12 @@ export {
   parseAnthropicMessages,
 } from './ingress/anthropic-messages/index';
 export {
+  type GeminiBatchEmbedContentsRequest,
+  type GeminiEmbedContentRequest,
+  parseGeminiBatchEmbedContents,
+  parseGeminiEmbedContent,
+} from './ingress/gemini-embeddings';
+export {
   type GeminiGenerateContentParseResult,
   type GeminiGenerateContentPart,
   type GeminiGenerateContentRequest,
@@ -109,6 +120,7 @@ export {
   OpenAICompletionsRequestSchema,
   parseOpenAICompletions,
 } from './ingress/openai-completions';
+export { type OpenAIEmbeddingsRequest, parseOpenAIEmbeddings } from './ingress/openai-embeddings';
 export {
   type OpenAIResponsesCustomTool,
   type OpenAIResponsesExecutableTool,
@@ -179,7 +191,13 @@ export {
   resolveApiKey,
 } from './provider/api/index';
 export { bridgeApiProviderToAiSdk, resolveOpenAIResponsesModel } from './provider/api-bridge/index';
-export { createProviderV4Invoke, validateProviderV4 } from './provider/provider-v4';
+export {
+  assertConvertSupported,
+  createProviderV4Embed,
+  createProviderV4Invoke,
+  type ProviderV4Embed,
+  validateProviderV4,
+} from './provider/provider-v4';
 export { createProxyFetch, type ProviderFetch } from './provider/proxy-fetch';
 export {
   type EffectiveCandidateRouting,

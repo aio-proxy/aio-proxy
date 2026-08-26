@@ -1,4 +1,11 @@
-import type { AiSdkProviderInstance, ApiProviderInstance, PluginRegistrySnapshot, Router } from '@aio-proxy/core';
+import type {
+  AiSdkProviderInstance,
+  ApiProviderInstance,
+  EmbeddingInvocation,
+  EmbeddingResult,
+  PluginRegistrySnapshot,
+  Router,
+} from '@aio-proxy/core';
 import type { LogicalRequestContext, ProviderExecutedTool, TokenCountCapability } from '@aio-proxy/plugin-sdk';
 import type {
   AliasConfig,
@@ -34,7 +41,19 @@ export type RuntimeRawCapability = {
   readonly resolve: (input: {
     readonly protocol: ProviderProtocol;
     readonly modelId: string;
+    readonly capability?: 'language' | 'embedding';
   }) => RawTransport | undefined;
+};
+
+export type EmbeddingTransport = {
+  readonly embed: (
+    invocation: EmbeddingInvocation,
+    options: {
+      readonly modelId: string;
+      readonly signal?: AbortSignal;
+      readonly logicalRequest: LogicalRequestContext;
+    },
+  ) => Promise<EmbeddingResult>;
 };
 
 export type ModelTransport = {
@@ -62,8 +81,9 @@ type RuntimeProviderBase = {
 };
 export type RuntimeProviderInstance = RuntimeProviderBase &
   (
-    | { readonly raw: RuntimeRawCapability; readonly model?: ModelTransport }
-    | { readonly raw?: RuntimeRawCapability; readonly model: ModelTransport }
+    | { readonly raw: RuntimeRawCapability; readonly model?: ModelTransport; readonly embedding?: EmbeddingTransport }
+    | { readonly raw?: RuntimeRawCapability; readonly model: ModelTransport; readonly embedding?: EmbeddingTransport }
+    | { readonly raw?: RuntimeRawCapability; readonly model?: ModelTransport; readonly embedding: EmbeddingTransport }
   );
 export type RuntimeProviderInput = LegacyRuntimeProviderInstance | RuntimeProviderInstance;
 

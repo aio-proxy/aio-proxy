@@ -3,10 +3,39 @@ import { describe, expect, test } from 'bun:test';
 import { ProviderProtocol } from '@aio-proxy/types';
 import { asSchema } from 'ai';
 
-import { defineProtocolAdapter, functionToolSet, type ProtocolAdapter } from '../../src/index';
+import {
+  defineEmbeddingProtocolAdapter,
+  defineProtocolAdapter,
+  functionToolSet,
+  type ProtocolAdapter,
+} from '../../src/index';
 
 type RequestValue = { readonly model: string };
 type RouteContext = { readonly stream: boolean };
+
+test('defineEmbeddingProtocolAdapter freezes capability embedding and omits stream/session defaults', () => {
+  const adapter = defineEmbeddingProtocolAdapter({
+    capability: 'embedding',
+    protocol: ProviderProtocol.OpenAICompatible,
+    parse: async () => ({ model: 'm' }),
+    model: (request) => request.model,
+    rawRequest: async (raw) => raw,
+    embeddingInvocation: () => ({ values: [{ value: 'hi' }] }),
+    embeddingJson: (result) => result.embeddings,
+    errors: {
+      requestError: () => undefined,
+      modelNotFound: (message) => Response.json({ message }, { status: 404 }),
+      previousResponseConflict: () => new Response(null, { status: 409 }),
+      tooLarge: () => new Response(null, { status: 413 }),
+      unsupportedContentEncoding: () => new Response(null, { status: 415 }),
+      unsupported: () => new Response(null, { status: 501 }),
+      provider: () => undefined,
+      rateLimited: () => new Response(null, { status: 429 }),
+    },
+  });
+  expect(adapter.capability).toBe('embedding');
+  expect(adapter.wantsStream({ model: 'm' }, { stream: true })).toBe(false);
+});
 
 describe('defineProtocolAdapter', () => {
   test('adds the empty-dimensions default and freezes the adapter', () => {

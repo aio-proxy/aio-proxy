@@ -27,6 +27,10 @@ describe('OpenAI ChatGPT runtime', () => {
     expect(runtime.raw?.({ protocol: 'openai-compatible', modelId: 'gpt-5.5' })).toBeUndefined();
     expect(runtime.raw?.({ protocol: 'anthropic', modelId: 'gpt-5.5' })).toBeUndefined();
     expect(runtime.raw?.({ protocol: 'gemini', modelId: 'gpt-5.5' })).toBeUndefined();
+    expect(runtime.raw?.({ protocol: 'openai-response', modelId: 'gpt-5.5', capability: 'embedding' })).toBeUndefined();
+    expect(
+      runtime.raw?.({ protocol: 'openai-compatible', modelId: 'gpt-5.5', capability: 'embedding' }),
+    ).toBeUndefined();
   });
 
   test('routes every concurrent expired request through the host credential refresh port', async () => {

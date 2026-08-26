@@ -18,7 +18,7 @@ import type {
   TextStreamPart,
   ToolSet,
 } from 'ai';
-import { jsonSchema, streamText } from 'ai';
+import { embed, embedMany, jsonSchema, streamText } from 'ai';
 
 /**
  * Non-deprecated replacement for the AI SDK `CallSettings` type: model-behavior
@@ -43,7 +43,7 @@ export type {
   TextStreamPart,
   ToolSet,
 };
-export { jsonSchema };
+export { embed, embedMany, jsonSchema };
 
 export type AiSdkLanguageModel = LanguageModelV2 | LanguageModelV3 | LanguageModelV4;
 

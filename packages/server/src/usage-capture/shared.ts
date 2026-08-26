@@ -1,4 +1,4 @@
-import { type OpenRouterModelPrice, type TextStreamPart, type ToolSet } from '@aio-proxy/core';
+import { type EmbeddingResult, type OpenRouterModelPrice, type TextStreamPart, type ToolSet } from '@aio-proxy/core';
 import type { ProviderProtocol, UsageRow } from '@aio-proxy/types';
 
 import type { AttemptResponseObservation } from '../response-observation';
@@ -63,9 +63,23 @@ export type PassthroughUsageOptions = {
   readonly configPrice?: OpenRouterModelPrice;
 };
 
+export type EmbeddingUsageOptions = {
+  // Upstream-reported embedding usage, absent when no token count was recovered.
+  readonly usage: EmbeddingResult['usage'];
+  readonly providerId: string;
+  readonly modelId: string;
+  readonly requestedModelId?: string;
+  // Per-provider price override for the hit channel; when present it wins over
+  // the models.dev catalog and marks the usage row's priceSource as 'config'.
+  readonly configPrice?: OpenRouterModelPrice;
+};
+
 export type UsageCapture = {
   readonly stream: (options: StreamUsageOptions) => Captured<ReadableStream<TextStreamPart<ToolSet>>>;
   readonly passthrough: (options: PassthroughUsageOptions) => Captured<Response>;
+  // Embedding responses are buffered JSON with no transport to wrap, so this
+  // resolves the completion directly instead of returning a captured value.
+  readonly embedding: (options: EmbeddingUsageOptions) => Promise<UsageCompletion>;
 };
 
 export function usageProperty(usage: UsageRow | undefined): { readonly usage?: UsageRow } {

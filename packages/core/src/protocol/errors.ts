@@ -5,6 +5,8 @@ import { prettifyError, ZodError } from 'zod';
 import {
   AiSdkProviderError,
   AnthropicMessagesTransformError,
+  EmbeddingConvertUnsupportedError,
+  EmbeddingUsageRequiredError,
   GeminiGenerateContentTransformError,
   GeminiInteractionsEgressError,
   GeminiInteractionsTransformError,
@@ -72,6 +74,37 @@ export const openAIResponsesErrors: ProtocolErrorMapper = {
   unsupportedContentEncoding: () => openAIInvalid(415, 'unsupported_content_encoding', 'Unsupported Content-Encoding'),
   unsupported: openAIUnsupported,
   provider: openAIProviderError,
+  rateLimited: openAIRateLimited,
+};
+
+export const openAIEmbeddingsErrors: ProtocolErrorMapper = {
+  modelUnsupported: (error) =>
+    error instanceof ImageInputUnsupportedError
+      ? openAIInvalid(501, 'unsupported_feature', 'Image input cannot be represented by this provider')
+      : undefined,
+  requestError: (error) => {
+    if (error instanceof EmbeddingConvertUnsupportedError) return openAIEmbeddingConvertUnsupported(error);
+    return error instanceof SyntaxError ||
+      error instanceof ZodError ||
+      error instanceof InvalidCompressedRequestBodyError
+      ? openAIInvalid(400, 'invalid_request', withZodDetail('Invalid OpenAI Embeddings request', error))
+      : undefined;
+  },
+  modelNotFound: (message) => openAIInvalid(404, 'model_not_found', message),
+  previousResponseConflict: () => openAIInvalid(409, 'previous_response_conflict', PREVIOUS_RESPONSE_CONFLICT_MESSAGE),
+  tooLarge: () => openAIInvalid(413, 'request_too_large', 'Request body too large'),
+  unsupportedContentEncoding: () => openAIInvalid(415, 'unsupported_content_encoding', 'Unsupported Content-Encoding'),
+  unsupported: () =>
+    openAIInvalid(501, 'not_implemented', 'Provider does not support OpenAI Embeddings transform dispatch'),
+  // OpenAI embeddings egress requires prompt/total tokens, so an upstream that
+  // never reported them is an upstream failure, not an internal one. Convert-gap
+  // throws from the transport still surface as 501, not a generic provider 500.
+  provider: (error) => {
+    if (error instanceof EmbeddingConvertUnsupportedError) return openAIEmbeddingConvertUnsupported(error);
+    return error instanceof EmbeddingUsageRequiredError
+      ? openAIInvalid(502, 'upstream_error', error.message)
+      : openAIProviderError(error);
+  },
   rateLimited: openAIRateLimited,
 };
 
@@ -159,6 +192,34 @@ export const geminiInteractionsErrors: ProtocolErrorMapper = {
   rateLimited: geminiRateLimited,
 };
 
+export const geminiEmbeddingsErrors: ProtocolErrorMapper = {
+  modelUnsupported: (error) =>
+    error instanceof ImageInputUnsupportedError
+      ? geminiError(501, 'UNIMPLEMENTED', 'Image input cannot be represented by this provider')
+      : undefined,
+  requestError: (error) => {
+    if (error instanceof EmbeddingConvertUnsupportedError) return geminiEmbeddingConvertUnsupported(error);
+    return error instanceof SyntaxError ||
+      error instanceof ZodError ||
+      error instanceof InvalidCompressedRequestBodyError
+      ? geminiError(400, 'INVALID_ARGUMENT', withZodDetail('Invalid Gemini Embeddings request', error))
+      : undefined;
+  },
+  modelNotFound: (message) => geminiError(404, 'NOT_FOUND', message),
+  previousResponseConflict: () => geminiError(409, 'ABORTED', PREVIOUS_RESPONSE_CONFLICT_MESSAGE),
+  tooLarge: () => geminiError(413, 'RESOURCE_EXHAUSTED', 'Request body too large'),
+  unsupportedContentEncoding: () => geminiError(415, 'INVALID_ARGUMENT', 'Unsupported Content-Encoding'),
+  unsupported: () =>
+    geminiError(501, 'UNIMPLEMENTED', 'Provider does not support Gemini embeddings transform dispatch'),
+  provider: (error) =>
+    error instanceof EmbeddingConvertUnsupportedError
+      ? geminiEmbeddingConvertUnsupported(error)
+      : genericProviderError(error, (status, message) =>
+          status === 499 ? geminiError(499, 'CANCELLED', message) : geminiError(status, 'UNAVAILABLE', message),
+        ),
+  rateLimited: geminiRateLimited,
+};
+
 function openAIProviderError(error: unknown): Response | undefined {
   const cause = error instanceof AiSdkProviderError ? error.cause : error;
   const missing = providerNotInstalled(error);
@@ -225,6 +286,23 @@ function statusCode(error: unknown): number | undefined {
 function isAbort(error: unknown): boolean {
   const cause = error instanceof AiSdkProviderError ? error.cause : error;
   return cause instanceof Error && cause.name === 'AbortError';
+}
+
+function openAIEmbeddingConvertUnsupported(error: EmbeddingConvertUnsupportedError): Response {
+  return Response.json(
+    {
+      error: {
+        code: 'not_implemented',
+        message: error.message,
+        type: 'unsupported_feature',
+      },
+    },
+    { status: 501 },
+  );
+}
+
+function geminiEmbeddingConvertUnsupported(error: EmbeddingConvertUnsupportedError): Response {
+  return geminiError(501, 'UNIMPLEMENTED', error.message);
 }
 
 function openAIUnsupported(feature: string): Response {
