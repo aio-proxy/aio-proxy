@@ -29,6 +29,51 @@ test('one-value group calls embed with singular value', async () => {
   expect(result.usage).toEqual({ tokens: 3 });
 });
 
+test('groups equal providerOptions even when namespace key order differs', async () => {
+  const calls: Array<{ values: string[] }> = [];
+  const run = createProviderV4Embed('p', providerFixture(), {
+    embed: async () => {
+      throw new Error('embed');
+    },
+    embedMany: async (args: { values: string[] }) => {
+      calls.push(args);
+      return { embeddings: [[0.1], [0.2]], usage: { tokens: 4 }, responses: [{ body: {} }] };
+    },
+  });
+  const result = await run(
+    {
+      values: [
+        { value: 'a', providerOptions: { google: { taskType: 'RETRIEVAL_QUERY' }, openai: { dimensions: 8 } } },
+        { value: 'b', providerOptions: { openai: { dimensions: 8 }, google: { taskType: 'RETRIEVAL_QUERY' } } },
+      ],
+    },
+    { modelId: 'm' },
+  );
+  expect(calls).toHaveLength(1);
+  expect(calls[0]?.values).toEqual(['a', 'b']);
+  expect(result.embeddings).toEqual([[0.1], [0.2]]);
+});
+
+test('keeps distinct providerOptions in separate groups', async () => {
+  const calls: Array<{ value?: string; values?: string[] }> = [];
+  const run = createProviderV4Embed('p', providerFixture(), {
+    embed: async (args: { value: string }) => {
+      calls.push(args);
+      return { embedding: [0.1], usage: { tokens: 1 }, response: { body: {} } };
+    },
+    embedMany: async () => {
+      throw new Error('embedMany');
+    },
+  });
+  const values = Array.from({ length: 8 }, (_, index) => ({
+    value: `t${index}`,
+    providerOptions: { google: { outputDimensionality: index + 1 } },
+  }));
+  const result = await run({ values }, { modelId: 'm' });
+  expect(calls).toHaveLength(8);
+  expect(result.embeddings).toHaveLength(8);
+});
+
 test('multi-value group calls embedMany with values', async () => {
   const embedManyFn = async (args: { values: string[] }) => {
     expect(args.values).toEqual(['a', 'b']);

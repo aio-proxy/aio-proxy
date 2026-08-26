@@ -1,5 +1,5 @@
 import type { ProviderV4 } from '@ai-sdk/provider';
-import { isEqual, isPlainObject } from 'es-toolkit/predicate';
+import { isPlainObject } from 'es-toolkit/predicate';
 
 import { embed, embedMany, streamAiSdkText } from '../ai-sdk-bridge';
 import { AiSdkProviderError, EmbeddingConvertUnsupportedError, EmbeddingCountMismatchError } from '../error';
@@ -182,22 +182,40 @@ export function assertConvertSupported(values: readonly EmbeddingValue[]): void 
 }
 
 function groupByProviderOptions(values: readonly EmbeddingValue[]): readonly EmbeddingGroup[] {
-  const groups: Array<{
-    items: IndexedValue[];
-    providerOptions: EmbeddingProviderOptions | undefined;
-  }> = [];
+  const groups = new Map<
+    string,
+    {
+      items: IndexedValue[];
+      providerOptions: EmbeddingProviderOptions | undefined;
+    }
+  >();
 
   for (const [index, value] of values.entries()) {
     const providerOptions = normalizeProviderOptions(value.providerOptions);
-    const existing = groups.find((group) => isEqual(group.providerOptions, providerOptions));
+    const key = providerOptionsKey(providerOptions);
+    const existing = groups.get(key);
     if (existing === undefined) {
-      groups.push({ items: [{ index, value: value.value }], providerOptions });
+      groups.set(key, { items: [{ index, value: value.value }], providerOptions });
       continue;
     }
     existing.items.push({ index, value: value.value });
   }
 
-  return groups;
+  return [...groups.values()];
+}
+
+function providerOptionsKey(options: EmbeddingProviderOptions | undefined): string {
+  return options === undefined ? '' : JSON.stringify(canonicalize(options));
+}
+
+function canonicalize(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalize);
+  if (!isPlainObject(value)) return value;
+  const normalized: Record<string, unknown> = {};
+  for (const key of Object.keys(value).sort()) {
+    normalized[key] = canonicalize(value[key]);
+  }
+  return normalized;
 }
 
 function normalizeProviderOptions(options: EmbeddingProviderOptions | undefined): EmbeddingProviderOptions | undefined {
