@@ -1,4 +1,5 @@
 import type { TextStreamPart, ToolSet } from '../../ai-sdk-bridge';
+import { GeminiInteractionsEgressError } from '../../error';
 import type { ModelEgressContext, ModelSseStream } from '../../protocol/adapter';
 import { createCancellableEgressStream } from '../cancellable-stream';
 import {
@@ -43,6 +44,7 @@ type SseState = {
   nextIndex: number;
   open: OpenStep | undefined;
   failed: boolean;
+  failure: unknown;
   finishReason: string;
   usage: TokenUsage | undefined;
   readonly tools: Map<string, ToolState>;
@@ -62,6 +64,7 @@ export function writeGeminiInteractionsSSE(
       nextIndex: 0,
       open: undefined,
       failed: false,
+      failure: undefined,
       finishReason: 'unknown',
       usage: undefined,
       tools: new Map(),
@@ -83,15 +86,16 @@ export function writeGeminiInteractionsSSE(
       if (state.failed) break;
       handlePart(state, part, context.omitThoughtSummaries === true);
     }
-    if (state.failed) return;
+    if (state.failed) throw protocolError(state.failure);
 
     closeRemaining(state);
     try {
       const functionCalls = Array.from(state.tools.values()).map(functionCallStep);
       const status = interactionStatus(state.finishReason, functionCalls.length > 0);
       if (status === 'error') {
-        emitError(state, `Gemini Interactions convert finished with ${state.finishReason}`);
-        return;
+        const error = new GeminiInteractionsEgressError(state.finishReason);
+        emitError(state, error);
+        throw error;
       }
 
       const interaction: Interaction = {
@@ -108,7 +112,8 @@ export function writeGeminiInteractionsSSE(
       context.onResponseId?.(id);
       emitDone(state);
     } catch (error) {
-      emitError(state, errorMessage(error));
+      emitError(state, error);
+      throw protocolError(error);
     }
   });
 }
@@ -131,7 +136,7 @@ function handlePart(state: SseState, part: GeminiInteractionsStreamPart, omitTho
       closeFunctionCall(state, part.id);
       break;
     case 'error':
-      emitError(state, errorMessage(part.error));
+      emitError(state, part.error);
       break;
     case 'finish':
       state.finishReason = typeof part.finishReason === 'string' ? part.finishReason : 'unknown';
@@ -168,7 +173,10 @@ function emitTextDelta(state: SseState, text: string): void {
 
 function startFunctionCall(state: SseState, id: string, name: string): void {
   if (id.length === 0 || name.length === 0) {
-    emitError(state, id.length === 0 ? 'function_call step is missing id' : 'function_call step is missing name');
+    emitError(
+      state,
+      new Error(id.length === 0 ? 'function_call step is missing id' : 'function_call step is missing name'),
+    );
     return;
   }
   if (state.open !== undefined && state.open.kind !== 'function_call') closeOpen(state);
@@ -261,15 +269,20 @@ function emitJson(state: SseState, eventType: string, payload: Record<string, un
   state.enqueue(encoder.encode(`event: ${eventType}\ndata: ${JSON.stringify(body)}\n\n`));
 }
 
-function emitError(state: SseState, message: string): void {
+function emitError(state: SseState, error: unknown): void {
   if (state.failed) return;
   state.failed = true;
+  state.failure = error;
   closeRemaining(state);
   emitJson(state, 'error', {
     event_type: 'error',
-    error: { code: 500, message, status: 'INTERNAL' },
+    error: { code: 500, message: errorMessage(error), status: 'INTERNAL' },
   });
   emitDone(state);
+}
+
+function protocolError(error: unknown): Error {
+  return error instanceof Error ? error : new Error(errorMessage(error));
 }
 
 function emitDone(state: SseState): void {

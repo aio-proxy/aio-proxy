@@ -85,7 +85,7 @@ function functionCallPart(step: Record<string, unknown>, toolNames: Map<string, 
 
 function functionResultPart(step: Record<string, unknown>, toolNames: Map<string, string>): ToolResultPart {
   const callId = typeof step['call_id'] === 'string' ? step['call_id'] : '';
-  const name = typeof step['name'] === 'string' ? step['name'] : (toolNames.get(callId) ?? '');
+  const name = toolNames.get(callId) ?? '';
   return {
     type: 'tool-result',
     toolCallId: callId,

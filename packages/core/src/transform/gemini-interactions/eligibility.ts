@@ -30,6 +30,11 @@ const PRESENT_UNSUPPORTED = [
   'webhook_config',
 ] as const;
 
+type FunctionCallState = {
+  readonly name: string;
+  resolved: boolean;
+};
+
 const STEP_TYPES = new Set(['user_input', 'model_output', 'thought', 'function_call', 'function_result']);
 const MEDIA_TYPES = new Set(['image', 'audio', 'video', 'document']);
 const MEDIA_DATA_KEYS = ['inline_data', 'file_data', 'inlineData', 'fileData'];
@@ -154,8 +159,8 @@ function assertInput(input: GeminiInteractionsBody['input']): void {
   if (Array.isArray(input)) {
     if (input.length === 0) return;
     if (input.every(isStep)) {
-      const callIds = new Set<string>();
-      for (const step of input) assertStep(step, callIds);
+      const calls = new Map<string, FunctionCallState>();
+      for (const step of input) assertStep(step, calls);
       return;
     }
     if (input.every((item) => isRecord(item) && !isStep(item))) {
@@ -171,7 +176,7 @@ function assertInput(input: GeminiInteractionsBody['input']): void {
   unsupported('input', 'input');
 }
 
-function assertStep(step: Record<string, unknown>, callIds: Set<string>): void {
+function assertStep(step: Record<string, unknown>, calls: Map<string, FunctionCallState>): void {
   const type = step['type'];
   if (typeof type !== 'string' || !STEP_TYPES.has(type)) unsupported('input', 'input');
   if (type === 'thought' && 'content' in step) unsupported('input', 'input');
@@ -186,11 +191,11 @@ function assertStep(step: Record<string, unknown>, callIds: Set<string>): void {
   if (type === 'function_call') {
     assertFunctionCall(step);
     const id = step['id'] as string;
-    if (callIds.has(id)) unsupported('input', 'input');
-    callIds.add(id);
+    if (calls.has(id)) unsupported('input', 'input');
+    calls.set(id, { name: step['name'] as string, resolved: false });
     return;
   }
-  assertFunctionResult(step, callIds);
+  assertFunctionResult(step, calls);
 }
 
 function assertFunctionCall(step: Record<string, unknown>): void {
@@ -199,10 +204,14 @@ function assertFunctionCall(step: Record<string, unknown>): void {
   if (step['arguments'] !== undefined && !isRecord(step['arguments'])) unsupported('input', 'input');
 }
 
-function assertFunctionResult(step: Record<string, unknown>, callIds: Set<string>): void {
+function assertFunctionResult(step: Record<string, unknown>, calls: Map<string, FunctionCallState>): void {
   if (typeof step['call_id'] !== 'string' || step['call_id'] === '') unsupported('input', 'input');
   if (!('result' in step)) unsupported('input', 'input');
-  if (!callIds.has(step['call_id'])) unsupported('input', 'input');
+  const call = calls.get(step['call_id']);
+  if (call === undefined || call.resolved) unsupported('input', 'input');
+  const authoredName = step['name'];
+  if (authoredName !== undefined && authoredName !== call.name) unsupported('input', 'input');
+  call.resolved = true;
 }
 
 function assertTextContents(value: unknown): void {

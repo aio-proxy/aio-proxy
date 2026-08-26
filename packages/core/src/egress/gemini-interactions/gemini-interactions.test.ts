@@ -212,7 +212,24 @@ describe('writeGeminiInteractionsResponse', () => {
 });
 
 async function readSse(stream: ReadableStream<Uint8Array>): Promise<string> {
-  return new Response(stream).text();
+  const reader = stream.getReader();
+  const chunks: Uint8Array[] = [];
+  try {
+    for (;;) {
+      const next = await reader.read();
+      if (next.done) break;
+      chunks.push(next.value);
+    }
+  } catch {
+    // Protocol-error paths reject the body after emitting error/done frames.
+  }
+  const bytes = new Uint8Array(chunks.reduce((total, chunk) => total + chunk.length, 0));
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return new TextDecoder().decode(bytes);
 }
 
 function completedSteps(text: string): unknown {
@@ -409,43 +426,56 @@ describe('writeGeminiInteractionsSSE', () => {
   });
 
   test('error finish emits error then done and never completed', async () => {
-    const text = await readSse(
-      writeGeminiInteractionsSSE(streamOf({ type: 'text-delta', id: 't', text: 'x' }, finish('error')), {
-        modelId: 'm',
-      }),
-    );
+    const stream = writeGeminiInteractionsSSE(streamOf({ type: 'text-delta', id: 't', text: 'x' }, finish('error')), {
+      modelId: 'm',
+    });
+    const text = await readSse(stream);
     expect(text).toContain('event: error');
     expect(text).toContain('event: done');
     expect(text).not.toContain('event: interaction.completed');
+    await expect(stream.completion).rejects.toBeInstanceOf(GeminiInteractionsEgressError);
+  });
+
+  test('unknown finish without tools rejects egress completion', async () => {
+    const stream = writeGeminiInteractionsSSE(streamOf({ type: 'text-delta', id: 't', text: 'x' }, finish('unknown')), {
+      modelId: 'm',
+    });
+    const text = await readSse(stream);
+    expect(text).toContain('event: error');
+    expect(text).not.toContain('event: interaction.completed');
+    await expect(stream.completion).rejects.toBeInstanceOf(GeminiInteractionsEgressError);
   });
 
   test('malformed function-call arguments emit error then done', async () => {
-    const text = await readSse(
-      writeGeminiInteractionsSSE(
-        streamOf(
-          { type: 'tool-input-start', id: 'c1', toolName: 'get_weather' },
-          { type: 'tool-input-delta', id: 'c1', delta: '{' },
-          { type: 'tool-input-end', id: 'c1' },
-          finish('tool-calls'),
-        ),
-        { modelId: 'm' },
+    const stream = writeGeminiInteractionsSSE(
+      streamOf(
+        { type: 'tool-input-start', id: 'c1', toolName: 'get_weather' },
+        { type: 'tool-input-delta', id: 'c1', delta: '{' },
+        { type: 'tool-input-end', id: 'c1' },
+        finish('tool-calls'),
       ),
+      { modelId: 'm' },
     );
+    const text = await readSse(stream);
     expect(text).toContain('event: error');
     expect(text).toContain('event: done');
     expect(text).not.toContain('event: interaction.completed');
+    await expect(stream.completion).rejects.toBeInstanceOf(GeminiInteractionsEgressError);
   });
 
   test('missing function_call id or name emits error then done', async () => {
-    const text = await readSse(
-      writeGeminiInteractionsSSE(streamOf({ type: 'tool-input-start', id: '', toolName: 't' }, finish('tool-calls')), {
+    const stream = writeGeminiInteractionsSSE(
+      streamOf({ type: 'tool-input-start', id: '', toolName: 't' }, finish('tool-calls')),
+      {
         modelId: 'm',
-      }),
+      },
     );
+    const text = await readSse(stream);
     expect(text).toContain('event: error');
     expect(text).toContain('event: done');
     expect(text).toContain('data: [DONE]');
     expect(text).not.toContain('event: interaction.completed');
     expect(text).not.toContain('"type":"function_call"');
+    await expect(stream.completion).rejects.toThrow();
   });
 });
