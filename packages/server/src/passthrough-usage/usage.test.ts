@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 
 import { ProviderProtocol } from '@aio-proxy/types';
 
-import { extractPassthroughUsage } from './index';
+import { extractPassthroughObservation, extractPassthroughUsage } from './index';
 
 describe('passthrough usage extraction', () => {
   test('extracts Anthropic JSON usage', () => {
@@ -146,6 +146,33 @@ describe('passthrough usage extraction', () => {
       inputTokens: 8,
       outputTokens: 1056,
       totalTokens: 1064,
+      imageCount: 1,
+    });
+  });
+
+  test('counts Images data length when token usage is absent', () => {
+    expect(
+      extractPassthroughUsage(
+        ProviderProtocol.OpenAIImage,
+        JSON.stringify({
+          created: 10,
+          data: [{ url: 'https://example.test/a' }, { url: 'https://example.test/b' }],
+        }),
+      ),
+    ).toEqual({ imageCount: 2 });
+  });
+
+  test('rejects invalid Images token fields even when data is present', () => {
+    expect(
+      extractPassthroughObservation(
+        ProviderProtocol.OpenAIImage,
+        JSON.stringify({
+          data: [{ b64_json: 'abc' }],
+          usage: { input_tokens: -1, output_tokens: 1, total_tokens: 1 },
+        }),
+      ),
+    ).toEqual({
+      issues: [{ code: 'invalid_token_count', path: ['inputTokens'] }],
     });
   });
 

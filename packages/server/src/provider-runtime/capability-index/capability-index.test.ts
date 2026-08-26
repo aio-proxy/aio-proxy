@@ -103,6 +103,22 @@ describe('buildModelCapabilityIndex', () => {
     expect(supportsImage(index, 'gpt-5')).toBe(false);
   });
 
+  test('does not synthesize language for catalog-image-only ids when models unions them', () => {
+    const index = buildModelCapabilityIndex({
+      catalog: {
+        language: [{ id: 'gpt-5' }],
+        image: [{ id: 'gpt-image-2' }],
+        embedding: [],
+        speech: [],
+        transcription: [],
+        reranking: [],
+      },
+      models: ['gpt-5', 'gpt-image-2'],
+    });
+    expect([...index['gpt-5']!]).toEqual(['language']);
+    expect([...index['gpt-image-2']!]).toEqual(['image']);
+  });
+
   test('keeps alias targets language-capable after a language catalog drops them', () => {
     const index = buildModelCapabilityIndex({
       catalog: {

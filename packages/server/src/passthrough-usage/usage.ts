@@ -30,15 +30,25 @@ export function usageFromJson(protocol: ProviderProtocol, value: unknown): Usage
 }
 
 function openAIImageUsage(value: unknown): UsageExtraction {
-  if (!isRecord(value) || !isRecord(value['usage'])) {
-    return { kind: 'absent' };
+  if (!isRecord(value)) return { kind: 'absent' };
+  const imageCount = Array.isArray(value['data']) ? value['data'].length : 0;
+  if (!isRecord(value['usage'])) {
+    return imageCount > 0 ? { kind: 'valid', usage: { imageCount } } : { kind: 'absent' };
   }
-  const usage = value['usage'];
-  return tokenUsage({
-    inputTokens: numberField(usage, 'input_tokens', 'inputTokens'),
-    outputTokens: numberField(usage, 'output_tokens', 'outputTokens'),
-    totalTokens: numberField(usage, 'total_tokens', 'totalTokens'),
+  const tokens = tokenUsage({
+    inputTokens: numberField(value['usage'], 'input_tokens', 'inputTokens'),
+    outputTokens: numberField(value['usage'], 'output_tokens', 'outputTokens'),
+    totalTokens: numberField(value['usage'], 'total_tokens', 'totalTokens'),
   });
+  if (tokens.kind === 'invalid') return tokens;
+  if (tokens.kind === 'absent' && imageCount === 0) return { kind: 'absent' };
+  return {
+    kind: 'valid',
+    usage: {
+      ...(tokens.kind === 'valid' ? tokens.usage : {}),
+      ...(imageCount > 0 ? { imageCount } : {}),
+    },
+  };
 }
 
 function openAICompatibleUsage(value: unknown): UsageExtraction {

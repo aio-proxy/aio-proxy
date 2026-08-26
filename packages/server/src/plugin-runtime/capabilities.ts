@@ -9,7 +9,13 @@ import type {
   RawTransportOptions,
   TokenCountCapability,
 } from '@aio-proxy/plugin-sdk';
-import { aliasTargetModels, type OAuthProvider, ProviderKind, type ProviderProtocol } from '@aio-proxy/types';
+import {
+  aliasTargetModels,
+  type OAuthProvider,
+  preservedAliasModels,
+  ProviderKind,
+  type ProviderProtocol,
+} from '@aio-proxy/types';
 import { uniq } from 'es-toolkit/array';
 
 import { buildModelCapabilityIndex } from '../provider-runtime/capability-index';
@@ -171,7 +177,9 @@ function routingCapabilities(
   readonly capabilityIndex: ReturnType<typeof buildModelCapabilityIndex>;
   readonly upstreamMetadata: ReturnType<typeof modelMetadataRecord>;
 } {
-  const upstreamMetadata = modelMetadataRecord(catalog);
+  const catalogMetadata = modelMetadataRecord(catalog);
+  const allowed = new Set([...models, ...(config.alias === undefined ? [] : preservedAliasModels(config.alias))]);
+  const upstreamMetadata = Object.fromEntries(Object.entries(catalogMetadata).filter(([id]) => allowed.has(id)));
   return {
     capabilityIndex: buildModelCapabilityIndex({
       catalog,

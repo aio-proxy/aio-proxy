@@ -236,6 +236,8 @@ test('a whitelist filters the freshly materialized catalog', async () => {
   });
 
   expect(result.provider?.models).toEqual(['model']); // 'other' is discovered but not exposed
+  expect(Object.keys(result.provider?.upstreamMetadata ?? {})).toEqual(['model']);
+  expect(result.summary.clientModels).not.toContain('other');
 });
 
 test('changing only the whitelist keeps runtime identity stable and takes the cached routing path', async () => {
@@ -317,6 +319,31 @@ test('withRoutingConfig rebuilds capabilityIndex when catalog.image gains an id'
     image: [{ id: 'gpt-image-2' }],
   });
 
+  expect(supportsImage(next.capabilityIndex, 'gpt-image-2')).toBe(true);
+});
+
+test('withRoutingConfig does not restore whitelist-excluded catalog ids through upstreamMetadata', () => {
+  const cached = {
+    id: 'person',
+    kind: ProviderKind.OAuth,
+    enabled: true,
+    models: ['gpt-5'],
+    capabilityIndex: { 'gpt-5': new Set(['language']) },
+    model: {
+      invoke: () => {
+        throw new Error('unused');
+      },
+    },
+  } as never;
+
+  const next = withRoutingConfig(cached, { ...providerConfig, models: ['gpt-5'] } as never, {
+    ...catalog,
+    language: [{ id: 'gpt-5' }, { id: 'other' }],
+    image: [{ id: 'gpt-image-2' }],
+  });
+
+  expect(next.models).toEqual(['gpt-5']);
+  expect(Object.keys(next.upstreamMetadata ?? {})).toEqual(['gpt-5']);
   expect(supportsImage(next.capabilityIndex, 'gpt-image-2')).toBe(true);
 });
 
