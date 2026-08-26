@@ -317,6 +317,27 @@ test('parses the original multipart body without cloning it', async () => {
   expect(raw.bodyUsed).toBe(true);
 });
 
+test('keeps in-file boundary text that is not a delimiter suffix', async () => {
+  const boundary = 'x';
+  const payload = Buffer.from('IMG\r\n--xZTAIL');
+  const encoded = Buffer.concat([
+    Buffer.from(
+      `--${boundary}\r\nContent-Disposition: form-data; name="prompt"\r\n\r\nmake it night\r\n--${boundary}\r\nContent-Disposition: form-data; name="image"; filename="cat.bin"\r\nContent-Type: application/octet-stream\r\n\r\n`,
+    ),
+    payload,
+    Buffer.from(`\r\n--${boundary}--\r\n`),
+  ]);
+  const parsed = await parseOpenAIImageEditsMultipart(
+    new Request('https://x/v1/images/edits', {
+      method: 'POST',
+      headers: { 'content-type': `multipart/form-data; boundary=${boundary}` },
+      body: encoded,
+    }),
+  );
+  expect(parsed.prompt).toBe('make it night');
+  expect(parsed.uploads?.[0]?.data).toEqual(new Uint8Array(payload));
+});
+
 test('counts unnamed parts toward the 1 MiB framing allowance', async () => {
   const boundary = '----unnamed';
   const unnamed = 'u'.repeat(1_048_577);

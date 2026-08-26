@@ -154,6 +154,16 @@ export async function parseMultipartStream(
         await readChunk();
         continue;
       }
+      const after = index + nextBoundary.byteLength;
+      if (window.byteLength < after + 2) {
+        if (index > 0) appendPartBytes(current, window.consume(index));
+        await readChunk();
+        continue;
+      }
+      if (!isBoundarySuffix(window.bytes().subarray(after, after + 2))) {
+        appendPartBytes(current, window.consume(index + 1));
+        continue;
+      }
       appendPartBytes(current, window.consume(index));
       finishPart(current);
       current = undefined;
@@ -242,6 +252,10 @@ function dispositionToken(headers: string, token: 'name' | 'filename'): string |
   const quoted = new RegExp(`(?:^|;\\s*)${token}="([^"]*)"`, 'iu').exec(disposition);
   if (quoted?.[1] !== undefined) return quoted[1];
   return new RegExp(`(?:^|;\\s*)${token}=([^;\\s]+)`, 'iu').exec(disposition)?.[1];
+}
+
+function isBoundarySuffix(bytes: Uint8Array): boolean {
+  return (bytes[0] === 45 && bytes[1] === 45) || (bytes[0] === 13 && bytes[1] === 10);
 }
 
 function syntax(): SyntaxError {
