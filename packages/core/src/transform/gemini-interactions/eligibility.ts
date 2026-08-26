@@ -69,8 +69,12 @@ function assertGenerationConfig(value: GeminiInteractionsBody['generation_config
   for (const [key, member] of Object.entries(value)) {
     const path = `generation_config.${key}`;
     if (!GENERATION_CONFIG_KEYS.has(key)) unsupported(path, path);
-    if (key === 'max_output_tokens' || key === 'seed') {
-      if (typeof member !== 'number') unsupported(path, path);
+    if (key === 'max_output_tokens') {
+      if (typeof member !== 'number' || !Number.isInteger(member) || member <= 0) unsupported(path, path);
+      continue;
+    }
+    if (key === 'seed') {
+      if (typeof member !== 'number' || !Number.isInteger(member)) unsupported(path, path);
       continue;
     }
     if (key === 'stop_sequences') {

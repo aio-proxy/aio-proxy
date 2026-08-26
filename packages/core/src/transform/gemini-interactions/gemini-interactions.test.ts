@@ -152,6 +152,15 @@ describe('geminiInteractionsToModelMessages', () => {
       'generation_config.temperature',
     ],
     [
+      { model: 'm', input: 'x', store: false, generation_config: { max_output_tokens: 1.5 } },
+      'generation_config.max_output_tokens',
+    ],
+    [
+      { model: 'm', input: 'x', store: false, generation_config: { max_output_tokens: 0 } },
+      'generation_config.max_output_tokens',
+    ],
+    [{ model: 'm', input: 'x', store: false, generation_config: { seed: 1.5 } }, 'generation_config.seed'],
+    [
       { model: 'm', input: 'x', store: false, generation_config: { thinking_summaries: 'auto' } },
       'generation_config.thinking_summaries',
     ],
@@ -285,5 +294,11 @@ describe('geminiInteractionsToModelMessages', () => {
   test('empty convertible transcript is request-terminal', () => {
     expect(() => convert({ model: 'm', input: '', store: false })).toThrow(GeminiInteractionsTransformError);
     expect(() => convert({ model: 'm', input: [], store: false })).toThrow(GeminiInteractionsTransformError);
+    expect(() => convert({ model: 'm', input: { type: 'text', text: '' }, store: false })).toThrow(
+      GeminiInteractionsTransformError,
+    );
+    expect(() => convert({ model: 'm', input: [{ type: 'text', text: '' }], store: false })).toThrow(
+      GeminiInteractionsTransformError,
+    );
   });
 });

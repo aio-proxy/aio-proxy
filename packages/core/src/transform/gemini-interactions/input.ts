@@ -132,8 +132,8 @@ function textFromContents(value: unknown): string | undefined {
     if (!isRecord(part) || typeof part['text'] !== 'string') return [];
     return [part['text']];
   });
-  if (texts.length === 0) return undefined;
-  return texts.join('');
+  const text = texts.join('');
+  return text.length === 0 ? undefined : text;
 }
 
 function toolOutput(result: unknown): ToolResultOutput {
