@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test';
 
+import { OpenAIImagesInvalidRequestError } from '../../error';
 import { REQUEST_BODY_LIMITS } from '../request';
 import {
   CPA_DEFAULT_IMAGE_MODEL,
@@ -131,6 +132,15 @@ test('omits convert size for auto and passes width x height', async () => {
   expect(openAIImagesAdapter.imageInvocation(autoRequest, generations).size).toBeUndefined();
   const sized = await parseGenerations({ prompt: 'a cat', size: '1024x1024' });
   expect(openAIImagesAdapter.imageInvocation(sized, generations).size).toBe('1024x1024');
+});
+
+test('rejects a malformed convert size instead of omitting it', async () => {
+  const raw = generationsRequest({ prompt: 'a cat', size: 'large' });
+  const request = await openAIImagesAdapter.parse(raw, generations);
+  expect(request.size).toBe('large');
+  expect(() => openAIImagesAdapter.imageInvocation(request, generations)).toThrow(OpenAIImagesInvalidRequestError);
+  const forwarded = await openAIImagesAdapter.rawRequest(raw, request, 'gpt-image-2', new Set(), generations);
+  expect(await forwarded.json()).toMatchObject({ size: 'large' });
 });
 
 test('copies present provider options and drops unknown fields on convert', async () => {

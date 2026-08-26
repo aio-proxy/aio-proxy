@@ -1,6 +1,6 @@
 import { ProviderProtocol } from '@aio-proxy/types';
 
-import { OpenAIImagesUnsupportedFeatureError } from '../../error';
+import { OpenAIImagesInvalidRequestError, OpenAIImagesUnsupportedFeatureError } from '../../error';
 import {
   parseOpenAIImageEdits,
   parseOpenAIImageEditsMultipart,
@@ -217,7 +217,8 @@ function imageGenerationsInvocation(request: OpenAIImageRequest): ImageInvocatio
 
 function convertSize(size: string | null | undefined): `${number}x${number}` | undefined {
   if (size == null || size === 'auto') return undefined;
-  return SIZE_PATTERN.test(size) ? (size as `${number}x${number}`) : undefined;
+  if (!SIZE_PATTERN.test(size)) throw new OpenAIImagesInvalidRequestError('size');
+  return size as `${number}x${number}`;
 }
 
 function convertProviderOptions(request: OpenAIImageRequest): ImageInvocation['providerOptions'] | undefined {

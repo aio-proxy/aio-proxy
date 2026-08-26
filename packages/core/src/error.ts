@@ -163,7 +163,7 @@ export class OpenAIImagesInvalidRequestError extends AioProxyError {
   readonly code = 'INVALID_OPENAI_IMAGES_REQUEST';
   readonly status = 400;
 
-  constructor(readonly param: 'image' | 'mask') {
+  constructor(readonly param: 'image' | 'mask' | 'size') {
     super('OpenAIImagesInvalidRequestError', `Invalid OpenAI Images request: ${param}`);
   }
 }

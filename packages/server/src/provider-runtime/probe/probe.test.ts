@@ -4,7 +4,7 @@ import { createApiProvider } from '@aio-proxy/core';
 import type { Provider } from '@aio-proxy/types';
 import { ProviderKind, ProviderProtocol } from '@aio-proxy/types';
 
-import { probeApi } from '.';
+import { probeApi, providerProbeRequest } from '.';
 
 test.each([
   { expected: 'OK', status: 200 },
@@ -113,4 +113,30 @@ test('a model test probe waits ten seconds, not one', async () => {
   } finally {
     AbortSignal.timeout = original;
   }
+});
+
+test('image-primary probe posts a generations ping through the primary transport', async () => {
+  let requested: string | undefined;
+  const provider = {
+    apiKey: 'k',
+    baseURL: 'https://api.openai.com/v1',
+    enabled: true,
+    id: 'images',
+    kind: ProviderKind.Api,
+    models: ['gpt-image-2'],
+    protocol: ProviderProtocol.OpenAIImage,
+  } as const;
+  expect(providerProbeRequest(provider, 'gpt-image-2')).toEqual({
+    body: { model: 'gpt-image-2', n: 1, prompt: 'ping' },
+    path: '/v1/images/generations',
+  });
+  const instance = createApiProvider(provider, {
+    fetch: (async (input: string | URL | Request) => {
+      requested = input instanceof Request ? input.url : String(input);
+      return new Response('{}', { status: 200 });
+    }) as typeof globalThis.fetch,
+  });
+
+  expect(await probeApi(provider, instance)).toBe('OK');
+  expect(requested).toBe('https://api.openai.com/v1/images/generations');
 });

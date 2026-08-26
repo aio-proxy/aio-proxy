@@ -227,7 +227,11 @@ test('a whitelist filters the freshly materialized catalog', async () => {
   fixture.repository.writeCatalog('person', { ...catalog, language: [{ id: 'model' }, { id: 'other' }] }, 1_000);
 
   const result = await materializePluginProvider({
-    config: { ...providerConfig, models: ['model'] },
+    config: {
+      ...providerConfig,
+      models: ['model'],
+      metadata: { model: { name: 'Kept' }, other: { name: 'Excluded' } },
+    },
     plugins: fixture.plugins,
     repository: fixture.repository,
     diagnostics,
@@ -237,6 +241,7 @@ test('a whitelist filters the freshly materialized catalog', async () => {
 
   expect(result.provider?.models).toEqual(['model']); // 'other' is discovered but not exposed
   expect(Object.keys(result.provider?.upstreamMetadata ?? {})).toEqual(['model']);
+  expect(Object.keys(result.provider?.configMetadata ?? {})).toEqual(['model']);
   expect(result.summary.clientModels).not.toContain('other');
 });
 
@@ -336,14 +341,23 @@ test('withRoutingConfig does not restore whitelist-excluded catalog ids through 
     },
   } as never;
 
-  const next = withRoutingConfig(cached, { ...providerConfig, models: ['gpt-5'] } as never, {
-    ...catalog,
-    language: [{ id: 'gpt-5' }, { id: 'other' }],
-    image: [{ id: 'gpt-image-2' }],
-  });
+  const next = withRoutingConfig(
+    cached,
+    {
+      ...providerConfig,
+      models: ['gpt-5'],
+      metadata: { 'gpt-5': { name: 'Kept' }, other: { name: 'Excluded' } },
+    } as never,
+    {
+      ...catalog,
+      language: [{ id: 'gpt-5' }, { id: 'other' }],
+      image: [{ id: 'gpt-image-2' }],
+    },
+  );
 
   expect(next.models).toEqual(['gpt-5']);
   expect(Object.keys(next.upstreamMetadata ?? {})).toEqual(['gpt-5']);
+  expect(Object.keys(next.configMetadata ?? {})).toEqual(['gpt-5']);
   expect(supportsImage(next.capabilityIndex, 'gpt-image-2')).toBe(true);
 });
 

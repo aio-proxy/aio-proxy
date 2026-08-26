@@ -95,7 +95,7 @@ export function withRoutingConfig(
     ...previousProvider
   } = provider;
   const models = exposedModelIds(catalogModelIds(catalog), config.models);
-  const { capabilityIndex, upstreamMetadata } = routingCapabilities(config, catalog, models);
+  const { capabilityIndex, configMetadata, upstreamMetadata } = routingCapabilities(config, catalog, models);
   return {
     ...previousProvider,
     enabled: config.enabled,
@@ -104,7 +104,7 @@ export function withRoutingConfig(
     capabilityIndex,
     upstreamMetadata,
     ...(config.alias === undefined ? {} : { alias: config.alias }),
-    ...(config.metadata === undefined ? {} : { configMetadata: config.metadata }),
+    ...(configMetadata === undefined ? {} : { configMetadata }),
   };
 }
 
@@ -131,7 +131,7 @@ export function createRuntimeProvider(
   const supportedProviderTools = new Set(providerTools?.supported);
   const tokenCount = tokenCountCapability(Reflect.get(result, 'tokenCount'));
   const models = exposedModelIds(catalogModelIds(catalog), config.models);
-  const { capabilityIndex, upstreamMetadata } = routingCapabilities(config, catalog, models);
+  const { capabilityIndex, configMetadata, upstreamMetadata } = routingCapabilities(config, catalog, models);
   const image =
     catalog.image.length > 0 ? { invoke: createProviderV4ImageInvoke(config.id, result.provider) } : undefined;
   const base = {
@@ -142,7 +142,7 @@ export function createRuntimeProvider(
     models,
     capabilityIndex,
     ...(config.alias === undefined ? {} : { alias: config.alias }),
-    ...(config.metadata === undefined ? {} : { configMetadata: config.metadata }),
+    ...(configMetadata === undefined ? {} : { configMetadata }),
     upstreamMetadata,
     plugin: config.plugin,
     capability: config.capability,
@@ -175,23 +175,33 @@ function routingCapabilities(
   models: readonly string[],
 ): {
   readonly capabilityIndex: ReturnType<typeof buildModelCapabilityIndex>;
+  readonly configMetadata: OAuthProvider['metadata'];
   readonly upstreamMetadata: ReturnType<typeof modelMetadataRecord>;
 } {
-  const catalogMetadata = modelMetadataRecord(catalog);
   const allowed = new Set([...models, ...(config.alias === undefined ? [] : preservedAliasModels(config.alias))]);
-  const upstreamMetadata = Object.fromEntries(Object.entries(catalogMetadata).filter(([id]) => allowed.has(id)));
+  const configMetadata = filterAllowedRecord(config.metadata, allowed);
+  const upstreamMetadata = filterAllowedRecord(modelMetadataRecord(catalog), allowed) ?? {};
   return {
     capabilityIndex: buildModelCapabilityIndex({
       catalog,
       models,
-      metadata: config.metadata,
-      configMetadata: config.metadata,
+      metadata: configMetadata,
+      configMetadata,
       upstreamMetadata,
       aliasTargets:
         config.alias === undefined ? undefined : [...new Set(Object.values(config.alias).flatMap(aliasTargetModels))],
     }),
+    configMetadata,
     upstreamMetadata,
   };
+}
+
+function filterAllowedRecord<T>(
+  record: Readonly<Record<string, T>> | undefined,
+  allowed: ReadonlySet<string>,
+): Record<string, T> | undefined {
+  if (record === undefined) return undefined;
+  return Object.fromEntries(Object.entries(record).filter(([id]) => allowed.has(id)));
 }
 
 function routingDefaults(config: { readonly priority?: number; readonly weight?: number }): {
