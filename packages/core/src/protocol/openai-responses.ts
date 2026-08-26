@@ -29,8 +29,8 @@ export const openAIResponsesAdapter = defineProtocolAdapter<
     return context.operation === 'compact' ? parseOpenAIResponsesCompact(body) : parseOpenAIResponses(body);
   },
   model: (request) => request.model,
-  dimensions: (request) => {
-    const effort = optionalText(reasoningEffort(request.reasoning));
+  dimensions: (request, context) => {
+    const effort = context.operation === 'compact' ? undefined : optionalText(reasoningEffort(request.reasoning));
     const speed = speedFromServiceTier(optionalText(request.service_tier));
     return {
       ...(effort === undefined ? {} : { effort: canonicalEffort(effort) }),

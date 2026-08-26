@@ -40,6 +40,15 @@ test('compact optional nulls do not enter session or dimensions', async () => {
   expect(openAIResponsesAdapter.requestDiagnostics(parsed, compactCtx)).toEqual([]);
 });
 
+test('compact dimensions ignore reasoning.effort and keep service_tier', async () => {
+  const parsed = await compactRequest({
+    model: 'gpt-5.1-codex-max',
+    reasoning: { effort: 'xhigh' },
+    service_tier: 'priority',
+  });
+  expect(openAIResponsesAdapter.dimensions(parsed, compactCtx)).toEqual({ speed: 'fast' });
+});
+
 test('compact session omits previousResponseId and raw keeps the wire field', async () => {
   const body = { model: 'gpt-5.1-codex-max', previous_response_id: 'resp_owned' };
   const parsed = await compactRequest(body);
