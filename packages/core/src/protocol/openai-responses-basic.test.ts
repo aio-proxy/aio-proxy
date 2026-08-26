@@ -2,6 +2,7 @@ import { describe, expect, spyOn, test } from 'bun:test';
 
 import { ProviderProtocol } from '@aio-proxy/types';
 
+import { aiSdkPartStream } from '../egress/openai-responses-test-support';
 import { openAIResponsesAdapter, writeOpenAIResponsesResponse, writeOpenAIResponsesSSE } from '../index';
 
 describe('openAIResponsesAdapter', () => {
@@ -89,6 +90,43 @@ describe('openAIResponsesAdapter', () => {
     });
     expect(base.messages[0]).toBe(portableMessage);
     expect(base.tools?.emit_raw).toBe(portableTool);
+  });
+
+  test('restores grammar custom tool calls from function-compatible model output', async () => {
+    const raw = new Request('https://proxy.test/v1/responses', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: 'alias',
+        input: 'apply a patch',
+        tools: [
+          {
+            type: 'custom',
+            name: 'apply_patch',
+            format: { type: 'grammar', syntax: 'lark', definition: 'start: PATCH' },
+          },
+        ],
+      }),
+    });
+    const parsed = await openAIResponsesAdapter.parse(raw, {});
+    const invocation = openAIResponsesAdapter.modelInvocation(parsed, {});
+    const toolMetadata = invocation.tools?.apply_patch?.metadata;
+    if (toolMetadata === undefined) throw new TypeError('Expected parsed custom tool metadata');
+
+    const stream = aiSdkPartStream([
+      { type: 'tool-input-start', id: 'call_1', toolName: 'apply_patch', toolMetadata },
+      { type: 'tool-input-delta', id: 'call_1', delta: '{"input":"*** Begin Patch"}' },
+      { type: 'tool-input-end', id: 'call_1' },
+    ]);
+    const response = await writeOpenAIResponsesResponse(stream, { modelId: 'test-model' });
+
+    expect(response.output).toContainEqual(
+      expect.objectContaining({
+        type: 'custom_tool_call',
+        name: 'apply_patch',
+        input: '*** Begin Patch',
+      }),
+    );
   });
 
   test('leaves noncanonical custom input portable during target materialization', async () => {

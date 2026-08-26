@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test';
 
+import { OpenAIResponsesTransformError } from '../error';
 import {
   aiSdkPartStream,
   frames,
@@ -37,6 +38,23 @@ test('emits a custom_tool_call JSON item from tool metadata', async () => {
       status: 'completed',
     }),
   );
+});
+
+test.each([
+  ['missing input', '{}'],
+  ['non-string input', '{"input":42}'],
+  ['extra object fields', '{"input":"pwd","extra":true}'],
+])('rejects custom call arguments with %s', async (_name, argumentsText) => {
+  await expect(
+    writeOpenAIResponsesResponse(
+      aiSdkPartStream([
+        { type: 'tool-input-start', id: 'call_1', toolName: 'exec', toolMetadata: metadata },
+        { type: 'tool-input-delta', id: 'call_1', delta: argumentsText },
+        { type: 'tool-input-end', id: 'call_1' },
+      ]),
+      { modelId: 'test-model' },
+    ),
+  ).rejects.toBeInstanceOf(OpenAIResponsesTransformError);
 });
 
 test('emits custom tool input SSE events instead of function argument events', async () => {
