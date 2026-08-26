@@ -317,6 +317,27 @@ test('parses the original multipart body without cloning it', async () => {
   expect(raw.bodyUsed).toBe(true);
 });
 
+test('skips preamble text that contains a non-delimiter boundary prefix', async () => {
+  const boundary = 'bound';
+  const encoded = Buffer.concat([
+    Buffer.from('prefix--boundX\r\n'),
+    Buffer.from(
+      `--${boundary}\r\nContent-Disposition: form-data; name="prompt"\r\n\r\nmake it night\r\n--${boundary}\r\nContent-Disposition: form-data; name="image"; filename="cat.bin"\r\nContent-Type: application/octet-stream\r\n\r\n`,
+    ),
+    Buffer.from(PNG_1X1_RGBA),
+    Buffer.from(`\r\n--${boundary}--\r\n`),
+  ]);
+  const parsed = await parseOpenAIImageEditsMultipart(
+    new Request('https://x/v1/images/edits', {
+      method: 'POST',
+      headers: { 'content-type': `multipart/form-data; boundary=${boundary}` },
+      body: encoded,
+    }),
+  );
+  expect(parsed.prompt).toBe('make it night');
+  expect(parsed.uploads?.[0]?.data).toEqual(PNG_1X1_RGBA);
+});
+
 test('keeps in-file boundary text that is not a delimiter suffix', async () => {
   const boundary = 'x';
   const payload = Buffer.from('IMG\r\n--xZTAIL');

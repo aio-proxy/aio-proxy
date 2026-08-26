@@ -96,6 +96,16 @@ export async function parseMultipartStream(
           await readChunk();
           continue;
         }
+        const after = index + firstBoundary.byteLength;
+        if (window.byteLength < after + 2) {
+          if (index > 0) addFraming(window.consume(index).byteLength);
+          await readChunk();
+          continue;
+        }
+        if (!isLineStart(window, index) || !isBoundarySuffix(window.bytes().subarray(after, after + 2))) {
+          addFraming(window.consume(index + 1).byteLength);
+          continue;
+        }
         addFraming(index + firstBoundary.byteLength);
         window.consume(index + firstBoundary.byteLength);
         state = 'afterBoundary';
@@ -252,6 +262,13 @@ function dispositionToken(headers: string, token: 'name' | 'filename'): string |
   const quoted = new RegExp(`(?:^|;\\s*)${token}="([^"]*)"`, 'iu').exec(disposition);
   if (quoted?.[1] !== undefined) return quoted[1];
   return new RegExp(`(?:^|;\\s*)${token}=([^;\\s]+)`, 'iu').exec(disposition)?.[1];
+}
+
+function isLineStart(window: ByteWindow, index: number): boolean {
+  if (index === 0) return true;
+  if (index < 2) return false;
+  const bytes = window.bytes();
+  return bytes[index - 2] === 13 && bytes[index - 1] === 10;
 }
 
 function isBoundarySuffix(bytes: Uint8Array): boolean {

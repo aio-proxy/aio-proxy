@@ -110,6 +110,42 @@ test('reuses the original gzip body when the explicit model is unchanged', async
   expect(new Uint8Array(await second.arrayBuffer())).toEqual(new Uint8Array(encoded));
 });
 
+test('rewritten json raw drops body integrity headers', async () => {
+  const raw = new Request('https://x/v1/images/generations', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'content-md5': 'abc',
+      digest: 'SHA-256=xyz',
+      'content-digest': 'sha-256=:abc:',
+    },
+    body: JSON.stringify({ prompt: 'a cat' }),
+  });
+  const request = await openAIImagesAdapter.parse(raw, generations);
+  const forwarded = await openAIImagesAdapter.rawRequest(raw, request, 'gpt-image-2', new Set(), generations);
+  expect(forwarded.headers.get('content-md5')).toBeNull();
+  expect(forwarded.headers.get('digest')).toBeNull();
+  expect(forwarded.headers.get('content-digest')).toBeNull();
+});
+
+test('same-id raw clone keeps body integrity headers', async () => {
+  const raw = new Request('https://x/v1/images/generations', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'content-md5': 'abc',
+      digest: 'SHA-256=xyz',
+      'content-digest': 'sha-256=:abc:',
+    },
+    body: JSON.stringify({ model: 'gpt-image-2', prompt: 'a cat' }),
+  });
+  const request = await openAIImagesAdapter.parse(raw, generations);
+  const forwarded = await openAIImagesAdapter.rawRequest(raw, request, 'gpt-image-2', new Set(), generations);
+  expect(forwarded.headers.get('content-md5')).toBe('abc');
+  expect(forwarded.headers.get('digest')).toBe('SHA-256=xyz');
+  expect(forwarded.headers.get('content-digest')).toBe('sha-256=:abc:');
+});
+
 test('rewrites even when the defaulted lookup still resolves to gpt-image-2', async () => {
   const bodyText = '{"prompt":"a cat","seed":42}';
   const raw = new Request('https://x/v1/images/generations', {
@@ -427,6 +463,26 @@ test('mixed-case multipart Content-Type uses edits multipart limits and parses',
   });
   const request = await openAIImagesAdapter.parse(mixed, edits);
   expect(request.prompt).toBe('make it night');
+});
+
+test('rewritten multipart raw drops body integrity headers', async () => {
+  const form = new FormData();
+  form.append('prompt', 'make it night');
+  form.append('image', pngBlob());
+  const raw = new Request('https://x/v1/images/edits', {
+    method: 'POST',
+    body: form,
+    headers: {
+      'content-md5': 'abc',
+      digest: 'SHA-256=xyz',
+      'content-digest': 'sha-256=:abc:',
+    },
+  });
+  const request = await openAIImagesAdapter.parse(raw, edits);
+  const forwarded = await openAIImagesAdapter.rawRequest(raw, request, 'gpt-image-2', new Set(), edits);
+  expect(forwarded.headers.get('content-md5')).toBeNull();
+  expect(forwarded.headers.get('digest')).toBeNull();
+  expect(forwarded.headers.get('content-digest')).toBeNull();
 });
 
 test('multipart raw rewrite inherits the inbound abort signal', async () => {

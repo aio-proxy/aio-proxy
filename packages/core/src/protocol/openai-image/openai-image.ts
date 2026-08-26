@@ -172,6 +172,9 @@ function stripHopHeaders(source: Headers): Headers {
   const headers = new Headers(source);
   headers.delete('content-encoding');
   headers.delete('content-length');
+  headers.delete('content-md5');
+  headers.delete('digest');
+  headers.delete('content-digest');
   return headers;
 }
 
