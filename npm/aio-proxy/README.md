@@ -275,6 +275,8 @@ Previously, Provider weight was a global fixed order: unique weights were tried 
 | Model list                | `GET /v1/models`                                    |
 | OpenAI Chat Completions   | `POST /v1/chat/completions`                         |
 | OpenAI Responses          | `POST /v1/responses`                                |
+| OpenAI Completions        | `POST /v1/completions`                              |
+| OpenAI Responses compact  | `POST /v1/responses/compact`                        |
 | Anthropic Messages        | `POST /v1/messages`                                 |
 | Anthropic Token Counting  | `POST /v1/messages/count_tokens`                    |
 | Gemini                    | `POST /v1beta/models/{model}:generateContent`       |
@@ -295,6 +297,8 @@ Images notes:
 - DALL·E omitted/`null`/`url` skips convert; GPT Image omitted encodes `b64_json`; custom omitted `b64_json` is an aio-proxy extension.
 - Edits accept official-max envelopes (`357_564_416` JSON, `851_048_559` multipart). P1 has no lower default DoS cap; a future smaller ceiling is an explicit deployment extension.
 - Non-catalog Images providers need a finite id set (`models`, preserved alias targets, or metadata keys) including `gpt-image-2` for the CPA default.
+
+Remaining official Responses resource operations (`GET /v1/responses/:id`, `DELETE /v1/responses/:id`, `POST /v1/responses/:id/cancel`, `GET /v1/responses/:id/input_items`) return a protocol-shaped 501.
 
 Call the OpenAI Responses endpoint:
 

@@ -4,50 +4,72 @@ import { z } from 'zod';
 
 import type { FilePart, ModelMessage, ToolSet } from '../ai-sdk-bridge';
 import { writeOpenAIResponsesResponse, writeOpenAIResponsesSSE } from '../egress/openai-responses/index';
+import { OpenAIResponsesUnsupportedFeatureError } from '../error';
 import { isImageMediaType, openAIImageDetail } from '../image-input';
+import { type OpenAIResponsesCompactRequest, parseOpenAIResponsesCompact } from '../ingress/openai-responses/compact';
 import { type OpenAIResponsesRequest, parseOpenAIResponses } from '../ingress/openai-responses/index';
 import { openAIResponsesToModelMessages, readOpenAIResponsesWireMetadata } from '../transform/openai-responses/index';
 import { warnOpenAIResponsesDegradation } from '../transform/openai-responses/tools';
-import { defineProtocolAdapter, type EmptyProtocolContext } from './adapter';
+import { defineProtocolAdapter } from './adapter';
 import { openAIResponsesErrors } from './errors';
 import { clampSdkReasoning, normalizeEffort, reasoningSetting } from './reasoning-effort/index';
 import { readJsonRequest, readRequestText } from './request';
 import type { SessionCandidate } from './session';
 import { functionToolSet } from './tools';
 
-export const openAIResponsesAdapter = defineProtocolAdapter<OpenAIResponsesRequest, EmptyProtocolContext>({
+export type OpenAIResponsesContext = { readonly operation?: 'create' | 'compact' };
+
+export const openAIResponsesAdapter = defineProtocolAdapter<
+  OpenAIResponsesRequest | OpenAIResponsesCompactRequest,
+  OpenAIResponsesContext
+>({
   protocol: ProviderProtocol.OpenAIResponse,
-  async parse(raw) {
-    return parseOpenAIResponses(await readJsonRequest(raw));
+  async parse(raw, context) {
+    const body = await readJsonRequest(raw);
+    return context.operation === 'compact' ? parseOpenAIResponsesCompact(body) : parseOpenAIResponses(body);
   },
   model: (request) => request.model,
-  dimensions: (request) => {
-    const speed = speedFromServiceTier(request.service_tier);
+  dimensions: (request, context) => {
+    const effort = context.operation === 'compact' ? undefined : optionalText(reasoningEffort(request.reasoning));
+    const speed = speedFromServiceTier(optionalText(request.service_tier));
     return {
-      ...(request.reasoning?.effort === undefined ? {} : { effort: canonicalEffort(request.reasoning.effort) }),
+      ...(effort === undefined ? {} : { effort: canonicalEffort(effort) }),
       ...(speed === undefined ? {} : { speed }),
     };
   },
-  requestDiagnostics: (request) =>
-    request.background === true ? [{ feature: 'background', action: 'dropped', effectiveMode: 'synchronous' }] : [],
-  session: (request) => ({
-    candidates: [
-      candidate('openai-conversation', conversationId(request.conversation)),
-      candidate('openai-prompt-cache', request.prompt_cache_key),
-      candidate('body-session', request.metadata?.session_id),
-      candidate('body-conversation', request.metadata?.conversation_id),
-      candidate('body-session', request.session_id),
-      candidate('body-conversation', request.conversation_id),
-    ].filter(isCandidate),
-    ...(request.previous_response_id === undefined ? {} : { previousResponseId: request.previous_response_id }),
-    transcript: request.input,
-  }),
-  wantsStream: (request) => request.stream === true,
-  rawRequest(raw, _request, resolvedModel, supportedEfforts) {
+  requestDiagnostics: (request, context) =>
+    context.operation === 'compact'
+      ? []
+      : request.background === true
+        ? [{ feature: 'background', action: 'dropped', effectiveMode: 'synchronous' }]
+        : [],
+  session: (request, context) => {
+    const previousResponseId = context.operation === 'compact' ? undefined : optionalText(request.previous_response_id);
+    return {
+      candidates: [
+        candidate('openai-conversation', conversationId(request.conversation)),
+        candidate('openai-prompt-cache', optionalText(request.prompt_cache_key)),
+        candidate('body-session', metadataText(request.metadata, 'session_id')),
+        candidate('body-conversation', metadataText(request.metadata, 'conversation_id')),
+        candidate('body-session', optionalText(request.session_id)),
+        candidate('body-conversation', optionalText(request.conversation_id)),
+      ].filter(isCandidate),
+      ...(previousResponseId === undefined ? {} : { previousResponseId }),
+      transcript: request.input,
+    };
+  },
+  wantsStream: (request, context) => context.operation !== 'compact' && request.stream === true,
+  async rawRequest(raw, _request, resolvedModel, supportedEfforts, context) {
+    if (context.operation === 'compact') {
+      return rewriteOpenAIResponsesCompactRequest(raw, resolvedModel);
+    }
     return rewriteOpenAIResponsesRequest(raw, resolvedModel, supportedEfforts);
   },
-  modelInvocation(request) {
-    const transformed = openAIResponsesToModelMessages(request);
+  modelInvocation(request, context) {
+    if (context.operation === 'compact') {
+      throw new OpenAIResponsesUnsupportedFeatureError('responses_compact', 'POST /v1/responses/compact');
+    }
+    const transformed = openAIResponsesToModelMessages(request as OpenAIResponsesRequest);
     const tools = functionToolSet(transformed.tools);
     const { reasoning, ...settings } = transformed.settings;
     return {
@@ -73,6 +95,18 @@ export const openAIResponsesAdapter = defineProtocolAdapter<OpenAIResponsesReque
   modelSse: writeOpenAIResponsesSSE,
   errors: openAIResponsesErrors,
 });
+
+function optionalText(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined;
+}
+
+function metadataText(metadata: unknown, key: 'session_id' | 'conversation_id'): string | undefined {
+  return typeof metadata === 'object' && metadata !== null ? optionalText(Reflect.get(metadata, key)) : undefined;
+}
+
+function reasoningEffort(reasoning: unknown): unknown {
+  return typeof reasoning === 'object' && reasoning !== null ? Reflect.get(reasoning, 'effort') : undefined;
+}
 
 function speedFromServiceTier(value: string | undefined): AliasDimensions['speed'] {
   if (value === undefined) return undefined;
@@ -173,6 +207,26 @@ function openAIResponsesMessages(messages: readonly ModelMessage[]): readonly Mo
 
 const jsonObjectSchema = z.object({}).catchall(z.unknown());
 
+async function rewriteOpenAIResponsesCompactRequest(raw: Request, resolvedModel: string): Promise<Request> {
+  // Read the decoded body once so a no-op rewrite forwards it verbatim instead
+  // of round-tripping through JSON, which would silently truncate large
+  // integers and drop the client's exact byte representation.
+  const bodyText = await readRequestText(raw);
+  const body = jsonObjectSchema.parse(JSON.parse(bodyText));
+  const headers = new Headers(raw.headers);
+  headers.delete('content-encoding');
+  headers.delete('content-length');
+  if (body['model'] === resolvedModel && !Object.hasOwn(body, 'stream')) {
+    return new Request(raw, { method: raw.method, body: bodyText, headers });
+  }
+  const { stream: _stream, ...bodyWithoutStream } = body;
+  return new Request(raw, {
+    method: raw.method,
+    body: JSON.stringify({ ...bodyWithoutStream, model: resolvedModel }),
+    headers,
+  });
+}
+
 async function rewriteOpenAIResponsesRequest(
   raw: Request,
   resolvedModel: string,
@@ -218,8 +272,11 @@ async function rewriteOpenAIResponsesRequest(
   });
 }
 
-function conversationId(conversation: OpenAIResponsesRequest['conversation']): string | undefined {
-  return typeof conversation === 'string' ? conversation : conversation?.id;
+function conversationId(conversation: unknown): string | undefined {
+  if (typeof conversation === 'string') return conversation;
+  return typeof conversation === 'object' && conversation !== null
+    ? optionalText(Reflect.get(conversation, 'id'))
+    : undefined;
 }
 
 function candidate(source: SessionCandidate['source'], value: string | undefined): SessionCandidate | undefined {

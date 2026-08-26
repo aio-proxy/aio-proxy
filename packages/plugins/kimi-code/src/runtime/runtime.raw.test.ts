@@ -74,22 +74,36 @@ describe('Kimi Code runtime', () => {
     });
   }
 
-  test('rejects non-allowlisted raw paths before fetch without exposing the inbound host', async () => {
-    let calls = 0;
-    const runtime = await createKimiRuntime(context(validCredential(), catalog()), {
-      fetch: async () => {
-        calls += 1;
-        return Response.json({});
-      },
-    });
-    const transport = runtime.raw?.({ protocol: 'anthropic', modelId: 'openai-model' });
-    const request = new Request('https://secret-host.example/v1/messages/client-secret-path', {
-      method: 'POST',
-      body: 'client-secret-body',
+  for (const scenario of [
+    { protocol: 'anthropic', url: 'https://secret-host.example/v1/messages/client-secret-path' },
+    { protocol: 'openai-compatible', url: 'https://secret-host.example/v1/completions' },
+  ] as const) {
+    test(`declines a non-allowlisted ${scenario.protocol} raw path so convert can run`, async () => {
+      const runtime = await createKimiRuntime(context(validCredential(), catalog()));
+      const requestPath = new URL(scenario.url).pathname;
+
+      expect(runtime.raw?.({ protocol: scenario.protocol, modelId: 'openai-model', requestPath })).toBeUndefined();
+      expect(runtime.raw?.({ protocol: scenario.protocol, modelId: 'openai-model' })).toBeDefined();
     });
 
-    const error = await transport?.invoke(request).catch(String);
-    expect(error).toBe('Error: Unsupported Kimi raw path');
-    expect(calls).toBe(0);
-  });
+    test(`declines a non-allowlisted ${scenario.protocol} raw path with a protocol-shaped 501`, async () => {
+      let calls = 0;
+      const runtime = await createKimiRuntime(context(validCredential(), catalog()), {
+        fetch: async () => {
+          calls += 1;
+          return Response.json({});
+        },
+      });
+      const transport = runtime.raw?.({ protocol: scenario.protocol, modelId: 'openai-model' });
+      const request = new Request(scenario.url, { method: 'POST', body: 'client-secret-body' });
+
+      const response = await transport?.invoke(request);
+      const body = JSON.stringify(await response?.json());
+
+      expect(response?.status).toBe(501);
+      expect(calls).toBe(0);
+      expect(body).toContain('invalid_request_error');
+      expect(body).not.toContain('secret');
+    });
+  }
 });

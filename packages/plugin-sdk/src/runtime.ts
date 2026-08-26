@@ -76,6 +76,9 @@ export type RawResolver = (input: {
   readonly modelId: string;
   readonly metadata?: JsonValue;
   readonly capability?: 'language' | 'embedding';
+  // Inbound URL pathname when the pipeline is choosing between raw and model.
+  // Absent for capability probes that are not tied to a request.
+  readonly requestPath?: string;
 }) => RawTransport | undefined;
 
 export type ModelDescriptor = {

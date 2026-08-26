@@ -81,6 +81,71 @@ describe('cross-protocol HTTP routing', () => {
     }
   }
 
+  test('Completions inbound uses openai-compatible raw only when protocols match', async () => {
+    const same = provider(ProviderProtocol.OpenAICompatible, 'same');
+    const response = await requestPath('/v1/completions', { model: 'm', prompt: 'hello' }, [same.value]);
+    expect(response.status).toBe(200);
+    expect(same.calls).toEqual({ model: 0, raw: 1 });
+  });
+
+  test('Completions inbound cross-protocol emits text_completion identity fields', async () => {
+    const other = provider(ProviderProtocol.OpenAIResponse, 'other');
+    const response = await requestPath('/v1/completions', { model: 'm', prompt: 'hello' }, [other.value]);
+    expect(response.status).toBe(200);
+    expect(other.calls).toEqual({ model: 1, raw: 0 });
+    expect(await response.json()).toMatchObject({
+      object: 'text_completion',
+      model: expect.any(String),
+      created: expect.any(Number),
+      choices: [{ index: 0, logprobs: null }],
+    });
+  });
+
+  test('Completions unfaithful n=2 501s model-only and still raw-forwards later', async () => {
+    const modelOnly = provider(ProviderProtocol.OpenAIResponse, 'model-only');
+    const rawLater = provider(ProviderProtocol.OpenAICompatible, 'raw-later');
+    const body = { model: 'm', prompt: 'hello', n: 2 };
+    const blocked = await requestPath('/v1/completions', body, [modelOnly.value]);
+    expect(blocked.status).toBe(501);
+    expect(modelOnly.calls.raw).toBe(0);
+    const forwarded = await requestPath('/v1/completions', body, [modelOnly.value, rawLater.value]);
+    expect(forwarded.status).toBe(200);
+    expect(rawLater.calls).toEqual({ model: 0, raw: 1 });
+  });
+
+  test('compact same-protocol raw is unary JSON and omitted input still 200s', async () => {
+    let upstreamStream: boolean | undefined;
+    const fixture = provider(ProviderProtocol.OpenAIResponse, 'compact-raw');
+    fixture.value.raw = {
+      resolve: ({ protocol }) =>
+        protocol === ProviderProtocol.OpenAIResponse
+          ? {
+              invoke: async (_req, _ctx, options) => {
+                upstreamStream = options?.upstreamStream;
+                fixture.calls.raw += 1;
+                return Response.json({ object: 'response.compaction', output: [] });
+              },
+            }
+          : undefined,
+    };
+    const response = await requestPath('/v1/responses/compact', { model: 'm' }, [fixture.value]);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ object: 'response.compaction' });
+    expect(upstreamStream).toBe(false);
+    expect(fixture.calls).toEqual({ model: 0, raw: 1 });
+  });
+
+  test.each([ProviderProtocol.OpenAICompatible, ProviderProtocol.Anthropic, ProviderProtocol.Gemini] as const)(
+    'compact %s is 501 responses_compact and does not model-invoke',
+    async (protocol) => {
+      const fixture = provider(protocol, 'other');
+      const response = await requestPath('/v1/responses/compact', { model: 'm', input: null }, [fixture.value]);
+      expect(response.status).toBe(501);
+      expect(JSON.stringify(await response.json())).toContain('responses_compact');
+      expect(fixture.calls).toEqual({ model: 0, raw: 0 });
+    },
+  );
+
   test('falls back from model preflight failure to matching raw and stops', async () => {
     const first = provider(ProviderProtocol.Anthropic, 'first', {
       model: () => new ReadableStream({ start: (controller) => controller.error(new Error('model unavailable')) }),
@@ -504,15 +569,25 @@ async function requestImages(
   providers: readonly RuntimeProviderInstance[],
   dbHome?: string,
 ) {
+  return requestPath(IMAGES_PATH, body, providers, 'POST', dbHome);
+}
+
+async function requestPath(
+  path: string,
+  body: unknown,
+  providers: readonly RuntimeProviderInstance[],
+  method: string = 'POST',
+  dbHome?: string,
+) {
   const app = await createServer({
     config: { providers: {} },
     dbHome: dbHome ?? tempHome(),
     providerInstances: providers,
   });
-  return app.request(IMAGES_PATH, {
+  return app.request(path, {
     body: JSON.stringify(body),
     headers: { 'content-type': 'application/json' },
-    method: 'POST',
+    method,
   });
 }
 

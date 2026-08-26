@@ -13,6 +13,7 @@ import { attemptBase, candidateConfigPrice } from '../attempt-base';
 import type { AttemptStep, CandidateSlot, EmbeddingAttemptLoopContext } from './context';
 import { emitReject, handleAttemptError, unsupportedDispatch } from './error';
 import { completeRawAttempt, startRawAttempt } from './raw';
+import { requestPathProperty } from './request-path';
 
 // Embedding dispatch for one candidate. Same-protocol raw wins, otherwise the
 // request converts into an embedding invocation. A language model transport is
@@ -28,6 +29,7 @@ export async function attemptEmbeddingCandidate<TRequest, TContext>(
     protocol: adapter.protocol,
     modelId: candidate.modelId,
     capability: 'embedding',
+    ...requestPathProperty(rawRequest),
   });
   if (raw !== undefined) {
     slot.trace.transport = 'raw';

@@ -135,6 +135,17 @@ test('plugin raw capability receives catalog metadata and rejects malformed tran
     modelId: 'model',
     metadata: { region: 'us', protocol: 'anthropic' },
   });
+  result.provider?.raw?.resolve({
+    protocol: ProviderProtocol.OpenAICompatible,
+    modelId: 'model',
+    requestPath: '/v1/completions',
+  });
+  expect(observed[1]).toEqual({
+    protocol: 'openai-compatible',
+    modelId: 'model',
+    metadata: { region: 'us', protocol: 'anthropic' },
+    requestPath: '/v1/completions',
+  });
   expect(result.provider?.configMetadata?.[modelId]).toEqual({
     name: 'Configured Name',
     limit: { context: 400_000, input: 272_000 },

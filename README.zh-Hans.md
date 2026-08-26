@@ -192,6 +192,8 @@ router:
 | 模型列表                  | `GET /v1/models`                                    |
 | OpenAI Chat Completions   | `POST /v1/chat/completions`                         |
 | OpenAI Responses          | `POST /v1/responses`                                |
+| OpenAI Completions        | `POST /v1/completions`                              |
+| OpenAI Responses compact  | `POST /v1/responses/compact`                        |
 | Anthropic Messages        | `POST /v1/messages`                                 |
 | Anthropic Token Counting  | `POST /v1/messages/count_tokens`                    |
 | Gemini                    | `POST /v1beta/models/{model}:generateContent`       |
@@ -212,6 +214,8 @@ Images 说明：
 - DALL·E 省略/`null`/`url` 会跳过转换；GPT Image 省略时编码为 `b64_json`；自定义模型省略时的 `b64_json` 是 aio-proxy 扩展。
 - Edits 接受官方上限信封（JSON `357_564_416`，multipart `851_048_559`）。P1 没有更低的默认 DoS 上限；未来更小的上限只能作为显式的部署扩展。
 - 无目录的 Images Provider 需要有限 id 集合（`models`、保留的别名目标或 metadata 键），其中须包含 `gpt-image-2` 才能使用 CPA 默认值。
+
+其余官方 Responses 资源操作（`GET /v1/responses/:id`、`DELETE /v1/responses/:id`、`POST /v1/responses/:id/cancel`、`GET /v1/responses/:id/input_items`）返回协议形 501。
 
 调用 OpenAI Responses 入口：
 

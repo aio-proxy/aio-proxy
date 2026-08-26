@@ -62,6 +62,7 @@ export {
   NpmPackageJsonError,
   NpmPackageNameError,
   OpenAICompletionsTransformError,
+  OpenAICompletionsUnsupportedFeatureError,
   OpenAIResponsesTransformError,
   OpenAIImagesInvalidRequestError,
   OpenAIImagesUnsupportedFeatureError,

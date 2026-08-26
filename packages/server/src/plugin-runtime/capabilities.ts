@@ -24,7 +24,7 @@ import {
 import { uniq } from 'es-toolkit/array';
 
 import { buildModelCapabilityIndex } from '../provider-runtime/capability-index';
-import type { RuntimeProviderInstance } from '../runtime';
+import type { RawResolveInput, RuntimeProviderInstance } from '../runtime';
 import { modelMetadataRecord } from './catalog';
 import { PluginRawResolverError, PluginRawTransportError } from './types';
 
@@ -50,15 +50,7 @@ function rawCapability(rawResolver: RawResolver | undefined, catalog: ModelCatal
   const imageCatalogById = new Map(catalog.image.map((descriptor) => [descriptor.id, descriptor]));
   const embeddingCatalogById = new Map(catalog.embedding.map((descriptor) => [descriptor.id, descriptor]));
   return {
-    resolve({
-      protocol,
-      modelId,
-      capability,
-    }: {
-      readonly protocol: ProviderProtocol;
-      readonly modelId: string;
-      readonly capability?: 'language' | 'embedding';
-    }) {
+    resolve({ protocol, modelId, capability, requestPath }: RawResolveInput) {
       const descriptor =
         capability === 'embedding'
           ? (embeddingCatalogById.get(modelId) ?? languageCatalogById.get(modelId) ?? imageCatalogById.get(modelId))
@@ -70,6 +62,7 @@ function rawCapability(rawResolver: RawResolver | undefined, catalog: ModelCatal
         modelId,
         ...(descriptor?.metadata === undefined ? {} : { metadata: descriptor.metadata }),
         ...(capability === undefined ? {} : { capability }),
+        ...(requestPath === undefined ? {} : { requestPath }),
       });
       if (transport === undefined) return undefined;
       if (
