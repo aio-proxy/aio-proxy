@@ -98,7 +98,8 @@ export async function parseMultipartStream(
         }
         const after = index + firstBoundary.byteLength;
         if (window.byteLength < after + 2) {
-          if (index > 0) addFraming(window.consume(index).byteLength);
+          const keepPrefix = index >= 2 ? 2 : index;
+          if (index > keepPrefix) addFraming(window.consume(index - keepPrefix).byteLength);
           await readChunk();
           continue;
         }

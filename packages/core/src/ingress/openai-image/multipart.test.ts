@@ -317,6 +317,41 @@ test('leaves the original multipart body unread after parse', async () => {
   expect(raw.bodyUsed).toBe(false);
 });
 
+test('keeps preamble line-start context when a false boundary is split before its suffix', async () => {
+  const boundary = 'bound';
+  const rest = Buffer.concat([
+    Buffer.from('\r\n'),
+    Buffer.from(
+      `Content-Disposition: form-data; name="image"; filename="bad.bin"\r\nContent-Type: application/octet-stream\r\n\r\nFAKE\r\n--${boundary}\r\nContent-Disposition: form-data; name="prompt"\r\n\r\nmake it night\r\n--${boundary}\r\nContent-Disposition: form-data; name="image"; filename="cat.bin"\r\nContent-Type: application/octet-stream\r\n\r\n`,
+    ),
+    Buffer.from(PNG_1X1_RGBA),
+    Buffer.from(`\r\n--${boundary}--\r\n`),
+  ]);
+  const chunks = [Buffer.from(`prefix--${boundary}`), rest];
+  let offset = 0;
+  const stream = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      const chunk = chunks[offset];
+      if (chunk === undefined) {
+        controller.close();
+        return;
+      }
+      offset += 1;
+      controller.enqueue(chunk);
+    },
+  });
+  const parsed = await parseOpenAIImageEditsMultipart(
+    new Request('https://x/v1/images/edits', {
+      method: 'POST',
+      headers: { 'content-type': `multipart/form-data; boundary=${boundary}` },
+      body: stream,
+    }),
+  );
+  expect(parsed.prompt).toBe('make it night');
+  expect(parsed.uploads).toHaveLength(1);
+  expect(parsed.uploads[0]?.data).toEqual(PNG_1X1_RGBA);
+});
+
 test('skips preamble text that contains a non-delimiter boundary prefix', async () => {
   const boundary = 'bound';
   const encoded = Buffer.concat([
