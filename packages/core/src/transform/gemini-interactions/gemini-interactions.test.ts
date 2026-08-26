@@ -79,6 +79,45 @@ describe('geminiInteractionsToModelMessages', () => {
     ]);
   });
 
+  test('groups consecutive parallel function calls and results', () => {
+    const result = convert({
+      model: 'm',
+      store: false,
+      input: [
+        { type: 'function_call', id: 'c1', name: 'read_a', arguments: { path: 'a' } },
+        { type: 'function_call', id: 'c2', name: 'read_b', arguments: { path: 'b' } },
+        { type: 'function_result', call_id: 'c1', result: 'A' },
+        { type: 'function_result', call_id: 'c2', result: 'B' },
+      ],
+    });
+    expect(result.messages).toEqual([
+      {
+        role: 'assistant',
+        content: [
+          { type: 'tool-call', toolCallId: 'c1', toolName: 'read_a', input: { path: 'a' } },
+          { type: 'tool-call', toolCallId: 'c2', toolName: 'read_b', input: { path: 'b' } },
+        ],
+      },
+      {
+        role: 'tool',
+        content: [
+          {
+            type: 'tool-result',
+            toolCallId: 'c1',
+            toolName: 'read_a',
+            output: { type: 'text', value: 'A' },
+          },
+          {
+            type: 'tool-result',
+            toolCallId: 'c2',
+            toolName: 'read_b',
+            output: { type: 'text', value: 'B' },
+          },
+        ],
+      },
+    ]);
+  });
+
   test.each([
     [{ model: 'm', input: 'x', agent_config: {} }, 'agent_config'],
     [{ agent: 'deep-research-preview-04-2026', input: 'x' }, 'agent'],
@@ -117,6 +156,7 @@ describe('geminiInteractionsToModelMessages', () => {
       'response_format',
     ],
     [{ model: 'm', input: 'x', store: false, tools: [{ google_search: {} }] }, 'tools'],
+    [{ model: 'm', input: 'x', store: false, tools: [{ name: '' }] }, 'tools'],
     [{ model: 'm', input: 'x', store: false, tools: [{ name: 't', parameters: 'not-json' }] }, 'tools'],
     [
       {
@@ -167,6 +207,17 @@ describe('geminiInteractionsToModelMessages', () => {
         input: [
           { type: 'user_input', content: [{ type: 'text', text: 'hi' }] },
           { type: 'function_result', name: 't', result: { ok: true } },
+        ],
+      },
+      'input',
+    ],
+    [
+      {
+        model: 'm',
+        store: false,
+        input: [
+          { type: 'user_input', content: [{ type: 'text', text: 'hi' }] },
+          { type: 'function_result', call_id: 'missing', result: { ok: true } },
         ],
       },
       'input',

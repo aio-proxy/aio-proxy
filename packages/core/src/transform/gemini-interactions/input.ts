@@ -30,18 +30,33 @@ function transcriptMessages(input: GeminiInteractionsBody['input']): readonly Mo
   return text === undefined ? [] : [userTextMessage(text)];
 }
 
+type ToolCallPart = Extract<AssistantMessage['content'], readonly unknown[]>[number] & { type: 'tool-call' };
+type ToolResultPart = Extract<ToolMessage['content'][number], { type: 'tool-result' }>;
+
 function stepMessages(steps: readonly unknown[]): readonly ModelMessage[] {
   const toolNames = new Map<string, string>();
   const messages: ModelMessage[] = [];
+  let previous: 'call' | 'result' | undefined;
   for (const step of steps) {
     if (!isRecord(step)) continue;
-    const message = stepMessage(step, toolNames);
+    if (step['type'] === 'function_call') {
+      appendAssistantToolCall(messages, previous, functionCallPart(step, toolNames));
+      previous = 'call';
+      continue;
+    }
+    if (step['type'] === 'function_result') {
+      appendToolResult(messages, previous, functionResultPart(step, toolNames));
+      previous = 'result';
+      continue;
+    }
+    previous = undefined;
+    const message = stepMessage(step);
     if (message !== undefined) messages.push(message);
   }
   return messages;
 }
 
-function stepMessage(step: Record<string, unknown>, toolNames: Map<string, string>): ModelMessage | undefined {
+function stepMessage(step: Record<string, unknown>): ModelMessage | undefined {
   switch (step['type']) {
     case 'user_input': {
       const text = textFromContents(step['content']);
@@ -56,33 +71,53 @@ function stepMessage(step: Record<string, unknown>, toolNames: Map<string, strin
       if (text === undefined) return undefined;
       return { role: 'assistant', content: [{ type: 'reasoning', text }] } satisfies AssistantMessage;
     }
-    case 'function_call': {
-      const id = typeof step['id'] === 'string' ? step['id'] : '';
-      const name = typeof step['name'] === 'string' ? step['name'] : '';
-      if (id !== '') toolNames.set(id, name);
-      return {
-        role: 'assistant',
-        content: [{ type: 'tool-call', toolCallId: id, toolName: name, input: step['arguments'] ?? {} }],
-      } satisfies AssistantMessage;
-    }
-    case 'function_result': {
-      const callId = typeof step['call_id'] === 'string' ? step['call_id'] : '';
-      const name = typeof step['name'] === 'string' ? step['name'] : (toolNames.get(callId) ?? '');
-      return {
-        role: 'tool',
-        content: [
-          {
-            type: 'tool-result',
-            toolCallId: callId,
-            toolName: name,
-            output: toolOutput(step['result']),
-          },
-        ],
-      } satisfies ToolMessage;
-    }
     default:
       return undefined;
   }
+}
+
+function functionCallPart(step: Record<string, unknown>, toolNames: Map<string, string>): ToolCallPart {
+  const id = typeof step['id'] === 'string' ? step['id'] : '';
+  const name = typeof step['name'] === 'string' ? step['name'] : '';
+  if (id !== '') toolNames.set(id, name);
+  return { type: 'tool-call', toolCallId: id, toolName: name, input: step['arguments'] ?? {} };
+}
+
+function functionResultPart(step: Record<string, unknown>, toolNames: Map<string, string>): ToolResultPart {
+  const callId = typeof step['call_id'] === 'string' ? step['call_id'] : '';
+  const name = typeof step['name'] === 'string' ? step['name'] : (toolNames.get(callId) ?? '');
+  return {
+    type: 'tool-result',
+    toolCallId: callId,
+    toolName: name,
+    output: toolOutput(step['result']),
+  };
+}
+
+function appendAssistantToolCall(
+  messages: ModelMessage[],
+  previous: 'call' | 'result' | undefined,
+  part: ToolCallPart,
+): void {
+  const last = messages.at(-1);
+  if (previous === 'call' && last?.role === 'assistant' && Array.isArray(last.content)) {
+    messages[messages.length - 1] = { ...last, content: [...last.content, part] };
+    return;
+  }
+  messages.push({ role: 'assistant', content: [part] } satisfies AssistantMessage);
+}
+
+function appendToolResult(
+  messages: ModelMessage[],
+  previous: 'call' | 'result' | undefined,
+  part: ToolResultPart,
+): void {
+  const last = messages.at(-1);
+  if (previous === 'result' && last?.role === 'tool') {
+    messages[messages.length - 1] = { ...last, content: [...last.content, part] };
+    return;
+  }
+  messages.push({ role: 'tool', content: [part] } satisfies ToolMessage);
 }
 
 function userTextMessage(text: string): ModelMessage {

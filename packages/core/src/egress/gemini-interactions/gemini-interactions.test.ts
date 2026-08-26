@@ -123,6 +123,35 @@ describe('writeGeminiInteractionsResponse', () => {
     expect(interaction.steps[0]).not.toHaveProperty('content');
   });
 
+  test('malformed or non-object function-call arguments fail egress', async () => {
+    for (const delta of ['{', '[]', 'null', '"x"']) {
+      let caught: unknown;
+      try {
+        await writeGeminiInteractionsResponse(
+          streamOf(
+            { type: 'tool-input-start', id: 'c1', toolName: 'get_weather' },
+            { type: 'tool-input-delta', id: 'c1', delta },
+            { type: 'tool-input-end', id: 'c1' },
+            finish('tool-calls'),
+          ),
+          { modelId: 'm' },
+        );
+      } catch (error) {
+        caught = error;
+      }
+      expect(caught).toBeInstanceOf(GeminiInteractionsEgressError);
+      expect(geminiInteractionsErrors.provider(caught)).toBeUndefined();
+    }
+  });
+
+  test('empty function-call arguments stay an empty object', async () => {
+    const interaction = await writeGeminiInteractionsResponse(
+      streamOf({ type: 'tool-input-start', id: 'c1', toolName: 'get_weather' }, finish('tool-calls')),
+      { modelId: 'm' },
+    );
+    expect(interaction.steps).toEqual([{ type: 'function_call', id: 'c1', name: 'get_weather', arguments: {} }]);
+  });
+
   test('missing function_call id or name fails egress', async () => {
     await expect(
       writeGeminiInteractionsResponse(
@@ -356,6 +385,23 @@ describe('writeGeminiInteractionsSSE', () => {
       writeGeminiInteractionsSSE(streamOf({ type: 'text-delta', id: 't', text: 'x' }, finish('error')), {
         modelId: 'm',
       }),
+    );
+    expect(text).toContain('event: error');
+    expect(text).toContain('event: done');
+    expect(text).not.toContain('event: interaction.completed');
+  });
+
+  test('malformed function-call arguments emit error then done', async () => {
+    const text = await readSse(
+      writeGeminiInteractionsSSE(
+        streamOf(
+          { type: 'tool-input-start', id: 'c1', toolName: 'get_weather' },
+          { type: 'tool-input-delta', id: 'c1', delta: '{' },
+          { type: 'tool-input-end', id: 'c1' },
+          finish('tool-calls'),
+        ),
+        { modelId: 'm' },
+      ),
     );
     expect(text).toContain('event: error');
     expect(text).toContain('event: done');

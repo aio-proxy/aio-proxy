@@ -195,11 +195,11 @@ function parseJsonObject(value: string): Record<string, unknown> {
   if (value.trim() === '') return {};
   try {
     const parsed: unknown = JSON.parse(value);
-    return isRecord(parsed) ? { ...parsed } : {};
+    if (isRecord(parsed)) return { ...parsed };
   } catch (error) {
-    if (error instanceof SyntaxError) return {};
-    throw error;
+    if (!(error instanceof SyntaxError)) throw error;
   }
+  throw new GeminiInteractionsEgressError('invalid_function_arguments');
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

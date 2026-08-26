@@ -135,7 +135,7 @@ function assertTools(value: GeminiInteractionsBody['tools']): void {
 }
 
 function isFunctionTool(value: unknown): boolean {
-  if (!isRecord(value) || typeof value['name'] !== 'string') return false;
+  if (!isRecord(value) || typeof value['name'] !== 'string' || value['name'] === '') return false;
   if (Object.keys(value).some((key) => !FUNCTION_TOOL_KEYS.has(key))) return false;
   const type = value['type'];
   if (type !== undefined && type !== 'function') return false;
@@ -150,7 +150,8 @@ function assertInput(input: GeminiInteractionsBody['input']): void {
   if (Array.isArray(input)) {
     if (input.length === 0) return;
     if (input.every(isStep)) {
-      for (const step of input) assertStep(step);
+      const callIds = new Set<string>();
+      for (const step of input) assertStep(step, callIds);
       return;
     }
     if (input.every((item) => isRecord(item) && !isStep(item))) {
@@ -166,7 +167,7 @@ function assertInput(input: GeminiInteractionsBody['input']): void {
   unsupported('input', 'input');
 }
 
-function assertStep(step: Record<string, unknown>): void {
+function assertStep(step: Record<string, unknown>, callIds: Set<string>): void {
   const type = step['type'];
   if (typeof type !== 'string' || !STEP_TYPES.has(type)) unsupported('input', 'input');
   if (type === 'thought' && 'content' in step) unsupported('input', 'input');
@@ -180,9 +181,10 @@ function assertStep(step: Record<string, unknown>): void {
   }
   if (type === 'function_call') {
     assertFunctionCall(step);
+    callIds.add(step['id'] as string);
     return;
   }
-  assertFunctionResult(step);
+  assertFunctionResult(step, callIds);
 }
 
 function assertFunctionCall(step: Record<string, unknown>): void {
@@ -191,8 +193,9 @@ function assertFunctionCall(step: Record<string, unknown>): void {
   if (step['arguments'] !== undefined && !isRecord(step['arguments'])) unsupported('input', 'input');
 }
 
-function assertFunctionResult(step: Record<string, unknown>): void {
+function assertFunctionResult(step: Record<string, unknown>, callIds: Set<string>): void {
   if (typeof step['call_id'] !== 'string' || step['call_id'] === '') unsupported('input', 'input');
+  if (!callIds.has(step['call_id'])) unsupported('input', 'input');
 }
 
 function assertTextContents(value: unknown): void {

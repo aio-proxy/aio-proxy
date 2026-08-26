@@ -86,26 +86,30 @@ export function writeGeminiInteractionsSSE(
     if (state.failed) return;
 
     closeRemaining(state);
-    const functionCalls = Array.from(state.tools.values()).map(functionCallStep);
-    const status = interactionStatus(state.finishReason, functionCalls.length > 0);
-    if (status === 'error') {
-      emitError(state, `Gemini Interactions convert finished with ${state.finishReason}`);
-      return;
-    }
+    try {
+      const functionCalls = Array.from(state.tools.values()).map(functionCallStep);
+      const status = interactionStatus(state.finishReason, functionCalls.length > 0);
+      if (status === 'error') {
+        emitError(state, `Gemini Interactions convert finished with ${state.finishReason}`);
+        return;
+      }
 
-    const interaction: Interaction = {
-      id,
-      object: 'interaction',
-      model: context.modelId,
-      status,
-      created,
-      updated: created,
-      steps: completedSteps(state),
-      usage: interactionUsage(state.usage),
-    };
-    emitJson(state, 'interaction.completed', { event_type: 'interaction.completed', interaction });
-    context.onResponseId?.(id);
-    emitDone(state);
+      const interaction: Interaction = {
+        id,
+        object: 'interaction',
+        model: context.modelId,
+        status,
+        created,
+        updated: created,
+        steps: completedSteps(state),
+        usage: interactionUsage(state.usage),
+      };
+      emitJson(state, 'interaction.completed', { event_type: 'interaction.completed', interaction });
+      context.onResponseId?.(id);
+      emitDone(state);
+    } catch (error) {
+      emitError(state, errorMessage(error));
+    }
   });
 }
 
