@@ -1,4 +1,10 @@
-import type { ModelInvocation, ProtocolAdapter, RouterCandidate } from '@aio-proxy/core';
+import type {
+  AnyProtocolAdapter,
+  EmbeddingProtocolAdapter,
+  ModelInvocation,
+  ProtocolAdapter,
+  RouterCandidate,
+} from '@aio-proxy/core';
 import type { LogicalRequestContext } from '@aio-proxy/plugin-sdk';
 import type { ProviderProtocol } from '@aio-proxy/types';
 
@@ -33,9 +39,15 @@ export type LogAttemptFailure = (
   detail?: { readonly response?: Response; readonly error?: unknown },
 ) => void;
 
-// Invariants shared by every candidate attempt in one request.
-export type AttemptLoopContext<TRequest, TContext> = {
-  readonly adapter: ProtocolAdapter<TRequest, TContext>;
+// Invariants shared by every candidate attempt in one request. TAdapter keeps
+// the language and embedding attempt paths from seeing each other's adapter
+// surface while the loop itself stays capability-agnostic.
+export type AttemptLoopContext<
+  TRequest,
+  TContext,
+  TAdapter extends AnyProtocolAdapter<TRequest, TContext> = ProtocolAdapter<TRequest, TContext>,
+> = {
+  readonly adapter: TAdapter;
   readonly context: TContext;
   readonly rawRequest: Request;
   readonly request: TRequest;
@@ -55,6 +67,20 @@ export type AttemptLoopContext<TRequest, TContext> = {
   readonly cooldown: ProviderCooldownStore;
   readonly retryAfterCapMs: number;
 };
+
+export type EmbeddingAttemptLoopContext<TRequest, TContext> = AttemptLoopContext<
+  TRequest,
+  TContext,
+  EmbeddingProtocolAdapter<TRequest, TContext>
+>;
+
+// Accepted by helpers that only touch capability-agnostic context (protocol,
+// error mapper, emitter, session).
+export type AnyAttemptLoopContext<TRequest, TContext> = AttemptLoopContext<
+  TRequest,
+  TContext,
+  AnyProtocolAdapter<TRequest, TContext>
+>;
 
 // Per-candidate facts.
 export type CandidateSlot = {

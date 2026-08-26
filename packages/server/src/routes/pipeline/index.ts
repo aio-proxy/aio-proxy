@@ -1,5 +1,5 @@
 import {
-  type ProtocolAdapter,
+  type AnyProtocolAdapter,
   RequestBodyTooLargeError,
   RouterModelNotFoundError,
   UnsupportedContentEncodingError,
@@ -16,7 +16,7 @@ import { logRequestDiagnostics, logRequestFailed, logRequestRejected } from './l
 import { cancelRetainedRequestBody, hasInvalidOrOversizedContentLength } from './request';
 
 export type HandleProtocolRequestOptions<TRequest, TContext> = {
-  readonly adapter: ProtocolAdapter<TRequest, TContext>;
+  readonly adapter: AnyProtocolAdapter<TRequest, TContext>;
   readonly context: TContext;
   readonly rawRequest: Request;
   readonly source: ProviderRouteSource;
@@ -153,7 +153,7 @@ type ParsedProtocolRequest<TRequest> =
   | { readonly request?: undefined; readonly response: Response };
 
 async function parseProtocolRequest<TRequest, TContext>(options: {
-  readonly adapter: ProtocolAdapter<TRequest, TContext>;
+  readonly adapter: AnyProtocolAdapter<TRequest, TContext>;
   readonly context: TContext;
   readonly inboundProtocol: ProviderProtocol;
   readonly rawRequest: Request;
@@ -197,7 +197,7 @@ function rejectParsedRequest<TRequest, TContext>(
     session,
     source,
   }: {
-    readonly adapter: ProtocolAdapter<TRequest, TContext>;
+    readonly adapter: AnyProtocolAdapter<TRequest, TContext>;
     readonly context: TContext;
     readonly inboundProtocol: ProviderProtocol;
     readonly rawRequest: Request;
@@ -209,7 +209,7 @@ function rejectParsedRequest<TRequest, TContext>(
 }
 
 async function attemptResolvedRequest<TRequest, TContext>(options: {
-  readonly adapter: ProtocolAdapter<TRequest, TContext>;
+  readonly adapter: AnyProtocolAdapter<TRequest, TContext>;
   readonly context: TContext;
   readonly inboundProtocol: ProviderProtocol;
   readonly rawRequest: Request;

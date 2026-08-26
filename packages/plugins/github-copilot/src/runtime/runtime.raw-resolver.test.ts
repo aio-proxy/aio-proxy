@@ -47,4 +47,19 @@ describe('GitHub Copilot runtime', () => {
     expect(captured?.headers.get('Copilot-Integration-Id')).toBe('vscode-chat');
     expect(await captured?.json()).toEqual({ model: 'gpt-chat', messages: [] });
   });
+
+  test('declines embeddings so convert can run on the same candidate', async () => {
+    const credentials = credentialPort(validCredential('raw-token'));
+    const runtime = await createGitHubCopilotRuntime({
+      credentials: credentials.port,
+      options: { deploymentType: 'github.com' },
+      catalog: catalog(),
+      fetch: forwardFetch,
+    });
+
+    expect(
+      runtime.raw?.({ protocol: 'openai-compatible', modelId: 'gpt-chat', capability: 'embedding' }),
+    ).toBeUndefined();
+    expect(runtime.raw?.({ protocol: 'openai-compatible', modelId: 'gpt-chat', capability: 'language' })).toBeDefined();
+  });
 });
