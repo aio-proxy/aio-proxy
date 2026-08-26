@@ -1,7 +1,13 @@
 import type { TextStreamPart, ToolSet } from '../../ai-sdk-bridge';
 import type { ModelEgressContext, ModelSseStream } from '../../protocol/adapter';
 import { createCancellableEgressStream } from '../cancellable-stream';
-import { assertFunctionCallStep, functionCallStep, type Interaction, interactionSteps } from './json';
+import {
+  assertFunctionCallStep,
+  assertThoughtStep,
+  functionCallStep,
+  type Interaction,
+  type InteractionStep,
+} from './json';
 import { interactionStatus } from './status';
 import { interactionUsage } from './usage';
 
@@ -35,6 +41,7 @@ type SseState = {
   readonly text: string[];
   readonly reasoning: string[];
   readonly tools: Map<string, ToolState>;
+  readonly started: Array<{ readonly kind: StepKind; readonly id?: string }>;
   readonly enqueue: (value: Uint8Array) => void;
 };
 
@@ -55,6 +62,7 @@ export function writeGeminiInteractionsSSE(
       text: [],
       reasoning: [],
       tools: new Map(),
+      started: [],
       enqueue,
     };
 
@@ -89,7 +97,7 @@ export function writeGeminiInteractionsSSE(
       status,
       created,
       updated: created,
-      steps: interactionSteps(state.text.join(''), state.reasoning.join(''), functionCalls),
+      steps: completedSteps(state),
       usage: interactionUsage(state.usage),
     };
     emitJson(state, 'interaction.completed', { event_type: 'interaction.completed', interaction });
@@ -162,6 +170,7 @@ function startFunctionCall(state: SseState, id: string, name: string): void {
   const index = state.nextIndex++;
   state.open = { kind: 'function_call', index, id };
   state.tools.set(id, { id, name, index, input: '', stopped: false });
+  state.started.push({ kind: 'function_call', id });
   emitJson(state, 'step.start', { event_type: 'step.start', index, step });
 }
 
@@ -181,6 +190,7 @@ function ensureStep(state: SseState, kind: Exclude<StepKind, 'function_call'>): 
   closeRemaining(state);
   const index = state.nextIndex++;
   state.open = { kind, index };
+  state.started.push({ kind });
   emitJson(state, 'step.start', { event_type: 'step.start', index, step: { type: kind } });
 }
 
@@ -207,6 +217,29 @@ function closeRemaining(state: SseState): void {
   for (const tool of state.tools.values()) {
     if (!tool.stopped) closeFunctionCall(state, tool.id);
   }
+}
+
+function completedSteps(state: SseState): InteractionStep[] {
+  const thoughtText = state.reasoning.join('');
+  const outputText = state.text.join('');
+  const tools = new Map(Array.from(state.tools.values(), (tool) => [tool.id, functionCallStep(tool)]));
+  const steps: InteractionStep[] = [];
+  for (const started of state.started) {
+    if (started.kind === 'thought') {
+      if (thoughtText.length === 0) continue;
+      const thought = { type: 'thought' as const, summary: [{ type: 'text' as const, text: thoughtText }] };
+      assertThoughtStep(thought);
+      steps.push(thought);
+      continue;
+    }
+    if (started.kind === 'model_output') {
+      if (outputText.length > 0) steps.push({ type: 'model_output', content: [{ type: 'text', text: outputText }] });
+      continue;
+    }
+    const call = started.id === undefined ? undefined : tools.get(started.id);
+    if (call !== undefined) steps.push(call);
+  }
+  return steps;
 }
 
 function emitJson(state: SseState, eventType: string, payload: Record<string, unknown>): void {

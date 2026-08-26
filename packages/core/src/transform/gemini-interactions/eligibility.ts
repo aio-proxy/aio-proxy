@@ -134,7 +134,9 @@ function isFunctionTool(value: unknown): boolean {
   const type = value['type'];
   if (type !== undefined && type !== 'function') return false;
   const description = value['description'];
-  return description === undefined || typeof description === 'string';
+  if (description !== undefined && typeof description !== 'string') return false;
+  const parameters = value['parameters'];
+  return parameters === undefined || isRecord(parameters);
 }
 
 function assertInput(input: GeminiInteractionsBody['input']): void {
@@ -189,6 +191,7 @@ function assertContent(value: unknown): void {
   if (hasMedia(value)) unsupported('input', 'input');
   const type = value['type'];
   if (type !== undefined && type !== 'text') unsupported('input', 'input');
+  if (typeof value['text'] !== 'string') unsupported('input', 'input');
 }
 
 function hasMedia(value: Record<string, unknown>): boolean {

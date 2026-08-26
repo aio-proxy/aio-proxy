@@ -256,6 +256,34 @@ describe('writeGeminiInteractionsSSE', () => {
     expect(text).toContain('"status":"requires_action"');
   });
 
+  test('completed steps follow streamed step.start order', async () => {
+    const text = await readSse(
+      writeGeminiInteractionsSSE(
+        streamOf(
+          { type: 'tool-input-start', id: 'c1', toolName: 'get_weather' },
+          { type: 'tool-input-delta', id: 'c1', delta: '{"location":"Boston, MA"}' },
+          { type: 'text-delta', id: 't', text: 'Hello' },
+          finish('tool-calls'),
+        ),
+        { modelId: 'm' },
+      ),
+    );
+    expect(text).toContain(
+      '"event_type":"step.start","index":0,"step":{"type":"function_call","id":"c1","name":"get_weather","arguments":{}}',
+    );
+    expect(text).toContain('"event_type":"step.start","index":1,"step":{"type":"model_output"}');
+    const completed = text.match(/event: interaction\.completed\ndata: (\{.*\})\n/);
+    const payload: unknown = JSON.parse(completed?.[1] ?? '{}');
+    const steps =
+      typeof payload === 'object' && payload !== null && 'interaction' in payload
+        ? (payload as { interaction?: { steps?: unknown } }).interaction?.steps
+        : undefined;
+    expect(steps).toEqual([
+      { type: 'function_call', id: 'c1', name: 'get_weather', arguments: { location: 'Boston, MA' } },
+      { type: 'model_output', content: [{ type: 'text', text: 'Hello' }] },
+    ]);
+  });
+
   test('error finish emits error then done and never completed', async () => {
     const text = await readSse(
       writeGeminiInteractionsSSE(streamOf({ type: 'text-delta', id: 't', text: 'x' }, finish('error')), {

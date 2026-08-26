@@ -117,6 +117,18 @@ describe('geminiInteractionsToModelMessages', () => {
       'response_format',
     ],
     [{ model: 'm', input: 'x', store: false, tools: [{ google_search: {} }] }, 'tools'],
+    [{ model: 'm', input: 'x', store: false, tools: [{ name: 't', parameters: 'not-json' }] }, 'tools'],
+    [
+      {
+        model: 'm',
+        input: [
+          { type: 'text', text: 'ok' },
+          { type: 'text', text: 123 },
+        ],
+        store: false,
+      },
+      'input',
+    ],
     [{ model: 'm', input: [{ type: 'thought', content: [{ type: 'text', text: 'x' }] }], store: false }, 'input'],
     [{ model: 'm', input: 'x', store: false, labels: {} }, 'labels'],
   ])('throws modelUnsupported for %j', (body, feature) => {
