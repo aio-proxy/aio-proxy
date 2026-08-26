@@ -1,6 +1,7 @@
 import type { ModelMessage } from '../../ai-sdk-bridge';
 import { OpenAIResponsesTransformError } from '../../error';
 import type { OpenAIResponsesInputItem } from '../../ingress/openai-responses/index';
+import type { ModelInvocationDiagnostic } from '../../protocol/adapter';
 import { inputMessage, toolOutput } from './input-content';
 import {
   flattenOpenAIResponsesToolName,
@@ -23,6 +24,7 @@ type CallIdentity = {
 
 type ConvertState = {
   readonly messages: ModelMessage[];
+  readonly diagnostics: ModelInvocationDiagnostic[];
   readonly calls: Map<string, CallIdentity>;
   readonly tools: readonly OpenAIResponsesTransformTool[] | undefined;
   previous: 'call' | 'result' | undefined;
@@ -38,11 +40,11 @@ type ToolCallOutputItem = Extract<InputItem, { type: 'function_call_output' | 'c
 export function openAIResponsesInputMessages(
   items: readonly OpenAIResponsesInputItem[],
   tools?: readonly OpenAIResponsesTransformTool[],
-): ModelMessage[] {
-  const state: ConvertState = { messages: [], calls: new Map(), tools, previous: undefined };
+): { messages: ModelMessage[]; diagnostics: ModelInvocationDiagnostic[] } {
+  const state: ConvertState = { messages: [], diagnostics: [], calls: new Map(), tools, previous: undefined };
 
   for (const [index, item] of items.entries()) {
-    if ('role' in item && item.type !== 'additional_tools') {
+    if (item.type === undefined || item.type === 'message') {
       state.messages.push(inputMessage(item, index));
       state.previous = undefined;
       continue;
@@ -62,6 +64,18 @@ export function openAIResponsesInputMessages(
         return rejectOpenAIResponsesFeature(item.type, `input.${index}.type`);
       case '__aio_proxy_unsupported__':
         return rejectOpenAIResponsesFeature(item.wireType, `input.${index}.type`);
+      case 'web_search_call':
+        if (!canDropCompletedWebSearch(item)) {
+          return rejectOpenAIResponsesFeature('web_search_call', `input.${index}.type`);
+        }
+        state.previous = undefined;
+        state.diagnostics.push({
+          feature: 'web_search_call',
+          action: 'dropped',
+          reason: 'completed_without_results_or_sources',
+          inputIndex: index,
+        });
+        break;
       case 'function_call':
         convertFunctionCall(state, item, index);
         break;
@@ -75,7 +89,16 @@ export function openAIResponsesInputMessages(
     }
   }
 
-  return state.messages;
+  return { messages: state.messages, diagnostics: state.diagnostics };
+}
+
+function hasOwnedActionSources(item: Extract<OpenAIResponsesInputItem, { type: 'web_search_call' }>): boolean {
+  const action = item.action;
+  return typeof action === 'object' && action !== null && Object.hasOwn(action, 'sources');
+}
+
+function canDropCompletedWebSearch(item: Extract<OpenAIResponsesInputItem, { type: 'web_search_call' }>): boolean {
+  return item.status === 'completed' && !Object.hasOwn(item, 'results') && !hasOwnedActionSources(item);
 }
 
 function convertAgentMessage(state: ConvertState, item: AgentMessageItem, index: number): void {

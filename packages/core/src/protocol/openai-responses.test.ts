@@ -1,5 +1,7 @@
 import { expect, test } from 'bun:test';
 
+import { ProviderProtocol } from '@aio-proxy/types';
+
 import { openAIResponsesAdapter } from '../index';
 
 test('drops background before raw forwarding while preserving unknown fields', async () => {
@@ -81,4 +83,39 @@ test('reports a safe diagnostic when background mode is downgraded', async () =>
   expect(openAIResponsesAdapter.requestDiagnostics(parsed, {})).toEqual([
     { feature: 'background', action: 'dropped', effectiveMode: 'synchronous' },
   ]);
+});
+
+test('carries non-empty model conversion diagnostics through target materialization', async () => {
+  const raw = new Request('https://proxy.test/v1/responses', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      model: 'gpt-5.6-terra',
+      input: [{ type: 'web_search_call', status: 'completed' }],
+    }),
+  });
+  const parsed = await openAIResponsesAdapter.parse(raw, {});
+
+  const invocation = openAIResponsesAdapter.modelInvocation(parsed, {});
+  expect(invocation.diagnostics).toEqual([
+    {
+      feature: 'web_search_call',
+      action: 'dropped',
+      reason: 'completed_without_results_or_sources',
+      inputIndex: 0,
+    },
+  ]);
+  expect(
+    openAIResponsesAdapter.modelInvocationForTarget(invocation, ProviderProtocol.OpenAIResponse, new Set()).diagnostics,
+  ).toBe(invocation.diagnostics);
+
+  const withoutDrops = await openAIResponsesAdapter.parse(
+    new Request('https://proxy.test/v1/responses', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ model: 'gpt-5.6-terra', input: 'hello' }),
+    }),
+    {},
+  );
+  expect(openAIResponsesAdapter.modelInvocation(withoutDrops, {})).not.toHaveProperty('diagnostics');
 });

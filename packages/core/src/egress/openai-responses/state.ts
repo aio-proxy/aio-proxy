@@ -213,6 +213,7 @@ export function openAIUsage(usage: {
 export function customInput(value: string): string {
   try {
     const parsed: unknown = JSON.parse(value);
+    if (typeof parsed === 'string') return parsed;
     if (
       typeof parsed === 'object' &&
       parsed !== null &&

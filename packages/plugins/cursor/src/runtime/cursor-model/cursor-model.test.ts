@@ -3,7 +3,8 @@ import { Buffer } from 'node:buffer';
 
 import { InvalidArgumentError, type LanguageModelV4CallOptions } from '@ai-sdk/provider';
 import type { CredentialPort } from '@aio-proxy/plugin-sdk';
-import { create, fromBinary, toBinary } from '@bufbuild/protobuf';
+import { create, fromBinary, toBinary, toJson } from '@bufbuild/protobuf';
+import { ValueSchema } from '@bufbuild/protobuf/wkt';
 
 import {
   AgentClientMessageSchema,
@@ -12,9 +13,11 @@ import {
   ConversationStateStructureSchema,
   ConversationStepSchema,
   ConversationTurnStructureSchema,
+  ExecServerMessageSchema,
   InteractionUpdateSchema,
   McpArgsSchema,
   McpToolCallSchema,
+  RequestContextArgsSchema,
   ToolCallSchema,
   UserMessageSchema,
 } from '../../gen/agent_pb';
@@ -43,6 +46,18 @@ const turnEnded = () =>
   server({
     case: 'interactionUpdate',
     value: create(InteractionUpdateSchema, { message: { case: 'turnEnded', value: {} } } as never),
+  });
+const execServerMessage = () =>
+  server({
+    case: 'execServerMessage',
+    value: create(ExecServerMessageSchema, {
+      id: 1,
+      execId: 'request-context',
+      message: {
+        case: 'requestContextArgs',
+        value: create(RequestContextArgsSchema, {}),
+      },
+    }),
   });
 
 function makeTransport(): { transport: CursorTransport; runs: Uint8Array[][] } {
@@ -135,6 +150,70 @@ test('doStream returns a finishing stream and frames a runRequest', async () => 
   expect(runs[0]?.length).toBeGreaterThan(0);
   const first = fromBinary(AgentClientMessageSchema, runs[0]![0]!.subarray(5));
   expect(first.message.case).toBe('runRequest');
+});
+
+test('function tools cross the local request-context handshake', async () => {
+  const runs: Uint8Array[][] = [];
+  const transport: CursorTransport = {
+    openRun: () => {
+      const writes: Uint8Array[] = [];
+      runs.push(writes);
+      return Promise.resolve({
+        write: (frame) => writes.push(frame),
+        end: () => {},
+        close: () => {},
+        frames: (async function* () {
+          yield execServerMessage();
+          yield text('ok');
+          yield turnEnded();
+        })(),
+        trailers: Promise.resolve({ 'grpc-status': '0' }),
+      });
+    },
+    unary: () => Promise.reject(new Error('unused')),
+  };
+  const model = createCursorLanguageModel('claude-4.5-sonnet', runtimeWith(transport, new CursorSessionStore()));
+  const inputSchema = {
+    type: 'object',
+    properties: { input: { type: 'string' } },
+    required: ['input'],
+    additionalProperties: false,
+  } as const;
+  const options = callOptions();
+  options.tools = [
+    {
+      type: 'function',
+      name: 'apply_patch',
+      description: 'Apply a patch',
+      inputSchema,
+    },
+  ];
+  options.toolChoice = { type: 'tool', toolName: 'apply_patch' };
+
+  const { stream } = await model.doStream(options);
+  const types = await lastPartType(stream as unknown as ReadableStream<{ type: string }>);
+
+  expect(types.at(-1)).toBe('finish');
+  const first = fromBinary(AgentClientMessageSchema, runs[0]![0]!.subarray(5));
+  expect(first.message.case).toBe('runRequest');
+  const subsequent = fromBinary(AgentClientMessageSchema, runs[0]![1]!.subarray(5));
+  expect(subsequent.message.case).toBe('execClientMessage');
+  if (subsequent.message.case !== 'execClientMessage') throw new Error('expected execClientMessage');
+  const result = subsequent.message.value.message;
+  expect(result.case).toBe('requestContextResult');
+  if (result.case !== 'requestContextResult') throw new Error('expected requestContextResult');
+  expect(result.value.result.case).toBe('success');
+  if (result.value.result.case !== 'success') throw new Error('expected request-context success');
+  const tools = result.value.result.value.requestContext?.tools;
+  expect(tools).toHaveLength(1);
+  const tool = tools?.[0];
+  expect(tool).toMatchObject({
+    name: 'apply_patch',
+    toolName: 'apply_patch',
+    providerIdentifier: 'pi-agent',
+  });
+  if (tool === undefined) throw new Error('expected apply_patch tool');
+  expect(toJson(ValueSchema, fromBinary(ValueSchema, tool.inputSchema))).toEqual(inputSchema);
 });
 
 test('required tool choice emits an unsupported warning and doGenerate retains it', async () => {

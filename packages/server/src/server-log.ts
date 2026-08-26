@@ -107,16 +107,28 @@ export type RequestRecorderInvariantLog = {
   readonly invariant: 'requested_model_conflict';
 };
 
-export type RequestFeatureDowngradedLog = {
+type RequestFeatureDowngradedIdentity = {
   readonly event: 'request.feature_downgraded';
   readonly requestId: string;
   readonly inboundProtocol: string;
-  readonly requestedModelId: string;
   readonly path: string;
-  readonly feature: 'background';
-  readonly action: 'dropped';
-  readonly effectiveMode: 'synchronous';
 };
+
+export type RequestFeatureDowngradedLog =
+  | (RequestFeatureDowngradedIdentity & {
+      readonly requestedModelId: string;
+      readonly feature: 'background';
+      readonly action: 'dropped';
+      readonly effectiveMode: 'synchronous';
+    })
+  | (RequestFeatureDowngradedIdentity & {
+      readonly feature: 'web_search_call';
+      readonly action: 'dropped';
+      readonly reason: 'completed_without_results_or_sources';
+      readonly inputIndex: number;
+      readonly providerId: string;
+      readonly attemptIndex: number;
+    });
 
 export type TracePersistenceFailedLog = {
   readonly event: 'trace.persistence_failed';

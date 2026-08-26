@@ -1,7 +1,11 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, spyOn, test } from 'bun:test';
 
 import type { CredentialPort, ModelCatalog, RuntimeFetch, RuntimeRequestInit } from '@aio-proxy/plugin-sdk';
 
+import { streamAiSdkText } from '../../../../core/src/ai-sdk-bridge';
+import { writeOpenAIResponsesResponse } from '../../../../core/src/egress/openai-responses';
+import { openAIResponsesAdapter } from '../../../../core/src/protocol/openai-responses';
+import { ProviderProtocol } from '../../../../types/src';
 import type { XAIGrokCredential } from '../schema';
 import { createXAIGrokDynamicFetch, createXAIGrokRuntime } from './runtime';
 
@@ -204,11 +208,13 @@ describe('xAI Grok runtime', () => {
     });
   });
 
-  test('rejects grammar custom tools locally without calling Grok', async () => {
+  test('compiles grammar custom tools, tool choice, and history before dispatch', async () => {
     let hostCalls = 0;
+    let captured: Request | undefined;
     const dynamicFetch = createXAIGrokDynamicFetch(port(), {
-      fetch: async () => {
+      fetch: async (input, init) => {
         hostCalls += 1;
+        captured = new Request(input, init);
         return new Response(null, { status: 200 });
       },
       now: () => 0,
@@ -217,31 +223,129 @@ describe('xAI Grok runtime', () => {
       method: 'POST',
       headers: { authorization: 'Bearer placeholder' },
       body: JSON.stringify({
-        model: 'grok-4.5',
+        model: 'grok-4.6',
         tools: [
           {
             type: 'custom',
-            name: 'exec',
-            format: { type: 'grammar', syntax: 'regex', definition: '.*' },
+            name: 'apply_patch',
+            format: { type: 'grammar', syntax: 'lark', definition: 'start: PATCH' },
+          },
+        ],
+        tool_choice: { type: 'custom', name: 'apply_patch' },
+        input: [
+          {
+            type: 'custom_tool_call',
+            call_id: 'call_1',
+            name: 'apply_patch',
+            input: '*** Begin Patch',
+          },
+          { type: 'custom_tool_call_output', call_id: 'call_1', output: 'done' },
+        ],
+      }),
+    });
+    expect(hostCalls).toBe(1);
+    expect(response.status).toBe(200);
+    expect(await captured?.json()).toEqual({
+      model: 'grok-4.6',
+      tools: [
+        {
+          type: 'function',
+          name: 'apply_patch',
+          parameters: {
+            type: 'object',
+            properties: { input: { type: 'string' } },
+            required: ['input'],
+            additionalProperties: false,
+          },
+        },
+      ],
+      tool_choice: { type: 'function', name: 'apply_patch' },
+      input: [
+        {
+          type: 'function_call',
+          call_id: 'call_1',
+          name: 'apply_patch',
+          arguments: '{"input":"*** Begin Patch"}',
+        },
+        { type: 'function_call_output', call_id: 'call_1', output: 'done' },
+      ],
+    });
+  });
+
+  test('round trips a target-materialized grammar tool through the xAI function fallback', async () => {
+    let captured: Request | undefined;
+    const runtime = await createXAIGrokRuntime({
+      credentials: port(),
+      options: {},
+      catalog: emptyCatalog(),
+      fetch: (async (input: RequestInfo | URL, init?: RuntimeRequestInit) => {
+        captured = new Request(input, init);
+        return functionCallStream('apply_patch', '{"input":"*** Begin Patch"}');
+      }) as RuntimeFetch,
+    });
+    const raw = new Request('https://proxy.test/v1/responses', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: 'grok-4.6',
+        input: 'apply a patch',
+        stream: true,
+        tools: [
+          {
+            type: 'custom',
+            name: 'apply_patch',
+            description: 'Apply a short patch',
+            format: { type: 'grammar', syntax: 'lark', definition: 'start: PATCH' },
           },
         ],
       }),
     });
-    expect(hostCalls).toBe(0);
-    expect(response.status).toBe(501);
-    expect(await response.json()).toEqual({
-      error: {
-        code: 'unsupported_feature',
-        message: 'xAI Grok OAuth cannot represent custom tool grammar format',
-      },
+    const parsed = await openAIResponsesAdapter.parse(raw, {});
+    const invocation = openAIResponsesAdapter.modelInvocationForTarget(
+      openAIResponsesAdapter.modelInvocation(parsed, {}),
+      ProviderProtocol.OpenAIResponse,
+      new Set(),
+    );
+    const result = streamAiSdkText({
+      model: runtime.provider.languageModel('grok-4.6'),
+      messages: invocation.messages,
+      settings: invocation.settings,
+      tools: invocation.tools,
     });
+
+    const response = await writeOpenAIResponsesResponse(result.fullStream, { modelId: 'grok-4.6' });
+    const hostBody = (await captured?.json()) as { tools?: unknown[] };
+
+    expect(hostBody.tools).toEqual([
+      {
+        type: 'function',
+        name: 'apply_patch',
+        description: 'Apply a short patch',
+        parameters: {
+          type: 'object',
+          properties: { input: { type: 'string' } },
+          required: ['input'],
+          additionalProperties: false,
+        },
+      },
+    ]);
+    expect(JSON.stringify(hostBody)).not.toContain('start: PATCH');
+    expect(response.output).toContainEqual(
+      expect.objectContaining({
+        type: 'custom_tool_call',
+        name: 'apply_patch',
+        input: '*** Begin Patch',
+      }),
+    );
   });
 
-  test('rejects nested grammar custom tools locally without calling Grok', async () => {
+  test('compiles nested grammar custom tools before dispatch', async () => {
     let hostCalls = 0;
+    let captured: Request | undefined;
     const dynamicFetch = createXAIGrokDynamicFetch(port(), {
-      fetch: async () => {
+      fetch: async (input, init) => {
         hostCalls += 1;
+        captured = new Request(input, init);
         return new Response(null, { status: 200 });
       },
       now: () => 0,
@@ -257,7 +361,7 @@ describe('xAI Grok runtime', () => {
             tools: [
               {
                 type: 'custom',
-                name: 'exec',
+                name: 'apply_patch',
                 format: { type: 'grammar', syntax: 'regex', definition: '.*' },
               },
             ],
@@ -265,14 +369,121 @@ describe('xAI Grok runtime', () => {
         ],
       }),
     });
-    expect(hostCalls).toBe(0);
-    expect(response.status).toBe(501);
-    expect(await response.json()).toEqual({
-      error: {
-        code: 'unsupported_feature',
-        message: 'xAI Grok OAuth cannot represent custom tool grammar format',
-      },
+    expect(hostCalls).toBe(1);
+    expect(response.status).toBe(200);
+    expect(await captured?.json()).toEqual({
+      model: 'grok-4.5',
+      tools: [
+        {
+          type: 'namespace',
+          name: 'shell',
+          tools: [
+            {
+              type: 'function',
+              name: 'apply_patch',
+              parameters: {
+                type: 'object',
+                properties: { input: { type: 'string' } },
+                required: ['input'],
+                additionalProperties: false,
+              },
+            },
+          ],
+        },
+      ],
     });
+  });
+
+  test('warns once per fetch without exposing grammar payloads', async () => {
+    const warning = spyOn(console, 'warn').mockImplementation(() => {});
+    const dynamicFetch = createXAIGrokDynamicFetch(port(), {
+      fetch: async () => new Response(null, { status: 200 }),
+      now: () => 0,
+    });
+    const body = JSON.stringify({
+      model: 'grok-4.6',
+      tools: [
+        {
+          type: 'custom',
+          name: 'private-tool-name-marker',
+          format: { type: 'grammar', syntax: 'regex', definition: 'first' },
+        },
+        {
+          type: 'namespace',
+          name: 'shell',
+          tools: [
+            {
+              type: 'custom',
+              name: 'apply_patch',
+              format: {
+                type: 'grammar',
+                syntax: 'lark',
+                definition: 'private-grammar-marker',
+              },
+            },
+          ],
+        },
+      ],
+    });
+
+    try {
+      await dynamicFetch('https://cli-chat-proxy.grok.com/v1/responses', { method: 'POST', body });
+      expect(warning).toHaveBeenCalledTimes(1);
+      expect(warning).toHaveBeenLastCalledWith(
+        '[aio-proxy] xAI Grok Responses compatibility downgrade',
+        'custom_tool.grammar',
+        'function_fallback',
+        'provider_lacks_native_grammar',
+      );
+
+      await dynamicFetch('https://cli-chat-proxy.grok.com/v1/responses', { method: 'POST', body });
+      expect(warning).toHaveBeenCalledTimes(2);
+      expect(JSON.stringify(warning.mock.calls)).not.toContain('private-tool-name-marker');
+      expect(JSON.stringify(warning.mock.calls)).not.toContain('private-grammar-marker');
+    } finally {
+      warning.mockRestore();
+    }
+  });
+
+  test('compiles custom tools without a format and emits no grammar warning', async () => {
+    let captured: Request | undefined;
+    const warning = spyOn(console, 'warn').mockImplementation(() => {});
+    const dynamicFetch = createXAIGrokDynamicFetch(port(), {
+      fetch: async (input, init) => {
+        captured = new Request(input, init);
+        return new Response(null, { status: 200 });
+      },
+      now: () => 0,
+    });
+
+    try {
+      await dynamicFetch('https://cli-chat-proxy.grok.com/v1/responses', {
+        method: 'POST',
+        body: JSON.stringify({
+          model: 'grok-4.6',
+          tools: [{ type: 'custom', name: 'plain_custom' }],
+        }),
+      });
+
+      expect(await captured?.json()).toEqual({
+        model: 'grok-4.6',
+        tools: [
+          {
+            type: 'function',
+            name: 'plain_custom',
+            parameters: {
+              type: 'object',
+              properties: { input: { type: 'string' } },
+              required: ['input'],
+              additionalProperties: false,
+            },
+          },
+        ],
+      });
+      expect(warning).not.toHaveBeenCalled();
+    } finally {
+      warning.mockRestore();
+    }
   });
 
   test('forwards non-Responses request bodies unchanged', async () => {
@@ -340,4 +551,66 @@ function openAIResponse() {
     user: null,
     metadata: {},
   };
+}
+
+function functionCallStream(name: string, argumentsText: string): Response {
+  const response = {
+    id: 'resp_test',
+    object: 'response',
+    created_at: 1,
+    status: 'completed',
+    error: null,
+    incomplete_details: null,
+    instructions: null,
+    max_output_tokens: null,
+    model: 'grok-4.6',
+    output: [
+      {
+        id: 'fc_test',
+        type: 'function_call',
+        call_id: 'call_1',
+        name,
+        arguments: argumentsText,
+        status: 'completed',
+      },
+    ],
+    parallel_tool_calls: true,
+    previous_response_id: null,
+    reasoning: { effort: null, summary: null },
+    store: false,
+    temperature: 1,
+    text: { format: { type: 'text' }, verbosity: 'medium' },
+    tool_choice: 'auto',
+    tools: [],
+    top_p: 1,
+    truncation: 'disabled',
+    usage: {
+      input_tokens: 1,
+      input_tokens_details: { cached_tokens: 0 },
+      output_tokens: 1,
+      output_tokens_details: { reasoning_tokens: 0 },
+      total_tokens: 2,
+    },
+    user: null,
+    metadata: {},
+  };
+  const events = [
+    { type: 'response.created', response: { id: response.id, created_at: response.created_at, model: response.model } },
+    {
+      type: 'response.output_item.added',
+      output_index: 0,
+      item: { id: 'fc_test', type: 'function_call', call_id: 'call_1', name, arguments: '' },
+    },
+    {
+      type: 'response.function_call_arguments.delta',
+      item_id: 'fc_test',
+      output_index: 0,
+      delta: argumentsText,
+    },
+    { type: 'response.output_item.done', output_index: 0, item: response.output[0] },
+    { type: 'response.completed', response },
+  ];
+  return new Response(events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(''), {
+    headers: { 'content-type': 'text/event-stream' },
+  });
 }

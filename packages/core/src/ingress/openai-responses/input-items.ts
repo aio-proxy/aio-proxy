@@ -72,6 +72,16 @@ const functionCallOutputItemSchema = z.object({
   status: z.string().optional(),
 });
 
+const webSearchCallItemSchema = z
+  .object({
+    type: z.literal('web_search_call'),
+    id: idSchema.optional(),
+    status: z.string().optional(),
+    action: z.unknown().optional(),
+    results: z.unknown().optional(),
+  })
+  .loose();
+
 const customToolCallItemSchema = z.object({
   type: z.literal('custom_tool_call'),
   call_id: idSchema,
@@ -131,6 +141,7 @@ export const knownOpenAIResponsesInputItemTypes = new Set([
   'message',
   'function_call',
   'function_call_output',
+  'web_search_call',
   'custom_tool_call',
   'custom_tool_call_output',
   'reasoning',
@@ -143,6 +154,7 @@ export const openAIResponsesInputItemSchema = z.union([
   inputMessageSchema,
   functionCallItemSchema,
   functionCallOutputItemSchema,
+  webSearchCallItemSchema,
   customToolCallItemSchema,
   customToolCallOutputItemSchema,
   reasoningItemSchema,
