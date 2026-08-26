@@ -154,8 +154,9 @@ function rebuildMultipartForm(request: OpenAIImageRequest, resolvedModel: string
 
 function appendUpload(form: FormData, name: string, upload: OpenAIImageUpload): void {
   const bytes = Buffer.from(upload.data);
-  if (upload.filename !== undefined) form.append(name, new File([bytes], upload.filename));
-  else form.append(name, new Blob([bytes]));
+  const type = upload.mediaType === undefined ? {} : { type: upload.mediaType };
+  if (upload.filename !== undefined) form.append(name, new File([bytes], upload.filename, type));
+  else form.append(name, new Blob([bytes], type));
 }
 
 function stripHopHeaders(source: Headers): Headers {

@@ -114,19 +114,21 @@ function ascii(data: Uint8Array, offset: number, length: number): string {
 
 function readU32BE(data: Uint8Array, offset: number): number {
   return (
-    ((data[offset] ?? 0) << 24) |
-    ((data[offset + 1] ?? 0) << 16) |
-    ((data[offset + 2] ?? 0) << 8) |
-    (data[offset + 3] ?? 0)
+    (((data[offset] ?? 0) << 24) |
+      ((data[offset + 1] ?? 0) << 16) |
+      ((data[offset + 2] ?? 0) << 8) |
+      (data[offset + 3] ?? 0)) >>>
+    0
   );
 }
 
 function readU32LE(data: Uint8Array, offset: number): number {
   return (
-    (data[offset] ?? 0) |
-    ((data[offset + 1] ?? 0) << 8) |
-    ((data[offset + 2] ?? 0) << 16) |
-    ((data[offset + 3] ?? 0) << 24)
+    ((data[offset] ?? 0) |
+      ((data[offset + 1] ?? 0) << 8) |
+      ((data[offset + 2] ?? 0) << 16) |
+      ((data[offset + 3] ?? 0) << 24)) >>>
+    0
   );
 }
 

@@ -17,6 +17,7 @@ type OpenPart = {
   readonly kind: PartKind;
   readonly fieldName?: string;
   readonly filename?: string;
+  readonly mediaType?: string;
   readonly chunks: Uint8Array[];
   length: number;
 };
@@ -201,16 +202,17 @@ async function readEncodedChunk(
 function startPart(headers: string, onImage: () => void, onMask: () => void): OpenPart {
   const rawName = dispositionToken(headers, 'name');
   const filename = dispositionToken(headers, 'filename');
+  const mediaType = contentType(headers);
   const name = normalizeFieldName(rawName);
   if (name === 'image') {
     onImage();
-    return { kind: 'image', fieldName: rawName, filename, chunks: [], length: 0 };
+    return { kind: 'image', fieldName: rawName, filename, mediaType, chunks: [], length: 0 };
   }
   if (name === 'mask') {
     onMask();
-    return { kind: 'mask', fieldName: rawName, filename, chunks: [], length: 0 };
+    return { kind: 'mask', fieldName: rawName, filename, mediaType, chunks: [], length: 0 };
   }
-  return { kind: 'field', fieldName: rawName, filename, chunks: [], length: 0 };
+  return { kind: 'field', fieldName: rawName, filename, mediaType, chunks: [], length: 0 };
 }
 
 function toUpload(part: OpenPart): OpenAIImageUpload {
@@ -219,6 +221,7 @@ function toUpload(part: OpenPart): OpenAIImageUpload {
     byteLength: part.length,
     ...(part.fieldName === undefined ? {} : { fieldName: part.fieldName }),
     ...(part.filename === undefined ? {} : { filename: part.filename }),
+    ...(part.mediaType === undefined ? {} : { mediaType: part.mediaType }),
   };
 }
 
@@ -236,6 +239,13 @@ function concatChunks(chunks: readonly Uint8Array[]): Uint8Array {
 function normalizeFieldName(name: string | undefined): string | undefined {
   if (name === undefined) return undefined;
   return name.endsWith('[]') ? name.slice(0, -2) : name;
+}
+
+function contentType(headers: string): string | undefined {
+  const line = headers.split('\r\n').find((entry) => entry.toLowerCase().startsWith('content-type:'));
+  if (line === undefined) return undefined;
+  const value = line.slice('content-type:'.length).trim().split(';')[0]?.trim();
+  return value === undefined || value === '' ? undefined : value;
 }
 
 function dispositionToken(headers: string, token: 'name' | 'filename'): string | undefined {

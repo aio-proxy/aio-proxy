@@ -441,6 +441,7 @@ test('multipart rewrite preserves filenames, image[] names, and extra fields', a
   expect(rewritten.get('seed')).toBe('42');
   expect(rewritten.get('image[]')).toBeInstanceOf(File);
   expect((rewritten.get('image[]') as File).name).toBe('cat.png');
+  expect((rewritten.get('image[]') as File).type).toBe('image/png');
   expect(rewritten.get('image')).toBeNull();
 });
 

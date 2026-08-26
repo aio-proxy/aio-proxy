@@ -44,6 +44,7 @@ export type OpenAIImageUpload = {
   readonly byteLength: number;
   readonly fieldName?: string;
   readonly filename?: string;
+  readonly mediaType?: string;
 };
 
 export type OpenAIImageRequest = {

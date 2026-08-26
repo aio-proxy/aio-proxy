@@ -23,10 +23,22 @@ export function usageFromJson(protocol: ProviderProtocol, value: unknown): Usage
     case ProviderProtocol.Gemini:
       return geminiUsage(value);
     case ProviderProtocol.OpenAIImage:
-      return { kind: 'absent' };
+      return openAIImageUsage(value);
     default:
       return assertNever(protocol);
   }
+}
+
+function openAIImageUsage(value: unknown): UsageExtraction {
+  if (!isRecord(value) || !isRecord(value['usage'])) {
+    return { kind: 'absent' };
+  }
+  const usage = value['usage'];
+  return tokenUsage({
+    inputTokens: numberField(usage, 'input_tokens', 'inputTokens'),
+    outputTokens: numberField(usage, 'output_tokens', 'outputTokens'),
+    totalTokens: numberField(usage, 'total_tokens', 'totalTokens'),
+  });
 }
 
 function openAICompatibleUsage(value: unknown): UsageExtraction {

@@ -30,6 +30,13 @@ const WEBP_1X1_OPAQUE = Uint8Array.from(
   Buffer.from('524946461a00000057454250565038580a0000000000000000000000000000', 'hex'),
 );
 
+function indexOfAscii(data: Uint8Array, value: string): number {
+  const needle = Buffer.from(value);
+  const index = Buffer.from(data).indexOf(needle);
+  if (index < 0) throw new Error(`missing ${value}`);
+  return index;
+}
+
 function bytesRef(
   overrides: Partial<ImageBytesRef> & Pick<ImageBytesRef, 'format' | 'width' | 'height' | 'hasAlpha'>,
 ): ImageBytesRef {
@@ -59,6 +66,26 @@ test('decodes PNG JPEG and WebP dimensions from bytes not Content-Type', () => {
   });
   expect(decodeImageBytes(WEBP_1X1_ALPHA)).toMatchObject({ format: 'webp', width: 1, height: 1, hasAlpha: true });
   expect(decodeImageBytes(WEBP_1X1_OPAQUE)).toMatchObject({ format: 'webp', hasAlpha: false });
+});
+
+test('PNG chunk lengths with the high bit set do not stall the decoder', () => {
+  const iend = indexOfAscii(PNG_1X1_RGB, 'IEND');
+  const prefix = PNG_1X1_RGB.subarray(0, iend - 4);
+  const stalled = new Uint8Array(prefix.length + 8);
+  stalled.set(prefix);
+  stalled.set([0xff, 0xff, 0xff, 0xf4, 0x61, 0x61, 0x61, 0x61], prefix.length);
+  expect(decodeImageBytes(stalled)).toMatchObject({ format: 'png', hasAlpha: false });
+});
+
+test('WebP chunk sizes with the high bit set do not stall the decoder', () => {
+  const stalled = Uint8Array.from(Buffer.from('524946461a0000005745425061616161f4ffffff', 'hex'));
+  try {
+    decodeImageBytes(stalled);
+    throw new Error('expected decode to fail');
+  } catch (error) {
+    expect(error).toBeInstanceOf(OpenAIImagesInvalidRequestError);
+    expect(error).toMatchObject({ param: 'image', status: 400 });
+  }
 });
 
 test('undecodable bytes are 400 image', () => {
