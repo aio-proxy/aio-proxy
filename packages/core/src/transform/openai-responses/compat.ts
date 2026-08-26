@@ -44,7 +44,7 @@ export function openAIResponsesInputMessages(
   const state: ConvertState = { messages: [], diagnostics: [], calls: new Map(), tools, previous: undefined };
 
   for (const [index, item] of items.entries()) {
-    if ('role' in item && item.type !== 'additional_tools') {
+    if (item.type === undefined || item.type === 'message') {
       state.messages.push(inputMessage(item, index));
       state.previous = undefined;
       continue;

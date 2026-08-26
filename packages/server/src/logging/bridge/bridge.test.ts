@@ -126,6 +126,20 @@ test('createServerLogSink forwards the complete entry at the mapped level', () =
       action: 'dropped',
       effectiveMode: 'synchronous',
     },
+    {
+      event: 'request.feature_downgraded',
+      requestId: 'hosted-search-downgraded',
+      inboundProtocol: 'openai-response',
+      requestedModelId: 'requested-model',
+      path: '/v1/responses',
+      feature: 'web_search_call',
+      action: 'dropped',
+      reason: 'completed_without_results_or_sources',
+      inputIndex: 2,
+      providerId: 'provider',
+      modelId: 'provider-model',
+      attemptIndex: 1,
+    },
   ];
 
   for (const entry of entries) sink(entry);
@@ -139,6 +153,7 @@ test('createServerLogSink forwards the complete entry at the mapped level', () =
   );
   expect(SERVER_LOG_LEVEL['request.body_chunk']).toBe('debug');
   expect(SERVER_LOG_LEVEL['request.body_terminal']).toBe('debug');
+  expect(SERVER_LOG_LEVEL['request.feature_downgraded']).toBe('info');
 });
 
 test('createPluginLogSink preserves the structured redacted entry', () => {

@@ -3,6 +3,7 @@ import { type ModelEgressContext } from '@aio-proxy/core';
 import { terminalCompletion } from '../../../route-observation';
 import type { ModelTransport } from '../../../runtime';
 import { attemptBase, candidateConfigPrice } from '../attempt-base';
+import { logModelInvocationDiagnostics } from '../logging';
 import { createSseResponse, preflightStream } from '../stream';
 import type { AttemptLoopContext, AttemptStep, CandidateSlot, InvocationHolder } from './context';
 import { assertCandidateSupported, prepareModelInvocation } from './model-prepare';
@@ -26,6 +27,17 @@ export async function attemptModelCandidate<TRequest, TContext>(
   const unsupported = assertCandidateSupported(ctx, slot, model, candidateInvocation, targetProtocol);
   if (unsupported !== undefined) return unsupported;
 
+  logModelInvocationDiagnostics({
+    source,
+    requestId: session.requestId,
+    rawRequest,
+    inboundProtocol: adapter.protocol,
+    requestedModelId: ctx.requestedModelId,
+    diagnostics: candidateInvocation.diagnostics ?? [],
+    providerId: provider.id,
+    modelId: candidate.modelId,
+    attemptIndex: index,
+  });
   const base = attemptBase(provider, candidate.modelId, startedAt, slot.trace);
   const attemptSpan = ctx.emitter.startAttempt(base, index);
   slot.spanRef.current = attemptSpan;
