@@ -170,12 +170,29 @@ function assertStep(step: Record<string, unknown>): void {
   }
   if (type === 'user_input' || type === 'model_output') {
     assertTextContents(step['content']);
+    return;
   }
+  if (type === 'function_call') {
+    assertFunctionCall(step);
+    return;
+  }
+  assertFunctionResult(step);
+}
+
+function assertFunctionCall(step: Record<string, unknown>): void {
+  if (typeof step['id'] !== 'string' || step['id'] === '') unsupported('input', 'input');
+  if (typeof step['name'] !== 'string' || step['name'] === '') unsupported('input', 'input');
+  if (step['arguments'] !== undefined && !isRecord(step['arguments'])) unsupported('input', 'input');
+}
+
+function assertFunctionResult(step: Record<string, unknown>): void {
+  if (typeof step['call_id'] !== 'string' || step['call_id'] === '') unsupported('input', 'input');
 }
 
 function assertTextContents(value: unknown): void {
-  if (value === undefined || typeof value === 'string') return;
+  if (typeof value === 'string') return;
   if (Array.isArray(value)) {
+    if (value.length === 0) unsupported('input', 'input');
     for (const part of value) assertContent(part);
     return;
   }

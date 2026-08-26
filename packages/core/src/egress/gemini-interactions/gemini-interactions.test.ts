@@ -158,6 +158,16 @@ async function readSse(stream: ReadableStream<Uint8Array>): Promise<string> {
   return new Response(stream).text();
 }
 
+function completedSteps(text: string): unknown {
+  const match = text.match(/event: interaction\.completed\ndata: (\{.*\})\n/);
+  const payload: unknown = JSON.parse(match?.[1] ?? '{}');
+  const interaction =
+    typeof payload === 'object' && payload !== null && 'interaction' in payload
+      ? (payload as { interaction?: { steps?: unknown } }).interaction
+      : undefined;
+  return interaction?.steps;
+}
+
 function completedUsage(text: string): Record<string, unknown> {
   const match = text.match(/event: interaction\.completed\ndata: (\{.*\})\n/);
   const payload: unknown = JSON.parse(match?.[1] ?? '{}');
@@ -281,6 +291,47 @@ describe('writeGeminiInteractionsSSE', () => {
     expect(steps).toEqual([
       { type: 'function_call', id: 'c1', name: 'get_weather', arguments: { location: 'Boston, MA' } },
       { type: 'model_output', content: [{ type: 'text', text: 'Hello' }] },
+    ]);
+  });
+
+  test('retains function-call argument deltas after interleaved text', async () => {
+    const text = await readSse(
+      writeGeminiInteractionsSSE(
+        streamOf(
+          { type: 'tool-input-start', id: 'c1', toolName: 'get_weather' },
+          { type: 'text-delta', id: 't', text: 'Hello' },
+          { type: 'tool-input-delta', id: 'c1', delta: '{"location":"Boston, MA"}' },
+          finish('tool-calls'),
+        ),
+        { modelId: 'm' },
+      ),
+    );
+    expect(text).toContain(
+      '"event_type":"step.delta","index":0,"delta":{"type":"arguments_delta","arguments":"{\\"location\\":\\"Boston, MA\\"}"}',
+    );
+    expect(completedSteps(text)).toEqual([
+      { type: 'function_call', id: 'c1', name: 'get_weather', arguments: { location: 'Boston, MA' } },
+      { type: 'model_output', content: [{ type: 'text', text: 'Hello' }] },
+    ]);
+  });
+
+  test('completed model_output steps keep their own streamed text', async () => {
+    const text = await readSse(
+      writeGeminiInteractionsSSE(
+        streamOf(
+          { type: 'text-delta', id: 't1', text: 'A' },
+          { type: 'tool-input-start', id: 'c1', toolName: 'get_weather' },
+          { type: 'tool-input-delta', id: 'c1', delta: '{"location":"Boston, MA"}' },
+          { type: 'text-delta', id: 't2', text: 'B' },
+          finish('tool-calls'),
+        ),
+        { modelId: 'm' },
+      ),
+    );
+    expect(completedSteps(text)).toEqual([
+      { type: 'model_output', content: [{ type: 'text', text: 'A' }] },
+      { type: 'function_call', id: 'c1', name: 'get_weather', arguments: { location: 'Boston, MA' } },
+      { type: 'model_output', content: [{ type: 'text', text: 'B' }] },
     ]);
   });
 

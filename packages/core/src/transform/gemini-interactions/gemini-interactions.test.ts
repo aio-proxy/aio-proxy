@@ -129,6 +129,36 @@ describe('geminiInteractionsToModelMessages', () => {
       },
       'input',
     ],
+    [
+      {
+        model: 'm',
+        store: false,
+        input: [{ type: 'user_input', content: [{ type: 'text', text: 'hi' }] }, { type: 'model_output' }],
+      },
+      'input',
+    ],
+    [
+      {
+        model: 'm',
+        store: false,
+        input: [
+          { type: 'user_input', content: [{ type: 'text', text: 'hi' }] },
+          { type: 'function_call', name: 't' },
+        ],
+      },
+      'input',
+    ],
+    [
+      {
+        model: 'm',
+        store: false,
+        input: [
+          { type: 'user_input', content: [{ type: 'text', text: 'hi' }] },
+          { type: 'function_result', name: 't', result: { ok: true } },
+        ],
+      },
+      'input',
+    ],
     [{ model: 'm', input: [{ type: 'thought', content: [{ type: 'text', text: 'x' }] }], store: false }, 'input'],
     [{ model: 'm', input: 'x', store: false, labels: {} }, 'labels'],
   ])('throws modelUnsupported for %j', (body, feature) => {

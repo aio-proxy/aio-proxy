@@ -20,7 +20,14 @@ type StepKind = 'thought' | 'model_output' | 'function_call';
 type OpenStep = {
   readonly kind: StepKind;
   readonly index: number;
+  readonly startedIndex: number;
   readonly id?: string;
+};
+
+type StartedStep = {
+  readonly kind: StepKind;
+  readonly id?: string;
+  readonly text: string[];
 };
 
 type ToolState = {
@@ -38,10 +45,8 @@ type SseState = {
   failed: boolean;
   finishReason: string;
   usage: TokenUsage | undefined;
-  readonly text: string[];
-  readonly reasoning: string[];
   readonly tools: Map<string, ToolState>;
-  readonly started: Array<{ readonly kind: StepKind; readonly id?: string }>;
+  readonly started: StartedStep[];
   readonly enqueue: (value: Uint8Array) => void;
 };
 
@@ -59,8 +64,6 @@ export function writeGeminiInteractionsSSE(
       failed: false,
       finishReason: 'unknown',
       usage: undefined,
-      text: [],
-      reasoning: [],
       tools: new Map(),
       started: [],
       enqueue,
@@ -138,7 +141,7 @@ function handlePart(state: SseState, part: GeminiInteractionsStreamPart): void {
 function emitThoughtDelta(state: SseState, text: string): void {
   if (text.length === 0 && state.open?.kind !== 'thought') return;
   ensureStep(state, 'thought');
-  state.reasoning.push(text);
+  appendOpenText(state, text);
   if (text.length === 0 || state.open === undefined) return;
   emitJson(state, 'step.delta', {
     event_type: 'step.delta',
@@ -150,7 +153,7 @@ function emitThoughtDelta(state: SseState, text: string): void {
 function emitTextDelta(state: SseState, text: string): void {
   if (text.length === 0 && state.open?.kind !== 'model_output') return;
   ensureStep(state, 'model_output');
-  state.text.push(text);
+  appendOpenText(state, text);
   if (text.length === 0 || state.open === undefined) return;
   emitJson(state, 'step.delta', {
     event_type: 'step.delta',
@@ -168,9 +171,10 @@ function startFunctionCall(state: SseState, id: string, name: string): void {
   const step = { type: 'function_call' as const, id, name, arguments: {} };
   assertFunctionCallStep(step);
   const index = state.nextIndex++;
-  state.open = { kind: 'function_call', index, id };
+  const startedIndex = state.started.length;
+  state.open = { kind: 'function_call', index, startedIndex, id };
   state.tools.set(id, { id, name, index, input: '', stopped: false });
-  state.started.push({ kind: 'function_call', id });
+  state.started.push({ kind: 'function_call', id, text: [] });
   emitJson(state, 'step.start', { event_type: 'step.start', index, step });
 }
 
@@ -187,11 +191,17 @@ function emitArgumentDelta(state: SseState, id: string, delta: string): void {
 
 function ensureStep(state: SseState, kind: Exclude<StepKind, 'function_call'>): void {
   if (state.open?.kind === kind) return;
-  closeRemaining(state);
+  if (state.open !== undefined && state.open.kind !== 'function_call') closeOpen(state);
   const index = state.nextIndex++;
-  state.open = { kind, index };
-  state.started.push({ kind });
+  const startedIndex = state.started.length;
+  state.open = { kind, index, startedIndex };
+  state.started.push({ kind, text: [] });
   emitJson(state, 'step.start', { event_type: 'step.start', index, step: { type: kind } });
+}
+
+function appendOpenText(state: SseState, text: string): void {
+  if (state.open === undefined) return;
+  state.started[state.open.startedIndex]?.text.push(text);
 }
 
 function closeFunctionCall(state: SseState, id: string): void {
@@ -220,20 +230,19 @@ function closeRemaining(state: SseState): void {
 }
 
 function completedSteps(state: SseState): InteractionStep[] {
-  const thoughtText = state.reasoning.join('');
-  const outputText = state.text.join('');
   const tools = new Map(Array.from(state.tools.values(), (tool) => [tool.id, functionCallStep(tool)]));
   const steps: InteractionStep[] = [];
   for (const started of state.started) {
+    const text = started.text.join('');
     if (started.kind === 'thought') {
-      if (thoughtText.length === 0) continue;
-      const thought = { type: 'thought' as const, summary: [{ type: 'text' as const, text: thoughtText }] };
+      if (text.length === 0) continue;
+      const thought = { type: 'thought' as const, summary: [{ type: 'text' as const, text }] };
       assertThoughtStep(thought);
       steps.push(thought);
       continue;
     }
     if (started.kind === 'model_output') {
-      if (outputText.length > 0) steps.push({ type: 'model_output', content: [{ type: 'text', text: outputText }] });
+      if (text.length > 0) steps.push({ type: 'model_output', content: [{ type: 'text', text }] });
       continue;
     }
     const call = started.id === undefined ? undefined : tools.get(started.id);
