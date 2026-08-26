@@ -13,6 +13,9 @@ import type { AiSdkProviderInstance } from './ai-sdk/index';
 
 const required = ['languageModel', 'imageModel', 'embeddingModel'] as const;
 const optional = ['speechModel', 'transcriptionModel', 'rerankingModel', 'files', 'skills'] as const;
+// Official Gemini batchEmbedContents is 100 items. Convert fans one SDK call per
+// distinct option group, so this is also the max sequential upstream fan-out.
+const MAX_EMBEDDING_CONVERT_GROUPS = 100;
 
 export function validateProviderV4(value: unknown): value is ProviderV4 {
   const valueType = typeof value;
@@ -90,6 +93,9 @@ export function createProviderV4Embed(
       assertConvertSupported(invocation.values);
 
       const groups = groupByProviderOptions(invocation.values);
+      if (groups.length > MAX_EMBEDDING_CONVERT_GROUPS) {
+        throw new EmbeddingConvertUnsupportedError('distinct-option groups');
+      }
       const embeddings: (readonly number[])[] = Array.from({ length: invocation.values.length });
       let total: number | undefined = 0;
 

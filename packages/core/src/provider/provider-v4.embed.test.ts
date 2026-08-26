@@ -9,6 +9,13 @@ function providerFixture(): ProviderV4 {
   return { embeddingModel: () => ({}) } as ProviderV4;
 }
 
+function distinctOptionValues(count: number) {
+  return Array.from({ length: count }, (_, index) => ({
+    value: `t${index}`,
+    providerOptions: { google: { outputDimensionality: index + 1 } },
+  }));
+}
+
 test('one-value group calls embed with singular value', async () => {
   const calls: unknown[] = [];
   const embedFn = async (args: { value: string }) => {
@@ -72,6 +79,40 @@ test('keeps distinct providerOptions in separate groups', async () => {
   const result = await run({ values }, { modelId: 'm' });
   expect(calls).toHaveLength(8);
   expect(result.embeddings).toHaveLength(8);
+});
+
+test('dispatches the maximum number of distinct option groups', async () => {
+  const calls: unknown[] = [];
+  const run = createProviderV4Embed('p', providerFixture(), {
+    embed: async (args: { value: string }) => {
+      calls.push(args);
+      return { embedding: [0.1], usage: { tokens: 1 }, response: { body: {} } };
+    },
+    embedMany: async () => {
+      throw new Error('embedMany');
+    },
+  });
+  const result = await run({ values: distinctOptionValues(100) }, { modelId: 'm' });
+  expect(calls).toHaveLength(100);
+  expect(result.embeddings).toHaveLength(100);
+});
+
+test('rejects more than 100 distinct option groups before calling the SDK', async () => {
+  let called = false;
+  const run = createProviderV4Embed('p', providerFixture(), {
+    embed: async () => {
+      called = true;
+      throw new Error('embed');
+    },
+    embedMany: async () => {
+      called = true;
+      throw new Error('embedMany');
+    },
+  });
+  await expect(run({ values: distinctOptionValues(101) }, { modelId: 'm' })).rejects.toMatchObject({
+    feature: 'distinct-option groups',
+  });
+  expect(called).toBe(false);
 });
 
 test('multi-value group calls embedMany with values', async () => {
