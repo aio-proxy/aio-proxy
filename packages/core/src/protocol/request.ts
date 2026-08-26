@@ -41,7 +41,9 @@ export async function decodedRequestStream(
     if (encoding === undefined) return raw.body;
     const encoded = await readRequestBytes(raw.body, limits.encoded);
     const bytes = await decodeRequestBytes(encoded, encoding, limits.decoded);
-    return new Blob([bytes]).stream();
+    const copy = new Uint8Array(new ArrayBuffer(bytes.byteLength));
+    copy.set(bytes);
+    return new Blob([copy]).stream();
   } catch (error) {
     await cancelRequestBody(raw, error);
     throw error;
