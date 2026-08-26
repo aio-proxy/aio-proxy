@@ -26,10 +26,20 @@ type SinkFallbackOptions<Entry> = {
   readonly fallback: (entry: Entry) => void;
 };
 
-const contextual = <Entry extends object>(entry: Entry) => ({
-  ...entry,
-  ...currentRequestLogContext(),
-});
+const contextual = <Entry extends object>(entry: Entry): Entry => {
+  const result = {
+    ...entry,
+    ...currentRequestLogContext(),
+  };
+  if (
+    Reflect.get(result, 'event') === 'request.feature_downgraded' &&
+    Reflect.get(result, 'feature') === 'web_search_call'
+  ) {
+    Reflect.deleteProperty(result, 'requestedModelId');
+    Reflect.deleteProperty(result, 'modelId');
+  }
+  return result;
+};
 
 export function createServerLogSink(logger: Logger, options?: SinkFallbackOptions<ServerLog>): ServerLogSink {
   return (entry) => {

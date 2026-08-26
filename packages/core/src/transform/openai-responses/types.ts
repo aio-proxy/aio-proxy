@@ -2,6 +2,7 @@ import type { JSONObject } from '@ai-sdk/provider';
 
 import type { ModelMessage } from '../../ai-sdk-bridge';
 import type { OpenAIResponsesRequest } from '../../ingress/openai-responses/index';
+import type { ModelInvocationDiagnostic } from '../../protocol/adapter';
 
 export type OpenAIResponsesTransformTool = {
   readonly type: 'function';
@@ -67,6 +68,7 @@ export type OpenAIResponsesTransformSettings = {
 
 export type OpenAIResponsesModelMessages = {
   readonly messages: readonly ModelMessage[];
+  readonly diagnostics: readonly ModelInvocationDiagnostic[];
   readonly tools?: readonly OpenAIResponsesTransformTool[];
   readonly settings: OpenAIResponsesTransformSettings;
 };

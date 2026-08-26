@@ -11,6 +11,13 @@ export type ModelSseStream = ReadableStream<Uint8Array> & { readonly completion:
 
 export type InboundCapability = 'language' | 'image' | 'embedding';
 
+export type ModelInvocationDiagnostic = Readonly<{
+  feature: 'web_search_call';
+  action: 'dropped';
+  reason: 'completed_without_results_or_sources';
+  inputIndex: number;
+}>;
+
 export type ProtocolErrorMapper = Readonly<{
   requestError: (error: unknown) => Response | undefined;
   modelUnsupported?: (error: unknown) => Response | undefined;
@@ -28,6 +35,7 @@ export type ModelInvocation = {
   readonly settings?: AiSdkCallSettings;
   readonly tools?: ToolSet;
   readonly providerTools?: readonly ProviderExecutedTool[];
+  readonly diagnostics?: readonly ModelInvocationDiagnostic[];
 };
 
 export type ModelEgressContext = {

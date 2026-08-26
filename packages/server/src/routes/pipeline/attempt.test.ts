@@ -8,7 +8,7 @@ import {
   openAIResponsesAdapter,
 } from '@aio-proxy/core';
 import { ConfigSchema, ProviderKind, ProviderProtocol } from '@aio-proxy/types';
-import { RetryError } from 'ai';
+import { asSchema, RetryError } from 'ai';
 
 import { handleProtocolRequest } from '.';
 import {
@@ -164,6 +164,102 @@ test('converts portable reasoning and uses the model candidate', async () => {
       statusCode,
     })),
   ).toEqual([{ errorCode: undefined, outcome: 'success', providerId: 'model', statusCode: undefined }]);
+});
+
+test('preserves exact raw bytes before model fallback drops safe hosted-search history', async () => {
+  const sensitiveQuery = 'private-search-marker';
+  const sensitiveGrammar = 'private-grammar-marker';
+  const requestedModelId = 'private-requested-model-marker';
+  const upstreamModelId = 'private-upstream-model-marker';
+  const rawText =
+    '{  "tools" : [{"type":"custom","name":"apply_patch","format":{"type":"grammar","syntax":"lark","definition":"private-grammar-marker"}}], "input" : [{"type":"web_search_call","status":"completed","action":{"type":"search","query":"private-search-marker"}},{"role":"assistant","content":"Prior answer."},{"role":"user","content":"Continue."}], "seed":9007199254740993, "model" : "private-requested-model-marker" }';
+  const originalBytes = new TextEncoder().encode(rawText);
+  const raw = rawProvider({
+    id: 'raw',
+    modelId: requestedModelId,
+    protocol: ProviderProtocol.OpenAIResponse,
+    invoke: async (request) => {
+      expect(new Uint8Array(await request.clone().arrayBuffer())).toEqual(originalBytes);
+      return Response.json({ error: 'unsupported request' }, { status: 422 });
+    },
+  });
+  const model = modelProvider({
+    id: 'model',
+    modelId: upstreamModelId,
+    invoke: () => textStream('model response'),
+  });
+  const rawAlias = { [requestedModelId]: { model: requestedModelId, preserve: false } } as const;
+  const modelAlias = { [requestedModelId]: { model: upstreamModelId, preserve: false } } as const;
+  const route = defineProviderRouteSource([
+    { ...raw, provider: { ...raw.provider, alias: rawAlias } },
+    { ...model, provider: { ...model.provider, alias: modelAlias } },
+  ]);
+  const rawRequest = new Request('https://proxy.test/v1/responses', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: originalBytes,
+  });
+  const adapter = {
+    ...openAIResponsesAdapter,
+    modelInvocation(
+      request: Parameters<typeof openAIResponsesAdapter.modelInvocation>[0],
+      context: Parameters<typeof openAIResponsesAdapter.modelInvocation>[1],
+    ) {
+      // The oversized seed is a raw-byte canary, not one of the compatibility
+      // features under test; exclude that unsupported extension at the model boundary.
+      const { seed: _seed, ...modelRequest } = request;
+      return openAIResponsesAdapter.modelInvocation(modelRequest, context);
+    },
+  };
+
+  const response = await handleProtocolRequest({
+    adapter,
+    context: {},
+    rawRequest,
+    source: route.source,
+  });
+  await settleRecording(route.recording);
+
+  expect(response.status).toBe(200);
+  expect(raw.calls.raw).toHaveLength(1);
+  expect(model.calls.model).toHaveLength(1);
+  expect(model.calls.model[0]?.messages).toEqual([
+    { role: 'assistant', content: 'Prior answer.' },
+    { role: 'user', content: 'Continue.' },
+  ]);
+  const applyPatch = model.calls.model[0]?.tools?.apply_patch;
+  expect(applyPatch).toMatchObject({ type: 'function' });
+  if (applyPatch?.type !== 'function') throw new TypeError('Expected apply_patch function tool');
+  expect(await asSchema(applyPatch.inputSchema).jsonSchema).toEqual({
+    type: 'object',
+    properties: { input: { type: 'string' } },
+    required: ['input'],
+    additionalProperties: false,
+  });
+
+  const downgradeEvents = route.logs.filter(
+    (entry): entry is Record<string, unknown> =>
+      typeof entry === 'object' && entry !== null && entry.event === 'request.feature_downgraded',
+  );
+  expect(downgradeEvents).toEqual([
+    {
+      event: 'request.feature_downgraded',
+      requestId: 'request-1',
+      inboundProtocol: ProviderProtocol.OpenAIResponse,
+      path: '/v1/responses',
+      feature: 'web_search_call',
+      action: 'dropped',
+      reason: 'completed_without_results_or_sources',
+      inputIndex: 0,
+      providerId: 'model',
+      attemptIndex: 1,
+    },
+  ]);
+  const serializedDowngrades = JSON.stringify(downgradeEvents);
+  expect(serializedDowngrades).not.toContain(sensitiveQuery);
+  expect(serializedDowngrades).not.toContain(sensitiveGrammar);
+  expect(serializedDowngrades).not.toContain(requestedModelId);
+  expect(serializedDowngrades).not.toContain(upstreamModelId);
 });
 
 test('rejects an item reference before invoking a model', async () => {
