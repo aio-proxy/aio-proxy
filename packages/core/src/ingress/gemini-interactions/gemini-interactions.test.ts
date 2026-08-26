@@ -38,6 +38,8 @@ describe('parseGeminiInteractions', () => {
     { model: '', input: 'x' },
     { agent: '  ', input: 'x' },
     { model: 'm', agent: 'a', input: 'x' },
+    { model: 'm', agent: ' ', input: 'x' },
+    { model: ' ', agent: 'a', input: 'x' },
     { model: 'm', input: 'x', stream: 'yes' },
     { model: 'm', input: 'x', system_instruction: { parts: [{ text: 'sys' }] } },
   ])('rejects %j', (body) => {

@@ -24,12 +24,15 @@ const GeminiInteractionsBodySchema = z
   })
   .catchall(z.unknown())
   .superRefine((body, ctx) => {
-    const model = body.model?.trim() ?? '';
-    const agent = body.agent?.trim() ?? '';
-    const hasModel = model.length > 0;
-    const hasAgent = agent.length > 0;
-    if (hasModel === hasAgent) {
+    const modelPresent = body.model !== undefined;
+    const agentPresent = body.agent !== undefined;
+    if (modelPresent === agentPresent) {
       ctx.addIssue({ code: 'custom', message: xorMessage, path: ['model'] });
+      return;
+    }
+    const selected = (modelPresent ? body.model : body.agent)?.trim() ?? '';
+    if (selected === '') {
+      ctx.addIssue({ code: 'custom', message: xorMessage, path: [modelPresent ? 'model' : 'agent'] });
     }
   });
 

@@ -171,6 +171,41 @@ describe('draft Provider catalog and test routes', () => {
     }
   });
 
+  test('imports Gemini Interactions catalogs from the Gemini protocol endpoint', async () => {
+    let pathname = '';
+    const upstream = Bun.serve({
+      hostname: '127.0.0.1',
+      port: 0,
+      fetch(request) {
+        pathname = new URL(request.url).pathname;
+        return Response.json({ models: [{ name: 'models/gemini-3.5-flash' }] });
+      },
+    });
+
+    try {
+      const response = await routes.request(
+        '/providers/draft/catalog',
+        jsonRequest(
+          {
+            draft: {
+              baseURL: `http://127.0.0.1:${upstream.port}`,
+              id: 'gemini-interactions-draft',
+              kind: 'api',
+              protocol: ProviderProtocol.GeminiInteractions,
+            },
+          },
+          'QUERY',
+        ),
+      );
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ ok: true, models: ['gemini-3.5-flash'] });
+      expect(pathname).toBe('/v1beta/models');
+    } finally {
+      await upstream.stop(true);
+    }
+  });
+
   test('imports every page from a Gemini catalog', async () => {
     const upstream = Bun.serve({
       hostname: '127.0.0.1',
