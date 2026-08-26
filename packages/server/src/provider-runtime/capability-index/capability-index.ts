@@ -60,7 +60,9 @@ function finiteNonCatalogIds(input: CapabilityIndexInput): Set<string> {
 
 function synthesizesLanguage(input: CapabilityIndexInput): boolean {
   if (input.primaryProtocol === ProviderProtocol.OpenAIImage) return false;
-  return input.primaryProtocol !== undefined || input.catalog === undefined;
+  return (
+    input.primaryProtocol !== undefined || input.catalog === undefined || (input.catalog.language?.length ?? 0) > 0
+  );
 }
 
 export function supportsLanguage(index: ModelCapabilityIndex, modelId: string): boolean {

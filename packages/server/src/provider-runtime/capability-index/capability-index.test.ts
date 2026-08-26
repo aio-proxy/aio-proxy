@@ -103,6 +103,22 @@ describe('buildModelCapabilityIndex', () => {
     expect(supportsImage(index, 'gpt-5')).toBe(false);
   });
 
+  test('keeps alias targets language-capable after a language catalog drops them', () => {
+    const index = buildModelCapabilityIndex({
+      catalog: {
+        language: [{ id: 'replacement' }],
+        image: [],
+        embedding: [],
+        speech: [],
+        transcription: [],
+        reranking: [],
+      },
+      aliasTargets: ['removed-from-catalog'],
+    });
+    expect(supportsLanguage(index, 'removed-from-catalog')).toBe(true);
+    expect(supportsLanguage(index, 'replacement')).toBe(true);
+  });
+
   test('seeds non-preserving alias targets as language on a chat primary', () => {
     const index = buildModelCapabilityIndex({
       primaryProtocol: ProviderProtocol.OpenAICompatible,

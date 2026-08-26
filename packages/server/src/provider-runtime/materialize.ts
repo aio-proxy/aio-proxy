@@ -43,7 +43,16 @@ export function materializeRuntimeProvider(
   options: { readonly apiBridge?: AiSdkProviderInstance } = {},
 ): RuntimeProviderInstance {
   if (isMaterializedRuntimeProvider(provider)) {
-    return provider;
+    if (provider.capabilityIndex !== undefined) return provider;
+    return {
+      ...provider,
+      capabilityIndex: capabilityIndexFromRoutable({
+        models: provider.models,
+        alias: provider.alias,
+        metadata: provider.configMetadata,
+        primaryProtocol: 'protocol' in provider ? provider.protocol : undefined,
+      }),
+    };
   }
 
   const { apiBridge } = options;
