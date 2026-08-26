@@ -25,9 +25,11 @@ export type ProviderV4ImageInvoke = (request: {
   readonly signal?: AbortSignal;
 }) => Promise<ImageTransportResult>;
 
+type GenerateImageCall = Parameters<typeof generateImage>[0];
+
 const defaultGenerate: GenerateImageFn = (options) =>
   generateImage({
-    model: options.model as Parameters<typeof generateImage>[0]['model'],
+    model: options.model as GenerateImageCall['model'],
     prompt:
       options.files === undefined
         ? options.prompt
@@ -38,7 +40,9 @@ const defaultGenerate: GenerateImageFn = (options) =>
           },
     n: options.n,
     ...(options.size === undefined ? {} : { size: options.size }),
-    ...(options.providerOptions === undefined ? {} : { providerOptions: options.providerOptions }),
+    ...(options.providerOptions === undefined
+      ? {}
+      : { providerOptions: options.providerOptions as GenerateImageCall['providerOptions'] }),
     ...(options.abortSignal === undefined ? {} : { abortSignal: options.abortSignal }),
   });
 
