@@ -12,7 +12,7 @@ test('rawRequest rewrites body model and forwards token-id input bytes otherwise
   expect(await forwarded.json()).toEqual({ model: 'text-embedding-3-small', input: [1, 2, 3] });
 });
 
-test('embeddingInvocation maps string[] and dimensions/user onto openai and openaiCompatible', () => {
+test('embeddingInvocation maps string[] and dimensions/user onto openai, openaiCompatible, and google', () => {
   const invocation = openAIEmbeddingsAdapter.embeddingInvocation(
     parseOpenAIEmbeddings({ model: 'm', input: ['a', 'b'], dimensions: 8, user: 'u' }),
     {},
@@ -20,12 +20,30 @@ test('embeddingInvocation maps string[] and dimensions/user onto openai and open
   expect(invocation.values).toEqual([
     {
       value: 'a',
-      providerOptions: { openai: { dimensions: 8, user: 'u' }, openaiCompatible: { dimensions: 8, user: 'u' } },
+      providerOptions: {
+        openai: { dimensions: 8, user: 'u' },
+        openaiCompatible: { dimensions: 8, user: 'u' },
+        google: { outputDimensionality: 8 },
+      },
     },
     {
       value: 'b',
-      providerOptions: { openai: { dimensions: 8, user: 'u' }, openaiCompatible: { dimensions: 8, user: 'u' } },
+      providerOptions: {
+        openai: { dimensions: 8, user: 'u' },
+        openaiCompatible: { dimensions: 8, user: 'u' },
+        google: { outputDimensionality: 8 },
+      },
     },
+  ]);
+});
+
+test('embeddingInvocation keeps user on openai namespaces and omits google when dimensions is absent', () => {
+  const invocation = openAIEmbeddingsAdapter.embeddingInvocation(
+    parseOpenAIEmbeddings({ model: 'm', input: 'a', user: 'u' }),
+    {},
+  );
+  expect(invocation.values).toEqual([
+    { value: 'a', providerOptions: { openai: { user: 'u' }, openaiCompatible: { user: 'u' } } },
   ]);
 });
 

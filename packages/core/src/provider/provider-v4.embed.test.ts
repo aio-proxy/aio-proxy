@@ -44,6 +44,57 @@ test('multi-value group calls embedMany with values', async () => {
   expect(result.embeddings).toEqual([[0.1], [0.2]]);
 });
 
+test('sums Google usageMetadata across every embedMany response when SDK usage is undefined', async () => {
+  const run = createProviderV4Embed('p', providerFixture(), {
+    embed: async () => {
+      throw new Error('embed');
+    },
+    embedMany: async () =>
+      ({
+        embeddings: [[0.1], [0.2]],
+        usage: { tokens: Number.NaN },
+        responses: [
+          { body: { usageMetadata: { promptTokenCount: 3 } } },
+          { body: { usageMetadata: { promptTokenCount: 5 } } },
+        ],
+      }) as never,
+  });
+  expect((await run({ values: [{ value: 'a' }, { value: 'b' }] }, { modelId: 'm' })).usage).toEqual({ tokens: 8 });
+});
+
+test('unsets embedMany fallback usage when any response count is missing', async () => {
+  const run = createProviderV4Embed('p', providerFixture(), {
+    embed: async () => {
+      throw new Error('embed');
+    },
+    embedMany: async () =>
+      ({
+        embeddings: [[0.1], [0.2]],
+        usage: { tokens: Number.NaN },
+        responses: [{ body: { usageMetadata: { promptTokenCount: 3 } } }, { body: {} }],
+      }) as never,
+  });
+  expect((await run({ values: [{ value: 'a' }, { value: 'b' }] }, { modelId: 'm' })).usage).toBeUndefined();
+});
+
+test('unsets embedMany fallback usage when the summed counts overflow', async () => {
+  const run = createProviderV4Embed('p', providerFixture(), {
+    embed: async () => {
+      throw new Error('embed');
+    },
+    embedMany: async () =>
+      ({
+        embeddings: [[0.1], [0.2]],
+        usage: { tokens: Number.NaN },
+        responses: [
+          { body: { usageMetadata: { promptTokenCount: Number.MAX_SAFE_INTEGER } } },
+          { body: { usageMetadata: { promptTokenCount: 1 } } },
+        ],
+      }) as never,
+  });
+  expect((await run({ values: [{ value: 'a' }, { value: 'b' }] }, { modelId: 'm' })).usage).toBeUndefined();
+});
+
 test('recovers Google usageMetadata when SDK usage is undefined', async () => {
   const run = createProviderV4Embed('p', providerFixture(), {
     embed: async () =>

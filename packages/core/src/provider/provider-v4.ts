@@ -223,12 +223,15 @@ function addUsage(total: number | undefined, tokens: number | undefined): number
 }
 
 function embedManyPromptTokenCount(responses: unknown): unknown {
-  if (!Array.isArray(responses)) return undefined;
+  if (!Array.isArray(responses) || responses.length === 0) return undefined;
+  let total: number | undefined = 0;
   for (const response of responses) {
     const tokens = promptTokenCount(isPlainObject(response) ? response['body'] : undefined);
-    if (isUsableTokenCount(tokens)) return tokens;
+    if (!isUsableTokenCount(tokens)) return undefined;
+    total = addUsage(total, tokens);
+    if (total === undefined) return undefined;
   }
-  return undefined;
+  return total;
 }
 
 function promptTokenCount(body: unknown): unknown {

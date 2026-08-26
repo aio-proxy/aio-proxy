@@ -47,5 +47,9 @@ function embeddingProviderOptions(request: OpenAIEmbeddingsRequest): EmbeddingPr
     ...(request.dimensions === undefined ? {} : { dimensions: request.dimensions }),
     ...(request.user === undefined ? {} : { user: request.user }),
   };
-  return { openai: options, openaiCompatible: options };
+  return {
+    openai: options,
+    openaiCompatible: options,
+    ...(request.dimensions === undefined ? {} : { google: { outputDimensionality: request.dimensions } }),
+  };
 }
