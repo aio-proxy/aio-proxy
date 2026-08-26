@@ -46,6 +46,7 @@ test('maps every internal provider protocol to the plugin SDK protocol', () => {
     [ProviderProtocol.OpenAIResponse]: 'openai-response',
     [ProviderProtocol.Anthropic]: 'anthropic',
     [ProviderProtocol.Gemini]: 'gemini',
+    [ProviderProtocol.GeminiInteractions]: 'gemini-interactions',
   });
 });
 
