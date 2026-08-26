@@ -53,15 +53,16 @@ export function openAIResponsesToModelMessages(request: OpenAIResponsesRequest):
       )
       .filter((source) => source !== undefined),
   ]);
-  const messages =
+  const convertedInput =
     typeof request.input === 'string'
-      ? [{ role: 'user' as const, content: request.input }]
+      ? { messages: [{ role: 'user' as const, content: request.input }], diagnostics: [] }
       : openAIResponsesInputMessages(request.input, tools);
   return {
     messages: [
       ...(typeof request.instructions === 'string' ? [{ role: 'system' as const, content: request.instructions }] : []),
-      ...messages,
+      ...convertedInput.messages,
     ],
+    diagnostics: convertedInput.diagnostics,
     ...(tools === undefined ? {} : { tools }),
     settings: transformSettings(request, tools),
   };

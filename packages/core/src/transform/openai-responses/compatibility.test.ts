@@ -6,6 +6,70 @@ import {
   parseOpenAIResponses,
 } from '../../index';
 
+test('returns empty diagnostics when no input evidence is dropped', () => {
+  const request = parseOpenAIResponses({ model: 'gpt-5.6-terra', input: 'hello' });
+
+  expect(openAIResponsesToModelMessages(request).diagnostics).toEqual([]);
+});
+
+test('drops completed web search evidence without results or action sources', () => {
+  const request = parseOpenAIResponses({
+    model: 'gpt-5.6-terra',
+    input: [
+      { type: 'web_search_call', id: 'ws_1', status: 'completed', action: { type: 'open_page' } },
+      { role: 'assistant', content: 'Prior answer.' },
+      { role: 'user', content: 'Continue.' },
+    ],
+  });
+
+  expect(openAIResponsesToModelMessages(request)).toMatchObject({
+    messages: [
+      { role: 'assistant', content: 'Prior answer.' },
+      { role: 'user', content: 'Continue.' },
+    ],
+    diagnostics: [
+      {
+        feature: 'web_search_call',
+        action: 'dropped',
+        reason: 'completed_without_results_or_sources',
+        inputIndex: 0,
+      },
+    ],
+  });
+});
+
+test.each([
+  ['missing status', { type: 'web_search_call' }],
+  ['in-progress status', { type: 'web_search_call', status: 'in_progress' }],
+  ['failed status', { type: 'web_search_call', status: 'failed' }],
+  ['unknown status', { type: 'web_search_call', status: 'mystery' }],
+  ['owned results null', { type: 'web_search_call', status: 'completed', results: null }],
+  ['owned results empty', { type: 'web_search_call', status: 'completed', results: [] }],
+  ['owned results populated', { type: 'web_search_call', status: 'completed', results: [{ title: 'x' }] }],
+  ['owned sources null', { type: 'web_search_call', status: 'completed', action: { sources: null } }],
+  ['owned sources empty', { type: 'web_search_call', status: 'completed', action: { sources: [] } }],
+  ['owned sources populated', { type: 'web_search_call', status: 'completed', action: { sources: [{ url: 'x' }] } }],
+])('keeps %s raw-only on the model path', (_name, item) => {
+  const request = parseOpenAIResponses({ model: 'gpt-5.6-terra', input: [item] });
+  expect(() => openAIResponsesToModelMessages(request)).toThrow(OpenAIResponsesUnsupportedFeatureError);
+});
+
+test('separates adjacent function calls when completed web search evidence is dropped', () => {
+  const request = parseOpenAIResponses({
+    model: 'gpt-5.6-terra',
+    input: [
+      { type: 'function_call', call_id: 'call_1', name: 'first', arguments: '{}' },
+      { type: 'web_search_call', status: 'completed' },
+      { type: 'function_call', call_id: 'call_2', name: 'second', arguments: '{}' },
+    ],
+  });
+
+  expect(openAIResponsesToModelMessages(request).messages).toMatchObject([
+    { role: 'assistant', content: [{ type: 'tool-call', toolCallId: 'call_1' }] },
+    { role: 'assistant', content: [{ type: 'tool-call', toolCallId: 'call_2' }] },
+  ]);
+});
+
 test('converts custom tool history with reversible metadata', () => {
   const request = parseOpenAIResponses({
     model: 'gpt-5.6-terra',

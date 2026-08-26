@@ -54,6 +54,7 @@ export const openAIResponsesAdapter = defineProtocolAdapter<OpenAIResponsesReque
       messages: transformed.messages,
       settings: { ...settings, ...reasoningSetting(reasoning) },
       ...(tools === undefined ? {} : { tools }),
+      ...(transformed.diagnostics.length === 0 ? {} : { diagnostics: transformed.diagnostics }),
     };
   },
   modelInvocationForTarget(invocation, targetProtocol, supportedEfforts) {
