@@ -234,13 +234,12 @@ export function materializeProviders(config: Config, options: MaterializeProvide
           createObservedFetch(createFetch(effectiveProxy(config.proxy, provider.proxy))),
         );
         const api = createApi(provider, { fetch: providerFetch });
-        const primaryProtocol = apiProviderEndpoints(provider)[0].protocol;
+        const endpoints = apiProviderEndpoints(provider);
+        const hasLanguageEndpoint = endpoints.some((endpoint) => endpoint.protocol !== ProviderProtocol.OpenAIImage);
         const instance = withRoutingDefaults(
           attachImageTransport(
             materializeRuntimeProvider(api, {
-              ...(primaryProtocol === ProviderProtocol.OpenAIImage
-                ? {}
-                : { apiBridge: bridgeApiProvider(provider, { fetch: providerFetch }) }),
+              ...(hasLanguageEndpoint ? { apiBridge: bridgeApiProvider(provider, { fetch: providerFetch }) } : {}),
             }),
             { config: provider, fetch: providerFetch },
           ),
