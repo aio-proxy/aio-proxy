@@ -182,17 +182,19 @@ function assertStep(step: Record<string, unknown>, calls: Map<string, FunctionCa
   if (type === 'thought' && 'content' in step) unsupported('input', 'input');
   if (type === 'thought') {
     assertTextContents(step['summary']);
+    rejectPartialCallExchange(calls);
     return;
   }
   if (type === 'user_input') {
-    for (const [id, call] of calls) {
-      if (!call.resolved) calls.delete(id);
+    for (const call of calls.values()) {
+      if (!call.resolved) unsupported('input', 'input');
     }
     assertTextContents(step['content']);
     return;
   }
   if (type === 'model_output') {
     assertTextContents(step['content']);
+    rejectPartialCallExchange(calls);
     return;
   }
   if (type === 'function_call') {
@@ -221,15 +223,34 @@ function assertFunctionResult(step: Record<string, unknown>, calls: Map<string, 
   call.resolved = true;
 }
 
+function rejectPartialCallExchange(calls: Map<string, FunctionCallState>): void {
+  let pending = false;
+  let resolved = false;
+  for (const call of calls.values()) {
+    if (call.resolved) resolved = true;
+    else pending = true;
+  }
+  if (pending && resolved) unsupported('input', 'input');
+}
+
 function assertTextContents(value: unknown): void {
-  if (typeof value === 'string') return;
+  if (typeof value === 'string') {
+    if (value.length === 0) unsupported('input', 'input');
+    return;
+  }
   if (Array.isArray(value)) {
     if (value.length === 0) unsupported('input', 'input');
-    for (const part of value) assertContent(part);
+    let nonempty = false;
+    for (const part of value) {
+      assertContent(part);
+      if (isRecord(part) && typeof part['text'] === 'string' && part['text'].length > 0) nonempty = true;
+    }
+    if (!nonempty) unsupported('input', 'input');
     return;
   }
   if (isRecord(value)) {
     assertContent(value);
+    if (typeof value['text'] === 'string' && value['text'].length === 0) unsupported('input', 'input');
     return;
   }
   unsupported('input', 'input');
