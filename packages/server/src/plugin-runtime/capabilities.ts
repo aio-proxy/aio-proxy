@@ -33,6 +33,7 @@ export const pluginProtocol = {
   'openai-response': 'openai-response',
   anthropic: 'anthropic',
   gemini: 'gemini',
+  'gemini-interactions': 'gemini-interactions',
   'openai-image': 'openai-image',
 } as const satisfies Record<ProviderProtocol, ProtocolId>;
 

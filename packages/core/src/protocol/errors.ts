@@ -8,6 +8,9 @@ import {
   EmbeddingConvertUnsupportedError,
   EmbeddingUsageRequiredError,
   GeminiGenerateContentTransformError,
+  GeminiInteractionsEgressError,
+  GeminiInteractionsTransformError,
+  GeminiInteractionsUnsupportedFeatureError,
   GeminiInlineDataTooLargeError,
   ImageInputUnsupportedError,
   OpenAICompletionsTransformError,
@@ -192,6 +195,38 @@ export const geminiGenerateContentErrors: ProtocolErrorMapper = {
     genericProviderError(error, (status, message) =>
       status === 499 ? geminiError(499, 'CANCELLED', message) : geminiError(status, 'UNAVAILABLE', message),
     ),
+  rateLimited: geminiRateLimited,
+};
+
+export const geminiInteractionsErrors: ProtocolErrorMapper = {
+  modelUnsupported(error) {
+    if (error instanceof GeminiInteractionsUnsupportedFeatureError) {
+      return geminiError(501, 'UNIMPLEMENTED', error.message);
+    }
+    return error instanceof ImageInputUnsupportedError
+      ? geminiError(501, 'UNIMPLEMENTED', 'Image input cannot be represented by this provider')
+      : undefined;
+  },
+  requestError(error) {
+    return error instanceof SyntaxError ||
+      error instanceof ZodError ||
+      error instanceof InvalidCompressedRequestBodyError ||
+      error instanceof GeminiInteractionsTransformError
+      ? geminiError(400, 'INVALID_ARGUMENT', withZodDetail('Invalid Gemini Interactions request', error))
+      : undefined;
+  },
+  modelNotFound: (message) => geminiError(404, 'NOT_FOUND', message),
+  previousResponseConflict: () => geminiError(409, 'ABORTED', PREVIOUS_RESPONSE_CONFLICT_MESSAGE),
+  tooLarge: () => geminiError(413, 'RESOURCE_EXHAUSTED', 'Request body too large'),
+  unsupportedContentEncoding: () => geminiError(415, 'INVALID_ARGUMENT', 'Unsupported Content-Encoding'),
+  unsupported: () =>
+    geminiError(501, 'UNIMPLEMENTED', 'Provider does not support Gemini Interactions transform dispatch'),
+  provider: (error) =>
+    error instanceof GeminiInteractionsEgressError
+      ? undefined
+      : genericProviderError(error, (status, message) =>
+          status === 499 ? geminiError(499, 'CANCELLED', message) : geminiError(status, 'UNAVAILABLE', message),
+        ),
   rateLimited: geminiRateLimited,
 };
 

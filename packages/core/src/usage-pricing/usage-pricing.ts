@@ -160,7 +160,8 @@ function toBillableUsage(
     case ProviderProtocol.OpenAICompatible:
     case ProviderProtocol.OpenAIResponse:
       return inclusiveBillableUsage(usage, price);
-    case ProviderProtocol.Gemini: {
+    case ProviderProtocol.Gemini:
+    case ProviderProtocol.GeminiInteractions: {
       const afterCache = peelSubsets(usage.inputTokens, [{ count: usage.cacheReadTokens, unitPrice: price.cacheRead }]);
       const thoughts = usage.reasoningTokens;
       const reasoningPriced = pricedSubset(thoughts, price.reasoning) !== undefined;

@@ -6,6 +6,7 @@ export enum ProviderProtocol {
   OpenAICompatible = 'openai-compatible',
   Anthropic = 'anthropic',
   Gemini = 'gemini',
+  GeminiInteractions = 'gemini-interactions',
   OpenAIImage = 'openai-image',
 }
 

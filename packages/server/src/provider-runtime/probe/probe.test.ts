@@ -89,6 +89,31 @@ test('probe follows sdk base URL semantics for an endpoints-only provider', asyn
   expect(apiKeyHeader).toBe('k');
 });
 
+test('probe of a primary gemini-interactions endpoint posts store:false ping', async () => {
+  let requested: string | undefined;
+  let body: unknown;
+  const provider = {
+    apiKey: 'k',
+    enabled: true,
+    endpoints: [{ protocol: ProviderProtocol.GeminiInteractions, baseURL: 'https://g.example.com/v1beta' }],
+    id: 'interactions-gateway',
+    kind: ProviderKind.Api,
+    models: ['gemini-3.5-flash'],
+  } satisfies Provider;
+  const instance = createApiProvider(provider, {
+    fetch: (async (input: string | URL | Request, init?: RequestInit) => {
+      requested = input instanceof Request ? input.url : String(input);
+      body = JSON.parse(await new Response(init?.body).text());
+      return new Response('{}', { status: 200 });
+    }) as typeof globalThis.fetch,
+  });
+
+  expect(await probeApi(provider, instance)).toBe('OK');
+  expect(requested).toBe('https://g.example.com/v1beta/interactions');
+  expect(body).toEqual({ model: 'gemini-3.5-flash', input: 'ping', store: false });
+  expect(body).not.toHaveProperty('agent');
+});
+
 test('a model test probe waits ten seconds, not one', async () => {
   let timeoutMs: number | undefined;
   const original = AbortSignal.timeout;

@@ -244,8 +244,12 @@ function withDraftAttempt<T>(
   );
 }
 
+function geminiCatalog(protocol: ProviderProtocol): boolean {
+  return protocol === ProviderProtocol.Gemini || protocol === ProviderProtocol.GeminiInteractions;
+}
+
 function catalogPath(protocol: ProviderProtocol): string {
-  return protocol === ProviderProtocol.Gemini ? '/v1beta/models' : '/v1/models';
+  return geminiCatalog(protocol) ? '/v1beta/models' : '/v1/models';
 }
 
 type CatalogPage = {
@@ -255,7 +259,7 @@ type CatalogPage = {
 
 function catalogPage(protocol: ProviderProtocol, payload: unknown): CatalogPage {
   const models = catalogModels(protocol, payload);
-  if (protocol === ProviderProtocol.Gemini) {
+  if (geminiCatalog(protocol)) {
     const pageToken = stringProperty(payload, 'nextPageToken');
     return pageToken === undefined
       ? { models }
@@ -282,13 +286,14 @@ function booleanProperty(payload: unknown, key: string): boolean {
 
 function catalogModels(protocol: ProviderProtocol, payload: unknown): readonly string[] {
   if (typeof payload !== 'object' || payload === null) throw new TypeError('invalid catalog');
-  const rows = Reflect.get(payload, protocol === ProviderProtocol.Gemini ? 'models' : 'data');
+  const gemini = geminiCatalog(protocol);
+  const rows = Reflect.get(payload, gemini ? 'models' : 'data');
   if (!Array.isArray(rows)) throw new TypeError('invalid catalog');
   const models = rows.flatMap((row) => {
     if (typeof row !== 'object' || row === null) return [];
-    const value = Reflect.get(row, protocol === ProviderProtocol.Gemini ? 'name' : 'id');
+    const value = Reflect.get(row, gemini ? 'name' : 'id');
     if (typeof value !== 'string' || value.trim() === '') return [];
-    return [protocol === ProviderProtocol.Gemini ? value.replace(/^models\//u, '') : value];
+    return [gemini ? value.replace(/^models\//u, '') : value];
   });
   return [...new Set(models)];
 }

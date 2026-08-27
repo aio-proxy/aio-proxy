@@ -71,6 +71,11 @@ export function providerProbeRequest(
         },
         path: `/v1beta/models/${model}:generateContent`,
       };
+    case ProviderProtocol.GeminiInteractions:
+      return {
+        body: { model, input: 'ping', store: false },
+        path: '/v1beta/interactions',
+      };
     case ProviderProtocol.OpenAIImage:
       return {
         body: { model, n: 1, prompt: 'ping' },

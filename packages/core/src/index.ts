@@ -35,6 +35,7 @@ export {
 } from './egress/anthropic-messages';
 export { writeGeminiEmbeddingsResponse } from './egress/gemini-embeddings';
 export { writeGeminiGenerateContentResponse, writeGeminiGenerateContentSSE } from './egress/gemini-generate-content';
+export { writeGeminiInteractionsResponse, writeGeminiInteractionsSSE } from './egress/gemini-interactions';
 export { writeOpenAICompletionsResponse, writeOpenAICompletionsSSE } from './egress/openai-completions';
 export { writeOpenAIEmbeddingsResponse } from './egress/openai-embeddings';
 export {
@@ -52,6 +53,9 @@ export {
   EmbeddingCountMismatchError,
   EmbeddingUsageRequiredError,
   GeminiGenerateContentTransformError,
+  GeminiInteractionsEgressError,
+  GeminiInteractionsTransformError,
+  GeminiInteractionsUnsupportedFeatureError,
   GeminiInlineDataTooLargeError,
   ImageInputUnsupportedError,
   type ImageInputUnsupportedReason,
@@ -107,6 +111,13 @@ export {
   parseGeminiGenerateContent,
   safeParseGeminiGenerateContent,
 } from './ingress/gemini-generate-content/index';
+export {
+  type GeminiInteractionsBody,
+  type GeminiInteractionsParseResult,
+  type GeminiInteractionsRequest,
+  parseGeminiInteractions,
+  safeParseGeminiInteractions,
+} from './ingress/gemini-interactions/index';
 export {
   type OpenAICompletionsRequest,
   OpenAICompletionsRequestSchema,
@@ -232,6 +243,13 @@ export {
   geminiGenerateContentToModelMessages,
   modelMessagesToGeminiGenerateContent,
 } from './transform/gemini-generate-content/index';
+export {
+  type GeminiInteractionsModelMessages,
+  type GeminiInteractionsTransformSettings,
+  type GeminiInteractionsTransformTool,
+  geminiInteractionsDimensions,
+  geminiInteractionsToModelMessages,
+} from './transform/gemini-interactions/index';
 export {
   type OpenAICompletionsFromModelMessages,
   type OpenAICompletionsModelMessages,

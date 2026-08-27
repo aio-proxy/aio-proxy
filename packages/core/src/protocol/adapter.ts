@@ -41,6 +41,7 @@ export type ModelInvocation = {
 export type ModelEgressContext = {
   readonly modelId: string;
   readonly onResponseId?: (responseId: string) => void;
+  readonly omitThoughtSummaries?: boolean;
 };
 
 export type ProtocolRequestDiagnostic = Readonly<{
@@ -80,6 +81,7 @@ export type LanguageProtocolAdapter<TRequest, TContext> = SharedProtocolAdapter<
     ) => ModelInvocation;
     modelJson: (stream: ModelEventStream, context: ModelEgressContext) => Promise<unknown>;
     modelSse: (stream: ModelEventStream, context: ModelEgressContext) => ModelSseStream;
+    egressContext?: (request: TRequest, context: TContext) => Partial<ModelEgressContext>;
   }>;
 
 export type ProtocolAdapter<TRequest, TContext> = LanguageProtocolAdapter<TRequest, TContext>;

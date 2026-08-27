@@ -21,6 +21,7 @@ const protocols = [
   ProviderProtocol.OpenAIResponse,
   ProviderProtocol.Anthropic,
   ProviderProtocol.Gemini,
+  ProviderProtocol.GeminiInteractions,
 ] as const;
 
 const inboundCases = [
@@ -43,6 +44,11 @@ const inboundCases = [
     protocol: ProviderProtocol.Gemini,
     path: '/v1beta/models/m:generateContent',
     body: { contents: [{ role: 'user', parts: [{ text: 'hello' }] }] },
+  },
+  {
+    protocol: ProviderProtocol.GeminiInteractions,
+    path: '/v1beta/interactions',
+    body: { model: 'm', input: 'hello', store: false },
   },
 ] as const;
 
@@ -80,6 +86,43 @@ describe('cross-protocol HTTP routing', () => {
       });
     }
   }
+
+  test('Antigravity still raw-resolves only gemini; Interactions inbound converts', async () => {
+    expect(await runAntigravityMatrixCase(ProviderProtocol.GeminiInteractions, 'cross protocol')).toBe('model');
+  });
+
+  test('omitted store 501s on language-only then raws a later Interactions candidate', async () => {
+    const language = provider(ProviderProtocol.Gemini, 'language');
+    const native = provider(ProviderProtocol.GeminiInteractions, 'native');
+    const response = await request(
+      {
+        protocol: ProviderProtocol.GeminiInteractions,
+        path: '/v1beta/interactions',
+        body: { model: 'm', input: 'hello' },
+      },
+      [language.value, native.value],
+    );
+    expect(await response.text()).toBe(`raw:${ProviderProtocol.GeminiInteractions}`);
+    expect(language.calls).toEqual({ model: 0, raw: 0 });
+    expect(native.calls).toEqual({ model: 0, raw: 1 });
+  });
+
+  test('agent inbound 501s on language-only and raws Interactions including alias rewrite', async () => {
+    const language = provider(ProviderProtocol.OpenAICompatible, 'language');
+    const native = provider(ProviderProtocol.GeminiInteractions, 'native');
+    const response = await request(
+      {
+        protocol: ProviderProtocol.GeminiInteractions,
+        path: '/v1beta/interactions',
+        body: { agent: 'm', input: 'hello' },
+      },
+      [language.value, native.value],
+    );
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe(`raw:${ProviderProtocol.GeminiInteractions}`);
+    expect(language.calls).toEqual({ model: 0, raw: 0 });
+    expect(native.calls).toEqual({ model: 0, raw: 1 });
+  });
 
   test('Completions inbound uses openai-compatible raw only when protocols match', async () => {
     const same = provider(ProviderProtocol.OpenAICompatible, 'same');
@@ -386,7 +429,6 @@ describe('openai-image inbound', () => {
   });
 });
 
-type InboundCase = (typeof inboundCases)[number];
 type Calls = { model: number; raw: number };
 type ImageCalls = { image: number; raw: number };
 
@@ -551,7 +593,11 @@ function modelStream(text: string): ReadableStream<TextStreamPart<ToolSet>> {
   });
 }
 
-async function request(inbound: InboundCase, providers: readonly RuntimeProviderInstance[], dbHome?: string) {
+async function request(
+  inbound: { protocol: ProviderProtocol; path: string; body: unknown },
+  providers: readonly RuntimeProviderInstance[],
+  dbHome?: string,
+) {
   const app = await createServer({
     config: { providers: {} },
     dbHome: dbHome ?? tempHome(),
@@ -611,6 +657,11 @@ function expectModelResponse(protocol: ProviderProtocol, body: unknown, text: st
     },
     [ProviderProtocol.Anthropic]: { type: 'message', role: 'assistant', content: [{ type: 'text', text }] },
     [ProviderProtocol.Gemini]: { candidates: [{ content: { role: 'model', parts: [{ text }] } }] },
+    [ProviderProtocol.GeminiInteractions]: {
+      object: 'interaction',
+      steps: [{ type: 'model_output', content: [{ type: 'text', text }] }],
+      usage: { total_input_tokens: 0 },
+    },
   } as const;
   expect(body).toMatchObject(shapes[protocol]);
 }

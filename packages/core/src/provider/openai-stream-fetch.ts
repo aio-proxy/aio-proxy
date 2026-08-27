@@ -11,6 +11,7 @@ export function wrapOpenAIProtocolFetch(protocol: ProviderProtocol, fetcher: Pro
       return createOpenAIStreamFetch('openai-compatible', fetcher, { upstreamStream: true });
     case ProviderProtocol.Anthropic:
     case ProviderProtocol.Gemini:
+    case ProviderProtocol.GeminiInteractions:
     case ProviderProtocol.OpenAIImage:
       return fetcher as OpenAIStreamFetch;
   }

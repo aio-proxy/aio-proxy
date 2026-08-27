@@ -67,6 +67,7 @@ export async function attemptModelCandidate<TRequest, TContext>(
   let capturedResponseId: string | undefined;
   const egressContext = {
     modelId: candidate.modelId,
+    ...adapter.egressContext?.(ctx.request, ctx.context),
     ...(adapter.session === undefined
       ? {}
       : {

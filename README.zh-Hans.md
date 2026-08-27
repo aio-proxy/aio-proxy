@@ -199,6 +199,7 @@ router:
 | Gemini                    | `POST /v1beta/models/{model}:generateContent`       |
 | Gemini 流式生成           | `POST /v1beta/models/{model}:streamGenerateContent` |
 | Gemini Token Counting     | `POST /v1beta/models/{model}:countTokens`           |
+| Gemini Interactions       | `POST /v1beta/interactions`                         |
 | OpenAI Embeddings         | `POST /v1/embeddings`                               |
 | Gemini embed              | `POST /v1beta/models/{model}:embedContent`          |
 | Gemini batch embed        | `POST /v1beta/models/{model}:batchEmbedContents`    |

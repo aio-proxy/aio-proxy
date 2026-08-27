@@ -15,6 +15,18 @@ export function hasContentDelta(protocol: ProviderProtocol, eventType: string | 
       return anthropicContent(value);
     case ProviderProtocol.Gemini:
       return geminiContent(value);
+    case ProviderProtocol.GeminiInteractions: {
+      const type = eventType ?? (isRecord(value) ? value['event_type'] : undefined);
+      if (type !== 'step.delta' || !isRecord(value)) return false;
+      const delta = value['delta'];
+      if (!isRecord(delta)) return false;
+      if (delta['type'] === 'text') return nonEmptyString(delta['text']);
+      if (delta['type'] === 'thought_summary') {
+        const content = delta['content'];
+        return isRecord(content) && nonEmptyString(content['text']);
+      }
+      return false;
+    }
     case ProviderProtocol.OpenAIImage:
       return false;
     default:

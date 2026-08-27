@@ -73,6 +73,7 @@ function bridgeMapping(provider: ApiProvider, primary: NormalizedApiEndpoint, pr
       };
     }
     case ProviderProtocol.Gemini:
+    case ProviderProtocol.GeminiInteractions:
       return { packageName: '@ai-sdk/google', options: sharedOptions };
     case ProviderProtocol.OpenAIResponse:
       return { packageName: '@ai-sdk/openai', options: sharedOptions, resolveModel: resolveOpenAIResponsesModel };
