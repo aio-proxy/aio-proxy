@@ -5,6 +5,27 @@ import { sanitizeXAIGrokResponsesBody } from './sanitize-responses';
 const encode = (value: unknown) => new TextEncoder().encode(JSON.stringify(value));
 const decode = (bytes: Uint8Array) => JSON.parse(new TextDecoder().decode(bytes));
 
+function buildBinaryRefFanOutParameters(depth: number): Record<string, unknown> {
+  const defs: Record<string, unknown> = {};
+  for (let index = 0; index <= depth; index += 1) {
+    defs[`n_${index}`] =
+      index === depth
+        ? { type: 'object', properties: {} }
+        : {
+            type: 'object',
+            properties: {
+              a: { $ref: `#/$defs/n_${index + 1}` },
+              b: { $ref: `#/$defs/n_${index + 1}` },
+            },
+          };
+  }
+  return {
+    type: 'object',
+    properties: { payload: { $ref: '#/$defs/n_0' } },
+    $defs: defs,
+  };
+}
+
 const capturedAutomationUpdateParameters = JSON.parse(
   `{"type":"object","properties":{},"oneOf":[{"$ref":"#/$defs/__schema0"},{"$ref":"#/$defs/__schema3"},{"$ref":"#/$defs/__schema21"},{"$ref":"#/$defs/__schema24"}],"$defs":{"__schema0":{"type":"object","properties":{"id":{"$ref":"#/$defs/__schema1"},"mode":{"type":"string","enum":["view"]}},"required":["mode","id"],"additionalProperties":false},"__schema1":{"$ref":"#/$defs/__schema2"},"__schema10":{"anyOf":[{"type":"string","enum":["failed_runs_only"]},{"type":"null"}]},"__schema11":{"type":"string","enum":["cron"]},"__schema12":{"anyOf":[{"$ref":"#/$defs/__schema13"},{"type":"null"}]},"__schema13":{"type":"string"},"__schema14":{"$ref":"#/$defs/__schema2"},"__schema15":{"type":"string","enum":["none","minimal","low","medium","high","xhigh","max","ultra"]},"__schema16":{"type":"string","enum":["create","suggested_create"]},"__schema17":{"type":"object","properties":{"destination":{"$ref":"#/$defs/__schema19"},"kind":{"$ref":"#/$defs/__schema18"},"mode":{"$ref":"#/$defs/__schema16"},"name":{"$ref":"#/$defs/__schema5"},"notificationPolicy":{"$ref":"#/$defs/__schema9"},"prompt":{"$ref":"#/$defs/__schema6"},"rrule":{"$ref":"#/$defs/__schema7"},"status":{"$ref":"#/$defs/__schema8"},"targetThreadId":{"$ref":"#/$defs/__schema20"}},"required":["name","prompt","rrule","status","kind","mode"],"additionalProperties":false},"__schema18":{"type":"string","enum":["heartbeat"]},"__schema19":{"type":"string","enum":["local","thread"]},"__schema2":{"type":"string"},"__schema20":{"$ref":"#/$defs/__schema2","type":"string"},"__schema21":{"oneOf":[{"type":"object","properties":{"destination":{"type":"string","enum":["local","worktree"]},"executionEnvironment":{"type":"string","enum":["worktree","local"]},"id":{"$ref":"#/$defs/__schema1"},"kind":{"$ref":"#/$defs/__schema11"},"localEnvironmentConfigPath":{"anyOf":[{"type":"string"},{"type":"null"}]},"mode":{"$ref":"#/$defs/__schema23"},"model":{"$ref":"#/$defs/__schema14"},"name":{"$ref":"#/$defs/__schema5"},"notificationPolicy":{"$ref":"#/$defs/__schema9"},"projectId":{"$ref":"#/$defs/__schema12"},"prompt":{"$ref":"#/$defs/__schema6"},"reasoningEffort":{"$ref":"#/$defs/__schema15"},"rrule":{"$ref":"#/$defs/__schema22"},"status":{"$ref":"#/$defs/__schema8"}},"required":["name","prompt","rrule","status","kind","projectId","model","reasoningEffort","mode","id","executionEnvironment"],"additionalProperties":false},{"type":"object","properties":{"destination":{"$ref":"#/$defs/__schema19"},"id":{"$ref":"#/$defs/__schema1"},"kind":{"$ref":"#/$defs/__schema18"},"mode":{"$ref":"#/$defs/__schema23"},"name":{"$ref":"#/$defs/__schema5"},"notificationPolicy":{"$ref":"#/$defs/__schema9"},"prompt":{"$ref":"#/$defs/__schema6"},"rrule":{"$ref":"#/$defs/__schema22"},"status":{"$ref":"#/$defs/__schema8"},"targetThreadId":{"$ref":"#/$defs/__schema20"}},"required":["name","prompt","rrule","status","kind","mode","id"],"additionalProperties":false}]},"__schema22":{"$ref":"#/$defs/__schema2"},"__schema23":{"type":"string","enum":["update","suggested_update"]},"__schema24":{"type":"object","properties":{"id":{"$ref":"#/$defs/__schema1"},"mode":{"type":"string","enum":["delete"]}},"required":["mode","id"],"additionalProperties":false},"__schema3":{"oneOf":[{"$ref":"#/$defs/__schema4"},{"$ref":"#/$defs/__schema17"}]},"__schema4":{"type":"object","properties":{"destination":{"type":"string","enum":["local"]},"executionEnvironment":{"type":"string","enum":["local"]},"kind":{"$ref":"#/$defs/__schema11"},"mode":{"$ref":"#/$defs/__schema16"},"model":{"$ref":"#/$defs/__schema14"},"name":{"$ref":"#/$defs/__schema5"},"notificationPolicy":{"$ref":"#/$defs/__schema9"},"projectId":{"$ref":"#/$defs/__schema12"},"prompt":{"$ref":"#/$defs/__schema6"},"reasoningEffort":{"$ref":"#/$defs/__schema15"},"rrule":{"$ref":"#/$defs/__schema7"},"status":{"$ref":"#/$defs/__schema8"}},"required":["name","prompt","rrule","status","kind","projectId","model","reasoningEffort","mode","executionEnvironment"],"additionalProperties":false},"__schema5":{"$ref":"#/$defs/__schema2"},"__schema6":{"$ref":"#/$defs/__schema2"},"__schema7":{"$ref":"#/$defs/__schema2"},"__schema8":{"type":"string","enum":["ACTIVE","PAUSED"]},"__schema9":{"$ref":"#/$defs/__schema10"}}}`,
 ) as Record<string, unknown>;
@@ -148,6 +169,33 @@ describe('sanitizeXAIGrokResponsesBody', () => {
         { type: 'custom', name: 'exec' },
       ],
     });
+  });
+
+  test('quarantines binary ref fan-out that exceeds the resolved-node budget', () => {
+    const healthy = {
+      type: 'function',
+      name: 'healthy',
+      parameters: { type: 'object', properties: { ok: { type: 'boolean' } } },
+    };
+    const startedAt = performance.now();
+    const cleaned = decode(
+      sanitizeXAIGrokResponsesBody(
+        encode({
+          tools: [
+            {
+              type: 'function',
+              name: 'ref_fanout',
+              parameters: buildBinaryRefFanOutParameters(20),
+            },
+            healthy,
+          ],
+        }),
+      ),
+    );
+    const elapsedMs = performance.now() - startedAt;
+
+    expect(cleaned.tools).toEqual([healthy]);
+    expect(elapsedMs).toBeLessThan(2_000);
   });
 
   test('removes empty catalogs and a forced choice when no tools remain', () => {

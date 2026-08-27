@@ -6,8 +6,11 @@ const DROPPED_FIELDS = [
   'stop',
 ] as const;
 
+const MAX_RESOLVED_NODES = 50_000;
+
 type JsonObject = Record<string, unknown>;
 type UnionKey = 'anyOf' | 'oneOf';
+type NodeBudget = { remaining: number };
 
 type ToolCatalogState = {
   readonly kept: Set<string>;
@@ -119,7 +122,8 @@ function sanitizeToolChoice(body: JsonObject, state: ToolCatalogState): void {
 function normalizeXAIToolParameters(value: unknown): JsonObject | undefined {
   const root = asRecord(value);
   if (root === undefined) return undefined;
-  const resolved = resolveLocalRefs(root, root, new Set());
+  const budget: NodeBudget = { remaining: MAX_RESOLVED_NODES };
+  const resolved = resolveLocalRefs(root, root, new Set(), budget);
   if (resolved === undefined || Array.isArray(resolved) || asRecord(resolved) === undefined) return undefined;
   const schema = { ...(resolved as JsonObject) };
   Reflect.deleteProperty(schema, '$defs');
@@ -128,12 +132,24 @@ function normalizeXAIToolParameters(value: unknown): JsonObject | undefined {
   return expandRootObjectUnion(schema);
 }
 
-function resolveLocalRefs(value: unknown, root: JsonObject, stack: Set<string>): unknown | undefined {
+function consumeResolvedNode(budget: NodeBudget): boolean {
+  if (budget.remaining <= 0) return false;
+  budget.remaining -= 1;
+  return true;
+}
+
+function resolveLocalRefs(
+  value: unknown,
+  root: JsonObject,
+  stack: Set<string>,
+  budget: NodeBudget,
+): unknown | undefined {
   if (Array.isArray(value)) {
     const result: unknown[] = [];
     for (const item of value) {
-      const resolved = resolveLocalRefs(item, root, stack);
+      const resolved = resolveLocalRefs(item, root, stack, budget);
       if (resolved === undefined) return undefined;
+      if (!consumeResolvedNode(budget)) return undefined;
       result.push(resolved);
     }
     return result;
@@ -147,13 +163,13 @@ function resolveLocalRefs(value: unknown, root: JsonObject, stack: Set<string>):
     const target = lookupLocalPointer(root, ref);
     if (target === undefined) return undefined;
     stack.add(ref);
-    const resolvedTarget = resolveLocalRefs(target, root, stack);
+    const resolvedTarget = resolveLocalRefs(target, root, stack, budget);
     stack.delete(ref);
     if (resolvedTarget === undefined) return undefined;
 
     const siblings = Object.fromEntries(Object.entries(record).filter(([key]) => key !== '$ref'));
     if (Object.keys(siblings).length === 0) return resolvedTarget;
-    const resolvedSiblings = resolveLocalRefs(siblings, root, stack);
+    const resolvedSiblings = resolveLocalRefs(siblings, root, stack, budget);
     if (resolvedSiblings === undefined) return undefined;
     const targetRecord = asRecord(resolvedTarget);
     const siblingRecord = asRecord(resolvedSiblings);
@@ -162,13 +178,15 @@ function resolveLocalRefs(value: unknown, root: JsonObject, stack: Set<string>):
     const siblingType = siblingRecord['type'];
     if (targetType !== undefined && siblingType !== undefined && targetType !== siblingType) return undefined;
     const type = targetType ?? siblingType;
+    if (!consumeResolvedNode(budget)) return undefined;
     return { ...(type === undefined ? {} : { type }), allOf: [targetRecord, siblingRecord] };
   }
 
+  if (!consumeResolvedNode(budget)) return undefined;
   const resolved: JsonObject = {};
   for (const [key, child] of Object.entries(record)) {
     if (key === '$defs' || key === 'definitions') continue;
-    const next = resolveLocalRefs(child, root, stack);
+    const next = resolveLocalRefs(child, root, stack, budget);
     if (next === undefined) return undefined;
     resolved[key] = next;
   }
