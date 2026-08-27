@@ -106,9 +106,11 @@ function resetToolChoice(body: JsonObject): void {
 function sanitizeToolChoice(body: JsonObject, state: ToolCatalogState): void {
   const choice = asRecord(body['tool_choice']);
   if (choice === undefined) return;
-  if (choice['type'] === 'allowed_tools' && Array.isArray(choice['tools'])) {
-    choice['tools'] = choice['tools'].filter((entry) => !wasOnlyRemoved(asRecord(entry)?.['name'], state));
-    if (choice['tools'].length === 0) resetToolChoice(body);
+  const allowed = choice['tools'];
+  if (choice['type'] === 'allowed_tools' && Array.isArray(allowed)) {
+    const filtered = allowed.filter((entry) => !wasOnlyRemoved(asRecord(entry)?.['name'], state));
+    choice['tools'] = filtered;
+    if (filtered.length === 0) resetToolChoice(body);
     return;
   }
   if (wasOnlyRemoved(choice['name'], state)) resetToolChoice(body);
