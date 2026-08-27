@@ -77,4 +77,105 @@ describe('sanitizeXAIGrokResponsesBody', () => {
     const original = new TextEncoder().encode('{not-json');
     expect(sanitizeXAIGrokResponsesBody(original)).toEqual(original);
   });
+
+  test('quarantines one cyclic function and resets its named tool choice', () => {
+    const cleaned = decode(
+      sanitizeXAIGrokResponsesBody(
+        encode({
+          tools: [
+            {
+              type: 'function',
+              name: 'broken',
+              parameters: {
+                type: 'object',
+                oneOf: [{ $ref: '#/$defs/loop' }],
+                $defs: { loop: { $ref: '#/$defs/loop' } },
+              },
+            },
+            { type: 'function', name: 'healthy', parameters: { type: 'object', properties: {} } },
+          ],
+          tool_choice: { type: 'function', name: 'broken' },
+        }),
+      ),
+    );
+
+    expect(cleaned.tools).toEqual([
+      { type: 'function', name: 'healthy', parameters: { type: 'object', properties: {} } },
+    ]);
+    expect(cleaned.tool_choice).toBe('auto');
+  });
+
+  test('sanitizes namespace and additional_tools catalogs and filters allowed_tools', () => {
+    const unsafe = { type: 'function', name: 'unsafe', parameters: { oneOf: [{ type: 'string' }] } };
+    const cleaned = decode(
+      sanitizeXAIGrokResponsesBody(
+        encode({
+          tools: [
+            {
+              type: 'namespace',
+              name: 'agents',
+              tools: [unsafe, { type: 'function', name: 'spawn', parameters: { type: 'object' } }],
+            },
+          ],
+          input: [
+            {
+              type: 'additional_tools',
+              role: 'developer',
+              tools: [unsafe, { type: 'custom', name: 'exec', format: { type: 'text' } }],
+            },
+            { role: 'user', content: 'continue' },
+          ],
+          tool_choice: {
+            type: 'allowed_tools',
+            mode: 'required',
+            tools: [
+              { type: 'function', name: 'unsafe' },
+              { type: 'function', name: 'spawn' },
+              { type: 'custom', name: 'exec' },
+            ],
+          },
+        }),
+      ),
+    );
+
+    expect(cleaned.tools[0].tools.map((tool: { name: string }) => tool.name)).toEqual(['spawn']);
+    expect(cleaned.input[0].tools.map((tool: { name: string }) => tool.name)).toEqual(['exec']);
+    expect(cleaned.tool_choice).toEqual({
+      type: 'allowed_tools',
+      mode: 'required',
+      tools: [
+        { type: 'function', name: 'spawn' },
+        { type: 'custom', name: 'exec' },
+      ],
+    });
+  });
+
+  test('removes empty catalogs and a forced choice when no tools remain', () => {
+    const cleaned = decode(
+      sanitizeXAIGrokResponsesBody(
+        encode({
+          tools: [
+            {
+              type: 'namespace',
+              name: 'broken_namespace',
+              tools: [{ type: 'function', name: 'broken', parameters: { $ref: 'https://example.test/schema' } }],
+            },
+          ],
+          input: [
+            {
+              type: 'additional_tools',
+              role: 'developer',
+              tools: [{ type: 'function', name: 'broken', parameters: { type: 'string' } }],
+            },
+            { role: 'user', content: 'continue' },
+          ],
+          tool_choice: { type: 'function', name: 'broken' },
+        }),
+      ),
+    );
+
+    expect(cleaned).not.toHaveProperty('tools');
+    expect(cleaned.input).toEqual([{ role: 'user', content: 'continue' }]);
+    expect(cleaned).not.toHaveProperty('tool_choice');
+  });
 });

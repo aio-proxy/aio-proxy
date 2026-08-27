@@ -9,6 +9,11 @@ const DROPPED_FIELDS = [
 type JsonObject = Record<string, unknown>;
 type UnionKey = 'anyOf' | 'oneOf';
 
+type ToolCatalogState = {
+  readonly kept: Set<string>;
+  readonly removed: Set<string>;
+};
+
 export function sanitizeXAIGrokResponsesBody(bytes: Uint8Array): Uint8Array {
   try {
     const value: unknown = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
@@ -17,24 +22,96 @@ export function sanitizeXAIGrokResponsesBody(bytes: Uint8Array): Uint8Array {
     for (const field of DROPPED_FIELDS) Reflect.deleteProperty(body, field);
     const reasoning = asRecord(body['reasoning']);
     if (reasoning !== undefined) Reflect.deleteProperty(reasoning, 'summary');
-    sanitizeTools(body['tools']);
+
+    const state: ToolCatalogState = { kept: new Set(), removed: new Set() };
+    sanitizeToolList(body['tools'], state);
+    if (!Array.isArray(body['tools']) || body['tools'].length === 0) Reflect.deleteProperty(body, 'tools');
+
+    const input = body['input'];
+    if (Array.isArray(input)) {
+      for (let index = input.length - 1; index >= 0; index -= 1) {
+        const item = asRecord(input[index]);
+        if (item?.['type'] !== 'additional_tools') continue;
+        sanitizeToolList(item['tools'], state);
+        if (!Array.isArray(item['tools']) || item['tools'].length === 0) input.splice(index, 1);
+      }
+    }
+
+    sanitizeToolChoice(body, state);
     return new TextEncoder().encode(JSON.stringify(body));
   } catch {
     return bytes;
   }
 }
 
-function sanitizeTools(tools: unknown): void {
+function toolAliases(name: string, namespace?: string): readonly string[] {
+  return namespace === undefined ? [name] : [name, `${namespace}__${name}`];
+}
+
+function remember(set: Set<string>, name: unknown, namespace?: string): void {
+  if (typeof name !== 'string' || name.length === 0) return;
+  for (const alias of toolAliases(name, namespace)) set.add(alias);
+}
+
+function sanitizeToolList(tools: unknown, state: ToolCatalogState, namespace?: string): void {
   if (!Array.isArray(tools)) return;
-  for (const tool of tools) {
-    const record = asRecord(tool);
-    if (record === undefined) continue;
-    if (record['type'] === 'namespace' && Array.isArray(record['tools'])) sanitizeTools(record['tools']);
-    if (record['type'] === 'function' && Object.hasOwn(record, 'parameters')) {
-      const normalized = normalizeXAIToolParameters(record['parameters']);
-      if (normalized !== undefined) record['parameters'] = normalized;
+  for (let index = tools.length - 1; index >= 0; index -= 1) {
+    const tool = asRecord(tools[index]);
+    if (tool === undefined) continue;
+    const type = tool['type'];
+    const name = tool['name'];
+    if (type === 'namespace') {
+      const childNamespace =
+        typeof name === 'string' ? (namespace === undefined ? name : `${namespace}__${name}`) : namespace;
+      sanitizeToolList(tool['tools'], state, childNamespace);
+      if (!Array.isArray(tool['tools']) || tool['tools'].length === 0) tools.splice(index, 1);
+      continue;
     }
+    if (type !== 'function' || !Object.hasOwn(tool, 'parameters')) {
+      remember(state.kept, name, namespace);
+      continue;
+    }
+    const parameters = normalizeXAIToolParameters(tool['parameters']);
+    if (parameters === undefined) {
+      remember(state.removed, name, namespace);
+      tools.splice(index, 1);
+      continue;
+    }
+    tool['parameters'] = parameters;
+    remember(state.kept, name, namespace);
   }
+}
+
+function wasOnlyRemoved(name: unknown, state: ToolCatalogState): boolean {
+  return typeof name === 'string' && state.removed.has(name) && !state.kept.has(name);
+}
+
+function hasTools(body: JsonObject): boolean {
+  if (Array.isArray(body['tools']) && body['tools'].length > 0) return true;
+  const input = body['input'];
+  return (
+    Array.isArray(input) &&
+    input.some((item) => {
+      const record = asRecord(item);
+      return record?.['type'] === 'additional_tools' && Array.isArray(record['tools']) && record['tools'].length > 0;
+    })
+  );
+}
+
+function resetToolChoice(body: JsonObject): void {
+  if (hasTools(body)) body['tool_choice'] = 'auto';
+  else Reflect.deleteProperty(body, 'tool_choice');
+}
+
+function sanitizeToolChoice(body: JsonObject, state: ToolCatalogState): void {
+  const choice = asRecord(body['tool_choice']);
+  if (choice === undefined) return;
+  if (choice['type'] === 'allowed_tools' && Array.isArray(choice['tools'])) {
+    choice['tools'] = choice['tools'].filter((entry) => !wasOnlyRemoved(asRecord(entry)?.['name'], state));
+    if (choice['tools'].length === 0) resetToolChoice(body);
+    return;
+  }
+  if (wasOnlyRemoved(choice['name'], state)) resetToolChoice(body);
 }
 
 function normalizeXAIToolParameters(value: unknown): JsonObject | undefined {
