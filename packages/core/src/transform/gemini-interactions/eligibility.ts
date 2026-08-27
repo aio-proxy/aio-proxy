@@ -161,6 +161,7 @@ function assertInput(input: GeminiInteractionsBody['input']): void {
     if (input.every(isStep)) {
       const calls = new Map<string, FunctionCallState>();
       for (const step of input) assertStep(step, calls);
+      rejectUnresolvedCalls(calls);
       return;
     }
     if (input.every((item) => isRecord(item) && !isStep(item))) {
@@ -186,9 +187,8 @@ function assertStep(step: Record<string, unknown>, calls: Map<string, FunctionCa
     return;
   }
   if (type === 'user_input') {
-    for (const call of calls.values()) {
-      if (!call.resolved) unsupported('input', 'input');
-    }
+    rejectUnresolvedCalls(calls);
+    calls.clear();
     assertTextContents(step['content']);
     return;
   }
@@ -199,6 +199,7 @@ function assertStep(step: Record<string, unknown>, calls: Map<string, FunctionCa
   }
   if (type === 'function_call') {
     assertFunctionCall(step);
+    if (![...calls.values()].some((call) => !call.resolved)) calls.clear();
     const id = step['id'] as string;
     if (calls.has(id)) unsupported('input', 'input');
     calls.set(id, { name: step['name'] as string, resolved: false });
@@ -221,6 +222,12 @@ function assertFunctionResult(step: Record<string, unknown>, calls: Map<string, 
   const authoredName = step['name'];
   if (authoredName !== undefined && authoredName !== call.name) unsupported('input', 'input');
   call.resolved = true;
+}
+
+function rejectUnresolvedCalls(calls: Map<string, FunctionCallState>): void {
+  for (const call of calls.values()) {
+    if (!call.resolved) unsupported('input', 'input');
+  }
 }
 
 function rejectPartialCallExchange(calls: Map<string, FunctionCallState>): void {

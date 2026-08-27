@@ -135,6 +135,29 @@ describe('geminiInteractionsToModelMessages', () => {
     ]);
   });
 
+  test('keeps later-exchange pending text after a completed prior call', () => {
+    const result = convert({
+      model: 'm',
+      store: false,
+      input: [
+        { type: 'function_call', id: 'a', name: 't', arguments: {} },
+        { type: 'function_result', call_id: 'a', result: 'A' },
+        { type: 'user_input', content: [{ type: 'text', text: 'next' }] },
+        { type: 'function_call', id: 'b', name: 'u', arguments: {} },
+        { type: 'model_output', content: [{ type: 'text', text: 'Hello' }] },
+        { type: 'function_result', call_id: 'b', result: 'B' },
+      ],
+    });
+    expect(result.messages.map((message) => message.role)).toEqual(['assistant', 'tool', 'user', 'assistant', 'tool']);
+    expect(result.messages[3]).toEqual({
+      role: 'assistant',
+      content: [
+        { type: 'tool-call', toolCallId: 'b', toolName: 'u', input: {} },
+        { type: 'text', text: 'Hello' },
+      ],
+    });
+  });
+
   test('groups consecutive parallel function calls and results', () => {
     const result = convert({
       model: 'm',
@@ -279,6 +302,26 @@ describe('geminiInteractionsToModelMessages', () => {
         model: 'm',
         store: false,
         input: [{ type: 'function_call', id: 'c1', name: ' ', arguments: {} }],
+      },
+      'input',
+    ],
+    [
+      {
+        model: 'm',
+        store: false,
+        input: [{ type: 'function_call', id: 'c1', name: 't', arguments: {} }],
+      },
+      'input',
+    ],
+    [
+      {
+        model: 'm',
+        store: false,
+        input: [
+          { type: 'function_call', id: 'a', name: 't', arguments: {} },
+          { type: 'function_call', id: 'b', name: 'u', arguments: {} },
+          { type: 'function_result', call_id: 'a', result: 'A' },
+        ],
       },
       'input',
     ],
