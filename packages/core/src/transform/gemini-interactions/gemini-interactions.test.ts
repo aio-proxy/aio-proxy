@@ -101,6 +101,40 @@ describe('geminiInteractionsToModelMessages', () => {
     });
   });
 
+  test('keeps intervening model_output and thought on the pending function-call turn', () => {
+    const result = convert({
+      model: 'm',
+      store: false,
+      input: [
+        { type: 'function_call', id: 'c1', name: 't', arguments: { a: 1 } },
+        { type: 'thought', summary: [{ type: 'text', text: 'plan' }] },
+        { type: 'model_output', content: [{ type: 'text', text: 'Hello' }] },
+        { type: 'function_result', call_id: 'c1', result: 'A' },
+      ],
+    });
+    expect(result.messages).toEqual([
+      {
+        role: 'assistant',
+        content: [
+          { type: 'tool-call', toolCallId: 'c1', toolName: 't', input: { a: 1 } },
+          { type: 'reasoning', text: 'plan' },
+          { type: 'text', text: 'Hello' },
+        ],
+      },
+      {
+        role: 'tool',
+        content: [
+          {
+            type: 'tool-result',
+            toolCallId: 'c1',
+            toolName: 't',
+            output: { type: 'text', value: 'A' },
+          },
+        ],
+      },
+    ]);
+  });
+
   test('groups consecutive parallel function calls and results', () => {
     const result = convert({
       model: 'm',
@@ -188,6 +222,7 @@ describe('geminiInteractionsToModelMessages', () => {
     ],
     [{ model: 'm', input: 'x', store: false, tools: [{ google_search: {} }] }, 'tools'],
     [{ model: 'm', input: 'x', store: false, tools: [{ name: '' }] }, 'tools'],
+    [{ model: 'm', input: 'x', store: false, tools: [{ name: ' ' }] }, 'tools'],
     [{ model: 'm', input: 'x', store: false, tools: [{ name: 't', parameters: 'not-json' }] }, 'tools'],
     [
       {
@@ -228,6 +263,22 @@ describe('geminiInteractionsToModelMessages', () => {
           { type: 'user_input', content: [{ type: 'text', text: 'hi' }] },
           { type: 'function_call', name: 't' },
         ],
+      },
+      'input',
+    ],
+    [
+      {
+        model: 'm',
+        store: false,
+        input: [{ type: 'function_call', id: ' ', name: 't', arguments: {} }],
+      },
+      'input',
+    ],
+    [
+      {
+        model: 'm',
+        store: false,
+        input: [{ type: 'function_call', id: 'c1', name: ' ', arguments: {} }],
       },
       'input',
     ],

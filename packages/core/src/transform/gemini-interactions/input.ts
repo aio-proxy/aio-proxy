@@ -49,6 +49,10 @@ function stepMessages(steps: readonly unknown[]): readonly ModelMessage[] {
       previous = 'result';
       continue;
     }
+    if (previous === 'call' && (step['type'] === 'model_output' || step['type'] === 'thought')) {
+      appendPendingCallContent(messages, step);
+      continue;
+    }
     previous = undefined;
     const message = stepMessage(step);
     if (message !== undefined) messages.push(message);
@@ -92,6 +96,15 @@ function functionResultPart(step: Record<string, unknown>, toolNames: Map<string
     toolName: name,
     output: toolOutput(step['result']),
   };
+}
+
+function appendPendingCallContent(messages: ModelMessage[], step: Record<string, unknown>): void {
+  const last = messages.at(-1);
+  if (last?.role !== 'assistant' || !Array.isArray(last.content)) return;
+  const text = step['type'] === 'thought' ? textFromContents(step['summary']) : textFromContents(step['content']);
+  if (text === undefined) return;
+  const part = step['type'] === 'thought' ? { type: 'reasoning' as const, text } : { type: 'text' as const, text };
+  messages[messages.length - 1] = { ...last, content: [...last.content, part] };
 }
 
 function appendAssistantToolCall(

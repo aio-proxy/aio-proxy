@@ -144,7 +144,7 @@ function assertTools(value: GeminiInteractionsBody['tools']): void {
 }
 
 function isFunctionTool(value: unknown): boolean {
-  if (!isRecord(value) || typeof value['name'] !== 'string' || value['name'] === '') return false;
+  if (!isRecord(value) || typeof value['name'] !== 'string' || isEmptyIdentifier(value['name'])) return false;
   if (Object.keys(value).some((key) => !FUNCTION_TOOL_KEYS.has(key))) return false;
   const type = value['type'];
   if (type !== undefined && type !== 'function') return false;
@@ -199,13 +199,13 @@ function assertStep(step: Record<string, unknown>, calls: Map<string, FunctionCa
 }
 
 function assertFunctionCall(step: Record<string, unknown>): void {
-  if (typeof step['id'] !== 'string' || step['id'] === '') unsupported('input', 'input');
-  if (typeof step['name'] !== 'string' || step['name'] === '') unsupported('input', 'input');
+  if (typeof step['id'] !== 'string' || isEmptyIdentifier(step['id'])) unsupported('input', 'input');
+  if (typeof step['name'] !== 'string' || isEmptyIdentifier(step['name'])) unsupported('input', 'input');
   if (step['arguments'] !== undefined && !isRecord(step['arguments'])) unsupported('input', 'input');
 }
 
 function assertFunctionResult(step: Record<string, unknown>, calls: Map<string, FunctionCallState>): void {
-  if (typeof step['call_id'] !== 'string' || step['call_id'] === '') unsupported('input', 'input');
+  if (typeof step['call_id'] !== 'string' || isEmptyIdentifier(step['call_id'])) unsupported('input', 'input');
   if (!('result' in step)) unsupported('input', 'input');
   const call = calls.get(step['call_id']);
   if (call === undefined || call.resolved) unsupported('input', 'input');
@@ -248,6 +248,10 @@ function isStep(value: unknown): value is Record<string, unknown> {
 
 function unsupported(feature: string, path: string): never {
   throw new GeminiInteractionsUnsupportedFeatureError(feature, path);
+}
+
+function isEmptyIdentifier(value: string): boolean {
+  return value.trim() === '';
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
