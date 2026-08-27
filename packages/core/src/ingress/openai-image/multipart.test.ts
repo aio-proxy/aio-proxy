@@ -4,6 +4,7 @@ import { RequestBodyTooLargeError, UnsupportedContentEncodingError } from '../..
 import {
   assertEditsMultipartCounters,
   EDITS_MULTIPART_ENCODED_LIMIT,
+  EDITS_MULTIPART_NON_FILE_LIMIT,
   parseOpenAIImageEditsMultipart,
 } from './multipart';
 import { parseMultipartStream } from './multipart-stream';
@@ -312,14 +313,14 @@ test('rejects an unsupported multipart content encoding before parsing', async (
   ).rejects.toBeInstanceOf(UnsupportedContentEncodingError);
 });
 
-test('leaves the original multipart body unread after parse', async () => {
+test('consumes the inbound multipart body into a spool instead of leaving a tee unread', async () => {
   const raw = editsMultipartRequest({
     prompt: 'make it night',
     image: blobFrom(PNG_1X1_RGBA),
   });
   const parsed = await parseOpenAIImageEditsMultipart(raw);
   expect(parsed.prompt).toBe('make it night');
-  expect(raw.bodyUsed).toBe(false);
+  expect(raw.bodyUsed).toBe(true);
 });
 
 test('keeps preamble line-start context when a false boundary is split before its suffix', async () => {
@@ -403,6 +404,38 @@ test('413s an encoded epilogue that exceeds the official-max envelope', async ()
   ]);
   const over = EDITS_MULTIPART_ENCODED_LIMIT - prefix.byteLength + 1;
   const chunk = new Uint8Array(1024 * 1024);
+  let sent = 0;
+  let prefixSent = false;
+  const stream = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      if (!prefixSent) {
+        prefixSent = true;
+        controller.enqueue(prefix);
+        return;
+      }
+      if (sent < over) {
+        const next = Math.min(chunk.byteLength, over - sent);
+        sent += next;
+        controller.enqueue(next === chunk.byteLength ? chunk : chunk.subarray(0, next));
+        return;
+      }
+      controller.close();
+    },
+  });
+  await expect(parseMultipartStream(stream, boundary)).rejects.toBeInstanceOf(RequestBodyTooLargeError);
+});
+
+test('413s a MIME epilogue that exceeds the 1 MiB non-file budget', async () => {
+  const boundary = 'bound';
+  const prefix = Buffer.concat([
+    Buffer.from(
+      `--${boundary}\r\nContent-Disposition: form-data; name="prompt"\r\n\r\nmake it night\r\n--${boundary}\r\nContent-Disposition: form-data; name="image"; filename="cat.bin"\r\nContent-Type: application/octet-stream\r\n\r\n`,
+    ),
+    Buffer.from(PNG_1X1_RGBA),
+    Buffer.from(`\r\n--${boundary}--\r\n`),
+  ]);
+  const over = EDITS_MULTIPART_NON_FILE_LIMIT + 1;
+  const chunk = new Uint8Array(64 * 1024);
   let sent = 0;
   let prefixSent = false;
   const stream = new ReadableStream<Uint8Array>({

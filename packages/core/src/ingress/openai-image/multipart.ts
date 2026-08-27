@@ -1,5 +1,6 @@
 import { abortError, decodedRequestStream, type RequestBodyLimits } from '../../protocol/request';
 import { EDITS_MULTIPART_ENCODED_LIMIT } from './multipart-counters';
+import { retainMultipartSpool, spoolMultipartBody, type MultipartSpool } from './multipart-spool';
 import { parseMultipartStream } from './multipart-stream';
 import { parseOpenAIImageGenerations, type OpenAIImageRequest } from './openai-image';
 
@@ -7,6 +8,8 @@ const MULTIPART_DECODE_LIMITS = Object.freeze({
   encoded: EDITS_MULTIPART_ENCODED_LIMIT,
   decoded: EDITS_MULTIPART_ENCODED_LIMIT,
 }) satisfies RequestBodyLimits;
+
+export { replaySpooledMultipartRaw } from './multipart-spool';
 
 export {
   EDITS_MULTIPART_AGGREGATE_LIMIT,
@@ -38,14 +41,22 @@ export async function parseOpenAIImageEditsMultipart(
   if (boundary === undefined) throw new SyntaxError('Invalid OpenAI Images multipart request');
   const idleTimeoutMs = options?.idleTimeoutMs ?? MULTIPART_IDLE_TIMEOUT_MS;
   await acquireMultipartSlot(raw.signal);
-  const branch = raw.clone();
+  let spool: MultipartSpool | undefined;
   try {
-    const body = await decodedRequestStream(branch, MULTIPART_DECODE_LIMITS, {
+    spool = await spoolMultipartBody(raw, idleTimeoutMs);
+    const replay = new Request(raw.url, {
+      method: raw.method,
+      headers: raw.headers,
+      body: Bun.file(spool.path),
+      signal: raw.signal,
+    });
+    const body = await decodedRequestStream(replay, MULTIPART_DECODE_LIMITS, {
       signal: raw.signal,
       idleTimeoutMs,
     });
     const { fields, uploads, maskUpload } = await parseMultipartStream(body, boundary, raw.signal, idleTimeoutMs);
     if (uploads.length === 0) throw new SyntaxError('Invalid OpenAI Images multipart request');
+    retainMultipartSpool(raw, spool);
     return {
       ...parseOpenAIImageGenerations(generationsInputFromFields(fields)),
       uploads,
@@ -53,7 +64,7 @@ export async function parseOpenAIImageEditsMultipart(
       formFields: fields,
     };
   } catch (error) {
-    void branch.body?.cancel(error).catch(() => undefined);
+    await spool?.unlink();
     void raw.body?.cancel(error).catch(() => undefined);
     throw error;
   } finally {

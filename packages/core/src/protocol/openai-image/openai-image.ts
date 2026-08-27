@@ -5,6 +5,7 @@ import {
   parseOpenAIImageEdits,
   parseOpenAIImageEditsMultipart,
   parseOpenAIImageGenerations,
+  replaySpooledMultipartRaw,
   stripOneProviderPrefix,
   type OpenAIImageRequest,
   type OpenAIImageUpload,
@@ -93,7 +94,7 @@ export const openAIImagesAdapter = defineImageProtocolAdapter<OpenAIImageRequest
   async rawRequest(raw, request, resolvedModel, _supportedEfforts, context) {
     const rewrite = request.modelDefaulted || request.clientModel !== resolvedModel;
     if (isMultipartRequest(raw)) {
-      if (!rewrite) return raw.clone();
+      if (!rewrite) return replaySpooledMultipartRaw(raw);
       return rewriteMultipartRawRequest(raw, request, resolvedModel);
     }
     if (!rewrite) return raw.clone();

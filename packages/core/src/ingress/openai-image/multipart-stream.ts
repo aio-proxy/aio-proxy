@@ -101,6 +101,9 @@ export async function parseMultipartStream(
         const head = window.bytes();
         if (head[0] === 45 && head[1] === 45) {
           addFraming(2);
+          window.consume(2);
+          addFraming(window.byteLength);
+          window.consume(window.byteLength);
           state = 'done';
           continue;
         }
@@ -162,7 +165,7 @@ export async function parseMultipartStream(
       window.consume(nextBoundary.byteLength);
       state = 'afterBoundary';
     }
-    await drainEncodedRemainder(reader, encoded, signal, idleTimeoutMs);
+    await drainEncodedRemainder(reader, encoded, addFraming, signal, idleTimeoutMs);
   } catch (error) {
     void reader.cancel(error).catch(() => undefined);
     throw error;
@@ -223,6 +226,7 @@ async function scanPreamble(
 async function drainEncodedRemainder(
   reader: ReadableStreamDefaultReader<Uint8Array>,
   encoded: number,
+  addFraming: (bytes: number) => void,
   signal: AbortSignal | undefined,
   idleTimeoutMs: number,
 ): Promise<void> {
@@ -232,6 +236,7 @@ async function drainEncodedRemainder(
     const total = encoded + next.value.byteLength;
     if (total > EDITS_MULTIPART_ENCODED_LIMIT) throw tooLarge();
     encoded = total;
+    addFraming(next.value.byteLength);
   }
 }
 

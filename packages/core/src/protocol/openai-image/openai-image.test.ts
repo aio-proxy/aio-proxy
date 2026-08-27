@@ -487,7 +487,7 @@ test('forwards explicit same-id multipart raw bytes without a FormData rebuild',
   const request = await openAIImagesAdapter.parse(raw, edits);
   expect(request.model).toBe('gpt-image-2');
   expect(request.modelDefaulted).toBe(false);
-  expect(raw.bodyUsed).toBe(false);
+  expect(raw.bodyUsed).toBe(true);
   const forwarded = await openAIImagesAdapter.rawRequest(raw, request, 'gpt-image-2', new Set(), edits);
   expect(forwarded.headers.get('content-type')).toBe(`multipart/form-data; boundary=${boundary}`);
   expect(forwarded.headers.get('content-md5')).toBe('abc');
@@ -579,8 +579,9 @@ test('multipart literal null with no alias stays null on raw and convert lookup'
     const forwarded = await openAIImagesAdapter.rawRequest(raw, request, 'null', new Set(), edits);
     expect(parsedJson).toBe(false);
     expect(forwarded.headers.get('content-type') ?? '').toStartWith('multipart/form-data');
-    const form = await forwarded.formData();
-    expect(form.get('model')).toBe('null');
+    const text = await forwarded.text();
+    expect(text).toContain('name="model"');
+    expect(text).toContain('\r\n\r\nnull\r\n');
   } finally {
     JSON.parse = original;
   }
