@@ -142,11 +142,17 @@ function isContentEncoding(value: string): value is ContentEncoding {
 
 type ContentDecoder = BrotliDecompress | Gunzip | Inflate | InflateRaw | ZstdDecompress;
 
+const PENDING_HIGH_WATER = 64 * 1024;
+const PENDING_LOW_WATER = 16 * 1024;
+
 type DecoderSession = {
   decoder: ContentDecoder;
   error?: unknown;
   pending: Uint8Array[];
+  pendingBytes: number;
   decoded: number;
+  paused: boolean;
+  notify?: () => void;
 };
 
 function streamDecodeRequestBody(
@@ -159,8 +165,9 @@ function streamDecodeRequestBody(
   if (reader === undefined) throw new InvalidCompressedRequestBodyError('Invalid compressed request body');
   const session = bindDecoder(createContentDecoder(encoding, limits.decoded), limits);
   let encoded = 0;
-  let sourceDone = false;
   let finished = false;
+  let pumping: Promise<void> | undefined;
+  let pumpError: unknown;
   let deflateFallbackUsed = false;
   const deflatePrefix: Uint8Array[] = [];
 
@@ -185,43 +192,52 @@ function streamDecodeRequestBody(
     }
   };
 
-  return new ReadableStream<Uint8Array>({
-    async pull(controller) {
-      try {
-        while (session.pending.length === 0 && !finished) {
-          if (!sourceDone) {
-            const next =
-              options?.idleTimeoutMs === undefined
-                ? await reader.read()
-                : await withAbortAndIdle(reader.read(), options.signal, options.idleTimeoutMs);
-            if (next.done) {
-              sourceDone = true;
-              try {
-                await awaitDecoder(endDecoder(session));
-              } catch (error) {
-                if (
-                  encoding === 'deflate' &&
-                  !deflateFallbackUsed &&
-                  session.decoded === 0 &&
-                  errorCode(error) === 'Z_DATA_ERROR'
-                ) {
-                  deflateFallbackUsed = true;
-                  rebindDecoder(session, createInflateRaw({ maxOutputLength: limits.decoded }), limits);
-                  for (const part of deflatePrefix) await awaitDecoder(writeDecoder(session, part));
-                  await awaitDecoder(endDecoder(session));
-                } else {
-                  throw mapDecodeError(error);
-                }
-              }
-              finished = true;
-              continue;
+  const pump = async (): Promise<void> => {
+    try {
+      for (;;) {
+        const next =
+          options?.idleTimeoutMs === undefined
+            ? await reader.read()
+            : await withAbortAndIdle(reader.read(), options.signal, options.idleTimeoutMs);
+        if (next.done) {
+          try {
+            await awaitDecoder(endDecoder(session));
+          } catch (error) {
+            if (
+              encoding !== 'deflate' ||
+              deflateFallbackUsed ||
+              session.decoded > 0 ||
+              errorCode(error) !== 'Z_DATA_ERROR'
+            ) {
+              throw mapDecodeError(error);
             }
-            await writeEncoded(next.value);
-            continue;
+            deflateFallbackUsed = true;
+            rebindDecoder(session, createInflateRaw({ maxOutputLength: limits.decoded }), limits);
+            for (const part of deflatePrefix) await awaitDecoder(writeDecoder(session, part));
+            await awaitDecoder(endDecoder(session));
           }
           finished = true;
+          wakeDecoder(session);
+          return;
         }
-        const next = session.pending.shift();
+        await writeEncoded(next.value);
+      }
+    } catch (error) {
+      pumpError = mapDecodeError(error);
+      session.decoder.destroy();
+      wakeDecoder(session);
+    }
+  };
+
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      pumping ??= pump();
+      try {
+        while (session.pending.length === 0 && pumpError === undefined && !finished) {
+          await waitForPending(session, () => finished || pumpError !== undefined);
+        }
+        if (pumpError !== undefined) throw pumpError;
+        const next = dequeuePending(session);
         if (next !== undefined) {
           controller.enqueue(next);
           return;
@@ -257,7 +273,7 @@ function createContentDecoder(encoding: ContentEncoding, maxOutputLength: number
 }
 
 function bindDecoder(decoder: ContentDecoder, limits: RequestBodyLimits): DecoderSession {
-  const session: DecoderSession = { decoder, pending: [], decoded: 0 };
+  const session: DecoderSession = { decoder, pending: [], pendingBytes: 0, decoded: 0, paused: false };
   attachDecoderListeners(session, limits);
   return session;
 }
@@ -267,6 +283,7 @@ function rebindDecoder(session: DecoderSession, decoder: ContentDecoder, limits:
   session.decoder.destroy();
   session.decoder = decoder;
   session.error = undefined;
+  session.paused = false;
   attachDecoderListeners(session, limits);
 }
 
@@ -276,13 +293,49 @@ function attachDecoderListeners(session: DecoderSession, limits: RequestBodyLimi
     if (session.decoded > limits.decoded) {
       session.error = new RequestBodyTooLargeError('Request body too large');
       session.decoder.destroy();
+      wakeDecoder(session);
       return;
     }
     session.pending.push(Uint8Array.from(chunk));
+    session.pendingBytes += chunk.byteLength;
+    if (session.pendingBytes >= PENDING_HIGH_WATER) {
+      session.paused = true;
+      session.decoder.pause();
+    }
+    wakeDecoder(session);
   });
   session.decoder.on('error', (error: Error) => {
     session.error ??= error;
+    wakeDecoder(session);
   });
+}
+
+function dequeuePending(session: DecoderSession): Uint8Array | undefined {
+  const next = session.pending.shift();
+  if (next === undefined) return undefined;
+  session.pendingBytes -= next.byteLength;
+  if (session.paused && session.pendingBytes <= PENDING_LOW_WATER) {
+    session.paused = false;
+    session.decoder.resume();
+  }
+  return next;
+}
+
+function waitForPending(session: DecoderSession, isIdle: () => boolean): Promise<void> {
+  if (session.pending.length > 0 || session.error !== undefined || isIdle()) return Promise.resolve();
+  return new Promise((resolve) => {
+    session.notify = resolve;
+    if (session.pending.length > 0 || session.error !== undefined || isIdle()) {
+      session.notify = undefined;
+      resolve();
+    }
+  });
+}
+
+function wakeDecoder(session: DecoderSession): void {
+  const notify = session.notify;
+  session.notify = undefined;
+  notify?.();
 }
 
 function writeDecoder(session: DecoderSession, chunk: Uint8Array): Promise<void> {

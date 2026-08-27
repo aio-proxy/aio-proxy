@@ -232,6 +232,19 @@ test('decodedRequestStream gunzips without buffering the decoded payload first',
   expect(new TextDecoder().decode(bytes)).toBe('{"ok":true}');
 });
 
+test('decodedRequestStream yields the first gzip chunk before buffering the full expansion', async () => {
+  const decoded = Buffer.alloc(256 * 1024, 0x61);
+  const encoded = Bun.gzipSync(decoded);
+  const stream = await decodedRequestStream(encodedRequest('gzip', encoded), {
+    encoded: encoded.byteLength,
+    decoded: decoded.byteLength,
+  });
+  const first = await stream!.getReader().read();
+  expect(first.done).toBe(false);
+  expect(first.value?.byteLength ?? 0).toBeGreaterThan(0);
+  expect(first.value?.byteLength ?? 0).toBeLessThan(decoded.byteLength);
+});
+
 test('decodedRequestStream drains gzip output that exceeds zlib highWaterMark', async () => {
   const decoded = Buffer.alloc(64 * 1024, 0x61);
   const encoded = Bun.gzipSync(decoded);
