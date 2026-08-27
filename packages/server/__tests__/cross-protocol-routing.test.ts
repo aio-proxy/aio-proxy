@@ -8,7 +8,12 @@ import { ProviderKind, ProviderProtocol } from '@aio-proxy/types';
 
 import { createServer } from '#server-test-lifecycle';
 
-import type { RuntimeProviderInstance } from '../src/runtime';
+import type {
+  ImageTransport,
+  ImageTransportInvokeRequest,
+  ModelCapabilityIndex,
+  RuntimeProviderInstance,
+} from '../src/runtime';
 import { recorded } from './trace-recording.test-support';
 
 const protocols = [
@@ -217,8 +222,240 @@ describe('cross-protocol HTTP routing', () => {
   });
 });
 
+const IMAGES_PATH = '/v1/images/generations';
+const IMAGES_NOT_IMPLEMENTED = 'No configured provider can generate images for this model';
+const IMAGE_METADATA = { capabilities: { modalities: { output: ['image'] as const } } };
+
+describe('openai-image inbound', () => {
+  test('image-only catalog.image id is 200 on Images and not 404', async () => {
+    const fixture = imageConvertProvider('catalog', 'gpt-image-2', { capabilities: ['image'] });
+    const response = await requestImages({ model: 'gpt-image-2', prompt: 'a cat' }, [fixture.value]);
+
+    expect(response.status).toBe(200);
+    expect(response.status).not.toBe(404);
+    expect(fixture.calls.image).toBe(1);
+    expect(await response.json()).toMatchObject({ data: [{ b64_json: expect.any(String) }] });
+  });
+
+  test('image-only catalog id is filtered from chat completions and does not invoke image', async () => {
+    const fixture = imageConvertProvider('catalog', 'gpt-image-2', { capabilities: ['image'] });
+    const app = await createServer({
+      config: { providers: {} },
+      dbHome: tempHome(),
+      providerInstances: [fixture.value],
+    });
+    const response = await app.request('/v1/chat/completions', {
+      body: JSON.stringify({ model: 'gpt-image-2', messages: [{ role: 'user', content: 'hello' }] }),
+      headers: { 'content-type': 'application/json' },
+      method: 'POST',
+    });
+
+    expect([404, 501]).toContain(response.status);
+    expect(response.status).not.toBe(200);
+    expect(fixture.calls.image).toBe(0);
+  });
+
+  test('dummy V4 imageModel with language-only catalog is skipped and does not invoke', async () => {
+    const fixture = imageConvertProvider('dummy', 'gpt-5', { capabilities: ['language'] });
+    const response = await requestImages({ model: 'gpt-5', prompt: 'a cat' }, [fixture.value]);
+
+    expect(response.status).toBe(501);
+    expect(fixture.calls.image).toBe(0);
+  });
+
+  test('documented example routes omitted-model generations to gpt-image-2', async () => {
+    const fixture = documentedImageProvider(['gpt-image-2', 'dall-e-2', 'gpt-image-1.5']);
+    const response = await requestImages({ prompt: 'a cat' }, [fixture.value]);
+
+    expect(response.status).toBe(200);
+    expect(fixture.calls.raw).toBe(1);
+    expect(fixture.rawBodies[0]).toMatchObject({ model: 'gpt-image-2', prompt: 'a cat' });
+  });
+
+  test('same documented provider without gpt-image-2 404s the CPA default', async () => {
+    const fixture = documentedImageProvider(['dall-e-2', 'gpt-image-1.5']);
+    const response = await requestImages({ prompt: 'a cat' }, [fixture.value]);
+
+    expect(response.status).toBe(404);
+    expect(fixture.calls.raw).toBe(0);
+  });
+
+  test('sibling gpt-5 in models is not image-capable unless metadata says so', async () => {
+    const fixture = documentedImageProvider(['gpt-5', 'gpt-image-2'], {
+      metadataIds: ['gpt-image-2'],
+    });
+
+    const sibling = await requestImages({ model: 'gpt-5', prompt: 'a cat' }, [fixture.value]);
+    const image = await requestImages({ model: 'gpt-image-2', prompt: 'a cat' }, [fixture.value]);
+
+    expect(sibling.status).toBe(501);
+    expect(image.status).toBe(200);
+    expect(fixture.calls.raw).toBe(1);
+    expect(fixture.rawBodies[0]).toMatchObject({ model: 'gpt-image-2' });
+  });
+
+  test('non-catalog openai-image endpoint without finite ids does not wildcard-route', async () => {
+    const fixture = documentedImageProvider([]);
+    const omitted = await requestImages({ prompt: 'a cat' }, [fixture.value]);
+    const explicit = await requestImages({ model: 'gpt-image-2', prompt: 'a cat' }, [fixture.value]);
+
+    expect(omitted.status).toBe(404);
+    expect(explicit.status).toBe(404);
+    expect(fixture.calls.raw).toBe(0);
+  });
+
+  test('same-protocol openai-image uses raw and chat-protocol providers do not raw-receive Images', async () => {
+    const images = documentedImageProvider(['gpt-image-2']);
+    const chat = provider(ProviderProtocol.OpenAICompatible, 'chat');
+    const response = await requestImages({ model: 'gpt-image-2', prompt: 'a cat' }, [images.value, chat.value]);
+
+    expect(response.status).toBe(200);
+    expect(images.calls.raw).toBe(1);
+    expect(chat.calls.raw).toBe(0);
+    expect(chat.calls.model).toBe(0);
+  });
+
+  test('all-filtered eligible set returns 501 images not-found message, not 404', async () => {
+    const languageOnly = provider(ProviderProtocol.OpenAICompatible, 'chat');
+    const response = await requestImages({ model: 'm', prompt: 'a cat' }, [languageOnly.value]);
+    const body = await response.json();
+
+    expect(response.status).toBe(501);
+    expect(response.status).not.toBe(404);
+    expect(body).toMatchObject({
+      error: { code: 'not_implemented', message: IMAGES_NOT_IMPLEMENTED },
+    });
+  });
+
+  test('usage records imageCount', async () => {
+    const home = tempHome();
+    const fixture = imageConvertProvider('convert', 'gpt-image-2', {
+      capabilities: ['image'],
+      images: [new Uint8Array([1]), new Uint8Array([2])],
+    });
+    const response = await requestImages({ model: 'gpt-image-2', prompt: 'a cat' }, [fixture.value], home);
+    const body = (await response.json()) as { data?: readonly unknown[] };
+
+    expect(response.status).toBe(200);
+    expect(body.data).toHaveLength(2);
+    expect(fixture.calls.image).toBe(1);
+    const { requests } = await recorded(home);
+    expect(requests[0]).toMatchObject({
+      inboundProtocol: 'openai-image',
+      outcome: 'success',
+      finalProviderId: 'convert',
+      finalModelId: 'gpt-image-2',
+    });
+  });
+
+  test('POST /v1/images/variations stays 404', async () => {
+    const fixture = documentedImageProvider(['gpt-image-2']);
+    const app = await createServer({
+      config: { providers: {} },
+      dbHome: tempHome(),
+      providerInstances: [fixture.value],
+    });
+    const response = await app.request('/v1/images/variations', {
+      body: JSON.stringify({ model: 'gpt-image-2', prompt: 'a cat' }),
+      headers: { 'content-type': 'application/json' },
+      method: 'POST',
+    });
+
+    expect(response.status).toBe(404);
+    expect(fixture.calls.raw).toBe(0);
+  });
+
+  test('language inbound does not call image convert', async () => {
+    const imageCalls: ImageTransportInvokeRequest[] = [];
+    const fixture = provider(ProviderProtocol.Anthropic, 'cross');
+    const response = await request(inboundCases[0], [
+      {
+        ...fixture.value,
+        image: {
+          async invoke(request: ImageTransportInvokeRequest) {
+            imageCalls.push(request);
+            return { images: [new Uint8Array([1])] };
+          },
+        },
+      },
+    ]);
+
+    expect(response.status).toBe(200);
+    expect(imageCalls).toHaveLength(0);
+    expect(fixture.calls.model).toBe(1);
+  });
+});
+
 type InboundCase = (typeof inboundCases)[number];
 type Calls = { model: number; raw: number };
+type ImageCalls = { image: number; raw: number };
+
+function imageConvertProvider(
+  id: string,
+  modelId: string,
+  options: {
+    readonly capabilities: readonly ('image' | 'language')[];
+    readonly images?: readonly Uint8Array[];
+  },
+): { readonly calls: ImageCalls; readonly value: RuntimeProviderInstance } {
+  const calls: ImageCalls = { image: 0, raw: 0 };
+  const invoke: ImageTransport['invoke'] = async () => {
+    calls.image += 1;
+    return { images: options.images ?? [new Uint8Array([1, 2, 3])] };
+  };
+  return {
+    calls,
+    value: {
+      capabilityIndex: { [modelId]: new Set(options.capabilities) },
+      enabled: true,
+      id,
+      image: { invoke },
+      kind: ProviderKind.AiSdk,
+      models: [modelId],
+    } satisfies RuntimeProviderInstance,
+  };
+}
+
+function documentedImageProvider(
+  models: readonly string[],
+  options: { readonly metadataIds?: readonly string[] } = {},
+): {
+  readonly calls: ImageCalls;
+  readonly rawBodies: unknown[];
+  readonly value: RuntimeProviderInstance;
+} {
+  const calls: ImageCalls = { image: 0, raw: 0 };
+  const rawBodies: unknown[] = [];
+  const metadataIds = options.metadataIds ?? models;
+  const raw = async (request: Request) => {
+    calls.raw += 1;
+    rawBodies.push(await request.clone().json());
+    return Response.json({ created: 1, data: [{ b64_json: 'YQ==' }] });
+  };
+  const capabilityIndex: ModelCapabilityIndex = Object.fromEntries(
+    models.map((modelId) => [
+      modelId,
+      new Set(metadataIds.includes(modelId) ? (['image'] as const) : (['language'] as const)),
+    ]),
+  );
+  return {
+    calls,
+    rawBodies,
+    value: {
+      capabilityIndex,
+      configMetadata: Object.fromEntries(metadataIds.map((modelId) => [modelId, IMAGE_METADATA])),
+      enabled: true,
+      endpointTransports: [{ protocol: ProviderProtocol.OpenAIImage, passthrough: raw }],
+      id: 'openai',
+      kind: ProviderKind.Api,
+      models,
+      protocol: ProviderProtocol.OpenAIResponse,
+      raw: {
+        resolve: ({ protocol }) => (protocol === ProviderProtocol.OpenAIImage ? { invoke: raw } : undefined),
+      },
+    } satisfies ApiProviderInstance & RuntimeProviderInstance,
+  };
+}
 
 async function runAntigravityMatrixCase(
   protocol: ProviderProtocol,
@@ -248,6 +485,7 @@ function antigravityProvider(rawAvailable: boolean): {
     value: {
       alias: { m: { model: 'm', preserve: false } },
       capability: 'default',
+      capabilityIndex: { m: new Set(['language']) },
       enabled: true,
       id: 'antigravity',
       kind: ProviderKind.OAuth,
@@ -277,6 +515,7 @@ function provider(
     value: {
       alias: { m: { model: 'm', preserve: false } },
       baseURL: `https://${id}.example.test`,
+      capabilityIndex: { m: new Set(['language']) },
       enabled: true,
       endpointTransports: [{ protocol, passthrough: raw }],
       id,
@@ -325,15 +564,24 @@ async function request(inbound: InboundCase, providers: readonly RuntimeProvider
   });
 }
 
+async function requestImages(
+  body: Record<string, unknown>,
+  providers: readonly RuntimeProviderInstance[],
+  dbHome?: string,
+) {
+  return requestPath(IMAGES_PATH, body, providers, 'POST', dbHome);
+}
+
 async function requestPath(
   path: string,
   body: unknown,
   providers: readonly RuntimeProviderInstance[],
   method: string = 'POST',
+  dbHome?: string,
 ) {
   const app = await createServer({
     config: { providers: {} },
-    dbHome: tempHome(),
+    dbHome: dbHome ?? tempHome(),
     providerInstances: providers,
   });
   return app.request(path, {

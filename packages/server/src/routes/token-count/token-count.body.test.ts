@@ -132,6 +132,7 @@ function countFixture(providers: readonly RuntimeProviderInstance[]) {
 function countProvider(countTokens: TokenCountCapability['countTokens']): RuntimeProviderInstance {
   return {
     alias: { 'count-model': { model: 'count-wire', preserve: false } },
+    capabilityIndex: { 'count-wire': new Set(['language']) },
     enabled: true,
     id: 'counter',
     kind: ProviderKind.OAuth,

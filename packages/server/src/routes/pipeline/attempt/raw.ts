@@ -16,6 +16,7 @@ export async function attemptRawCandidate<TRequest, TContext>(
   ctx: AttemptLoopContext<TRequest, TContext>,
   slot: CandidateSlot,
   raw: RawTransport,
+  options: { readonly idleTimeoutMs?: number } = {},
 ): Promise<AttemptStep> {
   const { adapter, context, rawRequest, request } = ctx;
   const attemptSpan = startRawAttempt(ctx, slot);
@@ -26,7 +27,7 @@ export async function attemptRawCandidate<TRequest, TContext>(
     slot.candidate.modelId,
   );
   const upstream = await adapter.rawRequest(rawRequest, request, slot.candidate.modelId, supportedEfforts, context);
-  return await completeRawAttempt(ctx, slot, raw, upstream, attemptSpan);
+  return await completeRawAttempt(ctx, slot, raw, upstream, attemptSpan, options);
 }
 
 // Opens the attempt span before the rewritten request is built, so the span
@@ -53,6 +54,7 @@ export async function completeRawAttempt<TRequest, TContext>(
   raw: RawTransport,
   upstream: Request,
   attemptSpan: OpenSpan,
+  options: { readonly idleTimeoutMs?: number } = {},
 ): Promise<AttemptStep> {
   const { adapter, rawRequest, session, source, logicalRequest, release, deferRelease, logFailure } = ctx;
   const { index, candidate, startedAt, observation, hasNext, inAttempt } = slot;
@@ -96,6 +98,7 @@ export async function completeRawAttempt<TRequest, TContext>(
     observation,
     ...(configPrice === undefined ? {} : { configPrice }),
     ...(ctx.streamRequested ? { startedAt } : {}),
+    ...(options.idleTimeoutMs === undefined ? {} : { idleTimeoutMs: options.idleTimeoutMs }),
     ...(adapter.session === undefined
       ? {}
       : {

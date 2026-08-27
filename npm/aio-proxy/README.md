@@ -35,7 +35,7 @@ flowchart LR
 
 - **Plugin-based integrations**: Connect different model providers through plugins, including AI SDK Provider packages and OAuth accounts.
 - **Rich observability**: Track requests, token usage, cost, and complete request traces in one place.
-- **Major protocol support**: Accept OpenAI Chat Completions, OpenAI Responses, Anthropic Messages, and Gemini GenerateContent requests.
+- **Major protocol support**: Accept OpenAI Chat Completions, OpenAI Responses, OpenAI Images, Anthropic Messages, and Gemini GenerateContent requests.
 - **Multi-Provider routing**: Select candidates by model, Provider priority, and Provider weight, with model aliases, failover, and session affinity.
 - **Transparent protocol conversion**: Use raw passthrough for matching protocols and automatic conversion for cross-protocol requests.
 
@@ -269,22 +269,34 @@ Previously, Provider weight was a global fixed order: unique weights were tried 
 
 ## API
 
-| Protocol or purpose      | Method and path                                     |
-| ------------------------ | --------------------------------------------------- |
-| Health check             | `GET /health`                                       |
-| Model list               | `GET /v1/models`                                    |
-| OpenAI Chat Completions  | `POST /v1/chat/completions`                         |
-| OpenAI Responses         | `POST /v1/responses`                                |
-| OpenAI Completions       | `POST /v1/completions`                              |
-| OpenAI Responses compact | `POST /v1/responses/compact`                        |
-| Anthropic Messages       | `POST /v1/messages`                                 |
-| Anthropic Token Counting | `POST /v1/messages/count_tokens`                    |
-| Gemini                   | `POST /v1beta/models/{model}:generateContent`       |
-| Gemini streaming         | `POST /v1beta/models/{model}:streamGenerateContent` |
-| Gemini Token Counting    | `POST /v1beta/models/{model}:countTokens`           |
-| OpenAI Embeddings        | `POST /v1/embeddings`                               |
-| Gemini embed             | `POST /v1beta/models/{model}:embedContent`          |
-| Gemini batch embed       | `POST /v1beta/models/{model}:batchEmbedContents`    |
+| Protocol or purpose       | Method and path                                     |
+| ------------------------- | --------------------------------------------------- |
+| Health check              | `GET /health`                                       |
+| Model list                | `GET /v1/models`                                    |
+| OpenAI Chat Completions   | `POST /v1/chat/completions`                         |
+| OpenAI Responses          | `POST /v1/responses`                                |
+| OpenAI Completions        | `POST /v1/completions`                              |
+| OpenAI Responses compact  | `POST /v1/responses/compact`                        |
+| Anthropic Messages        | `POST /v1/messages`                                 |
+| Anthropic Token Counting  | `POST /v1/messages/count_tokens`                    |
+| Gemini                    | `POST /v1beta/models/{model}:generateContent`       |
+| Gemini streaming          | `POST /v1beta/models/{model}:streamGenerateContent` |
+| Gemini Token Counting     | `POST /v1beta/models/{model}:countTokens`           |
+| OpenAI Embeddings         | `POST /v1/embeddings`                               |
+| Gemini embed              | `POST /v1beta/models/{model}:embedContent`          |
+| Gemini batch embed        | `POST /v1beta/models/{model}:batchEmbedContents`    |
+| OpenAI Images generations | `POST /v1/images/generations`                       |
+| OpenAI Images edits       | `POST /v1/images/edits`                             |
+
+Images notes:
+
+- Raw Images needs an `openai-image` endpoint (or primary protocol).
+- Blank JSON `model` and multipart missing/empty/whitespace `model` look up `gpt-image-2` (not official `dall-e-2` / `gpt-image-1.5`). Multipart literal form `null` is the model id `"null"` and is not defaulted. Raw injects the resolved candidate id.
+- Inbound model is the OpenAI id plus the existing `providerId/` qualifier.
+- Convert does not stream and does not fetch `image_url`.
+- DALL·E omitted/`null`/`url` skips convert; GPT Image omitted encodes `b64_json`; custom omitted `b64_json` is an aio-proxy extension.
+- Edits accept official-max envelopes (`357_564_416` JSON, `851_048_559` multipart). P1 has no lower default DoS cap; a future smaller ceiling is an explicit deployment extension.
+- Non-catalog Images providers need a finite id set (`models`, preserved alias targets, or metadata keys) including `gpt-image-2` for the blank-model default.
 
 Remaining official Responses resource operations (`GET /v1/responses/:id`, `DELETE /v1/responses/:id`, `POST /v1/responses/:id/cancel`, `GET /v1/responses/:id/input_items`) return a protocol-shaped 501.
 

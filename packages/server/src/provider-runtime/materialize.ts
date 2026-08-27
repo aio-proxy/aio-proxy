@@ -6,18 +6,22 @@ import {
   createProxyFetch,
   modelRoutes,
 } from '@aio-proxy/core';
-import type { Config, DashboardProviderSummary, Provider } from '@aio-proxy/types';
-import { apiProviderEndpoints, ProviderKind } from '@aio-proxy/types';
+import type { AliasConfig, Config, DashboardProviderSummary, ModelMetadata, Provider } from '@aio-proxy/types';
+import { aliasTargetModels, apiProviderEndpoints, ProviderKind, ProviderProtocol } from '@aio-proxy/types';
 
 import { createProviderRequestTransformFetch } from '../provider-request-transform';
 import { createObservedFetch } from '../request-logging';
 import type {
   EmbeddingTransport,
+  ImageTransport,
+  ModelCapabilityIndex,
   ModelTransport,
   RuntimeProviderInput,
   RuntimeProviderInstance,
   RuntimeRawCapability,
 } from '../runtime';
+import { buildModelCapabilityIndex } from './capability-index';
+import { attachImageTransport } from './materialize-image';
 import { probeAiSdk, probeApi, type ProviderProbe } from './probe';
 
 export type MaterializeProvidersOptions = {
@@ -40,11 +44,21 @@ export function materializeRuntimeProvider(
   options: { readonly apiBridge?: AiSdkProviderInstance } = {},
 ): RuntimeProviderInstance {
   if (isMaterializedRuntimeProvider(provider)) {
-    return provider;
+    if (provider.capabilityIndex !== undefined) return provider;
+    return {
+      ...provider,
+      capabilityIndex: capabilityIndexFromRoutable({
+        models: provider.models,
+        alias: provider.alias,
+        metadata: provider.configMetadata,
+        primaryProtocol: 'protocol' in provider ? provider.protocol : undefined,
+      }),
+    };
   }
 
   const { apiBridge } = options;
   if (provider.kind === ProviderKind.Api) {
+    const [primary, ...rest] = provider.endpointTransports;
     return {
       id: provider.id,
       kind: provider.kind,
@@ -53,6 +67,13 @@ export function materializeRuntimeProvider(
       ...(provider.models === undefined ? {} : { models: provider.models }),
       ...(provider.alias === undefined ? {} : { alias: provider.alias }),
       ...(provider.metadata === undefined ? {} : { configMetadata: provider.metadata }),
+      capabilityIndex: capabilityIndexFromRoutable({
+        models: provider.models,
+        alias: provider.alias,
+        metadata: provider.metadata,
+        primaryProtocol: primary.protocol,
+        extraProtocols: rest.map((endpoint) => endpoint.protocol),
+      }),
       hasApiKey: provider.apiKey !== undefined,
       raw: {
         resolve: ({ protocol }) => {
@@ -83,6 +104,12 @@ export function materializeRuntimeProvider(
       ...(provider.models === undefined ? {} : { models: provider.models }),
       ...(provider.alias === undefined ? {} : { alias: provider.alias }),
       ...(provider.metadata === undefined ? {} : { configMetadata: provider.metadata }),
+      capabilityIndex: capabilityIndexFromRoutable({
+        models: provider.models,
+        alias: provider.alias,
+        metadata: provider.metadata,
+        primaryProtocol: provider.targetProtocol,
+      }),
       model: {
         ...(provider.ensureAvailable === undefined ? {} : { ensureAvailable: provider.ensureAvailable }),
         invoke: provider.invoke,
@@ -92,12 +119,13 @@ export function materializeRuntimeProvider(
     };
   }
 
-  throw new TypeError('Runtime provider must expose a raw, model, or embedding capability');
+  throw new TypeError('Runtime provider must expose a raw, model, image, or embedding capability');
 }
 
 function isMaterializedRuntimeProvider(provider: RuntimeProviderInput): provider is RuntimeProviderInstance {
   const raw = Object.hasOwn(provider, 'raw') ? (provider as { readonly raw?: unknown }).raw : undefined;
   const model = Object.hasOwn(provider, 'model') ? (provider as { readonly model?: unknown }).model : undefined;
+  const image = Object.hasOwn(provider, 'image') ? (provider as { readonly image?: unknown }).image : undefined;
   const embedding = Object.hasOwn(provider, 'embedding')
     ? (provider as { readonly embedding?: unknown }).embedding
     : undefined;
@@ -107,10 +135,13 @@ function isMaterializedRuntimeProvider(provider: RuntimeProviderInput): provider
   if (model !== undefined && !isModelTransport(model)) {
     throw new TypeError(`Runtime provider ${provider.id} has an invalid model capability`);
   }
+  if (image !== undefined && !isImageTransport(image)) {
+    throw new TypeError(`Runtime provider ${provider.id} has an invalid image capability`);
+  }
   if (embedding !== undefined && !isEmbeddingTransport(embedding)) {
     throw new TypeError(`Runtime provider ${provider.id} has an invalid embedding capability`);
   }
-  return raw !== undefined || model !== undefined || embedding !== undefined;
+  return raw !== undefined || model !== undefined || image !== undefined || embedding !== undefined;
 }
 
 function isRuntimeRawCapability(value: unknown): value is RuntimeRawCapability {
@@ -130,6 +161,18 @@ function isModelTransport(value: unknown): value is ModelTransport {
   );
 }
 
+function isImageTransport(value: unknown): value is ImageTransport {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'invoke' in value &&
+    typeof value.invoke === 'function' &&
+    (!('ensureAvailable' in value) ||
+      value.ensureAvailable === undefined ||
+      typeof value.ensureAvailable === 'function')
+  );
+}
+
 function isEmbeddingTransport(value: unknown): value is EmbeddingTransport {
   return typeof value === 'object' && value !== null && 'embed' in value && typeof value.embed === 'function';
 }
@@ -138,6 +181,26 @@ function embeddingTransport(
   source: { readonly embed?: EmbeddingTransport['embed'] } | undefined,
 ): { readonly embedding: EmbeddingTransport } | Record<never, never> {
   return source?.embed === undefined ? {} : { embedding: { embed: source.embed } };
+}
+
+function capabilityIndexFromRoutable(provider: {
+  readonly models?: readonly string[];
+  readonly alias?: Readonly<Record<string, AliasConfig>>;
+  readonly metadata?: Readonly<Record<string, ModelMetadata>>;
+  readonly primaryProtocol?: ProviderProtocol;
+  readonly extraProtocols?: readonly ProviderProtocol[];
+}): ModelCapabilityIndex {
+  return buildModelCapabilityIndex({
+    models: provider.models,
+    metadata: provider.metadata,
+    primaryProtocol: provider.primaryProtocol,
+    extraProtocols: provider.extraProtocols,
+    aliasTargets: provider.alias === undefined ? undefined : aliasTargets(provider.alias),
+  });
+}
+
+function aliasTargets(alias: Readonly<Record<string, AliasConfig>>): string[] {
+  return [...new Set(Object.values(alias).flatMap(aliasTargetModels))];
 }
 
 /** `false` disables the top-level proxy for this provider; omitted inherits it. */
@@ -171,10 +234,15 @@ export function materializeProviders(config: Config, options: MaterializeProvide
           createObservedFetch(createFetch(effectiveProxy(config.proxy, provider.proxy))),
         );
         const api = createApi(provider, { fetch: providerFetch });
+        const endpoints = apiProviderEndpoints(provider);
+        const hasLanguageEndpoint = endpoints.some((endpoint) => endpoint.protocol !== ProviderProtocol.OpenAIImage);
         const instance = withRoutingDefaults(
-          materializeRuntimeProvider(api, {
-            apiBridge: bridgeApiProvider(provider, { fetch: providerFetch }),
-          }),
+          attachImageTransport(
+            materializeRuntimeProvider(api, {
+              ...(hasLanguageEndpoint ? { apiBridge: bridgeApiProvider(provider, { fetch: providerFetch }) } : {}),
+            }),
+            { config: provider, fetch: providerFetch },
+          ),
           provider,
         );
         probes.set(id, () => probeApi(provider, api));
@@ -188,7 +256,10 @@ export function materializeProviders(config: Config, options: MaterializeProvide
           createObservedFetch(createFetch(effectiveProxy(config.proxy, provider.proxy))),
         );
         const aiSdk = createAiSdk(provider, { fetch: providerFetch });
-        const instance = withRoutingDefaults(materializeRuntimeProvider(aiSdk), provider);
+        const instance = withRoutingDefaults(
+          attachImageTransport(materializeRuntimeProvider(aiSdk), { config: provider, fetch: providerFetch }),
+          provider,
+        );
         probes.set(id, () => probeAiSdk(aiSdk));
         providers.push(instance);
         summaries.push(providerSummary(instance, provider.name, provider));

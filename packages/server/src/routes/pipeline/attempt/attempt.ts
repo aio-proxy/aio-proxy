@@ -1,4 +1,9 @@
-import { type AnyProtocolAdapter, isEmbeddingProtocolAdapter, type RouterCandidate } from '@aio-proxy/core';
+import {
+  type AnyProtocolAdapter,
+  type ImageProtocolAdapter,
+  isEmbeddingProtocolAdapter,
+  type RouterCandidate,
+} from '@aio-proxy/core';
 import type { Config } from '@aio-proxy/types';
 
 import type { LogicalSessionResolution } from '../../../logical-session-store';
@@ -21,12 +26,13 @@ import { selectLiveCandidates } from './cooldown-write';
 import { attemptEmbeddingCandidate } from './embedding';
 import { createAttemptEmitter } from './emit';
 import { handleAttemptError, unsupportedDispatch } from './error';
+import { dispatchImageCandidate } from './image';
 import { attemptModelCandidate } from './model';
 import { attemptRawCandidate } from './raw';
 import { requestPathProperty } from './request-path';
 
 type AttemptCandidatesOptions<TRequest, TContext> = {
-  readonly adapter: AnyProtocolAdapter<TRequest, TContext>;
+  readonly adapter: AnyProtocolAdapter<TRequest, TContext> | ImageProtocolAdapter<TRequest, TContext>;
   readonly candidates: readonly RouterCandidate<RuntimeProviderInstance>[];
   readonly context: TContext;
   readonly config: Config | undefined;
@@ -95,6 +101,7 @@ function createAttemptLoopContext<TRequest, TContext>(
 
 type AttemptDispatch<TRequest, TContext> =
   | { readonly kind: 'embedding'; readonly ctx: EmbeddingAttemptLoopContext<TRequest, TContext> }
+  | { readonly kind: 'image'; readonly ctx: AnyAttemptLoopContext<TRequest, TContext> }
   | { readonly kind: 'language'; readonly ctx: AttemptLoopContext<TRequest, TContext> };
 
 // The inbound capability, not the provider kind, decides which transports a
@@ -103,9 +110,9 @@ function attemptDispatch<TRequest, TContext>(
   ctx: AnyAttemptLoopContext<TRequest, TContext>,
 ): AttemptDispatch<TRequest, TContext> {
   const { adapter } = ctx;
-  return isEmbeddingProtocolAdapter(adapter)
-    ? { kind: 'embedding', ctx: { ...ctx, adapter } }
-    : { kind: 'language', ctx: { ...ctx, adapter } };
+  if (isEmbeddingProtocolAdapter(adapter)) return { kind: 'embedding', ctx: { ...ctx, adapter } };
+  if (adapter.capability === 'image') return { kind: 'image', ctx };
+  return { kind: 'language', ctx: { ...ctx, adapter } };
 }
 
 // Same-protocol raw wins, then the AI SDK model transport, then nothing.
@@ -147,6 +154,7 @@ export async function attemptCandidates<TRequest, TContext>(
 
   const holder: InvocationHolder = { invocation: undefined, invocationUnsupported: undefined };
   let lastFailure: Response | undefined;
+  let lastSkipReason: string | undefined;
 
   const selection = selectLiveCandidates(ctx.cooldown, ordered);
   if (selection.kind === 'all-cooled') {
@@ -203,17 +211,28 @@ export async function attemptCandidates<TRequest, TContext>(
       const step =
         dispatch.kind === 'embedding'
           ? await attemptEmbeddingCandidate(dispatch.ctx, slot)
-          : await attemptLanguageCandidate(dispatch.ctx, slot, holder);
+          : dispatch.kind === 'image'
+            ? await dispatchImageCandidate(ctx, slot)
+            : await attemptLanguageCandidate(dispatch.ctx, slot, holder);
       if (step.kind === 'return') return step.response;
+      if (step.kind === 'skip') {
+        lastSkipReason = step.reason;
+        continue;
+      }
       lastFailure = step.lastFailure;
     } catch (error) {
       const step = handleAttemptError(ctx, slot, error);
       if (step.kind === 'return') return step.response;
+      if (step.kind === 'skip') {
+        lastSkipReason = step.reason;
+        continue;
+      }
       lastFailure = step.lastFailure;
     }
   }
 
-  const response = lastFailure ?? adapter.errors.unsupported('transform_dispatch');
+  const response =
+    lastFailure ?? adapter.errors.unsupported(lastSkipReason === undefined ? 'transform_dispatch' : lastSkipReason);
   session.finish({ outcome: 'failure', finalHttpStatus: response.status, clientResponse: response });
   return response;
 }

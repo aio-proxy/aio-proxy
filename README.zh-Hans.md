@@ -35,7 +35,7 @@ flowchart LR
 
 - **插件化接入**：通过插件连接不同模型提供商，支持 AI SDK Provider 包和 OAuth 账号。
 - **丰富可观测性**：集中查看请求量、Token 用量、费用和完整请求链路。
-- **主流协议兼容**：支持 OpenAI Chat Completions、OpenAI Responses、Anthropic Messages 和 Gemini GenerateContent。
+- **主流协议兼容**：支持 OpenAI Chat Completions、OpenAI Responses、OpenAI Images、Anthropic Messages 和 Gemini GenerateContent。
 - **多 Provider 路由**：按模型、Provider priority 和 Provider weight 选择候选，支持模型别名、故障回退和会话亲和。
 - **透明协议转换**：协议一致时原始透传，协议不一致时自动转换。
 
@@ -186,22 +186,34 @@ router:
 
 ## API
 
-| 协议或用途               | 方法与路径                                          |
-| ------------------------ | --------------------------------------------------- |
-| 健康检查                 | `GET /health`                                       |
-| 模型列表                 | `GET /v1/models`                                    |
-| OpenAI Chat Completions  | `POST /v1/chat/completions`                         |
-| OpenAI Responses         | `POST /v1/responses`                                |
-| OpenAI Completions       | `POST /v1/completions`                              |
-| OpenAI Responses compact | `POST /v1/responses/compact`                        |
-| Anthropic Messages       | `POST /v1/messages`                                 |
-| Anthropic Token Counting | `POST /v1/messages/count_tokens`                    |
-| Gemini                   | `POST /v1beta/models/{model}:generateContent`       |
-| Gemini 流式生成          | `POST /v1beta/models/{model}:streamGenerateContent` |
-| Gemini Token Counting    | `POST /v1beta/models/{model}:countTokens`           |
-| OpenAI Embeddings        | `POST /v1/embeddings`                               |
-| Gemini embed             | `POST /v1beta/models/{model}:embedContent`          |
-| Gemini batch embed       | `POST /v1beta/models/{model}:batchEmbedContents`    |
+| 协议或用途                | 方法与路径                                          |
+| ------------------------- | --------------------------------------------------- |
+| 健康检查                  | `GET /health`                                       |
+| 模型列表                  | `GET /v1/models`                                    |
+| OpenAI Chat Completions   | `POST /v1/chat/completions`                         |
+| OpenAI Responses          | `POST /v1/responses`                                |
+| OpenAI Completions        | `POST /v1/completions`                              |
+| OpenAI Responses compact  | `POST /v1/responses/compact`                        |
+| Anthropic Messages        | `POST /v1/messages`                                 |
+| Anthropic Token Counting  | `POST /v1/messages/count_tokens`                    |
+| Gemini                    | `POST /v1beta/models/{model}:generateContent`       |
+| Gemini 流式生成           | `POST /v1beta/models/{model}:streamGenerateContent` |
+| Gemini Token Counting     | `POST /v1beta/models/{model}:countTokens`           |
+| OpenAI Embeddings         | `POST /v1/embeddings`                               |
+| Gemini embed              | `POST /v1beta/models/{model}:embedContent`          |
+| Gemini batch embed        | `POST /v1beta/models/{model}:batchEmbedContents`    |
+| OpenAI Images generations | `POST /v1/images/generations`                       |
+| OpenAI Images edits       | `POST /v1/images/edits`                             |
+
+Images 说明：
+
+- 原始透传 Images 需要 `openai-image` 端点（或将其设为主协议）。
+- JSON 中留空的 `model` 以及 multipart 中缺失/空/仅空白的 `model` 会查找 `gpt-image-2`（不是官方的 `dall-e-2` / `gpt-image-1.5`）。multipart 字面量 `null` 是模型 id `"null"`，不会被默认化。原始透传会写入解析后的候选 id。
+- 入站模型是 OpenAI id，外加现有的 `providerId/` 限定符。
+- 转换路径不流式输出，也不会去拉取 `image_url`。
+- DALL·E 省略/`null`/`url` 会跳过转换；GPT Image 省略时编码为 `b64_json`；自定义模型省略时的 `b64_json` 是 aio-proxy 扩展。
+- Edits 接受官方上限信封（JSON `357_564_416`，multipart `851_048_559`）。P1 没有更低的默认 DoS 上限；未来更小的上限只能作为显式的部署扩展。
+- 无目录的 Images Provider 需要有限 id 集合（`models`、保留的别名目标或 metadata 键），其中须包含 `gpt-image-2` 才能使用空白 model 的默认值。
 
 其余官方 Responses 资源操作（`GET /v1/responses/:id`、`DELETE /v1/responses/:id`、`POST /v1/responses/:id/cancel`、`GET /v1/responses/:id/input_items`）返回协议形 501。
 

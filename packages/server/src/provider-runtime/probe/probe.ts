@@ -71,6 +71,11 @@ export function providerProbeRequest(
         },
         path: `/v1beta/models/${model}:generateContent`,
       };
+    case ProviderProtocol.OpenAIImage:
+      return {
+        body: { model, n: 1, prompt: 'ping' },
+        path: '/v1/images/generations',
+      };
     default:
       return assertNever(primary.protocol);
   }

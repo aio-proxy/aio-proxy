@@ -15,6 +15,7 @@ function rawAnthropicProvider(
     kind,
     enabled: true,
     alias: { [requestedModel]: { model: `${id}-wire`, preserve: false } },
+    capabilityIndex: { [`${id}-wire`]: new Set(['language']) },
     raw: {
       resolve: ({ protocol, modelId }) =>
         protocol === ProviderProtocol.Anthropic
@@ -77,6 +78,7 @@ test('cancels the upstream body and falls through when the raw provider returns 
     kind: ProviderKind.Api,
     enabled: true,
     alias: { [requestedModel]: { model: 'failing-wire', preserve: false } },
+    capabilityIndex: { 'failing-wire': new Set(['language']) },
     raw: {
       resolve: ({ protocol }) =>
         protocol === ProviderProtocol.Anthropic
@@ -100,6 +102,7 @@ test('a raw failure advances to the next candidate without invoking the same pro
     kind: ProviderKind.Api,
     enabled: true,
     alias: { [requestedModel]: { model: 'both-wire', preserve: false } },
+    capabilityIndex: { 'both-wire': new Set(['language']) },
     raw: {
       resolve: ({ protocol }) =>
         protocol === ProviderProtocol.Anthropic
@@ -127,6 +130,7 @@ test('does not raw-forward a non-anthropic provider and lets it use its own toke
     kind: ProviderKind.Api,
     enabled: true,
     alias: { [requestedModel]: { model: 'gemini-wire', preserve: false } },
+    capabilityIndex: { 'gemini-wire': new Set(['language']) },
     raw: {
       resolve: ({ protocol }) =>
         protocol === ProviderProtocol.Gemini

@@ -12,6 +12,7 @@ import { createServerState } from '#server-test-lifecycle';
 
 import { withAttemptLogContext, withRequestLogContext } from '../request-logging';
 import type { RuntimeProviderInstance } from '../runtime';
+import { supportsImage, supportsLanguage } from './capability-index';
 import { materializeProviders, materializeRuntimeProvider, providerSummary } from './materialize';
 
 const headerSet = (field: string, value: unknown) => ({
@@ -41,7 +42,7 @@ function withModelAttempt<T>(
 }
 
 function assertRuntimeProviderRequiresCapability(provider: AiSdkProviderInstance): void {
-  // @ts-expect-error a materialized runtime provider must expose raw, model, or embedding
+  // @ts-expect-error a materialized runtime provider must expose raw, model, image, or embedding
   const runtime: RuntimeProviderInstance = provider;
   void runtime;
 }
@@ -168,6 +169,81 @@ test('materializes a configured API provider with raw and bridged model capabili
     }),
   ).toBeDefined();
   expect(runtime.providers[0]?.model?.invoke).toBe(bridge.invoke);
+});
+
+test('chat-primary API models[] ids support language without a catalog', () => {
+  const config = ConfigSchema.parse({
+    providers: {
+      api: {
+        baseURL: 'https://api.example.com',
+        kind: ProviderKind.Api,
+        models: ['gpt-5'],
+        protocol: ProviderProtocol.OpenAICompatible,
+      },
+    },
+  });
+
+  const provider = materializeProviders(config).providers[0];
+
+  expect(supportsLanguage(provider!.capabilityIndex, 'gpt-5')).toBe(true);
+  expect(supportsImage(provider!.capabilityIndex, 'gpt-5')).toBe(false);
+});
+
+test('materializes an enabled image-only API provider without a language transport', () => {
+  const config = ConfigSchema.parse({
+    providers: {
+      images: {
+        baseURL: 'https://api.openai.com/v1',
+        kind: ProviderKind.Api,
+        models: ['gpt-image-2'],
+        protocol: ProviderProtocol.OpenAIImage,
+      },
+    },
+  });
+
+  const runtime = materializeProviders(config);
+  const provider = runtime.providers[0];
+
+  expect(provider?.raw).toBeDefined();
+  expect(provider?.image).toBeDefined();
+  expect(provider?.model).toBeUndefined();
+  expect(supportsImage(provider!.capabilityIndex, 'gpt-image-2')).toBe(true);
+  expect(supportsLanguage(provider!.capabilityIndex, 'gpt-image-2')).toBe(false);
+  expect(provider?.raw?.resolve({ protocol: ProviderProtocol.OpenAIImage, modelId: 'gpt-image-2' })).toBeDefined();
+});
+
+test('image-primary API with a language extra endpoint materializes a language bridge', () => {
+  const invoke = () => new ReadableStream();
+  const config = ConfigSchema.parse({
+    providers: {
+      images: {
+        baseURL: 'https://api.openai.com/v1',
+        endpoints: [{ baseURL: 'https://api.openai.com/v1', protocol: ProviderProtocol.OpenAICompatible }],
+        kind: ProviderKind.Api,
+        models: ['gpt-image-2', 'gpt-4o'],
+        protocol: ProviderProtocol.OpenAIImage,
+      },
+    },
+  });
+
+  const runtime = materializeProviders(config, {
+    bridgeApiProvider() {
+      return {
+        enabled: true,
+        id: 'images:bridge',
+        invoke,
+        kind: ProviderKind.AiSdk,
+      } satisfies AiSdkProviderInstance;
+    },
+  });
+  const provider = runtime.providers[0];
+
+  expect(provider?.image).toBeDefined();
+  expect(provider?.model?.invoke).toBe(invoke);
+  expect(supportsLanguage(provider!.capabilityIndex, 'gpt-4o')).toBe(true);
+  expect(supportsImage(provider!.capabilityIndex, 'gpt-image-2')).toBe(true);
+  expect(provider?.raw?.resolve({ protocol: ProviderProtocol.OpenAIImage, modelId: 'gpt-image-2' })).toBeDefined();
+  expect(provider?.raw?.resolve({ protocol: ProviderProtocol.OpenAICompatible, modelId: 'gpt-4o' })).toBeDefined();
 });
 
 test('api provider raw capability resolves any declared endpoint protocol', () => {
@@ -481,14 +557,14 @@ test('materializes AI SDK inputs with model capabilities only', () => {
   expect(aiSdkRuntime).not.toHaveProperty('weight');
 });
 
-test('rejects an injected runtime provider without raw or model capabilities', () => {
+test('rejects an injected runtime provider without raw, model, image, or embedding capabilities', () => {
   expect(() =>
     materializeRuntimeProvider({
       enabled: true,
       id: 'invalid',
       kind: ProviderKind.OAuth,
     } as never),
-  ).toThrow('must expose a raw, model, or embedding capability');
+  ).toThrow('must expose a raw, model, image, or embedding capability');
 });
 
 test('materializes an API input whose raw placeholder is undefined', async () => {
@@ -589,6 +665,7 @@ test('materializes an injected API test double without baseURL through the snaps
 test('returns an already materialized provider unchanged', () => {
   const invoke = () => new ReadableStream();
   const provider = {
+    capabilityIndex: { ready: new Set(['language']) },
     enabled: true,
     id: 'ready',
     invoke,

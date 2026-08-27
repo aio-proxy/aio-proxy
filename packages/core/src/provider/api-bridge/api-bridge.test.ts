@@ -37,6 +37,48 @@ async function capturedUpstreamRequest(
 }
 
 describe('bridgeApiProviderToAiSdk', () => {
+  test('does not invent a language bridge for primary openai-image', () => {
+    const provider = {
+      kind: ProviderKind.Api,
+      id: 'images-only',
+      enabled: true,
+      protocol: ProviderProtocol.OpenAIImage,
+      baseURL: 'https://api.openai.com/v1',
+      models: ['gpt-image-2'],
+    };
+    expect(() => bridgeApiProviderToAiSdk(provider as never)).toThrow('Unsupported provider protocol: openai-image');
+  });
+
+  test('bridges image-primary from a secondary language endpoint', async () => {
+    let packageSeen: string | undefined;
+    let optionsSeen: AiSdkProviderLoadOptions | undefined;
+    const bridge = bridgeApiProviderToAiSdk(
+      {
+        kind: ProviderKind.Api,
+        id: 'mixed',
+        protocol: ProviderProtocol.OpenAIImage,
+        baseURL: 'https://api.openai.com/v1/images',
+        endpoints: [{ protocol: ProviderProtocol.OpenAICompatible, baseURL: 'https://api.openai.com/v1' }],
+        models: ['gpt-4o'],
+      },
+      {
+        async loadProvider(packageName, options) {
+          packageSeen = packageName;
+          optionsSeen = options;
+          return loadedProvider({
+            languageModel: (modelId) => model(modelId, 'ok'),
+          });
+        },
+      },
+    );
+
+    await bridge.ensureAvailable?.();
+
+    expect(packageSeen).toBe('@ai-sdk/openai-compatible');
+    expect(optionsSeen?.baseURL).toBe('https://api.openai.com/v1');
+    expect(optionsSeen?.name).toBe('mixed');
+  });
+
   test('Given api provider protocols When bridged Then package and options are forwarded', async () => {
     // Given
     const previousKey = process.env.AIO_PROXY_BRIDGE_KEY;

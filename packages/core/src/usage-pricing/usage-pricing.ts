@@ -178,6 +178,8 @@ function toBillableUsage(
         ...(reasoningPriced ? { reasoningTokens: thoughts } : {}),
       };
     }
+    case ProviderProtocol.OpenAIImage:
+      return usage;
     default: {
       const _exhaustive: never = accounting.protocol;
       return _exhaustive;

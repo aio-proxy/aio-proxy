@@ -79,6 +79,14 @@ describe('createResponseItemCounter', () => {
     counter.observe('response.output_item.done', { item: { type: 'image_generation_call' } });
     expect(counter.totals()).toEqual({});
   });
+
+  it('counts Images image_generation.completed events and ignores partials', () => {
+    const counter = createResponseItemCounter(ProviderProtocol.OpenAIImage);
+    counter.observe('image_generation.partial_image', { type: 'image_generation.partial_image', b64_json: 'p' });
+    counter.observe('image_generation.completed', { type: 'image_generation.completed', b64_json: 'a' });
+    counter.observe(undefined, { type: 'image_generation.completed', b64_json: 'b' });
+    expect(counter.totals()).toEqual({ imageCount: 2 });
+  });
 });
 
 describe('withItemCounts', () => {

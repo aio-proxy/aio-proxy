@@ -249,6 +249,8 @@ function isSuccessTerminal(protocol: ProviderProtocol, eventType: string | undef
       // which observes the fully merged usage.
       return false;
     }
+    case ProviderProtocol.OpenAIImage:
+      return false;
     default:
       return assertNever(protocol);
   }

@@ -22,9 +22,33 @@ export function usageFromJson(protocol: ProviderProtocol, value: unknown): Usage
       return anthropicUsage(value);
     case ProviderProtocol.Gemini:
       return geminiUsage(value);
+    case ProviderProtocol.OpenAIImage:
+      return openAIImageUsage(value);
     default:
       return assertNever(protocol);
   }
+}
+
+function openAIImageUsage(value: unknown): UsageExtraction {
+  if (!isRecord(value)) return { kind: 'absent' };
+  const imageCount = Array.isArray(value['data']) ? value['data'].length : 0;
+  if (!isRecord(value['usage'])) {
+    return imageCount > 0 ? { kind: 'valid', usage: { imageCount } } : { kind: 'absent' };
+  }
+  const tokens = tokenUsage({
+    inputTokens: numberField(value['usage'], 'input_tokens', 'inputTokens'),
+    outputTokens: numberField(value['usage'], 'output_tokens', 'outputTokens'),
+    totalTokens: numberField(value['usage'], 'total_tokens', 'totalTokens'),
+  });
+  if (tokens.kind === 'invalid') return tokens;
+  if (tokens.kind === 'absent' && imageCount === 0) return { kind: 'absent' };
+  return {
+    kind: 'valid',
+    usage: {
+      ...(tokens.kind === 'valid' ? tokens.usage : {}),
+      ...(imageCount > 0 ? { imageCount } : {}),
+    },
+  };
 }
 
 function openAICompatibleUsage(value: unknown): UsageExtraction {

@@ -14,9 +14,10 @@ import {
   geminiGenerateContentErrors,
   openAICompletionsErrors,
   openAIEmbeddingsErrors,
+  openAIImagesErrors,
   openAIResponsesErrors,
 } from './errors';
-import { InvalidCompressedRequestBodyError } from './request';
+import { InvalidCompressedRequestBodyError, RequestBodyIdleTimeoutError } from './request';
 
 const cases = [
   [
@@ -31,6 +32,20 @@ const cases = [
     },
     {
       error: { code: 'invalid_request', message: 'Invalid OpenAI Completions request', type: 'invalid_request_error' },
+    },
+  ],
+  [
+    'OpenAI Images',
+    openAIImagesErrors,
+    {
+      error: {
+        code: 'unsupported_content_encoding',
+        message: 'Unsupported Content-Encoding',
+        type: 'invalid_request_error',
+      },
+    },
+    {
+      error: { code: 'invalid_request', message: 'Invalid OpenAI Images request', type: 'invalid_request_error' },
     },
   ],
   [
@@ -112,6 +127,17 @@ test.each([
   [
     'OpenAI Chat Completions',
     openAICompletionsErrors,
+    {
+      error: {
+        code: 'previous_response_conflict',
+        message: 'previous_response_id matches multiple providers',
+        type: 'invalid_request_error',
+      },
+    },
+  ],
+  [
+    'OpenAI Images',
+    openAIImagesErrors,
     {
       error: {
         code: 'previous_response_conflict',
@@ -212,6 +238,24 @@ test('maps image compatibility errors into every inbound protocol shape', async 
 
 test('openai completions rateLimited builds a native 429 with Retry-After', async () => {
   const r = openAICompletionsErrors.rateLimited(3);
+  expect(r.status).toBe(429);
+  expect(r.headers.get('retry-after')).toBe('3');
+  expect(await r.json()).toEqual({
+    error: { code: 'rate_limit_exceeded', message: expect.any(String), type: 'rate_limit_error' },
+  });
+});
+
+test('openai images maps stalled multipart reads to 408 and abort to 499', async () => {
+  const timeout = openAIImagesErrors.requestError(new RequestBodyIdleTimeoutError());
+  expect(timeout?.status).toBe(408);
+  expect(await timeout?.json()).toMatchObject({ error: { code: 'request_timeout' } });
+  const aborted = openAIImagesErrors.requestError(new DOMException('The operation was aborted.', 'AbortError'));
+  expect(aborted?.status).toBe(499);
+  expect(await aborted?.json()).toMatchObject({ error: { code: 'aborted' } });
+});
+
+test('openai images rateLimited builds a native 429 with Retry-After', async () => {
+  const r = openAIImagesErrors.rateLimited(3);
   expect(r.status).toBe(429);
   expect(r.headers.get('retry-after')).toBe('3');
   expect(await r.json()).toEqual({

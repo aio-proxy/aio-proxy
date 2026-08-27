@@ -1,4 +1,4 @@
-import { REQUEST_BODY_LIMITS } from '@aio-proxy/core';
+import { type InboundProtocolAdapter, REQUEST_BODY_LIMITS } from '@aio-proxy/core';
 import type { Config } from '@aio-proxy/types';
 
 import {
@@ -6,6 +6,8 @@ import {
   defineProtocolAdapter,
   defineProviderRouteSource,
   type FakeProvider,
+  type TestProtocolContext,
+  type TestProtocolRequest,
 } from '../../../__tests__/pipeline-helpers';
 import type { UsageCompletion } from '../../usage-capture';
 import { handleProtocolRequest } from './index';
@@ -15,7 +17,7 @@ export const MAX_BODY_BYTES = REQUEST_BODY_LIMITS.encoded;
 export function pipeline(
   fixtures: readonly FakeProvider[],
   options: {
-    readonly adapter?: ReturnType<typeof defineProtocolAdapter>;
+    readonly adapter?: InboundProtocolAdapter<TestProtocolRequest, TestProtocolContext>;
     readonly debugLogging?: boolean;
     readonly immediateStreamCompletion?: UsageCompletion;
     readonly config?: Config;

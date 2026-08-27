@@ -24,9 +24,12 @@ export function bridgeApiProviderToAiSdk(
   provider: ApiProvider,
   options: AiSdkProviderFactoryOptions = {},
 ): AiSdkProviderInstance {
-  const primary = apiProviderEndpoints(provider)[0];
+  const language = languageBridgeEndpoint(apiProviderEndpoints(provider));
+  if (language === undefined) {
+    throw new Error(`Unsupported provider protocol: ${ProviderProtocol.OpenAIImage}`);
+  }
   const providerId = provider.id;
-  const mapping = bridgeMapping(provider, primary, providerId);
+  const mapping = bridgeMapping(provider, language, providerId);
   const synthesized = {
     kind: ProviderKind.AiSdk,
     enabled: provider.enabled,
@@ -43,6 +46,10 @@ export function bridgeApiProviderToAiSdk(
     ...options,
     ...(mapping.resolveModel === undefined ? {} : { resolveModel: mapping.resolveModel }),
   });
+}
+
+function languageBridgeEndpoint(endpoints: readonly NormalizedApiEndpoint[]): NormalizedApiEndpoint | undefined {
+  return endpoints.find((endpoint) => endpoint.protocol !== ProviderProtocol.OpenAIImage);
 }
 
 function bridgeMapping(provider: ApiProvider, primary: NormalizedApiEndpoint, providerId: string): BridgeMapping {
@@ -69,6 +76,8 @@ function bridgeMapping(provider: ApiProvider, primary: NormalizedApiEndpoint, pr
       return { packageName: '@ai-sdk/google', options: sharedOptions };
     case ProviderProtocol.OpenAIResponse:
       return { packageName: '@ai-sdk/openai', options: sharedOptions, resolveModel: resolveOpenAIResponsesModel };
+    case ProviderProtocol.OpenAIImage:
+      throw new Error(`Unsupported provider protocol: ${ProviderProtocol.OpenAIImage}`);
     default:
       return assertNever(primary.protocol);
   }

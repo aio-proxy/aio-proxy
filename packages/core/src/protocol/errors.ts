@@ -12,12 +12,14 @@ import {
   ImageInputUnsupportedError,
   OpenAICompletionsTransformError,
   OpenAICompletionsUnsupportedFeatureError,
+  OpenAIImagesInvalidRequestError,
+  OpenAIImagesUnsupportedFeatureError,
   OpenAIResponsesTransformError,
   OpenAIResponsesUnsupportedFeatureError,
   ProviderNotInstalledError,
 } from '../error';
 import type { ProtocolErrorMapper } from './adapter';
-import { InvalidCompressedRequestBodyError } from './request';
+import { InvalidCompressedRequestBodyError, RequestBodyIdleTimeoutError } from './request';
 
 const PREVIOUS_RESPONSE_CONFLICT_MESSAGE = 'previous_response_id matches multiple providers';
 
@@ -132,6 +134,37 @@ export const anthropicMessagesErrors: ProtocolErrorMapper = {
     genericProviderError(error, (status, message) => anthropicError(status, 'invalid_request_error', message)),
   rateLimited: anthropicRateLimited,
 };
+
+const IMAGES_NOT_IMPLEMENTED_MESSAGE = 'No configured provider can generate images for this model';
+const IMAGES_UNSUPPORTED_FEATURES = new Set(['stream', 'response_format=url', 'image_url', 'files']);
+
+export const openAIImagesErrors: ProtocolErrorMapper = {
+  requestError: (error) => {
+    if (error instanceof OpenAIImagesUnsupportedFeatureError) return openAIImagesUnsupported(error.feature);
+    if (error instanceof OpenAIImagesInvalidRequestError) return openAIInvalid(400, 'invalid_request', error.message);
+    if (error instanceof RequestBodyIdleTimeoutError) return openAIInvalid(408, 'request_timeout', error.message);
+    if (error instanceof Error && error.name === 'AbortError') return openAIInvalid(499, 'aborted', error.message);
+    return error instanceof SyntaxError ||
+      error instanceof ZodError ||
+      error instanceof InvalidCompressedRequestBodyError
+      ? openAIInvalid(400, 'invalid_request', withZodDetail('Invalid OpenAI Images request', error))
+      : undefined;
+  },
+  modelNotFound: (message) => openAIInvalid(404, 'model_not_found', message),
+  previousResponseConflict: () => openAIInvalid(409, 'previous_response_conflict', PREVIOUS_RESPONSE_CONFLICT_MESSAGE),
+  tooLarge: () => openAIInvalid(413, 'request_too_large', 'Request body too large'),
+  unsupportedContentEncoding: () => openAIInvalid(415, 'unsupported_content_encoding', 'Unsupported Content-Encoding'),
+  unsupported: openAIImagesUnsupported,
+  provider: openAIProviderError,
+  rateLimited: openAIRateLimited,
+};
+
+function openAIImagesUnsupported(feature: string): Response {
+  if (feature === 'images') return openAIInvalid(501, 'not_implemented', IMAGES_NOT_IMPLEMENTED_MESSAGE);
+  return IMAGES_UNSUPPORTED_FEATURES.has(feature)
+    ? openAIInvalid(501, 'unsupported_feature', `OpenAI Images feature is not supported: ${feature}`)
+    : openAIInvalid(501, 'not_implemented', 'Provider does not support OpenAI Images transform dispatch');
+}
 
 export const geminiGenerateContentErrors: ProtocolErrorMapper = {
   modelUnsupported: (error) =>
