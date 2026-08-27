@@ -232,6 +232,78 @@ test('decodedRequestStream gunzips without buffering the decoded payload first',
   expect(new TextDecoder().decode(bytes)).toBe('{"ok":true}');
 });
 
+test('decodedRequestStream drains gzip output that exceeds zlib highWaterMark', async () => {
+  const decoded = Buffer.alloc(64 * 1024, 0x61);
+  const encoded = Bun.gzipSync(decoded);
+  const stream = await decodedRequestStream(encodedRequest('gzip', encoded), {
+    encoded: encoded.byteLength,
+    decoded: decoded.byteLength,
+  });
+  const total = await settleWithin(readDecodedLength(stream), 2_000);
+  expect(total).toBe(decoded.byteLength);
+});
+
+test('decodedRequestStream maps a corrupt gzip body without an unhandled decoder error', async () => {
+  const stream = await decodedRequestStream(encodedRequest('gzip', new Uint8Array([1, 2, 3, 4])));
+  await expect(readDecodedLength(stream)).rejects.toBeInstanceOf(InvalidCompressedRequestBodyError);
+});
+
+test('decodedRequestStream replays prefix bytes when falling back to raw deflate', async () => {
+  const payload = new TextEncoder().encode('{"ok":true}');
+  const encoded = deflateRawSync(payload);
+  let sent = 0;
+  const raw = new Request('https://proxy.test/v1/responses', {
+    method: 'POST',
+    headers: { 'content-encoding': 'deflate', 'content-type': 'application/json' },
+    body: new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (sent === 0) {
+          sent = 1;
+          controller.enqueue(encoded.subarray(0, 1));
+          return;
+        }
+        if (sent === 1) {
+          sent = 2;
+          controller.enqueue(encoded.subarray(1));
+          return;
+        }
+        controller.close();
+      },
+    }),
+  });
+  const stream = await decodedRequestStream(raw);
+  expect(await readDecodedText(stream)).toBe('{"ok":true}');
+});
+
+async function readDecodedLength(stream: ReadableStream<Uint8Array> | null): Promise<number> {
+  if (stream === null) return 0;
+  const reader = stream.getReader();
+  let total = 0;
+  for (;;) {
+    const next = await reader.read();
+    if (next.done) return total;
+    total += next.value.byteLength;
+  }
+}
+
+async function readDecodedText(stream: ReadableStream<Uint8Array> | null): Promise<string> {
+  if (stream === null) return '';
+  const reader = stream.getReader();
+  const parts: Uint8Array[] = [];
+  for (;;) {
+    const next = await reader.read();
+    if (next.done) break;
+    parts.push(next.value);
+  }
+  const bytes = new Uint8Array(parts.reduce((total, part) => total + part.byteLength, 0));
+  let offset = 0;
+  for (const part of parts) {
+    bytes.set(part, offset);
+    offset += part.byteLength;
+  }
+  return new TextDecoder().decode(bytes);
+}
+
 function encodedRequest(encoding: string, body: Uint8Array): Request {
   return new Request('https://proxy.test/v1/responses', {
     method: 'POST',
