@@ -72,6 +72,7 @@ export async function writeGeminiInteractionsResponse(
         if (context.omitThoughtSummaries !== true) appendJsonText(started, 'thought', part.text);
         break;
       case 'tool-input-start':
+        if (tools.has(part.id)) throw new Error('function_call step has a duplicate id');
         tools.set(part.id, { id: part.id, name: part.toolName, input: '' });
         started.push({ kind: 'function_call', id: part.id, text: [] });
         break;

@@ -184,7 +184,14 @@ function assertStep(step: Record<string, unknown>, calls: Map<string, FunctionCa
     assertTextContents(step['summary']);
     return;
   }
-  if (type === 'user_input' || type === 'model_output') {
+  if (type === 'user_input') {
+    for (const [id, call] of calls) {
+      if (!call.resolved) calls.delete(id);
+    }
+    assertTextContents(step['content']);
+    return;
+  }
+  if (type === 'model_output') {
     assertTextContents(step['content']);
     return;
   }

@@ -164,6 +164,19 @@ describe('writeGeminiInteractionsResponse', () => {
     expect(interaction.steps).toEqual([{ type: 'function_call', id: 'c1', name: 'get_weather', arguments: {} }]);
   });
 
+  test('duplicate function_call id fails egress', async () => {
+    await expect(
+      writeGeminiInteractionsResponse(
+        streamOf(
+          { type: 'tool-input-start', id: 'c1', toolName: 'get_weather' },
+          { type: 'tool-input-start', id: 'c1', toolName: 'get_time' },
+          finish('tool-calls'),
+        ),
+        { modelId: 'm' },
+      ),
+    ).rejects.toThrow('duplicate id');
+  });
+
   test('missing function_call id or name fails egress', async () => {
     await expect(
       writeGeminiInteractionsResponse(
