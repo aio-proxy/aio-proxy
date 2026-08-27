@@ -253,6 +253,8 @@ function isSuccessTerminal(protocol: ProviderProtocol, eventType: string | undef
       const type = eventType ?? (isRecord(value) ? value['event_type'] : undefined);
       return type === 'interaction.completed';
     }
+    case ProviderProtocol.OpenAIImage:
+      return false;
     default:
       return assertNever(protocol);
   }

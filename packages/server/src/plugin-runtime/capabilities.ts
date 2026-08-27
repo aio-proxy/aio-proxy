@@ -1,4 +1,9 @@
-import { createProviderV4Embed, createProviderV4Invoke, validateProviderV4 } from '@aio-proxy/core';
+import {
+  createProviderV4Embed,
+  createProviderV4ImageInvoke,
+  createProviderV4Invoke,
+  validateProviderV4,
+} from '@aio-proxy/core';
 import type {
   LogicalRequestContext,
   ModelCatalog,
@@ -9,10 +14,17 @@ import type {
   RawTransportOptions,
   TokenCountCapability,
 } from '@aio-proxy/plugin-sdk';
-import { type OAuthProvider, ProviderKind, type ProviderProtocol } from '@aio-proxy/types';
+import {
+  aliasTargetModels,
+  type OAuthProvider,
+  preservedAliasModels,
+  ProviderKind,
+  ProviderProtocol,
+} from '@aio-proxy/types';
 import { uniq } from 'es-toolkit/array';
 
-import type { RuntimeProviderInstance } from '../runtime';
+import { buildModelCapabilityIndex } from '../provider-runtime/capability-index';
+import type { RawResolveInput, RuntimeProviderInstance } from '../runtime';
 import { modelMetadataRecord } from './catalog';
 import { PluginRawResolverError, PluginRawTransportError } from './types';
 
@@ -22,31 +34,36 @@ export const pluginProtocol = {
   anthropic: 'anthropic',
   gemini: 'gemini',
   'gemini-interactions': 'gemini-interactions',
+  'openai-image': 'openai-image',
 } as const satisfies Record<ProviderProtocol, ProtocolId>;
+
+export function catalogModelIds(catalog: Pick<ModelCatalog, 'language' | 'image' | 'embedding'>): string[] {
+  return uniq([
+    ...catalog.language.map(({ id }) => id),
+    ...catalog.image.map(({ id }) => id),
+    ...catalog.embedding.map(({ id }) => id),
+  ]);
+}
 
 function rawCapability(rawResolver: RawResolver | undefined, catalog: ModelCatalog) {
   if (rawResolver === undefined) return undefined;
   const languageCatalogById = new Map(catalog.language.map((descriptor) => [descriptor.id, descriptor]));
+  const imageCatalogById = new Map(catalog.image.map((descriptor) => [descriptor.id, descriptor]));
   const embeddingCatalogById = new Map(catalog.embedding.map((descriptor) => [descriptor.id, descriptor]));
   return {
-    resolve({
-      protocol,
-      modelId,
-      capability,
-    }: {
-      readonly protocol: ProviderProtocol;
-      readonly modelId: string;
-      readonly capability?: 'language' | 'embedding';
-    }) {
+    resolve({ protocol, modelId, capability, requestPath }: RawResolveInput) {
       const descriptor =
         capability === 'embedding'
-          ? (embeddingCatalogById.get(modelId) ?? languageCatalogById.get(modelId))
-          : (languageCatalogById.get(modelId) ?? embeddingCatalogById.get(modelId));
+          ? (embeddingCatalogById.get(modelId) ?? languageCatalogById.get(modelId) ?? imageCatalogById.get(modelId))
+          : protocol === ProviderProtocol.OpenAIImage
+            ? (imageCatalogById.get(modelId) ?? languageCatalogById.get(modelId) ?? embeddingCatalogById.get(modelId))
+            : (languageCatalogById.get(modelId) ?? imageCatalogById.get(modelId) ?? embeddingCatalogById.get(modelId));
       const transport = rawResolver({
         protocol: pluginProtocol[protocol],
         modelId,
         ...(descriptor?.metadata === undefined ? {} : { metadata: descriptor.metadata }),
         ...(capability === undefined ? {} : { capability }),
+        ...(requestPath === undefined ? {} : { requestPath }),
       });
       if (transport === undefined) return undefined;
       if (
@@ -81,29 +98,31 @@ export function exposedModelIds(catalogIds: readonly string[], whitelist: readon
   return catalogIds.filter((id) => allowed.has(id));
 }
 
-export function catalogRouteIds(catalog: ModelCatalog): string[] {
-  return uniq([...catalog.language, ...catalog.embedding].map((item) => item.id));
-}
-
 export function withRoutingConfig(
   provider: RuntimeProviderInstance,
   config: OAuthProvider,
-  catalogIds: readonly string[],
+  catalog: ModelCatalog,
 ): RuntimeProviderInstance {
   const {
     alias: _previousAlias,
     configMetadata: _previousConfigMetadata,
     priority: _previousPriority,
     weight: _previousWeight,
+    capabilityIndex: _previousCapabilityIndex,
+    upstreamMetadata: _previousUpstreamMetadata,
     ...previousProvider
   } = provider;
+  const models = exposedModelIds(catalogModelIds(catalog), config.models);
+  const { capabilityIndex, configMetadata, upstreamMetadata } = routingCapabilities(config, catalog, models);
   return {
     ...previousProvider,
     enabled: config.enabled,
     ...routingDefaults(config),
-    models: exposedModelIds(catalogIds, config.models),
+    models,
+    capabilityIndex,
+    upstreamMetadata,
     ...(config.alias === undefined ? {} : { alias: config.alias }),
-    ...(config.metadata === undefined ? {} : { configMetadata: config.metadata }),
+    ...(configMetadata === undefined ? {} : { configMetadata }),
   };
 }
 
@@ -129,27 +148,89 @@ export function createRuntimeProvider(
   const providerTools = providerToolCapability(Reflect.get(result, 'providerTools'));
   const supportedProviderTools = new Set(providerTools?.supported);
   const tokenCount = tokenCountCapability(Reflect.get(result, 'tokenCount'));
-  const upstreamMetadata = modelMetadataRecord(catalog);
-  return {
+  const models = exposedModelIds(catalogModelIds(catalog), config.models);
+  const { capabilityIndex, configMetadata, upstreamMetadata } = routingCapabilities(config, catalog, models);
+  const image =
+    catalog.image.length > 0 ? { invoke: createProviderV4ImageInvoke(config.id, result.provider) } : undefined;
+  const embedding =
+    catalog.embedding.length > 0 ? { embed: createProviderV4Embed(config.id, result.provider) } : undefined;
+  const base = {
     id: config.id,
     kind: ProviderKind.OAuth,
     enabled: config.enabled,
     ...routingDefaults(config),
-    models: exposedModelIds(catalogRouteIds(catalog), config.models),
+    models,
+    capabilityIndex,
     ...(config.alias === undefined ? {} : { alias: config.alias }),
-    ...(config.metadata === undefined ? {} : { configMetadata: config.metadata }),
+    ...(configMetadata === undefined ? {} : { configMetadata }),
     upstreamMetadata,
     plugin: config.plugin,
     capability: config.capability,
-    ...(raw === undefined ? {} : { raw }),
     ...(tokenCount === undefined ? {} : { tokenCount }),
-    model: {
-      invoke: createProviderV4Invoke(config.id, result.provider),
-      supportsProviderTool: (type) => supportedProviderTools.has(type),
-      targetProtocol: (modelId) => upstreamMetadata[modelId]?.protocol,
-    },
-    embedding: { embed: createProviderV4Embed(config.id, result.provider) },
   };
+  if (catalog.language.length > 0) {
+    return {
+      ...base,
+      ...(raw === undefined ? {} : { raw }),
+      ...(image === undefined ? {} : { image }),
+      ...(embedding === undefined ? {} : { embedding }),
+      model: {
+        invoke: createProviderV4Invoke(config.id, result.provider),
+        supportsProviderTool: (type) => supportedProviderTools.has(type),
+        targetProtocol: (modelId) => upstreamMetadata[modelId]?.protocol,
+      },
+    };
+  }
+  if (image !== undefined) {
+    return {
+      ...base,
+      image,
+      ...(embedding === undefined ? {} : { embedding }),
+      ...(raw === undefined ? {} : { raw }),
+    };
+  }
+  if (embedding !== undefined) {
+    return { ...base, embedding, ...(raw === undefined ? {} : { raw }) };
+  }
+  if (raw !== undefined) {
+    return { ...base, raw };
+  }
+  throw new Error('Invalid ProviderV4 runtime');
+}
+
+function routingCapabilities(
+  config: OAuthProvider,
+  catalog: ModelCatalog,
+  models: readonly string[],
+): {
+  readonly capabilityIndex: ReturnType<typeof buildModelCapabilityIndex>;
+  readonly configMetadata: OAuthProvider['metadata'];
+  readonly upstreamMetadata: ReturnType<typeof modelMetadataRecord>;
+} {
+  const allowed = new Set([...models, ...(config.alias === undefined ? [] : preservedAliasModels(config.alias))]);
+  const configMetadata = filterAllowedRecord(config.metadata, allowed);
+  const upstreamMetadata = filterAllowedRecord(modelMetadataRecord(catalog), allowed) ?? {};
+  return {
+    capabilityIndex: buildModelCapabilityIndex({
+      catalog,
+      models,
+      metadata: configMetadata,
+      configMetadata,
+      upstreamMetadata,
+      aliasTargets:
+        config.alias === undefined ? undefined : [...new Set(Object.values(config.alias).flatMap(aliasTargetModels))],
+    }),
+    configMetadata,
+    upstreamMetadata,
+  };
+}
+
+function filterAllowedRecord<T>(
+  record: Readonly<Record<string, T>> | undefined,
+  allowed: ReadonlySet<string>,
+): Record<string, T> | undefined {
+  if (record === undefined) return undefined;
+  return Object.fromEntries(Object.entries(record).filter(([id]) => allowed.has(id)));
 }
 
 function routingDefaults(config: { readonly priority?: number; readonly weight?: number }): {

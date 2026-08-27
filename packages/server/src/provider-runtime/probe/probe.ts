@@ -76,6 +76,11 @@ export function providerProbeRequest(
         body: { model, input: 'ping', store: false },
         path: '/v1beta/interactions',
       };
+    case ProviderProtocol.OpenAIImage:
+      return {
+        body: { model, n: 1, prompt: 'ping' },
+        path: '/v1/images/generations',
+      };
     default:
       return assertNever(primary.protocol);
   }

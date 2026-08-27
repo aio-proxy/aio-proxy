@@ -1,6 +1,7 @@
 import type {
   AnyProtocolAdapter,
   EmbeddingProtocolAdapter,
+  ImageProtocolAdapter,
   ModelInvocation,
   ProtocolAdapter,
   RouterCandidate,
@@ -22,7 +23,8 @@ import type { AttemptEmitter } from './emit';
 // fall back to the next candidate. Thrown errors are handled by the loop.
 export type AttemptStep =
   | { readonly kind: 'return'; readonly response: Response }
-  | { readonly kind: 'fallback'; readonly lastFailure: Response };
+  | { readonly kind: 'fallback'; readonly lastFailure: Response }
+  | { readonly kind: 'skip'; readonly reason: string };
 
 // Model invocation is materialized lazily on the first model candidate and
 // reused across candidates; both fields are mutated in place by the model path.
@@ -39,13 +41,17 @@ export type LogAttemptFailure = (
   detail?: { readonly response?: Response; readonly error?: unknown },
 ) => void;
 
+export type PipelineAdapter<TRequest, TContext> =
+  | AnyProtocolAdapter<TRequest, TContext>
+  | ImageProtocolAdapter<TRequest, TContext>;
+
 // Invariants shared by every candidate attempt in one request. TAdapter keeps
-// the language and embedding attempt paths from seeing each other's adapter
-// surface while the loop itself stays capability-agnostic.
+// the language, image, and embedding attempt paths from seeing each other's
+// adapter surface while the loop itself stays capability-agnostic.
 export type AttemptLoopContext<
   TRequest,
   TContext,
-  TAdapter extends AnyProtocolAdapter<TRequest, TContext> = ProtocolAdapter<TRequest, TContext>,
+  TAdapter extends PipelineAdapter<TRequest, TContext> = ProtocolAdapter<TRequest, TContext>,
 > = {
   readonly adapter: TAdapter;
   readonly context: TContext;
@@ -68,6 +74,10 @@ export type AttemptLoopContext<
   readonly retryAfterCapMs: number;
 };
 
+export type LanguageAttemptLoopContext<TRequest, TContext> = Omit<AttemptLoopContext<TRequest, TContext>, 'adapter'> & {
+  readonly adapter: ProtocolAdapter<TRequest, TContext>;
+};
+
 export type EmbeddingAttemptLoopContext<TRequest, TContext> = AttemptLoopContext<
   TRequest,
   TContext,
@@ -79,7 +89,7 @@ export type EmbeddingAttemptLoopContext<TRequest, TContext> = AttemptLoopContext
 export type AnyAttemptLoopContext<TRequest, TContext> = AttemptLoopContext<
   TRequest,
   TContext,
-  AnyProtocolAdapter<TRequest, TContext>
+  PipelineAdapter<TRequest, TContext>
 >;
 
 // Per-candidate facts.

@@ -12,6 +12,7 @@ export function wrapOpenAIProtocolFetch(protocol: ProviderProtocol, fetcher: Pro
     case ProviderProtocol.Anthropic:
     case ProviderProtocol.Gemini:
     case ProviderProtocol.GeminiInteractions:
+    case ProviderProtocol.OpenAIImage:
       return fetcher as OpenAIStreamFetch;
   }
 }

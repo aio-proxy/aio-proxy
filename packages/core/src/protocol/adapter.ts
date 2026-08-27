@@ -2,11 +2,21 @@ import type { ProviderExecutedTool } from '@aio-proxy/plugin-sdk';
 import type { AliasDimensions, ProviderProtocol } from '@aio-proxy/types';
 
 import type { AiSdkCallSettings, ModelMessage, TextStreamPart, ToolSet } from '../ai-sdk-bridge';
+import { REQUEST_BODY_LIMITS, type RequestBodyLimits } from './request';
 import type { ProtocolSessionHints } from './session';
 
 export type EmptyProtocolContext = Readonly<Record<never, never>>;
 export type ModelEventStream = ReadableStream<TextStreamPart<ToolSet>>;
 export type ModelSseStream = ReadableStream<Uint8Array> & { readonly completion: Promise<void> };
+
+export type InboundCapability = 'language' | 'image' | 'embedding';
+
+export type ModelInvocationDiagnostic = Readonly<{
+  feature: 'web_search_call';
+  action: 'dropped';
+  reason: 'completed_without_results_or_sources';
+  inputIndex: number;
+}>;
 
 export type ProtocolErrorMapper = Readonly<{
   requestError: (error: unknown) => Response | undefined;
@@ -25,6 +35,7 @@ export type ModelInvocation = {
   readonly settings?: AiSdkCallSettings;
   readonly tools?: ToolSet;
   readonly providerTools?: readonly ProviderExecutedTool[];
+  readonly diagnostics?: readonly ModelInvocationDiagnostic[];
 };
 
 export type ModelEgressContext = {
@@ -39,8 +50,10 @@ export type ProtocolRequestDiagnostic = Readonly<{
   effectiveMode: 'synchronous';
 }>;
 
-export type ProtocolAdapter<TRequest, TContext> = Readonly<{
+export type SharedProtocolAdapter<TRequest, TContext> = Readonly<{
   protocol: ProviderProtocol;
+  capability: InboundCapability;
+  bodyLimits: (raw: Request, context: TContext) => RequestBodyLimits;
   parse: (raw: Request, context: TContext) => Promise<TRequest>;
   model: (request: TRequest, context: TContext) => string;
   dimensions: (request: TRequest, context: TContext) => AliasDimensions;
@@ -54,22 +67,30 @@ export type ProtocolAdapter<TRequest, TContext> = Readonly<{
     supportedEfforts: ReadonlySet<string>,
     context: TContext,
   ) => Promise<Request>;
-  modelInvocation: (request: TRequest, context: TContext) => ModelInvocation;
-  modelInvocationForTarget: (
-    invocation: ModelInvocation,
-    targetProtocol: ProviderProtocol | undefined,
-    supportedEfforts: ReadonlySet<string>,
-  ) => ModelInvocation;
-  modelJson: (stream: ModelEventStream, context: ModelEgressContext) => Promise<unknown>;
-  modelSse: (stream: ModelEventStream, context: ModelEgressContext) => ModelSseStream;
-  egressContext?: (request: TRequest, context: TContext) => Partial<ModelEgressContext>;
   errors: ProtocolErrorMapper;
 }>;
 
+export type LanguageProtocolAdapter<TRequest, TContext> = SharedProtocolAdapter<TRequest, TContext> &
+  Readonly<{
+    capability: 'language';
+    modelInvocation: (request: TRequest, context: TContext) => ModelInvocation;
+    modelInvocationForTarget: (
+      invocation: ModelInvocation,
+      targetProtocol: ProviderProtocol | undefined,
+      supportedEfforts: ReadonlySet<string>,
+    ) => ModelInvocation;
+    modelJson: (stream: ModelEventStream, context: ModelEgressContext) => Promise<unknown>;
+    modelSse: (stream: ModelEventStream, context: ModelEgressContext) => ModelSseStream;
+    egressContext?: (request: TRequest, context: TContext) => Partial<ModelEgressContext>;
+  }>;
+
+export type ProtocolAdapter<TRequest, TContext> = LanguageProtocolAdapter<TRequest, TContext>;
+
 export type ProtocolAdapterDefinition<TRequest, TContext> = Omit<
   ProtocolAdapter<TRequest, TContext>,
-  'modelInvocationForTarget' | 'requestDiagnostics' | 'dimensions'
+  'capability' | 'bodyLimits' | 'modelInvocationForTarget' | 'requestDiagnostics' | 'dimensions'
 > & {
+  readonly bodyLimits?: ProtocolAdapter<TRequest, TContext>['bodyLimits'];
   readonly modelInvocationForTarget?: ProtocolAdapter<TRequest, TContext>['modelInvocationForTarget'];
   readonly dimensions?: ProtocolAdapter<TRequest, TContext>['dimensions'];
   readonly requestDiagnostics?: ProtocolAdapter<TRequest, TContext>['requestDiagnostics'];
@@ -78,12 +99,15 @@ export type ProtocolAdapterDefinition<TRequest, TContext> = Omit<
 const noDimensions = (): AliasDimensions => ({});
 const noRequestDiagnostics = (): readonly ProtocolRequestDiagnostic[] => [];
 const sameModelInvocation = (invocation: ModelInvocation): ModelInvocation => invocation;
+const defaultBodyLimits = (): RequestBodyLimits => REQUEST_BODY_LIMITS;
 
 export function defineProtocolAdapter<TRequest, TContext>(
   definition: ProtocolAdapterDefinition<TRequest, TContext>,
 ): ProtocolAdapter<TRequest, TContext> {
   return Object.freeze({
     ...definition,
+    capability: 'language',
+    bodyLimits: definition.bodyLimits ?? defaultBodyLimits,
     modelInvocationForTarget: definition.modelInvocationForTarget ?? sameModelInvocation,
     dimensions: definition.dimensions ?? noDimensions,
     requestDiagnostics: definition.requestDiagnostics ?? noRequestDiagnostics,
@@ -118,6 +142,7 @@ export type EmbeddingEgressContext = {
 export type EmbeddingProtocolAdapter<TRequest, TContext> = Readonly<{
   capability: 'embedding';
   protocol: ProviderProtocol;
+  bodyLimits: (raw: Request, context: TContext) => RequestBodyLimits;
   parse: (raw: Request, context: TContext) => Promise<TRequest>;
   model: (request: TRequest, context: TContext) => string;
   dimensions: (request: TRequest, context: TContext) => AliasDimensions;
@@ -136,17 +161,18 @@ export type AnyProtocolAdapter<TRequest, TContext> =
   | ProtocolAdapter<TRequest, TContext>
   | EmbeddingProtocolAdapter<TRequest, TContext>;
 
-export function isEmbeddingProtocolAdapter<TRequest, TContext>(
-  adapter: AnyProtocolAdapter<TRequest, TContext>,
-): adapter is EmbeddingProtocolAdapter<TRequest, TContext> {
-  return 'capability' in adapter && adapter.capability === 'embedding';
+export function isEmbeddingProtocolAdapter<TRequest, TContext>(adapter: {
+  readonly capability?: string;
+}): adapter is EmbeddingProtocolAdapter<TRequest, TContext> {
+  return adapter.capability === 'embedding';
 }
 
 export function defineEmbeddingProtocolAdapter<TRequest, TContext>(
   definition: Omit<
     EmbeddingProtocolAdapter<TRequest, TContext>,
-    'dimensions' | 'requestDiagnostics' | 'session' | 'wantsStream'
+    'bodyLimits' | 'dimensions' | 'requestDiagnostics' | 'session' | 'wantsStream'
   > & {
+    readonly bodyLimits?: EmbeddingProtocolAdapter<TRequest, TContext>['bodyLimits'];
     readonly dimensions?: EmbeddingProtocolAdapter<TRequest, TContext>['dimensions'];
     readonly requestDiagnostics?: EmbeddingProtocolAdapter<TRequest, TContext>['requestDiagnostics'];
     readonly wantsStream?: EmbeddingProtocolAdapter<TRequest, TContext>['wantsStream'];
@@ -154,6 +180,7 @@ export function defineEmbeddingProtocolAdapter<TRequest, TContext>(
 ): EmbeddingProtocolAdapter<TRequest, TContext> {
   return Object.freeze({
     ...definition,
+    bodyLimits: definition.bodyLimits ?? defaultBodyLimits,
     dimensions: definition.dimensions ?? noDimensions,
     requestDiagnostics: definition.requestDiagnostics ?? noRequestDiagnostics,
     wantsStream: definition.wantsStream ?? (() => false),

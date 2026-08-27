@@ -3,14 +3,15 @@ import { type ModelEgressContext } from '@aio-proxy/core';
 import { terminalCompletion } from '../../../route-observation';
 import type { ModelTransport } from '../../../runtime';
 import { attemptBase, candidateConfigPrice } from '../attempt-base';
+import { logModelInvocationDiagnostics } from '../logging';
 import { createSseResponse, preflightStream } from '../stream';
-import type { AttemptLoopContext, AttemptStep, CandidateSlot, InvocationHolder } from './context';
+import type { AttemptStep, CandidateSlot, InvocationHolder, LanguageAttemptLoopContext } from './context';
 import { assertCandidateSupported, prepareModelInvocation } from './model-prepare';
 
 // Model dispatch for one candidate. The attempt span opens before the provider
 // invocation so buffered (non-stream) requests still get a real span duration.
 export async function attemptModelCandidate<TRequest, TContext>(
-  ctx: AttemptLoopContext<TRequest, TContext>,
+  ctx: LanguageAttemptLoopContext<TRequest, TContext>,
   slot: CandidateSlot,
   model: ModelTransport,
   holder: InvocationHolder,
@@ -26,6 +27,15 @@ export async function attemptModelCandidate<TRequest, TContext>(
   const unsupported = assertCandidateSupported(ctx, slot, model, candidateInvocation, targetProtocol);
   if (unsupported !== undefined) return unsupported;
 
+  logModelInvocationDiagnostics({
+    source,
+    requestId: session.requestId,
+    rawRequest,
+    inboundProtocol: adapter.protocol,
+    diagnostics: candidateInvocation.diagnostics ?? [],
+    providerId: provider.id,
+    attemptIndex: index,
+  });
   const base = attemptBase(provider, candidate.modelId, startedAt, slot.trace);
   const attemptSpan = ctx.emitter.startAttempt(base, index);
   slot.spanRef.current = attemptSpan;

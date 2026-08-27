@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 
 import { ProviderProtocol } from '@aio-proxy/types';
 
-import { extractPassthroughUsage } from './index';
+import { extractPassthroughObservation, extractPassthroughUsage } from './index';
 
 describe('passthrough usage extraction', () => {
   test('extracts Anthropic JSON usage', () => {
@@ -125,6 +125,55 @@ describe('passthrough usage extraction', () => {
     });
     expect(usage).not.toHaveProperty('inputAudioTokens');
     expect(usage).not.toHaveProperty('outputAudioTokens');
+  });
+
+  test('extracts official OpenAI Images usage tokens', () => {
+    expect(
+      extractPassthroughUsage(
+        ProviderProtocol.OpenAIImage,
+        JSON.stringify({
+          created: 10,
+          data: [{ b64_json: 'abc' }],
+          usage: {
+            input_tokens: 8,
+            output_tokens: 1056,
+            total_tokens: 1064,
+            input_tokens_details: { image_tokens: 4, text_tokens: 4 },
+          },
+        }),
+      ),
+    ).toEqual({
+      inputTokens: 8,
+      outputTokens: 1056,
+      totalTokens: 1064,
+      imageCount: 1,
+    });
+  });
+
+  test('counts Images data length when token usage is absent', () => {
+    expect(
+      extractPassthroughUsage(
+        ProviderProtocol.OpenAIImage,
+        JSON.stringify({
+          created: 10,
+          data: [{ url: 'https://example.test/a' }, { url: 'https://example.test/b' }],
+        }),
+      ),
+    ).toEqual({ imageCount: 2 });
+  });
+
+  test('rejects invalid Images token fields even when data is present', () => {
+    expect(
+      extractPassthroughObservation(
+        ProviderProtocol.OpenAIImage,
+        JSON.stringify({
+          data: [{ b64_json: 'abc' }],
+          usage: { input_tokens: -1, output_tokens: 1, total_tokens: 1 },
+        }),
+      ),
+    ).toEqual({
+      issues: [{ code: 'invalid_token_count', path: ['inputTokens'] }],
+    });
   });
 
   test('does not extract audio tokens from Responses-protocol usage', () => {

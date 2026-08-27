@@ -4,6 +4,7 @@ import { dirname } from 'node:path';
 import { AtomicConfigFile, configPath, parseRuntimeConfig } from '@aio-proxy/core';
 import { AppError, ConfigWriteError, m, PortOutOfRangeError } from '@aio-proxy/i18n';
 
+import { EDITS_MULTIPART_ENCODED_LIMIT } from '../../../core/src/ingress/openai-image/multipart-counters';
 import packageJson from '../../package.json' with { type: 'json' };
 import { bootProxyServer } from '../boot-proxy-server';
 import { controlBaseUrl } from '../control-plane';
@@ -15,6 +16,8 @@ import { loadServiceEnv } from '../service-env';
 
 const VERSION = packageJson.version;
 const CONFIG_SCHEMA_URL = `https://cdn.jsdelivr.net/npm/aio-proxy@${VERSION}/config.schema.json`;
+
+export const MAX_REQUEST_BODY_SIZE = EDITS_MULTIPART_ENCODED_LIMIT;
 
 export const DEFAULT_CONFIG = {
   $schema: CONFIG_SCHEMA_URL,
@@ -157,7 +160,13 @@ export const run = (deps: CliDeps) => async (options: RunOptions) => {
   // 255s is Bun's maximum idle window.
   let server: ReturnType<typeof Bun.serve>;
   try {
-    server = Bun.serve({ hostname: host, port, idleTimeout: 255, fetch: app.fetch });
+    server = Bun.serve({
+      hostname: host,
+      port,
+      idleTimeout: 255,
+      maxRequestBodySize: MAX_REQUEST_BODY_SIZE,
+      fetch: app.fetch,
+    });
   } catch (error) {
     try {
       app.close();

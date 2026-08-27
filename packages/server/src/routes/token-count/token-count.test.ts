@@ -403,7 +403,11 @@ function routingPolicy(providers: Record<string, { readonly priority?: number; r
 }
 
 function countModel(options: { readonly id: string; readonly invoke: ModelTransport['invoke'] }) {
-  const fixture = modelProvider({ id: options.id, invoke: options.invoke });
+  const fixture = modelProvider({
+    id: options.id,
+    invoke: options.invoke,
+    modelId: `${options.id}-wire`,
+  });
   return {
     ...fixture,
     provider: {

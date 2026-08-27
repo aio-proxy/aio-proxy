@@ -169,6 +169,7 @@ describe('server routes', () => {
         weight,
         models: ['shared'],
         alias: { shared: { model: 'shared', preserve: false } },
+        capabilityIndex: { shared: new Set(['language']) },
         model: {
           invoke: () => {
             attempts.push(id);

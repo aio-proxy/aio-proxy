@@ -35,6 +35,19 @@ test('overlapping catalog IDs keep the language protocol for language targetProt
   });
 });
 
+test('overlapping language and image catalog IDs keep the language protocol', () => {
+  expect(
+    modelMetadataRecord({
+      ...emptyFamilies,
+      language: [{ id: 'shared', displayName: 'Chat', metadata: { protocol: ProviderProtocol.Anthropic } }],
+      image: [{ id: 'shared', displayName: 'Image', metadata: { protocol: ProviderProtocol.OpenAIImage } }],
+      embedding: [],
+    }),
+  ).toEqual({
+    shared: { name: 'Chat', protocol: ProviderProtocol.Anthropic },
+  });
+});
+
 test('overlapping catalog IDs drop embedding protocol when language omits it', () => {
   expect(
     modelMetadataRecord({

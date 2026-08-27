@@ -27,6 +27,8 @@ export function hasContentDelta(protocol: ProviderProtocol, eventType: string | 
       }
       return false;
     }
+    case ProviderProtocol.OpenAIImage:
+      return false;
     default:
       return assertNever(protocol);
   }
@@ -45,7 +47,9 @@ function anthropicContent(value: unknown): boolean {
 function openAICompatibleContent(value: unknown): boolean {
   if (!isRecord(value) || !Array.isArray(value['choices'])) return false;
   return value['choices'].some((choice) => {
-    if (!isRecord(choice) || !isRecord(choice['delta'])) return false;
+    if (!isRecord(choice)) return false;
+    if (nonEmptyString(choice['text'])) return true;
+    if (!isRecord(choice['delta'])) return false;
     const delta = choice['delta'];
     return (
       nonEmptyString(delta['content']) ||

@@ -85,7 +85,7 @@ export function catalogFreshness(
 
 export function modelMetadataRecord(catalog: ModelCatalog): Readonly<Record<string, RuntimeModelMetadata>> {
   const record: Record<string, RuntimeModelMetadata> = {};
-  for (const descriptor of catalog.embedding) {
+  for (const descriptor of [...catalog.embedding, ...catalog.image]) {
     record[descriptor.id] = descriptorMetadata(descriptor);
   }
   for (const descriptor of catalog.language) {
@@ -95,8 +95,9 @@ export function modelMetadataRecord(catalog: ModelCatalog): Readonly<Record<stri
       record[descriptor.id] = next;
       continue;
     }
-    // Language owns targetProtocol. Embed() does not read this record, so an
-    // overlapping embedding descriptor must not replace or invent a protocol.
+    // Language owns targetProtocol. Image/embed convert do not read this record
+    // for dispatch, so an overlapping non-language descriptor must not replace
+    // or invent a protocol.
     record[descriptor.id] = {
       ...(existing.name === undefined ? {} : { name: existing.name }),
       ...(next.name === undefined ? {} : { name: next.name }),
@@ -123,6 +124,7 @@ function metadataProtocol(metadata: unknown): ProviderProtocol | undefined {
     case ProviderProtocol.Anthropic:
     case ProviderProtocol.Gemini:
     case ProviderProtocol.GeminiInteractions:
+    case ProviderProtocol.OpenAIImage:
       return protocol;
     default:
       return undefined;

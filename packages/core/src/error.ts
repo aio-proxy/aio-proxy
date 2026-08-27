@@ -150,6 +150,39 @@ export class OpenAIResponsesUnsupportedFeatureError extends AioProxyError {
   }
 }
 
+export class OpenAIImagesUnsupportedFeatureError extends AioProxyError {
+  readonly code = 'UNSUPPORTED_OPENAI_IMAGES_FEATURE';
+  readonly status = 501;
+
+  constructor(readonly feature: 'image_url' | 'files') {
+    super('OpenAIImagesUnsupportedFeatureError', `OpenAI Images feature is not supported: ${feature}`);
+  }
+}
+
+export class OpenAIImagesInvalidRequestError extends AioProxyError {
+  readonly code = 'INVALID_OPENAI_IMAGES_REQUEST';
+  readonly status = 400;
+
+  constructor(readonly param: 'image' | 'mask' | 'size') {
+    super('OpenAIImagesInvalidRequestError', `Invalid OpenAI Images request: ${param}`);
+  }
+}
+
+export class OpenAICompletionsUnsupportedFeatureError extends AioProxyError {
+  readonly code = 'UNSUPPORTED_OPENAI_COMPLETIONS_FEATURE';
+  readonly status = 501;
+
+  constructor(
+    readonly feature: string,
+    readonly path: string,
+  ) {
+    super(
+      'OpenAICompletionsUnsupportedFeatureError',
+      `OpenAI Completions feature is not supported: ${feature} at ${path}`,
+    );
+  }
+}
+
 export type ImageInputUnsupportedReason =
   | 'assistant-image'
   | 'gemini-assistant-url'

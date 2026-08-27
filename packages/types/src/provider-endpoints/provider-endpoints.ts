@@ -7,6 +7,7 @@ export enum ProviderProtocol {
   Anthropic = 'anthropic',
   Gemini = 'gemini',
   GeminiInteractions = 'gemini-interactions',
+  OpenAIImage = 'openai-image',
 }
 
 export const ProviderProtocolSchema = z

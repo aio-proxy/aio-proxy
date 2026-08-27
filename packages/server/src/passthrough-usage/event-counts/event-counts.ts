@@ -2,11 +2,11 @@ import { ProviderProtocol } from '@aio-proxy/types';
 
 import { type ExtractedUsage, isRecord } from '../shared';
 
-// Built-in tool invocations that carry a per-event fee. These counts live in the
-// OpenAI Responses *content* (the `output` array / `response.output_item.done`
-// stream events), never in any provider `usage` object, so they are counted
-// separately from token extraction. Chat Completions, Anthropic, and Gemini have
-// no equivalent built-in item shape in scope, so they contribute nothing.
+// Built-in items that carry a per-event fee. Responses counts live in the
+// `output` array / `response.output_item.done` events. Images streams count
+// each official `image_generation.completed` event. Neither lives in `usage`,
+// so they are counted separately from token extraction. Chat Completions,
+// Anthropic, and Gemini have no equivalent built-in item shape in scope.
 export type ResponseItemCounts = {
   readonly imageCount?: number;
   readonly webSearchCount?: number;
@@ -15,6 +15,7 @@ export type ResponseItemCounts = {
 const IMAGE_ITEM_TYPE = 'image_generation_call';
 const WEB_SEARCH_ITEM_TYPE = 'web_search_call';
 const OUTPUT_ITEM_DONE = 'response.output_item.done';
+const IMAGE_GENERATION_COMPLETED = 'image_generation.completed';
 
 // Count built-in tool items from a parsed NON-STREAM Responses reply. Mirrors
 // `openAIResponsesUsage`'s `response` unwrapping. Guards every access so a
@@ -39,17 +40,22 @@ export type ResponseItemCounter = {
   readonly totals: () => ResponseItemCounts;
 };
 
-// Streaming accumulator for the SSE path. Increments on each
-// `response.output_item.done` event whose completed `item.type` is a counted
-// built-in tool. `totals()` returns the cumulative counts observed so far.
+// Streaming accumulator for the SSE path. Responses increments on each
+// `response.output_item.done` built-in tool. Images increments on each official
+// `image_generation.completed` event (one generated image, not a `data` array).
 export function createResponseItemCounter(protocol: ProviderProtocol): ResponseItemCounter {
   let imageCount = 0;
   let webSearchCount = 0;
-  const enabled = protocol === ProviderProtocol.OpenAIResponse;
+  const responses = protocol === ProviderProtocol.OpenAIResponse;
+  const images = protocol === ProviderProtocol.OpenAIImage;
   return {
     observe(eventType, parsedData) {
-      if (!enabled) return;
       const type = eventType ?? (isRecord(parsedData) ? parsedData['type'] : undefined);
+      if (images) {
+        if (type === IMAGE_GENERATION_COMPLETED) imageCount += 1;
+        return;
+      }
+      if (!responses) return;
       if (type !== OUTPUT_ITEM_DONE || !isRecord(parsedData)) return;
       const item = parsedData['item'];
       if (!isRecord(item)) return;

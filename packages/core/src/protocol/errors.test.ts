@@ -7,6 +7,7 @@ import {
   GeminiInteractionsEgressError,
   GeminiInteractionsUnsupportedFeatureError,
   ImageInputUnsupportedError,
+  OpenAICompletionsUnsupportedFeatureError,
 } from '../error';
 import type { ProtocolErrorMapper } from './adapter';
 import {
@@ -16,9 +17,10 @@ import {
   geminiInteractionsErrors,
   openAICompletionsErrors,
   openAIEmbeddingsErrors,
+  openAIImagesErrors,
   openAIResponsesErrors,
 } from './errors';
-import { InvalidCompressedRequestBodyError } from './request';
+import { InvalidCompressedRequestBodyError, RequestBodyIdleTimeoutError } from './request';
 
 const cases = [
   [
@@ -33,6 +35,20 @@ const cases = [
     },
     {
       error: { code: 'invalid_request', message: 'Invalid OpenAI Completions request', type: 'invalid_request_error' },
+    },
+  ],
+  [
+    'OpenAI Images',
+    openAIImagesErrors,
+    {
+      error: {
+        code: 'unsupported_content_encoding',
+        message: 'Unsupported Content-Encoding',
+        type: 'invalid_request_error',
+      },
+    },
+    {
+      error: { code: 'invalid_request', message: 'Invalid OpenAI Images request', type: 'invalid_request_error' },
     },
   ],
   [
@@ -129,6 +145,17 @@ test.each([
     },
   ],
   [
+    'OpenAI Images',
+    openAIImagesErrors,
+    {
+      error: {
+        code: 'previous_response_conflict',
+        message: 'previous_response_id matches multiple providers',
+        type: 'invalid_request_error',
+      },
+    },
+  ],
+  [
     'OpenAI Responses',
     openAIResponsesErrors,
     {
@@ -190,6 +217,20 @@ test.each([
   expect(await response.json()).toEqual(expected);
 });
 
+test('maps Completions unsupported features through modelUnsupported as 501', async () => {
+  const response = openAICompletionsErrors.modelUnsupported?.(
+    new OpenAICompletionsUnsupportedFeatureError('prompt_array', 'prompt'),
+  );
+  expect(response?.status).toBe(501);
+  expect(await response?.json()).toEqual({
+    error: {
+      code: 'unsupported_feature',
+      message: 'OpenAI Completions feature is not supported: prompt_array',
+      type: 'invalid_request_error',
+    },
+  });
+});
+
 test('maps image compatibility errors into every inbound protocol shape', async () => {
   const error = new ImageInputUnsupportedError('gemini-tool-url', 'messages.2.content.0.output.value.1');
   const cases = [
@@ -214,6 +255,24 @@ test('maps image compatibility errors into every inbound protocol shape', async 
 
 test('openai completions rateLimited builds a native 429 with Retry-After', async () => {
   const r = openAICompletionsErrors.rateLimited(3);
+  expect(r.status).toBe(429);
+  expect(r.headers.get('retry-after')).toBe('3');
+  expect(await r.json()).toEqual({
+    error: { code: 'rate_limit_exceeded', message: expect.any(String), type: 'rate_limit_error' },
+  });
+});
+
+test('openai images maps stalled multipart reads to 408 and abort to 499', async () => {
+  const timeout = openAIImagesErrors.requestError(new RequestBodyIdleTimeoutError());
+  expect(timeout?.status).toBe(408);
+  expect(await timeout?.json()).toMatchObject({ error: { code: 'request_timeout' } });
+  const aborted = openAIImagesErrors.requestError(new DOMException('The operation was aborted.', 'AbortError'));
+  expect(aborted?.status).toBe(499);
+  expect(await aborted?.json()).toMatchObject({ error: { code: 'aborted' } });
+});
+
+test('openai images rateLimited builds a native 429 with Retry-After', async () => {
+  const r = openAIImagesErrors.rateLimited(3);
   expect(r.status).toBe(429);
   expect(r.headers.get('retry-after')).toBe('3');
   expect(await r.json()).toEqual({

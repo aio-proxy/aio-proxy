@@ -1,4 +1,4 @@
-import type { ProtocolRequestDiagnostic } from '@aio-proxy/core';
+import type { ModelInvocationDiagnostic, ProtocolRequestDiagnostic } from '@aio-proxy/core';
 
 import { providerRequestTransformDiagnostic } from '../../provider-request-transform';
 import type { ProviderRouteSource } from '../../runtime';
@@ -26,6 +26,28 @@ export function logRequestDiagnostics(options: {
       inboundProtocol: options.inboundProtocol,
       requestedModelId: options.requestedModelId,
       path: new URL(options.rawRequest.url).pathname,
+      ...diagnostic,
+    });
+  }
+}
+
+export function logModelInvocationDiagnostics(options: {
+  readonly source: ProviderRouteSource;
+  readonly requestId: string;
+  readonly rawRequest: Request;
+  readonly inboundProtocol: string;
+  readonly diagnostics: readonly ModelInvocationDiagnostic[];
+  readonly providerId: string;
+  readonly attemptIndex: number;
+}): void {
+  for (const diagnostic of options.diagnostics) {
+    logServerEvent(options.source.logger, {
+      event: 'request.feature_downgraded',
+      requestId: options.requestId,
+      inboundProtocol: options.inboundProtocol,
+      path: new URL(options.rawRequest.url).pathname,
+      providerId: options.providerId,
+      attemptIndex: options.attemptIndex,
       ...diagnostic,
     });
   }

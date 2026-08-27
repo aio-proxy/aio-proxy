@@ -102,3 +102,14 @@ test('retains unknown typed items for raw-only routing', () => {
     { type: '__aio_proxy_unsupported__', wireType: 'computer_call' },
   ]);
 });
+
+test('preserves completed web search history as a known input item', () => {
+  const item = {
+    type: 'web_search_call',
+    id: 'ws_1',
+    status: 'completed',
+    action: { type: 'search', query: 'private-marker' },
+  } as const;
+
+  expect(parseOpenAIResponses({ model: 'gpt-5.6-terra', input: [item] }).input).toEqual([item]);
+});

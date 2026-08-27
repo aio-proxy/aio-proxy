@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
 
 import { parseOpenAICompletions } from '../../ingress/openai-completions';
+import { rewriteOpenAICompletionsRaw } from './completions-raw';
 import { openAICompletionsAdapter } from './openai-completions';
 
 test('clamps reasoning_effort in the raw body against the supported set', async () => {
@@ -78,4 +79,23 @@ test('forwards the original body bytes verbatim when model and effort are unchan
     {},
   );
   expect(await forwarded.text()).toBe(bodyText);
+});
+
+test('legacy Completions raw keeps omitted and null prompt bytes', async () => {
+  const omitted = '{"model":"upstream","seed":9007199254740993}';
+  const forwarded = await rewriteOpenAICompletionsRaw(
+    new Request('https://x/v1/completions', { method: 'POST', body: omitted }),
+    'upstream',
+    new Set(['low', 'medium', 'high']),
+  );
+  expect(await forwarded.text()).toBe(omitted);
+  expect(forwarded.url).toContain('/v1/completions');
+
+  const nullable = '{"model":"src","prompt":null}';
+  const rewritten = await rewriteOpenAICompletionsRaw(
+    new Request('https://x/v1/completions', { method: 'POST', body: nullable }),
+    'davinci',
+    new Set(),
+  );
+  expect(await rewritten.json()).toEqual({ model: 'davinci', prompt: null });
 });

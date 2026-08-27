@@ -3,7 +3,13 @@ import type { LanguageModelCallOptions, ModelMessage, RequestOptions, ToolSet } 
 
 import type { JsonValue } from './json';
 
-export type ProtocolId = 'openai-compatible' | 'openai-response' | 'anthropic' | 'gemini' | 'gemini-interactions';
+export type ProtocolId =
+  | 'openai-compatible'
+  | 'openai-response'
+  | 'anthropic'
+  | 'gemini'
+  | 'gemini-interactions'
+  | 'openai-image';
 
 /** Non-deprecated replacement for the AI SDK `CallSettings` type. */
 export type AiSdkCallSettings = LanguageModelCallOptions &
@@ -76,6 +82,9 @@ export type RawResolver = (input: {
   readonly modelId: string;
   readonly metadata?: JsonValue;
   readonly capability?: 'language' | 'embedding';
+  // Inbound URL pathname when the pipeline is choosing between raw and model.
+  // Absent for capability probes that are not tied to a request.
+  readonly requestPath?: string;
 }) => RawTransport | undefined;
 
 export type ModelDescriptor = {

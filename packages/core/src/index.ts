@@ -66,7 +66,10 @@ export {
   NpmPackageJsonError,
   NpmPackageNameError,
   OpenAICompletionsTransformError,
+  OpenAICompletionsUnsupportedFeatureError,
   OpenAIResponsesTransformError,
+  OpenAIImagesInvalidRequestError,
+  OpenAIImagesUnsupportedFeatureError,
   OpenAIResponsesUnsupportedFeatureError,
   ProviderNotInstalledError,
   RouterModelCollisionError,
@@ -121,6 +124,16 @@ export {
   parseOpenAICompletions,
 } from './ingress/openai-completions';
 export { type OpenAIEmbeddingsRequest, parseOpenAIEmbeddings } from './ingress/openai-embeddings';
+export {
+  CPA_DEFAULT_IMAGE_MODEL,
+  EDITS_MULTIPART_ENCODED_LIMIT,
+  parseOpenAIImageEdits,
+  parseOpenAIImageGenerations,
+  releaseMultipartSpool,
+  type OpenAIImageRequest,
+  type OpenAIImageSourceRef,
+  type OpenAIImageUpload,
+} from './ingress/openai-image';
 export {
   type OpenAIResponsesCustomTool,
   type OpenAIResponsesExecutableTool,
@@ -191,6 +204,7 @@ export {
   resolveApiKey,
 } from './provider/api/index';
 export { bridgeApiProviderToAiSdk, resolveOpenAIResponsesModel } from './provider/api-bridge/index';
+export { createProviderV4ImageInvoke } from './provider/provider-v4-image';
 export {
   assertConvertSupported,
   createProviderV4Embed,
