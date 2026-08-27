@@ -2,6 +2,7 @@ import {
   type AnyProtocolAdapter,
   type ImageProtocolAdapter,
   RequestBodyTooLargeError,
+  releaseMultipartSpool,
   RouterModelNotFoundError,
   UnsupportedContentEncodingError,
 } from '@aio-proxy/core';
@@ -147,6 +148,7 @@ async function handleProtocolRequestInContext<TRequest, TContext>(
   } finally {
     if (releaseRetainedBody) {
       void cancelRetainedRequestBody(rawRequest, 'request body no longer needed');
+      void releaseMultipartSpool(rawRequest);
     }
   }
 }

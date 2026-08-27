@@ -2,6 +2,7 @@ import { expect, spyOn, test } from 'bun:test';
 import { brotliCompressSync, deflateRawSync, deflateSync } from 'node:zlib';
 
 import {
+  decodedRequestStream,
   InvalidCompressedRequestBodyError,
   REQUEST_BODY_LIMITS,
   RequestBodyTooLargeError,
@@ -208,6 +209,27 @@ test('readJsonRequest cancels every retained branch when a chunked body exceeds 
   expect(result).toBeInstanceOf(RequestBodyTooLargeError);
   expect(await settleWithin(cancellation, 100)).not.toBeInstanceOf(TimeoutError);
   expect(request.bodyUsed).toBe(true);
+});
+
+test('decodedRequestStream gunzips without buffering the decoded payload first', async () => {
+  const decoded = new TextEncoder().encode('{"ok":true}');
+  const encoded = Bun.gzipSync(decoded);
+  const stream = await decodedRequestStream(encodedRequest('gzip', encoded));
+  expect(stream).not.toBeNull();
+  const parts: Uint8Array[] = [];
+  const reader = stream!.getReader();
+  for (;;) {
+    const next = await reader.read();
+    if (next.done) break;
+    parts.push(next.value);
+  }
+  const bytes = new Uint8Array(parts.reduce((total, part) => total + part.byteLength, 0));
+  let offset = 0;
+  for (const part of parts) {
+    bytes.set(part, offset);
+    offset += part.byteLength;
+  }
+  expect(new TextDecoder().decode(bytes)).toBe('{"ok":true}');
 });
 
 function encodedRequest(encoding: string, body: Uint8Array): Request {

@@ -118,6 +118,7 @@ export {
   EDITS_MULTIPART_ENCODED_LIMIT,
   parseOpenAIImageEdits,
   parseOpenAIImageGenerations,
+  releaseMultipartSpool,
   type OpenAIImageRequest,
   type OpenAIImageSourceRef,
   type OpenAIImageUpload,

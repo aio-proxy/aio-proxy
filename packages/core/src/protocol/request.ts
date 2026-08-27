@@ -1,5 +1,21 @@
 import { promisify } from 'node:util';
-import { brotliDecompress, gunzip, inflate, inflateRaw, zstdDecompress } from 'node:zlib';
+import {
+  brotliDecompress,
+  createBrotliDecompress,
+  createGunzip,
+  createInflate,
+  createInflateRaw,
+  createZstdDecompress,
+  gunzip,
+  inflate,
+  inflateRaw,
+  zstdDecompress,
+  type BrotliDecompress,
+  type Gunzip,
+  type Inflate,
+  type InflateRaw,
+  type ZstdDecompress,
+} from 'node:zlib';
 
 import { z } from 'zod';
 
@@ -67,9 +83,9 @@ export async function readJsonRequest(raw: Request, limits: RequestBodyLimits = 
   return JSON.parse(await readRequestText(raw, limits));
 }
 
-// Decode a compressed request into a stream. Unencoded bodies stay streamed so
-// official-max multipart edits are not buffered. Unknown encodings throw
-// UnsupportedContentEncodingError before any parse.
+// Decode a compressed request as a bounded stream. Unencoded bodies stay
+// streamed so official-max multipart edits are not buffered. Unknown encodings
+// throw UnsupportedContentEncodingError before any parse.
 export async function decodedRequestStream(
   raw: Request,
   limits: RequestBodyLimits = REQUEST_BODY_LIMITS,
@@ -78,11 +94,7 @@ export async function decodedRequestStream(
   try {
     const encoding = requestContentEncoding(raw.headers.get('content-encoding'));
     if (encoding === undefined) return raw.body;
-    const encoded = await readRequestBytes(raw.body, limits.encoded, options);
-    const bytes = await decodeRequestBytes(encoded, encoding, limits.decoded);
-    const copy = new Uint8Array(new ArrayBuffer(bytes.byteLength));
-    copy.set(bytes);
-    return new Blob([copy]).stream();
+    return streamDecodeRequestBody(raw.body, encoding, limits, options);
   } catch (error) {
     await cancelRequestBody(raw, error);
     throw error;
@@ -126,6 +138,133 @@ function requestContentEncoding(header: string | null): ContentEncoding | undefi
 
 function isContentEncoding(value: string): value is ContentEncoding {
   return value === 'br' || value === 'deflate' || value === 'gzip' || value === 'x-gzip' || value === 'zstd';
+}
+
+type ContentDecoder = BrotliDecompress | Gunzip | Inflate | InflateRaw | ZstdDecompress;
+
+function streamDecodeRequestBody(
+  body: ReadableStream<Uint8Array> | null,
+  encoding: ContentEncoding,
+  limits: RequestBodyLimits,
+  options: RequestBodyReadOptions | undefined,
+): ReadableStream<Uint8Array> {
+  const reader = body?.getReader();
+  if (reader === undefined) throw new InvalidCompressedRequestBodyError('Invalid compressed request body');
+  let decoder: ContentDecoder = createContentDecoder(encoding, limits.decoded);
+  let encoded = 0;
+  let decoded = 0;
+  let sourceDone = false;
+  let finished = false;
+  let deflateFallbackUsed = false;
+  const pending: Uint8Array[] = [];
+
+  const collectOutput = (): void => {
+    for (;;) {
+      const out = decoder.read() as Buffer | null;
+      if (out == null || out.byteLength === 0) break;
+      decoded += out.byteLength;
+      if (decoded > limits.decoded) throw new RequestBodyTooLargeError('Request body too large');
+      pending.push(Uint8Array.from(out));
+    }
+  };
+
+  const writeEncoded = async (chunk: Uint8Array): Promise<void> => {
+    encoded += chunk.byteLength;
+    if (encoded > limits.encoded) throw new RequestBodyTooLargeError('Request body too large');
+    try {
+      await writeDecoder(decoder, chunk);
+    } catch (error) {
+      if (encoding === 'deflate' && !deflateFallbackUsed && decoded === 0 && errorCode(error) === 'Z_DATA_ERROR') {
+        deflateFallbackUsed = true;
+        decoder.destroy();
+        decoder = createInflateRaw({ maxOutputLength: limits.decoded });
+        await writeDecoder(decoder, chunk);
+      } else {
+        throw mapDecodeError(error);
+      }
+    }
+    collectOutput();
+  };
+
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      try {
+        while (pending.length === 0 && !finished) {
+          if (!sourceDone) {
+            const next =
+              options?.idleTimeoutMs === undefined
+                ? await reader.read()
+                : await withAbortAndIdle(reader.read(), options.signal, options.idleTimeoutMs);
+            if (next.done) {
+              sourceDone = true;
+              await endDecoder(decoder);
+              collectOutput();
+              finished = true;
+              continue;
+            }
+            await writeEncoded(next.value);
+            continue;
+          }
+          finished = true;
+        }
+        const next = pending.shift();
+        if (next !== undefined) {
+          controller.enqueue(next);
+          return;
+        }
+        controller.close();
+      } catch (error) {
+        const mapped = mapDecodeError(error);
+        void reader.cancel(mapped).catch(() => undefined);
+        decoder.destroy();
+        controller.error(mapped);
+      }
+    },
+    cancel(reason) {
+      void reader.cancel(reason).catch(() => undefined);
+      decoder.destroy();
+    },
+  });
+}
+
+function createContentDecoder(encoding: ContentEncoding, maxOutputLength: number): ContentDecoder {
+  const options = { maxOutputLength };
+  switch (encoding) {
+    case 'br':
+      return createBrotliDecompress(options);
+    case 'deflate':
+      return createInflate(options);
+    case 'gzip':
+    case 'x-gzip':
+      return createGunzip(options);
+    case 'zstd':
+      return createZstdDecompress(options);
+  }
+}
+
+function writeDecoder(decoder: ContentDecoder, chunk: Uint8Array): Promise<void> {
+  return new Promise((resolve, reject) => {
+    decoder.write(chunk, (error: Error | null | undefined) => {
+      if (error === undefined || error === null) resolve();
+      else reject(error);
+    });
+  });
+}
+
+function endDecoder(decoder: ContentDecoder): Promise<void> {
+  return new Promise((resolve, reject) => {
+    decoder.end((error: Error | null | undefined) => {
+      if (error === undefined || error === null) resolve();
+      else reject(error);
+    });
+  });
+}
+
+function mapDecodeError(error: unknown): unknown {
+  if (error instanceof RequestBodyTooLargeError || error instanceof RequestBodyIdleTimeoutError) return error;
+  if (errorCode(error) === 'ERR_BUFFER_TOO_LARGE') return new RequestBodyTooLargeError('Request body too large');
+  if (isCompressedDataError(error)) return new InvalidCompressedRequestBodyError('Invalid compressed request body');
+  return error;
 }
 
 async function decodeRequestBytes(

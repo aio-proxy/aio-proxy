@@ -9,7 +9,7 @@ const MULTIPART_DECODE_LIMITS = Object.freeze({
   decoded: EDITS_MULTIPART_ENCODED_LIMIT,
 }) satisfies RequestBodyLimits;
 
-export { replaySpooledMultipartRaw } from './multipart-spool';
+export { releaseMultipartSpool, replaySpooledMultipartRaw } from './multipart-spool';
 
 export {
   EDITS_MULTIPART_AGGREGATE_LIMIT,

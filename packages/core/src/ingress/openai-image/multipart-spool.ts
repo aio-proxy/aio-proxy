@@ -1,5 +1,5 @@
 import { once } from 'node:events';
-import { createWriteStream } from 'node:fs';
+import { closeSync, createWriteStream, fchmodSync, openSync } from 'node:fs';
 import { unlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -30,7 +30,16 @@ export async function spoolMultipartBody(raw: Request, idleTimeoutMs: number): P
       if (next.done) break;
       total += next.value.byteLength;
       if (total > EDITS_MULTIPART_ENCODED_LIMIT) throw tooLarge();
-      writer ??= createWriteStream(path);
+      if (writer === undefined) {
+        const fd = openSync(path, 'wx', 0o600);
+        try {
+          fchmodSync(fd, 0o600);
+          writer = createWriteStream(path, { fd, autoClose: true });
+        } catch (error) {
+          closeSync(fd);
+          throw error;
+        }
+      }
       if (!writer.write(next.value)) await once(writer, 'drain');
     }
     if (writer === undefined) throw new SyntaxError('Invalid OpenAI Images multipart request');
@@ -55,6 +64,17 @@ export function retainMultipartSpool(raw: Request, spool: MultipartSpool): void 
   spools.set(raw, spool);
   spoolFinalizers.register(raw, spool.path);
   raw.signal.addEventListener('abort', () => void spool.unlink(), { once: true });
+}
+
+export async function releaseMultipartSpool(raw: Request): Promise<void> {
+  const spool = spools.get(raw);
+  if (spool === undefined) return;
+  spools.delete(raw);
+  await spool.unlink();
+}
+
+export function multipartSpoolPath(raw: Request): string | undefined {
+  return spools.get(raw)?.path;
 }
 
 export function replaySpooledMultipartRaw(raw: Request): Request {

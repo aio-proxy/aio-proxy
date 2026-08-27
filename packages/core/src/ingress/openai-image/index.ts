@@ -2,6 +2,7 @@ export {
   assertEditsMultipartCounters,
   EDITS_MULTIPART_ENCODED_LIMIT,
   parseOpenAIImageEditsMultipart,
+  releaseMultipartSpool,
   replaySpooledMultipartRaw,
 } from './multipart';
 export {

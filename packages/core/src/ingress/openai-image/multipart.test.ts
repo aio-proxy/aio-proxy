@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test';
+import { stat } from 'node:fs/promises';
 
 import { RequestBodyTooLargeError, UnsupportedContentEncodingError } from '../../protocol/request';
 import {
@@ -6,7 +7,9 @@ import {
   EDITS_MULTIPART_ENCODED_LIMIT,
   EDITS_MULTIPART_NON_FILE_LIMIT,
   parseOpenAIImageEditsMultipart,
+  releaseMultipartSpool,
 } from './multipart';
+import { multipartSpoolPath } from './multipart-spool';
 import { parseMultipartStream } from './multipart-stream';
 import { CPA_DEFAULT_IMAGE_MODEL } from './openai-image';
 
@@ -321,6 +324,11 @@ test('consumes the inbound multipart body into a spool instead of leaving a tee 
   const parsed = await parseOpenAIImageEditsMultipart(raw);
   expect(parsed.prompt).toBe('make it night');
   expect(raw.bodyUsed).toBe(true);
+  const path = multipartSpoolPath(raw);
+  expect(path).toBeDefined();
+  expect((await stat(path!)).mode & 0o777).toBe(0o600);
+  await releaseMultipartSpool(raw);
+  await expect(stat(path!)).rejects.toMatchObject({ code: 'ENOENT' });
 });
 
 test('keeps preamble line-start context when a false boundary is split before its suffix', async () => {
