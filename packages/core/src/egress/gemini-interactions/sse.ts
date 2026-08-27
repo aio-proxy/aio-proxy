@@ -179,6 +179,10 @@ function startFunctionCall(state: SseState, id: string, name: string): void {
     );
     return;
   }
+  if (state.tools.has(id)) {
+    emitError(state, new Error('function_call step has a duplicate id'));
+    return;
+  }
   if (state.open !== undefined && state.open.kind !== 'function_call') closeOpen(state);
   const step = { type: 'function_call' as const, id, name, arguments: {} };
   assertFunctionCallStep(step);

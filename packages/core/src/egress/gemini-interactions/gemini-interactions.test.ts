@@ -463,6 +463,24 @@ describe('writeGeminiInteractionsSSE', () => {
     await expect(stream.completion).rejects.toBeInstanceOf(GeminiInteractionsEgressError);
   });
 
+  test('duplicate function_call id emits error then done', async () => {
+    const stream = writeGeminiInteractionsSSE(
+      streamOf(
+        { type: 'tool-input-start', id: 'c1', toolName: 'get_weather' },
+        { type: 'tool-input-start', id: 'c1', toolName: 'get_time' },
+        finish('tool-calls'),
+      ),
+      { modelId: 'm' },
+    );
+    const text = await readSse(stream);
+    expect(text).toContain('event: error');
+    expect(text).toContain('event: done');
+    expect(text).toContain('data: [DONE]');
+    expect(text).not.toContain('event: interaction.completed');
+    expect(text).not.toContain('"name":"get_time"');
+    await expect(stream.completion).rejects.toThrow();
+  });
+
   test('missing function_call id or name emits error then done', async () => {
     const stream = writeGeminiInteractionsSSE(
       streamOf({ type: 'tool-input-start', id: '', toolName: 't' }, finish('tool-calls')),
