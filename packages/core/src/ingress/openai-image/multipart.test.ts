@@ -1,7 +1,12 @@
 import { expect, test } from 'bun:test';
 
 import { RequestBodyTooLargeError, UnsupportedContentEncodingError } from '../../protocol/request';
-import { assertEditsMultipartCounters, parseOpenAIImageEditsMultipart } from './multipart';
+import {
+  assertEditsMultipartCounters,
+  EDITS_MULTIPART_ENCODED_LIMIT,
+  parseOpenAIImageEditsMultipart,
+} from './multipart';
+import { parseMultipartStream } from './multipart-stream';
 import { CPA_DEFAULT_IMAGE_MODEL } from './openai-image';
 
 const PNG_1X1_RGBA = Uint8Array.from(
@@ -350,6 +355,73 @@ test('keeps preamble line-start context when a false boundary is split before it
   expect(parsed.prompt).toBe('make it night');
   expect(parsed.uploads).toHaveLength(1);
   expect(parsed.uploads[0]?.data).toEqual(PNG_1X1_RGBA);
+});
+
+test('keeps preamble line-start context when a false boundary is split mid-token', async () => {
+  const boundary = 'bound';
+  const rest = Buffer.concat([
+    Buffer.from('nd\r\n'),
+    Buffer.from(
+      `Content-Disposition: form-data; name="image"; filename="bad.bin"\r\nContent-Type: application/octet-stream\r\n\r\nFAKE\r\n--${boundary}\r\nContent-Disposition: form-data; name="prompt"\r\n\r\nmake it night\r\n--${boundary}\r\nContent-Disposition: form-data; name="image"; filename="cat.bin"\r\nContent-Type: application/octet-stream\r\n\r\n`,
+    ),
+    Buffer.from(PNG_1X1_RGBA),
+    Buffer.from(`\r\n--${boundary}--\r\n`),
+  ]);
+  const chunks = [Buffer.from('prefix--bou'), rest];
+  let offset = 0;
+  const stream = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      const chunk = chunks[offset];
+      if (chunk === undefined) {
+        controller.close();
+        return;
+      }
+      offset += 1;
+      controller.enqueue(chunk);
+    },
+  });
+  const parsed = await parseOpenAIImageEditsMultipart(
+    new Request('https://x/v1/images/edits', {
+      method: 'POST',
+      headers: { 'content-type': `multipart/form-data; boundary=${boundary}` },
+      body: stream,
+    }),
+  );
+  expect(parsed.prompt).toBe('make it night');
+  expect(parsed.uploads).toHaveLength(1);
+  expect(parsed.uploads[0]?.data).toEqual(PNG_1X1_RGBA);
+});
+
+test('413s an encoded epilogue that exceeds the official-max envelope', async () => {
+  const boundary = 'bound';
+  const prefix = Buffer.concat([
+    Buffer.from(
+      `--${boundary}\r\nContent-Disposition: form-data; name="prompt"\r\n\r\nmake it night\r\n--${boundary}\r\nContent-Disposition: form-data; name="image"; filename="cat.bin"\r\nContent-Type: application/octet-stream\r\n\r\n`,
+    ),
+    Buffer.from(PNG_1X1_RGBA),
+    Buffer.from(`\r\n--${boundary}--\r\n`),
+  ]);
+  const over = EDITS_MULTIPART_ENCODED_LIMIT - prefix.byteLength + 1;
+  const chunk = new Uint8Array(1024 * 1024);
+  let sent = 0;
+  let prefixSent = false;
+  const stream = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      if (!prefixSent) {
+        prefixSent = true;
+        controller.enqueue(prefix);
+        return;
+      }
+      if (sent < over) {
+        const next = Math.min(chunk.byteLength, over - sent);
+        sent += next;
+        controller.enqueue(next === chunk.byteLength ? chunk : chunk.subarray(0, next));
+        return;
+      }
+      controller.close();
+    },
+  });
+  await expect(parseMultipartStream(stream, boundary)).rejects.toBeInstanceOf(RequestBodyTooLargeError);
 });
 
 test('skips preamble text that contains a non-delimiter boundary prefix', async () => {

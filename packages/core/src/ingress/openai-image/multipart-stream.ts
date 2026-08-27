@@ -89,27 +89,7 @@ export async function parseMultipartStream(
   try {
     while (state !== 'done') {
       if (state === 'preamble') {
-        const index = window.indexOf(firstBoundary);
-        if (index === -1) {
-          const flushed = window.flushExcept(window.delimiterOverlap(firstBoundary));
-          if (flushed !== undefined) addFraming(flushed.byteLength);
-          await readChunk();
-          continue;
-        }
-        const after = index + firstBoundary.byteLength;
-        if (window.byteLength < after + 2) {
-          const keepPrefix = index >= 2 ? 2 : index;
-          if (index > keepPrefix) addFraming(window.consume(index - keepPrefix).byteLength);
-          await readChunk();
-          continue;
-        }
-        if (!isLineStart(window, index) || !isBoundarySuffix(window.bytes().subarray(after, after + 2))) {
-          addFraming(window.consume(index + 1).byteLength);
-          continue;
-        }
-        addFraming(index + firstBoundary.byteLength);
-        window.consume(index + firstBoundary.byteLength);
-        state = 'afterBoundary';
+        state = await scanPreamble(window, firstBoundary, addFraming, readChunk);
         continue;
       }
 
@@ -182,6 +162,7 @@ export async function parseMultipartStream(
       window.consume(nextBoundary.byteLength);
       state = 'afterBoundary';
     }
+    await drainEncodedRemainder(reader, encoded, signal, idleTimeoutMs);
   } catch (error) {
     void reader.cancel(error).catch(() => undefined);
     throw error;
@@ -206,6 +187,52 @@ async function readEncodedChunk(
   if (total > EDITS_MULTIPART_ENCODED_LIMIT) throw tooLarge();
   setEncoded(total);
   window.append(next.value);
+}
+
+async function scanPreamble(
+  window: ByteWindow,
+  firstBoundary: Buffer,
+  addFraming: (bytes: number) => void,
+  readChunk: () => Promise<void>,
+): Promise<'preamble' | 'afterBoundary'> {
+  const index = window.indexOf(firstBoundary);
+  if (index === -1) {
+    const overlap = window.delimiterOverlap(firstBoundary);
+    const prefixKeep = overlap === 0 ? 0 : Math.min(2, window.byteLength - overlap);
+    const flushed = window.flushExcept(overlap + prefixKeep);
+    if (flushed !== undefined) addFraming(flushed.byteLength);
+    await readChunk();
+    return 'preamble';
+  }
+  const after = index + firstBoundary.byteLength;
+  if (window.byteLength < after + 2) {
+    const keepPrefix = index >= 2 ? 2 : index;
+    if (index > keepPrefix) addFraming(window.consume(index - keepPrefix).byteLength);
+    await readChunk();
+    return 'preamble';
+  }
+  if (!isLineStart(window, index) || !isBoundarySuffix(window.bytes().subarray(after, after + 2))) {
+    addFraming(window.consume(index + 1).byteLength);
+    return 'preamble';
+  }
+  addFraming(index + firstBoundary.byteLength);
+  window.consume(index + firstBoundary.byteLength);
+  return 'afterBoundary';
+}
+
+async function drainEncodedRemainder(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  encoded: number,
+  signal: AbortSignal | undefined,
+  idleTimeoutMs: number,
+): Promise<void> {
+  for (;;) {
+    const next = await withAbortAndIdle(reader.read(), signal, idleTimeoutMs);
+    if (next.done) return;
+    const total = encoded + next.value.byteLength;
+    if (total > EDITS_MULTIPART_ENCODED_LIMIT) throw tooLarge();
+    encoded = total;
+  }
 }
 
 function startPart(headers: string, onImage: () => void, onMask: () => void): OpenPart {
