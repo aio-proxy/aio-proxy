@@ -435,6 +435,20 @@ describe('geminiInteractionsToModelMessages', () => {
         model: 'm',
         store: false,
         input: [
+          { type: 'function_call', id: 'c1', name: 't', arguments: {} },
+          { type: 'function_result', call_id: 'c1', result: 'A' },
+          { type: 'user_input', content: [{ type: 'text', text: 'next' }] },
+          { type: 'function_call', id: 'c1', name: 'u', arguments: {} },
+          { type: 'function_result', call_id: 'c1', result: 'B' },
+        ],
+      },
+      'input',
+    ],
+    [
+      {
+        model: 'm',
+        store: false,
+        input: [
           { type: 'user_input', content: [{ type: 'text', text: 'hi' }] },
           { type: 'function_call', id: 'c1', name: 't', arguments: {} },
           { type: 'function_result', call_id: 'c1' },

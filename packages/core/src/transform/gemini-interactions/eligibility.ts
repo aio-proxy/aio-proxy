@@ -160,7 +160,8 @@ function assertInput(input: GeminiInteractionsBody['input']): void {
     if (input.length === 0) return;
     if (input.every(isStep)) {
       const calls = new Map<string, FunctionCallState>();
-      for (const step of input) assertStep(step, calls);
+      const seenIds = new Set<string>();
+      for (const step of input) assertStep(step, calls, seenIds);
       rejectUnresolvedCalls(calls);
       return;
     }
@@ -177,7 +178,7 @@ function assertInput(input: GeminiInteractionsBody['input']): void {
   unsupported('input', 'input');
 }
 
-function assertStep(step: Record<string, unknown>, calls: Map<string, FunctionCallState>): void {
+function assertStep(step: Record<string, unknown>, calls: Map<string, FunctionCallState>, seenIds: Set<string>): void {
   const type = step['type'];
   if (typeof type !== 'string' || !STEP_TYPES.has(type)) unsupported('input', 'input');
   if (type === 'thought' && 'content' in step) unsupported('input', 'input');
@@ -201,7 +202,8 @@ function assertStep(step: Record<string, unknown>, calls: Map<string, FunctionCa
     assertFunctionCall(step);
     if (![...calls.values()].some((call) => !call.resolved)) calls.clear();
     const id = step['id'] as string;
-    if (calls.has(id)) unsupported('input', 'input');
+    if (seenIds.has(id)) unsupported('input', 'input');
+    seenIds.add(id);
     calls.set(id, { name: step['name'] as string, resolved: false });
     return;
   }
