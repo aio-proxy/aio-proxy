@@ -87,7 +87,29 @@ describe('xAI Grok runtime', () => {
         reasoning: { effort: 'high', summary: 'auto' },
         tools: [
           { type: 'custom', name: 'exec', format: { type: 'text' } },
-          { type: 'function', name: 'lookup', parameters: { type: 'object' } },
+          {
+            type: 'function',
+            name: 'lookup',
+            strict: true,
+            parameters: {
+              type: 'object',
+              oneOf: [{ $ref: '#/$defs/by_id' }, { $ref: '#/$defs/by_name' }],
+              $defs: {
+                by_id: {
+                  type: 'object',
+                  properties: { id: { type: 'string' } },
+                  required: ['id'],
+                  additionalProperties: false,
+                },
+                by_name: {
+                  type: 'object',
+                  properties: { name: { type: 'string' } },
+                  required: ['name'],
+                  additionalProperties: false,
+                },
+              },
+            },
+          },
         ],
         tool_choice: { type: 'custom', name: 'exec' },
         input: [
@@ -119,7 +141,28 @@ describe('xAI Grok runtime', () => {
             additionalProperties: false,
           },
         },
-        { type: 'function', name: 'lookup', parameters: { type: 'object' } },
+        {
+          type: 'function',
+          name: 'lookup',
+          strict: true,
+          parameters: {
+            type: 'object',
+            oneOf: [
+              {
+                type: 'object',
+                properties: { id: { type: 'string' } },
+                required: ['id'],
+                additionalProperties: false,
+              },
+              {
+                type: 'object',
+                properties: { name: { type: 'string' } },
+                required: ['name'],
+                additionalProperties: false,
+              },
+            ],
+          },
+        },
       ],
       tool_choice: { type: 'function', name: 'exec' },
       input: [
