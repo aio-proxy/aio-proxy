@@ -208,7 +208,7 @@ function resolveLocalRefs(
   }
 
   if (!consumeResolvedNode(budget)) return undefined;
-  const resolved: JsonObject = {};
+  const resolved: JsonObject = Object.create(null);
   for (const [key, child] of Object.entries(record)) {
     if (walk === 'schema' && (key === '$defs' || key === 'definitions')) continue;
     const next = resolveLocalRefs(child, root, stack, budget, childSchemaWalk(walk, key), depth + 1);

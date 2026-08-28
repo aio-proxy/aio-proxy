@@ -261,6 +261,27 @@ describe('sanitizeXAIGrokResponsesBody', () => {
     expect(cleaned.tools[0].parameters).toEqual(parameters);
   });
 
+  test('keeps a property literally named __proto__', () => {
+    const parameters = {
+      type: 'object',
+      properties: { ['__proto__']: { type: 'string' } },
+      required: ['__proto__'],
+      additionalProperties: false,
+    };
+    const cleaned = decode(
+      sanitizeXAIGrokResponsesBody(
+        encode({
+          tools: [{ type: 'function', name: 'proto_field', parameters }],
+        }),
+      ),
+    );
+    const properties = cleaned.tools[0].parameters.properties as Record<string, unknown>;
+
+    expect(Object.hasOwn(properties, '__proto__')).toBe(true);
+    expect(properties['__proto__']).toEqual({ type: 'string' });
+    expect(cleaned.tools[0].parameters.required).toEqual(['__proto__']);
+  });
+
   test('quarantines a schema that exceeds recursion depth without restoring dropped fields', () => {
     let nested: Record<string, unknown> = { type: 'object', properties: {} };
     for (let index = 0; index < 300; index += 1) {
