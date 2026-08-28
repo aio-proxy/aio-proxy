@@ -20,6 +20,7 @@ interface RoutingBoardItemProps {
   readonly draggable: boolean;
   readonly hasOverride: boolean;
   readonly shareMax?: number;
+  readonly sliderMax?: number;
   readonly onShareChange?: (weight: number) => void;
 }
 
@@ -34,6 +35,7 @@ export const RoutingBoardItem: React.FC<RoutingBoardItemProps> = ({
   draggable,
   hasOverride,
   shareMax,
+  sliderMax,
   onShareChange,
 }) => {
   const { ref, handleRef, isDragging } = useDraggable({
@@ -46,7 +48,12 @@ export const RoutingBoardItem: React.FC<RoutingBoardItemProps> = ({
       ? m['dashboard.routing.editor.provider_unavailable']()
       : m['dashboard.routing.editor.provider_ready']();
   const showShareControl =
-    writable && !unused && onShareChange !== undefined && share !== null && shareMax !== undefined;
+    writable &&
+    !unused &&
+    onShareChange !== undefined &&
+    share !== null &&
+    shareMax !== undefined &&
+    sliderMax !== undefined;
   const shareLabel = share === null ? null : formatRoutingShareValue(share);
 
   return (
@@ -106,13 +113,15 @@ export const RoutingBoardItem: React.FC<RoutingBoardItemProps> = ({
         <Slider
           aria-label={m['dashboard.routing.editor.share_control']()}
           data-testid={`routing-share-slider-${provider.id}`}
-          min={1}
-          max={shareMax}
+          min={0}
+          max={sliderMax}
           thumbAlignment="center"
           value={[weight]}
+          disabled={shareMax <= 1}
           onValueChange={(value) => {
             const next = Array.isArray(value) ? value[0] : value;
-            if (typeof next === 'number') onShareChange?.(next);
+            if (typeof next !== 'number') return;
+            onShareChange?.(Math.min(shareMax, Math.max(1, next)));
           }}
         />
       ) : null}

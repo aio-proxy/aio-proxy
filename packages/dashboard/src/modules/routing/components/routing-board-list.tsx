@@ -71,6 +71,7 @@ export const RoutingBoardList: React.FC<RoutingBoardListProps> = ({
                 draggable={item.draggable}
                 hasOverride={row.hasOverride}
                 shareMax={shareMax}
+                sliderMax={total}
                 onShareChange={
                   unused || items.length < 2
                     ? undefined

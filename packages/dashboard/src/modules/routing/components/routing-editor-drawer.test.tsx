@@ -164,6 +164,66 @@ test('moves the share slider thumb when the weight changes', () => {
   expect(Number.parseFloat(thumb.style.insetInlineStart)).toBeCloseTo(70, 0);
 });
 
+const equalShare = (): DashboardRoutingModel => ({
+  modelId: 'equal-share',
+  revision: 'rev-1',
+  baselineProviderIds: ['a', 'b'],
+  providerCount: 2,
+  eligibleProviderCount: 2,
+  hasOverrides: false,
+  tiers: [
+    {
+      priority: 0,
+      providers: [
+        { providerId: 'a', weight: 1, share: 0.5 },
+        { providerId: 'b', weight: 1, share: 0.5 },
+      ],
+    },
+  ],
+  providers: [
+    provider({
+      id: 'a',
+      name: 'Primary',
+      defaults: { priority: routingNumber(0), weight: routingNumber(1) },
+      effective: {
+        priority: 0,
+        weight: 1,
+        prioritySource: 'provider',
+        weightSource: 'provider',
+        eligible: true,
+        share: 0.5,
+      },
+    }),
+    provider({
+      id: 'b',
+      name: 'Secondary',
+      defaults: { priority: routingNumber(0), weight: routingNumber(1) },
+      effective: {
+        priority: 0,
+        weight: 1,
+        prioritySource: 'provider',
+        weightSource: 'provider',
+        eligible: true,
+        share: 0.5,
+      },
+    }),
+  ],
+});
+
+test('keeps the share slider thumb visible for a 50/50 split', () => {
+  renderDrawer({ model: equalShare() });
+
+  const root = screen.getByTestId('routing-share-slider-a');
+  const slider = root.querySelector('input') as HTMLInputElement;
+  const thumb = root.querySelector('[data-slot="slider-thumb"]') as HTMLElement;
+  expect(screen.getByTestId('routing-share-a')).toHaveTextContent('50%');
+  expect(slider.min).toBe('0');
+  expect(slider.max).toBe('2');
+  expect(slider.value).toBe('1');
+  expect(thumb.style.visibility).not.toBe('hidden');
+  expect(Number.parseFloat(thumb.style.insetInlineStart)).toBeCloseTo(50, 0);
+});
+
 test('Reset stays available for a blocked Provider with a leftover override', async () => {
   renderDrawer();
 
