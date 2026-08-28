@@ -1,5 +1,11 @@
 # aio-proxy
 
+## 0.11.1
+
+### Patch Changes
+
+- [#220](https://github.com/aio-proxy/aio-proxy/pull/220) [`0635583`](https://github.com/aio-proxy/aio-proxy/commit/0635583d2067b41c1a27170d4330c6d7a3e53773) Thanks [@baranwang](https://github.com/baranwang)! - Preserve Codex function-tool schemas on xAI Grok OAuth requests by resolving local references and explicit object unions, while isolating only tools whose schemas cannot be converted safely.
+
 ## 0.11.0
 
 ### Minor Changes
