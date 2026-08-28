@@ -7,6 +7,7 @@ const DROPPED_FIELDS = [
 ] as const;
 
 const MAX_RESOLVED_NODES = 50_000;
+const MAX_SCHEMA_DEPTH = 256;
 const NAMED_SCHEMA_MAPS = new Set([
   'properties',
   'patternProperties',
@@ -14,11 +15,12 @@ const NAMED_SCHEMA_MAPS = new Set([
   'dependentRequired',
   'dependencies',
 ]);
+const LITERAL_KEYWORDS = new Set(['const', 'enum', 'default', 'examples']);
 
 type JsonObject = Record<string, unknown>;
 type UnionKey = 'anyOf' | 'oneOf';
 type NodeBudget = { remaining: number };
-type SchemaWalk = 'schema' | 'named-map';
+type SchemaWalk = 'schema' | 'named-map' | 'literal';
 
 type ToolCatalogState = {
   readonly kept: Set<string>;
@@ -151,17 +153,26 @@ function consumeResolvedNode(budget: NodeBudget): boolean {
   return true;
 }
 
+function childSchemaWalk(walk: SchemaWalk, key: string): SchemaWalk {
+  if (walk === 'literal') return 'literal';
+  if (walk === 'schema' && LITERAL_KEYWORDS.has(key)) return 'literal';
+  if (walk === 'schema' && NAMED_SCHEMA_MAPS.has(key)) return 'named-map';
+  return 'schema';
+}
+
 function resolveLocalRefs(
   value: unknown,
   root: JsonObject,
   stack: Set<string>,
   budget: NodeBudget,
   walk: SchemaWalk = 'schema',
+  depth = 0,
 ): unknown | undefined {
+  if (depth > MAX_SCHEMA_DEPTH) return undefined;
   if (Array.isArray(value)) {
     const result: unknown[] = [];
     for (const item of value) {
-      const resolved = resolveLocalRefs(item, root, stack, budget, walk);
+      const resolved = resolveLocalRefs(item, root, stack, budget, walk, depth + 1);
       if (resolved === undefined) return undefined;
       if (!consumeResolvedNode(budget)) return undefined;
       result.push(resolved);
@@ -171,19 +182,19 @@ function resolveLocalRefs(
   const record = asRecord(value);
   if (record === undefined) return value;
 
-  if (Object.hasOwn(record, '$ref')) {
+  if (walk === 'schema' && Object.hasOwn(record, '$ref')) {
     const ref = record['$ref'];
     if (typeof ref !== 'string' || !ref.startsWith('#/') || stack.has(ref)) return undefined;
     const target = lookupLocalPointer(root, ref);
     if (target === undefined) return undefined;
     stack.add(ref);
-    const resolvedTarget = resolveLocalRefs(target, root, stack, budget);
+    const resolvedTarget = resolveLocalRefs(target, root, stack, budget, 'schema', depth + 1);
     stack.delete(ref);
     if (resolvedTarget === undefined) return undefined;
 
     const siblings = Object.fromEntries(Object.entries(record).filter(([key]) => key !== '$ref'));
     if (Object.keys(siblings).length === 0) return resolvedTarget;
-    const resolvedSiblings = resolveLocalRefs(siblings, root, stack, budget);
+    const resolvedSiblings = resolveLocalRefs(siblings, root, stack, budget, 'schema', depth + 1);
     if (resolvedSiblings === undefined) return undefined;
     const targetRecord = asRecord(resolvedTarget);
     const siblingRecord = asRecord(resolvedSiblings);
@@ -200,8 +211,7 @@ function resolveLocalRefs(
   const resolved: JsonObject = {};
   for (const [key, child] of Object.entries(record)) {
     if (walk === 'schema' && (key === '$defs' || key === 'definitions')) continue;
-    const childWalk: SchemaWalk = walk === 'schema' && NAMED_SCHEMA_MAPS.has(key) ? 'named-map' : 'schema';
-    const next = resolveLocalRefs(child, root, stack, budget, childWalk);
+    const next = resolveLocalRefs(child, root, stack, budget, childSchemaWalk(walk, key), depth + 1);
     if (next === undefined) return undefined;
     resolved[key] = next;
   }

@@ -238,6 +238,52 @@ describe('sanitizeXAIGrokResponsesBody', () => {
     expect(cleaned.tools[0].parameters).toEqual(parameters);
   });
 
+  test('keeps definition-named fields inside schema literals', () => {
+    const parameters = {
+      type: 'object',
+      properties: {
+        value: {
+          const: { definitions: 'required-value' },
+          enum: [{ definitions: 1 }],
+          default: { $defs: true },
+          examples: [{ definitions: [] }],
+        },
+      },
+    };
+    const cleaned = decode(
+      sanitizeXAIGrokResponsesBody(
+        encode({
+          tools: [{ type: 'function', name: 'literal_defs', parameters }],
+        }),
+      ),
+    );
+
+    expect(cleaned.tools[0].parameters).toEqual(parameters);
+  });
+
+  test('quarantines a schema that exceeds recursion depth without restoring dropped fields', () => {
+    let nested: Record<string, unknown> = { type: 'object', properties: {} };
+    for (let index = 0; index < 300; index += 1) {
+      nested = { type: 'object', properties: { child: nested } };
+    }
+    const healthy = {
+      type: 'function',
+      name: 'healthy',
+      parameters: { type: 'object', properties: {} },
+    };
+    const cleaned = decode(
+      sanitizeXAIGrokResponsesBody(
+        encode({
+          previous_response_id: 'resp_old',
+          tools: [{ type: 'function', name: 'deep', parameters: nested }, healthy],
+        }),
+      ),
+    );
+
+    expect(cleaned).not.toHaveProperty('previous_response_id');
+    expect(cleaned.tools).toEqual([healthy]);
+  });
+
   test('removes a required string tool choice when no tools remain', () => {
     const cleaned = decode(
       sanitizeXAIGrokResponsesBody(
