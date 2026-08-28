@@ -57,7 +57,7 @@ export const RoutingBoardCanvas: React.FC<RoutingBoardCanvasProps> = ({ form, mo
   }, [board]);
 
   const itemsFor = (ids: readonly string[]): RoutingBoardItemModel[] =>
-    ids.map((id) => itemMeta.get(id) ?? { providerId: id, draggable: true, share: null });
+    ids.map((id) => itemMeta.get(id) ?? { providerId: id, draggable: true, share: null, weight: 0 });
 
   return (
     <DragDropProvider

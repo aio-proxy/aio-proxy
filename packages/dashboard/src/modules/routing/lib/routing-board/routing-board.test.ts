@@ -87,12 +87,12 @@ test('groups eligible Providers by priority and parks zero-weight ones as unused
     {
       priority: 30,
       items: [
-        { providerId: 'a', draggable: true, share: 0.6 },
-        { providerId: 'b', draggable: true, share: 0.4 },
+        { providerId: 'a', draggable: true, share: 0.6, weight: 6000 },
+        { providerId: 'b', draggable: true, share: 0.4, weight: 4000 },
       ],
     },
   ]);
-  expect(board.unused).toEqual([{ providerId: 'c', draggable: true, share: null }]);
+  expect(board.unused).toEqual([{ providerId: 'c', draggable: true, share: null, weight: 0 }]);
 });
 
 test('keeps weights when only the order inside a tier changes', () => {
@@ -103,6 +103,30 @@ test('keeps weights when only the order inside a tier changes', () => {
   };
   expect(sameListMembership(previousLists, nextLists)).toBe(true);
   expect(applyRoutingBoardMove({ providers, previousRows: rows, previousLists, nextLists })).toEqual(rows);
+});
+
+test('share slider scales a 1/1 split up so a drag can change the ratio', () => {
+  expect(
+    applyRoutingShare({
+      providers: [
+        provider({ id: 'a' }),
+        provider({ id: 'b' }),
+        provider({
+          id: 'c',
+          defaults: { priority: routingNumber(20), weight: routingNumber(1000) },
+          override: { weight: routingNumber(0, 0) },
+        }),
+      ],
+      rows: [{ providerId: 'a' }, { providerId: 'b' }, { providerId: 'c', weight: 0 }],
+      memberIds: ['a', 'b'],
+      providerId: 'a',
+      weight: 7000,
+    }),
+  ).toEqual([
+    { providerId: 'a', weight: 7000 },
+    { providerId: 'b', weight: 3000 },
+    { providerId: 'c', weight: 0 },
+  ]);
 });
 
 test('share slider keeps sibling ratios while changing one Provider percent', () => {

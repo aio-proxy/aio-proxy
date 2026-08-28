@@ -14,11 +14,13 @@ interface RoutingBoardItemProps {
   readonly provider: DashboardRoutingProvider;
   readonly index: number;
   readonly share: number | null;
+  readonly weight: number;
   readonly unused: boolean;
   readonly writable: boolean;
   readonly draggable: boolean;
   readonly hasOverride: boolean;
   readonly shareMax?: number;
+  readonly sliderMax?: number;
   readonly onShareChange?: (weight: number) => void;
 }
 
@@ -27,11 +29,13 @@ export const RoutingBoardItem: React.FC<RoutingBoardItemProps> = ({
   provider,
   index,
   share,
+  weight,
   unused,
   writable,
   draggable,
   hasOverride,
   shareMax,
+  sliderMax,
   onShareChange,
 }) => {
   const { ref, handleRef, isDragging } = useDraggable({
@@ -43,10 +47,13 @@ export const RoutingBoardItem: React.FC<RoutingBoardItemProps> = ({
     provider.state.status === 'unavailable'
       ? m['dashboard.routing.editor.provider_unavailable']()
       : m['dashboard.routing.editor.provider_ready']();
-  const draft = form.getFieldValue(`providers[${index}]`);
-  const weight = draft?.weight ?? provider.defaults.weight.effective;
   const showShareControl =
-    writable && !unused && onShareChange !== undefined && share !== null && shareMax !== undefined;
+    writable &&
+    !unused &&
+    onShareChange !== undefined &&
+    share !== null &&
+    shareMax !== undefined &&
+    sliderMax !== undefined;
   const shareLabel = share === null ? null : formatRoutingShareValue(share);
 
   return (
@@ -106,12 +113,14 @@ export const RoutingBoardItem: React.FC<RoutingBoardItemProps> = ({
         <Slider
           aria-label={m['dashboard.routing.editor.share_control']()}
           data-testid={`routing-share-slider-${provider.id}`}
-          min={1}
-          max={shareMax}
-          value={[weight]}
+          min={0}
+          max={sliderMax}
+          thumbAlignment="center"
+          value={[Math.max(0, Math.round((share ?? 0) * sliderMax))]}
           onValueChange={(value) => {
             const next = Array.isArray(value) ? value[0] : value;
-            if (typeof next === 'number') onShareChange?.(next);
+            if (typeof next !== 'number') return;
+            onShareChange?.(Math.min(shareMax, Math.max(1, next)));
           }}
         />
       ) : null}

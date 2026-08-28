@@ -18,6 +18,7 @@ export type RoutingBoardItem = {
   readonly providerId: string;
   readonly draggable: boolean;
   readonly share: number | null;
+  readonly weight: number;
 };
 
 export type RoutingBoard = {
@@ -93,13 +94,19 @@ export const buildRoutingBoard = (
       providerId: entry.providerId,
       draggable: true,
       share: entry.share,
+      weight: entry.weight,
     })),
   }));
   const unused: RoutingBoardItem[] = [];
   const blocked: RoutingBoardItem[] = [];
   for (const provider of providers) {
     if (byId.get(provider.id)?.eligible === true) continue;
-    const item = { providerId: provider.id, draggable: isReady(provider), share: null };
+    const item = {
+      providerId: provider.id,
+      draggable: isReady(provider),
+      share: null,
+      weight: byId.get(provider.id)?.weight ?? provider.defaults.weight.effective,
+    };
     if (item.draggable) unused.push(item);
     else blocked.push(item);
   }
@@ -278,7 +285,8 @@ export const applyRoutingShare = ({
   const others = memberIds.filter((id) => id !== providerId);
   const otherWeights = others.map(memberWeight);
   const otherTotal = otherWeights.reduce((sum, value) => sum + value, 0);
-  const total = memberWeight(providerId) + otherTotal;
+  const currentTotal = memberWeight(providerId) + otherTotal;
+  const total = currentTotal > others.length + 1 ? currentTotal : ROUTING_VALUE_MAX;
   const selected = Math.min(Math.max(1, Math.round(weight)), Math.min(ROUTING_VALUE_MAX, total - others.length));
   const remaining = total - selected;
   const distributed = allocateBounded(remaining, otherTotal === 0 ? others.map(() => 1) : otherWeights);
