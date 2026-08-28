@@ -87,12 +87,12 @@ test('groups eligible Providers by priority and parks zero-weight ones as unused
     {
       priority: 30,
       items: [
-        { providerId: 'a', draggable: true, share: 0.6 },
-        { providerId: 'b', draggable: true, share: 0.4 },
+        { providerId: 'a', draggable: true, share: 0.6, weight: 6000 },
+        { providerId: 'b', draggable: true, share: 0.4, weight: 4000 },
       ],
     },
   ]);
-  expect(board.unused).toEqual([{ providerId: 'c', draggable: true, share: null }]);
+  expect(board.unused).toEqual([{ providerId: 'c', draggable: true, share: null, weight: 0 }]);
 });
 
 test('keeps weights when only the order inside a tier changes', () => {

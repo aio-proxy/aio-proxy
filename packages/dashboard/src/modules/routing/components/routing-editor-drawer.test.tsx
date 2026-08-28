@@ -150,6 +150,20 @@ test('renders Providers as a priority board with live shares', () => {
   expect(screen.getByTestId('routing-disabled-c')).toBeInTheDocument();
 });
 
+test('moves the share slider thumb when the weight changes', () => {
+  renderDrawer();
+
+  fireEvent.change(screen.getByTestId('routing-share-slider-a').querySelector('input')!, {
+    target: { value: '7000' },
+  });
+
+  const root = screen.getByTestId('routing-share-slider-a');
+  const thumb = root.querySelector('[data-slot="slider-thumb"]') as HTMLElement;
+  expect(screen.getByTestId('routing-share-a')).toHaveTextContent('70%');
+  expect((root.querySelector('input') as HTMLInputElement).value).toBe('7000');
+  expect(Number.parseFloat(thumb.style.insetInlineStart)).toBeCloseTo(70, 0);
+});
+
 test('Reset stays available for a blocked Provider with a leftover override', async () => {
   renderDrawer();
 

@@ -14,6 +14,7 @@ interface RoutingBoardItemProps {
   readonly provider: DashboardRoutingProvider;
   readonly index: number;
   readonly share: number | null;
+  readonly weight: number;
   readonly unused: boolean;
   readonly writable: boolean;
   readonly draggable: boolean;
@@ -27,6 +28,7 @@ export const RoutingBoardItem: React.FC<RoutingBoardItemProps> = ({
   provider,
   index,
   share,
+  weight,
   unused,
   writable,
   draggable,
@@ -43,8 +45,6 @@ export const RoutingBoardItem: React.FC<RoutingBoardItemProps> = ({
     provider.state.status === 'unavailable'
       ? m['dashboard.routing.editor.provider_unavailable']()
       : m['dashboard.routing.editor.provider_ready']();
-  const draft = form.getFieldValue(`providers[${index}]`);
-  const weight = draft?.weight ?? provider.defaults.weight.effective;
   const showShareControl =
     writable && !unused && onShareChange !== undefined && share !== null && shareMax !== undefined;
   const shareLabel = share === null ? null : formatRoutingShareValue(share);
@@ -108,6 +108,7 @@ export const RoutingBoardItem: React.FC<RoutingBoardItemProps> = ({
           data-testid={`routing-share-slider-${provider.id}`}
           min={1}
           max={shareMax}
+          thumbAlignment="center"
           value={[weight]}
           onValueChange={(value) => {
             const next = Array.isArray(value) ? value[0] : value;

@@ -33,13 +33,7 @@ export const RoutingBoardList: React.FC<RoutingBoardListProps> = ({
   droppable,
 }) => {
   const { ref, isDropTarget } = useDroppable({ id: listId, accept: 'provider', type: 'list', disabled: !droppable });
-  const formRows = form.getFieldValue('providers') ?? [];
-  const total = items.reduce((sum, entry) => {
-    const entryProvider = providersById.get(entry.providerId);
-    const entryRow = formRows.find((candidate) => candidate.providerId === entry.providerId);
-    const entryWeight = entryRow?.weight ?? entryProvider?.defaults.weight.effective ?? 0;
-    return sum + (entryWeight > 0 ? entryWeight : 0);
-  }, 0);
+  const total = items.reduce((sum, entry) => sum + (entry.weight > 0 ? entry.weight : 0), 0);
   const shareMax = Math.max(1, Math.min(ROUTING_VALUE_MAX, total - (items.length - 1)));
   const slotClass =
     items.length === 0
@@ -71,6 +65,7 @@ export const RoutingBoardList: React.FC<RoutingBoardListProps> = ({
                 provider={provider}
                 index={row.index}
                 share={item.share}
+                weight={item.weight}
                 unused={unused}
                 writable={writable}
                 draggable={item.draggable}
