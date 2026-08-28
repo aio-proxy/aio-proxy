@@ -1,5 +1,11 @@
 # aio-proxy
 
+## 0.11.2
+
+### Patch Changes
+
+- [#224](https://github.com/aio-proxy/aio-proxy/pull/224) [`2bb3f13`](https://github.com/aio-proxy/aio-proxy/commit/2bb3f13f1be3707125777d080878850ef52bb865) Thanks [@baranwang](https://github.com/baranwang)! - Fix the routing share slider thumb so it follows the updated weight.
+
 ## 0.11.1
 
 ### Patch Changes
