@@ -217,11 +217,16 @@ test('keeps the share slider thumb visible for a 50/50 split', () => {
   const slider = root.querySelector('input') as HTMLInputElement;
   const thumb = root.querySelector('[data-slot="slider-thumb"]') as HTMLElement;
   expect(screen.getByTestId('routing-share-a')).toHaveTextContent('50%');
-  expect(slider.min).toBe('0');
-  expect(slider.max).toBe('2');
-  expect(slider.value).toBe('1');
+  expect(slider).not.toBeDisabled();
+  expect(slider.min).toBe('1');
+  expect(slider.max).toBe('10000');
+  expect(slider.value).toBe('5000');
   expect(thumb.style.visibility).not.toBe('hidden');
   expect(Number.parseFloat(thumb.style.insetInlineStart)).toBeCloseTo(50, 0);
+
+  fireEvent.change(slider, { target: { value: '7000' } });
+  expect(screen.getByTestId('routing-share-a')).toHaveTextContent('70%');
+  expect(screen.getByTestId('routing-share-b')).toHaveTextContent('30%');
 });
 
 test('Reset stays available for a blocked Provider with a leftover override', async () => {

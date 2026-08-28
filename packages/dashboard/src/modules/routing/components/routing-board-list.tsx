@@ -34,7 +34,8 @@ export const RoutingBoardList: React.FC<RoutingBoardListProps> = ({
 }) => {
   const { ref, isDropTarget } = useDroppable({ id: listId, accept: 'provider', type: 'list', disabled: !droppable });
   const total = items.reduce((sum, entry) => sum + (entry.weight > 0 ? entry.weight : 0), 0);
-  const shareMax = Math.max(1, Math.min(ROUTING_VALUE_MAX, total - (items.length - 1)));
+  const basis = total > items.length ? total : ROUTING_VALUE_MAX;
+  const shareMax = Math.max(1, Math.min(ROUTING_VALUE_MAX, basis - (items.length - 1)));
   const slotClass =
     items.length === 0
       ? 'h-2 rounded-md data-drop-target:border data-drop-target:border-dashed data-drop-target:border-border'
@@ -71,7 +72,7 @@ export const RoutingBoardList: React.FC<RoutingBoardListProps> = ({
                 draggable={item.draggable}
                 hasOverride={row.hasOverride}
                 shareMax={shareMax}
-                sliderMax={total}
+                sliderMax={basis}
                 onShareChange={
                   unused || items.length < 2
                     ? undefined

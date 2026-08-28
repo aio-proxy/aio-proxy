@@ -285,7 +285,8 @@ export const applyRoutingShare = ({
   const others = memberIds.filter((id) => id !== providerId);
   const otherWeights = others.map(memberWeight);
   const otherTotal = otherWeights.reduce((sum, value) => sum + value, 0);
-  const total = memberWeight(providerId) + otherTotal;
+  const currentTotal = memberWeight(providerId) + otherTotal;
+  const total = currentTotal > others.length + 1 ? currentTotal : ROUTING_VALUE_MAX;
   const selected = Math.min(Math.max(1, Math.round(weight)), Math.min(ROUTING_VALUE_MAX, total - others.length));
   const remaining = total - selected;
   const distributed = allocateBounded(remaining, otherTotal === 0 ? others.map(() => 1) : otherWeights);
