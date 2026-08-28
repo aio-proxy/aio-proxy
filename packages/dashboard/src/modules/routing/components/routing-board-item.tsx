@@ -113,10 +113,10 @@ export const RoutingBoardItem: React.FC<RoutingBoardItemProps> = ({
         <Slider
           aria-label={m['dashboard.routing.editor.share_control']()}
           data-testid={`routing-share-slider-${provider.id}`}
-          min={1}
+          min={0}
           max={sliderMax}
           thumbAlignment="center"
-          value={[Math.max(1, Math.round((share ?? 0) * sliderMax))]}
+          value={[Math.max(0, Math.round((share ?? 0) * sliderMax))]}
           onValueChange={(value) => {
             const next = Array.isArray(value) ? value[0] : value;
             if (typeof next !== 'number') return;

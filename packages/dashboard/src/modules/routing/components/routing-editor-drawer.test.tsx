@@ -218,7 +218,7 @@ test('keeps the share slider thumb visible for a 50/50 split', () => {
   const thumb = root.querySelector('[data-slot="slider-thumb"]') as HTMLElement;
   expect(screen.getByTestId('routing-share-a')).toHaveTextContent('50%');
   expect(slider).not.toBeDisabled();
-  expect(slider.min).toBe('1');
+  expect(slider.min).toBe('0');
   expect(slider.max).toBe('10000');
   expect(slider.value).toBe('5000');
   expect(thumb.style.visibility).not.toBe('hidden');
@@ -227,6 +227,67 @@ test('keeps the share slider thumb visible for a 50/50 split', () => {
   fireEvent.change(slider, { target: { value: '7000' } });
   expect(screen.getByTestId('routing-share-a')).toHaveTextContent('70%');
   expect(screen.getByTestId('routing-share-b')).toHaveTextContent('30%');
+});
+
+const smallShare = (): DashboardRoutingModel => ({
+  modelId: 'small-share',
+  revision: 'rev-1',
+  baselineProviderIds: ['a', 'b'],
+  providerCount: 2,
+  eligibleProviderCount: 2,
+  hasOverrides: true,
+  tiers: [
+    {
+      priority: 0,
+      providers: [
+        { providerId: 'a', weight: 2, share: 2 / 3 },
+        { providerId: 'b', weight: 1, share: 1 / 3 },
+      ],
+    },
+  ],
+  providers: [
+    provider({
+      id: 'a',
+      name: 'Primary',
+      override: { weight: routingNumber(2, 2) },
+      effective: {
+        priority: 0,
+        weight: 2,
+        prioritySource: 'provider',
+        weightSource: 'model',
+        eligible: true,
+        share: 2 / 3,
+      },
+    }),
+    provider({
+      id: 'b',
+      name: 'Secondary',
+      override: { weight: routingNumber(1, 1) },
+      effective: {
+        priority: 0,
+        weight: 1,
+        prioritySource: 'provider',
+        weightSource: 'model',
+        eligible: true,
+        share: 1 / 3,
+      },
+    }),
+  ],
+});
+
+test('places small-weight thumbs on the displayed share', () => {
+  renderDrawer({ model: smallShare() });
+
+  const thumbA = screen
+    .getByTestId('routing-share-slider-a')
+    .querySelector('[data-slot="slider-thumb"]') as HTMLElement;
+  const thumbB = screen
+    .getByTestId('routing-share-slider-b')
+    .querySelector('[data-slot="slider-thumb"]') as HTMLElement;
+  expect(screen.getByTestId('routing-share-a')).toHaveTextContent('66.67%');
+  expect(screen.getByTestId('routing-share-b')).toHaveTextContent('33.33%');
+  expect(Number.parseFloat(thumbA.style.insetInlineStart)).toBeCloseTo(66.67, 0);
+  expect(Number.parseFloat(thumbB.style.insetInlineStart)).toBeCloseTo(33.33, 0);
 });
 
 test('Reset stays available for a blocked Provider with a leftover override', async () => {
