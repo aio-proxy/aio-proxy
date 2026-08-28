@@ -11,6 +11,7 @@ const MAX_RESOLVED_NODES = 50_000;
 type JsonObject = Record<string, unknown>;
 type UnionKey = 'anyOf' | 'oneOf';
 type NodeBudget = { remaining: number };
+type SchemaWalk = 'schema' | 'named-map';
 
 type ToolCatalogState = {
   readonly kept: Set<string>;
@@ -107,7 +108,12 @@ function resetToolChoice(body: JsonObject): void {
 }
 
 function sanitizeToolChoice(body: JsonObject, state: ToolCatalogState): void {
-  const choice = asRecord(body['tool_choice']);
+  const rawChoice = body['tool_choice'];
+  if (typeof rawChoice === 'string') {
+    if (!hasTools(body) && rawChoice !== 'none') Reflect.deleteProperty(body, 'tool_choice');
+    return;
+  }
+  const choice = asRecord(rawChoice);
   if (choice === undefined) return;
   const allowed = choice['tools'];
   if (choice['type'] === 'allowed_tools' && Array.isArray(allowed)) {
@@ -143,11 +149,12 @@ function resolveLocalRefs(
   root: JsonObject,
   stack: Set<string>,
   budget: NodeBudget,
+  walk: SchemaWalk = 'schema',
 ): unknown | undefined {
   if (Array.isArray(value)) {
     const result: unknown[] = [];
     for (const item of value) {
-      const resolved = resolveLocalRefs(item, root, stack, budget);
+      const resolved = resolveLocalRefs(item, root, stack, budget, walk);
       if (resolved === undefined) return undefined;
       if (!consumeResolvedNode(budget)) return undefined;
       result.push(resolved);
@@ -185,8 +192,10 @@ function resolveLocalRefs(
   if (!consumeResolvedNode(budget)) return undefined;
   const resolved: JsonObject = {};
   for (const [key, child] of Object.entries(record)) {
-    if (key === '$defs' || key === 'definitions') continue;
-    const next = resolveLocalRefs(child, root, stack, budget);
+    if (walk === 'schema' && (key === '$defs' || key === 'definitions')) continue;
+    const childWalk: SchemaWalk =
+      walk === 'schema' && (key === 'properties' || key === 'patternProperties') ? 'named-map' : 'schema';
+    const next = resolveLocalRefs(child, root, stack, budget, childWalk);
     if (next === undefined) return undefined;
     resolved[key] = next;
   }

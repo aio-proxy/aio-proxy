@@ -198,6 +198,60 @@ describe('sanitizeXAIGrokResponsesBody', () => {
     expect(elapsedMs).toBeLessThan(2_000);
   });
 
+  test('keeps a property literally named definitions on an object schema', () => {
+    const parameters = {
+      type: 'object',
+      properties: {
+        definitions: { type: 'string' },
+        keep: { type: 'string' },
+      },
+      required: ['definitions'],
+      additionalProperties: false,
+    };
+    const cleaned = decode(
+      sanitizeXAIGrokResponsesBody(
+        encode({
+          tools: [{ type: 'function', name: 'named_defs', parameters }],
+        }),
+      ),
+    );
+
+    expect(cleaned.tools[0].parameters).toEqual(parameters);
+  });
+
+  test('removes a required string tool choice when no tools remain', () => {
+    const cleaned = decode(
+      sanitizeXAIGrokResponsesBody(
+        encode({
+          tools: [{ type: 'function', name: 'broken', parameters: { $ref: 'https://example.test/schema' } }],
+          tool_choice: 'required',
+        }),
+      ),
+    );
+
+    expect(cleaned).not.toHaveProperty('tools');
+    expect(cleaned).not.toHaveProperty('tool_choice');
+  });
+
+  test('keeps a string tool choice when a valid catalog remains', () => {
+    const healthy = {
+      type: 'function',
+      name: 'healthy',
+      parameters: { type: 'object', properties: {} },
+    };
+    const cleaned = decode(
+      sanitizeXAIGrokResponsesBody(
+        encode({
+          tools: [{ type: 'function', name: 'broken', parameters: { $ref: 'https://example.test/schema' } }, healthy],
+          tool_choice: 'required',
+        }),
+      ),
+    );
+
+    expect(cleaned.tools).toEqual([healthy]);
+    expect(cleaned.tool_choice).toBe('required');
+  });
+
   test('removes empty catalogs and a forced choice when no tools remain', () => {
     const cleaned = decode(
       sanitizeXAIGrokResponsesBody(
