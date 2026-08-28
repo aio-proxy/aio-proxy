@@ -219,6 +219,25 @@ describe('sanitizeXAIGrokResponsesBody', () => {
     expect(cleaned.tools[0].parameters).toEqual(parameters);
   });
 
+  test('keeps definition-named keys in dependent schema maps', () => {
+    const parameters = {
+      type: 'object',
+      properties: { flag: { type: 'boolean' } },
+      dependentSchemas: { definitions: { required: ['flag'] } },
+      dependentRequired: { definitions: ['flag'] },
+      dependencies: { definitions: ['flag'] },
+    };
+    const cleaned = decode(
+      sanitizeXAIGrokResponsesBody(
+        encode({
+          tools: [{ type: 'function', name: 'named_dep_defs', parameters }],
+        }),
+      ),
+    );
+
+    expect(cleaned.tools[0].parameters).toEqual(parameters);
+  });
+
   test('removes a required string tool choice when no tools remain', () => {
     const cleaned = decode(
       sanitizeXAIGrokResponsesBody(

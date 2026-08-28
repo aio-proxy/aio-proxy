@@ -7,6 +7,13 @@ const DROPPED_FIELDS = [
 ] as const;
 
 const MAX_RESOLVED_NODES = 50_000;
+const NAMED_SCHEMA_MAPS = new Set([
+  'properties',
+  'patternProperties',
+  'dependentSchemas',
+  'dependentRequired',
+  'dependencies',
+]);
 
 type JsonObject = Record<string, unknown>;
 type UnionKey = 'anyOf' | 'oneOf';
@@ -193,8 +200,7 @@ function resolveLocalRefs(
   const resolved: JsonObject = {};
   for (const [key, child] of Object.entries(record)) {
     if (walk === 'schema' && (key === '$defs' || key === 'definitions')) continue;
-    const childWalk: SchemaWalk =
-      walk === 'schema' && (key === 'properties' || key === 'patternProperties') ? 'named-map' : 'schema';
+    const childWalk: SchemaWalk = walk === 'schema' && NAMED_SCHEMA_MAPS.has(key) ? 'named-map' : 'schema';
     const next = resolveLocalRefs(child, root, stack, budget, childWalk);
     if (next === undefined) return undefined;
     resolved[key] = next;
