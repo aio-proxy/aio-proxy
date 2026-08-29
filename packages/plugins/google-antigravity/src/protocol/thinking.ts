@@ -181,15 +181,15 @@ function resolveWire(catalog: ModelCatalog, modelId: string): ResolvedWire {
 }
 
 function familyForWire(catalog: ModelCatalog, modelId: string): AntigravityFamily | undefined {
-  return readAntigravityFamilies(catalog.metadata).find(
+  return readAntigravityFamilies(catalog.extra).find(
     (family) => family.base === modelId || family.variants.some((variant) => variant.model === modelId),
   );
 }
 
-function readAntigravityFamilies(metadata: unknown): readonly AntigravityFamily[] {
-  if (!isRecord(metadata) || !Array.isArray(metadata['antigravityFamilies'])) return [];
+function readAntigravityFamilies(extra: unknown): readonly AntigravityFamily[] {
+  if (!isRecord(extra) || !Array.isArray(extra['antigravityFamilies'])) return [];
   const families: AntigravityFamily[] = [];
-  for (const value of metadata['antigravityFamilies']) {
+  for (const value of extra['antigravityFamilies']) {
     const family = asFamily(value);
     if (family !== undefined) families.push(family);
   }
@@ -220,7 +220,7 @@ function asFamily(value: unknown): AntigravityFamily | undefined {
 }
 
 function antigravityFields(descriptor: ModelDescriptor | undefined) {
-  const source = providerSource(descriptor?.metadata);
+  const source = providerSource(descriptor?.extra);
   return {
     thinkingBudget: asFiniteNumber(source?.['thinkingBudget']),
     minThinkingBudget: asFiniteNumber(source?.['minThinkingBudget']),
@@ -228,9 +228,9 @@ function antigravityFields(descriptor: ModelDescriptor | undefined) {
   };
 }
 
-function providerSource(metadata: unknown): Record<string, unknown> | undefined {
-  if (!isRecord(metadata)) return undefined;
-  return isRecord(metadata['antigravity']) ? metadata['antigravity'] : metadata;
+function providerSource(extra: unknown): Record<string, unknown> | undefined {
+  if (!isRecord(extra)) return undefined;
+  return isRecord(extra['antigravity']) ? extra['antigravity'] : extra;
 }
 
 function ccaConfig(thinkingBudget: number): CcaThinkingConfig {

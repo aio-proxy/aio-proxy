@@ -2,11 +2,29 @@ import { z } from 'zod';
 
 import { ModelIdSchema } from '../common';
 
-/** External models.dev slug enum referenced by the `extend` field in the emitted config JSON Schema. */
-export const MODELS_DEV_MODEL_REF = 'https://models.dev/model-schema.json#/$defs/Model';
+/** Document URI for the models.dev model schema; `extend` $refs `#/$defs/Model` on this document. */
+export const MODELS_DEV_SCHEMA_ID = 'https://models.dev/model-schema.json';
 
-/** Discriminable meta marker read by the config JSON Schema override to emit the external models.dev $ref. */
+/** External models.dev slug enum referenced by the `extend` field in the emitted config JSON Schema. */
+export const MODELS_DEV_MODEL_REF = `${MODELS_DEV_SCHEMA_ID}#/$defs/Model`;
+
+/** Discriminable meta marker read by the JSON Schema override to emit the external models.dev $ref. */
 const modelsDevRefMeta = { modelsDevRef: true } as const;
+
+/**
+ * The `extend` field is a models.dev slug. Emit an external $ref to models.dev's Model slug enum
+ * so editors autocomplete/validate it, instead of inlining the ~6000-entry enum. Runtime
+ * validation stays a plain non-empty string.
+ */
+export function modelsDevRefJsonSchemaOverride(ctx: {
+  readonly zodSchema: unknown;
+  jsonSchema: Record<string, unknown>;
+}): void {
+  const meta = (ctx.zodSchema as { meta?: () => { modelsDevRef?: boolean } | undefined }).meta?.();
+  if (meta?.modelsDevRef !== true) return;
+  for (const key of Object.keys(ctx.jsonSchema)) delete ctx.jsonSchema[key];
+  ctx.jsonSchema['$ref'] = MODELS_DEV_MODEL_REF;
+}
 
 /**
  * Per-token prices are USD per 1,000,000 tokens — the same unit models.dev and the
@@ -120,7 +138,7 @@ export const ModelCapabilitiesSchema = z
 
 /**
  * Typed, field-allowlisted overrides for a model's client-facing metadata.
- * Keyed by upstream model id inside a provider's `metadata`.
+ * Configured per exposed model slug under `router.models.<slug>.metadata`.
  *
  * Unknown keys are preserved (`.loose()`) rather than rejected so a config authored
  * for a newer version does not hard-fail; callers warn on unknown keys instead.
@@ -140,6 +158,11 @@ export const ModelMetadataSchema = z
     cost: ModelCostSchema.optional().describe('Per-model pricing overrides used for cost accounting.'),
   })
   .loose();
+
+export const ModelMetadataJsonSchema = z.toJSONSchema(ModelMetadataSchema, {
+  io: 'input',
+  override: modelsDevRefJsonSchemaOverride,
+});
 
 export type ModelCostTierInput = z.input<typeof ModelCostTierSchema>;
 export type ModelCostTier = z.output<typeof ModelCostTierSchema>;

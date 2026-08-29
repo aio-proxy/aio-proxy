@@ -7,7 +7,7 @@ import type {
   RouterCandidate,
 } from '@aio-proxy/core';
 import type { LogicalRequestContext } from '@aio-proxy/plugin-sdk';
-import type { ProviderProtocol } from '@aio-proxy/types';
+import type { ProviderProtocol, RouterModelPolicy } from '@aio-proxy/types';
 
 import type { SessionIdentity } from '../../../logical-session-store';
 import type { RequestTraceSession } from '../../../request-tracing';
@@ -58,6 +58,11 @@ export type AttemptLoopContext<
   readonly rawRequest: Request;
   readonly request: TRequest;
   readonly requestedModelId: string;
+  // Router policy from the SAME leased snapshot that selected the candidates.
+  // Dispatch grants and billing must never re-read the live snapshot: a hot
+  // reload between selection and dispatch/usage-capture would evaluate
+  // snapshot-A candidates against snapshot-B policies.
+  readonly routerModels: Readonly<Record<string, RouterModelPolicy>> | undefined;
   readonly session: RequestTraceSession;
   readonly source: ProviderRouteSource;
   readonly logicalRequest: LogicalRequestContext;
@@ -82,6 +87,21 @@ export type EmbeddingAttemptLoopContext<TRequest, TContext> = AttemptLoopContext
   TRequest,
   TContext,
   EmbeddingProtocolAdapter<TRequest, TContext>
+>;
+
+export type ImageAttemptLoopContext<TRequest, TContext> = AttemptLoopContext<
+  TRequest,
+  TContext,
+  ImageProtocolAdapter<TRequest, TContext>
+>;
+
+// Contexts whose adapter carries the language-shaped `rawRequest`/`dimensions`
+// surface (embedding adapters use a different `rawRequest` arity), i.e. the
+// contexts eligible for the shared raw-passthrough attempt.
+export type RawCapableAttemptLoopContext<TRequest, TContext> = AttemptLoopContext<
+  TRequest,
+  TContext,
+  ProtocolAdapter<TRequest, TContext> | ImageProtocolAdapter<TRequest, TContext>
 >;
 
 // Accepted by helpers that only touch capability-agnostic context (protocol,

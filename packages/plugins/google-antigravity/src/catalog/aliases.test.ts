@@ -278,7 +278,7 @@ test('rebuilds leftover thinking siblings from language when stored families omi
     speech: [],
     transcription: [],
     reranking: [],
-    metadata: {
+    extra: {
       antigravityPicker: {
         agentModelSorts: [{ groups: [{ modelIds: ['gemini-3.7-flash-high'] }] }],
       },
@@ -309,7 +309,7 @@ test('attaches a leftover thinking sibling onto an already-stored identity famil
     speech: [],
     transcription: [],
     reranking: [],
-    metadata: {
+    extra: {
       antigravityFamilies: [
         {
           logicalId: 'foo',
@@ -361,7 +361,7 @@ function descriptor(id: string, displayName: string): ModelDescriptor {
   return {
     id,
     displayName,
-    metadata: { antigravity: { apiProvider: 'gemini' } },
+    extra: { antigravity: { apiProvider: 'gemini' } },
   };
 }
 
@@ -373,6 +373,6 @@ function catalogWithFamilies(ids: readonly string[], antigravityFamilies: readon
     speech: [],
     transcription: [],
     reranking: [],
-    metadata: { antigravityFamilies },
+    extra: { antigravityFamilies },
   };
 }

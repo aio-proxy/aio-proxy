@@ -10,7 +10,7 @@ test('exposes curated Cursor language models and no other capabilities', () => {
   expect(catalog.image).toEqual([]);
   expect(catalog.embedding).toEqual([]);
   for (const model of catalog.language) {
-    expect((model.metadata as { protocol?: unknown } | undefined)?.protocol).toBeUndefined();
+    expect((model.extra as { protocol?: unknown } | undefined)?.protocol).toBeUndefined();
   }
 });
 

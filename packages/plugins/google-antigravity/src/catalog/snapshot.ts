@@ -167,7 +167,7 @@ function snapshotDescriptor(model: SnapshotModel): ModelDescriptor {
   return {
     id: model.id,
     ...(model.displayName === undefined ? {} : { displayName: model.displayName }),
-    metadata: {
+    extra: {
       antigravity: {
         supportsImages: true,
         supportsThinking: true,

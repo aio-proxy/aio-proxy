@@ -14,9 +14,7 @@ import { ProviderFormFieldsApi } from './provider-form-fields-api';
 // The editor form is seed-only by design, so there is no onSubmit to spy on. This reproduces the
 // normalize + parse half of what `saveConfigProvider` sends (use-provider-editor-page.ts), which is
 // enough for the assertions below — every one of them is about a field that path passes through
-// untouched. It is NOT the whole submit body: the real path also reconciles `metadata` against what
-// was persisted and drops the parsed copy. That override is covered at page level, in
-// provider-editor-page.test.tsx, so nothing here should grow a `metadata` assertion.
+// untouched.
 const mutationBody = (values: ProviderEditorShape) => {
   const result = ProviderMutationBodySchema.safeParse(normalizeProviderFormValue(values as ProviderFormShape));
   expect(result.success).toBe(true);

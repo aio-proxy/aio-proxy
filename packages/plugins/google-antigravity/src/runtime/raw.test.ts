@@ -35,7 +35,7 @@ describe('Gemini raw resolver', () => {
         language: [
           {
             id: 'gemini-3-flash-agent',
-            metadata: { antigravity: { apiProvider: 'gemini', thinkingBudget: 10_000 } },
+            extra: { antigravity: { apiProvider: 'gemini', thinkingBudget: 10_000 } },
           },
         ],
         image: [],

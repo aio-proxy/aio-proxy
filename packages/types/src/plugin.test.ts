@@ -138,23 +138,6 @@ describe('plugin identifiers and staged OAuth provider schema', () => {
     });
     expect(OAuthProviderSchema.safeParse(provider).success).toBe(true);
   });
-
-  test('accepts metadata and extend on an OAuth Provider', () => {
-    const provider = OAuthPluginProviderSchema.parse({
-      id: 'person',
-      kind: 'oauth',
-      plugin: '@example/oauth',
-      capability: 'default',
-      metadata: {
-        model: { extend: 'openai/gpt-5.6-sol', limit: { context: 400_000, input: 272_000 } },
-      },
-    });
-
-    expect(provider.metadata?.model).toEqual({
-      extend: 'openai/gpt-5.6-sol',
-      limit: { context: 400_000, input: 272_000 },
-    });
-  });
 });
 
 const providers = (entries: Record<string, unknown>) => ({ providers: entries });

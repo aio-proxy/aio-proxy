@@ -210,11 +210,11 @@ function warnGrammarFallback(applied: boolean): void {
 }
 
 const customFallbackSchema = {
-  type: 'object',
-  properties: { input: { type: 'string' } },
+  type: 'object' as const,
+  properties: { input: { type: 'string' as const } },
   required: ['input'],
   additionalProperties: false,
-} as const;
+};
 
 function unsupported(surface: string): never {
   throw new Error(`xAI Grok OAuth does not support ${surface}`);

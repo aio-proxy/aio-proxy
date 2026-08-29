@@ -91,6 +91,16 @@ test('dashboard OAuth provider patch canonicalizes weight and keeps omitted weig
   expect(schema.parse({ enabled: true, proxy: false }).weight).toBeUndefined();
 });
 
+test('dashboard OAuth provider patch rejects obsolete per-provider model metadata', () => {
+  expect(() =>
+    dashboard.DashboardOAuthProviderPatchSchema.parse({
+      enabled: true,
+      proxy: false,
+      metadata: { model: { name: 'Legacy' } },
+    }),
+  ).toThrow();
+});
+
 test('accepts an authorize_url session without a user code', () => {
   const parsed = DashboardOAuthSessionSchema.parse({
     id: '00000000-0000-4000-8000-000000000000',

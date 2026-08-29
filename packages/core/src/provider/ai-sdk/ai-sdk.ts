@@ -1,12 +1,5 @@
 import type { LogicalRequestContext, ProviderExecutedTool } from '@aio-proxy/plugin-sdk';
-import type {
-  AiSdkProvider,
-  AliasConfig,
-  ModelId,
-  ModelMetadata,
-  ProviderKind,
-  ProviderProtocol,
-} from '@aio-proxy/types';
+import type { AiSdkProvider, AliasConfig, ModelId, ProviderKind, ProviderProtocol } from '@aio-proxy/types';
 
 import type {
   AiSdkLanguageModel,
@@ -73,7 +66,6 @@ export type AiSdkProviderInstance = {
   readonly kind: ProviderKind.AiSdk;
   readonly models?: readonly ModelId[];
   readonly alias?: Readonly<Record<string, AliasConfig>>;
-  readonly metadata?: Readonly<Record<ModelId, ModelMetadata>>;
   readonly ensureAvailable?: () => Promise<void>;
   readonly invoke: (request: AiSdkProviderInvokeRequest) => ReadableStream<TextStreamPart<ToolSet>>;
   readonly targetProtocol?: ProviderProtocol;
@@ -124,7 +116,6 @@ export function createAiSdkProvider(
     ...(targetProtocol === undefined ? {} : { targetProtocol }),
     ...(config.models === undefined ? {} : { models: config.models }),
     ...(config.alias === undefined ? {} : { alias: config.alias }),
-    ...(config.metadata === undefined ? {} : { metadata: config.metadata }),
     async ensureAvailable() {
       try {
         if ((await providerTask()) === null) {

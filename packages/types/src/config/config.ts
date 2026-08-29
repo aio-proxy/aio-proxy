@@ -2,6 +2,7 @@ import { isPlainObject } from 'es-toolkit/predicate';
 import { z } from 'zod';
 
 import { hasReservedAgentTokenPrefix } from '../agent-integration';
+import { ModelCostSchema, ModelLimitSchema, ModelMetadataSchema } from '../model-metadata/index';
 import type { InvalidProviderConfig } from '../plugin';
 import { PluginPackageNameSchema } from '../plugin';
 import {
@@ -141,9 +142,18 @@ export const ModelContextAggregation = { Min: 'min', Max: 'max' } as const;
 export const RouterProviderOverrideSchema = z.object({
   priority: RoutingPrioritySchema.optional(),
   weight: RoutingWeightSchema.optional(),
+  cost: ModelCostSchema.optional().describe(
+    'Provider-specific cost override for this model; replaces the model-level cost wholesale.',
+  ),
+  limit: ModelLimitSchema.optional().describe(
+    'Provider-specific token-limit override for this model; replaces the model-level limit wholesale.',
+  ),
 });
 
 export const RouterModelPolicySchema = z.object({
+  metadata: ModelMetadataSchema.optional().describe(
+    'Client-facing metadata for this exposed model (name, description, extend, limit, capabilities, cost).',
+  ),
   providers: z.record(z.string().min(1), RouterProviderOverrideSchema).default({}),
 });
 

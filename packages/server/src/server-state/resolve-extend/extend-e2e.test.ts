@@ -4,9 +4,6 @@ import type { getModels } from '@aio-proxy/core';
 import { type Config, ConfigSchema, ProviderKind, ProviderProtocol } from '@aio-proxy/types';
 import type { Model } from '@opencode-ai/models';
 
-import { materializeProviders } from '../../provider-runtime/materialize';
-import { candidateConfigPrice } from '../../routes/pipeline/attempt-base';
-import type { RuntimeProviderInstance } from '../../runtime';
 import { applyMetadataExtend } from './resolve-extend';
 
 // A catalog base with values distinct from anything the user sets, so an
@@ -38,22 +35,20 @@ function stubGetModels(catalog: Record<string, Model | undefined>): typeof getMo
 
 function makeConfig(modelId: string, metadata: Record<string, unknown>): Config {
   return ConfigSchema.parse({
+    router: {
+      models: {
+        [modelId]: { metadata },
+      },
+    },
     providers: {
       p1: {
         kind: ProviderKind.Api,
         protocol: ProviderProtocol.OpenAICompatible,
         baseURL: 'https://api.example.com',
         models: [modelId],
-        metadata: { [modelId]: metadata },
       },
     },
   });
-}
-
-function runtimeProviderById(config: Config, id: string): RuntimeProviderInstance {
-  const provider = materializeProviders(config).providers.find((candidate) => candidate.id === id);
-  if (provider === undefined) throw new Error(`runtime provider '${id}' not materialized`);
-  return provider;
 }
 
 describe('metadata.extend end-to-end wiring', () => {
@@ -61,7 +56,7 @@ describe('metadata.extend end-to-end wiring', () => {
 
   // The user overrides `name` and `cost.input` but leaves `limit` and
   // `cost.output` to be inherited from the extend target's catalog entry.
-  async function resolveAndMaterialize(): Promise<RuntimeProviderInstance> {
+  async function resolveMetadata() {
     const config = makeConfig(modelId, {
       extend: 'openai/gpt-5.5',
       name: 'My Aliased GPT',
@@ -70,35 +65,24 @@ describe('metadata.extend end-to-end wiring', () => {
     const resolved = await applyMetadataExtend(config, undefined, {
       getModels: stubGetModels({ 'openai/gpt-5.5': catalogModel() }),
     });
-    return runtimeProviderById(resolved, 'p1');
+    return resolved.router.models[modelId]?.metadata;
   }
 
-  it('surfaces inherited name/limit on the runtime provider for model-resolution to read', async () => {
-    const provider = await resolveAndMaterialize();
-    // Model resolution reads name and limits on demand from
-    // provider.configMetadata[modelId]. Assert on that source object so this fails
-    // if extend→materialize wiring stops delivering config metadata to the runtime provider.
-    const entry = provider.configMetadata?.[modelId];
+  it('surfaces inherited name/limit on the router model policy', async () => {
+    const entry = await resolveMetadata();
 
     // User field wins (name) — proves the merge preserved the explicit override.
     expect(entry?.name).toBe('My Aliased GPT');
-    // limit is inherited wholesale from the catalog base — proves the runtime
-    // provider carries the context limit consumed by on-demand limit resolution.
+    // limit is inherited wholesale from the catalog base.
     expect(entry?.limit?.context).toBe(400_000);
   });
 
-  it('feeds inherited cost into candidateConfigPrice so billing tags priceSource:config', async () => {
-    const provider = await resolveAndMaterialize();
-    // The billing consumer reads provider.configMetadata[modelId].cost via this exact
-    // helper; a defined price with the INHERITED cost.output present proves the
-    // extend-inherited cost reached billing (any config cost => priceSource:'config').
-    const price = candidateConfigPrice(provider, modelId);
+  it('surfaces merged cost on the router model policy', async () => {
+    const entry = await resolveMetadata();
 
-    expect(price).toBeDefined();
-    expect(price?.id).toBe(modelId);
     // User override survives...
-    expect(price?.input).toBe(2);
+    expect(entry?.cost?.input).toBe(2);
     // ...and the inherited catalog cost.output (never set by the user) is present.
-    expect(price?.output).toBe(10);
+    expect(entry?.cost?.output).toBe(10);
   });
 });

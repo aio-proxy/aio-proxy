@@ -122,7 +122,7 @@ describe('CCA envelope identity', () => {
       descriptorById: descriptorMap([
         {
           id: 'gemini-4.0-flash-preview',
-          metadata: { antigravity: { modelEnum: 'MODEL_GEMINI_4_FLASH', maxOutputTokens: 8192 } },
+          extra: { antigravity: { modelEnum: 'MODEL_GEMINI_4_FLASH', maxOutputTokens: 8192 } },
         },
       ]),
       familyByWireId: () => undefined,
@@ -142,7 +142,7 @@ describe('CCA envelope identity', () => {
       descriptorById: descriptorMap([
         {
           id: 'claude-sonnet-4-6',
-          metadata: { antigravity: { apiProvider: 'anthropic', modelEnum: 'MODEL_CLAUDE_ONLY' } },
+          extra: { antigravity: { apiProvider: 'anthropic', modelEnum: 'MODEL_CLAUDE_ONLY' } },
         },
       ]),
       familyByWireId: () => undefined,
@@ -172,7 +172,7 @@ describe('CCA envelope identity', () => {
       descriptorById: descriptorMap([
         {
           id: 'claude-haiku-direct',
-          metadata: { antigravity: { apiProvider: 'anthropic' } },
+          extra: { antigravity: { apiProvider: 'anthropic' } },
         },
       ]),
       familyByWireId: () => undefined,
@@ -199,7 +199,7 @@ function credentialFixture(): GoogleAntigravityCredential {
   };
 }
 
-function descriptorMap(descriptors: readonly { readonly id: string; readonly metadata: unknown }[]) {
+function descriptorMap(descriptors: readonly { readonly id: string; readonly extra: unknown }[]) {
   return new Map(descriptors.map((descriptor) => [descriptor.id, descriptor]));
 }
 
@@ -208,15 +208,15 @@ function knownWireLookups() {
     descriptorById: descriptorMap([
       {
         id: 'gemini-3-flash-agent',
-        metadata: { antigravity: { modelEnum: 'MODEL_PLACEHOLDER_M132', maxOutputTokens: 65_536 } },
+        extra: { antigravity: { modelEnum: 'MODEL_PLACEHOLDER_M132', maxOutputTokens: 65_536 } },
       },
       {
         id: 'gemini-pro-agent',
-        metadata: { antigravity: { modelEnum: 'MODEL_PLACEHOLDER_M16', maxOutputTokens: 65_535 } },
+        extra: { antigravity: { modelEnum: 'MODEL_PLACEHOLDER_M16', maxOutputTokens: 65_535 } },
       },
       {
         id: 'claude-sonnet-4-6',
-        metadata: { antigravity: { apiProvider: 'anthropic' } },
+        extra: { antigravity: { apiProvider: 'anthropic' } },
       },
     ]),
     familyByWireId: (modelId: string) =>

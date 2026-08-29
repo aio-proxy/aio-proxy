@@ -20,12 +20,12 @@ test('overlapping catalog IDs keep the language protocol for language targetProt
     modelMetadataRecord({
       ...emptyFamilies,
       language: [
-        { id: 'shared', displayName: 'Chat', metadata: { protocol: ProviderProtocol.OpenAIResponse } },
-        { id: 'chat-only', metadata: { protocol: ProviderProtocol.Anthropic } },
+        { id: 'shared', displayName: 'Chat', extra: { protocol: ProviderProtocol.OpenAIResponse } },
+        { id: 'chat-only', extra: { protocol: ProviderProtocol.Anthropic } },
       ],
       embedding: [
-        { id: 'shared', displayName: 'Embed', metadata: { protocol: ProviderProtocol.Gemini } },
-        { id: 'embed-only', metadata: { protocol: ProviderProtocol.OpenAICompatible } },
+        { id: 'shared', displayName: 'Embed', extra: { protocol: ProviderProtocol.Gemini } },
+        { id: 'embed-only', extra: { protocol: ProviderProtocol.OpenAICompatible } },
       ],
     }),
   ).toEqual({
@@ -39,8 +39,8 @@ test('overlapping language and image catalog IDs keep the language protocol', ()
   expect(
     modelMetadataRecord({
       ...emptyFamilies,
-      language: [{ id: 'shared', displayName: 'Chat', metadata: { protocol: ProviderProtocol.Anthropic } }],
-      image: [{ id: 'shared', displayName: 'Image', metadata: { protocol: ProviderProtocol.OpenAIImage } }],
+      language: [{ id: 'shared', displayName: 'Chat', extra: { protocol: ProviderProtocol.Anthropic } }],
+      image: [{ id: 'shared', displayName: 'Image', extra: { protocol: ProviderProtocol.OpenAIImage } }],
       embedding: [],
     }),
   ).toEqual({
@@ -53,10 +53,51 @@ test('overlapping catalog IDs drop embedding protocol when language omits it', (
     modelMetadataRecord({
       ...emptyFamilies,
       language: [{ id: 'shared' }],
-      embedding: [{ id: 'shared', displayName: 'Embed', metadata: { protocol: ProviderProtocol.Gemini } }],
+      embedding: [{ id: 'shared', displayName: 'Embed', extra: { protocol: ProviderProtocol.Gemini } }],
     }),
   ).toEqual({
     shared: { name: 'Embed' },
+  });
+});
+
+test('descriptor modelMetadata feeds upstream metadata with displayName winning the name', () => {
+  expect(
+    modelMetadataRecord({
+      ...emptyFamilies,
+      language: [
+        {
+          id: 'm1',
+          displayName: 'Display',
+          extra: { protocol: ProviderProtocol.Anthropic },
+          modelMetadata: { name: 'Ignored', limit: { context: 100_000 } },
+        },
+      ],
+      embedding: [],
+    }),
+  ).toEqual({
+    m1: { name: 'Display', protocol: ProviderProtocol.Anthropic, limit: { context: 100_000 } },
+  });
+});
+
+test('overlapping language and image descriptors merge typed fields, language winning, protocol from language only', () => {
+  const record = modelMetadataRecord({
+    ...emptyFamilies,
+    image: [
+      {
+        id: 'm1',
+        extra: { protocol: ProviderProtocol.OpenAIImage },
+        modelMetadata: { name: 'Image', cost: { image: 0.04 } },
+      },
+    ],
+    language: [{ id: 'm1', modelMetadata: { limit: { context: 100_000 } } }],
+    embedding: [],
+  });
+  // Image-only fields survive, language fields merge in, and the image
+  // descriptor's extra.protocol does NOT survive — language owns protocol.
+  expect(record['m1']).toEqual({
+    name: 'Image',
+    cost: { image: 0.04 },
+    limit: { context: 100_000 },
   });
 });
 

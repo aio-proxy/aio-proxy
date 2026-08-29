@@ -267,7 +267,6 @@ describe('cross-protocol HTTP routing', () => {
 
 const IMAGES_PATH = '/v1/images/generations';
 const IMAGES_NOT_IMPLEMENTED = 'No configured provider can generate images for this model';
-const IMAGE_METADATA = { capabilities: { modalities: { output: ['image'] as const } } };
 
 describe('openai-image inbound', () => {
   test('image-only catalog.image id is 200 on Images and not 404', async () => {
@@ -485,7 +484,6 @@ function documentedImageProvider(
     rawBodies,
     value: {
       capabilityIndex,
-      configMetadata: Object.fromEntries(metadataIds.map((modelId) => [modelId, IMAGE_METADATA])),
       enabled: true,
       endpointTransports: [{ protocol: ProviderProtocol.OpenAIImage, passthrough: raw }],
       id: 'openai',

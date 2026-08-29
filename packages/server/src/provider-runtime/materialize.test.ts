@@ -286,41 +286,22 @@ test('summarizes an endpoints-only api provider with its primary endpoint protoc
   expect(providerSummary(instance, undefined, config)).toMatchObject({ protocol: ProviderProtocol.Anthropic });
 });
 
-test('materializes API metadata into the config layer only', () => {
+test('a router image-output policy attaches an image transport to a language-only API provider', () => {
   const config = ConfigSchema.parse({
     providers: {
       api: {
         kind: 'api',
         protocol: 'openai-compatible',
         baseURL: 'https://api.example.com',
-        models: ['model'],
-        metadata: { model: { name: 'Configured', cost: { input: 2 } } },
+        models: ['gpt-5'],
       },
     },
+    router: { models: { pub: { metadata: { capabilities: { modalities: { output: ['image'] } } } } } },
   });
 
   const provider = materializeProviders(config).providers[0];
-  expect(provider?.configMetadata?.model).toMatchObject({ name: 'Configured', cost: { input: 2 } });
-  expect(provider?.upstreamMetadata).toBeUndefined();
-});
-
-test('materializes AI SDK metadata into the config layer only', () => {
-  const config = ConfigSchema.parse({
-    providers: {
-      sdk: {
-        kind: 'ai-sdk',
-        packageName: '@ai-sdk/openai-compatible',
-        models: ['model'],
-        metadata: { model: { name: 'Configured', cost: { input: 2 } } },
-      },
-    },
-  });
-
-  const provider = materializeProviders(config, {
-    createAiSdkProvider: (configured) => ({ ...configured, invoke: () => new ReadableStream() }),
-  }).providers[0];
-  expect(provider?.configMetadata?.model).toMatchObject({ name: 'Configured', cost: { input: 2 } });
-  expect(provider?.upstreamMetadata).toBeUndefined();
+  expect(provider?.image).toBeDefined();
+  expect(supportsImage(provider!.capabilityIndex, 'gpt-5')).toBe(false);
 });
 
 test('materializes and summarizes normalized Provider routing defaults', () => {

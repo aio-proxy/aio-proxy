@@ -3,9 +3,10 @@ import { terminalCompletion } from '../../../route-observation';
 import type { RawTransport } from '../../../runtime';
 import { attemptBase, candidateConfigPrice } from '../attempt-base';
 import { failureTerminal, finalFailure, shouldFallbackStatus } from '../failure';
+import { publicSlug } from '../public-slug';
 import { retainResponseBody } from '../stream';
 import type { OpenSpan } from '../tracing';
-import type { AnyAttemptLoopContext, AttemptLoopContext, AttemptStep, CandidateSlot } from './context';
+import type { AnyAttemptLoopContext, AttemptStep, CandidateSlot, RawCapableAttemptLoopContext } from './context';
 import { cooldownTtlMs } from './cooldown-write';
 import { resolveSupportedEffortsForDimensions } from './effort-capability';
 import { attemptLog } from './emit';
@@ -13,7 +14,7 @@ import { attemptLog } from './emit';
 // Raw passthrough for one candidate. The attempt span opens before the provider
 // call so its duration covers the upstream request, not just post-response work.
 export async function attemptRawCandidate<TRequest, TContext>(
-  ctx: AttemptLoopContext<TRequest, TContext>,
+  ctx: RawCapableAttemptLoopContext<TRequest, TContext>,
   slot: CandidateSlot,
   raw: RawTransport,
   options: { readonly idleTimeoutMs?: number } = {},
@@ -88,7 +89,7 @@ export async function completeRawAttempt<TRequest, TContext>(
   slot.spanRef.current = undefined;
   let capturedResponseId: string | undefined;
   const normalizedResponse = withEventStreamContentType(response, ctx.streamRequested);
-  const configPrice = candidateConfigPrice(provider, candidate.modelId);
+  const configPrice = candidateConfigPrice(ctx.routerModels, publicSlug(ctx.requestedModelId, candidate), provider.id);
   const captured = source.usageCapture.passthrough({
     response: normalizedResponse,
     protocol: adapter.protocol,

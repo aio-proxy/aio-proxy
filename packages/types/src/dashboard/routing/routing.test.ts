@@ -38,7 +38,11 @@ const readyProvider = {
     priority: { effective: 0, wasNormalized: false },
     weight: routingNumber,
   },
-  override: { priority: { authored: 30, effective: 30, wasNormalized: false } },
+  override: {
+    priority: { authored: 30, effective: 30, wasNormalized: false },
+    cost: { input: 1 },
+    limit: { context: 8_000 },
+  },
   effective: {
     priority: 30,
     weight: 2,
@@ -51,6 +55,7 @@ const readyProvider = {
 
 const model = {
   modelId: 'openai/gpt-5',
+  metadata: { name: 'GPT-5', cost: { input: 2 } },
   revision: 'rev-1',
   baselineProviderIds: ['primary'],
   providerCount: 1,
@@ -75,15 +80,21 @@ describe('dashboard routing contracts', () => {
       modelId: 'openai/gpt-5',
       revision: 'rev-1',
       baselineProviderIds: ['primary', 'missing'],
+      metadata: { name: 'GPT-5' },
       providers: {
-        primary: { priority: 30 },
+        primary: { priority: 30, cost: { input: 1 } },
         missing: { weight: 0.6 },
+        clear: { cost: null },
       },
     };
 
     expect(mutation.parse(input)).toEqual({
       ...input,
-      providers: { primary: { priority: 30 }, missing: { weight: 1 } },
+      providers: {
+        primary: { priority: 30, cost: { input: 1 } },
+        missing: { weight: 1 },
+        clear: { cost: null },
+      },
     });
   });
 

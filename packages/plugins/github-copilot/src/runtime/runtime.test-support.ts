@@ -5,9 +5,9 @@ import type { GitHubAccountOptions, GitHubCopilotCredential } from '..';
 export function catalog(): ModelCatalog {
   return {
     language: [
-      { id: 'gpt-chat', metadata: { protocol: 'openai-compatible' } },
-      { id: 'claude', metadata: { protocol: 'anthropic' } },
-      { id: 'gpt-response', metadata: { protocol: 'openai-response' } },
+      { id: 'gpt-chat', extra: { protocol: 'openai-compatible' } },
+      { id: 'claude', extra: { protocol: 'anthropic' } },
+      { id: 'gpt-response', extra: { protocol: 'openai-response' } },
     ],
     image: [],
     embedding: [],

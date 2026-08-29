@@ -27,7 +27,6 @@ import { useProviderCreate, useProviderUpdate } from '../../hooks/use-provider-m
 import { aliasEditorIssues, serializeAlias, toAliasRecord, toAliasRows } from '../../lib/alias-editor';
 import { ProviderFormMode, PROVIDER_KIND_LABEL } from '../../lib/constants';
 import { exposedModels } from '../../lib/exposed-models';
-import { applyModelRows, toModelRows } from '../../lib/model-rows';
 import { oauthAccountSubmission } from '../../lib/oauth-account-submission';
 import { capabilityKey } from '../../lib/oauth-capability-key';
 import { oauthProviderEditAction } from '../../lib/oauth-provider-edit';
@@ -101,7 +100,6 @@ const saveOAuthProvider = (
       id: values.id,
       enabled: values.enabled ?? true,
       transforms: values.transforms as ProviderTransforms | undefined,
-      metadata: values.metadata ?? {},
       ...account,
     },
     oauth.publicValues,
@@ -179,7 +177,6 @@ const saveEditor = (
     ctx.mode,
     wireValues,
     ctx.providerId,
-    ctx.initial?.metadata,
     ctx.createProvider,
     ctx.updateProvider,
     (id) => void ctx.navigate({ to: '/providers/$id/edit', params: { id }, replace: true }),
@@ -190,7 +187,6 @@ const saveConfigProvider = (
   mode: ProviderFormMode,
   values: ProviderEditorWire,
   providerId: string | undefined,
-  persistedMetadata: ProviderEditorShape['metadata'],
   createProvider: (body: ProviderMutationBody, options?: { readonly onSuccess?: () => void }) => void,
   updateProvider: (input: { id: string; body: ProviderMutationBody }) => void,
   onCreated: (id: string) => void,
@@ -207,22 +203,7 @@ const saveConfigProvider = (
     });
     return;
   }
-  // Reconciled before the mode branch, not inside it: create must drop the empty records the drawer
-  // left behind, exactly as update does. What `applyModelRows` prunes is the EMPTY record of a LISTED
-  // id — a model whose cost fields were opened and cleared. Records for ids outside `models[]` are
-  // deliberately kept, because alias-only targets have metadata and no list entry; do not "fix"
-  // `applyModelRows` to prune those.
-  const applied = applyModelRows(toModelRows(values.models ?? [], values.metadata ?? {}), values.metadata);
-  // `{}` is not inert on update — `replaceProvider` retains `metadata` when the body omits it, so an
-  // emptied map has to be sent explicitly to clear the persisted one. With nothing persisted there is
-  // nothing to clear, and sending `{}` would stamp a dead `metadata: {}` key into the config file.
-  const metadata = applied.metadata ?? (Object.keys(persistedMetadata ?? {}).length === 0 ? undefined : {});
-  // The parsed `metadata` is dropped rather than overwritten with `undefined`, and the reconciled one
-  // is spread in only when there is one — the same conditional-spread idiom as `proxy` above. The
-  // parsed value is the unreconciled form state, so letting it through would restore exactly the
-  // empty records `applyModelRows` just pruned.
-  const { metadata: _unreconciled, ...parsed } = result.data;
-  const body = { ...parsed, ...(metadata === undefined ? {} : { metadata }) };
+  const body = result.data;
   if (mode === ProviderFormMode.Create) {
     createProvider(body, {
       onSuccess: () => onCreated(body.id),

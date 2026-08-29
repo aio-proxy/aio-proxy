@@ -138,7 +138,7 @@ function credentialPort(): CredentialPort<GitHubCopilotCredential> {
 
 function catalog(): ModelCatalog {
   return {
-    language: [{ id: 'gpt-chat', metadata: { protocol: 'openai-compatible' } }],
+    language: [{ id: 'gpt-chat', extra: { protocol: 'openai-compatible' } }],
     image: [],
     embedding: [],
     speech: [],

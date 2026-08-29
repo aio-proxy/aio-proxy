@@ -1,5 +1,5 @@
 import { m } from '@aio-proxy/i18n';
-import { ProviderKind, type ModelMetadata } from '@aio-proxy/types';
+import { ProviderKind } from '@aio-proxy/types';
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@aio-proxy/ui/components/empty';
 import { InputGroup, InputGroupAddon, InputGroupInput } from '@aio-proxy/ui/components/input-group';
 import { ScrollArea } from '@aio-proxy/ui/components/scroll-area';
@@ -15,12 +15,10 @@ import type { ProviderEditorForm } from '../../../hooks/use-provider-editor-form
 import { addManualModels } from '../../../lib/add-manual-models';
 import { aliasEditorIssues, type AliasRow, type ProviderAlias } from '../../../lib/alias-editor';
 import { exposedModels } from '../../../lib/exposed-models';
-import { applyModelRows, toModelRows, type ModelRow } from '../../../lib/model-rows';
 import { applicablePluginAliases, mergePluginAliasRows } from '../../../lib/plugin-alias-suggestions';
 import { removeModelFromAliases } from '../../../lib/remove-model-from-aliases';
 import type { SectionSummary } from '../../../lib/section-status';
 import { fetchProviderEditView } from '../../../services/providers-service';
-import { ProviderModelMetadataDrawer } from '../provider-model-metadata-drawer';
 import { SectionShell } from '../section-shell';
 import { ModelAliases } from './model-aliases';
 import { ModelRowItem } from './model-row-item';
@@ -38,8 +36,6 @@ interface ModelsSectionProps {
   readonly summary: SectionSummary;
 }
 
-type MetadataMap = Readonly<Record<string, ModelMetadata>>;
-
 type CatalogOutcome =
   | { readonly ok: true; readonly models: readonly string[] }
   | { readonly ok: false; readonly code: string };
@@ -53,7 +49,6 @@ export const ModelsSection: React.FC<ModelsSectionProps> = ({
   summary,
 }) => {
   const [filter, setFilter] = useState('');
-  const [metadataModel, setMetadataModel] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const catalogMutation = useProviderCatalogMutation(form, persistedProviderId);
   const oauthCatalogMutation = useMutation({
@@ -122,170 +117,133 @@ export const ModelsSection: React.FC<ModelsSectionProps> = ({
     >
       <form.Field name="models">
         {(modelsField) => (
-          <form.Field name="metadata">
-            {(metadataField) => (
-              <form.Field name="alias">
-                {(aliasField) => {
-                  const models: readonly string[] = modelsField.state.value ?? [];
-                  const metadata = (metadataField.state.value ?? {}) as MetadataMap;
-                  const alias: readonly AliasRow[] = aliasField.state.value ?? [];
-                  // An empty oauth whitelist exposes the whole discovered catalog at runtime, so the
-                  // rows must render checked and unchecking one must narrow that set — not promote
-                  // the single survivor. api/ai-sdk get no such substitution.
-                  const selected = exposedModels(models, kind === ProviderKind.OAuth ? discovered : undefined);
-                  // Filtered against the draft's own whitelist, not `selected`: an empty whitelist
-                  // falls back to the whole catalog, which would drop suggestions the save accepts.
-                  const applicableAliases = applicablePluginAliases(pluginAliases, models);
-                  const whitelist = new Set(selected);
-                  // Row order must not depend on which rows are ticked. Listing the whitelist first
-                  // re-sorted a row the moment its box was checked, while the ScrollArea kept its scroll
-                  // offset — so a catalog row jumped up to the enabled block and slid a different model
-                  // under the pointer, where the next click landed. Catalog order is fixed; ids the
-                  // catalog does not know (typed by hand) lead it, newest first as `addManualModels`
-                  // writes them.
-                  const catalogIds = discovered ?? [];
-                  const knownToCatalog = new Set(catalogIds);
-                  const rowIds = [...selected.filter((id) => !knownToCatalog.has(id)), ...catalogIds];
-                  const rows = toModelRows(rowIds, metadata);
-                  const whitelistRows = toModelRows(selected, metadata);
-                  const needle = filter.trim().toLowerCase();
-                  const visible = rows.filter((row) => needle === '' || row.id.toLowerCase().includes(needle));
+          <form.Field name="alias">
+            {(aliasField) => {
+              const models: readonly string[] = modelsField.state.value ?? [];
+              const alias: readonly AliasRow[] = aliasField.state.value ?? [];
+              // An empty oauth whitelist exposes the whole discovered catalog at runtime, so the
+              // rows must render checked and unchecking one must narrow that set — not promote
+              // the single survivor. api/ai-sdk get no such substitution.
+              const selected = exposedModels(models, kind === ProviderKind.OAuth ? discovered : undefined);
+              // Filtered against the draft's own whitelist, not `selected`: an empty whitelist
+              // falls back to the whole catalog, which would drop suggestions the save accepts.
+              const applicableAliases = applicablePluginAliases(pluginAliases, models);
+              const whitelist = new Set(selected);
+              // Row order must not depend on which rows are ticked. Listing the whitelist first
+              // re-sorted a row the moment its box was checked, while the ScrollArea kept its scroll
+              // offset — so a catalog row jumped up to the enabled block and slid a different model
+              // under the pointer, where the next click landed. Catalog order is fixed; ids the
+              // catalog does not know (typed by hand) lead it, newest first as `addManualModels`
+              // writes them.
+              const catalogIds = discovered ?? [];
+              const knownToCatalog = new Set(catalogIds);
+              const rowIds = [...selected.filter((id) => !knownToCatalog.has(id)), ...catalogIds];
+              const needle = filter.trim().toLowerCase();
+              const visible = rowIds.filter((id) => needle === '' || id.toLowerCase().includes(needle));
 
-                  const commit = (nextRows: readonly ModelRow[], previous: MetadataMap = metadata) => {
-                    const applied = applyModelRows(nextRows, previous);
-                    modelsField.handleChange(applied.models);
-                    metadataField.handleChange(applied.metadata);
-                  };
-                  // Front, as `addManualModels` does: one end for both ways a model joins the whitelist.
-                  const toggle = (id: string, enabled: boolean) =>
-                    commit(
-                      enabled
-                        ? [{ id, metadata: metadata[id] }, ...whitelistRows]
-                        : whitelistRows.filter((row) => row.id !== id),
-                    );
-                  const remove = (id: string) => {
-                    // Only whitelisted ids can leave the list — a catalog-only row survives
-                    // `discovered`. The row's trash control is disabled on this same predicate; the
-                    // guard stays because the cascade below must not run for a row that would remain
-                    // on screen, deleting aliases and metadata pointing at it.
-                    if (!whitelist.has(id)) return;
-                    const { [id]: _dropped, ...rest } = metadata;
-                    commit(
-                      whitelistRows.filter((row) => row.id !== id),
-                      rest,
-                    );
-                    aliasField.handleChange(removeModelFromAliases(alias, id));
-                  };
+              const commit = (nextIds: readonly string[]) => modelsField.handleChange([...nextIds]);
+              // Front, as `addManualModels` does: one end for both ways a model joins the whitelist.
+              const toggle = (id: string, enabled: boolean) =>
+                commit(enabled ? [id, ...selected] : selected.filter((current) => current !== id));
+              const remove = (id: string) => {
+                // Only whitelisted ids can leave the list — a catalog-only row survives
+                // `discovered`. The row's trash control is disabled on this same predicate; the
+                // guard stays because the cascade below must not run for a row that would remain
+                // on screen, deleting aliases pointing at it.
+                if (!whitelist.has(id)) return;
+                commit(selected.filter((current) => current !== id));
+                aliasField.handleChange(removeModelFromAliases(alias, id));
+              };
 
-                  return (
-                    <>
-                      <div className="space-y-3" data-testid="provider-editor-field-models">
-                        <div>
-                          <h3 className="text-sm font-medium">
-                            {m['dashboard.providers.form.models_upstream_heading']()}
-                          </h3>
-                          <p className="text-xs text-muted-foreground">
-                            {m['dashboard.providers.form.models_upstream_hint']()}
+              return (
+                <>
+                  <div className="space-y-3" data-testid="provider-editor-field-models">
+                    <div>
+                      <h3 className="text-sm font-medium">{m['dashboard.providers.form.models_upstream_heading']()}</h3>
+                      <p className="text-xs text-muted-foreground">
+                        {m['dashboard.providers.form.models_upstream_hint']()}
+                      </p>
+                    </div>
+
+                    {rowIds.length === 0 ? (
+                      <Empty className="border" data-testid="models-empty">
+                        <EmptyHeader>
+                          <EmptyMedia variant="icon">
+                            <LayersIcon />
+                          </EmptyMedia>
+                          <EmptyTitle>{m['dashboard.providers.form.models_empty_title']()}</EmptyTitle>
+                          <EmptyDescription>
+                            {m['dashboard.providers.form.models_empty_description']()}
+                          </EmptyDescription>
+                        </EmptyHeader>
+                      </Empty>
+                    ) : (
+                      <>
+                        <div className="flex flex-wrap items-center gap-3">
+                          <InputGroup className="w-full sm:w-64">
+                            <InputGroupAddon>
+                              <SearchIcon />
+                            </InputGroupAddon>
+                            <InputGroupInput
+                              value={filter}
+                              data-testid="models-filter"
+                              aria-label={m['dashboard.providers.editor.models_filter_placeholder']()}
+                              placeholder={m['dashboard.providers.editor.models_filter_placeholder']()}
+                              onChange={(event) => setFilter(event.target.value)}
+                            />
+                          </InputGroup>
+                          <p className="text-sm text-muted-foreground" data-testid="models-count">
+                            {m['dashboard.providers.editor.models_count']({
+                              enabled: selected.length,
+                              total: rowIds.length,
+                            })}
                           </p>
                         </div>
 
-                        {rows.length === 0 ? (
-                          <Empty className="border" data-testid="models-empty">
-                            <EmptyHeader>
-                              <EmptyMedia variant="icon">
-                                <LayersIcon />
-                              </EmptyMedia>
-                              <EmptyTitle>{m['dashboard.providers.form.models_empty_title']()}</EmptyTitle>
-                              <EmptyDescription>
-                                {m['dashboard.providers.form.models_empty_description']()}
-                              </EmptyDescription>
-                            </EmptyHeader>
-                          </Empty>
-                        ) : (
-                          <>
-                            <div className="flex flex-wrap items-center gap-3">
-                              <InputGroup className="w-full sm:w-64">
-                                <InputGroupAddon>
-                                  <SearchIcon />
-                                </InputGroupAddon>
-                                <InputGroupInput
-                                  value={filter}
-                                  data-testid="models-filter"
-                                  aria-label={m['dashboard.providers.editor.models_filter_placeholder']()}
-                                  placeholder={m['dashboard.providers.editor.models_filter_placeholder']()}
-                                  onChange={(event) => setFilter(event.target.value)}
-                                />
-                              </InputGroup>
-                              <p className="text-sm text-muted-foreground" data-testid="models-count">
-                                {m['dashboard.providers.editor.models_count']({
-                                  enabled: selected.length,
-                                  total: rowIds.length,
-                                })}
-                              </p>
-                            </div>
+                        {/* A loaded catalog is routinely dozens to hundreds of ids, and an unbounded
+                            list pushed Routing and Advanced so far down the page that the section nav
+                            was the only way back. `pr-3` keeps the row's own hover and focus ring clear
+                            of the scrollbar gutter. */}
+                        <ScrollArea className="[&_[data-slot=scroll-area-viewport]]:max-h-72">
+                          <div className="space-y-1.5 pr-3" data-testid="models-rows">
+                            {visible.map((id) => (
+                              <ModelRowItem
+                                key={id}
+                                id={id}
+                                enabled={whitelist.has(id)}
+                                onToggle={(enabled) => toggle(id, enabled)}
+                                onRemove={() => remove(id)}
+                              />
+                            ))}
+                          </div>
+                        </ScrollArea>
+                      </>
+                    )}
 
-                            {/* A loaded catalog is routinely dozens to hundreds of ids, and an unbounded
-                                list pushed Routing and Advanced so far down the page that the section nav
-                                was the only way back. `pr-3` keeps the row's own hover and focus ring clear
-                                of the scrollbar gutter. */}
-                            <ScrollArea className="[&_[data-slot=scroll-area-viewport]]:max-h-72">
-                              <div className="space-y-1.5 pr-3" data-testid="models-rows">
-                                {visible.map((row) => (
-                                  <ModelRowItem
-                                    key={row.id}
-                                    id={row.id}
-                                    enabled={whitelist.has(row.id)}
-                                    onToggle={(enabled) => toggle(row.id, enabled)}
-                                    onRemove={() => remove(row.id)}
-                                    onEditMetadata={() => setMetadataModel(row.id)}
-                                  />
-                                ))}
-                              </div>
-                            </ScrollArea>
-                          </>
-                        )}
+                    <ModelsManualAdd onAdd={(ids) => commit(addManualModels(selected, ids))} />
+                  </div>
 
-                        <ModelsManualAdd
-                          onAdd={(ids) => commit(toModelRows(addManualModels(selected, ids), metadata))}
-                        />
-                      </div>
-
-                      <ModelAliases
-                        alias={alias}
-                        issues={aliasEditorIssues(alias, models)}
-                        targetOptions={selected}
-                        onAliasChange={(next) => aliasField.handleChange(next)}
-                        onSyncPluginAliases={
-                          applicableAliases === undefined
-                            ? undefined
-                            : () => {
-                                aliasField.handleChange(mergePluginAliasRows(alias, applicableAliases));
-                                toast.add({
-                                  type: 'success',
-                                  title: m['dashboard.providers.toast.plugin_aliases_synced'](),
-                                  description: m['dashboard.providers.toast.plugin_aliases_synced_description'](),
-                                });
-                              }
-                        }
-                      />
-
-                      <ProviderModelMetadataDrawer
-                        model={metadataModel}
-                        value={metadataModel === null ? undefined : metadata[metadataModel]}
-                        onOpenChange={(open) => {
-                          if (!open) setMetadataModel(null);
-                        }}
-                        onSave={(value) => {
-                          if (metadataModel !== null) {
-                            metadataField.handleChange({ ...metadata, [metadataModel]: value });
+                  <ModelAliases
+                    alias={alias}
+                    issues={aliasEditorIssues(alias, models)}
+                    targetOptions={selected}
+                    onAliasChange={(next) => aliasField.handleChange(next)}
+                    onSyncPluginAliases={
+                      applicableAliases === undefined
+                        ? undefined
+                        : () => {
+                            aliasField.handleChange(mergePluginAliasRows(alias, applicableAliases));
+                            toast.add({
+                              type: 'success',
+                              title: m['dashboard.providers.toast.plugin_aliases_synced'](),
+                              description: m['dashboard.providers.toast.plugin_aliases_synced_description'](),
+                            });
                           }
-                        }}
-                      />
-                    </>
-                  );
-                }}
-              </form.Field>
-            )}
+                    }
+                  />
+                </>
+              );
+            }}
           </form.Field>
         )}
       </form.Field>

@@ -3,6 +3,7 @@ import type { Database } from 'bun:sqlite';
 import type { ModelCatalog } from '@aio-proxy/plugin-sdk';
 import type { Diagnostic } from '@aio-proxy/types';
 
+import { migrateStoredCatalogShape } from './catalog-migration';
 import { type CatalogRow, type DiagnosticRow, decodeJson, encodeJson, type PluginSecretRow } from './rows';
 import type {
   AccountWrite,
@@ -47,7 +48,11 @@ export function createPluginStateRows(sqlite: Database) {
     const row = selectCatalog.get(providerId);
     return row === null
       ? null
-      : { catalog: decodeJson<ModelCatalog>(row.catalog_json), refreshedAt: row.refreshed_at, revision: row.revision };
+      : {
+          catalog: migrateStoredCatalogShape(decodeJson<ModelCatalog>(row.catalog_json)),
+          refreshedAt: row.refreshed_at,
+          revision: row.revision,
+        };
   }
   function readDiagnostics(providerId: string): readonly Diagnostic[] {
     return selectDiagnostics.all(providerId).map(({ diagnostic_json }) => decodeJson<Diagnostic>(diagnostic_json));

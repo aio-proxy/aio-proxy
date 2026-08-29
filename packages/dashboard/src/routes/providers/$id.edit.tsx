@@ -66,7 +66,6 @@ const EditProviderPage: React.FC = () => {
           alias: provider.alias,
           transforms: provider.transforms,
           models: provider.models ?? [],
-          metadata: provider.metadata,
         }}
         sessionId={session}
         onSessionIdChange={onSessionIdChange}

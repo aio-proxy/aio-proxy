@@ -26,7 +26,6 @@ export type RoutableProvider = {
   readonly weight?: number | undefined;
   readonly models?: readonly ModelId[] | undefined;
   readonly alias?: Readonly<Record<string, AliasConfig>> | undefined;
-  readonly configMetadata?: Readonly<Record<string, unknown>> | undefined;
   readonly upstreamMetadata?: Readonly<Record<string, unknown>> | undefined;
 };
 
@@ -249,7 +248,8 @@ export function modelRoutes(provider: RoutableProvider): ModelRoute[] {
 function directModelIds(provider: RoutableProvider): string[] {
   const configuredModelIds = new Set<string>('models' in provider ? (provider.models ?? []) : []);
   const modelIds = new Set(configuredModelIds);
-  for (const modelId of Object.keys(provider.configMetadata ?? {})) modelIds.add(modelId);
+  // Config metadata keys deliberately do NOT create public model routes:
+  // models must be listed in providers.<id>.models or aliased.
   for (const modelId of Object.keys(provider.upstreamMetadata ?? {})) modelIds.add(modelId);
 
   for (const [alias, config] of Object.entries(provider.alias ?? {})) {

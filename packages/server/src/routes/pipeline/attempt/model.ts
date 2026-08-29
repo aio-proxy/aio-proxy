@@ -4,6 +4,7 @@ import { terminalCompletion } from '../../../route-observation';
 import type { ModelTransport } from '../../../runtime';
 import { attemptBase, candidateConfigPrice } from '../attempt-base';
 import { logModelInvocationDiagnostics } from '../logging';
+import { publicSlug } from '../public-slug';
 import { createSseResponse, preflightStream } from '../stream';
 import type { AttemptStep, CandidateSlot, InvocationHolder, LanguageAttemptLoopContext } from './context';
 import { assertCandidateSupported, prepareModelInvocation } from './model-prepare';
@@ -40,7 +41,7 @@ export async function attemptModelCandidate<TRequest, TContext>(
   const attemptSpan = ctx.emitter.startAttempt(base, index);
   slot.spanRef.current = attemptSpan;
   await inAttempt(targetProtocol, () => model.ensureAvailable?.());
-  const configPrice = candidateConfigPrice(provider, candidate.modelId);
+  const configPrice = candidateConfigPrice(ctx.routerModels, publicSlug(ctx.requestedModelId, candidate), provider.id);
   const captured = source.usageCapture.stream({
     providerId: provider.id,
     modelId: candidate.modelId,

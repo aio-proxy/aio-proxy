@@ -246,8 +246,12 @@ async function attemptResolvedRequest<TRequest, TContext>(options: {
     const candidates = lease.snapshot.router.resolve(requestedModel, adapter.dimensions(request, context), {
       session: resolution.context.session,
     });
-    const eligible = filterCandidatesByCapability(candidates, adapter.capability);
+    const eligible = filterCandidatesByCapability(candidates, adapter.capability, {
+      requestedModelId: requestedModel,
+      routerModels: lease.snapshot.config?.router.models,
+    });
     if (eligible.length === 0) {
+      const error = new Error('No eligible provider candidates for inbound capability');
       return rejectRequest({
         source,
         session,
@@ -256,6 +260,7 @@ async function attemptResolvedRequest<TRequest, TContext>(options: {
         requestedModelId: requestedModel,
         response: adapter.errors.unsupported(adapter.capability === 'image' ? 'images' : 'transform_dispatch'),
         errorCode: 'not_implemented',
+        error,
       });
     }
     return await attemptCandidates({

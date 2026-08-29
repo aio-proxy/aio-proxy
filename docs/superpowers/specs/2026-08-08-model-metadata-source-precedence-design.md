@@ -4,6 +4,8 @@
 
 This design resolves [issue #169](https://github.com/aio-proxy/aio-proxy/issues/169). It supersedes only the source-precedence and token-limit projection rules in the earlier provider-metadata and Codex-client-model specs.
 
+> **Superseding note (2026-08-29):** The user-config layer described here moved from Provider metadata to `router.models.<slug>.metadata`, with per-Provider `cost` and `limit` overrides under `router.models.<slug>.providers.<id>`. The source-precedence rules remain applicable. See the [router model metadata plan](../plans/2026-08-29-router-model-metadata.md).
+
 The work belongs in a future model-metadata PR. It is intentionally separate from [PR #170](https://github.com/aio-proxy/aio-proxy/pull/170), which only fixes Responses stream-error propagation.
 
 In scope:

@@ -19,7 +19,7 @@ const catalog = (
   speech: [],
   transcription: [],
   reranking: [],
-  metadata: { cursorFamilies: families },
+  extra: { cursorFamilies: families },
 });
 
 const asAliasConfig = (suggestion: unknown): AliasConfig => suggestion as AliasConfig;

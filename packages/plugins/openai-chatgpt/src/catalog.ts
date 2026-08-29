@@ -25,7 +25,7 @@ export async function discoverOpenAIChatGPTModels(
       (model): ModelDescriptor => ({
         id: model.slug,
         displayName: model.display_name,
-        metadata: { protocol: 'openai-response' },
+        extra: { protocol: 'openai-response' },
       }),
     ),
   );

@@ -78,7 +78,6 @@ const runLoginSession = async (
               proxy: input.providerPatch.proxy,
               alias: input.providerPatch.alias,
               models: input.providerPatch.models,
-              metadata: input.providerPatch.metadata,
               transforms: input.providerPatch.transforms,
             } satisfies OAuthProviderPatch,
           }),

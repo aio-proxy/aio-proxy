@@ -98,7 +98,7 @@ export function replaceProvider(
   // Omission still means "delete" except for this short list of fields the editor cannot
   // round-trip or does not own. `endpoints` is no longer here: the mutation body now accepts it,
   // so a save that omits it is the author deleting the extra protocols.
-  for (const key of ['headers', 'metadata', 'proxy', 'transforms'] as const) {
+  for (const key of ['headers', 'proxy', 'transforms'] as const) {
     if (provider[key] === undefined && previous[key] !== undefined) next[key] = previous[key];
   }
 

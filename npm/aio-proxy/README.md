@@ -135,24 +135,21 @@ Rules:
 
 ### Model metadata and pricing
 
-Each `api`, `ai-sdk`, or `oauth` Provider may declare `metadata`, keyed by **upstream model id**, to override client-facing metadata and cost accounting for that Provider's models. Metadata is resolved per field in this order: metadata config (including `extend`) > protocol/provider catalog > [models.dev](https://models.dev) > protocol default. Aliases only auto-discover catalog fallback by their public slug. Unknown fields are preserved and warned about rather than rejected, while invalid values (for example a negative price or a non-positive context limit) fail validation with a clear error.
+Configure client-facing metadata once per exposed model under `router.models.<slug>.metadata`, keyed by the exact slug clients request rather than by an upstream model id. The slug must already be exposed by a Provider's `models` or `alias` configuration: a `router.models` entry only customizes an existing route and never creates one. The removed `providers.<id>.metadata` field is silently ignored.
+
+Metadata is resolved per field in this order: the selected Provider's router override (for `cost` or `limit`) > slug metadata (including `extend`) > plugin-reported upstream metadata > [models.dev](https://models.dev) fallback > protocol default. A Provider override replaces the slug's entire `cost` or `limit` object rather than deep-merging it; other metadata is shared by every Provider serving that slug. Aliases only auto-discover catalog fallback by their public slug. Unknown metadata fields are preserved and warned about rather than rejected, while invalid values (for example a negative price or a non-positive context limit) fail validation with a clear error.
 
 ```jsonc
 {
   "$schema": "https://cdn.jsdelivr.net/npm/aio-proxy@latest/config.schema.json",
-  // When several Providers expose the same public model, reconcile its context window:
-  // "min" (default, safe) reports the smallest; "max" reports the largest.
-  "router": { "modelContextAggregation": "min" },
-  "providers": {
-    "openai": {
-      "kind": "api",
-      "protocol": "openai-response",
-      "baseURL": "https://api.openai.com/v1",
-      "apiKey": "{{env.OPENAI_API_KEY}}",
-      "models": ["gpt-5"],
-      "metadata": {
-        // Keyed by the upstream model id the Provider serves.
-        "gpt-5": {
+  "router": {
+    // When several Providers expose the same public model, reconcile its context window:
+    // "min" (default, safe) reports the smallest; "max" reports the largest.
+    "modelContextAggregation": "min",
+    "models": {
+      // Keyed by the exposed slug clients request.
+      "gpt-5": {
+        "metadata": {
           "name": "GPT-5", // client-facing display name
           "description": "Frontier model",
           "limit": {
@@ -164,6 +161,8 @@ Each `api`, `ai-sdk`, or `oauth` Provider may declare `metadata`, keyed by **ups
             "reasoning": true,
             "toolCall": true,
             "attachment": true,
+            // This can grant Images support to this slug without affecting other slugs.
+            "modalities": { "input": ["text", "image"], "output": ["text", "image"] },
           },
           "cost": {
             // Per-token prices are USD per 1,000,000 tokens.
@@ -181,7 +180,23 @@ Each `api`, `ai-sdk`, or `oauth` Provider may declare `metadata`, keyed by **ups
             "tiers": [{ "tier": { "type": "context", "size": 200000 }, "input": 2.5, "output": 15 }],
           },
         },
+        "providers": {
+          // Provider-specific values replace metadata.cost and metadata.limit wholesale.
+          "openai": {
+            "cost": { "input": 1, "output": 8 },
+            "limit": { "context": 300000, "input": 200000, "output": 100000 },
+          },
+        },
       },
+    },
+  },
+  "providers": {
+    "openai": {
+      "kind": "api",
+      "protocol": "openai-response",
+      "baseURL": "https://api.openai.com/v1",
+      "apiKey": "{{env.OPENAI_API_KEY}}",
+      "models": ["gpt-5"],
     },
   },
 }
@@ -189,22 +204,27 @@ Each `api`, `ai-sdk`, or `oauth` Provider may declare `metadata`, keyed by **ups
 
 `limit.context` is the maximum total context, `limit.input` is the maximum input tokens, and `limit.output` is the maximum output tokens. Configured `input` and `output` cannot exceed configured `context`. For Codex, these distinct limits project to `context_window = input ?? context` and `max_context_window = context ?? input`; `output` is never used as a Codex context window.
 
-When a request is billed, the Provider that actually served it supplies the price: a configured `cost` wins over the models.dev catalog, and the recorded usage row notes whether the price came from `config`, `models-dev`, or a built-in default (`priceSource`).
+When a request is billed, the Provider that actually served it supplies the price: its router `cost` override wins over slug metadata and the models.dev catalog, and the recorded usage row notes whether the price came from `config`, `models-dev`, or a built-in default (`priceSource`).
 
 Per-event fees and audio-token costs are metered from the actual response: generated images and web-search invocations are counted from the served output, and audio tokens are read from the upstream usage (available on OpenAI-compatible Chat Completions upstreams). A fee applies only when the corresponding events occur.
 
 #### Inheriting a catalog entry with `extend`
 
-When your Provider's upstream model id doesn't line up with a [models.dev](https://models.dev) slug (an aliased or renamed model), point `extend` at the slug to inherit as a base layer:
+When an exposed slug doesn't line up with a [models.dev](https://models.dev) slug (for example, an aliased or renamed model), point `extend` at the catalog slug to inherit as a base layer:
 
 ```jsonc
 {
-  "metadata": {
-    // Your Provider serves this under a name models.dev doesn't know.
-    "my-frontier-alias": {
-      "extend": "openai/gpt-5.5", // inherit this catalog entry as the base
-      "name": "My Frontier Model", // override the inherited name
-      "cost": { "input": 2 }, // override input price; inherited output/tiers remain
+  "router": {
+    "models": {
+      // This exposed slug must also be listed by a Provider or produced by an alias.
+      "my-frontier-alias": {
+        "metadata": {
+          "extend": "openai/gpt-5.5", // inherit this catalog entry as the base
+          "name": "My Frontier Model", // override the inherited name
+          "cost": { "input": 2 }, // override input price; inherited output/tiers remain
+        },
+        "providers": {},
+      },
     },
   },
 }
@@ -297,7 +317,7 @@ Images notes:
 - Convert does not stream and does not fetch `image_url`.
 - DALL·E omitted/`null`/`url` skips convert; GPT Image omitted encodes `b64_json`; custom omitted `b64_json` is an aio-proxy extension.
 - Edits accept official-max envelopes (`357_564_416` JSON, `851_048_559` multipart). P1 has no lower default DoS cap; a future smaller ceiling is an explicit deployment extension.
-- Non-catalog Images providers need a finite id set (`models`, preserved alias targets, or metadata keys) including `gpt-image-2` for the blank-model default.
+- Non-catalog Images Providers need a finite id set (`models` or preserved alias targets) including `gpt-image-2` for the blank-model default. A `router.models` metadata entry does not create a route.
 
 Remaining official Responses resource operations (`GET /v1/responses/:id`, `DELETE /v1/responses/:id`, `POST /v1/responses/:id/cancel`, `GET /v1/responses/:id/input_items`) return a protocol-shaped 501.
 

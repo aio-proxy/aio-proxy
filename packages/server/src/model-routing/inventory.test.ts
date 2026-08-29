@@ -208,7 +208,7 @@ describe('model routing inventory', () => {
     expect(modelIds).toContain('stale-alias');
     expect(modelIds).toContain('oauth-current');
     expect(modelIds).toContain('broken-alias');
-    expect(modelIds).not.toContain('unknown-model');
+    expect(modelIds).toContain('unknown-model');
     expect(modelIds).not.toContain('gone-model');
 
     expect(provider(response, 'api-alias', 'disabled-api')).toMatchObject({
@@ -397,5 +397,63 @@ describe('model routing inventory', () => {
     expect(oauth.defaults.priority).toEqual({ effective: 0, wasNormalized: false });
     expect(oauth.defaults.weight).toEqual({ effective: 1, wasNormalized: false });
     expect(oauth.override).toBeUndefined();
+  });
+
+  test('a metadata-only slug appears with its metadata and no providers', async () => {
+    const rawPolicy = { metadata: { name: 'Meta', cost: { input: 2 } } };
+    const rawRecord = {
+      providers: {},
+      router: { models: { 'meta-only': rawPolicy } },
+    };
+    const config = parseRuntimeConfig(rawRecord);
+
+    const response = await assembleRoutingInventory({
+      rawRecord,
+      config,
+      summaries: [],
+      repository: catalogRepository(),
+      writable: true,
+    });
+
+    expect(response.models).toEqual([
+      {
+        modelId: 'meta-only',
+        revision: digestProviderEntry(rawPolicy),
+        baselineProviderIds: [],
+        providerCount: 0,
+        eligibleProviderCount: 0,
+        hasOverrides: true,
+        metadata: { name: 'Meta', cost: { input: 2 } },
+        tiers: [],
+        providers: [],
+      },
+    ]);
+  });
+
+  test('per-provider cost and limit overrides round-trip through the inventory view', async () => {
+    const rawRecord = structuredClone(authoredRecord) as Record<string, unknown>;
+    const router = rawRecord['router'] as {
+      models: { shared: { providers: Record<string, unknown> } };
+    };
+    router.models.shared.providers['high'] = {
+      cost: { input: 1 },
+      limit: { context: 8_000 },
+    };
+    const config = parseRuntimeConfig(rawRecord);
+    const response = await assembleRoutingInventory({
+      rawRecord,
+      config,
+      summaries: summariesFrom(config, {
+        'unavailable-oauth': unavailable,
+        'broken-oauth': unavailable,
+      }),
+      repository: catalogRepository(),
+      writable: true,
+    });
+
+    expect(provider(response, 'shared', 'high').override).toEqual({
+      cost: { input: 1 },
+      limit: { context: 8_000 },
+    });
   });
 });

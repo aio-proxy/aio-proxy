@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { clearModelsCache, fileCacheStorage, type getModels, type PluginLogSink } from '@aio-proxy/core';
-import { type Config, ConfigSchema, ProviderKind, ProviderProtocol } from '@aio-proxy/types';
+import { type Config, ConfigSchema, type ModelMetadata } from '@aio-proxy/types';
 import type { Model } from '@opencode-ai/models';
 
 import { applyMetadataExtend } from './resolve-extend';
@@ -47,15 +47,10 @@ function catalogModel(overrides: Partial<Model> = {}): Model {
 
 function makeConfig(metadata: Record<string, unknown>): Config {
   return ConfigSchema.parse({
-    providers: {
-      p1: {
-        kind: ProviderKind.Api,
-        protocol: ProviderProtocol.OpenAICompatible,
-        baseURL: 'https://api.example.com',
-        models: Object.keys(metadata),
-        metadata,
-      },
+    router: {
+      models: Object.fromEntries(Object.entries(metadata).map(([slug, entry]) => [slug, { metadata: entry }])),
     },
+    providers: {},
   });
 }
 
@@ -67,12 +62,10 @@ function stubGetModels(catalog: Record<string, Model | undefined>): typeof getMo
   }) as unknown as typeof getModels;
 }
 
-function metadataOf(config: Config, providerId: string): Record<string, unknown> {
-  const provider = config.providers.find((candidate) => candidate.id === providerId);
-  if (provider === undefined || !('metadata' in provider) || provider.metadata === undefined) {
-    throw new Error('expected provider metadata');
-  }
-  return provider.metadata as Record<string, unknown>;
+function metadataOf(config: Config, slug: string): ModelMetadata {
+  const metadata = config.router.models[slug]?.metadata;
+  if (metadata === undefined) throw new Error('expected router model metadata');
+  return metadata;
 }
 
 describe('applyMetadataExtend', () => {
@@ -92,7 +85,7 @@ describe('applyMetadataExtend', () => {
 
       expect(result).not.toBe(timedOut);
       if (result === timedOut) throw new Error('metadata resolution waited for the catalog');
-      expect(metadataOf(result, 'p1')['my-gpt']).toMatchObject({ extend: 'openai/gpt-5.5', name: 'Kept' });
+      expect(metadataOf(result, 'my-gpt')).toMatchObject({ extend: 'openai/gpt-5.5', name: 'Kept' });
     } finally {
       globalThis.fetch = nativeFetch;
     }
@@ -104,31 +97,29 @@ describe('applyMetadataExtend', () => {
 
     const resolved = await applyMetadataExtend(config);
 
-    expect(metadataOf(resolved, 'p1')['my-gpt']).toEqual({ extend: 'openai/missing', name: 'Kept' });
+    expect(metadataOf(resolved, 'my-gpt')).toEqual({ extend: 'openai/missing', name: 'Kept' });
   });
 
-  it('materializes metadata.extend for an OAuth Provider', async () => {
+  it('materializes metadata.extend for a router model', async () => {
     const config = ConfigSchema.parse({
-      providers: {
-        person: {
-          kind: 'oauth',
-          plugin: '@example/oauth',
-          capability: 'default',
-          metadata: { model: { extend: 'openai/gpt-5.5', name: 'Configured OAuth Name' } },
+      router: {
+        models: {
+          model: {
+            metadata: { extend: 'openai/gpt-5.5', name: 'Configured Name' },
+          },
         },
       },
+      providers: {},
     });
     const resolved = await applyMetadataExtend(config, undefined, {
       getModels: stubGetModels({ 'openai/gpt-5.5': catalogModel() }),
     });
-    const provider = resolved.providers[0];
-    if (provider?.kind !== ProviderKind.OAuth) throw new Error('expected OAuth Provider');
 
-    expect(provider.metadata?.model).toMatchObject({
-      name: 'Configured OAuth Name',
+    expect(resolved.router.models.model?.metadata).toMatchObject({
+      name: 'Configured Name',
       limit: { context: 400_000, input: 300_000, output: 128_000 },
     });
-    expect(provider.metadata?.model.extend).toBeUndefined();
+    expect(resolved.router.models.model?.metadata?.extend).toBeUndefined();
   });
 
   it('two-layer merges catalog base under user fields with array replacement', async () => {
@@ -143,7 +134,7 @@ describe('applyMetadataExtend', () => {
     const deps = { getModels: stubGetModels({ 'openai/gpt-5.5': catalogModel() }) };
 
     const resolved = await applyMetadataExtend(config, undefined, deps);
-    const entry = metadataOf(resolved, 'p1')['my-gpt'] as Record<string, any>;
+    const entry = metadataOf(resolved, 'my-gpt');
 
     expect(entry.extend).toBeUndefined();
     // user wins on scalar
@@ -171,7 +162,7 @@ describe('applyMetadataExtend', () => {
     };
 
     const resolved = await applyMetadataExtend(config, undefined, deps);
-    const entry = metadataOf(resolved, 'p1')['openai/gpt-5.5'] as Record<string, any>;
+    const entry = metadataOf(resolved, 'openai/gpt-5.5');
 
     expect(entry.name).toBe('Aliased');
     expect(entry.cost).toEqual({ input: 7, output: 8 });
@@ -185,16 +176,29 @@ describe('applyMetadataExtend', () => {
     const deps = { getModels: stubGetModels({}) };
 
     const resolved = await applyMetadataExtend(config, logger, deps);
-    const entry = metadataOf(resolved, 'p1')['my-gpt'] as Record<string, any>;
+    const entry = metadataOf(resolved, 'my-gpt');
 
     expect(entry.extend).toBeUndefined();
     expect(entry.name).toBe('Kept');
     expect(entry.cost).toEqual({ input: 3 });
     expect(logger).toHaveBeenCalledTimes(1);
     const call = logger.mock.calls[0]?.[0];
-    expect(call?.context.providerId).toBe('p1');
+    expect(call?.context).toEqual({ model: 'my-gpt' });
     expect(call?.error.message).toContain('openai/missing');
     expect(call?.error.message).toContain('my-gpt');
+  });
+
+  it('preserves user fields when the catalog fetch fails', async () => {
+    const config = makeConfig({
+      'my-gpt': { extend: 'openai/gpt-5.5', name: 'Kept', cost: { input: 3 } },
+    });
+    const getModels = (async () => {
+      throw new Error('catalog unavailable');
+    }) as typeof import('@aio-proxy/core').getModels;
+
+    const resolved = await applyMetadataExtend(config, undefined, { getModels });
+
+    expect(metadataOf(resolved, 'my-gpt')).toEqual({ name: 'Kept', cost: { input: 3 } });
   });
 
   it('ignores inheritance when merged limits would be invalid', async () => {
@@ -206,13 +210,13 @@ describe('applyMetadataExtend', () => {
     const resolved = await applyMetadataExtend(config, logger, {
       getModels: stubGetModels({ 'openai/gpt-5.5': catalogModel() }),
     });
-    const entry = metadataOf(resolved, 'p1')['my-gpt'];
+    const entry = metadataOf(resolved, 'my-gpt');
 
     expect(entry).toEqual({ name: 'Kept', limit: { input: 500_000 } });
     expect(logger.mock.calls[0]?.[0]).toMatchObject({
       event: 'metadata.extend.invalid',
       code: 'PROVIDER_CONFIG_INVALID',
-      context: { providerId: 'p1' },
+      context: { model: 'my-gpt' },
       error: { name: 'MetadataExtendInvalid' },
     });
   });

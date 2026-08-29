@@ -141,20 +141,19 @@ test('degrades invalid and legacy provider entries independently', () => {
   expect(JSON.stringify(config)).not.toContain('@example/oauth');
 });
 
-test('marks an OAuth Provider invalid when an input limit exceeds context', () => {
-  const config = ConfigSchema.parse({
-    providers: {
-      bad: {
-        kind: 'oauth',
-        plugin: '@example/oauth',
-        capability: 'default',
-        metadata: { model: { limit: { context: 272_000, input: 400_000 } } },
+test('rejects router model metadata when an input limit exceeds context', () => {
+  expect(() =>
+    ConfigSchema.parse({
+      router: {
+        models: {
+          'gpt-5': {
+            metadata: { limit: { context: 272_000, input: 400_000 } },
+          },
+        },
       },
-    },
-  });
-
-  expect(config.providers).toEqual([]);
-  expect(config.invalidProviders[0]?.issuePaths).toContainEqual(['metadata', 'model', 'limit', 'input']);
+      providers: {},
+    }),
+  ).toThrow();
 });
 
 test('keeps authoring schema strict and documents the structured oauth shape', () => {

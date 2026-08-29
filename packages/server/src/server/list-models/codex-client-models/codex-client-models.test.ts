@@ -4,7 +4,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { clearModelsCache, fileCacheStorage, Router } from '@aio-proxy/core';
-import { ModelContextAggregation, ProviderKind } from '@aio-proxy/types';
+import {
+  ModelContextAggregation,
+  ProviderKind,
+  type RouterModelPolicy,
+  RouterModelPolicySchema,
+} from '@aio-proxy/types';
 import type { Model, ProviderMap } from '@opencode-ai/models';
 
 import type { RuntimeProviderInstance } from '../../../runtime';
@@ -19,21 +24,29 @@ const provider = {
     'gpt-5': { model: 'gpt-5.6-sol', preserve: false },
     'my-alias': { model: 'third-party-model', preserve: false },
   },
-  metadata: {},
   model: { invoke: async function* () {} },
 } as unknown as RuntimeProviderInstance;
 
 function fakeState(
   providers: readonly RuntimeProviderInstance[] = [provider],
   aggregation?: (typeof ModelContextAggregation)[keyof typeof ModelContextAggregation],
+  models: Readonly<Record<string, RouterModelPolicy>> = {},
 ): ServerState {
-  const config = aggregation === undefined ? undefined : { router: { modelContextAggregation: aggregation } };
+  const normalizedModels = Object.fromEntries(
+    Object.entries(models).map(([slug, policy]) => [slug, RouterModelPolicySchema.parse(policy)]),
+  );
+  const config = {
+    router: {
+      ...(aggregation === undefined ? {} : { modelContextAggregation: aggregation }),
+      models: normalizedModels,
+    },
+  };
   return {
     acquireProviderSnapshot: () => ({
       snapshot: {
         providers,
-        router: new Router(providers, { models: config?.router.models }),
-        ...(config === undefined ? {} : { config }),
+        router: new Router(providers, { models: normalizedModels }),
+        config,
       },
       release() {},
     }),
@@ -140,15 +153,14 @@ test('official Codex windows beat larger models.dev fallback limits', async () =
 });
 
 test('configured generic limits override official Codex windows as a distinct pair', async () => {
-  const configured = {
-    ...provider,
-    configMetadata: {
-      'gpt-5.6-sol': { limit: { context: 1_050_000, input: 922_000, output: 128_000 } },
-    },
-  } as unknown as RuntimeProviderInstance;
   const officialRow = { ...upstream, context_window: 272_000, max_context_window: 272_000 };
   const fetchImpl = (async () => Response.json({ models: [officialRow] })) as unknown as typeof fetch;
-  const { models } = await codexClientModels(fakeState([configured]), { fetchImpl });
+  const { models } = await codexClientModels(
+    fakeState([provider], undefined, {
+      'gpt-5': { metadata: { limit: { context: 1_050_000, input: 922_000, output: 128_000 } } },
+    }),
+    { fetchImpl },
+  );
 
   const official = models.find((entry) => entry.id === 'gpt-5') as Record<string, unknown>;
   expect(official.context_window).toBe(922_000);
@@ -164,16 +176,16 @@ test('configured composite limits win in both matching-row case A and synthesize
       'gpt-5': { model: 'gpt-5.6-sol', preserve: false },
       'my-alias': { model: 'third-party-model', preserve: false },
     },
-    configMetadata: {
-      'gpt-5.6-sol': { limit: { context: 400_000, input: 272_000, output: 128_000 } },
-      'third-party-model': { limit: { context: 400_000, input: 272_000, output: 128_000 } },
-    },
     model: { invoke: async function* () {} },
   } as unknown as RuntimeProviderInstance;
 
   const upstreamRow = { ...upstream, context_window: 272_000, max_context_window: 272_000 };
   const fetchImpl = (async () => Response.json({ models: [upstreamRow] })) as unknown as typeof fetch;
-  const { models } = await codexClientModels(fakeState([configured]), { fetchImpl });
+  const policy = { metadata: { limit: { context: 400_000, input: 272_000, output: 128_000 } } };
+  const { models } = await codexClientModels(
+    fakeState([configured], undefined, { 'gpt-5': policy, 'my-alias': policy }),
+    { fetchImpl },
+  );
 
   const caseA = models.find((m) => m.id === 'gpt-5') as Record<string, unknown>;
   expect(caseA.context_window).toBe(272_000);
@@ -185,10 +197,9 @@ test('configured composite limits win in both matching-row case A and synthesize
 });
 
 test('case A applies mapped config fields without dropping official-only fields', async () => {
-  const configured = {
-    ...provider,
-    configMetadata: {
-      'gpt-5.6-sol': {
+  const models = {
+    'gpt-5': {
+      metadata: {
         name: 'Configured Name',
         description: 'Configured description',
         capabilities: {
@@ -198,7 +209,7 @@ test('case A applies mapped config fields without dropping official-only fields'
         },
       },
     },
-  } as unknown as RuntimeProviderInstance;
+  };
   const officialRow = {
     ...upstream,
     display_name: 'Official Name',
@@ -211,9 +222,9 @@ test('case A applies mapped config fields without dropping official-only fields'
     service_tiers: [{ name: 'priority' }],
   };
   const fetchImpl = (async () => Response.json({ models: [officialRow] })) as unknown as typeof fetch;
-  const { models } = await codexClientModels(fakeState([configured]), { fetchImpl });
+  const result = await codexClientModels(fakeState([provider], undefined, models), { fetchImpl });
 
-  const entry = models.find((item) => item.id === 'gpt-5') as Record<string, unknown>;
+  const entry = result.models.find((item) => item.id === 'gpt-5') as Record<string, unknown>;
   expect(entry.display_name).toBe('Configured Name');
   expect(entry.description).toBe('Configured description');
   expect(entry.input_modalities).toEqual(['text']);
@@ -228,17 +239,18 @@ test('case A applies mapped config fields without dropping official-only fields'
 });
 
 test('a config reasoning flag without effort values leaves official reasoning levels intact', async () => {
-  const configured = {
-    ...provider,
-    configMetadata: { 'gpt-5.6-sol': { capabilities: { reasoning: true } } },
-  } as unknown as RuntimeProviderInstance;
   const officialRow = {
     ...upstream,
     supported_reasoning_levels: [{ effort: 'high', description: 'official' }],
     default_reasoning_level: 'high',
   };
   const fetchImpl = (async () => Response.json({ models: [officialRow] })) as unknown as typeof fetch;
-  const { models } = await codexClientModels(fakeState([configured]), { fetchImpl });
+  const { models } = await codexClientModels(
+    fakeState([provider], undefined, {
+      'gpt-5': { metadata: { capabilities: { reasoning: true } } },
+    }),
+    { fetchImpl },
+  );
 
   const entry = models.find((item) => item.id === 'gpt-5') as Record<string, unknown>;
   expect(entry.supported_reasoning_levels).toEqual([{ effort: 'high', description: 'official' }]);
@@ -297,9 +309,6 @@ test('aggregates candidate windows only after each candidate resolves its own so
     kind: ProviderKind.Api,
     enabled: true,
     alias: { shared: { model: 'configured-model', preserve: false } },
-    configMetadata: {
-      'configured-model': { limit: { context: 400_000, input: 272_000, output: 128_000 } },
-    },
     model: { invoke: async function* () {} },
   } as unknown as RuntimeProviderInstance;
   const official = {
@@ -316,19 +325,30 @@ test('aggregates candidate windows only after each candidate resolves its own so
     max_context_window: 500_000,
   };
   const fetchImpl = (async () => Response.json({ models: [officialRow] })) as unknown as typeof fetch;
+  const models = {
+    shared: {
+      providers: {
+        configured: { limit: { context: 400_000, input: 272_000, output: 128_000 } },
+      },
+    },
+  };
 
-  const min = await codexClientModels(fakeState([configured, official], ModelContextAggregation.Min), { fetchImpl });
-  const max = await codexClientModels(fakeState([configured, official], ModelContextAggregation.Max), { fetchImpl });
+  const min = await codexClientModels(fakeState([configured, official], ModelContextAggregation.Min, models), {
+    fetchImpl,
+  });
+  const max = await codexClientModels(fakeState([configured, official], ModelContextAggregation.Max, models), {
+    fetchImpl,
+  });
   const minEntry = min.models.find((item) => item.id === 'shared') as Record<string, unknown>;
   const maxEntry = max.models.find((item) => item.id === 'shared') as Record<string, unknown>;
   expect([minEntry.context_window, minEntry.max_context_window]).toEqual([272_000, 400_000]);
   expect([maxEntry.context_window, maxEntry.max_context_window]).toEqual([300_000, 500_000]);
 });
 
-test('config metadata overrides (description) flow into the synthesized case B entry', async () => {
-  // Provider config overrides third-party-model's description and input modalities.
-  // The synthesized entry must reflect metadata projected on demand from config and
-  // fallback sources, not the raw catalog record, so these config overrides surface to Codex.
+test('router metadata overrides flow into the synthesized case B entry', async () => {
+  // Router metadata overrides the public model's description and input modalities.
+  // The synthesized entry must reflect metadata projected on demand from router policy and
+  // fallback sources, not the raw catalog record, so these overrides surface to Codex.
   const configured = {
     id: 'p1',
     kind: ProviderKind.OAuth,
@@ -336,17 +356,21 @@ test('config metadata overrides (description) flow into the synthesized case B e
     alias: {
       'my-alias': { model: 'my-alias', preserve: false },
     },
-    configMetadata: {
-      'my-alias': {
-        description: 'Overridden by config',
-        capabilities: { modalities: { input: ['text', 'image'] } },
-      },
-    },
     model: { invoke: async function* () {} },
   } as unknown as RuntimeProviderInstance;
 
   const fetchImpl = (async () => Response.json({ models: [upstream] })) as unknown as typeof fetch;
-  const { models } = await codexClientModels(fakeState([configured]), { fetchImpl });
+  const { models } = await codexClientModels(
+    fakeState([configured], undefined, {
+      'my-alias': {
+        metadata: {
+          description: 'Overridden by config',
+          capabilities: { modalities: { input: ['text', 'image'] } },
+        },
+      },
+    }),
+    { fetchImpl },
+  );
 
   const caseB = models.find((m) => m.id === 'my-alias') as Record<string, unknown>;
   expect(caseB.description).toBe('Overridden by config');

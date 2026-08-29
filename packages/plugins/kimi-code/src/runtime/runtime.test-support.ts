@@ -22,8 +22,8 @@ export function credentialPort(initial: KimiCredential) {
 export function catalog(): ModelCatalog {
   return {
     language: [
-      { id: 'openai-model', metadata: { protocol: 'openai-compatible' } },
-      { id: 'anthropic-model', metadata: { protocol: 'anthropic' } },
+      { id: 'openai-model', extra: { protocol: 'openai-compatible' } },
+      { id: 'anthropic-model', extra: { protocol: 'anthropic' } },
       { id: 'raw-only-model' },
     ],
     image: [],

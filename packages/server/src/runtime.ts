@@ -91,7 +91,6 @@ type RuntimeProviderBase = {
   readonly weight?: number;
   readonly models?: readonly ModelId[];
   readonly alias?: Readonly<Record<string, AliasConfig>>;
-  readonly configMetadata?: Readonly<Record<ModelId, ModelMetadata>>;
   readonly upstreamMetadata?: Readonly<Record<ModelId, RuntimeModelMetadata>>;
   readonly plugin?: string;
   readonly capability?: string;

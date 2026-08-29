@@ -6,7 +6,7 @@ import {
   type ModelsDevModel,
   type PluginLogSink,
 } from '@aio-proxy/core';
-import { type Config, type ModelMetadata, ModelMetadataSchema, type Provider } from '@aio-proxy/types';
+import { type Config, type ModelMetadata, ModelMetadataSchema, type RouterModelPolicy } from '@aio-proxy/types';
 import { mergeWith } from 'es-toolkit/object';
 
 /** Injection seam so tests can supply a catalog without touching the network/global cache. */
@@ -17,12 +17,12 @@ export type ResolveExtendDeps = {
 };
 
 /**
- * Resolve every provider's `metadata[modelId].extend` into a fully materialized
+ * Resolve every router model's `metadata.extend` into a fully materialized
  * metadata entry. `extend: 'openai/gpt-5.5'` means: take that slug's models.dev
  * catalog entry as the BASE layer, then deep-merge the entry's other explicit
  * fields on top (user wins). The resolved entry drops the `extend` key.
  *
- * Providers without metadata, and metadata entries without `extend`, pass through
+ * Router models without metadata, and metadata entries without `extend`, pass through
  * with their original object identity. Unresolved targets keep the user's fields
  * (minus `extend`) and emit a warning; resolution never throws or blocks snapshot
  * build.
@@ -32,7 +32,7 @@ export async function applyMetadataExtend(
   logger?: PluginLogSink,
   deps?: ResolveExtendDeps,
 ): Promise<Config> {
-  const slugs = collectExtendSlugs(config.providers);
+  const slugs = collectExtendSlugs(config.router.models);
   if (slugs.size === 0) return config;
 
   const cachedOnly = deps?.getModels === undefined;
@@ -42,25 +42,28 @@ export async function applyMetadataExtend(
     void getModels([...slugs]).then(deps.onCatalogWarmed, () => {});
   }
 
+  const preserveUnresolved =
+    !catalogCached || (cachedOnly && Object.values(catalog).some((model) => model === undefined));
   let changed = false;
-  const providers = config.providers.map((provider) => {
-    const preserveUnresolved =
-      !catalogCached || (cachedOnly && Object.values(catalog).some((model) => model === undefined));
-    const rewritten = rewriteProvider(provider, catalog, logger, preserveUnresolved);
-    if (rewritten !== provider) changed = true;
-    return rewritten;
-  });
-  return changed ? { ...config, providers } : config;
+  const models: Record<string, RouterModelPolicy> = {};
+  for (const [slug, policy] of Object.entries(config.router.models)) {
+    if (policy.metadata?.extend === undefined) {
+      models[slug] = policy;
+      continue;
+    }
+    changed = true;
+    models[slug] = {
+      ...policy,
+      metadata: resolveEntry(slug, policy.metadata, catalog, logger, preserveUnresolved),
+    };
+  }
+  return changed ? { ...config, router: { ...config.router, models } } : config;
 }
 
-function collectExtendSlugs(providers: readonly Provider[]): Set<string> {
+function collectExtendSlugs(models: Readonly<Record<string, RouterModelPolicy>>): Set<string> {
   const slugs = new Set<string>();
-  for (const provider of providers) {
-    const metadata = providerMetadata(provider);
-    if (metadata === undefined) continue;
-    for (const meta of Object.values(metadata)) {
-      if (meta.extend !== undefined) slugs.add(meta.extend);
-    }
+  for (const policy of Object.values(models)) {
+    if (policy.metadata?.extend !== undefined) slugs.add(policy.metadata.extend);
   }
   return slugs;
 }
@@ -78,43 +81,19 @@ async function resolveCatalog(
   }
 }
 
-function rewriteProvider(
-  provider: Provider,
-  catalog: Record<string, ModelsDevModel | undefined>,
-  logger: PluginLogSink | undefined,
-  preserveUnresolved: boolean,
-): Provider {
-  const metadata = providerMetadata(provider);
-  if (metadata === undefined) return provider;
-
-  let changed = false;
-  const next: Record<string, ModelMetadata> = {};
-  for (const [modelId, meta] of Object.entries(metadata)) {
-    if (meta.extend === undefined) {
-      next[modelId] = meta;
-      continue;
-    }
-    changed = true;
-    next[modelId] = resolveEntry(provider.id, modelId, meta, catalog, logger, preserveUnresolved);
-  }
-  if (!changed) return provider;
-  return { ...provider, metadata: next } as Provider;
-}
-
 function resolveEntry(
-  providerId: string,
-  modelId: string,
+  slug: string,
   meta: ModelMetadata,
   catalog: Record<string, ModelsDevModel | undefined>,
   logger: PluginLogSink | undefined,
   preserveUnresolved: boolean,
 ): ModelMetadata {
-  const slug = meta.extend as string;
+  const targetSlug = meta.extend as string;
   const { extend: _extend, ...userFields } = meta;
-  const target = catalog[slug];
+  const target = catalog[targetSlug];
   if (target === undefined) {
     if (preserveUnresolved) return meta;
-    warnUnresolved(providerId, modelId, slug, logger);
+    warnUnresolved(slug, targetSlug, logger);
     return userFields;
   }
   // `base` is a fresh object from the mapper; mergeWith mutates its first arg,
@@ -128,27 +107,23 @@ function resolveEntry(
   logger?.({
     event: 'metadata.extend.invalid',
     code: 'PROVIDER_CONFIG_INVALID',
-    context: { providerId },
+    context: { model: slug },
     error: {
       name: 'MetadataExtendInvalid',
-      message: `metadata.extend target '${slug}' for model '${modelId}' produced invalid merged metadata; ignoring inheritance`,
+      message: `metadata.extend target '${targetSlug}' for model '${slug}' produced invalid merged metadata; ignoring inheritance`,
     },
   });
   return userFields;
 }
 
-function warnUnresolved(providerId: string, modelId: string, slug: string, logger: PluginLogSink | undefined): void {
+function warnUnresolved(model: string, slug: string, logger: PluginLogSink | undefined): void {
   logger?.({
     event: 'metadata.extend.unresolved',
     code: 'PROVIDER_CONFIG_INVALID',
-    context: { providerId },
+    context: { model },
     error: {
       name: 'MetadataExtendUnresolved',
-      message: `metadata.extend target '${slug}' for model '${modelId}' not found in models.dev catalog; ignoring`,
+      message: `metadata.extend target '${slug}' for model '${model}' not found in models.dev catalog; ignoring`,
     },
   });
-}
-
-function providerMetadata(provider: Provider): Record<string, ModelMetadata> | undefined {
-  return 'metadata' in provider ? provider.metadata : undefined;
 }

@@ -70,7 +70,7 @@ function credentialPort(): CredentialPort<KimiCredential> {
 
 function catalog(): ModelCatalog {
   return {
-    language: [{ id: 'kimi-model', metadata: { protocol: 'openai-compatible' } }],
+    language: [{ id: 'kimi-model', extra: { protocol: 'openai-compatible' } }],
     image: [],
     embedding: [],
     speech: [],

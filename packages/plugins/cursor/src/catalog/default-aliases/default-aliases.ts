@@ -21,7 +21,7 @@ type CursorFamily = {
 export function defaultCursorAliases(catalog: ModelCatalog): DefaultAliasSuggestions {
   const usable = new Set(catalog.language.map(({ id }) => id));
   const out: Record<string, DefaultAliasSuggestions[string]> = {};
-  for (const family of readCursorFamilies(catalog.metadata)) {
+  for (const family of readCursorFamilies(catalog.extra)) {
     const override = CURSOR_ALIAS_OVERRIDES[family.name];
     if (override?.skip === true) continue;
     const rows = peelFamily(family, usable);
@@ -85,9 +85,9 @@ function wins(candidate: PeeledVariant, incumbent: PeeledVariant, preferred: str
   return candidate.slug.localeCompare(incumbent.slug) < 0;
 }
 
-function readCursorFamilies(metadata: unknown): readonly CursorFamily[] {
-  if (!isRecord(metadata)) return [];
-  const families = metadata['cursorFamilies'];
+function readCursorFamilies(extra: unknown): readonly CursorFamily[] {
+  if (!isRecord(extra)) return [];
+  const families = extra['cursorFamilies'];
   if (!Array.isArray(families)) return [];
   const parsed: CursorFamily[] = [];
   for (const family of families) {

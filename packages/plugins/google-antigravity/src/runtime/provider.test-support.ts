@@ -79,7 +79,7 @@ export function runtimeContext() {
     },
     options: {},
     catalog: {
-      language: [{ id: 'claude-sonnet-4-6', metadata: { antigravity: { apiProvider: 'anthropic' } } }],
+      language: [{ id: 'claude-sonnet-4-6', extra: { antigravity: { apiProvider: 'anthropic' } } }],
       image: [],
       embedding: [],
       speech: [],

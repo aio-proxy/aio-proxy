@@ -1,1 +1,1 @@
-export { modelsDevSlugsQueryOptions } from './models-dev-service';
+export { modelsDevLookupQueryOptions, modelsDevSlugsQueryOptions } from './models-dev-service';

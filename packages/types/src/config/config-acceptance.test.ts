@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { ConfigSchema, ProviderMutationBodySchema } from '..';
+import { ConfigSchema } from '..';
 import { apiProvider, defaultRouter, defaultServer, providers } from './config-acceptance.test-support';
 
 describe('ConfigSchema', () => {
@@ -57,6 +57,40 @@ describe('ConfigSchema', () => {
     ]);
   });
 
+  test('parses router model metadata with per-provider cost and limit overrides', () => {
+    const config = ConfigSchema.parse({
+      router: {
+        models: {
+          'gpt-5': {
+            metadata: { name: 'GPT-5', extend: 'openai/gpt-5', cost: { input: 1.25 } },
+            providers: {
+              reseller: { priority: 10, cost: { input: 0.8 }, limit: { context: 128_000 } },
+            },
+          },
+        },
+      },
+      providers: {},
+    });
+    const policy = config.router.models['gpt-5'];
+    expect(policy).toBeDefined();
+    if (!policy) throw new Error('expected gpt-5 router model policy');
+    expect(policy.metadata?.name).toBe('GPT-5');
+    expect(policy.providers['reseller']?.cost).toEqual({ input: 0.8 });
+    expect(policy.providers['reseller']?.limit).toEqual({ context: 128_000 });
+  });
+
+  test('silently strips the removed provider-level metadata field', () => {
+    const config = ConfigSchema.parse({
+      providers: {
+        openai: { ...apiProvider, metadata: { 'gpt-5': { name: 'x' } } },
+      },
+    });
+    const [provider] = config.providers;
+    expect(provider).toBeDefined();
+    if (!provider) throw new Error('expected parsed provider');
+    expect('metadata' in provider).toBe(false);
+  });
+
   test('parses sparse exact model policies without validating references', () => {
     const config = ConfigSchema.parse({
       router: {
@@ -75,35 +109,5 @@ describe('ConfigSchema', () => {
     expect(config.router.models['openai/gpt-5']).toEqual({
       providers: { primary: { priority: 30 }, missing: { weight: 1 } },
     });
-  });
-
-  test('round-trips per-model metadata through the full config pipeline', () => {
-    const provider = {
-      ...apiProvider,
-      metadata: { 'up-x': { limit: { context: 1000 }, cost: { input: 2 } } },
-    };
-
-    const config = ConfigSchema.parse(providers({ openai: provider }));
-
-    const [parsed] = config.providers;
-    expect(parsed?.metadata?.['up-x']?.limit?.context).toBe(1000);
-    expect(parsed?.metadata?.['up-x']?.cost?.input).toBe(2);
-  });
-});
-
-describe('ProviderMutationBodySchema', () => {
-  test('preserves per-model metadata on a PUT-style api mutation body', () => {
-    const parsed = ProviderMutationBodySchema.parse({
-      kind: 'api',
-      id: 'openai',
-      protocol: 'openai-compatible',
-      baseURL: 'https://api.example.com',
-      metadata: { 'up-x': { limit: { context: 1000 }, cost: { input: 2 } } },
-    });
-
-    expect(parsed.kind).toBe('api');
-    if (parsed.kind !== 'api') throw new Error('expected api mutation body');
-    expect(parsed.metadata?.['up-x']?.limit?.context).toBe(1000);
-    expect(parsed.metadata?.['up-x']?.cost?.input).toBe(2);
   });
 });

@@ -78,7 +78,7 @@ test('preserves discovered display model ID and max mode metadata', async () => 
     {
       id: 'wire-model',
       displayName: 'Display Model',
-      metadata: { displayModelId: 'display-model', maxMode: true },
+      extra: { displayModelId: 'display-model', maxMode: true },
     },
   ]);
 });
@@ -125,7 +125,7 @@ test('attaches cursorFamilies when AvailableModels succeeds', async () => {
   };
   const catalog = await discoverCursorModels({ accessToken: 't', transport: transport as never });
   expect(catalog.language.map((m) => m.id)).toContain('claude-opus-4-8-medium');
-  expect(catalog.metadata).toEqual({
+  expect(catalog.extra).toEqual({
     cursorFamilies: [
       { name: 'claude-opus-4-8', variants: [{ slug: 'claude-opus-4-8-medium', isDefaultNonMax: true }] },
     ],
@@ -144,5 +144,5 @@ test('AvailableModels failure does not drop GetUsableModels', async () => {
   };
   const catalog = await discoverCursorModels({ accessToken: 't', transport: transport as never });
   expect(catalog.language.map((m) => m.id)).toContain('claude-opus-4-8-medium');
-  expect(catalog.metadata).toBeUndefined();
+  expect(catalog.extra).toBeUndefined();
 });

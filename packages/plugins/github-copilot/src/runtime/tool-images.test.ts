@@ -80,7 +80,7 @@ test('compatible delegate emits CPA tool image content', async () => {
 
 function catalog(): ModelCatalog {
   return {
-    language: [{ id: 'gpt-chat', metadata: { protocol: 'openai-compatible' } }],
+    language: [{ id: 'gpt-chat', extra: { protocol: 'openai-compatible' } }],
     image: [],
     embedding: [],
     speech: [],

@@ -152,7 +152,6 @@ type RoutableModelSource = {
   readonly enabled: boolean;
   readonly models?: readonly string[] | undefined;
   readonly alias?: ProviderAlias | undefined;
-  readonly metadata?: Readonly<Record<string, unknown>> | undefined;
 };
 
 export type ModelRoute = {
@@ -179,7 +178,6 @@ export function modelRoutes(provider: RoutableModelSource): ModelRoute[] {
 export function directModelIds(provider: RoutableModelSource): string[] {
   const configuredModelIds = new Set<string>('models' in provider ? (provider.models ?? []) : []);
   const modelIds = new Set(configuredModelIds);
-  for (const modelId of Object.keys(provider.metadata ?? {})) modelIds.add(modelId);
 
   for (const [alias, config] of Object.entries(provider.alias ?? {})) {
     modelIds.delete(alias);

@@ -1,10 +1,13 @@
+import type { ModelMetadata } from '@aio-proxy/types';
 import { Models, type Model, type ProviderMap, type RequestOptions } from '@opencode-ai/models';
 import { LRUCache } from 'lru-cache';
 
 import { fileCacheStorage } from '../cache';
-import { resolveModel } from './resolve';
+import { catalogModelToMetadata } from './catalog-metadata/index';
+import { resolveModel, resolveModelEntry } from './resolve';
 
 export { catalogModelToMetadata } from './catalog-metadata/index';
+export { resolveModel, resolveModelEntry, type ResolvedModelsDevEntry } from './resolve';
 export { findModelPrice } from './price';
 
 const PROVIDERS_CACHE_KEY = 'models-dev-providers';
@@ -71,6 +74,21 @@ export async function hasCachedModelsCatalog(): Promise<boolean> {
 
 /** Flattened `providerId/modelId` slugs from the cached models.dev catalog.
  * Cached-only by design: a cold cache yields [] instead of blocking the drawer. */
+/** Cached-only models.dev lookup: the same fallback as request-time metadata, never a network fetch. */
+export async function lookupCachedModel(
+  modelId: string,
+): Promise<{ readonly slug: string; readonly metadata: ModelMetadata } | undefined> {
+  const providerMap = await readCachedProviderMap();
+  if (providerMap === undefined) return undefined;
+  const entry = resolveModelEntry(providerMap, modelId);
+  if (entry === undefined) return undefined;
+  try {
+    return { slug: entry.slug, metadata: catalogModelToMetadata(entry.model) };
+  } catch {
+    return undefined;
+  }
+}
+
 export async function getCachedModelSlugs(): Promise<string[]> {
   const providerMap = await readCachedProviderMap();
   if (providerMap === undefined) return [];

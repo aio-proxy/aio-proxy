@@ -105,6 +105,17 @@ describe('createAiSdkProvider', () => {
     expect(provider.embed).toBeUndefined();
   });
 
+  test('does not copy obsolete config metadata onto the runtime provider', () => {
+    const provider = createAiSdkProvider({
+      kind: 'ai-sdk',
+      id: 'anthropic',
+      packageName: '@ai-sdk/anthropic',
+      metadata: { model: { name: 'Legacy' } },
+    } as never);
+
+    expect(provider).not.toHaveProperty('metadata');
+  });
+
   test('exposes embed when the package has an embedding model', () => {
     const provider = createAiSdkProvider({
       kind: 'ai-sdk',

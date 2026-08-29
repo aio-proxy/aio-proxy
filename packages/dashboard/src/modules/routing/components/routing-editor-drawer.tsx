@@ -12,10 +12,14 @@ import {
 import { useRef, useState } from 'react';
 
 import { reconcileRoutingFormRows, routingDraftRecord, useRoutingForm } from '../hooks/use-routing-form';
+import { useRoutingMetadataForm } from '../hooks/use-routing-metadata-form';
 import { useRoutingMutation } from '../hooks/use-routing-mutation';
+import { mergeRoutingMutationDrafts, reconcileRoutingMetadataValues } from '../lib/routing-metadata-draft';
 import { explicitRoutingOverrides } from '../lib/routing-summary';
 import { isStaleRoutingError } from '../services/routing-service';
+import { ModelMetadataEditor } from './model-metadata-editor';
 import { RoutingBoard } from './routing-board';
+import { RoutingProviderOverrideFields } from './routing-provider-override-fields';
 
 interface RoutingEditorDrawerProps {
   readonly model: DashboardRoutingModel | null;
@@ -32,7 +36,13 @@ export const RoutingEditorDrawer: React.FC<RoutingEditorDrawerProps> = ({
 }) => {
   const mutation = useRoutingMutation();
   const [stale, setStale] = useState(false);
+  // Invalid metadata JSON stays local to the editor; saving over it would silently persist the
+  // last valid value and discard the visible draft, so Save is gated until the draft is repaired.
+  const [metadataValid, setMetadataValid] = useState(true);
   const reloadGeneration = useRef(0);
+  // Metadata and per-provider cost/limit live in their own form: the board rows must stay
+  // priority/weight-only so a drag or share change can never carry — or delete — drawer data.
+  const metadataForm = useRoutingMetadataForm(model);
   const form = useRoutingForm(model, (value) => {
     if (model === null) return;
     mutation.mutate(
@@ -40,7 +50,10 @@ export const RoutingEditorDrawer: React.FC<RoutingEditorDrawerProps> = ({
         modelId: model.modelId,
         revision: model.revision,
         baselineProviderIds: model.baselineProviderIds,
-        providers: explicitRoutingOverrides(routingDraftRecord(value.providers)),
+        ...mergeRoutingMutationDrafts(
+          explicitRoutingOverrides(routingDraftRecord(value.providers)),
+          metadataForm.state.values,
+        ),
       },
       {
         onSuccess: () => {
@@ -69,6 +82,7 @@ export const RoutingEditorDrawer: React.FC<RoutingEditorDrawerProps> = ({
       if (generation !== reloadGeneration.current) return;
       if (next == null || next.modelId !== initiatedId) return;
       form.setFieldValue('providers', reconcileRoutingFormRows(form.getFieldValue('providers') ?? [], next));
+      metadataForm.reset(reconcileRoutingMetadataValues(metadataForm.state.values, next));
     });
   };
 
@@ -94,6 +108,8 @@ export const RoutingEditorDrawer: React.FC<RoutingEditorDrawerProps> = ({
             noValidate
             onSubmit={(event) => {
               event.preventDefault();
+              // Keyboard submit bypasses the disabled Save button, so the gate lives here too.
+              if (!metadataValid) return;
               void form.handleSubmit();
             }}
           >
@@ -104,6 +120,42 @@ export const RoutingEditorDrawer: React.FC<RoutingEditorDrawerProps> = ({
             )}
             <div className="min-h-0 flex-1 overflow-auto px-4 py-3">
               <RoutingBoard form={form} model={model} writable={writable} />
+              <section className="mt-6 space-y-2" data-testid="routing-metadata-section">
+                <h3 className="text-sm font-medium">{m['dashboard.routing.editor.metadata']()}</h3>
+                <p className="text-xs text-muted-foreground">{m['dashboard.routing.editor.metadata_description']()}</p>
+                <metadataForm.Field name="metadata">
+                  {(field) => (
+                    <ModelMetadataEditor
+                      model={model.modelId}
+                      value={field.state.value.value}
+                      onChange={(next) => field.handleChange({ touched: true, value: next })}
+                      onValidityChange={setMetadataValid}
+                    />
+                  )}
+                </metadataForm.Field>
+              </section>
+              <section className="mt-6 space-y-2" data-testid="routing-overrides-section">
+                <h3 className="text-sm font-medium">{m['dashboard.routing.editor.provider_overrides']()}</h3>
+                <metadataForm.Field name="overrides">
+                  {(field) => (
+                    <div className="space-y-3">
+                      {model.providers.map((provider) => (
+                        <RoutingProviderOverrideFields
+                          key={provider.id}
+                          providerId={provider.id}
+                          value={
+                            field.state.value[provider.id] ?? {
+                              cost: { touched: false, value: undefined },
+                              limit: { touched: false, value: undefined },
+                            }
+                          }
+                          onChange={(next) => field.handleChange({ ...field.state.value, [provider.id]: next })}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </metadataForm.Field>
+              </section>
               {stale ? (
                 <p role="alert" className="mt-4 text-sm text-destructive">
                   {m['dashboard.routing.editor.stale']()}
@@ -128,7 +180,7 @@ export const RoutingEditorDrawer: React.FC<RoutingEditorDrawerProps> = ({
                   <Button
                     type="submit"
                     data-testid="routing-save"
-                    disabled={!writable || !canSubmit || isSubmitting || mutation.isPending}
+                    disabled={!writable || !canSubmit || isSubmitting || mutation.isPending || !metadataValid}
                   >
                     {m['dashboard.routing.editor.save']()}
                   </Button>

@@ -57,14 +57,14 @@ export function createGoogleAntigravityRuntime(
       fetch,
     }),
   };
-  const metadataByModel = new Map(context.catalog.language.map((descriptor) => [descriptor.id, descriptor.metadata]));
+  const extraByModel = new Map(context.catalog.language.map((descriptor) => [descriptor.id, descriptor.extra]));
   return {
     provider: createAntigravityProviderV4(modelRuntime, {
-      modelMetadata: (modelId) => metadataByModel.get(modelId),
+      modelMetadata: (modelId) => extraByModel.get(modelId),
     }),
     providerTools: { supported: ['web-search'] },
     raw: createGeminiRawResolver(transport, thinkingBinder),
-    tokenCount: createAntigravityTokenCount(transport, (modelId) => metadataByModel.get(modelId), context.catalog),
+    tokenCount: createAntigravityTokenCount(transport, (modelId) => extraByModel.get(modelId), context.catalog),
   };
 }
 

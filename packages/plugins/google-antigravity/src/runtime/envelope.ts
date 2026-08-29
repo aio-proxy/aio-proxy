@@ -38,7 +38,7 @@ export type CcaEnvelopeInput = {
 export function createCatalogWireLookups(catalog: ModelCatalog): Required<CcaWireLookups> {
   const descriptorById = new Map(catalog.language.map((model) => [model.id, model]));
   const byWire = new Map<string, AntigravityFamily>();
-  for (const family of readAntigravityFamilies(catalog.metadata)) {
+  for (const family of readAntigravityFamilies(catalog.extra)) {
     byWire.set(family.base, family);
     for (const variant of family.variants) byWire.set(variant.model, family);
   }
@@ -117,17 +117,17 @@ function applyWireProfile(
 }
 
 function wireProfile(descriptor: ModelDescriptor | undefined) {
-  const source = providerSource(descriptor?.metadata);
+  const source = providerSource(descriptor?.extra);
   return {
     maxOutputTokens: finitePositive(source?.['maxOutputTokens']),
     modelEnum: asString(source?.['modelEnum']),
   };
 }
 
-function readAntigravityFamilies(metadata: unknown): readonly AntigravityFamily[] {
-  if (!isRecord(metadata) || !Array.isArray(metadata['antigravityFamilies'])) return [];
+function readAntigravityFamilies(extra: unknown): readonly AntigravityFamily[] {
+  if (!isRecord(extra) || !Array.isArray(extra['antigravityFamilies'])) return [];
   const families: AntigravityFamily[] = [];
-  for (const value of metadata['antigravityFamilies']) {
+  for (const value of extra['antigravityFamilies']) {
     const family = asFamily(value);
     if (family !== undefined) families.push(family);
   }
@@ -157,9 +157,9 @@ function asFamily(value: unknown): AntigravityFamily | undefined {
   return { logicalId, kind, thinking: { mode: thinkingMode }, base, variants };
 }
 
-function providerSource(metadata: unknown): Record<string, unknown> | undefined {
-  if (!isRecord(metadata)) return undefined;
-  return isRecord(metadata['antigravity']) ? metadata['antigravity'] : metadata;
+function providerSource(extra: unknown): Record<string, unknown> | undefined {
+  if (!isRecord(extra)) return undefined;
+  return isRecord(extra['antigravity']) ? extra['antigravity'] : extra;
 }
 
 function record(value: unknown): Record<string, unknown> | undefined {

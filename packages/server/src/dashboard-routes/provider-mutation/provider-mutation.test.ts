@@ -49,15 +49,10 @@ describe('parseProviderMutation', () => {
 });
 
 describe('replaceProvider', () => {
-  test('preserves existing metadata when an older client omits it and clears it when explicitly empty', () => {
+  test('drops obsolete provider metadata from an existing config entry', () => {
     const previous = { openai: { kind: 'api', metadata: { model: { limit: { context: 400_000 } } } } };
 
-    expect(replaceProvider(previous, 'openai', { kind: 'api' })['openai']).toMatchObject({
-      metadata: { model: { limit: { context: 400_000 } } },
-    });
-    expect(replaceProvider(previous, 'openai', { kind: 'api', metadata: {} })['openai']).toMatchObject({
-      metadata: {},
-    });
+    expect(replaceProvider(previous, 'openai', { kind: 'api' })['openai']).not.toHaveProperty('metadata');
   });
 
   test('preserves existing transforms when an older client omits them', () => {

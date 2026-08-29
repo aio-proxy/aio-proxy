@@ -57,7 +57,7 @@ function xhighRow(model: string | undefined): DefaultAliasSelectRow[] {
 }
 
 function familiesForAliases(catalog: ModelCatalog): readonly AntigravityFamily[] {
-  const stored = readAntigravityFamilies(catalog.metadata);
+  const stored = readAntigravityFamilies(catalog.extra);
   const leftover = leftoverThinkingFamilies(catalog, stored);
   return leftover.length === 0 ? stored : [...stored, ...leftover];
 }
@@ -126,10 +126,10 @@ function isEmptyWhen(when: DefaultAliasSelectRow['when']): boolean {
   return when.thinking === undefined && when.effort === undefined && when.speed === undefined;
 }
 
-function readAntigravityFamilies(metadata: unknown): readonly AntigravityFamily[] {
-  if (!isRecord(metadata) || !Array.isArray(metadata['antigravityFamilies'])) return [];
+function readAntigravityFamilies(extra: unknown): readonly AntigravityFamily[] {
+  if (!isRecord(extra) || !Array.isArray(extra['antigravityFamilies'])) return [];
   const families: AntigravityFamily[] = [];
-  for (const value of metadata['antigravityFamilies']) {
+  for (const value of extra['antigravityFamilies']) {
     const family = asFamily(value);
     if (family !== undefined) families.push(family);
   }

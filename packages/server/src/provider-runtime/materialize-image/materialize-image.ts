@@ -5,11 +5,11 @@ import {
   resolveApiKey,
   validateProviderV4,
 } from '@aio-proxy/core';
-import type { AiSdkProvider, ApiProvider, Provider } from '@aio-proxy/types';
+import type { AiSdkProvider, ApiProvider, Provider, RouterModelPolicy } from '@aio-proxy/types';
 import { apiProviderEndpoints, ProviderKind, ProviderProtocol } from '@aio-proxy/types';
 
-import type { ImageTransport, ModelCapabilityIndex, RuntimeProviderInstance } from '../runtime';
-import { supportsImage } from './capability-index';
+import type { ImageTransport, ModelCapabilityIndex, RuntimeProviderInstance } from '../../runtime';
+import { routerModelsGrantImage, supportsImage } from '../capability-index';
 
 const IMAGE_BRIDGE_PACKAGES = {
   [ProviderProtocol.OpenAIImage]: '@ai-sdk/openai',
@@ -17,11 +17,23 @@ const IMAGE_BRIDGE_PACKAGES = {
   [ProviderProtocol.OpenAIResponse]: '@ai-sdk/openai',
 } as const;
 
+type ImageBridgeProtocol = keyof typeof IMAGE_BRIDGE_PACKAGES;
+
 export function attachImageTransport(
   instance: RuntimeProviderInstance,
-  options: { readonly config: Provider; readonly fetch?: ProviderFetch },
+  options: {
+    readonly config: Provider;
+    readonly fetch?: ProviderFetch;
+    readonly routerModels?: Readonly<Record<string, RouterModelPolicy>>;
+  },
 ): RuntimeProviderInstance {
-  if (instance.image !== undefined || !capabilityIndexHasImage(instance.capabilityIndex)) return instance;
+  if (instance.image !== undefined) return instance;
+  // Router policies may grant image output at request time to models the
+  // upstream-id index knows nothing about, so transport creation cannot be
+  // gated on the index alone.
+  if (!capabilityIndexHasImage(instance.capabilityIndex) && !routerModelsGrantImage(options.routerModels)) {
+    return instance;
+  }
   const image = imageTransportFor(options.config, options.fetch);
   return image === undefined ? instance : { ...instance, image };
 }
@@ -62,11 +74,11 @@ function aiSdkImageTransport(config: AiSdkProvider, fetch?: ProviderFetch): Imag
 }
 
 function imageBridgeEndpoint(config: ApiProvider) {
-  const endpoints = apiProviderEndpoints(config);
-  return (
-    endpoints.find((endpoint) => endpoint.protocol === ProviderProtocol.OpenAIImage) ??
-    endpoints.find((endpoint) => endpoint.protocol in IMAGE_BRIDGE_PACKAGES)
+  const bridgeable = apiProviderEndpoints(config).filter(
+    (endpoint): endpoint is typeof endpoint & { readonly protocol: ImageBridgeProtocol } =>
+      endpoint.protocol in IMAGE_BRIDGE_PACKAGES,
   );
+  return bridgeable.find((endpoint) => endpoint.protocol === ProviderProtocol.OpenAIImage) ?? bridgeable[0];
 }
 
 function lazyImageTransport(providerId: string, load: () => Promise<unknown>): ImageTransport {
