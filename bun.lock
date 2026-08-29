@@ -511,7 +511,7 @@
     "class-variance-authority": "^0.7.1",
     "date-fns": "^4.4.0",
     "drizzle-orm": "^0.45.2",
-    "es-toolkit": "1.50.0-dev.2001",
+    "es-toolkit": "1.52.0",
     "eventsource-parser": "^3.1.0",
     "hono": "^4.13.3",
     "jose": "^6.2.3",
@@ -2056,7 +2056,7 @@
 
     "es-object-atoms": ["es-object-atoms@1.1.2", "", { "dependencies": { "es-errors": "^1.3.0" } }, "sha512-HWcBoN6NileqtSydK2FqHbS/LoDd2pqrnQHLyJzBj4kOp/ky2MWMN694xOfkK8/SnUsW2DH7EfyVlydKCsm1Zw=="],
 
-    "es-toolkit": ["es-toolkit@1.50.0-dev.2001", "", {}, "sha512-O505JjIk1WuWt19rMkFRUxFQBdX1y3deL9YB7IlF6X4KFYVn2nkd7XZtM2Ouomr+EBn7aoED1rO5Asijq2hAYA=="],
+    "es-toolkit": ["es-toolkit@1.52.0", "", {}, "sha512-XTNEJQh1tY1ZJVcf6ayP/2n4ZPyaHlW2FWs7xvw5ddPuhUVjLD3olQVQS7kf58JbAB48iL0uL/jerTrjtV3lDA=="],
 
     "es6-error": ["es6-error@4.1.1", "", {}, "sha512-Um/+FxMr9CISWh0bi5Zv0iOD+4cFh5qLeks1qhAopKVAJw3drgKbKySikp7wGhDL0HPeaja0P5ULZrxLkniUVg=="],
 

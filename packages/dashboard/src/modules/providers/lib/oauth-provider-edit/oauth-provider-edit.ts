@@ -6,7 +6,7 @@ import {
   type ProviderAlias,
   type ProviderTransforms,
 } from '@aio-proxy/types';
-import { isEqual } from 'es-toolkit';
+import { isEqual } from 'es-toolkit/predicate';
 
 export interface OAuthProviderEditValues {
   readonly id: string;

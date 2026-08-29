@@ -8,7 +8,7 @@ import {
 import { Label } from '@aio-proxy/ui/components/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@aio-proxy/ui/components/tabs';
 import { useQuery } from '@tanstack/react-query';
-import { isEqual } from 'es-toolkit';
+import { isEqual } from 'es-toolkit/predicate';
 import { useEffect, useId, useMemo, useState } from 'react';
 
 import {
