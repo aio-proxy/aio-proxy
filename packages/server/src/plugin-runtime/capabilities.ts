@@ -215,7 +215,7 @@ function routingCapabilities(
       models,
       upstreamMetadata,
       aliasTargets:
-        config.alias === undefined ? undefined : [...new Set(Object.values(config.alias).flatMap(aliasTargetModels))],
+        config.alias === undefined ? undefined : uniq(Object.values(config.alias).flatMap(aliasTargetModels)),
     }),
     upstreamMetadata,
   };

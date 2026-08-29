@@ -8,6 +8,7 @@ import {
   ProviderProtocol,
   type ProviderState,
 } from '@aio-proxy/types';
+import { uniq } from 'es-toolkit/array';
 
 import type { RuntimeModelMetadata, RuntimeProviderInstance } from '../runtime';
 import type { MaterializePluginProviderOptions, PluginProviderMaterialization } from './types';
@@ -35,7 +36,7 @@ export function summary(
     name: config.name,
     ...(config.priority === undefined ? {} : { priority: config.priority }),
     ...(config.weight === undefined ? {} : { weight: config.weight }),
-    clientModels: provider === undefined ? [] : [...new Set(modelRoutes(provider).map((route) => route.alias))],
+    clientModels: provider === undefined ? [] : uniq(modelRoutes(provider).map((route) => route.alias)),
     plugin: config.plugin,
     capability: config.capability,
     ...(persisted?.accountLabel === undefined ? {} : { accountLabel: persisted.accountLabel }),

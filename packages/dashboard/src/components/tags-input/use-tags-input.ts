@@ -1,4 +1,5 @@
 import { useComboboxAnchor } from '@aio-proxy/ui/components/combobox';
+import { uniq } from 'es-toolkit/array';
 import { useMemo, useRef, useState } from 'react';
 
 export interface TagsInputItem {
@@ -27,10 +28,7 @@ export const useTagsInput = ({ value, onValueChange, options }: UseTagsInputOpti
   const highlightedItemRef = useRef<TagsInputItem | null>(null);
   const trimmedDraft = draft.trim();
 
-  const baseItems = useMemo(
-    () => [...new Set([...options, ...value])].map((item) => ({ value: item })),
-    [options, value],
-  );
+  const baseItems = useMemo(() => uniq([...options, ...value]).map((item) => ({ value: item })), [options, value]);
   const items = useMemo(
     () =>
       options.length > 0 && trimmedDraft !== '' && !baseItems.some((item) => item.value === trimmedDraft)

@@ -1,3 +1,5 @@
+import { uniq } from 'es-toolkit/array';
+
 type KnownField =
   | '$ref'
   | 'allOf'
@@ -289,5 +291,5 @@ function arrayOrEmpty(value: unknown): unknown[] {
 }
 
 function uniqueStrings(values: readonly unknown[]): string[] {
-  return [...new Set(values.filter((value): value is string => typeof value === 'string'))];
+  return uniq(values.filter((value): value is string => typeof value === 'string'));
 }

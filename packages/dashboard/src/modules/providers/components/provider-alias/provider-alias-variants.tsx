@@ -1,6 +1,7 @@
 import { m } from '@aio-proxy/i18n';
 import { Button } from '@aio-proxy/ui/components/button';
 import { Switch } from '@aio-proxy/ui/components/switch';
+import { uniq } from 'es-toolkit/array';
 import { PlusIcon } from 'lucide-react';
 import type { FC } from 'react';
 
@@ -35,7 +36,7 @@ export const ProviderAliasVariants: FC<ProviderAliasVariantsProps> = ({
   const { keys, appendKey, dropKey } = useVariantRowKeys(rows.length);
   // Two rows can fail the same way; the list names each problem once, and `aria-invalid` on the
   // offending controls is what points at which row it came from.
-  const messages = [...new Set(issues.map(aliasIssueMessage))];
+  const messages = uniq(issues.map(aliasIssueMessage));
 
   return (
     <>
