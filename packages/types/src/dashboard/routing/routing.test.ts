@@ -98,7 +98,7 @@ describe('dashboard routing contracts', () => {
     });
   });
 
-  test('rejects empty overrides, duplicate baseline ids, and invalid routing numbers', () => {
+  test('accepts empty preservation patches and rejects duplicate ids and invalid routing numbers', () => {
     const mutation = schema('DashboardRoutingModelMutationSchema');
     const base = {
       modelId: 'openai/gpt-5',
@@ -107,7 +107,10 @@ describe('dashboard routing contracts', () => {
       providers: { primary: { priority: 30 } },
     };
 
-    expect(mutation.safeParse({ ...base, providers: { primary: {} } }).success).toBe(false);
+    expect(mutation.parse({ ...base, providers: { primary: {} } })).toEqual({
+      ...base,
+      providers: { primary: {} },
+    });
     expect(mutation.safeParse({ ...base, baselineProviderIds: ['primary', 'primary'] }).success).toBe(false);
     expect(mutation.safeParse({ ...base, providers: { primary: { priority: 1.5 } } }).success).toBe(false);
     expect(mutation.safeParse({ ...base, providers: { primary: { weight: '2' } } }).success).toBe(false);

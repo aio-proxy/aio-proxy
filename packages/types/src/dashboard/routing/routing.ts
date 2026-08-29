@@ -157,23 +157,15 @@ export const DashboardRoutingModelsResponseSchema = matchesDto<DashboardRoutingM
   }),
 );
 
-const DashboardRoutingProviderOverrideSchema = z
-  .strictObject({
-    priority: RoutingPrioritySchema.optional(),
-    weight: RoutingWeightSchema.optional(),
-    cost: ModelCostSchema.nullable().optional(),
-    limit: ModelLimitSchema.nullable().optional(),
-  })
-  .refine(
-    (value) =>
-      value.priority !== undefined ||
-      value.weight !== undefined ||
-      value.cost !== undefined ||
-      value.limit !== undefined,
-    {
-      message: 'Override must include priority, weight, cost, or limit',
-    },
-  );
+// Empty `{}` is a preservation patch: the board/drawer submit every baseline
+// Provider, and applyRoutingMutation keeps stored cost/limit when those keys
+// are absent. A non-empty refine would 400 those saves.
+const DashboardRoutingProviderOverrideSchema = z.strictObject({
+  priority: RoutingPrioritySchema.optional(),
+  weight: RoutingWeightSchema.optional(),
+  cost: ModelCostSchema.nullable().optional(),
+  limit: ModelLimitSchema.nullable().optional(),
+});
 
 function refineUniqueBaselineProviderIds(ids: readonly string[], context: z.RefinementCtx): void {
   const seen = new Set<string>();
