@@ -536,6 +536,8 @@ test('Reset on dotted and bracketed Provider IDs sends empty preservation patche
 
 const nameLabel = () => m['dashboard.routing.editor.metadata_field_label_name']();
 const costInputLabel = () => m['dashboard.routing.editor.metadata_cost_label_input']();
+const limitContextLabel = () => m['dashboard.routing.editor.metadata_limit_label_context']();
+const limitInputLabel = () => m['dashboard.routing.editor.metadata_limit_label_input']();
 
 /** gpt5 plus metadata and a cost/limit-only override on blocked Provider e. */
 const withAuthoredMetadata = (): DashboardRoutingModel => {
@@ -643,6 +645,21 @@ test('clearing every metadata field sends metadata: null, and clearing a cost ov
 // Invalid JSON stays local to the editor (the form keeps the last valid value), so an ungated Save
 // would silently persist that stale value and close over the draft the user is looking at. The old
 // provider drawer disabled Save in this state; the routing drawer must too.
+// The PUT uses ModelLimitSchema; an input>context draft must not stay Save-enabled and then fail
+// with the generic save-failed alert.
+test('an invalid per-Provider limit disables Save and blocks submit', async () => {
+  renderDrawer();
+
+  const overrides = within(screen.getByTestId('routing-overrides-a'));
+  fireEvent.change(overrides.getByLabelText(limitContextLabel()), { target: { value: '100' } });
+  fireEvent.change(overrides.getByLabelText(limitInputLabel()), { target: { value: '200' } });
+
+  const save = screen.getByTestId('routing-save');
+  await waitFor(() => expect(save).toBeDisabled());
+  fireEvent.submit(save.closest('form')!);
+  expect(mocks.mutate).not.toHaveBeenCalled();
+});
+
 test('invalid metadata JSON disables Save and blocks submit until the draft is repaired', async () => {
   renderDrawer({ model: withAuthoredMetadata() });
 

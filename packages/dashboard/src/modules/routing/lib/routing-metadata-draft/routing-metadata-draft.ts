@@ -1,11 +1,14 @@
-import type {
-  DashboardRoutingModel,
-  DashboardRoutingModelMutation,
-  ModelCostInput,
-  ModelLimitInput,
-  ModelMetadataInput,
-  RouterProviderOverride,
+import {
+  ModelCostSchema,
+  ModelLimitSchema,
+  type DashboardRoutingModel,
+  type DashboardRoutingModelMutation,
+  type ModelCostInput,
+  type ModelLimitInput,
+  type ModelMetadataInput,
+  type RouterProviderOverride,
 } from '@aio-proxy/types';
+import type { ZodType } from 'zod';
 
 /**
  * Tri-state draft for the mutation contract: an untouched draft is OMITTED from the PUT body
@@ -68,6 +71,18 @@ export const reconcileRoutingMetadataValues = (
 };
 
 type MutationProviderOverride = DashboardRoutingModelMutation['providers'][string];
+
+const touchedGroupValid = (draft: RoutingMetadataDraft<object> | undefined, schema: ZodType): boolean => {
+  if (draft === undefined || !draft.touched) return true;
+  if (draft.value === undefined || Object.keys(draft.value).length === 0) return true;
+  return schema.safeParse(draft.value).success;
+};
+
+/** Whether every touched cost/limit draft would pass the same Zod the PUT body uses. */
+export const routingOverrideDraftsValid = (overrides: RoutingMetadataFormValues['overrides']): boolean =>
+  Object.values(overrides).every(
+    (draft) => touchedGroupValid(draft.cost, ModelCostSchema) && touchedGroupValid(draft.limit, ModelLimitSchema),
+  );
 
 const patchOf = <T extends object>(draft: RoutingMetadataDraft<T> | undefined): T | null | undefined => {
   if (draft === undefined || !draft.touched) return undefined;

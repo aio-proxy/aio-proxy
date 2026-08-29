@@ -14,7 +14,11 @@ import { useRef, useState } from 'react';
 import { reconcileRoutingFormRows, routingDraftRecord, useRoutingForm } from '../hooks/use-routing-form';
 import { useRoutingMetadataForm } from '../hooks/use-routing-metadata-form';
 import { useRoutingMutation } from '../hooks/use-routing-mutation';
-import { mergeRoutingMutationDrafts, reconcileRoutingMetadataValues } from '../lib/routing-metadata-draft';
+import {
+  mergeRoutingMutationDrafts,
+  reconcileRoutingMetadataValues,
+  routingOverrideDraftsValid,
+} from '../lib/routing-metadata-draft';
 import { explicitRoutingOverrides } from '../lib/routing-summary';
 import { isStaleRoutingError } from '../services/routing-service';
 import { ModelMetadataEditor } from './model-metadata-editor';
@@ -109,7 +113,7 @@ export const RoutingEditorDrawer: React.FC<RoutingEditorDrawerProps> = ({
             onSubmit={(event) => {
               event.preventDefault();
               // Keyboard submit bypasses the disabled Save button, so the gate lives here too.
-              if (!metadataValid) return;
+              if (!metadataValid || !routingOverrideDraftsValid(metadataForm.state.values.overrides)) return;
               void form.handleSubmit();
             }}
           >
@@ -177,13 +181,24 @@ export const RoutingEditorDrawer: React.FC<RoutingEditorDrawerProps> = ({
               ) : null}
               <form.Subscribe selector={(state) => [state.canSubmit, state.isSubmitting]}>
                 {([canSubmit, isSubmitting]) => (
-                  <Button
-                    type="submit"
-                    data-testid="routing-save"
-                    disabled={!writable || !canSubmit || isSubmitting || mutation.isPending || !metadataValid}
-                  >
-                    {m['dashboard.routing.editor.save']()}
-                  </Button>
+                  <metadataForm.Subscribe selector={(state) => routingOverrideDraftsValid(state.values.overrides)}>
+                    {(overridesValid) => (
+                      <Button
+                        type="submit"
+                        data-testid="routing-save"
+                        disabled={
+                          !writable ||
+                          !canSubmit ||
+                          isSubmitting ||
+                          mutation.isPending ||
+                          !metadataValid ||
+                          !overridesValid
+                        }
+                      >
+                        {m['dashboard.routing.editor.save']()}
+                      </Button>
+                    )}
+                  </metadataForm.Subscribe>
                 )}
               </form.Subscribe>
             </DrawerFooter>

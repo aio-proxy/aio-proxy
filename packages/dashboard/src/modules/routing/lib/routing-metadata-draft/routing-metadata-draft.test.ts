@@ -6,6 +6,7 @@ import {
   mergeRoutingMutationDrafts,
   reconcileRoutingMetadataValues,
   routingMetadataFormValues,
+  routingOverrideDraftsValid,
 } from './routing-metadata-draft';
 
 const number = (effective: number) => ({ effective, wasNormalized: false });
@@ -95,4 +96,27 @@ test('reconcile after a stale reload re-seeds untouched drafts and keeps touched
   expect(next.overrides['a']?.cost).toEqual({ touched: true, value: { input: 9 } });
   // The untouched limit picks up the freshly stored server value.
   expect(next.overrides['a']?.limit).toEqual({ touched: false, value: { context: 1000 } });
+});
+
+test('a touched limit with input above context is invalid for Save', () => {
+  expect(
+    routingOverrideDraftsValid({
+      a: {
+        cost: { touched: false, value: undefined },
+        limit: { touched: true, value: { context: 100, input: 200 } },
+      },
+    }),
+  ).toBe(false);
+});
+
+test('a touched valid or cleared limit stays valid', () => {
+  expect(
+    routingOverrideDraftsValid({
+      a: {
+        cost: { touched: true, value: { input: 1 } },
+        limit: { touched: true, value: { context: 200, input: 100 } },
+      },
+      b: { cost: { touched: false, value: undefined }, limit: { touched: true, value: undefined } },
+    }),
+  ).toBe(true);
 });

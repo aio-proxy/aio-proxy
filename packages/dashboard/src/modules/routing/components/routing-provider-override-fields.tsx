@@ -1,5 +1,5 @@
 import { m } from '@aio-proxy/i18n';
-import type { ModelCostInput, ModelLimitInput } from '@aio-proxy/types';
+import { ModelLimitSchema, type ModelCostInput, type ModelLimitInput } from '@aio-proxy/types';
 
 import type { RoutingProviderOverrideDraft } from '../lib/routing-metadata-draft';
 import { ModelMetadataNumberField } from './model-metadata-visual-tab';
@@ -54,6 +54,11 @@ export const RoutingProviderOverrideFields: React.FC<RoutingProviderOverrideFiel
   const inherit = m['dashboard.routing.editor.metadata_inherit_placeholder']();
   const cost = value.cost.value as Readonly<Record<string, unknown>> | undefined;
   const limit = value.limit.value as Readonly<Record<string, unknown>> | undefined;
+  const limitParsed =
+    limit === undefined || Object.keys(limit).length === 0
+      ? { success: true as const }
+      : ModelLimitSchema.safeParse(limit);
+  const limitIssues = limitParsed.success ? [] : limitParsed.error.issues;
 
   return (
     <div className="space-y-3 rounded-2xl border p-3" data-testid={`routing-overrides-${providerId}`}>
@@ -105,6 +110,26 @@ export const RoutingProviderOverrideFields: React.FC<RoutingProviderOverrideFiel
             />
           ))}
         </div>
+        {limitIssues.length === 0 ? null : (
+          <ul className="space-y-1" data-testid={`routing-overrides-${providerId}-limit-errors`}>
+            {limitIssues.map((issue) => {
+              const path = issue.path[0];
+              const field =
+                path === 'input'
+                  ? LIMIT_LABEL.input()
+                  : path === 'output'
+                    ? LIMIT_LABEL.output()
+                    : path === 'context'
+                      ? LIMIT_LABEL.context()
+                      : String(path ?? '');
+              return (
+                <li key={`${String(path)}:${issue.message}`} role="alert" className="text-xs text-destructive">
+                  {m['dashboard.routing.editor.metadata_schema_error']({ path: field })}
+                </li>
+              );
+            })}
+          </ul>
+        )}
       </div>
     </div>
   );
