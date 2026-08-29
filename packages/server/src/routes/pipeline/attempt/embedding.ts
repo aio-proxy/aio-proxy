@@ -10,6 +10,7 @@ import { terminalCompletion } from '../../../route-observation';
 import type { EmbeddingTransport } from '../../../runtime';
 import type { UsageCompletion } from '../../../usage-capture';
 import { attemptBase, candidateConfigPrice } from '../attempt-base';
+import { publicSlug } from '../public-slug';
 import type { AttemptStep, CandidateSlot, EmbeddingAttemptLoopContext } from './context';
 import { emitReject, handleAttemptError, unsupportedDispatch } from './error';
 import { completeRawAttempt, startRawAttempt } from './raw';
@@ -93,7 +94,12 @@ async function convertEmbeddingCandidate<TRequest, TContext>(
   }
   const response = Response.json(payload);
   slot.spanRef.current = undefined;
-  const configPrice = candidateConfigPrice(provider, candidate.modelId);
+  const configPrice = candidateConfigPrice(
+    ctx.routerModels,
+    publicSlug(ctx.requestedModelId, candidate),
+    provider.id,
+    provider.upstreamMetadata?.[candidate.modelId]?.cost,
+  );
   // Capture runs even without a token count: a per-request fee still bills off
   // configPrice, and finalizeUsage drops the row when there is nothing to price.
   const completion: Promise<UsageCompletion> = source.usageCapture.embedding({

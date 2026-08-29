@@ -14,7 +14,7 @@ test('maps OpenAI reasoning through the catalog thinking binder on count', async
     language: [
       {
         id: 'claude-sonnet-4-6',
-        metadata: { antigravity: { apiProvider: 'anthropic' } },
+        extra: { antigravity: { apiProvider: 'anthropic' } },
       },
     ],
     image: [],
@@ -55,7 +55,7 @@ test('maps OpenAI reasoning through the catalog thinking binder on count', async
 test('uses the Google codec and count endpoint for the CCA token count', async () => {
   const seen: Request[] = [];
   const catalog = {
-    language: [{ id: 'claude-sonnet-4-6', metadata: { antigravity: { apiProvider: 'anthropic' } } }],
+    language: [{ id: 'claude-sonnet-4-6', extra: { antigravity: { apiProvider: 'anthropic' } } }],
     image: [],
     embedding: [],
     speech: [],

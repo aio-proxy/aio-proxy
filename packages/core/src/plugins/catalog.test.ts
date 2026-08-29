@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 
 import { ModelCatalogValidationError, validateModelCatalog } from './catalog';
 
-const empty = {
+const emptyCatalog = {
   language: [{ id: 'm' }],
   image: [],
   embedding: [],
@@ -12,7 +12,7 @@ const empty = {
 };
 
 const validCatalog = () => ({
-  language: [{ id: 'language', displayName: 'Language', metadata: { nested: [1, true, null] } }],
+  language: [{ id: 'language', displayName: 'Language', extra: { nested: [1, true, null] } }],
   image: [{ id: 'image' }],
   embedding: [{ id: 'embedding' }],
   speech: [{ id: 'speech' }],
@@ -38,9 +38,9 @@ describe('validateModelCatalog', () => {
     ['blank id', { ...validCatalog(), language: [{ id: ' ' }] }],
     ['duplicate id', { ...validCatalog(), language: [{ id: 'same' }, { id: 'same' }] }],
     ['non-string display name', { ...validCatalog(), language: [{ id: 'id', displayName: 1 }] }],
-    ['function metadata', { ...validCatalog(), language: [{ id: 'id', metadata: () => {} }] }],
-    ['bigint metadata', { ...validCatalog(), language: [{ id: 'id', metadata: BigInt(1) }] }],
-    ['non-finite metadata', { ...validCatalog(), language: [{ id: 'id', metadata: Number.POSITIVE_INFINITY }] }],
+    ['function extra', { ...validCatalog(), language: [{ id: 'id', extra: () => {} }] }],
+    ['bigint extra', { ...validCatalog(), language: [{ id: 'id', extra: BigInt(1) }] }],
+    ['non-finite extra', { ...validCatalog(), language: [{ id: 'id', extra: Number.POSITIVE_INFINITY }] }],
   ])('rejects %s without exposing the value', (_name, catalog) => {
     try {
       validateModelCatalog(catalog);
@@ -51,25 +51,60 @@ describe('validateModelCatalog', () => {
     }
   });
 
-  test('rejects cyclic metadata', () => {
-    const metadata: Record<string, unknown> = {};
-    metadata.self = metadata;
-    expect(() => validateModelCatalog({ ...validCatalog(), language: [{ id: 'id', metadata }] })).toThrow(
+  test('rejects cyclic extra', () => {
+    const extra: Record<string, unknown> = {};
+    extra.self = extra;
+    expect(() => validateModelCatalog({ ...validCatalog(), language: [{ id: 'id', extra }] })).toThrow(
       ModelCatalogValidationError,
     );
   });
 });
 
-test('keeps top-level catalog metadata', () => {
+test('keeps top-level catalog extra', () => {
   const catalog = validateModelCatalog({
-    ...empty,
-    metadata: { cursorFamilies: [{ name: 'claude-opus-4-8', variants: [{ slug: 'claude-opus-4-8-medium' }] }] },
+    ...emptyCatalog,
+    extra: { cursorFamilies: [{ name: 'claude-opus-4-8', variants: [{ slug: 'claude-opus-4-8-medium' }] }] },
   });
-  expect(catalog.metadata).toEqual({
+  expect(catalog.extra).toEqual({
     cursorFamilies: [{ name: 'claude-opus-4-8', variants: [{ slug: 'claude-opus-4-8-medium' }] }],
   });
 });
 
-test('rejects non-JSON catalog metadata', () => {
-  expect(() => validateModelCatalog({ ...empty, metadata: { when: 1n } })).toThrow(ModelCatalogValidationError);
+test('rejects non-JSON catalog extra', () => {
+  expect(() => validateModelCatalog({ ...emptyCatalog, extra: { when: 1n } })).toThrow(ModelCatalogValidationError);
+});
+
+test('preserves a valid descriptor modelMetadata, stripping extend and unknown keys like protocol', () => {
+  const catalog = validateModelCatalog({
+    ...emptyCatalog,
+    language: [
+      {
+        id: 'm1',
+        extra: { protocol: 'anthropic' },
+        modelMetadata: {
+          name: 'M1',
+          extend: 'openai/gpt-5',
+          protocol: 'anthropic',
+          limit: { context: 200_000, output: 8192 },
+        },
+      },
+    ],
+  });
+  expect(catalog.language[0]?.modelMetadata).toEqual({ name: 'M1', limit: { context: 200_000, output: 8192 } });
+});
+
+test('drops an invalid descriptor modelMetadata but keeps the descriptor', () => {
+  const catalog = validateModelCatalog({
+    ...emptyCatalog,
+    language: [{ id: 'm1', displayName: 'Kept', modelMetadata: { limit: { context: -5 } } }],
+  });
+  expect(catalog.language[0]).toEqual({ id: 'm1', displayName: 'Kept' });
+});
+
+test('drops a modelMetadata that smuggles non-JSON values through a nested loose schema', () => {
+  const catalog = validateModelCatalog({
+    ...emptyCatalog,
+    language: [{ id: 'm1', modelMetadata: { cost: { input: 1, note: () => {} } } }],
+  });
+  expect(catalog.language[0]?.modelMetadata).toBeUndefined();
 });

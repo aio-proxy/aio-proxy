@@ -161,7 +161,11 @@ export {
   getModelsCachedOnly,
   hasCachedModelsCatalog,
   getProviders,
+  lookupCachedModel,
+  resolveModel,
+  resolveModelEntry,
 } from './models-dev/index';
+export type { ResolvedModelsDevEntry } from './models-dev/index';
 export { modelEffortValues, normalizeEffort } from './protocol/reasoning-effort/index';
 export {
   findInstalledNpmPackage,

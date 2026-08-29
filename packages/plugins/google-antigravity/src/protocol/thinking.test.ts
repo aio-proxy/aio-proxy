@@ -174,7 +174,7 @@ function thinkingCatalog(): ModelCatalog {
       claude('claude-opus-4-6-thinking', { minThinkingBudget: 2048, maxOutputTokens: 64_000 }),
       {
         id: 'gpt-oss-120b',
-        metadata: { antigravity: { apiProvider: 'openai' } },
+        extra: { antigravity: { apiProvider: 'openai' } },
       },
     ],
     image: [],
@@ -182,7 +182,7 @@ function thinkingCatalog(): ModelCatalog {
     speech: [],
     transcription: [],
     reranking: [],
-    metadata: {
+    extra: {
       antigravityFamilies: [
         family({
           logicalId: 'gemini-3.5-flash',
@@ -284,7 +284,7 @@ function descriptor(
 ): ModelDescriptor {
   return {
     id,
-    metadata: {
+    extra: {
       antigravity: {
         apiProvider,
         ...(fields.thinkingBudget === undefined ? {} : { thinkingBudget: fields.thinkingBudget }),

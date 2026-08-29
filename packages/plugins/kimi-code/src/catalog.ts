@@ -19,7 +19,7 @@ export function staticKimiCatalog(): ModelCatalog {
     {
       id: 'kimi-for-coding',
       displayName: 'Kimi for Coding',
-      metadata: { protocol: 'openai-compatible' },
+      extra: { protocol: 'openai-compatible' },
     },
   ]);
 }
@@ -50,7 +50,7 @@ export async function discoverKimiCatalog(
       {
         id: id.trim(),
         ...(typeof displayName === 'string' && displayName.trim() !== '' ? { displayName: displayName.trim() } : {}),
-        metadata: {
+        extra: {
           protocol: Reflect.get(value, 'protocol') === 'anthropic' ? 'anthropic' : 'openai-compatible',
         },
       },

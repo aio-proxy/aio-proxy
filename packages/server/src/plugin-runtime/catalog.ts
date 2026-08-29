@@ -86,7 +86,11 @@ export function catalogFreshness(
 export function modelMetadataRecord(catalog: ModelCatalog): Readonly<Record<string, RuntimeModelMetadata>> {
   const record: Record<string, RuntimeModelMetadata> = {};
   for (const descriptor of [...catalog.embedding, ...catalog.image]) {
-    record[descriptor.id] = descriptorMetadata(descriptor);
+    const next = descriptorMetadata(descriptor);
+    const existing = record[descriptor.id];
+    // Cross-modality overlap merges fields; the earlier modality wins conflicts
+    // (embedding before image — this loop's order).
+    record[descriptor.id] = existing === undefined ? next : { ...next, ...existing };
   }
   for (const descriptor of catalog.language) {
     const next = descriptorMetadata(descriptor);
@@ -95,21 +99,20 @@ export function modelMetadataRecord(catalog: ModelCatalog): Readonly<Record<stri
       record[descriptor.id] = next;
       continue;
     }
-    // Language owns targetProtocol. Image/embed convert do not read this record
-    // for dispatch, so an overlapping non-language descriptor must not replace
-    // or invent a protocol.
-    record[descriptor.id] = {
-      ...(existing.name === undefined ? {} : { name: existing.name }),
-      ...(next.name === undefined ? {} : { name: next.name }),
-      ...(next.protocol === undefined ? {} : { protocol: next.protocol }),
-    };
+    // Language owns targetProtocol: a protocol from a non-language descriptor's
+    // extra must not survive (image/embed convert never read it, and it must not
+    // redirect language dispatch). Other fields merge; language wins conflicts.
+    const { protocol: _nonLanguageProtocol, ...nonLanguageFields } = existing;
+    record[descriptor.id] = { ...nonLanguageFields, ...next };
   }
   return record;
 }
 
 function descriptorMetadata(descriptor: ModelCatalog['language'][number]): RuntimeModelMetadata {
-  const protocol = metadataProtocol(descriptor.metadata);
+  const protocol = metadataProtocol(descriptor.extra);
+  const typed = descriptor.modelMetadata ?? {};
   return {
+    ...typed,
     ...(descriptor.displayName === undefined ? {} : { name: descriptor.displayName }),
     ...(protocol === undefined ? {} : { protocol }),
   };

@@ -90,7 +90,7 @@ function credentialPort(initial: KimiCredential): CredentialPort<KimiCredential>
 
 function catalog(): ModelCatalog {
   return {
-    language: [{ id: 'openai-model', metadata: { protocol: 'openai-compatible' } }],
+    language: [{ id: 'openai-model', extra: { protocol: 'openai-compatible' } }],
     image: [],
     embedding: [],
     speech: [],

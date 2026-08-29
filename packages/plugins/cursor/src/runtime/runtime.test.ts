@@ -115,7 +115,7 @@ test('discovered model metadata reaches Cursor model details and requested model
       {
         id: 'wire-model',
         displayName: 'Display Model',
-        metadata: { displayModelId: 'display-model', maxMode: true },
+        extra: { displayModelId: 'display-model', maxMode: true },
       },
     ],
   };

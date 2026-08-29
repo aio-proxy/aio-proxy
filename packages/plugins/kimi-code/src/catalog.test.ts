@@ -46,9 +46,9 @@ test('discovers authenticated Kimi language models and normalizes their preferre
       {
         id: 'kimi-for-coding',
         displayName: 'Kimi for Coding',
-        metadata: { protocol: 'openai-compatible' },
+        extra: { protocol: 'openai-compatible' },
       },
-      { id: 'k3', displayName: 'K3', metadata: { protocol: 'anthropic' } },
+      { id: 'k3', displayName: 'K3', extra: { protocol: 'anthropic' } },
     ],
     image: [],
     embedding: [],
@@ -64,7 +64,7 @@ test('provides a six-hour static first-login fallback', () => {
     {
       id: 'kimi-for-coding',
       displayName: 'Kimi for Coding',
-      metadata: { protocol: 'openai-compatible' },
+      extra: { protocol: 'openai-compatible' },
     },
   ]);
 });

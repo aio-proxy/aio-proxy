@@ -69,13 +69,26 @@ const allPackages = (
 // tag / GitHub Release of their own — only the note-bearing product packages do.
 const platformProvided = new Set(allPackages.flatMap(({ json }) => Object.keys(json.optionalDependencies ?? {})));
 
-const publishable = allPackages
-  .filter(({ json }) => json.private !== true)
-  // Publish per-platform binary packages before the launcher that lists them in
-  // optionalDependencies: npm silently skips an optional dep that isn't on the
-  // registry yet (and won't self-heal on later installs), so the platform
-  // packages must already exist at this version when the launcher is published.
-  .sort((a, b) => Number(!!a.json.optionalDependencies) - Number(!!b.json.optionalDependencies));
+// Publish dependencies before dependents. npm silently skips an optionalDependency
+// that isn't on the registry yet (launcher -> @aio-proxy/cli-*), and a dependent
+// published before its workspace dependency (plugin-sdk -> @aio-proxy/types) is
+// uninstallable if the later publish fails mid-release.
+const unsorted = allPackages.filter(({ json }) => json.private !== true);
+const names = new Set(unsorted.map((p) => p.json.name));
+const emitted = new Set<string>();
+const publishable: typeof unsorted = [];
+while (publishable.length < unsorted.length) {
+  const ready = unsorted.filter(
+    (p) =>
+      !emitted.has(p.json.name) &&
+      [...Object.keys(p.json.dependencies ?? {}), ...Object.keys(p.json.optionalDependencies ?? {})].every(
+        (dep) => !names.has(dep) || emitted.has(dep),
+      ),
+  );
+  if (ready.length === 0) throw new Error('Cyclic workspace dependencies among publishable packages');
+  for (const p of ready) emitted.add(p.json.name);
+  publishable.push(...ready);
+}
 
 if (publishable.length === 0) {
   throw new Error('No publishable packages found');

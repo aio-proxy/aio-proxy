@@ -41,7 +41,7 @@ export async function createGitHubCopilotRuntime(
   });
   const protocolByModelId = new Map(
     context.catalog.language.flatMap((model) => {
-      const protocol = catalogProtocol(model.metadata);
+      const protocol = catalogProtocol(model.extra);
       return protocol === undefined ? [] : [[model.id, protocol] as const];
     }),
   );
@@ -125,9 +125,9 @@ async function fetchWithCredential(
   });
 }
 
-function catalogProtocol(metadata: unknown): ProtocolId | undefined {
-  if (typeof metadata !== 'object' || metadata === null || Array.isArray(metadata)) return undefined;
-  const protocol = Reflect.get(metadata, 'protocol');
+function catalogProtocol(extra: unknown): ProtocolId | undefined {
+  if (typeof extra !== 'object' || extra === null || Array.isArray(extra)) return undefined;
+  const protocol = Reflect.get(extra, 'protocol');
   return protocol === 'openai-compatible' || protocol === 'anthropic' || protocol === 'openai-response'
     ? protocol
     : undefined;

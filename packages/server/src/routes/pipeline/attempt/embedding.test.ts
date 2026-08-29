@@ -10,9 +10,13 @@ import {
   parseGeminiBatchEmbedContents,
   parseGeminiEmbedContent,
 } from '@aio-proxy/core';
-import { ProviderKind, ProviderProtocol } from '@aio-proxy/types';
+import { ConfigSchema, ProviderKind, ProviderProtocol, type RouterModelPolicy } from '@aio-proxy/types';
 
-import { defineProviderRouteSource, settleRecording } from '../../../../__tests__/pipeline-helpers';
+import {
+  defineProviderRouteSource,
+  settleRecording,
+  withSnapshotConfigs,
+} from '../../../../__tests__/pipeline-helpers';
 import { createAttemptResponseObservation } from '../../../response-observation';
 import type { RuntimeProviderInstance } from '../../../runtime';
 import type { CandidateSlot, EmbeddingAttemptLoopContext } from './context';
@@ -32,6 +36,7 @@ function harness<TRequest, TContext>(
   adapter: EmbeddingProtocolAdapter<TRequest, TContext>,
   request: TRequest,
   context: TContext,
+  routerModels?: Readonly<Record<string, RouterModelPolicy>>,
 ): Harness<TRequest, TContext> {
   const route = defineProviderRouteSource([]);
   const rawRequest = new Request('https://proxy.test/v1/embeddings', {
@@ -55,6 +60,7 @@ function harness<TRequest, TContext>(
       rawRequest,
       request,
       requestedModelId: MODEL_ID,
+      routerModels,
       session,
       source: route.source,
       logicalRequest: resolution.context,
@@ -282,15 +288,77 @@ test('Gemini convert omits usageMetadata instead of failing when usage is unknow
   expect(body).toEqual({ embedding: { values: [0.1, 0.2] } });
 });
 
+test('bills a qualified alias from the leased router policy after a snapshot swap', async () => {
+  const configA = ConfigSchema.parse({
+    providers: {},
+    router: { models: { [MODEL_ID]: { metadata: { cost: { input: 1 } } } } },
+  });
+  const configB = ConfigSchema.parse({
+    providers: {},
+    router: { models: { [MODEL_ID]: { metadata: { cost: { input: 99 } } } } },
+  });
+  const provider = {
+    id: 'compatible',
+    kind: ProviderKind.Api,
+    enabled: true,
+    embedding: { embed: async () => ({ embeddings: [[0.1]], usage: { tokens: 1 } }) },
+  } satisfies RuntimeProviderInstance;
+  const built = harness(
+    openAIEmbeddingsAdapter,
+    { model: `${provider.id}/${MODEL_ID}`, input: 'hello' },
+    {},
+    configA.router.models,
+  );
+  const candidateSlot = slot(provider);
+  const qualifiedSlot = {
+    ...candidateSlot,
+    candidate: { ...candidateSlot.candidate, selectionSource: 'provider_qualified' as const },
+    trace: { ...candidateSlot.trace, selectionSource: 'provider_qualified' as const },
+  };
+  const leasedCtx = {
+    ...built.ctx,
+    requestedModelId: `${provider.id}/${MODEL_ID}`,
+    source: withSnapshotConfigs(built.route.source, configA, configB),
+  };
+
+  const step = await attemptEmbeddingCandidate(leasedCtx, qualifiedSlot);
+
+  expect(step.kind).toBe('return');
+  expect(built.route.usage.embedding[0]?.configPrice).toEqual({ id: MODEL_ID, input: 1 });
+});
+
+test('bills plugin upstream cost when the router policy has no cost', async () => {
+  const provider = {
+    id: 'oauth',
+    kind: ProviderKind.OAuth,
+    enabled: true,
+    upstreamMetadata: { [MODEL_ID]: { cost: { input: 5 } } },
+    embedding: { embed: async () => ({ embeddings: [[0.1]], usage: { tokens: 1 } }) },
+  } satisfies RuntimeProviderInstance;
+  const built = harness(openAIEmbeddingsAdapter, { model: MODEL_ID, input: 'hello' });
+
+  const step = await attemptEmbeddingCandidate(built.ctx, slot(provider));
+
+  expect(step.kind).toBe('return');
+  expect(built.route.usage.embedding[0]?.configPrice).toEqual({ id: MODEL_ID, input: 5 });
+});
+
 test('bills the configured per-request fee when the upstream reported no tokens', async () => {
   const provider = {
     id: 'google',
     kind: ProviderKind.Api,
     enabled: true,
-    configMetadata: { [MODEL_ID]: { cost: { request: 0.02 } } },
     embedding: { embed: async () => ({ embeddings: [[0.1, 0.2]] }) },
   } satisfies RuntimeProviderInstance;
-  const { ctx: geminiCtx, route } = geminiHarness(parseGeminiEmbedContent({ content: { parts: [{ text: 'doc' }] } }));
+  const routerModels = {
+    [MODEL_ID]: { metadata: { cost: { request: 0.02 } }, providers: {} },
+  };
+  const { ctx: geminiCtx, route } = harness(
+    geminiEmbeddingsAdapter,
+    parseGeminiEmbedContent({ content: { parts: [{ text: 'doc' }] } }),
+    { model: MODEL_ID, action: 'embedContent' },
+    routerModels,
+  );
 
   const step = await attemptEmbeddingCandidate(geminiCtx, slot(provider));
   expect(step.kind).toBe('return');

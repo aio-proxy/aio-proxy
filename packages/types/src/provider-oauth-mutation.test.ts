@@ -14,7 +14,6 @@ test('OAuth provider mutation accepts routing fields but rejects identity and ac
     enabled: false,
     weight: 4,
     proxy: null,
-    metadata: { model: { limit: { context: 400_000, input: 272_000, output: 128_000 } } },
     alias: { chat: { model: 'model-1', preserve: false } },
   };
 

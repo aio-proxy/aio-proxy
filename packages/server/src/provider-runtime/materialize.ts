@@ -6,7 +6,7 @@ import {
   createProxyFetch,
   modelRoutes,
 } from '@aio-proxy/core';
-import type { AliasConfig, Config, DashboardProviderSummary, ModelMetadata, Provider } from '@aio-proxy/types';
+import type { AliasConfig, Config, DashboardProviderSummary, Provider } from '@aio-proxy/types';
 import { aliasTargetModels, apiProviderEndpoints, ProviderKind, ProviderProtocol } from '@aio-proxy/types';
 
 import { createProviderRequestTransformFetch } from '../provider-request-transform';
@@ -50,8 +50,10 @@ export function materializeRuntimeProvider(
       capabilityIndex: capabilityIndexFromRoutable({
         models: provider.models,
         alias: provider.alias,
-        metadata: provider.configMetadata,
-        primaryProtocol: 'protocol' in provider ? provider.protocol : undefined,
+        // Legacy API provider instances carry a primary protocol; the
+        // materialized runtime type does not declare it.
+        primaryProtocol:
+          'protocol' in provider ? (provider as { readonly protocol?: ProviderProtocol }).protocol : undefined,
       }),
     };
   }
@@ -66,11 +68,9 @@ export function materializeRuntimeProvider(
       ...routingDefaults(provider),
       ...(provider.models === undefined ? {} : { models: provider.models }),
       ...(provider.alias === undefined ? {} : { alias: provider.alias }),
-      ...(provider.metadata === undefined ? {} : { configMetadata: provider.metadata }),
       capabilityIndex: capabilityIndexFromRoutable({
         models: provider.models,
         alias: provider.alias,
-        metadata: provider.metadata,
         primaryProtocol: primary.protocol,
         extraProtocols: rest.map((endpoint) => endpoint.protocol),
       }),
@@ -103,11 +103,9 @@ export function materializeRuntimeProvider(
       enabled: provider.enabled,
       ...(provider.models === undefined ? {} : { models: provider.models }),
       ...(provider.alias === undefined ? {} : { alias: provider.alias }),
-      ...(provider.metadata === undefined ? {} : { configMetadata: provider.metadata }),
       capabilityIndex: capabilityIndexFromRoutable({
         models: provider.models,
         alias: provider.alias,
-        metadata: provider.metadata,
         primaryProtocol: provider.targetProtocol,
       }),
       model: {
@@ -186,13 +184,11 @@ function embeddingTransport(
 function capabilityIndexFromRoutable(provider: {
   readonly models?: readonly string[];
   readonly alias?: Readonly<Record<string, AliasConfig>>;
-  readonly metadata?: Readonly<Record<string, ModelMetadata>>;
   readonly primaryProtocol?: ProviderProtocol;
   readonly extraProtocols?: readonly ProviderProtocol[];
 }): ModelCapabilityIndex {
   return buildModelCapabilityIndex({
     models: provider.models,
-    metadata: provider.metadata,
     primaryProtocol: provider.primaryProtocol,
     extraProtocols: provider.extraProtocols,
     aliasTargets: provider.alias === undefined ? undefined : aliasTargets(provider.alias),
@@ -241,7 +237,7 @@ export function materializeProviders(config: Config, options: MaterializeProvide
             materializeRuntimeProvider(api, {
               ...(hasLanguageEndpoint ? { apiBridge: bridgeApiProvider(provider, { fetch: providerFetch }) } : {}),
             }),
-            { config: provider, fetch: providerFetch },
+            { config: provider, fetch: providerFetch, routerModels: config.router.models },
           ),
           provider,
         );
@@ -257,7 +253,11 @@ export function materializeProviders(config: Config, options: MaterializeProvide
         );
         const aiSdk = createAiSdk(provider, { fetch: providerFetch });
         const instance = withRoutingDefaults(
-          attachImageTransport(materializeRuntimeProvider(aiSdk), { config: provider, fetch: providerFetch }),
+          attachImageTransport(materializeRuntimeProvider(aiSdk), {
+            config: provider,
+            fetch: providerFetch,
+            routerModels: config.router.models,
+          }),
           provider,
         );
         probes.set(id, () => probeAiSdk(aiSdk));

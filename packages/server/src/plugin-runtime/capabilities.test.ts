@@ -78,7 +78,7 @@ test('rejects an array raw transport carrying an invoke property', async () => {
   ).toThrow(PluginRawResolverError);
 });
 
-test('plugin raw capability receives catalog metadata and rejects malformed transports', async () => {
+test('plugin raw capability receives catalog extra and rejects malformed transports', async () => {
   const modelId = 'model';
   const observed: unknown[] = [];
   const fixture = runtimeFixture(
@@ -86,7 +86,7 @@ test('plugin raw capability receives catalog metadata and rejects malformed tran
     {
       catalog: {
         ...catalog,
-        language: [{ id: 'model', displayName: 'Catalog Name', metadata: { region: 'us', protocol: 'anthropic' } }],
+        language: [{ id: 'model', displayName: 'Catalog Name', extra: { region: 'us', protocol: 'anthropic' } }],
       },
       createRuntime: async () =>
         ({
@@ -105,7 +105,7 @@ test('plugin raw capability receives catalog metadata and rejects malformed tran
     {
       ...catalog,
       language: [
-        { id: 'model', displayName: 'Catalog Name', metadata: { region: 'us', protocol: 'anthropic' } },
+        { id: 'model', displayName: 'Catalog Name', extra: { region: 'us', protocol: 'anthropic' } },
         { id: 'bad-resolver' },
         { id: 'bad-response' },
       ],
@@ -120,7 +120,6 @@ test('plugin raw capability receives catalog metadata and rejects malformed tran
       plugin: '@example/oauth',
       capability: 'default',
       alias: { client: { model: 'model', preserve: false } },
-      metadata: { model: { name: 'Configured Name', limit: { context: 400_000, input: 272_000 } } },
     },
     plugins: fixture.plugins,
     repository: fixture.repository,
@@ -134,7 +133,7 @@ test('plugin raw capability receives catalog metadata and rejects malformed tran
   expect(observed[0]).toEqual({
     protocol: 'openai-compatible',
     modelId: 'model',
-    metadata: { region: 'us', protocol: 'anthropic' },
+    extra: { region: 'us', protocol: 'anthropic' },
   });
   result.provider?.raw?.resolve({
     protocol: ProviderProtocol.OpenAICompatible,
@@ -144,12 +143,8 @@ test('plugin raw capability receives catalog metadata and rejects malformed tran
   expect(observed[1]).toEqual({
     protocol: 'openai-compatible',
     modelId: 'model',
-    metadata: { region: 'us', protocol: 'anthropic' },
+    extra: { region: 'us', protocol: 'anthropic' },
     requestPath: '/v1/completions',
-  });
-  expect(result.provider?.configMetadata?.[modelId]).toEqual({
-    name: 'Configured Name',
-    limit: { context: 400_000, input: 272_000 },
   });
   expect(result.provider?.upstreamMetadata?.[modelId]).toEqual({
     name: 'Catalog Name',
@@ -239,11 +234,7 @@ test('a whitelist filters the freshly materialized catalog', async () => {
   fixture.repository.writeCatalog('person', { ...catalog, language: [{ id: 'model' }, { id: 'other' }] }, 1_000);
 
   const result = await materializePluginProvider({
-    config: {
-      ...providerConfig,
-      models: ['model'],
-      metadata: { model: { name: 'Kept' }, other: { name: 'Excluded' } },
-    },
+    config: { ...providerConfig, models: ['model'] },
     plugins: fixture.plugins,
     repository: fixture.repository,
     diagnostics,
@@ -253,7 +244,6 @@ test('a whitelist filters the freshly materialized catalog', async () => {
 
   expect(result.provider?.models).toEqual(['model']); // 'other' is discovered but not exposed
   expect(Object.keys(result.provider?.upstreamMetadata ?? {})).toEqual(['model']);
-  expect(Object.keys(result.provider?.configMetadata ?? {})).toEqual(['model']);
   expect(result.summary.clientModels).not.toContain('other');
 });
 
@@ -353,24 +343,27 @@ test('withRoutingConfig does not restore whitelist-excluded catalog ids through 
     },
   } as never;
 
-  const next = withRoutingConfig(
-    cached,
-    {
-      ...providerConfig,
-      models: ['gpt-5'],
-      metadata: { 'gpt-5': { name: 'Kept' }, other: { name: 'Excluded' } },
-    } as never,
-    {
-      ...catalog,
-      language: [{ id: 'gpt-5' }, { id: 'other' }],
-      image: [{ id: 'gpt-image-2' }],
-    },
-  );
+  const next = withRoutingConfig(cached, { ...providerConfig, models: ['gpt-5'] } as never, {
+    ...catalog,
+    language: [{ id: 'gpt-5' }, { id: 'other' }],
+    image: [{ id: 'gpt-image-2' }],
+  });
 
   expect(next.models).toEqual(['gpt-5']);
   expect(Object.keys(next.upstreamMetadata ?? {})).toEqual(['gpt-5']);
-  expect(Object.keys(next.configMetadata ?? {})).toEqual(['gpt-5']);
   expect(supportsImage(next.capabilityIndex, 'gpt-image-2')).toBe(true);
+});
+
+test('a language catalog attaches a lazy image invoke even when catalog.image is empty', async () => {
+  // Router metadata may grant image output to language models at request
+  // time; the invoke must already exist on the materialized provider.
+  const fixture = runtimeFixture({ kind: 'static' }, { createRuntime: async () => ({ provider: providerV4() }) });
+
+  const result = await materializeFixture(fixture);
+
+  expect(result.provider?.model).toBeDefined();
+  expect(result.provider?.image).toBeDefined();
+  expect(supportsImage(result.provider!.capabilityIndex, 'model')).toBe(false);
 });
 
 test('createRuntimeProvider exposes catalog.image ids and does not synthesize language transport when language is empty', async () => {
@@ -441,8 +434,8 @@ test('shared language and image catalog ids keep language targetProtocol and ima
 
   const next = withRoutingConfig(cached, providerConfig as never, {
     ...catalog,
-    language: [{ id: 'shared', displayName: 'Chat', metadata: { protocol: 'anthropic' } }],
-    image: [{ id: 'shared', displayName: 'Image', metadata: { protocol: 'openai-image' } }],
+    language: [{ id: 'shared', displayName: 'Chat', extra: { protocol: 'anthropic' } }],
+    image: [{ id: 'shared', displayName: 'Image', extra: { protocol: 'openai-image' } }],
   });
 
   expect(next.upstreamMetadata?.shared).toEqual({
@@ -460,7 +453,7 @@ test('unions catalog language and embedding into models and attaches embedding c
     {
       ...catalog,
       language: [{ id: 'chat' }, { id: 'shared' }],
-      embedding: [{ id: 'embed', displayName: 'Embed Model', metadata: { protocol: 'gemini' } }, { id: 'shared' }],
+      embedding: [{ id: 'embed', displayName: 'Embed Model', extra: { protocol: 'gemini' } }, { id: 'shared' }],
     },
     1_000,
   );
@@ -500,7 +493,7 @@ test('unions catalog language and embedding into models and attaches embedding c
   expect(third.provider?.models).toEqual(['chat', 'shared', 'embed']);
 });
 
-test('forwards embedding capability and catalog metadata to the plugin raw resolver', async () => {
+test('forwards embedding capability and catalog extra to the plugin raw resolver', async () => {
   const observed: unknown[] = [];
   const fixture = runtimeFixture(
     { kind: 'static' },
@@ -508,7 +501,7 @@ test('forwards embedding capability and catalog metadata to the plugin raw resol
       catalog: {
         ...catalog,
         language: [{ id: 'chat' }],
-        embedding: [{ id: 'embed', metadata: { region: 'us', protocol: 'gemini' } }],
+        embedding: [{ id: 'embed', extra: { region: 'us', protocol: 'gemini' } }],
       },
       createRuntime: async () =>
         ({
@@ -525,7 +518,7 @@ test('forwards embedding capability and catalog metadata to the plugin raw resol
     {
       ...catalog,
       language: [{ id: 'chat' }],
-      embedding: [{ id: 'embed', metadata: { region: 'us', protocol: 'gemini' } }],
+      embedding: [{ id: 'embed', extra: { region: 'us', protocol: 'gemini' } }],
     },
     1_000,
   );
@@ -541,7 +534,7 @@ test('forwards embedding capability and catalog metadata to the plugin raw resol
   expect(observed[0]).toEqual({
     protocol: 'gemini',
     modelId: 'embed',
-    metadata: { region: 'us', protocol: 'gemini' },
+    extra: { region: 'us', protocol: 'gemini' },
     capability: 'embedding',
   });
 });

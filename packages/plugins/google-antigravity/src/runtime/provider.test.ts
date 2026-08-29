@@ -198,15 +198,15 @@ function reasoningCatalog(): ModelCatalog {
     language: [
       {
         id: 'gemini-3-flash-agent',
-        metadata: { antigravity: { apiProvider: 'gemini', thinkingBudget: 10_000 } },
+        extra: { antigravity: { apiProvider: 'gemini', thinkingBudget: 10_000 } },
       },
       {
         id: 'gemini-pro-agent',
-        metadata: { antigravity: { apiProvider: 'gemini', thinkingBudget: -1 } },
+        extra: { antigravity: { apiProvider: 'gemini', thinkingBudget: -1 } },
       },
       {
         id: 'claude-sonnet-4-6',
-        metadata: { antigravity: { apiProvider: 'anthropic' } },
+        extra: { antigravity: { apiProvider: 'anthropic' } },
       },
     ],
     image: [],
@@ -214,7 +214,7 @@ function reasoningCatalog(): ModelCatalog {
     speech: [],
     transcription: [],
     reranking: [],
-    metadata: {
+    extra: {
       antigravityFamilies: [
         {
           logicalId: 'gemini-3.5-flash',

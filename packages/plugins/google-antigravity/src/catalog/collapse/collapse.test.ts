@@ -226,6 +226,6 @@ function descriptor(id: string, displayName: string | undefined, apiProvider: st
   return {
     id,
     ...(displayName === undefined ? {} : { displayName }),
-    metadata: { antigravity: { apiProvider } },
+    extra: { antigravity: { apiProvider } },
   };
 }

@@ -1,11 +1,6 @@
-import { type ModelMetadata, ProviderProtocol } from '@aio-proxy/types';
+import { type ModelMetadata, ProviderProtocol, type RouterModelPolicy } from '@aio-proxy/types';
 
-import type {
-  InboundCapability,
-  ModelCapabilityIndex,
-  RuntimeModelMetadata,
-  RuntimeProviderInstance,
-} from '../../runtime';
+import type { InboundCapability, ModelCapabilityIndex, RuntimeModelMetadata } from '../../runtime';
 
 export type CapabilityIndexInput = {
   readonly catalog?: {
@@ -14,8 +9,6 @@ export type CapabilityIndexInput = {
     readonly embedding?: readonly { readonly id: string }[];
   };
   readonly models?: readonly string[];
-  readonly metadata?: Readonly<Record<string, ModelMetadata | undefined>>;
-  readonly configMetadata?: Readonly<Record<string, ModelMetadata | undefined>>;
   readonly upstreamMetadata?: Readonly<Record<string, RuntimeModelMetadata | undefined>>;
   readonly hasImageModel?: boolean;
   readonly primaryProtocol?: ProviderProtocol;
@@ -36,13 +29,7 @@ export function buildModelCapabilityIndex(input: CapabilityIndexInput): ModelCap
     if (languageIds.has(id)) capabilities.add('language');
     if (imageIds.has(id)) capabilities.add('image');
     if (embeddingIds.has(id)) capabilities.add('embedding');
-    if (
-      metadataHasImageOutput(input.metadata?.[id]) ||
-      metadataHasImageOutput(input.configMetadata?.[id]) ||
-      metadataHasImageOutput(input.upstreamMetadata?.[id])
-    ) {
-      capabilities.add('image');
-    }
+    if (metadataHasImageOutput(input.upstreamMetadata?.[id])) capabilities.add('image');
     if (input.primaryProtocol === ProviderProtocol.OpenAIImage) capabilities.add('image');
     // Catalog image/embedding ids stay out of synthesized language even when
     // OAuth `models` unions them with language catalog ids.
@@ -60,8 +47,6 @@ function finiteNonCatalogIds(input: CapabilityIndexInput): Set<string> {
     ...(input.models ?? []),
     ...(input.aliasTargets ?? []),
     ...(input.preservedAliasTargets ?? []),
-    ...Object.keys(input.metadata ?? {}),
-    ...Object.keys(input.configMetadata ?? {}),
     ...Object.keys(input.upstreamMetadata ?? {}),
   ]);
 }
@@ -95,17 +80,14 @@ export function supportsEmbedding(index: ModelCapabilityIndex, modelId: string):
   return index[modelId]?.has('embedding') === true;
 }
 
-export function supportsImageRaw(provider: RuntimeProviderInstance, modelId: string): boolean {
-  return (
-    supportsImage(provider.capabilityIndex, modelId) &&
-    provider.raw?.resolve({ protocol: ProviderProtocol.OpenAIImage, modelId }) !== undefined
-  );
-}
-
-export function supportsImageConvert(provider: RuntimeProviderInstance, modelId: string): boolean {
-  return supportsImage(provider.capabilityIndex, modelId) && provider.image !== undefined;
-}
-
-function metadataHasImageOutput(metadata: ModelMetadata | RuntimeModelMetadata | undefined): boolean {
+export function metadataHasImageOutput(metadata: ModelMetadata | RuntimeModelMetadata | undefined): boolean {
   return metadata?.capabilities?.modalities?.output?.includes('image') === true;
+}
+
+// Provider-agnostic transport plumbing: does ANY router policy declare image
+// output? Deliberately not per-provider/per-slug - an attached-but-unused
+// transport is harmless, while a granted candidate without a transport is a
+// dead end. Per-request enforcement stays in candidateSupportsImage.
+export function routerModelsGrantImage(models: Readonly<Record<string, RouterModelPolicy>> | undefined): boolean {
+  return Object.values(models ?? {}).some((policy) => metadataHasImageOutput(policy.metadata));
 }

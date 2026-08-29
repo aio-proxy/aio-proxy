@@ -1,9 +1,18 @@
 import type { DashboardRoutingModel, DashboardRoutingModelsResponse, DashboardRoutingProvider } from '@aio-proxy/types';
 import { ProviderKind } from '@aio-proxy/types';
 import { afterEach, expect, rs, test } from '@rstest/core';
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { act, fireEvent, render as renderComponent, screen, waitFor, within } from '@testing-library/react';
+import type { ReactNode } from 'react';
 
 import { RoutingPage } from './routing-page';
+
+// The drawer's metadata editor queries the models.dev slug catalog, so the tree needs a QueryClient.
+const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+const wrapper = ({ children }: { readonly children: ReactNode }) => (
+  <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+);
+const render = (ui: React.ReactElement) => renderComponent(ui, { wrapper });
 
 const mocks = rs.hoisted(() => ({
   query: {
@@ -35,6 +44,17 @@ rs.mock('@tanstack/react-router', () => ({
   Link: ({ to, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { to: string }) => (
     <a href={to} {...props} />
   ),
+}));
+
+rs.mock('../services/models-dev-service', () => ({
+  modelsDevSlugsQueryOptions: () => ({
+    queryKey: ['models-dev-slugs'],
+    queryFn: async () => ({ slugs: [] as string[] }),
+  }),
+  modelsDevLookupQueryOptions: (id: string) => ({
+    queryKey: ['models-dev-lookup', id],
+    queryFn: async () => ({ slug: null, metadata: null }),
+  }),
 }));
 
 const routingNumber = (effective: number, authored?: number) => ({
@@ -89,6 +109,7 @@ const model = (
 };
 
 afterEach(() => {
+  queryClient.clear();
   mocks.query.data = undefined;
   mocks.query.isError = false;
   mocks.query.isLoading = false;
@@ -210,7 +231,7 @@ test('ordinary query refetch keeps the opened editor revision and draft', async 
         modelId: 'solo-model',
         revision: 'rev-1',
         baselineProviderIds: ['solo-model-provider'],
-        providers: {},
+        providers: { 'solo-model-provider': {} },
       },
       expect.any(Object),
     );
@@ -276,7 +297,7 @@ test('explicit stale reload adopts the new revision without clearing draft value
         modelId: 'solo-model',
         revision: 'rev-2',
         baselineProviderIds: ['solo-model-provider', 'other'],
-        providers: {},
+        providers: { 'solo-model-provider': {}, other: {} },
       },
       expect.any(Object),
     );
@@ -330,6 +351,7 @@ test('explicit reload appends a new Provider override from the refreshed model',
         revision: 'rev-2',
         baselineProviderIds: ['kept', 'added'],
         providers: {
+          kept: {},
           added: { priority: 30, weight: 4000 },
         },
       },
@@ -384,7 +406,7 @@ test('explicit reload drops a disappeared Provider from the visible Save payload
         modelId: 'solo-model',
         revision: 'rev-2',
         baselineProviderIds: ['kept'],
-        providers: {},
+        providers: { kept: {} },
       },
       expect.any(Object),
     );
@@ -525,7 +547,7 @@ test('pending Reload for one model does not replace another open editor draft', 
         modelId: 'model-b',
         revision: 'rev-b-1',
         baselineProviderIds: ['b-provider'],
-        providers: {},
+        providers: { 'b-provider': {} },
       },
       expect.any(Object),
     );

@@ -119,7 +119,7 @@ test('providerEntry keeps the existing models whitelist and lets the patch repla
 
 // Kills the mutant that restores any of these to `patch === undefined ? existing?.[k] : patch.k`,
 // under which a patch that omits the field erases a value the user authored.
-test('providerEntry retains every stored field a patch does not mention', () => {
+test('providerEntry retains supported stored fields a patch does not mention and drops obsolete metadata', () => {
   const existing = {
     kind: 'oauth',
     plugin: 'p',
@@ -141,8 +141,8 @@ test('providerEntry retains every stored field a patch does not mention', () => 
     models: ['a'],
     proxy: 'http://proxy.example:8080',
     transforms: [{ kind: 'drop-empty-text' }],
-    metadata: { a: { name: 'A' } },
   });
+  expect(entry).not.toHaveProperty('metadata');
 });
 
 // `''` is what the editor's optional display-name input sends when a user clears it (D-F5), and it is

@@ -1,5 +1,11 @@
 import { catalogModelToMetadata, getModels } from '@aio-proxy/core';
-import { ModelContextAggregation, type ModelCapabilities, type ModelLimit, type ModelMetadata } from '@aio-proxy/types';
+import {
+  ModelContextAggregation,
+  type ModelCapabilities,
+  type ModelLimit,
+  type ModelMetadata,
+  type RouterModelPolicy,
+} from '@aio-proxy/types';
 import { mergeWith } from 'es-toolkit/object';
 
 import type { RuntimeModelMetadata, RuntimeProviderInstance } from '../../runtime';
@@ -64,20 +70,37 @@ export function resolveAggregatedLimit(model: ResolvedModel, field: keyof ModelL
   return model.aggregation === ModelContextAggregation.Max ? Math.max(...values) : Math.min(...values);
 }
 
+// Slug-level metadata with this provider's cost/limit override applied.
+// Overrides replace the whole cost/limit object; other fields are never
+// overridable per provider by design.
+function candidateConfigMetadata(policy: RouterModelPolicy | undefined, providerId: string): ModelMetadata | undefined {
+  if (policy === undefined) return undefined;
+  const override = policy.providers[providerId];
+  const base = policy.metadata;
+  if (override?.cost === undefined && override?.limit === undefined) return base;
+  return {
+    ...base,
+    ...(override.cost === undefined ? {} : { cost: override.cost }),
+    ...(override.limit === undefined ? {} : { limit: override.limit }),
+  };
+}
+
 export async function resolveEnabledModels(state: ServerState): Promise<readonly ResolvedModel[]> {
   const lease = state.acquireProviderSnapshot();
   try {
     const aggregation = lease.snapshot.config?.router.modelContextAggregation ?? ModelContextAggregation.Min;
     const resolved: { slug: string; candidates: ResolvedModelCandidate[] }[] = [];
+    const routerModels = lease.snapshot.config?.router.models;
     for (const slug of lease.snapshot.router.modelIds()) {
       const routed = lease.snapshot.router.catalogCandidates(slug);
       if (routed.length === 0) continue;
+      const policy = routerModels?.[slug];
       resolved.push({
         slug,
         candidates: routed.map(({ provider, modelId }) => ({
           provider,
           modelId,
-          configMetadata: provider.configMetadata?.[modelId],
+          configMetadata: candidateConfigMetadata(policy, provider.id),
           upstreamMetadata: provider.upstreamMetadata?.[modelId],
         })),
       });

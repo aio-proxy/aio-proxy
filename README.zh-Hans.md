@@ -133,6 +133,57 @@ aio-proxy reload
 - 顶层的 `protocol`/`baseURL` 仍然是主端点，并保持既有的透传行为——透传时会丢弃其 base URL 的路径部分，只取 origin 并拼接入站请求的路径，因此单协议的 Provider 建议继续使用顶层的 `protocol`/`baseURL`；跨协议转换始终指向主端点。如果没有声明顶层的 `protocol`/`baseURL`，主端点就是 `endpoints` 中的第一项（共用形式下为其 `protocol` 列表中的第一个协议）。
 - 在 Dashboard 中编辑声明了 `endpoints` 的 Provider 目前会丢失该字段；在 Dashboard 支持之前，请直接编辑配置文件。
 
+### 模型元数据与计费
+
+客户端可见的模型元数据统一配置在 `router.models.<slug>.metadata`，键是客户端请求的公开 slug，而不是上游模型 id。该 slug 必须已由某个 Provider 的 `models` 或 `alias` 配置公开；`router.models` 只会定制已有路由，不会创建路由。已删除的 `providers.<id>.metadata` 字段会被静默忽略。
+
+每个字段按以下优先级解析：所选 Provider 的路由覆盖（仅 `cost` 或 `limit`）> slug 元数据（含 `extend`）> 插件上报的上游元数据 > [models.dev](https://models.dev) 回退 > 协议默认值。Provider 覆盖会整体替换 slug 的 `cost` 或 `limit` 对象，而不是深度合并；其他元数据由服务该 slug 的所有 Provider 共用。未知元数据字段会被保留并产生警告，负价格、非正数上下文限制等无效值则会导致清晰的校验错误。
+
+```jsonc
+{
+  "$schema": "https://cdn.jsdelivr.net/npm/aio-proxy@latest/config.schema.json",
+  "router": {
+    "modelContextAggregation": "min",
+    "models": {
+      // 使用客户端请求的公开 slug。
+      "gpt-5": {
+        "metadata": {
+          "name": "GPT-5",
+          "description": "前沿模型",
+          "limit": { "context": 400000, "input": 272000, "output": 128000 },
+          "capabilities": {
+            "reasoning": true,
+            // 可只为这个 slug 授予 Images 能力，不影响其他 slug。
+            "modalities": { "input": ["text", "image"], "output": ["text", "image"] },
+          },
+          "cost": { "input": 1.25, "output": 10 },
+        },
+        "providers": {
+          // 这些对象分别整体替换 metadata.cost 和 metadata.limit。
+          "openai": {
+            "cost": { "input": 1, "output": 8 },
+            "limit": { "context": 300000, "input": 200000, "output": 100000 },
+          },
+        },
+      },
+    },
+  },
+  "providers": {
+    "openai": {
+      "kind": "api",
+      "protocol": "openai-response",
+      "baseURL": "https://api.openai.com/v1",
+      "apiKey": "{{env.OPENAI_API_KEY}}",
+      "models": ["gpt-5"],
+    },
+  },
+}
+```
+
+`limit.context` 是最大总上下文，`limit.input` 是最大输入 token 数，`limit.output` 是最大输出 token 数；配置的 `input` 和 `output` 不能超过 `context`。实际处理请求的 Provider 决定计费价格：它的路由 `cost` 覆盖优先于 slug 元数据和 models.dev 目录。
+
+当公开 slug 与 models.dev slug 不一致时，可在 `metadata` 中设置 `extend: "provider/model"` 继承目录条目。显式字段会覆盖继承值；对象会深度合并，数组会整体替换。找不到目标时会保留显式字段、丢弃 `extend` 并记录警告，不会阻止启动。
+
 ## 路由规则
 
 `providers` 对象中的键是稳定的 **Provider ID**。**Provider priority** 是整数故障回退层级（`0..10000`，默认 `0`）；数值越大越先尝试。**Provider weight** 在同一 priority 层级内分配流量：它是有限的配置数值，默认 `1`，经 `Math.round` 后钳制到 `0..10000`。现有配置会保留旧的 `weight` 值，但该字段不再表示全局固定顺序。
@@ -214,7 +265,7 @@ Images 说明：
 - 转换路径不流式输出，也不会去拉取 `image_url`。
 - DALL·E 省略/`null`/`url` 会跳过转换；GPT Image 省略时编码为 `b64_json`；自定义模型省略时的 `b64_json` 是 aio-proxy 扩展。
 - Edits 接受官方上限信封（JSON `357_564_416`，multipart `851_048_559`）。P1 没有更低的默认 DoS 上限；未来更小的上限只能作为显式的部署扩展。
-- 无目录的 Images Provider 需要有限 id 集合（`models`、保留的别名目标或 metadata 键），其中须包含 `gpt-image-2` 才能使用空白 model 的默认值。
+- 无目录的 Images Provider 需要有限 id 集合（`models` 或保留的别名目标），其中须包含 `gpt-image-2` 才能使用空白 model 的默认值。`router.models` 元数据条目不会创建路由。
 
 其余官方 Responses 资源操作（`GET /v1/responses/:id`、`DELETE /v1/responses/:id`、`POST /v1/responses/:id/cancel`、`GET /v1/responses/:id/input_items`）返回协议形 501。
 

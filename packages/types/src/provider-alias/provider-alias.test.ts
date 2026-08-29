@@ -163,20 +163,6 @@ test('whenIdentity folds effort spelling and ignores key order', () => {
   expect(types.whenIdentity({ thinking: false })).not.toBe(types.whenIdentity({}));
 });
 
-test('directModelIds: metadata keys register as direct routes', () => {
-  expect(directModelIds({ enabled: true, metadata: { 'gpt-image-2': {} } })).toEqual(['gpt-image-2']);
-});
-
-test('directModelIds: metadata on a hidden alias target stays hidden', () => {
-  expect(
-    directModelIds({
-      enabled: true,
-      alias: { public: { model: 'secret-internal', preserve: false } },
-      metadata: { 'secret-internal': {} },
-    }),
-  ).toEqual([]);
-});
-
-test('directModelIds: absent models alias and metadata yield no direct routes', () => {
+test('directModelIds: absent models and alias yield no direct routes', () => {
   expect(directModelIds({ enabled: true })).toEqual([]);
 });

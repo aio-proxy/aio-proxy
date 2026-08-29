@@ -16,3 +16,16 @@ export const modelsDevSlugsQueryOptions = () =>
     queryKey: queryKeys.modelsDevSlugs,
     queryFn: fetchModelsDevSlugs,
   });
+
+export const fetchModelsDevLookup = async (id: string) => {
+  const response = await dashboardClient.dashboard.api['models-dev'].lookup.$get({ query: { id } });
+  if (!response.ok) throw new Error('models.dev lookup request failed');
+  return response.json();
+};
+
+export const modelsDevLookupQueryOptions = (id: string) =>
+  queryOptions({
+    queryKey: queryKeys.modelsDevLookup(id),
+    queryFn: () => fetchModelsDevLookup(id),
+    enabled: id.trim() !== '',
+  });

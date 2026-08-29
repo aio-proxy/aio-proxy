@@ -27,8 +27,8 @@ describe('xAI Grok model catalog', () => {
     expect(request?.url).toBe('https://api.x.ai/v1/models');
     expect(request?.headers.get('authorization')).toBe('Bearer access-token');
     expect(catalog.language).toEqual([
-      { id: 'grok-4.5', displayName: 'Grok 4.5', metadata: { protocol: 'openai-response' } },
-      { id: 'grok-new', displayName: 'Grok New', metadata: { protocol: 'openai-response' } },
+      { id: 'grok-4.5', displayName: 'Grok 4.5', extra: { protocol: 'openai-response' } },
+      { id: 'grok-new', displayName: 'Grok New', extra: { protocol: 'openai-response' } },
     ]);
   });
 
@@ -36,7 +36,7 @@ describe('xAI Grok model catalog', () => {
     expect(initialXAIGrokCatalogFallback(new XAIGrokCatalogError('network', true))?.language).toContainEqual({
       id: 'grok-build',
       displayName: 'Grok Build',
-      metadata: { protocol: 'openai-response' },
+      extra: { protocol: 'openai-response' },
     });
     expect(initialXAIGrokCatalogFallback(new XAIGrokCatalogError('unauthorized', false))).toBeUndefined();
   });

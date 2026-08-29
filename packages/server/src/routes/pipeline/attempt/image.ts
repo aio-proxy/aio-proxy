@@ -1,29 +1,25 @@
-import type { ImageProtocolAdapter } from '@aio-proxy/core';
-
-import { supportsImage, supportsImageConvert } from '../../../provider-runtime';
 import { terminalCompletion } from '../../../route-observation';
 import type { ImageTransport } from '../../../runtime';
 import { captureImageUsage } from '../../../usage-capture/image-capture';
 import { attemptBase, candidateConfigPrice } from '../attempt-base';
 import { failureTerminal, finalFailure } from '../failure';
 import { logRequestRejected } from '../logging';
-import type { AnyAttemptLoopContext, AttemptLoopContext, AttemptStep, CandidateSlot } from './context';
+import { publicSlug } from '../public-slug';
+import { candidateSupportsImage } from './capability-filter';
+import type { AttemptStep, CandidateSlot, ImageAttemptLoopContext } from './context';
 import { unsupportedDispatch } from './error';
 import { attemptRawCandidate } from './raw';
 import { requestPathProperty } from './request-path';
 
 export const IMAGE_RAW_IDLE_TIMEOUT_MS = 600_000;
 
-type ImageAttemptLoopContext<TRequest, TContext> = Omit<AttemptLoopContext<TRequest, TContext>, 'adapter'> & {
-  readonly adapter: ImageProtocolAdapter<TRequest, TContext>;
-};
-
 export async function dispatchImageCandidate<TRequest, TContext>(
-  ctx: AnyAttemptLoopContext<TRequest, TContext>,
+  ctx: ImageAttemptLoopContext<TRequest, TContext>,
   slot: CandidateSlot,
 ): Promise<AttemptStep> {
   const provider = slot.candidate.provider;
-  const raw = supportsImage(provider.capabilityIndex, slot.candidate.modelId)
+  const granted = candidateSupportsImage(slot.candidate, ctx.requestedModelId, ctx.routerModels);
+  const raw = granted
     ? provider.raw?.resolve({
         protocol: ctx.adapter.protocol,
         modelId: slot.candidate.modelId,
@@ -36,9 +32,8 @@ export async function dispatchImageCandidate<TRequest, TContext>(
     return attemptRawCandidate(ctx, slot, raw, ctx.streamRequested ? { idleTimeoutMs: IMAGE_RAW_IDLE_TIMEOUT_MS } : {});
   }
   if (ctx.streamRequested) return { kind: 'skip', reason: 'stream' };
-  if (supportsImageConvert(provider, slot.candidate.modelId) && provider.image !== undefined) {
-    if (ctx.adapter.capability !== 'image') return unsupportedDispatch(ctx, slot);
-    return attemptImageCandidate({ ...ctx, adapter: ctx.adapter }, slot, provider.image);
+  if (granted && provider.image !== undefined) {
+    return attemptImageCandidate(ctx, slot, provider.image);
   }
   slot.trace.transport = undefined;
   slot.trace.targetProtocol = undefined;
@@ -85,7 +80,12 @@ export async function attemptImageCandidate<TRequest, TContext>(
   const attemptSpan = ctx.emitter.startAttempt(base, index);
   slot.spanRef.current = attemptSpan;
   await inAttempt(undefined, () => image.ensureAvailable?.());
-  const configPrice = candidateConfigPrice(provider, candidate.modelId);
+  const configPrice = candidateConfigPrice(
+    ctx.routerModels,
+    publicSlug(ctx.requestedModelId, candidate),
+    provider.id,
+    provider.upstreamMetadata?.[candidate.modelId]?.cost,
+  );
   observation.markTransportUnavailable();
   const result = await inAttempt(undefined, () =>
     image.invoke({

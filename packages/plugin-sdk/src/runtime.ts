@@ -1,4 +1,5 @@
 import type { ProviderV4 } from '@ai-sdk/provider';
+import type { ModelMetadataInput } from '@aio-proxy/types';
 import type { LanguageModelCallOptions, ModelMessage, RequestOptions, ToolSet } from 'ai';
 
 import type { JsonValue } from './json';
@@ -80,17 +81,35 @@ export type RawTransport = {
 export type RawResolver = (input: {
   readonly protocol: ProtocolId;
   readonly modelId: string;
-  readonly metadata?: JsonValue;
+  readonly extra?: JsonValue;
   readonly capability?: 'language' | 'embedding';
   // Inbound URL pathname when the pipeline is choosing between raw and model.
   // Absent for capability probes that are not tied to a request.
   readonly requestPath?: string;
 }) => RawTransport | undefined;
 
+/**
+ * Typed, host-consumed model metadata a plugin may report for a catalog model —
+ * the descriptor-facing subset of the host's ModelMetadata authoring shape.
+ * `extend` is a user-config concept and is excluded; the host strips unknown
+ * keys and DROPS an invalid value fail-soft, keeping the rest of the
+ * descriptor and catalog usable.
+ *
+ * Pick (not Omit): the schema is `.loose()`, so its type carries a string
+ * index signature — Omit would collapse the named keys, Pick keeps them exact.
+ */
+export type DescriptorModelMetadata = Pick<
+  ModelMetadataInput,
+  'name' | 'description' | 'limit' | 'capabilities' | 'cost'
+>;
+
 export type ModelDescriptor = {
   readonly id: string;
   readonly displayName?: string;
-  readonly metadata?: JsonValue;
+  /** Plugin-private free-form data (e.g. wire protocol hints); opaque to users. */
+  readonly extra?: JsonValue;
+  /** Typed model metadata merged into the host's upstream metadata layer. */
+  readonly modelMetadata?: DescriptorModelMetadata;
 };
 
 export type ModelCatalog = {
@@ -100,7 +119,8 @@ export type ModelCatalog = {
   readonly speech: readonly ModelDescriptor[];
   readonly transcription: readonly ModelDescriptor[];
   readonly reranking: readonly ModelDescriptor[];
-  readonly metadata?: JsonValue;
+  /** Catalog-level plugin-private free-form data. */
+  readonly extra?: JsonValue;
 };
 
 export type OAuthRuntimeResult = {

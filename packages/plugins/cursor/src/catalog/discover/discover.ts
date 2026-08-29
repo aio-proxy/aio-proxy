@@ -31,7 +31,7 @@ export async function discoverCursorModels(input: {
   const [catalog, cursorFamilies] = await Promise.all([usablePromise, familiesPromise]);
   return cursorFamilies === undefined || cursorFamilies.length === 0
     ? catalog
-    : { ...catalog, metadata: { cursorFamilies } };
+    : { ...catalog, extra: { cursorFamilies } };
 }
 
 async function fetchGetUsableModels(input: {
@@ -92,7 +92,7 @@ function dedupeById(
     byId.set(id, {
       id,
       ...(model.displayName ? { displayName: model.displayName } : {}),
-      metadata: { displayModelId, maxMode: model.maxMode ?? false },
+      extra: { displayModelId, maxMode: model.maxMode ?? false },
     });
   }
   return [...byId.values()].sort((left, right) => left.id.localeCompare(right.id));

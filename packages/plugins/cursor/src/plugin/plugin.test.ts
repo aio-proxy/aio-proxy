@@ -53,7 +53,7 @@ test('Cursor adapter suggests array-when aliases that AliasConfigSchema accepts'
     speech: [],
     transcription: [],
     reranking: [],
-    metadata: {
+    extra: {
       cursorFamilies: [
         {
           name: 'claude-opus-4-8',

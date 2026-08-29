@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 
 import { defineImageProtocolAdapter } from '@aio-proxy/core';
-import { ProviderKind, ProviderProtocol } from '@aio-proxy/types';
+import { type Config, ConfigSchema, ProviderKind, ProviderProtocol } from '@aio-proxy/types';
 
 import {
   jsonRequest,
@@ -134,6 +134,76 @@ function convertProvider(options: {
   } satisfies RuntimeProviderInstance;
   return { calls, imageCalls, provider };
 }
+
+// Router policy declaring image output for the requested public slug. The
+// providers record stays empty so routing order is untouched.
+function routerImageGrantConfig(slug: string): Config {
+  return ConfigSchema.parse({
+    providers: {},
+    router: { models: { [slug]: { metadata: { capabilities: { modalities: { output: ['image'] } } } } } },
+  });
+}
+
+// A provider whose capabilityIndex has NO image entry: only a request-time
+// router grant can make it an image candidate.
+function languageIndexedConvertProvider(id: string): FakeProvider & {
+  readonly imageCalls: ImageTransportInvokeRequest[];
+} {
+  const imageCalls: ImageTransportInvokeRequest[] = [];
+  const modelId = `${id}-model`;
+  const provider = {
+    alias: { [REQUESTED_MODEL]: { model: modelId, preserve: false } },
+    capabilityIndex: { [modelId]: new Set(['language'] as const) },
+    enabled: true,
+    id,
+    kind: ProviderKind.AiSdk,
+    image: {
+      async invoke(request: ImageTransportInvokeRequest) {
+        imageCalls.push(request);
+        return { images: [new Uint8Array([1, 2, 3])], usage: { input_tokens: 11 } };
+      },
+    },
+  } satisfies RuntimeProviderInstance;
+  return { calls: { ensure: 0, model: [], raw: [] }, imageCalls, provider };
+}
+
+test('a router metadata image grant dispatches through the convert transport instead of unsupported', async () => {
+  const convert = languageIndexedConvertProvider('granted');
+  const route = pipeline([convert], { adapter: imageAdapter(), config: routerImageGrantConfig(REQUESTED_MODEL) });
+
+  const response = await route.run(jsonRequest({ model: REQUESTED_MODEL, prompt: 'a cat' }));
+
+  expect(response.status).toBe(200);
+  expect(await response.json()).toEqual({ created: 1, count: 1 });
+  expect(convert.imageCalls).toHaveLength(1);
+  expect(convert.imageCalls[0]?.modelId).toBe('granted-model');
+});
+
+test('without the grant the same candidate is rejected as unsupported', async () => {
+  const convert = languageIndexedConvertProvider('ungranted');
+  const route = pipeline([convert], { adapter: imageAdapter() });
+
+  const response = await route.run(jsonRequest({ model: REQUESTED_MODEL, prompt: 'a cat' }));
+
+  expect(response.status).toBe(501);
+  expect(await response.json()).toEqual({ error: { code: 'unsupported', message: 'images' } });
+  expect(convert.imageCalls).toHaveLength(0);
+});
+
+test('a router metadata image grant lets a language-indexed raw candidate pass through', async () => {
+  const raw = rawProvider({
+    id: 'raw-granted',
+    protocol: ProviderProtocol.OpenAIImage,
+    invoke: async () => Response.json({ provider: 'raw-granted' }),
+  });
+  const route = pipeline([raw], { adapter: imageAdapter(), config: routerImageGrantConfig(REQUESTED_MODEL) });
+
+  const response = await route.run(jsonRequest({ model: REQUESTED_MODEL, prompt: 'a cat' }));
+
+  expect(response.status).toBe(200);
+  expect(await response.json()).toEqual({ provider: 'raw-granted' });
+  expect(raw.calls.raw).toHaveLength(1);
+});
 
 test('image inbound raw resolve receives the inbound request path', async () => {
   const resolvePaths: Array<string | undefined> = [];

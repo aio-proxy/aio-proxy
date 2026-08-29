@@ -185,7 +185,6 @@ export function providerEntry(
   const models = patch?.models === undefined ? existing?.['models'] : patch.models;
   const proxy = patch?.proxy === undefined ? existing?.['proxy'] : patch.proxy;
   const transforms = patch?.transforms === undefined ? existing?.['transforms'] : patch.transforms;
-  const metadata = patch?.metadata === undefined ? existing?.['metadata'] : patch.metadata;
   return {
     kind: 'oauth',
     plugin,
@@ -197,7 +196,6 @@ export function providerEntry(
     ...(name === undefined || (typeof name === 'string' && name.trim() === '') ? {} : { name }),
     ...(alias === undefined ? {} : { alias }),
     ...(models === undefined ? {} : { models }),
-    ...(metadata === undefined ? {} : { metadata }),
     ...(proxy === undefined || proxy === null ? {} : { proxy }),
     ...(transforms === undefined ? {} : { transforms }),
   };

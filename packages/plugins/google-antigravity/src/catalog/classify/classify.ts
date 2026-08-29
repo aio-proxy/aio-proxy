@@ -1,7 +1,7 @@
 export type ThinkingMode = 'gemini' | 'claude' | 'none';
 
-export function classifyProvider(descriptor: { readonly id?: string; readonly metadata?: unknown }): ThinkingMode {
-  const providers = providerSource(descriptor.metadata);
+export function classifyProvider(descriptor: { readonly id?: string; readonly extra?: unknown }): ThinkingMode {
+  const providers = providerSource(descriptor.extra);
   const token = providerString(providers?.['apiProvider']) ?? providerString(providers?.['modelProvider']);
   if (token !== undefined) {
     if (token.includes('gemini')) return 'gemini';
@@ -14,9 +14,9 @@ export function classifyProvider(descriptor: { readonly id?: string; readonly me
   return 'none';
 }
 
-function providerSource(metadata: unknown): Record<string, unknown> | undefined {
-  if (!isRecord(metadata)) return undefined;
-  return isRecord(metadata['antigravity']) ? metadata['antigravity'] : metadata;
+function providerSource(extra: unknown): Record<string, unknown> | undefined {
+  if (!isRecord(extra)) return undefined;
+  return isRecord(extra['antigravity']) ? extra['antigravity'] : extra;
 }
 
 function providerString(value: unknown): string | undefined {

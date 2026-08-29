@@ -32,6 +32,7 @@
     "test:types": "tsc -p tsconfig.test.json"
   },
   "dependencies": {
+    "@aio-proxy/types": "workspace:*",
     "@ai-sdk/provider": "catalog:",
     "@date-fns/tz": "catalog:",
     "ai": "catalog:",

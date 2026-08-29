@@ -44,11 +44,15 @@ async function catalogState(input: { readonly metadata: Record<string, ModelMeta
       defaults: { model: 'defaults', preserve: false },
       explicit: { model: 'explicit', preserve: false },
     },
-    metadata: input.metadata,
     invoke: () => new ReadableStream(),
   } satisfies AiSdkProviderInstance;
   const state = await createServerState({
-    config: ConfigSchema.parse({ providers: {} }),
+    config: ConfigSchema.parse({
+      providers: {},
+      router: {
+        models: Object.fromEntries(Object.entries(input.metadata).map(([slug, metadata]) => [slug, { metadata }])),
+      },
+    }),
     dbHome: home,
     providerInstances: [provider],
   });

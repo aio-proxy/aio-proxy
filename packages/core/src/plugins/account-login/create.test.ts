@@ -5,6 +5,7 @@ import {
   staticAntigravityCatalog,
 } from '@aio-proxy/plugin-google-antigravity';
 
+import { validateModelCatalog } from '../catalog';
 import {
   AccountCleanupPendingError,
   configOf,
@@ -242,7 +243,7 @@ test('first login reaches prod and applies the snapshot after both endpoint time
     'https://daily-cloudcode-pa.googleapis.com',
     'https://cloudcode-pa.googleapis.com',
   ]);
-  expect(state.repository.readCatalog('person')?.catalog).toEqual(staticAntigravityCatalog());
+  expect(state.repository.readCatalog('person')?.catalog).toEqual(validateModelCatalog(staticAntigravityCatalog()));
 });
 
 test('discovery refreshes the in-memory credential before persistence', async () => {

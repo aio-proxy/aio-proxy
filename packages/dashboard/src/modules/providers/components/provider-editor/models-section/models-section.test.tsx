@@ -15,7 +15,7 @@ import type { ProviderAlias } from '../../../lib/alias-editor';
 import { PROVIDER_MODELS_PLACEHOLDER } from '../../../lib/constants';
 import { ModelsSection } from './models-section';
 
-const mocks = rs.hoisted(() => ({ fetchCatalog: rs.fn(), fetchEditView: rs.fn(), slugs: rs.fn() }));
+const mocks = rs.hoisted(() => ({ fetchCatalog: rs.fn(), fetchEditView: rs.fn() }));
 
 // Only the service boundary is mocked. `@tanstack/react-query` stays real: a stubbed `useMutation`
 // whose `mutate` never resolves makes every catalog assertion pass regardless of the button.
@@ -29,9 +29,6 @@ rs.mock('../../../services/providers-service', () => ({
     queryKey: ['providers', id, 'edit-view'],
     queryFn: () => mocks.fetchEditView(id),
   }),
-}));
-rs.mock('../../../services/models-dev-service', () => ({
-  modelsDevSlugsQueryOptions: () => ({ queryKey: ['models-dev-slugs'], queryFn: mocks.slugs }),
 }));
 
 const queryClient = new QueryClient({
@@ -76,13 +73,6 @@ const renderSection = (props: HarnessProps) => render(<Harness {...props} />, { 
 const CLIENT_ID_LABEL = /Client model ID|客户端模型 ID/u;
 const UPSTREAM_LABEL = /Upstream model|上游模型/u;
 
-const limitContextLabel = () => m['dashboard.providers.editor.metadata_limit_label_context']();
-const limitInputLabel = () => m['dashboard.providers.editor.metadata_limit_label_input']();
-const costInputLabel = () => m['dashboard.providers.editor.metadata_cost_label_input']();
-const costCacheReadLabel = () => m['dashboard.providers.editor.metadata_cost_label_cache_read']();
-const costReasoningLabel = () => m['dashboard.providers.editor.metadata_cost_label_reasoning']();
-const nameLabel = () => m['dashboard.providers.editor.metadata_field_label_name']();
-
 // Open the alias row's target picker and read back the option labels it offers.
 const targetOptions = async () => {
   const card = await screen.findByTestId('provider-alias-card');
@@ -91,28 +81,25 @@ const targetOptions = async () => {
   return options.map((option) => option.textContent);
 };
 
-const apiInitial = (models: readonly string[], metadata?: Record<string, Record<string, unknown>>) => ({
+const apiInitial = (models: readonly string[]) => ({
   kind: ProviderKind.Api,
   id: 'provider',
   protocol: ProviderProtocol.OpenAICompatible,
   baseURL: 'https://api.example/v1',
   models,
-  ...(metadata === undefined ? {} : { metadata }),
 });
 
 beforeEach(() => {
   mocks.fetchCatalog.mockReset();
   mocks.fetchEditView.mockReset();
-  mocks.slugs.mockReset();
-  mocks.slugs.mockResolvedValue({ slugs: ['openai/gpt-5', 'anthropic/claude-opus-4'] });
   queryClient.clear();
 });
 
 describe('ModelsSection', () => {
-  test('renders one row per whitelisted model and flags the ones carrying metadata', () => {
+  test('renders one row per whitelisted model', () => {
     renderSection({
       kind: ProviderKind.Api,
-      initial: apiInitial(['model-a', 'model-b'], { 'model-a': { name: 'A' } }),
+      initial: apiInitial(['model-a', 'model-b']),
     });
 
     expect(within(screen.getByTestId('model-row-model-a')).getByText('model-a')).toBeInTheDocument();
@@ -177,19 +164,6 @@ describe('ModelsSection', () => {
     expect(screen.getByTestId('models-rows').firstElementChild).toHaveAttribute('data-testid', 'model-row-model-z');
   });
 
-  test('removing a row keeps metadata for models outside the whitelist', async () => {
-    renderSection({
-      kind: ProviderKind.Api,
-      initial: apiInitial(['model-a'], { 'model-a': { name: 'A' }, 'alias-only': { extend: 'openai/gpt-5' } }),
-    });
-
-    fireEvent.click(within(screen.getByTestId('model-row-model-a')).getByTestId('model-row-remove'));
-
-    await waitFor(() => expect(section.state.values.models).toEqual([]));
-    // applyModelRows must carry the alias-only record through; only model-a's record goes.
-    expect(section.state.values.metadata).toEqual({ 'alias-only': { extend: 'openai/gpt-5' } });
-  });
-
   test('an oauth provider with an empty whitelist counts every discovered row as enabled', () => {
     renderSection({
       kind: ProviderKind.OAuth,
@@ -229,173 +203,6 @@ describe('ModelsSection', () => {
     const row = screen.getByTestId('model-row-model-a');
     expect(within(row).getByRole('checkbox')).toBeChecked();
     expect(within(row).getByTestId('model-row-remove')).toBeInTheDocument();
-  });
-
-  test('the metadata visual tab merges over fields it cannot edit instead of replacing them', async () => {
-    renderSection({
-      kind: ProviderKind.Api,
-      initial: apiInitial(['model-a'], {
-        'model-a': { capabilities: { knowledge: '2024-06' }, limit: { context: 100 } },
-      }),
-    });
-
-    fireEvent.click(within(screen.getByTestId('model-row-model-a')).getByTestId('model-row-metadata'));
-    await screen.findByTestId('provider-model-metadata-drawer');
-
-    const context = await screen.findByLabelText(limitContextLabel());
-    fireEvent.change(context, { target: { value: '4096' } });
-    fireEvent.click(screen.getByTestId('provider-model-metadata-save'));
-
-    await waitFor(() =>
-      expect(section.state.values.metadata?.['model-a']).toEqual({
-        capabilities: { knowledge: '2024-06' },
-        limit: { context: 4096 },
-      }),
-    );
-  });
-
-  test('the metadata visual tab accepts a fractional cost typed one keystroke at a time', async () => {
-    renderSection({ kind: ProviderKind.Api, initial: apiInitial(['model-a']) });
-
-    fireEvent.click(within(screen.getByTestId('model-row-model-a')).getByTestId('model-row-metadata'));
-    await screen.findByTestId('provider-model-metadata-drawer');
-
-    const cost = (await screen.findByLabelText(costInputLabel())) as HTMLInputElement;
-    // Append to the live DOM value rather than feeding absolute strings. The regression is React
-    // rewriting the field at the `0.0` step, where `Number()` collapses the text to `0`; an absolute
-    // next event would overwrite that rewrite, so the test would pass either way. Appending carries
-    // the clobber forward — on the broken code the field accumulates to `75`.
-    for (const character of '0.075') {
-      fireEvent.change(cost, { target: { value: cost.value + character } });
-    }
-
-    expect(cost).toHaveValue(0.075);
-    fireEvent.click(screen.getByTestId('provider-model-metadata-save'));
-    await waitFor(() => expect(section.state.values.metadata?.['model-a']).toEqual({ cost: { input: 0.075 } }));
-
-    // Clearing a money field must delete the key, not write `0`. Save closed the drawer, so reopen it.
-    fireEvent.click(within(screen.getByTestId('model-row-model-a')).getByTestId('model-row-metadata'));
-    await screen.findByTestId('provider-model-metadata-drawer');
-    fireEvent.change(await screen.findByLabelText(costInputLabel()), { target: { value: '' } });
-    fireEvent.click(screen.getByTestId('provider-model-metadata-save'));
-    await waitFor(() => expect(section.state.values.metadata?.['model-a']).toEqual({}));
-  });
-
-  test('the metadata visual tab cannot be entered while the JSON draft is unparseable', async () => {
-    renderSection({ kind: ProviderKind.Api, initial: apiInitial(['model-a'], { 'model-a': { name: 'A' } }) });
-
-    fireEvent.click(within(screen.getByTestId('model-row-model-a')).getByTestId('model-row-metadata'));
-    await screen.findByTestId('provider-model-metadata-drawer');
-    expect(screen.getByTestId('metadata-tab-visual')).not.toHaveAttribute('aria-disabled', 'true');
-
-    // Drop the closing brace: the visual tab merges over the parsed draft, so entering it on broken
-    // text would write back an object missing every key the text still carries.
-    fireEvent.click(screen.getByTestId('metadata-tab-json'));
-    fireEvent.change(await screen.findByTestId('metadata-json-draft'), { target: { value: '{"name":"A"' } });
-
-    // Base UI marks a disabled tab with aria-disabled, not the native attribute.
-    await waitFor(() => expect(screen.getByTestId('metadata-tab-visual')).toHaveAttribute('aria-disabled', 'true'));
-    fireEvent.click(screen.getByTestId('metadata-tab-visual'));
-    // keepMounted defaults to false, so the visual fields' absence is the assertion.
-    expect(screen.queryByLabelText(limitContextLabel())).toBeNull();
-
-    // Save is disabled on an unparseable draft, so this click is a no-op; the two assertions above
-    // are the discriminating ones. This only pins that nothing lossy slips through anyway.
-    fireEvent.click(screen.getByTestId('provider-model-metadata-save'));
-    expect(section.state.values.metadata?.['model-a']).toEqual({ name: 'A' });
-
-    // Emptying the textarea to start over has no keys to lose, so it must not lock the tab.
-    fireEvent.change(screen.getByTestId('metadata-json-draft'), { target: { value: '  ' } });
-    await waitFor(() => expect(screen.getByTestId('metadata-tab-visual')).not.toHaveAttribute('aria-disabled', 'true'));
-  });
-
-  // The drawer is a form, not a code editor: opening on the textarea was the shipped default and the
-  // demo's first impression is the visual form. Only an unparseable draft may force JSON.
-  test('the metadata drawer opens on the visual tab and an unparseable draft forces JSON', async () => {
-    renderSection({ kind: ProviderKind.Api, initial: apiInitial(['model-a'], { 'model-a': { name: 'A' } }) });
-
-    fireEvent.click(within(screen.getByTestId('model-row-model-a')).getByTestId('model-row-metadata'));
-    await screen.findByTestId('provider-model-metadata-drawer');
-
-    // No click into the visual tab: the fields are there because visual is the default.
-    expect(await screen.findByLabelText(limitContextLabel())).toBeInTheDocument();
-    expect(screen.getByTestId('metadata-tab-visual')).toHaveAttribute('aria-selected', 'true');
-    expect(screen.queryByTestId('metadata-json-draft')).toBeNull();
-
-    fireEvent.click(screen.getByTestId('metadata-tab-json'));
-    fireEvent.change(await screen.findByTestId('metadata-json-draft'), { target: { value: '{oops' } });
-    await waitFor(() => expect(screen.getByTestId('metadata-tab-json')).toHaveAttribute('aria-selected', 'true'));
-
-    // Controlled tabs still have to obey the user: repairing the draft and choosing visual must work,
-    // or forcing json once would strand the user there for the rest of the session.
-    fireEvent.change(screen.getByTestId('metadata-json-draft'), { target: { value: '{"name":"A"}' } });
-    fireEvent.click(screen.getByTestId('metadata-tab-visual'));
-    expect(await screen.findByLabelText(limitContextLabel())).toBeInTheDocument();
-  });
-
-  // A two-state switch reads an explicit `false` as "inherit" and silently converts it on save. Only a
-  // three-state control can tell the two apart, so both directions are pinned here.
-  test('a capability reads and writes explicit false, and inherit deletes the key', async () => {
-    renderSection({
-      kind: ProviderKind.Api,
-      initial: apiInitial(['model-a'], { 'model-a': { capabilities: { attachment: false, reasoning: true } } }),
-    });
-
-    fireEvent.click(within(screen.getByTestId('model-row-model-a')).getByTestId('model-row-metadata'));
-    await screen.findByTestId('provider-model-metadata-drawer');
-
-    const attachment = await screen.findByTestId('metadata-capability-attachment');
-    expect(attachment).toHaveTextContent(m['dashboard.providers.editor.metadata_capability_unsupported']());
-    expect(screen.getByTestId('metadata-capability-reasoning')).toHaveTextContent(
-      m['dashboard.providers.editor.metadata_capability_supported'](),
-    );
-
-    // Inherit is the only choice that writes nothing.
-    fireEvent.click(attachment);
-    fireEvent.keyDown(
-      await screen.findByRole('option', { name: m['dashboard.providers.editor.metadata_capability_inherit']() }),
-      { key: 'Enter' },
-    );
-    fireEvent.click(screen.getByTestId('provider-model-metadata-save'));
-    await waitFor(() =>
-      expect(section.state.values.metadata?.['model-a']).toEqual({ capabilities: { reasoning: true } }),
-    );
-
-    // And unsupported writes the boolean rather than dropping the key.
-    fireEvent.click(within(screen.getByTestId('model-row-model-a')).getByTestId('model-row-metadata'));
-    await screen.findByTestId('provider-model-metadata-drawer');
-    fireEvent.click(await screen.findByTestId('metadata-capability-toolCall'));
-    fireEvent.keyDown(
-      await screen.findByRole('option', { name: m['dashboard.providers.editor.metadata_capability_unsupported']() }),
-      { key: 'Enter' },
-    );
-    fireEvent.click(screen.getByTestId('provider-model-metadata-save'));
-    await waitFor(() =>
-      expect(section.state.values.metadata?.['model-a']).toEqual({
-        capabilities: { reasoning: true, toolCall: false },
-      }),
-    );
-  });
-
-  test('the newly exposed limit and cost fields round-trip into the draft', async () => {
-    renderSection({ kind: ProviderKind.Api, initial: apiInitial(['model-a']) });
-
-    fireEvent.click(within(screen.getByTestId('model-row-model-a')).getByTestId('model-row-metadata'));
-    await screen.findByTestId('provider-model-metadata-drawer');
-
-    fireEvent.change(await screen.findByLabelText(limitInputLabel()), { target: { value: '8192' } });
-    fireEvent.change(screen.getByLabelText(costCacheReadLabel()), { target: { value: '0.5' } });
-    fireEvent.change(screen.getByLabelText(nameLabel()), { target: { value: 'GPT-5' } });
-    // An empty number field must read as inherit, not as zero.
-    expect(screen.getByLabelText(costReasoningLabel())).toHaveAttribute(
-      'placeholder',
-      m['dashboard.providers.editor.metadata_inherit_placeholder'](),
-    );
-
-    // The JSON tab is the same draft seen from the other side; a field wired to nothing shows up here.
-    fireEvent.click(screen.getByTestId('metadata-tab-json'));
-    const draft = JSON.parse(((await screen.findByTestId('metadata-json-draft')) as HTMLTextAreaElement).value);
-    expect(draft).toEqual({ name: 'GPT-5', limit: { input: 8192 }, cost: { cacheRead: 0.5 } });
   });
 
   // The placeholder is a comma-separated pair, and the box used to take the whole string as a single
@@ -482,160 +289,6 @@ describe('ModelsSection', () => {
       m['dashboard.providers.form.catalog_failed']({ code: 'upstream_unauthorized' }),
     );
     expect(screen.getByTestId('model-row-model-a')).toBeInTheDocument();
-  });
-
-  // An overflowing entry (`1e999` parses to Infinity) is the one numeric string the field cannot
-  // store. Keeping its text on screen left the input showing a value the draft did not contain, so
-  // the user read a context limit or a price that was never saved.
-  test('a number the draft cannot hold is refused instead of being displayed', async () => {
-    renderSection({
-      kind: ProviderKind.Api,
-      initial: apiInitial(['model-a'], { 'model-a': { limit: { context: 4096 } } }),
-    });
-
-    fireEvent.click(within(screen.getByTestId('model-row-model-a')).getByTestId('model-row-metadata'));
-    await screen.findByTestId('provider-model-metadata-drawer');
-
-    const context = (await screen.findByLabelText(limitContextLabel())) as HTMLInputElement;
-    fireEvent.change(context, { target: { value: '1e999' } });
-
-    expect(context.value).toBe('4096');
-    fireEvent.click(screen.getByTestId('metadata-tab-json'));
-    const draft = JSON.parse(((await screen.findByTestId('metadata-json-draft')) as HTMLTextAreaElement).value);
-    expect(draft).toEqual({ limit: { context: 4096 } });
-  });
-
-  // An empty picker with no explanation is indistinguishable from a catalog with no models.
-  test('a failed models.dev slug query explains itself and offers a retry', async () => {
-    mocks.slugs.mockRejectedValue(new Error('offline'));
-    renderSection({ kind: ProviderKind.Api, initial: apiInitial(['model-a']) });
-
-    fireEvent.click(within(screen.getByTestId('model-row-model-a')).getByTestId('model-row-metadata'));
-    await screen.findByTestId('provider-model-metadata-drawer');
-
-    const retry = await screen.findByTestId('metadata-extend-retry');
-    expect(screen.getByTestId('metadata-extend-status')).toHaveTextContent(
-      m['dashboard.providers.editor.metadata_extend_error'](),
-    );
-
-    mocks.slugs.mockResolvedValue({ slugs: ['openai/gpt-5'] });
-    fireEvent.click(retry);
-
-    await waitFor(() =>
-      expect(screen.getByTestId('metadata-extend-status')).toHaveTextContent(
-        m['dashboard.providers.editor.metadata_extend_loaded']({ count: 1 }),
-      ),
-    );
-  });
-
-  test('the extend picker keeps a clear control when a slug is set', async () => {
-    renderSection({
-      kind: ProviderKind.Api,
-      initial: apiInitial(['model-a'], { 'model-a': { extend: 'openai/gpt-5' } }),
-    });
-
-    fireEvent.click(within(screen.getByTestId('model-row-model-a')).getByTestId('model-row-metadata'));
-    await screen.findByTestId('provider-model-metadata-drawer');
-
-    expect(document.querySelector('[data-slot="combobox-clear"]')).not.toBeNull();
-  });
-
-  test('visual metadata fields are named by prose, not config key paths', async () => {
-    renderSection({ kind: ProviderKind.Api, initial: apiInitial(['model-a']) });
-
-    fireEvent.click(within(screen.getByTestId('model-row-model-a')).getByTestId('model-row-metadata'));
-    await screen.findByTestId('provider-model-metadata-drawer');
-
-    expect(await screen.findByLabelText(limitContextLabel())).toBeInTheDocument();
-    expect(
-      screen.getByLabelText(m['dashboard.providers.editor.metadata_capability_label_reasoning']()),
-    ).toBeInTheDocument();
-    expect(screen.getByLabelText('Temperature')).toBeInTheDocument();
-    expect(screen.getByLabelText(nameLabel())).toHaveAttribute(
-      'placeholder',
-      m['dashboard.providers.editor.metadata_name_placeholder'](),
-    );
-    expect(screen.getByTestId('provider-model-metadata-save')).toHaveTextContent(
-      m['dashboard.providers.actions.save_metadata'](),
-    );
-    expect(screen.queryByLabelText('limit.context')).toBeNull();
-    expect(screen.queryByLabelText('capabilities.reasoning')).toBeNull();
-  });
-
-  test('broken JSON and a schema failure use different alerts, and only the former names the blocked tab', async () => {
-    renderSection({ kind: ProviderKind.Api, initial: apiInitial(['model-a'], { 'model-a': { name: 'A' } }) });
-
-    fireEvent.click(within(screen.getByTestId('model-row-model-a')).getByTestId('model-row-metadata'));
-    await screen.findByTestId('provider-model-metadata-drawer');
-    fireEvent.click(screen.getByTestId('metadata-tab-json'));
-
-    fireEvent.change(await screen.findByTestId('metadata-json-draft'), { target: { value: '{oops' } });
-    const jsonAlert = await screen.findByRole('alert');
-    expect(jsonAlert).toHaveTextContent(m['dashboard.providers.form.metadata_json_error']());
-    expect(jsonAlert).toHaveAttribute('id', 'metadata-visual-blocked');
-    expect(screen.getByTestId('metadata-tab-visual')).toHaveAttribute('aria-disabled', 'true');
-
-    // A legal object that Zod rejects is still a form: the visual tab stays open, and the alert
-    // has to name the field instead of claiming the draft is not an object.
-    fireEvent.change(screen.getByTestId('metadata-json-draft'), {
-      target: { value: JSON.stringify({ limit: { context: 100, input: 200 } }) },
-    });
-    await waitFor(() => expect(screen.getByTestId('metadata-tab-visual')).not.toHaveAttribute('aria-disabled', 'true'));
-    const schemaAlert = screen.getByRole('alert');
-    expect(schemaAlert).toHaveTextContent(
-      m['dashboard.providers.form.metadata_schema_error']({
-        path: 'limit.input',
-      }),
-    );
-    expect(schemaAlert).not.toHaveAttribute('id', 'metadata-visual-blocked');
-    expect(screen.getByTestId('provider-model-metadata-save')).toBeDisabled();
-  });
-
-  test('the extend picker is disabled only while the catalog is loading and no slug is set', async () => {
-    mocks.slugs.mockReset();
-    mocks.slugs.mockImplementation(() => new Promise(() => {}));
-    renderSection({ kind: ProviderKind.Api, initial: apiInitial(['model-a']) });
-
-    fireEvent.click(within(screen.getByTestId('model-row-model-a')).getByTestId('model-row-metadata'));
-    await screen.findByTestId('provider-model-metadata-drawer');
-
-    const empty = document.getElementById('metadata-extend');
-    expect(empty).toBeDisabled();
-    expect(empty).toHaveAttribute('placeholder', m['dashboard.providers.editor.metadata_extend_loading_placeholder']());
-    expect(empty).toHaveAttribute('aria-label', m['dashboard.providers.editor.metadata_extend_aria_label']());
-    expect(screen.getByRole('status')).toHaveTextContent(m['dashboard.providers.editor.metadata_extend_loading']());
-  });
-
-  test('the extend picker stays enabled while the catalog is loading if a slug is already set', async () => {
-    mocks.slugs.mockReset();
-    mocks.slugs.mockImplementation(() => new Promise(() => {}));
-    renderSection({
-      kind: ProviderKind.Api,
-      initial: apiInitial(['model-a'], { 'model-a': { extend: 'openai/gpt-5' } }),
-    });
-
-    fireEvent.click(within(screen.getByTestId('model-row-model-a')).getByTestId('model-row-metadata'));
-    await screen.findByTestId('provider-model-metadata-drawer');
-
-    const filled = document.getElementById('metadata-extend');
-    expect(filled).toBeEnabled();
-    expect(filled).toHaveValue('openai/gpt-5');
-  });
-
-  test('an extend slug missing from the catalog stays in the picker so it can be selected again', async () => {
-    mocks.slugs.mockResolvedValue({ slugs: ['openai/gpt-5'] });
-    renderSection({
-      kind: ProviderKind.Api,
-      initial: apiInitial(['model-a'], { 'model-a': { extend: 'legacy/missing-slug' } }),
-    });
-
-    fireEvent.click(within(screen.getByTestId('model-row-model-a')).getByTestId('model-row-metadata'));
-    await screen.findByTestId('provider-model-metadata-drawer');
-
-    fireEvent.mouseDown(screen.getByRole('button', { expanded: false }));
-    // The typed query is the saved slug itself, so the catalog hit is filtered out; the
-    // discriminating check is that the missing slug is still an option and can be picked again.
-    expect(await screen.findByRole('option', { name: 'legacy/missing-slug' })).toBeInTheDocument();
   });
 
   // Aliases moved here from Routing (fidelity-rules D-F6): they rename the models this section picks,
@@ -863,17 +516,6 @@ describe('ModelsSection', () => {
     expect(summary).not.toBeNull();
     expect(summary).toHaveAttribute('role', 'alert');
     expect(summary).toHaveTextContent(m['dashboard.providers.form.alias_name_duplicate']());
-  });
-
-  test('metadata cannot be opened on a disabled row', () => {
-    renderSection({
-      kind: ProviderKind.Api,
-      initial: apiInitial(['model-a']),
-      candidates: ['model-a', 'disc-b'],
-    });
-
-    expect(within(screen.getByTestId('model-row-disc-b')).getByTestId('model-row-metadata')).toBeDisabled();
-    expect(within(screen.getByTestId('model-row-model-a')).getByTestId('model-row-metadata')).toBeEnabled();
   });
 
   // Nesting, not styling: the card body spaces its blocks with `space-y-*`, which Tailwind compiles to a

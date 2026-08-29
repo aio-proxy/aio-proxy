@@ -42,7 +42,7 @@ test('applies catalog wire profiles on the initial envelope and the retry envelo
         'gemini-4.0-flash-preview',
         {
           id: 'gemini-4.0-flash-preview',
-          metadata: { antigravity: { modelEnum: 'MODEL_GEMINI_4_FLASH', maxOutputTokens: 8192 } },
+          extra: { antigravity: { modelEnum: 'MODEL_GEMINI_4_FLASH', maxOutputTokens: 8192 } },
         },
       ],
     ]),

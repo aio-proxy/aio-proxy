@@ -697,109 +697,6 @@ test('every exposure row names its origin, direct models included', () => {
   expect(mapped.getByText(/direct-b/u)).toBeTruthy();
 });
 
-test('edit-api clearing model metadata sends an explicit empty metadata object', async () => {
-  renderPage({
-    mode: ProviderFormMode.Edit,
-    kind: ProviderKind.Api,
-    providerId: 'p1',
-    initial: {
-      id: 'p1',
-      name: 'Existing',
-      enabled: true,
-      protocol: ProviderProtocol.OpenAICompatible,
-      baseURL: 'https://api.example.com/v1',
-      models: ['a'],
-      metadata: { a: { name: 'A' } },
-    },
-    onSessionIdChange: rs.fn(),
-  });
-
-  fireEvent.click(within(screen.getByTestId('model-row-a')).getByTestId('model-row-metadata'));
-  await screen.findByTestId('provider-model-metadata-drawer');
-  // The drawer opens on the visual form, so emptying the record means going to the raw draft first.
-  fireEvent.click(screen.getByTestId('metadata-tab-json'));
-  fireEvent.change(await screen.findByTestId('metadata-json-draft'), { target: { value: '{}' } });
-  fireEvent.click(screen.getByTestId('provider-model-metadata-save'));
-
-  await waitFor(() => expect(saveButton()).toBeEnabled());
-  fireEvent.click(saveButton());
-
-  await waitFor(() => expect(mocks.update).toHaveBeenCalled());
-  expect(mocks.create).not.toHaveBeenCalled();
-  const input = mocks.update.mock.calls[0]?.[0] as { body: { metadata?: unknown } };
-  // Explicitly `{}`, never omitted: `replaceProvider` retains the persisted `metadata` when the body
-  // leaves it out, so omission here would make clearing a record impossible.
-  expect(input.body.metadata).toEqual({});
-});
-
-// The reconciliation that prunes an emptied record ran on the update branch only, so this exact
-// sequence wrote `metadata: { a: {} }` into a brand-new provider's config: a key that means nothing,
-// for a model whose overrides the user just deleted.
-test('create-api prunes an emptied metadata record instead of writing it', async () => {
-  renderPage({
-    mode: ProviderFormMode.Create,
-    kind: ProviderKind.Api,
-    initial: { enabled: true, models: ['a'] },
-    onSessionIdChange: rs.fn(),
-  });
-
-  fillName('Demo API');
-  fillId('demo-api');
-  fillBaseURL('https://api.example.com/v1');
-  await pickProtocol();
-
-  fireEvent.click(within(screen.getByTestId('model-row-a')).getByTestId('model-row-metadata'));
-  await screen.findByTestId('provider-model-metadata-drawer');
-  fireEvent.change(await screen.findByLabelText(m['dashboard.providers.editor.metadata_cost_label_input']()), {
-    target: { value: '1' },
-  });
-  fireEvent.click(screen.getByTestId('provider-model-metadata-save'));
-
-  // Reopen and clear it again: the record is now `{}`, which is what the update branch drops.
-  fireEvent.click(within(screen.getByTestId('model-row-a')).getByTestId('model-row-metadata'));
-  await screen.findByTestId('provider-model-metadata-drawer');
-  fireEvent.change(await screen.findByLabelText(m['dashboard.providers.editor.metadata_cost_label_input']()), {
-    target: { value: '' },
-  });
-  fireEvent.click(screen.getByTestId('provider-model-metadata-save'));
-
-  await waitFor(() => expect(saveButton()).toBeEnabled());
-  fireEvent.click(saveButton());
-
-  await waitFor(() => expect(mocks.create).toHaveBeenCalled());
-  const body = mocks.create.mock.calls[0]?.[0] as { metadata?: unknown };
-  // Not `{}` either: nothing was ever persisted, so there is nothing to clear and the key has no
-  // reason to exist in the file.
-  expect(body.metadata).toBeUndefined();
-});
-
-// A provider that has never had per-model overrides got `metadata: {}` written into its config entry
-// on every single save, because the body always carried the key.
-test('edit-api a provider with no metadata does not gain a dead metadata key', async () => {
-  renderPage({
-    mode: ProviderFormMode.Edit,
-    kind: ProviderKind.Api,
-    providerId: 'p1',
-    initial: {
-      id: 'p1',
-      name: 'Existing',
-      enabled: true,
-      protocol: ProviderProtocol.OpenAICompatible,
-      baseURL: 'https://api.example.com/v1',
-      models: ['a'],
-    },
-    onSessionIdChange: rs.fn(),
-  });
-
-  fillName('Renamed');
-  await waitFor(() => expect(saveButton()).toBeEnabled());
-  fireEvent.click(saveButton());
-
-  await waitFor(() => expect(mocks.update).toHaveBeenCalled());
-  const input = mocks.update.mock.calls[0]?.[0] as { body: { metadata?: unknown } };
-  expect(input.body.metadata).toBeUndefined();
-});
-
 // serializeAlias([], 'edit') is `{}`. Passing that on every save of a provider that never had
 // aliases stamps `alias: {}` into the user's config. An untouched undefined form value must stay
 // omitted — deleting every row still serializes to `{}`, which is the intentional clear.
@@ -920,6 +817,6 @@ test('oauth create still authorizes when a leftover empty alias has models as to
   // section-gated fields; if a later change starts sending alias (the parked
   // "create-auth drops draft aliases" todo), this branch needs a validation
   // gate again — exact equality here is the tripwire for models / transforms /
-  // metadata / weight as well, not just alias.
+  // weight as well, not just alias.
   expect(mocks.start.mock.calls[0]?.[0]).toEqual(expect.objectContaining({ providerPatch: { enabled: true } }));
 });

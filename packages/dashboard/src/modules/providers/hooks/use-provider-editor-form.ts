@@ -22,8 +22,6 @@ export type OAuthEditorShape = {
   readonly alias?: readonly AliasRow[] | undefined;
   readonly transforms?: unknown;
   readonly models?: readonly string[] | undefined;
-  // Keyed metadata, not Record<string, unknown>: this is fed to toModelRows.
-  readonly metadata?: OAuthProviderMutationBody['metadata'];
   readonly validationModel?: string | undefined;
 };
 

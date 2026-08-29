@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { clearModelsCache, fileCacheStorage, Router, type ModelsDevModel } from '@aio-proxy/core';
-import { ModelContextAggregation, ProviderKind } from '@aio-proxy/types';
+import { ModelContextAggregation, ProviderKind, type RouterModelPolicy } from '@aio-proxy/types';
 
 import type { RuntimeProviderInstance } from '../../runtime';
 import type { ServerState } from '../../server-state';
@@ -93,8 +93,12 @@ const aliasOnlyProvider = {
 function fakeState(
   providers: readonly RuntimeProviderInstance[],
   aggregation?: (typeof ModelContextAggregation)[keyof typeof ModelContextAggregation],
+  models?: Record<string, RouterModelPolicy>,
 ): ServerState {
-  const config = aggregation === undefined ? undefined : { router: { modelContextAggregation: aggregation } };
+  const config =
+    aggregation === undefined && models === undefined
+      ? undefined
+      : { router: { ...(aggregation === undefined ? {} : { modelContextAggregation: aggregation }), models } };
   return {
     acquireProviderSnapshot: () => ({
       snapshot: {
@@ -107,13 +111,11 @@ function fakeState(
   } as unknown as ServerState;
 }
 
-// A provider exposing one public slug backed by an upstream model, with optional
-// config-level metadata limits for that upstream model.
+// A provider exposing one public slug backed by an upstream model.
 function slugProvider(
   id: string,
   slug: string,
   modelId: string,
-  limit?: { context?: number; input?: number; output?: number },
   routing?: { readonly priority?: number; readonly weight?: number },
 ): RuntimeProviderInstance {
   return {
@@ -121,11 +123,73 @@ function slugProvider(
     kind: ProviderKind.Api,
     enabled: true,
     alias: { [slug]: { model: modelId, preserve: false } },
-    ...(limit === undefined ? {} : { configMetadata: { [modelId]: { limit } } }),
     ...routing,
     model: { invoke: async function* () {} },
   } as unknown as RuntimeProviderInstance;
 }
+
+test('router slug metadata supplies the config layer for every candidate', async () => {
+  await seedCatalog({});
+  const resolved = await resolveEnabledModels(
+    fakeState([slugProvider('a', 'pub', 'up-a'), slugProvider('b', 'pub', 'up-b')], undefined, {
+      pub: { metadata: { name: 'Pub', limit: { context: 100 } }, providers: {} },
+    }),
+  );
+  const model = resolved.find((entry) => entry.slug === 'pub')!;
+  expect(model.candidates.map((candidate) => candidate.configMetadata?.name)).toEqual(['Pub', 'Pub']);
+  expect(resolveModelField(model, (metadata) => metadata.name)).toBe('Pub');
+});
+
+test('per-provider limit override replaces the slug limit for that candidate only', async () => {
+  await seedCatalog({});
+  const providers = [slugProvider('capped', 'pub', 'up-a'), slugProvider('full', 'pub', 'up-b')];
+  const models = {
+    pub: {
+      metadata: { limit: { context: 200_000, output: 50_000 } },
+      providers: { capped: { limit: { context: 100_000 } } },
+    },
+  };
+  const min = await resolveEnabledModels(fakeState(providers, ModelContextAggregation.Min, models));
+  expect(min.find((entry) => entry.slug === 'pub')?.candidates[0]?.configMetadata?.limit).toEqual({
+    context: 100_000,
+  });
+  expect(
+    resolveAggregatedLimit(
+      min.find((entry) => entry.slug === 'pub')!,
+      'context',
+    ),
+  ).toBe(100_000);
+  const max = await resolveEnabledModels(fakeState(providers, ModelContextAggregation.Max, models));
+  expect(
+    resolveAggregatedLimit(
+      max.find((entry) => entry.slug === 'pub')!,
+      'context',
+    ),
+  ).toBe(200_000);
+});
+
+test('per-provider cost override does not leak name or capabilities', async () => {
+  await seedCatalog({});
+  const resolved = await resolveEnabledModels(
+    fakeState([slugProvider('cheap', 'pub', 'up-a')], undefined, {
+      pub: {
+        metadata: {
+          name: 'Pub',
+          capabilities: { reasoning: true },
+          cost: { input: 10, output: 20 },
+        },
+        providers: { cheap: { cost: { input: 1 } } },
+      },
+    }),
+  );
+  const model = resolved.find((entry) => entry.slug === 'pub')!;
+  expect(model.candidates[0]?.configMetadata).toEqual({
+    name: 'Pub',
+    capabilities: { reasoning: true },
+    cost: { input: 1 },
+  });
+  expect(resolveModelField(model, (metadata) => metadata.name)).toBe('Pub');
+});
 
 test('resolveEnabledModels reads metadata only from the alias slug, never the upstream modelId', async () => {
   // alias "my-alias" has no catalog entry; upstream "gpt-5.6-sol" does. The upstream
@@ -175,12 +239,17 @@ test('resolves config over upstream over public-slug fallback for each limit fie
     kind: ProviderKind.Api,
     enabled: true,
     alias: { shared: { model: 'upstream', preserve: false } },
-    configMetadata: { upstream: { name: 'Configured', limit: { input: 272_000 } } },
     upstreamMetadata: { upstream: { name: 'Catalog', limit: { context: 400_000, output: 64_000 } } },
     model: { invoke: async function* () {} },
   } as unknown as RuntimeProviderInstance;
 
-  const model = (await resolveEnabledModels(fakeState([provider])))[0]!;
+  const model = (
+    await resolveEnabledModels(
+      fakeState([provider], undefined, {
+        shared: { metadata: { name: 'Configured', limit: { input: 272_000 } }, providers: {} },
+      }),
+    )
+  )[0]!;
   expect(resolveModelField(model, (metadata) => metadata.name)).toBe('Configured');
   expect(resolveAggregatedLimit(model, 'context')).toBe(400_000);
   expect(resolveAggregatedLimit(model, 'input')).toBe(272_000);
@@ -189,25 +258,25 @@ test('resolves config over upstream over public-slug fallback for each limit fie
 
 test('aggregates context, input, and output independently across candidates', async () => {
   await seedCatalog({});
-  const first = slugProvider('p1', 'shared', 'up-first', {
-    context: 400_000,
-    input: 272_000,
-    output: 128_000,
-  });
-  const second = slugProvider('p2', 'shared', 'up-second', {
-    context: 300_000,
-    input: 250_000,
-    output: 64_000,
-  });
+  const first = slugProvider('p1', 'shared', 'up-first');
+  const second = slugProvider('p2', 'shared', 'up-second');
+  const models = {
+    shared: {
+      providers: {
+        p1: { limit: { context: 400_000, input: 272_000, output: 128_000 } },
+        p2: { limit: { context: 300_000, input: 250_000, output: 64_000 } },
+      },
+    },
+  };
 
-  const min = (await resolveEnabledModels(fakeState([first, second], ModelContextAggregation.Min)))[0]!;
+  const min = (await resolveEnabledModels(fakeState([first, second], ModelContextAggregation.Min, models)))[0]!;
   expect(min.modelId).toBe('up-first');
   expect(min.provider).toBe(first);
   expect(resolveAggregatedLimit(min, 'context')).toBe(300_000);
   expect(resolveAggregatedLimit(min, 'input')).toBe(250_000);
   expect(resolveAggregatedLimit(min, 'output')).toBe(64_000);
 
-  const max = (await resolveEnabledModels(fakeState([first, second], ModelContextAggregation.Max)))[0]!;
+  const max = (await resolveEnabledModels(fakeState([first, second], ModelContextAggregation.Max, models)))[0]!;
   expect(resolveAggregatedLimit(max, 'context')).toBe(400_000);
   expect(resolveAggregatedLimit(max, 'input')).toBe(272_000);
   expect(resolveAggregatedLimit(max, 'output')).toBe(128_000);
@@ -221,7 +290,7 @@ test('uses only the first candidate for non-aggregated fields', async () => {
       kind: ProviderKind.Api,
       enabled: true,
       alias: { shared: { model: modelId, preserve: false } },
-      configMetadata: { [modelId]: { name, capabilities: { structuredOutput, releaseDate } } },
+      upstreamMetadata: { [modelId]: { name, capabilities: { structuredOutput, releaseDate } } },
       model: { invoke: async function* () {} },
     }) as unknown as RuntimeProviderInstance;
   const first = provider('p1', 'up-first', 'First', false, '1970-01-02');
@@ -236,12 +305,13 @@ test('uses only the first candidate for non-aggregated fields', async () => {
 test('ignores missing candidate limits for both min and max aggregation', async () => {
   await seedCatalog({});
   const missing = slugProvider('p1', 'shared', 'up-missing');
-  const present = slugProvider('p2', 'shared', 'up-present', { output: 64_000 });
+  const present = slugProvider('p2', 'shared', 'up-present');
+  const models = { shared: { providers: { p2: { limit: { output: 64_000 } } } } };
 
-  const min = (await resolveEnabledModels(fakeState([missing, present], ModelContextAggregation.Min)))[0]!;
+  const min = (await resolveEnabledModels(fakeState([missing, present], ModelContextAggregation.Min, models)))[0]!;
   expect(resolveAggregatedLimit(min, 'output')).toBe(64_000);
 
-  const max = (await resolveEnabledModels(fakeState([missing, present], ModelContextAggregation.Max)))[0]!;
+  const max = (await resolveEnabledModels(fakeState([missing, present], ModelContextAggregation.Max, models)))[0]!;
   expect(resolveAggregatedLimit(max, 'output')).toBe(64_000);
 });
 
@@ -279,22 +349,35 @@ test('treats a malformed cached models.dev row as missing metadata', async () =>
 });
 
 test('chooses the deterministic representative by priority then weight then config order', async () => {
-  const first = slugProvider('first', 'shared', 'a', undefined, { priority: 10, weight: 1 });
-  const second = slugProvider('second', 'shared', 'b', undefined, { priority: 20, weight: 1 });
+  await seedCatalog({});
+  const first = slugProvider('first', 'shared', 'a', { priority: 10, weight: 1 });
+  const second = slugProvider('second', 'shared', 'b', { priority: 20, weight: 1 });
   const model = (await resolveEnabledModels(fakeState([first, second])))[0]!;
   expect(model.provider.id).toBe('second');
 });
 
 test('excludes zero-weight candidates from limit aggregation', async () => {
-  const positiveLimit = slugProvider('positive', 'shared', 'up-positive', { context: 400_000 }, { weight: 1 });
-  const zeroWeightSmallLimit = slugProvider('zero', 'shared', 'up-zero', { context: 8_000 }, { weight: 0 });
-  const model = (await resolveEnabledModels(fakeState([positiveLimit, zeroWeightSmallLimit])))[0]!;
+  await seedCatalog({});
+  const positiveLimit = slugProvider('positive', 'shared', 'up-positive', { weight: 1 });
+  const zeroWeightSmallLimit = slugProvider('zero', 'shared', 'up-zero', { weight: 0 });
+  const model = (
+    await resolveEnabledModels(
+      fakeState([positiveLimit, zeroWeightSmallLimit], undefined, {
+        shared: {
+          providers: {
+            positive: { limit: { context: 400_000 } },
+            zero: { limit: { context: 8_000 } },
+          },
+        },
+      }),
+    )
+  )[0]!;
   expect(resolveAggregatedLimit(model, 'context')).toBe(400_000);
 });
 
 test('omits a model when every normal candidate has zero weight', async () => {
-  const zeroA = slugProvider('a', 'shared', 'up-a', undefined, { weight: 0 });
-  const zeroB = slugProvider('b', 'shared', 'up-b', undefined, { weight: 0 });
+  const zeroA = slugProvider('a', 'shared', 'up-a', { weight: 0 });
+  const zeroB = slugProvider('b', 'shared', 'up-b', { weight: 0 });
   expect(await resolveEnabledModels(fakeState([zeroA, zeroB]))).toEqual([]);
 });
 
@@ -311,13 +394,21 @@ test('capability resolution preserves false and replaces arrays wholesale', asyn
     kind: ProviderKind.Api,
     enabled: true,
     alias: { shared: { model: 'upstream', preserve: false } },
-    configMetadata: {
-      upstream: { capabilities: { structuredOutput: false, modalities: { input: [] } } },
-    },
     model: { invoke: async function* () {} },
   } as unknown as RuntimeProviderInstance;
 
-  const capabilities = resolveModelCapabilities((await resolveEnabledModels(fakeState([provider])))[0]!);
+  const capabilities = resolveModelCapabilities(
+    (
+      await resolveEnabledModels(
+        fakeState([provider], undefined, {
+          shared: {
+            metadata: { capabilities: { structuredOutput: false, modalities: { input: [] } } },
+            providers: {},
+          },
+        }),
+      )
+    )[0]!,
+  );
   expect(capabilities?.structuredOutput).toBe(false);
   expect(capabilities?.modalities?.input).toEqual([]);
   expect(capabilities?.reasoningOptions).toEqual([{ type: 'effort', values: ['low', 'high'] }]);

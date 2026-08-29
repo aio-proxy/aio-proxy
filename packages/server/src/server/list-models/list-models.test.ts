@@ -4,7 +4,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { clearModelsCache, fileCacheStorage, Router, type ModelsDevModel } from '@aio-proxy/core';
-import { ModelContextAggregation, ProviderKind } from '@aio-proxy/types';
+import {
+  ModelContextAggregation,
+  ProviderKind,
+  type RouterModelPolicy,
+  RouterModelPolicySchema,
+} from '@aio-proxy/types';
 
 import type { RuntimeProviderInstance } from '../../runtime';
 import type { ServerState } from '../../server-state';
@@ -68,14 +73,23 @@ async function seedCatalog(models: Record<string, ModelsDevModel>): Promise<void
 function fakeState(
   providers: readonly RuntimeProviderInstance[],
   aggregation?: (typeof ModelContextAggregation)[keyof typeof ModelContextAggregation],
+  models: Readonly<Record<string, RouterModelPolicy>> = {},
 ): ServerState {
-  const config = aggregation === undefined ? undefined : { router: { modelContextAggregation: aggregation } };
+  const normalizedModels = Object.fromEntries(
+    Object.entries(models).map(([slug, policy]) => [slug, RouterModelPolicySchema.parse(policy)]),
+  );
+  const config = {
+    router: {
+      ...(aggregation === undefined ? {} : { modelContextAggregation: aggregation }),
+      models: normalizedModels,
+    },
+  };
   return {
     acquireProviderSnapshot: () => ({
       snapshot: {
         providers,
-        router: new Router(providers, { models: config?.router.models }),
-        ...(config === undefined ? {} : { config }),
+        router: new Router(providers, { models: normalizedModels }),
+        config,
       },
       release() {},
     }),
@@ -95,20 +109,23 @@ test('projects composite metadata fields from their resolved sources', async () 
     kind: ProviderKind.Api,
     enabled: true,
     alias: { 'gpt-x': { model: 'up-x', preserve: false } },
-    configMetadata: {
-      'up-x': {
-        name: 'Configured Name',
-        capabilities: { releaseDate: '1970-01-02', structuredOutput: false },
-        limit: { context: 400_000, input: 272_000, output: 128_000 },
-      },
-    },
     upstreamMetadata: {
       'up-x': { capabilities: { releaseDate: '1970-01-03' } },
     },
     model: { invoke: async function* () {} },
   } as unknown as RuntimeProviderInstance;
 
-  const result = await listModels(fakeState([provider]));
+  const result = await listModels(
+    fakeState([provider], undefined, {
+      'gpt-x': {
+        metadata: {
+          name: 'Configured Name',
+          capabilities: { releaseDate: '1970-01-02', structuredOutput: false },
+          limit: { context: 400_000, input: 272_000, output: 128_000 },
+        },
+      },
+    }),
+  );
   const item = result.data[0]!;
   expect(item.capabilities?.structured_outputs).toEqual({ supported: false });
   expect(item.max_input_tokens).toBe(272_000);
@@ -120,17 +137,28 @@ test('projects composite metadata fields from their resolved sources', async () 
 
 test('max_tokens follows the configured aggregation across candidates', async () => {
   await seedCatalog({});
-  const provider = (id: string, model: string, output: number) =>
+  const provider = (id: string, model: string) =>
     ({
       id,
       kind: ProviderKind.Api,
       enabled: true,
       alias: { shared: { model, preserve: false } },
-      configMetadata: { [model]: { limit: { output } } },
       model: { invoke: async function* () {} },
     }) as unknown as RuntimeProviderInstance;
-  const candidates = [provider('p1', 'up-first', 128_000), provider('p2', 'up-second', 64_000)];
+  const candidates = [provider('p1', 'up-first'), provider('p2', 'up-second')];
+  const models = {
+    shared: {
+      providers: {
+        p1: { limit: { output: 128_000 } },
+        p2: { limit: { output: 64_000 } },
+      },
+    },
+  };
 
-  expect((await listModels(fakeState(candidates, ModelContextAggregation.Min))).data[0]?.max_tokens).toBe(64_000);
-  expect((await listModels(fakeState(candidates, ModelContextAggregation.Max))).data[0]?.max_tokens).toBe(128_000);
+  expect((await listModels(fakeState(candidates, ModelContextAggregation.Min, models))).data[0]?.max_tokens).toBe(
+    64_000,
+  );
+  expect((await listModels(fakeState(candidates, ModelContextAggregation.Max, models))).data[0]?.max_tokens).toBe(
+    128_000,
+  );
 });

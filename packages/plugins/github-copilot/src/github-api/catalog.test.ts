@@ -26,9 +26,9 @@ describe('GitHub Copilot catalog', () => {
     );
 
     expect(models).toEqual([
-      { id: 'gpt-5-mini', displayName: 'GPT 5 Mini', metadata: { protocol: 'openai-compatible' } },
-      { id: 'claude-sonnet-4', metadata: { protocol: 'anthropic' } },
-      { id: 'gpt-5', metadata: { protocol: 'openai-response' } },
+      { id: 'gpt-5-mini', displayName: 'GPT 5 Mini', extra: { protocol: 'openai-compatible' } },
+      { id: 'claude-sonnet-4', extra: { protocol: 'anthropic' } },
+      { id: 'gpt-5', extra: { protocol: 'openai-response' } },
     ]);
   });
 });

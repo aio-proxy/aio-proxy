@@ -173,6 +173,29 @@ test('PUT /routing/models replaces the baseline and preserves unknown raw entrie
   });
 });
 
+test('PUT /routing/models accepts empty preservation patches', async () => {
+  await withRoutingFixture(async ({ configPath, routes }) => {
+    const listed = DashboardRoutingModelsResponseSchema.parse(await (await routes.request('/routing/models')).json());
+    const current = listed.models.find((entry) => entry.modelId === 'openai/gpt-5');
+    const response = await routes.request('/routing/models', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        modelId: 'openai/gpt-5',
+        revision: current?.revision,
+        baselineProviderIds: current?.baselineProviderIds,
+        providers: { off: {}, on: {} },
+      }),
+    });
+    const disk = JSON.parse(readFileSync(configPath, 'utf8')) as typeof authored;
+
+    expect(response.status).toBe(200);
+    expect(disk.router.models['openai/gpt-5'].providers).toEqual({
+      ghost: { weight: 9 },
+    });
+  });
+});
+
 test('PUT /routing/models returns typed config, revision, and validation errors', async () => {
   await withRoutingFixture(async ({ routes }) => {
     const stale = await routes.request('/routing/models', {

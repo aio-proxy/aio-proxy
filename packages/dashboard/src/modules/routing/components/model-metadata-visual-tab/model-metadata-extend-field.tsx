@@ -14,15 +14,21 @@ import { useQuery } from '@tanstack/react-query';
 import { RotateCwIcon } from 'lucide-react';
 import { useState } from 'react';
 
-import { modelsDevSlugsQueryOptions } from '../../../services/models-dev-service';
+import { modelsDevSlugsQueryOptions } from '../../services/models-dev-service';
 
 interface ModelMetadataExtendFieldProps {
   readonly value: string;
   readonly onValueChange: (next: string | undefined) => void;
+  /** Canonical models.dev slug from the public-slug fallback; click fills `extend`. */
+  readonly suggestion?: string | undefined;
 }
 
 /** The models.dev slug this model inherits from, plus the state of the catalog behind the picker. */
-export const ModelMetadataExtendField: React.FC<ModelMetadataExtendFieldProps> = ({ value, onValueChange }) => {
+export const ModelMetadataExtendField: React.FC<ModelMetadataExtendFieldProps> = ({
+  value,
+  onValueChange,
+  suggestion,
+}) => {
   const [slugQuery, setSlugQuery] = useState(value);
   const slugs = useQuery(modelsDevSlugsQueryOptions());
   const query = slugQuery.trim().toLowerCase();
@@ -33,7 +39,7 @@ export const ModelMetadataExtendField: React.FC<ModelMetadataExtendFieldProps> =
 
   return (
     <div className="space-y-1.5">
-      <Label htmlFor="metadata-extend">{m['dashboard.providers.editor.metadata_extend_label']()}</Label>
+      <Label htmlFor="metadata-extend">{m['dashboard.routing.editor.metadata_extend_label']()}</Label>
       <Combobox
         items={options}
         value={value === '' ? null : value}
@@ -48,17 +54,17 @@ export const ModelMetadataExtendField: React.FC<ModelMetadataExtendFieldProps> =
           id="metadata-extend"
           className="w-full font-mono text-xs"
           disabled={slugs.isPending && value === ''}
-          aria-label={m['dashboard.providers.editor.metadata_extend_aria_label']()}
+          aria-label={m['dashboard.routing.editor.metadata_extend_aria_label']()}
           placeholder={
             slugs.isPending
-              ? m['dashboard.providers.editor.metadata_extend_loading_placeholder']()
-              : m['dashboard.providers.editor.metadata_extend_placeholder']()
+              ? m['dashboard.routing.editor.metadata_extend_loading_placeholder']()
+              : m['dashboard.routing.editor.metadata_extend_placeholder']()
           }
           showClear={value !== ''}
           clearLabel={m['common.clear']()}
         />
         <ComboboxContent>
-          <ComboboxEmpty>{m['dashboard.providers.editor.metadata_extend_empty']()}</ComboboxEmpty>
+          <ComboboxEmpty>{m['dashboard.routing.editor.metadata_extend_empty']()}</ComboboxEmpty>
           <ComboboxList>
             {options.map((slug) => (
               <ComboboxItem key={slug} value={slug} className="font-mono text-xs">
@@ -73,11 +79,11 @@ export const ModelMetadataExtendField: React.FC<ModelMetadataExtendFieldProps> =
           {/* Hidden from assistive tech: this paragraph is already the live region, and Spinner
               carries its own untranslated status role. */}
           <Spinner className="size-3" aria-hidden="true" />
-          {m['dashboard.providers.editor.metadata_extend_loading']()}
+          {m['dashboard.routing.editor.metadata_extend_loading']()}
         </p>
       ) : slugs.isError ? (
         <div className="flex flex-wrap items-center gap-2" role="alert" data-testid="metadata-extend-status">
-          <p className="text-xs text-destructive">{m['dashboard.providers.editor.metadata_extend_error']()}</p>
+          <p className="text-xs text-destructive">{m['dashboard.routing.editor.metadata_extend_error']()}</p>
           <Button
             type="button"
             size="xs"
@@ -86,12 +92,30 @@ export const ModelMetadataExtendField: React.FC<ModelMetadataExtendFieldProps> =
             onClick={() => void slugs.refetch()}
           >
             <RotateCwIcon data-icon="inline-start" aria-hidden="true" />
-            {m['dashboard.providers.editor.metadata_extend_retry']()}
+            {m['dashboard.routing.editor.metadata_extend_retry']()}
           </Button>
         </div>
       ) : (
         <p className="text-xs text-muted-foreground" data-testid="metadata-extend-status">
-          {m['dashboard.providers.editor.metadata_extend_loaded']({ count: loaded.length })}
+          {m['dashboard.routing.editor.metadata_extend_loaded']({ count: loaded.length })}
+          {suggestion === undefined ? null : (
+            <>
+              {' '}
+              <Button
+                type="button"
+                variant="link"
+                size="xs"
+                className="h-auto px-0 font-mono text-xs"
+                data-testid="metadata-extend-suggest"
+                onClick={() => {
+                  setSlugQuery(suggestion);
+                  onValueChange(suggestion);
+                }}
+              >
+                {m['dashboard.routing.editor.metadata_extend_suggest']({ slug: suggestion })}
+              </Button>
+            </>
+          )}
         </p>
       )}
     </div>

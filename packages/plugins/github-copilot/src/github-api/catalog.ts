@@ -35,7 +35,7 @@ function modelEntry(value: unknown): ModelDescriptor | undefined {
   return {
     id: record.id,
     ...(record.displayName === undefined ? {} : { displayName: record.displayName }),
-    metadata: { protocol },
+    extra: { protocol },
   };
 }
 

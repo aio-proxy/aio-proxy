@@ -116,3 +116,114 @@ test('writes a __proto__ model policy as an own data property', () => {
   expect(Object.getPrototypeOf(models)).toBe(Object.prototype);
   expect(models['__proto__']).toEqual({ providers: { a: { priority: 30 } } });
 });
+
+test('routing mutation writes and clears slug metadata', () => {
+  const written = applyRoutingMutation(
+    {},
+    {
+      modelId: 'pub',
+      revision: digestProviderEntry(null),
+      baselineProviderIds: [],
+      providers: {},
+      metadata: { name: 'Pub' },
+    },
+  );
+  expect(readRawModelPolicy(written, 'pub')).toEqual({ metadata: { name: 'Pub' } });
+
+  const policy = readRawModelPolicy(written, 'pub');
+  const cleared = applyRoutingMutation(written, {
+    modelId: 'pub',
+    revision: digestProviderEntry(policy ?? null),
+    baselineProviderIds: [],
+    providers: {},
+    metadata: null,
+  });
+  expect(readRawModelPolicy(cleared, 'pub')).toBeUndefined();
+});
+
+test('a routing-only submission preserves cost, limit, and unknown keys on the provider entry', () => {
+  const policy = {
+    metadata: { name: 'Pub' },
+    providers: {
+      p1: {
+        priority: 5,
+        cost: { input: 1 },
+        limit: { context: 8_000 },
+        futureKey: 'keep',
+      },
+    },
+  };
+  const seeded = { router: { models: { pub: policy } } };
+
+  const written = applyRoutingMutation(seeded, {
+    modelId: 'pub',
+    revision: digestProviderEntry(policy),
+    baselineProviderIds: ['p1'],
+    providers: { p1: { priority: 7 } },
+  });
+
+  expect(readRawModelPolicy(written, 'pub')).toEqual({
+    metadata: { name: 'Pub' },
+    providers: {
+      p1: {
+        priority: 7,
+        cost: { input: 1 },
+        limit: { context: 8_000 },
+        futureKey: 'keep',
+      },
+    },
+  });
+});
+
+test('null clears cost while preserving limit and unknown provider keys', () => {
+  const policy = {
+    providers: {
+      p1: {
+        priority: 5,
+        cost: { input: 1 },
+        limit: { context: 8_000 },
+        futureKey: 'keep',
+      },
+    },
+  };
+  const written = applyRoutingMutation(
+    { router: { models: { pub: policy } } },
+    {
+      modelId: 'pub',
+      revision: digestProviderEntry(policy),
+      baselineProviderIds: ['p1'],
+      providers: { p1: { cost: null } },
+    },
+  );
+
+  expect(readRawModelPolicy(written, 'pub')).toEqual({
+    providers: {
+      p1: {
+        limit: { context: 8_000 },
+        futureKey: 'keep',
+      },
+    },
+  });
+});
+
+test('empty patches preserve metadata-only providers and drop genuinely empty entries', () => {
+  const policy = {
+    providers: {
+      p1: { priority: 5, weight: 2, cost: { input: 1 }, limit: { context: 8_000 } },
+      p2: {},
+    },
+  };
+  const written = applyRoutingMutation(
+    { router: { models: { pub: policy } } },
+    {
+      modelId: 'pub',
+      revision: digestProviderEntry(policy),
+      baselineProviderIds: ['p1', 'p2'],
+      providers: { p1: {}, p2: {} },
+    },
+  );
+
+  expect(readRawModelPolicy(written, 'pub')).toEqual({
+    providers: { p1: { cost: { input: 1 }, limit: { context: 8_000 } } },
+  });
+});

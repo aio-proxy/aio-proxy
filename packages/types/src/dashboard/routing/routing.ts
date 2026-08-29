@@ -2,6 +2,14 @@ import { z } from 'zod';
 
 import { IdSchema } from '../../common';
 import type { RouterProviderOverride } from '../../config';
+import {
+  type ModelCostInput,
+  ModelCostSchema,
+  type ModelLimitInput,
+  ModelLimitSchema,
+  type ModelMetadataInput,
+  ModelMetadataSchema,
+} from '../../model-metadata';
 import { type ProviderState, ProviderStateSchema } from '../../plugin';
 import { ProviderKind, RoutingPrioritySchema, RoutingWeightSchema } from '../../provider';
 
@@ -26,6 +34,8 @@ export type DashboardRoutingProvider = {
   readonly override?: {
     readonly priority?: DashboardRoutingNumber;
     readonly weight?: DashboardRoutingNumber;
+    readonly cost?: ModelCostInput;
+    readonly limit?: ModelLimitInput;
   };
   readonly effective: {
     readonly priority: number;
@@ -39,6 +49,7 @@ export type DashboardRoutingProvider = {
 
 export type DashboardRoutingModel = {
   readonly modelId: string;
+  readonly metadata?: ModelMetadataInput;
   readonly revision: string;
   readonly baselineProviderIds: readonly string[];
   readonly providerCount: number;
@@ -60,7 +71,16 @@ export type DashboardRoutingModelMutation = {
   readonly modelId: string;
   readonly revision: string;
   readonly baselineProviderIds: readonly string[];
-  readonly providers: Readonly<Record<string, RouterProviderOverride>>;
+  readonly metadata?: ModelMetadataInput | null;
+  readonly providers: Readonly<
+    Record<
+      string,
+      Omit<RouterProviderOverride, 'cost' | 'limit'> & {
+        readonly cost?: ModelCostInput | null;
+        readonly limit?: ModelLimitInput | null;
+      }
+    >
+  >;
 };
 
 export const DashboardRoutingNumberSchema = matchesDto<DashboardRoutingNumber>()(
@@ -74,6 +94,8 @@ export const DashboardRoutingNumberSchema = matchesDto<DashboardRoutingNumber>()
 const DashboardRoutingProviderOverrideViewSchema = z.strictObject({
   priority: DashboardRoutingNumberSchema.optional(),
   weight: DashboardRoutingNumberSchema.optional(),
+  cost: ModelCostSchema.optional(),
+  limit: ModelLimitSchema.optional(),
 });
 
 export const DashboardRoutingProviderSchema = matchesDto<DashboardRoutingProvider>()(
@@ -102,6 +124,7 @@ export const DashboardRoutingProviderSchema = matchesDto<DashboardRoutingProvide
 export const DashboardRoutingModelSchema = matchesDto<DashboardRoutingModel>()(
   z.strictObject({
     modelId: IdSchema,
+    metadata: ModelMetadataSchema.optional(),
     revision: z.string().min(1),
     baselineProviderIds: z.array(IdSchema).readonly(),
     providerCount: z.number().int().nonnegative(),
@@ -134,14 +157,15 @@ export const DashboardRoutingModelsResponseSchema = matchesDto<DashboardRoutingM
   }),
 );
 
-const DashboardRoutingProviderOverrideSchema = z
-  .strictObject({
-    priority: RoutingPrioritySchema.optional(),
-    weight: RoutingWeightSchema.optional(),
-  })
-  .refine((value) => value.priority !== undefined || value.weight !== undefined, {
-    message: 'Override must include priority or weight',
-  });
+// Empty `{}` is a preservation patch: the board/drawer submit every baseline
+// Provider, and applyRoutingMutation keeps stored cost/limit when those keys
+// are absent. A non-empty refine would 400 those saves.
+const DashboardRoutingProviderOverrideSchema = z.strictObject({
+  priority: RoutingPrioritySchema.optional(),
+  weight: RoutingWeightSchema.optional(),
+  cost: ModelCostSchema.nullable().optional(),
+  limit: ModelLimitSchema.nullable().optional(),
+});
 
 function refineUniqueBaselineProviderIds(ids: readonly string[], context: z.RefinementCtx): void {
   const seen = new Set<string>();
@@ -162,6 +186,7 @@ export const DashboardRoutingModelMutationSchema = matchesDto<DashboardRoutingMo
     modelId: IdSchema,
     revision: z.string().min(1),
     baselineProviderIds: z.array(IdSchema).superRefine(refineUniqueBaselineProviderIds).readonly(),
+    metadata: ModelMetadataSchema.nullable().optional(),
     providers: z.record(IdSchema, DashboardRoutingProviderOverrideSchema),
   }),
 );

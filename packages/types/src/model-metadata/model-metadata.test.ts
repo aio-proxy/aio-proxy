@@ -1,6 +1,11 @@
 import { describe, expect, test } from 'bun:test';
 
-import { collectUnknownModelMetadataKeys, ModelMetadataSchema } from './model-metadata';
+import {
+  collectUnknownModelMetadataKeys,
+  MODELS_DEV_MODEL_REF,
+  ModelMetadataJsonSchema,
+  ModelMetadataSchema,
+} from './model-metadata';
 
 describe('ModelMetadataSchema validation', () => {
   test('accepts an allowlisted metadata record with name, description, limit, capabilities and cost', () => {
@@ -104,6 +109,20 @@ describe('ModelMetadataSchema validation', () => {
     expect(
       ModelMetadataSchema.safeParse({ cost: { tiers: [{ tier: { type: 'context', size: -1 }, input: 2 }] } }).success,
     ).toBe(false);
+  });
+});
+
+describe('ModelMetadataJsonSchema', () => {
+  test('extend is an external $ref to the models.dev Model slug enum, not an inlined string', () => {
+    const json = ModelMetadataJsonSchema as {
+      properties?: { extend?: { $ref?: string; type?: string; modelsDevRef?: boolean } };
+    };
+    const schema = JSON.stringify(ModelMetadataJsonSchema);
+    expect(json.properties?.extend?.$ref).toBe(MODELS_DEV_MODEL_REF);
+    expect(json.properties?.extend?.type).toBeUndefined();
+    expect(json.properties?.extend?.modelsDevRef).toBeUndefined();
+    expect(schema).toContain(MODELS_DEV_MODEL_REF);
+    expect(schema).not.toContain('302ai/');
   });
 });
 

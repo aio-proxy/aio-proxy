@@ -8,6 +8,8 @@ export type DiagnosticContext = {
   readonly plugin?: string;
   readonly capability?: string;
   readonly providerId?: string;
+  /** Router model slug (`config.router.models` key), for model-scoped diagnostics. */
+  readonly model?: string;
 };
 
 export type DiagnosticFactory = (

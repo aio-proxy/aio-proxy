@@ -65,14 +65,14 @@ export async function discoverXAIGrokModels(
     if (!id.startsWith('grok-') || NON_CHAT_PREFIXES.some((prefix) => id.startsWith(prefix))) continue;
     const name = Reflect.get(value, 'name');
     const displayName = curatedNames.get(id) ?? readDisplayName(name);
-    byId.set(id, { id, ...(displayName === undefined ? {} : { displayName }), metadata: MODEL_METADATA });
+    byId.set(id, { id, ...(displayName === undefined ? {} : { displayName }), extra: MODEL_METADATA });
   }
   return emptyCatalog([...byId.values()].sort((left, right) => left.id.localeCompare(right.id)));
 }
 
 export function initialXAIGrokCatalogFallback(error: unknown): ModelCatalog | undefined {
   return error instanceof XAIGrokCatalogError && error.retryable
-    ? emptyCatalog(CURATED.map(([id, displayName]) => ({ id, displayName, metadata: MODEL_METADATA })))
+    ? emptyCatalog(CURATED.map(([id, displayName]) => ({ id, displayName, extra: MODEL_METADATA })))
     : undefined;
 }
 

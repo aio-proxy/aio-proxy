@@ -20,8 +20,13 @@ export function applyRoutingMutation(
   const preserved = Object.fromEntries(
     Object.entries(rawPolicyProviders(currentPolicy)).filter(([id]) => !input.baselineProviderIds.includes(id)),
   );
-  const submitted = Object.fromEntries(Object.entries(input.providers).filter(([, value]) => !isEmptyOverride(value)));
-  return writeRawModelPolicy(current, input.modelId, { ...preserved, ...submitted });
+  const currentProviders = rawPolicyProviders(currentPolicy);
+  const submitted = Object.fromEntries(
+    Object.entries(input.providers)
+      .map(([id, value]) => [id, mergeProviderOverride(currentProviders[id], value)] as const)
+      .filter(([, value]) => Object.keys(value).length > 0),
+  );
+  return writeRawModelPolicy(current, input.modelId, { ...preserved, ...submitted }, input.metadata);
 }
 
 export function readRawModelPolicy(current: Record<string, unknown>, modelId: string): unknown {
@@ -32,15 +37,25 @@ export function readRawModelPolicy(current: Record<string, unknown>, modelId: st
   return Object.hasOwn(models, modelId) ? models[modelId] : undefined;
 }
 
+export function rawModelPolicySlugs(current: Readonly<Record<string, unknown>>): readonly string[] {
+  const router = current['router'];
+  if (!isPlainObject(router)) return [];
+  const models = router['models'];
+  return isPlainObject(models) ? Object.keys(models) : [];
+}
+
 export function writeRawModelPolicy(
   current: Record<string, unknown>,
   modelId: string,
   providers: Readonly<Record<string, unknown>>,
+  metadata?: DashboardRoutingModelMutation['metadata'],
 ): Record<string, unknown> {
   const currentRouter = isPlainObject(current['router']) ? current['router'] : {};
   const currentModels = isPlainObject(currentRouter['models']) ? { ...currentRouter['models'] } : {};
   const currentPolicy = isPlainObject(currentModels[modelId]) ? currentModels[modelId] : {};
   const { providers: _ignored, ...futurePolicyFields } = currentPolicy;
+  if (metadata === null) delete futurePolicyFields['metadata'];
+  else if (metadata !== undefined) futurePolicyFields['metadata'] = metadata;
   const hasProviders = Object.keys(providers).length > 0;
   const hasFuturePolicy = Object.keys(futurePolicyFields).length > 0;
 
@@ -78,6 +93,19 @@ export function rawPolicyProviders(policy: unknown): Record<string, unknown> {
   return isPlainObject(policy['providers']) ? policy['providers'] : {};
 }
 
-function isEmptyOverride(value: unknown): boolean {
-  return isPlainObject(value) && value['priority'] === undefined && value['weight'] === undefined;
+function mergeProviderOverride(
+  existingRaw: unknown,
+  submitted: DashboardRoutingModelMutation['providers'][string],
+): Record<string, unknown> {
+  const base: Record<string, unknown> = isPlainObject(existingRaw) ? { ...existingRaw } : {};
+  delete base['priority'];
+  delete base['weight'];
+  if (submitted.priority !== undefined) base['priority'] = submitted.priority;
+  if (submitted.weight !== undefined) base['weight'] = submitted.weight;
+  for (const key of ['cost', 'limit'] as const) {
+    const value = submitted[key];
+    if (value === null) delete base[key];
+    else if (value !== undefined) base[key] = value;
+  }
+  return base;
 }

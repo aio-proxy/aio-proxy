@@ -190,7 +190,7 @@ test('omits maxOutputTokens when upstream is missing or non-positive', () => {
   expect(model).toEqual({
     id: 'model',
     displayName: 'Model',
-    metadata: {
+    extra: {
       antigravity: {
         supportsImages: true,
         supportsThinking: true,
@@ -201,7 +201,7 @@ test('omits maxOutputTokens when upstream is missing or non-positive', () => {
   });
 });
 
-test('persists thinking budgets, providers, and modelEnum on descriptor metadata', () => {
+test('persists thinking budgets, providers, and modelEnum on descriptor extra', () => {
   const [model] = normalizeDiscoveredModels({
     model: {
       displayName: 'Model',
@@ -213,7 +213,7 @@ test('persists thinking budgets, providers, and modelEnum on descriptor metadata
       maxOutputTokens: 8192,
     },
   });
-  expect(model?.metadata).toEqual({
+  expect(model?.extra).toEqual({
     antigravity: {
       supportsImages: false,
       supportsThinking: false,
@@ -264,7 +264,7 @@ test('parses picker fields and attaches collapsed families on the catalog', asyn
     'gemini-3.8-flash-low',
     'gemini-3.8-flash-medium',
   ]);
-  expect(catalog.metadata).toEqual({
+  expect(catalog.extra).toEqual({
     antigravityPicker: {
       agentModelSorts: [
         {
@@ -293,7 +293,7 @@ test('parses picker fields and attaches collapsed families on the catalog', asyn
       },
     ],
   });
-  expect(catalog.language.find((model) => model.id === 'gemini-3.8-flash-low')?.metadata).toEqual({
+  expect(catalog.language.find((model) => model.id === 'gemini-3.8-flash-low')?.extra).toEqual({
     antigravity: {
       supportsImages: false,
       supportsThinking: false,

@@ -5,7 +5,7 @@ import { join } from 'node:path';
 
 import type { Model, Provider, ProviderMap } from '@opencode-ai/models';
 
-import { clearModelsCache, getCachedModelSlugs, getModels, getModelsCachedOnly } from '.';
+import { clearModelsCache, getCachedModelSlugs, getModels, getModelsCachedOnly, lookupCachedModel } from '.';
 import { fileCacheStorage } from '../cache';
 
 const model = (id: string, name = id): Model => ({
@@ -246,4 +246,27 @@ test('getCachedModelSlugs returns [] on a cold cache and sorted provider/model s
   }
 
   expect(fetched).toBe(false);
+});
+
+test('lookupCachedModel returns the fallback slug and metadata without fetching', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (() => {
+    throw new Error('lookupCachedModel must not fetch');
+  }) as typeof fetch;
+
+  try {
+    const hit = await lookupCachedModel('gpt-5');
+    expect(hit?.slug).toBe('openai/gpt-5');
+    expect(hit?.metadata.name).toBe('gpt-5');
+    expect(hit?.metadata.limit?.context).toBe(128_000);
+    expect(await lookupCachedModel('missing-model')).toBeUndefined();
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('lookupCachedModel returns undefined on a cold cache', async () => {
+  await fileCacheStorage.removeItem('models-dev-providers');
+  clearModelsCache();
+  expect(await lookupCachedModel('gpt-5')).toBeUndefined();
 });

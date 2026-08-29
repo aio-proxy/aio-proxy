@@ -1,8 +1,8 @@
 import { configModelPrice, type OpenRouterModelPrice, type RouterCandidate } from '@aio-proxy/core';
-import type { ProviderProtocol } from '@aio-proxy/types';
+import type { ModelCost, ProviderProtocol, RouterModelPolicy } from '@aio-proxy/types';
 
-import { attributeName } from '../../request-tracing';
-import type { RuntimeProviderInstance } from '../../runtime';
+import { attributeName } from '../../../request-tracing';
+import type { RuntimeProviderInstance } from '../../../runtime';
 
 export type AttemptSelectionSource =
   | 'provider_qualified'
@@ -106,13 +106,16 @@ export function attemptBase(
   };
 }
 
-// The hit channel's per-model config cost override, mapped into the pricing
-// engine's shape. Undefined when the provider declares no cost for this model,
-// so billing falls back to the models.dev catalog.
+// Cost for this provider attempt, mapped into the pricing engine's shape.
+// Provider override > slug metadata > plugin upstreamMetadata; undefined
+// falls back to the models.dev catalog in priceUsage.
 export function candidateConfigPrice(
-  provider: RuntimeProviderInstance,
-  modelId: string,
+  models: Readonly<Record<string, RouterModelPolicy>> | undefined,
+  slug: string,
+  providerId: string,
+  upstreamCost?: ModelCost,
 ): OpenRouterModelPrice | undefined {
-  const cost = provider.configMetadata?.[modelId]?.cost;
-  return cost === undefined ? undefined : configModelPrice(modelId, cost);
+  const policy = models?.[slug];
+  const cost = policy?.providers[providerId]?.cost ?? policy?.metadata?.cost ?? upstreamCost;
+  return cost === undefined ? undefined : configModelPrice(slug, cost);
 }

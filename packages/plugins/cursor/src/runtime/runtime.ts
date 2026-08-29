@@ -27,14 +27,14 @@ export function createCursorRuntime(
   const sessionStore = injectedStore ?? new CursorSessionStore();
   const modelById = new Map<string, CursorModelDescriptor>(
     context.catalog.language.map((descriptor) => {
-      const metadata = cursorModelMetadata(descriptor.metadata);
+      const extra = cursorModelExtra(descriptor.extra);
       return [
         descriptor.id,
         {
           wireModelId: descriptor.id,
-          displayModelId: metadata.displayModelId ?? descriptor.id,
+          displayModelId: extra.displayModelId ?? descriptor.id,
           displayName: descriptor.displayName ?? descriptor.id,
-          maxMode: metadata.maxMode ?? false,
+          maxMode: extra.maxMode ?? false,
         },
       ] as const;
     }),
@@ -50,13 +50,13 @@ export function createCursorRuntime(
   return Promise.resolve({ provider });
 }
 
-function cursorModelMetadata(metadata: JsonValue | undefined): {
+function cursorModelExtra(extra: JsonValue | undefined): {
   readonly displayModelId?: string;
   readonly maxMode?: boolean;
 } {
-  if (metadata === undefined || metadata === null || typeof metadata !== 'object' || Array.isArray(metadata)) return {};
-  const displayModelId = Reflect.get(metadata, 'displayModelId');
-  const maxMode = Reflect.get(metadata, 'maxMode');
+  if (extra === undefined || extra === null || typeof extra !== 'object' || Array.isArray(extra)) return {};
+  const displayModelId = Reflect.get(extra, 'displayModelId');
+  const maxMode = Reflect.get(extra, 'maxMode');
   return {
     ...(typeof displayModelId === 'string' && displayModelId.length > 0 ? { displayModelId } : {}),
     ...(typeof maxMode === 'boolean' ? { maxMode } : {}),

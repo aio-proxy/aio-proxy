@@ -119,6 +119,45 @@ describe('json language service', () => {
     await expect(visibleCompletionLabels('{}', 1)).resolves.toEqual([]);
   });
 
+  test('suggests enum values from a registered models.dev $ref', async () => {
+    const documentUri = 'inmemory://aio-proxy/json-editor/metadata.json';
+    const modelsDevUri = 'https://models.dev/model-schema.json';
+    configureJsonSchemas([
+      {
+        uri: `${documentUri}#schema`,
+        fileMatch: [documentUri],
+        schema: {
+          type: 'object',
+          properties: {
+            extend: { $ref: `${modelsDevUri}#/$defs/Model` },
+          },
+        },
+      },
+      {
+        uri: modelsDevUri,
+        fileMatch: [],
+        schema: {
+          $id: modelsDevUri,
+          $defs: { Model: { type: 'string', enum: ['openai/gpt-5', 'anthropic/claude-sonnet-4'] } },
+        },
+      },
+    ]);
+
+    const text = '{\n  "extend": "\n}';
+    const result = await createJsonCompletionSource()(
+      new CompletionContext(
+        EditorState.create({
+          doc: text,
+          extensions: [json(), textDocument(documentUri)],
+        }),
+        15,
+        false,
+      ),
+    );
+    const labels = result?.options.map((option) => option.label) ?? [];
+    expect(labels).toEqual(expect.arrayContaining(['"openai/gpt-5"', '"anthropic/claude-sonnet-4"']));
+  });
+
   test('renders schema description markdown in hover', async () => {
     configureJsonSchemas([
       {

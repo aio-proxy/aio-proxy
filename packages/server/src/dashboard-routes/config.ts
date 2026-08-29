@@ -1,4 +1,4 @@
-import { getCachedModelSlugs } from '@aio-proxy/core';
+import { getCachedModelSlugs, lookupCachedModel } from '@aio-proxy/core';
 import { UsageOverviewGroupBySchema, UsageOverviewMetricSchema, UsageOverviewRangeSchema } from '@aio-proxy/types';
 import { Hono } from 'hono';
 import { validator } from 'hono/validator';
@@ -36,6 +36,12 @@ export const createDashboardRoutes = (state: ServerState, auth: DashboardAuthent
   new Hono()
     .get('/config', (context) => context.json(redactSecrets(state.currentConfig())))
     .get('/models-dev/slugs', async (context) => context.json({ slugs: await getCachedModelSlugs() }))
+    .get('/models-dev/lookup', async (context) => {
+      const id = context.req.query('id')?.trim() ?? '';
+      if (id === '') return context.json({ slug: null, metadata: null }, 400);
+      const hit = await lookupCachedModel(id);
+      return context.json(hit === undefined ? { slug: null, metadata: null } : hit);
+    })
     .get('/oauth/capabilities', (context) => context.json({ capabilities: state.oauthCapabilities() }))
     .route('/oauth', createDashboardOAuthLoginRoutes(state))
     .route('/', createDashboardProviderReadRoutes(state))

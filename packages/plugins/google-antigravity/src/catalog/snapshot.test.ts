@@ -69,12 +69,12 @@ function descriptor(id: string, displayName: string | undefined, apiProvider: st
   return {
     id,
     ...(displayName === undefined ? {} : { displayName }),
-    metadata: { antigravity: { apiProvider } },
+    extra: { antigravity: { apiProvider } },
   };
 }
 
 function catalogField(catalog: ReturnType<typeof staticAntigravityCatalog>, key: string): unknown {
-  const metadata = catalog.metadata;
-  if (typeof metadata !== 'object' || metadata === null || Array.isArray(metadata)) return undefined;
-  return metadata[key];
+  const extra = catalog.extra;
+  if (typeof extra !== 'object' || extra === null || Array.isArray(extra)) return undefined;
+  return extra[key];
 }

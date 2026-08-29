@@ -1,7 +1,14 @@
 {
   "name": "@aio-proxy/types",
   "version": "0.11.2",
-  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/aio-proxy/aio-proxy.git",
+    "directory": "packages/types"
+  },
+  "files": [
+    "dist"
+  ],
   "type": "module",
   "exports": {
     ".": {
@@ -9,6 +16,9 @@
       "default": "./dist/index.js"
     },
     "./config.schema.json": "./dist/config.schema.json"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "build": "rslib",

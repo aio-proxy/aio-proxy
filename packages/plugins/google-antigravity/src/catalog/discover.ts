@@ -140,7 +140,7 @@ export function normalizeDiscoveredModels(
     descriptors.set(modelId, {
       id: modelId,
       ...(displayName === undefined || displayName === '' ? {} : { displayName }),
-      metadata: {
+      extra: {
         antigravity: discoveredCapabilities(model, webSearchIds.has(modelId)),
       },
     });
@@ -219,7 +219,7 @@ export function assembleAntigravityCatalog(
     speech: [],
     transcription: [],
     reranking: [],
-    metadata: {
+    extra: {
       antigravityPicker: {
         ...(picker.agentModelSorts === undefined ? {} : { agentModelSorts: picker.agentModelSorts }),
         ...(picker.tieredModelIds === undefined ? {} : { tieredModelIds: picker.tieredModelIds }),

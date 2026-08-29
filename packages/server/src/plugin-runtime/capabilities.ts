@@ -61,7 +61,7 @@ function rawCapability(rawResolver: RawResolver | undefined, catalog: ModelCatal
       const transport = rawResolver({
         protocol: pluginProtocol[protocol],
         modelId,
-        ...(descriptor?.metadata === undefined ? {} : { metadata: descriptor.metadata }),
+        ...(descriptor?.extra === undefined ? {} : { extra: descriptor.extra }),
         ...(capability === undefined ? {} : { capability }),
         ...(requestPath === undefined ? {} : { requestPath }),
       });
@@ -105,7 +105,6 @@ export function withRoutingConfig(
 ): RuntimeProviderInstance {
   const {
     alias: _previousAlias,
-    configMetadata: _previousConfigMetadata,
     priority: _previousPriority,
     weight: _previousWeight,
     capabilityIndex: _previousCapabilityIndex,
@@ -113,7 +112,7 @@ export function withRoutingConfig(
     ...previousProvider
   } = provider;
   const models = exposedModelIds(catalogModelIds(catalog), config.models);
-  const { capabilityIndex, configMetadata, upstreamMetadata } = routingCapabilities(config, catalog, models);
+  const { capabilityIndex, upstreamMetadata } = routingCapabilities(config, catalog, models);
   return {
     ...previousProvider,
     enabled: config.enabled,
@@ -122,7 +121,6 @@ export function withRoutingConfig(
     capabilityIndex,
     upstreamMetadata,
     ...(config.alias === undefined ? {} : { alias: config.alias }),
-    ...(configMetadata === undefined ? {} : { configMetadata }),
   };
 }
 
@@ -149,7 +147,7 @@ export function createRuntimeProvider(
   const supportedProviderTools = new Set(providerTools?.supported);
   const tokenCount = tokenCountCapability(Reflect.get(result, 'tokenCount'));
   const models = exposedModelIds(catalogModelIds(catalog), config.models);
-  const { capabilityIndex, configMetadata, upstreamMetadata } = routingCapabilities(config, catalog, models);
+  const { capabilityIndex, upstreamMetadata } = routingCapabilities(config, catalog, models);
   const image =
     catalog.image.length > 0 ? { invoke: createProviderV4ImageInvoke(config.id, result.provider) } : undefined;
   const embedding =
@@ -162,7 +160,6 @@ export function createRuntimeProvider(
     models,
     capabilityIndex,
     ...(config.alias === undefined ? {} : { alias: config.alias }),
-    ...(configMetadata === undefined ? {} : { configMetadata }),
     upstreamMetadata,
     plugin: config.plugin,
     capability: config.capability,
@@ -172,7 +169,11 @@ export function createRuntimeProvider(
     return {
       ...base,
       ...(raw === undefined ? {} : { raw }),
-      ...(image === undefined ? {} : { image }),
+      // Router metadata may grant image output to language-catalog models at
+      // request time, so the invoke attaches unconditionally. It is lazy: a V4
+      // provider without imageModel fails per-attempt like any candidate
+      // failure.
+      image: { invoke: createProviderV4ImageInvoke(config.id, result.provider) },
       ...(embedding === undefined ? {} : { embedding }),
       model: {
         invoke: createProviderV4Invoke(config.id, result.provider),
@@ -204,23 +205,18 @@ function routingCapabilities(
   models: readonly string[],
 ): {
   readonly capabilityIndex: ReturnType<typeof buildModelCapabilityIndex>;
-  readonly configMetadata: OAuthProvider['metadata'];
   readonly upstreamMetadata: ReturnType<typeof modelMetadataRecord>;
 } {
   const allowed = new Set([...models, ...(config.alias === undefined ? [] : preservedAliasModels(config.alias))]);
-  const configMetadata = filterAllowedRecord(config.metadata, allowed);
   const upstreamMetadata = filterAllowedRecord(modelMetadataRecord(catalog), allowed) ?? {};
   return {
     capabilityIndex: buildModelCapabilityIndex({
       catalog,
       models,
-      metadata: configMetadata,
-      configMetadata,
       upstreamMetadata,
       aliasTargets:
         config.alias === undefined ? undefined : [...new Set(Object.values(config.alias).flatMap(aliasTargetModels))],
     }),
-    configMetadata,
     upstreamMetadata,
   };
 }

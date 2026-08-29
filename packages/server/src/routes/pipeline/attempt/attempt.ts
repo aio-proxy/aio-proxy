@@ -1,9 +1,4 @@
-import {
-  type AnyProtocolAdapter,
-  type ImageProtocolAdapter,
-  isEmbeddingProtocolAdapter,
-  type RouterCandidate,
-} from '@aio-proxy/core';
+import type { AnyProtocolAdapter, ImageProtocolAdapter, RouterCandidate } from '@aio-proxy/core';
 import type { Config } from '@aio-proxy/types';
 
 import type { LogicalSessionResolution } from '../../../logical-session-store';
@@ -20,6 +15,7 @@ import type {
   AttemptStep,
   CandidateSlot,
   EmbeddingAttemptLoopContext,
+  ImageAttemptLoopContext,
   InvocationHolder,
 } from './context';
 import { selectLiveCandidates } from './cooldown-write';
@@ -77,6 +73,7 @@ function createAttemptLoopContext<TRequest, TContext>(
     rawRequest,
     request,
     requestedModelId,
+    routerModels: options.config?.router.models,
     session,
     source,
     logicalRequest: resolution.context,
@@ -101,17 +98,20 @@ function createAttemptLoopContext<TRequest, TContext>(
 
 type AttemptDispatch<TRequest, TContext> =
   | { readonly kind: 'embedding'; readonly ctx: EmbeddingAttemptLoopContext<TRequest, TContext> }
-  | { readonly kind: 'image'; readonly ctx: AnyAttemptLoopContext<TRequest, TContext> }
+  | { readonly kind: 'image'; readonly ctx: ImageAttemptLoopContext<TRequest, TContext> }
   | { readonly kind: 'language'; readonly ctx: AttemptLoopContext<TRequest, TContext> };
 
 // The inbound capability, not the provider kind, decides which transports a
 // candidate may use. Resolved once per request so the loop below stays one loop.
+// Narrows on the `capability` discriminant directly: the isEmbeddingProtocolAdapter
+// guard cannot eliminate union members here because its type parameters infer as
+// `unknown` against generic TRequest/TContext.
 function attemptDispatch<TRequest, TContext>(
   ctx: AnyAttemptLoopContext<TRequest, TContext>,
 ): AttemptDispatch<TRequest, TContext> {
   const { adapter } = ctx;
-  if (isEmbeddingProtocolAdapter(adapter)) return { kind: 'embedding', ctx: { ...ctx, adapter } };
-  if (adapter.capability === 'image') return { kind: 'image', ctx };
+  if (adapter.capability === 'embedding') return { kind: 'embedding', ctx: { ...ctx, adapter } };
+  if (adapter.capability === 'image') return { kind: 'image', ctx: { ...ctx, adapter } };
   return { kind: 'language', ctx: { ...ctx, adapter } };
 }
 
@@ -212,7 +212,7 @@ export async function attemptCandidates<TRequest, TContext>(
         dispatch.kind === 'embedding'
           ? await attemptEmbeddingCandidate(dispatch.ctx, slot)
           : dispatch.kind === 'image'
-            ? await dispatchImageCandidate(ctx, slot)
+            ? await dispatchImageCandidate(dispatch.ctx, slot)
             : await attemptLanguageCandidate(dispatch.ctx, slot, holder);
       if (step.kind === 'return') return step.response;
       if (step.kind === 'skip') {

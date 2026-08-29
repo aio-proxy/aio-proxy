@@ -184,7 +184,6 @@ export function assembleServerState(runtime: ServerRuntime, parts: ServerStatePa
     pluginControlPlane: parts.pluginControlPlane,
     providerSummaries: parts.providerSummaries,
     currentConfig: () => (manager.current() as Snapshot).config,
-    configBeforeExtend: () => (manager.current() as Snapshot).configBeforeExtend,
     oauthQuota: parts.oauthQuota,
     reload: parts.reload,
     traceStore: parts.traceStore,

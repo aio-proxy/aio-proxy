@@ -33,7 +33,7 @@ export async function createKimiRuntime(
   });
   const protocols = new Map(
     context.catalog.language.flatMap((model) => {
-      const protocol = catalogProtocol(model.metadata);
+      const protocol = catalogProtocol(model.extra);
       return protocol === undefined ? [] : [[model.id, protocol] as const];
     }),
   );
@@ -161,8 +161,8 @@ function unsupportedRawPath(protocol: KimiProtocol): Response {
       );
 }
 
-function catalogProtocol(metadata: unknown): KimiProtocol | undefined {
-  if (typeof metadata !== 'object' || metadata === null || Array.isArray(metadata)) return undefined;
-  const value = Reflect.get(metadata, 'protocol');
+function catalogProtocol(extra: unknown): KimiProtocol | undefined {
+  if (typeof extra !== 'object' || extra === null || Array.isArray(extra)) return undefined;
+  const value = Reflect.get(extra, 'protocol');
   return value === 'anthropic' || value === 'openai-compatible' ? value : undefined;
 }

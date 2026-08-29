@@ -12,6 +12,12 @@ import {
   type DashboardRoutingModelsResponse,
   type DashboardRoutingNumber,
   type DashboardRoutingProvider,
+  type ModelCostInput,
+  ModelCostSchema,
+  type ModelLimitInput,
+  ModelLimitSchema,
+  type ModelMetadataInput,
+  ModelMetadataSchema,
   type Provider,
   ProviderKind,
   RoutingPrioritySchema,
@@ -19,7 +25,7 @@ import {
 } from '@aio-proxy/types';
 import { isPlainObject } from 'es-toolkit/predicate';
 
-import { readRawModelPolicy, rawPolicyProviders } from './mutation';
+import { rawModelPolicySlugs, readRawModelPolicy, rawPolicyProviders } from './mutation';
 import { authoredNumber, routingNumberView } from './number-view';
 
 export type RoutingInventoryInput = {
@@ -57,6 +63,9 @@ export async function assembleRoutingInventory(input: RoutingInventoryInput): Pr
       );
     }
   }
+  for (const slug of rawModelPolicySlugs(input.rawRecord)) {
+    if (!models.has(slug)) models.set(slug, emptyModel(slug, input.rawRecord));
+  }
 
   return {
     writable: input.writable,
@@ -69,6 +78,7 @@ function emptyModel(modelId: string, rawRecord: Readonly<Record<string, unknown>
   return {
     modelId,
     revision: digestProviderEntry(rawPolicy ?? null),
+    rawMetadata: isPlainObject(rawPolicy) ? rawPolicy['metadata'] : undefined,
     providers: [],
   };
 }
@@ -88,13 +98,16 @@ function finalizeModel(model: WritableModel): DashboardRoutingModel {
     };
   });
   const priorities = [...totals.keys()].sort((left, right) => right - left);
+  const parsedMetadata = ModelMetadataSchema.safeParse(model.rawMetadata);
+  const metadata = parsedMetadata.success ? (model.rawMetadata as ModelMetadataInput) : undefined;
   return {
     modelId: model.modelId,
+    ...(metadata === undefined ? {} : { metadata }),
     revision: model.revision,
     baselineProviderIds: providers.map((provider) => provider.id),
     providerCount: providers.length,
     eligibleProviderCount: providers.filter((provider) => provider.effective.eligible).length,
-    hasOverrides: providers.some((provider) => provider.override !== undefined),
+    hasOverrides: providers.some((provider) => provider.override !== undefined) || metadata !== undefined,
     tiers: priorities.map((priority) => ({
       priority,
       providers: providers
@@ -163,10 +176,16 @@ function overrideView(rawOverride: unknown, discloseAuthored: boolean): Dashboar
   if (!isPlainObject(rawOverride)) return undefined;
   const priority = parsedNumberView(rawOverride['priority'], RoutingPrioritySchema, discloseAuthored);
   const weight = parsedNumberView(rawOverride['weight'], RoutingWeightSchema, discloseAuthored);
-  if (priority === undefined && weight === undefined) return undefined;
+  const parsedCost = ModelCostSchema.safeParse(rawOverride['cost']);
+  const cost = parsedCost.success ? (rawOverride['cost'] as ModelCostInput) : undefined;
+  const parsedLimit = ModelLimitSchema.safeParse(rawOverride['limit']);
+  const limit = parsedLimit.success ? (rawOverride['limit'] as ModelLimitInput) : undefined;
+  if (priority === undefined && weight === undefined && cost === undefined && limit === undefined) return undefined;
   return {
     ...(priority === undefined ? {} : { priority }),
     ...(weight === undefined ? {} : { weight }),
+    ...(cost === undefined ? {} : { cost }),
+    ...(limit === undefined ? {} : { limit }),
   };
 }
 
@@ -237,5 +256,6 @@ function objectRecord(value: unknown): Record<string, unknown> {
 type WritableModel = {
   modelId: string;
   revision: string;
+  rawMetadata: unknown;
   providers: DashboardRoutingProvider[];
 };

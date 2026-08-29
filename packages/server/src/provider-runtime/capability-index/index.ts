@@ -1,9 +1,9 @@
 export {
   buildModelCapabilityIndex,
+  metadataHasImageOutput,
+  routerModelsGrantImage,
   supportsEmbedding,
   supportsImage,
-  supportsImageConvert,
-  supportsImageRaw,
   supportsLanguage,
 } from './capability-index';
 export type { CapabilityIndexInput } from './capability-index';
