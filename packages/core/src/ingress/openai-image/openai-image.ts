@@ -24,15 +24,17 @@ const imageRequestFields = {
   user: nullableString,
 };
 
-const OpenAIImageGenerationsInputSchema = z.object(imageRequestFields).superRefine(refineImageN);
+const OpenAIImageGenerationsInputSchema = z.compile(z.object(imageRequestFields).superRefine(refineImageN));
 
-const OpenAIImageEditsInputSchema = z
-  .object({
-    ...imageRequestFields,
-    images: z.array(imageSourceSchema).min(1),
-    mask: imageSourceSchema.nullable().optional(),
-  })
-  .superRefine(refineImageN);
+const OpenAIImageEditsInputSchema = z.compile(
+  z
+    .object({
+      ...imageRequestFields,
+      images: z.array(imageSourceSchema).min(1),
+      mask: imageSourceSchema.nullable().optional(),
+    })
+    .superRefine(refineImageN),
+);
 
 export type OpenAIImageSourceRef = {
   readonly image_url?: string;

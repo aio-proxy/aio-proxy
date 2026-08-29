@@ -41,21 +41,25 @@ const embedContentConfigSchema = z
   })
   .transform(({ audioTrackExtraction: _audioTrackExtraction, documentOcr: _documentOcr, ...rest }) => rest);
 
-export const GeminiEmbedContentRequestSchema = z
-  .object({
-    model: z.string().optional(),
-    content: contentSchema,
-    embedContentConfig: embedContentConfigSchema.optional(),
-    taskType: z.string().optional(),
-    title: z.string().optional(),
-    outputDimensionality: z.number().int().optional(),
-  })
-  .strip();
+export const GeminiEmbedContentRequestSchema = z.compile(
+  z
+    .object({
+      model: z.string().optional(),
+      content: contentSchema,
+      embedContentConfig: embedContentConfigSchema.optional(),
+      taskType: z.string().optional(),
+      title: z.string().optional(),
+      outputDimensionality: z.number().int().optional(),
+    })
+    .strip(),
+);
 
-export const GeminiBatchEmbedContentsRequestSchema = z.object({
-  // Official Gemini batchEmbedContents: at most 100 requests in one batch.
-  requests: z.array(GeminiEmbedContentRequestSchema).min(1).max(100),
-});
+export const GeminiBatchEmbedContentsRequestSchema = z.compile(
+  z.object({
+    // Official Gemini batchEmbedContents: at most 100 requests in one batch.
+    requests: z.array(GeminiEmbedContentRequestSchema).min(1).max(100),
+  }),
+);
 
 export type GeminiEmbedContentRequest = z.output<typeof GeminiEmbedContentRequestSchema>;
 export type GeminiBatchEmbedContentsRequest = z.output<typeof GeminiBatchEmbedContentsRequestSchema>;
