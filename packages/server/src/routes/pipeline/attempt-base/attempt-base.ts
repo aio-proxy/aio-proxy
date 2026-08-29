@@ -1,5 +1,5 @@
 import { configModelPrice, type OpenRouterModelPrice, type RouterCandidate } from '@aio-proxy/core';
-import type { ProviderProtocol, RouterModelPolicy } from '@aio-proxy/types';
+import type { ModelCost, ProviderProtocol, RouterModelPolicy } from '@aio-proxy/types';
 
 import { attributeName } from '../../../request-tracing';
 import type { RuntimeProviderInstance } from '../../../runtime';
@@ -106,16 +106,16 @@ export function attemptBase(
   };
 }
 
-// The slug's config cost for this provider attempt, mapped into the pricing
-// engine's shape. Provider override wins over the slug default; undefined
+// Cost for this provider attempt, mapped into the pricing engine's shape.
+// Provider override > slug metadata > plugin upstreamMetadata; undefined
 // falls back to the models.dev catalog in priceUsage.
 export function candidateConfigPrice(
   models: Readonly<Record<string, RouterModelPolicy>> | undefined,
   slug: string,
   providerId: string,
+  upstreamCost?: ModelCost,
 ): OpenRouterModelPrice | undefined {
   const policy = models?.[slug];
-  if (policy === undefined) return undefined;
-  const cost = policy.providers[providerId]?.cost ?? policy.metadata?.cost;
+  const cost = policy?.providers[providerId]?.cost ?? policy?.metadata?.cost ?? upstreamCost;
   return cost === undefined ? undefined : configModelPrice(slug, cost);
 }

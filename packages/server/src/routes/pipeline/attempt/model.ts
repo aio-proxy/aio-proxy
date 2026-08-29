@@ -41,7 +41,12 @@ export async function attemptModelCandidate<TRequest, TContext>(
   const attemptSpan = ctx.emitter.startAttempt(base, index);
   slot.spanRef.current = attemptSpan;
   await inAttempt(targetProtocol, () => model.ensureAvailable?.());
-  const configPrice = candidateConfigPrice(ctx.routerModels, publicSlug(ctx.requestedModelId, candidate), provider.id);
+  const configPrice = candidateConfigPrice(
+    ctx.routerModels,
+    publicSlug(ctx.requestedModelId, candidate),
+    provider.id,
+    provider.upstreamMetadata?.[candidate.modelId]?.cost,
+  );
   const captured = source.usageCapture.stream({
     providerId: provider.id,
     modelId: candidate.modelId,

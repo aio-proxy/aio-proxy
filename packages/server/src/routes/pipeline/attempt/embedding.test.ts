@@ -327,6 +327,22 @@ test('bills a qualified alias from the leased router policy after a snapshot swa
   expect(built.route.usage.embedding[0]?.configPrice).toEqual({ id: MODEL_ID, input: 1 });
 });
 
+test('bills plugin upstream cost when the router policy has no cost', async () => {
+  const provider = {
+    id: 'oauth',
+    kind: ProviderKind.OAuth,
+    enabled: true,
+    upstreamMetadata: { [MODEL_ID]: { cost: { input: 5 } } },
+    embedding: { embed: async () => ({ embeddings: [[0.1]], usage: { tokens: 1 } }) },
+  } satisfies RuntimeProviderInstance;
+  const built = harness(openAIEmbeddingsAdapter, { model: MODEL_ID, input: 'hello' });
+
+  const step = await attemptEmbeddingCandidate(built.ctx, slot(provider));
+
+  expect(step.kind).toBe('return');
+  expect(built.route.usage.embedding[0]?.configPrice).toEqual({ id: MODEL_ID, input: 5 });
+});
+
 test('bills the configured per-request fee when the upstream reported no tokens', async () => {
   const provider = {
     id: 'google',

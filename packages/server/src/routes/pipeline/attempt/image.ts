@@ -80,7 +80,12 @@ export async function attemptImageCandidate<TRequest, TContext>(
   const attemptSpan = ctx.emitter.startAttempt(base, index);
   slot.spanRef.current = attemptSpan;
   await inAttempt(undefined, () => image.ensureAvailable?.());
-  const configPrice = candidateConfigPrice(ctx.routerModels, publicSlug(ctx.requestedModelId, candidate), provider.id);
+  const configPrice = candidateConfigPrice(
+    ctx.routerModels,
+    publicSlug(ctx.requestedModelId, candidate),
+    provider.id,
+    provider.upstreamMetadata?.[candidate.modelId]?.cost,
+  );
   observation.markTransportUnavailable();
   const result = await inAttempt(undefined, () =>
     image.invoke({
