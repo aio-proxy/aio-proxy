@@ -15,4 +15,4 @@
 '@aio-proxy/plugin-github-copilot': patch
 ---
 
-Upgrade Zod to 4.5 and compile inbound protocol request schemas with `z.compile()` (except OpenAI Responses, whose unknown-item transform logs). Upgrade es-toolkit to 1.52, replace local object guards with `isPlainObject`, and replace spread-Set arrays with `uniq`.
+Upgrade Zod to 4.5 and compile inbound protocol request schemas with `z.compile()` (except OpenAI Responses, whose unknown-item transform logs). Upgrade es-toolkit to 1.52. Use `isPlainObject` for JSON/plain-data guards; keep structural plugin contracts on non-null non-array objects so class instances still pass. Replace spread-Set arrays with `uniq` in packages that already depend on es-toolkit.

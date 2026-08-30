@@ -36,6 +36,23 @@ describe('takeAioProxyOptions', () => {
       }),
     ).toThrow();
   });
+
+  test('accepts a class-based logical request context', () => {
+    class Session {
+      readonly key = 'sha256:abc' as const;
+      readonly source = 'transcript';
+    }
+    class Context {
+      readonly requestId = '00000000-0000-4000-8000-000000000001';
+      readonly session = new Session();
+    }
+    const context = new Context();
+
+    const split = takeAioProxyOptions({ aioProxy: { logicalRequest: context } });
+
+    expect(split.context).toBe(context);
+    expect(split.privateOptions.logicalRequest).toBe(context);
+  });
 });
 
 function logicalContext(): LogicalRequestContext {
