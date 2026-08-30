@@ -86,7 +86,7 @@ export async function validatedLoginResult<Credential>(
   raw: OAuthLoginResult<Credential>,
   signal: AbortSignal,
 ) {
-  if (!isPlainObject(raw)) throw new OAuthLoginResultValidationError();
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) throw new OAuthLoginResultValidationError();
   const { fingerprint, suggestedKey, accountLabel, expiresAt, credentials } = raw;
   if (
     typeof fingerprint !== 'string' ||

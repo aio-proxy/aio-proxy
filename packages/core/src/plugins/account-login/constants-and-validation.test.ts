@@ -44,6 +44,17 @@ test('credential schema failure and malformed login metadata perform no write', 
   }
 });
 
+test('accepts a class-based OAuth login result', async () => {
+  class LoginResult {
+    readonly fingerprint = 'person@example.com';
+    readonly suggestedKey = 'person';
+    readonly credentials = { token: 'new' };
+  }
+  const state = fixture();
+  await createAccount(state, { registry: registry({ login: async () => new LoginResult() }) });
+  expect(state.repository.readAccount('person')?.fingerprint).toBe('person@example.com');
+});
+
 test('malformed providers config is not overwritten during login', async () => {
   const state = fixture({ plugins: [], providers: 'malformed' });
   await expect(createAccount(state)).rejects.toThrow();
