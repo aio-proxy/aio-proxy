@@ -6,7 +6,6 @@ import {
   type ProviderKind,
   type ProviderProtocol,
 } from '@aio-proxy/types';
-import { isPlainObject } from 'es-toolkit/predicate';
 
 import type {
   AiSdkLanguageModel,
@@ -260,7 +259,7 @@ function callableProviderModel(provider: LoadedAiSdkRuntimeProvider, modelId: st
 }
 
 function isLanguageModel(value: unknown): value is AiSdkLanguageModel {
-  if (!isPlainObject(value)) {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
     return false;
   }
 
