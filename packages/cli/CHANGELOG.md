@@ -1,5 +1,22 @@
 # @aio-proxy/cli
 
+## 0.12.0
+
+### Patch Changes
+
+- [#228](https://github.com/aio-proxy/aio-proxy/pull/228) [`2cb5333`](https://github.com/aio-proxy/aio-proxy/commit/2cb5333493e582b676e34565246cfa0defb24dca) Thanks [@baranwang](https://github.com/baranwang)! - Upgrade Zod to 4.5 and compile inbound protocol request schemas with `z.compile()` (except OpenAI Responses, whose unknown-item transform logs). Upgrade es-toolkit to 1.52. Use `isPlainObject` for JSON and other plain data. Structural plugin/SDK contracts that may be class instances use `isRecord` from the published `@aio-proxy/shared` leaf package. Replace spread-Set arrays with `uniq` in packages that already depend on es-toolkit.
+- Updated dependencies [[`9c16d0b`](https://github.com/aio-proxy/aio-proxy/commit/9c16d0b56a954563a296e5363869d5bae12ffda2), [`2cb5333`](https://github.com/aio-proxy/aio-proxy/commit/2cb5333493e582b676e34565246cfa0defb24dca)]:
+  - @aio-proxy/plugin-sdk@0.12.0
+  - @aio-proxy/core@0.12.0
+  - @aio-proxy/server@0.12.0
+  - @aio-proxy/types@0.12.0
+  - @aio-proxy/dashboard@0.12.0
+  - @aio-proxy/i18n@0.12.0
+  - @aio-proxy/logger@0.12.0
+  - @aio-proxy/shared@0.12.0
+  - @aio-proxy/opencode-provider@0.12.0
+  - @aio-proxy/pi-provider@0.12.0
+
 ## 0.11.2
 
 ### Patch Changes
