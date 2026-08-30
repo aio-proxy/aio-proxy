@@ -239,9 +239,13 @@ function routingDefaults(config: { readonly priority?: number; readonly weight?:
   };
 }
 
+function isObject(value: unknown): value is object {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
 function tokenCountCapability(value: unknown): TokenCountCapability | undefined {
   if (value === undefined) return undefined;
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+  if (!isObject(value)) {
     throw new Error('Invalid token count capability');
   }
   const countTokens = Reflect.get(value, 'countTokens');
@@ -253,7 +257,7 @@ const providerToolTypes: ReadonlySet<ProviderExecutedTool['type']> = new Set(['w
 
 function providerToolCapability(value: unknown): ProviderToolCapability | undefined {
   if (value === undefined) return undefined;
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+  if (!isObject(value)) {
     throw new Error('Invalid provider tool capability');
   }
   const supported = Reflect.get(value, 'supported');

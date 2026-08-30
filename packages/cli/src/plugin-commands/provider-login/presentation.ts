@@ -43,8 +43,12 @@ function safeProperty(value: object, key: string): unknown {
   return descriptor !== undefined && 'value' in descriptor ? descriptor.value : undefined;
 }
 
+function isObject(value: unknown): value is object {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
 function safeCapability(value: unknown): OAuthCapabilityReference | null {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) return null;
+  if (!isObject(value)) return null;
   const plugin = safeIdentifier(safeProperty(value, 'plugin'));
   const capability = safeIdentifier(safeProperty(value, 'capability'));
   return plugin === null || capability === null ? null : { plugin, capability };

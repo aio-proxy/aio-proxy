@@ -5,6 +5,7 @@ import { Label } from '@aio-proxy/ui/components/label';
 import { Switch } from '@aio-proxy/ui/components/switch';
 import { Textarea } from '@aio-proxy/ui/components/textarea';
 import { cn } from '@aio-proxy/ui/lib/utils';
+import { isPlainObject } from 'es-toolkit/predicate';
 import { useId } from 'react';
 import type React from 'react';
 import type { ValueEditorProps, ValueSelectorProps } from 'react-querybuilder';
@@ -19,8 +20,8 @@ export interface QueryBuilderValueEditorProps extends ValueEditorProps {
 type ValueEditorState = ReturnType<typeof useValueEditor>;
 
 const regexValue = (value: unknown): { regex: string; options: string } => {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return { regex: '', options: '' };
-  const document = value as Record<string, unknown>;
+  if (!isPlainObject(value)) return { regex: '', options: '' };
+  const document = value;
   return {
     regex: typeof document['regex'] === 'string' ? document['regex'] : '',
     options: typeof document['options'] === 'string' ? document['options'] : '',

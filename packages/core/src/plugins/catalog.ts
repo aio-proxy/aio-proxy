@@ -19,6 +19,10 @@ export class ModelCatalogValidationError extends Error {
   }
 }
 
+function isObject(value: unknown): value is Record<PropertyKey, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
 function isJsonValue(value: unknown, seen = new Set<object>()): value is JsonValue {
   if (value === null || typeof value === 'string' || typeof value === 'boolean') return true;
   if (typeof value === 'number') return Number.isFinite(value);
@@ -65,10 +69,10 @@ function validateDescriptors(modality: Modality, value: unknown): readonly Model
   if (!Array.isArray(value)) throw new ModelCatalogValidationError(modality, -1, []);
   const seen = new Set<string>();
   return value.map((descriptor, index) => {
-    if (descriptor === null || typeof descriptor !== 'object' || Array.isArray(descriptor)) {
+    if (!isObject(descriptor)) {
       throw new ModelCatalogValidationError(modality, index, []);
     }
-    const record = descriptor as Record<string, unknown>;
+    const record = descriptor;
     const { id: rawId, displayName, extra, modelMetadata } = record;
     if (typeof rawId !== 'string' || rawId.trim() === '') {
       throw new ModelCatalogValidationError(modality, index, ['id']);
@@ -101,10 +105,10 @@ function validateDescriptors(modality: Modality, value: unknown): readonly Model
 }
 
 export function validateModelCatalog(value: unknown): ModelCatalog {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+  if (!isObject(value)) {
     throw new ModelCatalogValidationError('language', -1, []);
   }
-  const record = value as Record<string, unknown>;
+  const record = value;
   const { language, image, embedding, speech, transcription, reranking, extra } = record;
   if (extra !== undefined && !isJsonValue(extra)) {
     throw new ModelCatalogValidationError('language', -1, ['extra']);

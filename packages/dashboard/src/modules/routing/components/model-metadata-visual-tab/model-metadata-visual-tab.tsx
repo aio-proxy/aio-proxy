@@ -4,6 +4,7 @@ import { Input } from '@aio-proxy/ui/components/input';
 import { Label } from '@aio-proxy/ui/components/label';
 import { Textarea } from '@aio-proxy/ui/components/textarea';
 import { useQuery } from '@tanstack/react-query';
+import { isPlainObject } from 'es-toolkit/predicate';
 
 import { modelsDevLookupQueryOptions } from '../../services/models-dev-service';
 import { ModelMetadataCapabilitySelect } from './model-metadata-capability-select';
@@ -47,9 +48,7 @@ const COST_LABEL: Readonly<Record<(typeof COST_FIELDS)[number], () => string>> =
 
 const objectAt = (value: Readonly<Record<string, unknown>>, key: string): Readonly<Record<string, unknown>> => {
   const nested = value[key];
-  return typeof nested === 'object' && nested !== null && !Array.isArray(nested)
-    ? (nested as Readonly<Record<string, unknown>>)
-    : {};
+  return isPlainObject(nested) ? nested : {};
 };
 
 /** Setting a key to `undefined` clears it, which is how a merge drops a field the user emptied. */

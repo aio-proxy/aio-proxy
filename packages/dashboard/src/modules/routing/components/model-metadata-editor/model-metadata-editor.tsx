@@ -8,7 +8,7 @@ import {
 import { Label } from '@aio-proxy/ui/components/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@aio-proxy/ui/components/tabs';
 import { useQuery } from '@tanstack/react-query';
-import { isEqual } from 'es-toolkit/predicate';
+import { isEqual, isPlainObject } from 'es-toolkit/predicate';
 import { useEffect, useId, useMemo, useState } from 'react';
 
 import {
@@ -132,9 +132,7 @@ export const ModelMetadataEditor: React.FC<ModelMetadataEditorProps> = ({
     if (draft.trim() === '') return {};
     try {
       const parsedDraft: unknown = JSON.parse(draft);
-      return typeof parsedDraft === 'object' && parsedDraft !== null && !Array.isArray(parsedDraft)
-        ? (parsedDraft as Readonly<Record<string, unknown>>)
-        : undefined;
+      return isPlainObject(parsedDraft) ? parsedDraft : undefined;
     } catch {
       return undefined;
     }

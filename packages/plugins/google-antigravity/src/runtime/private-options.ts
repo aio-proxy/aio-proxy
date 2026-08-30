@@ -3,8 +3,12 @@ import { type LogicalRequestContext, type ProviderExecutedTool, zod } from '@aio
 
 import type { AntigravityThinkingOption } from '../protocol/thinking';
 
+function isObject(value: unknown): value is object {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
 const logicalRequestSchema = zod.custom<LogicalRequestContext>((value) => {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  if (!isObject(value)) return false;
   const session = Reflect.get(value, 'session');
   return (
     typeof Reflect.get(value, 'requestId') === 'string' &&

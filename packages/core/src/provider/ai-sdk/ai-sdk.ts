@@ -258,8 +258,12 @@ function callableProviderModel(provider: LoadedAiSdkRuntimeProvider, modelId: st
   return isLanguageModel(model) ? model : undefined;
 }
 
+function isObject(value: unknown): value is object {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
 function isLanguageModel(value: unknown): value is AiSdkLanguageModel {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+  if (!isObject(value)) {
     return false;
   }
 
