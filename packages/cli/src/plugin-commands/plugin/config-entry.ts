@@ -49,10 +49,6 @@ export function sameJson(left: unknown, right: unknown): boolean {
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
 export function usedPackageNames(config: ConfigRecord): Set<string> {
   const builtIns = new Set<string>(BUILT_IN_PLUGIN_PACKAGE_NAMES);
   const used = new Set(
@@ -60,9 +56,9 @@ export function usedPackageNames(config: ConfigRecord): Set<string> {
       .map(packageNameOf)
       .filter((name): name is string => name !== null && !builtIns.has(name)),
   );
-  if (isRecord(config['providers'])) {
+  if (isPlainObject(config['providers'])) {
     for (const provider of Object.values(config['providers'])) {
-      if (!isRecord(provider) || provider['kind'] !== 'ai-sdk') continue;
+      if (!isPlainObject(provider) || provider['kind'] !== 'ai-sdk') continue;
       const packageName = typeof provider['packageName'] === 'string' ? provider['packageName'] : provider['package'];
       if (isNpmPackageName(packageName)) used.add(packageName);
     }

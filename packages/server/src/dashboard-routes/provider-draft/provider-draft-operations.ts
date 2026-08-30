@@ -8,6 +8,7 @@ import {
   ProviderProtocol,
   ProviderSchema,
 } from '@aio-proxy/types';
+import { uniq } from 'es-toolkit/array';
 import { isPlainObject } from 'es-toolkit/predicate';
 
 import { exposedModelIds } from '../../plugin-runtime';
@@ -84,7 +85,7 @@ async function loadAiSdkDraftCatalog(
       return failure('catalog_unavailable');
     }
     const page = catalogPage(ProviderProtocol.OpenAICompatible, await response.json());
-    return { ok: true, models: [...new Set(page.models)] };
+    return { ok: true, models: uniq(page.models) };
   } catch {
     return failure('catalog_unavailable');
   }
@@ -295,5 +296,5 @@ function catalogModels(protocol: ProviderProtocol, payload: unknown): readonly s
     if (typeof value !== 'string' || value.trim() === '') return [];
     return [gemini ? value.replace(/^models\//u, '') : value];
   });
-  return [...new Set(models)];
+  return uniq(models);
 }

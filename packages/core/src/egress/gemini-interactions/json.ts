@@ -1,3 +1,5 @@
+import { isPlainObject } from 'es-toolkit/predicate';
+
 import type { TextStreamPart, ToolSet } from '../../ai-sdk-bridge';
 import { GeminiInteractionsEgressError } from '../../error';
 import type { ModelEgressContext } from '../../protocol/adapter';
@@ -115,7 +117,7 @@ export async function writeGeminiInteractionsResponse(
 }
 
 export function assertFunctionCallStep(step: unknown): asserts step is FunctionCallStep {
-  if (!isRecord(step) || step['type'] !== 'function_call') {
+  if (!isPlainObject(step) || step['type'] !== 'function_call') {
     throw new Error('Invalid function_call step');
   }
   const id = step['id'];
@@ -126,13 +128,13 @@ export function assertFunctionCallStep(step: unknown): asserts step is FunctionC
   if (typeof name !== 'string' || name.length === 0) {
     throw new Error('function_call step is missing name');
   }
-  if (!isRecord(step['arguments'])) {
+  if (!isPlainObject(step['arguments'])) {
     throw new Error('function_call step is missing arguments');
   }
 }
 
 export function assertThoughtStep(step: unknown): asserts step is ThoughtStep {
-  if (!isRecord(step) || step['type'] !== 'thought') {
+  if (!isPlainObject(step) || step['type'] !== 'thought') {
     throw new Error('Invalid thought step');
   }
   if ('content' in step) {
@@ -196,13 +198,9 @@ function parseJsonObject(value: string): Record<string, unknown> {
   if (value.trim() === '') return {};
   try {
     const parsed: unknown = JSON.parse(value);
-    if (isRecord(parsed)) return { ...parsed };
+    if (isPlainObject(parsed)) return { ...parsed };
   } catch (error) {
     if (!(error instanceof SyntaxError)) throw error;
   }
   throw new GeminiInteractionsEgressError('invalid_function_arguments');
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

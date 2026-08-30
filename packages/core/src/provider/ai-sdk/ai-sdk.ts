@@ -1,5 +1,12 @@
 import type { LogicalRequestContext, ProviderExecutedTool } from '@aio-proxy/plugin-sdk';
-import type { AiSdkProvider, AliasConfig, ModelId, ProviderKind, ProviderProtocol } from '@aio-proxy/types';
+import { isRecord } from '@aio-proxy/shared';
+import {
+  type AiSdkProvider,
+  type AliasConfig,
+  type ModelId,
+  type ProviderKind,
+  type ProviderProtocol,
+} from '@aio-proxy/types';
 
 import type {
   AiSdkLanguageModel,
@@ -264,8 +271,4 @@ function isLanguageModel(value: unknown): value is AiSdkLanguageModel {
     typeof candidate.modelId === 'string' &&
     typeof candidate.doStream === 'function'
   );
-}
-
-function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

@@ -8,6 +8,7 @@ import {
 } from '@aio-proxy/core';
 import { OAuthPluginProviderSchema, ProviderKind } from '@aio-proxy/types';
 import { minBy } from 'es-toolkit/array';
+import { isPlainObject } from 'es-toolkit/predicate';
 
 import type { FifoQueue } from './fifo-queue';
 import type { RetiredProviderSnapshot } from './runtime';
@@ -30,7 +31,7 @@ export type AccountRemovalCoordinator = {
 };
 
 export function asProviderRecord(value: unknown): Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+  return isPlainObject(value) ? value : {};
 }
 
 export function oauthCapabilityOf(

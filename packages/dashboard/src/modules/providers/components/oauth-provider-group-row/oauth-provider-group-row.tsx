@@ -3,6 +3,7 @@ import type { DashboardPluginSummary } from '@aio-proxy/types';
 import { Button } from '@aio-proxy/ui/components/button';
 import { TableRow } from '@aio-proxy/ui/components/table';
 import { Subscribe, type Row } from '@tanstack/react-table';
+import { uniq } from 'es-toolkit/array';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import type React from 'react';
 
@@ -36,7 +37,7 @@ export const OAuthProviderGroupRow: React.FC<OAuthProviderGroupRowProps> = ({
     (total, { provider }) => total + (providerUsage.get(provider.id)?.requestCount ?? 0n),
     0n,
   );
-  const models = [...new Set(group.accounts.flatMap(({ provider }) => provider.clientModels))];
+  const models = uniq(group.accounts.flatMap(({ provider }) => provider.clientModels));
   const provider = group.accounts[0]?.provider;
   const pluginPresentation = provider?.plugin === undefined ? undefined : pluginPresentations.get(provider.plugin);
   let pluginLabel = group.groupKey;

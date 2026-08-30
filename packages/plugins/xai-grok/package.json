@@ -20,7 +20,8 @@
   },
   "dependencies": {
     "@ai-sdk/openai": "catalog:",
-    "@aio-proxy/plugin-sdk": "workspace:*"
+    "@aio-proxy/plugin-sdk": "workspace:*",
+    "es-toolkit": "catalog:"
   },
   "devDependencies": {
     "@aio-proxy/infra": "workspace:*",

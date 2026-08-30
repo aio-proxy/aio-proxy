@@ -47,8 +47,12 @@ Use these terms in code, docs, and discussion; avoid the listed synonyms.
 - Prefer `es-toolkit`, or a composition of its functions, for generic collection, object, string, and function utilities.
 - Do not hand-write utilities without business meaning when `es-toolkit` already provides equivalent behavior.
 - Keep trivial native JavaScript when it is clearer, such as `map`, `filter`, `some`, `every`, object spread, or a simple loop.
-- Prefer narrow imports such as `es-toolkit/array`, `es-toolkit/object`, and `es-toolkit/function`.
+- Prefer narrow imports such as `es-toolkit/array`, `es-toolkit/object`, `es-toolkit/predicate`, and `es-toolkit/function`.
 - Avoid `es-toolkit/compat` unless lodash-compatible behavior is explicitly required.
+- Object shape checks:
+  - Use `isPlainObject` from `es-toolkit/predicate` for JSON, config, wire payloads, lock files, and other plain data. It rejects arrays, `null`, class instances, `Date`, `Error`, `Map`, and ESM module namespaces. That is the correct guard for authored/parsed data.
+  - Do **not** use `isPlainObject` for structural TypeScript contracts that may be class instances (`PluginDescriptor`, `ConfigSpec`, `OAuthAdapter`, `OAuthLoginResult`, `ModelCatalog`, `LogicalRequestContext`, AI SDK language models, capability objects, `Error` subclasses). Import `isRecord` from `@aio-proxy/shared` (published leaf, no workspace deps). Never put it in `@aio-proxy/types` or `@aio-proxy/plugin-sdk`.
+  - `typeof value === 'object'` alone is not enough: it is true for `null` and for arrays.
 - Each workspace package using `es-toolkit` must declare it with `"es-toolkit": "catalog:"`.
 - When selecting an `es-toolkit` function or verifying its import path, behavior, or FP signature, consult the official documentation index: https://es-toolkit.dev/llms.txt
 - Load only the relevant referenced documentation page. Do not load `llms-full.txt` unless broad API research is explicitly required.

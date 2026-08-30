@@ -1,3 +1,4 @@
+import { isPlainObject } from 'es-toolkit/predicate';
 import { z } from 'zod';
 
 type Json = z.JSONType;
@@ -245,7 +246,7 @@ function validateHeaderName(value: Json | undefined, path: IssuePath, context: z
 }
 
 function isDocument(value: Json | undefined): value is Document {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
+  return isPlainObject(value);
 }
 function isGetField(value: Json | undefined): value is Record<'$getField', Json> {
   return isDocument(value) && exactKeys(value, ['$getField']);

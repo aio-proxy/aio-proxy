@@ -6,6 +6,7 @@ import {
   type OAuthAdapter,
   type PluginApi,
 } from '@aio-proxy/plugin-sdk';
+import { isRecord } from '@aio-proxy/shared';
 import { CapabilityIdSchema } from '@aio-proxy/types';
 
 import { validateConfigSpec } from './config-spec';
@@ -21,10 +22,6 @@ export type PluginRegistry = {
 };
 
 type OAuthCapability = ReturnType<PluginRegistry['oauthCapabilities']>[number];
-
-function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
 
 function validateQuota(value: unknown): NonNullable<OAuthAdapter['quota']> | undefined {
   if (value === undefined) return undefined;

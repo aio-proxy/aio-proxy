@@ -220,6 +220,34 @@ test('materializes an optional plugin token-count capability', async () => {
   expect(await result.provider?.tokenCount?.countTokens(input)).toEqual({ inputTokens: 13 });
 });
 
+test('materializes a class-based plugin token-count capability', async () => {
+  class TokenCount {
+    async countTokens() {
+      return { inputTokens: 17 };
+    }
+  }
+  const fixture = runtimeFixture(
+    { kind: 'static' },
+    {
+      createRuntime: async () => ({
+        provider: providerV4(),
+        tokenCount: new TokenCount(),
+      }),
+    },
+  );
+
+  const result = await materializeFixture(fixture);
+  const input = {
+    protocol: 'anthropic' as const,
+    modelId: 'model',
+    request: new Request('https://proxy.test/v1/messages/count_tokens'),
+    context: { requestId: 'request', session: { key: 'sha256:test' as const, source: 'transcript' as const } },
+    invocation: { messages: [{ role: 'user' as const, content: 'hello' }] },
+  };
+
+  expect(await result.provider?.tokenCount?.countTokens(input)).toEqual({ inputTokens: 17 });
+});
+
 test('exposedModelIds: absent or empty whitelist exposes the whole catalog', () => {
   expect(exposedModelIds(['a', 'b'], undefined)).toEqual(['a', 'b']);
   expect(exposedModelIds(['a', 'b'], [])).toEqual(['a', 'b']);

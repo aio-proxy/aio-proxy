@@ -13,6 +13,7 @@ import {
   recoverPendingAccountOperations,
 } from '@aio-proxy/core';
 import { m } from '@aio-proxy/i18n';
+import { isPlainObject } from 'es-toolkit/predicate';
 
 import { CliExit, EXIT } from '../../exit';
 import { createProviderLoginDefaultDeps } from '../provider-login/deps';
@@ -34,10 +35,6 @@ type ImportCounts = { imported: number; duplicate: number; skipped: number; fail
 
 function isErrnoException(error: unknown): error is NodeJS.ErrnoException {
   return error instanceof Error && 'code' in error;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function safeReason(error: unknown): string {
@@ -108,7 +105,7 @@ async function importOneFile(file: string, deps: ProviderImportDeps, counts: Imp
     return;
   }
 
-  if (!isRecord(parsed) || typeof parsed['type'] !== 'string' || parsed['type'].trim() === '') {
+  if (!isPlainObject(parsed) || typeof parsed['type'] !== 'string' || parsed['type'].trim() === '') {
     counts.failed += 1;
     deps.print(
       m['cli.provider.import.status_failed']({

@@ -6,6 +6,7 @@ import type {
   ExpressionNode,
   MongoAggSerializerRegistry,
 } from '@react-querybuilder/expr';
+import { isPlainObject } from 'es-toolkit/predicate';
 import type { DefaultRuleGroupType, RuleProcessor, RuleType } from 'react-querybuilder';
 
 import {
@@ -59,8 +60,7 @@ const parserMeta = { ...requestTransformFunctionMeta, __literal: { arity: 1 } };
 const parseExpression = createMongoExpressionParser(parserInverse, parserMeta);
 const baseRuleProcessor = createMongoExpressionRuleProcessor(privateSerializers);
 const LITERAL_PREFIX = '__aio_literal__:';
-const isDocument = (value: unknown): value is Document =>
-  value !== null && typeof value === 'object' && !Array.isArray(value);
+const isDocument = (value: unknown): value is Document => isPlainObject(value);
 const exactKeys = (value: Document, keys: readonly string[]): boolean =>
   Object.keys(value).length === keys.length && keys.every((key) => Object.hasOwn(value, key));
 const readGetField = (value: unknown): { scope: HeaderScope; name: string } | undefined => {

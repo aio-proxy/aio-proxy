@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, normalize, sep } from 'node:path';
 
+import { isPlainObject } from 'es-toolkit/predicate';
 import { z } from 'zod';
 
 import { NpmInstallError, NpmPackageEntrypointError, NpmPackageJsonError, NpmPackageNameError } from './error';
@@ -61,15 +62,11 @@ function packageJsonPath(pkg: string): string {
   return join(npmPackageCacheDir(pkg), 'node_modules', ...packageNameParts(pkg), 'package.json');
 }
 
-function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
 function exportPath(value: unknown): string | undefined {
   if (typeof value === 'string') {
     return value;
   }
-  if (!isRecord(value)) {
+  if (!isPlainObject(value)) {
     return undefined;
   }
   for (const key of ['.', 'import', 'module', 'default', 'require'] as const) {

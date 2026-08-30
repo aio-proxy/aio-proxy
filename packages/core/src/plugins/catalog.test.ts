@@ -25,6 +25,29 @@ describe('validateModelCatalog', () => {
     expect(validateModelCatalog(validCatalog())).toEqual(validCatalog());
   });
 
+  test('accepts a class-based catalog and descriptors', () => {
+    class Descriptor {
+      readonly id = 'language';
+      readonly displayName = 'Language';
+    }
+    class Catalog {
+      readonly language = [new Descriptor()];
+      readonly image = [];
+      readonly embedding = [];
+      readonly speech = [];
+      readonly transcription = [];
+      readonly reranking = [];
+    }
+    expect(validateModelCatalog(new Catalog())).toEqual({
+      language: [{ id: 'language', displayName: 'Language' }],
+      image: [],
+      embedding: [],
+      speech: [],
+      transcription: [],
+      reranking: [],
+    });
+  });
+
   test.each(['language', 'image', 'embedding', 'speech', 'transcription', 'reranking'])(
     'requires the %s modality array',
     (modality) => {

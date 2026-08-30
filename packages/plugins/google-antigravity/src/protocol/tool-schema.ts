@@ -1,3 +1,6 @@
+import { filter, pipe, uniq } from 'es-toolkit/fp';
+import { isPlainObject, isString } from 'es-toolkit/predicate';
+
 type KnownField =
   | '$ref'
   | 'allOf'
@@ -49,7 +52,7 @@ export function normalizeAntigravityToolSchema(input: unknown, options: { readon
 export function normalizeFunctionDeclarations(input: unknown): JsonObject[] {
   if (!Array.isArray(input)) throw validationError();
   return input.map((value) => {
-    if (!isObject(value)) throw validationError();
+    if (!isPlainObject(value)) throw validationError();
     const { parametersJsonSchema, parameters, ...declaration } = value;
     const hasJsonSchema = Object.hasOwn(value, 'parametersJsonSchema');
     const hasParameters = Object.hasOwn(value, 'parameters');
@@ -109,15 +112,15 @@ function convertRefsConstsEnumsAndHints(schema: JsonObject): JsonObject {
 function flattenCompositionsAndTypeArrays(schema: JsonObject): JsonObject {
   let result = mapChildren(schema, flattenCompositionsAndTypeArrays);
   if (Array.isArray(result.allOf)) {
-    const branches = result.allOf.filter(isObject);
+    const branches = result.allOf.filter((item): item is JsonObject => isPlainObject(item));
     const properties = Object.assign(
       {},
-      objectOrEmpty(result.properties),
-      ...branches.map((item) => objectOrEmpty(item.properties)),
+      objectOrEmpty(result['properties']),
+      ...branches.map((item) => objectOrEmpty(item['properties'])),
     );
     const required = uniqueStrings([
-      ...arrayOrEmpty(result.required),
-      ...branches.flatMap((item) => arrayOrEmpty(item.required)),
+      ...arrayOrEmpty(result['required']),
+      ...branches.flatMap((item) => arrayOrEmpty(item['required'])),
     ]);
     const { allOf: _allOf, ...rest } = result;
     result = {
@@ -128,7 +131,7 @@ function flattenCompositionsAndTypeArrays(schema: JsonObject): JsonObject {
   }
   for (const keyword of ['anyOf', 'oneOf'] as const) {
     if (!Array.isArray(result[keyword])) continue;
-    const choices = result[keyword].filter(isObject);
+    const choices = result[keyword].filter((item): item is JsonObject => isPlainObject(item));
     const selected =
       choices.reduce<JsonObject | undefined>(
         (best, choice) => (best === undefined || schemaPriority(choice) > schemaPriority(best) ? choice : best),
@@ -157,7 +160,7 @@ function removeUnsupportedAndInvalidRequired(schema: JsonObject): JsonObject {
   for (const keyword of Object.keys(result)) {
     if (UNSUPPORTED.has(keyword) || keyword.startsWith('x-') || keyword === '$ref') delete result[keyword];
   }
-  const properties = isObject(result.properties) ? result.properties : undefined;
+  const properties = isPlainObject(result.properties) ? result.properties : undefined;
   if (result.properties !== undefined && properties === undefined) delete result.properties;
   const required = uniqueStrings(arrayOrEmpty(result.required)).filter((name) => properties?.[name] !== undefined);
   if (required.length === 0) delete result.required;
@@ -167,7 +170,7 @@ function removeUnsupportedAndInvalidRequired(schema: JsonObject): JsonObject {
 
 function addRequiredPlaceholder(schema: JsonObject, root: boolean): JsonObject {
   const result = mapChildren(schema, (child) => addRequiredPlaceholder(child, false));
-  const properties = isObject(result.properties) ? result.properties : undefined;
+  const properties = isPlainObject(result.properties) ? result.properties : undefined;
   const objectSchema = result.type === 'object' || properties !== undefined || (root && result.type === undefined);
   if (!objectSchema) return result;
   if (root && (properties === undefined || Object.keys(properties).length === 0)) {
@@ -193,17 +196,17 @@ function addRequiredPlaceholder(schema: JsonObject, root: boolean): JsonObject {
 
 function mapChildren(schema: JsonObject, transform: (input: JsonObject) => JsonObject): JsonObject {
   const result = { ...schema };
-  if (isObject(result.properties)) {
+  if (isPlainObject(result.properties)) {
     result.properties = Object.fromEntries(
-      Object.entries(result.properties).map(([name, value]) => [name, isObject(value) ? transform(value) : value]),
+      Object.entries(result.properties).map(([name, value]) => [name, isPlainObject(value) ? transform(value) : value]),
     );
   }
-  if (isObject(result.items)) result.items = transform(result.items);
+  if (isPlainObject(result.items)) result.items = transform(result.items);
   else if (Array.isArray(result.items))
-    result.items = result.items.map((item) => (isObject(item) ? transform(item) : item));
+    result.items = result.items.map((item) => (isPlainObject(item) ? transform(item) : item));
   for (const keyword of ['allOf', 'anyOf', 'oneOf'] as const) {
     if (Array.isArray(result[keyword])) {
-      result[keyword] = result[keyword].map((item) => (isObject(item) ? transform(item) : item));
+      result[keyword] = result[keyword].map((item) => (isPlainObject(item) ? transform(item) : item));
     }
   }
   return result;
@@ -251,7 +254,7 @@ function schemaPriority(schema: JsonObject): number {
 
 function schemaLabel(schema: JsonObject): string {
   if (typeof schema.type === 'string') return schema.type;
-  if (isObject(schema.properties)) return 'object';
+  if (isPlainObject(schema.properties)) return 'object';
   if (schema.items !== undefined) return 'array';
   return 'value';
 }
@@ -268,7 +271,7 @@ function stringValue(value: unknown): string {
 }
 
 function cloneJsonObject(input: unknown): JsonObject {
-  if (!isObject(input)) throw validationError();
+  if (!isPlainObject(input)) throw validationError();
   return structuredClone(input);
 }
 
@@ -276,12 +279,8 @@ function validationError(): AntigravityToolSchemaValidationError {
   return new AntigravityToolSchemaValidationError('Function declaration parameters must be an object schema');
 }
 
-function isObject(value: unknown): value is JsonObject {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
 function objectOrEmpty(value: unknown): JsonObject {
-  return isObject(value) ? value : {};
+  return isPlainObject(value) ? value : {};
 }
 
 function arrayOrEmpty(value: unknown): unknown[] {
@@ -289,5 +288,5 @@ function arrayOrEmpty(value: unknown): unknown[] {
 }
 
 function uniqueStrings(values: readonly unknown[]): string[] {
-  return [...new Set(values.filter((value): value is string => typeof value === 'string'))];
+  return pipe(values, filter(isString), uniq());
 }

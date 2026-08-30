@@ -105,6 +105,7 @@
         "@aio-proxy/pi-provider": "workspace:*",
         "@aio-proxy/plugin-sdk": "workspace:*",
         "@aio-proxy/server": "workspace:*",
+        "@aio-proxy/shared": "workspace:*",
         "@aio-proxy/types": "workspace:*",
         "@inquirer/prompts": "^8.5.2",
         "commander": "15",
@@ -138,6 +139,7 @@
         "@aio-proxy/plugin-openai-chatgpt": "workspace:*",
         "@aio-proxy/plugin-sdk": "workspace:*",
         "@aio-proxy/plugin-xai-grok": "workspace:*",
+        "@aio-proxy/shared": "workspace:*",
         "@aio-proxy/types": "workspace:*",
         "@anthropic-ai/sdk": "catalog:",
         "@google/genai": "catalog:",
@@ -260,6 +262,7 @@
         "@aio-proxy/plugin-sdk": "workspace:*",
         "@logtape/file": "2.2.4",
         "@logtape/logtape": "catalog:",
+        "es-toolkit": "catalog:",
       },
       "devDependencies": {
         "@aio-proxy/infra": "workspace:*",
@@ -272,10 +275,12 @@
       "version": "0.11.2",
       "dependencies": {
         "@ai-sdk/provider": "catalog:",
+        "@aio-proxy/shared": "workspace:*",
         "@aio-proxy/types": "workspace:*",
         "@date-fns/tz": "catalog:",
         "ai": "catalog:",
         "date-fns": "catalog:",
+        "es-toolkit": "catalog:",
         "eventsource-parser": "catalog:",
         "zod": "catalog:",
       },
@@ -295,6 +300,7 @@
         "@aio-proxy/plugin-sdk": "workspace:*",
         "@aio-proxy/types": "workspace:*",
         "@bufbuild/protobuf": "catalog:",
+        "es-toolkit": "catalog:",
         "lru-cache": "catalog:",
       },
       "devDependencies": {
@@ -312,6 +318,7 @@
         "@ai-sdk/openai": "catalog:",
         "@ai-sdk/openai-compatible": "catalog:",
         "@aio-proxy/plugin-sdk": "workspace:*",
+        "es-toolkit": "catalog:",
       },
       "devDependencies": {
         "@aio-proxy/infra": "workspace:*",
@@ -327,6 +334,7 @@
         "@ai-sdk/google": "catalog:",
         "@ai-sdk/provider": "catalog:",
         "@aio-proxy/plugin-sdk": "workspace:*",
+        "@aio-proxy/shared": "workspace:*",
         "ai": "catalog:",
         "es-toolkit": "catalog:",
         "eventsource-parser": "catalog:",
@@ -345,6 +353,7 @@
         "@ai-sdk/anthropic": "catalog:",
         "@ai-sdk/openai-compatible": "catalog:",
         "@aio-proxy/plugin-sdk": "workspace:*",
+        "es-toolkit": "catalog:",
       },
       "devDependencies": {
         "@aio-proxy/infra": "workspace:*",
@@ -376,6 +385,7 @@
       "dependencies": {
         "@ai-sdk/openai": "catalog:",
         "@aio-proxy/plugin-sdk": "workspace:*",
+        "es-toolkit": "catalog:",
       },
       "devDependencies": {
         "@aio-proxy/infra": "workspace:*",
@@ -392,6 +402,7 @@
         "@aio-proxy/i18n": "workspace:*",
         "@aio-proxy/logger": "workspace:*",
         "@aio-proxy/plugin-sdk": "workspace:*",
+        "@aio-proxy/shared": "workspace:*",
         "@aio-proxy/types": "workspace:*",
         "@logtape/hono": "2.2.4",
         "@opentelemetry/api": "1.9.1",
@@ -414,6 +425,16 @@
         "@types/bun": "catalog:",
         "ai": "catalog:",
         "openai": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
+    "packages/shared": {
+      "name": "@aio-proxy/shared",
+      "version": "0.11.2",
+      "devDependencies": {
+        "@aio-proxy/infra": "workspace:*",
+        "@rslib/core": "catalog:",
+        "@types/bun": "catalog:",
         "typescript": "catalog:",
       },
     },
@@ -511,7 +532,7 @@
     "class-variance-authority": "^0.7.1",
     "date-fns": "^4.4.0",
     "drizzle-orm": "^0.45.2",
-    "es-toolkit": "1.50.0-dev.2001",
+    "es-toolkit": "1.52.0",
     "eventsource-parser": "^3.1.0",
     "hono": "^4.13.3",
     "jose": "^6.2.3",
@@ -525,7 +546,7 @@
     "recharts": "3.8.0",
     "tailwindcss": "^4.3.2",
     "typescript": "^7.0.2",
-    "zod": "^4.4.3",
+    "zod": "^4.5.4",
   },
   "packages": {
     "@adobe/css-tools": ["@adobe/css-tools@4.5.0", "", {}, "sha512-6OzddxPio9UiWTCemp4N8cYLV2ZN1ncRnV1cVGtve7dhPOtRkleRyx32GQCYSwDYgaHU3USMm84tNsvKzRCa1Q=="],
@@ -593,6 +614,8 @@
     "@aio-proxy/provider-schemas": ["@aio-proxy/provider-schemas@0.1.1", "", { "peerDependencies": { "zod": "^4.1.5" }, "optionalPeers": ["zod"] }, "sha512-jYutoOrOFeCvt6qImGjZ3S9GpqPC/8b5mo1dSrWxJr86V4+wjXi0bX/8eiOJ0IpkT9b5QJJVrCCUbPb6X7jGZw=="],
 
     "@aio-proxy/server": ["@aio-proxy/server@workspace:packages/server"],
+
+    "@aio-proxy/shared": ["@aio-proxy/shared@workspace:packages/shared"],
 
     "@aio-proxy/types": ["@aio-proxy/types@workspace:packages/types"],
 
@@ -2056,7 +2079,7 @@
 
     "es-object-atoms": ["es-object-atoms@1.1.2", "", { "dependencies": { "es-errors": "^1.3.0" } }, "sha512-HWcBoN6NileqtSydK2FqHbS/LoDd2pqrnQHLyJzBj4kOp/ky2MWMN694xOfkK8/SnUsW2DH7EfyVlydKCsm1Zw=="],
 
-    "es-toolkit": ["es-toolkit@1.50.0-dev.2001", "", {}, "sha512-O505JjIk1WuWt19rMkFRUxFQBdX1y3deL9YB7IlF6X4KFYVn2nkd7XZtM2Ouomr+EBn7aoED1rO5Asijq2hAYA=="],
+    "es-toolkit": ["es-toolkit@1.52.0", "", {}, "sha512-XTNEJQh1tY1ZJVcf6ayP/2n4ZPyaHlW2FWs7xvw5ddPuhUVjLD3olQVQS7kf58JbAB48iL0uL/jerTrjtV3lDA=="],
 
     "es6-error": ["es6-error@4.1.1", "", {}, "sha512-Um/+FxMr9CISWh0bi5Zv0iOD+4cFh5qLeks1qhAopKVAJw3drgKbKySikp7wGhDL0HPeaja0P5ULZrxLkniUVg=="],
 
@@ -3172,7 +3195,7 @@
 
     "yoctocolors": ["yoctocolors@2.1.2", "", {}, "sha512-CzhO+pFNo8ajLM2d2IW/R93ipy99LWjtwblvC1RsoSUMZgyLbYFr221TnSNT7GjGdYui6P459mw9JH/g/zW2ug=="],
 
-    "zod": ["zod@4.4.3", "", {}, "sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ=="],
+    "zod": ["zod@4.5.4", "", {}, "sha512-sC95tT5iHHH9gtpj6A81kh+NEaRAUFN+qlUPDUbRfOMvNf5QCBqsb3WgvnpVtK5Y+4UfA6KqufotuTvMGiTlsA=="],
 
     "zod-to-json-schema": ["zod-to-json-schema@3.25.2", "", { "peerDependencies": { "zod": "^3.25.28 || ^4" } }, "sha512-O/PgfnpT1xKSDeQYSCfRI5Gy3hPf91mKVDuYLUHZJMiDFptvP41MSnWofm8dnCm0256ZNfZIM7DSzuSMAFnjHA=="],
 

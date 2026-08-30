@@ -1,5 +1,4 @@
 import { expect, test } from 'bun:test';
-
 const LOCALES = ['en', 'zh-Hans', 'zh-Hant', 'ja', 'ko'] as const;
 
 const flatten = (value: unknown, prefix = ''): [string, unknown][] => {

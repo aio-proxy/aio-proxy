@@ -1,5 +1,6 @@
 import { openai } from '@ai-sdk/openai';
 import { type AliasDimensions, canonicalEffort, ProviderProtocol } from '@aio-proxy/types';
+import { isPlainObject } from 'es-toolkit/predicate';
 import { z } from 'zod';
 
 import type { FilePart, ModelMessage, ToolSet } from '../ai-sdk-bridge';
@@ -157,7 +158,7 @@ function isCurrentFilePart<T>(part: T): part is Extract<T, { type: 'file' }> {
 function withoutOpenAIImageDetail<T extends FilePart>(part: T, path: string): T {
   if (openAIImageDetail(part) === undefined) return part;
   const openaiOptions = part.providerOptions?.['openai'];
-  if (typeof openaiOptions !== 'object' || openaiOptions === null || Array.isArray(openaiOptions)) return part;
+  if (!isPlainObject(openaiOptions)) return part;
 
   warnOpenAIResponsesDegradation('image_detail', `${path}.providerOptions.openai.imageDetail`, 'dropped');
   const remainingOpenAIOptions = { ...openaiOptions };

@@ -1,4 +1,5 @@
 import type { RuntimeFetch } from '@aio-proxy/plugin-sdk';
+import { isPlainObject } from 'es-toolkit/predicate';
 
 const GROUNDING_REDIRECT_ORIGIN = 'https://vertexaisearch.cloud.google.com';
 const GROUNDING_REDIRECT_PREFIX = '/grounding-api-redirect/';
@@ -189,7 +190,7 @@ function groundingChunks(payload: unknown): Record<string, unknown>[] {
   return candidates.flatMap((candidate) => {
     const groundingMetadata = record(Reflect.get(record(candidate) ?? {}, 'groundingMetadata'));
     const chunks = Reflect.get(groundingMetadata ?? {}, 'groundingChunks');
-    return Array.isArray(chunks) ? chunks.filter(isRecord) : [];
+    return Array.isArray(chunks) ? chunks.filter(isPlainObject) : [];
   });
 }
 
@@ -222,9 +223,5 @@ function throwIfCallerAborted(signal: AbortSignal | undefined): void {
 }
 
 function record(value: unknown): Record<string, unknown> | undefined {
-  return isRecord(value) ? value : undefined;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+  return isPlainObject(value) ? value : undefined;
 }

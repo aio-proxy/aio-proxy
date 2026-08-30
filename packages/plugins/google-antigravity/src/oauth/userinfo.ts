@@ -1,3 +1,5 @@
+import { isPlainObject } from 'es-toolkit/predicate';
+
 import { antigravityUserAgent } from '../runtime/hub-version';
 import { GOOGLE_USERINFO_ENDPOINT } from './constants';
 import type { OAuthHttpOptions } from './flow';
@@ -26,7 +28,7 @@ export async function fetchGoogleEmail(accessToken: string, options: OAuthHttpOp
 }
 
 function readEmail(payload: unknown): string | undefined {
-  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) return undefined;
+  if (!isPlainObject(payload)) return undefined;
   const value = Reflect.get(payload, 'email');
   if (typeof value !== 'string' || value.trim() === '') return undefined;
   return value.trim();

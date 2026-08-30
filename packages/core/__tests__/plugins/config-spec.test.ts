@@ -73,6 +73,53 @@ describe('validateConfigSpec', () => {
     expect(Object.getPrototypeOf(result.spec.form[0]?.label)).toBe(Object.prototype);
   });
 
+  test('accepts a class-based ConfigSpec and fields', () => {
+    class When {
+      readonly key = 'enabled';
+      readonly equals = true;
+    }
+    class Option {
+      readonly value = 'fast';
+      readonly label = 'Fast';
+    }
+    class EnabledField {
+      readonly type = 'boolean';
+      readonly key = 'enabled';
+      readonly label = 'Enabled';
+    }
+    class SecretField {
+      readonly type = 'secret';
+      readonly key = 'token';
+      readonly label = 'Token';
+    }
+    class SelectField {
+      readonly type = 'select';
+      readonly key = 'mode';
+      readonly label = 'Mode';
+      readonly when = new When();
+      readonly options = [new Option()];
+    }
+    class Spec {
+      readonly schema = schema;
+      readonly form = [new EnabledField(), new SecretField(), new SelectField()];
+    }
+
+    const result = validateConfigSpec(new Spec());
+
+    expect(result.spec.form).toEqual([
+      { type: 'boolean', key: 'enabled', label: 'Enabled' },
+      { type: 'secret', key: 'token', label: 'Token' },
+      {
+        type: 'select',
+        key: 'mode',
+        label: 'Mode',
+        when: { key: 'enabled', equals: true },
+        options: [{ value: 'fast', label: 'Fast' }],
+      },
+    ]);
+    expect([...result.secretKeys]).toEqual(['token']);
+  });
+
   test('accepts localized placeholders and rejects invalid localized copy', () => {
     expect(() =>
       validateConfigSpec({

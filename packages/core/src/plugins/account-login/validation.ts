@@ -1,5 +1,6 @@
 import type { CredentialPort, OAuthAdapter, OAuthLoginResult } from '@aio-proxy/plugin-sdk';
 import { OAuthPluginProviderSchema, type ProviderAlias } from '@aio-proxy/types';
+import { isPlainObject } from 'es-toolkit/predicate';
 import { z } from 'zod';
 
 import { parseRuntimeConfig } from '../../config';
@@ -18,18 +19,15 @@ import type { OAuthProviderPatch } from './login';
 
 export type ConfigRecord = Record<string, unknown>;
 export type PlainRecord = Record<string, unknown>;
-export function isRecord(value: unknown): value is PlainRecord {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
 export function providerRecord(current: ConfigRecord): Record<string, unknown> {
   const providers = current['providers'];
   if (providers === undefined) return {};
-  if (isRecord(providers)) return providers;
+  if (isPlainObject(providers)) return providers;
   parseRuntimeConfig(current);
   throw new ProviderConfigInvalidError();
 }
 export function structuredEntry(value: unknown): PlainRecord | null {
-  if (!isRecord(value) || value['kind'] !== 'oauth' || Object.hasOwn(value, 'vendor')) return null;
+  if (!isPlainObject(value) || value['kind'] !== 'oauth' || Object.hasOwn(value, 'vendor')) return null;
   return OAuthPluginProviderSchema.safeParse({ ...value, id: 'staged' }).success ? value : null;
 }
 export function capabilityOf(entry: PlainRecord): OAuthCapabilityReference {
@@ -43,13 +41,13 @@ export function accountMatches(account: StoredAccount, capability: OAuthCapabili
 }
 export function validateStagedOAuthWrite(candidate: ConfigRecord): void {
   const providers = candidate['providers'];
-  if (!isRecord(providers)) {
+  if (!isPlainObject(providers)) {
     parseRuntimeConfig(candidate);
     return;
   }
   const legacyProviders: Record<string, unknown> = {};
   for (const [id, value] of Object.entries(providers)) {
-    if (isRecord(value) && value['kind'] === 'oauth' && !Object.hasOwn(value, 'vendor')) {
+    if (isPlainObject(value) && value['kind'] === 'oauth' && !Object.hasOwn(value, 'vendor')) {
       const parsed = OAuthPluginProviderSchema.safeParse({ ...value, id });
       // A hand-edited `models` on an oauth provider is validated as of this branch, so this rejection is
       // reachable from an ordinary re-login. Standalone issue paths read `["models", 0]` and never say
@@ -76,7 +74,7 @@ export async function validatedAccountOptions<Options, Credential>(
   signal: AbortSignal,
 ) {
   const { publicValues, secrets } = rendered;
-  if (!isRecord(publicValues) || !isRecord(secrets)) throw new AccountOptionsValidationError();
+  if (!isPlainObject(publicValues) || !isPlainObject(secrets)) throw new AccountOptionsValidationError();
   const parsed = await withAbort(signal, () =>
     parsePluginSchema(adapter.account.options.schema, { ...publicValues, ...secrets }),
   );
@@ -88,7 +86,7 @@ export async function validatedLoginResult<Credential>(
   raw: OAuthLoginResult<Credential>,
   signal: AbortSignal,
 ) {
-  if (!isRecord(raw)) throw new OAuthLoginResultValidationError();
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) throw new OAuthLoginResultValidationError();
   const { fingerprint, suggestedKey, accountLabel, expiresAt, credentials } = raw;
   if (
     typeof fingerprint !== 'string' ||

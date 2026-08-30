@@ -1,3 +1,5 @@
+import { isPlainObject } from 'es-toolkit/predicate';
+
 import { antigravityEndpoints } from '../runtime/endpoints';
 import {
   ANTIGRAVITY_GOOGLE_API_CLIENT,
@@ -98,20 +100,20 @@ async function requestJson(
   if (!response.ok) throw new Error(`Google Antigravity ${input.operation} failed (HTTP ${response.status})`);
   try {
     const payload: unknown = await response.json();
-    if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) throw new Error();
-    return payload as Record<string, unknown>;
+    if (!isPlainObject(payload)) throw new Error();
+    return payload;
   } catch {
     throw new Error(`Google Antigravity ${input.operation} returned an invalid response`);
   }
 }
 
 function extractProjectId(payload: unknown): string | undefined {
-  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) return undefined;
+  if (!isPlainObject(payload)) return undefined;
   for (const key of ['cloudaicompanionProject', 'projectId', 'project'] as const) {
     const value = Reflect.get(payload, key);
     const direct = trimmedString(value);
     if (direct !== undefined) return direct;
-    if (typeof value === 'object' && value !== null) {
+    if (isPlainObject(value)) {
       const nested = trimmedString(Reflect.get(value, 'id'));
       if (nested !== undefined) return nested;
     }
@@ -123,7 +125,7 @@ function selectTier(payload: Record<string, unknown>): string {
   const tiers = payload['allowedTiers'];
   if (Array.isArray(tiers)) {
     for (const tier of tiers) {
-      if (typeof tier === 'object' && tier !== null && Reflect.get(tier, 'isDefault') === true) {
+      if (isPlainObject(tier) && Reflect.get(tier, 'isDefault') === true) {
         const id = trimmedString(Reflect.get(tier, 'id'));
         if (id !== undefined) return id;
       }

@@ -28,13 +28,9 @@ import {
   PluginSetupValidationError,
 } from './errors';
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
 function descriptorFromModule(packageName: string, imported: unknown): PluginDescriptor<unknown> {
-  if (!isRecord(imported)) throw new PluginDescriptorInvalidError(packageName);
-  const descriptor = imported['default'];
+  if (imported === null || typeof imported !== 'object') throw new PluginDescriptorInvalidError(packageName);
+  const descriptor = Reflect.get(imported, 'default');
   if (!isPluginDescriptor(descriptor)) throw new PluginDescriptorInvalidError(packageName);
   const typed = descriptor as PluginDescriptor<unknown>;
   try {

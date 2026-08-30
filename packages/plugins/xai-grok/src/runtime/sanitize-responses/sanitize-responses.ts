@@ -1,3 +1,4 @@
+import { isPlainObject } from 'es-toolkit/predicate';
 const DROPPED_FIELDS = [
   'previous_response_id',
   'prompt_cache_retention',
@@ -280,7 +281,5 @@ function objectBranch(schema: JsonObject): JsonObject | undefined {
 }
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : undefined;
+  return isPlainObject(value) ? value : undefined;
 }

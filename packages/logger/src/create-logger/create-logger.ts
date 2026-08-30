@@ -1,5 +1,6 @@
 import type { LogBindings, Logger } from '@aio-proxy/plugin-sdk';
 import { getLogger } from '@logtape/logtape';
+import { isPlainObject } from 'es-toolkit/predicate';
 
 import { redactLogText, redactLogValue } from '../redact';
 
@@ -66,5 +67,5 @@ export function createLogger(category: readonly string[], options: LoggerOptions
 }
 
 function isLogBindings(value: unknown): value is LogBindings {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
+  return isPlainObject(value);
 }

@@ -48,6 +48,7 @@
     "@aio-proxy/plugin-openai-chatgpt": "workspace:*",
     "@aio-proxy/plugin-sdk": "workspace:*",
     "@aio-proxy/plugin-xai-grok": "workspace:*",
+    "@aio-proxy/shared": "workspace:*",
     "@aio-proxy/types": "workspace:*",
     "@anthropic-ai/sdk": "catalog:",
     "@google/genai": "catalog:",

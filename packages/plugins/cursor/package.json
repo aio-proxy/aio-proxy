@@ -22,7 +22,8 @@
     "@aio-proxy/plugin-sdk": "workspace:*",
     "@aio-proxy/types": "workspace:*",
     "@bufbuild/protobuf": "catalog:",
-    "lru-cache": "catalog:"
+    "lru-cache": "catalog:",
+    "es-toolkit": "catalog:"
   },
   "devDependencies": {
     "@aio-proxy/infra": "workspace:*",

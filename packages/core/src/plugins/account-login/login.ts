@@ -8,6 +8,7 @@ import type {
   RuntimeFetch,
 } from '@aio-proxy/plugin-sdk';
 import type { OAuthProviderMutationBody, ProviderAlias, ProviderTransforms } from '@aio-proxy/types';
+import { isPlainObject } from 'es-toolkit/predicate';
 
 import { AtomicConfigCommitUncertainError, type AtomicConfigFile } from '../config-file';
 import { insertMissingAliases, validatedDefaultAliases } from '../default-aliases';
@@ -41,7 +42,6 @@ import {
   capabilityOf,
   type ConfigRecord,
   inMemoryCredentialPort,
-  isRecord,
   providerRecord,
   sameCapability,
   structuredEntry,
@@ -312,7 +312,7 @@ function mergeInsertedAliases(
   if (entry === null || !sameCapability(capabilityOf(entry), capability)) {
     return { next: current, result: undefined };
   }
-  const existingAlias = isRecord(entry['alias']) ? (entry['alias'] as ProviderAlias) : {};
+  const existingAlias = isPlainObject(entry['alias']) ? (entry['alias'] as ProviderAlias) : {};
   const alias = insertMissingAliases(existingAlias, suggestions, entry['models']);
   if (alias === existingAlias) return { next: current, result: undefined };
   return {

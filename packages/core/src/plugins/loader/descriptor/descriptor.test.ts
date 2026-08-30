@@ -36,6 +36,18 @@ test('materializes descriptor presentation metadata as inert localized plain dat
   expect(loaded?.icon).toBe('openai');
 });
 
+test('module namespace default export loads', async () => {
+  install('@example/namespace-export');
+  const descriptor = definePlugin(() => {});
+  const snapshot = await loadPluginRegistry(
+    options({
+      enablements: [{ packageName: '@example/namespace-export' }],
+      importPackage: async () => Object.freeze(Object.create(null, { default: { value: descriptor } })),
+    }),
+  );
+  expect(snapshot.plugins.get('@example/namespace-export')?.state.status).toBe('ready');
+});
+
 test('invalid default export fails', async () => {
   install('@example/invalid-export');
   const snapshot = await loadPluginRegistry(

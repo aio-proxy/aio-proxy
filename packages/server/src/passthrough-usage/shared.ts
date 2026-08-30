@@ -1,4 +1,5 @@
-import type { UsageRow } from '@aio-proxy/types';
+import { type UsageRow } from '@aio-proxy/types';
+import { isPlainObject } from 'es-toolkit/predicate';
 
 export type ExtractedUsage = Omit<UsageRow, 'providerId' | 'modelId'>;
 export type UsageIssue = {
@@ -68,7 +69,7 @@ export function nestedNumberField(
   usageField: UsageField,
 ): UsageFieldResult {
   const value = record[parent];
-  return isRecord(value) ? numberField(value, field, usageField) : { kind: 'absent' };
+  return isPlainObject(value) ? numberField(value, field, usageField) : { kind: 'absent' };
 }
 
 export function usageNumber(value: unknown, field: UsageField): UsageFieldResult {
@@ -84,10 +85,6 @@ export function fieldValue(field: UsageFieldResult): number | undefined {
 
 export function nonEmptyString(value: unknown): boolean {
   return typeof value === 'string' && value.length > 0;
-}
-
-export function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 export function assertNever(value: never): never {

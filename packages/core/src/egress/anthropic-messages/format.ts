@@ -4,6 +4,7 @@ import type {
   StopReason,
   Usage,
 } from '@anthropic-ai/sdk/resources/messages/messages';
+import { isPlainObject } from 'es-toolkit/predicate';
 
 import type { LanguageModelV2FinishReason } from '../../ai-sdk-bridge';
 
@@ -121,7 +122,5 @@ export function event(value: RawMessageStreamEvent): Uint8Array {
 }
 
 function record(value: unknown): Readonly<Record<string, unknown>> | undefined {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-    ? (value as Readonly<Record<string, unknown>>)
-    : undefined;
+  return isPlainObject(value) ? value : undefined;
 }

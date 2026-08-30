@@ -111,16 +111,18 @@ const safetySettingSchema = z
   })
   .catchall(z.unknown());
 
-export const GeminiGenerateContentRequestSchema = z.object({
-  model: idSchema,
-  contents: z.array(contentSchema).min(1),
-  session_id: z.string().optional(),
-  conversation_id: z.string().optional(),
-  systemInstruction: systemInstructionSchema.optional(),
-  tools: z.array(toolSchema).optional(),
-  generationConfig: generationConfigSchema.optional(),
-  safetySettings: z.array(safetySettingSchema).optional(),
-});
+export const GeminiGenerateContentRequestSchema = z.compile(
+  z.object({
+    model: idSchema,
+    contents: z.array(contentSchema).min(1),
+    session_id: z.string().optional(),
+    conversation_id: z.string().optional(),
+    systemInstruction: systemInstructionSchema.optional(),
+    tools: z.array(toolSchema).optional(),
+    generationConfig: generationConfigSchema.optional(),
+    safetySettings: z.array(safetySettingSchema).optional(),
+  }),
+);
 
 export type GeminiGenerateContentPart = z.output<typeof partSchema>;
 export type GeminiGenerateContentRequest = z.output<typeof GeminiGenerateContentRequestSchema>;

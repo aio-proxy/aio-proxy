@@ -1,4 +1,5 @@
 import { type AliasDimensions, canonicalEffort } from '@aio-proxy/types';
+import { isPlainObject } from 'es-toolkit/predicate';
 
 import type { AiSdkCallSettings, ModelMessage } from '../../ai-sdk-bridge';
 import type { GeminiInteractionsBody, GeminiInteractionsRequest } from '../../ingress/gemini-interactions/index';
@@ -28,7 +29,7 @@ export type GeminiInteractionsModelMessages = {
 
 export function geminiInteractionsDimensions(request: GeminiInteractionsRequest): AliasDimensions {
   const config = request.body.generation_config;
-  if (!isRecord(config)) return {};
+  if (!isPlainObject(config)) return {};
   const thinkingLevel = config['thinking_level'];
   return typeof thinkingLevel === 'string' ? { thinking: true, effort: canonicalEffort(thinkingLevel) } : {};
 }
@@ -46,7 +47,7 @@ export function geminiInteractionsToModelMessages(request: GeminiInteractionsReq
 function functionTools(value: GeminiInteractionsBody['tools']): readonly GeminiInteractionsTransformTool[] | undefined {
   if (!Array.isArray(value) || value.length === 0) return undefined;
   return value.flatMap((tool) => {
-    if (!isRecord(tool) || typeof tool['name'] !== 'string') return [];
+    if (!isPlainObject(tool) || typeof tool['name'] !== 'string') return [];
     return [
       {
         type: 'function' as const,
@@ -59,7 +60,7 @@ function functionTools(value: GeminiInteractionsBody['tools']): readonly GeminiI
 }
 
 function callSettings(value: GeminiInteractionsBody['generation_config']): GeminiInteractionsTransformSettings {
-  if (!isRecord(value)) return {};
+  if (!isPlainObject(value)) return {};
   const toolChoice = toolChoiceSetting(value['tool_choice']);
   const thinkingLevel = typeof value['thinking_level'] === 'string' ? value['thinking_level'] : undefined;
   return {
@@ -73,11 +74,7 @@ function callSettings(value: GeminiInteractionsBody['generation_config']): Gemin
 
 function toolChoiceSetting(value: unknown): GeminiInteractionsTransformSettings['toolChoice'] {
   if (value === 'auto' || value === 'none') return value;
-  if (!isRecord(value) || !isRecord(value['allowed_tools'])) return undefined;
+  if (!isPlainObject(value) || !isPlainObject(value['allowed_tools'])) return undefined;
   const mode = value['allowed_tools']['mode'];
   return mode === 'auto' || mode === 'none' ? mode : undefined;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

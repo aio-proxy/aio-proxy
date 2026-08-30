@@ -1,4 +1,5 @@
 import { ProviderProtocol } from '@aio-proxy/types';
+import { isPlainObject } from 'es-toolkit/predicate';
 import { createParser } from 'eventsource-parser';
 
 import { hasContentDelta } from './content';
@@ -7,7 +8,6 @@ import {
   anthropicTotalTokens,
   assertNever,
   type ExtractedUsage,
-  isRecord,
   MAX_SSE_BUFFER_CHARS,
   parseJson,
   type UsageExtraction,
@@ -207,10 +207,10 @@ function protocolFailure(protocol: ProviderProtocol, eventType: string | undefin
     (eventType === 'response.failed' || eventType === 'response.incomplete' || eventType === 'response.cancelled')
   )
     return true;
-  if (!isRecord(value)) return false;
-  if (value['type'] === 'error' || isRecord(value['error'])) return true;
+  if (!isPlainObject(value)) return false;
+  if (value['type'] === 'error' || isPlainObject(value['error'])) return true;
   if (protocol !== ProviderProtocol.OpenAIResponse) return false;
-  const response = isRecord(value['response']) ? value['response'] : value;
+  const response = isPlainObject(value['response']) ? value['response'] : value;
   return (
     value['type'] === 'response.failed' ||
     value['type'] === 'response.incomplete' ||
@@ -224,13 +224,13 @@ function protocolFailure(protocol: ProviderProtocol, eventType: string | undefin
 function isSuccessTerminal(protocol: ProviderProtocol, eventType: string | undefined, value: unknown): boolean {
   switch (protocol) {
     case ProviderProtocol.OpenAIResponse: {
-      const type = eventType ?? (isRecord(value) ? value['type'] : undefined);
+      const type = eventType ?? (isPlainObject(value) ? value['type'] : undefined);
       if (type === 'response.completed' || type === 'response.done') return true;
-      const response = isRecord(value) && isRecord(value['response']) ? value['response'] : value;
-      return isRecord(response) && response['status'] === 'completed';
+      const response = isPlainObject(value) && isPlainObject(value['response']) ? value['response'] : value;
+      return isPlainObject(response) && response['status'] === 'completed';
     }
     case ProviderProtocol.Anthropic: {
-      const type = eventType ?? (isRecord(value) ? value['type'] : undefined);
+      const type = eventType ?? (isPlainObject(value) ? value['type'] : undefined);
       return type === 'message_stop';
     }
     case ProviderProtocol.OpenAICompatible: {
@@ -250,7 +250,7 @@ function isSuccessTerminal(protocol: ProviderProtocol, eventType: string | undef
       return false;
     }
     case ProviderProtocol.GeminiInteractions: {
-      const type = eventType ?? (isRecord(value) ? value['event_type'] : undefined);
+      const type = eventType ?? (isPlainObject(value) ? value['event_type'] : undefined);
       return type === 'interaction.completed';
     }
     case ProviderProtocol.OpenAIImage:
@@ -261,8 +261,8 @@ function isSuccessTerminal(protocol: ProviderProtocol, eventType: string | undef
 }
 
 function completedResponseId(protocol: ProviderProtocol, value: unknown): string | undefined {
-  if (protocol !== ProviderProtocol.OpenAIResponse || !isRecord(value)) return undefined;
-  const response = isRecord(value['response']) ? value['response'] : value;
+  if (protocol !== ProviderProtocol.OpenAIResponse || !isPlainObject(value)) return undefined;
+  const response = isPlainObject(value['response']) ? value['response'] : value;
   const completed = value['type'] === 'response.completed' || response['status'] === 'completed';
   if (!completed || typeof response['id'] !== 'string') return undefined;
   const responseId = response['id'].trim();

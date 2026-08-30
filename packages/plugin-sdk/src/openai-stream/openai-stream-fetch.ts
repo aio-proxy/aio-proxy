@@ -1,3 +1,5 @@
+import { isPlainObject } from 'es-toolkit/predicate';
+
 import { createContentDecodedReader, type ContentDecodedReader } from './content-decoding';
 import { createOpenAISseBody, type OpenAIStreamProtocol } from './sse-terminal';
 import { isTrustedToolImageMarker } from './tool-image-trust';
@@ -81,10 +83,10 @@ async function rewriteCompatibleToolImages(request: Request): Promise<Request> {
   } catch {
     return request;
   }
-  if (!isRecord(body) || !Array.isArray(body['messages'])) return request;
+  if (!isPlainObject(body) || !Array.isArray(body['messages'])) return request;
   let changed = false;
   const messages = body['messages'].map((message: unknown) => {
-    if (!isRecord(message) || message['role'] !== 'tool' || typeof message['content'] !== 'string') return message;
+    if (!isPlainObject(message) || message['role'] !== 'tool' || typeof message['content'] !== 'string') return message;
     const content = compatibleToolContent(message['content']);
     if (content === undefined) return message;
     changed = true;
@@ -106,7 +108,7 @@ function compatibleToolContent(content: string): readonly unknown[] | undefined 
   }
   if (!Array.isArray(value) || !value.some(isMarkedToolImage)) return undefined;
   return value.map((part) => {
-    if (isRecord(part) && part['type'] === 'text' && typeof part['text'] === 'string') {
+    if (isPlainObject(part) && part['type'] === 'text' && typeof part['text'] === 'string') {
       return { type: 'text', text: part['text'] };
     }
     if (isMarkedToolImage(part)) return compatibleImagePart(part);
@@ -115,14 +117,18 @@ function compatibleToolContent(content: string): readonly unknown[] | undefined 
 }
 
 function isMarkedToolImage(value: unknown): value is Readonly<Record<string, unknown>> {
-  if (!isRecord(value) || value['type'] !== 'file' || !isRecord(value['providerOptions'])) return false;
+  if (!isPlainObject(value) || value['type'] !== 'file' || !isPlainObject(value['providerOptions'])) return false;
   return isTrustedToolImageMarker(value['providerOptions']['aioProxy']);
 }
 
 function compatibleImagePart(part: Readonly<Record<string, unknown>>) {
   const mediaType = part['mediaType'];
   const data = part['data'];
-  if (typeof mediaType !== 'string' || (mediaType !== 'image' && !mediaType.startsWith('image/')) || !isRecord(data)) {
+  if (
+    typeof mediaType !== 'string' ||
+    (mediaType !== 'image' && !mediaType.startsWith('image/')) ||
+    !isPlainObject(data)
+  ) {
     throw new TypeError('Marked tool image is invalid');
   }
   let url: string | undefined;
@@ -130,8 +136,8 @@ function compatibleImagePart(part: Readonly<Record<string, unknown>>) {
   else if (data['type'] === 'url' && typeof data['url'] === 'string') url = data['url'];
   if (url === undefined) throw new TypeError('Marked tool image source is unsupported');
   const providerOptions = part['providerOptions'];
-  const openAI = isRecord(providerOptions) ? providerOptions['openai'] : undefined;
-  const detail = isRecord(openAI) ? openAI['imageDetail'] : undefined;
+  const openAI = isPlainObject(providerOptions) ? providerOptions['openai'] : undefined;
+  const detail = isPlainObject(openAI) ? openAI['imageDetail'] : undefined;
   if (detail !== undefined && detail !== 'auto' && detail !== 'low' && detail !== 'high') {
     throw new TypeError('Marked tool image detail is invalid');
   }
@@ -139,10 +145,6 @@ function compatibleImagePart(part: Readonly<Record<string, unknown>>) {
     type: 'image_url' as const,
     image_url: { url, ...(detail === undefined ? {} : { detail }) },
   };
-}
-
-function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function isEventStream(contentType: string | null): boolean {

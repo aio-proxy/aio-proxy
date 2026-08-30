@@ -60,26 +60,28 @@ const ToolSchema = z.object({
   }),
 });
 
-export const OpenAICompletionsRequestSchema = z.object({
-  model: IdSchema,
-  messages: z.array(MessageSchema).min(1),
-  prompt_cache_key: z.string().optional(),
-  metadata: SessionMetadataSchema.optional(),
-  session_id: z.string().optional(),
-  conversation_id: z.string().optional(),
-  tools: z.array(ToolSchema).optional(),
-  tool_choice: z.union([z.enum(['none', 'auto', 'required']), LooseObjectSchema]).optional(),
-  stream: z.boolean().optional(),
-  temperature: z.number().optional(),
-  max_tokens: z.number().int().positive().optional(),
-  max_completion_tokens: z.number().int().positive().optional(),
-  response_format: LooseObjectSchema.optional(),
-  // We never branch on the effort value: it is only used as a routing variant
-  // key and otherwise normalized against upstream capability before dispatch.
-  // Gating it to a fixed enum would reject legitimate levels (e.g. `max`) and
-  // aliases before they can reach normalization, so accept any string.
-  reasoning_effort: z.string().optional(),
-});
+export const OpenAICompletionsRequestSchema = z.compile(
+  z.object({
+    model: IdSchema,
+    messages: z.array(MessageSchema).min(1),
+    prompt_cache_key: z.string().optional(),
+    metadata: SessionMetadataSchema.optional(),
+    session_id: z.string().optional(),
+    conversation_id: z.string().optional(),
+    tools: z.array(ToolSchema).optional(),
+    tool_choice: z.union([z.enum(['none', 'auto', 'required']), LooseObjectSchema]).optional(),
+    stream: z.boolean().optional(),
+    temperature: z.number().optional(),
+    max_tokens: z.number().int().positive().optional(),
+    max_completion_tokens: z.number().int().positive().optional(),
+    response_format: LooseObjectSchema.optional(),
+    // We never branch on the effort value: it is only used as a routing variant
+    // key and otherwise normalized against upstream capability before dispatch.
+    // Gating it to a fixed enum would reject legitimate levels (e.g. `max`) and
+    // aliases before they can reach normalization, so accept any string.
+    reasoning_effort: z.string().optional(),
+  }),
+);
 
 export type OpenAICompletionsRequest = z.output<typeof OpenAICompletionsRequestSchema>;
 

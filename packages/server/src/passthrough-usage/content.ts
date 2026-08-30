@@ -1,6 +1,7 @@
 import { ProviderProtocol } from '@aio-proxy/types';
+import { isPlainObject } from 'es-toolkit/predicate';
 
-import { assertNever, isRecord, nonEmptyString } from './shared';
+import { assertNever, nonEmptyString } from './shared';
 
 // Whether one parsed SSE event carries generated content (text or reasoning),
 // aligned with the streaming path's text-delta/reasoning-delta TTFT trigger.
@@ -16,14 +17,14 @@ export function hasContentDelta(protocol: ProviderProtocol, eventType: string | 
     case ProviderProtocol.Gemini:
       return geminiContent(value);
     case ProviderProtocol.GeminiInteractions: {
-      const type = eventType ?? (isRecord(value) ? value['event_type'] : undefined);
-      if (type !== 'step.delta' || !isRecord(value)) return false;
+      const type = eventType ?? (isPlainObject(value) ? value['event_type'] : undefined);
+      if (type !== 'step.delta' || !isPlainObject(value)) return false;
       const delta = value['delta'];
-      if (!isRecord(delta)) return false;
+      if (!isPlainObject(delta)) return false;
       if (delta['type'] === 'text') return nonEmptyString(delta['text']);
       if (delta['type'] === 'thought_summary') {
         const content = delta['content'];
-        return isRecord(content) && nonEmptyString(content['text']);
+        return isPlainObject(content) && nonEmptyString(content['text']);
       }
       return false;
     }
@@ -38,18 +39,18 @@ export function hasContentDelta(protocol: ProviderProtocol, eventType: string | 
 // and signature (signature_delta) frames; only text/thinking deltas are
 // generated content, matching the streaming path's TTFT trigger.
 function anthropicContent(value: unknown): boolean {
-  if (!isRecord(value) || value['type'] !== 'content_block_delta') return false;
+  if (!isPlainObject(value) || value['type'] !== 'content_block_delta') return false;
   const delta = value['delta'];
-  if (!isRecord(delta)) return false;
+  if (!isPlainObject(delta)) return false;
   return delta['type'] === 'text_delta' || delta['type'] === 'thinking_delta';
 }
 
 function openAICompatibleContent(value: unknown): boolean {
-  if (!isRecord(value) || !Array.isArray(value['choices'])) return false;
+  if (!isPlainObject(value) || !Array.isArray(value['choices'])) return false;
   return value['choices'].some((choice) => {
-    if (!isRecord(choice)) return false;
+    if (!isPlainObject(choice)) return false;
     if (nonEmptyString(choice['text'])) return true;
-    if (!isRecord(choice['delta'])) return false;
+    if (!isPlainObject(choice['delta'])) return false;
     const delta = choice['delta'];
     return (
       nonEmptyString(delta['content']) ||
@@ -60,7 +61,7 @@ function openAICompatibleContent(value: unknown): boolean {
 }
 
 function openAIResponsesContent(eventType: string | undefined, value: unknown): boolean {
-  const type = eventType ?? (isRecord(value) ? value['type'] : undefined);
+  const type = eventType ?? (isPlainObject(value) ? value['type'] : undefined);
   return (
     type === 'response.output_text.delta' ||
     type === 'response.reasoning_text.delta' ||
@@ -70,11 +71,15 @@ function openAIResponsesContent(eventType: string | undefined, value: unknown): 
 
 function geminiContent(value: unknown): boolean {
   if (Array.isArray(value)) return value.some((entry) => geminiContent(entry));
-  if (!isRecord(value) || !Array.isArray(value['candidates'])) return false;
+  if (!isPlainObject(value) || !Array.isArray(value['candidates'])) return false;
   return value['candidates'].some((candidate) => {
-    if (!isRecord(candidate) || !isRecord(candidate['content']) || !Array.isArray(candidate['content']['parts'])) {
+    if (
+      !isPlainObject(candidate) ||
+      !isPlainObject(candidate['content']) ||
+      !Array.isArray(candidate['content']['parts'])
+    ) {
       return false;
     }
-    return candidate['content']['parts'].some((part) => isRecord(part) && nonEmptyString(part['text']));
+    return candidate['content']['parts'].some((part) => isPlainObject(part) && nonEmptyString(part['text']));
   });
 }

@@ -1,7 +1,7 @@
 import { pathToFileURL } from 'node:url';
 
 import { isPluginDescriptor, type PluginDescriptor } from '@aio-proxy/plugin-sdk';
-import type { Diagnostic } from '@aio-proxy/types';
+import { type Diagnostic } from '@aio-proxy/types';
 
 import type { NpmPackageInfo } from '../npm';
 import { isAiSdkProviderModule } from '../provider/ai-sdk-loader/index';
@@ -31,9 +31,6 @@ export class PluginSetupInvalidError extends Error {
   }
 }
 
-const isRecord = (value: unknown): value is Readonly<Record<PropertyKey, unknown>> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value);
-
 export async function classifyInstalledPackage(
   packageName: string,
   installed: NpmPackageInfo,
@@ -50,9 +47,9 @@ export async function classifyInstalledPackage(
       timeoutError: () => new InstalledPackageInvalidError(packageName),
     },
   );
-  if (isRecord(imported) && isPluginDescriptor(imported['default'])) {
+  if (imported !== null && typeof imported === 'object' && isPluginDescriptor(Reflect.get(imported, 'default'))) {
     try {
-      const descriptor = validateDescriptor(imported['default']);
+      const descriptor = validateDescriptor(Reflect.get(imported, 'default'));
       if (descriptor.metadata.options !== undefined) validateConfigSpec(descriptor.metadata.options);
       return { kind: 'plugin', descriptor };
     } catch {

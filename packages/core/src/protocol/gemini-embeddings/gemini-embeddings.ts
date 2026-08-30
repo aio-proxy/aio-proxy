@@ -1,4 +1,5 @@
 import { ProviderProtocol } from '@aio-proxy/types';
+import { isPlainObject } from 'es-toolkit/predicate';
 
 import { writeGeminiEmbeddingsResponse } from '../../egress/gemini-embeddings';
 import {
@@ -27,9 +28,7 @@ export const geminiEmbeddingsAdapter = defineEmbeddingProtocolAdapter<GeminiEmbe
       if (context.action === 'batchEmbedContents') {
         return parseGeminiBatchEmbedContents(body);
       }
-      return parseGeminiEmbedContent(
-        body !== null && typeof body === 'object' && !Array.isArray(body) ? { ...body, model: context.model } : body,
-      );
+      return parseGeminiEmbedContent(isPlainObject(body) ? { ...body, model: context.model } : body);
     },
     model: (_request, context) => context.model,
     async rawRequest(raw, request, resolvedModel, context) {

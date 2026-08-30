@@ -1,6 +1,7 @@
 import { loadPluginRegistry } from '@aio-proxy/core';
 import { getLocale, m } from '@aio-proxy/i18n';
 import { resolveLocalizedText } from '@aio-proxy/plugin-sdk';
+import { uniq } from 'es-toolkit/array';
 
 import { entries, packageNameOf, removePlugin, requirePluginPackageName, usedPackageNames } from './config-entry';
 import {
@@ -33,7 +34,7 @@ export async function pluginList(_options: PluginListOptions, injected?: PluginL
       logger: () => {},
       secrets: { readPluginSecret: (plugin) => deps.repository.readPluginSecret(plugin)?.value },
     });
-    const names = [...new Set([...deps.builtInNames, ...configured])].sort();
+    const names = uniq([...deps.builtInNames, ...configured]).sort();
     for (const packageName of names) {
       const loaded = snapshot.plugins.get(packageName);
       let state: string = m['cli.plugin.state_not_installed']();

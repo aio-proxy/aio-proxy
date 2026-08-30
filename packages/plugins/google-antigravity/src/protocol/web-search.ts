@@ -1,4 +1,6 @@
 import type { JsonValue, ProviderExecutedTool } from '@aio-proxy/plugin-sdk';
+import { uniq } from 'es-toolkit/array';
+import { isPlainObject } from 'es-toolkit/predicate';
 
 export class AntigravityWebSearchError extends TypeError {
   override readonly name = 'AntigravityWebSearchError';
@@ -18,7 +20,7 @@ export function ccaGoogleSearch(tool: ProviderExecutedTool, metadata: JsonValue 
 }
 
 export function ccaWebSearchInstruction(tools: readonly ProviderExecutedTool[]): string {
-  const blockedDomains = [...new Set(tools.flatMap((tool) => nonEmpty(tool.blockedDomains) ?? []))];
+  const blockedDomains = uniq(tools.flatMap((tool) => nonEmpty(tool.blockedDomains) ?? []));
   const instruction = 'Use Google Search when current or external information would improve the answer.';
   return blockedDomains.length === 0
     ? instruction
@@ -36,7 +38,5 @@ function nonEmpty(values: readonly string[] | undefined): readonly string[] | un
 }
 
 function record(value: unknown): Readonly<Record<string, unknown>> | undefined {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-    ? (value as Readonly<Record<string, unknown>>)
-    : undefined;
+  return isPlainObject(value) ? value : undefined;
 }

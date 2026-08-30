@@ -1,4 +1,5 @@
 import type { ProviderRequestTransformRule, ProviderRequestTransformStage } from '@aio-proxy/types';
+import { isPlainObject } from 'es-toolkit/predicate';
 import { Query } from 'mingo';
 
 export const MINGO_OPTIONS = { scriptEnabled: false, failOnError: true } as const;
@@ -106,5 +107,5 @@ function bodyPath(value: string): boolean {
 }
 
 function isDocument(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
+  return isPlainObject(value);
 }

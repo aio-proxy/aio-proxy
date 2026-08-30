@@ -97,10 +97,6 @@ const bundledProviders = {
 
 export const BUNDLED_PROVIDERS: Readonly<Record<string, AiSdkProviderLoader>> = bundledProviders;
 
-function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
 function isProviderLoader(value: unknown): value is AiSdkProviderLoader {
   return typeof value === 'function';
 }
@@ -110,9 +106,9 @@ function isProviderLoader(value: unknown): value is AiSdkProviderLoader {
 // loadCachedProvider uses to invoke it. Exported so the CLI installer classifies a
 // package by the exact rule the runtime loader will later apply.
 export function isAiSdkProviderModule(imported: unknown): boolean {
-  return (
-    isRecord(imported) &&
-    Object.entries(imported).some(([name, value]) => name.startsWith('create') && isProviderLoader(value))
+  if (imported === null || typeof imported !== 'object') return false;
+  return Reflect.ownKeys(imported).some(
+    (name) => typeof name === 'string' && name.startsWith('create') && isProviderLoader(Reflect.get(imported, name)),
   );
 }
 
@@ -125,13 +121,13 @@ async function loadCachedProvider(
     return null;
   }
   const loaded: unknown = await import(pathToFileURL(cached.entrypoint).href);
-  if (!isRecord(loaded)) {
+  if (loaded === null || typeof loaded !== 'object') {
     throw new AiSdkProviderLoaderError(`No exports found in ${packageName}`);
   }
-  for (const [name, value] of Object.entries(loaded)) {
-    if (name.startsWith('create') && isProviderLoader(value)) {
-      return value(options);
-    }
+  for (const name of Reflect.ownKeys(loaded)) {
+    if (typeof name !== 'string' || !name.startsWith('create')) continue;
+    const value = Reflect.get(loaded, name);
+    if (isProviderLoader(value)) return value(options);
   }
   throw new AiSdkProviderLoaderError(`No create* export found in ${packageName}`);
 }

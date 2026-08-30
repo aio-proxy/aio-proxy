@@ -1,4 +1,5 @@
 import { ProviderProtocol } from '@aio-proxy/types';
+import { isPlainObject } from 'es-toolkit/predicate';
 import { z } from 'zod';
 
 import type { AiSdkCallSettings } from '../../ai-sdk-bridge';
@@ -74,11 +75,7 @@ function rewriteAuthoredId(
 }
 
 function thinkingSummariesNone(value: GeminiInteractionsRequest['body']['generation_config']): boolean {
-  return isRecord(value) && value['thinking_summaries'] === 'none';
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+  return isPlainObject(value) && value['thinking_summaries'] === 'none';
 }
 
 function aiSdkSettings(settings: GeminiInteractionsTransformSettings): AiSdkCallSettings {

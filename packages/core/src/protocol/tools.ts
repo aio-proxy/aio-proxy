@@ -1,4 +1,5 @@
 import type { JSONObject } from '@ai-sdk/provider';
+import { isPlainObject } from 'es-toolkit/predicate';
 import { z } from 'zod';
 
 import type { JSONValue, ToolSet } from '../ai-sdk-bridge';
@@ -35,7 +36,7 @@ export function functionToolSet(tools: readonly FunctionToolDefinition[] | undef
 
 function jsonSchemaObject(value: unknown): Parameters<typeof jsonSchema>[0] {
   const parsed = jsonValue(value);
-  return parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  return isPlainObject(parsed) ? parsed : {};
 }
 
 function jsonValue(value: unknown): JSONValue | undefined {

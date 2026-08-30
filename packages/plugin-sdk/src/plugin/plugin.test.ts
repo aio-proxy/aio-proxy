@@ -38,6 +38,17 @@ describe('definePlugin', () => {
     expect(isPluginDescriptor({ apiVersion: 1, setup() {} })).toBe(false);
   });
 
+  test('accepts a class-based branded descriptor', () => {
+    class Descriptor {
+      readonly [PLUGIN_DESCRIPTOR_BRAND] = true as const;
+      readonly apiVersion = PLUGIN_API_VERSION;
+      readonly metadata = {};
+      setup() {}
+    }
+
+    expect(isPluginDescriptor(new Descriptor())).toBe(true);
+  });
+
   test('rejects branded descriptors without object metadata', () => {
     const descriptor = {
       [PLUGIN_DESCRIPTOR_BRAND]: true,

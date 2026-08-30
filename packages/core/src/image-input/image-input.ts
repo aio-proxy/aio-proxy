@@ -1,5 +1,6 @@
 import { createToolImageMarker } from '@aio-proxy/plugin-sdk/openai-stream';
 import { ProviderProtocol } from '@aio-proxy/types';
+import { isPlainObject } from 'es-toolkit/predicate';
 
 import type { FilePart, ModelMessage } from '../ai-sdk-bridge';
 import { ImageInputUnsupportedError } from '../error';
@@ -51,7 +52,7 @@ export function isImageMediaType(value: string): boolean {
 
 export function openAIImageDetail(part: FilePart): ImageInputDetail | undefined {
   const options = part.providerOptions?.['openai'];
-  if (typeof options !== 'object' || options === null || Array.isArray(options)) return undefined;
+  if (!isPlainObject(options)) return undefined;
   const detail = Reflect.get(options, 'imageDetail');
   return detail === 'auto' || detail === 'low' || detail === 'high' ? detail : undefined;
 }

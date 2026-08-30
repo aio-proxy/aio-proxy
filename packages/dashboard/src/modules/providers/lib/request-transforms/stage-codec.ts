@@ -1,6 +1,7 @@
 import type { JsonValue } from '@aio-proxy/plugin-sdk';
 import { ProviderRequestTransformRulesSchema, type ProviderRequestTransformStage } from '@aio-proxy/types';
 import type { ExpressionNode } from '@react-querybuilder/expr';
+import { isPlainObject } from 'es-toolkit/predicate';
 import { z } from 'zod';
 
 import { parseRequestTransformExpression, serializeRequestTransformExpression } from './mongo-codec';
@@ -21,8 +22,7 @@ export type RequestTransformStageDraft =
     };
 
 type Document = Record<string, unknown>;
-const isDocument = (value: unknown): value is Document =>
-  value !== null && typeof value === 'object' && !Array.isArray(value);
+const isDocument = (value: unknown): value is Document => isPlainObject(value);
 const exactKeys = (value: Document, keys: readonly string[]): boolean =>
   Object.keys(value).length === keys.length && keys.every((key) => Object.hasOwn(value, key));
 

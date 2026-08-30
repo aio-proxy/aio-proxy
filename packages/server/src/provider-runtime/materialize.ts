@@ -8,6 +8,7 @@ import {
 } from '@aio-proxy/core';
 import type { AliasConfig, Config, DashboardProviderSummary, Provider } from '@aio-proxy/types';
 import { aliasTargetModels, apiProviderEndpoints, ProviderKind, ProviderProtocol } from '@aio-proxy/types';
+import { uniq } from 'es-toolkit/array';
 
 import { createProviderRequestTransformFetch } from '../provider-request-transform';
 import { createObservedFetch } from '../request-logging';
@@ -196,7 +197,7 @@ function capabilityIndexFromRoutable(provider: {
 }
 
 function aliasTargets(alias: Readonly<Record<string, AliasConfig>>): string[] {
-  return [...new Set(Object.values(alias).flatMap(aliasTargetModels))];
+  return uniq(Object.values(alias).flatMap(aliasTargetModels));
 }
 
 /** `false` disables the top-level proxy for this provider; omitted inherits it. */
@@ -296,7 +297,7 @@ export function providerSummary(
     // Runtime factories don't carry `name`, so callers pass the config display name through.
     ...(name === undefined ? {} : { name }),
     ...(config === undefined ? {} : providerDisplayFields(config)),
-    clientModels: [...new Set(modelRoutes(provider).map((route) => route.alias))],
+    clientModels: uniq(modelRoutes(provider).map((route) => route.alias)),
     hasApiKey: provider.kind === ProviderKind.Api ? provider.hasApiKey : undefined,
   };
 }
@@ -320,7 +321,7 @@ function providerId(provider: Provider): string {
 }
 
 function providerConfigSummary(provider: Provider): ProviderRuntimeSummary {
-  const clientModels = [...new Set(modelRoutes(provider).map((route) => route.alias))];
+  const clientModels = uniq(modelRoutes(provider).map((route) => route.alias));
   return {
     id: provider.id,
     kind: provider.kind,

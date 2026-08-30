@@ -1,3 +1,4 @@
+import { isPlainObject } from 'es-toolkit/predicate';
 const MAX_INSPECTION_BYTES = 64 * 1_024;
 const MAX_INSPECTION_MS = 100;
 const inspectionTimedOut = Symbol('inspection-timed-out');
@@ -88,9 +89,7 @@ function explicitNoCapacity(bytes: Uint8Array): boolean {
 }
 
 function record(value: unknown): Record<string, unknown> | undefined {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : undefined;
+  return isPlainObject(value) ? value : undefined;
 }
 
 function throwIfAborted(signal: AbortSignal | undefined): void {

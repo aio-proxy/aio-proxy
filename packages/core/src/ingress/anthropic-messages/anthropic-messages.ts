@@ -181,35 +181,37 @@ const ThinkingSchema = z.discriminatedUnion('type', [
 
 const OutputConfigSchema = z.object({ effort: z.string().optional() }).loose();
 
-export const AnthropicMessagesRequestSchema = z.object({
-  model: IdSchema,
-  system: z.union([z.string(), z.array(TextBlockSchema)]).optional(),
-  messages: z
-    .array(z.discriminatedUnion('role', [UserMessageSchema, AssistantMessageSchema, SystemMessageSchema]))
-    .min(1),
-  metadata: MetadataSchema.optional(),
-  session_id: z.string().optional(),
-  conversation_id: z.string().optional(),
-  thinking: ThinkingSchema.optional(),
-  output_config: OutputConfigSchema.optional(),
-  // .nullish(), not .optional() on the string: an explicit `null` must keep
-  // parsing and read as "absent". The trailing .optional() keeps the key
-  // optional in the output type so synthesized requests can omit it.
-  speed: z
-    .string()
-    .nullish()
-    .transform((value) => value ?? undefined)
-    .optional(),
-  service_tier: z
-    .string()
-    .nullish()
-    .transform((value) => value ?? undefined)
-    .optional(),
-  tools: z.array(ToolSchema).optional(),
-  stream: z.boolean().optional(),
-  max_tokens: z.number().int().positive().optional(),
-  temperature: z.number().optional(),
-});
+export const AnthropicMessagesRequestSchema = z.compile(
+  z.object({
+    model: IdSchema,
+    system: z.union([z.string(), z.array(TextBlockSchema)]).optional(),
+    messages: z
+      .array(z.discriminatedUnion('role', [UserMessageSchema, AssistantMessageSchema, SystemMessageSchema]))
+      .min(1),
+    metadata: MetadataSchema.optional(),
+    session_id: z.string().optional(),
+    conversation_id: z.string().optional(),
+    thinking: ThinkingSchema.optional(),
+    output_config: OutputConfigSchema.optional(),
+    // .nullish(), not .optional() on the string: an explicit `null` must keep
+    // parsing and read as "absent". The trailing .optional() keeps the key
+    // optional in the output type so synthesized requests can omit it.
+    speed: z
+      .string()
+      .nullish()
+      .transform((value) => value ?? undefined)
+      .optional(),
+    service_tier: z
+      .string()
+      .nullish()
+      .transform((value) => value ?? undefined)
+      .optional(),
+    tools: z.array(ToolSchema).optional(),
+    stream: z.boolean().optional(),
+    max_tokens: z.number().int().positive().optional(),
+    temperature: z.number().optional(),
+  }),
+);
 
 export type AnthropicCacheControl = z.output<typeof CacheControlSchema>;
 export type AnthropicTextBlock = z.output<typeof TextBlockSchema>;

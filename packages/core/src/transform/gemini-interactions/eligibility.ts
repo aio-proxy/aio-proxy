@@ -1,3 +1,5 @@
+import { isPlainObject } from 'es-toolkit/predicate';
+
 import { GeminiInteractionsUnsupportedFeatureError } from '../../error';
 import type { GeminiInteractionsBody, GeminiInteractionsRequest } from '../../ingress/gemini-interactions/index';
 
@@ -70,7 +72,7 @@ export function assertGeminiInteractionsConvertible(request: GeminiInteractionsR
 
 function assertGenerationConfig(value: GeminiInteractionsBody['generation_config']): void {
   if (value === undefined) return;
-  if (!isRecord(value)) unsupported('generation_config', 'generation_config');
+  if (!isPlainObject(value)) unsupported('generation_config', 'generation_config');
   for (const [key, member] of Object.entries(value)) {
     const path = `generation_config.${key}`;
     if (!GENERATION_CONFIG_KEYS.has(key)) unsupported(path, path);
@@ -100,11 +102,11 @@ function assertGenerationConfig(value: GeminiInteractionsBody['generation_config
 
 function isToolChoice(value: unknown): boolean {
   if (value === 'auto' || value === 'none') return true;
-  if (!isRecord(value)) return false;
+  if (!isPlainObject(value)) return false;
   const keys = Object.keys(value);
   if (keys.length !== 1 || keys[0] !== 'allowed_tools') return false;
   const allowed = value['allowed_tools'];
-  if (!isRecord(allowed)) return false;
+  if (!isPlainObject(allowed)) return false;
   for (const key of Object.keys(allowed)) {
     if (key !== 'mode' && key !== 'tools') return false;
   }
@@ -124,7 +126,7 @@ function assertResponseFormat(value: GeminiInteractionsBody['response_format']):
 }
 
 function isTextPlainFormat(value: unknown): boolean {
-  if (!isRecord(value)) return false;
+  if (!isPlainObject(value)) return false;
   const keys = Object.keys(value);
   if (keys.some((key) => key !== 'type' && key !== 'mime_type')) return false;
   if (value['type'] !== 'text') return false;
@@ -137,21 +139,21 @@ function assertTools(value: GeminiInteractionsBody['tools']): void {
   if (!Array.isArray(value) || !value.every(isFunctionTool)) unsupported('tools', 'tools');
   const names = new Set<string>();
   for (const tool of value) {
-    const name = isRecord(tool) && typeof tool['name'] === 'string' ? tool['name'] : '';
+    const name = isPlainObject(tool) && typeof tool['name'] === 'string' ? tool['name'] : '';
     if (names.has(name)) unsupported('tools', 'tools');
     names.add(name);
   }
 }
 
 function isFunctionTool(value: unknown): boolean {
-  if (!isRecord(value) || typeof value['name'] !== 'string' || isEmptyIdentifier(value['name'])) return false;
+  if (!isPlainObject(value) || typeof value['name'] !== 'string' || isEmptyIdentifier(value['name'])) return false;
   if (Object.keys(value).some((key) => !FUNCTION_TOOL_KEYS.has(key))) return false;
   const type = value['type'];
   if (type !== undefined && type !== 'function') return false;
   const description = value['description'];
   if (description !== undefined && typeof description !== 'string') return false;
   const parameters = value['parameters'];
-  return parameters === undefined || isRecord(parameters);
+  return parameters === undefined || isPlainObject(parameters);
 }
 
 function assertInput(input: GeminiInteractionsBody['input']): void {
@@ -165,13 +167,13 @@ function assertInput(input: GeminiInteractionsBody['input']): void {
       rejectUnresolvedCalls(calls);
       return;
     }
-    if (input.every((item) => isRecord(item) && !isStep(item))) {
+    if (input.every((item) => isPlainObject(item) && !isStep(item))) {
       for (const part of input) assertContent(part);
       return;
     }
     unsupported('input', 'input');
   }
-  if (isRecord(input) && !isStep(input)) {
+  if (isPlainObject(input) && !isStep(input)) {
     assertContent(input);
     return;
   }
@@ -213,7 +215,7 @@ function assertStep(step: Record<string, unknown>, calls: Map<string, FunctionCa
 function assertFunctionCall(step: Record<string, unknown>): void {
   if (typeof step['id'] !== 'string' || isEmptyIdentifier(step['id'])) unsupported('input', 'input');
   if (typeof step['name'] !== 'string' || isEmptyIdentifier(step['name'])) unsupported('input', 'input');
-  if (step['arguments'] !== undefined && !isRecord(step['arguments'])) unsupported('input', 'input');
+  if (step['arguments'] !== undefined && !isPlainObject(step['arguments'])) unsupported('input', 'input');
 }
 
 function assertFunctionResult(step: Record<string, unknown>, calls: Map<string, FunctionCallState>): void {
@@ -252,12 +254,12 @@ function assertTextContents(value: unknown): void {
     let nonempty = false;
     for (const part of value) {
       assertContent(part);
-      if (isRecord(part) && typeof part['text'] === 'string' && part['text'].length > 0) nonempty = true;
+      if (isPlainObject(part) && typeof part['text'] === 'string' && part['text'].length > 0) nonempty = true;
     }
     if (!nonempty) unsupported('input', 'input');
     return;
   }
-  if (isRecord(value)) {
+  if (isPlainObject(value)) {
     assertContent(value);
     if (typeof value['text'] === 'string' && value['text'].length === 0) unsupported('input', 'input');
     return;
@@ -266,7 +268,7 @@ function assertTextContents(value: unknown): void {
 }
 
 function assertContent(value: unknown): void {
-  if (!isRecord(value)) unsupported('input', 'input');
+  if (!isPlainObject(value)) unsupported('input', 'input');
   if (hasMedia(value)) unsupported('input', 'input');
   const type = value['type'];
   if (type !== undefined && type !== 'text') unsupported('input', 'input');
@@ -280,7 +282,7 @@ function hasMedia(value: Record<string, unknown>): boolean {
 }
 
 function isStep(value: unknown): value is Record<string, unknown> {
-  return isRecord(value) && typeof value['type'] === 'string' && STEP_TYPES.has(value['type'] as string);
+  return isPlainObject(value) && typeof value['type'] === 'string' && STEP_TYPES.has(value['type'] as string);
 }
 
 function unsupported(feature: string, path: string): never {
@@ -289,8 +291,4 @@ function unsupported(feature: string, path: string): never {
 
 function isEmptyIdentifier(value: string): boolean {
   return value.trim() === '';
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

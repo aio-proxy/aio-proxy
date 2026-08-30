@@ -1,6 +1,7 @@
 import { ProviderProtocol } from '@aio-proxy/types';
+import { isPlainObject } from 'es-toolkit/predicate';
 
-import { type ExtractedUsage, isRecord } from '../shared';
+import { type ExtractedUsage } from '../shared';
 
 // Built-in items that carry a per-event fee. Responses counts live in the
 // `output` array / `response.output_item.done` events. Images streams count
@@ -21,14 +22,14 @@ const IMAGE_GENERATION_COMPLETED = 'image_generation.completed';
 // `openAIResponsesUsage`'s `response` unwrapping. Guards every access so a
 // malformed body yields `{}` rather than throwing.
 export function countResponseItems(protocol: ProviderProtocol, value: unknown): ResponseItemCounts {
-  if (protocol !== ProviderProtocol.OpenAIResponse || !isRecord(value)) return {};
-  const response = isRecord(value['response']) ? value['response'] : value;
+  if (protocol !== ProviderProtocol.OpenAIResponse || !isPlainObject(value)) return {};
+  const response = isPlainObject(value['response']) ? value['response'] : value;
   const output = response['output'];
   if (!Array.isArray(output)) return {};
   let imageCount = 0;
   let webSearchCount = 0;
   for (const item of output) {
-    if (!isRecord(item)) continue;
+    if (!isPlainObject(item)) continue;
     if (item['type'] === IMAGE_ITEM_TYPE) imageCount += 1;
     else if (item['type'] === WEB_SEARCH_ITEM_TYPE) webSearchCount += 1;
   }
@@ -50,15 +51,15 @@ export function createResponseItemCounter(protocol: ProviderProtocol): ResponseI
   const images = protocol === ProviderProtocol.OpenAIImage;
   return {
     observe(eventType, parsedData) {
-      const type = eventType ?? (isRecord(parsedData) ? parsedData['type'] : undefined);
+      const type = eventType ?? (isPlainObject(parsedData) ? parsedData['type'] : undefined);
       if (images) {
         if (type === IMAGE_GENERATION_COMPLETED) imageCount += 1;
         return;
       }
       if (!responses) return;
-      if (type !== OUTPUT_ITEM_DONE || !isRecord(parsedData)) return;
+      if (type !== OUTPUT_ITEM_DONE || !isPlainObject(parsedData)) return;
       const item = parsedData['item'];
-      if (!isRecord(item)) return;
+      if (!isPlainObject(item)) return;
       if (item['type'] === IMAGE_ITEM_TYPE) imageCount += 1;
       else if (item['type'] === WEB_SEARCH_ITEM_TYPE) webSearchCount += 1;
     },

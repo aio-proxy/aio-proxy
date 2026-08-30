@@ -1,4 +1,5 @@
 import { type CredentialPort, CredentialRefreshError, type RuntimeFetch } from '@aio-proxy/plugin-sdk';
+import { isPlainObject } from 'es-toolkit/predicate';
 
 import { cursorTokenExpiry } from '../jwt/index';
 import type { CursorCredential } from '../schema';
@@ -78,7 +79,7 @@ async function parseToken(
   } catch (error) {
     throw error instanceof SyntaxError ? refreshError(false, 'invalid') : refreshError(true, 'network');
   }
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) throw refreshError(false, 'invalid');
+  if (!isPlainObject(value)) throw refreshError(false, 'invalid');
   const record = value as Record<string, unknown>;
   const accessToken = optionalString(record, 'accessToken');
   const refreshToken = optionalString(record, 'refreshToken');
@@ -89,9 +90,7 @@ async function parseToken(
 async function readOAuthError(response: Response): Promise<string | undefined> {
   try {
     const value: unknown = await response.json();
-    return typeof value === 'object' && value !== null && !Array.isArray(value)
-      ? optionalString(value as Record<string, unknown>, 'error')
-      : undefined;
+    return isPlainObject(value) ? optionalString(value, 'error') : undefined;
   } catch {
     return undefined;
   }

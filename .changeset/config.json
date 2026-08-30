@@ -27,6 +27,7 @@
       "@aio-proxy/plugin-sdk",
       "@aio-proxy/plugin-xai-grok",
       "@aio-proxy/server",
+      "@aio-proxy/shared",
       "@aio-proxy/types",
       "@aio-proxy/ui",
       "@aio-proxy/agent-provider-runtime",

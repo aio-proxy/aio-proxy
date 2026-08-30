@@ -5,6 +5,7 @@ import type {
   GenerateContentResponseUsageMetadata,
   Part,
 } from '@google/genai';
+import { isPlainObject } from 'es-toolkit/predicate';
 
 import type { TextStreamPart, ToolSet } from '../ai-sdk-bridge';
 import type { ModelEgressContext, ModelSseStream } from '../protocol/adapter';
@@ -173,7 +174,7 @@ function toolPart(tool: ToolState): Part {
 function parseJsonObject(value: string): Record<string, unknown> {
   try {
     const parsed: unknown = JSON.parse(value);
-    return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed) ? { ...parsed } : {};
+    return isPlainObject(parsed) ? { ...parsed } : {};
   } catch (error) {
     if (error instanceof SyntaxError) return {};
     throw error;

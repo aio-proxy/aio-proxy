@@ -1,3 +1,5 @@
+import { isRecord } from '@aio-proxy/shared';
+
 import type { ConfigSpec } from '../config';
 import type { LocalizedText } from '../localized-text';
 import type { Logger } from '../logger';
@@ -57,12 +59,8 @@ export function definePlugin<Options = undefined>(
   });
 }
 
-function isObject(value: unknown): value is object {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
 export function isPluginDescriptor(value: unknown): value is PluginDescriptorShell {
-  if (!isObject(value)) {
+  if (!isRecord(value)) {
     return false;
   }
 
@@ -71,7 +69,7 @@ export function isPluginDescriptor(value: unknown): value is PluginDescriptorShe
   return (
     Reflect.get(value, PLUGIN_DESCRIPTOR_BRAND) === true &&
     apiVersion === PLUGIN_API_VERSION &&
-    isObject(metadata) &&
+    isRecord(metadata) &&
     typeof Reflect.get(value, 'setup') === 'function'
   );
 }

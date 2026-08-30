@@ -3,6 +3,7 @@ import type {
   ExpressionNode,
   MongoAggSerializerRegistry,
 } from '@react-querybuilder/expr';
+import { isPlainObject } from 'es-toolkit/predicate';
 import type { RuleProcessor, RuleType } from 'react-querybuilder';
 
 type ParserContext = { readonly fieldExists: (field: string) => boolean };
@@ -51,8 +52,7 @@ const mongoInverse: Record<string, string> = {
   $toLower: 'lower',
 };
 
-const isDocument = (value: unknown): value is Document =>
-  value !== null && typeof value === 'object' && !Array.isArray(value);
+const isDocument = (value: unknown): value is Document => isPlainObject(value);
 
 const validArity = (node: ExpressionNode, meta: ExpressionFunctionMetaRegistry): boolean => {
   if (node.kind !== 'func') return node.kind !== 'field' || node.field !== '';
