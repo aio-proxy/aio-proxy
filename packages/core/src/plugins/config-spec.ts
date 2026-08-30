@@ -6,7 +6,7 @@ import {
   type LocalizedText,
   LocalizedTextSchema,
 } from '@aio-proxy/plugin-sdk';
-import { isObject } from '@aio-proxy/shared';
+import { isRecord } from '@aio-proxy/shared';
 
 import { isPluginZodSchema } from './schema';
 
@@ -48,7 +48,7 @@ function optionalLocalizedText(value: unknown): LocalizedText | null | undefined
 
 function validateWhen(value: unknown, knownKeys: ReadonlySet<string>): value is FormCondition | undefined {
   if (value === undefined) return true;
-  if (!isObject(value)) return false;
+  if (!isRecord(value)) return false;
   const { key, equals } = value;
   if (typeof key !== 'string' || !knownKeys.has(key)) return false;
   if (typeof equals === 'number') return Number.isFinite(equals);
@@ -74,7 +74,7 @@ function validateSelectOptions(value: unknown):
     description?: LocalizedText;
   }[] = [];
   for (const option of value) {
-    if (!isObject(option)) return undefined;
+    if (!isRecord(option)) return undefined;
     const { value: optionValue, label, description } = option;
     if (!['string', 'number', 'boolean'].includes(typeof optionValue)) return undefined;
     if (typeof optionValue === 'number' && !Number.isFinite(optionValue)) return undefined;
@@ -94,7 +94,7 @@ function validateSelectOptions(value: unknown):
 }
 
 function validateField(value: unknown, knownKeys: ReadonlySet<string>): FormField | undefined {
-  if (!isObject(value)) return undefined;
+  if (!isRecord(value)) return undefined;
   const { key, label, description, when, type, placeholder, defaultValue, options } = value;
   if (typeof key !== 'string' || key.trim() === '' || key !== key.trim()) return undefined;
   const validatedLabel = localizedText(label);
@@ -140,7 +140,7 @@ function validateField(value: unknown, knownKeys: ReadonlySet<string>): FormFiel
 }
 
 export function validateConfigSpec<T = unknown>(value: unknown): ValidatedConfigSpec<T> {
-  if (!isObject(value)) {
+  if (!isRecord(value)) {
     throw new ConfigSpecValidationError();
   }
   const { schema, form } = value;

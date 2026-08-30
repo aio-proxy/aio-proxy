@@ -1,5 +1,5 @@
 import type { DescriptorModelMetadata, JsonValue, ModelCatalog, ModelDescriptor } from '@aio-proxy/plugin-sdk';
-import { isObject } from '@aio-proxy/shared';
+import { isRecord } from '@aio-proxy/shared';
 import { ModelMetadataSchema } from '@aio-proxy/types';
 import { z } from 'zod';
 
@@ -66,7 +66,7 @@ function validateDescriptors(modality: Modality, value: unknown): readonly Model
   if (!Array.isArray(value)) throw new ModelCatalogValidationError(modality, -1, []);
   const seen = new Set<string>();
   return value.map((descriptor, index) => {
-    if (!isObject(descriptor)) {
+    if (!isRecord(descriptor)) {
       throw new ModelCatalogValidationError(modality, index, []);
     }
     const record = descriptor;
@@ -102,7 +102,7 @@ function validateDescriptors(modality: Modality, value: unknown): readonly Model
 }
 
 export function validateModelCatalog(value: unknown): ModelCatalog {
-  if (!isObject(value)) {
+  if (!isRecord(value)) {
     throw new ModelCatalogValidationError('language', -1, []);
   }
   const record = value;

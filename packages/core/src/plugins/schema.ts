@@ -1,5 +1,5 @@
 import type { ZodType } from '@aio-proxy/plugin-sdk';
-import { isObject } from '@aio-proxy/shared';
+import { isRecord } from '@aio-proxy/shared';
 import { isPlainObject } from 'es-toolkit/predicate';
 
 export type PluginSchemaValidation<T> =
@@ -24,7 +24,7 @@ export class PluginSchemaContractError extends Error {
 export function isPluginZodSchema(value: unknown): value is ZodType<unknown> {
   try {
     return (
-      isObject(value) &&
+      isRecord(value) &&
       typeof Reflect.get(value, 'safeParse') === 'function' &&
       typeof Reflect.get(value, 'safeParseAsync') === 'function'
     );

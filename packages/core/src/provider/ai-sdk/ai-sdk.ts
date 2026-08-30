@@ -1,5 +1,5 @@
 import type { LogicalRequestContext, ProviderExecutedTool } from '@aio-proxy/plugin-sdk';
-import { isObject } from '@aio-proxy/shared';
+import { isRecord } from '@aio-proxy/shared';
 import {
   type AiSdkProvider,
   type AliasConfig,
@@ -260,7 +260,7 @@ function callableProviderModel(provider: LoadedAiSdkRuntimeProvider, modelId: st
 }
 
 function isLanguageModel(value: unknown): value is AiSdkLanguageModel {
-  if (!isObject(value)) {
+  if (!isRecord(value)) {
     return false;
   }
 

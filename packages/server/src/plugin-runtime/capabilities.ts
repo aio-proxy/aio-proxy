@@ -14,7 +14,7 @@ import type {
   RawTransportOptions,
   TokenCountCapability,
 } from '@aio-proxy/plugin-sdk';
-import { isObject } from '@aio-proxy/shared';
+import { isRecord } from '@aio-proxy/shared';
 import {
   aliasTargetModels,
   type OAuthProvider,
@@ -242,7 +242,7 @@ function routingDefaults(config: { readonly priority?: number; readonly weight?:
 
 function tokenCountCapability(value: unknown): TokenCountCapability | undefined {
   if (value === undefined) return undefined;
-  if (!isObject(value)) {
+  if (!isRecord(value)) {
     throw new Error('Invalid token count capability');
   }
   const countTokens = Reflect.get(value, 'countTokens');
@@ -254,7 +254,7 @@ const providerToolTypes: ReadonlySet<ProviderExecutedTool['type']> = new Set(['w
 
 function providerToolCapability(value: unknown): ProviderToolCapability | undefined {
   if (value === undefined) return undefined;
-  if (!isObject(value)) {
+  if (!isRecord(value)) {
     throw new Error('Invalid provider tool capability');
   }
   const supported = Reflect.get(value, 'supported');
