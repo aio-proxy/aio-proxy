@@ -1,17 +1,34 @@
 {
   "name": "@aio-proxy/shared",
   "version": "0.11.2",
-  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/aio-proxy/aio-proxy.git",
+    "directory": "packages/shared"
+  },
+  "files": [
+    "dist"
+  ],
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
+    "build": "rslib",
+    "dev": "rslib --watch --no-clean",
     "test": "bun run test:unit",
-    "test:unit": "bun test"
+    "test:unit": "bun test ./__tests__ ./src",
+    "test:artifact": "bun test ./__tests__/build-entry.smoke.ts"
   },
   "devDependencies": {
     "@aio-proxy/infra": "workspace:*",
+    "@rslib/core": "catalog:",
     "@types/bun": "catalog:",
     "typescript": "catalog:"
   }

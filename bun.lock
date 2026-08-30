@@ -433,6 +433,7 @@
       "version": "0.11.2",
       "devDependencies": {
         "@aio-proxy/infra": "workspace:*",
+        "@rslib/core": "catalog:",
         "@types/bun": "catalog:",
         "typescript": "catalog:",
       },

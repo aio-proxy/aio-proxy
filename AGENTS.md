@@ -51,7 +51,7 @@ Use these terms in code, docs, and discussion; avoid the listed synonyms.
 - Avoid `es-toolkit/compat` unless lodash-compatible behavior is explicitly required.
 - Object shape checks:
   - Use `isPlainObject` from `es-toolkit/predicate` for JSON, config, wire payloads, lock files, and other plain data. It rejects arrays, `null`, class instances, `Date`, `Error`, `Map`, and ESM module namespaces. That is the correct guard for authored/parsed data.
-  - Do **not** use `isPlainObject` for structural TypeScript contracts that may be class instances (`PluginDescriptor`, `ConfigSpec`, `OAuthAdapter`, `OAuthLoginResult`, `ModelCatalog`, `LogicalRequestContext`, AI SDK language models, capability objects, `Error` subclasses). Import `isObject` from `@aio-proxy/shared`. Never name it `isRecord`. Never put it in `@aio-proxy/types` or `@aio-proxy/plugin-sdk`.
+  - Do **not** use `isPlainObject` for structural TypeScript contracts that may be class instances (`PluginDescriptor`, `ConfigSpec`, `OAuthAdapter`, `OAuthLoginResult`, `ModelCatalog`, `LogicalRequestContext`, AI SDK language models, capability objects, `Error` subclasses). Import `isObject` from `@aio-proxy/shared` (published leaf, no workspace deps). Never name it `isRecord`. Never put it in `@aio-proxy/types` or `@aio-proxy/plugin-sdk`.
   - `typeof value === 'object'` alone is not enough: it is true for `null` and for arrays.
 - Each workspace package using `es-toolkit` must declare it with `"es-toolkit": "catalog:"`.
 - When selecting an `es-toolkit` function or verifying its import path, behavior, or FP signature, consult the official documentation index: https://es-toolkit.dev/llms.txt
