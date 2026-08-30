@@ -5,7 +5,7 @@ import {
   type RuntimeContext,
   type RuntimeFetch,
 } from '@aio-proxy/plugin-sdk';
-import { isRecord } from '@aio-proxy/types';
+import { isPlainObject } from 'es-toolkit/predicate';
 
 import type { GoogleAntigravityAccountOptions, GoogleAntigravityCredential } from '../schema';
 import { GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_TOKEN_ENDPOINT } from './constants';
@@ -136,7 +136,7 @@ async function readPayload(response: Response): Promise<Record<string, unknown>>
   } catch (error) {
     throw error instanceof SyntaxError ? refreshError(false, 'invalid_payload') : refreshError(true, 'network');
   }
-  if (!isRecord(payload)) {
+  if (!isPlainObject(payload)) {
     throw refreshError(false, 'invalid_payload');
   }
   return payload as Record<string, unknown>;
@@ -145,7 +145,7 @@ async function readPayload(response: Response): Promise<Record<string, unknown>>
 async function readErrorPayload(response: Response): Promise<Record<string, unknown>> {
   try {
     const payload: unknown = await response.json();
-    if (isRecord(payload)) {
+    if (isPlainObject(payload)) {
       return payload as Record<string, unknown>;
     }
   } catch {}

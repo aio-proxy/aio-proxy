@@ -1,5 +1,5 @@
 import type { DefaultAliasSelectRow, DefaultAliasSuggestions, ModelCatalog } from '@aio-proxy/plugin-sdk';
-import { isRecord } from '@aio-proxy/types';
+import { isPlainObject } from 'es-toolkit/predicate';
 
 import type { AntigravityFamily, Effort } from './collapse';
 
@@ -128,7 +128,7 @@ function isEmptyWhen(when: DefaultAliasSelectRow['when']): boolean {
 }
 
 function readAntigravityFamilies(extra: unknown): readonly AntigravityFamily[] {
-  if (!isRecord(extra) || !Array.isArray(extra['antigravityFamilies'])) return [];
+  if (!isPlainObject(extra) || !Array.isArray(extra['antigravityFamilies'])) return [];
   const families: AntigravityFamily[] = [];
   for (const value of extra['antigravityFamilies']) {
     const family = asFamily(value);
@@ -138,19 +138,19 @@ function readAntigravityFamilies(extra: unknown): readonly AntigravityFamily[] {
 }
 
 function asFamily(value: unknown): AntigravityFamily | undefined {
-  if (!isRecord(value)) return undefined;
+  if (!isPlainObject(value)) return undefined;
   const logicalId = asString(value['logicalId']);
   const base = asString(value['base']);
   const kind = value['kind'];
   const thinking = value['thinking'];
-  const thinkingMode = isRecord(thinking) ? thinking['mode'] : undefined;
+  const thinkingMode = isPlainObject(thinking) ? thinking['mode'] : undefined;
   if (logicalId === undefined || base === undefined) return undefined;
   if (kind !== 'split' && kind !== 'tiered' && kind !== 'same-wire') return undefined;
   if (thinkingMode !== 'gemini' && thinkingMode !== 'claude' && thinkingMode !== 'none') return undefined;
   if (!Array.isArray(value['variants'])) return undefined;
   const variants: { effort: Effort; model: string }[] = [];
   for (const row of value['variants']) {
-    if (!isRecord(row)) continue;
+    if (!isPlainObject(row)) continue;
     const effort = row['effort'];
     const model = asString(row['model']);
     if (effort !== 'low' && effort !== 'medium' && effort !== 'high') continue;

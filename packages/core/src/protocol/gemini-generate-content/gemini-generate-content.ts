@@ -1,4 +1,5 @@
-import { canonicalEffort, normalizeVariantKey, ProviderProtocol, isRecord } from '@aio-proxy/types';
+import { canonicalEffort, normalizeVariantKey, ProviderProtocol } from '@aio-proxy/types';
+import { isPlainObject } from 'es-toolkit/predicate';
 import { z } from 'zod';
 
 import type { AiSdkCallSettings, JSONValue } from '../../ai-sdk-bridge';
@@ -51,7 +52,7 @@ export const geminiGenerateContentAdapter = defineProtocolAdapter<GeminiGenerate
   protocol: ProviderProtocol.Gemini,
   async parse(raw, context) {
     const body = await readJsonRequest(raw);
-    return parseGeminiGenerateContent(isRecord(body) ? { ...body, model: context.model } : body);
+    return parseGeminiGenerateContent(isPlainObject(body) ? { ...body, model: context.model } : body);
   },
   model: (_request, context) => context.model,
   dimensions: (request) => {
@@ -150,7 +151,7 @@ function clampThinkingLevel(body: RawGeminiBody, supported: ReadonlySet<string>)
 }
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
-  return isRecord(value) ? value : undefined;
+  return isPlainObject(value) ? value : undefined;
 }
 function isCandidate(value: SessionCandidate | undefined): value is SessionCandidate {
   return value !== undefined;

@@ -1,5 +1,6 @@
 import type { DescriptorModelMetadata, JsonValue, ModelCatalog, ModelDescriptor } from '@aio-proxy/plugin-sdk';
-import { ModelMetadataSchema, isRecord } from '@aio-proxy/types';
+import { ModelMetadataSchema } from '@aio-proxy/types';
+import { isPlainObject } from 'es-toolkit/predicate';
 import { z } from 'zod';
 
 const MODALITIES = ['language', 'image', 'embedding', 'speech', 'transcription', 'reranking'] as const;
@@ -65,7 +66,7 @@ function validateDescriptors(modality: Modality, value: unknown): readonly Model
   if (!Array.isArray(value)) throw new ModelCatalogValidationError(modality, -1, []);
   const seen = new Set<string>();
   return value.map((descriptor, index) => {
-    if (!isRecord(descriptor)) throw new ModelCatalogValidationError(modality, index, []);
+    if (!isPlainObject(descriptor)) throw new ModelCatalogValidationError(modality, index, []);
     const { id: rawId, displayName, extra, modelMetadata } = descriptor;
     if (typeof rawId !== 'string' || rawId.trim() === '') {
       throw new ModelCatalogValidationError(modality, index, ['id']);
@@ -98,7 +99,7 @@ function validateDescriptors(modality: Modality, value: unknown): readonly Model
 }
 
 export function validateModelCatalog(value: unknown): ModelCatalog {
-  if (!isRecord(value)) throw new ModelCatalogValidationError('language', -1, []);
+  if (!isPlainObject(value)) throw new ModelCatalogValidationError('language', -1, []);
   const { language, image, embedding, speech, transcription, reranking, extra } = value;
   if (extra !== undefined && !isJsonValue(extra)) {
     throw new ModelCatalogValidationError('language', -1, ['extra']);

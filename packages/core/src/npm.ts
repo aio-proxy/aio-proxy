@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs';
 import { readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, normalize, sep } from 'node:path';
 
-import { isRecord } from '@aio-proxy/types';
+import { isPlainObject } from 'es-toolkit/predicate';
 import { z } from 'zod';
 
 import { NpmInstallError, NpmPackageEntrypointError, NpmPackageJsonError, NpmPackageNameError } from './error';
@@ -66,7 +66,7 @@ function exportPath(value: unknown): string | undefined {
   if (typeof value === 'string') {
     return value;
   }
-  if (!isRecord(value)) {
+  if (!isPlainObject(value)) {
     return undefined;
   }
   for (const key of ['.', 'import', 'module', 'default', 'require'] as const) {

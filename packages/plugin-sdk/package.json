@@ -38,7 +38,8 @@
     "ai": "catalog:",
     "date-fns": "catalog:",
     "eventsource-parser": "catalog:",
-    "zod": "catalog:"
+    "zod": "catalog:",
+    "es-toolkit": "catalog:"
   },
   "devDependencies": {
     "@aio-proxy/infra": "workspace:*",

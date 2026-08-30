@@ -1,6 +1,6 @@
 import { pathToFileURL } from 'node:url';
 
-import { isRecord } from '@aio-proxy/types';
+import { isPlainObject } from 'es-toolkit/predicate';
 
 import type { LoadedAiSdkRuntimeProvider } from '../../ai-sdk-bridge';
 import { AiSdkProviderLoaderError } from '../../error';
@@ -109,7 +109,7 @@ function isProviderLoader(value: unknown): value is AiSdkProviderLoader {
 // package by the exact rule the runtime loader will later apply.
 export function isAiSdkProviderModule(imported: unknown): boolean {
   return (
-    isRecord(imported) &&
+    isPlainObject(imported) &&
     Object.entries(imported).some(([name, value]) => name.startsWith('create') && isProviderLoader(value))
   );
 }
@@ -123,7 +123,7 @@ async function loadCachedProvider(
     return null;
   }
   const loaded: unknown = await import(pathToFileURL(cached.entrypoint).href);
-  if (!isRecord(loaded)) {
+  if (!isPlainObject(loaded)) {
     throw new AiSdkProviderLoaderError(`No exports found in ${packageName}`);
   }
   for (const [name, value] of Object.entries(loaded)) {

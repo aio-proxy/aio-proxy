@@ -6,8 +6,9 @@ import {
   type PendingAccountOperation,
   type PluginRepository,
 } from '@aio-proxy/core';
-import { OAuthPluginProviderSchema, ProviderKind, isRecord } from '@aio-proxy/types';
+import { OAuthPluginProviderSchema, ProviderKind } from '@aio-proxy/types';
 import { minBy } from 'es-toolkit/array';
+import { isPlainObject } from 'es-toolkit/predicate';
 
 import type { FifoQueue } from './fifo-queue';
 import type { RetiredProviderSnapshot } from './runtime';
@@ -30,7 +31,7 @@ export type AccountRemovalCoordinator = {
 };
 
 export function asProviderRecord(value: unknown): Record<string, unknown> {
-  return isRecord(value) ? value : {};
+  return isPlainObject(value) ? value : {};
 }
 
 export function oauthCapabilityOf(

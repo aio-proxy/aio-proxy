@@ -1,5 +1,5 @@
 import type { FormField } from '@aio-proxy/plugin-sdk';
-import { isRecord } from '@aio-proxy/types';
+import { isPlainObject } from 'es-toolkit/predicate';
 
 import { FormSchemaValidationError } from './errors';
 
@@ -150,7 +150,7 @@ export function compatibleDefault(field: FormField, current: unknown): unknown {
 }
 
 export function plainRecordEntries(value: unknown): readonly (readonly [string, unknown])[] {
-  if (!isRecord(value)) {
+  if (!isPlainObject(value)) {
     throw new FormSchemaValidationError([{ key: '<root>', message: 'Expected an object' }]);
   }
   try {

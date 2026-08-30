@@ -1,5 +1,6 @@
 import type { ProviderExecutedTool } from '@aio-proxy/plugin-sdk';
-import { isRecord, type AliasDimensions, canonicalEffort, ProviderProtocol } from '@aio-proxy/types';
+import { type AliasDimensions, canonicalEffort, ProviderProtocol } from '@aio-proxy/types';
+import { isPlainObject } from 'es-toolkit/predicate';
 
 import type { ModelMessage } from '../../ai-sdk-bridge';
 import { writeAnthropicMessagesResponse, writeAnthropicMessagesSSE } from '../../egress/anthropic-messages';
@@ -135,7 +136,7 @@ function claudeCodeSession(userId: string | undefined): string | undefined {
   if (legacy !== undefined) return legacy;
   try {
     const parsed = JSON.parse(userId) as unknown;
-    if (isRecord(parsed)) {
+    if (isPlainObject(parsed)) {
       const sessionId = (parsed as { readonly session_id?: unknown }).session_id;
       return typeof sessionId === 'string' ? sessionId : undefined;
     }

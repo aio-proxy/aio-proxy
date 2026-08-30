@@ -3,7 +3,7 @@ import { createOpenAI } from '@ai-sdk/openai';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import type { OAuthRuntimeResult, ProtocolId, RuntimeContext, RuntimeFetch } from '@aio-proxy/plugin-sdk';
 import { createOpenAIStreamFetch } from '@aio-proxy/plugin-sdk/openai-stream';
-import { isRecord } from '@aio-proxy/types';
+import { isPlainObject } from 'es-toolkit/predicate';
 
 import {
   copilotHeaders,
@@ -127,7 +127,7 @@ async function fetchWithCredential(
 }
 
 function catalogProtocol(extra: unknown): ProtocolId | undefined {
-  if (!isRecord(extra)) return undefined;
+  if (!isPlainObject(extra)) return undefined;
   const protocol = Reflect.get(extra, 'protocol');
   return protocol === 'openai-compatible' || protocol === 'anthropic' || protocol === 'openai-response'
     ? protocol

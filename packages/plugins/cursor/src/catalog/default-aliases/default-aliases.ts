@@ -1,5 +1,5 @@
 import type { DefaultAliasSelectRow, DefaultAliasSuggestions, ModelCatalog } from '@aio-proxy/plugin-sdk';
-import { isRecord } from '@aio-proxy/types';
+import { isPlainObject } from 'es-toolkit/predicate';
 
 import { isEmptyWhen, peelSlug, whenIdentity } from './peel';
 import { pickDefaultModel, type PeeledVariant } from './pick-default';
@@ -87,12 +87,12 @@ function wins(candidate: PeeledVariant, incumbent: PeeledVariant, preferred: str
 }
 
 function readCursorFamilies(extra: unknown): readonly CursorFamily[] {
-  if (!isRecord(extra)) return [];
+  if (!isPlainObject(extra)) return [];
   const families = extra['cursorFamilies'];
   if (!Array.isArray(families)) return [];
   const parsed: CursorFamily[] = [];
   for (const family of families) {
-    if (!isRecord(family)) continue;
+    if (!isPlainObject(family)) continue;
     const name = family['name'];
     const variants = family['variants'];
     if (typeof name !== 'string' || !Array.isArray(variants)) continue;
@@ -102,7 +102,7 @@ function readCursorFamilies(extra: unknown): readonly CursorFamily[] {
 }
 
 function readVariant(value: unknown): CursorFamily['variants'][number][] {
-  if (!isRecord(value)) return [];
+  if (!isPlainObject(value)) return [];
   const slug = value['slug'];
   if (typeof slug !== 'string') return [];
   return [{ slug, ...(value['isDefaultNonMax'] === true ? { isDefaultNonMax: true } : {}) }];

@@ -1,4 +1,4 @@
-import { isRecord } from '@aio-proxy/types';
+import { isPlainObject } from 'es-toolkit/predicate';
 export type ThinkingMode = 'gemini' | 'claude' | 'none';
 
 export function classifyProvider(descriptor: { readonly id?: string; readonly extra?: unknown }): ThinkingMode {
@@ -16,8 +16,8 @@ export function classifyProvider(descriptor: { readonly id?: string; readonly ex
 }
 
 function providerSource(extra: unknown): Record<string, unknown> | undefined {
-  if (!isRecord(extra)) return undefined;
-  return isRecord(extra['antigravity']) ? extra['antigravity'] : extra;
+  if (!isPlainObject(extra)) return undefined;
+  return isPlainObject(extra['antigravity']) ? extra['antigravity'] : extra;
 }
 
 function providerString(value: unknown): string | undefined {

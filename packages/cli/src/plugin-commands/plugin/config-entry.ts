@@ -1,5 +1,5 @@
 import { BUILT_IN_PLUGIN_PACKAGE_NAMES, isNpmPackageName, type PluginSecretSnapshot } from '@aio-proxy/core';
-import { PluginPackageNameSchema, isRecord } from '@aio-proxy/types';
+import { PluginPackageNameSchema } from '@aio-proxy/types';
 import { isPlainObject } from 'es-toolkit/predicate';
 
 export type ConfigRecord = Record<string, unknown>;
@@ -56,9 +56,9 @@ export function usedPackageNames(config: ConfigRecord): Set<string> {
       .map(packageNameOf)
       .filter((name): name is string => name !== null && !builtIns.has(name)),
   );
-  if (isRecord(config['providers'])) {
+  if (isPlainObject(config['providers'])) {
     for (const provider of Object.values(config['providers'])) {
-      if (!isRecord(provider) || provider['kind'] !== 'ai-sdk') continue;
+      if (!isPlainObject(provider) || provider['kind'] !== 'ai-sdk') continue;
       const packageName = typeof provider['packageName'] === 'string' ? provider['packageName'] : provider['package'];
       if (isNpmPackageName(packageName)) used.add(packageName);
     }

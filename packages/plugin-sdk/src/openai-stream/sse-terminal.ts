@@ -1,4 +1,4 @@
-import { isRecord } from '@aio-proxy/types';
+import { isPlainObject } from 'es-toolkit/predicate';
 import { createParser } from 'eventsource-parser';
 
 import type { ProtocolId } from '../runtime';
@@ -97,7 +97,7 @@ function parseFrame(frameBytes: Uint8Array): { readonly event?: string; readonly
 function parseObject(data: string): Record<string, unknown> | undefined {
   try {
     const value: unknown = JSON.parse(data);
-    return isRecord(value) && !Array.isArray(value) ? value : undefined;
+    return isPlainObject(value) && !Array.isArray(value) ? value : undefined;
   } catch {
     return undefined;
   }
@@ -112,7 +112,7 @@ function responsesCreatedResponse(
 ): Record<string, unknown> | undefined {
   const created = event.event === 'response.created' || value?.['type'] === 'response.created';
   const response = value?.['response'];
-  return created && isRecord(response) && !Array.isArray(response) ? response : undefined;
+  return created && isPlainObject(response) && !Array.isArray(response) ? response : undefined;
 }
 
 function normalizedResponsesErrorFrame(

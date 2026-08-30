@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 
 import type { ModelDescriptor } from '@aio-proxy/plugin-sdk';
-import { isRecord } from '@aio-proxy/types';
+import { isPlainObject } from 'es-toolkit/predicate';
 
 import { assembleAntigravityCatalog } from './discover';
 import { staticAntigravityCatalog } from './snapshot';
@@ -76,6 +76,6 @@ function descriptor(id: string, displayName: string | undefined, apiProvider: st
 
 function catalogField(catalog: ReturnType<typeof staticAntigravityCatalog>, key: string): unknown {
   const extra = catalog.extra;
-  if (!isRecord(extra)) return undefined;
+  if (!isPlainObject(extra)) return undefined;
   return extra[key];
 }

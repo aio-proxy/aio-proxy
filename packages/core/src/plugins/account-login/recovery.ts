@@ -1,4 +1,5 @@
 import { providerLoginCommand } from '@aio-proxy/types';
+import { isPlainObject } from 'es-toolkit/predicate';
 
 import { parseRuntimeConfig } from '../../config';
 import { AtomicConfigCommitUncertainError, type AtomicConfigFile, digestProviderEntry } from '../config-file';
@@ -9,7 +10,6 @@ import {
   accountMatches,
   type ConfigRecord,
   capabilityOf,
-  isRecord,
   providerRecord,
   structuredEntry,
   validateStagedOAuthWrite,
@@ -110,7 +110,7 @@ export async function recoverPendingAccountOperations(
   let nextRunAt: number | undefined;
   await config.transaction(async (current) => {
     const rawProviders = current['providers'];
-    if (rawProviders !== undefined && !isRecord(rawProviders)) {
+    if (rawProviders !== undefined && !isPlainObject(rawProviders)) {
       try {
         parseRuntimeConfig(current);
       } catch {}

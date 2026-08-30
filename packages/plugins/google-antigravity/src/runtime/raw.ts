@@ -1,5 +1,5 @@
 import type { ModelCatalog, RawResolver } from '@aio-proxy/plugin-sdk';
-import { isRecord } from '@aio-proxy/types';
+import { isPlainObject } from 'es-toolkit/predicate';
 
 import { AntigravityThinkingError, bindAntigravityThinking } from '../protocol/thinking';
 import { AntigravityToolSchemaValidationError } from '../protocol/tool-schema';
@@ -109,11 +109,11 @@ function normalizeGeminiThinking(
 }
 
 function record(value: unknown): Readonly<Record<string, unknown>> | undefined {
-  return isRecord(value) ? value : undefined;
+  return isPlainObject(value) ? value : undefined;
 }
 
 export function unwrapCcaJson(payload: unknown): unknown {
-  if (!isRecord(payload)) return payload;
+  if (!isPlainObject(payload)) return payload;
   const response = Reflect.get(payload, 'response');
   return response ?? payload;
 }
@@ -129,7 +129,7 @@ function operation(request: Request): boolean | undefined {
 async function readBody(request: Request): Promise<Record<string, unknown> | undefined> {
   try {
     const body: unknown = await request.json();
-    return isRecord(body) ? (body as Record<string, unknown>) : undefined;
+    return isPlainObject(body) ? (body as Record<string, unknown>) : undefined;
   } catch {
     throwIfAborted(request.signal);
     return undefined;

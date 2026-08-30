@@ -1,5 +1,5 @@
-import { isRecord } from '@aio-proxy/types';
 import type { AliasDimensions } from '@aio-proxy/types';
+import { isPlainObject } from 'es-toolkit/predicate';
 
 import type {
   LanguageProtocolAdapter,
@@ -58,7 +58,7 @@ export function officialImageUsage(
 }
 
 function officialInputTokenDetails(value: unknown): Record<string, unknown> | undefined {
-  if (!isRecord(value)) return undefined;
+  if (!isPlainObject(value)) return undefined;
   const record = value as Record<string, unknown>;
   const textTokens = numberField(record, 'text_tokens') ?? numberField(record, 'textTokens');
   const imageTokens = numberField(record, 'image_tokens') ?? numberField(record, 'imageTokens');

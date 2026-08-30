@@ -1,4 +1,5 @@
-import { ProviderProtocol, isRecord } from '@aio-proxy/types';
+import { ProviderProtocol } from '@aio-proxy/types';
+import { isPlainObject } from 'es-toolkit/predicate';
 import { z } from 'zod';
 
 import type { AiSdkCallSettings } from '../../ai-sdk-bridge';
@@ -74,7 +75,7 @@ function rewriteAuthoredId(
 }
 
 function thinkingSummariesNone(value: GeminiInteractionsRequest['body']['generation_config']): boolean {
-  return isRecord(value) && value['thinking_summaries'] === 'none';
+  return isPlainObject(value) && value['thinking_summaries'] === 'none';
 }
 
 function aiSdkSettings(settings: GeminiInteractionsTransformSettings): AiSdkCallSettings {

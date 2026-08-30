@@ -258,9 +258,9 @@
       "version": "0.11.2",
       "dependencies": {
         "@aio-proxy/plugin-sdk": "workspace:*",
-        "@aio-proxy/types": "workspace:*",
         "@logtape/file": "2.2.4",
         "@logtape/logtape": "catalog:",
+        "es-toolkit": "catalog:",
       },
       "devDependencies": {
         "@aio-proxy/infra": "workspace:*",
@@ -277,6 +277,7 @@
         "@date-fns/tz": "catalog:",
         "ai": "catalog:",
         "date-fns": "catalog:",
+        "es-toolkit": "catalog:",
         "eventsource-parser": "catalog:",
         "zod": "catalog:",
       },
@@ -296,6 +297,7 @@
         "@aio-proxy/plugin-sdk": "workspace:*",
         "@aio-proxy/types": "workspace:*",
         "@bufbuild/protobuf": "catalog:",
+        "es-toolkit": "catalog:",
         "lru-cache": "catalog:",
       },
       "devDependencies": {
@@ -313,7 +315,7 @@
         "@ai-sdk/openai": "catalog:",
         "@ai-sdk/openai-compatible": "catalog:",
         "@aio-proxy/plugin-sdk": "workspace:*",
-        "@aio-proxy/types": "workspace:*",
+        "es-toolkit": "catalog:",
       },
       "devDependencies": {
         "@aio-proxy/infra": "workspace:*",
@@ -329,7 +331,6 @@
         "@ai-sdk/google": "catalog:",
         "@ai-sdk/provider": "catalog:",
         "@aio-proxy/plugin-sdk": "workspace:*",
-        "@aio-proxy/types": "workspace:*",
         "ai": "catalog:",
         "es-toolkit": "catalog:",
         "eventsource-parser": "catalog:",
@@ -348,7 +349,7 @@
         "@ai-sdk/anthropic": "catalog:",
         "@ai-sdk/openai-compatible": "catalog:",
         "@aio-proxy/plugin-sdk": "workspace:*",
-        "@aio-proxy/types": "workspace:*",
+        "es-toolkit": "catalog:",
       },
       "devDependencies": {
         "@aio-proxy/infra": "workspace:*",
@@ -380,7 +381,7 @@
       "dependencies": {
         "@ai-sdk/openai": "catalog:",
         "@aio-proxy/plugin-sdk": "workspace:*",
-        "@aio-proxy/types": "workspace:*",
+        "es-toolkit": "catalog:",
       },
       "devDependencies": {
         "@aio-proxy/infra": "workspace:*",

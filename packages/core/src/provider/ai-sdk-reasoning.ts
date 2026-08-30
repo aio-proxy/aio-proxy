@@ -1,4 +1,5 @@
-import { isRecord, type AiSdkProvider } from '@aio-proxy/types';
+import { type AiSdkProvider } from '@aio-proxy/types';
+import { isPlainObject } from 'es-toolkit/predicate';
 
 import type { TextStreamPart, ToolSet } from '../ai-sdk-bridge';
 
@@ -110,7 +111,7 @@ function reasoningContent(value: unknown): string | undefined {
     return undefined;
   }
 
-  if (!isRecord(value)) {
+  if (!isPlainObject(value)) {
     return undefined;
   }
 

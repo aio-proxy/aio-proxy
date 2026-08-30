@@ -3,7 +3,7 @@ import { constants, type Stats } from 'node:fs';
 import { mkdir, open, readFile, stat, unlink } from 'node:fs/promises';
 import { dirname } from 'node:path';
 
-import { isRecord } from '@aio-proxy/types';
+import { isPlainObject } from 'es-toolkit/predicate';
 
 import { abortableDelay } from '../../file-lock/delay';
 import { isNodeError, sameFileSnapshot } from '../../file-lock/fs';
@@ -41,7 +41,7 @@ function configOwnerIsAlive(pid: number): boolean {
 function parseLock(text: string): LockRecord | null {
   try {
     const value: unknown = JSON.parse(text);
-    if (!isRecord(value)) return null;
+    if (!isPlainObject(value)) return null;
     const { pid, owner, createdAt, starttime } = value as Record<string, unknown>;
     return typeof pid === 'number' &&
       Number.isSafeInteger(pid) &&

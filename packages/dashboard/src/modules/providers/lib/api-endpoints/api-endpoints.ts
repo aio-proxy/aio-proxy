@@ -1,6 +1,6 @@
-import { isRecord } from '@aio-proxy/types';
 import type { ApiEndpointsInput, ProviderEndpointAuth, ProviderProtocol } from '@aio-proxy/types';
 import { ProviderKind } from '@aio-proxy/types';
+import { isPlainObject } from 'es-toolkit/predicate';
 
 import { usableBaseURL } from '../section-status/usable-base-url';
 
@@ -36,7 +36,7 @@ export function apiDraftFromProvider(value: {
 }): ApiEndpointDraft | undefined {
   if (value.kind !== ProviderKind.Api) return undefined;
   const endpoints = value.endpoints;
-  if (isRecord(endpoints)) {
+  if (isPlainObject(endpoints)) {
     const shared = endpoints as { readonly baseURL?: unknown; readonly protocol?: unknown };
     if (typeof shared.baseURL === 'string' && Array.isArray(shared.protocol)) {
       return { shape: 'shared', baseURL: shared.baseURL, protocols: concreteProtocols(shared.protocol) };

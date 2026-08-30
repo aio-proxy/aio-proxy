@@ -1,4 +1,4 @@
-import { isRecord } from '@aio-proxy/types';
+import { isPlainObject } from 'es-toolkit/predicate';
 
 import type { JsonSchema } from './json-editor-state';
 
@@ -18,7 +18,7 @@ const SCHEMA_NODE_KEYS = [
 ] as const;
 const SCHEMA_ARRAY_KEYS = ['allOf', 'anyOf', 'oneOf', 'prefixItems'] as const;
 
-const isSchemaObject = (value: unknown): value is Record<string, unknown> => isRecord(value);
+const isSchemaObject = (value: unknown): value is Record<string, unknown> => isPlainObject(value);
 
 const mapSchemaRecord = (value: unknown): unknown => {
   if (!isSchemaObject(value)) return value;

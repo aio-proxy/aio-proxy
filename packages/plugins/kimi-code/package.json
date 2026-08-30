@@ -22,7 +22,7 @@
     "@ai-sdk/anthropic": "catalog:",
     "@ai-sdk/openai-compatible": "catalog:",
     "@aio-proxy/plugin-sdk": "workspace:*",
-    "@aio-proxy/types": "workspace:*"
+    "es-toolkit": "catalog:"
   },
   "devDependencies": {
     "@aio-proxy/infra": "workspace:*",

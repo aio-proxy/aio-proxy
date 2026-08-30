@@ -1,8 +1,8 @@
 import type { AtomicConfigFile, OAuthCapabilityReference, PluginRegistry } from '@aio-proxy/core';
 import { getLocale, m } from '@aio-proxy/i18n';
 import { type LocalizedText, resolveLocalizedText } from '@aio-proxy/plugin-sdk';
-import { isRecord } from '@aio-proxy/types';
 import { confirm, select } from '@inquirer/prompts';
+import { isPlainObject } from 'es-toolkit/predicate';
 
 import {
   ProviderCapabilityAmbiguousError,
@@ -111,11 +111,11 @@ export async function targetCapability(
   config: AtomicConfigFile,
 ): Promise<OAuthCapabilityReference> {
   return config.transaction(async (current) => {
-    const providers = isRecord(current['providers']) ? current['providers'] : {};
+    const providers = isPlainObject(current['providers']) ? current['providers'] : {};
     const entry = providers[providerId];
     if (entry === undefined) throw new ProviderTargetNotFoundError(providerId);
     if (
-      !isRecord(entry) ||
+      !isPlainObject(entry) ||
       entry['kind'] !== 'oauth' ||
       Object.hasOwn(entry, 'vendor') ||
       typeof entry['plugin'] !== 'string' ||

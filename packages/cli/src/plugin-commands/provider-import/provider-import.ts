@@ -13,7 +13,7 @@ import {
   recoverPendingAccountOperations,
 } from '@aio-proxy/core';
 import { m } from '@aio-proxy/i18n';
-import { isRecord } from '@aio-proxy/types';
+import { isPlainObject } from 'es-toolkit/predicate';
 
 import { CliExit, EXIT } from '../../exit';
 import { createProviderLoginDefaultDeps } from '../provider-login/deps';
@@ -105,7 +105,7 @@ async function importOneFile(file: string, deps: ProviderImportDeps, counts: Imp
     return;
   }
 
-  if (!isRecord(parsed) || typeof parsed['type'] !== 'string' || parsed['type'].trim() === '') {
+  if (!isPlainObject(parsed) || typeof parsed['type'] !== 'string' || parsed['type'].trim() === '') {
     counts.failed += 1;
     deps.print(
       m['cli.provider.import.status_failed']({

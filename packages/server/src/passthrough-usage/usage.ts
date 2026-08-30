@@ -1,10 +1,10 @@
 import { ProviderProtocol } from '@aio-proxy/types';
+import { isPlainObject } from 'es-toolkit/predicate';
 
 import {
   anthropicTotalTokens,
   assertNever,
   fieldValue,
-  isRecord,
   nestedNumberField,
   numberField,
   tokenUsage,
@@ -32,9 +32,9 @@ export function usageFromJson(protocol: ProviderProtocol, value: unknown): Usage
 }
 
 function interactionsUsage(value: unknown): UsageExtraction {
-  const root = isRecord(value) ? value : undefined;
-  const interaction = isRecord(root?.['interaction']) ? root['interaction'] : root;
-  if (!isRecord(interaction) || !isRecord(interaction['usage'])) return { kind: 'absent' };
+  const root = isPlainObject(value) ? value : undefined;
+  const interaction = isPlainObject(root?.['interaction']) ? root['interaction'] : root;
+  if (!isPlainObject(interaction) || !isPlainObject(interaction['usage'])) return { kind: 'absent' };
   const usage = interaction['usage'];
   return tokenUsage({
     inputTokens: numberField(usage, 'total_input_tokens', 'inputTokens'),
@@ -46,9 +46,9 @@ function interactionsUsage(value: unknown): UsageExtraction {
 }
 
 function openAIImageUsage(value: unknown): UsageExtraction {
-  if (!isRecord(value)) return { kind: 'absent' };
+  if (!isPlainObject(value)) return { kind: 'absent' };
   const imageCount = Array.isArray(value['data']) ? value['data'].length : 0;
-  if (!isRecord(value['usage'])) {
+  if (!isPlainObject(value['usage'])) {
     return imageCount > 0 ? { kind: 'valid', usage: { imageCount } } : { kind: 'absent' };
   }
   const tokens = tokenUsage({
@@ -68,7 +68,7 @@ function openAIImageUsage(value: unknown): UsageExtraction {
 }
 
 function openAICompatibleUsage(value: unknown): UsageExtraction {
-  if (!isRecord(value) || !isRecord(value['usage'])) {
+  if (!isPlainObject(value) || !isPlainObject(value['usage'])) {
     return { kind: 'absent' };
   }
   const usage = value['usage'];
@@ -86,11 +86,11 @@ function openAICompatibleUsage(value: unknown): UsageExtraction {
 }
 
 function openAIResponsesUsage(value: unknown): UsageExtraction {
-  if (!isRecord(value)) {
+  if (!isPlainObject(value)) {
     return { kind: 'absent' };
   }
-  const response = isRecord(value['response']) ? value['response'] : value;
-  if (!isRecord(response['usage'])) {
+  const response = isPlainObject(value['response']) ? value['response'] : value;
+  if (!isPlainObject(response['usage'])) {
     return { kind: 'absent' };
   }
   const usage = response['usage'];
@@ -106,11 +106,11 @@ function openAIResponsesUsage(value: unknown): UsageExtraction {
 }
 
 function anthropicUsage(value: unknown): UsageExtraction {
-  if (!isRecord(value)) {
+  if (!isPlainObject(value)) {
     return { kind: 'absent' };
   }
-  const container = isRecord(value['message']) ? value['message'] : value;
-  if (!isRecord(container['usage'])) {
+  const container = isPlainObject(value['message']) ? value['message'] : value;
+  if (!isPlainObject(container['usage'])) {
     return { kind: 'absent' };
   }
   const usage = container['usage'];
@@ -138,13 +138,13 @@ function anthropicUsage(value: unknown): UsageExtraction {
 function geminiUsage(value: unknown): UsageExtraction {
   if (Array.isArray(value)) {
     for (let index = value.length - 1; index >= 0; index -= 1) {
-      if (isRecord(value[index]) && isRecord(value[index]['usageMetadata'])) {
+      if (isPlainObject(value[index]) && isPlainObject(value[index]['usageMetadata'])) {
         return geminiUsage(value[index]);
       }
     }
     return { kind: 'absent' };
   }
-  if (!isRecord(value) || !isRecord(value['usageMetadata'])) {
+  if (!isPlainObject(value) || !isPlainObject(value['usageMetadata'])) {
     return { kind: 'absent' };
   }
   const usage = value['usageMetadata'];

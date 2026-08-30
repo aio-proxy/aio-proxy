@@ -1,4 +1,5 @@
-import { type Config, ConfigSchema, isRecord } from '@aio-proxy/types';
+import { type Config, ConfigSchema } from '@aio-proxy/types';
+import { isPlainObject } from 'es-toolkit/predicate';
 
 import { resolveConfigTemplates } from './resolve-config-templates';
 
@@ -9,9 +10,9 @@ const digitPort = (value: unknown): number | undefined => {
 };
 
 const withDigitServerPort = (value: unknown): unknown => {
-  if (!isRecord(value)) return value;
+  if (!isPlainObject(value)) return value;
   const server = value['server'];
-  if (!isRecord(server)) return value;
+  if (!isPlainObject(server)) return value;
   const port = digitPort(server['port']);
   return port === undefined ? value : { ...value, server: { ...server, port } };
 };

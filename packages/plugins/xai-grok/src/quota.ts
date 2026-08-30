@@ -1,5 +1,5 @@
 import type { AccountContext, OAuthQuotaItem, OAuthQuotaSnapshot } from '@aio-proxy/plugin-sdk';
-import { isRecord } from '@aio-proxy/types';
+import { isPlainObject } from 'es-toolkit/predicate';
 
 import { createXAIGrokCLIHeaders, XAI_GROK_CLI_BASE_URL } from './cli-headers/index';
 import { currentXAIGrokCredential, type XAIGrokOAuthOptions } from './oauth';
@@ -86,7 +86,7 @@ function monthlyItem(config: BillingObject): OAuthQuotaItem | undefined {
 }
 
 function record(value: unknown): BillingObject | undefined {
-  return isRecord(value) ? value : undefined;
+  return isPlainObject(value) ? value : undefined;
 }
 
 function number(value: unknown): number | undefined {

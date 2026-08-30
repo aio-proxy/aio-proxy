@@ -8,7 +8,8 @@ import {
   PLUGIN_DESCRIPTOR_BRAND,
   type PluginDescriptor,
 } from '@aio-proxy/plugin-sdk';
-import { isRecord, type DiagnosticCode } from '@aio-proxy/types';
+import { type DiagnosticCode } from '@aio-proxy/types';
+import { isPlainObject } from 'es-toolkit/predicate';
 
 import type { NpmPackageInfo } from '../../../npm';
 import type { PluginLogSink } from '../../diagnostic/index';
@@ -41,7 +42,7 @@ export function validateDescriptor(
   descriptor: unknown,
   context?: { readonly packageName: string; readonly logger: PluginLogSink },
 ): LoadablePluginDescriptor<unknown> {
-  if (isRecord(descriptor)) {
+  if (isPlainObject(descriptor)) {
     const apiVersion = Reflect.get(descriptor, 'apiVersion');
     if (Reflect.has(descriptor, 'apiVersion') && !supportedApiVersions.has(apiVersion as number)) {
       throw new PluginHostError('PLUGIN_API_INCOMPATIBLE');
@@ -124,7 +125,7 @@ export async function loadThirdPartyDescriptor(
       timeoutMs: PLUGIN_IMPORT_TIMEOUT_MS,
       timeoutError: () => new PluginHostError('PLUGIN_LOAD_FAILED', true),
     }).then((value) => {
-      if (!isRecord(value)) throw new PluginHostError('PLUGIN_LOAD_FAILED');
+      if (!isPlainObject(value)) throw new PluginHostError('PLUGIN_LOAD_FAILED');
       return validateDescriptor(Reflect.get(value, 'default'), { packageName, logger });
     });
     descriptorCache.set(cacheKey, cached);

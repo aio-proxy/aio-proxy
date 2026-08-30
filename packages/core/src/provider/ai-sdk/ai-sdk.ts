@@ -1,12 +1,12 @@
 import type { LogicalRequestContext, ProviderExecutedTool } from '@aio-proxy/plugin-sdk';
 import {
-  isRecord,
   type AiSdkProvider,
   type AliasConfig,
   type ModelId,
   type ProviderKind,
   type ProviderProtocol,
 } from '@aio-proxy/types';
+import { isPlainObject } from 'es-toolkit/predicate';
 
 import type {
   AiSdkLanguageModel,
@@ -260,7 +260,7 @@ function callableProviderModel(provider: LoadedAiSdkRuntimeProvider, modelId: st
 }
 
 function isLanguageModel(value: unknown): value is AiSdkLanguageModel {
-  if (!isRecord(value)) {
+  if (!isPlainObject(value)) {
     return false;
   }
 

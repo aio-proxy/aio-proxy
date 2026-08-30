@@ -1,11 +1,11 @@
 import type { SharedV4ProviderOptions } from '@ai-sdk/provider';
 import { type LogicalRequestContext, type ProviderExecutedTool, zod } from '@aio-proxy/plugin-sdk';
-import { isRecord } from '@aio-proxy/types';
+import { isPlainObject } from 'es-toolkit/predicate';
 
 import type { AntigravityThinkingOption } from '../protocol/thinking';
 
 const logicalRequestSchema = zod.custom<LogicalRequestContext>((value) => {
-  if (!isRecord(value)) return false;
+  if (!isPlainObject(value)) return false;
   const session = Reflect.get(value, 'session');
   return (
     typeof Reflect.get(value, 'requestId') === 'string' &&

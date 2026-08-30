@@ -1,7 +1,6 @@
 import { type DiagnosticFactory, modelRoutes, type PluginRegistrySnapshot, type StoredCatalog } from '@aio-proxy/core';
 import type { ModelCatalog, OAuthAdapter } from '@aio-proxy/plugin-sdk';
 import {
-  isRecord,
   type DashboardProviderSummary,
   type Diagnostic,
   type OAuthProvider,
@@ -10,6 +9,7 @@ import {
   type ProviderState,
 } from '@aio-proxy/types';
 import { uniq } from 'es-toolkit/array';
+import { isPlainObject } from 'es-toolkit/predicate';
 
 import type { RuntimeModelMetadata, RuntimeProviderInstance } from '../runtime';
 import type { MaterializePluginProviderOptions, PluginProviderMaterialization } from './types';
@@ -121,7 +121,7 @@ function descriptorMetadata(descriptor: ModelCatalog['language'][number]): Runti
 }
 
 function metadataProtocol(metadata: unknown): ProviderProtocol | undefined {
-  if (!isRecord(metadata)) return undefined;
+  if (!isPlainObject(metadata)) return undefined;
   const protocol = Reflect.get(metadata, 'protocol');
   switch (protocol) {
     case ProviderProtocol.OpenAICompatible:

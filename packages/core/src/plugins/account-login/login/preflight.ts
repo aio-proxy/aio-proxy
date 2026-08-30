@@ -1,3 +1,5 @@
+import { isPlainObject } from 'es-toolkit/predicate';
+
 import type { StoredAccount } from '../../repository/index';
 import {
   AccountCleanupPendingError,
@@ -6,7 +8,7 @@ import {
   ProviderCapabilityTargetMismatchError,
 } from '../errors';
 import type { OAuthAccountWriteOptions } from '../login';
-import { accountMatches, capabilityOf, isRecord, providerRecord, sameCapability, structuredEntry } from '../validation';
+import { accountMatches, capabilityOf, providerRecord, sameCapability, structuredEntry } from '../validation';
 
 export type Preflight = {
   readonly capability: OAuthCapabilityReference;
@@ -67,8 +69,8 @@ export async function preflight(options: OAuthAccountWriteOptions, signal: Abort
           account,
           runtimeRevision: account.runtimeRevision,
           fingerprint: account.fingerprint,
-          publicOptions: isRecord(entry['options']) ? entry['options'] : {},
-          secrets: isRecord(account.secrets) ? account.secrets : {},
+          publicOptions: isPlainObject(entry['options']) ? entry['options'] : {},
+          secrets: isPlainObject(account.secrets) ? account.secrets : {},
         },
       };
     },

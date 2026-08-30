@@ -1,6 +1,6 @@
 import type { GoogleProviderSettings } from '@ai-sdk/google';
 import type { JsonValue, LogicalRequestContext, ModelCatalog, ProviderExecutedTool } from '@aio-proxy/plugin-sdk';
-import { isRecord } from '@aio-proxy/types';
+import { isPlainObject } from 'es-toolkit/predicate';
 
 import { repairGroundingSse, repairGroundingUrls } from '../protocol/grounding-urls';
 import { type AntigravityThinkingOption, bindAntigravityThinking } from '../protocol/thinking';
@@ -136,7 +136,7 @@ function applyPrivateThinking(
 }
 
 function record(value: unknown): Readonly<Record<string, unknown>> {
-  return isRecord(value) ? value : {};
+  return isPlainObject(value) ? value : {};
 }
 
 function parseGoogleTarget(url: string, modelId: string): { readonly modelId: string; readonly stream: boolean } {
@@ -170,7 +170,7 @@ function createGoogleCodecErrorResponse(status: number): Response {
 async function readGoogleBody(request: Request): Promise<Record<string, unknown>> {
   try {
     const body: unknown = await request.json();
-    if (isRecord(body)) {
+    if (isPlainObject(body)) {
       return body as Record<string, unknown>;
     }
   } catch (error) {

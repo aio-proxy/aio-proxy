@@ -1,6 +1,5 @@
-import { isRecord, type UsageRow } from '@aio-proxy/types';
-
-export { isRecord };
+import { type UsageRow } from '@aio-proxy/types';
+import { isPlainObject } from 'es-toolkit/predicate';
 
 export type ExtractedUsage = Omit<UsageRow, 'providerId' | 'modelId'>;
 export type UsageIssue = {
@@ -70,7 +69,7 @@ export function nestedNumberField(
   usageField: UsageField,
 ): UsageFieldResult {
   const value = record[parent];
-  return isRecord(value) ? numberField(value, field, usageField) : { kind: 'absent' };
+  return isPlainObject(value) ? numberField(value, field, usageField) : { kind: 'absent' };
 }
 
 export function usageNumber(value: unknown, field: UsageField): UsageFieldResult {

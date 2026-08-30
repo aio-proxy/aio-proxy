@@ -6,8 +6,8 @@ import type {
   TokenCountCapability,
   TokenCountInput,
 } from '@aio-proxy/plugin-sdk';
-import { isRecord } from '@aio-proxy/types';
 import { generateText } from 'ai';
+import { isPlainObject } from 'es-toolkit/predicate';
 
 import { bindAntigravityThinking } from '../protocol/thinking';
 import { createAntigravityGoogleFetch } from './google-fetch';
@@ -105,7 +105,7 @@ function countTransport(transport: CcaTransport): CcaTransport {
 }
 
 function tokenCount(payload: unknown): number {
-  const value = isRecord(payload) ? Reflect.get(payload, 'totalTokens') : undefined;
+  const value = isPlainObject(payload) ? Reflect.get(payload, 'totalTokens') : undefined;
   if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
     throw new TypeError('Google Antigravity returned an invalid token count');
   }
@@ -141,5 +141,5 @@ function splitInvocation(context: LogicalRequestContext, invocation: TokenCountI
 }
 
 function record(value: unknown): Readonly<Record<string, unknown>> {
-  return isRecord(value) ? value : {};
+  return isPlainObject(value) ? value : {};
 }

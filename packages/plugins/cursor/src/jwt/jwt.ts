@@ -1,9 +1,9 @@
-import { isRecord } from '@aio-proxy/types';
+import { isPlainObject } from 'es-toolkit/predicate';
 export function readCursorClaims(token: string): Record<string, unknown> {
   try {
     const payload = token.split('.')[1];
     const value: unknown = JSON.parse(Buffer.from(payload ?? '', 'base64url').toString('utf8'));
-    return isRecord(value) ? value : {};
+    return isPlainObject(value) ? value : {};
   } catch {
     return {};
   }

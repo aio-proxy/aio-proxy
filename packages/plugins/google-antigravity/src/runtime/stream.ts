@@ -1,4 +1,4 @@
-import { isRecord } from '@aio-proxy/types';
+import { isPlainObject } from 'es-toolkit/predicate';
 import { createParser } from 'eventsource-parser';
 
 import type { AntigravityFailureReason } from './errors';
@@ -281,7 +281,7 @@ function failureReason(failure: unknown, signal: AbortSignal | undefined): unkno
 }
 
 function record(value: unknown): Record<string, unknown> | undefined {
-  return isRecord(value) ? value : undefined;
+  return isPlainObject(value) ? value : undefined;
 }
 
 function errorPayload(value: unknown): CcaErrorPayload | undefined {

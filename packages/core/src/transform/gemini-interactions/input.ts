@@ -1,4 +1,4 @@
-import { isRecord } from '@aio-proxy/types';
+import { isPlainObject } from 'es-toolkit/predicate';
 
 import type { ModelMessage } from '../../ai-sdk-bridge';
 import { GeminiInteractionsTransformError } from '../../error';
@@ -40,7 +40,7 @@ function stepMessages(steps: readonly unknown[]): readonly ModelMessage[] {
   const messages: ModelMessage[] = [];
   let previous: 'call' | 'result' | undefined;
   for (const step of steps) {
-    if (!isRecord(step)) continue;
+    if (!isPlainObject(step)) continue;
     if (step['type'] === 'function_call') {
       appendAssistantToolCall(messages, previous, functionCallPart(step, toolNames));
       previous = 'call';
@@ -144,7 +144,7 @@ function textFromContents(value: unknown): string | undefined {
   if (value === undefined) return undefined;
   const parts = Array.isArray(value) ? value : [value];
   const texts = parts.flatMap((part) => {
-    if (!isRecord(part) || typeof part['text'] !== 'string') return [];
+    if (!isPlainObject(part) || typeof part['text'] !== 'string') return [];
     return [part['text']];
   });
   const text = texts.join('');
@@ -163,5 +163,5 @@ function toolOutput(result: unknown): ToolResultOutput {
 }
 
 function isStep(value: unknown): value is Record<string, unknown> {
-  return isRecord(value) && typeof value['type'] === 'string' && STEP_TYPES.has(value['type'] as string);
+  return isPlainObject(value) && typeof value['type'] === 'string' && STEP_TYPES.has(value['type'] as string);
 }

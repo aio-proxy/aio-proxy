@@ -1,5 +1,5 @@
 import type { JsonValue, OAuthRuntimeResult, RuntimeContext } from '@aio-proxy/plugin-sdk';
-import { isRecord } from '@aio-proxy/types';
+import { isPlainObject } from 'es-toolkit/predicate';
 
 import type { CursorOAuthDependencies } from '../oauth';
 import type { CursorCredential } from '../schema';
@@ -55,7 +55,7 @@ function cursorModelExtra(extra: JsonValue | undefined): {
   readonly displayModelId?: string;
   readonly maxMode?: boolean;
 } {
-  if (!isRecord(extra)) return {};
+  if (!isPlainObject(extra)) return {};
   const displayModelId = Reflect.get(extra, 'displayModelId');
   const maxMode = Reflect.get(extra, 'maxMode');
   return {

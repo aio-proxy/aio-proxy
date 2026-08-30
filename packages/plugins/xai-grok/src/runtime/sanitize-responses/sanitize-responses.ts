@@ -1,4 +1,4 @@
-import { isRecord } from '@aio-proxy/types';
+import { isPlainObject } from 'es-toolkit/predicate';
 const DROPPED_FIELDS = [
   'previous_response_id',
   'prompt_cache_retention',
@@ -281,5 +281,5 @@ function objectBranch(schema: JsonObject): JsonObject | undefined {
 }
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
-  return isRecord(value) ? value : undefined;
+  return isPlainObject(value) ? value : undefined;
 }

@@ -1,5 +1,5 @@
 import type { ZodType } from '@aio-proxy/plugin-sdk';
-import { isRecord } from '@aio-proxy/types';
+import { isPlainObject } from 'es-toolkit/predicate';
 
 export type PluginSchemaValidation<T> =
   | { readonly ok: true; readonly value: T }
@@ -23,7 +23,8 @@ export class PluginSchemaContractError extends Error {
 export function isPluginZodSchema(value: unknown): value is ZodType<unknown> {
   try {
     return (
-      isRecord(value) &&
+      value !== null &&
+      typeof value === 'object' &&
       typeof Reflect.get(value, 'safeParse') === 'function' &&
       typeof Reflect.get(value, 'safeParseAsync') === 'function'
     );
@@ -46,7 +47,7 @@ export async function parsePluginSchema<T>(schema: ZodType<T>, value: unknown): 
     if (!isPluginZodSchema(schema)) throw new PluginSchemaContractError();
     const result: unknown = await schema.safeParseAsync(value);
 
-    if (!isRecord(result)) throw new PluginSchemaContractError();
+    if (!isPlainObject(result)) throw new PluginSchemaContractError();
     const { success } = result;
     if (typeof success !== 'boolean') throw new PluginSchemaContractError();
     if (success) {
@@ -56,11 +57,11 @@ export async function parsePluginSchema<T>(schema: ZodType<T>, value: unknown): 
     }
 
     const { error } = result;
-    if (!isRecord(error)) throw new PluginSchemaContractError();
+    if (error === null || typeof error !== 'object') throw new PluginSchemaContractError();
     const { issues: rawIssues } = error;
     if (!Array.isArray(rawIssues) || rawIssues.length === 0) throw new PluginSchemaContractError();
     const issues = rawIssues.map((issue) => {
-      if (!isRecord(issue)) throw new PluginSchemaContractError();
+      if (!isPlainObject(issue)) throw new PluginSchemaContractError();
       const { message, path } = issue;
       if (typeof message !== 'string') throw new PluginSchemaContractError();
       return { message, path: normalizePath(path) };

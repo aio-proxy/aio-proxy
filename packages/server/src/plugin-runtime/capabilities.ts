@@ -15,7 +15,6 @@ import type {
   TokenCountCapability,
 } from '@aio-proxy/plugin-sdk';
 import {
-  isRecord,
   aliasTargetModels,
   type OAuthProvider,
   preservedAliasModels,
@@ -23,6 +22,7 @@ import {
   ProviderProtocol,
 } from '@aio-proxy/types';
 import { uniq } from 'es-toolkit/array';
+import { isPlainObject } from 'es-toolkit/predicate';
 
 import { buildModelCapabilityIndex } from '../provider-runtime/capability-index';
 import type { RawResolveInput, RuntimeProviderInstance } from '../runtime';
@@ -242,7 +242,7 @@ function routingDefaults(config: { readonly priority?: number; readonly weight?:
 
 function tokenCountCapability(value: unknown): TokenCountCapability | undefined {
   if (value === undefined) return undefined;
-  if (!isRecord(value)) {
+  if (!isPlainObject(value)) {
     throw new Error('Invalid token count capability');
   }
   const countTokens = Reflect.get(value, 'countTokens');
@@ -254,7 +254,7 @@ const providerToolTypes: ReadonlySet<ProviderExecutedTool['type']> = new Set(['w
 
 function providerToolCapability(value: unknown): ProviderToolCapability | undefined {
   if (value === undefined) return undefined;
-  if (!isRecord(value)) {
+  if (!isPlainObject(value)) {
     throw new Error('Invalid provider tool capability');
   }
   const supported = Reflect.get(value, 'supported');
