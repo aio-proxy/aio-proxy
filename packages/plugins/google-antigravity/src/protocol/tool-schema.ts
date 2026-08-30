@@ -1,5 +1,5 @@
 import { filter, pipe, uniq } from 'es-toolkit/fp';
-import { isPlainObject } from 'es-toolkit/predicate';
+import { isPlainObject, isString } from 'es-toolkit/predicate';
 
 type KnownField =
   | '$ref'
@@ -112,15 +112,15 @@ function convertRefsConstsEnumsAndHints(schema: JsonObject): JsonObject {
 function flattenCompositionsAndTypeArrays(schema: JsonObject): JsonObject {
   let result = mapChildren(schema, flattenCompositionsAndTypeArrays);
   if (Array.isArray(result.allOf)) {
-    const branches = result.allOf.filter(isPlainObject);
+    const branches = result.allOf.filter((item): item is JsonObject => isPlainObject(item));
     const properties = Object.assign(
       {},
-      objectOrEmpty(result.properties),
-      ...branches.map((item) => objectOrEmpty(item.properties)),
+      objectOrEmpty(result['properties']),
+      ...branches.map((item) => objectOrEmpty(item['properties'])),
     );
     const required = uniqueStrings([
-      ...arrayOrEmpty(result.required),
-      ...branches.flatMap((item) => arrayOrEmpty(item.required)),
+      ...arrayOrEmpty(result['required']),
+      ...branches.flatMap((item) => arrayOrEmpty(item['required'])),
     ]);
     const { allOf: _allOf, ...rest } = result;
     result = {
@@ -131,7 +131,7 @@ function flattenCompositionsAndTypeArrays(schema: JsonObject): JsonObject {
   }
   for (const keyword of ['anyOf', 'oneOf'] as const) {
     if (!Array.isArray(result[keyword])) continue;
-    const choices = result[keyword].filter(isPlainObject);
+    const choices = result[keyword].filter((item): item is JsonObject => isPlainObject(item));
     const selected =
       choices.reduce<JsonObject | undefined>(
         (best, choice) => (best === undefined || schemaPriority(choice) > schemaPriority(best) ? choice : best),
@@ -288,9 +288,5 @@ function arrayOrEmpty(value: unknown): unknown[] {
 }
 
 function uniqueStrings(values: readonly unknown[]): string[] {
-  return pipe(
-    values,
-    filter((value): value is string => typeof value === 'string'),
-    uniq(),
-  );
+  return pipe(values, filter(isString), uniq());
 }

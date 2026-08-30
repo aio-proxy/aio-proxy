@@ -7,7 +7,6 @@ import {
   type PluginApi,
 } from '@aio-proxy/plugin-sdk';
 import { CapabilityIdSchema } from '@aio-proxy/types';
-import { isPlainObject } from 'es-toolkit/predicate';
 
 import { validateConfigSpec } from './config-spec';
 import { isPluginZodSchema } from './schema';
@@ -23,9 +22,13 @@ export type PluginRegistry = {
 
 type OAuthCapability = ReturnType<PluginRegistry['oauthCapabilities']>[number];
 
+function isObject(value: unknown): value is Record<PropertyKey, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
 function validateQuota(value: unknown): NonNullable<OAuthAdapter['quota']> | undefined {
   if (value === undefined) return undefined;
-  if (!isPlainObject(value)) throw new Error('Invalid OAuth adapter');
+  if (!isObject(value)) throw new Error('Invalid OAuth adapter');
   const { read, reset } = value;
   if (typeof read !== 'function' || (reset !== undefined && typeof reset !== 'function')) {
     throw new Error('Invalid OAuth adapter');
@@ -40,10 +43,10 @@ function validateQuota(value: unknown): NonNullable<OAuthAdapter['quota']> | und
 
 function validateCredentialImports(value: unknown): OAuthAdapter['credentialImports'] | undefined {
   if (value === undefined) return undefined;
-  if (!isPlainObject(value)) throw new Error('Invalid OAuth adapter');
+  if (!isObject(value)) throw new Error('Invalid OAuth adapter');
   const cpa = value['cpa'];
   if (cpa === undefined) return {};
-  if (!isPlainObject(cpa)) throw new Error('Invalid OAuth adapter');
+  if (!isObject(cpa)) throw new Error('Invalid OAuth adapter');
   const types = cpa['types'];
   const importCredential = cpa['import'];
   if (!Array.isArray(types) || types.length === 0 || typeof importCredential !== 'function') {
@@ -67,7 +70,7 @@ function validateCredentialImports(value: unknown): OAuthAdapter['credentialImpo
 }
 
 function validateAdapter(value: unknown): { readonly id: string; readonly adapter: OAuthAdapter } {
-  if (!isPlainObject(value)) throw new Error('Invalid OAuth adapter');
+  if (!isObject(value)) throw new Error('Invalid OAuth adapter');
   const {
     id: rawId,
     displayName,
@@ -88,18 +91,18 @@ function validateAdapter(value: unknown): { readonly id: string; readonly adapte
     throw new Error('Invalid OAuth adapter');
   }
   if (supportsProxy !== undefined && typeof supportsProxy !== 'boolean') throw new Error('Invalid OAuth adapter');
-  if (!isPlainObject(account)) throw new Error('Invalid OAuth adapter');
+  if (!isObject(account)) throw new Error('Invalid OAuth adapter');
   const { options } = account;
   const validatedOptions = validateConfigSpec(options).spec;
   if (!isPluginZodSchema(credentials)) throw new Error('Invalid OAuth adapter');
   if (typeof login !== 'function' || typeof createRuntime !== 'function') throw new Error('Invalid OAuth adapter');
   const validatedQuota = validateQuota(quota);
   const validatedCredentialImports = validateCredentialImports(credentialImports);
-  if (!isPlainObject(catalog)) throw new Error('Invalid OAuth adapter');
+  if (!isObject(catalog)) throw new Error('Invalid OAuth adapter');
   const { discover, policy, initialFallback, defaultAliases } = catalog;
   if (
     typeof discover !== 'function' ||
-    !isPlainObject(policy) ||
+    !isObject(policy) ||
     (initialFallback !== undefined && typeof initialFallback !== 'function') ||
     (defaultAliases !== undefined && typeof defaultAliases !== 'function')
   ) {

@@ -163,6 +163,11 @@ describe('isAiSdkProviderModule', () => {
     expect(isAiSdkProviderModule({ createAnthropic: (options: unknown) => options })).toBe(true);
   });
 
+  test('accepts a module namespace object with a create* factory', () => {
+    const namespace = Object.freeze(Object.create(null, { createAnthropic: { value: (options: unknown) => options } }));
+    expect(isAiSdkProviderModule(namespace)).toBe(true);
+  });
+
   test('rejects a module that has no create* factory export', () => {
     // A plugin package exports a default descriptor, not a create* factory.
     expect(isAiSdkProviderModule({ default: { plugin: true } })).toBe(false);

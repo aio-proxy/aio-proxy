@@ -2,7 +2,6 @@ import { pathToFileURL } from 'node:url';
 
 import { isPluginDescriptor, type PluginDescriptor } from '@aio-proxy/plugin-sdk';
 import { type Diagnostic } from '@aio-proxy/types';
-import { isPlainObject } from 'es-toolkit/predicate';
 
 import type { NpmPackageInfo } from '../npm';
 import { isAiSdkProviderModule } from '../provider/ai-sdk-loader/index';
@@ -48,9 +47,9 @@ export async function classifyInstalledPackage(
       timeoutError: () => new InstalledPackageInvalidError(packageName),
     },
   );
-  if (isPlainObject(imported) && isPluginDescriptor(imported['default'])) {
+  if (imported !== null && typeof imported === 'object' && isPluginDescriptor(Reflect.get(imported, 'default'))) {
     try {
-      const descriptor = validateDescriptor(imported['default']);
+      const descriptor = validateDescriptor(Reflect.get(imported, 'default'));
       if (descriptor.metadata.options !== undefined) validateConfigSpec(descriptor.metadata.options);
       return { kind: 'plugin', descriptor };
     } catch {

@@ -15,7 +15,6 @@ import {
   validateConfigSpec,
 } from '@aio-proxy/core';
 import { isPluginDescriptor, type PluginDescriptor } from '@aio-proxy/plugin-sdk';
-import { isPlainObject } from 'es-toolkit/predicate';
 
 import { cloneInertJson } from '../form';
 import { entries, packageNameOf, pluginEntry, replacePlugin, sameJson } from './config-entry';
@@ -30,8 +29,8 @@ import {
 } from './errors';
 
 function descriptorFromModule(packageName: string, imported: unknown): PluginDescriptor<unknown> {
-  if (!isPlainObject(imported)) throw new PluginDescriptorInvalidError(packageName);
-  const descriptor = imported['default'];
+  if (imported === null || typeof imported !== 'object') throw new PluginDescriptorInvalidError(packageName);
+  const descriptor = Reflect.get(imported, 'default');
   if (!isPluginDescriptor(descriptor)) throw new PluginDescriptorInvalidError(packageName);
   const typed = descriptor as PluginDescriptor<unknown>;
   try {
