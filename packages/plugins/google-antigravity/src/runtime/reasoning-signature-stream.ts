@@ -1,4 +1,5 @@
 import type { LanguageModelV4StreamPart, SharedV4ProviderMetadata } from '@ai-sdk/provider';
+import { isRecord } from '@aio-proxy/types';
 
 import { validThoughtSignature } from '../protocol/signatures';
 
@@ -213,9 +214,7 @@ function withGoogleSignature<T extends ReasoningPart>(part: T, signature: string
 }
 
 function record(value: unknown): Readonly<Record<string, unknown>> | undefined {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-    ? (value as Readonly<Record<string, unknown>>)
-    : undefined;
+  return isRecord(value) ? value : undefined;
 }
 
 function array(value: unknown): readonly unknown[] {

@@ -1,4 +1,6 @@
-import type { UsageRow } from '@aio-proxy/types';
+import { isRecord, type UsageRow } from '@aio-proxy/types';
+
+export { isRecord };
 
 export type ExtractedUsage = Omit<UsageRow, 'providerId' | 'modelId'>;
 export type UsageIssue = {
@@ -84,10 +86,6 @@ export function fieldValue(field: UsageFieldResult): number | undefined {
 
 export function nonEmptyString(value: unknown): boolean {
   return typeof value === 'string' && value.length > 0;
-}
-
-export function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 export function assertNever(value: never): never {

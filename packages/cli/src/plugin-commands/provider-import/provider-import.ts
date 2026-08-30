@@ -13,6 +13,7 @@ import {
   recoverPendingAccountOperations,
 } from '@aio-proxy/core';
 import { m } from '@aio-proxy/i18n';
+import { isRecord } from '@aio-proxy/types';
 
 import { CliExit, EXIT } from '../../exit';
 import { createProviderLoginDefaultDeps } from '../provider-login/deps';
@@ -34,10 +35,6 @@ type ImportCounts = { imported: number; duplicate: number; skipped: number; fail
 
 function isErrnoException(error: unknown): error is NodeJS.ErrnoException {
   return error instanceof Error && 'code' in error;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function safeReason(error: unknown): string {

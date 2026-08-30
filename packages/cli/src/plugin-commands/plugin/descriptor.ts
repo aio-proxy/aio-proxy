@@ -15,6 +15,7 @@ import {
   validateConfigSpec,
 } from '@aio-proxy/core';
 import { isPluginDescriptor, type PluginDescriptor } from '@aio-proxy/plugin-sdk';
+import { isRecord } from '@aio-proxy/types';
 
 import { cloneInertJson } from '../form';
 import { entries, packageNameOf, pluginEntry, replacePlugin, sameJson } from './config-entry';
@@ -27,10 +28,6 @@ import {
   PluginNotInstalledError,
   PluginSetupValidationError,
 } from './errors';
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
 
 function descriptorFromModule(packageName: string, imported: unknown): PluginDescriptor<unknown> {
   if (!isRecord(imported)) throw new PluginDescriptorInvalidError(packageName);

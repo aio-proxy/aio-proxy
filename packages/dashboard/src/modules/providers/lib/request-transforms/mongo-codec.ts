@@ -1,4 +1,4 @@
-import { ProviderRequestTransformRulesSchema, type ProviderRequestTransformRule } from '@aio-proxy/types';
+import { isRecord, ProviderRequestTransformRulesSchema, type ProviderRequestTransformRule } from '@aio-proxy/types';
 import { formatQuery } from '@react-querybuilder/core/formatQuery';
 import { parseMongoDB } from '@react-querybuilder/core/parseMongoDB';
 import type {
@@ -59,8 +59,7 @@ const parserMeta = { ...requestTransformFunctionMeta, __literal: { arity: 1 } };
 const parseExpression = createMongoExpressionParser(parserInverse, parserMeta);
 const baseRuleProcessor = createMongoExpressionRuleProcessor(privateSerializers);
 const LITERAL_PREFIX = '__aio_literal__:';
-const isDocument = (value: unknown): value is Document =>
-  value !== null && typeof value === 'object' && !Array.isArray(value);
+const isDocument = (value: unknown): value is Document => isRecord(value);
 const exactKeys = (value: Document, keys: readonly string[]): boolean =>
   Object.keys(value).length === keys.length && keys.every((key) => Object.hasOwn(value, key));
 const readGetField = (value: unknown): { scope: HeaderScope; name: string } | undefined => {

@@ -1,4 +1,5 @@
 import type { LocalizedText, OAuthLoginContext, RuntimeFetch } from '@aio-proxy/plugin-sdk';
+import { isRecord } from '@aio-proxy/types';
 
 import { kimiIdentityHeaders } from './headers';
 import { KIMI_OAUTH_BASE_URL } from './oauth/constants';
@@ -170,9 +171,7 @@ async function postForm(
 async function parseObject(response: Response, message: string): Promise<Record<string, unknown>> {
   try {
     const value: unknown = await response.json();
-    if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-      return value as Record<string, unknown>;
-    }
+    if (isRecord(value)) return value;
   } catch {}
   throw new Error(message);
 }

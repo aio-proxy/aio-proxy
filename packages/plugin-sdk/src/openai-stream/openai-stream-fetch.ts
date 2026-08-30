@@ -1,3 +1,5 @@
+import { isRecord } from '@aio-proxy/types';
+
 import { createContentDecodedReader, type ContentDecodedReader } from './content-decoding';
 import { createOpenAISseBody, type OpenAIStreamProtocol } from './sse-terminal';
 import { isTrustedToolImageMarker } from './tool-image-trust';
@@ -139,10 +141,6 @@ function compatibleImagePart(part: Readonly<Record<string, unknown>>) {
     type: 'image_url' as const,
     image_url: { url, ...(detail === undefined ? {} : { detail }) },
   };
-}
-
-function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function isEventStream(contentType: string | null): boolean {

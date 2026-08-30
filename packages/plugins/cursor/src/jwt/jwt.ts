@@ -1,10 +1,9 @@
+import { isRecord } from '@aio-proxy/types';
 export function readCursorClaims(token: string): Record<string, unknown> {
   try {
     const payload = token.split('.')[1];
     const value: unknown = JSON.parse(Buffer.from(payload ?? '', 'base64url').toString('utf8'));
-    return typeof value === 'object' && value !== null && !Array.isArray(value)
-      ? (value as Record<string, unknown>)
-      : {};
+    return isRecord(value) ? value : {};
   } catch {
     return {};
   }

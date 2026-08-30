@@ -1,4 +1,5 @@
 import { type CredentialPort, CredentialRefreshError, type RuntimeFetch } from '@aio-proxy/plugin-sdk';
+import { isRecord } from '@aio-proxy/types';
 
 import { kimiIdentityHeaders } from '../headers';
 import type { KimiCredential, KimiOAuthDependencies } from '../oauth';
@@ -70,7 +71,7 @@ async function parseSuccessfulToken(
   } catch (error) {
     throw error instanceof SyntaxError ? refreshError(false, 'invalid') : refreshError(true, 'network');
   }
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) throw refreshError(false, 'invalid');
+  if (!isRecord(value)) throw refreshError(false, 'invalid');
   const record = value as Record<string, unknown>;
   const accessToken = optionalString(record, 'access_token');
   const refreshToken = optionalString(record, 'refresh_token');
@@ -82,9 +83,7 @@ async function parseSuccessfulToken(
 async function readOAuthError(response: Response): Promise<string | undefined> {
   try {
     const value: unknown = await response.json();
-    return typeof value === 'object' && value !== null && !Array.isArray(value)
-      ? optionalString(value as Record<string, unknown>, 'error')
-      : undefined;
+    return isRecord(value) ? optionalString(value, 'error') : undefined;
   } catch {
     return undefined;
   }

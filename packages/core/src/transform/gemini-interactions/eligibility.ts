@@ -1,3 +1,5 @@
+import { isRecord } from '@aio-proxy/types';
+
 import { GeminiInteractionsUnsupportedFeatureError } from '../../error';
 import type { GeminiInteractionsBody, GeminiInteractionsRequest } from '../../ingress/gemini-interactions/index';
 
@@ -289,8 +291,4 @@ function unsupported(feature: string, path: string): never {
 
 function isEmptyIdentifier(value: string): boolean {
   return value.trim() === '';
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

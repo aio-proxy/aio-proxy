@@ -1,4 +1,5 @@
 import type { ModelCatalog, RawResolver } from '@aio-proxy/plugin-sdk';
+import { isRecord } from '@aio-proxy/types';
 
 import { AntigravityThinkingError, bindAntigravityThinking } from '../protocol/thinking';
 import { AntigravityToolSchemaValidationError } from '../protocol/tool-schema';
@@ -108,13 +109,11 @@ function normalizeGeminiThinking(
 }
 
 function record(value: unknown): Readonly<Record<string, unknown>> | undefined {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : undefined;
+  return isRecord(value) ? value : undefined;
 }
 
 export function unwrapCcaJson(payload: unknown): unknown {
-  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) return payload;
+  if (!isRecord(payload)) return payload;
   const response = Reflect.get(payload, 'response');
   return response ?? payload;
 }
@@ -130,9 +129,7 @@ function operation(request: Request): boolean | undefined {
 async function readBody(request: Request): Promise<Record<string, unknown> | undefined> {
   try {
     const body: unknown = await request.json();
-    return typeof body === 'object' && body !== null && !Array.isArray(body)
-      ? (body as Record<string, unknown>)
-      : undefined;
+    return isRecord(body) ? (body as Record<string, unknown>) : undefined;
   } catch {
     throwIfAborted(request.signal);
     return undefined;

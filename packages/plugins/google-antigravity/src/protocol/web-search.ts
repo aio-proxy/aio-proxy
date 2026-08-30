@@ -1,4 +1,5 @@
 import type { JsonValue, ProviderExecutedTool } from '@aio-proxy/plugin-sdk';
+import { isRecord } from '@aio-proxy/types';
 import { uniq } from 'es-toolkit/array';
 
 export class AntigravityWebSearchError extends TypeError {
@@ -37,7 +38,5 @@ function nonEmpty(values: readonly string[] | undefined): readonly string[] | un
 }
 
 function record(value: unknown): Readonly<Record<string, unknown>> | undefined {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-    ? (value as Readonly<Record<string, unknown>>)
-    : undefined;
+  return isRecord(value) ? value : undefined;
 }

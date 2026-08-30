@@ -8,6 +8,7 @@ import {
   type RuntimeFetch,
   zod,
 } from '@aio-proxy/plugin-sdk';
+import { isRecord } from '@aio-proxy/types';
 
 import { isRetryableStatus, postForm, postFormResponse, request, XAIOAuthHttpError } from './oauth/http';
 import type { XAIGrokCredential } from './schema';
@@ -229,9 +230,7 @@ function readClaims(token: string): Record<string, unknown> {
   try {
     const payload = token.split('.')[1];
     const value: unknown = JSON.parse(Buffer.from(payload ?? '', 'base64url').toString('utf8'));
-    return typeof value === 'object' && value !== null && !Array.isArray(value)
-      ? (value as Record<string, unknown>)
-      : {};
+    return isRecord(value) ? value : {};
   } catch {
     return {};
   }

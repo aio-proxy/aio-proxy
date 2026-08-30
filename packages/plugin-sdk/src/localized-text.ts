@@ -1,3 +1,4 @@
+import { isRecord } from '@aio-proxy/types';
 import { z } from 'zod';
 
 export type LocaleTextMap = Readonly<{ readonly default: string } & Readonly<Record<string, string>>>;
@@ -6,7 +7,7 @@ const INVALID_LOCALIZED_TEXT = Symbol('invalid localized text');
 
 function materialize(value: unknown): LocalizedText | undefined {
   if (typeof value === 'string') return value.trim() === '' || value.trim() !== value ? undefined : value;
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined;
+  if (!isRecord(value)) return undefined;
   const prototype = Object.getPrototypeOf(value);
   if (prototype !== Object.prototype && prototype !== null) return undefined;
 

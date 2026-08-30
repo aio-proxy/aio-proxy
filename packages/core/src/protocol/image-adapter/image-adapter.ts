@@ -1,3 +1,4 @@
+import { isRecord } from '@aio-proxy/types';
 import type { AliasDimensions } from '@aio-proxy/types';
 
 import type {
@@ -57,7 +58,7 @@ export function officialImageUsage(
 }
 
 function officialInputTokenDetails(value: unknown): Record<string, unknown> | undefined {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined;
+  if (!isRecord(value)) return undefined;
   const record = value as Record<string, unknown>;
   const textTokens = numberField(record, 'text_tokens') ?? numberField(record, 'textTokens');
   const imageTokens = numberField(record, 'image_tokens') ?? numberField(record, 'imageTokens');

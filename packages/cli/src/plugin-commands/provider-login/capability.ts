@@ -1,6 +1,7 @@
 import type { AtomicConfigFile, OAuthCapabilityReference, PluginRegistry } from '@aio-proxy/core';
 import { getLocale, m } from '@aio-proxy/i18n';
 import { type LocalizedText, resolveLocalizedText } from '@aio-proxy/plugin-sdk';
+import { isRecord } from '@aio-proxy/types';
 import { confirm, select } from '@inquirer/prompts';
 
 import {
@@ -10,7 +11,6 @@ import {
   ProviderTargetNotFoundError,
 } from './errors';
 
-type ConfigRecord = Record<string, unknown>;
 export type CapabilityChoice = { readonly reference: string; readonly displayName: LocalizedText };
 type CapabilitySelectPrompt = (config: {
   readonly message: string;
@@ -104,10 +104,6 @@ export async function chooseCapability(
     throw new ProviderCapabilityNotFoundError(selected);
   }
   return resolved;
-}
-
-function isRecord(value: unknown): value is ConfigRecord {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 export async function targetCapability(

@@ -1,4 +1,4 @@
-import type { AiSdkProvider } from '@aio-proxy/types';
+import { isRecord, type AiSdkProvider } from '@aio-proxy/types';
 
 import type { TextStreamPart, ToolSet } from '../ai-sdk-bridge';
 
@@ -128,8 +128,4 @@ function reasoningContent(value: unknown): string | undefined {
   }
 
   return undefined;
-}
-
-function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

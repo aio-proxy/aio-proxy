@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@aio-proxy/plugin-sdk": "workspace:*",
+    "@aio-proxy/types": "workspace:*",
     "@logtape/file": "2.2.4",
     "@logtape/logtape": "catalog:"
   },

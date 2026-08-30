@@ -1,6 +1,6 @@
 import { describe, expect, spyOn, test } from 'bun:test';
 
-import { ProviderProtocol } from '@aio-proxy/types';
+import { isRecord, ProviderProtocol } from '@aio-proxy/types';
 
 import { aiSdkPartStream } from '../egress/openai-responses-test-support';
 import { openAIResponsesAdapter, writeOpenAIResponsesResponse, writeOpenAIResponsesSSE } from '../index';
@@ -170,7 +170,7 @@ describe('openAIResponsesAdapter', () => {
     const image = message.content[0];
     if (image?.type !== 'file') throw new TypeError('Expected user image file part');
     const openaiOptions = image.providerOptions?.['openai'];
-    if (typeof openaiOptions !== 'object' || openaiOptions === null || Array.isArray(openaiOptions)) {
+    if (!isRecord(openaiOptions)) {
       throw new TypeError('Expected OpenAI image options');
     }
     const withSentinels: typeof base = {

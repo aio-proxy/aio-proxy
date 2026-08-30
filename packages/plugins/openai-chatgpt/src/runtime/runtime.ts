@@ -5,6 +5,7 @@ import {
   type OpenAIStreamFetch,
   type OpenAIStreamFetchCallOptions,
 } from '@aio-proxy/plugin-sdk/openai-stream';
+import { isRecord } from '@aio-proxy/types';
 
 import { refreshAccessToken } from '../oauth-flow';
 import type { ChatGPTCredential } from '../schema';
@@ -96,7 +97,7 @@ function shouldRewriteResponsesBody(request: Request): boolean {
 
 async function rewriteResponsesBody(request: Request, headers: Headers): Promise<string> {
   const value: unknown = await request.json();
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+  if (!isRecord(value)) {
     throw new TypeError('ChatGPT Codex Responses request body must be an object');
   }
   const body = value as Record<string, unknown>;

@@ -1,4 +1,5 @@
 import type { RuntimeFetch } from '@aio-proxy/plugin-sdk';
+import { isRecord } from '@aio-proxy/types';
 
 const GROUNDING_REDIRECT_ORIGIN = 'https://vertexaisearch.cloud.google.com';
 const GROUNDING_REDIRECT_PREFIX = '/grounding-api-redirect/';
@@ -223,8 +224,4 @@ function throwIfCallerAborted(signal: AbortSignal | undefined): void {
 
 function record(value: unknown): Record<string, unknown> | undefined {
   return isRecord(value) ? value : undefined;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

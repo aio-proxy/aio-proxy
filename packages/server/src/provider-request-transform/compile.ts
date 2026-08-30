@@ -1,3 +1,4 @@
+import { isRecord } from '@aio-proxy/types';
 import type { ProviderRequestTransformRule, ProviderRequestTransformStage } from '@aio-proxy/types';
 import { Query } from 'mingo';
 
@@ -106,5 +107,5 @@ function bodyPath(value: string): boolean {
 }
 
 function isDocument(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
+  return isRecord(value);
 }

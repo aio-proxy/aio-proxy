@@ -1,3 +1,5 @@
+import { isRecord } from '@aio-proxy/types';
+
 import type { TextStreamPart, ToolSet } from '../../ai-sdk-bridge';
 import { GeminiInteractionsEgressError } from '../../error';
 import type { ModelEgressContext } from '../../protocol/adapter';
@@ -201,8 +203,4 @@ function parseJsonObject(value: string): Record<string, unknown> {
     if (!(error instanceof SyntaxError)) throw error;
   }
   throw new GeminiInteractionsEgressError('invalid_function_arguments');
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

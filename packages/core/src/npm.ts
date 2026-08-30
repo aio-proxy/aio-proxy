@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, normalize, sep } from 'node:path';
 
+import { isRecord } from '@aio-proxy/types';
 import { z } from 'zod';
 
 import { NpmInstallError, NpmPackageEntrypointError, NpmPackageJsonError, NpmPackageNameError } from './error';
@@ -59,10 +60,6 @@ export function npmPackageCacheDir(pkg: string): string {
 
 function packageJsonPath(pkg: string): string {
   return join(npmPackageCacheDir(pkg), 'node_modules', ...packageNameParts(pkg), 'package.json');
-}
-
-function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function exportPath(value: unknown): string | undefined {

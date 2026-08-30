@@ -1,3 +1,4 @@
+import { isRecord } from '@aio-proxy/types';
 import { createParser } from 'eventsource-parser';
 
 import type { ProtocolId } from '../runtime';
@@ -16,10 +17,6 @@ const responsesTerminalTypes = new Set([
 
 const textDecoder = new TextDecoder();
 const textEncoder = new TextEncoder();
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
 
 function isResponsesTerminal(
   event: { readonly event?: string; readonly data: string },

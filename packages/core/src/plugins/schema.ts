@@ -1,4 +1,5 @@
 import type { ZodType } from '@aio-proxy/plugin-sdk';
+import { isRecord } from '@aio-proxy/types';
 
 export type PluginSchemaValidation<T> =
   | { readonly ok: true; readonly value: T }
@@ -17,10 +18,6 @@ export class PluginSchemaContractError extends Error {
     super(CONTRACT_ERROR_MESSAGE);
     this.name = 'PluginSchemaContractError';
   }
-}
-
-function isRecord(value: unknown): value is Readonly<Record<PropertyKey, unknown>> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 export function isPluginZodSchema(value: unknown): value is ZodType<unknown> {

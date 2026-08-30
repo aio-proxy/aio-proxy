@@ -1,4 +1,5 @@
 import type { DefaultAliasSelectRow, DefaultAliasSuggestions, ModelCatalog } from '@aio-proxy/plugin-sdk';
+import { isRecord } from '@aio-proxy/types';
 
 import { isEmptyWhen, peelSlug, whenIdentity } from './peel';
 import { pickDefaultModel, type PeeledVariant } from './pick-default';
@@ -105,8 +106,4 @@ function readVariant(value: unknown): CursorFamily['variants'][number][] {
   const slug = value['slug'];
   if (typeof slug !== 'string') return [];
   return [{ slug, ...(value['isDefaultNonMax'] === true ? { isDefaultNonMax: true } : {}) }];
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

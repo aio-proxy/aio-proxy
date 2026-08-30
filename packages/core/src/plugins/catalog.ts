@@ -1,5 +1,5 @@
 import type { DescriptorModelMetadata, JsonValue, ModelCatalog, ModelDescriptor } from '@aio-proxy/plugin-sdk';
-import { ModelMetadataSchema } from '@aio-proxy/types';
+import { ModelMetadataSchema, isRecord } from '@aio-proxy/types';
 import { z } from 'zod';
 
 const MODALITIES = ['language', 'image', 'embedding', 'speech', 'transcription', 'reranking'] as const;
@@ -17,10 +17,6 @@ export class ModelCatalogValidationError extends Error {
     this.index = index;
     this.path = path;
   }
-}
-
-function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function isJsonValue(value: unknown, seen = new Set<object>()): value is JsonValue {

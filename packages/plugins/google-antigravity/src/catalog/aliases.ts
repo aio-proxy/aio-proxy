@@ -1,4 +1,5 @@
 import type { DefaultAliasSelectRow, DefaultAliasSuggestions, ModelCatalog } from '@aio-proxy/plugin-sdk';
+import { isRecord } from '@aio-proxy/types';
 
 import type { AntigravityFamily, Effort } from './collapse';
 
@@ -171,8 +172,4 @@ function asFamily(value: unknown): AntigravityFamily | undefined {
 
 function asString(value: unknown): string | undefined {
   return typeof value === 'string' && value !== '' ? value : undefined;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

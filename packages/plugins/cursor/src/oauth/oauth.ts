@@ -1,4 +1,5 @@
 import type { LocalizedText, OAuthLoginContext, OAuthLoginResult, RuntimeFetch } from '@aio-proxy/plugin-sdk';
+import { isRecord } from '@aio-proxy/types';
 
 import { cursorIdentity, cursorTokenExpiry } from '../jwt';
 import type { CursorCredential } from '../schema';
@@ -61,7 +62,7 @@ export async function loginCursor(
 }
 
 function completeLogin(payload: unknown, now: number): OAuthLoginResult<CursorCredential> {
-  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
+  if (!isRecord(payload)) {
     throw new Error('Cursor authentication returned an invalid payload');
   }
   const record = payload as Record<string, unknown>;

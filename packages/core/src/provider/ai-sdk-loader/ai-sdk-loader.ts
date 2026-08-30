@@ -1,5 +1,7 @@
 import { pathToFileURL } from 'node:url';
 
+import { isRecord } from '@aio-proxy/types';
+
 import type { LoadedAiSdkRuntimeProvider } from '../../ai-sdk-bridge';
 import { AiSdkProviderLoaderError } from '../../error';
 import { findInstalledNpmPackage } from '../../npm';
@@ -96,10 +98,6 @@ const bundledProviders = {
 } satisfies Record<BundledAiSdkProviderPackage, AiSdkProviderLoader>;
 
 export const BUNDLED_PROVIDERS: Readonly<Record<string, AiSdkProviderLoader>> = bundledProviders;
-
-function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
 
 function isProviderLoader(value: unknown): value is AiSdkProviderLoader {
   return typeof value === 'function';

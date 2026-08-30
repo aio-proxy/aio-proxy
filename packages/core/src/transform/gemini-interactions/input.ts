@@ -1,3 +1,5 @@
+import { isRecord } from '@aio-proxy/types';
+
 import type { ModelMessage } from '../../ai-sdk-bridge';
 import { GeminiInteractionsTransformError } from '../../error';
 import type { GeminiInteractionsBody, GeminiInteractionsRequest } from '../../ingress/gemini-interactions/index';
@@ -162,8 +164,4 @@ function toolOutput(result: unknown): ToolResultOutput {
 
 function isStep(value: unknown): value is Record<string, unknown> {
   return isRecord(value) && typeof value['type'] === 'string' && STEP_TYPES.has(value['type'] as string);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

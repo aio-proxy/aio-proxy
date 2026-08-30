@@ -1,3 +1,4 @@
+import { isRecord } from '@aio-proxy/types';
 export type ThinkingMode = 'gemini' | 'claude' | 'none';
 
 export function classifyProvider(descriptor: { readonly id?: string; readonly extra?: unknown }): ThinkingMode {
@@ -23,8 +24,4 @@ function providerString(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined;
   const trimmed = value.trim().toLowerCase();
   return trimmed === '' ? undefined : trimmed;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

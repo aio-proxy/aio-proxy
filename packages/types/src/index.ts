@@ -14,6 +14,7 @@ export type { AliasDimensions, AliasSelectRow, AliasSpeed, AliasWhen } from './a
 export * from './codex-model/index';
 export * from './commands';
 export * from './common';
+export { isRecord } from './is-record';
 export * from './config/index';
 export * from './dashboard/index';
 export * from './dashboard/routing/index';

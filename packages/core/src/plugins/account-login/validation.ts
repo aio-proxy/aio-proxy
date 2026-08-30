@@ -1,5 +1,5 @@
 import type { CredentialPort, OAuthAdapter, OAuthLoginResult } from '@aio-proxy/plugin-sdk';
-import { OAuthPluginProviderSchema, type ProviderAlias } from '@aio-proxy/types';
+import { OAuthPluginProviderSchema, type ProviderAlias, isRecord } from '@aio-proxy/types';
 import { z } from 'zod';
 
 import { parseRuntimeConfig } from '../../config';
@@ -16,11 +16,10 @@ import {
 } from './errors';
 import type { OAuthProviderPatch } from './login';
 
+export { isRecord };
+
 export type ConfigRecord = Record<string, unknown>;
 export type PlainRecord = Record<string, unknown>;
-export function isRecord(value: unknown): value is PlainRecord {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
 export function providerRecord(current: ConfigRecord): Record<string, unknown> {
   const providers = current['providers'];
   if (providers === undefined) return {};

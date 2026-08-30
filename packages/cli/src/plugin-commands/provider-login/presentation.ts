@@ -15,7 +15,7 @@ import {
   ProviderIdCollisionError,
 } from '@aio-proxy/core';
 import { m } from '@aio-proxy/i18n';
-import { providerLoginCommand } from '@aio-proxy/types';
+import { providerLoginCommand, isRecord } from '@aio-proxy/types';
 
 import { isLoopbackUserError } from '../loopback';
 import { canonical } from './capability';
@@ -41,10 +41,6 @@ function safeIdentifier(value: unknown): string | null {
 function safeProperty(value: object, key: string): unknown {
   const descriptor = Object.getOwnPropertyDescriptor(value, key);
   return descriptor !== undefined && 'value' in descriptor ? descriptor.value : undefined;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function safeCapability(value: unknown): OAuthCapabilityReference | null {

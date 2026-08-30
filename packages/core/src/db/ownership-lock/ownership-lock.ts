@@ -18,6 +18,8 @@ import {
 } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 
+import { isRecord } from '@aio-proxy/types';
+
 import { isNodeError } from '../../file-lock/fs';
 import { processIsAlive, processStarttime } from '../../file-lock/process-identity';
 import { runWithRecoveryFence } from '../../file-lock/recovery-fence';
@@ -198,7 +200,7 @@ function createLockHandle(databasePath: string, lockPath: string, owner: string,
 function parseLock(text: string): LockRecord | null {
   try {
     const value: unknown = JSON.parse(text);
-    if (value === null || typeof value !== 'object' || Array.isArray(value)) return null;
+    if (!isRecord(value)) return null;
     const { version, pid, starttime, owner, createdAt } = value as Record<string, unknown>;
     return version === LOCK_VERSION &&
       typeof pid === 'number' &&

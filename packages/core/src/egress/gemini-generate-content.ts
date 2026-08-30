@@ -1,3 +1,4 @@
+import { isRecord } from '@aio-proxy/types';
 import type {
   Candidate,
   FinishReason as GeminiFinishReason,
@@ -173,7 +174,7 @@ function toolPart(tool: ToolState): Part {
 function parseJsonObject(value: string): Record<string, unknown> {
   try {
     const parsed: unknown = JSON.parse(value);
-    return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed) ? { ...parsed } : {};
+    return isRecord(parsed) ? { ...parsed } : {};
   } catch (error) {
     if (error instanceof SyntaxError) return {};
     throw error;

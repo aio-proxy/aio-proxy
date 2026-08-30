@@ -1,9 +1,6 @@
-import { type Config, ConfigSchema } from '@aio-proxy/types';
+import { type Config, ConfigSchema, isRecord } from '@aio-proxy/types';
 
 import { resolveConfigTemplates } from './resolve-config-templates';
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value);
 
 const digitPort = (value: unknown): number | undefined => {
   if (typeof value !== 'string' || !/^\d+$/u.test(value)) return undefined;

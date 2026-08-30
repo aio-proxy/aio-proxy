@@ -1,3 +1,4 @@
+import { isRecord } from '@aio-proxy/types';
 import { z } from 'zod';
 
 import { ModelIdSchema } from '../model-id';
@@ -117,7 +118,7 @@ export function isAliasVariantSelect(variants: unknown): variants is readonly Al
 }
 
 export function isAliasVariantsObject(variants: unknown): variants is Readonly<Record<string, AliasTarget>> {
-  return variants !== undefined && variants !== null && typeof variants === 'object' && !Array.isArray(variants);
+  return variants !== undefined && isRecord(variants);
 }
 
 function canonicalizeSpeed(value: string): AliasSpeed | undefined {

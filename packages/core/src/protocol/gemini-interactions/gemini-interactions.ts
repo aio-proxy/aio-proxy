@@ -1,4 +1,4 @@
-import { ProviderProtocol } from '@aio-proxy/types';
+import { ProviderProtocol, isRecord } from '@aio-proxy/types';
 import { z } from 'zod';
 
 import type { AiSdkCallSettings } from '../../ai-sdk-bridge';
@@ -75,10 +75,6 @@ function rewriteAuthoredId(
 
 function thinkingSummariesNone(value: GeminiInteractionsRequest['body']['generation_config']): boolean {
   return isRecord(value) && value['thinking_summaries'] === 'none';
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function aiSdkSettings(settings: GeminiInteractionsTransformSettings): AiSdkCallSettings {

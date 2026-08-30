@@ -1,3 +1,5 @@
+import { isRecord } from '@aio-proxy/types';
+
 import type { JsonSchema } from './json-editor-state';
 
 const SCHEMA_MAP_KEYS = ['properties', 'patternProperties', 'definitions', '$defs', 'dependentSchemas'] as const;
@@ -16,8 +18,7 @@ const SCHEMA_NODE_KEYS = [
 ] as const;
 const SCHEMA_ARRAY_KEYS = ['allOf', 'anyOf', 'oneOf', 'prefixItems'] as const;
 
-const isSchemaObject = (value: unknown): value is Record<string, unknown> =>
-  value !== null && typeof value === 'object' && !Array.isArray(value);
+const isSchemaObject = (value: unknown): value is Record<string, unknown> => isRecord(value);
 
 const mapSchemaRecord = (value: unknown): unknown => {
   if (!isSchemaObject(value)) return value;

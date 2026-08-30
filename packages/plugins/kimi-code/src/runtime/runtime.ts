@@ -2,6 +2,7 @@ import { createAnthropic } from '@ai-sdk/anthropic';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import type { OAuthRuntimeResult, ProtocolId, RuntimeContext } from '@aio-proxy/plugin-sdk';
 import { createOpenAIStreamFetch } from '@aio-proxy/plugin-sdk/openai-stream';
+import { isRecord } from '@aio-proxy/types';
 
 import { kimiIdentityHeaders } from '../headers';
 import { currentKimiCredential, type KimiCredential, type KimiOAuthDependencies } from '../oauth';
@@ -73,7 +74,7 @@ export async function createKimiRuntime(
           throw new Error(`Kimi token count does not support ${input.protocol}`);
         }
         const body: unknown = await input.request.json();
-        if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+        if (!isRecord(body)) {
           throw new Error('Kimi token count request is invalid');
         }
         const response = await dynamicFetch('https://api.kimi.com/coding/v1/messages/count_tokens?beta=true', {
@@ -162,7 +163,7 @@ function unsupportedRawPath(protocol: KimiProtocol): Response {
 }
 
 function catalogProtocol(extra: unknown): KimiProtocol | undefined {
-  if (typeof extra !== 'object' || extra === null || Array.isArray(extra)) return undefined;
+  if (!isRecord(extra)) return undefined;
   const value = Reflect.get(extra, 'protocol');
   return value === 'anthropic' || value === 'openai-compatible' ? value : undefined;
 }

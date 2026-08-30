@@ -258,6 +258,7 @@
       "version": "0.11.2",
       "dependencies": {
         "@aio-proxy/plugin-sdk": "workspace:*",
+        "@aio-proxy/types": "workspace:*",
         "@logtape/file": "2.2.4",
         "@logtape/logtape": "catalog:",
       },
@@ -312,6 +313,7 @@
         "@ai-sdk/openai": "catalog:",
         "@ai-sdk/openai-compatible": "catalog:",
         "@aio-proxy/plugin-sdk": "workspace:*",
+        "@aio-proxy/types": "workspace:*",
       },
       "devDependencies": {
         "@aio-proxy/infra": "workspace:*",
@@ -327,6 +329,7 @@
         "@ai-sdk/google": "catalog:",
         "@ai-sdk/provider": "catalog:",
         "@aio-proxy/plugin-sdk": "workspace:*",
+        "@aio-proxy/types": "workspace:*",
         "ai": "catalog:",
         "es-toolkit": "catalog:",
         "eventsource-parser": "catalog:",
@@ -345,6 +348,7 @@
         "@ai-sdk/anthropic": "catalog:",
         "@ai-sdk/openai-compatible": "catalog:",
         "@aio-proxy/plugin-sdk": "workspace:*",
+        "@aio-proxy/types": "workspace:*",
       },
       "devDependencies": {
         "@aio-proxy/infra": "workspace:*",
@@ -376,6 +380,7 @@
       "dependencies": {
         "@ai-sdk/openai": "catalog:",
         "@aio-proxy/plugin-sdk": "workspace:*",
+        "@aio-proxy/types": "workspace:*",
       },
       "devDependencies": {
         "@aio-proxy/infra": "workspace:*",

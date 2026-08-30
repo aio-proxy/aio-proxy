@@ -1,7 +1,7 @@
 import { pathToFileURL } from 'node:url';
 
 import { isPluginDescriptor, type PluginDescriptor } from '@aio-proxy/plugin-sdk';
-import type { Diagnostic } from '@aio-proxy/types';
+import { isRecord, type Diagnostic } from '@aio-proxy/types';
 
 import type { NpmPackageInfo } from '../npm';
 import { isAiSdkProviderModule } from '../provider/ai-sdk-loader/index';
@@ -30,9 +30,6 @@ export class PluginSetupInvalidError extends Error {
     super(diagnostic.summary);
   }
 }
-
-const isRecord = (value: unknown): value is Readonly<Record<PropertyKey, unknown>> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value);
 
 export async function classifyInstalledPackage(
   packageName: string,

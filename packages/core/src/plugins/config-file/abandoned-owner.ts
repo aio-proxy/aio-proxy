@@ -1,6 +1,8 @@
 import type { Stats } from 'node:fs';
 import { readFile, stat, unlink } from 'node:fs/promises';
 
+import { isRecord } from '@aio-proxy/types';
+
 import { isNodeError, sameFileSnapshot } from '../../file-lock/fs';
 
 type AbandonedLockOwner = {
@@ -14,7 +16,7 @@ const abandonedLockOwners = new Map<string, AbandonedLockOwner>();
 function ownerFrom(text: string): string | undefined {
   try {
     const value: unknown = JSON.parse(text);
-    if (value === null || typeof value !== 'object' || Array.isArray(value)) return undefined;
+    if (!isRecord(value)) return undefined;
     const owner = (value as Record<string, unknown>)['owner'];
     return typeof owner === 'string' ? owner : undefined;
   } catch {

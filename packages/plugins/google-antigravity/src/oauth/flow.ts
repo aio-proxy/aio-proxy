@@ -1,4 +1,5 @@
 import type { RuntimeFetch } from '@aio-proxy/plugin-sdk';
+import { isRecord } from '@aio-proxy/types';
 
 import {
   GOOGLE_ANTIGRAVITY_SCOPES,
@@ -84,7 +85,7 @@ async function requestToken(body: URLSearchParams, options: OAuthHttpOptions): P
 async function readTokenPayload(response: Response): Promise<Record<string, unknown>> {
   try {
     const payload: unknown = await response.json();
-    if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) throw new Error();
+    if (!isRecord(payload)) throw new Error();
     return payload as Record<string, unknown>;
   } catch {
     throw new Error('Google authorization code exchange failed: invalid token response');

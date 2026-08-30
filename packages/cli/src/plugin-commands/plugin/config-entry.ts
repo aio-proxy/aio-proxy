@@ -1,5 +1,5 @@
 import { BUILT_IN_PLUGIN_PACKAGE_NAMES, isNpmPackageName, type PluginSecretSnapshot } from '@aio-proxy/core';
-import { PluginPackageNameSchema } from '@aio-proxy/types';
+import { PluginPackageNameSchema, isRecord } from '@aio-proxy/types';
 import { isPlainObject } from 'es-toolkit/predicate';
 
 export type ConfigRecord = Record<string, unknown>;
@@ -47,10 +47,6 @@ export function secretRecord(snapshot: PluginSecretSnapshot | null): Record<stri
 
 export function sameJson(left: unknown, right: unknown): boolean {
   return JSON.stringify(left) === JSON.stringify(right);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 export function usedPackageNames(config: ConfigRecord): Set<string> {

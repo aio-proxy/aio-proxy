@@ -1,3 +1,5 @@
+import { isRecord } from '@aio-proxy/types';
+
 import type { ModelMessage } from '../../ai-sdk-bridge';
 import { OpenAICompletionsTransformError } from '../../error';
 import { imageFilePart, type ImageFilePart } from '../../image-input';
@@ -156,14 +158,8 @@ function contentParts(
     }
     if (part.type !== 'image_url') continue;
     const payload = Reflect.get(part, 'image_url');
-    const url =
-      typeof payload === 'object' && payload !== null && !Array.isArray(payload)
-        ? Reflect.get(payload, 'url')
-        : undefined;
-    const detail =
-      typeof payload === 'object' && payload !== null && !Array.isArray(payload)
-        ? Reflect.get(payload, 'detail')
-        : undefined;
+    const url = isRecord(payload) ? Reflect.get(payload, 'url') : undefined;
+    const detail = isRecord(payload) ? Reflect.get(payload, 'detail') : undefined;
     if (
       typeof url !== 'string' ||
       (detail !== undefined && detail !== 'auto' && detail !== 'low' && detail !== 'high')

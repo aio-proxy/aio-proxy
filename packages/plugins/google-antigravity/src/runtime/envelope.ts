@@ -1,4 +1,5 @@
 import type { LogicalRequestContext, ModelCatalog, ModelDescriptor } from '@aio-proxy/plugin-sdk';
+import { isRecord } from '@aio-proxy/types';
 
 import { classifyProvider } from '../catalog/classify';
 import type { AntigravityFamily, Effort } from '../catalog/collapse';
@@ -75,7 +76,7 @@ function normalizeToolDomains(body: Record<string, unknown> & { readonly tools?:
   if (domains === undefined) return body;
   if (!Array.isArray(domains)) throw new TypeError('Gemini tools must be an array');
   const tools = domains.flatMap((value): Record<string, unknown>[] => {
-    if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    if (!isRecord(value)) {
       throw new TypeError('Gemini tool domains must be objects');
     }
     const { functionDeclarations, ...domains } = value as Record<string, unknown>;
@@ -163,9 +164,7 @@ function providerSource(extra: unknown): Record<string, unknown> | undefined {
 }
 
 function record(value: unknown): Record<string, unknown> | undefined {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : undefined;
+  return isRecord(value) ? value : undefined;
 }
 
 function finitePositive(value: unknown): number | undefined {
@@ -174,8 +173,4 @@ function finitePositive(value: unknown): number | undefined {
 
 function asString(value: unknown): string | undefined {
   return typeof value === 'string' && value !== '' ? value : undefined;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

@@ -1,3 +1,4 @@
+import { isRecord } from '@aio-proxy/types';
 import type {
   MessageDeltaUsage,
   RawMessageStreamEvent,
@@ -121,7 +122,5 @@ export function event(value: RawMessageStreamEvent): Uint8Array {
 }
 
 function record(value: unknown): Readonly<Record<string, unknown>> | undefined {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-    ? (value as Readonly<Record<string, unknown>>)
-    : undefined;
+  return isRecord(value) ? value : undefined;
 }

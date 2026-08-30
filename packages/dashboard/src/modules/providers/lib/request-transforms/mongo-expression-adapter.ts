@@ -1,3 +1,4 @@
+import { isRecord } from '@aio-proxy/types';
 import type {
   ExpressionFunctionMetaRegistry,
   ExpressionNode,
@@ -51,8 +52,7 @@ const mongoInverse: Record<string, string> = {
   $toLower: 'lower',
 };
 
-const isDocument = (value: unknown): value is Document =>
-  value !== null && typeof value === 'object' && !Array.isArray(value);
+const isDocument = (value: unknown): value is Document => isRecord(value);
 
 const validArity = (node: ExpressionNode, meta: ExpressionFunctionMetaRegistry): boolean => {
   if (node.kind !== 'func') return node.kind !== 'field' || node.field !== '';
