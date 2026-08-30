@@ -6,6 +6,7 @@ import {
   type LocalizedText,
   LocalizedTextSchema,
 } from '@aio-proxy/plugin-sdk';
+import { isObject } from '@aio-proxy/shared';
 
 import { isPluginZodSchema } from './schema';
 
@@ -19,10 +20,6 @@ export class ConfigSpecValidationError extends Error {
     super('Plugin config specification is invalid');
     this.name = 'ConfigSpecValidationError';
   }
-}
-
-function isObject(value: unknown): value is Record<PropertyKey, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
 function isJsonValue(value: unknown, seen = new Set<object>()): value is JsonValue {

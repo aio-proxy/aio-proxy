@@ -105,6 +105,7 @@
         "@aio-proxy/pi-provider": "workspace:*",
         "@aio-proxy/plugin-sdk": "workspace:*",
         "@aio-proxy/server": "workspace:*",
+        "@aio-proxy/shared": "workspace:*",
         "@aio-proxy/types": "workspace:*",
         "@inquirer/prompts": "^8.5.2",
         "commander": "15",
@@ -138,6 +139,7 @@
         "@aio-proxy/plugin-openai-chatgpt": "workspace:*",
         "@aio-proxy/plugin-sdk": "workspace:*",
         "@aio-proxy/plugin-xai-grok": "workspace:*",
+        "@aio-proxy/shared": "workspace:*",
         "@aio-proxy/types": "workspace:*",
         "@anthropic-ai/sdk": "catalog:",
         "@google/genai": "catalog:",
@@ -273,6 +275,7 @@
       "version": "0.11.2",
       "dependencies": {
         "@ai-sdk/provider": "catalog:",
+        "@aio-proxy/shared": "workspace:*",
         "@aio-proxy/types": "workspace:*",
         "@date-fns/tz": "catalog:",
         "ai": "catalog:",
@@ -331,6 +334,7 @@
         "@ai-sdk/google": "catalog:",
         "@ai-sdk/provider": "catalog:",
         "@aio-proxy/plugin-sdk": "workspace:*",
+        "@aio-proxy/shared": "workspace:*",
         "ai": "catalog:",
         "es-toolkit": "catalog:",
         "eventsource-parser": "catalog:",
@@ -398,6 +402,7 @@
         "@aio-proxy/i18n": "workspace:*",
         "@aio-proxy/logger": "workspace:*",
         "@aio-proxy/plugin-sdk": "workspace:*",
+        "@aio-proxy/shared": "workspace:*",
         "@aio-proxy/types": "workspace:*",
         "@logtape/hono": "2.2.4",
         "@opentelemetry/api": "1.9.1",
@@ -420,6 +425,15 @@
         "@types/bun": "catalog:",
         "ai": "catalog:",
         "openai": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
+    "packages/shared": {
+      "name": "@aio-proxy/shared",
+      "version": "0.11.2",
+      "devDependencies": {
+        "@aio-proxy/infra": "workspace:*",
+        "@types/bun": "catalog:",
         "typescript": "catalog:",
       },
     },
@@ -599,6 +613,8 @@
     "@aio-proxy/provider-schemas": ["@aio-proxy/provider-schemas@0.1.1", "", { "peerDependencies": { "zod": "^4.1.5" }, "optionalPeers": ["zod"] }, "sha512-jYutoOrOFeCvt6qImGjZ3S9GpqPC/8b5mo1dSrWxJr86V4+wjXi0bX/8eiOJ0IpkT9b5QJJVrCCUbPb6X7jGZw=="],
 
     "@aio-proxy/server": ["@aio-proxy/server@workspace:packages/server"],
+
+    "@aio-proxy/shared": ["@aio-proxy/shared@workspace:packages/shared"],
 
     "@aio-proxy/types": ["@aio-proxy/types@workspace:packages/types"],
 

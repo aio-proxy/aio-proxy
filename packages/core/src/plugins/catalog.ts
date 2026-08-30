@@ -1,4 +1,5 @@
 import type { DescriptorModelMetadata, JsonValue, ModelCatalog, ModelDescriptor } from '@aio-proxy/plugin-sdk';
+import { isObject } from '@aio-proxy/shared';
 import { ModelMetadataSchema } from '@aio-proxy/types';
 import { z } from 'zod';
 
@@ -17,10 +18,6 @@ export class ModelCatalogValidationError extends Error {
     this.index = index;
     this.path = path;
   }
-}
-
-function isObject(value: unknown): value is Record<PropertyKey, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
 function isJsonValue(value: unknown, seen = new Set<object>()): value is JsonValue {

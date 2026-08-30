@@ -1,11 +1,8 @@
 import type { SharedV4ProviderOptions } from '@ai-sdk/provider';
 import { type LogicalRequestContext, type ProviderExecutedTool, zod } from '@aio-proxy/plugin-sdk';
+import { isObject } from '@aio-proxy/shared';
 
 import type { AntigravityThinkingOption } from '../protocol/thinking';
-
-function isObject(value: unknown): value is object {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
-}
 
 const logicalRequestSchema = zod.custom<LogicalRequestContext>((value) => {
   if (!isObject(value)) return false;

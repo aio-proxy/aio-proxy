@@ -1,3 +1,5 @@
+import { isObject } from '@aio-proxy/shared';
+
 import type { ConfigSpec } from '../config';
 import type { LocalizedText } from '../localized-text';
 import type { Logger } from '../logger';
@@ -55,10 +57,6 @@ export function definePlugin<Options = undefined>(
     metadata,
     setup,
   });
-}
-
-function isObject(value: unknown): value is object {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
 export function isPluginDescriptor(value: unknown): value is PluginDescriptorShell {

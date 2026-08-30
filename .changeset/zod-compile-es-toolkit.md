@@ -14,6 +14,7 @@
 '@aio-proxy/plugin-xai-grok': patch
 '@aio-proxy/plugin-github-copilot': patch
 '@aio-proxy/logger': patch
+'@aio-proxy/shared': patch
 ---
 
-Upgrade Zod to 4.5 and compile inbound protocol request schemas with `z.compile()` (except OpenAI Responses, whose unknown-item transform logs). Upgrade es-toolkit to 1.52. Use `isPlainObject` for JSON and other plain data; keep a local `isObject` check (`!== null`, `typeof === 'object'`, not array) for structural plugin/SDK contracts that may be class instances. Replace spread-Set arrays with `uniq` in packages that already depend on es-toolkit.
+Upgrade Zod to 4.5 and compile inbound protocol request schemas with `z.compile()` (except OpenAI Responses, whose unknown-item transform logs). Upgrade es-toolkit to 1.52. Use `isPlainObject` for JSON and other plain data; keep a local `isObject` check (`!== null`, `typeof === 'object'`, not array) for structural plugin/SDK contracts that may be class instances. Replace spread-Set arrays with `uniq` in packages that already depend on es-toolkit. Structural object guards live in `@aio-proxy/shared` as `isObject`.

@@ -14,6 +14,7 @@ import type {
   RawTransportOptions,
   TokenCountCapability,
 } from '@aio-proxy/plugin-sdk';
+import { isObject } from '@aio-proxy/shared';
 import {
   aliasTargetModels,
   type OAuthProvider,
@@ -237,10 +238,6 @@ function routingDefaults(config: { readonly priority?: number; readonly weight?:
     ...(config.priority === undefined ? {} : { priority: config.priority }),
     ...(config.weight === undefined ? {} : { weight: config.weight }),
   };
-}
-
-function isObject(value: unknown): value is object {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
 function tokenCountCapability(value: unknown): TokenCountCapability | undefined {

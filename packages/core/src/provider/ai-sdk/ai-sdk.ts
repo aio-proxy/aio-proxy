@@ -1,4 +1,5 @@
 import type { LogicalRequestContext, ProviderExecutedTool } from '@aio-proxy/plugin-sdk';
+import { isObject } from '@aio-proxy/shared';
 import {
   type AiSdkProvider,
   type AliasConfig,
@@ -256,10 +257,6 @@ function callableProviderModel(provider: LoadedAiSdkRuntimeProvider, modelId: st
 
   const model: unknown = provider(modelId);
   return isLanguageModel(model) ? model : undefined;
-}
-
-function isObject(value: unknown): value is object {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
 function isLanguageModel(value: unknown): value is AiSdkLanguageModel {
