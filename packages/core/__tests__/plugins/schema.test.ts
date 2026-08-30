@@ -74,6 +74,17 @@ describe('parsePluginSchema', () => {
     }
   });
 
+  test('rejects an array with schema-shaped methods', async () => {
+    const schema = Object.assign([], {
+      safeParse() {},
+      async safeParseAsync() {
+        return { success: true, data: 'leaked' };
+      },
+    });
+
+    await expect(parsePluginSchema(schema as never, {})).rejects.toEqual(new PluginSchemaContractError());
+  });
+
   test('an empty issue list is a malformed parse result', async () => {
     const schema = {
       safeParse() {},

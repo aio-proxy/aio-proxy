@@ -20,11 +20,14 @@ export class PluginSchemaContractError extends Error {
   }
 }
 
+function isObject(value: unknown): value is object {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
 export function isPluginZodSchema(value: unknown): value is ZodType<unknown> {
   try {
     return (
-      value !== null &&
-      typeof value === 'object' &&
+      isObject(value) &&
       typeof Reflect.get(value, 'safeParse') === 'function' &&
       typeof Reflect.get(value, 'safeParseAsync') === 'function'
     );
