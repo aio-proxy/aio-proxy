@@ -68,7 +68,8 @@ function validateDescriptors(modality: Modality, value: unknown): readonly Model
     if (descriptor === null || typeof descriptor !== 'object' || Array.isArray(descriptor)) {
       throw new ModelCatalogValidationError(modality, index, []);
     }
-    const { id: rawId, displayName, extra, modelMetadata } = descriptor;
+    const record = descriptor as Record<string, unknown>;
+    const { id: rawId, displayName, extra, modelMetadata } = record;
     if (typeof rawId !== 'string' || rawId.trim() === '') {
       throw new ModelCatalogValidationError(modality, index, ['id']);
     }
@@ -103,7 +104,8 @@ export function validateModelCatalog(value: unknown): ModelCatalog {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) {
     throw new ModelCatalogValidationError('language', -1, []);
   }
-  const { language, image, embedding, speech, transcription, reranking, extra } = value;
+  const record = value as Record<string, unknown>;
+  const { language, image, embedding, speech, transcription, reranking, extra } = record;
   if (extra !== undefined && !isJsonValue(extra)) {
     throw new ModelCatalogValidationError('language', -1, ['extra']);
   }
