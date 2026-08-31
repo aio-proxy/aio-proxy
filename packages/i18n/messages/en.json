@@ -1246,7 +1246,7 @@
       "latency": "Latency",
       "load_older_traces": "Load older traces",
       "new_traces_available": "New traces available: {count}",
-      "fast_latency": "Fast",
+      "fast_latency": "Fast mode",
       "result_details": "Result details",
       "status": "Status",
       "duration": "Duration",

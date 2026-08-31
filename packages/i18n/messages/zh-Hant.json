@@ -1246,7 +1246,7 @@
       "latency": "延遲",
       "load_older_traces": "載入更早的 Trace",
       "new_traces_available": "有 {count} 筆新 Trace",
-      "fast_latency": "快速",
+      "fast_latency": "快速模式",
       "result_details": "結果詳情",
       "status": "狀態",
       "duration": "耗時",
