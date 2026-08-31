@@ -1,6 +1,6 @@
 import type { RuntimeFetch, ZodType } from '@aio-proxy/plugin-sdk';
 
-import { extractAccountId } from './jwt';
+import { extractAccountId, extractEmail } from './jwt';
 import type { ChatGPTCredential } from './schema';
 import { refreshTokenResponseSchema, tokenResponseSchema } from './schema';
 
@@ -23,6 +23,7 @@ export type ChatGPTTokenExchangeOptions = {
   readonly now?: () => number;
   readonly redirectUri?: string;
   readonly signal?: AbortSignal;
+  readonly email?: string;
 };
 
 export class ChatGPTTokenExchangeError extends Error {
@@ -84,7 +85,7 @@ export async function refreshAccessToken(
     refreshTokenResponseSchema,
   );
 
-  return toCredential(body, options.now, refreshToken);
+  return toCredential(body, options.now, refreshToken, options.email);
 }
 
 async function postTokenRequest<T>(
@@ -112,6 +113,7 @@ function toCredential(
   body: OpenAITokenResponse,
   now: (() => number) | undefined,
   fallbackRefreshToken?: string,
+  previousEmail?: string,
 ): ChatGPTCredential {
   const accountId =
     extractAccountId(body.access_token) ?? (body.id_token === undefined ? undefined : extractAccountId(body.id_token));
@@ -120,10 +122,16 @@ function toCredential(
   const refreshToken = body.refresh_token ?? fallbackRefreshToken;
   if (refreshToken === undefined) throw new ChatGPTRefreshTokenMissingError();
 
+  const email =
+    (body.id_token === undefined ? undefined : extractEmail(body.id_token)) ??
+    extractEmail(body.access_token) ??
+    previousEmail;
+
   return {
     accessToken: body.access_token,
     accountId,
     expiresAt: (now ?? Date.now)() + (body.expires_in ?? DEFAULT_EXPIRES_IN_SECONDS) * 1_000,
     refreshToken,
+    ...(email === undefined ? {} : { email }),
   };
 }

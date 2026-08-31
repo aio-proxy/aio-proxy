@@ -124,6 +124,67 @@ describe('OpenAI ChatGPT OAuth flow', () => {
     await expect(exchange).rejects.toEqual(expect.objectContaining({ status: 429 }));
     await expect(exchange).rejects.not.toHaveProperty('responseText');
   });
+
+  test('prefers id_token email over access-token email and normalizes it', async () => {
+    const response = await exchangeCodeForTokens('code-123', 'verifier-123', {
+      fetch: createTokenFetchMock(
+        {
+          access_token: buildJwt({ chatgpt_account_id: 'access-account', email: 'access@example.com' }),
+          expires_in: 900,
+          id_token: buildJwt({ chatgpt_account_id: 'id-account', email: '  Person@Example.COM ' }),
+          refresh_token: 'refresh-123',
+        },
+        new URLSearchParams({
+          client_id: CHATGPT_CLIENT_ID,
+          code: 'code-123',
+          code_verifier: 'verifier-123',
+          grant_type: 'authorization_code',
+          redirect_uri: 'http://localhost:1455/auth/callback',
+        }),
+      ),
+      now: () => 1_700_000_000_000,
+      redirectUri: 'http://localhost:1455/auth/callback',
+    });
+
+    expect(response.email).toBe('person@example.com');
+    expect(response.accountId).toBe('access-account');
+  });
+
+  test('falls back to access-token email when id_token has none', async () => {
+    const response = await exchangeCodeForTokens('code-123', 'verifier-123', {
+      fetch: createTokenFetchMock(
+        {
+          access_token: buildJwt({ chatgpt_account_id: 'access-account', email: 'Access@Example.com' }),
+          refresh_token: 'refresh-123',
+        },
+        new URLSearchParams({
+          client_id: CHATGPT_CLIENT_ID,
+          code: 'code-123',
+          code_verifier: 'verifier-123',
+          grant_type: 'authorization_code',
+          redirect_uri: 'http://localhost:1455/auth/callback',
+        }),
+      ),
+      redirectUri: 'http://localhost:1455/auth/callback',
+    });
+
+    expect(response.email).toBe('access@example.com');
+  });
+
+  test('keeps the previous credential email when refresh tokens omit one', async () => {
+    const response = await refreshAccessToken('refresh-123', {
+      email: 'stored@example.com',
+      fetch: createTokenFetchMock(
+        {
+          access_token: buildJwt({ chatgpt_account_id: 'access-account' }),
+          expires_in: 3_600,
+        },
+        refreshBody('refresh-123'),
+      ),
+    });
+
+    expect(response.email).toBe('stored@example.com');
+  });
 });
 
 function refreshBody(refreshToken: string): URLSearchParams {
