@@ -18,7 +18,7 @@ export const responseTimeGrade = (milliseconds: number, outputTokens = 0): Laten
 export const latencyDotClassName = (grade: LatencyGrade): string =>
   cn(
     'size-1.5 rounded-full',
-    grade === 'success' ? 'bg-primary' : grade === 'warning' ? 'bg-muted-foreground' : 'bg-destructive',
+    grade === 'success' ? 'bg-primary' : grade === 'warning' ? 'bg-amber-600 dark:bg-amber-400' : 'bg-destructive',
   );
 
 const timeGrade = (seconds: number): LatencyGrade => {

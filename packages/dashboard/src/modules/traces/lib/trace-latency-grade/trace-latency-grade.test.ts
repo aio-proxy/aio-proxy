@@ -24,6 +24,6 @@ test('grades long-output duration on generated tokens per second', () => {
 
 test('maps grades onto the existing latency-dot tokens', () => {
   expect(latencyDotClassName('success')).toContain('bg-primary');
-  expect(latencyDotClassName('warning')).toContain('bg-muted-foreground');
+  expect(latencyDotClassName('warning')).toContain('bg-amber-600');
   expect(latencyDotClassName('danger')).toContain('bg-destructive');
 });
