@@ -132,4 +132,25 @@ describe('GitHub Copilot login', () => {
     );
     expect(invalid.accountLabel).toBe('octocat');
   });
+
+  test('propagates cancellation while looking up GitHub emails', async () => {
+    const controller = new AbortController();
+    const reason = new DOMException('cancelled', 'AbortError');
+    await withFetchMock(
+      async (input, init) => {
+        const url = new URL(input.toString());
+        if (url.pathname === '/user/emails') {
+          controller.abort(reason);
+          init?.signal?.throwIfAborted();
+          throw new Error('email lookup must not continue after abort');
+        }
+        return deviceFlowFetch()(input, init);
+      },
+      async () => {
+        await expect(
+          loginToGitHubCopilot(loginContext({ signal: controller.signal }), { deploymentType: 'github.com' }),
+        ).rejects.toBe(reason);
+      },
+    );
+  });
 });

@@ -169,6 +169,7 @@ async function fetchGitHubPrimaryEmail(
     const email = match?.email.trim().toLowerCase();
     return email === undefined || email === '' ? undefined : email;
   } catch {
+    if (signal.aborted) throw signal.reason;
     return undefined;
   }
 }
