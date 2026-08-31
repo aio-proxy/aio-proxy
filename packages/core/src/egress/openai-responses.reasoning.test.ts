@@ -32,11 +32,33 @@ describe('OpenAI Responses egress', () => {
       'response.reasoning_summary_text.delta',
       'response.output_item.added',
       'response.output_text.delta',
+      'response.output_item.done',
+      'response.output_item.done',
       'response.completed',
     ]);
     expect(events[2]).toMatchObject({ delta: 'I should answer.', summary_index: 0 });
     expect(events[4]).toMatchObject({ delta: 'Pong', content_index: 0, logprobs: [] });
-    expect(events[5]?.response).toMatchObject({
+    expect(events[5]).toMatchObject({
+      output_index: 0,
+      item: {
+        type: 'reasoning',
+        status: 'completed',
+        summary: [{ type: 'summary_text', text: 'I should answer.' }],
+      },
+    });
+    expect(events[6]).toMatchObject({
+      output_index: 1,
+      item: {
+        type: 'message',
+        role: 'assistant',
+        status: 'completed',
+        content: [{ type: 'output_text', text: 'Pong' }],
+      },
+    });
+    expect(events[5]?.item?.id).toBe(events[1]?.item?.id);
+    expect(events[6]?.item?.id).toBe(events[3]?.item?.id);
+    expect(events.map((event) => event.sequence_number)).toEqual(events.map((_, index) => index));
+    expect(events[7]?.response).toMatchObject({
       status: 'completed',
       output_text: 'Pong',
       usage: { input_tokens: 3, output_tokens: 4, total_tokens: 7 },
@@ -72,10 +94,20 @@ describe('OpenAI Responses egress', () => {
       'response.created',
       'response.output_item.added',
       'response.reasoning_summary_text.delta',
+      'response.output_item.done',
       'response.completed',
     ]);
     expect(events[2]).toMatchObject({ delta: 'private summary' });
-    expect(events[3]?.response?.output[0]).toMatchObject({
+    expect(events[3]).toMatchObject({
+      output_index: 0,
+      item: {
+        type: 'reasoning',
+        status: 'completed',
+        summary: [{ type: 'summary_text', text: 'private summary' }],
+      },
+    });
+    expect(events[3]?.item?.id).toBe(events[1]?.item?.id);
+    expect(events[4]?.response?.output[0]).toMatchObject({
       type: 'reasoning',
       summary: [{ type: 'summary_text', text: 'private summary' }],
     });
