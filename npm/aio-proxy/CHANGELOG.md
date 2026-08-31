@@ -1,5 +1,15 @@
 # aio-proxy
 
+## 0.12.1
+
+### Patch Changes
+
+- [#230](https://github.com/aio-proxy/aio-proxy/pull/230) [`e674d9a`](https://github.com/aio-proxy/aio-proxy/commit/e674d9a225d36d03fb388c223a6559beff6adb4d) Thanks [@baranwang](https://github.com/baranwang)! - oauth: show normalized account emails for connected OAuth providers
+
+- [#231](https://github.com/aio-proxy/aio-proxy/pull/231) [`70756e3`](https://github.com/aio-proxy/aio-proxy/commit/70756e3fe1bd63be4871bd2dc9901b159db47de6) Thanks [@baranwang](https://github.com/baranwang)! - dashboard: grade traces latency like new-api and show the lightning icon for fast/priority requests
+
+  Chat Completions `service_tier` now maps onto the speed routing axis (`priority`/`fast` → fast, `flex` → flex), matching Responses.
+
 ## 0.12.0
 
 ### Minor Changes

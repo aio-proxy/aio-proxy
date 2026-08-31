@@ -1,5 +1,13 @@
 # @aio-proxy/plugin-kimi-code
 
+## 0.12.1
+
+### Patch Changes
+
+- [#230](https://github.com/aio-proxy/aio-proxy/pull/230) [`e674d9a`](https://github.com/aio-proxy/aio-proxy/commit/e674d9a225d36d03fb388c223a6559beff6adb4d) Thanks [@baranwang](https://github.com/baranwang)! - oauth: show normalized account emails for connected OAuth providers
+- Updated dependencies []:
+  - @aio-proxy/plugin-sdk@0.12.1
+
 ## 0.12.0
 
 ### Minor Changes

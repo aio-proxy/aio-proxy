@@ -1,5 +1,26 @@
 # @aio-proxy/core
 
+## 0.12.1
+
+### Patch Changes
+
+- [#231](https://github.com/aio-proxy/aio-proxy/pull/231) [`70756e3`](https://github.com/aio-proxy/aio-proxy/commit/70756e3fe1bd63be4871bd2dc9901b159db47de6) Thanks [@baranwang](https://github.com/baranwang)! - dashboard: grade traces latency like new-api and show the lightning icon for fast/priority requests
+
+  Chat Completions `service_tier` now maps onto the speed routing axis (`priority`/`fast` → fast, `flex` → flex), matching Responses.
+
+- Updated dependencies [[`e674d9a`](https://github.com/aio-proxy/aio-proxy/commit/e674d9a225d36d03fb388c223a6559beff6adb4d), [`70756e3`](https://github.com/aio-proxy/aio-proxy/commit/70756e3fe1bd63be4871bd2dc9901b159db47de6)]:
+  - @aio-proxy/plugin-openai-chatgpt@0.12.1
+  - @aio-proxy/plugin-cursor@0.12.1
+  - @aio-proxy/plugin-kimi-code@0.12.1
+  - @aio-proxy/plugin-github-copilot@0.12.1
+  - @aio-proxy/plugin-google-antigravity@0.12.1
+  - @aio-proxy/plugin-xai-grok@0.12.1
+  - @aio-proxy/types@0.12.1
+  - @aio-proxy/i18n@0.12.1
+  - @aio-proxy/plugin-sdk@0.12.1
+  - @aio-proxy/logger@0.12.1
+  - @aio-proxy/shared@0.12.1
+
 ## 0.12.0
 
 ### Minor Changes
