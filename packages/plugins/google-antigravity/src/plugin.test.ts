@@ -142,6 +142,56 @@ test('imports an expired CPA file and recovers a missing project id', async () =
   expect(requests.slice(beforeExisting).some((url) => url.includes('loadCodeAssist'))).toBe(false);
 });
 
+test('normalizes Antigravity account labels without changing identity input', async () => {
+  const adapter = await adapterFrom(
+    createGoogleAntigravityPlugin(undefined, {
+      fetch: async (input) => {
+        const url = String(input);
+        if (url.includes('oauth2.googleapis.com/token')) {
+          return Response.json({
+            access_token: 'access-1',
+            refresh_token: 'refresh-1',
+            expires_in: 3600,
+            token_type: 'Bearer',
+          });
+        }
+        if (url.includes('oauth2/v2/userinfo')) return Response.json({ email: '  Person@Example.COM ' });
+        return Response.json({ cloudaicompanionProject: 'project-1' });
+      },
+      now: () => 1_700_000_000_000,
+      sleep: async () => {},
+    }),
+  );
+
+  const result = await adapter.login(loginContext(), {});
+  expect(result.fingerprint).toBe('Person@Example.COM');
+  expect(result.suggestedKey).toBe('antigravity-Person@Example.COM');
+  expect(result.accountLabel).toBe('person@example.com');
+  expect(result.credentials.email).toBe('person@example.com');
+});
+
+test('normalizes CPA Antigravity presentation email without changing identity', async () => {
+  const adapter = await adapterFrom(createGoogleAntigravityPlugin());
+  const importer = adapter.credentialImports?.cpa;
+  if (importer === undefined) throw new Error('CPA importer not registered');
+  const result = await importer.import(
+    { progress: () => {}, signal: new AbortController().signal },
+    {},
+    {
+      type: 'antigravity',
+      access_token: 'access-1',
+      refresh_token: 'refresh-1',
+      email: 'Person@Example.COM',
+      project_id: 'project-1',
+      expired: '2026-08-24T12:00:00.000Z',
+    },
+  );
+  expect(result.fingerprint).toBe('Person@Example.COM');
+  expect(result.suggestedKey).toBe('antigravity-Person@Example.COM');
+  expect(result.accountLabel).toBe('person@example.com');
+  expect(result.credentials.email).toBe('person@example.com');
+});
+
 test('rejects missing callback code before token exchange', async () => {
   let fetched = false;
   const adapter = await adapterFrom(

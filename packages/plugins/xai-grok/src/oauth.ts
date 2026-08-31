@@ -194,17 +194,25 @@ async function discover(fetcher: XAIGrokFetch, signal: AbortSignal) {
   };
 }
 
+function normalizeXAIGrokEmail(value: string | undefined): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const email = value.trim().toLowerCase();
+  return email === '' ? undefined : email;
+}
+
 export function xaiLoginResult(credentials: XAIGrokCredential) {
-  let identity = `refresh:${credentials.refreshToken}`;
-  if (credentials.email !== undefined) identity = `email:${credentials.email.toLowerCase()}`;
-  if (credentials.subject !== undefined) identity = `sub:${credentials.subject}`;
+  const email = normalizeXAIGrokEmail(credentials.email);
+  const normalized = email === undefined ? credentials : { ...credentials, email };
+  let identity = `refresh:${normalized.refreshToken}`;
+  if (normalized.email !== undefined) identity = `email:${normalized.email}`;
+  if (normalized.subject !== undefined) identity = `sub:${normalized.subject}`;
   const digest = new Bun.CryptoHasher('sha256').update(identity).digest('hex');
   return {
     fingerprint: `sha256:${digest}`,
     suggestedKey: `grok-${digest.slice(0, 12)}`,
-    accountLabel: credentials.email ?? credentials.subject ?? 'xAI Grok',
-    credentials,
-    expiresAt: credentials.expiresAt,
+    accountLabel: normalized.email ?? normalized.subject ?? 'xAI Grok',
+    credentials: normalized,
+    expiresAt: normalized.expiresAt,
   };
 }
 

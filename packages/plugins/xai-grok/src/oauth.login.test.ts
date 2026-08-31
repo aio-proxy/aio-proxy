@@ -51,12 +51,12 @@ describe('xAI Grok OAuth', () => {
     expect(result).toEqual({
       fingerprint: expect.stringMatching(/^sha256:[a-f0-9]{64}$/u),
       suggestedKey: expect.stringMatching(/^grok-[a-f0-9]{12}$/u),
-      accountLabel: 'Person@Example.com',
+      accountLabel: 'person@example.com',
       credentials: {
         accessToken,
         refreshToken: 'refresh-1',
         expiresAt: 1_700_003_600_000,
-        email: 'Person@Example.com',
+        email: 'person@example.com',
         subject: 'subject-1',
       },
       expiresAt: 1_700_003_600_000,
@@ -75,10 +75,28 @@ describe('xAI Grok OAuth', () => {
     expect(xaiLoginResult(credentials)).toEqual({
       fingerprint: `sha256:${digest}`,
       suggestedKey: `grok-${digest.slice(0, 12)}`,
-      accountLabel: 'Person@Example.com',
-      credentials,
+      accountLabel: 'person@example.com',
+      credentials: { ...credentials, email: 'person@example.com' },
       expiresAt: 1_700_003_600_000,
     });
+  });
+
+  test('falls back to subject then xAI Grok when email is missing', () => {
+    expect(
+      xaiLoginResult({
+        accessToken: 'access-1',
+        refreshToken: 'refresh-1',
+        expiresAt: 1,
+        subject: 'subject-1',
+      }).accountLabel,
+    ).toBe('subject-1');
+    expect(
+      xaiLoginResult({
+        accessToken: 'access-1',
+        refreshToken: 'refresh-1',
+        expiresAt: 1,
+      }).accountLabel,
+    ).toBe('xAI Grok');
   });
 
   test('rejects discovered endpoints outside x.ai before sending credentials', () => {
