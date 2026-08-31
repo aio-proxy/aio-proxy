@@ -65,3 +65,13 @@ export const copilotModelSchema = zod
     displayName: name,
     endpoints: [...model.endpoints, ...supported_endpoints],
   }));
+
+export const githubEmailsResponseSchema = zod.array(
+  zod
+    .object({
+      email: zod.string(),
+      primary: zod.boolean().optional(),
+      verified: zod.boolean().optional(),
+    })
+    .loose(),
+);

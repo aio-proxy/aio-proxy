@@ -53,6 +53,8 @@ export function deviceFlowFetch(
     readonly expiresIn?: number;
     readonly interval?: number;
     readonly tokenResponses?: readonly Record<string, string>[];
+    readonly emails?: unknown;
+    readonly emailsStatus?: number;
     readonly onRequest?: (url: URL) => void;
     readonly onTokenPoll?: () => void;
   } = {},
@@ -82,6 +84,10 @@ export function deviceFlowFetch(
       });
     }
     if (url.pathname === '/user') return Response.json({ id: 12345, login: 'octocat' });
+    if (url.pathname === '/user/emails') {
+      if (options.emailsStatus !== undefined) return new Response('unavailable', { status: options.emailsStatus });
+      return Response.json(options.emails ?? [{ email: '  Octocat@GitHub.com ', primary: true, verified: true }]);
+    }
     return Response.json({ error: `unexpected ${url.pathname}` }, { status: 404 });
   };
 }

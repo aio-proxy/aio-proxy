@@ -62,7 +62,7 @@ describe('GitHub Copilot login', () => {
       expect(result).toEqual({
         fingerprint: '12345',
         suggestedKey: 'copilot-12345',
-        accountLabel: 'octocat',
+        accountLabel: 'octocat@github.com',
         credentials: {
           githubToken: 'github-token',
           copilotToken: 'tid=x;exp=9999999999;proxy-ep=proxy.individual.githubcopilot.com;',
@@ -76,6 +76,7 @@ describe('GitHub Copilot login', () => {
         '/login/oauth/access_token',
         '/copilot_internal/v2/token',
         '/user',
+        '/user/emails',
       ]);
       expect(readdirSync(home)).toEqual([]);
     } finally {
@@ -98,5 +99,37 @@ describe('GitHub Copilot login', () => {
 
     expect(result.fingerprint).toBe('12345');
     expect(progress).toContain('Waiting for GitHub authorization');
+  });
+
+  test('requests the GitHub email scope during device authorization', async () => {
+    const bodies: string[] = [];
+    await withFetchMock(
+      async (input, init) => {
+        const url = new URL(input.toString());
+        if (url.pathname === '/login/device/code') bodies.push(String(init?.body));
+        return deviceFlowFetch()(input, init);
+      },
+      () => loginToGitHubCopilot(loginContext(), { deploymentType: 'github.com' }),
+    );
+    expect(new URLSearchParams(bodies[0] ?? '').get('scope')).toBe('read:user user:email');
+  });
+
+  test('falls back to GitHub login when emails are unavailable or unverified', async () => {
+    const missing = await withFetchMock(deviceFlowFetch({ emailsStatus: 404 }), () =>
+      loginToGitHubCopilot(loginContext(), { deploymentType: 'github.com' }),
+    );
+    expect(missing.accountLabel).toBe('octocat');
+    expect(missing.fingerprint).toBe('12345');
+
+    const unverified = await withFetchMock(
+      deviceFlowFetch({ emails: [{ email: 'hidden@example.com', primary: true, verified: false }] }),
+      () => loginToGitHubCopilot(loginContext(), { deploymentType: 'github.com' }),
+    );
+    expect(unverified.accountLabel).toBe('octocat');
+
+    const invalid = await withFetchMock(deviceFlowFetch({ emails: { email: 'nope@example.com' } }), () =>
+      loginToGitHubCopilot(loginContext(), { deploymentType: 'github.com' }),
+    );
+    expect(invalid.accountLabel).toBe('octocat');
   });
 });
