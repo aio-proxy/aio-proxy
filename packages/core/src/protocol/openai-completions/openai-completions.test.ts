@@ -4,6 +4,37 @@ import { parseOpenAICompletions } from '../../ingress/openai-completions';
 import { rewriteOpenAICompletionsRaw } from './completions-raw';
 import { openAICompletionsAdapter } from './openai-completions';
 
+test('maps service_tier onto the speed axis', async () => {
+  await expect(dimensions({ service_tier: 'priority' })).resolves.toEqual({ speed: 'fast' });
+  await expect(dimensions({ service_tier: 'fast' })).resolves.toEqual({ speed: 'fast' });
+  await expect(dimensions({ service_tier: 'flex' })).resolves.toEqual({ speed: 'flex' });
+});
+
+test('keeps service_tier off the speed axis when it is not a speed tier', async () => {
+  await expect(dimensions({ service_tier: 'auto' })).resolves.toEqual({});
+  await expect(dimensions({ service_tier: 'default' })).resolves.toEqual({});
+  await expect(dimensions({ speed: 'fast' })).resolves.toEqual({});
+});
+
+test('maps service_tier alongside reasoning_effort', async () => {
+  await expect(dimensions({ reasoning_effort: 'high', service_tier: 'priority' })).resolves.toEqual({
+    effort: 'high',
+    speed: 'fast',
+  });
+});
+
+async function dimensions(extra: Record<string, unknown>) {
+  const raw = new Request('https://x/v1/chat/completions', {
+    method: 'POST',
+    body: JSON.stringify({
+      model: 'alias',
+      messages: [{ role: 'user', content: 'hi' }],
+      ...extra,
+    }),
+  });
+  return openAICompletionsAdapter.dimensions(await openAICompletionsAdapter.parse(raw, {}), {});
+}
+
 test('clamps reasoning_effort in the raw body against the supported set', async () => {
   const body = { model: 'src', messages: [{ role: 'user', content: 'hi' }], reasoning_effort: 'xhigh' };
   const raw = new Request('https://x/v1/chat/completions', { method: 'POST', body: JSON.stringify(body) });

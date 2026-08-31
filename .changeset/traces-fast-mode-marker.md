@@ -8,3 +8,5 @@
 ---
 
 dashboard: grade traces latency like new-api and show the lightning icon for fast/priority requests
+
+Chat Completions `service_tier` now maps onto the speed routing axis (`priority`/`fast` → fast, `flex` → flex), matching Responses.
