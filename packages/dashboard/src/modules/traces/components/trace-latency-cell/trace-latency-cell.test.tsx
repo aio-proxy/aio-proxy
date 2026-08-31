@@ -24,3 +24,14 @@ test('marks fast-mode requests independently of duration', () => {
   view.rerender(<TraceLatencyCell durationMs={125} />);
   expect(view.container.querySelector('[data-fast-marker]')).toBeNull();
 });
+
+test('colors duration from throughput when output tokens are large enough', () => {
+  const view = render(<TraceLatencyCell durationMs={8_000} outputTokens={240} />);
+  const durationDot = view.container.querySelector('[data-latency-dot]');
+
+  expect(durationDot).toHaveClass('bg-primary');
+  expect(durationDot).not.toHaveClass('bg-destructive');
+
+  view.rerender(<TraceLatencyCell durationMs={8_000} outputTokens={100} />);
+  expect(view.container.querySelector('[data-latency-dot]')).toHaveClass('bg-destructive');
+});
