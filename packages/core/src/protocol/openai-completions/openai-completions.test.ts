@@ -13,6 +13,7 @@ test('maps service_tier onto the speed axis', async () => {
 test('keeps service_tier off the speed axis when it is not a speed tier', async () => {
   await expect(dimensions({ service_tier: 'auto' })).resolves.toEqual({});
   await expect(dimensions({ service_tier: 'default' })).resolves.toEqual({});
+  await expect(dimensions({ service_tier: null })).resolves.toEqual({});
   await expect(dimensions({ speed: 'fast' })).resolves.toEqual({});
 });
 

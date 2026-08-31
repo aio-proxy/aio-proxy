@@ -63,8 +63,8 @@ function isCandidate(value: SessionCandidate | undefined): value is SessionCandi
   return value !== undefined;
 }
 
-function speedFromServiceTier(value: string | undefined): AliasDimensions['speed'] {
-  if (value === undefined) return undefined;
+function speedFromServiceTier(value: string | null | undefined): AliasDimensions['speed'] {
+  if (typeof value !== 'string') return undefined;
   const tier = value.trim().toLowerCase();
   if (tier === 'priority' || tier === 'fast') return 'fast';
   if (tier === 'flex') return 'flex';
