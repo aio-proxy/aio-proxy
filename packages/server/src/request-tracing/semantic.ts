@@ -27,6 +27,7 @@ export const attributeName = {
   requestId: 'aio_proxy.request.id',
   operation: 'aio_proxy.operation',
   stream: 'aio_proxy.request.stream',
+  fast: 'aio_proxy.request.fast',
   ttftMs: 'aio_proxy.response.ttft_ms',
   transportObservation: 'aio_proxy.response.transport_observation',
   upstreamHeadersMs: 'aio_proxy.response.upstream_headers_ms',

@@ -7,6 +7,7 @@ export type RequestTraceIdentityInput = {
   readonly resolution: LogicalSessionResolution;
   readonly mutateSessionState: boolean;
   readonly streamRequested?: boolean;
+  readonly fastRequested?: boolean;
 };
 
 type RequestTraceFinishBase = {
