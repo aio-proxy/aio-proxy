@@ -61,6 +61,7 @@ export function createKimiCodePlugin(
       refreshToken: zod.string().min(1),
       expiresAt: zod.number().int(),
       deviceId: zod.string().min(1),
+      email: zod.string().optional(),
     }),
     login: async (context, options) => {
       await accountOptions.schema.parseAsync(options);

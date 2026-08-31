@@ -2,7 +2,7 @@ import { type CredentialPort, CredentialRefreshError, type RuntimeFetch } from '
 import { isPlainObject } from 'es-toolkit/predicate';
 
 import { kimiIdentityHeaders } from '../headers';
-import type { KimiCredential, KimiOAuthDependencies } from '../oauth';
+import { kimiCredentialEmail, type KimiCredential, type KimiOAuthDependencies } from '../oauth';
 import { KIMI_OAUTH_BASE_URL } from './constants';
 
 declare const __AIO_PROXY_KIMI_CLIENT_ID__: string;
@@ -38,11 +38,14 @@ export async function refreshKimiCredential(
     throw refreshError(!invalidGrant && isRetryableStatus(response.status), reason, response.status);
   }
   const token = await parseSuccessfulToken(response);
+  const refreshToken = token.refreshToken ?? current.refreshToken;
+  const email = kimiCredentialEmail(token.accessToken, refreshToken, current.email);
   return {
     accessToken: token.accessToken,
-    refreshToken: token.refreshToken ?? current.refreshToken,
+    refreshToken,
     expiresAt: now() + token.expiresIn * 1_000,
     deviceId: current.deviceId,
+    ...(email === undefined ? {} : { email }),
   };
 }
 
@@ -57,7 +60,13 @@ export async function currentKimiCredential(
   if (current.value.expiresAt > now() + 5 * 60_000) return current.value;
   const refreshing = port.refresh(current.revision, async ({ value }, signal) => {
     const refreshed = await refreshKimiCredential(value, { ...options, signal });
-    return { value: refreshed, metadata: { expiresAt: refreshed.expiresAt } };
+    return {
+      value: refreshed,
+      metadata: {
+        expiresAt: refreshed.expiresAt,
+        ...(refreshed.email === undefined ? {} : { accountLabel: refreshed.email }),
+      },
+    };
   });
   return (await waitForCaller(refreshing, options.signal)).snapshot.value;
 }

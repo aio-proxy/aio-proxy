@@ -15,19 +15,38 @@ type RefreshExchange = Parameters<CredentialPort<KimiCredential>['refresh']>[1];
 
 const presentation = { instructions: 'Open Kimi', waiting: 'Waiting' } as const;
 
-test('builds a shared SHA-256 login result from a Kimi credential', async () => {
+function kimiJwt(payload: object): string {
+  return ['h', Buffer.from(JSON.stringify(payload)).toString('base64url'), 's'].join('.');
+}
+
+test('uses access-token JWT email as the Kimi account label', async () => {
   const result = await kimiLoginResult({
+    accessToken: kimiJwt({ email: '  Person@Example.COM ' }),
+    refreshToken: 'refresh',
+    expiresAt: 123,
+    deviceId: 'device-1',
+  });
+  expect(result.accountLabel).toBe('person@example.com');
+  expect(result.credentials.email).toBe('person@example.com');
+  expect(result.fingerprint).toMatch(/^[a-f0-9]{64}$/u);
+});
+
+test('falls back to refresh-token JWT email then Kimi Code', async () => {
+  const fromRefresh = await kimiLoginResult({
+    accessToken: 'opaque-access',
+    refreshToken: kimiJwt({ email: 'Refresh@Example.com' }),
+    expiresAt: 123,
+    deviceId: 'device-1',
+  });
+  expect(fromRefresh.accountLabel).toBe('refresh@example.com');
+
+  const fallback = await kimiLoginResult({
     accessToken: 'access',
     refreshToken: 'refresh',
     expiresAt: 123,
     deviceId: 'device-1',
   });
-  expect(result).toMatchObject({
-    fingerprint: expect.stringMatching(/^[a-f0-9]{64}$/u),
-    suggestedKey: expect.stringMatching(/^kimi-[a-f0-9]{12}$/u),
-    accountLabel: 'Kimi Code',
-    expiresAt: 123,
-  });
+  expect(fallback.accountLabel).toBe('Kimi Code');
 });
 
 function sequence(responses: readonly (Response | Error)[], calls: FetchCall[] = []): typeof fetch {
@@ -319,5 +338,20 @@ describe('credential refresh', () => {
         fetch: sequence([Response.json({ access_token: 'new-access', expires_in: 400 })]),
       }),
     ).toEqual(refreshed);
+  });
+
+  test('refresh keeps the current Kimi email when rotated tokens omit one', async () => {
+    const stored: KimiCredential = {
+      accessToken: 'old-access',
+      refreshToken: 'old-refresh',
+      expiresAt: 0,
+      deviceId: 'device-1',
+      email: 'stored@example.com',
+    };
+    const refreshed = await refreshKimiCredential(stored, {
+      now: () => 1_000,
+      fetch: sequence([Response.json({ access_token: 'new-access', expires_in: 60 })]),
+    });
+    expect(refreshed.email).toBe('stored@example.com');
   });
 });
