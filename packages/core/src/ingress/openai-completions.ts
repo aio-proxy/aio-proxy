@@ -80,6 +80,7 @@ export const OpenAICompletionsRequestSchema = z.compile(
     // Gating it to a fixed enum would reject legitimate levels (e.g. `max`) and
     // aliases before they can reach normalization, so accept any string.
     reasoning_effort: z.string().optional(),
+    service_tier: z.string().nullish(),
   }),
 );
 

@@ -292,4 +292,16 @@ describe('createRequestTraceRecorder', () => {
       [attributeName.ttftMs]: 42,
     });
   });
+
+  test('projects fast-mode intent onto the root span', () => {
+    const { completions, store } = collector();
+    const recorder = createRequestTraceRecorder({ store });
+    const session = recorder.begin({ inboundRequest: request(), inboundProtocol: 'openai-chat' });
+
+    session.identify({ ...identityInput, fastRequested: true });
+    session.finish({ outcome: 'success' });
+
+    const root = completions[0]?.spans.find((span) => span.spanId === session.rootSpanId);
+    expect(root?.attributes).toMatchObject({ [attributeName.fast]: true });
+  });
 });

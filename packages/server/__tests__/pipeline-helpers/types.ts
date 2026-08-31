@@ -12,6 +12,8 @@ export type TestProtocolRequest = {
   readonly model: string;
   readonly prompt: string;
   readonly stream: boolean;
+  readonly service_tier?: string;
+  readonly speed?: string;
 };
 
 export type TestProtocolContext = {

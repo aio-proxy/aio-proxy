@@ -78,6 +78,7 @@ function durationMs(startedAt: Date, endedAt: Date | null, now: Date): number {
 
 function rowToSummary(row: typeof traceSpan.$inferSelect, now: Date): DashboardTraceSummary {
   const stream = row.attributes['aio_proxy.request.stream'];
+  const fast = row.attributes['aio_proxy.request.fast'];
   const ttftMs = row.attributes['aio_proxy.response.ttft_ms'];
   const usage = !hasAnyUsage(row)
     ? undefined
@@ -102,6 +103,7 @@ function rowToSummary(row: typeof traceSpan.$inferSelect, now: Date): DashboardT
     endedAt: toIso(row.endedAt),
     durationMs: durationMs(row.startedAt, row.endedAt, now),
     ...(typeof stream === 'boolean' ? { stream } : {}),
+    ...(fast === true ? { fast: true } : {}),
     ...(typeof ttftMs === 'number' && Number.isFinite(ttftMs) && ttftMs >= 0 ? { ttftMs } : {}),
     otelStatusCode: STATUS_CODE_TO_OTEL[row.statusCode] ?? 'UNSET',
     ...(row.terminationReason !== null ? { terminationReason: row.terminationReason as TraceTerminationReason } : {}),

@@ -10,7 +10,7 @@ import type { ProviderProtocol } from '@aio-proxy/types';
 import { context } from '@opentelemetry/api';
 
 import { observeInboundRequest, withRequestLogContext } from '../../request-logging';
-import type { RequestTraceSession } from '../../request-tracing';
+import { requestAsksFastMode, type RequestTraceSession } from '../../request-tracing';
 import { isInboundAbort } from '../../route-observation';
 import type { ProviderRouteSource } from '../../runtime';
 import { attemptCandidates } from './attempt';
@@ -95,6 +95,7 @@ async function handleProtocolRequestInContext<TRequest, TContext>(
       resolution,
       mutateSessionState: true,
       streamRequested,
+      ...(requestAsksFastMode(request, rawRequest.headers) ? { fastRequested: true } : {}),
     });
     if (resolution.responseStatus === 'ambiguous') {
       const error = new Error('Ambiguous previous response ownership');

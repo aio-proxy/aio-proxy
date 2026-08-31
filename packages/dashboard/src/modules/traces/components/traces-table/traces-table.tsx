@@ -92,6 +92,8 @@ const columns: ColumnDef<typeof tracesTableFeatures, DashboardTraceSummary>[] = 
         durationMs={row.original.durationMs}
         stream={row.original.stream}
         ttftMs={row.original.ttftMs}
+        fast={row.original.fast}
+        outputTokens={row.original.usage?.outputTokens}
       />
     ),
   },

@@ -1,4 +1,4 @@
-import { canonicalEffort, ProviderProtocol } from '@aio-proxy/types';
+import { type AliasDimensions, canonicalEffort, ProviderProtocol } from '@aio-proxy/types';
 
 import { writeOpenAICompletionsResponse, writeOpenAICompletionsSSE } from '../../egress/openai-completions';
 import { type OpenAICompletionsRequest, parseOpenAICompletions } from '../../ingress/openai-completions';
@@ -17,8 +17,13 @@ export const openAICompletionsAdapter = defineProtocolAdapter<OpenAICompletionsR
     return parseOpenAICompletions(await readJsonRequest(raw));
   },
   model: (request) => request.model,
-  dimensions: (request) =>
-    request.reasoning_effort === undefined ? {} : { effort: canonicalEffort(request.reasoning_effort) },
+  dimensions: (request) => {
+    const speed = speedFromServiceTier(request.service_tier);
+    return {
+      ...(request.reasoning_effort === undefined ? {} : { effort: canonicalEffort(request.reasoning_effort) }),
+      ...(speed === undefined ? {} : { speed }),
+    };
+  },
   session: (request) => ({
     candidates: [
       candidate('openai-prompt-cache', request.prompt_cache_key),
@@ -56,4 +61,12 @@ function candidate(source: SessionCandidate['source'], value: string | undefined
 
 function isCandidate(value: SessionCandidate | undefined): value is SessionCandidate {
   return value !== undefined;
+}
+
+function speedFromServiceTier(value: string | null | undefined): AliasDimensions['speed'] {
+  if (typeof value !== 'string') return undefined;
+  const tier = value.trim().toLowerCase();
+  if (tier === 'priority' || tier === 'fast') return 'fast';
+  if (tier === 'flex') return 'flex';
+  return undefined;
 }

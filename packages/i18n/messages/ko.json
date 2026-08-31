@@ -1246,7 +1246,7 @@
       "latency": "지연 시간",
       "load_older_traces": "이전 Trace 불러오기",
       "new_traces_available": "새 Trace {count}개",
-      "fast_latency": "빠름",
+      "fast_latency": "빠른 모드",
       "result_details": "결과 세부 정보",
       "status": "상태",
       "duration": "소요 시간",

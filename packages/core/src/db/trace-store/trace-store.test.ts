@@ -146,6 +146,31 @@ describe('trace store lifecycle', () => {
     }
   });
 
+  test('projects root fast-mode intent into trace summaries', () => {
+    const handle = openTestDb();
+    try {
+      const store = createTraceStore(handle.db);
+      store.startRoot(rootStart());
+      store.complete(
+        completion({
+          spans: [
+            rootSpan({
+              attributes: {
+                'aio_proxy.request.id': 'request-a',
+                'aio_proxy.protocol.inbound': 'openai-compatible',
+                'aio_proxy.request.fast': true,
+              },
+            }),
+          ],
+        }),
+      );
+
+      expect(store.find(TRACE_ID)?.trace).toMatchObject({ fast: true });
+    } finally {
+      handle.close();
+    }
+  });
+
   test('rolls back the terminal transaction when a child violates the parent foreign key', () => {
     const handle = openTestDb();
     try {

@@ -13,7 +13,7 @@ import { context } from '@opentelemetry/api';
 
 import type { LogicalSessionResolution } from '../../logical-session-store';
 import { observeInboundRequest, withAttemptLogContext, withRequestLogContext } from '../../request-logging';
-import { attributeName, type RequestTraceSession } from '../../request-tracing';
+import { attributeName, requestAsksFastMode, type RequestTraceSession } from '../../request-tracing';
 import { isInboundAbort } from '../../route-observation';
 import type { ProviderRouteSource, RuntimeProviderInstance } from '../../runtime';
 import { hasInvalidOrOversizedContentLength, resolveSupportedEffortsForDimensions } from '../pipeline';
@@ -119,7 +119,12 @@ async function handleTokenCountInContext<TRequest, TContext>(
       hints: adapter.session?.(request, context) ?? { candidates: [], transcript: request },
       headers: rawRequest.headers,
     });
-    session.identify({ requestedModelId: requestedModel, resolution, mutateSessionState: false });
+    session.identify({
+      requestedModelId: requestedModel,
+      resolution,
+      mutateSessionState: false,
+      ...(requestAsksFastMode(request, rawRequest.headers) ? { fastRequested: true } : {}),
+    });
     if (resolution.responseStatus === 'ambiguous') {
       return finishRejected(session, adapter.errors.previousResponseConflict(), 'previous_response_conflict');
     }

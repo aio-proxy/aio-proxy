@@ -1246,7 +1246,7 @@
       "latency": "レイテンシ",
       "load_older_traces": "過去の Trace を読み込む",
       "new_traces_available": "新しい Trace: {count} 件",
-      "fast_latency": "高速",
+      "fast_latency": "高速モード",
       "result_details": "結果の詳細",
       "status": "ステータス",
       "duration": "所要時間",

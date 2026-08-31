@@ -34,6 +34,10 @@ export function defineProtocolAdapter(
         model: value.model,
         prompt: 'prompt' in value && typeof value.prompt === 'string' ? value.prompt : 'ping',
         stream: 'stream' in value && value.stream === true,
+        ...('service_tier' in value && typeof value.service_tier === 'string'
+          ? { service_tier: value.service_tier }
+          : {}),
+        ...('speed' in value && typeof value.speed === 'string' ? { speed: value.speed } : {}),
       };
     },
     model: (request) => request.model,
