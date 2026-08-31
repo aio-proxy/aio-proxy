@@ -24,3 +24,12 @@ test('derives a stable sub-based fingerprint and normalizes email', () => {
 test('rejects a token without a stable account identifier', () => {
   expect(() => cursorIdentity({ accessToken: jwt({}) })).toThrow(/stable account identifier/i);
 });
+
+test('uses normalized JWT email as the Cursor account label', () => {
+  const identity = cursorIdentity({ accessToken: jwt({ sub: 'user-1', email: 'A@B.com' }) });
+  expect(identity.label).toBe('a@b.com');
+});
+
+test('falls back to Cursor when the JWT has a subject but no email', () => {
+  expect(cursorIdentity({ accessToken: jwt({ sub: 'user-1' }) }).label).toBe('Cursor');
+});

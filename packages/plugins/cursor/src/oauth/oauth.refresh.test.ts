@@ -79,7 +79,7 @@ test('currentCursorCredential refreshes through the port when expiresAt <= now',
   });
   expect(result.accessToken).toBe(rotated);
   expect(result.expiresAt).toBe(10_000 * 1000 - 5 * 60_000);
-  expect(metadata).toEqual({ accountLabel: 'Cursor', expiresAt: 10_000 * 1000 - 5 * 60_000 });
+  expect(metadata).toEqual({ expiresAt: 10_000 * 1000 - 5 * 60_000 });
   expect(Reflect.get(requestInit ?? {}, 'aioProxy')).toEqual({ traffic: 'control' });
 });
 
@@ -90,4 +90,38 @@ test('refreshCursorCredential produces a CredentialRefreshError on failure', asy
   ).catch((caught: unknown) => caught);
   expect(error).toBeInstanceOf(CredentialRefreshError);
   expect((error as CredentialRefreshError).retryable).toBe(false);
+});
+
+test('refresh keeps the current Cursor email when the new token omits one', async () => {
+  const next = await refreshCursorCredential(
+    { accessToken: 'old', refreshToken: 'keep-me', expiresAt: 0, email: 'stored@example.com' },
+    { now: () => 0, fetch: async () => okResponse({ accessToken: jwt({ exp: 4_000, sub: 'u1' }) }) },
+  );
+  expect(next.email).toBe('stored@example.com');
+});
+
+test('refresh metadata omits accountLabel when no email is available', async () => {
+  const stale = { accessToken: 'a', refreshToken: 'r', expiresAt: 1_000 };
+  const rotated = jwt({ sub: 'u1', exp: 10_000 });
+  let metadata: { accountLabel?: string; expiresAt?: number } | undefined;
+  const port = {
+    read: async () => ({ value: stale, revision: 7 }),
+    refresh: async (
+      expectedRevision: number,
+      exchange: (
+        current: { value: typeof stale; revision: number },
+        signal: AbortSignal,
+      ) => Promise<{ value: { accessToken: string; refreshToken: string; expiresAt: number; email?: string } }>,
+    ) => {
+      expect(expectedRevision).toBe(7);
+      const result = await exchange({ value: stale, revision: 7 }, new AbortController().signal);
+      metadata = Reflect.get(result, 'metadata');
+      return { status: 'updated' as const, snapshot: { value: result.value, revision: 8 } };
+    },
+  };
+  await currentCursorCredential(port, {
+    now: () => 5_000,
+    fetch: async () => okResponse({ accessToken: rotated }),
+  });
+  expect(metadata).toEqual({ expiresAt: 10_000 * 1000 - 5 * 60_000 });
 });
