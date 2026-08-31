@@ -119,11 +119,35 @@ describe('OpenAI ChatGPT plugin', () => {
     expect(adapter.catalog.policy).toEqual({ kind: 'ttl', ttlMs: 6 * 60 * 60_000 });
   });
 
-  test('imports a CPA Codex auth file with native account identity', async () => {
+  test('uses normalized id_token email as the ChatGPT account label', async () => {
+    const adapter = await adapterFrom(openAIChatGPTPlugin);
+    const redirectUri = 'http://localhost:43123/auth/callback';
+    globalThis.fetch = async () =>
+      Response.json({
+        access_token: buildJwt({ chatgpt_account_id: 'account-123' }),
+        id_token: buildJwt({ email: '  Person@Example.COM ' }),
+        expires_in: 900,
+        refresh_token: 'refresh-token',
+      });
+
+    const result = await adapter.login(
+      loginContext({
+        loopback: async () => ({ code: 'auth-code', redirectUri }),
+      }),
+      {},
+    );
+
+    expect(result.accountLabel).toBe('person@example.com');
+    expect(result.fingerprint).toBe('account-123');
+    expect(result.suggestedKey).toBe('chatgpt-account-123');
+    expect(result.credentials).toMatchObject({ accountId: 'account-123', email: 'person@example.com' });
+  });
+
+  test('imports CPA Codex email from the validated top-level field first', async () => {
     const adapter = await adapterFrom(openAIChatGPTPlugin);
     const importer = adapter.credentialImports?.cpa;
     if (importer === undefined) throw new Error('CPA importer not registered');
-    const accessToken = buildJwt({ chatgpt_account_id: 'account-123' });
+    const accessToken = buildJwt({ chatgpt_account_id: 'account-123', email: 'token@example.com' });
 
     await expect(
       importer.import(
@@ -134,22 +158,42 @@ describe('OpenAI ChatGPT plugin', () => {
           access_token: accessToken,
           refresh_token: 'refresh-123',
           expired: '2026-08-24T12:00:00Z',
-          email: 'ignored@example.com',
-          id_token: 'ignored-id-token',
+          email: '  Person@Example.COM ',
+          id_token: buildJwt({ email: 'id@example.com' }),
         },
       ),
     ).resolves.toEqual({
       fingerprint: 'account-123',
       suggestedKey: 'chatgpt-account-123',
-      accountLabel: 'account-123',
+      accountLabel: 'person@example.com',
       credentials: {
         accessToken,
         accountId: 'account-123',
         refreshToken: 'refresh-123',
         expiresAt: Date.parse('2026-08-24T12:00:00Z'),
+        email: 'person@example.com',
       },
       expiresAt: Date.parse('2026-08-24T12:00:00Z'),
     });
+  });
+
+  test('imports CPA Codex email from id_token then access token', async () => {
+    const adapter = await adapterFrom(openAIChatGPTPlugin);
+    const importer = adapter.credentialImports?.cpa;
+    if (importer === undefined) throw new Error('CPA importer not registered');
+    const accessToken = buildJwt({ chatgpt_account_id: 'account-123', email: 'access@example.com' });
+    const result = await importer.import(
+      { progress: () => {}, signal: new AbortController().signal },
+      {},
+      {
+        type: 'codex',
+        access_token: accessToken,
+        refresh_token: 'refresh-123',
+        id_token: buildJwt({ email: 'ID@example.com' }),
+      },
+    );
+    expect(result.accountLabel).toBe('id@example.com');
+    expect(result.credentials).not.toHaveProperty('idToken');
   });
 
   test('uses explicit CPA account_id and treats invalid expiry as expired', async () => {

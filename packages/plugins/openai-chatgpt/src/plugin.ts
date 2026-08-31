@@ -8,7 +8,7 @@ import {
 } from '@aio-proxy/plugin-sdk';
 
 import { CHATGPT_CATALOG_TTL_MS, discoverOpenAIChatGPTModels } from './catalog';
-import { extractAccountId } from './jwt';
+import { extractAccountId, extractEmail, normalizeChatGPTEmail } from './jwt';
 import { ChatGPTAccountIdMissingError, CHATGPT_CLIENT_ID, exchangeCodeForTokens } from './oauth-flow';
 import { generatePKCE, generateState } from './pkce';
 import { createOpenAIChatGPTRuntime } from './runtime/index';
@@ -25,6 +25,8 @@ const cpaCodexSchema = zod
     refresh_token: zod.string().trim().min(1),
     account_id: zod.string().trim().min(1).optional(),
     expired: zod.unknown().optional(),
+    email: zod.string().optional(),
+    id_token: zod.string().optional(),
   })
   .loose();
 
@@ -62,6 +64,7 @@ export function createOpenAIChatGPTPlugin(
       accountId: zod.string(),
       expiresAt: zod.number(),
       refreshToken: zod.string(),
+      email: zod.string().optional(),
     }),
     login: async (context, options) => {
       await accountOptions.schema.parseAsync(options);
@@ -86,7 +89,7 @@ export function createOpenAIChatGPTPlugin(
       return {
         fingerprint: token.accountId,
         suggestedKey: `chatgpt-${token.accountId}`,
-        accountLabel: token.accountId,
+        accountLabel: token.email ?? token.accountId,
         credentials: token,
         expiresAt: token.expiresAt,
       };
@@ -100,15 +103,20 @@ export function createOpenAIChatGPTPlugin(
           const accountId = source.account_id ?? extractAccountId(source.access_token);
           if (accountId === undefined) throw new ChatGPTAccountIdMissingError();
           const expiresAt = cpaExpiresAt(source.expired);
+          const email =
+            normalizeChatGPTEmail(source.email) ??
+            (source.id_token === undefined ? undefined : extractEmail(source.id_token)) ??
+            extractEmail(source.access_token);
           return {
             fingerprint: accountId,
             suggestedKey: `chatgpt-${accountId}`,
-            accountLabel: accountId,
+            accountLabel: email ?? accountId,
             credentials: {
               accessToken: source.access_token,
               accountId,
               expiresAt,
               refreshToken: source.refresh_token,
+              ...(email === undefined ? {} : { email }),
             },
             expiresAt,
           };
