@@ -130,6 +130,30 @@ describe('OpenAI ChatGPT runtime', () => {
   });
 });
 
+test('refresh metadata uses stored email when rotated tokens omit one', async () => {
+  const originalFetch = globalThis.fetch;
+  let metadata: { readonly accountLabel?: string; readonly expiresAt?: number } | undefined;
+  const expired = credential({ accessToken: 'expired', expiresAt: 0, email: 'stored@example.com' });
+  const credentials: CredentialPort<ChatGPTCredential> = {
+    read: async () => ({ revision: 3, value: expired }),
+    refresh: async (revision, exchange) => {
+      const exchanged = await exchange({ revision, value: expired }, new AbortController().signal);
+      metadata = exchanged.metadata;
+      return { status: 'updated', snapshot: { revision: revision + 1, value: exchanged.value } };
+    },
+  };
+  globalThis.fetch = async () =>
+    Response.json({ access_token: buildJwt({ chatgpt_account_id: 'acct-refreshed' }), expires_in: 60 });
+
+  try {
+    const refreshed = await currentCredential(credentials);
+    expect(refreshed.email).toBe('stored@example.com');
+    expect(metadata).toEqual({ accountLabel: 'stored@example.com', expiresAt: refreshed.expiresAt });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('normalizes Responses requests for the Codex backend', async () => {
   const calls: FetchCall[] = [];
   const dynamicFetch = createOpenAIChatGPTDynamicFetch(staticCredentialPort(credential()), captureFetch(calls));

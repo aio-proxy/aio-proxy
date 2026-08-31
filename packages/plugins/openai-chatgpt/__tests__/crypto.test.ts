@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { extractAccountId } from '../src/jwt';
+import { extractAccountId, extractEmail } from '../src/jwt';
 import { base64url, generatePKCE, generateState } from '../src/pkce';
 import { tokenResponseSchema } from '../src/schema';
 
@@ -44,6 +44,17 @@ describe('extractAccountId', () => {
   test('returns undefined for malformed tokens', () => {
     expect(extractAccountId('not-a-jwt')).toBeUndefined();
     expect(extractAccountId('header.not-base64url.signature')).toBeUndefined();
+  });
+});
+
+describe('extractEmail', () => {
+  test('normalizes a JWT email claim', () => {
+    expect(extractEmail(buildJwt({ email: '  Person@Example.COM ' }))).toBe('person@example.com');
+  });
+
+  test('treats blank and malformed tokens as missing', () => {
+    expect(extractEmail(buildJwt({ email: '   ' }))).toBeUndefined();
+    expect(extractEmail('not-a-jwt')).toBeUndefined();
   });
 });
 

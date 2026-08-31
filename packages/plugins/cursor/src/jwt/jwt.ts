@@ -37,8 +37,12 @@ export function cursorIdentity(input: { readonly accessToken: string }): {
   return {
     fingerprint: `sha256:${digest}`,
     suggestedKey: `cursor-${digest.slice(0, 12)}`,
-    label: 'Cursor',
+    label: email ?? 'Cursor',
     ...(subject === undefined ? {} : { subject }),
     ...(email === undefined ? {} : { email }),
   };
+}
+
+export function cursorIdentityEmail(accessToken: string): string | undefined {
+  return readClaim(readCursorClaims(accessToken), 'email')?.toLowerCase();
 }

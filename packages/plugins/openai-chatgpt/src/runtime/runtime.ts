@@ -121,8 +121,18 @@ export async function currentCredential(
 
   return (
     await port.refresh(current.revision, async ({ value }, signal) => {
-      const refreshed = await refreshAccessToken(value.refreshToken, { fetch: fetcher, signal });
-      return { value: refreshed, metadata: { expiresAt: refreshed.expiresAt } };
+      const refreshed = await refreshAccessToken(value.refreshToken, {
+        fetch: fetcher,
+        signal,
+        ...(value.email === undefined ? {} : { email: value.email }),
+      });
+      return {
+        value: refreshed,
+        metadata: {
+          expiresAt: refreshed.expiresAt,
+          ...(refreshed.email === undefined ? {} : { accountLabel: refreshed.email }),
+        },
+      };
     })
   ).snapshot.value;
 }

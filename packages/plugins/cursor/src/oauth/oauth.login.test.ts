@@ -59,6 +59,27 @@ test('presents the login URL then returns credentials after a 404 then 200', asy
   ]);
 });
 
+test('returns the JWT email as the Cursor account label', async () => {
+  const { ctx } = context();
+  const result = await loginCursor(
+    ctx,
+    { waiting: 'Waiting' },
+    {
+      now: () => 0,
+      sleep: async () => {},
+      uuid: () => 'uuid-1',
+      fetch: async () =>
+        new Response(
+          JSON.stringify({ accessToken: jwt({ sub: 'u1', email: 'A@B.com', exp: 4_000 }), refreshToken: 'r1' }),
+          { status: 200 },
+        ),
+    },
+  );
+  expect(result.accountLabel).toBe('a@b.com');
+  expect(result.credentials.email).toBe('a@b.com');
+  expect(result.fingerprint.startsWith('sha256:')).toBe(true);
+});
+
 test('rejects login when Cursor returns no stable account identifier', async () => {
   const { ctx } = context();
   await expect(

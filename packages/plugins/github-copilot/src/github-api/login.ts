@@ -1,6 +1,11 @@
 import type { LocalizedText, OAuthLoginContext, RuntimeFetch } from '@aio-proxy/plugin-sdk';
 
-import { deviceCodeResponseSchema, githubTokenResponseSchema, githubUserResponseSchema } from '../schema';
+import {
+  deviceCodeResponseSchema,
+  githubEmailsResponseSchema,
+  githubTokenResponseSchema,
+  githubUserResponseSchema,
+} from '../schema';
 import { fetchCopilotToken } from './credential';
 import { authHeaders, fetchJson } from './http';
 import type { GitHubAccountOptions, GitHubCopilotCredential, GitHubCopilotLoginPresentationText } from './types';
@@ -41,11 +46,13 @@ export async function loginToGitHubCopilot(
   const copilot = await fetchCopilotToken(apiBase, githubToken, context.signal, fetcher);
   const baseURL = getGitHubCopilotBaseURL(copilot.access, enterpriseURL);
   const user = await fetchGitHubUser(apiBase, githubToken, context.signal, fetcher);
+  const email = await fetchGitHubPrimaryEmail(apiBase, githubToken, context.signal, fetcher);
+  const accountLabel = email ?? user.login;
 
   return {
     fingerprint: user.id,
     suggestedKey: `copilot-${user.id}`,
-    ...(user.login === undefined ? {} : { accountLabel: user.login }),
+    ...(accountLabel === undefined ? {} : { accountLabel }),
     credentials: {
       githubToken,
       copilotToken: copilot.access,
@@ -61,7 +68,7 @@ async function requestDeviceCode(authBase: string, signal: AbortSignal, fetcher:
   return await fetchJson(
     `${authBase}/login/device/code`,
     {
-      body: new URLSearchParams({ client_id: CLIENT_ID, scope: 'read:user' }),
+      body: new URLSearchParams({ client_id: CLIENT_ID, scope: 'read:user user:email' }),
       headers: { accept: 'application/json' },
       method: 'POST',
       signal,
@@ -143,4 +150,26 @@ function abortableSleep(milliseconds: number, signal: AbortSignal): Promise<void
       reject(signal.reason);
     }
   });
+}
+
+async function fetchGitHubPrimaryEmail(
+  apiBase: string,
+  githubToken: string,
+  signal: AbortSignal,
+  fetcher: RuntimeFetch,
+): Promise<string | undefined> {
+  try {
+    const emails = await fetchJson(
+      `${apiBase}/user/emails`,
+      { headers: authHeaders(githubToken), signal },
+      githubEmailsResponseSchema,
+      fetcher,
+    );
+    const match = emails.find((entry) => entry.primary === true && entry.verified === true);
+    const email = match?.email.trim().toLowerCase();
+    return email === undefined || email === '' ? undefined : email;
+  } catch {
+    if (signal.aborted) throw signal.reason;
+    return undefined;
+  }
 }

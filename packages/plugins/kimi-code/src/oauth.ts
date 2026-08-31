@@ -15,6 +15,7 @@ export type KimiCredential = {
   readonly refreshToken: string;
   readonly expiresAt: number;
   readonly deviceId: string;
+  readonly email?: string;
 };
 
 export type KimiOAuthDependencies = {
@@ -47,13 +48,15 @@ type TokenResponse = {
 };
 
 export async function kimiLoginResult(credential: KimiCredential) {
-  const fingerprint = await sha256(credential.refreshToken);
+  const email = kimiCredentialEmail(credential.accessToken, credential.refreshToken, credential.email);
+  const credentials = email === undefined ? credential : { ...credential, email };
+  const fingerprint = await sha256(credentials.refreshToken);
   return {
     fingerprint,
     suggestedKey: `kimi-${fingerprint.slice(0, 12)}`,
-    accountLabel: 'Kimi Code',
-    credentials: credential,
-    expiresAt: credential.expiresAt,
+    accountLabel: email ?? 'Kimi Code',
+    credentials,
+    expiresAt: credentials.expiresAt,
   };
 }
 
@@ -180,11 +183,13 @@ function completeCredential(token: TokenResponse, deviceId: string, now: number)
   if (token.accessToken === undefined || token.refreshToken === undefined || token.expiresIn === undefined) {
     throw new Error('Kimi OAuth token response is invalid');
   }
+  const email = kimiCredentialEmail(token.accessToken, token.refreshToken);
   return {
     accessToken: token.accessToken,
     refreshToken: token.refreshToken,
     expiresAt: now + token.expiresIn * 1_000,
     deviceId,
+    ...(email === undefined ? {} : { email }),
   };
 }
 
@@ -224,4 +229,26 @@ function abortableSleep(milliseconds: number, signal: AbortSignal): Promise<void
 async function sha256(value: string): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+function normalizeKimiEmail(value: string | undefined): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const email = value.trim().toLowerCase();
+  return email === '' ? undefined : email;
+}
+
+function readKimiJwtEmail(token: string): string | undefined {
+  try {
+    const payload = token.split('.')[1];
+    const value: unknown = JSON.parse(Buffer.from(payload ?? '', 'base64url').toString('utf8'));
+    if (!isPlainObject(value)) return undefined;
+    const email = value['email'];
+    return normalizeKimiEmail(typeof email === 'string' ? email : undefined);
+  } catch {
+    return undefined;
+  }
+}
+
+export function kimiCredentialEmail(accessToken: string, refreshToken: string, previous?: string): string | undefined {
+  return readKimiJwtEmail(accessToken) ?? readKimiJwtEmail(refreshToken) ?? previous;
 }

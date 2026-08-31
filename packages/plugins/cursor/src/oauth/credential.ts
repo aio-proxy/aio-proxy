@@ -1,7 +1,7 @@
 import { type CredentialPort, CredentialRefreshError, type RuntimeFetch } from '@aio-proxy/plugin-sdk';
 import { isPlainObject } from 'es-toolkit/predicate';
 
-import { cursorTokenExpiry } from '../jwt/index';
+import { cursorIdentityEmail, cursorTokenExpiry } from '../jwt/index';
 import type { CursorCredential } from '../schema';
 import { CURSOR_REFRESH_URL } from './constants';
 
@@ -44,11 +44,13 @@ export async function refreshCursorCredential(
     );
   }
   const token = await parseToken(response);
+  const email = cursorIdentityEmail(token.accessToken) ?? current.email;
   return {
     ...current,
     accessToken: token.accessToken,
     refreshToken: token.refreshToken ?? current.refreshToken,
     expiresAt: cursorTokenExpiry(token.accessToken, now()),
+    ...(email === undefined ? {} : { email }),
   };
 }
 
@@ -64,7 +66,10 @@ export async function currentCursorCredential(
     const refreshed = await refreshCursorCredential(value, { ...options, signal });
     return {
       value: refreshed,
-      metadata: { accountLabel: 'Cursor', expiresAt: refreshed.expiresAt },
+      metadata: {
+        expiresAt: refreshed.expiresAt,
+        ...(refreshed.email === undefined ? {} : { accountLabel: refreshed.email }),
+      },
     };
   });
   return (await waitForCaller(refreshing, options.signal)).snapshot.value;

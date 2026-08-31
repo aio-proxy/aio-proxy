@@ -59,6 +59,30 @@ test('imports CPA kimi credentials with native device and fingerprint rules', as
     },
   );
   expect(explicit.credentials.deviceId).toBe('explicit-device');
+
+  const accessToken = [
+    'h',
+    Buffer.from(JSON.stringify({ email: 'Person@Example.com' })).toString('base64url'),
+    's',
+  ].join('.');
+  const emailed = await importer.import(
+    context,
+    {},
+    {
+      type: 'kimi',
+      access_token: accessToken,
+      refresh_token: 'refresh',
+      device_id: 'explicit-device',
+    },
+  );
+  const emailedShared = await kimiLoginResult({
+    accessToken,
+    refreshToken: 'refresh',
+    expiresAt: 0,
+    deviceId: 'explicit-device',
+  });
+  expect(emailed.accountLabel).toBe('person@example.com');
+  expect(emailed.fingerprint).toBe(emailedShared.fingerprint);
 });
 
 test('preserves localized login and quota presentation values', async () => {

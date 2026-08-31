@@ -38,6 +38,10 @@ const cpaAntigravitySchema = zod
   })
   .loose();
 
+function normalizeAntigravityEmail(value: string): string | undefined {
+  const email = value.trim().toLowerCase();
+  return email === '' ? undefined : email;
+}
 function antigravityExpiry(source: zod.infer<typeof cpaAntigravitySchema>): number {
   const parsed = typeof source.expired === 'string' ? Date.parse(source.expired) : Number.NaN;
   if (Number.isFinite(parsed)) return parsed;
@@ -118,11 +122,13 @@ export function createGoogleAntigravityPlugin(
         signal: context.signal,
       });
       if (projectId.trim() === '') throw new Error('Google Antigravity project identity is missing');
+      const identityEmail = email.trim();
+      const presentationEmail = normalizeAntigravityEmail(identityEmail) ?? identityEmail;
       return {
-        fingerprint: email,
-        suggestedKey: `antigravity-${email}`,
-        accountLabel: email,
-        credentials: { ...token, email, projectId },
+        fingerprint: identityEmail,
+        suggestedKey: `antigravity-${identityEmail}`,
+        accountLabel: presentationEmail,
+        credentials: { ...token, email: presentationEmail, projectId },
         expiresAt: token.expiresAt,
       };
     },
@@ -154,11 +160,13 @@ export function createGoogleAntigravityPlugin(
               sleep: dependencies.sleep,
               signal: context.signal,
             }));
+          const identityEmail = source.email;
+          const presentationEmail = normalizeAntigravityEmail(identityEmail) ?? identityEmail;
           return {
-            fingerprint: source.email,
-            suggestedKey: `antigravity-${source.email}`,
-            accountLabel: source.email,
-            credentials: { ...token, email: source.email, projectId },
+            fingerprint: identityEmail,
+            suggestedKey: `antigravity-${identityEmail}`,
+            accountLabel: presentationEmail,
+            credentials: { ...token, email: presentationEmail, projectId },
             expiresAt: token.expiresAt,
           };
         },

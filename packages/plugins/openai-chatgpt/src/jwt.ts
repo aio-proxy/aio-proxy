@@ -32,3 +32,22 @@ export function extractAccountId(token: string): string | undefined {
 
   return undefined;
 }
+
+export function normalizeChatGPTEmail(value: string | undefined): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const email = value.trim().toLowerCase();
+  return email === '' ? undefined : email;
+}
+
+export function extractEmail(token: string): string | undefined {
+  let payload: JwtPayload;
+  try {
+    payload = decodeJwt(token);
+  } catch (error) {
+    if (error instanceof Error) return undefined;
+    throw error;
+  }
+
+  const email = Reflect.get(payload, 'email');
+  return normalizeChatGPTEmail(typeof email === 'string' ? email : undefined);
+}

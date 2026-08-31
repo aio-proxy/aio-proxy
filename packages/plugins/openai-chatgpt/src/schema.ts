@@ -18,4 +18,5 @@ export type ChatGPTCredential = {
   readonly accountId: string;
   readonly expiresAt: number;
   readonly refreshToken: string;
+  readonly email?: string;
 };
