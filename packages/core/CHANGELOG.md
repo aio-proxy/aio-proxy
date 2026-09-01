@@ -1,5 +1,23 @@
 # @aio-proxy/core
 
+## 0.12.3
+
+### Patch Changes
+
+- [#235](https://github.com/aio-proxy/aio-proxy/pull/235) [`aeec254`](https://github.com/aio-proxy/aio-proxy/commit/aeec254e53904ecf656d055ea9f45029f5bb68a8) Thanks [@baranwang](https://github.com/baranwang)! - Group dashboard model cost and usage by the requested model alias instead of the upstream model a route resolved to.
+- Updated dependencies []:
+  - @aio-proxy/i18n@0.12.3
+  - @aio-proxy/logger@0.12.3
+  - @aio-proxy/plugin-cursor@0.12.3
+  - @aio-proxy/plugin-github-copilot@0.12.3
+  - @aio-proxy/plugin-google-antigravity@0.12.3
+  - @aio-proxy/plugin-kimi-code@0.12.3
+  - @aio-proxy/plugin-openai-chatgpt@0.12.3
+  - @aio-proxy/plugin-sdk@0.12.3
+  - @aio-proxy/plugin-xai-grok@0.12.3
+  - @aio-proxy/shared@0.12.3
+  - @aio-proxy/types@0.12.3
+
 ## 0.12.2
 
 ### Patch Changes

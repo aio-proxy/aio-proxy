@@ -1,5 +1,13 @@
 # @aio-proxy/plugin-sdk
 
+## 0.12.3
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @aio-proxy/shared@0.12.3
+  - @aio-proxy/types@0.12.3
+
 ## 0.12.2
 
 ### Patch Changes
