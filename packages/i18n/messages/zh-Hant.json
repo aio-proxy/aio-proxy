@@ -698,25 +698,6 @@
         "invalid": "無效"
       },
       "table": {
-        "label": "提供商",
-        "col_provider": "提供商",
-        "col_details": "詳情",
-        "col_type": "類型",
-        "col_protocol": "協定",
-        "col_name": "名稱",
-        "col_enabled": "啟用",
-        "col_status": "狀態",
-        "col_state": "可用性",
-        "col_capability": "能力",
-        "col_account": "帳戶",
-        "col_catalog": "目錄",
-        "col_models": "模型",
-        "col_priority": "優先級",
-        "col_weight": "權重",
-        "col_usage_24h": "24 小時請求",
-        "col_actions": "操作",
-        "expand_group": "展開提供商分組",
-        "collapse_group": "收合提供商分組",
         "filter": "篩選提供商",
         "filter_placeholder": "依名稱或提供商 ID 搜尋",
         "columns": "提供商欄"
@@ -724,20 +705,6 @@
       "badge": {
         "enabled": "已啟用",
         "disabled": "已停用"
-      },
-      "state": {
-        "details": "提供商 {id} 的診斷資訊",
-        "ready": "就緒",
-        "failed": "失敗",
-        "unavailable": "無法使用",
-        "catalog_fresh": "最新",
-        "catalog_stale": "已過期"
-      },
-      "account": {
-        "expires_at": "到期時間 {value}"
-      },
-      "catalog": {
-        "last_success_at": "最近成功 {value}"
       },
       "oauth": {
         "select_label": "登入方式",

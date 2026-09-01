@@ -698,25 +698,6 @@
         "invalid": "Invalid"
       },
       "table": {
-        "label": "Providers",
-        "col_provider": "Provider",
-        "col_details": "Details",
-        "col_type": "Type",
-        "col_protocol": "Protocol",
-        "col_name": "Name",
-        "col_enabled": "Enabled",
-        "col_status": "Status",
-        "col_state": "Availability",
-        "col_capability": "Capability",
-        "col_account": "Account",
-        "col_catalog": "Catalog",
-        "col_models": "Models",
-        "col_priority": "Priority",
-        "col_weight": "Weight",
-        "col_usage_24h": "24h requests",
-        "col_actions": "Actions",
-        "expand_group": "Expand provider group",
-        "collapse_group": "Collapse provider group",
         "filter": "Filter providers",
         "filter_placeholder": "Search by name or Provider ID",
         "columns": "Provider columns"
@@ -724,20 +705,6 @@
       "badge": {
         "enabled": "Enabled",
         "disabled": "Disabled"
-      },
-      "state": {
-        "details": "Diagnostics for provider {id}",
-        "ready": "Ready",
-        "failed": "Failed",
-        "unavailable": "Unavailable",
-        "catalog_fresh": "Fresh",
-        "catalog_stale": "Stale"
-      },
-      "account": {
-        "expires_at": "Expires {value}"
-      },
-      "catalog": {
-        "last_success_at": "Last success {value}"
       },
       "oauth": {
         "select_label": "Sign-in method",

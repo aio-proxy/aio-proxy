@@ -698,25 +698,6 @@
         "invalid": "无效"
       },
       "table": {
-        "label": "提供商",
-        "col_provider": "提供商",
-        "col_details": "详情",
-        "col_type": "类型",
-        "col_protocol": "协议",
-        "col_name": "名称",
-        "col_enabled": "启用",
-        "col_status": "状态",
-        "col_state": "可用性",
-        "col_capability": "能力",
-        "col_account": "账户",
-        "col_catalog": "目录",
-        "col_models": "模型",
-        "col_priority": "优先级",
-        "col_weight": "权重",
-        "col_usage_24h": "24 小时请求",
-        "col_actions": "操作",
-        "expand_group": "展开提供商分组",
-        "collapse_group": "收起提供商分组",
         "filter": "筛选提供商",
         "filter_placeholder": "按名称或提供商 ID 搜索",
         "columns": "提供商列"
@@ -724,20 +705,6 @@
       "badge": {
         "enabled": "已启用",
         "disabled": "已禁用"
-      },
-      "state": {
-        "details": "提供商 {id} 的诊断信息",
-        "ready": "就绪",
-        "failed": "失败",
-        "unavailable": "不可用",
-        "catalog_fresh": "最新",
-        "catalog_stale": "已过期"
-      },
-      "account": {
-        "expires_at": "到期时间 {value}"
-      },
-      "catalog": {
-        "last_success_at": "最近成功 {value}"
       },
       "oauth": {
         "select_label": "登录方式",

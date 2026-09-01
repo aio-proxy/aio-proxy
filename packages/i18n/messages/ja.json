@@ -698,25 +698,6 @@
         "invalid": "無効"
       },
       "table": {
-        "label": "プロバイダー",
-        "col_provider": "プロバイダー",
-        "col_details": "詳細",
-        "col_type": "タイプ",
-        "col_protocol": "プロトコル",
-        "col_name": "名前",
-        "col_enabled": "有効",
-        "col_status": "ステータス",
-        "col_state": "可用性",
-        "col_capability": "ケイパビリティ",
-        "col_account": "アカウント",
-        "col_catalog": "カタログ",
-        "col_models": "モデル",
-        "col_priority": "優先度",
-        "col_weight": "ウェイト",
-        "col_usage_24h": "24時間のリクエスト",
-        "col_actions": "操作",
-        "expand_group": "プロバイダーグループを展開",
-        "collapse_group": "プロバイダーグループを折りたたむ",
         "filter": "プロバイダーを絞り込む",
         "filter_placeholder": "名前または Provider ID で検索",
         "columns": "プロバイダーの列"
@@ -724,20 +705,6 @@
       "badge": {
         "enabled": "有効",
         "disabled": "無効"
-      },
-      "state": {
-        "details": "プロバイダー {id} の診断情報",
-        "ready": "準備完了",
-        "failed": "失敗",
-        "unavailable": "利用不可",
-        "catalog_fresh": "最新",
-        "catalog_stale": "古い"
-      },
-      "account": {
-        "expires_at": "有効期限 {value}"
-      },
-      "catalog": {
-        "last_success_at": "最終成功 {value}"
       },
       "oauth": {
         "select_label": "ログイン方法",

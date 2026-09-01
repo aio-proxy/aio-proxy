@@ -104,7 +104,13 @@ export const ProviderCard: React.FC<ProviderCardProps> = ({
               </div>
             ) : null}
             <ProviderCardStats provider={provider} health={health} />
-            <ProviderCardFooter provider={provider} usage={usage} usagePending={usagePending} onDelete={onDelete} />
+            <ProviderCardFooter
+              provider={provider}
+              usage={usage}
+              usagePending={usagePending}
+              editable={editable}
+              onDelete={onDelete}
+            />
           </>
         )}
       </CardContent>

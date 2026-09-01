@@ -698,25 +698,6 @@
         "invalid": "잘못됨"
       },
       "table": {
-        "label": "프로바이더",
-        "col_provider": "프로바이더",
-        "col_details": "세부 정보",
-        "col_type": "유형",
-        "col_protocol": "프로토콜",
-        "col_name": "이름",
-        "col_enabled": "활성화",
-        "col_status": "상태",
-        "col_state": "가용성",
-        "col_capability": "기능",
-        "col_account": "계정",
-        "col_catalog": "카탈로그",
-        "col_models": "모델",
-        "col_priority": "우선순위",
-        "col_weight": "가중치",
-        "col_usage_24h": "24시간 요청",
-        "col_actions": "작업",
-        "expand_group": "프로바이더 그룹 펼치기",
-        "collapse_group": "프로바이더 그룹 접기",
         "filter": "프로바이더 필터링",
         "filter_placeholder": "이름 또는 Provider ID로 검색",
         "columns": "프로바이더 열"
@@ -724,20 +705,6 @@
       "badge": {
         "enabled": "활성화됨",
         "disabled": "비활성화됨"
-      },
-      "state": {
-        "details": "프로바이더 {id}의 진단 정보",
-        "ready": "준비됨",
-        "failed": "실패",
-        "unavailable": "사용 불가",
-        "catalog_fresh": "최신",
-        "catalog_stale": "오래됨"
-      },
-      "account": {
-        "expires_at": "만료 {value}"
-      },
-      "catalog": {
-        "last_success_at": "마지막 성공 {value}"
       },
       "oauth": {
         "select_label": "로그인 방식",

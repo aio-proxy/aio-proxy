@@ -30,6 +30,33 @@
 
 **Deliberate deviation from the spec, applied throughout:** the spec's quota response sketch was `{ snapshot, sampledAt, plan?, stale, error? }`. Because `plan` now lives *inside* `OAuthQuotaSnapshot` (Task 1), the route returns `{ snapshot, sampledAt, stale, error? }` and every reader takes the plan from `snapshot.plan`. Duplicating it at the top level would be two sources of truth.
 
+## Execution status
+
+Tasks 1–13 are **landed**. Their steps are kept below as the record of what was built; do not re-run them.
+
+| Task | Commit |
+| --- | --- |
+| 1 — OAuth quota `plan` | `26dcb2eb` |
+| 2 — `protocols[]` + `hasQuota` | `f325bf90` |
+| 3 — Quota cache | `fef15e14` |
+| 4 — Quota route | `8f804b40` |
+| 5 — Pipeline warming | `72fdc48d` |
+| 6 — kimi-code plan | `27a6d01f` |
+| 7 — xai-grok plan + per-product usage | `e3e9d4b5` |
+| 8 — Dialog primitive | (folded into `f325bf90`; the primitive was already present) |
+| 9 — Card and quota copy | `7754735f` |
+| Review round 1 follow-ups | `77213e25` |
+| 10 — Pure list and quota view helpers | `b47fd3aa` |
+| 11 — Health and quota services | `b2da608c` |
+| 13 — Quota ring and detail modal (built before 12, which imports it) | `9bd941dd` |
+| 12 — Provider card | `85ef866c` |
+
+`77213e25` also moved the route to `packages/server/src/dashboard-routes/provider-routes/` with a colocated `provider-routes.test.ts`, dropped the `hono/etag` middleware (it cached the very body `refresh` exists to bypass), made the cache persist failures as stale entries with negative caching and in-flight dedupe, gated warming on `response.ok`, threaded `hasQuota` through the materialization failure paths, and annotated `PROTOCOL_LABELS` as `Record<ProviderProtocol, …>` (which surfaced the missing `openai-image` entry, so **Task 12 Step 3's label addition is already done** — only the `PROTOCOL_ORDER` pin remains).
+
+**Task 7 correction:** the xAI weekly-window behaviour was already correct before the change — `weeklyItem()` returned an item whenever `currentPeriod.end` parsed. The test added in `e3e9d4b5` is a regression guard, not a fix. Neither the changeset nor the PR body may claim a unified-billing weekly-limit fix.
+
+**Known baseline:** `bun run lint:types` reports 11 pre-existing TypeScript errors on pristine `main` (`91de6ca4`), all in `packages/dashboard` and `packages/cli`, none from this work. `bun run preflight` therefore cannot pass end-to-end; report the baseline honestly rather than papering over it.
+
 ---
 
 ## File map
@@ -222,7 +249,7 @@ Expected: PASS.
 
 ```bash
 git add packages/plugin-sdk/src/oauth.ts packages/core/src/plugins/quota.ts packages/core/src/plugins/quota.test.ts
-git commit -m "feat(plugin-sdk): allow an optional plan on OAuth quota snapshots"
+git commit -m "feat(plugin-sdk): allow an optional plan on OAuth quota snapshots" -m "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -465,7 +492,7 @@ Expected: PASS. The only remaining `lint:types` errors should be the two dashboa
 
 ```bash
 git add -A
-git commit -m "feat(types): expose provider protocols list and quota capability on dashboard summaries"
+git commit -m "feat(types): expose provider protocols list and quota capability on dashboard summaries" -m "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -687,7 +714,7 @@ Expected: PASS.
 
 ```bash
 git add packages/server/src/plugin-quota
-git commit -m "feat(server): cache OAuth quota reads behind a per-provider cooldown"
+git commit -m "feat(server): cache OAuth quota reads behind a per-provider cooldown" -m "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -843,7 +870,7 @@ Expected: PASS, including the 304.
 
 ```bash
 git add packages/server/src/server-state packages/server/src/dashboard-routes/provider-routes.ts packages/server/__tests__/dashboard-provider-quota.test.ts
-git commit -m "feat(server): add a cached QUERY route for OAuth provider quota"
+git commit -m "feat(server): add a cached QUERY route for OAuth provider quota" -m "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -987,7 +1014,7 @@ Expected: PASS.
 
 ```bash
 git add packages/server/src/runtime.ts packages/server/src/routes/pipeline packages/server/src/server-state packages/server/__tests__/pipeline-helpers
-git commit -m "feat(server): warm OAuth quota after a provider answers a request"
+git commit -m "feat(server): warm OAuth quota after a provider answers a request" -m "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -1078,7 +1105,7 @@ Expected: PASS — including the pre-existing assertions that the request URL is
 
 ```bash
 git add packages/plugins/kimi-code/src
-git commit -m "feat(plugin-kimi-code): report the membership plan on quota snapshots"
+git commit -m "feat(plugin-kimi-code): report the membership plan on quota snapshots" -m "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -1361,7 +1388,7 @@ Expected: PASS, including the pre-existing `keeps valid monthly quota when weekl
 
 ```bash
 git add packages/plugins/xai-grok/src
-git commit -m "feat(plugin-xai-grok): report the plan, per-product usage, and unified-billing weekly limits"
+git commit -m "feat(plugin-xai-grok): report the plan, per-product usage, and unified-billing weekly limits" -m "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -1415,7 +1442,7 @@ Expected: PASS.
 
 ```bash
 git add packages/ui/src/components/dialog.tsx
-git commit -m "chore(ui): add the shadcn dialog primitive"
+git commit -m "chore(ui): add the shadcn dialog primitive" -m "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -1532,7 +1559,7 @@ Expected: `locales aligned`.
 
 ```bash
 git add packages/i18n/messages
-git commit -m "feat(i18n): add Provider card and quota copy"
+git commit -m "feat(i18n): add Provider card and quota copy" -m "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -1598,14 +1625,14 @@ test('a configuration-invalid Provider is not editable', () => {
   expect(
     canEditProvider(
       providerStub({
-        state: { status: 'unavailable', diagnostic: { code: 'PROVIDER_CONFIG_INVALID', summary: 'bad', retryable: false } },
+        state: { status: 'unavailable', diagnostic: { code: 'PROVIDER_CONFIG_INVALID', summary: 'bad', retryable: false, occurredAt: '2026-09-01T00:00:00.000Z' } },
       }),
     ),
   ).toBe(false);
   expect(
     canEditProvider(
       providerStub({
-        state: { status: 'unavailable', diagnostic: { code: 'CREDENTIALS_MISSING_OR_INVALID', summary: 'x', retryable: false } },
+        state: { status: 'unavailable', diagnostic: { code: 'CREDENTIALS_MISSING_OR_INVALID', summary: 'x', retryable: false, occurredAt: '2026-09-01T00:00:00.000Z' } },
       }),
     ),
   ).toBe(true);
@@ -1626,7 +1653,7 @@ test('chips narrow by availability, enablement, and kind', () => {
     providerStub({
       id: 'broken',
       kind: ProviderKind.Api,
-      state: { status: 'unavailable', diagnostic: { code: 'CATALOG_UNAVAILABLE', summary: 'x', retryable: true } },
+      state: { status: 'unavailable', diagnostic: { code: 'CATALOG_UNAVAILABLE', summary: 'x', retryable: true, occurredAt: '2026-09-01T00:00:00.000Z' } },
     }),
   ];
   const ids = (filters: Partial<typeof emptyProviderListFilters>) =>
@@ -1766,7 +1793,9 @@ export const visibleProviders = (
         matchesEnablement(provider, filters.enablement) &&
         matchesKind(provider, filters.kind),
     )
-    .toSorted(
+    // `filter` already produced a fresh array, so sorting in place mutates nothing the caller owns.
+    // `toSorted` is not in this package's TypeScript lib target.
+    .sort(
       (left, right) =>
         effectivePriority(right) - effectivePriority(left) ||
         effectiveWeight(right) - effectiveWeight(left) ||
@@ -1822,7 +1851,7 @@ Expected: PASS.
 
 ```bash
 git add packages/dashboard/src/modules/providers/lib
-git commit -m "feat(dashboard): add pure Provider list and quota view helpers"
+git commit -m "feat(dashboard): add pure Provider list and quota view helpers" -m "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -1833,6 +1862,7 @@ git commit -m "feat(dashboard): add pure Provider list and quota view helpers"
 - Modify: `packages/dashboard/src/lib/query-keys.ts`
 - Create: `packages/dashboard/src/modules/providers/services/provider-health-service/{index.ts,provider-health-service.ts}`
 - Create: `packages/dashboard/src/modules/providers/services/provider-quota-service/{index.ts,provider-quota-service.ts}`
+- Create: `packages/dashboard/src/modules/providers/hooks/use-provider-quota-refresh.ts`
 
 **Interfaces:**
 - Consumes: the `QUERY` route from Task 4, `dashboardClient` from `@/lib/dashboard-client`.
@@ -1841,15 +1871,17 @@ git commit -m "feat(dashboard): add pure Provider list and quota view helpers"
   export type ProviderHealth = { readonly successRate: number; readonly p95LatencyMs: number };
   export const providerHealthQueryOptions: () => /* TanStack queryOptions yielding ReadonlyMap<string, ProviderHealth> */;
 
-  export type ProviderQuotaResult = {
-    readonly snapshot: OAuthQuotaSnapshot;
-    readonly sampledAt: number;
-    readonly stale: boolean;
-    readonly error?: string;
-  };
-  export const providerQuotaQueryOptions: (id: string, refresh?: boolean) => /* queryOptions yielding ProviderQuotaResult */;
+  // Derived from the route, never redeclared — `packages/dashboard/CLAUDE.md`: "Dashboard API route
+  // and client types must come from the typed Hono client exported by `@aio-proxy/server`."
+  export type ProviderQuotaResult = InferResponseType<
+    (typeof dashboardClient.dashboard.api.providers)[':id']['quota']['$query'],
+    200
+  >;
+  export const getProviderQuota: (id: string, refresh: boolean) => Promise<ProviderQuotaResult>;
+  export const providerQuotaQueryOptions: (id: string) => /* queryOptions yielding ProviderQuotaResult */;
+  export const useProviderQuotaRefresh: (id: string) => UseMutationResult<ProviderQuotaResult, Error, void>;
   ```
-  Tasks 12–14 consume both.
+  Tasks 12–14 consume all of them.
 
 **Why a providers-owned health service:** `overviewDiagnosticsQueryOptions` lives in `modules/overview/services/`, and `packages/dashboard/AGENTS.md` forbids a `@/modules/overview/...` import from inside `modules/providers/`. This service calls the same endpoint with a distinct query key and a provider-shaped result.
 
@@ -1921,18 +1953,15 @@ export { getProviderHealth, type ProviderHealth, providerHealthQueryOptions } fr
 Create `packages/dashboard/src/modules/providers/services/provider-quota-service/provider-quota-service.ts`:
 
 ```ts
-import type { OAuthQuotaSnapshot } from '@aio-proxy/plugin-sdk';
 import { queryOptions } from '@tanstack/react-query';
+import type { InferResponseType } from 'hono/client';
 
 import { dashboardClient } from '@/lib/dashboard-client';
 import { queryKeys } from '@/lib/query-keys';
 
-export type ProviderQuotaResult = {
-  readonly snapshot: OAuthQuotaSnapshot;
-  readonly sampledAt: number;
-  readonly stale: boolean;
-  readonly error?: string;
-};
+const quotaEndpoint = dashboardClient.dashboard.api.providers[':id'].quota.$query;
+
+export type ProviderQuotaResult = InferResponseType<typeof quotaEndpoint, 200>;
 
 class DashboardProviderQuotaRequestError extends Error {
   constructor(readonly status: number) {
@@ -1942,46 +1971,74 @@ class DashboardProviderQuotaRequestError extends Error {
 }
 
 export const getProviderQuota = async (id: string, refresh: boolean): Promise<ProviderQuotaResult> => {
-  const response = await dashboardClient.dashboard.api.providers[':id'].quota.$query({
-    param: { id },
-    json: { refresh },
-  });
+  const response = await quotaEndpoint({ param: { id }, json: { refresh } });
   if (!response.ok) throw new DashboardProviderQuotaRequestError(response.status);
-  return (await response.json()) as ProviderQuotaResult;
+  return await response.json();
 };
 
 /**
- * `refresh` is deliberately outside the query key: the card and the modal share one cache entry, and
- * opening the modal should replace the card's reading rather than start a second one.
+ * The passive read. `refresh` is deliberately absent from both the key and the function: the card and
+ * the modal share one cache entry, and a passive render must never bypass the server's cooldown.
+ * Explicit refreshes go through `useProviderQuotaRefresh`.
  */
-export const providerQuotaQueryOptions = (id: string, refresh = false) =>
+export const providerQuotaQueryOptions = (id: string) =>
   queryOptions({
     queryKey: queryKeys.providerQuota(id),
-    queryFn: () => getProviderQuota(id, refresh),
+    queryFn: () => getProviderQuota(id, false),
     staleTime: 30_000,
     retry: false,
   });
 ```
 
-Create `index.ts`:
+Create `provider-quota-service/index.ts`:
 
 ```ts
 export { getProviderQuota, type ProviderQuotaResult, providerQuotaQueryOptions } from './provider-quota-service';
 ```
 
-- [ ] **Step 4: Verify the RPC types line up**
+- [ ] **Step 4: Write the refresh hook**
+
+`query.refetch()` cannot express a refresh: it re-runs the captured `queryFn`, which is pinned to
+`refresh: false`. Opening the modal must bypass the server's five-minute cooldown, so the refresh is a
+mutation that writes its result into the same cache entry the ring reads.
+
+Create `packages/dashboard/src/modules/providers/hooks/use-provider-quota-refresh.ts`:
+
+```ts
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+
+import { queryKeys } from '@/lib/query-keys';
+
+import { getProviderQuota, type ProviderQuotaResult } from '../services/provider-quota-service';
+
+/**
+ * Bypasses the server's per-provider cooldown and seeds the shared cache entry, so the ring and any
+ * open dialog both re-render from one reading.
+ */
+export const useProviderQuotaRefresh = (id: string) => {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: () => getProviderQuota(id, true),
+    onSuccess: (result: ProviderQuotaResult) => {
+      client.setQueryData(queryKeys.providerQuota(id), result);
+    },
+  });
+};
+```
+
+- [ ] **Step 5: Verify the RPC types line up**
 
 ```bash
 bun run build && bun run lint:types
 ```
 
-Expected: PASS. If `$query` is not present on the RPC handle, the route in Task 4 was registered with `.on('QUERY', ...)` instead of `.query(...)` — fix Task 4, not this service.
+Expected: PASS against the existing 11-error baseline — no *new* errors. If `$query` is not present on the RPC handle, the route in Task 4 was registered with `.on('QUERY', ...)` instead of `.query(...)` — fix Task 4, not this service.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add packages/dashboard/src/lib/query-keys.ts packages/dashboard/src/modules/providers/services
-git commit -m "feat(dashboard): add Provider health and quota services"
+git add packages/dashboard/src/lib/query-keys.ts packages/dashboard/src/modules/providers/services packages/dashboard/src/modules/providers/hooks
+git commit -m "feat(dashboard): add Provider health and quota services" -m "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -1990,8 +2047,8 @@ git commit -m "feat(dashboard): add Provider health and quota services"
 
 **Files:**
 - Modify: `packages/dashboard/src/components/protocol-label/protocol-label.tsx`
-- Create: `.../modules/providers/components/provider-protocol-stack/{index.ts,provider-protocol-stack.tsx}`
-- Create: `.../modules/providers/components/provider-card/{index.ts,provider-card.tsx,provider-card-identity.tsx,provider-card-stats.tsx,provider-card-footer.tsx,provider-card.test.tsx}`
+- Create: `.../modules/providers/components/provider-protocol-labels/{index.ts,provider-protocol-labels.tsx}`
+- Create: `.../modules/providers/components/provider-card/{index.ts,provider-card.tsx,provider-card-identity.tsx,provider-card-stat.tsx,provider-card-stats.tsx,provider-card-footer.tsx,provider-card.test.tsx}`
 
 **Interfaces:**
 - Consumes: `providerDisplayName`, `canEditProvider` (Task 10); `ProviderHealth` (Task 11); `ProviderUsage` from `../../services/provider-usage-service`; the surviving `ProviderEnabledSwitch`, `ProviderMoreMenu`, `DiagnosticDetails`; the ring from Task 13.
@@ -2011,26 +2068,45 @@ git commit -m "feat(dashboard): add Provider health and quota services"
   ```
   Task 14 renders it.
 
+**Design corrections applied here (review round 1):**
+- The card is **not** a `role="button"`. A card that is itself a button and also contains a switch, a
+  menu button, and the quota button is invalid nested-interactive content, and its `Enter`/`Space`
+  handler fires for every keystroke that bubbles up from those controls. Instead the display name is
+  a real `<Link>` with a `::after` overlay covering the card, and the controls sit in a
+  `relative z-10` row above it. Screen readers get one link, the mouse gets the whole card, and no
+  handler has to guess whether an event "belongs" to the card.
+- API protocol icons belong on **line 1**, next to the name (spec: "Line 1: 24px provider icon ·
+  display name · quota ring", and "API providers with several protocols render a stacked avatar
+  group"). Line 2 carries the protocol **label list** as an API provider's `detail` text.
+- `grayscale` applies to the icon and the ring only, not the whole card — a disabled card's text must
+  stay legible.
+- A `state.diagnostic` on an otherwise-`ready` provider appends an amber suffix to line 2; only an
+  `unavailable` state gets the red diagnostic box.
+- The card test renders inside a `QueryClientProvider`; `ProviderCard` calls `useQuery`
+  unconditionally and would otherwise throw "No QueryClient set".
+
 - [ ] **Step 1: Write the failing test**
 
 Create `packages/dashboard/src/modules/providers/components/provider-card/provider-card.test.tsx`:
 
 ```tsx
-import { ProviderKind } from '@aio-proxy/types';
+import { ProviderKind, ProviderProtocol } from '@aio-proxy/types';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { expect, rs, test } from '@rstest/core';
 import { render, screen } from '@testing-library/react';
+import type React from 'react';
 
 import { providerStub } from '../../lib/provider-fixtures';
 import { ProviderCard } from './provider-card';
 
-rs.mock('@tanstack/react-router', () => ({ Link: 'a', useNavigate: () => () => {} }));
+rs.mock('@tanstack/react-router', () => ({ Link: 'a' }));
 rs.mock('../../hooks/use-provider-enabled-mutation', () => ({
   useProviderEnabledMutation: () => ({ mutate: rs.fn(), isPending: false }),
 }));
 rs.mock('../../hooks/use-provider-mutations', () => ({
   useProviderDelete: () => ({ mutate: rs.fn(), isPending: false }),
 }));
-rs.mock('../provider-quota-ring', () => ({ ProviderQuotaRing: () => null }));
+rs.mock('../provider-quota-ring', () => ({ ProviderQuotaRing: () => <span data-testid="quota-ring" /> }));
 
 const baseProps = {
   health: undefined,
@@ -2042,16 +2118,48 @@ const baseProps = {
   onDelete: () => {},
 };
 
+// The card calls `useQuery` unconditionally, so every render needs a client in scope.
+const renderCard = (element: React.ReactElement) => {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(<QueryClientProvider client={client}>{element}</QueryClientProvider>);
+};
+
 test('shows the display name and keeps the Provider ID to the hover title', () => {
-  render(<ProviderCard {...baseProps} provider={providerStub({ id: 'carpool', name: 'Carpool' })} />);
+  renderCard(<ProviderCard {...baseProps} provider={providerStub({ id: 'carpool', name: 'Carpool' })} />);
 
   expect(screen.getByText('Carpool')).toBeInTheDocument();
   expect(screen.getByTitle('carpool')).toBeInTheDocument();
   expect(screen.queryByText('carpool')).not.toBeInTheDocument();
 });
 
+test('the card body is one link and never a nested-interactive button', () => {
+  renderCard(<ProviderCard {...baseProps} provider={providerStub({ id: 'p', name: 'P' })} />);
+
+  const card = screen.getByTestId('provider-row-p');
+  expect(card).not.toHaveAttribute('role', 'button');
+  expect(card.querySelectorAll('a')).toHaveLength(1);
+  expect(screen.getByTestId('provider-link-p')).toBeInTheDocument();
+});
+
+test('an API Provider lists its protocols on line 2 and stacks their icons on line 1', () => {
+  renderCard(
+    <ProviderCard
+      {...baseProps}
+      provider={providerStub({
+        id: 'gateway',
+        kind: ProviderKind.Api,
+        protocols: [ProviderProtocol.OpenAICompatible, ProviderProtocol.Anthropic],
+      })}
+    />,
+  );
+
+  expect(screen.getByTestId('provider-protocol-stack')).toBeInTheDocument();
+  expect(screen.getByTestId('provider-card-detail')).toHaveTextContent('OpenAI Compatible');
+  expect(screen.getByTestId('provider-card-detail')).toHaveTextContent('Anthropic');
+});
+
 test('renders the routing and health stats with dashes when unavailable', () => {
-  render(<ProviderCard {...baseProps} provider={providerStub({ id: 'p', priority: 5, weight: 3 })} />);
+  renderCard(<ProviderCard {...baseProps} provider={providerStub({ id: 'p', priority: 5, weight: 3 })} />);
 
   expect(screen.getByTestId('provider-stat-priority')).toHaveTextContent('5');
   expect(screen.getByTestId('provider-stat-weight')).toHaveTextContent('3');
@@ -2060,7 +2168,7 @@ test('renders the routing and health stats with dashes when unavailable', () => 
 });
 
 test('defaults priority to 0 and weight to 1 and formats health', () => {
-  render(
+  renderCard(
     <ProviderCard
       {...baseProps}
       provider={providerStub({ id: 'p' })}
@@ -2075,12 +2183,20 @@ test('defaults priority to 0 and weight to 1 and formats health', () => {
 });
 
 test('an unavailable Provider shows its diagnostic prominently', () => {
-  render(
+  renderCard(
     <ProviderCard
       {...baseProps}
       provider={providerStub({
         id: 'p',
-        state: { status: 'unavailable', diagnostic: { code: 'CATALOG_UNAVAILABLE', summary: 'Catalog down', retryable: true } },
+        state: {
+          status: 'unavailable',
+          diagnostic: {
+            code: 'CATALOG_UNAVAILABLE',
+            summary: 'Catalog down',
+            retryable: true,
+            occurredAt: '2026-09-01T00:00:00.000Z',
+          },
+        },
       })}
     />,
   );
@@ -2088,19 +2204,43 @@ test('an unavailable Provider shows its diagnostic prominently', () => {
   const diagnostic = screen.getByTestId('provider-card-diagnostic');
   expect(diagnostic).toHaveTextContent('Catalog down');
   expect(diagnostic).toHaveTextContent('CATALOG_UNAVAILABLE');
+  expect(screen.queryByTestId('provider-card-diagnostic-hint')).not.toBeInTheDocument();
+});
+
+test('a ready Provider carrying a diagnostic gets the amber line-2 suffix, not the red box', () => {
+  renderCard(
+    <ProviderCard
+      {...baseProps}
+      provider={providerStub({
+        id: 'p',
+        state: {
+          status: 'ready',
+          diagnostic: {
+            code: 'CATALOG_UNAVAILABLE',
+            summary: 'Model list may be out of date',
+            retryable: true,
+            occurredAt: '2026-09-01T00:00:00.000Z',
+          },
+        },
+      })}
+    />,
+  );
+
+  expect(screen.getByTestId('provider-card-diagnostic-hint')).toHaveTextContent('Model list may be out of date');
+  expect(screen.queryByTestId('provider-card-diagnostic')).not.toBeInTheDocument();
 });
 
 test('an invalid Provider offers deletion and nothing else', () => {
-  render(<ProviderCard {...baseProps} provider={providerStub({ id: 'oops', kind: 'invalid', enabled: false })} />);
+  renderCard(<ProviderCard {...baseProps} provider={providerStub({ id: 'oops', kind: 'invalid', enabled: false })} />);
 
   expect(screen.getByTestId('provider-card-invalid')).toBeInTheDocument();
   expect(screen.queryByRole('switch')).not.toBeInTheDocument();
-  expect(screen.queryByRole('link')).not.toBeInTheDocument();
+  expect(screen.queryByTestId('provider-link-oops')).not.toBeInTheDocument();
   expect(screen.getByTestId('provider-card-delete')).toBeInTheDocument();
 });
 
 test('a disabled Provider is dimmed but still interactive', () => {
-  render(<ProviderCard {...baseProps} provider={providerStub({ id: 'p', kind: ProviderKind.Api, enabled: false })} />);
+  renderCard(<ProviderCard {...baseProps} provider={providerStub({ id: 'p', kind: ProviderKind.Api, enabled: false })} />);
 
   expect(screen.getByTestId('provider-row-p').className).toContain('opacity-55');
   expect(screen.getByRole('switch')).toBeInTheDocument();
@@ -2115,29 +2255,30 @@ cd packages/dashboard && bun run test:unit -- provider-card
 
 Expected: FAIL — module not found.
 
-- [ ] **Step 3: Add the missing protocol entry**
+- [ ] **Step 3: Pin the protocol picker order**
 
-`packages/dashboard/src/components/protocol-label/protocol-label.tsx` — add to `PROTOCOL_LABELS`, after the Gemini Interactions entry:
+`PROTOCOL_LABELS` already carries the `openai-image` entry (added in `77213e25` when the map was
+annotated `Record<ProviderProtocol, …>`). What is still outstanding is that `PROTOCOL_ORDER` derives
+from `Object.keys(PROTOCOL_LABELS)`, so that entry also leaked an `OpenAI Image` option into two
+**pickers** — `modules/traces/components/traces-filters/traces-filters.tsx:146` and
+`modules/providers/components/provider-form-fields-api.tsx:111,171` — a product change this release
+did not ask for.
+
+Replace line 48 of `packages/dashboard/src/components/protocol-label/protocol-label.tsx`:
 
 ```ts
-  [ProviderProtocol.OpenAIImage]: {
-    label: 'OpenAI Image',
-    icon: withLobeIcon('openai'),
-  },
+export const PROTOCOL_ORDER = Object.keys(PROTOCOL_LABELS) as readonly ProviderProtocol[];
 ```
 
-The card's protocol stack indexes this map by a real `ProviderProtocol`, so a missing entry would render a blank icon.
-
-`PROTOCOL_ORDER` is currently derived as `Object.keys(PROTOCOL_LABELS)` and drives two **pickers** —
-`modules/traces/components/traces-filters/traces-filters.tsx:146` and
-`modules/providers/components/provider-form-fields-api.tsx:111,171`. Adding the label entry would
-silently add an `OpenAI Image` option to both, which is a product change this release did not ask for.
-Pin the order to an explicit list in the same file so the label map and the picker list stop being
-the same decision:
+with the explicit list, and rewrite the doc comment above it:
 
 ```ts
-// Rendering coverage and picker coverage are different questions: OpenAI Image endpoints render on
-// Provider cards but are not offered in the endpoint/filter pickers.
+/**
+ * Protocol order for pickers. Rendering coverage and picker coverage are different questions:
+ * `PROTOCOL_LABELS` must be exhaustive so a card never renders a blank icon, while the pickers offer
+ * only the protocols a user may configure or filter by. `openai-image` renders but is not offered.
+ * OpenAI Compatible leads because it is what most third-party gateways speak.
+ */
 export const PROTOCOL_ORDER: readonly ProviderProtocol[] = [
   ProviderProtocol.OpenAICompatible,
   ProviderProtocol.OpenAIResponse,
@@ -2147,9 +2288,10 @@ export const PROTOCOL_ORDER: readonly ProviderProtocol[] = [
 ];
 ```
 
-- [ ] **Step 4: Write the protocol stack**
+- [ ] **Step 4: Write the protocol stack and the protocol label list**
 
-Create `packages/dashboard/src/modules/providers/components/provider-protocol-stack/provider-protocol-stack.tsx`:
+Create `packages/dashboard/src/modules/providers/components/provider-protocol-stack/provider-protocol-stack.tsx`
+— the line-1 icon group:
 
 ```tsx
 import type { ProviderProtocol } from '@aio-proxy/types';
@@ -2172,7 +2314,11 @@ export const ProviderProtocolStack: React.FC<ProviderProtocolStackProps> = ({ pr
   return (
     <span className={cn('inline-flex -space-x-1.5', className)} data-testid="provider-protocol-stack">
       {visible.map((protocol) => (
-        <span key={protocol} className="inline-flex size-6 items-center justify-center rounded-full bg-card ring-2 ring-card">
+        <span
+          key={protocol}
+          className="inline-flex size-6 items-center justify-center rounded-full bg-card ring-2 ring-card"
+        >
+          {/* The label is the accessible name; only the icon is drawn. */}
           <ProtocolLabel protocol={protocol} showIcon className="[&>span:last-child]:sr-only" />
         </span>
       ))}
@@ -2186,16 +2332,47 @@ export const ProviderProtocolStack: React.FC<ProviderProtocolStackProps> = ({ pr
 };
 ```
 
-Create `index.ts`: `export { ProviderProtocolStack } from './provider-protocol-stack';`
+Create `provider-protocol-stack/index.ts`: `export { ProviderProtocolStack } from './provider-protocol-stack';`
 
-- [ ] **Step 5: Write the card**
+Create `packages/dashboard/src/modules/providers/components/provider-protocol-labels/provider-protocol-labels.tsx`
+— the line-2 text list. Protocol names are deliberately untranslated product terms, so the separator
+is the only thing this component adds:
 
-Create `provider-card/provider-card-identity.tsx` — line 1 (icon + name + ring slot) and line 2 (`kind · detail · plan`):
+```tsx
+import type { ProviderProtocol } from '@aio-proxy/types';
+import type React from 'react';
+
+import { ProtocolLabel } from '@/components/protocol-label';
+
+interface ProviderProtocolLabelsProps {
+  readonly protocols: readonly ProviderProtocol[];
+}
+
+export const ProviderProtocolLabels: React.FC<ProviderProtocolLabelsProps> = ({ protocols }) => (
+  <>
+    {protocols.map((protocol, index) => (
+      <span key={protocol}>
+        {index === 0 ? null : <span aria-hidden="true">{', '}</span>}
+        <ProtocolLabel protocol={protocol} />
+      </span>
+    ))}
+  </>
+);
+```
+
+Create `provider-protocol-labels/index.ts`: `export { ProviderProtocolLabels } from './provider-protocol-labels';`
+
+- [ ] **Step 5: Write the identity block**
+
+Create `provider-card/provider-card-identity.tsx` — line 1 (icon + protocol stack + name link) and
+line 2 (`kind · detail · plan` plus the amber diagnostic suffix):
 
 ```tsx
 import { m } from '@aio-proxy/i18n';
 import { type DashboardProviderSummary, ProviderKind } from '@aio-proxy/types';
 import { Skeleton } from '@aio-proxy/ui/components/skeleton';
+import { cn } from '@aio-proxy/ui/lib/utils';
+import { Link } from '@tanstack/react-router';
 import { AlertTriangleIcon } from 'lucide-react';
 import type React from 'react';
 
@@ -2203,6 +2380,7 @@ import { PluginIcon } from '@/components/plugin-icon';
 
 import { PROVIDER_KIND_LABEL } from '../../lib/constants';
 import { providerDisplayName } from '../../lib/provider-list-view';
+import { ProviderProtocolLabels } from '../provider-protocol-labels';
 import { ProviderProtocolStack } from '../provider-protocol-stack';
 
 interface ProviderCardIdentityProps {
@@ -2211,16 +2389,8 @@ interface ProviderCardIdentityProps {
   readonly pluginIcon: string | undefined;
   readonly plan: string | undefined;
   readonly planPending: boolean;
+  readonly editable: boolean;
 }
-
-const detailOf = (
-  provider: DashboardProviderSummary,
-  pluginLabel: string | undefined,
-): string | undefined => {
-  if (provider.kind === ProviderKind.OAuth) return pluginLabel ?? provider.plugin;
-  if (provider.kind === ProviderKind.AiSdk) return provider.packageName;
-  return undefined;
-};
 
 export const ProviderCardIdentity: React.FC<ProviderCardIdentityProps> = ({
   provider,
@@ -2228,38 +2398,79 @@ export const ProviderCardIdentity: React.FC<ProviderCardIdentityProps> = ({
   pluginIcon,
   plan,
   planPending,
+  editable,
 }) => {
-  const detail = detailOf(provider, pluginLabel);
-  const kindLabel = provider.kind === 'invalid' ? m['dashboard.providers.kind_label.invalid']() : PROVIDER_KIND_LABEL[provider.kind];
+  const name = providerDisplayName(provider);
+  const kindLabel =
+    provider.kind === 'invalid' ? m['dashboard.providers.kind_label.invalid']() : PROVIDER_KIND_LABEL[provider.kind];
+  // A `ready` provider can still carry a diagnostic (e.g. a stale catalog). That is a hint, not a
+  // failure: the red box below is reserved for `unavailable`.
+  const hint = provider.state.status === 'ready' ? provider.state.diagnostic : undefined;
+
   return (
-    <div className="flex min-w-0 items-center gap-2">
+    <div className="flex min-w-0 items-start gap-2">
       {provider.kind === 'invalid' ? (
         <AlertTriangleIcon className="size-6 shrink-0 text-destructive" aria-hidden="true" />
+      ) : provider.kind === ProviderKind.Api && provider.protocols.length > 0 ? (
+        <ProviderProtocolStack
+          protocols={provider.protocols}
+          className={cn('shrink-0', provider.enabled === false && 'grayscale')}
+        />
       ) : pluginIcon === undefined ? (
         <span className="inline-flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">
-          {providerDisplayName(provider).charAt(0).toUpperCase()}
+          {name.charAt(0).toUpperCase()}
         </span>
       ) : (
-        <PluginIcon icon={pluginIcon} size={24} className="size-6 shrink-0 rounded-full" />
+        <PluginIcon
+          icon={pluginIcon}
+          size={24}
+          className={cn('size-6 shrink-0 rounded-full', provider.enabled === false && 'grayscale')}
+        />
       )}
+
       <div className="min-w-0 flex-1">
-        <div className="truncate font-medium" title={provider.id}>
-          {providerDisplayName(provider)}
-        </div>
-        <div className="flex min-w-0 items-center gap-1 truncate text-xs text-muted-foreground">
+        {/* `::after` stretches this link over the whole card, so the card is clickable without being
+            a nested-interactive button. The controls sit at `z-10` and stay above it. */}
+        {editable ? (
+          <Link
+            id={`provider-link-${provider.id}`}
+            data-testid={`provider-link-${provider.id}`}
+            to="/providers/$id/edit"
+            params={{ id: provider.id }}
+            title={provider.id}
+            className="block truncate font-medium after:absolute after:inset-0 after:content-[''] hover:underline focus-visible:underline"
+          >
+            {name}
+          </Link>
+        ) : (
+          <div className="truncate font-medium" title={provider.id}>
+            {name}
+          </div>
+        )}
+
+        <div
+          className="flex min-w-0 flex-wrap items-center gap-x-1 text-xs text-muted-foreground"
+          data-testid="provider-card-detail"
+        >
           <span>{kindLabel}</span>
-          {provider.protocols.length > 0 ? (
+          {provider.kind === ProviderKind.Api && provider.protocols.length > 0 ? (
             <>
               <span aria-hidden="true">·</span>
-              <ProviderProtocolStack protocols={provider.protocols} className="scale-75" />
+              <ProviderProtocolLabels protocols={provider.protocols} />
             </>
           ) : null}
-          {detail === undefined ? null : (
+          {provider.kind === ProviderKind.OAuth && (pluginLabel ?? provider.plugin) !== undefined ? (
             <>
               <span aria-hidden="true">·</span>
-              <span className="truncate">{detail}</span>
+              <span className="truncate">{pluginLabel ?? provider.plugin}</span>
             </>
-          )}
+          ) : null}
+          {provider.kind === ProviderKind.AiSdk && provider.packageName !== undefined ? (
+            <>
+              <span aria-hidden="true">·</span>
+              <span className="truncate">{provider.packageName}</span>
+            </>
+          ) : null}
           {planPending ? (
             <Skeleton className="h-3 w-12" data-testid="provider-plan-loading" />
           ) : plan === undefined ? null : (
@@ -2269,10 +2480,38 @@ export const ProviderCardIdentity: React.FC<ProviderCardIdentityProps> = ({
             </>
           )}
         </div>
+
+        {hint === undefined ? null : (
+          <p className="truncate text-xs text-amber-600 dark:text-amber-500" data-testid="provider-card-diagnostic-hint">
+            {hint.summary}
+          </p>
+        )}
       </div>
     </div>
   );
 };
+```
+
+- [ ] **Step 6: Write the stats row**
+
+Create `provider-card/provider-card-stat.tsx` — one cell. Its own file, because a `.tsx` declares
+exactly one component:
+
+```tsx
+import type React from 'react';
+
+interface ProviderCardStatProps {
+  readonly testId: string;
+  readonly label: string;
+  readonly value: string;
+}
+
+export const ProviderCardStat: React.FC<ProviderCardStatProps> = ({ testId, label, value }) => (
+  <div className="min-w-0" data-testid={testId}>
+    <div className="truncate text-xs text-muted-foreground">{label}</div>
+    <div className="truncate text-sm font-medium tabular-nums">{value}</div>
+  </div>
+);
 ```
 
 Create `provider-card/provider-card-stats.tsx`:
@@ -2283,33 +2522,31 @@ import type { DashboardProviderSummary } from '@aio-proxy/types';
 import type React from 'react';
 
 import type { ProviderHealth } from '../../services/provider-health-service';
+import { ProviderCardStat } from './provider-card-stat';
 
 interface ProviderCardStatsProps {
   readonly provider: DashboardProviderSummary;
   readonly health: ProviderHealth | undefined;
 }
 
-const Stat: React.FC<{ readonly testId: string; readonly label: string; readonly value: string }> = ({
-  testId,
-  label,
-  value,
-}) => (
-  <div className="min-w-0" data-testid={testId}>
-    <div className="truncate text-xs text-muted-foreground">{label}</div>
-    <div className="truncate text-sm font-medium tabular-nums">{value}</div>
-  </div>
-);
-
 export const ProviderCardStats: React.FC<ProviderCardStatsProps> = ({ provider, health }) => (
   <div className="grid grid-cols-4 gap-2">
-    <Stat testId="provider-stat-priority" label={m['dashboard.providers.card.stat_priority']()} value={String(provider.priority ?? 0)} />
-    <Stat testId="provider-stat-weight" label={m['dashboard.providers.card.stat_weight']()} value={String(provider.weight ?? 1)} />
-    <Stat
+    <ProviderCardStat
+      testId="provider-stat-priority"
+      label={m['dashboard.providers.card.stat_priority']()}
+      value={String(provider.priority ?? 0)}
+    />
+    <ProviderCardStat
+      testId="provider-stat-weight"
+      label={m['dashboard.providers.card.stat_weight']()}
+      value={String(provider.weight ?? 1)}
+    />
+    <ProviderCardStat
       testId="provider-stat-success-rate"
       label={m['dashboard.providers.card.stat_success_rate']()}
       value={health === undefined ? '—' : `${(health.successRate * 100).toFixed(1)}%`}
     />
-    <Stat
+    <ProviderCardStat
       testId="provider-stat-p95"
       label={m['dashboard.providers.card.stat_p95']()}
       value={health === undefined ? '—' : `${Math.round(health.p95LatencyMs)} ms`}
@@ -2318,9 +2555,11 @@ export const ProviderCardStats: React.FC<ProviderCardStatsProps> = ({ provider, 
 );
 ```
 
-Note: `Stat` is a second component in this file, which the one-component-per-file rule forbids. Extract it to `provider-card/provider-card-stat.tsx` as `ProviderCardStat` with an `interface ProviderCardStatProps`, and import it here.
+- [ ] **Step 7: Write the footer**
 
-Create `provider-card/provider-card-footer.tsx` — models count, 24h requests, the enable switch, and the `⋯` menu; every interactive element calls `event.stopPropagation()` so it never triggers the card's navigation:
+Create `provider-card/provider-card-footer.tsx` — models count, 24h requests, the enable switch, and
+the `⋯` menu. The controls sit above the card's overlay link rather than fighting it with
+`stopPropagation`:
 
 ```tsx
 import { m } from '@aio-proxy/i18n';
@@ -2345,13 +2584,8 @@ export const ProviderCardFooter: React.FC<ProviderCardFooterProps> = ({ provider
     <div className="truncate text-xs text-muted-foreground">
       {`${m['dashboard.providers.card.models_count']({ count: provider.clientModels.length })} · ${m['dashboard.providers.card.requests_24h']({ count: usagePending ? '…' : usage === undefined ? 'N/A' : formatCompactTokenCount(usage.requestCount) })}`}
     </div>
-    {/* The card body navigates on click; these controls must not. */}
-    <div
-      className="flex shrink-0 items-center gap-1"
-      onClick={(event) => event.stopPropagation()}
-      onKeyDown={(event) => event.stopPropagation()}
-      role="presentation"
-    >
+    {/* Above the identity link's full-card `::after` overlay, so these stay clickable. */}
+    <div className="relative z-10 flex shrink-0 items-center gap-1">
       <ProviderEnabledSwitch provider={provider} />
       <ProviderMoreMenu provider={provider} onDelete={onDelete} />
     </div>
@@ -2359,7 +2593,10 @@ export const ProviderCardFooter: React.FC<ProviderCardFooterProps> = ({ provider
 );
 ```
 
-Create `provider-card/provider-card.tsx` — composes the pieces, owns the card container, the state styling, the focus attributes, and the quota query for OAuth providers with `hasQuota`:
+- [ ] **Step 8: Write the card**
+
+Create `provider-card/provider-card.tsx` — composes the pieces, owns the card container, the state
+styling, the focus attributes, and the quota query for OAuth providers with `hasQuota`:
 
 ```tsx
 import { m } from '@aio-proxy/i18n';
@@ -2368,7 +2605,6 @@ import { Button } from '@aio-proxy/ui/components/button';
 import { Card, CardContent } from '@aio-proxy/ui/components/card';
 import { cn } from '@aio-proxy/ui/lib/utils';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate } from '@tanstack/react-router';
 import type React from 'react';
 
 import { resolveDashboardText } from '@/lib/localized-text';
@@ -2404,14 +2640,9 @@ export const ProviderCard: React.FC<ProviderCardProps> = ({
   focused,
   onDelete,
 }) => {
-  const navigate = useNavigate();
   const editable = canEditProvider(provider);
   const quotaQuery = useQuery({ ...providerQuotaQueryOptions(provider.id), enabled: provider.hasQuota });
   const plan = quotaQuery.data?.snapshot.plan;
-  const openEditor = () => {
-    if (!editable) return;
-    void navigate({ to: '/providers/$id/edit', params: { id: provider.id } });
-  };
 
   return (
     <Card
@@ -2419,21 +2650,13 @@ export const ProviderCard: React.FC<ProviderCardProps> = ({
       id={`provider-row-${provider.id}`}
       data-testid={`provider-row-${provider.id}`}
       data-focused={focused ? 'true' : undefined}
-      tabIndex={editable ? 0 : -1}
-      role={editable ? 'button' : undefined}
-      aria-label={editable ? m['dashboard.providers.card.open_provider']({ id: provider.id }) : undefined}
-      onClick={openEditor}
-      onKeyDown={(event) => {
-        if (event.key === 'Enter' || event.key === ' ') {
-          event.preventDefault();
-          openEditor();
-        }
-      }}
       className={cn(
-        'gap-3 transition-shadow',
-        editable && 'cursor-pointer hover:shadow-md focus-visible:ring-2 focus-visible:ring-ring/40',
+        // `relative` anchors the identity link's full-card overlay; `overflow-visible` keeps the
+        // focus ring from being clipped by the Card's own `overflow-hidden`.
+        'relative gap-3 overflow-visible transition-shadow',
+        editable && 'hover:shadow-md focus-within:ring-2 focus-within:ring-ring/40',
         provider.state.status === 'unavailable' && 'border border-destructive/60',
-        provider.enabled === false && 'opacity-55 grayscale',
+        provider.enabled === false && 'opacity-55',
         provider.kind === 'invalid' && 'border border-dashed border-destructive',
         focused && 'bg-accent ring-2 ring-ring/40',
       )}
@@ -2446,24 +2669,26 @@ export const ProviderCard: React.FC<ProviderCardProps> = ({
             pluginIcon={pluginIcon}
             plan={plan === undefined ? undefined : resolveDashboardText(plan)}
             planPending={provider.hasQuota && quotaQuery.isPending}
+            editable={editable}
           />
-          {provider.hasQuota ? <ProviderQuotaRing provider={provider} /> : null}
+          {provider.hasQuota ? (
+            <div className={cn('relative z-10 shrink-0', provider.enabled === false && 'grayscale')}>
+              <ProviderQuotaRing provider={provider} pluginLabel={pluginLabel} pluginIcon={pluginIcon} />
+            </div>
+          ) : null}
         </div>
 
         {provider.kind === 'invalid' ? (
           <div className="space-y-2" data-testid="provider-card-invalid">
             <p className="text-sm text-destructive">{m['dashboard.providers.card.invalid_hint']()}</p>
             <code className="block rounded-md bg-destructive/10 p-2 text-xs whitespace-normal">{provider.id}</code>
-            <div className="flex justify-end">
+            <div className="relative z-10 flex justify-end">
               <Button
                 type="button"
                 size="xs"
                 variant="ghost"
                 data-testid="provider-card-delete"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onDelete(provider);
-                }}
+                onClick={() => onDelete(provider)}
               >
                 {m['dashboard.providers.actions.delete']()}
               </Button>
@@ -2471,14 +2696,14 @@ export const ProviderCard: React.FC<ProviderCardProps> = ({
           </div>
         ) : (
           <>
-            {provider.state.diagnostic === undefined ? null : (
+            {provider.state.status === 'unavailable' ? (
               <div
-                className="rounded-md border border-destructive/40 bg-destructive/10 p-2"
+                className="relative z-10 rounded-md border border-destructive/40 bg-destructive/10 p-2"
                 data-testid="provider-card-diagnostic"
               >
                 <DiagnosticDetails diagnostic={provider.state.diagnostic} />
               </div>
-            )}
+            ) : null}
             <ProviderCardStats provider={provider} health={health} />
             <ProviderCardFooter
               provider={provider}
@@ -2496,19 +2721,19 @@ export const ProviderCard: React.FC<ProviderCardProps> = ({
 
 Create `provider-card/index.ts`: `export { ProviderCard } from './provider-card';`
 
-- [ ] **Step 6: Run tests to verify they pass**
+- [ ] **Step 9: Run tests to verify they pass**
 
 ```bash
-cd packages/dashboard && bun run test:unit -- provider-card
+cd packages/dashboard && bun run test:unit -- provider-card protocol-label traces-filters provider-form-fields
 ```
 
-Expected: PASS.
+Expected: PASS. The extra filters catch the `PROTOCOL_ORDER` pin regressing either picker.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 10: Commit**
 
 ```bash
-git add packages/dashboard/src/components/protocol-label packages/dashboard/src/modules/providers/components/provider-protocol-stack packages/dashboard/src/modules/providers/components/provider-card
-git commit -m "feat(dashboard): add the Provider card"
+git add packages/dashboard/src/components/protocol-label packages/dashboard/src/modules/providers/components/provider-protocol-stack packages/dashboard/src/modules/providers/components/provider-protocol-labels packages/dashboard/src/modules/providers/components/provider-card
+git commit -m "feat(dashboard): add the Provider card" -m "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -2519,15 +2744,32 @@ git commit -m "feat(dashboard): add the Provider card"
 - Create: `.../modules/providers/components/provider-quota-ring/{index.ts,provider-quota-ring.tsx,provider-quota-dialog.tsx,provider-quota-item.tsx,provider-quota-ring.test.tsx}`
 
 **Interfaces:**
-- Consumes: `providerQuotaQueryOptions` (Task 11), `tightestQuotaItem` / `remainingPercent` (Task 10), the shadcn `Dialog` (Task 8), the `quota` message group (Task 9).
+- Consumes: `providerQuotaQueryOptions` and `useProviderQuotaRefresh` (Task 11), `tightestQuotaItem` / `remainingPercent` (Task 10), the shadcn `Dialog` (Task 8), the `quota` message group (Task 9).
 - Produces:
   ```ts
   interface ProviderQuotaRingProps {
     readonly provider: DashboardProviderSummary;
+    readonly pluginLabel?: string;
+    readonly pluginIcon?: string;
   }
   export const ProviderQuotaRing: React.FC<ProviderQuotaRingProps>;
   ```
   Task 12's card renders it.
+
+**Design corrections applied here (review round 1):**
+- A failed first read must stay recoverable. `providerQuotaQueryOptions` sets `retry: false`, so an
+  error state that renders an inert `<span>` strands the card forever — the only refresh button lives
+  in a dialog that can no longer be opened. The error state is therefore the same **button**, drawn
+  differently, and it opens the same dialog.
+- `strokeDashoffset` is computed from the clamped **raw ratio**, not the rounded display percent.
+  `remainingPercent` floors a non-zero remainder at 1% so users never read "0%" beside a working
+  provider; feeding that into the geometry would draw a visible arc for a ratio of `0.0001`.
+- Refreshing goes through `useProviderQuotaRefresh` (a mutation that sends `refresh: true` and seeds
+  the shared cache entry), not `query.refetch()` — a refetch re-runs the captured `refresh: false`
+  query function and is silently swallowed by the server's five-minute cooldown.
+- The dialog header carries the provider icon, the name, `plugin · plan`, and the refresh button, per
+  the spec. The Provider ID is not surfaced there — the card never shows it, and the dialog is
+  further from the list, not closer.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -2540,21 +2782,23 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { providerStub } from '../../lib/provider-fixtures';
 import { ProviderQuotaRing } from './provider-quota-ring';
 
-const queryMocks = { data: undefined as unknown, isPending: false, isError: false, refetches: 0 };
+const queryMocks = { data: undefined as unknown, isPending: false, isError: false };
+const refreshMock = { calls: 0 };
 
 rs.mock('@tanstack/react-query', () => ({
   queryOptions: <T,>(options: T) => options,
-  useQuery: () => ({
-    data: queryMocks.data,
-    isPending: queryMocks.isPending,
-    isError: queryMocks.isError,
-    refetch: () => {
-      queryMocks.refetches += 1;
+  useQuery: () => ({ data: queryMocks.data, isPending: queryMocks.isPending, isError: queryMocks.isError }),
+}));
+rs.mock('../../hooks/use-provider-quota-refresh', () => ({
+  useProviderQuotaRefresh: () => ({
+    mutate: () => {
+      refreshMock.calls += 1;
     },
+    isPending: false,
   }),
 }));
 
-const provider = providerStub({ id: 'kimi', hasQuota: true });
+const provider = providerStub({ id: 'kimi', name: 'Kimi', hasQuota: true });
 
 test('renders the tightest remaining percentage on the ring', () => {
   queryMocks.data = {
@@ -2573,7 +2817,7 @@ test('renders the tightest remaining percentage on the ring', () => {
   expect(screen.getByTestId('provider-quota-ring')).toHaveTextContent('12');
 });
 
-test('opening the ring lists every quota item and refreshes', () => {
+test('opening the ring lists every quota item and requests a fresh reading', () => {
   queryMocks.data = {
     sampledAt: 1_700_000_000_000,
     stale: false,
@@ -2584,7 +2828,7 @@ test('opening the ring lists every quota item and refreshes', () => {
       ],
     },
   };
-  const before = queryMocks.refetches;
+  const before = refreshMock.calls;
 
   render(<ProviderQuotaRing provider={provider} />);
   fireEvent.click(screen.getByTestId('provider-quota-ring'));
@@ -2593,10 +2837,41 @@ test('opening the ring lists every quota item and refreshes', () => {
   expect(screen.getByText('Unrated')).toBeInTheDocument();
   expect(screen.getByTestId('provider-quota-item-unrated')).toHaveTextContent(/Not applicable|暂不适用/u);
   expect(screen.queryByTestId('provider-quota-bar-unrated')).not.toBeInTheDocument();
-  expect(queryMocks.refetches).toBeGreaterThan(before);
+  expect(refreshMock.calls).toBe(before + 1);
 });
 
-test('a tiny non-zero remainder never reads as zero', () => {
+test('the header refresh button asks for another reading', () => {
+  queryMocks.data = {
+    sampledAt: 1,
+    stale: false,
+    snapshot: { items: [{ id: 'weekly', displayName: 'Weekly', remainingRatio: 0.5 }] },
+  };
+
+  render(<ProviderQuotaRing provider={provider} />);
+  fireEvent.click(screen.getByTestId('provider-quota-ring'));
+  const before = refreshMock.calls;
+  fireEvent.click(screen.getByTestId('provider-quota-refresh'));
+
+  expect(refreshMock.calls).toBe(before + 1);
+});
+
+test('the arc is drawn from the raw ratio, not the floored display percent', () => {
+  queryMocks.data = {
+    sampledAt: 1,
+    stale: false,
+    snapshot: { items: [{ id: 'weekly', displayName: 'Weekly', remainingRatio: 0.004 }] },
+  };
+
+  render(<ProviderQuotaRing provider={provider} />);
+
+  // The label floors to 1% so it never reads "0%", but the arc must stay ~invisible.
+  expect(screen.getByTestId('provider-quota-ring')).toHaveTextContent('1');
+  const arc = screen.getByTestId('provider-quota-arc');
+  const circumference = Number(arc.getAttribute('stroke-dasharray'));
+  expect(Number(arc.getAttribute('stroke-dashoffset'))).toBeCloseTo(circumference * 0.996, 5);
+});
+
+test('a tiny non-zero remainder never reads as zero in the dialog', () => {
   queryMocks.data = {
     sampledAt: 1,
     stale: false,
@@ -2609,27 +2884,44 @@ test('a tiny non-zero remainder never reads as zero', () => {
   expect(screen.getByTestId('provider-quota-item-weekly')).toHaveTextContent(/<1%|Less than 1%/u);
 });
 
-test('a stale reading is called out and a hard failure is explained', () => {
+test('a stale reading is called out in the dialog', () => {
   queryMocks.data = {
     sampledAt: 1,
     stale: true,
     error: 'OAUTH_QUOTA_READ_FAILED',
     snapshot: { items: [{ id: 'weekly', displayName: 'Weekly', remainingRatio: 0.5 }] },
   };
-  const { unmount } = render(<ProviderQuotaRing provider={provider} />);
-  fireEvent.click(screen.getByTestId('provider-quota-ring'));
-  expect(screen.getByTestId('provider-quota-stale')).toBeInTheDocument();
-  unmount();
 
+  render(<ProviderQuotaRing provider={provider} />);
+  fireEvent.click(screen.getByTestId('provider-quota-ring'));
+
+  expect(screen.getByTestId('provider-quota-stale')).toBeInTheDocument();
+});
+
+test('a failed first read stays recoverable: the indicator is a button that retries', () => {
   queryMocks.data = undefined;
   queryMocks.isError = true;
-  render(<ProviderQuotaRing provider={provider} />);
-  expect(screen.getByTestId('provider-quota-unavailable')).toBeInTheDocument();
-  queryMocks.isError = false;
+  try {
+    render(<ProviderQuotaRing provider={provider} />);
+
+    const unavailable = screen.getByTestId('provider-quota-unavailable');
+    expect(unavailable.tagName).toBe('BUTTON');
+
+    const before = refreshMock.calls;
+    fireEvent.click(unavailable);
+    expect(refreshMock.calls).toBe(before + 1);
+    expect(screen.getByTestId('provider-quota-dialog')).toBeInTheDocument();
+  } finally {
+    queryMocks.isError = false;
+  }
 });
 
 test('clicking the ring does not bubble to the card', () => {
-  queryMocks.data = { sampledAt: 1, stale: false, snapshot: { items: [{ id: 'w', displayName: 'W', remainingRatio: 0.5 }] } };
+  queryMocks.data = {
+    sampledAt: 1,
+    stale: false,
+    snapshot: { items: [{ id: 'w', displayName: 'W', remainingRatio: 0.5 }] },
+  };
   const onCardClick = rs.fn();
 
   render(
@@ -2663,6 +2955,7 @@ import { useQuery } from '@tanstack/react-query';
 import type React from 'react';
 import { useState } from 'react';
 
+import { useProviderQuotaRefresh } from '../../hooks/use-provider-quota-refresh';
 import { remainingPercent, tightestQuotaItem } from '../../lib/quota-view';
 import { providerQuotaQueryOptions } from '../../services/provider-quota-service';
 import { ProviderQuotaDialog } from './provider-quota-dialog';
@@ -2674,12 +2967,21 @@ const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 
 interface ProviderQuotaRingProps {
   readonly provider: DashboardProviderSummary;
+  readonly pluginLabel?: string;
+  readonly pluginIcon?: string;
 }
 
-export const ProviderQuotaRing: React.FC<ProviderQuotaRingProps> = ({ provider }) => {
+export const ProviderQuotaRing: React.FC<ProviderQuotaRingProps> = ({ provider, pluginLabel, pluginIcon }) => {
   const [open, setOpen] = useState(false);
   const query = useQuery(providerQuotaQueryOptions(provider.id));
+  const refresh = useProviderQuotaRefresh(provider.id);
   const tightest = tightestQuotaItem(query.data?.snapshot);
+
+  // Opening always asks upstream for a fresh reading; the ring itself is happy with the cached one.
+  const openDialog = () => {
+    setOpen(true);
+    refresh.mutate();
+  };
 
   if (query.isPending) {
     return (
@@ -2690,18 +2992,43 @@ export const ProviderQuotaRing: React.FC<ProviderQuotaRingProps> = ({ provider }
       />
     );
   }
+
+  // `retry: false` means one failure is final for this query. An inert indicator would strand the
+  // card, so the failure state is the same button: it opens the dialog and fires a refresh.
   if (query.isError || query.data === undefined) {
     return (
-      <span
-        className="size-7 shrink-0 rounded-full border-2 border-dashed border-muted-foreground/40"
-        title={m['dashboard.providers.quota.load_failed']()}
-        data-testid="provider-quota-unavailable"
-      />
+      <>
+        <button
+          type="button"
+          data-testid="provider-quota-unavailable"
+          aria-label={m['dashboard.providers.quota.load_failed']()}
+          title={m['dashboard.providers.quota.load_failed']()}
+          className="size-7 shrink-0 rounded-full border-2 border-dashed border-muted-foreground/40 focus-visible:ring-2 focus-visible:ring-ring/40"
+          onClick={(event) => {
+            event.stopPropagation();
+            openDialog();
+          }}
+        />
+        <ProviderQuotaDialog
+          provider={provider}
+          pluginLabel={pluginLabel}
+          pluginIcon={pluginIcon}
+          open={open}
+          onOpenChange={setOpen}
+          result={undefined}
+          onRefresh={() => refresh.mutate()}
+          refreshing={refresh.isPending}
+        />
+      </>
     );
   }
 
-  const percent = tightest?.remainingRatio === undefined ? undefined : remainingPercent(tightest.remainingRatio);
-  const offset = percent === undefined ? CIRCUMFERENCE : CIRCUMFERENCE * (1 - percent / 100);
+  const ratio = tightest?.remainingRatio;
+  const percent = ratio === undefined ? undefined : remainingPercent(ratio);
+  // Geometry uses the clamped raw ratio. `remainingPercent` floors a non-zero remainder at 1% for
+  // the label; drawing that would show a visible arc for a nearly-exhausted quota.
+  const clamped = ratio === undefined ? 0 : Math.min(Math.max(ratio, 0), 1);
+  const offset = CIRCUMFERENCE * (1 - clamped);
 
   return (
     <>
@@ -2711,14 +3038,16 @@ export const ProviderQuotaRing: React.FC<ProviderQuotaRingProps> = ({ provider }
         aria-label={m['dashboard.providers.quota.ring_label']({ id: provider.id })}
         className={cn('relative shrink-0 rounded-full focus-visible:ring-2 focus-visible:ring-ring/40')}
         onClick={(event) => {
-          // The card body navigates on click; the ring opens a modal instead.
+          // The card body is one big link; the ring opens a modal instead of navigating.
           event.stopPropagation();
-          setOpen(true);
+          event.preventDefault();
+          openDialog();
         }}
       >
         <svg width={SIZE} height={SIZE} className="-rotate-90" aria-hidden="true">
           <circle cx={SIZE / 2} cy={SIZE / 2} r={RADIUS} fill="none" strokeWidth={STROKE} className="stroke-muted" />
           <circle
+            data-testid="provider-quota-arc"
             cx={SIZE / 2}
             cy={SIZE / 2}
             r={RADIUS}
@@ -2736,17 +3065,22 @@ export const ProviderQuotaRing: React.FC<ProviderQuotaRingProps> = ({ provider }
       </button>
       <ProviderQuotaDialog
         provider={provider}
+        pluginLabel={pluginLabel}
+        pluginIcon={pluginIcon}
         open={open}
         onOpenChange={setOpen}
         result={query.data}
-        onRefresh={() => void query.refetch()}
+        onRefresh={() => refresh.mutate()}
+        refreshing={refresh.isPending}
       />
     </>
   );
 };
 ```
 
-Create `provider-quota-ring/provider-quota-item.tsx` — one bar per quota item:
+- [ ] **Step 4: Write one quota bar**
+
+Create `provider-quota-ring/provider-quota-item.tsx`:
 
 ```tsx
 import { m } from '@aio-proxy/i18n';
@@ -2780,7 +3114,10 @@ export const ProviderQuotaItem: React.FC<ProviderQuotaItemProps> = ({ item }) =>
         <p className="text-xs text-muted-foreground">{m['dashboard.providers.quota.not_applicable_hint']()}</p>
       ) : (
         // Bars never recolor by tightness: the ring already carries that signal.
-        <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted" data-testid={`provider-quota-bar-${item.id}`}>
+        <div
+          className="h-1.5 w-full overflow-hidden rounded-full bg-muted"
+          data-testid={`provider-quota-bar-${item.id}`}
+        >
           <div className="h-full rounded-full bg-primary" style={{ width: tiny ? '0%' : `${percent}%` }} />
         </div>
       )}
@@ -2794,22 +3131,20 @@ export const ProviderQuotaItem: React.FC<ProviderQuotaItemProps> = ({ item }) =>
 };
 ```
 
-Create `provider-quota-ring/provider-quota-dialog.tsx`:
+- [ ] **Step 5: Write the dialog**
+
+Create `provider-quota-ring/provider-quota-dialog.tsx`. `result` is optional so the failure state can
+open the same dialog and offer a retry:
 
 ```tsx
 import { m } from '@aio-proxy/i18n';
 import type { DashboardProviderSummary } from '@aio-proxy/types';
 import { Button } from '@aio-proxy/ui/components/button';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@aio-proxy/ui/components/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@aio-proxy/ui/components/dialog';
 import { RotateCwIcon } from 'lucide-react';
 import type React from 'react';
 
+import { PluginIcon } from '@/components/plugin-icon';
 import { resolveDashboardText } from '@/lib/localized-text';
 
 import { providerDisplayName } from '../../lib/provider-list-view';
@@ -2818,86 +3153,115 @@ import { ProviderQuotaItem } from './provider-quota-item';
 
 interface ProviderQuotaDialogProps {
   readonly provider: DashboardProviderSummary;
+  readonly pluginLabel: string | undefined;
+  readonly pluginIcon: string | undefined;
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
-  readonly result: ProviderQuotaResult;
+  readonly result: ProviderQuotaResult | undefined;
   readonly onRefresh: () => void;
+  readonly refreshing: boolean;
 }
 
 export const ProviderQuotaDialog: React.FC<ProviderQuotaDialogProps> = ({
   provider,
+  pluginLabel,
+  pluginIcon,
   open,
   onOpenChange,
   result,
   onRefresh,
+  refreshing,
 }) => {
-  const plan = result.snapshot.plan;
+  const plan = result?.snapshot.plan;
+  const source = pluginLabel ?? provider.plugin;
+  const resolvedPlan = plan === undefined ? undefined : resolveDashboardText(plan);
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent data-testid="provider-quota-dialog">
         <DialogHeader>
-          <DialogTitle>{`${providerDisplayName(provider)} · ${m['dashboard.providers.quota.title']()}`}</DialogTitle>
-          <DialogDescription>
-            {plan === undefined ? provider.id : `${provider.id} · ${resolveDashboardText(plan)}`}
-          </DialogDescription>
+          <div className="flex items-start gap-3">
+            {pluginIcon === undefined ? null : (
+              <PluginIcon icon={pluginIcon} size={32} className="mt-0.5 size-8 shrink-0 rounded-full" />
+            )}
+            <div className="min-w-0 flex-1">
+              <DialogTitle className="truncate">{providerDisplayName(provider)}</DialogTitle>
+              <DialogDescription className="truncate">
+                {[source, resolvedPlan].filter((part) => part !== undefined).join(' · ')}
+              </DialogDescription>
+            </div>
+            <Button
+              type="button"
+              size="xs"
+              variant="ghost"
+              data-testid="provider-quota-refresh"
+              disabled={refreshing}
+              onClick={onRefresh}
+            >
+              <RotateCwIcon data-icon="inline-start" aria-hidden="true" />
+              {m['dashboard.providers.quota.refresh']()}
+            </Button>
+          </div>
         </DialogHeader>
-        {result.stale ? (
-          <p
-            role="status"
-            data-testid="provider-quota-stale"
-            className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-xs"
-          >
-            {m['dashboard.providers.quota.stale_notice']()}
+
+        {result === undefined ? (
+          <p role="status" data-testid="provider-quota-dialog-unavailable" className="text-sm text-muted-foreground">
+            {m['dashboard.providers.quota.load_failed']()}
           </p>
-        ) : null}
-        <ul className="space-y-3">
-          {result.snapshot.items.map((item) => (
-            <ProviderQuotaItem key={item.id} item={item} />
-          ))}
-        </ul>
-        {result.snapshot.resetCredits === undefined ? null : (
-          <p className="text-xs text-muted-foreground">
-            {m['dashboard.providers.quota.reset_credits']({ count: result.snapshot.resetCredits.availableCount })}
-          </p>
+        ) : (
+          <>
+            {result.stale ? (
+              <p
+                role="status"
+                data-testid="provider-quota-stale"
+                className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-xs"
+              >
+                {m['dashboard.providers.quota.stale_notice']()}
+              </p>
+            ) : null}
+            <ul className="space-y-3">
+              {result.snapshot.items.map((item) => (
+                <ProviderQuotaItem key={item.id} item={item} />
+              ))}
+            </ul>
+            {result.snapshot.resetCredits === undefined ? null : (
+              <p className="text-xs text-muted-foreground">
+                {m['dashboard.providers.quota.reset_credits']({ count: result.snapshot.resetCredits.availableCount })}
+              </p>
+            )}
+            <p className="text-xs text-muted-foreground">
+              {m['dashboard.providers.quota.sampled_at']({ value: new Date(result.sampledAt).toLocaleString() })}
+            </p>
+          </>
         )}
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-xs text-muted-foreground">
-            {m['dashboard.providers.quota.sampled_at']({ value: new Date(result.sampledAt).toLocaleString() })}
-          </span>
-          <Button type="button" size="xs" variant="ghost" onClick={onRefresh}>
-            <RotateCwIcon data-icon="inline-start" aria-hidden="true" />
-            {m['dashboard.providers.quota.refresh']()}
-          </Button>
-        </div>
       </DialogContent>
     </Dialog>
   );
 };
 ```
 
-Wire "opening the modal always refreshes": in `provider-quota-ring.tsx`, change the ring's `onClick` to
+Create `provider-quota-ring/index.ts`: `export { ProviderQuotaRing } from './provider-quota-ring';`
+
+- [ ] **Step 6: Confirm the card forwards the plugin presentation**
+
+Task 12's `provider-card.tsx` already renders the ring with both props — verify the line reads:
 
 ```tsx
-          event.stopPropagation();
-          setOpen(true);
-          void query.refetch();
+            <ProviderQuotaRing provider={provider} pluginLabel={pluginLabel} pluginIcon={pluginIcon} />
 ```
 
-Create `index.ts`: `export { ProviderQuotaRing } from './provider-quota-ring';`
-
-- [ ] **Step 4: Run tests to verify they pass**
+- [ ] **Step 7: Run tests to verify they pass**
 
 ```bash
-cd packages/dashboard && bun run test:unit -- provider-quota-ring
+cd packages/dashboard && bun run test:unit -- provider-quota-ring provider-card
 ```
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
-git add packages/dashboard/src/modules/providers/components/provider-quota-ring
-git commit -m "feat(dashboard): add the Provider quota ring and detail modal"
+git add packages/dashboard/src/modules/providers/components/provider-quota-ring packages/dashboard/src/modules/providers/components/provider-card
+git commit -m "feat(dashboard): add the Provider quota ring and detail modal" -m "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -2905,12 +3269,12 @@ git commit -m "feat(dashboard): add the Provider quota ring and detail modal"
 ### Task 14: Card grid page, deletions, and the page test
 
 **Files:**
-- Create: `.../components/provider-card-grid/{index.ts,provider-card-grid.tsx,provider-filter-chips.tsx,provider-card-grid.test.tsx}`
+- Create: `.../components/provider-card-grid/{index.ts,provider-card-grid.tsx,provider-filter-chips.tsx,provider-search-field.tsx,provider-card-grid.test.tsx}`
 - Modify: `.../templates/providers-page.tsx`, `.../templates/providers-page.test.tsx`
 - Delete: `.../components/providers-table/` (whole directory), `.../components/providers-table-columns.tsx`, `.../components/oauth-provider-group-row/`, `.../components/provider-table-actions.tsx`, `.../components/provider-state-cell.tsx`, `.../components/provider-state-cell.test.tsx`, `.../components/provider-models-cell.tsx`
 
 **Interfaces:**
-- Consumes: `ProviderCard` (Task 12), `visibleProviders` / `emptyProviderListFilters` (Task 10), `providerHealthQueryOptions` (Task 11), `providerUsageQueryOptions`, `providerPluginPresentationsQueryOptions`, `DeleteProviderDialog`.
+- Consumes: `ProviderCard` (Task 12), `visibleProviders` / `emptyProviderListFilters` / `ProviderListFilters` (Task 10), `providerHealthQueryOptions` (Task 11), `providerUsageQueryOptions`, `providerPluginPresentationsQueryOptions`, `DeleteProviderDialog`.
 - Produces:
   ```ts
   interface ProviderCardGridProps {
@@ -2919,6 +3283,23 @@ git commit -m "feat(dashboard): add the Provider quota ring and detail modal"
   }
   export const ProviderCardGrid: React.FC<ProviderCardGridProps>;
   ```
+
+**Design corrections applied here (review round 1):**
+- The chip group's option `value` cannot be typed `string`: `onChange({ ...filters, [group.key]: option.value })`
+  would try to assign `string` into `ProviderAvailabilityFilter | ProviderEnablementFilter | ProviderKindFilter`
+  and fail the dashboard build. Each option instead carries its own `select` closure written with the
+  literal inline, so every value type-checks at its declaration site with no cast and no generic
+  computed-key gymnastics. `value` survives only as the `data-testid` suffix and React key.
+- The search box is a TanStack Form field, not `useState` — `packages/dashboard/CLAUDE.md`: "Every
+  input, select, checkbox, textarea, and editable field must use TanStack Form." It follows the
+  existing `traces-request-filters` shape: the form owns the draft, each keystroke pushes the value
+  up. It also gets a real `<FieldLabel>` (visually `sr-only`, reusing the placeholder copy) so the
+  input is not a nameless textbox.
+- The chips are toggle buttons in a labelled group: `role="group"` + `aria-label` on the group,
+  `aria-pressed` on each chip. Without it a screen reader hears three unrelated runs of
+  "All / Available / Unavailable" with no indication of which is active.
+- The grid test's router mock keeps `Link` (`ProviderMoreMenu` still renders one) but drops
+  `useNavigate` — the card no longer navigates programmatically.
 
 - [ ] **Step 1: Write the failing grid test**
 
@@ -2932,15 +3313,19 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { providerStub } from '../../lib/provider-fixtures';
 import { ProviderCardGrid } from './provider-card-grid';
 
-rs.mock('@tanstack/react-router', () => ({ Link: 'a', useNavigate: () => () => {} }));
+// `Link` survives because ProviderMoreMenu and the card identity both render one; `useNavigate` does
+// not, because no component in the grid navigates programmatically any more.
+rs.mock('@tanstack/react-router', () => ({ Link: 'a' }));
 rs.mock('../../hooks/use-provider-enabled-mutation', () => ({
   useProviderEnabledMutation: () => ({ mutate: rs.fn(), isPending: false }),
 }));
-rs.mock('../../hooks/use-provider-mutations', () => ({ useProviderDelete: () => ({ mutate: rs.fn(), isPending: false }) }));
+rs.mock('../../hooks/use-provider-mutations', () => ({
+  useProviderDelete: () => ({ mutate: rs.fn(), isPending: false }),
+}));
 rs.mock('../provider-quota-ring', () => ({ ProviderQuotaRing: () => null }));
 rs.mock('@tanstack/react-query', () => ({
   queryOptions: <T,>(options: T) => options,
-  useQuery: () => ({ data: new Map(), isPending: false, isError: false, refetch: () => {} }),
+  useQuery: () => ({ data: new Map(), isPending: false, isError: false }),
 }));
 
 const providers = [
@@ -2955,23 +3340,40 @@ test('renders one card per Provider, sorted by priority', () => {
   expect(cards.map((card) => card.dataset['testid'])).toEqual(['provider-row-beta', 'provider-row-alpha']);
 });
 
-test('the search box narrows the grid and reports an empty result', () => {
+test('the search box is a labelled field that narrows the grid and reports an empty result', () => {
   render(<ProviderCardGrid providers={providers} />);
 
-  fireEvent.change(screen.getByTestId('provider-search'), { target: { value: 'alpha' } });
+  // A nameless textbox is unusable with a screen reader, so the accessible name is part of the contract.
+  const search = screen.getByTestId('provider-search');
+  expect(search).toHaveAccessibleName();
+
+  fireEvent.change(search, { target: { value: 'alpha' } });
   expect(screen.queryByTestId('provider-row-beta')).not.toBeInTheDocument();
 
-  fireEvent.change(screen.getByTestId('provider-search'), { target: { value: 'nothing' } });
+  fireEvent.change(search, { target: { value: 'nothing' } });
   expect(screen.getByTestId('providers-no-matches')).toBeInTheDocument();
 });
 
-test('a chip filters by enablement', () => {
+test('a chip filters by enablement and reports its pressed state', () => {
   render(<ProviderCardGrid providers={providers} />);
 
-  fireEvent.click(screen.getByTestId('provider-filter-enablement-disabled'));
+  const disabled = screen.getByTestId('provider-filter-enablement-disabled');
+  expect(disabled).toHaveAttribute('aria-pressed', 'false');
 
+  fireEvent.click(disabled);
+
+  expect(disabled).toHaveAttribute('aria-pressed', 'true');
+  expect(screen.getByTestId('provider-filter-enablement-all')).toHaveAttribute('aria-pressed', 'false');
   expect(screen.getByTestId('provider-row-beta')).toBeInTheDocument();
   expect(screen.queryByTestId('provider-row-alpha')).not.toBeInTheDocument();
+});
+
+test('each chip group is named for assistive technology', () => {
+  render(<ProviderCardGrid providers={providers} />);
+
+  const groups = screen.getAllByRole('group');
+  expect(groups.length).toBe(3);
+  for (const group of groups) expect(group).toHaveAccessibleName();
 });
 
 test('marks the focused Provider', () => {
@@ -2995,7 +3397,52 @@ cd packages/dashboard && bun run test:unit -- provider-card-grid
 
 Expected: FAIL — module not found.
 
-- [ ] **Step 3: Write the filter chips**
+- [ ] **Step 3: Write the search field**
+
+Create `provider-card-grid/provider-search-field.tsx`. One input, one component file, TanStack Form
+owning the draft exactly as `traces-request-filters` does:
+
+```tsx
+import { m } from '@aio-proxy/i18n';
+import { Field, FieldLabel } from '@aio-proxy/ui/components/field';
+import { Input } from '@aio-proxy/ui/components/input';
+import { useForm } from '@tanstack/react-form';
+import type React from 'react';
+
+interface ProviderSearchFieldProps {
+  readonly value: string;
+  readonly onChange: (value: string) => void;
+}
+
+export const ProviderSearchField: React.FC<ProviderSearchFieldProps> = ({ value, onChange }) => {
+  const form = useForm({ defaultValues: { search: value } });
+
+  return (
+    <form.Field name="search">
+      {(field) => (
+        <Field>
+          {/* The placeholder alone would leave the input nameless once text is typed into it. */}
+          <FieldLabel htmlFor="provider-search" className="sr-only">
+            {m['dashboard.providers.card.search_placeholder']()}
+          </FieldLabel>
+          <Input
+            id="provider-search"
+            data-testid="provider-search"
+            value={field.state.value}
+            placeholder={m['dashboard.providers.card.search_placeholder']()}
+            onChange={(event) => {
+              field.handleChange(event.target.value);
+              onChange(event.target.value);
+            }}
+          />
+        </Field>
+      )}
+    </form.Field>
+  );
+};
+```
+
+- [ ] **Step 4: Write the filter chips**
 
 Create `provider-card-grid/provider-filter-chips.tsx`:
 
@@ -3011,41 +3458,84 @@ interface ProviderFilterChipsProps {
   readonly onChange: (filters: ProviderListFilters) => void;
 }
 
-type Group = {
-  readonly key: 'availability' | 'enablement' | 'kind';
+/**
+ * `value` is only the test id and React key. The literal that actually reaches `ProviderListFilters`
+ * lives inside `select`, written at its declaration site, so each of the three filters keeps its own
+ * union without a cast — a shared `value: string` would not be assignable to any of them.
+ */
+interface FilterOption {
+  readonly value: string;
   readonly label: string;
-  readonly options: readonly { readonly value: string; readonly label: string }[];
-};
+  readonly select: () => void;
+}
+
+interface FilterGroup {
+  readonly key: string;
+  readonly label: string;
+  readonly selected: string;
+  readonly options: readonly FilterOption[];
+}
 
 export const ProviderFilterChips: React.FC<ProviderFilterChipsProps> = ({ filters, onChange }) => {
-  const groups: readonly Group[] = [
+  const groups: readonly FilterGroup[] = [
     {
       key: 'availability',
       label: m['dashboard.providers.card.filter_availability'](),
+      selected: filters.availability,
       options: [
-        { value: 'all', label: m['dashboard.providers.card.filter_availability_all']() },
-        { value: 'available', label: m['dashboard.providers.card.filter_availability_available']() },
-        { value: 'unavailable', label: m['dashboard.providers.card.filter_availability_unavailable']() },
+        {
+          value: 'all',
+          label: m['dashboard.providers.card.filter_availability_all'](),
+          select: () => onChange({ ...filters, availability: 'all' }),
+        },
+        {
+          value: 'available',
+          label: m['dashboard.providers.card.filter_availability_available'](),
+          select: () => onChange({ ...filters, availability: 'available' }),
+        },
+        {
+          value: 'unavailable',
+          label: m['dashboard.providers.card.filter_availability_unavailable'](),
+          select: () => onChange({ ...filters, availability: 'unavailable' }),
+        },
       ],
     },
     {
       key: 'enablement',
       label: m['dashboard.providers.card.filter_enablement'](),
+      selected: filters.enablement,
       options: [
-        { value: 'all', label: m['dashboard.providers.card.filter_enablement_all']() },
-        { value: 'enabled', label: m['dashboard.providers.card.filter_enablement_enabled']() },
-        { value: 'disabled', label: m['dashboard.providers.card.filter_enablement_disabled']() },
+        {
+          value: 'all',
+          label: m['dashboard.providers.card.filter_enablement_all'](),
+          select: () => onChange({ ...filters, enablement: 'all' }),
+        },
+        {
+          value: 'enabled',
+          label: m['dashboard.providers.card.filter_enablement_enabled'](),
+          select: () => onChange({ ...filters, enablement: 'enabled' }),
+        },
+        {
+          value: 'disabled',
+          label: m['dashboard.providers.card.filter_enablement_disabled'](),
+          select: () => onChange({ ...filters, enablement: 'disabled' }),
+        },
       ],
     },
     {
       key: 'kind',
       label: m['dashboard.providers.card.filter_kind'](),
+      selected: filters.kind,
       // Kind values are protocol-level identifiers, not copy.
       options: [
-        { value: 'all', label: m['dashboard.providers.card.filter_kind_all']() },
-        { value: 'oauth', label: 'OAuth' },
-        { value: 'api', label: 'API' },
-        { value: 'ai-sdk', label: 'AI SDK' },
+        {
+          value: 'all',
+          label: m['dashboard.providers.card.filter_kind_all'](),
+          select: () => onChange({ ...filters, kind: 'all' }),
+        },
+        { value: 'oauth', label: 'OAuth', select: () => onChange({ ...filters, kind: 'oauth' }) },
+        { value: 'api', label: 'API', select: () => onChange({ ...filters, kind: 'api' }) },
+        { value: 'ai-sdk', label: 'AI SDK', select: () => onChange({ ...filters, kind: 'ai-sdk' }) },
       ],
     },
   ];
@@ -3053,16 +3543,21 @@ export const ProviderFilterChips: React.FC<ProviderFilterChipsProps> = ({ filter
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
       {groups.map((group) => (
-        <div key={group.key} className="flex flex-wrap items-center gap-1">
-          <span className="text-xs text-muted-foreground">{group.label}</span>
+        // Toggle buttons, not radios: no arrow-key roving is implemented, so `aria-pressed` describes
+        // what the control actually is. The group name is what makes three runs of "All" tellable apart.
+        <div key={group.key} role="group" aria-label={group.label} className="flex flex-wrap items-center gap-1">
+          <span aria-hidden="true" className="text-xs text-muted-foreground">
+            {group.label}
+          </span>
           {group.options.map((option) => (
             <Button
               key={option.value}
               type="button"
               size="xs"
-              variant={filters[group.key] === option.value ? 'secondary' : 'ghost'}
+              variant={group.selected === option.value ? 'secondary' : 'ghost'}
+              aria-pressed={group.selected === option.value}
               data-testid={`provider-filter-${group.key}-${option.value}`}
-              onClick={() => onChange({ ...filters, [group.key]: option.value })}
+              onClick={option.select}
             >
               {option.label}
             </Button>
@@ -3074,7 +3569,7 @@ export const ProviderFilterChips: React.FC<ProviderFilterChipsProps> = ({ filter
 };
 ```
 
-- [ ] **Step 4: Write the grid**
+- [ ] **Step 5: Write the grid**
 
 Create `provider-card-grid/provider-card-grid.tsx`:
 
@@ -3082,7 +3577,6 @@ Create `provider-card-grid/provider-card-grid.tsx`:
 import { m } from '@aio-proxy/i18n';
 import type { DashboardProviderSummary } from '@aio-proxy/types';
 import { Empty } from '@aio-proxy/ui/components/empty';
-import { Input } from '@aio-proxy/ui/components/input';
 import { useQuery } from '@tanstack/react-query';
 import type React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -3096,6 +3590,7 @@ import { providerUsageQueryOptions } from '../../services/provider-usage-service
 import { DeleteProviderDialog, type DeleteProviderDialogRef } from '../delete-provider-dialog';
 import { ProviderCard } from '../provider-card';
 import { ProviderFilterChips } from './provider-filter-chips';
+import { ProviderSearchField } from './provider-search-field';
 
 interface ProviderCardGridProps {
   readonly providers: readonly DashboardProviderSummary[];
@@ -3122,6 +3617,7 @@ export const ProviderCardGrid: React.FC<ProviderCardGridProps> = ({ providers, f
       requestAnimationFrame(() => {
         const card = document.getElementById(`provider-row-${focusProviderId}`);
         card?.scrollIntoView?.({ block: 'center' });
+        // The identity link is the card's only focusable anchor; the container itself is not tabbable.
         (document.getElementById(`provider-link-${focusProviderId}`) ?? card)?.focus();
       });
     });
@@ -3133,12 +3629,7 @@ export const ProviderCardGrid: React.FC<ProviderCardGridProps> = ({ providers, f
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3">
-        <Input
-          data-testid="provider-search"
-          value={filters.search}
-          placeholder={m['dashboard.providers.card.search_placeholder']()}
-          onChange={(event) => setFilters({ ...filters, search: event.target.value })}
-        />
+        <ProviderSearchField value={filters.search} onChange={(search) => setFilters({ ...filters, search })} />
         <ProviderFilterChips filters={filters} onChange={setFilters} />
       </div>
 
@@ -3177,7 +3668,7 @@ export const ProviderCardGrid: React.FC<ProviderCardGridProps> = ({ providers, f
 
 Create `index.ts`: `export { ProviderCardGrid } from './provider-card-grid';`
 
-- [ ] **Step 5: Rewrite the page**
+- [ ] **Step 6: Rewrite the page**
 
 `packages/dashboard/src/modules/providers/templates/providers-page.tsx` — replace only the import and the final render branch:
 
@@ -3191,7 +3682,7 @@ import { ProviderCardGrid } from '../components/provider-card-grid';
 
 Also drop the wrapping `Card`/`CardContent` (a grid of cards inside a card reads as a nesting mistake): keep the catalog warning, the loading skeletons, and the error branch as direct children of `PageContainer`, and remove the now-unused `Card` / `CardContent` imports.
 
-- [ ] **Step 6: Delete the table**
+- [ ] **Step 7: Delete the table**
 
 ```bash
 git rm -r packages/dashboard/src/modules/providers/components/providers-table \
@@ -3205,7 +3696,7 @@ git rm packages/dashboard/src/modules/providers/components/providers-table-colum
 
 `DiagnosticDetails`, `ProviderMoreMenu`, `ProviderEnabledSwitch`, and `DeleteProviderDialog` stay — the card uses all four. `use-data-table` stays — four other tables use it.
 
-- [ ] **Step 7: Rewrite the page test**
+- [ ] **Step 8: Rewrite the page test**
 
 `packages/dashboard/src/modules/providers/templates/providers-page.test.tsx`:
 
@@ -3235,9 +3726,9 @@ rs.mock('@tanstack/react-query', () => ({
 - Keep and adapt: `offers a new-provider action linking to /providers/new` (drop the `plugins-table` assertion), `locates and highlights a focused provider on another page` → rename to `highlights a focused provider` and keep the `data-focused="true"` assertion, `a failed providers query explains itself and offers a retry`, `shows a catalog warning returned by OAuth login`.
 - Rewrite `renders one Provider identity column with a direct edit link` into a card assertion: the display name is present, the raw ID is not rendered as text, and there is no `columnheader` role anywhere.
 - Delete outright: `renders OAuth accounts under their plugin capability group` (no grouping) and `pages forward and backward through more than one page of providers` (no pagination).
-- Add the `@tanstack/react-router` mock's `useNavigate: () => () => {}` and mock `../components/provider-quota-ring` to render null, as in the grid test.
+- Mock `../components/provider-quota-ring` to render null, as in the grid test. The router mock keeps `Link: 'a'` and needs no `useNavigate`.
 
-- [ ] **Step 8: Prune orphaned message keys**
+- [ ] **Step 9: Prune orphaned message keys**
 
 ```bash
 cd /Users/bytedance/Documents/self/aio-proxy/.claude/worktrees/silly-shirley-289c12
@@ -3249,7 +3740,7 @@ done
 
 Delete every key reporting `0` from all five locale files, then re-run `bun run i18n:compile`. Keep `state.unavailable` if the card still uses it; keep every key still reporting a non-zero count.
 
-- [ ] **Step 9: Run the dashboard suite**
+- [ ] **Step 10: Run the dashboard suite**
 
 ```bash
 bun run i18n:compile
@@ -3258,11 +3749,11 @@ cd packages/dashboard && bun run test:unit
 
 Expected: PASS.
 
-- [ ] **Step 10: Commit**
+- [ ] **Step 11: Commit**
 
 ```bash
 git add -A
-git commit -m "feat(dashboard): replace the Provider table with a card grid"
+git commit -m "feat(dashboard): replace the Provider table with a card grid" -m "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -3304,13 +3795,19 @@ opens a detail dialog with one bar per quota window.
 
 The quota read is cached in memory behind a per-provider five-minute cooldown, refreshed
 asynchronously after a Provider answers a model request, and exposed at
-`QUERY /dashboard/api/providers/:id/quota` with ETag revalidation; the dialog's refresh button
-bypasses the cooldown. `OAuthQuotaSnapshot` gains an optional `plan`, which `kimi-code` and
-`xai-grok` now populate. Dashboard Provider summaries gain `protocols` and `hasQuota` in place of
-the single `protocol` field.
+`QUERY /dashboard/api/providers/:id/quota`; the dialog's refresh button bypasses the cooldown.
+`OAuthQuotaSnapshot` gains an optional `plan`, which `kimi-code` and `xai-grok` now populate, and
+`xai-grok` also reports per-product usage. Dashboard Provider summaries gain `protocols` and
+`hasQuota` in place of the single `protocol` field.
 ```
 
 `aio-proxy` and `@aio-proxy/plugin-sdk` are both present, so both published Releases carry the note.
+
+Two claims must **not** appear in this note. There is no ETag/conditional revalidation — commit
+`77213e25` removed the `hono/etag` middleware, because it cached the very body `refresh` exists to
+bypass. And there is no unified-billing weekly-limit fix: the pre-change `weeklyItem()` already
+returned an item whenever `currentPeriod.end` parsed, so `e3e9d4b5` added a regression guard, not a
+fix.
 
 - [ ] **Step 2: Run the full preflight**
 
@@ -3319,13 +3816,18 @@ bun run build
 bun run preflight
 ```
 
-Expected: PASS. `lint:types` requires the fresh `dist` output, hence the explicit `build` first.
+Expected: `lint:types` reports the **same 11 pre-existing TypeScript errors as pristine `main`
+(`91de6ca4`)** and no new ones; `format:check` and `test` PASS. `lint:types` requires the fresh
+`dist` output, hence the explicit `build` first. Confirm the delta by diffing the reported error list
+against the recorded baseline in **Execution status**. A twelfth error, or an error in a file this
+work touched, is a regression to fix before opening the PR. Do not "fix" the eleven: they are out of
+scope and would bloat the diff.
 
 - [ ] **Step 3: Commit**
 
 ```bash
 git add .changeset
-git commit -m "chore: add a changeset for the Provider card grid and quota"
+git commit -m "chore: add a changeset for the Provider card grid and quota" -m "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 ```
 
 - [ ] **Step 4: Open the pull request**
@@ -3343,13 +3845,13 @@ Replaces the dashboard Provider list's TanStack Table with a responsive card gri
 - One card per Provider, including one per OAuth account. No pagination, no grouping; sorted by provider priority then provider weight then Provider ID.
 - Search matches display name and Provider ID; availability / state / kind chips narrow the grid.
 - OAuth Providers whose plugin exposes a quota capability show a 28px ring for the tightest window, opening a dialog with one bar per window, the plan, the sample time, and a manual refresh that bypasses the cooldown.
-- New `QUERY /dashboard/api/providers/:id/quota` with `hono/etag`, backed by an in-memory per-provider 5-minute cooldown cache; the request pipeline warms it asynchronously after a Provider answers.
-- `OAuthQuotaSnapshot` gains an optional `plan`; `kimi-code` maps its membership level and `xai-grok` reads its subscription tier, also fixing the dropped unified-billing weekly window and adding per-product usage.
+- New `QUERY /dashboard/api/providers/:id/quota`, backed by an in-memory per-provider 5-minute cooldown cache with negative caching and in-flight dedupe; the request pipeline warms it asynchronously after a Provider answers successfully.
+- `OAuthQuotaSnapshot` gains an optional `plan`; `kimi-code` maps its membership level and `xai-grok` reads its subscription tier and now also reports per-product usage.
 - `DashboardProviderSummary` replaces `protocol?` with `protocols[]` and adds `hasQuota`.
 
 ## Test plan
 
-- `bun run preflight`
+- `bun run build && bun run preflight` — `format:check` and `test` pass. `lint:types` reports the same 11 pre-existing errors as `main` (`91de6ca4`) in `packages/dashboard` and `packages/cli`, none introduced here.
 EOF
 )"
 ```
@@ -3366,8 +3868,8 @@ EOF
 | One card per OAuth account, no grouping | 14 (grouping code deleted) |
 | Sort priority desc → weight desc → id | 10 |
 | Pure filter function + assert-based check, not TanStack Table | 10 |
-| Search matches display name and Provider ID | 10 |
-| Availability / enablement / kind chips, single-select with "all" | 14 |
+| Search matches display name and Provider ID; the input is a TanStack Form field with an `sr-only` label | 10, 14 |
+| Availability / enablement / kind chips, single-select with "all", `aria-pressed` in a named group | 14 |
 | Line 1: 24px icon, display name, quota ring | 12 |
 | Display name `name ?? accountLabel ?? id`, ID only in `title` | 10, 12 |
 | Stacked protocol icons capped at 3 + `+N` | 12 |
@@ -3375,22 +3877,22 @@ EOF
 | Line 2 `kind · detail · plan`, plan skeleton while loading | 12 |
 | Stats row 优先级/权重/成功率/p95 with `—` and 0/1 fallbacks | 12 |
 | Footer `N 模型 · N 次 / 24h` + switch + `⋯` | 12 |
-| Card body navigates; switch/ring/menu `stopPropagation` | 12, 13 |
+| Card body navigates; controls stay above it | 12 (overlay `<Link>` + `relative z-10` control row, not `role="button"` + `stopPropagation`), 13 |
 | `unavailable` destructive border + red diagnostic box | 12 |
-| `enabled === false` → `opacity-55` + `grayscale` | 12 |
+| `enabled === false` → `opacity-55`; `grayscale` on the icon and ring only | 12 |
 | `kind === 'invalid'` → dashed card, alert triangle, red code box, single delete | 12 |
 | Catalog fresh/stale line and `expiresAt` dropped; no status dot | 14 (cell deleted, keys pruned) |
 | `?focus` preserved: id, testid, `data-focused`, double-rAF, `scrollIntoView`, focus link | 14 |
 | Ring: hand-written 28px SVG, two circles, `-rotate-90`, dasharray/dashoffset, tightest item | 13, 10 |
 | Loading ring = pulsing bordered circle | 13 |
-| Ring is a button, opens a modal | 13 |
+| Ring is a button, opens a modal; a failed read stays a button so it can retry | 13 |
 | Modal: header, per-item bars, reset credits, sample time, stale amber box, refresh | 13 |
 | `remainingRatio === undefined` → 暂不适用, no bar | 13 |
 | `>0 && <0.01` → 剩余 <1%, zero-width bar | 13, 10 |
 | Bars don't recolor by tightness | 13 |
 | Dialog primitive from the shadcn CLI, not hand-written | 8 |
 | Reset quota out of scope | — (no reset UI in any task) |
-| `QUERY /providers/:id/quota`, `{refresh?}` body, `hono/etag` | 4 |
+| `QUERY /providers/:id/quota`, `{refresh?}` body | 4 (the ETag middleware was removed in `77213e25`: it cached the very body `refresh` exists to bypass) |
 | Response returns the last good snapshot even on failure | 3, 4 |
 | `plugin-quota/cache/` wrapping the reader, in-memory, 5-min cooldown, refresh bypass | 3 |
 | Frontend `staleTime` 30s; modal always refreshes | 11, 13 |
@@ -3399,11 +3901,11 @@ EOF
 | `plan?: LocalizedText` + `SNAPSHOT_KEYS` gains `'plan'` | 1 |
 | OAuth complete route must NOT be deleted | — (absent from every deletion list) |
 | kimi plan map + fallback, `www.kimi.com` assertion kept | 6 |
-| grok plan via `/settings`, weekly-window fix, per-product usage | 7 |
+| grok plan via `/settings`, weekly-window regression guard, per-product usage | 7 (the weekly window was never actually dropped — see **Execution status**) |
 | Paraglide across five locales + `i18n:compile` | 9 |
 | 500-line limit / split at 400 | Global Constraints, Task 7 Step 5 |
 | One `minor` changeset targeting `aio-proxy` + `@aio-proxy/plugin-sdk` | 15 |
-| `bun run preflight` | 15 |
+| `bun run preflight` | 15 (against the recorded 11-error `lint:types` baseline) |
 | `canEditProvider` + `displayName` relocated, `formatProviderUsage`/`ProviderUsageStatus` retired | 10 (relocation), 12 (footer derives the three states from the query) |
 | `PROTOCOL_ORDER` pickers unchanged by the new `openai-image` label | 12 Step 3 |
 
