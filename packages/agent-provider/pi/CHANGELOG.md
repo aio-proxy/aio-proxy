@@ -1,5 +1,13 @@
 # @aio-proxy/pi-provider
 
+## 0.12.2
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @aio-proxy/types@0.12.2
+  - @aio-proxy/agent-provider-runtime@0.12.2
+
 ## 0.12.1
 
 ### Patch Changes

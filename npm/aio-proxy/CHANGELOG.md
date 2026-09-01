@@ -1,5 +1,11 @@
 # aio-proxy
 
+## 0.12.2
+
+### Patch Changes
+
+- [#233](https://github.com/aio-proxy/aio-proxy/pull/233) [`ccf42a4`](https://github.com/aio-proxy/aio-proxy/commit/ccf42a4555539dd311a0cc36eefd41e75afdd9ac) Thanks [@baranwang](https://github.com/baranwang)! - Emit completed output-item events for streamed OpenAI Responses reasoning and assistant messages so clients can finalize cross-protocol responses.
+
 ## 0.12.1
 
 ### Patch Changes
