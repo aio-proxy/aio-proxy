@@ -38,6 +38,24 @@ function item(value: unknown, id: string, displayName: OAuthQuotaItem['displayNa
   };
 }
 
+// Kimi ships tempo-marking tier names in its own UI; the API only returns the enum.
+const PLAN_BY_LEVEL: Record<string, string> = {
+  LEVEL_BASIC: 'Moderato',
+  LEVEL_INTERMEDIATE: 'Allegretto',
+  LEVEL_ADVANCED: 'Allegro',
+  LEVEL_STANDARD: 'Vivace',
+};
+
+function membershipPlan(root: object): string | undefined {
+  const user = Reflect.get(root, 'user');
+  if (typeof user !== 'object' || user === null) return undefined;
+  const membership = Reflect.get(user, 'membership');
+  if (typeof membership !== 'object' || membership === null) return undefined;
+  const level = Reflect.get(membership, 'level');
+  if (typeof level !== 'string' || level.trim() === '') return undefined;
+  return PLAN_BY_LEVEL[level] ?? level.replace('LEVEL_', '').toLowerCase();
+}
+
 export async function readKimiQuota(
   context: AccountContext<KimiCredential, Record<string, never>>,
   dependencies: KimiOAuthDependencies = {},
@@ -85,5 +103,6 @@ export async function readKimiQuota(
   });
   const items = [...(weekly === undefined ? [] : [weekly]), ...windows];
   if (items.length === 0) throw new Error('Kimi quota response contains no valid windows');
-  return { items };
+  const plan = membershipPlan(root);
+  return { items, ...(plan === undefined ? {} : { plan }) };
 }

@@ -151,6 +151,23 @@ test('rejects HTTP failures without exposing credentials or raw bodies', async (
   expect(publicSurface).not.toContain(body);
 });
 
+test('maps the membership level to a plan name', async () => {
+  const snapshot = await quotaResponse({
+    usage: { limit: 100, remaining: 40 },
+    user: { membership: { level: 'LEVEL_ADVANCED' } },
+  });
+  expect(snapshot.plan).toBe('Allegro');
+});
+
+test('falls back to a readable level and omits an unknown shape', async () => {
+  const unknownLevel = await quotaResponse({
+    usage: { limit: 100, remaining: 40 },
+    user: { membership: { level: 'LEVEL_FUTURE' } },
+  });
+  expect(unknownLevel.plan).toBe('future');
+  expect(await quotaResponse({ usage: { limit: 100, remaining: 40 } })).not.toHaveProperty('plan');
+});
+
 function rolling(duration: number, detail: Record<string, unknown>) {
   return { window: { duration, timeUnit: 'TIME_UNIT_MINUTE' }, detail };
 }
