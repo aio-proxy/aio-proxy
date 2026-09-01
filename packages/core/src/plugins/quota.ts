@@ -154,7 +154,7 @@ function resetCount(value: unknown, path: Path): number {
   return value as number;
 }
 
-const SNAPSHOT_KEYS = new Set(['items', 'resetCredits']);
+const SNAPSHOT_KEYS = new Set(['items', 'resetCredits', 'plan']);
 const ITEM_KEYS = new Set(['id', 'displayName', 'remainingRatio', 'resetsAt']);
 const RESET_KEYS = new Set(['availableCount', 'items']);
 const CREDIT_KEYS = new Set(['id', 'expiresAt']);
@@ -162,7 +162,7 @@ const CREDIT_KEYS = new Set(['id', 'expiresAt']);
 export function validateOAuthQuotaSnapshot(value: unknown): OAuthQuotaSnapshot {
   const ancestors = new Set<object>();
   return withPlainRecord(value, [], SNAPSHOT_KEYS, ancestors, (snapshot) => {
-    const { items: snapshotItems, resetCredits: snapshotResetCredits } = snapshot;
+    const { items: snapshotItems, resetCredits: snapshotResetCredits, plan: snapshotPlan } = snapshot;
     const itemIds = new Set<string>();
     const items = withDenseArray(snapshotItems, ['items'], ancestors, (inputItems) =>
       inputItems.map((input, index) =>
@@ -215,6 +215,12 @@ export function validateOAuthQuotaSnapshot(value: unknown): OAuthQuotaSnapshot {
             };
           });
 
-    return { items, ...(resetCredits === undefined ? {} : { resetCredits }) };
+    const plan = snapshotPlan === undefined ? undefined : localizedText(snapshotPlan, ['plan']);
+
+    return {
+      items,
+      ...(resetCredits === undefined ? {} : { resetCredits }),
+      ...(plan === undefined ? {} : { plan }),
+    };
   });
 }
