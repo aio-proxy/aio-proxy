@@ -57,8 +57,8 @@ Secondary outcomes, all required by the primary one:
   every provider.
 - One card per provider, including one card per OAuth account. **No grouping.**
 - Sort: provider priority descending, then provider weight descending. Ties fall back to id.
-- Filtering is a pure function in `modules/providers/lib/` consumed via `useMemo` — **not** TanStack
-  Table. It carries one assert-based self-check.
+- Filtering is a pure function in `modules/providers/lib/provider-list-view/` consumed via `useMemo`
+  — **not** TanStack Table. It is covered by `provider-list-view.test.ts`.
   - Search matches display name **and** Provider ID (case-insensitive substring).
   - Chips, flat and clickable: availability (全部 / 可用 / 异常), enablement (已启用 / 已禁用), kind
     (OAuth / API / AI SDK). Each group is single-select with an implicit "all" default.
@@ -93,7 +93,9 @@ Card states:
   menu each `stopPropagation`.
 - `state.status === 'unavailable'`: destructive border plus a red diagnostic box containing the
   diagnostic code and message.
-- `enabled === false`: `opacity-55`, icon and ring `grayscale`.
+- `enabled === false`: `bg-muted/40` on the card, icon and ring `grayscale`. A blanket `opacity`
+  would drop the muted body text under the contrast floor, and the greyed icons plus the off switch
+  already read as disabled.
 - `kind === 'invalid'`: dashed destructive card, alert-triangle placeholder icon, red code box,
   footer with a single 删除 action.
 
@@ -121,7 +123,9 @@ fallback. Pagination and group expansion drop out of that sequence because neith
   - Bars do not change color by tightness.
 - Modal primitive: `packages/ui` has no `dialog.tsx`. It is generated with the vendored shadcn CLI —
   `bun x --bun --no-install shadcn add dialog --overwrite` run from `packages/ui` — not hand-written,
-  because that directory is CLI-managed.
+  because that directory is CLI-managed. The one hand edit on top of the generated file is a
+  `closeLabel` prop: the close button's screen-reader label must be localized, and `packages/ui`
+  intentionally has no `@aio-proxy/i18n` dependency, so the label comes from the caller.
 
 ### Reset quota is out of scope
 
@@ -136,8 +140,9 @@ only means a preflight, and the dashboard is same-origin. No `hono/etag`: the re
 served from a cooldown-guarded in-memory cache, so conditional revalidation would add a second
 caching layer with its own invalidation problem and save nothing measurable on a payload this small.
 
-Response: `{ snapshot, sampledAt, plan?, stale: boolean, error?: string }` — the last successful
-snapshot is always returned when one exists, even when the current refresh failed.
+Response: `{ snapshot, sampledAt, stale: boolean, error?: string }` — the last successful snapshot is
+always returned when one exists, even when the current refresh failed. The plan is not a top-level
+field; it rides on `snapshot.plan`, because it is what the plugin sampled, not what the route knows.
 
 Caching:
 
@@ -166,8 +171,9 @@ of on the reader; `ServerState` already *is* the source, so no new plumbing is n
 - `protocol?: ProviderProtocol` → `protocols: ProviderProtocol[]` (readonly array; empty for non-API
   providers). Populated from `apiProviderEndpoints(provider)`. Only two readers of `protocol` exist
   today and both live in files being deleted.
-- Add `hasQuota: boolean` — `adapter.quota !== undefined`. `false` on the `failure()` path and on
-  invalid providers.
+- Add `hasQuota: boolean` — `adapter.quota !== undefined`. An OAuth account that fails preparation
+  still reports the flag its adapter advertises, so the ring survives a reauthentication prompt;
+  only invalid providers, whose plugin never loaded, report `false`.
 
 ### SDK and validator
 
@@ -205,8 +211,8 @@ Quota ring, per card with `hasQuota`:
 Modal open: same query with `{ refresh: true }`, bypassing the cooldown. Failure returns the previous
 snapshot with `stale: true` and the amber error box.
 
-Pipeline warming: attempt returns → `void oauthQuota.readCached(providerId)` → cooldown-guarded
-refresh.
+Pipeline warming: attempt returns `response.ok` → `source.warmProviderQuota?.(provider.id)` →
+cooldown-guarded refresh. The pipeline sees one optional callback, not the quota capability.
 
 ## Plugin Behavior
 
