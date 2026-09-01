@@ -57,6 +57,7 @@ export const anthropicMessagesAdapter = defineProtocolAdapter<AnthropicMessagesR
       candidate('body-conversation', request.metadata?.conversation_id),
       candidate('body-session', request.session_id),
       candidate('body-conversation', request.conversation_id),
+      candidate('anthropic-user', request.metadata?.user_id),
     ].filter(isCandidate),
     transcript: request.messages,
   }),

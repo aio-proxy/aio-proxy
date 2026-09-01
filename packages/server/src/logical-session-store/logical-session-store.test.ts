@@ -4,6 +4,23 @@ import { LogicalSessionStore, type SessionAffinityObservation } from './logical-
 import { stubRepository } from './logical-session-store.test-support';
 
 describe('LogicalSessionStore', () => {
+  test('does not generate a session for ordinary Anthropic user metadata', () => {
+    const store = new LogicalSessionStore({ repository: stubRepository() });
+    const resolution = store.begin({
+      requestedModelId: 'claude',
+      headers: new Headers(),
+      hints: {
+        candidates: [{ source: 'anthropic-user', value: 'codex-thread-42' }],
+        transcript: [{ role: 'user', content: 'ignored for identity' }],
+      },
+    });
+
+    expect(resolution.resolvedBy).toBe('anthropic-user');
+    expect(resolution.identity).toEqual({ source: 'anthropic-user', id: 'codex-thread-42' });
+    expect(resolution.session).toMatchObject({ source: 'anthropic-user' });
+    expect(resolution.session.key).toMatch(/^sha256:[0-9a-f]{64}$/u);
+  });
+
   test('uses internal, protocol, header, previous-response, then generated priority', () => {
     const store = new LogicalSessionStore({
       repository: stubRepository({
