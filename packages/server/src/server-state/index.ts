@@ -157,6 +157,7 @@ async function initializeServerState(
     startupDiagnosticRebuildPending: false,
     accountRemovals: undefined as unknown as AccountRemovalCoordinator,
     scheduler: undefined as unknown as CatalogScheduler,
+    quotaCache: undefined,
     recovery: undefined,
     configFile,
   };
@@ -179,14 +180,7 @@ async function initializeServerState(
   runtime.manager = createSnapshotManager(initial);
   const manager = runtime.manager;
   runtime.managerReady = true;
-  const oauthQuota = createOAuthQuotaOperations({
-    acquireSnapshot: manager.acquire,
-    repository,
-    diagnostics,
-    logger: pluginLogger,
-    onDiagnosticChanged: () => queueRebuild(runtime),
-  });
-  const quotaCache = createOAuthQuotaCache(oauthQuota);
+  const { oauthQuota, quotaCache } = createQuotaServices(runtime, manager);
   runtime.accountRemovals = createAccountRemovalCoordinator({
     file: configFile,
     repository,
@@ -278,6 +272,21 @@ async function initializeServerState(
     watcher,
     closeRecovery: () => runtime.recovery?.close(),
   });
+}
+
+// The cache is published onto the runtime so `commitConfig` can invalidate the entries of Providers
+// whose configuration changed; everything in it is keyed by Provider ID alone.
+function createQuotaServices(runtime: ServerRuntime, manager: SnapshotManager) {
+  const oauthQuota = createOAuthQuotaOperations({
+    acquireSnapshot: manager.acquire,
+    repository: runtime.repository,
+    diagnostics: runtime.diagnostics,
+    logger: runtime.pluginLogger,
+    onDiagnosticChanged: () => queueRebuild(runtime),
+  });
+  const quotaCache = createOAuthQuotaCache(oauthQuota);
+  runtime.quotaCache = quotaCache;
+  return { oauthQuota, quotaCache };
 }
 
 function createStatePluginControlPlane(runtime: ServerRuntime, configStore: ConfigStore) {

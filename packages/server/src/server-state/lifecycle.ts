@@ -19,6 +19,7 @@ import type { LogicalSessionStore } from '../logical-session-store';
 import type { OAuthLoginSessionManager } from '../oauth-login-session/manager';
 import { createOAuthLoginSessionManager } from '../oauth-login-session/manager';
 import { findPluginEntry } from '../plugin-control-plane/plugin-config';
+import type { OAuthQuotaCache } from '../plugin-quota';
 import { createRuntimeFetch } from '../plugin-runtime';
 import type { SnapshotManager } from '../plugin-snapshot';
 import { effectiveProxy, providerDiff } from '../provider-runtime';
@@ -26,6 +27,7 @@ import type { ProviderCooldownStore } from '../routes/pipeline/provider-cooldown
 import type { RetiredProviderSnapshot } from '../runtime';
 import type { ServerLogSink } from '../server-log';
 import { oauthCapabilities, oauthProviderEditView } from './oauth-views';
+import { invalidateReconfiguredQuota } from './quota-invalidation';
 import { createRecovery } from './recovery';
 import { reloadSnapshot } from './reload';
 import { buildSnapshot, providerConfigRecord, type Snapshot } from './snapshot';
@@ -53,6 +55,7 @@ export type ServerRuntime = {
   startupDiagnosticRebuildPending: boolean;
   accountRemovals: AccountRemovalCoordinator;
   scheduler: CatalogScheduler;
+  quotaCache: OAuthQuotaCache | undefined;
   recovery: RecoveryHandle | undefined;
   configFile: AtomicConfigFile | undefined;
 };
@@ -96,7 +99,10 @@ export async function commitConfig(
   const retired = runtime.manager.swap(candidate);
   replaceCatalogJobs(runtime, candidate.catalogJobs);
   runtime.events.publish({ event: 'config.changed', data: providerDiff(before, candidate.summaries) });
-  runtime.accountRemovals.cancelReadded(providerConfigRecord(previous.config), providerConfigRecord(config));
+  const previousRecord = providerConfigRecord(previous.config);
+  const nextRecord = providerConfigRecord(config);
+  invalidateReconfiguredQuota(runtime.quotaCache, previousRecord, nextRecord);
+  runtime.accountRemovals.cancelReadded(previousRecord, nextRecord);
   return retired;
 }
 

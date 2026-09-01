@@ -25,6 +25,9 @@ export class OAuthPluginAccountPreparationError extends Error {
     readonly code: DiagnosticCode,
     readonly accountSummary: OAuthAccountSummary,
     readonly suggestLogin: boolean,
+    // Only known once the adapter has resolved. A credential or option failure after that point
+    // still describes a Provider whose plugin can answer a quota read, so the card keeps its ring.
+    readonly hasQuota = false,
   ) {
     super('OAuth plugin account is unavailable');
     this.name = 'OAuthPluginAccountPreparationError';
@@ -76,8 +79,9 @@ function unavailable(
   code: DiagnosticCode,
   accountSummary: OAuthAccountSummary = {},
   suggestLogin = false,
+  hasQuota = false,
 ): OAuthPluginAccountPreparationError {
-  return new OAuthPluginAccountPreparationError(code, accountSummary, suggestLogin);
+  return new OAuthPluginAccountPreparationError(code, accountSummary, suggestLogin, hasQuota);
 }
 
 function credentialFactory(
@@ -112,15 +116,16 @@ export async function prepareOAuthPluginAccount(
 
   const adapter = plugins.registry.resolveOAuth(config.plugin, config.capability);
   if (adapter === undefined) throw unavailable('CAPABILITY_MISSING');
+  const hasQuota = adapter.quota !== undefined;
 
   let account: StoredAccount | null;
   try {
     account = repository.readAccount(config.id);
   } catch {
-    throw unavailable('CREDENTIALS_MISSING_OR_INVALID', {}, true);
+    throw unavailable('CREDENTIALS_MISSING_OR_INVALID', {}, true, hasQuota);
   }
   if (account === null || account.plugin !== config.plugin || account.capability !== config.capability) {
-    throw unavailable('CREDENTIALS_MISSING_OR_INVALID');
+    throw unavailable('CREDENTIALS_MISSING_OR_INVALID', {}, false, hasQuota);
   }
 
   const accountSummary = {
@@ -140,17 +145,19 @@ export async function prepareOAuthPluginAccount(
     if (!parsed.ok) throw new Error('Invalid account options');
     accountOptions = parsed.value;
   } catch {
-    throw unavailable('ACCOUNT_OPTIONS_INVALID', accountSummary, true);
+    throw unavailable('ACCOUNT_OPTIONS_INVALID', accountSummary, true, hasQuota);
   }
 
   let parsedCredential: Awaited<ReturnType<typeof parsePluginSchema>>;
   try {
     parsedCredential = await parsePluginSchema(adapter.credentials, account.credential);
   } catch (error) {
-    if (error instanceof PluginSchemaContractError) throw unavailable('PLUGIN_LOAD_FAILED', accountSummary);
+    if (error instanceof PluginSchemaContractError) {
+      throw unavailable('PLUGIN_LOAD_FAILED', accountSummary, false, hasQuota);
+    }
     throw error;
   }
-  if (!parsedCredential.ok) throw unavailable('CREDENTIALS_MISSING_OR_INVALID', accountSummary, true);
+  if (!parsedCredential.ok) throw unavailable('CREDENTIALS_MISSING_OR_INVALID', accountSummary, true, hasQuota);
 
   const credentialBase = {
     providerId: config.id,

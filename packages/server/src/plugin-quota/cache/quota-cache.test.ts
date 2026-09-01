@@ -111,3 +111,43 @@ test('warm never rejects and respects the cooldown', async () => {
 
   expect(reader.calls()).toBe(1);
 });
+
+test('invalidation drops the snapshot, the cooldown, and the unsupported mark for a reconfigured provider', async () => {
+  const reader = countingReader([snapshot('a'), snapshot('b')]);
+  const cache = createOAuthQuotaCache(reader);
+
+  await cache.read('p');
+  cache.invalidate('p');
+  const afterInvalidate = await cache.read('p');
+
+  const unsupported = createOAuthQuotaCache(
+    countingReader([new OAuthQuotaCapabilityUnavailableError(), snapshot('c')]),
+  );
+  await expect(unsupported.read('p')).rejects.toBeInstanceOf(OAuthQuotaCapabilityUnavailableError);
+  unsupported.invalidate('p');
+
+  expect(afterInvalidate.snapshot).toEqual(snapshot('b'));
+  expect(reader.calls()).toBe(2);
+  expect((await unsupported.read('p')).snapshot).toEqual(snapshot('c'));
+});
+
+test('a read in flight when a provider is reconfigured does not repopulate the cache', async () => {
+  let release: (value: OAuthQuotaSnapshot) => void = () => {};
+  const pending = new Promise<OAuthQuotaSnapshot>((resolve) => {
+    release = resolve;
+  });
+  let calls = 0;
+  const cache = createOAuthQuotaCache({
+    read: async () => {
+      calls += 1;
+      return calls === 1 ? await pending : snapshot('fresh');
+    },
+  });
+
+  const inFlight = cache.read('p');
+  cache.invalidate('p');
+  release(snapshot('stale'));
+  await inFlight;
+
+  expect((await cache.read('p')).snapshot).toEqual(snapshot('fresh'));
+});

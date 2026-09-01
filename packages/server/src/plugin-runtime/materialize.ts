@@ -151,6 +151,7 @@ export async function materializePluginProvider(
       false,
       error.suggestLogin ? providerLoginCommand(options.config.id) : undefined,
       error.accountSummary,
+      error.hasQuota,
     );
   }
   const { adapter, account, accountOptions, accountSummary, createCredentials } = prepared;

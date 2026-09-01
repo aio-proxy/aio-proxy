@@ -18,6 +18,7 @@ export type OAuthQuotaCacheEntry = {
 export type OAuthQuotaCache = {
   readonly read: (providerId: string, refresh?: boolean) => Promise<OAuthQuotaCacheEntry>;
   readonly warm: (providerId: string) => void;
+  readonly invalidate: (providerId: string) => void;
 };
 
 /**
@@ -41,8 +42,13 @@ export function createOAuthQuotaCache(reader: OAuthQuotaReader): OAuthQuotaCache
   // A plugin without a quota capability will not grow one at runtime, and every retry re-prepares
   // the OAuth account (credentials, diagnostics) for nothing. Skip it for the process lifetime.
   const unsupported = new Set<string>();
+  // Bumped by `invalidate`. A read already in flight when a Provider is reconfigured describes the
+  // old account, so its result must not be written back under the new one.
+  const generations = new Map<string, number>();
 
   const load = async (providerId: string): Promise<OAuthQuotaCacheEntry> => {
+    const generation = generations.get(providerId) ?? 0;
+    const current = (): boolean => (generations.get(providerId) ?? 0) === generation;
     const previous = entries.get(providerId);
     cooldown.set(providerId, true);
     try {
@@ -51,13 +57,15 @@ export function createOAuthQuotaCache(reader: OAuthQuotaReader): OAuthQuotaCache
         sampledAt: Date.now(),
         stale: false,
       };
-      entries.set(providerId, entry);
-      failures.delete(providerId);
+      if (current()) {
+        entries.set(providerId, entry);
+        failures.delete(providerId);
+      }
       return entry;
     } catch (error) {
-      if (error instanceof OAuthQuotaCapabilityUnavailableError) unsupported.add(providerId);
+      if (error instanceof OAuthQuotaCapabilityUnavailableError && current()) unsupported.add(providerId);
       if (previous === undefined) {
-        failures.set(providerId, error instanceof Error ? error : new Error('QUOTA_READ_FAILED'));
+        if (current()) failures.set(providerId, error instanceof Error ? error : new Error('QUOTA_READ_FAILED'));
         throw error;
       }
       // Replaces the entry so the next cooldown hit still reports the failure instead of silently
@@ -68,7 +76,7 @@ export function createOAuthQuotaCache(reader: OAuthQuotaReader): OAuthQuotaCache
         stale: true,
         error: error instanceof Error ? error.message : 'QUOTA_READ_FAILED',
       };
-      entries.set(providerId, stale);
+      if (current()) entries.set(providerId, stale);
       return stale;
     }
   };
@@ -99,6 +107,17 @@ export function createOAuthQuotaCache(reader: OAuthQuotaReader): OAuthQuotaCache
     warm: (providerId) => {
       if (unsupported.has(providerId) || cooldown.has(providerId)) return;
       void start(providerId).catch(() => {});
+    },
+    // A Provider ID is reusable: reconfiguration can point it at a different account or plugin, and
+    // everything here is keyed by ID alone. Without this, the next read serves the previous
+    // account's snapshot for the rest of the cooldown, or stays permanently `unsupported`.
+    invalidate: (providerId) => {
+      generations.set(providerId, (generations.get(providerId) ?? 0) + 1);
+      inFlight.delete(providerId);
+      entries.delete(providerId);
+      failures.delete(providerId);
+      cooldown.delete(providerId);
+      unsupported.delete(providerId);
     },
   };
 }

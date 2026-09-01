@@ -468,3 +468,38 @@ test('plugin removal drops the runtime capability without deleting the account',
   expect(removed.state).toMatchObject({ diagnostic: { code: 'PLUGIN_NOT_INSTALLED' } });
   expect(fixture.repository.readAccount('person')).not.toBeNull();
 });
+
+test('a quota-capable adapter keeps its quota capability across account preparation failures', async () => {
+  const quota = { read: async () => ({ items: [] }) };
+  const config = {
+    id: 'person',
+    kind: ProviderKind.OAuth,
+    enabled: true,
+    plugin: '@example/oauth',
+    capability: 'default',
+  } as const;
+  const base = { config, diagnostics, logger: () => {}, onDiagnosticChanged: () => {} } as const;
+
+  // The account belongs to another provider id, so `readAccount('person')` finds nothing.
+  const missing = runtimeFixture({ kind: 'static' }, { providerId: 'someone-else', quota });
+  const missingResult = await materializePluginProvider({
+    ...base,
+    plugins: missing.plugins,
+    repository: missing.repository,
+  });
+
+  const invalidOptions = runtimeFixture(
+    { kind: 'static' },
+    { accountOptionsSchema: zod.object({ region: zod.string() }), quota },
+  );
+  const invalidOptionsResult = await materializePluginProvider({
+    ...base,
+    plugins: invalidOptions.plugins,
+    repository: invalidOptions.repository,
+  });
+
+  expect(missingResult.state).toMatchObject({ diagnostic: { code: 'CREDENTIALS_MISSING_OR_INVALID' } });
+  expect(missingResult.summary.hasQuota).toBe(true);
+  expect(invalidOptionsResult.state).toMatchObject({ diagnostic: { code: 'ACCOUNT_OPTIONS_INVALID' } });
+  expect(invalidOptionsResult.summary.hasQuota).toBe(true);
+});
