@@ -129,10 +129,12 @@ fallback. Pagination and group expansion drop out of that sequence because neith
 
 ### Backend quota route
 
-`QUERY /dashboard/api/providers/:id/quota`, body `{ refresh?: boolean }`, wrapped in the `hono/etag`
-middleware. QUERY is chosen over POST because the operation is a read; Hono's `METHODS` includes
-`query` so `app.query(...)` and the typed RPC `$query` both work with no shim. Browsers issue it fine
-via `fetch`; being non-CORS-safelisted only means a preflight, and the dashboard is same-origin.
+`QUERY /dashboard/api/providers/:id/quota`, body `{ refresh?: boolean }`. QUERY is chosen over POST
+because the operation is a read; Hono's `METHODS` includes `query` so `app.query(...)` and the typed
+RPC `$query` both work with no shim. Browsers issue it fine via `fetch`; being non-CORS-safelisted
+only means a preflight, and the dashboard is same-origin. No `hono/etag`: the response is already
+served from a cooldown-guarded in-memory cache, so conditional revalidation would add a second
+caching layer with its own invalidation problem and save nothing measurable on a payload this small.
 
 Response: `{ snapshot, sampledAt, plan?, stale: boolean, error?: string }` — the last successful
 snapshot is always returned when one exists, even when the current refresh failed.
@@ -150,10 +152,12 @@ Caching:
 
 After a candidate attempt returns a response, the pipeline fires one non-blocking quota refresh for
 that provider (`void ….catch(() => {})`) in `routes/pipeline/attempt/attempt.ts` at both
-`if (step.kind === 'return')` sites. `waitUntil` is unusable here — `c.executionCtx` throws under
+`if (step.kind === 'return')` sites, gated on `response.ok` so a failed attempt does not spend a
+cooldown slot. `waitUntil` is unusable here — `c.executionCtx` throws under
 `Bun.serve({ fetch: app.fetch })` — which is why the hook lives in the pipeline rather than in a Hono
-handler. This requires adding `oauthQuota` to `ProviderRouteSource`; `ServerState` already carries it
-and already *is* the source, so no new plumbing is needed.
+handler. `ProviderRouteSource` gains one optional `warmProviderQuota(providerId)` callback rather than
+the whole `oauthQuota` capability, so the pipeline depends on the single operation it performs instead
+of on the reader; `ServerState` already *is* the source, so no new plumbing is needed.
 
 ### Type changes
 
@@ -227,9 +231,10 @@ The existing `quota.test.ts` assertion that the request URL never contains `www.
 1. **Plan:** `GET ${XAI_GROK_CLI_BASE_URL}/settings` with the same bearer headers, reading
    `subscription_tier_display` (e.g. `SuperGrok Heavy`, `SuperGrok`). Optional enrichment with a
    2-second timeout; any failure or missing field simply drops the plan.
-2. **Unified-billing weekly-limit fix:** a credits payload with a parseable period but no
-   `creditUsagePercent` currently yields no rate window at all, hiding the weekly bar. Emit the
-   window with `remainingRatio` omitted so the modal shows 暂不适用 instead of the item vanishing.
+2. **Unified-billing weekly-limit regression guard:** a credits payload with a parseable period but
+   no `creditUsagePercent` already emits the rate window with `remainingRatio` omitted, so the modal
+   shows 暂不适用 rather than dropping the weekly bar. This is existing correct behavior; the release
+   only adds the test that pins it, because the per-product work below touches the same builder.
 3. **Per-product usage:** map `config.productUsage[]` (`{ product, usagePercent }`) into items keyed
    `product_<slug>`, with `grokbuild` / `productgrokbuild` normalized to `grok_build` / "Grok Build",
    `remainingRatio = (100 - usagePercent) / 100`, and `_2` / `_3` suffixes for duplicate slugs.

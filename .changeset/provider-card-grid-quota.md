@@ -6,6 +6,7 @@
 '@aio-proxy/server': minor
 '@aio-proxy/types': minor
 '@aio-proxy/core': minor
+'@aio-proxy/cli': minor
 '@aio-proxy/i18n': minor
 '@aio-proxy/ui': minor
 'aio-proxy': minor
@@ -15,7 +16,7 @@ Redesign the dashboard Provider list as a card grid and surface OAuth remaining 
 
 Each Provider — including each OAuth account — is now one card showing its name, kind, protocols,
 plan, routing priority and weight, 24-hour success rate and p95 latency, model count, and request
-count, with search and availability/state/kind filters replacing the old table's pagination and
+count, with search and availability/enablement/kind filters replacing the old table's pagination and
 grouping. OAuth Providers whose plugin exposes a quota capability show a remaining-quota ring that
 opens a detail dialog with one bar per quota window.
 

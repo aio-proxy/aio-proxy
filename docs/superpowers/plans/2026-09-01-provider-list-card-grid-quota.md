@@ -32,7 +32,7 @@
 
 ## Execution status
 
-Tasks 1–13 are **landed**. Their steps are kept below as the record of what was built; do not re-run them.
+Every task is **landed**. Their steps are kept below as the record of what was built; do not re-run them. Only PR creation remains.
 
 | Task | Commit |
 | --- | --- |
@@ -50,6 +50,9 @@ Tasks 1–13 are **landed**. Their steps are kept below as the record of what wa
 | 11 — Health and quota services | `b2da608c` |
 | 13 — Quota ring and detail modal (built before 12, which imports it) | `9bd941dd` |
 | 12 — Provider card | `85ef866c` |
+| 14 — Grid, page rewrite, table removal, message pruning | `86f055d3` |
+| 15 — Changeset | `b1f5bff2` |
+| Review round 2 follow-ups | pending commit |
 
 `77213e25` also moved the route to `packages/server/src/dashboard-routes/provider-routes/` with a colocated `provider-routes.test.ts`, dropped the `hono/etag` middleware (it cached the very body `refresh` exists to bypass), made the cache persist failures as stale entries with negative caching and in-flight dedupe, gated warming on `response.ok`, threaded `hasQuota` through the materialization failure paths, and annotated `PROTOCOL_LABELS` as `Record<ProviderProtocol, …>` (which surfaced the missing `openai-image` entry, so **Task 12 Step 3's label addition is already done** — only the `PROTOCOL_ORDER` pin remains).
 
@@ -3323,9 +3326,15 @@ rs.mock('../../hooks/use-provider-mutations', () => ({
   useProviderDelete: () => ({ mutate: rs.fn(), isPending: false }),
 }));
 rs.mock('../provider-quota-ring', () => ({ ProviderQuotaRing: () => null }));
+// The grid's own three queries all hand back lookup maps; the card's per-Provider quota query is a
+// different shape, so the mock has to tell them apart rather than return one value for everything.
+// Handing a `Map` to the card would make `quotaQuery.data.snapshot` undefined and throw on `.plan`.
 rs.mock('@tanstack/react-query', () => ({
   queryOptions: <T,>(options: T) => options,
-  useQuery: () => ({ data: new Map(), isPending: false, isError: false }),
+  useQuery: (options: { queryKey: readonly unknown[] }) =>
+    options.queryKey[2] === 'quota'
+      ? { data: undefined, isPending: false, isError: true }
+      : { data: new Map(), isPending: false, isError: false },
 }));
 
 const providers = [
@@ -3337,7 +3346,7 @@ test('renders one card per Provider, sorted by priority', () => {
   render(<ProviderCardGrid providers={providers} />);
 
   const cards = screen.getAllByTestId(/^provider-row-/u);
-  expect(cards.map((card) => card.dataset['testid'])).toEqual(['provider-row-beta', 'provider-row-alpha']);
+  expect(cards.map((card) => card.getAttribute('data-testid'))).toEqual(['provider-row-beta', 'provider-row-alpha']);
 });
 
 test('the search box is a labelled field that narrows the grid and reports an empty result', () => {
@@ -3369,9 +3378,12 @@ test('a chip filters by enablement and reports its pressed state', () => {
 });
 
 test('each chip group is named for assistive technology', () => {
-  render(<ProviderCardGrid providers={providers} />);
+  const { container } = render(<ProviderCardGrid providers={providers} />);
 
-  const groups = screen.getAllByRole('group');
+  // The shadcn `Field` wrapper around the search box is also a `group`, so scope this to the chips.
+  const groups = [...container.querySelectorAll('[role="group"]')].filter((group) =>
+    group.querySelector('[data-testid^="provider-filter-"]'),
+  );
   expect(groups.length).toBe(3);
   for (const group of groups) expect(group).toHaveAccessibleName();
 });
@@ -3381,6 +3393,24 @@ test('marks the focused Provider', () => {
 
   expect(screen.getByTestId('provider-row-alpha')).toHaveAttribute('data-focused', 'true');
 });
+
+test('deep-link focus does not fire again when the user filters', async () => {
+  render(<ProviderCardGrid providers={providers} focusProviderId="alpha" />);
+  await nextFrames();
+
+  const search = screen.getByTestId('provider-search');
+  search.focus();
+  fireEvent.change(search, { target: { value: 'alpha' } });
+  await nextFrames();
+
+  // Re-focusing the card here would rip the cursor out of the box mid-word.
+  expect(document.activeElement).toBe(search);
+});
+
+const nextFrames = () =>
+  new Promise<void>((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+  });
 
 test('renders the empty state when there are no Providers at all', () => {
   render(<ProviderCardGrid providers={[]} />);
@@ -3718,6 +3748,10 @@ rs.mock('@tanstack/react-query', () => ({
         },
       };
     }
+    // The card's quota query returns a snapshot, not a lookup map; hand it nothing rather than a Map.
+    if (options.queryKey[2] === 'quota') {
+      return { data: undefined, isLoading: false, isPending: false, isError: true, refetch: () => {} };
+    }
     return { data: new Map(), isLoading: false, isPending: false, isError: false, refetch: () => {} };
   },
 }));
@@ -3789,7 +3823,7 @@ Redesign the dashboard Provider list as a card grid and surface OAuth remaining 
 
 Each Provider — including each OAuth account — is now one card showing its name, kind, protocols,
 plan, routing priority and weight, 24-hour success rate and p95 latency, model count, and request
-count, with search and availability/state/kind filters replacing the old table's pagination and
+count, with search and availability/enablement/kind filters replacing the old table's pagination and
 grouping. OAuth Providers whose plugin exposes a quota capability show a remaining-quota ring that
 opens a detail dialog with one bar per quota window.
 
