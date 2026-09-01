@@ -41,9 +41,13 @@ function DialogContent({
   className,
   children,
   showCloseButton = true,
+  closeLabel = "Close",
   ...props
 }: DialogPrimitive.Popup.Props & {
   showCloseButton?: boolean
+  // The close button's only accessible name. Localized copy lives outside this
+  // package, so the caller supplies it; the default keeps the primitive usable.
+  closeLabel?: React.ReactNode
 }) {
   return (
     <DialogPortal>
@@ -70,7 +74,7 @@ function DialogContent({
           >
             <XIcon
             />
-            <span className="sr-only">Close</span>
+            <span className="sr-only">{closeLabel}</span>
           </DialogPrimitive.Close>
         )}
       </DialogPrimitive.Popup>

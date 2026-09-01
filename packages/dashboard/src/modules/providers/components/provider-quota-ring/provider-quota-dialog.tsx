@@ -1,4 +1,4 @@
-import { m } from '@aio-proxy/i18n';
+import { getLocale, m } from '@aio-proxy/i18n';
 import type { DashboardProviderSummary } from '@aio-proxy/types';
 import { Button } from '@aio-proxy/ui/components/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@aio-proxy/ui/components/dialog';
@@ -38,7 +38,7 @@ export const ProviderQuotaDialog: React.FC<ProviderQuotaDialogProps> = ({
   const resolvedPlan = plan === undefined ? undefined : resolveDashboardText(plan);
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent data-testid="provider-quota-dialog">
+      <DialogContent closeLabel={m['common.close']()} data-testid="provider-quota-dialog">
         <DialogHeader>
           <div className="flex items-start gap-3">
             <ProviderAvatar
@@ -93,7 +93,9 @@ export const ProviderQuotaDialog: React.FC<ProviderQuotaDialogProps> = ({
               </p>
             )}
             <p className="text-xs text-muted-foreground">
-              {m['dashboard.providers.quota.sampled_at']({ value: new Date(result.sampledAt).toLocaleString() })}
+              {m['dashboard.providers.quota.sampled_at']({
+                value: new Date(result.sampledAt).toLocaleString(getLocale()),
+              })}
             </p>
           </>
         )}

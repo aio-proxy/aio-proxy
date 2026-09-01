@@ -1,4 +1,4 @@
-import { m } from '@aio-proxy/i18n';
+import { getLocale, m } from '@aio-proxy/i18n';
 import type { OAuthQuotaItem } from '@aio-proxy/plugin-sdk';
 import type React from 'react';
 
@@ -38,7 +38,7 @@ export const ProviderQuotaItem: React.FC<ProviderQuotaItemProps> = ({ item }) =>
       )}
       {item.resetsAt === undefined ? null : (
         <p className="text-xs text-muted-foreground">
-          {m['dashboard.providers.quota.resets_at']({ value: new Date(item.resetsAt).toLocaleString() })}
+          {m['dashboard.providers.quota.resets_at']({ value: new Date(item.resetsAt).toLocaleString(getLocale()) })}
         </p>
       )}
     </li>
