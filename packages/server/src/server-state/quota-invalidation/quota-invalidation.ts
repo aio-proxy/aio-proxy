@@ -1,47 +1,37 @@
-import type { PluginRepository } from '@aio-proxy/core';
 import { ProviderKind } from '@aio-proxy/types';
-import type { Config } from '@aio-proxy/types';
-import { isEqual } from 'es-toolkit/predicate';
 
 import type { OAuthQuotaCache } from '../../plugin-quota';
+import type { Snapshot } from '../snapshot';
 
 export type QuotaIdentityTracker = {
   /** Invalidates every Provider whose quota identity differs from the last commit. */
-  readonly reconcile: (config: Config) => void;
+  readonly reconcile: (snapshot: QuotaIdentitySource) => void;
 };
 
-type QuotaIdentityRepository = Pick<PluginRepository, 'readAccount' | 'readPluginSecret'>;
+/** The parts of a {@link Snapshot} the tracker reads. */
+export type QuotaIdentitySource = Pick<Snapshot, 'config' | 'runtimeCache'>;
 
 /**
  * Everything in the quota cache is keyed by Provider ID alone, so a cached snapshot is only valid
- * while everything the read depends on is unchanged. That is more than the Provider's own config
- * entry: a reauthentication bumps the account revision, a plugin upgrade or options edit changes the
- * adapter, a rotated plugin secret changes the credentials, and the global proxy changes the route
- * the read takes — all without touching `config.providers[id]`.
+ * while everything the read depends on is unchanged — which is far more than the Provider's own
+ * config entry. The runtime identity already digests all of it: plugin package and version, the
+ * plugin options digest (which folds in the stored plugin secret), the account options digest, the
+ * account's `runtimeRevision` (bumped by every credential write, so a reauthentication moves it),
+ * the effective proxy, and the request transforms.
+ *
+ * Reading it off the committed snapshot rather than re-deriving it also keeps the repository's
+ * single-read isolation intact: a corrupt account or unreadable plugin secret is already handled
+ * once, during materialization, and marks only its own Provider unavailable.
+ *
+ * A Provider with no cache entry never materialized a runtime — it is unavailable, and its quota
+ * read is failing for the same reason. Those failures are stored as retryable stale entries, so
+ * they need no invalidation; recovering the Provider produces an entry and moves the identity.
  */
-function quotaIdentity(config: Config, repository: QuotaIdentityRepository): Map<string, unknown> {
-  const identities = new Map<string, unknown>();
+function quotaIdentity({ config, runtimeCache }: QuotaIdentitySource): Map<string, string | null> {
+  const identities = new Map<string, string | null>();
   for (const provider of config.providers) {
     if (provider.kind !== ProviderKind.OAuth) continue;
-    const account = repository.readAccount(provider.id);
-    identities.set(provider.id, {
-      provider,
-      proxy: config.proxy,
-      plugin: config.plugins.find(({ packageName }) => packageName === provider.plugin),
-      // Revisions alone: the credential and options themselves must not be held in memory here, and
-      // both revisions move whenever either changes.
-      account:
-        account === null
-          ? null
-          : {
-              plugin: account.plugin,
-              capability: account.capability,
-              fingerprint: account.fingerprint,
-              revision: account.revision,
-              runtimeRevision: account.runtimeRevision,
-            },
-      secret: repository.readPluginSecret(provider.plugin)?.revision ?? null,
-    });
+    identities.set(provider.id, runtimeCache.get(provider.id)?.identity ?? null);
   }
   return identities;
 }
@@ -52,13 +42,12 @@ function quotaIdentity(config: Config, repository: QuotaIdentityRepository): Map
  */
 export function createQuotaIdentityTracker(
   cache: OAuthQuotaCache | undefined,
-  repository: QuotaIdentityRepository,
-  initial: Config,
+  initial: QuotaIdentitySource,
 ): QuotaIdentityTracker {
-  let previous = quotaIdentity(initial, repository);
+  let previous = quotaIdentity(initial);
   return {
-    reconcile: (config) => {
-      const next = quotaIdentity(config, repository);
+    reconcile: (snapshot) => {
+      const next = quotaIdentity(snapshot);
       if (cache === undefined) {
         previous = next;
         return;
@@ -66,7 +55,7 @@ export function createQuotaIdentityTracker(
       for (const id of new Set([...previous.keys(), ...next.keys()])) {
         // A Provider that stopped being an OAuth Provider — or vanished — is absent from `next`, and
         // its ID is reusable, so its snapshot and "unsupported" mark must go too.
-        if (!isEqual(previous.get(id), next.get(id))) cache.invalidate(id);
+        if (previous.get(id) !== next.get(id)) cache.invalidate(id);
       }
       previous = next;
     },

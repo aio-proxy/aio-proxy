@@ -100,8 +100,8 @@ export async function commitConfig(
   const retired = runtime.manager.swap(candidate);
   replaceCatalogJobs(runtime, candidate.catalogJobs);
   runtime.events.publish({ event: 'config.changed', data: providerDiff(before, candidate.summaries) });
-  // After the swap: the identity is read from the repository, which the commit may have just written.
-  runtime.quotaIdentity?.reconcile(config);
+  // The candidate carries the runtime identities this commit produced; nothing is re-read.
+  runtime.quotaIdentity?.reconcile(candidate);
   const previousRecord = providerConfigRecord(previous.config);
   const nextRecord = providerConfigRecord(config);
   runtime.accountRemovals.cancelReadded(previousRecord, nextRecord);

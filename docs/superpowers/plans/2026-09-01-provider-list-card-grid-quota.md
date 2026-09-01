@@ -55,6 +55,20 @@ Every task is **landed**. Their steps are kept below as the record of what was b
 | Review round 2 follow-ups (quota invalidation) | `0bff48df` |
 | Review round 2 follow-ups (invalid-Provider diagnostics, focus) | `8bcf2631` |
 | Review round 2 follow-ups (spec, plan, changeset sync) | `386fc22f` |
+| Review round 3 follow-ups (retryable quota, identity tracking, i18n, doc sync) | `6a45b0ca`, `93ef7168`, `2b3dbf18` |
+| Review round 4 follow-up (route gates its 404 on `permanent`) | `0cbeed08` |
+| Review round 5 follow-up (identity read off the snapshot) | pending commit |
+
+**Quota cache invalidation:** everything in the cache is keyed by Provider ID alone, so
+`commitConfig` invalidates each Provider whose quota identity moved. That identity is
+`Snapshot.runtimeCache[id].identity` — the digest materialization already computes, folding in the
+plugin version, the plugin options digest (which includes the stored plugin secret), the account
+options digest, the account's `runtimeRevision` (bumped by every credential write, so a
+reauthentication moves it), the effective proxy, and the request transforms. Reading it off the
+committed snapshot rather than re-deriving it from the repository keeps the single-read isolation
+contract intact: a corrupt account or unreadable plugin secret is handled once, during
+materialization, and marks only its own Provider unavailable
+(`__tests__/plugin-snapshot/isolation-storage.test.ts` pins both).
 
 `77213e25` also moved the route to `packages/server/src/dashboard-routes/provider-routes/` with a colocated `provider-routes.test.ts`, dropped the `hono/etag` middleware (it cached the very body `refresh` exists to bypass), made the cache persist failures as stale entries with negative caching and in-flight dedupe, gated warming on `response.ok`, threaded `hasQuota` through the materialization failure paths, and annotated `PROTOCOL_LABELS` as `Record<ProviderProtocol, …>` (which surfaced the missing `openai-image` entry, so **Task 12 Step 3's label addition is already done** — only the `PROTOCOL_ORDER` pin remains).
 

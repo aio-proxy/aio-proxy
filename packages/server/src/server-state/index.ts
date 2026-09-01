@@ -288,11 +288,7 @@ function createQuotaServices(runtime: ServerRuntime, manager: SnapshotManager) {
   });
   const quotaCache = createOAuthQuotaCache(oauthQuota);
   runtime.quotaCache = quotaCache;
-  runtime.quotaIdentity = createQuotaIdentityTracker(
-    quotaCache,
-    runtime.repository,
-    (manager.current() as Snapshot).config,
-  );
+  runtime.quotaIdentity = createQuotaIdentityTracker(quotaCache, manager.current() as Snapshot);
   return { oauthQuota, quotaCache };
 }
 
