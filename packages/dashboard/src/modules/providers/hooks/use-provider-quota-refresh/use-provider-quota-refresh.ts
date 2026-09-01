@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { queryKeys } from '@/lib/query-keys';
 
-import { getProviderQuota, type ProviderQuotaResult } from '../services/provider-quota-service';
+import { getProviderQuota, type ProviderQuotaResult } from '../../services/provider-quota-service';
 
 /**
  * Bypasses the server's per-provider cooldown and seeds the shared cache entry, so the ring and any

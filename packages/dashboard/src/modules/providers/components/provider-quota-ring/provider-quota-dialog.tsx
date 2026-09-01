@@ -5,11 +5,11 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { RotateCw } from 'lucide-react';
 import type React from 'react';
 
-import { PluginIcon } from '@/components/plugin-icon';
 import { resolveDashboardText } from '@/lib/localized-text';
 
 import { providerDisplayName } from '../../lib/provider-list-view';
 import type { ProviderQuotaResult } from '../../services/provider-quota-service';
+import { ProviderAvatar } from '../provider-avatar';
 import { ProviderQuotaItem } from './provider-quota-item';
 
 interface ProviderQuotaDialogProps {
@@ -41,9 +41,12 @@ export const ProviderQuotaDialog: React.FC<ProviderQuotaDialogProps> = ({
       <DialogContent data-testid="provider-quota-dialog">
         <DialogHeader>
           <div className="flex items-start gap-3">
-            {pluginIcon === undefined ? null : (
-              <PluginIcon icon={pluginIcon} size={32} className="mt-0.5 size-8 shrink-0 rounded-full" />
-            )}
+            <ProviderAvatar
+              name={providerDisplayName(provider)}
+              icon={pluginIcon}
+              size={32}
+              className="mt-0.5 size-8"
+            />
             <div className="min-w-0 flex-1">
               <DialogTitle className="truncate">{providerDisplayName(provider)}</DialogTitle>
               <DialogDescription className="truncate">

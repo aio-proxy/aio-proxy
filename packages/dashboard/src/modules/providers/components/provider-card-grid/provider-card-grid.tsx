@@ -34,19 +34,26 @@ export const ProviderCardGrid: React.FC<ProviderCardGridProps> = ({ providers, f
   );
   const visible = useMemo(() => visibleProviders(providers, filters), [providers, filters]);
 
+  // Deep-linking focuses the target card once. Keyed on the Provider ID alone: re-running on every
+  // filter change would steal focus back from whatever the user is typing in.
   useEffect(() => {
     if (focusProviderId === undefined) return;
+    let inner = 0;
     // Two frames: the first lets React commit the grid, the second lets layout settle before scrolling.
-    const frame = requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
+    const outer = requestAnimationFrame(() => {
+      inner = requestAnimationFrame(() => {
         const card = document.getElementById(`provider-row-${focusProviderId}`);
         card?.scrollIntoView?.({ block: 'center' });
-        // The identity link is the card's only focusable anchor; the container itself is not tabbable.
+        // The identity link is the card's only focusable anchor; an uneditable card falls back to
+        // its own container, which carries `tabIndex={-1}` so `.focus()` still lands.
         (document.getElementById(`provider-link-${focusProviderId}`) ?? card)?.focus();
       });
     });
-    return () => cancelAnimationFrame(frame);
-  }, [focusProviderId, visible]);
+    return () => {
+      cancelAnimationFrame(outer);
+      cancelAnimationFrame(inner);
+    };
+  }, [focusProviderId]);
 
   if (providers.length === 0) return <Empty>{m['dashboard.providers.empty_state']()}</Empty>;
 

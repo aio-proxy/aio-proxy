@@ -82,6 +82,24 @@ test('marks the focused Provider', () => {
   expect(screen.getByTestId('provider-row-alpha')).toHaveAttribute('data-focused', 'true');
 });
 
+test('deep-link focus does not fire again when the user filters', async () => {
+  render(<ProviderCardGrid providers={providers} focusProviderId="alpha" />);
+  await nextFrames();
+
+  const search = screen.getByTestId('provider-search');
+  search.focus();
+  fireEvent.change(search, { target: { value: 'alpha' } });
+  await nextFrames();
+
+  // Re-focusing the card here would rip the cursor out of the box mid-word.
+  expect(document.activeElement).toBe(search);
+});
+
+const nextFrames = () =>
+  new Promise<void>((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+  });
+
 test('renders the empty state when there are no Providers at all', () => {
   render(<ProviderCardGrid providers={[]} />);
 

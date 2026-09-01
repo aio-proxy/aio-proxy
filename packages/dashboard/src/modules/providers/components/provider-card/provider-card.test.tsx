@@ -112,6 +112,9 @@ test('an unavailable Provider shows its diagnostic prominently', () => {
   const diagnostic = screen.getByTestId('provider-card-diagnostic');
   expect(diagnostic).toHaveTextContent('Catalog down');
   expect(diagnostic).toHaveTextContent('CATALOG_UNAVAILABLE');
+  // Noninteractive content must stay under the identity link's full-card overlay, or it would punch
+  // a dead hole in the card's click target.
+  expect(diagnostic.className).not.toContain('z-10');
   expect(screen.queryByTestId('provider-card-diagnostic-hint')).not.toBeInTheDocument();
 });
 
@@ -147,11 +150,40 @@ test('an invalid Provider offers deletion and nothing else', () => {
   expect(screen.getByTestId('provider-card-delete')).toBeInTheDocument();
 });
 
-test('a disabled Provider is dimmed but still interactive', () => {
+test('a disabled Provider is tinted rather than faded, and stays interactive', () => {
   renderCard(
     <ProviderCard {...baseProps} provider={providerStub({ id: 'p', kind: ProviderKind.Api, enabled: false })} />,
   );
 
-  expect(screen.getByTestId('provider-row-p').className).toContain('opacity-55');
+  const card = screen.getByTestId('provider-row-p');
+  expect(card.className).toContain('bg-muted/40');
+  // Fading the whole card would take its body text below the contrast floor.
+  expect(card.className).not.toContain('opacity-');
   expect(screen.getByRole('switch')).toBeInTheDocument();
+});
+
+test('an invalid Provider still shows why its configuration could not be parsed', () => {
+  renderCard(
+    <ProviderCard
+      {...baseProps}
+      provider={providerStub({
+        id: 'oops',
+        kind: 'invalid',
+        enabled: false,
+        state: {
+          status: 'unavailable',
+          diagnostic: {
+            code: 'PROVIDER_CONFIG_INVALID',
+            summary: 'baseURL must be an absolute URL',
+            retryable: false,
+            occurredAt: '2026-09-01T00:00:00.000Z',
+          },
+        },
+      })}
+    />,
+  );
+
+  const diagnostic = screen.getByTestId('provider-card-diagnostic');
+  expect(diagnostic).toHaveTextContent('baseURL must be an absolute URL');
+  expect(diagnostic).toHaveTextContent('PROVIDER_CONFIG_INVALID');
 });

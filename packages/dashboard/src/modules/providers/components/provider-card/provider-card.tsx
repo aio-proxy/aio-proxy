@@ -48,6 +48,9 @@ export const ProviderCard: React.FC<ProviderCardProps> = ({
       size="sm"
       id={`provider-row-${provider.id}`}
       data-testid={`provider-row-${provider.id}`}
+      // A card with no identity link (an unparseable Provider) is the deep-link focus fallback, so
+      // it has to be programmatically focusable without entering the tab order.
+      {...(editable ? {} : { tabIndex: -1 })}
       data-focused={focused ? 'true' : undefined}
       className={cn(
         // `relative` anchors the identity link's full-card overlay; `overflow-visible` keeps the
@@ -55,7 +58,9 @@ export const ProviderCard: React.FC<ProviderCardProps> = ({
         'relative gap-3 overflow-visible transition-shadow',
         editable && 'focus-within:ring-2 focus-within:ring-ring/40 hover:shadow-md',
         provider.state.status === 'unavailable' && 'border border-destructive/60',
-        provider.enabled === false && 'opacity-55',
+        // A tint rather than `opacity`: dimming the whole card would take its body text below the
+        // contrast floor. The icons already grayscale and the switch already reads as off.
+        provider.enabled === false && 'bg-muted/40',
         provider.kind === 'invalid' && 'border border-dashed border-destructive',
         focused && 'bg-accent ring-2 ring-ring/40',
       )}
@@ -81,6 +86,16 @@ export const ProviderCard: React.FC<ProviderCardProps> = ({
           <div className="space-y-2" data-testid="provider-card-invalid">
             <p className="text-sm text-destructive">{m['dashboard.providers.card.invalid_hint']()}</p>
             <code className="block rounded-md bg-destructive/10 p-2 text-xs whitespace-normal">{provider.id}</code>
+            {provider.state.status === 'unavailable' ? (
+              // The parse failure's own reason. Without it the card says only "invalid" and the
+              // Provider cannot be edited, so there would be nowhere left to learn what broke.
+              <div
+                className="rounded-md border border-destructive/40 bg-destructive/10 p-2"
+                data-testid="provider-card-diagnostic"
+              >
+                <DiagnosticDetails diagnostic={provider.state.diagnostic} />
+              </div>
+            ) : null}
             <div className="relative z-10 flex justify-end">
               <Button
                 type="button"
@@ -96,8 +111,10 @@ export const ProviderCard: React.FC<ProviderCardProps> = ({
         ) : (
           <>
             {provider.state.status === 'unavailable' ? (
+              // Deliberately not elevated: raising noninteractive text above the identity link's
+              // full-card `::after` overlay would punch a dead hole in the card's click target.
               <div
-                className="relative z-10 rounded-md border border-destructive/40 bg-destructive/10 p-2"
+                className="rounded-md border border-destructive/40 bg-destructive/10 p-2"
                 data-testid="provider-card-diagnostic"
               >
                 <DiagnosticDetails diagnostic={provider.state.diagnostic} />

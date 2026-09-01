@@ -6,10 +6,9 @@ import { Link } from '@tanstack/react-router';
 import { AlertTriangle } from 'lucide-react';
 import type React from 'react';
 
-import { PluginIcon } from '@/components/plugin-icon';
-
 import { PROVIDER_KIND_LABEL } from '../../lib/constants';
 import { providerDisplayName } from '../../lib/provider-list-view';
+import { ProviderAvatar } from '../provider-avatar';
 import { ProviderProtocolLabels } from '../provider-protocol-labels';
 import { ProviderProtocolStack } from '../provider-protocol-stack';
 
@@ -46,15 +45,12 @@ export const ProviderCardIdentity: React.FC<ProviderCardIdentityProps> = ({
           protocols={provider.protocols}
           className={cn('shrink-0', provider.enabled === false && 'grayscale')}
         />
-      ) : pluginIcon === undefined ? (
-        <span className="inline-flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">
-          {name.charAt(0).toUpperCase()}
-        </span>
       ) : (
-        <PluginIcon
+        <ProviderAvatar
+          name={name}
           icon={pluginIcon}
           size={24}
-          className={cn('size-6 shrink-0 rounded-full', provider.enabled === false && 'grayscale')}
+          className={cn('size-6', provider.enabled === false && 'grayscale')}
         />
       )}
 
