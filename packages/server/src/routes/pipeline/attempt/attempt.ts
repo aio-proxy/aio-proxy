@@ -1,5 +1,6 @@
 import type { AnyProtocolAdapter, ImageProtocolAdapter, RouterCandidate } from '@aio-proxy/core';
 import type { Config } from '@aio-proxy/types';
+import { ProviderKind } from '@aio-proxy/types';
 
 import type { LogicalSessionResolution } from '../../../logical-session-store';
 import { withAttemptLogContext } from '../../../request-logging';
@@ -142,6 +143,12 @@ async function attemptLanguageCandidate<TRequest, TContext>(
   return unsupportedDispatch(ctx, slot);
 }
 
+// The response is already on its way out; a quota refresh must never delay or fail it.
+function warmProviderQuota(source: ProviderRouteSource, provider: RuntimeProviderInstance): void {
+  if (provider.kind !== ProviderKind.OAuth) return;
+  source.warmProviderQuota?.(provider.id);
+}
+
 export async function attemptCandidates<TRequest, TContext>(
   options: AttemptCandidatesOptions<TRequest, TContext>,
 ): Promise<Response> {
@@ -214,7 +221,10 @@ export async function attemptCandidates<TRequest, TContext>(
           : dispatch.kind === 'image'
             ? await dispatchImageCandidate(dispatch.ctx, slot)
             : await attemptLanguageCandidate(dispatch.ctx, slot, holder);
-      if (step.kind === 'return') return step.response;
+      if (step.kind === 'return') {
+        warmProviderQuota(options.source, provider);
+        return step.response;
+      }
       if (step.kind === 'skip') {
         lastSkipReason = step.reason;
         continue;
@@ -222,7 +232,10 @@ export async function attemptCandidates<TRequest, TContext>(
       lastFailure = step.lastFailure;
     } catch (error) {
       const step = handleAttemptError(ctx, slot, error);
-      if (step.kind === 'return') return step.response;
+      if (step.kind === 'return') {
+        warmProviderQuota(options.source, provider);
+        return step.response;
+      }
       if (step.kind === 'skip') {
         lastSkipReason = step.reason;
         continue;

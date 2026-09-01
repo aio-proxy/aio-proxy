@@ -128,6 +128,7 @@ export type ServerStateParts = Pick<
   | 'oauthLoginSessions'
   | 'pluginControlPlane'
   | 'providerSummaries'
+  | 'quotaCache'
   | 'reload'
   | 'traceStore'
   | 'requestRecorder'
@@ -185,6 +186,8 @@ export function assembleServerState(runtime: ServerRuntime, parts: ServerStatePa
     providerSummaries: parts.providerSummaries,
     currentConfig: () => (manager.current() as Snapshot).config,
     oauthQuota: parts.oauthQuota,
+    quotaCache: parts.quotaCache,
+    warmProviderQuota: (providerId) => parts.quotaCache.warm(providerId),
     reload: parts.reload,
     traceStore: parts.traceStore,
     logger,
