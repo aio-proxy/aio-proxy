@@ -63,7 +63,9 @@ export const visibleProviders = (
         matchesEnablement(provider, filters.enablement) &&
         matchesKind(provider, filters.kind),
     )
-    .toSorted(
+    // `filter` already produced a fresh array, so sorting in place mutates nothing the caller owns.
+    // `toSorted` is not in this package's TypeScript lib target.
+    .sort(
       (left, right) =>
         effectivePriority(right) - effectivePriority(left) ||
         effectiveWeight(right) - effectiveWeight(left) ||
