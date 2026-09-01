@@ -1,6 +1,6 @@
 {
   "name": "aio-proxy",
-  "version": "0.12.2",
+  "version": "0.12.3",
   "description": "All-in-one LLM API proxy",
   "repository": {
     "type": "git",

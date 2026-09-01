@@ -1,5 +1,15 @@
 # aio-proxy
 
+## 0.12.3
+
+### Patch Changes
+
+- [#235](https://github.com/aio-proxy/aio-proxy/pull/235) [`aeec254`](https://github.com/aio-proxy/aio-proxy/commit/aeec254e53904ecf656d055ea9f45029f5bb68a8) Thanks [@baranwang](https://github.com/baranwang)! - Group dashboard model cost and usage by the requested model alias instead of the upstream model a route resolved to.
+
+- [#237](https://github.com/aio-proxy/aio-proxy/pull/237) [`e735323`](https://github.com/aio-proxy/aio-proxy/commit/e7353232a59b83235f88948a72f94fa5e6219e87) Thanks [@baranwang](https://github.com/baranwang)! - Route image generation for models whose image output is only declared by models.dev. A provider that lists an image model in `models` (or reaches it through an alias) no longer needs a hand-written `router.models` metadata entry to avoid a 501 `not_implemented`.
+
+- [#237](https://github.com/aio-proxy/aio-proxy/pull/237) [`c8dd136`](https://github.com/aio-proxy/aio-proxy/commit/c8dd1369bc9b08570bb74c77befca449272abfb0) Thanks [@baranwang](https://github.com/baranwang)! - Stop an unbounded snapshot-rebuild loop when the models.dev catalog cache expires. The cold-catalog warm now refreshes the provider catalog the staleness check actually reads, instead of a per-model cache that could already be warm — which previously left the check false forever and requeued a rebuild on every pass.
+
 ## 0.12.2
 
 ### Patch Changes
