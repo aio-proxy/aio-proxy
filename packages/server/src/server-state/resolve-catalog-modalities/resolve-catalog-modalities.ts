@@ -58,27 +58,22 @@ export async function resolveCatalogModalities(
 // Non-OAuth providers only: an OAuth/plugin catalog already declares `catalog.image`
 // explicitly, and that stays the authoritative source for those providers.
 //
-// Ids whose router policy already declares an output modality are skipped so an
-// explicit authored value is never second-guessed by the catalog beneath it.
+// Authored `router.models` metadata is deliberately NOT consulted here. Its keys are
+// public slugs while these are upstream model ids, and the capability index this feeds
+// is id-keyed and shared by every slug and alias routing to that id — so filtering by
+// slug name suppresses unrelated routes (a text-only `gpt-image-2` policy would strip
+// image from an `art -> gpt-image-2` alias) while never firing for the route it meant
+// to protect. Suppression belongs to the id-keyed layer above: see
+// `catalogOnlyImageOutput`, where upstream metadata outranks this catalog.
 function routableUpstreamIds(config: Config): string[] {
-  const authored = authoredOutputModalitySlugs(config);
-  const ids = config.providers.flatMap((provider) =>
-    provider.kind === ProviderKind.OAuth ? [] : providerRoutableIds(provider),
+  return uniq(
+    config.providers.flatMap((provider) => (provider.kind === ProviderKind.OAuth ? [] : providerRoutableIds(provider))),
   );
-  return uniq(ids).filter((id) => !authored.has(id));
 }
 
 function providerRoutableIds(provider: Provider): string[] {
   const alias = 'alias' in provider ? provider.alias : undefined;
   return [...(provider.models ?? []), ...(alias === undefined ? [] : Object.values(alias).flatMap(aliasTargetModels))];
-}
-
-function authoredOutputModalitySlugs(config: Config): Set<string> {
-  const slugs = new Set<string>();
-  for (const [slug, policy] of Object.entries(config.router.models)) {
-    if (policy.metadata?.capabilities?.modalities?.output !== undefined) slugs.add(slug);
-  }
-  return slugs;
 }
 
 async function resolveCatalog(

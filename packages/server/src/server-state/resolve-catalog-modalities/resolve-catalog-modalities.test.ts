@@ -70,14 +70,17 @@ describe('resolveCatalogModalities', () => {
     expect(resolved['broken']).toBeUndefined();
   });
 
-  test('skips ids whose router policy already authors an output modality', async () => {
+  // `router.models` keys are public slugs; these are upstream ids, and the index they
+  // feed is shared by every route to an id. Filtering by slug name would strip image
+  // from an unrelated alias that happens to target the same upstream model.
+  test('a slug-named output override does not suppress the catalog for routes to that upstream id', async () => {
     const config = makeConfig(
       {
-        carpool: {
+        aliased: {
           kind: 'api',
           protocol: 'openai-response',
           baseURL: 'https://api.example.com',
-          models: ['gpt-image-2'],
+          alias: { art: { model: 'gpt-image-2' } },
         },
       },
       { 'gpt-image-2': { metadata: { capabilities: { modalities: { output: ['text'] } } } } },
@@ -85,7 +88,7 @@ describe('resolveCatalogModalities', () => {
 
     const resolved = await resolveCatalogModalities(config, { getModels: stubGetModels() });
 
-    expect(resolved['gpt-image-2']).toBeUndefined();
+    expect(outputOf(resolved, 'gpt-image-2')).toEqual(['image']);
   });
 
   test('ignores OAuth providers, whose catalog already declares image models', async () => {
