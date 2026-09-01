@@ -44,6 +44,7 @@ export function writeOpenAIResponsesSSE(
 
     for await (const part of parts) handleStreamPart(ctx, part);
 
+    emitNonToolOutputItemsDone(ctx);
     const response = responseObject('completed', ctx.state);
     send(ctx, { type: 'response.completed', sequence_number: ctx.seq, response });
     context.onResponseId?.(response.id);
@@ -202,6 +203,19 @@ function emitToolEnd(ctx: SseContext, part: Extract<OpenAIResponsesStreamPart, {
     output_index: index,
     item: toolItem(tool, 'completed'),
   });
+}
+
+function emitNonToolOutputItemsDone(ctx: SseContext): void {
+  const { state } = ctx;
+  for (const [index, output] of state.output.entries()) {
+    if (output.type === 'tool') continue;
+    send(ctx, {
+      type: 'response.output_item.done',
+      sequence_number: ctx.seq,
+      output_index: index,
+      item: output.type === 'reasoning' ? reasoningItem(state, 'completed') : messageItem(state, 'completed'),
+    });
+  }
 }
 
 function frame(value: ResponseStreamEvent): Uint8Array {
