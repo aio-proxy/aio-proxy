@@ -36,6 +36,7 @@ import {
 } from '../provider-runtime';
 import { createObservedFetch } from '../request-logging';
 import type { ProviderRouteSnapshot, RuntimeProviderInput, RuntimeProviderInstance } from '../runtime';
+import { resolveCatalogModalities } from './resolve-catalog-modalities/index';
 import { applyMetadataExtend } from './resolve-extend/index';
 import type { CreateRouter, ServerStateOptions } from './types';
 
@@ -76,11 +77,14 @@ export async function buildSnapshot(
   // Resolve router model `metadata.extend` before model resolution and capability
   // indexing read the policies, so downstream consumers see effective values.
   const configWithExtend = await applyMetadataExtend(config, logger, { onCatalogWarmed: onDiagnosticChanged });
+  // models.dev output modalities for ids that only appear in `models`/`alias`, so the
+  // capability index can route them (e.g. an image model with no authored metadata).
+  const catalogMetadata = await resolveCatalogModalities(configWithExtend, { onCatalogWarmed: onDiagnosticChanged });
   const nonOAuth = {
     ...configWithExtend,
     providers: configWithExtend.providers.filter((provider) => provider.kind !== ProviderKind.OAuth),
   };
-  const base = materializeProviders(nonOAuth);
+  const base = materializeProviders(nonOAuth, { catalogMetadata });
   const oauthConfigs = configWithExtend.providers.filter((provider) => provider.kind === ProviderKind.OAuth);
   const oauth = await Promise.all(
     oauthConfigs.map((provider) => {

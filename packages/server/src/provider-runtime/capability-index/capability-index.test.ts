@@ -16,6 +16,7 @@ import {
 // | catalog.image id | image |
 // | same id in both | union |
 // | upstreamMetadata capabilities.modalities.output includes image | image |
+// | catalogMetadata (models.dev) output includes image AND upstream declares no output | image |
 // | modalities.output present and text-only | does not add image; does not remove catalog.image |
 // | primary protocol openai-image and id in finite non-catalog set (models, preserved alias targets, upstream metadata keys) | image |
 // | chat primary (openai-compatible, openai-response, anthropic, gemini) and id in finite non-catalog set | language |
@@ -69,6 +70,26 @@ describe('buildModelCapabilityIndex', () => {
     });
     expect(supportsImage(index, 'dall-e-2')).toBe(true);
     expect(supportsImage(index, 'dummy')).toBe(false);
+  });
+
+  test('models.dev catalog metadata grants image only when upstream declares no output modality', () => {
+    const index = buildModelCapabilityIndex({
+      primaryProtocol: ProviderProtocol.OpenAIResponse,
+      models: ['gpt-image-2', 'gpt-5', 'upstream-text'],
+      upstreamMetadata: { 'upstream-text': { capabilities: { modalities: { output: ['text'] } } } },
+      catalogMetadata: {
+        'gpt-image-2': { capabilities: { modalities: { output: ['image'] } } },
+        'gpt-5': { capabilities: { modalities: { output: ['text'] } } },
+        'upstream-text': { capabilities: { modalities: { output: ['image'] } } },
+        'not-configured': { capabilities: { modalities: { output: ['image'] } } },
+      },
+    });
+    expect(supportsImage(index, 'gpt-image-2')).toBe(true);
+    expect(supportsImage(index, 'gpt-5')).toBe(false);
+    // Upstream outranks the catalog beneath it, even when the catalog says image.
+    expect(supportsImage(index, 'upstream-text')).toBe(false);
+    // The catalog answers "does this produce images?", never "is this routable?".
+    expect(index['not-configured']).toBeUndefined();
   });
 
   test('text-only modalities do not add image and do not remove catalog.image', () => {

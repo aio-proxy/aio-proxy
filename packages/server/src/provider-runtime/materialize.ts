@@ -6,7 +6,7 @@ import {
   createProxyFetch,
   modelRoutes,
 } from '@aio-proxy/core';
-import type { AliasConfig, Config, DashboardProviderSummary, Provider } from '@aio-proxy/types';
+import type { AliasConfig, Config, DashboardProviderSummary, ModelMetadata, Provider } from '@aio-proxy/types';
 import { aliasTargetModels, apiProviderEndpoints, ProviderKind, ProviderProtocol } from '@aio-proxy/types';
 import { uniq } from 'es-toolkit/array';
 
@@ -30,6 +30,8 @@ export type MaterializeProvidersOptions = {
   readonly createApiProvider?: typeof createApiProvider;
   readonly createAiSdkProvider?: typeof createAiSdkProvider;
   readonly createProxyFetch?: typeof createProxyFetch;
+  /** models.dev fallback metadata by upstream model id; see `CapabilityIndexInput.catalogMetadata`. */
+  readonly catalogMetadata?: Readonly<Record<string, ModelMetadata | undefined>>;
 };
 
 export type ProviderRuntime = {
@@ -42,8 +44,12 @@ export type ProviderRuntimeSummary = Omit<DashboardProviderSummary, 'state'>;
 
 export function materializeRuntimeProvider(
   provider: RuntimeProviderInput,
-  options: { readonly apiBridge?: AiSdkProviderInstance } = {},
+  options: {
+    readonly apiBridge?: AiSdkProviderInstance;
+    readonly catalogMetadata?: Readonly<Record<string, ModelMetadata | undefined>>;
+  } = {},
 ): RuntimeProviderInstance {
+  const { catalogMetadata } = options;
   if (isMaterializedRuntimeProvider(provider)) {
     if (provider.capabilityIndex !== undefined) return provider;
     return {
@@ -51,6 +57,7 @@ export function materializeRuntimeProvider(
       capabilityIndex: capabilityIndexFromRoutable({
         models: provider.models,
         alias: provider.alias,
+        catalogMetadata,
         // Legacy API provider instances carry a primary protocol; the
         // materialized runtime type does not declare it.
         primaryProtocol:
@@ -72,6 +79,7 @@ export function materializeRuntimeProvider(
       capabilityIndex: capabilityIndexFromRoutable({
         models: provider.models,
         alias: provider.alias,
+        catalogMetadata,
         primaryProtocol: primary.protocol,
         extraProtocols: rest.map((endpoint) => endpoint.protocol),
       }),
@@ -107,6 +115,7 @@ export function materializeRuntimeProvider(
       capabilityIndex: capabilityIndexFromRoutable({
         models: provider.models,
         alias: provider.alias,
+        catalogMetadata,
         primaryProtocol: provider.targetProtocol,
       }),
       model: {
@@ -187,11 +196,13 @@ function capabilityIndexFromRoutable(provider: {
   readonly alias?: Readonly<Record<string, AliasConfig>>;
   readonly primaryProtocol?: ProviderProtocol;
   readonly extraProtocols?: readonly ProviderProtocol[];
+  readonly catalogMetadata?: Readonly<Record<string, ModelMetadata | undefined>>;
 }): ModelCapabilityIndex {
   return buildModelCapabilityIndex({
     models: provider.models,
     primaryProtocol: provider.primaryProtocol,
     extraProtocols: provider.extraProtocols,
+    catalogMetadata: provider.catalogMetadata,
     aliasTargets: provider.alias === undefined ? undefined : aliasTargets(provider.alias),
   });
 }
@@ -236,6 +247,7 @@ export function materializeProviders(config: Config, options: MaterializeProvide
         const instance = withRoutingDefaults(
           attachImageTransport(
             materializeRuntimeProvider(api, {
+              catalogMetadata: options.catalogMetadata,
               ...(hasLanguageEndpoint ? { apiBridge: bridgeApiProvider(provider, { fetch: providerFetch }) } : {}),
             }),
             { config: provider, fetch: providerFetch, routerModels: config.router.models },
@@ -254,7 +266,7 @@ export function materializeProviders(config: Config, options: MaterializeProvide
         );
         const aiSdk = createAiSdk(provider, { fetch: providerFetch });
         const instance = withRoutingDefaults(
-          attachImageTransport(materializeRuntimeProvider(aiSdk), {
+          attachImageTransport(materializeRuntimeProvider(aiSdk, { catalogMetadata: options.catalogMetadata }), {
             config: provider,
             fetch: providerFetch,
             routerModels: config.router.models,
