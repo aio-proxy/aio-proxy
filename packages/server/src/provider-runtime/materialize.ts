@@ -294,6 +294,9 @@ export function providerSummary(
     passthrough: provider.raw !== undefined,
     last_status: 'unknown',
     last_latency: null,
+    protocols: [],
+    // Only OAuth plugin providers can expose a quota capability.
+    hasQuota: false,
     // Runtime factories don't carry `name`, so callers pass the config display name through.
     ...(name === undefined ? {} : { name }),
     ...(config === undefined ? {} : providerDisplayFields(config)),
@@ -329,6 +332,7 @@ function providerConfigSummary(provider: Provider): ProviderRuntimeSummary {
     passthrough: provider.kind === ProviderKind.Api,
     last_status: 'unknown',
     last_latency: null,
+    hasQuota: false,
     name: provider.name,
     ...providerDisplayFields(provider),
     clientModels,
@@ -338,10 +342,13 @@ function providerConfigSummary(provider: Provider): ProviderRuntimeSummary {
 
 function providerDisplayFields(
   provider: Provider,
-): Pick<ProviderRuntimeSummary, 'priority' | 'weight' | 'protocol' | 'packageName'> {
+): Pick<ProviderRuntimeSummary, 'priority' | 'weight' | 'protocols' | 'packageName'> {
   return {
     ...routingDefaults(provider),
-    ...(provider.kind === ProviderKind.Api ? { protocol: apiProviderEndpoints(provider)[0].protocol } : {}),
+    protocols:
+      provider.kind === ProviderKind.Api
+        ? uniq(apiProviderEndpoints(provider).map((endpoint) => endpoint.protocol))
+        : [],
     ...(provider.kind === ProviderKind.AiSdk ? { packageName: provider.packageName } : {}),
   };
 }

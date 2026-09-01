@@ -187,10 +187,15 @@ export async function materializePluginProvider(
         })
       : undefined);
   const persistedSummary = (provider: Parameters<typeof summary>[1], catalog: typeof storedCatalog) =>
-    summary(config, provider, {
-      ...accountSummary,
-      ...(catalog === null ? {} : { catalogLastSuccessAt: new Date(catalog.refreshedAt).toISOString() }),
-    });
+    summary(
+      config,
+      provider,
+      {
+        ...accountSummary,
+        ...(catalog === null ? {} : { catalogLastSuccessAt: new Date(catalog.refreshedAt).toISOString() }),
+      },
+      adapter.quota !== undefined,
+    );
   const defaultAliases = adapter.catalog.defaultAliases;
   const catalogJobFor = (credentials: CredentialPort<unknown>): CatalogJobDescriptor => ({
     providerId: config.id,

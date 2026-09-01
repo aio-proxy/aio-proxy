@@ -84,7 +84,7 @@ const typeColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
   meta: { className: 'w-36 max-w-36 whitespace-normal', label: () => m['dashboard.providers.table.col_type']() },
   accessorFn: (row) => {
     if (row.rowType === 'oauth-group') return `OAuth ${row.groupKey}`;
-    if (row.provider.kind === 'api') return `${PROVIDER_KIND_LABEL.api} · ${row.provider.protocol ?? 'N/A'}`;
+    if (row.provider.kind === 'api') return `${PROVIDER_KIND_LABEL.api} · ${row.provider.protocols[0] ?? 'N/A'}`;
     if (row.provider.kind === 'ai-sdk') return row.provider.packageName ?? PROVIDER_KIND_LABEL['ai-sdk'];
     if (row.provider.kind === 'invalid') return m['dashboard.providers.kind_label.invalid']();
     return PROVIDER_KIND_LABEL[row.provider.kind];
@@ -97,7 +97,7 @@ const typeColumn: ColumnDef<DataTableFeatures, ProviderTableRow> = {
       return (
         <div className="leading-5">
           <div className="">{PROVIDER_KIND_LABEL.api}</div>
-          <ProtocolLabel className="truncate text-muted-foreground" protocol={provider.protocol ?? 'N/A'} />
+          <ProtocolLabel className="truncate text-muted-foreground" protocol={provider.protocols[0] ?? 'N/A'} />
         </div>
       );
     }

@@ -26,6 +26,7 @@ export function summary(
     readonly expiresAt?: number;
     readonly catalogLastSuccessAt?: string;
   },
+  hasQuota = false,
 ): Omit<DashboardProviderSummary, 'state'> {
   return {
     id: config.id,
@@ -35,6 +36,9 @@ export function summary(
     last_status: 'unknown',
     last_latency: null,
     name: config.name,
+    // OAuth providers speak whatever their plugin runtime speaks; there is no configured wire protocol.
+    protocols: [],
+    hasQuota,
     ...(config.priority === undefined ? {} : { priority: config.priority }),
     ...(config.weight === undefined ? {} : { weight: config.weight }),
     clientModels: provider === undefined ? [] : uniq(modelRoutes(provider).map((route) => route.alias)),
