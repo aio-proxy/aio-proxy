@@ -56,6 +56,9 @@ export function failure(
   retryable: boolean,
   suggestedCommand?: string,
   persisted?: Parameters<typeof summary>[2],
+  // Quota lives on the adapter, not the runtime: a provider whose runtime or proxy check failed can
+  // still answer a quota read, so an unavailable card must keep showing its ring.
+  hasQuota = false,
 ): PluginProviderMaterialization {
   const diagnostic = options.diagnostics(code, {
     plugin: options.config.plugin,
@@ -64,7 +67,10 @@ export function failure(
     retryable,
     ...(suggestedCommand === undefined ? {} : { suggestedCommand }),
   });
-  return { summary: summary(options.config, undefined, persisted), state: diagnosticState(diagnostic) };
+  return {
+    summary: summary(options.config, undefined, persisted, hasQuota),
+    state: diagnosticState(diagnostic),
+  };
 }
 
 export function pluginVersion(plugins: PluginRegistrySnapshot, packageName: string): string | undefined {

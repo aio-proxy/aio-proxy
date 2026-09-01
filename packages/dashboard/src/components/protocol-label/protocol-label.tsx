@@ -9,7 +9,10 @@ interface ProtocolLabelProps {
   readonly showIcon?: boolean;
 }
 
-const PROTOCOL_LABELS = {
+const PROTOCOL_LABELS: Record<
+  ProviderProtocol,
+  { readonly label: string; readonly icon: React.FC<{ size?: number; className?: string }> }
+> = {
   [ProviderProtocol.OpenAICompatible]: {
     label: 'OpenAI Compatible',
     icon: withLobeIcon('openai'),
@@ -30,13 +33,17 @@ const PROTOCOL_LABELS = {
     label: 'Gemini Interactions',
     icon: withLobeIcon('gemini-color'),
   },
-} as const;
+  [ProviderProtocol.OpenAIImage]: {
+    label: 'OpenAI Image',
+    icon: withLobeIcon('openai'),
+  },
+};
 
 /**
  * Protocol order for pickers. Declaration order above, not `Object.values(ProviderProtocol)`: the enum
  * declares `openai-response` first, while OpenAI Compatible is what most third-party gateways speak and
- * so is what a protocol dropdown should open on. Indexing `PROTOCOL_LABELS` by a `ProviderProtocol`
- * below is what keeps this list exhaustive — a new protocol fails to compile until it is listed.
+ * so is what a protocol dropdown should open on. The `Record<ProviderProtocol, …>` annotation is what
+ * keeps this list exhaustive — a new protocol fails to compile until it is listed.
  */
 export const PROTOCOL_ORDER = Object.keys(PROTOCOL_LABELS) as readonly ProviderProtocol[];
 

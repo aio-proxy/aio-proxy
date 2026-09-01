@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test';
 
+import { APICallError } from '@ai-sdk/provider';
 import { ProviderKind, ProviderProtocol } from '@aio-proxy/types';
 
 import {
@@ -24,7 +25,7 @@ const asOAuth = (fixture: FakeProvider): FakeProvider => ({
   },
 });
 
-const runWith = async (fixture: FakeProvider, warmed: string[]) => {
+const runWith = async (fixture: FakeProvider, warmed: string[], expectedStatus = 200) => {
   const adapter = defineProtocolAdapter(ProviderProtocol.OpenAICompatible);
   const route = defineProviderRouteSource([fixture]);
   const response = await handleProtocolRequest({
@@ -33,7 +34,7 @@ const runWith = async (fixture: FakeProvider, warmed: string[]) => {
     rawRequest: jsonRequest({ model: REQUESTED_MODEL }),
     source: { ...route.source, warmProviderQuota: (providerId: string) => warmed.push(providerId) },
   });
-  expect(response.status).toBe(200);
+  expect(response.status).toBe(expectedStatus);
 };
 
 test('a successful attempt warms that OAuth provider quota exactly once', async () => {
@@ -46,6 +47,30 @@ test('a successful attempt warms that OAuth provider quota exactly once', async 
 test('a non-OAuth provider is never warmed', async () => {
   const warmed: string[] = [];
   await runWith(modelProvider({ id: 'plain', invoke: () => textStream('ok') }), warmed);
+
+  expect(warmed).toEqual([]);
+});
+
+test('a terminal failure does not warm the quota', async () => {
+  const warmed: string[] = [];
+  await runWith(
+    asOAuth(
+      modelProvider({
+        id: 'kimi',
+        invoke: () => {
+          throw new APICallError({
+            message: 'quota exhausted',
+            url: 'https://kimi.example.test',
+            requestBodyValues: {},
+            statusCode: 402,
+            isRetryable: false,
+          });
+        },
+      }),
+    ),
+    warmed,
+    502,
+  );
 
   expect(warmed).toEqual([]);
 });

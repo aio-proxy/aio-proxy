@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test';
 
 import type { OAuthQuotaSnapshot } from '@aio-proxy/plugin-sdk';
 
+import { OAuthQuotaCapabilityUnavailableError } from '../errors';
 import type { OAuthQuotaReader } from '../read';
 import { createOAuthQuotaCache } from './quota-cache';
 
@@ -20,14 +21,12 @@ function countingReader(results: readonly (OAuthQuotaSnapshot | Error)[]): OAuth
   };
 }
 
-const signal = () => new AbortController().signal;
-
 test('serves the cached snapshot while the provider is cooling down', async () => {
   const reader = countingReader([snapshot('a'), snapshot('b')]);
   const cache = createOAuthQuotaCache(reader);
 
-  const first = await cache.read('p', signal());
-  const second = await cache.read('p', signal());
+  const first = await cache.read('p');
+  const second = await cache.read('p');
 
   expect(reader.calls()).toBe(1);
   expect(second.snapshot).toEqual(snapshot('a'));
@@ -39,28 +38,64 @@ test('an explicit refresh bypasses the cooldown', async () => {
   const reader = countingReader([snapshot('a'), snapshot('b')]);
   const cache = createOAuthQuotaCache(reader);
 
-  await cache.read('p', signal());
-  const refreshed = await cache.read('p', signal(), true);
+  await cache.read('p');
+  const refreshed = await cache.read('p', true);
 
   expect(reader.calls()).toBe(2);
   expect(refreshed.snapshot).toEqual(snapshot('b'));
 });
 
-test('a failed refresh keeps the last snapshot and reports it as stale', async () => {
+test('a failed refresh keeps reporting the last snapshot as stale on later cooldown hits', async () => {
   const reader = countingReader([snapshot('a'), new Error('QUOTA_READ_FAILED')]);
   const cache = createOAuthQuotaCache(reader);
 
-  await cache.read('p', signal());
-  const stale = await cache.read('p', signal(), true);
+  await cache.read('p');
+  const stale = await cache.read('p', true);
+  const cooled = await cache.read('p');
 
   expect(stale.snapshot).toEqual(snapshot('a'));
   expect(stale.stale).toBe(true);
   expect(stale.error).toBe('QUOTA_READ_FAILED');
+  expect(cooled).toEqual(stale);
+  expect(reader.calls()).toBe(2);
 });
 
-test('a first read that fails rejects instead of inventing an empty snapshot', async () => {
-  const cache = createOAuthQuotaCache(countingReader([new Error('nope')]));
-  await expect(cache.read('p', signal())).rejects.toThrow('nope');
+test('a first read that fails is cooled down instead of retried on every request', async () => {
+  const reader = countingReader([new Error('nope')]);
+  const cache = createOAuthQuotaCache(reader);
+
+  await expect(cache.read('p')).rejects.toThrow('nope');
+  await expect(cache.read('p')).rejects.toThrow('nope');
+
+  expect(reader.calls()).toBe(1);
+});
+
+test('concurrent reads share a single upstream call', async () => {
+  let calls = 0;
+  const cache = createOAuthQuotaCache({
+    read: async () => {
+      calls += 1;
+      await Bun.sleep(5);
+      return snapshot('a');
+    },
+  });
+
+  const [first, second] = await Promise.all([cache.read('p'), cache.read('p')]);
+
+  expect(calls).toBe(1);
+  expect(first).toEqual(second);
+});
+
+test('an unsupported provider is never retried', async () => {
+  const reader = countingReader([new OAuthQuotaCapabilityUnavailableError()]);
+  const cache = createOAuthQuotaCache(reader);
+
+  await expect(cache.read('p')).rejects.toThrow(OAuthQuotaCapabilityUnavailableError);
+  await expect(cache.read('p', true)).rejects.toThrow(OAuthQuotaCapabilityUnavailableError);
+  cache.warm('p');
+  await Bun.sleep(5);
+
+  expect(reader.calls()).toBe(1);
 });
 
 test('warm never rejects and respects the cooldown', async () => {

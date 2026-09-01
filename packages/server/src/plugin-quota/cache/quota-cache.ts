@@ -1,11 +1,12 @@
 import type { OAuthQuotaSnapshot } from '@aio-proxy/plugin-sdk';
 import { LRUCache } from 'lru-cache';
 
+import { OAuthQuotaCapabilityUnavailableError } from '../errors';
 import type { OAuthQuotaReader } from '../read';
 
 const COOLDOWN_MS = 5 * 60_000;
 const MAX_ENTRIES = 256;
-const WARM_TIMEOUT_MS = 15_000;
+const READ_TIMEOUT_MS = 15_000;
 
 export type OAuthQuotaCacheEntry = {
   readonly snapshot: OAuthQuotaSnapshot;
@@ -15,11 +16,9 @@ export type OAuthQuotaCacheEntry = {
 };
 
 export type OAuthQuotaCache = {
-  readonly read: (providerId: string, signal: AbortSignal, refresh?: boolean) => Promise<OAuthQuotaCacheEntry>;
+  readonly read: (providerId: string, refresh?: boolean) => Promise<OAuthQuotaCacheEntry>;
   readonly warm: (providerId: string) => void;
 };
-
-type Sample = { readonly snapshot: OAuthQuotaSnapshot; readonly sampledAt: number };
 
 /**
  * In-memory only, lost on restart: a quota snapshot is a cheap re-read and persisting it would
@@ -28,40 +27,78 @@ type Sample = { readonly snapshot: OAuthQuotaSnapshot; readonly sampledAt: numbe
  * The cooldown is set even when a read throws, so a provider whose upstream is down is retried at
  * the same 5-minute rhythm instead of on every card render. `refresh: true` (the modal's manual
  * button) is the documented escape hatch.
+ *
+ * Reads share one in-flight promise per provider and one 15s timeout, deliberately detached from
+ * any caller's signal: a card unmounting mid-load must not abort the read the modal is awaiting,
+ * and a warm started by the pipeline must not leave a concurrent card stranded behind the cooldown
+ * it just set.
  */
 export function createOAuthQuotaCache(reader: OAuthQuotaReader): OAuthQuotaCache {
-  const samples = new LRUCache<string, Sample>({ max: MAX_ENTRIES });
+  const entries = new LRUCache<string, OAuthQuotaCacheEntry>({ max: MAX_ENTRIES });
+  const failures = new LRUCache<string, Error>({ max: MAX_ENTRIES, ttl: COOLDOWN_MS, ttlAutopurge: true });
   const cooldown = new LRUCache<string, true>({ max: MAX_ENTRIES, ttl: COOLDOWN_MS, ttlAutopurge: true });
+  const inFlight = new Map<string, Promise<OAuthQuotaCacheEntry>>();
+  // A plugin without a quota capability will not grow one at runtime, and every retry re-prepares
+  // the OAuth account (credentials, diagnostics) for nothing. Skip it for the process lifetime.
+  const unsupported = new Set<string>();
 
-  const read = async (providerId: string, signal: AbortSignal, refresh = false): Promise<OAuthQuotaCacheEntry> => {
-    const cached = samples.get(providerId);
-    if (!refresh && cached !== undefined && cooldown.has(providerId)) {
-      return { snapshot: cached.snapshot, sampledAt: cached.sampledAt, stale: false };
-    }
+  const load = async (providerId: string): Promise<OAuthQuotaCacheEntry> => {
+    const previous = entries.get(providerId);
     cooldown.set(providerId, true);
     try {
-      const snapshot = await reader.read(providerId, signal);
-      const sample: Sample = { snapshot, sampledAt: Date.now() };
-      samples.set(providerId, sample);
-      return { snapshot: sample.snapshot, sampledAt: sample.sampledAt, stale: false };
+      const entry: OAuthQuotaCacheEntry = {
+        snapshot: await reader.read(providerId, AbortSignal.timeout(READ_TIMEOUT_MS)),
+        sampledAt: Date.now(),
+        stale: false,
+      };
+      entries.set(providerId, entry);
+      failures.delete(providerId);
+      return entry;
     } catch (error) {
-      if (cached === undefined) throw error;
-      return {
-        snapshot: cached.snapshot,
-        sampledAt: cached.sampledAt,
+      if (error instanceof OAuthQuotaCapabilityUnavailableError) unsupported.add(providerId);
+      if (previous === undefined) {
+        failures.set(providerId, error instanceof Error ? error : new Error('QUOTA_READ_FAILED'));
+        throw error;
+      }
+      // Replaces the entry so the next cooldown hit still reports the failure instead of silently
+      // presenting the old snapshot as fresh.
+      const stale: OAuthQuotaCacheEntry = {
+        snapshot: previous.snapshot,
+        sampledAt: previous.sampledAt,
         stale: true,
         error: error instanceof Error ? error.message : 'QUOTA_READ_FAILED',
       };
+      entries.set(providerId, stale);
+      return stale;
     }
+  };
+
+  const start = (providerId: string): Promise<OAuthQuotaCacheEntry> => {
+    const pending = inFlight.get(providerId);
+    if (pending !== undefined) return pending;
+    const promise = load(providerId).finally(() => {
+      if (inFlight.get(providerId) === promise) inFlight.delete(providerId);
+    });
+    inFlight.set(providerId, promise);
+    return promise;
+  };
+
+  const read = async (providerId: string, refresh = false): Promise<OAuthQuotaCacheEntry> => {
+    if (unsupported.has(providerId)) throw new OAuthQuotaCapabilityUnavailableError();
+    if (!refresh && cooldown.has(providerId)) {
+      const cached = entries.get(providerId);
+      if (cached !== undefined) return cached;
+      const failure = failures.get(providerId);
+      if (failure !== undefined) throw failure;
+    }
+    return await start(providerId);
   };
 
   return {
     read,
-    // ponytail: no in-flight dedupe — the cooldown plus the dashboard's 30s staleTime already
-    // collapse bursts; add one if a provider ever shows concurrent upstream reads.
     warm: (providerId) => {
-      if (cooldown.has(providerId)) return;
-      void read(providerId, AbortSignal.timeout(WARM_TIMEOUT_MS)).catch(() => {});
+      if (unsupported.has(providerId) || cooldown.has(providerId)) return;
+      void start(providerId).catch(() => {});
     },
   };
 }

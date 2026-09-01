@@ -143,9 +143,11 @@ async function attemptLanguageCandidate<TRequest, TContext>(
   return unsupportedDispatch(ctx, slot);
 }
 
-// The response is already on its way out; a quota refresh must never delay or fail it.
-function warmProviderQuota(source: ProviderRouteSource, provider: RuntimeProviderInstance): void {
-  if (provider.kind !== ProviderKind.OAuth) return;
+// A `return` step also carries terminal failures (unsupported dispatch, mapped upstream errors), and
+// only a provider that actually served the request has spent quota worth re-reading. The response is
+// already on its way out, so the refresh must never delay or fail it.
+function warmProviderQuota(source: ProviderRouteSource, provider: RuntimeProviderInstance, response: Response): void {
+  if (!response.ok || provider.kind !== ProviderKind.OAuth) return;
   source.warmProviderQuota?.(provider.id);
 }
 
@@ -222,7 +224,7 @@ export async function attemptCandidates<TRequest, TContext>(
             ? await dispatchImageCandidate(dispatch.ctx, slot)
             : await attemptLanguageCandidate(dispatch.ctx, slot, holder);
       if (step.kind === 'return') {
-        warmProviderQuota(options.source, provider);
+        warmProviderQuota(options.source, provider, step.response);
         return step.response;
       }
       if (step.kind === 'skip') {
@@ -233,7 +235,7 @@ export async function attemptCandidates<TRequest, TContext>(
     } catch (error) {
       const step = handleAttemptError(ctx, slot, error);
       if (step.kind === 'return') {
-        warmProviderQuota(options.source, provider);
+        warmProviderQuota(options.source, provider, step.response);
         return step.response;
       }
       if (step.kind === 'skip') {

@@ -1,16 +1,21 @@
 import { isPlainObject } from 'es-toolkit/predicate';
 import { Hono } from 'hono';
-import { etag } from 'hono/etag';
 import { validator } from 'hono/validator';
 
-import type { ServerState } from '../server-state';
-import { providerPackageQueryValidator, providerPackageStatus } from './provider-package-metadata';
+import { OAuthQuotaCapabilityUnavailableError } from '../../plugin-quota';
+import type { ServerState } from '../../server-state';
+import { providerPackageQueryValidator, providerPackageStatus } from '../provider-package-metadata';
 
 const probeKey = 'probe';
 
 const providerProbeValidator = validator('query', (raw): { readonly probe?: string } =>
   typeof raw[probeKey] === 'string' ? { probe: raw[probeKey] } : {},
 );
+
+// The body is optional and the only field that matters is the manual-refresh escape hatch.
+const quotaRefreshValidator = validator('json', (raw): { readonly refresh: boolean } => ({
+  refresh: isPlainObject(raw) && raw['refresh'] === true,
+}));
 
 export const createDashboardProviderReadRoutes = (state: ServerState) =>
   new Hono()
@@ -40,12 +45,13 @@ export const createDashboardProviderReadRoutes = (state: ServerState) =>
         ...(routing === undefined ? {} : { routing }),
       });
     })
-    .use('/providers/:id/quota', etag())
-    .query('/providers/:id/quota', async (context) => {
-      const body: unknown = await context.req.json().catch(() => ({}));
-      const refresh = isPlainObject(body) && body['refresh'] === true;
+    .query('/providers/:id/quota', quotaRefreshValidator, async (context) => {
+      const id = context.req.param('id');
+      if (!state.currentConfig().providers.some((provider) => provider.id === id)) {
+        return context.json({ error: 'provider not found' }, 404);
+      }
       try {
-        const entry = await state.quotaCache.read(context.req.param('id'), context.req.raw.signal, refresh);
+        const entry = await state.quotaCache.read(id, context.req.valid('json').refresh);
         return context.json({
           snapshot: entry.snapshot,
           sampledAt: entry.sampledAt,
@@ -53,8 +59,11 @@ export const createDashboardProviderReadRoutes = (state: ServerState) =>
           ...(entry.error === undefined ? {} : { error: entry.error }),
         });
       } catch (error) {
-        // The cache only throws when it has no snapshot at all: an unsupported provider, a missing
-        // account, or a first read that failed. All are upstream problems, not client mistakes.
+        // A provider whose plugin has no quota capability is a permanent 404, not a transient
+        // upstream failure the card should keep retrying.
+        if (error instanceof OAuthQuotaCapabilityUnavailableError) {
+          return context.json({ error: error.code }, 404);
+        }
         return context.json({ error: error instanceof Error ? error.message : 'OAUTH_QUOTA_READ_FAILED' }, 502);
       }
     })

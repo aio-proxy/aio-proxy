@@ -1,4 +1,4 @@
-import type { DashboardProviderSummary } from '@aio-proxy/types';
+import { type DashboardProviderSummary, ProviderProtocol } from '@aio-proxy/types';
 import { afterEach, describe, expect, rs, test } from '@rstest/core';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
@@ -53,7 +53,9 @@ afterEach(() => {
 describe('providers table', () => {
   test('shows usage loading instead of fabricated zero traffic', () => {
     renderProvidersTable(
-      <ProvidersTable providers={[providerStub({ id: 'usage-pending', kind: 'api', protocol: 'openai-response' })]} />,
+      <ProvidersTable
+        providers={[providerStub({ id: 'usage-pending', kind: 'api', protocols: [ProviderProtocol.OpenAIResponse] })]}
+      />,
       undefined,
     );
 
@@ -68,7 +70,7 @@ describe('providers table', () => {
             id: 'openai-main',
             name: 'OpenAI Main',
             kind: 'api',
-            protocol: 'openai-response',
+            protocols: [ProviderProtocol.OpenAIResponse],
             clientModels: ['gpt-5', 'gpt-5-mini'],
             weight: 7,
           }),
@@ -277,8 +279,8 @@ describe('providers table', () => {
     renderProvidersTable(
       <ProvidersTable
         providers={[
-          providerStub({ id: 'api', kind: 'api', protocol: 'openai-response' }),
-          providerStub({ id: 'weight-zero', kind: 'api', protocol: 'openai-response', weight: 0 }),
+          providerStub({ id: 'api', kind: 'api', protocols: [ProviderProtocol.OpenAIResponse] }),
+          providerStub({ id: 'weight-zero', kind: 'api', protocols: [ProviderProtocol.OpenAIResponse], weight: 0 }),
         ]}
       />,
     );
@@ -299,8 +301,8 @@ describe('providers table', () => {
     renderProvidersTable(
       <ProvidersTable
         providers={[
-          providerStub({ id: 'zulu', kind: 'api', protocol: 'openai-response' }),
-          providerStub({ id: 'alpha', kind: 'api', protocol: 'anthropic' }),
+          providerStub({ id: 'zulu', kind: 'api', protocols: [ProviderProtocol.OpenAIResponse] }),
+          providerStub({ id: 'alpha', kind: 'api', protocols: [ProviderProtocol.Anthropic] }),
         ]}
       />,
       new Map([

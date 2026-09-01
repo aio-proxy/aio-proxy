@@ -132,7 +132,7 @@ async function createRuntimeMaterialization(
       context: { plugin: config.plugin, capability: config.capability, providerId: config.id },
       error: { name: error instanceof Error ? error.name : 'Error', message: 'Plugin runtime creation failed' },
     });
-    return failure(options, 'RUNTIME_CREATE_FAILED', true, undefined, accountSummary);
+    return failure(options, 'RUNTIME_CREATE_FAILED', true, undefined, accountSummary, adapter.quota !== undefined);
   }
 }
 
@@ -157,19 +157,26 @@ export async function materializePluginProvider(
   let proxyIdentity = options.effectiveProxy;
   if (proxyIdentity === undefined) proxyIdentity = config.proxy === false ? null : (config.proxy ?? null);
   if (adapter.supportsProxy === false && proxyIdentity !== null) {
-    return failure(options, 'PROXY_UNSUPPORTED', false, undefined, accountSummary);
+    return failure(options, 'PROXY_UNSUPPORTED', false, undefined, accountSummary, adapter.quota !== undefined);
   }
   const accountOptionsDigest = digest(prepared.accountOptionsIdentity);
   let diagnostics: readonly Diagnostic[];
   try {
     diagnostics = repository.readDiagnostics(config.id);
   } catch {
-    return failure(options, 'CREDENTIALS_MISSING_OR_INVALID', false, providerLoginCommand(config.id), accountSummary);
+    return failure(
+      options,
+      'CREDENTIALS_MISSING_OR_INVALID',
+      false,
+      providerLoginCommand(config.id),
+      accountSummary,
+      adapter.quota !== undefined,
+    );
   }
   const refreshFailure = refreshDiagnostic(diagnostics);
   if (refreshFailure !== undefined) {
     return {
-      summary: summary(config, undefined, accountSummary),
+      summary: summary(config, undefined, accountSummary, adapter.quota !== undefined),
       state: diagnosticState({ ...refreshFailure, suggestedCommand: providerLoginCommand(config.id) }),
     };
   }

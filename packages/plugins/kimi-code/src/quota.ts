@@ -1,4 +1,5 @@
 import type { AccountContext, OAuthQuotaItem, OAuthQuotaSnapshot } from '@aio-proxy/plugin-sdk';
+import { isPlainObject } from 'es-toolkit/predicate';
 
 import { kimiIdentityHeaders } from './headers';
 import { currentKimiCredential, type KimiCredential, type KimiOAuthDependencies } from './oauth';
@@ -48,9 +49,9 @@ const PLAN_BY_LEVEL: Record<string, string> = {
 
 function membershipPlan(root: object): string | undefined {
   const user = Reflect.get(root, 'user');
-  if (typeof user !== 'object' || user === null) return undefined;
+  if (!isPlainObject(user)) return undefined;
   const membership = Reflect.get(user, 'membership');
-  if (typeof membership !== 'object' || membership === null) return undefined;
+  if (!isPlainObject(membership)) return undefined;
   const level = Reflect.get(membership, 'level');
   if (typeof level !== 'string' || level.trim() === '') return undefined;
   return PLAN_BY_LEVEL[level] ?? level.replace('LEVEL_', '').toLowerCase();
