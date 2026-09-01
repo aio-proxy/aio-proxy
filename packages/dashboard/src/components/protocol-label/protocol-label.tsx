@@ -40,12 +40,18 @@ const PROTOCOL_LABELS: Record<
 };
 
 /**
- * Protocol order for pickers. Declaration order above, not `Object.values(ProviderProtocol)`: the enum
- * declares `openai-response` first, while OpenAI Compatible is what most third-party gateways speak and
- * so is what a protocol dropdown should open on. The `Record<ProviderProtocol, …>` annotation is what
- * keeps this list exhaustive — a new protocol fails to compile until it is listed.
+ * Protocol order for pickers. Rendering coverage and picker coverage are different questions:
+ * `PROTOCOL_LABELS` must be exhaustive so a card never renders a blank icon, while the pickers offer
+ * only the protocols a user may configure or filter by. `openai-image` renders but is not offered.
+ * OpenAI Compatible leads because it is what most third-party gateways speak.
  */
-export const PROTOCOL_ORDER = Object.keys(PROTOCOL_LABELS) as readonly ProviderProtocol[];
+export const PROTOCOL_ORDER: readonly ProviderProtocol[] = [
+  ProviderProtocol.OpenAICompatible,
+  ProviderProtocol.OpenAIResponse,
+  ProviderProtocol.Anthropic,
+  ProviderProtocol.Gemini,
+  ProviderProtocol.GeminiInteractions,
+];
 
 const isProviderProtocol = (value: string): value is ProviderProtocol =>
   Object.values(ProviderProtocol).includes(value as ProviderProtocol);
