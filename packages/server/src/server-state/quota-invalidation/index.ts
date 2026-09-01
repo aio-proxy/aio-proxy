@@ -1,1 +1,1 @@
-export { invalidateReconfiguredQuota } from './quota-invalidation';
+export { createQuotaIdentityTracker, type QuotaIdentityTracker } from './quota-invalidation';

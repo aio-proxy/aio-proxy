@@ -27,7 +27,7 @@ import type { ProviderCooldownStore } from '../routes/pipeline/provider-cooldown
 import type { RetiredProviderSnapshot } from '../runtime';
 import type { ServerLogSink } from '../server-log';
 import { oauthCapabilities, oauthProviderEditView } from './oauth-views';
-import { invalidateReconfiguredQuota } from './quota-invalidation';
+import type { QuotaIdentityTracker } from './quota-invalidation';
 import { createRecovery } from './recovery';
 import { reloadSnapshot } from './reload';
 import { buildSnapshot, providerConfigRecord, type Snapshot } from './snapshot';
@@ -56,6 +56,7 @@ export type ServerRuntime = {
   accountRemovals: AccountRemovalCoordinator;
   scheduler: CatalogScheduler;
   quotaCache: OAuthQuotaCache | undefined;
+  quotaIdentity: QuotaIdentityTracker | undefined;
   recovery: RecoveryHandle | undefined;
   configFile: AtomicConfigFile | undefined;
 };
@@ -99,9 +100,10 @@ export async function commitConfig(
   const retired = runtime.manager.swap(candidate);
   replaceCatalogJobs(runtime, candidate.catalogJobs);
   runtime.events.publish({ event: 'config.changed', data: providerDiff(before, candidate.summaries) });
+  // After the swap: the identity is read from the repository, which the commit may have just written.
+  runtime.quotaIdentity?.reconcile(config);
   const previousRecord = providerConfigRecord(previous.config);
   const nextRecord = providerConfigRecord(config);
-  invalidateReconfiguredQuota(runtime.quotaCache, previousRecord, nextRecord);
   runtime.accountRemovals.cancelReadded(previousRecord, nextRecord);
   return retired;
 }

@@ -87,7 +87,7 @@ test('concurrent reads share a single upstream call', async () => {
 });
 
 test('an unsupported provider is never retried', async () => {
-  const reader = countingReader([new OAuthQuotaCapabilityUnavailableError()]);
+  const reader = countingReader([new OAuthQuotaCapabilityUnavailableError(true)]);
   const cache = createOAuthQuotaCache(reader);
 
   await expect(cache.read('p')).rejects.toThrow(OAuthQuotaCapabilityUnavailableError);
@@ -96,6 +96,18 @@ test('an unsupported provider is never retried', async () => {
   await Bun.sleep(5);
 
   expect(reader.calls()).toBe(1);
+});
+
+test('a transient account failure wearing the unavailable error stays retryable', async () => {
+  // `prepareContext` reports bad credentials, unreadable secrets, and invalid options as the same
+  // opaque error as a plugin with no quota capability. Latching on it would mean one expired token
+  // disables the quota ring until restart, even after the user reauthenticates.
+  const reader = countingReader([new OAuthQuotaCapabilityUnavailableError(), snapshot('a')]);
+  const cache = createOAuthQuotaCache(reader);
+
+  await expect(cache.read('p')).rejects.toBeInstanceOf(OAuthQuotaCapabilityUnavailableError);
+
+  expect((await cache.read('p', true)).snapshot).toEqual(snapshot('a'));
 });
 
 test('warm never rejects and respects the cooldown', async () => {
@@ -121,7 +133,7 @@ test('invalidation drops the snapshot, the cooldown, and the unsupported mark fo
   const afterInvalidate = await cache.read('p');
 
   const unsupported = createOAuthQuotaCache(
-    countingReader([new OAuthQuotaCapabilityUnavailableError(), snapshot('c')]),
+    countingReader([new OAuthQuotaCapabilityUnavailableError(true), snapshot('c')]),
   );
   await expect(unsupported.read('p')).rejects.toBeInstanceOf(OAuthQuotaCapabilityUnavailableError);
   unsupported.invalidate('p');

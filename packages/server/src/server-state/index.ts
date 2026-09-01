@@ -50,6 +50,7 @@ import {
 } from './lifecycle';
 import { defaultLogger, defaultPluginLogger } from './logging';
 import { createProviderSummaries } from './probe';
+import { createQuotaIdentityTracker } from './quota-invalidation';
 import { defaultRecoveryScheduler, recoverBeforeSnapshot } from './recovery';
 import { buildSnapshot, buildSnapshotWithProviders, type Snapshot } from './snapshot';
 import type {
@@ -158,6 +159,7 @@ async function initializeServerState(
     accountRemovals: undefined as unknown as AccountRemovalCoordinator,
     scheduler: undefined as unknown as CatalogScheduler,
     quotaCache: undefined,
+    quotaIdentity: undefined,
     recovery: undefined,
     configFile,
   };
@@ -286,6 +288,11 @@ function createQuotaServices(runtime: ServerRuntime, manager: SnapshotManager) {
   });
   const quotaCache = createOAuthQuotaCache(oauthQuota);
   runtime.quotaCache = quotaCache;
+  runtime.quotaIdentity = createQuotaIdentityTracker(
+    quotaCache,
+    runtime.repository,
+    (manager.current() as Snapshot).config,
+  );
   return { oauthQuota, quotaCache };
 }
 

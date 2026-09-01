@@ -39,8 +39,10 @@ export function createOAuthQuotaCache(reader: OAuthQuotaReader): OAuthQuotaCache
   const failures = new LRUCache<string, Error>({ max: MAX_ENTRIES, ttl: COOLDOWN_MS, ttlAutopurge: true });
   const cooldown = new LRUCache<string, true>({ max: MAX_ENTRIES, ttl: COOLDOWN_MS, ttlAutopurge: true });
   const inFlight = new Map<string, Promise<OAuthQuotaCacheEntry>>();
-  // A plugin without a quota capability will not grow one at runtime, and every retry re-prepares
-  // the OAuth account (credentials, diagnostics) for nothing. Skip it for the process lifetime.
+  // A plugin without a quota capability will not grow one until its config changes, and every retry
+  // re-prepares the OAuth account (credentials, diagnostics) for nothing. Skip it until `invalidate`.
+  // Only `permanent` failures land here: a credential or options failure wears the same error type
+  // but must stay retryable, or one expired token would disable quota for the process lifetime.
   const unsupported = new Set<string>();
   // Bumped by `invalidate`. A read already in flight when a Provider is reconfigured describes the
   // old account, so its result must not be written back under the new one.
@@ -63,7 +65,9 @@ export function createOAuthQuotaCache(reader: OAuthQuotaReader): OAuthQuotaCache
       }
       return entry;
     } catch (error) {
-      if (error instanceof OAuthQuotaCapabilityUnavailableError && current()) unsupported.add(providerId);
+      if (error instanceof OAuthQuotaCapabilityUnavailableError && error.permanent && current()) {
+        unsupported.add(providerId);
+      }
       if (previous === undefined) {
         if (current()) failures.set(providerId, error instanceof Error ? error : new Error('QUOTA_READ_FAILED'));
         throw error;
@@ -92,7 +96,7 @@ export function createOAuthQuotaCache(reader: OAuthQuotaReader): OAuthQuotaCache
   };
 
   const read = async (providerId: string, refresh = false): Promise<OAuthQuotaCacheEntry> => {
-    if (unsupported.has(providerId)) throw new OAuthQuotaCapabilityUnavailableError();
+    if (unsupported.has(providerId)) throw new OAuthQuotaCapabilityUnavailableError(true);
     if (!refresh && cooldown.has(providerId)) {
       const cached = entries.get(providerId);
       if (cached !== undefined) return cached;

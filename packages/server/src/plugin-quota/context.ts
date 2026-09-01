@@ -77,7 +77,7 @@ async function prepareContext(
   try {
     const provider = lease.snapshot.config?.providers.find(({ id }) => id === providerId);
     if (provider?.kind !== ProviderKind.OAuth) {
-      throw new OAuthQuotaCapabilityUnavailableError();
+      throw new OAuthQuotaCapabilityUnavailableError(true);
     }
     const pluginSecretValues = collectSecretStrings(dependencies.repository.readPluginSecret(provider.plugin)?.value);
     const prepared = await prepareOAuthPluginAccount({
@@ -91,7 +91,7 @@ async function prepareContext(
       pluginSecretValues,
     });
     if (prepared.adapter.quota === undefined) {
-      throw new OAuthQuotaCapabilityUnavailableError();
+      throw new OAuthQuotaCapabilityUnavailableError(true);
     }
     const secretValues = new Set(prepared.secretValues);
     const runtimeFetch = quotaFetch(lease.snapshot as Partial<Snapshot>, provider);
@@ -108,8 +108,13 @@ async function prepareContext(
       providerId,
       secretValues,
     };
-  } catch {
-    throw new OAuthQuotaCapabilityUnavailableError();
+  } catch (error) {
+    // Deliberately opaque: a caller must not learn whether the account exists, its options parsed,
+    // or its credential decrypted. `permanent` is preserved so the cache can still tell a plugin
+    // with no quota capability apart from an account that merely needs reauthentication.
+    throw new OAuthQuotaCapabilityUnavailableError(
+      error instanceof OAuthQuotaCapabilityUnavailableError && error.permanent,
+    );
   }
 }
 
