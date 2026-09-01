@@ -1,12 +1,8 @@
-import {
-  catalogModelToMetadata,
-  getModels,
-  getModelsCachedOnly,
-  hasCachedModelsCatalog,
-  type ModelsDevModel,
-} from '@aio-proxy/core';
+import { catalogModelToMetadata, getModels, getModelsCachedOnly, type ModelsDevModel } from '@aio-proxy/core';
 import { aliasTargetModels, type Config, type ModelMetadata, ProviderKind, type Provider } from '@aio-proxy/types';
 import { uniq } from 'es-toolkit/array';
+
+import { catalogCachedOrWarming } from '../warm-catalog/index';
 
 /** Injection seam so tests can supply a catalog without touching the network/global cache. */
 export type ResolveCatalogModalitiesDeps = {
@@ -34,12 +30,10 @@ export async function resolveCatalogModalities(
   const ids = routableUpstreamIds(config);
   if (ids.length === 0) return {};
 
-  const cachedOnly = deps?.getModels === undefined;
-  const catalogCached = !cachedOnly || (await hasCachedModelsCatalog());
+  // Queues a background warm when the catalog is cold. The current snapshot still
+  // resolves from whatever the caches already hold rather than waiting on it.
+  if (deps?.getModels === undefined) await catalogCachedOrWarming(deps?.onCatalogWarmed);
   const catalog = await resolveCatalog(ids, deps?.getModels ?? getModelsCachedOnly);
-  if (!catalogCached && deps?.onCatalogWarmed !== undefined) {
-    void getModels(ids).then(deps.onCatalogWarmed, () => {});
-  }
 
   const resolved: Record<string, ModelMetadata> = {};
   for (const id of ids) {

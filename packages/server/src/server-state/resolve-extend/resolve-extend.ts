@@ -2,12 +2,13 @@ import {
   catalogModelToMetadata,
   getModels,
   getModelsCachedOnly,
-  hasCachedModelsCatalog,
   type ModelsDevModel,
   type PluginLogSink,
 } from '@aio-proxy/core';
 import { type Config, type ModelMetadata, ModelMetadataSchema, type RouterModelPolicy } from '@aio-proxy/types';
 import { mergeWith } from 'es-toolkit/object';
+
+import { catalogCachedOrWarming } from '../warm-catalog/index';
 
 /** Injection seam so tests can supply a catalog without touching the network/global cache. */
 export type ResolveExtendDeps = {
@@ -36,11 +37,8 @@ export async function applyMetadataExtend(
   if (slugs.size === 0) return config;
 
   const cachedOnly = deps?.getModels === undefined;
-  const catalogCached = !cachedOnly || (await hasCachedModelsCatalog());
+  const catalogCached = !cachedOnly || (await catalogCachedOrWarming(deps?.onCatalogWarmed));
   const catalog = await resolveCatalog([...slugs], deps?.getModels ?? getModelsCachedOnly);
-  if (!catalogCached && deps?.onCatalogWarmed !== undefined) {
-    void getModels([...slugs]).then(deps.onCatalogWarmed, () => {});
-  }
 
   const preserveUnresolved =
     !catalogCached || (cachedOnly && Object.values(catalog).some((model) => model === undefined));
