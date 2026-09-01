@@ -147,6 +147,30 @@ describe('usage overview from trace roots', () => {
     }
   });
 
+  test('groups model usage by the requested alias, not the upstream model', () => {
+    const { handle, store } = makeStore();
+    try {
+      complete(
+        store,
+        'a'.repeat(32),
+        new Date(NOW.getTime() - 1000),
+        NOW,
+        {
+          finalProviderId: 'openrouter',
+          finalModelId: 'upstream-model',
+          finalHttpStatus: 200,
+          usage: { providerId: 'openrouter', modelId: 'upstream-model', totalTokens: 9, estimatedCostUsd: 0.1 },
+        },
+        { 'gen_ai.request.model': 'my-alias' },
+      );
+
+      const overview = store.overview({ range: '24h', metric: 'cost', groupBy: 'model', now: NOW });
+      expect(overview.series).toEqual([{ key: 'my-alias', kind: 'dimension' }]);
+    } finally {
+      handle.close();
+    }
+  });
+
   test('aggregates token and cost values beyond SQLite int64', () => {
     const { handle, store } = makeStore();
     try {

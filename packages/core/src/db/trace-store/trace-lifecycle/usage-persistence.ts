@@ -60,7 +60,7 @@ export function upsertUsageDelta(
   childSpans: readonly StoredSpan[],
 ): void {
   const { summary, session } = input;
-  const modelDimension = summary.finalModelId ?? session?.requestedModelId ?? 'unknown';
+  const modelDimension = session?.requestedModelId ?? summary.finalModelId ?? 'unknown';
   const usage = summary.usage;
   const success = summary.terminationReason === undefined;
   const inputTokens = BigInt(usage?.inputTokens ?? 0);
