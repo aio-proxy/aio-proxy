@@ -32,7 +32,7 @@ import { createFifoQueue } from '../fifo-queue';
 import { LogicalSessionStore } from '../logical-session-store';
 import { createModelRoutingControlPlane } from '../model-routing';
 import { createPluginControlPlane } from '../plugin-control-plane';
-import { createOAuthQuotaOperations } from '../plugin-quota';
+import { createOAuthQuotaCache, createOAuthQuotaOperations } from '../plugin-quota';
 import type { SnapshotManager } from '../plugin-snapshot';
 import { createSnapshotManager } from '../plugin-snapshot';
 import { createRequestTraceRecorder } from '../request-tracing';
@@ -186,6 +186,7 @@ async function initializeServerState(
     logger: pluginLogger,
     onDiagnosticChanged: () => queueRebuild(runtime),
   });
+  const quotaCache = createOAuthQuotaCache(oauthQuota);
   runtime.accountRemovals = createAccountRemovalCoordinator({
     file: configFile,
     repository,
@@ -266,6 +267,7 @@ async function initializeServerState(
     cooldown,
     modelRouting,
     oauthQuota,
+    quotaCache,
     oauthLoginSessions,
     pluginControlPlane,
     providerSummaries,

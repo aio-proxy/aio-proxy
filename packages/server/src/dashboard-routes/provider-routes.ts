@@ -1,4 +1,6 @@
+import { isPlainObject } from 'es-toolkit/predicate';
 import { Hono } from 'hono';
+import { etag } from 'hono/etag';
 import { validator } from 'hono/validator';
 
 import type { ServerState } from '../server-state';
@@ -37,6 +39,24 @@ export const createDashboardProviderReadRoutes = (state: ServerState) =>
         ...(oauth === undefined ? {} : { oauth }),
         ...(routing === undefined ? {} : { routing }),
       });
+    })
+    .use('/providers/:id/quota', etag())
+    .query('/providers/:id/quota', async (context) => {
+      const body: unknown = await context.req.json().catch(() => ({}));
+      const refresh = isPlainObject(body) && body['refresh'] === true;
+      try {
+        const entry = await state.quotaCache.read(context.req.param('id'), context.req.raw.signal, refresh);
+        return context.json({
+          snapshot: entry.snapshot,
+          sampledAt: entry.sampledAt,
+          stale: entry.stale,
+          ...(entry.error === undefined ? {} : { error: entry.error }),
+        });
+      } catch (error) {
+        // The cache only throws when it has no snapshot at all: an unsupported provider, a missing
+        // account, or a first read that failed. All are upstream problems, not client mistakes.
+        return context.json({ error: error instanceof Error ? error.message : 'OAUTH_QUOTA_READ_FAILED' }, 502);
+      }
     })
     .get('/providers/:id', providerProbeValidator, async (context) => {
       const query = context.req.valid('query');
