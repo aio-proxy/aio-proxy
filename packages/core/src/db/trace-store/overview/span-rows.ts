@@ -47,7 +47,7 @@ export function spanRows(db: BunSQLiteDatabase, range: ResolvedRange): readonly 
   const sql = `
     select ${bucket} as bucket,
       min(1439, cast((root.ended_at - ?) / 60000 as integer)) as peakBucket,
-      coalesce(root.final_model_id, root.requested_model_id, 'unknown') as dimension,
+      coalesce(root.requested_model_id, root.final_model_id, 'unknown') as dimension,
       root.termination_reason as terminationReason,
       attempt.transport as transport,
       attempt.target_protocol as targetProtocol,

@@ -99,7 +99,7 @@ function* overviewRows(
       : sql<string>`strftime('%Y-%m-%d', ${traceSpan.endedAt} / 1000, 'unixepoch', 'localtime')`.as('bucket');
   const dimension = (
     groupBy === 'model'
-      ? sql<string>`coalesce(${traceSpan.finalModelId}, ${traceSpan.requestedModelId}, 'unknown')`
+      ? sql<string>`coalesce(${traceSpan.requestedModelId}, ${traceSpan.finalModelId}, 'unknown')`
       : sql<string>`coalesce(${traceSpan.finalProviderId}, 'unknown')`
   ).as('dimension');
   const query = db

@@ -120,6 +120,36 @@ describe('trace store lifecycle', () => {
     }
   });
 
+  test('rolls usage up under the requested model alias, not the upstream model', () => {
+    const handle = openTestDb();
+    try {
+      const store = createTraceStore(handle.db);
+      store.startRoot(rootStart());
+      expect(
+        store.complete(
+          completion({
+            session: {
+              identity: { source: 'body-session', id: 'session-a' },
+              requestedModelId: 'my-alias',
+              resolvedBy: 'body-session',
+            },
+            summary: {
+              finalProviderId: 'provider-b',
+              finalModelId: 'upstream-model',
+              usage: { providerId: 'provider-b', modelId: 'upstream-model', totalTokens: 7 },
+            },
+          }),
+        ),
+      ).toBe(true);
+
+      expect(handle.db.select().from(usageDaily).all()).toContainEqual(
+        expect.objectContaining({ modelDimension: 'my-alias', requestCount: '1', totalTokens: '7' }),
+      );
+    } finally {
+      handle.close();
+    }
+  });
+
   test('projects root stream intent and TTFT into trace summaries', () => {
     const handle = openTestDb();
     try {

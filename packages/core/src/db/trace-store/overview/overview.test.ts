@@ -19,6 +19,7 @@ type TraceSeed = {
   readonly id: number;
   readonly endedAt?: Date;
   readonly modelId?: string;
+  readonly requestedModelId?: string;
   readonly attempts: readonly AttemptSeed[];
   readonly terminationReason?: 'failure' | 'cancelled';
   readonly usage?: {
@@ -38,10 +39,11 @@ function seedTrace(store: TraceStore, seed: TraceSeed): void {
   const finalAttempt = seed.attempts.findLast(({ outcome }) => outcome !== 'failure');
   const finalProviderId = finalAttempt?.providerId;
   const finalModelId = seed.modelId ?? 'model';
+  const requestedModelId = seed.requestedModelId ?? finalModelId;
   const rootAttributes = {
     'aio_proxy.request.id': `request-${seed.id}`,
     'aio_proxy.protocol.inbound': 'openai-response',
-    'gen_ai.request.model': finalModelId,
+    'gen_ai.request.model': requestedModelId,
     ...(finalProviderId === undefined ? {} : { 'aio_proxy.route.final_provider_id': finalProviderId }),
     ...(finalProviderId === undefined ? {} : { 'gen_ai.response.model': finalModelId }),
   };
@@ -406,6 +408,22 @@ test('scopes Provider health and top model costs to the selected range', () => {
     expect(quarter.topModelCosts).toEqual([
       { modelId: 'old-model', estimatedCostNanoUsd: '5000000000' },
       { modelId: 'recent-model', estimatedCostNanoUsd: '2000000000' },
+    ]);
+  });
+});
+
+test('ranks model costs by the requested alias, not the upstream model', () => {
+  withStore((store) => {
+    seedTrace(store, {
+      id: 1,
+      modelId: 'upstream-model',
+      requestedModelId: 'my-alias',
+      attempts: [{ providerId: 'provider', durationMs: 100 }],
+      usage: { estimatedCostUsd: 2 },
+    });
+
+    expect(store.overviewDashboardDiagnostics({ range: '24h', now: NOW }).topModelCosts).toEqual([
+      { modelId: 'my-alias', estimatedCostNanoUsd: '2000000000' },
     ]);
   });
 });
