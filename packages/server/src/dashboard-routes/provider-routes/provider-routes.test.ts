@@ -18,8 +18,10 @@ const SNAPSHOT: OAuthQuotaSnapshot = {
   plan: 'Allegro',
 };
 
-async function createQuotaFixture(options: { read?: () => Promise<OAuthQuotaSnapshot>; breakRuntime?: boolean } = {}) {
-  const { read, breakRuntime = false } = options;
+async function createQuotaFixture(
+  options: { read?: () => Promise<OAuthQuotaSnapshot>; breakRuntime?: boolean; breakCredential?: boolean } = {},
+) {
+  const { read, breakRuntime = false, breakCredential = false } = options;
   const dir = mkdtempSync(join(tmpdir(), 'aio-dashboard-provider-quota-'));
   const input = {
     plugins: ['@example/oauth'],
@@ -65,7 +67,9 @@ async function createQuotaFixture(options: { read?: () => Promise<OAuthQuotaSnap
       id: 'default',
       displayName: 'Example OAuth',
       account: { options: { schema: zod.object({ tenant: zod.string() }), form: [] } },
-      credentials: zod.object({ accessToken: zod.string() }),
+      credentials: breakCredential
+        ? zod.object({ accessToken: zod.number() })
+        : zod.object({ accessToken: zod.string() }),
       async login() {
         throw new Error('not used');
       },
@@ -173,6 +177,18 @@ test('answers 404 for an unknown provider and for one without a quota capability
   try {
     expect((await quota(fixture.routes, 'missing')).status).toBe(404);
     expect((await quota(fixture.routes, 'plain')).status).toBe(404);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('a quota read blocked by a bad credential stays retryable rather than a permanent 404', async () => {
+  // Preparation failures wear the same opaque error as a plugin with no quota capability, so the
+  // route must gate the 404 on the permanent flag. A 404 here would tell the card to stop asking,
+  // and the ring would never come back after the user reauthenticates.
+  const fixture = await createQuotaFixture({ breakCredential: true });
+  try {
+    expect((await quota(fixture.routes, 'person')).status).toBe(502);
   } finally {
     fixture.cleanup();
   }

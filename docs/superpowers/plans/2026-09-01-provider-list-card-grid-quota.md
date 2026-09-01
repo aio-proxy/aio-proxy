@@ -19,7 +19,7 @@
 - Each `.tsx` file declares exactly one React component, as `export const Name: React.FC<NameProps>` (arrow function, never a function declaration). Props use `interface <ComponentName>Props`, never a generic `Props`. Filenames are kebab-case matching the component.
 - Server state uses TanStack Query. Components, routes, and templates must not call `fetch`.
 - Never edit `packages/dashboard/src/route-tree.gen.ts`.
-- `packages/ui/src/components/` is shadcn-CLI-managed. Do not hand-edit files there; the only permitted touch is `oxfmt` via `bun run format`.
+- `packages/ui/src/components/` is shadcn-CLI-managed. Generate files there with the CLI rather than hand-writing them; `oxfmt` via `bun run format` and narrow, documented additions such as the `closeLabel` prop that lets a caller pass localized copy are the only permitted hand edits.
 - Handwritten non-test implementation files stay under 500 lines; evaluate splitting at 400 into `foo/index.ts` (exports only) + `foo/foo.ts` + private collaborators.
 - Colocate tests next to their source: `foo/index.ts`, `foo/foo.ts`, `foo/foo.test.ts`.
 - Prefer `es-toolkit` (narrow imports: `es-toolkit/array`, `es-toolkit/object`, `es-toolkit/predicate`) over hand-written generic utilities. Use `isPlainObject` from `es-toolkit/predicate` for wire payloads.
@@ -1433,9 +1433,30 @@ Expected: FAIL naming `packages/ui/src/components/dialog.tsx` (the generator emi
 bun run format
 ```
 
-`oxfmt` is the only permitted touch for this directory. Do not add `'use client'`, do not rename exports, do not restyle.
+`oxfmt` is the only bulk touch for this directory. Do not add `'use client'`, do not rename exports, do not restyle.
 
-- [ ] **Step 4: Verify**
+- [ ] **Step 4: Let the caller supply the close label**
+
+The generated close button hardcodes `<span className="sr-only">Close</span>`, and `packages/ui` has no `@aio-proxy/i18n` dependency by design. Add one prop so the localized copy comes from the caller (Task 13 passes `m['common.close']()`):
+
+```tsx
+function DialogContent({
+  className,
+  children,
+  showCloseButton = true,
+  closeLabel = "Close",
+  ...props
+}: DialogPrimitive.Popup.Props & {
+  showCloseButton?: boolean
+  // The close button's only accessible name. Localized copy lives outside this
+  // package, so the caller supplies it; the default keeps the primitive usable.
+  closeLabel?: React.ReactNode
+}) {
+```
+
+and replace the hardcoded label with `<span className="sr-only">{closeLabel}</span>`.
+
+- [ ] **Step 5: Verify**
 
 ```bash
 bun run format:check
@@ -1443,7 +1464,7 @@ bun run format:check
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
 git add packages/ui/src/components/dialog.tsx
@@ -2247,7 +2268,7 @@ test('an invalid Provider offers deletion and nothing else', () => {
 test('a disabled Provider is dimmed but still interactive', () => {
   renderCard(<ProviderCard {...baseProps} provider={providerStub({ id: 'p', kind: ProviderKind.Api, enabled: false })} />);
 
-  expect(screen.getByTestId('provider-row-p').className).toContain('opacity-55');
+  expect(screen.getByTestId('provider-row-p').className).toContain('bg-muted/40');
   expect(screen.getByRole('switch')).toBeInTheDocument();
 });
 ```
@@ -2661,7 +2682,8 @@ export const ProviderCard: React.FC<ProviderCardProps> = ({
         'relative gap-3 overflow-visible transition-shadow',
         editable && 'hover:shadow-md focus-within:ring-2 focus-within:ring-ring/40',
         provider.state.status === 'unavailable' && 'border border-destructive/60',
-        provider.enabled === false && 'opacity-55',
+        // A blanket `opacity` would drop the muted body text under the contrast floor.
+        provider.enabled === false && 'bg-muted/40',
         provider.kind === 'invalid' && 'border border-dashed border-destructive',
         focused && 'bg-accent ring-2 ring-ring/40',
       )}
@@ -3088,7 +3110,7 @@ export const ProviderQuotaRing: React.FC<ProviderQuotaRingProps> = ({ provider, 
 Create `provider-quota-ring/provider-quota-item.tsx`:
 
 ```tsx
-import { m } from '@aio-proxy/i18n';
+import { getLocale, m } from '@aio-proxy/i18n';
 import type { OAuthQuotaItem } from '@aio-proxy/plugin-sdk';
 import type React from 'react';
 
@@ -3128,7 +3150,7 @@ export const ProviderQuotaItem: React.FC<ProviderQuotaItemProps> = ({ item }) =>
       )}
       {item.resetsAt === undefined ? null : (
         <p className="text-xs text-muted-foreground">
-          {m['dashboard.providers.quota.resets_at']({ value: new Date(item.resetsAt).toLocaleString() })}
+          {m['dashboard.providers.quota.resets_at']({ value: new Date(item.resetsAt).toLocaleString(getLocale()) })}
         </p>
       )}
     </li>
@@ -3142,7 +3164,7 @@ Create `provider-quota-ring/provider-quota-dialog.tsx`. `result` is optional so 
 open the same dialog and offer a retry:
 
 ```tsx
-import { m } from '@aio-proxy/i18n';
+import { getLocale, m } from '@aio-proxy/i18n';
 import type { DashboardProviderSummary } from '@aio-proxy/types';
 import { Button } from '@aio-proxy/ui/components/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@aio-proxy/ui/components/dialog';
@@ -3182,7 +3204,7 @@ export const ProviderQuotaDialog: React.FC<ProviderQuotaDialogProps> = ({
   const resolvedPlan = plan === undefined ? undefined : resolveDashboardText(plan);
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent data-testid="provider-quota-dialog">
+      <DialogContent closeLabel={m['common.close']()} data-testid="provider-quota-dialog">
         <DialogHeader>
           <div className="flex items-start gap-3">
             {pluginIcon === undefined ? null : (
@@ -3234,7 +3256,7 @@ export const ProviderQuotaDialog: React.FC<ProviderQuotaDialogProps> = ({
               </p>
             )}
             <p className="text-xs text-muted-foreground">
-              {m['dashboard.providers.quota.sampled_at']({ value: new Date(result.sampledAt).toLocaleString() })}
+              {m['dashboard.providers.quota.sampled_at']({ value: new Date(result.sampledAt).toLocaleString(getLocale()) })}
             </p>
           </>
         )}
@@ -3915,7 +3937,7 @@ EOF
 | Footer `N 模型 · N 次 / 24h` + switch + `⋯` | 12 |
 | Card body navigates; controls stay above it | 12 (overlay `<Link>` + `relative z-10` control row, not `role="button"` + `stopPropagation`), 13 |
 | `unavailable` destructive border + red diagnostic box | 12 |
-| `enabled === false` → `opacity-55`; `grayscale` on the icon and ring only | 12 |
+| `enabled === false` → `bg-muted/40` on the card; `grayscale` on the icon and ring only | 12 |
 | `kind === 'invalid'` → dashed card, alert triangle, red code box, single delete | 12 |
 | Catalog fresh/stale line and `expiresAt` dropped; no status dot | 14 (cell deleted, keys pruned) |
 | `?focus` preserved: id, testid, `data-focused`, double-rAF, `scrollIntoView`, focus link | 14 |
@@ -3932,7 +3954,7 @@ EOF
 | Response returns the last good snapshot even on failure | 3, 4 |
 | `plugin-quota/cache/` wrapping the reader, in-memory, 5-min cooldown, refresh bypass | 3 |
 | Frontend `staleTime` 30s; modal always refreshes | 11, 13 |
-| Async warming at both `step.kind === 'return'` sites, `oauthQuota` on `ProviderRouteSource` | 5 |
+| Async warming at both `step.kind === 'return'` sites, gated on `response.ok`, via `warmProviderQuota` on `ProviderRouteSource` | 5 |
 | `protocol?` → `protocols[]`, add `hasQuota` | 2 |
 | `plan?: LocalizedText` + `SNAPSHOT_KEYS` gains `'plan'` | 1 |
 | OAuth complete route must NOT be deleted | — (absent from every deletion list) |

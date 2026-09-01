@@ -60,9 +60,10 @@ export const createDashboardProviderReadRoutes = (state: ServerState) =>
         });
       } catch (error) {
         // A provider whose plugin has no quota capability is a permanent 404, not a transient
-        // upstream failure the card should keep retrying.
+        // upstream failure the card should keep retrying. A preparation failure wears the same
+        // error type but is retryable, so only the permanent flag earns the 404.
         if (error instanceof OAuthQuotaCapabilityUnavailableError) {
-          return context.json({ error: error.code }, 404);
+          return context.json({ error: error.code }, error.permanent ? 404 : 502);
         }
         return context.json({ error: error instanceof Error ? error.message : 'OAUTH_QUOTA_READ_FAILED' }, 502);
       }
