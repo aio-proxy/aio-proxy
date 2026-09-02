@@ -25,7 +25,7 @@ export const PROVIDER_AI_SDK_DEFAULT_PACKAGE = '@ai-sdk/openai-compatible';
 // Diameter in px of the frame every Provider mark is drawn in — the avatar, each protocol in the
 // stack, and the stack's overflow bubble. Kept in one place because those three must agree: the
 // frames are what the eye aligns on, so a mismatch reads as icons of different sizes.
-export const PROVIDER_FRAME_SIZE = 24;
+export const PROVIDER_FRAME_SIZE = 20;
 
 // The same frame at the quota dialog's larger header scale.
 export const PROVIDER_DIALOG_FRAME_SIZE = 32;
