@@ -73,8 +73,14 @@ export const useOAuthEditorSession = (
       (session?.status === 'authorize_url' || session?.status === 'loopback' || session?.status === 'device_code') &&
       popup.current !== null
     ) {
-      popup.current.location.href = session.status === 'loopback' ? session.authorizationUrl : session.url;
+      const target = popup.current;
       popup.current = null;
+      // Loopback keeps its opener: the completion page posts OAUTH_COMPLETE_MESSAGE back through it. The other
+      // two statuses navigate to a third-party verification page, which must not keep a live window.opener on
+      // the dashboard. `noopener` cannot be applied after the window exists, and opening a fresh one here
+      // would be blocked as an unrequested popup, so disown this one instead.
+      if (session.status !== 'loopback') target.opener = null;
+      target.location.href = session.status === 'loopback' ? session.authorizationUrl : session.url;
     }
     if (session?.status === 'failed' || session?.status === 'cancelled') {
       closeUnclaimedPopup();

@@ -824,8 +824,8 @@ test('oauth create still authorizes when a leftover empty alias has models as to
 // Popups must be opened on the click, not when the session URL lands, or the browser blocks them. The
 // hook therefore pre-opens a blank window and navigates it once the URL arrives — device_code sessions
 // used to be excluded from that navigation and got a blank tab that never loaded anything.
-test('oauth device_code navigates the window opened on the authorize click', async () => {
-  const popup = { location: { href: '' }, close: rs.fn() };
+const authorizeThenPublish = async (session: DashboardOAuthSession) => {
+  const popup = { location: { href: '' }, close: rs.fn(), opener: window as Window | null };
   const open = rs.fn(() => popup);
   const originalOpen = window.open;
   Object.defineProperty(window, 'open', { writable: true, configurable: true, value: open });
@@ -849,23 +849,44 @@ test('oauth device_code navigates the window opened on the authorize click', asy
     fireEvent.click(sectionAuthorizeButton());
     await waitFor(() => expect(open).toHaveBeenCalledTimes(1));
 
-    mocks.session = {
-      id: '0198bfc4-239e-7d62-bcb0-a9e0849cabaf',
-      status: 'device_code',
-      url: 'https://x.ai/device',
-      userCode: 'ABCD-EFGH',
-    };
+    mocks.session = session;
     view.rerender(
       <>
         <Toaster />
-        <ProviderEditorPage {...props} sessionId="0198bfc4-239e-7d62-bcb0-a9e0849cabaf" />
+        <ProviderEditorPage {...props} sessionId={session.id} />
       </>,
     );
-
-    await waitFor(() => expect(popup.location.href).toBe('https://x.ai/device'));
-    expect(popup.close).not.toHaveBeenCalled();
-    expect(open).toHaveBeenCalledTimes(1);
+    return { popup, open };
   } finally {
     Object.defineProperty(window, 'open', { writable: true, configurable: true, value: originalOpen });
   }
+};
+
+test('oauth device_code navigates the window opened on the authorize click', async () => {
+  const { popup, open } = await authorizeThenPublish({
+    id: '0198bfc4-239e-7d62-bcb0-a9e0849cabaf',
+    status: 'device_code',
+    url: 'https://x.ai/device',
+    userCode: 'ABCD-EFGH',
+  });
+
+  await waitFor(() => expect(popup.location.href).toBe('https://x.ai/device'));
+  expect(popup.close).not.toHaveBeenCalled();
+  expect(open).toHaveBeenCalledTimes(1);
+  // The verification page is third-party, so it must not be able to reach back through window.opener.
+  expect(popup.opener).toBeNull();
+});
+
+test('oauth loopback keeps the opener the completion page posts back through', async () => {
+  const { popup } = await authorizeThenPublish({
+    id: '0198bfc4-239e-7d62-bcb0-a9e0849cabbf',
+    status: 'loopback',
+    authorizationUrl: 'https://accounts.example.com/authorize',
+    allowManualCallback: false,
+  });
+
+  await waitFor(() => expect(popup.location.href).toBe('https://accounts.example.com/authorize'));
+  // The redirect ends on the dashboard's own completion page, which closes itself by postMessage through
+  // window.opener. Disowning this window the way the third-party statuses do would break that handshake.
+  expect(popup.opener).not.toBeNull();
 });

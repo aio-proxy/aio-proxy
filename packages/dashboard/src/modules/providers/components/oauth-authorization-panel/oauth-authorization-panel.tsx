@@ -11,7 +11,7 @@ import { useEffect, useRef } from 'react';
 
 import { resolveDashboardText } from '@/lib/localized-text';
 
-import { OAuthAuthorizationUrlField } from './oauth-authorization-url-field';
+import { OAuthAuthorizationUrlField } from '../oauth-authorization-url-field';
 
 interface OAuthAuthorizationPanelProps {
   readonly session: DashboardOAuthSession;
