@@ -228,6 +228,29 @@ test('holds the old snapshot lease through plugin settlement and ignores a concu
   expect(next.readCalls()).toBe(0);
 });
 
+test('aborts a plugin read that ignores its signal instead of holding the snapshot lease forever', async () => {
+  const started = Promise.withResolvers<void>();
+  const fixture = createQuotaFixture({
+    // A cooperative plugin would settle on abort. This one never does, which is exactly the case the
+    // advisory signal cannot cover: without a host-side race the lease is released in a `finally`
+    // attached to a promise that never settles.
+    read: () => {
+      started.resolve();
+      return new Promise<never>(() => {});
+    },
+  });
+  const controller = new AbortController();
+  const deadline = new Error('read deadline');
+  const pending = createOAuthQuotaReader(fixture.dependencies).read(PROVIDER_ID, controller.signal);
+  await started.promise;
+  controller.abort(deadline);
+
+  expect(await capturedError(pending)).toBe(deadline);
+  // The caller cancelled; nothing about the plugin failed, so nothing is logged as its failure.
+  expect(fixture.logs).toHaveLength(0);
+  await fixture.manager.swap(createQuotaFixture({ itemId: 'new' }).snapshot).whenDrained;
+});
+
 test('intentionally invokes the plugin twice for simultaneous reads of one Provider ID', async () => {
   const release = Promise.withResolvers<void>();
   const fixture = createQuotaFixture({

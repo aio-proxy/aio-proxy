@@ -1,4 +1,4 @@
-import { redactPluginError, validateOAuthQuotaSnapshot } from '@aio-proxy/core';
+import { redactPluginError, validateOAuthQuotaSnapshot, withAbort } from '@aio-proxy/core';
 import type { OAuthQuotaSnapshot } from '@aio-proxy/plugin-sdk';
 
 import { type OAuthQuotaServiceDependencies, type PreparedOAuthQuotaContext, withOAuthQuotaContext } from './context';
@@ -14,9 +14,17 @@ export async function readValidatedQuota(
   event: string,
 ): Promise<OAuthQuotaSnapshot> {
   try {
-    const snapshot = await prepared.adapter.quota.read(prepared.accountContext);
+    // The signal handed to the plugin is advisory: a plugin that never checks it leaves this await
+    // pending forever, and `withOAuthQuotaContext`'s `finally { lease.release() }` hangs off that same
+    // promise, so a hung read leaks the snapshot lease too. Race it host-side instead.
+    const snapshot = await withAbort(prepared.accountContext.signal, () =>
+      prepared.adapter.quota.read(prepared.accountContext),
+    );
     return validateOAuthQuotaSnapshot(snapshot);
   } catch (error) {
+    // Cancellation is the caller's, not the plugin's: surface the abort reason unlogged, the way
+    // `signal.throwIfAborted()` would have. The cache turns its own read timeout into a stale entry.
+    if (prepared.accountContext.signal.aborted) throw prepared.accountContext.signal.reason;
     try {
       dependencies.logger({
         event,
