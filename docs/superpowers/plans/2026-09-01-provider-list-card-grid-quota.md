@@ -60,7 +60,7 @@ Every task is **landed**. Their steps are kept below as the record of what was b
 | Review round 5 follow-up (identity read off the snapshot) | `3f22d428` |
 | Review round 6 follow-ups (no-digest invalidation, zero-vs-unknown usage) | `ea0afe38` |
 | Review round 7 follow-ups (suffix collision, deep-link focus retry) | `eed0062f` |
-| Review round 8 follow-up (focus retries on visibility, not membership) | pending commit |
+| Review round 8 follow-up (focus retries on visibility, not membership) | `7cfbdc40` |
 
 **Quota cache invalidation:** everything in the cache is keyed by Provider ID alone, so
 `commitConfig` invalidates each Provider whose quota identity moved. That identity is
