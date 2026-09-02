@@ -115,10 +115,11 @@ fallback. Pagination and group expansion drop out of that sequence because neith
   the one with the lowest `remainingRatio`. Items without a ratio never win.
 - While loading, the ring is replaced by a pulsing bordered circle of the same size.
 - The ring is a button. It opens a modal; it does not navigate.
-- The modal shows: header (icon, name, `plugin · plan`, refresh button), one bar per quota item,
-  reset-credit availability when present, the sample time, and a stale-snapshot amber error box when
-  the last refresh failed.
-  - An item with `remainingRatio === undefined` renders 暂不适用 with an explanatory line and no bar.
+- The modal shows: header (icon, name, `plugin · plan`), one bar per quota item, reset-credit
+  availability when present, and a stale-snapshot amber error box when the last refresh failed; the
+  footer carries the sample time and the refresh button.
+  - An item with `remainingRatio === undefined` is not rendered at all. A snapshot in which no window
+    reports a remaining amount shows one empty-state line instead of an empty list.
   - `remainingRatio > 0 && < 0.01` renders 剩余 <1% with a zero-width bar.
   - Bars do not change color by tightness.
 - Modal primitive: `packages/ui` has no `dialog.tsx`. It is generated with the vendored shadcn CLI —
@@ -240,9 +241,11 @@ The existing `quota.test.ts` assertion that the request URL never contains `www.
    `subscription_tier_display` (e.g. `SuperGrok Heavy`, `SuperGrok`). Optional enrichment with a
    2-second timeout; any failure or missing field simply drops the plan.
 2. **Unified-billing weekly-limit regression guard:** a credits payload with a parseable period but
-   no `creditUsagePercent` already emits the rate window with `remainingRatio` omitted, so the modal
-   shows 暂不适用 rather than dropping the weekly bar. This is existing correct behavior; the release
-   only adds the test that pins it, because the per-product work below touches the same builder.
+   no `creditUsagePercent` already emits the rate window with `remainingRatio` omitted, and that
+   window can be the only item the account produces, so dropping it in the reader would trip the
+   no-items throw and fail an otherwise successful read. This is existing correct behavior; the
+   release only adds the test that pins it, because the per-product work below touches the same
+   builder. The modal separately does not render a window with no remaining amount.
 3. **Per-product usage:** map `config.productUsage[]` (`{ product, usagePercent }`) into items keyed
    `product_<slug>`, with `grokbuild` / `productgrokbuild` normalized to `grok_build` / "Grok Build",
    `remainingRatio = (100 - usagePercent) / 100`, and `_2` / `_3` suffixes for duplicate slugs. The

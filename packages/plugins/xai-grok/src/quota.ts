@@ -83,8 +83,10 @@ function weeklyItems(config: BillingObject): readonly OAuthQuotaItem[] {
   const period = record(config.currentPeriod ?? config.current_period);
   const remainingRatio = remainingFromPercent(config.creditUsagePercent ?? config.credit_usage_percent);
   const resetsAt = timestamp(period?.end);
-  // A unified-billing account reports a period but no credit percentage. Emitting the window with no
-  // ratio is what makes the dashboard show 暂不适用 instead of hiding the weekly limit entirely.
+  // A unified-billing account reports a period but no credit percentage, and that window can be the
+  // only item the account produces. Dropping it here would trip the no-items throw and turn a
+  // successful billing read into a failure; whether an unrated window is worth rendering is the
+  // dashboard's call, not this reader's.
   const weekly: readonly OAuthQuotaItem[] =
     remainingRatio === undefined && resetsAt === undefined
       ? []
