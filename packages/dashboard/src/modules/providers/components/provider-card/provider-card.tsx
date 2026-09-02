@@ -1,7 +1,7 @@
 import { m } from '@aio-proxy/i18n';
 import type { DashboardProviderSummary } from '@aio-proxy/types';
 import { Button } from '@aio-proxy/ui/components/button';
-import { Card, CardContent } from '@aio-proxy/ui/components/card';
+import { Card, CardAction, CardContent, CardHeader } from '@aio-proxy/ui/components/card';
 import { cn } from '@aio-proxy/ui/lib/utils';
 import { useQuery } from '@tanstack/react-query';
 import type React from 'react';
@@ -54,8 +54,9 @@ export const ProviderCard: React.FC<ProviderCardProps> = ({
       data-focused={focused ? 'true' : undefined}
       className={cn(
         // `relative` anchors the identity link's full-card overlay; `overflow-visible` keeps the
-        // focus ring from being clipped by the Card's own `overflow-hidden`.
-        'relative gap-3 overflow-visible transition-shadow',
+        // focus ring from being clipped by the Card's own `overflow-hidden`. Slot spacing is the
+        // Card's own `gap-(--card-spacing)`, which also matches its vertical padding.
+        'relative overflow-visible transition-shadow',
         editable && 'focus-within:ring-2 focus-within:ring-ring/40 hover:shadow-md',
         provider.state.status === 'unavailable' && 'border border-destructive/60',
         // A tint rather than `opacity`: dimming the whole card would take its body text below the
@@ -65,23 +66,25 @@ export const ProviderCard: React.FC<ProviderCardProps> = ({
         focused && 'bg-accent ring-2 ring-ring/40',
       )}
     >
-      <CardContent className="space-y-3">
-        <div className="flex items-start justify-between gap-2">
-          <ProviderCardIdentity
-            provider={provider}
-            pluginLabel={pluginLabel}
-            pluginIcon={pluginIcon}
-            plan={plan === undefined ? undefined : resolveDashboardText(plan)}
-            planPending={provider.hasQuota && quotaQuery.isPending}
-            editable={editable}
-          />
-          {provider.hasQuota ? (
-            <div className={cn('relative z-10 shrink-0', provider.enabled === false && 'grayscale')}>
-              <ProviderQuotaRing provider={provider} pluginLabel={pluginLabel} pluginIcon={pluginIcon} />
-            </div>
-          ) : null}
-        </div>
+      {/* `CardHeader` is a grid that switches to `[1fr_auto]` as soon as it contains a
+          `CardAction`, which is exactly the identity-plus-quota split. */}
+      <CardHeader>
+        <ProviderCardIdentity
+          provider={provider}
+          pluginLabel={pluginLabel}
+          pluginIcon={pluginIcon}
+          plan={plan === undefined ? undefined : resolveDashboardText(plan)}
+          planPending={provider.hasQuota && quotaQuery.isPending}
+          editable={editable}
+        />
+        {provider.hasQuota ? (
+          <CardAction className={cn('relative z-10', provider.enabled === false && 'grayscale')}>
+            <ProviderQuotaRing provider={provider} pluginLabel={pluginLabel} pluginIcon={pluginIcon} />
+          </CardAction>
+        ) : null}
+      </CardHeader>
 
+      <CardContent className="space-y-3">
         {provider.kind === 'invalid' ? (
           <div className="space-y-2" data-testid="provider-card-invalid">
             <p className="text-sm text-destructive">{m['dashboard.providers.card.invalid_hint']()}</p>
