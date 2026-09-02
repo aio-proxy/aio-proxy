@@ -117,6 +117,12 @@ test('a tiny non-zero remainder never reads as zero in the dialog', () => {
   fireEvent.click(screen.getByTestId('provider-quota-ring'));
 
   expect(screen.getByTestId('provider-quota-item-weekly')).toHaveTextContent(/<1%|Less than 1%|不足 1%/u);
+  // The bar carries the raw ratio, so its own value is 0. A screen reader reads `aria-valuetext`, not
+  // the `aria-hidden` value span, and must not be told the quota is empty when it is not.
+  expect(screen.getByRole('progressbar')).toHaveAttribute(
+    'aria-valuetext',
+    expect.stringMatching(/<1%|Less than 1%|不足 1%/u),
+  );
 });
 
 test('a stale reading is called out in the dialog', () => {
