@@ -1,6 +1,7 @@
 ---
 '@aio-proxy/core': patch
 '@aio-proxy/plugin-sdk': patch
+'@aio-proxy/server': patch
 'aio-proxy': patch
 ---
 
