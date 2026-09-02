@@ -669,6 +669,7 @@
         "stat_success_rate": "성공률",
         "stat_p95": "P95",
         "models_count": "{count} 모델",
+        "protocols_multi": "다중 프로토콜",
         "requests_24h": "{count} 회 / 24h",
         "invalid_hint": "프로바이더 설정이 유효하지 않습니다.",
         "open_provider": "프로바이더 {id} 열기"

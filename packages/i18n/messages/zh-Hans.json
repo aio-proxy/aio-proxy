@@ -669,6 +669,7 @@
         "stat_success_rate": "成功率",
         "stat_p95": "P95",
         "models_count": "{count} 模型",
+        "protocols_multi": "多协议",
         "requests_24h": "{count} 次 / 24h",
         "invalid_hint": "提供商配置无效。",
         "open_provider": "打开提供商 {id}"

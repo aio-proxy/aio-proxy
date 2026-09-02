@@ -669,6 +669,7 @@
         "stat_success_rate": "成功率",
         "stat_p95": "P95",
         "models_count": "{count} モデル",
+        "protocols_multi": "複数プロトコル",
         "requests_24h": "{count} 件 / 24h",
         "invalid_hint": "プロバイダー設定が無効です。",
         "open_provider": "プロバイダー {id} を開く"

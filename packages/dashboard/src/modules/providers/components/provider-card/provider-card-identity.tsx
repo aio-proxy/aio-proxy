@@ -82,35 +82,47 @@ export const ProviderCardIdentity: React.FC<ProviderCardIdentityProps> = ({
         )}
       </div>
 
+      {/* One line, always: `nowrap` plus `min-w-0` on the parts that carry free-form text, so a long
+          plugin name or package ellipsizes instead of pushing the line into a second row. */}
       <CardDescription
-        className="flex min-w-0 flex-wrap items-center gap-x-1 text-xs"
+        className="flex min-w-0 flex-nowrap items-center gap-x-1 text-xs"
         data-testid="provider-card-detail"
       >
-        <span>{kindLabel}</span>
+        <span className="shrink-0">{kindLabel}</span>
         {provider.kind === ProviderKind.Api && provider.protocols.length > 0 ? (
           <>
-            <span aria-hidden="true">·</span>
-            <ProviderProtocolLabels protocols={provider.protocols} />
+            <span aria-hidden="true" className="shrink-0">
+              ·
+            </span>
+            <span className="min-w-0 truncate">
+              <ProviderProtocolLabels protocols={provider.protocols} />
+            </span>
           </>
         ) : null}
         {provider.kind === ProviderKind.OAuth && (pluginLabel ?? provider.plugin) !== undefined ? (
           <>
-            <span aria-hidden="true">·</span>
-            <span className="truncate">{pluginLabel ?? provider.plugin}</span>
+            <span aria-hidden="true" className="shrink-0">
+              ·
+            </span>
+            <span className="min-w-0 truncate">{pluginLabel ?? provider.plugin}</span>
           </>
         ) : null}
         {provider.kind === ProviderKind.AiSdk && provider.packageName !== undefined ? (
           <>
-            <span aria-hidden="true">·</span>
-            <span className="truncate">{provider.packageName}</span>
+            <span aria-hidden="true" className="shrink-0">
+              ·
+            </span>
+            <span className="min-w-0 truncate">{provider.packageName}</span>
           </>
         ) : null}
         {planPending ? (
-          <Skeleton className="h-3 w-12" data-testid="provider-plan-loading" />
+          <Skeleton className="h-3 w-12 shrink-0" data-testid="provider-plan-loading" />
         ) : plan === undefined ? null : (
           <>
-            <span aria-hidden="true">·</span>
-            <span className="truncate">{plan}</span>
+            <span aria-hidden="true" className="shrink-0">
+              ·
+            </span>
+            <span className="min-w-0 truncate">{plan}</span>
           </>
         )}
       </CardDescription>

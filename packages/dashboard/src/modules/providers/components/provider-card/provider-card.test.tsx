@@ -49,7 +49,23 @@ test('the card body is one link and never a nested-interactive button', () => {
   expect(screen.getByTestId('provider-link-p')).toBeInTheDocument();
 });
 
-test('an API Provider lists its protocols on line 2 and stacks their icons on line 1', () => {
+test('an API Provider with one protocol names it on line 2 and stacks its icon on line 1', () => {
+  renderCard(
+    <ProviderCard
+      {...baseProps}
+      provider={providerStub({
+        id: 'gateway',
+        kind: ProviderKind.Api,
+        protocols: [ProviderProtocol.OpenAICompatible],
+      })}
+    />,
+  );
+
+  expect(screen.getByTestId('provider-protocol-stack')).toBeInTheDocument();
+  expect(screen.getByTestId('provider-card-detail')).toHaveTextContent('OpenAI Compatible');
+});
+
+test('several protocols collapse to one word so line 2 never wraps', () => {
   renderCard(
     <ProviderCard
       {...baseProps}
@@ -61,9 +77,10 @@ test('an API Provider lists its protocols on line 2 and stacks their icons on li
     />,
   );
 
-  expect(screen.getByTestId('provider-protocol-stack')).toBeInTheDocument();
-  expect(screen.getByTestId('provider-card-detail')).toHaveTextContent('OpenAI Compatible');
-  expect(screen.getByTestId('provider-card-detail')).toHaveTextContent('Anthropic');
+  const detail = screen.getByTestId('provider-card-detail');
+  expect(screen.getByTestId('provider-protocols-multi')).toBeInTheDocument();
+  expect(detail).not.toHaveTextContent('OpenAI Compatible');
+  expect(detail).not.toHaveTextContent('Anthropic');
 });
 
 test('renders the routing and health stats with dashes when unavailable', () => {

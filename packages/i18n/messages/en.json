@@ -669,6 +669,7 @@
         "stat_success_rate": "Success rate",
         "stat_p95": "P95",
         "models_count": "{count} models",
+        "protocols_multi": "Multiple protocols",
         "requests_24h": "{count} / 24h",
         "invalid_hint": "Invalid Provider configuration.",
         "open_provider": "Open Provider {id}"
