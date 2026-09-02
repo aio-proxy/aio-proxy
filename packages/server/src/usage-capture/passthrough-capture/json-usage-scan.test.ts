@@ -61,6 +61,47 @@ test('retains a resumable Gemini Interaction owner from a body larger than two M
   });
 });
 
+test('recovers after an over-cap top-level candidate value', () => {
+  const scan = createJsonUsageScan();
+  scan.push(
+    new TextEncoder().encode(
+      JSON.stringify({
+        usage: 'x'.repeat(8 * 1024 - 1),
+        id: 'intr_ok',
+        status: 'requires_action',
+        usageMetadata: { promptTokenCount: 3, totalTokenCount: 3 },
+      }),
+    ),
+  );
+  scan.finish();
+
+  expect(extractPassthroughObservation(ProviderProtocol.GeminiInteractions, scan.text() ?? '')).toMatchObject({
+    responseId: 'intr_ok',
+  });
+});
+
+test('skips a huge unknown top-level key before retained fields', () => {
+  const scan = createJsonUsageScan();
+  scan.push(
+    new TextEncoder().encode(
+      JSON.stringify({
+        ['x'.repeat(2 * 1024 * 1024)]: 'ignored',
+        id: 'intr_ok',
+        status: 'requires_action',
+        usage: { total_input_tokens: 3, total_tokens: 3 },
+      }),
+    ),
+  );
+  scan.finish();
+
+  expect(scan.text()).toBe(
+    '{"id":"intr_ok","status":"requires_action","usage":{"total_input_tokens":3,"total_tokens":3}}',
+  );
+  expect(extractPassthroughObservation(ProviderProtocol.GeminiInteractions, scan.text() ?? '')).toMatchObject({
+    responseId: 'intr_ok',
+  });
+});
+
 test('extracts leading usage before a large embeddings payload', () => {
   const scan = createJsonUsageScan();
   scan.push(

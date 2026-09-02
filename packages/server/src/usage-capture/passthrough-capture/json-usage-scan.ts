@@ -1,5 +1,6 @@
 const USAGE_KEYS = new Set(['usage', 'usageMetadata']);
 const IDENTITY_KEYS = new Set(['id', 'status']);
+const MAX_CANDIDATE_KEY_CHARS = Math.max(...[...USAGE_KEYS, ...IDENTITY_KEYS].map((key) => key.length));
 // Token-count objects are tiny. Cap the captured value so a malicious or
 // mislabeled "usage" payload cannot become an unbounded second buffer.
 const MAX_USAGE_VALUE_CHARS = 8 * 1024;
@@ -34,28 +35,22 @@ function createScanner() {
   let expectingKey = false;
   let readingKey = false;
   let keyRaw = '';
+  let keyTooLong = false;
   let pendingKey: string | undefined;
   let capturing = false;
   let captureKey: string | undefined;
   let capture = '';
   let captureStartDepth = 0;
+  let discardingCapture = false;
   let lastUsage: readonly [string, string] | undefined;
   let id: string | undefined;
   let status: string | undefined;
-
   const consume = (text: string): void => {
     for (const character of text) step(character);
   };
-
   const step = (character: string): void => {
-    if (capturing) {
-      stepCapture(character);
-      return;
-    }
-    if (inString) {
-      stepString(character);
-      return;
-    }
+    if (capturing) return stepCapture(character);
+    if (inString) return stepString(character);
     if (isWhitespace(character)) return;
     if (pendingKey !== undefined) {
       if (character === ':') {
@@ -70,6 +65,7 @@ function createScanner() {
       if (expectingKey && depth === 1) {
         readingKey = true;
         keyRaw = '';
+        keyTooLong = false;
       }
       return;
     }
@@ -85,51 +81,53 @@ function createScanner() {
     }
     if (character === ',') expectingKey = depth >= 1;
   };
-
   const startCapture = (): void => {
     capturing = true;
     captureKey = pendingKey;
     pendingKey = undefined;
     capture = '';
     captureStartDepth = depth;
+    discardingCapture = false;
   };
-
+  const appendKeyCharacter = (character: string): void => {
+    if (keyRaw.length < MAX_CANDIDATE_KEY_CHARS) keyRaw += character;
+    else keyTooLong = true;
+  };
   const stepString = (character: string): void => {
     if (escaped) {
-      if (readingKey) keyRaw += character;
+      if (readingKey) appendKeyCharacter(character);
       escaped = false;
       return;
     }
     if (character === '\\') {
-      if (readingKey) keyRaw += character;
+      if (readingKey) appendKeyCharacter(character);
       escaped = true;
       return;
     }
     if (character === '"') {
       inString = false;
       if (readingKey) {
-        const key = decodeJsonString(keyRaw);
+        const key = keyTooLong ? undefined : decodeJsonString(keyRaw);
         if (key !== undefined && (USAGE_KEYS.has(key) || IDENTITY_KEYS.has(key))) pendingKey = key;
         readingKey = false;
         keyRaw = '';
+        keyTooLong = false;
         expectingKey = false;
       }
       return;
     }
-    if (readingKey) keyRaw += character;
+    if (readingKey) appendKeyCharacter(character);
   };
-
   const stepCapture = (character: string): void => {
     if (capture === '' && isWhitespace(character)) return;
-    if (capture.length >= MAX_USAGE_VALUE_CHARS) {
-      capturing = false;
+    if (!discardingCapture && capture.length >= MAX_USAGE_VALUE_CHARS) {
+      discardingCapture = true;
       capture = '';
       captureKey = undefined;
-      return;
     }
 
     if (inString) {
-      capture += character;
+      if (!discardingCapture) capture += character;
       if (escaped) {
         escaped = false;
         return;
@@ -146,20 +144,20 @@ function createScanner() {
     }
 
     if (character === '"') {
-      capture += character;
+      if (!discardingCapture) capture += character;
       inString = true;
       escaped = false;
       return;
     }
 
     if (character === '{' || character === '[') {
-      capture += character;
+      if (!discardingCapture) capture += character;
       depth += 1;
       return;
     }
 
     if (character === '}' || character === ']') {
-      capture += character;
+      if (!discardingCapture) capture += character;
       depth -= 1;
       if (depth === captureStartDepth) finishCapture();
       return;
@@ -171,7 +169,7 @@ function createScanner() {
       return;
     }
 
-    capture += character;
+    if (!discardingCapture) capture += character;
   };
 
   const finishCapture = (): void => {
@@ -186,6 +184,7 @@ function createScanner() {
     }
     capture = '';
     captureKey = undefined;
+    discardingCapture = false;
     expectingKey = false;
   };
 
