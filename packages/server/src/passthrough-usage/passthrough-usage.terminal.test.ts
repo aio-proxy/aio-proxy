@@ -96,7 +96,7 @@ describe('observer onTerminal detection', () => {
     expect(seen[0]?.responseId).toBe('intr_sse');
   });
 
-  test('does not expose a non-completed Gemini Interaction ID', () => {
+  test('does not expose a non-resumable Gemini Interaction ID', () => {
     const observe = (body: unknown) =>
       extractPassthroughObservation(ProviderProtocol.GeminiInteractions, JSON.stringify(body));
     expect(observe({ id: 'intr_active', status: 'in_progress' }).responseId).toBeUndefined();

@@ -272,12 +272,12 @@ function completedResponseId(protocol: ProviderProtocol, value: unknown): string
   if (protocol !== ProviderProtocol.GeminiInteractions) return undefined;
 
   const interaction = isPlainObject(value['interaction']) ? value['interaction'] : undefined;
-  const completed =
+  const resumable =
     value['event_type'] === 'interaction.completed' ||
-    value['status'] === 'completed' ||
-    interaction?.['status'] === 'completed';
+    ['completed', 'requires_action', 'incomplete'].includes(value['status']) ||
+    ['completed', 'requires_action', 'incomplete'].includes(interaction?.['status']);
   const id = typeof value['id'] === 'string' ? value['id'] : interaction?.['id'];
-  if (!completed || typeof id !== 'string') return undefined;
+  if (!resumable || typeof id !== 'string') return undefined;
   const responseId = id.trim();
   return responseId === '' || !responseId.startsWith('intr_') ? undefined : responseId;
 }
