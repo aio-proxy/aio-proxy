@@ -1,4 +1,5 @@
 const USAGE_KEYS = new Set(['usage', 'usageMetadata']);
+const IDENTITY_KEYS = new Set(['id', 'status']);
 // Token-count objects are tiny. Cap the captured value so a malicious or
 // mislabeled "usage" payload cannot become an unbounded second buffer.
 const MAX_USAGE_VALUE_CHARS = 8 * 1024;
@@ -7,13 +8,12 @@ export type JsonUsageScan = {
   readonly push: (chunk: Uint8Array) => void;
   // Flush the UTF-8 decoder and finish a value that ends at EOF.
   readonly finish: () => void;
-  // Complete JSON document containing only the last top-level usage object.
+  // Complete JSON document containing retained top-level usage and identity fields.
   readonly text: () => string | undefined;
 };
 
-// Extracts a top-level `usage` / `usageMetadata` object from a JSON stream
-// without retaining the rest of the body. Nested objects with those keys
-// (for example a vector item) are ignored.
+// Extracts top-level usage and identity fields from a JSON stream without
+// retaining the rest of the body. Nested fields are ignored.
 export function createJsonUsageScan(): JsonUsageScan {
   const decoder = new TextDecoder();
   const scanner = createScanner();
@@ -39,7 +39,9 @@ function createScanner() {
   let captureKey: string | undefined;
   let capture = '';
   let captureStartDepth = 0;
-  let lastWrapper: string | undefined;
+  let lastUsage: readonly [string, string] | undefined;
+  let id: string | undefined;
+  let status: string | undefined;
 
   const consume = (text: string): void => {
     for (const character of text) step(character);
@@ -107,7 +109,7 @@ function createScanner() {
       inString = false;
       if (readingKey) {
         const key = decodeJsonString(keyRaw);
-        if (key !== undefined && USAGE_KEYS.has(key)) pendingKey = key;
+        if (key !== undefined && (USAGE_KEYS.has(key) || IDENTITY_KEYS.has(key))) pendingKey = key;
         readingKey = false;
         keyRaw = '';
         expectingKey = false;
@@ -175,8 +177,12 @@ function createScanner() {
   const finishCapture = (): void => {
     capturing = false;
     if (captureKey !== undefined) {
-      const wrapper = wrapUsage(captureKey, capture);
-      if (wrapper !== undefined) lastWrapper = wrapper;
+      if (USAGE_KEYS.has(captureKey) && validValue(capture) !== undefined) lastUsage = [captureKey, capture];
+      if (IDENTITY_KEYS.has(captureKey)) {
+        const value = stringValue(capture);
+        if (captureKey === 'id') id = value;
+        if (captureKey === 'status') status = value;
+      }
     }
     capture = '';
     captureKey = undefined;
@@ -188,14 +194,30 @@ function createScanner() {
     end: () => {
       if (capturing) finishCapture();
     },
-    text: () => lastWrapper,
+    text: () => wrapCaptured(id, status, lastUsage),
   };
 }
 
-function wrapUsage(key: string, value: string): string | undefined {
-  if (value === '') return undefined;
-  const text = `{${JSON.stringify(key)}:${value}}`;
-  return parseJson(text) === undefined ? undefined : text;
+function wrapCaptured(
+  id: string | undefined,
+  status: string | undefined,
+  usage: readonly [string, string] | undefined,
+): string | undefined {
+  const entries = [
+    ...(id === undefined ? [] : [[JSON.stringify('id'), JSON.stringify(id)]]),
+    ...(status === undefined ? [] : [[JSON.stringify('status'), JSON.stringify(status)]]),
+    ...(usage === undefined ? [] : [[JSON.stringify(usage[0]), usage[1]]]),
+  ];
+  return entries.length === 0 ? undefined : `{${entries.map(([key, value]) => `${key}:${value}`).join(',')}}`;
+}
+
+function validValue(value: string): unknown | undefined {
+  return value === '' ? undefined : parseJson(value);
+}
+
+function stringValue(value: string): string | undefined {
+  const parsed = validValue(value);
+  return typeof parsed === 'string' ? parsed : undefined;
 }
 
 function decodeJsonString(raw: string): string | undefined {

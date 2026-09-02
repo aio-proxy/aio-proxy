@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 
 import { ProviderProtocol } from '@aio-proxy/types';
 
-import { extractPassthroughUsage } from '../../passthrough-usage';
+import { extractPassthroughObservation, extractPassthroughUsage } from '../../passthrough-usage';
 import { createJsonUsageScan } from './json-usage-scan';
 
 test('captures a trailing usage object split across UTF-8 chunks', () => {
@@ -39,6 +39,25 @@ test('extracts usage from a body larger than the passthrough JSON cap', () => {
     inputTokens: 3,
     outputTokens: 2,
     totalTokens: 5,
+  });
+});
+
+test('retains a resumable Gemini Interaction owner from a body larger than two MiB', () => {
+  const scan = createJsonUsageScan();
+  scan.push(
+    new TextEncoder().encode(
+      JSON.stringify({
+        id: 'intr_large',
+        status: 'requires_action',
+        padding: 'x'.repeat(2 * 1024 * 1024),
+        usage: { total_input_tokens: 3, total_tokens: 3 },
+      }),
+    ),
+  );
+  scan.finish();
+
+  expect(extractPassthroughObservation(ProviderProtocol.GeminiInteractions, scan.text() ?? '')).toMatchObject({
+    responseId: 'intr_large',
   });
 });
 

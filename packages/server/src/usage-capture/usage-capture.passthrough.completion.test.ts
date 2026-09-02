@@ -50,6 +50,33 @@ function streamText(chunks: readonly string[]): ReadableStream<Uint8Array> {
   });
 }
 
+describe('oversized JSON passthrough completion', () => {
+  test('commits a resumable Gemini Interaction owner after the client drains to EOF', async () => {
+    const committed: string[] = [];
+    const body = JSON.stringify({
+      id: 'intr_large',
+      status: 'requires_action',
+      padding: 'x'.repeat(2 * 1024 * 1024),
+      usage: { total_input_tokens: 3, total_tokens: 3 },
+    });
+    const captured = createUsageCapture().passthrough({
+      response: new Response(body, { headers: { 'content-type': 'application/json' } }),
+      protocol: ProviderProtocol.GeminiInteractions,
+      providerId: 'provider',
+      modelId: 'model',
+      onCommit: (responseId) => committed.push(responseId),
+    });
+
+    expect(await captured.value.text()).toBe(body);
+    await expect(captured.completion).resolves.toEqual({
+      outcome: 'success',
+      statusCode: 200,
+      usage: expect.objectContaining({ inputTokens: 3, totalTokens: 3 }),
+    });
+    expect(committed).toEqual(['intr_large']);
+  });
+});
+
 describe('usage capture passthrough completion', () => {
   test.each([
     [
