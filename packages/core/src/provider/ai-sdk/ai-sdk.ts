@@ -234,7 +234,7 @@ function projectSessionSettings(
     case '@ai-sdk/anthropic':
       return projectAnthropicSession(settings, sessionKey);
     case '@ai-sdk/openai':
-      return projectFlatSession(settings, 'openai', 'promptCacheKey', sessionKey);
+      return projectFlatSession(settings, 'openai', 'promptCacheKey', sessionKey.slice('sha256:'.length));
     case '@ai-sdk/openai-compatible':
       return projectFlatSession(settings, openAICompatibleProviderName(config), 'user', sessionKey);
     default:

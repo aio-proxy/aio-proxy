@@ -10,7 +10,7 @@ Object.assign(globalThis, { AI_SDK_LOG_WARNINGS: false });
 
 const stableContext = {
   requestId: 'request-1',
-  session: { key: 'sha256:stable-session', source: 'body-session' },
+  session: { key: `sha256:${'a'.repeat(64)}`, source: 'body-session' },
 } satisfies LogicalRequestContext;
 
 type SessionProjectionCase = readonly [
@@ -20,14 +20,14 @@ type SessionProjectionCase = readonly [
 ];
 
 const sessionProjectionCases: readonly SessionProjectionCase[] = [
-  ['@ai-sdk/anthropic', {}, { anthropic: { metadata: { userId: 'sha256:stable-session' } } }],
-  ['@ai-sdk/openai', {}, { openai: { promptCacheKey: 'sha256:stable-session' } }],
+  ['@ai-sdk/anthropic', {}, { anthropic: { metadata: { userId: `sha256:${'a'.repeat(64)}` } } }],
+  ['@ai-sdk/openai', {}, { openai: { promptCacheKey: 'a'.repeat(64) } }],
   [
     '@ai-sdk/openai-compatible',
     { baseURL: 'https://example.test/v1', name: 'custom-compatible' },
-    { 'custom-compatible': { user: 'sha256:stable-session' } },
+    { 'custom-compatible': { user: `sha256:${'a'.repeat(64)}` } },
   ],
-  ['@ai-sdk/openai-compatible', {}, { 'fallback-name': { user: 'sha256:stable-session' } }],
+  ['@ai-sdk/openai-compatible', {}, { 'fallback-name': { user: `sha256:${'a'.repeat(64)}` } }],
 ];
 
 const noProjectionCases: readonly (readonly [string, LogicalRequestContext])[] = [
