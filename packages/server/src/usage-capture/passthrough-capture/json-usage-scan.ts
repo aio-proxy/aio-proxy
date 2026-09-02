@@ -194,6 +194,7 @@ function stepString(state: StringScanState, character: string): void {
       state.keyUnicode = undefined;
       state.escaped = false;
       state.keyTooLong = true;
+      return stepString(state, character);
     }
     return;
   }
