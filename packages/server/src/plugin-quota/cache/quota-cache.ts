@@ -88,13 +88,13 @@ export function createOAuthQuotaCache(reader: OAuthQuotaReader): OAuthQuotaCache
   };
 
   // Re-reads rather than resolving the caller with the retired account's snapshot: the dashboard
-  // would otherwise cache and render it under the new configuration. Unbounded by design — each
-  // extra pass needs another concurrent reconfiguration of the same Provider.
+  // would otherwise cache and render it under the new configuration. The retry goes back through
+  // `read` rather than straight into `attempt`, because by now the new configuration may already have
+  // a read in flight or an entry cached, and both are the cache's to share. Unbounded by design —
+  // each extra pass needs another concurrent reconfiguration of the same Provider.
   const load = async (providerId: string): Promise<OAuthQuotaCacheEntry> => {
-    for (;;) {
-      const entry = await attempt(providerId);
-      if (entry !== undefined) return entry;
-    }
+    const entry = await attempt(providerId);
+    return entry ?? (await read(providerId));
   };
 
   const start = (providerId: string): Promise<OAuthQuotaCacheEntry> => {

@@ -165,3 +165,26 @@ test('a read in flight when a provider is reconfigured does not repopulate the c
   expect((await inFlight).snapshot).toEqual(snapshot('fresh'));
   expect((await cache.read('p')).snapshot).toEqual(snapshot('fresh'));
 });
+
+test('an invalidated read joins the replacement instead of reading the new account twice', async () => {
+  // Single flight has to survive reconfiguration: the retired read cannot resolve its caller, but by
+  // the time it notices, the new configuration already has a read of its own in flight. Starting
+  // another one bills the upstream quota endpoint twice for one dashboard render.
+  const release = Promise.withResolvers<OAuthQuotaSnapshot>();
+  let calls = 0;
+  const cache = createOAuthQuotaCache({
+    read: async () => {
+      calls += 1;
+      return calls === 1 ? await release.promise : snapshot('fresh');
+    },
+  });
+
+  const retired = cache.read('p');
+  cache.invalidate('p');
+  const replacement = cache.read('p');
+  release.resolve(snapshot('stale'));
+
+  expect((await retired).snapshot).toEqual(snapshot('fresh'));
+  expect(await retired).toEqual(await replacement);
+  expect(calls).toBe(2);
+});
