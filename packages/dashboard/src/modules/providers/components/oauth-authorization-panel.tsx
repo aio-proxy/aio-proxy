@@ -20,12 +20,6 @@ interface OAuthAuthorizationPanelProps {
   readonly isPending: boolean;
 }
 
-const authorizationUrl = (session: DashboardOAuthSession): string | undefined => {
-  if (session.status === 'device_code' || session.status === 'authorize_url') return session.url;
-  if (session.status === 'loopback') return session.authorizationUrl;
-  return undefined;
-};
-
 export const OAuthAuthorizationPanel: React.FC<OAuthAuthorizationPanelProps> = ({
   session,
   onSubmitCallback,
@@ -50,19 +44,18 @@ export const OAuthAuthorizationPanel: React.FC<OAuthAuthorizationPanelProps> = (
     }
   }
 
-  const presentedUrl = useRef<string | undefined>(undefined);
-  const url = authorizationUrl(session);
+  // Opening the authorization page is the session hook's job: it pre-opens a window on the user's click
+  // so the browser does not treat the later navigation as an unrequested popup. Opening one here too
+  // gave every authorize_url provider (Cursor) two tabs.
+  const copiedCode = useRef<string | undefined>(undefined);
   useEffect(() => {
-    if (url === undefined || presentedUrl.current === url) return;
-    presentedUrl.current = url;
-    if (session.status === 'device_code') {
-      void navigator.clipboard.writeText(session.userCode).then(
-        () => toast.add({ type: 'success', title: m['dashboard.providers.oauth.copied_device_code']() }),
-        () => undefined,
-      );
-    }
-    window.open(url, '_blank', 'noopener,noreferrer');
-  }, [session, url]);
+    if (session.status !== 'device_code' || copiedCode.current === session.userCode) return;
+    copiedCode.current = session.userCode;
+    void navigator.clipboard.writeText(session.userCode).then(
+      () => toast.add({ type: 'success', title: m['dashboard.providers.oauth.copied_device_code']() }),
+      () => undefined,
+    );
+  }, [session]);
 
   return (
     <div className="space-y-4 rounded-2xl bg-input/50 p-4">

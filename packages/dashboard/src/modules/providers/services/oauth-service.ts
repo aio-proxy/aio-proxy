@@ -29,6 +29,10 @@ export const oauthSessionQueryOptions = (id: string) =>
       return response.json();
     },
     enabled: id !== '',
+    // Authorization deliberately hands focus to a popup, so the dashboard tab is blurred for the whole
+    // pending phase. Without this the poll stalls exactly then, and a session that only reaches
+    // device_code/authorize_url after a round trip is never observed until the user comes back.
+    refetchIntervalInBackground: true,
     refetchInterval: (query) => {
       if (query.state.status === 'error') return false;
       const status = query.state.data?.session.status;

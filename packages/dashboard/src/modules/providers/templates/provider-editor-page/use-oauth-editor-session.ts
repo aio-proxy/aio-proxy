@@ -69,11 +69,14 @@ export const useOAuthEditorSession = (
       : undefined);
 
   useEffect(() => {
-    if ((session?.status === 'authorize_url' || session?.status === 'loopback') && popup.current !== null) {
+    if (
+      (session?.status === 'authorize_url' || session?.status === 'loopback' || session?.status === 'device_code') &&
+      popup.current !== null
+    ) {
       popup.current.location.href = session.status === 'loopback' ? session.authorizationUrl : session.url;
       popup.current = null;
     }
-    if (session?.status === 'failed' || session?.status === 'cancelled' || session?.status === 'device_code') {
+    if (session?.status === 'failed' || session?.status === 'cancelled') {
       closeUnclaimedPopup();
     }
     if (session?.status === 'succeeded' && handledSuccess.current !== session.id) {
