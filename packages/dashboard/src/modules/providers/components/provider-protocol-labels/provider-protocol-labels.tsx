@@ -21,10 +21,15 @@ export const ProviderProtocolLabels: React.FC<ProviderProtocolLabelsProps> = ({ 
 
   return (
     <Tooltip>
-      {/* `underline-offset` decoration rather than a button: the whole card is already one link, so
-          a real control here would nest interactives. Hover and focus still reach it. */}
+      {/* `relative z-10` is what makes the tooltip reachable at all: the card's identity link
+          stretches a positioned `::after` over the whole card, and a static inline span paints
+          underneath it, so every hover would land on the link instead. Raising it costs the word's
+          own share of the card click target, which is the right trade for a hover-only affordance.
+          Decoration rather than a button, since the whole card is already one link. */}
       <TooltipTrigger
-        render={<span tabIndex={0} className="cursor-help underline decoration-dotted underline-offset-2" />}
+        render={
+          <span tabIndex={0} className="relative z-10 cursor-help underline decoration-dotted underline-offset-2" />
+        }
         data-testid="provider-protocols-multi"
       >
         {m['dashboard.providers.card.protocols_multi']()}

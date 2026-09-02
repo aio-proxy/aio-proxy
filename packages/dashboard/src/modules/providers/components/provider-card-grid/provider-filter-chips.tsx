@@ -104,9 +104,9 @@ export const ProviderFilterChips: React.FC<ProviderFilterChipsProps> = ({ filter
           <ToggleGroup
             aria-label={group.label}
             size="sm"
+            variant="outline"
             value={[group.selected]}
             onValueChange={(next) => group.options.find((option) => option.value === next[0])?.select()}
-            className="ml-2.5 gap-1"
           >
             <span aria-hidden="true" className="text-xs text-muted-foreground">
               {group.label}
