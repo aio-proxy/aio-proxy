@@ -159,7 +159,9 @@ test('a read in flight when a provider is reconfigured does not repopulate the c
   const inFlight = cache.read('p');
   cache.invalidate('p');
   release(snapshot('stale'));
-  await inFlight;
 
+  // Not just withheld from the cache: the caller must not render the retired account's snapshot
+  // under the new configuration either, so the read is retried against it.
+  expect((await inFlight).snapshot).toEqual(snapshot('fresh'));
   expect((await cache.read('p')).snapshot).toEqual(snapshot('fresh'));
 });

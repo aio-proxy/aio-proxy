@@ -53,8 +53,12 @@ function membershipPlan(root: object): string | undefined {
   const membership = Reflect.get(user, 'membership');
   if (!isPlainObject(membership)) return undefined;
   const level = Reflect.get(membership, 'level');
-  if (typeof level !== 'string' || level.trim() === '') return undefined;
-  return PLAN_BY_LEVEL[level] ?? level.replace('LEVEL_', '').toLowerCase();
+  if (typeof level !== 'string') return undefined;
+  // `LocalizedTextSchema` rejects untrimmed strings, so an untrimmed level that misses the lookup
+  // would fail validation of the whole otherwise-valid snapshot.
+  const trimmed = level.trim();
+  if (trimmed === '') return undefined;
+  return PLAN_BY_LEVEL[trimmed] ?? trimmed.replace('LEVEL_', '').toLowerCase();
 }
 
 export async function readKimiQuota(

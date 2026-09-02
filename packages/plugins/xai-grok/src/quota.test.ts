@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
 
 import type { CredentialPort } from '@aio-proxy/plugin-sdk';
+import { LocalizedTextSchema } from '@aio-proxy/plugin-sdk';
 
 import { readXAIGrokQuota } from './quota';
 import type { XAIGrokCredential } from './schema';
@@ -97,6 +98,16 @@ test('reports the subscription tier as the plan', async () => {
     settings: { subscription_tier_display: 'SuperGrok Heavy' },
   });
   expect(snapshot.plan).toBe('SuperGrok Heavy');
+});
+
+test('trims a padded tier so the plan does not fail snapshot validation', async () => {
+  // `LocalizedTextSchema` rejects untrimmed strings, so passing one through would fail the whole
+  // otherwise-valid billing snapshot over an optional enrichment.
+  const snapshot = await readWithResponses({
+    settings: { subscription_tier_display: '  SuperGrok Heavy \n' },
+  });
+  expect(snapshot.plan).toBe('SuperGrok Heavy');
+  expect(LocalizedTextSchema.safeParse(snapshot.plan).success).toBe(true);
 });
 
 test('drops the plan when settings fail without failing the read', async () => {

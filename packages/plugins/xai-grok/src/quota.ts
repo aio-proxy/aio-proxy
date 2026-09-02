@@ -63,7 +63,11 @@ async function readPlan(
   if (!response.ok) return undefined;
   const payload = record(await response.json());
   const tier = payload === undefined ? undefined : Reflect.get(payload, 'subscription_tier_display');
-  return typeof tier === 'string' && tier.trim() !== '' ? tier : undefined;
+  if (typeof tier !== 'string') return undefined;
+  // `LocalizedTextSchema` rejects untrimmed strings, so passing the tier through verbatim would turn
+  // this optional enrichment into a failure of the whole otherwise-valid snapshot.
+  const trimmed = tier.trim();
+  return trimmed === '' ? undefined : trimmed;
 }
 
 async function requestBilling(

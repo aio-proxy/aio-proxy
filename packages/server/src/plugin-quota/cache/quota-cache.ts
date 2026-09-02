@@ -48,7 +48,9 @@ export function createOAuthQuotaCache(reader: OAuthQuotaReader): OAuthQuotaCache
   // old account, so its result must not be written back under the new one.
   const generations = new Map<string, number>();
 
-  const load = async (providerId: string): Promise<OAuthQuotaCacheEntry> => {
+  // `undefined` means the Provider was invalidated while this read was in flight, so the result
+  // describes an account that is no longer configured under this ID.
+  const attempt = async (providerId: string): Promise<OAuthQuotaCacheEntry | undefined> => {
     const generation = generations.get(providerId) ?? 0;
     const current = (): boolean => (generations.get(providerId) ?? 0) === generation;
     const previous = entries.get(providerId);
@@ -59,17 +61,17 @@ export function createOAuthQuotaCache(reader: OAuthQuotaReader): OAuthQuotaCache
         sampledAt: Date.now(),
         stale: false,
       };
-      if (current()) {
-        entries.set(providerId, entry);
-        failures.delete(providerId);
-      }
+      if (!current()) return undefined;
+      entries.set(providerId, entry);
+      failures.delete(providerId);
       return entry;
     } catch (error) {
-      if (error instanceof OAuthQuotaCapabilityUnavailableError && error.permanent && current()) {
+      if (!current()) return undefined;
+      if (error instanceof OAuthQuotaCapabilityUnavailableError && error.permanent) {
         unsupported.add(providerId);
       }
       if (previous === undefined) {
-        if (current()) failures.set(providerId, error instanceof Error ? error : new Error('QUOTA_READ_FAILED'));
+        failures.set(providerId, error instanceof Error ? error : new Error('QUOTA_READ_FAILED'));
         throw error;
       }
       // Replaces the entry so the next cooldown hit still reports the failure instead of silently
@@ -80,8 +82,18 @@ export function createOAuthQuotaCache(reader: OAuthQuotaReader): OAuthQuotaCache
         stale: true,
         error: error instanceof Error ? error.message : 'QUOTA_READ_FAILED',
       };
-      if (current()) entries.set(providerId, stale);
+      entries.set(providerId, stale);
       return stale;
+    }
+  };
+
+  // Re-reads rather than resolving the caller with the retired account's snapshot: the dashboard
+  // would otherwise cache and render it under the new configuration. Unbounded by design — each
+  // extra pass needs another concurrent reconfiguration of the same Provider.
+  const load = async (providerId: string): Promise<OAuthQuotaCacheEntry> => {
+    for (;;) {
+      const entry = await attempt(providerId);
+      if (entry !== undefined) return entry;
     }
   };
 
