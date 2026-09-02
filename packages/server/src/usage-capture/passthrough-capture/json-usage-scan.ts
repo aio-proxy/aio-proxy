@@ -183,13 +183,17 @@ type StringScanState = {
 
 function stepString(state: StringScanState, character: string): void {
   if (state.readingKey && state.keyUnicode !== undefined) {
-    state.keyUnicode += character;
-    if (state.keyUnicode.length === 4) {
-      if (/^[0-9a-f]{4}$/iu.test(state.keyUnicode))
+    if (/^[0-9a-f]$/iu.test(character)) {
+      state.keyUnicode += character;
+      if (state.keyUnicode.length === 4) {
         appendKeyCharacter(state, String.fromCharCode(Number.parseInt(state.keyUnicode, 16)));
-      else state.keyTooLong = true;
+        state.keyUnicode = undefined;
+        state.escaped = false;
+      }
+    } else {
       state.keyUnicode = undefined;
       state.escaped = false;
+      state.keyTooLong = true;
     }
     return;
   }

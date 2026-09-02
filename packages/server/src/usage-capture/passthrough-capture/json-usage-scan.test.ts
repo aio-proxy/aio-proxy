@@ -120,6 +120,21 @@ test('recognizes escaped top-level candidate keys without retaining their raw sp
   });
 });
 
+test('recovers after a malformed unicode escape in a huge unknown top-level key', () => {
+  const scan = createJsonUsageScan();
+  scan.push(
+    new TextEncoder().encode(
+      `{"${'x'.repeat(2 * 1024 * 1024)}\\u000💩":"ignored","id":"intr_ok","status":"requires_action","usage":{"total_input_tokens":3,"total_tokens":3}}`,
+    ),
+  );
+  scan.finish();
+
+  expect(extractPassthroughObservation(ProviderProtocol.GeminiInteractions, scan.text() ?? '')).toMatchObject({
+    responseId: 'intr_ok',
+    usage: { inputTokens: 3, totalTokens: 3 },
+  });
+});
+
 test('extracts leading usage before a large embeddings payload', () => {
   const scan = createJsonUsageScan();
   scan.push(
