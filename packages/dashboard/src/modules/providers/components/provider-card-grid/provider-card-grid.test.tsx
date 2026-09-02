@@ -125,6 +125,22 @@ test('deep-link focus lands once the target Provider arrives on a later render',
   expect(document.activeElement).toBe(screen.getByTestId('provider-link-gamma'));
 });
 
+test('deep-link focus waits for a filter that hides the target to be cleared', async () => {
+  // A filter narrowed before the double-rAF fires leaves the target card out of the document. Giving
+  // up there would drop the deep link silently: the card comes back when the filter clears, but
+  // nothing would scroll to it or move the keyboard there.
+  render(<ProviderCardGrid providers={providers} focusProviderId="beta" />);
+  const search = screen.getByTestId('provider-search');
+  fireEvent.change(search, { target: { value: 'alpha' } });
+  await nextFrames();
+  expect(screen.queryByTestId('provider-link-beta')).not.toBeInTheDocument();
+
+  fireEvent.change(search, { target: { value: '' } });
+  await nextFrames();
+
+  expect(document.activeElement).toBe(screen.getByTestId('provider-link-beta'));
+});
+
 test('renders the empty state when there are no Providers at all', () => {
   render(<ProviderCardGrid providers={[]} />);
 
