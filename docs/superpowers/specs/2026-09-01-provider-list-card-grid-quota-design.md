@@ -120,8 +120,12 @@ fallback. Pagination and group expansion drop out of that sequence because neith
   footer carries the sample time and the refresh button.
   - An item with `remainingRatio === undefined` is not rendered at all. A snapshot in which no window
     reports a remaining amount shows one empty-state line instead of an empty list.
-  - `remainingRatio > 0 && < 0.01` renders 剩余 <1% with a zero-width bar.
+  - `remainingRatio > 0 && < 0.01` renders 剩余 <1% with a zero-width bar. The bar's
+    `aria-valuetext` carries that same string, because the underlying value is the raw ratio and
+    would otherwise be announced as 0%.
   - Bars do not change color by tightness.
+- Bar primitive: the shared `progress.tsx`, same as the overview's top-model-costs rows. The call
+  site supplies only a `ProgressLabel` and a `ProgressValue`; `Progress` renders the track itself.
 - Modal primitive: `packages/ui` has no `dialog.tsx`. It is generated with the vendored shadcn CLI —
   `bun x --bun --no-install shadcn add dialog --overwrite` run from `packages/ui` — not hand-written,
   because that directory is CLI-managed. The one hand edit on top of the generated file is a
