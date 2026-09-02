@@ -64,7 +64,7 @@ export const ProviderCardIdentity: React.FC<ProviderCardIdentityProps> = ({
             to="/providers/$id/edit"
             params={{ id: provider.id }}
             title={provider.id}
-            className="block truncate font-medium after:absolute after:inset-0 after:content-[''] hover:underline focus-visible:underline"
+            // className="block truncate font-medium after:absolute after:inset-0 after:content-[''] hover:underline focus-visible:underline"
           >
             {name}
           </Link>

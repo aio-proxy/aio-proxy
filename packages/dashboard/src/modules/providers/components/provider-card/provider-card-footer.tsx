@@ -1,6 +1,7 @@
 import { m } from '@aio-proxy/i18n';
 import type { DashboardProviderSummary } from '@aio-proxy/types';
 import { Button } from '@aio-proxy/ui/components/button';
+import { CardFooter } from '@aio-proxy/ui/components/card';
 import type React from 'react';
 
 import { formatCompactTokenCount } from '@/components/token-count';
@@ -29,7 +30,7 @@ export const ProviderCardFooter: React.FC<ProviderCardFooterProps> = ({
   editable,
   onDelete,
 }) => (
-  <div className="flex items-center justify-between gap-2">
+  <CardFooter className="justify-between gap-2">
     <div className="truncate text-xs text-muted-foreground">
       {`${m['dashboard.providers.card.models_count']({ count: provider.clientModels.length })} · ${m['dashboard.providers.card.requests_24h']({ count: requestCountLabel(usage, usagePending) })}`}
     </div>
@@ -54,5 +55,5 @@ export const ProviderCardFooter: React.FC<ProviderCardFooterProps> = ({
         </Button>
       )}
     </div>
-  </div>
+  </CardFooter>
 );

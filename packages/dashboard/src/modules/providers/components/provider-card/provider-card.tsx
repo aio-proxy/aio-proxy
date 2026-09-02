@@ -121,16 +121,21 @@ export const ProviderCard: React.FC<ProviderCardProps> = ({
               </div>
             ) : null}
             <ProviderCardStats provider={provider} health={health} />
-            <ProviderCardFooter
-              provider={provider}
-              usage={usage}
-              usagePending={usagePending}
-              editable={editable}
-              onDelete={onDelete}
-            />
           </>
         )}
       </CardContent>
+
+      {/* `CardFooter` is a sibling of `CardContent`, not a child: each Card slot supplies its own
+          horizontal padding, and the Card's own `gap` is what separates them. */}
+      {provider.kind === 'invalid' ? null : (
+        <ProviderCardFooter
+          provider={provider}
+          usage={usage}
+          usagePending={usagePending}
+          editable={editable}
+          onDelete={onDelete}
+        />
+      )}
     </Card>
   );
 };
