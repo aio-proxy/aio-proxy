@@ -251,6 +251,35 @@ test('aborts a plugin read that ignores its signal instead of holding the snapsh
   await fixture.manager.swap(createQuotaFixture({ itemId: 'new' }).snapshot).whenDrained;
 });
 
+test('aborts a hung account-options schema instead of holding the snapshot lease forever', async () => {
+  // Context preparation runs the plugin's own `safeParseAsync`, so a plugin can hang the read before it
+  // ever reaches `quota.read`. The lease is released in a `finally` attached to that same promise, so
+  // this half needs the race just as much as the read does.
+  const started = Promise.withResolvers<void>();
+  const fixture = createQuotaFixture({
+    accountOptions: {
+      schema: {
+        safeParse: () => ({ success: true, data: {} }),
+        safeParseAsync: () => {
+          started.resolve();
+          return new Promise<never>(() => {});
+        },
+      } as never,
+      form: [],
+    },
+  });
+  const controller = new AbortController();
+  const deadline = new Error('read deadline');
+  const pending = createOAuthQuotaReader(fixture.dependencies).read(PROVIDER_ID, controller.signal);
+  await started.promise;
+  controller.abort(deadline);
+
+  expect(await capturedError(pending)).toBe(deadline);
+  expect(fixture.readCalls()).toBe(0);
+  expect(fixture.logs).toHaveLength(0);
+  await fixture.manager.swap(createQuotaFixture({ itemId: 'new' }).snapshot).whenDrained;
+});
+
 test('intentionally invokes the plugin twice for simultaneous reads of one Provider ID', async () => {
   const release = Promise.withResolvers<void>();
   const fixture = createQuotaFixture({

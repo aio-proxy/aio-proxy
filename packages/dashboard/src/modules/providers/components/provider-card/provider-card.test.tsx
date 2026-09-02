@@ -4,6 +4,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen } from '@testing-library/react';
 import type React from 'react';
 
+import { queryKeys } from '@/lib/query-keys';
+
 import { providerStub } from '../../lib/provider-fixtures';
 import { ProviderCard } from './provider-card';
 
@@ -203,4 +205,20 @@ test('an invalid Provider still shows why its configuration could not be parsed'
   const diagnostic = screen.getByTestId('provider-card-diagnostic');
   expect(diagnostic).toHaveTextContent('baseURL must be an absolute URL');
   expect(diagnostic).toHaveTextContent('PROVIDER_CONFIG_INVALID');
+});
+
+test('a Provider that lost quota support stops showing the previous account plan', () => {
+  // Disabling the query leaves whatever it already cached in place, so the plan has to be read through
+  // `hasQuota` as well; otherwise a reused Provider ID keeps advertising the retired account's plan.
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  client.setQueryData(queryKeys.providerQuota('reused'), { snapshot: { items: [], plan: 'Allegro' } });
+
+  render(
+    <QueryClientProvider client={client}>
+      <ProviderCard {...baseProps} provider={providerStub({ id: 'reused', name: 'Reused', hasQuota: false })} />
+    </QueryClientProvider>,
+  );
+
+  expect(screen.queryByText('Allegro')).not.toBeInTheDocument();
+  expect(screen.queryByTestId('provider-plan-loading')).not.toBeInTheDocument();
 });

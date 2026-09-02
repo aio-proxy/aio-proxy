@@ -4,6 +4,7 @@ import {
   type DiagnosticFactory,
   type PluginLogSink,
   type PluginRepository,
+  withAbort,
 } from '@aio-proxy/core';
 import type { AccountContext, CredentialPort, OAuthAdapter } from '@aio-proxy/plugin-sdk';
 import { type OAuthProvider, ProviderKind } from '@aio-proxy/types';
@@ -126,8 +127,14 @@ export async function withOAuthQuotaContext<T>(
 ): Promise<T> {
   const lease = dependencies.acquireSnapshot();
   try {
-    const prepared = await prepareContext(dependencies, lease, providerId, signal);
-    return await operation(prepared);
+    // The signal handed to the plugin is advisory, and both halves of this are plugin-controlled: the
+    // account-options and credential schemas run through the plugin's own `safeParseAsync` during
+    // preparation, then the read itself. Either can stay pending forever, and `lease.release()` hangs
+    // off whatever this awaits, so the race has to cover both or a hung plugin leaks the snapshot lease.
+    return await withAbort(
+      signal,
+      async () => await operation(await prepareContext(dependencies, lease, providerId, signal)),
+    );
   } finally {
     lease.release();
   }

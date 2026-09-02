@@ -41,7 +41,9 @@ export const ProviderCard: React.FC<ProviderCardProps> = ({
 }) => {
   const editable = canEditProvider(provider);
   const quotaQuery = useQuery({ ...providerQuotaQueryOptions(provider.id), enabled: provider.hasQuota });
-  const plan = quotaQuery.data?.snapshot.plan;
+  // Disabling the query does not evict what it already cached, so a Provider ID reconfigured away from
+  // quota support would keep rendering the previous account's plan until the cache expires.
+  const plan = provider.hasQuota ? quotaQuery.data?.snapshot.plan : undefined;
 
   return (
     <Card
