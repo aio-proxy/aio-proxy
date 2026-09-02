@@ -30,13 +30,14 @@ export function createJsonUsageScan(): JsonUsageScan {
 
 function createScanner() {
   let depth = 0;
-  let inString = false;
-  let escaped = false;
-  let expectingKey = false;
-  let readingKey = false;
-  let keyRaw = '';
-  let keyTooLong = false;
-  let pendingKey: string | undefined;
+  const stringState: StringScanState = {
+    inString: false,
+    escaped: false,
+    expectingKey: false,
+    readingKey: false,
+    keyValue: '',
+    keyTooLong: false,
+  };
   let capturing = false;
   let captureKey: string | undefined;
   let capture = '';
@@ -50,73 +51,45 @@ function createScanner() {
   };
   const step = (character: string): void => {
     if (capturing) return stepCapture(character);
-    if (inString) return stepString(character);
+    if (stringState.inString) return stepString(stringState, character);
     if (isWhitespace(character)) return;
-    if (pendingKey !== undefined) {
+    if (stringState.pendingKey !== undefined) {
       if (character === ':') {
         startCapture();
         return;
       }
-      pendingKey = undefined;
+      stringState.pendingKey = undefined;
     }
     if (character === '"') {
-      inString = true;
-      escaped = false;
-      if (expectingKey && depth === 1) {
-        readingKey = true;
-        keyRaw = '';
-        keyTooLong = false;
+      stringState.inString = true;
+      stringState.escaped = false;
+      if (stringState.expectingKey && depth === 1) {
+        stringState.readingKey = true;
+        stringState.keyValue = '';
+        stringState.keyUnicode = undefined;
+        stringState.keyTooLong = false;
       }
       return;
     }
     if (character === '{' || character === '[') {
       depth += 1;
-      expectingKey = character === '{';
+      stringState.expectingKey = character === '{';
       return;
     }
     if (character === '}' || character === ']') {
       depth = Math.max(0, depth - 1);
-      expectingKey = false;
+      stringState.expectingKey = false;
       return;
     }
-    if (character === ',') expectingKey = depth >= 1;
+    if (character === ',') stringState.expectingKey = depth >= 1;
   };
   const startCapture = (): void => {
     capturing = true;
-    captureKey = pendingKey;
-    pendingKey = undefined;
+    captureKey = stringState.pendingKey;
+    stringState.pendingKey = undefined;
     capture = '';
     captureStartDepth = depth;
     discardingCapture = false;
-  };
-  const appendKeyCharacter = (character: string): void => {
-    if (keyRaw.length < MAX_CANDIDATE_KEY_CHARS) keyRaw += character;
-    else keyTooLong = true;
-  };
-  const stepString = (character: string): void => {
-    if (escaped) {
-      if (readingKey) appendKeyCharacter(character);
-      escaped = false;
-      return;
-    }
-    if (character === '\\') {
-      if (readingKey) appendKeyCharacter(character);
-      escaped = true;
-      return;
-    }
-    if (character === '"') {
-      inString = false;
-      if (readingKey) {
-        const key = keyTooLong ? undefined : decodeJsonString(keyRaw);
-        if (key !== undefined && (USAGE_KEYS.has(key) || IDENTITY_KEYS.has(key))) pendingKey = key;
-        readingKey = false;
-        keyRaw = '';
-        keyTooLong = false;
-        expectingKey = false;
-      }
-      return;
-    }
-    if (readingKey) appendKeyCharacter(character);
   };
   const stepCapture = (character: string): void => {
     if (capture === '' && isWhitespace(character)) return;
@@ -126,18 +99,18 @@ function createScanner() {
       captureKey = undefined;
     }
 
-    if (inString) {
+    if (stringState.inString) {
       if (!discardingCapture) capture += character;
-      if (escaped) {
-        escaped = false;
+      if (stringState.escaped) {
+        stringState.escaped = false;
         return;
       }
       if (character === '\\') {
-        escaped = true;
+        stringState.escaped = true;
         return;
       }
       if (character === '"') {
-        inString = false;
+        stringState.inString = false;
         if (depth === captureStartDepth) finishCapture();
       }
       return;
@@ -145,8 +118,8 @@ function createScanner() {
 
     if (character === '"') {
       if (!discardingCapture) capture += character;
-      inString = true;
-      escaped = false;
+      stringState.inString = true;
+      stringState.escaped = false;
       return;
     }
 
@@ -185,7 +158,7 @@ function createScanner() {
     capture = '';
     captureKey = undefined;
     discardingCapture = false;
-    expectingKey = false;
+    stringState.expectingKey = false;
   };
 
   return {
@@ -195,6 +168,67 @@ function createScanner() {
     },
     text: () => wrapCaptured(id, status, lastUsage),
   };
+}
+
+type StringScanState = {
+  inString: boolean;
+  escaped: boolean;
+  expectingKey: boolean;
+  readingKey: boolean;
+  keyValue: string;
+  keyUnicode?: string;
+  keyTooLong: boolean;
+  pendingKey?: string;
+};
+
+function stepString(state: StringScanState, character: string): void {
+  if (state.readingKey && state.keyUnicode !== undefined) {
+    state.keyUnicode += character;
+    if (state.keyUnicode.length === 4) {
+      if (/^[0-9a-f]{4}$/iu.test(state.keyUnicode))
+        appendKeyCharacter(state, String.fromCharCode(Number.parseInt(state.keyUnicode, 16)));
+      else state.keyTooLong = true;
+      state.keyUnicode = undefined;
+      state.escaped = false;
+    }
+    return;
+  }
+  if (state.escaped) {
+    if (state.readingKey) {
+      if (character === 'u') {
+        state.keyUnicode = '';
+        return;
+      }
+      const decoded = decodeJsonString(`\\${character}`);
+      if (decoded === undefined) state.keyTooLong = true;
+      else appendKeyCharacter(state, decoded);
+    }
+    state.escaped = false;
+    return;
+  }
+  if (character === '\\') {
+    state.escaped = true;
+    return;
+  }
+  if (character === '"') {
+    state.inString = false;
+    if (state.readingKey) {
+      const key = state.keyTooLong ? undefined : state.keyValue;
+      if (key !== undefined && (USAGE_KEYS.has(key) || IDENTITY_KEYS.has(key))) state.pendingKey = key;
+      state.readingKey = false;
+      state.keyValue = '';
+      state.keyUnicode = undefined;
+      state.keyTooLong = false;
+      state.expectingKey = false;
+    }
+    return;
+  }
+  if (state.readingKey) appendKeyCharacter(state, character);
+}
+
+function appendKeyCharacter(state: StringScanState, character: string): void {
+  if (state.keyValue.length < MAX_CANDIDATE_KEY_CHARS) state.keyValue += character;
+  else state.keyTooLong = true;
 }
 
 function wrapCaptured(

@@ -102,6 +102,24 @@ test('skips a huge unknown top-level key before retained fields', () => {
   });
 });
 
+test('recognizes escaped top-level candidate keys without retaining their raw spelling', () => {
+  const scan = createJsonUsageScan();
+  scan.push(
+    new TextEncoder().encode(
+      '{"\\u0069\\u0064":"intr_ok","\\u0073\\u0074\\u0061\\u0074\\u0075\\u0073":"requires_action","\\u0075\\u0073\\u0061\\u0067\\u0065":{"total_input_tokens":3,"total_tokens":3}}',
+    ),
+  );
+  scan.finish();
+
+  expect(scan.text()).toBe(
+    '{"id":"intr_ok","status":"requires_action","usage":{"total_input_tokens":3,"total_tokens":3}}',
+  );
+  expect(extractPassthroughObservation(ProviderProtocol.GeminiInteractions, scan.text() ?? '')).toMatchObject({
+    responseId: 'intr_ok',
+    usage: { inputTokens: 3, totalTokens: 3 },
+  });
+});
+
 test('extracts leading usage before a large embeddings payload', () => {
   const scan = createJsonUsageScan();
   scan.push(
