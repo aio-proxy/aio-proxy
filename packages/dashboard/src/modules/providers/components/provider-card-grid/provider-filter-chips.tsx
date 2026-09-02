@@ -1,4 +1,5 @@
 import { m } from '@aio-proxy/i18n';
+import { Field, FieldLabel } from '@aio-proxy/ui/components/field';
 import { Separator } from '@aio-proxy/ui/components/separator';
 import { ToggleGroup, ToggleGroupItem } from '@aio-proxy/ui/components/toggle-group';
 import type React from 'react';
@@ -101,26 +102,29 @@ export const ProviderFilterChips: React.FC<ProviderFilterChipsProps> = ({ filter
               exactly one pressed. Its `value` is an array even when `multiple` is false, and an empty
               array means the user re-pressed the active option — treat that as no change rather than
               clearing, because "no filter" is already spelled by the `all` option. */}
-          <ToggleGroup
-            aria-label={group.label}
-            size="sm"
-            variant="outline"
-            value={[group.selected]}
-            onValueChange={(next) => group.options.find((option) => option.value === next[0])?.select()}
-          >
-            <span aria-hidden="true" className="text-xs text-muted-foreground">
-              {group.label}
-            </span>
-            {group.options.map((option) => (
-              <ToggleGroupItem
-                key={option.value}
-                value={option.value}
-                data-testid={`provider-filter-${group.key}-${option.value}`}
-              >
-                {option.label}
-              </ToggleGroupItem>
-            ))}
-          </ToggleGroup>
+          {/* `role="presentation"` drops `Field`'s own `role="group"`: this wrapper is layout, and
+              the named group is the `ToggleGroup` inside it. Left as a group it would announce an
+              anonymous group around every named one, since `FieldLabel` has no control to point at. */}
+          <Field orientation="horizontal" role="presentation" className="w-auto">
+            <FieldLabel>{group.label}</FieldLabel>
+            <ToggleGroup
+              aria-label={group.label}
+              size="sm"
+              variant="outline"
+              value={[group.selected]}
+              onValueChange={(next) => group.options.find((option) => option.value === next[0])?.select()}
+            >
+              {group.options.map((option) => (
+                <ToggleGroupItem
+                  key={option.value}
+                  value={option.value}
+                  data-testid={`provider-filter-${group.key}-${option.value}`}
+                >
+                  {option.label}
+                </ToggleGroupItem>
+              ))}
+            </ToggleGroup>
+          </Field>
           {index !== array.length - 1 && <Separator orientation="vertical" />}
         </Fragment>
       ))}

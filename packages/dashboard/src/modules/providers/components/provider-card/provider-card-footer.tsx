@@ -9,6 +9,7 @@ import { formatCompactTokenCount } from '@/components/token-count';
 import type { ProviderUsage } from '../../services/provider-usage-service';
 import { ProviderEnabledSwitch } from '../provider-enabled-switch';
 import { ProviderMoreMenu } from '../provider-more-menu';
+import { ProviderModelCount } from './provider-model-count';
 
 interface ProviderCardFooterProps {
   readonly provider: DashboardProviderSummary;
@@ -31,8 +32,10 @@ export const ProviderCardFooter: React.FC<ProviderCardFooterProps> = ({
   onDelete,
 }) => (
   <CardFooter className="justify-between gap-2">
-    <div className="truncate text-xs text-muted-foreground">
-      {`${m['dashboard.providers.card.models_count']({ count: provider.clientModels.length })} · ${m['dashboard.providers.card.requests_24h']({ count: requestCountLabel(usage, usagePending) })}`}
+    <div className="flex min-w-0 items-center gap-1 truncate text-xs text-muted-foreground">
+      <ProviderModelCount models={provider.clientModels} />
+      <span aria-hidden="true">·</span>
+      <span>{m['dashboard.providers.card.requests_24h']({ count: requestCountLabel(usage, usagePending) })}</span>
     </div>
     {/* Above the identity link's full-card `::after` overlay, so these stay clickable. */}
     <div className="relative z-10 flex shrink-0 items-center gap-1">
