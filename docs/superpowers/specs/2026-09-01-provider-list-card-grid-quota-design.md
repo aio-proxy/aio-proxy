@@ -198,7 +198,9 @@ Card list render:
 1. `providersQueryOptions()` → `GET /providers` → summaries with `protocols[]` and `hasQuota`.
 2. `overviewDiagnosticsQueryOptions('24h')` → `providerHealth[]`, joined by `providerId` for
    成功率 / p95.
-3. `providerUsageQueryOptions()` → 24h request counts per provider, joined by id.
+3. `providerUsageQueryOptions()` → 24h request counts per provider, joined by id. The response omits
+   Providers with no traffic in the window, so a resolved query with no entry for a Provider means
+   `0`, not unknown; only an unresolved query renders `N/A`.
 4. Filter + sort pure function → grid.
 
 Quota ring, per card with `hasQuota`:

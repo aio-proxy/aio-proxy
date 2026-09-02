@@ -100,6 +100,17 @@ const nextFrames = () =>
     requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
   });
 
+test('a Provider the usage response omits counts as zero requests, not as unknown', () => {
+  // The usage query above resolves to an empty map, which is exactly what the route returns once no
+  // Provider saw traffic in the window. Rendering `N/A` there would read as "we could not tell",
+  // when the server told us plainly: nobody called it.
+  render(<ProviderCardGrid providers={providers} />);
+
+  const card = screen.getByTestId('provider-row-alpha');
+  expect(card.textContent).toMatch(/0\s*(次|件|회)?\s*\/ 24h/u);
+  expect(card.textContent).not.toContain('N/A');
+});
+
 test('renders the empty state when there are no Providers at all', () => {
   render(<ProviderCardGrid providers={[]} />);
 

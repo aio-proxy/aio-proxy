@@ -10,7 +10,7 @@ import { resolveDashboardText } from '@/lib/localized-text';
 import { emptyProviderListFilters, visibleProviders } from '../../lib/provider-list-view';
 import { providerHealthQueryOptions } from '../../services/provider-health-service';
 import { providerPluginPresentationsQueryOptions } from '../../services/provider-plugin-labels';
-import { providerUsageQueryOptions } from '../../services/provider-usage-service';
+import { providerUsageQueryOptions, zeroProviderUsage } from '../../services/provider-usage-service';
 import { DeleteProviderDialog, type DeleteProviderDialogRef } from '../delete-provider-dialog';
 import { ProviderCard } from '../provider-card';
 import { ProviderFilterChips } from './provider-filter-chips';
@@ -77,7 +77,11 @@ export const ProviderCardGrid: React.FC<ProviderCardGridProps> = ({ providers, f
                 key={provider.id}
                 provider={provider}
                 health={healthQuery.data?.get(provider.id)}
-                usage={usageQuery.data?.get(provider.id)}
+                // A successful response omits Providers with no traffic, so a missing entry means
+                // zero requests. Only an unresolved query leaves the count unknown.
+                usage={
+                  usageQuery.data === undefined ? undefined : (usageQuery.data.get(provider.id) ?? zeroProviderUsage)
+                }
                 usagePending={usageQuery.isPending}
                 pluginLabel={
                   presentation?.displayName === undefined ? undefined : resolveDashboardText(presentation.displayName)

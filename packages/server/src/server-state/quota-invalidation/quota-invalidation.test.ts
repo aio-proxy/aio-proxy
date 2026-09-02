@@ -86,3 +86,16 @@ test('a Provider that recovers a runtime drops the failure it cached while unava
 
   expect(cache.invalidated).toEqual(['person']);
 });
+
+test('a Provider with no runtime on either side is invalidated, not assumed unchanged', () => {
+  // With no digest to compare there is nothing that says the read would return the same answer. A
+  // disabled or unavailable Provider can be re-pointed at another plugin under the same ID, so
+  // treating "no digest" as "same as last time" would keep serving the old snapshot — or the latched
+  // "quota unsupported" mark — until restart.
+  const cache = recordingCache();
+  const tracker = createQuotaIdentityTracker(cache, snapshot({ person: undefined }));
+
+  tracker.reconcile(snapshot({ person: undefined }));
+
+  expect(cache.invalidated).toEqual(['person']);
+});

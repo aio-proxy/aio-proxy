@@ -23,9 +23,9 @@ export type QuotaIdentitySource = Pick<Snapshot, 'config' | 'runtimeCache'>;
  * single-read isolation intact: a corrupt account or unreadable plugin secret is already handled
  * once, during materialization, and marks only its own Provider unavailable.
  *
- * A Provider with no cache entry never materialized a runtime — it is unavailable, and its quota
- * read is failing for the same reason. Those failures are stored as retryable stale entries, so
- * they need no invalidation; recovering the Provider produces an entry and moves the identity.
+ * A Provider with no cache entry produced no runtime — it is unavailable, or disabled and
+ * reconfigured — and there is then no digest to compare, so the identity cannot be shown unchanged.
+ * `null` records that, and the reconcile treats it as changed rather than as "same as last time".
  */
 function quotaIdentity({ config, runtimeCache }: QuotaIdentitySource): Map<string, string | null> {
   const identities = new Map<string, string | null>();
@@ -34,6 +34,18 @@ function quotaIdentity({ config, runtimeCache }: QuotaIdentitySource): Map<strin
     identities.set(provider.id, runtimeCache.get(provider.id)?.identity ?? null);
   }
   return identities;
+}
+
+/**
+ * A Provider that appeared, vanished, stopped being an OAuth Provider, or has no digest on either
+ * side cannot be shown unchanged. Provider IDs are reusable and the cache also latches a
+ * "quota unsupported" mark, so the safe answer is to invalidate: the entry is at worst a failure
+ * the Provider would retry anyway.
+ */
+function unchanged(previous: Map<string, string | null>, next: Map<string, string | null>, id: string): boolean {
+  const before = previous.get(id);
+  const after = next.get(id);
+  return typeof before === 'string' && before === after;
 }
 
 /**
@@ -53,9 +65,7 @@ export function createQuotaIdentityTracker(
         return;
       }
       for (const id of new Set([...previous.keys(), ...next.keys()])) {
-        // A Provider that stopped being an OAuth Provider — or vanished — is absent from `next`, and
-        // its ID is reusable, so its snapshot and "unsupported" mark must go too.
-        if (previous.get(id) !== next.get(id)) cache.invalidate(id);
+        if (!unchanged(previous, next, id)) cache.invalidate(id);
       }
       previous = next;
     },

@@ -57,7 +57,8 @@ Every task is **landed**. Their steps are kept below as the record of what was b
 | Review round 2 follow-ups (spec, plan, changeset sync) | `386fc22f` |
 | Review round 3 follow-ups (retryable quota, identity tracking, i18n, doc sync) | `6a45b0ca`, `93ef7168`, `2b3dbf18` |
 | Review round 4 follow-up (route gates its 404 on `permanent`) | `0cbeed08` |
-| Review round 5 follow-up (identity read off the snapshot) | pending commit |
+| Review round 5 follow-up (identity read off the snapshot) | `3f22d428` |
+| Review round 6 follow-ups (no-digest invalidation, zero-vs-unknown usage) | pending commit |
 
 **Quota cache invalidation:** everything in the cache is keyed by Provider ID alone, so
 `commitConfig` invalidates each Provider whose quota identity moved. That identity is
@@ -68,7 +69,10 @@ reauthentication moves it), the effective proxy, and the request transforms. Rea
 committed snapshot rather than re-deriving it from the repository keeps the single-read isolation
 contract intact: a corrupt account or unreadable plugin secret is handled once, during
 materialization, and marks only its own Provider unavailable
-(`__tests__/plugin-snapshot/isolation-storage.test.ts` pins both).
+(`__tests__/plugin-snapshot/isolation-storage.test.ts` pins both). A Provider with no cache entry
+produced no runtime — unavailable, or disabled — so there is no digest to compare; "no digest" is
+never treated as "same as last time", because a Provider ID is reusable and the cache also latches a
+"quota unsupported" mark that would otherwise survive a repoint until restart.
 
 `77213e25` also moved the route to `packages/server/src/dashboard-routes/provider-routes/` with a colocated `provider-routes.test.ts`, dropped the `hono/etag` middleware (it cached the very body `refresh` exists to bypass), made the cache persist failures as stale entries with negative caching and in-flight dedupe, gated warming on `response.ok`, threaded `hasQuota` through the materialization failure paths, and annotated `PROTOCOL_LABELS` as `Record<ProviderProtocol, …>` (which surfaced the missing `openai-image` entry, so **Task 12 Step 3's label addition is already done** — only the `PROTOCOL_ORDER` pin remains).
 
@@ -3654,7 +3658,7 @@ import { resolveDashboardText } from '@/lib/localized-text';
 import { emptyProviderListFilters, visibleProviders } from '../../lib/provider-list-view';
 import { providerHealthQueryOptions } from '../../services/provider-health-service';
 import { providerPluginPresentationsQueryOptions } from '../../services/provider-plugin-labels';
-import { providerUsageQueryOptions } from '../../services/provider-usage-service';
+import { providerUsageQueryOptions, zeroProviderUsage } from '../../services/provider-usage-service';
 import { DeleteProviderDialog, type DeleteProviderDialogRef } from '../delete-provider-dialog';
 import { ProviderCard } from '../provider-card';
 import { ProviderFilterChips } from './provider-filter-chips';
@@ -3714,7 +3718,9 @@ export const ProviderCardGrid: React.FC<ProviderCardGridProps> = ({ providers, f
                 key={provider.id}
                 provider={provider}
                 health={healthQuery.data?.get(provider.id)}
-                usage={usageQuery.data?.get(provider.id)}
+                // A successful response omits Providers with no traffic, so a missing entry means
+                // zero requests. Only an unresolved query leaves the count unknown.
+                usage={usageQuery.data === undefined ? undefined : (usageQuery.data.get(provider.id) ?? zeroProviderUsage)}
                 usagePending={usageQuery.isPending}
                 pluginLabel={
                   presentation?.displayName === undefined ? undefined : resolveDashboardText(presentation.displayName)
