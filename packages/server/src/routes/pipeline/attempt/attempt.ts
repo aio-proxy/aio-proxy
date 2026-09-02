@@ -1,6 +1,5 @@
 import type { AnyProtocolAdapter, ImageProtocolAdapter, RouterCandidate } from '@aio-proxy/core';
 import type { Config } from '@aio-proxy/types';
-import { ProviderKind } from '@aio-proxy/types';
 
 import type { LogicalSessionResolution } from '../../../logical-session-store';
 import { withAttemptLogContext } from '../../../request-logging';
@@ -27,6 +26,7 @@ import { dispatchImageCandidate } from './image';
 import { attemptModelCandidate } from './model';
 import { attemptRawCandidate } from './raw';
 import { requestPathProperty } from './request-path';
+import { warmProviderQuota } from './warm-quota';
 
 type AttemptCandidatesOptions<TRequest, TContext> = {
   readonly adapter: AnyProtocolAdapter<TRequest, TContext> | ImageProtocolAdapter<TRequest, TContext>;
@@ -143,14 +143,6 @@ async function attemptLanguageCandidate<TRequest, TContext>(
   return unsupportedDispatch(ctx, slot);
 }
 
-// A `return` step also carries terminal failures (unsupported dispatch, mapped upstream errors), and
-// only a provider that actually served the request has spent quota worth re-reading. The response is
-// already on its way out, so the refresh must never delay or fail it.
-function warmProviderQuota(source: ProviderRouteSource, provider: RuntimeProviderInstance, response: Response): void {
-  if (!response.ok || provider.kind !== ProviderKind.OAuth) return;
-  source.warmProviderQuota?.(provider.id);
-}
-
 export async function attemptCandidates<TRequest, TContext>(
   options: AttemptCandidatesOptions<TRequest, TContext>,
 ): Promise<Response> {
@@ -224,8 +216,7 @@ export async function attemptCandidates<TRequest, TContext>(
             ? await dispatchImageCandidate(dispatch.ctx, slot)
             : await attemptLanguageCandidate(dispatch.ctx, slot, holder);
       if (step.kind === 'return') {
-        warmProviderQuota(options.source, provider, step.response);
-        return step.response;
+        return warmProviderQuota(options.source, provider, step.response);
       }
       if (step.kind === 'skip') {
         lastSkipReason = step.reason;
@@ -235,8 +226,7 @@ export async function attemptCandidates<TRequest, TContext>(
     } catch (error) {
       const step = handleAttemptError(ctx, slot, error);
       if (step.kind === 'return') {
-        warmProviderQuota(options.source, provider, step.response);
-        return step.response;
+        return warmProviderQuota(options.source, provider, step.response);
       }
       if (step.kind === 'skip') {
         lastSkipReason = step.reason;

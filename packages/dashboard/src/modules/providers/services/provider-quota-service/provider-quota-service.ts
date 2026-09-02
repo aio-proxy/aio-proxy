@@ -31,5 +31,11 @@ export const providerQuotaQueryOptions = (id: string) =>
     queryKey: queryKeys.providerQuota(id),
     queryFn: () => getProviderQuota(id, false),
     staleTime: 30_000,
+    // Matches the sibling health query. `staleTime` alone only marks the entry stale and the client
+    // disables refetch on focus, so a parked Providers page would keep showing the reading it loaded
+    // with while the pipeline's warm updated only the server cache. Each poll is an in-memory cache
+    // hit for the rest of the server's five-minute cooldown, not an upstream quota read.
+    refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
     retry: false,
   });
