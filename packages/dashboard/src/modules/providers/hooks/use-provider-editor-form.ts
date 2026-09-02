@@ -1,9 +1,9 @@
-import type { OAuthProviderMutationBody, ProviderAlias, ProviderKind } from '@aio-proxy/types';
+import type { ApiProviderMutationBody, OAuthProviderMutationBody, ProviderAlias, ProviderKind } from '@aio-proxy/types';
 import { type ReactFormExtendedApi, useForm } from '@tanstack/react-form';
 import { useState } from 'react';
 
 import { type AliasRow, toAliasRows } from '../lib/alias-editor';
-import { apiDraftFromProvider, emptySharedDraft } from '../lib/api-endpoints';
+import { type ApiEndpointDraft, apiDraftFromProvider, emptySharedDraft } from '../lib/api-endpoints';
 import type { ProviderFormShape } from '../lib/provider-form-value';
 
 /**
@@ -32,7 +32,33 @@ export type ProviderEditorShape =
   | WithEditorAlias<Extract<ProviderFormShape, { kind: ProviderKind.AiSdk }>>
   | OAuthEditorShape;
 
-export type ProviderEditorInitial = Omit<Partial<ProviderEditorShape>, 'alias'> & {
+/**
+ * A route loader's parsed initial value: every arm's fields, all optional.
+ *
+ * Written out rather than derived. `Partial` distributes over a union but `Omit` does not —
+ * `keyof (A | B)` is only the shared keys — so `Omit<Partial<ProviderEditorShape>, 'alias'>`
+ * silently dropped `endpoints`, `protocol`, `baseURL`, `apiKey`, and `packageName`. Intersecting the
+ * arms instead collapses each conflicting field to `never`, and a union of partials cannot be read
+ * at all: union property access needs the key on every arm, and a loader has nothing to narrow on
+ * yet.
+ */
+export type ProviderEditorInitial = {
+  readonly kind?: ProviderKind | undefined;
+  readonly id?: string | undefined;
+  readonly name?: string | undefined;
+  readonly enabled?: boolean | undefined;
+  readonly priority?: number | undefined;
+  readonly weight?: number | undefined;
+  readonly proxy?: OAuthProviderMutationBody['proxy'];
+  readonly models?: readonly string[] | undefined;
+  readonly transforms?: unknown;
+  readonly validationModel?: string | undefined;
+  readonly protocol?: ApiProviderMutationBody['protocol'];
+  readonly baseURL?: ApiProviderMutationBody['baseURL'];
+  readonly apiKey?: ApiProviderMutationBody['apiKey'];
+  readonly endpoints?: ApiEndpointDraft | undefined;
+  readonly packageName?: string | undefined;
+  readonly options?: unknown;
   readonly alias?: ProviderAlias | undefined;
 };
 
