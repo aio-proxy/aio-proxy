@@ -75,7 +75,7 @@ test('a snapshot where no window reports a remaining amount says so instead of l
   expect(screen.getByTestId('provider-quota-empty')).toBeInTheDocument();
 });
 
-test('the header refresh button asks for another reading', () => {
+test('the footer refresh button asks for another reading', () => {
   queryMocks.data = {
     sampledAt: 1,
     stale: false,
@@ -146,6 +146,9 @@ test('a failed first read stays recoverable: the indicator is a button that retr
     fireEvent.click(unavailable);
     expect(refreshMock.calls).toBe(before + 1);
     expect(screen.getByTestId('provider-quota-dialog')).toBeInTheDocument();
+    // The dialog's own refresh control is the only way out of a failed read, so it has to render
+    // even though there is no snapshot to describe.
+    expect(screen.getByTestId('provider-quota-refresh')).toBeInTheDocument();
   } finally {
     queryMocks.isError = false;
   }
