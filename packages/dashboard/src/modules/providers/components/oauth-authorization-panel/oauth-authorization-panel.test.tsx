@@ -85,3 +85,38 @@ test('renders the authorize_url branch with localized instructions, an open link
   expect(screen.getByText(/Finish signing in from the opened page|请在打开的页面中完成登录/u)).toBeInTheDocument();
   expect(screen.getByRole('button', { name: /cancel|取消/iu })).toBeInTheDocument();
 });
+
+// The session hook pre-opens one window on the user's click and navigates it when the URL arrives
+// (`use-oauth-editor-session.ts`). The panel used to `window.open` the same URL again on render, which
+// gave every authorize_url provider two authorization tabs.
+test('does not open a second authorization window', async () => {
+  const open = rs.fn();
+  const original = window.open;
+  Object.defineProperty(window, 'open', { writable: true, configurable: true, value: open });
+  Object.defineProperty(navigator, 'clipboard', {
+    writable: true,
+    configurable: true,
+    value: { writeText: async () => undefined },
+  });
+
+  try {
+    render(
+      <OAuthAuthorizationPanel
+        session={{
+          id: '550e8400-e29b-41d4-a716-446655440000',
+          status: 'device_code',
+          url: 'https://x.ai/device',
+          userCode: 'ABCD-EFGH',
+        }}
+        onSubmitCallback={rs.fn()}
+        onCancel={rs.fn()}
+        isPending={false}
+      />,
+    );
+
+    await waitFor(() => expect(screen.getByDisplayValue('https://x.ai/device')).toBeTruthy());
+    expect(open).not.toHaveBeenCalled();
+  } finally {
+    Object.defineProperty(window, 'open', { writable: true, configurable: true, value: original });
+  }
+});
