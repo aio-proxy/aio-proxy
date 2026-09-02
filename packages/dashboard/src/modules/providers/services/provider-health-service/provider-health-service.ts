@@ -32,4 +32,9 @@ export const providerHealthQueryOptions = () =>
     queryKey: queryKeys.providerHealth,
     queryFn: getProviderHealth,
     staleTime: 60_000,
+    // Matches the sibling usage query so one card's success rate, p95, and request count all move on
+    // the same tick. `staleTime` alone only marks the entry stale, and the client disables refetch on
+    // focus, so a parked Providers page would otherwise show these two numbers at different ages.
+    refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
   });
