@@ -2,7 +2,11 @@ import { describe, expect, test } from 'bun:test';
 
 import { ProviderProtocol } from '@aio-proxy/types';
 
-import { createPassthroughSseUsageObserver, type PassthroughObservation } from './passthrough-usage';
+import {
+  createPassthroughSseUsageObserver,
+  extractPassthroughObservation,
+  type PassthroughObservation,
+} from './passthrough-usage';
 
 function collectTerminal(protocol: ProviderProtocol, frames: string): PassthroughObservation[] {
   const seen: PassthroughObservation[] = [];
@@ -74,5 +78,29 @@ describe('observer onTerminal detection', () => {
       'event: response.output_text.delta\ndata: {"type":"response.output_text.delta","delta":"hi"}\n\n',
     );
     expect(seen).toHaveLength(0);
+  });
+
+  test('Gemini Interactions completed JSON exposes its response ID', () => {
+    const observe = (body: unknown) =>
+      extractPassthroughObservation(ProviderProtocol.GeminiInteractions, JSON.stringify(body));
+    expect(observe({ id: 'intr_json', status: 'completed' }).responseId).toBe('intr_json');
+    expect(observe({ status: 'completed', interaction: { id: 'intr_wrapped' } }).responseId).toBe('intr_wrapped');
+  });
+
+  test('Gemini Interactions completed SSE exposes its response ID', () => {
+    const seen = collectTerminal(
+      ProviderProtocol.GeminiInteractions,
+      'event: interaction.completed\ndata: {"event_type":"interaction.completed","interaction":{"id":"intr_sse","status":"completed"}}\n\n',
+    );
+    expect(seen).toHaveLength(1);
+    expect(seen[0]?.responseId).toBe('intr_sse');
+  });
+
+  test('does not expose a non-resumable Gemini Interaction ID', () => {
+    const observe = (body: unknown) =>
+      extractPassthroughObservation(ProviderProtocol.GeminiInteractions, JSON.stringify(body));
+    expect(observe({ id: 'intr_active', status: 'in_progress' }).responseId).toBeUndefined();
+    expect(observe({ interaction: { id: 'intr_failed', status: 'failed' } }).responseId).toBeUndefined();
+    expect(observe({ id: 'response_other', status: 'completed' }).responseId).toBeUndefined();
   });
 });

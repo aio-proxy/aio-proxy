@@ -62,22 +62,30 @@ describe('protocol sessions', () => {
     });
   });
 
-  test.each(['ordinary-user', '{"session_id":1}', 'user_account__session_'])(
-    'rejects unverified Claude metadata: %s',
-    async (userId) => {
-      const parsed = await anthropicMessagesAdapter.parse(
-        jsonRequest({
-          model: 'claude',
-          messages: [{ role: 'user', content: 'hello' }],
-          metadata: { user_id: userId, session_id: 'fallback' },
-        }),
-        {},
-      );
-      expect(anthropicMessagesAdapter.session?.(parsed, {})?.candidates).toEqual([
-        { source: 'body-session', value: 'fallback' },
-      ]);
-    },
-  );
+  test('uses an ordinary Anthropic user ID only after explicit session candidates', async () => {
+    const parsed = await anthropicMessagesAdapter.parse(
+      jsonRequest({
+        model: 'claude',
+        messages: [{ role: 'user', content: 'hello' }],
+        metadata: {
+          user_id: 'codex-thread-42',
+          session_id: 'explicit-session',
+          conversation_id: 'explicit-conversation',
+        },
+        session_id: 'top-session',
+        conversation_id: 'top-conversation',
+      }),
+      {},
+    );
+
+    expect(anthropicMessagesAdapter.session?.(parsed, {})?.candidates).toEqual([
+      { source: 'body-session', value: 'explicit-session' },
+      { source: 'body-conversation', value: 'explicit-conversation' },
+      { source: 'body-session', value: 'top-session' },
+      { source: 'body-conversation', value: 'top-conversation' },
+      { source: 'anthropic-user', value: 'codex-thread-42' },
+    ]);
+  });
 });
 
 function jsonRequest(body: unknown): Request {

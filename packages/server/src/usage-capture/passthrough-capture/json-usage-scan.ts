@@ -1,4 +1,6 @@
 const USAGE_KEYS = new Set(['usage', 'usageMetadata']);
+const IDENTITY_KEYS = new Set(['id', 'status']);
+const MAX_CANDIDATE_KEY_CHARS = Math.max(...[...USAGE_KEYS, ...IDENTITY_KEYS].map((key) => key.length));
 // Token-count objects are tiny. Cap the captured value so a malicious or
 // mislabeled "usage" payload cannot become an unbounded second buffer.
 const MAX_USAGE_VALUE_CHARS = 8 * 1024;
@@ -7,13 +9,12 @@ export type JsonUsageScan = {
   readonly push: (chunk: Uint8Array) => void;
   // Flush the UTF-8 decoder and finish a value that ends at EOF.
   readonly finish: () => void;
-  // Complete JSON document containing only the last top-level usage object.
+  // Complete JSON document containing retained top-level usage and identity fields.
   readonly text: () => string | undefined;
 };
 
-// Extracts a top-level `usage` / `usageMetadata` object from a JSON stream
-// without retaining the rest of the body. Nested objects with those keys
-// (for example a vector item) are ignored.
+// Extracts top-level usage and identity fields from a JSON stream without
+// retaining the rest of the body. Nested fields are ignored.
 export function createJsonUsageScan(): JsonUsageScan {
   const decoder = new TextDecoder();
   const scanner = createScanner();
@@ -29,135 +30,107 @@ export function createJsonUsageScan(): JsonUsageScan {
 
 function createScanner() {
   let depth = 0;
-  let inString = false;
-  let escaped = false;
-  let expectingKey = false;
-  let readingKey = false;
-  let keyRaw = '';
-  let pendingKey: string | undefined;
+  const stringState: StringScanState = {
+    inString: false,
+    escaped: false,
+    expectingKey: false,
+    readingKey: false,
+    keyValue: '',
+    keyTooLong: false,
+  };
   let capturing = false;
   let captureKey: string | undefined;
   let capture = '';
   let captureStartDepth = 0;
-  let lastWrapper: string | undefined;
-
+  let discardingCapture = false;
+  let lastUsage: readonly [string, string] | undefined;
+  let id: string | undefined;
+  let status: string | undefined;
   const consume = (text: string): void => {
     for (const character of text) step(character);
   };
-
   const step = (character: string): void => {
-    if (capturing) {
-      stepCapture(character);
-      return;
-    }
-    if (inString) {
-      stepString(character);
-      return;
-    }
+    if (capturing) return stepCapture(character);
+    if (stringState.inString) return stepString(stringState, character);
     if (isWhitespace(character)) return;
-    if (pendingKey !== undefined) {
+    if (stringState.pendingKey !== undefined) {
       if (character === ':') {
         startCapture();
         return;
       }
-      pendingKey = undefined;
+      stringState.pendingKey = undefined;
     }
     if (character === '"') {
-      inString = true;
-      escaped = false;
-      if (expectingKey && depth === 1) {
-        readingKey = true;
-        keyRaw = '';
+      stringState.inString = true;
+      stringState.escaped = false;
+      if (stringState.expectingKey && depth === 1) {
+        stringState.readingKey = true;
+        stringState.keyValue = '';
+        stringState.keyUnicode = undefined;
+        stringState.keyTooLong = false;
       }
       return;
     }
     if (character === '{' || character === '[') {
       depth += 1;
-      expectingKey = character === '{';
+      stringState.expectingKey = character === '{';
       return;
     }
     if (character === '}' || character === ']') {
       depth = Math.max(0, depth - 1);
-      expectingKey = false;
+      stringState.expectingKey = false;
       return;
     }
-    if (character === ',') expectingKey = depth >= 1;
+    if (character === ',') stringState.expectingKey = depth >= 1;
   };
-
   const startCapture = (): void => {
     capturing = true;
-    captureKey = pendingKey;
-    pendingKey = undefined;
+    captureKey = stringState.pendingKey;
+    stringState.pendingKey = undefined;
     capture = '';
     captureStartDepth = depth;
+    discardingCapture = false;
   };
-
-  const stepString = (character: string): void => {
-    if (escaped) {
-      if (readingKey) keyRaw += character;
-      escaped = false;
-      return;
-    }
-    if (character === '\\') {
-      if (readingKey) keyRaw += character;
-      escaped = true;
-      return;
-    }
-    if (character === '"') {
-      inString = false;
-      if (readingKey) {
-        const key = decodeJsonString(keyRaw);
-        if (key !== undefined && USAGE_KEYS.has(key)) pendingKey = key;
-        readingKey = false;
-        keyRaw = '';
-        expectingKey = false;
-      }
-      return;
-    }
-    if (readingKey) keyRaw += character;
-  };
-
   const stepCapture = (character: string): void => {
     if (capture === '' && isWhitespace(character)) return;
-    if (capture.length >= MAX_USAGE_VALUE_CHARS) {
-      capturing = false;
+    if (!discardingCapture && capture.length >= MAX_USAGE_VALUE_CHARS) {
+      discardingCapture = true;
       capture = '';
       captureKey = undefined;
-      return;
     }
 
-    if (inString) {
-      capture += character;
-      if (escaped) {
-        escaped = false;
+    if (stringState.inString) {
+      if (!discardingCapture) capture += character;
+      if (stringState.escaped) {
+        stringState.escaped = false;
         return;
       }
       if (character === '\\') {
-        escaped = true;
+        stringState.escaped = true;
         return;
       }
       if (character === '"') {
-        inString = false;
+        stringState.inString = false;
         if (depth === captureStartDepth) finishCapture();
       }
       return;
     }
 
     if (character === '"') {
-      capture += character;
-      inString = true;
-      escaped = false;
+      if (!discardingCapture) capture += character;
+      stringState.inString = true;
+      stringState.escaped = false;
       return;
     }
 
     if (character === '{' || character === '[') {
-      capture += character;
+      if (!discardingCapture) capture += character;
       depth += 1;
       return;
     }
 
     if (character === '}' || character === ']') {
-      capture += character;
+      if (!discardingCapture) capture += character;
       depth -= 1;
       if (depth === captureStartDepth) finishCapture();
       return;
@@ -169,18 +142,23 @@ function createScanner() {
       return;
     }
 
-    capture += character;
+    if (!discardingCapture) capture += character;
   };
 
   const finishCapture = (): void => {
     capturing = false;
     if (captureKey !== undefined) {
-      const wrapper = wrapUsage(captureKey, capture);
-      if (wrapper !== undefined) lastWrapper = wrapper;
+      if (USAGE_KEYS.has(captureKey) && validValue(capture) !== undefined) lastUsage = [captureKey, capture];
+      if (IDENTITY_KEYS.has(captureKey)) {
+        const value = stringValue(capture);
+        if (captureKey === 'id') id = value;
+        if (captureKey === 'status') status = value;
+      }
     }
     capture = '';
     captureKey = undefined;
-    expectingKey = false;
+    discardingCapture = false;
+    stringState.expectingKey = false;
   };
 
   return {
@@ -188,14 +166,96 @@ function createScanner() {
     end: () => {
       if (capturing) finishCapture();
     },
-    text: () => lastWrapper,
+    text: () => wrapCaptured(id, status, lastUsage),
   };
 }
 
-function wrapUsage(key: string, value: string): string | undefined {
-  if (value === '') return undefined;
-  const text = `{${JSON.stringify(key)}:${value}}`;
-  return parseJson(text) === undefined ? undefined : text;
+type StringScanState = {
+  inString: boolean;
+  escaped: boolean;
+  expectingKey: boolean;
+  readingKey: boolean;
+  keyValue: string;
+  keyUnicode?: string;
+  keyTooLong: boolean;
+  pendingKey?: string;
+};
+
+function stepString(state: StringScanState, character: string): void {
+  if (state.readingKey && state.keyUnicode !== undefined) {
+    if (/^[0-9a-f]$/iu.test(character)) {
+      state.keyUnicode += character;
+      if (state.keyUnicode.length === 4) {
+        appendKeyCharacter(state, String.fromCharCode(Number.parseInt(state.keyUnicode, 16)));
+        state.keyUnicode = undefined;
+        state.escaped = false;
+      }
+    } else {
+      state.keyUnicode = undefined;
+      state.escaped = false;
+      state.keyTooLong = true;
+      return stepString(state, character);
+    }
+    return;
+  }
+  if (state.escaped) {
+    if (state.readingKey) {
+      if (character === 'u') {
+        state.keyUnicode = '';
+        return;
+      }
+      const decoded = decodeJsonString(`\\${character}`);
+      if (decoded === undefined) state.keyTooLong = true;
+      else appendKeyCharacter(state, decoded);
+    }
+    state.escaped = false;
+    return;
+  }
+  if (character === '\\') {
+    state.escaped = true;
+    return;
+  }
+  if (character === '"') {
+    state.inString = false;
+    if (state.readingKey) {
+      const key = state.keyTooLong ? undefined : state.keyValue;
+      if (key !== undefined && (USAGE_KEYS.has(key) || IDENTITY_KEYS.has(key))) state.pendingKey = key;
+      state.readingKey = false;
+      state.keyValue = '';
+      state.keyUnicode = undefined;
+      state.keyTooLong = false;
+      state.expectingKey = false;
+    }
+    return;
+  }
+  if (state.readingKey) appendKeyCharacter(state, character);
+}
+
+function appendKeyCharacter(state: StringScanState, character: string): void {
+  if (state.keyValue.length < MAX_CANDIDATE_KEY_CHARS) state.keyValue += character;
+  else state.keyTooLong = true;
+}
+
+function wrapCaptured(
+  id: string | undefined,
+  status: string | undefined,
+  usage: readonly [string, string] | undefined,
+): string | undefined {
+  const entries = [
+    ...(id === undefined ? [] : [[JSON.stringify('id'), JSON.stringify(id)]]),
+    ...(status === undefined ? [] : [[JSON.stringify('status'), JSON.stringify(status)]]),
+    ...(usage === undefined ? [] : [[JSON.stringify(usage[0]), usage[1]]]),
+  ];
+  return entries.length === 0 ? undefined : `{${entries.map(([key, value]) => `${key}:${value}`).join(',')}}`;
+}
+
+function validValue(value: string): unknown | undefined {
+  return value === '' ? undefined : parseJson(value);
+}
+
+function stringValue(value: string): string | undefined {
+  const parsed = validValue(value);
+  return typeof parsed === 'string' ? parsed : undefined;
 }
 
 function decodeJsonString(raw: string): string | undefined {

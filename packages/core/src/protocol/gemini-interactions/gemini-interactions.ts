@@ -25,6 +25,13 @@ export const geminiInteractionsAdapter = defineProtocolAdapter<GeminiInteraction
   },
   model: (request) => request.routingId,
   dimensions: (request) => geminiInteractionsDimensions(request),
+  session: (request) => ({
+    candidates: [],
+    ...(request.body.previous_interaction_id === undefined
+      ? {}
+      : { previousResponseId: request.body.previous_interaction_id }),
+    transcript: request.body.input,
+  }),
   wantsStream: (request) => request.body.stream === true,
   async rawRequest(raw, request, resolvedModel) {
     const bodyText = await readRequestText(raw);

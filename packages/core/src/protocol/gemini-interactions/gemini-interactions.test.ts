@@ -31,6 +31,23 @@ describe('geminiInteractionsAdapter', () => {
     expect(geminiInteractionsAdapter.wantsStream(parsed, {})).toBe(true);
   });
 
+  test('uses previous_interaction_id as a resumable response identity', async () => {
+    const parsed = await geminiInteractionsAdapter.parse(
+      request({
+        model: 'gemini-3.5-flash',
+        input: 'continue this task',
+        previous_interaction_id: 'intr_previous',
+      }),
+      {},
+    );
+
+    expect(geminiInteractionsAdapter.session?.(parsed, {})).toEqual({
+      candidates: [],
+      previousResponseId: 'intr_previous',
+      transcript: 'continue this task',
+    });
+  });
+
   test('preserves decoded body text when the XOR id already matches', async () => {
     const body = '{"model":"gemini-3.5-flash","input":"hi","store":false}';
     const forwarded = await geminiInteractionsAdapter.rawRequest(

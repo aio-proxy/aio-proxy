@@ -261,12 +261,25 @@ function isSuccessTerminal(protocol: ProviderProtocol, eventType: string | undef
 }
 
 function completedResponseId(protocol: ProviderProtocol, value: unknown): string | undefined {
-  if (protocol !== ProviderProtocol.OpenAIResponse || !isPlainObject(value)) return undefined;
-  const response = isPlainObject(value['response']) ? value['response'] : value;
-  const completed = value['type'] === 'response.completed' || response['status'] === 'completed';
-  if (!completed || typeof response['id'] !== 'string') return undefined;
-  const responseId = response['id'].trim();
-  return responseId === '' ? undefined : responseId;
+  if (!isPlainObject(value)) return undefined;
+  if (protocol === ProviderProtocol.OpenAIResponse) {
+    const response = isPlainObject(value['response']) ? value['response'] : value;
+    const completed = value['type'] === 'response.completed' || response['status'] === 'completed';
+    if (!completed || typeof response['id'] !== 'string') return undefined;
+    const responseId = response['id'].trim();
+    return responseId === '' ? undefined : responseId;
+  }
+  if (protocol !== ProviderProtocol.GeminiInteractions) return undefined;
+
+  const interaction = isPlainObject(value['interaction']) ? value['interaction'] : undefined;
+  const resumable =
+    value['event_type'] === 'interaction.completed' ||
+    ['completed', 'requires_action', 'incomplete'].includes(value['status']) ||
+    ['completed', 'requires_action', 'incomplete'].includes(interaction?.['status']);
+  const id = typeof value['id'] === 'string' ? value['id'] : interaction?.['id'];
+  if (!resumable || typeof id !== 'string') return undefined;
+  const responseId = id.trim();
+  return responseId === '' || !responseId.startsWith('intr_') ? undefined : responseId;
 }
 
 function mergeObservedUsage(

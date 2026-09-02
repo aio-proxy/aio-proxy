@@ -146,10 +146,11 @@ export function createAiSdkProvider(
             const model =
               options.resolveModel?.(config, request.modelId, null) ??
               (await resolveProviderModel(config, request.modelId, providerTask, options.resolveModel));
+            const settings = projectSessionSettings(config, request.context, request.settings);
             const result = streamAiSdkText({
               model,
               messages: request.messages,
-              ...(request.settings === undefined ? {} : { settings: request.settings }),
+              ...(settings === undefined ? {} : { settings }),
               ...(request.tools === undefined ? {} : { tools: request.tools }),
               ...(request.signal === undefined ? {} : { signal: request.signal }),
               includeRawChunks: parsesDeepSeekReasoning(config, request.modelId),
@@ -220,6 +221,75 @@ function loadOptions(config: AiSdkProvider, providerFetch: ProviderFetch | undef
   const options = providerFetch === undefined ? configured : { ...configured, fetch: providerFetch };
   if (config.packageName !== '@ai-sdk/openai-compatible' || options['name'] !== undefined) return options;
   return { ...options, name: config.id };
+}
+
+function projectSessionSettings(
+  config: AiSdkProvider,
+  context: LogicalRequestContext | undefined,
+  settings: AiSdkProviderInvokeRequest['settings'],
+): AiSdkProviderInvokeRequest['settings'] {
+  if (context === undefined || context.session.source === 'generated') return settings;
+  const sessionKey = context.session.key;
+  switch (config.packageName) {
+    case '@ai-sdk/anthropic':
+      return projectAnthropicSession(settings, sessionKey);
+    case '@ai-sdk/openai':
+      return projectFlatSession(settings, 'openai', 'promptCacheKey', sessionKey.slice('sha256:'.length));
+    case '@ai-sdk/openai-compatible':
+      return projectFlatSession(settings, openAICompatibleProviderName(config), 'user', sessionKey);
+    default:
+      return settings;
+  }
+}
+
+function projectAnthropicSession(
+  settings: AiSdkProviderInvokeRequest['settings'],
+  sessionKey: string,
+): AiSdkProviderInvokeRequest['settings'] {
+  const anthropic = providerOptionsFor(settings, 'anthropic');
+  if (anthropic === undefined) return settings;
+  const metadata = anthropic['metadata'];
+  if (metadata !== undefined && !isRecord(metadata)) return settings;
+  if (isRecord(metadata) && Object.hasOwn(metadata, 'userId')) return settings;
+  return replaceProviderOptions(settings, 'anthropic', {
+    ...anthropic,
+    metadata: { ...(isRecord(metadata) ? metadata : {}), userId: sessionKey },
+  });
+}
+
+function projectFlatSession(
+  settings: AiSdkProviderInvokeRequest['settings'],
+  providerName: string,
+  field: 'promptCacheKey' | 'user',
+  sessionKey: string,
+): AiSdkProviderInvokeRequest['settings'] {
+  const current = providerOptionsFor(settings, providerName);
+  if (current === undefined || Object.hasOwn(current, field)) return settings;
+  return replaceProviderOptions(settings, providerName, { ...current, [field]: sessionKey });
+}
+
+function providerOptionsFor(
+  settings: AiSdkProviderInvokeRequest['settings'],
+  providerName: string,
+): Readonly<Record<string, unknown>> | undefined {
+  const value = settings?.providerOptions?.[providerName];
+  return value === undefined ? {} : isRecord(value) ? value : undefined;
+}
+
+function replaceProviderOptions(
+  settings: AiSdkProviderInvokeRequest['settings'],
+  providerName: string,
+  next: Readonly<Record<string, unknown>>,
+): AiSdkProviderInvokeRequest['settings'] {
+  return {
+    ...settings,
+    providerOptions: { ...settings?.providerOptions, [providerName]: next },
+  };
+}
+
+function openAICompatibleProviderName(config: AiSdkProvider): string {
+  const name = config.options?.['name'];
+  return typeof name === 'string' ? name : config.id;
 }
 
 async function resolveLoadedModel({

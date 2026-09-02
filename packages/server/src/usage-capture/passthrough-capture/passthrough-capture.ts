@@ -1,4 +1,4 @@
-import type { UsageRow } from '@aio-proxy/types';
+import { ProviderProtocol, type UsageRow } from '@aio-proxy/types';
 
 import { type PassthroughObservation } from '../../passthrough-usage';
 import { isAbortError } from '../../route-observation';
@@ -142,7 +142,12 @@ export function passthroughCapture(
   };
   const source = createObservationSource(isSse, protocol, observation, {
     onContent: (contentAt) => (firstTokenAt ??= contentAt),
-    onTerminal: (obs) => void complete(obs),
+    // A completed Gemini Interaction can still be cancelled before EOF. Defer
+    // its success completion so its response ID reaches trace persistence only
+    // through the clean-EOF commit path; terminal failures remain prompt.
+    onTerminal: (obs) => {
+      if (protocol !== ProviderProtocol.GeminiInteractions || obs.failed === true) void complete(obs);
+    },
   });
   const returnedBody = createTeeBody({
     reader,

@@ -33,6 +33,7 @@ export type LogicalSessionSource =
   | 'openai-conversation'
   | 'openai-prompt-cache'
   | 'claude-code'
+  | 'anthropic-user'
   | 'body-session'
   | 'body-conversation'
   | 'header-session'

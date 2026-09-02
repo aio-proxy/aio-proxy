@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 
 import { ProviderProtocol } from '@aio-proxy/types';
 
-import { extractPassthroughUsage } from '../../passthrough-usage';
+import { extractPassthroughObservation, extractPassthroughUsage } from '../../passthrough-usage';
 import { createJsonUsageScan } from './json-usage-scan';
 
 test('captures a trailing usage object split across UTF-8 chunks', () => {
@@ -39,6 +39,117 @@ test('extracts usage from a body larger than the passthrough JSON cap', () => {
     inputTokens: 3,
     outputTokens: 2,
     totalTokens: 5,
+  });
+});
+
+test('retains a resumable Gemini Interaction owner from a body larger than two MiB', () => {
+  const scan = createJsonUsageScan();
+  scan.push(
+    new TextEncoder().encode(
+      JSON.stringify({
+        id: 'intr_large',
+        status: 'requires_action',
+        padding: 'x'.repeat(2 * 1024 * 1024),
+        usage: { total_input_tokens: 3, total_tokens: 3 },
+      }),
+    ),
+  );
+  scan.finish();
+
+  expect(extractPassthroughObservation(ProviderProtocol.GeminiInteractions, scan.text() ?? '')).toMatchObject({
+    responseId: 'intr_large',
+  });
+});
+
+test('recovers after an over-cap top-level candidate value', () => {
+  const scan = createJsonUsageScan();
+  scan.push(
+    new TextEncoder().encode(
+      JSON.stringify({
+        usage: 'x'.repeat(8 * 1024 - 1),
+        id: 'intr_ok',
+        status: 'requires_action',
+        usageMetadata: { promptTokenCount: 3, totalTokenCount: 3 },
+      }),
+    ),
+  );
+  scan.finish();
+
+  expect(extractPassthroughObservation(ProviderProtocol.GeminiInteractions, scan.text() ?? '')).toMatchObject({
+    responseId: 'intr_ok',
+  });
+});
+
+test('skips a huge unknown top-level key before retained fields', () => {
+  const scan = createJsonUsageScan();
+  scan.push(
+    new TextEncoder().encode(
+      JSON.stringify({
+        ['x'.repeat(2 * 1024 * 1024)]: 'ignored',
+        id: 'intr_ok',
+        status: 'requires_action',
+        usage: { total_input_tokens: 3, total_tokens: 3 },
+      }),
+    ),
+  );
+  scan.finish();
+
+  expect(scan.text()).toBe(
+    '{"id":"intr_ok","status":"requires_action","usage":{"total_input_tokens":3,"total_tokens":3}}',
+  );
+  expect(extractPassthroughObservation(ProviderProtocol.GeminiInteractions, scan.text() ?? '')).toMatchObject({
+    responseId: 'intr_ok',
+  });
+});
+
+test('recognizes escaped top-level candidate keys without retaining their raw spelling', () => {
+  const scan = createJsonUsageScan();
+  scan.push(
+    new TextEncoder().encode(
+      '{"\\u0069\\u0064":"intr_ok","\\u0073\\u0074\\u0061\\u0074\\u0075\\u0073":"requires_action","\\u0075\\u0073\\u0061\\u0067\\u0065":{"total_input_tokens":3,"total_tokens":3}}',
+    ),
+  );
+  scan.finish();
+
+  expect(scan.text()).toBe(
+    '{"id":"intr_ok","status":"requires_action","usage":{"total_input_tokens":3,"total_tokens":3}}',
+  );
+  expect(extractPassthroughObservation(ProviderProtocol.GeminiInteractions, scan.text() ?? '')).toMatchObject({
+    responseId: 'intr_ok',
+    usage: { inputTokens: 3, totalTokens: 3 },
+  });
+});
+
+test('recovers after a malformed unicode escape in a huge unknown top-level key', () => {
+  const scan = createJsonUsageScan();
+  scan.push(
+    new TextEncoder().encode(
+      `{"${'x'.repeat(2 * 1024 * 1024)}\\u000💩":"ignored","id":"intr_ok","status":"requires_action","usage":{"total_input_tokens":3,"total_tokens":3}}`,
+    ),
+  );
+  scan.finish();
+
+  expect(extractPassthroughObservation(ProviderProtocol.GeminiInteractions, scan.text() ?? '')).toMatchObject({
+    responseId: 'intr_ok',
+    usage: { inputTokens: 3, totalTokens: 3 },
+  });
+});
+
+test('reprocesses a closing quote after an incomplete unicode escape in a huge unknown key', () => {
+  const scan = createJsonUsageScan();
+  scan.push(
+    new TextEncoder().encode(
+      `{"${'x'.repeat(2 * 1024 * 1024)}\\u":"ignored","id":"intr_ok","status":"requires_action","usage":{"total_input_tokens":3,"total_tokens":3}}`,
+    ),
+  );
+  scan.finish();
+
+  expect(scan.text()).toBe(
+    '{"id":"intr_ok","status":"requires_action","usage":{"total_input_tokens":3,"total_tokens":3}}',
+  );
+  expect(extractPassthroughObservation(ProviderProtocol.GeminiInteractions, scan.text() ?? '')).toMatchObject({
+    responseId: 'intr_ok',
+    usage: { inputTokens: 3, totalTokens: 3 },
   });
 });
 
