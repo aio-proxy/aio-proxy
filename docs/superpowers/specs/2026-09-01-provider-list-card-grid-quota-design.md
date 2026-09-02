@@ -245,7 +245,10 @@ The existing `quota.test.ts` assertion that the request URL never contains `www.
    only adds the test that pins it, because the per-product work below touches the same builder.
 3. **Per-product usage:** map `config.productUsage[]` (`{ product, usagePercent }`) into items keyed
    `product_<slug>`, with `grokbuild` / `productgrokbuild` normalized to `grok_build` / "Grok Build",
-   `remainingRatio = (100 - usagePercent) / 100`, and `_2` / `_3` suffixes for duplicate slugs.
+   `remainingRatio = (100 - usagePercent) / 100`, and `_2` / `_3` suffixes for duplicate slugs. The
+   suffix pass reserves every id it hands out, so a product that spells a suffix out (`grok build 2`)
+   cannot collide with a generated one — a duplicate id would make the core validator reject the whole
+   snapshot.
 
 ## Deletions
 

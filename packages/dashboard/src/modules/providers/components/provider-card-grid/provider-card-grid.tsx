@@ -34,26 +34,35 @@ export const ProviderCardGrid: React.FC<ProviderCardGridProps> = ({ providers, f
   );
   const visible = useMemo(() => visibleProviders(providers, filters), [providers, filters]);
 
-  // Deep-linking focuses the target card once. Keyed on the Provider ID alone: re-running on every
-  // filter change would steal focus back from whatever the user is typing in.
+  // Deep-linking focuses the target card once it exists. Keyed on the Provider ID and on whether the
+  // grid currently holds it — a cached list that does not yet include a freshly created Provider only
+  // grows it on the background refetch, and an effect keyed on the ID alone would never retry. It
+  // still must not re-run on filter changes, which would steal focus back from whatever the user is
+  // typing in, so the `focused` ref latches after the first successful focus.
+  const focused = useRef<string | undefined>(undefined);
+  const present = focusProviderId !== undefined && providers.some((provider) => provider.id === focusProviderId);
   useEffect(() => {
-    if (focusProviderId === undefined) return;
+    if (focusProviderId === undefined || !present || focused.current === focusProviderId) return;
     let inner = 0;
     // Two frames: the first lets React commit the grid, the second lets layout settle before scrolling.
     const outer = requestAnimationFrame(() => {
       inner = requestAnimationFrame(() => {
         const card = document.getElementById(`provider-row-${focusProviderId}`);
-        card?.scrollIntoView?.({ block: 'center' });
+        // A card filtered out of the grid is not in the document; leave the latch open so the focus
+        // still lands once it comes back rather than being silently dropped.
+        if (card === null) return;
+        focused.current = focusProviderId;
+        card.scrollIntoView?.({ block: 'center' });
         // The identity link is the card's only focusable anchor; an uneditable card falls back to
         // its own container, which carries `tabIndex={-1}` so `.focus()` still lands.
-        (document.getElementById(`provider-link-${focusProviderId}`) ?? card)?.focus();
+        (document.getElementById(`provider-link-${focusProviderId}`) ?? card).focus();
       });
     });
     return () => {
       cancelAnimationFrame(outer);
       cancelAnimationFrame(inner);
     };
-  }, [focusProviderId]);
+  }, [focusProviderId, present]);
 
   if (providers.length === 0) return <Empty>{m['dashboard.providers.empty_state']()}</Empty>;
 

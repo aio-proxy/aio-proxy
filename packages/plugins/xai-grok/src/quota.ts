@@ -160,13 +160,21 @@ function productItems(config: BillingObject): readonly OAuthQuotaItem[] {
 }
 
 // The core validator rejects duplicate item ids outright, so two spellings of one product must not
-// both survive as `product_grok_build`.
+// both survive as `product_grok_build`. A generated suffix can itself collide with a product that
+// spells that suffix out (`grok build`, `grok build`, `grok build 2`), so every id the pass hands
+// out — generated or original — is reserved and the counter walks past anything already taken.
 function dedupeItemIds(items: readonly OAuthQuotaItem[]): readonly OAuthQuotaItem[] {
-  const seen = new Map<string, number>();
+  const taken = new Set<string>();
   return items.map((item) => {
-    const count = (seen.get(item.id) ?? 0) + 1;
-    seen.set(item.id, count);
-    return count === 1 ? item : { ...item, id: `${item.id}_${count}` };
+    if (!taken.has(item.id)) {
+      taken.add(item.id);
+      return item;
+    }
+    let count = 2;
+    while (taken.has(`${item.id}_${count}`)) count += 1;
+    const id = `${item.id}_${count}`;
+    taken.add(id);
+    return { ...item, id };
   });
 }
 

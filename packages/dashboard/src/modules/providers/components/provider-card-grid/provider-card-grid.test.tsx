@@ -111,6 +111,20 @@ test('a Provider the usage response omits counts as zero requests, not as unknow
   expect(card.textContent).not.toContain('N/A');
 });
 
+test('deep-link focus lands once the target Provider arrives on a later render', async () => {
+  // A cached list served from `providersQueryOptions` need not contain a Provider the user just
+  // created; the background refetch adds it. An effect keyed on the ID alone would have already run
+  // and never retried, leaving the deep link with no scroll and no keyboard focus.
+  const { rerender } = render(<ProviderCardGrid providers={providers} focusProviderId="gamma" />);
+  await nextFrames();
+
+  const grown = [...providers, providerStub({ id: 'gamma', name: 'Gamma', kind: ProviderKind.Api })];
+  rerender(<ProviderCardGrid providers={grown} focusProviderId="gamma" />);
+  await nextFrames();
+
+  expect(document.activeElement).toBe(screen.getByTestId('provider-link-gamma'));
+});
+
 test('renders the empty state when there are no Providers at all', () => {
   render(<ProviderCardGrid providers={[]} />);
 

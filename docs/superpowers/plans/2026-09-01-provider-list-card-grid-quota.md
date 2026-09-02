@@ -58,7 +58,8 @@ Every task is **landed**. Their steps are kept below as the record of what was b
 | Review round 3 follow-ups (retryable quota, identity tracking, i18n, doc sync) | `6a45b0ca`, `93ef7168`, `2b3dbf18` |
 | Review round 4 follow-up (route gates its 404 on `permanent`) | `0cbeed08` |
 | Review round 5 follow-up (identity read off the snapshot) | `3f22d428` |
-| Review round 6 follow-ups (no-digest invalidation, zero-vs-unknown usage) | pending commit |
+| Review round 6 follow-ups (no-digest invalidation, zero-vs-unknown usage) | `ea0afe38` |
+| Review round 7 follow-ups (suffix collision, deep-link focus retry) | pending commit |
 
 **Quota cache invalidation:** everything in the cache is keyed by Provider ID alone, so
 `commitConfig` invalidates each Provider whose quota identity moved. That identity is
@@ -1363,13 +1364,21 @@ function productItems(config: BillingObject): readonly OAuthQuotaItem[] {
 }
 
 // The core validator rejects duplicate item ids outright, so two spellings of one product must not
-// both survive as `product_grok_build`.
+// both survive as `product_grok_build`. A generated suffix can itself collide with a product that
+// spells that suffix out (`grok build`, `grok build`, `grok build 2`), so every id the pass hands
+// out — generated or original — is reserved and the counter walks past anything already taken.
 function dedupeItemIds(items: readonly OAuthQuotaItem[]): readonly OAuthQuotaItem[] {
-  const seen = new Map<string, number>();
+  const taken = new Set<string>();
   return items.map((item) => {
-    const count = (seen.get(item.id) ?? 0) + 1;
-    seen.set(item.id, count);
-    return count === 1 ? item : { ...item, id: `${item.id}_${count}` };
+    if (!taken.has(item.id)) {
+      taken.add(item.id);
+      return item;
+    }
+    let count = 2;
+    while (taken.has(`${item.id}_${count}`)) count += 1;
+    const id = `${item.id}_${count}`;
+    taken.add(id);
+    return { ...item, id };
   });
 }
 ```
@@ -3682,19 +3691,35 @@ export const ProviderCardGrid: React.FC<ProviderCardGridProps> = ({ providers, f
   );
   const visible = useMemo(() => visibleProviders(providers, filters), [providers, filters]);
 
+  // Deep-linking focuses the target card once it exists. Keyed on the Provider ID and on whether the
+  // grid currently holds it — a cached list that does not yet include a freshly created Provider only
+  // grows it on the background refetch, and an effect keyed on the ID alone would never retry. It
+  // still must not re-run on filter changes, which would steal focus back from whatever the user is
+  // typing in, so the `focused` ref latches after the first successful focus.
+  const focused = useRef<string | undefined>(undefined);
+  const present = focusProviderId !== undefined && providers.some((provider) => provider.id === focusProviderId);
   useEffect(() => {
-    if (focusProviderId === undefined) return;
+    if (focusProviderId === undefined || !present || focused.current === focusProviderId) return;
+    let inner = 0;
     // Two frames: the first lets React commit the grid, the second lets layout settle before scrolling.
-    const frame = requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
+    const outer = requestAnimationFrame(() => {
+      inner = requestAnimationFrame(() => {
         const card = document.getElementById(`provider-row-${focusProviderId}`);
-        card?.scrollIntoView?.({ block: 'center' });
-        // The identity link is the card's only focusable anchor; the container itself is not tabbable.
-        (document.getElementById(`provider-link-${focusProviderId}`) ?? card)?.focus();
+        // A card filtered out of the grid is not in the document; leave the latch open so the focus
+        // still lands once it comes back rather than being silently dropped.
+        if (card === null) return;
+        focused.current = focusProviderId;
+        card.scrollIntoView?.({ block: 'center' });
+        // The identity link is the card's only focusable anchor; an uneditable card falls back to
+        // its own container, which carries `tabIndex={-1}` so `.focus()` still lands.
+        (document.getElementById(`provider-link-${focusProviderId}`) ?? card).focus();
       });
     });
-    return () => cancelAnimationFrame(frame);
-  }, [focusProviderId, visible]);
+    return () => {
+      cancelAnimationFrame(outer);
+      cancelAnimationFrame(inner);
+    };
+  }, [focusProviderId, present]);
 
   if (providers.length === 0) return <Empty>{m['dashboard.providers.empty_state']()}</Empty>;
 

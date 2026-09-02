@@ -138,6 +138,28 @@ test('maps per-product usage into its own items with normalized ids', async () =
   expect(build?.displayName).toBe('Grok Build');
 });
 
+test('a product spelling that collides with a generated suffix still yields unique ids', async () => {
+  // `grok build 2` normalizes to the very id the deduplicator hands the second `grok build`. Two
+  // items sharing an id make the core validator reject the whole snapshot, so the ring would go dark
+  // for an account whose billing response is otherwise perfectly usable.
+  const snapshot = await readWithResponses({
+    weekly: {
+      config: {
+        creditUsagePercent: 10,
+        currentPeriod: { end: '2026-09-08T00:00:00.000Z' },
+        productUsage: [
+          { product: 'grok build', usagePercent: 10 },
+          { product: 'grok build 2', usagePercent: 20 },
+          { product: 'grokbuild', usagePercent: 30 },
+        ],
+      },
+    },
+  });
+
+  const ids = snapshot.items.map((item) => item.id);
+  expect(new Set(ids).size).toBe(ids.length);
+});
+
 type Leg = Record<string, unknown> | Error;
 
 const DEFAULT_WEEKLY = {
