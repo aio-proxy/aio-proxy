@@ -69,8 +69,11 @@ export const ProviderCardGrid: React.FC<ProviderCardGridProps> = ({ providers, f
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-3">
-        <ProviderSearchField value={filters.search} onChange={(search) => setFilters({ ...filters, search })} />
+      <div className="flex flex-col gap-3 md:flex-row md:items-center">
+        {/* `Field` is `w-full`, so the search box needs a bounded box of its own to share the row. */}
+        <div className="md:w-64 md:shrink-0">
+          <ProviderSearchField value={filters.search} onChange={(search) => setFilters({ ...filters, search })} />
+        </div>
         <ProviderFilterChips filters={filters} onChange={setFilters} />
       </div>
 
