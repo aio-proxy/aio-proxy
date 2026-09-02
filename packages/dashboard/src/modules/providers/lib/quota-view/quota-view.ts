@@ -1,5 +1,15 @@
 import type { OAuthQuotaItem, OAuthQuotaSnapshot } from '@aio-proxy/plugin-sdk';
 
+/** An item the upstream reported a remaining amount for. The others have nothing to display. */
+export type ApplicableQuotaItem = OAuthQuotaItem & { readonly remainingRatio: number };
+
+/**
+ * A window with no remaining amount is left out entirely rather than shown as "not applicable":
+ * a row that only says it has nothing to say is noise between the windows that do.
+ */
+export const applicableQuotaItems = (snapshot: OAuthQuotaSnapshot | undefined): readonly ApplicableQuotaItem[] =>
+  snapshot?.items.filter((item): item is ApplicableQuotaItem => item.remainingRatio !== undefined) ?? [];
+
 /** The ring shows the window closest to running out. An item with no ratio can never be "tightest". */
 export const tightestQuotaItem = (snapshot: OAuthQuotaSnapshot | undefined): OAuthQuotaItem | undefined =>
   snapshot?.items.reduce<OAuthQuotaItem | undefined>((tightest, item) => {

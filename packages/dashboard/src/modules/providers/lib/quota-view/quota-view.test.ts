@@ -1,6 +1,20 @@
 import { expect, test } from '@rstest/core';
 
-import { remainingPercent, tightestQuotaItem } from './quota-view';
+import { applicableQuotaItems, remainingPercent, tightestQuotaItem } from './quota-view';
+
+test('keeps only the windows that report a remaining amount', () => {
+  expect(
+    applicableQuotaItems({
+      items: [
+        { id: 'weekly', displayName: 'Weekly', remainingRatio: 0.8 },
+        { id: 'unrated', displayName: 'Unrated' },
+        { id: 'empty', displayName: 'Empty', remainingRatio: 0 },
+      ],
+    }).map((item) => item.id),
+    // A window at 0% still reports a number, so it stays: exhausted is not the same as unreported.
+  ).toEqual(['weekly', 'empty']);
+  expect(applicableQuotaItems(undefined)).toEqual([]);
+});
 
 test('picks the item with the lowest remaining ratio', () => {
   const snapshot = {

@@ -9,6 +9,7 @@ import { resolveDashboardText } from '@/lib/localized-text';
 
 import { PROVIDER_DIALOG_FRAME_SIZE } from '../../lib/constants';
 import { providerDisplayName } from '../../lib/provider-list-view';
+import { applicableQuotaItems } from '../../lib/quota-view';
 import type { ProviderQuotaResult } from '../../services/provider-quota-service';
 import { ProviderAvatar } from '../provider-avatar';
 import { ProviderQuotaItem } from './provider-quota-item';
@@ -37,6 +38,7 @@ export const ProviderQuotaDialog: React.FC<ProviderQuotaDialogProps> = ({
   const plan = result?.snapshot.plan;
   const source = pluginLabel ?? provider.plugin;
   const resolvedPlan = plan === undefined ? undefined : resolveDashboardText(plan);
+  const items = applicableQuotaItems(result?.snapshot);
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent closeLabel={m['common.close']()} data-testid="provider-quota-dialog">
@@ -83,11 +85,19 @@ export const ProviderQuotaDialog: React.FC<ProviderQuotaDialogProps> = ({
                 {m['dashboard.providers.quota.stale_notice']()}
               </p>
             ) : null}
-            <ul className="space-y-3">
-              {result.snapshot.items.map((item) => (
-                <ProviderQuotaItem key={item.id} item={item} />
-              ))}
-            </ul>
+            {/* Windows the upstream reported no remaining amount for are dropped, so a snapshot can
+                carry items and still have nothing to show. Say that rather than render an empty list. */}
+            {items.length === 0 ? (
+              <p role="status" data-testid="provider-quota-empty" className="text-sm text-muted-foreground">
+                {m['dashboard.providers.quota.no_windows']()}
+              </p>
+            ) : (
+              <ul className="space-y-3">
+                {items.map((item) => (
+                  <ProviderQuotaItem key={item.id} item={item} />
+                ))}
+              </ul>
+            )}
             {result.snapshot.resetCredits === undefined ? null : (
               <p className="text-xs text-muted-foreground">
                 {m['dashboard.providers.quota.reset_credits']({ count: result.snapshot.resetCredits.availableCount })}

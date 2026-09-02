@@ -39,7 +39,7 @@ test('renders the tightest remaining percentage on the ring', () => {
   expect(screen.getByTestId('provider-quota-ring')).toHaveTextContent('12');
 });
 
-test('opening the ring lists every quota item and requests a fresh reading', () => {
+test('opening the ring lists the windows with a remaining amount, hides the rest, and refreshes', () => {
   queryMocks.data = {
     sampledAt: 1_700_000_000_000,
     stale: false,
@@ -56,10 +56,23 @@ test('opening the ring lists every quota item and requests a fresh reading', () 
   fireEvent.click(screen.getByTestId('provider-quota-ring'));
 
   expect(screen.getByText('Weekly')).toBeInTheDocument();
-  expect(screen.getByText('Unrated')).toBeInTheDocument();
-  expect(screen.getByTestId('provider-quota-item-unrated')).toHaveTextContent(/Not applicable|暂不适用/u);
-  expect(screen.queryByTestId('provider-quota-bar-unrated')).not.toBeInTheDocument();
+  // Nothing to report is nothing to render: the row would only have said it had no number.
+  expect(screen.queryByText('Unrated')).not.toBeInTheDocument();
+  expect(screen.queryByTestId('provider-quota-item-unrated')).not.toBeInTheDocument();
   expect(refreshMock.calls).toBe(before + 1);
+});
+
+test('a snapshot where no window reports a remaining amount says so instead of listing nothing', () => {
+  queryMocks.data = {
+    sampledAt: 1,
+    stale: false,
+    snapshot: { items: [{ id: 'unrated', displayName: 'Unrated' }] },
+  };
+
+  render(<ProviderQuotaRing provider={provider} />);
+  fireEvent.click(screen.getByTestId('provider-quota-ring'));
+
+  expect(screen.getByTestId('provider-quota-empty')).toBeInTheDocument();
 });
 
 test('the header refresh button asks for another reading', () => {
