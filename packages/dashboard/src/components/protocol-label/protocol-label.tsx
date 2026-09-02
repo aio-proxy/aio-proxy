@@ -7,6 +7,7 @@ interface ProtocolLabelProps {
   readonly protocol: ProviderProtocol | string;
   readonly className?: string;
   readonly showIcon?: boolean;
+  readonly iconSize?: number;
 }
 
 const PROTOCOL_LABELS: Record<
@@ -56,7 +57,12 @@ export const PROTOCOL_ORDER: readonly ProviderProtocol[] = [
 const isProviderProtocol = (value: string): value is ProviderProtocol =>
   Object.values(ProviderProtocol).includes(value as ProviderProtocol);
 
-export const ProtocolLabel: React.FC<ProtocolLabelProps> = ({ protocol, className, showIcon = false }) => {
+export const ProtocolLabel: React.FC<ProtocolLabelProps> = ({
+  protocol,
+  className,
+  showIcon = false,
+  iconSize = 16,
+}) => {
   if (!isProviderProtocol(protocol)) {
     return <span className={className}>{protocol}</span>;
   }
@@ -64,7 +70,7 @@ export const ProtocolLabel: React.FC<ProtocolLabelProps> = ({ protocol, classNam
   const { icon: Icon, label } = PROTOCOL_LABELS[protocol];
   return (
     <span className={cn('inline-flex items-center gap-2', className)}>
-      {showIcon ? <Icon size={16} className="shrink-0" /> : null}
+      {showIcon ? <Icon size={iconSize} className="shrink-0" /> : null}
       <span>{label}</span>
     </span>
   );

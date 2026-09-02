@@ -7,6 +7,7 @@ import type React from 'react';
 
 import { resolveDashboardText } from '@/lib/localized-text';
 
+import { PROVIDER_DIALOG_FRAME_SIZE } from '../../lib/constants';
 import { providerDisplayName } from '../../lib/provider-list-view';
 import type { ProviderQuotaResult } from '../../services/provider-quota-service';
 import { ProviderAvatar } from '../provider-avatar';
@@ -44,8 +45,8 @@ export const ProviderQuotaDialog: React.FC<ProviderQuotaDialogProps> = ({
             <ProviderAvatar
               name={providerDisplayName(provider)}
               icon={pluginIcon}
-              size={32}
-              className="mt-0.5 size-8"
+              size={PROVIDER_DIALOG_FRAME_SIZE}
+              className="mt-0.5"
             />
             <div className="min-w-0 flex-1">
               <DialogTitle className="truncate">{providerDisplayName(provider)}</DialogTitle>

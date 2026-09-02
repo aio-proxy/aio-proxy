@@ -1,6 +1,8 @@
 import { m } from '@aio-proxy/i18n';
-import { Button } from '@aio-proxy/ui/components/button';
+import { Separator } from '@aio-proxy/ui/components/separator';
+import { ToggleGroup, ToggleGroupItem } from '@aio-proxy/ui/components/toggle-group';
 import type React from 'react';
+import { Fragment } from 'react';
 
 import type { ProviderListFilters } from '../../lib/provider-list-view';
 
@@ -92,28 +94,35 @@ export const ProviderFilterChips: React.FC<ProviderFilterChipsProps> = ({ filter
   ];
 
   return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-      {groups.map((group) => (
-        // Toggle buttons, not radios: no arrow-key roving is implemented, so `aria-pressed` describes
-        // what the control actually is. The group name is what makes three runs of "All" tellable apart.
-        <div key={group.key} role="group" aria-label={group.label} className="flex flex-wrap items-center gap-1">
-          <span aria-hidden="true" className="text-xs text-muted-foreground">
-            {group.label}
-          </span>
-          {group.options.map((option) => (
-            <Button
-              key={option.value}
-              type="button"
-              size="xs"
-              variant={group.selected === option.value ? 'secondary' : 'ghost'}
-              aria-pressed={group.selected === option.value}
-              data-testid={`provider-filter-${group.key}-${option.value}`}
-              onClick={option.select}
-            >
-              {option.label}
-            </Button>
-          ))}
-        </div>
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-2">
+      {groups.map((group, index, array) => (
+        <Fragment key={group.key}>
+          {/* Single-select: `ToggleGroup` gives arrow-key roving over the three options and keeps
+              exactly one pressed. Its `value` is an array even when `multiple` is false, and an empty
+              array means the user re-pressed the active option — treat that as no change rather than
+              clearing, because "no filter" is already spelled by the `all` option. */}
+          <ToggleGroup
+            aria-label={group.label}
+            size="sm"
+            value={[group.selected]}
+            onValueChange={(next) => group.options.find((option) => option.value === next[0])?.select()}
+            className="ml-2.5 gap-1"
+          >
+            <span aria-hidden="true" className="text-xs text-muted-foreground">
+              {group.label}
+            </span>
+            {group.options.map((option) => (
+              <ToggleGroupItem
+                key={option.value}
+                value={option.value}
+                data-testid={`provider-filter-${group.key}-${option.value}`}
+              >
+                {option.label}
+              </ToggleGroupItem>
+            ))}
+          </ToggleGroup>
+          {index !== array.length - 1 && <Separator orientation="vertical" />}
+        </Fragment>
       ))}
     </div>
   );

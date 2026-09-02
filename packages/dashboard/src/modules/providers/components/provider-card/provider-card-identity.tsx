@@ -6,7 +6,7 @@ import { Link } from '@tanstack/react-router';
 import { AlertTriangle } from 'lucide-react';
 import type React from 'react';
 
-import { PROVIDER_KIND_LABEL } from '../../lib/constants';
+import { PROVIDER_FRAME_SIZE, PROVIDER_KIND_LABEL } from '../../lib/constants';
 import { providerDisplayName } from '../../lib/provider-list-view';
 import { ProviderAvatar } from '../provider-avatar';
 import { ProviderProtocolLabels } from '../provider-protocol-labels';
@@ -49,8 +49,8 @@ export const ProviderCardIdentity: React.FC<ProviderCardIdentityProps> = ({
         <ProviderAvatar
           name={name}
           icon={pluginIcon}
-          size={24}
-          className={cn('size-6', provider.enabled === false && 'grayscale')}
+          size={PROVIDER_FRAME_SIZE}
+          className={cn(provider.enabled === false && 'grayscale')}
         />
       )}
 
