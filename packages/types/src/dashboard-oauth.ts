@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { AliasConfigSchema, IdSchema } from './common';
 import { DashboardLocalizedTextSchema } from './dashboard-localized-text';
 import { ProviderMutationProxySchema, RoutingPrioritySchema, RoutingWeightSchema } from './provider';
+import { validateAliasTargets } from './provider-alias';
+import { AuthoredOAuthAliasSchema } from './provider-alias/oauth-alias';
 import { ProviderTransformsSchema } from './provider-transform/index';
 
 const DashboardOAuthFormConditionSchema = z.strictObject({
@@ -65,16 +67,18 @@ export const DashboardOAuthProviderEditSchema = z.strictObject({
 
 const DashboardOAuthSessionCommonSchema = z.object({ id: z.uuid() });
 
-export const DashboardOAuthProviderPatchSchema = z.strictObject({
-  name: z.string().optional(),
-  enabled: z.boolean(),
-  priority: RoutingPrioritySchema.optional(),
-  weight: RoutingWeightSchema.optional(),
-  models: z.array(z.string()).optional(),
-  proxy: ProviderMutationProxySchema,
-  alias: z.record(z.string().min(1), AliasConfigSchema).optional(),
-  transforms: ProviderTransformsSchema.optional().describe('Ordered outbound request transforms.'),
-});
+export const DashboardOAuthProviderPatchSchema = z
+  .strictObject({
+    name: z.string().optional(),
+    enabled: z.boolean(),
+    priority: RoutingPrioritySchema.optional(),
+    weight: RoutingWeightSchema.optional(),
+    excludedModels: z.array(z.string()).optional(),
+    proxy: ProviderMutationProxySchema,
+    alias: AuthoredOAuthAliasSchema.optional(),
+    transforms: ProviderTransformsSchema.optional().describe('Ordered outbound request transforms.'),
+  })
+  .superRefine((value, ctx) => validateAliasTargets({ ...value, kind: 'oauth' }, ctx));
 
 export const DashboardOAuthSessionSchema = z.discriminatedUnion('status', [
   z.strictObject({ ...DashboardOAuthSessionCommonSchema.shape, status: z.literal('preparing') }),

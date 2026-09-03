@@ -214,6 +214,31 @@ describe('AliasConfigSchema', () => {
     });
     expect(result.success).toBe(false);
   });
+
+  test('DashboardOAuthProviderPatchSchema reports false and reserved * at alias.<key>', async () => {
+    const { DashboardOAuthProviderPatchSchema } = await import('../dashboard-oauth');
+    const hidden = DashboardOAuthProviderPatchSchema.safeParse({
+      enabled: true,
+      alias: { codex: false },
+    });
+    expect(hidden.success).toBe(true);
+
+    const star = DashboardOAuthProviderPatchSchema.safeParse({
+      enabled: true,
+      alias: { '*': { model: 'gpt-5' } },
+    });
+    expect(star.success).toBe(false);
+    if (!star.success) expect(star.error.issues[0]?.path).toEqual(['alias', '*']);
+
+    const excluded = DashboardOAuthProviderPatchSchema.safeParse({
+      enabled: true,
+      excludedModels: ['hidden'],
+      alias: { mini: { model: 'hidden' } },
+    });
+    expect(excluded.success).toBe(false);
+    if (!excluded.success)
+      expect(excluded.error.issues.map((issue) => issue.path)).toContainEqual(['alias', 'mini', 'model']);
+  });
 });
 
 describe('provider-level alias validation', () => {
