@@ -133,6 +133,7 @@ export type ServerStateParts = Pick<
   | 'logicalSessionStore'
   | 'modelRouting'
   | 'oauthQuota'
+  | 'oauthCredentialRefresh'
   | 'oauthLoginSessions'
   | 'pluginControlPlane'
   | 'providerSummaries'
@@ -194,6 +195,7 @@ export function assembleServerState(runtime: ServerRuntime, parts: ServerStatePa
     providerSummaries: parts.providerSummaries,
     currentConfig: () => (manager.current() as Snapshot).config,
     oauthQuota: parts.oauthQuota,
+    oauthCredentialRefresh: parts.oauthCredentialRefresh,
     quotaCache: parts.quotaCache,
     warmProviderQuota: (providerId) => parts.quotaCache.warm(providerId),
     reload: parts.reload,

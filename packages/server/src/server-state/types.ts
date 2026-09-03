@@ -18,6 +18,7 @@ import type {
 } from '@aio-proxy/types';
 
 import type { ConfigStore } from '../config-store';
+import type { OAuthCredentialRefreshOperations } from '../credential-refresh';
 import type { DashboardEventHub, DashboardEventLimits } from '../dashboard-events';
 import type { ModelRoutingControlPlane } from '../model-routing';
 import type { OAuthLoginSessionManager } from '../oauth-login-session/manager';
@@ -86,6 +87,7 @@ export type ServerState = ProviderRouteSource & {
   readonly events: DashboardEventHub;
   readonly modelRouting: ModelRoutingControlPlane;
   readonly oauthQuota: OAuthQuotaOperations;
+  readonly oauthCredentialRefresh: OAuthCredentialRefreshOperations;
   readonly quotaCache: OAuthQuotaCache;
   readonly pluginControlPlane: PluginControlPlane;
   readonly oauthCapabilities: () => readonly DashboardOAuthCapability[];
