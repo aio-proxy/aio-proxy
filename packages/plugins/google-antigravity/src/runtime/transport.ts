@@ -1,7 +1,7 @@
 import type { LogicalRequestContext, ModelDescriptor, RuntimeFetch } from '@aio-proxy/plugin-sdk';
 
 import type { AntigravityFamily } from '../catalog/collapse';
-import { ANTIGRAVITY_DAILY, ANTIGRAVITY_PROD } from '../oauth/constants';
+import { ANTIGRAVITY_DAILY, ANTIGRAVITY_SANDBOX } from '../oauth/constants';
 import { antigravityReplayCache, type ReasoningReplayCache } from '../protocol/replay-cache';
 import type { GoogleAntigravityAccountOptions } from '../schema';
 import type { AntigravityCredentialSource } from './credential';
@@ -199,7 +199,7 @@ async function sleepWithSignal(
 function endpointCategory(endpoint: string, options: GoogleAntigravityAccountOptions): AntigravityEndpointCategory {
   if (options.baseURL !== undefined) return 'custom';
   if (endpoint === ANTIGRAVITY_DAILY) return 'daily';
-  if (endpoint === ANTIGRAVITY_PROD) return 'prod';
+  if (endpoint === ANTIGRAVITY_SANDBOX) return 'sandbox';
   return 'custom';
 }
 

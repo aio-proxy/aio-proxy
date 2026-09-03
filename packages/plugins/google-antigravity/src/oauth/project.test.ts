@@ -3,12 +3,16 @@ import { expect, spyOn, test } from 'bun:test';
 import { antigravityEndpoints } from '../runtime/endpoints';
 import { initializeAntigravityProject } from './project';
 
-test('routes load to prod, onboarding to daily, and runtime operations through both defaults', () => {
-  expect(antigravityEndpoints({}, 'project-load')).toEqual(['https://cloudcode-pa.googleapis.com']);
+test('routes load and onboarding to daily, and runtime operations through daily then sandbox', () => {
+  expect(antigravityEndpoints({}, 'project-load')).toEqual(['https://daily-cloudcode-pa.googleapis.com']);
   expect(antigravityEndpoints({}, 'onboarding')).toEqual(['https://daily-cloudcode-pa.googleapis.com']);
   expect(antigravityEndpoints({}, 'discovery')).toEqual([
     'https://daily-cloudcode-pa.googleapis.com',
-    'https://cloudcode-pa.googleapis.com',
+    'https://daily-cloudcode-pa.sandbox.googleapis.com',
+  ]);
+  expect(antigravityEndpoints({}, 'inference', 'https://daily-cloudcode-pa.sandbox.googleapis.com')).toEqual([
+    'https://daily-cloudcode-pa.sandbox.googleapis.com',
+    'https://daily-cloudcode-pa.googleapis.com',
   ]);
   expect(antigravityEndpoints({ baseURL: ' https://proxy.example.test/root/ ' }, 'inference')).toEqual([
     'https://proxy.example.test/root',
@@ -39,7 +43,7 @@ test('returns an existing project identity from loadCodeAssist', async () => {
 
   expect(projectId).toBe('project-existing');
   expect(requests).toHaveLength(1);
-  expect(requests[0]?.url).toBe('https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist');
+  expect(requests[0]?.url).toBe('https://daily-cloudcode-pa.googleapis.com/v1internal:loadCodeAssist');
   expect(await requests[0]?.clone().json()).toEqual({ metadata: { ideType: 'ANTIGRAVITY' } });
 });
 
