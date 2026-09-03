@@ -28,12 +28,20 @@ export type CcaWireLookups = {
   readonly familyByWireId?: (modelId: string) => AntigravityFamily | undefined;
 };
 
+export type AntigravityRequestSession = {
+  readonly agentId: string;
+  readonly trajectoryId: string;
+  readonly stepIndex: number;
+  readonly lastExecutionId?: string;
+};
+
 export type CcaEnvelopeInput = {
   readonly body: Readonly<Record<string, unknown>>;
   readonly context: LogicalRequestContext;
   readonly credential: Pick<GoogleAntigravityCredential, 'projectId'>;
   readonly modelId: string;
   readonly requestType: CcaRequestType;
+  readonly sessionState?: AntigravityRequestSession;
 } & CcaWireLookups;
 
 export function createCatalogWireLookups(catalog: ModelCatalog): Required<CcaWireLookups> {
@@ -60,15 +68,35 @@ export function createCcaEnvelope(input: CcaEnvelopeInput): CcaEnvelope {
   const claudeBacked =
     input.familyByWireId?.(input.modelId)?.thinking.mode === 'claude' ||
     classifyProvider(descriptor ?? {}) === 'claude';
-  const request = applyValidatedToolMode(normalizeToolDomains(cleanGeminiBody(input.body)), claudeBacked);
+  const cleaned = normalizeToolDomains(cleanGeminiBody(input.body));
+  const tools = Reflect.get(cleaned, 'tools');
+  const request = applyValidatedToolMode(cleaned, {
+    claudeBacked,
+    hasTools: Array.isArray(tools) && tools.length > 0,
+  });
+  const session = input.sessionState ?? {
+    agentId: crypto.randomUUID(),
+    trajectoryId: crypto.randomUUID(),
+    stepIndex: 2,
+  };
   return {
     model: input.modelId,
     project: input.credential.projectId,
     userAgent: 'antigravity',
-    requestId: `agent-${input.context.requestId}`,
+    requestId: `agent/${session.agentId}/${Date.now()}/${session.trajectoryId}/${session.stepIndex}`,
     requestType: input.requestType,
-    request: applyWireProfile(request, input.context.session.key, descriptor),
+    request: applyWireProfile(request, input.context.session.key, descriptor, { claudeBacked, session }),
   };
+}
+
+export function readCcaResponseId(payload: unknown): string | undefined {
+  if (!isPlainObject(payload)) return undefined;
+  const nested = payload['response'];
+  const nestedId = isPlainObject(nested) ? nested['responseId'] : undefined;
+  const topId = payload['responseId'];
+  if (typeof nestedId === 'string' && nestedId !== '') return nestedId;
+  if (typeof topId === 'string' && topId !== '') return topId;
+  return undefined;
 }
 
 function normalizeToolDomains(body: Record<string, unknown> & { readonly tools?: unknown }): Record<string, unknown> {
@@ -98,10 +126,12 @@ function applyWireProfile(
   body: Record<string, unknown>,
   sessionKey: `sha256:${string}`,
   descriptor: ModelDescriptor | undefined,
+  identity: { readonly claudeBacked: boolean; readonly session: AntigravityRequestSession },
 ): CcaRequestBody {
   const profile = wireProfile(descriptor);
   const generationConfig = record(Reflect.get(body, 'generationConfig'));
   const labels = record(Reflect.get(body, 'labels'));
+  const systemInstruction = record(Reflect.get(body, 'systemInstruction'));
   const explicitLimit = generationConfig === undefined ? undefined : Reflect.get(generationConfig, 'maxOutputTokens');
   const maxOutputTokens =
     profile.maxOutputTokens === undefined
@@ -109,10 +139,22 @@ function applyWireProfile(
       : typeof explicitLimit === 'number' && Number.isFinite(explicitLimit)
         ? Math.min(explicitLimit, profile.maxOutputTokens)
         : profile.maxOutputTokens;
+  const usedClaude = identity.claudeBacked ? 'true' : 'false';
   return {
     ...body,
     ...(maxOutputTokens === undefined ? {} : { generationConfig: { ...generationConfig, maxOutputTokens } }),
-    ...(profile.modelEnum === undefined ? {} : { labels: { ...labels, model_enum: profile.modelEnum } }),
+    ...(systemInstruction === undefined ? {} : { systemInstruction: { ...systemInstruction, role: 'user' } }),
+    labels: {
+      ...labels,
+      ...(profile.modelEnum === undefined ? {} : { model_enum: profile.modelEnum }),
+      last_step_index: String(identity.session.stepIndex - 1),
+      trajectory_id: identity.session.trajectoryId,
+      used_claude: usedClaude,
+      used_claude_conservative: usedClaude,
+      ...(identity.session.lastExecutionId === undefined
+        ? {}
+        : { last_execution_id: identity.session.lastExecutionId }),
+    },
     sessionId: wireSessionId(sessionKey),
   };
 }

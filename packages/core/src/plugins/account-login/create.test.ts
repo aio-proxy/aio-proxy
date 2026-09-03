@@ -189,7 +189,7 @@ test('new account uses a validated discovery fallback', async () => {
   expect(logs.map(({ event }) => event)).not.toContain('plugin.catalog.discovery.failed');
 });
 
-test('first login reaches prod and applies the snapshot after both endpoint timeouts', async () => {
+test('first login reaches sandbox and applies the snapshot after both endpoint timeouts', async () => {
   const state = fixture();
   const urls: string[] = [];
   await createAccount(state, {
@@ -223,7 +223,7 @@ test('first login reaches prod and applies the snapshot after both endpoint time
 
   expect(urls.map((url) => new URL(url).origin)).toEqual([
     'https://daily-cloudcode-pa.googleapis.com',
-    'https://cloudcode-pa.googleapis.com',
+    'https://daily-cloudcode-pa.sandbox.googleapis.com',
   ]);
   expect(state.repository.readCatalog('person')?.catalog).toEqual(validateModelCatalog(staticAntigravityCatalog()));
 });

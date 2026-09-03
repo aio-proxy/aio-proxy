@@ -35,7 +35,7 @@ export function credentialSource() {
     refreshToken: 'refresh-1',
     expiresAt: 1_900_000_000_000,
     email: 'person@example.com',
-    projectId: 'project-1',
+    projectId: `project-${crypto.randomUUID()}`,
   };
   return { current: async () => credential, forceRefresh: async () => credential };
 }

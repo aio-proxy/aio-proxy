@@ -120,6 +120,7 @@ export function createGoogleAntigravityPlugin(
         fetch: dependencies.fetch ?? context.fetch,
         sleep: dependencies.sleep,
         signal: context.signal,
+        now: dependencies.now,
       });
       if (projectId.trim() === '') throw new Error('Google Antigravity project identity is missing');
       const identityEmail = email.trim();
@@ -159,6 +160,7 @@ export function createGoogleAntigravityPlugin(
               fetch: dependencies.fetch ?? context.fetch,
               sleep: dependencies.sleep,
               signal: context.signal,
+              now: dependencies.now,
             }));
           const identityEmail = source.email;
           const presentationEmail = normalizeAntigravityEmail(identityEmail) ?? identityEmail;
