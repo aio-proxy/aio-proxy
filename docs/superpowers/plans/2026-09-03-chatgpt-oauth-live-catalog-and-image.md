@@ -351,6 +351,10 @@ export async function discoverOpenAIChatGPTModels(
   });
   if (!response.ok) throw new Error(`Codex model catalog request failed with ${response.status}`);
   const { models } = CodexModelsSchema.parse(await response.json());
+  // The endpoint answers 200 with an empty array when no model clears
+  // `minimal_client_version`, so an empty list is a failed discovery, not an
+  // account with no models: swapping it in would drop every language model.
+  if (models.length === 0) throw new Error('Codex model catalog returned no models');
   return pipe(
     models,
     sortBy([(model) => model.priority]),
