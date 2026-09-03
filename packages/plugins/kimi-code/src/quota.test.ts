@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
 
 import type { AccountContext } from '@aio-proxy/plugin-sdk';
+import { LocalizedTextSchema } from '@aio-proxy/plugin-sdk';
 
 import type { KimiCredential } from './oauth';
 import { readKimiQuota } from './quota';
@@ -149,6 +150,34 @@ test('rejects HTTP failures without exposing credentials or raw bodies', async (
   const publicSurface = [error.message, ...Object.values(error), JSON.stringify(error)].join('\n');
   expect(publicSurface).not.toContain(credential.accessToken);
   expect(publicSurface).not.toContain(body);
+});
+
+test('maps the membership level to a plan name', async () => {
+  const snapshot = await quotaResponse({
+    usage: { limit: 100, remaining: 40 },
+    user: { membership: { level: 'LEVEL_ADVANCED' } },
+  });
+  expect(snapshot.plan).toBe('Allegro');
+});
+
+test('falls back to a readable level and omits an unknown shape', async () => {
+  const unknownLevel = await quotaResponse({
+    usage: { limit: 100, remaining: 40 },
+    user: { membership: { level: 'LEVEL_FUTURE' } },
+  });
+  expect(unknownLevel.plan).toBe('future');
+  expect(await quotaResponse({ usage: { limit: 100, remaining: 40 } })).not.toHaveProperty('plan');
+});
+
+test('trims a padded level so the plan does not fail snapshot validation', async () => {
+  // `LocalizedTextSchema` rejects untrimmed strings, so passing one through would fail the whole
+  // otherwise-valid snapshot over an optional enrichment.
+  const padded = await quotaResponse({
+    usage: { limit: 100, remaining: 40 },
+    user: { membership: { level: '  LEVEL_FUTURE  ' } },
+  });
+  expect(padded.plan).toBe('future');
+  expect(LocalizedTextSchema.safeParse(padded.plan).success).toBe(true);
 });
 
 function rolling(duration: number, detail: Record<string, unknown>) {

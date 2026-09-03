@@ -19,7 +19,10 @@ class DashboardUsageRequestError extends Error {
 
 const dimensionPrefix = 'dimension:';
 
-const emptyProviderUsage = (): ProviderUsage => ({ requestCount: 0n });
+/** A successful response omits Providers with no traffic in the window, so absence means zero. */
+export const zeroProviderUsage: ProviderUsage = { requestCount: 0n };
+
+const emptyProviderUsage = (): ProviderUsage => ({ ...zeroProviderUsage });
 
 const addUsageResponse = (totals: Map<string, ProviderUsage>, response: DashboardUsageWireResponse) => {
   const dimensionKeys = new Set(

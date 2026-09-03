@@ -10,6 +10,8 @@ const unavailableProvider = (suggestedCommand?: string): DashboardProviderSummar
   last_status: 'unknown',
   last_latency: null,
   clientModels: [],
+  protocols: [],
+  hasQuota: false,
   state: {
     status: 'unavailable',
     diagnostic: {

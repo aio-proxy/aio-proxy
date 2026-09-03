@@ -651,6 +651,43 @@
       "page_size": "Rows per page"
     },
     "providers": {
+      "card": {
+        "search_placeholder": "Search by name or Provider ID",
+        "filter_availability": "Availability",
+        "filter_availability_all": "All",
+        "filter_availability_available": "Available",
+        "filter_availability_unavailable": "Unavailable",
+        "filter_enablement": "State",
+        "filter_enablement_all": "All",
+        "filter_enablement_enabled": "Enabled",
+        "filter_enablement_disabled": "Disabled",
+        "filter_kind": "Kind",
+        "filter_kind_all": "All",
+        "no_matches": "No Providers match these filters",
+        "stat_priority": "Priority",
+        "stat_weight": "Weight",
+        "stat_success_rate": "Success rate",
+        "stat_p95": "P95",
+        "models_count": "{count} models",
+        "protocols_multi": "Multiple protocols",
+        "requests_24h": "{count} / 24h",
+        "invalid_hint": "Invalid Provider configuration.",
+        "open_provider": "Open Provider {id}"
+      },
+      "quota": {
+        "ring_label": "Remaining quota for Provider {id}",
+        "title": "Remaining quota",
+        "refresh": "Refresh quota",
+        "sampled_at": "Sampled {value}",
+        "remaining": "{percent}% remaining",
+        "less_than_one_percent": "Less than 1% remaining",
+        "no_windows": "This upstream reports no remaining amounts",
+        "resets_at": "Resets {value}",
+        "reset_credits": "{count} reset credits available",
+        "stale_notice": "Showing the last successful reading; the latest refresh failed",
+        "load_failed": "Quota is unavailable for this Provider",
+        "loading": "Loading quota"
+      },
       "list_title": "Providers",
       "providers_title": "Providers",
       "new_provider": "New Provider",
@@ -661,25 +698,6 @@
         "invalid": "Invalid"
       },
       "table": {
-        "label": "Providers",
-        "col_provider": "Provider",
-        "col_details": "Details",
-        "col_type": "Type",
-        "col_protocol": "Protocol",
-        "col_name": "Name",
-        "col_enabled": "Enabled",
-        "col_status": "Status",
-        "col_state": "Availability",
-        "col_capability": "Capability",
-        "col_account": "Account",
-        "col_catalog": "Catalog",
-        "col_models": "Models",
-        "col_priority": "Priority",
-        "col_weight": "Weight",
-        "col_usage_24h": "24h requests",
-        "col_actions": "Actions",
-        "expand_group": "Expand provider group",
-        "collapse_group": "Collapse provider group",
         "filter": "Filter providers",
         "filter_placeholder": "Search by name or Provider ID",
         "columns": "Provider columns"
@@ -687,20 +705,6 @@
       "badge": {
         "enabled": "Enabled",
         "disabled": "Disabled"
-      },
-      "state": {
-        "details": "Diagnostics for provider {id}",
-        "ready": "Ready",
-        "failed": "Failed",
-        "unavailable": "Unavailable",
-        "catalog_fresh": "Fresh",
-        "catalog_stale": "Stale"
-      },
-      "account": {
-        "expires_at": "Expires {value}"
-      },
-      "catalog": {
-        "last_success_at": "Last success {value}"
       },
       "oauth": {
         "select_label": "Sign-in method",

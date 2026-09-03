@@ -17,6 +17,10 @@ export async function readValidatedQuota(
     const snapshot = await prepared.adapter.quota.read(prepared.accountContext);
     return validateOAuthQuotaSnapshot(snapshot);
   } catch (error) {
+    // Cancellation is the caller's, not the plugin's: a cooperative plugin rejects from inside this try
+    // when the signal fires, so surface the abort reason unlogged the way `signal.throwIfAborted()`
+    // would have. A plugin that ignores the signal never gets here — `withOAuthQuotaContext` races it.
+    if (prepared.accountContext.signal.aborted) throw prepared.accountContext.signal.reason;
     try {
       dependencies.logger({
         event,

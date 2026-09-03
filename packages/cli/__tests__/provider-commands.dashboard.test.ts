@@ -47,6 +47,8 @@ const withFakeDashboard = async (providers: readonly FakeDashboardProvider[], ru
         .filter((provider) => filter === null || provider.id === filter)
         .map((provider) => ({
           clientModels: [],
+          protocols: [],
+          hasQuota: false,
           state: { status: 'ready' },
           ...provider,
           ...(probe ? { probe: provider.probe ?? 'OK' } : {}),

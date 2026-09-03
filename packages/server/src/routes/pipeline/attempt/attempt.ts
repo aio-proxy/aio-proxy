@@ -26,6 +26,7 @@ import { dispatchImageCandidate } from './image';
 import { attemptModelCandidate } from './model';
 import { attemptRawCandidate } from './raw';
 import { requestPathProperty } from './request-path';
+import { warmProviderQuota } from './warm-quota';
 
 type AttemptCandidatesOptions<TRequest, TContext> = {
   readonly adapter: AnyProtocolAdapter<TRequest, TContext> | ImageProtocolAdapter<TRequest, TContext>;
@@ -214,7 +215,9 @@ export async function attemptCandidates<TRequest, TContext>(
           : dispatch.kind === 'image'
             ? await dispatchImageCandidate(dispatch.ctx, slot)
             : await attemptLanguageCandidate(dispatch.ctx, slot, holder);
-      if (step.kind === 'return') return step.response;
+      if (step.kind === 'return') {
+        return warmProviderQuota(options.source, provider, step.response);
+      }
       if (step.kind === 'skip') {
         lastSkipReason = step.reason;
         continue;
@@ -222,7 +225,9 @@ export async function attemptCandidates<TRequest, TContext>(
       lastFailure = step.lastFailure;
     } catch (error) {
       const step = handleAttemptError(ctx, slot, error);
-      if (step.kind === 'return') return step.response;
+      if (step.kind === 'return') {
+        return warmProviderQuota(options.source, provider, step.response);
+      }
       if (step.kind === 'skip') {
         lastSkipReason = step.reason;
         continue;

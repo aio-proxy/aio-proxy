@@ -132,7 +132,7 @@ async function createRuntimeMaterialization(
       context: { plugin: config.plugin, capability: config.capability, providerId: config.id },
       error: { name: error instanceof Error ? error.name : 'Error', message: 'Plugin runtime creation failed' },
     });
-    return failure(options, 'RUNTIME_CREATE_FAILED', true, undefined, accountSummary);
+    return failure(options, 'RUNTIME_CREATE_FAILED', true, undefined, accountSummary, adapter.quota !== undefined);
   }
 }
 
@@ -151,25 +151,33 @@ export async function materializePluginProvider(
       false,
       error.suggestLogin ? providerLoginCommand(options.config.id) : undefined,
       error.accountSummary,
+      error.hasQuota,
     );
   }
   const { adapter, account, accountOptions, accountSummary, createCredentials } = prepared;
   let proxyIdentity = options.effectiveProxy;
   if (proxyIdentity === undefined) proxyIdentity = config.proxy === false ? null : (config.proxy ?? null);
   if (adapter.supportsProxy === false && proxyIdentity !== null) {
-    return failure(options, 'PROXY_UNSUPPORTED', false, undefined, accountSummary);
+    return failure(options, 'PROXY_UNSUPPORTED', false, undefined, accountSummary, adapter.quota !== undefined);
   }
   const accountOptionsDigest = digest(prepared.accountOptionsIdentity);
   let diagnostics: readonly Diagnostic[];
   try {
     diagnostics = repository.readDiagnostics(config.id);
   } catch {
-    return failure(options, 'CREDENTIALS_MISSING_OR_INVALID', false, providerLoginCommand(config.id), accountSummary);
+    return failure(
+      options,
+      'CREDENTIALS_MISSING_OR_INVALID',
+      false,
+      providerLoginCommand(config.id),
+      accountSummary,
+      adapter.quota !== undefined,
+    );
   }
   const refreshFailure = refreshDiagnostic(diagnostics);
   if (refreshFailure !== undefined) {
     return {
-      summary: summary(config, undefined, accountSummary),
+      summary: summary(config, undefined, accountSummary, adapter.quota !== undefined),
       state: diagnosticState({ ...refreshFailure, suggestedCommand: providerLoginCommand(config.id) }),
     };
   }
@@ -187,10 +195,15 @@ export async function materializePluginProvider(
         })
       : undefined);
   const persistedSummary = (provider: Parameters<typeof summary>[1], catalog: typeof storedCatalog) =>
-    summary(config, provider, {
-      ...accountSummary,
-      ...(catalog === null ? {} : { catalogLastSuccessAt: new Date(catalog.refreshedAt).toISOString() }),
-    });
+    summary(
+      config,
+      provider,
+      {
+        ...accountSummary,
+        ...(catalog === null ? {} : { catalogLastSuccessAt: new Date(catalog.refreshedAt).toISOString() }),
+      },
+      adapter.quota !== undefined,
+    );
   const defaultAliases = adapter.catalog.defaultAliases;
   const catalogJobFor = (credentials: CredentialPort<unknown>): CatalogJobDescriptor => ({
     providerId: config.id,

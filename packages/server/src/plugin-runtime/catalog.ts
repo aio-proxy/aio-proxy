@@ -26,6 +26,7 @@ export function summary(
     readonly expiresAt?: number;
     readonly catalogLastSuccessAt?: string;
   },
+  hasQuota = false,
 ): Omit<DashboardProviderSummary, 'state'> {
   return {
     id: config.id,
@@ -35,6 +36,9 @@ export function summary(
     last_status: 'unknown',
     last_latency: null,
     name: config.name,
+    // OAuth providers speak whatever their plugin runtime speaks; there is no configured wire protocol.
+    protocols: [],
+    hasQuota,
     ...(config.priority === undefined ? {} : { priority: config.priority }),
     ...(config.weight === undefined ? {} : { weight: config.weight }),
     clientModels: provider === undefined ? [] : uniq(modelRoutes(provider).map((route) => route.alias)),
@@ -52,6 +56,9 @@ export function failure(
   retryable: boolean,
   suggestedCommand?: string,
   persisted?: Parameters<typeof summary>[2],
+  // Quota lives on the adapter, not the runtime: a provider whose runtime or proxy check failed can
+  // still answer a quota read, so an unavailable card must keep showing its ring.
+  hasQuota = false,
 ): PluginProviderMaterialization {
   const diagnostic = options.diagnostics(code, {
     plugin: options.config.plugin,
@@ -60,7 +67,10 @@ export function failure(
     retryable,
     ...(suggestedCommand === undefined ? {} : { suggestedCommand }),
   });
-  return { summary: summary(options.config, undefined, persisted), state: diagnosticState(diagnostic) };
+  return {
+    summary: summary(options.config, undefined, persisted, hasQuota),
+    state: diagnosticState(diagnostic),
+  };
 }
 
 export function pluginVersion(plugins: PluginRegistrySnapshot, packageName: string): string | undefined {

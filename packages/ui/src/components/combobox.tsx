@@ -36,12 +36,20 @@ function ComboboxTrigger({
   )
 }
 
-function ComboboxClear({ className, ...props }: ComboboxPrimitive.Clear.Props) {
+function ComboboxClear({
+  className,
+  clearLabel,
+  ...props
+}: ComboboxPrimitive.Clear.Props & {
+  /** Accessible name for the icon-only button. This package has no i18n, so the caller supplies it. */
+  clearLabel?: string
+}) {
   return (
     <ComboboxPrimitive.Clear
       data-slot="combobox-clear"
       render={<InputGroupButton variant="ghost" size="icon-xs" />}
       className={cn(className)}
+      aria-label={clearLabel}
       {...props}
     >
       <XIcon className="pointer-events-none" />
@@ -49,17 +57,26 @@ function ComboboxClear({ className, ...props }: ComboboxPrimitive.Clear.Props) {
   )
 }
 
+/**
+ * The clear button is icon-only, so `showClear` without an accessible name is never a valid combination.
+ * Pairing them here turns that into a compile error instead of a silently unnamed button; this package has
+ * no i18n, so the label has to come from the caller.
+ */
+type ComboboxClearPairProps =
+  | { showClear: boolean; clearLabel: string }
+  | { showClear?: false; clearLabel?: never }
+
 function ComboboxInput({
   className,
   children,
   disabled = false,
   showTrigger = true,
   showClear = false,
+  clearLabel,
   ...props
 }: ComboboxPrimitive.Input.Props & {
   showTrigger?: boolean
-  showClear?: boolean
-}) {
+} & ComboboxClearPairProps) {
   return (
     <InputGroup className={cn("w-auto", className)}>
       <ComboboxPrimitive.Input
@@ -67,17 +84,22 @@ function ComboboxInput({
         {...props}
       />
       <InputGroupAddon align="inline-end">
+        {/* The chevron stays beside the clear button instead of being replaced by it. Base UI's input
+            does open on click — `openOnInputClick` defaults to `true` — so this is about the affordance,
+            not reachability: with the chevron hidden, the only visible control on a filled field is the
+            clear button, which discards the value rather than revealing the list, so nothing tells a
+            pointer user a curated list is there at all. */}
         {showTrigger && (
           <InputGroupButton
             size="icon-xs"
             variant="ghost"
             render={<ComboboxTrigger />}
             data-slot="input-group-button"
-            className="group-has-data-[slot=combobox-clear]/input-group:hidden data-pressed:bg-transparent"
+            className="data-pressed:bg-transparent"
             disabled={disabled}
           />
         )}
-        {showClear && <ComboboxClear disabled={disabled} />}
+        {showClear && <ComboboxClear disabled={disabled} clearLabel={clearLabel} />}
       </InputGroupAddon>
       {children}
     </InputGroup>
@@ -233,9 +255,12 @@ function ComboboxChip({
   className,
   children,
   showRemove = true,
+  removeLabel,
   ...props
 }: ComboboxPrimitive.Chip.Props & {
   showRemove?: boolean
+  /** Accessible name for the icon-only remove button. This package has no i18n, so the caller supplies it. */
+  removeLabel?: string
 }) {
   return (
     <ComboboxPrimitive.Chip
@@ -252,6 +277,7 @@ function ComboboxChip({
           render={<Button variant="ghost" size="icon-xs" />}
           className="-ml-0.5 size-4.5 opacity-50 hover:opacity-100 aria-disabled:pointer-events-none"
           data-slot="combobox-chip-remove"
+          aria-label={removeLabel}
         >
           <XIcon className="pointer-events-none" />
         </ComboboxPrimitive.ChipRemove>
