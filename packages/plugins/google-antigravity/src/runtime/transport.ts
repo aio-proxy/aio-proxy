@@ -29,7 +29,7 @@ const SESSION_TTL_MS = 3_600_000;
 const SESSION_MAX_ENTRIES = 10_240;
 const sessions = new Map<SessionStateKey, SessionRecord>();
 
-type SessionStateKey = `${string}\u0000sha256:${string}`;
+type SessionStateKey = `${string}\u0000${string}\u0000sha256:${string}`;
 type SessionRecord = AntigravityRequestSession & { expiresAt: number; lastAccessAt: number };
 
 export type AntigravityExecuteInput = {
@@ -88,7 +88,7 @@ export class AntigravityTransport implements CcaTransport {
     const sessionState =
       input.operation === 'countTokens'
         ? ephemeralSessionState()
-        : nextSessionState(sessionStateKey(input.modelId, input.context.session.key), this.#now);
+        : nextSessionState(sessionStateKey(credential.projectId, input.modelId, input.context.session.key), this.#now);
     let body = JSON.stringify(
       createCcaEnvelope({ ...input, ...this.#lookups, body: replayBody, credential, sessionState }),
     );
@@ -174,7 +174,7 @@ export class AntigravityTransport implements CcaTransport {
             rememberLastGood(credential.projectId, endpoint);
             if (input.operation !== 'countTokens') {
               rememberLastExecution(
-                sessionStateKey(input.modelId, input.context.session.key),
+                sessionStateKey(credential.projectId, input.modelId, input.context.session.key),
                 sessionState,
                 readCcaResponseId(preflight.payload),
               );
@@ -192,7 +192,7 @@ export class AntigravityTransport implements CcaTransport {
           rememberLastGood(credential.projectId, endpoint);
           if (input.operation !== 'countTokens') {
             rememberLastExecution(
-              sessionStateKey(input.modelId, input.context.session.key),
+              sessionStateKey(credential.projectId, input.modelId, input.context.session.key),
               sessionState,
               await readJsonResponseId(response),
             );
@@ -210,8 +210,8 @@ function rememberLastGood(projectId: string, origin: string): void {
   lastGoodByProject.set(projectId, origin);
 }
 
-function sessionStateKey(modelId: string, sessionKey: `sha256:${string}`): SessionStateKey {
-  return `${modelId}\u0000${sessionKey}`;
+function sessionStateKey(projectId: string, modelId: string, sessionKey: `sha256:${string}`): SessionStateKey {
+  return `${projectId}\u0000${modelId}\u0000${sessionKey}`;
 }
 
 function nextSessionState(key: SessionStateKey, now: () => number): AntigravityRequestSession {

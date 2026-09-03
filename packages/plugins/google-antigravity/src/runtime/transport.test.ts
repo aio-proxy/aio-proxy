@@ -291,6 +291,37 @@ test('uses only the outbound header whitelist', async () => {
   }
 });
 
+test('does not reuse trajectory across Antigravity accounts in the same session', async () => {
+  const seen: Request[] = [];
+  const sessionKey = `sha256:${crypto.randomUUID()}` as const;
+  const first = new AntigravityTransport({
+    credentials: credentialSource(),
+    fetch: async (input, init) => {
+      seen.push(new Request(input, init));
+      return Response.json({ response: { responseId: 'exec-first', candidates: [] } });
+    },
+  });
+  const fallback = new AntigravityTransport({
+    credentials: credentialSource(),
+    fetch: async (input, init) => {
+      seen.push(new Request(input, init));
+      return Response.json({ response: { candidates: [] } });
+    },
+  });
+
+  await first.execute(executeInput({ context: logicalContext({ sessionKey }) }));
+  await fallback.execute(executeInput({ context: logicalContext({ sessionKey }) }));
+
+  const envelopes = await Promise.all(seen.map((request) => request.clone().json()));
+  const firstId = String(envelopes[0]?.requestId).split('/');
+  const secondId = String(envelopes[1]?.requestId).split('/');
+  expect(firstId[1]).not.toBe(secondId[1]);
+  expect(firstId[3]).not.toBe(secondId[3]);
+  expect(firstId[4]).toBe('1');
+  expect(secondId[4]).toBe('1');
+  expect(envelopes[1]?.request.labels.last_execution_id).toBeUndefined();
+});
+
 test('shares replay across Antigravity transport instances without a Provider ID key', async () => {
   const modelId = `claude-replay-${crypto.randomUUID()}`;
   const sessionKey = `sha256:${crypto.randomUUID()}` as const;
