@@ -145,7 +145,6 @@ Create `packages/plugins/openai-chatgpt/src/codex-client.ts`:
 // endpoint gates each model on its `minimal_client_version`, so this value
 // decides which models the catalog can see: 0.123.0 hides gpt-5.5, and an
 // inflated version surfaces unreleased models the account is not meant to have.
-// Keep it equal to the version reported in the User-Agent below.
 export const CODEX_CLIENT_VERSION = '0.135.0';
 
 export const CHATGPT_USER_AGENT =
@@ -189,6 +188,10 @@ function staticCredentialPort(value: ChatGPTCredential): CredentialPort<ChatGPTC
   };
 }
 
+const ONE_MODEL = {
+  models: [{ slug: 'gpt-5.5', display_name: 'GPT-5.5', priority: 12, supported_in_api: true, visibility: 'list' }],
+};
+
 test('queries the account Codex models endpoint with pinned client version and ChatGPT auth', async () => {
   const calls: { readonly url: string; readonly headers: Headers; readonly traffic: string | undefined }[] = [];
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RuntimeRequestInit) => {
@@ -198,7 +201,7 @@ test('queries the account Codex models endpoint with pinned client version and C
       headers: new Headers(request.headers),
       traffic: init?.aioProxy?.traffic,
     });
-    return Response.json({ models: [] });
+    return Response.json(ONE_MODEL);
   }) as typeof globalThis.fetch;
 
   await discoverOpenAIChatGPTModels(staticCredentialPort(credential()), new AbortController().signal);
@@ -240,7 +243,7 @@ test('refreshes an expired credential before querying the catalog', async () => 
   const headers: Headers[] = [];
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     headers.push(new Headers(new Request(input, init).headers));
-    return Response.json({ models: [] });
+    return Response.json(ONE_MODEL);
   }) as typeof globalThis.fetch;
   const port: CredentialPort<ChatGPTCredential> = {
     read: async () => ({ revision: 7, value: credential({ accessToken: 'stale', expiresAt: Date.now() - 1 }) }),
@@ -282,6 +285,17 @@ test('fails loudly when the models endpoint rejects the account', async () => {
   await expect(
     discoverOpenAIChatGPTModels(staticCredentialPort(credential()), new AbortController().signal),
   ).rejects.toThrow('Codex model catalog request failed with 401');
+});
+
+// A 200 with an empty array is what the endpoint returns when no model clears
+// `minimal_client_version`. Resolving it would swap an empty catalog in over the
+// stored one and take every language model with it.
+test('fails loudly when the models endpoint returns an empty list', async () => {
+  globalThis.fetch = async () => Response.json({ models: [] });
+
+  await expect(
+    discoverOpenAIChatGPTModels(staticCredentialPort(credential()), new AbortController().signal),
+  ).rejects.toThrow('Codex model catalog returned no models');
 });
 ```
 
@@ -407,7 +421,7 @@ export { CHATGPT_CATALOG_TTL_MS, CODEX_MODELS_ENDPOINT } from './catalog';
 turbo run test:unit --filter=@aio-proxy/plugin-openai-chatgpt
 ```
 
-Expected: PASS, all 5 catalog tests included. If `format:check` would complain, run `bun run format` now.
+Expected: PASS, all 6 catalog tests included. If `format:check` would complain, run `bun run format` now.
 
 - [ ] **Step 8: Confirm nothing else referenced the old name**
 
@@ -684,9 +698,9 @@ In the same file, replace the `raw` property of the returned object (lines 37-42
 with:
 
 ```ts
-    // `capability` is only ever 'language' | 'embedding'; image dispatch resolves
-    // with it absent, so the embedding guard already excludes the one case that
-    // must not passthrough.
+    // Defensive: image dispatch resolves with `capability` absent, so this guard
+    // exists to keep an embedding request off the responses/image passthrough
+    // rather than to gate image routing.
     raw: ({ protocol, capability }) =>
       capability === 'embedding'
         ? undefined
