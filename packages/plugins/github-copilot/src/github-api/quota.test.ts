@@ -179,4 +179,47 @@ describe('GitHub Copilot quota', () => {
       },
     ]);
   });
+
+  // The counters must not resurrect a window the snapshots deliberately suppressed: an unlimited
+  // seat that also reports legacy counters would otherwise render a bar the snapshot said not to.
+  test('keeps an unlimited window suppressed when the counters also report it', async () => {
+    const { fetcher } = usageFetcher({
+      copilot_plan: 'free',
+      quota_snapshots: { chat: { unlimited: true } },
+      monthly_quotas: { chat: 50 },
+      limited_user_quotas: { chat: 20 },
+    });
+
+    const snapshot = await readGitHubCopilotQuota(context(), fetcher);
+
+    expect(snapshot).toStrictEqual({ items: [], plan: 'Free' });
+  });
+
+  test('keeps a zero/zero window suppressed when the counters also report it', async () => {
+    const { fetcher } = usageFetcher({
+      quota_snapshots: { chat: { entitlement: 0, remaining: 0, percent_remaining: 100 } },
+      monthly_quotas: { chat: 50 },
+      limited_user_quotas: { chat: 20 },
+    });
+
+    const snapshot = await readGitHubCopilotQuota(context(), fetcher);
+
+    expect(snapshot.items).toStrictEqual([]);
+  });
+
+  // The mirror of the two above: a snapshot entry nothing can be read from is "no answer", not
+  // "unmetered", so the counters are still allowed to speak for that window.
+  test('falls back to the counters when the snapshot entry is unreadable', async () => {
+    const { fetcher } = usageFetcher({
+      quota_snapshots: { chat: 'nope' },
+      monthly_quotas: { chat: 50 },
+      limited_user_quotas: { chat: 20 },
+    });
+
+    const snapshot = await readGitHubCopilotQuota(context(), fetcher);
+
+    expect(snapshot.items).toStrictEqual([
+      { id: 'chat', displayName: { default: 'Chat', 'zh-Hans': '聊天' }, remainingRatio: 0.4 },
+    ]);
+  });
 });
