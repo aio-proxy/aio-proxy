@@ -58,7 +58,7 @@ const encryptedContentPartSchema = z.object({
 });
 
 // codex-rs FunctionCallOutputContentItem also carries encrypted_content, which
-// raw passthrough must preserve; the model path already drops it.
+// raw passthrough must preserve; the model path drops it with a warning.
 const toolOutputContentPartSchema = z.union([
   textPartSchema,
   inputImagePartSchema,

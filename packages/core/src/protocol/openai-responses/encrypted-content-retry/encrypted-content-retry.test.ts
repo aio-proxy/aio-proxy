@@ -154,6 +154,10 @@ test.each([
     'reasoning with summary',
     '{"type":"response.output_item.done","item":{"type":"reasoning","summary":[{"type":"summary_text","text":"t"}]}}',
   ],
+  [
+    'reasoning with encrypted_content',
+    '{"type":"response.output_item.done","item":{"type":"reasoning","encrypted_content":"gAAAA","summary":[]}}',
+  ],
 ])('commits output_item.done carrying %s', (_name, data) => {
   expect(classifyOpenAIResponsesRawRetry({ event: 'response.output_item.done', data })).toBe('commit');
 });

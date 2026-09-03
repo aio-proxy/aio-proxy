@@ -56,7 +56,15 @@ function itemCarriesOutput(item: unknown): boolean {
   if (!EMPTY_ITEM_TYPES.has(type)) return true;
   const content = item['content'];
   const summary = item['summary'];
-  return (Array.isArray(content) && content.length > 0) || (Array.isArray(summary) && summary.length > 0);
+  const encrypted = item['encrypted_content'];
+  // Official reasoning often lands as encrypted_content with an empty summary.
+  // That blob is generated work; holding the frame would let a later
+  // invalid_encrypted_content replay — and re-bill — it.
+  return (
+    (Array.isArray(content) && content.length > 0) ||
+    (Array.isArray(summary) && summary.length > 0) ||
+    (typeof encrypted === 'string' && encrypted.length > 0)
+  );
 }
 
 export function looksLikeBackendCiphertext(payload: string): boolean {
