@@ -135,6 +135,9 @@ test.each([
     'response.image_generation_call.partial_image',
     '{"type":"response.image_generation_call.partial_image","partial_image_index":0}',
   ],
+  ['response.web_search_call.completed', '{"type":"response.web_search_call.completed","item_id":"ws_1"}'],
+  ['response.image_generation_call.completed', '{"type":"response.image_generation_call.completed","item_id":"ig_1"}'],
+  ['response.mcp_call.completed', '{"type":"response.mcp_call.completed","item_id":"mcp_1"}'],
 ])('commits output-bearing frame %s', (event, data) => {
   expect(classifyOpenAIResponsesRawRetry({ event, data })).toBe('commit');
 });

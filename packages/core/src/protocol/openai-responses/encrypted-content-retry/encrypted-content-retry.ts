@@ -35,10 +35,13 @@ const OUTPUT_ITEM_DONE = 'response.output_item.done';
 const EMPTY_ITEM_TYPES = new Set(['message', 'reasoning']);
 // Every output-bearing Responses event ends in one of these. Matching by suffix
 // covers the whole `ResponseStreamEvent` union — text, refusal, reasoning,
-// audio, function/custom/mcp/code-interpreter arguments, and partial images —
-// instead of an allowlist that silently holds (and would then discard) output
-// from an event nobody remembered to name.
-const OUTPUT_EVENT_SUFFIXES = ['.delta', '.done', '.partial_image'] as const;
+// audio, function/custom/mcp/code-interpreter arguments, partial images, and
+// built-in tool completions (`response.web_search_call.completed`,
+// `response.mcp_call.completed`, …) — instead of an allowlist that silently
+// holds (and would then discard) output from an event nobody remembered to name.
+// Stream-level `response.completed` is in TERMINAL_EVENTS, so it is excluded
+// here and still classified as a terminal commit.
+const OUTPUT_EVENT_SUFFIXES = ['.delta', '.done', '.partial_image', '.completed'] as const;
 
 function carriesGeneratedOutput(type: string, payload: Record<string, unknown> | undefined): boolean {
   if (type === OUTPUT_ITEM_DONE) return itemCarriesOutput(payload?.['item']);
