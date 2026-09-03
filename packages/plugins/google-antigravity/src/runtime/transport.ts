@@ -6,7 +6,13 @@ import { antigravityReplayCache, type ReasoningReplayCache } from '../protocol/r
 import type { GoogleAntigravityAccountOptions } from '../schema';
 import type { AntigravityCredentialSource } from './credential';
 import { antigravityEndpoints } from './endpoints';
-import { type CcaRequestType, type CcaWireLookups, createCcaEnvelope } from './envelope';
+import {
+  type AntigravityRequestSession,
+  type CcaRequestType,
+  type CcaWireLookups,
+  createCcaEnvelope,
+  readCcaResponseId,
+} from './envelope';
 import { hasExplicitNoCapacity } from './error-response';
 import { type AntigravityEndpointCategory, type AntigravityFailureReason, AntigravityUpstreamError } from './errors';
 import { createCcaHeaders } from './headers';
@@ -18,6 +24,7 @@ const GENERATE_PATH = '/v1internal:generateContent';
 const STREAM_PATH = '/v1internal:streamGenerateContent?alt=sse';
 const COUNT_PATH = '/v1internal:countTokens';
 const lastGoodByProject = new Map<string, string>();
+const sessions = new Map<`sha256:${string}`, AntigravityRequestSession>();
 
 export type AntigravityExecuteInput = {
   readonly body: Readonly<Record<string, unknown>>;
@@ -69,7 +76,10 @@ export class AntigravityTransport implements CcaTransport {
     throwIfCallerAborted(input.signal);
     const scope = this.#replayCache.begin(input.modelId, input.context.session.key, input.context.requestId);
     const replayBody = prepareReasoningReplay(input.body, input.modelId, this.#replayCache.read(scope.key));
-    let body = JSON.stringify(createCcaEnvelope({ ...input, ...this.#lookups, body: replayBody, credential }));
+    const sessionState = nextSessionState(input.context.session.key);
+    let body = JSON.stringify(
+      createCcaEnvelope({ ...input, ...this.#lookups, body: replayBody, credential, sessionState }),
+    );
     let authRefreshUsed = false;
     let lastFailure: AntigravityUpstreamError | undefined;
     let signatureRetryUsed = false;
@@ -122,7 +132,9 @@ export class AntigravityTransport implements CcaTransport {
           this.#replayCache.clear(scope);
           await discard(response);
           signatureRetryUsed = true;
-          body = JSON.stringify(createCcaEnvelope({ ...input, ...this.#lookups, credential, body: input.body }));
+          body = JSON.stringify(
+            createCcaEnvelope({ ...input, ...this.#lookups, credential, body: input.body, sessionState }),
+          );
           continue;
         }
 
@@ -142,6 +154,7 @@ export class AntigravityTransport implements CcaTransport {
               break;
             }
             rememberLastGood(credential.projectId, endpoint);
+            rememberLastExecution(input.context.session.key, sessionState, readCcaResponseId(preflight.payload));
             return await captureReasoningReplay(preflight.response, input.modelId, scope, this.#replayCache);
           } catch (error) {
             throwIfCallerAborted(input.signal);
@@ -151,7 +164,10 @@ export class AntigravityTransport implements CcaTransport {
           }
         }
 
-        if (response.ok) rememberLastGood(credential.projectId, endpoint);
+        if (response.ok) {
+          rememberLastGood(credential.projectId, endpoint);
+          rememberLastExecution(input.context.session.key, sessionState, await readJsonResponseId(response));
+        }
         return await captureReasoningReplay(response, input.modelId, scope, this.#replayCache);
       }
     }
@@ -162,6 +178,47 @@ export class AntigravityTransport implements CcaTransport {
 
 function rememberLastGood(projectId: string, origin: string): void {
   lastGoodByProject.set(projectId, origin);
+}
+
+function nextSessionState(sessionKey: `sha256:${string}`): AntigravityRequestSession {
+  const current = sessions.get(sessionKey);
+  if (current === undefined) {
+    const created: AntigravityRequestSession = {
+      agentId: crypto.randomUUID(),
+      trajectoryId: crypto.randomUUID(),
+      stepIndex: 1,
+    };
+    sessions.set(sessionKey, created);
+    return created;
+  }
+  const next = { ...current, stepIndex: current.stepIndex + 1 };
+  sessions.set(sessionKey, next);
+  return next;
+}
+
+function rememberLastExecution(
+  sessionKey: `sha256:${string}`,
+  sessionState: AntigravityRequestSession,
+  responseId: string | undefined,
+): void {
+  const stored = sessions.get(sessionKey);
+  if (stored === undefined) return;
+  if (stored.agentId !== sessionState.agentId || stored.trajectoryId !== sessionState.trajectoryId) return;
+  if (stored.stepIndex !== sessionState.stepIndex) return;
+  if (responseId === undefined) {
+    const { lastExecutionId: _dropped, ...rest } = stored;
+    sessions.set(sessionKey, rest);
+    return;
+  }
+  sessions.set(sessionKey, { ...stored, lastExecutionId: responseId });
+}
+
+async function readJsonResponseId(response: Response): Promise<string | undefined> {
+  try {
+    return readCcaResponseId(await response.clone().json());
+  } catch {
+    return undefined;
+  }
 }
 
 function requestPath(input: AntigravityExecuteInput): string {

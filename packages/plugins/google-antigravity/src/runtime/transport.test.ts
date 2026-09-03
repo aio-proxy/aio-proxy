@@ -86,6 +86,37 @@ test('does not remember a non-2xx origin as last-good', async () => {
   ]);
 });
 
+test('reuses session agent identity and echoes last_execution_id', async () => {
+  const seen: Request[] = [];
+  const sessionKey = `sha256:${crypto.randomUUID()}` as const;
+  const transport = new AntigravityTransport({
+    credentials: credentialSource(),
+    fetch: async (input, init) => {
+      seen.push(new Request(input, init));
+      if (seen.length === 1) return Response.json({ response: { responseId: 'exec-first', candidates: [] } });
+      return Response.json({ response: { candidates: [] } });
+    },
+  });
+
+  await transport.execute(executeInput({ context: logicalContext({ sessionKey }) }));
+  await transport.execute(executeInput({ context: logicalContext({ sessionKey }) }));
+
+  const envelopes = await Promise.all(seen.map((request) => request.clone().json()));
+  const first = envelopes[0] as { requestId: string; request: { labels: Record<string, string> } };
+  const second = envelopes[1] as { requestId: string; request: { labels: Record<string, string> } };
+  const firstId = first.requestId.split('/');
+  const secondId = second.requestId.split('/');
+  expect(firstId).toHaveLength(5);
+  expect(secondId).toHaveLength(5);
+  expect(firstId[0]).toBe('agent');
+  expect(firstId[1]).toBe(secondId[1]);
+  expect(firstId[3]).toBe(secondId[3]);
+  expect(firstId[4]).toBe('1');
+  expect(secondId[4]).toBe('2');
+  expect(first.request.labels.last_execution_id).toBeUndefined();
+  expect(second.request.labels.last_execution_id).toBe('exec-first');
+});
+
 test('applies catalog wire profiles on the initial envelope and the retry envelope', async () => {
   const seen: Request[] = [];
   const transport = new AntigravityTransport({

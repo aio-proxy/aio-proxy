@@ -45,6 +45,7 @@ test('maps OpenAI reasoning through the catalog thinking binder on count', async
 
   expect(result).toEqual({ inputTokens: 9 });
   const envelope = await seen[0]?.clone().json();
+  expect(envelope.requestId).toMatch(/^agent\/[^/]+\/\d+\/[^/]+\/\d+$/u);
   expect(envelope).toMatchObject({
     request: {
       generationConfig: { thinkingConfig: { thinkingBudget: 16_384, includeThoughts: true } },
@@ -95,15 +96,17 @@ test('uses the Google codec and count endpoint for the CCA token count', async (
   expect(seen).toHaveLength(1);
   expect(new URL(seen[0]?.url ?? '').pathname).toBe('/v1internal:countTokens');
   const envelope = await seen[0]?.clone().json();
+  expect(envelope.requestId).toMatch(/^agent\/[^/]+\/\d+\/[^/]+\/\d+$/u);
+  expect(envelope.request.systemInstruction.role).toBe('user');
   expect(envelope).toMatchObject({
     model: 'claude-sonnet-4-6',
     project: 'project-1',
-    requestId: 'agent-00000000-0000-4000-8000-000000000001',
     request: {
       sessionId: wireSessionId(logicalContext().session.key),
       contents: [{ role: 'user', parts: [{ text: 'what is the weather?' }] }],
       generationConfig: { thinkingConfig: { thinkingBudget: 2048, includeThoughts: true } },
       systemInstruction: {
+        role: 'user',
         parts: [{ text: 'Use Google Search when current or external information would improve the answer.' }],
       },
       tools: expect.arrayContaining([

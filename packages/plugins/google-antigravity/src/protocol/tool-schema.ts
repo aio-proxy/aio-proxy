@@ -65,17 +65,20 @@ export function normalizeFunctionDeclarations(input: unknown): JsonObject[] {
   });
 }
 
-export function applyValidatedToolMode(request: Readonly<JsonObject>, claudeBacked: boolean): JsonObject {
-  if (!claudeBacked) return { ...request };
-  const toolConfig = objectOrEmpty(request.toolConfig);
-  const functionCallingConfig = objectOrEmpty(toolConfig.functionCallingConfig);
-  return {
-    ...request,
-    toolConfig: {
-      ...toolConfig,
-      functionCallingConfig: { ...functionCallingConfig, mode: 'VALIDATED' },
-    },
-  };
+export function applyValidatedToolMode(
+  request: Readonly<JsonObject>,
+  options: { readonly claudeBacked: boolean; readonly hasTools: boolean },
+): JsonObject {
+  if (options.claudeBacked) {
+    const toolConfig = objectOrEmpty(request.toolConfig);
+    const functionCallingConfig = objectOrEmpty(toolConfig.functionCallingConfig);
+    return {
+      ...request,
+      toolConfig: { ...toolConfig, functionCallingConfig: { ...functionCallingConfig, mode: 'VALIDATED' } },
+    };
+  }
+  if (!options.hasTools || request.toolConfig !== undefined) return { ...request };
+  return { ...request, toolConfig: { functionCallingConfig: { mode: 'VALIDATED' } } };
 }
 
 function convertRefsConstsEnumsAndHints(schema: JsonObject): JsonObject {
