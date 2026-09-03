@@ -18,6 +18,7 @@ const authoredConfig = {
   proxy: '{{env.SETTINGS_ROOT_PROXY}}',
   router: { modelContextAggregation: 'min', futureRouter: true },
   server: {
+    apiKeys: [{ key: '{{env.SETTINGS_API_KEY}}', label: 'ci' }, { key: 'sk-plain-preserved' }],
     futureServer: 'server-preserved',
     host: '{{env.SETTINGS_HOST}}',
     logging: {
@@ -47,11 +48,13 @@ async function withSettingsFixture(
   const configPath = join(directory, 'config.json');
   writeFileSync(configPath, JSON.stringify(authoredConfig, null, 2));
   const previous = {
+    SETTINGS_API_KEY: process.env['SETTINGS_API_KEY'],
     SETTINGS_HOST: process.env['SETTINGS_HOST'],
     SETTINGS_LOG_DIR: process.env['SETTINGS_LOG_DIR'],
     SETTINGS_PROXY_HOST: process.env['SETTINGS_PROXY_HOST'],
     SETTINGS_ROOT_PROXY: process.env['SETTINGS_ROOT_PROXY'],
   };
+  process.env['SETTINGS_API_KEY'] = 'sk-from-env';
   process.env['SETTINGS_HOST'] = '127.0.0.1';
   process.env['SETTINGS_LOG_DIR'] = '/tmp/settings-logs';
   process.env['SETTINGS_PROXY_HOST'] = 'replacement.proxy.example';
@@ -105,6 +108,7 @@ test('GET /settings returns only the redacted typed settings view', async () => 
 
     expect(response.status).toBe(200);
     expect(JSON.parse(text)).toEqual({
+      apiKeys: [{ key: '****', label: 'ci' }, { key: '****' }],
       hasPassword: true,
       host: '127.0.0.1',
       logging: { enabled: false, level: 'info', retentionDays: 3 },
@@ -112,7 +116,9 @@ test('GET /settings returns only the redacted typed settings view', async () => 
       proxy: '****',
       retryAfterCapMs: 30_000,
     });
-    expect(text).not.toMatch(/password-preserved|user:password|SETTINGS_|root-preserved/u);
+    expect(text).not.toMatch(
+      /password-preserved|user:password|SETTINGS_|root-preserved|sk-from-env|sk-plain-preserved/u,
+    );
   });
 });
 
@@ -292,6 +298,79 @@ test('a password below the minimum length is rejected without changing config by
 test('a password write does not require restart', async () => {
   await withSettingsFixture(async ({ routes }) => {
     const response = await put(routes, { password: 'correct horse battery' });
+
+    expect(await response.json()).toMatchObject({ ok: true, restartRequired: false });
+  });
+});
+
+test('a retained API key keeps its authored template byte-for-byte', async () => {
+  await withSettingsFixture(async ({ configPath, routes }) => {
+    const response = await put(routes, { apiKeys: [{ retain: 0, label: 'ci-renamed' }, { retain: 1 }] });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      ok: true,
+      settings: { apiKeys: [{ key: '****', label: 'ci-renamed' }, { key: '****' }] },
+    });
+    expect(onDisk(configPath).server.apiKeys).toEqual([
+      { key: '{{env.SETTINGS_API_KEY}}', label: 'ci-renamed' },
+      { key: 'sk-plain-preserved' },
+    ]);
+  });
+});
+
+test('a new API key is appended and an unlisted authored key is removed', async () => {
+  await withSettingsFixture(async ({ configPath, routes }) => {
+    const response = await put(routes, {
+      apiKeys: [
+        { retain: 0, label: 'ci' },
+        { key: 'sk-added', label: 'laptop' },
+      ],
+    });
+
+    expect(response.status).toBe(200);
+    expect(onDisk(configPath).server.apiKeys).toEqual([
+      { key: '{{env.SETTINGS_API_KEY}}', label: 'ci' },
+      { key: 'sk-added', label: 'laptop' },
+    ]);
+  });
+});
+
+test('an empty API key array removes every authored key', async () => {
+  await withSettingsFixture(async ({ configPath, routes }) => {
+    const response = await put(routes, { apiKeys: [] });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ ok: true, settings: { apiKeys: [] } });
+    expect(onDisk(configPath).server.apiKeys).toEqual([]);
+  });
+});
+
+test('an omitted API key array preserves the authored keys', async () => {
+  await withSettingsFixture(async ({ configPath, routes }) => {
+    const response = await put(routes, { retryAfterCapMs: 11_000 });
+
+    expect(response.status).toBe(200);
+    expect(onDisk(configPath).server.apiKeys).toEqual(authoredConfig.server.apiKeys);
+  });
+});
+
+test('a retain index outside the authored array and a reserved-prefix key are rejected', async () => {
+  await withSettingsFixture(async ({ configPath, routes }) => {
+    const before = readFileSync(configPath, 'utf8');
+    for (const apiKeys of [[{ retain: 5 }], [{ key: 'aio_agent_at_forged' }]]) {
+      const response = await put(routes, { apiKeys });
+
+      expect(response.status).toBe(422);
+      expect(await response.json()).toEqual({ ok: false, error: { code: 'config_rejected' } });
+      expect(readFileSync(configPath, 'utf8')).toBe(before);
+    }
+  });
+});
+
+test('an API key write does not require restart', async () => {
+  await withSettingsFixture(async ({ routes }) => {
+    const response = await put(routes, { apiKeys: [{ retain: 0 }] });
 
     expect(await response.json()).toMatchObject({ ok: true, restartRequired: false });
   });

@@ -24,6 +24,7 @@ rs.mock('../../hooks/use-reload-mutation', () => ({
 }));
 
 const settings: DashboardSettingsView = {
+  apiKeys: [{ key: '****', label: 'ci' }, { key: '****' }],
   hasPassword: true,
   host: '127.0.0.1',
   logging: { enabled: true, level: 'info', retentionDays: 3 },
@@ -199,4 +200,48 @@ test('shows restart guidance only when the server reports restartRequired', () =
   renderPage(false);
   expect(screen.getByRole('status')).toHaveTextContent(/Settings saved|设置已保存|設定已儲存/u);
   expect(screen.getByRole('status')).not.toHaveTextContent(/Restart aio-proxy|重启 aio-proxy|重新啟動 aio-proxy/u);
+});
+
+test('lists stored API keys masked and retains them by index when saving', () => {
+  renderPage();
+
+  const group = screen.getByTestId('settings-group-api-keys');
+  expect(within(group).getAllByDisplayValue('****')).toHaveLength(2);
+
+  fireEvent.change(within(group).getAllByLabelText(/Label|标签|標籤|ラベル|라벨/u)[0] as HTMLElement, {
+    target: { value: 'ci-renamed' },
+  });
+  fireEvent.click(within(group).getByRole('button', { name: /Save keys|保存密钥|儲存金鑰|キーを保存|키 저장/u }));
+
+  expect(mocks.mutate).toHaveBeenCalledTimes(1);
+  expect(mocks.mutate).toHaveBeenCalledWith({
+    apiKeys: [{ retain: 0, label: 'ci-renamed' }, { retain: 1 }],
+  });
+});
+
+test('adds a new API key and sends it in plaintext exactly once', () => {
+  renderPage();
+
+  const group = screen.getByTestId('settings-group-api-keys');
+  fireEvent.click(within(group).getByRole('button', { name: /Add key|添加密钥|新增金鑰|キーを追加|키 추가/u }));
+
+  const values = within(group).getAllByLabelText(/^Key$|^密钥$|^金鑰$|^キー$|^키$/u);
+  fireEvent.change(values[values.length - 1] as HTMLElement, { target: { value: 'sk-added' } });
+  fireEvent.click(within(group).getByRole('button', { name: /Save keys|保存密钥|儲存金鑰|キーを保存|키 저장/u }));
+
+  expect(mocks.mutate).toHaveBeenCalledTimes(1);
+  expect(mocks.mutate).toHaveBeenCalledWith({
+    apiKeys: [{ retain: 0, label: 'ci' }, { retain: 1 }, { key: 'sk-added' }],
+  });
+});
+
+test('removes a stored API key', () => {
+  renderPage();
+
+  const group = screen.getByTestId('settings-group-api-keys');
+  fireEvent.click(within(group).getByRole('button', { name: /Remove key ci|移除密钥 ci|移除金鑰 ci|キー ci|키 ci/u }));
+  fireEvent.click(within(group).getByRole('button', { name: /Save keys|保存密钥|儲存金鑰|キーを保存|키 저장/u }));
+
+  expect(mocks.mutate).toHaveBeenCalledTimes(1);
+  expect(mocks.mutate).toHaveBeenCalledWith({ apiKeys: [{ retain: 1 }] });
 });

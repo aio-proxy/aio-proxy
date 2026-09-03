@@ -1,5 +1,6 @@
 import {
   type Config,
+  type DashboardApiKeyMutation,
   type DashboardSettingsMutation,
   type DashboardSettingsMutationInput,
   DashboardSettingsMutationSchema,
@@ -32,6 +33,10 @@ const settingsValidator = validator('json', (raw, context) => {
 function settingsView(config: Config): DashboardSettingsView {
   const logging = config.server.logging ?? defaultLogging;
   return {
+    apiKeys: config.server.apiKeys.map((entry) => ({
+      key: '****' as const,
+      ...(entry.label === undefined ? {} : { label: entry.label }),
+    })),
     hasPassword: config.server.password !== undefined,
     host: config.server.host,
     logging: {
@@ -49,6 +54,22 @@ function section(value: unknown, path: string): Record<string, unknown> {
   if (value === undefined) return {};
   if (!isPlainObject(value)) throw new TypeError(`${path} must be an object`);
   return value;
+}
+
+function resolveApiKeys(
+  authored: unknown,
+  submitted: readonly DashboardApiKeyMutation[],
+): readonly Record<string, unknown>[] {
+  const previous = Array.isArray(authored) ? authored : [];
+  return submitted.map((entry) => {
+    const label = entry.label === undefined ? {} : { label: entry.label };
+    if (!('retain' in entry)) return { key: entry.key, ...label };
+    const kept = previous[entry.retain];
+    if (!isPlainObject(kept) || typeof kept['key'] !== 'string') {
+      throw new TypeError(`server.apiKeys[${entry.retain}] cannot be retained`);
+    }
+    return { ...kept, key: kept['key'], ...label };
+  });
 }
 
 async function applySettingsMutation(
@@ -113,6 +134,10 @@ async function applySettingsMutation(
     } else if (mutation.password !== undefined) {
       next = { ...next, server: { ...server, password: await Bun.password.hash(mutation.password) } };
     }
+  }
+  if (mutation.apiKeys !== undefined) {
+    const server = section(next['server'], 'server');
+    next = { ...next, server: { ...server, apiKeys: resolveApiKeys(server['apiKeys'], mutation.apiKeys) } };
   }
   return { next, restartRequired };
 }

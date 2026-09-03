@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { hasReservedAgentTokenPrefix } from '../../agent-integration';
 import { ServerConfigSchema, ServerLoggingSchema, ServerRetrySchema } from '../../config/index';
 import { DashboardLocalizedTextSchema } from '../../dashboard-localized-text';
 import { DashboardOAuthFormFieldSchema } from '../../dashboard-oauth';
@@ -90,6 +91,26 @@ const DashboardPasswordSchema = z
   .min(8)
   .describe('New dashboard password in plaintext; the server stores only an Argon2id hash.');
 
+const DashboardApiKeyLabelSchema = z.string().min(1);
+
+const DashboardApiKeySecretSchema = z
+  .string()
+  .min(1)
+  .refine(
+    (value) => !hasReservedAgentTokenPrefix(value),
+    'Static API keys cannot use reserved aio_agent_at_ or aio_agent_rt_ prefixes',
+  );
+
+export const DashboardApiKeyViewSchema = z.strictObject({
+  key: z.literal('****'),
+  label: DashboardApiKeyLabelSchema.optional(),
+});
+
+export const DashboardApiKeyMutationSchema = z.union([
+  z.strictObject({ retain: z.number().int().min(0), label: DashboardApiKeyLabelSchema.optional() }),
+  z.strictObject({ key: DashboardApiKeySecretSchema, label: DashboardApiKeyLabelSchema.optional() }),
+]);
+
 export const DashboardSettingsViewSchema = z.strictObject({
   host: required(ServerConfigSchema.shape.host),
   port: required(ServerConfigSchema.shape.port),
@@ -97,6 +118,7 @@ export const DashboardSettingsViewSchema = z.strictObject({
   logging: DashboardSettingsLoggingSchema,
   retryAfterCapMs: required(ServerRetrySchema.shape.retryAfterCapMs),
   hasPassword: z.boolean(),
+  apiKeys: z.array(DashboardApiKeyViewSchema),
 });
 
 export const DashboardSettingsMutationSchema = z.strictObject({
@@ -104,6 +126,7 @@ export const DashboardSettingsMutationSchema = z.strictObject({
   port: required(ServerConfigSchema.shape.port).optional(),
   proxy: z.union([DashboardHttpProxyUrlSchema, DashboardHttpProxyTemplateSchema, z.null()]).optional(),
   password: z.union([DashboardPasswordSchema, z.null()]).optional(),
+  apiKeys: z.array(DashboardApiKeyMutationSchema).optional(),
   logging: z
     .strictObject({
       enabled: required(ServerLoggingSchema.shape.enabled).optional(),
@@ -167,6 +190,8 @@ export const DashboardPluginOptionsMutationSchema = z.strictObject({
 });
 
 export type DashboardSettingsView = z.output<typeof DashboardSettingsViewSchema>;
+export type DashboardApiKeyView = z.output<typeof DashboardApiKeyViewSchema>;
+export type DashboardApiKeyMutation = z.output<typeof DashboardApiKeyMutationSchema>;
 export type DashboardSettingsMutationInput = z.input<typeof DashboardSettingsMutationSchema>;
 export type DashboardSettingsMutation = z.output<typeof DashboardSettingsMutationSchema>;
 export type DashboardSettingsMutationResponse = z.output<typeof DashboardSettingsMutationResponseSchema>;

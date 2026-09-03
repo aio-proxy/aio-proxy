@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 
 import { useSettingsMutation } from '../../hooks/use-settings-mutation';
 import { SettingsAccessConfirmationDialog } from './settings-access-confirmation-dialog';
+import { SettingsApiKeysGroup } from './settings-api-keys-group';
 import type { PendingAccessChange, SettingsFormProps } from './settings-form-contract';
 import { SettingsLogsGroup } from './settings-logs-group';
 import { SettingsMutationStatus } from './settings-mutation-status';
@@ -54,6 +55,7 @@ export const SettingsForm: React.FC<SettingsFormProps> = ({ settings }) => {
         onAccessChange={(field, input) => setPendingAccess({ field, input })}
         onSave={save}
       />
+      <SettingsApiKeysGroup disabled={mutation.isPending} settings={settings} onSave={save} />
       <SettingsLogsGroup disabled={mutation.isPending} form={form} settings={settings} onSave={save} />
       <SettingsMutationStatus data={mutation.data} isError={mutation.isError} />
       <SettingsAccessConfirmationDialog
