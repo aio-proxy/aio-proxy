@@ -51,13 +51,30 @@ rawRetry?: Readonly<{
 }>;
 ```
 
-`openAIResponsesAdapter` supplies it. `classify` holds `response.created` / `response.in_progress`, returns `retry` for an `error` frame whose `error.code` is `invalid_encrypted_content`, and returns `commit` for everything else. `rewrite` returns `undefined` when `context.operation === 'compact'`, so the compact endpoint never replays.
+`openAIResponsesAdapter` supplies it. `rewrite` returns `undefined` when `context.operation === 'compact'`, so the compact endpoint never replays.
+
+### Classification is hold-by-default
+
+`classify` must **not** treat every unfamiliar frame as `commit`. Pre-content metadata is normal: this repository's own Responses egress emits `response.output_item.added` immediately before each `response.output_text.delta` / `response.reasoning_summary_text.delta`, and `packages/server/src/passthrough-usage/content.ts` already classifies it as non-content. Committing on it would expose a metadata frame and make the very next `invalid_encrypted_content` impossible to hide, which is exactly the window this feature exists for.
+
+`classifyOpenAIResponsesRawRetry` therefore commits only on a decisive frame:
+
+| Frame | Verdict |
+|---|---|
+| `error` whose `error.code` is `invalid_encrypted_content` | `retry` |
+| any other `error`, `response.failed`, `response.incomplete`, `response.cancelled` | `commit` |
+| `response.completed`, `response.done` | `commit` |
+| `response.output_text.delta`, `response.reasoning_text.delta`, `response.reasoning_summary_text.delta` | `commit` |
+| `response.function_call_arguments.delta`, `response.custom_tool_call_input.delta` | `commit` |
+| anything else, including `response.created`, `response.in_progress`, `response.output_item.added`, `response.content_part.added`, unparseable data | `hold` |
+
+Holding an unknown frame is bounded by the 1 MiB replay cap, the preflight idle timer, and stream EOF, all of which commit. So an upstream that only ever emits frames this table does not name still reaches the client.
 
 ### Retry preconditions
 
 - the attempt used raw passthrough
 - the adapter exposes `rawRetry`
-- the first upstream response is HTTP 200 `text/event-stream`, or HTTP 400 JSON
+- the first upstream response is HTTP 200 `text/event-stream`, or HTTP 400 with a JSON content type
 - `classify` returned `retry` before any frame classified `commit`
 - `rewrite` returned a Request
 - this candidate has not already been replayed
@@ -79,14 +96,16 @@ A `retry` verdict whose `rewrite` yields `undefined` commits the original error 
 
 ### Preflight liveness
 
-The preflight read happens before `usageCapture.passthrough` installs the existing stream idle timer, so preflight carries its own guards. Both cancel the upstream reader and throw, which the attempt loop's existing exception path already maps to a provider failure (with next-candidate fallback) or, for an inbound abort, to `cancelled`.
+The preflight read happens before `usageCapture.passthrough` installs the existing stream idle timer, so preflight carries its own guards. Both cancel the upstream reader and reject, which the attempt loop's existing exception path already maps to a provider failure (with next-candidate fallback) or, for an inbound abort, to `cancelled`.
 
-- Idle: re-arm `createIdleTimer(STREAM_IDLE_TIMEOUT_MS)` on every chunk. A stream that emits `response.created` and then stalls must not hold the request, provider stream, and attempt span open indefinitely.
-- Inbound abort: honor `rawRequest.signal`.
+- Idle: re-arm `createIdleTimer(STREAM_IDLE_TIMEOUT_MS)` on every chunk. A stream that emits a hold frame and then stalls must not hold the request, provider stream, and attempt span open.
+- Inbound abort: register an `abort` listener on `rawRequest.signal` that cancels the reader **while a read is pending**. Polling `signal.aborted` between reads is not sufficient: once `reader.read()` is awaiting, a client disconnect would otherwise wait for upstream data or the 300s idle timer.
 
 ### HTTP 400
 
-If the first response is HTTP 400 JSON, `classify({ data: bodyText })` decides. On `retry` plus a rewrite, discard that body and invoke the same raw transport once with the rewritten request. This is not next-candidate fallback.
+Interception is limited to a JSON content type, and the body is read with the same bounds the passthrough JSON capture uses: a 1 MiB cap (`MAX_PASSTHROUGH_JSON_BYTES`), the preflight idle timer, and the inbound abort listener. A non-JSON 400, an oversized body, or a body that never reaches EOF is streamed to the client unchanged, exactly as today.
+
+On `classify({ data: bodyText }) === 'retry'` plus a rewrite, discard that body and invoke the same raw transport once with the rewritten request. This is not next-candidate fallback.
 
 ### Replay request
 
@@ -131,11 +150,14 @@ The retry is the same candidate attempt. Do not open a second attempt span. Do n
 ## Verification
 
 - Spawn plaintext `encrypted_content` + 200 SSE `invalid_encrypted_content` after `response.created` must invoke raw twice, return only the second stream, and never expose the error frame.
+- The same error after `response.output_item.added` but before any delta must still retry.
 - The same error after an `output_text.delta` must not retry.
 - Ciphertext-shaped `encrypted_content` parts must not be converted to `input_text`.
 - Reasoning-only blobs retry by deleting `encrypted_content`, not by converting them to text.
-- A stream that holds and then stalls must fail on the preflight idle timer instead of hanging.
+- A stream that holds and then stalls must reject on the preflight idle timer instead of hanging.
+- A client abort **after** a hold frame was consumed, while the next read is pending, must reject promptly rather than waiting for the idle timer.
 - A client abort during the replay must cancel the replay.
 - The compact route must not replay.
+- A non-JSON `400` and an oversized JSON `400` must stream to the client without interception.
 - An adapter without `rawRetry` must not read the body before committing.
 - Ordinary raw `400` that is not this code, and raw `422`/`429`/`5xx` fallback, stay unchanged.
