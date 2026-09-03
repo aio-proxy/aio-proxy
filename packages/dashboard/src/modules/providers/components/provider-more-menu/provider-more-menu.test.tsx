@@ -23,7 +23,9 @@ test('offers a credential refresh only when the plugin declares the capability',
   expect(screen.queryByTestId('provider-refresh-credential')).toBeNull();
 
   rerender(<ProviderMoreMenu provider={providerStub({ canRefreshCredential: true })} onDelete={rs.fn()} />);
-  expect(screen.getByTestId('provider-refresh-credential')).not.toBeNull();
+  // Queried by accessible name, not testid: the visible label is the accessible name, so this also
+  // catches a missing or broken `dashboard.providers.actions.refresh_credential` message key.
+  expect(screen.getByRole('menuitem', { name: /refresh credential/i })).not.toBeNull();
 });
 
 test('a credential refresh targets the provider the menu belongs to', () => {
