@@ -1114,7 +1114,8 @@
         "copy_provider_id": "プロバイダー ID をコピー",
         "enable_provider": "プロバイダー {id} を有効化",
         "disable_provider": "プロバイダー {id} を無効化",
-        "delete_provider": "プロバイダー {id} を削除"
+        "delete_provider": "プロバイダー {id} を削除",
+        "refresh_credential": "認証情報を更新"
       },
       "toast": {
         "created": "プロバイダーを作成しました",
@@ -1124,7 +1125,9 @@
         "update_failed": "プロバイダーの更新に失敗しました",
         "delete_failed": "プロバイダーの削除に失敗しました",
         "plugin_aliases_synced": "プラグインのエイリアスを同期しました",
-        "plugin_aliases_synced_description": "同名のエイリアスを更新し、その他のカスタムエイリアスは保持しました。"
+        "plugin_aliases_synced_description": "同名のエイリアスを更新し、その他のカスタムエイリアスは保持しました。",
+        "credential_refreshed": "認証情報を更新しました",
+        "credential_refresh_failed": "認証情報の更新に失敗しました"
       },
       "delete_dialog": {
         "title": "プロバイダーを削除",
