@@ -9,6 +9,8 @@ const QUOTA_PATH = '/v1internal:retrieveUserQuotaSummary';
 const DAILY = `https://daily-cloudcode-pa.googleapis.com${QUOTA_PATH}`;
 const SANDBOX = `https://daily-cloudcode-pa.sandbox.googleapis.com${QUOTA_PATH}`;
 const PROD = `https://cloudcode-pa.googleapis.com${QUOTA_PATH}`;
+const PLAN_PATH = '/v1internal:loadCodeAssist';
+const DAILY_PLAN = `https://daily-cloudcode-pa.googleapis.com${PLAN_PATH}`;
 
 function context(
   options: GoogleAntigravityAccountOptions = {},
@@ -49,7 +51,7 @@ const summaryPayload = {
   ],
 };
 
-// Only the quota endpoint answers; loadCodeAssist is Task 3's concern and 404s here.
+// Only the routes a test names answer; everything else 404s.
 function quotaResponder(routes: Readonly<Record<string, unknown>>, seen: string[] = []): RuntimeFetch {
   return (async (input: string | URL | Request, init?: RequestInit) => {
     const url = String(input instanceof Request ? input.url : input);
@@ -61,6 +63,11 @@ function quotaResponder(routes: Readonly<Record<string, unknown>>, seen: string[
       expect(headers.get('Content-Type')).toBe('application/json');
       expect(headers.get('User-Agent')).toBe('antigravity/cli/1.0.13 (aidev_client; os_type=darwin; arch=arm64)');
       expect(init?.body).toBe(JSON.stringify({ project: 'project-1' }));
+    }
+    if (url.endsWith(PLAN_PATH)) {
+      expect(init?.method).toBe('POST');
+      expect(headers.get('Authorization')).toBe('Bearer access-token');
+      expect(init?.body).toBe(JSON.stringify({ metadata: { ideType: 'ANTIGRAVITY' } }));
     }
     const route = routes[url];
     if (route === undefined) return new Response('missing', { status: 404 });
@@ -174,4 +181,42 @@ test('produces a snapshot the core quota validator accepts', async () => {
     expect(item.remainingRatio).toBeLessThanOrEqual(1);
     if (item.resetsAt !== undefined) expect(Number.isSafeInteger(item.resetsAt)).toBe(true);
   }
+});
+
+test('prefers the paid tier name for the plan label', async () => {
+  const snapshot = await readGoogleAntigravityQuota(
+    context(),
+    quotaResponder({
+      [DAILY]: summaryPayload,
+      [DAILY_PLAN]: {
+        currentTier: { id: 'free-tier', name: 'Free' },
+        paidTier: { id: 'g1-ultra-tier', name: 'Antigravity Ultra' },
+      },
+    }),
+  );
+  expect(snapshot.plan).toBe('Antigravity Ultra');
+});
+
+test('falls back to the current tier and to the built-in tier label', async () => {
+  const snapshot = await readGoogleAntigravityQuota(
+    context(),
+    quotaResponder({ [DAILY]: summaryPayload, [DAILY_PLAN]: { current_tier: { id: 'free-tier' } } }),
+  );
+  expect(snapshot.plan).toEqual({ default: 'Free', 'zh-Hans': '免费版' });
+});
+
+// The plan read is enrichment. A dead loadCodeAssist must never blank the quota ring.
+test('keeps the quota items when the plan read fails', async () => {
+  const snapshot = await readGoogleAntigravityQuota(context(), quotaResponder({ [DAILY]: summaryPayload }));
+  expect(snapshot.plan).toBeUndefined();
+  expect(snapshot.items).toHaveLength(4);
+});
+
+test('sends the ideType metadata body to the first quota base only', async () => {
+  const seen: string[] = [];
+  await readGoogleAntigravityQuota(
+    context(),
+    quotaResponder({ [SANDBOX]: summaryPayload, [DAILY_PLAN]: { paidTier: { id: 'g1-pro-tier' } } }, seen),
+  );
+  expect(seen.filter((url) => url.endsWith(PLAN_PATH))).toEqual([DAILY_PLAN]);
 });
