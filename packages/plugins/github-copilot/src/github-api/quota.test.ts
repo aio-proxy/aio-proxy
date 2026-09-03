@@ -65,6 +65,25 @@ describe('GitHub Copilot quota', () => {
     });
   });
 
+  // Per-entry parsing is lossy on purpose: an entry nothing can be derived from is dropped, and one
+  // unusable sibling must never discard the windows that did parse. Every emitted item carries a
+  // `remainingRatio` — a ratio-less item survives snapshot validation but renders no meter at all.
+  test('drops entries no ratio can be derived from and keeps their siblings', async () => {
+    const { fetcher } = usageFetcher({
+      quota_snapshots: {
+        good: { percent_remaining: 40 },
+        no_percent: { entitlement: 10 },
+        broken: 'nope',
+      },
+    });
+
+    const snapshot = await readGitHubCopilotQuota(context(), fetcher);
+
+    // `toStrictEqual`, not `toEqual`: `toEqual` treats a trailing `undefined` element as absent, so a
+    // `flatMap` weakened to `map` would leave this green while emitting holes the validator throws on.
+    expect(snapshot.items).toStrictEqual([{ id: 'good', displayName: 'Good', remainingRatio: 0.4 }]);
+  });
+
   test('reads copilot_internal/user once, as control traffic, with the GitHub OAuth token', async () => {
     const { fetcher, calls } = usageFetcher({ copilot_plan: 'free' });
 
