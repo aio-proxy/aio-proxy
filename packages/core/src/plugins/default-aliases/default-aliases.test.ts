@@ -55,6 +55,23 @@ test('pluginDefaultAliases treats a throwing hook or missing hook as empty', () 
   ).toBeUndefined();
 });
 
+test('pluginDefaultAliases normalizes names and drops reserved or blank keys', () => {
+  const adapter = {
+    catalog: {
+      defaultAliases: () => ({
+        ' mini': { model: 'wire-low' },
+        mini: { model: 'wire-high' },
+        ' ': { model: 'wire-low' },
+        '*': { model: 'wire-low' },
+      }),
+    },
+  } as OAuthAdapter;
+
+  expect(pluginDefaultAliases(adapter, catalog())).toEqual({
+    mini: { model: 'wire-low', preserve: false },
+  });
+});
+
 test('pluginDefaultAliases ignores a non-object hook return', () => {
   expect(
     pluginDefaultAliases({ catalog: { defaultAliases: () => ['logical'] } } as unknown as OAuthAdapter, catalog()),

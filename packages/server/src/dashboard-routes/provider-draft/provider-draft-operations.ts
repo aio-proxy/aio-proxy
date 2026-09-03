@@ -162,6 +162,16 @@ export async function testProviderDraft(
 // one-shot materialization would drive plugin auth (and can rewrite stored
 // credentials) from a read-only test button. Unsaved draft transforms are
 // therefore NOT exercised here; the editor's rail copy says so.
+function oauthDiscoveredCatalogIds(
+  state: ServerState,
+  providerId: string,
+  runtime: RuntimeProviderInstance,
+): readonly string[] {
+  const stored = state.oauthProviderEditView(providerId)?.models;
+  if (stored !== undefined && stored.length > 0) return stored;
+  return Object.keys(runtime.upstreamMetadata ?? {});
+}
+
 async function testOAuthProvider(
   state: ServerState,
   provider: Extract<Provider, { kind: ProviderKind.OAuth }>,
@@ -172,7 +182,10 @@ async function testOAuthProvider(
     const runtime = lease.snapshot.providers.find((candidate) => candidate.id === provider.id);
     const transport = runtime?.model;
     if (runtime === undefined || transport === undefined) return failure('test_request_failed');
-    const catalogIds = Object.keys(runtime.upstreamMetadata ?? {});
+    // Stored catalog, not `runtime.upstreamMetadata`: materialization already
+    // subtracts the *saved* denylist from metadata, so a draft that re-enables a
+    // hidden id would otherwise look undiscovered and return model_not_enabled.
+    const catalogIds = oauthDiscoveredCatalogIds(state, provider.id, runtime);
     // Gate on the DRAFT denylist over the discovered catalog, so an unsaved hide
     // is honored and an empty excludedModels list exposes everything.
     if (!new Set(oauthExposedModels(catalogIds, provider.excludedModels)).has(modelId)) {

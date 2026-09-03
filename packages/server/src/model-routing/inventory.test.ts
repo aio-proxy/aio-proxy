@@ -313,6 +313,27 @@ describe('model routing inventory', () => {
     expect(modelIds).not.toContain('oauth-alias');
   });
 
+  test('includes inherited plugin default aliases on the routing board', async () => {
+    const rawRecord = structuredClone(authoredRecord) as Record<string, unknown>;
+    const config = parseRuntimeConfig(rawRecord);
+    const response = await assembleRoutingInventory({
+      rawRecord,
+      config,
+      summaries: summariesFrom(config, {
+        'unavailable-oauth': unavailable,
+        'broken-oauth': unavailable,
+      }),
+      repository: catalogRepository(),
+      writable: true,
+      pluginDefaults: (provider) =>
+        provider.id === 'disabled-oauth' ? { mini: { model: 'oauth-kept', preserve: false } } : undefined,
+    });
+
+    const modelIds = response.models.map((entry) => entry.modelId);
+    expect(modelIds).toContain('mini');
+    expect(provider(response, 'mini', 'disabled-oauth')).toMatchObject({ id: 'disabled-oauth', kind: 'oauth' });
+  });
+
   test('keeps remaining models when one OAuth catalog is unreadable', async () => {
     const rawRecord = structuredClone(authoredRecord) as Record<string, unknown>;
     const providers = rawRecord['providers'] as Record<string, unknown>;
