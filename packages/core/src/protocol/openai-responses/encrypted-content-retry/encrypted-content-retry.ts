@@ -72,12 +72,30 @@ export function classifyOpenAIResponsesRawRetry(frame: RawRetryFrame): RawRetryV
   const payload = parseJson(frame.data);
   const type = frame.event ?? (typeof payload?.['type'] === 'string' ? payload['type'] : undefined);
   if (type !== undefined && carriesGeneratedOutput(type, payload)) return 'commit';
-  const error = isPlainObject(payload?.['error']) ? payload['error'] : undefined;
-  if (type === 'error' || error !== undefined) {
-    return error?.['code'] === 'invalid_encrypted_content' ? 'retry' : 'commit';
+  if (type === 'error' || type === 'response.failed' || isPlainObject(payload?.['error'])) {
+    return responsesErrorCode(payload) === 'invalid_encrypted_content' ? 'retry' : 'commit';
   }
   if (type !== undefined && TERMINAL_EVENTS.has(type)) return 'commit';
   return 'hold';
+}
+
+// Official Responses `event: error` puts `code` on the payload root. ChatGPT
+// raw traffic then goes through createOpenAIStreamFetch, which rewrites that
+// frame to `response.failed` and stores the original object at
+// `response.error` — sometimes wrapping a nested `{ error: { code } }`.
+function responsesErrorCode(payload: Record<string, unknown> | undefined): string | undefined {
+  if (payload === undefined) return undefined;
+  return errorCodeFrom(payload) ?? errorCodeFrom(isPlainObject(payload['response']) ? payload['response'] : undefined);
+}
+
+function errorCodeFrom(value: Record<string, unknown> | undefined): string | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value['code'] === 'string') return value['code'];
+  const nested = value['error'];
+  if (!isPlainObject(nested)) return undefined;
+  if (typeof nested['code'] === 'string') return nested['code'];
+  const inner = nested['error'];
+  return isPlainObject(inner) && typeof inner['code'] === 'string' ? inner['code'] : undefined;
 }
 
 export function rewriteOpenAIResponsesEncryptedContent(bodyText: string): string | undefined {

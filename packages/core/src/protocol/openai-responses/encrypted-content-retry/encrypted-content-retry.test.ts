@@ -29,6 +29,69 @@ test('retries only invalid_encrypted_content', () => {
   ).toBe('commit');
 });
 
+// Official Responses / ChatGPT `event: error` puts `code` on the payload root.
+// createOpenAIStreamFetch then rewrites that frame to response.failed with the
+// code at response.error.code (see sse-terminal.recognition.test.ts).
+test('retries a top-level Responses error code', () => {
+  expect(
+    classifyOpenAIResponsesRawRetry({
+      event: 'error',
+      data: JSON.stringify({
+        type: 'error',
+        code: 'invalid_encrypted_content',
+        message: 'Encrypted function output content could not be decrypted or decoded.',
+      }),
+    }),
+  ).toBe('retry');
+  expect(
+    classifyOpenAIResponsesRawRetry({
+      event: 'error',
+      data: JSON.stringify({ type: 'error', code: 'context_too_large', message: 'too big' }),
+    }),
+  ).toBe('commit');
+});
+
+test('retries a normalized response.failed envelope', () => {
+  expect(
+    classifyOpenAIResponsesRawRetry({
+      event: 'response.failed',
+      data: JSON.stringify({
+        type: 'response.failed',
+        response: {
+          id: 'resp_1',
+          status: 'failed',
+          error: { type: 'error', code: 'invalid_encrypted_content', message: 'x' },
+        },
+      }),
+    }),
+  ).toBe('retry');
+  expect(
+    classifyOpenAIResponsesRawRetry({
+      event: 'response.failed',
+      data: JSON.stringify({
+        type: 'response.failed',
+        response: {
+          id: 'resp_1',
+          status: 'failed',
+          error: {
+            type: 'error',
+            error: { type: 'invalid_request_error', code: 'invalid_encrypted_content', message: 'x' },
+          },
+        },
+      }),
+    }),
+  ).toBe('retry');
+  expect(
+    classifyOpenAIResponsesRawRetry({
+      event: 'response.failed',
+      data: JSON.stringify({
+        type: 'response.failed',
+        response: { id: 'resp_1', status: 'failed', error: { type: 'error', code: 'context_too_large' } },
+      }),
+    }),
+  ).toBe('commit');
+});
+
 // The repo's own Responses egress sends response.output_item.added immediately
 // before each delta, so committing on it would forfeit the retry window. The
 // *.added / *.done container frames announce or close an item without carrying
