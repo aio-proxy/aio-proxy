@@ -212,6 +212,16 @@ test('keeps the quota items when the plan read fails', async () => {
   expect(snapshot.items).toHaveLength(4);
 });
 
+// A tier id naming a prototype member must not read the inherited value: a function or object
+// here trips the core validator, which rejects the whole snapshot and blanks the quota ring.
+test('treats a prototype-named tier id as a plain label', async () => {
+  const snapshot = await readGoogleAntigravityQuota(
+    context(),
+    quotaResponder({ [DAILY]: summaryPayload, [DAILY_PLAN]: { paidTier: { id: '__proto__' } } }),
+  );
+  expect(snapshot.plan).toBe('__proto__');
+});
+
 test('sends the ideType metadata body to the first quota base only', async () => {
   const seen: string[] = [];
   await readGoogleAntigravityQuota(

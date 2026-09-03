@@ -20,12 +20,14 @@ const PLAN_BODY = JSON.stringify({ metadata: { ideType: 'ANTIGRAVITY' } });
 // The tier read is enrichment, so a slow endpoint must not hold up the quota read.
 const PLAN_TIMEOUT_MS = 4_000;
 
-const PLAN_BY_TIER_ID: Readonly<Record<string, LocalizedText>> = {
-  'free-tier': { default: 'Free', 'zh-Hans': '免费版' },
-  'g1-pro-tier': { default: 'Pro', 'zh-Hans': '专业版' },
-  'g1-ultra-tier': { default: 'Ultra', 'zh-Hans': '旗舰版' },
-  'g1-ultra-lite-tier': { default: 'Ultra Lite', 'zh-Hans': '轻量旗舰版' },
-};
+// A Map, not an object literal: the tier id is unvalidated upstream text, and an object lookup
+// would resolve `__proto__` or `toString` to an inherited value that blanks the whole snapshot.
+const PLAN_BY_TIER_ID: ReadonlyMap<string, LocalizedText> = new Map([
+  ['free-tier', { default: 'Free', 'zh-Hans': '免费版' }],
+  ['g1-pro-tier', { default: 'Pro', 'zh-Hans': '专业版' }],
+  ['g1-ultra-tier', { default: 'Ultra', 'zh-Hans': '旗舰版' }],
+  ['g1-ultra-lite-tier', { default: 'Ultra Lite', 'zh-Hans': '轻量旗舰版' }],
+]);
 
 const FIVE_HOUR_WINDOWS = new Set(['5h', 'five-hour', 'five_hour']);
 const WEEKLY_WINDOWS = new Set(['weekly', 'week']);
@@ -103,7 +105,9 @@ async function readPlan(
     if (effective === undefined) return undefined;
     // Google's own `name` is what the user sees in Antigravity, and it stays right for tier ids we
     // have not mapped, so it wins over the built-in label.
-    return effective.name ?? (effective.id === undefined ? undefined : (PLAN_BY_TIER_ID[effective.id] ?? effective.id));
+    return (
+      effective.name ?? (effective.id === undefined ? undefined : (PLAN_BY_TIER_ID.get(effective.id) ?? effective.id))
+    );
   } catch {
     return undefined;
   }
