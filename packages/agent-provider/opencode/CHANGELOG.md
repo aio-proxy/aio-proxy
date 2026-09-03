@@ -1,5 +1,13 @@
 # @aio-proxy/opencode-provider
 
+## 0.13.0
+
+### Patch Changes
+
+- Updated dependencies [[`b1f5bff`](https://github.com/aio-proxy/aio-proxy/commit/b1f5bff2f2e92abfd54b90fb32b29b4b145e8c1d)]:
+  - @aio-proxy/types@0.13.0
+  - @aio-proxy/agent-provider-runtime@0.13.0
+
 ## 0.12.3
 
 ### Patch Changes
