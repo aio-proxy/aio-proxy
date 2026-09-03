@@ -60,6 +60,36 @@ test('a snapshot rebuild failure does not report a committed rotation as a refre
   expect(fixture.repository.readAccount(PROVIDER_ID)?.credential).toEqual({ token: 'rotated' });
 });
 
+test('two concurrent refreshes of one Provider perform a single upstream exchange', async () => {
+  // The serializer is `CredentialPort`'s single-flight (WeakMap repository -> Provider ID -> mode),
+  // backed by the SQLite refresh lease and the revision compare-and-swap. Nothing in this service
+  // queues, so this pins the guarantee at the layer that actually provides it.
+  let exchangeCalls = 0;
+  let release = () => {};
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const fixture = createQuotaFixture({
+    refreshCredential: async () => {
+      exchangeCalls++;
+      await gate;
+      return { value: { token: 'rotated' } };
+    },
+  });
+  const refresher = createOAuthCredentialRefresher(fixture.dependencies);
+
+  const both = Promise.all([
+    refresher.refresh(PROVIDER_ID, quotaSignal()),
+    refresher.refresh(PROVIDER_ID, quotaSignal()),
+  ]);
+  await Bun.sleep(50);
+  release();
+  await both;
+
+  expect(exchangeCalls).toBe(1);
+  expect(fixture.repository.readAccount(PROVIDER_ID)?.revision).toBe(2);
+});
+
 test('a plugin without the refresh capability is a permanent failure', async () => {
   const fixture = createQuotaFixture();
   const refresher = createOAuthCredentialRefresher(fixture.dependencies);

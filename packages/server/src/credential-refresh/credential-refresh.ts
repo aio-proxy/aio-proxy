@@ -1,7 +1,6 @@
 import { redactPluginError } from '@aio-proxy/core';
 import type { OAuthAdapter } from '@aio-proxy/plugin-sdk';
 
-import { createKeyedFifoQueue } from '../fifo-queue';
 import {
   type OAuthAccountContextDependencies,
   type PreparedOAuthAccountContext,
@@ -45,43 +44,41 @@ async function exchange(
 }
 
 /**
- * Serializes manual refreshes per Provider. `CredentialPort.refresh` already dedupes concurrent
- * callers, but a queued second request would race the first one's revision and come back
- * `superseded`; queueing here means each click observes the credential the previous one wrote.
+ * `CredentialPort.refresh` is already the serializer: it single-flights concurrent callers per
+ * repository/Provider ID/mode, behind the SQLite refresh lease and a revision compare-and-swap. A
+ * queue here would defeat that — the second click would run *after* the first released its flight
+ * and perform a redundant upstream exchange.
  */
 export function createOAuthCredentialRefresher(
   dependencies: OAuthAccountContextDependencies,
 ): OAuthCredentialRefreshOperations {
-  const execute = createKeyedFifoQueue();
   return {
     refresh: (providerId, signal) =>
-      execute(providerId, () =>
-        withOAuthAccountContext(
-          dependencies,
-          { providerId, signal, select: (adapter) => adapter.refreshCredential },
-          async (prepared, refreshCredential) => {
+      withOAuthAccountContext(
+        dependencies,
+        { providerId, signal, select: (adapter) => adapter.refreshCredential },
+        async (prepared, refreshCredential) => {
+          try {
+            await exchange(dependencies, prepared, refreshCredential);
+          } catch (error) {
+            // Cancellation is the caller's, not the plugin's: surface the abort reason unlogged
+            // the way `signal.throwIfAborted()` would have.
+            if (prepared.accountContext.signal.aborted) throw prepared.accountContext.signal.reason;
             try {
-              await exchange(dependencies, prepared, refreshCredential);
-            } catch (error) {
-              // Cancellation is the caller's, not the plugin's: surface the abort reason unlogged
-              // the way `signal.throwIfAborted()` would have.
-              if (prepared.accountContext.signal.aborted) throw prepared.accountContext.signal.reason;
-              try {
-                dependencies.logger({
-                  event: 'plugin.credential.refresh.manual.failed',
-                  code: 'CREDENTIAL_REFRESH_FAILED',
-                  context: {
-                    plugin: prepared.plugin,
-                    capability: prepared.capability,
-                    providerId: prepared.providerId,
-                  },
-                  error: redactPluginError(error, { secretValues: [...prepared.secretValues] }),
-                });
-              } catch {}
-              throw new OAuthCredentialRefreshError();
-            }
-          },
-        ),
+              dependencies.logger({
+                event: 'plugin.credential.refresh.manual.failed',
+                code: 'CREDENTIAL_REFRESH_FAILED',
+                context: {
+                  plugin: prepared.plugin,
+                  capability: prepared.capability,
+                  providerId: prepared.providerId,
+                },
+                error: redactPluginError(error, { secretValues: [...prepared.secretValues] }),
+              });
+            } catch {}
+            throw new OAuthCredentialRefreshError();
+          }
+        },
       ),
   };
 }
