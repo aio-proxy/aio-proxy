@@ -164,10 +164,10 @@ describe('ModelsSection', () => {
     expect(screen.getByTestId('models-rows').firstElementChild).toHaveAttribute('data-testid', 'model-row-model-z');
   });
 
-  test('an oauth provider with an empty whitelist counts every discovered row as enabled', () => {
+  test('an oauth provider with an empty denylist counts every discovered row as enabled', () => {
     renderSection({
       kind: ProviderKind.OAuth,
-      initial: { kind: ProviderKind.OAuth, id: 'oauth-provider', models: [] },
+      initial: { kind: ProviderKind.OAuth, id: 'oauth-provider', excludedModels: [] },
       candidates: ['disc-a', 'disc-b', 'disc-c'],
     });
 
@@ -180,10 +180,10 @@ describe('ModelsSection', () => {
   // (`exposedModelIds` treats absent and length-0 alike), and the editor's own create flow saves a
   // provider with no `models` key. Rendering those rows unchecked misreports what is live, and the
   // first click then committed a one-model whitelist — silently disabling everything else.
-  test('an oauth provider with an empty whitelist renders every discovered model as enabled', async () => {
+  test('an oauth provider with an empty denylist renders every discovered model as enabled', async () => {
     renderSection({
       kind: ProviderKind.OAuth,
-      initial: { kind: ProviderKind.OAuth, id: 'oauth-provider', models: [] },
+      initial: { kind: ProviderKind.OAuth, id: 'oauth-provider', excludedModels: [] },
       candidates: ['disc-a', 'disc-b', 'disc-c'],
     });
 
@@ -193,8 +193,8 @@ describe('ModelsSection', () => {
 
     fireEvent.click(within(screen.getByTestId('model-row-disc-a')).getByRole('checkbox'));
 
-    // Unchecking one narrows the whitelist to the rest, rather than promoting it to the only model.
-    await waitFor(() => expect(section.state.values.models).toEqual(['disc-b', 'disc-c']));
+    await waitFor(() => expect(section.state.values.excludedModels).toEqual(['disc-a']));
+    expect(section.state.values).not.toHaveProperty('models');
   });
 
   test('a row without a discovered catalog still has a checkbox and a remove control', () => {
@@ -365,70 +365,62 @@ describe('ModelsSection', () => {
 
   // Same-name replace, end to end: the suggestion has to reach the form draft, not just the response,
   // because the alias only lives in the draft and the next save replaces the stored record wholesale.
-  test('syncing plugin aliases rewrites the same-named row and says what it kept', async () => {
+  test('inherited plugin aliases appear without being written into the draft', () => {
     renderSection({
       kind: ProviderKind.OAuth,
-      initial: {
-        kind: ProviderKind.OAuth,
-        id: 'oauth-provider',
-        models: ['model-a', 'model-b'],
-        alias: { mini: { model: 'model-a', preserve: false } },
-      },
+      initial: { kind: ProviderKind.OAuth, id: 'oauth-provider', excludedModels: [] },
       candidates: ['model-a', 'model-b'],
       pluginAliases: { mini: { model: 'model-b', preserve: false } },
       persistedProviderId: 'oauth-provider',
     });
-
-    expect(within(screen.getByTestId('provider-alias-card')).getByLabelText(UPSTREAM_LABEL)).toHaveTextContent(
-      'model-a',
-    );
-
-    fireEvent.click(screen.getByTestId('provider-alias-sync-plugin'));
 
     expect(within(screen.getByTestId('provider-alias-card')).getByLabelText(UPSTREAM_LABEL)).toHaveTextContent(
       'model-b',
     );
-    // The toast mounts asynchronously, and the description is the half that tells the user their own
-    // aliases survived, so both halves are asserted against the whole tree.
-    await waitFor(() =>
-      expect(screen.getByText(m['dashboard.providers.toast.plugin_aliases_synced']())).toBeInTheDocument(),
-    );
-    expect(screen.getByText(m['dashboard.providers.toast.plugin_aliases_synced_description']())).toBeInTheDocument();
+    expect(section.state.values.alias ?? []).toEqual([]);
   });
 
-  // Merging a target the whitelist does not contain reports `target-missing` and greys out Save, so a
-  // suggestion that cannot land is silently dropped — and with nothing left, the button goes with it.
-  test('a suggestion aimed outside the draft whitelist offers no sync action', () => {
+  test('hiding an inherited alias persists false and restore removes the authored key', async () => {
     renderSection({
       kind: ProviderKind.OAuth,
-      initial: { kind: ProviderKind.OAuth, id: 'oauth-provider', models: ['model-a'] },
+      initial: { kind: ProviderKind.OAuth, id: 'oauth-provider', excludedModels: [] },
       candidates: ['model-a', 'model-b'],
       pluginAliases: { mini: { model: 'model-b', preserve: false } },
       persistedProviderId: 'oauth-provider',
     });
 
-    expect(screen.queryByTestId('provider-alias-sync-plugin')).toBeNull();
+    fireEvent.click(screen.getByLabelText(m['dashboard.providers.form.hide_inherited_alias']({ alias: 'mini' })));
+    await waitFor(() => expect(section.state.values.alias?.[0]?.origin).toBe('hidden'));
+
+    fireEvent.click(screen.getByLabelText(m['dashboard.providers.form.restore_plugin_alias']({ alias: 'mini' })));
+    await waitFor(() => expect(section.state.values.alias ?? []).toEqual([]));
   });
 
-  // The filter reads the draft's `models`, not the exposed set: an empty whitelist means "no
-  // whitelist", where `selected` falls back to the discovered catalog and would reject a suggestion
-  // the save accepts.
-  test('an empty whitelist filters no suggestion, even one outside the discovered catalog', () => {
+  test('turning inherit off does not snapshot plugin defaults into the draft', async () => {
     renderSection({
       kind: ProviderKind.OAuth,
-      initial: { kind: ProviderKind.OAuth, id: 'oauth-provider', models: [] },
-      candidates: ['model-a'],
+      initial: { kind: ProviderKind.OAuth, id: 'oauth-provider', excludedModels: [] },
+      candidates: ['model-a', 'model-b'],
       pluginAliases: { mini: { model: 'model-b', preserve: false } },
       persistedProviderId: 'oauth-provider',
     });
 
-    expect(screen.getByTestId('provider-alias-sync-plugin')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('inherit-plugin-aliases-checkbox'));
+    await waitFor(() => expect(section.state.values.pluginAliasInherit).toBe(false));
+    expect(section.state.values.alias ?? []).toEqual([]);
+    expect(screen.queryByTestId('provider-alias-card')).toBeNull();
   });
 
-  test('a provider with no plugin suggestions offers no sync action', () => {
-    renderSection({ kind: ProviderKind.Api, initial: apiInitial(['model-a']) });
+  test('a suggestion aimed at a hidden model does not appear as an inherited row', () => {
+    renderSection({
+      kind: ProviderKind.OAuth,
+      initial: { kind: ProviderKind.OAuth, id: 'oauth-provider', excludedModels: ['model-b'] },
+      candidates: ['model-a', 'model-b'],
+      pluginAliases: { mini: { model: 'model-b', preserve: false } },
+      persistedProviderId: 'oauth-provider',
+    });
 
-    expect(screen.queryByTestId('provider-alias-sync-plugin')).toBeNull();
+    expect(screen.queryByTestId('provider-alias-card')).toBeNull();
   });
 
   test('oauth providers still get a catalog button and refresh the edit-view catalog', async () => {

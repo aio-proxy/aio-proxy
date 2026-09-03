@@ -1,10 +1,10 @@
 import { m } from '@aio-proxy/i18n';
 import { Button } from '@aio-proxy/ui/components/button';
+import { Checkbox } from '@aio-proxy/ui/components/checkbox';
 import { ArrowRightIcon, PlusIcon } from 'lucide-react';
 
 import type { AliasEditorIssue, AliasRow } from '../../../lib/alias-editor';
 import { ProviderAliasList, useAliasRows } from '../../provider-alias';
-import { SyncPluginAliasesAction } from './sync-plugin-aliases-action';
 
 interface ModelAliasesProps {
   readonly alias: readonly AliasRow[];
@@ -12,12 +12,11 @@ interface ModelAliasesProps {
   /** Enabled upstream model ids — the only legal alias targets. */
   readonly targetOptions: readonly string[];
   readonly onAliasChange: (alias: readonly AliasRow[]) => void;
-  /**
-   * Absent whenever there is nothing to sync. The parent owns the decision because filtering the
-   * plugin's suggestions needs the draft's own `models` whitelist, and this component only sees
-   * `targetOptions`, which falls back to the whole catalog when that whitelist is empty.
-   */
-  readonly onSyncPluginAliases?: (() => void) | undefined;
+  readonly inheritPluginAliases?: boolean | undefined;
+  readonly onInheritPluginAliasesChange?: ((inherit: boolean) => void) | undefined;
+  readonly pluginDefaultNames?: ReadonlySet<string> | undefined;
+  readonly onHideAlias?: ((id: string) => void) | undefined;
+  readonly onRestoreAlias?: ((id: string) => void) | undefined;
 }
 
 /**
@@ -30,7 +29,11 @@ export const ModelAliases: React.FC<ModelAliasesProps> = ({
   issues,
   targetOptions,
   onAliasChange,
-  onSyncPluginAliases,
+  inheritPluginAliases,
+  onInheritPluginAliasesChange,
+  pluginDefaultNames,
+  onHideAlias,
+  onRestoreAlias,
 }) => {
   const rows = useAliasRows(alias, onAliasChange);
   const hasRows = alias.length > 0;
@@ -45,10 +48,23 @@ export const ModelAliases: React.FC<ModelAliasesProps> = ({
           <h3 className="text-sm font-medium">{m['dashboard.providers.editor.aliases_heading']()}</h3>
           <p className="text-xs text-muted-foreground">{m['dashboard.providers.editor.aliases_description']()}</p>
         </div>
-        {onSyncPluginAliases === undefined ? null : (
-          <SyncPluginAliasesAction disabled={targetOptions.length === 0} onClick={onSyncPluginAliases} />
-        )}
       </div>
+      {onInheritPluginAliasesChange === undefined ? null : (
+        <div className="flex items-start gap-2 text-sm" data-testid="inherit-plugin-aliases">
+          <Checkbox
+            id="inherit-plugin-aliases"
+            data-testid="inherit-plugin-aliases-checkbox"
+            checked={inheritPluginAliases !== false}
+            onCheckedChange={(checked) => onInheritPluginAliasesChange(checked === true)}
+          />
+          <label htmlFor="inherit-plugin-aliases">
+            <span className="font-medium">{m['dashboard.providers.form.inherit_plugin_aliases']()}</span>
+            <span className="block text-xs text-muted-foreground">
+              {m['dashboard.providers.form.inherit_plugin_aliases_description']()}
+            </span>
+          </label>
+        </div>
+      )}
       {hasRows ? (
         <div className="hidden grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto] items-center gap-2 px-3 text-xs text-muted-foreground sm:grid">
           <span>{m['dashboard.providers.editor.alias_column_client']()}</span>
@@ -64,6 +80,9 @@ export const ModelAliases: React.FC<ModelAliasesProps> = ({
         onAliasChange={onAliasChange}
         onRenameAlias={rows.rename}
         onRemoveAlias={rows.removeAlias}
+        onHideAlias={onHideAlias}
+        onRestoreAlias={onRestoreAlias}
+        pluginDefaultNames={pluginDefaultNames}
       />
       {hasDuplicateName ? (
         <p id="alias-name-duplicate-error" role="alert" className="text-xs text-destructive">

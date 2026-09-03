@@ -1,9 +1,9 @@
 import {
+  type AuthoredOAuthAlias,
   type DashboardOAuthSessionStart,
   dashboardOAuthCompleteUrl,
   type OAuthProviderMutationBody,
   ProviderKind,
-  type ProviderAlias,
   type ProviderTransforms,
 } from '@aio-proxy/types';
 import { isEqual } from 'es-toolkit/predicate';
@@ -15,8 +15,8 @@ export interface OAuthProviderEditValues {
   readonly priority?: number | undefined;
   readonly weight?: number | undefined;
   readonly proxy?: OAuthProviderMutationBody['proxy'];
-  readonly alias?: ProviderAlias | undefined;
-  readonly models?: readonly string[] | undefined;
+  readonly alias?: AuthoredOAuthAlias | undefined;
+  readonly excludedModels?: readonly string[] | undefined;
   readonly transforms?: ProviderTransforms | undefined;
   readonly publicValues: DashboardOAuthSessionStart['publicValues'];
   readonly secrets: DashboardOAuthSessionStart['secrets'];
@@ -39,8 +39,8 @@ export const oauthProviderEditAction = (
     ...(values.priority === undefined ? {} : { priority: values.priority }),
     ...(values.weight === undefined ? {} : { weight: values.weight }),
     ...(values.proxy === undefined ? {} : { proxy: values.proxy }),
-    ...(values.alias === undefined ? {} : { alias: values.alias }),
-    ...(values.models === undefined ? {} : { models: [...values.models] }),
+    alias: values.alias ?? {},
+    excludedModels: [...(values.excludedModels ?? [])],
     ...(values.transforms === undefined ? {} : { transforms: values.transforms }),
   };
   const secrets = Object.fromEntries(Object.entries(values.secrets).filter(([, value]) => value !== ''));

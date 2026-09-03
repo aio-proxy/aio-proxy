@@ -20,7 +20,7 @@ const oauthDraftBody = (values: OAuthEditorValues) => ({
   id: values.id,
   enabled: values.enabled,
   proxy: null,
-  models: values.models,
+  excludedModels: values.excludedModels,
 });
 
 export const useProviderTestMutation = (form: ProviderEditorForm, persistedProviderId?: string) =>

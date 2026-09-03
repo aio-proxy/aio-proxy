@@ -1,6 +1,6 @@
 import type { AliasEditorIssue } from '../alias-editor';
 import { apiConnectionIssues, type ApiEndpointDraft } from '../api-endpoints';
-import { exposedModels } from '../exposed-models';
+import { exposedModels, oauthEditorExposedModels } from '../exposed-models';
 import { advancedHint, blankPackageName, connectionHint, identityHint, modelsHint, routingHint } from './section-hint';
 
 export type SectionId = 'identity' | 'connection' | 'models' | 'routing' | 'advanced';
@@ -25,6 +25,7 @@ export interface SectionStatusInput {
   readonly authorized?: boolean | undefined;
   readonly packageName?: string | undefined;
   readonly models: readonly string[];
+  readonly excludedModels?: readonly string[] | undefined;
   readonly discoveredModels?: readonly string[] | undefined;
   readonly aliasCount?: number | undefined;
   readonly aliasIssues: readonly AliasEditorIssue[];
@@ -82,9 +83,18 @@ export function sectionStatuses(input: SectionStatusInput): Readonly<Record<Sect
   // pointless: `modelRoutes` derives its routes from the whitelist plus the alias map. oauth is
   // exempt — its empty whitelist means "expose the whole upstream catalog", which stays true even
   // when the dashboard could not fetch that catalog (`catalog_unavailable`).
-  const exposed = exposedModels(input.models, input.discoveredModels);
+  const exposed =
+    input.kind === 'oauth'
+      ? oauthEditorExposedModels(input.discoveredModels, input.excludedModels)
+      : exposedModels(input.models, input.discoveredModels);
   let models: SectionStatus =
-    input.kind !== 'oauth' && exposed.length === 0 && (input.aliasCount ?? 0) === 0 ? 'todo' : 'ok';
+    input.kind === 'oauth'
+      ? input.discoveredModels !== undefined && exposed.length === 0 && (input.aliasCount ?? 0) === 0
+        ? 'todo'
+        : 'ok'
+      : exposed.length === 0 && (input.aliasCount ?? 0) === 0
+        ? 'todo'
+        : 'ok';
   // A stale whitelist entry stays `ok` (X9): the upstream catalog is not the user's to fix, so gating
   // the save on it would strand them. `modelsHint` still names it — off the same inputs, not off this
   // status — so the reason survives on screen.
