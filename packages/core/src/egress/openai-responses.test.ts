@@ -131,4 +131,94 @@ describe('OpenAI Responses egress', () => {
     expect(first.find((event) => event.type === 'response.output_text.delta')?.item_id).toBe(messageId);
     expect(first.at(-1)?.response).toMatchObject({ id: responseId, model: 'gpt-routed' });
   });
+
+  test('Given a model stream error When encoded as SSE Then response.failed terminates the client stream', async () => {
+    const failure = new Error('sensitive upstream failure');
+    let reads = 0;
+    const source = new ReadableStream({
+      pull(controller) {
+        reads += 1;
+        if (reads === 1) {
+          controller.enqueue({ type: 'text-delta', id: 'text-1', text: 'partial' });
+          return;
+        }
+        controller.error(failure);
+      },
+    });
+    const stream = writeOpenAIResponsesSSE(source);
+
+    const events = await frames(stream);
+
+    expect(events.map((event) => event.type)).toEqual([
+      'response.created',
+      'response.output_item.added',
+      'response.output_text.delta',
+      'response.failed',
+    ]);
+    expect(events.at(-1)?.response).toMatchObject({
+      status: 'failed',
+      error: { code: 'server_error', message: 'The upstream model stream failed.' },
+    });
+    expect(JSON.stringify(events)).not.toContain(failure.message);
+    await expect(stream.completion).rejects.toBe(failure);
+  });
+
+  test('Given invalid partial custom tool input When the stream fails Then response.failed is still emitted', async () => {
+    let cancelled = false;
+    const source = new ReadableStream({
+      start(controller) {
+        controller.enqueue({
+          type: 'tool-input-start',
+          id: 'call-1',
+          toolName: 'exec',
+          toolMetadata: {
+            aioProxy: {
+              openaiResponses: {
+                protocol: 'openai-responses',
+                wireToolType: 'custom',
+                wireToolName: 'exec',
+              },
+            },
+          },
+        });
+        controller.enqueue({ type: 'tool-input-delta', id: 'call-1', delta: '{invalid' });
+        controller.enqueue({ type: 'tool-input-end', id: 'call-1' });
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    const stream = writeOpenAIResponsesSSE(source);
+
+    const events = await frames(stream);
+
+    expect(events.at(-1)).toMatchObject({
+      type: 'response.failed',
+      response: { status: 'failed', output: [] },
+    });
+    await expect(stream.completion).rejects.toThrow('output.custom_tool_call.input');
+    expect(cancelled).toBe(true);
+  });
+
+  test('Given source cancellation hangs When the stream fails Then response.failed is not blocked', async () => {
+    const failure = new Error('upstream failed');
+    let reads = 0;
+    const source = new ReadableStream({
+      pull(controller) {
+        reads += 1;
+        if (reads === 1) {
+          controller.enqueue({ type: 'text-delta', id: 'text-1', text: 'partial' });
+          return;
+        }
+        controller.error(failure);
+      },
+      cancel: () => new Promise<void>(() => {}),
+    });
+    const stream = writeOpenAIResponsesSSE(source);
+
+    const events = await frames(stream);
+
+    expect(events.at(-1)?.type).toBe('response.failed');
+    await expect(stream.completion).rejects.toBe(failure);
+  });
 });

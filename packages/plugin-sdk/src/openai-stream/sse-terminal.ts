@@ -6,6 +6,10 @@ import type { ContentDecodedReader } from './content-decoding';
 
 export type OpenAIStreamProtocol = Extract<ProtocolId, 'openai-response' | 'openai-compatible'>;
 
+export type OpenAISseBodyOptions = {
+  readonly normalizeToolArgumentSnapshots?: boolean;
+};
+
 const responsesTerminalTypes = new Set([
   'response.completed',
   'response.incomplete',
@@ -131,6 +135,56 @@ function normalizedResponsesErrorFrame(
   return textEncoder.encode(`event: response.failed\ndata: ${JSON.stringify(payload)}\n\n`);
 }
 
+type ToolArgumentsState = {
+  mode: 'unknown' | 'delta' | 'snapshot';
+  value: string;
+};
+
+function normalizedCompatibleToolArgumentsFrame(
+  event: { readonly event?: string; readonly data: string },
+  value: Record<string, unknown> | undefined,
+  states: Map<string, ToolArgumentsState>,
+): Uint8Array | undefined {
+  const choices = value?.['choices'];
+  if (!Array.isArray(choices)) return undefined;
+  let changed = false;
+  const normalizedChoices = choices.map((choice, choiceIndex) => {
+    if (!isPlainObject(choice) || !isPlainObject(choice['delta'])) return choice;
+    const toolCalls = choice['delta']['tool_calls'];
+    if (!Array.isArray(toolCalls)) return choice;
+    const normalizedToolCalls = toolCalls.map((toolCall, toolIndex) => {
+      if (!isPlainObject(toolCall) || !isPlainObject(toolCall['function'])) return toolCall;
+      const args = toolCall['function']['arguments'];
+      if (typeof args !== 'string') return toolCall;
+      const key = `${String(choice['index'] ?? choiceIndex)}:${String(toolCall['index'] ?? toolIndex)}`;
+      const state = states.get(key);
+      if (state === undefined) {
+        states.set(key, { mode: 'unknown', value: args });
+        return toolCall;
+      }
+      if (state.mode === 'unknown' && args.startsWith(state.value)) state.mode = 'snapshot';
+      else if (state.mode === 'unknown') state.mode = 'delta';
+      if (state.mode === 'delta') {
+        state.value += args;
+        return toolCall;
+      }
+      if (!args.startsWith(state.value)) {
+        state.mode = 'delta';
+        state.value += args;
+        return toolCall;
+      }
+      const delta = args.slice(state.value.length);
+      state.value = args;
+      changed = true;
+      return { ...toolCall, function: { ...toolCall['function'], arguments: delta } };
+    });
+    return { ...choice, delta: { ...choice['delta'], tool_calls: normalizedToolCalls } };
+  });
+  if (!changed || value === undefined) return undefined;
+  const eventLine = event.event === undefined ? '' : `event: ${event.event}\n`;
+  return textEncoder.encode(`${eventLine}data: ${JSON.stringify({ ...value, choices: normalizedChoices })}\n\n`);
+}
+
 function ignoreCancel(decoded: ContentDecodedReader, reason: unknown): void {
   // Consumer completion must not await cancel — a hung upstream cancel must not block close.
   void decoded.cancel(reason).catch(() => undefined);
@@ -139,11 +193,13 @@ function ignoreCancel(decoded: ContentDecodedReader, reason: unknown): void {
 export function createOpenAISseBody(
   decoded: ContentDecodedReader,
   protocol: OpenAIStreamProtocol,
+  options: OpenAISseBodyOptions = {},
 ): ReadableStream<Uint8Array> {
   let carry = new Uint8Array(0);
   let finished = false;
   let pendingError: unknown;
   let createdResponse: Record<string, unknown> | undefined;
+  const toolArguments = new Map<string, ToolArgumentsState>();
 
   return new ReadableStream<Uint8Array>({
     async pull(controller) {
@@ -182,11 +238,15 @@ export function createOpenAISseBody(
           if (protocol === 'openai-response' && event !== undefined) {
             createdResponse = responsesCreatedResponse(event, responsesValue) ?? createdResponse;
           }
-          outbound.push(
-            protocol === 'openai-response' && event !== undefined
-              ? (normalizedResponsesErrorFrame(event, responsesValue, createdResponse) ?? frameBytes)
-              : frameBytes,
-          );
+          const normalizedFrame =
+            event === undefined
+              ? undefined
+              : protocol === 'openai-response'
+                ? normalizedResponsesErrorFrame(event, responsesValue, createdResponse)
+                : options.normalizeToolArgumentSnapshots === true
+                  ? normalizedCompatibleToolArgumentsFrame(event, parseObject(event.data), toolArguments)
+                  : undefined;
+          outbound.push(normalizedFrame ?? frameBytes);
           if (event !== undefined && isTerminal(event, protocol, responsesValue)) {
             terminalFound = true;
             carry = new Uint8Array(0);

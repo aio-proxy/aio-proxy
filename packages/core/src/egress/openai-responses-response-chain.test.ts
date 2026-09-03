@@ -31,7 +31,7 @@ describe('OpenAI Responses response-chain callbacks', () => {
     expect(ids).toEqual([payload.response.id]);
   });
 
-  test('errored JSON and SSE streams never commit a response ID', async () => {
+  test('errored JSON rejects while SSE terminates with response.failed without committing a response ID', async () => {
     for (const format of ['json', 'sse'] as const) {
       const ids: string[] = [];
       const stream = errorParts(new Error(`${format} failed`));
@@ -39,13 +39,15 @@ describe('OpenAI Responses response-chain callbacks', () => {
       if (format === 'json') {
         await expect(writeOpenAIResponsesResponse(stream, context)).rejects.toThrow('json failed');
       } else {
-        await expect(collect(writeOpenAIResponsesSSE(stream, context))).rejects.toThrow('sse failed');
+        const sse = writeOpenAIResponsesSSE(stream, context);
+        expect(await collect(sse)).toContain('event: response.failed');
+        await expect(sse.completion).rejects.toThrow('sse failed');
       }
       expect(ids).toEqual([]);
     }
   });
 
-  test('error events reject JSON and SSE without committing a response ID', async () => {
+  test('error events reject JSON and terminate SSE with response.failed without committing a response ID', async () => {
     const error = new Error('event failed');
     for (const format of ['json', 'sse'] as const) {
       const ids: string[] = [];
@@ -54,13 +56,15 @@ describe('OpenAI Responses response-chain callbacks', () => {
       if (format === 'json') {
         await expect(writeOpenAIResponsesResponse(stream, context)).rejects.toBe(error);
       } else {
-        await expect(collect(writeOpenAIResponsesSSE(stream, context))).rejects.toBe(error);
+        const sse = writeOpenAIResponsesSSE(stream, context);
+        expect(await collect(sse)).toContain('event: response.failed');
+        await expect(sse.completion).rejects.toBe(error);
       }
       expect(ids).toEqual([]);
     }
   });
 
-  test('error finish reasons reject JSON and SSE without committing a response ID', async () => {
+  test('error finish reasons reject JSON and terminate SSE with response.failed without committing a response ID', async () => {
     for (const format of ['json', 'sse'] as const) {
       const ids: string[] = [];
       const stream = parts([
@@ -70,13 +74,15 @@ describe('OpenAI Responses response-chain callbacks', () => {
       if (format === 'json') {
         await expect(writeOpenAIResponsesResponse(stream, context)).rejects.toThrow('upstream_error');
       } else {
-        await expect(collect(writeOpenAIResponsesSSE(stream, context))).rejects.toThrow('upstream_error');
+        const sse = writeOpenAIResponsesSSE(stream, context);
+        expect(await collect(sse)).toContain('event: response.failed');
+        await expect(sse.completion).rejects.toThrow('upstream_error');
       }
       expect(ids).toEqual([]);
     }
   });
 
-  test('error finish-step reasons reject JSON and SSE without committing a response ID', async () => {
+  test('error finish-step reasons reject JSON and terminate SSE with response.failed without committing a response ID', async () => {
     for (const format of ['json', 'sse'] as const) {
       const ids: string[] = [];
       const stream = parts([
@@ -94,7 +100,9 @@ describe('OpenAI Responses response-chain callbacks', () => {
       if (format === 'json') {
         await expect(writeOpenAIResponsesResponse(stream, context)).rejects.toThrow('step_error');
       } else {
-        await expect(collect(writeOpenAIResponsesSSE(stream, context))).rejects.toThrow('step_error');
+        const sse = writeOpenAIResponsesSSE(stream, context);
+        expect(await collect(sse)).toContain('event: response.failed');
+        await expect(sse.completion).rejects.toThrow('step_error');
       }
       expect(ids).toEqual([]);
     }
