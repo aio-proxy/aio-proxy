@@ -63,3 +63,25 @@ export async function discoverOpenAIChatGPTModels(
     ),
   );
 }
+
+/**
+ * Hardcoded, and permanently so. The Codex models endpoint describes language
+ * models only — its `ModelInfo` carries `input_modalities` but no output
+ * modality — so it structurally cannot report an image model, and `gpt-image-2`
+ * appears in neither the endpoint nor the published `models.json`. codex itself
+ * hardcodes the id (`IMAGE_MODEL`), as does every reference proxy. Meanwhile
+ * `/backend-api/codex/images/generations` serves it for the same account.
+ *
+ * The upstream `model` field is decorative: every value tested returned the same
+ * gpt-image 2.0 output. The id exists so users have something to route to.
+ */
+export const CHATGPT_IMAGE_MODELS: readonly ModelDescriptor[] = [
+  {
+    id: 'gpt-image-2',
+    displayName: 'GPT Image 2',
+    extra: { protocol: 'openai-image' },
+    modelMetadata: {
+      capabilities: { modalities: { input: ['text', 'image'], output: ['image'] } },
+    },
+  },
+];

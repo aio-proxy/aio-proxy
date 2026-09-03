@@ -9,6 +9,7 @@ import {
 
 import packageJson from '../package.json' with { type: 'json' };
 import openAIChatGPTPlugin, { createOpenAIChatGPTPlugin, OPENAI_CHATGPT_PLUGIN_VERSION } from '../src';
+import { CHATGPT_IMAGE_MODELS } from '../src/catalog';
 import { base64url } from '../src/pkce';
 
 const originalFetch = globalThis.fetch;
@@ -110,7 +111,7 @@ describe('OpenAI ChatGPT plugin', () => {
 
     expect(catalog).toEqual({
       language: [{ id: 'gpt-test', displayName: 'GPT Test', extra: { protocol: 'openai-response' } }],
-      image: [],
+      image: CHATGPT_IMAGE_MODELS,
       embedding: [],
       speech: [],
       transcription: [],

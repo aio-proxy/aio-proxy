@@ -7,7 +7,7 @@ import {
   zod,
 } from '@aio-proxy/plugin-sdk';
 
-import { CHATGPT_CATALOG_TTL_MS, discoverOpenAIChatGPTModels } from './catalog';
+import { CHATGPT_CATALOG_TTL_MS, CHATGPT_IMAGE_MODELS, discoverOpenAIChatGPTModels } from './catalog';
 import { extractAccountId, extractEmail, normalizeChatGPTEmail } from './jwt';
 import { ChatGPTAccountIdMissingError, CHATGPT_CLIENT_ID, exchangeCodeForTokens } from './oauth-flow';
 import { generatePKCE, generateState } from './pkce';
@@ -127,7 +127,7 @@ export function createOpenAIChatGPTPlugin(
       policy: { kind: 'ttl', ttlMs: CHATGPT_CATALOG_TTL_MS },
       discover: async ({ credentials, fetch, signal }) => ({
         language: await discoverOpenAIChatGPTModels(credentials, signal, fetch),
-        image: [],
+        image: CHATGPT_IMAGE_MODELS,
         embedding: [],
         speech: [],
         transcription: [],
