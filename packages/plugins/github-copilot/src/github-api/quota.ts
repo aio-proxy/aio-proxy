@@ -42,8 +42,11 @@ export async function readGitHubCopilotQuota(
 
   // GitHub reports one account-wide monthly boundary, not a per-window reset, so every item shares it.
   const resetsAt = timestamp(Reflect.get(payload, 'quota_reset_date'));
-  const { items: snapshots, covered } = snapshotItems(payload, resetsAt);
-  const items = [...snapshots, ...counterItems(payload, resetsAt, covered)];
+  // One `claimed` set spans both readers, and the snapshots run first so the counters only speak for
+  // windows the snapshots left unanswered.
+  const claimed = new Set<string>();
+  const snapshots = snapshotItems(payload, resetsAt, claimed);
+  const items = [...snapshots, ...counterItems(payload, resetsAt, claimed)];
   const plan = planText(Reflect.get(payload, 'copilot_plan'));
   // An all-unlimited or token-billed seat legitimately meters nothing. That is an empty snapshot, not
   // a failure: throwing would paint the "load failed" ring over a read that worked.
@@ -51,35 +54,43 @@ export async function readGitHubCopilotQuota(
 }
 
 /**
- * `covered` is every id `quota_snapshots` had an answer for, which includes the unmetered windows
- * deliberately left out of `items`. An entry the snapshots could not parse at all is not covered, so
- * the legacy counters may still speak for it.
+ * The one place an id is allowed to enter a snapshot. `validateOAuthQuotaSnapshot` discards the
+ * entire snapshot over a single duplicate id, so every emitter has to claim through here: two payload
+ * keys can trim into the same id within one object (`chat` and `' chat'`) as easily as across the two
+ * readers. First claim wins; a key that trims to nothing was never an id.
+ */
+function claim(claimed: Set<string>, key: string): string | undefined {
+  const id = key.trim();
+  if (id === '' || claimed.has(id)) return undefined;
+  claimed.add(id);
+  return id;
+}
+
+/**
+ * A window the snapshots answered for is claimed even when it is deliberately left out of `items`:
+ * an unmetered seat must not reappear at some counter-derived percentage. An entry the snapshots
+ * could not parse at all is not claimed, so the legacy counters may still speak for it.
  */
 function snapshotItems(
   payload: Readonly<Record<string, unknown>>,
   resetsAt: number | undefined,
-): { readonly items: readonly OAuthQuotaItem[]; readonly covered: ReadonlySet<string> } {
+  claimed: Set<string>,
+): readonly OAuthQuotaItem[] {
   const snapshots = Reflect.get(payload, 'quota_snapshots');
+  if (!isPlainObject(snapshots)) return [];
   const items: OAuthQuotaItem[] = [];
-  const covered = new Set<string>();
-  if (!isPlainObject(snapshots)) return { items, covered };
   for (const key of Object.keys(snapshots)) {
-    const id = key.trim();
     const value = Reflect.get(snapshots, key);
-    // Two keys can trim into one id, and the core validator rejects a duplicate id by discarding the
-    // whole snapshot. First answer wins — covering both the emitted and the suppressed-unmetered
-    // paths, since `covered` records both.
-    if (id === '' || covered.has(id) || !isPlainObject(value)) continue;
-    if (unmetered(value)) {
-      covered.add(id);
-      continue;
-    }
-    const ratio = snapshotRatio(value);
-    if (ratio === undefined) continue;
-    covered.add(id);
-    items.push(quotaItem(id, ratio, resetsAt));
+    if (!isPlainObject(value)) continue;
+    // An unmetered window is an answer — claim it so the counters cannot resurrect it — but an
+    // unreadable ratio is "no answer", and claiming it would silence the counter fallback.
+    const suppressed = unmetered(value);
+    const ratio = suppressed ? undefined : snapshotRatio(value);
+    if (!suppressed && ratio === undefined) continue;
+    const id = claim(claimed, key);
+    if (id !== undefined && ratio !== undefined) items.push(quotaItem(id, ratio, resetsAt));
   }
-  return { items, covered };
+  return items;
 }
 
 /**
@@ -87,11 +98,12 @@ function snapshotItems(
  * GitHub serves for token-based billing and Business seats — sometimes alongside
  * `percent_remaining: 100`, which would otherwise render as a full allowance. `remaining` is optional
  * upstream, so an entitlement of `0` has to stand on its own, and `unlimited` is trusted as a claim
- * rather than as a boolean: anything present and not `false` still says unlimited.
+ * rather than as a boolean: any non-nullish value other than `false` still says unlimited. `null` is
+ * upstream's "no answer", not a claim, and must not suppress a genuinely metered window.
  */
 function unmetered(snapshot: Readonly<Record<string, unknown>>): boolean {
   const unlimited = Reflect.get(snapshot, 'unlimited');
-  if (unlimited !== undefined && unlimited !== false) return true;
+  if (unlimited != null && unlimited !== false) return true;
   return number(Reflect.get(snapshot, 'entitlement')) === 0;
 }
 
@@ -107,26 +119,27 @@ function snapshotRatio(snapshot: Readonly<Record<string, unknown>>): number | un
 
 /**
  * Free and older seats answer with counters instead of snapshots: `monthly_quotas` is the allowance
- * and `limited_user_quotas` is what is left. Windows `quota_snapshots` already covered are skipped —
- * a duplicate id makes the core validator reject the whole snapshot, valid windows included, and an
- * unmetered window must not be resurrected here at some counter-derived percentage.
+ * and `limited_user_quotas` is what is left. Ids already claimed are skipped, whether the claim came
+ * from `quota_snapshots` or from an earlier counter key that trimmed to the same id.
  */
 function counterItems(
   payload: Readonly<Record<string, unknown>>,
   resetsAt: number | undefined,
-  covered: ReadonlySet<string>,
+  claimed: Set<string>,
 ): readonly OAuthQuotaItem[] {
   const monthly = Reflect.get(payload, 'monthly_quotas');
   const limited = Reflect.get(payload, 'limited_user_quotas');
   if (!isPlainObject(monthly) || !isPlainObject(limited)) return [];
-  return Object.keys(monthly).flatMap((key): OAuthQuotaItem[] => {
-    const id = key.trim();
-    if (id === '' || covered.has(id)) return [];
+  const items: OAuthQuotaItem[] = [];
+  for (const key of Object.keys(monthly)) {
     const entitlement = number(Reflect.get(monthly, key));
     const remaining = number(Reflect.get(limited, key));
-    if (entitlement === undefined || entitlement <= 0 || remaining === undefined) return [];
-    return [quotaItem(id, clampRatio(remaining / entitlement), resetsAt)];
-  });
+    if (entitlement === undefined || entitlement <= 0 || remaining === undefined) continue;
+    const id = claim(claimed, key);
+    if (id === undefined) continue;
+    items.push(quotaItem(id, clampRatio(remaining / entitlement), resetsAt));
+  }
+  return items;
 }
 
 function quotaItem(id: string, remainingRatio: number, resetsAt: number | undefined): OAuthQuotaItem {

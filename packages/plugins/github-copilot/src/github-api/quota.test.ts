@@ -130,7 +130,21 @@ describe('GitHub Copilot quota', () => {
 
     const snapshot = await readGitHubCopilotQuota(context(), fetcher);
 
-    expect(snapshot).toEqual({ items: [], plan: 'Free' });
+    expect(snapshot).toStrictEqual({ items: [], plan: 'Free' });
+  });
+
+  // The mirror of the `unlimited: 'true'` case above: `null` is upstream's "no answer", not a claim
+  // of an unlimited allowance, and must not blank out a window that reports a real denominator.
+  test('meters a window whose unlimited flag is null', async () => {
+    const { fetcher } = usageFetcher({
+      quota_snapshots: { chat: { unlimited: null, entitlement: 200, remaining: 50 } },
+    });
+
+    const snapshot = await readGitHubCopilotQuota(context(), fetcher);
+
+    expect(snapshot.items).toStrictEqual([
+      { id: 'chat', displayName: { default: 'Chat', 'zh-Hans': '聊天' }, remainingRatio: 0.25 },
+    ]);
   });
 
   test('derives a missing percentage and clamps an over-quota window to empty', async () => {
@@ -245,6 +259,21 @@ describe('GitHub Copilot quota', () => {
       quota_snapshots: { chat: 'nope' },
       monthly_quotas: { chat: 50 },
       limited_user_quotas: { chat: 20 },
+    });
+
+    const snapshot = await readGitHubCopilotQuota(context(), fetcher);
+
+    expect(snapshot.items).toStrictEqual([
+      { id: 'chat', displayName: { default: 'Chat', 'zh-Hans': '聊天' }, remainingRatio: 0.4 },
+    ]);
+  });
+
+  // The counters share the snapshots' claim rule, so the collision is caught on that side too: two
+  // counter keys trimming to one id would otherwise emit `chat` twice and cost the user every lane.
+  test('keeps the first of two counter keys that trim to the same id', async () => {
+    const { fetcher } = usageFetcher({
+      monthly_quotas: { chat: 50, ' chat': 60, '  ': 10 },
+      limited_user_quotas: { chat: 20, ' chat': 30, '  ': 5 },
     });
 
     const snapshot = await readGitHubCopilotQuota(context(), fetcher);
