@@ -79,6 +79,7 @@ export function runtimeFixture(
     readonly defaultAliases?: OAuthAdapter['catalog']['defaultAliases'];
     readonly providerId?: string;
     readonly quota?: OAuthAdapter['quota'];
+    readonly refreshCredential?: OAuthAdapter['refreshCredential'];
     readonly supportsProxy?: boolean;
   } = {},
 ): {
@@ -123,6 +124,7 @@ export function runtimeFixture(
     displayName: 'Example',
     ...(overrides.supportsProxy === undefined ? {} : { supportsProxy: overrides.supportsProxy }),
     ...(overrides.quota === undefined ? {} : { quota: overrides.quota }),
+    ...(overrides.refreshCredential === undefined ? {} : { refreshCredential: overrides.refreshCredential }),
     account: { options: { schema: overrides.accountOptionsSchema ?? zod.object({}), form: [] } },
     credentials: zod.object({ token: zod.string() }),
     async login() {
