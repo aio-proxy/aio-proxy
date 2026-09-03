@@ -205,11 +205,11 @@ describe('model routing inventory', () => {
     expect(modelIds).not.toContain('sdk-direct');
     expect(modelIds).toContain('oauth-alias');
     expect(modelIds).toContain('oauth-kept');
-    expect(modelIds).toContain('stale-alias');
     expect(modelIds).toContain('oauth-current');
     expect(modelIds).toContain('broken-alias');
     expect(modelIds).toContain('unknown-model');
     expect(modelIds).not.toContain('gone-model');
+    expect(modelIds).not.toContain('stale-alias');
 
     expect(provider(response, 'api-alias', 'disabled-api')).toMatchObject({
       id: 'disabled-api',
@@ -243,11 +243,6 @@ describe('model routing inventory', () => {
       kind: 'oauth',
       enabled: false,
       effective: { eligible: false, share: null },
-    });
-    expect(provider(response, 'stale-alias', 'unavailable-oauth')).toMatchObject({
-      enabled: true,
-      state: unavailable,
-      effective: { eligible: false },
     });
     expect(provider(response, 'oauth-current', 'unavailable-oauth').effective.eligible).toBe(false);
     expect(provider(response, 'broken-alias', 'broken-oauth')).toMatchObject({

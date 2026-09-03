@@ -125,7 +125,7 @@ const saveOAuthProvider = (
 const saveEditor = (
   forceReauthorize: boolean,
   ctx: {
-    readonly values: ProviderEditorWire;
+    readonly values: ProviderEditorShape;
     readonly kind: ProviderKind;
     readonly mode: ProviderFormMode;
     readonly authorized: boolean;
@@ -150,7 +150,7 @@ const saveEditor = (
   const wireValues = {
     ...ctx.values,
     alias:
-      ctx.kind === 'oauth'
+      ctx.values.kind === 'oauth'
         ? serializeOAuthAlias(ctx.values.alias ?? [], ctx.values.pluginAliasInherit === false, serializeMode)
         : ctx.values.alias === undefined
           ? undefined
@@ -303,7 +303,7 @@ const editorSectionInput = (
               values.alias ?? [],
               extras.pluginAliases,
               oauthEditorExposedModels(extras.discoveredModels, extras.excludedModels),
-              values.pluginAliasInherit === false,
+              values.kind === 'oauth' && values.pluginAliasInherit === false,
             )
           : values.alias === undefined
             ? undefined
@@ -358,10 +358,10 @@ export const useProviderEditorPage = ({
             ? undefined
             : kind === 'oauth'
               ? toOAuthAliasRows(initial.alias)
-              : toAliasRows(initial.alias),
+              : toAliasRows(initial.alias as ProviderAlias),
         ...(kind === 'oauth'
           ? {
-              excludedModels: initial.excludedModels ?? [],
+              excludedModels: 'excludedModels' in initial ? (initial.excludedModels ?? []) : [],
               pluginAliasInherit: !isOAuthInheritOff(initial.alias),
             }
           : {}),
