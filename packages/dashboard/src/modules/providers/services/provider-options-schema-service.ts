@@ -29,8 +29,14 @@ export const throwRequestError = async (response: Response): Promise<never> => {
   throw new ProviderPackageRequestError(response.status, code);
 };
 
-export const providerInstallRequestBody = (packageName: string, confirmed: boolean) =>
-  confirmed ? { npm: packageName, confirmed: true } : { npm: packageName };
+export const providerInstallRequestBody = (packageName: string, confirmed: boolean, registry?: string) => {
+  const normalizedRegistry = registry?.trim();
+  return {
+    npm: packageName,
+    ...(confirmed ? { confirmed: true as const } : {}),
+    ...(normalizedRegistry === undefined || normalizedRegistry === '' ? {} : { registry: normalizedRegistry }),
+  };
+};
 
 export const providerPackageStatusQueryOptions = (packageName: string) =>
   queryOptions({
@@ -49,11 +55,13 @@ export const providerPackageStatusQueryOptions = (packageName: string) =>
 export const installProviderPackage = async ({
   packageName,
   confirmed,
+  registry,
 }: {
   readonly packageName: string;
   readonly confirmed: boolean;
+  readonly registry?: string;
 }) => {
-  const json = providerInstallRequestBody(packageName, confirmed);
+  const json = providerInstallRequestBody(packageName, confirmed, registry);
   const response = await dashboardClient.dashboard.api.providers.install.$post({ json });
   if (!response.ok) {
     return throwRequestError(response);

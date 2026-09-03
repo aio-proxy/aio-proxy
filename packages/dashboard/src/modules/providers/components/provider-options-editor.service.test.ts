@@ -22,6 +22,17 @@ describe('provider options schema service', () => {
       npm: 'community-provider',
       confirmed: true,
     });
+    expect(providerInstallRequestBody('@vendor/internal-provider', true, '  https://registry.corp.example/  ')).toEqual(
+      {
+        npm: '@vendor/internal-provider',
+        confirmed: true,
+        registry: 'https://registry.corp.example/',
+      },
+    );
+    expect(providerInstallRequestBody('@vendor/internal-provider', true, '   ')).toEqual({
+      npm: '@vendor/internal-provider',
+      confirmed: true,
+    });
   });
 
   test('non-JSON error responses still produce a typed request error', async () => {

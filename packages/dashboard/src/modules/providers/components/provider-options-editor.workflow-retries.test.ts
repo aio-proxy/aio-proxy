@@ -51,7 +51,7 @@ describe('provider options schema workflow retries', () => {
       status: { trusted: false, state: 'missing' },
     });
     const installing = providerOptionsSchemaTransition(
-      providerOptionsSchemaTransition(required, { type: 'install_confirmed' }),
+      providerOptionsSchemaTransition(required, { type: 'install_requested' }),
       { type: 'install_started' },
     );
     const failed = providerOptionsSchemaTransition(installing, {
@@ -74,7 +74,7 @@ describe('provider options schema workflow retries', () => {
 
     expect(retry).toMatchObject({ phase: 'checking', commitGeneration: 2 });
     expect(retryRequired).toMatchObject({ phase: 'install_required', effect: undefined });
-    expect(providerOptionsSchemaTransition(retryRequired, { type: 'install_confirmed' })).toMatchObject({
+    expect(providerOptionsSchemaTransition(retryRequired, { type: 'install_requested' })).toMatchObject({
       phase: 'installing',
       effect: { type: 'install', confirmed: true },
     });
