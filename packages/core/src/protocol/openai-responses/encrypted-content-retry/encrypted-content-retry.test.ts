@@ -217,6 +217,21 @@ test('rewrites plaintext function_call_output encrypted_content parts', () => {
   ]);
 });
 
+test('rewrites plaintext custom_tool_call_output encrypted_content parts', () => {
+  const body = JSON.stringify({
+    input: [
+      {
+        type: 'custom_tool_call_output',
+        call_id: 'call_1',
+        output: [{ type: 'encrypted_content', encrypted_content: 'tool result' }],
+      },
+    ],
+  });
+  expect(JSON.parse(rewriteOpenAIResponsesEncryptedContent(body)!).input[0].output).toEqual([
+    { type: 'input_text', text: 'tool result' },
+  ]);
+});
+
 test('leaves ciphertext parts untouched and falls through to the blob strip', () => {
   const body = JSON.stringify({
     input: [

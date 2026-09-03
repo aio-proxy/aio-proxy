@@ -148,7 +148,10 @@ function rewritePlaintextSlots(input: readonly unknown[]): unknown[] | undefined
       changed = true;
       return { ...item, content };
     }
-    if (item['type'] === 'function_call_output' && Array.isArray(item['output'])) {
+    if (
+      (item['type'] === 'function_call_output' || item['type'] === 'custom_tool_call_output') &&
+      Array.isArray(item['output'])
+    ) {
       const output = rewriteParts(item['output']);
       if (output === undefined) return item;
       changed = true;
