@@ -56,7 +56,7 @@ export function resolveOAuthAlias(
   exposedCatalog?: readonly string[],
 ): ProviderAlias {
   const inheritOff = isInheritOff(authored);
-  const resolved: Record<string, AliasConfig> = inheritOff ? {} : { ...defaults };
+  const resolved = Object.assign(Object.create(null) as Record<string, AliasConfig>, inheritOff ? undefined : defaults);
   if (authored !== undefined) {
     for (const [key, value] of Object.entries(authored)) {
       if (!Object.hasOwn(authored, key)) continue;
@@ -69,15 +69,51 @@ export function resolveOAuthAlias(
       resolved[name] = value;
     }
   }
-  if (exposedCatalog === undefined) return resolved;
+  const effective = dropInheritedPreserveConflicts(resolved, authored);
+  if (exposedCatalog === undefined) return effective;
   const allowed = new Set(exposedCatalog);
   return Object.fromEntries(
-    Object.entries(resolved).filter(([, config]) =>
+    Object.entries(effective).filter(([, config]) =>
       [config.model, ...flattenAliasVariants(config.variants).map((row) => row.model)].every((model) =>
         allowed.has(model),
       ),
     ),
   );
+}
+
+function dropInheritedPreserveConflicts(
+  resolved: Record<string, AliasConfig>,
+  authored: AuthoredOAuthAlias | undefined,
+): Record<string, AliasConfig> {
+  const authoredNames = new Set<string>();
+  const authoredPreserved = new Set<string>();
+  if (authored !== undefined) {
+    for (const [key, value] of Object.entries(authored)) {
+      if (!Object.hasOwn(authored, key) || value === false) continue;
+      const name = normalizeAliasName(key);
+      if (name === '' || name === INHERIT_OFF_KEY) continue;
+      authoredNames.add(name);
+      addPreservedModels(authoredPreserved, value);
+    }
+  }
+  const next = Object.create(null) as Record<string, AliasConfig>;
+  for (const [name, config] of Object.entries(resolved)) {
+    if (!authoredNames.has(name)) {
+      if (authoredPreserved.has(name)) continue;
+      const inheritedPreserved = new Set<string>();
+      addPreservedModels(inheritedPreserved, config);
+      if ([...inheritedPreserved].some((id) => authoredNames.has(id))) continue;
+    }
+    next[name] = config;
+  }
+  return next;
+}
+
+function addPreservedModels(models: Set<string>, config: AliasConfig): void {
+  if (config.preserve) models.add(config.model);
+  for (const row of flattenAliasVariants(config.variants)) {
+    if (row.preserve) models.add(row.model);
+  }
 }
 
 function isInheritOff(authored: AuthoredOAuthAlias | undefined): boolean {

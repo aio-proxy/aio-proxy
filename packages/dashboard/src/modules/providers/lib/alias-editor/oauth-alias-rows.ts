@@ -59,15 +59,15 @@ export function serializeOAuthAlias(
   inheritOff: boolean,
   mode: 'create' | 'edit',
 ): AuthoredOAuthAlias | undefined {
-  const record: Record<string, AliasConfig | false> = {};
+  const entries: Array<readonly [string, AliasConfig | false]> = [];
   for (const row of rows) {
     const name = normalizeAliasName(row.name);
     if (name === '' || name === INHERIT_OFF_KEY || row.origin === 'inherited') continue;
-    record[name] = row.origin === 'hidden' ? false : row.config;
+    entries.push([name, row.origin === 'hidden' ? false : row.config]);
   }
-  if (inheritOff) record[INHERIT_OFF_KEY] = false;
-  if (mode === 'create' && Object.keys(record).length === 0) return undefined;
-  return record;
+  if (inheritOff) entries.push([INHERIT_OFF_KEY, false]);
+  if (mode === 'create' && entries.length === 0) return undefined;
+  return Object.fromEntries(entries);
 }
 
 export function editorEffectiveAlias(

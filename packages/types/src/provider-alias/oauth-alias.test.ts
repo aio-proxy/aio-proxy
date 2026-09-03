@@ -58,6 +58,32 @@ test('preserve cannot keep an excluded catalog id in the effective map', () => {
   expect(resolveOAuthAlias({ mini: cfg('hidden', true) }, undefined, ['visible'])).toEqual({});
 });
 
+test('authored preserve drops an inherited alias that occupies the original model id', () => {
+  expect(
+    resolveOAuthAlias(
+      { nick: cfg('m', true) },
+      {
+        m: {
+          model: 'm',
+          preserve: false,
+          variants: [{ when: { effort: 'high' }, model: 'm-high', preserve: false }],
+        },
+        codex: cfg('codex'),
+      },
+      ['m', 'm-high', 'codex'],
+    ),
+  ).toEqual({
+    nick: cfg('m', true),
+    codex: cfg('codex'),
+  });
+});
+
+test('an authored alias name drops an inherited preserve of that id', () => {
+  expect(resolveOAuthAlias({ m: cfg('other') }, { nick: cfg('m', true) }, ['m', 'other'])).toEqual({
+    m: cfg('other'),
+  });
+});
+
 test('resolve drops entries whose targets are missing from the exposed catalog', () => {
   expect(
     resolveOAuthAlias({ keep: cfg('live'), gone: cfg('missing') }, { inherited: cfg('hidden') }, ['live']),
