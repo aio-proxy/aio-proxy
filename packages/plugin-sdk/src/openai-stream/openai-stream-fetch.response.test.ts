@@ -118,4 +118,24 @@ describe('createOpenAIStreamFetch', () => {
     expect(response.headers.get('content-length')).toBeNull();
     expect(await response.text()).toBe(responsesTerminal);
   });
+
+  test('normalizes cumulative tool arguments only when requested', async () => {
+    const chunk = (argumentsText: string) =>
+      `data: ${JSON.stringify({ choices: [{ index: 0, delta: { tool_calls: [{ index: 0, function: { arguments: argumentsText } }] } }] })}\n\n`;
+    const upstream = chunk(`{"`) + chunk(`{"text"`) + chunk(`{"text":"ok"}`) + 'data: [DONE]\n\n';
+    const fetch = createOpenAIStreamFetch(
+      'openai-compatible',
+      async () => new Response(upstream, { headers: { 'content-type': 'text/event-stream' } }),
+      { normalizeToolArgumentSnapshots: true },
+    );
+
+    const response = await fetch('https://example.test/v1/chat/completions');
+    const deltas = (await response.text())
+      .trim()
+      .split('\n\n')
+      .filter((frame) => frame !== 'data: [DONE]')
+      .map((frame) => JSON.parse(frame.slice('data: '.length)).choices[0].delta.tool_calls[0].function.arguments);
+
+    expect(deltas.join('')).toBe('{"text":"ok"}');
+  });
 });
