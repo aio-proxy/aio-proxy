@@ -55,17 +55,16 @@ test('discovery exposes gpt-image-2 as an image model alongside the language cat
   });
 
   expect(catalog.language.map(({ id }) => id)).toEqual(['gpt-5.5']);
-  // Membership in `catalog.image` is what grants the routable `image` capability;
-  // the modalities serve /v1/models `image_input` and suppress the models.dev
-  // fallback. Strict equality also pins the absence of `extra.protocol`: raw image
-  // dispatch matches on the inbound protocol, so a protocol here has no reader.
-  expect(catalog.image).toEqual([
-    {
-      id: 'gpt-image-2',
-      displayName: 'GPT Image 2',
-      modelMetadata: {
-        capabilities: { modalities: { input: ['text', 'image'], output: ['image'] } },
-      },
-    },
-  ]);
+  // Two contracts, both user-visible: live language discovery must not clobber the
+  // hardcoded image catalog (membership is what grants the routable `image`
+  // capability), and `modalities` must survive to the descriptor because `input`
+  // reaches users as /v1/models `capabilities.image_input` and `output` suppresses
+  // the models.dev fallback. Deliberately not a whole-object `toEqual`: that also
+  // pinned `displayName` and the absence of `extra`, neither of which has a
+  // user-visible contract to protect.
+  expect(catalog.image.map(({ id }) => id)).toEqual(['gpt-image-2']);
+  expect(catalog.image[0]?.modelMetadata?.capabilities?.modalities).toEqual({
+    input: ['text', 'image'],
+    output: ['image'],
+  });
 });

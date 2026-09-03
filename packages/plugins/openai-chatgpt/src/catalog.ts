@@ -75,10 +75,12 @@ export async function discoverOpenAIChatGPTModels(
  * The upstream `model` field is decorative: every value tested returned the same
  * gpt-image 2.0 output. The id exists so users have something to route to.
  *
- * No `extra.protocol`: the host surfaces a descriptor's protocol only as
- * `model.targetProtocol`, which is language-path only, and an image-only id never
- * becomes a language candidate. Raw image dispatch matches on the inbound
- * protocol instead, so a protocol here would have no reader.
+ * No `extra.protocol`. The host does hand this descriptor's `extra` to the raw
+ * resolver — for an inbound `openai-image` it resolves the descriptor from the
+ * image catalog first and spreads `extra` into the resolver input
+ * (`plugin-runtime/capabilities.ts:62-63,68`). This plugin's resolver ignores
+ * `extra` and matches on the inbound protocol, so a `protocol` here would reach
+ * it and be dropped. Omitted rather than carried as a decorative field.
  */
 export const CHATGPT_IMAGE_MODELS: readonly ModelDescriptor[] = [
   {

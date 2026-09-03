@@ -435,7 +435,7 @@ Puts `gpt-image-2` into `catalog.image` so `buildModelCapabilityIndex` grants it
 - Consumes: `discoverOpenAIChatGPTModels(credentials, signal, fetch?)` from Task 1.
 - Produces: `CHATGPT_IMAGE_MODELS: readonly ModelDescriptor[]` exported from `./catalog`, containing exactly one descriptor with `id: 'gpt-image-2'`.
 - `ModelDescriptor` is `{ id: string; displayName?: string; extra?: JsonValue; modelMetadata?: DescriptorModelMetadata }`, where `DescriptorModelMetadata` is `Pick<ModelMetadataInput, 'name' | 'description' | 'limit' | 'capabilities' | 'cost'>`. `capabilities.modalities` is `{ input?: Modality[]; output?: Modality[] }` and `Modality` is `'text' | 'audio' | 'image' | 'video' | 'pdf'`.
-- The image descriptor carries **no** `extra.protocol`, and must not. `extra: { protocol }` is how a descriptor declares its wire protocol, and the host does read it in `modelMetadataRecord` (`packages/server/src/plugin-runtime/catalog.ts:100-105`) — but it surfaces it only as `model.targetProtocol` (`capabilities.ts:178`), inside the `catalog.language.length > 0` branch. All three `targetProtocol` callers are language-path (`model-prepare.ts:62`, `token-count.ts:227`, `provider-draft-operations.ts:162` — the last unreachable for OAuth providers per its own comment at `:155-158`), and an image-only id can never be a language candidate anyway: `capability-index.ts:46-48` sets `catalogNonLanguage`, suppressing synthesized language. Nothing else reads it — `projectCodexMetadata` (`codex-assembly.ts:68-88`) reads only `description`/`capabilities`, and `model-resolution.ts` reads `capabilities`/`limit`/`cost`. **Raw image dispatch keys on the INBOUND protocol**, not the catalog: `dispatchImageCandidate` passes `ctx.adapter.protocol` (`image.ts:24`), and the plugin's raw resolver matches on that argument, never on `extra`. A protocol on an image-only descriptor would therefore be inert — consistent with `catalog.ts:114-118`, which already states a non-language descriptor's protocol "must not survive".
+- The image descriptor carries **no** `extra.protocol`, and must not — but not because the host withholds the field. The host **does** deliver an image descriptor's `extra` to the plugin: for an inbound `OpenAIImage` protocol, `rawCapability.resolve` deliberately resolves the descriptor from `imageCatalogById` first (`capabilities.ts:62-63`) and spreads the whole `extra` into the `rawResolver({...})` input (`capabilities.ts:68`). That branch exists precisely so an image descriptor's `extra` reaches the resolver. The field is inert **for this plugin's resolver specifically**: it destructures `{ protocol, capability }` and never touches `extra`, matching instead on the inbound protocol that `dispatchImageCandidate` passes as `ctx.adapter.protocol` (`image.ts:24`). So a `protocol` here would reach the resolver and be dropped — omitted rather than carried as a decorative field. Separately, the other host path for the field is language-only and also unavailable to it: `modelMetadataRecord` (`catalog.ts:100-105`) surfaces it as `model.targetProtocol` (`capabilities.ts:178`) inside the `catalog.language.length > 0` branch, all three callers are language-path (`model-prepare.ts:62`, `token-count.ts:227`, `provider-draft-operations.ts:162` — the last unreachable for OAuth per its own comment at `:155-158`), and an image-only id never becomes a language candidate because `provider-runtime/capability-index/capability-index.ts:47-48` sets `catalogNonLanguage`.
 - Membership in `catalog.image` is what grants the routable `image` capability: `buildModelCapabilityIndex` adds `'image'` unconditionally for every `catalog.image` id (`capability-index.ts:31,39`), so `modelMetadata` is NOT load-bearing for routing — delete it and `supportsImage` is still `true`. `metadataHasImageOutput` (line 41) is a redundant second path here, and `catalogOnlyImageOutput` cannot apply at all because `resolveCatalogModalities` skips OAuth providers by design (`resolve-catalog-modalities.ts:52-65`). Declare the modalities anyway for two other reasons: `modalities.input` reaches users as `/v1/models` `capabilities.image_input` (`model-capabilities.ts:59,69`) and the agent catalog's `input` field (`agent-catalog.ts:25`), and declaring `output` suppresses the models.dev fallback layer on non-OAuth paths. Do not assert the modalities as if routing depended on them — that assertion would pass even if the feature regressed.
 - `descriptor.setup` takes **two** arguments — `(api, options)` — so the test helper must call `descriptor.setup({ oauth: { register } }, undefined)`. The `adapterFrom` helper below mirrors `packages/plugins/github-copilot/src/plugin.test.ts:154-170`.
 - `ModelModalitiesSchema` is `.loose()`, so `modelMetadata.capabilities.modalities` accepts `{ input, output }` with `Modality = 'text' | 'audio' | 'image' | 'video' | 'pdf'`.
@@ -502,19 +502,18 @@ test('discovery exposes gpt-image-2 as an image model alongside the language cat
   });
 
   expect(catalog.language.map(({ id }) => id)).toEqual(['gpt-5.5']);
-  // Membership in `catalog.image` is what grants the routable `image` capability;
-  // the modalities serve /v1/models `image_input` and suppress the models.dev
-  // fallback. Strict equality also pins the absence of `extra.protocol`: raw image
-  // dispatch matches on the inbound protocol, so a protocol here has no reader.
-  expect(catalog.image).toEqual([
-    {
-      id: 'gpt-image-2',
-      displayName: 'GPT Image 2',
-      modelMetadata: {
-        capabilities: { modalities: { input: ['text', 'image'], output: ['image'] } },
-      },
-    },
-  ]);
+  // Two contracts, both user-visible: live language discovery must not clobber the
+  // hardcoded image catalog (membership is what grants the routable `image`
+  // capability), and `modalities` must survive to the descriptor because `input`
+  // reaches users as /v1/models `capabilities.image_input` and `output` suppresses
+  // the models.dev fallback. Deliberately not a whole-object `toEqual`: that also
+  // pinned `displayName` and the absence of `extra`, neither of which has a
+  // user-visible contract to protect.
+  expect(catalog.image.map(({ id }) => id)).toEqual(['gpt-image-2']);
+  expect(catalog.image[0]?.modelMetadata?.capabilities?.modalities).toEqual({
+    input: ['text', 'image'],
+    output: ['image'],
+  });
 });
 ```
 
