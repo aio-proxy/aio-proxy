@@ -1,1 +1,8 @@
-export { preflightRawRetrySse, readBoundedJsonBody, type RawRetryGuards, type RawRetryPreflight } from './raw-retry';
+export {
+  preflightRawRetrySse,
+  readBoundedJsonBody,
+  resolveRawRetry,
+  type RawRetryGuards,
+  type RawRetryPreflight,
+  type RawRetryResolution,
+} from './raw-retry';

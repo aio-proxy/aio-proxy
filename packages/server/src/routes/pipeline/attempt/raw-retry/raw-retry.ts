@@ -210,3 +210,53 @@ function replayBuffered(
     },
   });
 }
+
+export type RawRetryResolution<TRequest, TContext> = {
+  readonly hook:
+    | Readonly<{
+        classify: (frame: RawRetryFrame) => RawRetryVerdict;
+        rewrite: (upstream: Request, request: TRequest, context: TContext) => Promise<Request | undefined>;
+      }>
+    | undefined;
+  readonly retrySource: Request | undefined;
+  readonly request: TRequest;
+  readonly context: TContext;
+  readonly response: Response;
+  readonly streamRequested: boolean;
+  readonly guards: RawRetryGuards;
+  readonly invoke: (request: Request) => Promise<Response>;
+};
+
+// One replay at most, decided by the adapter. Runs before usage capture so a
+// hidden retry never reaches the client or the trace.
+export async function resolveRawRetry<TRequest, TContext>(
+  input: RawRetryResolution<TRequest, TContext>,
+): Promise<Response> {
+  const { hook, retrySource, response } = input;
+  if (hook === undefined || retrySource === undefined) return response;
+
+  // Replay only after the failed response is released. A slow or throwing retry
+  // transport would otherwise leave the first SSE reader locked and its upstream
+  // connection open and buffering for the whole second call, and a thrown replay
+  // would skip cancellation entirely.
+  const replay = async (failed: Response): Promise<Response | undefined> => {
+    const retryRequest = await hook.rewrite(retrySource, input.request, input.context);
+    if (retryRequest === undefined) return undefined;
+    void failed.body?.cancel().catch(() => undefined);
+    return await input.invoke(retryRequest);
+  };
+
+  if (response.status === 400) {
+    const bodyText = await readBoundedJsonBody(response, input.guards);
+    if (bodyText === undefined || hook.classify({ data: bodyText }) !== 'retry') return response;
+    return (await replay(response)) ?? response;
+  }
+
+  if (!response.ok || !input.streamRequested) return response;
+  const preflight = await preflightRawRetrySse(response, hook.classify, {
+    ...input.guards,
+    assumeEventStream: true,
+  });
+  if (preflight.kind !== 'retry') return preflight.response;
+  return (await replay(preflight.response)) ?? preflight.response;
+}
