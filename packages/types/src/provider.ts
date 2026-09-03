@@ -25,6 +25,7 @@ export {
 import { AliasConfigSchema, ModelIdSchema } from './common';
 import { CapabilityIdSchema, PluginPackageNameSchema } from './plugin';
 import { normalizeProviderAlias, normalizeProviderAliasKeys, validateAliasTargets } from './provider-alias';
+import { AuthoredOAuthAliasSchema } from './provider-alias/oauth-alias';
 import { ProviderTransformsSchema } from './provider-transform/index';
 
 export {
@@ -38,6 +39,15 @@ export {
   sameRouteTargets,
   validateAliasTargets,
 } from './provider-alias';
+export {
+  AuthoredOAuthAliasSchema,
+  type AuthoredOAuthAlias,
+  type AuthoredOAuthAliasValue,
+  INHERIT_OFF_KEY,
+  isAuthoredAliasConfig,
+  oauthExposedModels,
+  resolveOAuthAlias,
+} from './provider-alias/oauth-alias';
 
 export enum ProviderKind {
   Api = 'api',
@@ -86,7 +96,6 @@ const SharedProviderSchemaBase = {
   enabled: z.boolean().default(true).describe('Whether this provider participates in routing.'),
   priority: RoutingPrioritySchema.prefault(0).describe('Provider failover priority; higher values are tried first.'),
   weight: RoutingWeightSchema.prefault(1).describe('Same-priority traffic weight; zero disables normal routing.'),
-  alias: z.record(z.string().min(1), AliasConfigSchema).optional().describe('Client-facing model aliases.'),
   name: z.string().optional().describe('Display name shown in the dashboard.'),
   transforms: ProviderTransformsSchema.optional().describe('Ordered outbound request transforms.'),
 } as const;
@@ -95,11 +104,21 @@ const modelsField = {
   models: z.array(ModelIdSchema).optional().describe('Upstream model ids available through this provider.'),
 } as const;
 
+const configuredAliasField = {
+  alias: z.record(z.string().min(1), AliasConfigSchema).optional().describe('Client-facing model aliases.'),
+} as const;
+
+const oauthRoutingFields = {
+  excludedModels: z.array(ModelIdSchema).optional().describe('Catalog ids hidden from this OAuth provider.'),
+  alias: AuthoredOAuthAliasSchema.optional().describe('Authored alias overrides and hides on top of plugin defaults.'),
+} as const;
+
 const AiSdkPackageNameSchema = z.string().trim().min(1, 'AI SDK package name cannot be blank');
 
 const ApiProviderSharedFields = {
   kind: z.literal(ProviderKind.Api).describe('Provider backed by a raw HTTP API.'),
   ...SharedProviderSchemaBase,
+  ...configuredAliasField,
   ...modelsField,
   protocol: ProviderProtocolSchema.optional(),
   apiKey: z.string().optional().describe('Bearer token or API key for the provider.'),
@@ -150,7 +169,7 @@ export const ApiProviderAuthoringSchema = ApiProviderAuthoringObjectSchema.super
 export const OAuthPluginProviderSchema = z.object({
   kind: z.literal(ProviderKind.OAuth).describe('Provider backed by a plugin OAuth account.'),
   ...SharedProviderSchemaBase,
-  ...modelsField,
+  ...oauthRoutingFields,
   plugin: PluginPackageNameSchema,
   capability: CapabilityIdSchema,
   options: z.record(z.string(), z.unknown()).optional(),
@@ -172,6 +191,7 @@ export const OAuthProviderAuthoringSchema = OAuthProviderSchema.omit({
 const AiSdkProviderSharedFields = {
   kind: z.literal(ProviderKind.AiSdk).describe('Provider loaded from an AI SDK provider package.'),
   ...SharedProviderSchemaBase,
+  ...configuredAliasField,
   ...modelsField,
   packageName: AiSdkPackageNameSchema.default('@ai-sdk/openai-compatible').describe(
     'npm package name that exports the AI SDK provider factory.',
@@ -274,9 +294,9 @@ export const OAuthProviderMutationBodySchema = z.strictObject({
   enabled: z.boolean().optional(),
   priority: RoutingPrioritySchema.optional(),
   weight: RoutingWeightSchema.optional(),
-  models: z.array(z.string()).optional(),
+  excludedModels: z.array(z.string()).optional(),
   proxy: ProviderMutationProxySchema,
-  alias: z.record(z.string().min(1), AliasConfigSchema).optional().describe('Client-facing model aliases.'),
+  alias: AuthoredOAuthAliasSchema.optional().describe('Authored alias overrides and hides on top of plugin defaults.'),
   transforms: ProviderTransformsSchema.optional().describe('Ordered outbound request transforms.'),
 });
 

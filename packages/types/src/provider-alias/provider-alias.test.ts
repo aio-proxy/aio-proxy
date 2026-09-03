@@ -6,8 +6,10 @@ import * as types from '../index';
 import { directModelIds, modelRoutes, validateAliasTargets } from './provider-alias';
 
 const issuesFor = (provider: {
+  kind?: string;
   models?: readonly string[];
-  alias?: Record<string, { model: string; variants?: Record<string, { model: string }> }>;
+  excludedModels?: readonly string[];
+  alias?: Record<string, { model: string; variants?: Record<string, { model: string }> } | false>;
 }) => {
   const issues: z.core.$ZodIssue[] = [];
   const ctx = { addIssue: (issue: never) => issues.push(issue), value: provider } as unknown as z.RefinementCtx;
@@ -124,6 +126,34 @@ test('the provider-alias barrel exports exactly its intended surface', async () 
     'preservedAliasModels',
     'sameRouteTargets',
     'validateAliasTargets',
+  ]);
+});
+
+test('OAuth leftover models do not restrict alias targets; excludedModels do', () => {
+  expect(
+    issuesFor({
+      kind: 'oauth',
+      models: ['only-this'],
+      alias: { smart: { model: 'upstream-a' } },
+    }),
+  ).toEqual([]);
+  const excluded = issuesFor({
+    kind: 'oauth',
+    excludedModels: ['hidden', 'also-hidden'],
+    alias: { smart: { model: 'hidden', variants: { fast: { model: 'also-hidden' } } } },
+  });
+  expect(excluded.map((issue) => issue.path)).toEqual([
+    ['alias', 'smart', 'model'],
+    ['alias', 'smart', 'variants', 0, 'model'],
+  ]);
+});
+
+test('api and ai-sdk reject false hides and reserved *', () => {
+  expect(issuesFor({ kind: 'api', alias: { hidden: false as never } }).map((issue) => issue.path)).toEqual([
+    ['alias', 'hidden'],
+  ]);
+  expect(issuesFor({ kind: 'ai-sdk', alias: { '*': { model: 'x' } } }).map((issue) => issue.path)).toEqual([
+    ['alias', '*'],
   ]);
 });
 
