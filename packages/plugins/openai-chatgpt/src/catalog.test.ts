@@ -30,6 +30,10 @@ function staticCredentialPort(value: ChatGPTCredential): CredentialPort<ChatGPTC
   };
 }
 
+const ONE_MODEL = {
+  models: [{ slug: 'gpt-5.5', display_name: 'GPT-5.5', priority: 12, supported_in_api: true, visibility: 'list' }],
+};
+
 test('queries the account Codex models endpoint with pinned client version and ChatGPT auth', async () => {
   const calls: { readonly url: string; readonly headers: Headers; readonly traffic: string | undefined }[] = [];
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RuntimeRequestInit) => {
@@ -39,7 +43,7 @@ test('queries the account Codex models endpoint with pinned client version and C
       headers: new Headers(request.headers),
       traffic: init?.aioProxy?.traffic,
     });
-    return Response.json({ models: [] });
+    return Response.json(ONE_MODEL);
   }) as typeof globalThis.fetch;
 
   await discoverOpenAIChatGPTModels(staticCredentialPort(credential()), new AbortController().signal);
@@ -93,7 +97,7 @@ test('refreshes an expired credential before querying the catalog', async () => 
   const headers: Headers[] = [];
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     headers.push(new Headers(new Request(input, init).headers));
-    return Response.json({ models: [] });
+    return Response.json(ONE_MODEL);
   }) as typeof globalThis.fetch;
   const port: CredentialPort<ChatGPTCredential> = {
     read: async () => ({ revision: 7, value: credential({ accessToken: 'stale', expiresAt: Date.now() - 1 }) }),
@@ -135,4 +139,15 @@ test('fails loudly when the models endpoint rejects the account', async () => {
   await expect(
     discoverOpenAIChatGPTModels(staticCredentialPort(credential()), new AbortController().signal),
   ).rejects.toThrow('Codex model catalog request failed with 401');
+});
+
+// A 200 with an empty array is what the endpoint returns when no model clears
+// `minimal_client_version`. Resolving it would swap an empty catalog in over the
+// stored one and take every language model with it.
+test('fails loudly when the models endpoint returns an empty list', async () => {
+  globalThis.fetch = async () => Response.json({ models: [] });
+
+  await expect(
+    discoverOpenAIChatGPTModels(staticCredentialPort(credential()), new AbortController().signal),
+  ).rejects.toThrow('Codex model catalog returned no models');
 });
