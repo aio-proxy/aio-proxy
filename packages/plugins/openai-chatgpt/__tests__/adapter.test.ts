@@ -103,7 +103,7 @@ describe('OpenAI ChatGPT plugin', () => {
       });
 
     const catalog = await adapter.catalog.discover({
-      credentials: unusedCredentialPort(),
+      credentials: catalogCredentialPort(),
       options: {},
       signal: new AbortController().signal,
     });
@@ -247,13 +247,19 @@ function loginContext(overrides: {
   };
 }
 
-function unusedCredentialPort() {
+function catalogCredentialPort() {
   return {
-    read: async () => {
-      throw new Error('catalog must not read credentials');
-    },
+    read: async () => ({
+      revision: 1,
+      value: {
+        accessToken: 'access-token',
+        accountId: 'acct-123',
+        expiresAt: Date.now() + 60_000,
+        refreshToken: 'refresh-token',
+      },
+    }),
     refresh: async () => {
-      throw new Error('catalog must not refresh credentials');
+      throw new Error('valid credentials must not refresh');
     },
   };
 }

@@ -125,8 +125,8 @@ export function createOpenAIChatGPTPlugin(
     },
     catalog: {
       policy: { kind: 'ttl', ttlMs: CHATGPT_CATALOG_TTL_MS },
-      discover: async ({ fetch, signal }) => ({
-        language: await discoverOpenAIChatGPTModels(signal, fetch),
+      discover: async ({ credentials, fetch, signal }) => ({
+        language: await discoverOpenAIChatGPTModels(credentials, signal, fetch),
         image: [],
         embedding: [],
         speech: [],
