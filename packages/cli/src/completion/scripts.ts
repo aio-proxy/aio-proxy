@@ -1,4 +1,4 @@
-// Static shell-completion scripts for the top-level `aio-proxy` commands.
+// Static shell-completion scripts for the top-level `aio-proxy` / `aiop` commands.
 // Static (rather than reflected from commander) keeps output deterministic and
 // decoupled from internal command wiring.
 const COMMANDS = 'run reload status config dashboard provider plugin service doctor completion agent';
@@ -11,12 +11,12 @@ _aio_proxy() {
     COMPREPLY=( $(compgen -W "${COMMANDS}" -- "$cur") )
   fi
 }
-complete -F _aio_proxy aio-proxy
+complete -F _aio_proxy aio-proxy aiop
 `;
 
 const zsh = `# aio-proxy zsh completion
 # Install: aio-proxy completion zsh > "\${fpath[1]}/_aio-proxy"
-#compdef aio-proxy
+#compdef aio-proxy aiop
 _aio_proxy() {
   local -a commands
   commands=(${COMMANDS})
@@ -26,9 +26,14 @@ _aio_proxy "$@"
 `;
 
 const fish = `# aio-proxy fish completion
-# Install: aio-proxy completion fish > ~/.config/fish/completions/aio-proxy.fish
+# Install:
+#   aio-proxy completion fish > ~/.config/fish/completions/aio-proxy.fish
+#   cp ~/.config/fish/completions/aio-proxy.fish ~/.config/fish/completions/aiop.fish
 ${COMMANDS.split(' ')
   .map((cmd) => `complete -c aio-proxy -n __fish_use_subcommand -a ${cmd}`)
+  .join('\n')}
+${COMMANDS.split(' ')
+  .map((cmd) => `complete -c aiop -n __fish_use_subcommand -a ${cmd}`)
   .join('\n')}
 `;
 

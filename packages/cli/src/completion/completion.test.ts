@@ -7,14 +7,22 @@ test('emits a bash completion script naming the run command', () => {
   const lines: string[] = [];
   completionCommand('bash', (line) => lines.push(line));
   const out = lines.join('\n');
-  expect(out).toContain('complete -F _aio_proxy aio-proxy');
+  expect(out).toContain('complete -F _aio_proxy aio-proxy aiop');
   expect(out).toContain('run');
+});
+
+test('zsh completion registers both command names', () => {
+  const lines: string[] = [];
+  completionCommand('zsh', (line) => lines.push(line));
+  expect(lines.join('\n')).toContain('#compdef aio-proxy aiop');
 });
 
 test('fish completion lists subcommands as completions', () => {
   const lines: string[] = [];
   completionCommand('fish', (line) => lines.push(line));
-  expect(lines.join('\n')).toContain('complete -c aio-proxy -n __fish_use_subcommand -a run');
+  const out = lines.join('\n');
+  expect(out).toContain('complete -c aio-proxy -n __fish_use_subcommand -a run');
+  expect(out).toContain('complete -c aiop -n __fish_use_subcommand -a run');
 });
 
 test('rejects an unsupported shell with an unrecoverable exit', () => {

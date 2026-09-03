@@ -56,8 +56,10 @@ bun add -g aio-proxy
 ## Quick start
 
 ```bash
-aio-proxy run --open
+aiop run --open
 ```
+
+`aio-proxy` still works. `aiop` is the short command.
 
 - API: `http://127.0.0.1:9317`
 - Dashboard: `http://127.0.0.1:9317/dashboard`

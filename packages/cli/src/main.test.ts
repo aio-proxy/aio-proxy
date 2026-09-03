@@ -11,7 +11,8 @@ import packageJson from '../package.json' with { type: 'json' };
 import type { AgentConfigureResult, AgentListResult, AgentRemoveResult, AgentRevokeResult } from './agent';
 import type { AgentCliActions } from './agent/output';
 import { registerAgentCommands } from './agent/output';
-import { buildProgram } from './main';
+import { defaultCliDeps } from './dashboard-assets';
+import { buildProgram, invokedProgramName } from './main';
 
 describe('cli', () => {
   test('prints package version when requested', () => {
@@ -183,6 +184,20 @@ describe('cli', () => {
     const child = program.commands.find((command) => command.name() === '__agent-post-upgrade');
     expect(child).toBeDefined();
     expect(program.helpInformation()).not.toContain('__agent-post-upgrade');
+  });
+
+  test('invokedProgramName treats aiop as the short command', () => {
+    expect(invokedProgramName('aiop')).toBe('aiop');
+    expect(invokedProgramName('/usr/local/bin/aiop')).toBe('aiop');
+    expect(invokedProgramName('/usr/local/bin/aiop.js')).toBe('aiop');
+    expect(invokedProgramName('/usr/bin/node', '/opt/homebrew/bin/aiop')).toBe('aiop');
+    expect(invokedProgramName('/usr/local/bin/aio-proxy')).toBe('aio-proxy');
+  });
+
+  test('help uses the invoked short name', () => {
+    const program = buildProgram(defaultCliDeps, 'aiop');
+    expect(program.name()).toBe('aiop');
+    expect(program.helpInformation()).toContain('Usage: aiop');
   });
 });
 
