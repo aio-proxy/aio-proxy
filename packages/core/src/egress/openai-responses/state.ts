@@ -112,6 +112,13 @@ export function responseObject(status: ResponseStatus, state: ResponseState): Re
   };
 }
 
+export function failedResponseObject(state: ResponseState): Response {
+  return {
+    ...responseObject('failed', { ...state, text: [], reasoning: [], tools: new Map(), output: [] }),
+    error: { code: 'server_error', message: 'The upstream model stream failed.' },
+  };
+}
+
 export function ensureOutput(
   state: ResponseState,
   output: OutputItemRef,

@@ -27,6 +27,7 @@ test('build exposes exact Lobe icon keys without bundling them into runtime Java
   const openaiStreamDts = readFileSync(join(packagePath, 'dist', 'openai-stream', 'index.d.ts'), 'utf8');
   expect(openaiStreamDts).toContain('createOpenAIStreamFetch');
   expect(openaiStreamDts).toContain('OpenAIStreamFetchCallOptions');
+  expect(openaiStreamDts).toContain('normalizeToolArgumentSnapshots?: boolean');
   expect(openaiStreamDts).toContain('OpenAIStreamFetch = typeof globalThis.fetch &');
   expect(openaiStreamDts).toContain('options?: OpenAIStreamFetchCallOptions');
   expect(openaiStreamDts).toContain('OpenAIStreamProtocol');
@@ -41,6 +42,7 @@ import {
   createOpenAIStreamFetch,
   type OpenAIStreamFetch,
   type OpenAIStreamFetchCallOptions,
+  type OpenAIStreamFetchOptions,
 } from ${JSON.stringify(join(packagePath, 'dist', 'openai-stream', 'index.js'))};
 
 const lobe: PluginIcon = "openai";
@@ -48,7 +50,8 @@ const http: PluginIcon = "http://example.com/icon.svg";
 const https: PluginIcon = "https://example.com/icon.svg";
 const data: PluginIcon = "data:image/png;base64,iVBORw0KGgo=";
 const callOptions: OpenAIStreamFetchCallOptions = { upstreamStream: false };
-const streamFetch: OpenAIStreamFetch = createOpenAIStreamFetch("openai-response");
+const fetchOptions: OpenAIStreamFetchOptions = { normalizeToolArgumentSnapshots: true };
+const streamFetch: OpenAIStreamFetch = createOpenAIStreamFetch("openai-response", undefined, fetchOptions);
 const fetch: typeof globalThis.fetch = streamFetch;
 void streamFetch("https://example.test", undefined, callOptions);
 
