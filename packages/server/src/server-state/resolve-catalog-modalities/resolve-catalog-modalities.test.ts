@@ -93,7 +93,7 @@ describe('resolveCatalogModalities', () => {
 
   test('ignores OAuth providers, whose catalog already declares image models', async () => {
     const config = makeConfig({
-      person: { kind: 'oauth', plugin: '@example/oauth', capability: 'default', models: ['gpt-image-2'] },
+      person: { kind: 'oauth', plugin: '@example/oauth', capability: 'default' },
     });
 
     const resolved = await resolveCatalogModalities(config, { getModels: stubGetModels() });

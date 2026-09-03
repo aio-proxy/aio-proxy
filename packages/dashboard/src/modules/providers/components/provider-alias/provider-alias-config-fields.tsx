@@ -3,7 +3,7 @@ import { Button } from '@aio-proxy/ui/components/button';
 import { FieldError } from '@aio-proxy/ui/components/field';
 import { Input } from '@aio-proxy/ui/components/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@aio-proxy/ui/components/select';
-import { ArrowRightIcon, Trash2Icon } from 'lucide-react';
+import { ArrowRightIcon, EyeOffIcon, RotateCcwIcon, Trash2Icon } from 'lucide-react';
 import type { FC } from 'react';
 
 import { type AliasEditorIssue, type AliasRow, aliasControlId } from '../../lib/alias-editor';
@@ -17,6 +17,8 @@ interface ProviderAliasConfigFieldsProps {
   readonly onAliasChange: (alias: readonly AliasRow[]) => void;
   readonly onRename: (name: string) => void;
   readonly onRemove: () => void;
+  readonly onHide?: (() => void) | undefined;
+  readonly onRestore?: (() => void) | undefined;
 }
 
 export const ProviderAliasConfigFields: FC<ProviderAliasConfigFieldsProps> = ({
@@ -27,6 +29,8 @@ export const ProviderAliasConfigFields: FC<ProviderAliasConfigFieldsProps> = ({
   onAliasChange,
   onRename,
   onRemove,
+  onHide,
+  onRestore,
 }) => {
   const codes = new Set(issues.map((issue) => issue.code));
   // The duplicate is reported once, at the list level, so the card only points at it. Anything else is
@@ -50,15 +54,25 @@ export const ProviderAliasConfigFields: FC<ProviderAliasConfigFieldsProps> = ({
           aria-describedby={duplicateName ? 'alias-name-duplicate-error' : undefined}
           placeholder={m['dashboard.providers.form.alias_name_placeholder']()}
           className="font-mono text-sm"
+          disabled={row.origin === 'inherited' || row.origin === 'hidden'}
           onChange={(event) => onRename(event.target.value)}
         />
         <ArrowRightIcon className="mx-auto size-4 text-muted-foreground" aria-hidden="true" />
         <Select
           value={row.config.model}
+          disabled={row.origin === 'hidden'}
           onValueChange={(model) => {
             if (model === null) return;
             onAliasChange(
-              alias.map((item) => (item.id === row.id ? { ...item, config: { ...item.config, model } } : item)),
+              alias.map((item) =>
+                item.id === row.id
+                  ? {
+                      ...item,
+                      origin: item.origin === 'inherited' ? 'authored' : item.origin,
+                      config: { ...item.config, model },
+                    }
+                  : item,
+              ),
             );
           }}
         >
@@ -78,15 +92,39 @@ export const ProviderAliasConfigFields: FC<ProviderAliasConfigFieldsProps> = ({
             ))}
           </SelectContent>
         </Select>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-xs"
-          aria-label={m['dashboard.providers.form.remove_alias_named']({ alias: row.name })}
-          onClick={onRemove}
-        >
-          <Trash2Icon />
-        </Button>
+        {onHide === undefined ? null : (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            aria-label={m['dashboard.providers.form.hide_inherited_alias']({ alias: row.name })}
+            onClick={onHide}
+          >
+            <EyeOffIcon />
+          </Button>
+        )}
+        {onRestore === undefined ? null : (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            aria-label={m['dashboard.providers.form.restore_plugin_alias']({ alias: row.name })}
+            onClick={onRestore}
+          >
+            <RotateCcwIcon />
+          </Button>
+        )}
+        {row.origin === 'inherited' || row.origin === 'hidden' ? null : (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            aria-label={m['dashboard.providers.form.remove_alias_named']({ alias: row.name })}
+            onClick={onRemove}
+          >
+            <Trash2Icon />
+          </Button>
+        )}
       </div>
       {errorMessage !== null && <FieldError>{errorMessage}</FieldError>}
     </>

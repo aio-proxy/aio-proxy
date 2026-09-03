@@ -52,7 +52,7 @@ test('stores account, structured canonical config, credentials, and initial cata
   expect(state.repository.listPendingAccountOperations()).toHaveLength(0);
 });
 
-test('new account stores catalog-derived aliases whose targets exist', async () => {
+test('new account does not persist plugin default aliases', async () => {
   const state = fixture();
   await createAccount(state, {
     registry: registry({
@@ -67,32 +67,25 @@ test('new account stores catalog-derived aliases whose targets exist', async () 
     }),
   });
 
-  expect(configOf(state)['providers']).toMatchObject({
-    person: {
-      alias: {
-        logical: {
-          model: 'wire-low',
-          preserve: false,
-          variants: [{ when: { effort: 'high' }, model: 'wire-high', preserve: false }],
-        },
-      },
-    },
-  });
+  expect((configOf(state)['providers'] as Record<string, Record<string, unknown>>)['person']).not.toHaveProperty(
+    'alias',
+  );
 });
 
-test('new account rejects default aliases that reference an undiscovered target', async () => {
+test('new account still succeeds when default aliases reference an undiscovered target', async () => {
   const state = fixture();
-  await expect(
-    createAccount(state, {
-      registry: registry({
-        discover: async () => ({ ...emptyCatalog(), language: [{ id: 'wire-low' }] }),
-        defaultAliases: () => ({ logical: { model: 'missing' } }),
-      }),
+  await createAccount(state, {
+    registry: registry({
+      discover: async () => ({ ...emptyCatalog(), language: [{ id: 'wire-low' }] }),
+      defaultAliases: () => ({ logical: { model: 'missing' } }),
     }),
-  ).rejects.toThrow('default alias target');
+  });
+  expect((configOf(state)['providers'] as Record<string, Record<string, unknown>>)['person']).not.toHaveProperty(
+    'alias',
+  );
 });
 
-test('new account writes full suggestions when the server reconstructs alias as undefined', async () => {
+test('new account does not persist suggestions when the patch alias is undefined', async () => {
   const state = fixture();
   await createAccount(state, {
     providerPatch: {
@@ -112,18 +105,12 @@ test('new account writes full suggestions when the server reconstructs alias as 
     }),
   });
 
-  expect(configOf(state)['providers']).toMatchObject({
-    person: {
-      weight: 2,
-      alias: {
-        logical: { model: 'wire-low' },
-        extra: { model: 'wire-high' },
-      },
-    },
-  });
+  const person = (configOf(state)['providers'] as Record<string, Record<string, unknown>>)['person'];
+  expect(person?.['weight']).toBe(2);
+  expect(person).not.toHaveProperty('alias');
 });
 
-test('new account writes full suggestions when the provider patch omits alias', async () => {
+test('new account does not persist suggestions when the provider patch omits alias', async () => {
   const state = fixture();
   await createAccount(state, {
     providerPatch: { weight: 2 } as never,
@@ -136,15 +123,9 @@ test('new account writes full suggestions when the provider patch omits alias', 
     }),
   });
 
-  expect(configOf(state)['providers']).toMatchObject({
-    person: {
-      weight: 2,
-      alias: {
-        logical: { model: 'wire-low' },
-        extra: { model: 'wire-high' },
-      },
-    },
-  });
+  const person = (configOf(state)['providers'] as Record<string, Record<string, unknown>>)['person'];
+  expect(person?.['weight']).toBe(2);
+  expect(person).not.toHaveProperty('alias');
 });
 
 test('new account treats an explicit provider alias as final', async () => {
@@ -173,22 +154,23 @@ test('new account treats an explicit provider alias as final', async () => {
   ).not.toHaveProperty('extra');
 });
 
-test('new account rejects array default-alias rows missing from the catalog', async () => {
+test('new account does not persist array default-alias rows missing from the catalog', async () => {
   const state = fixture();
-  await expect(
-    createAccount(state, {
-      registry: registry({
-        discover: async () => ({ ...emptyCatalog(), language: [{ id: 'wire-low' }] }),
-        defaultAliases: () =>
-          ({
-            logical: {
-              model: 'wire-low',
-              variants: [{ when: { effort: 'high' }, model: 'missing-high' }],
-            },
-          }) as never,
-      }),
+  await createAccount(state, {
+    registry: registry({
+      discover: async () => ({ ...emptyCatalog(), language: [{ id: 'wire-low' }] }),
+      defaultAliases: () =>
+        ({
+          logical: {
+            model: 'wire-low',
+            variants: [{ when: { effort: 'high' }, model: 'missing-high' }],
+          },
+        }) as never,
     }),
-  ).rejects.toThrow('default alias target');
+  });
+  expect((configOf(state)['providers'] as Record<string, Record<string, unknown>>)['person']).not.toHaveProperty(
+    'alias',
+  );
 });
 
 test('new account uses a validated discovery fallback', async () => {

@@ -10,11 +10,18 @@ import { omit } from 'es-toolkit/object';
 
 export type { ProviderAlias };
 
+export type AliasRowOrigin = 'authored' | 'inherited' | 'hidden';
+
 export type AliasRow = {
   readonly id: string;
   readonly name: string;
+  readonly origin: AliasRowOrigin;
   readonly config: AliasConfig;
 };
+
+export const mintAliasRowId = (): string => nextKey();
+
+export const isEditableAliasRow = (row: AliasRow): boolean => row.origin === 'authored';
 
 export type AliasEditorIssue = {
   readonly code:
@@ -44,6 +51,7 @@ const nextKey = (): string => {
 export const blankAliasRow = (model: string): AliasRow => ({
   id: nextKey(),
   name: '',
+  origin: 'authored',
   config: { model, preserve: false },
 });
 
@@ -51,13 +59,17 @@ export function toAliasRows(record: ProviderAlias): readonly AliasRow[] {
   return Object.entries(record).map(([name, config]) => ({
     id: nextKey(),
     name,
+    origin: 'authored',
     config,
   }));
 }
 
 export function toAliasRecord(rows: readonly AliasRow[]): ProviderAlias {
   return Object.fromEntries(
-    rows.map((row) => [normalizeAliasName(row.name), row.config] as const).filter(([name]) => name !== ''),
+    rows
+      .filter((row) => row.origin === 'authored')
+      .map((row) => [normalizeAliasName(row.name), row.config] as const)
+      .filter(([name]) => name !== ''),
   );
 }
 
@@ -148,7 +160,7 @@ export function aliasEditorIssues(rows: readonly AliasRow[], models?: readonly s
   // Keep in lockstep with validateAliasTargets in @aio-proxy/types: absent and
   // empty both mean "no whitelist", or the editor blocks a payload the server accepts.
   const availableModels = models === undefined || models.length === 0 ? undefined : new Set(models);
-  const preservedModels = preservedAliasModels(toAliasRecord(rows));
+  const preservedModels = preservedAliasModels(toAliasRecord(rows.filter((row) => row.origin === 'authored')));
   // Every row in a collision is flagged, not just the later one: the first row is no more legal than
   // the second, and marking one of them makes the other look like the only mistake. A `Map`, not a
   // counted record: the names are user-typed, and a plain object answers `constructor` (or `toString`,
@@ -161,6 +173,7 @@ export function aliasEditorIssues(rows: readonly AliasRow[], models?: readonly s
   }
 
   for (const row of rows) {
+    if (row.origin === 'inherited' || row.origin === 'hidden') continue;
     const normalizedAlias = normalizeAliasName(row.name);
     if (normalizedAlias === '') {
       issues.push({ code: 'alias-name-required', alias: row.id });

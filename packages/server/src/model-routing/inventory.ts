@@ -18,8 +18,11 @@ import {
   ModelLimitSchema,
   type ModelMetadataInput,
   ModelMetadataSchema,
+  oauthExposedModels,
   type Provider,
+  type ProviderAlias,
   ProviderKind,
+  resolveOAuthAlias,
   RoutingPrioritySchema,
   RoutingWeightSchema,
 } from '@aio-proxy/types';
@@ -34,6 +37,9 @@ export type RoutingInventoryInput = {
   readonly summaries: readonly DashboardProviderSummary[];
   readonly repository: Pick<PluginRepository, 'readCatalog' | 'readAccount'>;
   readonly writable: boolean;
+  readonly pluginDefaults?: (
+    provider: Extract<Provider, { kind: typeof ProviderKind.OAuth }>,
+  ) => ProviderAlias | undefined;
 };
 
 export async function assembleRoutingInventory(input: RoutingInventoryInput): Promise<DashboardRoutingModelsResponse> {
@@ -43,7 +49,7 @@ export async function assembleRoutingInventory(input: RoutingInventoryInput): Pr
   const models = new Map<string, WritableModel>();
 
   for (const provider of providers) {
-    const source = await syntheticSource(provider, input.repository);
+    const source = await syntheticSource(provider, input.repository, input.pluginDefaults);
     const name = routingProviderName(provider, summaries.get(provider.id), input.repository);
     for (const route of modelRoutes(source)) {
       let model = models.get(route.alias);
@@ -205,13 +211,23 @@ function parsedNumberView(
 async function syntheticSource(
   provider: Provider,
   repository: Pick<PluginRepository, 'readCatalog'>,
+  pluginDefaults?: RoutingInventoryInput['pluginDefaults'],
 ): Promise<RoutableProvider> {
-  const models =
-    provider.kind === ProviderKind.OAuth
-      ? await oauthCatalogModels(provider.id, repository)
-      : 'models' in provider
-        ? (provider.models ?? [])
-        : [];
+  if (provider.kind === ProviderKind.OAuth) {
+    const models = await oauthCatalogModels(provider, repository);
+    const alias = resolveOAuthAlias(
+      provider.alias,
+      pluginDefaults?.(provider),
+      models === undefined ? undefined : models,
+    );
+    return {
+      id: provider.id,
+      enabled: provider.enabled,
+      ...(models === undefined || models.length === 0 ? {} : { models }),
+      ...(Object.keys(alias).length === 0 ? {} : { alias }),
+    };
+  }
+  const models = provider.models ?? [];
   return {
     id: provider.id,
     enabled: provider.enabled,
@@ -221,15 +237,18 @@ async function syntheticSource(
 }
 
 async function oauthCatalogModels(
-  providerId: string,
+  provider: Extract<Provider, { kind: typeof ProviderKind.OAuth }>,
   repository: Pick<PluginRepository, 'readCatalog'>,
-): Promise<readonly string[]> {
+): Promise<readonly string[] | undefined> {
   try {
-    const stored = repository.readCatalog(providerId);
-    if (stored === null) return [];
-    return validateModelCatalog(stored.catalog).language.map((entry) => entry.id);
+    const stored = repository.readCatalog(provider.id);
+    if (stored === null) return undefined;
+    return oauthExposedModels(
+      validateModelCatalog(stored.catalog).language.map((entry) => entry.id),
+      provider.excludedModels,
+    );
   } catch {
-    return [];
+    return undefined;
   }
 }
 

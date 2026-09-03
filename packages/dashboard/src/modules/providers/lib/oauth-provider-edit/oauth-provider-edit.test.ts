@@ -28,6 +28,7 @@ test('common-only OAuth edits use the normal provider update', () => {
       priority: 4,
       weight: 2,
       alias: { chat: { model: 'model-2', preserve: false } },
+      excludedModels: [],
     },
   });
 });
@@ -57,6 +58,7 @@ test('account edits start locked reauthorization and omit blank replacement secr
         priority: 4,
         weight: 2,
         alias: { chat: { model: 'model-2', preserve: false } },
+        excludedModels: [],
       },
     },
   });
@@ -91,22 +93,30 @@ test('OAuth proxy edits preserve explicit inheritance across update and reauthor
   });
 });
 
-test('whitelist round-trips through both action branches', () => {
+test('excludedModels and an empty authored alias always go out on both action branches', () => {
   const base = {
     id: 'p',
     enabled: true,
     publicValues: {},
     secrets: {},
     clearSecrets: [],
-    models: ['m1', 'm2'],
+    excludedModels: ['m1'],
   };
   const update = oauthProviderEditAction(base, {});
   expect(update.kind).toBe('update');
-  if (update.kind === 'update') expect(update.body.models).toEqual(['m1', 'm2']);
+  if (update.kind === 'update') {
+    expect(update.body.excludedModels).toEqual(['m1']);
+    expect(update.body.alias).toEqual({});
+    expect(update.body).not.toHaveProperty('models');
+  }
 
   const reauth = oauthProviderEditAction(base, {}, true);
   expect(reauth.kind).toBe('reauthorize');
-  if (reauth.kind === 'reauthorize') expect(reauth.input.providerPatch?.models).toEqual(['m1', 'm2']);
+  if (reauth.kind === 'reauthorize') {
+    expect(reauth.input.providerPatch?.excludedModels).toEqual(['m1']);
+    expect(reauth.input.providerPatch?.alias).toEqual({});
+    expect(reauth.input.providerPatch).not.toHaveProperty('models');
+  }
 });
 
 test('a whitespace-only display name is omitted from both action branches', () => {

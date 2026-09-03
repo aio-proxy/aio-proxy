@@ -3,7 +3,7 @@ import { m } from '@aio-proxy/i18n';
 import { headerCountText } from '../advanced-summary';
 import { apiConnectionIssues } from '../api-endpoints';
 import { PROVIDER_AI_SDK_DEFAULT_PACKAGE } from '../constants';
-import { exposedModels } from '../exposed-models';
+import { exposedModels, oauthEditorExposedModels } from '../exposed-models';
 import type { SectionStatus, SectionStatusInput } from './section-status';
 
 // The finished badge text for each section. A hint always follows the status it accompanies, so it
@@ -50,13 +50,21 @@ export const connectionHint = (input: SectionStatusInput, status: SectionStatus)
 };
 
 /**
- * oauth's empty whitelist means "expose the whole upstream catalog" (`section-status.ts`), so counting a
+ * oauth's unknown catalog means "expose the whole upstream catalog" (`section-status.ts`), so counting a
  * catalog the dashboard never fetched would print "0 models" for a provider that exposes all of them.
+ * Once the catalog is known, the count is how many ids are still exposed after the denylist.
  * api and ai-sdk route only what their whitelist plus alias map name, so 0 is true there.
  */
 const exposureText = (input: SectionStatusInput): string => {
+  if (input.kind === 'oauth') {
+    if (input.discoveredModels === undefined) return m['dashboard.providers.editor.hint_models_all']();
+    const count = oauthEditorExposedModels(input.discoveredModels, input.excludedModels).length;
+    if (count === input.discoveredModels.length) return m['dashboard.providers.editor.hint_models_all']();
+    return count === 1
+      ? m['dashboard.providers.editor.hint_models_count_model']({ count })
+      : m['dashboard.providers.editor.hint_models_count_models']({ count });
+  }
   const count = exposedModels(input.models, input.discoveredModels).length;
-  if (count === 0 && input.kind === 'oauth') return m['dashboard.providers.editor.hint_models_all']();
   return count === 1
     ? m['dashboard.providers.editor.hint_models_count_model']({ count })
     : m['dashboard.providers.editor.hint_models_count_models']({ count });

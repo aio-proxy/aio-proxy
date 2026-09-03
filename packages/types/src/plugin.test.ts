@@ -147,31 +147,30 @@ describe('plugin identifiers and staged OAuth provider schema', () => {
 const providers = (entries: Record<string, unknown>) => ({ providers: entries });
 
 describe('OAuth plugin config schema', () => {
-  // An OAuth provider's `models` is its whitelist over the plugin-discovered catalog, so parsing must
-  // keep it. It was dropped while the whitelist was api/ai-sdk only.
-  test('Given oauth provider input with a models key When parsed Then the whitelist survives', () => {
-    // Given
+  test('Given oauth provider input with leftover models When parsed Then the whitelist is stripped', () => {
     const provider = {
       kind: 'oauth',
       plugin: '@aio-proxy/plugin-github-copilot',
       capability: 'default',
       models: ['gpt-5-mini'],
+      excludedModels: ['o1-preview'],
+      alias: { codex: false, mini: 'gpt-5-mini' },
     };
 
-    // When
     const config = ConfigSchema.parse({ server: {}, providers: { copilot: provider } });
 
-    // Then
     expect(config.providers[0]).toEqual({
       kind: 'oauth',
       plugin: '@aio-proxy/plugin-github-copilot',
       capability: 'default',
       enabled: true,
       id: 'copilot',
-      models: ['gpt-5-mini'],
+      excludedModels: ['o1-preview'],
+      alias: { codex: false, mini: { model: 'gpt-5-mini', preserve: false } },
       priority: 0,
       weight: 1,
     });
+    expect(config.providers[0]).not.toHaveProperty('models');
   });
 
   test('Given oauth provider with alias but no models When parsed Then it passes without a models validation error', () => {

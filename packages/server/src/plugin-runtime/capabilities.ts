@@ -17,10 +17,13 @@ import type {
 import { isRecord } from '@aio-proxy/shared';
 import {
   aliasTargetModels,
+  oauthExposedModels,
   type OAuthProvider,
+  type ProviderAlias,
   preservedAliasModels,
   ProviderKind,
   ProviderProtocol,
+  resolveOAuthAlias,
 } from '@aio-proxy/types';
 import { uniq } from 'es-toolkit/array';
 
@@ -90,19 +93,11 @@ function rawCapability(rawResolver: RawResolver | undefined, catalog: ModelCatal
   };
 }
 
-// One rule, two call sites (fresh + cached). Absent or empty whitelist means
-// expose everything so existing oauth configs keep working; stale whitelist
-// entries are dropped so they cannot create dead routes.
-export function exposedModelIds(catalogIds: readonly string[], whitelist: readonly string[] | undefined): string[] {
-  if (whitelist === undefined || whitelist.length === 0) return [...catalogIds];
-  const allowed = new Set(whitelist);
-  return catalogIds.filter((id) => allowed.has(id));
-}
-
 export function withRoutingConfig(
   provider: RuntimeProviderInstance,
   config: OAuthProvider,
   catalog: ModelCatalog,
+  defaults?: ProviderAlias,
 ): RuntimeProviderInstance {
   const {
     alias: _previousAlias,
@@ -112,8 +107,8 @@ export function withRoutingConfig(
     upstreamMetadata: _previousUpstreamMetadata,
     ...previousProvider
   } = provider;
-  const models = exposedModelIds(catalogModelIds(catalog), config.models);
-  const { capabilityIndex, upstreamMetadata } = routingCapabilities(config, catalog, models);
+  const { models, alias } = oauthRouting(config, catalog, defaults);
+  const { capabilityIndex, upstreamMetadata } = routingCapabilities(alias, catalog, models);
   return {
     ...previousProvider,
     enabled: config.enabled,
@@ -121,7 +116,7 @@ export function withRoutingConfig(
     models,
     capabilityIndex,
     upstreamMetadata,
-    ...(config.alias === undefined ? {} : { alias: config.alias }),
+    ...(Object.keys(alias).length === 0 ? {} : { alias }),
   };
 }
 
@@ -129,6 +124,7 @@ export function createRuntimeProvider(
   config: OAuthProvider,
   result: unknown,
   catalog: ModelCatalog,
+  defaults?: ProviderAlias,
 ): RuntimeProviderInstance {
   if (
     typeof result !== 'object' ||
@@ -147,8 +143,8 @@ export function createRuntimeProvider(
   const providerTools = providerToolCapability(Reflect.get(result, 'providerTools'));
   const supportedProviderTools = new Set(providerTools?.supported);
   const tokenCount = tokenCountCapability(Reflect.get(result, 'tokenCount'));
-  const models = exposedModelIds(catalogModelIds(catalog), config.models);
-  const { capabilityIndex, upstreamMetadata } = routingCapabilities(config, catalog, models);
+  const { models, alias } = oauthRouting(config, catalog, defaults);
+  const { capabilityIndex, upstreamMetadata } = routingCapabilities(alias, catalog, models);
   const image =
     catalog.image.length > 0 ? { invoke: createProviderV4ImageInvoke(config.id, result.provider) } : undefined;
   const embedding =
@@ -160,7 +156,7 @@ export function createRuntimeProvider(
     ...routingDefaults(config),
     models,
     capabilityIndex,
-    ...(config.alias === undefined ? {} : { alias: config.alias }),
+    ...(Object.keys(alias).length === 0 ? {} : { alias }),
     upstreamMetadata,
     plugin: config.plugin,
     capability: config.capability,
@@ -200,23 +196,31 @@ export function createRuntimeProvider(
   throw new Error('Invalid ProviderV4 runtime');
 }
 
-function routingCapabilities(
+function oauthRouting(
   config: OAuthProvider,
+  catalog: ModelCatalog,
+  defaults: ProviderAlias | undefined,
+): { readonly models: string[]; readonly alias: ProviderAlias } {
+  const models = oauthExposedModels(catalogModelIds(catalog), config.excludedModels);
+  return { models, alias: resolveOAuthAlias(config.alias, defaults, models) };
+}
+
+function routingCapabilities(
+  alias: ProviderAlias,
   catalog: ModelCatalog,
   models: readonly string[],
 ): {
   readonly capabilityIndex: ReturnType<typeof buildModelCapabilityIndex>;
   readonly upstreamMetadata: ReturnType<typeof modelMetadataRecord>;
 } {
-  const allowed = new Set([...models, ...(config.alias === undefined ? [] : preservedAliasModels(config.alias))]);
+  const allowed = new Set([...models, ...preservedAliasModels(alias)]);
   const upstreamMetadata = filterAllowedRecord(modelMetadataRecord(catalog), allowed) ?? {};
   return {
     capabilityIndex: buildModelCapabilityIndex({
       catalog,
       models,
       upstreamMetadata,
-      aliasTargets:
-        config.alias === undefined ? undefined : uniq(Object.values(config.alias).flatMap(aliasTargetModels)),
+      aliasTargets: Object.keys(alias).length === 0 ? undefined : uniq(Object.values(alias).flatMap(aliasTargetModels)),
     }),
     upstreamMetadata,
   };

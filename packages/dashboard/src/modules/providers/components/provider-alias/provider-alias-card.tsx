@@ -12,6 +12,8 @@ interface ProviderAliasCardProps {
   readonly onAliasChange: (alias: readonly AliasRow[]) => void;
   readonly onRename: (name: string) => void;
   readonly onRemove: () => void;
+  readonly onHide?: (() => void) | undefined;
+  readonly onRestore?: (() => void) | undefined;
 }
 
 export const ProviderAliasCard: FC<ProviderAliasCardProps> = ({
@@ -22,6 +24,8 @@ export const ProviderAliasCard: FC<ProviderAliasCardProps> = ({
   onAliasChange,
   onRename,
   onRemove,
+  onHide,
+  onRestore,
 }) => (
   // No header: the name and the target are editable in the row below, and a read-only copy of both
   // above it doubled every card's height for nothing.
@@ -34,6 +38,8 @@ export const ProviderAliasCard: FC<ProviderAliasCardProps> = ({
       onAliasChange={onAliasChange}
       onRename={onRename}
       onRemove={onRemove}
+      onHide={onHide}
+      onRestore={onRestore}
     />
     <ProviderAliasVariants
       alias={alias}

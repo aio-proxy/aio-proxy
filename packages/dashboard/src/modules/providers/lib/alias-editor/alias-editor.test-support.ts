@@ -19,4 +19,9 @@ export const thinkingAlias = {
   },
 };
 
-export const aliasRow = (name: string, config: AliasConfig, id = name): AliasRow => ({ id, name, config });
+export const aliasRow = (name: string, config: AliasConfig, id = name): AliasRow => ({
+  id,
+  name,
+  origin: 'authored',
+  config,
+});

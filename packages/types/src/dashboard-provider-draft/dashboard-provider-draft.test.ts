@@ -42,7 +42,18 @@ describe('DashboardProviderDraftSchema', () => {
     });
   });
 
-  test('accepts an oauth draft with a whitelist', () => {
+  test('accepts an oauth draft with a denylist', () => {
+    const result = DashboardProviderDraftSchema.safeParse({
+      kind: 'oauth',
+      id: 'oauth-p',
+      enabled: true,
+      proxy: null,
+      excludedModels: ['m1'],
+    });
+    expect(result.success).toBeTrue();
+  });
+
+  test('rejects leftover models on an oauth draft', () => {
     const result = DashboardProviderDraftSchema.safeParse({
       kind: 'oauth',
       id: 'oauth-p',
@@ -50,7 +61,7 @@ describe('DashboardProviderDraftSchema', () => {
       proxy: null,
       models: ['m1'],
     });
-    expect(result.success).toBeTrue();
+    expect(result.success).toBeFalse();
   });
 
   test('rejects a redacted proxy sentinel instead of accepting it as an unchanged marker', () => {

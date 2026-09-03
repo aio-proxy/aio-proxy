@@ -1,8 +1,6 @@
-import type { PluginRepository } from '@aio-proxy/core';
+import { pluginDefaultAliases, type PluginRepository } from '@aio-proxy/core';
 import type { ModelCatalog, OAuthAdapter } from '@aio-proxy/plugin-sdk';
 import {
-  aliasTargetModels,
-  AliasConfigSchema,
   type DashboardOAuthCapability,
   type DashboardOAuthProviderEdit,
   DashboardOAuthProviderEditSchema,
@@ -36,25 +34,8 @@ function pluginAliasSuggestions(
   adapter: OAuthAdapter | undefined,
   catalog: ModelCatalog | undefined,
 ): ProviderAlias | undefined {
-  try {
-    if (adapter === undefined || catalog === undefined) return undefined;
-    const defaultAliases = adapter.catalog.defaultAliases;
-    if (defaultAliases === undefined) return undefined;
-    const models = new Set(catalog.language.map(({ id }) => id));
-    const applicable: Record<string, ProviderAlias[string]> = {};
-    for (const [name, suggestion] of Object.entries(defaultAliases(catalog))) {
-      // Per suggestion, never collectively: one malformed or unroutable entry must not cost the
-      // user the entries beside it that are perfectly good.
-      const parsed = AliasConfigSchema.safeParse(suggestion);
-      if (!parsed.success) continue;
-      if (aliasTargetModels(parsed.data).some((model) => !models.has(model))) continue;
-      applicable[name] = parsed.data;
-    }
-    // "No suggestions" has exactly one representation, so the dashboard never has to test for both.
-    return Object.keys(applicable).length === 0 ? undefined : applicable;
-  } catch {
-    return undefined;
-  }
+  if (adapter === undefined || catalog === undefined) return undefined;
+  return pluginDefaultAliases(adapter, catalog);
 }
 
 export function oauthProviderEditView(

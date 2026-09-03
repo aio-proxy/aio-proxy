@@ -6,6 +6,11 @@ export type ConfigReloadLog = {
   readonly stage: 'parse' | 'providers' | 'router' | 'alias-collision';
 };
 
+export type ConfigOAuthLeftoverModelsLog = {
+  readonly event: 'config.oauth_leftover_models';
+  readonly providerId: string;
+};
+
 export type DashboardAuthUnavailableLog = {
   readonly error: string;
   readonly errorType: string;
@@ -181,6 +186,7 @@ export type RequestBodyTerminalLog = RequestBodyIdentity & {
 };
 
 export type ServerLog =
+  | ConfigOAuthLeftoverModelsLog
   | ConfigReloadLog
   | DashboardAuthUnavailableLog
   | RequestBodyChunkLog

@@ -108,37 +108,26 @@ test('Add Alias twice keeps both unnamed rows', () => {
   expect(screen.getAllByTestId('provider-alias-card')).toHaveLength(2);
 });
 
-// Nothing to sync is the ordinary case — non-oauth providers, a missing catalog, a plugin without
-// default aliases, and suggestions the whitelist filtered away all reach this component as an absent
-// handler, so the button has to be absent too rather than present and inert.
-test('the plugin sync action stays off screen without a sync handler', () => {
+test('the inherit toggle stays off screen unless the parent owns inherit', () => {
   render(aliases([], () => {}));
 
-  expect(screen.queryByTestId('provider-alias-sync-plugin')).toBeNull();
+  expect(screen.queryByTestId('inherit-plugin-aliases')).toBeNull();
 });
 
-// Reuses the Add Alias gate rather than inventing one: with no enabled models there is no legal
-// target for a merged alias to point at.
-test('the plugin sync action follows the same enabled-models gate as Add Alias', () => {
-  const onSyncPluginAliases = rs.fn();
-  const syncable = (targetOptions: readonly string[]): ReactElement => (
+test('the inherit toggle reports the current draft inherit state', () => {
+  const onInherit = rs.fn();
+  render(
     <ModelAliases
       alias={[]}
       issues={[]}
-      targetOptions={targetOptions}
+      targetOptions={models}
       onAliasChange={() => {}}
-      onSyncPluginAliases={onSyncPluginAliases}
-    />
+      inheritPluginAliases
+      onInheritPluginAliasesChange={onInherit}
+    />,
   );
-  const { rerender } = render(syncable([]));
 
-  expect(screen.getByTestId('provider-alias-sync-plugin')).toBeDisabled();
-
-  rerender(syncable(models));
-
-  expect(screen.getByTestId('provider-alias-sync-plugin')).toBeEnabled();
-
-  fireEvent.click(screen.getByTestId('provider-alias-sync-plugin'));
-
-  expect(onSyncPluginAliases).toHaveBeenCalledTimes(1);
+  expect(screen.getByTestId('inherit-plugin-aliases')).toBeInTheDocument();
+  fireEvent.click(screen.getByTestId('inherit-plugin-aliases-checkbox'));
+  expect(onInherit).toHaveBeenCalled();
 });

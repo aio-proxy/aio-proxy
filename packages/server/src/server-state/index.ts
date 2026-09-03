@@ -7,6 +7,7 @@ import {
   createPluginDiagnosticFactory,
   createPluginRepository,
   type DiagnosticFactory,
+  pluginDefaultAliases,
   RECOVERY_DRAIN_RETRY_MS,
   Router,
   recoverPendingAccountOperations,
@@ -24,7 +25,7 @@ import {
 
 import type { AccountRemovalCoordinator } from '../account-removal';
 import { createAccountRemovalCoordinator } from '../account-removal';
-import { CatalogScheduler, mergeCatalogDefaultAliases } from '../catalog-scheduler';
+import { CatalogScheduler } from '../catalog-scheduler';
 import type { ConfigStore } from '../config-store';
 import { watchConfigFile } from '../config-watcher';
 import { createDashboardEventHub } from '../dashboard-events';
@@ -190,19 +191,11 @@ async function initializeServerState(
     canDeleteAccount: manager.canDeleteAccount,
     onRecoveryNeeded: (nextRunAt) => runtime.recovery?.schedule(nextRunAt),
   });
-  const mergeHost: { store: ConfigStore | undefined } = { store: undefined };
   runtime.scheduler = new CatalogScheduler({
     repository,
     diagnostics,
     logger: pluginLogger,
     rebuild: () => queue(() => commitConfig(runtime, (manager.current() as Snapshot).config, 'catalog')),
-    mergeDefaultAliases: async (providerId, catalog, identity) => {
-      const store = mergeHost.store;
-      if (store === undefined) return;
-      await store.mutateProviders((providers) =>
-        mergeCatalogDefaultAliases(providers, { providerId, catalog, identity, repository }),
-      );
-    },
   });
   registerStartupCleanup(() => runtime.scheduler.close());
   failAfter('scheduler');
@@ -230,7 +223,6 @@ async function initializeServerState(
     },
     registerStartupCleanup,
   );
-  mergeHost.store = configStore;
   failAfter('recovery');
   const pluginControlPlane = createStatePluginControlPlane(runtime, configStore);
   const modelRouting = createModelRoutingControlPlane({
@@ -238,6 +230,15 @@ async function initializeServerState(
     currentSummaries: () => (manager.current() as Snapshot).summaries,
     repository,
     configStore,
+    pluginDefaults: (provider) => {
+      const adapter = (manager.current() as Snapshot).plugins.registry.resolveOAuth(
+        provider.plugin,
+        provider.capability,
+      );
+      const catalog = repository.readCatalog(provider.id)?.catalog;
+      if (adapter === undefined || catalog === undefined) return undefined;
+      return pluginDefaultAliases(adapter, catalog);
+    },
   });
 
   const providerSummaries = createProviderSummaries(manager);
