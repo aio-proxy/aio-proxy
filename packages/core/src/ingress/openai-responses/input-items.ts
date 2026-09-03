@@ -52,7 +52,19 @@ const inputMessageSchema = z.object({
   content: messageContentSchema,
 });
 
-const toolOutputContentPartSchema = z.union([textPartSchema, inputImagePartSchema, inputFilePartSchema]);
+const encryptedContentPartSchema = z.object({
+  type: z.literal('encrypted_content'),
+  encrypted_content: z.string(),
+});
+
+// codex-rs FunctionCallOutputContentItem also carries encrypted_content, which
+// raw passthrough must preserve; the model path already drops it.
+const toolOutputContentPartSchema = z.union([
+  textPartSchema,
+  inputImagePartSchema,
+  inputFilePartSchema,
+  encryptedContentPartSchema,
+]);
 
 const functionCallItemSchema = z.object({
   type: z.literal('function_call'),
@@ -126,7 +138,7 @@ const additionalToolsItemSchema = z.object({
 
 const agentMessageContentPartSchema = z.union([
   z.object({ type: z.literal('input_text'), text: z.string() }),
-  z.object({ type: z.literal('encrypted_content'), encrypted_content: z.string() }),
+  encryptedContentPartSchema,
 ]);
 
 const agentMessageItemSchema = z.object({
