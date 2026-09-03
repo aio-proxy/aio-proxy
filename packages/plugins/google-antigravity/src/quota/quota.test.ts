@@ -248,6 +248,9 @@ function recordAttemptTimeouts() {
 // never reached when the earlier ones are slow rather than dead — the only reason the list exists.
 const SERVER_READ_TIMEOUT_MS = 15_000;
 
+// The plan timeout happens to equal the default per-attempt share, so this test alone cannot tell
+// a reordered plan read from a correct one. The custom-base test below is the ordering anchor: it
+// observes two distinct values, so a reorder trips it.
 test('fits every quota attempt inside the server read budget', async () => {
   const recorder = recordAttemptTimeouts();
   try {
