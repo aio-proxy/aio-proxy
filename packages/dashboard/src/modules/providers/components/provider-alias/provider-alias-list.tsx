@@ -11,6 +11,9 @@ interface ProviderAliasListProps {
   readonly onAliasChange: (alias: readonly AliasRow[]) => void;
   readonly onRenameAlias: (id: string, name: string) => void;
   readonly onRemoveAlias: (id: string) => void;
+  readonly onHideAlias?: ((id: string) => void) | undefined;
+  readonly onRestoreAlias?: ((id: string) => void) | undefined;
+  readonly pluginDefaultNames?: ReadonlySet<string> | undefined;
 }
 
 export const ProviderAliasList: FC<ProviderAliasListProps> = ({
@@ -20,6 +23,9 @@ export const ProviderAliasList: FC<ProviderAliasListProps> = ({
   onAliasChange,
   onRenameAlias,
   onRemoveAlias,
+  onHideAlias,
+  onRestoreAlias,
+  pluginDefaultNames,
 }) => {
   if (alias.length === 0) {
     return (
@@ -41,6 +47,14 @@ export const ProviderAliasList: FC<ProviderAliasListProps> = ({
           onAliasChange={onAliasChange}
           onRename={(name) => onRenameAlias(row.id, name)}
           onRemove={() => onRemoveAlias(row.id)}
+          onHide={onHideAlias === undefined || row.origin === 'hidden' ? undefined : () => onHideAlias(row.id)}
+          onRestore={
+            onRestoreAlias === undefined ||
+            row.origin === 'inherited' ||
+            (row.origin === 'authored' && pluginDefaultNames !== undefined && !pluginDefaultNames.has(row.name))
+              ? undefined
+              : () => onRestoreAlias(row.id)
+          }
         />
       ))}
     </div>

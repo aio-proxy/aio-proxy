@@ -207,7 +207,7 @@ describe('ModelValidationPanel', () => {
     await waitFor(() => expect(mocks.testDraft).toHaveBeenCalled());
 
     expect(mocks.testDraft).toHaveBeenCalledWith({
-      draft: { kind: 'oauth', id: 'oauth-p', enabled: true, proxy: null, models: ['m1'] },
+      draft: { kind: 'oauth', id: 'oauth-p', enabled: true, proxy: null, excludedModels: [] },
       model: 'm1',
       persistedProviderId: 'oauth-p',
     });

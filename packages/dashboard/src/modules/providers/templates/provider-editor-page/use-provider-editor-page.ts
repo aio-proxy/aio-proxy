@@ -5,6 +5,7 @@ import {
   type DashboardOAuthSessionStart,
   dashboardOAuthCompleteUrl,
   type OAuthProvider,
+  type ProviderAlias,
   type ProviderKind,
   type ProviderMutationBody,
   type ProviderTransforms,
@@ -24,9 +25,18 @@ import {
   useProviderEditorForm,
 } from '../../hooks/use-provider-editor-form';
 import { useProviderCreate, useProviderUpdate } from '../../hooks/use-provider-mutations';
-import { aliasEditorIssues, serializeAlias, toAliasRecord, toAliasRows } from '../../lib/alias-editor';
+import {
+  aliasEditorIssues,
+  editorEffectiveAlias,
+  isOAuthInheritOff,
+  serializeAlias,
+  serializeOAuthAlias,
+  toAliasRecord,
+  toAliasRows,
+  toOAuthAliasRows,
+} from '../../lib/alias-editor';
 import { ProviderFormMode, PROVIDER_KIND_LABEL } from '../../lib/constants';
-import { exposedModels } from '../../lib/exposed-models';
+import { exposedModels, oauthEditorExposedModels } from '../../lib/exposed-models';
 import { oauthAccountSubmission } from '../../lib/oauth-account-submission';
 import { capabilityKey } from '../../lib/oauth-capability-key';
 import { oauthProviderEditAction } from '../../lib/oauth-provider-edit';
@@ -136,12 +146,15 @@ const saveEditor = (
     readonly saveBlocked: boolean;
   },
 ) => {
+  const serializeMode = ctx.mode === ProviderFormMode.Create ? 'create' : 'edit';
   const wireValues = {
     ...ctx.values,
     alias:
-      ctx.values.alias === undefined
-        ? undefined
-        : serializeAlias(ctx.values.alias, ctx.mode === ProviderFormMode.Create ? 'create' : 'edit'),
+      ctx.kind === 'oauth'
+        ? serializeOAuthAlias(ctx.values.alias ?? [], ctx.values.pluginAliasInherit === false, serializeMode)
+        : ctx.values.alias === undefined
+          ? undefined
+          : serializeAlias(ctx.values.alias, serializeMode),
   };
   if (ctx.kind === 'oauth' && ctx.mode === ProviderFormMode.Create && !ctx.authorized) {
     if (ctx.accountForm.state.isValid === false) return;
@@ -243,12 +256,14 @@ const editorSectionInput = (
     readonly authorized: boolean;
     readonly capabilityKey: string;
     readonly discoveredModels: readonly string[] | undefined;
+    readonly excludedModels?: readonly string[] | undefined;
     readonly hasApiKey: boolean;
     readonly models: readonly string[];
     readonly others: Parameters<typeof hasWeightTie>[0]['others'];
     readonly optionsValid: boolean;
     readonly transformsValid: boolean;
     readonly transformCount: number;
+    readonly pluginAliases?: ProviderAlias | undefined;
   },
 ): SectionStatusInput => ({
   kind: values.kind ?? kind,
@@ -267,6 +282,7 @@ const editorSectionInput = (
   authorized: extras.authorized,
   packageName: values.kind === 'ai-sdk' ? values.packageName : undefined,
   models: extras.models,
+  excludedModels: extras.excludedModels,
   discoveredModels: extras.discoveredModels,
   aliasCount: (values.alias ?? []).length,
   aliasIssues: extras.aliasIssues,
@@ -277,8 +293,21 @@ const editorSectionInput = (
     selfWeight: values.weight,
     exposedAliases: modelRoutes({
       enabled: true,
-      models: exposedModels(extras.models, extras.discoveredModels),
-      alias: values.alias === undefined ? undefined : toAliasRecord(values.alias),
+      models:
+        kind === 'oauth'
+          ? oauthEditorExposedModels(extras.discoveredModels, extras.excludedModels)
+          : exposedModels(extras.models, extras.discoveredModels),
+      alias:
+        kind === 'oauth'
+          ? editorEffectiveAlias(
+              values.alias ?? [],
+              extras.pluginAliases,
+              oauthEditorExposedModels(extras.discoveredModels, extras.excludedModels),
+              values.pluginAliasInherit === false,
+            )
+          : values.alias === undefined
+            ? undefined
+            : toAliasRecord(values.alias),
     }).map((route) => route.alias),
     others: extras.others,
   }),
@@ -324,7 +353,18 @@ export const useProviderEditorPage = ({
       form.reset({
         ...initial,
         kind,
-        alias: initial.alias === undefined ? undefined : toAliasRows(initial.alias),
+        alias:
+          initial.alias === undefined
+            ? undefined
+            : kind === 'oauth'
+              ? toOAuthAliasRows(initial.alias)
+              : toAliasRows(initial.alias),
+        ...(kind === 'oauth'
+          ? {
+              excludedModels: initial.excludedModels ?? [],
+              pluginAliasInherit: !isOAuthInheritOff(initial.alias),
+            }
+          : {}),
       } as ProviderEditorShape);
     }
   }, [accountForm, form, initial, kind, oauth]);
@@ -351,8 +391,10 @@ export const useProviderEditorPage = ({
   const accountValues = useSelector(accountForm.store, (state) => state.values);
   const capabilities = capabilitiesQuery.data?.capabilities ?? [];
   const others = summariesQuery.data?.providers ?? [];
-  const models = values.models ?? [];
-  const aliasIssues = aliasEditorIssues(values.alias ?? [], models);
+  const models = values.kind === 'oauth' ? [] : (values.models ?? []);
+  const excludedModels = values.kind === 'oauth' ? (values.excludedModels ?? []) : undefined;
+  const oauthExposed = kind === 'oauth' ? oauthEditorExposedModels(oauth?.models, excludedModels) : undefined;
+  const aliasIssues = aliasEditorIssues(values.alias ?? [], oauthExposed ?? models);
   const authorized =
     mode === ProviderFormMode.Edit || authorizedProviderId !== undefined || session?.status === 'succeeded';
   const transforms = values.transforms as ProviderTransforms | undefined;
@@ -363,8 +405,10 @@ export const useProviderEditorPage = ({
       authorized,
       capabilityKey: accountValues.capabilityKey,
       discoveredModels: oauth?.models,
+      excludedModels,
       hasApiKey,
       models,
+      pluginAliases: oauth?.pluginAliases,
       others,
       optionsValid,
       transformsValid,

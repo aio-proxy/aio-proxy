@@ -1,8 +1,8 @@
-import type { OAuthProviderMutationBody, ProviderAlias, ProviderKind } from '@aio-proxy/types';
+import type { AuthoredOAuthAlias, OAuthProviderMutationBody, ProviderAlias, ProviderKind } from '@aio-proxy/types';
 import { type ReactFormExtendedApi, useForm } from '@tanstack/react-form';
 import { useState } from 'react';
 
-import { type AliasRow, toAliasRows } from '../lib/alias-editor';
+import { type AliasRow, isOAuthInheritOff, toAliasRows, toOAuthAliasRows } from '../lib/alias-editor';
 import { apiDraftFromProvider, emptySharedDraft } from '../lib/api-endpoints';
 import type { ProviderFormShape } from '../lib/provider-form-value';
 
@@ -21,7 +21,8 @@ export type OAuthEditorShape = {
   readonly proxy?: OAuthProviderMutationBody['proxy'];
   readonly alias?: readonly AliasRow[] | undefined;
   readonly transforms?: unknown;
-  readonly models?: readonly string[] | undefined;
+  readonly excludedModels?: readonly string[] | undefined;
+  readonly pluginAliasInherit?: boolean | undefined;
   readonly validationModel?: string | undefined;
 };
 
@@ -33,10 +34,12 @@ export type ProviderEditorShape =
   | OAuthEditorShape;
 
 export type ProviderEditorInitial = Omit<Partial<ProviderEditorShape>, 'alias'> & {
-  readonly alias?: ProviderAlias | undefined;
+  readonly alias?: ProviderAlias | AuthoredOAuthAlias | undefined;
 };
 
-type WithWireAlias<T> = Omit<T, 'alias'> & { readonly alias?: ProviderAlias | undefined };
+type WithWireAlias<T> = Omit<T, 'alias'> & {
+  readonly alias?: ProviderAlias | AuthoredOAuthAlias | undefined;
+};
 
 /** Form values after `save()` serializes alias rows back to the wire record. */
 export type ProviderEditorWire =
@@ -78,7 +81,18 @@ export function useProviderEditorForm({ kind, initial }: UseProviderEditorFormOp
         ...(kind === 'api' && initial?.endpoints === undefined
           ? { endpoints: apiDraftFromProvider({ ...initial, kind }) ?? emptySharedDraft() }
           : {}),
-        alias: initial?.alias === undefined ? undefined : toAliasRows(initial.alias),
+        alias:
+          initial?.alias === undefined
+            ? undefined
+            : kind === 'oauth'
+              ? toOAuthAliasRows(initial.alias)
+              : toAliasRows(initial.alias as ProviderAlias),
+        ...(kind === 'oauth'
+          ? {
+              excludedModels: initial?.excludedModels ?? [],
+              pluginAliasInherit: !isOAuthInheritOff(initial?.alias),
+            }
+          : {}),
       }) as ProviderEditorShape,
   );
   return useForm({

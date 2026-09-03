@@ -65,7 +65,7 @@ const EditProviderPage: React.FC = () => {
           proxy: provider.proxy,
           alias: provider.alias,
           transforms: provider.transforms,
-          models: provider.models ?? [],
+          excludedModels: provider.excludedModels ?? [],
         }}
         sessionId={session}
         onSessionIdChange={onSessionIdChange}

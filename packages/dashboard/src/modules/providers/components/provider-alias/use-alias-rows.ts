@@ -6,5 +6,10 @@ export const useAliasRows = (rows: readonly AliasRow[], onAliasChange: (rows: re
     onAliasChange([...rows, blankAliasRow(model)]);
   },
   removeAlias: (id: string) => onAliasChange(rows.filter((row) => row.id !== id)),
-  rename: (id: string, name: string) => onAliasChange(rows.map((row) => (row.id === id ? { ...row, name } : row))),
+  rename: (id: string, name: string) =>
+    onAliasChange(
+      rows.map((row) =>
+        row.id === id ? { ...row, name, origin: row.origin === 'inherited' ? 'authored' : row.origin } : row,
+      ),
+    ),
 });
