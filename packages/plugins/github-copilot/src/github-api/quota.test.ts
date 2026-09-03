@@ -109,4 +109,74 @@ describe('GitHub Copilot quota', () => {
 
     await expect(readGitHubCopilotQuota(context(), fetcher)).rejects.toThrow('GitHub Copilot request failed (401)');
   });
+
+  // An unlimited allowance has no denominator, and GitHub's zero/zero placeholder for token-based
+  // billing is sometimes served as `percent_remaining: 100`. Showing either as a full bar would tell
+  // the user a seat is healthy when it is simply not metered.
+  test('reports an unmetered seat as a successful empty snapshot', async () => {
+    const { fetcher } = usageFetcher({
+      copilot_plan: 'free',
+      quota_snapshots: {
+        premium_interactions: { unlimited: true, percent_remaining: 100 },
+        chat: { entitlement: 0, remaining: 0, percent_remaining: 100 },
+      },
+    });
+
+    const snapshot = await readGitHubCopilotQuota(context(), fetcher);
+
+    expect(snapshot).toEqual({ items: [], plan: 'Free' });
+  });
+
+  test('derives a missing percentage and clamps an over-quota window to empty', async () => {
+    const { fetcher } = usageFetcher({
+      quota_snapshots: {
+        premium_interactions: { percent_remaining: -20 },
+        chat: { entitlement: 200, remaining: 50 },
+      },
+    });
+
+    const snapshot = await readGitHubCopilotQuota(context(), fetcher);
+
+    expect(snapshot.items.map((item) => [item.id, item.remainingRatio])).toEqual([
+      ['premium_interactions', 0],
+      ['chat', 0.25],
+    ]);
+  });
+
+  test('keeps an unfamiliar window when a sibling entry is malformed', async () => {
+    const { fetcher } = usageFetcher({
+      copilot_plan: 'unknown',
+      quota_snapshots: { spark_premium_request: { percent_remaining: 40 }, chat: 'nope' },
+    });
+
+    const snapshot = await readGitHubCopilotQuota(context(), fetcher);
+
+    expect(snapshot.items).toEqual([
+      { id: 'spark_premium_request', displayName: 'Spark Premium Request', remainingRatio: 0.4 },
+    ]);
+    // `unknown` is GitHub's "no answer", not a tier. Showing it would put a literal "Unknown" under
+    // the Provider name.
+    expect(snapshot.plan).toBeUndefined();
+  });
+
+  // Free and older seats answer with counters instead of snapshots. A duplicate id would make the
+  // core validator reject the whole snapshot, so `chat` must not come back twice.
+  test('falls back to the monthly counters for windows the snapshots do not cover', async () => {
+    const { fetcher } = usageFetcher({
+      quota_snapshots: { chat: { percent_remaining: 25 } },
+      monthly_quotas: { chat: 50, completions: 2000 },
+      limited_user_quotas: { chat: 20, completions: 500 },
+    });
+
+    const snapshot = await readGitHubCopilotQuota(context(), fetcher);
+
+    expect(snapshot.items).toEqual([
+      { id: 'chat', displayName: { default: 'Chat', 'zh-Hans': '聊天' }, remainingRatio: 0.25 },
+      {
+        id: 'completions',
+        displayName: { default: 'Code completions', 'zh-Hans': '代码补全' },
+        remainingRatio: 0.25,
+      },
+    ]);
+  });
 });

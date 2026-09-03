@@ -42,7 +42,8 @@ export async function readGitHubCopilotQuota(
 
   // GitHub reports one account-wide monthly boundary, not a per-window reset, so every item shares it.
   const resetsAt = timestamp(Reflect.get(payload, 'quota_reset_date'));
-  const items = snapshotItems(payload, resetsAt);
+  const snapshots = snapshotItems(payload, resetsAt);
+  const items = [...snapshots, ...counterItems(payload, resetsAt, new Set(snapshots.map(({ id }) => id)))];
   const plan = planText(Reflect.get(payload, 'copilot_plan'));
   // An all-unlimited or token-billed seat legitimately meters nothing. That is an empty snapshot, not
   // a failure: throwing would paint the "load failed" ring over a read that worked.
@@ -59,8 +60,44 @@ function snapshotItems(
     const id = key.trim();
     const value = Reflect.get(snapshots, key);
     if (id === '' || !isPlainObject(value)) return [];
-    const percent = number(Reflect.get(value, 'percent_remaining'));
-    return percent === undefined ? [] : [quotaItem(id, clampRatio(percent / 100), resetsAt)];
+    const ratio = snapshotRatio(value);
+    return ratio === undefined ? [] : [quotaItem(id, ratio, resetsAt)];
+  });
+}
+
+function snapshotRatio(snapshot: Readonly<Record<string, unknown>>): number | undefined {
+  if (Reflect.get(snapshot, 'unlimited') === true) return undefined;
+  const entitlement = number(Reflect.get(snapshot, 'entitlement'));
+  const remaining = number(Reflect.get(snapshot, 'remaining'));
+  // GitHub serves an explicit zero/zero for token-based billing and Business seats, sometimes with
+  // `percent_remaining: 100`. Check it before the percentage or the bar reads as a full allowance.
+  if (entitlement === 0 && remaining === 0) return undefined;
+  const percent = number(Reflect.get(snapshot, 'percent_remaining'));
+  if (percent !== undefined) return clampRatio(percent / 100);
+  if (entitlement === undefined || entitlement <= 0 || remaining === undefined) return undefined;
+  return clampRatio(remaining / entitlement);
+}
+
+/**
+ * Free and older seats answer with counters instead of snapshots: `monthly_quotas` is the allowance
+ * and `limited_user_quotas` is what is left. Ids `quota_snapshots` already produced are skipped — a
+ * duplicate id makes the core validator reject the whole snapshot, valid windows included.
+ */
+function counterItems(
+  payload: Readonly<Record<string, unknown>>,
+  resetsAt: number | undefined,
+  taken: ReadonlySet<string>,
+): readonly OAuthQuotaItem[] {
+  const monthly = Reflect.get(payload, 'monthly_quotas');
+  const limited = Reflect.get(payload, 'limited_user_quotas');
+  if (!isPlainObject(monthly) || !isPlainObject(limited)) return [];
+  return Object.keys(monthly).flatMap((key): OAuthQuotaItem[] => {
+    const id = key.trim();
+    if (id === '' || taken.has(id)) return [];
+    const entitlement = number(Reflect.get(monthly, key));
+    const remaining = number(Reflect.get(limited, key));
+    if (entitlement === undefined || entitlement <= 0 || remaining === undefined) return [];
+    return [quotaItem(id, clampRatio(remaining / entitlement), resetsAt)];
   });
 }
 
