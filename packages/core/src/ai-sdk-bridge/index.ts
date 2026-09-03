@@ -50,7 +50,15 @@ export type AiSdkLanguageModel = LanguageModelV2 | LanguageModelV3 | LanguageMod
 export type AiSdkRuntimeProvider = ProviderV3 | ProviderV4;
 export type AiSdkCallableProvider = (modelId: string) => AiSdkLanguageModel;
 
-export type LoadedAiSdkRuntimeProvider = AiSdkRuntimeProvider | AiSdkCallableProvider;
+export type AiSdkModelCatalogEntry = string | { readonly id: string };
+
+export type AiSdkModelCatalogProvider = {
+  readonly listModels?: (
+    signal?: AbortSignal,
+  ) => Promise<readonly AiSdkModelCatalogEntry[]> | readonly AiSdkModelCatalogEntry[];
+};
+
+export type LoadedAiSdkRuntimeProvider = (AiSdkRuntimeProvider | AiSdkCallableProvider) & AiSdkModelCatalogProvider;
 
 export type AiSdkTextStreamRequest = {
   readonly model: AiSdkLanguageModel;
