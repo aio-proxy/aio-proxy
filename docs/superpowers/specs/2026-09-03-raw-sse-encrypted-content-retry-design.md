@@ -65,10 +65,14 @@ rawRetry?: Readonly<{
 | any other `error`, `response.failed`, `response.incomplete`, `response.cancelled` | `commit` |
 | `response.completed`, `response.done` | `commit` |
 | any output-bearing event: a type ending in `.delta`, `.done`, or `.partial_image` that is not an item/part container frame | `commit` |
-| container lifecycle frames `response.output_item.added` / `.done`, `response.content_part.added` / `.done`, `response.reasoning_summary_part.added` / `.done` | `hold` |
+| `response.output_item.done` whose `item` carries generated output — any built-in tool item, or a message/reasoning item with non-empty `content` / `summary` | `commit` |
+| `response.output_item.done` closing an empty `message` or `reasoning` shell | `hold` |
+| container lifecycle frames `response.output_item.added`, `response.content_part.added` / `.done`, `response.reasoning_summary_part.added` / `.done` | `hold` |
 | anything else, including `response.created`, `response.in_progress`, `response.queued`, unparseable data | `hold` |
 
-Output detection is by suffix, not an allowlist. The SDK's `ResponseStreamEvent` union carries generated output through `response.output_text.*`, `response.refusal.*`, `response.reasoning_text.*`, `response.reasoning_summary_text.*`, `response.function_call_arguments.*`, `response.custom_tool_call_input.*`, `response.mcp_call_arguments.*`, `response.code_interpreter_call_code.*`, `response.audio.*`, `response.audio.transcript.*`, and `response.image_generation_call.partial_image`. An allowlist that forgot one of these would hold it, then let a later `invalid_encrypted_content` replay a turn that had already produced output. Only the item/part container frames are excluded, because they announce or close a container without emitting output.
+`response.output_item.done` is judged by its payload, not excluded wholesale. A built-in tool can deliver its entire result through that one frame with no preceding delta, and `createResponseItemCounter` in `packages/server/src/passthrough-usage/event-counts/event-counts.ts` bills image-generation and web-search items from exactly this event. Holding it would let a later `invalid_encrypted_content` replay — and re-bill — completed work.
+
+Output detection is otherwise by suffix, not an allowlist. The SDK's `ResponseStreamEvent` union carries generated output through `response.output_text.*`, `response.refusal.*`, `response.reasoning_text.*`, `response.reasoning_summary_text.*`, `response.function_call_arguments.*`, `response.custom_tool_call_input.*`, `response.mcp_call_arguments.*`, `response.code_interpreter_call_code.*`, `response.audio.*`, `response.audio.transcript.*`, and `response.image_generation_call.partial_image`. An allowlist that forgot one of these would hold it, then let a later `invalid_encrypted_content` replay a turn that had already produced output. Only the item/part container frames are excluded, because they announce or close a container without emitting output.
 
 Holding an unknown frame is bounded by the 1 MiB replay cap, the preflight idle timer, and stream EOF, all of which commit. So an upstream that only ever emits frames this table does not name still reaches the client.
 
@@ -93,6 +97,8 @@ For HTTP 200 event-stream with `rawRetry` present and `streamRequested` true, bu
 | stream ends while every frame held | commit |
 | buffered bytes exceed 1 MiB | commit, even when that same chunk classified `retry` |
 | no `rawRetry`, non-stream request, or non-event-stream body | commit without reading |
+
+A streaming provider may return an SSE body with **no** `Content-Type`. `withEventStreamContentType` in `packages/server/src/routes/pipeline/attempt/raw.ts` infers that header from `streamRequested`, but it runs after this resolver, so preflight treats a missing header as event-stream when a stream was requested. A header naming another type is still honored, so a JSON body is never drained here.
 
 A `retry` verdict whose `rewrite` yields `undefined` commits the original error stream, so the client still sees the upstream error.
 
@@ -163,6 +169,8 @@ The retry is the same candidate attempt. Do not open a second attempt span. Do n
 - The same error after `response.output_item.added` but before any delta must still retry.
 - The same error after an `output_text.delta` must not retry.
 - The same error after any other output-bearing event, including `response.refusal.delta` and `response.image_generation_call.partial_image`, must not retry.
+- The same error after a `response.output_item.done` carrying a built-in tool item must not retry, even with no earlier delta; the same frame closing an empty message shell must still retry.
+- A streamed SSE body with no `Content-Type` must still be inspected and retried, while an explicit non-SSE content type must stream through unread.
 - An `encrypted_content` part inside `function_call_output.output` must survive ingress and be rewritten through the pipeline, not only through the helper.
 - Ciphertext-shaped `encrypted_content` parts must not be converted to `input_text`.
 - Reasoning-only blobs retry by deleting `encrypted_content`, not by converting them to text.

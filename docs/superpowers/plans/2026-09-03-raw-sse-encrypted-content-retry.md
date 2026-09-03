@@ -121,7 +121,8 @@ test.each([
   ['response.in_progress', '{"type":"response.in_progress"}'],
   ['response.queued', '{"type":"response.queued"}'],
   ['response.output_item.added', '{"type":"response.output_item.added","output_index":0}'],
-  ['response.output_item.done', '{"type":"response.output_item.done","output_index":0}'],
+  ['empty message item done', '{"type":"response.output_item.done","item":{"type":"message","content":[]}}'],
+  ['empty reasoning item done', '{"type":"response.output_item.done","item":{"type":"reasoning","summary":[]}}'],
   ['response.content_part.added', '{"type":"response.content_part.added"}'],
   ['response.content_part.done', '{"type":"response.content_part.done"}'],
   ['response.reasoning_summary_part.added', '{"type":"response.reasoning_summary_part.added"}'],
@@ -153,6 +154,19 @@ test.each([
   ['response.image_generation_call.partial_image', '{"type":"response.image_generation_call.partial_image","partial_image_index":0}'],
 ])('commits output-bearing frame %s', (event, data) => {
   expect(classifyOpenAIResponsesRawRetry({ event, data })).toBe('commit');
+});
+
+// A built-in tool can deliver its whole result through output_item.done with no
+// preceding delta, and event-counts bills image/web-search items from exactly
+// that frame. Holding it would let a later error replay billable work.
+test.each([
+  ['image_generation_call', '{"type":"response.output_item.done","item":{"type":"image_generation_call","id":"ig_1"}}'],
+  ['web_search_call', '{"type":"response.output_item.done","item":{"type":"web_search_call","id":"ws_1"}}'],
+  ['function_call', '{"type":"response.output_item.done","item":{"type":"function_call","call_id":"c1"}}'],
+  ['message with content', '{"type":"response.output_item.done","item":{"type":"message","content":[{"type":"output_text","text":"hi"}]}}'],
+  ['reasoning with summary', '{"type":"response.output_item.done","item":{"type":"reasoning","summary":[{"type":"summary_text","text":"t"}]}}'],
+])('commits output_item.done carrying %s', (_name, data) => {
+  expect(classifyOpenAIResponsesRawRetry({ event: 'response.output_item.done', data })).toBe('commit');
 });
 
 test.each([
@@ -429,15 +443,21 @@ const TERMINAL_EVENTS = new Set([
   'response.cancelled',
 ]);
 // Item lifecycle frames that announce or close a container without carrying
-// generated output themselves.
+// generated output themselves. `response.output_item.done` is NOT here: it
+// carries the completed `item`, and built-in tool items bill through it (see
+// createResponseItemCounter in packages/server/src/passthrough-usage/event-counts).
 const LIFECYCLE_ITEM_EVENTS = new Set([
   'response.output_item.added',
-  'response.output_item.done',
   'response.content_part.added',
   'response.content_part.done',
   'response.reasoning_summary_part.added',
   'response.reasoning_summary_part.done',
 ]);
+const OUTPUT_ITEM_DONE = 'response.output_item.done';
+// An empty message/reasoning shell can close without output; a built-in tool
+// call, or any item with content, is generated work that a replay would discard
+// and possibly re-bill.
+const EMPTY_ITEM_TYPES = new Set(['message', 'reasoning']);
 // Every output-bearing Responses event ends in one of these. Matching by suffix
 // covers the whole `ResponseStreamEvent` union — text, refusal, reasoning,
 // audio, function/custom/mcp/code-interpreter arguments, and partial images —
@@ -445,9 +465,23 @@ const LIFECYCLE_ITEM_EVENTS = new Set([
 // from an event nobody remembered to name.
 const OUTPUT_EVENT_SUFFIXES = ['.delta', '.done', '.partial_image'] as const;
 
-function carriesGeneratedOutput(type: string): boolean {
+function carriesGeneratedOutput(type: string, payload: Record<string, unknown> | undefined): boolean {
+  if (type === OUTPUT_ITEM_DONE) return itemCarriesOutput(payload?.['item']);
   if (LIFECYCLE_ITEM_EVENTS.has(type) || TERMINAL_EVENTS.has(type)) return false;
   return OUTPUT_EVENT_SUFFIXES.some((suffix) => type.endsWith(suffix));
+}
+
+// A done frame for a built-in tool (image generation, web search, code
+// interpreter, MCP) is billable generated work even with no preceding delta.
+// A message/reasoning shell that closed empty is not.
+function itemCarriesOutput(item: unknown): boolean {
+  if (!isPlainObject(item)) return false;
+  const type = item['type'];
+  if (typeof type !== 'string') return true;
+  if (!EMPTY_ITEM_TYPES.has(type)) return true;
+  const content = item['content'];
+  const summary = item['summary'];
+  return (Array.isArray(content) && content.length > 0) || (Array.isArray(summary) && summary.length > 0);
 }
 
 export function looksLikeBackendCiphertext(payload: string): boolean {
@@ -462,7 +496,7 @@ export function looksLikeBackendCiphertext(payload: string): boolean {
 export function classifyOpenAIResponsesRawRetry(frame: RawRetryFrame): RawRetryVerdict {
   const payload = parseJson(frame.data);
   const type = frame.event ?? (typeof payload?.['type'] === 'string' ? payload['type'] : undefined);
-  if (type !== undefined && carriesGeneratedOutput(type)) return 'commit';
+  if (type !== undefined && carriesGeneratedOutput(type, payload)) return 'commit';
   const error = isPlainObject(payload?.['error']) ? payload['error'] : undefined;
   if (type === 'error' || error !== undefined) {
     return error?.['code'] === 'invalid_encrypted_content' ? 'retry' : 'commit';
@@ -639,7 +673,14 @@ export type RawRetryPreflight =
   | { readonly kind: 'commit'; readonly response: Response }
   | { readonly kind: 'retry'; readonly response: Response };
 
-export type RawRetryGuards = { readonly signal: AbortSignal; readonly idleTimeoutMs?: number };
+export type RawRetryGuards = {
+  readonly signal: AbortSignal;
+  readonly idleTimeoutMs?: number;
+  // True when the pipeline requested a stream, so a body with no Content-Type
+  // is still SSE. `withEventStreamContentType` in raw.ts only infers that header
+  // after this resolver runs.
+  readonly assumeEventStream?: boolean;
+};
 
 export function preflightRawRetrySse(
   response: Response,
@@ -744,6 +785,35 @@ test('passes a non-event-stream body through without reading it', async () => {
   expect(preflight.kind).toBe('commit');
   expect(preflight.response).toBe(response);
   expect(await preflight.response.json()).toEqual({ ok: true });
+});
+
+// raw.ts infers the SSE header only after this resolver, so a streaming provider
+// that omits Content-Type must still be inspected.
+test('treats a missing content type as SSE when a stream was requested', async () => {
+  const response = new Response(created + encryptedError, { status: 200 });
+  const preflight = await preflightRawRetrySse(response, classifyOpenAIResponsesRawRetry, {
+    signal: new AbortController().signal,
+    assumeEventStream: true,
+  });
+  expect(preflight.kind).toBe('retry');
+});
+
+test('does not inspect a missing content type without assumeEventStream', async () => {
+  const response = new Response(created + encryptedError, { status: 200 });
+  const preflight = await preflightRawRetrySse(response, classifyOpenAIResponsesRawRetry, live());
+  expect(preflight.kind).toBe('commit');
+  expect(preflight.response).toBe(response);
+});
+
+// An explicit non-SSE header still wins, so a JSON body is never drained here.
+test('honors an explicit non-SSE content type even when a stream was requested', async () => {
+  const response = Response.json({ ok: true });
+  const preflight = await preflightRawRetrySse(response, classifyOpenAIResponsesRawRetry, {
+    signal: new AbortController().signal,
+    assumeEventStream: true,
+  });
+  expect(preflight.kind).toBe('commit');
+  expect(preflight.response).toBe(response);
 });
 
 test('rejects a stream that stalls after a hold frame', async () => {
@@ -900,7 +970,11 @@ export type RawRetryPreflight =
   | { readonly kind: 'commit'; readonly response: Response }
   | { readonly kind: 'retry'; readonly response: Response };
 
-export type RawRetryGuards = { readonly signal: AbortSignal; readonly idleTimeoutMs?: number };
+export type RawRetryGuards = {
+  readonly signal: AbortSignal;
+  readonly idleTimeoutMs?: number;
+  readonly assumeEventStream?: boolean;
+};
 
 // Cancels `reader` on an inbound abort or an idle gap, so a pending read cannot
 // outlive the client. usageCapture.passthrough installs the normal idle timer
@@ -932,8 +1006,15 @@ export async function preflightRawRetrySse(
   classify: (frame: RawRetryFrame) => RawRetryVerdict,
   guards: RawRetryGuards,
 ): Promise<RawRetryPreflight> {
-  const contentType = response.headers.get('content-type') ?? '';
-  if (response.body === null || !contentType.toLowerCase().includes('text/event-stream')) {
+  // A streaming provider may omit Content-Type; raw.ts's withEventStreamContentType
+  // adds it only after this resolver, so treat a missing header as SSE when the
+  // pipeline asked for a stream. A header that names another type is honored.
+  const contentType = response.headers.get('content-type');
+  const eventStream =
+    contentType === null
+      ? guards.assumeEventStream === true
+      : contentType.toLowerCase().includes('text/event-stream');
+  if (response.body === null || !eventStream) {
     return { kind: 'commit', response };
   }
 
@@ -1209,6 +1290,27 @@ test('replays the same raw candidate and hides the failed stream', async () => {
   expect(attemptsOf(harness.recording)).toEqual([{ outcome: 'success', providerId: 'carpool', statusCode: 200 }]);
 });
 
+// A streaming relay may omit Content-Type entirely. raw.ts only infers the SSE
+// header after the retry resolver, so without assumeEventStream the error frame
+// would reach the client unretried.
+test('retries a streamed SSE body that omits its content type', async () => {
+  let calls = 0;
+  const primary = responsesProvider(async () => {
+    calls += 1;
+    return calls === 1
+      ? new Response(created + encryptedError, { status: 200 })
+      : new Response(success, { status: 200 });
+  });
+  const harness = pipeline([primary], { adapter: openAIResponsesAdapter });
+
+  const response = await harness.run(jsonRequest({ model: REQUESTED_MODEL, stream: true, input: spawnInput() }));
+  const text = await response.text();
+
+  expect(calls).toBe(2);
+  expect(text).toBe(success);
+  expect(text).not.toContain('invalid_encrypted_content');
+});
+
 // Exercises the function_call_output rewrite branch through the real parse step,
 // not just the direct helper: that part only survives ingress after Task 1's
 // toolOutputContentPartSchema change.
@@ -1432,7 +1534,10 @@ export async function resolveRawRetry<TRequest, TContext>(
   }
 
   if (!response.ok || !input.streamRequested) return response;
-  const preflight = await preflightRawRetrySse(response, hook.classify, input.guards);
+  const preflight = await preflightRawRetrySse(response, hook.classify, {
+    ...input.guards,
+    assumeEventStream: true,
+  });
   if (preflight.kind !== 'retry') return preflight.response;
   return (await replay(preflight.response)) ?? preflight.response;
 }
@@ -1531,6 +1636,6 @@ EOF
 
 ## Self-review
 
-1. Spec coverage: the ingress change that makes an encrypted `function_call_output` part reachable, the `rawRetry` hook and compact refusal, and suffix-based output detection over the whole `ResponseStreamEvent` union so no output-bearing event is held (Task 1), SSE hold with idle plus pending-read abort guards, the 1 MiB cap winning over a same-chunk `retry`, the bounded JSON read with tee-safe abandonment and abort propagation, and non-`rawRetry` passthrough (Task 2), HTTP 400 interception limits, replay signal, cancel-before-replay, same-candidate accounting, no-rewrite commit, and the changeset (Task 3) each have a task. Non-goals are constraints, not extra tasks.
+1. Spec coverage: the ingress change that makes an encrypted `function_call_output` part reachable, the `rawRetry` hook and compact refusal, suffix-based output detection over the whole `ResponseStreamEvent` union, and payload-aware `response.output_item.done` classification so a billable built-in tool result is never replayed (Task 1), SSE hold with idle plus pending-read abort guards, inferred event-stream detection when a streaming provider omits `Content-Type`, the 1 MiB cap winning over a same-chunk `retry`, the bounded JSON read with tee-safe abandonment and abort propagation, and non-`rawRetry` passthrough (Task 2), HTTP 400 interception limits, replay signal, cancel-before-replay, same-candidate accounting, no-rewrite commit, and the changeset (Task 3) each have a task. Non-goals are constraints, not extra tasks.
 2. Placeholder scan: no TBD/TODO, no "add tests later", no "similar to Task N". Task 3 spells out the resolver instead of saying "wire it up".
-3. Type consistency: `RawRetryFrame`, `RawRetryVerdict`, `RawRetryHook<TRequest, TContext>`, `RawRetryGuards`, `RawRetryPreflight`, `RawRetryResolution<TRequest, TContext>`, `classifyOpenAIResponsesRawRetry`, `rewriteOpenAIResponsesEncryptedContent`, `openAIResponsesRawRetry`, `preflightRawRetrySse(response, classify, guards)`, `readBoundedJsonBody(response, guards)`, `resolveRawRetry(input)`. Private helpers in `raw-retry.ts`: `guardReader`, `inboundAbortError`, `isAbortFailure`, `replayBuffered`. In `encrypted-content-retry.ts`: `carriesGeneratedOutput`, `TERMINAL_EVENTS`, `LIFECYCLE_ITEM_EVENTS`, `OUTPUT_EVENT_SUFFIXES`. New ingress symbol: `encryptedContentPartSchema`. The pipeline calls only `hook.classify` and `hook.rewrite`.
+3. Type consistency: `RawRetryFrame`, `RawRetryVerdict`, `RawRetryHook<TRequest, TContext>`, `RawRetryGuards`, `RawRetryPreflight`, `RawRetryResolution<TRequest, TContext>`, `classifyOpenAIResponsesRawRetry`, `rewriteOpenAIResponsesEncryptedContent`, `openAIResponsesRawRetry`, `preflightRawRetrySse(response, classify, guards)`, `readBoundedJsonBody(response, guards)`, `resolveRawRetry(input)`. Private helpers in `raw-retry.ts`: `guardReader`, `inboundAbortError`, `isAbortFailure`, `replayBuffered`. In `encrypted-content-retry.ts`: `carriesGeneratedOutput(type, payload)`, `itemCarriesOutput`, `TERMINAL_EVENTS`, `LIFECYCLE_ITEM_EVENTS`, `OUTPUT_ITEM_DONE`, `EMPTY_ITEM_TYPES`, `OUTPUT_EVENT_SUFFIXES`. `RawRetryGuards` carries `assumeEventStream`. New ingress symbol: `encryptedContentPartSchema`. The pipeline calls only `hook.classify` and `hook.rewrite`.
