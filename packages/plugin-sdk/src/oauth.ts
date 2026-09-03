@@ -211,6 +211,11 @@ export type OAuthAdapter<AccountOptions = unknown, Credential = unknown> = {
   };
   readonly createRuntime: (context: RuntimeContext<Credential, AccountOptions>) => Promise<OAuthRuntimeResult>;
   readonly quota?: OAuthQuotaCapability<AccountOptions, Credential>;
+  /**
+   * Performs the upstream exchange for a user-initiated credential refresh. Invoked unconditionally,
+   * including while the current credential is still valid, so it must not short-circuit on expiry.
+   * The framework owns the lease, single-flight dedupe, revision compare-and-swap, and persistence.
+   */
   readonly refreshCredential?: (
     context: OAuthCredentialRefreshContext<Credential, AccountOptions>,
   ) => Promise<OAuthCredentialRefreshResult<Credential>>;
