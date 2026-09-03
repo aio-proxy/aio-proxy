@@ -10,6 +10,7 @@ import type { AnyAttemptLoopContext, AttemptStep, CandidateSlot, RawCapableAttem
 import { cooldownTtlMs } from './cooldown-write';
 import { resolveSupportedEffortsForDimensions } from './effort-capability';
 import { attemptLog } from './emit';
+import { resolveRawRetry } from './raw-retry';
 
 // Raw passthrough for one candidate. The attempt span opens before the provider
 // call so its duration covers the upstream request, not just post-response work.
@@ -61,10 +62,28 @@ export async function completeRawAttempt<TRequest, TContext>(
   const { index, candidate, startedAt, observation, hasNext, inAttempt } = slot;
   const provider = candidate.provider;
   observation.markTransportUnavailable();
-  const response = await inAttempt(adapter.protocol, () =>
-    raw.invoke(upstream, logicalRequest, { upstreamStream: ctx.streamRequested }),
-  );
-  if (!(response instanceof Response)) throw new TypeError('Provider raw transport must return a Response');
+  const invokeRaw = async (request: Request): Promise<Response> => {
+    const result = await inAttempt(adapter.protocol, () =>
+      raw.invoke(request, logicalRequest, { upstreamStream: ctx.streamRequested }),
+    );
+    if (!(result instanceof Response)) throw new TypeError('Provider raw transport must return a Response');
+    return result;
+  };
+
+  // `rawRetry` is absent on embedding adapters, and the clone must happen before
+  // the first invoke consumes the body.
+  const hook = 'rawRetry' in adapter ? adapter.rawRetry : undefined;
+  const retrySource = hook === undefined ? undefined : upstream.clone();
+  const response = await resolveRawRetry({
+    hook,
+    retrySource,
+    request: ctx.request,
+    context: ctx.context,
+    response: await invokeRaw(upstream),
+    streamRequested: ctx.streamRequested,
+    guards: { signal: ctx.rawRequest.signal },
+    invoke: invokeRaw,
+  });
 
   const fallback = hasNext && shouldFallbackStatus(response.status);
   if (fallback || response.status < 200 || response.status >= 400) {
