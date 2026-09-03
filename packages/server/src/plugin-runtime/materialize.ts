@@ -108,6 +108,7 @@ async function createRuntimeMaterialization(
   state: PluginProviderMaterialization['state'],
   persistedSummary: PersistedSummary,
   accountSummary: PreparedOAuthPluginAccount['accountSummary'],
+  canRefreshCredential: boolean,
 ): Promise<PluginProviderMaterialization> {
   const { config } = options;
   const fetch = options.runtimeFetch ?? globalThis.fetch;
@@ -137,7 +138,15 @@ async function createRuntimeMaterialization(
       context: { plugin: config.plugin, capability: config.capability, providerId: config.id },
       error: { name: error instanceof Error ? error.name : 'Error', message: 'Plugin runtime creation failed' },
     });
-    return failure(options, 'RUNTIME_CREATE_FAILED', true, undefined, accountSummary, adapter.quota !== undefined);
+    return failure(
+      options,
+      'RUNTIME_CREATE_FAILED',
+      true,
+      undefined,
+      accountSummary,
+      adapter.quota !== undefined,
+      canRefreshCredential,
+    );
   }
 }
 
@@ -157,13 +166,23 @@ export async function materializePluginProvider(
       error.suggestLogin ? providerLoginCommand(options.config.id) : undefined,
       error.accountSummary,
       error.hasQuota,
+      error.canRefreshCredential,
     );
   }
   const { adapter, account, accountOptions, accountSummary, createCredentials } = prepared;
+  const canRefreshCredential = adapter.refreshCredential !== undefined;
   let proxyIdentity = options.effectiveProxy;
   if (proxyIdentity === undefined) proxyIdentity = config.proxy === false ? null : (config.proxy ?? null);
   if (adapter.supportsProxy === false && proxyIdentity !== null) {
-    return failure(options, 'PROXY_UNSUPPORTED', false, undefined, accountSummary, adapter.quota !== undefined);
+    return failure(
+      options,
+      'PROXY_UNSUPPORTED',
+      false,
+      undefined,
+      accountSummary,
+      adapter.quota !== undefined,
+      canRefreshCredential,
+    );
   }
   const accountOptionsDigest = digest(prepared.accountOptionsIdentity);
   let diagnostics: readonly Diagnostic[];
@@ -177,12 +196,13 @@ export async function materializePluginProvider(
       providerLoginCommand(config.id),
       accountSummary,
       adapter.quota !== undefined,
+      canRefreshCredential,
     );
   }
   const refreshFailure = refreshDiagnostic(diagnostics);
   if (refreshFailure !== undefined) {
     return {
-      summary: summary(config, undefined, accountSummary, adapter.quota !== undefined),
+      summary: summary(config, undefined, accountSummary, adapter.quota !== undefined, canRefreshCredential),
       state: diagnosticState({ ...refreshFailure, suggestedCommand: providerLoginCommand(config.id) }),
     };
   }
@@ -208,6 +228,7 @@ export async function materializePluginProvider(
         ...(catalog === null ? {} : { catalogLastSuccessAt: new Date(catalog.refreshedAt).toISOString() }),
       },
       adapter.quota !== undefined,
+      canRefreshCredential,
     );
   const catalogJobFor = (credentials: CredentialPort<unknown>): CatalogJobDescriptor => ({
     providerId: config.id,
@@ -282,5 +303,6 @@ export async function materializePluginProvider(
     state,
     persistedSummary,
     accountSummary,
+    canRefreshCredential,
   );
 }

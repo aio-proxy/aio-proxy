@@ -27,6 +27,7 @@ export function summary(
     readonly catalogLastSuccessAt?: string;
   },
   hasQuota = false,
+  canRefreshCredential = false,
 ): Omit<DashboardProviderSummary, 'state'> {
   return {
     id: config.id,
@@ -39,6 +40,7 @@ export function summary(
     // OAuth providers speak whatever their plugin runtime speaks; there is no configured wire protocol.
     protocols: [],
     hasQuota,
+    canRefreshCredential,
     ...(config.priority === undefined ? {} : { priority: config.priority }),
     ...(config.weight === undefined ? {} : { weight: config.weight }),
     clientModels: provider === undefined ? [] : uniq(modelRoutes(provider).map((route) => route.alias)),
@@ -59,6 +61,9 @@ export function failure(
   // Quota lives on the adapter, not the runtime: a provider whose runtime or proxy check failed can
   // still answer a quota read, so an unavailable card must keep showing its ring.
   hasQuota = false,
+  // Refresh lives on the adapter, not the runtime: the menu item that repairs a broken credential
+  // must still be reachable on an unavailable card.
+  canRefreshCredential = false,
 ): PluginProviderMaterialization {
   const diagnostic = options.diagnostics(code, {
     plugin: options.config.plugin,
@@ -68,7 +73,7 @@ export function failure(
     ...(suggestedCommand === undefined ? {} : { suggestedCommand }),
   });
   return {
-    summary: summary(options.config, undefined, persisted, hasQuota),
+    summary: summary(options.config, undefined, persisted, hasQuota, canRefreshCredential),
     state: diagnosticState(diagnostic),
   };
 }
