@@ -21,6 +21,7 @@ import {
   oauthExposedModels,
   type Provider,
   ProviderKind,
+  resolveOAuthAlias,
   RoutingPrioritySchema,
   RoutingWeightSchema,
 } from '@aio-proxy/types';
@@ -207,12 +208,17 @@ async function syntheticSource(
   provider: Provider,
   repository: Pick<PluginRepository, 'readCatalog'>,
 ): Promise<RoutableProvider> {
-  const models =
-    provider.kind === ProviderKind.OAuth
-      ? await oauthCatalogModels(provider, repository)
-      : 'models' in provider
-        ? (provider.models ?? [])
-        : [];
+  if (provider.kind === ProviderKind.OAuth) {
+    const models = await oauthCatalogModels(provider, repository);
+    const alias = resolveOAuthAlias(provider.alias, undefined, models === undefined ? undefined : models);
+    return {
+      id: provider.id,
+      enabled: provider.enabled,
+      ...(models === undefined || models.length === 0 ? {} : { models }),
+      ...(Object.keys(alias).length === 0 ? {} : { alias }),
+    };
+  }
+  const models = provider.models ?? [];
   return {
     id: provider.id,
     enabled: provider.enabled,
@@ -224,16 +230,16 @@ async function syntheticSource(
 async function oauthCatalogModels(
   provider: Extract<Provider, { kind: typeof ProviderKind.OAuth }>,
   repository: Pick<PluginRepository, 'readCatalog'>,
-): Promise<readonly string[]> {
+): Promise<readonly string[] | undefined> {
   try {
     const stored = repository.readCatalog(provider.id);
-    if (stored === null) return [];
+    if (stored === null) return undefined;
     return oauthExposedModels(
       validateModelCatalog(stored.catalog).language.map((entry) => entry.id),
       provider.excludedModels,
     );
   } catch {
-    return [];
+    return undefined;
   }
 }
 

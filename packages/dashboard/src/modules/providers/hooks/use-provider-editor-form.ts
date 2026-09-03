@@ -33,9 +33,14 @@ export type ProviderEditorShape =
   | WithEditorAlias<Extract<ProviderFormShape, { kind: ProviderKind.AiSdk }>>
   | OAuthEditorShape;
 
-export type ProviderEditorInitial = Omit<Partial<ProviderEditorShape>, 'alias'> & {
+type EditorInitialFor<T extends { readonly kind: ProviderKind }> = Omit<Partial<T>, 'alias'> & {
   readonly alias?: ProviderAlias | AuthoredOAuthAlias | undefined;
 };
+
+export type ProviderEditorInitial =
+  | EditorInitialFor<Extract<ProviderEditorShape, { kind: ProviderKind.Api }>>
+  | EditorInitialFor<Extract<ProviderEditorShape, { kind: ProviderKind.AiSdk }>>
+  | EditorInitialFor<OAuthEditorShape>;
 
 type WithWireAlias<T> = Omit<T, 'alias'> & {
   readonly alias?: ProviderAlias | AuthoredOAuthAlias | undefined;
@@ -78,7 +83,7 @@ export function useProviderEditorForm({ kind, initial }: UseProviderEditorFormOp
       ({
         ...initial,
         kind,
-        ...(kind === 'api' && initial?.endpoints === undefined
+        ...(kind === 'api' && (initial === undefined || !('endpoints' in initial) || initial.endpoints === undefined)
           ? { endpoints: apiDraftFromProvider({ ...initial, kind }) ?? emptySharedDraft() }
           : {}),
         alias:
@@ -89,7 +94,8 @@ export function useProviderEditorForm({ kind, initial }: UseProviderEditorFormOp
               : toAliasRows(initial.alias as ProviderAlias),
         ...(kind === 'oauth'
           ? {
-              excludedModels: initial?.excludedModels ?? [],
+              excludedModels:
+                initial !== undefined && 'excludedModels' in initial ? (initial.excludedModels ?? []) : [],
               pluginAliasInherit: !isOAuthInheritOff(initial?.alias),
             }
           : {}),

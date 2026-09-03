@@ -65,8 +65,8 @@ function routableUpstreamIds(config: Config): string[] {
   );
 }
 
-function providerRoutableIds(provider: Provider): string[] {
-  const alias = 'alias' in provider ? provider.alias : undefined;
+function providerRoutableIds(provider: Exclude<Provider, { kind: typeof ProviderKind.OAuth }>): string[] {
+  const alias = provider.alias;
   return [...(provider.models ?? []), ...(alias === undefined ? [] : Object.values(alias).flatMap(aliasTargetModels))];
 }
 
