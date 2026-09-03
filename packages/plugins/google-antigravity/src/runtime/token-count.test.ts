@@ -24,7 +24,7 @@ test('maps OpenAI reasoning through the catalog thinking binder on count', async
     reranking: [],
   };
   const transport = new AntigravityTransport({
-    credentials: credentialSource(),
+    credentials: credentialSource('project-1'),
     descriptorById: new Map(catalog.language.map((descriptor) => [descriptor.id, descriptor])),
     familyByWireId: () => undefined,
     fetch: async (input, init) => {
@@ -63,7 +63,7 @@ test('uses the Google codec and count endpoint for the CCA token count', async (
     reranking: [],
   };
   const transport = new AntigravityTransport({
-    credentials: credentialSource(),
+    credentials: credentialSource('project-1'),
     descriptorById: new Map(catalog.language.map((descriptor) => [descriptor.id, descriptor])),
     familyByWireId: () => undefined,
     fetch: async (input, init) => {
@@ -155,8 +155,8 @@ test('reuses daily to prod fallback, one auth refresh, and stable endpoint ident
   expect(refreshes).toBe(1);
   expect(seen.map((request) => new URL(request.url).origin)).toEqual([
     'https://daily-cloudcode-pa.googleapis.com',
-    'https://cloudcode-pa.googleapis.com',
-    'https://cloudcode-pa.googleapis.com',
+    'https://daily-cloudcode-pa.sandbox.googleapis.com',
+    'https://daily-cloudcode-pa.sandbox.googleapis.com',
   ]);
   expect(seen.map((request) => new URL(request.url).pathname)).toEqual([
     '/v1internal:countTokens',
@@ -243,8 +243,13 @@ function logicalContext(): LogicalRequestContext {
   };
 }
 
-function credentialSource() {
-  return { current: async () => credentialFixture(), forceRefresh: async () => credentialFixture() };
+function uniqueProjectId(): string {
+  return `project-${crypto.randomUUID()}`;
+}
+
+function credentialSource(projectId?: string) {
+  const credential = credentialFixture(projectId === undefined ? {} : { projectId });
+  return { current: async () => credential, forceRefresh: async () => credential };
 }
 
 function credentialFixture(overrides: Partial<GoogleAntigravityCredential> = {}): GoogleAntigravityCredential {
@@ -253,7 +258,7 @@ function credentialFixture(overrides: Partial<GoogleAntigravityCredential> = {})
     refreshToken: 'refresh-1',
     expiresAt: 1_900_000_000_000,
     email: 'person@example.com',
-    projectId: 'project-1',
+    projectId: uniqueProjectId(),
     ...overrides,
   };
 }

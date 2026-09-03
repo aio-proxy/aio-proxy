@@ -17,6 +17,7 @@ import { preflightCcaSse } from './stream';
 const GENERATE_PATH = '/v1internal:generateContent';
 const STREAM_PATH = '/v1internal:streamGenerateContent?alt=sse';
 const COUNT_PATH = '/v1internal:countTokens';
+const lastGoodByProject = new Map<string, string>();
 
 export type AntigravityExecuteInput = {
   readonly body: Readonly<Record<string, unknown>>;
@@ -72,7 +73,7 @@ export class AntigravityTransport implements CcaTransport {
     let authRefreshUsed = false;
     let lastFailure: AntigravityUpstreamError | undefined;
     let signatureRetryUsed = false;
-    const endpoints = antigravityEndpoints(this.#options, 'inference');
+    const endpoints = antigravityEndpoints(this.#options, 'inference', lastGoodByProject.get(credential.projectId));
 
     for (const endpoint of endpoints) {
       const category = endpointCategory(endpoint, this.#options);
@@ -140,6 +141,7 @@ export class AntigravityTransport implements CcaTransport {
               await discard(preflight.response);
               break;
             }
+            rememberLastGood(credential.projectId, endpoint);
             return await captureReasoningReplay(preflight.response, input.modelId, scope, this.#replayCache);
           } catch (error) {
             throwIfCallerAborted(input.signal);
@@ -149,12 +151,17 @@ export class AntigravityTransport implements CcaTransport {
           }
         }
 
+        rememberLastGood(credential.projectId, endpoint);
         return await captureReasoningReplay(response, input.modelId, scope, this.#replayCache);
       }
     }
 
     throw lastFailure ?? upstreamError('custom', 'upstream_network');
   }
+}
+
+function rememberLastGood(projectId: string, origin: string): void {
+  lastGoodByProject.set(projectId, origin);
 }
 
 function requestPath(input: AntigravityExecuteInput): string {

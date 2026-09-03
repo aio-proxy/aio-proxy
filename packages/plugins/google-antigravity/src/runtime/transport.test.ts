@@ -28,8 +28,33 @@ test('reuses identity across short retry, endpoint fallback, and one forced refr
   expect(seen.map((request) => new URL(request.url).origin)).toEqual([
     'https://daily-cloudcode-pa.googleapis.com',
     'https://daily-cloudcode-pa.googleapis.com',
-    'https://cloudcode-pa.googleapis.com',
-    'https://cloudcode-pa.googleapis.com',
+    'https://daily-cloudcode-pa.sandbox.googleapis.com',
+    'https://daily-cloudcode-pa.sandbox.googleapis.com',
+  ]);
+});
+
+test('prefers the last successful sandbox origin for the same project', async () => {
+  const origins: string[] = [];
+  const scripted = [
+    Response.json({ error: { message: 'No capacity is available' } }, { status: 503 }),
+    Response.json({ response: { candidates: [] } }),
+    Response.json({ response: { candidates: [] } }),
+  ];
+  let index = 0;
+  const credential = credentialFixture({ projectId: 'last-good-project' });
+  const dependencies = {
+    credentials: { current: async () => credential, forceRefresh: async () => credential },
+    fetch: async (input: RequestInfo) => {
+      origins.push(new URL(String(input)).origin);
+      return scripted[index++] ?? Response.json({ response: {} });
+    },
+  };
+  await new AntigravityTransport(dependencies).execute(executeInput());
+  await new AntigravityTransport(dependencies).execute(executeInput());
+  expect(origins).toEqual([
+    'https://daily-cloudcode-pa.googleapis.com',
+    'https://daily-cloudcode-pa.sandbox.googleapis.com',
+    'https://daily-cloudcode-pa.sandbox.googleapis.com',
   ]);
 });
 
@@ -192,8 +217,13 @@ async function identityTuple(request: Request): Promise<string> {
   return `${body.requestId}:${body.request.sessionId}:${await request.clone().text()}`;
 }
 
+function uniqueProjectId(): string {
+  return `project-${crypto.randomUUID()}`;
+}
+
 function credentialSource() {
-  return { current: async () => credentialFixture(), forceRefresh: async () => credentialFixture() };
+  const credential = credentialFixture();
+  return { current: async () => credential, forceRefresh: async () => credential };
 }
 
 function credentialFixture(overrides: Partial<GoogleAntigravityCredential> = {}): GoogleAntigravityCredential {
@@ -202,7 +232,7 @@ function credentialFixture(overrides: Partial<GoogleAntigravityCredential> = {})
     refreshToken: 'refresh-1',
     expiresAt: 1_900_000_000_000,
     email: 'person@example.com',
-    projectId: 'project-1',
+    projectId: uniqueProjectId(),
     ...overrides,
   };
 }

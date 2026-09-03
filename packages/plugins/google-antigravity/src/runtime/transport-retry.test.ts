@@ -49,7 +49,10 @@ test('switches endpoint after a known connection reset', async () => {
 
   await transport.execute(executeInput());
 
-  expect(origins).toEqual(['https://daily-cloudcode-pa.googleapis.com', 'https://cloudcode-pa.googleapis.com']);
+  expect(origins).toEqual([
+    'https://daily-cloudcode-pa.googleapis.com',
+    'https://daily-cloudcode-pa.sandbox.googleapis.com',
+  ]);
 });
 
 test.each([
@@ -88,7 +91,7 @@ test('uses at most one short 429 retry per endpoint', async () => {
   expect(seen.map((request) => new URL(request.url).origin)).toEqual([
     'https://daily-cloudcode-pa.googleapis.com',
     'https://daily-cloudcode-pa.googleapis.com',
-    'https://cloudcode-pa.googleapis.com',
+    'https://daily-cloudcode-pa.sandbox.googleapis.com',
   ]);
 });
 
@@ -106,7 +109,7 @@ test.each(['2.5', '2e0', '0x2', '-1'])('does not short-retry a non-integer Retry
   expect(sleeps).toEqual([]);
   expect(seen.map((request) => new URL(request.url).origin)).toEqual([
     'https://daily-cloudcode-pa.googleapis.com',
-    'https://cloudcode-pa.googleapis.com',
+    'https://daily-cloudcode-pa.sandbox.googleapis.com',
   ]);
 });
 
@@ -218,8 +221,13 @@ function executeInput(overrides: Partial<Parameters<AntigravityTransport['execut
   };
 }
 
+function uniqueProjectId(): string {
+  return `project-${crypto.randomUUID()}`;
+}
+
 function credentialSource() {
-  return { current: async () => credentialFixture(), forceRefresh: async () => credentialFixture() };
+  const credential = credentialFixture();
+  return { current: async () => credential, forceRefresh: async () => credential };
 }
 
 function credentialFixture(): GoogleAntigravityCredential {
@@ -228,7 +236,7 @@ function credentialFixture(): GoogleAntigravityCredential {
     refreshToken: 'refresh-1',
     expiresAt: 1_900_000_000_000,
     email: 'person@example.com',
-    projectId: 'project-1',
+    projectId: uniqueProjectId(),
   };
 }
 

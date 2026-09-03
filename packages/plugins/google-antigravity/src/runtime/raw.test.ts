@@ -94,7 +94,10 @@ describe('Gemini raw resolver', () => {
     );
 
     expect(await response?.text()).toBe('data: {"candidates":[{"content":{"parts":[{"text":"ok"}]}}]}\n\n');
-    expect(origins).toEqual(['https://daily-cloudcode-pa.googleapis.com', 'https://cloudcode-pa.googleapis.com']);
+    expect(origins).toEqual([
+      'https://daily-cloudcode-pa.googleapis.com',
+      'https://daily-cloudcode-pa.sandbox.googleapis.com',
+    ]);
   });
 
   test('never replays after a model stream frame is committed', async () => {

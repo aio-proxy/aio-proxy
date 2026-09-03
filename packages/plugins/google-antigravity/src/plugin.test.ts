@@ -110,7 +110,7 @@ test('imports an expired CPA file and recovers a missing project id', async () =
 
   expect(requests).toEqual([
     'https://oauth2.googleapis.com/token',
-    'https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist',
+    'https://daily-cloudcode-pa.googleapis.com/v1internal:loadCodeAssist',
   ]);
   expect(result).toEqual({
     fingerprint: 'person@example.com',
