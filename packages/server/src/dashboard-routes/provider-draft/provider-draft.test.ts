@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { npmPackageCacheDir } from '@aio-proxy/core';
 import { ConfigSchema, ProviderProtocol } from '@aio-proxy/types';
 
 import { createServerState } from '#server-test-lifecycle';
@@ -333,6 +334,48 @@ describe('draft Provider catalog and test routes', () => {
       ok: false,
       error: { code: 'catalog_unsupported', recoverable: true },
     });
+  });
+
+  test('lists a custom AI SDK provider catalog through its optional listModels extension', async () => {
+    const packageName = '@example/catalog-provider';
+    const packageDirectory = join(npmPackageCacheDir(packageName), 'node_modules', '@example', 'catalog-provider');
+    mkdirSync(packageDirectory, { recursive: true });
+    writeFileSync(
+      join(packageDirectory, 'package.json'),
+      JSON.stringify({ name: packageName, version: '1.0.0', type: 'module', exports: './index.js' }),
+    );
+    writeFileSync(
+      join(packageDirectory, 'index.js'),
+      `export const createCatalogProvider = (options) => ({
+        listModels: async (signal) => {
+          if (signal?.aborted) throw signal.reason;
+          if (options.marker !== 'draft-option') throw new Error('options not forwarded');
+          return ['model-a', { id: 'model-b' }, 'model-a', null, {}, { id: 42 }];
+        },
+      });\n`,
+    );
+
+    try {
+      const response = await routes.request(
+        '/providers/draft/catalog',
+        jsonRequest(
+          {
+            draft: {
+              id: 'custom-sdk',
+              kind: 'ai-sdk',
+              packageName,
+              options: { marker: 'draft-option' },
+            },
+          },
+          'QUERY',
+        ),
+      );
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ ok: true, models: ['model-a', 'model-b'] });
+    } finally {
+      rmSync(npmPackageCacheDir(packageName), { force: true, recursive: true });
+    }
   });
 
   test('lists an ai-sdk draft catalog from options.baseURL with bearer auth', async () => {
