@@ -35,9 +35,11 @@ echo "Downloading ${url} ..."
 curl -fSL --progress-bar -o "$tmp" "$url"
 chmod +x "$tmp"
 mv "$tmp" "$INSTALL_DIR/aio-proxy"
+ln -sfn aio-proxy "$INSTALL_DIR/aiop"
 trap - INT TERM EXIT
 
 echo "Installed aio-proxy to $INSTALL_DIR/aio-proxy"
+echo "Short command: $INSTALL_DIR/aiop"
 case ":$PATH:" in
   *":$INSTALL_DIR:"*) ;;
   *)

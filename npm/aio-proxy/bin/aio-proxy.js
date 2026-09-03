@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 const { spawn } = require('node:child_process');
+const { basename } = require('node:path');
 
 const pkg = `@aio-proxy/cli-${process.platform}-${process.arch}`;
 let binary;
@@ -14,7 +15,8 @@ try {
   process.exit(1);
 }
 
-const child = spawn(binary, process.argv.slice(2), { stdio: 'inherit' });
+const argv0 = basename(process.argv[1] ?? 'aio-proxy', '.js') || 'aio-proxy';
+const child = spawn(binary, process.argv.slice(2), { stdio: 'inherit', argv0 });
 
 child.on('error', (error) => {
   console.error(error.message);

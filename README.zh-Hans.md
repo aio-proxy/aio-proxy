@@ -56,8 +56,10 @@ bun add -g aio-proxy
 ## 快速开始
 
 ```bash
-aio-proxy run --open
+aiop run --open
 ```
+
+`aio-proxy` 仍然可用。`aiop` 是短命令。
 
 - API：`http://127.0.0.1:9317`
 - Dashboard：`http://127.0.0.1:9317/dashboard`
