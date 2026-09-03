@@ -117,6 +117,89 @@ test('reuses session agent identity and echoes last_execution_id', async () => {
   expect(second.request.labels.last_execution_id).toBe('exec-first');
 });
 
+test('does not let countTokens consume generation session state', async () => {
+  const seen: Request[] = [];
+  const sessionKey = `sha256:${crypto.randomUUID()}` as const;
+  const transport = new AntigravityTransport({
+    credentials: credentialSource(),
+    fetch: async (input, init) => {
+      seen.push(new Request(input, init));
+      if (seen.length === 1) return Response.json({ response: { responseId: 'exec-first', candidates: [] } });
+      if (seen.length === 2) return Response.json({ totalTokens: 9 });
+      return Response.json({ response: { candidates: [] } });
+    },
+  });
+
+  await transport.execute(executeInput({ context: logicalContext({ sessionKey }) }));
+  await transport.execute(executeInput({ context: logicalContext({ sessionKey }), operation: 'countTokens' }));
+  await transport.execute(executeInput({ context: logicalContext({ sessionKey }) }));
+
+  const envelopes = await Promise.all(seen.map((request) => request.clone().json()));
+  const ids = envelopes.map((envelope) => String(envelope.requestId).split('/'));
+  expect(ids[0]?.[4]).toBe('1');
+  expect(ids[2]?.[4]).toBe('2');
+  expect(ids[1]?.[1]).not.toBe(ids[0]?.[1]);
+  expect(envelopes[2]?.request.labels.last_execution_id).toBe('exec-first');
+});
+
+test('reapplies skip signature when retrying without replay', async () => {
+  const seen: Request[] = [];
+  const transport = new AntigravityTransport({
+    credentials: credentialSource(),
+    options: { baseURL: 'https://example.test' },
+    fetch: async (input, init) => {
+      seen.push(new Request(input, init));
+      if (seen.length === 1) {
+        return Response.json({ error: { message: 'function call has invalid thoughtSignature' } }, { status: 400 });
+      }
+      return Response.json({ response: { candidates: [] } });
+    },
+  });
+
+  const unsigned = {
+    contents: [
+      {
+        role: 'model',
+        parts: [{ functionCall: { name: 'a', args: {} } }, { functionCall: { name: 'b', args: {} } }],
+      },
+    ],
+  };
+  await transport.execute(executeInput({ body: unsigned, modelId: 'gemini-3-flash-agent' }));
+
+  const envelopes = await Promise.all(seen.map((request) => request.clone().json()));
+  expect(seen).toHaveLength(2);
+  for (const envelope of envelopes) {
+    expect(envelope.request.contents[0].parts[0].thoughtSignature).toBe('skip_thought_signature_validator');
+    expect(envelope.request.contents[0].parts[1].thoughtSignature).toBeUndefined();
+  }
+});
+
+test('expires unused session identity after one hour', async () => {
+  const seen: Request[] = [];
+  let now = 1_000;
+  const sessionKey = `sha256:${crypto.randomUUID()}` as const;
+  const transport = new AntigravityTransport({
+    credentials: credentialSource(),
+    now: () => now,
+    fetch: async (input, init) => {
+      seen.push(new Request(input, init));
+      return Response.json({ response: { candidates: [] } });
+    },
+  });
+
+  await transport.execute(executeInput({ context: logicalContext({ sessionKey }) }));
+  now += 3_600_000;
+  await transport.execute(executeInput({ context: logicalContext({ sessionKey }) }));
+
+  const envelopes = await Promise.all(seen.map((request) => request.clone().json()));
+  const first = String(envelopes[0]?.requestId).split('/');
+  const second = String(envelopes[1]?.requestId).split('/');
+  expect(first[1]).not.toBe(second[1]);
+  expect(first[3]).not.toBe(second[3]);
+  expect(first[4]).toBe('1');
+  expect(second[4]).toBe('1');
+});
+
 test('applies catalog wire profiles on the initial envelope and the retry envelope', async () => {
   const seen: Request[] = [];
   const transport = new AntigravityTransport({

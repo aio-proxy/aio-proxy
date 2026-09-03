@@ -18,13 +18,18 @@ import { type AntigravityEndpointCategory, type AntigravityFailureReason, Antigr
 import { createCcaHeaders } from './headers';
 import { retryAfterMilliseconds } from './retry-after';
 import { captureReasoningReplay, isSignatureInvalidResponse, prepareReasoningReplay } from './session-state';
+import { applyGeminiSkipThoughtSignature } from './session-state/prepare/skip-signature';
 import { preflightCcaSse } from './stream';
 
 const GENERATE_PATH = '/v1internal:generateContent';
 const STREAM_PATH = '/v1internal:streamGenerateContent?alt=sse';
 const COUNT_PATH = '/v1internal:countTokens';
 const lastGoodByProject = new Map<string, string>();
-const sessions = new Map<`sha256:${string}`, AntigravityRequestSession>();
+const SESSION_TTL_MS = 3_600_000;
+const SESSION_MAX_ENTRIES = 10_240;
+const sessions = new Map<`sha256:${string}`, SessionRecord>();
+
+type SessionRecord = AntigravityRequestSession & { expiresAt: number; lastAccessAt: number };
 
 export type AntigravityExecuteInput = {
   readonly body: Readonly<Record<string, unknown>>;
@@ -44,6 +49,7 @@ export type AntigravityTransportDependencies = {
   readonly sleep?: (milliseconds: number) => Promise<void>;
   readonly descriptorById?: ReadonlyMap<string, ModelDescriptor>;
   readonly familyByWireId?: (modelId: string) => AntigravityFamily | undefined;
+  readonly now?: () => number;
 };
 
 export type CcaTransport = {
@@ -57,6 +63,7 @@ export class AntigravityTransport implements CcaTransport {
   readonly #replayCache: ReasoningReplayCache;
   readonly #sleep: (milliseconds: number) => Promise<void>;
   readonly #lookups: CcaWireLookups;
+  readonly #now: () => number;
 
   constructor(dependencies: AntigravityTransportDependencies) {
     this.#credentials = dependencies.credentials;
@@ -64,6 +71,7 @@ export class AntigravityTransport implements CcaTransport {
     this.#fetch = dependencies.fetch ?? globalThis.fetch;
     this.#replayCache = dependencies.replayCache ?? antigravityReplayCache;
     this.#sleep = dependencies.sleep ?? Bun.sleep;
+    this.#now = dependencies.now ?? Date.now;
     this.#lookups = {
       descriptorById: dependencies.descriptorById ?? new Map(),
       familyByWireId: dependencies.familyByWireId ?? (() => undefined),
@@ -76,7 +84,10 @@ export class AntigravityTransport implements CcaTransport {
     throwIfCallerAborted(input.signal);
     const scope = this.#replayCache.begin(input.modelId, input.context.session.key, input.context.requestId);
     const replayBody = prepareReasoningReplay(input.body, input.modelId, this.#replayCache.read(scope.key));
-    const sessionState = nextSessionState(input.context.session.key);
+    const sessionState =
+      input.operation === 'countTokens'
+        ? ephemeralSessionState()
+        : nextSessionState(input.context.session.key, this.#now);
     let body = JSON.stringify(
       createCcaEnvelope({ ...input, ...this.#lookups, body: replayBody, credential, sessionState }),
     );
@@ -133,7 +144,13 @@ export class AntigravityTransport implements CcaTransport {
           await discard(response);
           signatureRetryUsed = true;
           body = JSON.stringify(
-            createCcaEnvelope({ ...input, ...this.#lookups, credential, body: input.body, sessionState }),
+            createCcaEnvelope({
+              ...input,
+              ...this.#lookups,
+              credential,
+              body: applyGeminiSkipThoughtSignature(input.body, input.modelId),
+              sessionState,
+            }),
           );
           continue;
         }
@@ -154,7 +171,9 @@ export class AntigravityTransport implements CcaTransport {
               break;
             }
             rememberLastGood(credential.projectId, endpoint);
-            rememberLastExecution(input.context.session.key, sessionState, readCcaResponseId(preflight.payload));
+            if (input.operation !== 'countTokens') {
+              rememberLastExecution(input.context.session.key, sessionState, readCcaResponseId(preflight.payload));
+            }
             return await captureReasoningReplay(preflight.response, input.modelId, scope, this.#replayCache);
           } catch (error) {
             throwIfCallerAborted(input.signal);
@@ -166,7 +185,9 @@ export class AntigravityTransport implements CcaTransport {
 
         if (response.ok) {
           rememberLastGood(credential.projectId, endpoint);
-          rememberLastExecution(input.context.session.key, sessionState, await readJsonResponseId(response));
+          if (input.operation !== 'countTokens') {
+            rememberLastExecution(input.context.session.key, sessionState, await readJsonResponseId(response));
+          }
         }
         return await captureReasoningReplay(response, input.modelId, scope, this.#replayCache);
       }
@@ -180,20 +201,59 @@ function rememberLastGood(projectId: string, origin: string): void {
   lastGoodByProject.set(projectId, origin);
 }
 
-function nextSessionState(sessionKey: `sha256:${string}`): AntigravityRequestSession {
+function nextSessionState(sessionKey: `sha256:${string}`, now: () => number): AntigravityRequestSession {
+  const clock = now();
+  pruneSessions(clock);
   const current = sessions.get(sessionKey);
-  if (current === undefined) {
-    const created: AntigravityRequestSession = {
+  if (current === undefined || current.expiresAt <= clock) {
+    const created: SessionRecord = {
       agentId: crypto.randomUUID(),
       trajectoryId: crypto.randomUUID(),
       stepIndex: 1,
+      expiresAt: clock + SESSION_TTL_MS,
+      lastAccessAt: clock,
     };
     sessions.set(sessionKey, created);
+    evictSessions();
     return created;
   }
-  const next = { ...current, stepIndex: current.stepIndex + 1 };
+  const next: SessionRecord = {
+    ...current,
+    stepIndex: current.stepIndex + 1,
+    expiresAt: clock + SESSION_TTL_MS,
+    lastAccessAt: clock,
+  };
   sessions.set(sessionKey, next);
   return next;
+}
+
+function ephemeralSessionState(): AntigravityRequestSession {
+  return {
+    agentId: crypto.randomUUID(),
+    trajectoryId: crypto.randomUUID(),
+    stepIndex: 2,
+  };
+}
+
+function pruneSessions(now: number): void {
+  for (const [key, record] of sessions) {
+    if (record.expiresAt <= now) sessions.delete(key);
+  }
+}
+
+function evictSessions(): void {
+  while (sessions.size > SESSION_MAX_ENTRIES) {
+    let oldestKey: `sha256:${string}` | undefined;
+    let oldestAccess = Number.POSITIVE_INFINITY;
+    for (const [key, record] of sessions) {
+      if (record.lastAccessAt < oldestAccess) {
+        oldestAccess = record.lastAccessAt;
+        oldestKey = key;
+      }
+    }
+    if (oldestKey === undefined) return;
+    sessions.delete(oldestKey);
+  }
 }
 
 function rememberLastExecution(
