@@ -54,7 +54,12 @@ providers:
 
 `false` and `*` exist only on the authored type. Resolve is the only place they are consumed. Downstream must not grow `if (config === false)` checks. Membership tests on authored maps use `Object.hasOwn`, not a bare lookup (`constructor` / `__proto__`).
 
-OAuth mutation body (`OAuthProviderMutationBodySchema`, `strictObject`) drops `models` and adds `excludedModels` and the authored alias grammar in the same change.
+Two independent `z.strictObject` surfaces drop `models` and add `excludedModels` plus the authored alias grammar in the same change:
+
+- `OAuthProviderMutationBodySchema` (Save / PUT)
+- `DashboardOAuthProviderPatchSchema` (login / re-login `providerPatch`)
+
+Missing either one leaves a dead field or a strict parse error. `DashboardOAuthProviderPatchSchema` is not derived from the mutation body; both must be edited.
 
 ### Authored alias rules
 
@@ -72,6 +77,8 @@ Key reservation runs **after key normalization** (`trim`). `' *'` and `'*'` are 
 
 When inherit is off (`*: false`), a `false` value on any other key is ignored at resolve. The editor keeps those rows visible and marks them unused until inherit is turned back on.
 
+Authored value grammar is `z.union([z.literal(false), AliasConfigSchema])` with `false` first. `AliasConfigSchema` already `.transform`s. A failed object/`false` mix must still report `alias.<key>`, not a union blob — custom `errorMap` or a refine, not a bare union message.
+
 ## Runtime
 
 Exposure: `catalog − excludedModels`. There is no allowlist branch. `exposedModelIds` / the draft Test gate take the OAuth provider (or `{ excludedModels }`), not `provider.models`.
@@ -88,7 +95,7 @@ The only functions that have `config` and `catalog` together are `createRuntimeP
 
 ### Effective alias
 
-Shared helper (types or core, one function, used by materialize, `withRoutingConfig`, edit-view, and the editor preview):
+Shared helper (types or core, one function, used by materialize, `withRoutingConfig`, and the editor preview). Edit-view does **not** run step 5:
 
 1. Plugin defaults come from the per-entry helper. A throwing hook or a wholly unusable return is empty defaults, not a failed login / refresh / editor page.
 2. Bad entries drop individually. One broken suggestion does not drop its neighbors. Editor and router see the same set.
@@ -128,6 +135,8 @@ Delete these, including tests that only exist to protect them:
 
 `insertMissingAliases` is not kept as an unused export.
 
+Dashboard re-login is a third persist path and is not removed by deleting those server merges. `oauthProviderEditAction` already puts `values.alias` on `providerPatch`. That patch must use the **same authored serialization as Save**: inherited rows stay out of the map. A test that only asserts server-side re-login (no `providerPatch.alias`) does not cover this.
+
 ### Plugin-default helper
 
 One function in core (today's edit-view `pluginAliasSuggestions` loop, not `assertAliasTargetsInCatalog`):
@@ -138,7 +147,7 @@ One function in core (today's edit-view `pluginAliasSuggestions` loop, not `asse
 - `Object.hasOwn` when copying keys
 - empty result → `undefined`
 
-Login, catalog refresh, edit-view, and materialize all use this function.
+Login, catalog refresh, edit-view, and materialize all use this function for **schema/catalog** validity only. Edit-view `pluginAliases` is that unfiltered-by-denylist set. `excludedModels` is editor draft state; the server has not seen the latest uncheck. Filtering inherit rows against `catalog − excludedModels` happens on the client (reuse `applicablePluginAliases`, change its input from a `models` allowlist to the draft exposed set). `mergePluginAliasRows` goes away with the one-shot sync button. `applicablePluginAliases` stays.
 
 ## Dashboard
 
@@ -157,7 +166,10 @@ Alias list:
 - An authored key that is also a plugin default has **two** actions: restore plugin default (delete the entry so inherit returns) and hide (`key: false`). Removing the entry must not be the only delete control — that would look like delete and then show the plugin value again. This is the exit for keys already seeded into existing files.
 - 「跟插件同步」off → persist `*: false`. Inherited-only rows leave the effective set. The editor does not snapshot them into `alias`. Existing `false` rows stay in the file and render as unused.
 - 「跟插件同步」on → omit `*: false`.
-- The one-shot 「同步插件别名」copy-into-`alias` action is removed. Inherit replaces it.
+- The one-shot 「同步插件别名」copy-into-`alias` action is removed. Inherit replaces it. Delete `mergePluginAliasRows` only.
+- Save and re-login `providerPatch.alias` share one serializer. Inherited rows never enter that map.
+
+Exposure rail and alias preview resolve on the client from `pluginAliases` + draft `alias` + draft `excludedModels`, so unchecking a model hides inherit rows that target it before save.
 
 ## Compatibility
 
@@ -195,5 +207,7 @@ The changeset targets `aio-proxy` plus the packages that actually change (`@aio-
 - One bad `defaultAliases` entry plus three good ones → three inherited (login, catalog refresh, edit-view, materialize).
 - api / ai-sdk reject `false` and reserved `*`, path `alias.<key>`.
 - Create / re-login / catalog refresh do not persist plugin defaults.
-- Dashboard: uncheck one catalog row writes only that id to `excludedModels`.
-- Dashboard: inherited row is visible and absent from the mutation `alias` map; hide persists `false`; restore removes the authored key; turning inherit off persists `*: false` and does not snapshot.
+- Re-login **with** `providerPatch` does not persist plugin defaults (inherited rows absent from `providerPatch.alias`).
+- Dashboard: uncheck one catalog row writes only that id to `excludedModels`, and inherit rows targeting it leave the preview immediately.
+- Dashboard: inherited row is visible and absent from the mutation **and** `providerPatch` `alias` map; hide persists `false`; restore removes the authored key; turning inherit off persists `*: false` and does not snapshot.
+- `DashboardOAuthProviderPatchSchema` parse errors for `false` / `*` / duplicate `when` still point at `alias.<key>` after `models` is removed (`alias-variant.test.ts` patch-schema case included).
