@@ -110,7 +110,14 @@ export async function preflightRawRetrySse(
     status: response.status,
     statusText: response.statusText,
   });
-  return { kind: verdict === 'retry' ? 'retry' : 'commit', response: next };
+  // `onEvent` assigns `'retry'` through a closure TypeScript does not track, so
+  // after the hold loop the local is narrowed to `'commit' | 'hold'`. Re-widen
+  // through the full verdict union before choosing the preflight kind.
+  return { kind: preflightKind(verdict), response: next };
+}
+
+function preflightKind(verdict: RawRetryVerdict): RawRetryPreflight['kind'] {
+  return verdict === 'retry' ? 'retry' : 'commit';
 }
 
 export async function readBoundedJsonBody(response: Response, guards: RawRetryGuards): Promise<string | undefined> {
