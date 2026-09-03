@@ -16,7 +16,6 @@ import {
   providerRecord,
   sameCapability,
   structuredEntry,
-  validatedDefaultAliases,
 } from '../validation';
 import type { Preflight } from './preflight';
 
@@ -53,7 +52,7 @@ export function stageAccountWrite(current: ConfigRecord, ctx: StageContext, stat
   ctx.signal.throwIfAborted();
   const providers = providerRecord(current);
   const { providerId, existingEntry, currentAccount } = resolveTarget(current, ctx, providers);
-  const entry = buildProviderEntry(ctx, providers, providerId, existingEntry, currentAccount);
+  const entry = buildProviderEntry(ctx, existingEntry);
   const account = buildAccountWrite(ctx, providerId, currentAccount);
   ctx.signal.throwIfAborted();
   const targetDigest = digestProviderEntry(entry);
@@ -127,23 +126,12 @@ function resolveTarget(current: ConfigRecord, ctx: StageContext, providers: Reco
   return { providerId, existingEntry, currentAccount };
 }
 
-function buildProviderEntry(
-  ctx: StageContext,
-  providers: Record<string, unknown>,
-  providerId: string,
-  existingEntry: PlainRecord | undefined,
-  currentAccount: StoredAccount | null,
-): PlainRecord {
-  const defaults =
-    currentAccount === null && ctx.discovered.kind === 'success'
-      ? validatedDefaultAliases(ctx.adapter, ctx.discovered.catalog)
-      : undefined;
+function buildProviderEntry(ctx: StageContext, existingEntry: PlainRecord | undefined): PlainRecord {
   return providerEntry(
     ctx.initial.capability.plugin,
     ctx.initial.capability.capability,
     ctx.publicValues,
     existingEntry,
-    defaults,
     ctx.options.providerPatch,
   );
 }

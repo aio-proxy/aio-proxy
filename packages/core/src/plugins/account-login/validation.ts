@@ -1,5 +1,5 @@
 import type { CredentialPort, OAuthAdapter, OAuthLoginResult } from '@aio-proxy/plugin-sdk';
-import { OAuthPluginProviderSchema, type ProviderAlias } from '@aio-proxy/types';
+import { OAuthPluginProviderSchema } from '@aio-proxy/types';
 import { isPlainObject } from 'es-toolkit/predicate';
 import { z } from 'zod';
 
@@ -156,7 +156,6 @@ export function providerEntry(
   capability: string,
   publicOptions: Record<string, unknown>,
   existing?: PlainRecord,
-  defaults?: ProviderAlias,
   patch?: OAuthProviderPatch,
 ): PlainRecord {
   // Retention is per-field: a patch that omits a field keeps the stored value, because a re-login or a
@@ -176,11 +175,9 @@ export function providerEntry(
   const priority = patch === undefined ? existing?.['priority'] : patch.priority;
   const weight = patch === undefined ? existing?.['weight'] : patch.weight;
   const name = patch?.name === undefined ? existing?.['name'] : patch.name;
-  // `alias` uses a `??` chain unlike the other fields: plugin-generated default aliases must seed
-  // on first login even when the caller brings a patch (`defaults` is only computed in `login/stage.ts`
-  // when `currentAccount === null`).
-  const alias = patch?.alias ?? existing?.['alias'] ?? defaults;
-  const models = patch?.models === undefined ? existing?.['models'] : patch.models;
+  const alias = patch?.alias ?? existing?.['alias'];
+  const excludedModels =
+    patch !== undefined && Object.hasOwn(patch, 'excludedModels') ? patch.excludedModels : existing?.['excludedModels'];
   const proxy = patch?.proxy === undefined ? existing?.['proxy'] : patch.proxy;
   const transforms = patch?.transforms === undefined ? existing?.['transforms'] : patch.transforms;
   return {
@@ -193,12 +190,11 @@ export function providerEntry(
     ...(weight === undefined ? {} : { weight }),
     ...(name === undefined || (typeof name === 'string' && name.trim() === '') ? {} : { name }),
     ...(alias === undefined ? {} : { alias }),
-    ...(models === undefined ? {} : { models }),
+    ...(excludedModels === undefined ? {} : { excludedModels }),
     ...(proxy === undefined || proxy === null ? {} : { proxy }),
     ...(transforms === undefined ? {} : { transforms }),
   };
 }
-export { validatedDefaultAliases } from '../default-aliases';
 export function duplicateOrCleanup(account: StoredAccount, providers: Record<string, unknown>) {
   const entry = structuredEntry(providers[account.providerId]);
   return entry !== null && accountMatches(account, capabilityOf(entry))

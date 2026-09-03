@@ -5,13 +5,7 @@ import type {
   PluginRepository,
   StoredCatalog,
 } from '@aio-proxy/core';
-import type {
-  CredentialPort,
-  DefaultAliasSuggestions,
-  ModelCatalog,
-  OAuthAdapter,
-  RuntimeFetch,
-} from '@aio-proxy/plugin-sdk';
+import type { CredentialPort, ModelCatalog, OAuthAdapter, RuntimeFetch } from '@aio-proxy/plugin-sdk';
 import type { DashboardProviderSummary, OAuthProvider, ProviderState } from '@aio-proxy/types';
 
 import type { RuntimeProviderInstance } from '../runtime';
@@ -46,7 +40,6 @@ export type CatalogJobDescriptor = {
   readonly discover: (signal: AbortSignal) => Promise<ModelCatalog>;
   readonly stored: StoredCatalog | null;
   readonly unavailableOccurredAt?: number;
-  readonly defaultAliases?: (catalog: ModelCatalog) => DefaultAliasSuggestions;
 };
 
 export type PluginRuntimeCacheEntry = {
