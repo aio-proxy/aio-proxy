@@ -1,5 +1,11 @@
 # aio-proxy
 
+## 0.14.0
+
+### Minor Changes
+
+- [#245](https://github.com/aio-proxy/aio-proxy/pull/245) [`3408993`](https://github.com/aio-proxy/aio-proxy/commit/340899373f0244e6dd240459d6e02d187998961f) Thanks [@olivewind](https://github.com/olivewind)! - Let AI SDK provider packages be installed from a configurable npm registry in the dashboard, and load model catalogs from packages that expose an optional `listModels` method.
+
 ## 0.13.0
 
 ### Minor Changes
