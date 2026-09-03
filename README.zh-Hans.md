@@ -56,10 +56,10 @@ bun add -g aio-proxy
 ## 快速开始
 
 ```bash
-aiop run --open
+aio-proxy run --open
 ```
 
-`aio-proxy` 仍然可用。`aiop` 是短命令。
+npm/bun 还会安装短命令 `aiop`。Homebrew 目前仍只有 `aio-proxy`。
 
 - API：`http://127.0.0.1:9317`
 - Dashboard：`http://127.0.0.1:9317/dashboard`
