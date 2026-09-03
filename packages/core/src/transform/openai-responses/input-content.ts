@@ -104,14 +104,23 @@ function textMessageContent(
 
 export function toolOutput(output: string | OpenAIResponsesToolOutputPart[], path: string): ToolResultPart['output'] {
   if (typeof output === 'string') return { type: 'text', value: output };
-  return {
-    type: 'content',
-    value: output.map((part, index) => {
-      if (part.type === 'input_text' || part.type === 'output_text' || part.type === 'text') {
-        return { type: 'text', text: part.text };
-      }
-      if (part.type === 'input_image') return openAIImagePart(part, `${path}.${index}`, true);
-      return rejectOpenAIResponsesFeature(part.type, `${path}.${index}.type`);
-    }),
-  };
+  const value: Array<{ type: 'text'; text: string } | ImageFilePart> = [];
+  for (const [index, part] of output.entries()) {
+    if (part.type === 'encrypted_content') {
+      // Ingress accepts this part so raw retry can rewrite it. The model path
+      // has no ciphertext slot; drop it the same way agent_message does.
+      warnOpenAIResponsesDegradation('function_call_output.encrypted_content', `${path}.${index}.type`, 'dropped');
+      continue;
+    }
+    if (part.type === 'input_text' || part.type === 'output_text' || part.type === 'text') {
+      value.push({ type: 'text', text: part.text });
+      continue;
+    }
+    if (part.type === 'input_image') {
+      value.push(openAIImagePart(part, `${path}.${index}`, true));
+      continue;
+    }
+    return rejectOpenAIResponsesFeature(part.type, `${path}.${index}.type`);
+  }
+  return { type: 'content', value };
 }
