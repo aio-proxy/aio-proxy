@@ -27,8 +27,9 @@ const COUNT_PATH = '/v1internal:countTokens';
 const lastGoodByProject = new Map<string, string>();
 const SESSION_TTL_MS = 3_600_000;
 const SESSION_MAX_ENTRIES = 10_240;
-const sessions = new Map<`sha256:${string}`, SessionRecord>();
+const sessions = new Map<SessionStateKey, SessionRecord>();
 
+type SessionStateKey = `${string}\u0000sha256:${string}`;
 type SessionRecord = AntigravityRequestSession & { expiresAt: number; lastAccessAt: number };
 
 export type AntigravityExecuteInput = {
@@ -87,7 +88,7 @@ export class AntigravityTransport implements CcaTransport {
     const sessionState =
       input.operation === 'countTokens'
         ? ephemeralSessionState()
-        : nextSessionState(input.context.session.key, this.#now);
+        : nextSessionState(sessionStateKey(input.modelId, input.context.session.key), this.#now);
     let body = JSON.stringify(
       createCcaEnvelope({ ...input, ...this.#lookups, body: replayBody, credential, sessionState }),
     );
@@ -172,7 +173,11 @@ export class AntigravityTransport implements CcaTransport {
             }
             rememberLastGood(credential.projectId, endpoint);
             if (input.operation !== 'countTokens') {
-              rememberLastExecution(input.context.session.key, sessionState, readCcaResponseId(preflight.payload));
+              rememberLastExecution(
+                sessionStateKey(input.modelId, input.context.session.key),
+                sessionState,
+                readCcaResponseId(preflight.payload),
+              );
             }
             return await captureReasoningReplay(preflight.response, input.modelId, scope, this.#replayCache);
           } catch (error) {
@@ -186,7 +191,11 @@ export class AntigravityTransport implements CcaTransport {
         if (response.ok) {
           rememberLastGood(credential.projectId, endpoint);
           if (input.operation !== 'countTokens') {
-            rememberLastExecution(input.context.session.key, sessionState, await readJsonResponseId(response));
+            rememberLastExecution(
+              sessionStateKey(input.modelId, input.context.session.key),
+              sessionState,
+              await readJsonResponseId(response),
+            );
           }
         }
         return await captureReasoningReplay(response, input.modelId, scope, this.#replayCache);
@@ -201,10 +210,14 @@ function rememberLastGood(projectId: string, origin: string): void {
   lastGoodByProject.set(projectId, origin);
 }
 
-function nextSessionState(sessionKey: `sha256:${string}`, now: () => number): AntigravityRequestSession {
+function sessionStateKey(modelId: string, sessionKey: `sha256:${string}`): SessionStateKey {
+  return `${modelId}\u0000${sessionKey}`;
+}
+
+function nextSessionState(key: SessionStateKey, now: () => number): AntigravityRequestSession {
   const clock = now();
   pruneSessions(clock);
-  const current = sessions.get(sessionKey);
+  const current = sessions.get(key);
   if (current === undefined || current.expiresAt <= clock) {
     const created: SessionRecord = {
       agentId: crypto.randomUUID(),
@@ -213,7 +226,7 @@ function nextSessionState(sessionKey: `sha256:${string}`, now: () => number): An
       expiresAt: clock + SESSION_TTL_MS,
       lastAccessAt: clock,
     };
-    sessions.set(sessionKey, created);
+    sessions.set(key, created);
     evictSessions();
     return created;
   }
@@ -223,7 +236,7 @@ function nextSessionState(sessionKey: `sha256:${string}`, now: () => number): An
     expiresAt: clock + SESSION_TTL_MS,
     lastAccessAt: clock,
   };
-  sessions.set(sessionKey, next);
+  sessions.set(key, next);
   return next;
 }
 
@@ -243,7 +256,7 @@ function pruneSessions(now: number): void {
 
 function evictSessions(): void {
   while (sessions.size > SESSION_MAX_ENTRIES) {
-    let oldestKey: `sha256:${string}` | undefined;
+    let oldestKey: SessionStateKey | undefined;
     let oldestAccess = Number.POSITIVE_INFINITY;
     for (const [key, record] of sessions) {
       if (record.lastAccessAt < oldestAccess) {
@@ -257,20 +270,20 @@ function evictSessions(): void {
 }
 
 function rememberLastExecution(
-  sessionKey: `sha256:${string}`,
+  key: SessionStateKey,
   sessionState: AntigravityRequestSession,
   responseId: string | undefined,
 ): void {
-  const stored = sessions.get(sessionKey);
+  const stored = sessions.get(key);
   if (stored === undefined) return;
   if (stored.agentId !== sessionState.agentId || stored.trajectoryId !== sessionState.trajectoryId) return;
   if (stored.stepIndex !== sessionState.stepIndex) return;
   if (responseId === undefined) {
     const { lastExecutionId: _dropped, ...rest } = stored;
-    sessions.set(sessionKey, rest);
+    sessions.set(key, rest);
     return;
   }
-  sessions.set(sessionKey, { ...stored, lastExecutionId: responseId });
+  sessions.set(key, { ...stored, lastExecutionId: responseId });
 }
 
 async function readJsonResponseId(response: Response): Promise<string | undefined> {

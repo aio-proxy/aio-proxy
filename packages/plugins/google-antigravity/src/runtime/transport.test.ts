@@ -174,6 +174,31 @@ test('reapplies skip signature when retrying without replay', async () => {
   }
 });
 
+test('starts a new trajectory when the same session switches models', async () => {
+  const seen: Request[] = [];
+  const sessionKey = `sha256:${crypto.randomUUID()}` as const;
+  const transport = new AntigravityTransport({
+    credentials: credentialSource(),
+    fetch: async (input, init) => {
+      seen.push(new Request(input, init));
+      if (seen.length === 1) return Response.json({ response: { responseId: 'exec-gemini', candidates: [] } });
+      return Response.json({ response: { candidates: [] } });
+    },
+  });
+
+  await transport.execute(executeInput({ context: logicalContext({ sessionKey }), modelId: 'gemini-3-flash-agent' }));
+  await transport.execute(executeInput({ context: logicalContext({ sessionKey }), modelId: 'claude-sonnet-4-5' }));
+
+  const envelopes = await Promise.all(seen.map((request) => request.clone().json()));
+  const first = String(envelopes[0]?.requestId).split('/');
+  const second = String(envelopes[1]?.requestId).split('/');
+  expect(first[1]).not.toBe(second[1]);
+  expect(first[3]).not.toBe(second[3]);
+  expect(first[4]).toBe('1');
+  expect(second[4]).toBe('1');
+  expect(envelopes[1]?.request.labels.last_execution_id).toBeUndefined();
+});
+
 test('expires unused session identity after one hour', async () => {
   const seen: Request[] = [];
   let now = 1_000;
