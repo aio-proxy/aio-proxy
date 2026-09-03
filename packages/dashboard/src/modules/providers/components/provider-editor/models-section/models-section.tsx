@@ -19,6 +19,7 @@ import {
   hideAliasRow,
   mergeInheritedAliasRows,
   mintAliasRowId,
+  promoteEditedInheritedRows,
   type ProviderAlias,
   restoreAliasRow,
 } from '../../../lib/alias-editor';
@@ -142,7 +143,9 @@ export const ModelsSection: React.FC<ModelsSectionProps> = ({
                       ? mergeInheritedAliasRows(alias, applicableAliases, selected, inheritOff)
                       : alias;
                   const persistAlias = (next: readonly AliasRow[]) =>
-                    aliasField.handleChange(next.filter((row) => row.origin !== 'inherited'));
+                    aliasField.handleChange(
+                      promoteEditedInheritedRows(next, displayAlias).filter((row) => row.origin !== 'inherited'),
+                    );
                   const whitelist = new Set(selected);
                   // Row order must not depend on which rows are ticked. Listing the whitelist first
                   // re-sorted a row the moment its box was checked, while the ScrollArea kept its scroll

@@ -91,6 +91,21 @@ export function promoteInheritedRow(rows: readonly AliasRow[], id: string): read
   return rows.map((row) => (row.id === id && row.origin === 'inherited' ? { ...row, origin: 'authored' } : row));
 }
 
+/** Persist must promote an inherited row the moment any field changes, or the filter that
+ * drops `origin === 'inherited'` throws the edit away (preserve, variants, rename). */
+export function promoteEditedInheritedRows(
+  next: readonly AliasRow[],
+  previous: readonly AliasRow[],
+): readonly AliasRow[] {
+  const prior = new Map(previous.map((row) => [row.id, row]));
+  return next.map((row) => {
+    if (row.origin !== 'inherited') return row;
+    const before = prior.get(row.id);
+    if (before !== undefined && before.name === row.name && before.config === row.config) return row;
+    return { ...row, origin: 'authored' };
+  });
+}
+
 function aliasTargetsExposed(config: AliasConfig, allowed: ReadonlySet<string>): boolean {
   return [config.model, ...flattenAliasVariants(config.variants).map((row) => row.model)].every((model) =>
     allowed.has(model),

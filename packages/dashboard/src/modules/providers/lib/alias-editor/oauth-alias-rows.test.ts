@@ -8,6 +8,7 @@ import {
   hideAliasRow,
   isOAuthInheritOff,
   mergeInheritedAliasRows,
+  promoteEditedInheritedRows,
   restoreAliasRow,
   serializeOAuthAlias,
   toOAuthAliasRows,
@@ -85,6 +86,14 @@ describe('oauth alias rows', () => {
       chat: cfg('gpt-5'),
       mini: cfg('gpt-5-mini'),
     });
+  });
+
+  test('promoteEditedInheritedRows authors an inherited row whose config changed', () => {
+    const inherited = { ...aliasRow('fast', cfg('gpt-5-nano'), 'fast'), origin: 'inherited' as const };
+    const preserved = { ...inherited, config: { ...inherited.config, preserve: true } };
+
+    expect(promoteEditedInheritedRows([inherited], [inherited])).toEqual([inherited]);
+    expect(promoteEditedInheritedRows([preserved], [inherited])).toEqual([{ ...preserved, origin: 'authored' }]);
   });
 
   test('isOAuthInheritOff reads the reserved key after trim', () => {

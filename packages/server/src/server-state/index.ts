@@ -7,6 +7,7 @@ import {
   createPluginDiagnosticFactory,
   createPluginRepository,
   type DiagnosticFactory,
+  pluginDefaultAliases,
   RECOVERY_DRAIN_RETRY_MS,
   Router,
   recoverPendingAccountOperations,
@@ -232,6 +233,15 @@ async function initializeServerState(
     currentSummaries: () => (manager.current() as Snapshot).summaries,
     repository,
     configStore,
+    pluginDefaults: (provider) => {
+      const adapter = (manager.current() as Snapshot).plugins.registry.resolveOAuth(
+        provider.plugin,
+        provider.capability,
+      );
+      const catalog = repository.readCatalog(provider.id)?.catalog;
+      if (adapter === undefined || catalog === undefined) return undefined;
+      return pluginDefaultAliases(adapter, catalog);
+    },
   });
 
   const providerSummaries = createProviderSummaries(manager);

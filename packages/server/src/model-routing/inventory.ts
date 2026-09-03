@@ -20,6 +20,7 @@ import {
   ModelMetadataSchema,
   oauthExposedModels,
   type Provider,
+  type ProviderAlias,
   ProviderKind,
   resolveOAuthAlias,
   RoutingPrioritySchema,
@@ -36,6 +37,9 @@ export type RoutingInventoryInput = {
   readonly summaries: readonly DashboardProviderSummary[];
   readonly repository: Pick<PluginRepository, 'readCatalog' | 'readAccount'>;
   readonly writable: boolean;
+  readonly pluginDefaults?: (
+    provider: Extract<Provider, { kind: typeof ProviderKind.OAuth }>,
+  ) => ProviderAlias | undefined;
 };
 
 export async function assembleRoutingInventory(input: RoutingInventoryInput): Promise<DashboardRoutingModelsResponse> {
@@ -45,7 +49,7 @@ export async function assembleRoutingInventory(input: RoutingInventoryInput): Pr
   const models = new Map<string, WritableModel>();
 
   for (const provider of providers) {
-    const source = await syntheticSource(provider, input.repository);
+    const source = await syntheticSource(provider, input.repository, input.pluginDefaults);
     const name = routingProviderName(provider, summaries.get(provider.id), input.repository);
     for (const route of modelRoutes(source)) {
       let model = models.get(route.alias);
@@ -207,10 +211,15 @@ function parsedNumberView(
 async function syntheticSource(
   provider: Provider,
   repository: Pick<PluginRepository, 'readCatalog'>,
+  pluginDefaults?: RoutingInventoryInput['pluginDefaults'],
 ): Promise<RoutableProvider> {
   if (provider.kind === ProviderKind.OAuth) {
     const models = await oauthCatalogModels(provider, repository);
-    const alias = resolveOAuthAlias(provider.alias, undefined, models === undefined ? undefined : models);
+    const alias = resolveOAuthAlias(
+      provider.alias,
+      pluginDefaults?.(provider),
+      models === undefined ? undefined : models,
+    );
     return {
       id: provider.id,
       enabled: provider.enabled,

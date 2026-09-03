@@ -5,6 +5,8 @@ import type {
   DashboardRoutingModelMutation,
   DashboardRoutingModelsResponse,
   DashboardRoutingNumber,
+  Provider,
+  ProviderAlias,
 } from '@aio-proxy/types';
 import { isPlainObject } from 'es-toolkit/predicate';
 
@@ -29,6 +31,7 @@ export type ModelRoutingControlPlaneOptions = {
   readonly currentSummaries: () => readonly DashboardProviderSummary[];
   readonly repository: PluginRepository;
   readonly configStore: ConfigStore;
+  readonly pluginDefaults?: (provider: Extract<Provider, { kind: 'oauth' }>) => ProviderAlias | undefined;
 };
 
 export function createModelRoutingControlPlane(options: ModelRoutingControlPlaneOptions): ModelRoutingControlPlane {
@@ -47,6 +50,7 @@ export function createModelRoutingControlPlane(options: ModelRoutingControlPlane
       summaries: options.currentSummaries(),
       repository: options.repository,
       writable,
+      pluginDefaults: options.pluginDefaults,
     });
   }
 

@@ -1,5 +1,11 @@
 import type { ModelCatalog, OAuthAdapter } from '@aio-proxy/plugin-sdk';
-import { AliasConfigSchema, aliasTargetModels, type ProviderAlias } from '@aio-proxy/types';
+import {
+  AliasConfigSchema,
+  aliasTargetModels,
+  INHERIT_OFF_KEY,
+  normalizeAliasName,
+  type ProviderAlias,
+} from '@aio-proxy/types';
 import { isPlainObject } from 'es-toolkit/predicate';
 
 /**
@@ -12,8 +18,10 @@ export function pluginDefaultAliases(adapter: OAuthAdapter, catalog: ModelCatalo
     if (!isPlainObject(raw)) return undefined;
     const models = new Set(catalog.language.map(({ id }) => id));
     const applicable: Record<string, ProviderAlias[string]> = {};
-    for (const [name, suggestion] of Object.entries(raw)) {
-      if (!Object.hasOwn(raw, name)) continue;
+    for (const [key, suggestion] of Object.entries(raw)) {
+      if (!Object.hasOwn(raw, key)) continue;
+      const name = normalizeAliasName(key);
+      if (name === '' || name === INHERIT_OFF_KEY || Object.hasOwn(applicable, name)) continue;
       const parsed = AliasConfigSchema.safeParse(suggestion);
       if (!parsed.success) continue;
       if (aliasTargetModels(parsed.data).some((model) => !models.has(model))) continue;
