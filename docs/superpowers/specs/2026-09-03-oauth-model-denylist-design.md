@@ -54,12 +54,15 @@ providers:
 
 `false` and `*` exist only on the authored type. Resolve is the only place they are consumed. Downstream must not grow `if (config === false)` checks. Membership tests on authored maps use `Object.hasOwn`, not a bare lookup (`constructor` / `__proto__`).
 
+`OAuthProviderPatch` in `packages/core/src/plugins/account-login/login.ts` uses `AuthoredOAuthAlias`, not `ProviderAlias`. `providerEntry` writes `patch.alias` to disk; a `ProviderAlias` type would force casts and drop `false` / `*`.
+
 Two independent `z.strictObject` surfaces drop `models` and add `excludedModels` plus the authored alias grammar in the same change:
 
 - `OAuthProviderMutationBodySchema` (Save / PUT)
 - `DashboardOAuthProviderPatchSchema` (login / re-login `providerPatch`)
+- `OAuthProviderPatch` in `login.ts` (the TypeScript type the patch schema flows into). This is not a Zod surface, but it is the write-disk type. Leaving it as `ProviderAlias` blocks `false` / `*` at the type checker.
 
-Missing either one leaves a dead field or a strict parse error. `DashboardOAuthProviderPatchSchema` is not derived from the mutation body; both must be edited.
+Missing either schema leaves a dead field or a strict parse error. Missing the type forces casts. `DashboardOAuthProviderPatchSchema` is not derived from the mutation body; both schemas and the patch type must be edited.
 
 ### Authored alias rules
 
@@ -98,7 +101,7 @@ The only functions that have `config` and `catalog` together are `createRuntimeP
 Shared helper (types or core, one function, used by materialize, `withRoutingConfig`, and the editor preview). Edit-view does **not** run step 5:
 
 1. Plugin defaults come from the per-entry helper. A throwing hook or a wholly unusable return is empty defaults, not a failed login / refresh / editor page.
-2. Bad entries drop individually. One broken suggestion does not drop its neighbors. Editor and router see the same set.
+2. Bad entries drop individually. One broken suggestion does not drop its neighbors. Materialize and the editor preview see the same inherit set after step 5; edit-view `pluginAliases` stops after the per-entry helper (catalog-valid defaults only).
 3. If inherit is on, start from those defaults. If inherit is off, start from `{}`.
 4. For each authored key, `Object.hasOwn`: `AliasConfig` replaces that key; `false` deletes it (inherit on) or is ignored (inherit off). Skip `*`.
 5. Drop any remaining entry — authored or inherited — whose targets are not all in the exposed catalog. This is resolve, not parse.
@@ -131,11 +134,20 @@ Delete these, including tests that only exist to protect them:
 - `CatalogMergeIdentity.defaultAliases`
 - `mergeHost` / `mergeDefaultAliases` wiring in `packages/server/src/server-state/index.ts`
 - `insertMissingAliases` and its tests
-- `assertAliasTargetsInCatalog` / `validatedDefaultAliases` throw-the-whole-map helpers, once the per-entry helper is the only reader
+- `assertAliasTargetsInCatalog` / `validatedDefaultAliases` throw-the-whole-map helpers, once the per-entry helper is the only reader, **including** the `export { validatedDefaultAliases }` re-export in `packages/core/src/plugins/account-login/validation.ts`
 
 `insertMissingAliases` is not kept as an unused export.
 
 Dashboard re-login is a third persist path and is not removed by deleting those server merges. `oauthProviderEditAction` already puts `values.alias` on `providerPatch`. That patch must use the **same authored serialization as Save**: inherited rows stay out of the map. A test that only asserts server-side re-login (no `providerPatch.alias`) does not cover this.
+
+`providerEntry` (`packages/core/src/plugins/account-login/validation.ts`) rebuilds the whole oauth entry. Fields it does not list are dropped.
+
+- Stop retaining `models`. `patch?.models === undefined ? existing['models'] : patch.models` and the write-back of `models` go away. Leftover `models` disappears on re-login the same way a Save omits it. Otherwise every re-login nails the whitelist back into the file and the startup warn never stops.
+- Retain `excludedModels`: `patch.excludedModels` when the patch has the key, otherwise `existing['excludedModels']`. Write it when defined. A re-login that does not mention the field must not wipe the hide list — that would silently re-expose every hidden model.
+
+`replaceProvider` (`packages/server/src/dashboard-routes/provider-mutation/provider-mutation.ts`) is a full PUT. Today's `if (provider.alias === undefined) restore previous.alias` is wrong for OAuth: authored `alias` omitted or empty means **pure inherit**, not "editor forgot the field". Restoring would revive `codex: false` and every override after the user deleted the last authored row.
+
+Invariant: OAuth edit serialization **always sends `alias` as an object** (`{}` when there are no authored keys or hides). It never sends `undefined` for alias on edit. `serializeAlias` today relies on "edit + empty → `{}`" by accident; the new serializer must keep that, as a named rule, not a coincidence. Same distinguishability for `excludedModels`: empty hide list is `[]`, omitted is not used on Save. OAuth PUT that omits `alias` means delete stored alias (pure inherit). OAuth PUT that omits `excludedModels` means delete the hide list (expose all). Do not restore either field from `previous` for OAuth.
 
 ### Plugin-default helper
 
@@ -167,7 +179,18 @@ Alias list:
 - 「跟插件同步」off → persist `*: false`. Inherited-only rows leave the effective set. The editor does not snapshot them into `alias`. Existing `false` rows stay in the file and render as unused.
 - 「跟插件同步」on → omit `*: false`.
 - The one-shot 「同步插件别名」copy-into-`alias` action is removed. Inherit replaces it. Delete `mergePluginAliasRows` only.
-- Save and re-login `providerPatch.alias` share one serializer. Inherited rows never enter that map.
+- Save and re-login `providerPatch.alias` share one serializer. Inherited rows never enter that map. Edit mode always emits an `alias` object (`{}` if empty), never `undefined`.
+- `AliasRow` is three-state: inherited (not persisted), authored `AliasConfig` (override), and hidden (`false`). `AliasRow.config: AliasConfig` is not enough. `toAliasRows` / `toAliasRecord` split: authored record in, authored record out; inherited rows are a separate display merge.
+- `aliasEditorIssues` skips hidden (`false`) rows and inherited rows. An inherited target that is excluded is dropped by client resolve, not a user-facing target-missing that blocks Save.
+- Exposure rail **and** `weightTie` use the client-resolved **effective** alias map (authored + inherit − hides − excluded targets). `toAliasRecord(values.alias)` alone misses inherited keys and under-reports same-name weight ties.
+
+`exposedModels` (`models.length === 0 ? candidates : models`) stays for api / ai-sdk. OAuth inverts that helper: `catalog − excludedModels` (`oauthEditorExposedModels`). Three call sites switch on `kind`:
+
+- `models-section` (checkbox selected state)
+- `section-status` (section completeness)
+- `section-hint` (the "exposed N models" copy)
+
+`section-hint` OAuth copy is "how many are still exposed" (denylist remainder), not "how many were picked". Existing `hint_models_all` still applies when the catalog is unknown.
 
 Exposure rail and alias preview resolve on the client from `pluginAliases` + draft `alias` + draft `excludedModels`, so unchecking a model hides inherit rows that target it before save.
 
@@ -211,3 +234,6 @@ The changeset targets `aio-proxy` plus the packages that actually change (`@aio-
 - Dashboard: uncheck one catalog row writes only that id to `excludedModels`, and inherit rows targeting it leave the preview immediately.
 - Dashboard: inherited row is visible and absent from the mutation **and** `providerPatch` `alias` map; hide persists `false`; restore removes the authored key; turning inherit off persists `*: false` and does not snapshot.
 - `DashboardOAuthProviderPatchSchema` parse errors for `false` / `*` / duplicate `when` still point at `alias.<key>` after `models` is removed (`alias-variant.test.ts` patch-schema case included).
+- `providerEntry` re-login drops leftover `models` and keeps `excludedModels` when the patch omits that field.
+- OAuth `replaceProvider` does not restore `alias` or `excludedModels` from `previous` when the PUT omits them.
+- `aliasEditorIssues` does not flag inherited or `false` rows; `weightTie` sees inherited names.
