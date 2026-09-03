@@ -1,5 +1,6 @@
 import { redactPluginError } from '@aio-proxy/core';
 
+import { createKeyedFifoQueue } from '../fifo-queue';
 import type { OAuthQuotaServiceDependencies } from './context';
 import { withOAuthQuotaContext } from './context';
 import { OAuthQuotaResetError, OAuthQuotaResetUnavailableError, OAuthQuotaResetUnsupportedError } from './errors';
@@ -9,25 +10,8 @@ export type OAuthQuotaResetter = {
   readonly reset: (providerId: string, signal: AbortSignal) => Promise<void>;
 };
 
-function createKeyedSerialExecutor(): <T>(key: string, operation: () => Promise<T>) => Promise<T> {
-  const tails = new Map<string, Promise<void>>();
-  return <T>(key: string, operation: () => Promise<T>): Promise<T> => {
-    const previous = tails.get(key) ?? Promise.resolve();
-    const result = previous.then(operation, operation);
-    const tail = result.then(
-      () => undefined,
-      () => undefined,
-    );
-    tails.set(key, tail);
-    void tail.then(() => {
-      if (tails.get(key) === tail) tails.delete(key);
-    });
-    return result;
-  };
-}
-
 export function createOAuthQuotaResetter(dependencies: OAuthQuotaServiceDependencies): OAuthQuotaResetter {
-  const execute = createKeyedSerialExecutor();
+  const execute = createKeyedFifoQueue();
   return {
     reset: (providerId, signal) =>
       execute(providerId, () =>
