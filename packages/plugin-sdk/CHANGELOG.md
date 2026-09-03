@@ -1,5 +1,14 @@
 # @aio-proxy/plugin-sdk
 
+## 0.16.0
+
+### Patch Changes
+
+- [#252](https://github.com/aio-proxy/aio-proxy/pull/252) [`142cc1b`](https://github.com/aio-proxy/aio-proxy/commit/142cc1b419b0109585a53f020343d0eb72b6673f) Thanks [@wqsworks](https://github.com/wqsworks)! - core: terminate converted OpenAI Responses stream failures with `response.failed` and normalize cumulative OpenAI-compatible tool argument snapshots.
+- Updated dependencies []:
+  - @aio-proxy/shared@0.16.0
+  - @aio-proxy/types@0.16.0
+
 ## 0.15.0
 
 ### Patch Changes

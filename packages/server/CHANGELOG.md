@@ -1,5 +1,18 @@
 # @aio-proxy/server
 
+## 0.16.0
+
+### Patch Changes
+
+- [#250](https://github.com/aio-proxy/aio-proxy/pull/250) [`3e3c4bd`](https://github.com/aio-proxy/aio-proxy/commit/3e3c4bdc6acaabe970849961b79a649b1f37a6d5) Thanks [@baranwang](https://github.com/baranwang)! - Raw OpenAI Responses requests that fail with `invalid_encrypted_content` before any output are now retried once on the same provider. Plaintext encrypted slots become plain text, and opaque reasoning blobs are dropped when that is all that remains, so the client no longer sees a stream that disconnects before completion.
+- Updated dependencies [[`142cc1b`](https://github.com/aio-proxy/aio-proxy/commit/142cc1b419b0109585a53f020343d0eb72b6673f), [`3e3c4bd`](https://github.com/aio-proxy/aio-proxy/commit/3e3c4bdc6acaabe970849961b79a649b1f37a6d5)]:
+  - @aio-proxy/core@0.16.0
+  - @aio-proxy/plugin-sdk@0.16.0
+  - @aio-proxy/logger@0.16.0
+  - @aio-proxy/i18n@0.16.0
+  - @aio-proxy/shared@0.16.0
+  - @aio-proxy/types@0.16.0
+
 ## 0.15.0
 
 ### Minor Changes
