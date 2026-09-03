@@ -2,7 +2,6 @@
 // endpoint gates each model on its `minimal_client_version`, so this value
 // decides which models the catalog can see: 0.123.0 hides gpt-5.5, and an
 // inflated version surfaces unreleased models the account is not meant to have.
-// Keep it equal to the version reported in the User-Agent below.
 export const CODEX_CLIENT_VERSION = '0.135.0';
 
 export const CHATGPT_USER_AGENT =

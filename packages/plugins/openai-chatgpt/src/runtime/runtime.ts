@@ -36,9 +36,9 @@ export async function createOpenAIChatGPTRuntime(
       embeddingModel: (modelId) => openAI.embeddingModel(modelId),
       imageModel: (modelId) => openAI.imageModel(modelId),
     },
-    // `capability` is only ever 'language' | 'embedding'; image dispatch resolves
-    // with it absent, so the embedding guard already excludes the one case that
-    // must not passthrough.
+    // Defensive: image dispatch resolves with `capability` absent, so this guard
+    // exists to keep an embedding request off the responses/image passthrough
+    // rather than to gate image routing.
     raw: ({ protocol, capability }) =>
       capability === 'embedding'
         ? undefined
