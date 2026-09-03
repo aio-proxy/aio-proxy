@@ -32,43 +32,73 @@ This change is the 200-SSE equivalent of sub2api's retry, with CLIProxyAPI's los
 
 ## Behavior
 
-Applies only when all of these are true:
+The pipeline owns the candidate replay. The adapter owns every protocol-shaped judgement: which buffered frames are still undecided, and how to rewrite the outbound body. `completeRawAttempt` must not branch on `adapter.protocol`, parse OpenAI error envelopes, or edit an OpenAI wire payload.
 
-- inbound adapter protocol is `openai-response`
+### Adapter hook
+
+Language adapters gain one optional field. An adapter without it keeps today's behavior exactly.
+
+```ts
+export type RawRetryFrame = { readonly event?: string; readonly data: string };
+export type RawRetryVerdict = 'hold' | 'commit' | 'retry';
+
+rawRetry?: Readonly<{
+  // Classify one buffered SSE frame, or one JSON error body, before the
+  // response is committed to the client. 'hold' keeps buffering.
+  classify: (frame: RawRetryFrame) => RawRetryVerdict;
+  // Rewritten upstream request, or undefined to commit the original response.
+  rewrite: (upstream: Request, request: TRequest, context: TContext) => Promise<Request | undefined>;
+}>;
+```
+
+`openAIResponsesAdapter` supplies it. `classify` holds `response.created` / `response.in_progress`, returns `retry` for an `error` frame whose `error.code` is `invalid_encrypted_content`, and returns `commit` for everything else. `rewrite` returns `undefined` when `context.operation === 'compact'`, so the compact endpoint never replays.
+
+### Retry preconditions
+
 - the attempt used raw passthrough
-- the first upstream response is either HTTP 200 `text/event-stream` or HTTP 400 JSON
-- the error code is exactly `invalid_encrypted_content`
-- no generated content has been observed
-- a rewrite of the outbound JSON body actually changes something
-- this candidate has not already been replayed for this reason
+- the adapter exposes `rawRetry`
+- the first upstream response is HTTP 200 `text/event-stream`, or HTTP 400 JSON
+- `classify` returned `retry` before any frame classified `commit`
+- `rewrite` returned a Request
+- this candidate has not already been replayed
 
 ### SSE hold
 
-For HTTP 200 event-stream, buffer bytes until the first decisive frame. Do **not** return the Response to the client or call `usageCapture.passthrough` / `session.finishFrom` until that decision.
+For HTTP 200 event-stream with `rawRetry` present and `streamRequested` true, buffer bytes and feed frames to `classify` until a verdict. Do **not** return the Response to the client or call `usageCapture.passthrough` / `session.finishFrom` until then.
 
-| Frame | Action |
+| Condition | Action |
 |---|---|
-| `response.created`, `response.in_progress` | hold, keep buffering |
-| `event: error` and `error.code === "invalid_encrypted_content"` | retryable, cancel upstream, do not replay buffered bytes |
-| other `event: error` / `response.failed` / `response.incomplete` | commit: replay buffered bytes to the client |
-| content delta (`response.output_text.delta`, `response.reasoning_text.delta`, `response.reasoning_summary_text.delta`) | commit |
-| `response.output_item.added` or any other non-hold frame | commit |
-| stream ends with only hold frames | commit |
-| buffered bytes exceed 1 MiB before a decision | commit |
+| `classify` returns `hold` | keep buffering |
+| `classify` returns `retry` | retryable; ask the adapter to rewrite |
+| `classify` returns `commit` | commit: replay buffered bytes, then continue the upstream reader |
+| stream ends while every frame held | commit |
+| buffered bytes exceed 1 MiB | commit |
+| no `rawRetry`, non-stream request, or non-event-stream body | commit without reading |
 
-A retryable decision that cannot rewrite the body becomes commit of the original error stream.
+A `retry` verdict whose `rewrite` yields `undefined` commits the original error stream, so the client still sees the upstream error.
+
+### Preflight liveness
+
+The preflight read happens before `usageCapture.passthrough` installs the existing stream idle timer, so preflight carries its own guards. Both cancel the upstream reader and throw, which the attempt loop's existing exception path already maps to a provider failure (with next-candidate fallback) or, for an inbound abort, to `cancelled`.
+
+- Idle: re-arm `createIdleTimer(STREAM_IDLE_TIMEOUT_MS)` on every chunk. A stream that emits `response.created` and then stalls must not hold the request, provider stream, and attempt span open indefinitely.
+- Inbound abort: honor `rawRequest.signal`.
 
 ### HTTP 400
 
-If the first response is HTTP 400 JSON with `error.code === "invalid_encrypted_content"` and a rewrite changes the body, cancel/ignore that body and invoke the same raw transport once with the rewritten request. Do not treat this as next-candidate fallback.
+If the first response is HTTP 400 JSON, `classify({ data: bodyText })` decides. On `retry` plus a rewrite, discard that body and invoke the same raw transport once with the rewritten request. This is not next-candidate fallback.
+
+### Replay request
+
+The retry Request must inherit the first upstream request's signal, so a client disconnect during the second invocation cancels it. Build it from the original Request (`new Request(upstreamClone, { method, headers, body, signal: upstream.signal })`), delete `content-length` / `content-encoding`, and clone the upstream Request before the first invoke so the retry still has body bytes.
 
 ### Rewrite (one retry, lossless first)
 
-Operate on the raw JSON `input` array of the **already rewritten** upstream request (model / background / effort already applied).
+`openAIResponsesAdapter.rawRetry.rewrite` operates on the raw JSON `input` array of the **already rewritten** upstream request (model / background / effort already applied).
 
 1. **Plaintext slots.** Every `{ type: "encrypted_content", encrypted_content: string }` part whose payload is **not** backend ciphertext becomes `{ type: "input_text", text: payload }` and loses `encrypted_content`. Walk `agent_message.content` and `function_call_output.output` when that output is an array. Leave ciphertext parts untouched.
 2. If step 1 changed nothing, **opaque blobs.** Delete `encrypted_content` on `type: "reasoning"` and `type: "compaction"` / `compaction_summary` / `context_compaction` items. Keep the item and any `summary`.
-3. If neither step changes the body, do not retry.
+3. If neither step changes the body, return `undefined`.
 
 Backend ciphertext, copied from opencodex's cheap gate: string length `>= 64` and `/^[A-Za-z0-9+/=_-]+$/`. Do not add a Fernet decoder.
 
@@ -82,19 +112,20 @@ The retry is the same candidate attempt. Do not open a second attempt span. Do n
 
 ## Scope
 
-- Core: classify ciphertext vs plaintext and produce the retry body.
-- Server: raw SSE preflight, HTTP 400 intercept, same-candidate replay inside `completeRawAttempt` before usage capture.
-- Tests for rewrite, preflight classification, and the raw pipeline retry.
+- Core: the `rawRetry` adapter hook, the OpenAI Responses `classify` / `rewrite` implementation, and the ciphertext gate.
+- Server: a protocol-agnostic raw SSE preflight with idle and abort guards, the HTTP 400 intercept, and the same-candidate replay inside `completeRawAttempt` before usage capture.
+- Tests for rewrite, classification, preflight liveness, and the raw pipeline retry.
 - User-facing changeset on `aio-proxy`, `@aio-proxy/core`, and `@aio-proxy/server`.
 
 ## Non-goals
 
 - Preemptive rewrite on the first send.
-- Retry after any generated content, or after `response.output_item.added`.
-- Retry of SSE errors other than `invalid_encrypted_content`.
+- Retry after any frame the adapter classified `commit`.
+- Retry of failures other than `invalid_encrypted_content` (no other adapter supplies `rawRetry`).
 - Next-candidate fallback for this error.
+- `POST /v1/responses/compact`: `rewrite` returns `undefined` there.
 - Changing the cross-protocol transform that already drops `encrypted_content`.
-- Compact endpoint, other inbound protocols, or a second retry when plaintext and blobs are both present.
+- A second retry when plaintext and blobs are both present.
 - New dashboard events or trace attributes.
 
 ## Verification
@@ -103,4 +134,8 @@ The retry is the same candidate attempt. Do not open a second attempt span. Do n
 - The same error after an `output_text.delta` must not retry.
 - Ciphertext-shaped `encrypted_content` parts must not be converted to `input_text`.
 - Reasoning-only blobs retry by deleting `encrypted_content`, not by converting them to text.
+- A stream that holds and then stalls must fail on the preflight idle timer instead of hanging.
+- A client abort during the replay must cancel the replay.
+- The compact route must not replay.
+- An adapter without `rawRetry` must not read the body before committing.
 - Ordinary raw `400` that is not this code, and raw `422`/`429`/`5xx` fallback, stay unchanged.

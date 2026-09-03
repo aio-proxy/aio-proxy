@@ -12,12 +12,15 @@
 
 ## Global Constraints
 
-- Retry only `invalid_encrypted_content`. No other SSE `error` codes.
-- Retry only before generated content and before `response.output_item.added`.
+- The shared raw attempt must stay protocol-agnostic. No `adapter.protocol` branching, no OpenAI error parsing, and no OpenAI wire-payload editing in `packages/server/src/routes/pipeline/attempt/`.
+- Retry only when the adapter's `rawRetry.classify` says so. An adapter without `rawRetry` keeps today's behavior and must not have its body read before commit.
+- `openAIResponsesAdapter.rawRetry.rewrite` returns `undefined` when `context.operation === 'compact'`.
+- The preflight read carries its own `createIdleTimer(STREAM_IDLE_TIMEOUT_MS)` and honors `rawRequest.signal`. It runs before `usageCapture.passthrough` installs the normal idle timer.
+- The replay `Request` inherits `signal: upstream.signal`.
 - One replay per candidate attempt. Same span. No cooldown. No next-candidate fallback unless the **replay** status already matches `shouldFallbackStatus`.
 - Do not rewrite on the first send. Do not change the cross-protocol transform that already drops `encrypted_content`.
 - Do not add a Fernet decoder. Ciphertext gate is length `>= 64` and `/^[A-Za-z0-9+/=_-]+$/`.
-- No new dependencies. `openai-responses.ts` (293 lines) and `raw.ts` (154 lines) must not grow past 400; put new logic in new files.
+- No new dependencies. `openai-responses.ts` (293 lines) and `raw.ts` (154 lines) must not pass 400 lines; put new logic in new files.
 - Changeset must list `aio-proxy`, `@aio-proxy/core`, and `@aio-proxy/server` at the same `patch` level.
 - Workspace is already an isolated git worktree. Do not create another worktree.
 
@@ -25,51 +28,99 @@
 
 ## File map
 
-- `packages/core/src/transform/openai-responses/encrypted-content-retry.ts` — ciphertext gate + retry body rewrite.
-- `packages/core/src/transform/openai-responses/encrypted-content-retry.test.ts` — rewrite contract.
-- `packages/core/src/transform/openai-responses/index.ts` — re-export.
-- `packages/core/src/index.ts` — public export for server.
-- `packages/server/src/routes/pipeline/attempt/raw-sse-preflight.ts` — hold/commit/retryable classification and byte replay.
-- `packages/server/src/routes/pipeline/attempt/raw-sse-preflight.test.ts` — frame classification.
-- `packages/server/src/routes/pipeline/attempt/raw.ts` — same-candidate replay inside `completeRawAttempt` before usage capture.
-- `packages/server/src/routes/pipeline/raw-encrypted-content-retry.test.ts` — pipeline: client never sees the failed SSE.
+- `packages/core/src/protocol/adapter.ts` — add the optional `rawRetry` field to `LanguageProtocolAdapter`.
+- `packages/core/src/protocol/openai-responses/encrypted-content-retry.ts` — OpenAI Responses `classify` + `rewrite` + ciphertext gate.
+- `packages/core/src/protocol/openai-responses/encrypted-content-retry.test.ts` — rewrite and classification contract.
+- `packages/core/src/protocol/openai-responses.ts` — attach `rawRetry` to the adapter.
+- `packages/server/src/routes/pipeline/attempt/raw-retry-preflight.ts` — protocol-agnostic hold/commit/retry preflight with idle and abort guards.
+- `packages/server/src/routes/pipeline/attempt/raw-retry-preflight.test.ts` — verdict routing, idle timeout, abort, non-`rawRetry` passthrough.
+- `packages/server/src/routes/pipeline/attempt/raw.ts` — same-candidate replay before usage capture.
+- `packages/server/src/routes/pipeline/raw-encrypted-content-retry.test.ts` — pipeline: the client never sees the failed SSE.
 - `.changeset/raw-sse-encrypted-content-retry.md` — release note.
+
+`openai-responses.ts` currently sits at `packages/core/src/protocol/openai-responses.ts` with tests beside it. The new collaborator goes in a `openai-responses/` directory next to it; do not move the existing file in this change.
 
 ---
 
-### Task 1: Retry body rewrite
+### Task 1: `rawRetry` adapter hook and OpenAI Responses implementation
 
 **Files:**
-- Create: `packages/core/src/transform/openai-responses/encrypted-content-retry.ts`
-- Create: `packages/core/src/transform/openai-responses/encrypted-content-retry.test.ts`
-- Modify: `packages/core/src/transform/openai-responses/index.ts`
-- Modify: `packages/core/src/index.ts`
+- Modify: `packages/core/src/protocol/adapter.ts:75-86`
+- Create: `packages/core/src/protocol/openai-responses/encrypted-content-retry.ts`
+- Create: `packages/core/src/protocol/openai-responses/encrypted-content-retry.test.ts`
+- Modify: `packages/core/src/protocol/openai-responses.ts:96-99`
 
 **Interfaces:**
-- Consumes: `isPlainObject` from `es-toolkit/predicate`.
-- Produces: `looksLikeBackendCiphertext(payload: string): boolean`.
-- Produces: `rewriteOpenAIResponsesEncryptedContentRetryBody(bodyText: string): string | undefined` — `undefined` means no retry body; otherwise a JSON string.
+- Consumes: `isPlainObject` from `es-toolkit/predicate`; `readRequestText` from `../request`.
+- Produces (exported from `packages/core/src/protocol/adapter.ts`):
+
+```ts
+export type RawRetryFrame = { readonly event?: string; readonly data: string };
+export type RawRetryVerdict = 'hold' | 'commit' | 'retry';
+export type RawRetryHook<TRequest, TContext> = Readonly<{
+  classify: (frame: RawRetryFrame) => RawRetryVerdict;
+  rewrite: (upstream: Request, request: TRequest, context: TContext) => Promise<Request | undefined>;
+}>;
+```
+
+- Produces: `LanguageProtocolAdapter.rawRetry?: RawRetryHook<TRequest, TContext>`.
+- Produces (from `encrypted-content-retry.ts`): `looksLikeBackendCiphertext(payload: string): boolean`, `classifyOpenAIResponsesRawRetry(frame: RawRetryFrame): RawRetryVerdict`, `rewriteOpenAIResponsesEncryptedContent(bodyText: string): string | undefined`, and `openAIResponsesRawRetry: RawRetryHook<OpenAIResponsesRequest | OpenAIResponsesCompactRequest, OpenAIResponsesContext>`.
 
 - [ ] **Step 1: Write the failing tests**
 
-Create `packages/core/src/transform/openai-responses/encrypted-content-retry.test.ts`:
+Create `packages/core/src/protocol/openai-responses/encrypted-content-retry.test.ts`:
 
 ```ts
 import { expect, test } from 'bun:test';
 
 import {
+  classifyOpenAIResponsesRawRetry,
   looksLikeBackendCiphertext,
-  rewriteOpenAIResponsesEncryptedContentRetryBody,
+  openAIResponsesRawRetry,
+  rewriteOpenAIResponsesEncryptedContent,
 } from './encrypted-content-retry';
 
 const CIPHER = `g${'A'.repeat(63)}`;
+const ENCRYPTED_ERROR = JSON.stringify({
+  type: 'error',
+  error: { type: 'invalid_request_error', code: 'invalid_encrypted_content', message: 'x' },
+});
+
+function upstream(body: unknown): Request {
+  return new Request('https://upstream.test/v1/responses', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
 
 test('rejects short or punctuated payloads as ciphertext', () => {
   expect(looksLikeBackendCiphertext('delegated task')).toBe(false);
   expect(looksLikeBackendCiphertext('a'.repeat(64))).toBe(true);
   expect(looksLikeBackendCiphertext(CIPHER)).toBe(true);
-  expect(looksLikeBackendCiphertext(`${'A'.repeat(63)}`)).toBe(false);
+  expect(looksLikeBackendCiphertext('A'.repeat(63))).toBe(false);
   expect(looksLikeBackendCiphertext(`${'A'.repeat(60)} hello`)).toBe(false);
+});
+
+test('holds lifecycle frames and retries only invalid_encrypted_content', () => {
+  expect(classifyOpenAIResponsesRawRetry({ event: 'response.created', data: '{"type":"response.created"}' })).toBe('hold');
+  expect(classifyOpenAIResponsesRawRetry({ event: 'response.in_progress', data: '{}' })).toBe('hold');
+  expect(classifyOpenAIResponsesRawRetry({ event: 'error', data: ENCRYPTED_ERROR })).toBe('retry');
+  expect(classifyOpenAIResponsesRawRetry({ data: ENCRYPTED_ERROR })).toBe('retry');
+  expect(
+    classifyOpenAIResponsesRawRetry({
+      event: 'error',
+      data: '{"type":"error","error":{"code":"invalid_value"}}',
+    }),
+  ).toBe('commit');
+  expect(
+    classifyOpenAIResponsesRawRetry({
+      event: 'response.output_text.delta',
+      data: '{"type":"response.output_text.delta","delta":"hi"}',
+    }),
+  ).toBe('commit');
+  expect(classifyOpenAIResponsesRawRetry({ event: 'response.output_item.added', data: '{}' })).toBe('commit');
+  expect(classifyOpenAIResponsesRawRetry({ data: 'not-json' })).toBe('commit');
 });
 
 test('rewrites plaintext agent_message encrypted_content to input_text', () => {
@@ -87,7 +138,7 @@ test('rewrites plaintext agent_message encrypted_content to input_text', () => {
       },
     ],
   });
-  expect(JSON.parse(rewriteOpenAIResponsesEncryptedContentRetryBody(body)!)).toEqual({
+  expect(JSON.parse(rewriteOpenAIResponsesEncryptedContent(body)!)).toEqual({
     model: 'gpt-5.6-sol',
     input: [
       {
@@ -113,12 +164,12 @@ test('rewrites plaintext function_call_output encrypted_content parts', () => {
       },
     ],
   });
-  expect(JSON.parse(rewriteOpenAIResponsesEncryptedContentRetryBody(body)!).input[0].output).toEqual([
+  expect(JSON.parse(rewriteOpenAIResponsesEncryptedContent(body)!).input[0].output).toEqual([
     { type: 'input_text', text: 'tool result' },
   ]);
 });
 
-test('leaves ciphertext-shaped encrypted_content parts untouched and falls through to blob strip', () => {
+test('leaves ciphertext parts untouched and falls through to the blob strip', () => {
   const body = JSON.stringify({
     input: [
       {
@@ -130,7 +181,7 @@ test('leaves ciphertext-shaped encrypted_content parts untouched and falls throu
       { type: 'reasoning', id: 'rs_1', encrypted_content: CIPHER, summary: [{ type: 'summary_text', text: 'think' }] },
     ],
   });
-  expect(JSON.parse(rewriteOpenAIResponsesEncryptedContentRetryBody(body)!)).toEqual({
+  expect(JSON.parse(rewriteOpenAIResponsesEncryptedContent(body)!)).toEqual({
     input: [
       {
         type: 'agent_message',
@@ -152,7 +203,7 @@ test('strips reasoning and compaction blobs only when no plaintext slot changed'
       { type: 'context_compaction', encrypted_content: CIPHER },
     ],
   });
-  expect(JSON.parse(rewriteOpenAIResponsesEncryptedContentRetryBody(body)!).input).toEqual([
+  expect(JSON.parse(rewriteOpenAIResponsesEncryptedContent(body)!).input).toEqual([
     { type: 'reasoning', summary: [] },
     { type: 'compaction' },
     { type: 'compaction_summary' },
@@ -161,8 +212,52 @@ test('strips reasoning and compaction blobs only when no plaintext slot changed'
 });
 
 test('returns undefined when there is nothing to rewrite', () => {
-  expect(rewriteOpenAIResponsesEncryptedContentRetryBody('{"input":[{"type":"message","role":"user","content":"hi"}]}')).toBeUndefined();
-  expect(rewriteOpenAIResponsesEncryptedContentRetryBody('not-json')).toBeUndefined();
+  expect(
+    rewriteOpenAIResponsesEncryptedContent('{"input":[{"type":"message","role":"user","content":"hi"}]}'),
+  ).toBeUndefined();
+  expect(rewriteOpenAIResponsesEncryptedContent('not-json')).toBeUndefined();
+});
+
+test('hook rewrite carries the request forward and preserves the inbound signal', async () => {
+  const controller = new AbortController();
+  const source = new Request('https://upstream.test/v1/responses', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'content-length': '5' },
+    body: JSON.stringify({
+      input: [
+        {
+          type: 'agent_message',
+          author: '/root',
+          recipient: '/root/w',
+          content: [{ type: 'encrypted_content', encrypted_content: 'delegated task' }],
+        },
+      ],
+    }),
+    signal: controller.signal,
+  });
+  const retried = await openAIResponsesRawRetry.rewrite(source, {} as never, {});
+  expect(retried).toBeDefined();
+  expect(retried!.headers.get('content-length')).toBeNull();
+  expect(retried!.signal.aborted).toBe(false);
+  controller.abort();
+  expect(retried!.signal.aborted).toBe(true);
+  expect(await retried!.json()).toMatchObject({
+    input: [{ type: 'agent_message', content: [{ type: 'input_text', text: 'delegated task' }] }],
+  });
+});
+
+test('hook rewrite refuses the compact operation', async () => {
+  const source = upstream({
+    input: [
+      {
+        type: 'agent_message',
+        author: '/root',
+        recipient: '/root/w',
+        content: [{ type: 'encrypted_content', encrypted_content: 'delegated task' }],
+      },
+    ],
+  });
+  expect(await openAIResponsesRawRetry.rewrite(source, {} as never, { operation: 'compact' })).toBeUndefined();
 });
 ```
 
@@ -171,41 +266,97 @@ test('returns undefined when there is nothing to rewrite', () => {
 Run:
 
 ```bash
-bun test packages/core/src/transform/openai-responses/encrypted-content-retry.test.ts
+bun test packages/core/src/protocol/openai-responses/encrypted-content-retry.test.ts
 ```
 
-Expected: FAIL with `Cannot find module` or `rewriteOpenAIResponsesEncryptedContentRetryBody is not a function`.
+Expected: FAIL with `Cannot find module './encrypted-content-retry'`.
 
-- [ ] **Step 3: Implement the rewrite**
+- [ ] **Step 3: Add the hook type**
 
-Create `packages/core/src/transform/openai-responses/encrypted-content-retry.ts`:
+In `packages/core/src/protocol/adapter.ts`, above `SharedProtocolAdapter`, add:
+
+```ts
+export type RawRetryFrame = { readonly event?: string; readonly data: string };
+export type RawRetryVerdict = 'hold' | 'commit' | 'retry';
+
+// Lets one protocol adapter own the judgement for a same-protocol raw retry:
+// which buffered frames are still undecided, and how to rewrite the outbound
+// body. The pipeline owns the replay itself and stays protocol-agnostic.
+export type RawRetryHook<TRequest, TContext> = Readonly<{
+  classify: (frame: RawRetryFrame) => RawRetryVerdict;
+  rewrite: (upstream: Request, request: TRequest, context: TContext) => Promise<Request | undefined>;
+}>;
+```
+
+Inside the `LanguageProtocolAdapter` object type, next to `egressContext`, add:
+
+```ts
+    rawRetry?: RawRetryHook<TRequest, TContext>;
+```
+
+`rawRetry` is optional and `defineProtocolAdapter` spreads `definition`, so no default is needed.
+
+- [ ] **Step 4: Implement the OpenAI Responses hook**
+
+Create `packages/core/src/protocol/openai-responses/encrypted-content-retry.ts`:
 
 ```ts
 import { isPlainObject } from 'es-toolkit/predicate';
 
+import type { OpenAIResponsesCompactRequest } from '../../ingress/openai-responses/compact';
+import type { OpenAIResponsesRequest } from '../../ingress/openai-responses/index';
+import type { RawRetryFrame, RawRetryHook, RawRetryVerdict } from '../adapter';
+import { readRequestText } from '../request';
+
+type OpenAIResponsesRawRetryContext = { readonly operation?: 'create' | 'compact' };
+
 const CIPHERTEXT = /^[A-Za-z0-9+/=_-]+$/;
+const HOLD_EVENTS = new Set(['response.created', 'response.in_progress']);
 const OPAQUE_ITEM_TYPES = new Set(['reasoning', 'compaction', 'compaction_summary', 'context_compaction']);
 
 export function looksLikeBackendCiphertext(payload: string): boolean {
   return payload.length >= 64 && CIPHERTEXT.test(payload);
 }
 
-export function rewriteOpenAIResponsesEncryptedContentRetryBody(bodyText: string): string | undefined {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(bodyText);
-  } catch {
-    return undefined;
-  }
-  if (!isPlainObject(parsed) || !Array.isArray(parsed['input'])) return undefined;
+export function classifyOpenAIResponsesRawRetry(frame: RawRetryFrame): RawRetryVerdict {
+  const payload = parseJson(frame.data);
+  const type = frame.event ?? (typeof payload?.['type'] === 'string' ? payload['type'] : undefined);
+  if (type !== undefined && HOLD_EVENTS.has(type)) return 'hold';
+  const error = isPlainObject(payload?.['error']) ? payload['error'] : payload;
+  return error?.['code'] === 'invalid_encrypted_content' ? 'retry' : 'commit';
+}
+
+export function rewriteOpenAIResponsesEncryptedContent(bodyText: string): string | undefined {
+  const parsed = parseJson(bodyText);
+  if (parsed === undefined || !Array.isArray(parsed['input'])) return undefined;
 
   const withPlaintext = rewritePlaintextSlots(parsed['input']);
-  if (withPlaintext) return JSON.stringify({ ...parsed, input: withPlaintext });
+  if (withPlaintext !== undefined) return JSON.stringify({ ...parsed, input: withPlaintext });
 
   const withBlobs = rewriteOpaqueBlobs(parsed['input']);
-  if (withBlobs) return JSON.stringify({ ...parsed, input: withBlobs });
+  if (withBlobs !== undefined) return JSON.stringify({ ...parsed, input: withBlobs });
   return undefined;
 }
+
+export const openAIResponsesRawRetry: RawRetryHook<
+  OpenAIResponsesRequest | OpenAIResponsesCompactRequest,
+  OpenAIResponsesRawRetryContext
+> = {
+  classify: classifyOpenAIResponsesRawRetry,
+  async rewrite(upstream, _request, context) {
+    // Compact replay is out of scope: its `input` can also be an array, so the
+    // rewrite would otherwise fire on an endpoint this feature does not cover.
+    if (context.operation === 'compact') return undefined;
+    const body = rewriteOpenAIResponsesEncryptedContent(await readRequestText(upstream.clone()));
+    if (body === undefined) return undefined;
+    const headers = new Headers(upstream.headers);
+    headers.delete('content-encoding');
+    headers.delete('content-length');
+    // `signal` comes from the inbound request, so a client disconnect during the
+    // replay cancels the second upstream call too.
+    return new Request(upstream, { method: upstream.method, body, headers, signal: upstream.signal });
+  },
+};
 
 function rewritePlaintextSlots(input: readonly unknown[]): unknown[] | undefined {
   let changed = false;
@@ -252,254 +403,6 @@ function rewriteOpaqueBlobs(input: readonly unknown[]): unknown[] | undefined {
   });
   return changed ? next : undefined;
 }
-```
-
-Add to `packages/core/src/transform/openai-responses/index.ts`:
-
-```ts
-export { looksLikeBackendCiphertext, rewriteOpenAIResponsesEncryptedContentRetryBody } from './encrypted-content-retry';
-```
-
-Add a named export in `packages/core/src/index.ts` next to the other core exports:
-
-```ts
-export {
-  looksLikeBackendCiphertext,
-  rewriteOpenAIResponsesEncryptedContentRetryBody,
-} from './transform/openai-responses/encrypted-content-retry';
-```
-
-- [ ] **Step 4: Run the tests and confirm they pass**
-
-Run:
-
-```bash
-bun test packages/core/src/transform/openai-responses/encrypted-content-retry.test.ts
-```
-
-Expected: PASS.
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add \
-  packages/core/src/transform/openai-responses/encrypted-content-retry.ts \
-  packages/core/src/transform/openai-responses/encrypted-content-retry.test.ts \
-  packages/core/src/transform/openai-responses/index.ts \
-  packages/core/src/index.ts
-git commit -m "$(cat <<'EOF'
-feat(core): rewrite OpenAI Responses encrypted_content for raw retry
-
-Co-authored-by: Codex <noreply@openai.com>
-EOF
-)"
-```
-
----
-
-### Task 2: Raw SSE preflight
-
-**Files:**
-- Create: `packages/server/src/routes/pipeline/attempt/raw-sse-preflight.ts`
-- Create: `packages/server/src/routes/pipeline/attempt/raw-sse-preflight.test.ts`
-
-**Interfaces:**
-- Consumes: `createParser` from `eventsource-parser`, `isPlainObject` from `es-toolkit/predicate`.
-- Produces:
-
-```ts
-export type RawSsePreflight =
-  | { readonly kind: 'commit'; readonly response: Response }
-  | { readonly kind: 'retryable'; readonly code: 'invalid_encrypted_content'; readonly response: Response };
-
-export function invalidEncryptedContentCode(value: unknown): 'invalid_encrypted_content' | undefined;
-export async function preflightRawOpenAIResponsesSse(response: Response): Promise<RawSsePreflight>;
-```
-
-`preflightRawOpenAIResponsesSse` must not consume a non-event-stream body. A `commit` response replays every buffered byte then continues the upstream reader. A `retryable` response still carries those bytes so the caller can forward them if rewrite fails.
-
-- [ ] **Step 1: Write the failing tests**
-
-Create `packages/server/src/routes/pipeline/attempt/raw-sse-preflight.test.ts`:
-
-```ts
-import { expect, test } from 'bun:test';
-
-import { invalidEncryptedContentCode, preflightRawOpenAIResponsesSse } from './raw-sse-preflight';
-
-const created =
-  'event: response.created\ndata: {"type":"response.created","response":{"id":"resp_1","status":"in_progress"}}\n\n';
-const encryptedError =
-  'event: error\ndata: {"type":"error","error":{"type":"invalid_request_error","code":"invalid_encrypted_content","message":"Encrypted function output content could not be decrypted or decoded."}}\n\n';
-const otherError = 'event: error\ndata: {"type":"error","error":{"type":"invalid_request_error","code":"invalid_value","message":"nope"}}\n\n';
-const delta = 'event: response.output_text.delta\ndata: {"type":"response.output_text.delta","delta":"hi"}\n\n';
-
-function sse(text: string): Response {
-  return new Response(text, { status: 200, headers: { 'content-type': 'text/event-stream' } });
-}
-
-test('extracts invalid_encrypted_content from OpenAI error envelopes', () => {
-  expect(
-    invalidEncryptedContentCode({
-      error: { type: 'invalid_request_error', code: 'invalid_encrypted_content', message: 'x' },
-    }),
-  ).toBe('invalid_encrypted_content');
-  expect(invalidEncryptedContentCode({ error: { code: 'invalid_value' } })).toBeUndefined();
-});
-
-test('holds response.created then classifies invalid_encrypted_content as retryable', async () => {
-  const preflight = await preflightRawOpenAIResponsesSse(sse(created + encryptedError));
-  expect(preflight.kind).toBe('retryable');
-  if (preflight.kind !== 'retryable') return;
-  expect(preflight.code).toBe('invalid_encrypted_content');
-  expect(await preflight.response.text()).toBe(created + encryptedError);
-});
-
-test('commits when a content delta arrives before the error', async () => {
-  const preflight = await preflightRawOpenAIResponsesSse(sse(created + delta + encryptedError));
-  expect(preflight.kind).toBe('commit');
-  expect(await preflight.response.text()).toBe(created + delta + encryptedError);
-});
-
-test('commits other SSE errors', async () => {
-  const preflight = await preflightRawOpenAIResponsesSse(sse(created + otherError));
-  expect(preflight.kind).toBe('commit');
-});
-
-test('passes non-SSE bodies through', async () => {
-  const response = Response.json({ ok: true });
-  const preflight = await preflightRawOpenAIResponsesSse(response);
-  expect(preflight.kind).toBe('commit');
-  expect(await preflight.response.json()).toEqual({ ok: true });
-});
-```
-
-- [ ] **Step 2: Run the tests and confirm they fail**
-
-Run:
-
-```bash
-bun test packages/server/src/routes/pipeline/attempt/raw-sse-preflight.test.ts --preload=packages/server/__tests__/setup.ts
-```
-
-Expected: FAIL with `Cannot find module`.
-
-- [ ] **Step 3: Implement preflight**
-
-Create `packages/server/src/routes/pipeline/attempt/raw-sse-preflight.ts`:
-
-```ts
-import { isPlainObject } from 'es-toolkit/predicate';
-import { createParser } from 'eventsource-parser';
-
-const MAX_PREFLIGHT_REPLAY_BYTES = 1024 * 1024;
-const HOLD_EVENTS = new Set(['response.created', 'response.in_progress']);
-const CONTENT_EVENTS = new Set([
-  'response.output_text.delta',
-  'response.reasoning_text.delta',
-  'response.reasoning_summary_text.delta',
-]);
-
-export type RawSsePreflight =
-  | { readonly kind: 'commit'; readonly response: Response }
-  | { readonly kind: 'retryable'; readonly code: 'invalid_encrypted_content'; readonly response: Response };
-
-export function invalidEncryptedContentCode(value: unknown): 'invalid_encrypted_content' | undefined {
-  if (!isPlainObject(value)) return undefined;
-  const error = isPlainObject(value['error']) ? value['error'] : value;
-  return error['code'] === 'invalid_encrypted_content' ? 'invalid_encrypted_content' : undefined;
-}
-
-export async function preflightRawOpenAIResponsesSse(response: Response): Promise<RawSsePreflight> {
-  const contentType = response.headers.get('content-type') ?? '';
-  if (response.body === null || !contentType.toLowerCase().includes('text/event-stream')) {
-    return { kind: 'commit', response };
-  }
-
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  const buffered: Uint8Array[] = [];
-  let bufferedBytes = 0;
-  let decision: 'hold' | 'commit' | 'retryable' = 'hold';
-  const parser = createParser({
-    onEvent(event) {
-      if (decision !== 'hold') return;
-      const type = event.event || (isPlainObject(parseJson(event.data)) ? parseJson(event.data)?.['type'] : undefined);
-      if (typeof type === 'string' && HOLD_EVENTS.has(type)) return;
-      if (type === 'error' && invalidEncryptedContentCode(parseJson(event.data)) !== undefined) {
-        decision = 'retryable';
-        return;
-      }
-      decision = 'commit';
-    },
-  });
-
-  let done = false;
-  try {
-    while (decision === 'hold' && !done) {
-      const chunk = await reader.read();
-      done = chunk.done;
-      if (chunk.value !== undefined) {
-        if (bufferedBytes + chunk.value.byteLength > MAX_PREFLIGHT_REPLAY_BYTES) {
-          decision = 'commit';
-        }
-        buffered.push(chunk.value);
-        bufferedBytes += chunk.value.byteLength;
-        parser.feed(decoder.decode(chunk.value, { stream: true }));
-      }
-    }
-  } catch (error) {
-    await reader.cancel(error).catch(() => undefined);
-    throw error;
-  }
-
-  const replay = replayBuffered(reader, buffered, done);
-  const next = new Response(replay, {
-    headers: response.headers,
-    status: response.status,
-    statusText: response.statusText,
-  });
-  return decision === 'retryable' ? { kind: 'retryable', code: 'invalid_encrypted_content', response: next } : { kind: 'commit', response: next };
-}
-
-function replayBuffered(
-  reader: ReadableStreamDefaultReader<Uint8Array>,
-  buffered: readonly Uint8Array[],
-  sourceDone: boolean,
-): ReadableStream<Uint8Array> {
-  let index = 0;
-  return new ReadableStream<Uint8Array>({
-    async pull(controller) {
-      if (index < buffered.length) {
-        controller.enqueue(buffered[index]!);
-        index += 1;
-        return;
-      }
-      if (sourceDone) {
-        reader.releaseLock();
-        controller.close();
-        return;
-      }
-      try {
-        const next = await reader.read();
-        if (next.done) {
-          reader.releaseLock();
-          controller.close();
-        } else controller.enqueue(next.value);
-      } catch (error) {
-        reader.releaseLock();
-        controller.error(error);
-      }
-    },
-    async cancel(reason) {
-      try {
-        await reader.cancel(reason);
-      } finally {
-        reader.releaseLock();
-      }
-    },
-  });
-}
 
 function parseJson(text: string): Record<string, unknown> | undefined {
   try {
@@ -511,26 +414,332 @@ function parseJson(text: string): Record<string, unknown> | undefined {
 }
 ```
 
-If `CONTENT_EVENTS` is unused after the generic "any non-hold frame commits" rule, do not leave it in the file. The tests already cover content-delta-before-error via the generic commit path.
+- [ ] **Step 5: Attach the hook to the adapter**
 
-- [ ] **Step 4: Run the tests and confirm they pass**
+In `packages/core/src/protocol/openai-responses.ts`, add the import beside the other local imports:
+
+```ts
+import { openAIResponsesRawRetry } from './openai-responses/encrypted-content-retry';
+```
+
+Inside the `defineProtocolAdapter({ ... })` call, next to `errors: openAIResponsesErrors`, add:
+
+```ts
+  rawRetry: openAIResponsesRawRetry,
+```
+
+- [ ] **Step 6: Run the tests and confirm they pass**
 
 Run:
 
 ```bash
-bun test packages/server/src/routes/pipeline/attempt/raw-sse-preflight.test.ts --preload=packages/server/__tests__/setup.ts
+bun test packages/core/src/protocol/openai-responses/encrypted-content-retry.test.ts packages/core/src/protocol/openai-responses.test.ts packages/core/src/protocol/openai-responses-basic.test.ts packages/core/src/protocol/openai-responses-compact.test.ts
 ```
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
 git add \
-  packages/server/src/routes/pipeline/attempt/raw-sse-preflight.ts \
-  packages/server/src/routes/pipeline/attempt/raw-sse-preflight.test.ts
+  packages/core/src/protocol/adapter.ts \
+  packages/core/src/protocol/openai-responses.ts \
+  packages/core/src/protocol/openai-responses/encrypted-content-retry.ts \
+  packages/core/src/protocol/openai-responses/encrypted-content-retry.test.ts
 git commit -m "$(cat <<'EOF'
-feat(server): hold raw OpenAI Responses SSE until a retryable error
+feat(core): add a raw retry hook for OpenAI Responses encrypted content
+
+Co-authored-by: Codex <noreply@openai.com>
+EOF
+)"
+```
+
+---
+
+### Task 2: Protocol-agnostic raw retry preflight
+
+**Files:**
+- Modify: `packages/server/src/usage-capture/index.ts:1-10`
+- Create: `packages/server/src/routes/pipeline/attempt/raw-retry-preflight.ts`
+- Create: `packages/server/src/routes/pipeline/attempt/raw-retry-preflight.test.ts`
+
+**Interfaces:**
+- Consumes: `RawRetryFrame`, `RawRetryVerdict` from `@aio-proxy/core`; `createParser` from `eventsource-parser`; `createIdleTimer`, `STREAM_IDLE_TIMEOUT_MS` from `../../../usage-capture`. `packages/server/src/usage-capture/index.ts` currently exports only `captureImageUsage` and the `usage-capture` surface, so this task must widen that barrel.
+- Produces:
+
+```ts
+export type RawRetryPreflight =
+  | { readonly kind: 'commit'; readonly response: Response }
+  | { readonly kind: 'retry'; readonly response: Response };
+
+export function preflightRawRetry(
+  response: Response,
+  classify: (frame: RawRetryFrame) => RawRetryVerdict,
+  options: { readonly signal: AbortSignal; readonly idleTimeoutMs?: number },
+): Promise<RawRetryPreflight>;
+```
+
+A `commit` result replays every buffered byte, then continues the upstream reader. A `retry` result also carries those bytes so the caller can forward the original error when no rewrite exists. A stall or an inbound abort cancels the reader and rejects.
+
+- [ ] **Step 1: Write the failing tests**
+
+Create `packages/server/src/routes/pipeline/attempt/raw-retry-preflight.test.ts`:
+
+```ts
+import { expect, test } from 'bun:test';
+
+import { classifyOpenAIResponsesRawRetry } from '@aio-proxy/core';
+
+import { preflightRawRetry } from './raw-retry-preflight';
+
+const created =
+  'event: response.created\ndata: {"type":"response.created","response":{"id":"resp_1","status":"in_progress"}}\n\n';
+const encryptedError =
+  'event: error\ndata: {"type":"error","error":{"type":"invalid_request_error","code":"invalid_encrypted_content","message":"x"}}\n\n';
+const otherError = 'event: error\ndata: {"type":"error","error":{"code":"invalid_value"}}\n\n';
+const delta = 'event: response.output_text.delta\ndata: {"type":"response.output_text.delta","delta":"hi"}\n\n';
+
+function sse(text: string): Response {
+  return new Response(text, { status: 200, headers: { 'content-type': 'text/event-stream' } });
+}
+
+function live(): { readonly signal: AbortSignal } {
+  return { signal: new AbortController().signal };
+}
+
+test('holds lifecycle frames then reports retry', async () => {
+  const preflight = await preflightRawRetry(sse(created + encryptedError), classifyOpenAIResponsesRawRetry, live());
+  expect(preflight.kind).toBe('retry');
+  expect(await preflight.response.text()).toBe(created + encryptedError);
+});
+
+test('commits when content arrives before the error', async () => {
+  const preflight = await preflightRawRetry(
+    sse(created + delta + encryptedError),
+    classifyOpenAIResponsesRawRetry,
+    live(),
+  );
+  expect(preflight.kind).toBe('commit');
+  expect(await preflight.response.text()).toBe(created + delta + encryptedError);
+});
+
+test('commits other SSE errors', async () => {
+  const preflight = await preflightRawRetry(sse(created + otherError), classifyOpenAIResponsesRawRetry, live());
+  expect(preflight.kind).toBe('commit');
+});
+
+test('commits a stream that only ever holds', async () => {
+  const preflight = await preflightRawRetry(sse(created), classifyOpenAIResponsesRawRetry, live());
+  expect(preflight.kind).toBe('commit');
+  expect(await preflight.response.text()).toBe(created);
+});
+
+test('passes a non-event-stream body through without reading it', async () => {
+  const response = Response.json({ ok: true });
+  const preflight = await preflightRawRetry(response, classifyOpenAIResponsesRawRetry, live());
+  expect(preflight.kind).toBe('commit');
+  expect(preflight.response).toBe(response);
+  expect(await preflight.response.json()).toEqual({ ok: true });
+});
+
+test('fails a stream that stalls after a hold frame', async () => {
+  let cancelled = false;
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode(created));
+    },
+    cancel() {
+      cancelled = true;
+    },
+  });
+  const response = new Response(body, { status: 200, headers: { 'content-type': 'text/event-stream' } });
+
+  await expect(
+    preflightRawRetry(response, classifyOpenAIResponsesRawRetry, { signal: new AbortController().signal, idleTimeoutMs: 10 }),
+  ).rejects.toThrow();
+  expect(cancelled).toBe(true);
+});
+
+test('fails when the inbound request aborts during the hold', async () => {
+  const controller = new AbortController();
+  const body = new ReadableStream<Uint8Array>({
+    start(streamController) {
+      streamController.enqueue(new TextEncoder().encode(created));
+    },
+  });
+  const response = new Response(body, { status: 200, headers: { 'content-type': 'text/event-stream' } });
+  const pending = preflightRawRetry(response, classifyOpenAIResponsesRawRetry, { signal: controller.signal });
+  controller.abort();
+  await expect(pending).rejects.toThrow();
+});
+```
+
+- [ ] **Step 2: Run the tests and confirm they fail**
+
+Run:
+
+```bash
+bun test packages/server/src/routes/pipeline/attempt/raw-retry-preflight.test.ts --preload=packages/server/__tests__/setup.ts
+```
+
+Expected: FAIL with `Cannot find module './raw-retry-preflight'`.
+
+- [ ] **Step 3: Export the idle timer from the usage-capture barrel**
+
+`createIdleTimer` and `STREAM_IDLE_TIMEOUT_MS` live in `packages/server/src/usage-capture/shared.ts` but are not re-exported. Add to `packages/server/src/usage-capture/index.ts`:
+
+```ts
+export { createIdleTimer, STREAM_IDLE_TIMEOUT_MS, type IdleTimer } from './shared';
+```
+
+- [ ] **Step 4: Implement the preflight**
+
+Create `packages/server/src/routes/pipeline/attempt/raw-retry-preflight.ts`:
+
+```ts
+import type { RawRetryFrame, RawRetryVerdict } from '@aio-proxy/core';
+import { createParser } from 'eventsource-parser';
+
+import { createIdleTimer, STREAM_IDLE_TIMEOUT_MS } from '../../../usage-capture';
+
+const MAX_PREFLIGHT_REPLAY_BYTES = 1024 * 1024;
+
+export type RawRetryPreflight =
+  | { readonly kind: 'commit'; readonly response: Response }
+  | { readonly kind: 'retry'; readonly response: Response };
+
+export async function preflightRawRetry(
+  response: Response,
+  classify: (frame: RawRetryFrame) => RawRetryVerdict,
+  options: { readonly signal: AbortSignal; readonly idleTimeoutMs?: number },
+): Promise<RawRetryPreflight> {
+  const contentType = response.headers.get('content-type') ?? '';
+  if (response.body === null || !contentType.toLowerCase().includes('text/event-stream')) {
+    return { kind: 'commit', response };
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  const buffered: Uint8Array[] = [];
+  let bufferedBytes = 0;
+  let verdict: RawRetryVerdict = 'hold';
+  const parser = createParser({
+    onEvent(event) {
+      if (verdict !== 'hold') return;
+      verdict = classify(event.event === undefined ? { data: event.data } : { event: event.event, data: event.data });
+    },
+  });
+
+  // The normal 300s idle timer is installed by usageCapture.passthrough, which
+  // has not run yet: without this guard an upstream that emits a lifecycle frame
+  // and then stalls would hold the request and attempt span open indefinitely.
+  let stalled: Error | undefined;
+  const idle = createIdleTimer(options.idleTimeoutMs ?? STREAM_IDLE_TIMEOUT_MS, () => {
+    stalled = new Error('Upstream stream stalled during raw retry preflight');
+    void reader.cancel(stalled).catch(() => undefined);
+  });
+
+  let done = false;
+  try {
+    idle.arm();
+    while (verdict === 'hold' && !done) {
+      if (options.signal.aborted) throw options.signal.reason;
+      const chunk = await reader.read();
+      if (stalled !== undefined) throw stalled;
+      idle.arm();
+      done = chunk.done;
+      if (chunk.value !== undefined) {
+        buffered.push(chunk.value);
+        bufferedBytes += chunk.value.byteLength;
+        parser.feed(decoder.decode(chunk.value, { stream: true }));
+        if (verdict === 'hold' && bufferedBytes > MAX_PREFLIGHT_REPLAY_BYTES) verdict = 'commit';
+      }
+    }
+  } catch (error) {
+    await reader.cancel(error).catch(() => undefined);
+    throw stalled ?? error;
+  } finally {
+    idle.clear();
+  }
+
+  const next = new Response(replayBuffered(reader, buffered, done), {
+    headers: response.headers,
+    status: response.status,
+    statusText: response.statusText,
+  });
+  return { kind: verdict === 'retry' ? 'retry' : 'commit', response: next };
+}
+
+function replayBuffered(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  buffered: readonly Uint8Array[],
+  sourceDone: boolean,
+): ReadableStream<Uint8Array> {
+  let index = 0;
+  let released = false;
+  const release = () => {
+    if (released) return;
+    released = true;
+    try {
+      reader.releaseLock();
+    } catch {}
+  };
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      if (index < buffered.length) {
+        controller.enqueue(buffered[index]!);
+        index += 1;
+        return;
+      }
+      if (sourceDone) {
+        release();
+        controller.close();
+        return;
+      }
+      try {
+        const next = await reader.read();
+        if (next.done) {
+          release();
+          controller.close();
+        } else controller.enqueue(next.value);
+      } catch (error) {
+        release();
+        controller.error(error);
+      }
+    },
+    async cancel(reason) {
+      try {
+        await reader.cancel(reason);
+      } finally {
+        release();
+      }
+    },
+  });
+}
+```
+
+Export `classifyOpenAIResponsesRawRetry`, `RawRetryFrame`, `RawRetryHook`, and `RawRetryVerdict` from `packages/core/src/index.ts` if `bun run check` reports them missing from the `@aio-proxy/core` surface. `packages/core/src/index.ts` re-exports `./protocol` via `export * from './protocol'`, and `packages/core/src/protocol/index.ts` re-exports `./adapter` and `./openai-responses`; add `export * from './openai-responses/encrypted-content-retry';` to `packages/core/src/protocol/index.ts` so the hook and its classifier are reachable.
+
+- [ ] **Step 5: Run the tests and confirm they pass**
+
+Run:
+
+```bash
+bun test packages/server/src/routes/pipeline/attempt/raw-retry-preflight.test.ts --preload=packages/server/__tests__/setup.ts
+```
+
+Expected: PASS, including the stall and abort cases.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add \
+  packages/core/src/protocol/index.ts \
+  packages/server/src/usage-capture/index.ts \
+  packages/server/src/routes/pipeline/attempt/raw-retry-preflight.ts \
+  packages/server/src/routes/pipeline/attempt/raw-retry-preflight.test.ts
+git commit -m "$(cat <<'EOF'
+feat(server): hold a raw stream until the adapter reaches a verdict
 
 Co-authored-by: Codex <noreply@openai.com>
 EOF
@@ -542,15 +751,14 @@ EOF
 ### Task 3: Same-candidate replay in `completeRawAttempt`
 
 **Files:**
-- Modify: `packages/server/src/routes/pipeline/attempt/raw.ts`
+- Modify: `packages/server/src/routes/pipeline/attempt/raw.ts:52-86`
 - Create: `packages/server/src/routes/pipeline/raw-encrypted-content-retry.test.ts`
 - Create: `.changeset/raw-sse-encrypted-content-retry.md`
 
 **Interfaces:**
-- Consumes: `rewriteOpenAIResponsesEncryptedContentRetryBody` from `@aio-proxy/core`.
-- Consumes: `preflightRawOpenAIResponsesSse`, `invalidEncryptedContentCode` from `./raw-sse-preflight`.
-- Consumes: `ProviderProtocol` from `@aio-proxy/types`.
-- Produces: `completeRawAttempt` still returns `AttemptStep`. On a hidden retry it invokes `raw.invoke` a second time with the rewritten `Request` **before** `usageCapture.passthrough` / `session.finishFrom`.
+- Consumes: `preflightRawRetry`, `RawRetryPreflight` from `./raw-retry-preflight`.
+- Consumes: `ctx.adapter.rawRetry`, `ctx.request`, `ctx.context`, `ctx.rawRequest.signal`, `ctx.streamRequested`.
+- Produces: `completeRawAttempt` still returns `AttemptStep`. On a hidden retry it calls `raw.invoke` a second time with the adapter's rewritten `Request` **before** `usageCapture.passthrough` and `session.finishFrom`.
 
 - [ ] **Step 1: Write the failing pipeline tests**
 
@@ -568,7 +776,7 @@ import { attemptsOf, pipeline } from './test-support';
 const created =
   'event: response.created\ndata: {"type":"response.created","response":{"id":"resp_1","status":"in_progress"}}\n\n';
 const encryptedError =
-  'event: error\ndata: {"type":"error","error":{"type":"invalid_request_error","code":"invalid_encrypted_content","message":"Encrypted function output content could not be decrypted or decoded."}}\n\n';
+  'event: error\ndata: {"type":"error","error":{"type":"invalid_request_error","code":"invalid_encrypted_content","message":"x"}}\n\n';
 const success =
   created + 'event: response.output_text.delta\ndata: {"type":"response.output_text.delta","delta":"ok"}\n\n';
 
@@ -576,46 +784,45 @@ function sse(text: string): Response {
   return new Response(text, { status: 200, headers: { 'content-type': 'text/event-stream' } });
 }
 
-function responsesRequest(input: unknown) {
-  return jsonRequest({ model: REQUESTED_MODEL, stream: true, input });
+function spawnInput() {
+  return [
+    {
+      type: 'agent_message',
+      author: '/root',
+      recipient: '/root/review_t1',
+      content: [{ type: 'encrypted_content', encrypted_content: 'delegated task' }],
+    },
+  ];
 }
 
-test('replays the same raw candidate after SSE invalid_encrypted_content and hides the error frame', async () => {
+function responsesProvider(invoke: (request: Request) => Promise<Response>) {
+  return rawProvider({
+    id: 'carpool',
+    modelId: REQUESTED_MODEL,
+    protocol: ProviderProtocol.OpenAIResponse,
+    invoke: async (request) => invoke(request),
+  });
+}
+
+test('replays the same raw candidate and hides the failed stream', async () => {
   let calls = 0;
   const bodies: unknown[] = [];
-  const primary = rawProvider({
-    id: 'carpool',
-    protocol: ProviderProtocol.OpenAIResponse,
-    invoke: async (request) => {
-      calls += 1;
-      bodies.push(await request.clone().json());
-      return calls === 1 ? sse(created + encryptedError) : sse(success);
-    },
+  const primary = responsesProvider(async (request) => {
+    calls += 1;
+    bodies.push(await request.clone().json());
+    return calls === 1 ? sse(created + encryptedError) : sse(success);
   });
   const harness = pipeline([primary], { adapter: openAIResponsesAdapter });
-  const response = await harness.run(
-    responsesRequest([
-      {
-        type: 'agent_message',
-        author: '/root',
-        recipient: '/root/review_t1',
-        content: [{ type: 'encrypted_content', encrypted_content: 'delegated task' }],
-      },
-    ]),
-  );
+
+  const response = await harness.run(jsonRequest({ model: REQUESTED_MODEL, stream: true, input: spawnInput() }));
+  const text = await response.text();
 
   expect(response.status).toBe(200);
-  const text = await response.text();
   expect(text).toBe(success);
   expect(text).not.toContain('invalid_encrypted_content');
   expect(calls).toBe(2);
   expect(bodies[1]).toMatchObject({
-    input: [
-      {
-        type: 'agent_message',
-        content: [{ type: 'input_text', text: 'delegated task' }],
-      },
-    ],
+    input: [{ type: 'agent_message', content: [{ type: 'input_text', text: 'delegated task' }] }],
   });
   await settleRecording(harness.recording);
   expect(attemptsOf(harness.recording)).toEqual([{ outcome: 'success', providerId: 'carpool', statusCode: 200 }]);
@@ -623,72 +830,87 @@ test('replays the same raw candidate after SSE invalid_encrypted_content and hid
 
 test('does not retry after a content delta', async () => {
   let calls = 0;
-  const primary = rawProvider({
-    id: 'carpool',
-    protocol: ProviderProtocol.OpenAIResponse,
-    invoke: async () => {
-      calls += 1;
-      return sse(
-        created +
-          'event: response.output_text.delta\ndata: {"type":"response.output_text.delta","delta":"hi"}\n\n' +
-          encryptedError,
-      );
-    },
+  const primary = responsesProvider(async () => {
+    calls += 1;
+    return sse(
+      created +
+        'event: response.output_text.delta\ndata: {"type":"response.output_text.delta","delta":"hi"}\n\n' +
+        encryptedError,
+    );
   });
   const harness = pipeline([primary], { adapter: openAIResponsesAdapter });
+
   const text = await (
-    await harness.run(
-      responsesRequest([
-        {
-          type: 'agent_message',
-          author: '/root',
-          recipient: '/root/w',
-          content: [{ type: 'encrypted_content', encrypted_content: 'delegated task' }],
-        },
-      ]),
-    )
+    await harness.run(jsonRequest({ model: REQUESTED_MODEL, stream: true, input: spawnInput() }))
   ).text();
+
   expect(calls).toBe(1);
   expect(text).toContain('invalid_encrypted_content');
 });
 
 test('retries HTTP 400 invalid_encrypted_content on the same candidate', async () => {
   let calls = 0;
-  const primary = rawProvider({
-    id: 'carpool',
-    protocol: ProviderProtocol.OpenAIResponse,
-    invoke: async () => {
-      calls += 1;
-      if (calls === 1) {
-        return Response.json(
-          { error: { type: 'invalid_request_error', code: 'invalid_encrypted_content', message: 'x' } },
-          { status: 400 },
-        );
-      }
-      return Response.json({ id: 'resp_ok', status: 'completed', output: [] });
-    },
+  const primary = responsesProvider(async () => {
+    calls += 1;
+    if (calls === 1) {
+      return Response.json(
+        { error: { type: 'invalid_request_error', code: 'invalid_encrypted_content', message: 'x' } },
+        { status: 400 },
+      );
+    }
+    return Response.json({ id: 'resp_ok', status: 'completed', output: [] });
   });
   const harness = pipeline([primary], { adapter: openAIResponsesAdapter });
-  const response = await harness.run(
-    jsonRequest({
-      model: REQUESTED_MODEL,
-      input: [
-        {
-          type: 'agent_message',
-          author: '/root',
-          recipient: '/root/w',
-          content: [{ type: 'encrypted_content', encrypted_content: 'delegated task' }],
-        },
-      ],
-    }),
-  );
+
+  const response = await harness.run(jsonRequest({ model: REQUESTED_MODEL, input: spawnInput() }));
+
   expect(response.status).toBe(200);
   expect(calls).toBe(2);
   expect(await response.json()).toMatchObject({ id: 'resp_ok' });
 });
-```
 
-Use `REQUESTED_MODEL` only if the test adapter/provider model id matches `openAIResponsesAdapter` routing. If the harness 404s, set `rawProvider({ modelId: REQUESTED_MODEL, ...})` or put `model: primary.provider` alias into the JSON body. The existing `raw-fallback.test.ts` uses `REQUESTED_MODEL` with the default test adapter; this file uses `openAIResponsesAdapter`, so pin `modelId: REQUESTED_MODEL` on `rawProvider` if the first run 404s.
+test('commits the upstream error when no rewrite is possible', async () => {
+  let calls = 0;
+  const primary = responsesProvider(async () => {
+    calls += 1;
+    return sse(created + encryptedError);
+  });
+  const harness = pipeline([primary], { adapter: openAIResponsesAdapter });
+
+  const text = await (
+    await harness.run(jsonRequest({ model: REQUESTED_MODEL, stream: true, input: 'hello' }))
+  ).text();
+
+  expect(calls).toBe(1);
+  expect(text).toContain('invalid_encrypted_content');
+});
+
+test('cancels the replay when the client disconnects', async () => {
+  const controller = new AbortController();
+  let replaySignal: AbortSignal | undefined;
+  let calls = 0;
+  const primary = responsesProvider(async (request) => {
+    calls += 1;
+    if (calls === 1) return sse(created + encryptedError);
+    replaySignal = request.signal;
+    controller.abort();
+    return sse(success);
+  });
+  const harness = pipeline([primary], { adapter: openAIResponsesAdapter });
+
+  await harness
+    .run(
+      jsonRequest(
+        { model: REQUESTED_MODEL, stream: true, input: spawnInput() },
+        { signal: controller.signal },
+      ),
+    )
+    .catch(() => undefined);
+
+  expect(calls).toBe(2);
+  expect(replaySignal?.aborted).toBe(true);
+});
+```
 
 - [ ] **Step 2: Run the new tests and confirm they fail**
 
@@ -698,45 +920,80 @@ Run:
 bun test packages/server/src/routes/pipeline/raw-encrypted-content-retry.test.ts --preload=packages/server/__tests__/setup.ts
 ```
 
-Expected: FAIL. `calls === 1` and the client body contains `invalid_encrypted_content`.
+Expected: FAIL. `calls` stays `1` and the client body contains `invalid_encrypted_content`.
 
 - [ ] **Step 3: Wire the replay**
 
-In `packages/server/src/routes/pipeline/attempt/raw.ts`, import:
+In `packages/server/src/routes/pipeline/attempt/raw.ts`, add:
 
 ```ts
-import { rewriteOpenAIResponsesEncryptedContentRetryBody } from '@aio-proxy/core';
-import { ProviderProtocol } from '@aio-proxy/types';
-import { invalidEncryptedContentCode, preflightRawOpenAIResponsesSse } from './raw-sse-preflight';
+import { preflightRawRetry } from './raw-retry-preflight';
 ```
 
-Inside `completeRawAttempt`, replace the single `raw.invoke` with a helper in the same file (keep `completeRawAttempt` as the orchestrator; if the file would exceed 400 lines, move the helper into `raw-sse-preflight.ts` as `replayRawOpenAIResponsesEncryptedContent`).
-
-Required control flow:
+Replace the single `raw.invoke` call in `completeRawAttempt` with a first invoke plus one resolution step, keeping `completeRawAttempt` as the orchestrator:
 
 ```ts
-const response = await invokeRaw(upstream);
-const resolved = await resolveEncryptedContentRetry(ctx, raw, upstream, response, inAttempt);
+  const invokeRaw = (request: Request) =>
+    inAttempt(adapter.protocol, () => raw.invoke(request, logicalRequest, { upstreamStream: ctx.streamRequested }));
+
+  // Clone before the first invoke: the body is consumed by that call, and the
+  // adapter's rewrite needs the original bytes.
+  const retrySource = ctx.adapter.rawRetry === undefined ? undefined : upstream.clone();
+  const first = await invokeRaw(upstream);
+  if (!(first instanceof Response)) throw new TypeError('Provider raw transport must return a Response');
+  const response = await resolveRawRetry(ctx, invokeRaw, retrySource, first);
 ```
 
-`resolveEncryptedContentRetry`:
+Add `resolveRawRetry` as a private helper in the same file (move it to `raw-retry-preflight.ts` if `raw.ts` would pass 400 lines):
 
-1. If `adapter.protocol !== ProviderProtocol.OpenAIResponse`, return `response`.
-2. If status is 400, parse JSON (clone), and if `invalidEncryptedContentCode` matches, `rewrite` the **upstream** body. On a new body, cancel the 400 body and `invokeRaw` the rewritten `Request` once. Return that.
-3. If status is 200, `preflightRawOpenAIResponsesSse`. If `commit`, return `preflight.response`. If `retryable`, rewrite the upstream body. On a new body, cancel `preflight.response`, `invokeRaw` the rewritten `Request` once, and if that is 200 SSE, return `preflightRawOpenAIResponsesSse(second).response` (never retry again). If rewrite is `undefined`, return `preflight.response` so the original error frames still reach the client.
-4. Reconstruct the retry `Request` from the first `upstream` URL/method/headers, replacing body and deleting `content-length` / `content-encoding`. Read the first upstream body with `upstream.clone().text()` **before** the first invoke, or clone the `Request` before invoke, so the retry still has bytes.
+```ts
+async function resolveRawRetry<TRequest, TContext>(
+  ctx: AnyAttemptLoopContext<TRequest, TContext>,
+  invokeRaw: (request: Request) => Promise<unknown>,
+  retrySource: Request | undefined,
+  response: Response,
+): Promise<Response> {
+  const hook = ctx.adapter.rawRetry;
+  if (hook === undefined || retrySource === undefined) return response;
 
-Do not call `usageCapture.passthrough` or `session.finishFrom` until this helper returns. Existing fallback / cooldown / success code then runs on the resolved response unchanged.
+  const replay = async (): Promise<Response | undefined> => {
+    const retryRequest = await hook.rewrite(retrySource, ctx.request, ctx.context);
+    if (retryRequest === undefined) return undefined;
+    const retried = await invokeRaw(retryRequest);
+    if (!(retried instanceof Response)) throw new TypeError('Provider raw transport must return a Response');
+    return retried;
+  };
 
-- [ ] **Step 4: Re-run the pipeline tests**
+  if (response.status === 400) {
+    const bodyText = await response.clone().text();
+    if (hook.classify({ data: bodyText }) !== 'retry') return response;
+    const retried = await replay();
+    if (retried === undefined) return response;
+    void response.body?.cancel().catch(() => undefined);
+    return retried;
+  }
+
+  if (!response.ok || !ctx.streamRequested) return response;
+  const preflight = await preflightRawRetry(response, hook.classify, { signal: ctx.rawRequest.signal });
+  if (preflight.kind !== 'retry') return preflight.response;
+  const retried = await replay();
+  if (retried === undefined) return preflight.response;
+  void preflight.response.body?.cancel().catch(() => undefined);
+  return retried;
+}
+```
+
+`ctx.adapter` is typed as a `PipelineAdapter` union whose embedding arm has no `rawRetry`; read it as `'rawRetry' in ctx.adapter ? ctx.adapter.rawRetry : undefined` if TypeScript rejects the direct access. Everything after this line — the `shouldFallbackStatus` check, cooldown, `usageCapture.passthrough`, and `session.finishFrom` — stays exactly as it is and now runs on the resolved response.
+
+- [ ] **Step 4: Re-run the raw suites**
 
 Run:
 
 ```bash
-bun test packages/server/src/routes/pipeline/raw-encrypted-content-retry.test.ts packages/server/src/routes/pipeline/raw-fallback.test.ts --preload=packages/server/__tests__/setup.ts
+bun test packages/server/src/routes/pipeline/raw-encrypted-content-retry.test.ts packages/server/src/routes/pipeline/raw-fallback.test.ts packages/server/src/routes/pipeline/raw-fallback.exceptions.test.ts packages/server/src/routes/pipeline/raw-session.test.ts --preload=packages/server/__tests__/setup.ts
 ```
 
-Expected: all PASS, including the existing raw `400` / `422` fallback cases.
+Expected: all PASS, including the existing raw `400` terminal and `422`/`429`/`5xx` fallback contracts.
 
 - [ ] **Step 5: Add the changeset**
 
@@ -749,7 +1006,7 @@ Create `.changeset/raw-sse-encrypted-content-retry.md`:
 '@aio-proxy/server': patch
 ---
 
-Raw OpenAI Responses streams that fail with `invalid_encrypted_content` before any output are retried once on the same provider after rewriting plaintext encrypted slots (and opaque reasoning blobs if that is all that remains). The client never sees the failed SSE.
+Raw OpenAI Responses requests that fail with `invalid_encrypted_content` before any output are now retried once on the same provider. Plaintext encrypted slots become plain text, and opaque reasoning blobs are dropped when that is all that remains, so the client no longer sees a stream that disconnects before completion.
 ```
 
 - [ ] **Step 6: Check and commit**
@@ -757,7 +1014,7 @@ Raw OpenAI Responses streams that fail with `invalid_encrypted_content` before a
 Run:
 
 ```bash
-bun test packages/core/src/transform/openai-responses/encrypted-content-retry.test.ts packages/server/src/routes/pipeline/attempt/raw-sse-preflight.test.ts packages/server/src/routes/pipeline/raw-encrypted-content-retry.test.ts packages/server/src/routes/pipeline/raw-fallback.test.ts --preload=packages/server/__tests__/setup.ts && bun run check
+bun test packages/core/src/protocol/openai-responses/encrypted-content-retry.test.ts packages/server/src/routes/pipeline/attempt/raw-retry-preflight.test.ts packages/server/src/routes/pipeline/raw-encrypted-content-retry.test.ts --preload=packages/server/__tests__/setup.ts && bun run check
 ```
 
 Expected: exit 0.
@@ -770,7 +1027,7 @@ git add \
   docs/superpowers/specs/2026-09-03-raw-sse-encrypted-content-retry-design.md \
   docs/superpowers/plans/2026-09-03-raw-sse-encrypted-content-retry.md
 git commit -m "$(cat <<'EOF'
-fix(server): retry raw Responses invalid_encrypted_content before commit
+fix(server): retry a raw attempt before committing its stream
 
 Co-authored-by: Codex <noreply@openai.com>
 EOF
@@ -781,6 +1038,6 @@ EOF
 
 ## Self-review
 
-1. Spec coverage: SSE hold table, HTTP 400, plaintext-then-blob rewrite, ciphertext gate, one retry, same-candidate accounting, no next-candidate fallback, verification cases, and changeset each have a task. Non-goals are constraints, not extra tasks.
-2. Placeholder scan: no TBD/TODO, no "add tests later", no "similar to Task N". Task 3 names the exact helper flow instead of "wire it up".
-3. Type consistency: `rewriteOpenAIResponsesEncryptedContentRetryBody(bodyText: string): string | undefined`, `RawSsePreflight`, `invalidEncryptedContentCode`, `preflightRawOpenAIResponsesSse(response: Response): Promise<RawSsePreflight>`.
+1. Spec coverage: the `rawRetry` hook (Task 1), compact refusal (Task 1), SSE hold plus idle and abort guards (Task 2), non-`rawRetry` passthrough (Task 2), HTTP 400 intercept, replay signal, same-candidate accounting, no-rewrite commit, and the changeset (Task 3) each have a task. Non-goals are constraints, not extra tasks.
+2. Placeholder scan: no TBD/TODO, no "add tests later", no "similar to Task N". Task 3 spells out the helper instead of saying "wire it up".
+3. Type consistency: `RawRetryFrame`, `RawRetryVerdict`, `RawRetryHook<TRequest, TContext>`, `classifyOpenAIResponsesRawRetry`, `rewriteOpenAIResponsesEncryptedContent`, `openAIResponsesRawRetry`, `preflightRawRetry(response, classify, options)`, `RawRetryPreflight`. The pipeline calls only `hook.classify` and `hook.rewrite`.
