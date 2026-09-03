@@ -2,19 +2,27 @@ import { expect, test } from 'bun:test';
 
 import { createHubVersionCache } from './hub-version';
 
+const HUB_UA = (version: string) =>
+  `antigravity/hub/${version} (aidev_client; os_type=darwin; arch=arm64; cl=963137146)`;
+
 test('returns the verified fallback immediately and refreshes in the background', async () => {
   let resolveFetch = (_response: Response) => {};
   const response = new Promise<Response>((resolve) => {
     resolveFetch = resolve;
   });
-  const cache = createHubVersionCache({ fetch: async () => await response, platform: 'darwin', arch: 'arm64' });
+  const cache = createHubVersionCache({
+    fetch: async () => await response,
+    platform: 'linux',
+    arch: 'x64',
+  });
 
-  expect(cache.version()).toBe('2.2.1');
+  expect(cache.version()).toBe('2.8.0');
+  expect(cache.shortUserAgent()).toBe(HUB_UA('2.8.0'));
   resolveFetch(new Response('version: 3.4.5\nfiles: []'));
   await settle();
   expect(cache.version()).toBe('3.4.5');
-  expect(cache.shortUserAgent()).toBe('antigravity/hub/3.4.5 darwin/arm64');
-  expect(cache.onboardingUserAgent()).toBe('antigravity/hub/3.4.5 darwin/arm64 google-api-nodejs-client/10.3.0');
+  expect(cache.shortUserAgent()).toBe(HUB_UA('3.4.5'));
+  expect(cache.onboardingUserAgent()).toBe(`${HUB_UA('3.4.5')} google-api-nodejs-client/10.3.0`);
 });
 
 test('keeps a verified cached version for six hours', async () => {
@@ -62,10 +70,10 @@ test('an aborted manifest refresh does not delay the fallback caller', async () 
     timeoutSignal: () => aborted,
   });
 
-  expect(cache.version()).toBe('2.2.1');
+  expect(cache.version()).toBe('2.8.0');
   await settle();
   expect(observedSignal?.aborted).toBe(true);
-  expect(cache.version()).toBe('2.2.1');
+  expect(cache.version()).toBe('2.8.0');
 });
 
 async function settle(): Promise<void> {
