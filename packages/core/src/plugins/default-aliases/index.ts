@@ -1,1 +1,1 @@
-export { assertAliasTargetsInCatalog, insertMissingAliases, validatedDefaultAliases } from './default-aliases';
+export { pluginDefaultAliases } from './default-aliases';

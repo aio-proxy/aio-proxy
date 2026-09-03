@@ -191,7 +191,6 @@ export async function materializePluginProvider(
       ...accountSummary,
       ...(catalog === null ? {} : { catalogLastSuccessAt: new Date(catalog.refreshedAt).toISOString() }),
     });
-  const defaultAliases = adapter.catalog.defaultAliases;
   const catalogJobFor = (credentials: CredentialPort<unknown>): CatalogJobDescriptor => ({
     providerId: config.id,
     plugin: account.plugin,
@@ -200,7 +199,6 @@ export async function materializePluginProvider(
     policy: adapter.catalog.policy,
     stored: storedCatalog,
     ...(unavailable === undefined ? {} : { unavailableOccurredAt: Date.parse(unavailable.occurredAt) }),
-    ...(defaultAliases === undefined ? {} : { defaultAliases }),
     discover: (signal) =>
       adapter.catalog.discover({
         credentials: credentials as never,

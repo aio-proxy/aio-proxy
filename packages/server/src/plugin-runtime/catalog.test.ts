@@ -117,9 +117,8 @@ test('a migrated static catalog with revision 0 stays fresh', () => {
   );
 });
 
-test('materialize binds plugin capability runtimeRevision and defaultAliases onto the catalog job', async () => {
-  const defaultAliases = () => ({ logical: { model: 'model' } });
-  const fixture = runtimeFixture({ kind: 'ttl', ttlMs: 1 }, { defaultAliases });
+test('materialize binds plugin capability runtimeRevision onto the catalog job', async () => {
+  const fixture = runtimeFixture({ kind: 'ttl', ttlMs: 1 });
   const account = fixture.repository.readAccount('person');
 
   const result = await materializePluginProvider({
@@ -140,8 +139,7 @@ test('materialize binds plugin capability runtimeRevision and defaultAliases ont
   expect(result.catalogJob?.plugin).toBe('@example/oauth');
   expect(result.catalogJob?.capability).toBe('default');
   expect(result.catalogJob?.accountRuntimeRevision).toBe(account?.runtimeRevision);
-  expect(result.catalogJob?.defaultAliases).toBeDefined();
-  expect(result.catalogJob?.defaultAliases?.(catalog)).toEqual({ logical: { model: 'model' } });
+  expect(result.catalogJob).not.toHaveProperty('defaultAliases');
 });
 
 test('an expired TTL catalog is ready but stale before a refresh diagnostic exists', async () => {
