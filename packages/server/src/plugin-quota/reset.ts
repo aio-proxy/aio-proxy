@@ -31,10 +31,15 @@ export function createOAuthQuotaResetter(dependencies: OAuthQuotaServiceDependen
   return {
     reset: (providerId, signal) =>
       execute(providerId, () =>
-        withOAuthQuotaContext(dependencies, providerId, signal, async (prepared) => {
-          const reset = prepared.adapter.quota.reset?.bind(prepared.adapter.quota);
+        withOAuthQuotaContext(dependencies, providerId, signal, async (prepared, quota) => {
+          const reset = quota.reset?.bind(quota);
           if (reset === undefined) throw new OAuthQuotaResetUnsupportedError();
-          const snapshot = await readValidatedQuota(dependencies, prepared, 'plugin.quota.reset.preflight.failed');
+          const snapshot = await readValidatedQuota(
+            dependencies,
+            prepared,
+            quota,
+            'plugin.quota.reset.preflight.failed',
+          );
           if ((snapshot.resetCredits?.availableCount ?? 0) <= 0) {
             throw new OAuthQuotaResetUnavailableError();
           }
