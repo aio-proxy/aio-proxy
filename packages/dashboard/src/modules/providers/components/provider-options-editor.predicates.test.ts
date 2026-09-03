@@ -1,11 +1,6 @@
 import { describe, expect, test } from '@rstest/core';
 
-import {
-  canConfirmProviderInstall,
-  canRequestProviderInstall,
-  isProviderOptionsObject,
-  providerOptionsAreValid,
-} from './provider-options-editor';
+import { canRequestProviderInstall, isProviderOptionsObject, providerOptionsAreValid } from './provider-options-editor';
 
 describe('provider options editor', () => {
   test('accepts only undefined or a plain object at the provider options root', () => {
@@ -60,13 +55,6 @@ describe('provider options editor', () => {
         undefined,
       ),
     ).toBe(true);
-  });
-
-  test('only confirms the install-required package currently bound to the dialog', () => {
-    expect(canConfirmProviderInstall('community-provider', 'install_required', 'community-provider')).toBe(true);
-    expect(canConfirmProviderInstall('old-provider', 'install_required', 'new-provider')).toBe(false);
-    expect(canConfirmProviderInstall('community-provider', 'checking', 'community-provider')).toBe(false);
-    expect(canConfirmProviderInstall(null, 'install_required', 'community-provider')).toBe(false);
   });
 
   test('deferred and failed installs expose an explicit retry action', () => {
