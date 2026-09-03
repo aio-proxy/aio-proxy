@@ -13,7 +13,8 @@ import type { ChatGPTCredential } from '../schema';
 const CHATGPT_CODEX_BASE_URL = 'https://chatgpt.com/backend-api/codex' as const;
 const CHATGPT_CODEX_RESPONSES_ENDPOINT = `${CHATGPT_CODEX_BASE_URL}/responses` as const;
 const CHATGPT_CODEX_COMPACT_ENDPOINT = `${CHATGPT_CODEX_RESPONSES_ENDPOINT}/compact` as const;
-const CHATGPT_USER_AGENT = 'codex-tui/0.135.0 (Mac OS 26.5.0; arm64) iTerm.app/3.6.10 (codex-tui; 0.135.0)' as const;
+export const CHATGPT_USER_AGENT =
+  'codex-tui/0.135.0 (Mac OS 26.5.0; arm64) iTerm.app/3.6.10 (codex-tui; 0.135.0)' as const;
 const PLACEHOLDER_CREDENTIAL = 'dynamic-credential' as const;
 
 export async function createOpenAIChatGPTRuntime(
