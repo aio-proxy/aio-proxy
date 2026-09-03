@@ -1,5 +1,13 @@
 # aio-proxy
 
+## 0.15.0
+
+### Minor Changes
+
+- [#244](https://github.com/aio-proxy/aio-proxy/pull/244) [`44a3b38`](https://github.com/aio-proxy/aio-proxy/commit/44a3b383bda177c8ee0124e53325cb8c63e1752d) Thanks [@baranwang](https://github.com/baranwang)! - cli: add `aiop` as a short command for `aio-proxy`
+
+- [#243](https://github.com/aio-proxy/aio-proxy/pull/243) [`1daece3`](https://github.com/aio-proxy/aio-proxy/commit/1daece3dd2dad3ddfe86c12784ef379e99424c91) Thanks [@baranwang](https://github.com/baranwang)! - OAuth providers now hide models with `excludedModels` instead of a `models` whitelist. Leftover `models` keys are ignored and no longer restrict exposure — newly discovered catalog ids stay visible unless hidden. Plugin default aliases inherit at runtime and are no longer written into the config file.
+
 ## 0.14.0
 
 ### Minor Changes
