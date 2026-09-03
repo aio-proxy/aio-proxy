@@ -13,11 +13,12 @@ import { antigravityEndpoints } from '../runtime/endpoints';
 import type { GoogleAntigravityAccountOptions, GoogleAntigravityCredential } from '../schema';
 
 const QUOTA_PATH = '/v1internal:retrieveUserQuotaSummary';
-// Budget: the server aborts a quota read at 15s (READ_TIMEOUT_MS in
-// packages/server/src/plugin-quota/cache/quota-cache.ts), and antigravityEndpoints('quota')
-// returns 3 bases. Keep this under 5s so all three are actually attempted when the first
-// two are slow rather than dead — otherwise the prod fallback never runs.
-const QUOTA_ENDPOINT_TIMEOUT_MS = 4_500;
+// The server aborts the whole read at 15s (READ_TIMEOUT_MS in
+// packages/server/src/plugin-quota/cache/quota-cache.ts, module-private so it cannot be imported).
+// Budget below that: the credential refresh ahead of the walk has no timeout of its own, and the
+// per-attempt share is divided by the actual base count so a custom baseURL — a single base — is
+// not cut short by a divisor meant for the three-base default list.
+const QUOTA_WALK_BUDGET_MS = 12_000;
 
 const PLAN_PATH = '/v1internal:loadCodeAssist';
 const PLAN_BODY = JSON.stringify({ metadata: { ideType: 'ANTIGRAVITY' } });
@@ -54,6 +55,7 @@ export async function readGoogleAntigravityQuota(
   };
   const body = JSON.stringify({ project: credential.value.projectId });
   const endpoints = antigravityEndpoints(context.options, 'quota');
+  const attemptTimeoutMs = QUOTA_WALK_BUDGET_MS / Math.max(endpoints.length, 1);
 
   // Started before the loop so it overlaps the quota request; it resolves rather than rejects, so
   // an early throw from the loop cannot leave an unhandled rejection behind.
@@ -66,7 +68,14 @@ export async function readGoogleAntigravityQuota(
       context.signal.throwIfAborted();
       let payload: unknown;
       try {
-        payload = await fetchSummary(fetcher, `${endpoint}${QUOTA_PATH}`, headers, body, context.signal);
+        payload = await fetchSummary(
+          fetcher,
+          `${endpoint}${QUOTA_PATH}`,
+          headers,
+          body,
+          context.signal,
+          attemptTimeoutMs,
+        );
       } catch (error) {
         context.signal.throwIfAborted();
         lastError = error instanceof Error ? error : new Error('Antigravity quota request failed');
@@ -131,12 +140,13 @@ async function fetchSummary(
   headers: Readonly<Record<string, string>>,
   body: string,
   signal: AbortSignal,
+  timeoutMs: number,
 ): Promise<unknown> {
   const response = await fetcher(url, {
     method: 'POST',
     headers,
     body,
-    signal: AbortSignal.any([signal, AbortSignal.timeout(QUOTA_ENDPOINT_TIMEOUT_MS)]),
+    signal: AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)]),
     aioProxy: { traffic: 'control' },
   });
   if (!response.ok) throw new Error(`Antigravity quota request failed with ${response.status}`);

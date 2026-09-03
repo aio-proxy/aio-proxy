@@ -1,4 +1,4 @@
-import { expect, test } from 'bun:test';
+import { expect, spyOn, test } from 'bun:test';
 
 import type { AccountContext, RuntimeFetch } from '@aio-proxy/plugin-sdk';
 
@@ -229,4 +229,52 @@ test('sends the ideType metadata body to the first quota base only', async () =>
     quotaResponder({ [SANDBOX]: summaryPayload, [DAILY_PLAN]: { paidTier: { id: 'g1-pro-tier' } } }, seen),
   );
   expect(seen.filter((url) => url.endsWith(PLAN_PATH))).toEqual([DAILY_PLAN]);
+});
+
+// The plan read is started before the loop, so the first timeout belongs to it and the rest are
+// the base walk.
+function recordAttemptTimeouts() {
+  const observed: number[] = [];
+  const timeout = spyOn(AbortSignal, 'timeout').mockImplementation((milliseconds) => {
+    observed.push(Number(milliseconds));
+    return new AbortController().signal;
+  });
+  return { walk: () => observed.slice(1), restore: () => timeout.mockRestore() };
+}
+
+// The server aborts the whole read at 15s (READ_TIMEOUT_MS in the server's quota cache, which is
+// module-private, so this test is the only thing holding the two numbers together). The walk must
+// fit under that with room for the untimed credential refresh ahead of it, or the last base is
+// never reached when the earlier ones are slow rather than dead — the only reason the list exists.
+const SERVER_READ_TIMEOUT_MS = 15_000;
+
+test('fits every quota attempt inside the server read budget', async () => {
+  const recorder = recordAttemptTimeouts();
+  try {
+    await readGoogleAntigravityQuota(context(), quotaResponder({ [PROD]: summaryPayload }));
+  } finally {
+    recorder.restore();
+  }
+  const walk = recorder.walk();
+  expect(walk).toHaveLength(3);
+  expect(walk.reduce((total, value) => total + value, 0)).toBeLessThan(SERVER_READ_TIMEOUT_MS);
+});
+
+// A custom base is a one-element list, so it gets the whole walk budget instead of a third of it:
+// a slow-but-healthy relay must not be cut short by a divisor meant for the default three.
+test('gives a custom base the whole walk budget', async () => {
+  const base = 'https://relay.example.com';
+  const recorder = recordAttemptTimeouts();
+  try {
+    await readGoogleAntigravityQuota(
+      context({ baseURL: base }),
+      quotaResponder({ [`${base}${QUOTA_PATH}`]: summaryPayload }),
+    );
+  } finally {
+    recorder.restore();
+  }
+  const walk = recorder.walk();
+  expect(walk).toHaveLength(1);
+  expect(walk[0]).toBeLessThan(SERVER_READ_TIMEOUT_MS);
+  expect(walk[0]).toBeGreaterThan(SERVER_READ_TIMEOUT_MS / 3);
 });
