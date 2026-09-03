@@ -1,18 +1,10 @@
 import {
-  assertAliasTargetsInCatalog,
-  capabilityOf,
   type DiagnosticFactory,
-  insertMissingAliases,
   type PluginLogSink,
   type PluginRepository,
-  redactPluginError,
-  sameCapability,
-  structuredEntry,
   validateModelCatalog,
 } from '@aio-proxy/core';
-import { CATALOG_DISCOVERY_TIMEOUT_MS, type DefaultAliasSuggestions, type ModelCatalog } from '@aio-proxy/plugin-sdk';
-import type { ProviderAlias } from '@aio-proxy/types';
-import { isPlainObject } from 'es-toolkit/predicate';
+import { CATALOG_DISCOVERY_TIMEOUT_MS, type ModelCatalog } from '@aio-proxy/plugin-sdk';
 
 import type { CatalogJobDescriptor } from './plugin-runtime';
 
@@ -26,14 +18,6 @@ type ActiveJob = {
   controller: AbortController | undefined;
 };
 
-export type CatalogMergeIdentity = {
-  readonly plugin: string;
-  readonly capability: string;
-  readonly accountRuntimeRevision: number;
-  readonly writtenCatalogRevision: number;
-  readonly defaultAliases?: (catalog: ModelCatalog) => DefaultAliasSuggestions;
-};
-
 export type CatalogSchedulerOptions = {
   readonly repository: PluginRepository;
   readonly diagnostics: DiagnosticFactory;
@@ -43,11 +27,6 @@ export type CatalogSchedulerOptions = {
   readonly catalogRetryMs?: number;
   readonly rebuildRetryMs?: number;
   readonly logger?: PluginLogSink;
-  readonly mergeDefaultAliases?: (
-    providerId: string,
-    catalog: ModelCatalog,
-    identity: CatalogMergeIdentity,
-  ) => Promise<void> | void;
 };
 
 function dueAt(job: CatalogJobDescriptor, now: number, retryMs: number): number | undefined {
@@ -59,36 +38,6 @@ function dueAt(job: CatalogJobDescriptor, now: number, retryMs: number): number 
   const retryDue =
     job.unavailableOccurredAt === undefined ? Number.NEGATIVE_INFINITY : job.unavailableOccurredAt + retryMs;
   return Math.max(now, catalogDue, retryDue);
-}
-
-export function mergeCatalogDefaultAliases(
-  providers: Record<string, unknown>,
-  input: {
-    readonly providerId: string;
-    readonly catalog: ModelCatalog;
-    readonly identity: CatalogMergeIdentity;
-    readonly repository: PluginRepository;
-  },
-): Record<string, unknown> {
-  const { providerId, catalog, identity, repository } = input;
-  const account = repository.readAccount(providerId);
-  if (account === null) return providers;
-  if (account.plugin !== identity.plugin || account.capability !== identity.capability) return providers;
-  if (account.runtimeRevision !== identity.accountRuntimeRevision) return providers;
-  if (repository.listPendingAccountOperations().some((operation) => operation.providerId === providerId)) {
-    return providers;
-  }
-  const stored = repository.readCatalog(providerId);
-  if (stored === null || stored.revision !== identity.writtenCatalogRevision) return providers;
-  const raw = identity.defaultAliases?.(catalog);
-  if (raw === undefined) return providers;
-  const suggestions = assertAliasTargetsInCatalog(raw, catalog);
-  const entry = structuredEntry(providers[providerId]);
-  if (entry === null || !sameCapability(capabilityOf(entry), identity)) return providers;
-  const existingAlias = isPlainObject(entry['alias']) ? (entry['alias'] as ProviderAlias) : {};
-  const alias = insertMissingAliases(existingAlias, suggestions, entry['models']);
-  if (alias === existingAlias) return providers;
-  return { ...providers, [providerId]: { ...entry, alias } };
 }
 
 export class CatalogScheduler {
@@ -214,29 +163,6 @@ export class CatalogScheduler {
     if (swapped?.ok !== true || catalog === undefined) {
       this.#scheduleCatalogRetry(active);
       return;
-    }
-    const merge = this.#options.mergeDefaultAliases;
-    if (merge !== undefined && active.descriptor.defaultAliases !== undefined) {
-      try {
-        await merge(active.descriptor.providerId, catalog, {
-          plugin: active.descriptor.plugin,
-          capability: active.descriptor.capability,
-          accountRuntimeRevision: active.descriptor.accountRuntimeRevision,
-          writtenCatalogRevision: swapped.revision,
-          defaultAliases: active.descriptor.defaultAliases,
-        });
-      } catch (error) {
-        this.#options.logger?.({
-          event: 'plugin.default-aliases.merge.failed',
-          code: 'PROVIDER_CONFIG_INVALID',
-          context: {
-            plugin: active.descriptor.plugin,
-            capability: active.descriptor.capability,
-            providerId: active.descriptor.providerId,
-          },
-          error: redactPluginError(error),
-        });
-      }
     }
     try {
       await this.#options.rebuild('catalog');

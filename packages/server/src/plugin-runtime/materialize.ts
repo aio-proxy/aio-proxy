@@ -1,4 +1,4 @@
-import { type StoredCatalog, validateModelCatalog } from '@aio-proxy/core';
+import { pluginDefaultAliases, type StoredCatalog, validateModelCatalog } from '@aio-proxy/core';
 import type { AccountContext, CredentialPort } from '@aio-proxy/plugin-sdk';
 import { type Diagnostic, providerLoginCommand } from '@aio-proxy/types';
 
@@ -122,7 +122,12 @@ async function createRuntimeMaterialization(
         }),
       ),
     );
-    const provider = createRuntimeProvider(config, result, storedCatalog.catalog);
+    const provider = createRuntimeProvider(
+      config,
+      result,
+      storedCatalog.catalog,
+      pluginDefaultAliases(adapter, storedCatalog.catalog),
+    );
     const cacheEntry = { identity, provider, credentials, fetch };
     return { provider, summary: persistedSummary(provider, storedCatalog), state, catalogJob, cacheEntry };
   } catch (error) {
@@ -204,7 +209,6 @@ export async function materializePluginProvider(
       },
       adapter.quota !== undefined,
     );
-  const defaultAliases = adapter.catalog.defaultAliases;
   const catalogJobFor = (credentials: CredentialPort<unknown>): CatalogJobDescriptor => ({
     providerId: config.id,
     plugin: account.plugin,
@@ -213,7 +217,6 @@ export async function materializePluginProvider(
     policy: adapter.catalog.policy,
     stored: storedCatalog,
     ...(unavailable === undefined ? {} : { unavailableOccurredAt: Date.parse(unavailable.occurredAt) }),
-    ...(defaultAliases === undefined ? {} : { defaultAliases }),
     discover: (signal) =>
       adapter.catalog.discover({
         credentials: credentials as never,
@@ -227,6 +230,7 @@ export async function materializePluginProvider(
     return catalogUnavailableMaterialization(options, unavailable, persistedSummary, catalogJobFor, createCredentials);
   }
 
+  const defaults = pluginDefaultAliases(adapter, storedCatalog.catalog);
   const identity = runtimeIdentity({
     packageName: config.plugin,
     version: pluginVersion(plugins, config.plugin),
@@ -250,7 +254,7 @@ export async function materializePluginProvider(
       options.previous?.identity === identity
         ? {
             ...options.previous,
-            provider: withRoutingConfig(options.previous.provider, config, storedCatalog.catalog),
+            provider: withRoutingConfig(options.previous.provider, config, storedCatalog.catalog, defaults),
           }
         : undefined;
     return {
@@ -262,7 +266,7 @@ export async function materializePluginProvider(
   const credentials = options.previous?.identity === identity ? options.previous.credentials : createCredentials();
   const catalogJob = catalogJobFor(credentials);
   if (options.previous?.identity === identity) {
-    const provider = withRoutingConfig(options.previous.provider, config, storedCatalog.catalog);
+    const provider = withRoutingConfig(options.previous.provider, config, storedCatalog.catalog, defaults);
     const cacheEntry = { ...options.previous, provider };
     return { provider, summary: persistedSummary(provider, storedCatalog), state, catalogJob, cacheEntry };
   }

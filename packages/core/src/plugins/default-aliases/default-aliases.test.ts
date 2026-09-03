@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 
 import type { ModelCatalog, OAuthAdapter } from '@aio-proxy/plugin-sdk';
 
-import { assertAliasTargetsInCatalog, insertMissingAliases, validatedDefaultAliases } from './default-aliases';
+import { pluginDefaultAliases } from './default-aliases';
 
 const catalog = (): ModelCatalog => ({
   language: [{ id: 'wire-low' }, { id: 'wire-high' }],
@@ -13,93 +13,67 @@ const catalog = (): ModelCatalog => ({
   reranking: [],
 });
 
-test('insertMissingAliases keeps existing keys byte-identical and inserts only missing keys', () => {
-  const existing = { model: 'edited', preserve: true as const };
-  const extraBase = { model: 'keep-me', variants: [{ when: { effort: 'high' as const }, model: 'wire-high' }] };
-  const base = { logical: existing, extra: extraBase };
-  const suggestedNew = { model: 'wire-low', preserve: false as const };
-  const result = insertMissingAliases(
-    base,
-    {
-      logical: { model: 'suggested' },
-      extra: { model: 'mutated' },
-      fresh: suggestedNew,
-    },
-    undefined,
-  );
-
-  expect(result.logical).toBe(existing);
-  expect(result.extra).toBe(extraBase);
-  expect(result.fresh).toBe(suggestedNew);
-  expect(result).not.toBe(base);
-});
-
-test('insertMissingAliases returns the same base object when every suggestion key already exists', () => {
-  const base = { logical: { model: 'edited' } };
-  expect(insertMissingAliases(base, { logical: { model: 'suggested' } }, undefined)).toBe(base);
-  expect(insertMissingAliases(base, {}, undefined)).toBe(base);
-});
-
-test('insertMissingAliases treats an empty or unusable models value as no whitelist', () => {
-  const base = {};
-  const suggestions = { fresh: { model: 'anything' } };
-  // Empty means "no restriction" everywhere else in the codebase; a filter that read it as "expose
-  // nothing" would stop seeding aliases for every provider that has no whitelist at all.
-  expect(insertMissingAliases(base, suggestions, [])).toEqual(suggestions);
-  expect(insertMissingAliases(base, suggestions, undefined)).toEqual(suggestions);
-  expect(insertMissingAliases(base, suggestions, 'not-an-array')).toEqual(suggestions);
-});
-
-test('assertAliasTargetsInCatalog accepts array and record variants whose targets exist', () => {
-  const parsed = assertAliasTargetsInCatalog(
-    {
-      arrayed: {
-        model: 'wire-low',
-        variants: [{ when: { effort: 'high' }, model: 'wire-high' }],
-      },
-      recorded: {
-        model: 'wire-low',
-        variants: { high: { model: 'wire-high' } },
-      },
-    },
-    catalog(),
-  );
-
-  expect(parsed.arrayed?.model).toBe('wire-low');
-  expect(parsed.recorded?.model).toBe('wire-low');
-});
-
-test('assertAliasTargetsInCatalog rejects missing model and variant targets', () => {
-  expect(() => assertAliasTargetsInCatalog({ logical: { model: 'missing' } }, catalog())).toThrow(
-    'default alias target',
-  );
-  expect(() =>
-    assertAliasTargetsInCatalog(
-      {
-        logical: {
+test('pluginDefaultAliases keeps catalog-valid entries and drops bad neighbors', () => {
+  const adapter = {
+    catalog: {
+      defaultAliases: () => ({
+        good: { model: 'wire-low' },
+        also: { model: 'wire-high', variants: { high: { model: 'wire-high' } } },
+        missing: { model: 'gone' },
+        broken: true,
+        variantMissing: {
           model: 'wire-low',
           variants: [{ when: { effort: 'high' }, model: 'missing-high' }],
         },
-      },
-      catalog(),
-    ),
-  ).toThrow('default alias target');
-});
-
-test('validatedDefaultAliases wraps adapter suggestions and leaves a missing hook undefined', () => {
-  const seen: ModelCatalog[] = [];
-  const adapter = {
-    catalog: {
-      defaultAliases: (input: ModelCatalog) => {
-        seen.push(input);
-        return { logical: { model: 'wire-low' } };
-      },
+      }),
     },
   } as OAuthAdapter;
 
-  expect(validatedDefaultAliases(adapter, catalog())).toEqual({
-    logical: { model: 'wire-low', preserve: false },
+  expect(pluginDefaultAliases(adapter, catalog())).toEqual({
+    good: { model: 'wire-low', preserve: false },
+    also: {
+      model: 'wire-high',
+      preserve: false,
+      variants: [{ when: { effort: 'high' }, model: 'wire-high', preserve: false }],
+    },
   });
-  expect(seen).toEqual([catalog()]);
-  expect(validatedDefaultAliases({ catalog: {} } as OAuthAdapter, catalog())).toBeUndefined();
+});
+
+test('pluginDefaultAliases treats a throwing hook or missing hook as empty', () => {
+  expect(pluginDefaultAliases({ catalog: {} } as OAuthAdapter, catalog())).toBeUndefined();
+  expect(
+    pluginDefaultAliases(
+      {
+        catalog: {
+          defaultAliases: () => {
+            throw new Error('boom');
+          },
+        },
+      } as OAuthAdapter,
+      catalog(),
+    ),
+  ).toBeUndefined();
+});
+
+test('pluginDefaultAliases normalizes names and drops reserved or blank keys', () => {
+  const adapter = {
+    catalog: {
+      defaultAliases: () => ({
+        ' mini': { model: 'wire-low' },
+        mini: { model: 'wire-high' },
+        ' ': { model: 'wire-low' },
+        '*': { model: 'wire-low' },
+      }),
+    },
+  } as OAuthAdapter;
+
+  expect(pluginDefaultAliases(adapter, catalog())).toEqual({
+    mini: { model: 'wire-low', preserve: false },
+  });
+});
+
+test('pluginDefaultAliases ignores a non-object hook return', () => {
+  expect(
+    pluginDefaultAliases({ catalog: { defaultAliases: () => ['logical'] } } as unknown as OAuthAdapter, catalog()),
+  ).toBeUndefined();
 });

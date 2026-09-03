@@ -207,11 +207,11 @@ describe('model routing inventory', () => {
     expect(modelIds).not.toContain('sdk-direct');
     expect(modelIds).toContain('oauth-alias');
     expect(modelIds).toContain('oauth-kept');
-    expect(modelIds).toContain('stale-alias');
     expect(modelIds).toContain('oauth-current');
     expect(modelIds).toContain('broken-alias');
     expect(modelIds).toContain('unknown-model');
     expect(modelIds).not.toContain('gone-model');
+    expect(modelIds).not.toContain('stale-alias');
 
     expect(provider(response, 'api-alias', 'disabled-api')).toMatchObject({
       id: 'disabled-api',
@@ -245,11 +245,6 @@ describe('model routing inventory', () => {
       kind: 'oauth',
       enabled: false,
       effective: { eligible: false, share: null },
-    });
-    expect(provider(response, 'stale-alias', 'unavailable-oauth')).toMatchObject({
-      enabled: true,
-      state: unavailable,
-      effective: { eligible: false },
     });
     expect(provider(response, 'oauth-current', 'unavailable-oauth').effective.eligible).toBe(false);
     expect(provider(response, 'broken-alias', 'broken-oauth')).toMatchObject({
@@ -294,6 +289,51 @@ describe('model routing inventory', () => {
     expect(zeroOnly.eligibleProviderCount).toBe(0);
     expect(zeroOnly.tiers).toEqual([]);
     expect(provider(response, 'zero-only', 'zero').effective.eligible).toBe(false);
+  });
+
+  test('hides denylisted OAuth catalog ids from the routing board', async () => {
+    const rawRecord = structuredClone(authoredRecord) as Record<string, unknown>;
+    const providers = rawRecord['providers'] as Record<string, unknown>;
+    providers['disabled-oauth'] = {
+      ...(providers['disabled-oauth'] as Record<string, unknown>),
+      excludedModels: ['oauth-kept'],
+    };
+    const config = parseRuntimeConfig(rawRecord);
+    const response = await assembleRoutingInventory({
+      rawRecord,
+      config,
+      summaries: summariesFrom(config, {
+        'unavailable-oauth': unavailable,
+        'broken-oauth': unavailable,
+      }),
+      repository: catalogRepository(),
+      writable: true,
+    });
+
+    const modelIds = response.models.map((entry) => entry.modelId);
+    expect(modelIds).not.toContain('oauth-kept');
+    expect(modelIds).not.toContain('oauth-alias');
+  });
+
+  test('includes inherited plugin default aliases on the routing board', async () => {
+    const rawRecord = structuredClone(authoredRecord) as Record<string, unknown>;
+    const config = parseRuntimeConfig(rawRecord);
+    const response = await assembleRoutingInventory({
+      rawRecord,
+      config,
+      summaries: summariesFrom(config, {
+        'unavailable-oauth': unavailable,
+        'broken-oauth': unavailable,
+      }),
+      repository: catalogRepository(),
+      writable: true,
+      pluginDefaults: (provider) =>
+        provider.id === 'disabled-oauth' ? { mini: { model: 'oauth-kept', preserve: false } } : undefined,
+    });
+
+    const modelIds = response.models.map((entry) => entry.modelId);
+    expect(modelIds).toContain('mini');
+    expect(provider(response, 'mini', 'disabled-oauth')).toMatchObject({ id: 'disabled-oauth', kind: 'oauth' });
   });
 
   test('keeps remaining models when one OAuth catalog is unreadable', async () => {

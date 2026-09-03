@@ -3,7 +3,9 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { npmPackageCacheDir } from '@aio-proxy/core';
+import { createPluginRepository, npmPackageCacheDir } from '@aio-proxy/core';
+import { openDb } from '@aio-proxy/core/db';
+import type { ModelCatalog } from '@aio-proxy/plugin-sdk';
 import { ConfigSchema, ProviderProtocol } from '@aio-proxy/types';
 
 import { createServerState } from '#server-test-lifecycle';
@@ -62,11 +64,6 @@ describe('draft Provider catalog and test routes', () => {
         },
       }),
       dbHome: directory,
-      // The two lists MUST differ: `models` is the runtime's already-filtered SAVED
-      // whitelist, `upstreamMetadata` keys are the full discovered catalog, and the gate
-      // must read the latter. Make them equal and `Object.keys(runtime.upstreamMetadata)`
-      // and `runtime.models` become indistinguishable, so nothing catches a gate wired to
-      // the saved whitelist — exactly the unsaved-whitelist-edit case this supports.
       providerInstances: [
         {
           id: 'saved-oauth',
@@ -1124,7 +1121,7 @@ describe('draft Provider catalog and test routes', () => {
     const response = await routes.request(
       '/providers/draft/test',
       jsonRequest({
-        draft: { kind: 'oauth', id: 'saved-oauth', enabled: true, proxy: null, models: [] },
+        draft: { kind: 'oauth', id: 'saved-oauth', enabled: true, proxy: null, excludedModels: [] },
         persistedProviderId: 'saved-oauth',
         model: 'disc-a',
       }),
@@ -1134,15 +1131,14 @@ describe('draft Provider catalog and test routes', () => {
     expect(probedModel).toBe('disc-a');
   });
 
-  // The gate reads the DISCOVERED catalog with the DRAFT's whitelist, not the saved
+  // The gate reads the discovered catalog with the DRAFT denylist, not the saved
   // `runtime.models` (which is only ['disc-a']). Swap the implementation to
-  // `runtime.models` and this is the test that goes red: an unsaved whitelist edit
-  // naming a discovered-but-not-yet-saved model must be testable before saving.
-  test('an oauth draft whitelist beats the saved one for a discovered model', async () => {
+  // `runtime.models` and this is the test that goes red.
+  test('an oauth draft denylist does not hide a discovered model it omits', async () => {
     const response = await routes.request(
       '/providers/draft/test',
       jsonRequest({
-        draft: { kind: 'oauth', id: 'saved-oauth', enabled: true, proxy: null, models: ['disc-b'] },
+        draft: { kind: 'oauth', id: 'saved-oauth', enabled: true, proxy: null, excludedModels: ['disc-a'] },
         persistedProviderId: 'saved-oauth',
         model: 'disc-b',
       }),
@@ -1152,16 +1148,11 @@ describe('draft Provider catalog and test routes', () => {
     expect(probedModel).toBe('disc-b');
   });
 
-  // The gate's other direction, and the one that matters for exposure: a non-empty draft whitelist
-  // must RESTRICT. Kills the mutant that drops the whitelist and gates on the discovered catalog alone
-  // (`exposedModelIds(catalogIds, undefined)`), which is otherwise green on every oauth test here —
-  // the empty-whitelist case passes via "whole catalog" and the unknown-model case still 400s on
-  // catalog membership. `disc-b` is discovered, so only the whitelist can reject it.
-  test('an oauth draft whitelist restricts a discovered model it omits', async () => {
+  test('an oauth draft denylist hides a discovered model it lists', async () => {
     const response = await routes.request(
       '/providers/draft/test',
       jsonRequest({
-        draft: { kind: 'oauth', id: 'saved-oauth', enabled: true, proxy: null, models: ['disc-a'] },
+        draft: { kind: 'oauth', id: 'saved-oauth', enabled: true, proxy: null, excludedModels: ['disc-b'] },
         persistedProviderId: 'saved-oauth',
         model: 'disc-b',
       }),
@@ -1171,11 +1162,11 @@ describe('draft Provider catalog and test routes', () => {
     expect(probedModel).toBeUndefined();
   });
 
-  test('an oauth draft with an empty whitelist can test any discovered model, but not an unknown one', async () => {
+  test('an oauth draft with an empty denylist can test any discovered model, but not an unknown one', async () => {
     const response = await routes.request(
       '/providers/draft/test',
       jsonRequest({
-        draft: { kind: 'oauth', id: 'saved-oauth', enabled: true, proxy: null, models: [] },
+        draft: { kind: 'oauth', id: 'saved-oauth', enabled: true, proxy: null, excludedModels: [] },
         persistedProviderId: 'saved-oauth',
         model: 'not-discovered',
       }),
@@ -1208,7 +1199,7 @@ describe('draft Provider catalog and test routes', () => {
     const response = await routes.request(
       '/providers/draft/test',
       jsonRequest({
-        draft: { kind: 'oauth', id: 'fresh-oauth', enabled: true, proxy: null, models: [] },
+        draft: { kind: 'oauth', id: 'fresh-oauth', enabled: true, proxy: null, excludedModels: [] },
         model: 'disc-a',
       }),
     );
@@ -1219,3 +1210,91 @@ describe('draft Provider catalog and test routes', () => {
     expect(probedModel).toBeUndefined();
   });
 });
+
+describe('oauth draft test stored catalog', () => {
+  test('re-enabling a saved denylist id is testable before save', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'aio-dashboard-oauth-draft-catalog-'));
+    const database = openDb({ home: directory });
+    const repository = createPluginRepository(database.sqlite);
+    seedOAuthCatalog(repository, 'saved-oauth', ['disc-a', 'disc-b']);
+    let probed: string | undefined;
+    const state = await createServerState({
+      config: ConfigSchema.parse({
+        providers: {
+          'saved-oauth': {
+            kind: 'oauth',
+            plugin: '@example/oauth',
+            capability: 'default',
+            excludedModels: ['disc-b'],
+          },
+        },
+      }),
+      dbHome: directory,
+      pluginRepository: repository,
+      providerInstances: [
+        {
+          id: 'saved-oauth',
+          kind: 'oauth',
+          enabled: true,
+          models: ['disc-a'],
+          upstreamMetadata: { 'disc-a': {} },
+          model: {
+            invoke: async function* (input: { readonly modelId: string }) {
+              probed = input.modelId;
+              yield { type: 'text-delta', delta: 'pong' };
+            },
+          },
+        } as never,
+      ],
+    });
+    const routes = createDashboardRoutes(state, disabledDashboardAuthentication);
+
+    try {
+      const response = await routes.request(
+        '/providers/draft/test',
+        jsonRequest({
+          draft: { kind: 'oauth', id: 'saved-oauth', enabled: true, proxy: null, excludedModels: [] },
+          persistedProviderId: 'saved-oauth',
+          model: 'disc-b',
+        }),
+      );
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ ok: true });
+      expect(probed).toBe('disc-b');
+    } finally {
+      state.close();
+      database.close();
+      rmSync(directory, { force: true, recursive: true });
+    }
+  });
+});
+
+function seedOAuthCatalog(
+  repository: ReturnType<typeof createPluginRepository>,
+  providerId: string,
+  models: readonly string[],
+) {
+  const catalog: ModelCatalog = {
+    language: models.map((id) => ({ id })),
+    image: [],
+    embedding: [],
+    speech: [],
+    transcription: [],
+    reranking: [],
+  };
+  const operation = repository.stageAccountOperation({
+    kind: 'create',
+    targetDigest: `create:${providerId}`,
+    account: {
+      providerId,
+      plugin: '@example/oauth',
+      capability: 'default',
+      fingerprint: `${providerId}@example.com`,
+      options: {},
+      secrets: {},
+      credential: { token: 'secret' },
+      catalog: { kind: 'replace', value: { catalog, refreshedAt: Date.now() } },
+    },
+  });
+  repository.completeAccountOperation(operation.operationId);
+}

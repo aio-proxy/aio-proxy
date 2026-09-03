@@ -2,22 +2,14 @@ import type {
   AuthorizationPort,
   ConfigSpec,
   LocalizedText,
-  ModelCatalog,
   OAuthAdapter,
   OAuthLoginResult,
   RuntimeFetch,
 } from '@aio-proxy/plugin-sdk';
-import type { OAuthProviderMutationBody, ProviderAlias, ProviderTransforms } from '@aio-proxy/types';
-import { isPlainObject } from 'es-toolkit/predicate';
+import type { AuthoredOAuthAlias, OAuthProviderMutationBody, ProviderTransforms } from '@aio-proxy/types';
 
 import { AtomicConfigCommitUncertainError, type AtomicConfigFile } from '../config-file';
-import { insertMissingAliases, validatedDefaultAliases } from '../default-aliases';
-import {
-  collectSecretStrings,
-  type DiagnosticFactory,
-  type PluginLogSink,
-  redactPluginError,
-} from '../diagnostic/index';
+import { type DiagnosticFactory, type PluginLogSink } from '../diagnostic/index';
 import type { PluginRegistry } from '../registry';
 import type { PendingAccountOperation, PluginRepository } from '../repository/index';
 import {
@@ -39,12 +31,7 @@ import { preflight } from './login/preflight';
 import { type StageState, stageAccountWrite } from './login/stage';
 import { safeSupersededDiagnostic } from './recovery';
 import {
-  capabilityOf,
-  type ConfigRecord,
   inMemoryCredentialPort,
-  providerRecord,
-  sameCapability,
-  structuredEntry,
   validatedAccountOptions,
   validatedLoginResult,
   validateStagedOAuthWrite,
@@ -65,8 +52,8 @@ export type OAuthProviderPatch = {
   readonly priority?: number | undefined;
   readonly weight: number | undefined;
   readonly proxy?: OAuthProviderMutationBody['proxy'];
-  readonly alias: ProviderAlias | undefined;
-  readonly models?: readonly string[] | undefined;
+  readonly alias: AuthoredOAuthAlias | undefined;
+  readonly excludedModels?: readonly string[] | undefined;
   readonly transforms?: ProviderTransforms | undefined;
 };
 export type OAuthAccountWriteOptions = {
@@ -267,56 +254,5 @@ async function persistOAuthAccount(input: {
     throw error;
   }
   options.repository.completeAccountOperation(staged.operationId);
-  if (staged.kind === 'update' && discovered.kind === 'success') {
-    try {
-      const merge = () =>
-        options.config.transaction(
-          async (current) => {
-            await options.validateProviderCommit?.(initial.capability, current);
-            return mergeInsertedAliases(current, staged.providerId, adapter, discovered.catalog, initial.capability);
-          },
-          { validateCandidate: validateStagedOAuthWrite, signal: deadline.signal },
-        );
-      await (options.coordinateProviderCommit === undefined
-        ? merge()
-        : options.coordinateProviderCommit(initial.capability, merge));
-    } catch (error) {
-      options.logger({
-        event: 'plugin.default-aliases.merge.failed',
-        code: 'PROVIDER_CONFIG_INVALID',
-        context: {
-          plugin: initial.capability.plugin,
-          capability: initial.capability.capability,
-          providerId: staged.providerId,
-        },
-        error: redactPluginError(error, {
-          secretValues: [...collectSecretStrings(rendered.secrets), ...collectSecretStrings(credentials.current())],
-        }),
-      });
-    }
-  }
   return { providerId: staged.providerId };
-}
-
-function mergeInsertedAliases(
-  current: ConfigRecord,
-  providerId: string,
-  adapter: OAuthAdapter,
-  catalog: ModelCatalog,
-  capability: OAuthCapabilityReference,
-): { readonly next: ConfigRecord; readonly result: undefined } {
-  const suggestions = validatedDefaultAliases(adapter, catalog);
-  if (suggestions === undefined) return { next: current, result: undefined };
-  const providers = providerRecord(current);
-  const entry = structuredEntry(providers[providerId]);
-  if (entry === null || !sameCapability(capabilityOf(entry), capability)) {
-    return { next: current, result: undefined };
-  }
-  const existingAlias = isPlainObject(entry['alias']) ? (entry['alias'] as ProviderAlias) : {};
-  const alias = insertMissingAliases(existingAlias, suggestions, entry['models']);
-  if (alias === existingAlias) return { next: current, result: undefined };
-  return {
-    next: { ...current, providers: { ...providers, [providerId]: { ...entry, alias } } },
-    result: undefined,
-  };
 }

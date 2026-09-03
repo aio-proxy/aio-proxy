@@ -131,3 +131,29 @@ test('drops a whitespace-only display name instead of writing it into the config
 
   expect(result['openai']).not.toHaveProperty('name');
 });
+
+test('OAuth PUT that omits alias and excludedModels deletes them instead of restoring previous', () => {
+  const result = replaceProvider(
+    {
+      openai: {
+        kind: 'oauth',
+        alias: { codex: false, mini: { model: 'gpt-5-mini' } },
+        excludedModels: ['o1-preview'],
+      },
+    },
+    'openai',
+    { kind: 'oauth', name: 'Personal' },
+  );
+
+  expect(result['openai']).toEqual({ kind: 'oauth', name: 'Personal' });
+});
+
+test('non-OAuth PUT still restores a previous alias when the client omits it', () => {
+  const alias = { chat: { model: 'gpt-5' } };
+  const result = replaceProvider({ openai: { kind: 'api', alias } }, 'openai', {
+    kind: 'api',
+    protocol: 'openai-compatible',
+  });
+
+  expect(result['openai']).toMatchObject({ alias });
+});

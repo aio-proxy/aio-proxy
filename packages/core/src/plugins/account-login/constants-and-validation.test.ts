@@ -71,18 +71,15 @@ test('malformed providers config prevents delete staging', async () => {
   expect(configOf(state)).toEqual({ plugins: [], providers: 'malformed' });
 });
 
-// A hand-edited `models` on an oauth provider became both active and validated on this branch, so the
-// rejection a user hits must name what to go fix. The bare schema throw said `["models", 0]` and never
-// said which provider, which is unactionable in a config with several.
 test('a rejected staged oauth write names the offending provider id and field', () => {
   const candidate = {
     plugins: [],
     providers: {
-      'my-claude': { kind: 'oauth', plugin: '@example/oauth', capability: 'default', models: [''] },
+      'my-claude': { kind: 'oauth', plugin: '@example/oauth', capability: 'default', excludedModels: [''] },
     },
   };
   expect(() => validateStagedOAuthWrite(candidate)).toThrow(/my-claude/u);
-  expect(() => validateStagedOAuthWrite(candidate)).toThrow(/models/u);
+  expect(() => validateStagedOAuthWrite(candidate)).toThrow(/excludedModels/u);
 });
 
 // `new z.ZodError([...])` is not an `instanceof Error` in Zod 4 and carries no stack, while the error
@@ -93,7 +90,7 @@ test('a rejected staged oauth write throws a real Error that keeps the re-rooted
   const candidate = {
     plugins: [],
     providers: {
-      'my-claude': { kind: 'oauth', plugin: '@example/oauth', capability: 'default', models: [''] },
+      'my-claude': { kind: 'oauth', plugin: '@example/oauth', capability: 'default', excludedModels: [''] },
     },
   };
   let thrown: unknown;
@@ -104,7 +101,7 @@ test('a rejected staged oauth write throws a real Error that keeps the re-rooted
   }
   expect(thrown).toBeInstanceOf(Error);
   expect(thrown).toBeInstanceOf(z.ZodError);
-  expect((thrown as z.ZodError).issues[0]?.path).toEqual(['providers', 'my-claude', 'models', 0]);
+  expect((thrown as z.ZodError).issues[0]?.path).toEqual(['providers', 'my-claude', 'excludedModels', 0]);
 });
 
 test('typed duplicate error contains only canonical guidance', () => {
@@ -118,14 +115,25 @@ test('typed duplicate error contains only canonical guidance', () => {
   });
 });
 
-test('providerEntry keeps the existing models whitelist and lets the patch replace it', () => {
-  const existing = { kind: 'oauth', plugin: 'p', capability: 'c', enabled: true, models: ['a'] };
-  expect(providerEntry('p', 'c', {}, existing, undefined, undefined)['models']).toEqual(['a']);
-  const patch = { name: undefined, enabled: true, weight: undefined, alias: undefined, models: ['b'] };
-  expect(providerEntry('p', 'c', {}, existing, undefined, patch)['models']).toEqual(['b']);
-  // An empty whitelist is the editor's "expose the whole upstream catalog", so it must survive as `[]`
-  // and not be confused with the omitted-field case below.
-  expect(providerEntry('p', 'c', {}, existing, undefined, { ...patch, models: [] })['models']).toEqual([]);
+test('providerEntry drops leftover models and retains excludedModels unless the patch names it', () => {
+  const existing = {
+    kind: 'oauth',
+    plugin: 'p',
+    capability: 'c',
+    enabled: true,
+    models: ['a'],
+    excludedModels: ['hidden'],
+  };
+  expect(providerEntry('p', 'c', {}, existing)['models']).toBeUndefined();
+  expect(providerEntry('p', 'c', {}, existing)['excludedModels']).toEqual(['hidden']);
+  const patch = { name: undefined, enabled: true, weight: undefined, alias: undefined, excludedModels: ['b'] };
+  expect(providerEntry('p', 'c', {}, existing, patch)['excludedModels']).toEqual(['b']);
+  expect(providerEntry('p', 'c', {}, existing, { ...patch, excludedModels: [] })['excludedModels']).toEqual([]);
+  expect(
+    providerEntry('p', 'c', {}, existing, { name: undefined, enabled: true, weight: undefined, alias: undefined })[
+      'excludedModels'
+    ],
+  ).toEqual(['hidden']);
 });
 
 // Kills the mutant that restores any of these to `patch === undefined ? existing?.[k] : patch.k`,
@@ -139,20 +147,21 @@ test('providerEntry retains supported stored fields a patch does not mention and
     weight: 7,
     name: 'Personal',
     alias: { chat: { model: 'a' } },
-    models: ['a'],
+    excludedModels: ['a'],
     proxy: 'http://proxy.example:8080',
     transforms: [{ kind: 'drop-empty-text' }],
     metadata: { a: { name: 'A' } },
   };
   // The shape a partial surface sends: enabled only, every optional field absent.
-  const entry = providerEntry('p', 'c', {}, existing, undefined, { enabled: false } as never);
+  const entry = providerEntry('p', 'c', {}, existing, { enabled: false } as never);
   expect(entry).toMatchObject({
     name: 'Personal',
     alias: { chat: { model: 'a' } },
-    models: ['a'],
+    excludedModels: ['a'],
     proxy: 'http://proxy.example:8080',
     transforms: [{ kind: 'drop-empty-text' }],
   });
+  expect(entry).not.toHaveProperty('models');
   expect(entry).not.toHaveProperty('metadata');
 });
 
@@ -162,7 +171,7 @@ test('providerEntry retains supported stored fields a patch does not mention and
 test('providerEntry treats a blank patched display name as clearing it', () => {
   const existing = { kind: 'oauth', plugin: 'p', capability: 'c', enabled: true, name: 'Personal' };
   const patch = { name: '', enabled: true, weight: undefined, alias: undefined } as never;
-  expect('name' in providerEntry('p', 'c', {}, existing, undefined, patch)).toBe(false);
+  expect('name' in providerEntry('p', 'c', {}, existing, patch)).toBe(false);
 });
 
 // Whitespace-only carries the same intent, and the dashboard's `normalizeProviderFormValue` already
@@ -171,7 +180,7 @@ test('providerEntry treats a blank patched display name as clearing it', () => {
 test('providerEntry treats a whitespace-only patched display name as clearing it', () => {
   const existing = { kind: 'oauth', plugin: 'p', capability: 'c', enabled: true, name: 'Personal' };
   const patch = { name: '   ', enabled: true, weight: undefined, alias: undefined } as never;
-  expect('name' in providerEntry('p', 'c', {}, existing, undefined, patch)).toBe(false);
+  expect('name' in providerEntry('p', 'c', {}, existing, patch)).toBe(false);
 });
 
 // Weight deliberately keeps the clobbering idiom: `{ weight: undefined }` is `{}` after JSON, so an
@@ -185,6 +194,6 @@ test('providerEntry treats a whitespace-only patched display name as clearing it
 test('providerEntry lets a patch clear a stored weight', () => {
   const existing = { kind: 'oauth', plugin: 'p', capability: 'c', enabled: true, weight: 7 };
   const patch = { name: undefined, enabled: true, weight: undefined, alias: undefined };
-  expect('weight' in providerEntry('p', 'c', {}, existing, undefined, patch)).toBe(false);
-  expect(providerEntry('p', 'c', {}, existing, undefined, { ...patch, weight: 3 })['weight']).toBe(3);
+  expect('weight' in providerEntry('p', 'c', {}, existing, patch)).toBe(false);
+  expect(providerEntry('p', 'c', {}, existing, { ...patch, weight: 3 })['weight']).toBe(3);
 });

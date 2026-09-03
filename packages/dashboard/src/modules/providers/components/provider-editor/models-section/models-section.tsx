@@ -13,9 +13,18 @@ import { queryKeys } from '@/lib/query-keys';
 import { useProviderCatalogMutation } from '../../../hooks/use-provider-catalog-mutation';
 import type { ProviderEditorForm } from '../../../hooks/use-provider-editor-form';
 import { addManualModels } from '../../../lib/add-manual-models';
-import { aliasEditorIssues, type AliasRow, type ProviderAlias } from '../../../lib/alias-editor';
-import { exposedModels } from '../../../lib/exposed-models';
-import { applicablePluginAliases, mergePluginAliasRows } from '../../../lib/plugin-alias-suggestions';
+import {
+  aliasEditorIssues,
+  type AliasRow,
+  hideAliasRow,
+  mergeInheritedAliasRows,
+  mintAliasRowId,
+  promoteEditedInheritedRows,
+  type ProviderAlias,
+  restoreAliasRow,
+} from '../../../lib/alias-editor';
+import { exposedModels, oauthEditorExposedModels } from '../../../lib/exposed-models';
+import { applicablePluginAliases } from '../../../lib/plugin-alias-suggestions';
 import { removeModelFromAliases } from '../../../lib/remove-model-from-aliases';
 import type { SectionSummary } from '../../../lib/section-status';
 import { fetchProviderEditView } from '../../../services/providers-service';
@@ -115,135 +124,163 @@ export const ModelsSection: React.FC<ModelsSectionProps> = ({
       statusHint={summary.hint}
       action={<ModelsCatalogAction pending={catalogPending} loaded={catalogLoaded} onClick={loadCatalog} />}
     >
-      <form.Field name="models">
+      <form.Field name={kind === ProviderKind.OAuth ? 'excludedModels' : 'models'}>
         {(modelsField) => (
           <form.Field name="alias">
-            {(aliasField) => {
-              const models: readonly string[] = modelsField.state.value ?? [];
-              const alias: readonly AliasRow[] = aliasField.state.value ?? [];
-              // An empty oauth whitelist exposes the whole discovered catalog at runtime, so the
-              // rows must render checked and unchecking one must narrow that set — not promote
-              // the single survivor. api/ai-sdk get no such substitution.
-              const selected = exposedModels(models, kind === ProviderKind.OAuth ? discovered : undefined);
-              // Filtered against the draft's own whitelist, not `selected`: an empty whitelist
-              // falls back to the whole catalog, which would drop suggestions the save accepts.
-              const applicableAliases = applicablePluginAliases(pluginAliases, models);
-              const whitelist = new Set(selected);
-              // Row order must not depend on which rows are ticked. Listing the whitelist first
-              // re-sorted a row the moment its box was checked, while the ScrollArea kept its scroll
-              // offset — so a catalog row jumped up to the enabled block and slid a different model
-              // under the pointer, where the next click landed. Catalog order is fixed; ids the
-              // catalog does not know (typed by hand) lead it, newest first as `addManualModels`
-              // writes them.
-              const catalogIds = discovered ?? [];
-              const knownToCatalog = new Set(catalogIds);
-              const rowIds = [...selected.filter((id) => !knownToCatalog.has(id)), ...catalogIds];
-              const needle = filter.trim().toLowerCase();
-              const visible = rowIds.filter((id) => needle === '' || id.toLowerCase().includes(needle));
+            {(aliasField) => (
+              <form.Field name="pluginAliasInherit">
+                {(inheritField) => {
+                  const stored: readonly string[] = modelsField.state.value ?? [];
+                  const alias: readonly AliasRow[] = aliasField.state.value ?? [];
+                  const inheritOff = kind === ProviderKind.OAuth && inheritField.state.value === false;
+                  const selected =
+                    kind === ProviderKind.OAuth
+                      ? oauthEditorExposedModels(discovered, stored)
+                      : exposedModels(stored, undefined);
+                  const applicableAliases = applicablePluginAliases(pluginAliases, selected);
+                  const displayAlias =
+                    kind === ProviderKind.OAuth
+                      ? mergeInheritedAliasRows(alias, applicableAliases, selected, inheritOff)
+                      : alias;
+                  const persistAlias = (next: readonly AliasRow[]) =>
+                    aliasField.handleChange(
+                      promoteEditedInheritedRows(next, displayAlias).filter((row) => row.origin !== 'inherited'),
+                    );
+                  const whitelist = new Set(selected);
+                  // Row order must not depend on which rows are ticked. Listing the whitelist first
+                  // re-sorted a row the moment its box was checked, while the ScrollArea kept its scroll
+                  // offset — so a catalog row jumped up to the enabled block and slid a different model
+                  // under the pointer, where the next click landed. Catalog order is fixed; ids the
+                  // catalog does not know (typed by hand) lead it, newest first as `addManualModels`
+                  // writes them.
+                  const catalogIds = discovered ?? [];
+                  const knownToCatalog = new Set(catalogIds);
+                  const rowIds = [...selected.filter((id) => !knownToCatalog.has(id)), ...catalogIds];
+                  const needle = filter.trim().toLowerCase();
+                  const visible = rowIds.filter((id) => needle === '' || id.toLowerCase().includes(needle));
 
-              const commit = (nextIds: readonly string[]) => modelsField.handleChange([...nextIds]);
-              // Front, as `addManualModels` does: one end for both ways a model joins the whitelist.
-              const toggle = (id: string, enabled: boolean) =>
-                commit(enabled ? [id, ...selected] : selected.filter((current) => current !== id));
-              const remove = (id: string) => {
-                // Only whitelisted ids can leave the list — a catalog-only row survives
-                // `discovered`. The row's trash control is disabled on this same predicate; the
-                // guard stays because the cascade below must not run for a row that would remain
-                // on screen, deleting aliases pointing at it.
-                if (!whitelist.has(id)) return;
-                commit(selected.filter((current) => current !== id));
-                aliasField.handleChange(removeModelFromAliases(alias, id));
-              };
+                  const commit = (nextIds: readonly string[]) => modelsField.handleChange([...nextIds]);
+                  const toggle = (id: string, enabled: boolean) => {
+                    if (kind === ProviderKind.OAuth) {
+                      modelsField.handleChange(enabled ? stored.filter((current) => current !== id) : [...stored, id]);
+                      return;
+                    }
+                    commit(enabled ? [id, ...selected] : selected.filter((current) => current !== id));
+                  };
+                  const remove = (id: string) => {
+                    if (kind === ProviderKind.OAuth) return;
+                    if (!whitelist.has(id)) return;
+                    commit(selected.filter((current) => current !== id));
+                    persistAlias(removeModelFromAliases(alias, id));
+                  };
+                  const hideAlias = (id: string) => {
+                    const row = displayAlias.find((item) => item.id === id);
+                    if (row === undefined) return;
+                    if (row.origin === 'inherited') {
+                      persistAlias([...alias, { ...row, id: mintAliasRowId(), origin: 'hidden' }]);
+                      return;
+                    }
+                    persistAlias(hideAliasRow(alias, id));
+                  };
 
-              return (
-                <>
-                  <div className="space-y-3" data-testid="provider-editor-field-models">
-                    <div>
-                      <h3 className="text-sm font-medium">{m['dashboard.providers.form.models_upstream_heading']()}</h3>
-                      <p className="text-xs text-muted-foreground">
-                        {m['dashboard.providers.form.models_upstream_hint']()}
-                      </p>
-                    </div>
-
-                    {rowIds.length === 0 ? (
-                      <Empty className="border" data-testid="models-empty">
-                        <EmptyHeader>
-                          <EmptyMedia variant="icon">
-                            <LayersIcon />
-                          </EmptyMedia>
-                          <EmptyTitle>{m['dashboard.providers.form.models_empty_title']()}</EmptyTitle>
-                          <EmptyDescription>
-                            {m['dashboard.providers.form.models_empty_description']()}
-                          </EmptyDescription>
-                        </EmptyHeader>
-                      </Empty>
-                    ) : (
-                      <>
-                        <div className="flex flex-wrap items-center gap-3">
-                          <InputGroup className="w-full sm:w-64">
-                            <InputGroupAddon>
-                              <SearchIcon />
-                            </InputGroupAddon>
-                            <InputGroupInput
-                              value={filter}
-                              data-testid="models-filter"
-                              aria-label={m['dashboard.providers.editor.models_filter_placeholder']()}
-                              placeholder={m['dashboard.providers.editor.models_filter_placeholder']()}
-                              onChange={(event) => setFilter(event.target.value)}
-                            />
-                          </InputGroup>
-                          <p className="text-sm text-muted-foreground" data-testid="models-count">
-                            {m['dashboard.providers.editor.models_count']({
-                              enabled: selected.length,
-                              total: rowIds.length,
-                            })}
+                  return (
+                    <>
+                      <div className="space-y-3" data-testid="provider-editor-field-models">
+                        <div>
+                          <h3 className="text-sm font-medium">
+                            {m['dashboard.providers.form.models_upstream_heading']()}
+                          </h3>
+                          <p className="text-xs text-muted-foreground">
+                            {kind === ProviderKind.OAuth
+                              ? m['dashboard.providers.form.models_upstream_hint_oauth']()
+                              : m['dashboard.providers.form.models_upstream_hint']()}
                           </p>
                         </div>
 
-                        {/* A loaded catalog is routinely dozens to hundreds of ids, and an unbounded
+                        {rowIds.length === 0 ? (
+                          <Empty className="border" data-testid="models-empty">
+                            <EmptyHeader>
+                              <EmptyMedia variant="icon">
+                                <LayersIcon />
+                              </EmptyMedia>
+                              <EmptyTitle>{m['dashboard.providers.form.models_empty_title']()}</EmptyTitle>
+                              <EmptyDescription>
+                                {m['dashboard.providers.form.models_empty_description']()}
+                              </EmptyDescription>
+                            </EmptyHeader>
+                          </Empty>
+                        ) : (
+                          <>
+                            <div className="flex flex-wrap items-center gap-3">
+                              <InputGroup className="w-full sm:w-64">
+                                <InputGroupAddon>
+                                  <SearchIcon />
+                                </InputGroupAddon>
+                                <InputGroupInput
+                                  value={filter}
+                                  data-testid="models-filter"
+                                  aria-label={m['dashboard.providers.editor.models_filter_placeholder']()}
+                                  placeholder={m['dashboard.providers.editor.models_filter_placeholder']()}
+                                  onChange={(event) => setFilter(event.target.value)}
+                                />
+                              </InputGroup>
+                              <p className="text-sm text-muted-foreground" data-testid="models-count">
+                                {m['dashboard.providers.editor.models_count']({
+                                  enabled: selected.length,
+                                  total: rowIds.length,
+                                })}
+                              </p>
+                            </div>
+
+                            {/* A loaded catalog is routinely dozens to hundreds of ids, and an unbounded
                             list pushed Routing and Advanced so far down the page that the section nav
                             was the only way back. `pr-3` keeps the row's own hover and focus ring clear
                             of the scrollbar gutter. */}
-                        <ScrollArea className="[&_[data-slot=scroll-area-viewport]]:max-h-72">
-                          <div className="space-y-1.5 pr-3" data-testid="models-rows">
-                            {visible.map((id) => (
-                              <ModelRowItem
-                                key={id}
-                                id={id}
-                                enabled={whitelist.has(id)}
-                                onToggle={(enabled) => toggle(id, enabled)}
-                                onRemove={() => remove(id)}
-                              />
-                            ))}
-                          </div>
-                        </ScrollArea>
-                      </>
-                    )}
+                            <ScrollArea className="[&_[data-slot=scroll-area-viewport]]:max-h-72">
+                              <div className="space-y-1.5 pr-3" data-testid="models-rows">
+                                {visible.map((id) => (
+                                  <ModelRowItem
+                                    key={id}
+                                    id={id}
+                                    enabled={whitelist.has(id)}
+                                    onToggle={(enabled) => toggle(id, enabled)}
+                                    onRemove={() => remove(id)}
+                                  />
+                                ))}
+                              </div>
+                            </ScrollArea>
+                          </>
+                        )}
 
-                    <ModelsManualAdd onAdd={(ids) => commit(addManualModels(selected, ids))} />
-                  </div>
+                        {kind === ProviderKind.OAuth ? null : (
+                          <ModelsManualAdd onAdd={(ids) => commit(addManualModels(selected, ids))} />
+                        )}
+                      </div>
 
-                  <ModelAliases
-                    alias={alias}
-                    issues={aliasEditorIssues(alias, models)}
-                    targetOptions={selected}
-                    onAliasChange={(next) => aliasField.handleChange(next)}
-                    onSyncPluginAliases={
-                      applicableAliases === undefined
-                        ? undefined
-                        : () => {
-                            aliasField.handleChange(mergePluginAliasRows(alias, applicableAliases));
-                            toast.add({
-                              type: 'success',
-                              title: m['dashboard.providers.toast.plugin_aliases_synced'](),
-                              description: m['dashboard.providers.toast.plugin_aliases_synced_description'](),
-                            });
-                          }
-                    }
-                  />
-                </>
-              );
-            }}
+                      <ModelAliases
+                        alias={displayAlias}
+                        issues={aliasEditorIssues(displayAlias, selected)}
+                        targetOptions={selected}
+                        onAliasChange={persistAlias}
+                        inheritPluginAliases={
+                          kind === ProviderKind.OAuth ? inheritField.state.value !== false : undefined
+                        }
+                        onInheritPluginAliasesChange={
+                          kind === ProviderKind.OAuth ? (inherit) => inheritField.handleChange(inherit) : undefined
+                        }
+                        pluginDefaultNames={
+                          applicableAliases === undefined ? undefined : new Set(Object.keys(applicableAliases))
+                        }
+                        onHideAlias={kind === ProviderKind.OAuth ? hideAlias : undefined}
+                        onRestoreAlias={
+                          kind === ProviderKind.OAuth ? (id) => persistAlias(restoreAliasRow(alias, id)) : undefined
+                        }
+                      />
+                    </>
+                  );
+                }}
+              </form.Field>
+            )}
           </form.Field>
         )}
       </form.Field>

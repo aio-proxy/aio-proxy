@@ -13,9 +13,9 @@ import { ModelValidationPanel } from '../../components/provider-editor/model-val
 import { ModelsSection } from '../../components/provider-editor/models-section';
 import { RoutingSection } from '../../components/provider-editor/routing-section';
 import { useActiveSection } from '../../hooks/use-active-section';
-import { toAliasRecord } from '../../lib/alias-editor';
+import { editorEffectiveAlias, toAliasRecord } from '../../lib/alias-editor';
 import { ProviderFormMode } from '../../lib/constants';
-import { exposedModels } from '../../lib/exposed-models';
+import { exposedModels, oauthEditorExposedModels } from '../../lib/exposed-models';
 import { EditorFooter } from './editor-footer';
 import { SectionNav } from './section-nav';
 import { type ProviderEditorPageProps, useProviderEditorPage } from './use-provider-editor-page';
@@ -56,8 +56,22 @@ export const ProviderEditorPage: React.FC<ProviderEditorPageProps> = (props) => 
   } = useProviderEditorPage(props);
   const activeId = useActiveSection();
   const locked = mode === ProviderFormMode.Create && kind === ProviderKind.OAuth && !authorized;
-  const models = values.models ?? [];
-  const exposed = exposedModels(models, oauth?.models);
+  const models = values.kind === 'oauth' ? [] : (values.models ?? []);
+  const exposed =
+    kind === ProviderKind.OAuth
+      ? oauthEditorExposedModels(oauth?.models, values.kind === 'oauth' ? values.excludedModels : undefined)
+      : exposedModels(models, oauth?.models);
+  const railAlias =
+    kind === ProviderKind.OAuth
+      ? editorEffectiveAlias(
+          values.alias ?? [],
+          oauth?.pluginAliases,
+          exposed,
+          values.kind === 'oauth' && values.pluginAliasInherit === false,
+        )
+      : values.alias === undefined
+        ? undefined
+        : toAliasRecord(values.alias);
 
   const sections345 = (
     <>
@@ -180,7 +194,7 @@ export const ProviderEditorPage: React.FC<ProviderEditorPageProps> = (props) => 
               <CardContent>
                 <ExposurePanel
                   models={exposed}
-                  alias={values.alias === undefined ? undefined : toAliasRecord(values.alias)}
+                  alias={railAlias}
                   enabled={values.enabled ?? true}
                   warning={sessionWarning}
                 />

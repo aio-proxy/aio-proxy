@@ -157,13 +157,16 @@ test('re-login preserves an edited alias despite catalog suggestions', async () 
   );
 
   expect((configOf(state)['providers'] as Record<string, unknown>)['person']).toMatchObject({
-    alias: { logical: { model: 'edited' }, fresh: { model: 'fresh' } },
+    alias: { logical: { model: 'edited' } },
   });
-  expect(suggestions).toBe(1);
-  expect(suggestedAfterComplete).toBe(true);
+  expect(
+    (configOf(state)['providers'] as Record<string, { alias: Record<string, unknown> }>)['person']?.alias,
+  ).not.toHaveProperty('fresh');
+  expect(suggestions).toBe(0);
+  expect(suggestedAfterComplete).toBe(false);
 });
 
-test('re-login skips a suggestion outside the models whitelist, so the provider stays routable', async () => {
+test('re-login does not persist plugin defaults and drops leftover models', async () => {
   const state = fixture();
   await createAccount(state);
   await state.config.replace((current) => ({
@@ -172,6 +175,7 @@ test('re-login skips a suggestion outside the models whitelist, so the provider 
       person: {
         ...((current['providers'] as Record<string, unknown>)['person'] as object),
         models: ['edited'],
+        excludedModels: ['fresh'],
         alias: { logical: { model: 'edited' } },
       },
     },
@@ -192,8 +196,9 @@ test('re-login skips a suggestion outside the models whitelist, so the provider 
 
   const config = configOf(state);
   const person = (config['providers'] as Record<string, { readonly alias: Record<string, unknown> }>)['person'];
-  // `toEqual`, not `toMatchObject`: the latter allows extra keys, so it would pass with `fresh` inserted.
   expect(person?.alias).toEqual({ logical: { model: 'edited' } });
+  expect(person).not.toHaveProperty('models');
+  expect((person as { excludedModels?: readonly string[] }).excludedModels).toEqual(['fresh']);
   // Routability as the runtime decides it: a poisoned alias would land the whole provider in
   // `invalidProviders`, which is what drops it out of the routable set.
   const parsed = parseRuntimeConfig(config);
@@ -201,7 +206,7 @@ test('re-login skips a suggestion outside the models whitelist, so the provider 
   expect(parsed.providers.map(({ id }) => id)).toEqual(['person']);
 });
 
-test('re-login post-commit merge does not write aliases when the config entry capability no longer matches', async () => {
+test('re-login does not open a second commit to merge plugin aliases', async () => {
   const state = fixture();
   await createAccount(state);
   await state.config.replace((current) => ({
@@ -248,10 +253,10 @@ test('re-login post-commit merge does not write aliases when the config entry ca
   };
   expect(person.capability).toBe('other');
   expect(person.alias).toEqual({ logical: { model: 'edited' } });
-  expect(commits).toBe(2);
+  expect(commits).toBe(1);
 });
 
-test('re-login keeps catalog and credential when post-commit alias merge throws', async () => {
+test('re-login keeps catalog and credential when defaultAliases throws', async () => {
   const state = fixture();
   await createAccount(state, {
     registry: registry({ discover: async () => ({ ...emptyCatalog(), language: [{ id: 'old' }] }) }),
@@ -301,7 +306,7 @@ test('re-login keeps catalog and credential when post-commit alias merge throws'
   expect((configOf(state)['providers'] as Record<string, unknown>)['person']).toMatchObject({
     alias: { logical: { model: 'edited' } },
   });
-  expect(logs.map(({ event }) => event)).toContain('plugin.default-aliases.merge.failed');
+  expect(logs.map(({ event }) => event)).not.toContain('plugin.default-aliases.merge.failed');
 });
 
 test('missing config/account preflight makes no network call and reports cleanup-pending', async () => {

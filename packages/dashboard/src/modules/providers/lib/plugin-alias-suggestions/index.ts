@@ -1,1 +1,1 @@
-export { applicablePluginAliases, mergePluginAliasRows } from './plugin-alias-suggestions';
+export { applicablePluginAliases } from './plugin-alias-suggestions';

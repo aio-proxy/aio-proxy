@@ -107,7 +107,7 @@ export function replaceProvider(
   if (provider['proxy'] === null) delete restored['proxy'];
   if (typeof restored['name'] === 'string' && restored['name'].trim() === '') delete restored['name'];
 
-  if (provider['alias'] === undefined && previous['alias'] !== undefined) {
+  if (previous['kind'] !== 'oauth' && provider['alias'] === undefined && previous['alias'] !== undefined) {
     restored['alias'] = previous['alias'];
   }
 

@@ -7,7 +7,13 @@ import {
   modelRoutes,
 } from '@aio-proxy/core';
 import type { AliasConfig, Config, DashboardProviderSummary, ModelMetadata, Provider } from '@aio-proxy/types';
-import { aliasTargetModels, apiProviderEndpoints, ProviderKind, ProviderProtocol } from '@aio-proxy/types';
+import {
+  aliasTargetModels,
+  apiProviderEndpoints,
+  ProviderKind,
+  ProviderProtocol,
+  resolveOAuthAlias,
+} from '@aio-proxy/types';
 import { uniq } from 'es-toolkit/array';
 
 import { createProviderRequestTransformFetch } from '../provider-request-transform';
@@ -335,8 +341,25 @@ function providerId(provider: Provider): string {
   return provider.id;
 }
 
+function routableConfig(provider: Provider) {
+  if (provider.kind === ProviderKind.OAuth) {
+    const alias = resolveOAuthAlias(provider.alias, undefined);
+    return {
+      id: provider.id,
+      enabled: provider.enabled,
+      ...(Object.keys(alias).length === 0 ? {} : { alias }),
+    };
+  }
+  return {
+    id: provider.id,
+    enabled: provider.enabled,
+    ...(provider.models === undefined || provider.models.length === 0 ? {} : { models: provider.models }),
+    ...(provider.alias === undefined ? {} : { alias: provider.alias }),
+  };
+}
+
 function providerConfigSummary(provider: Provider): ProviderRuntimeSummary {
-  const clientModels = uniq(modelRoutes(provider).map((route) => route.alias));
+  const clientModels = uniq(modelRoutes(routableConfig(provider)).map((route) => route.alias));
   return {
     id: provider.id,
     kind: provider.kind,

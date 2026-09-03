@@ -93,7 +93,7 @@ test('orders Antigravity accounts by Provider priority and preserves equal-tier 
   }
 });
 
-test('attempts an existing alias after catalog refresh removes its target', async () => {
+test('drops an existing alias after catalog refresh removes its target', async () => {
   const home = mkdtempSync(join(tmpdir(), 'aio-proxy-provider-alias-refresh-'));
   const configPath = join(home, 'config.json');
   const handle = openDb({ home });
@@ -153,10 +153,8 @@ test('attempts an existing alias after catalog refresh removes its target', asyn
       source: state,
     });
 
-    expect(response.status).toBe(200);
-    expect(attempts).toEqual([
-      { modelId: 'removed-from-catalog', path: '/v1beta/models/removed-from-catalog:generateContent' },
-    ]);
+    expect(response.status).toBe(404);
+    expect(attempts).toEqual([]);
   } finally {
     state.close();
     handle.close();
