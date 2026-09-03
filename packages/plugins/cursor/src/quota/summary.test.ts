@@ -37,7 +37,7 @@ test('parses billing timestamps into epoch milliseconds', () => {
 });
 
 test('maps the plan, auto, named-model, and on-demand lanes', () => {
-  expect(summaryQuota(fullPayload)).toEqual({
+  expect(summaryQuota(fullPayload)).toStrictEqual({
     items: [
       {
         id: 'plan',
@@ -72,7 +72,7 @@ test('averages the auto and named lanes when no total percent is reported', () =
   const payload = {
     individualUsage: { plan: { autoPercentUsed: 0.36, apiPercentUsed: 25 } },
   };
-  expect(summaryQuota(payload).items[0]).toEqual({
+  expect(summaryQuota(payload).items[0]).toStrictEqual({
     id: 'plan',
     displayName: { default: 'Plan usage', 'zh-Hans': '套餐用量' },
     remainingRatio: 0.8732,
@@ -81,17 +81,17 @@ test('averages the auto and named lanes when no total percent is reported', () =
 
 // Enterprise and Team accounts get no `plan` block at all; without these rungs their ring is empty.
 test('falls back to the personal cap and then the shared team pool', () => {
-  expect(summaryQuota({ individualUsage: { overall: { used: 2500, limit: 10_000 } } }).items).toEqual([
+  expect(summaryQuota({ individualUsage: { overall: { used: 2500, limit: 10_000 } } }).items).toStrictEqual([
     { id: 'plan', displayName: { default: 'Plan usage', 'zh-Hans': '套餐用量' }, remainingRatio: 0.75 },
   ]);
-  expect(summaryQuota({ teamUsage: { pooled: { used: 3000, limit: 4000 } } }).items).toEqual([
+  expect(summaryQuota({ teamUsage: { pooled: { used: 3000, limit: 4000 } } }).items).toStrictEqual([
     { id: 'plan', displayName: { default: 'Plan usage', 'zh-Hans': '套餐用量' }, remainingRatio: 0.25 },
   ]);
 });
 
 // A zero limit must not render as a full or empty bar; the lane simply does not exist.
 test('drops lanes with a missing or non-positive limit', () => {
-  expect(summaryQuota({ individualUsage: { plan: { used: 5, limit: 0 }, onDemand: { used: 400 } } })).toEqual({
+  expect(summaryQuota({ individualUsage: { plan: { used: 5, limit: 0 }, onDemand: { used: 400 } } })).toStrictEqual({
     items: [],
   });
 });

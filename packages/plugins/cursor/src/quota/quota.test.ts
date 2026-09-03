@@ -102,7 +102,7 @@ test('reports the plan lane and the weekly Grok Bot allowance', async () => {
     fetch: responder({ sand: async () => Response.json(sandBody) }),
   });
 
-  expect(snapshot).toEqual({
+  expect(snapshot).toStrictEqual({
     items: [
       {
         id: 'plan',
@@ -130,12 +130,12 @@ test('keeps the monthly items when the Grok Bot read fails or reports no allowan
       },
     }),
   });
-  expect(failed.items.map((entry) => entry.id)).toEqual(['plan']);
+  expect(failed.items.map((entry) => entry.id)).toStrictEqual(['plan']);
 
   const noAllowance = await readCursorQuota(context(), {
     fetch: responder({ sand: async () => Response.json({ ...sandBody, hasNonZeroIncludedLimit: false }) }),
   });
-  expect(noAllowance.items.map((entry) => entry.id)).toEqual(['plan']);
+  expect(noAllowance.items.map((entry) => entry.id)).toStrictEqual(['plan']);
 });
 
 // Credentials stored before the optional `subject` field existed must still work.
