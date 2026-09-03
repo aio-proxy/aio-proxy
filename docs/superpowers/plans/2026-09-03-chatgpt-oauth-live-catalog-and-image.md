@@ -435,7 +435,7 @@ Puts `gpt-image-2` into `catalog.image` so `buildModelCapabilityIndex` grants it
 - Consumes: `discoverOpenAIChatGPTModels(credentials, signal, fetch?)` from Task 1.
 - Produces: `CHATGPT_IMAGE_MODELS: readonly ModelDescriptor[]` exported from `./catalog`, containing exactly one descriptor with `id: 'gpt-image-2'`.
 - `ModelDescriptor` is `{ id: string; displayName?: string; extra?: JsonValue; modelMetadata?: DescriptorModelMetadata }`, where `DescriptorModelMetadata` is `Pick<ModelMetadataInput, 'name' | 'description' | 'limit' | 'capabilities' | 'cost'>`. `capabilities.modalities` is `{ input?: Modality[]; output?: Modality[] }` and `Modality` is `'text' | 'audio' | 'image' | 'video' | 'pdf'`.
-- `extra: { protocol: 'openai-image' }` is how a descriptor declares its wire protocol. The host reads it in `modelMetadataRecord` (`packages/server/src/plugin-runtime/catalog.ts:98`); language descriptors own `targetProtocol`, so a non-language descriptor's protocol never redirects language dispatch.
+- The image descriptor carries **no** `extra.protocol`, and must not. `extra: { protocol }` is how a descriptor declares its wire protocol, and the host does read it in `modelMetadataRecord` (`packages/server/src/plugin-runtime/catalog.ts:100-105`) — but it surfaces it only as `model.targetProtocol` (`capabilities.ts:178`), inside the `catalog.language.length > 0` branch. All three `targetProtocol` callers are language-path (`model-prepare.ts:62`, `token-count.ts:227`, `provider-draft-operations.ts:162` — the last unreachable for OAuth providers per its own comment at `:155-158`), and an image-only id can never be a language candidate anyway: `capability-index.ts:46-48` sets `catalogNonLanguage`, suppressing synthesized language. Nothing else reads it — `projectCodexMetadata` (`codex-assembly.ts:68-88`) reads only `description`/`capabilities`, and `model-resolution.ts` reads `capabilities`/`limit`/`cost`. **Raw image dispatch keys on the INBOUND protocol**, not the catalog: `dispatchImageCandidate` passes `ctx.adapter.protocol` (`image.ts:24`), and the plugin's raw resolver matches on that argument, never on `extra`. A protocol on an image-only descriptor would therefore be inert — consistent with `catalog.ts:114-118`, which already states a non-language descriptor's protocol "must not survive".
 - Membership in `catalog.image` is what grants the routable `image` capability: `buildModelCapabilityIndex` adds `'image'` unconditionally for every `catalog.image` id (`capability-index.ts:31,39`), so `modelMetadata` is NOT load-bearing for routing — delete it and `supportsImage` is still `true`. `metadataHasImageOutput` (line 41) is a redundant second path here, and `catalogOnlyImageOutput` cannot apply at all because `resolveCatalogModalities` skips OAuth providers by design (`resolve-catalog-modalities.ts:52-65`). Declare the modalities anyway for two other reasons: `modalities.input` reaches users as `/v1/models` `capabilities.image_input` (`model-capabilities.ts:59,69`) and the agent catalog's `input` field (`agent-catalog.ts:25`), and declaring `output` suppresses the models.dev fallback layer on non-OAuth paths. Do not assert the modalities as if routing depended on them — that assertion would pass even if the feature regressed.
 - `descriptor.setup` takes **two** arguments — `(api, options)` — so the test helper must call `descriptor.setup({ oauth: { register } }, undefined)`. The `adapterFrom` helper below mirrors `packages/plugins/github-copilot/src/plugin.test.ts:154-170`.
 - `ModelModalitiesSchema` is `.loose()`, so `modelMetadata.capabilities.modalities` accepts `{ input, output }` with `Modality = 'text' | 'audio' | 'image' | 'video' | 'pdf'`.
@@ -502,16 +502,14 @@ test('discovery exposes gpt-image-2 as an image model alongside the language cat
   });
 
   expect(catalog.language.map(({ id }) => id)).toEqual(['gpt-5.5']);
-  // `extra.protocol` is pinned as a literal because the host reads it into
-  // RuntimeModelMetadata.protocol and the raw resolver dispatches on it, so a typo
-  // here is invisible until an image request picks the wrong transport. Membership
-  // in `catalog.image` is what grants the routable `image` capability; the
-  // modalities serve /v1/models `image_input` and suppress the models.dev fallback.
+  // Membership in `catalog.image` is what grants the routable `image` capability;
+  // the modalities serve /v1/models `image_input` and suppress the models.dev
+  // fallback. Strict equality also pins the absence of `extra.protocol`: raw image
+  // dispatch matches on the inbound protocol, so a protocol here has no reader.
   expect(catalog.image).toEqual([
     {
       id: 'gpt-image-2',
       displayName: 'GPT Image 2',
-      extra: { protocol: 'openai-image' },
       modelMetadata: {
         capabilities: { modalities: { input: ['text', 'image'], output: ['image'] } },
       },
@@ -543,12 +541,16 @@ Append to the end of `packages/plugins/openai-chatgpt/src/catalog.ts`:
  *
  * The upstream `model` field is decorative: every value tested returned the same
  * gpt-image 2.0 output. The id exists so users have something to route to.
+ *
+ * No `extra.protocol`: the host surfaces a descriptor's protocol only as
+ * `model.targetProtocol`, which is language-path only, and an image-only id never
+ * becomes a language candidate. Raw image dispatch matches on the inbound
+ * protocol instead, so a protocol here would have no reader.
  */
 export const CHATGPT_IMAGE_MODELS: readonly ModelDescriptor[] = [
   {
     id: 'gpt-image-2',
     displayName: 'GPT Image 2',
-    extra: { protocol: 'openai-image' },
     modelMetadata: {
       capabilities: { modalities: { input: ['text', 'image'], output: ['image'] } },
     },
