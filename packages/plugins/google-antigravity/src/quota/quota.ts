@@ -13,7 +13,11 @@ import { antigravityEndpoints } from '../runtime/endpoints';
 import type { GoogleAntigravityAccountOptions, GoogleAntigravityCredential } from '../schema';
 
 const QUOTA_PATH = '/v1internal:retrieveUserQuotaSummary';
-const QUOTA_ENDPOINT_TIMEOUT_MS = 10_000;
+// Budget: the server aborts a quota read at 15s (READ_TIMEOUT_MS in
+// packages/server/src/plugin-quota/cache/quota-cache.ts), and antigravityEndpoints('quota')
+// returns 3 bases. Keep this under 5s so all three are actually attempted when the first
+// two are slow rather than dead — otherwise the prod fallback never runs.
+const QUOTA_ENDPOINT_TIMEOUT_MS = 4_500;
 
 const PLAN_PATH = '/v1internal:loadCodeAssist';
 const PLAN_BODY = JSON.stringify({ metadata: { ideType: 'ANTIGRAVITY' } });
