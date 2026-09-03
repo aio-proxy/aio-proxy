@@ -80,6 +80,7 @@ function validateAdapter(value: unknown): { readonly id: string; readonly adapte
     catalog,
     quota,
     credentialImports,
+    refreshCredential,
   } = value;
   const id = CapabilityIdSchema.parse(rawId);
   const validatedDisplayName = LocalizedTextSchema.safeParse(displayName);
@@ -93,6 +94,9 @@ function validateAdapter(value: unknown): { readonly id: string; readonly adapte
   const validatedOptions = validateConfigSpec(options).spec;
   if (!isPluginZodSchema(credentials)) throw new Error('Invalid OAuth adapter');
   if (typeof login !== 'function' || typeof createRuntime !== 'function') throw new Error('Invalid OAuth adapter');
+  if (refreshCredential !== undefined && typeof refreshCredential !== 'function') {
+    throw new Error('Invalid OAuth adapter');
+  }
   const validatedQuota = validateQuota(quota);
   const validatedCredentialImports = validateCredentialImports(credentialImports);
   if (!isRecord(catalog)) throw new Error('Invalid OAuth adapter');
@@ -142,6 +146,9 @@ function validateAdapter(value: unknown): { readonly id: string; readonly adapte
       createRuntime: createRuntime.bind(value) as OAuthAdapter['createRuntime'],
       ...(validatedQuota === undefined ? {} : { quota: validatedQuota }),
       ...(validatedCredentialImports === undefined ? {} : { credentialImports: validatedCredentialImports }),
+      ...(refreshCredential === undefined
+        ? {}
+        : { refreshCredential: refreshCredential.bind(value) as NonNullable<OAuthAdapter['refreshCredential']> }),
     },
   };
 }

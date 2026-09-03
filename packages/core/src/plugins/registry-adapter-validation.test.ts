@@ -131,6 +131,7 @@ describe('PluginRegistry staging', () => {
         },
       }),
     ],
+    ['non-function credential refresh', fakeAdapter('refresh-invalid', { refreshCredential: 'invalid' })],
   ])('rejects %s atomically', async (_name, adapter) => {
     const snapshot = await loadPluginRegistry({
       ...base,
@@ -171,5 +172,27 @@ describe('PluginRegistry staging', () => {
     });
 
     expect(snapshot.registry.resolveOAuth(packageName, 'default')?.supportsProxy).toBe(false);
+  });
+
+  test('preserves the credential refresh capability and its receiver', async () => {
+    const packageName = '@example/refresh-credential';
+    const adapter = fakeAdapter('default');
+    Object.assign(adapter, {
+      privateToken: 'rotated-token',
+      async refreshCredential(this: { privateToken: string }) {
+        return { value: { token: this.privateToken } };
+      },
+    });
+    const snapshot = await loadPluginRegistry({
+      ...base,
+      builtIns: [{ packageName, version: '1.0.0', descriptor: definePlugin((api) => api.oauth.register(adapter)) }],
+      enablements: [{ packageName }],
+      importPackage: async () => {
+        throw new Error('must not import');
+      },
+    });
+
+    const resolved = snapshot.registry.resolveOAuth(packageName, 'default');
+    await expect(resolved?.refreshCredential?.({} as never)).resolves.toEqual({ value: { token: 'rotated-token' } });
   });
 });
