@@ -31,7 +31,11 @@ test('uses the fixed loopback callback and returns a complete stable account ide
           });
         }
         if (request.url.includes('oauth2/v2/userinfo')) return Response.json({ email: 'person@example.com' });
-        return Response.json({ cloudaicompanionProject: 'project-1' });
+        return Response.json({
+          cloudaicompanionProject: 'project-1',
+          currentTier: { id: 'free-tier' },
+          paidTier: { id: 'standard-tier' },
+        });
       },
       now: () => 1_700_000_000_000,
       sleep: async () => {},
@@ -74,7 +78,7 @@ test('uses the fixed loopback callback and returns a complete stable account ide
     },
     expiresAt: 1_700_003_600_000,
   });
-  expect(requests).toHaveLength(3);
+  expect(requests).toHaveLength(4);
 });
 
 test('imports an expired CPA file and recovers a missing project id', async () => {
@@ -87,7 +91,11 @@ test('imports an expired CPA file and recovers a missing project id', async () =
         if (request.url.includes('oauth2.googleapis.com/token')) {
           return Response.json({ access_token: 'fresh-access', expires_in: 3600 });
         }
-        return Response.json({ cloudaicompanionProject: 'project-1' });
+        return Response.json({
+          cloudaicompanionProject: 'project-1',
+          currentTier: { id: 'free-tier' },
+          paidTier: { id: 'standard-tier' },
+        });
       },
       now: () => 1_700_000_000_000,
       sleep: async () => {},
@@ -110,6 +118,7 @@ test('imports an expired CPA file and recovers a missing project id', async () =
 
   expect(requests).toEqual([
     'https://oauth2.googleapis.com/token',
+    'https://daily-cloudcode-pa.googleapis.com/v1internal:loadCodeAssist',
     'https://daily-cloudcode-pa.googleapis.com/v1internal:loadCodeAssist',
   ]);
   expect(result).toEqual({
@@ -156,7 +165,11 @@ test('normalizes Antigravity account labels without changing identity input', as
           });
         }
         if (url.includes('oauth2/v2/userinfo')) return Response.json({ email: '  Person@Example.COM ' });
-        return Response.json({ cloudaicompanionProject: 'project-1' });
+        return Response.json({
+          cloudaicompanionProject: 'project-1',
+          currentTier: { id: 'free-tier' },
+          paidTier: { id: 'standard-tier' },
+        });
       },
       now: () => 1_700_000_000_000,
       sleep: async () => {},
@@ -248,8 +261,9 @@ test('propagates state mismatch reported by the authorization port', async () =>
   ).rejects.toBe(mismatch);
 });
 
-test('rejects project initialization exhaustion after five polls', async () => {
+test('rejects project initialization when onboardUser times out', async () => {
   let requests = 0;
+  let now = 0;
   const adapter = await adapterFrom(
     createGoogleAntigravityPlugin(undefined, {
       fetch: async () => {
@@ -258,14 +272,17 @@ test('rejects project initialization exhaustion after five polls', async () => {
           return Response.json({ access_token: 'access-1', refresh_token: 'refresh-1', expires_in: 3600 });
         }
         if (requests === 2) return Response.json({ email: 'person@example.com' });
-        if (requests === 3) return Response.json({});
-        return Response.json({ done: false });
+        if (requests === 3) return Response.json({ allowedTiers: [{ id: 'free-tier' }] });
+        return Response.json({ name: 'operations/op-1', done: false });
       },
-      sleep: async () => {},
+      sleep: async () => {
+        now = 30_000;
+      },
+      now: () => now,
     }),
   );
-  await expect(adapter.login(loginContext(), {})).rejects.toThrow('five attempts');
-  expect(requests).toBe(8);
+  await expect(adapter.login(loginContext(), {})).rejects.toThrow('timed out after 30000ms');
+  expect(requests).toBe(4);
 });
 
 test('runtime exposes Google ProviderV4, Gemini raw, and token-count capabilities', async () => {
