@@ -1,5 +1,26 @@
 # @aio-proxy/core
 
+## 0.15.0
+
+### Minor Changes
+
+- [#243](https://github.com/aio-proxy/aio-proxy/pull/243) [`1daece3`](https://github.com/aio-proxy/aio-proxy/commit/1daece3dd2dad3ddfe86c12784ef379e99424c91) Thanks [@baranwang](https://github.com/baranwang)! - OAuth providers now hide models with `excludedModels` instead of a `models` whitelist. Leftover `models` keys are ignored and no longer restrict exposure — newly discovered catalog ids stay visible unless hidden. Plugin default aliases inherit at runtime and are no longer written into the config file.
+
+### Patch Changes
+
+- Updated dependencies [[`1daece3`](https://github.com/aio-proxy/aio-proxy/commit/1daece3dd2dad3ddfe86c12784ef379e99424c91)]:
+  - @aio-proxy/types@0.15.0
+  - @aio-proxy/plugin-sdk@0.15.0
+  - @aio-proxy/plugin-cursor@0.15.0
+  - @aio-proxy/plugin-openai-chatgpt@0.15.0
+  - @aio-proxy/logger@0.15.0
+  - @aio-proxy/plugin-github-copilot@0.15.0
+  - @aio-proxy/plugin-google-antigravity@0.15.0
+  - @aio-proxy/plugin-kimi-code@0.15.0
+  - @aio-proxy/plugin-xai-grok@0.15.0
+  - @aio-proxy/i18n@0.15.0
+  - @aio-proxy/shared@0.15.0
+
 ## 0.14.0
 
 ### Minor Changes
