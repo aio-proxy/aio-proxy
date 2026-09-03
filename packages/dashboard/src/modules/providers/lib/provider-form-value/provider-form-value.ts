@@ -17,6 +17,9 @@ export type ProviderFormShape = ProviderFormValues extends infer Provider
         readonly protocol?: ApiProviderMutationBody['protocol'];
         readonly baseURL?: ApiProviderMutationBody['baseURL'];
         readonly endpoints?: ApiEndpointDraft;
+        // Lifted onto both arms like the four above: switching kind carries the whole draft forward,
+        // so an ai-sdk value really can hold an `apiKey` the normalizer then has to strip.
+        readonly apiKey?: ApiProviderMutationBody['apiKey'];
       }
     : never
   : never;

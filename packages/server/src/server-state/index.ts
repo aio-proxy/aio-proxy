@@ -32,7 +32,7 @@ import { createFifoQueue } from '../fifo-queue';
 import { LogicalSessionStore } from '../logical-session-store';
 import { createModelRoutingControlPlane } from '../model-routing';
 import { createPluginControlPlane } from '../plugin-control-plane';
-import { createOAuthQuotaOperations } from '../plugin-quota';
+import { createOAuthQuotaCache, createOAuthQuotaOperations } from '../plugin-quota';
 import type { SnapshotManager } from '../plugin-snapshot';
 import { createSnapshotManager } from '../plugin-snapshot';
 import { createRequestTraceRecorder } from '../request-tracing';
@@ -50,6 +50,7 @@ import {
 } from './lifecycle';
 import { defaultLogger, defaultPluginLogger } from './logging';
 import { createProviderSummaries } from './probe';
+import { createQuotaIdentityTracker } from './quota-invalidation';
 import { defaultRecoveryScheduler, recoverBeforeSnapshot } from './recovery';
 import { buildSnapshot, buildSnapshotWithProviders, type Snapshot } from './snapshot';
 import type {
@@ -157,6 +158,8 @@ async function initializeServerState(
     startupDiagnosticRebuildPending: false,
     accountRemovals: undefined as unknown as AccountRemovalCoordinator,
     scheduler: undefined as unknown as CatalogScheduler,
+    quotaCache: undefined,
+    quotaIdentity: undefined,
     recovery: undefined,
     configFile,
   };
@@ -179,13 +182,7 @@ async function initializeServerState(
   runtime.manager = createSnapshotManager(initial);
   const manager = runtime.manager;
   runtime.managerReady = true;
-  const oauthQuota = createOAuthQuotaOperations({
-    acquireSnapshot: manager.acquire,
-    repository,
-    diagnostics,
-    logger: pluginLogger,
-    onDiagnosticChanged: () => queueRebuild(runtime),
-  });
+  const { oauthQuota, quotaCache } = createQuotaServices(runtime, manager);
   runtime.accountRemovals = createAccountRemovalCoordinator({
     file: configFile,
     repository,
@@ -266,6 +263,7 @@ async function initializeServerState(
     cooldown,
     modelRouting,
     oauthQuota,
+    quotaCache,
     oauthLoginSessions,
     pluginControlPlane,
     providerSummaries,
@@ -276,6 +274,22 @@ async function initializeServerState(
     watcher,
     closeRecovery: () => runtime.recovery?.close(),
   });
+}
+
+// The cache is published onto the runtime so `commitConfig` can invalidate the entries of Providers
+// whose configuration changed; everything in it is keyed by Provider ID alone.
+function createQuotaServices(runtime: ServerRuntime, manager: SnapshotManager) {
+  const oauthQuota = createOAuthQuotaOperations({
+    acquireSnapshot: manager.acquire,
+    repository: runtime.repository,
+    diagnostics: runtime.diagnostics,
+    logger: runtime.pluginLogger,
+    onDiagnosticChanged: () => queueRebuild(runtime),
+  });
+  const quotaCache = createOAuthQuotaCache(oauthQuota);
+  runtime.quotaCache = quotaCache;
+  runtime.quotaIdentity = createQuotaIdentityTracker(quotaCache, manager.current() as Snapshot);
+  return { oauthQuota, quotaCache };
 }
 
 function createStatePluginControlPlane(runtime: ServerRuntime, configStore: ConfigStore) {

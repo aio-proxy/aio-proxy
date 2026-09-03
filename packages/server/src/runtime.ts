@@ -155,4 +155,6 @@ export type ProviderRouteSource = {
   readonly logicalSessionStore: LogicalSessionStore;
   readonly requestRecorder: RequestTraceRecorder;
   readonly usageCapture: UsageCapture;
+  /** Optional: fire-and-forget OAuth quota refresh after a provider answers a request. */
+  readonly warmProviderQuota?: (providerId: string) => void;
 };

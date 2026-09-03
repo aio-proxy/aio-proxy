@@ -115,7 +115,9 @@ const saveOAuthProvider = (
 const saveEditor = (
   forceReauthorize: boolean,
   ctx: {
-    readonly values: ProviderEditorWire;
+    // The live form values, not the wire shape: serializing `alias` to a record is this function's
+    // own first step, so annotating the input as already-serialized made both ends wrong.
+    readonly values: ProviderEditorShape;
     readonly kind: ProviderKind;
     readonly mode: ProviderFormMode;
     readonly authorized: boolean;

@@ -226,6 +226,8 @@ function assembleProviders(
           last_status: 'unknown',
           last_latency: null,
           clientModels: [],
+          protocols: [],
+          hasQuota: false,
         }) satisfies Omit<DashboardProviderSummary, 'state'>,
     ),
     ...compact(config.providers.map((configured) => summaryById.get(configured.id))),

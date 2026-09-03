@@ -1,4 +1,6 @@
-export type JsonValue = null | boolean | number | string | JsonValue[] | { readonly [key: string]: JsonValue };
+import type { JsonValue } from '@aio-proxy/plugin-sdk';
+
+export type { JsonValue };
 
 export type JsonSchema = Readonly<Record<string, unknown>>;
 

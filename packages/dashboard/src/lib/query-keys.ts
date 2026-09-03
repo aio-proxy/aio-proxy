@@ -18,8 +18,12 @@ export const queryKeys = {
   pluginEditView: (packageName: string) => ['plugins', packageName, 'edit-view'],
   plugins: ['plugins'],
   providerEditView: (id: string) => ['providers', id, 'edit-view'],
+  // Distinct from `overviewDiagnostics`: same endpoint, different decoded shape, so it must not
+  // share a cache entry with the overview module's query.
+  providerHealth: ['dashboard', 'providers', 'health'],
   providerPackageStatus: (packageName: string) => ['providers', 'package-status', packageName],
   providerProbe: (id: string) => ['providers', id, 'probe'],
+  providerQuota: (id: string) => ['providers', id, 'quota'],
   providerUsage: ['dashboard', 'providers', 'usage'],
   providers: ['providers'],
   routingModels: ['routing', 'models'],

@@ -78,6 +78,8 @@ test('preserves configured API and AI SDK display fields in dashboard summaries'
     last_status: 'unknown',
     last_latency: null,
     clientModels: [],
+    protocols: [],
+    hasQuota: false,
     state: { status: 'ready' },
   } as const;
   const api = {
@@ -85,7 +87,7 @@ test('preserves configured API and AI SDK display fields in dashboard summaries'
     id: 'anthropic-api',
     kind: ProviderKind.Api,
     weight: 9,
-    protocol: ProviderProtocol.Anthropic,
+    protocols: [ProviderProtocol.Anthropic, ProviderProtocol.OpenAICompatible],
   } as const;
   const aiSdk = {
     ...base,
@@ -96,7 +98,22 @@ test('preserves configured API and AI SDK display fields in dashboard summaries'
 
   expect(DashboardProviderSummarySchema.parse(api)).toEqual(api);
   expect(DashboardProviderSummarySchema.parse(aiSdk)).toEqual(aiSdk);
-  expect(DashboardProviderSummarySchema.parse(aiSdk)).not.toHaveProperty('protocol');
+  expect(DashboardProviderSummarySchema.parse(aiSdk).protocols).toEqual([]);
+});
+
+test('requires protocols and hasQuota on every summary', () => {
+  const missing = {
+    id: 'anthropic-api',
+    kind: ProviderKind.Api,
+    enabled: true,
+    passthrough: false,
+    last_status: 'unknown',
+    last_latency: null,
+    clientModels: [],
+    state: { status: 'ready' },
+  };
+
+  expect(DashboardProviderSummarySchema.safeParse(missing).success).toBe(false);
 });
 
 test('accepts independent range, diagnostics, and activity overview contracts', () => {
