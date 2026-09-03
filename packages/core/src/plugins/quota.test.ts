@@ -148,4 +148,21 @@ describe('validateOAuthQuotaSnapshot', () => {
   ] as const)('rejects invalid localized text: %s', (_name, label) => {
     expectInvalid({ items: [{ id: 'label', label }] }, ['items', 0, 'label']);
   });
+
+  test('accepts a localized plan on the snapshot', () => {
+    const snapshot = validateOAuthQuotaSnapshot({
+      ...validSnapshot(),
+      plan: { default: 'Allegro', 'zh-Hans': 'Allegro' },
+    });
+    expect(snapshot.plan).toEqual({ default: 'Allegro', 'zh-Hans': 'Allegro' });
+  });
+
+  test('accepts a plain string plan and omits an absent one', () => {
+    expect(validateOAuthQuotaSnapshot({ ...validSnapshot(), plan: 'SuperGrok' }).plan).toBe('SuperGrok');
+    expect(validateOAuthQuotaSnapshot(validSnapshot())).not.toHaveProperty('plan');
+  });
+
+  test('rejects a non-text plan', () => {
+    expectInvalid({ ...validSnapshot(), plan: 42 }, ['plan']);
+  });
 });

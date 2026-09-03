@@ -1,4 +1,4 @@
-export { CATALOG_DISCOVERY_TIMEOUT_MS, LOGIN_TIMEOUT_MS } from './deadline';
+export { CATALOG_DISCOVERY_TIMEOUT_MS, LOGIN_TIMEOUT_MS, withAbort } from './deadline';
 export {
   AccountCleanupPendingError,
   AccountOptionsValidationError,

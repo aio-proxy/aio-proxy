@@ -267,7 +267,7 @@ test('api provider raw capability resolves any declared endpoint protocol', () =
   expect(instance.raw?.resolve({ protocol: ProviderProtocol.Gemini, modelId: 'kimi-k2' })).toBeUndefined();
 });
 
-test('summarizes an endpoints-only api provider with its primary endpoint protocol', () => {
+test('summarizes an endpoints-only api provider with every endpoint protocol it serves', () => {
   const config = {
     apiKey: 'k',
     enabled: true,
@@ -283,7 +283,9 @@ test('summarizes an endpoints-only api provider with its primary endpoint protoc
     createApiProvider(config, { fetch: (async () => new Response('{}')) as typeof globalThis.fetch }),
   );
 
-  expect(providerSummary(instance, undefined, config)).toMatchObject({ protocol: ProviderProtocol.Anthropic });
+  expect(providerSummary(instance, undefined, config)).toMatchObject({
+    protocols: [ProviderProtocol.Anthropic, ProviderProtocol.OpenAICompatible],
+  });
 });
 
 test('a router image-output policy attaches an image transport to a language-only API provider', () => {
@@ -396,10 +398,9 @@ test('provider summaries preserve configured weight and truthful display identit
   const api = runtime.summaries.find((provider) => provider.id === 'api');
   const sdk = runtime.summaries.find((provider) => provider.id === 'sdk');
 
-  expect(api).toMatchObject({ weight: 9, protocol: ProviderProtocol.Anthropic });
+  expect(api).toMatchObject({ weight: 9, protocols: [ProviderProtocol.Anthropic] });
   expect(api).not.toHaveProperty('packageName');
-  expect(sdk).toMatchObject({ weight: 0, packageName: '@ai-sdk/anthropic' });
-  expect(sdk).not.toHaveProperty('protocol');
+  expect(sdk).toMatchObject({ weight: 0, packageName: '@ai-sdk/anthropic', protocols: [] });
 });
 
 test('materializes one transformed Fetch for raw API, API bridge, and direct AI SDK model traffic', async () => {

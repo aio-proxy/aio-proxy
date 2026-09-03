@@ -1,5 +1,38 @@
 # @aio-proxy/dashboard
 
+## 0.13.0
+
+### Minor Changes
+
+- [#239](https://github.com/aio-proxy/aio-proxy/pull/239) [`b1f5bff`](https://github.com/aio-proxy/aio-proxy/commit/b1f5bff2f2e92abfd54b90fb32b29b4b145e8c1d) Thanks [@baranwang](https://github.com/baranwang)! - Redesign the dashboard Provider list as a card grid and surface OAuth remaining quota.
+
+  Each Provider — including each OAuth account — is now one card showing its name, kind, protocols,
+  plan, routing priority and weight, 24-hour success rate and p95 latency, model count, and request
+  count, with search and availability/enablement/kind filters replacing the old table's pagination and
+  grouping. OAuth Providers whose plugin exposes a quota capability show a remaining-quota ring that
+  opens a detail dialog with one bar per quota window that reports a remaining amount.
+
+  The quota read is cached in memory behind a per-provider five-minute cooldown, refreshed
+  asynchronously once a Provider has finished answering a model request, and exposed at
+  `QUERY /dashboard/api/providers/:id/quota`; the dialog's refresh button bypasses the cooldown, and the
+  Providers page polls the reading the way it already polls health. `OAuthQuotaSnapshot` gains an
+  optional `plan`, which `kimi-code` and `xai-grok` now populate, and `xai-grok` also reports per-product
+  usage. Dashboard Provider summaries gain `protocols` and `hasQuota` in place of the single `protocol`
+  field.
+
+### Patch Changes
+
+- [#241](https://github.com/aio-proxy/aio-proxy/pull/241) [`1299208`](https://github.com/aio-proxy/aio-proxy/commit/129920850794518d0089762bb015eeac12e4de71) Thanks [@baranwang](https://github.com/baranwang)! - Fix Dashboard OAuth authorization windows. Device-code providers now navigate the window opened on the
+  authorize click instead of leaving a blank tab that only loaded after switching back to the dashboard,
+  and the authorization panel no longer opens a second window on top of it — providers that authorize by
+  URL, such as Cursor, opened two authorization pages.
+- Updated dependencies [[`07413a1`](https://github.com/aio-proxy/aio-proxy/commit/07413a116385e94e20e2c722ecdb32c0b97d52b6), [`99755b5`](https://github.com/aio-proxy/aio-proxy/commit/99755b58b7492f9da4161ac429325dd319ba48f8), [`672e0db`](https://github.com/aio-proxy/aio-proxy/commit/672e0dbb4eb0d81b965164b05d7a83dc9db23cda), [`b1f5bff`](https://github.com/aio-proxy/aio-proxy/commit/b1f5bff2f2e92abfd54b90fb32b29b4b145e8c1d)]:
+  - @aio-proxy/ui@0.13.0
+  - @aio-proxy/plugin-sdk@0.13.0
+  - @aio-proxy/server@0.13.0
+  - @aio-proxy/types@0.13.0
+  - @aio-proxy/i18n@0.13.0
+
 ## 0.12.3
 
 ### Patch Changes

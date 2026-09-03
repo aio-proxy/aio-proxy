@@ -8,6 +8,8 @@ export const providerStub = (overrides: Partial<DashboardProviderSummary> = {}):
   last_status: 'unknown',
   last_latency: null,
   clientModels: [],
+  protocols: [],
+  hasQuota: false,
   state: { status: 'ready' },
   ...overrides,
 });

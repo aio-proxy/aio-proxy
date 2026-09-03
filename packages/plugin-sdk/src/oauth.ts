@@ -147,6 +147,8 @@ export type OAuthQuotaResetCredits = {
 export type OAuthQuotaSnapshot = {
   readonly items: readonly OAuthQuotaItem[];
   readonly resetCredits?: OAuthQuotaResetCredits;
+  /** Human-readable subscription tier for this account, when the upstream exposes one. */
+  readonly plan?: LocalizedText;
 };
 
 export type OAuthQuotaCapability<AccountOptions, Credential> = {

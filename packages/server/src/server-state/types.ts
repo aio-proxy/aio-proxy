@@ -22,7 +22,7 @@ import type { DashboardEventHub, DashboardEventLimits } from '../dashboard-event
 import type { ModelRoutingControlPlane } from '../model-routing';
 import type { OAuthLoginSessionManager } from '../oauth-login-session/manager';
 import type { PluginControlPlane, PluginControlPlaneOptions } from '../plugin-control-plane';
-import type { OAuthQuotaOperations } from '../plugin-quota';
+import type { OAuthQuotaCache, OAuthQuotaOperations } from '../plugin-quota';
 import type { CatalogJobDescriptor } from '../plugin-runtime';
 import type { ProviderRouteSource, RuntimeProviderInput, RuntimeProviderInstance } from '../runtime';
 import type { ConfigReloadLog, ServerLogSink } from '../server-log';
@@ -86,6 +86,7 @@ export type ServerState = ProviderRouteSource & {
   readonly events: DashboardEventHub;
   readonly modelRouting: ModelRoutingControlPlane;
   readonly oauthQuota: OAuthQuotaOperations;
+  readonly quotaCache: OAuthQuotaCache;
   readonly pluginControlPlane: PluginControlPlane;
   readonly oauthCapabilities: () => readonly DashboardOAuthCapability[];
   readonly oauthProviderEditView: (providerId: string) => DashboardOAuthProviderEdit | undefined;

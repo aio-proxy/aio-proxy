@@ -28,22 +28,32 @@ const invalidProvider = (): DashboardProviderSummary =>
     },
   });
 
+// Match the providers key exactly. A `queryKey[0] === 'providers'` prefix test would also swallow
+// each card's `['providers', id, 'quota']` key and hand it the provider list as its snapshot.
 rs.mock('@tanstack/react-query', () => ({
   queryOptions: <T,>(options: T) => options,
-  useQuery: (options: { queryKey: readonly string[] }) => {
-    const isProviders = options.queryKey[0] === 'providers';
-    return {
-      data: isProviders ? queryMocks.providers : new Map(),
-      isLoading: false,
-      isError: isProviders && queryMocks.failed,
-      refetch: () => {
-        queryMocks.refetches += 1;
-      },
-    };
+  useQuery: (options: { queryKey: readonly unknown[] }) => {
+    if (JSON.stringify(options.queryKey) === JSON.stringify(['providers'])) {
+      return {
+        data: queryMocks.providers,
+        isLoading: false,
+        isPending: false,
+        isError: queryMocks.failed,
+        refetch: () => {
+          queryMocks.refetches += 1;
+        },
+      };
+    }
+    // The card's quota query returns a snapshot, not a lookup map; hand it nothing rather than a Map.
+    if (options.queryKey[2] === 'quota') {
+      return { data: undefined, isLoading: false, isPending: false, isError: true, refetch: () => {} };
+    }
+    return { data: new Map(), isLoading: false, isPending: false, isError: false, refetch: () => {} };
   },
 }));
 
 rs.mock('../components/delete-provider-dialog', () => ({ DeleteProviderDialog: DeleteProviderDialogStub }));
+rs.mock('../components/provider-quota-ring', () => ({ ProviderQuotaRing: () => null }));
 rs.mock('../hooks/use-provider-enabled-mutation', () => ({
   useProviderEnabledMutation: () => ({ mutate: rs.fn(), isPending: false }),
 }));
@@ -62,54 +72,25 @@ describe('providers page', () => {
   test('offers a new-provider action linking to /providers/new', () => {
     render(<ProvidersPage />);
 
-    expect(screen.queryByTestId('plugins-table')).toBeNull();
     const action = screen.getByTestId('new-provider-button');
     expect(action).toHaveAttribute('to', '/providers/new');
     expect(action).not.toHaveAttribute('params');
   });
 
-  test('renders OAuth accounts under their plugin capability group', () => {
-    queryMocks.providers.providers = [
-      providerStub({
-        id: 'copilot-octocat',
-        plugin: '@aio-proxy/plugin-github-copilot',
-        capability: 'default',
-        accountLabel: 'octocat',
-        expiresAt: 1_900_000_000_000,
-        catalogLastSuccessAt: '2026-07-14T00:00:00.000Z',
-        state: { status: 'ready', catalog: 'stale' },
-      }),
-    ];
-
-    render(<ProvidersPage />);
-
-    const group = within(screen.getByTestId('provider-group-@aio-proxy/plugin-github-copilot/default'));
-    expect(group.getByText('@aio-proxy/plugin-github-copilot')).toBeTruthy();
-    expect(group.queryByText('@aio-proxy/plugin-github-copilot/default')).toBeNull();
-    fireEvent.click(group.getByRole('button'));
-    const row = within(screen.getByTestId('provider-row-copilot-octocat'));
-    expect(row.getByText('octocat')).toBeTruthy();
-    expect(row.getAllByText(/Stale|过期/u).length).toBeGreaterThan(0);
-    expect(screen.queryByRole('button', { name: /Install|安装/u })).toBeNull();
-    expect(screen.queryByRole('button', { name: /Configure|配置/u })).toBeNull();
-    expect(screen.queryByRole('button', { name: /Login|登录/u })).toBeNull();
-    expect(screen.queryByLabelText(/Secret|密钥/u)).toBeNull();
-  });
-
-  test('renders one Provider identity column with a direct edit link', () => {
+  test('renders each Provider as a card whose name links straight to its editor', () => {
     queryMocks.providers.providers = [
       providerStub({ id: 'carpool', name: 'Carpool', kind: 'api', clientModels: ['model-1'] }),
     ];
     render(<ProvidersPage />);
 
-    const row = within(screen.getByTestId('provider-row-carpool'));
-    expect(row.getByText('Carpool')).toBeTruthy();
-    expect(row.getByText('carpool')).toBeTruthy();
-    expect(row.getByText('API')).toBeTruthy();
-    expect(row.getByText('N/A')).toBeTruthy();
-    expect(row.getByTestId('provider-models-count')).toHaveTextContent('1');
-    expect(row.getByLabelText(/Edit provider carpool|编辑提供商 carpool/u)).toBeTruthy();
-    expect(screen.queryByRole('columnheader', { name: /Details|详情/u })).toBeNull();
+    const card = within(screen.getByTestId('provider-row-carpool'));
+    expect(card.getByText('Carpool')).toBeTruthy();
+    // The ID is the hover title only; the card never spends a line on it.
+    expect(card.queryByText('carpool')).toBeNull();
+    expect(card.getByTestId('provider-link-carpool')).toHaveAttribute('to', '/providers/$id/edit');
+    expect(card.getByTestId('provider-card-detail')).toHaveTextContent('API');
+    // No table survives the redesign, so no header row should either.
+    expect(screen.queryByRole('columnheader')).toBeNull();
     expect(screen.queryByRole('button', { name: /Previous|上一页/u })).toBeNull();
   });
 
@@ -117,30 +98,17 @@ describe('providers page', () => {
     queryMocks.providers.providers = [invalidProvider()];
     render(<ProvidersPage />);
 
-    const row = within(screen.getByTestId('provider-row-broken'));
-    expect(row.queryByRole('link')).toBeNull();
-    expect(row.queryByRole('switch')).toBeNull();
-    expect(row.queryByRole('button')).toBeNull();
-    expect(row.getByText('Invalid Provider configuration.')).toBeTruthy();
+    const card = within(screen.getByTestId('provider-row-broken'));
+    expect(card.queryByRole('link')).toBeNull();
+    expect(card.queryByRole('switch')).toBeNull();
+    expect(card.getByText('Invalid Provider configuration.')).toBeTruthy();
+    // Deletion is the only thing a Provider the editor cannot represent can still offer.
+    expect(card.getAllByRole('button').map((button) => button.getAttribute('data-testid'))).toEqual([
+      'provider-card-delete',
+    ]);
   });
 
-  test('pages forward and backward through more than one page of providers', () => {
-    queryMocks.providers.providers = Array.from({ length: 11 }, (_, index) =>
-      providerStub({ id: `provider-${index}` }),
-    );
-    render(<ProvidersPage />);
-    expect(screen.getByTestId('provider-row-provider-0')).toBeTruthy();
-    expect(screen.queryByTestId('provider-row-provider-10')).toBeNull();
-
-    fireEvent.click(screen.getByRole('button', { name: /Next|下一页/u }));
-    expect(screen.queryByTestId('provider-row-provider-0')).toBeNull();
-    expect(screen.getByTestId('provider-row-provider-10')).toBeTruthy();
-
-    fireEvent.click(screen.getByRole('button', { name: /Previous|上一页/u }));
-    expect(screen.getByTestId('provider-row-provider-0')).toBeTruthy();
-  });
-
-  test('locates and highlights a focused provider on another page', async () => {
+  test('highlights a focused provider', async () => {
     queryMocks.providers.providers = Array.from({ length: 11 }, (_, index) =>
       providerStub({ id: `provider-${index}` }),
     );
@@ -152,7 +120,7 @@ describe('providers page', () => {
     });
   });
 
-  // A failed query used to fall through to the table's own empty state, so a user whose backend is
+  // A failed query used to fall through to the list's own empty state, so a user whose backend is
   // down was told they have no providers configured — and invited to create one.
   test('a failed providers query explains itself and offers a retry', () => {
     queryMocks.failed = true;
