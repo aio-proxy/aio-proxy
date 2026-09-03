@@ -58,6 +58,34 @@ test('prefers the last successful sandbox origin for the same project', async ()
   ]);
 });
 
+test('does not remember a non-2xx origin as last-good', async () => {
+  const origins: string[] = [];
+  const scripted = [
+    Response.json({ error: { message: 'No capacity is available' } }, { status: 503 }),
+    Response.json({ error: { message: 'boom' } }, { status: 500 }),
+    Response.json({ response: { candidates: [] } }),
+  ];
+  let index = 0;
+  const credential = credentialFixture({ projectId: `last-good-500-${crypto.randomUUID()}` });
+  const dependencies = {
+    credentials: { current: async () => credential, forceRefresh: async () => credential },
+    fetch: async (input: RequestInfo) => {
+      origins.push(new URL(String(input)).origin);
+      return scripted[index++] ?? Response.json({ response: {} });
+    },
+  };
+
+  const failed = await new AntigravityTransport(dependencies).execute(executeInput());
+  expect(failed.status).toBe(500);
+  await new AntigravityTransport(dependencies).execute(executeInput());
+
+  expect(origins).toEqual([
+    'https://daily-cloudcode-pa.googleapis.com',
+    'https://daily-cloudcode-pa.sandbox.googleapis.com',
+    'https://daily-cloudcode-pa.googleapis.com',
+  ]);
+});
+
 test('applies catalog wire profiles on the initial envelope and the retry envelope', async () => {
   const seen: Request[] = [];
   const transport = new AntigravityTransport({

@@ -151,7 +151,7 @@ export class AntigravityTransport implements CcaTransport {
           }
         }
 
-        rememberLastGood(credential.projectId, endpoint);
+        if (response.ok) rememberLastGood(credential.projectId, endpoint);
         return await captureReasoningReplay(response, input.modelId, scope, this.#replayCache);
       }
     }
