@@ -336,6 +336,31 @@ describe('openAIResponsesAdapter', () => {
     expect(await forwarded.json()).toEqual({ model: 'same', input: 'hello', beta_field: true });
   });
 
+  test('preserves an encrypted function call output part through parse and raw forwarding', async () => {
+    const body = JSON.stringify({
+      model: 'alias',
+      input: [
+        {
+          type: 'function_call_output',
+          call_id: 'call_1',
+          output: [{ type: 'encrypted_content', encrypted_content: 'tool result' }],
+        },
+      ],
+    });
+    const raw = new Request('https://proxy.test/v1/responses', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body,
+    });
+
+    const parsed = await openAIResponsesAdapter.parse(raw, {});
+    const forwarded = await openAIResponsesAdapter.rawRequest(raw, parsed, 'alias', new Set(), {});
+
+    expect(await forwarded.json()).toMatchObject({
+      input: [{ output: [{ type: 'encrypted_content', encrypted_content: 'tool result' }] }],
+    });
+  });
+
   test('clamps reasoning.effort in the raw body against the supported set', async () => {
     const body = { model: 'src', input: 'hi', reasoning: { effort: 'xhigh' } };
     const raw = new Request('https://proxy.test/v1/responses', {
