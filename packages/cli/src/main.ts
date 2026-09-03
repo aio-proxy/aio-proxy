@@ -1,4 +1,6 @@
 #!/usr/bin/env bun
+import { basename } from 'node:path';
+
 import { formatUserError, getLocale, m, resolveLocaleFromArgv, setLocale } from '@aio-proxy/i18n';
 import { Command } from 'commander';
 
@@ -53,9 +55,19 @@ const registerServiceCommands = (program: Command): void => {
     .action(() => serviceStatus());
 };
 
-export const buildProgram = (deps: CliDeps = defaultCliDeps) => {
+export const invokedProgramName = (
+  argv0: string | undefined = process.argv0,
+  execPath: string | undefined = process.execPath,
+): string => {
+  for (const value of [argv0, execPath]) {
+    if (basename(value ?? '').replace(/\.(js|ts)$/, '') === 'aiop') return 'aiop';
+  }
+  return 'aio-proxy';
+};
+
+export const buildProgram = (deps: CliDeps = defaultCliDeps, programName = invokedProgramName()) => {
   const program = new Command()
-    .name('aio-proxy')
+    .name(programName)
     .description(m['cli.root.description']())
     .version(VERSION, '-v, --version', m['cli.version.description']())
     .option('--lang <locale>', m['cli.option.lang_description']());
