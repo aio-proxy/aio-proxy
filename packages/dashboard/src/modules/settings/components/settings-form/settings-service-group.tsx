@@ -7,6 +7,7 @@ import { Label } from '@aio-proxy/ui/components/label';
 
 import { SettingsEndpointFields } from './settings-endpoint-fields';
 import { proxySchema } from './settings-form-contract';
+import { SettingsPasswordField } from './settings-password-field';
 import type { SettingsFormApi } from './use-settings-form';
 
 interface SettingsServiceGroupProps {
@@ -33,23 +34,7 @@ export const SettingsServiceGroup: React.FC<SettingsServiceGroupProps> = ({
     <CardContent>
       <div className="grid gap-5 md:grid-cols-2">
         <SettingsEndpointFields disabled={disabled} form={form} settings={settings} onAccessChange={onAccessChange} />
-        <Field>
-          <Label htmlFor="dashboard-password-state">{m['dashboard.settings.password']()}</Label>
-          <Input
-            id="dashboard-password-state"
-            type="password"
-            value={settings.hasPassword ? '********' : ''}
-            placeholder={m['dashboard.settings.password_not_configured']()}
-            readOnly
-            aria-readonly="true"
-          />
-          <FieldDescription>
-            {settings.hasPassword
-              ? m['dashboard.settings.password_configured']()
-              : m['dashboard.settings.password_not_configured']()}{' '}
-            {m['dashboard.settings.password_description']()}
-          </FieldDescription>
-        </Field>
+        <SettingsPasswordField disabled={disabled} settings={settings} onSave={onSave} />
         <form.Field name="proxy">
           {(field) => {
             const proxy = field.state.value.trim() || null;

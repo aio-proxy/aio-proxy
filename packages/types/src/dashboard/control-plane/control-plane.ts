@@ -85,6 +85,11 @@ const DashboardSettingsLoggingSchema = z.strictObject({
   level: required(ServerLoggingSchema.shape.level),
 });
 
+const DashboardPasswordSchema = z
+  .string()
+  .min(8)
+  .describe('New dashboard password in plaintext; the server stores only an Argon2id hash.');
+
 export const DashboardSettingsViewSchema = z.strictObject({
   host: required(ServerConfigSchema.shape.host),
   port: required(ServerConfigSchema.shape.port),
@@ -98,6 +103,7 @@ export const DashboardSettingsMutationSchema = z.strictObject({
   host: required(ServerConfigSchema.shape.host).optional(),
   port: required(ServerConfigSchema.shape.port).optional(),
   proxy: z.union([DashboardHttpProxyUrlSchema, DashboardHttpProxyTemplateSchema, z.null()]).optional(),
+  password: z.union([DashboardPasswordSchema, z.null()]).optional(),
   logging: z
     .strictObject({
       enabled: required(ServerLoggingSchema.shape.enabled).optional(),

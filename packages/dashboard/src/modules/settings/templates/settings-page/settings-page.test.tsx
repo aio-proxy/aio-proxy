@@ -64,14 +64,38 @@ test('renders service/access/network before logs/retries and keeps the logging S
   expect(within(header as HTMLElement).getByRole('heading', { level: 2 })).toBe(logs);
 });
 
-test('shows only masked read-only password state without password mutation actions', () => {
+test('sets a new dashboard password from a writable field', () => {
   renderPage();
 
   const password = screen.getByLabelText(/Dashboard password|控制台密码|控制台密碼/u);
   expect(password).toHaveAttribute('type', 'password');
-  expect(password).toHaveAttribute('readonly');
-  expect(password).toHaveValue('********');
-  expect(screen.queryByRole('button', { name: /clear|refill|replace|reset|清除|替换|取代/u })).not.toBeInTheDocument();
+  expect(password).not.toHaveAttribute('readonly');
+
+  fireEvent.change(password, { target: { value: 'correct horse battery' } });
+  fireEvent.click(screen.getByRole('button', { name: /Set password|设置密码|設定密碼/u }));
+
+  expect(mocks.mutate).toHaveBeenCalledTimes(1);
+  expect(mocks.mutate).toHaveBeenCalledWith({ password: 'correct horse battery' });
+});
+
+test('refuses to submit a password below the minimum length', () => {
+  renderPage();
+
+  const password = screen.getByLabelText(/Dashboard password|控制台密码|控制台密碼/u);
+  fireEvent.change(password, { target: { value: 'short12' } });
+  fireEvent.click(screen.getByRole('button', { name: /Set password|设置密码|設定密碼/u }));
+
+  expect(mocks.mutate).not.toHaveBeenCalled();
+  expect(screen.getByText(/at least 8 characters|至少需要 8|8 文字以上|8자 이상/u)).toBeInTheDocument();
+});
+
+test('clears a configured password', () => {
+  renderPage();
+
+  fireEvent.click(screen.getByRole('button', { name: /Clear password|清除密码|清除密碼/u }));
+
+  expect(mocks.mutate).toHaveBeenCalledTimes(1);
+  expect(mocks.mutate).toHaveBeenCalledWith({ password: null });
 });
 
 test('writes a routine logging change exactly once', () => {

@@ -20,3 +20,4 @@ export const retentionSchema = loggingSchema.shape.retentionDays.unwrap();
 export const levelSchema = loggingSchema.shape.level.unwrap();
 export const retrySchema = DashboardSettingsMutationSchema.shape.retryAfterCapMs.unwrap();
 export const proxySchema = DashboardSettingsMutationSchema.shape.proxy.unwrap();
+export const passwordSchema = DashboardSettingsMutationSchema.shape.password.unwrap();

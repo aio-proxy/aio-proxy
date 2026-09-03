@@ -51,10 +51,10 @@ function section(value: unknown, path: string): Record<string, unknown> {
   return value;
 }
 
-function applySettingsMutation(
+async function applySettingsMutation(
   current: Record<string, unknown>,
   mutation: DashboardSettingsMutation,
-): { readonly next: Record<string, unknown>; readonly restartRequired: boolean } {
+): Promise<{ readonly next: Record<string, unknown>; readonly restartRequired: boolean }> {
   let next = current;
   let restartRequired = false;
   if (
@@ -103,6 +103,17 @@ function applySettingsMutation(
       next = { ...next, proxy: mutation.proxy };
     }
   }
+  if (Object.hasOwn(mutation, 'password')) {
+    const server = section(next['server'], 'server');
+    if (mutation.password === null) {
+      if (Object.hasOwn(server, 'password')) {
+        const { password: _password, ...withoutPassword } = server;
+        next = { ...next, server: withoutPassword };
+      }
+    } else if (mutation.password !== undefined) {
+      next = { ...next, server: { ...server, password: await Bun.password.hash(mutation.password) } };
+    }
+  }
   return { next, restartRequired };
 }
 
@@ -113,8 +124,8 @@ export const createDashboardSettingsRoute = (state: ServerState) =>
       const mutation = context.req.valid('json');
       let restartRequired = false;
       try {
-        await state.configStore.mutateConfig((current) => {
-          const result = applySettingsMutation(current, mutation);
+        await state.configStore.mutateConfig(async (current) => {
+          const result = await applySettingsMutation(current, mutation);
           restartRequired = result.restartRequired;
           return result.next;
         });

@@ -59,8 +59,19 @@ describe('dashboard settings control-plane contracts', () => {
     ]) {
       expect(mutation.safeParse({ proxy }).success).toBe(false);
     }
-    for (const field of ['theme', 'language', 'router', 'password', 'hasPassword']) {
+    for (const field of ['theme', 'language', 'router', 'hasPassword']) {
       expect(mutation.safeParse({ [field]: field === 'router' ? {} : 'value' }).success).toBe(false);
+    }
+  });
+
+  test('distinguishes preserving, setting, and clearing the dashboard password', () => {
+    const mutation = schema('DashboardSettingsMutationSchema');
+
+    expect(mutation.parse({})).not.toHaveProperty('password');
+    expect(mutation.parse({ password: null })).toEqual({ password: null });
+    expect(mutation.parse({ password: 'correct horse battery' })).toEqual({ password: 'correct horse battery' });
+    for (const password of ['', 'short12', 42, {}]) {
+      expect(mutation.safeParse({ password }).success).toBe(false);
     }
   });
 

@@ -252,3 +252,47 @@ test('theme, language, and router fields are rejected without changing config by
     }
   });
 });
+
+test('a new password is stored only as an Argon2id hash and never in plaintext', async () => {
+  await withSettingsFixture(async ({ configPath, routes }) => {
+    const response = await put(routes, { password: 'correct horse battery' });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ ok: true, settings: { hasPassword: true } });
+
+    const stored = onDisk(configPath);
+    expect(stored.server.password).toStartWith('$argon2id$');
+    expect(await Bun.password.verify('correct horse battery', stored.server.password)).toBe(true);
+    expect(readFileSync(configPath, 'utf8')).not.toContain('correct horse battery');
+  });
+});
+
+test('a null password removes the authored dashboard password', async () => {
+  await withSettingsFixture(async ({ configPath, routes }) => {
+    const response = await put(routes, { password: null });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ ok: true, settings: { hasPassword: false } });
+    expect(onDisk(configPath).server).not.toHaveProperty('password');
+  });
+});
+
+test('a password below the minimum length is rejected without changing config bytes', async () => {
+  await withSettingsFixture(async ({ configPath, routes }) => {
+    const before = readFileSync(configPath, 'utf8');
+
+    const response = await put(routes, { password: 'short12' });
+
+    expect(response.status).toBe(422);
+    expect(await response.json()).toEqual({ ok: false, error: { code: 'config_rejected' } });
+    expect(readFileSync(configPath, 'utf8')).toBe(before);
+  });
+});
+
+test('a password write does not require restart', async () => {
+  await withSettingsFixture(async ({ routes }) => {
+    const response = await put(routes, { password: 'correct horse battery' });
+
+    expect(await response.json()).toMatchObject({ ok: true, restartRequired: false });
+  });
+});
