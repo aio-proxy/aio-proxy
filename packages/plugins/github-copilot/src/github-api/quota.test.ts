@@ -171,7 +171,7 @@ describe('GitHub Copilot quota', () => {
 
     const snapshot = await readGitHubCopilotQuota(context(), fetcher);
 
-    expect(snapshot.items).toEqual([
+    expect(snapshot.items).toStrictEqual([
       { id: 'spark_premium_request', displayName: 'Spark Premium Request', remainingRatio: 0.4 },
     ]);
     // `unknown` is GitHub's "no answer", not a tier. Showing it would put a literal "Unknown" under
@@ -190,7 +190,7 @@ describe('GitHub Copilot quota', () => {
 
     const snapshot = await readGitHubCopilotQuota(context(), fetcher);
 
-    expect(snapshot.items).toEqual([
+    expect(snapshot.items).toStrictEqual([
       { id: 'chat', displayName: { default: 'Chat', 'zh-Hans': '聊天' }, remainingRatio: 0.25 },
       {
         id: 'completions',

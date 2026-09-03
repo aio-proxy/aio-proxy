@@ -84,11 +84,14 @@ function snapshotItems(
     if (!isPlainObject(value)) continue;
     // An unmetered window is an answer — claim it so the counters cannot resurrect it — but an
     // unreadable ratio is "no answer", and claiming it would silence the counter fallback.
-    const suppressed = unmetered(value);
-    const ratio = suppressed ? undefined : snapshotRatio(value);
-    if (!suppressed && ratio === undefined) continue;
+    if (unmetered(value)) {
+      claim(claimed, key);
+      continue;
+    }
+    const ratio = snapshotRatio(value);
+    if (ratio === undefined) continue;
     const id = claim(claimed, key);
-    if (id !== undefined && ratio !== undefined) items.push(quotaItem(id, ratio, resetsAt));
+    if (id !== undefined) items.push(quotaItem(id, ratio, resetsAt));
   }
   return items;
 }
@@ -107,8 +110,8 @@ function unmetered(snapshot: Readonly<Record<string, unknown>>): boolean {
   return number(Reflect.get(snapshot, 'entitlement')) === 0;
 }
 
+/** Callers screen for `unmetered` first; this only runs on a window with a real denominator. */
 function snapshotRatio(snapshot: Readonly<Record<string, unknown>>): number | undefined {
-  if (unmetered(snapshot)) return undefined;
   const percent = number(Reflect.get(snapshot, 'percent_remaining'));
   if (percent !== undefined) return clampRatio(percent / 100);
   const entitlement = number(Reflect.get(snapshot, 'entitlement'));
