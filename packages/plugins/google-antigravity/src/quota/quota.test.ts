@@ -71,7 +71,9 @@ function quotaResponder(routes: Readonly<Record<string, unknown>>, seen: string[
 test('maps grouped buckets to five-hour-then-weekly items with localized labels', async () => {
   const snapshot = await readGoogleAntigravityQuota(context(), quotaResponder({ [DAILY]: summaryPayload }));
 
-  expect(snapshot.items).toEqual([
+  // toStrictEqual, not toEqual: `toEqual` treats trailing `undefined` array holes as absent, so a
+  // flatMap-to-map regression in the mapper would compare equal to the expected list.
+  expect(snapshot.items).toStrictEqual([
     {
       id: 'gemini-models-5h',
       displayName: { default: 'Gemini Models · 5-hour limit', 'zh-Hans': 'Gemini Models · 5 小时额度' },
@@ -109,7 +111,7 @@ test('reports a fully unused account rather than suppressing it', async () => {
       [DAILY]: { groups: [{ displayName: 'Gemini Models', buckets: [{ window: '5h', remainingFraction: 1 }] }] },
     }),
   );
-  expect(snapshot.items).toEqual([
+  expect(snapshot.items).toStrictEqual([
     {
       id: 'gemini-models-5h',
       displayName: { default: 'Gemini Models · 5-hour limit', 'zh-Hans': 'Gemini Models · 5 小时额度' },
