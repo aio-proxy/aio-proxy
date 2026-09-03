@@ -21,9 +21,8 @@ export const createDashboardProviderCredentialRefreshRoute = (state: ServerState
       }
       throw error;
     }
-    const provider = (await state.providerSummaries({ filter: id, probe: false })).find((summary) => summary.id === id);
-    if (provider === undefined) {
-      return context.json({ error: 'provider summary not found' }, 500);
-    }
-    return context.json({ provider });
+    // No summary in the body: the rebuild `onDiagnosticChanged` queues has not landed yet, so any
+    // summary read here would still carry the pre-refresh `accountLabel` and `expiresAt`. The client
+    // invalidates the Provider list and refetches instead of seeding it from this response.
+    return context.json({ ok: true });
   });

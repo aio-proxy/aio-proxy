@@ -86,9 +86,7 @@ async function createRefreshFixture(options: FixtureOptions = {}) {
           }
         : {}),
       async createRuntime() {
-        // Never invoked: nothing here routes a generation request. Returning a stub instead of
-        // throwing keeps snapshot builds from logging a runtime-creation failure on every fixture.
-        return { provider: { specificationVersion: 'v4' } } as never;
+        throw new Error('not used');
       },
     });
   });
@@ -122,13 +120,15 @@ async function createRefreshFixture(options: FixtureOptions = {}) {
 const refresh = (routes: Awaited<ReturnType<typeof createRefreshFixture>>['routes'], id: string) =>
   routes.request(`/providers/${id}/credential/refresh`, { method: 'POST' });
 
-test('a manual refresh persists the rotated credential and answers with the provider summary', async () => {
+test('a manual refresh persists the rotated credential and acknowledges without a summary', async () => {
   const fixture = await createRefreshFixture();
   try {
     const response = await refresh(fixture.routes, 'person');
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ provider: { id: 'person', canRefreshCredential: true } });
+    // No summary in the body on purpose: the rebuild is still queued, so one read here would carry
+    // the pre-refresh label. The client invalidates the Provider list instead of seeding it.
+    expect(await response.json()).toEqual({ ok: true });
     expect(fixture.repository.readAccount('person')?.credential).toEqual({ accessToken: 'rotated' });
     expect(fixture.repository.readAccount('person')?.label).toBe('rotated@example.com');
   } finally {
