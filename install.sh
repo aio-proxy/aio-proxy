@@ -26,22 +26,13 @@ esac
 
 asset="aio-proxy-${os}-${arch}"
 url="https://github.com/${REPO}/releases/latest/download/${asset}"
+aiop="$INSTALL_DIR/aiop"
 
 mkdir -p "$INSTALL_DIR"
-tmp="$(mktemp "$INSTALL_DIR/.aio-proxy.tmp.XXXXXX")"
-trap 'rm -f "$tmp"' INT TERM EXIT
-
-echo "Downloading ${url} ..."
-curl -fSL --progress-bar -o "$tmp" "$url"
-chmod +x "$tmp"
-mv "$tmp" "$INSTALL_DIR/aio-proxy"
-aiop="$INSTALL_DIR/aiop"
 if [ -L "$aiop" ]; then
   current="$(readlink "$aiop")"
   case "$current" in
-    aio-proxy | "$INSTALL_DIR/aio-proxy")
-      ln -sfn aio-proxy "$aiop"
-      ;;
+    aio-proxy | "$INSTALL_DIR/aio-proxy") ;;
     *)
       echo "aio-proxy: refusing to replace existing $aiop -> $current" >&2
       exit 1
@@ -50,9 +41,16 @@ if [ -L "$aiop" ]; then
 elif [ -e "$aiop" ]; then
   echo "aio-proxy: refusing to replace existing $aiop" >&2
   exit 1
-else
-  ln -s aio-proxy "$aiop"
 fi
+
+tmp="$(mktemp "$INSTALL_DIR/.aio-proxy.tmp.XXXXXX")"
+trap 'rm -f "$tmp"' INT TERM EXIT
+
+echo "Downloading ${url} ..."
+curl -fSL --progress-bar -o "$tmp" "$url"
+chmod +x "$tmp"
+mv "$tmp" "$INSTALL_DIR/aio-proxy"
+ln -sfn aio-proxy "$aiop"
 trap - INT TERM EXIT
 
 echo "Installed aio-proxy to $INSTALL_DIR/aio-proxy"
