@@ -19,6 +19,10 @@ rs.mock('../../hooks/use-settings-mutation', () => ({
   useSettingsMutation: () => mocks.useSettingsMutation(),
 }));
 
+rs.mock('../../hooks/use-reload-mutation', () => ({
+  useReloadMutation: () => ({ isPending: false, mutate: rs.fn() }),
+}));
+
 const settings: DashboardSettingsView = {
   hasPassword: true,
   host: '127.0.0.1',
