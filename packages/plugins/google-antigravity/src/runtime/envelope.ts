@@ -69,9 +69,10 @@ export function createCcaEnvelope(input: CcaEnvelopeInput): CcaEnvelope {
     input.familyByWireId?.(input.modelId)?.thinking.mode === 'claude' ||
     classifyProvider(descriptor ?? {}) === 'claude';
   const cleaned = normalizeToolDomains(cleanGeminiBody(input.body));
+  const tools = Reflect.get(cleaned, 'tools');
   const request = applyValidatedToolMode(cleaned, {
     claudeBacked,
-    hasTools: Array.isArray(cleaned.tools) && cleaned.tools.length > 0,
+    hasTools: Array.isArray(tools) && tools.length > 0,
   });
   const session = input.sessionState ?? {
     agentId: crypto.randomUUID(),

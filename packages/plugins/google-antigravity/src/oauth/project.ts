@@ -27,7 +27,8 @@ export async function initializeAntigravityProject(
   const fetchImpl = dependencies.fetch ?? globalThis.fetch;
   const sleep = dependencies.sleep ?? Bun.sleep;
   const now = dependencies.now ?? Date.now;
-  const daily = antigravityEndpoints(options, 'project-load')[0];
+  const daily = antigravityEndpoints(options, 'project-load')[0] ?? '';
+  if (daily === '') throw new Error('Google Antigravity project load endpoint is missing');
   const userAgent = antigravityUserAgent();
 
   const initial = await loadCodeAssist(fetchImpl, daily, accessToken, {}, dependencies.signal, userAgent);
