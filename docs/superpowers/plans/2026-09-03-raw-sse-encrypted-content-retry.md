@@ -52,6 +52,7 @@
 ### Task 1: `rawRetry` adapter hook and OpenAI Responses implementation
 
 **Files:**
+- Modify: `packages/core/src/ingress/openai-responses/input-items.ts:55`
 - Modify: `packages/core/src/protocol/adapter.ts:75-86`
 - Create: `packages/core/src/protocol/openai-responses/encrypted-content-retry/index.ts`
 - Create: `packages/core/src/protocol/openai-responses/encrypted-content-retry/encrypted-content-retry.ts`
@@ -112,26 +113,54 @@ test('retries only invalid_encrypted_content', () => {
 });
 
 // The repo's own Responses egress sends response.output_item.added immediately
-// before each delta, so committing on it would forfeit the retry window.
+// before each delta, so committing on it would forfeit the retry window. The
+// *.added / *.done container frames announce or close an item without carrying
+// generated output themselves.
 test.each([
   ['response.created', '{"type":"response.created"}'],
   ['response.in_progress', '{"type":"response.in_progress"}'],
+  ['response.queued', '{"type":"response.queued"}'],
   ['response.output_item.added', '{"type":"response.output_item.added","output_index":0}'],
+  ['response.output_item.done', '{"type":"response.output_item.done","output_index":0}'],
   ['response.content_part.added', '{"type":"response.content_part.added"}'],
+  ['response.content_part.done', '{"type":"response.content_part.done"}'],
+  ['response.reasoning_summary_part.added', '{"type":"response.reasoning_summary_part.added"}'],
   [undefined, 'not-json'],
 ])('holds pre-content frame %s', (event, data) => {
   expect(classifyOpenAIResponsesRawRetry(event === undefined ? { data } : { event, data })).toBe('hold');
 });
 
+// Every output-bearing member of the SDK's ResponseStreamEvent union, not just
+// the text deltas. Holding any of these would let a later encrypted-content
+// error replay a turn that already produced output.
 test.each([
   ['response.output_text.delta', '{"type":"response.output_text.delta","delta":"hi"}'],
+  ['response.output_text.done', '{"type":"response.output_text.done","text":"hi"}'],
+  ['response.refusal.delta', '{"type":"response.refusal.delta","delta":"no"}'],
+  ['response.refusal.done', '{"type":"response.refusal.done","refusal":"no"}'],
   ['response.reasoning_text.delta', '{"type":"response.reasoning_text.delta","delta":"hi"}'],
+  ['response.reasoning_text.done', '{"type":"response.reasoning_text.done","text":"hi"}'],
   ['response.reasoning_summary_text.delta', '{"type":"response.reasoning_summary_text.delta","delta":"hi"}'],
+  ['response.reasoning_summary_text.done', '{"type":"response.reasoning_summary_text.done","text":"hi"}'],
   ['response.function_call_arguments.delta', '{"type":"response.function_call_arguments.delta","delta":"{"}'],
+  ['response.function_call_arguments.done', '{"type":"response.function_call_arguments.done","arguments":"{}"}'],
+  ['response.custom_tool_call_input.delta', '{"type":"response.custom_tool_call_input.delta","delta":"p"}'],
+  ['response.custom_tool_call_input.done', '{"type":"response.custom_tool_call_input.done","input":"pwd"}'],
+  ['response.mcp_call_arguments.delta', '{"type":"response.mcp_call_arguments.delta","delta":"{"}'],
+  ['response.code_interpreter_call_code.delta', '{"type":"response.code_interpreter_call_code.delta","delta":"1"}'],
+  ['response.audio.delta', '{"type":"response.audio.delta","delta":"AA"}'],
+  ['response.audio.transcript.delta', '{"type":"response.audio.transcript.delta","delta":"hi"}'],
+  ['response.image_generation_call.partial_image', '{"type":"response.image_generation_call.partial_image","partial_image_index":0}'],
+])('commits output-bearing frame %s', (event, data) => {
+  expect(classifyOpenAIResponsesRawRetry({ event, data })).toBe('commit');
+});
+
+test.each([
   ['response.completed', '{"type":"response.completed","response":{"status":"completed"}}'],
   ['response.failed', '{"type":"response.failed","response":{"status":"failed"}}'],
   ['response.incomplete', '{"type":"response.incomplete"}'],
-])('commits decisive frame %s', (event, data) => {
+  ['response.cancelled', '{"type":"response.cancelled"}'],
+])('commits terminal frame %s', (event, data) => {
   expect(classifyOpenAIResponsesRawRetry({ event, data })).toBe('commit');
 });
 
@@ -287,7 +316,70 @@ bun test packages/core/src/protocol/openai-responses/encrypted-content-retry/enc
 
 Expected: FAIL with `Cannot find module './encrypted-content-retry'`.
 
-- [ ] **Step 3: Add the hook type**
+- [ ] **Step 3: Accept encrypted tool outputs at ingress**
+
+Verified against the current parser: `parseOpenAIResponses` **rejects** a `function_call_output` whose `output` array holds an `encrypted_content` part with a `ZodError`, while the same part inside `agent_message.content` parses. `toolOutputContentPartSchema` at `packages/core/src/ingress/openai-responses/input-items.ts:55` allows only text, image, and file parts, and `function_call_output` is in `knownOpenAIResponsesInputItemTypes`, so `inputItemSchema` turns the mismatch into a request error before any raw attempt runs. Without this step the `function_call_output` rewrite branch is dead code that only the direct helper test can reach.
+
+Change line 55 from:
+
+```ts
+const toolOutputContentPartSchema = z.union([textPartSchema, inputImagePartSchema, inputFilePartSchema]);
+```
+
+to:
+
+```ts
+// codex-rs FunctionCallOutputContentItem also carries encrypted_content, which
+// raw passthrough must preserve; the model path already drops it.
+const toolOutputContentPartSchema = z.union([
+  textPartSchema,
+  inputImagePartSchema,
+  inputFilePartSchema,
+  encryptedContentPartSchema,
+]);
+```
+
+Define `encryptedContentPartSchema` immediately above it and reuse it in `agentMessageContentPartSchema`, replacing that union's inline `z.object({ type: z.literal('encrypted_content'), encrypted_content: z.string() })` at line 129:
+
+```ts
+const encryptedContentPartSchema = z.object({
+  type: z.literal('encrypted_content'),
+  encrypted_content: z.string(),
+});
+```
+
+Add this case to `packages/core/src/protocol/openai-responses-basic.test.ts`:
+
+```ts
+test('preserves an encrypted function call output part through parse and raw forwarding', async () => {
+  const body = JSON.stringify({
+    model: 'alias',
+    input: [
+      {
+        type: 'function_call_output',
+        call_id: 'call_1',
+        output: [{ type: 'encrypted_content', encrypted_content: 'tool result' }],
+      },
+    ],
+  });
+  const raw = new Request('https://proxy.test/v1/responses', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body,
+  });
+
+  const parsed = await openAIResponsesAdapter.parse(raw, {});
+  const forwarded = await openAIResponsesAdapter.rawRequest(raw, parsed, 'alias', new Set(), {});
+
+  expect(await forwarded.json()).toMatchObject({
+    input: [{ output: [{ type: 'encrypted_content', encrypted_content: 'tool result' }] }],
+  });
+});
+```
+
+The model path is unaffected: `convertToolCallOutput` in `packages/core/src/transform/openai-responses/compat.ts` already routes unknown output parts through the existing degradation warning, so cross-protocol conversion keeps dropping the blob.
+
+- [ ] **Step 4: Add the hook type**
 
 In `packages/core/src/protocol/adapter.ts`, above `SharedProtocolAdapter`, add:
 
@@ -312,7 +404,7 @@ Inside the `LanguageProtocolAdapter` object type, next to `egressContext`, add:
 
 `rawRetry` is optional and `defineProtocolAdapter` spreads `definition`, so no default is needed.
 
-- [ ] **Step 4: Implement the OpenAI Responses hook**
+- [ ] **Step 5: Implement the OpenAI Responses hook**
 
 Create `packages/core/src/protocol/openai-responses/encrypted-content-retry/encrypted-content-retry.ts`:
 
@@ -328,15 +420,6 @@ type OpenAIResponsesRawRetryContext = { readonly operation?: 'create' | 'compact
 
 const CIPHERTEXT = /^[A-Za-z0-9+/=_-]+$/;
 const OPAQUE_ITEM_TYPES = new Set(['reasoning', 'compaction', 'compaction_summary', 'context_compaction']);
-// Generated output. Once one of these reaches the client the stream is committed
-// and a later error can no longer be hidden.
-const CONTENT_EVENTS = new Set([
-  'response.output_text.delta',
-  'response.reasoning_text.delta',
-  'response.reasoning_summary_text.delta',
-  'response.function_call_arguments.delta',
-  'response.custom_tool_call_input.delta',
-]);
 // Stream-level outcomes.
 const TERMINAL_EVENTS = new Set([
   'response.completed',
@@ -345,6 +428,27 @@ const TERMINAL_EVENTS = new Set([
   'response.incomplete',
   'response.cancelled',
 ]);
+// Item lifecycle frames that announce or close a container without carrying
+// generated output themselves.
+const LIFECYCLE_ITEM_EVENTS = new Set([
+  'response.output_item.added',
+  'response.output_item.done',
+  'response.content_part.added',
+  'response.content_part.done',
+  'response.reasoning_summary_part.added',
+  'response.reasoning_summary_part.done',
+]);
+// Every output-bearing Responses event ends in one of these. Matching by suffix
+// covers the whole `ResponseStreamEvent` union — text, refusal, reasoning,
+// audio, function/custom/mcp/code-interpreter arguments, and partial images —
+// instead of an allowlist that silently holds (and would then discard) output
+// from an event nobody remembered to name.
+const OUTPUT_EVENT_SUFFIXES = ['.delta', '.done', '.partial_image'] as const;
+
+function carriesGeneratedOutput(type: string): boolean {
+  if (LIFECYCLE_ITEM_EVENTS.has(type) || TERMINAL_EVENTS.has(type)) return false;
+  return OUTPUT_EVENT_SUFFIXES.some((suffix) => type.endsWith(suffix));
+}
 
 export function looksLikeBackendCiphertext(payload: string): boolean {
   return payload.length >= 64 && CIPHERTEXT.test(payload);
@@ -358,7 +462,7 @@ export function looksLikeBackendCiphertext(payload: string): boolean {
 export function classifyOpenAIResponsesRawRetry(frame: RawRetryFrame): RawRetryVerdict {
   const payload = parseJson(frame.data);
   const type = frame.event ?? (typeof payload?.['type'] === 'string' ? payload['type'] : undefined);
-  if (type !== undefined && CONTENT_EVENTS.has(type)) return 'commit';
+  if (type !== undefined && carriesGeneratedOutput(type)) return 'commit';
   const error = isPlainObject(payload?.['error']) ? payload['error'] : undefined;
   if (type === 'error' || error !== undefined) {
     return error?.['code'] === 'invalid_encrypted_content' ? 'retry' : 'commit';
@@ -466,7 +570,7 @@ export {
 } from './encrypted-content-retry';
 ```
 
-- [ ] **Step 5: Attach the hook and widen the barrel**
+- [ ] **Step 6: Attach the hook and widen the barrel**
 
 In `packages/core/src/protocol/openai-responses.ts`, add the import beside the other local imports:
 
@@ -488,23 +592,25 @@ export * from './openai-responses/encrypted-content-retry';
 
 `packages/core/src/index.ts` already does `export * from './protocol'`, so `classifyOpenAIResponsesRawRetry` and the hook types become part of the `@aio-proxy/core` surface the server consumes.
 
-- [ ] **Step 6: Run the tests and confirm they pass**
+- [ ] **Step 7: Run the tests and confirm they pass**
 
 Run:
 
 ```bash
-bun test packages/core/src/protocol/openai-responses/encrypted-content-retry/encrypted-content-retry.test.ts packages/core/src/protocol/openai-responses.test.ts packages/core/src/protocol/openai-responses-basic.test.ts packages/core/src/protocol/openai-responses-compact.test.ts
+bun test packages/core/src/protocol/openai-responses/encrypted-content-retry/encrypted-content-retry.test.ts packages/core/src/protocol/openai-responses.test.ts packages/core/src/protocol/openai-responses-basic.test.ts packages/core/src/protocol/openai-responses-compact.test.ts packages/core/src/ingress/openai-responses.test.ts packages/core/src/transform/openai-responses/compatibility.test.ts
 ```
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
 git add \
+  packages/core/src/ingress/openai-responses/input-items.ts \
   packages/core/src/protocol/adapter.ts \
   packages/core/src/protocol/index.ts \
   packages/core/src/protocol/openai-responses.ts \
+  packages/core/src/protocol/openai-responses-basic.test.ts \
   packages/core/src/protocol/openai-responses/encrypted-content-retry
 git commit -m "$(cat <<'EOF'
 feat(core): add a raw retry hook for OpenAI Responses encrypted content
@@ -1103,6 +1209,40 @@ test('replays the same raw candidate and hides the failed stream', async () => {
   expect(attemptsOf(harness.recording)).toEqual([{ outcome: 'success', providerId: 'carpool', statusCode: 200 }]);
 });
 
+// Exercises the function_call_output rewrite branch through the real parse step,
+// not just the direct helper: that part only survives ingress after Task 1's
+// toolOutputContentPartSchema change.
+test('rewrites an encrypted function call output through the pipeline', async () => {
+  let calls = 0;
+  const bodies: unknown[] = [];
+  const primary = responsesProvider(async (request) => {
+    calls += 1;
+    bodies.push(await request.clone().json());
+    return calls === 1 ? sse(created + encryptedError) : sse(success);
+  });
+  const harness = pipeline([primary], { adapter: openAIResponsesAdapter });
+
+  const response = await harness.run(
+    jsonRequest({
+      model: REQUESTED_MODEL,
+      stream: true,
+      input: [
+        {
+          type: 'function_call_output',
+          call_id: 'call_1',
+          output: [{ type: 'encrypted_content', encrypted_content: 'tool result' }],
+        },
+      ],
+    }),
+  );
+
+  expect(response.status).toBe(200);
+  expect(calls).toBe(2);
+  expect(bodies[1]).toMatchObject({
+    input: [{ type: 'function_call_output', output: [{ type: 'input_text', text: 'tool result' }] }],
+  });
+});
+
 test('does not retry after a content delta', async () => {
   let calls = 0;
   const primary = responsesProvider(async () => {
@@ -1391,6 +1531,6 @@ EOF
 
 ## Self-review
 
-1. Spec coverage: the `rawRetry` hook and compact refusal (Task 1), hold-by-default classification including `output_item.added` (Task 1), SSE hold with idle plus pending-read abort guards, the 1 MiB cap winning over a same-chunk `retry`, the bounded JSON read with tee-safe abandonment and abort propagation, and non-`rawRetry` passthrough (Task 2), HTTP 400 interception limits, replay signal, cancel-before-replay, same-candidate accounting, no-rewrite commit, and the changeset (Task 3) each have a task. Non-goals are constraints, not extra tasks.
+1. Spec coverage: the ingress change that makes an encrypted `function_call_output` part reachable, the `rawRetry` hook and compact refusal, and suffix-based output detection over the whole `ResponseStreamEvent` union so no output-bearing event is held (Task 1), SSE hold with idle plus pending-read abort guards, the 1 MiB cap winning over a same-chunk `retry`, the bounded JSON read with tee-safe abandonment and abort propagation, and non-`rawRetry` passthrough (Task 2), HTTP 400 interception limits, replay signal, cancel-before-replay, same-candidate accounting, no-rewrite commit, and the changeset (Task 3) each have a task. Non-goals are constraints, not extra tasks.
 2. Placeholder scan: no TBD/TODO, no "add tests later", no "similar to Task N". Task 3 spells out the resolver instead of saying "wire it up".
-3. Type consistency: `RawRetryFrame`, `RawRetryVerdict`, `RawRetryHook<TRequest, TContext>`, `RawRetryGuards`, `RawRetryPreflight`, `RawRetryResolution<TRequest, TContext>`, `classifyOpenAIResponsesRawRetry`, `rewriteOpenAIResponsesEncryptedContent`, `openAIResponsesRawRetry`, `preflightRawRetrySse(response, classify, guards)`, `readBoundedJsonBody(response, guards)`, `resolveRawRetry(input)`. Private helpers in `raw-retry.ts`: `guardReader`, `inboundAbortError`, `isAbortFailure`, `replayBuffered`. The pipeline calls only `hook.classify` and `hook.rewrite`.
+3. Type consistency: `RawRetryFrame`, `RawRetryVerdict`, `RawRetryHook<TRequest, TContext>`, `RawRetryGuards`, `RawRetryPreflight`, `RawRetryResolution<TRequest, TContext>`, `classifyOpenAIResponsesRawRetry`, `rewriteOpenAIResponsesEncryptedContent`, `openAIResponsesRawRetry`, `preflightRawRetrySse(response, classify, guards)`, `readBoundedJsonBody(response, guards)`, `resolveRawRetry(input)`. Private helpers in `raw-retry.ts`: `guardReader`, `inboundAbortError`, `isAbortFailure`, `replayBuffered`. In `encrypted-content-retry.ts`: `carriesGeneratedOutput`, `TERMINAL_EVENTS`, `LIFECYCLE_ITEM_EVENTS`, `OUTPUT_EVENT_SUFFIXES`. New ingress symbol: `encryptedContentPartSchema`. The pipeline calls only `hook.classify` and `hook.rewrite`.

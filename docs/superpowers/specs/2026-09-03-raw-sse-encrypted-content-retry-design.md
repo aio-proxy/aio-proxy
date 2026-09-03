@@ -64,9 +64,11 @@ rawRetry?: Readonly<{
 | `error` whose `error.code` is `invalid_encrypted_content` | `retry` |
 | any other `error`, `response.failed`, `response.incomplete`, `response.cancelled` | `commit` |
 | `response.completed`, `response.done` | `commit` |
-| `response.output_text.delta`, `response.reasoning_text.delta`, `response.reasoning_summary_text.delta` | `commit` |
-| `response.function_call_arguments.delta`, `response.custom_tool_call_input.delta` | `commit` |
-| anything else, including `response.created`, `response.in_progress`, `response.output_item.added`, `response.content_part.added`, unparseable data | `hold` |
+| any output-bearing event: a type ending in `.delta`, `.done`, or `.partial_image` that is not an item/part container frame | `commit` |
+| container lifecycle frames `response.output_item.added` / `.done`, `response.content_part.added` / `.done`, `response.reasoning_summary_part.added` / `.done` | `hold` |
+| anything else, including `response.created`, `response.in_progress`, `response.queued`, unparseable data | `hold` |
+
+Output detection is by suffix, not an allowlist. The SDK's `ResponseStreamEvent` union carries generated output through `response.output_text.*`, `response.refusal.*`, `response.reasoning_text.*`, `response.reasoning_summary_text.*`, `response.function_call_arguments.*`, `response.custom_tool_call_input.*`, `response.mcp_call_arguments.*`, `response.code_interpreter_call_code.*`, `response.audio.*`, `response.audio.transcript.*`, and `response.image_generation_call.partial_image`. An allowlist that forgot one of these would hold it, then let a later `invalid_encrypted_content` replay a turn that had already produced output. Only the item/part container frames are excluded, because they announce or close a container without emitting output.
 
 Holding an unknown frame is bounded by the 1 MiB replay cap, the preflight idle timer, and stream EOF, all of which commit. So an upstream that only ever emits frames this table does not name still reaches the client.
 
@@ -122,6 +124,8 @@ Cancel the failed response **before** awaiting the second invoke. Cancelling onl
 `openAIResponsesAdapter.rawRetry.rewrite` operates on the raw JSON `input` array of the **already rewritten** upstream request (model / background / effort already applied).
 
 1. **Plaintext slots.** Every `{ type: "encrypted_content", encrypted_content: string }` part whose payload is **not** backend ciphertext becomes `{ type: "input_text", text: payload }` and loses `encrypted_content`. Walk `agent_message.content` and `function_call_output.output` when that output is an array. Leave ciphertext parts untouched.
+
+   `function_call_output` requires an ingress change first. `toolOutputContentPartSchema` currently allows only text, image, and file parts, and `function_call_output` is a known wire type, so `parseOpenAIResponses` rejects such a request with a `ZodError` before any raw attempt. Verified against the current parser: the same part inside `agent_message.content` parses today. Add `encrypted_content` to that union so raw passthrough can preserve and rewrite it; the model path keeps dropping it through the existing degradation warning.
 2. If step 1 changed nothing, **opaque blobs.** Delete `encrypted_content` on `type: "reasoning"` and `type: "compaction"` / `compaction_summary` / `context_compaction` items. Keep the item and any `summary`.
 3. If neither step changes the body, return `undefined`.
 
@@ -137,7 +141,7 @@ The retry is the same candidate attempt. Do not open a second attempt span. Do n
 
 ## Scope
 
-- Core: the `rawRetry` adapter hook, the OpenAI Responses `classify` / `rewrite` implementation, and the ciphertext gate.
+- Core: the `rawRetry` adapter hook, the OpenAI Responses `classify` / `rewrite` implementation, the ciphertext gate, and the ingress schema change that lets an encrypted `function_call_output` part reach raw passthrough.
 - Server: a protocol-agnostic raw SSE preflight with idle and abort guards, the HTTP 400 intercept, and the same-candidate replay inside `completeRawAttempt` before usage capture.
 - Tests for rewrite, classification, preflight liveness, and the raw pipeline retry.
 - User-facing changeset on `aio-proxy`, `@aio-proxy/core`, and `@aio-proxy/server`.
@@ -158,6 +162,8 @@ The retry is the same candidate attempt. Do not open a second attempt span. Do n
 - Spawn plaintext `encrypted_content` + 200 SSE `invalid_encrypted_content` after `response.created` must invoke raw twice, return only the second stream, and never expose the error frame.
 - The same error after `response.output_item.added` but before any delta must still retry.
 - The same error after an `output_text.delta` must not retry.
+- The same error after any other output-bearing event, including `response.refusal.delta` and `response.image_generation_call.partial_image`, must not retry.
+- An `encrypted_content` part inside `function_call_output.output` must survive ingress and be rewritten through the pipeline, not only through the helper.
 - Ciphertext-shaped `encrypted_content` parts must not be converted to `input_text`.
 - Reasoning-only blobs retry by deleting `encrypted_content`, not by converting them to text.
 - A stream that holds and then stalls must reject on the preflight idle timer instead of hanging.
