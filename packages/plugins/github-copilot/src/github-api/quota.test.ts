@@ -119,6 +119,12 @@ describe('GitHub Copilot quota', () => {
       quota_snapshots: {
         premium_interactions: { unlimited: true, percent_remaining: 100 },
         chat: { entitlement: 0, remaining: 0, percent_remaining: 100 },
+        // `remaining` is optional upstream, and an entitlement of 0 is already a complete statement
+        // that the window has no denominator — the 100% must not survive as a confident full bar.
+        completions: { entitlement: 0, percent_remaining: 100 },
+        // `unlimited` is only trustworthy as a claim, not as a boolean: anything present and not
+        // `false` still says unlimited.
+        spark_premium_request: { unlimited: 'true', percent_remaining: 100 },
       },
     });
 
@@ -197,14 +203,39 @@ describe('GitHub Copilot quota', () => {
 
   test('keeps a zero/zero window suppressed when the counters also report it', async () => {
     const { fetcher } = usageFetcher({
-      quota_snapshots: { chat: { entitlement: 0, remaining: 0, percent_remaining: 100 } },
-      monthly_quotas: { chat: 50 },
-      limited_user_quotas: { chat: 20 },
+      quota_snapshots: {
+        chat: { entitlement: 0, remaining: 0, percent_remaining: 100 },
+        // The widened suppression has to reach the counters too: a window dropped as unmetered that
+        // reappears at a counter-derived percentage is the same misleading bar by another route.
+        completions: { entitlement: 0, percent_remaining: 100 },
+        spark_premium_request: { unlimited: 'true' },
+      },
+      monthly_quotas: { chat: 50, completions: 2000, spark_premium_request: 10 },
+      limited_user_quotas: { chat: 20, completions: 500, spark_premium_request: 4 },
     });
 
     const snapshot = await readGitHubCopilotQuota(context(), fetcher);
 
     expect(snapshot.items).toStrictEqual([]);
+  });
+
+  // Two payload keys can trim into one id, and the core validator rejects a duplicate id by throwing
+  // out the whole snapshot — the "one bad entry must not discard its siblings" rule, from the other
+  // direction. First key wins; a key that trims to nothing was never an id at all.
+  test('keeps the first of two keys that trim to the same id', async () => {
+    const { fetcher } = usageFetcher({
+      quota_snapshots: {
+        chat: { percent_remaining: 50 },
+        ' chat': { percent_remaining: 10 },
+        '  ': { percent_remaining: 90 },
+      },
+    });
+
+    const snapshot = await readGitHubCopilotQuota(context(), fetcher);
+
+    expect(snapshot.items).toStrictEqual([
+      { id: 'chat', displayName: { default: 'Chat', 'zh-Hans': '聊天' }, remainingRatio: 0.5 },
+    ]);
   });
 
   // The mirror of the two above: a snapshot entry nothing can be read from is "no answer", not

@@ -66,7 +66,10 @@ function snapshotItems(
   for (const key of Object.keys(snapshots)) {
     const id = key.trim();
     const value = Reflect.get(snapshots, key);
-    if (id === '' || !isPlainObject(value)) continue;
+    // Two keys can trim into one id, and the core validator rejects a duplicate id by discarding the
+    // whole snapshot. First answer wins — covering both the emitted and the suppressed-unmetered
+    // paths, since `covered` records both.
+    if (id === '' || covered.has(id) || !isPlainObject(value)) continue;
     if (unmetered(value)) {
       covered.add(id);
       continue;
@@ -80,13 +83,16 @@ function snapshotItems(
 }
 
 /**
- * A window with no denominator to measure against: an unlimited allowance, or the explicit zero/zero
+ * A window with no denominator to measure against: an unlimited allowance, or the zero entitlement
  * GitHub serves for token-based billing and Business seats — sometimes alongside
- * `percent_remaining: 100`, which would otherwise render as a full allowance.
+ * `percent_remaining: 100`, which would otherwise render as a full allowance. `remaining` is optional
+ * upstream, so an entitlement of `0` has to stand on its own, and `unlimited` is trusted as a claim
+ * rather than as a boolean: anything present and not `false` still says unlimited.
  */
 function unmetered(snapshot: Readonly<Record<string, unknown>>): boolean {
-  if (Reflect.get(snapshot, 'unlimited') === true) return true;
-  return number(Reflect.get(snapshot, 'entitlement')) === 0 && number(Reflect.get(snapshot, 'remaining')) === 0;
+  const unlimited = Reflect.get(snapshot, 'unlimited');
+  if (unlimited !== undefined && unlimited !== false) return true;
+  return number(Reflect.get(snapshot, 'entitlement')) === 0;
 }
 
 function snapshotRatio(snapshot: Readonly<Record<string, unknown>>): number | undefined {
