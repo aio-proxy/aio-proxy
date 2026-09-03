@@ -42,6 +42,24 @@ test('a manual refresh clears a stale credential refresh diagnostic', async () =
   ).toBe(false);
 });
 
+test('a snapshot rebuild failure does not report a committed rotation as a refresh failure', async () => {
+  const fixture = createQuotaFixture({
+    refreshCredential: async () => ({ value: { token: 'rotated' } }),
+  });
+  const refresher = createOAuthCredentialRefresher({
+    ...fixture.dependencies,
+    onDiagnosticChanged: () => {
+      throw new Error('snapshot rebuild failed');
+    },
+  });
+
+  await refresher.refresh(PROVIDER_ID, quotaSignal());
+
+  // The credential is already committed to SQLite by this point; surfacing an error here would tell
+  // the user their refresh failed when it did not.
+  expect(fixture.repository.readAccount(PROVIDER_ID)?.credential).toEqual({ token: 'rotated' });
+});
+
 test('a plugin without the refresh capability is a permanent failure', async () => {
   const fixture = createQuotaFixture();
   const refresher = createOAuthCredentialRefresher(fixture.dependencies);

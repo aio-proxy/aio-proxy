@@ -36,10 +36,12 @@ async function exchange(
   // `createCredentialPort` skips both of these in `control-plane` mode so a background quota read
   // cannot mutate routing state. A user-initiated refresh must do them: otherwise a stale
   // `CREDENTIAL_REFRESH_FAILED` survives a successful refresh and the summary is never rebuilt.
+  // Both are best-effort: the rotated credential is already committed, so a failure here must not
+  // surface as a refresh failure and tell the user work that succeeded did not.
   try {
     dependencies.repository.clearDiagnostic(prepared.providerId, 'CREDENTIAL_REFRESH_FAILED');
+    dependencies.onDiagnosticChanged();
   } catch {}
-  dependencies.onDiagnosticChanged();
 }
 
 /**
