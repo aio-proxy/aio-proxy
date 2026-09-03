@@ -15,6 +15,18 @@ import type { GoogleAntigravityAccountOptions, GoogleAntigravityCredential } fro
 const QUOTA_PATH = '/v1internal:retrieveUserQuotaSummary';
 const QUOTA_ENDPOINT_TIMEOUT_MS = 10_000;
 
+const PLAN_PATH = '/v1internal:loadCodeAssist';
+const PLAN_BODY = JSON.stringify({ metadata: { ideType: 'ANTIGRAVITY' } });
+// The tier read is enrichment, so a slow endpoint must not hold up the quota read.
+const PLAN_TIMEOUT_MS = 4_000;
+
+const PLAN_BY_TIER_ID: Readonly<Record<string, LocalizedText>> = {
+  'free-tier': { default: 'Free', 'zh-Hans': '免费版' },
+  'g1-pro-tier': { default: 'Pro', 'zh-Hans': '专业版' },
+  'g1-ultra-tier': { default: 'Ultra', 'zh-Hans': '旗舰版' },
+  'g1-ultra-lite-tier': { default: 'Ultra Lite', 'zh-Hans': '轻量旗舰版' },
+};
+
 const FIVE_HOUR_WINDOWS = new Set(['5h', 'five-hour', 'five_hour']);
 const WEEKLY_WINDOWS = new Set(['weekly', 'week']);
 
@@ -37,22 +49,72 @@ export async function readGoogleAntigravityQuota(
   const body = JSON.stringify({ project: credential.value.projectId });
   const endpoints = antigravityEndpoints(context.options, 'quota');
 
+  // Started before the loop so it overlaps the quota request; it resolves rather than rejects, so
+  // an early throw from the loop cannot leave an unhandled rejection behind.
+  const planRead = readPlan(fetcher, `${endpoints[0] ?? ''}${PLAN_PATH}`, headers, context.signal);
+
   let lastError: Error | undefined;
-  for (const endpoint of endpoints) {
-    context.signal.throwIfAborted();
-    let payload: unknown;
-    try {
-      payload = await fetchSummary(fetcher, `${endpoint}${QUOTA_PATH}`, headers, body, context.signal);
-    } catch (error) {
+  // `finally` settles the plan read on every exit, including an abort or a terminal parse throw.
+  try {
+    for (const endpoint of endpoints) {
       context.signal.throwIfAborted();
-      lastError = error instanceof Error ? error : new Error('Antigravity quota request failed');
-      continue;
+      let payload: unknown;
+      try {
+        payload = await fetchSummary(fetcher, `${endpoint}${QUOTA_PATH}`, headers, body, context.signal);
+      } catch (error) {
+        context.signal.throwIfAborted();
+        lastError = error instanceof Error ? error : new Error('Antigravity quota request failed');
+        continue;
+      }
+      // A base that answered speaks for the account, so a bad payload is terminal: the remaining
+      // bases would only repeat it, and retrying would mask the real reason behind a stale 404.
+      const items = summaryItems(payload);
+      const plan = await planRead;
+      return { items, ...(plan === undefined ? {} : { plan }) };
     }
-    // A base that answered speaks for the account, so a bad payload is terminal: the remaining
-    // bases would only repeat it, and retrying would mask the real reason behind a stale 404.
-    return { items: summaryItems(payload) };
+  } finally {
+    await planRead;
   }
   throw lastError ?? new Error('Antigravity quota request failed');
+}
+
+/** Best-effort: the tier only decorates the card, so every failure degrades to no label. */
+async function readPlan(
+  fetcher: RuntimeFetch,
+  url: string,
+  headers: Readonly<Record<string, string>>,
+  signal: AbortSignal,
+): Promise<LocalizedText | undefined> {
+  try {
+    const response = await fetcher(url, {
+      method: 'POST',
+      headers,
+      body: PLAN_BODY,
+      signal: AbortSignal.any([signal, AbortSignal.timeout(PLAN_TIMEOUT_MS)]),
+      aioProxy: { traffic: 'control' },
+    });
+    if (!response.ok) return undefined;
+    const payload: unknown = await response.json();
+    if (!isPlainObject(payload)) return undefined;
+    const paid = tier(Reflect.get(payload, 'paidTier') ?? Reflect.get(payload, 'paid_tier'));
+    const current = tier(Reflect.get(payload, 'currentTier') ?? Reflect.get(payload, 'current_tier'));
+    // A paid tier only counts once it names an id; an empty paid slot means the free plan applies.
+    const effective = paid?.id === undefined ? current : paid;
+    if (effective === undefined) return undefined;
+    // Google's own `name` is what the user sees in Antigravity, and it stays right for tier ids we
+    // have not mapped, so it wins over the built-in label.
+    return effective.name ?? (effective.id === undefined ? undefined : (PLAN_BY_TIER_ID[effective.id] ?? effective.id));
+  } catch {
+    return undefined;
+  }
+}
+
+function tier(value: unknown): { readonly id?: string; readonly name?: string } | undefined {
+  if (!isPlainObject(value)) return undefined;
+  const id = nonEmpty(Reflect.get(value, 'id'));
+  const name = nonEmpty(Reflect.get(value, 'name'));
+  if (id === undefined && name === undefined) return undefined;
+  return { ...(id === undefined ? {} : { id }), ...(name === undefined ? {} : { name }) };
 }
 
 async function fetchSummary(
