@@ -93,3 +93,27 @@ test('createRuntime builds a v4 provider-only runtime', async () => {
   expect(runtime.provider.specificationVersion).toBe('v4');
   expect(runtime.raw).toBeUndefined();
 });
+
+test('refreshCredential exchanges an unexpired credential instead of returning it unchanged', async () => {
+  const jwt = (payload: object) => ['h', Buffer.from(JSON.stringify(payload)).toString('base64url'), 's'].join('.');
+  let exchanges = 0;
+  const adapter = await adapterFrom(
+    createCursorPlugin(englishPresentationText, {
+      now: () => 0,
+      fetch: async () => {
+        exchanges += 1;
+        return Response.json({ accessToken: jwt({ exp: 4_000, email: 'person@example.com' }) });
+      },
+    }),
+  );
+
+  const result = await adapter.refreshCredential!({
+    credential: { accessToken: 'old', refreshToken: 'keep-me', expiresAt: Number.MAX_SAFE_INTEGER },
+    options: {},
+    signal: new AbortController().signal,
+  });
+
+  expect(exchanges).toBe(1);
+  expect(result.value.accessToken).toBe(jwt({ exp: 4_000, email: 'person@example.com' }));
+  expect(result.metadata).toEqual({ expiresAt: 4_000 * 1000 - 5 * 60_000, accountLabel: 'person@example.com' });
+});
