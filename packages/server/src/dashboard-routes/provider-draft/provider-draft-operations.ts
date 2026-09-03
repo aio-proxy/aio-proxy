@@ -73,21 +73,28 @@ async function loadAiSdkDraftCatalog(
   // the api loader above has the same gap. Wiring them in would look like transform
   // support without providing any.
   const fetchWithProxy = createProxyFetch(effectiveProxy(state.currentConfig().proxy, provider.proxy));
-  try {
-    if (BUNDLED_PROVIDERS[provider.packageName] === undefined) {
+  let extensionUnavailable = false;
+  if (BUNDLED_PROVIDERS[provider.packageName] === undefined) {
+    try {
       const runtime = await loadAiSdkProvider(provider.packageName, {
         ...provider.options,
         fetch: fetchWithProxy,
       });
       if (typeof runtime?.listModels === 'function') {
         const models = catalogEntryIds(await runtime.listModels(AbortSignal.timeout(5_000)));
-        if (models === null) return failure('catalog_unavailable');
-        return { ok: true, models };
+        if (models !== null) return { ok: true, models };
+        extensionUnavailable = true;
       }
+    } catch {
+      extensionUnavailable = true;
     }
+  }
 
-    const baseURL = provider.options?.['baseURL'];
-    if (typeof baseURL !== 'string' || baseURL.trim() === '') return failure('catalog_unsupported');
+  const baseURL = provider.options?.['baseURL'];
+  if (typeof baseURL !== 'string' || baseURL.trim() === '') {
+    return failure(extensionUnavailable ? 'catalog_unavailable' : 'catalog_unsupported');
+  }
+  try {
     const response = await fetchWithProxy(`${baseURL.replace(/\/+$/u, '')}/models`, {
       signal: AbortSignal.timeout(5_000),
       headers: catalogHeaders(provider.options),

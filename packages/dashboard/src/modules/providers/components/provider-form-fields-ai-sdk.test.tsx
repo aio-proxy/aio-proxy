@@ -125,4 +125,20 @@ describe('ProviderFormFieldsAiSdk package commits', () => {
       }),
     );
   });
+
+  test('retries a failed install with a fresh attempt generation', async () => {
+    mocks.status.mockResolvedValue({ trusted: false, state: 'missing' });
+    mocks.install.mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce({ installed: true });
+    render(<Harness initial={{ kind: ProviderKind.AiSdk, packageName: '@vendor/retry-provider' }} />, { wrapper });
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: m['dashboard.providers.form.options_install_package']() }),
+    );
+    await waitFor(() => expect(mocks.install).toHaveBeenCalledTimes(1));
+    fireEvent.click(
+      await screen.findByRole('button', { name: m['dashboard.providers.form.options_install_package']() }),
+    );
+
+    await waitFor(() => expect(mocks.install).toHaveBeenCalledTimes(2));
+  });
 });
