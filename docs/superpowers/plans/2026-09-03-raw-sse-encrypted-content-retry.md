@@ -620,6 +620,18 @@ test('commits a stream that only ever holds', async () => {
   expect(await preflight.response.text()).toBe(created + itemAdded);
 });
 
+// One provider-controlled chunk can carry both the padding and the retryable
+// error. The cap has to win, otherwise the replay bound is unenforceable.
+test('commits when a single oversized chunk also carries the retryable error', async () => {
+  const padding = `event: response.output_item.added\ndata: {"type":"response.output_item.added","note":"${'x'.repeat(1024 * 1024 + 16)}"}\n\n`;
+  const preflight = await preflightRawRetrySse(
+    sse(created + padding + encryptedError),
+    classifyOpenAIResponsesRawRetry,
+    live(),
+  );
+  expect(preflight.kind).toBe('commit');
+});
+
 test('passes a non-event-stream body through without reading it', async () => {
   const response = Response.json({ ok: true });
   const preflight = await preflightRawRetrySse(response, classifyOpenAIResponsesRawRetry, live());
@@ -686,6 +698,40 @@ test('refuses an oversized JSON body', async () => {
   expect(await readBoundedJsonBody(response, live())).toBeUndefined();
 });
 
+// The cloned inspection branch must be abandoned without awaiting the tee-wide
+// cancellation: the preserved original branch is never drained here, so an
+// awaited cancel would never settle.
+test('resolves an oversized JSON read while the original body is still open', async () => {
+  const encoder = new TextEncoder();
+  const body = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      controller.enqueue(encoder.encode('x'.repeat(256 * 1024)));
+    },
+  });
+  const response = new Response(body, { status: 400, headers: { 'content-type': 'application/json' } });
+
+  const read = await Promise.race([
+    readBoundedJsonBody(response, live()),
+    Bun.sleep(1_000).then(() => 'timed-out' as const),
+  ]);
+
+  expect(read).toBeUndefined();
+});
+
+// A size or idle limit means "cannot intercept". An inbound abort is different:
+// it must reach handleAttemptError so the request records `cancelled`.
+test('rethrows an inbound abort during the JSON read', async () => {
+  const controller = new AbortController();
+  const response = new Response(heldStream('{"error":'), {
+    status: 400,
+    headers: { 'content-type': 'application/json' },
+  });
+  const pending = readBoundedJsonBody(response, { signal: controller.signal, idleTimeoutMs: 60_000 });
+  await Bun.sleep(20);
+  controller.abort();
+  await expect(pending).rejects.toThrow();
+});
+
 test('refuses a JSON body that stalls', async () => {
   const response = new Response(heldStream('{"error":'), {
     status: 400,
@@ -734,6 +780,16 @@ import {
 
 const MAX_PREFLIGHT_REPLAY_BYTES = 1024 * 1024;
 
+function inboundAbortError(): Error {
+  return new DOMException('The operation was aborted', 'AbortError') as unknown as Error;
+}
+
+// Only an inbound abort must propagate. Size and idle limits mean "cannot
+// intercept", and the caller streams the original response instead.
+function isAbortFailure(error: unknown): boolean {
+  return error instanceof Error && error.name === 'AbortError';
+}
+
 export type RawRetryPreflight =
   | { readonly kind: 'commit'; readonly response: Response }
   | { readonly kind: 'retry'; readonly response: Response };
@@ -752,7 +808,7 @@ function guardReader(reader: ReadableStreamDefaultReader<Uint8Array>, guards: Ra
   const idle = createIdleTimer(guards.idleTimeoutMs ?? STREAM_IDLE_TIMEOUT_MS, () => {
     fail(new Error('Upstream stream stalled before the raw retry verdict'));
   });
-  const onAbort = () => fail(new DOMException('The operation was aborted', 'AbortError'));
+  const onAbort = () => fail(inboundAbortError());
   if (guards.signal.aborted) onAbort();
   else guards.signal.addEventListener('abort', onAbort, { once: true });
   return {
@@ -801,7 +857,11 @@ export async function preflightRawRetrySse(
         buffered.push(chunk.value);
         bufferedBytes += chunk.value.byteLength;
         parser.feed(decoder.decode(chunk.value, { stream: true }));
-        if (verdict === 'hold' && bufferedBytes > MAX_PREFLIGHT_REPLAY_BYTES) verdict = 'commit';
+        // The cap wins over whatever this chunk classified as. A single
+        // provider-controlled chunk can be arbitrarily large and may carry the
+        // retryable error itself, so checking `verdict === 'hold'` first would
+        // let an oversized body through the advertised replay bound.
+        if (bufferedBytes > MAX_PREFLIGHT_REPLAY_BYTES) verdict = 'commit';
       }
     }
   } catch (error) {
@@ -826,7 +886,14 @@ export async function readBoundedJsonBody(
   const contentType = response.headers.get('content-type') ?? '';
   if (response.body === null || !contentType.toLowerCase().includes('application/json')) return undefined;
 
+  // `response.clone()` tees the body. Never await a cancel on this branch: the
+  // tee-wide promise does not settle until the preserved original branch is also
+  // drained or cancelled, and the caller cannot return that original until this
+  // function resolves. Awaiting would deadlock a large or never-ending 400.
   const reader = response.clone().body!.getReader();
+  const abandon = () => {
+    void reader.cancel().catch(() => undefined);
+  };
   const guard = guardReader(reader, guards);
   const chunks: Uint8Array[] = [];
   let byteLength = 0;
@@ -834,23 +901,27 @@ export async function readBoundedJsonBody(
     guard.arm();
     for (;;) {
       const chunk = await reader.read();
-      if (guard.failure() !== undefined) return undefined;
+      const failure = guard.failure();
+      // An inbound abort is not a "cannot intercept" case: swallowing it would
+      // make completeRawAttempt record an ordinary provider failure instead of
+      // letting handleAttemptError see the cancellation.
+      if (isAbortFailure(failure)) throw failure;
+      if (failure !== undefined) return undefined;
       guard.arm();
       if (chunk.done) break;
       byteLength += chunk.value.byteLength;
       if (byteLength > MAX_PASSTHROUGH_JSON_BYTES) {
-        await reader.cancel().catch(() => undefined);
+        abandon();
         return undefined;
       }
       chunks.push(chunk.value);
     }
-  } catch {
+  } catch (error) {
+    abandon();
+    if (isAbortFailure(error)) throw error;
     return undefined;
   } finally {
     guard.release();
-    try {
-      reader.releaseLock();
-    } catch {}
   }
 
   const bytes = new Uint8Array(byteLength);
@@ -1091,6 +1162,41 @@ test('streams a non-JSON 400 without interception', async () => {
   expect(await response.text()).toContain('gateway error');
 });
 
+// Cancellation happens before the second invoke, so a slow or throwing replay
+// cannot leave the failed SSE connection open and buffering.
+test('cancels the failed stream before invoking the replay', async () => {
+  let cancelledBeforeReplay: boolean | undefined;
+  let cancelled = false;
+  let calls = 0;
+  const primary = responsesProvider(async () => {
+    calls += 1;
+    if (calls === 1) {
+      const encoder = new TextEncoder();
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(encoder.encode(created + encryptedError));
+          },
+          cancel() {
+            cancelled = true;
+          },
+        }),
+        { status: 200, headers: { 'content-type': 'text/event-stream' } },
+      );
+    }
+    cancelledBeforeReplay = cancelled;
+    throw new Error('replay transport failed');
+  });
+  const harness = pipeline([primary], { adapter: openAIResponsesAdapter });
+
+  await harness
+    .run(jsonRequest({ model: REQUESTED_MODEL, stream: true, input: spawnInput() }))
+    .catch(() => undefined);
+
+  expect(calls).toBe(2);
+  expect(cancelledBeforeReplay).toBe(true);
+});
+
 test('commits the upstream error when no rewrite is possible', async () => {
   let calls = 0;
   const primary = responsesProvider(async () => {
@@ -1168,27 +1274,27 @@ export async function resolveRawRetry<TRequest, TContext>(
   const { hook, retrySource, response } = input;
   if (hook === undefined || retrySource === undefined) return response;
 
-  const replay = async (): Promise<Response | undefined> => {
+  // Replay only after the failed response is released. A slow or throwing retry
+  // transport would otherwise leave the first SSE reader locked and its upstream
+  // connection open and buffering for the whole second call, and a thrown replay
+  // would skip cancellation entirely.
+  const replay = async (failed: Response): Promise<Response | undefined> => {
     const retryRequest = await hook.rewrite(retrySource, input.request, input.context);
-    return retryRequest === undefined ? undefined : await input.invoke(retryRequest);
+    if (retryRequest === undefined) return undefined;
+    void failed.body?.cancel().catch(() => undefined);
+    return await input.invoke(retryRequest);
   };
 
   if (response.status === 400) {
     const bodyText = await readBoundedJsonBody(response, input.guards);
     if (bodyText === undefined || hook.classify({ data: bodyText }) !== 'retry') return response;
-    const retried = await replay();
-    if (retried === undefined) return response;
-    void response.body?.cancel().catch(() => undefined);
-    return retried;
+    return (await replay(response)) ?? response;
   }
 
   if (!response.ok || !input.streamRequested) return response;
   const preflight = await preflightRawRetrySse(response, hook.classify, input.guards);
   if (preflight.kind !== 'retry') return preflight.response;
-  const retried = await replay();
-  if (retried === undefined) return preflight.response;
-  void preflight.response.body?.cancel().catch(() => undefined);
-  return retried;
+  return (await replay(preflight.response)) ?? preflight.response;
 }
 ```
 
@@ -1285,6 +1391,6 @@ EOF
 
 ## Self-review
 
-1. Spec coverage: the `rawRetry` hook and compact refusal (Task 1), hold-by-default classification including `output_item.added` (Task 1), SSE hold with idle plus pending-read abort guards and the bounded JSON read (Task 2), non-`rawRetry` passthrough (Task 2), HTTP 400 interception limits, replay signal, same-candidate accounting, no-rewrite commit, and the changeset (Task 3) each have a task. Non-goals are constraints, not extra tasks.
+1. Spec coverage: the `rawRetry` hook and compact refusal (Task 1), hold-by-default classification including `output_item.added` (Task 1), SSE hold with idle plus pending-read abort guards, the 1 MiB cap winning over a same-chunk `retry`, the bounded JSON read with tee-safe abandonment and abort propagation, and non-`rawRetry` passthrough (Task 2), HTTP 400 interception limits, replay signal, cancel-before-replay, same-candidate accounting, no-rewrite commit, and the changeset (Task 3) each have a task. Non-goals are constraints, not extra tasks.
 2. Placeholder scan: no TBD/TODO, no "add tests later", no "similar to Task N". Task 3 spells out the resolver instead of saying "wire it up".
-3. Type consistency: `RawRetryFrame`, `RawRetryVerdict`, `RawRetryHook<TRequest, TContext>`, `RawRetryGuards`, `RawRetryPreflight`, `RawRetryResolution<TRequest, TContext>`, `classifyOpenAIResponsesRawRetry`, `rewriteOpenAIResponsesEncryptedContent`, `openAIResponsesRawRetry`, `preflightRawRetrySse(response, classify, guards)`, `readBoundedJsonBody(response, guards)`, `resolveRawRetry(input)`. The pipeline calls only `hook.classify` and `hook.rewrite`.
+3. Type consistency: `RawRetryFrame`, `RawRetryVerdict`, `RawRetryHook<TRequest, TContext>`, `RawRetryGuards`, `RawRetryPreflight`, `RawRetryResolution<TRequest, TContext>`, `classifyOpenAIResponsesRawRetry`, `rewriteOpenAIResponsesEncryptedContent`, `openAIResponsesRawRetry`, `preflightRawRetrySse(response, classify, guards)`, `readBoundedJsonBody(response, guards)`, `resolveRawRetry(input)`. Private helpers in `raw-retry.ts`: `guardReader`, `inboundAbortError`, `isAbortFailure`, `replayBuffered`. The pipeline calls only `hook.classify` and `hook.rewrite`.

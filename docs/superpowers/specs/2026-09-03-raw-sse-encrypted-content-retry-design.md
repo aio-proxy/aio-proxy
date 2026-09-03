@@ -89,7 +89,7 @@ For HTTP 200 event-stream with `rawRetry` present and `streamRequested` true, bu
 | `classify` returns `retry` | retryable; ask the adapter to rewrite |
 | `classify` returns `commit` | commit: replay buffered bytes, then continue the upstream reader |
 | stream ends while every frame held | commit |
-| buffered bytes exceed 1 MiB | commit |
+| buffered bytes exceed 1 MiB | commit, even when that same chunk classified `retry` |
 | no `rawRetry`, non-stream request, or non-event-stream body | commit without reading |
 
 A `retry` verdict whose `rewrite` yields `undefined` commits the original error stream, so the client still sees the upstream error.
@@ -105,11 +105,17 @@ The preflight read happens before `usageCapture.passthrough` installs the existi
 
 Interception is limited to a JSON content type, and the body is read with the same bounds the passthrough JSON capture uses: a 1 MiB cap (`MAX_PASSTHROUGH_JSON_BYTES`), the preflight idle timer, and the inbound abort listener. A non-JSON 400, an oversized body, or a body that never reaches EOF is streamed to the client unchanged, exactly as today.
 
+Inspection reads a `response.clone()` tee branch, so it must **abandon** that branch rather than await its cancellation: the tee-wide cancel promise does not settle until the preserved original branch is also drained or cancelled, and the original cannot be returned until inspection finishes. Awaiting would deadlock a large or never-ending error body.
+
+A size or idle limit means "cannot intercept", and the original response streams through. An inbound abort is different and must propagate, so `completeRawAttempt` throws and `handleAttemptError` records `cancelled` instead of an ordinary provider failure.
+
 On `classify({ data: bodyText }) === 'retry'` plus a rewrite, discard that body and invoke the same raw transport once with the rewritten request. This is not next-candidate fallback.
 
 ### Replay request
 
 The retry Request must inherit the first upstream request's signal, so a client disconnect during the second invocation cancels it. Build it from the original Request (`new Request(upstreamClone, { method, headers, body, signal: upstream.signal })`), delete `content-length` / `content-encoding`, and clone the upstream Request before the first invoke so the retry still has body bytes.
+
+Cancel the failed response **before** awaiting the second invoke. Cancelling only after a successful replay would keep the first SSE reader locked and its upstream connection open and buffering for the whole retry, and a replay that throws would skip cancellation entirely.
 
 ### Rewrite (one retry, lossless first)
 
@@ -158,6 +164,9 @@ The retry is the same candidate attempt. Do not open a second attempt span. Do n
 - A client abort **after** a hold frame was consumed, while the next read is pending, must reject promptly rather than waiting for the idle timer.
 - A client abort during the replay must cancel the replay.
 - The compact route must not replay.
-- A non-JSON `400` and an oversized JSON `400` must stream to the client without interception.
+- A non-JSON `400` and an oversized JSON `400` must stream to the client without interception, and the oversized read must resolve while the original body is still open.
+- An inbound abort during the JSON `400` read must propagate rather than degrade into a provider failure.
+- One oversized chunk that also carries the retryable error must commit, not retry.
+- A replay that throws must still have cancelled the failed stream first.
 - An adapter without `rawRetry` must not read the body before committing.
 - Ordinary raw `400` that is not this code, and raw `422`/`429`/`5xx` fallback, stay unchanged.
