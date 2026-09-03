@@ -51,31 +51,19 @@ describe('provider options schema workflow retries', () => {
       status: { trusted: false, state: 'missing' },
     });
     const installing = providerOptionsSchemaTransition(
-      providerOptionsSchemaTransition(required, { type: 'install_confirmed' }),
+      providerOptionsSchemaTransition(required, { type: 'install_requested' }),
       { type: 'install_started' },
     );
     const failed = providerOptionsSchemaTransition(installing, {
       type: 'install_failed',
       packageName: 'community-provider',
-      generation: 1,
+      generation: 2,
       errorCode: 'install_failed',
     });
-    const retry = providerOptionsSchemaTransition(failed, {
-      type: 'package_committed',
-      packageName: 'community-provider',
-      allowAutomaticInstall: true,
-    });
-    const retryRequired = providerOptionsSchemaTransition(retry, {
-      type: 'status_loaded',
-      packageName: 'community-provider',
-      generation: 2,
-      status: { trusted: false, state: 'missing' },
-    });
-
-    expect(retry).toMatchObject({ phase: 'checking', commitGeneration: 2 });
-    expect(retryRequired).toMatchObject({ phase: 'install_required', effect: undefined });
-    expect(providerOptionsSchemaTransition(retryRequired, { type: 'install_confirmed' })).toMatchObject({
+    expect(failed).toMatchObject({ phase: 'install_error', commitGeneration: 2 });
+    expect(providerOptionsSchemaTransition(failed, { type: 'install_requested' })).toMatchObject({
       phase: 'installing',
+      commitGeneration: 3,
       effect: { type: 'install', confirmed: true },
     });
   });

@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { createPluginRepository } from '@aio-proxy/core';
+import { createPluginRepository, npmPackageCacheDir } from '@aio-proxy/core';
 import { openDb } from '@aio-proxy/core/db';
 import type { ModelCatalog } from '@aio-proxy/plugin-sdk';
 import { ConfigSchema, ProviderProtocol } from '@aio-proxy/types';
@@ -331,6 +331,95 @@ describe('draft Provider catalog and test routes', () => {
       ok: false,
       error: { code: 'catalog_unsupported', recoverable: true },
     });
+  });
+
+  test('lists a custom AI SDK provider catalog through its optional listModels extension', async () => {
+    const packageName = '@example/catalog-provider';
+    const packageDirectory = join(npmPackageCacheDir(packageName), 'node_modules', '@example', 'catalog-provider');
+    mkdirSync(packageDirectory, { recursive: true });
+    writeFileSync(
+      join(packageDirectory, 'package.json'),
+      JSON.stringify({ name: packageName, version: '1.0.0', type: 'module', exports: './index.js' }),
+    );
+    writeFileSync(
+      join(packageDirectory, 'index.js'),
+      `export const createCatalogProvider = (options) => ({
+        listModels: async (signal) => {
+          if (signal?.aborted) throw signal.reason;
+          if (options.marker !== 'draft-option') throw new Error('options not forwarded');
+          return ['model-a', { id: 'model-b' }, 'model-a', null, {}, { id: 42 }];
+        },
+      });\n`,
+    );
+
+    try {
+      const response = await routes.request(
+        '/providers/draft/catalog',
+        jsonRequest(
+          {
+            draft: {
+              id: 'custom-sdk',
+              kind: 'ai-sdk',
+              packageName,
+              options: { marker: 'draft-option' },
+            },
+          },
+          'QUERY',
+        ),
+      );
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ ok: true, models: ['model-a', 'model-b'] });
+    } finally {
+      rmSync(npmPackageCacheDir(packageName), { force: true, recursive: true });
+    }
+  });
+
+  test('falls back to options.baseURL when a custom provider factory cannot expose its catalog', async () => {
+    const packageName = '@example/failing-catalog-provider';
+    const packageDirectory = join(
+      npmPackageCacheDir(packageName),
+      'node_modules',
+      '@example',
+      'failing-catalog-provider',
+    );
+    mkdirSync(packageDirectory, { recursive: true });
+    writeFileSync(
+      join(packageDirectory, 'package.json'),
+      JSON.stringify({ name: packageName, version: '1.0.0', type: 'module', exports: './index.js' }),
+    );
+    writeFileSync(
+      join(packageDirectory, 'index.js'),
+      `export const createFailingProvider = () => { throw new Error('factory failed'); };\n`,
+    );
+    const upstream = Bun.serve({
+      hostname: '127.0.0.1',
+      port: 0,
+      fetch: () => Response.json({ data: [{ id: 'fallback-model' }] }),
+    });
+
+    try {
+      const response = await routes.request(
+        '/providers/draft/catalog',
+        jsonRequest(
+          {
+            draft: {
+              id: 'custom-sdk',
+              kind: 'ai-sdk',
+              packageName,
+              options: { baseURL: `http://127.0.0.1:${upstream.port}/v1` },
+            },
+          },
+          'QUERY',
+        ),
+      );
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ ok: true, models: ['fallback-model'] });
+    } finally {
+      await upstream.stop(true);
+      rmSync(npmPackageCacheDir(packageName), { force: true, recursive: true });
+    }
   });
 
   test('lists an ai-sdk draft catalog from options.baseURL with bearer auth', async () => {

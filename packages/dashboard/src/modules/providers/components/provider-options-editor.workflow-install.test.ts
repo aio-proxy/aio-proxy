@@ -57,22 +57,29 @@ describe('provider options schema workflow install flow', () => {
     ).toMatchObject({ phase: 'installing', effect: { type: 'install', confirmed: false } });
   });
 
-  test('untrusted missing packages wait for explicit confirmation', () => {
+  test('untrusted missing packages wait for an explicit install request', () => {
     const required = providerOptionsSchemaTransition(
-      { ...initialProviderOptionsSchemaState, phase: 'checking', committedPackage: 'community-provider' },
+      providerOptionsSchemaTransition(initialProviderOptionsSchemaState, {
+        type: 'package_committed',
+        packageName: 'community-provider',
+      }),
       {
         type: 'status_loaded',
         packageName: 'community-provider',
-        generation: 0,
+        generation: 1,
         status: { trusted: false, state: 'missing' },
       },
     );
 
     expect(required).toMatchObject({ phase: 'install_required', effect: undefined });
-    const confirmed = providerOptionsSchemaTransition(required, { type: 'install_confirmed' });
+    const confirmed = providerOptionsSchemaTransition(required, {
+      type: 'install_requested',
+      registry: 'https://registry.corp.example/',
+    });
     expect(confirmed).toMatchObject({
       phase: 'installing',
-      effect: { type: 'install', confirmed: true },
+      commitGeneration: 2,
+      effect: { type: 'install', confirmed: true, registry: 'https://registry.corp.example/' },
     });
     expect(providerOptionsSchemaTransition(confirmed, { type: 'install_started' })).toMatchObject({
       effect: undefined,

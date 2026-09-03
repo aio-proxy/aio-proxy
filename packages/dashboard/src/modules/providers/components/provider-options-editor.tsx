@@ -1,14 +1,4 @@
 import { m } from '@aio-proxy/i18n';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@aio-proxy/ui/components/alert-dialog';
 import { Button } from '@aio-proxy/ui/components/button';
 import { Field, FieldDescription, FieldError } from '@aio-proxy/ui/components/field';
 import { Label } from '@aio-proxy/ui/components/label';
@@ -43,18 +33,14 @@ export const providerOptionsAreValid = (
   (phase === 'ready' || phase === 'schema_unavailable' || phase === 'install_error') &&
   (schemaResolution === 'unavailable' || (schemaResolution === 'ready' && schema !== undefined));
 
-export const canConfirmProviderInstall = (
-  dialogPackage: string | null,
-  phase: UseProviderOptionsSchemaResult['phase'],
-  currentPackage: string | null,
-) => dialogPackage !== null && phase === 'install_required' && currentPackage === dialogPackage;
-
 export const canRequestProviderInstall = (phase: UseProviderOptionsSchemaResult['phase']) =>
   phase === 'install_required' || phase === 'install_deferred' || phase === 'install_error';
 
 type Props = {
   readonly field: AnyFieldApi;
   readonly schemaState: UseProviderOptionsSchemaResult;
+  readonly installRegistry?: string;
+  readonly installRegistryValid: boolean;
   readonly onValidityChange: (valid: boolean) => void;
 };
 
@@ -66,10 +52,15 @@ const initialValidation: JsonEditorValidation = {
   schema: undefined,
 };
 
-export const ProviderOptionsEditor: FC<Props> = ({ field, schemaState, onValidityChange }) => {
+export const ProviderOptionsEditor: FC<Props> = ({
+  field,
+  schemaState,
+  installRegistry,
+  installRegistryValid,
+  onValidityChange,
+}) => {
   const [editorValue, setEditorValue] = useState<JsonValue | undefined>(field.state.value);
   const [validation, setValidation] = useState(initialValidation);
-  const [dismissedInstallPackage, setDismissedInstallPackage] = useState<string | null>(null);
   const rootValid = isProviderOptionsObject(editorValue);
   const requiredRootMissing =
     editorValue === undefined &&
@@ -92,7 +83,6 @@ export const ProviderOptionsEditor: FC<Props> = ({ field, schemaState, onValidit
   }, [onValidityChange, valid]);
 
   const packageName = schemaState.packageName ?? '';
-  const installRequiredPackage = schemaState.phase === 'install_required' ? schemaState.packageName : null;
 
   let helper: string | null = null;
   if (schemaState.phase === 'checking') {
@@ -118,8 +108,6 @@ export const ProviderOptionsEditor: FC<Props> = ({ field, schemaState, onValidit
     error = m['dashboard.providers.form.options_schema_load_error']();
   }
   const errorId = `${field.name}-error`;
-  const dialogOpen = installRequiredPackage !== null && dismissedInstallPackage !== installRequiredPackage;
-
   return (
     <Field data-invalid={!valid}>
       <Label htmlFor={field.name}>{m['dashboard.providers.form.label_options']()}</Label>
@@ -140,47 +128,13 @@ export const ProviderOptionsEditor: FC<Props> = ({ field, schemaState, onValidit
         <Button
           type="button"
           variant="outline"
-          onClick={() => {
-            if (schemaState.phase === 'install_required') {
-              setDismissedInstallPackage(null);
-            } else {
-              schemaState.requestInstall();
-            }
-          }}
+          disabled={!installRegistryValid}
+          onClick={() => schemaState.requestInstall(installRegistry)}
         >
           {m['dashboard.providers.form.options_install_package']()}
         </Button>
       )}
       {error !== null && <FieldError id={errorId}>{error}</FieldError>}
-      <AlertDialog
-        open={dialogOpen}
-        onOpenChange={(open) => setDismissedInstallPackage(open ? null : installRequiredPackage)}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{m['dashboard.providers.form.options_install_dialog_title']()}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {m['dashboard.providers.form.options_install_dialog_description']({
-                packageName: installRequiredPackage ?? packageName,
-              })}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{m['dashboard.providers.form.options_install_dialog_cancel']()}</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => {
-                const confirmedPackage = installRequiredPackage;
-                setDismissedInstallPackage(confirmedPackage);
-                if (canConfirmProviderInstall(confirmedPackage, schemaState.phase, schemaState.packageName)) {
-                  schemaState.confirmInstall();
-                }
-              }}
-            >
-              {m['dashboard.providers.form.options_install_dialog_confirm']()}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </Field>
   );
 };

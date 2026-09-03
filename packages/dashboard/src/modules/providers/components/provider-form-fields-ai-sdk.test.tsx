@@ -83,16 +83,62 @@ describe('ProviderFormFieldsAiSdk package commits', () => {
     expect(deferredInstallButton()).toBeTruthy();
   });
 
-  test('typing a different package and blurring still installs it', async () => {
+  test('typing a different package waits for an explicit install so registry can be configured', async () => {
     render(<Harness initial={{ kind: ProviderKind.AiSdk, packageName: '@ai-sdk/anthropic' }} />, { wrapper });
 
     await waitFor(() => expect(deferredInstallButton()).toBeTruthy());
 
     fireEvent.change(packageInput(), { target: { value: '@ai-sdk/google' } });
     fireEvent.blur(packageInput());
+    await waitFor(() => expect(deferredInstallButton()).toBeTruthy());
+    expect(mocks.install).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText(m['dashboard.providers.form.options_install_registry_label']()), {
+      target: { value: 'https://registry.corp.example/' },
+    });
+    fireEvent.click(deferredInstallButton());
 
     await waitFor(() =>
-      expect(mocks.install).toHaveBeenCalledWith({ packageName: '@ai-sdk/google', confirmed: false }),
+      expect(mocks.install).toHaveBeenCalledWith({
+        packageName: '@ai-sdk/google',
+        confirmed: true,
+        registry: 'https://registry.corp.example/',
+      }),
     );
+  });
+
+  test('installs an untrusted package from the inline registry field', async () => {
+    mocks.status.mockResolvedValue({ trusted: false, state: 'missing' });
+    render(<Harness initial={{ kind: ProviderKind.AiSdk, packageName: '@vendor/internal-provider' }} />, { wrapper });
+
+    const registry = screen.getByLabelText(m['dashboard.providers.form.options_install_registry_label']());
+    fireEvent.change(registry, { target: { value: 'https://registry.corp.example/' } });
+    fireEvent.click(
+      await screen.findByRole('button', { name: m['dashboard.providers.form.options_install_package']() }),
+    );
+
+    await waitFor(() =>
+      expect(mocks.install).toHaveBeenCalledWith({
+        packageName: '@vendor/internal-provider',
+        confirmed: true,
+        registry: 'https://registry.corp.example/',
+      }),
+    );
+  });
+
+  test('retries a failed install with a fresh attempt generation', async () => {
+    mocks.status.mockResolvedValue({ trusted: false, state: 'missing' });
+    mocks.install.mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce({ installed: true });
+    render(<Harness initial={{ kind: ProviderKind.AiSdk, packageName: '@vendor/retry-provider' }} />, { wrapper });
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: m['dashboard.providers.form.options_install_package']() }),
+    );
+    await waitFor(() => expect(mocks.install).toHaveBeenCalledTimes(1));
+    fireEvent.click(
+      await screen.findByRole('button', { name: m['dashboard.providers.form.options_install_package']() }),
+    );
+
+    await waitFor(() => expect(mocks.install).toHaveBeenCalledTimes(2));
   });
 });
