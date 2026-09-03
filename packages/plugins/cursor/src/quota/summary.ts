@@ -132,7 +132,9 @@ function membershipPlan(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined;
   const trimmed = value.trim();
   if (trimmed === '') return undefined;
-  return `Cursor ${MEMBERSHIP_NAMES[trimmed.toLowerCase()] ?? trimmed}`;
+  // The key is upstream JSON, so `constructor` must fall through instead of rendering Object.prototype.
+  const key = trimmed.toLowerCase();
+  return `Cursor ${Object.hasOwn(MEMBERSHIP_NAMES, key) ? MEMBERSHIP_NAMES[key] : trimmed}`;
 }
 
 function finite(value: unknown): number | undefined {

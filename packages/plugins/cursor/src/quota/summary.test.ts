@@ -103,6 +103,10 @@ test('passes an unknown membership type through with the Cursor prefix', () => {
   expect(
     summaryQuota({ membershipType: '   ', individualUsage: { plan: { totalPercentUsed: 0 } } }).plan,
   ).toBeUndefined();
+  // The key comes from upstream JSON: an Object.prototype name must not leak native-code text.
+  expect(summaryQuota({ membershipType: 'constructor', individualUsage: { plan: { totalPercentUsed: 0 } } }).plan).toBe(
+    'Cursor constructor',
+  );
 });
 
 test('names the rejected session so the user knows to sign in again', async () => {

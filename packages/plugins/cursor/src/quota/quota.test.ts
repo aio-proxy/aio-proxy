@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 
-import type { AccountContext } from '@aio-proxy/plugin-sdk';
+import type { AccountContext, RuntimeRequestInit } from '@aio-proxy/plugin-sdk';
 
 import type { CursorCredential } from '../schema';
 import { readCursorQuota } from './quota';
@@ -50,6 +50,7 @@ type Seen = {
   readonly method: string;
   readonly cookie: string | null;
   readonly origin: string | null;
+  readonly traffic: RuntimeRequestInit['aioProxy'];
 };
 
 function responder(
@@ -59,7 +60,7 @@ function responder(
     readonly seen?: Seen[];
   } = {},
 ) {
-  return (async (input: string | URL, init?: RequestInit) => {
+  return (async (input: string | URL, init?: RuntimeRequestInit) => {
     const url = String(input);
     const headers = new Headers(init?.headers);
     options.seen?.push({
@@ -67,6 +68,7 @@ function responder(
       method: init?.method ?? 'GET',
       cookie: headers.get('Cookie'),
       origin: headers.get('Origin'),
+      traffic: init?.aioProxy,
     });
     if (url === 'https://cursor.com/api/usage-summary') {
       const summary = options.summary;
@@ -85,12 +87,19 @@ test('cookie-authenticates both reads and sends Origin on the dashboard route', 
 
   expect(seen).toEqual(
     expect.arrayContaining([
-      { url: 'https://cursor.com/api/usage-summary', method: 'GET', cookie: EXPECTED_COOKIE, origin: null },
+      {
+        url: 'https://cursor.com/api/usage-summary',
+        method: 'GET',
+        cookie: EXPECTED_COOKIE,
+        origin: null,
+        traffic: { traffic: 'control' },
+      },
       {
         url: 'https://cursor.com/api/dashboard/get-sand-usage-status',
         method: 'POST',
         cookie: EXPECTED_COOKIE,
         origin: 'https://cursor.com',
+        traffic: { traffic: 'control' },
       },
     ]),
   );
