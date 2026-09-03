@@ -11,6 +11,7 @@ import { CHATGPT_CATALOG_TTL_MS, discoverOpenAIChatGPTModels } from './catalog';
 import { extractAccountId, extractEmail, normalizeChatGPTEmail } from './jwt';
 import { ChatGPTAccountIdMissingError, CHATGPT_CLIENT_ID, exchangeCodeForTokens } from './oauth-flow';
 import { generatePKCE, generateState } from './pkce';
+import { readOpenAIChatGPTQuota } from './quota/index';
 import { createOpenAIChatGPTRuntime } from './runtime/index';
 import type { ChatGPTCredential } from './schema';
 
@@ -135,6 +136,7 @@ export function createOpenAIChatGPTPlugin(
       }),
     },
     createRuntime: createOpenAIChatGPTRuntime,
+    quota: { read: (context) => readOpenAIChatGPTQuota(context) },
   };
 
   return definePlugin(
