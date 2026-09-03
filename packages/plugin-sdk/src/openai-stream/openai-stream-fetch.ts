@@ -18,6 +18,7 @@ export type OpenAIStreamFetch = typeof globalThis.fetch & {
 
 export type OpenAIStreamFetchOptions = {
   readonly acceptEncoding?: string;
+  readonly normalizeToolArgumentSnapshots?: boolean;
   readonly rewriteToolImages?: boolean;
   readonly upstreamStream?: boolean;
 };
@@ -54,9 +55,9 @@ export function createOpenAIStreamFetch(
       request,
       upstreamStream ? { headers, decompress: false } : { headers },
     );
-    if (upstreamStream) return normalizeControlledResponse(response, protocol);
+    if (upstreamStream) return normalizeControlledResponse(response, protocol, resolvedOptions);
     if (!isEventStream(response.headers.get('content-type'))) return response;
-    return normalizeUnexpectedSse(response, protocol);
+    return normalizeUnexpectedSse(response, protocol, resolvedOptions);
   };
 
   // Bun's fetch exposes `preconnect`; DOM lib typings used for DTS may not.
@@ -198,7 +199,11 @@ function rebuildResponse(response: Response, body: ReadableStream<Uint8Array> | 
   });
 }
 
-function normalizeControlledResponse(response: Response, protocol: OpenAIStreamProtocol): Response {
+function normalizeControlledResponse(
+  response: Response,
+  protocol: OpenAIStreamProtocol,
+  options: OpenAIStreamFetchOptions,
+): Response {
   const eventStream = isEventStream(response.headers.get('content-type'));
   if (response.body === null && !eventStream) return response;
 
@@ -212,11 +217,25 @@ function normalizeControlledResponse(response: Response, protocol: OpenAIStreamP
   // Throws before a Response is returned when Content-Encoding is unsupported.
   const source = response.body ?? new ReadableStream<Uint8Array>({ start: (controller) => controller.close() });
   const decoded = createContentDecodedReader(source, encoding);
-  const body = eventStream && response.ok ? createOpenAISseBody(decoded, protocol) : createPlainDecodedBody(decoded);
+  const body =
+    eventStream && response.ok
+      ? createOpenAISseBody(decoded, protocol, {
+          normalizeToolArgumentSnapshots: options.normalizeToolArgumentSnapshots === true,
+        })
+      : createPlainDecodedBody(decoded);
   return rebuildResponse(response, body);
 }
 
-function normalizeUnexpectedSse(response: Response, protocol: OpenAIStreamProtocol): Response {
+function normalizeUnexpectedSse(
+  response: Response,
+  protocol: OpenAIStreamProtocol,
+  options: OpenAIStreamFetchOptions,
+): Response {
   const source = response.body ?? new ReadableStream<Uint8Array>({ start: (controller) => controller.close() });
-  return rebuildResponse(response, createOpenAISseBody(createContentDecodedReader(source, null), protocol));
+  return rebuildResponse(
+    response,
+    createOpenAISseBody(createContentDecodedReader(source, null), protocol, {
+      normalizeToolArgumentSnapshots: options.normalizeToolArgumentSnapshots === true,
+    }),
+  );
 }
