@@ -1,4 +1,4 @@
-import { createProxyFetch } from '@aio-proxy/core';
+import { BUNDLED_PROVIDERS, createProxyFetch, loadAiSdkProvider } from '@aio-proxy/core';
 import {
   apiProviderEndpoints,
   type DashboardProviderDraftCatalogResponse,
@@ -58,15 +58,13 @@ export async function loadProviderDraftCatalog(
   }
 }
 
-// ai-sdk runtimes expose no raw capability and no protocol field, so the api
-// loader cannot serve them. Convention over schema: baseURL/apiKey/headers are the
-// @ai-sdk/openai-compatible option keys, and the listing must be OpenAI-shaped.
+// The AI SDK contract does not standardize model discovery. Custom packages may
+// expose listModels(signal?) on their provider instance; otherwise retain the
+// existing OpenAI-compatible options.baseURL + /models convention.
 async function loadAiSdkDraftCatalog(
   state: ServerState,
   provider: Extract<Provider, { kind: ProviderKind.AiSdk }>,
 ): Promise<DashboardProviderDraftCatalogResponse> {
-  const baseURL = provider.options?.['baseURL'];
-  if (typeof baseURL !== 'string' || baseURL.trim() === '') return failure('catalog_unsupported');
   // Proxy only. The runtime path also wraps this in createProviderRequestTransformFetch +
   // createObservedFetch (materialize.ts:156-159), but both are provably inert here: the
   // transform fetch returns early unless currentProviderAttemptContext() names this
@@ -75,6 +73,27 @@ async function loadAiSdkDraftCatalog(
   // the api loader above has the same gap. Wiring them in would look like transform
   // support without providing any.
   const fetchWithProxy = createProxyFetch(effectiveProxy(state.currentConfig().proxy, provider.proxy));
+  let extensionUnavailable = false;
+  if (BUNDLED_PROVIDERS[provider.packageName] === undefined) {
+    try {
+      const runtime = await loadAiSdkProvider(provider.packageName, {
+        ...provider.options,
+        fetch: fetchWithProxy,
+      });
+      if (typeof runtime?.listModels === 'function') {
+        const models = catalogEntryIds(await runtime.listModels(AbortSignal.timeout(5_000)));
+        if (models !== null) return { ok: true, models };
+        extensionUnavailable = true;
+      }
+    } catch {
+      extensionUnavailable = true;
+    }
+  }
+
+  const baseURL = provider.options?.['baseURL'];
+  if (typeof baseURL !== 'string' || baseURL.trim() === '') {
+    return failure(extensionUnavailable ? 'catalog_unavailable' : 'catalog_unsupported');
+  }
   try {
     const response = await fetchWithProxy(`${baseURL.replace(/\/+$/u, '')}/models`, {
       signal: AbortSignal.timeout(5_000),
@@ -89,6 +108,17 @@ async function loadAiSdkDraftCatalog(
   } catch {
     return failure('catalog_unavailable');
   }
+}
+
+function catalogEntryIds(rows: unknown): readonly string[] | null {
+  if (!Array.isArray(rows)) return null;
+  return uniq(
+    rows.flatMap((row) => {
+      const id = typeof row === 'string' ? row : isPlainObject(row) ? row['id'] : undefined;
+      if (typeof id !== 'string') return [];
+      return id.trim() === '' ? [] : [id];
+    }),
+  );
 }
 
 // apiKey first, configured headers second — `upstreamHeaders` (core/.../api.ts:98-104),
