@@ -12,6 +12,7 @@ import {
   createAgentOAuthRoutes,
   createDeviceChallengeStore,
 } from '../agent-authorization';
+import { warnLeftoverOAuthModels } from '../config-leftover-oauth-models';
 import type { DashboardAssets } from '../dashboard-assets';
 import {
   createDashboardAuthentication,
@@ -424,6 +425,7 @@ export const createServer = async (options: CreateServerOptions): Promise<AppTyp
     });
   }
   const config = parseRuntimeConfig(prepared.config);
+  warnLeftoverOAuthModels(prepared.config, options.logger ?? defaultLogger);
   const stateOptions: InternalServerStateOptions = {
     config,
     __dashboardAuthHealthChanged: (available) => {

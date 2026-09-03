@@ -294,6 +294,29 @@ describe('model routing inventory', () => {
     expect(provider(response, 'zero-only', 'zero').effective.eligible).toBe(false);
   });
 
+  test('hides denylisted OAuth catalog ids from the routing board', async () => {
+    const rawRecord = structuredClone(authoredRecord) as Record<string, unknown>;
+    const providers = rawRecord['providers'] as Record<string, unknown>;
+    providers['disabled-oauth'] = {
+      ...(providers['disabled-oauth'] as Record<string, unknown>),
+      excludedModels: ['oauth-kept'],
+    };
+    const config = parseRuntimeConfig(rawRecord);
+    const response = await assembleRoutingInventory({
+      rawRecord,
+      config,
+      summaries: summariesFrom(config, {
+        'unavailable-oauth': unavailable,
+        'broken-oauth': unavailable,
+      }),
+      repository: catalogRepository(),
+      writable: true,
+    });
+
+    expect(response.models.map((entry) => entry.modelId)).not.toContain('oauth-kept');
+    expect(response.models.map((entry) => entry.modelId)).toContain('oauth-alias');
+  });
+
   test('keeps remaining models when one OAuth catalog is unreadable', async () => {
     const rawRecord = structuredClone(authoredRecord) as Record<string, unknown>;
     const providers = rawRecord['providers'] as Record<string, unknown>;

@@ -1034,7 +1034,7 @@ describe('draft Provider catalog and test routes', () => {
     const response = await routes.request(
       '/providers/draft/test',
       jsonRequest({
-        draft: { kind: 'oauth', id: 'saved-oauth', enabled: true, proxy: null, models: [] },
+        draft: { kind: 'oauth', id: 'saved-oauth', enabled: true, proxy: null, excludedModels: [] },
         persistedProviderId: 'saved-oauth',
         model: 'disc-a',
       }),
@@ -1048,11 +1048,11 @@ describe('draft Provider catalog and test routes', () => {
   // `runtime.models` (which is only ['disc-a']). Swap the implementation to
   // `runtime.models` and this is the test that goes red: an unsaved whitelist edit
   // naming a discovered-but-not-yet-saved model must be testable before saving.
-  test('an oauth draft whitelist beats the saved one for a discovered model', async () => {
+  test('an oauth draft denylist does not hide a discovered model it omits', async () => {
     const response = await routes.request(
       '/providers/draft/test',
       jsonRequest({
-        draft: { kind: 'oauth', id: 'saved-oauth', enabled: true, proxy: null, models: ['disc-b'] },
+        draft: { kind: 'oauth', id: 'saved-oauth', enabled: true, proxy: null, excludedModels: ['disc-a'] },
         persistedProviderId: 'saved-oauth',
         model: 'disc-b',
       }),
@@ -1062,16 +1062,11 @@ describe('draft Provider catalog and test routes', () => {
     expect(probedModel).toBe('disc-b');
   });
 
-  // The gate's other direction, and the one that matters for exposure: a non-empty draft whitelist
-  // must RESTRICT. Kills the mutant that drops the whitelist and gates on the discovered catalog alone
-  // (`exposedModelIds(catalogIds, undefined)`), which is otherwise green on every oauth test here —
-  // the empty-whitelist case passes via "whole catalog" and the unknown-model case still 400s on
-  // catalog membership. `disc-b` is discovered, so only the whitelist can reject it.
-  test('an oauth draft whitelist restricts a discovered model it omits', async () => {
+  test('an oauth draft denylist hides a discovered model it lists', async () => {
     const response = await routes.request(
       '/providers/draft/test',
       jsonRequest({
-        draft: { kind: 'oauth', id: 'saved-oauth', enabled: true, proxy: null, models: ['disc-a'] },
+        draft: { kind: 'oauth', id: 'saved-oauth', enabled: true, proxy: null, excludedModels: ['disc-b'] },
         persistedProviderId: 'saved-oauth',
         model: 'disc-b',
       }),
@@ -1081,11 +1076,11 @@ describe('draft Provider catalog and test routes', () => {
     expect(probedModel).toBeUndefined();
   });
 
-  test('an oauth draft with an empty whitelist can test any discovered model, but not an unknown one', async () => {
+  test('an oauth draft with an empty denylist can test any discovered model, but not an unknown one', async () => {
     const response = await routes.request(
       '/providers/draft/test',
       jsonRequest({
-        draft: { kind: 'oauth', id: 'saved-oauth', enabled: true, proxy: null, models: [] },
+        draft: { kind: 'oauth', id: 'saved-oauth', enabled: true, proxy: null, excludedModels: [] },
         persistedProviderId: 'saved-oauth',
         model: 'not-discovered',
       }),
@@ -1118,7 +1113,7 @@ describe('draft Provider catalog and test routes', () => {
     const response = await routes.request(
       '/providers/draft/test',
       jsonRequest({
-        draft: { kind: 'oauth', id: 'fresh-oauth', enabled: true, proxy: null, models: [] },
+        draft: { kind: 'oauth', id: 'fresh-oauth', enabled: true, proxy: null, excludedModels: [] },
         model: 'disc-a',
       }),
     );

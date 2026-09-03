@@ -8,12 +8,14 @@ import type { Config } from '@aio-proxy/types';
 import { ZodError } from 'zod';
 
 import { type AccountRemovalCoordinator, asProviderRecord } from '../account-removal';
+import { warnLeftoverOAuthModels } from '../config-leftover-oauth-models';
 import { normalizeDashboardPassword } from '../dashboard-auth';
 import type { SnapshotManager } from '../plugin-snapshot';
 import { providerDiff } from '../provider-runtime';
 import type { RetiredProviderSnapshot } from '../runtime';
+import type { ServerLogSink } from '../server-log';
 import { providerConfigRecord, type Snapshot } from './snapshot';
-import type { ConfigReloadLog, ConfigReloadResult, ReloadFailure } from './types';
+import type { ConfigReloadResult, ReloadFailure } from './types';
 
 export async function reloadSnapshot({
   accountRemovals,
@@ -27,7 +29,7 @@ export async function reloadSnapshot({
   readonly accountRemovals: AccountRemovalCoordinator;
   readonly commitConfig: (config: Config, reason: string) => Promise<RetiredProviderSnapshot>;
   readonly configFile: AtomicConfigFile | undefined;
-  readonly logger: (entry: ConfigReloadLog) => void;
+  readonly logger: ServerLogSink;
   readonly manager: SnapshotManager;
   readonly onDashboardAuthHealthChanged?: (available: boolean) => void;
   readonly retainedOperations?: readonly PendingAccountOperation[];
@@ -40,6 +42,7 @@ export async function reloadSnapshot({
         accountRemovals,
         commitConfig,
         configFile,
+        logger,
         manager,
         onDashboardAuthHealthChanged,
         retainedOperations,
@@ -56,6 +59,7 @@ async function reloadConfigFile({
   accountRemovals,
   commitConfig,
   configFile,
+  logger,
   manager,
   onDashboardAuthHealthChanged,
   retainedOperations,
@@ -63,6 +67,7 @@ async function reloadConfigFile({
   readonly accountRemovals: AccountRemovalCoordinator;
   readonly commitConfig: (config: Config, reason: string) => Promise<RetiredProviderSnapshot>;
   readonly configFile: AtomicConfigFile;
+  readonly logger: ServerLogSink;
   readonly manager: SnapshotManager;
   readonly onDashboardAuthHealthChanged: (available: boolean) => void;
   readonly retainedOperations: readonly PendingAccountOperation[];
@@ -94,12 +99,18 @@ async function reloadConfigFile({
         newlyStaged.push(...detected);
         staged.push(...detected);
         commitAfterWrite = next !== current;
-        if (!commitAfterWrite) retired = await commitConfig(parseRuntimeConfig(next), 'reload');
+        if (!commitAfterWrite) {
+          warnLeftoverOAuthModels(next, logger);
+          retired = await commitConfig(parseRuntimeConfig(next), 'reload');
+        }
         return { next, result: undefined };
       },
       {
         verify: async (candidate) => {
-          if (commitAfterWrite) retired = await commitConfig(parseRuntimeConfig(candidate), 'reload');
+          if (commitAfterWrite) {
+            warnLeftoverOAuthModels(candidate, logger);
+            retired = await commitConfig(parseRuntimeConfig(candidate), 'reload');
+          }
         },
       },
     );

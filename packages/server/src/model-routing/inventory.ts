@@ -18,6 +18,7 @@ import {
   ModelLimitSchema,
   type ModelMetadataInput,
   ModelMetadataSchema,
+  oauthExposedModels,
   type Provider,
   ProviderKind,
   RoutingPrioritySchema,
@@ -208,7 +209,7 @@ async function syntheticSource(
 ): Promise<RoutableProvider> {
   const models =
     provider.kind === ProviderKind.OAuth
-      ? await oauthCatalogModels(provider.id, repository)
+      ? await oauthCatalogModels(provider, repository)
       : 'models' in provider
         ? (provider.models ?? [])
         : [];
@@ -221,13 +222,16 @@ async function syntheticSource(
 }
 
 async function oauthCatalogModels(
-  providerId: string,
+  provider: Extract<Provider, { kind: typeof ProviderKind.OAuth }>,
   repository: Pick<PluginRepository, 'readCatalog'>,
 ): Promise<readonly string[]> {
   try {
-    const stored = repository.readCatalog(providerId);
+    const stored = repository.readCatalog(provider.id);
     if (stored === null) return [];
-    return validateModelCatalog(stored.catalog).language.map((entry) => entry.id);
+    return oauthExposedModels(
+      validateModelCatalog(stored.catalog).language.map((entry) => entry.id),
+      provider.excludedModels,
+    );
   } catch {
     return [];
   }
