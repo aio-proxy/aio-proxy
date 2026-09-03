@@ -378,6 +378,53 @@ describe('draft Provider catalog and test routes', () => {
     }
   });
 
+  test('falls back to options.baseURL when a custom provider factory cannot expose its catalog', async () => {
+    const packageName = '@example/failing-catalog-provider';
+    const packageDirectory = join(
+      npmPackageCacheDir(packageName),
+      'node_modules',
+      '@example',
+      'failing-catalog-provider',
+    );
+    mkdirSync(packageDirectory, { recursive: true });
+    writeFileSync(
+      join(packageDirectory, 'package.json'),
+      JSON.stringify({ name: packageName, version: '1.0.0', type: 'module', exports: './index.js' }),
+    );
+    writeFileSync(
+      join(packageDirectory, 'index.js'),
+      `export const createFailingProvider = () => { throw new Error('factory failed'); };\n`,
+    );
+    const upstream = Bun.serve({
+      hostname: '127.0.0.1',
+      port: 0,
+      fetch: () => Response.json({ data: [{ id: 'fallback-model' }] }),
+    });
+
+    try {
+      const response = await routes.request(
+        '/providers/draft/catalog',
+        jsonRequest(
+          {
+            draft: {
+              id: 'custom-sdk',
+              kind: 'ai-sdk',
+              packageName,
+              options: { baseURL: `http://127.0.0.1:${upstream.port}/v1` },
+            },
+          },
+          'QUERY',
+        ),
+      );
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ ok: true, models: ['fallback-model'] });
+    } finally {
+      await upstream.stop(true);
+      rmSync(npmPackageCacheDir(packageName), { force: true, recursive: true });
+    }
+  });
+
   test('lists an ai-sdk draft catalog from options.baseURL with bearer auth', async () => {
     let authorization: string | null = null;
     let pathname = '';

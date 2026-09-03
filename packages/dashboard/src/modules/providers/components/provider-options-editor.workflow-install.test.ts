@@ -59,11 +59,14 @@ describe('provider options schema workflow install flow', () => {
 
   test('untrusted missing packages wait for an explicit install request', () => {
     const required = providerOptionsSchemaTransition(
-      { ...initialProviderOptionsSchemaState, phase: 'checking', committedPackage: 'community-provider' },
+      providerOptionsSchemaTransition(initialProviderOptionsSchemaState, {
+        type: 'package_committed',
+        packageName: 'community-provider',
+      }),
       {
         type: 'status_loaded',
         packageName: 'community-provider',
-        generation: 0,
+        generation: 1,
         status: { trusted: false, state: 'missing' },
       },
     );
@@ -75,6 +78,7 @@ describe('provider options schema workflow install flow', () => {
     });
     expect(confirmed).toMatchObject({
       phase: 'installing',
+      commitGeneration: 2,
       effect: { type: 'install', confirmed: true, registry: 'https://registry.corp.example/' },
     });
     expect(providerOptionsSchemaTransition(confirmed, { type: 'install_started' })).toMatchObject({

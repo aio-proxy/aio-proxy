@@ -154,6 +154,7 @@ export const providerOptionsSchemaTransition = (
         ? {
             ...state,
             phase: 'installing',
+            commitGeneration: state.commitGeneration + 1,
             effect: {
               type: 'install',
               confirmed: true,
