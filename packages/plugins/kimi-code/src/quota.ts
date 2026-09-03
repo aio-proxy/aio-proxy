@@ -1,4 +1,5 @@
 import type { AccountContext, OAuthQuotaItem, OAuthQuotaSnapshot } from '@aio-proxy/plugin-sdk';
+import { isPlainObject } from 'es-toolkit/predicate';
 
 import { kimiIdentityHeaders } from './headers';
 import { currentKimiCredential, type KimiCredential, type KimiOAuthDependencies } from './oauth';
@@ -36,6 +37,28 @@ function item(value: unknown, id: string, displayName: OAuthQuotaItem['displayNa
     ...(ratio === undefined ? {} : { remainingRatio: Math.min(1, Math.max(0, ratio)) }),
     ...(resetsAt === undefined ? {} : { resetsAt }),
   };
+}
+
+// Kimi ships tempo-marking tier names in its own UI; the API only returns the enum.
+const PLAN_BY_LEVEL: Record<string, string> = {
+  LEVEL_BASIC: 'Moderato',
+  LEVEL_INTERMEDIATE: 'Allegretto',
+  LEVEL_ADVANCED: 'Allegro',
+  LEVEL_STANDARD: 'Vivace',
+};
+
+function membershipPlan(root: object): string | undefined {
+  const user = Reflect.get(root, 'user');
+  if (!isPlainObject(user)) return undefined;
+  const membership = Reflect.get(user, 'membership');
+  if (!isPlainObject(membership)) return undefined;
+  const level = Reflect.get(membership, 'level');
+  if (typeof level !== 'string') return undefined;
+  // `LocalizedTextSchema` rejects untrimmed strings, so an untrimmed level that misses the lookup
+  // would fail validation of the whole otherwise-valid snapshot.
+  const trimmed = level.trim();
+  if (trimmed === '') return undefined;
+  return PLAN_BY_LEVEL[trimmed] ?? trimmed.replace('LEVEL_', '').toLowerCase();
 }
 
 export async function readKimiQuota(
@@ -85,5 +108,6 @@ export async function readKimiQuota(
   });
   const items = [...(weekly === undefined ? [] : [weekly]), ...windows];
   if (items.length === 0) throw new Error('Kimi quota response contains no valid windows');
-  return { items };
+  const plan = membershipPlan(root);
+  return { items, ...(plan === undefined ? {} : { plan }) };
 }

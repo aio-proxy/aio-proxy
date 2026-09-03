@@ -129,6 +129,8 @@ function summariesFrom(config: Config, states: Readonly<Record<string, ProviderS
     priority: provider.priority,
     weight: provider.weight,
     clientModels: [],
+    protocols: [],
+    hasQuota: false,
     state: states[provider.id] ?? { status: 'ready' as const },
   }));
 }

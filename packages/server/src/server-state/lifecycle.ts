@@ -19,6 +19,7 @@ import type { LogicalSessionStore } from '../logical-session-store';
 import type { OAuthLoginSessionManager } from '../oauth-login-session/manager';
 import { createOAuthLoginSessionManager } from '../oauth-login-session/manager';
 import { findPluginEntry } from '../plugin-control-plane/plugin-config';
+import type { OAuthQuotaCache } from '../plugin-quota';
 import { createRuntimeFetch } from '../plugin-runtime';
 import type { SnapshotManager } from '../plugin-snapshot';
 import { effectiveProxy, providerDiff } from '../provider-runtime';
@@ -26,6 +27,7 @@ import type { ProviderCooldownStore } from '../routes/pipeline/provider-cooldown
 import type { RetiredProviderSnapshot } from '../runtime';
 import type { ServerLogSink } from '../server-log';
 import { oauthCapabilities, oauthProviderEditView } from './oauth-views';
+import type { QuotaIdentityTracker } from './quota-invalidation';
 import { createRecovery } from './recovery';
 import { reloadSnapshot } from './reload';
 import { buildSnapshot, providerConfigRecord, type Snapshot } from './snapshot';
@@ -53,6 +55,8 @@ export type ServerRuntime = {
   startupDiagnosticRebuildPending: boolean;
   accountRemovals: AccountRemovalCoordinator;
   scheduler: CatalogScheduler;
+  quotaCache: OAuthQuotaCache | undefined;
+  quotaIdentity: QuotaIdentityTracker | undefined;
   recovery: RecoveryHandle | undefined;
   configFile: AtomicConfigFile | undefined;
 };
@@ -96,7 +100,11 @@ export async function commitConfig(
   const retired = runtime.manager.swap(candidate);
   replaceCatalogJobs(runtime, candidate.catalogJobs);
   runtime.events.publish({ event: 'config.changed', data: providerDiff(before, candidate.summaries) });
-  runtime.accountRemovals.cancelReadded(providerConfigRecord(previous.config), providerConfigRecord(config));
+  // The candidate carries the runtime identities this commit produced; nothing is re-read.
+  runtime.quotaIdentity?.reconcile(candidate);
+  const previousRecord = providerConfigRecord(previous.config);
+  const nextRecord = providerConfigRecord(config);
+  runtime.accountRemovals.cancelReadded(previousRecord, nextRecord);
   return retired;
 }
 
@@ -128,6 +136,7 @@ export type ServerStateParts = Pick<
   | 'oauthLoginSessions'
   | 'pluginControlPlane'
   | 'providerSummaries'
+  | 'quotaCache'
   | 'reload'
   | 'traceStore'
   | 'requestRecorder'
@@ -185,6 +194,8 @@ export function assembleServerState(runtime: ServerRuntime, parts: ServerStatePa
     providerSummaries: parts.providerSummaries,
     currentConfig: () => (manager.current() as Snapshot).config,
     oauthQuota: parts.oauthQuota,
+    quotaCache: parts.quotaCache,
+    warmProviderQuota: (providerId) => parts.quotaCache.warm(providerId),
     reload: parts.reload,
     traceStore: parts.traceStore,
     logger,

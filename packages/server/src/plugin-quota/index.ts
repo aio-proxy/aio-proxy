@@ -16,4 +16,5 @@ export function createOAuthQuotaOperations(dependencies: OAuthQuotaServiceDepend
   };
 }
 
+export * from './cache';
 export * from './errors';

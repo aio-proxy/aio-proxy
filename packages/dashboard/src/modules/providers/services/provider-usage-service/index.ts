@@ -1,1 +1,6 @@
-export { getProviderUsage, providerUsageQueryOptions, type ProviderUsage } from './provider-usage-service';
+export {
+  getProviderUsage,
+  providerUsageQueryOptions,
+  type ProviderUsage,
+  zeroProviderUsage,
+} from './provider-usage-service';

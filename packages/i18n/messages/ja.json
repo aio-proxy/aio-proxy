@@ -651,6 +651,43 @@
       "page_size": "1 ページあたりの行数"
     },
     "providers": {
+      "card": {
+        "search_placeholder": "名前またはプロバイダー ID で検索",
+        "filter_availability": "可用性",
+        "filter_availability_all": "すべて",
+        "filter_availability_available": "利用可能",
+        "filter_availability_unavailable": "利用不可",
+        "filter_enablement": "状態",
+        "filter_enablement_all": "すべて",
+        "filter_enablement_enabled": "有効",
+        "filter_enablement_disabled": "無効",
+        "filter_kind": "種別",
+        "filter_kind_all": "すべて",
+        "no_matches": "条件に一致するプロバイダーがありません",
+        "stat_priority": "優先度",
+        "stat_weight": "重み",
+        "stat_success_rate": "成功率",
+        "stat_p95": "P95",
+        "models_count": "{count} モデル",
+        "protocols_multi": "複数プロトコル",
+        "requests_24h": "{count} 件 / 24h",
+        "invalid_hint": "プロバイダー設定が無効です。",
+        "open_provider": "プロバイダー {id} を開く"
+      },
+      "quota": {
+        "ring_label": "プロバイダー {id} の残り使用量",
+        "title": "残り使用量",
+        "refresh": "使用量を更新",
+        "sampled_at": "{value} に取得",
+        "remaining": "残り {percent}%",
+        "less_than_one_percent": "残り 1% 未満",
+        "no_windows": "このアップストリームは残量を返しません",
+        "resets_at": "{value} にリセット",
+        "reset_credits": "リセット可能回数 {count}",
+        "stale_notice": "最後に取得できた値を表示しています。直近の更新は失敗しました",
+        "load_failed": "このプロバイダーの使用量を取得できません",
+        "loading": "使用量を読み込み中"
+      },
       "list_title": "プロバイダー",
       "providers_title": "プロバイダー",
       "new_provider": "新規プロバイダー",
@@ -661,25 +698,6 @@
         "invalid": "無効"
       },
       "table": {
-        "label": "プロバイダー",
-        "col_provider": "プロバイダー",
-        "col_details": "詳細",
-        "col_type": "タイプ",
-        "col_protocol": "プロトコル",
-        "col_name": "名前",
-        "col_enabled": "有効",
-        "col_status": "ステータス",
-        "col_state": "可用性",
-        "col_capability": "ケイパビリティ",
-        "col_account": "アカウント",
-        "col_catalog": "カタログ",
-        "col_models": "モデル",
-        "col_priority": "優先度",
-        "col_weight": "ウェイト",
-        "col_usage_24h": "24時間のリクエスト",
-        "col_actions": "操作",
-        "expand_group": "プロバイダーグループを展開",
-        "collapse_group": "プロバイダーグループを折りたたむ",
         "filter": "プロバイダーを絞り込む",
         "filter_placeholder": "名前または Provider ID で検索",
         "columns": "プロバイダーの列"
@@ -687,20 +705,6 @@
       "badge": {
         "enabled": "有効",
         "disabled": "無効"
-      },
-      "state": {
-        "details": "プロバイダー {id} の診断情報",
-        "ready": "準備完了",
-        "failed": "失敗",
-        "unavailable": "利用不可",
-        "catalog_fresh": "最新",
-        "catalog_stale": "古い"
-      },
-      "account": {
-        "expires_at": "有効期限 {value}"
-      },
-      "catalog": {
-        "last_success_at": "最終成功 {value}"
       },
       "oauth": {
         "select_label": "ログイン方法",

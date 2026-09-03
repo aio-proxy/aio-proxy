@@ -1,5 +1,36 @@
 # @aio-proxy/ui
 
+## 0.13.0
+
+### Minor Changes
+
+- [#239](https://github.com/aio-proxy/aio-proxy/pull/239) [`b1f5bff`](https://github.com/aio-proxy/aio-proxy/commit/b1f5bff2f2e92abfd54b90fb32b29b4b145e8c1d) Thanks [@baranwang](https://github.com/baranwang)! - Redesign the dashboard Provider list as a card grid and surface OAuth remaining quota.
+
+  Each Provider — including each OAuth account — is now one card showing its name, kind, protocols,
+  plan, routing priority and weight, 24-hour success rate and p95 latency, model count, and request
+  count, with search and availability/enablement/kind filters replacing the old table's pagination and
+  grouping. OAuth Providers whose plugin exposes a quota capability show a remaining-quota ring that
+  opens a detail dialog with one bar per quota window that reports a remaining amount.
+
+  The quota read is cached in memory behind a per-provider five-minute cooldown, refreshed
+  asynchronously once a Provider has finished answering a model request, and exposed at
+  `QUERY /dashboard/api/providers/:id/quota`; the dialog's refresh button bypasses the cooldown, and the
+  Providers page polls the reading the way it already polls health. `OAuthQuotaSnapshot` gains an
+  optional `plan`, which `kimi-code` and `xai-grok` now populate, and `xai-grok` also reports per-product
+  usage. Dashboard Provider summaries gain `protocols` and `hasQuota` in place of the single `protocol`
+  field.
+
+### Patch Changes
+
+- [#239](https://github.com/aio-proxy/aio-proxy/pull/239) [`07413a1`](https://github.com/aio-proxy/aio-proxy/commit/07413a116385e94e20e2c722ecdb32c0b97d52b6) Thanks [@baranwang](https://github.com/baranwang)! - Restore the accessible names on the combobox clear and chip remove buttons
+
+  A `shadcn add combobox --overwrite` had discarded the hand-applied patch, leaving both icon-only
+  buttons announced as an unnamed "button" and forwarding the localized labels to the DOM as dead
+  attributes. The same overwrite re-hid the chevron trigger whenever a value was set, which left a
+  pointer user on a filled field with no visible control that reveals the curated list.
+
+- [#242](https://github.com/aio-proxy/aio-proxy/pull/242) [`672e0db`](https://github.com/aio-proxy/aio-proxy/commit/672e0dbb4eb0d81b965164b05d7a83dc9db23cda) Thanks [@baranwang](https://github.com/baranwang)! - Replace the Dashboard `cn` helper's `clsx` and `tailwind-merge` implementation with the `cn` package.
+
 ## 0.12.3
 
 ## 0.12.2
