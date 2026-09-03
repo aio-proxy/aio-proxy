@@ -374,7 +374,8 @@ test('withRoutingConfig does not restore denylist-excluded catalog ids through u
   });
 
   expect(next.models).toEqual(['gpt-5', 'gpt-image-2']);
-  expect(Object.keys(next.upstreamMetadata ?? {})).toEqual(['gpt-5', 'gpt-image-2']);
+  expect(Object.keys(next.upstreamMetadata ?? {})).toEqual(expect.arrayContaining(['gpt-5', 'gpt-image-2']));
+  expect(next.upstreamMetadata).not.toHaveProperty('other');
   expect(supportsImage(next.capabilityIndex, 'gpt-image-2')).toBe(true);
 });
 

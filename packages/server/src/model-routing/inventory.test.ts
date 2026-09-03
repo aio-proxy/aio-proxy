@@ -313,8 +313,9 @@ describe('model routing inventory', () => {
       writable: true,
     });
 
-    expect(response.models.map((entry) => entry.modelId)).not.toContain('oauth-kept');
-    expect(response.models.map((entry) => entry.modelId)).toContain('oauth-alias');
+    const modelIds = response.models.map((entry) => entry.modelId);
+    expect(modelIds).not.toContain('oauth-kept');
+    expect(modelIds).not.toContain('oauth-alias');
   });
 
   test('keeps remaining models when one OAuth catalog is unreadable', async () => {
