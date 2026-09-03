@@ -11,7 +11,7 @@ import {
 import { uniq } from 'es-toolkit/array';
 import { isPlainObject } from 'es-toolkit/predicate';
 
-import { exposedModelIds } from '../../plugin-runtime';
+import { oauthExposedModels } from '../../plugin-runtime';
 import { effectiveProxy, materializeProviders } from '../../provider-runtime';
 import { withAttemptLogContext, withRequestLogContext } from '../../request-logging';
 import type { RuntimeProviderInstance } from '../../runtime';
@@ -173,9 +173,9 @@ async function testOAuthProvider(
     const transport = runtime?.model;
     if (runtime === undefined || transport === undefined) return failure('test_request_failed');
     const catalogIds = Object.keys(runtime.upstreamMetadata ?? {});
-    // Gate on the DRAFT whitelist over the full discovered catalog, so an
-    // unsaved whitelist edit is honored and an empty whitelist exposes everything.
-    if (!new Set(exposedModelIds(catalogIds, provider.models)).has(modelId)) {
+    // Gate on the DRAFT denylist over the discovered catalog, so an unsaved hide
+    // is honored and an empty excludedModels list exposes everything.
+    if (!new Set(oauthExposedModels(catalogIds, provider.excludedModels)).has(modelId)) {
       return failure('model_not_enabled');
     }
     const passed = await withDraftAttempt(provider, modelId, transport.targetProtocol?.(modelId), async () => {

@@ -2,9 +2,10 @@ import { afterEach, expect, test } from 'bun:test';
 
 import type { LogicalRequestContext, RawResolver, RawTransportOptions } from '@aio-proxy/plugin-sdk';
 import { ProviderKind, ProviderProtocol } from '@aio-proxy/types';
+import { oauthExposedModels } from '@aio-proxy/types';
 
 import { supportsEmbedding, supportsImage } from '../provider-runtime/capability-index';
-import { exposedModelIds, withRoutingConfig } from './capabilities';
+import { withRoutingConfig } from './capabilities';
 import { PluginRawResolverError, PluginRawTransportError, validatePluginProtocolMap } from './index';
 import { catalog, cleanup, diagnostics, materializePluginProvider, runtimeFixture } from './test-support';
 
@@ -248,21 +249,21 @@ test('materializes a class-based plugin token-count capability', async () => {
   expect(await result.provider?.tokenCount?.countTokens(input)).toEqual({ inputTokens: 17 });
 });
 
-test('exposedModelIds: absent or empty whitelist exposes the whole catalog', () => {
-  expect(exposedModelIds(['a', 'b'], undefined)).toEqual(['a', 'b']);
-  expect(exposedModelIds(['a', 'b'], [])).toEqual(['a', 'b']);
+test('oauthExposedModels: absent or empty excludedModels exposes the whole catalog', () => {
+  expect(oauthExposedModels(['a', 'b'], undefined)).toEqual(['a', 'b']);
+  expect(oauthExposedModels(['a', 'b'], [])).toEqual(['a', 'b']);
 });
 
-test('exposedModelIds: a whitelist intersects the catalog and drops stale entries', () => {
-  expect(exposedModelIds(['a', 'b', 'c'], ['b', 'gone', 'a'])).toEqual(['a', 'b']);
+test('oauthExposedModels: a denylist subtracts from the catalog and ignores stale ids', () => {
+  expect(oauthExposedModels(['a', 'b', 'c'], ['b', 'gone'])).toEqual(['a', 'c']);
 });
 
-test('a whitelist filters the freshly materialized catalog', async () => {
+test('a denylist filters the freshly materialized catalog', async () => {
   const fixture = runtimeFixture({ kind: 'static' }, { createRuntime: async () => ({ provider: providerV4() }) });
   fixture.repository.writeCatalog('person', { ...catalog, language: [{ id: 'model' }, { id: 'other' }] }, 1_000);
 
   const result = await materializePluginProvider({
-    config: { ...providerConfig, models: ['model'] },
+    config: { ...providerConfig, excludedModels: ['other'] },
     plugins: fixture.plugins,
     repository: fixture.repository,
     diagnostics,
@@ -270,12 +271,12 @@ test('a whitelist filters the freshly materialized catalog', async () => {
     onDiagnosticChanged: () => {},
   });
 
-  expect(result.provider?.models).toEqual(['model']); // 'other' is discovered but not exposed
+  expect(result.provider?.models).toEqual(['model']);
   expect(Object.keys(result.provider?.upstreamMetadata ?? {})).toEqual(['model']);
   expect(result.summary.clientModels).not.toContain('other');
 });
 
-test('changing only the whitelist keeps runtime identity stable and takes the cached routing path', async () => {
+test('changing only the denylist keeps runtime identity stable and takes the cached routing path', async () => {
   const fixture = runtimeFixture({ kind: 'static' }, { createRuntime: async () => ({ provider: providerV4() }) });
   fixture.repository.writeCatalog('person', { ...catalog, language: [{ id: 'model' }, { id: 'other' }] }, 1_000);
 
@@ -283,7 +284,7 @@ test('changing only the whitelist keeps runtime identity stable and takes the ca
   expect(first.provider?.models).toEqual(['model', 'other']);
 
   const second = await materializePluginProvider({
-    config: { ...providerConfig, models: ['model'] },
+    config: { ...providerConfig, excludedModels: ['other'] },
     plugins: fixture.plugins,
     repository: fixture.repository,
     diagnostics,
@@ -292,16 +293,11 @@ test('changing only the whitelist keeps runtime identity stable and takes the ca
     previous: first.cacheEntry,
   });
 
-  // Same identity -> the provider instance is rebuilt via withRoutingConfig, not re-created:
   expect(second.cacheEntry?.identity).toBe(first.cacheEntry?.identity);
   expect(second.provider?.models).toEqual(['model']);
 
-  // Widening is not a one-way ratchet. Kills the mutant that sources the cached routing path's catalog
-  // ids from the already-filtered `previous.provider.models` instead of the discovered catalog: narrowing
-  // would then be irreversible, because each cached materialization re-filters a filtered list. That is
-  // the exposure defect this branch already shipped once (899d22df).
   const third = await materializePluginProvider({
-    config: providerConfig, // whitelist removed again
+    config: providerConfig,
     plugins: fixture.plugins,
     repository: fixture.repository,
     diagnostics,
@@ -326,7 +322,7 @@ test('withRoutingConfig re-derives models from the unfiltered catalog ids', () =
     },
   } as never;
 
-  const next = withRoutingConfig(cached, { ...providerConfig, models: ['b'] } as never, {
+  const next = withRoutingConfig(cached, { ...providerConfig, excludedModels: ['a'] } as never, {
     ...catalog,
     language: [{ id: 'a' }, { id: 'b' }],
   });
@@ -357,7 +353,7 @@ test('withRoutingConfig rebuilds capabilityIndex when catalog.image gains an id'
   expect(supportsImage(next.capabilityIndex, 'gpt-image-2')).toBe(true);
 });
 
-test('withRoutingConfig does not restore whitelist-excluded catalog ids through upstreamMetadata', () => {
+test('withRoutingConfig does not restore denylist-excluded catalog ids through upstreamMetadata', () => {
   const cached = {
     id: 'person',
     kind: ProviderKind.OAuth,
@@ -371,15 +367,40 @@ test('withRoutingConfig does not restore whitelist-excluded catalog ids through 
     },
   } as never;
 
-  const next = withRoutingConfig(cached, { ...providerConfig, models: ['gpt-5'] } as never, {
+  const next = withRoutingConfig(cached, { ...providerConfig, excludedModels: ['other'] } as never, {
     ...catalog,
     language: [{ id: 'gpt-5' }, { id: 'other' }],
     image: [{ id: 'gpt-image-2' }],
   });
 
-  expect(next.models).toEqual(['gpt-5']);
-  expect(Object.keys(next.upstreamMetadata ?? {})).toEqual(['gpt-5']);
+  expect(next.models).toEqual(['gpt-5', 'gpt-image-2']);
+  expect(Object.keys(next.upstreamMetadata ?? {})).toEqual(['gpt-5', 'gpt-image-2']);
   expect(supportsImage(next.capabilityIndex, 'gpt-image-2')).toBe(true);
+});
+
+test('inherited preserve cannot re-admit an excluded catalog id', () => {
+  const cached = {
+    id: 'person',
+    kind: ProviderKind.OAuth,
+    enabled: true,
+    models: ['visible'],
+    model: {
+      invoke: () => {
+        throw new Error('unused');
+      },
+    },
+  } as never;
+
+  const next = withRoutingConfig(
+    cached,
+    { ...providerConfig, excludedModels: ['hidden'] } as never,
+    { ...catalog, language: [{ id: 'visible' }, { id: 'hidden' }] },
+    { keep: { model: 'hidden', preserve: true } },
+  );
+
+  expect(next.models).toEqual(['visible']);
+  expect(next.alias).toBeUndefined();
+  expect(next.upstreamMetadata).not.toHaveProperty('hidden');
 });
 
 test('a language catalog attaches a lazy image invoke even when catalog.image is empty', async () => {
@@ -496,7 +517,7 @@ test('unions catalog language and embedding into models and attaches embedding c
   });
 
   const second = await materializePluginProvider({
-    config: { ...providerConfig, models: ['embed'] },
+    config: { ...providerConfig, excludedModels: ['chat', 'shared'] },
     plugins: fixture.plugins,
     repository: fixture.repository,
     diagnostics,
@@ -565,4 +586,40 @@ test('forwards embedding capability and catalog extra to the plugin raw resolver
     extra: { region: 'us', protocol: 'gemini' },
     capability: 'embedding',
   });
+});
+
+test('cached routing still inherits a newly advertised plugin default alias', async () => {
+  let suggestions: Record<string, { model: string }> = {};
+  const fixture = runtimeFixture(
+    { kind: 'static' },
+    {
+      createRuntime: async () => ({ provider: providerV4() }),
+      defaultAliases: () => suggestions,
+    },
+  );
+  fixture.repository.writeCatalog('person', { ...catalog, language: [{ id: 'model' }, { id: 'fresh' }] }, 1_000);
+
+  const first = await materializePluginProvider({
+    config: providerConfig,
+    plugins: fixture.plugins,
+    repository: fixture.repository,
+    diagnostics,
+    logger: () => {},
+    onDiagnosticChanged: () => {},
+  });
+  expect(first.provider?.alias).toBeUndefined();
+
+  suggestions = { fresh: { model: 'fresh' } };
+  const second = await materializePluginProvider({
+    config: providerConfig,
+    plugins: fixture.plugins,
+    repository: fixture.repository,
+    diagnostics,
+    logger: () => {},
+    onDiagnosticChanged: () => {},
+    previous: first.cacheEntry,
+  });
+
+  expect(second.cacheEntry?.identity).toBe(first.cacheEntry?.identity);
+  expect(second.provider?.alias).toEqual({ fresh: { model: 'fresh', preserve: false } });
 });
