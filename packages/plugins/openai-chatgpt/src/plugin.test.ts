@@ -55,8 +55,19 @@ test('discovery exposes gpt-image-2 as an image model alongside the language cat
   });
 
   expect(catalog.language.map(({ id }) => id)).toEqual(['gpt-5.5']);
-  expect(catalog.image.map(({ id }) => id)).toEqual(['gpt-image-2']);
-  // The capability index derives `image` from these ids, so the output modality
-  // must be declared here or /v1/images/* rejects the model.
-  expect(catalog.image[0]?.modelMetadata?.capabilities?.modalities?.output).toContain('image');
+  // `extra.protocol` is pinned as a literal because the host reads it into
+  // RuntimeModelMetadata.protocol and the raw resolver dispatches on it, so a typo
+  // here is invisible until an image request picks the wrong transport. Membership
+  // in `catalog.image` is what grants the routable `image` capability; the
+  // modalities serve /v1/models `image_input` and suppress the models.dev fallback.
+  expect(catalog.image).toEqual([
+    {
+      id: 'gpt-image-2',
+      displayName: 'GPT Image 2',
+      extra: { protocol: 'openai-image' },
+      modelMetadata: {
+        capabilities: { modalities: { input: ['text', 'image'], output: ['image'] } },
+      },
+    },
+  ]);
 });

@@ -436,6 +436,7 @@ Puts `gpt-image-2` into `catalog.image` so `buildModelCapabilityIndex` grants it
 - Produces: `CHATGPT_IMAGE_MODELS: readonly ModelDescriptor[]` exported from `./catalog`, containing exactly one descriptor with `id: 'gpt-image-2'`.
 - `ModelDescriptor` is `{ id: string; displayName?: string; extra?: JsonValue; modelMetadata?: DescriptorModelMetadata }`, where `DescriptorModelMetadata` is `Pick<ModelMetadataInput, 'name' | 'description' | 'limit' | 'capabilities' | 'cost'>`. `capabilities.modalities` is `{ input?: Modality[]; output?: Modality[] }` and `Modality` is `'text' | 'audio' | 'image' | 'video' | 'pdf'`.
 - `extra: { protocol: 'openai-image' }` is how a descriptor declares its wire protocol. The host reads it in `modelMetadataRecord` (`packages/server/src/plugin-runtime/catalog.ts:98`); language descriptors own `targetProtocol`, so a non-language descriptor's protocol never redirects language dispatch.
+- Membership in `catalog.image` is what grants the routable `image` capability: `buildModelCapabilityIndex` adds `'image'` unconditionally for every `catalog.image` id (`capability-index.ts:31,39`), so `modelMetadata` is NOT load-bearing for routing — delete it and `supportsImage` is still `true`. `metadataHasImageOutput` (line 41) is a redundant second path here, and `catalogOnlyImageOutput` cannot apply at all because `resolveCatalogModalities` skips OAuth providers by design (`resolve-catalog-modalities.ts:52-65`). Declare the modalities anyway for two other reasons: `modalities.input` reaches users as `/v1/models` `capabilities.image_input` (`model-capabilities.ts:59,69`) and the agent catalog's `input` field (`agent-catalog.ts:25`), and declaring `output` suppresses the models.dev fallback layer on non-OAuth paths. Do not assert the modalities as if routing depended on them — that assertion would pass even if the feature regressed.
 - `descriptor.setup` takes **two** arguments — `(api, options)` — so the test helper must call `descriptor.setup({ oauth: { register } }, undefined)`. The `adapterFrom` helper below mirrors `packages/plugins/github-copilot/src/plugin.test.ts:154-170`.
 - `ModelModalitiesSchema` is `.loose()`, so `modelMetadata.capabilities.modalities` accepts `{ input, output }` with `Modality = 'text' | 'audio' | 'image' | 'video' | 'pdf'`.
 
@@ -501,10 +502,21 @@ test('discovery exposes gpt-image-2 as an image model alongside the language cat
   });
 
   expect(catalog.language.map(({ id }) => id)).toEqual(['gpt-5.5']);
-  expect(catalog.image.map(({ id }) => id)).toEqual(['gpt-image-2']);
-  // The capability index derives `image` from these ids, so the output modality
-  // must be declared here or /v1/images/* rejects the model.
-  expect(catalog.image[0]?.modelMetadata?.capabilities?.modalities?.output).toContain('image');
+  // `extra.protocol` is pinned as a literal because the host reads it into
+  // RuntimeModelMetadata.protocol and the raw resolver dispatches on it, so a typo
+  // here is invisible until an image request picks the wrong transport. Membership
+  // in `catalog.image` is what grants the routable `image` capability; the
+  // modalities serve /v1/models `image_input` and suppress the models.dev fallback.
+  expect(catalog.image).toEqual([
+    {
+      id: 'gpt-image-2',
+      displayName: 'GPT Image 2',
+      extra: { protocol: 'openai-image' },
+      modelMetadata: {
+        capabilities: { modalities: { input: ['text', 'image'], output: ['image'] } },
+      },
+    },
+  ]);
 });
 ```
 
