@@ -25,7 +25,6 @@ export type OAuthAccountContextDependencies = {
 };
 
 export type PreparedOAuthAccountContext = {
-  readonly adapter: OAuthAdapter;
   readonly accountContext: AccountContext<unknown, unknown>;
   readonly plugin: string;
   readonly capability: string;
@@ -105,7 +104,6 @@ async function prepareContext<Capability>(
     return {
       capability,
       prepared: {
-        adapter: prepared.adapter,
         accountContext: {
           credentials: createTrackingCredentialPort(prepared.createCredentials(), secretValues),
           options: prepared.accountOptions,
