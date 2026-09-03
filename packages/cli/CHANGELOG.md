@@ -1,5 +1,25 @@
 # @aio-proxy/cli
 
+## 0.15.0
+
+### Minor Changes
+
+- [#244](https://github.com/aio-proxy/aio-proxy/pull/244) [`44a3b38`](https://github.com/aio-proxy/aio-proxy/commit/44a3b383bda177c8ee0124e53325cb8c63e1752d) Thanks [@baranwang](https://github.com/baranwang)! - cli: add `aiop` as a short command for `aio-proxy`
+
+### Patch Changes
+
+- Updated dependencies [[`1daece3`](https://github.com/aio-proxy/aio-proxy/commit/1daece3dd2dad3ddfe86c12784ef379e99424c91)]:
+  - @aio-proxy/types@0.15.0
+  - @aio-proxy/core@0.15.0
+  - @aio-proxy/server@0.15.0
+  - @aio-proxy/dashboard@0.15.0
+  - @aio-proxy/opencode-provider@0.15.0
+  - @aio-proxy/pi-provider@0.15.0
+  - @aio-proxy/plugin-sdk@0.15.0
+  - @aio-proxy/logger@0.15.0
+  - @aio-proxy/i18n@0.15.0
+  - @aio-proxy/shared@0.15.0
+
 ## 0.14.0
 
 ### Patch Changes
