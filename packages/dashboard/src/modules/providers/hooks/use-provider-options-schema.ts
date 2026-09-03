@@ -26,7 +26,11 @@ type ProviderPackageStatus = {
   readonly state: 'bundled' | 'installed' | 'missing';
 };
 
-type ProviderOptionsSchemaEffect = { readonly type: 'install'; readonly confirmed: boolean };
+type ProviderOptionsSchemaEffect = {
+  readonly type: 'install';
+  readonly confirmed: boolean;
+  readonly registry?: string;
+};
 
 export type ProviderOptionsSchemaState = {
   readonly phase: ProviderOptionsSchemaPhase;
@@ -57,7 +61,7 @@ export type ProviderOptionsSchemaEvent =
       readonly generation: number;
       readonly errorCode: string;
     }
-  | { readonly type: 'install_confirmed' }
+  | { readonly type: 'install_requested'; readonly registry?: string }
   | { readonly type: 'install_started' }
   | { readonly type: 'install_succeeded'; readonly packageName: string; readonly generation: number }
   | {
@@ -145,9 +149,17 @@ export const providerOptionsSchemaTransition = (
         effect: undefined,
         errorCode: event.errorCode,
       };
-    case 'install_confirmed':
-      return state.phase === 'install_required'
-        ? { ...state, phase: 'installing', effect: { type: 'install', confirmed: true } }
+    case 'install_requested':
+      return state.phase === 'install_required' || state.phase === 'install_deferred' || state.phase === 'install_error'
+        ? {
+            ...state,
+            phase: 'installing',
+            effect: {
+              type: 'install',
+              confirmed: true,
+              ...(event.registry === undefined ? {} : { registry: event.registry }),
+            },
+          }
         : state;
     case 'install_started':
       return state.phase === 'installing'
@@ -172,8 +184,7 @@ export type UseProviderOptionsSchemaResult = {
   readonly packageName: string | null;
   readonly changePackage: (packageName: string) => void;
   readonly commitPackage: (packageName: string, allowAutomaticInstall?: boolean) => void;
-  readonly requestInstall: () => void;
-  readonly confirmInstall: () => void;
+  readonly requestInstall: (registry?: string) => void;
   readonly errorCode?: string;
 };
 
@@ -210,11 +221,18 @@ export function useProviderOptionsSchema(): UseProviderOptionsSchemaResult {
     mutationFn: ({
       packageName: mutationPackage,
       confirmed,
+      registry,
     }: {
       packageName: string;
       generation: number;
       confirmed: boolean;
-    }) => installProviderPackage({ packageName: mutationPackage, confirmed }),
+      registry?: string;
+    }) =>
+      installProviderPackage({
+        packageName: mutationPackage,
+        confirmed,
+        ...(registry === undefined ? {} : { registry }),
+      }),
     onSuccess: async (_data, variables) => {
       dispatch({ type: 'install_succeeded', packageName: variables.packageName, generation: variables.generation });
       const options = providerPackageStatusQueryOptions(variables.packageName);
@@ -247,7 +265,12 @@ export function useProviderOptionsSchema(): UseProviderOptionsSchemaResult {
     }
     startedInstalls.current.add(generation);
     dispatch({ type: 'install_started' });
-    installMutation.mutate({ packageName, generation, confirmed: state.effect.confirmed });
+    installMutation.mutate({
+      packageName,
+      generation,
+      confirmed: state.effect.confirmed,
+      ...(state.effect.registry === undefined ? {} : { registry: state.effect.registry }),
+    });
   }, [generation, packageName, state.effect, installMutation]);
 
   const changePackage = useCallback((nextPackageName: string) => {
@@ -256,12 +279,10 @@ export function useProviderOptionsSchema(): UseProviderOptionsSchemaResult {
   const commitPackage = useCallback((nextPackageName: string, allowAutomaticInstall = true) => {
     dispatch({ type: 'package_committed', packageName: nextPackageName, allowAutomaticInstall });
   }, []);
-  const requestInstall = useCallback(() => {
-    if (packageName !== null) {
-      dispatch({ type: 'package_committed', packageName, allowAutomaticInstall: true });
-    }
-  }, [packageName]);
-  const confirmInstall = useCallback(() => dispatch({ type: 'install_confirmed' }), []);
+  const requestInstall = useCallback(
+    (registry?: string) => dispatch({ type: 'install_requested', ...(registry === undefined ? {} : { registry }) }),
+    [],
+  );
 
   return {
     phase: state.phase,
@@ -271,7 +292,6 @@ export function useProviderOptionsSchema(): UseProviderOptionsSchemaResult {
     changePackage,
     commitPackage,
     requestInstall,
-    confirmInstall,
     ...(state.schema === undefined ? {} : { schema: state.schema }),
     ...(state.errorCode === undefined ? {} : { errorCode: state.errorCode }),
   };

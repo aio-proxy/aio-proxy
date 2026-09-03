@@ -1,9 +1,12 @@
 import { m } from '@aio-proxy/i18n';
-import { Field, FieldDescription } from '@aio-proxy/ui/components/field';
+import { Field, FieldDescription, FieldError } from '@aio-proxy/ui/components/field';
+import { Input } from '@aio-proxy/ui/components/input';
 import { Label } from '@aio-proxy/ui/components/label';
 import { Switch } from '@aio-proxy/ui/components/switch';
+import { useForm } from '@tanstack/react-form';
 import type React from 'react';
 import { useEffect, useRef } from 'react';
+import { z } from 'zod';
 
 import type { ProviderEditorForm } from '../hooks/use-provider-editor-form';
 import { useProviderOptionsSchema } from '../hooks/use-provider-options-schema';
@@ -12,6 +15,7 @@ import { ProviderOptionsEditor } from './provider-options-editor';
 import { ProviderPackageCombobox } from './provider-package-combobox';
 
 const IGNORE_VALIDITY = () => undefined;
+const RegistrySchema = z.union([z.literal(''), z.url()]);
 
 type PackageCommitRef = { current: string | null };
 
@@ -33,12 +37,16 @@ interface ProviderFormFieldsAiSdkProps {
 
 export const ProviderFormFieldsAiSdk: React.FC<ProviderFormFieldsAiSdkProps> = ({ form, onOptionsValidityChange }) => {
   const schemaState = useProviderOptionsSchema();
+  const installForm = useForm({
+    defaultValues: { registry: '' },
+    validators: { onChange: z.object({ registry: RegistrySchema }) },
+  });
 
   const initialPackageSynchronized = useRef(false);
   const lastCommittedPackage = useRef<string | null>(null);
   const commitUserPackage = (packageName: string) =>
     commitProviderPackageOnce(packageName, lastCommittedPackage, (nextPackageName) =>
-      schemaState.commitPackage(nextPackageName, true),
+      schemaState.commitPackage(nextPackageName, false),
     );
 
   useEffect(() => {
@@ -48,7 +56,7 @@ export const ProviderFormFieldsAiSdk: React.FC<ProviderFormFieldsAiSdkProps> = (
     // Arming commitProviderPackageOnce's equality guard is the point: without it a focus+blur with no
     // keystroke is not recognized as a repeat of this commit, and re-commits with automatic install
     // allowed — npm-installing a package the user only looked at. A real edit clears the ref in
-    // onValueChange below, so a genuinely changed package still installs.
+    // onValueChange below, so a genuinely changed package is checked and can be explicitly installed.
     lastCommittedPackage.current = initialPackage;
     schemaState.commitPackage(initialPackage, false);
   }, [form, schemaState.commitPackage]);
@@ -78,16 +86,54 @@ export const ProviderFormFieldsAiSdk: React.FC<ProviderFormFieldsAiSdkProps> = (
           )}
         </form.Field>
       </div>
-      <div data-testid="provider-form-field-options">
-        <form.Field name="options">
+      <div data-testid="provider-form-field-registry">
+        <installForm.Field
+          name="registry"
+          validators={{
+            onChange: ({ value }) =>
+              RegistrySchema.safeParse(value).success
+                ? undefined
+                : m['dashboard.providers.form.options_install_registry_error'](),
+          }}
+        >
           {(field) => (
-            <ProviderOptionsEditor
-              field={field}
-              schemaState={schemaState}
-              onValidityChange={onOptionsValidityChange ?? IGNORE_VALIDITY}
-            />
+            <Field data-invalid={field.state.meta.errors.length > 0 || undefined}>
+              <Label htmlFor="provider-package-registry">
+                {m['dashboard.providers.form.options_install_registry_label']()}
+              </Label>
+              <Input
+                id="provider-package-registry"
+                type="url"
+                value={field.state.value}
+                placeholder={m['dashboard.providers.form.options_install_registry_placeholder']()}
+                aria-invalid={field.state.meta.errors.length > 0 || undefined}
+                onBlur={field.handleBlur}
+                onChange={(event) => field.handleChange(event.target.value)}
+              />
+              <FieldDescription>
+                {m['dashboard.providers.form.options_install_registry_description']()}
+              </FieldDescription>
+              <FieldError errors={field.state.meta.errors.map((message) => ({ message: String(message) }))} />
+            </Field>
           )}
-        </form.Field>
+        </installForm.Field>
+      </div>
+      <div data-testid="provider-form-field-options">
+        <installForm.Subscribe selector={(state) => [state.values.registry, state.canSubmit] as const}>
+          {([registry, registryValid]) => (
+            <form.Field name="options">
+              {(field) => (
+                <ProviderOptionsEditor
+                  field={field}
+                  schemaState={schemaState}
+                  installRegistry={registry.trim() === '' ? undefined : registry.trim()}
+                  installRegistryValid={Boolean(registryValid)}
+                  onValidityChange={onOptionsValidityChange ?? IGNORE_VALIDITY}
+                />
+              )}
+            </form.Field>
+          )}
+        </installForm.Subscribe>
       </div>
       <div data-testid="provider-form-field-parseReasoningContent">
         <form.Field name="parseReasoningContent">
