@@ -43,6 +43,13 @@ describe('oauth alias rows', () => {
     expect(serializeOAuthAlias([], true, 'edit')).toEqual({ [INHERIT_OFF_KEY]: false });
   });
 
+  test('serializeOAuthAlias keeps a __proto__ authored name as an own key', () => {
+    const record = serializeOAuthAlias([aliasRow('__proto__', cfg('gpt-5'))], false, 'edit');
+
+    expect(Object.hasOwn(record ?? {}, '__proto__')).toBe(true);
+    expect(record?.['__proto__']).toEqual(cfg('gpt-5'));
+  });
+
   test('mergeInheritedAliasRows drops excluded and inherit-off defaults', () => {
     const defaults = { mini: cfg('gpt-5-mini'), gone: cfg('hidden') };
     const authored = [aliasRow('chat', cfg('gpt-5'))];
