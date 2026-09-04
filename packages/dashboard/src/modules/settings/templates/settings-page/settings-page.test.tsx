@@ -243,10 +243,10 @@ test('lists stored API keys masked and retains them by index when saving', () =>
   fireEvent.click(within(group).getByRole('button', { name: /Save keys|保存密钥|儲存金鑰|キーを保存|키 저장/u }));
 
   expect(mocks.mutate).toHaveBeenCalledTimes(1);
-  expect(mocks.mutate).toHaveBeenCalledWith({
-    apiKeys: [{ retain: 0, label: 'ci-renamed' }, { retain: 1 }],
-    apiKeysRevision: settings.apiKeysRevision,
-  });
+  expect(mocks.mutate).toHaveBeenCalledWith(
+    { apiKeys: [{ retain: 0, label: 'ci-renamed' }, { retain: 1 }], apiKeysRevision: settings.apiKeysRevision },
+    expect.anything(),
+  );
 });
 
 test('adds a new API key and sends it in plaintext exactly once', () => {
@@ -260,10 +260,13 @@ test('adds a new API key and sends it in plaintext exactly once', () => {
   fireEvent.click(within(group).getByRole('button', { name: /Save keys|保存密钥|儲存金鑰|キーを保存|키 저장/u }));
 
   expect(mocks.mutate).toHaveBeenCalledTimes(1);
-  expect(mocks.mutate).toHaveBeenCalledWith({
-    apiKeys: [{ retain: 0, label: 'ci' }, { retain: 1 }, { key: 'sk-added' }],
-    apiKeysRevision: settings.apiKeysRevision,
-  });
+  expect(mocks.mutate).toHaveBeenCalledWith(
+    {
+      apiKeys: [{ retain: 0, label: 'ci' }, { retain: 1 }, { key: 'sk-added' }],
+      apiKeysRevision: settings.apiKeysRevision,
+    },
+    expect.anything(),
+  );
 });
 
 test('generates a usable key for a new row without asking the server for one', () => {
@@ -281,10 +284,13 @@ test('generates a usable key for a new row without asking the server for one', (
   expect(generated).toMatch(/^sk-[0-9a-f]{48}$/u);
 
   fireEvent.click(within(group).getByRole('button', { name: /Save keys|保存密钥|儲存金鑰|キーを保存|키 저장/u }));
-  expect(mocks.mutate).toHaveBeenCalledWith({
-    apiKeys: [{ retain: 0, label: 'ci' }, { retain: 1 }, { key: generated }],
-    apiKeysRevision: settings.apiKeysRevision,
-  });
+  expect(mocks.mutate).toHaveBeenCalledWith(
+    {
+      apiKeys: [{ retain: 0, label: 'ci' }, { retain: 1 }, { key: generated }],
+      apiKeysRevision: settings.apiKeysRevision,
+    },
+    expect.anything(),
+  );
 });
 
 test('puts the required key before the optional label in each row', () => {
@@ -305,13 +311,13 @@ test('removes a stored API key', () => {
   fireEvent.click(within(group).getByRole('button', { name: /Save keys|保存密钥|儲存金鑰|キーを保存|키 저장/u }));
 
   expect(mocks.mutate).toHaveBeenCalledTimes(1);
-  expect(mocks.mutate).toHaveBeenCalledWith({
-    apiKeys: [{ retain: 1 }],
-    apiKeysRevision: settings.apiKeysRevision,
-  });
+  expect(mocks.mutate).toHaveBeenCalledWith(
+    { apiKeys: [{ retain: 1 }], apiKeysRevision: settings.apiKeysRevision },
+    expect.anything(),
+  );
 });
 
-test('resets API key rows when a reload replaces the stored keys', () => {
+test('resyncs stored API key rows when a reload replaces the stored keys', () => {
   const { rerender } = renderPage();
 
   const group = screen.getByTestId('settings-group-api-keys');
@@ -331,10 +337,10 @@ test('resets API key rows when a reload replaces the stored keys', () => {
   expect(within(reloaded).queryByDisplayValue('stale-draft')).toBeNull();
 
   fireEvent.click(within(reloaded).getByRole('button', { name: /Save keys|保存密钥|儲存金鑰|キーを保存|키 저장/u }));
-  expect(mocks.mutate).toHaveBeenCalledWith({
-    apiKeys: [{ retain: 0, label: 'reloaded' }],
-    apiKeysRevision: 'sha256:reloaded',
-  });
+  expect(mocks.mutate).toHaveBeenCalledWith(
+    { apiKeys: [{ retain: 0, label: 'reloaded' }], apiKeysRevision: 'sha256:reloaded' },
+    expect.anything(),
+  );
 });
 
 test('keeps an in-progress key draft when an unrelated save refreshes the settings object', () => {
@@ -355,4 +361,55 @@ test('keeps an in-progress key draft when an unrelated save refreshes the settin
 
   const refreshed = screen.getByTestId('settings-group-api-keys');
   expect(within(refreshed).getByDisplayValue('in-progress')).toBeInTheDocument();
+});
+
+test('keeps an unsaved new key when a rejected save re-fetches a newer revision', () => {
+  const { rerender } = renderPage();
+
+  const group = screen.getByTestId('settings-group-api-keys');
+  fireEvent.click(within(group).getByRole('button', { name: /Add key|添加密钥|新增金鑰|キーを追加|키 추가/u }));
+  const values = within(group).getAllByLabelText(/^Key$|^密钥$|^金鑰$|^キー$|^키$/u);
+  fireEvent.change(values[values.length - 1] as HTMLElement, { target: { value: 'sk-only-copy' } });
+
+  // A 409 stale_api_keys re-fetches settings with another writer's revision. The typed secret
+  // exists nowhere else, so the resync must not be what destroys it.
+  mocks.useSettingsQuery.mockReturnValue({
+    data: { ...settings, apiKeys: [{ key: '****', label: 'other-writer' }], apiKeysRevision: 'sha256:theirs' },
+    isError: false,
+    isLoading: false,
+  });
+  rerender(<SettingsPage />);
+
+  const refreshed = screen.getByTestId('settings-group-api-keys');
+  expect(within(refreshed).getByDisplayValue('sk-only-copy')).toBeInTheDocument();
+
+  fireEvent.click(within(refreshed).getByRole('button', { name: /Save keys|保存密钥|儲存金鑰|キーを保存|키 저장/u }));
+  expect(mocks.mutate).toHaveBeenCalledWith(
+    { apiKeys: [{ retain: 0, label: 'other-writer' }, { key: 'sk-only-copy' }], apiKeysRevision: 'sha256:theirs' },
+    expect.anything(),
+  );
+});
+
+test('drops a saved new key row instead of leaving it beside its stored copy', () => {
+  const { rerender } = renderPage();
+  mocks.mutate.mockImplementation((_input: unknown, options?: { readonly onSuccess?: () => void }) => {
+    options?.onSuccess?.();
+  });
+
+  const group = screen.getByTestId('settings-group-api-keys');
+  fireEvent.click(within(group).getByRole('button', { name: /Add key|添加密钥|新增金鑰|キーを追加|키 추가/u }));
+  const values = within(group).getAllByLabelText(/^Key$|^密钥$|^金鑰$|^キー$|^키$/u);
+  fireEvent.change(values[values.length - 1] as HTMLElement, { target: { value: 'sk-accepted' } });
+  fireEvent.click(within(group).getByRole('button', { name: /Save keys|保存密钥|儲存金鑰|キーを保存|키 저장/u }));
+
+  mocks.useSettingsQuery.mockReturnValue({
+    data: { ...settings, apiKeys: [...settings.apiKeys, { key: '****' }], apiKeysRevision: 'sha256:saved' },
+    isError: false,
+    isLoading: false,
+  });
+  rerender(<SettingsPage />);
+
+  const refreshed = screen.getByTestId('settings-group-api-keys');
+  expect(within(refreshed).queryByDisplayValue('sk-accepted')).toBeNull();
+  expect(within(refreshed).getAllByDisplayValue('****')).toHaveLength(3);
 });

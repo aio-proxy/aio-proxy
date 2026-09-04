@@ -463,6 +463,10 @@
       "reload_succeeded": "已从磁盘重新加载配置。",
       "reload_failed": "重新加载在 {stage} 阶段失败。",
       "reload_failed_stage_unknown": "未知",
+      "reload_failed_stage_parse": "配置解析",
+      "reload_failed_stage_providers": "Provider 初始化",
+      "reload_failed_stage_router": "路由",
+      "reload_failed_stage_alias_collision": "模型别名冲突",
       "appearance_description": "仅对当前浏览器生效。",
       "language_description": "切换后会重新加载控制台以应用。",
       "host": "监听主机",
@@ -510,7 +514,7 @@
       "invalid": "请输入有效值。",
       "about_group": "关于",
       "version": "版本",
-      "version_description": "当前运行的 aio-proxy 版本。",
+      "version_description": "当前运行 {version}。",
       "version_check": "检查新版本",
       "version_up_to_date": "已是最新发布版本。",
       "version_outdated": "有新版本 {version} 可用。",
@@ -518,8 +522,7 @@
       "repository": "源代码",
       "repository_description": "在 GitHub 上查看问题、发布与源代码。",
       "documentation": "文档",
-      "documentation_description": "使用指南与配置参考。",
-      "open": "打开"
+      "documentation_description": "使用指南与配置参考。"
     },
     "plugins": {
       "title": "插件",

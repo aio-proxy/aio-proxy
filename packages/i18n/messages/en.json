@@ -463,6 +463,10 @@
       "reload_succeeded": "Configuration reloaded from disk.",
       "reload_failed": "Reload failed at the {stage} stage.",
       "reload_failed_stage_unknown": "unknown",
+      "reload_failed_stage_parse": "config parsing",
+      "reload_failed_stage_providers": "provider setup",
+      "reload_failed_stage_router": "routing",
+      "reload_failed_stage_alias_collision": "model alias collision",
       "appearance_description": "Applies to this browser only.",
       "language_description": "Reloads the Dashboard to apply.",
       "host": "Listen host",
@@ -510,7 +514,7 @@
       "invalid": "Enter a valid value.",
       "about_group": "About",
       "version": "Version",
-      "version_description": "The aio-proxy build currently running.",
+      "version_description": "Currently running {version}.",
       "version_check": "Check for updates",
       "version_up_to_date": "This is the latest published version.",
       "version_outdated": "Version {version} is available.",
@@ -518,8 +522,7 @@
       "repository": "Source code",
       "repository_description": "Issues, releases, and source on GitHub.",
       "documentation": "Documentation",
-      "documentation_description": "Guides and the configuration reference.",
-      "open": "Open"
+      "documentation_description": "Guides and the configuration reference."
     },
     "plugins": {
       "title": "Plugins",

@@ -6,6 +6,21 @@ import { RefreshCw } from 'lucide-react';
 import { useReloadMutation } from '../../hooks/use-reload-mutation';
 import { ReloadFailedError } from '../../services/reload-service';
 
+// The server's stage identifiers are internal English tokens, so they cannot be interpolated
+// into a translated sentence directly. An unrecognized stage falls back to "unknown" rather
+// than leaking the raw token into a localized message.
+const STAGE_MESSAGES: Record<string, () => string> = {
+  'alias-collision': m['dashboard.settings.reload_failed_stage_alias_collision'],
+  parse: m['dashboard.settings.reload_failed_stage_parse'],
+  providers: m['dashboard.settings.reload_failed_stage_providers'],
+  router: m['dashboard.settings.reload_failed_stage_router'],
+};
+
+const stageLabel = (error: unknown) => {
+  const stage = error instanceof ReloadFailedError ? STAGE_MESSAGES[error.stage] : undefined;
+  return (stage ?? m['dashboard.settings.reload_failed_stage_unknown'])();
+};
+
 export const SettingsReloadButton: React.FC = () => {
   const reload = useReloadMutation();
 
@@ -19,12 +34,7 @@ export const SettingsReloadButton: React.FC = () => {
           onError: (error) => {
             toast.add({
               type: 'error',
-              title: m['dashboard.settings.reload_failed']({
-                stage:
-                  error instanceof ReloadFailedError
-                    ? error.stage
-                    : m['dashboard.settings.reload_failed_stage_unknown'](),
-              }),
+              title: m['dashboard.settings.reload_failed']({ stage: stageLabel(error) }),
             });
           },
           onSuccess: () => {

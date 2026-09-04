@@ -21,8 +21,9 @@ export const SettingsAboutGroup: React.FC = () => {
   // A failed lookup must not read as "up to date": an unreachable registry says nothing
   // about the published version.
   const versionDescription = (() => {
+    if (current === undefined) return undefined;
     if (check.isError) return m['dashboard.settings.version_check_failed']();
-    if (check.data === undefined) return m['dashboard.settings.version_description']();
+    if (check.data === undefined) return m['dashboard.settings.version_description']({ version: current });
     return check.data.outdated
       ? m['dashboard.settings.version_outdated']({ version: check.data.latest })
       : m['dashboard.settings.version_up_to_date']();
@@ -37,31 +38,35 @@ export const SettingsAboutGroup: React.FC = () => {
       </CardHeader>
       <CardContent>
         <FieldGroup>
-          <SettingsFieldRow label={m['dashboard.settings.version']()} description={versionDescription}>
-            <div className="flex items-center gap-2">
-              {current === undefined ? (
-                <Skeleton className="h-8 w-24" />
-              ) : (
-                <SettingsExternalLink href={`${REPOSITORY_URL}/releases/tag/v${current}`}>
-                  {current}
-                </SettingsExternalLink>
-              )}
-              <Button variant="ghost" disabled={check.isPending} onClick={() => check.mutate()}>
+          <SettingsFieldRow
+            label={m['dashboard.settings.version']()}
+            description={versionDescription ?? <Skeleton className="h-4 w-40" />}
+          >
+            <div className="flex items-center justify-end gap-1">
+              <Button variant="ghost" size="sm" disabled={check.isPending} onClick={() => check.mutate()}>
                 {m['dashboard.settings.version_check']()}
               </Button>
+              <SettingsExternalLink
+                href={current === undefined ? REPOSITORY_URL : `${REPOSITORY_URL}/releases/tag/v${current}`}
+                label={m['dashboard.settings.version']()}
+              />
             </div>
           </SettingsFieldRow>
           <SettingsFieldRow
             label={m['dashboard.settings.repository']()}
             description={m['dashboard.settings.repository_description']()}
           >
-            <SettingsExternalLink href={REPOSITORY_URL}>{m['dashboard.settings.open']()}</SettingsExternalLink>
+            <div className="flex justify-end">
+              <SettingsExternalLink href={REPOSITORY_URL} label={m['dashboard.settings.repository']()} />
+            </div>
           </SettingsFieldRow>
           <SettingsFieldRow
             label={m['dashboard.settings.documentation']()}
             description={m['dashboard.settings.documentation_description']()}
           >
-            <SettingsExternalLink href={DOCUMENTATION_URL}>{m['dashboard.settings.open']()}</SettingsExternalLink>
+            <div className="flex justify-end">
+              <SettingsExternalLink href={DOCUMENTATION_URL} label={m['dashboard.settings.documentation']()} />
+            </div>
           </SettingsFieldRow>
         </FieldGroup>
       </CardContent>

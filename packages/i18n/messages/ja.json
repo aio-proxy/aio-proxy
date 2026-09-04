@@ -463,6 +463,10 @@
       "reload_succeeded": "ディスクから設定を再読み込みしました。",
       "reload_failed": "{stage} 段階で再読み込みに失敗しました。",
       "reload_failed_stage_unknown": "不明",
+      "reload_failed_stage_parse": "設定の解析",
+      "reload_failed_stage_providers": "プロバイダーの初期化",
+      "reload_failed_stage_router": "ルーティング",
+      "reload_failed_stage_alias_collision": "モデルエイリアスの競合",
       "appearance_description": "このブラウザーにのみ適用されます。",
       "language_description": "変更を反映するためダッシュボードを再読み込みします。",
       "host": "リッスンホスト",
@@ -510,7 +514,7 @@
       "invalid": "有効な値を入力してください。",
       "about_group": "このアプリについて",
       "version": "バージョン",
-      "version_description": "現在実行中の aio-proxy のバージョンです。",
+      "version_description": "現在 {version} を実行中です。",
       "version_check": "更新を確認",
       "version_up_to_date": "最新の公開バージョンです。",
       "version_outdated": "バージョン {version} が利用できます。",
@@ -518,8 +522,7 @@
       "repository": "ソースコード",
       "repository_description": "GitHub で Issue、リリース、ソースを確認できます。",
       "documentation": "ドキュメント",
-      "documentation_description": "ガイドと設定リファレンス。",
-      "open": "開く"
+      "documentation_description": "ガイドと設定リファレンス。"
     },
     "plugins": {
       "title": "プラグイン",

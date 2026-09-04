@@ -463,6 +463,10 @@
       "reload_succeeded": "已從磁碟重新載入設定。",
       "reload_failed": "重新載入在 {stage} 階段失敗。",
       "reload_failed_stage_unknown": "未知",
+      "reload_failed_stage_parse": "設定解析",
+      "reload_failed_stage_providers": "Provider 初始化",
+      "reload_failed_stage_router": "路由",
+      "reload_failed_stage_alias_collision": "模型別名衝突",
       "appearance_description": "僅對目前瀏覽器生效。",
       "language_description": "切換後會重新載入控制台以套用。",
       "host": "監聽主機",
@@ -510,7 +514,7 @@
       "invalid": "請輸入有效值。",
       "about_group": "關於",
       "version": "版本",
-      "version_description": "目前執行的 aio-proxy 版本。",
+      "version_description": "目前執行 {version}。",
       "version_check": "檢查新版本",
       "version_up_to_date": "已是最新發布版本。",
       "version_outdated": "有新版本 {version} 可用。",
@@ -518,8 +522,7 @@
       "repository": "原始碼",
       "repository_description": "在 GitHub 上檢視問題、發布與原始碼。",
       "documentation": "文件",
-      "documentation_description": "使用指南與設定參考。",
-      "open": "開啟"
+      "documentation_description": "使用指南與設定參考。"
     },
     "plugins": {
       "title": "外掛",

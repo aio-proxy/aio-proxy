@@ -1,5 +1,5 @@
 import { m } from '@aio-proxy/i18n';
-import type { DashboardApiKeyMutation, DashboardSettingsMutationInput, DashboardSettingsView } from '@aio-proxy/types';
+import type { DashboardApiKeyMutation, DashboardSettingsView } from '@aio-proxy/types';
 import { Button } from '@aio-proxy/ui/components/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@aio-proxy/ui/components/card';
 import { Input } from '@aio-proxy/ui/components/input';
@@ -8,10 +8,10 @@ import { Label } from '@aio-proxy/ui/components/label';
 import { DicesIcon, PlusIcon, Trash2Icon } from 'lucide-react';
 import { useState } from 'react';
 
-import { apiKeysSchema } from './settings-form-contract';
+import { apiKeysSchema, type SettingsSave } from './settings-form-contract';
 
 interface ApiKeyRow {
-  readonly id: number;
+  readonly id: string;
   readonly retain?: number;
   readonly key: string;
   readonly label: string;
@@ -20,11 +20,19 @@ interface ApiKeyRow {
 interface SettingsApiKeysGroupProps {
   readonly disabled: boolean;
   readonly settings: DashboardSettingsView;
-  readonly onSave: (input: DashboardSettingsMutationInput) => void;
+  readonly onSave: SettingsSave;
 }
 
+// Stored rows are addressed by their index in the authored array, which `retain` mirrors, while
+// drafts get an opaque id: a resync renumbers the stored rows, and a draft that shared that
+// numbering would be silently reassigned to someone else's row.
 const rowsFromSettings = (settings: DashboardSettingsView): readonly ApiKeyRow[] =>
-  settings.apiKeys.map((entry, index) => ({ id: index, key: entry.key, label: entry.label ?? '', retain: index }));
+  settings.apiKeys.map((entry, index) => ({
+    id: `stored-${index}`,
+    key: entry.key,
+    label: entry.label ?? '',
+    retain: index,
+  }));
 
 const mutationEntries = (rows: readonly ApiKeyRow[]): readonly DashboardApiKeyMutation[] =>
   rows.flatMap((row): readonly DashboardApiKeyMutation[] => {
@@ -43,16 +51,21 @@ export const SettingsApiKeysGroup: React.FC<SettingsApiKeysGroupProps> = ({ disa
   const [rows, setRows] = useState<readonly ApiKeyRow[]>(() => rowsFromSettings(settings));
   const [revision, setRevision] = useState(settings.apiKeysRevision);
 
-  // `retain` indexes address the authored array this revision digests. A save elsewhere in the
-  // page re-fetches the same keys, so key on the digest and keep drafts unless the keys changed.
+  // `retain` indexes address the authored array this revision digests, so a changed revision must
+  // resync the stored rows. Non-empty drafts survive that resync: their key exists nowhere else
+  // yet, and a rejected save (a 409 refetches settings) must not be what destroys it. A successful
+  // save drops its own drafts by id, so the saved keys do not come back as duplicate rows.
   if (revision !== settings.apiKeysRevision) {
     setRevision(settings.apiKeysRevision);
-    setRows(rowsFromSettings(settings));
+    setRows((current) => [
+      ...rowsFromSettings(settings),
+      ...current.filter((row) => row.retain === undefined && row.key.trim() !== ''),
+    ]);
   }
 
   const entries = mutationEntries(rows);
   const parsed = apiKeysSchema.safeParse(entries);
-  const patchRow = (id: number, patch: Partial<ApiKeyRow>) =>
+  const patchRow = (id: string, patch: Partial<ApiKeyRow>) =>
     setRows((current) => current.map((entry) => (entry.id === id ? { ...entry, ...patch } : entry)));
 
   return (
@@ -148,10 +161,7 @@ export const SettingsApiKeysGroup: React.FC<SettingsApiKeysGroupProps> = ({ disa
             size="xs"
             disabled={disabled}
             onClick={() => {
-              setRows((current) => [
-                ...current,
-                { id: Math.max(-1, ...current.map((entry) => entry.id)) + 1, key: '', label: '' },
-              ]);
+              setRows((current) => [...current, { id: `draft-${crypto.randomUUID()}`, key: '', label: '' }]);
             }}
           >
             <PlusIcon data-icon="inline-start" />
@@ -163,7 +173,12 @@ export const SettingsApiKeysGroup: React.FC<SettingsApiKeysGroupProps> = ({ disa
             disabled={disabled || !parsed.success}
             onClick={() => {
               if (!parsed.success) return;
-              onSave({ apiKeys: parsed.data, apiKeysRevision: settings.apiKeysRevision });
+              const submitted = new Set(rows.filter((row) => row.retain === undefined).map((row) => row.id));
+              onSave(
+                { apiKeys: parsed.data, apiKeysRevision: settings.apiKeysRevision },
+                // The saved keys come back as stored rows, so the drafts this save carried must go.
+                { onSuccess: () => setRows((current) => current.filter((row) => !submitted.has(row.id))) },
+              );
             }}
           >
             {m['dashboard.settings.api_keys_save']()}

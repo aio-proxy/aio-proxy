@@ -27,19 +27,24 @@ const clickCheck = () =>
     screen.getByRole('button', { name: /Check for updates|检查新版本|檢查新版本|更新を確認|업데이트 확인/u }),
   );
 
-test('links the running version to its release tag and points at the repo and docs', async () => {
+test('shows the running version and links it to its release tag, the repo, and the docs', async () => {
   mocks.release.mockReturnValue({ data: { current: '1.4.2' } });
   await renderGroup();
 
   const group = screen.getByTestId('settings-group-about');
+  expect(within(group).getByText(/1\.4\.2/u)).toBeInTheDocument();
+
   const links = within(group).getAllByRole('link');
   expect(links.map((link) => link.getAttribute('href'))).toEqual([
     'https://github.com/aio-proxy/aio-proxy/releases/tag/v1.4.2',
     'https://github.com/aio-proxy/aio-proxy',
     'https://aio-proxy.github.io',
   ]);
-  // An external tab must not be able to reach back into an authenticated Dashboard.
-  for (const link of links) expect(link).toHaveAttribute('rel', expect.stringContaining('noreferrer'));
+  // Icon-only links still need a name, or they read as "link" and nothing else.
+  for (const link of links) {
+    expect(link).toHaveAttribute('rel', expect.stringContaining('noreferrer'));
+    expect(link).toHaveAccessibleName();
+  }
 });
 
 test('announces a newer published version after the check', async () => {
