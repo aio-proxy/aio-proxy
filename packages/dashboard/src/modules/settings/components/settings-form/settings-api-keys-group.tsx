@@ -45,7 +45,9 @@ const mutationEntries = (rows: readonly ApiKeyRow[]): readonly DashboardApiKeyMu
     const label = row.label.trim() === '' ? {} : { label: row.label.trim() };
     if (row.retain !== undefined) return [{ retain: row.retain, ...label }];
     if (row.key.trim() === '') return [];
-    return [{ key: row.key.trim(), ...label }];
+    // Trimming decides whether the row is empty; the credential itself goes out exactly as
+    // typed, since the proxy compares the authored key byte for byte.
+    return [{ key: row.key, ...label }];
   });
 
 // The generated key never leaves the browser until the row is saved, so the platform CSPRNG

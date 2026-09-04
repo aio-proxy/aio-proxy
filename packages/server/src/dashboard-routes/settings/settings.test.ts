@@ -504,6 +504,32 @@ test('a retried key write commits the credential once instead of authoring a dup
   });
 });
 
+test('a retained duplicate credential survives a label-only edit', async () => {
+  await withSettingsFixture(async ({ configPath, routes }) => {
+    // The schema permits the same credential under several labels, so retained rows must be
+    // written back as authored — deduplicating them would delete an unrelated entry.
+    expect(
+      (
+        await putKeys(routes, [
+          { key: 'sk-shared', label: 'first' },
+          { key: 'sk-shared', label: 'second' },
+        ])
+      ).status,
+    ).toBe(200);
+
+    const response = await putKeys(routes, [
+      { retain: 0, label: 'renamed' },
+      { retain: 1, label: 'second' },
+    ]);
+
+    expect(response.status).toBe(200);
+    expect(onDisk(configPath).server.apiKeys).toEqual([
+      { key: 'sk-shared', label: 'renamed' },
+      { key: 'sk-shared', label: 'second' },
+    ]);
+  });
+});
+
 test('an API key write does not require restart', async () => {
   await withSettingsFixture(async ({ routes }) => {
     const response = await putKeys(routes, [{ retain: 0 }]);

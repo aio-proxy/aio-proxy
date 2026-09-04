@@ -10,7 +10,6 @@ import {
   type DashboardSettingsView,
   ServerLoggingSchema,
 } from '@aio-proxy/types';
-import { uniqBy } from 'es-toolkit/array';
 import { isPlainObject } from 'es-toolkit/predicate';
 import type { MiddlewareHandler } from 'hono';
 import { Hono } from 'hono';
@@ -111,21 +110,30 @@ function resolveApiKeys(
   // The client's `retain` indexes address the array it read. If the watcher or another
   // session rewrote it since, those positions now name different secrets — reject instead.
   if (apiKeysRevision(previous) !== revision) throw new StaleApiKeysError();
-  const resolved = submitted.map((entry) => {
+  const retainedKeys = new Set(
+    submitted.flatMap((entry) => {
+      if (!('retain' in entry)) return [];
+      const kept = previous[entry.retain];
+      return isPlainObject(kept) && typeof kept['key'] === 'string' ? [kept['key']] : [];
+    }),
+  );
+  return submitted.flatMap((entry) => {
     const label = entry.label === undefined ? {} : { label: entry.label };
-    if (!('retain' in entry)) return { key: entry.key, ...label };
+    if (!('retain' in entry)) {
+      // A write whose response never reached the client is retried with the same secret still in
+      // hand, and by then the committed copy is already retained by index. Dropping the new copy
+      // of an already-retained key makes that retry idempotent. Duplicates among the retained
+      // rows are left alone: the schema permits the same credential under several labels.
+      return retainedKeys.has(entry.key) ? [] : [{ key: entry.key, ...label }];
+    }
     const kept = previous[entry.retain];
     if (!isPlainObject(kept) || typeof kept['key'] !== 'string') {
       throw new TypeError(`server.apiKeys[${entry.retain}] cannot be retained`);
     }
     // The mutation owns `label` outright: an omitted label clears the authored one.
     const { label: _label, ...rest } = kept;
-    return { ...rest, key: kept['key'], ...label };
+    return [{ ...rest, key: kept['key'], ...label }];
   });
-  // A write whose response never reached the client is retried with the same secret still in
-  // hand, and by then the committed copy is already retained by index. Collapsing onto the
-  // first occurrence makes that retry idempotent instead of authoring the credential twice.
-  return uniqBy(resolved, (entry) => entry['key']);
 }
 
 async function applySettingsMutation(

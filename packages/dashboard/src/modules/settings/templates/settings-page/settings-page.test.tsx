@@ -361,6 +361,26 @@ test('refuses to save a labeled row whose key was left blank instead of dropping
   expect(mocks.mutate).not.toHaveBeenCalled();
 });
 
+test('submits a key exactly as typed rather than trimming the credential', () => {
+  renderPage();
+
+  const group = screen.getByTestId('settings-group-api-keys');
+  fireEvent.click(within(group).getByRole('button', { name: /Add key|添加密钥|新增金鑰|キーを追加|키 추가/u }));
+  const values = within(group).getAllByLabelText(/^Key$|^密钥$|^金鑰$|^キー$|^키$/u);
+  fireEvent.change(values[values.length - 1] as HTMLElement, { target: { value: ' sk-padded ' } });
+
+  // The proxy compares the authored key byte for byte, so trimming here would store a
+  // different credential than the one the operator handed out.
+  fireEvent.click(within(group).getByRole('button', { name: /Save keys|保存密钥|儲存金鑰|キーを保存|키 저장/u }));
+  expect(mocks.mutate).toHaveBeenCalledWith(
+    {
+      apiKeys: [{ retain: 0, label: 'ci' }, { retain: 1 }, { key: ' sk-padded ' }],
+      apiKeysRevision: 'sha256:current',
+    },
+    expect.anything(),
+  );
+});
+
 test('keeps an in-progress key draft when an unrelated save refreshes the settings object', () => {
   const { rerender } = renderPage();
 
