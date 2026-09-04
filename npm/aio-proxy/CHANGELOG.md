@@ -1,5 +1,21 @@
 # aio-proxy
 
+## 0.16.0
+
+### Minor Changes
+
+- [#253](https://github.com/aio-proxy/aio-proxy/pull/253) [`a12c9ca`](https://github.com/aio-proxy/aio-proxy/commit/a12c9cabb7481d188786bf22ac5a718b4bf7cca9) Thanks [@baranwang](https://github.com/baranwang)! - google-antigravity: match oh-my-pi hub fingerprints, daily-to-sandbox failover, native request envelopes, onboard polling, and Gemini first-call skip signatures
+
+- [#249](https://github.com/aio-proxy/aio-proxy/pull/249) [`e5e18af`](https://github.com/aio-proxy/aio-proxy/commit/e5e18af5f48f54c9dcc8e823fbcda137a97ad4b5) Thanks [@baranwang](https://github.com/baranwang)! - openai-chatgpt: report ChatGPT OAuth quota in the dashboard
+
+  The ChatGPT (Codex) OAuth adapter now reads `wham/usage`, so its Provider card shows the quota ring: the 5-hour and weekly windows, any model-specific limits the account reports (Codex Spark and the like), the subscription plan, and the available rate-limit reset credits.
+
+### Patch Changes
+
+- [#252](https://github.com/aio-proxy/aio-proxy/pull/252) [`142cc1b`](https://github.com/aio-proxy/aio-proxy/commit/142cc1b419b0109585a53f020343d0eb72b6673f) Thanks [@wqsworks](https://github.com/wqsworks)! - core: terminate converted OpenAI Responses stream failures with `response.failed` and normalize cumulative OpenAI-compatible tool argument snapshots.
+
+- [#250](https://github.com/aio-proxy/aio-proxy/pull/250) [`3e3c4bd`](https://github.com/aio-proxy/aio-proxy/commit/3e3c4bdc6acaabe970849961b79a649b1f37a6d5) Thanks [@baranwang](https://github.com/baranwang)! - Raw OpenAI Responses requests that fail with `invalid_encrypted_content` before any output are now retried once on the same provider. Plaintext encrypted slots become plain text, and opaque reasoning blobs are dropped when that is all that remains, so the client no longer sees a stream that disconnects before completion.
+
 ## 0.15.0
 
 ### Minor Changes

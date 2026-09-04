@@ -400,6 +400,52 @@ test('converts reasoning summary and diagnoses encrypted content', () => {
   }
 });
 
+test('drops encrypted function_call_output parts on the model path', () => {
+  const warn = spyOn(console, 'warn').mockImplementation(() => {});
+  const request = parseOpenAIResponses({
+    model: 'gpt-5.6-terra',
+    input: [
+      { type: 'function_call', call_id: 'call_1', name: 'spawn', arguments: '{}' },
+      {
+        type: 'function_call_output',
+        call_id: 'call_1',
+        output: [
+          { type: 'encrypted_content', encrypted_content: 'delegated task' },
+          { type: 'input_text', text: 'visible' },
+        ],
+      },
+    ],
+  });
+
+  try {
+    expect(openAIResponsesToModelMessages(request).messages).toEqual([
+      {
+        role: 'assistant',
+        content: [{ type: 'tool-call', toolCallId: 'call_1', toolName: 'spawn', input: {} }],
+      },
+      {
+        role: 'tool',
+        content: [
+          {
+            type: 'tool-result',
+            toolCallId: 'call_1',
+            toolName: 'spawn',
+            output: { type: 'content', value: [{ type: 'text', text: 'visible' }] },
+          },
+        ],
+      },
+    ]);
+    expect(warn).toHaveBeenCalledWith(
+      '[aio-proxy] OpenAI Responses model conversion degraded',
+      'function_call_output.encrypted_content',
+      'input.1.output.0.type',
+      'dropped',
+    );
+  } finally {
+    warn.mockRestore();
+  }
+});
+
 test('converts agent messages with attribution and diagnoses encrypted content', () => {
   const warn = spyOn(console, 'warn').mockImplementation(() => {});
   const request = parseOpenAIResponses({

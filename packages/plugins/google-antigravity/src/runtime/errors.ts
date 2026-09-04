@@ -1,4 +1,4 @@
-export type AntigravityEndpointCategory = 'daily' | 'prod' | 'custom';
+export type AntigravityEndpointCategory = 'daily' | 'sandbox' | 'custom';
 export type AntigravityFailureReason = 'upstream_network' | 'upstream_rate_limited' | 'upstream_no_capacity';
 
 export class AntigravityUpstreamError extends Error {

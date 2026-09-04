@@ -5,7 +5,7 @@ import type { AccountContext } from '@aio-proxy/plugin-sdk';
 
 import { CatalogScheduler } from './catalog-scheduler';
 
-test('scheduler leaves enough host budget for daily timeout and prod discovery', async () => {
+test('scheduler leaves enough host budget for daily timeout and sandbox discovery', async () => {
   let written: unknown;
   let resolveWrite = () => {};
   const catalogWritten = new Promise<void>((resolve) => {
@@ -49,7 +49,7 @@ test('scheduler leaves enough host budget for daily timeout and prod discovery',
       discover: async (signal) =>
         await discoverAntigravityCatalog(discoveryContext(signal), {
           fetch: async (input, init) => {
-            if (new URL(String(input)).origin === 'https://cloudcode-pa.googleapis.com') {
+            if (new URL(String(input)).origin === 'https://daily-cloudcode-pa.sandbox.googleapis.com') {
               return Response.json({ models: { prod: {} } });
             }
             return await new Promise<Response>((_resolve, reject) => {

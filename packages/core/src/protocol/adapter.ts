@@ -50,6 +50,17 @@ export type ProtocolRequestDiagnostic = Readonly<{
   effectiveMode: 'synchronous';
 }>;
 
+export type RawRetryFrame = { readonly event?: string; readonly data: string };
+export type RawRetryVerdict = 'hold' | 'commit' | 'retry';
+
+// Lets one protocol adapter own the judgement for a same-protocol raw retry:
+// which buffered frames are still undecided, and how to rewrite the outbound
+// body. The pipeline owns the replay itself and stays protocol-agnostic.
+export type RawRetryHook<TRequest, TContext> = Readonly<{
+  classify: (frame: RawRetryFrame) => RawRetryVerdict;
+  rewrite: (upstream: Request, request: TRequest, context: TContext) => Promise<Request | undefined>;
+}>;
+
 export type SharedProtocolAdapter<TRequest, TContext> = Readonly<{
   protocol: ProviderProtocol;
   capability: InboundCapability;
@@ -82,6 +93,7 @@ export type LanguageProtocolAdapter<TRequest, TContext> = SharedProtocolAdapter<
     modelJson: (stream: ModelEventStream, context: ModelEgressContext) => Promise<unknown>;
     modelSse: (stream: ModelEventStream, context: ModelEgressContext) => ModelSseStream;
     egressContext?: (request: TRequest, context: TContext) => Partial<ModelEgressContext>;
+    rawRetry?: RawRetryHook<TRequest, TContext>;
   }>;
 
 export type ProtocolAdapter<TRequest, TContext> = LanguageProtocolAdapter<TRequest, TContext>;

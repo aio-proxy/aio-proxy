@@ -7,7 +7,7 @@ export * from './catalog/errors';
 export * from './catalog/snapshot';
 export {
   ANTIGRAVITY_DAILY,
-  ANTIGRAVITY_PROD,
+  ANTIGRAVITY_SANDBOX,
   GOOGLE_ANTIGRAVITY_SCOPES,
   GOOGLE_AUTH_ENDPOINT,
   GOOGLE_CLIENT_ID,

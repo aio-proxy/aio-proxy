@@ -10,6 +10,7 @@ export * from './openai-completions';
 export * from './openai-embeddings';
 export * from './openai-image';
 export * from './openai-responses';
+export * from './openai-responses/encrypted-content-retry';
 export * from './request';
 export * from './session';
 export * from './tools';

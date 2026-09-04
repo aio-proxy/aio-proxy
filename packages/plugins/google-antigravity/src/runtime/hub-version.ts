@@ -1,6 +1,6 @@
 const HUB_VERSION_MANIFEST =
   'https://antigravity-hub-auto-updater-974169037036.us-central1.run.app/manifest/latest-arm64-mac.yml';
-const FALLBACK_VERSION = '2.2.1';
+const FALLBACK_VERSION = '2.8.0';
 const CACHE_TTL_MS = 6 * 60 * 60_000;
 const FETCH_TIMEOUT_MS = 10_000;
 
@@ -12,22 +12,19 @@ export type HubVersionCache = {
   readonly onboardingUserAgent: () => string;
 };
 
+const HUB_OS = 'darwin';
+const HUB_ARCH = 'arm64';
+const HUB_CL = '963137146';
+
 export function createHubVersionCache(
   options: {
     readonly fetch?: typeof globalThis.fetch;
     readonly now?: () => number;
     readonly timeoutSignal?: () => AbortSignal;
-    readonly platform?: string;
-    readonly arch?: string;
   } = {},
 ): HubVersionCache {
   const fetchImpl = options.fetch ?? globalThis.fetch;
   const now = options.now ?? Date.now;
-  const runtime = globalThis as typeof globalThis & {
-    readonly process?: { readonly platform?: string; readonly arch?: string };
-  };
-  const platform = options.platform ?? runtime.process?.platform ?? 'unknown';
-  const arch = options.arch ?? runtime.process?.arch ?? 'unknown';
   let cachedVersion = FALLBACK_VERSION;
   let expiresAt = 0;
   let refreshFlight: Promise<void> | undefined;
@@ -59,7 +56,8 @@ export function createHubVersionCache(
     return cachedVersion;
   };
 
-  const shortUserAgent = (): string => `antigravity/hub/${version()} ${platform}/${arch}`;
+  const shortUserAgent = (): string =>
+    `antigravity/hub/${version()} (aidev_client; os_type=${HUB_OS}; arch=${HUB_ARCH}; cl=${HUB_CL})`;
   return {
     version,
     shortUserAgent,

@@ -1,22 +1,36 @@
 import type { LogicalRequestContext, ModelDescriptor, RuntimeFetch } from '@aio-proxy/plugin-sdk';
 
 import type { AntigravityFamily } from '../catalog/collapse';
-import { ANTIGRAVITY_DAILY, ANTIGRAVITY_PROD } from '../oauth/constants';
+import { ANTIGRAVITY_DAILY, ANTIGRAVITY_SANDBOX } from '../oauth/constants';
 import { antigravityReplayCache, type ReasoningReplayCache } from '../protocol/replay-cache';
 import type { GoogleAntigravityAccountOptions } from '../schema';
 import type { AntigravityCredentialSource } from './credential';
 import { antigravityEndpoints } from './endpoints';
-import { type CcaRequestType, type CcaWireLookups, createCcaEnvelope } from './envelope';
+import {
+  type AntigravityRequestSession,
+  type CcaRequestType,
+  type CcaWireLookups,
+  createCcaEnvelope,
+  readCcaResponseId,
+} from './envelope';
 import { hasExplicitNoCapacity } from './error-response';
 import { type AntigravityEndpointCategory, type AntigravityFailureReason, AntigravityUpstreamError } from './errors';
 import { createCcaHeaders } from './headers';
 import { retryAfterMilliseconds } from './retry-after';
 import { captureReasoningReplay, isSignatureInvalidResponse, prepareReasoningReplay } from './session-state';
+import { applyGeminiSkipThoughtSignature } from './session-state/prepare/skip-signature';
 import { preflightCcaSse } from './stream';
 
 const GENERATE_PATH = '/v1internal:generateContent';
 const STREAM_PATH = '/v1internal:streamGenerateContent?alt=sse';
 const COUNT_PATH = '/v1internal:countTokens';
+const lastGoodByProject = new Map<string, string>();
+const SESSION_TTL_MS = 3_600_000;
+const SESSION_MAX_ENTRIES = 10_240;
+const sessions = new Map<SessionStateKey, SessionRecord>();
+
+type SessionStateKey = `${string}\u0000${string}\u0000sha256:${string}`;
+type SessionRecord = AntigravityRequestSession & { expiresAt: number; lastAccessAt: number };
 
 export type AntigravityExecuteInput = {
   readonly body: Readonly<Record<string, unknown>>;
@@ -36,6 +50,7 @@ export type AntigravityTransportDependencies = {
   readonly sleep?: (milliseconds: number) => Promise<void>;
   readonly descriptorById?: ReadonlyMap<string, ModelDescriptor>;
   readonly familyByWireId?: (modelId: string) => AntigravityFamily | undefined;
+  readonly now?: () => number;
 };
 
 export type CcaTransport = {
@@ -49,6 +64,7 @@ export class AntigravityTransport implements CcaTransport {
   readonly #replayCache: ReasoningReplayCache;
   readonly #sleep: (milliseconds: number) => Promise<void>;
   readonly #lookups: CcaWireLookups;
+  readonly #now: () => number;
 
   constructor(dependencies: AntigravityTransportDependencies) {
     this.#credentials = dependencies.credentials;
@@ -56,6 +72,7 @@ export class AntigravityTransport implements CcaTransport {
     this.#fetch = dependencies.fetch ?? globalThis.fetch;
     this.#replayCache = dependencies.replayCache ?? antigravityReplayCache;
     this.#sleep = dependencies.sleep ?? Bun.sleep;
+    this.#now = dependencies.now ?? Date.now;
     this.#lookups = {
       descriptorById: dependencies.descriptorById ?? new Map(),
       familyByWireId: dependencies.familyByWireId ?? (() => undefined),
@@ -68,11 +85,17 @@ export class AntigravityTransport implements CcaTransport {
     throwIfCallerAborted(input.signal);
     const scope = this.#replayCache.begin(input.modelId, input.context.session.key, input.context.requestId);
     const replayBody = prepareReasoningReplay(input.body, input.modelId, this.#replayCache.read(scope.key));
-    let body = JSON.stringify(createCcaEnvelope({ ...input, ...this.#lookups, body: replayBody, credential }));
+    const sessionState =
+      input.operation === 'countTokens'
+        ? ephemeralSessionState()
+        : nextSessionState(sessionStateKey(credential.projectId, input.modelId, input.context.session.key), this.#now);
+    let body = JSON.stringify(
+      createCcaEnvelope({ ...input, ...this.#lookups, body: replayBody, credential, sessionState }),
+    );
     let authRefreshUsed = false;
     let lastFailure: AntigravityUpstreamError | undefined;
     let signatureRetryUsed = false;
-    const endpoints = antigravityEndpoints(this.#options, 'inference');
+    const endpoints = antigravityEndpoints(this.#options, 'inference', lastGoodByProject.get(credential.projectId));
 
     for (const endpoint of endpoints) {
       const category = endpointCategory(endpoint, this.#options);
@@ -121,7 +144,15 @@ export class AntigravityTransport implements CcaTransport {
           this.#replayCache.clear(scope);
           await discard(response);
           signatureRetryUsed = true;
-          body = JSON.stringify(createCcaEnvelope({ ...input, ...this.#lookups, credential, body: input.body }));
+          body = JSON.stringify(
+            createCcaEnvelope({
+              ...input,
+              ...this.#lookups,
+              credential,
+              body: applyGeminiSkipThoughtSignature(input.body, input.modelId),
+              sessionState,
+            }),
+          );
           continue;
         }
 
@@ -140,6 +171,14 @@ export class AntigravityTransport implements CcaTransport {
               await discard(preflight.response);
               break;
             }
+            rememberLastGood(credential.projectId, endpoint);
+            if (input.operation !== 'countTokens') {
+              rememberLastExecution(
+                sessionStateKey(credential.projectId, input.modelId, input.context.session.key),
+                sessionState,
+                readCcaResponseId(preflight.payload),
+              );
+            }
             return await captureReasoningReplay(preflight.response, input.modelId, scope, this.#replayCache);
           } catch (error) {
             throwIfCallerAborted(input.signal);
@@ -149,11 +188,109 @@ export class AntigravityTransport implements CcaTransport {
           }
         }
 
+        if (response.ok) {
+          rememberLastGood(credential.projectId, endpoint);
+          if (input.operation !== 'countTokens') {
+            rememberLastExecution(
+              sessionStateKey(credential.projectId, input.modelId, input.context.session.key),
+              sessionState,
+              await readJsonResponseId(response),
+            );
+          }
+        }
         return await captureReasoningReplay(response, input.modelId, scope, this.#replayCache);
       }
     }
 
     throw lastFailure ?? upstreamError('custom', 'upstream_network');
+  }
+}
+
+function rememberLastGood(projectId: string, origin: string): void {
+  lastGoodByProject.set(projectId, origin);
+}
+
+function sessionStateKey(projectId: string, modelId: string, sessionKey: `sha256:${string}`): SessionStateKey {
+  return `${projectId}\u0000${modelId}\u0000${sessionKey}`;
+}
+
+function nextSessionState(key: SessionStateKey, now: () => number): AntigravityRequestSession {
+  const clock = now();
+  pruneSessions(clock);
+  const current = sessions.get(key);
+  if (current === undefined || current.expiresAt <= clock) {
+    const created: SessionRecord = {
+      agentId: crypto.randomUUID(),
+      trajectoryId: crypto.randomUUID(),
+      stepIndex: 1,
+      expiresAt: clock + SESSION_TTL_MS,
+      lastAccessAt: clock,
+    };
+    sessions.set(key, created);
+    evictSessions();
+    return created;
+  }
+  const next: SessionRecord = {
+    ...current,
+    stepIndex: current.stepIndex + 1,
+    expiresAt: clock + SESSION_TTL_MS,
+    lastAccessAt: clock,
+  };
+  sessions.set(key, next);
+  return next;
+}
+
+function ephemeralSessionState(): AntigravityRequestSession {
+  return {
+    agentId: crypto.randomUUID(),
+    trajectoryId: crypto.randomUUID(),
+    stepIndex: 2,
+  };
+}
+
+function pruneSessions(now: number): void {
+  for (const [key, record] of sessions) {
+    if (record.expiresAt <= now) sessions.delete(key);
+  }
+}
+
+function evictSessions(): void {
+  while (sessions.size > SESSION_MAX_ENTRIES) {
+    let oldestKey: SessionStateKey | undefined;
+    let oldestAccess = Number.POSITIVE_INFINITY;
+    for (const [key, record] of sessions) {
+      if (record.lastAccessAt < oldestAccess) {
+        oldestAccess = record.lastAccessAt;
+        oldestKey = key;
+      }
+    }
+    if (oldestKey === undefined) return;
+    sessions.delete(oldestKey);
+  }
+}
+
+function rememberLastExecution(
+  key: SessionStateKey,
+  sessionState: AntigravityRequestSession,
+  responseId: string | undefined,
+): void {
+  const stored = sessions.get(key);
+  if (stored === undefined) return;
+  if (stored.agentId !== sessionState.agentId || stored.trajectoryId !== sessionState.trajectoryId) return;
+  if (stored.stepIndex !== sessionState.stepIndex) return;
+  if (responseId === undefined) {
+    const { lastExecutionId: _dropped, ...rest } = stored;
+    sessions.set(key, rest);
+    return;
+  }
+  sessions.set(key, { ...stored, lastExecutionId: responseId });
+}
+
+async function readJsonResponseId(response: Response): Promise<string | undefined> {
+  try {
+    return readCcaResponseId(await response.clone().json());
+  } catch {
+    return undefined;
   }
 }
 
@@ -199,7 +336,7 @@ async function sleepWithSignal(
 function endpointCategory(endpoint: string, options: GoogleAntigravityAccountOptions): AntigravityEndpointCategory {
   if (options.baseURL !== undefined) return 'custom';
   if (endpoint === ANTIGRAVITY_DAILY) return 'daily';
-  if (endpoint === ANTIGRAVITY_PROD) return 'prod';
+  if (endpoint === ANTIGRAVITY_SANDBOX) return 'sandbox';
   return 'custom';
 }
 

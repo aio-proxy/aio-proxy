@@ -8,6 +8,7 @@ export const OPENAI_STREAM_DTS = `export type OpenAIStreamProtocol = "openai-res
 
 export type OpenAIStreamFetchOptions = {
   readonly acceptEncoding?: string;
+  readonly normalizeToolArgumentSnapshots?: boolean;
   readonly rewriteToolImages?: boolean;
   readonly upstreamStream?: boolean;
 };

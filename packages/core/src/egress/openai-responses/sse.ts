@@ -6,6 +6,7 @@ import {
   assertSuccessfulFinish,
   customInput,
   ensureOutput,
+  failedResponseObject,
   finishUsage,
   messageItem,
   type OpenAIResponsesStreamPart,
@@ -33,7 +34,7 @@ export function writeOpenAIResponsesSSE(
   stream: ReadableStream<OpenAIResponsesStreamPart>,
   context: ModelEgressContext,
 ): ModelSseStream {
-  return createCancellableEgressStream(stream, async ({ parts, enqueue }) => {
+  return createCancellableEgressStream(stream, async ({ parts, enqueue, fail }) => {
     const ctx: SseContext = { state: responseState(context.modelId), seq: 0, enqueue };
 
     send(ctx, {
@@ -42,7 +43,14 @@ export function writeOpenAIResponsesSSE(
       response: responseObject('in_progress', ctx.state),
     });
 
-    for await (const part of parts) handleStreamPart(ctx, part);
+    try {
+      for await (const part of parts) handleStreamPart(ctx, part);
+    } catch (error) {
+      const response = failedResponseObject(ctx.state);
+      send(ctx, { type: 'response.failed', sequence_number: ctx.seq, response });
+      fail(error);
+      return;
+    }
 
     emitNonToolOutputItemsDone(ctx);
     const response = responseObject('completed', ctx.state);

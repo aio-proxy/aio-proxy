@@ -3,8 +3,17 @@ import { asArray } from './payload-shape';
 import { enrichModelTurn } from './prepare/model-turn';
 import { orderedReplayParts, replayPart } from './prepare/replay-parts';
 import { matchingReplayBoundary } from './prepare/response-match';
+import { applyGeminiSkipThoughtSignature } from './prepare/skip-signature';
 
 export function prepareReasoningReplay(
+  body: Readonly<Record<string, unknown>>,
+  modelId: string,
+  replay: ReasoningReplay | undefined,
+): Record<string, unknown> {
+  return applyGeminiSkipThoughtSignature(applyReplay(body, modelId, replay), modelId);
+}
+
+function applyReplay(
   body: Readonly<Record<string, unknown>>,
   modelId: string,
   replay: ReasoningReplay | undefined,
