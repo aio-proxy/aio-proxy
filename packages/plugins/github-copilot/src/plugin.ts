@@ -15,6 +15,7 @@ import {
   type GitHubCopilotCredential,
   loginToGitHubCopilot,
   normalizeEnterpriseURL,
+  readGitHubCopilotQuota,
 } from './github-api';
 import { createGitHubCopilotRuntime } from './runtime/index';
 
@@ -139,6 +140,8 @@ export function createGitHubCopilotPlugin(
       return { value, metadata: { expiresAt: value.expiresAt } };
     },
     createRuntime: createGitHubCopilotRuntime,
+    // No `reset`: GitHub has no endpoint that redeems or resets a Copilot allowance.
+    quota: { read: (context) => readGitHubCopilotQuota(context) },
   };
 
   return definePlugin(

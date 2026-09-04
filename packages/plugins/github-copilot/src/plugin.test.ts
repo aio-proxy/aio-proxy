@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import type { OAuthAdapter, PluginDescriptor } from '@aio-proxy/plugin-sdk';
+import type { OAuthAdapter, PluginDescriptor, RuntimeFetch, RuntimeRequestInit } from '@aio-proxy/plugin-sdk';
 
 import githubCopilotPlugin, {
   COPILOT_CATALOG_TTL_MS,
@@ -8,7 +8,7 @@ import githubCopilotPlugin, {
   type GitHubAccountOptions,
   type GitHubCopilotCredential,
 } from '.';
-import { deviceFlowFetch, loginContext, withFetchMock } from '../__tests__/test-support';
+import { credentialPort, deviceFlowFetch, loginContext, withFetchMock } from '../__tests__/test-support';
 import packageJson from '../package.json' with { type: 'json' };
 import { createGitHubCopilotPlugin } from './plugin';
 
@@ -183,6 +183,38 @@ describe('GitHub Copilot plugin', () => {
       baseURL: 'https://api.individual.githubcopilot.com',
     });
     expect(result.metadata).toEqual({ expiresAt: 9_999_999_999_000 });
+  });
+
+  test('reads quota through the host fetch and offers no reset', async () => {
+    const adapter = await adapterFrom(githubCopilotPlugin);
+    const quota = adapter.quota;
+    if (quota === undefined) throw new Error('missing GitHub Copilot quota capability');
+    const requests: RuntimeRequestInit[] = [];
+
+    // No `withFetchMock` here on purpose: the capability has to reach upstream through the injected
+    // host fetch, which is what tags the call as control traffic and applies the Provider's proxy.
+    const snapshot = await quota.read({
+      credentials: credentialPort({
+        githubToken: 'github-token',
+        copilotToken: 'copilot-token',
+        expiresAt: 0,
+        baseURL: 'https://api.githubcopilot.com',
+      }).port,
+      options: { deploymentType: 'github.com' },
+      signal: new AbortController().signal,
+      fetch: (async (_input: RequestInfo | URL, init?: RuntimeRequestInit) => {
+        requests.push(init ?? {});
+        return Response.json({ copilot_plan: 'pro', quota_snapshots: { chat: { percent_remaining: 40 } } });
+      }) as RuntimeFetch,
+    });
+
+    expect(quota.reset).toBeUndefined();
+    expect(requests).toHaveLength(1);
+    expect(requests[0]?.aioProxy).toEqual({ traffic: 'control' });
+    expect(snapshot).toEqual({
+      items: [{ id: 'chat', displayName: { default: 'Chat', 'zh-Hans': '聊天' }, remainingRatio: 0.4 }],
+      plan: 'Pro',
+    });
   });
 });
 

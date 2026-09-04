@@ -14,6 +14,7 @@ import {
   initialCursorCatalogFallback,
 } from '../catalog';
 import { loginCursor, refreshCursorCredential } from '../oauth';
+import { readCursorQuota } from '../quota/index';
 import { createCursorRuntime, type CursorRuntimeDependencies } from '../runtime';
 import { credentialSchema, type CursorCredential } from '../schema';
 
@@ -67,6 +68,7 @@ export function createCursorPlugin(
       };
     },
     createRuntime: (context) => createCursorRuntime(context, dependencies),
+    quota: { read: (context) => readCursorQuota(context, dependencies) },
   };
   return definePlugin((api) => api.oauth.register(adapter), {
     displayName: presentationText.pluginLabel ?? 'Cursor',
