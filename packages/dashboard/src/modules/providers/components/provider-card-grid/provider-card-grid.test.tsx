@@ -37,6 +37,7 @@ const providers = [
 
 afterEach(() => {
   routingMocks.mutate.mockReset();
+  Reflect.deleteProperty(document, 'getAnimations');
 });
 
 test('renders a flat card grid sorted by priority, then weight', () => {
@@ -212,4 +213,30 @@ test('only the explicit handles become draggable controls', async () => {
   expect(tierHandle).not.toHaveAttribute('aria-disabled', 'true');
   expect(providerHandle).not.toHaveAttribute('aria-disabled', 'true');
   expect(screen.getByTestId('provider-share-slider-alpha')).toBeEnabled();
+});
+
+test('tier keyboard drag collapses every tier until the drag is canceled', async () => {
+  Object.defineProperty(document, 'getAnimations', { configurable: true, value: () => [] });
+  render(<ProviderCardGrid providers={providers} routingRevision="revision" />);
+  fireEvent.click(screen.getByTestId('provider-routing-manage'));
+
+  const tierHandles = screen.getAllByRole('button', { name: /Drag tier|拖动梯队|ドラッグ|드래그/u });
+  const alphaList = screen.getByTestId('provider-routing-item-alpha').parentElement;
+  const betaList = screen.getByTestId('provider-routing-item-beta').parentElement;
+  expect(alphaList).not.toBeNull();
+  expect(betaList).not.toBeNull();
+  await waitFor(() => expect(tierHandles[0]).toHaveAttribute('aria-roledescription', 'draggable'));
+
+  tierHandles[0]!.focus();
+  fireEvent.keyDown(tierHandles[0]!, { key: ' ', code: 'Space' });
+  await waitFor(() => {
+    expect(alphaList).toHaveAttribute('aria-hidden', 'true');
+    expect(betaList).toHaveAttribute('aria-hidden', 'true');
+  });
+
+  fireEvent.keyDown(tierHandles[0]!, { key: 'Escape', code: 'Escape' });
+  await waitFor(() => {
+    expect(alphaList).not.toHaveAttribute('aria-hidden');
+    expect(betaList).not.toHaveAttribute('aria-hidden');
+  });
 });
