@@ -174,3 +174,16 @@ test('fails when no lane reports a usable number', async () => {
     readCursorQuota(context(), { fetch: responder({ summary: () => Response.json({ membershipType: 'pro' }) }) }),
   ).rejects.toThrow('Cursor usage summary contains no usable quota');
 });
+
+// The Grok Bot lane is enrichment: on its own it must not stand in for the monthly bars, or a
+// summary that stopped reporting usable fields would render as a single weekly lane.
+test('fails when only the Grok Bot lane survives the summary', async () => {
+  await expect(
+    readCursorQuota(context(), {
+      fetch: responder({
+        summary: () => Response.json({ membershipType: 'pro' }),
+        sand: async () => Response.json(sandBody),
+      }),
+    }),
+  ).rejects.toThrow('Cursor usage summary contains no usable quota');
+});
