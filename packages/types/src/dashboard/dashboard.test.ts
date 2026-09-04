@@ -130,6 +130,7 @@ test('parses the Provider routing snapshot and bounded routing mutation contract
     clientModels: [],
     protocols: [ProviderProtocol.OpenAICompatible],
     hasQuota: false,
+    canRefreshCredential: false,
     state: { status: 'ready' },
   } as const;
 
