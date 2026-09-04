@@ -4,13 +4,42 @@ import { Switch as SwitchPrimitive } from '@base-ui/react/switch';
 
 import { cn } from '#lib/utils';
 
-function Switch({
-  className,
-  size = 'default',
-  ...props
-}: SwitchPrimitive.Root.Props & {
+// Safari 17.4+ reflects the `switch` attribute as an IDL property. Support cannot change at
+// runtime, so this resolves once at module load rather than through a hook.
+const supportsNativeSwitch = typeof HTMLInputElement !== 'undefined' && 'switch' in HTMLInputElement.prototype;
+
+// The native path renders an <input>, so the Base UI escape hatches that only make sense for its
+// <span> root are dropped rather than leaked onto the DOM as invalid attributes.
+type SwitchProps = Omit<
+  SwitchPrimitive.Root.Props,
+  'render' | 'nativeButton' | 'inputRef' | 'uncheckedValue' | 'className' | 'style' | 'onCheckedChange'
+> & {
+  className?: string;
+  style?: React.CSSProperties;
   size?: 'sm' | 'default';
-}) {
+  onCheckedChange?: (checked: boolean) => void;
+};
+
+function Switch({ className, size = 'default', onCheckedChange, ...props }: SwitchProps) {
+  // `appearance: auto` only honours accent-color, so the native control cannot reproduce the `sm`
+  // geometry; small switches stay on the Base UI implementation.
+  if (supportsNativeSwitch && size === 'default') {
+    return (
+      <input
+        {...props}
+        type="checkbox"
+        // @ts-expect-error `switch` is not in React's DOM attribute types yet
+        switch=""
+        data-slot="switch"
+        className={cn(
+          'shrink-0 align-middle accent-primary outline-none focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-50',
+          className,
+        )}
+        onChange={(event) => onCheckedChange?.(event.target.checked)}
+      />
+    );
+  }
+
   return (
     <SwitchPrimitive.Root
       data-slot="switch"
@@ -20,6 +49,7 @@ function Switch({
         className,
       )}
       {...props}
+      onCheckedChange={onCheckedChange}
     >
       <SwitchPrimitive.Thumb
         data-slot="switch-thumb"
