@@ -1,6 +1,7 @@
 import { expect, spyOn, test } from 'bun:test';
 
 import type { AccountContext, RuntimeFetch } from '@aio-proxy/plugin-sdk';
+import { isPlainObject } from 'es-toolkit/predicate';
 
 import type { GoogleAntigravityAccountOptions, GoogleAntigravityCredential } from '../schema';
 import { readGoogleAntigravityQuota } from './quota';
@@ -66,7 +67,9 @@ function quotaResponder(routes: Readonly<Record<string, unknown>>, seen: string[
     if (url.endsWith(PLAN_PATH)) {
       expect(init?.method).toBe('POST');
       expect(headers.get('Authorization')).toBe('Bearer access-token');
-      expect(init?.body).toBe(JSON.stringify({ metadata: { ideType: 'ANTIGRAVITY' } }));
+      expect(init?.body).toBe(
+        JSON.stringify({ cloudaicompanionProject: 'project-1', metadata: { ideType: 'ANTIGRAVITY' } }),
+      );
     }
     const route = routes[url];
     if (route === undefined) return new Response('missing', { status: 404 });
@@ -213,6 +216,27 @@ test('treats a prototype-named tier id as a plain label', async () => {
     quotaResponder({ [DAILY]: summaryPayload, [DAILY_PLAN]: { paidTier: { id: '__proto__' } } }),
   );
   expect(snapshot.plan).toBe('__proto__');
+});
+
+// Upstream answers the project-less `loadCodeAssist` with the current/free tier and no `paidTier`,
+// which is why `oauth/project.ts` repeats the request with `cloudaicompanionProject`. The credential
+// already carries the project, so this read must name it or a paid account displays "Free".
+test('names the project so a paid seat is not reported as its current tier', async () => {
+  const fetcher = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input instanceof Request ? input.url : input);
+    if (url === DAILY) return Response.json(summaryPayload);
+    if (url !== DAILY_PLAN) return new Response('missing', { status: 404 });
+    const body: unknown = JSON.parse(String(init?.body));
+    const named = isPlainObject(body) && body.cloudaicompanionProject === 'project-1';
+    return Response.json(
+      named
+        ? { currentTier: { id: 'free-tier' }, paidTier: { id: 'g1-ultra-tier', name: 'Antigravity Ultra' } }
+        : { currentTier: { id: 'free-tier' }, cloudaicompanionProject: 'project-1' },
+    );
+  }) as RuntimeFetch;
+
+  const snapshot = await readGoogleAntigravityQuota(context(), fetcher);
+  expect(snapshot.plan).toBe('Antigravity Ultra');
 });
 
 test('sends the ideType metadata body to the first quota base only', async () => {

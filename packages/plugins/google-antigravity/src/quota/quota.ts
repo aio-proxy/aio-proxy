@@ -22,7 +22,12 @@ const QUOTA_PATH = '/v1internal:retrieveUserQuotaSummary';
 const QUOTA_WALK_BUDGET_MS = 12_000;
 
 const PLAN_PATH = '/v1internal:loadCodeAssist';
-const PLAN_BODY = JSON.stringify({ metadata: { ideType: 'ANTIGRAVITY' } });
+// The project-less form of this request answers `currentTier` and no `paidTier`, which is why
+// `oauth/project.ts` repeats it with `cloudaicompanionProject`. The credential already holds the
+// project, so name it up front and a paid seat is not reported as its free current tier.
+const planBody = (projectId: string) =>
+  JSON.stringify({ cloudaicompanionProject: projectId, metadata: { ideType: 'ANTIGRAVITY' } });
+
 // The tier read is enrichment, so a slow endpoint must not hold up the quota read.
 const PLAN_TIMEOUT_MS = 4_000;
 
@@ -60,7 +65,13 @@ export async function readGoogleAntigravityQuota(
 
   // Started before the loop so it overlaps the quota request; it resolves rather than rejects, so
   // an early throw from the loop cannot leave an unhandled rejection behind.
-  const planRead = readPlan(fetcher, `${endpoints[0] ?? ''}${PLAN_PATH}`, headers, context.signal);
+  const planRead = readPlan(
+    fetcher,
+    `${endpoints[0] ?? ''}${PLAN_PATH}`,
+    headers,
+    planBody(credential.value.projectId),
+    context.signal,
+  );
 
   let lastError: Error | undefined;
   // `finally` settles the plan read on every exit, including an abort or a terminal parse throw.
@@ -99,13 +110,14 @@ async function readPlan(
   fetcher: RuntimeFetch,
   url: string,
   headers: Readonly<Record<string, string>>,
+  body: string,
   signal: AbortSignal,
 ): Promise<LocalizedText | undefined> {
   try {
     const response = await fetcher(url, {
       method: 'POST',
       headers,
-      body: PLAN_BODY,
+      body,
       signal: AbortSignal.any([signal, AbortSignal.timeout(PLAN_TIMEOUT_MS)]),
       aioProxy: { traffic: 'control' },
     });
