@@ -223,6 +223,17 @@ test('rejects invalid function arguments', () => {
   expect(() => openAIResponsesToModelMessages(request)).toThrow(new OpenAIResponsesTransformError('input.0.arguments'));
 });
 
+test('rejects a tool output without a call_id', () => {
+  // Parse accepts it so raw passthrough can forward it, but the model path has
+  // no call to pair it with.
+  const request = parseOpenAIResponses({
+    model: 'gpt-5.6-terra',
+    input: [{ type: 'function_call_output', name: 'send_message_to_thread', namespace: 'codex_app', output: 'hi' }],
+  });
+
+  expect(() => openAIResponsesToModelMessages(request)).toThrow(new OpenAIResponsesTransformError('input.0.call_id'));
+});
+
 test('converts empty function arguments to an empty object', () => {
   const request = parseOpenAIResponses({
     model: 'gpt-5.6-terra',

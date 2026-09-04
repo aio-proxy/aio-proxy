@@ -76,9 +76,16 @@ const functionCallItemSchema = z.object({
   status: z.string().optional(),
 });
 
+// call_id is optional: clients inject synthetic tool outputs that never had a
+// matching call, identified by name/namespace instead (Codex Desktop's
+// cross-thread delegation sends `codex_app`/`send_message_to_thread` this way).
+// Raw passthrough forwards them untouched and lets the upstream judge; the model
+// path has no call to pair them with and rejects them during conversion.
 const functionCallOutputItemSchema = z.object({
   type: z.literal('function_call_output'),
-  call_id: idSchema,
+  call_id: idSchema.optional(),
+  name: idSchema.optional(),
+  namespace: idSchema.optional(),
   output: z.union([z.string(), z.array(toolOutputContentPartSchema).min(1)]),
   id: idSchema.optional(),
   status: z.string().optional(),
@@ -104,9 +111,12 @@ const customToolCallItemSchema = z.object({
   status: z.string().optional(),
 });
 
+// Optional call_id for the same reason as functionCallOutputItemSchema.
 const customToolCallOutputItemSchema = z.object({
   type: z.literal('custom_tool_call_output'),
-  call_id: idSchema,
+  call_id: idSchema.optional(),
+  name: idSchema.optional(),
+  namespace: idSchema.optional(),
   output: z.union([z.string(), z.array(toolOutputContentPartSchema).min(1)]),
   id: idSchema.optional(),
   status: z.string().optional(),
