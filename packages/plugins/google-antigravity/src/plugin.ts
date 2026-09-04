@@ -15,6 +15,7 @@ import { buildGoogleAuthorizationUrl, exchangeAuthorizationCode } from './oauth/
 import { initializeAntigravityProject, type ProjectInitializationDependencies } from './oauth/project';
 import { exchangeGoogleRefreshToken } from './oauth/refresh';
 import { fetchGoogleEmail } from './oauth/userinfo';
+import { readGoogleAntigravityQuota } from './quota/index';
 import { createGoogleAntigravityRuntime } from './runtime/provider';
 import {
   accountOptionsSchema,
@@ -193,6 +194,9 @@ export function createGoogleAntigravityPlugin(
         ...(dependencies.now === undefined ? {} : { now: dependencies.now }),
         ...(dependencies.sleep === undefined ? {} : { sleep: dependencies.sleep }),
       }),
+    quota: {
+      read: async (context) => await readGoogleAntigravityQuota(context, dependencies.fetch ?? context.fetch),
+    },
   };
 
   return definePlugin(

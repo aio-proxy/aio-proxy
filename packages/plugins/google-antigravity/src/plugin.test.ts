@@ -300,6 +300,14 @@ test('runtime exposes Google ProviderV4, Gemini raw, and token-count capabilitie
   expect(() => runtime.provider.imageModel('model')).toThrow('does not support image generation');
 });
 
+// `hasQuota` on the dashboard Provider card is derived from `adapter.quota !== undefined`
+// (packages/server/src/plugin-account.ts). Without this the quota ring never renders.
+test('registers a quota capability with no reset', async () => {
+  const adapter = await adapterFrom(googleAntigravityPlugin);
+  expect(adapter.quota?.read).toBeFunction();
+  expect(adapter.quota?.reset).toBeUndefined();
+});
+
 function loginContext(
   loopback: (
     input: LoopbackRequest,
