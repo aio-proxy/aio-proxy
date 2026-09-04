@@ -14,7 +14,6 @@ const base = {
   models: ['m1'],
   aliasIssues: [],
   transformsValid: true,
-  weightTie: false,
 };
 
 /** Statuses only, so the pre-hint status assertions stay readable. */
@@ -24,7 +23,6 @@ const statuses = (input: SectionStatusInput) => {
     identity: summaries.identity.status,
     connection: summaries.connection.status,
     models: summaries.models.status,
-    routing: summaries.routing.status,
     advanced: summaries.advanced.status,
   };
 };
@@ -88,7 +86,6 @@ test('blocking sections come back in rail order, whatever order the statuses wer
       identity: summary('todo'),
       connection: summary('ok'),
       models: summary('ok'),
-      routing: summary('ok'),
     }),
   ).toEqual(['identity', 'advanced']);
 });
@@ -101,9 +98,6 @@ test('an empty provider id blocks in create mode only', () => {
 test('alias issues raise models to todo because the schema would reject the save', () => {
   const aliasIssues = [{ code: 'target-missing' as const, alias: 'smart' }];
   expect(statuses({ ...base, aliasIssues }).models).toBe('todo');
-  // The alias editor lives in Models now (D-F6), so Routing must not carry a dot for a control it no
-  // longer holds — and todo there would send the footer's "complete these sections" to the wrong one.
-  expect(statuses({ ...base, aliasIssues }).routing).toBe('ok');
 });
 
 // X9: the upstream catalog is not the user's to fix, so a stale whitelist entry must not gate the save.
@@ -125,15 +119,6 @@ test('a stale whitelist entry is ok, does not block, and still names its stalene
   // `new Set(undefined)` empty, so every whitelisted model reads as stale on every provider.
   expect(statuses(base).models).toBe('ok');
   expect(sectionStatuses(base).models.hint).not.toBe(m['dashboard.providers.editor.hint_models_stale']());
-});
-
-// X9 again: a tie is advice about attempt order — the other provider in it may not even be this user's
-// to change — so it reports `ok` and keeps the explanation in the hint.
-test('a weight tie is ok on routing and still names the tie', () => {
-  const summaries = sectionStatuses({ ...base, weightTie: true });
-  expect(summaries.routing.status).toBe('ok');
-  expect(blockingSections(summaries)).toEqual([]);
-  expect(summaries.routing.hint).toBe(m['dashboard.providers.editor.hint_routing_weight_tie']());
 });
 
 test('an oauth provider needs a capability, but never its own id — the server assigns that', () => {
@@ -238,37 +223,6 @@ test('a models hint with no aliases counts models only', () => {
     m['dashboard.providers.editor.hint_models_count_models']({ count: 2 }),
   );
   expect(sectionStatuses({ ...base, models: [] }).models.hint).toBe(m['dashboard.providers.editor.hint_models_todo']());
-});
-
-test('a disabled provider reads as disabled, never as a weight it will not honour', () => {
-  // A disabled provider is never materialized, so printing "weight 40" states something the router
-  // will not do.
-  expect(sectionStatuses({ ...base, enabled: false, weight: 40 }).routing.hint).toBe(
-    m['dashboard.providers.editor.hint_routing_disabled'](),
-  );
-  expect(sectionStatuses({ ...base, enabled: true, weight: 40 }).routing.hint).toBe(
-    m['dashboard.providers.editor.hint_routing_weight']({ weight: 40 }),
-  );
-  // Absent coalesces to 0 for *ordering*, but the readout keeps the two apart: a stored 0 must stay
-  // distinguishable from a key that was never written. `section-hint.test.ts` pins all three states at
-  // the unit.
-  expect(sectionStatuses(base).routing.hint).toBe(m['dashboard.providers.editor.hint_routing_no_weight']());
-});
-
-test('routing states its own problem before its weight', () => {
-  expect(sectionStatuses({ ...base, weightTie: true }).routing.hint).toBe(
-    m['dashboard.providers.editor.hint_routing_weight_tie'](),
-  );
-});
-
-// A disabled provider is never materialized, so it joins no attempt queue — which makes a tie inside
-// that queue exactly as untrue of it as the weight the branch above already suppresses.
-test('a disabled provider reads as disabled even when its weight ties', () => {
-  const summaries = sectionStatuses({ ...base, enabled: false, weightTie: true, weight: 40 });
-  expect(summaries.routing.hint).toBe(m['dashboard.providers.editor.hint_routing_disabled']());
-  // The tie no longer moves the status (X9), so what this pins is purely the hint's ordering: the
-  // `enabled === false` branch has to stay ahead of the tie branch.
-  expect(summaries.routing.status).toBe('ok');
 });
 
 test('the advanced hint joins exactly the parts that are active', () => {

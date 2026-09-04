@@ -75,6 +75,7 @@ describe('server routes', () => {
     // Then
     expect(await models.json()).toEqual(expectedModelList([]));
     expect(await providers.json()).toEqual({
+      routingRevision: expect.stringMatching(/^[a-f0-9]{64}$/u),
       providers: [
         {
           id: 'openai',

@@ -9,7 +9,6 @@ import {
   type ProviderKind,
   type ProviderMutationBody,
   type ProviderTransforms,
-  modelRoutes,
   ProviderMutationBodySchema,
 } from '@aio-proxy/types';
 import { toast } from '@aio-proxy/ui/components/toast';
@@ -27,24 +26,20 @@ import {
 import { useProviderCreate, useProviderUpdate } from '../../hooks/use-provider-mutations';
 import {
   aliasEditorIssues,
-  editorEffectiveAlias,
   isOAuthInheritOff,
   serializeAlias,
   serializeOAuthAlias,
-  toAliasRecord,
   toAliasRows,
   toOAuthAliasRows,
 } from '../../lib/alias-editor';
-import { ProviderFormMode, PROVIDER_KIND_LABEL } from '../../lib/constants';
-import { exposedModels, oauthEditorExposedModels } from '../../lib/exposed-models';
+import { ProviderFormMode } from '../../lib/constants';
+import { oauthEditorExposedModels } from '../../lib/exposed-models';
 import { oauthAccountSubmission } from '../../lib/oauth-account-submission';
 import { capabilityKey } from '../../lib/oauth-capability-key';
 import { oauthProviderEditAction } from '../../lib/oauth-provider-edit';
 import { normalizeProviderFormValue, type ProviderFormShape } from '../../lib/provider-form-value';
 import { blockingSections, sectionStatuses, type SectionStatusInput } from '../../lib/section-status';
-import { hasWeightTie } from '../../lib/weight-tie';
 import { oauthCapabilitiesQueryOptions } from '../../services/oauth-service';
-import { providersQueryOptions } from '../../services/providers-service';
 import { useOAuthEditorSession } from './use-oauth-editor-session';
 
 const accountDraft = (values: {
@@ -85,8 +80,6 @@ const startCreateAuthorization = (
       providerPatch: {
         enabled: true,
         ...(values.name === undefined || values.name.trim() === '' ? {} : { name: values.name.trim() }),
-        ...(values.priority === undefined ? {} : { priority: values.priority }),
-        ...(values.weight === undefined ? {} : { weight: values.weight }),
         ...(values.proxy === undefined ? {} : { proxy: values.proxy }),
       },
     },
@@ -261,11 +254,9 @@ const editorSectionInput = (
     readonly excludedModels?: readonly string[] | undefined;
     readonly hasApiKey: boolean;
     readonly models: readonly string[];
-    readonly others: Parameters<typeof hasWeightTie>[0]['others'];
     readonly optionsValid: boolean;
     readonly transformsValid: boolean;
     readonly transformCount: number;
-    readonly pluginAliases?: ProviderAlias | undefined;
   },
 ): SectionStatusInput => ({
   kind: values.kind ?? kind,
@@ -290,32 +281,6 @@ const editorSectionInput = (
   aliasIssues: extras.aliasIssues,
   transformsValid: extras.transformsValid,
   transformCount: extras.transformCount,
-  weightTie: hasWeightTie({
-    selfId: values.id ?? '',
-    selfWeight: values.weight,
-    exposedAliases: modelRoutes({
-      enabled: true,
-      models:
-        kind === 'oauth'
-          ? oauthEditorExposedModels(extras.discoveredModels, extras.excludedModels)
-          : exposedModels(extras.models, extras.discoveredModels),
-      alias:
-        kind === 'oauth'
-          ? editorEffectiveAlias(
-              values.alias ?? [],
-              extras.pluginAliases,
-              oauthEditorExposedModels(extras.discoveredModels, extras.excludedModels),
-              values.kind === 'oauth' && values.pluginAliasInherit === false,
-            )
-          : values.alias === undefined
-            ? undefined
-            : toAliasRecord(values.alias),
-    }).map((route) => route.alias),
-    others: extras.others,
-  }),
-  enabled: values.enabled,
-  priority: values.priority,
-  weight: values.weight,
   headerCount: values.kind === 'api' ? Object.keys(values.headers ?? {}).length : 0,
   proxyCustom: values.proxy !== undefined && values.proxy !== null,
   optionsValid: extras.optionsValid,
@@ -387,12 +352,10 @@ export const useProviderEditorPage = ({
   const { mutate: createProvider, isPending: isCreating } = useProviderCreate();
   const { mutate: updateProvider, isPending: isUpdating } = useProviderUpdate();
   const capabilitiesQuery = useQuery(oauthCapabilitiesQueryOptions());
-  const summariesQuery = useQuery(providersQueryOptions());
 
   const values = useSelector(form.store, (state) => state.values);
   const accountValues = useSelector(accountForm.store, (state) => state.values);
   const capabilities = capabilitiesQuery.data?.capabilities ?? [];
-  const others = summariesQuery.data?.providers ?? [];
   const models = values.kind === 'oauth' ? [] : (values.models ?? []);
   const excludedModels = values.kind === 'oauth' ? (values.excludedModels ?? []) : undefined;
   const oauthExposed = kind === 'oauth' ? oauthEditorExposedModels(oauth?.models, excludedModels) : undefined;
@@ -410,8 +373,6 @@ export const useProviderEditorPage = ({
       excludedModels,
       hasApiKey,
       models,
-      pluginAliases: oauth?.pluginAliases,
-      others,
       optionsValid,
       transformsValid,
       transformCount: transforms?.request?.length ?? 0,
@@ -449,11 +410,6 @@ export const useProviderEditorPage = ({
     });
 
   const title = editorTitle(mode, values.name);
-  const subtitle =
-    mode === ProviderFormMode.Create
-      ? m['dashboard.providers.editor.header_create_subtitle']()
-      : `${PROVIDER_KIND_LABEL[kind]} · ${providerId ?? values.id}`;
-
   return {
     form,
     accountForm,
@@ -482,7 +438,6 @@ export const useProviderEditorPage = ({
     pending: isCreating || isUpdating || startMutation.isPending,
     primaryLabel: m['dashboard.providers.editor.footer_save'](),
     title,
-    subtitle,
     navigate,
   };
 };

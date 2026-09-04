@@ -65,6 +65,16 @@ describe('replaceProvider', () => {
     expect(result['openai']).toMatchObject({ baseURL: 'https://new.example/v1', transforms });
   });
 
+  test('preserves routing values when the Provider editor no longer submits them', () => {
+    const result = replaceProvider(
+      { openai: { kind: 'api', baseURL: 'https://old.example/v1', priority: 40, weight: 6000 } },
+      'openai',
+      { kind: 'api', baseURL: 'https://new.example/v1' },
+    );
+
+    expect(result['openai']).toMatchObject({ priority: 40, weight: 6000 });
+  });
+
   test('replaces a stored endpoints list when the client sends a new one', () => {
     const result = replaceProvider(
       {

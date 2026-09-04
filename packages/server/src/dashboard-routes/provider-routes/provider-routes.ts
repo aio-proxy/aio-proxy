@@ -5,6 +5,7 @@ import { validator } from 'hono/validator';
 import { OAuthQuotaCapabilityUnavailableError } from '../../plugin-quota';
 import type { ServerState } from '../../server-state';
 import { providerPackageQueryValidator, providerPackageStatus } from '../provider-package-metadata';
+import { providerRoutingRevision } from '../provider-routing-mutation';
 
 const probeKey = 'probe';
 
@@ -23,7 +24,13 @@ export const createDashboardProviderReadRoutes = (state: ServerState) =>
       const filter = context.req.query('filter');
       const probe = context.req.query('probe') === 'true';
       const providers = await state.providerSummaries({ filter, probe });
-      return context.json({ providers });
+      const providerIds = state.currentConfig().providers.map((provider) => provider.id);
+      const rawProviders =
+        state.configStore.file === undefined ? {} : ((await state.configStore.file.read())['providers'] ?? {});
+      return context.json({
+        providers,
+        routingRevision: providerRoutingRevision(isPlainObject(rawProviders) ? rawProviders : {}, providerIds),
+      });
     })
     .get('/providers/package-status', providerPackageQueryValidator, async (context) =>
       context.json(await providerPackageStatus(context.req.valid('query').npm)),

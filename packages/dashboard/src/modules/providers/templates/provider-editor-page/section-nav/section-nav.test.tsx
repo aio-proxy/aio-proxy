@@ -10,7 +10,6 @@ const summaries: Readonly<Record<SectionId, SectionSummary>> = {
   identity: { status: 'ok', hint: 'demo-api' },
   connection: { status: 'attention', hint: 'missing API key' },
   models: { status: 'todo', hint: 'no models enabled' },
-  routing: { status: 'ok', hint: 'weight 40' },
   advanced: { status: 'ok', hint: 'all defaults' },
 };
 
@@ -18,7 +17,6 @@ const PILLS = [
   ['identity', m['dashboard.providers.editor.section_identity']()],
   ['connection', m['dashboard.providers.editor.section_connection']()],
   ['models', m['dashboard.providers.editor.section_models']()],
-  ['routing', m['dashboard.providers.editor.section_routing']()],
   ['advanced', m['dashboard.providers.editor.section_advanced']()],
 ] as const;
 

@@ -107,13 +107,13 @@ export const RoutingBoardCanvas: React.FC<RoutingBoardCanvasProps> = ({ form, mo
             droppable
           />
         ) : null}
-        {board.tiers.map((tier) => (
+        {board.tiers.map((tier, index) => (
           <div key={tier.priority}>
             <RoutingBoardList
               form={form}
               listId={routingBoardTierListId(tier.priority)}
-              label={m['dashboard.routing.editor.tier']({ value: tier.priority })}
-              ariaLabel={m['dashboard.routing.editor.tier']({ value: tier.priority })}
+              label={m['dashboard.routing.editor.tier']({ value: index + 1 })}
+              ariaLabel={m['dashboard.routing.editor.tier']({ value: index + 1 })}
               items={itemsFor(lists[routingBoardTierListId(tier.priority)] ?? [])}
               providersById={providersById}
               rowsById={rowsById}

@@ -28,6 +28,7 @@ test('optimistically updates enabled, rolls back on failure, and invalidates pro
     defaultOptions: { mutations: { retry: false }, queries: { retry: false } },
   });
   const initial: DashboardProvidersResponse = {
+    routingRevision: 'revision',
     providers: [
       {
         id: 'openai-main',
