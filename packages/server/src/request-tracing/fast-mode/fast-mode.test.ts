@@ -3,8 +3,9 @@ import { describe, expect, test } from 'bun:test';
 import { requestAsksFastMode } from './fast-mode';
 
 describe('requestAsksFastMode', () => {
-  test('matches priority service_tier, fast speed, and the Anthropic fast-mode beta', () => {
+  test('matches priority and ultrafast service tiers, fast speed, and the Anthropic fast-mode beta', () => {
     expect(requestAsksFastMode({ service_tier: 'priority' }, new Headers())).toBe(true);
+    expect(requestAsksFastMode({ service_tier: 'ultrafast' }, new Headers())).toBe(true);
     expect(requestAsksFastMode({ speed: 'fast' }, new Headers())).toBe(true);
     expect(
       requestAsksFastMode(
