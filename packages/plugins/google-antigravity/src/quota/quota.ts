@@ -73,14 +73,18 @@ export async function readGoogleAntigravityQuota(
     context.signal,
   );
 
-  let lastError: Error | undefined;
-  // `finally` settles the plan read on every exit, including an abort or a terminal parse throw.
+  let firstError: Error | undefined;
+  // `finally` settles the plan read on every exit, including an abort.
   try {
     for (const endpoint of endpoints) {
       context.signal.throwIfAborted();
-      let payload: unknown;
+      let items: readonly OAuthQuotaItem[];
+      // The parse is inside the retry: a 200 carrying nothing usable is a broken base, not a broken
+      // account, and the other base may still answer. The first base's error is what the card
+      // reports when they all fail — a later base's transport 404 must not bury a real diagnosis
+      // like a summary that stopped reporting buckets.
       try {
-        payload = await fetchSummary(
+        const payload = await fetchSummary(
           fetcher,
           `${endpoint}${QUOTA_PATH}`,
           headers,
@@ -88,21 +92,19 @@ export async function readGoogleAntigravityQuota(
           context.signal,
           attemptTimeoutMs,
         );
+        items = summaryItems(payload);
       } catch (error) {
         context.signal.throwIfAborted();
-        lastError = error instanceof Error ? error : new Error('Antigravity quota request failed');
+        firstError ??= error instanceof Error ? error : new Error('Antigravity quota request failed');
         continue;
       }
-      // A base that answered speaks for the account, so a bad payload is terminal: the remaining
-      // bases would only repeat it, and retrying would mask the real reason behind a stale 404.
-      const items = summaryItems(payload);
       const plan = await planRead;
       return { items, ...(plan === undefined ? {} : { plan }) };
     }
   } finally {
     await planRead;
   }
-  throw lastError ?? new Error('Antigravity quota request failed');
+  throw firstError ?? new Error('Antigravity quota request failed');
 }
 
 /** Best-effort: the tier only decorates the card, so every failure degrades to no label. */

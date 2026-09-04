@@ -142,6 +142,25 @@ test('fails when every base rejects', async () => {
   );
 });
 
+// A 200 with nothing usable in it is a broken base, not a broken account: the whole point of the
+// list is that the other base may still answer, and a terminal throw here blanks the card for the
+// server's whole cache cooldown.
+test('falls through to the sandbox base when daily answers an unusable summary', async () => {
+  const seen: string[] = [];
+  const snapshot = await readGoogleAntigravityQuota(
+    context(),
+    quotaResponder(
+      {
+        [DAILY]: { groups: [{ displayName: 'Gemini Models', buckets: [{ window: '5h' }] }] },
+        [SANDBOX]: summaryPayload,
+      },
+      seen,
+    ),
+  );
+  expect(seen.filter((url) => url.endsWith(QUOTA_PATH))).toEqual([DAILY, SANDBOX]);
+  expect(snapshot.items).toHaveLength(4);
+});
+
 test('fails when no bucket carries a usable fraction', async () => {
   await expect(
     readGoogleAntigravityQuota(

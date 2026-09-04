@@ -202,7 +202,7 @@ for exactly the users whose quota is healthy.
 | --- | --- |
 | credential refresh fails | throws (`currentGoogleCredential` propagates `CredentialRefreshError`) |
 | one base: network error, non-2xx, non-object body, or zero usable buckets | remember it, try the next base |
-| every base failed | throw the last remembered error — the card shows an error |
+| every base failed | throw the **first** remembered error — the card shows an error. A later base's transport 404 must not bury the first base's real diagnosis, such as a summary that stopped reporting buckets |
 | `context.signal` aborted | throw immediately; never swallowed into the retry loop |
 | `loadCodeAssist` anything | swallow, omit `plan` |
 
