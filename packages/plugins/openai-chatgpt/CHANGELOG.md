@@ -1,5 +1,37 @@
 # @aio-proxy/plugin-openai-chatgpt
 
+## 0.17.0
+
+### Minor Changes
+
+- [#259](https://github.com/aio-proxy/aio-proxy/pull/259) [`44a978e`](https://github.com/aio-proxy/aio-proxy/commit/44a978eb2a58a1e36c9c5cd3fd933f082995580b) Thanks [@baranwang](https://github.com/baranwang)! - ChatGPT OAuth providers now discover models from the signed-in account's own Codex endpoint instead of a published `models.json` snapshot, so the exposed list matches what the account can actually call. Models the account cannot use no longer appear, and `gpt-5.3-codex-spark` — previously hidden by a `supported_in_api` filter that does not apply to ChatGPT accounts — is now available. Because the list is fetched with the account's own credential and there is no bundled fallback, a ChatGPT provider whose login is missing or can no longer be refreshed now exposes no models until you sign in again, where before it listed the published snapshot regardless of login state. An expired access token alone is unaffected — it is refreshed as usual.
+
+  `gpt-image-2` is also exposed, and `/v1/images/generations` and `/v1/images/edits` now pass through to the ChatGPT image endpoints. JSON image requests are supported; `multipart/form-data` requests to `/v1/images/edits` are not, because the ChatGPT backend rejects that content type.
+
+- [#260](https://github.com/aio-proxy/aio-proxy/pull/260) [`b7d9520`](https://github.com/aio-proxy/aio-proxy/commit/b7d9520cdc280d1b6785c53d4d079b5db2d5311f) Thanks [@baranwang](https://github.com/baranwang)! - Refresh an OAuth Provider's credential on demand from the dashboard Provider card menu.
+
+  OAuth Providers whose plugin supports it gain a "Refresh Credential" entry in the card's ⋯ menu that
+  forces an upstream token exchange even when the current credential has not expired, clears a stale
+  `CREDENTIAL_REFRESH_FAILED` diagnostic on success, and reloads the Provider list so the account label
+  and expiry reflect the new credential. A refresh the plugin reports as permanently failed — a revoked
+  refresh token, for example — records the same reauthentication diagnostic the automatic refresh path
+  does, so the card tells you to re-login instead of continuing to report the Provider as ready. A
+  transient failure leaves the Provider untouched. The entry is hidden — not
+  disabled — for plugins without the capability, which Provider summaries now report as
+  `canRefreshCredential`. All six bundled OAuth plugins support it.
+
+  `OAuthAdapter` gains an optional `refreshCredential`, exported alongside the new
+  `OAuthCredentialRefreshContext` and `OAuthCredentialRefreshResult` types. It is a pure exchange: the
+  framework owns the lease, single-flight dedupe, revision compare-and-swap, and persistence, and calls
+  the adapter unconditionally rather than only past expiry. Adapter registration previously dropped
+  fields outside its closed list, so an adapter declaring `refreshCredential` would have lost it.
+
+### Patch Changes
+
+- Updated dependencies [[`b7d9520`](https://github.com/aio-proxy/aio-proxy/commit/b7d9520cdc280d1b6785c53d4d079b5db2d5311f), [`2c6da7a`](https://github.com/aio-proxy/aio-proxy/commit/2c6da7a8ccd7246bcc81daf83001e046ce376e16), [`6d02c87`](https://github.com/aio-proxy/aio-proxy/commit/6d02c876980ee55963fd0db6298adffe23bc42a2), [`8150738`](https://github.com/aio-proxy/aio-proxy/commit/815073848e78ed7195f7f6d97077f3b495d103bd)]:
+  - @aio-proxy/plugin-sdk@0.17.0
+  - @aio-proxy/types@0.17.0
+
 ## 0.16.0
 
 ### Minor Changes
