@@ -8,7 +8,7 @@ import {
   type PluginDescriptor,
 } from '@aio-proxy/plugin-sdk';
 
-import { ANTIGRAVITY_DAILY, ANTIGRAVITY_PROD } from '../oauth/constants';
+import { ANTIGRAVITY_DAILY, ANTIGRAVITY_SANDBOX } from '../oauth/constants';
 import { createGoogleAntigravityPlugin } from '../plugin';
 import type { GoogleAntigravityAccountOptions, GoogleAntigravityCredential } from '../schema';
 import { discoverAntigravityCatalog, normalizeDiscoveredModels } from './discover';
@@ -52,7 +52,7 @@ test('tries daily then prod only after a retryable endpoint outcome', async () =
         : Response.json({ models: { 'dynamic-only': { displayName: 'Dynamic' } } });
     },
   });
-  expect(urls).toEqual([`${ANTIGRAVITY_DAILY}${discoveryPath}`, `${ANTIGRAVITY_PROD}${discoveryPath}`]);
+  expect(urls).toEqual([`${ANTIGRAVITY_DAILY}${discoveryPath}`, `${ANTIGRAVITY_SANDBOX}${discoveryPath}`]);
   expect(catalog.language.map(({ id }) => id)).toEqual(['dynamic-only']);
 });
 
@@ -64,7 +64,7 @@ test('tries prod after daily returns HTTP 429', async () => {
       return urls.length === 1 ? new Response(null, { status: 429 }) : Response.json({ models: { prod: {} } });
     },
   });
-  expect(urls).toEqual([`${ANTIGRAVITY_DAILY}${discoveryPath}`, `${ANTIGRAVITY_PROD}${discoveryPath}`]);
+  expect(urls).toEqual([`${ANTIGRAVITY_DAILY}${discoveryPath}`, `${ANTIGRAVITY_SANDBOX}${discoveryPath}`]);
   expect(catalog.language.map(({ id }) => id)).toEqual(['prod']);
 });
 

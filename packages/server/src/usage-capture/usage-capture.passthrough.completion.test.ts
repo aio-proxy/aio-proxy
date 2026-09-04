@@ -1,8 +1,20 @@
-import { describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
 import { ProviderProtocol } from '@aio-proxy/types';
 
 import { createUsageCapture } from './index';
+import { clearPriceCatalog, seedPriceCatalog } from './test-support';
+
+// Pricing resolves through getProviders() and AIO_PROXY_HOME. Without an
+// isolated empty catalog, a concurrent file that seeds a priced model can
+// make finalizeUsage drop a valid usage row (CI --concurrency=2).
+beforeEach(async () => {
+  await seedPriceCatalog([]);
+});
+
+afterEach(() => {
+  clearPriceCatalog();
+});
 
 describe('oversized SSE passthrough completion', () => {
   test('oversized SSE failure event completes as failure without changing the response', async () => {

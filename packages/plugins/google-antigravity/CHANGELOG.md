@@ -1,5 +1,17 @@
 # @aio-proxy/plugin-google-antigravity
 
+## 0.16.0
+
+### Minor Changes
+
+- [#253](https://github.com/aio-proxy/aio-proxy/pull/253) [`a12c9ca`](https://github.com/aio-proxy/aio-proxy/commit/a12c9cabb7481d188786bf22ac5a718b4bf7cca9) Thanks [@baranwang](https://github.com/baranwang)! - google-antigravity: match oh-my-pi hub fingerprints, daily-to-sandbox failover, native request envelopes, onboard polling, and Gemini first-call skip signatures
+
+### Patch Changes
+
+- Updated dependencies [[`142cc1b`](https://github.com/aio-proxy/aio-proxy/commit/142cc1b419b0109585a53f020343d0eb72b6673f)]:
+  - @aio-proxy/plugin-sdk@0.16.0
+  - @aio-proxy/shared@0.16.0
+
 ## 0.15.0
 
 ### Patch Changes

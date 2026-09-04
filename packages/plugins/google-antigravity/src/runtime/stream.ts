@@ -21,6 +21,7 @@ type CcaErrorPayload = {
 export type CcaSsePreflight = {
   readonly response: Response;
   readonly event?: PreflightEvent;
+  readonly payload?: unknown;
 };
 
 type StreamReaderOwner = {
@@ -131,6 +132,7 @@ export async function preflightCcaSse(response: Response): Promise<CcaSsePreflig
   const buffered: Uint8Array[] = [];
   let bufferedBytes = 0;
   let event: PreflightEvent | undefined;
+  let payload: unknown;
   let done = false;
   let failure: Error | undefined;
   const parser = createParser({
@@ -141,12 +143,13 @@ export async function preflightCcaSse(response: Response): Promise<CcaSsePreflig
         failure = invalidStream();
         return;
       }
-      const payload = parseEvent(message.data);
-      if (payload === undefined) {
+      const parsed = parseEvent(message.data);
+      if (parsed === undefined) {
         failure = invalidStream();
         return;
       }
-      event = classifyEvent(payload);
+      payload = parsed;
+      event = classifyEvent(parsed);
     },
     onError() {
       failure ??= invalidStream();
@@ -175,6 +178,7 @@ export async function preflightCcaSse(response: Response): Promise<CcaSsePreflig
         statusText: response.statusText,
       }),
       ...(event === undefined ? {} : { event }),
+      ...(payload === undefined ? {} : { payload }),
     };
   } catch (error) {
     await owner.fail(error);
