@@ -26,6 +26,7 @@ export type ProviderListOptions = {
 };
 
 const defaultDashboardUrl = 'http://127.0.0.1:9317';
+const DashboardProviderListResponseSchema = DashboardProvidersResponseSchema.pick({ providers: true });
 
 export const providerErrors = [
   NpmInstallError,
@@ -60,7 +61,10 @@ export async function providerList(options: ProviderListOptions): Promise<void> 
   if (!response.ok) {
     throw new ProviderDashboardError(response.status, url.toString());
   }
-  const parsed = DashboardProvidersResponseSchema.parse(await response.json());
+  // Provider listing does not consume the routing revision. Parsing only the
+  // field it owns keeps a newer CLI compatible with Dashboard servers from
+  // before routing revisions were added.
+  const parsed = DashboardProviderListResponseSchema.parse(await response.json());
   printProviderTable(parsed.providers, options.probe === true);
 }
 

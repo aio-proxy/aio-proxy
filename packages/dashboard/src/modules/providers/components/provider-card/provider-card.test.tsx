@@ -85,16 +85,17 @@ test('several protocols collapse to one word so line 2 never wraps', () => {
   expect(detail).not.toHaveTextContent('Anthropic');
 });
 
-test('renders the routing and health stats with dashes when unavailable', () => {
+test('renders traffic share and health stats with dashes when unavailable', () => {
   renderCard(<ProviderCard {...baseProps} provider={providerStub({ id: 'p', priority: 5, weight: 3 })} />);
 
-  expect(screen.getByTestId('provider-stat-priority')).toHaveTextContent('5');
-  expect(screen.getByTestId('provider-stat-weight')).toHaveTextContent('3');
+  expect(screen.getByTestId('provider-stat-share')).toHaveTextContent('100%');
+  expect(screen.queryByTestId('provider-stat-priority')).not.toBeInTheDocument();
+  expect(screen.queryByTestId('provider-stat-weight')).not.toBeInTheDocument();
   expect(screen.getByTestId('provider-stat-success-rate')).toHaveTextContent('—');
   expect(screen.getByTestId('provider-stat-p95')).toHaveTextContent('—');
 });
 
-test('defaults priority to 0 and weight to 1 and formats health', () => {
+test('formats traffic share and health', () => {
   renderCard(
     <ProviderCard
       {...baseProps}
@@ -103,8 +104,7 @@ test('defaults priority to 0 and weight to 1 and formats health', () => {
     />,
   );
 
-  expect(screen.getByTestId('provider-stat-priority')).toHaveTextContent('0');
-  expect(screen.getByTestId('provider-stat-weight')).toHaveTextContent('1');
+  expect(screen.getByTestId('provider-stat-share')).toHaveTextContent('100%');
   expect(screen.getByTestId('provider-stat-success-rate')).toHaveTextContent('98.5%');
   expect(screen.getByTestId('provider-stat-p95')).toHaveTextContent('1234');
 });

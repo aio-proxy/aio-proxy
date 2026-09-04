@@ -8,7 +8,7 @@ import { DeleteProviderDialogStub } from './delete-provider-dialog-stub';
 import { ProvidersPage } from './providers-page';
 
 const queryMocks = rs.hoisted(() => ({
-  providers: { providers: [] as DashboardProviderSummary[] },
+  providers: { providers: [] as DashboardProviderSummary[], routingRevision: 'revision' },
   failed: false,
   refetches: 0,
 }));
@@ -56,6 +56,9 @@ rs.mock('../components/delete-provider-dialog', () => ({ DeleteProviderDialog: D
 rs.mock('../components/provider-quota-ring', () => ({ ProviderQuotaRing: () => null }));
 rs.mock('../hooks/use-provider-enabled-mutation', () => ({
   useProviderEnabledMutation: () => ({ mutate: rs.fn(), isPending: false }),
+}));
+rs.mock('../hooks/use-provider-routing-mutation', () => ({
+  useProviderRoutingMutation: () => ({ mutate: rs.fn(), isPending: false }),
 }));
 rs.mock('@tanstack/react-router', () => ({
   Link: 'a',

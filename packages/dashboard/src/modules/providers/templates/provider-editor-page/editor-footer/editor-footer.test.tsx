@@ -9,7 +9,6 @@ const summaries = (overrides: Partial<Record<SectionId, SectionSummary>> = {}): 
   identity: { status: 'ok', hint: 'demo-api' },
   connection: { status: 'ok', hint: 'x.example/v1' },
   models: { status: 'ok', hint: '3 models' },
-  routing: { status: 'ok', hint: 'weight 40' },
   advanced: { status: 'ok', hint: 'all defaults' },
   ...overrides,
 });

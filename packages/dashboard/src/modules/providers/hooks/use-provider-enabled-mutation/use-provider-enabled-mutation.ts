@@ -19,6 +19,7 @@ export const useProviderEnabledMutation = () => {
               providers: current.providers.map((provider) =>
                 provider.id === id ? { ...provider, enabled } : provider,
               ),
+              routingRevision: current.routingRevision,
             },
       );
       return { previous };

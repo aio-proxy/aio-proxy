@@ -25,7 +25,11 @@ export const ProvidersPage: React.FC<ProvidersPageProps> = ({ focusProviderId, w
       title={m['dashboard.providers.list_title']()}
       breadcrumbs={[{ label: m['dashboard.menus.configuration']() }, { label: m['dashboard.providers.list_title']() }]}
       extra={
-        <Button render={<Link preload="intent" to="/providers/new" />} data-testid="new-provider-button">
+        <Button
+          nativeButton={false}
+          render={<Link preload="intent" to="/providers/new" />}
+          data-testid="new-provider-button"
+        >
           {m['dashboard.providers.new_provider']()}
         </Button>
       }
@@ -58,7 +62,11 @@ export const ProvidersPage: React.FC<ProvidersPageProps> = ({ focusProviderId, w
           </Button>
         </div>
       ) : (
-        <ProviderCardGrid providers={providers} focusProviderId={focusProviderId} />
+        <ProviderCardGrid
+          providers={providers}
+          routingRevision={providersQuery.data?.routingRevision ?? ''}
+          focusProviderId={focusProviderId}
+        />
       )}
     </PageContainer>
   );

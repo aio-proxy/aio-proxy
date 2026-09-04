@@ -20,6 +20,7 @@ interface ProviderCardIdentityProps {
   readonly plan: string | undefined;
   readonly planPending: boolean;
   readonly editable: boolean;
+  readonly dragHandle?: React.ReactNode;
 }
 
 export const ProviderCardIdentity: React.FC<ProviderCardIdentityProps> = ({
@@ -29,6 +30,7 @@ export const ProviderCardIdentity: React.FC<ProviderCardIdentityProps> = ({
   plan,
   planPending,
   editable,
+  dragHandle,
 }) => {
   const name = providerDisplayName(provider);
   const kindLabel =
@@ -42,6 +44,7 @@ export const ProviderCardIdentity: React.FC<ProviderCardIdentityProps> = ({
     // card's own left edge instead of being indented under the name by the icon's column.
     <>
       <div className="flex min-w-0 items-center gap-2">
+        {dragHandle}
         {provider.kind === 'invalid' ? (
           <AlertTriangle
             style={{ width: PROVIDER_FRAME_SIZE, height: PROVIDER_FRAME_SIZE }}
