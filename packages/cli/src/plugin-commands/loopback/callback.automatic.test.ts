@@ -22,8 +22,15 @@ describe('loopback automatic callback handling', () => {
     const wrongState = await fetch(`${redirectUri}?error=access_denied&state=wrong-secret`);
     expect(wrongState.status).toBe(400);
     expect(await wrongState.text()).toBe(copy.invalidCallback);
+    // The matching-state callback rejects `flow` from inside the request handler, so a rejection
+    // handler must already be attached when that request goes out: awaiting the fetch first leaves
+    // a microtask checkpoint where the rejection is unhandled, which fails the run intermittently.
+    const settled = flow.then(
+      () => undefined,
+      (error: unknown) => error,
+    );
     expect((await fetch(`${redirectUri}?error=access_denied&state=expected-state`)).status).toBe(400);
-    await expect(flow).rejects.toBeInstanceOf(LoopbackOAuthError);
+    expect(await settled).toBeInstanceOf(LoopbackOAuthError);
     await expectPortAvailable(Number(new URL(redirectUri).port));
   });
 
