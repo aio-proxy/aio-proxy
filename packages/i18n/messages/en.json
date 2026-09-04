@@ -484,6 +484,7 @@
       "api_keys_description": "Keys that clients present to this proxy. Stored keys are never shown again.",
       "api_keys_empty": "No API keys configured.",
       "api_keys_label": "Label",
+      "api_keys_value_required": "A key is required.",
       "optional": " (optional)",
       "api_keys_value": "Key",
       "api_keys_stored": "Stored",

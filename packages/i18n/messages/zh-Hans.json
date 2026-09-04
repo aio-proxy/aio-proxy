@@ -484,6 +484,7 @@
       "api_keys_description": "客户端访问本代理时使用的密钥。已保存的密钥不会再次显示。",
       "api_keys_empty": "尚未配置 API 密钥。",
       "api_keys_label": "标签",
+      "api_keys_value_required": "必须填写密钥。",
       "optional": "（可选）",
       "api_keys_value": "密钥",
       "api_keys_stored": "已保存",

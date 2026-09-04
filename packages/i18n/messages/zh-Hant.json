@@ -484,6 +484,7 @@
       "api_keys_description": "用戶端存取本代理時使用的金鑰。已儲存的金鑰不會再次顯示。",
       "api_keys_empty": "尚未設定 API 金鑰。",
       "api_keys_label": "標籤",
+      "api_keys_value_required": "必須填寫金鑰。",
       "optional": "（選填）",
       "api_keys_value": "金鑰",
       "api_keys_stored": "已儲存",

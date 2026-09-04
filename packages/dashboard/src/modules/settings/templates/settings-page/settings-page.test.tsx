@@ -343,6 +343,24 @@ test('resyncs stored API key rows when a reload replaces the stored keys', () =>
   );
 });
 
+test('refuses to save a labeled row whose key was left blank instead of dropping it', () => {
+  renderPage();
+
+  const group = screen.getByTestId('settings-group-api-keys');
+  fireEvent.click(within(group).getByRole('button', { name: /Add key|添加密钥|新增金鑰|キーを追加|키 추가/u }));
+  const labels = within(group).getAllByLabelText(/Label|标签|標籤|ラベル|라벨/u);
+  fireEvent.change(labels[labels.length - 1] as HTMLElement, { target: { value: 'forgot-the-key' } });
+
+  // Silently dropping the row would report success for a key that was never persisted.
+  expect(
+    within(group).getByText(/A key is required|必须填写密钥|必須填寫金鑰|キーは必須|키는 필수/u),
+  ).toBeInTheDocument();
+  const save = within(group).getByRole('button', { name: /Save keys|保存密钥|儲存金鑰|キーを保存|키 저장/u });
+  expect(save).toBeDisabled();
+  fireEvent.click(save);
+  expect(mocks.mutate).not.toHaveBeenCalled();
+});
+
 test('keeps an in-progress key draft when an unrelated save refreshes the settings object', () => {
   const { rerender } = renderPage();
 

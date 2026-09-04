@@ -34,6 +34,12 @@ const rowsFromSettings = (settings: DashboardSettingsView): readonly ApiKeyRow[]
     retain: index,
   }));
 
+// A row the user has typed into but left without a key cannot be saved, so it is reported as an
+// error rather than dropped. A row with nothing in it at all is just an unused Add click.
+const isDraft = (row: ApiKeyRow) => row.retain === undefined;
+const isTouchedDraft = (row: ApiKeyRow) => isDraft(row) && (row.key.trim() !== '' || row.label.trim() !== '');
+const isIncompleteDraft = (row: ApiKeyRow) => isDraft(row) && row.key.trim() === '' && row.label.trim() !== '';
+
 const mutationEntries = (rows: readonly ApiKeyRow[]): readonly DashboardApiKeyMutation[] =>
   rows.flatMap((row): readonly DashboardApiKeyMutation[] => {
     const label = row.label.trim() === '' ? {} : { label: row.label.trim() };
@@ -52,19 +58,17 @@ export const SettingsApiKeysGroup: React.FC<SettingsApiKeysGroupProps> = ({ disa
   const [revision, setRevision] = useState(settings.apiKeysRevision);
 
   // `retain` indexes address the authored array this revision digests, so a changed revision must
-  // resync the stored rows. Non-empty drafts survive that resync: their key exists nowhere else
-  // yet, and a rejected save (a 409 refetches settings) must not be what destroys it. A successful
-  // save drops its own drafts by id, so the saved keys do not come back as duplicate rows.
+  // resync the stored rows. Drafts the user has typed into survive that resync: a key exists
+  // nowhere else yet, and a rejected save (a 409 refetches settings) must not be what destroys it.
+  // A successful save drops its own drafts by id, so saved keys do not come back as duplicate rows.
   if (revision !== settings.apiKeysRevision) {
     setRevision(settings.apiKeysRevision);
-    setRows((current) => [
-      ...rowsFromSettings(settings),
-      ...current.filter((row) => row.retain === undefined && row.key.trim() !== ''),
-    ]);
+    setRows((current) => [...rowsFromSettings(settings), ...current.filter(isTouchedDraft)]);
   }
 
   const entries = mutationEntries(rows);
   const parsed = apiKeysSchema.safeParse(entries);
+  const incomplete = rows.some(isIncompleteDraft);
   const patchRow = (id: string, patch: Partial<ApiKeyRow>) =>
     setRows((current) => current.map((entry) => (entry.id === id ? { ...entry, ...patch } : entry)));
 
@@ -125,6 +129,9 @@ export const SettingsApiKeysGroup: React.FC<SettingsApiKeysGroupProps> = ({ disa
                     </InputGroupAddon>
                   </InputGroup>
                 )}
+                {isIncompleteDraft(row) ? (
+                  <p className="text-xs text-destructive">{m['dashboard.settings.api_keys_value_required']()}</p>
+                ) : null}
               </div>
               <div className="flex-1 space-y-1">
                 <Label htmlFor={`api-key-label-${row.id}`} className="text-xs">
@@ -170,10 +177,10 @@ export const SettingsApiKeysGroup: React.FC<SettingsApiKeysGroupProps> = ({ disa
           <Button
             type="button"
             size="sm"
-            disabled={disabled || !parsed.success}
+            disabled={disabled || incomplete || !parsed.success}
             onClick={() => {
-              if (!parsed.success) return;
-              const submitted = new Set(rows.filter((row) => row.retain === undefined).map((row) => row.id));
+              if (incomplete || !parsed.success) return;
+              const submitted = new Set(rows.filter(isDraft).map((row) => row.id));
               onSave(
                 { apiKeys: parsed.data, apiKeysRevision: settings.apiKeysRevision },
                 // The saved keys come back as stored rows, so the drafts this save carried must go.

@@ -484,6 +484,7 @@
       "api_keys_description": "クライアントがこのプロキシに提示するキーです。保存済みのキーは再表示されません。",
       "api_keys_empty": "API キーは設定されていません。",
       "api_keys_label": "ラベル",
+      "api_keys_value_required": "キーは必須です。",
       "optional": "（任意）",
       "api_keys_value": "キー",
       "api_keys_stored": "保存済み",
