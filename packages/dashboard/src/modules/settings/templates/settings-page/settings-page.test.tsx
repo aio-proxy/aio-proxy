@@ -1,6 +1,6 @@
 import type { DashboardSettingsView } from '@aio-proxy/types';
 import { expect, rs, test } from '@rstest/core';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 
 import { SettingsPage } from '.';
 import { SettingsForm } from '../../components/settings-form';
@@ -77,7 +77,23 @@ test('sets a new dashboard password from a writable field', () => {
   fireEvent.click(screen.getByRole('button', { name: /Set password|设置密码|設定密碼/u }));
 
   expect(mocks.mutate).toHaveBeenCalledTimes(1);
-  expect(mocks.mutate).toHaveBeenCalledWith({ password: 'correct horse battery' });
+  expect(mocks.mutate).toHaveBeenCalledWith({ password: 'correct horse battery' }, { onSuccess: expect.any(Function) });
+});
+
+test('holds the password draft until the write succeeds and clears it only then', () => {
+  renderPage();
+
+  const password = screen.getByLabelText(/Dashboard password|控制台密码|控制台密碼/u);
+  fireEvent.change(password, { target: { value: 'correct horse battery' } });
+  fireEvent.click(screen.getByRole('button', { name: /Set password|设置密码|設定密碼/u }));
+
+  // A rejected write leaves no copy of the secret anywhere, so the field must still hold it.
+  expect(password).toHaveValue('correct horse battery');
+
+  const [, options] = mocks.mutate.mock.calls[0] as [unknown, { readonly onSuccess: () => void }];
+  act(() => options.onSuccess());
+
+  expect(password).toHaveValue('');
 });
 
 test('refuses to submit a password below the minimum length', () => {
@@ -97,7 +113,7 @@ test('clears a configured password', () => {
   fireEvent.click(screen.getByRole('button', { name: /Clear password|清除密码|清除密碼/u }));
 
   expect(mocks.mutate).toHaveBeenCalledTimes(1);
-  expect(mocks.mutate).toHaveBeenCalledWith({ password: null });
+  expect(mocks.mutate).toHaveBeenCalledWith({ password: null }, { onSuccess: expect.any(Function) });
 });
 
 test('writes a routine logging change exactly once', () => {

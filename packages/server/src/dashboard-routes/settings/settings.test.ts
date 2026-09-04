@@ -387,6 +387,31 @@ test('a retain index outside the authored array and a reserved-prefix key are re
   });
 });
 
+test('GET /settings derives key rows and their revision from the same authored snapshot', async () => {
+  await withSettingsFixture(async ({ configPath, routes }) => {
+    // An external edit lands before the watcher reloads, so `currentConfig()` is one snapshot
+    // behind. Rows read from it would pair old `retain` indexes with the new file's revision.
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        ...authoredConfig,
+        server: { ...authoredConfig.server, apiKeys: [{ key: 'sk-plain-preserved', label: 'moved' }] },
+      }),
+    );
+
+    const view = (await (await routes.request('/settings')).json()) as {
+      readonly apiKeys: readonly { readonly label?: string }[];
+      readonly apiKeysRevision: string;
+    };
+
+    expect(view.apiKeys).toEqual([{ key: '****', label: 'moved' }]);
+    // `retain: 0` now names the same entry the revision was taken over, so the write applies.
+    const response = await put(routes, { apiKeys: [{ retain: 0 }], apiKeysRevision: view.apiKeysRevision });
+    expect(response.status).toBe(200);
+    expect(onDisk(configPath).server.apiKeys).toEqual([{ key: 'sk-plain-preserved' }]);
+  });
+});
+
 test('a key write against a superseded revision is rejected without changing config bytes', async () => {
   await withSettingsFixture(async ({ configPath, routes }) => {
     const stale = await apiKeysRevision(routes);

@@ -35,25 +35,33 @@ class StaleApiKeysError extends Error {}
 
 // `retain` indexes the authored array, not the runtime one: templates are already
 // expanded in `currentConfig()`, so the revision has to digest what is on disk.
-async function authoredApiKeys(state: ServerState): Promise<unknown> {
+async function authoredApiKeys(state: ServerState): Promise<readonly unknown[]> {
   const file = state.configStore.file;
   if (file === undefined) return [];
   const server = (await file.read())['server'];
-  return isPlainObject(server) ? server['apiKeys'] : [];
+  const keys = isPlainObject(server) ? server['apiKeys'] : undefined;
+  return Array.isArray(keys) ? keys : [];
 }
 
-function apiKeysRevision(authored: unknown): string {
-  return `sha256:${digestProviderEntry(Array.isArray(authored) ? authored : [])}`;
+function apiKeysRevision(authored: readonly unknown[]): string {
+  return `sha256:${digestProviderEntry(authored)}`;
 }
 
-function settingsView(config: Config, authoredApiKeys: unknown): DashboardSettingsView {
+// Rows and revision both come from the authored snapshot. Reading the count and labels from
+// `currentConfig()` instead would pair one snapshot's `retain` indexes with another's revision
+// whenever an external edit lands before the watcher reloads.
+function apiKeysView(authored: readonly unknown[]): DashboardSettingsView['apiKeys'] {
+  return authored.map((entry) => {
+    const label = isPlainObject(entry) ? entry['label'] : undefined;
+    return { key: '****' as const, ...(typeof label === 'string' && label !== '' ? { label } : {}) };
+  });
+}
+
+function settingsView(config: Config, authored: readonly unknown[]): DashboardSettingsView {
   const logging = config.server.logging ?? defaultLogging;
   return {
-    apiKeys: config.server.apiKeys.map((entry) => ({
-      key: '****' as const,
-      ...(entry.label === undefined ? {} : { label: entry.label }),
-    })),
-    apiKeysRevision: apiKeysRevision(authoredApiKeys),
+    apiKeys: apiKeysView(authored),
+    apiKeysRevision: apiKeysRevision(authored),
     hasPassword: config.server.password !== undefined,
     host: config.server.host,
     logging: {
@@ -78,10 +86,10 @@ function resolveApiKeys(
   submitted: readonly DashboardApiKeyMutation[],
   revision: string,
 ): readonly Record<string, unknown>[] {
+  const previous = Array.isArray(authored) ? authored : [];
   // The client's `retain` indexes address the array it read. If the watcher or another
   // session rewrote it since, those positions now name different secrets — reject instead.
-  if (apiKeysRevision(authored) !== revision) throw new StaleApiKeysError();
-  const previous = Array.isArray(authored) ? authored : [];
+  if (apiKeysRevision(previous) !== revision) throw new StaleApiKeysError();
   return submitted.map((entry) => {
     const label = entry.label === undefined ? {} : { label: entry.label };
     if (!('retain' in entry)) return { key: entry.key, ...label };

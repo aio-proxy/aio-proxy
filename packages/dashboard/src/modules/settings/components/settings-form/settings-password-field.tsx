@@ -1,17 +1,17 @@
 import { m } from '@aio-proxy/i18n';
-import type { DashboardSettingsMutationInput, DashboardSettingsView } from '@aio-proxy/types';
+import type { DashboardSettingsView } from '@aio-proxy/types';
 import { Button } from '@aio-proxy/ui/components/button';
 import { Field, FieldDescription, FieldError } from '@aio-proxy/ui/components/field';
 import { Input } from '@aio-proxy/ui/components/input';
 import { Label } from '@aio-proxy/ui/components/label';
 import { useForm } from '@tanstack/react-form';
 
-import { passwordSchema } from './settings-form-contract';
+import { passwordSchema, type SettingsSave } from './settings-form-contract';
 
 interface SettingsPasswordFieldProps {
   readonly disabled: boolean;
   readonly settings: DashboardSettingsView;
-  readonly onSave: (input: DashboardSettingsMutationInput) => void;
+  readonly onSave: SettingsSave;
 }
 
 export const SettingsPasswordField: React.FC<SettingsPasswordFieldProps> = ({ disabled, settings, onSave }) => {
@@ -47,8 +47,9 @@ export const SettingsPasswordField: React.FC<SettingsPasswordFieldProps> = ({ di
                 onClick={() => {
                   const parsed = passwordSchema.safeParse(draft);
                   if (!parsed.success) return;
-                  onSave({ password: parsed.data });
-                  field.handleChange('');
+                  // A rejected write leaves nothing to restore the secret from, so hold the
+                  // draft until the server confirms rather than making the user retype it.
+                  onSave({ password: parsed.data }, { onSuccess: () => field.handleChange('') });
                 }}
               >
                 {m['dashboard.settings.password_save']()}
@@ -59,8 +60,7 @@ export const SettingsPasswordField: React.FC<SettingsPasswordFieldProps> = ({ di
                 variant="outline"
                 disabled={disabled || !settings.hasPassword}
                 onClick={() => {
-                  onSave({ password: null });
-                  field.handleChange('');
+                  onSave({ password: null }, { onSuccess: () => field.handleChange('') });
                 }}
               >
                 {m['dashboard.settings.password_clear']()}

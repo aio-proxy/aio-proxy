@@ -1,10 +1,10 @@
-import { type DashboardSettingsMutationInput, DashboardSettingsMutationSchema } from '@aio-proxy/types';
+import { DashboardSettingsMutationSchema } from '@aio-proxy/types';
 import { useEffect, useState } from 'react';
 
 import { useSettingsMutation } from '../../hooks/use-settings-mutation';
 import { SettingsAccessConfirmationDialog } from './settings-access-confirmation-dialog';
 import { SettingsApiKeysGroup } from './settings-api-keys-group';
-import type { PendingAccessChange, SettingsFormProps } from './settings-form-contract';
+import type { PendingAccessChange, SettingsFormProps, SettingsSave } from './settings-form-contract';
 import { SettingsLogsGroup } from './settings-logs-group';
 import { SettingsMutationStatus } from './settings-mutation-status';
 import { SettingsServiceGroup } from './settings-service-group';
@@ -31,9 +31,11 @@ export const SettingsForm: React.FC<SettingsFormProps> = ({ settings }) => {
     }
   }, [form, mutation.isError, settings]);
 
-  const save = (input: DashboardSettingsMutationInput) => {
+  const save: SettingsSave = (input, options) => {
     const parsed = DashboardSettingsMutationSchema.safeParse(input);
-    if (parsed.success) mutation.mutate(parsed.data);
+    if (!parsed.success) return;
+    if (options === undefined) mutation.mutate(parsed.data);
+    else mutation.mutate(parsed.data, options);
   };
   const closeConfirmation = () => {
     if (pendingAccess?.field === 'host') form.setFieldValue('host', settings.host);
