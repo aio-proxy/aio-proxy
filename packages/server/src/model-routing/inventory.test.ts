@@ -131,6 +131,7 @@ function summariesFrom(config: Config, states: Readonly<Record<string, ProviderS
     clientModels: [],
     protocols: [],
     hasQuota: false,
+    canRefreshCredential: false,
     state: states[provider.id] ?? { status: 'ready' as const },
   }));
 }

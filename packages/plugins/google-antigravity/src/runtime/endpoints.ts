@@ -2,7 +2,7 @@ import { ANTIGRAVITY_DAILY, ANTIGRAVITY_SANDBOX } from '../oauth/constants';
 import type { GoogleAntigravityAccountOptions } from '../schema';
 import { normalizeBaseURL } from '../schema';
 
-export type AntigravityOperation = 'project-load' | 'onboarding' | 'discovery' | 'inference' | 'count';
+export type AntigravityOperation = 'project-load' | 'onboarding' | 'discovery' | 'inference' | 'count' | 'quota';
 
 export function antigravityEndpoints(
   options: GoogleAntigravityAccountOptions,

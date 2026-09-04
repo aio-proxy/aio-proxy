@@ -13,8 +13,9 @@ import { CatalogDiscoveryError } from './catalog/errors';
 import { staticAntigravityCatalog } from './catalog/snapshot';
 import { buildGoogleAuthorizationUrl, exchangeAuthorizationCode } from './oauth/flow';
 import { initializeAntigravityProject, type ProjectInitializationDependencies } from './oauth/project';
-import { exchangeGoogleRefreshToken } from './oauth/refresh';
+import { exchangeGoogleRefreshToken, refreshGoogleCredential } from './oauth/refresh';
 import { fetchGoogleEmail } from './oauth/userinfo';
+import { readGoogleAntigravityQuota } from './quota/index';
 import { createGoogleAntigravityRuntime } from './runtime/provider';
 import {
   accountOptionsSchema,
@@ -187,12 +188,23 @@ export function createGoogleAntigravityPlugin(
         error instanceof CatalogDiscoveryError && error.snapshotEligible ? staticAntigravityCatalog() : undefined,
       defaultAliases: defaultAntigravityAliases,
     },
+    refreshCredential: async ({ credential, signal, fetch }) => {
+      const refreshed = await refreshGoogleCredential(credential, {
+        fetch: dependencies.fetch ?? fetch,
+        ...(dependencies.now === undefined ? {} : { now: dependencies.now }),
+        signal,
+      });
+      return { value: refreshed, metadata: { accountLabel: refreshed.email, expiresAt: refreshed.expiresAt } };
+    },
     createRuntime: async (context) =>
       createGoogleAntigravityRuntime(context, {
         ...(dependencies.fetch === undefined ? {} : { fetch: dependencies.fetch }),
         ...(dependencies.now === undefined ? {} : { now: dependencies.now }),
         ...(dependencies.sleep === undefined ? {} : { sleep: dependencies.sleep }),
       }),
+    quota: {
+      read: async (context) => await readGoogleAntigravityQuota(context, dependencies.fetch ?? context.fetch),
+    },
   };
 
   return definePlugin(

@@ -60,6 +60,9 @@ rs.mock('../hooks/use-provider-enabled-mutation', () => ({
 rs.mock('../hooks/use-provider-routing-mutation', () => ({
   useProviderRoutingMutation: () => ({ mutate: rs.fn(), isPending: false }),
 }));
+rs.mock('../hooks/use-provider-credential-refresh', () => ({
+  useProviderCredentialRefresh: () => ({ mutate: rs.fn(), isPending: false }),
+}));
 rs.mock('@tanstack/react-router', () => ({
   Link: 'a',
 }));

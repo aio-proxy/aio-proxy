@@ -300,6 +300,14 @@ test('runtime exposes Google ProviderV4, Gemini raw, and token-count capabilitie
   expect(() => runtime.provider.imageModel('model')).toThrow('does not support image generation');
 });
 
+// `hasQuota` on the dashboard Provider card is derived from `adapter.quota !== undefined`
+// (packages/server/src/plugin-account.ts). Without this the quota ring never renders.
+test('registers a quota capability with no reset', async () => {
+  const adapter = await adapterFrom(googleAntigravityPlugin);
+  expect(adapter.quota?.read).toBeFunction();
+  expect(adapter.quota?.reset).toBeUndefined();
+});
+
 function loginContext(
   loopback: (
     input: LoopbackRequest,
@@ -346,3 +354,40 @@ async function adapterFrom(
   if (registered === undefined) throw new Error('Google Antigravity OAuth adapter was not registered');
   return registered;
 }
+
+test('refreshCredential exchanges an unexpired credential instead of returning it unchanged', async () => {
+  let exchanges = 0;
+  const adapter = await adapterFrom(
+    createGoogleAntigravityPlugin(undefined, {
+      now: () => 1_000,
+      fetch: async () => {
+        exchanges += 1;
+        return Response.json({ access_token: 'new-access', expires_in: 60, token_type: 'Bearer' });
+      },
+    }),
+  );
+  const credential: GoogleAntigravityCredential = {
+    accessToken: 'old-access',
+    refreshToken: 'old-refresh',
+    expiresAt: Number.MAX_SAFE_INTEGER,
+    email: 'person@example.com',
+    projectId: 'project-1',
+  };
+
+  const result = await adapter.refreshCredential!({
+    credential,
+    options: {},
+    signal: new AbortController().signal,
+  });
+
+  expect(exchanges).toBe(1);
+  expect(result.value).toEqual({
+    accessToken: 'new-access',
+    refreshToken: 'old-refresh',
+    expiresAt: 61_000,
+    tokenType: 'Bearer',
+    email: 'person@example.com',
+    projectId: 'project-1',
+  });
+  expect(result.metadata).toEqual({ accountLabel: 'person@example.com', expiresAt: 61_000 });
+});

@@ -228,6 +228,7 @@ function assembleProviders(
           clientModels: [],
           protocols: [],
           hasQuota: false,
+          canRefreshCredential: false,
         }) satisfies Omit<DashboardProviderSummary, 'state'>,
     ),
     ...compact(config.providers.map((configured) => summaryById.get(configured.id))),

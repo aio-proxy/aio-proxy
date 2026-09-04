@@ -28,6 +28,7 @@ export const DashboardProviderSummarySchema = z.object({
   // API providers can serve several protocols from one config; non-API providers get an empty list.
   protocols: z.array(ProviderProtocolSchema).readonly(),
   hasQuota: z.boolean(),
+  canRefreshCredential: z.boolean(),
   packageName: z.string().trim().min(1).optional(),
   clientModels: z.array(z.string()).readonly(),
   hasApiKey: z.boolean().optional(),

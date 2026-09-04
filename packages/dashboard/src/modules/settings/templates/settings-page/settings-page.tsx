@@ -3,7 +3,10 @@ import { Skeleton } from '@aio-proxy/ui/components/skeleton';
 
 import { PageContainer } from '@/components/page-container';
 
+import { SettingsAboutGroup } from '../../components/settings-about-group';
 import { SettingsForm } from '../../components/settings-form';
+import { SettingsPreferencesGroup } from '../../components/settings-preferences-group';
+import { SettingsReloadButton } from '../../components/settings-reload-button';
 import { useSettingsQuery } from '../../hooks/use-settings-query';
 
 export const SettingsPage: React.FC = () => {
@@ -32,8 +35,15 @@ export const SettingsPage: React.FC = () => {
       title={m['dashboard.settings.title']()}
       subtitle={m['dashboard.settings.description']()}
       breadcrumbs={[{ label: m['dashboard.menus.configuration']() }, { label: m['dashboard.settings.title']() }]}
+      extra={<SettingsReloadButton />}
     >
-      <div className="mx-auto w-full max-w-3xl">{content}</div>
+      <div className="mx-auto w-full max-w-3xl space-y-6">
+        {/* Preferences are browser-local and always available, so they lead: they render even
+            while the server-backed settings are still loading or failed to load. */}
+        <SettingsPreferencesGroup />
+        {content}
+        <SettingsAboutGroup />
+      </div>
     </PageContainer>
   );
 };

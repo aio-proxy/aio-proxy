@@ -24,6 +24,8 @@ describe('OpenAI ChatGPT runtime', () => {
     expect(runtime.provider.specificationVersion).toBe('v4');
     expect(runtime.provider.languageModel('gpt-5.5')).toBeDefined();
     expect(runtime.raw?.({ protocol: 'openai-response', modelId: 'gpt-5.5' })).toBeDefined();
+    expect(runtime.raw?.({ protocol: 'openai-image', modelId: 'gpt-image-2' })).toBeDefined();
+    expect(runtime.raw?.({ protocol: 'gemini-interactions', modelId: 'gpt-5.5' })).toBeUndefined();
     expect(runtime.raw?.({ protocol: 'openai-compatible', modelId: 'gpt-5.5' })).toBeUndefined();
     expect(runtime.raw?.({ protocol: 'anthropic', modelId: 'gpt-5.5' })).toBeUndefined();
     expect(runtime.raw?.({ protocol: 'gemini', modelId: 'gpt-5.5' })).toBeUndefined();
@@ -192,6 +194,23 @@ test('routes compact to the Codex compaction endpoint and forwards its body verb
   const call = requiredCall(calls, 0);
   expect(call.url).toBe('https://chatgpt.com/backend-api/codex/responses/compact?trace=1');
   expect(call.body).toBe(body);
+});
+
+test('routes image generations and edits to the Codex image endpoints', async () => {
+  const calls: FetchCall[] = [];
+  const dynamicFetch = createOpenAIChatGPTDynamicFetch(staticCredentialPort(credential()), captureFetch(calls));
+  const body = JSON.stringify({ model: 'gpt-image-2', prompt: 'a tiny red square' });
+
+  await dynamicFetch('https://proxy.local/v1/images/generations?trace=1', { method: 'POST', body });
+  await dynamicFetch('https://proxy.local/v1/images/edits', { method: 'POST', body });
+
+  expect(requiredCall(calls, 0).url).toBe('https://chatgpt.com/backend-api/codex/images/generations?trace=1');
+  expect(requiredCall(calls, 1).url).toBe('https://chatgpt.com/backend-api/codex/images/edits');
+  // Image bodies are forwarded verbatim: the `store: false` rewrite is
+  // Responses-only, and the Codex image endpoints reject unknown parameters.
+  expect(requiredCall(calls, 0).body).toBe(body);
+  expect(requiredCall(calls, 0).headers.get('authorization')).toBe('Bearer access-token');
+  expect(requiredCall(calls, 0).headers.get('ChatGPT-Account-Id')).toBe('acct-123');
 });
 
 function credential(overrides: Partial<ChatGPTCredential> = {}): ChatGPTCredential {

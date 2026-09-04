@@ -1,5 +1,9 @@
+import { createHmac, randomBytes } from 'node:crypto';
+
+import { digestProviderEntry } from '@aio-proxy/core';
 import {
   type Config,
+  type DashboardApiKeyMutation,
   type DashboardSettingsMutation,
   type DashboardSettingsMutationInput,
   DashboardSettingsMutationSchema,
@@ -29,9 +33,55 @@ const settingsValidator = validator('json', (raw, context) => {
   }
 >;
 
-function settingsView(config: Config): DashboardSettingsView {
+class StaleApiKeysError extends Error {}
+
+// `retain` indexes the authored array, not the runtime one: templates are already
+// expanded in `currentConfig()`, so the revision has to digest what is on disk.
+// Without a config file nothing is writable (PUT fails with `config_unavailable`),
+// but the read view must still show the keys the proxy is actually enforcing.
+// An unparseable file is the same situation: the watcher rejected it, so the runtime
+// still enforces its last valid snapshot, and failing the whole endpoint would hide
+// every control until the file is repaired. The runtime keys stand in, and a write
+// against the revision they produce is rejected as stale rather than applying
+// `retain` indexes to an array the client never read.
+async function authoredApiKeys(state: ServerState): Promise<readonly unknown[]> {
+  const file = state.configStore.file;
+  if (file === undefined) return state.currentConfig().server.apiKeys;
+  let server: unknown;
+  try {
+    server = (await file.read())['server'];
+  } catch {
+    return state.currentConfig().server.apiKeys;
+  }
+  const keys = isPlainObject(server) ? server['apiKeys'] : undefined;
+  return Array.isArray(keys) ? keys : [];
+}
+
+// A bare digest of the authored array is an offline verifier for the secrets inside it:
+// the same response hands the client the labels and ordering, so short keys fall to a
+// dictionary attack. Keying the digest with a per-process secret makes it opaque. The
+// key need not outlive the process — clients refetch settings before they can save.
+const revisionKey = randomBytes(32);
+
+function apiKeysRevision(authored: readonly unknown[]): string {
+  return `sha256:${createHmac('sha256', revisionKey).update(digestProviderEntry(authored)).digest('hex')}`;
+}
+
+// Rows and revision both come from the authored snapshot. Reading the count and labels from
+// `currentConfig()` instead would pair one snapshot's `retain` indexes with another's revision
+// whenever an external edit lands before the watcher reloads.
+function apiKeysView(authored: readonly unknown[]): DashboardSettingsView['apiKeys'] {
+  return authored.map((entry) => {
+    const label = isPlainObject(entry) ? entry['label'] : undefined;
+    return { key: '****' as const, ...(typeof label === 'string' && label !== '' ? { label } : {}) };
+  });
+}
+
+function settingsView(config: Config, authored: readonly unknown[]): DashboardSettingsView {
   const logging = config.server.logging ?? defaultLogging;
   return {
+    apiKeys: apiKeysView(authored),
+    apiKeysRevision: apiKeysRevision(authored),
     hasPassword: config.server.password !== undefined,
     host: config.server.host,
     logging: {
@@ -51,10 +101,38 @@ function section(value: unknown, path: string): Record<string, unknown> {
   return value;
 }
 
-function applySettingsMutation(
+function resolveApiKeys(
+  authored: unknown,
+  submitted: readonly DashboardApiKeyMutation[],
+  revision: string,
+): readonly Record<string, unknown>[] {
+  const previous = Array.isArray(authored) ? authored : [];
+  // The client's `retain` indexes address the array it read. If the watcher or another
+  // session rewrote it since, those positions now name different secrets — reject instead.
+  if (apiKeysRevision(previous) !== revision) throw new StaleApiKeysError();
+  return submitted.flatMap((entry) => {
+    const label = entry.label === undefined ? {} : { label: entry.label };
+    // Every submitted key is authored, including one whose value already appears in a retained
+    // row: the schema permits the same credential under several labels, and value equality
+    // cannot tell an intentional duplicate from a resubmission after a lost response. Collapsing
+    // them would silently discard a key the operator has already handed out, so the resubmission
+    // authors a second visible row the user can delete instead. Suppressing it correctly needs a
+    // per-write operation identity, which means server-side state this endpoint does not keep.
+    if (!('retain' in entry)) return [{ key: entry.key, ...label }];
+    const kept = previous[entry.retain];
+    if (!isPlainObject(kept) || typeof kept['key'] !== 'string') {
+      throw new TypeError(`server.apiKeys[${entry.retain}] cannot be retained`);
+    }
+    // The mutation owns `label` outright: an omitted label clears the authored one.
+    const { label: _label, ...rest } = kept;
+    return [{ ...rest, key: kept['key'], ...label }];
+  });
+}
+
+async function applySettingsMutation(
   current: Record<string, unknown>,
   mutation: DashboardSettingsMutation,
-): { readonly next: Record<string, unknown>; readonly restartRequired: boolean } {
+): Promise<{ readonly next: Record<string, unknown>; readonly restartRequired: boolean }> {
   let next = current;
   let restartRequired = false;
   if (
@@ -103,18 +181,36 @@ function applySettingsMutation(
       next = { ...next, proxy: mutation.proxy };
     }
   }
+  if (Object.hasOwn(mutation, 'password')) {
+    const server = section(next['server'], 'server');
+    if (mutation.password === null) {
+      if (Object.hasOwn(server, 'password')) {
+        const { password: _password, ...withoutPassword } = server;
+        next = { ...next, server: withoutPassword };
+      }
+    } else if (mutation.password !== undefined) {
+      next = { ...next, server: { ...server, password: await Bun.password.hash(mutation.password) } };
+    }
+  }
+  if (mutation.apiKeys !== undefined && mutation.apiKeysRevision !== undefined) {
+    const server = section(next['server'], 'server');
+    next = {
+      ...next,
+      server: { ...server, apiKeys: resolveApiKeys(server['apiKeys'], mutation.apiKeys, mutation.apiKeysRevision) },
+    };
+  }
   return { next, restartRequired };
 }
 
 export const createDashboardSettingsRoute = (state: ServerState) =>
   new Hono()
-    .get('/', (context) => context.json(settingsView(state.currentConfig())))
+    .get('/', async (context) => context.json(settingsView(state.currentConfig(), await authoredApiKeys(state))))
     .put('/', settingsValidator, async (context) => {
       const mutation = context.req.valid('json');
       let restartRequired = false;
       try {
-        await state.configStore.mutateConfig((current) => {
-          const result = applySettingsMutation(current, mutation);
+        await state.configStore.mutateConfig(async (current) => {
+          const result = await applySettingsMutation(current, mutation);
           restartRequired = result.restartRequired;
           return result.next;
         });
@@ -122,13 +218,23 @@ export const createDashboardSettingsRoute = (state: ServerState) =>
         if (error instanceof ConfigPathMissingError) {
           return context.json({ error: { code: 'config_unavailable' }, ok: false } as const, 409);
         }
+        if (error instanceof StaleApiKeysError) {
+          return context.json({ error: { code: 'stale_api_keys' }, ok: false } as const, 409);
+        }
         if (error instanceof ConfigReloadRejectedError) {
           return context.json({ error: { code: 'reload_failed' }, ok: false } as const, 422);
         }
-        if (error instanceof ZodError || error instanceof TypeError) {
+        // A `SyntaxError` means the file on disk no longer parses, so the write is refused
+        // before any bytes move — the same "config as authored is unusable" answer as a
+        // schema rejection, rather than an unhandled 500.
+        if (error instanceof ZodError || error instanceof TypeError || error instanceof SyntaxError) {
           return context.json({ error: { code: 'config_rejected' }, ok: false } as const, 422);
         }
         throw error;
       }
-      return context.json({ ok: true, restartRequired, settings: settingsView(state.currentConfig()) } as const);
+      return context.json({
+        ok: true,
+        restartRequired,
+        settings: settingsView(state.currentConfig(), await authoredApiKeys(state)),
+      } as const);
     });

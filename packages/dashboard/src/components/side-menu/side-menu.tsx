@@ -2,6 +2,7 @@ import { m } from '@aio-proxy/i18n';
 import {
   Sidebar,
   SidebarContent,
+  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
   SidebarGroupLabel,
@@ -17,7 +18,7 @@ import type { ComponentProps, ComponentType } from 'react';
 
 import { AioProxyBrand } from '@/components/aio-proxy-brand';
 
-import { SidebarPreferences } from './sidebar-preferences';
+import { SidebarLogout } from './sidebar-logout';
 
 interface SideMenuItem {
   id: string;
@@ -129,7 +130,11 @@ export const SideMenu: React.FC = () => {
           </SidebarGroup>
         ))}
       </SidebarContent>
-      <SidebarPreferences />
+      <SidebarFooter>
+        <SidebarMenu>
+          <SidebarLogout />
+        </SidebarMenu>
+      </SidebarFooter>
     </Sidebar>
   );
 };

@@ -315,6 +315,8 @@ export function providerSummary(
     protocols: [],
     // Only OAuth plugin providers can expose a quota capability.
     hasQuota: false,
+    // Same: only OAuth plugin providers can expose a credential refresh capability.
+    canRefreshCredential: false,
     // Runtime factories don't carry `name`, so callers pass the config display name through.
     ...(name === undefined ? {} : { name }),
     ...(config === undefined ? {} : providerDisplayFields(config)),
@@ -368,6 +370,7 @@ function providerConfigSummary(provider: Provider): ProviderRuntimeSummary {
     last_status: 'unknown',
     last_latency: null,
     hasQuota: false,
+    canRefreshCredential: false,
     name: provider.name,
     ...providerDisplayFields(provider),
     clientModels,

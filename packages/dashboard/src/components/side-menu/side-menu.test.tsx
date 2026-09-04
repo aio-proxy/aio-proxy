@@ -11,7 +11,7 @@ rs.mock('@tanstack/react-router', () => ({
   useLocation: () => ({ pathname: '/' }),
 }));
 
-rs.mock('./sidebar-preferences', () => ({ SidebarPreferences: () => null }));
+rs.mock('./sidebar-logout', () => ({ SidebarLogout: () => null }));
 
 test('groups Dashboard and Traces under Observability', () => {
   render(

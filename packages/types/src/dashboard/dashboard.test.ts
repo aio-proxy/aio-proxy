@@ -82,6 +82,7 @@ test('preserves configured API and AI SDK display fields in dashboard summaries'
     clientModels: [],
     protocols: [],
     hasQuota: false,
+    canRefreshCredential: false,
     state: { status: 'ready' },
   } as const;
   const api = {

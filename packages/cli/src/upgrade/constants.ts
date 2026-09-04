@@ -10,7 +10,6 @@ export const BINARY_NPM_SCOPE = '@aio-proxy';
 // reports `x64`/`arm64` and `process.platform` reports `darwin`/`linux`, matching
 // the package suffixes exactly.
 export const SUPPORTED_BINARY_TARGETS = ['darwin-arm64', 'darwin-x64', 'linux-arm64', 'linux-x64'] as const;
-export const RELEASE_METADATA_TIMEOUT_MS = 30_000;
 export const BINARY_DOWNLOAD_TIMEOUT_MS = 15 * 60_000;
 
 export type UpgradeMethod = 'brew' | 'bun' | 'npm' | 'pnpm' | 'binary';

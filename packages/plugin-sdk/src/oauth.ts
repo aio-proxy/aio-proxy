@@ -156,6 +156,23 @@ export type OAuthQuotaCapability<AccountOptions, Credential> = {
   readonly reset?: (context: AccountContext<Credential, AccountOptions>) => Promise<void>;
 };
 
+/**
+ * A manual credential refresh. The framework owns the distributed lease, single-flight dedupe,
+ * revision compare-and-swap, and persistence; the adapter only performs the upstream exchange.
+ * It is called even when the credential has not expired, so it must not short-circuit on expiry.
+ */
+export type OAuthCredentialRefreshContext<Credential, AccountOptions> = {
+  readonly credential: Credential;
+  readonly options: AccountOptions;
+  readonly signal: AbortSignal;
+  readonly fetch?: RuntimeFetch;
+};
+
+export type OAuthCredentialRefreshResult<Credential> = {
+  readonly value: Credential;
+  readonly metadata?: { readonly accountLabel?: string; readonly expiresAt?: number };
+};
+
 export type RuntimeFetchTraffic = 'model' | 'control';
 
 export type RuntimeRequestInit = RequestInit & {
@@ -194,4 +211,12 @@ export type OAuthAdapter<AccountOptions = unknown, Credential = unknown> = {
   };
   readonly createRuntime: (context: RuntimeContext<Credential, AccountOptions>) => Promise<OAuthRuntimeResult>;
   readonly quota?: OAuthQuotaCapability<AccountOptions, Credential>;
+  /**
+   * Performs the upstream exchange for a user-initiated credential refresh. Invoked unconditionally,
+   * including while the current credential is still valid, so it must not short-circuit on expiry.
+   * The framework owns the lease, single-flight dedupe, revision compare-and-swap, and persistence.
+   */
+  readonly refreshCredential?: (
+    context: OAuthCredentialRefreshContext<Credential, AccountOptions>,
+  ) => Promise<OAuthCredentialRefreshResult<Credential>>;
 };

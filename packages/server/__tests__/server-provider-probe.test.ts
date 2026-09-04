@@ -68,6 +68,7 @@ describe('server routes', () => {
             weight: 7,
             protocols: [ProviderProtocol.OpenAICompatible],
             hasQuota: false,
+            canRefreshCredential: false,
             clientModels: ['gpt-test'],
             hasApiKey: false,
             state: { status: 'ready' },

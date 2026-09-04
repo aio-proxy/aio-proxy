@@ -75,3 +75,7 @@ export const githubEmailsResponseSchema = zod.array(
     })
     .loose(),
 );
+
+// `copilot_internal/user` is read key by key with lossy per-entry parsing, so the schema's only job
+// is to reject a non-object body and keep `fetchJson`'s standard failure message.
+export const copilotUserResponseSchema = zod.record(zod.string(), zod.unknown());

@@ -189,3 +189,36 @@ async function adapterFrom(
   if (registered === undefined) throw new Error('Kimi Code OAuth adapter was not registered');
   return registered;
 }
+
+test('refreshCredential exchanges an unexpired credential instead of returning it unchanged', async () => {
+  let exchanges = 0;
+  const adapter = await adapterFrom(
+    createKimiCodePlugin(undefined, {
+      now: () => 1_000,
+      fetch: async () => {
+        exchanges += 1;
+        return Response.json({ access_token: 'new-access', refresh_token: 'new-refresh', expires_in: 60 });
+      },
+    }),
+  );
+
+  const result = await adapter.refreshCredential!({
+    credential: {
+      accessToken: 'old-access',
+      refreshToken: 'old-refresh',
+      expiresAt: Number.MAX_SAFE_INTEGER,
+      deviceId: 'device-1',
+    },
+    options: {},
+    signal: new AbortController().signal,
+  });
+
+  expect(exchanges).toBe(1);
+  expect(result.value).toEqual({
+    accessToken: 'new-access',
+    refreshToken: 'new-refresh',
+    expiresAt: 61_000,
+    deviceId: 'device-1',
+  });
+  expect(result.metadata).toEqual({ expiresAt: 61_000 });
+});

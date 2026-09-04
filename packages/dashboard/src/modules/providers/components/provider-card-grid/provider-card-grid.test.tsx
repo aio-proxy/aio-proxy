@@ -19,6 +19,9 @@ rs.mock('../../hooks/use-provider-mutations', () => ({
 rs.mock('../../hooks/use-provider-routing-mutation', () => ({
   useProviderRoutingMutation: () => ({ mutate: routingMocks.mutate, isPending: false }),
 }));
+rs.mock('../../hooks/use-provider-credential-refresh', () => ({
+  useProviderCredentialRefresh: () => ({ mutate: rs.fn(), isPending: false }),
+}));
 rs.mock('../provider-quota-ring', () => ({ ProviderQuotaRing: () => null }));
 // The grid's own three queries all hand back lookup maps; the card's per-Provider quota query is a
 // different shape, so the mock has to tell them apart rather than return one value for everything.

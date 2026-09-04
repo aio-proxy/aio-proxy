@@ -61,13 +61,18 @@ export type ServerRuntime = {
   configFile: AtomicConfigFile | undefined;
 };
 
-export function queueRebuild(runtime: ServerRuntime): void {
-  if (runtime.closed) return;
+/**
+ * Resolves once the rebuilt snapshot has been swapped in, so a caller that must not acknowledge
+ * success before the new summaries are readable can await it. Never rejects: a rebuild failure
+ * leaves the previous snapshot serving, which is not the awaiting caller's error to report.
+ */
+export function queueRebuild(runtime: ServerRuntime): Promise<void> {
+  if (runtime.closed) return Promise.resolve();
   if (!runtime.managerReady) {
     runtime.startupDiagnosticRebuildPending = true;
-    return;
+    return Promise.resolve();
   }
-  void runtime
+  return runtime
     .queue(async () => {
       if (!runtime.closed)
         await commitConfig(runtime, (runtime.manager.current() as Snapshot).config, 'credential-diagnostic');
@@ -133,6 +138,7 @@ export type ServerStateParts = Pick<
   | 'logicalSessionStore'
   | 'modelRouting'
   | 'oauthQuota'
+  | 'oauthCredentialRefresh'
   | 'oauthLoginSessions'
   | 'pluginControlPlane'
   | 'providerSummaries'
@@ -194,6 +200,7 @@ export function assembleServerState(runtime: ServerRuntime, parts: ServerStatePa
     providerSummaries: parts.providerSummaries,
     currentConfig: () => (manager.current() as Snapshot).config,
     oauthQuota: parts.oauthQuota,
+    oauthCredentialRefresh: parts.oauthCredentialRefresh,
     quotaCache: parts.quotaCache,
     warmProviderQuota: (providerId) => parts.quotaCache.warm(providerId),
     reload: parts.reload,

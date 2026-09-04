@@ -7,13 +7,18 @@ import {
   zod,
 } from '@aio-proxy/plugin-sdk';
 
-import { CHATGPT_CATALOG_TTL_MS, discoverOpenAIChatGPTModels } from './catalog';
-import { extractAccountId, extractEmail, normalizeChatGPTEmail } from './jwt';
-import { ChatGPTAccountIdMissingError, CHATGPT_CLIENT_ID, exchangeCodeForTokens } from './oauth-flow';
-import { generatePKCE, generateState } from './pkce';
-import { readOpenAIChatGPTQuota } from './quota/index';
-import { createOpenAIChatGPTRuntime } from './runtime/index';
-import type { ChatGPTCredential } from './schema';
+import { CHATGPT_CATALOG_TTL_MS, CHATGPT_IMAGE_MODELS, discoverOpenAIChatGPTModels } from '../catalog';
+import { extractAccountId, extractEmail, normalizeChatGPTEmail } from '../jwt';
+import {
+  ChatGPTAccountIdMissingError,
+  CHATGPT_CLIENT_ID,
+  exchangeCodeForTokens,
+  refreshAccessToken,
+} from '../oauth-flow';
+import { generatePKCE, generateState } from '../pkce';
+import { readOpenAIChatGPTQuota } from '../quota/index';
+import { createOpenAIChatGPTRuntime } from '../runtime/index';
+import type { ChatGPTCredential } from '../schema';
 
 const CHATGPT_AUTHORIZATION_ENDPOINT = 'https://auth.openai.com/oauth/authorize' as const;
 const CHATGPT_SCOPE = 'openid profile email offline_access' as const;
@@ -126,14 +131,28 @@ export function createOpenAIChatGPTPlugin(
     },
     catalog: {
       policy: { kind: 'ttl', ttlMs: CHATGPT_CATALOG_TTL_MS },
-      discover: async ({ fetch, signal }) => ({
-        language: await discoverOpenAIChatGPTModels(signal, fetch),
-        image: [],
+      discover: async ({ credentials, fetch, signal }) => ({
+        language: await discoverOpenAIChatGPTModels(credentials, signal, fetch),
+        image: CHATGPT_IMAGE_MODELS,
         embedding: [],
         speech: [],
         transcription: [],
         reranking: [],
       }),
+    },
+    refreshCredential: async ({ credential, signal, fetch }) => {
+      const refreshed = await refreshAccessToken(credential.refreshToken, {
+        ...(fetch === undefined ? {} : { fetch }),
+        signal,
+        ...(credential.email === undefined ? {} : { email: credential.email }),
+      });
+      return {
+        value: refreshed,
+        metadata: {
+          expiresAt: refreshed.expiresAt,
+          ...(refreshed.email === undefined ? {} : { accountLabel: refreshed.email }),
+        },
+      };
     },
     createRuntime: createOpenAIChatGPTRuntime,
     quota: { read: (context) => readOpenAIChatGPTQuota(context) },
