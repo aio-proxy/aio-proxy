@@ -319,6 +319,16 @@ test('a retained API key keeps its authored template byte-for-byte', async () =>
   });
 });
 
+test('retaining a key without a label clears the authored label', async () => {
+  await withSettingsFixture(async ({ configPath, routes }) => {
+    const response = await put(routes, { apiKeys: [{ retain: 0 }] });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ ok: true, settings: { apiKeys: [{ key: '****' }] } });
+    expect(onDisk(configPath).server.apiKeys).toEqual([{ key: '{{env.SETTINGS_API_KEY}}' }]);
+  });
+});
+
 test('a new API key is appended and an unlisted authored key is removed', async () => {
   await withSettingsFixture(async ({ configPath, routes }) => {
     const response = await put(routes, {

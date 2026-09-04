@@ -68,7 +68,9 @@ function resolveApiKeys(
     if (!isPlainObject(kept) || typeof kept['key'] !== 'string') {
       throw new TypeError(`server.apiKeys[${entry.retain}] cannot be retained`);
     }
-    return { ...kept, key: kept['key'], ...label };
+    // The mutation owns `label` outright: an omitted label clears the authored one.
+    const { label: _label, ...rest } = kept;
+    return { ...rest, key: kept['key'], ...label };
   });
 }
 

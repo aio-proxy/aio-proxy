@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@aio-
 import { Input } from '@aio-proxy/ui/components/input';
 import { Label } from '@aio-proxy/ui/components/label';
 import { PlusIcon, Trash2Icon } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 
 import { apiKeysSchema } from './settings-form-contract';
 
@@ -35,7 +35,14 @@ const mutationEntries = (rows: readonly ApiKeyRow[]): readonly DashboardApiKeyMu
 
 export const SettingsApiKeysGroup: React.FC<SettingsApiKeysGroupProps> = ({ disabled, settings, onSave }) => {
   const [rows, setRows] = useState<readonly ApiKeyRow[]>(() => rowsFromSettings(settings));
-  const nextId = useRef(settings.apiKeys.length);
+  const [source, setSource] = useState(settings.apiKeys);
+
+  // `retain` indexes address the authored array the server just sent, so a refetch that
+  // replaces it invalidates every draft row. Re-derive instead of saving against stale indexes.
+  if (source !== settings.apiKeys) {
+    setSource(settings.apiKeys);
+    setRows(rowsFromSettings(settings));
+  }
 
   const entries = mutationEntries(rows);
   const parsed = apiKeysSchema.safeParse(entries);
@@ -111,9 +118,10 @@ export const SettingsApiKeysGroup: React.FC<SettingsApiKeysGroupProps> = ({ disa
             size="xs"
             disabled={disabled}
             onClick={() => {
-              const id = nextId.current;
-              nextId.current += 1;
-              setRows((current) => [...current, { id, key: '', label: '' }]);
+              setRows((current) => [
+                ...current,
+                { id: Math.max(-1, ...current.map((entry) => entry.id)) + 1, key: '', label: '' },
+              ]);
             }}
           >
             <PlusIcon data-icon="inline-start" />

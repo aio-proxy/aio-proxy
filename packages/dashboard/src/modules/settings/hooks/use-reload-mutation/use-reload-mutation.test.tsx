@@ -33,6 +33,19 @@ test('refreshes settings and providers after a successful reload', async () => {
   });
 });
 
+test('refreshes every config-backed query after a successful reload', async () => {
+  mocks.reloadConfigMutationFn.mockReset().mockResolvedValue({ providerIds: { added: [], removed: [] } });
+  const { invalidateQueries, result } = renderReloadMutation();
+
+  result.current.mutate();
+
+  // A reload commits the whole config snapshot, so routing and plugin caches go stale too.
+  await waitFor(() => {
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: queryKeys.plugins });
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: queryKeys.routingModels });
+  });
+});
+
 test('does not refresh anything when the reload is rejected', async () => {
   mocks.reloadConfigMutationFn.mockReset().mockRejectedValue(new Error('providers'));
   const { invalidateQueries, result } = renderReloadMutation();

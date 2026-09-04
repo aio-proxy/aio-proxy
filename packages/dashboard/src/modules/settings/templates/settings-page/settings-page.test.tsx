@@ -245,3 +245,26 @@ test('removes a stored API key', () => {
   expect(mocks.mutate).toHaveBeenCalledTimes(1);
   expect(mocks.mutate).toHaveBeenCalledWith({ apiKeys: [{ retain: 1 }] });
 });
+
+test('resets API key rows when a reload replaces the stored keys', () => {
+  const { rerender } = renderPage();
+
+  const group = screen.getByTestId('settings-group-api-keys');
+  fireEvent.change(within(group).getAllByLabelText(/Label|标签|標籤|ラベル|라벨/u)[0] as HTMLElement, {
+    target: { value: 'stale-draft' },
+  });
+
+  mocks.useSettingsQuery.mockReturnValue({
+    data: { ...settings, apiKeys: [{ key: '****', label: 'reloaded' }] },
+    isError: false,
+    isLoading: false,
+  });
+  rerender(<SettingsPage />);
+
+  const reloaded = screen.getByTestId('settings-group-api-keys');
+  expect(within(reloaded).getAllByDisplayValue('****')).toHaveLength(1);
+  expect(within(reloaded).queryByDisplayValue('stale-draft')).toBeNull();
+
+  fireEvent.click(within(reloaded).getByRole('button', { name: /Save keys|保存密钥|儲存金鑰|キーを保存|키 저장/u }));
+  expect(mocks.mutate).toHaveBeenCalledWith({ apiKeys: [{ retain: 0, label: 'reloaded' }] });
+});

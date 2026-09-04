@@ -9,8 +9,13 @@ export const useReloadMutation = () => {
   return useMutation({
     mutationFn: reloadConfigMutationFn,
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.settings });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.providers });
+      // A reload commits the whole config snapshot, so every config-backed cache is stale.
+      // `providers` and `plugins` are prefixes of their own edit-view keys.
+      await Promise.all(
+        [queryKeys.settings, queryKeys.providers, queryKeys.plugins, queryKeys.routingModels].map((queryKey) =>
+          queryClient.invalidateQueries({ queryKey }),
+        ),
+      );
     },
   });
 };
