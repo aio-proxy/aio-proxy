@@ -1,9 +1,8 @@
 import { m } from '@aio-proxy/i18n';
 import type { DashboardSettingsMutationInput, DashboardSettingsView } from '@aio-proxy/types';
-import { Field, FieldDescription, FieldError } from '@aio-proxy/ui/components/field';
 import { Input } from '@aio-proxy/ui/components/input';
-import { Label } from '@aio-proxy/ui/components/label';
 
+import { SettingsFieldRow } from './settings-field-row';
 import { hostSchema, portSchema } from './settings-form-contract';
 import type { SettingsFormApi } from './use-settings-form';
 
@@ -25,8 +24,12 @@ export const SettingsEndpointFields: React.FC<SettingsEndpointFieldsProps> = ({
       {(field) => {
         const invalid = field.state.meta.isTouched && !hostSchema.safeParse(field.state.value).success;
         return (
-          <Field>
-            <Label htmlFor={field.name}>{m['dashboard.settings.host']()}</Label>
+          <SettingsFieldRow
+            label={m['dashboard.settings.host']()}
+            htmlFor={field.name}
+            description={m['dashboard.settings.host_description']()}
+            error={invalid ? m['dashboard.settings.invalid']() : null}
+          >
             <Input
               id={field.name}
               value={field.state.value}
@@ -40,9 +43,7 @@ export const SettingsEndpointFields: React.FC<SettingsEndpointFieldsProps> = ({
                 }
               }}
             />
-            <FieldDescription>{m['dashboard.settings.host_description']()}</FieldDescription>
-            <FieldError>{invalid ? m['dashboard.settings.invalid']() : null}</FieldError>
-          </Field>
+          </SettingsFieldRow>
         );
       }}
     </form.Field>
@@ -50,8 +51,12 @@ export const SettingsEndpointFields: React.FC<SettingsEndpointFieldsProps> = ({
       {(field) => {
         const invalid = field.state.meta.isTouched && !portSchema.safeParse(field.state.value).success;
         return (
-          <Field>
-            <Label htmlFor={field.name}>{m['dashboard.settings.port']()}</Label>
+          <SettingsFieldRow
+            label={m['dashboard.settings.port']()}
+            htmlFor={field.name}
+            description={m['dashboard.settings.port_description']()}
+            error={invalid ? m['dashboard.settings.invalid']() : null}
+          >
             <Input
               id={field.name}
               type="number"
@@ -68,9 +73,7 @@ export const SettingsEndpointFields: React.FC<SettingsEndpointFieldsProps> = ({
                 }
               }}
             />
-            <FieldDescription>{m['dashboard.settings.port_description']()}</FieldDescription>
-            <FieldError>{invalid ? m['dashboard.settings.invalid']() : null}</FieldError>
-          </Field>
+          </SettingsFieldRow>
         );
       }}
     </form.Field>

@@ -3,8 +3,9 @@ import type { DashboardApiKeyMutation, DashboardSettingsMutationInput, Dashboard
 import { Button } from '@aio-proxy/ui/components/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@aio-proxy/ui/components/card';
 import { Input } from '@aio-proxy/ui/components/input';
+import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from '@aio-proxy/ui/components/input-group';
 import { Label } from '@aio-proxy/ui/components/label';
-import { PlusIcon, Trash2Icon } from 'lucide-react';
+import { DicesIcon, PlusIcon, Trash2Icon } from 'lucide-react';
 import { useState } from 'react';
 
 import { apiKeysSchema } from './settings-form-contract';
@@ -33,6 +34,11 @@ const mutationEntries = (rows: readonly ApiKeyRow[]): readonly DashboardApiKeyMu
     return [{ key: row.key.trim(), ...label }];
   });
 
+// The generated key never leaves the browser until the row is saved, so the platform CSPRNG
+// is the whole requirement here — 24 bytes of entropy behind the conventional `sk-` prefix.
+const generateApiKey = () =>
+  `sk-${Array.from(crypto.getRandomValues(new Uint8Array(24)), (byte) => byte.toString(16).padStart(2, '0')).join('')}`;
+
 export const SettingsApiKeysGroup: React.FC<SettingsApiKeysGroupProps> = ({ disabled, settings, onSave }) => {
   const [rows, setRows] = useState<readonly ApiKeyRow[]>(() => rowsFromSettings(settings));
   const [revision, setRevision] = useState(settings.apiKeysRevision);
@@ -46,6 +52,8 @@ export const SettingsApiKeysGroup: React.FC<SettingsApiKeysGroupProps> = ({ disa
 
   const entries = mutationEntries(rows);
   const parsed = apiKeysSchema.safeParse(entries);
+  const patchRow = (id: number, patch: Partial<ApiKeyRow>) =>
+    setRows((current) => current.map((entry) => (entry.id === id ? { ...entry, ...patch } : entry)));
 
   return (
     <Card data-testid="settings-group-api-keys">
@@ -59,58 +67,79 @@ export const SettingsApiKeysGroup: React.FC<SettingsApiKeysGroupProps> = ({ disa
         {rows.length === 0 ? (
           <p className="text-sm text-muted-foreground">{m['dashboard.settings.api_keys_empty']()}</p>
         ) : null}
-        {rows.map((row) => (
-          <div key={row.id} className="flex items-end gap-2">
-            <div className="flex-1 space-y-1">
-              <Label htmlFor={`api-key-label-${row.id}`} className="text-xs">
-                {m['dashboard.settings.api_keys_label']()}
-              </Label>
-              <Input
-                id={`api-key-label-${row.id}`}
-                className="h-7 text-xs"
-                value={row.label}
+        {rows.map((row) => {
+          const stored = row.retain !== undefined;
+          return (
+            // The labels sit above the inputs, so the remove control aligns to the input line
+            // rather than to the row box — `items-end` plus a control-height button centers it.
+            <div key={row.id} className="flex items-end gap-2">
+              <div className="flex-[2] space-y-1">
+                <Label htmlFor={`api-key-value-${row.id}`} className="text-xs">
+                  {m['dashboard.settings.api_keys_value']()}
+                </Label>
+                {stored ? (
+                  <Input
+                    id={`api-key-value-${row.id}`}
+                    className="font-mono text-xs"
+                    type="password"
+                    autoComplete="off"
+                    value={row.key}
+                    readOnly
+                    disabled={disabled}
+                    placeholder={m['dashboard.settings.api_keys_stored']()}
+                  />
+                ) : (
+                  <InputGroup>
+                    <InputGroupInput
+                      id={`api-key-value-${row.id}`}
+                      className="font-mono text-xs"
+                      type="text"
+                      autoComplete="off"
+                      value={row.key}
+                      disabled={disabled}
+                      placeholder="sk-"
+                      onChange={(event) => patchRow(row.id, { key: event.target.value })}
+                    />
+                    <InputGroupAddon align="inline-end">
+                      <InputGroupButton
+                        size="icon-xs"
+                        disabled={disabled}
+                        aria-label={m['dashboard.settings.api_keys_generate']()}
+                        onClick={() => patchRow(row.id, { key: generateApiKey() })}
+                      >
+                        <DicesIcon />
+                      </InputGroupButton>
+                    </InputGroupAddon>
+                  </InputGroup>
+                )}
+              </div>
+              <div className="flex-1 space-y-1">
+                <Label htmlFor={`api-key-label-${row.id}`} className="text-xs">
+                  {m['dashboard.settings.api_keys_label']()}
+                </Label>
+                <Input
+                  id={`api-key-label-${row.id}`}
+                  className="text-xs"
+                  value={row.label}
+                  disabled={disabled}
+                  onChange={(event) => patchRow(row.id, { label: event.target.value })}
+                />
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
                 disabled={disabled}
-                onChange={(event) =>
-                  setRows((current) =>
-                    current.map((entry) => (entry.id === row.id ? { ...entry, label: event.target.value } : entry)),
-                  )
-                }
-              />
+                aria-label={m['dashboard.settings.api_keys_remove']({
+                  label: row.label || m['dashboard.settings.api_keys_unnamed'](),
+                })}
+                onClick={() => setRows((current) => current.filter((entry) => entry.id !== row.id))}
+              >
+                <Trash2Icon />
+              </Button>
             </div>
-            <div className="flex-1 space-y-1">
-              <Label htmlFor={`api-key-value-${row.id}`} className="text-xs">
-                {m['dashboard.settings.api_keys_value']()}
-              </Label>
-              <Input
-                id={`api-key-value-${row.id}`}
-                className="h-7 font-mono text-xs"
-                type={row.retain === undefined ? 'text' : 'password'}
-                autoComplete="off"
-                value={row.key}
-                readOnly={row.retain !== undefined}
-                disabled={disabled}
-                placeholder={row.retain === undefined ? undefined : m['dashboard.settings.api_keys_stored']()}
-                onChange={(event) =>
-                  setRows((current) =>
-                    current.map((entry) => (entry.id === row.id ? { ...entry, key: event.target.value } : entry)),
-                  )
-                }
-              />
-            </div>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-xs"
-              disabled={disabled}
-              aria-label={m['dashboard.settings.api_keys_remove']({
-                label: row.label || m['dashboard.settings.api_keys_unnamed'](),
-              })}
-              onClick={() => setRows((current) => current.filter((entry) => entry.id !== row.id))}
-            >
-              <Trash2Icon />
-            </Button>
-          </div>
-        ))}
+          );
+        })}
         <div className="flex flex-wrap gap-2">
           <Button
             type="button"
