@@ -9,13 +9,17 @@ import { refreshProviderCredential } from '../../services/provider-credential-re
 /**
  * Invalidates the Provider list rather than seeding it: the refreshed `accountLabel` and `expiresAt`
  * only exist in the rebuilt server-side summary, and the refresh response carries no summary at all.
+ * Invalidated on failure too — a non-retryable exchange failure persists a reauthentication
+ * diagnostic that the card renders, and the toast alone would not surface it.
  */
 export const useProviderCredentialRefresh = () => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => refreshProviderCredential(id),
-    onSuccess: () => {
+    onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.providers });
+    },
+    onSuccess: () => {
       toast.add({ type: 'success', title: m['dashboard.providers.toast.credential_refreshed']() });
     },
     onError: () => {

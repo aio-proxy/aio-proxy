@@ -1,5 +1,7 @@
 import { afterEach, expect, test } from 'bun:test';
 
+import { CredentialRefreshError } from '@aio-proxy/plugin-sdk';
+
 import { OAuthAccountUnavailableError } from '../oauth-account-context';
 import { cleanupQuotaFixtures, createQuotaFixture, PROVIDER_ID, quotaSignal } from '../plugin-quota/test-support';
 import { createOAuthCredentialRefresher } from './credential-refresh';
@@ -141,6 +143,42 @@ test('a plugin without the refresh capability is a permanent failure', async () 
 
   expect(error).toBeInstanceOf(OAuthAccountUnavailableError);
   expect((error as OAuthAccountUnavailableError).permanent).toBe(true);
+});
+
+test('a non-retryable exchange failure persists the reauthentication diagnostic', async () => {
+  // The control-plane credential port skips this write so a background quota read cannot mark a
+  // Provider as needing reauthentication. Without it a revoked refresh token leaves the Provider
+  // reporting ready and the user sees only a generic toast.
+  const fixture = createQuotaFixture({
+    refreshCredential: async () => {
+      throw new CredentialRefreshError('invalid_grant', { retryable: false, reason: 'invalid_grant' });
+    },
+  });
+  const refresher = createOAuthCredentialRefresher(fixture.dependencies);
+
+  await refresher.refresh(PROVIDER_ID, quotaSignal()).catch(() => {});
+
+  const diagnostic = fixture.repository
+    .readDiagnostics(PROVIDER_ID)
+    .find((entry) => entry.code === 'CREDENTIAL_REFRESH_FAILED');
+  expect(diagnostic).toBeDefined();
+  expect(fixture.changed()).toBeGreaterThan(0);
+});
+
+test('a retryable exchange failure leaves the Provider undiagnosed', async () => {
+  // A transient upstream hiccup is not the user's cue to re-login; the port applies the same rule.
+  const fixture = createQuotaFixture({
+    refreshCredential: async () => {
+      throw new CredentialRefreshError('upstream unavailable', { retryable: true, reason: 'network' });
+    },
+  });
+  const refresher = createOAuthCredentialRefresher(fixture.dependencies);
+
+  await refresher.refresh(PROVIDER_ID, quotaSignal()).catch(() => {});
+
+  expect(
+    fixture.repository.readDiagnostics(PROVIDER_ID).some((entry) => entry.code === 'CREDENTIAL_REFRESH_FAILED'),
+  ).toBe(false);
 });
 
 test('an upstream exchange failure is redacted and surfaced as a refresh error', async () => {

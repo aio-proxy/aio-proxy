@@ -1,5 +1,6 @@
 import { redactPluginError } from '@aio-proxy/core';
-import type { OAuthAdapter } from '@aio-proxy/plugin-sdk';
+import { CredentialRefreshError, type OAuthAdapter } from '@aio-proxy/plugin-sdk';
+import { providerLoginCommand } from '@aio-proxy/types';
 
 import {
   type OAuthAccountContextDependencies,
@@ -47,6 +48,32 @@ async function exchange(
 }
 
 /**
+ * `createCredentialPort` writes `CREDENTIAL_REFRESH_FAILED` for a non-retryable exchange failure only
+ * in `runtime` mode, so a background quota read cannot mark a Provider as needing reauthentication.
+ * A manual refresh has to do it: a revoked refresh token (`invalid_grant`) is exactly the case the
+ * user needs told, and without this the Provider keeps reporting ready and the dashboard shows only
+ * a generic toast. Retryable failures are left alone — the same rule the port applies.
+ */
+async function recordPermanentFailure(
+  dependencies: OAuthAccountContextDependencies,
+  providerId: string,
+  error: unknown,
+): Promise<void> {
+  if (error instanceof CredentialRefreshError && error.retryable) return;
+  try {
+    const diagnostic = dependencies.diagnostics('CREDENTIAL_REFRESH_FAILED', {
+      providerId,
+      retryable: false,
+      suggestedCommand: providerLoginCommand(providerId),
+    });
+    // Awaited for the same reason the success path awaits: the route rejects as soon as this returns
+    // and the dashboard refetches immediately, so a queued-but-unlanded rebuild would serve a summary
+    // that still reports the Provider as ready.
+    if (dependencies.repository.writeDiagnostic(providerId, diagnostic)) await dependencies.onDiagnosticChanged();
+  } catch {}
+}
+
+/**
  * `CredentialPort.refresh` is already the serializer: it single-flights concurrent callers per
  * repository/Provider ID/mode, behind the SQLite refresh lease and a revision compare-and-swap. A
  * queue here would defeat that — the second click would run *after* the first released its flight
@@ -79,6 +106,7 @@ export function createOAuthCredentialRefresher(
                 error: redactPluginError(error, { secretValues: [...prepared.secretValues] }),
               });
             } catch {}
+            await recordPermanentFailure(dependencies, prepared.providerId, error);
             throw new OAuthCredentialRefreshError();
           }
         },
