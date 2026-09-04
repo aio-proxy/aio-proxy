@@ -1,15 +1,8 @@
 export {
-  ROUTING_BOARD_HIGH,
-  ROUTING_BOARD_UNUSED,
-  applyRoutingBoardMove,
+  applyRoutingBoardLayout,
   applyRoutingShare,
   buildRoutingBoard,
-  listsFromBoard,
-  sameListMembership,
-  routingBoardAfterListId,
-  routingBoardTierListId,
   type RoutingBoard,
   type RoutingBoardDraftRow,
   type RoutingBoardItem,
-  type RoutingBoardLists,
 } from './routing-board';
