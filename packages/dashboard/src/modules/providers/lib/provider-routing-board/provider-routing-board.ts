@@ -196,6 +196,29 @@ export const applyProviderShare = (
   }),
 });
 
+const TIER_PRIORITY = /^tier:(\d+)$/;
+
+/**
+ * The priorities the board already carries, when they are still usable as-is.
+ *
+ * A tier ID encodes the priority it was built from, so a save that only moved a weight slider can
+ * commit the priorities the config already holds. Rewriting them would be visible beyond this
+ * board: exact model overrides are absolute, so recompacting two Providers that both sit at 0 into
+ * 20 and 10 flips their order against a model override that pinned one of them at 5.
+ *
+ * Anything the board changed disqualifies the whole set — a new tier has no encoded priority, and a
+ * moved tier leaves the encoded ones out of descending order — and the layout is recompacted. So
+ * does a value outside the supported range, which the server would clamp into a collision.
+ */
+const preservedPriorities = (tiers: readonly ProviderRoutingBoardTier[]): number[] | undefined => {
+  const priorities = tiers.map((tier) => Number(TIER_PRIORITY.exec(tier.id)?.[1] ?? Number.NaN));
+  return priorities.every(
+    (priority, index) => priority <= ROUTING_VALUE_MAX && (index === 0 || priority < (priorities[index - 1] ?? 0)),
+  )
+    ? priorities
+    : undefined;
+};
+
 export const providerRoutingMutation = (
   board: ProviderRoutingBoard,
   revision: string,
@@ -208,11 +231,12 @@ export const providerRoutingMutation = (
   // Priorities descend from a top that already fits, rather than being capped per tier: capping would
   // collapse the top two whenever the packed board needs the whole range (10001 tiers at spacing 1).
   const top = Math.min(ROUTING_VALUE_MAX, occupied.length * spacing);
+  const preserved = preservedPriorities(occupied);
   return {
     revision,
     providers: Object.fromEntries(
       occupied.flatMap((tier, index) => {
-        const priority = Math.max(0, top - index * spacing);
+        const priority = preserved?.[index] ?? Math.max(0, top - index * spacing);
         // Weight zero is the authored "parked" value; reordering tiers must not revive that traffic.
         return tier.items.map((item) => [item.providerId, { priority, weight: item.weight }]);
       }),

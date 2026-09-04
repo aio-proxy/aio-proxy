@@ -9,6 +9,7 @@ import {
   projectWeightedTierLayout,
   weightedTierAfterSlotId,
   weightedTierIdFromSortable,
+  weightedTierItemIdFromSortable,
   weightedTierListId,
   weightedTierLists,
   weightedTierParkingId,
@@ -112,10 +113,14 @@ export const WeightedTierBoard = <TItem,>({
     [parking, tiers],
   );
   const tiersById = useMemo(() => new Map(tiers.map((tier, index) => [tier.id, { index, tier }])), [tiers]);
+  // `lists` holds dnd-kit sortable ids; a slot can hold either an item's or a whole tier's, so each
+  // lookup translates only its own namespace and ignores the other.
   const itemsFor = (ids: readonly string[]): WeightedTierBoardItem<TItem>[] =>
-    ids.flatMap((id) => (itemsById.get(id) === undefined ? [] : [itemsById.get(id)!]));
+    ids.flatMap((id) => {
+      const item = itemsById.get(weightedTierItemIdFromSortable(id) ?? '');
+      return item === undefined ? [] : [item];
+    });
   const previewFor = (listId: string): { readonly index: number; readonly itemCount: number } | undefined => {
-    // A slot holds the dragged sortable id; only a tier's translates back to a tier.
     const preview = tiersById.get(weightedTierIdFromSortable(lists[listId]?.[0] ?? '') ?? '');
     return preview === undefined ? undefined : { index: preview.index, itemCount: preview.tier.items.length };
   };
@@ -144,11 +149,12 @@ export const WeightedTierBoard = <TItem,>({
         dragListsRef.current = null;
         setDragLists(null);
         if (event.canceled || (source?.type !== 'item' && source?.type !== 'tier')) return;
-        // dnd-kit reports the namespaced sortable id for a tier; the layout speaks domain tier IDs.
+        // dnd-kit reports namespaced sortable ids; the layout speaks domain tier and item IDs.
         const sourceId = String(source.id);
-        const tierId = source.type === 'tier' ? weightedTierIdFromSortable(sourceId) : undefined;
-        if (source.type === 'tier' && tierId === undefined) return;
-        const operation: WeightedTierOperation = { type: source.type, id: tierId ?? sourceId };
+        const id =
+          source.type === 'tier' ? weightedTierIdFromSortable(sourceId) : weightedTierItemIdFromSortable(sourceId);
+        if (id === undefined) return;
+        const operation: WeightedTierOperation = { type: source.type, id };
         const next = projectWeightedTierLayout(snapshot.current, nextLists, operation);
         if (next !== snapshot.current) onLayoutChange(next, operation);
       }}

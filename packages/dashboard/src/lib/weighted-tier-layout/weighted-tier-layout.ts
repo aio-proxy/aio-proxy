@@ -10,19 +10,29 @@ export const WEIGHTED_TIER_ORDER = 'weighted-tier:order';
 export const WEIGHTED_TIER_HIGH = 'weighted-tier:slot:high';
 
 const TIER_SORTABLE_PREFIX = 'weighted-tier:tier:';
+const ITEM_SORTABLE_PREFIX = 'weighted-tier:item:';
 
 /**
- * The dnd-kit sortable id of a tier.
+ * The dnd-kit sortable id of a tier, and of an item.
  *
- * Tiers and items register in one `DragDropProvider`, so a domain tier ID that happens to equal an
- * item ID — a Provider called `tier:10` against the tier generated for priority 10 — would have both
- * register the same sortable id and shadow each other. The namespace keeps them distinct; callers
- * translate back with `weightedTierIdFromSortable` before emitting a domain operation.
+ * Tiers, items, and the droppable lists all register in one `DragDropProvider`, and dnd-kit accepts
+ * any nonempty string as an id. Registering the domain IDs directly lets caller-supplied ones
+ * collide with generated ones — a Provider called `tier:10` against the tier generated for priority
+ * 10, or one called `weighted-tier:items:high` against that tier's droppable list — and either
+ * registration then shadows the other. Both id spaces are namespaced instead, disjoint from each
+ * other and from every list id (`weighted-tier:items:…` never starts with `weighted-tier:item:`).
+ * `lists` therefore speaks sortable ids throughout, and every projection translates back before it
+ * touches the layout.
  */
 export const weightedTierSortableId = (tierId: string): string => `${TIER_SORTABLE_PREFIX}${tierId}`;
 
 export const weightedTierIdFromSortable = (sortableId: string): string | undefined =>
   sortableId.startsWith(TIER_SORTABLE_PREFIX) ? sortableId.slice(TIER_SORTABLE_PREFIX.length) : undefined;
+
+export const weightedTierItemSortableId = (itemId: string): string => `${ITEM_SORTABLE_PREFIX}${itemId}`;
+
+export const weightedTierItemIdFromSortable = (sortableId: string): string | undefined =>
+  sortableId.startsWith(ITEM_SORTABLE_PREFIX) ? sortableId.slice(ITEM_SORTABLE_PREFIX.length) : undefined;
 
 export const weightedTierListId = (tierId: string): string => `weighted-tier:items:${tierId}`;
 export const weightedTierAfterSlotId = (tierId: string): string => `weighted-tier:slot:after:${tierId}`;
@@ -34,11 +44,11 @@ export const weightedTierLists = (layout: WeightedTierLayout): WeightedTierLists
     [WEIGHTED_TIER_HIGH]: [],
   };
   for (const tier of layout.tiers) {
-    lists[weightedTierListId(tier.id)] = [...tier.itemIds];
+    lists[weightedTierListId(tier.id)] = tier.itemIds.map(weightedTierItemSortableId);
     lists[weightedTierAfterSlotId(tier.id)] = [];
   }
   for (const [id, itemIds] of Object.entries(layout.parking)) {
-    lists[weightedTierParkingId(id)] = [...itemIds];
+    lists[weightedTierParkingId(id)] = itemIds.map(weightedTierItemSortableId);
   }
   return lists;
 };
@@ -54,11 +64,19 @@ const sameLayout = (left: WeightedTierLayout, right: WeightedTierLayout): boolea
   Object.keys(left.parking).length === Object.keys(right.parking).length &&
   Object.entries(left.parking).every(([id, itemIds]) => sameIds(itemIds, right.parking[id] ?? []));
 
-// The order list is kept in dnd-kit's namespaced id space; every projection compares domain ids.
+// Every list is kept in dnd-kit's namespaced id space; every projection compares domain ids. A slot
+// list can hold either kind of sortable — an item dropped into it, or a whole tier being reordered —
+// so both translations drop anything from the other namespace instead of guessing.
 const tierOrder = (lists: Readonly<Record<string, readonly string[]>>): string[] =>
   (lists[WEIGHTED_TIER_ORDER] ?? []).flatMap((id) => {
     const tierId = weightedTierIdFromSortable(id);
     return tierId === undefined ? [] : [tierId];
+  });
+
+const itemIdsIn = (lists: Readonly<Record<string, readonly string[]>>, listId: string): string[] =>
+  (lists[listId] ?? []).flatMap((id) => {
+    const itemId = weightedTierItemIdFromSortable(id);
+    return itemId === undefined ? [] : [itemId];
   });
 
 const projectTier = (
@@ -118,15 +136,15 @@ const projectItem = (
     if (itemIds.length > 0) tiers.push({ id: nextTierId(usedTierIds), itemIds: [...itemIds] });
   };
 
-  addNewTier(lists[WEIGHTED_TIER_HIGH] ?? []);
+  addNewTier(itemIdsIn(lists, WEIGHTED_TIER_HIGH));
   for (const tier of layout.tiers) {
-    const itemIds = lists[weightedTierListId(tier.id)] ?? [];
-    if (itemIds.length > 0) tiers.push({ id: tier.id, itemIds: [...itemIds] });
-    addNewTier(lists[weightedTierAfterSlotId(tier.id)] ?? []);
+    const itemIds = itemIdsIn(lists, weightedTierListId(tier.id));
+    if (itemIds.length > 0) tiers.push({ id: tier.id, itemIds });
+    addNewTier(itemIdsIn(lists, weightedTierAfterSlotId(tier.id)));
   }
 
   const parking = Object.fromEntries(
-    Object.keys(layout.parking).map((id) => [id, [...(lists[weightedTierParkingId(id)] ?? [])]]),
+    Object.keys(layout.parking).map((id) => [id, itemIdsIn(lists, weightedTierParkingId(id))]),
   );
   const nextItemIds = [...tiers.flatMap((tier) => tier.itemIds), ...Object.values(parking).flat()];
   if (

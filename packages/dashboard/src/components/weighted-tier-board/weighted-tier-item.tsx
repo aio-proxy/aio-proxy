@@ -6,6 +6,8 @@ import { useSortable } from '@dnd-kit/react/sortable';
 import { GripVertical } from 'lucide-react';
 import type React from 'react';
 
+import { weightedTierItemSortableId } from '@/lib/weighted-tier-layout';
+
 import type { WeightedTierBoardItem as WeightedTierBoardItemModel } from './weighted-tier-board';
 
 const SORTABLE_PLUGINS = [SortableKeyboardPlugin];
@@ -28,7 +30,8 @@ export const WeightedTierItem = <TItem,>({
   writable,
 }: WeightedTierItemProps<TItem>): React.ReactElement => {
   const { ref, handleRef, isDragging } = useSortable({
-    id: item.id,
+    // Namespaced so a caller-supplied item ID never collides with a generated tier or list id.
+    id: weightedTierItemSortableId(item.id),
     index,
     group: listId,
     type: 'item',

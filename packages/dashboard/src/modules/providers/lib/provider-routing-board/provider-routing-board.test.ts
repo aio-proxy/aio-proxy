@@ -109,6 +109,35 @@ test('tier order becomes compact descending priorities in the mutation', () => {
   });
 });
 
+test('a share-only edit commits the priorities the board already carried', () => {
+  // Recompacting would be visible past this board: an exact model override is absolute, so lifting
+  // two Providers that both sit at 0 to 20 and 10 flips their order against an override pinning one
+  // of them at 5. Only a layout change may rewrite priorities.
+  const flat = [
+    providerStub({ id: 'a', kind: ProviderKind.Api, priority: 0, weight: 1 }),
+    providerStub({ id: 'b', kind: ProviderKind.Api, priority: 0, weight: 1 }),
+  ];
+  const board = applyProviderShare(buildProviderRoutingBoard(flat), 'tier:0', 'a', 70);
+
+  expect(providerRoutingMutation(board, 'revision').providers).toEqual({
+    a: { priority: 0, weight: 7000 },
+    b: { priority: 0, weight: 3000 },
+  });
+});
+
+test('reordering tiers still recompacts, since the moved tier no longer matches its encoded priority', () => {
+  const flat = [
+    providerStub({ id: 'a', kind: ProviderKind.Api, priority: 20, weight: 1 }),
+    providerStub({ id: 'b', kind: ProviderKind.Api, priority: 10, weight: 1 }),
+  ];
+  const board = buildProviderRoutingBoard(flat);
+
+  expect(providerRoutingMutation({ tiers: [...board.tiers].reverse() }, 'revision').providers).toEqual({
+    b: { priority: 20, weight: 1 },
+    a: { priority: 10, weight: 1 },
+  });
+});
+
 test('every occupied tier keeps a distinct priority past the ten-point spacing limit', () => {
   const many = Array.from({ length: 1001 }, (_, index) =>
     providerStub({ id: `p${index}`, kind: ProviderKind.Api, priority: index + 1, weight: 1 }),
@@ -185,7 +214,7 @@ test('the only Provider in a tier can still be parked and brought back', () => {
 
   expect(providerRoutingMutation(parked, 'revision').providers['a']?.weight).toBe(0);
   expect(providerRoutingMutation(applyProviderShare(parked, 'tier:20', 'a', 100), 'revision').providers['a']).toEqual({
-    priority: 10,
+    priority: 20,
     weight: 10_000,
   });
 });

@@ -88,7 +88,11 @@ const allocatePriority = (higher: number | undefined, lower: number | undefined)
 const compactPriorities = (count: number): number[] => {
   if (count <= 0) return [];
   const step = count * 10 <= ROUTING_VALUE_MAX ? 10 : Math.max(1, Math.floor(ROUTING_VALUE_MAX / count));
-  return Array.from({ length: count }, (_, index) => Math.min(ROUTING_VALUE_MAX, (count - index) * step));
+  // Priorities descend from a top that already fits, rather than being capped per tier: capping
+  // would collapse the top two whenever the packed board needs the whole range (10001 tiers at
+  // step 1), merging two tiers the user deliberately kept apart.
+  const top = Math.min(ROUTING_VALUE_MAX, count * step);
+  return Array.from({ length: count }, (_, index) => Math.max(0, top - index * step));
 };
 
 type ActiveGroup = { readonly ids: readonly string[]; readonly keep?: number };

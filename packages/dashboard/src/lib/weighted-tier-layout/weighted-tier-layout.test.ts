@@ -5,12 +5,15 @@ import {
   WEIGHTED_TIER_ORDER,
   projectWeightedTierLayout,
   weightedTierAfterSlotId,
+  weightedTierItemSortableId,
   weightedTierListId,
   weightedTierLists,
   weightedTierParkingId,
   weightedTierSortableId,
   type WeightedTierLayout,
 } from './weighted-tier-layout';
+
+const items = (...ids: readonly string[]): string[] => ids.map(weightedTierItemSortableId);
 
 const layout = (): WeightedTierLayout => ({
   tiers: [
@@ -24,8 +27,8 @@ test('an item dropped between tiers becomes a new tier at that position', () => 
   const previous = layout();
   const lists = {
     ...weightedTierLists(previous),
-    [weightedTierListId('high')]: ['d'],
-    [weightedTierAfterSlotId('high')]: ['a'],
+    [weightedTierListId('high')]: items('d'),
+    [weightedTierAfterSlotId('high')]: items('a'),
   };
 
   expect(projectWeightedTierLayout(previous, lists, { type: 'item', id: 'a' })).toEqual({
@@ -60,7 +63,7 @@ test('an item can move from an active tier into a parking list', () => {
   const lists = {
     ...weightedTierLists(previous),
     [weightedTierListId('low')]: [],
-    [weightedTierParkingId('unused')]: ['c', 'b'],
+    [weightedTierParkingId('unused')]: items('c', 'b'),
   };
 
   expect(projectWeightedTierLayout(previous, lists, { type: 'item', id: 'b' })).toEqual({
@@ -80,8 +83,8 @@ test('an invalid tier destination leaves the layout unchanged', () => {
 });
 
 test('a tier whose ID equals an item ID still moves independently of that item', () => {
-  // Tiers and items share one dnd-kit provider, so the tier's sortable id is namespaced. Without that,
-  // the two registrations shadow each other and either drag targets the wrong sortable.
+  // Tiers and items share one dnd-kit provider, so both id spaces are namespaced. Without that, the
+  // two registrations shadow each other and either drag targets the wrong sortable.
   const previous: WeightedTierLayout = {
     tiers: [
       { id: 'tier:10', itemIds: ['x'] },
@@ -104,6 +107,32 @@ test('a tier whose ID equals an item ID still moves independently of that item',
   });
 });
 
+test('an item whose ID collides with a generated list or tier id still moves on its own', () => {
+  // Item IDs come from the caller and dnd-kit accepts any string, so one can spell a droppable list
+  // id or another sortable's id. The item namespace is disjoint from both, so the projection reads
+  // the list it was actually dropped into rather than a shadowed registration.
+  const previous: WeightedTierLayout = {
+    tiers: [
+      { id: 'high', itemIds: ['weighted-tier:items:high', 'weighted-tier:tier:high'] },
+      { id: 'low', itemIds: ['b'] },
+    ],
+    parking: {},
+  };
+  const lists = {
+    ...weightedTierLists(previous),
+    [weightedTierListId('high')]: items('weighted-tier:tier:high'),
+    [weightedTierListId('low')]: items('b', 'weighted-tier:items:high'),
+  };
+
+  expect(projectWeightedTierLayout(previous, lists, { type: 'item', id: 'weighted-tier:items:high' })).toEqual({
+    tiers: [
+      { id: 'high', itemIds: ['weighted-tier:tier:high'] },
+      { id: 'low', itemIds: ['b', 'weighted-tier:items:high'] },
+    ],
+    parking: {},
+  });
+});
+
 test('new tier IDs skip IDs already present in the board', () => {
   const previous: WeightedTierLayout = {
     tiers: [
@@ -114,8 +143,8 @@ test('new tier IDs skip IDs already present in the board', () => {
   };
   const lists = {
     ...weightedTierLists(previous),
-    [weightedTierListId('tier:new:1')]: ['d'],
-    [weightedTierAfterSlotId('tier:new:1')]: ['a'],
+    [weightedTierListId('tier:new:1')]: items('d'),
+    [weightedTierAfterSlotId('tier:new:1')]: items('a'),
   };
 
   expect(projectWeightedTierLayout(previous, lists, { type: 'item', id: 'a' }).tiers[1]?.id).toBe('tier:new:2');

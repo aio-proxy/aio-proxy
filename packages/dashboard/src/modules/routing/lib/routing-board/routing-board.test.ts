@@ -283,6 +283,32 @@ test('compacts priorities when neighboring tiers have no integer gap', () => {
   ]);
 });
 
+test('a fully packed model board keeps every tier distinct when it has to compact', () => {
+  // Interpolation fails for a whole-tier move across a board that already uses every priority, so
+  // this falls through to compaction. The supported range holds exactly 10001 values, and the
+  // lowest tier has to take 0 for all of them to stay apart.
+  const packed = Array.from({ length: 10_001 }, (_, index) => tierProvider(`p${index}`, 10_000 - index, 1));
+  const previousRows = packed.map((entry, index) => ({ providerId: entry.id, priority: 10_000 - index, weight: 1 }));
+  const previousLayout = {
+    tiers: packed.map((entry, index) => ({ id: `tier:${10_000 - index}`, itemIds: [entry.id] })),
+    parking: { unused: [] },
+  } satisfies WeightedTierLayout;
+  const moved = previousLayout.tiers[0]!;
+
+  const priorities = applyRoutingBoardLayout({
+    providers: packed,
+    previousRows,
+    previousLayout,
+    nextLayout: { ...previousLayout, tiers: [...previousLayout.tiers.slice(1), moved] },
+    operation: { type: 'tier', id: moved.id },
+    // A row omits a priority equal to the Provider default (0), so read the effective value back.
+  }).map((row) => row.priority ?? 0);
+
+  expect(new Set(priorities).size).toBe(10_001);
+  expect(Math.max(...priorities)).toBe(10_000);
+  expect(Math.min(...priorities)).toBe(0);
+});
+
 test('preserves a blocked Provider row when another Provider is dragged', () => {
   const withBlocked = [
     ...providers,
