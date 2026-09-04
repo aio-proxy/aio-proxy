@@ -51,6 +51,28 @@ test('retries a top-level Responses error code', () => {
   ).toBe('commit');
 });
 
+// ChatGPT's Responses backend rejects an unverifiable reasoning blob with
+// `code: null` and only the prose naming the item, so the code check alone
+// never fires. `Signature expired` shares the sentence but is not a decode
+// failure, and replaying the same body would not fix it.
+test('retries a code-less unverifiable blob rejection', () => {
+  const rejection = (message: string) =>
+    JSON.stringify({
+      type: 'error',
+      error: { message, type: 'invalid_request_error', param: 'input', code: null },
+    });
+  const unverifiable =
+    'The encrypted content for item rs_0f4347088f3919bd016a9a713844d481938d7134a664dbed90 could not be verified. Reason: Encrypted content could not be decrypted or parsed.';
+  expect(classifyOpenAIResponsesRawRetry({ event: 'error', data: rejection(unverifiable) })).toBe('retry');
+  expect(classifyOpenAIResponsesRawRetry({ data: rejection(unverifiable) })).toBe('retry');
+  expect(
+    classifyOpenAIResponsesRawRetry({
+      event: 'error',
+      data: rejection('The encrypted content for item rs_1 could not be verified. Reason: Signature expired.'),
+    }),
+  ).toBe('commit');
+});
+
 test('retries a normalized response.failed envelope', () => {
   expect(
     classifyOpenAIResponsesRawRetry({

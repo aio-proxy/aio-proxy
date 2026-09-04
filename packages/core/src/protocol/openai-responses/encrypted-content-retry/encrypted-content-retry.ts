@@ -84,7 +84,7 @@ export function classifyOpenAIResponsesRawRetry(frame: RawRetryFrame): RawRetryV
   const type = frame.event ?? (typeof payload?.['type'] === 'string' ? payload['type'] : undefined);
   if (type !== undefined && carriesGeneratedOutput(type, payload)) return 'commit';
   if (type === 'error' || type === 'response.failed' || isPlainObject(payload?.['error'])) {
-    return responsesErrorCode(payload) === 'invalid_encrypted_content' ? 'retry' : 'commit';
+    return isEncryptedContentRejection(payload) ? 'retry' : 'commit';
   }
   if (type !== undefined && TERMINAL_EVENTS.has(type)) return 'commit';
   return 'hold';
@@ -97,6 +97,39 @@ export function classifyOpenAIResponsesRawRetry(frame: RawRetryFrame): RawRetryV
 function responsesErrorCode(payload: Record<string, unknown> | undefined): string | undefined {
   if (payload === undefined) return undefined;
   return errorCodeFrom(payload) ?? errorCodeFrom(isPlainObject(payload['response']) ? payload['response'] : undefined);
+}
+
+// The ChatGPT backend also rejects an unverifiable blob with `code: null` and
+// only the prose naming the item, e.g. `The encrypted content for item rs_… could
+// not be verified. Reason: Encrypted content could not be decrypted or parsed.`
+// Matching the code alone leaves that (very common) variant un-retried. Other
+// reasons carried by the same sentence — `Signature expired`, for instance — are
+// not blob-decode failures and must keep committing, so the reason is matched too.
+const UNVERIFIABLE_BLOB_MESSAGE =
+  /^The encrypted content\b.*\bcould not be verified\. Reason: Encrypted content could not be (?:decrypted or parsed|decoded)\.$/;
+
+function isEncryptedContentRejection(payload: Record<string, unknown> | undefined): boolean {
+  if (responsesErrorCode(payload) === 'invalid_encrypted_content') return true;
+  const message = responsesErrorMessage(payload);
+  return message !== undefined && UNVERIFIABLE_BLOB_MESSAGE.test(message.trim());
+}
+
+function responsesErrorMessage(payload: Record<string, unknown> | undefined): string | undefined {
+  if (payload === undefined) return undefined;
+  return (
+    errorMessageFrom(payload) ?? errorMessageFrom(isPlainObject(payload['response']) ? payload['response'] : undefined)
+  );
+}
+
+function errorMessageFrom(value: Record<string, unknown> | undefined): string | undefined {
+  if (value === undefined) return undefined;
+  const nested = value['error'];
+  if (isPlainObject(nested)) return errorMessageFrom(nested) ?? stringField(nested, 'message');
+  return stringField(value, 'message');
+}
+
+function stringField(value: Record<string, unknown>, key: string): string | undefined {
+  return typeof value[key] === 'string' ? value[key] : undefined;
 }
 
 function errorCodeFrom(value: Record<string, unknown> | undefined): string | undefined {
