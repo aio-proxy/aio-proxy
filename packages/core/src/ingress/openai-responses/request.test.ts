@@ -39,6 +39,26 @@ describe('OpenAIResponsesRequestSchema', () => {
     ).toThrow();
   });
 
+  test('Given a synthetic tool output without call_id When parsed Then request is accepted', () => {
+    // Codex Desktop injects cross-thread delegation as a function_call_output
+    // with no matching call, identified by name/namespace. Same-protocol raw
+    // passthrough forwards it verbatim, so parse must not reject it.
+    const input = {
+      model: 'gpt-5.6-luna',
+      input: [
+        {
+          type: 'function_call_output',
+          id: 'fco_01a06bab',
+          name: 'send_message_to_thread',
+          namespace: 'codex_app',
+          output: '<codex_delegation></codex_delegation>',
+        },
+      ],
+    };
+
+    expect(parseOpenAIResponses(input)).toEqual(input);
+  });
+
   test('Given invalid input role When safe parsed Then Zod path names input', () => {
     const result = OpenAIResponsesRequestSchema.safeParse({
       model: 'gpt-5-mini',
