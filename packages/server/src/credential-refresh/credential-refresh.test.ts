@@ -181,6 +181,24 @@ test('a retryable exchange failure leaves the Provider undiagnosed', async () =>
   ).toBe(false);
 });
 
+test('an unclassified exchange failure leaves the Provider undiagnosed', async () => {
+  // Several bundled adapters throw a plain error for every non-2xx response, 429 and 5xx included,
+  // and a network fault is a generic error everywhere. Only a failure the adapter itself called
+  // permanent may take a Provider out of service until the user re-logs in.
+  const fixture = createQuotaFixture({
+    refreshCredential: async () => {
+      throw new Error('503 Service Unavailable');
+    },
+  });
+  const refresher = createOAuthCredentialRefresher(fixture.dependencies);
+
+  await refresher.refresh(PROVIDER_ID, quotaSignal()).catch(() => {});
+
+  expect(
+    fixture.repository.readDiagnostics(PROVIDER_ID).some((entry) => entry.code === 'CREDENTIAL_REFRESH_FAILED'),
+  ).toBe(false);
+});
+
 test('an upstream exchange failure is redacted and surfaced as a refresh error', async () => {
   // The fixture account stores `{ token: 'credential-secret' }`; a plugin that echoes the credential
   // it was handed back into its error message must not reach the log sink unredacted.

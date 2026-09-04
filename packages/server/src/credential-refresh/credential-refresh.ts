@@ -52,14 +52,20 @@ async function exchange(
  * in `runtime` mode, so a background quota read cannot mark a Provider as needing reauthentication.
  * A manual refresh has to do it: a revoked refresh token (`invalid_grant`) is exactly the case the
  * user needs told, and without this the Provider keeps reporting ready and the dashboard shows only
- * a generic toast. Retryable failures are left alone — the same rule the port applies.
+ * a generic toast.
+ *
+ * Only an adapter that explicitly classified the failure as permanent counts. Anything else —
+ * a retryable `CredentialRefreshError`, an unclassified plugin error, a network fault — stays
+ * undiagnosed: several bundled adapters throw a plain error for every non-2xx response, including
+ * 429 and 5xx, so treating unclassified failures as permanent would take a Provider out of service
+ * for a transient outage until the user re-logged in.
  */
 async function recordPermanentFailure(
   dependencies: OAuthAccountContextDependencies,
   providerId: string,
   error: unknown,
 ): Promise<void> {
-  if (error instanceof CredentialRefreshError && error.retryable) return;
+  if (!(error instanceof CredentialRefreshError) || error.retryable) return;
   try {
     const diagnostic = dependencies.diagnostics('CREDENTIAL_REFRESH_FAILED', {
       providerId,
