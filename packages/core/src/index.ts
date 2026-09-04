@@ -168,6 +168,7 @@ export {
 export type { ResolvedModelsDevEntry } from './models-dev/index';
 export { modelEffortValues, normalizeEffort } from './protocol/reasoning-effort/index';
 export {
+  fetchLatestNpmVersion,
   findInstalledNpmPackage,
   isNpmPackageName,
   type NpmPackageInfo,
