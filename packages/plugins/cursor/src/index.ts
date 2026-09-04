@@ -5,6 +5,7 @@ export * from './catalog/index';
 export * from './jwt/index';
 export * from './oauth/index';
 export { createCursorPlugin, englishPresentationText, type CursorPresentationText } from './plugin/index';
+export * from './quota/index';
 export * from './runtime';
 export * from './schema';
 export * from './store';
