@@ -1,9 +1,9 @@
 import type { AliasEditorIssue } from '../alias-editor';
 import { apiConnectionIssues, type ApiEndpointDraft } from '../api-endpoints';
 import { exposedModels, oauthEditorExposedModels } from '../exposed-models';
-import { advancedHint, blankPackageName, connectionHint, identityHint, modelsHint, routingHint } from './section-hint';
+import { advancedHint, blankPackageName, connectionHint, identityHint, modelsHint } from './section-hint';
 
-export type SectionId = 'identity' | 'connection' | 'models' | 'routing' | 'advanced';
+export type SectionId = 'identity' | 'connection' | 'models' | 'advanced';
 export type SectionStatus = 'todo' | 'attention' | 'ok';
 
 /** A section's live status plus the finished, localized badge text that explains it. */
@@ -31,10 +31,6 @@ export interface SectionStatusInput {
   readonly aliasIssues: readonly AliasEditorIssue[];
   readonly transformsValid: boolean;
   readonly transformCount?: number | undefined;
-  readonly weightTie: boolean;
-  readonly enabled?: boolean | undefined;
-  readonly priority?: number | undefined;
-  readonly weight?: number | undefined;
   readonly headerCount?: number | undefined;
   readonly proxyCustom?: boolean | undefined;
   readonly optionsValid?: boolean | undefined;
@@ -50,7 +46,6 @@ export const SECTION_LABEL = {
   identity: 'dashboard.providers.editor.section_identity',
   connection: 'dashboard.providers.editor.section_connection',
   models: 'dashboard.providers.editor.section_models',
-  routing: 'dashboard.providers.editor.section_routing',
   advanced: 'dashboard.providers.editor.section_advanced',
 } as const satisfies Record<SectionId, string>;
 
@@ -103,17 +98,12 @@ export function sectionStatuses(input: SectionStatusInput): Readonly<Record<Sect
   // plenty of models still has unfinished work here.
   if (input.aliasIssues.length > 0) models = 'todo';
 
-  // Always `ok` (X9): a weight tie is advice about ordering, not an unfinished field. `routingHint`
-  // reads `weightTie` directly to keep saying so.
-  const routing: SectionStatus = 'ok';
-
   const advanced: SectionStatus = input.transformsValid ? 'ok' : 'todo';
 
   return {
     identity: { status: identity, hint: identityHint(input, identity) },
     connection: { status: connection, hint: connectionHint(input, connection) },
     models: { status: models, hint: modelsHint(input, models) },
-    routing: { status: routing, hint: routingHint(input) },
     advanced: { status: advanced, hint: advancedHint(input, advanced) },
   };
 }

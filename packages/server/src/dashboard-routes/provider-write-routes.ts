@@ -8,7 +8,11 @@ import {
   npmAdd,
   PendingAccountOperationConflictError,
 } from '@aio-proxy/core';
-import type { ProviderMutationBody } from '@aio-proxy/types';
+import {
+  type DashboardProviderRoutingMutation,
+  DashboardProviderRoutingMutationSchema,
+  type ProviderMutationBody,
+} from '@aio-proxy/types';
 import type { MiddlewareHandler } from 'hono';
 import { Hono } from 'hono';
 import { validator } from 'hono/validator';
@@ -27,6 +31,12 @@ import {
   replaceOAuthProvider,
   replaceProvider,
 } from './provider-mutation';
+import {
+  applyProviderRoutingMutation,
+  ProviderRoutingSetChangedError,
+  providerRoutingRevision,
+  ProviderRoutingStaleRevisionError,
+} from './provider-routing-mutation';
 
 const ProviderInstallRequestSchema = z.object({
   npm: z.string().min(1),
@@ -44,6 +54,15 @@ const providerMutationValidator = validator(
   Record<string, never>,
   string,
   { in: { json: ProviderMutationBody }; out: { json: ParsedProviderMutation } }
+>;
+
+const providerRoutingMutationValidator = validator('json', (raw, context) => {
+  const parsed = DashboardProviderRoutingMutationSchema.safeParse(raw);
+  return parsed.success ? parsed.data : context.json({ error: 'validation_failed' } as const, 400);
+}) as unknown as MiddlewareHandler<
+  Record<string, never>,
+  string,
+  { in: { json: DashboardProviderRoutingMutation }; out: { json: DashboardProviderRoutingMutation } }
 >;
 
 export const createDashboardProviderWriteRoutes = (state: ServerState) =>
@@ -76,6 +95,40 @@ export const createDashboardProviderWriteRoutes = (state: ServerState) =>
         return context.json({ error: 'provider summary not found' }, 500);
       }
       return context.json({ provider }, 201);
+    })
+    .put('/providers/routing', providerRoutingMutationValidator, async (context) => {
+      if (state.configPath === undefined) {
+        return context.json({ error: 'config_unavailable' } as const, 409);
+      }
+      const providerIds = state.currentConfig().providers.map((provider) => provider.id);
+      try {
+        await state.configStore.mutateProviders((record) =>
+          applyProviderRoutingMutation(record, context.req.valid('json'), providerIds),
+        );
+      } catch (error) {
+        if (error instanceof ProviderRoutingStaleRevisionError) {
+          return context.json({ error: 'stale_revision' } as const, 409);
+        }
+        if (error instanceof ProviderRoutingSetChangedError) {
+          return context.json({ error: 'provider_set_changed' } as const, 409);
+        }
+        if (error instanceof ConfigReloadRejectedError) {
+          return context.json({ error: 'validation_failed' } as const, 422);
+        }
+        throw error;
+      }
+      const providers = await state.providerSummaries({ probe: false });
+      const nextProviderIds = state.currentConfig().providers.map((provider) => provider.id);
+      const rawProviders = (await state.configStore.file?.read())?.['providers'];
+      return context.json({
+        providers,
+        routingRevision: providerRoutingRevision(
+          typeof rawProviders === 'object' && rawProviders !== null && !Array.isArray(rawProviders)
+            ? (rawProviders as Record<string, unknown>)
+            : {},
+          nextProviderIds,
+        ),
+      });
     })
     .put('/providers/:id', providerMutationValidator, async (context) => {
       if (state.configPath === undefined) {

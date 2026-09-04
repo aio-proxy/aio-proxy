@@ -1,25 +1,13 @@
 import type {
   DashboardProviderEnabledMutationBody,
+  DashboardProviderRoutingMutation,
   DashboardProviderSummary,
-  DashboardRoutingNumber,
   ProviderMutationBody,
 } from '@aio-proxy/types';
 import { queryOptions } from '@tanstack/react-query';
 
 import { createDashboardClient } from '@/lib/dashboard-client';
 import { queryKeys } from '@/lib/query-keys';
-
-export type ProviderEditRouting = {
-  readonly priority: DashboardRoutingNumber;
-  readonly weight: DashboardRoutingNumber;
-};
-
-export const providerFormRoutingValues = (
-  routing: ProviderEditRouting | undefined,
-): { readonly priority?: number; readonly weight?: number } => ({
-  ...(routing?.priority.authored === undefined ? {} : { priority: routing.priority.authored }),
-  ...(routing?.weight.authored === undefined ? {} : { weight: routing.weight.authored }),
-});
 
 const dashboardClient = createDashboardClient();
 
@@ -89,6 +77,15 @@ export const updateProviderEnabledMutationFn = async ({
   });
   if (!response.ok) {
     throw new Error(`update provider enabled failed: ${response.status}`);
+  }
+  return response.json();
+};
+
+export const updateProviderRoutingMutationFn = async (body: DashboardProviderRoutingMutation) => {
+  const response = await dashboardClient.dashboard.api.providers.routing.$put({ json: body });
+  if (!response.ok) {
+    const payload = await response.json();
+    throw new Error('error' in payload ? payload.error : `update Provider routing failed: ${response.status}`);
   }
   return response.json();
 };

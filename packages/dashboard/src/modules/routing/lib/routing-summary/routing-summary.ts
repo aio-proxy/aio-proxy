@@ -65,13 +65,13 @@ export const effectiveRoutingCandidates = (
 
 export const formatRoutingTiers = (tiers: readonly RoutingTier[]): string =>
   tiers
-    .map((tier) => {
+    .map((tier, index) => {
       const members = tier.providers
         .map((entry) =>
           tier.providers.length === 1 ? entry.providerId : `${entry.providerId} ${Math.round(entry.share * 100)}%`,
         )
         .join(' / ');
-      return `${m['dashboard.routing.editor.tier']({ value: tier.priority })}: ${members}`;
+      return `${m['dashboard.routing.editor.tier']({ value: index + 1 })}: ${members}`;
     })
     .join(' → ');
 

@@ -6,6 +6,8 @@ import {
   DashboardOverviewActivityResponseSchema,
   DashboardOverviewDiagnosticsResponseSchema,
   DashboardOverviewResponseSchema,
+  DashboardProviderRoutingMutationSchema,
+  DashboardProvidersResponseSchema,
   DashboardProviderSummarySchema,
 } from './dashboard';
 
@@ -114,6 +116,38 @@ test('requires protocols and hasQuota on every summary', () => {
   };
 
   expect(DashboardProviderSummarySchema.safeParse(missing).success).toBe(false);
+});
+
+test('parses the Provider routing snapshot and bounded routing mutation contract', () => {
+  const provider = {
+    id: 'alpha',
+    kind: ProviderKind.Api,
+    enabled: true,
+    passthrough: false,
+    last_status: 'unknown',
+    last_latency: null,
+    clientModels: [],
+    protocols: [ProviderProtocol.OpenAICompatible],
+    hasQuota: false,
+    state: { status: 'ready' },
+  } as const;
+
+  expect(DashboardProvidersResponseSchema.parse({ providers: [provider], routingRevision: 'revision' })).toEqual({
+    providers: [provider],
+    routingRevision: 'revision',
+  });
+  expect(
+    DashboardProviderRoutingMutationSchema.parse({
+      revision: 'revision',
+      providers: { alpha: { priority: 20, weight: 10000 } },
+    }),
+  ).toEqual({ revision: 'revision', providers: { alpha: { priority: 20, weight: 10000 } } });
+  expect(
+    DashboardProviderRoutingMutationSchema.parse({
+      revision: 'revision',
+      providers: { alpha: { priority: 20, weight: 10001.4 } },
+    }),
+  ).toEqual({ revision: 'revision', providers: { alpha: { priority: 20, weight: 10000 } } });
 });
 
 test('accepts independent range, diagnostics, and activity overview contracts', () => {
