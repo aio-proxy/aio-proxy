@@ -35,12 +35,12 @@ const mutationEntries = (rows: readonly ApiKeyRow[]): readonly DashboardApiKeyMu
 
 export const SettingsApiKeysGroup: React.FC<SettingsApiKeysGroupProps> = ({ disabled, settings, onSave }) => {
   const [rows, setRows] = useState<readonly ApiKeyRow[]>(() => rowsFromSettings(settings));
-  const [source, setSource] = useState(settings.apiKeys);
+  const [revision, setRevision] = useState(settings.apiKeysRevision);
 
-  // `retain` indexes address the authored array the server just sent, so a refetch that
-  // replaces it invalidates every draft row. Re-derive instead of saving against stale indexes.
-  if (source !== settings.apiKeys) {
-    setSource(settings.apiKeys);
+  // `retain` indexes address the authored array this revision digests. A save elsewhere in the
+  // page re-fetches the same keys, so key on the digest and keep drafts unless the keys changed.
+  if (revision !== settings.apiKeysRevision) {
+    setRevision(settings.apiKeysRevision);
     setRows(rowsFromSettings(settings));
   }
 
@@ -133,7 +133,7 @@ export const SettingsApiKeysGroup: React.FC<SettingsApiKeysGroupProps> = ({ disa
             disabled={disabled || !parsed.success}
             onClick={() => {
               if (!parsed.success) return;
-              onSave({ apiKeys: parsed.data });
+              onSave({ apiKeys: parsed.data, apiKeysRevision: settings.apiKeysRevision });
             }}
           >
             {m['dashboard.settings.api_keys_save']()}

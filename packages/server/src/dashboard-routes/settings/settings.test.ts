@@ -101,6 +101,16 @@ function onDisk(configPath: string): typeof authoredConfig {
   return JSON.parse(readFileSync(configPath, 'utf8')) as typeof authoredConfig;
 }
 
+async function apiKeysRevision(routes: Routes): Promise<string> {
+  const view = (await (await routes.request('/settings')).json()) as { readonly apiKeysRevision: string };
+  return view.apiKeysRevision;
+}
+
+// Every key write carries the revision the client read, so the fixtures round-trip through GET.
+async function putKeys(routes: Routes, apiKeys: unknown): Promise<Response> {
+  return put(routes, { apiKeys, apiKeysRevision: await apiKeysRevision(routes) });
+}
+
 test('GET /settings returns only the redacted typed settings view', async () => {
   await withSettingsFixture(async ({ routes }) => {
     const response = await routes.request('/settings');
@@ -109,6 +119,7 @@ test('GET /settings returns only the redacted typed settings view', async () => 
     expect(response.status).toBe(200);
     expect(JSON.parse(text)).toEqual({
       apiKeys: [{ key: '****', label: 'ci' }, { key: '****' }],
+      apiKeysRevision: expect.stringMatching(/^sha256:[0-9a-f]{64}$/u),
       hasPassword: true,
       host: '127.0.0.1',
       logging: { enabled: false, level: 'info', retentionDays: 3 },
@@ -305,7 +316,7 @@ test('a password write does not require restart', async () => {
 
 test('a retained API key keeps its authored template byte-for-byte', async () => {
   await withSettingsFixture(async ({ configPath, routes }) => {
-    const response = await put(routes, { apiKeys: [{ retain: 0, label: 'ci-renamed' }, { retain: 1 }] });
+    const response = await putKeys(routes, [{ retain: 0, label: 'ci-renamed' }, { retain: 1 }]);
 
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({
@@ -321,7 +332,7 @@ test('a retained API key keeps its authored template byte-for-byte', async () =>
 
 test('retaining a key without a label clears the authored label', async () => {
   await withSettingsFixture(async ({ configPath, routes }) => {
-    const response = await put(routes, { apiKeys: [{ retain: 0 }] });
+    const response = await putKeys(routes, [{ retain: 0 }]);
 
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ ok: true, settings: { apiKeys: [{ key: '****' }] } });
@@ -331,12 +342,10 @@ test('retaining a key without a label clears the authored label', async () => {
 
 test('a new API key is appended and an unlisted authored key is removed', async () => {
   await withSettingsFixture(async ({ configPath, routes }) => {
-    const response = await put(routes, {
-      apiKeys: [
-        { retain: 0, label: 'ci' },
-        { key: 'sk-added', label: 'laptop' },
-      ],
-    });
+    const response = await putKeys(routes, [
+      { retain: 0, label: 'ci' },
+      { key: 'sk-added', label: 'laptop' },
+    ]);
 
     expect(response.status).toBe(200);
     expect(onDisk(configPath).server.apiKeys).toEqual([
@@ -348,7 +357,7 @@ test('a new API key is appended and an unlisted authored key is removed', async 
 
 test('an empty API key array removes every authored key', async () => {
   await withSettingsFixture(async ({ configPath, routes }) => {
-    const response = await put(routes, { apiKeys: [] });
+    const response = await putKeys(routes, []);
 
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ ok: true, settings: { apiKeys: [] } });
@@ -369,7 +378,7 @@ test('a retain index outside the authored array and a reserved-prefix key are re
   await withSettingsFixture(async ({ configPath, routes }) => {
     const before = readFileSync(configPath, 'utf8');
     for (const apiKeys of [[{ retain: 5 }], [{ key: 'aio_agent_at_forged' }]]) {
-      const response = await put(routes, { apiKeys });
+      const response = await putKeys(routes, apiKeys);
 
       expect(response.status).toBe(422);
       expect(await response.json()).toEqual({ ok: false, error: { code: 'config_rejected' } });
@@ -378,9 +387,24 @@ test('a retain index outside the authored array and a reserved-prefix key are re
   });
 });
 
+test('a key write against a superseded revision is rejected without changing config bytes', async () => {
+  await withSettingsFixture(async ({ configPath, routes }) => {
+    const stale = await apiKeysRevision(routes);
+    // Another writer reorders the authored array, so `retain: 0` now names a different secret.
+    expect((await putKeys(routes, [{ retain: 1 }, { retain: 0 }])).status).toBe(200);
+    const before = readFileSync(configPath, 'utf8');
+
+    const response = await put(routes, { apiKeys: [{ retain: 0 }], apiKeysRevision: stale });
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ ok: false, error: { code: 'stale_api_keys' } });
+    expect(readFileSync(configPath, 'utf8')).toBe(before);
+  });
+});
+
 test('an API key write does not require restart', async () => {
   await withSettingsFixture(async ({ routes }) => {
-    const response = await put(routes, { apiKeys: [{ retain: 0 }] });
+    const response = await putKeys(routes, [{ retain: 0 }]);
 
     expect(await response.json()).toMatchObject({ ok: true, restartRequired: false });
   });

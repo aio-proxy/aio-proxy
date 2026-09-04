@@ -43,7 +43,16 @@ test('refreshes every config-backed query after a successful reload', async () =
   await waitFor(() => {
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: queryKeys.plugins });
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: queryKeys.routingModels });
+    // A reload can add or drop OAuth-capable plugins and rewrite the overview's provider set.
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: queryKeys.oauthCapabilities });
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: queryKeys.overview });
   });
+});
+
+test('the overview invalidation key is a prefix of every range-scoped overview query', () => {
+  for (const key of [queryKeys.overviewActivity, queryKeys.overviewRange('7d'), queryKeys.overviewDiagnostics('7d')]) {
+    expect(key.slice(0, queryKeys.overview.length)).toEqual([...queryKeys.overview]);
+  }
 });
 
 test('does not refresh anything when the reload is rejected', async () => {

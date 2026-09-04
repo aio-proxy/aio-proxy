@@ -111,6 +111,11 @@ export const DashboardApiKeyMutationSchema = z.union([
   z.strictObject({ key: DashboardApiKeySecretSchema, label: DashboardApiKeyLabelSchema.optional() }),
 ]);
 
+const DashboardApiKeysRevisionSchema = z
+  .string()
+  .min(1)
+  .describe('Opaque digest of the authored API key array the client read.');
+
 export const DashboardSettingsViewSchema = z.strictObject({
   host: required(ServerConfigSchema.shape.host),
   port: required(ServerConfigSchema.shape.port),
@@ -119,26 +124,35 @@ export const DashboardSettingsViewSchema = z.strictObject({
   retryAfterCapMs: required(ServerRetrySchema.shape.retryAfterCapMs),
   hasPassword: z.boolean(),
   apiKeys: z.array(DashboardApiKeyViewSchema),
+  apiKeysRevision: DashboardApiKeysRevisionSchema,
 });
 
-export const DashboardSettingsMutationSchema = z.strictObject({
-  host: required(ServerConfigSchema.shape.host).optional(),
-  port: required(ServerConfigSchema.shape.port).optional(),
-  proxy: z.union([DashboardHttpProxyUrlSchema, DashboardHttpProxyTemplateSchema, z.null()]).optional(),
-  password: z.union([DashboardPasswordSchema, z.null()]).optional(),
-  apiKeys: z.array(DashboardApiKeyMutationSchema).optional(),
-  logging: z
-    .strictObject({
-      enabled: required(ServerLoggingSchema.shape.enabled).optional(),
-      retentionDays: required(ServerLoggingSchema.shape.retentionDays).optional(),
-      level: required(ServerLoggingSchema.shape.level).optional(),
-    })
-    .optional(),
-  retryAfterCapMs: required(ServerRetrySchema.shape.retryAfterCapMs).optional(),
-});
+export const DashboardSettingsMutationSchema = z
+  .strictObject({
+    host: required(ServerConfigSchema.shape.host).optional(),
+    port: required(ServerConfigSchema.shape.port).optional(),
+    proxy: z.union([DashboardHttpProxyUrlSchema, DashboardHttpProxyTemplateSchema, z.null()]).optional(),
+    password: z.union([DashboardPasswordSchema, z.null()]).optional(),
+    apiKeys: z.array(DashboardApiKeyMutationSchema).optional(),
+    apiKeysRevision: DashboardApiKeysRevisionSchema.optional(),
+    logging: z
+      .strictObject({
+        enabled: required(ServerLoggingSchema.shape.enabled).optional(),
+        retentionDays: required(ServerLoggingSchema.shape.retentionDays).optional(),
+        level: required(ServerLoggingSchema.shape.level).optional(),
+      })
+      .optional(),
+    retryAfterCapMs: required(ServerRetrySchema.shape.retryAfterCapMs).optional(),
+  })
+  // `retain` indexes address one specific authored array, so a key write without the
+  // revision it was read against cannot be applied safely, and a revision alone is inert.
+  .refine(
+    (value) => (value.apiKeys === undefined) === (value.apiKeysRevision === undefined),
+    'apiKeys and apiKeysRevision must be sent together',
+  );
 
 export const DashboardSettingsMutationErrorSchema = z.strictObject({
-  code: z.enum(['config_unavailable', 'config_rejected', 'reload_failed']),
+  code: z.enum(['config_unavailable', 'config_rejected', 'reload_failed', 'stale_api_keys']),
 });
 
 export const DashboardSettingsMutationResponseSchema = z.discriminatedUnion('ok', [

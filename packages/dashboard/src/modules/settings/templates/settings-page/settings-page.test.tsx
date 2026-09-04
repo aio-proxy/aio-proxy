@@ -25,6 +25,7 @@ rs.mock('../../hooks/use-reload-mutation', () => ({
 
 const settings: DashboardSettingsView = {
   apiKeys: [{ key: '****', label: 'ci' }, { key: '****' }],
+  apiKeysRevision: 'sha256:current',
   hasPassword: true,
   host: '127.0.0.1',
   logging: { enabled: true, level: 'info', retentionDays: 3 },
@@ -216,6 +217,7 @@ test('lists stored API keys masked and retains them by index when saving', () =>
   expect(mocks.mutate).toHaveBeenCalledTimes(1);
   expect(mocks.mutate).toHaveBeenCalledWith({
     apiKeys: [{ retain: 0, label: 'ci-renamed' }, { retain: 1 }],
+    apiKeysRevision: settings.apiKeysRevision,
   });
 });
 
@@ -232,6 +234,7 @@ test('adds a new API key and sends it in plaintext exactly once', () => {
   expect(mocks.mutate).toHaveBeenCalledTimes(1);
   expect(mocks.mutate).toHaveBeenCalledWith({
     apiKeys: [{ retain: 0, label: 'ci' }, { retain: 1 }, { key: 'sk-added' }],
+    apiKeysRevision: settings.apiKeysRevision,
   });
 });
 
@@ -243,7 +246,10 @@ test('removes a stored API key', () => {
   fireEvent.click(within(group).getByRole('button', { name: /Save keys|保存密钥|儲存金鑰|キーを保存|키 저장/u }));
 
   expect(mocks.mutate).toHaveBeenCalledTimes(1);
-  expect(mocks.mutate).toHaveBeenCalledWith({ apiKeys: [{ retain: 1 }] });
+  expect(mocks.mutate).toHaveBeenCalledWith({
+    apiKeys: [{ retain: 1 }],
+    apiKeysRevision: settings.apiKeysRevision,
+  });
 });
 
 test('resets API key rows when a reload replaces the stored keys', () => {
@@ -255,7 +261,7 @@ test('resets API key rows when a reload replaces the stored keys', () => {
   });
 
   mocks.useSettingsQuery.mockReturnValue({
-    data: { ...settings, apiKeys: [{ key: '****', label: 'reloaded' }] },
+    data: { ...settings, apiKeys: [{ key: '****', label: 'reloaded' }], apiKeysRevision: 'sha256:reloaded' },
     isError: false,
     isLoading: false,
   });
@@ -266,5 +272,28 @@ test('resets API key rows when a reload replaces the stored keys', () => {
   expect(within(reloaded).queryByDisplayValue('stale-draft')).toBeNull();
 
   fireEvent.click(within(reloaded).getByRole('button', { name: /Save keys|保存密钥|儲存金鑰|キーを保存|키 저장/u }));
-  expect(mocks.mutate).toHaveBeenCalledWith({ apiKeys: [{ retain: 0, label: 'reloaded' }] });
+  expect(mocks.mutate).toHaveBeenCalledWith({
+    apiKeys: [{ retain: 0, label: 'reloaded' }],
+    apiKeysRevision: 'sha256:reloaded',
+  });
+});
+
+test('keeps an in-progress key draft when an unrelated save refreshes the settings object', () => {
+  const { rerender } = renderPage();
+
+  const group = screen.getByTestId('settings-group-api-keys');
+  fireEvent.change(within(group).getAllByLabelText(/Label|标签|標籤|ラベル|라벨/u)[0] as HTMLElement, {
+    target: { value: 'in-progress' },
+  });
+
+  // A password write re-fetches settings; the authored keys are untouched, so the digest holds.
+  mocks.useSettingsQuery.mockReturnValue({
+    data: { ...settings, apiKeys: [...settings.apiKeys] },
+    isError: false,
+    isLoading: false,
+  });
+  rerender(<SettingsPage />);
+
+  const refreshed = screen.getByTestId('settings-group-api-keys');
+  expect(within(refreshed).getByDisplayValue('in-progress')).toBeInTheDocument();
 });

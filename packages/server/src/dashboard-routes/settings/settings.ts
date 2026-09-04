@@ -1,3 +1,4 @@
+import { digestProviderEntry } from '@aio-proxy/core';
 import {
   type Config,
   type DashboardApiKeyMutation,
@@ -30,13 +31,29 @@ const settingsValidator = validator('json', (raw, context) => {
   }
 >;
 
-function settingsView(config: Config): DashboardSettingsView {
+class StaleApiKeysError extends Error {}
+
+// `retain` indexes the authored array, not the runtime one: templates are already
+// expanded in `currentConfig()`, so the revision has to digest what is on disk.
+async function authoredApiKeys(state: ServerState): Promise<unknown> {
+  const file = state.configStore.file;
+  if (file === undefined) return [];
+  const server = (await file.read())['server'];
+  return isPlainObject(server) ? server['apiKeys'] : [];
+}
+
+function apiKeysRevision(authored: unknown): string {
+  return `sha256:${digestProviderEntry(Array.isArray(authored) ? authored : [])}`;
+}
+
+function settingsView(config: Config, authoredApiKeys: unknown): DashboardSettingsView {
   const logging = config.server.logging ?? defaultLogging;
   return {
     apiKeys: config.server.apiKeys.map((entry) => ({
       key: '****' as const,
       ...(entry.label === undefined ? {} : { label: entry.label }),
     })),
+    apiKeysRevision: apiKeysRevision(authoredApiKeys),
     hasPassword: config.server.password !== undefined,
     host: config.server.host,
     logging: {
@@ -59,7 +76,11 @@ function section(value: unknown, path: string): Record<string, unknown> {
 function resolveApiKeys(
   authored: unknown,
   submitted: readonly DashboardApiKeyMutation[],
+  revision: string,
 ): readonly Record<string, unknown>[] {
+  // The client's `retain` indexes address the array it read. If the watcher or another
+  // session rewrote it since, those positions now name different secrets — reject instead.
+  if (apiKeysRevision(authored) !== revision) throw new StaleApiKeysError();
   const previous = Array.isArray(authored) ? authored : [];
   return submitted.map((entry) => {
     const label = entry.label === undefined ? {} : { label: entry.label };
@@ -137,16 +158,19 @@ async function applySettingsMutation(
       next = { ...next, server: { ...server, password: await Bun.password.hash(mutation.password) } };
     }
   }
-  if (mutation.apiKeys !== undefined) {
+  if (mutation.apiKeys !== undefined && mutation.apiKeysRevision !== undefined) {
     const server = section(next['server'], 'server');
-    next = { ...next, server: { ...server, apiKeys: resolveApiKeys(server['apiKeys'], mutation.apiKeys) } };
+    next = {
+      ...next,
+      server: { ...server, apiKeys: resolveApiKeys(server['apiKeys'], mutation.apiKeys, mutation.apiKeysRevision) },
+    };
   }
   return { next, restartRequired };
 }
 
 export const createDashboardSettingsRoute = (state: ServerState) =>
   new Hono()
-    .get('/', (context) => context.json(settingsView(state.currentConfig())))
+    .get('/', async (context) => context.json(settingsView(state.currentConfig(), await authoredApiKeys(state))))
     .put('/', settingsValidator, async (context) => {
       const mutation = context.req.valid('json');
       let restartRequired = false;
@@ -160,6 +184,9 @@ export const createDashboardSettingsRoute = (state: ServerState) =>
         if (error instanceof ConfigPathMissingError) {
           return context.json({ error: { code: 'config_unavailable' }, ok: false } as const, 409);
         }
+        if (error instanceof StaleApiKeysError) {
+          return context.json({ error: { code: 'stale_api_keys' }, ok: false } as const, 409);
+        }
         if (error instanceof ConfigReloadRejectedError) {
           return context.json({ error: { code: 'reload_failed' }, ok: false } as const, 422);
         }
@@ -168,5 +195,9 @@ export const createDashboardSettingsRoute = (state: ServerState) =>
         }
         throw error;
       }
-      return context.json({ ok: true, restartRequired, settings: settingsView(state.currentConfig()) } as const);
+      return context.json({
+        ok: true,
+        restartRequired,
+        settings: settingsView(state.currentConfig(), await authoredApiKeys(state)),
+      } as const);
     });

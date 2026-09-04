@@ -17,6 +17,7 @@ const settings = {
   retryAfterCapMs: 30_000,
   hasPassword: true,
   apiKeys: [{ key: '****', label: 'ci' }, { key: '****' }],
+  apiKeysRevision: 'sha256:fixture',
 } as const;
 
 describe('dashboard settings control-plane contracts', () => {
@@ -85,8 +86,17 @@ describe('dashboard settings control-plane contracts', () => {
     expect(view.safeParse({ ...settings, apiKeys: [{ key: '****', label: '' }] }).success).toBe(false);
 
     expect(mutation.parse({})).not.toHaveProperty('apiKeys');
-    expect(mutation.parse({ apiKeys: [] })).toEqual({ apiKeys: [] });
-    expect(mutation.parse({ apiKeys: [{ retain: 0 }, { retain: 1, label: 'renamed' }, { key: 'sk-new' }] })).toEqual({
+    expect(mutation.parse({ apiKeysRevision: 'sha256:r', apiKeys: [] })).toEqual({
+      apiKeysRevision: 'sha256:r',
+      apiKeys: [],
+    });
+    expect(
+      mutation.parse({
+        apiKeysRevision: 'sha256:r',
+        apiKeys: [{ retain: 0 }, { retain: 1, label: 'renamed' }, { key: 'sk-new' }],
+      }),
+    ).toEqual({
+      apiKeysRevision: 'sha256:r',
       apiKeys: [{ retain: 0 }, { retain: 1, label: 'renamed' }, { key: 'sk-new' }],
     });
     for (const entry of [
@@ -99,8 +109,20 @@ describe('dashboard settings control-plane contracts', () => {
       { label: 'no key' },
       {},
     ]) {
-      expect(mutation.safeParse({ apiKeys: [entry] }).success).toBe(false);
+      expect(mutation.safeParse({ apiKeysRevision: 'sha256:r', apiKeys: [entry] }).success).toBe(false);
     }
+  });
+
+  test('requires an API key revision whenever keys are written', () => {
+    const view = schema('DashboardSettingsViewSchema');
+    const mutation = schema('DashboardSettingsMutationSchema');
+
+    expect(view.parse(settings).apiKeysRevision).toBe(settings.apiKeysRevision);
+    // A positional `retain` is only meaningful against the array the client actually read.
+    expect(mutation.safeParse({ apiKeys: [{ retain: 0 }] }).success).toBe(false);
+    expect(mutation.safeParse({ apiKeysRevision: 'sha256:abc', apiKeys: [{ retain: 0 }] }).success).toBe(true);
+    expect(mutation.safeParse({ apiKeysRevision: 'sha256:abc' }).success).toBe(false);
+    expect(mutation.safeParse({ apiKeysRevision: '', apiKeys: [] }).success).toBe(false);
   });
 
   test('accepts only credential-free or fully redacted root proxies in the settings view', () => {
