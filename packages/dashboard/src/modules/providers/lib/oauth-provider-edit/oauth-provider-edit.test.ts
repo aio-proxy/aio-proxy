@@ -113,6 +113,22 @@ test('excludedModels and an empty authored alias always go out on both action br
   }
 });
 
+// The routing board owns priority and weight, but core rebuilds the whole oauth entry from this patch
+// and reads an omitted routing field as a clear. Dropping them here resets priority to 0 and — worse —
+// revives a Provider the user deliberately parked at weight 0 the moment a reauthorization completes.
+test('routing values travel with both action branches so a reauthorization cannot clear them', () => {
+  const routed = { ...values, priority: 20, weight: 0 };
+
+  const update = oauthProviderEditAction(routed, { tenant: 'work' });
+  expect(update).toEqual({ kind: 'update', body: expect.objectContaining({ priority: 20, weight: 0 }) });
+
+  const reauth = oauthProviderEditAction(routed, { tenant: 'work' }, true);
+  expect(reauth).toEqual({
+    kind: 'reauthorize',
+    input: expect.objectContaining({ providerPatch: expect.objectContaining({ priority: 20, weight: 0 }) }),
+  });
+});
+
 test('a whitespace-only display name is omitted from both action branches', () => {
   const update = oauthProviderEditAction({ ...values, name: '   ' }, { tenant: 'work' });
   expect(update.kind).toBe('update');
