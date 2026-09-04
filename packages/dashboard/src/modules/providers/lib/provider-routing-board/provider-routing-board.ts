@@ -19,7 +19,9 @@ export interface ProviderRoutingBoard {
 }
 
 export const PROVIDER_TIER_ORDER = 'provider-tier-order';
+export const PROVIDER_TIER_HIGH = 'provider-tier-slot:high';
 export const providerTierListId = (tierId: string): string => `provider-tier-list:${tierId}`;
+export const providerTierAfterListId = (tierId: string): string => `provider-tier-slot:after:${tierId}`;
 
 const effectivePriority = (provider: DashboardProviderSummary): number => provider.priority ?? 0;
 const effectiveWeight = (provider: DashboardProviderSummary): number => Math.max(0, provider.weight ?? 1);
@@ -76,8 +78,12 @@ export const buildProviderRoutingBoard = (providers: readonly DashboardProviderS
 
 export const providerRoutingLists = (board: ProviderRoutingBoard): Record<string, string[]> => ({
   [PROVIDER_TIER_ORDER]: board.tiers.map((tier) => tier.id),
+  [PROVIDER_TIER_HIGH]: [],
   ...Object.fromEntries(
-    board.tiers.map((tier) => [providerTierListId(tier.id), tier.items.map((item) => item.providerId)]),
+    board.tiers.flatMap((tier) => [
+      [providerTierListId(tier.id), tier.items.map((item) => item.providerId)],
+      [providerTierAfterListId(tier.id), []],
+    ]),
   ),
 });
 
@@ -88,10 +94,6 @@ export const providerTierPercentages = (tier: ProviderRoutingBoardTier): Readonl
   );
   return new Map(tier.items.map((item, index) => [item.providerId, percentages[index] ?? 0]));
 };
-
-export const addProviderRoutingTier = (board: ProviderRoutingBoard, id: string): ProviderRoutingBoard => ({
-  tiers: [...board.tiers, { id, items: [] }],
-});
 
 export const applyProviderTierOrder = (
   board: ProviderRoutingBoard,
@@ -109,18 +111,34 @@ export const applyProviderMove = (
   const previousTier = board.tiers.find((tier) => tier.items.some((item) => item.providerId === providerId));
   const itemById = new Map(board.tiers.flatMap((tier) => tier.items.map((item) => [item.providerId, item] as const)));
   const order = lists[PROVIDER_TIER_ORDER] ?? board.tiers.map((tier) => tier.id);
-  const nextTierId = order.find((id) => lists[providerTierListId(id)]?.includes(providerId));
-  if (previousTier === undefined || nextTierId === undefined) return board;
+  const tierIds = new Set(board.tiers.map((tier) => tier.id));
+  let nextSequence = 1;
+  const nextTierId = (): string => {
+    while (tierIds.has(`tier:new:${nextSequence}`)) nextSequence += 1;
+    const id = `tier:new:${nextSequence}`;
+    tierIds.add(id);
+    nextSequence += 1;
+    return id;
+  };
+  const groups: Array<{ readonly id: string; readonly ids: readonly string[] }> = [];
+  const high = lists[PROVIDER_TIER_HIGH] ?? [];
+  if (high.length > 0) groups.push({ id: nextTierId(), ids: high });
+  for (const id of order) {
+    const tier = lists[providerTierListId(id)] ?? [];
+    if (tier.length > 0) groups.push({ id, ids: tier });
+    const after = lists[providerTierAfterListId(id)] ?? [];
+    if (after.length > 0) groups.push({ id: nextTierId(), ids: after });
+  }
+  const targetTierId = groups.find((group) => group.ids.includes(providerId))?.id;
+  if (previousTier === undefined || targetTierId === undefined) return board;
 
-  const movedAcrossTiers = previousTier.id !== nextTierId;
-  const tiers = order.flatMap((id) => {
-    const ids = lists[providerTierListId(id)] ?? [];
-    if (ids.length === 0) return [];
+  const movedAcrossTiers = previousTier.id !== targetTierId;
+  const tiers = groups.flatMap(({ id, ids }) => {
     let items = ids.flatMap((memberId) => (itemById.get(memberId) === undefined ? [] : [itemById.get(memberId)!]));
-    if (movedAcrossTiers && (id === previousTier.id || id === nextTierId)) {
+    if (movedAcrossTiers && (id === previousTier.id || id === targetTierId)) {
       items = normalizedItems(items);
     }
-    if (movedAcrossTiers && id === nextTierId) {
+    if (movedAcrossTiers && id === targetTierId) {
       const equal = positiveDistribution(
         ROUTING_VALUE_MAX,
         items.map(() => 1),

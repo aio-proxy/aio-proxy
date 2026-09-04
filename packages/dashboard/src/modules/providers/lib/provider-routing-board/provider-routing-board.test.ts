@@ -3,11 +3,12 @@ import { expect, test } from '@rstest/core';
 
 import { providerStub } from '../provider-fixtures';
 import {
-  addProviderRoutingTier,
   applyProviderMove,
   applyProviderShare,
   buildProviderRoutingBoard,
+  PROVIDER_TIER_HIGH,
   PROVIDER_TIER_ORDER,
+  providerTierAfterListId,
   providerRoutingLists,
   providerRoutingMutation,
   providerTierListId,
@@ -62,19 +63,26 @@ test('moving a Provider rebalances both tiers and removes an empty source tier',
   expect([...providerTierPercentages(next.tiers[0]!).values()]).toEqual([25, 25, 25, 25]);
 });
 
-test('an added empty tier can accept a Provider and receives an equal split', () => {
-  const board = addProviderRoutingTier(buildProviderRoutingBoard(providers), 'tier:new');
+test.each([
+  [PROVIDER_TIER_HIGH, [['a'], ['b', 'c'], ['d']]],
+  [providerTierAfterListId('tier:20'), [['b', 'c'], ['a'], ['d']]],
+  [providerTierAfterListId('tier:10'), [['b', 'c'], ['d'], ['a']]],
+] as const)('dropping a Provider into %s creates a tier at that position', (slotId, expected) => {
+  const board = buildProviderRoutingBoard(providers);
   const lists = providerRoutingLists(board);
   const next = applyProviderMove(
     board,
     {
       ...lists,
       [providerTierListId('tier:20')]: ['b', 'c'],
-      [providerTierListId('tier:new')]: ['a'],
+      [slotId]: ['a'],
     },
     'a',
   );
-  expect(next.tiers.map((tier) => [...providerTierPercentages(tier).values()])).toEqual([[50, 50], [100], [100]]);
+  expect(next.tiers.map((tier) => tier.items.map((item) => item.providerId))).toEqual(expected);
+  expect([...providerTierPercentages(next.tiers.find((tier) => tier.items[0]?.providerId === 'a')!).values()]).toEqual([
+    100,
+  ]);
 });
 
 test('tier order becomes compact descending priorities in the mutation', () => {
