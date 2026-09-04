@@ -8,7 +8,6 @@ import { readGoogleAntigravityQuota } from './quota';
 const QUOTA_PATH = '/v1internal:retrieveUserQuotaSummary';
 const DAILY = `https://daily-cloudcode-pa.googleapis.com${QUOTA_PATH}`;
 const SANDBOX = `https://daily-cloudcode-pa.sandbox.googleapis.com${QUOTA_PATH}`;
-const PROD = `https://cloudcode-pa.googleapis.com${QUOTA_PATH}`;
 const PLAN_PATH = '/v1internal:loadCodeAssist';
 const DAILY_PLAN = `https://daily-cloudcode-pa.googleapis.com${PLAN_PATH}`;
 
@@ -134,12 +133,6 @@ test('falls through to the sandbox base when daily rejects the account', async (
   expect(snapshot.items).toHaveLength(4);
 });
 
-test('falls through to prod when daily and the sandbox both reject', async () => {
-  const seen: string[] = [];
-  await readGoogleAntigravityQuota(context(), quotaResponder({ [PROD]: summaryPayload }, seen));
-  expect(seen.filter((url) => url.endsWith(QUOTA_PATH))).toEqual([DAILY, SANDBOX, PROD]);
-});
-
 test('fails when every base rejects', async () => {
   await expect(readGoogleAntigravityQuota(context(), quotaResponder({}))).rejects.toThrow(
     'Antigravity quota request failed with 404',
@@ -248,23 +241,21 @@ function recordAttemptTimeouts() {
 // never reached when the earlier ones are slow rather than dead — the only reason the list exists.
 const SERVER_READ_TIMEOUT_MS = 15_000;
 
-// The plan timeout happens to equal the default per-attempt share, so this test alone cannot tell
-// a reordered plan read from a correct one. The custom-base test below is the ordering anchor: it
-// observes two distinct values, so a reorder trips it.
 test('fits every quota attempt inside the server read budget', async () => {
   const recorder = recordAttemptTimeouts();
   try {
-    await readGoogleAntigravityQuota(context(), quotaResponder({ [PROD]: summaryPayload }));
+    // The sandbox is the last base, so every attempt in the walk is made.
+    await readGoogleAntigravityQuota(context(), quotaResponder({ [SANDBOX]: summaryPayload }));
   } finally {
     recorder.restore();
   }
   const walk = recorder.walk();
-  expect(walk).toHaveLength(3);
+  expect(walk).toHaveLength(2);
   expect(walk.reduce((total, value) => total + value, 0)).toBeLessThan(SERVER_READ_TIMEOUT_MS);
 });
 
-// A custom base is a one-element list, so it gets the whole walk budget instead of a third of it:
-// a slow-but-healthy relay must not be cut short by a divisor meant for the default three.
+// A custom base is a one-element list, so it gets the whole walk budget rather than a share sized
+// for the default list: a slow-but-healthy relay must not be cut short by someone else's divisor.
 test('gives a custom base the whole walk budget', async () => {
   const base = 'https://relay.example.com';
   const recorder = recordAttemptTimeouts();
@@ -279,5 +270,6 @@ test('gives a custom base the whole walk budget', async () => {
   const walk = recorder.walk();
   expect(walk).toHaveLength(1);
   expect(walk[0]).toBeLessThan(SERVER_READ_TIMEOUT_MS);
-  expect(walk[0]).toBeGreaterThan(SERVER_READ_TIMEOUT_MS / 3);
+  // Strictly more than the default per-base share, i.e. the divisor really tracked the list length.
+  expect(walk[0]).toBeGreaterThan(SERVER_READ_TIMEOUT_MS / 2);
 });
