@@ -1,5 +1,35 @@
 # @aio-proxy/types
 
+## 0.17.0
+
+### Minor Changes
+
+- [#260](https://github.com/aio-proxy/aio-proxy/pull/260) [`b7d9520`](https://github.com/aio-proxy/aio-proxy/commit/b7d9520cdc280d1b6785c53d4d079b5db2d5311f) Thanks [@baranwang](https://github.com/baranwang)! - Refresh an OAuth Provider's credential on demand from the dashboard Provider card menu.
+
+  OAuth Providers whose plugin supports it gain a "Refresh Credential" entry in the card's ⋯ menu that
+  forces an upstream token exchange even when the current credential has not expired, clears a stale
+  `CREDENTIAL_REFRESH_FAILED` diagnostic on success, and reloads the Provider list so the account label
+  and expiry reflect the new credential. A refresh the plugin reports as permanently failed — a revoked
+  refresh token, for example — records the same reauthentication diagnostic the automatic refresh path
+  does, so the card tells you to re-login instead of continuing to report the Provider as ready. A
+  transient failure leaves the Provider untouched. The entry is hidden — not
+  disabled — for plugins without the capability, which Provider summaries now report as
+  `canRefreshCredential`. All six bundled OAuth plugins support it.
+
+  `OAuthAdapter` gains an optional `refreshCredential`, exported alongside the new
+  `OAuthCredentialRefreshContext` and `OAuthCredentialRefreshResult` types. It is a pure exchange: the
+  framework owns the lease, single-flight dedupe, revision compare-and-swap, and persistence, and calls
+  the adapter unconditionally rather than only past expiry. Adapter registration previously dropped
+  fields outside its closed list, so an adapter declaring `refreshCredential` would have lost it.
+
+- [#261](https://github.com/aio-proxy/aio-proxy/pull/261) [`2c6da7a`](https://github.com/aio-proxy/aio-proxy/commit/2c6da7a8ccd7246bcc81daf83001e046ce376e16) Thanks [@baranwang](https://github.com/baranwang)! - Add, relabel, and remove API keys from Settings, including a one-click generator for a fresh random key. Stored keys stay masked and are never sent back to the browser, and authored `{{env.NAME}}` key templates survive a write unchanged. Key writes carry the revision of the key list they were made against, so a write is rejected with `409 stale_api_keys` when the config changed underneath instead of silently rewriting a different key.
+
+- [#261](https://github.com/aio-proxy/aio-proxy/pull/261) [`6d02c87`](https://github.com/aio-proxy/aio-proxy/commit/6d02c876980ee55963fd0db6298adffe23bc42a2) Thanks [@baranwang](https://github.com/baranwang)! - Set and clear the Dashboard password from Settings. The password is stored only as an Argon2id hash, and changing it signs out every existing session.
+
+### Patch Changes
+
+- [#271](https://github.com/aio-proxy/aio-proxy/pull/271) [`8150738`](https://github.com/aio-proxy/aio-proxy/commit/815073848e78ed7195f7f6d97077f3b495d103bd) Thanks [@baranwang](https://github.com/baranwang)! - dashboard: manage Provider and per-model priority tiers with one drag editor that moves whole tiers, creates tiers at drop slots, and adjusts traffic shares without an add-tier button
+
 ## 0.16.0
 
 ## 0.15.0

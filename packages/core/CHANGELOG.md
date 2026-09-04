@@ -1,5 +1,53 @@
 # @aio-proxy/core
 
+## 0.17.0
+
+### Minor Changes
+
+- [#260](https://github.com/aio-proxy/aio-proxy/pull/260) [`b7d9520`](https://github.com/aio-proxy/aio-proxy/commit/b7d9520cdc280d1b6785c53d4d079b5db2d5311f) Thanks [@baranwang](https://github.com/baranwang)! - Refresh an OAuth Provider's credential on demand from the dashboard Provider card menu.
+
+  OAuth Providers whose plugin supports it gain a "Refresh Credential" entry in the card's ⋯ menu that
+  forces an upstream token exchange even when the current credential has not expired, clears a stale
+  `CREDENTIAL_REFRESH_FAILED` diagnostic on success, and reloads the Provider list so the account label
+  and expiry reflect the new credential. A refresh the plugin reports as permanently failed — a revoked
+  refresh token, for example — records the same reauthentication diagnostic the automatic refresh path
+  does, so the card tells you to re-login instead of continuing to report the Provider as ready. A
+  transient failure leaves the Provider untouched. The entry is hidden — not
+  disabled — for plugins without the capability, which Provider summaries now report as
+  `canRefreshCredential`. All six bundled OAuth plugins support it.
+
+  `OAuthAdapter` gains an optional `refreshCredential`, exported alongside the new
+  `OAuthCredentialRefreshContext` and `OAuthCredentialRefreshResult` types. It is a pure exchange: the
+  framework owns the lease, single-flight dedupe, revision compare-and-swap, and persistence, and calls
+  the adapter unconditionally rather than only past expiry. Adapter registration previously dropped
+  fields outside its closed list, so an adapter declaring `refreshCredential` would have lost it.
+
+- [#261](https://github.com/aio-proxy/aio-proxy/pull/261) [`fd1c284`](https://github.com/aio-proxy/aio-proxy/commit/fd1c28430f0678bc22a558677feeff3146f7eba6) Thanks [@baranwang](https://github.com/baranwang)! - Add an About section to the Settings page with the running version, the source repository, and the documentation site, plus a button that checks npm for a newer published release. Move the appearance and language card to the top of the page, and mark the API key label field as optional.
+
+### Patch Changes
+
+- [#269](https://github.com/aio-proxy/aio-proxy/pull/269) [`0934b54`](https://github.com/aio-proxy/aio-proxy/commit/0934b54a8e8dfb1c9c03ceff1f521b7c82ff600f) Thanks [@baranwang](https://github.com/baranwang)! - Accept OpenAI Responses tool outputs that carry no `call_id`. Codex Desktop's cross-thread delegation injects a synthetic `function_call_output` identified by `name`/`namespace` instead of a `call_id`, which previously failed inbound validation with a 400 even when the request was routed to a same-protocol provider that would have received the body verbatim. Same-protocol raw passthrough now forwards these items untouched and lets the upstream decide; a provider that needs model conversion is skipped as unsupported so the request falls back to the next candidate.
+
+- [#261](https://github.com/aio-proxy/aio-proxy/pull/261) [`d3eb521`](https://github.com/aio-proxy/aio-proxy/commit/d3eb5215724009b43705a515ca17666097d578f8) Thanks [@baranwang](https://github.com/baranwang)! - Raise a `SyntaxError` when a config file parses to a non-object root, so a Settings write against `[]` or `null` answers `config_rejected` instead of failing with an unhandled server error.
+
+- [#268](https://github.com/aio-proxy/aio-proxy/pull/268) [`c2acd49`](https://github.com/aio-proxy/aio-proxy/commit/c2acd49f937aa833b8cf7f5937d45cd2a227cd70) Thanks [@baranwang](https://github.com/baranwang)! - Retry OpenAI Responses raw requests when the upstream rejects an unverifiable reasoning blob with `code: null` and only the message `The encrypted content for item rs_… could not be verified. Reason: Encrypted content could not be decrypted or parsed.`. That variant previously reached the client unchanged because the retry only matched `code: "invalid_encrypted_content"`. A `Signature expired` rejection still commits, since replaying the same body cannot fix it.
+
+- [#261](https://github.com/aio-proxy/aio-proxy/pull/261) [`b0e6181`](https://github.com/aio-proxy/aio-proxy/commit/b0e6181122aa8424d90f9533b9deef7f57bb6810) Thanks [@baranwang](https://github.com/baranwang)! - Derive the recovery-fence action-phase test's sleep from its deadline so a slow acquisition no longer makes it fail on the timeout path it is not testing.
+
+- [#271](https://github.com/aio-proxy/aio-proxy/pull/271) [`8150738`](https://github.com/aio-proxy/aio-proxy/commit/815073848e78ed7195f7f6d97077f3b495d103bd) Thanks [@baranwang](https://github.com/baranwang)! - dashboard: manage Provider and per-model priority tiers with one drag editor that moves whole tiers, creates tiers at drop slots, and adjusts traffic shares without an add-tier button
+- Updated dependencies [[`44a978e`](https://github.com/aio-proxy/aio-proxy/commit/44a978eb2a58a1e36c9c5cd3fd933f082995580b), [`1d688b5`](https://github.com/aio-proxy/aio-proxy/commit/1d688b5090fdbb004435f7e41042464e24885936), [`d4b7388`](https://github.com/aio-proxy/aio-proxy/commit/d4b738816eaa2ad2f32f125cc7238db2e84b85da), [`d371ddc`](https://github.com/aio-proxy/aio-proxy/commit/d371ddcdeaaeb93931739f68f26432f2408ad1cd), [`b7d9520`](https://github.com/aio-proxy/aio-proxy/commit/b7d9520cdc280d1b6785c53d4d079b5db2d5311f), [`fd1c284`](https://github.com/aio-proxy/aio-proxy/commit/fd1c28430f0678bc22a558677feeff3146f7eba6), [`2c6da7a`](https://github.com/aio-proxy/aio-proxy/commit/2c6da7a8ccd7246bcc81daf83001e046ce376e16), [`6d02c87`](https://github.com/aio-proxy/aio-proxy/commit/6d02c876980ee55963fd0db6298adffe23bc42a2), [`2621cb3`](https://github.com/aio-proxy/aio-proxy/commit/2621cb3221abdc8a7d98cbde7eb54e6b35feef37), [`31b4339`](https://github.com/aio-proxy/aio-proxy/commit/31b4339d6b59ca72c0a3b5b33bcd2c339e631f1a), [`4c93909`](https://github.com/aio-proxy/aio-proxy/commit/4c939090f89ac0799768ab356e74310c91940b7a), [`7ecb445`](https://github.com/aio-proxy/aio-proxy/commit/7ecb4452f35b3b1fafa8215d2710e134b60425e7), [`8150738`](https://github.com/aio-proxy/aio-proxy/commit/815073848e78ed7195f7f6d97077f3b495d103bd)]:
+  - @aio-proxy/plugin-openai-chatgpt@0.17.0
+  - @aio-proxy/plugin-cursor@0.17.0
+  - @aio-proxy/plugin-github-copilot@0.17.0
+  - @aio-proxy/plugin-google-antigravity@0.17.0
+  - @aio-proxy/plugin-kimi-code@0.17.0
+  - @aio-proxy/plugin-xai-grok@0.17.0
+  - @aio-proxy/plugin-sdk@0.17.0
+  - @aio-proxy/types@0.17.0
+  - @aio-proxy/i18n@0.17.0
+  - @aio-proxy/logger@0.17.0
+  - @aio-proxy/shared@0.17.0
+
 ## 0.16.0
 
 ### Patch Changes

@@ -1,5 +1,79 @@
 # aio-proxy
 
+## 0.17.0
+
+### Minor Changes
+
+- [#259](https://github.com/aio-proxy/aio-proxy/pull/259) [`44a978e`](https://github.com/aio-proxy/aio-proxy/commit/44a978eb2a58a1e36c9c5cd3fd933f082995580b) Thanks [@baranwang](https://github.com/baranwang)! - ChatGPT OAuth providers now discover models from the signed-in account's own Codex endpoint instead of a published `models.json` snapshot, so the exposed list matches what the account can actually call. Models the account cannot use no longer appear, and `gpt-5.3-codex-spark` — previously hidden by a `supported_in_api` filter that does not apply to ChatGPT accounts — is now available. Because the list is fetched with the account's own credential and there is no bundled fallback, a ChatGPT provider whose login is missing or can no longer be refreshed now exposes no models until you sign in again, where before it listed the published snapshot regardless of login state. An expired access token alone is unaffected — it is refreshed as usual.
+
+  `gpt-image-2` is also exposed, and `/v1/images/generations` and `/v1/images/edits` now pass through to the ChatGPT image endpoints. JSON image requests are supported; `multipart/form-data` requests to `/v1/images/edits` are not, because the ChatGPT backend rejects that content type.
+
+- [#263](https://github.com/aio-proxy/aio-proxy/pull/263) [`1d688b5`](https://github.com/aio-proxy/aio-proxy/commit/1d688b5090fdbb004435f7e41042464e24885936) Thanks [@baranwang](https://github.com/baranwang)! - cursor: report Cursor OAuth quota in the dashboard
+
+  The Cursor OAuth adapter now reads `cursor.com/api/usage-summary`, so its Provider card shows the quota ring: plan usage, the Auto and named-model lanes, the on-demand budget when the account has a cap, and the Cursor subscription tier, all resetting at the billing-cycle end. Accounts with a Grok Bot allowance also get its weekly lane; that read is best-effort and never fails the monthly bars. No re-login is needed — the session is derived from the access token already on file.
+
+- [#262](https://github.com/aio-proxy/aio-proxy/pull/262) [`d4b7388`](https://github.com/aio-proxy/aio-proxy/commit/d4b738816eaa2ad2f32f125cc7238db2e84b85da) Thanks [@baranwang](https://github.com/baranwang)! - github-copilot: report Copilot OAuth quota in the dashboard
+
+  The GitHub Copilot OAuth adapter now reads `copilot_internal/user`, so its Provider card shows the quota ring: the premium-request and chat allowances, any other window the account reports, the monthly reset date, and the Copilot plan. Seats with an unlimited or token-billed entitlement report no metered window rather than a misleading full bar.
+
+- [#265](https://github.com/aio-proxy/aio-proxy/pull/265) [`d371ddc`](https://github.com/aio-proxy/aio-proxy/commit/d371ddcdeaaeb93931739f68f26432f2408ad1cd) Thanks [@baranwang](https://github.com/baranwang)! - google-antigravity: report account quota on the Provider card. The plugin now reads Antigravity's grouped five-hour and weekly limits, along with the subscription tier, so the dashboard renders a quota ring for Antigravity accounts.
+
+- [#260](https://github.com/aio-proxy/aio-proxy/pull/260) [`b7d9520`](https://github.com/aio-proxy/aio-proxy/commit/b7d9520cdc280d1b6785c53d4d079b5db2d5311f) Thanks [@baranwang](https://github.com/baranwang)! - Refresh an OAuth Provider's credential on demand from the dashboard Provider card menu.
+
+  OAuth Providers whose plugin supports it gain a "Refresh Credential" entry in the card's ⋯ menu that
+  forces an upstream token exchange even when the current credential has not expired, clears a stale
+  `CREDENTIAL_REFRESH_FAILED` diagnostic on success, and reloads the Provider list so the account label
+  and expiry reflect the new credential. A refresh the plugin reports as permanently failed — a revoked
+  refresh token, for example — records the same reauthentication diagnostic the automatic refresh path
+  does, so the card tells you to re-login instead of continuing to report the Provider as ready. A
+  transient failure leaves the Provider untouched. The entry is hidden — not
+  disabled — for plugins without the capability, which Provider summaries now report as
+  `canRefreshCredential`. All six bundled OAuth plugins support it.
+
+  `OAuthAdapter` gains an optional `refreshCredential`, exported alongside the new
+  `OAuthCredentialRefreshContext` and `OAuthCredentialRefreshResult` types. It is a pure exchange: the
+  framework owns the lease, single-flight dedupe, revision compare-and-swap, and persistence, and calls
+  the adapter unconditionally rather than only past expiry. Adapter registration previously dropped
+  fields outside its closed list, so an adapter declaring `refreshCredential` would have lost it.
+
+- [#261](https://github.com/aio-proxy/aio-proxy/pull/261) [`fd1c284`](https://github.com/aio-proxy/aio-proxy/commit/fd1c28430f0678bc22a558677feeff3146f7eba6) Thanks [@baranwang](https://github.com/baranwang)! - Add an About section to the Settings page with the running version, the source repository, and the documentation site, plus a button that checks npm for a newer published release. Move the appearance and language card to the top of the page, and mark the API key label field as optional.
+
+- [#261](https://github.com/aio-proxy/aio-proxy/pull/261) [`2c6da7a`](https://github.com/aio-proxy/aio-proxy/commit/2c6da7a8ccd7246bcc81daf83001e046ce376e16) Thanks [@baranwang](https://github.com/baranwang)! - Add, relabel, and remove API keys from Settings, including a one-click generator for a fresh random key. Stored keys stay masked and are never sent back to the browser, and authored `{{env.NAME}}` key templates survive a write unchanged. Key writes carry the revision of the key list they were made against, so a write is rejected with `409 stale_api_keys` when the config changed underneath instead of silently rewriting a different key.
+
+- [#261](https://github.com/aio-proxy/aio-proxy/pull/261) [`6d02c87`](https://github.com/aio-proxy/aio-proxy/commit/6d02c876980ee55963fd0db6298adffe23bc42a2) Thanks [@baranwang](https://github.com/baranwang)! - Set and clear the Dashboard password from Settings. The password is stored only as an Argon2id hash, and changing it signs out every existing session.
+
+- [#261](https://github.com/aio-proxy/aio-proxy/pull/261) [`4c93909`](https://github.com/aio-proxy/aio-proxy/commit/4c939090f89ac0799768ab356e74310c91940b7a) Thanks [@baranwang](https://github.com/baranwang)! - Move appearance and language into Settings as an "Appearance & language" card and drop the sidebar dropdowns, so every preference has one entry point.
+
+- [#261](https://github.com/aio-proxy/aio-proxy/pull/261) [`7ecb445`](https://github.com/aio-proxy/aio-proxy/commit/7ecb4452f35b3b1fafa8215d2710e134b60425e7) Thanks [@baranwang](https://github.com/baranwang)! - Add a "Reload config" action to Settings that re-reads the config file on demand and surfaces the failing reload stage. Host, port, and log level still require a restart.
+
+### Patch Changes
+
+- [#269](https://github.com/aio-proxy/aio-proxy/pull/269) [`0934b54`](https://github.com/aio-proxy/aio-proxy/commit/0934b54a8e8dfb1c9c03ceff1f521b7c82ff600f) Thanks [@baranwang](https://github.com/baranwang)! - Accept OpenAI Responses tool outputs that carry no `call_id`. Codex Desktop's cross-thread delegation injects a synthetic `function_call_output` identified by `name`/`namespace` instead of a `call_id`, which previously failed inbound validation with a 400 even when the request was routed to a same-protocol provider that would have received the body verbatim. Same-protocol raw passthrough now forwards these items untouched and lets the upstream decide; a provider that needs model conversion is skipped as unsupported so the request falls back to the next candidate.
+
+- [#261](https://github.com/aio-proxy/aio-proxy/pull/261) [`d3eb521`](https://github.com/aio-proxy/aio-proxy/commit/d3eb5215724009b43705a515ca17666097d578f8) Thanks [@baranwang](https://github.com/baranwang)! - Raise a `SyntaxError` when a config file parses to a non-object root, so a Settings write against `[]` or `null` answers `config_rejected` instead of failing with an unhandled server error.
+
+- [#268](https://github.com/aio-proxy/aio-proxy/pull/268) [`c2acd49`](https://github.com/aio-proxy/aio-proxy/commit/c2acd49f937aa833b8cf7f5937d45cd2a227cd70) Thanks [@baranwang](https://github.com/baranwang)! - Retry OpenAI Responses raw requests when the upstream rejects an unverifiable reasoning blob with `code: null` and only the message `The encrypted content for item rs_… could not be verified. Reason: Encrypted content could not be decrypted or parsed.`. That variant previously reached the client unchanged because the retry only matched `code: "invalid_encrypted_content"`. A `Signature expired` rejection still commits, since replaying the same body cannot fix it.
+
+- [#261](https://github.com/aio-proxy/aio-proxy/pull/261) [`17a68c2`](https://github.com/aio-proxy/aio-proxy/commit/17a68c228a961afa04a61ed46cb84808b2e33830) Thanks [@baranwang](https://github.com/baranwang)! - Attach the loopback OAuth-error rejection handler before the callback request so the test no longer fails intermittently on an unhandled rejection.
+
+- [#261](https://github.com/aio-proxy/aio-proxy/pull/261) [`b0e6181`](https://github.com/aio-proxy/aio-proxy/commit/b0e6181122aa8424d90f9533b9deef7f57bb6810) Thanks [@baranwang](https://github.com/baranwang)! - Derive the recovery-fence action-phase test's sleep from its deadline so a slow acquisition no longer makes it fail on the timeout path it is not testing.
+
+- [#261](https://github.com/aio-proxy/aio-proxy/pull/261) [`9b80f0c`](https://github.com/aio-proxy/aio-proxy/commit/9b80f0cbb813a709a42638915224d81f1e16241e) Thanks [@baranwang](https://github.com/baranwang)! - Build the Settings About rows from the shadcn `Item` primitive so the repository and documentation rows are clickable end to end instead of only through their chevron.
+
+- [#261](https://github.com/aio-proxy/aio-proxy/pull/261) [`962e433`](https://github.com/aio-proxy/aio-proxy/commit/962e433bc648cb44604ed98423ecec3c17a6b721) Thanks [@baranwang](https://github.com/baranwang)! - Store a new API key exactly as entered instead of trimming it, including a key made up entirely of whitespace, and author every submitted key even when a retained row already holds that credential.
+
+- [#261](https://github.com/aio-proxy/aio-proxy/pull/261) [`2621cb3`](https://github.com/aio-proxy/aio-proxy/commit/2621cb3221abdc8a7d98cbde7eb54e6b35feef37) Thanks [@baranwang](https://github.com/baranwang)! - Keep an unsaved API key when another writer's change forces a settings refetch, so a rejected save no longer discards the only copy of a generated key. Localize every config reload failure stage instead of interpolating the server's internal stage identifier into the translated message.
+
+- [#261](https://github.com/aio-proxy/aio-proxy/pull/261) [`31b4339`](https://github.com/aio-proxy/aio-proxy/commit/31b4339d6b59ca72c0a3b5b33bcd2c339e631f1a) Thanks [@baranwang](https://github.com/baranwang)! - Report an API key row that has a label but no key instead of silently dropping it, so saving no longer succeeds without persisting the key.
+
+- [#261](https://github.com/aio-proxy/aio-proxy/pull/261) [`fe76256`](https://github.com/aio-proxy/aio-proxy/commit/fe762564e204fb81535ed99fc82dfbff72c63e0d) Thanks [@baranwang](https://github.com/baranwang)! - Keep the Settings page usable when an external edit leaves the config file unparseable: the read view falls back to the keys the proxy is still enforcing instead of failing, and a write attempted against the broken file is refused with a clear error rather than a 500.
+
+- [#267](https://github.com/aio-proxy/aio-proxy/pull/267) [`cef9deb`](https://github.com/aio-proxy/aio-proxy/commit/cef9deb1441d7c22cf64b412fb6a311bac1f761a) Thanks [@baranwang](https://github.com/baranwang)! - Render the dashboard's default-size switches as Safari's native `<input type="checkbox" switch>` when the browser supports it, falling back to the Base UI implementation everywhere else.
+
+- [#272](https://github.com/aio-proxy/aio-proxy/pull/272) [`5c7f017`](https://github.com/aio-proxy/aio-proxy/commit/5c7f01716a840a8f02850b08bcd3ad7cf254f740) Thanks [@baranwang](https://github.com/baranwang)! - Show Trace fast-mode indicators for GPT-5.6 Sol ultrafast requests.
+
+- [#271](https://github.com/aio-proxy/aio-proxy/pull/271) [`8150738`](https://github.com/aio-proxy/aio-proxy/commit/815073848e78ed7195f7f6d97077f3b495d103bd) Thanks [@baranwang](https://github.com/baranwang)! - dashboard: manage Provider and per-model priority tiers with one drag editor that moves whole tiers, creates tiers at drop slots, and adjusts traffic shares without an add-tier button
+
 ## 0.16.0
 
 ### Minor Changes

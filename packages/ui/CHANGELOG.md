@@ -1,5 +1,13 @@
 # @aio-proxy/ui
 
+## 0.17.0
+
+### Patch Changes
+
+- [#261](https://github.com/aio-proxy/aio-proxy/pull/261) [`9b80f0c`](https://github.com/aio-proxy/aio-proxy/commit/9b80f0cbb813a709a42638915224d81f1e16241e) Thanks [@baranwang](https://github.com/baranwang)! - Build the Settings About rows from the shadcn `Item` primitive so the repository and documentation rows are clickable end to end instead of only through their chevron.
+
+- [#267](https://github.com/aio-proxy/aio-proxy/pull/267) [`cef9deb`](https://github.com/aio-proxy/aio-proxy/commit/cef9deb1441d7c22cf64b412fb6a311bac1f761a) Thanks [@baranwang](https://github.com/baranwang)! - Render the dashboard's default-size switches as Safari's native `<input type="checkbox" switch>` when the browser supports it, falling back to the Base UI implementation everywhere else.
+
 ## 0.16.0
 
 ## 0.15.0

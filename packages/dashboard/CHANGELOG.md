@@ -1,5 +1,55 @@
 # @aio-proxy/dashboard
 
+## 0.17.0
+
+### Minor Changes
+
+- [#260](https://github.com/aio-proxy/aio-proxy/pull/260) [`b7d9520`](https://github.com/aio-proxy/aio-proxy/commit/b7d9520cdc280d1b6785c53d4d079b5db2d5311f) Thanks [@baranwang](https://github.com/baranwang)! - Refresh an OAuth Provider's credential on demand from the dashboard Provider card menu.
+
+  OAuth Providers whose plugin supports it gain a "Refresh Credential" entry in the card's ⋯ menu that
+  forces an upstream token exchange even when the current credential has not expired, clears a stale
+  `CREDENTIAL_REFRESH_FAILED` diagnostic on success, and reloads the Provider list so the account label
+  and expiry reflect the new credential. A refresh the plugin reports as permanently failed — a revoked
+  refresh token, for example — records the same reauthentication diagnostic the automatic refresh path
+  does, so the card tells you to re-login instead of continuing to report the Provider as ready. A
+  transient failure leaves the Provider untouched. The entry is hidden — not
+  disabled — for plugins without the capability, which Provider summaries now report as
+  `canRefreshCredential`. All six bundled OAuth plugins support it.
+
+  `OAuthAdapter` gains an optional `refreshCredential`, exported alongside the new
+  `OAuthCredentialRefreshContext` and `OAuthCredentialRefreshResult` types. It is a pure exchange: the
+  framework owns the lease, single-flight dedupe, revision compare-and-swap, and persistence, and calls
+  the adapter unconditionally rather than only past expiry. Adapter registration previously dropped
+  fields outside its closed list, so an adapter declaring `refreshCredential` would have lost it.
+
+- [#261](https://github.com/aio-proxy/aio-proxy/pull/261) [`fd1c284`](https://github.com/aio-proxy/aio-proxy/commit/fd1c28430f0678bc22a558677feeff3146f7eba6) Thanks [@baranwang](https://github.com/baranwang)! - Add an About section to the Settings page with the running version, the source repository, and the documentation site, plus a button that checks npm for a newer published release. Move the appearance and language card to the top of the page, and mark the API key label field as optional.
+
+- [#261](https://github.com/aio-proxy/aio-proxy/pull/261) [`2c6da7a`](https://github.com/aio-proxy/aio-proxy/commit/2c6da7a8ccd7246bcc81daf83001e046ce376e16) Thanks [@baranwang](https://github.com/baranwang)! - Add, relabel, and remove API keys from Settings, including a one-click generator for a fresh random key. Stored keys stay masked and are never sent back to the browser, and authored `{{env.NAME}}` key templates survive a write unchanged. Key writes carry the revision of the key list they were made against, so a write is rejected with `409 stale_api_keys` when the config changed underneath instead of silently rewriting a different key.
+
+- [#261](https://github.com/aio-proxy/aio-proxy/pull/261) [`6d02c87`](https://github.com/aio-proxy/aio-proxy/commit/6d02c876980ee55963fd0db6298adffe23bc42a2) Thanks [@baranwang](https://github.com/baranwang)! - Set and clear the Dashboard password from Settings. The password is stored only as an Argon2id hash, and changing it signs out every existing session.
+
+- [#261](https://github.com/aio-proxy/aio-proxy/pull/261) [`4c93909`](https://github.com/aio-proxy/aio-proxy/commit/4c939090f89ac0799768ab356e74310c91940b7a) Thanks [@baranwang](https://github.com/baranwang)! - Move appearance and language into Settings as an "Appearance & language" card and drop the sidebar dropdowns, so every preference has one entry point.
+
+- [#261](https://github.com/aio-proxy/aio-proxy/pull/261) [`7ecb445`](https://github.com/aio-proxy/aio-proxy/commit/7ecb4452f35b3b1fafa8215d2710e134b60425e7) Thanks [@baranwang](https://github.com/baranwang)! - Add a "Reload config" action to Settings that re-reads the config file on demand and surfaces the failing reload stage. Host, port, and log level still require a restart.
+
+### Patch Changes
+
+- [#261](https://github.com/aio-proxy/aio-proxy/pull/261) [`9b80f0c`](https://github.com/aio-proxy/aio-proxy/commit/9b80f0cbb813a709a42638915224d81f1e16241e) Thanks [@baranwang](https://github.com/baranwang)! - Build the Settings About rows from the shadcn `Item` primitive so the repository and documentation rows are clickable end to end instead of only through their chevron.
+
+- [#261](https://github.com/aio-proxy/aio-proxy/pull/261) [`962e433`](https://github.com/aio-proxy/aio-proxy/commit/962e433bc648cb44604ed98423ecec3c17a6b721) Thanks [@baranwang](https://github.com/baranwang)! - Store a new API key exactly as entered instead of trimming it, including a key made up entirely of whitespace, and author every submitted key even when a retained row already holds that credential.
+
+- [#261](https://github.com/aio-proxy/aio-proxy/pull/261) [`2621cb3`](https://github.com/aio-proxy/aio-proxy/commit/2621cb3221abdc8a7d98cbde7eb54e6b35feef37) Thanks [@baranwang](https://github.com/baranwang)! - Keep an unsaved API key when another writer's change forces a settings refetch, so a rejected save no longer discards the only copy of a generated key. Localize every config reload failure stage instead of interpolating the server's internal stage identifier into the translated message.
+
+- [#261](https://github.com/aio-proxy/aio-proxy/pull/261) [`31b4339`](https://github.com/aio-proxy/aio-proxy/commit/31b4339d6b59ca72c0a3b5b33bcd2c339e631f1a) Thanks [@baranwang](https://github.com/baranwang)! - Report an API key row that has a label but no key instead of silently dropping it, so saving no longer succeeds without persisting the key.
+
+- [#271](https://github.com/aio-proxy/aio-proxy/pull/271) [`8150738`](https://github.com/aio-proxy/aio-proxy/commit/815073848e78ed7195f7f6d97077f3b495d103bd) Thanks [@baranwang](https://github.com/baranwang)! - dashboard: manage Provider and per-model priority tiers with one drag editor that moves whole tiers, creates tiers at drop slots, and adjusts traffic shares without an add-tier button
+- Updated dependencies [[`d3eb521`](https://github.com/aio-proxy/aio-proxy/commit/d3eb5215724009b43705a515ca17666097d578f8), [`b7d9520`](https://github.com/aio-proxy/aio-proxy/commit/b7d9520cdc280d1b6785c53d4d079b5db2d5311f), [`9b80f0c`](https://github.com/aio-proxy/aio-proxy/commit/9b80f0cbb813a709a42638915224d81f1e16241e), [`fd1c284`](https://github.com/aio-proxy/aio-proxy/commit/fd1c28430f0678bc22a558677feeff3146f7eba6), [`962e433`](https://github.com/aio-proxy/aio-proxy/commit/962e433bc648cb44604ed98423ecec3c17a6b721), [`2c6da7a`](https://github.com/aio-proxy/aio-proxy/commit/2c6da7a8ccd7246bcc81daf83001e046ce376e16), [`6d02c87`](https://github.com/aio-proxy/aio-proxy/commit/6d02c876980ee55963fd0db6298adffe23bc42a2), [`2621cb3`](https://github.com/aio-proxy/aio-proxy/commit/2621cb3221abdc8a7d98cbde7eb54e6b35feef37), [`31b4339`](https://github.com/aio-proxy/aio-proxy/commit/31b4339d6b59ca72c0a3b5b33bcd2c339e631f1a), [`4c93909`](https://github.com/aio-proxy/aio-proxy/commit/4c939090f89ac0799768ab356e74310c91940b7a), [`7ecb445`](https://github.com/aio-proxy/aio-proxy/commit/7ecb4452f35b3b1fafa8215d2710e134b60425e7), [`fe76256`](https://github.com/aio-proxy/aio-proxy/commit/fe762564e204fb81535ed99fc82dfbff72c63e0d), [`cef9deb`](https://github.com/aio-proxy/aio-proxy/commit/cef9deb1441d7c22cf64b412fb6a311bac1f761a), [`5c7f017`](https://github.com/aio-proxy/aio-proxy/commit/5c7f01716a840a8f02850b08bcd3ad7cf254f740), [`8150738`](https://github.com/aio-proxy/aio-proxy/commit/815073848e78ed7195f7f6d97077f3b495d103bd)]:
+  - @aio-proxy/server@0.17.0
+  - @aio-proxy/plugin-sdk@0.17.0
+  - @aio-proxy/types@0.17.0
+  - @aio-proxy/i18n@0.17.0
+  - @aio-proxy/ui@0.17.0
+
 ## 0.16.0
 
 ### Patch Changes
