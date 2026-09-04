@@ -22,3 +22,8 @@ edited by hand.
   button a compile error rather than a silently English one. Also: the chevron trigger must NOT carry
   `group-has-data-[slot=combobox-clear]/input-group:hidden` — see the comment at that call site.
   An overwrite has already deleted this patch once (`7157fe8c`), taking the chevron fix with it.
+- `switch.tsx`: the `supportsNativeSwitch` branch rendering `<input type="checkbox" switch>` on Safari
+  17.4+, plus the `SwitchProps` type that narrows `SwitchPrimitive.Root.Props` and simplifies
+  `onCheckedChange` to `(checked: boolean) => void`. The branch is deliberately limited to
+  `size="default"`: `appearance: auto` honours only `accent-color`, so the `sm` geometry cannot be
+  reproduced natively.
