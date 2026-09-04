@@ -28,11 +28,6 @@ export const ProviderRoutingBoard: React.FC<ProviderRoutingBoardProps> = ({ boar
         const provider = providersById.get(item.providerId);
         if (provider === undefined) return [];
         const share = percentages.get(provider.id) ?? 0;
-        // A share is only meaningful against another Provider that holds one, so a tier with a single
-        // active member gets no slider. Zero is part of the range: it parks the Provider outside
-        // normal routing while leaving its Provider-qualified route reachable, and dragging the
-        // slider back up is how a parked Provider returns to the split.
-        const adjustable = tier.items.some((other) => other.providerId !== item.providerId && other.weight > 0);
         return [
           {
             id: provider.id,
@@ -42,17 +37,19 @@ export const ProviderRoutingBoard: React.FC<ProviderRoutingBoardProps> = ({ boar
             shareLabel: item.weight > 0 ? `${share}%` : m['dashboard.providers.routing.parked'](),
             shareTestId: `provider-share-${provider.id}`,
             testId: `provider-routing-item-${provider.id}`,
-            control: adjustable
-              ? {
-                  ariaLabel: m['dashboard.providers.routing.share_aria']({ providerId: provider.id }),
-                  min: 0,
-                  max: 100,
-                  step: 1,
-                  value: share,
-                  testId: `provider-share-slider-${provider.id}`,
-                  onChange: (value: number) => onChange(applyProviderShare(board, tier.id, provider.id, value)),
-                }
-              : undefined,
+            // Every member gets a slider, including the only one in its tier: zero is part of the
+            // range and parks the Provider outside normal routing while leaving its Provider-qualified
+            // route reachable, so a tier of one still has that one question to answer. Raising the
+            // slider again is how a parked Provider returns to the split.
+            control: {
+              ariaLabel: m['dashboard.providers.routing.share_aria']({ providerId: provider.id }),
+              min: 0,
+              max: 100,
+              step: 1,
+              value: share,
+              testId: `provider-share-slider-${provider.id}`,
+              onChange: (value: number) => onChange(applyProviderShare(board, tier.id, provider.id, value)),
+            },
           },
         ];
       }),

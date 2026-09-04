@@ -1,5 +1,6 @@
-import { digestProviderEntry } from '@aio-proxy/core';
+import { digestProviderEntry, resolveConfigTemplates } from '@aio-proxy/core';
 import { ConfigSchema, type DashboardProviderRoutingMutation } from '@aio-proxy/types';
+import { mapValues } from 'es-toolkit/object';
 import { isPlainObject } from 'es-toolkit/predicate';
 
 export class ProviderRoutingStaleRevisionError extends Error {
@@ -22,9 +23,21 @@ export class ProviderRoutingSetChangedError extends Error {
  * Derived from the record itself, not the running config: the watcher's snapshot lags an external
  * edit, so a Provider added on disk between the client's GET and the reload would otherwise be
  * absent from both the expected set and the revision, and a save would silently omit it.
+ *
+ * Templates are resolved first, the same way the runtime loads the file: a `{{env.NAME}}` baseURL is
+ * not a valid authored shape on its own, so parsing the raw record would drop every templated
+ * Provider from the set the board is built from and reject every save. Resolution is per entry so an
+ * unparseable template only disqualifies its own Provider.
  */
 export const validProviderIds = (providers: Readonly<Record<string, unknown>>): string[] => {
-  const parsed = ConfigSchema.safeParse({ providers });
+  const resolved = mapValues(providers, (entry) => {
+    try {
+      return resolveConfigTemplates(entry);
+    } catch {
+      return entry;
+    }
+  });
+  const parsed = ConfigSchema.safeParse({ providers: resolved });
   return parsed.success ? parsed.data.providers.map((provider) => provider.id) : [];
 };
 

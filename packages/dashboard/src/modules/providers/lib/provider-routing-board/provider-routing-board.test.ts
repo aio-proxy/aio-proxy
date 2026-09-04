@@ -163,14 +163,31 @@ test('moving a Provider into a tier leaves a parked member of that tier at zero'
   ]);
 });
 
-test('a share edit cannot split against a parked Provider', () => {
+test('a share edit never revives a parked Provider it is splitting against', () => {
   const parked = [
     providerStub({ id: 'a', kind: ProviderKind.Api, priority: 20, weight: 5000 }),
     providerStub({ id: 'b', kind: ProviderKind.Api, priority: 20, weight: 0 }),
   ];
-  const board = buildProviderRoutingBoard(parked);
+  const tier = applyProviderShare(buildProviderRoutingBoard(parked), 'tier:20', 'a', 40).tiers[0]!;
 
-  expect(applyProviderShare(board, 'tier:20', 'a', 40)).toEqual(board);
+  expect(tier.items.find((item) => item.providerId === 'b')?.weight).toBe(0);
+  // `a` is the only active member, so it still carries the whole tier whatever its weight became.
+  expect([...providerTierPercentages(tier)]).toEqual([
+    ['a', 100],
+    ['b', 0],
+  ]);
+});
+
+test('the only Provider in a tier can still be parked and brought back', () => {
+  const single = [providerStub({ id: 'a', kind: ProviderKind.Api, priority: 20, weight: 1 })];
+  const board = buildProviderRoutingBoard(single);
+  const parked = applyProviderShare(board, 'tier:20', 'a', 0);
+
+  expect(providerRoutingMutation(parked, 'revision').providers['a']?.weight).toBe(0);
+  expect(providerRoutingMutation(applyProviderShare(parked, 'tier:20', 'a', 100), 'revision').providers['a']).toEqual({
+    priority: 10,
+    weight: 10_000,
+  });
 });
 
 test('dragging a parked Provider into another tier is the interaction that unparks it', () => {

@@ -230,3 +230,57 @@ describe('PUT /providers/routing', () => {
     expect(payload.routingRevision).toBe(reread.routingRevision);
   });
 });
+
+describe('PUT /providers/routing with templated Provider values', () => {
+  let directory: string;
+  let configPath: string;
+  let state: ServerState;
+  let routes: ReturnType<typeof createDashboardRoutes>;
+
+  const templated = {
+    providers: {
+      alpha: {
+        kind: 'api',
+        protocol: 'openai-compatible',
+        // Only valid once templates are resolved, which is how the runtime loads it and therefore how
+        // the routing endpoints must derive membership.
+        baseURL: '{{env.AIO_TEST_ROUTING_BASE}}/v1',
+        models: ['gpt-test'],
+        priority: 20,
+        weight: 7,
+      },
+    },
+  };
+
+  beforeEach(async () => {
+    process.env['AIO_TEST_ROUTING_BASE'] = 'https://templated.example.test';
+    directory = mkdtempSync(join(tmpdir(), 'aio-dashboard-provider-routing-template-'));
+    configPath = join(directory, 'config.json');
+    writeFileSync(configPath, JSON.stringify(templated, null, 2));
+    state = await createServerState({ config: parseRuntimeConfig(templated), configPath, watchConfig: false });
+    routes = createDashboardRoutes(state, disabledDashboardAuthentication);
+  });
+
+  afterEach(() => {
+    state.close();
+    rmSync(directory, { recursive: true, force: true });
+    delete process.env['AIO_TEST_ROUTING_BASE'];
+  });
+
+  test('saves routing for a Provider whose baseURL is a template', async () => {
+    const before = DashboardProvidersResponseSchema.parse(await (await routes.request('/providers')).json());
+    const response = await routes.request('/providers/routing', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        revision: before.routingRevision,
+        providers: { alpha: { priority: 10, weight: 10_000 } },
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    const onDisk = JSON.parse(readFileSync(configPath, 'utf8')) as typeof templated;
+    // The template survives the write; only the routing values move.
+    expect(onDisk.providers.alpha).toEqual({ ...templated.providers.alpha, priority: 10, weight: 10_000 });
+  });
+});

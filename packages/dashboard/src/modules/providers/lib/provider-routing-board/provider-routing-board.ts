@@ -162,10 +162,10 @@ export const applyProviderShare = (
 ): ProviderRoutingBoard => ({
   tiers: board.tiers.map((tier) => {
     if (tier.id !== tierId) return tier;
-    // Parked Providers keep their zero and are not part of the split, so a tier whose only other
-    // members are parked has nothing to rebalance against and the slider cannot move a share.
+    // Parked Providers keep their zero and are not part of the split, so the share moves only against
+    // the active members. When there are none, the Provider is the whole tier and the only meaningful
+    // question the slider asks is whether it is parked at all.
     const others = tier.items.filter((item) => item.providerId !== providerId && item.weight > 0);
-    if (others.length === 0) return tier;
     // Zero is a real destination: it parks the Provider outside normal routing while leaving it
     // reachable through its Provider-qualified route, and the slider is the only place to ask for
     // that. Above zero the clamp is in weight space, so every other member keeps a visible one
