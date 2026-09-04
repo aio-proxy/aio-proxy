@@ -109,7 +109,11 @@ const UNVERIFIABLE_BLOB_MESSAGE =
   /^The encrypted content\b.*\bcould not be verified\. Reason: Encrypted content could not be (?:decrypted or parsed|decoded)\.$/;
 
 function isEncryptedContentRejection(payload: Record<string, unknown> | undefined): boolean {
-  if (responsesErrorCode(payload) === 'invalid_encrypted_content') return true;
+  const code = responsesErrorCode(payload);
+  if (code !== undefined) return code === 'invalid_encrypted_content';
+  // Prose is the fallback identity only when the provider named no code at all.
+  // A different explicit code is authoritative: retrying would silently rewrite
+  // and resend a body the provider rejected for an unrelated reason.
   const message = responsesErrorMessage(payload);
   return message !== undefined && UNVERIFIABLE_BLOB_MESSAGE.test(message.trim());
 }

@@ -71,6 +71,17 @@ test('retries a code-less unverifiable blob rejection', () => {
       data: rejection('The encrypted content for item rs_1 could not be verified. Reason: Signature expired.'),
     }),
   ).toBe('commit');
+  // An explicit different code is authoritative over the prose. Retrying would
+  // rewrite and resend a body the provider rejected for an unrelated reason.
+  expect(
+    classifyOpenAIResponsesRawRetry({
+      event: 'error',
+      data: JSON.stringify({
+        type: 'error',
+        error: { message: unverifiable, type: 'invalid_request_error', param: 'input', code: 'invalid_value' },
+      }),
+    }),
+  ).toBe('commit');
 });
 
 // The error chain is provider-controlled. A recursive walk would blow the stack
