@@ -34,7 +34,10 @@ export function parseConfig(bytes: Uint8Array | null, path: string): ConfigRecor
         return YAML.parse(text);
     }
   })();
-  if (!isPlainObject(value)) throw new Error('Config root must be an object');
+  // A root that parsed but is not an object is a parse failure like any other: the bytes are
+  // syntactically fine and still not a config. Raising the same `SyntaxError` the parsers throw
+  // lets every caller treat "this file is unusable as authored" as one condition.
+  if (!isPlainObject(value)) throw new SyntaxError('Config root must be an object');
   return value;
 }
 

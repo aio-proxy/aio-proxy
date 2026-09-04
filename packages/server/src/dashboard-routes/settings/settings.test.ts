@@ -480,6 +480,25 @@ test('GET /settings still serves the enforced keys when the authored file cannot
   });
 });
 
+test('a config whose root parses to a non-object is refused rather than crashing the write', async () => {
+  await withSettingsFixture(async ({ configPath, routes }) => {
+    // Valid JSON, unusable as a config. This parses cleanly, so it reaches the root check rather
+    // than the parser's own error — the write must still answer `config_rejected`, not a 500.
+    writeFileSync(configPath, '[]');
+
+    const response = await routes.request('/settings');
+    const view = (await response.json()) as { readonly apiKeysRevision: string };
+    expect(response.status).toBe(200);
+
+    const before = readFileSync(configPath, 'utf8');
+    const write = await put(routes, { apiKeys: [{ retain: 0 }], apiKeysRevision: view.apiKeysRevision });
+
+    expect(write.status).toBe(422);
+    expect(await write.json()).toEqual({ ok: false, error: { code: 'config_rejected' } });
+    expect(readFileSync(configPath, 'utf8')).toBe(before);
+  });
+});
+
 test('a newly added key is authored even when a retained row already holds that credential', async () => {
   await withSettingsFixture(async ({ configPath, routes }) => {
     // Value equality cannot tell a deliberate second label for one credential from a
