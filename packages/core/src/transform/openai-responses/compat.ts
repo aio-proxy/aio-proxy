@@ -228,10 +228,11 @@ function uniqueToolNamespace(
 
 function convertToolCallOutput(state: ConvertState, item: ToolCallOutputItem, index: number): void {
   // An absent call_id means the client synthesized this output without a call
-  // (see functionCallOutputItemSchema). Raw passthrough forwards it; the model
-  // path has nothing to pair it with, so it fails here rather than at parse.
+  // (see functionCallOutputItemSchema). This candidate cannot pair it with a
+  // call, but a same-protocol raw candidate would forward it verbatim, so reject
+  // as an unsupported feature and let the pipeline fall back instead of 400ing.
   const callId = item.call_id;
-  if (callId === undefined) throw new OpenAIResponsesTransformError(`input.${index}.call_id`);
+  if (callId === undefined) return rejectOpenAIResponsesFeature(`${item.type}.call_id`, `input.${index}.call_id`);
   const call = state.calls.get(callId);
   if (call === undefined) throw new OpenAIResponsesTransformError(`input.${index}.call_id`);
   const custom = item.type === 'custom_tool_call_output';
