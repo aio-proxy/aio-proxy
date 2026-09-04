@@ -42,9 +42,31 @@ const pick = async (trigger: HTMLElement, option: string) => {
 test('stores the appearance without touching the settings mutation', async () => {
   render(<SettingsPreferencesGroup />);
 
-  await pick(screen.getByLabelText('Appearance'), 'Dark');
+  fireEvent.click(screen.getByRole('button', { name: 'Dark' }));
 
-  expect(mocks.setTheme).toHaveBeenCalledWith('dark');
+  await waitFor(() => {
+    expect(mocks.setTheme).toHaveBeenCalledWith('dark');
+  });
+});
+
+test('re-pressing the active appearance leaves the theme alone', async () => {
+  mocks.setTheme.mockReset();
+  render(<SettingsPreferencesGroup />);
+
+  // Single-select ToggleGroup reports an empty array when the pressed option is pressed again.
+  // "No theme" is not a state the dashboard has — `system` already spells it.
+  fireEvent.click(screen.getByRole('button', { name: 'System' }));
+
+  await waitFor(() => {
+    expect(screen.getByRole('button', { name: 'System' })).toHaveAttribute('aria-pressed', 'true');
+  });
+  expect(mocks.setTheme).not.toHaveBeenCalled();
+});
+
+test('shows the language name rather than the locale code in the trigger', () => {
+  render(<SettingsPreferencesGroup />);
+
+  expect(screen.getByLabelText('Language')).toHaveTextContent('English');
 });
 
 test('stores a different language and reloads the Dashboard', async () => {

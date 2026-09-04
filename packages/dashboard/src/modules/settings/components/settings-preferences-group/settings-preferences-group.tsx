@@ -1,17 +1,19 @@
 import { getLocale, getLocaleName, type Locale, locales, m, setLocale } from '@aio-proxy/i18n';
 import { Card, CardContent, CardHeader, CardTitle } from '@aio-proxy/ui/components/card';
-import { Field, FieldDescription } from '@aio-proxy/ui/components/field';
+import { Field, FieldContent, FieldDescription, FieldGroup } from '@aio-proxy/ui/components/field';
 import { Label } from '@aio-proxy/ui/components/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@aio-proxy/ui/components/select';
+import { ToggleGroup, ToggleGroupItem } from '@aio-proxy/ui/components/toggle-group';
 import { useForm } from '@tanstack/react-form';
+import { Monitor, Moon, Sun } from 'lucide-react';
 import { useTheme } from 'next-themes';
 
 import { reloadDashboard } from '@/lib/reload-dashboard';
 
 const themes = [
-  ['system', () => m['dashboard.preferences.theme_system']()],
-  ['light', () => m['dashboard.preferences.theme_light']()],
-  ['dark', () => m['dashboard.preferences.theme_dark']()],
+  ['system', Monitor, () => m['dashboard.preferences.theme_system']()],
+  ['light', Sun, () => m['dashboard.preferences.theme_light']()],
+  ['dark', Moon, () => m['dashboard.preferences.theme_dark']()],
 ] as const;
 
 export const SettingsPreferencesGroup: React.FC = () => {
@@ -32,39 +34,52 @@ export const SettingsPreferencesGroup: React.FC = () => {
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="grid gap-5 md:grid-cols-2">
+        <FieldGroup>
           <form.Field name="theme">
             {(field) => (
-              <Field>
-                <Label htmlFor={field.name}>{m['dashboard.preferences.appearance']()}</Label>
-                <Select
-                  value={field.state.value}
-                  onValueChange={(value) => {
-                    if (typeof value !== 'string') return;
+              // Three mutually exclusive options with well-known icons read faster as a segmented
+              // control than a dropdown. `ToggleGroup` gives arrow-key roving and keeps exactly one
+              // pressed; its `value` is an array even in single-select mode, and an empty array means
+              // the user re-pressed the active option, which is no change rather than "no theme".
+              // `role="presentation"` drops `Field`'s own `role="group"`: the named group is the
+              // `ToggleGroup`, and `Label` has no control to point at here.
+              <Field orientation="horizontal" role="presentation">
+                <FieldContent>
+                  <Label>{m['dashboard.preferences.appearance']()}</Label>
+                  <FieldDescription>{m['dashboard.settings.appearance_description']()}</FieldDescription>
+                </FieldContent>
+                <ToggleGroup
+                  aria-label={m['dashboard.preferences.appearance']()}
+                  variant="outline"
+                  spacing={0}
+                  value={[field.state.value]}
+                  onValueChange={(next) => {
+                    const [value] = next;
+                    if (value === undefined) return;
                     field.handleChange(value);
                     setTheme(value);
                   }}
                 >
-                  <SelectTrigger id={field.name} className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {themes.map(([value, label]) => (
-                      <SelectItem key={value} value={value}>
-                        {label()}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <FieldDescription>{m['dashboard.settings.appearance_description']()}</FieldDescription>
+                  {themes.map(([value, Icon, label]) => (
+                    <ToggleGroupItem key={value} value={value} aria-label={label()}>
+                      <Icon />
+                    </ToggleGroupItem>
+                  ))}
+                </ToggleGroup>
               </Field>
             )}
           </form.Field>
           <form.Field name="locale">
             {(field) => (
-              <Field>
-                <Label htmlFor={field.name}>{m['dashboard.preferences.language']()}</Label>
+              <Field orientation="horizontal">
+                <FieldContent>
+                  <Label htmlFor={field.name}>{m['dashboard.preferences.language']()}</Label>
+                  <FieldDescription>{m['dashboard.settings.language_description']()}</FieldDescription>
+                </FieldContent>
+                {/* Base UI renders the raw value in the trigger unless the root can map values to
+                    labels, so `items` is what makes the trigger read "简体中文" and not "zh-Hans". */}
                 <Select
+                  items={Object.fromEntries(locales.map((locale) => [locale, getLocaleName(locale)]))}
                   value={field.state.value}
                   onValueChange={(value) => {
                     if (typeof value !== 'string') return;
@@ -72,7 +87,7 @@ export const SettingsPreferencesGroup: React.FC = () => {
                     void changeLocale(value as Locale);
                   }}
                 >
-                  <SelectTrigger id={field.name} className="w-full">
+                  <SelectTrigger id={field.name}>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -83,11 +98,10 @@ export const SettingsPreferencesGroup: React.FC = () => {
                     ))}
                   </SelectContent>
                 </Select>
-                <FieldDescription>{m['dashboard.settings.language_description']()}</FieldDescription>
               </Field>
             )}
           </form.Field>
-        </div>
+        </FieldGroup>
       </CardContent>
     </Card>
   );
