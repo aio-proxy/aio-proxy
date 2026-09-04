@@ -16,8 +16,8 @@ export const ProviderTierSlot: React.FC<ProviderTierSlotProps> = ({ listId, item
   const { ref, isDropTarget } = useDroppable({ id: listId, type: 'list', accept: 'provider' });
   const className =
     items.length === 0
-      ? 'h-2 rounded-md data-drop-target:border data-drop-target:border-dashed data-drop-target:border-border'
-      : 'space-y-2 rounded-xl border border-dashed p-2 data-drop-target:border-primary';
+      ? 'h-2 rounded-md transition-colors data-drop-target:border data-drop-target:border-dashed data-drop-target:border-primary data-drop-target:bg-primary/5'
+      : 'space-y-2 rounded-xl border border-dashed p-2 transition-colors data-drop-target:border-primary data-drop-target:bg-primary/5';
 
   return (
     <section
