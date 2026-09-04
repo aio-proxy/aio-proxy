@@ -1,14 +1,14 @@
 import { m } from '@aio-proxy/i18n';
 import { Button } from '@aio-proxy/ui/components/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@aio-proxy/ui/components/card';
-import { FieldGroup } from '@aio-proxy/ui/components/field';
+import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemTitle } from '@aio-proxy/ui/components/item';
 import { Skeleton } from '@aio-proxy/ui/components/skeleton';
 import { useMutation } from '@tanstack/react-query';
 
 import { useReleaseQuery } from '../../hooks/use-release-query';
 import { checkLatestReleaseMutationFn } from '../../services/release-service';
-import { SettingsFieldRow } from '../settings-field-row';
 import { SettingsExternalLink } from './settings-external-link';
+import { SettingsRowChevron } from './settings-row-chevron';
 
 const REPOSITORY_URL = 'https://github.com/aio-proxy/aio-proxy';
 const DOCUMENTATION_URL = 'https://aio-proxy.github.io';
@@ -37,12 +37,15 @@ export const SettingsAboutGroup: React.FC = () => {
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <FieldGroup>
-          <SettingsFieldRow
-            label={m['dashboard.settings.version']()}
-            description={versionDescription ?? <Skeleton className="h-4 w-40" />}
-          >
-            <div className="flex items-center justify-end gap-1">
+        <ItemGroup>
+          {/* The version row carries its own button, so the row itself cannot be the link —
+              nesting a button inside an anchor is invalid and swallows one of the two actions. */}
+          <Item size="sm">
+            <ItemContent>
+              <ItemTitle>{m['dashboard.settings.version']()}</ItemTitle>
+              <ItemDescription>{versionDescription ?? <Skeleton className="h-4 w-40" />}</ItemDescription>
+            </ItemContent>
+            <ItemActions>
               <Button variant="ghost" size="sm" disabled={check.isPending} onClick={() => check.mutate()}>
                 {m['dashboard.settings.version_check']()}
               </Button>
@@ -50,25 +53,29 @@ export const SettingsAboutGroup: React.FC = () => {
                 href={current === undefined ? REPOSITORY_URL : `${REPOSITORY_URL}/releases/tag/v${current}`}
                 label={m['dashboard.settings.version']()}
               />
-            </div>
-          </SettingsFieldRow>
-          <SettingsFieldRow
-            label={m['dashboard.settings.repository']()}
-            description={m['dashboard.settings.repository_description']()}
-          >
-            <div className="flex justify-end">
-              <SettingsExternalLink href={REPOSITORY_URL} label={m['dashboard.settings.repository']()} />
-            </div>
-          </SettingsFieldRow>
-          <SettingsFieldRow
-            label={m['dashboard.settings.documentation']()}
-            description={m['dashboard.settings.documentation_description']()}
-          >
-            <div className="flex justify-end">
-              <SettingsExternalLink href={DOCUMENTATION_URL} label={m['dashboard.settings.documentation']()} />
-            </div>
-          </SettingsFieldRow>
-        </FieldGroup>
+            </ItemActions>
+          </Item>
+          {/* These rows do nothing but navigate, so the whole row is the anchor and its title
+              supplies the accessible name — the chevron is decoration, not a second control. */}
+          <Item size="sm" render={<a href={REPOSITORY_URL} target="_blank" rel="noreferrer" />}>
+            <ItemContent>
+              <ItemTitle>{m['dashboard.settings.repository']()}</ItemTitle>
+              <ItemDescription>{m['dashboard.settings.repository_description']()}</ItemDescription>
+            </ItemContent>
+            <ItemActions>
+              <SettingsRowChevron />
+            </ItemActions>
+          </Item>
+          <Item size="sm" render={<a href={DOCUMENTATION_URL} target="_blank" rel="noreferrer" />}>
+            <ItemContent>
+              <ItemTitle>{m['dashboard.settings.documentation']()}</ItemTitle>
+              <ItemDescription>{m['dashboard.settings.documentation_description']()}</ItemDescription>
+            </ItemContent>
+            <ItemActions>
+              <SettingsRowChevron />
+            </ItemActions>
+          </Item>
+        </ItemGroup>
       </CardContent>
     </Card>
   );
