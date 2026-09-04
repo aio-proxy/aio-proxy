@@ -13,3 +13,5 @@ npm/cli-*/bin/
 .impeccable/
 .worktrees/
 .reference
+.claude/worktrees/
+.claude/settings.local.json
