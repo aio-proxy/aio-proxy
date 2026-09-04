@@ -32,7 +32,7 @@ function Switch({ className, size = 'default', onCheckedChange, ...props }: Swit
         switch=""
         data-slot="switch"
         className={cn(
-          'shrink-0 align-middle accent-primary outline-none focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-50',
+          'peer shrink-0 align-middle accent-primary outline-none focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-50',
           className,
         )}
         onChange={(event) => onCheckedChange?.(event.target.checked)}
