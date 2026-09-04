@@ -381,6 +381,26 @@ test('submits a key exactly as typed rather than trimming the credential', () =>
   );
 });
 
+test('submits a whitespace-only key instead of silently dropping the row', () => {
+  renderPage();
+
+  const group = screen.getByTestId('settings-group-api-keys');
+  fireEvent.click(within(group).getByRole('button', { name: /Add key|添加密钥|新增金鑰|キーを追加|키 추가/u }));
+  const values = within(group).getAllByLabelText(/^Key$|^密钥$|^金鑰$|^キー$|^키$/u);
+  fireEvent.change(values[values.length - 1] as HTMLElement, { target: { value: '   ' } });
+
+  // The schema accepts any nonempty string, so whitespace is a usable credential. Treating it as
+  // an empty row would report a successful save for a key that was never persisted.
+  fireEvent.click(within(group).getByRole('button', { name: /Save keys|保存密钥|儲存金鑰|キーを保存|키 저장/u }));
+  expect(mocks.mutate).toHaveBeenCalledWith(
+    {
+      apiKeys: [{ retain: 0, label: 'ci' }, { retain: 1 }, { key: '   ' }],
+      apiKeysRevision: 'sha256:current',
+    },
+    expect.anything(),
+  );
+});
+
 test('keeps an in-progress key draft when an unrelated save refreshes the settings object', () => {
   const { rerender } = renderPage();
 

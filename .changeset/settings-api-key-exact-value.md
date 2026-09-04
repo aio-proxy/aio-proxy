@@ -4,4 +4,4 @@
 'aio-proxy': patch
 ---
 
-Store a new API key exactly as entered instead of trimming its surrounding whitespace, and keep every authored row when the same credential is configured under several labels.
+Store a new API key exactly as entered instead of trimming it, including a key made up entirely of whitespace, and author every submitted key even when a retained row already holds that credential.

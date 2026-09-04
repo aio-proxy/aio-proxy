@@ -36,17 +36,17 @@ const rowsFromSettings = (settings: DashboardSettingsView): readonly ApiKeyRow[]
 
 // A row the user has typed into but left without a key cannot be saved, so it is reported as an
 // error rather than dropped. A row with nothing in it at all is just an unused Add click.
+// Emptiness is the literal empty string, matching the schema's `min(1)`: whitespace is a valid
+// credential the proxy compares byte for byte, so trimming here would drop a usable key.
 const isDraft = (row: ApiKeyRow) => row.retain === undefined;
-const isTouchedDraft = (row: ApiKeyRow) => isDraft(row) && (row.key.trim() !== '' || row.label.trim() !== '');
-const isIncompleteDraft = (row: ApiKeyRow) => isDraft(row) && row.key.trim() === '' && row.label.trim() !== '';
+const isTouchedDraft = (row: ApiKeyRow) => isDraft(row) && (row.key !== '' || row.label.trim() !== '');
+const isIncompleteDraft = (row: ApiKeyRow) => isDraft(row) && row.key === '' && row.label.trim() !== '';
 
 const mutationEntries = (rows: readonly ApiKeyRow[]): readonly DashboardApiKeyMutation[] =>
   rows.flatMap((row): readonly DashboardApiKeyMutation[] => {
     const label = row.label.trim() === '' ? {} : { label: row.label.trim() };
     if (row.retain !== undefined) return [{ retain: row.retain, ...label }];
-    if (row.key.trim() === '') return [];
-    // Trimming decides whether the row is empty; the credential itself goes out exactly as
-    // typed, since the proxy compares the authored key byte for byte.
+    if (row.key === '') return [];
     return [{ key: row.key, ...label }];
   });
 
@@ -63,9 +63,10 @@ export const SettingsApiKeysGroup: React.FC<SettingsApiKeysGroupProps> = ({ disa
   // resync the stored rows. Drafts the user has typed into survive that resync: a key exists
   // nowhere else yet, and a rejected save (a 409 refetches settings) must not be what destroys it.
   // A successful save drops its own drafts by id, so saved keys do not come back as duplicate rows.
-  // The one ambiguous case — the write committed but its response was lost, so the draft is kept
-  // beside the stored copy it created — resolves on the next save: `resolveApiKeys` collapses a
-  // resubmitted key onto the entry already authored rather than duplicating the credential.
+  // The one ambiguous case is a write that committed while its response was lost: the draft stays
+  // beside the stored copy it created, and saving again authors the credential a second time. The
+  // server cannot collapse that by value — an operator may deliberately configure one credential
+  // under several labels — so the duplicate row is left visible for the user to delete.
   if (revision !== settings.apiKeysRevision) {
     setRevision(settings.apiKeysRevision);
     setRows((current) => [...rowsFromSettings(settings), ...current.filter(isTouchedDraft)]);

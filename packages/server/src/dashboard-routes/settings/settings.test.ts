@@ -480,26 +480,22 @@ test('GET /settings still serves the enforced keys when the authored file cannot
   });
 });
 
-test('a retried key write commits the credential once instead of authoring a duplicate', async () => {
+test('a newly added key is authored even when a retained row already holds that credential', async () => {
   await withSettingsFixture(async ({ configPath, routes }) => {
-    // The first write commits but its response is lost, so the client still holds the plaintext
-    // and retries it alongside the now-stored copy it retained by index.
-    expect((await putKeys(routes, [{ retain: 0, label: 'ci' }, { retain: 1 }, { key: 'sk-retried' }])).status).toBe(
-      200,
-    );
-
+    // Value equality cannot tell a deliberate second label for one credential from a
+    // resubmission after a lost response, and dropping a submitted key is the worse failure:
+    // the operator has already handed it out. So the row is authored either way.
     const response = await putKeys(routes, [
       { retain: 0, label: 'ci' },
       { retain: 1 },
-      { retain: 2 },
-      { key: 'sk-retried' },
+      { key: 'sk-plain-preserved', label: 'second-label' },
     ]);
 
     expect(response.status).toBe(200);
     expect(onDisk(configPath).server.apiKeys).toEqual([
       { key: '{{env.SETTINGS_API_KEY}}', label: 'ci' },
       { key: 'sk-plain-preserved' },
-      { key: 'sk-retried' },
+      { key: 'sk-plain-preserved', label: 'second-label' },
     ]);
   });
 });

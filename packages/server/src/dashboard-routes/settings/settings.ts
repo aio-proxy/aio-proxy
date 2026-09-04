@@ -110,22 +110,15 @@ function resolveApiKeys(
   // The client's `retain` indexes address the array it read. If the watcher or another
   // session rewrote it since, those positions now name different secrets — reject instead.
   if (apiKeysRevision(previous) !== revision) throw new StaleApiKeysError();
-  const retainedKeys = new Set(
-    submitted.flatMap((entry) => {
-      if (!('retain' in entry)) return [];
-      const kept = previous[entry.retain];
-      return isPlainObject(kept) && typeof kept['key'] === 'string' ? [kept['key']] : [];
-    }),
-  );
   return submitted.flatMap((entry) => {
     const label = entry.label === undefined ? {} : { label: entry.label };
-    if (!('retain' in entry)) {
-      // A write whose response never reached the client is retried with the same secret still in
-      // hand, and by then the committed copy is already retained by index. Dropping the new copy
-      // of an already-retained key makes that retry idempotent. Duplicates among the retained
-      // rows are left alone: the schema permits the same credential under several labels.
-      return retainedKeys.has(entry.key) ? [] : [{ key: entry.key, ...label }];
-    }
+    // Every submitted key is authored, including one whose value already appears in a retained
+    // row: the schema permits the same credential under several labels, and value equality
+    // cannot tell an intentional duplicate from a resubmission after a lost response. Collapsing
+    // them would silently discard a key the operator has already handed out, so the resubmission
+    // authors a second visible row the user can delete instead. Suppressing it correctly needs a
+    // per-write operation identity, which means server-side state this endpoint does not keep.
+    if (!('retain' in entry)) return [{ key: entry.key, ...label }];
     const kept = previous[entry.retain];
     if (!isPlainObject(kept) || typeof kept['key'] !== 'string') {
       throw new TypeError(`server.apiKeys[${entry.retain}] cannot be retained`);
