@@ -718,6 +718,7 @@
         "tier": "Tier {tier}",
         "provider_count": "{count} Providers",
         "share": "Traffic share",
+        "parked": "Parked",
         "share_aria": "Traffic share for Provider {providerId}",
         "drag_provider": "Drag Provider {providerId}",
         "drag_tier": "Drag tier {tier}",

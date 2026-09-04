@@ -718,6 +718,7 @@
         "tier": "第 {tier} 梯隊",
         "provider_count": "{count} 個提供商",
         "share": "流量占比",
+        "parked": "已停用",
         "share_aria": "提供商 {providerId} 的流量占比",
         "drag_provider": "拖曳提供商 {providerId}",
         "drag_tier": "拖曳第 {tier} 梯隊",

@@ -1,5 +1,5 @@
 import { digestProviderEntry } from '@aio-proxy/core';
-import type { DashboardProviderRoutingMutation } from '@aio-proxy/types';
+import { ConfigSchema, type DashboardProviderRoutingMutation } from '@aio-proxy/types';
 import { isPlainObject } from 'es-toolkit/predicate';
 
 export class ProviderRoutingStaleRevisionError extends Error {
@@ -15,6 +15,18 @@ export class ProviderRoutingSetChangedError extends Error {
     this.name = 'ProviderRoutingSetChangedError';
   }
 }
+
+/**
+ * The Provider IDs the parser accepts from an authored providers record.
+ *
+ * Derived from the record itself, not the running config: the watcher's snapshot lags an external
+ * edit, so a Provider added on disk between the client's GET and the reload would otherwise be
+ * absent from both the expected set and the revision, and a save would silently omit it.
+ */
+export const validProviderIds = (providers: Readonly<Record<string, unknown>>): string[] => {
+  const parsed = ConfigSchema.safeParse({ providers });
+  return parsed.success ? parsed.data.providers.map((provider) => provider.id) : [];
+};
 
 const sortedIds = (ids: readonly string[]): string[] => [...ids].sort((left, right) => left.localeCompare(right));
 

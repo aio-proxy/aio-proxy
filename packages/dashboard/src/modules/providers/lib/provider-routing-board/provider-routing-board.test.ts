@@ -163,7 +163,7 @@ test('moving a Provider into a tier leaves a parked member of that tier at zero'
   ]);
 });
 
-test('a share edit cannot revive a parked Provider or split against one', () => {
+test('a share edit cannot split against a parked Provider', () => {
   const parked = [
     providerStub({ id: 'a', kind: ProviderKind.Api, priority: 20, weight: 5000 }),
     providerStub({ id: 'b', kind: ProviderKind.Api, priority: 20, weight: 0 }),
@@ -200,6 +200,30 @@ test('a share edit in a tier larger than one hundred keeps every Provider routab
 
   expect(tier.items.every((item) => item.weight > 0)).toBe(true);
   expect(tier.items.find((item) => item.providerId === 'p0')?.weight).toBe(5000);
+});
+
+test('a zero share parks a Provider, and raising it again brings it back', () => {
+  const board = buildProviderRoutingBoard(providers);
+  const parked = applyProviderShare(board, 'tier:20', 'a', 0);
+
+  expect(parked.tiers[0]!.items.find((item) => item.providerId === 'a')?.weight).toBe(0);
+  expect(providerRoutingMutation(parked, 'revision').providers['a']?.weight).toBe(0);
+  expect(
+    applyProviderShare(parked, 'tier:20', 'a', 60).tiers[0]!.items.find((item) => item.providerId === 'a')?.weight,
+  ).toBeGreaterThan(0);
+});
+
+test('a completely packed board still gives every tier a distinct priority', () => {
+  const many = Array.from({ length: 10_001 }, (_, index) =>
+    providerStub({ id: `p${index}`, kind: ProviderKind.Api, priority: index + 1, weight: 1 }),
+  );
+  const priorities = Object.values(providerRoutingMutation(buildProviderRoutingBoard(many), 'revision').providers).map(
+    (routing) => routing.priority,
+  );
+
+  expect(new Set(priorities).size).toBe(10_001);
+  expect(Math.max(...priorities)).toBe(10_000);
+  expect(Math.min(...priorities)).toBe(0);
 });
 
 test('a Provider whose configuration failed to parse is not routable even when its kind survived', () => {

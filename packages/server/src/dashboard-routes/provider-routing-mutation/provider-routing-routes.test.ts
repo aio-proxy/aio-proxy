@@ -165,6 +165,50 @@ describe('PUT /providers/routing', () => {
     expect(onDisk.providers['gamma']).toBeDefined();
   });
 
+  test('rejects a save whose Provider set predates a Provider added directly on disk', async () => {
+    const before = DashboardProvidersResponseSchema.parse(await (await routes.request('/providers')).json());
+
+    // Written straight to the file with no reload, so `state.currentConfig()` still lags: the set and
+    // the revision must both come from the record the transaction reads, not the runtime snapshot.
+    writeFileSync(
+      configPath,
+      JSON.stringify(
+        {
+          ...authored,
+          providers: {
+            ...authored.providers,
+            delta: {
+              kind: 'api',
+              protocol: 'openai-compatible',
+              baseURL: 'https://delta.example.test/v1',
+              models: ['gpt-test'],
+            },
+          },
+        },
+        null,
+        2,
+      ),
+    );
+
+    const routing = await routes.request('/providers/routing', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        revision: before.routingRevision,
+        providers: {
+          alpha: { priority: 10, weight: 5000 },
+          beta: { priority: 10, weight: 5000 },
+        },
+      }),
+    });
+
+    expect(routing.status).toBe(409);
+    expect(await routing.json()).toEqual({ error: 'provider_set_changed' });
+    const onDisk = JSON.parse(readFileSync(configPath, 'utf8')) as { readonly providers: Record<string, unknown> };
+    expect(onDisk.providers['alpha']).toEqual(authored.providers.alpha);
+    expect(onDisk.providers['delta']).toBeDefined();
+  });
+
   test('reports the revision of the routing values it committed', async () => {
     const before = DashboardProvidersResponseSchema.parse(await (await routes.request('/providers')).json());
     const response = await routes.request('/providers/routing', {

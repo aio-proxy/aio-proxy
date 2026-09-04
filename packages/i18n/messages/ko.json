@@ -718,6 +718,7 @@
         "tier": "{tier}단계",
         "provider_count": "프로바이더 {count}개",
         "share": "트래픽 비중",
+        "parked": "중단됨",
         "share_aria": "프로바이더 {providerId}의 트래픽 비중",
         "drag_provider": "프로바이더 {providerId} 드래그",
         "drag_tier": "{tier}단계 드래그",

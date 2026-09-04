@@ -5,7 +5,7 @@ import { validator } from 'hono/validator';
 import { OAuthQuotaCapabilityUnavailableError } from '../../plugin-quota';
 import type { ServerState } from '../../server-state';
 import { providerPackageQueryValidator, providerPackageStatus } from '../provider-package-metadata';
-import { providerRoutingRevision } from '../provider-routing-mutation';
+import { providerRoutingRevision, validProviderIds } from '../provider-routing-mutation';
 
 const probeKey = 'probe';
 
@@ -26,10 +26,12 @@ export const createDashboardProviderReadRoutes = (state: ServerState) =>
       // The revision is read before the summaries so a routing commit landing between the two reads
       // makes the revision stale rather than newer than the values shipped with it. A stale revision
       // costs the client one rejected save; a future one would let it silently revert that commit.
-      const providerIds = state.currentConfig().providers.map((provider) => provider.id);
+      // Its Provider set is derived from the file the same way the save derives it, so an external
+      // edit the watcher has not picked up yet still produces a revision the save will compare against.
       const rawProviders =
         state.configStore.file === undefined ? {} : ((await state.configStore.file.read())['providers'] ?? {});
-      const routingRevision = providerRoutingRevision(isPlainObject(rawProviders) ? rawProviders : {}, providerIds);
+      const authoredProviders = isPlainObject(rawProviders) ? rawProviders : {};
+      const routingRevision = providerRoutingRevision(authoredProviders, validProviderIds(authoredProviders));
       const providers = await state.providerSummaries({ filter, probe });
       return context.json({ providers, routingRevision });
     })

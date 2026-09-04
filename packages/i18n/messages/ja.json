@@ -718,6 +718,7 @@
         "tier": "第 {tier} ティア",
         "provider_count": "{count} プロバイダー",
         "share": "トラフィック比率",
+        "parked": "停止中",
         "share_aria": "プロバイダー {providerId} のトラフィック比率",
         "drag_provider": "プロバイダー {providerId} をドラッグ",
         "drag_tier": "第 {tier} ティアをドラッグ",

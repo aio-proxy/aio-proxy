@@ -56,8 +56,8 @@ const positiveDistribution = (total: number, weights: readonly number[]): number
 
 // Weight zero deliberately parks a Provider outside normal routing. It holds no share of its tier,
 // so it neither receives budget here nor reserves any. `revive` names the Provider the user just
-// dragged: that drag is the explicit interaction that unparks it, and it is the only dashboard path
-// back — the editor does not expose weight and a parked Provider gets no share slider.
+// dragged, so a drag into another tier lands it with a share instead of carrying its zero along;
+// raising its share slider is the other way back.
 const normalizedItems = (
   items: readonly ProviderRoutingBoardItem[],
   weightOf: (item: ProviderRoutingBoardItem) => number = (item) => item.weight,
@@ -166,15 +166,21 @@ export const applyProviderShare = (
     // members are parked has nothing to rebalance against and the slider cannot move a share.
     const others = tier.items.filter((item) => item.providerId !== providerId && item.weight > 0);
     if (others.length === 0) return tier;
-    // Clamped in weight space, not percentage space. Every other member keeps a visible one percent
-    // while a whole percentage point each still fits; past that the reserve drops to a single weight
-    // point, because reserving a percent per member in a tier of more than 100 would drive the
-    // selected weight to zero and silently park the Provider the user was only adjusting.
+    // Zero is a real destination: it parks the Provider outside normal routing while leaving it
+    // reachable through its Provider-qualified route, and the slider is the only place to ask for
+    // that. Above zero the clamp is in weight space, so every other member keeps a visible one
+    // percent while a whole percentage point each still fits and a single weight point beyond —
+    // reserving a percent per member in a tier of more than 100 would park the Provider being
+    // adjusted instead of the one the user chose.
+    const requested = Math.round(percentage);
     const reservePerOther = others.length <= 99 ? ROUTING_VALUE_MAX / 100 : 1;
-    const selected = Math.max(
-      1,
-      Math.min(ROUTING_VALUE_MAX - others.length * reservePerOther, Math.round(percentage) * (ROUTING_VALUE_MAX / 100)),
-    );
+    const selected =
+      requested <= 0
+        ? 0
+        : Math.max(
+            1,
+            Math.min(ROUTING_VALUE_MAX - others.length * reservePerOther, requested * (ROUTING_VALUE_MAX / 100)),
+          );
     const remaining = positiveDistribution(
       ROUTING_VALUE_MAX - selected,
       others.map((item) => item.weight),
@@ -199,11 +205,14 @@ export const providerRoutingMutation = (
   // supported range; beyond that the spacing narrows so every tier the user kept apart stays apart.
   const spacing =
     occupied.length <= ROUTING_VALUE_MAX / 10 ? 10 : Math.max(1, Math.floor(ROUTING_VALUE_MAX / occupied.length));
+  // Priorities descend from a top that already fits, rather than being capped per tier: capping would
+  // collapse the top two whenever the packed board needs the whole range (10001 tiers at spacing 1).
+  const top = Math.min(ROUTING_VALUE_MAX, occupied.length * spacing);
   return {
     revision,
     providers: Object.fromEntries(
       occupied.flatMap((tier, index) => {
-        const priority = Math.min(ROUTING_VALUE_MAX, (occupied.length - index) * spacing);
+        const priority = Math.max(0, top - index * spacing);
         // Weight zero is the authored "parked" value; reordering tiers must not revive that traffic.
         return tier.items.map((item) => [item.providerId, { priority, weight: item.weight }]);
       }),

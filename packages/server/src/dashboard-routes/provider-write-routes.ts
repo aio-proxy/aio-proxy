@@ -36,6 +36,7 @@ import {
   ProviderRoutingSetChangedError,
   providerRoutingRevision,
   ProviderRoutingStaleRevisionError,
+  validProviderIds,
 } from './provider-routing-mutation';
 
 const ProviderInstallRequestSchema = z.object({
@@ -103,9 +104,10 @@ export const createDashboardProviderWriteRoutes = (state: ServerState) =>
       let committed: { readonly revision: string } | undefined;
       try {
         await state.configStore.mutateProviders((record) => {
-          // Both reads happen inside the serialized mutation: an earlier queued operation has fully
-          // committed by now, so a Provider it added is part of the set this save must account for.
-          const providerIds = state.currentConfig().providers.map((provider) => provider.id);
+          // The Provider set comes from the record this transaction holds, not the runtime snapshot:
+          // that snapshot lags both an earlier queued mutation and an external edit to the file, and
+          // either would let a save commit a layout that never covered the Provider it added.
+          const providerIds = validProviderIds(record);
           const next = applyProviderRoutingMutation(record, context.req.valid('json'), providerIds);
           // The revision describes the record this transaction commits. Reading it back from the file
           // afterwards could pair the client's cached values with a concurrent commit's revision,
