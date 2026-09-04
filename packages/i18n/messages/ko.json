@@ -1114,7 +1114,8 @@
         "copy_provider_id": "프로바이더 ID 복사",
         "enable_provider": "프로바이더 {id} 활성화",
         "disable_provider": "프로바이더 {id} 비활성화",
-        "delete_provider": "프로바이더 {id} 삭제"
+        "delete_provider": "프로바이더 {id} 삭제",
+        "refresh_credential": "자격 증명 갱신"
       },
       "toast": {
         "created": "프로바이더가 생성되었습니다",
@@ -1124,7 +1125,9 @@
         "update_failed": "프로바이더 업데이트에 실패했습니다",
         "delete_failed": "프로바이더 삭제에 실패했습니다",
         "plugin_aliases_synced": "플러그인 별칭이 동기화되었습니다",
-        "plugin_aliases_synced_description": "같은 이름의 별칭을 업데이트했고 나머지 사용자 지정 별칭은 유지했습니다."
+        "plugin_aliases_synced_description": "같은 이름의 별칭을 업데이트했고 나머지 사용자 지정 별칭은 유지했습니다.",
+        "credential_refreshed": "자격 증명이 갱신되었습니다",
+        "credential_refresh_failed": "자격 증명 갱신에 실패했습니다"
       },
       "delete_dialog": {
         "title": "프로바이더 삭제",

@@ -1114,7 +1114,8 @@
         "copy_provider_id": "Copy Provider ID",
         "enable_provider": "Enable provider {id}",
         "disable_provider": "Disable provider {id}",
-        "delete_provider": "Delete provider {id}"
+        "delete_provider": "Delete provider {id}",
+        "refresh_credential": "Refresh Credential"
       },
       "toast": {
         "created": "Provider created",
@@ -1124,7 +1125,9 @@
         "update_failed": "Failed to update provider",
         "delete_failed": "Failed to delete provider",
         "plugin_aliases_synced": "Plugin aliases synced",
-        "plugin_aliases_synced_description": "Aliases with the same name were updated; your other custom aliases were kept."
+        "plugin_aliases_synced_description": "Aliases with the same name were updated; your other custom aliases were kept.",
+        "credential_refreshed": "Credential refreshed",
+        "credential_refresh_failed": "Failed to refresh credential"
       },
       "delete_dialog": {
         "title": "Delete Provider",

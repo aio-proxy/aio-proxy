@@ -8,7 +8,7 @@ import {
 } from '@aio-proxy/plugin-sdk';
 
 import { discoverKimiCatalog, KIMI_CATALOG_TTL_MS, staticKimiCatalog } from './catalog';
-import { kimiLoginResult, loginKimi } from './oauth';
+import { kimiLoginResult, loginKimi, refreshKimiCredential } from './oauth';
 import type { KimiCredential, KimiOAuthDependencies } from './oauth';
 import { readKimiQuota } from './quota';
 import { createKimiRuntime } from './runtime/index';
@@ -109,6 +109,20 @@ export function createKimiCodePlugin(
           ...dependencies,
           ...(dependencies.fetch === undefined && context.fetch !== undefined ? { fetch: context.fetch } : {}),
         }),
+    },
+    refreshCredential: async ({ credential, signal, fetch }) => {
+      const refreshed = await refreshKimiCredential(credential, {
+        ...dependencies,
+        signal,
+        ...(dependencies.fetch === undefined && fetch !== undefined ? { fetch } : {}),
+      });
+      return {
+        value: refreshed,
+        metadata: {
+          expiresAt: refreshed.expiresAt,
+          ...(refreshed.email === undefined ? {} : { accountLabel: refreshed.email }),
+        },
+      };
     },
   };
 

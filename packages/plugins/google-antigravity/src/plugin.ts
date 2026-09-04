@@ -13,7 +13,7 @@ import { CatalogDiscoveryError } from './catalog/errors';
 import { staticAntigravityCatalog } from './catalog/snapshot';
 import { buildGoogleAuthorizationUrl, exchangeAuthorizationCode } from './oauth/flow';
 import { initializeAntigravityProject, type ProjectInitializationDependencies } from './oauth/project';
-import { exchangeGoogleRefreshToken } from './oauth/refresh';
+import { exchangeGoogleRefreshToken, refreshGoogleCredential } from './oauth/refresh';
 import { fetchGoogleEmail } from './oauth/userinfo';
 import { readGoogleAntigravityQuota } from './quota/index';
 import { createGoogleAntigravityRuntime } from './runtime/provider';
@@ -187,6 +187,14 @@ export function createGoogleAntigravityPlugin(
       initialFallback: (error) =>
         error instanceof CatalogDiscoveryError && error.snapshotEligible ? staticAntigravityCatalog() : undefined,
       defaultAliases: defaultAntigravityAliases,
+    },
+    refreshCredential: async ({ credential, signal, fetch }) => {
+      const refreshed = await refreshGoogleCredential(credential, {
+        fetch: dependencies.fetch ?? fetch,
+        ...(dependencies.now === undefined ? {} : { now: dependencies.now }),
+        signal,
+      });
+      return { value: refreshed, metadata: { accountLabel: refreshed.email, expiresAt: refreshed.expiresAt } };
     },
     createRuntime: async (context) =>
       createGoogleAntigravityRuntime(context, {

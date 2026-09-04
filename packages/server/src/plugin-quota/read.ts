@@ -1,7 +1,12 @@
 import { redactPluginError, validateOAuthQuotaSnapshot } from '@aio-proxy/core';
 import type { OAuthQuotaSnapshot } from '@aio-proxy/plugin-sdk';
 
-import { type OAuthQuotaServiceDependencies, type PreparedOAuthQuotaContext, withOAuthQuotaContext } from './context';
+import {
+  type OAuthQuotaCapabilityHandle,
+  type OAuthQuotaServiceDependencies,
+  type PreparedOAuthQuotaContext,
+  withOAuthQuotaContext,
+} from './context';
 import { OAuthQuotaReadError } from './errors';
 
 export type OAuthQuotaReader = {
@@ -11,10 +16,11 @@ export type OAuthQuotaReader = {
 export async function readValidatedQuota(
   dependencies: OAuthQuotaServiceDependencies,
   prepared: PreparedOAuthQuotaContext,
+  quota: OAuthQuotaCapabilityHandle,
   event: string,
 ): Promise<OAuthQuotaSnapshot> {
   try {
-    const snapshot = await prepared.adapter.quota.read(prepared.accountContext);
+    const snapshot = await quota.read(prepared.accountContext);
     return validateOAuthQuotaSnapshot(snapshot);
   } catch (error) {
     // Cancellation is the caller's, not the plugin's: a cooperative plugin rejects from inside this try
@@ -40,8 +46,8 @@ export async function readValidatedQuota(
 export function createOAuthQuotaReader(dependencies: OAuthQuotaServiceDependencies): OAuthQuotaReader {
   return {
     read: (providerId, signal) =>
-      withOAuthQuotaContext(dependencies, providerId, signal, (prepared) =>
-        readValidatedQuota(dependencies, prepared, 'plugin.quota.read.failed'),
+      withOAuthQuotaContext(dependencies, providerId, signal, (prepared, quota) =>
+        readValidatedQuota(dependencies, prepared, quota, 'plugin.quota.read.failed'),
       ),
   };
 }

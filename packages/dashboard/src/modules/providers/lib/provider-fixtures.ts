@@ -10,6 +10,7 @@ export const providerStub = (overrides: Partial<DashboardProviderSummary> = {}):
   clientModels: [],
   protocols: [],
   hasQuota: false,
+  canRefreshCredential: false,
   state: { status: 'ready' },
   ...overrides,
 });

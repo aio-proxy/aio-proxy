@@ -1114,7 +1114,8 @@
         "copy_provider_id": "复制提供商 ID",
         "enable_provider": "启用提供商 {id}",
         "disable_provider": "停用提供商 {id}",
-        "delete_provider": "删除提供商 {id}"
+        "delete_provider": "删除提供商 {id}",
+        "refresh_credential": "刷新凭据"
       },
       "toast": {
         "created": "提供商已创建",
@@ -1124,7 +1125,9 @@
         "update_failed": "更新提供商失败",
         "delete_failed": "删除提供商失败",
         "plugin_aliases_synced": "插件别名已同步",
-        "plugin_aliases_synced_description": "已更新同名别名，其他自定义别名已保留。"
+        "plugin_aliases_synced_description": "已更新同名别名，其他自定义别名已保留。",
+        "credential_refreshed": "凭据已刷新",
+        "credential_refresh_failed": "刷新凭据失败"
       },
       "delete_dialog": {
         "title": "删除提供商",

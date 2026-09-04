@@ -57,6 +57,9 @@ rs.mock('../components/provider-quota-ring', () => ({ ProviderQuotaRing: () => n
 rs.mock('../hooks/use-provider-enabled-mutation', () => ({
   useProviderEnabledMutation: () => ({ mutate: rs.fn(), isPending: false }),
 }));
+rs.mock('../hooks/use-provider-credential-refresh', () => ({
+  useProviderCredentialRefresh: () => ({ mutate: rs.fn(), isPending: false }),
+}));
 rs.mock('@tanstack/react-router', () => ({
   Link: 'a',
 }));

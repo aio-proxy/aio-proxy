@@ -150,6 +150,41 @@ describe('GitHub Copilot plugin', () => {
     expect(adapter.catalog.policy).toEqual({ kind: 'ttl', ttlMs: COPILOT_CATALOG_TTL_MS });
   });
 
+  test('refreshCredential exchanges an unexpired credential instead of returning it unchanged', async () => {
+    const adapter = await adapterFrom(githubCopilotPlugin);
+    let exchanges = 0;
+    const result = await withFetchMock(
+      async (input) => {
+        expect(new URL(String(input)).pathname).toBe('/copilot_internal/v2/token');
+        exchanges += 1;
+        return Response.json({
+          token: 'tid=x;exp=9999999999;proxy-ep=proxy.individual.githubcopilot.com;',
+          expires_at: 9_999_999_999,
+        });
+      },
+      async () =>
+        await adapter.refreshCredential!({
+          credential: {
+            githubToken: 'github-token',
+            copilotToken: 'stale-copilot-token',
+            expiresAt: Number.MAX_SAFE_INTEGER,
+            baseURL: 'https://api.githubcopilot.com',
+          },
+          options: { deploymentType: 'github.com' },
+          signal: new AbortController().signal,
+        }),
+    );
+
+    expect(exchanges).toBe(1);
+    expect(result.value).toEqual({
+      githubToken: 'github-token',
+      copilotToken: 'tid=x;exp=9999999999;proxy-ep=proxy.individual.githubcopilot.com;',
+      expiresAt: 9_999_999_999_000,
+      baseURL: 'https://api.individual.githubcopilot.com',
+    });
+    expect(result.metadata).toEqual({ expiresAt: 9_999_999_999_000 });
+  });
+
   test('reads quota through the host fetch and offers no reset', async () => {
     const adapter = await adapterFrom(githubCopilotPlugin);
     const quota = adapter.quota;

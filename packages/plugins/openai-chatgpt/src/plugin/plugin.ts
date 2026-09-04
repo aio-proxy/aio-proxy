@@ -9,7 +9,12 @@ import {
 
 import { CHATGPT_CATALOG_TTL_MS, CHATGPT_IMAGE_MODELS, discoverOpenAIChatGPTModels } from '../catalog';
 import { extractAccountId, extractEmail, normalizeChatGPTEmail } from '../jwt';
-import { ChatGPTAccountIdMissingError, CHATGPT_CLIENT_ID, exchangeCodeForTokens } from '../oauth-flow';
+import {
+  ChatGPTAccountIdMissingError,
+  CHATGPT_CLIENT_ID,
+  exchangeCodeForTokens,
+  refreshAccessToken,
+} from '../oauth-flow';
 import { generatePKCE, generateState } from '../pkce';
 import { readOpenAIChatGPTQuota } from '../quota/index';
 import { createOpenAIChatGPTRuntime } from '../runtime/index';
@@ -134,6 +139,20 @@ export function createOpenAIChatGPTPlugin(
         transcription: [],
         reranking: [],
       }),
+    },
+    refreshCredential: async ({ credential, signal, fetch }) => {
+      const refreshed = await refreshAccessToken(credential.refreshToken, {
+        ...(fetch === undefined ? {} : { fetch }),
+        signal,
+        ...(credential.email === undefined ? {} : { email: credential.email }),
+      });
+      return {
+        value: refreshed,
+        metadata: {
+          expiresAt: refreshed.expiresAt,
+          ...(refreshed.email === undefined ? {} : { accountLabel: refreshed.email }),
+        },
+      };
     },
     createRuntime: createOpenAIChatGPTRuntime,
     quota: { read: (context) => readOpenAIChatGPTQuota(context) },

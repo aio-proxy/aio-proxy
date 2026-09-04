@@ -49,6 +49,7 @@ const withFakeDashboard = async (providers: readonly FakeDashboardProvider[], ru
           clientModels: [],
           protocols: [],
           hasQuota: false,
+          canRefreshCredential: false,
           state: { status: 'ready' },
           ...provider,
           ...(probe ? { probe: provider.probe ?? 'OK' } : {}),

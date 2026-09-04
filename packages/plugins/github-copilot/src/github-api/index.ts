@@ -1,5 +1,5 @@
 export { COPILOT_CATALOG_TTL_MS, discoverGitHubCopilotModels } from './catalog';
-export { currentGitHubCopilotCredential, fetchCopilotToken } from './credential';
+export { currentGitHubCopilotCredential, exchangeGitHubCopilotToken, fetchCopilotToken } from './credential';
 export { copilotHeaders } from './http';
 export { loginToGitHubCopilot } from './login';
 export { readGitHubCopilotQuota } from './quota';

@@ -99,3 +99,38 @@ async function adapterFrom(
   if (registered === undefined) throw new Error('xAI Grok OAuth adapter was not registered');
   return registered;
 }
+
+test('refreshCredential exchanges an unexpired credential instead of returning it unchanged', async () => {
+  let exchanges = 0;
+  const adapter = await adapterFrom(
+    createXAIGrokPlugin(undefined, {
+      now: () => 1_000,
+      fetch: async (input) => {
+        if (String(input).includes('openid-configuration')) {
+          return Response.json({
+            device_authorization_endpoint: 'https://auth.x.ai/oauth2/device/code',
+            token_endpoint: 'https://auth.x.ai/oauth2/token',
+          });
+        }
+        exchanges += 1;
+        return Response.json({ access_token: 'new-access', expires_in: 60 });
+      },
+    }),
+  );
+  const credential = {
+    accessToken: 'old-access',
+    refreshToken: 'old-refresh',
+    expiresAt: Number.MAX_SAFE_INTEGER,
+    email: 'person@example.com',
+  };
+
+  const result = await adapter.refreshCredential!({
+    credential,
+    options: {},
+    signal: new AbortController().signal,
+  });
+
+  expect(exchanges).toBe(1);
+  expect(result.value).toEqual({ ...credential, accessToken: 'new-access', expiresAt: 61_000 });
+  expect(result.metadata).toEqual({ expiresAt: 61_000 });
+});

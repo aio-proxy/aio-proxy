@@ -13,7 +13,7 @@ import {
   discoverCursorCatalog,
   initialCursorCatalogFallback,
 } from '../catalog';
-import { loginCursor } from '../oauth';
+import { loginCursor, refreshCursorCredential } from '../oauth';
 import { readCursorQuota } from '../quota/index';
 import { createCursorRuntime, type CursorRuntimeDependencies } from '../runtime';
 import { credentialSchema, type CursorCredential } from '../schema';
@@ -52,6 +52,20 @@ export function createCursorPlugin(
       discover: (context) => discoverCursorCatalog(context, dependencies),
       initialFallback: initialCursorCatalogFallback,
       defaultAliases: defaultCursorAliases,
+    },
+    refreshCredential: async ({ credential, signal, fetch }) => {
+      const refreshed = await refreshCursorCredential(credential, {
+        ...dependencies,
+        signal,
+        ...(dependencies.fetch === undefined && fetch !== undefined ? { fetch } : {}),
+      });
+      return {
+        value: refreshed,
+        metadata: {
+          expiresAt: refreshed.expiresAt,
+          ...(refreshed.email === undefined ? {} : { accountLabel: refreshed.email }),
+        },
+      };
     },
     createRuntime: (context) => createCursorRuntime(context, dependencies),
     quota: { read: (context) => readCursorQuota(context, dependencies) },
