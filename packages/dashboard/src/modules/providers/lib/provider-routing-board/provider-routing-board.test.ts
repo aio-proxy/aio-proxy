@@ -1,17 +1,14 @@
 import { ProviderKind } from '@aio-proxy/types';
 import { expect, test } from '@rstest/core';
 
+import type { WeightedTierLayout } from '@/lib/weighted-tier-layout';
+
 import { providerStub } from '../provider-fixtures';
 import {
-  applyProviderMove,
+  applyProviderRoutingLayout,
   applyProviderShare,
   buildProviderRoutingBoard,
-  PROVIDER_TIER_HIGH,
-  PROVIDER_TIER_ORDER,
-  providerTierAfterListId,
-  providerRoutingLists,
   providerRoutingMutation,
-  providerTierListId,
   providerTierPercentages,
 } from './provider-routing-board';
 
@@ -22,18 +19,25 @@ const providers = [
   providerStub({ id: 'd', kind: ProviderKind.Api, priority: 10, weight: 1 }),
 ];
 
+test('a normalized tier move preserves every Provider member and weight', () => {
+  const board = buildProviderRoutingBoard(providers);
+  const layout: WeightedTierLayout = {
+    tiers: [...board.tiers]
+      .reverse()
+      .map((tier) => ({ id: tier.id, itemIds: tier.items.map((item) => item.providerId) })),
+    parking: {},
+  };
+
+  expect(applyProviderRoutingLayout(board, layout, { type: 'tier', id: 'tier:10' })).toEqual({
+    tiers: [...board.tiers].reverse(),
+  });
+});
+
 test('groups Providers by descending priority and distributes displayed percentages to exactly 100', () => {
   const board = buildProviderRoutingBoard(providers);
   expect(board.tiers.map((tier) => tier.items.map((item) => item.providerId))).toEqual([['a', 'b', 'c'], ['d']]);
   expect([...providerTierPercentages(board.tiers[0]!).values()]).toEqual([34, 33, 33]);
   expect([...providerTierPercentages(board.tiers[1]!).values()]).toEqual([100]);
-});
-
-test('uses distinct list IDs so tier sorting and Provider drop targets cannot collide', () => {
-  const lists = providerRoutingLists(buildProviderRoutingBoard(providers));
-
-  expect(lists['tier:20']).toBeUndefined();
-  expect(lists[providerTierListId('tier:20')]).toEqual(['a', 'b', 'c']);
 });
 
 test('changing one share keeps the tier total at 100 percent', () => {
@@ -48,37 +52,46 @@ test('clamps a share so every other Provider retains at least one percent', () =
 
 test('moving a Provider rebalances both tiers and removes an empty source tier', () => {
   const board = buildProviderRoutingBoard(providers);
-  const lists = providerRoutingLists(board);
-  const next = applyProviderMove(
+  const next = applyProviderRoutingLayout(
     board,
     {
-      ...lists,
-      [PROVIDER_TIER_ORDER]: ['tier:20', 'tier:10'],
-      [providerTierListId('tier:20')]: ['a', 'b', 'c', 'd'],
-      [providerTierListId('tier:10')]: [],
+      tiers: [{ id: 'tier:20', itemIds: ['a', 'b', 'c', 'd'] }],
+      parking: {},
     },
-    'd',
+    { type: 'item', id: 'd' },
   );
   expect(next.tiers).toHaveLength(1);
   expect([...providerTierPercentages(next.tiers[0]!).values()]).toEqual([25, 25, 25, 25]);
 });
 
 test.each([
-  [PROVIDER_TIER_HIGH, [['a'], ['b', 'c'], ['d']]],
-  [providerTierAfterListId('tier:20'), [['b', 'c'], ['a'], ['d']]],
-  [providerTierAfterListId('tier:10'), [['b', 'c'], ['d'], ['a']]],
-] as const)('dropping a Provider into %s creates a tier at that position', (slotId, expected) => {
+  [
+    [
+      { id: 'tier:new:1', itemIds: ['a'] },
+      { id: 'tier:20', itemIds: ['b', 'c'] },
+      { id: 'tier:10', itemIds: ['d'] },
+    ],
+    [['a'], ['b', 'c'], ['d']],
+  ],
+  [
+    [
+      { id: 'tier:20', itemIds: ['b', 'c'] },
+      { id: 'tier:new:1', itemIds: ['a'] },
+      { id: 'tier:10', itemIds: ['d'] },
+    ],
+    [['b', 'c'], ['a'], ['d']],
+  ],
+  [
+    [
+      { id: 'tier:20', itemIds: ['b', 'c'] },
+      { id: 'tier:10', itemIds: ['d'] },
+      { id: 'tier:new:1', itemIds: ['a'] },
+    ],
+    [['b', 'c'], ['d'], ['a']],
+  ],
+] as const)('dropping a Provider into a tier insertion slot creates a tier at that position', (tiers, expected) => {
   const board = buildProviderRoutingBoard(providers);
-  const lists = providerRoutingLists(board);
-  const next = applyProviderMove(
-    board,
-    {
-      ...lists,
-      [providerTierListId('tier:20')]: ['b', 'c'],
-      [slotId]: ['a'],
-    },
-    'a',
-  );
+  const next = applyProviderRoutingLayout(board, { tiers, parking: {} }, { type: 'item', id: 'a' });
   expect(next.tiers.map((tier) => tier.items.map((item) => item.providerId))).toEqual(expected);
   expect([...providerTierPercentages(next.tiers.find((tier) => tier.items[0]?.providerId === 'a')!).values()]).toEqual([
     100,
