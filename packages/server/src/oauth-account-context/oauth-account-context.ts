@@ -21,7 +21,12 @@ export type OAuthAccountContextDependencies = {
   readonly repository: PluginRepository;
   readonly diagnostics: DiagnosticFactory;
   readonly logger: PluginLogSink;
-  readonly onDiagnosticChanged: () => void;
+  /**
+   * May return a promise that settles once the rebuilt snapshot is readable. Callers that only need
+   * the rebuild scheduled can ignore it; a caller that must not acknowledge success while the
+   * summaries are still stale awaits it.
+   */
+  readonly onDiagnosticChanged: () => void | Promise<void>;
 };
 
 export type PreparedOAuthAccountContext = {

@@ -21,8 +21,8 @@ export const createDashboardProviderCredentialRefreshRoute = (state: ServerState
       }
       throw error;
     }
-    // No summary in the body: the rebuild `onDiagnosticChanged` queues has not landed yet, so any
-    // summary read here would still carry the pre-refresh `accountLabel` and `expiresAt`. The client
-    // invalidates the Provider list and refetches instead of seeding it from this response.
+    // No summary in the body: the refresh already awaited the snapshot rebuild, so the client's
+    // refetch reads the post-refresh `accountLabel` and `expiresAt`. Nothing is seeded from this
+    // response — the Provider list is invalidated and refetched through its own query.
     return context.json({ ok: true });
   });

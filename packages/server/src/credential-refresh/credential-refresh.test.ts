@@ -60,6 +60,49 @@ test('a snapshot rebuild failure does not report a committed rotation as a refre
   expect(fixture.repository.readAccount(PROVIDER_ID)?.credential).toEqual({ token: 'rotated' });
 });
 
+test('a rejected snapshot rebuild promise does not report a committed rotation as a failure', async () => {
+  const fixture = createQuotaFixture({
+    refreshCredential: async () => ({ value: { token: 'rotated' } }),
+  });
+  const refresher = createOAuthCredentialRefresher({
+    ...fixture.dependencies,
+    onDiagnosticChanged: () => Promise.reject(new Error('snapshot rebuild failed')),
+  });
+
+  await refresher.refresh(PROVIDER_ID, quotaSignal());
+
+  expect(fixture.repository.readAccount(PROVIDER_ID)?.credential).toEqual({ token: 'rotated' });
+});
+
+test('the refresh resolves only after the queued snapshot rebuild has landed', async () => {
+  // The route acknowledges success the moment this resolves, and the dashboard refetches the
+  // Provider list immediately. Returning before the rebuild swaps in would serve summaries still
+  // carrying the pre-refresh `accountLabel` and `expiresAt`.
+  let releaseRebuild = () => {};
+  const rebuild = new Promise<void>((resolve) => {
+    releaseRebuild = resolve;
+  });
+  const fixture = createQuotaFixture({
+    refreshCredential: async () => ({ value: { token: 'rotated' } }),
+  });
+  const refresher = createOAuthCredentialRefresher({
+    ...fixture.dependencies,
+    onDiagnosticChanged: () => rebuild,
+  });
+
+  let settled = false;
+  const refreshing = refresher.refresh(PROVIDER_ID, quotaSignal()).then(() => {
+    settled = true;
+  });
+  await Bun.sleep(50);
+
+  // Still pending: the rebuild has not landed, so there is nothing truthful to acknowledge yet.
+  expect(settled).toBe(false);
+  releaseRebuild();
+  await refreshing;
+  expect(settled).toBe(true);
+});
+
 test('two concurrent refreshes of one Provider perform a single upstream exchange', async () => {
   // The serializer is `CredentialPort`'s single-flight (WeakMap repository -> Provider ID -> mode),
   // backed by the SQLite refresh lease and the revision compare-and-swap. Nothing in this service
