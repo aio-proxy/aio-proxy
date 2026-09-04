@@ -121,11 +121,24 @@ function responsesErrorMessage(payload: Record<string, unknown> | undefined): st
   );
 }
 
+// The innermost `message` wins: a wrapper envelope repeats or generalizes the
+// message the backend actually issued. Iterative and depth-capped because the
+// chain is provider-controlled — a recursive walk over a deeply nested `error`
+// chain (~50k levels fit under the 1 MiB body cap) would throw a RangeError out
+// of `classify` instead of committing and forwarding the provider's response.
+const MAX_ERROR_NESTING = 8;
+
 function errorMessageFrom(value: Record<string, unknown> | undefined): string | undefined {
   if (value === undefined) return undefined;
-  const nested = value['error'];
-  if (isPlainObject(nested)) return errorMessageFrom(nested) ?? stringField(nested, 'message');
-  return stringField(value, 'message');
+  const chain: Record<string, unknown>[] = [value];
+  for (let node = value['error']; isPlainObject(node) && chain.length < MAX_ERROR_NESTING; node = node['error']) {
+    chain.push(node);
+  }
+  for (let index = chain.length - 1; index >= 0; index -= 1) {
+    const message = stringField(chain[index]!, 'message');
+    if (message !== undefined) return message;
+  }
+  return undefined;
 }
 
 function stringField(value: Record<string, unknown>, key: string): string | undefined {

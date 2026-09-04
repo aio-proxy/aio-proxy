@@ -73,6 +73,17 @@ test('retries a code-less unverifiable blob rejection', () => {
   ).toBe('commit');
 });
 
+// The error chain is provider-controlled. A recursive walk would blow the stack
+// on a deeply nested chain that still fits under the 1 MiB body cap, and that
+// RangeError would escape classify instead of committing the provider response.
+// Built as text: JSON.stringify overflows on this shape before parse can run.
+test('commits a pathologically nested error chain without throwing', () => {
+  const depth = 60_000;
+  const data = `{"type":"error",${'"error":{'.repeat(depth)}"message":"x"${'}'.repeat(depth)}}`;
+  expect(data.length).toBeLessThan(1024 * 1024);
+  expect(classifyOpenAIResponsesRawRetry({ event: 'error', data })).toBe('commit');
+});
+
 test('retries a normalized response.failed envelope', () => {
   expect(
     classifyOpenAIResponsesRawRetry({
