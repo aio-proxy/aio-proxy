@@ -117,3 +117,42 @@ test('refreshCredential exchanges an unexpired credential instead of returning i
   expect(result.value.accessToken).toBe(jwt({ exp: 4_000, email: 'person@example.com' }));
   expect(result.metadata).toEqual({ expiresAt: 4_000 * 1000 - 5 * 60_000, accountLabel: 'person@example.com' });
 });
+
+// `hasQuota` on the dashboard card is `adapter.quota !== undefined`, and the reader has to
+// receive the plugin's injected fetch or the capability is dead on arrival.
+test('exposes a quota capability that reads through the injected fetcher', async () => {
+  const accessToken = ['h', Buffer.from(JSON.stringify({ sub: 'auth0|user_01ABC' })).toString('base64url'), 's'].join(
+    '.',
+  );
+  const adapter = await adapterFrom(
+    createCursorPlugin(englishPresentationText, {
+      fetch: (async (input: string | URL) => {
+        if (String(input) === 'https://cursor.com/api/usage-summary') {
+          return Response.json({ membershipType: 'ultra', individualUsage: { plan: { totalPercentUsed: 20 } } });
+        }
+        return new Response('nope', { status: 404 });
+      }) as never,
+    }),
+  );
+
+  const snapshot = await adapter.quota!.read({
+    credentials: {
+      read: async () => ({
+        value: { accessToken, refreshToken: 'r', expiresAt: Number.MAX_SAFE_INTEGER },
+        revision: 1,
+      }),
+      refresh: async () => {
+        throw new Error('unused');
+      },
+    },
+    options: {},
+    signal: new AbortController().signal,
+  });
+
+  expect(snapshot).toStrictEqual({
+    items: [{ id: 'plan', displayName: { default: 'Plan usage', 'zh-Hans': '套餐用量' }, remainingRatio: 0.8 }],
+    plan: 'Cursor Ultra',
+  });
+  // Cursor has no redeem endpoint, so there is nothing to reset.
+  expect(adapter.quota?.reset).toBeUndefined();
+});
