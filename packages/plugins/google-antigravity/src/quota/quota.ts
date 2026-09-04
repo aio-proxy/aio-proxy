@@ -99,6 +99,9 @@ export async function readGoogleAntigravityQuota(
         continue;
       }
       const plan = await planRead;
+      // `readPlan` swallows every failure, including an abort, so the cancellation that ended it
+      // would otherwise be answered with a successful snapshot the server caches past its deadline.
+      context.signal.throwIfAborted();
       return { items, ...(plan === undefined ? {} : { plan }) };
     }
   } finally {

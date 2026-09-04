@@ -14,6 +14,7 @@ const DAILY_PLAN = `https://daily-cloudcode-pa.googleapis.com${PLAN_PATH}`;
 
 function context(
   options: GoogleAntigravityAccountOptions = {},
+  signal: AbortSignal = new AbortController().signal,
 ): AccountContext<GoogleAntigravityCredential, GoogleAntigravityAccountOptions> {
   const value: GoogleAntigravityCredential = {
     accessToken: 'access-token',
@@ -24,7 +25,7 @@ function context(
   };
   return {
     options,
-    signal: new AbortController().signal,
+    signal,
     credentials: {
       read: async () => ({ value, revision: 1 }),
       refresh: async () => ({ status: 'superseded', snapshot: { value, revision: 1 } }),
@@ -168,6 +169,30 @@ test('fails when no bucket carries a usable fraction', async () => {
       quotaResponder({ [DAILY]: { groups: [{ displayName: 'Gemini Models', buckets: [{ window: '5h' }] }] } }),
     ),
   ).rejects.toThrow('Antigravity quota response contains no usable buckets');
+});
+
+// `readPlan` swallows every failure, including an abort, so a cancellation that lands while it is
+// still pending would otherwise be answered with a successful snapshot — and the server would cache
+// a result produced after its deadline. Same recheck the ChatGPT reader does after its reset-credits
+// read.
+test('throws when the read is cancelled while the plan request is still pending', async () => {
+  const controller = new AbortController();
+  const fetcher = (async (input: string | URL | Request) => {
+    const url = String(input instanceof Request ? input.url : input);
+    // The plan read is started before the base walk, so it is pending when the summary answers.
+    if (url === DAILY_PLAN) {
+      return await new Promise<Response>((_resolve, reject) => {
+        controller.signal.addEventListener('abort', () => reject(new Error('The operation was aborted.')));
+      });
+    }
+    if (url !== DAILY) return new Response('missing', { status: 404 });
+    controller.abort();
+    return Response.json(summaryPayload);
+  }) as RuntimeFetch;
+
+  await expect(readGoogleAntigravityQuota(context({}, controller.signal), fetcher)).rejects.toThrow(
+    /aborted|AbortError/i,
+  );
 });
 
 test('contacts only the configured base URL', async () => {
