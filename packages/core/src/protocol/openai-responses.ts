@@ -13,6 +13,7 @@ import { openAIResponsesToModelMessages, readOpenAIResponsesWireMetadata } from 
 import { warnOpenAIResponsesDegradation } from '../transform/openai-responses/tools';
 import { defineProtocolAdapter } from './adapter';
 import { openAIResponsesErrors } from './errors';
+import { openAIResponsesRawRetry } from './openai-responses/encrypted-content-retry';
 import { clampSdkReasoning, normalizeEffort, reasoningSetting } from './reasoning-effort/index';
 import { readJsonRequest, readRequestText } from './request';
 import type { SessionCandidate } from './session';
@@ -96,6 +97,7 @@ export const openAIResponsesAdapter = defineProtocolAdapter<
   modelJson: writeOpenAIResponsesResponse,
   modelSse: writeOpenAIResponsesSSE,
   errors: openAIResponsesErrors,
+  rawRetry: openAIResponsesRawRetry,
 });
 
 function optionalText(value: unknown): string | undefined {

@@ -23,6 +23,7 @@ export function wrapOpenAIPackageFetch(packageName: string, fetcher?: ProviderFe
   }
   if (packageName === '@ai-sdk/openai-compatible') {
     return createOpenAIStreamFetch('openai-compatible', fetcher ?? globalThis.fetch, {
+      normalizeToolArgumentSnapshots: true,
       rewriteToolImages: true,
       upstreamStream: true,
     });

@@ -111,6 +111,25 @@ describe('OpenAI ChatGPT runtime stream protection', () => {
     expect(response.headers.get('content-encoding')).toBeNull();
     expect(await response.text()).toBe(RESPONSES_TERMINAL);
   });
+
+  // An Images stream terminates on `image_generation.*`, which the Responses SSE
+  // normalizer reads as an early EOF and fails with
+  // 'OpenAI Responses stream ended before a terminal event'.
+  test('image path forwards a non-Responses SSE terminal untouched', async () => {
+    const imageStream = 'data: {"type":"image_generation.completed","b64_json":"aGk="}\n\n';
+    const upstreamFetch = (async (input, init) => {
+      const request = new Request(input, init);
+      expect(request.url).toBe('https://chatgpt.com/backend-api/codex/images/generations?stream=true');
+      return new Response(imageStream, { headers: { 'content-type': 'text/event-stream' } });
+    }) as typeof globalThis.fetch;
+
+    const runtime = await runtimeWithFetch(upstreamFetch);
+    const raw = runtime.raw?.({ protocol: 'openai-image', modelId: 'gpt-image-2' });
+
+    const response = await raw!.invoke(new Request('https://api.openai.com/v1/images/generations?stream=true'));
+
+    expect(await response.text()).toBe(imageStream);
+  });
 });
 
 function terminalThenErrorUpstream(terminal: string) {

@@ -64,10 +64,20 @@ describe('request tool normalization', () => {
   test('sets VALIDATED only for Claude-backed wire models', () => {
     const request = { toolConfig: { functionCallingConfig: { mode: 'AUTO', allowedFunctionNames: ['weather'] } } };
 
-    expect(applyValidatedToolMode(request, true)).toEqual({
+    expect(applyValidatedToolMode(request, { claudeBacked: true, hasTools: false })).toEqual({
       toolConfig: { functionCallingConfig: { mode: 'VALIDATED', allowedFunctionNames: ['weather'] } },
     });
-    expect(applyValidatedToolMode(request, false)).toEqual(request);
-    expect(applyValidatedToolMode(request, true)).not.toBe(request);
+    expect(applyValidatedToolMode(request, { claudeBacked: false, hasTools: false })).toEqual(request);
+    expect(applyValidatedToolMode(request, { claudeBacked: true, hasTools: false })).not.toBe(request);
+  });
+
+  test('defaults Gemini VALIDATED only when tools exist and toolConfig is missing', () => {
+    const withTools = { tools: [{ functionDeclarations: [{ name: 'weather' }] }] };
+    expect(applyValidatedToolMode(withTools, { claudeBacked: false, hasTools: true })).toEqual({
+      ...withTools,
+      toolConfig: { functionCallingConfig: { mode: 'VALIDATED' } },
+    });
+    const explicit = { ...withTools, toolConfig: { functionCallingConfig: { mode: 'AUTO' } } };
+    expect(applyValidatedToolMode(explicit, { claudeBacked: false, hasTools: true })).toEqual(explicit);
   });
 });

@@ -66,6 +66,56 @@ describe('createOpenAISseBody terminals', () => {
     }
   });
 
+  test('normalizes cumulative OpenAI-compatible tool argument snapshots into deltas', async () => {
+    const chunk = (argumentsText: string) =>
+      `data: ${JSON.stringify({ choices: [{ index: 0, delta: { tool_calls: [{ index: 0, function: { arguments: argumentsText } }] } }] })}\n\n`;
+    const stream = createOpenAISseBody(
+      sourceFromText(chunk(`{"`), chunk(`{"text"`), chunk(`{"text":"ok"}`), chunk(`{"text":"ok"}`), 'data: [DONE]\n\n'),
+      'openai-compatible',
+      { normalizeToolArgumentSnapshots: true },
+    );
+
+    const text = await readBody(stream);
+    const deltas = text
+      .trim()
+      .split('\n\n')
+      .filter((frame) => frame !== 'data: [DONE]')
+      .map((frame) => JSON.parse(frame.slice('data: '.length)).choices[0].delta.tool_calls[0].function.arguments);
+
+    expect(deltas).toEqual([`{"`, `text"`, `:"ok"}`, '']);
+  });
+
+  test('preserves incremental OpenAI-compatible tool argument deltas', async () => {
+    const chunk = (argumentsText: string) =>
+      `data: ${JSON.stringify({ choices: [{ index: 0, delta: { tool_calls: [{ index: 0, function: { arguments: argumentsText } }] } }] })}\n\n`;
+    const stream = createOpenAISseBody(
+      sourceFromText(chunk(`{"`), chunk(`text"`), chunk(`:"ok"}`), 'data: [DONE]\n\n'),
+      'openai-compatible',
+      { normalizeToolArgumentSnapshots: true },
+    );
+
+    const text = await readBody(stream);
+    const deltas = text
+      .trim()
+      .split('\n\n')
+      .filter((frame) => frame !== 'data: [DONE]')
+      .map((frame) => JSON.parse(frame.slice('data: '.length)).choices[0].delta.tool_calls[0].function.arguments);
+
+    expect(deltas).toEqual([`{"`, `text"`, `:"ok"}`]);
+  });
+
+  test('preserves cumulative tool argument frames when normalization is disabled', async () => {
+    const first =
+      'data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\\\""}}]}}]}\n\n';
+    const second =
+      'data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\\\"text\\\""}}]}}]}\n\n';
+    const done = 'data: [DONE]\n\n';
+
+    expect(await readBody(createOpenAISseBody(sourceFromText(first, second, done), 'openai-compatible'))).toBe(
+      first + second + done,
+    );
+  });
+
   test('preserves LF, CRLF, bare CR, mixed line endings, split delimiters, and split UTF-8 bytes', async () => {
     const terminal = 'event: response.completed\ndata: {"type":"response.completed"}\n\n';
     const cases = [

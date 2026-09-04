@@ -7,7 +7,7 @@ export const GOOGLE_AUTH_ENDPOINT = 'https://accounts.google.com/o/oauth2/v2/aut
 export const GOOGLE_TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token';
 export const GOOGLE_USERINFO_ENDPOINT = 'https://www.googleapis.com/oauth2/v2/userinfo?alt=json';
 export const ANTIGRAVITY_DAILY = 'https://daily-cloudcode-pa.googleapis.com';
-export const ANTIGRAVITY_PROD = 'https://cloudcode-pa.googleapis.com';
+export const ANTIGRAVITY_SANDBOX = 'https://daily-cloudcode-pa.sandbox.googleapis.com';
 export const GOOGLE_ANTIGRAVITY_SCOPES = [
   'https://www.googleapis.com/auth/cloud-platform',
   'https://www.googleapis.com/auth/userinfo.email',

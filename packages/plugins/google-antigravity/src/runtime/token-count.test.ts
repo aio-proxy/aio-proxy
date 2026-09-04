@@ -24,7 +24,7 @@ test('maps OpenAI reasoning through the catalog thinking binder on count', async
     reranking: [],
   };
   const transport = new AntigravityTransport({
-    credentials: credentialSource(),
+    credentials: credentialSource('project-1'),
     descriptorById: new Map(catalog.language.map((descriptor) => [descriptor.id, descriptor])),
     familyByWireId: () => undefined,
     fetch: async (input, init) => {
@@ -45,6 +45,7 @@ test('maps OpenAI reasoning through the catalog thinking binder on count', async
 
   expect(result).toEqual({ inputTokens: 9 });
   const envelope = await seen[0]?.clone().json();
+  expect(envelope.requestId).toMatch(/^agent\/[^/]+\/\d+\/[^/]+\/\d+$/u);
   expect(envelope).toMatchObject({
     request: {
       generationConfig: { thinkingConfig: { thinkingBudget: 16_384, includeThoughts: true } },
@@ -63,7 +64,7 @@ test('uses the Google codec and count endpoint for the CCA token count', async (
     reranking: [],
   };
   const transport = new AntigravityTransport({
-    credentials: credentialSource(),
+    credentials: credentialSource('project-1'),
     descriptorById: new Map(catalog.language.map((descriptor) => [descriptor.id, descriptor])),
     familyByWireId: () => undefined,
     fetch: async (input, init) => {
@@ -95,15 +96,17 @@ test('uses the Google codec and count endpoint for the CCA token count', async (
   expect(seen).toHaveLength(1);
   expect(new URL(seen[0]?.url ?? '').pathname).toBe('/v1internal:countTokens');
   const envelope = await seen[0]?.clone().json();
+  expect(envelope.requestId).toMatch(/^agent\/[^/]+\/\d+\/[^/]+\/\d+$/u);
+  expect(envelope.request.systemInstruction.role).toBe('user');
   expect(envelope).toMatchObject({
     model: 'claude-sonnet-4-6',
     project: 'project-1',
-    requestId: 'agent-00000000-0000-4000-8000-000000000001',
     request: {
       sessionId: wireSessionId(logicalContext().session.key),
       contents: [{ role: 'user', parts: [{ text: 'what is the weather?' }] }],
       generationConfig: { thinkingConfig: { thinkingBudget: 2048, includeThoughts: true } },
       systemInstruction: {
+        role: 'user',
         parts: [{ text: 'Use Google Search when current or external information would improve the answer.' }],
       },
       tools: expect.arrayContaining([
@@ -155,8 +158,8 @@ test('reuses daily to prod fallback, one auth refresh, and stable endpoint ident
   expect(refreshes).toBe(1);
   expect(seen.map((request) => new URL(request.url).origin)).toEqual([
     'https://daily-cloudcode-pa.googleapis.com',
-    'https://cloudcode-pa.googleapis.com',
-    'https://cloudcode-pa.googleapis.com',
+    'https://daily-cloudcode-pa.sandbox.googleapis.com',
+    'https://daily-cloudcode-pa.sandbox.googleapis.com',
   ]);
   expect(seen.map((request) => new URL(request.url).pathname)).toEqual([
     '/v1internal:countTokens',
@@ -243,8 +246,13 @@ function logicalContext(): LogicalRequestContext {
   };
 }
 
-function credentialSource() {
-  return { current: async () => credentialFixture(), forceRefresh: async () => credentialFixture() };
+function uniqueProjectId(): string {
+  return `project-${crypto.randomUUID()}`;
+}
+
+function credentialSource(projectId?: string) {
+  const credential = credentialFixture(projectId === undefined ? {} : { projectId });
+  return { current: async () => credential, forceRefresh: async () => credential };
 }
 
 function credentialFixture(overrides: Partial<GoogleAntigravityCredential> = {}): GoogleAntigravityCredential {
@@ -253,7 +261,7 @@ function credentialFixture(overrides: Partial<GoogleAntigravityCredential> = {})
     refreshToken: 'refresh-1',
     expiresAt: 1_900_000_000_000,
     email: 'person@example.com',
-    projectId: 'project-1',
+    projectId: uniqueProjectId(),
     ...overrides,
   };
 }

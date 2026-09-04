@@ -171,3 +171,22 @@ function prepareCallDuplicates(parts: readonly unknown[], call: { readonly id: s
     },
   );
 }
+
+test('fills skip sentinel on the first unsigned Gemini call without replay', () => {
+  const body = {
+    contents: [
+      {
+        role: 'model',
+        parts: [{ functionCall: { name: 'a', args: {} } }, { functionCall: { name: 'b', args: {} } }],
+      },
+    ],
+  };
+  const prepared = prepareReasoningReplay(body, 'gemini-3-flash-agent', undefined);
+  expect(prepared.contents[0]).toEqual({
+    role: 'model',
+    parts: [
+      { functionCall: { name: 'a', args: {} }, thoughtSignature: 'skip_thought_signature_validator' },
+      { functionCall: { name: 'b', args: {} } },
+    ],
+  });
+});

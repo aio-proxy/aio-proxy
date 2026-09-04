@@ -3,6 +3,7 @@ import type { ModelSseStream } from '../protocol/adapter';
 export type EgressRunContext<T> = {
   readonly parts: AsyncIterable<T>;
   readonly enqueue: (value: Uint8Array) => void;
+  readonly fail: (error: unknown) => void;
 };
 
 export function createCancellableEgressStream<T>(
@@ -15,6 +16,7 @@ export function createCancellableEgressStream<T>(
   let cancelled = false;
   let canceling: Promise<void> | undefined;
   let writerFinished = false;
+  let writerFailure: { readonly error: unknown } | undefined;
   let released = false;
   let output: ReadableStreamDefaultController<Uint8Array>;
   let resume: (() => void) | undefined;
@@ -35,7 +37,8 @@ export function createCancellableEgressStream<T>(
   const completeIfDrained = () => {
     if (writerFinished && !cancelled && (output.desiredSize ?? 0) > 0) {
       output.close();
-      completion.resolve();
+      if (writerFailure === undefined) completion.resolve();
+      else completion.reject(writerFailure.error);
     }
   };
   const parts = {
@@ -58,7 +61,14 @@ export function createCancellableEgressStream<T>(
   const body = new ReadableStream<Uint8Array>({
     start(controller) {
       output = controller;
-      void run({ parts, enqueue: (value) => controller.enqueue(value) })
+      void run({
+        parts,
+        enqueue: (value) => controller.enqueue(value),
+        fail: (error) => {
+          writerFailure ??= { error };
+          void cancelSource(error).catch(() => {});
+        },
+      })
         .then(() => {
           if (!cancelled) {
             writerFinished = true;
@@ -90,7 +100,7 @@ export function createCancellableEgressStream<T>(
       try {
         await cancelSource(reason);
       } finally {
-        completion.reject(new DOMException('The operation was aborted.', 'AbortError'));
+        completion.reject(writerFailure?.error ?? new DOMException('The operation was aborted.', 'AbortError'));
         release();
       }
     },
