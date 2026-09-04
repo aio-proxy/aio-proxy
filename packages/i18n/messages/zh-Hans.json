@@ -480,6 +480,7 @@
       "api_keys_description": "客户端访问本代理时使用的密钥。已保存的密钥不会再次显示。",
       "api_keys_empty": "尚未配置 API 密钥。",
       "api_keys_label": "标签",
+      "optional": "（可选）",
       "api_keys_value": "密钥",
       "api_keys_stored": "已保存",
       "api_keys_add": "添加密钥",
@@ -506,7 +507,19 @@
       "restart_required": "重启 aio-proxy 以应用此更改。",
       "load_failed": "无法加载设置，请重试。",
       "save_failed": "无法保存设置，请重试。",
-      "invalid": "请输入有效值。"
+      "invalid": "请输入有效值。",
+      "about_group": "关于",
+      "version": "版本",
+      "version_description": "当前运行的 aio-proxy 版本。",
+      "version_check": "检查新版本",
+      "version_up_to_date": "已是最新发布版本。",
+      "version_outdated": "有新版本 {version} 可用。",
+      "version_check_failed": "无法连接软件源，请重试。",
+      "repository": "源代码",
+      "repository_description": "在 GitHub 上查看问题、发布与源代码。",
+      "documentation": "文档",
+      "documentation_description": "使用指南与配置参考。",
+      "open": "打开"
     },
     "plugins": {
       "title": "插件",

@@ -1,5 +1,6 @@
 import type { DashboardSettingsView } from '@aio-proxy/types';
 import { expect, rs, test } from '@rstest/core';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 
 import { SettingsPage } from '.';
@@ -9,6 +10,14 @@ const mocks = rs.hoisted(() => ({
   mutate: rs.fn(),
   useSettingsMutation: rs.fn(),
   useSettingsQuery: rs.fn(),
+}));
+
+rs.mock('../../hooks/use-release-query', () => ({
+  useReleaseQuery: () => ({ data: { current: '1.4.2' } }),
+}));
+
+rs.mock('../../services/release-service', () => ({
+  checkLatestReleaseMutationFn: rs.fn(),
 }));
 
 rs.mock('../../hooks/use-settings-query', () => ({
@@ -47,7 +56,10 @@ const prepareMocks = (restartRequired?: boolean) => {
 
 const renderPage = (restartRequired?: boolean) => {
   prepareMocks(restartRequired);
-  return render(<SettingsPage />);
+  const queryClient = new QueryClient();
+  return render(<SettingsPage />, {
+    wrapper: ({ children }) => <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>,
+  });
 };
 
 test('renders service/access/network before logs/retries and keeps the logging Switch in its group header', () => {

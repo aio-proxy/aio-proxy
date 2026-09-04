@@ -480,6 +480,7 @@
       "api_keys_description": "クライアントがこのプロキシに提示するキーです。保存済みのキーは再表示されません。",
       "api_keys_empty": "API キーは設定されていません。",
       "api_keys_label": "ラベル",
+      "optional": "（任意）",
       "api_keys_value": "キー",
       "api_keys_stored": "保存済み",
       "api_keys_add": "キーを追加",
@@ -506,7 +507,19 @@
       "restart_required": "この変更を反映するには aio-proxy を再起動してください。",
       "load_failed": "設定を読み込めませんでした。もう一度お試しください。",
       "save_failed": "設定を保存できませんでした。もう一度お試しください。",
-      "invalid": "有効な値を入力してください。"
+      "invalid": "有効な値を入力してください。",
+      "about_group": "このアプリについて",
+      "version": "バージョン",
+      "version_description": "現在実行中の aio-proxy のバージョンです。",
+      "version_check": "更新を確認",
+      "version_up_to_date": "最新の公開バージョンです。",
+      "version_outdated": "バージョン {version} が利用できます。",
+      "version_check_failed": "レジストリに接続できませんでした。再試行してください。",
+      "repository": "ソースコード",
+      "repository_description": "GitHub で Issue、リリース、ソースを確認できます。",
+      "documentation": "ドキュメント",
+      "documentation_description": "ガイドと設定リファレンス。",
+      "open": "開く"
     },
     "plugins": {
       "title": "プラグイン",

@@ -1,0 +1,1 @@
+export { createDashboardReleaseRoute } from './release';

@@ -2,7 +2,7 @@ import { m } from '@aio-proxy/i18n';
 import type { DashboardSettingsMutationInput, DashboardSettingsView } from '@aio-proxy/types';
 import { Input } from '@aio-proxy/ui/components/input';
 
-import { SettingsFieldRow } from './settings-field-row';
+import { SettingsFieldRow } from '../settings-field-row';
 import { hostSchema, portSchema } from './settings-form-contract';
 import type { SettingsFormApi } from './use-settings-form';
 

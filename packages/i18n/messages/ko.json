@@ -480,6 +480,7 @@
       "api_keys_description": "클라이언트가 이 프록시에 제시하는 키입니다. 저장된 키는 다시 표시되지 않습니다.",
       "api_keys_empty": "구성된 API 키가 없습니다.",
       "api_keys_label": "라벨",
+      "optional": "(선택)",
       "api_keys_value": "키",
       "api_keys_stored": "저장됨",
       "api_keys_add": "키 추가",
@@ -506,7 +507,19 @@
       "restart_required": "이 변경 사항을 적용하려면 aio-proxy를 다시 시작하세요.",
       "load_failed": "설정을 불러올 수 없습니다. 다시 시도하세요.",
       "save_failed": "설정을 저장할 수 없습니다. 다시 시도하세요.",
-      "invalid": "유효한 값을 입력하세요."
+      "invalid": "유효한 값을 입력하세요.",
+      "about_group": "정보",
+      "version": "버전",
+      "version_description": "현재 실행 중인 aio-proxy 버전입니다.",
+      "version_check": "업데이트 확인",
+      "version_up_to_date": "최신 배포 버전입니다.",
+      "version_outdated": "버전 {version}을 사용할 수 있습니다.",
+      "version_check_failed": "레지스트리에 연결할 수 없습니다. 다시 시도하세요.",
+      "repository": "소스 코드",
+      "repository_description": "GitHub에서 이슈, 릴리스, 소스를 확인하세요.",
+      "documentation": "문서",
+      "documentation_description": "가이드와 설정 참조.",
+      "open": "열기"
     },
     "plugins": {
       "title": "플러그인",

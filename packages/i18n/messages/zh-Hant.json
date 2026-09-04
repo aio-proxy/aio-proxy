@@ -480,6 +480,7 @@
       "api_keys_description": "用戶端存取本代理時使用的金鑰。已儲存的金鑰不會再次顯示。",
       "api_keys_empty": "尚未設定 API 金鑰。",
       "api_keys_label": "標籤",
+      "optional": "（選填）",
       "api_keys_value": "金鑰",
       "api_keys_stored": "已儲存",
       "api_keys_add": "新增金鑰",
@@ -506,7 +507,19 @@
       "restart_required": "重新啟動 aio-proxy 以套用此變更。",
       "load_failed": "無法載入設定，請重試。",
       "save_failed": "無法儲存設定，請重試。",
-      "invalid": "請輸入有效值。"
+      "invalid": "請輸入有效值。",
+      "about_group": "關於",
+      "version": "版本",
+      "version_description": "目前執行的 aio-proxy 版本。",
+      "version_check": "檢查新版本",
+      "version_up_to_date": "已是最新發布版本。",
+      "version_outdated": "有新版本 {version} 可用。",
+      "version_check_failed": "無法連線至套件來源，請重試。",
+      "repository": "原始碼",
+      "repository_description": "在 GitHub 上檢視問題、發布與原始碼。",
+      "documentation": "文件",
+      "documentation_description": "使用指南與設定參考。",
+      "open": "開啟"
     },
     "plugins": {
       "title": "外掛",

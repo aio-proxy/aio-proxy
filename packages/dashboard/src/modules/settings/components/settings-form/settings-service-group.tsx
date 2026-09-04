@@ -4,8 +4,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@aio-proxy/ui/componen
 import { FieldGroup } from '@aio-proxy/ui/components/field';
 import { Input } from '@aio-proxy/ui/components/input';
 
+import { SettingsFieldRow } from '../settings-field-row';
 import { SettingsEndpointFields } from './settings-endpoint-fields';
-import { SettingsFieldRow } from './settings-field-row';
 import { proxySchema } from './settings-form-contract';
 import { SettingsPasswordField } from './settings-password-field';
 import type { SettingsFormApi } from './use-settings-form';

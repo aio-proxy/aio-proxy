@@ -480,6 +480,7 @@
       "api_keys_description": "Keys that clients present to this proxy. Stored keys are never shown again.",
       "api_keys_empty": "No API keys configured.",
       "api_keys_label": "Label",
+      "optional": " (optional)",
       "api_keys_value": "Key",
       "api_keys_stored": "Stored",
       "api_keys_add": "Add key",
@@ -506,7 +507,19 @@
       "restart_required": "Restart aio-proxy to apply this change.",
       "load_failed": "Settings could not be loaded. Try again.",
       "save_failed": "Settings could not be saved. Try again.",
-      "invalid": "Enter a valid value."
+      "invalid": "Enter a valid value.",
+      "about_group": "About",
+      "version": "Version",
+      "version_description": "The aio-proxy build currently running.",
+      "version_check": "Check for updates",
+      "version_up_to_date": "This is the latest published version.",
+      "version_outdated": "Version {version} is available.",
+      "version_check_failed": "Could not reach the registry. Try again.",
+      "repository": "Source code",
+      "repository_description": "Issues, releases, and source on GitHub.",
+      "documentation": "Documentation",
+      "documentation_description": "Guides and the configuration reference.",
+      "open": "Open"
     },
     "plugins": {
       "title": "Plugins",

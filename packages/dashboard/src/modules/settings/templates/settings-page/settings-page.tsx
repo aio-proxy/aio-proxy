@@ -3,6 +3,7 @@ import { Skeleton } from '@aio-proxy/ui/components/skeleton';
 
 import { PageContainer } from '@/components/page-container';
 
+import { SettingsAboutGroup } from '../../components/settings-about-group';
 import { SettingsForm } from '../../components/settings-form';
 import { SettingsPreferencesGroup } from '../../components/settings-preferences-group';
 import { SettingsReloadButton } from '../../components/settings-reload-button';
@@ -37,8 +38,11 @@ export const SettingsPage: React.FC = () => {
       extra={<SettingsReloadButton />}
     >
       <div className="mx-auto w-full max-w-3xl space-y-6">
-        {content}
+        {/* Preferences are browser-local and always available, so they lead: they render even
+            while the server-backed settings are still loading or failed to load. */}
         <SettingsPreferencesGroup />
+        {content}
+        <SettingsAboutGroup />
       </div>
     </PageContainer>
   );

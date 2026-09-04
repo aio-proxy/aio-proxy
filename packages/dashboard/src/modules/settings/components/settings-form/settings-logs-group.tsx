@@ -7,7 +7,7 @@ import { Label } from '@aio-proxy/ui/components/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@aio-proxy/ui/components/select';
 import { Switch } from '@aio-proxy/ui/components/switch';
 
-import { SettingsFieldRow } from './settings-field-row';
+import { SettingsFieldRow } from '../settings-field-row';
 import { levelSchema, retentionSchema, retrySchema } from './settings-form-contract';
 import type { SettingsFormApi } from './use-settings-form';
 

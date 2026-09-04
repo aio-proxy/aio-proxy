@@ -4,7 +4,7 @@ import { Button } from '@aio-proxy/ui/components/button';
 import { Input } from '@aio-proxy/ui/components/input';
 import { useForm } from '@tanstack/react-form';
 
-import { SettingsFieldRow } from './settings-field-row';
+import { SettingsFieldRow } from '../settings-field-row';
 import { passwordSchema, type SettingsSave } from './settings-form-contract';
 
 interface SettingsPasswordFieldProps {

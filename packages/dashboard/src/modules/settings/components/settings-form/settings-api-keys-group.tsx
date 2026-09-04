@@ -116,6 +116,7 @@ export const SettingsApiKeysGroup: React.FC<SettingsApiKeysGroupProps> = ({ disa
               <div className="flex-1 space-y-1">
                 <Label htmlFor={`api-key-label-${row.id}`} className="text-xs">
                   {m['dashboard.settings.api_keys_label']()}
+                  <span className="font-normal text-muted-foreground">{m['dashboard.settings.optional']()}</span>
                 </Label>
                 <Input
                   id={`api-key-label-${row.id}`}
