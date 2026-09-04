@@ -675,7 +675,7 @@
         "open_provider": "開啟提供商 {id}"
       },
       "routing": {
-        "manage": "管理梯隊",
+        "manage": "管理優先級",
         "add_tier": "新增梯隊",
         "tier": "第 {tier} 梯隊",
         "provider_count": "{count} 個提供商",

@@ -675,7 +675,7 @@
         "open_provider": "プロバイダー {id} を開く"
       },
       "routing": {
-        "manage": "ティアを管理",
+        "manage": "優先度を管理",
         "add_tier": "ティアを追加",
         "tier": "第 {tier} ティア",
         "provider_count": "{count} プロバイダー",

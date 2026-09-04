@@ -169,13 +169,16 @@ test('renders the empty state when there are no Providers at all', () => {
 });
 
 test('management mode replaces full cards with compact routing rows and restores them on cancel', () => {
-  render(<ProviderCardGrid providers={providers} routingRevision="revision" />);
+  const onRoutingEditingChange = rs.fn();
+  const { rerender } = render(
+    <ProviderCardGrid
+      providers={providers}
+      routingRevision="revision"
+      routingEditing
+      onRoutingEditingChange={onRoutingEditingChange}
+    />,
+  );
 
-  expect(screen.getByTestId('provider-search')).toBeInTheDocument();
-  expect(screen.getByTestId('provider-card-models-count')).toBeInTheDocument();
-  fireEvent.click(screen.getByTestId('provider-routing-manage'));
-
-  expect(screen.queryByTestId('provider-search')).not.toBeInTheDocument();
   expect(screen.getByTestId('provider-routing-item-beta')).toHaveTextContent('Beta');
   expect(screen.getByTestId('provider-routing-item-beta')).toHaveTextContent('Provider disabled');
   expect(screen.getByTestId('provider-routing-item-alpha')).toHaveTextContent('Alpha');
@@ -188,6 +191,15 @@ test('management mode replaces full cards with compact routing rows and restores
   expect(screen.getAllByTestId(/^provider-routing-slot-/u)).toHaveLength(3);
 
   fireEvent.click(screen.getByTestId('provider-routing-cancel'));
+  expect(onRoutingEditingChange).toHaveBeenCalledWith(false);
+  rerender(
+    <ProviderCardGrid
+      providers={providers}
+      routingRevision="revision"
+      routingEditing={false}
+      onRoutingEditingChange={onRoutingEditingChange}
+    />,
+  );
   expect(screen.getByTestId('provider-search')).toBeInTheDocument();
   expect(screen.getAllByTestId(/^provider-row-/u)).toHaveLength(2);
   expect(routingMocks.mutate).not.toHaveBeenCalled();
@@ -195,12 +207,7 @@ test('management mode replaces full cards with compact routing rows and restores
 
 test('only the explicit handles become draggable controls', async () => {
   const sameTierProviders = providers.map((provider) => ({ ...provider, priority: 1 }));
-  render(<ProviderCardGrid providers={sameTierProviders} routingRevision="revision" />);
-
-  expect(screen.queryByTestId('provider-tier-1')).not.toBeInTheDocument();
-  expect(screen.getByTestId('provider-row-alpha')).not.toHaveAttribute('role', 'button');
-
-  fireEvent.click(screen.getByTestId('provider-routing-manage'));
+  render(<ProviderCardGrid providers={sameTierProviders} routingRevision="revision" routingEditing />);
 
   const tier = screen.getByTestId('provider-tier-1');
   const item = screen.getByTestId('provider-routing-item-alpha');
@@ -217,8 +224,7 @@ test('only the explicit handles become draggable controls', async () => {
 
 test('tier keyboard drag collapses every tier until the drag is canceled', async () => {
   Object.defineProperty(document, 'getAnimations', { configurable: true, value: () => [] });
-  render(<ProviderCardGrid providers={providers} routingRevision="revision" />);
-  fireEvent.click(screen.getByTestId('provider-routing-manage'));
+  render(<ProviderCardGrid providers={providers} routingRevision="revision" routingEditing />);
 
   const tierHandles = screen.getAllByRole('button', { name: /Drag tier|拖动梯队|ドラッグ|드래그/u });
   const alphaList = screen.getByTestId('provider-routing-item-alpha').parentElement;

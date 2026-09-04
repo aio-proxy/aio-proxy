@@ -33,8 +33,9 @@ export const WeightedTierSlot = <TItem,>({
       data-testid={testId}
       data-drop-target={isDropTarget || undefined}
       className={cn(
-        'rounded-xl border-dashed transition-[min-height,border-color,background-color,padding] duration-150 motion-reduce:transition-none',
+        'rounded-xl border-dashed transition-[min-height,border-color,background-color,padding,margin] duration-150 motion-reduce:transition-none',
         occupied ? 'space-y-2 border border-primary bg-primary/5 p-2' : 'h-2',
+        (occupied || isDropTarget) && 'my-2',
         isDropTarget && 'min-h-14 border border-primary bg-primary/5 p-2',
       )}
     >
