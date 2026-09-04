@@ -22,8 +22,6 @@ export type OAuthEditorShape = {
   readonly id: string;
   readonly name?: string | undefined;
   readonly enabled?: boolean | undefined;
-  readonly priority?: number | undefined;
-  readonly weight?: number | undefined;
   readonly proxy?: OAuthProviderMutationBody['proxy'];
   readonly alias?: readonly AliasRow[] | undefined;
   readonly transforms?: unknown;
@@ -54,8 +52,6 @@ export type ProviderEditorInitial = {
   readonly id?: string | undefined;
   readonly name?: string | undefined;
   readonly enabled?: boolean | undefined;
-  readonly priority?: number | undefined;
-  readonly weight?: number | undefined;
   readonly proxy?: OAuthProviderMutationBody['proxy'];
   readonly models?: readonly string[] | undefined;
   readonly excludedModels?: readonly string[] | undefined;

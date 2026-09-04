@@ -551,7 +551,7 @@ test('edit mode heads the page with the provider name, and falls back when it ha
   expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(m['dashboard.providers.edit_title']());
 });
 
-test('create mode explains what the page is for under the title', () => {
+test('create mode keeps the page heading concise without a subtitle', () => {
   renderPage({
     mode: ProviderFormMode.Create,
     kind: ProviderKind.Api,
@@ -559,7 +559,7 @@ test('create mode explains what the page is for under the title', () => {
     onSessionIdChange: rs.fn(),
   });
 
-  expect(screen.getByText(m['dashboard.providers.editor.header_create_subtitle']())).toBeTruthy();
+  expect(screen.queryByText(m['dashboard.providers.editor.header_create_subtitle']())).toBeNull();
 });
 
 // A provider with no API key is a legitimate configuration: X9 made the draft saveable, and C15 (ruled

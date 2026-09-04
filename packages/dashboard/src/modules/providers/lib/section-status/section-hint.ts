@@ -98,28 +98,6 @@ export const modelsHint = (input: SectionStatusInput, status: SectionStatus): st
   return aliases === 0 ? exposure : `${exposure} · ${aliasText(aliases)}`;
 };
 
-/** No `status` parameter: routing is always `ok` since X9, so a status could not change any answer. */
-export const routingHint = (input: SectionStatusInput): string => {
-  // First and unconditionally: a disabled provider is never materialized, so every other thing this
-  // badge could say — its weight, or a tie inside an attempt queue it never joins — describes routing
-  // it takes no part in.
-  if (input.enabled === false) return m['dashboard.providers.editor.hint_routing_disabled']();
-  // Off the input, not off the status: a tie is `ok` since X9 — it is advice about attempt order, and
-  // the other provider in the tie may not even be the user's to change — so this branch is what keeps
-  // the advice on screen.
-  if (input.weightTie) return m['dashboard.providers.editor.hint_routing_weight_tie']();
-  const parts: string[] = [];
-  if (input.priority !== undefined) {
-    parts.push(m['dashboard.providers.editor.hint_routing_priority']({ priority: input.priority }));
-  }
-  if (input.weight === undefined) {
-    parts.push(m['dashboard.providers.editor.hint_routing_no_weight']());
-  } else {
-    parts.push(m['dashboard.providers.editor.hint_routing_weight']({ weight: input.weight }));
-  }
-  return parts.join(' · ');
-};
-
 const transformText = (count: number): string =>
   count === 1
     ? m['dashboard.providers.editor.hint_advanced_transform']({ count })

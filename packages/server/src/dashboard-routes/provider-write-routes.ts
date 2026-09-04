@@ -8,7 +8,11 @@ import {
   npmAdd,
   PendingAccountOperationConflictError,
 } from '@aio-proxy/core';
-import type { ProviderMutationBody } from '@aio-proxy/types';
+import {
+  type DashboardProviderRoutingMutation,
+  DashboardProviderRoutingMutationSchema,
+  type ProviderMutationBody,
+} from '@aio-proxy/types';
 import type { MiddlewareHandler } from 'hono';
 import { Hono } from 'hono';
 import { validator } from 'hono/validator';
@@ -27,6 +31,13 @@ import {
   replaceOAuthProvider,
   replaceProvider,
 } from './provider-mutation';
+import {
+  applyProviderRoutingMutation,
+  authoredProviderRouting,
+  ProviderRoutingSetChangedError,
+  providerRoutingRevision,
+  ProviderRoutingStaleRevisionError,
+} from './provider-routing-mutation';
 
 const ProviderInstallRequestSchema = z.object({
   npm: z.string().min(1),
@@ -44,6 +55,15 @@ const providerMutationValidator = validator(
   Record<string, never>,
   string,
   { in: { json: ProviderMutationBody }; out: { json: ParsedProviderMutation } }
+>;
+
+const providerRoutingMutationValidator = validator('json', (raw, context) => {
+  const parsed = DashboardProviderRoutingMutationSchema.safeParse(raw);
+  return parsed.success ? parsed.data : context.json({ error: 'validation_failed' } as const, 400);
+}) as unknown as MiddlewareHandler<
+  Record<string, never>,
+  string,
+  { in: { json: DashboardProviderRoutingMutation }; out: { json: DashboardProviderRoutingMutation } }
 >;
 
 export const createDashboardProviderWriteRoutes = (state: ServerState) =>
@@ -76,6 +96,43 @@ export const createDashboardProviderWriteRoutes = (state: ServerState) =>
         return context.json({ error: 'provider summary not found' }, 500);
       }
       return context.json({ provider }, 201);
+    })
+    .put('/providers/routing', providerRoutingMutationValidator, async (context) => {
+      if (state.configPath === undefined) {
+        return context.json({ error: 'config_unavailable' } as const, 409);
+      }
+      let committed: { readonly revision: string } | undefined;
+      try {
+        await state.configStore.mutateProviders((record) => {
+          // Routing comes from the record this transaction holds, not the runtime snapshot: that
+          // snapshot lags both an earlier queued mutation and an external edit to the file, and either
+          // would let a save commit a layout that never covered the Provider it added. Values are the
+          // parsed ones, so the digest matches the one `GET /providers` built from the running config.
+          const routing = authoredProviderRouting(record);
+          const next = applyProviderRoutingMutation(record, context.req.valid('json'), routing);
+          // The revision describes the record this transaction commits. Reading it back from the file
+          // afterwards could pair the client's cached values with a concurrent commit's revision,
+          // letting its next save overwrite that change instead of being rejected as stale.
+          committed = { revision: providerRoutingRevision(authoredProviderRouting(next)) };
+          return next;
+        });
+      } catch (error) {
+        if (error instanceof ProviderRoutingStaleRevisionError) {
+          return context.json({ error: 'stale_revision' } as const, 409);
+        }
+        if (error instanceof ProviderRoutingSetChangedError) {
+          return context.json({ error: 'provider_set_changed' } as const, 409);
+        }
+        if (error instanceof ConfigReloadRejectedError) {
+          return context.json({ error: 'validation_failed' } as const, 422);
+        }
+        throw error;
+      }
+      if (committed === undefined) throw new Error('Provider routing mutation did not run');
+      // Summaries are read after the commit, so a later concurrent commit can make them newer than
+      // `revision`. That pairing only costs the client one `stale_revision`, never a silent overwrite.
+      const providers = await state.providerSummaries({ probe: false });
+      return context.json({ providers, routingRevision: committed.revision });
     })
     .put('/providers/:id', providerMutationValidator, async (context) => {
       if (state.configPath === undefined) {

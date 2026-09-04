@@ -1,7 +1,7 @@
 import { m } from '@aio-proxy/i18n';
 import { expect, test } from '@rstest/core';
 
-import { advancedHint, connectionHint, modelsHint, routingHint } from './section-hint';
+import { advancedHint, connectionHint, modelsHint } from './section-hint';
 import { sectionStatuses, type SectionStatusInput } from './section-status';
 
 const base: SectionStatusInput = {
@@ -15,7 +15,6 @@ const base: SectionStatusInput = {
   models: ['m1'],
   aliasIssues: [],
   transformsValid: true,
-  weightTie: false,
 };
 
 // One plural-only key per noun rendered "1 models", "1 aliases", "1 headers", "1 rewrites". The
@@ -66,19 +65,11 @@ test('the models hint names a broken alias ahead of anything it counts', () => {
   );
 });
 
-// X9 downgraded staleness and a weight tie from `attention` to `ok`. Both hints used to be selected BY
-// `status === 'attention'`, so the downgrade would have silently deleted both explanations; each now
-// reads its own input. One assertion per hint, with the status the section actually reports now — pass
-// `'attention'` and these pass against the deleted branch.
-test('the two downgraded conditions still explain themselves at status ok', () => {
+test('a stale catalog condition still explains itself at status ok', () => {
   expect(modelsHint({ ...base, models: ['gone'], discoveredModels: ['here'] }, 'ok')).toBe(
     m['dashboard.providers.editor.hint_models_stale'](),
   );
-  expect(routingHint({ ...base, weightTie: true })).toBe(m['dashboard.providers.editor.hint_routing_weight_tie']());
-  // The mirror half: neither may fire when its own condition is absent, or every healthy section reports
-  // a problem it does not have.
   expect(modelsHint({ ...base, models: ['m1'], discoveredModels: ['m1'] }, 'ok')).toBe('1 model');
-  expect(routingHint(base)).toBe(m['dashboard.providers.editor.hint_routing_no_weight']());
 });
 
 // C15 (ruled 2026-08-19): a provider with no api key is a legitimate configuration, so the badge keeps
@@ -126,24 +117,4 @@ test('a malformed base URL says the address is invalid, not that it is missing',
   // Keyed off the status, not off `usableBaseURL` alone: the `ok` copy is its own branch, and
   // reordering the guard above it would report a bad address on a section that has none.
   expect(sectionStatuses(base).connection.hint).toBe('x.example/v1');
-});
-
-// `0` is a real configured weight and absent is the key being omitted from config; the routing badge
-// coalesced the two, so a provider that was never given a weight read as one deliberately set to zero.
-// Ordering still coalesces to 0 (types/src/config/config.ts:196, the single ordering point, mirrored
-// by `lib/weight-tie`'s `effectiveWeight`) — this is the readout only.
-test('the routing hint tells an absent weight apart from a configured zero', () => {
-  const input = { ...base, models: ['m1'], aliasCount: 0 } satisfies SectionStatusInput;
-
-  expect(routingHint({ ...input, weight: 0 })).toBe(m['dashboard.providers.editor.hint_routing_weight']({ weight: 0 }));
-  expect(routingHint(input)).toBe(m['dashboard.providers.editor.hint_routing_no_weight']());
-  expect(routingHint(input)).not.toBe(m['dashboard.providers.editor.hint_routing_weight']({ weight: 0 }));
-});
-
-test('the routing hint names a configured priority before the weight', () => {
-  const input = { ...base, models: ['m1'], aliasCount: 0, priority: 4, weight: 2 } satisfies SectionStatusInput;
-
-  expect(routingHint(input)).toBe(
-    `${m['dashboard.providers.editor.hint_routing_priority']({ priority: 4 })} · ${m['dashboard.providers.editor.hint_routing_weight']({ weight: 2 })}`,
-  );
 });

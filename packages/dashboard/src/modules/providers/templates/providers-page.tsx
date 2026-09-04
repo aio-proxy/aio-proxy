@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { RotateCwIcon } from 'lucide-react';
 import type React from 'react';
+import { useState } from 'react';
 
 import { PageContainer } from '@/components/page-container';
 
@@ -19,15 +20,32 @@ interface ProvidersPageProps {
 export const ProvidersPage: React.FC<ProvidersPageProps> = ({ focusProviderId, warning }) => {
   const providersQuery = useQuery(providersQueryOptions());
   const providers = providersQuery.data?.providers ?? [];
+  const [routingEditing, setRoutingEditing] = useState(false);
 
   return (
     <PageContainer
       title={m['dashboard.providers.list_title']()}
       breadcrumbs={[{ label: m['dashboard.menus.configuration']() }, { label: m['dashboard.providers.list_title']() }]}
       extra={
-        <Button render={<Link preload="intent" to="/providers/new" />} data-testid="new-provider-button">
-          {m['dashboard.providers.new_provider']()}
-        </Button>
+        <div className="flex items-center justify-end gap-2">
+          {providers.length > 0 && !routingEditing ? (
+            <Button
+              type="button"
+              variant="outline"
+              data-testid="provider-routing-manage"
+              onClick={() => setRoutingEditing(true)}
+            >
+              {m['dashboard.providers.routing.manage']()}
+            </Button>
+          ) : null}
+          <Button
+            nativeButton={false}
+            render={<Link preload="intent" to="/providers/new" />}
+            data-testid="new-provider-button"
+          >
+            {m['dashboard.providers.new_provider']()}
+          </Button>
+        </div>
       }
     >
       {warning === 'catalog_unavailable' ? (
@@ -58,7 +76,13 @@ export const ProvidersPage: React.FC<ProvidersPageProps> = ({ focusProviderId, w
           </Button>
         </div>
       ) : (
-        <ProviderCardGrid providers={providers} focusProviderId={focusProviderId} />
+        <ProviderCardGrid
+          providers={providers}
+          routingRevision={providersQuery.data?.routingRevision ?? ''}
+          focusProviderId={focusProviderId}
+          routingEditing={routingEditing}
+          onRoutingEditingChange={setRoutingEditing}
+        />
       )}
     </PageContainer>
   );

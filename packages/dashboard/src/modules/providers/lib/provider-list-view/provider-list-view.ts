@@ -18,12 +18,17 @@ export const emptyProviderListFilters: ProviderListFilters = {
   kind: 'all',
 };
 
-// A Provider the editor cannot represent must not offer an edit affordance at all.
-const uneditableDiagnosticCodes = new Set(['PROVIDER_CONFIG_INVALID', 'LEGACY_OAUTH_CONFIG_UNSUPPORTED']);
+// These codes are the config parser's own verdict on an entry it refused, so they mark exactly the
+// Providers that exist as a diagnostic instead of a configuration. `kind` alone is not enough: a
+// rejected entry keeps whatever kind was recognizable, so a broken `api` entry still reports 'api'.
+const invalidConfigDiagnosticCodes = new Set(['PROVIDER_CONFIG_INVALID', 'LEGACY_OAUTH_CONFIG_UNSUPPORTED']);
 
-export const canEditProvider = (provider: DashboardProviderSummary): boolean =>
-  provider.kind !== 'invalid' &&
-  (provider.state.diagnostic === undefined || !uneditableDiagnosticCodes.has(provider.state.diagnostic.code));
+/** A Provider missing from the parsed configuration: the editor cannot represent it and routing cannot move it. */
+export const isDegradedProvider = (provider: DashboardProviderSummary): boolean =>
+  provider.kind === 'invalid' ||
+  (provider.state.diagnostic !== undefined && invalidConfigDiagnosticCodes.has(provider.state.diagnostic.code));
+
+export const canEditProvider = (provider: DashboardProviderSummary): boolean => !isDegradedProvider(provider);
 
 /**
  * The configured name wins; an OAuth account that was never named falls back to its account label

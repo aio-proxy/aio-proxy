@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { providerLoginCommand } from '../commands';
 import { IdSchema } from '../common';
 import { type DiagnosticCode, ProviderStateSchema } from '../plugin';
-import { ProviderKind, ProviderProtocolSchema } from '../provider';
+import { ProviderKind, ProviderProtocolSchema, RoutingPrioritySchema, RoutingWeightSchema } from '../provider';
 import {
   DashboardOverviewRangeSchema,
   UsageOverviewGroupBySchema,
@@ -42,6 +42,18 @@ export const DashboardProviderSummarySchema = z.object({
 
 export const DashboardProvidersResponseSchema = z.object({
   providers: z.array(DashboardProviderSummarySchema),
+  routingRevision: z.string(),
+});
+
+export const DashboardProviderRoutingMutationSchema = z.object({
+  revision: z.string(),
+  providers: z.record(
+    IdSchema,
+    z.object({
+      priority: RoutingPrioritySchema,
+      weight: RoutingWeightSchema,
+    }),
+  ),
 });
 
 export const NonNegativeIntegerStringSchema = z.string().regex(/^(?:0|[1-9]\d*)$/u);
@@ -233,6 +245,8 @@ export const dashboardProviderNeedsReauthorization = (
 
 export type DashboardProvidersResponseInput = z.input<typeof DashboardProvidersResponseSchema>;
 export type DashboardProvidersResponse = z.output<typeof DashboardProvidersResponseSchema>;
+export type DashboardProviderRoutingMutationInput = z.input<typeof DashboardProviderRoutingMutationSchema>;
+export type DashboardProviderRoutingMutation = z.output<typeof DashboardProviderRoutingMutationSchema>;
 export type DashboardUsageSummaryInput = z.input<typeof DashboardUsageSummarySchema>;
 export type DashboardUsageSummary = z.output<typeof DashboardUsageSummarySchema>;
 export type DashboardUsageSeriesInput = z.input<typeof DashboardUsageSeriesSchema>;

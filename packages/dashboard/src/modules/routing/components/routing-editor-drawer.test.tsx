@@ -209,6 +209,15 @@ test('renders Providers as a priority board with live shares', () => {
   expect(screen.getByTestId('routing-disabled-c')).toBeInTheDocument();
 });
 
+test('exposes the shared whole-tier drag control', () => {
+  renderDrawer();
+
+  expect(
+    screen.getByRole('button', { name: m['dashboard.providers.routing.drag_tier']({ tier: 1 }) }),
+  ).toBeInTheDocument();
+  expect(screen.getByText(m['dashboard.providers.routing.provider_count']({ count: 2 }))).toBeInTheDocument();
+});
+
 test('moves the share slider thumb when the weight changes', () => {
   renderDrawer();
 

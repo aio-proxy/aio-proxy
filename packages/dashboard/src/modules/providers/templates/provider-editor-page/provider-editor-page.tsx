@@ -11,7 +11,6 @@ import { IdentitySection } from '../../components/provider-editor/identity-secti
 import { KindCard } from '../../components/provider-editor/kind-card';
 import { ModelValidationPanel } from '../../components/provider-editor/model-validation-panel';
 import { ModelsSection } from '../../components/provider-editor/models-section';
-import { RoutingSection } from '../../components/provider-editor/routing-section';
 import { useActiveSection } from '../../hooks/use-active-section';
 import { editorEffectiveAlias, toAliasRecord } from '../../lib/alias-editor';
 import { ProviderFormMode } from '../../lib/constants';
@@ -51,7 +50,6 @@ export const ProviderEditorPage: React.FC<ProviderEditorPageProps> = (props) => 
     pending,
     primaryLabel,
     title,
-    subtitle,
     navigate,
   } = useProviderEditorPage(props);
   const activeId = useActiveSection();
@@ -73,7 +71,7 @@ export const ProviderEditorPage: React.FC<ProviderEditorPageProps> = (props) => 
         ? undefined
         : toAliasRecord(values.alias);
 
-  const sections345 = (
+  const sections34 = (
     <>
       <ModelsSection
         form={form}
@@ -83,7 +81,6 @@ export const ProviderEditorPage: React.FC<ProviderEditorPageProps> = (props) => 
         pluginAliases={oauth?.pluginAliases}
         summary={summaries.models}
       />
-      <RoutingSection form={form} summary={summaries.routing} />
       <AdvancedSection
         form={form}
         kind={kind}
@@ -96,7 +93,6 @@ export const ProviderEditorPage: React.FC<ProviderEditorPageProps> = (props) => 
   return (
     <PageContainer
       title={title}
-      subtitle={subtitle}
       breadcrumbs={[
         { label: m['dashboard.menus.configuration']() },
         { label: m['dashboard.providers.list_title'](), to: '/providers' },
@@ -177,11 +173,11 @@ export const ProviderEditorPage: React.FC<ProviderEditorPageProps> = (props) => 
                   {m['dashboard.providers.editor.authorization_locked_hint']()}
                 </p>
                 <fieldset disabled className="pointer-events-none space-y-4 opacity-60">
-                  {sections345}
+                  {sections34}
                 </fieldset>
               </>
             ) : (
-              sections345
+              sections34
             )}
           </div>
           {/* Stacks under the form below `lg`; above it, stays in view while the user works down the

@@ -85,7 +85,7 @@ test('several protocols collapse to one word so line 2 never wraps', () => {
   expect(detail).not.toHaveTextContent('Anthropic');
 });
 
-test('renders the routing and health stats with dashes when unavailable', () => {
+test('renders priority, weight, and health stats with dashes when unavailable', () => {
   renderCard(<ProviderCard {...baseProps} provider={providerStub({ id: 'p', priority: 5, weight: 3 })} />);
 
   expect(screen.getByTestId('provider-stat-priority')).toHaveTextContent('5');

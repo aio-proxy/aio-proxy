@@ -1,38 +1,72 @@
 import { m } from '@aio-proxy/i18n';
 import type { DashboardProviderSummary } from '@aio-proxy/types';
+import { Button } from '@aio-proxy/ui/components/button';
 import { Empty } from '@aio-proxy/ui/components/empty';
 import { useQuery } from '@tanstack/react-query';
+import { Check, X } from 'lucide-react';
 import type React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { resolveDashboardText } from '@/lib/localized-text';
 
+import { useProviderRoutingMutation } from '../../hooks/use-provider-routing-mutation';
 import { emptyProviderListFilters, visibleProviders } from '../../lib/provider-list-view';
+import { buildProviderRoutingBoard, providerRoutingMutation } from '../../lib/provider-routing-board';
 import { providerHealthQueryOptions } from '../../services/provider-health-service';
 import { providerPluginPresentationsQueryOptions } from '../../services/provider-plugin-labels';
 import { providerUsageQueryOptions, zeroProviderUsage } from '../../services/provider-usage-service';
 import { DeleteProviderDialog, type DeleteProviderDialogRef } from '../delete-provider-dialog';
 import { ProviderCard } from '../provider-card';
+import { ProviderRoutingBoard } from '../provider-routing-board';
 import { ProviderFilterChips } from './provider-filter-chips';
 import { ProviderSearchField } from './provider-search-field';
 
 interface ProviderCardGridProps {
   readonly providers: readonly DashboardProviderSummary[];
+  readonly routingRevision: string;
   readonly focusProviderId?: string;
+  readonly routingEditing?: boolean;
+  readonly onRoutingEditingChange?: (editing: boolean) => void;
 }
 
-export const ProviderCardGrid: React.FC<ProviderCardGridProps> = ({ providers, focusProviderId }) => {
+export const ProviderCardGrid: React.FC<ProviderCardGridProps> = ({
+  providers,
+  routingRevision,
+  focusProviderId,
+  routingEditing = false,
+  onRoutingEditingChange,
+}) => {
   const [filters, setFilters] = useState(emptyProviderListFilters);
+  const [draft, setDraft] = useState<{
+    readonly board: ReturnType<typeof buildProviderRoutingBoard>;
+    readonly savedBoard: ReturnType<typeof buildProviderRoutingBoard>;
+    readonly revision: string;
+  } | null>(null);
   const deleteDialogRef = useRef<DeleteProviderDialogRef>(null);
+  const routingMutation = useProviderRoutingMutation();
   const usageQuery = useQuery(providerUsageQueryOptions());
   const healthQuery = useQuery(providerHealthQueryOptions());
   const pluginsQuery = useQuery(providerPluginPresentationsQueryOptions());
 
   const pluginPresentations = useMemo(
-    () => new Map((pluginsQuery.data?.plugins ?? []).map((plugin) => [plugin.packageName, plugin])),
+    () =>
+      new Map(
+        (pluginsQuery.data?.plugins ?? []).map((plugin) => [
+          plugin.packageName,
+          {
+            ...plugin,
+            displayName: plugin.displayName === undefined ? undefined : resolveDashboardText(plugin.displayName),
+          },
+        ]),
+      ),
     [pluginsQuery.data],
   );
   const visible = useMemo(() => visibleProviders(providers, filters), [providers, filters]);
+  const currentBoard = draft?.board ?? buildProviderRoutingBoard(providers);
+  const savedBoard = draft?.savedBoard ?? currentBoard;
+  const dirty =
+    JSON.stringify(providerRoutingMutation(currentBoard, routingRevision).providers) !==
+    JSON.stringify(providerRoutingMutation(savedBoard, routingRevision).providers);
 
   // Deep-linking focuses the target card once it is actually on screen. Keyed on the Provider ID and
   // on whether the *visible* grid holds it: a cached list may not yet contain a freshly created
@@ -69,15 +103,73 @@ export const ProviderCardGrid: React.FC<ProviderCardGridProps> = ({ providers, f
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-3 md:flex-row md:items-center">
-        {/* `Field` is `w-full`, so the search box needs a bounded box of its own to share the row. */}
-        <div className="md:w-64 md:shrink-0">
-          <ProviderSearchField value={filters.search} onChange={(search) => setFilters({ ...filters, search })} />
+      {routingEditing ? (
+        <div className="flex flex-col gap-3 rounded-xl border border-primary/25 bg-primary/5 p-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="text-sm font-medium">{m['dashboard.providers.routing.manage']()}</div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              data-testid="provider-routing-cancel"
+              disabled={routingMutation.isPending}
+              onClick={() => {
+                setDraft(null);
+                onRoutingEditingChange?.(false);
+              }}
+            >
+              <X />
+              {m['common.cancel']()}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              data-testid="provider-routing-save"
+              disabled={!dirty || routingMutation.isPending}
+              onClick={() =>
+                routingMutation.mutate(providerRoutingMutation(currentBoard, draft?.revision ?? routingRevision), {
+                  onSuccess: () => {
+                    setDraft(null);
+                    onRoutingEditingChange?.(false);
+                  },
+                  onError: (error) => {
+                    if (
+                      error instanceof Error &&
+                      (error.message === 'stale_revision' || error.message === 'provider_set_changed')
+                    ) {
+                      setDraft(null);
+                      onRoutingEditingChange?.(false);
+                    }
+                  },
+                })
+              }
+            >
+              <Check />
+              {m['common.save']()}
+            </Button>
+          </div>
         </div>
-        <ProviderFilterChips filters={filters} onChange={setFilters} />
-      </div>
+      ) : (
+        <div className="flex flex-col gap-3 md:flex-row md:items-center">
+          {/* `Field` is `w-full`, so the search box needs a bounded box of its own to share the row. */}
+          <div className="md:w-64 md:shrink-0">
+            <ProviderSearchField value={filters.search} onChange={(search) => setFilters({ ...filters, search })} />
+          </div>
+          <ProviderFilterChips filters={filters} onChange={setFilters} />
+        </div>
+      )}
 
-      {visible.length === 0 ? (
+      {routingEditing ? (
+        <ProviderRoutingBoard
+          board={currentBoard}
+          providers={providers}
+          onChange={(board) =>
+            setDraft((current) =>
+              current === null ? { board, savedBoard: currentBoard, revision: routingRevision } : { ...current, board },
+            )
+          }
+        />
+      ) : visible.length === 0 ? (
         <p role="status" data-testid="providers-no-matches" className="p-6 text-center text-sm text-muted-foreground">
           {m['dashboard.providers.card.no_matches']()}
         </p>
@@ -90,15 +182,11 @@ export const ProviderCardGrid: React.FC<ProviderCardGridProps> = ({ providers, f
                 key={provider.id}
                 provider={provider}
                 health={healthQuery.data?.get(provider.id)}
-                // A successful response omits Providers with no traffic, so a missing entry means
-                // zero requests. Only an unresolved query leaves the count unknown.
                 usage={
                   usageQuery.data === undefined ? undefined : (usageQuery.data.get(provider.id) ?? zeroProviderUsage)
                 }
                 usagePending={usageQuery.isPending}
-                pluginLabel={
-                  presentation?.displayName === undefined ? undefined : resolveDashboardText(presentation.displayName)
-                }
+                pluginLabel={presentation?.displayName}
                 pluginIcon={presentation?.icon}
                 focused={provider.id === focusProviderId}
                 onDelete={(target) => deleteDialogRef.current?.open(target)}
@@ -108,7 +196,13 @@ export const ProviderCardGrid: React.FC<ProviderCardGridProps> = ({ providers, f
         </div>
       )}
 
-      <DeleteProviderDialog ref={deleteDialogRef} />
+      <DeleteProviderDialog
+        ref={deleteDialogRef}
+        onDeleted={() => {
+          setDraft(null);
+          onRoutingEditingChange?.(false);
+        }}
+      />
     </div>
   );
 };

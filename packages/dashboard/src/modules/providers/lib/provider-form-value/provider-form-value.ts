@@ -11,7 +11,7 @@ import { apiDraftFromProvider, apiDraftToMutation, emptySharedDraft, type ApiEnd
 type ProviderFormValues = ApiProviderMutationBody | AiSdkProviderMutationBody;
 export type ProviderFormShape = ProviderFormValues extends infer Provider
   ? Provider extends ProviderFormValues
-    ? Omit<Provider, 'transforms' | 'endpoints' | 'protocol' | 'baseURL'> & {
+    ? Omit<Provider, 'transforms' | 'endpoints' | 'protocol' | 'baseURL' | 'priority' | 'weight'> & {
         readonly transforms?: unknown;
         readonly validationModel?: string;
         readonly protocol?: ApiProviderMutationBody['protocol'];
@@ -43,10 +43,10 @@ export function parseProviderFormInitial(value: unknown): ProviderFormInitial | 
   if (value === null || typeof value !== 'object' || !('kind' in value)) return undefined;
   if (value.kind === ProviderKind.AiSdk) {
     const result = AiSdkProviderMutationBodySchema.safeParse(value);
-    return result.success ? result.data : undefined;
+    return result.success ? omit(result.data, ['priority', 'weight']) : undefined;
   }
   if (value.kind !== ProviderKind.Api) return undefined;
   const result = ApiProviderMutationBodySchema.safeParse(value);
   if (!result.success) return undefined;
-  return { ...result.data, endpoints: apiDraftFromProvider(result.data) };
+  return { ...omit(result.data, ['priority', 'weight']), endpoints: apiDraftFromProvider(result.data) };
 }

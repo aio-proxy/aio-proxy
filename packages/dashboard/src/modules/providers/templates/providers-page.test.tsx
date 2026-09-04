@@ -8,7 +8,7 @@ import { DeleteProviderDialogStub } from './delete-provider-dialog-stub';
 import { ProvidersPage } from './providers-page';
 
 const queryMocks = rs.hoisted(() => ({
-  providers: { providers: [] as DashboardProviderSummary[] },
+  providers: { providers: [] as DashboardProviderSummary[], routingRevision: 'revision' },
   failed: false,
   refetches: 0,
 }));
@@ -57,6 +57,9 @@ rs.mock('../components/provider-quota-ring', () => ({ ProviderQuotaRing: () => n
 rs.mock('../hooks/use-provider-enabled-mutation', () => ({
   useProviderEnabledMutation: () => ({ mutate: rs.fn(), isPending: false }),
 }));
+rs.mock('../hooks/use-provider-routing-mutation', () => ({
+  useProviderRoutingMutation: () => ({ mutate: rs.fn(), isPending: false }),
+}));
 rs.mock('../hooks/use-provider-credential-refresh', () => ({
   useProviderCredentialRefresh: () => ({ mutate: rs.fn(), isPending: false }),
 }));
@@ -78,6 +81,24 @@ describe('providers page', () => {
     const action = screen.getByTestId('new-provider-button');
     expect(action).toHaveAttribute('to', '/providers/new');
     expect(action).not.toHaveAttribute('params');
+  });
+
+  test('opens Provider tier management from the page action and returns on cancel', () => {
+    queryMocks.providers.providers = [providerStub({ id: 'alpha' })];
+    render(<ProvidersPage />);
+
+    const manage = screen.getByTestId('provider-routing-manage');
+    fireEvent.click(manage);
+
+    expect(screen.queryByTestId('provider-search')).not.toBeInTheDocument();
+    expect(screen.getByTestId('provider-routing-item-alpha')).toBeInTheDocument();
+    expect(screen.queryByTestId('provider-routing-manage')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('provider-routing-cancel'));
+
+    expect(screen.getByTestId('provider-search')).toBeInTheDocument();
+    expect(screen.getByTestId('provider-routing-manage')).toBeInTheDocument();
+    expect(screen.getByTestId('provider-row-alpha')).toBeInTheDocument();
   });
 
   test('renders each Provider as a card whose name links straight to its editor', () => {
