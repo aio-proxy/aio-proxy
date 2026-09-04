@@ -459,6 +459,30 @@ test('a key write against a superseded revision is rejected without changing con
   });
 });
 
+test('a retried key write commits the credential once instead of authoring a duplicate', async () => {
+  await withSettingsFixture(async ({ configPath, routes }) => {
+    // The first write commits but its response is lost, so the client still holds the plaintext
+    // and retries it alongside the now-stored copy it retained by index.
+    expect((await putKeys(routes, [{ retain: 0, label: 'ci' }, { retain: 1 }, { key: 'sk-retried' }])).status).toBe(
+      200,
+    );
+
+    const response = await putKeys(routes, [
+      { retain: 0, label: 'ci' },
+      { retain: 1 },
+      { retain: 2 },
+      { key: 'sk-retried' },
+    ]);
+
+    expect(response.status).toBe(200);
+    expect(onDisk(configPath).server.apiKeys).toEqual([
+      { key: '{{env.SETTINGS_API_KEY}}', label: 'ci' },
+      { key: 'sk-plain-preserved' },
+      { key: 'sk-retried' },
+    ]);
+  });
+});
+
 test('an API key write does not require restart', async () => {
   await withSettingsFixture(async ({ routes }) => {
     const response = await putKeys(routes, [{ retain: 0 }]);

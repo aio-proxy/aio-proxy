@@ -61,6 +61,9 @@ export const SettingsApiKeysGroup: React.FC<SettingsApiKeysGroupProps> = ({ disa
   // resync the stored rows. Drafts the user has typed into survive that resync: a key exists
   // nowhere else yet, and a rejected save (a 409 refetches settings) must not be what destroys it.
   // A successful save drops its own drafts by id, so saved keys do not come back as duplicate rows.
+  // The one ambiguous case — the write committed but its response was lost, so the draft is kept
+  // beside the stored copy it created — resolves on the next save: `resolveApiKeys` collapses a
+  // resubmitted key onto the entry already authored rather than duplicating the credential.
   if (revision !== settings.apiKeysRevision) {
     setRevision(settings.apiKeysRevision);
     setRows((current) => [...rowsFromSettings(settings), ...current.filter(isTouchedDraft)]);

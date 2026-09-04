@@ -10,6 +10,7 @@ import {
   type DashboardSettingsView,
   ServerLoggingSchema,
 } from '@aio-proxy/types';
+import { uniqBy } from 'es-toolkit/array';
 import { isPlainObject } from 'es-toolkit/predicate';
 import type { MiddlewareHandler } from 'hono';
 import { Hono } from 'hono';
@@ -100,7 +101,7 @@ function resolveApiKeys(
   // The client's `retain` indexes address the array it read. If the watcher or another
   // session rewrote it since, those positions now name different secrets — reject instead.
   if (apiKeysRevision(previous) !== revision) throw new StaleApiKeysError();
-  return submitted.map((entry) => {
+  const resolved = submitted.map((entry) => {
     const label = entry.label === undefined ? {} : { label: entry.label };
     if (!('retain' in entry)) return { key: entry.key, ...label };
     const kept = previous[entry.retain];
@@ -111,6 +112,10 @@ function resolveApiKeys(
     const { label: _label, ...rest } = kept;
     return { ...rest, key: kept['key'], ...label };
   });
+  // A write whose response never reached the client is retried with the same secret still in
+  // hand, and by then the committed copy is already retained by index. Collapsing onto the
+  // first occurrence makes that retry idempotent instead of authoring the credential twice.
+  return uniqBy(resolved, (entry) => entry['key']);
 }
 
 async function applySettingsMutation(
