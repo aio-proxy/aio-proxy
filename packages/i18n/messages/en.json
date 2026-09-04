@@ -675,7 +675,7 @@
         "open_provider": "Open Provider {id}"
       },
       "routing": {
-        "manage": "Manage tiers",
+        "manage": "Manage priorities",
         "add_tier": "Add tier",
         "tier": "Tier {tier}",
         "provider_count": "{count} Providers",

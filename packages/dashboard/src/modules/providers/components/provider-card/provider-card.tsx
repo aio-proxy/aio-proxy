@@ -16,16 +16,7 @@ import { DiagnosticDetails } from '../diagnostic-details';
 import { ProviderQuotaRing } from '../provider-quota-ring';
 import { ProviderCardFooter } from './provider-card-footer';
 import { ProviderCardIdentity } from './provider-card-identity';
-import { ProviderCardRoutingControl } from './provider-card-routing-control';
 import { ProviderCardStats } from './provider-card-stats';
-
-export interface ProviderCardRoutingProps {
-  readonly editing: boolean;
-  readonly share: number;
-  readonly canAdjustShare: boolean;
-  readonly dragHandle?: React.ReactNode;
-  readonly onShareChange: (share: number) => void;
-}
 
 interface ProviderCardProps {
   readonly provider: DashboardProviderSummary;
@@ -36,7 +27,6 @@ interface ProviderCardProps {
   readonly pluginIcon: string | undefined;
   readonly focused: boolean;
   readonly onDelete: (provider: DashboardProviderSummary) => void;
-  readonly routing?: ProviderCardRoutingProps;
 }
 
 export const ProviderCard: React.FC<ProviderCardProps> = ({
@@ -48,7 +38,6 @@ export const ProviderCard: React.FC<ProviderCardProps> = ({
   pluginIcon,
   focused,
   onDelete,
-  routing,
 }) => {
   const editable = canEditProvider(provider);
   const quotaQuery = useQuery({ ...providerQuotaQueryOptions(provider.id), enabled: provider.hasQuota });
@@ -89,7 +78,6 @@ export const ProviderCard: React.FC<ProviderCardProps> = ({
           plan={plan === undefined ? undefined : resolveDashboardText(plan)}
           planPending={provider.hasQuota && quotaQuery.isPending}
           editable={editable}
-          dragHandle={routing?.dragHandle}
         />
         {provider.hasQuota ? (
           <CardAction className={cn('relative z-10', provider.enabled === false && 'grayscale')}>
@@ -137,16 +125,7 @@ export const ProviderCard: React.FC<ProviderCardProps> = ({
                 <DiagnosticDetails diagnostic={provider.state.diagnostic} />
               </div>
             ) : null}
-            {routing?.editing === true ? (
-              <ProviderCardRoutingControl
-                providerId={provider.id}
-                share={routing.share}
-                disabled={!routing.canAdjustShare}
-                onChange={routing.onShareChange}
-              />
-            ) : (
-              <ProviderCardStats health={health} share={routing?.share ?? 100} />
-            )}
+            <ProviderCardStats provider={provider} health={health} />
           </>
         )}
       </CardContent>

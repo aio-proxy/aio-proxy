@@ -2,17 +2,9 @@ import type { DashboardRoutingProvider } from '@aio-proxy/types';
 import { ProviderKind } from '@aio-proxy/types';
 import { expect, test } from '@rstest/core';
 
-import {
-  ROUTING_BOARD_HIGH,
-  ROUTING_BOARD_UNUSED,
-  applyRoutingBoardMove,
-  applyRoutingShare,
-  buildRoutingBoard,
-  listsFromBoard,
-  sameListMembership,
-  routingBoardAfterListId,
-  routingBoardTierListId,
-} from './routing-board';
+import type { WeightedTierLayout } from '@/lib/weighted-tier-layout';
+
+import { applyRoutingBoardLayout, applyRoutingShare, buildRoutingBoard } from './routing-board';
 
 const routingNumber = (effective: number, authored?: number) => ({
   ...(authored === undefined ? {} : { authored }),
@@ -81,6 +73,20 @@ const providers = [
 
 const rows = [{ providerId: 'a', priority: 30, weight: 6000 }, { providerId: 'b' }, { providerId: 'c', weight: 0 }];
 
+const tierProvider = (id: string, priority: number, weight: number): DashboardRoutingProvider =>
+  provider({
+    id,
+    override: { priority: routingNumber(priority, priority), weight: routingNumber(weight, weight) },
+    effective: {
+      priority,
+      weight,
+      prioritySource: 'model',
+      weightSource: 'model',
+      eligible: true,
+      share: 1,
+    },
+  });
+
 test('groups eligible Providers by priority and parks zero-weight ones as unused', () => {
   const board = buildRoutingBoard(providers, rows);
   expect(board.tiers).toEqual([
@@ -96,13 +102,19 @@ test('groups eligible Providers by priority and parks zero-weight ones as unused
 });
 
 test('keeps weights when only the order inside a tier changes', () => {
-  const previousLists = listsFromBoard(buildRoutingBoard(providers, rows));
-  const nextLists = {
-    ...previousLists,
-    [routingBoardTierListId(30)]: ['b', 'a'],
-  };
-  expect(sameListMembership(previousLists, nextLists)).toBe(true);
-  expect(applyRoutingBoardMove({ providers, previousRows: rows, previousLists, nextLists })).toEqual(rows);
+  const previousLayout = {
+    tiers: [{ id: 'tier:30', itemIds: ['a', 'b'] }],
+    parking: { unused: ['c'] },
+  } satisfies WeightedTierLayout;
+  expect(
+    applyRoutingBoardLayout({
+      providers,
+      previousRows: rows,
+      previousLayout,
+      nextLayout: { ...previousLayout, tiers: [{ id: 'tier:30', itemIds: ['b', 'a'] }] },
+      operation: { type: 'item', id: 'a' },
+    }),
+  ).toEqual(rows);
 });
 
 test('share slider scales a 1/1 split up so a drag can change the ratio', () => {
@@ -146,67 +158,78 @@ test('share slider keeps sibling ratios while changing one Provider percent', ()
 });
 
 test('dropping below a tier creates a lower priority and keeps weight', () => {
-  const previousLists = listsFromBoard(buildRoutingBoard(providers, rows));
-  const nextLists = {
-    ...previousLists,
-    [routingBoardTierListId(30)]: ['b'],
-    [routingBoardAfterListId(30)]: ['a'],
-  };
-  expect(applyRoutingBoardMove({ providers, previousRows: rows, previousLists, nextLists })).toEqual([
-    { providerId: 'a', priority: 20, weight: 6000 },
-    { providerId: 'b' },
-    { providerId: 'c', weight: 0 },
-  ]);
+  const previousLayout = {
+    tiers: [{ id: 'tier:30', itemIds: ['a', 'b'] }],
+    parking: { unused: ['c'] },
+  } satisfies WeightedTierLayout;
+  expect(
+    applyRoutingBoardLayout({
+      providers,
+      previousRows: rows,
+      previousLayout,
+      nextLayout: {
+        tiers: [
+          { id: 'tier:30', itemIds: ['b'] },
+          { id: 'tier:new:1', itemIds: ['a'] },
+        ],
+        parking: previousLayout.parking,
+      },
+      operation: { type: 'item', id: 'a' },
+    }),
+  ).toEqual([{ providerId: 'a', priority: 20, weight: 6000 }, { providerId: 'b' }, { providerId: 'c', weight: 0 }]);
 });
 
-test('unused sets weight to zero and dropping back restores a positive weight', () => {
-  const previousLists = listsFromBoard(buildRoutingBoard(providers, rows));
-  const disabled = applyRoutingBoardMove({
+test('normalized item movement disables and restores a Provider through unused', () => {
+  const previousLayout = {
+    tiers: [{ id: 'tier:30', itemIds: ['a', 'b'] }],
+    parking: { unused: ['c'] },
+  } satisfies WeightedTierLayout;
+  const disabledLayout = {
+    tiers: [{ id: 'tier:30', itemIds: ['b'] }],
+    parking: { unused: ['c', 'a'] },
+  } satisfies WeightedTierLayout;
+  const disabled = applyRoutingBoardLayout({
     providers,
     previousRows: rows,
-    previousLists,
-    nextLists: {
-      ...previousLists,
-      [routingBoardTierListId(30)]: ['b'],
-      [ROUTING_BOARD_UNUSED]: ['c', 'a'],
-    },
+    previousLayout,
+    nextLayout: disabledLayout,
+    operation: { type: 'item', id: 'a' },
   });
   expect(disabled).toEqual([
     { providerId: 'a', priority: 30, weight: 0 },
     { providerId: 'b' },
     { providerId: 'c', weight: 0 },
   ]);
-  const restoredLists = {
-    ...previousLists,
-    [routingBoardTierListId(30)]: ['b', 'a'],
-    [ROUTING_BOARD_UNUSED]: ['c'],
-  };
+
   expect(
-    applyRoutingBoardMove({
+    applyRoutingBoardLayout({
       providers,
       previousRows: disabled,
-      previousLists: {
-        ...previousLists,
-        [routingBoardTierListId(30)]: ['b'],
-        [ROUTING_BOARD_UNUSED]: ['c', 'a'],
-      },
-      nextLists: restoredLists,
+      previousLayout: disabledLayout,
+      nextLayout: previousLayout,
+      operation: { type: 'item', id: 'a' },
     }),
   ).toEqual([{ providerId: 'a', priority: 30 }, { providerId: 'b' }, { providerId: 'c', weight: 0 }]);
 });
 
 test('new highest slot allocates an open priority', () => {
-  const previousLists = listsFromBoard(buildRoutingBoard(providers, rows));
+  const previousLayout = {
+    tiers: [{ id: 'tier:30', itemIds: ['a', 'b'] }],
+    parking: { unused: ['c'] },
+  } satisfies WeightedTierLayout;
   expect(
-    applyRoutingBoardMove({
+    applyRoutingBoardLayout({
       providers,
       previousRows: rows,
-      previousLists,
-      nextLists: {
-        ...previousLists,
-        [ROUTING_BOARD_HIGH]: ['a'],
-        [routingBoardTierListId(30)]: ['b'],
+      previousLayout,
+      nextLayout: {
+        tiers: [
+          { id: 'tier:new:1', itemIds: ['a'] },
+          { id: 'tier:30', itemIds: ['b'] },
+        ],
+        parking: previousLayout.parking,
       },
+      operation: { type: 'item', id: 'a' },
     }),
   ).toEqual([{ providerId: 'a', priority: 40, weight: 6000 }, { providerId: 'b' }, { providerId: 'c', weight: 0 }]);
 });
@@ -231,24 +254,27 @@ test('compacts priorities when neighboring tiers have no integer gap', () => {
     { providerId: 'b', priority: 1, weight: 1 },
     { providerId: 'c', priority: 1, weight: 1 },
   ];
-  const previousLists = {
-    [ROUTING_BOARD_HIGH]: [],
-    [routingBoardTierListId(2)]: ['a'],
-    [routingBoardAfterListId(2)]: [],
-    [routingBoardTierListId(1)]: ['b'],
-    [routingBoardAfterListId(1)]: [],
-    [ROUTING_BOARD_UNUSED]: [],
-  };
+  const previousLayout = {
+    tiers: [
+      { id: 'tier:2', itemIds: ['a'] },
+      { id: 'tier:1', itemIds: ['b', 'c'] },
+    ],
+    parking: { unused: [] },
+  } satisfies WeightedTierLayout;
   expect(
-    applyRoutingBoardMove({
+    applyRoutingBoardLayout({
       providers: tight,
       previousRows,
-      previousLists,
-      nextLists: {
-        ...previousLists,
-        [routingBoardAfterListId(2)]: ['c'],
-        [routingBoardTierListId(1)]: ['b'],
+      previousLayout,
+      nextLayout: {
+        tiers: [
+          { id: 'tier:2', itemIds: ['a'] },
+          { id: 'tier:new:1', itemIds: ['c'] },
+          { id: 'tier:1', itemIds: ['b'] },
+        ],
+        parking: previousLayout.parking,
       },
+      operation: { type: 'item', id: 'c' },
     }),
   ).toEqual([
     { providerId: 'a', priority: 30 },
@@ -274,24 +300,159 @@ test('preserves a blocked Provider row when another Provider is dragged', () => 
     }),
   ];
   const previousRows = [...rows, { providerId: 'd' }];
-  const previousLists = listsFromBoard(buildRoutingBoard(withBlocked, previousRows));
-  expect(previousLists[ROUTING_BOARD_UNUSED]).toEqual(['c']);
+  const previousLayout = {
+    tiers: [{ id: 'tier:30', itemIds: ['a', 'b'] }],
+    parking: { unused: ['c'], blocked: ['d'] },
+  } satisfies WeightedTierLayout;
   expect(
-    applyRoutingBoardMove({
+    applyRoutingBoardLayout({
       providers: withBlocked,
       previousRows,
-      previousLists,
-      nextLists: {
-        ...previousLists,
-        [routingBoardTierListId(30)]: ['b'],
-        [routingBoardAfterListId(30)]: ['a'],
+      previousLayout,
+      nextLayout: {
+        tiers: [
+          { id: 'tier:30', itemIds: ['b'] },
+          { id: 'tier:new:1', itemIds: ['a'] },
+        ],
+        parking: previousLayout.parking,
       },
+      operation: { type: 'item', id: 'a' },
     }),
   ).toEqual([
     { providerId: 'a', priority: 20, weight: 6000 },
     { providerId: 'b' },
     { providerId: 'c', weight: 0 },
     { providerId: 'd' },
+  ]);
+});
+
+test('moving a tier between existing priorities changes only the moved tier priority', () => {
+  const tierProviders = [tierProvider('a', 30, 6000), tierProvider('b', 20, 4000), tierProvider('c', 10, 1000)];
+  const previousRows = [
+    { providerId: 'a', priority: 30, weight: 6000 },
+    { providerId: 'b', priority: 20, weight: 4000 },
+    { providerId: 'c', priority: 10, weight: 1000 },
+  ];
+  const previousLayout = {
+    tiers: [
+      { id: 'tier:30', itemIds: ['a'] },
+      { id: 'tier:20', itemIds: ['b'] },
+      { id: 'tier:10', itemIds: ['c'] },
+    ],
+    parking: { unused: [] },
+  } satisfies WeightedTierLayout;
+
+  expect(
+    applyRoutingBoardLayout({
+      providers: tierProviders,
+      previousRows,
+      previousLayout,
+      nextLayout: {
+        ...previousLayout,
+        tiers: [previousLayout.tiers[0]!, previousLayout.tiers[2]!, previousLayout.tiers[1]!],
+      },
+      operation: { type: 'tier', id: 'tier:10' },
+    }),
+  ).toEqual([
+    { providerId: 'a', priority: 30, weight: 6000 },
+    { providerId: 'b', priority: 20, weight: 4000 },
+    { providerId: 'c', priority: 25, weight: 1000 },
+  ]);
+});
+
+test('moving a tier into a tight priority gap compacts all active priorities', () => {
+  const tierProviders = [tierProvider('a', 3, 1000), tierProvider('b', 2, 2000), tierProvider('c', 1, 3000)];
+  const previousRows = [
+    { providerId: 'a', priority: 3, weight: 1000 },
+    { providerId: 'b', priority: 2, weight: 2000 },
+    { providerId: 'c', priority: 1, weight: 3000 },
+  ];
+  const previousLayout = {
+    tiers: [
+      { id: 'tier:3', itemIds: ['a'] },
+      { id: 'tier:2', itemIds: ['b'] },
+      { id: 'tier:1', itemIds: ['c'] },
+    ],
+    parking: { unused: [] },
+  } satisfies WeightedTierLayout;
+
+  expect(
+    applyRoutingBoardLayout({
+      providers: tierProviders,
+      previousRows,
+      previousLayout,
+      nextLayout: {
+        ...previousLayout,
+        tiers: [previousLayout.tiers[0]!, previousLayout.tiers[2]!, previousLayout.tiers[1]!],
+      },
+      operation: { type: 'tier', id: 'tier:1' },
+    }),
+  ).toEqual([
+    { providerId: 'a', priority: 30, weight: 1000 },
+    { providerId: 'b', priority: 10, weight: 2000 },
+    { providerId: 'c', priority: 20, weight: 3000 },
+  ]);
+});
+
+test('moving a tier preserves unused and blocked Provider rows', () => {
+  const tierProviders = [
+    tierProvider('a', 30, 6000),
+    tierProvider('b', 20, 4000),
+    provider({
+      id: 'unused',
+      override: { weight: routingNumber(0, 0) },
+      effective: {
+        priority: 0,
+        weight: 0,
+        prioritySource: 'provider',
+        weightSource: 'model',
+        eligible: false,
+        share: null,
+      },
+    }),
+    provider({
+      id: 'blocked',
+      enabled: false,
+      effective: {
+        priority: 0,
+        weight: 1,
+        prioritySource: 'provider',
+        weightSource: 'provider',
+        eligible: false,
+        share: null,
+      },
+    }),
+  ];
+  const previousRows = [
+    { providerId: 'a', priority: 30, weight: 6000 },
+    { providerId: 'b', priority: 20, weight: 4000 },
+    { providerId: 'unused', weight: 0 },
+    { providerId: 'blocked' },
+  ];
+  const previousLayout = {
+    tiers: [
+      { id: 'tier:30', itemIds: ['a'] },
+      { id: 'tier:20', itemIds: ['b'] },
+    ],
+    parking: { unused: ['unused'], blocked: ['blocked'] },
+  } satisfies WeightedTierLayout;
+
+  expect(
+    applyRoutingBoardLayout({
+      providers: tierProviders,
+      previousRows,
+      previousLayout,
+      nextLayout: {
+        ...previousLayout,
+        tiers: [previousLayout.tiers[1]!, previousLayout.tiers[0]!],
+      },
+      operation: { type: 'tier', id: 'tier:20' },
+    }),
+  ).toEqual([
+    { providerId: 'a', priority: 30, weight: 6000 },
+    { providerId: 'b', priority: 40, weight: 4000 },
+    { providerId: 'unused', weight: 0 },
+    { providerId: 'blocked' },
   ]);
 });
 

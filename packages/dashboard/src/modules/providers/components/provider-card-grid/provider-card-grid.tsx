@@ -3,7 +3,7 @@ import type { DashboardProviderSummary } from '@aio-proxy/types';
 import { Button } from '@aio-proxy/ui/components/button';
 import { Empty } from '@aio-proxy/ui/components/empty';
 import { useQuery } from '@tanstack/react-query';
-import { Check, GripVertical, Plus, X } from 'lucide-react';
+import { Check, X } from 'lucide-react';
 import type React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
@@ -11,11 +11,7 @@ import { resolveDashboardText } from '@/lib/localized-text';
 
 import { useProviderRoutingMutation } from '../../hooks/use-provider-routing-mutation';
 import { emptyProviderListFilters, visibleProviders } from '../../lib/provider-list-view';
-import {
-  addProviderRoutingTier,
-  buildProviderRoutingBoard,
-  providerRoutingMutation,
-} from '../../lib/provider-routing-board';
+import { buildProviderRoutingBoard, providerRoutingMutation } from '../../lib/provider-routing-board';
 import { providerHealthQueryOptions } from '../../services/provider-health-service';
 import { providerPluginPresentationsQueryOptions } from '../../services/provider-plugin-labels';
 import { providerUsageQueryOptions, zeroProviderUsage } from '../../services/provider-usage-service';
@@ -29,17 +25,23 @@ interface ProviderCardGridProps {
   readonly providers: readonly DashboardProviderSummary[];
   readonly routingRevision: string;
   readonly focusProviderId?: string;
+  readonly routingEditing?: boolean;
+  readonly onRoutingEditingChange?: (editing: boolean) => void;
 }
 
-export const ProviderCardGrid: React.FC<ProviderCardGridProps> = ({ providers, routingRevision, focusProviderId }) => {
+export const ProviderCardGrid: React.FC<ProviderCardGridProps> = ({
+  providers,
+  routingRevision,
+  focusProviderId,
+  routingEditing = false,
+  onRoutingEditingChange,
+}) => {
   const [filters, setFilters] = useState(emptyProviderListFilters);
-  const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<{
     readonly board: ReturnType<typeof buildProviderRoutingBoard>;
     readonly savedBoard: ReturnType<typeof buildProviderRoutingBoard>;
     readonly revision: string;
   } | null>(null);
-  const tierSequence = useRef(0);
   const deleteDialogRef = useRef<DeleteProviderDialogRef>(null);
   const routingMutation = useProviderRoutingMutation();
   const usageQuery = useQuery(providerUsageQueryOptions());
@@ -62,11 +64,6 @@ export const ProviderCardGrid: React.FC<ProviderCardGridProps> = ({ providers, r
   const visible = useMemo(() => visibleProviders(providers, filters), [providers, filters]);
   const currentBoard = draft?.board ?? buildProviderRoutingBoard(providers);
   const savedBoard = draft?.savedBoard ?? currentBoard;
-  const visibleProviderIds = useMemo(() => new Set(visible.map((provider) => provider.id)), [visible]);
-  const invalidProviders = (editing ? providers : visible).filter((provider) => provider.kind === 'invalid');
-  const hasVisibleRoutableProvider = currentBoard.tiers.some((tier) =>
-    tier.items.some((item) => editing || visibleProviderIds.has(item.providerId)),
-  );
   const dirty =
     JSON.stringify(providerRoutingMutation(currentBoard, routingRevision).providers) !==
     JSON.stringify(providerRoutingMutation(savedBoard, routingRevision).providers);
@@ -106,32 +103,10 @@ export const ProviderCardGrid: React.FC<ProviderCardGridProps> = ({ providers, r
 
   return (
     <div className="space-y-4">
-      {editing ? (
+      {routingEditing ? (
         <div className="flex flex-col gap-3 rounded-xl border border-primary/25 bg-primary/5 p-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-2 text-sm font-medium">
-            <span className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
-              <GripVertical className="size-4" />
-            </span>
-            {m['dashboard.providers.routing.manage']()}
-          </div>
+          <div className="text-sm font-medium">{m['dashboard.providers.routing.manage']()}</div>
           <div className="flex flex-wrap items-center gap-2">
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              data-testid="provider-routing-add-tier"
-              onClick={() => {
-                tierSequence.current += 1;
-                setDraft((current) =>
-                  current === null
-                    ? current
-                    : { ...current, board: addProviderRoutingTier(current.board, `tier:new:${tierSequence.current}`) },
-                );
-              }}
-            >
-              <Plus />
-              {m['dashboard.providers.routing.add_tier']()}
-            </Button>
             <Button
               type="button"
               size="sm"
@@ -140,7 +115,7 @@ export const ProviderCardGrid: React.FC<ProviderCardGridProps> = ({ providers, r
               disabled={routingMutation.isPending}
               onClick={() => {
                 setDraft(null);
-                setEditing(false);
+                onRoutingEditingChange?.(false);
               }}
             >
               <X />
@@ -155,7 +130,7 @@ export const ProviderCardGrid: React.FC<ProviderCardGridProps> = ({ providers, r
                 routingMutation.mutate(providerRoutingMutation(currentBoard, draft?.revision ?? routingRevision), {
                   onSuccess: () => {
                     setDraft(null);
-                    setEditing(false);
+                    onRoutingEditingChange?.(false);
                   },
                   onError: (error) => {
                     if (
@@ -163,7 +138,7 @@ export const ProviderCardGrid: React.FC<ProviderCardGridProps> = ({ providers, r
                       (error.message === 'stale_revision' || error.message === 'provider_set_changed')
                     ) {
                       setDraft(null);
-                      setEditing(false);
+                      onRoutingEditingChange?.(false);
                     }
                   },
                 })
@@ -181,74 +156,51 @@ export const ProviderCardGrid: React.FC<ProviderCardGridProps> = ({ providers, r
             <ProviderSearchField value={filters.search} onChange={(search) => setFilters({ ...filters, search })} />
           </div>
           <ProviderFilterChips filters={filters} onChange={setFilters} />
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            className="md:ml-auto"
-            data-testid="provider-routing-manage"
-            onClick={() => {
-              const next = buildProviderRoutingBoard(providers);
-              setDraft({ board: next, savedBoard: next, revision: routingRevision });
-              setEditing(true);
-            }}
-          >
-            <GripVertical />
-            {m['dashboard.providers.routing.manage']()}
-          </Button>
         </div>
       )}
 
-      {!hasVisibleRoutableProvider && invalidProviders.length === 0 ? (
+      {routingEditing ? (
+        <ProviderRoutingBoard
+          board={currentBoard}
+          providers={providers}
+          onChange={(board) =>
+            setDraft((current) =>
+              current === null ? { board, savedBoard: currentBoard, revision: routingRevision } : { ...current, board },
+            )
+          }
+        />
+      ) : visible.length === 0 ? (
         <p role="status" data-testid="providers-no-matches" className="p-6 text-center text-sm text-muted-foreground">
           {m['dashboard.providers.card.no_matches']()}
         </p>
       ) : (
-        <>
-          <ProviderRoutingBoard
-            board={currentBoard}
-            providers={providers}
-            visibleProviderIds={visibleProviderIds}
-            editing={editing}
-            health={healthQuery.data}
-            usage={
-              usageQuery.data === undefined
-                ? undefined
-                : new Map(
-                    providers.map((provider) => [provider.id, usageQuery.data?.get(provider.id) ?? zeroProviderUsage]),
-                  )
-            }
-            usagePending={usageQuery.isPending}
-            pluginPresentations={pluginPresentations}
-            focusedProviderId={focusProviderId}
-            onChange={(board) => setDraft((current) => (current === null ? current : { ...current, board }))}
-            onDelete={(target) => deleteDialogRef.current?.open(target)}
-          />
-          {invalidProviders.length === 0 ? null : (
-            <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-              {invalidProviders.map((provider) => (
-                <ProviderCard
-                  key={provider.id}
-                  provider={provider}
-                  health={healthQuery.data?.get(provider.id)}
-                  usage={usageQuery.data?.get(provider.id)}
-                  usagePending={usageQuery.isPending}
-                  pluginLabel={undefined}
-                  pluginIcon={undefined}
-                  focused={provider.id === focusProviderId}
-                  onDelete={(target) => deleteDialogRef.current?.open(target)}
-                />
-              ))}
-            </div>
-          )}
-        </>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+          {visible.map((provider) => {
+            const presentation = provider.plugin === undefined ? undefined : pluginPresentations.get(provider.plugin);
+            return (
+              <ProviderCard
+                key={provider.id}
+                provider={provider}
+                health={healthQuery.data?.get(provider.id)}
+                usage={
+                  usageQuery.data === undefined ? undefined : (usageQuery.data.get(provider.id) ?? zeroProviderUsage)
+                }
+                usagePending={usageQuery.isPending}
+                pluginLabel={presentation?.displayName}
+                pluginIcon={presentation?.icon}
+                focused={provider.id === focusProviderId}
+                onDelete={(target) => deleteDialogRef.current?.open(target)}
+              />
+            );
+          })}
+        </div>
       )}
 
       <DeleteProviderDialog
         ref={deleteDialogRef}
         onDeleted={() => {
           setDraft(null);
-          setEditing(false);
+          onRoutingEditingChange?.(false);
         }}
       />
     </div>

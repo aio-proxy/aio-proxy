@@ -8,4 +8,4 @@
 'aio-proxy': patch
 ---
 
-dashboard: manage Provider failover tiers and traffic shares with drag-and-drop
+dashboard: manage Provider and per-model priority tiers with one drag editor that moves whole tiers, creates tiers at drop slots, and adjusts traffic shares without an add-tier button

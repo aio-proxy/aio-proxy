@@ -95,7 +95,7 @@ export const ProviderFilterChips: React.FC<ProviderFilterChipsProps> = ({ filter
   ];
 
   return (
-    <div className="flex flex-wrap items-center gap-x-2 gap-y-2">
+    <div className="flex w-full min-w-0 items-center gap-x-2 overflow-x-auto">
       {groups.map((group, index, array) => (
         <Fragment key={group.key}>
           {/* Single-select: `ToggleGroup` gives arrow-key roving over the three options and keeps
@@ -105,7 +105,7 @@ export const ProviderFilterChips: React.FC<ProviderFilterChipsProps> = ({ filter
           {/* `role="presentation"` drops `Field`'s own `role="group"`: this wrapper is layout, and
               the named group is the `ToggleGroup` inside it. Left as a group it would announce an
               anonymous group around every named one, since `FieldLabel` has no control to point at. */}
-          <Field orientation="horizontal" role="presentation" className="w-auto">
+          <Field orientation="horizontal" role="presentation" className="w-auto shrink-0">
             <FieldLabel>{group.label}</FieldLabel>
             <ToggleGroup
               aria-label={group.label}

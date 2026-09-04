@@ -4,6 +4,8 @@ import {
   type DashboardProviderSummary,
 } from '@aio-proxy/types';
 
+import type { WeightedTierLayout, WeightedTierOperation } from '@/lib/weighted-tier-layout';
+
 export interface ProviderRoutingBoardItem {
   readonly providerId: string;
   readonly weight: number;
@@ -17,9 +19,6 @@ export interface ProviderRoutingBoardTier {
 export interface ProviderRoutingBoard {
   readonly tiers: readonly ProviderRoutingBoardTier[];
 }
-
-export const PROVIDER_TIER_ORDER = 'provider-tier-order';
-export const providerTierListId = (tierId: string): string => `provider-tier-list:${tierId}`;
 
 const effectivePriority = (provider: DashboardProviderSummary): number => provider.priority ?? 0;
 const effectiveWeight = (provider: DashboardProviderSummary): number => Math.max(0, provider.weight ?? 1);
@@ -74,13 +73,6 @@ export const buildProviderRoutingBoard = (providers: readonly DashboardProviderS
   };
 };
 
-export const providerRoutingLists = (board: ProviderRoutingBoard): Record<string, string[]> => ({
-  [PROVIDER_TIER_ORDER]: board.tiers.map((tier) => tier.id),
-  ...Object.fromEntries(
-    board.tiers.map((tier) => [providerTierListId(tier.id), tier.items.map((item) => item.providerId)]),
-  ),
-});
-
 export const providerTierPercentages = (tier: ProviderRoutingBoardTier): ReadonlyMap<string, number> => {
   const percentages = distribute(
     100,
@@ -89,47 +81,67 @@ export const providerTierPercentages = (tier: ProviderRoutingBoardTier): Readonl
   return new Map(tier.items.map((item, index) => [item.providerId, percentages[index] ?? 0]));
 };
 
-export const addProviderRoutingTier = (board: ProviderRoutingBoard, id: string): ProviderRoutingBoard => ({
-  tiers: [...board.tiers, { id, items: [] }],
-});
-
-export const applyProviderTierOrder = (
-  board: ProviderRoutingBoard,
-  tierIds: readonly string[],
-): ProviderRoutingBoard => {
+const applyProviderTierOrder = (board: ProviderRoutingBoard, tierIds: readonly string[]): ProviderRoutingBoard => {
   const byId = new Map(board.tiers.map((tier) => [tier.id, tier]));
   return { tiers: tierIds.flatMap((id) => (byId.get(id) === undefined ? [] : [byId.get(id)!])) };
 };
 
-export const applyProviderMove = (
+export const applyProviderRoutingLayout = (
   board: ProviderRoutingBoard,
-  lists: Readonly<Record<string, readonly string[]>>,
-  providerId: string,
+  layout: WeightedTierLayout,
+  operation: WeightedTierOperation,
 ): ProviderRoutingBoard => {
-  const previousTier = board.tiers.find((tier) => tier.items.some((item) => item.providerId === providerId));
-  const itemById = new Map(board.tiers.flatMap((tier) => tier.items.map((item) => [item.providerId, item] as const)));
-  const order = lists[PROVIDER_TIER_ORDER] ?? board.tiers.map((tier) => tier.id);
-  const nextTierId = order.find((id) => lists[providerTierListId(id)]?.includes(providerId));
-  if (previousTier === undefined || nextTierId === undefined) return board;
+  if (operation.type === 'tier') {
+    if (!board.tiers.some((tier) => tier.id === operation.id)) return board;
+    const byId = new Map(board.tiers.map((tier) => [tier.id, tier]));
+    if (
+      layout.tiers.length !== board.tiers.length ||
+      layout.tiers.some((tier) => {
+        const previous = byId.get(tier.id);
+        return (
+          previous === undefined ||
+          previous.items.length !== tier.itemIds.length ||
+          previous.items.some((item, index) => item.providerId !== tier.itemIds[index])
+        );
+      })
+    ) {
+      return board;
+    }
+    return applyProviderTierOrder(
+      board,
+      layout.tiers.map((tier) => tier.id),
+    );
+  }
 
-  const movedAcrossTiers = previousTier.id !== nextTierId;
-  const tiers = order.flatMap((id) => {
-    const ids = lists[providerTierListId(id)] ?? [];
-    if (ids.length === 0) return [];
-    let items = ids.flatMap((memberId) => (itemById.get(memberId) === undefined ? [] : [itemById.get(memberId)!]));
-    if (movedAcrossTiers && (id === previousTier.id || id === nextTierId)) {
-      items = normalizedItems(items);
-    }
-    if (movedAcrossTiers && id === nextTierId) {
-      const equal = positiveDistribution(
-        ROUTING_VALUE_MAX,
-        items.map(() => 1),
-      );
-      items = items.map((item, index) => ({ ...item, weight: equal[index] ?? 1 }));
-    }
-    return [{ id, items }];
-  });
-  return { tiers };
+  const previousTier = board.tiers.find((tier) => tier.items.some((item) => item.providerId === operation.id));
+  if (previousTier === undefined || Object.values(layout.parking).some((itemIds) => itemIds.length > 0)) return board;
+  const itemById = new Map(board.tiers.flatMap((tier) => tier.items.map((item) => [item.providerId, item] as const)));
+  const nextItemIds = layout.tiers.flatMap((tier) => tier.itemIds);
+  if (
+    nextItemIds.length !== itemById.size ||
+    new Set(nextItemIds).size !== nextItemIds.length ||
+    nextItemIds.some((id) => !itemById.has(id))
+  ) {
+    return board;
+  }
+  const targetTierId = layout.tiers.find((tier) => tier.itemIds.includes(operation.id))?.id;
+  if (targetTierId === undefined) return board;
+
+  const movedAcrossTiers = previousTier.id !== targetTierId;
+  return {
+    tiers: layout.tiers.map(({ id, itemIds }) => {
+      let items = itemIds.flatMap((itemId) => (itemById.get(itemId) === undefined ? [] : [itemById.get(itemId)!]));
+      if (movedAcrossTiers && (id === previousTier.id || id === targetTierId)) items = normalizedItems(items);
+      if (movedAcrossTiers && id === targetTierId) {
+        const equal = positiveDistribution(
+          ROUTING_VALUE_MAX,
+          items.map(() => 1),
+        );
+        items = items.map((item, index) => ({ ...item, weight: equal[index] ?? 1 }));
+      }
+      return { id, items };
+    }),
+  };
 };
 
 export const applyProviderShare = (

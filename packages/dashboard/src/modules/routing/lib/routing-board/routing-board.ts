@@ -1,10 +1,9 @@
 import type { DashboardRoutingProvider } from '@aio-proxy/types';
 import { ROUTING_VALUE_MAX } from '@aio-proxy/types';
 
-import { buildRoutingTiers, effectiveRoutingCandidates, type RoutingProviderDraft } from '../routing-summary';
+import type { WeightedTierLayout, WeightedTierOperation } from '@/lib/weighted-tier-layout';
 
-export const ROUTING_BOARD_UNUSED = 'unused';
-export const ROUTING_BOARD_HIGH = 'slot:high';
+import { buildRoutingTiers, effectiveRoutingCandidates, type RoutingProviderDraft } from '../routing-summary';
 
 const TIER_LIST = /^tier:(\d+)$/;
 
@@ -27,11 +26,6 @@ export type RoutingBoard = {
   readonly blocked: readonly RoutingBoardItem[];
 };
 
-export type RoutingBoardLists = Record<string, string[]>;
-
-export const routingBoardTierListId = (priority: number): string => `tier:${priority}`;
-export const routingBoardAfterListId = (priority: number): string => `slot:after:${priority}`;
-
 const draftRecord = (rows: readonly RoutingBoardDraftRow[]): Record<string, RoutingProviderDraft> =>
   Object.fromEntries(
     rows.map((row) => [
@@ -45,41 +39,10 @@ const draftRecord = (rows: readonly RoutingBoardDraftRow[]): Record<string, Rout
 
 const isReady = (provider: DashboardRoutingProvider): boolean => provider.enabled && provider.state.status === 'ready';
 
-const listOf = (providerId: string, lists: Readonly<Record<string, readonly string[]>>): string | undefined =>
-  Object.keys(lists).find((key) => lists[key]?.includes(providerId));
-
-const tierPriorities = (lists: Readonly<Record<string, readonly string[]>>): number[] =>
-  Object.keys(lists)
-    .flatMap((key) => {
-      const match = TIER_LIST.exec(key);
-      return match === null ? [] : [Number(match[1])];
-    })
-    .sort((left, right) => right - left);
-
 const sameMembers = (left: readonly string[], right: readonly string[]): boolean => {
   if (left.length !== right.length) return false;
   const seen = new Set(left);
   return right.every((id) => seen.has(id));
-};
-
-export const sameListMembership = (
-  left: Readonly<Record<string, readonly string[]>>,
-  right: Readonly<Record<string, readonly string[]>>,
-): boolean => {
-  const keys = new Set([...Object.keys(left), ...Object.keys(right)]);
-  return [...keys].every((key) => sameMembers(left[key] ?? [], right[key] ?? []));
-};
-
-export const listsFromBoard = (board: RoutingBoard): RoutingBoardLists => {
-  const lists: RoutingBoardLists = {
-    [ROUTING_BOARD_HIGH]: [],
-    [ROUTING_BOARD_UNUSED]: board.unused.map((item) => item.providerId),
-  };
-  for (const tier of board.tiers) {
-    lists[routingBoardTierListId(tier.priority)] = tier.items.map((item) => item.providerId);
-    lists[routingBoardAfterListId(tier.priority)] = [];
-  }
-  return lists;
 };
 
 export const buildRoutingBoard = (
@@ -130,19 +93,6 @@ const compactPriorities = (count: number): number[] => {
 
 type ActiveGroup = { readonly ids: readonly string[]; readonly keep?: number };
 
-const activeGroups = (lists: Readonly<Record<string, readonly string[]>>): ActiveGroup[] => {
-  const groups: ActiveGroup[] = [];
-  const high = lists[ROUTING_BOARD_HIGH] ?? [];
-  if (high.length > 0) groups.push({ ids: high });
-  for (const priority of tierPriorities(lists)) {
-    const tier = lists[routingBoardTierListId(priority)] ?? [];
-    if (tier.length > 0) groups.push({ ids: tier, keep: priority });
-    const inserted = lists[routingBoardAfterListId(priority)] ?? [];
-    if (inserted.length > 0) groups.push({ ids: inserted });
-  }
-  return groups;
-};
-
 const assignGroupPriorities = (groups: readonly ActiveGroup[]): number[] => {
   const assigned: Array<number | undefined> = groups.map((group) => group.keep);
   for (let index = 0; index < groups.length; index += 1) {
@@ -166,17 +116,77 @@ const omitDefault = (
   ...(weight === undefined || weight === provider.defaults.weight.effective ? {} : { weight }),
 });
 
-export const applyRoutingBoardMove = ({
+const layoutItemIds = (layout: WeightedTierLayout): string[] => [
+  ...layout.tiers.flatMap((tier) => tier.itemIds),
+  ...Object.values(layout.parking).flat(),
+];
+
+const sameParkingKeys = (left: WeightedTierLayout, right: WeightedTierLayout): boolean => {
+  const keys = Object.keys(left.parking);
+  return keys.length === Object.keys(right.parking).length && keys.every((key) => key in right.parking);
+};
+
+const sameParkingMembers = (left: WeightedTierLayout, right: WeightedTierLayout): boolean =>
+  Object.keys(left.parking).every((key) => sameMembers(left.parking[key] ?? [], right.parking[key] ?? []));
+
+const validLayoutTransition = (
+  previous: WeightedTierLayout,
+  next: WeightedTierLayout,
+  operation: WeightedTierOperation,
+): boolean => {
+  const previousItems = layoutItemIds(previous);
+  const nextItems = layoutItemIds(next);
+  if (
+    new Set(previousItems).size !== previousItems.length ||
+    new Set(nextItems).size !== nextItems.length ||
+    !sameMembers(previousItems, nextItems) ||
+    !sameParkingKeys(previous, next)
+  ) {
+    return false;
+  }
+  if (operation.type === 'item') return previousItems.includes(operation.id);
+
+  const previousById = new Map(previous.tiers.map((tier) => [tier.id, tier]));
+  return (
+    previousById.has(operation.id) &&
+    sameParkingMembers(previous, next) &&
+    previous.tiers.length === next.tiers.length &&
+    next.tiers.every((tier) => {
+      const before = previousById.get(tier.id);
+      return before !== undefined && sameMembers(before.itemIds, tier.itemIds);
+    })
+  );
+};
+
+const layoutGroups = (layout: WeightedTierLayout, operation: WeightedTierOperation): ActiveGroup[] =>
+  layout.tiers.map((tier) => {
+    const match = TIER_LIST.exec(tier.id);
+    const keep = operation.type === 'tier' && operation.id === tier.id ? undefined : Number(match?.[1]);
+    return { ids: tier.itemIds, ...(Number.isFinite(keep) ? { keep } : {}) };
+  });
+
+const layoutLocation = (layout: WeightedTierLayout, providerId: string): string | undefined => {
+  const tier = layout.tiers.find((entry) => entry.itemIds.includes(providerId));
+  if (tier !== undefined) return `tier:${tier.id}`;
+  const parking = Object.entries(layout.parking).find(([, itemIds]) => itemIds.includes(providerId));
+  return parking === undefined ? undefined : `parking:${parking[0]}`;
+};
+
+export const applyRoutingBoardLayout = ({
   providers,
   previousRows,
-  previousLists,
-  nextLists,
+  previousLayout,
+  nextLayout,
+  operation,
 }: {
   readonly providers: readonly DashboardRoutingProvider[];
   readonly previousRows: readonly RoutingBoardDraftRow[];
-  readonly previousLists: Readonly<Record<string, readonly string[]>>;
-  readonly nextLists: Readonly<Record<string, readonly string[]>>;
+  readonly previousLayout: WeightedTierLayout;
+  readonly nextLayout: WeightedTierLayout;
+  readonly operation: WeightedTierOperation;
 }): RoutingBoardDraftRow[] => {
+  if (!validLayoutTransition(previousLayout, nextLayout, operation)) return [...previousRows];
+
   const previousById = new Map(previousRows.map((row) => [row.providerId, row]));
   const previousEffective = new Map(
     effectiveRoutingCandidates(providers, draftRecord(previousRows)).map((candidate) => [
@@ -184,32 +194,25 @@ export const applyRoutingBoardMove = ({
       candidate,
     ]),
   );
-  const weights = new Map<string, number>();
-  for (const provider of providers) {
-    const from = listOf(provider.id, previousLists);
-    const to = listOf(provider.id, nextLists);
-    if (to === undefined || to === ROUTING_BOARD_UNUSED) continue;
-    const current = previousEffective.get(provider.id)?.weight ?? provider.defaults.weight.effective;
-    if (current > 0) {
-      weights.set(provider.id, current);
-      continue;
-    }
-    const restored = provider.defaults.weight.effective > 0 ? provider.defaults.weight.effective : 1;
-    weights.set(provider.id, from === to ? current : restored);
-  }
-  const groups = activeGroups(nextLists);
+  const groups = layoutGroups(nextLayout, operation);
   const priorities = assignGroupPriorities(groups);
   const assignedPriority = new Map<string, number>();
   groups.forEach((group, index) => {
     for (const id of group.ids) assignedPriority.set(id, priorities[index] ?? 0);
   });
+
   return providers.map((provider) => {
-    const to = listOf(provider.id, nextLists);
-    if (to === undefined) return previousById.get(provider.id) ?? { providerId: provider.id };
-    if (to === ROUTING_BOARD_UNUSED) {
+    const nextLocation = layoutLocation(nextLayout, provider.id);
+    if (nextLocation === undefined) return previousById.get(provider.id) ?? { providerId: provider.id };
+    if (nextLocation === 'parking:unused') {
       return omitDefault(provider, previousById.get(provider.id)?.priority, 0);
     }
-    return omitDefault(provider, assignedPriority.get(provider.id), weights.get(provider.id));
+    if (nextLocation.startsWith('parking:')) return previousById.get(provider.id) ?? { providerId: provider.id };
+
+    const current = previousEffective.get(provider.id)?.weight ?? provider.defaults.weight.effective;
+    const moved = layoutLocation(previousLayout, provider.id) !== nextLocation;
+    const weight = current > 0 || !moved ? current : Math.max(1, provider.defaults.weight.effective);
+    return omitDefault(provider, assignedPriority.get(provider.id), weight);
   });
 };
 

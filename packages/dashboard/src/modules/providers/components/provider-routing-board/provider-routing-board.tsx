@@ -1,97 +1,76 @@
+import { m } from '@aio-proxy/i18n';
 import type { DashboardProviderSummary } from '@aio-proxy/types';
-import { defaultPreset } from '@dnd-kit/dom';
-import { move } from '@dnd-kit/helpers';
-import { DragDropProvider } from '@dnd-kit/react';
 import type React from 'react';
-import { useMemo, useRef } from 'react';
+
+import { WeightedTierBoard, type WeightedTierBoardTier } from '@/components/weighted-tier-board';
 
 import {
-  applyProviderMove,
+  applyProviderRoutingLayout,
   applyProviderShare,
-  applyProviderTierOrder,
-  PROVIDER_TIER_ORDER,
-  providerRoutingLists,
+  providerTierPercentages,
   type ProviderRoutingBoard as ProviderRoutingBoardModel,
 } from '../../lib/provider-routing-board';
-import type { ProviderHealth } from '../../services/provider-health-service';
-import type { ProviderUsage } from '../../services/provider-usage-service';
-import { ProviderTier } from './provider-tier';
-import { ProviderTierFlow } from './provider-tier-flow';
+import { ProviderRoutingItem } from './provider-routing-item';
 
 interface ProviderRoutingBoardProps {
   readonly board: ProviderRoutingBoardModel;
   readonly providers: readonly DashboardProviderSummary[];
-  readonly visibleProviderIds: ReadonlySet<string>;
-  readonly editing: boolean;
-  readonly health: ReadonlyMap<string, ProviderHealth> | undefined;
-  readonly usage: ReadonlyMap<string, ProviderUsage> | undefined;
-  readonly usagePending: boolean;
-  readonly pluginPresentations: ReadonlyMap<string, { readonly displayName?: string; readonly icon?: string }>;
-  readonly focusedProviderId: string | undefined;
   readonly onChange: (board: ProviderRoutingBoardModel) => void;
-  readonly onDelete: (provider: DashboardProviderSummary) => void;
 }
 
-export const ProviderRoutingBoard: React.FC<ProviderRoutingBoardProps> = ({
-  board,
-  providers,
-  visibleProviderIds,
-  editing,
-  health,
-  usage,
-  usagePending,
-  pluginPresentations,
-  focusedProviderId,
-  onChange,
-  onDelete,
-}) => {
-  const snapshotBoard = useRef(board);
-  const providersById = useMemo(() => new Map(providers.map((provider) => [provider.id, provider])), [providers]);
+export const ProviderRoutingBoard: React.FC<ProviderRoutingBoardProps> = ({ board, providers, onChange }) => {
+  const providersById = new Map(providers.map((provider) => [provider.id, provider]));
+  const tiers: WeightedTierBoardTier<DashboardProviderSummary>[] = board.tiers.map((tier) => {
+    const percentages = providerTierPercentages(tier);
+    return {
+      id: tier.id,
+      items: tier.items.flatMap((item) => {
+        const provider = providersById.get(item.providerId);
+        if (provider === undefined) return [];
+        const share = percentages.get(provider.id) ?? 0;
+        return [
+          {
+            id: provider.id,
+            value: provider,
+            draggable: true,
+            dragLabel: m['dashboard.providers.routing.drag_provider']({ providerId: provider.id }),
+            shareLabel: `${share}%`,
+            shareTestId: `provider-share-${provider.id}`,
+            testId: `provider-routing-item-${provider.id}`,
+            control:
+              tier.items.length < 2
+                ? undefined
+                : {
+                    ariaLabel: m['dashboard.providers.routing.share_aria']({ providerId: provider.id }),
+                    min: 1,
+                    max: 100,
+                    step: 1,
+                    value: share,
+                    testId: `provider-share-slider-${provider.id}`,
+                    onChange: (value: number) => onChange(applyProviderShare(board, tier.id, provider.id, value)),
+                  },
+          },
+        ];
+      }),
+    };
+  });
 
   return (
-    <DragDropProvider
-      plugins={defaultPreset.plugins}
-      sensors={defaultPreset.sensors}
-      onDragStart={() => {
-        snapshotBoard.current = board;
+    <WeightedTierBoard
+      tiers={tiers}
+      writable
+      labels={{
+        tier: (index) => m['dashboard.providers.routing.tier']({ tier: index + 1 }),
+        tierCount: (count) => m['dashboard.providers.routing.provider_count']({ count }),
+        dragTier: (index) => m['dashboard.providers.routing.drag_tier']({ tier: index + 1 }),
+        newTier: m['dashboard.providers.routing.add_tier'](),
+        emptyTier: m['dashboard.providers.routing.empty_tier'](),
       }}
-      onDragEnd={(event) => {
-        if (event.canceled || event.operation.source === null) return;
-        const next = move(providerRoutingLists(snapshotBoard.current), event);
-        if (event.operation.source.type === 'tier') {
-          onChange(applyProviderTierOrder(snapshotBoard.current, next[PROVIDER_TIER_ORDER] ?? []));
-          return;
-        }
-        if (event.operation.source.type === 'provider') {
-          onChange(applyProviderMove(snapshotBoard.current, next, String(event.operation.source.id)));
-        }
-      }}
-    >
-      <div className="space-y-0" data-testid="provider-routing-board">
-        {board.tiers.map((tier, index) => {
-          const visible = editing || tier.items.some((item) => visibleProviderIds.has(item.providerId));
-          if (!visible) return null;
-          return (
-            <div key={tier.id}>
-              <ProviderTier
-                tier={tier}
-                tierIndex={index}
-                providersById={providersById}
-                visibleProviderIds={visibleProviderIds}
-                editing={editing}
-                health={health}
-                usage={usage}
-                usagePending={usagePending}
-                pluginPresentations={pluginPresentations}
-                focusedProviderId={focusedProviderId}
-                onShareChange={(providerId, share) => onChange(applyProviderShare(board, tier.id, providerId, share))}
-                onDelete={onDelete}
-              />
-              {index < board.tiers.length - 1 ? <ProviderTierFlow /> : null}
-            </div>
-          );
-        })}
-      </div>
-    </DragDropProvider>
+      renderItem={(provider) => <ProviderRoutingItem provider={provider} />}
+      onLayoutChange={(layout, operation) => onChange(applyProviderRoutingLayout(board, layout, operation))}
+      testId="provider-routing-board"
+      tierTestId={(index) => `provider-tier-${index + 1}`}
+      slotTestId={(listId) => `provider-routing-slot-${listId}`}
+    />
   );
 };
