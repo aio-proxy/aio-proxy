@@ -7,14 +7,15 @@ import {
 } from '@aio-proxy/plugin-sdk/openai-stream';
 import { isPlainObject } from 'es-toolkit/predicate';
 
+import { CHATGPT_USER_AGENT } from '../codex-client';
 import { refreshAccessToken } from '../oauth-flow';
 import type { ChatGPTCredential } from '../schema';
 
 const CHATGPT_CODEX_BASE_URL = 'https://chatgpt.com/backend-api/codex' as const;
 const CHATGPT_CODEX_RESPONSES_ENDPOINT = `${CHATGPT_CODEX_BASE_URL}/responses` as const;
 const CHATGPT_CODEX_COMPACT_ENDPOINT = `${CHATGPT_CODEX_RESPONSES_ENDPOINT}/compact` as const;
-export const CHATGPT_USER_AGENT =
-  'codex-tui/0.135.0 (Mac OS 26.5.0; arm64) iTerm.app/3.6.10 (codex-tui; 0.135.0)' as const;
+const CHATGPT_CODEX_IMAGE_GENERATIONS_ENDPOINT = `${CHATGPT_CODEX_BASE_URL}/images/generations` as const;
+const CHATGPT_CODEX_IMAGE_EDITS_ENDPOINT = `${CHATGPT_CODEX_BASE_URL}/images/edits` as const;
 const PLACEHOLDER_CREDENTIAL = 'dynamic-credential' as const;
 
 export async function createOpenAIChatGPTRuntime(
@@ -35,10 +36,13 @@ export async function createOpenAIChatGPTRuntime(
       embeddingModel: (modelId) => openAI.embeddingModel(modelId),
       imageModel: (modelId) => openAI.imageModel(modelId),
     },
+    // Defensive: image dispatch resolves with `capability` absent, so this guard
+    // exists to keep an embedding request off the responses/image passthrough
+    // rather than to gate image routing.
     raw: ({ protocol, capability }) =>
       capability === 'embedding'
         ? undefined
-        : protocol === 'openai-response'
+        : protocol === 'openai-response' || protocol === 'openai-image'
           ? { invoke: (request, _context, options) => dynamicFetch(request, undefined, options) }
           : undefined,
   };
@@ -69,18 +73,24 @@ export function createOpenAIChatGPTDynamicFetch(
     headers.set('User-Agent', CHATGPT_USER_AGENT);
     headers.set('session-id', crypto.randomUUID());
     const body = shouldRewriteResponsesBody(request) ? await rewriteResponsesBody(request, headers) : request.body;
+    const url = rewriteCodexUrl(request.url);
+    const upstreamInit = {
+      method: request.method,
+      headers,
+      ...(request.method === 'GET' || request.method === 'HEAD' ? {} : { body }),
+      signal: init?.signal ?? (input instanceof Request ? input.signal : request.signal),
+      redirect: request.redirect,
+    } satisfies RequestInit;
 
-    return await fetchOpenAIResponses(
-      rewriteCodexUrl(request.url),
-      {
-        method: request.method,
-        headers,
-        ...(request.method === 'GET' || request.method === 'HEAD' ? {} : { body }),
-        signal: init?.signal ?? (input instanceof Request ? input.signal : request.signal),
-        redirect: request.redirect,
-      },
-      options,
-    );
+    // The image endpoints are not the Responses protocol: an Images stream
+    // terminates on `image_generation.*`, which the Responses SSE normalizer
+    // reads as an early EOF. Forward those bytes untouched.
+    if (isCodexImageEndpoint(url)) {
+      headers.set('accept-encoding', 'identity');
+      return await fetcher(url, upstreamInit);
+    }
+
+    return await fetchOpenAIResponses(url, upstreamInit, options);
   };
   return dynamicFetch as OpenAIStreamFetch;
 }
@@ -147,14 +157,20 @@ function rewriteCodexUrl(input: string): string {
   return endpoint.toString();
 }
 
-// The Codex backend exposes both the streaming create endpoint and the
-// stateless compaction endpoint, so an inbound `/responses/compact` must land on
-// its own upstream path instead of collapsing onto create — otherwise the
-// rewrite would leave the proxy's own inbound URL and the request would loop.
+// Every inbound path this runtime accepts must map to an explicit upstream
+// endpoint: an unmapped path leaves the proxy's own inbound URL in place and the
+// request loops back into the proxy. `/responses/compact` therefore needs its own
+// entry rather than collapsing onto create, and the image paths need theirs.
 function codexEndpointFor(pathname: string): string | undefined {
   if (pathname.endsWith('/responses/compact')) return CHATGPT_CODEX_COMPACT_ENDPOINT;
   if (pathname.endsWith('/responses') || pathname.endsWith('/chat/completions')) {
     return CHATGPT_CODEX_RESPONSES_ENDPOINT;
   }
+  if (pathname.endsWith('/images/generations')) return CHATGPT_CODEX_IMAGE_GENERATIONS_ENDPOINT;
+  if (pathname.endsWith('/images/edits')) return CHATGPT_CODEX_IMAGE_EDITS_ENDPOINT;
   return undefined;
+}
+
+function isCodexImageEndpoint(url: string): boolean {
+  return url.startsWith(CHATGPT_CODEX_IMAGE_GENERATIONS_ENDPOINT) || url.startsWith(CHATGPT_CODEX_IMAGE_EDITS_ENDPOINT);
 }
