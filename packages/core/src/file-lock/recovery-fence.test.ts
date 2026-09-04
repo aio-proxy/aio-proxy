@@ -69,6 +69,11 @@ test.serial('action errors are not translated after the acquisition deadline', a
     exited: Promise.resolve(0),
   })) as unknown as typeof Bun.spawn);
   const actionError = new Error('action failed');
+  // The deadline must expire while the action runs, never during acquisition — a timeout there
+  // is the translated-error path this test is not about. Acquisition gets a margin no loaded
+  // runner needs all of, and the action outlives the deadline by construction rather than by
+  // out-sleeping a fixed head start it might lose.
+  const deadline = Date.now() + 1_000;
   try {
     await expect(
       runWithRecoveryFence(
@@ -76,11 +81,11 @@ test.serial('action errors are not translated after the acquisition deadline', a
           lockPath: join(dir, 'config.lock'),
           staleMs: 60_000,
           heartbeatMs: 10_000,
-          deadline: Date.now() + 100,
+          deadline,
           timeoutError: () => new Error('acquisition timed out'),
         },
         async () => {
-          await Bun.sleep(150);
+          await Bun.sleep(Math.max(0, deadline - Date.now()) + 50);
           throw actionError;
         },
       ),
