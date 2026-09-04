@@ -55,32 +55,34 @@ test('retries a top-level Responses error code', () => {
 // `code: null` and only the prose naming the item, so the code check alone
 // never fires. `Signature expired` shares the sentence but is not a decode
 // failure, and replaying the same body would not fix it.
+const UNVERIFIABLE =
+  'The encrypted content for item rs_0f4347088f3919bd016a9a713844d481938d7134a664dbed90 could not be verified. Reason: Encrypted content could not be decrypted or parsed.';
+
 test('retries a code-less unverifiable blob rejection', () => {
   const rejection = (message: string) =>
     JSON.stringify({
       type: 'error',
       error: { message, type: 'invalid_request_error', param: 'input', code: null },
     });
-  const unverifiable =
-    'The encrypted content for item rs_0f4347088f3919bd016a9a713844d481938d7134a664dbed90 could not be verified. Reason: Encrypted content could not be decrypted or parsed.';
-  expect(classifyOpenAIResponsesRawRetry({ event: 'error', data: rejection(unverifiable) })).toBe('retry');
-  expect(classifyOpenAIResponsesRawRetry({ data: rejection(unverifiable) })).toBe('retry');
+  expect(classifyOpenAIResponsesRawRetry({ event: 'error', data: rejection(UNVERIFIABLE) })).toBe('retry');
+  expect(classifyOpenAIResponsesRawRetry({ data: rejection(UNVERIFIABLE) })).toBe('retry');
   expect(
     classifyOpenAIResponsesRawRetry({
       event: 'error',
       data: rejection('The encrypted content for item rs_1 could not be verified. Reason: Signature expired.'),
     }),
   ).toBe('commit');
-  // An explicit different code is authoritative over the prose. Retrying would
-  // rewrite and resend a body the provider rejected for an unrelated reason.
+});
+
+// An explicit different code is authoritative over the prose. Retrying would
+// rewrite and resend a body the provider rejected for an unrelated reason.
+// Checked at every nesting level the message walk reaches: a shallower code
+// lookup would make the code look absent and hand the decision to the prose.
+test.each([1, 2, 3, 4, 8])('commits a %s-level chain naming a different code', (depth) => {
+  let node: Record<string, unknown> = { message: UNVERIFIABLE, code: 'invalid_value' };
+  for (let level = 1; level < depth; level += 1) node = { error: node };
   expect(
-    classifyOpenAIResponsesRawRetry({
-      event: 'error',
-      data: JSON.stringify({
-        type: 'error',
-        error: { message: unverifiable, type: 'invalid_request_error', param: 'input', code: 'invalid_value' },
-      }),
-    }),
+    classifyOpenAIResponsesRawRetry({ event: 'error', data: JSON.stringify({ type: 'error', error: node }) }),
   ).toBe('commit');
 });
 
