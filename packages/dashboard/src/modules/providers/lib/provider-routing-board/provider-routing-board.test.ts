@@ -173,6 +173,35 @@ test('a share edit cannot revive a parked Provider or split against one', () => 
   expect(applyProviderShare(board, 'tier:20', 'a', 40)).toEqual(board);
 });
 
+test('dragging a parked Provider into another tier is the interaction that unparks it', () => {
+  const parked = [...providers, providerStub({ id: 'e', kind: ProviderKind.Api, priority: 10, weight: 0 })];
+  const board = buildProviderRoutingBoard(parked);
+  const next = applyProviderRoutingLayout(
+    board,
+    {
+      tiers: [
+        { id: 'tier:20', itemIds: ['a', 'b', 'c', 'e'] },
+        { id: 'tier:10', itemIds: ['d'] },
+      ],
+      parking: {},
+    },
+    { type: 'item', id: 'e' },
+  );
+
+  expect(next.tiers[0]!.items.find((item) => item.providerId === 'e')?.weight).toBeGreaterThan(0);
+  expect([...providerTierPercentages(next.tiers[0]!).values()]).toEqual([25, 25, 25, 25]);
+});
+
+test('a share edit in a tier larger than one hundred keeps every Provider routable', () => {
+  const crowded = Array.from({ length: 101 }, (_, index) =>
+    providerStub({ id: `p${index}`, kind: ProviderKind.Api, priority: 20, weight: 1 }),
+  );
+  const tier = applyProviderShare(buildProviderRoutingBoard(crowded), 'tier:20', 'p0', 50).tiers[0]!;
+
+  expect(tier.items.every((item) => item.weight > 0)).toBe(true);
+  expect(tier.items.find((item) => item.providerId === 'p0')?.weight).toBe(5000);
+});
+
 test('a Provider whose configuration failed to parse is not routable even when its kind survived', () => {
   const degraded = providerStub({
     id: 'broken',

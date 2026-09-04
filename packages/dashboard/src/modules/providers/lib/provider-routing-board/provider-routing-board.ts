@@ -46,20 +46,24 @@ const distribute = (total: number, weights: readonly number[]): number[] => {
 const positiveDistribution = (total: number, weights: readonly number[]): number[] => {
   if (weights.length === 0) return [];
   const base = weights.map(() => 1);
+  // Every member keeps at least one point, so only the surplus above that floor is distributable.
   const extra = distribute(
-    total - weights.length,
+    Math.max(0, total - weights.length),
     weights.map((weight) => Math.max(1, weight)),
   );
   return base.map((value, index) => value + (extra[index] ?? 0));
 };
 
 // Weight zero deliberately parks a Provider outside normal routing. It holds no share of its tier,
-// so it neither receives budget here nor reserves any: only an explicit share edit revives it.
+// so it neither receives budget here nor reserves any. `revive` names the Provider the user just
+// dragged: that drag is the explicit interaction that unparks it, and it is the only dashboard path
+// back — the editor does not expose weight and a parked Provider gets no share slider.
 const normalizedItems = (
   items: readonly ProviderRoutingBoardItem[],
   weightOf: (item: ProviderRoutingBoardItem) => number = (item) => item.weight,
+  revive?: string,
 ): ProviderRoutingBoardItem[] => {
-  const active = items.filter((item) => item.weight > 0);
+  const active = items.filter((item) => item.weight > 0 || item.providerId === revive);
   const weights = positiveDistribution(ROUTING_VALUE_MAX, active.map(weightOf));
   const byId = new Map(active.map((item, index) => [item.providerId, weights[index] ?? 1]));
   return items.map((item) => ({ ...item, weight: byId.get(item.providerId) ?? item.weight }));
@@ -142,8 +146,9 @@ export const applyProviderRoutingLayout = (
       let items = itemIds.flatMap((itemId) => (itemById.get(itemId) === undefined ? [] : [itemById.get(itemId)!]));
       if (movedAcrossTiers && id === previousTier.id) items = normalizedItems(items);
       // The destination tier restarts from an even split so the moved Provider lands with a share,
-      // rather than inheriting whatever ratio the source tier happened to hold.
-      if (movedAcrossTiers && id === targetTierId) items = normalizedItems(items, () => 1);
+      // rather than inheriting whatever ratio the source tier happened to hold. The drag is also the
+      // only way to unpark a Provider, so it is the one item allowed back into the split at zero.
+      if (movedAcrossTiers && id === targetTierId) items = normalizedItems(items, () => 1, operation.id);
       return { id, items };
     }),
   };
@@ -161,15 +166,23 @@ export const applyProviderShare = (
     // members are parked has nothing to rebalance against and the slider cannot move a share.
     const others = tier.items.filter((item) => item.providerId !== providerId && item.weight > 0);
     if (others.length === 0) return tier;
-    const selected = Math.min(100 - others.length, Math.max(1, Math.round(percentage)));
+    // Clamped in weight space, not percentage space. Every other member keeps a visible one percent
+    // while a whole percentage point each still fits; past that the reserve drops to a single weight
+    // point, because reserving a percent per member in a tier of more than 100 would drive the
+    // selected weight to zero and silently park the Provider the user was only adjusting.
+    const reservePerOther = others.length <= 99 ? ROUTING_VALUE_MAX / 100 : 1;
+    const selected = Math.max(
+      1,
+      Math.min(ROUTING_VALUE_MAX - others.length * reservePerOther, Math.round(percentage) * (ROUTING_VALUE_MAX / 100)),
+    );
     const remaining = positiveDistribution(
-      (100 - selected) * 100,
+      ROUTING_VALUE_MAX - selected,
       others.map((item) => item.weight),
     );
     return {
       ...tier,
       items: tier.items.map((item) => {
-        if (item.providerId === providerId) return { ...item, weight: selected * 100 };
+        if (item.providerId === providerId) return { ...item, weight: selected };
         const index = others.findIndex((other) => other.providerId === item.providerId);
         return index === -1 ? item : { ...item, weight: remaining[index] ?? 1 };
       }),

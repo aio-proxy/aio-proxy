@@ -23,14 +23,15 @@ export const createDashboardProviderReadRoutes = (state: ServerState) =>
     .get('/providers', async (context) => {
       const filter = context.req.query('filter');
       const probe = context.req.query('probe') === 'true';
-      const providers = await state.providerSummaries({ filter, probe });
+      // The revision is read before the summaries so a routing commit landing between the two reads
+      // makes the revision stale rather than newer than the values shipped with it. A stale revision
+      // costs the client one rejected save; a future one would let it silently revert that commit.
       const providerIds = state.currentConfig().providers.map((provider) => provider.id);
       const rawProviders =
         state.configStore.file === undefined ? {} : ((await state.configStore.file.read())['providers'] ?? {});
-      return context.json({
-        providers,
-        routingRevision: providerRoutingRevision(isPlainObject(rawProviders) ? rawProviders : {}, providerIds),
-      });
+      const routingRevision = providerRoutingRevision(isPlainObject(rawProviders) ? rawProviders : {}, providerIds);
+      const providers = await state.providerSummaries({ filter, probe });
+      return context.json({ providers, routingRevision });
     })
     .get('/providers/package-status', providerPackageQueryValidator, async (context) =>
       context.json(await providerPackageStatus(context.req.valid('query').npm)),
