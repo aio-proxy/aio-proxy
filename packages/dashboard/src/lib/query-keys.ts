@@ -12,6 +12,8 @@ export const queryKeys = {
   modelsDevSlugs: ['models-dev-slugs'],
   oauthCapabilities: ['oauth-capabilities'],
   oauthSession: (id: string) => ['oauth-session', id],
+  // Prefix of every overview key, so invalidating it covers the whole overview page.
+  overview: ['dashboard', 'overview'],
   overviewActivity: ['dashboard', 'overview', 'activity'],
   overviewDiagnostics: (range: string) => ['dashboard', 'overview', 'diagnostics', range],
   overviewRange: (range: string) => ['dashboard', 'overview', 'range', range],
@@ -26,6 +28,7 @@ export const queryKeys = {
   providerQuota: (id: string) => ['providers', id, 'quota'],
   providerUsage: ['dashboard', 'providers', 'usage'],
   providers: ['providers'],
+  release: ['release'],
   routingModels: ['routing', 'models'],
   settings: ['settings'],
   // Search shape stays structural: src/lib must not depend on a module's types.

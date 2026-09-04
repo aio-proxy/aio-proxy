@@ -1,12 +1,13 @@
 import { m } from '@aio-proxy/i18n';
 import type { DashboardSettingsMutationInput, DashboardSettingsView } from '@aio-proxy/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@aio-proxy/ui/components/card';
-import { Field, FieldDescription, FieldError } from '@aio-proxy/ui/components/field';
+import { FieldGroup } from '@aio-proxy/ui/components/field';
 import { Input } from '@aio-proxy/ui/components/input';
-import { Label } from '@aio-proxy/ui/components/label';
 
+import { SettingsFieldRow } from '../settings-field-row';
 import { SettingsEndpointFields } from './settings-endpoint-fields';
 import { proxySchema } from './settings-form-contract';
+import { SettingsPasswordField } from './settings-password-field';
 import type { SettingsFormApi } from './use-settings-form';
 
 interface SettingsServiceGroupProps {
@@ -31,33 +32,21 @@ export const SettingsServiceGroup: React.FC<SettingsServiceGroupProps> = ({
       </CardTitle>
     </CardHeader>
     <CardContent>
-      <div className="grid gap-5 md:grid-cols-2">
+      <FieldGroup>
         <SettingsEndpointFields disabled={disabled} form={form} settings={settings} onAccessChange={onAccessChange} />
-        <Field>
-          <Label htmlFor="dashboard-password-state">{m['dashboard.settings.password']()}</Label>
-          <Input
-            id="dashboard-password-state"
-            type="password"
-            value={settings.hasPassword ? '********' : ''}
-            placeholder={m['dashboard.settings.password_not_configured']()}
-            readOnly
-            aria-readonly="true"
-          />
-          <FieldDescription>
-            {settings.hasPassword
-              ? m['dashboard.settings.password_configured']()
-              : m['dashboard.settings.password_not_configured']()}{' '}
-            {m['dashboard.settings.password_description']()}
-          </FieldDescription>
-        </Field>
+        <SettingsPasswordField disabled={disabled} settings={settings} onSave={onSave} />
         <form.Field name="proxy">
           {(field) => {
             const proxy = field.state.value.trim() || null;
             const unchangedMask = proxy === '****' && settings.proxy === '****';
             const invalid = field.state.meta.isTouched && !unchangedMask && !proxySchema.safeParse(proxy).success;
             return (
-              <Field>
-                <Label htmlFor={field.name}>{m['dashboard.settings.default_proxy']()}</Label>
+              <SettingsFieldRow
+                label={m['dashboard.settings.default_proxy']()}
+                htmlFor={field.name}
+                description={m['dashboard.settings.proxy_description']()}
+                error={invalid ? m['dashboard.settings.invalid']() : null}
+              >
                 <Input
                   id={field.name}
                   value={field.state.value}
@@ -76,13 +65,11 @@ export const SettingsServiceGroup: React.FC<SettingsServiceGroupProps> = ({
                     }
                   }}
                 />
-                <FieldDescription>{m['dashboard.settings.proxy_description']()}</FieldDescription>
-                <FieldError>{invalid ? m['dashboard.settings.invalid']() : null}</FieldError>
-              </Field>
+              </SettingsFieldRow>
             );
           }}
         </form.Field>
-      </div>
+      </FieldGroup>
     </CardContent>
   </Card>
 );

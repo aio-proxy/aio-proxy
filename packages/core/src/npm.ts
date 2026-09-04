@@ -11,6 +11,7 @@ import { packagesDir } from './paths/index';
 
 const REGISTRY = 'https://registry.npmjs.org';
 const INSTALL_TIMEOUT_MS = 120_000;
+const REGISTRY_METADATA_TIMEOUT_MS = 30_000;
 
 const PackageJsonSchema = z
   .object({
@@ -118,6 +119,26 @@ export async function findInstalledNpmPackage(pkg: string): Promise<NpmPackageIn
     entrypoint: resolveEntrypoint(pkg, parsed, path),
     version: parsed.version,
   };
+}
+
+// Reads the dist-tag document rather than the full packument: the `latest` view is a few
+// hundred bytes where the packument grows with every published version. The name is
+// validated first so a caller cannot walk out of the registry path with `../`.
+export async function fetchLatestNpmVersion(
+  pkg: string,
+  registry: string = REGISTRY,
+  fetchImpl: typeof fetch = fetch,
+): Promise<string> {
+  packageNameParts(pkg);
+  const base = registry.endsWith('/') ? registry : `${registry}/`;
+  const response = await fetchImpl(`${base}${pkg}/latest`, {
+    signal: AbortSignal.timeout(REGISTRY_METADATA_TIMEOUT_MS),
+  });
+  if (!response.ok) throw new Error(`failed to fetch latest version: ${response.status}`);
+  const data: unknown = await response.json();
+  const version = isPlainObject(data) ? data['version'] : undefined;
+  if (typeof version !== 'string') throw new Error('registry response missing version');
+  return version;
 }
 
 async function runInstall(pkg: string, registry: string, cacheDir: string): Promise<void> {

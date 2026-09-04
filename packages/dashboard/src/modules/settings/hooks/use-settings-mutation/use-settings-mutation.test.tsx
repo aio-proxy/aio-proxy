@@ -4,6 +4,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { createElement, type ReactNode } from 'react';
 
+import { queryKeys } from '@/lib/query-keys';
+
 import { useSettingsMutation } from '.';
 
 const mocks = rs.hoisted(() => ({ update: rs.fn() }));
@@ -13,6 +15,8 @@ rs.mock('../../services/settings-service', () => ({
 }));
 
 const settings: DashboardSettingsView = {
+  apiKeys: [],
+  apiKeysRevision: 'sha256:current',
   hasPassword: false,
   host: '127.0.0.1',
   logging: { enabled: true, level: 'info', retentionDays: 3 },
@@ -52,6 +56,35 @@ test('does not invalidate Providers for a non-proxy update', async () => {
   await waitFor(() => expect(result.current.isSuccess).toBe(true));
   expect(invalidate).toHaveBeenCalledWith({ queryKey: ['settings'] });
   expect(invalidate).not.toHaveBeenCalledWith({ queryKey: ['providers'] });
+});
+
+test('invalidates the authentication session after a password change', async () => {
+  mocks.update.mockResolvedValue({ ok: true, restartRequired: false, settings });
+  const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+  const invalidate = rs.spyOn(queryClient, 'invalidateQueries');
+  const wrapper = ({ children }: { readonly children: ReactNode }) =>
+    createElement(QueryClientProvider, { client: queryClient }, children);
+  const { result } = renderHook(() => useSettingsMutation(), { wrapper });
+
+  // Clearing the password disables dashboard authentication server-side.
+  act(() => result.current.mutate({ password: null }));
+
+  await waitFor(() => expect(result.current.isSuccess).toBe(true));
+  expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.auth });
+});
+
+test('leaves the authentication session cached for an unrelated update', async () => {
+  mocks.update.mockResolvedValue({ ok: true, restartRequired: false, settings });
+  const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+  const invalidate = rs.spyOn(queryClient, 'invalidateQueries');
+  const wrapper = ({ children }: { readonly children: ReactNode }) =>
+    createElement(QueryClientProvider, { client: queryClient }, children);
+  const { result } = renderHook(() => useSettingsMutation(), { wrapper });
+
+  act(() => result.current.mutate({ retryAfterCapMs: 10_000 }));
+
+  await waitFor(() => expect(result.current.isSuccess).toBe(true));
+  expect(invalidate).not.toHaveBeenCalledWith({ queryKey: queryKeys.auth });
 });
 
 test('refetches authoritative Settings after a rejected update', async () => {

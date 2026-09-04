@@ -1,6 +1,7 @@
 import type { DashboardSettingsView } from '@aio-proxy/types';
 import { expect, rs, test } from '@rstest/core';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 
 import { SettingsPage } from '.';
 import { SettingsForm } from '../../components/settings-form';
@@ -11,6 +12,14 @@ const mocks = rs.hoisted(() => ({
   useSettingsQuery: rs.fn(),
 }));
 
+rs.mock('../../hooks/use-release-query', () => ({
+  useReleaseQuery: () => ({ data: { current: '1.4.2' } }),
+}));
+
+rs.mock('../../services/release-service', () => ({
+  checkLatestReleaseMutationFn: rs.fn(),
+}));
+
 rs.mock('../../hooks/use-settings-query', () => ({
   useSettingsQuery: () => mocks.useSettingsQuery(),
 }));
@@ -19,7 +28,13 @@ rs.mock('../../hooks/use-settings-mutation', () => ({
   useSettingsMutation: () => mocks.useSettingsMutation(),
 }));
 
+rs.mock('../../hooks/use-reload-mutation', () => ({
+  useReloadMutation: () => ({ isPending: false, mutate: rs.fn() }),
+}));
+
 const settings: DashboardSettingsView = {
+  apiKeys: [{ key: '****', label: 'ci' }, { key: '****' }],
+  apiKeysRevision: 'sha256:current',
   hasPassword: true,
   host: '127.0.0.1',
   logging: { enabled: true, level: 'info', retentionDays: 3 },
@@ -41,7 +56,10 @@ const prepareMocks = (restartRequired?: boolean) => {
 
 const renderPage = (restartRequired?: boolean) => {
   prepareMocks(restartRequired);
-  return render(<SettingsPage />);
+  const queryClient = new QueryClient();
+  return render(<SettingsPage />, {
+    wrapper: ({ children }) => <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>,
+  });
 };
 
 test('renders service/access/network before logs/retries and keeps the logging Switch in its group header', () => {
@@ -60,14 +78,54 @@ test('renders service/access/network before logs/retries and keeps the logging S
   expect(within(header as HTMLElement).getByRole('heading', { level: 2 })).toBe(logs);
 });
 
-test('shows only masked read-only password state without password mutation actions', () => {
+test('sets a new dashboard password from a writable field', () => {
   renderPage();
 
   const password = screen.getByLabelText(/Dashboard password|控制台密码|控制台密碼/u);
   expect(password).toHaveAttribute('type', 'password');
-  expect(password).toHaveAttribute('readonly');
-  expect(password).toHaveValue('********');
-  expect(screen.queryByRole('button', { name: /clear|refill|replace|reset|清除|替换|取代/u })).not.toBeInTheDocument();
+  expect(password).not.toHaveAttribute('readonly');
+
+  fireEvent.change(password, { target: { value: 'correct horse battery' } });
+  fireEvent.click(screen.getByRole('button', { name: /Set password|设置密码|設定密碼/u }));
+
+  expect(mocks.mutate).toHaveBeenCalledTimes(1);
+  expect(mocks.mutate).toHaveBeenCalledWith({ password: 'correct horse battery' }, { onSuccess: expect.any(Function) });
+});
+
+test('holds the password draft until the write succeeds and clears it only then', () => {
+  renderPage();
+
+  const password = screen.getByLabelText(/Dashboard password|控制台密码|控制台密碼/u);
+  fireEvent.change(password, { target: { value: 'correct horse battery' } });
+  fireEvent.click(screen.getByRole('button', { name: /Set password|设置密码|設定密碼/u }));
+
+  // A rejected write leaves no copy of the secret anywhere, so the field must still hold it.
+  expect(password).toHaveValue('correct horse battery');
+
+  const [, options] = mocks.mutate.mock.calls[0] as [unknown, { readonly onSuccess: () => void }];
+  act(() => options.onSuccess());
+
+  expect(password).toHaveValue('');
+});
+
+test('refuses to submit a password below the minimum length', () => {
+  renderPage();
+
+  const password = screen.getByLabelText(/Dashboard password|控制台密码|控制台密碼/u);
+  fireEvent.change(password, { target: { value: 'short12' } });
+  fireEvent.click(screen.getByRole('button', { name: /Set password|设置密码|設定密碼/u }));
+
+  expect(mocks.mutate).not.toHaveBeenCalled();
+  expect(screen.getByText(/at least 8 characters|至少需要 8|8 文字以上|8자 이상/u)).toBeInTheDocument();
+});
+
+test('clears a configured password', () => {
+  renderPage();
+
+  fireEvent.click(screen.getByRole('button', { name: /Clear password|清除密码|清除密碼/u }));
+
+  expect(mocks.mutate).toHaveBeenCalledTimes(1);
+  expect(mocks.mutate).toHaveBeenCalledWith({ password: null }, { onSuccess: expect.any(Function) });
 });
 
 test('writes a routine logging change exactly once', () => {
@@ -171,4 +229,245 @@ test('shows restart guidance only when the server reports restartRequired', () =
   renderPage(false);
   expect(screen.getByRole('status')).toHaveTextContent(/Settings saved|设置已保存|設定已儲存/u);
   expect(screen.getByRole('status')).not.toHaveTextContent(/Restart aio-proxy|重启 aio-proxy|重新啟動 aio-proxy/u);
+});
+
+test('lists stored API keys masked and retains them by index when saving', () => {
+  renderPage();
+
+  const group = screen.getByTestId('settings-group-api-keys');
+  expect(within(group).getAllByDisplayValue('****')).toHaveLength(2);
+
+  fireEvent.change(within(group).getAllByLabelText(/Label|标签|標籤|ラベル|라벨/u)[0] as HTMLElement, {
+    target: { value: 'ci-renamed' },
+  });
+  fireEvent.click(within(group).getByRole('button', { name: /Save keys|保存密钥|儲存金鑰|キーを保存|키 저장/u }));
+
+  expect(mocks.mutate).toHaveBeenCalledTimes(1);
+  expect(mocks.mutate).toHaveBeenCalledWith(
+    { apiKeys: [{ retain: 0, label: 'ci-renamed' }, { retain: 1 }], apiKeysRevision: settings.apiKeysRevision },
+    expect.anything(),
+  );
+});
+
+test('adds a new API key and sends it in plaintext exactly once', () => {
+  renderPage();
+
+  const group = screen.getByTestId('settings-group-api-keys');
+  fireEvent.click(within(group).getByRole('button', { name: /Add key|添加密钥|新增金鑰|キーを追加|키 추가/u }));
+
+  const values = within(group).getAllByLabelText(/^Key$|^密钥$|^金鑰$|^キー$|^키$/u);
+  fireEvent.change(values[values.length - 1] as HTMLElement, { target: { value: 'sk-added' } });
+  fireEvent.click(within(group).getByRole('button', { name: /Save keys|保存密钥|儲存金鑰|キーを保存|키 저장/u }));
+
+  expect(mocks.mutate).toHaveBeenCalledTimes(1);
+  expect(mocks.mutate).toHaveBeenCalledWith(
+    {
+      apiKeys: [{ retain: 0, label: 'ci' }, { retain: 1 }, { key: 'sk-added' }],
+      apiKeysRevision: settings.apiKeysRevision,
+    },
+    expect.anything(),
+  );
+});
+
+test('generates a usable key for a new row without asking the server for one', () => {
+  renderPage();
+
+  const group = screen.getByTestId('settings-group-api-keys');
+  fireEvent.click(within(group).getByRole('button', { name: /Add key|添加密钥|新增金鑰|キーを追加|키 추가/u }));
+  fireEvent.click(
+    within(group).getByRole('button', { name: /Generate a key|随机生成密钥|隨機產生金鑰|キーを生成|키 생성/u }),
+  );
+
+  const values = within(group).getAllByLabelText(/^Key$|^密钥$|^金鑰$|^キー$|^키$/u);
+  const generated = (values[values.length - 1] as HTMLInputElement).value;
+  // A key too short or without enough entropy is worse than no key: it is a guessable credential.
+  expect(generated).toMatch(/^sk-[0-9a-f]{48}$/u);
+
+  fireEvent.click(within(group).getByRole('button', { name: /Save keys|保存密钥|儲存金鑰|キーを保存|키 저장/u }));
+  expect(mocks.mutate).toHaveBeenCalledWith(
+    {
+      apiKeys: [{ retain: 0, label: 'ci' }, { retain: 1 }, { key: generated }],
+      apiKeysRevision: settings.apiKeysRevision,
+    },
+    expect.anything(),
+  );
+});
+
+test('puts the required key before the optional label in each row', () => {
+  renderPage();
+
+  const group = screen.getByTestId('settings-group-api-keys');
+  const key = within(group).getAllByLabelText(/^Key$|^密钥$|^金鑰$|^キー$|^키$/u)[0] as HTMLElement;
+  const label = within(group).getAllByLabelText(/Label|标签|標籤|ラベル|라벨/u)[0] as HTMLElement;
+
+  expect(key.compareDocumentPosition(label) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+});
+
+test('removes a stored API key', () => {
+  renderPage();
+
+  const group = screen.getByTestId('settings-group-api-keys');
+  fireEvent.click(within(group).getByRole('button', { name: /Remove key ci|移除密钥 ci|移除金鑰 ci|キー ci|키 ci/u }));
+  fireEvent.click(within(group).getByRole('button', { name: /Save keys|保存密钥|儲存金鑰|キーを保存|키 저장/u }));
+
+  expect(mocks.mutate).toHaveBeenCalledTimes(1);
+  expect(mocks.mutate).toHaveBeenCalledWith(
+    { apiKeys: [{ retain: 1 }], apiKeysRevision: settings.apiKeysRevision },
+    expect.anything(),
+  );
+});
+
+test('resyncs stored API key rows when a reload replaces the stored keys', () => {
+  const { rerender } = renderPage();
+
+  const group = screen.getByTestId('settings-group-api-keys');
+  fireEvent.change(within(group).getAllByLabelText(/Label|标签|標籤|ラベル|라벨/u)[0] as HTMLElement, {
+    target: { value: 'stale-draft' },
+  });
+
+  mocks.useSettingsQuery.mockReturnValue({
+    data: { ...settings, apiKeys: [{ key: '****', label: 'reloaded' }], apiKeysRevision: 'sha256:reloaded' },
+    isError: false,
+    isLoading: false,
+  });
+  rerender(<SettingsPage />);
+
+  const reloaded = screen.getByTestId('settings-group-api-keys');
+  expect(within(reloaded).getAllByDisplayValue('****')).toHaveLength(1);
+  expect(within(reloaded).queryByDisplayValue('stale-draft')).toBeNull();
+
+  fireEvent.click(within(reloaded).getByRole('button', { name: /Save keys|保存密钥|儲存金鑰|キーを保存|키 저장/u }));
+  expect(mocks.mutate).toHaveBeenCalledWith(
+    { apiKeys: [{ retain: 0, label: 'reloaded' }], apiKeysRevision: 'sha256:reloaded' },
+    expect.anything(),
+  );
+});
+
+test('refuses to save a labeled row whose key was left blank instead of dropping it', () => {
+  renderPage();
+
+  const group = screen.getByTestId('settings-group-api-keys');
+  fireEvent.click(within(group).getByRole('button', { name: /Add key|添加密钥|新增金鑰|キーを追加|키 추가/u }));
+  const labels = within(group).getAllByLabelText(/Label|标签|標籤|ラベル|라벨/u);
+  fireEvent.change(labels[labels.length - 1] as HTMLElement, { target: { value: 'forgot-the-key' } });
+
+  // Silently dropping the row would report success for a key that was never persisted.
+  expect(
+    within(group).getByText(/A key is required|必须填写密钥|必須填寫金鑰|キーは必須|키는 필수/u),
+  ).toBeInTheDocument();
+  const save = within(group).getByRole('button', { name: /Save keys|保存密钥|儲存金鑰|キーを保存|키 저장/u });
+  expect(save).toBeDisabled();
+  fireEvent.click(save);
+  expect(mocks.mutate).not.toHaveBeenCalled();
+});
+
+test('submits a key exactly as typed rather than trimming the credential', () => {
+  renderPage();
+
+  const group = screen.getByTestId('settings-group-api-keys');
+  fireEvent.click(within(group).getByRole('button', { name: /Add key|添加密钥|新增金鑰|キーを追加|키 추가/u }));
+  const values = within(group).getAllByLabelText(/^Key$|^密钥$|^金鑰$|^キー$|^키$/u);
+  fireEvent.change(values[values.length - 1] as HTMLElement, { target: { value: ' sk-padded ' } });
+
+  // The proxy compares the authored key byte for byte, so trimming here would store a
+  // different credential than the one the operator handed out.
+  fireEvent.click(within(group).getByRole('button', { name: /Save keys|保存密钥|儲存金鑰|キーを保存|키 저장/u }));
+  expect(mocks.mutate).toHaveBeenCalledWith(
+    {
+      apiKeys: [{ retain: 0, label: 'ci' }, { retain: 1 }, { key: ' sk-padded ' }],
+      apiKeysRevision: 'sha256:current',
+    },
+    expect.anything(),
+  );
+});
+
+test('submits a whitespace-only key instead of silently dropping the row', () => {
+  renderPage();
+
+  const group = screen.getByTestId('settings-group-api-keys');
+  fireEvent.click(within(group).getByRole('button', { name: /Add key|添加密钥|新增金鑰|キーを追加|키 추가/u }));
+  const values = within(group).getAllByLabelText(/^Key$|^密钥$|^金鑰$|^キー$|^키$/u);
+  fireEvent.change(values[values.length - 1] as HTMLElement, { target: { value: '   ' } });
+
+  // The schema accepts any nonempty string, so whitespace is a usable credential. Treating it as
+  // an empty row would report a successful save for a key that was never persisted.
+  fireEvent.click(within(group).getByRole('button', { name: /Save keys|保存密钥|儲存金鑰|キーを保存|키 저장/u }));
+  expect(mocks.mutate).toHaveBeenCalledWith(
+    {
+      apiKeys: [{ retain: 0, label: 'ci' }, { retain: 1 }, { key: '   ' }],
+      apiKeysRevision: 'sha256:current',
+    },
+    expect.anything(),
+  );
+});
+
+test('keeps an in-progress key draft when an unrelated save refreshes the settings object', () => {
+  const { rerender } = renderPage();
+
+  const group = screen.getByTestId('settings-group-api-keys');
+  fireEvent.change(within(group).getAllByLabelText(/Label|标签|標籤|ラベル|라벨/u)[0] as HTMLElement, {
+    target: { value: 'in-progress' },
+  });
+
+  // A password write re-fetches settings; the authored keys are untouched, so the digest holds.
+  mocks.useSettingsQuery.mockReturnValue({
+    data: { ...settings, apiKeys: [...settings.apiKeys] },
+    isError: false,
+    isLoading: false,
+  });
+  rerender(<SettingsPage />);
+
+  const refreshed = screen.getByTestId('settings-group-api-keys');
+  expect(within(refreshed).getByDisplayValue('in-progress')).toBeInTheDocument();
+});
+
+test('keeps an unsaved new key when a rejected save re-fetches a newer revision', () => {
+  const { rerender } = renderPage();
+
+  const group = screen.getByTestId('settings-group-api-keys');
+  fireEvent.click(within(group).getByRole('button', { name: /Add key|添加密钥|新增金鑰|キーを追加|키 추가/u }));
+  const values = within(group).getAllByLabelText(/^Key$|^密钥$|^金鑰$|^キー$|^키$/u);
+  fireEvent.change(values[values.length - 1] as HTMLElement, { target: { value: 'sk-only-copy' } });
+
+  // A 409 stale_api_keys re-fetches settings with another writer's revision. The typed secret
+  // exists nowhere else, so the resync must not be what destroys it.
+  mocks.useSettingsQuery.mockReturnValue({
+    data: { ...settings, apiKeys: [{ key: '****', label: 'other-writer' }], apiKeysRevision: 'sha256:theirs' },
+    isError: false,
+    isLoading: false,
+  });
+  rerender(<SettingsPage />);
+
+  const refreshed = screen.getByTestId('settings-group-api-keys');
+  expect(within(refreshed).getByDisplayValue('sk-only-copy')).toBeInTheDocument();
+
+  fireEvent.click(within(refreshed).getByRole('button', { name: /Save keys|保存密钥|儲存金鑰|キーを保存|키 저장/u }));
+  expect(mocks.mutate).toHaveBeenCalledWith(
+    { apiKeys: [{ retain: 0, label: 'other-writer' }, { key: 'sk-only-copy' }], apiKeysRevision: 'sha256:theirs' },
+    expect.anything(),
+  );
+});
+
+test('drops a saved new key row instead of leaving it beside its stored copy', () => {
+  const { rerender } = renderPage();
+  mocks.mutate.mockImplementation((_input: unknown, options?: { readonly onSuccess?: () => void }) => {
+    options?.onSuccess?.();
+  });
+
+  const group = screen.getByTestId('settings-group-api-keys');
+  fireEvent.click(within(group).getByRole('button', { name: /Add key|添加密钥|新增金鑰|キーを追加|키 추가/u }));
+  const values = within(group).getAllByLabelText(/^Key$|^密钥$|^金鑰$|^キー$|^키$/u);
+  fireEvent.change(values[values.length - 1] as HTMLElement, { target: { value: 'sk-accepted' } });
+  fireEvent.click(within(group).getByRole('button', { name: /Save keys|保存密钥|儲存金鑰|キーを保存|키 저장/u }));
+
+  mocks.useSettingsQuery.mockReturnValue({
+    data: { ...settings, apiKeys: [...settings.apiKeys, { key: '****' }], apiKeysRevision: 'sha256:saved' },
+    isError: false,
+    isLoading: false,
+  });
+  rerender(<SettingsPage />);
+
+  const refreshed = screen.getByTestId('settings-group-api-keys');
+  expect(within(refreshed).queryByDisplayValue('sk-accepted')).toBeNull();
+  expect(within(refreshed).getAllByDisplayValue('****')).toHaveLength(3);
 });

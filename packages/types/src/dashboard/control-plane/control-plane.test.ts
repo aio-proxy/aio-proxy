@@ -16,6 +16,8 @@ const settings = {
   logging: { enabled: true, retentionDays: 3, level: 'info' },
   retryAfterCapMs: 30_000,
   hasPassword: true,
+  apiKeys: [{ key: '****', label: 'ci' }, { key: '****' }],
+  apiKeysRevision: 'sha256:fixture',
 } as const;
 
 describe('dashboard settings control-plane contracts', () => {
@@ -59,9 +61,68 @@ describe('dashboard settings control-plane contracts', () => {
     ]) {
       expect(mutation.safeParse({ proxy }).success).toBe(false);
     }
-    for (const field of ['theme', 'language', 'router', 'password', 'hasPassword']) {
+    for (const field of ['theme', 'language', 'router', 'hasPassword']) {
       expect(mutation.safeParse({ [field]: field === 'router' ? {} : 'value' }).success).toBe(false);
     }
+  });
+
+  test('distinguishes preserving, setting, and clearing the dashboard password', () => {
+    const mutation = schema('DashboardSettingsMutationSchema');
+
+    expect(mutation.parse({})).not.toHaveProperty('password');
+    expect(mutation.parse({ password: null })).toEqual({ password: null });
+    expect(mutation.parse({ password: 'correct horse battery' })).toEqual({ password: 'correct horse battery' });
+    for (const password of ['', 'short12', 42, {}]) {
+      expect(mutation.safeParse({ password }).success).toBe(false);
+    }
+  });
+
+  test('masks API keys in the view and distinguishes retained from replaced keys in the mutation', () => {
+    const view = schema('DashboardSettingsViewSchema');
+    const mutation = schema('DashboardSettingsMutationSchema');
+
+    expect(view.parse(settings)).toEqual(settings);
+    expect(view.safeParse({ ...settings, apiKeys: [{ key: 'sk-real-secret' }] }).success).toBe(false);
+    expect(view.safeParse({ ...settings, apiKeys: [{ key: '****', label: '' }] }).success).toBe(false);
+
+    expect(mutation.parse({})).not.toHaveProperty('apiKeys');
+    expect(mutation.parse({ apiKeysRevision: 'sha256:r', apiKeys: [] })).toEqual({
+      apiKeysRevision: 'sha256:r',
+      apiKeys: [],
+    });
+    expect(
+      mutation.parse({
+        apiKeysRevision: 'sha256:r',
+        apiKeys: [{ retain: 0 }, { retain: 1, label: 'renamed' }, { key: 'sk-new' }],
+      }),
+    ).toEqual({
+      apiKeysRevision: 'sha256:r',
+      apiKeys: [{ retain: 0 }, { retain: 1, label: 'renamed' }, { key: 'sk-new' }],
+    });
+    for (const entry of [
+      { retain: -1 },
+      { retain: 1.5 },
+      { retain: 0, key: 'sk-both' },
+      { key: '' },
+      { key: 'aio_agent_at_forged' },
+      { key: 'aio_agent_rt_forged' },
+      { label: 'no key' },
+      {},
+    ]) {
+      expect(mutation.safeParse({ apiKeysRevision: 'sha256:r', apiKeys: [entry] }).success).toBe(false);
+    }
+  });
+
+  test('requires an API key revision whenever keys are written', () => {
+    const view = schema('DashboardSettingsViewSchema');
+    const mutation = schema('DashboardSettingsMutationSchema');
+
+    expect(view.parse(settings).apiKeysRevision).toBe(settings.apiKeysRevision);
+    // A positional `retain` is only meaningful against the array the client actually read.
+    expect(mutation.safeParse({ apiKeys: [{ retain: 0 }] }).success).toBe(false);
+    expect(mutation.safeParse({ apiKeysRevision: 'sha256:abc', apiKeys: [{ retain: 0 }] }).success).toBe(true);
+    expect(mutation.safeParse({ apiKeysRevision: 'sha256:abc' }).success).toBe(false);
+    expect(mutation.safeParse({ apiKeysRevision: '', apiKeys: [] }).success).toBe(false);
   });
 
   test('accepts only credential-free or fully redacted root proxies in the settings view', () => {
