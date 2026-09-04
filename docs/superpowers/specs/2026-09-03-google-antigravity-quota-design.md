@@ -203,7 +203,7 @@ for exactly the users whose quota is healthy.
 | credential refresh fails | throws (`currentGoogleCredential` propagates `CredentialRefreshError`) |
 | one base: network error, non-2xx, non-object body, or zero usable buckets | remember it, try the next base |
 | every base failed | throw the **first** remembered error — the card shows an error. A later base's transport 404 must not bury the first base's real diagnosis, such as a summary that stopped reporting buckets |
-| `context.signal` aborted | throw immediately; never swallowed into the retry loop |
+| `context.signal` aborted | throw immediately; never swallowed into the retry loop, and rechecked after the plan read — `readPlan` swallows an abort, so a cancellation that lands while it is pending must not be answered with a snapshot the server caches past its deadline |
 | `loadCodeAssist` anything | swallow, omit `plan` |
 
 The plan read gets its **own** timeout (`PLAN_TIMEOUT_MS = 4_000`) layered onto `context.signal` with
