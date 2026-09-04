@@ -39,11 +39,20 @@ afterEach(() => {
   routingMocks.mutate.mockReset();
 });
 
-test('renders one card per Provider, sorted by priority', () => {
-  render(<ProviderCardGrid providers={providers} routingRevision="revision" />);
+test('renders a flat card grid sorted by priority, then weight', () => {
+  const weightedProviders = [
+    ...providers,
+    providerStub({ id: 'gamma', name: 'Gamma', kind: ProviderKind.Api, priority: 1, weight: 9 }),
+  ];
+  render(<ProviderCardGrid providers={weightedProviders} routingRevision="revision" />);
 
   const cards = screen.getAllByTestId(/^provider-row-/u);
-  expect(cards.map((card) => card.getAttribute('data-testid'))).toEqual(['provider-row-beta', 'provider-row-alpha']);
+  expect(cards.map((card) => card.getAttribute('data-testid'))).toEqual([
+    'provider-row-beta',
+    'provider-row-gamma',
+    'provider-row-alpha',
+  ]);
+  expect(screen.queryByTestId('provider-tier-1')).not.toBeInTheDocument();
 });
 
 test('the search box is a labelled field that narrows the grid and reports an empty result', () => {
@@ -158,7 +167,7 @@ test('renders the empty state when there are no Providers at all', () => {
   expect(screen.getByText(/No providers configured|未配置提供商/u)).toBeInTheDocument();
 });
 
-test('management mode keeps card capabilities and treats an empty added tier as an unsaved draft only', () => {
+test('management mode replaces full cards with compact routing rows and restores them on cancel', () => {
   render(<ProviderCardGrid providers={providers} routingRevision="revision" />);
 
   expect(screen.getByTestId('provider-search')).toBeInTheDocument();
@@ -166,11 +175,13 @@ test('management mode keeps card capabilities and treats an empty added tier as 
   fireEvent.click(screen.getByTestId('provider-routing-manage'));
 
   expect(screen.queryByTestId('provider-search')).not.toBeInTheDocument();
-  expect(screen.getByTestId('provider-tier-1')).toHaveTextContent('Beta');
-  expect(screen.getByTestId('provider-tier-2')).toHaveTextContent('Alpha');
+  expect(screen.getByTestId('provider-routing-item-beta')).toHaveTextContent('Beta');
+  expect(screen.getByTestId('provider-routing-item-beta')).toHaveTextContent('Provider disabled');
+  expect(screen.getByTestId('provider-routing-item-alpha')).toHaveTextContent('Alpha');
   expect(screen.getByTestId('provider-share-beta')).toHaveTextContent('100%');
   expect(screen.getByTestId('provider-share-alpha')).toHaveTextContent('100%');
-  expect(screen.getByTestId('provider-card-models-count')).toBeInTheDocument();
+  expect(screen.queryByTestId(/^provider-row-/u)).not.toBeInTheDocument();
+  expect(screen.queryByTestId('provider-card-models-count')).not.toBeInTheDocument();
   expect(screen.getByTestId('provider-routing-save')).toBeDisabled();
 
   fireEvent.click(screen.getByTestId('provider-routing-add-tier'));
@@ -179,6 +190,7 @@ test('management mode keeps card capabilities and treats an empty added tier as 
 
   fireEvent.click(screen.getByTestId('provider-routing-cancel'));
   expect(screen.getByTestId('provider-search')).toBeInTheDocument();
+  expect(screen.getAllByTestId(/^provider-row-/u)).toHaveLength(2);
   expect(routingMocks.mutate).not.toHaveBeenCalled();
 });
 
@@ -186,21 +198,20 @@ test('only the explicit handles become draggable controls', async () => {
   const sameTierProviders = providers.map((provider) => ({ ...provider, priority: 1 }));
   render(<ProviderCardGrid providers={sameTierProviders} routingRevision="revision" />);
 
-  const tier = screen.getByTestId('provider-tier-1');
-  const cardWrapper = screen.getByTestId('provider-row-alpha').parentElement;
-  expect(tier).not.toHaveAttribute('role', 'button');
-  expect(cardWrapper).not.toHaveAttribute('role', 'button');
+  expect(screen.queryByTestId('provider-tier-1')).not.toBeInTheDocument();
+  expect(screen.getByTestId('provider-row-alpha')).not.toHaveAttribute('role', 'button');
 
   fireEvent.click(screen.getByTestId('provider-routing-manage'));
 
+  const tier = screen.getByTestId('provider-tier-1');
+  const item = screen.getByTestId('provider-routing-item-alpha');
   const tierHandle = screen.getByRole('button', { name: /Drag tier|拖动梯队|ドラッグ|드래그/u });
   const providerHandle = screen.getByLabelText('Drag Provider alpha');
   await waitFor(() => expect(tierHandle).toHaveAttribute('aria-roledescription', 'draggable'));
 
   expect(tier).not.toHaveAttribute('role', 'button');
-  expect(cardWrapper).not.toHaveAttribute('role', 'button');
+  expect(item).not.toHaveAttribute('role', 'button');
   expect(tierHandle).not.toHaveAttribute('aria-disabled', 'true');
   expect(providerHandle).not.toHaveAttribute('aria-disabled', 'true');
-  expect(screen.getByTestId('provider-link-alpha')).not.toHaveAttribute('aria-disabled', 'true');
   expect(screen.getByTestId('provider-share-slider-alpha')).toBeEnabled();
 });
