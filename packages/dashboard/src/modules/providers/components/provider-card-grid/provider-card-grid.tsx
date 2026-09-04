@@ -62,11 +62,6 @@ export const ProviderCardGrid: React.FC<ProviderCardGridProps> = ({ providers, r
   const visible = useMemo(() => visibleProviders(providers, filters), [providers, filters]);
   const currentBoard = draft?.board ?? buildProviderRoutingBoard(providers);
   const savedBoard = draft?.savedBoard ?? currentBoard;
-  const visibleProviderIds = useMemo(() => new Set(visible.map((provider) => provider.id)), [visible]);
-  const invalidProviders = (editing ? providers : visible).filter((provider) => provider.kind === 'invalid');
-  const hasVisibleRoutableProvider = currentBoard.tiers.some((tier) =>
-    tier.items.some((item) => editing || visibleProviderIds.has(item.providerId)),
-  );
   const dirty =
     JSON.stringify(providerRoutingMutation(currentBoard, routingRevision).providers) !==
     JSON.stringify(providerRoutingMutation(savedBoard, routingRevision).providers);
@@ -199,49 +194,37 @@ export const ProviderCardGrid: React.FC<ProviderCardGridProps> = ({ providers, r
         </div>
       )}
 
-      {!hasVisibleRoutableProvider && invalidProviders.length === 0 ? (
+      {editing ? (
+        <ProviderRoutingBoard
+          board={currentBoard}
+          providers={providers}
+          onChange={(board) => setDraft((current) => (current === null ? current : { ...current, board }))}
+        />
+      ) : visible.length === 0 ? (
         <p role="status" data-testid="providers-no-matches" className="p-6 text-center text-sm text-muted-foreground">
           {m['dashboard.providers.card.no_matches']()}
         </p>
       ) : (
-        <>
-          <ProviderRoutingBoard
-            board={currentBoard}
-            providers={providers}
-            visibleProviderIds={visibleProviderIds}
-            editing={editing}
-            health={healthQuery.data}
-            usage={
-              usageQuery.data === undefined
-                ? undefined
-                : new Map(
-                    providers.map((provider) => [provider.id, usageQuery.data?.get(provider.id) ?? zeroProviderUsage]),
-                  )
-            }
-            usagePending={usageQuery.isPending}
-            pluginPresentations={pluginPresentations}
-            focusedProviderId={focusProviderId}
-            onChange={(board) => setDraft((current) => (current === null ? current : { ...current, board }))}
-            onDelete={(target) => deleteDialogRef.current?.open(target)}
-          />
-          {invalidProviders.length === 0 ? null : (
-            <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-              {invalidProviders.map((provider) => (
-                <ProviderCard
-                  key={provider.id}
-                  provider={provider}
-                  health={healthQuery.data?.get(provider.id)}
-                  usage={usageQuery.data?.get(provider.id)}
-                  usagePending={usageQuery.isPending}
-                  pluginLabel={undefined}
-                  pluginIcon={undefined}
-                  focused={provider.id === focusProviderId}
-                  onDelete={(target) => deleteDialogRef.current?.open(target)}
-                />
-              ))}
-            </div>
-          )}
-        </>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+          {visible.map((provider) => {
+            const presentation = provider.plugin === undefined ? undefined : pluginPresentations.get(provider.plugin);
+            return (
+              <ProviderCard
+                key={provider.id}
+                provider={provider}
+                health={healthQuery.data?.get(provider.id)}
+                usage={
+                  usageQuery.data === undefined ? undefined : (usageQuery.data.get(provider.id) ?? zeroProviderUsage)
+                }
+                usagePending={usageQuery.isPending}
+                pluginLabel={presentation?.displayName}
+                pluginIcon={presentation?.icon}
+                focused={provider.id === focusProviderId}
+                onDelete={(target) => deleteDialogRef.current?.open(target)}
+              />
+            );
+          })}
+        </div>
       )}
 
       <DeleteProviderDialog

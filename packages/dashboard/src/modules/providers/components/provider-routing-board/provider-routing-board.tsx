@@ -13,38 +13,16 @@ import {
   providerRoutingLists,
   type ProviderRoutingBoard as ProviderRoutingBoardModel,
 } from '../../lib/provider-routing-board';
-import type { ProviderHealth } from '../../services/provider-health-service';
-import type { ProviderUsage } from '../../services/provider-usage-service';
 import { ProviderTier } from './provider-tier';
 import { ProviderTierFlow } from './provider-tier-flow';
 
 interface ProviderRoutingBoardProps {
   readonly board: ProviderRoutingBoardModel;
   readonly providers: readonly DashboardProviderSummary[];
-  readonly visibleProviderIds: ReadonlySet<string>;
-  readonly editing: boolean;
-  readonly health: ReadonlyMap<string, ProviderHealth> | undefined;
-  readonly usage: ReadonlyMap<string, ProviderUsage> | undefined;
-  readonly usagePending: boolean;
-  readonly pluginPresentations: ReadonlyMap<string, { readonly displayName?: string; readonly icon?: string }>;
-  readonly focusedProviderId: string | undefined;
   readonly onChange: (board: ProviderRoutingBoardModel) => void;
-  readonly onDelete: (provider: DashboardProviderSummary) => void;
 }
 
-export const ProviderRoutingBoard: React.FC<ProviderRoutingBoardProps> = ({
-  board,
-  providers,
-  visibleProviderIds,
-  editing,
-  health,
-  usage,
-  usagePending,
-  pluginPresentations,
-  focusedProviderId,
-  onChange,
-  onDelete,
-}) => {
+export const ProviderRoutingBoard: React.FC<ProviderRoutingBoardProps> = ({ board, providers, onChange }) => {
   const snapshotBoard = useRef(board);
   const providersById = useMemo(() => new Map(providers.map((provider) => [provider.id, provider])), [providers]);
 
@@ -68,29 +46,17 @@ export const ProviderRoutingBoard: React.FC<ProviderRoutingBoardProps> = ({
       }}
     >
       <div className="space-y-0" data-testid="provider-routing-board">
-        {board.tiers.map((tier, index) => {
-          const visible = editing || tier.items.some((item) => visibleProviderIds.has(item.providerId));
-          if (!visible) return null;
-          return (
-            <div key={tier.id}>
-              <ProviderTier
-                tier={tier}
-                tierIndex={index}
-                providersById={providersById}
-                visibleProviderIds={visibleProviderIds}
-                editing={editing}
-                health={health}
-                usage={usage}
-                usagePending={usagePending}
-                pluginPresentations={pluginPresentations}
-                focusedProviderId={focusedProviderId}
-                onShareChange={(providerId, share) => onChange(applyProviderShare(board, tier.id, providerId, share))}
-                onDelete={onDelete}
-              />
-              {index < board.tiers.length - 1 ? <ProviderTierFlow /> : null}
-            </div>
-          );
-        })}
+        {board.tiers.map((tier, index) => (
+          <div key={tier.id}>
+            <ProviderTier
+              tier={tier}
+              tierIndex={index}
+              providersById={providersById}
+              onShareChange={(providerId, share) => onChange(applyProviderShare(board, tier.id, providerId, share))}
+            />
+            {index < board.tiers.length - 1 ? <ProviderTierFlow /> : null}
+          </div>
+        ))}
       </div>
     </DragDropProvider>
   );
