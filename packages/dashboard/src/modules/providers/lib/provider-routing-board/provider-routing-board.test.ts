@@ -108,3 +108,88 @@ test('tier order becomes compact descending priorities in the mutation', () => {
     c: { priority: 10, weight: 1 },
   });
 });
+
+test('every occupied tier keeps a distinct priority past the ten-point spacing limit', () => {
+  const many = Array.from({ length: 1001 }, (_, index) =>
+    providerStub({ id: `p${index}`, kind: ProviderKind.Api, priority: index + 1, weight: 1 }),
+  );
+  const priorities = Object.values(providerRoutingMutation(buildProviderRoutingBoard(many), 'revision').providers).map(
+    (routing) => routing.priority,
+  );
+
+  expect(priorities).toHaveLength(1001);
+  expect(new Set(priorities).size).toBe(1001);
+  expect(Math.max(...priorities)).toBeLessThanOrEqual(10_000);
+});
+
+test('a zero-weight Provider stays parked when an unrelated tier is reordered', () => {
+  const parked = [...providers, providerStub({ id: 'e', kind: ProviderKind.Api, priority: 20, weight: 0 })];
+  const board = buildProviderRoutingBoard(parked);
+  const reversed = { tiers: [...board.tiers].reverse() };
+
+  expect(providerRoutingMutation(reversed, 'revision').providers['e']).toEqual({ priority: 10, weight: 0 });
+});
+
+test('a parked Provider holds no share and does not dilute its tier', () => {
+  const parked = [...providers, providerStub({ id: 'e', kind: ProviderKind.Api, priority: 10, weight: 0 })];
+  const tier = buildProviderRoutingBoard(parked).tiers[1]!;
+
+  expect([...providerTierPercentages(tier)]).toEqual([
+    ['d', 100],
+    ['e', 0],
+  ]);
+});
+
+test('moving a Provider into a tier leaves a parked member of that tier at zero', () => {
+  const parked = [...providers, providerStub({ id: 'e', kind: ProviderKind.Api, priority: 10, weight: 0 })];
+  const board = buildProviderRoutingBoard(parked);
+  const next = applyProviderRoutingLayout(
+    board,
+    {
+      tiers: [
+        { id: 'tier:20', itemIds: ['b', 'c'] },
+        { id: 'tier:10', itemIds: ['d', 'e', 'a'] },
+      ],
+      parking: {},
+    },
+    { type: 'item', id: 'a' },
+  );
+
+  expect(next.tiers[1]!.items.find((item) => item.providerId === 'e')?.weight).toBe(0);
+  expect([...providerTierPercentages(next.tiers[1]!)]).toEqual([
+    ['d', 50],
+    ['e', 0],
+    ['a', 50],
+  ]);
+});
+
+test('a share edit cannot revive a parked Provider or split against one', () => {
+  const parked = [
+    providerStub({ id: 'a', kind: ProviderKind.Api, priority: 20, weight: 5000 }),
+    providerStub({ id: 'b', kind: ProviderKind.Api, priority: 20, weight: 0 }),
+  ];
+  const board = buildProviderRoutingBoard(parked);
+
+  expect(applyProviderShare(board, 'tier:20', 'a', 40)).toEqual(board);
+});
+
+test('a Provider whose configuration failed to parse is not routable even when its kind survived', () => {
+  const degraded = providerStub({
+    id: 'broken',
+    kind: ProviderKind.Api,
+    priority: 20,
+    state: {
+      status: 'unavailable',
+      diagnostic: {
+        code: 'PROVIDER_CONFIG_INVALID',
+        summary: 'invalid',
+        retryable: false,
+        occurredAt: '2026-01-01T00:00:00.000Z',
+      },
+    },
+  });
+  const board = buildProviderRoutingBoard([...providers, degraded]);
+
+  expect(board.tiers.flatMap((tier) => tier.items.map((item) => item.providerId))).not.toContain('broken');
+  expect(providerRoutingMutation(board, 'revision').providers['broken']).toBeUndefined();
+});

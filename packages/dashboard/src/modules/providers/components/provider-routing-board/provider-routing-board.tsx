@@ -28,6 +28,10 @@ export const ProviderRoutingBoard: React.FC<ProviderRoutingBoardProps> = ({ boar
         const provider = providersById.get(item.providerId);
         if (provider === undefined) return [];
         const share = percentages.get(provider.id) ?? 0;
+        // A parked Provider (weight zero) holds no share, and a share is only adjustable against
+        // another Provider that does hold one, so neither case gets a slider that could do nothing.
+        const adjustable =
+          item.weight > 0 && tier.items.some((other) => other.providerId !== item.providerId && other.weight > 0);
         return [
           {
             id: provider.id,
@@ -37,18 +41,17 @@ export const ProviderRoutingBoard: React.FC<ProviderRoutingBoardProps> = ({ boar
             shareLabel: `${share}%`,
             shareTestId: `provider-share-${provider.id}`,
             testId: `provider-routing-item-${provider.id}`,
-            control:
-              tier.items.length < 2
-                ? undefined
-                : {
-                    ariaLabel: m['dashboard.providers.routing.share_aria']({ providerId: provider.id }),
-                    min: 1,
-                    max: 100,
-                    step: 1,
-                    value: share,
-                    testId: `provider-share-slider-${provider.id}`,
-                    onChange: (value: number) => onChange(applyProviderShare(board, tier.id, provider.id, value)),
-                  },
+            control: adjustable
+              ? {
+                  ariaLabel: m['dashboard.providers.routing.share_aria']({ providerId: provider.id }),
+                  min: 1,
+                  max: 100,
+                  step: 1,
+                  value: share,
+                  testId: `provider-share-slider-${provider.id}`,
+                  onChange: (value: number) => onChange(applyProviderShare(board, tier.id, provider.id, value)),
+                }
+              : undefined,
           },
         ];
       }),

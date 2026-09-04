@@ -6,6 +6,8 @@ import {
 
 import type { WeightedTierLayout, WeightedTierOperation } from '@/lib/weighted-tier-layout';
 
+import { isDegradedProvider } from '../provider-list-view';
+
 export interface ProviderRoutingBoardItem {
   readonly providerId: string;
   readonly weight: number;
@@ -51,16 +53,20 @@ const positiveDistribution = (total: number, weights: readonly number[]): number
   return base.map((value, index) => value + (extra[index] ?? 0));
 };
 
-const normalizedItems = (items: readonly ProviderRoutingBoardItem[]): ProviderRoutingBoardItem[] => {
-  const weights = positiveDistribution(
-    ROUTING_VALUE_MAX,
-    items.map((item) => item.weight),
-  );
-  return items.map((item, index) => ({ ...item, weight: weights[index] ?? 1 }));
+// Weight zero deliberately parks a Provider outside normal routing. It holds no share of its tier,
+// so it neither receives budget here nor reserves any: only an explicit share edit revives it.
+const normalizedItems = (
+  items: readonly ProviderRoutingBoardItem[],
+  weightOf: (item: ProviderRoutingBoardItem) => number = (item) => item.weight,
+): ProviderRoutingBoardItem[] => {
+  const active = items.filter((item) => item.weight > 0);
+  const weights = positiveDistribution(ROUTING_VALUE_MAX, active.map(weightOf));
+  const byId = new Map(active.map((item, index) => [item.providerId, weights[index] ?? 1]));
+  return items.map((item) => ({ ...item, weight: byId.get(item.providerId) ?? item.weight }));
 };
 
 export const buildProviderRoutingBoard = (providers: readonly DashboardProviderSummary[]): ProviderRoutingBoard => {
-  const routable = providers.filter((provider) => provider.kind !== 'invalid');
+  const routable = providers.filter((provider) => !isDegradedProvider(provider));
   const priorities = [...new Set(routable.map(effectivePriority))].sort((left, right) => right - left);
   return {
     tiers: priorities.map((priority) => ({
@@ -74,11 +80,14 @@ export const buildProviderRoutingBoard = (providers: readonly DashboardProviderS
 };
 
 export const providerTierPercentages = (tier: ProviderRoutingBoardTier): ReadonlyMap<string, number> => {
+  const active = tier.items.filter((item) => item.weight > 0);
   const percentages = distribute(
     100,
-    tier.items.map((item) => item.weight),
+    active.map((item) => item.weight),
   );
-  return new Map(tier.items.map((item, index) => [item.providerId, percentages[index] ?? 0]));
+  const byId = new Map(active.map((item, index) => [item.providerId, percentages[index] ?? 0]));
+  // A parked Provider shows no share, including when every member of the tier is parked.
+  return new Map(tier.items.map((item) => [item.providerId, byId.get(item.providerId) ?? 0]));
 };
 
 const applyProviderTierOrder = (board: ProviderRoutingBoard, tierIds: readonly string[]): ProviderRoutingBoard => {
@@ -131,14 +140,10 @@ export const applyProviderRoutingLayout = (
   return {
     tiers: layout.tiers.map(({ id, itemIds }) => {
       let items = itemIds.flatMap((itemId) => (itemById.get(itemId) === undefined ? [] : [itemById.get(itemId)!]));
-      if (movedAcrossTiers && (id === previousTier.id || id === targetTierId)) items = normalizedItems(items);
-      if (movedAcrossTiers && id === targetTierId) {
-        const equal = positiveDistribution(
-          ROUTING_VALUE_MAX,
-          items.map(() => 1),
-        );
-        items = items.map((item, index) => ({ ...item, weight: equal[index] ?? 1 }));
-      }
+      if (movedAcrossTiers && id === previousTier.id) items = normalizedItems(items);
+      // The destination tier restarts from an even split so the moved Provider lands with a share,
+      // rather than inheriting whatever ratio the source tier happened to hold.
+      if (movedAcrossTiers && id === targetTierId) items = normalizedItems(items, () => 1);
       return { id, items };
     }),
   };
@@ -151,8 +156,11 @@ export const applyProviderShare = (
   percentage: number,
 ): ProviderRoutingBoard => ({
   tiers: board.tiers.map((tier) => {
-    if (tier.id !== tierId || tier.items.length < 2) return tier;
-    const others = tier.items.filter((item) => item.providerId !== providerId);
+    if (tier.id !== tierId) return tier;
+    // Parked Providers keep their zero and are not part of the split, so a tier whose only other
+    // members are parked has nothing to rebalance against and the slider cannot move a share.
+    const others = tier.items.filter((item) => item.providerId !== providerId && item.weight > 0);
+    if (others.length === 0) return tier;
     const selected = Math.min(100 - others.length, Math.max(1, Math.round(percentage)));
     const remaining = positiveDistribution(
       (100 - selected) * 100,
@@ -163,7 +171,7 @@ export const applyProviderShare = (
       items: tier.items.map((item) => {
         if (item.providerId === providerId) return { ...item, weight: selected * 100 };
         const index = others.findIndex((other) => other.providerId === item.providerId);
-        return { ...item, weight: remaining[index] ?? 1 };
+        return index === -1 ? item : { ...item, weight: remaining[index] ?? 1 };
       }),
     };
   }),
@@ -174,12 +182,17 @@ export const providerRoutingMutation = (
   revision: string,
 ): DashboardProviderRoutingMutation => {
   const occupied = board.tiers.filter((tier) => tier.items.length > 0);
+  // Ten-point spacing leaves room to insert a tier by hand, but it only fits 1000 tiers inside the
+  // supported range; beyond that the spacing narrows so every tier the user kept apart stays apart.
+  const spacing =
+    occupied.length <= ROUTING_VALUE_MAX / 10 ? 10 : Math.max(1, Math.floor(ROUTING_VALUE_MAX / occupied.length));
   return {
     revision,
     providers: Object.fromEntries(
       occupied.flatMap((tier, index) => {
-        const priority = Math.min(ROUTING_VALUE_MAX, (occupied.length - index) * 10);
-        return tier.items.map((item) => [item.providerId, { priority, weight: Math.max(1, item.weight) }]);
+        const priority = Math.min(ROUTING_VALUE_MAX, (occupied.length - index) * spacing);
+        // Weight zero is the authored "parked" value; reordering tiers must not revive that traffic.
+        return tier.items.map((item) => [item.providerId, { priority, weight: item.weight }]);
       }),
     ),
   };

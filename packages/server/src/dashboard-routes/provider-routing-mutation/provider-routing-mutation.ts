@@ -46,14 +46,17 @@ export const applyProviderRoutingMutation = (
   input: DashboardProviderRoutingMutation,
   providerIds: readonly string[],
 ): Record<string, unknown> => {
-  if (providerRoutingRevision(current, providerIds) !== input.revision) {
-    throw new ProviderRoutingStaleRevisionError();
-  }
-
+  // Membership is checked before the revision because the revision also covers membership: a Provider
+  // that appeared since the client loaded the board would otherwise be reported as a stale revision,
+  // hiding the fact that the submitted layout is missing an entry.
   const submittedIds = sortedIds(Object.keys(input.providers));
   const expectedIds = sortedIds(providerIds);
   if (submittedIds.length !== expectedIds.length || submittedIds.some((id, index) => id !== expectedIds[index])) {
     throw new ProviderRoutingSetChangedError();
+  }
+
+  if (providerRoutingRevision(current, providerIds) !== input.revision) {
+    throw new ProviderRoutingStaleRevisionError();
   }
 
   return Object.fromEntries(

@@ -100,11 +100,19 @@ export const createDashboardProviderWriteRoutes = (state: ServerState) =>
       if (state.configPath === undefined) {
         return context.json({ error: 'config_unavailable' } as const, 409);
       }
-      const providerIds = state.currentConfig().providers.map((provider) => provider.id);
+      let committed: { readonly revision: string } | undefined;
       try {
-        await state.configStore.mutateProviders((record) =>
-          applyProviderRoutingMutation(record, context.req.valid('json'), providerIds),
-        );
+        await state.configStore.mutateProviders((record) => {
+          // Both reads happen inside the serialized mutation: an earlier queued operation has fully
+          // committed by now, so a Provider it added is part of the set this save must account for.
+          const providerIds = state.currentConfig().providers.map((provider) => provider.id);
+          const next = applyProviderRoutingMutation(record, context.req.valid('json'), providerIds);
+          // The revision describes the record this transaction commits. Reading it back from the file
+          // afterwards could pair the client's cached values with a concurrent commit's revision,
+          // letting its next save overwrite that change instead of being rejected as stale.
+          committed = { revision: providerRoutingRevision(next, providerIds) };
+          return next;
+        });
       } catch (error) {
         if (error instanceof ProviderRoutingStaleRevisionError) {
           return context.json({ error: 'stale_revision' } as const, 409);
@@ -117,18 +125,11 @@ export const createDashboardProviderWriteRoutes = (state: ServerState) =>
         }
         throw error;
       }
+      if (committed === undefined) throw new Error('Provider routing mutation did not run');
+      // Summaries are read after the commit, so a later concurrent commit can make them newer than
+      // `revision`. That pairing only costs the client one `stale_revision`, never a silent overwrite.
       const providers = await state.providerSummaries({ probe: false });
-      const nextProviderIds = state.currentConfig().providers.map((provider) => provider.id);
-      const rawProviders = (await state.configStore.file?.read())?.['providers'];
-      return context.json({
-        providers,
-        routingRevision: providerRoutingRevision(
-          typeof rawProviders === 'object' && rawProviders !== null && !Array.isArray(rawProviders)
-            ? (rawProviders as Record<string, unknown>)
-            : {},
-          nextProviderIds,
-        ),
-      });
+      return context.json({ providers, routingRevision: committed.revision });
     })
     .put('/providers/:id', providerMutationValidator, async (context) => {
       if (state.configPath === undefined) {
