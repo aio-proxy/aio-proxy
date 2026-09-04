@@ -80,7 +80,7 @@ const functionCallItemSchema = z.object({
 // matching call, identified by name/namespace instead (Codex Desktop's
 // cross-thread delegation sends `codex_app`/`send_message_to_thread` this way).
 // Raw passthrough forwards them untouched and lets the upstream judge; the model
-// path has no call to pair them with and rejects them during conversion.
+// path has no call to pair them with and rejects the candidate during conversion.
 const functionCallOutputItemSchema = z.object({
   type: z.literal('function_call_output'),
   call_id: idSchema.optional(),

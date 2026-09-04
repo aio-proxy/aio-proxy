@@ -223,15 +223,23 @@ test('rejects invalid function arguments', () => {
   expect(() => openAIResponsesToModelMessages(request)).toThrow(new OpenAIResponsesTransformError('input.0.arguments'));
 });
 
-test('rejects a tool output without a call_id', () => {
-  // Parse accepts it so raw passthrough can forward it, but the model path has
-  // no call to pair it with.
+test('rejects a tool output without a call_id as an unsupported feature', () => {
+  // Parse accepts it so raw passthrough can forward it. A model-only candidate
+  // cannot pair it with a call, and must reject in a way the pipeline can fall
+  // back from — a terminal 400 would skip a later raw candidate.
+  const warn = spyOn(console, 'warn').mockImplementation(() => {});
   const request = parseOpenAIResponses({
     model: 'gpt-5.6-terra',
     input: [{ type: 'function_call_output', name: 'send_message_to_thread', namespace: 'codex_app', output: 'hi' }],
   });
 
-  expect(() => openAIResponsesToModelMessages(request)).toThrow(new OpenAIResponsesTransformError('input.0.call_id'));
+  try {
+    expect(() => openAIResponsesToModelMessages(request)).toThrow(
+      new OpenAIResponsesUnsupportedFeatureError('function_call_output.call_id', 'input.0.call_id'),
+    );
+  } finally {
+    warn.mockRestore();
+  }
 });
 
 test('converts empty function arguments to an empty object', () => {
