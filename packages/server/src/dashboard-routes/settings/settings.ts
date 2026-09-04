@@ -1,3 +1,5 @@
+import { createHmac, randomBytes } from 'node:crypto';
+
 import { digestProviderEntry } from '@aio-proxy/core';
 import {
   type Config,
@@ -35,16 +37,24 @@ class StaleApiKeysError extends Error {}
 
 // `retain` indexes the authored array, not the runtime one: templates are already
 // expanded in `currentConfig()`, so the revision has to digest what is on disk.
+// Without a config file nothing is writable (PUT fails with `config_unavailable`),
+// but the read view must still show the keys the proxy is actually enforcing.
 async function authoredApiKeys(state: ServerState): Promise<readonly unknown[]> {
   const file = state.configStore.file;
-  if (file === undefined) return [];
+  if (file === undefined) return state.currentConfig().server.apiKeys;
   const server = (await file.read())['server'];
   const keys = isPlainObject(server) ? server['apiKeys'] : undefined;
   return Array.isArray(keys) ? keys : [];
 }
 
+// A bare digest of the authored array is an offline verifier for the secrets inside it:
+// the same response hands the client the labels and ordering, so short keys fall to a
+// dictionary attack. Keying the digest with a per-process secret makes it opaque. The
+// key need not outlive the process — clients refetch settings before they can save.
+const revisionKey = randomBytes(32);
+
 function apiKeysRevision(authored: readonly unknown[]): string {
-  return `sha256:${digestProviderEntry(authored)}`;
+  return `sha256:${createHmac('sha256', revisionKey).update(digestProviderEntry(authored)).digest('hex')}`;
 }
 
 // Rows and revision both come from the authored snapshot. Reading the count and labels from

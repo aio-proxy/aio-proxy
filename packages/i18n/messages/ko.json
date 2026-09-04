@@ -462,6 +462,7 @@
       "reload": "설정 다시 불러오기",
       "reload_succeeded": "디스크에서 설정을 다시 불러왔습니다.",
       "reload_failed": "{stage} 단계에서 다시 불러오기가 실패했습니다.",
+      "reload_failed_stage_unknown": "알 수 없음",
       "appearance_description": "이 브라우저에만 적용됩니다.",
       "language_description": "적용하려면 대시보드를 다시 불러옵니다.",
       "host": "수신 호스트",

@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test';
+import { createHash } from 'node:crypto';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -130,6 +131,37 @@ test('GET /settings returns only the redacted typed settings view', async () => 
     expect(text).not.toMatch(
       /password-preserved|user:password|SETTINGS_|root-preserved|sk-from-env|sk-plain-preserved/u,
     );
+  });
+});
+
+test('GET /settings masks the enforced keys when the server runs without a config file', async () => {
+  await withSettingsFixture(
+    async ({ routes }) => {
+      // Keys stay enforced without a file to write back to, so reporting none would
+      // tell the operator access is open when it is not.
+      const view = (await (await routes.request('/settings')).json()) as { readonly apiKeys: unknown };
+
+      expect(view.apiKeys).toEqual([{ key: '****', label: 'ci' }, { key: '****' }]);
+    },
+    { configPath: false },
+  );
+});
+
+test('the API key revision is not the bare digest of the authored array', async () => {
+  await withSettingsFixture(async ({ routes }) => {
+    // A plain sha256 over the authored entries is an offline verifier for the very
+    // secrets the view masks: the labels and ordering ship in the same response.
+    const bare = createHash('sha256')
+      .update(JSON.stringify([{ key: 'sk-from-env', label: 'ci' }, { key: 'sk-plain-preserved' }]))
+      .digest('hex');
+    const authored = createHash('sha256')
+      .update(JSON.stringify([{ key: '{{env.SETTINGS_API_KEY}}', label: 'ci' }, { key: 'sk-plain-preserved' }]))
+      .digest('hex');
+
+    const revision = await apiKeysRevision(routes);
+
+    expect(revision).not.toBe(`sha256:${bare}`);
+    expect(revision).not.toBe(`sha256:${authored}`);
   });
 });
 

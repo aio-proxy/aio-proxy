@@ -462,6 +462,7 @@
       "reload": "設定を再読み込み",
       "reload_succeeded": "ディスクから設定を再読み込みしました。",
       "reload_failed": "{stage} 段階で再読み込みに失敗しました。",
+      "reload_failed_stage_unknown": "不明",
       "appearance_description": "このブラウザーにのみ適用されます。",
       "language_description": "変更を反映するためダッシュボードを再読み込みします。",
       "host": "リッスンホスト",

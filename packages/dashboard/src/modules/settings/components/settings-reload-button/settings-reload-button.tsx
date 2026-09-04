@@ -20,7 +20,10 @@ export const SettingsReloadButton: React.FC = () => {
             toast.add({
               type: 'error',
               title: m['dashboard.settings.reload_failed']({
-                stage: error instanceof ReloadFailedError ? error.stage : 'unknown',
+                stage:
+                  error instanceof ReloadFailedError
+                    ? error.stage
+                    : m['dashboard.settings.reload_failed_stage_unknown'](),
               }),
             });
           },

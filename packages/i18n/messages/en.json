@@ -462,6 +462,7 @@
       "reload": "Reload config",
       "reload_succeeded": "Configuration reloaded from disk.",
       "reload_failed": "Reload failed at the {stage} stage.",
+      "reload_failed_stage_unknown": "unknown",
       "appearance_description": "Applies to this browser only.",
       "language_description": "Reloads the Dashboard to apply.",
       "host": "Listen host",

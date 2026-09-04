@@ -462,6 +462,7 @@
       "reload": "重新加载配置",
       "reload_succeeded": "已从磁盘重新加载配置。",
       "reload_failed": "重新加载在 {stage} 阶段失败。",
+      "reload_failed_stage_unknown": "未知",
       "appearance_description": "仅对当前浏览器生效。",
       "language_description": "切换后会重新加载控制台以应用。",
       "host": "监听主机",
