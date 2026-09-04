@@ -7,13 +7,13 @@ import {
   zod,
 } from '@aio-proxy/plugin-sdk';
 
-import { CHATGPT_CATALOG_TTL_MS, CHATGPT_IMAGE_MODELS, discoverOpenAIChatGPTModels } from './catalog';
-import { extractAccountId, extractEmail, normalizeChatGPTEmail } from './jwt';
-import { ChatGPTAccountIdMissingError, CHATGPT_CLIENT_ID, exchangeCodeForTokens } from './oauth-flow';
-import { generatePKCE, generateState } from './pkce';
-import { readOpenAIChatGPTQuota } from './quota/index';
-import { createOpenAIChatGPTRuntime } from './runtime/index';
-import type { ChatGPTCredential } from './schema';
+import { CHATGPT_CATALOG_TTL_MS, CHATGPT_IMAGE_MODELS, discoverOpenAIChatGPTModels } from '../catalog';
+import { extractAccountId, extractEmail, normalizeChatGPTEmail } from '../jwt';
+import { ChatGPTAccountIdMissingError, CHATGPT_CLIENT_ID, exchangeCodeForTokens } from '../oauth-flow';
+import { generatePKCE, generateState } from '../pkce';
+import { readOpenAIChatGPTQuota } from '../quota/index';
+import { createOpenAIChatGPTRuntime } from '../runtime/index';
+import type { ChatGPTCredential } from '../schema';
 
 const CHATGPT_AUTHORIZATION_ENDPOINT = 'https://auth.openai.com/oauth/authorize' as const;
 const CHATGPT_SCOPE = 'openid profile email offline_access' as const;

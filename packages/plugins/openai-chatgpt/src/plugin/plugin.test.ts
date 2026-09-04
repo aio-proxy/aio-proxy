@@ -2,8 +2,8 @@ import { expect, test } from 'bun:test';
 
 import type { CredentialPort, OAuthAdapter, PluginDescriptor, RuntimeFetch } from '@aio-proxy/plugin-sdk';
 
-import openAIChatGPTPlugin from '.';
-import type { ChatGPTCredential } from './schema';
+import openAIChatGPTPlugin from '..';
+import type { ChatGPTCredential } from '../schema';
 
 async function adapterFrom(
   descriptor: PluginDescriptor<undefined>,

@@ -73,18 +73,24 @@ export function createOpenAIChatGPTDynamicFetch(
     headers.set('User-Agent', CHATGPT_USER_AGENT);
     headers.set('session-id', crypto.randomUUID());
     const body = shouldRewriteResponsesBody(request) ? await rewriteResponsesBody(request, headers) : request.body;
+    const url = rewriteCodexUrl(request.url);
+    const upstreamInit = {
+      method: request.method,
+      headers,
+      ...(request.method === 'GET' || request.method === 'HEAD' ? {} : { body }),
+      signal: init?.signal ?? (input instanceof Request ? input.signal : request.signal),
+      redirect: request.redirect,
+    } satisfies RequestInit;
 
-    return await fetchOpenAIResponses(
-      rewriteCodexUrl(request.url),
-      {
-        method: request.method,
-        headers,
-        ...(request.method === 'GET' || request.method === 'HEAD' ? {} : { body }),
-        signal: init?.signal ?? (input instanceof Request ? input.signal : request.signal),
-        redirect: request.redirect,
-      },
-      options,
-    );
+    // The image endpoints are not the Responses protocol: an Images stream
+    // terminates on `image_generation.*`, which the Responses SSE normalizer
+    // reads as an early EOF. Forward those bytes untouched.
+    if (isCodexImageEndpoint(url)) {
+      headers.set('accept-encoding', 'identity');
+      return await fetcher(url, upstreamInit);
+    }
+
+    return await fetchOpenAIResponses(url, upstreamInit, options);
   };
   return dynamicFetch as OpenAIStreamFetch;
 }
@@ -163,4 +169,8 @@ function codexEndpointFor(pathname: string): string | undefined {
   if (pathname.endsWith('/images/generations')) return CHATGPT_CODEX_IMAGE_GENERATIONS_ENDPOINT;
   if (pathname.endsWith('/images/edits')) return CHATGPT_CODEX_IMAGE_EDITS_ENDPOINT;
   return undefined;
+}
+
+function isCodexImageEndpoint(url: string): boolean {
+  return url.startsWith(CHATGPT_CODEX_IMAGE_GENERATIONS_ENDPOINT) || url.startsWith(CHATGPT_CODEX_IMAGE_EDITS_ENDPOINT);
 }
