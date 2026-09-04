@@ -40,10 +40,20 @@ class StaleApiKeysError extends Error {}
 // expanded in `currentConfig()`, so the revision has to digest what is on disk.
 // Without a config file nothing is writable (PUT fails with `config_unavailable`),
 // but the read view must still show the keys the proxy is actually enforcing.
+// An unparseable file is the same situation: the watcher rejected it, so the runtime
+// still enforces its last valid snapshot, and failing the whole endpoint would hide
+// every control until the file is repaired. The runtime keys stand in, and a write
+// against the revision they produce is rejected as stale rather than applying
+// `retain` indexes to an array the client never read.
 async function authoredApiKeys(state: ServerState): Promise<readonly unknown[]> {
   const file = state.configStore.file;
   if (file === undefined) return state.currentConfig().server.apiKeys;
-  const server = (await file.read())['server'];
+  let server: unknown;
+  try {
+    server = (await file.read())['server'];
+  } catch {
+    return state.currentConfig().server.apiKeys;
+  }
   const keys = isPlainObject(server) ? server['apiKeys'] : undefined;
   return Array.isArray(keys) ? keys : [];
 }
@@ -213,7 +223,10 @@ export const createDashboardSettingsRoute = (state: ServerState) =>
         if (error instanceof ConfigReloadRejectedError) {
           return context.json({ error: { code: 'reload_failed' }, ok: false } as const, 422);
         }
-        if (error instanceof ZodError || error instanceof TypeError) {
+        // A `SyntaxError` means the file on disk no longer parses, so the write is refused
+        // before any bytes move — the same "config as authored is unusable" answer as a
+        // schema rejection, rather than an unhandled 500.
+        if (error instanceof ZodError || error instanceof TypeError || error instanceof SyntaxError) {
           return context.json({ error: { code: 'config_rejected' }, ok: false } as const, 422);
         }
         throw error;

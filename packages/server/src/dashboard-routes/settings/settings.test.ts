@@ -459,6 +459,27 @@ test('a key write against a superseded revision is rejected without changing con
   });
 });
 
+test('GET /settings still serves the enforced keys when the authored file cannot be parsed', async () => {
+  await withSettingsFixture(async ({ configPath, routes }) => {
+    // The watcher rejected this edit, so the proxy still enforces its last valid snapshot.
+    // Failing the read would blank the whole Settings page until the file is repaired.
+    writeFileSync(configPath, '{ "server": { "apiKeys": ');
+
+    const response = await routes.request('/settings');
+    const view = (await response.json()) as { readonly apiKeys: unknown; readonly apiKeysRevision: string };
+
+    expect(response.status).toBe(200);
+    expect(view.apiKeys).toEqual([{ key: '****', label: 'ci' }, { key: '****' }]);
+    // A write cannot apply `retain` indexes to an array the client never read, and the file it
+    // would rewrite does not parse — so it is refused before any bytes move.
+    const before = readFileSync(configPath, 'utf8');
+    const write = await put(routes, { apiKeys: [{ retain: 0 }], apiKeysRevision: view.apiKeysRevision });
+    expect(write.status).toBe(422);
+    expect(await write.json()).toEqual({ ok: false, error: { code: 'config_rejected' } });
+    expect(readFileSync(configPath, 'utf8')).toBe(before);
+  });
+});
+
 test('a retried key write commits the credential once instead of authoring a duplicate', async () => {
   await withSettingsFixture(async ({ configPath, routes }) => {
     // The first write commits but its response is lost, so the client still holds the plaintext
