@@ -84,7 +84,7 @@ export function classifyOpenAIResponsesRawRetry(frame: RawRetryFrame): RawRetryV
   const type = frame.event ?? (typeof payload?.['type'] === 'string' ? payload['type'] : undefined);
   if (type !== undefined && carriesGeneratedOutput(type, payload)) return 'commit';
   if (type === 'error' || type === 'response.failed' || isPlainObject(payload?.['error'])) {
-    return responsesErrorCode(payload) === 'invalid_encrypted_content' ? 'retry' : 'commit';
+    return isEncryptedContentRejection(payload) ? 'retry' : 'commit';
   }
   if (type !== undefined && TERMINAL_EVENTS.has(type)) return 'commit';
   return 'hold';
@@ -96,17 +96,76 @@ export function classifyOpenAIResponsesRawRetry(frame: RawRetryFrame): RawRetryV
 // `response.error` — sometimes wrapping a nested `{ error: { code } }`.
 function responsesErrorCode(payload: Record<string, unknown> | undefined): string | undefined {
   if (payload === undefined) return undefined;
-  return errorCodeFrom(payload) ?? errorCodeFrom(isPlainObject(payload['response']) ? payload['response'] : undefined);
+  return codeFrom(errorChain(payload)) ?? codeFrom(errorChain(responseEnvelope(payload)));
 }
 
-function errorCodeFrom(value: Record<string, unknown> | undefined): string | undefined {
-  if (value === undefined) return undefined;
-  if (typeof value['code'] === 'string') return value['code'];
-  const nested = value['error'];
-  if (!isPlainObject(nested)) return undefined;
-  if (typeof nested['code'] === 'string') return nested['code'];
-  const inner = nested['error'];
-  return isPlainObject(inner) && typeof inner['code'] === 'string' ? inner['code'] : undefined;
+// The ChatGPT backend also rejects an unverifiable blob with `code: null` and
+// only the prose naming the item, e.g. `The encrypted content for item rs_… could
+// not be verified. Reason: Encrypted content could not be decrypted or parsed.`
+// Matching the code alone leaves that (very common) variant un-retried. Other
+// reasons carried by the same sentence — `Signature expired`, for instance — are
+// not blob-decode failures and must keep committing, so the reason is matched too.
+const UNVERIFIABLE_BLOB_MESSAGE =
+  /^The encrypted content\b.*\bcould not be verified\. Reason: Encrypted content could not be (?:decrypted or parsed|decoded)\.$/;
+
+function isEncryptedContentRejection(payload: Record<string, unknown> | undefined): boolean {
+  const code = responsesErrorCode(payload);
+  if (code !== undefined) return code === 'invalid_encrypted_content';
+  // Prose is the fallback identity only when the provider named no code at all.
+  // A different explicit code is authoritative: retrying would silently rewrite
+  // and resend a body the provider rejected for an unrelated reason.
+  const message = responsesErrorMessage(payload);
+  return message !== undefined && UNVERIFIABLE_BLOB_MESSAGE.test(message.trim());
+}
+
+function responsesErrorMessage(payload: Record<string, unknown> | undefined): string | undefined {
+  if (payload === undefined) return undefined;
+  return messageFrom(errorChain(payload)) ?? messageFrom(errorChain(responseEnvelope(payload)));
+}
+
+function responseEnvelope(payload: Record<string, unknown>): Record<string, unknown> | undefined {
+  return isPlainObject(payload['response']) ? payload['response'] : undefined;
+}
+
+// Both lookups walk this one chain, so a code can never sit on a node whose
+// message was consulted: a depth mismatch would let an explicit non-matching
+// code look absent and hand a rewrite-and-resend to the prose fallback.
+// Iterative and depth-capped because the chain is provider-controlled — a
+// recursive walk over a deeply nested `error` chain (~50k levels fit under the
+// 1 MiB body cap) would throw a RangeError out of `classify` instead of
+// committing and forwarding the provider's response.
+const MAX_ERROR_NESTING = 8;
+
+function errorChain(root: Record<string, unknown> | undefined): readonly Record<string, unknown>[] {
+  if (root === undefined) return [];
+  const chain: Record<string, unknown>[] = [root];
+  for (let node = root['error']; isPlainObject(node) && chain.length < MAX_ERROR_NESTING; node = node['error']) {
+    chain.push(node);
+  }
+  return chain;
+}
+
+// Outermost wins: the envelope names the failure the provider is reporting.
+function codeFrom(chain: readonly Record<string, unknown>[]): string | undefined {
+  for (const node of chain) {
+    const code = stringField(node, 'code');
+    if (code !== undefined) return code;
+  }
+  return undefined;
+}
+
+// Innermost wins: a wrapper repeats or generalizes the message the backend
+// actually issued.
+function messageFrom(chain: readonly Record<string, unknown>[]): string | undefined {
+  for (let index = chain.length - 1; index >= 0; index -= 1) {
+    const message = stringField(chain[index]!, 'message');
+    if (message !== undefined) return message;
+  }
+  return undefined;
+}
+
+function stringField(value: Record<string, unknown>, key: string): string | undefined {
+  return typeof value[key] === 'string' ? value[key] : undefined;
 }
 
 export function rewriteOpenAIResponsesEncryptedContent(bodyText: string): string | undefined {
