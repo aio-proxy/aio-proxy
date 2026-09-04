@@ -227,7 +227,12 @@ function uniqueToolNamespace(
 }
 
 function convertToolCallOutput(state: ConvertState, item: ToolCallOutputItem, index: number): void {
-  const call = state.calls.get(item.call_id);
+  // An absent call_id means the client synthesized this output without a call
+  // (see functionCallOutputItemSchema). Raw passthrough forwards it; the model
+  // path has nothing to pair it with, so it fails here rather than at parse.
+  const callId = item.call_id;
+  if (callId === undefined) throw new OpenAIResponsesTransformError(`input.${index}.call_id`);
+  const call = state.calls.get(callId);
   if (call === undefined) throw new OpenAIResponsesTransformError(`input.${index}.call_id`);
   const custom = item.type === 'custom_tool_call_output';
   const metadata = {
@@ -243,7 +248,7 @@ function convertToolCallOutput(state: ConvertState, item: ToolCallOutputItem, in
   } satisfies OpenAIResponsesWireMetadata;
   const part: ToolResultPart = {
     type: 'tool-result',
-    toolCallId: item.call_id,
+    toolCallId: callId,
     toolName: call.flattenedName,
     output: toolOutput(item.output, `input.${index}.output`),
     ...(custom || call.metadata !== undefined ? { providerOptions: wireProviderOptions(metadata) } : {}),
