@@ -10,6 +10,7 @@ import {
 import {
   COPILOT_CATALOG_TTL_MS,
   discoverGitHubCopilotModels,
+  exchangeGitHubCopilotToken,
   type GitHubAccountOptions,
   type GitHubCopilotCredential,
   loginToGitHubCopilot,
@@ -133,6 +134,10 @@ export function createGitHubCopilotPlugin(
         transcription: [],
         reranking: [],
       }),
+    },
+    refreshCredential: async ({ credential, signal, fetch }) => {
+      const value = await exchangeGitHubCopilotToken(credential, signal, fetch);
+      return { value, metadata: { expiresAt: value.expiresAt } };
     },
     createRuntime: createGitHubCopilotRuntime,
     // No `reset`: GitHub has no endpoint that redeems or resets a Copilot allowance.

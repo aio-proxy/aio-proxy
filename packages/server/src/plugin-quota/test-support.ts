@@ -29,6 +29,7 @@ export type QuotaFixtureOptions = {
   readonly loggerFailure?: boolean;
   readonly read?: (context: AccountContext<unknown, unknown>) => Promise<OAuthQuotaSnapshot>;
   readonly reset?: (context: AccountContext<unknown, unknown>) => Promise<void>;
+  readonly refreshCredential?: OAuthAdapter['refreshCredential'];
   readonly additionalProviderIds?: readonly string[];
   readonly itemId?: string;
   readonly region?: string;
@@ -177,6 +178,7 @@ function buildQuotaAdapter(options: QuotaFixtureOptions, tracker: QuotaAdapterTr
                 }),
           },
         }),
+    ...(options.refreshCredential === undefined ? {} : { refreshCredential: options.refreshCredential }),
   };
 }
 

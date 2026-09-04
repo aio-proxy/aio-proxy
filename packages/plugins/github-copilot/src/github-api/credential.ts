@@ -36,6 +36,20 @@ export async function fetchCopilotToken(
   };
 }
 
+export async function exchangeGitHubCopilotToken(
+  current: GitHubCopilotCredential,
+  signal: AbortSignal,
+  fetcher: RuntimeFetch = globalThis.fetch,
+): Promise<GitHubCopilotCredential> {
+  const copilot = await fetchCopilotToken(githubApiBase(current.enterpriseURL), current.githubToken, signal, fetcher);
+  return {
+    ...current,
+    copilotToken: copilot.access,
+    expiresAt: copilot.expires,
+    baseURL: getGitHubCopilotBaseURL(copilot.access, current.enterpriseURL),
+  };
+}
+
 async function refreshGitHubCopilotCredential(
   current: CredentialSnapshot<GitHubCopilotCredential>,
   signal: AbortSignal,
@@ -47,18 +61,7 @@ async function refreshGitHubCopilotCredential(
   if (current.value.expiresAt > Date.now()) {
     return { value: current.value, metadata: { expiresAt: current.value.expiresAt } };
   }
-  const copilot = await fetchCopilotToken(
-    githubApiBase(current.value.enterpriseURL),
-    current.value.githubToken,
-    signal,
-    fetcher,
-  );
-  const value = {
-    ...current.value,
-    copilotToken: copilot.access,
-    expiresAt: copilot.expires,
-    baseURL: getGitHubCopilotBaseURL(copilot.access, current.value.enterpriseURL),
-  };
+  const value = await exchangeGitHubCopilotToken(current.value, signal, fetcher);
   return { value, metadata: { expiresAt: value.expiresAt } };
 }
 

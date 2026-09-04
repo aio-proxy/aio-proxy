@@ -19,9 +19,14 @@ const SNAPSHOT: OAuthQuotaSnapshot = {
 };
 
 async function createQuotaFixture(
-  options: { read?: () => Promise<OAuthQuotaSnapshot>; breakRuntime?: boolean; breakCredential?: boolean } = {},
+  options: {
+    read?: () => Promise<OAuthQuotaSnapshot>;
+    breakRuntime?: boolean;
+    breakCredential?: boolean;
+    refreshable?: boolean;
+  } = {},
 ) {
-  const { read, breakRuntime = false, breakCredential = false } = options;
+  const { read, breakRuntime = false, breakCredential = false, refreshable = false } = options;
   const dir = mkdtempSync(join(tmpdir(), 'aio-dashboard-provider-quota-'));
   const input = {
     plugins: ['@example/oauth'],
@@ -85,6 +90,7 @@ async function createQuotaFixture(
           return read === undefined ? SNAPSHOT : await read();
         },
       },
+      ...(refreshable ? { refreshCredential: async () => ({ value: { accessToken: 'rotated-credential' } }) } : {}),
       async createRuntime() {
         if (breakRuntime) throw new Error('runtime is broken');
         return {
@@ -167,6 +173,27 @@ test('keeps reporting the quota capability when the provider runtime is unavaila
     const person = providers.find((provider: { id: string }) => provider.id === 'person');
     expect(person?.state.status).toBe('unavailable');
     expect(person?.hasQuota).toBe(true);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('reports the credential refresh capability on the provider summary', async () => {
+  const fixture = await createQuotaFixture({ refreshable: true });
+  try {
+    const { providers } = await (await fixture.routes.request('/providers')).json();
+    expect(providers.find((provider: { id: string }) => provider.id === 'person')?.canRefreshCredential).toBe(true);
+    expect(providers.find((provider: { id: string }) => provider.id === 'plain')?.canRefreshCredential).toBe(false);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('reports no credential refresh capability when the plugin does not declare one', async () => {
+  const fixture = await createQuotaFixture();
+  try {
+    const { providers } = await (await fixture.routes.request('/providers')).json();
+    expect(providers.find((provider: { id: string }) => provider.id === 'person')?.canRefreshCredential).toBe(false);
   } finally {
     fixture.cleanup();
   }

@@ -354,3 +354,40 @@ async function adapterFrom(
   if (registered === undefined) throw new Error('Google Antigravity OAuth adapter was not registered');
   return registered;
 }
+
+test('refreshCredential exchanges an unexpired credential instead of returning it unchanged', async () => {
+  let exchanges = 0;
+  const adapter = await adapterFrom(
+    createGoogleAntigravityPlugin(undefined, {
+      now: () => 1_000,
+      fetch: async () => {
+        exchanges += 1;
+        return Response.json({ access_token: 'new-access', expires_in: 60, token_type: 'Bearer' });
+      },
+    }),
+  );
+  const credential: GoogleAntigravityCredential = {
+    accessToken: 'old-access',
+    refreshToken: 'old-refresh',
+    expiresAt: Number.MAX_SAFE_INTEGER,
+    email: 'person@example.com',
+    projectId: 'project-1',
+  };
+
+  const result = await adapter.refreshCredential!({
+    credential,
+    options: {},
+    signal: new AbortController().signal,
+  });
+
+  expect(exchanges).toBe(1);
+  expect(result.value).toEqual({
+    accessToken: 'new-access',
+    refreshToken: 'old-refresh',
+    expiresAt: 61_000,
+    tokenType: 'Bearer',
+    email: 'person@example.com',
+    projectId: 'project-1',
+  });
+  expect(result.metadata).toEqual({ accountLabel: 'person@example.com', expiresAt: 61_000 });
+});

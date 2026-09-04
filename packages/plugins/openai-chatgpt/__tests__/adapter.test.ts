@@ -214,6 +214,34 @@ describe('OpenAI ChatGPT plugin', () => {
     expect(result).toMatchObject({ fingerprint: 'explicit-account', expiresAt: 0 });
     expect(result.credentials).not.toHaveProperty('idToken');
   });
+
+  test('refreshCredential exchanges an unexpired credential instead of returning it unchanged', async () => {
+    const adapter = await adapterFrom(openAIChatGPTPlugin);
+    const accessToken = buildJwt({ chatgpt_account_id: 'account-123', email: 'person@example.com' });
+    let exchanges = 0;
+    globalThis.fetch = async (_input, init) => {
+      exchanges += 1;
+      expect(new URLSearchParams(String(init?.body)).get('grant_type')).toBe('refresh_token');
+      return Response.json({ access_token: accessToken, expires_in: 900 });
+    };
+
+    const result = await adapter.refreshCredential!({
+      credential: {
+        accessToken: 'stale-access',
+        accountId: 'account-123',
+        expiresAt: Number.MAX_SAFE_INTEGER,
+        refreshToken: 'refresh-token',
+        email: 'person@example.com',
+      },
+      options: {},
+      signal: new AbortController().signal,
+    });
+
+    expect(exchanges).toBe(1);
+    expect(result.value).toMatchObject({ accessToken, refreshToken: 'refresh-token', email: 'person@example.com' });
+    expect(result.metadata?.accountLabel).toBe('person@example.com');
+    expect(result.metadata?.expiresAt).toBe((result.value as { expiresAt: number }).expiresAt);
+  });
 });
 
 async function adapterFrom(descriptor: PluginDescriptor): Promise<OAuthAdapter<Record<string, never>, unknown>> {

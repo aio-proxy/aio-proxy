@@ -28,6 +28,7 @@ import { createAccountRemovalCoordinator } from '../account-removal';
 import { CatalogScheduler } from '../catalog-scheduler';
 import type { ConfigStore } from '../config-store';
 import { watchConfigFile } from '../config-watcher';
+import { createOAuthCredentialRefresher } from '../credential-refresh';
 import { createDashboardEventHub } from '../dashboard-events';
 import { createFifoQueue } from '../fifo-queue';
 import { LogicalSessionStore } from '../logical-session-store';
@@ -183,7 +184,7 @@ async function initializeServerState(
   runtime.manager = createSnapshotManager(initial);
   const manager = runtime.manager;
   runtime.managerReady = true;
-  const { oauthQuota, quotaCache } = createQuotaServices(runtime, manager);
+  const { oauthQuota, oauthCredentialRefresh, quotaCache } = createQuotaServices(runtime, manager);
   runtime.accountRemovals = createAccountRemovalCoordinator({
     file: configFile,
     repository,
@@ -264,6 +265,7 @@ async function initializeServerState(
     cooldown,
     modelRouting,
     oauthQuota,
+    oauthCredentialRefresh,
     quotaCache,
     oauthLoginSessions,
     pluginControlPlane,
@@ -279,18 +281,22 @@ async function initializeServerState(
 
 // The cache is published onto the runtime so `commitConfig` can invalidate the entries of Providers
 // whose configuration changed; everything in it is keyed by Provider ID alone.
+// Called exactly once per server: the refresher's per-Provider-ID serialization lives in a closure,
+// so a second instance would mean a second queue and two clicks could race the same credential.
 function createQuotaServices(runtime: ServerRuntime, manager: SnapshotManager) {
-  const oauthQuota = createOAuthQuotaOperations({
+  const dependencies = {
     acquireSnapshot: manager.acquire,
     repository: runtime.repository,
     diagnostics: runtime.diagnostics,
     logger: runtime.pluginLogger,
     onDiagnosticChanged: () => queueRebuild(runtime),
-  });
+  };
+  const oauthQuota = createOAuthQuotaOperations(dependencies);
+  const oauthCredentialRefresh = createOAuthCredentialRefresher(dependencies);
   const quotaCache = createOAuthQuotaCache(oauthQuota);
   runtime.quotaCache = quotaCache;
   runtime.quotaIdentity = createQuotaIdentityTracker(quotaCache, manager.current() as Snapshot);
-  return { oauthQuota, quotaCache };
+  return { oauthQuota, oauthCredentialRefresh, quotaCache };
 }
 
 function createStatePluginControlPlane(runtime: ServerRuntime, configStore: ConfigStore) {

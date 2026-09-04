@@ -50,6 +50,7 @@ describe('plugin and provider diagnostics', () => {
       clientModels: ['gpt-4o'],
       protocols: [],
       hasQuota: true,
+      canRefreshCredential: false,
       state: { status: 'ready', catalog: 'stale' },
       plugin: '@aio-proxy/plugin-github-copilot',
       capability: 'default',
@@ -72,6 +73,7 @@ describe('plugin and provider diagnostics', () => {
       clientModels: [],
       protocols: [],
       hasQuota: false,
+      canRefreshCredential: false,
       state: { status: 'unavailable', diagnostic: diagnostic('PROVIDER_CONFIG_INVALID') },
     } as const;
 

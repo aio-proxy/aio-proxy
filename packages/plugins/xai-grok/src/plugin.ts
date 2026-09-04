@@ -8,7 +8,7 @@ import {
 } from '@aio-proxy/plugin-sdk';
 
 import { discoverXAIGrokModels, initialXAIGrokCatalogFallback, XAI_GROK_CATALOG_TTL_MS } from './catalog';
-import { loginXAIGrok, type XAIGrokOAuthOptions, xaiLoginResult } from './oauth';
+import { loginXAIGrok, refreshXAIGrokCredential, type XAIGrokOAuthOptions, xaiLoginResult } from './oauth';
 import { readXAIGrokQuota } from './quota';
 import { createXAIGrokRuntime } from './runtime/index';
 import { credentialSchema, type XAIGrokCredential } from './schema';
@@ -98,6 +98,14 @@ export function createXAIGrokPlugin(
           ...dependencies,
           ...(dependencies.fetch === undefined && context.fetch !== undefined ? { fetch: context.fetch } : {}),
         }),
+    },
+    refreshCredential: async ({ credential, signal, fetch }) => {
+      const refreshed = await refreshXAIGrokCredential(credential, {
+        ...dependencies,
+        signal,
+        ...(dependencies.fetch === undefined && fetch !== undefined ? { fetch } : {}),
+      });
+      return { value: refreshed, metadata: { expiresAt: refreshed.expiresAt } };
     },
     createRuntime: (context) => createXAIGrokRuntime(context, dependencies),
   };

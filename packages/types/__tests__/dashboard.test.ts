@@ -12,6 +12,7 @@ const unavailableProvider = (suggestedCommand?: string): DashboardProviderSummar
   clientModels: [],
   protocols: [],
   hasQuota: false,
+  canRefreshCredential: false,
   state: {
     status: 'unavailable',
     diagnostic: {
