@@ -72,3 +72,33 @@ test('a failed refresh announces the failure without surfacing the error code', 
   await waitFor(() => expect(result.current.isError).toBe(true));
   expect(mocks.toastAdd).toHaveBeenCalledWith({ type: 'error', title: 'Failed to refresh credential' });
 });
+
+test('a failed refresh still refetches the Provider list', async () => {
+  // A non-retryable exchange failure persists a reauthentication diagnostic server-side, which the
+  // Provider card renders. Without a refetch the row keeps reporting ready and only the toast hints
+  // that anything happened.
+  const wrapper = setup();
+  mocks.refreshProviderCredential.mockRejectedValue(new Error('OAUTH_CREDENTIAL_REFRESH_FAILED'));
+  let refetches = 0;
+  const { result } = renderHook(
+    () => ({
+      refresh: useProviderCredentialRefresh(),
+      list: useQuery({
+        queryKey: queryKeys.providers,
+        queryFn: () => {
+          refetches += 1;
+          return Promise.resolve({ providers: [] });
+        },
+      }),
+    }),
+    { wrapper },
+  );
+
+  await waitFor(() => expect(result.current.list.isSuccess).toBe(true));
+  expect(refetches).toBe(1);
+
+  act(() => result.current.refresh.mutate('openai.main'));
+
+  await waitFor(() => expect(result.current.refresh.isError).toBe(true));
+  await waitFor(() => expect(refetches).toBe(2));
+});
