@@ -11,6 +11,8 @@ export const useReloadMutation = () => {
     onSuccess: async () => {
       // A reload commits the whole config snapshot, so every config-backed cache is stale.
       // `providers`, `plugins`, and `overview` are prefixes of their own per-entity keys.
+      // `auth` belongs here too: the reloaded file can add or drop `server.password`, and
+      // once authentication is disabled no 401 will correct a stale authenticated session.
       await Promise.all(
         [
           queryKeys.settings,
@@ -19,6 +21,7 @@ export const useReloadMutation = () => {
           queryKeys.routingModels,
           queryKeys.oauthCapabilities,
           queryKeys.overview,
+          queryKeys.auth,
         ].map((queryKey) => queryClient.invalidateQueries({ queryKey })),
       );
     },

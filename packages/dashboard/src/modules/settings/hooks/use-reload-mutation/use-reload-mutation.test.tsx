@@ -46,6 +46,9 @@ test('refreshes every config-backed query after a successful reload', async () =
     // A reload can add or drop OAuth-capable plugins and rewrite the overview's provider set.
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: queryKeys.oauthCapabilities });
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: queryKeys.overview });
+    // A reloaded file can drop `server.password`; without this the logout control lingers,
+    // and the settings refetch succeeds so no 401 ever corrects the cached session.
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: queryKeys.auth });
   });
 });
 
