@@ -16,8 +16,9 @@ const QUOTA_PATH = '/v1internal:retrieveUserQuotaSummary';
 // The server aborts the whole read at 15s (READ_TIMEOUT_MS in
 // packages/server/src/plugin-quota/cache/quota-cache.ts, module-private so it cannot be imported).
 // Budget below that: the credential refresh ahead of the walk has no timeout of its own, and the
-// per-attempt share is divided by the actual base count so a custom baseURL — a single base — is
-// not cut short by a divisor meant for the three-base default list.
+// per-attempt share is divided by the actual base count, so a custom baseURL — a single base — is
+// not cut short by a divisor sized for the default list, and the split follows that list if it
+// changes length again.
 const QUOTA_WALK_BUDGET_MS = 12_000;
 
 const PLAN_PATH = '/v1internal:loadCodeAssist';
