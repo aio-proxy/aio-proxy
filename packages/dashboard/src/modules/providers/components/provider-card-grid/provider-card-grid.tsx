@@ -3,7 +3,7 @@ import type { DashboardProviderSummary } from '@aio-proxy/types';
 import { Button } from '@aio-proxy/ui/components/button';
 import { Empty } from '@aio-proxy/ui/components/empty';
 import { useQuery } from '@tanstack/react-query';
-import { Check, GripVertical, Plus, X } from 'lucide-react';
+import { Check, GripVertical, X } from 'lucide-react';
 import type React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
@@ -11,11 +11,7 @@ import { resolveDashboardText } from '@/lib/localized-text';
 
 import { useProviderRoutingMutation } from '../../hooks/use-provider-routing-mutation';
 import { emptyProviderListFilters, visibleProviders } from '../../lib/provider-list-view';
-import {
-  addProviderRoutingTier,
-  buildProviderRoutingBoard,
-  providerRoutingMutation,
-} from '../../lib/provider-routing-board';
+import { buildProviderRoutingBoard, providerRoutingMutation } from '../../lib/provider-routing-board';
 import { providerHealthQueryOptions } from '../../services/provider-health-service';
 import { providerPluginPresentationsQueryOptions } from '../../services/provider-plugin-labels';
 import { providerUsageQueryOptions, zeroProviderUsage } from '../../services/provider-usage-service';
@@ -39,7 +35,6 @@ export const ProviderCardGrid: React.FC<ProviderCardGridProps> = ({ providers, r
     readonly savedBoard: ReturnType<typeof buildProviderRoutingBoard>;
     readonly revision: string;
   } | null>(null);
-  const tierSequence = useRef(0);
   const deleteDialogRef = useRef<DeleteProviderDialogRef>(null);
   const routingMutation = useProviderRoutingMutation();
   const usageQuery = useQuery(providerUsageQueryOptions());
@@ -110,23 +105,6 @@ export const ProviderCardGrid: React.FC<ProviderCardGridProps> = ({ providers, r
             {m['dashboard.providers.routing.manage']()}
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              data-testid="provider-routing-add-tier"
-              onClick={() => {
-                tierSequence.current += 1;
-                setDraft((current) =>
-                  current === null
-                    ? current
-                    : { ...current, board: addProviderRoutingTier(current.board, `tier:new:${tierSequence.current}`) },
-                );
-              }}
-            >
-              <Plus />
-              {m['dashboard.providers.routing.add_tier']()}
-            </Button>
             <Button
               type="button"
               size="sm"

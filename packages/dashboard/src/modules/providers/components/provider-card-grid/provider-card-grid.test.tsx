@@ -183,10 +183,8 @@ test('management mode replaces full cards with compact routing rows and restores
   expect(screen.queryByTestId(/^provider-row-/u)).not.toBeInTheDocument();
   expect(screen.queryByTestId('provider-card-models-count')).not.toBeInTheDocument();
   expect(screen.getByTestId('provider-routing-save')).toBeDisabled();
-
-  fireEvent.click(screen.getByTestId('provider-routing-add-tier'));
-  expect(screen.getByTestId('provider-tier-3')).toBeInTheDocument();
-  expect(screen.getByTestId('provider-routing-save')).toBeDisabled();
+  expect(screen.queryByTestId('provider-routing-add-tier')).not.toBeInTheDocument();
+  expect(screen.getAllByTestId(/^provider-routing-slot-/u)).toHaveLength(3);
 
   fireEvent.click(screen.getByTestId('provider-routing-cancel'));
   expect(screen.getByTestId('provider-search')).toBeInTheDocument();
