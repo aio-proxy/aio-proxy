@@ -209,6 +209,46 @@ describe('PUT /providers/routing', () => {
     expect(onDisk.providers['delta']).toBeDefined();
   });
 
+  test('rejects a save whose values predate a routing edit made directly on disk', async () => {
+    const before = DashboardProvidersResponseSchema.parse(await (await routes.request('/providers')).json());
+
+    // The Provider set is unchanged; only its routing values moved, and the watcher has not reloaded.
+    // The revision must describe the values the GET actually shipped, so this save is stale rather
+    // than a silent overwrite of the external edit.
+    writeFileSync(
+      configPath,
+      JSON.stringify(
+        {
+          ...authored,
+          providers: {
+            ...authored.providers,
+            alpha: { ...authored.providers.alpha, priority: 5, weight: 1234 },
+          },
+        },
+        null,
+        2,
+      ),
+    );
+
+    const routing = await routes.request('/providers/routing', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        revision: before.routingRevision,
+        providers: {
+          alpha: { priority: 10, weight: 5000 },
+          beta: { priority: 10, weight: 5000 },
+        },
+      }),
+    });
+
+    expect(routing.status).toBe(409);
+    expect(await routing.json()).toEqual({ error: 'stale_revision' });
+    const onDisk = JSON.parse(readFileSync(configPath, 'utf8')) as typeof authored;
+    expect(onDisk.providers.alpha.priority).toBe(5);
+    expect(onDisk.providers.alpha.weight).toBe(1234);
+  });
+
   test('reports the revision of the routing values it committed', async () => {
     const before = DashboardProvidersResponseSchema.parse(await (await routes.request('/providers')).json());
     const response = await routes.request('/providers/routing', {

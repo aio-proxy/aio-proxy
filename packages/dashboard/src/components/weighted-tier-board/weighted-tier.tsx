@@ -4,7 +4,7 @@ import { useDragOperation, useDroppable } from '@dnd-kit/react';
 import { useSortable } from '@dnd-kit/react/sortable';
 import type React from 'react';
 
-import { WEIGHTED_TIER_ORDER, weightedTierListId } from '@/lib/weighted-tier-layout';
+import { WEIGHTED_TIER_ORDER, weightedTierListId, weightedTierSortableId } from '@/lib/weighted-tier-layout';
 
 import type { WeightedTierBoardItem, WeightedTierBoardLabels } from './weighted-tier-board';
 import { WeightedTierHeader } from './weighted-tier-header';
@@ -34,7 +34,8 @@ export const WeightedTier = <TItem,>({
   const { source } = useDragOperation();
   const collapsed = source?.type === 'tier';
   const { ref, handleRef, isDragging } = useSortable({
-    id,
+    // Namespaced so a tier never collides with an item whose id equals the tier's own.
+    id: weightedTierSortableId(id),
     index,
     group: WEIGHTED_TIER_ORDER,
     type: 'tier',

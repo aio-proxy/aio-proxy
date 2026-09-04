@@ -5,7 +5,7 @@ import { validator } from 'hono/validator';
 import { OAuthQuotaCapabilityUnavailableError } from '../../plugin-quota';
 import type { ServerState } from '../../server-state';
 import { providerPackageQueryValidator, providerPackageStatus } from '../provider-package-metadata';
-import { providerRoutingRevision, validProviderIds } from '../provider-routing-mutation';
+import { providerRoutingRevision, providerRoutingValues } from '../provider-routing-mutation';
 
 const probeKey = 'probe';
 
@@ -23,15 +23,13 @@ export const createDashboardProviderReadRoutes = (state: ServerState) =>
     .get('/providers', async (context) => {
       const filter = context.req.query('filter');
       const probe = context.req.query('probe') === 'true';
-      // The revision is read before the summaries so a routing commit landing between the two reads
-      // makes the revision stale rather than newer than the values shipped with it. A stale revision
-      // costs the client one rejected save; a future one would let it silently revert that commit.
-      // Its Provider set is derived from the file the same way the save derives it, so an external
-      // edit the watcher has not picked up yet still produces a revision the save will compare against.
-      const rawProviders =
-        state.configStore.file === undefined ? {} : ((await state.configStore.file.read())['providers'] ?? {});
-      const authoredProviders = isPlainObject(rawProviders) ? rawProviders : {};
-      const routingRevision = providerRoutingRevision(authoredProviders, validProviderIds(authoredProviders));
+      // Both the revision and the summaries come from the running config, so they always describe one
+      // snapshot. Reading the revision off disk instead would make it *newer* than the values shipped
+      // with it while the watcher lags an external edit, and the client's next save would pass the
+      // revision check and silently overwrite that edit. Pairing them means the same window costs one
+      // rejected `stale_revision` instead. The save re-derives the set from the record it commits, so
+      // a Provider only present on disk still surfaces as `provider_set_changed`.
+      const routingRevision = providerRoutingRevision(state.currentConfig().providers.map(providerRoutingValues));
       const providers = await state.providerSummaries({ filter, probe });
       return context.json({ providers, routingRevision });
     })

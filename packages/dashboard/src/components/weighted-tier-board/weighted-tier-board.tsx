@@ -8,6 +8,7 @@ import {
   WEIGHTED_TIER_HIGH,
   projectWeightedTierLayout,
   weightedTierAfterSlotId,
+  weightedTierIdFromSortable,
   weightedTierListId,
   weightedTierLists,
   weightedTierParkingId,
@@ -114,7 +115,8 @@ export const WeightedTierBoard = <TItem,>({
   const itemsFor = (ids: readonly string[]): WeightedTierBoardItem<TItem>[] =>
     ids.flatMap((id) => (itemsById.get(id) === undefined ? [] : [itemsById.get(id)!]));
   const previewFor = (listId: string): { readonly index: number; readonly itemCount: number } | undefined => {
-    const preview = tiersById.get(lists[listId]?.[0] ?? '');
+    // A slot holds the dragged sortable id; only a tier's translates back to a tier.
+    const preview = tiersById.get(weightedTierIdFromSortable(lists[listId]?.[0] ?? '') ?? '');
     return preview === undefined ? undefined : { index: preview.index, itemCount: preview.tier.items.length };
   };
 
@@ -142,7 +144,11 @@ export const WeightedTierBoard = <TItem,>({
         dragListsRef.current = null;
         setDragLists(null);
         if (event.canceled || (source?.type !== 'item' && source?.type !== 'tier')) return;
-        const operation: WeightedTierOperation = { type: source.type, id: String(source.id) };
+        // dnd-kit reports the namespaced sortable id for a tier; the layout speaks domain tier IDs.
+        const sourceId = String(source.id);
+        const tierId = source.type === 'tier' ? weightedTierIdFromSortable(sourceId) : undefined;
+        if (source.type === 'tier' && tierId === undefined) return;
+        const operation: WeightedTierOperation = { type: source.type, id: tierId ?? sourceId };
         const next = projectWeightedTierLayout(snapshot.current, nextLists, operation);
         if (next !== snapshot.current) onLayoutChange(next, operation);
       }}

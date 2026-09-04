@@ -33,10 +33,10 @@ import {
 } from './provider-mutation';
 import {
   applyProviderRoutingMutation,
+  authoredProviderRouting,
   ProviderRoutingSetChangedError,
   providerRoutingRevision,
   ProviderRoutingStaleRevisionError,
-  validProviderIds,
 } from './provider-routing-mutation';
 
 const ProviderInstallRequestSchema = z.object({
@@ -104,15 +104,16 @@ export const createDashboardProviderWriteRoutes = (state: ServerState) =>
       let committed: { readonly revision: string } | undefined;
       try {
         await state.configStore.mutateProviders((record) => {
-          // The Provider set comes from the record this transaction holds, not the runtime snapshot:
-          // that snapshot lags both an earlier queued mutation and an external edit to the file, and
-          // either would let a save commit a layout that never covered the Provider it added.
-          const providerIds = validProviderIds(record);
-          const next = applyProviderRoutingMutation(record, context.req.valid('json'), providerIds);
+          // Routing comes from the record this transaction holds, not the runtime snapshot: that
+          // snapshot lags both an earlier queued mutation and an external edit to the file, and either
+          // would let a save commit a layout that never covered the Provider it added. Values are the
+          // parsed ones, so the digest matches the one `GET /providers` built from the running config.
+          const routing = authoredProviderRouting(record);
+          const next = applyProviderRoutingMutation(record, context.req.valid('json'), routing);
           // The revision describes the record this transaction commits. Reading it back from the file
           // afterwards could pair the client's cached values with a concurrent commit's revision,
           // letting its next save overwrite that change instead of being rejected as stale.
-          committed = { revision: providerRoutingRevision(next, providerIds) };
+          committed = { revision: providerRoutingRevision(authoredProviderRouting(next)) };
           return next;
         });
       } catch (error) {
