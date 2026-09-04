@@ -675,7 +675,7 @@
         "open_provider": "프로바이더 {id} 열기"
       },
       "routing": {
-        "manage": "단계 관리",
+        "manage": "우선순위 관리",
         "add_tier": "단계 추가",
         "tier": "{tier}단계",
         "provider_count": "프로바이더 {count}개",

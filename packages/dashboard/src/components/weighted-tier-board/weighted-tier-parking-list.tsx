@@ -4,11 +4,11 @@ import type React from 'react';
 
 import { weightedTierParkingId } from '@/lib/weighted-tier-layout';
 
-import type { WeightedTierParkingList } from './weighted-tier-board';
+import type { WeightedTierParkingList as WeightedTierParkingListModel } from './weighted-tier-board';
 import { WeightedTierItem } from './weighted-tier-item';
 
 interface WeightedTierParkingListProps<TItem> {
-  readonly list: WeightedTierParkingList<TItem>;
+  readonly list: WeightedTierParkingListModel<TItem>;
   readonly renderItem: (value: TItem) => React.ReactNode;
   readonly writable: boolean;
 }

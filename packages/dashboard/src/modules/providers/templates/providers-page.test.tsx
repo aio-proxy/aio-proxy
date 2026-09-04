@@ -80,6 +80,24 @@ describe('providers page', () => {
     expect(action).not.toHaveAttribute('params');
   });
 
+  test('opens Provider tier management from the page action and returns on cancel', () => {
+    queryMocks.providers.providers = [providerStub({ id: 'alpha' })];
+    render(<ProvidersPage />);
+
+    const manage = screen.getByTestId('provider-routing-manage');
+    fireEvent.click(manage);
+
+    expect(screen.queryByTestId('provider-search')).not.toBeInTheDocument();
+    expect(screen.getByTestId('provider-routing-item-alpha')).toBeInTheDocument();
+    expect(screen.queryByTestId('provider-routing-manage')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('provider-routing-cancel'));
+
+    expect(screen.getByTestId('provider-search')).toBeInTheDocument();
+    expect(screen.getByTestId('provider-routing-manage')).toBeInTheDocument();
+    expect(screen.getByTestId('provider-row-alpha')).toBeInTheDocument();
+  });
+
   test('renders each Provider as a card whose name links straight to its editor', () => {
     queryMocks.providers.providers = [
       providerStub({ id: 'carpool', name: 'Carpool', kind: 'api', clientModels: ['model-1'] }),
