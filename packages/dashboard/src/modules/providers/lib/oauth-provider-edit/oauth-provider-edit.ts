@@ -12,11 +12,6 @@ export interface OAuthProviderEditValues {
   readonly id: string;
   readonly name?: string | undefined;
   readonly enabled: boolean;
-  // The board owns these now, not this editor. They still travel with the patch because core rebuilds
-  // the whole oauth entry from it and reads an omitted routing field as a clear, so a reauthorization
-  // would otherwise reset priority to 0 and unpark a weight-zero Provider.
-  readonly priority?: number | undefined;
-  readonly weight?: number | undefined;
   readonly proxy?: OAuthProviderMutationBody['proxy'];
   readonly alias?: AuthoredOAuthAlias | undefined;
   readonly excludedModels?: readonly string[] | undefined;
@@ -39,8 +34,6 @@ export const oauthProviderEditAction = (
   const providerPatch = {
     ...(name === undefined || name === '' ? {} : { name }),
     enabled: values.enabled,
-    ...(values.priority === undefined ? {} : { priority: values.priority }),
-    ...(values.weight === undefined ? {} : { weight: values.weight }),
     ...(values.proxy === undefined ? {} : { proxy: values.proxy }),
     alias: values.alias ?? {},
     excludedModels: [...(values.excludedModels ?? [])],

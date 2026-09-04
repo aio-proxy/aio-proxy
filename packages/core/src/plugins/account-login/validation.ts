@@ -159,11 +159,16 @@ export function providerEntry(
   patch?: OAuthProviderPatch,
 ): PlainRecord {
   // Retention is per-field: a patch that omits a field keeps the stored value, because a re-login or a
-  // partial edit surface must not delete config the user authored elsewhere. `weight` is the deliberate
-  // exception — `{ weight: undefined }` is `{}` after JSON, so an omitted key is the only "absent" signal
-  // a caller has, and retaining it would make a cleared weight unreachable over the wire. `name` gets the
-  // same treatment via a blank-after-trim value, its own surviving clear signal (see the entry spread
-  // below).
+  // partial edit surface must not delete config the user authored elsewhere. `name` is the deliberate
+  // exception, via a blank-after-trim value — its own clear signal that survives JSON (see the entry
+  // spread below).
+  //
+  // `priority` and `weight` follow the ordinary rule and have no clear signal at all: the dashboard's
+  // routing board owns them now and commits them through its own route, so the only surface that could
+  // ask for a clear is gone. Retaining them here is what makes that safe — this entry is rebuilt inside
+  // the login transaction, so it reads the value authored as of the commit, whereas a client forwarding
+  // its own snapshot would replay whatever the board held when the editor was opened, undoing a tier
+  // move made from another tab and reviving a Provider parked at weight zero.
   //
   // `replaceProvider` in server's dashboard-routes/provider-mutation answers the same question for the
   // config-provider PUT path, with a much shorter field list, and the two are deliberately not unified.
@@ -172,8 +177,8 @@ export function providerEntry(
   // and the exceptions are enumerated instead. Same rule, opposite defaults, because the contracts
   // differ — a shared helper would have to hide that.
   const enabled = patch?.enabled ?? existing?.['enabled'] ?? true;
-  const priority = patch === undefined ? existing?.['priority'] : patch.priority;
-  const weight = patch === undefined ? existing?.['weight'] : patch.weight;
+  const priority = patch?.priority ?? existing?.['priority'];
+  const weight = patch?.weight ?? existing?.['weight'];
   const name = patch?.name === undefined ? existing?.['name'] : patch.name;
   const alias = patch?.alias ?? existing?.['alias'];
   const excludedModels =

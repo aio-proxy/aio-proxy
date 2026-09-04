@@ -744,30 +744,8 @@ const renderOAuthEditWithTwoAliases = () =>
     onSessionIdChange: rs.fn(),
   });
 
-// The routing board owns priority and weight, so the editor form no longer holds them — the stored
-// entry is the only source left. Core rebuilds the whole oauth entry from this patch and reads an
-// omitted routing field as a clear, so without this the login that completes a reauthorization unparks
-// a Provider the user deliberately parked at weight 0.
-test('oauth reauthorize carries the stored routing values it no longer edits', async () => {
-  renderPage({
-    mode: ProviderFormMode.Edit,
-    kind: ProviderKind.OAuth,
-    providerId: 'existing',
-    provider: { ...oauthProvider, priority: 20, weight: 0 } as OAuthProvider,
-    oauth,
-    initial: { id: 'existing', enabled: true, models: [] },
-    onSessionIdChange: rs.fn(),
-  });
-
-  fireEvent.click(reauthorizeButton());
-
-  await waitFor(() => expect(mocks.start).toHaveBeenCalled());
-  expect(mocks.start.mock.calls[0]?.[0]).toEqual(
-    expect.objectContaining({ providerPatch: expect.objectContaining({ priority: 20, weight: 0 }) }),
-  );
-});
-
-// Reauthorize is a second caller of save(), so it has to be refused the same way Save is: the click is// gated on the same predicate save() returns on, and the refusal is visible on the button rather than a
+// Reauthorize is a second caller of save(), so it has to be refused the same way Save is: the click is
+// gated on the same predicate save() returns on, and the refusal is visible on the button rather than a
 // silent no-op. A test that only clicked Save would stay green against the data-loss path this pin is for.
 test('duplicate alias names stop reauthorize from starting a mutation', async () => {
   renderOAuthEditWithTwoAliases();

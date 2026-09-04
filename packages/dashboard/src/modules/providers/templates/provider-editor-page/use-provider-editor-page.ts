@@ -87,25 +87,10 @@ const startCreateAuthorization = (
   );
 };
 
-/**
- * The routing values already stored for this Provider.
- *
- * The routing board owns priority and weight now, so the editor form no longer carries them — but
- * core rebuilds the whole oauth entry from the patch and reads an omitted routing field as a clear,
- * so a reauthorization has to carry the stored values back or it resets priority to 0 and unparks a
- * weight-zero Provider. Defaults stay omitted: clearing them lands on the same effective value
- * without stamping a dead key into the user's config.
- */
-const storedRouting = (provider: OAuthProvider | undefined) => ({
-  ...(provider?.priority === undefined || provider.priority === 0 ? {} : { priority: provider.priority }),
-  ...(provider?.weight === undefined || provider.weight === 1 ? {} : { weight: provider.weight }),
-});
-
 const saveOAuthProvider = (
   values: ProviderEditorWire,
   accountValues: AccountFormValues,
   oauth: DashboardOAuthProviderEdit,
-  provider: OAuthProvider | undefined,
   forceReauthorize: boolean,
   updateProvider: (input: { id: string; body: ProviderMutationBody }) => void,
   startReauthorize: (input: DashboardOAuthSessionStart, options: { onError: () => void }) => void,
@@ -118,7 +103,6 @@ const saveOAuthProvider = (
       id: values.id,
       enabled: values.enabled ?? true,
       transforms: values.transforms as ProviderTransforms | undefined,
-      ...storedRouting(provider),
       ...account,
     },
     oauth.publicValues,
@@ -144,7 +128,6 @@ const saveEditor = (
     readonly accountValues: AccountFormValues;
     readonly capabilities: readonly DashboardOAuthCapability[];
     readonly oauth: DashboardOAuthProviderEdit | undefined;
-    readonly provider: OAuthProvider | undefined;
     readonly providerId: string | undefined;
     readonly initial: ProviderEditorInitial | undefined;
     readonly openPopup: () => void;
@@ -187,7 +170,6 @@ const saveEditor = (
       wireValues,
       ctx.accountValues,
       ctx.oauth,
-      ctx.provider,
       forceReauthorize,
       ctx.updateProvider,
       (input, options) => {
@@ -416,7 +398,6 @@ export const useProviderEditorPage = ({
       accountValues,
       capabilities,
       oauth,
-      provider,
       providerId,
       initial,
       openPopup,

@@ -183,17 +183,20 @@ test('providerEntry treats a whitespace-only patched display name as clearing it
   expect('name' in providerEntry('p', 'c', {}, existing, patch)).toBe(false);
 });
 
-// Weight deliberately keeps the clobbering idiom: `{ weight: undefined }` is `{}` after JSON, so an
-// omitted key is the only "absent" signal the editor's number input has. Retaining here would make a
-// cleared weight unreachable over the wire.
-//
-// Unlike its three siblings in this file, this test passes against the PRE-FIX code, and that is the
-// point: it is a guard, not a regression witness. The retention fix that made the others go green must
-// stop at `weight`, so this test exists to redden if a later "finish the job" change extends per-field
-// retention to it. Do not convert it into a failing-first test or delete it as dead coverage.
-test('providerEntry lets a patch clear a stored weight', () => {
-  const existing = { kind: 'oauth', plugin: 'p', capability: 'c', enabled: true, weight: 7 };
+// Weight and priority used to keep a clobbering idiom, on the premise that the editor's number inputs
+// had no "clear" signal other than an omitted key. That premise died with those inputs: the routing
+// board owns both fields now and commits them through its own route, so the only patch that omits them
+// is a re-login carrying an unrelated edit. Clobbering there resets priority to 0 and — worse — revives
+// a Provider the user deliberately parked at weight 0, the moment a reauthorization completes. The
+// editor must not send its own snapshot back instead: it would be stale the moment the board moved the
+// Provider from another tab, whereas `existing` here is read inside the login transaction.
+test('providerEntry retains stored routing values a patch does not carry', () => {
+  const existing = { kind: 'oauth', plugin: 'p', capability: 'c', enabled: true, priority: 20, weight: 0 };
   const patch = { name: undefined, enabled: true, weight: undefined, alias: undefined };
-  expect('weight' in providerEntry('p', 'c', {}, existing, patch)).toBe(false);
-  expect(providerEntry('p', 'c', {}, existing, { ...patch, weight: 3 })['weight']).toBe(3);
+  expect(providerEntry('p', 'c', {}, existing, patch)).toMatchObject({ priority: 20, weight: 0 });
+  // A patch that does carry them still wins — the CLI and the routing route both reach this path.
+  expect(providerEntry('p', 'c', {}, existing, { ...patch, priority: 1, weight: 3 })).toMatchObject({
+    priority: 1,
+    weight: 3,
+  });
 });
