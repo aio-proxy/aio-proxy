@@ -8,6 +8,7 @@ import { DataTableControls } from '@/components/data-table/data-table-controls';
 import { Pagination } from '@/components/data-table/pagination';
 import { tableHead } from '@/components/data-table/table-head';
 import { type DataTableFeatures, useDataTable } from '@/hooks/use-data-table';
+import { formatDuration } from '@/lib/format-duration';
 
 import type { OverviewDiagnosticsData } from '../../services/overview-service';
 
@@ -41,9 +42,7 @@ export const ProviderHealthTable: React.FC<ProviderHealthTableProps> = ({ rows }
         accessorKey: 'p95LatencyMs',
         meta: { label: () => m['dashboard.overview.p95_latency']() },
         header: tableHead(() => m['dashboard.overview.p95_latency']()),
-        cell: ({ getValue }) => (
-          <span className="tabular-nums">{m['dashboard.traces.duration_ms']({ value: Number(getValue()) })}</span>
-        ),
+        cell: ({ getValue }) => <span className="tabular-nums">{formatDuration(Number(getValue()), locale)}</span>,
       },
     ];
   }, [locale]);

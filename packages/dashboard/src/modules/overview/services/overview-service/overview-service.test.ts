@@ -48,7 +48,7 @@ const wireOverview = {
 };
 
 const wireDiagnostics = {
-  providerHealth: [{ providerId: 'first', successRate: 1, p95LatencyMs: 25 }],
+  providerHealth: [{ providerId: 'first', successRate: 1, p95LatencyMs: 25, outputTokensPerSecond: null }],
   topModelCosts: [{ modelId: 'model-a', estimatedCostNanoUsd: '600' }],
 };
 

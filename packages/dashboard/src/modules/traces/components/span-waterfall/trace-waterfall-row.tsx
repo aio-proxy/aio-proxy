@@ -1,7 +1,8 @@
 import { m } from '@aio-proxy/i18n';
 import { Button } from '@aio-proxy/ui/components/button';
 
-import { formatTraceDuration } from '../../lib/trace-formatters';
+import { formatDuration } from '@/lib/format-duration';
+
 import type { layoutTraceSpans } from '../../lib/trace-layout';
 import { TraceStatus } from '../trace-status';
 
@@ -38,7 +39,7 @@ export const TraceWaterfallRow: React.FC<TraceWaterfallRowProps> = ({ row, selec
         />
       </span>
       <TraceStatus item={row} className="justify-end" />
-      <span className="text-right font-mono text-xs tabular-nums">{formatTraceDuration(row.durationMs)}</span>
+      <span className="text-right font-mono text-xs tabular-nums">{formatDuration(row.durationMs)}</span>
     </Button>
   );
 };

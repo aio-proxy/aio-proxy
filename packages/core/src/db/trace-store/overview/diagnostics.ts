@@ -44,6 +44,20 @@ function providerHealth(
       group by provider_id order by provider_id`,
     [range.start.getTime(), range.end.getTime()],
   );
+  // Match Trace throughput: output tokens / end-to-end request time, weighted by duration.
+  // Missing usage and zero-duration requests cannot provide a throughput sample.
+  const throughput = new Map(
+    all<{ providerId: string; outputTokensPerSecond: number }>(
+      db,
+      `select final_provider_id as providerId,
+        1000.0 * total(output_tokens) / total(ended_at - started_at) as outputTokensPerSecond
+      from trace_span where parent_span_id is null and final_provider_id is not null
+        and termination_reason is null and output_tokens >= 0 and ended_at > started_at
+        and ended_at >= ? and ended_at <= ?
+      group by final_provider_id`,
+      [range.start.getTime(), range.end.getTime()],
+    ).map((row) => [row.providerId, row.outputTokensPerSecond]),
+  );
   return rows.map((row) => {
     const durations = (JSON.parse(row.durations) as number[]).sort((left, right) => left - right);
     const successes = parseSqliteInteger(row.successCount);
@@ -52,6 +66,7 @@ function providerHealth(
       providerId: row.providerId,
       successRate: Number(successes) / Number(attempts),
       p95LatencyMs: durations[Math.ceil(durations.length * 0.95) - 1]!,
+      outputTokensPerSecond: throughput.get(row.providerId) ?? null,
     };
   });
 }

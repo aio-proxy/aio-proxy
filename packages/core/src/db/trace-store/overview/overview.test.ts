@@ -18,12 +18,14 @@ type AttemptSeed = {
 type TraceSeed = {
   readonly id: number;
   readonly endedAt?: Date;
+  readonly durationMs?: number;
   readonly modelId?: string;
   readonly requestedModelId?: string;
   readonly attempts: readonly AttemptSeed[];
   readonly terminationReason?: 'failure' | 'cancelled';
   readonly usage?: {
     readonly inputTokens?: number;
+    readonly outputTokens?: number;
     readonly totalTokens?: number;
     readonly cacheReadTokens?: number;
     readonly cacheWriteTokens?: number;
@@ -35,7 +37,7 @@ function seedTrace(store: TraceStore, seed: TraceSeed): void {
   const traceId = seed.id.toString(16).padStart(32, '0');
   const spanId = seed.id.toString(16).padStart(16, '0');
   const endedAt = seed.endedAt ?? NOW;
-  const startedAt = new Date(endedAt.getTime() - 1_000);
+  const startedAt = new Date(endedAt.getTime() - (seed.durationMs ?? 1_000));
   const finalAttempt = seed.attempts.findLast(({ outcome }) => outcome !== 'failure');
   const finalProviderId = finalAttempt?.providerId;
   const finalModelId = seed.modelId ?? 'model';
@@ -400,7 +402,9 @@ test('scopes Provider health and top model costs to the selected range', () => {
     });
 
     const recent = store.overviewDashboardDiagnostics({ range: '24h', now: NOW });
-    expect(recent.providerHealth).toEqual([{ providerId: 'recent-provider', successRate: 1, p95LatencyMs: 100 }]);
+    expect(recent.providerHealth).toEqual([
+      { providerId: 'recent-provider', successRate: 1, p95LatencyMs: 100, outputTokensPerSecond: null },
+    ]);
     expect(recent.topModelCosts).toEqual([{ modelId: 'recent-model', estimatedCostNanoUsd: '2000000000' }]);
 
     const quarter = store.overviewDashboardDiagnostics({ range: '90d', now: NOW });
@@ -442,10 +446,45 @@ test('derives Provider health from failed and successful attempt child spans', (
     }
 
     expect(store.overviewDashboardDiagnostics({ range: '24h', now: NOW }).providerHealth).toEqual([
-      { providerId: 'a', successRate: 0, p95LatencyMs: 300 },
-      { providerId: 'b', successRate: 1, p95LatencyMs: 900 },
-      { providerId: 'c', successRate: 1, p95LatencyMs: 19 },
+      { providerId: 'a', successRate: 0, p95LatencyMs: 300, outputTokensPerSecond: null },
+      { providerId: 'b', successRate: 1, p95LatencyMs: 900, outputTokensPerSecond: null },
+      { providerId: 'c', successRate: 1, p95LatencyMs: 19, outputTokensPerSecond: null },
     ]);
+  });
+});
+
+test('weights Provider throughput by successful request duration and excludes missing or invalid samples', () => {
+  withStore((store) => {
+    const samples: readonly Partial<TraceSeed>[] = [
+      { durationMs: 1_000, usage: { outputTokens: 100 } },
+      { durationMs: 9_000, usage: { outputTokens: 300 } },
+      { durationMs: 100_000 },
+      { durationMs: 0, usage: { outputTokens: 10_000 } },
+      { terminationReason: 'failure', durationMs: 100_000 },
+      { terminationReason: 'cancelled', durationMs: 100_000 },
+      { endedAt: new Date(NOW.getTime() - 25 * 60 * 60 * 1_000), usage: { outputTokens: 10_000 } },
+    ];
+    samples.forEach((sample, index) => {
+      seedTrace(store, {
+        id: index + 1,
+        attempts: [{ providerId: 'measured', durationMs: 100 }],
+        ...sample,
+      });
+    });
+    seedTrace(store, {
+      id: 20,
+      attempts: [{ providerId: 'unknown', durationMs: 100 }],
+    });
+    seedTrace(store, {
+      id: 21,
+      attempts: [{ providerId: 'zero', durationMs: 100 }],
+      usage: { outputTokens: 0 },
+    });
+
+    const rows = store.overviewDashboardDiagnostics({ range: '24h', now: NOW }).providerHealth!;
+    expect(rows.find((row) => row.providerId === 'measured')?.outputTokensPerSecond).toBe(40);
+    expect(rows.find((row) => row.providerId === 'unknown')?.outputTokensPerSecond).toBeNull();
+    expect(rows.find((row) => row.providerId === 'zero')?.outputTokensPerSecond).toBe(0);
   });
 });
 

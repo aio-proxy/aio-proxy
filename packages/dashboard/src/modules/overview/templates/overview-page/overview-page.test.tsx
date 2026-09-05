@@ -67,8 +67,8 @@ const createOverviewData = () => ({
 
 const createDiagnosticsData = () => ({
   providerHealth: [
-    { providerId: 'provider-a', successRate: 0.98, p95LatencyMs: 420 },
-    { providerId: 'provider-b', successRate: 0.75, p95LatencyMs: 980 },
+    { providerId: 'provider-a', successRate: 0.98, p95LatencyMs: 420, outputTokensPerSecond: null },
+    { providerId: 'provider-b', successRate: 0.75, p95LatencyMs: 980, outputTokensPerSecond: null },
   ],
   topModelCosts: [
     { modelId: 'model-a', estimatedCostNanoUsd: 1_500_000_000n },

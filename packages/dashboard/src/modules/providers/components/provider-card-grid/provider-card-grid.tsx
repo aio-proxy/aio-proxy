@@ -11,7 +11,11 @@ import { resolveDashboardText } from '@/lib/localized-text';
 
 import { useProviderRoutingMutation } from '../../hooks/use-provider-routing-mutation';
 import { emptyProviderListFilters, visibleProviders } from '../../lib/provider-list-view';
-import { buildProviderRoutingBoard, providerRoutingMutation } from '../../lib/provider-routing-board';
+import {
+  buildProviderRoutingBoard,
+  providerRoutingMutation,
+  providerTierPercentages,
+} from '../../lib/provider-routing-board';
 import { providerHealthQueryOptions } from '../../services/provider-health-service';
 import { providerPluginPresentationsQueryOptions } from '../../services/provider-plugin-labels';
 import { providerUsageQueryOptions, zeroProviderUsage } from '../../services/provider-usage-service';
@@ -62,7 +66,28 @@ export const ProviderCardGrid: React.FC<ProviderCardGridProps> = ({
     [pluginsQuery.data],
   );
   const visible = useMemo(() => visibleProviders(providers, filters), [providers, filters]);
-  const currentBoard = draft?.board ?? buildProviderRoutingBoard(providers);
+  const defaultBoard = useMemo(() => buildProviderRoutingBoard(providers), [providers]);
+  const routingByProvider = useMemo(
+    () =>
+      new Map(
+        defaultBoard.tiers.flatMap((tier, index) => {
+          const percentages = providerTierPercentages(tier);
+          return tier.items.map(
+            (item) =>
+              [
+                item.providerId,
+                {
+                  tier: index + 1,
+                  share: percentages.get(item.providerId) ?? 0,
+                  parked: item.weight === 0,
+                },
+              ] as const,
+          );
+        }),
+      ),
+    [defaultBoard],
+  );
+  const currentBoard = draft?.board ?? defaultBoard;
   const savedBoard = draft?.savedBoard ?? currentBoard;
   const dirty =
     JSON.stringify(providerRoutingMutation(currentBoard, routingRevision).providers) !==
@@ -181,6 +206,7 @@ export const ProviderCardGrid: React.FC<ProviderCardGridProps> = ({
               <ProviderCard
                 key={provider.id}
                 provider={provider}
+                routing={routingByProvider.get(provider.id)}
                 health={healthQuery.data?.get(provider.id)}
                 usage={
                   usageQuery.data === undefined ? undefined : (usageQuery.data.get(provider.id) ?? zeroProviderUsage)

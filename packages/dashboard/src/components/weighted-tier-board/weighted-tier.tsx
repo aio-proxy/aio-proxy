@@ -59,7 +59,6 @@ export const WeightedTier = <TItem,>({
       data-drop-target={isDropTarget || undefined}
       className={cn(
         'space-y-2 rounded-xl border bg-muted/40 p-3 transition-colors',
-        isDragging && 'opacity-0',
         isDropTarget && 'border-primary bg-primary/5',
       )}
     >
@@ -72,7 +71,7 @@ export const WeightedTier = <TItem,>({
       />
       <div
         className={cn(
-          'grid transition-[grid-template-rows,opacity] duration-150 ease-out motion-reduce:transition-none',
+          'grid transition-[grid-template-rows,opacity] duration-200 ease-out motion-reduce:transition-none',
           collapsed ? 'grid-rows-[0fr] opacity-0' : 'grid-rows-[1fr] opacity-100',
         )}
       >
