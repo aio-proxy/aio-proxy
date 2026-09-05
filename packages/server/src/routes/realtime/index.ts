@@ -8,3 +8,6 @@ export {
 export { CODEX_REALTIME_MODEL, normalizeRealtimeModel } from './model';
 export type { RealtimeCallPin, RealtimeCandidate, RealtimeModelPair } from './provider-select';
 export { pinnedRealtimeCandidate, selectRealtimeCandidates } from './provider-select';
+export type { RealtimeCreateBody } from './create-body';
+export { readRealtimeCreateBody, REALTIME_CREATE_BODY_LIMIT, withUpstreamModel } from './create-body';
+export { isValidCallId, REALTIME_CALL_ID_PATTERN, realtimeError } from './errors';
