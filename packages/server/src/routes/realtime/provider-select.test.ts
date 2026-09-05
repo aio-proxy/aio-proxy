@@ -99,6 +99,21 @@ test('a pin to a now-disabled provider does not resolve', () => {
   ).toBeUndefined();
 });
 
+// A plugin whose realtime materialization failed yields an instance whose
+// `accountId` and `runtimeRevision` still satisfy the pin while `realtime` is gone.
+// Without the transport check the route would hand `undefined.fetch` to the sideband.
+test('a pin to a provider that lost its realtime transport does not resolve', () => {
+  const snapshot = snapshotOf([{ ...realtimeProvider({ id: 'codex' }), realtime: undefined }]);
+
+  expect(
+    pinnedRealtimeCandidate(snapshot, {
+      providerId: 'codex',
+      accountId: 'person@example.com',
+      runtimeRevision: 3,
+    }),
+  ).toBeUndefined();
+});
+
 const transport: RealtimeTransport = {
   models: ['gpt-live-1-codex'],
   fetch: () => Promise.resolve(new Response(null, { status: 204 })),

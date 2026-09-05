@@ -87,6 +87,12 @@ test('the realtime transport injects Codex credentials and never forwards a call
   expect(sent?.get('content-type')).toBe('application/sdp');
 });
 
+// The literal is the cross-package contract: `@aio-proxy/server`'s realtime
+// selection normalizes to the same literal (`CODEX_REALTIME_MODEL` in
+// packages/server/src/routes/realtime/model.ts) and matches with
+// `models.includes(...)`, so drift on either side leaves every realtime request
+// without a candidate provider. The two packages pin it independently because
+// server does not depend on this plugin.
 test('realtime models advertise only the Codex realtime model', () => {
   const realtime = createOpenAIChatGPTRealtime(staticCredentialPort(credential()), {
     fetch: captureFetch([]),

@@ -49,6 +49,11 @@ export function pinnedRealtimeCandidate(
   if (provider.accountId !== pin.accountId || provider.runtimeRevision !== pin.runtimeRevision) return undefined;
   const realtime = provider.realtime;
   if (realtime === undefined) return undefined;
+  // `weight` is reported for `RealtimeCandidate` shape parity only, and has no
+  // consumer here. A pin is session affinity, not traffic allocation: there is no
+  // weight gate, and the model override is deliberately skipped because a pinned
+  // call's provider was already chosen — so this number legitimately differs from
+  // the one `selectRealtimeCandidates` reports for the same provider.
   return {
     provider,
     realtime,
