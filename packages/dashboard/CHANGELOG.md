@@ -1,5 +1,26 @@
 # @aio-proxy/dashboard
 
+## 0.19.0
+
+### Minor Changes
+
+- [#282](https://github.com/aio-proxy/aio-proxy/pull/282) [`d3bec51`](https://github.com/aio-proxy/aio-proxy/commit/d3bec51577cb5e4fbb057b459acbf76acea3b828) Thanks [@baranwang](https://github.com/baranwang)! - Make the Provider editor's catalog button actually re-fetch an OAuth Provider's model list. It only ever re-read the persisted catalog, so until the plugin's TTL expired — six hours for ChatGPT — the button silently redrew the same rows. It now forces a rediscovery upstream, waits for the new catalog to be readable, and reports failures instead of looking like a success. Disabled OAuth Providers can be refreshed this way too; they are still never rediscovered on a timer.
+
+### Patch Changes
+
+- [#276](https://github.com/aio-proxy/aio-proxy/pull/276) [`2e76766`](https://github.com/aio-proxy/aio-proxy/commit/2e7676669a60d42af8d545e8d1614a295fabfae6) Thanks [@baranwang](https://github.com/baranwang)! - Make a quota reset redemption legible while it happens. The redeem button lives inside the quota popup, so its confirmation is now inline — next to the count being spent, instead of behind a second stacked frame that covered the reading the decision is made from. While the redemption is in flight the button is replaced in place by a spinner, so the wait is visible rather than looking like a dead click, and the confirmation cannot be re-offered against a count that is already being spent. Redeeming the last available credit keeps that spinner until the request settles, instead of removing it the moment the refreshed count reaches zero mid-request. The prompt no longer names the Provider the popup header already identifies, and it is announced to whichever button is focused. Focus follows the redemption instead of dropping to the page: onto the spinner for the wait, and back onto the redeem button — or onto the popup, when the last credit leaves no button to return to — whether the redemption completes or is cancelled.
+
+  A redemption can no longer be spent twice. Closing the quota popup and reopening it before the request settled used to present the confirmation again over the stale count, and confirming spent a second credit; the wait is now read from the pending redemption itself, which outlives the popup. An open confirmation is also retracted when a refresh finds the inventory emptied elsewhere, rather than offering a credit that no longer exists.
+
+  Toasts now render above dialogs and sheets instead of being dimmed and blurred by their backdrop, so the confirmation a modal action gives is actually legible. A successful redemption also sets off a burst of confetti from the button that was pressed, because a corner toast behind a modal was too easy to miss for the one irreversible action in the popup. It is skipped for anyone whose system asks for reduced motion.
+
+- Updated dependencies [[`d3bec51`](https://github.com/aio-proxy/aio-proxy/commit/d3bec51577cb5e4fbb057b459acbf76acea3b828), [`2e76766`](https://github.com/aio-proxy/aio-proxy/commit/2e7676669a60d42af8d545e8d1614a295fabfae6)]:
+  - @aio-proxy/server@0.19.0
+  - @aio-proxy/i18n@0.19.0
+  - @aio-proxy/ui@0.19.0
+  - @aio-proxy/plugin-sdk@0.19.0
+  - @aio-proxy/types@0.19.0
+
 ## 0.18.1
 
 ### Patch Changes

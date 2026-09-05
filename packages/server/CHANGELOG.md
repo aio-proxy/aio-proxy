@@ -1,5 +1,21 @@
 # @aio-proxy/server
 
+## 0.19.0
+
+### Minor Changes
+
+- [#282](https://github.com/aio-proxy/aio-proxy/pull/282) [`d3bec51`](https://github.com/aio-proxy/aio-proxy/commit/d3bec51577cb5e4fbb057b459acbf76acea3b828) Thanks [@baranwang](https://github.com/baranwang)! - Make the Provider editor's catalog button actually re-fetch an OAuth Provider's model list. It only ever re-read the persisted catalog, so until the plugin's TTL expired — six hours for ChatGPT — the button silently redrew the same rows. It now forces a rediscovery upstream, waits for the new catalog to be readable, and reports failures instead of looking like a success. Disabled OAuth Providers can be refreshed this way too; they are still never rediscovered on a timer.
+
+### Patch Changes
+
+- Updated dependencies [[`2e76766`](https://github.com/aio-proxy/aio-proxy/commit/2e7676669a60d42af8d545e8d1614a295fabfae6)]:
+  - @aio-proxy/i18n@0.19.0
+  - @aio-proxy/core@0.19.0
+  - @aio-proxy/logger@0.19.0
+  - @aio-proxy/plugin-sdk@0.19.0
+  - @aio-proxy/shared@0.19.0
+  - @aio-proxy/types@0.19.0
+
 ## 0.18.1
 
 ### Patch Changes
