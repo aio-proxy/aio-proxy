@@ -20,10 +20,12 @@ type FixtureOptions = {
   readonly fail?: boolean;
   /** Stored account options that no longer satisfy the plugin schema: a transient preparation failure. */
   readonly brokenOptions?: boolean;
+  /** The inventory endpoint failed, so the snapshot omits `resetCredits` rather than reporting zero. */
+  readonly inventoryUnreadable?: boolean;
 };
 
 async function createQuotaResetFixture(options: FixtureOptions = {}) {
-  const { resettable = true, credits = 1, fail = false, brokenOptions = false } = options;
+  const { resettable = true, credits = 1, fail = false, brokenOptions = false, inventoryUnreadable = false } = options;
   const dir = mkdtempSync(join(tmpdir(), 'aio-dashboard-quota-reset-'));
   const handle = openDb({ home: dir });
   const repository = createPluginRepository(handle.sqlite);
@@ -82,6 +84,7 @@ async function createQuotaResetFixture(options: FixtureOptions = {}) {
       quota: {
         read: async (): Promise<OAuthQuotaSnapshot> => {
           reads += 1;
+          if (inventoryUnreadable) return { items: [] };
           // Redemption spends the credit, so a post-reset read must not still offer one: the route's
           // cache invalidation is only observable through a second read reporting the new inventory.
           const remaining = Math.max(credits - resetCalls - spentElsewhere, 0);
@@ -199,6 +202,29 @@ test('an exhausted inventory answers 409 without redeeming', async () => {
     expect(response.status).toBe(409);
     expect(await response.json()).toEqual({ error: 'OAUTH_QUOTA_RESET_UNAVAILABLE' });
     expect(fixture.resetCalls()).toBe(0);
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+// An unreadable inventory is not an exhausted one: 409 would tell the user their credit is spent, and
+// the refetch after it would replace the count with a reading whose inventory the same failing
+// endpoint omits — hiding a control that a retry a minute later would have worked.
+test('an unreadable inventory answers a retryable 502 and keeps the cached count', async () => {
+  const fixture = await createQuotaResetFixture({ inventoryUnreadable: true });
+  try {
+    expect((await fixture.readQuota('person')).status).toBe(200);
+    const seeded = fixture.reads();
+
+    const response = await reset(fixture.routes, 'person');
+
+    expect(response.status).toBe(502);
+    expect(await response.json()).toEqual({ error: 'OAUTH_QUOTA_RESET_INVENTORY_UNKNOWN' });
+    expect(fixture.resetCalls()).toBe(0);
+    // Nothing was learned about the credit, so the cached reading is unverified rather than wrong: it
+    // stays, and this refetch is served from the cooldown instead of going upstream again.
+    await fixture.readQuota('person');
+    expect(fixture.reads()).toBe(seeded + 1);
   } finally {
     fixture.cleanup();
   }

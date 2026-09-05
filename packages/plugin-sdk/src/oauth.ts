@@ -151,6 +151,11 @@ export type OAuthQuotaSnapshot = {
    * a non-zero `availableCount` is what the dashboard offers redemption from, so an inventory without
    * one advertises an action the plugin cannot perform. The framework drops the inventory from a
    * snapshot whose adapter has no `reset`, rather than surfacing a control that could only fail.
+   *
+   * Absence and zero are distinct answers for a `reset`-capable adapter. Report
+   * `{ availableCount: 0 }` for an inventory read as empty; omit the field only when the inventory
+   * could not be read at all. The framework refuses a redemption against an omitted inventory as a
+   * retryable failure rather than telling the user their credit is spent.
    */
   readonly resetCredits?: OAuthQuotaResetCredits;
   /** Human-readable subscription tier for this account, when the upstream exposes one. */

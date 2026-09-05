@@ -6,6 +6,7 @@ import { zod } from '@aio-proxy/plugin-sdk';
 import {
   OAuthQuotaReadError,
   OAuthQuotaResetError,
+  OAuthQuotaResetInventoryUnknownError,
   OAuthQuotaResetUnavailableError,
   OAuthQuotaResetUnsupportedError,
 } from './errors';
@@ -113,7 +114,16 @@ test('preserves the stable reset error when the mutation failure logger throws',
 
 test.each([
   ['unsupported', {}, OAuthQuotaResetUnsupportedError],
-  ['unavailable', { read: async () => ({ items: [] }), reset: async () => {} }, OAuthQuotaResetUnavailableError],
+  [
+    'unavailable',
+    { read: async () => ({ items: [], resetCredits: { availableCount: 0 } }), reset: async () => {} },
+    OAuthQuotaResetUnavailableError,
+  ],
+  [
+    'inventory-unknown',
+    { read: async () => ({ items: [] }), reset: async () => {} },
+    OAuthQuotaResetInventoryUnknownError,
+  ],
   [
     'preflight',
     { read: async () => Promise.reject(new Error('preflight failed')), reset: async () => {} },

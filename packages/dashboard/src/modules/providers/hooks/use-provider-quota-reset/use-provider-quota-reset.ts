@@ -19,9 +19,11 @@ export const useProviderQuotaReset = (id: string) => {
   const client = useQueryClient();
   return useMutation({
     mutationFn: () => resetProviderQuota(id),
-    onSettled: () => {
-      void client.invalidateQueries({ queryKey: queryKeys.providerQuota(id) });
-    },
+    // Returned, not discarded: react-query holds the mutation pending until this settles, which keeps
+    // the button disabled across the refetch. Discarding it ends the pending state while the pre-reset
+    // count is still rendered, and with several credits the user can confirm a second redemption
+    // against it — the server's own preflight would still see a remaining credit and spend it.
+    onSettled: () => client.invalidateQueries({ queryKey: queryKeys.providerQuota(id) }),
     onSuccess: () => {
       toast.add({ type: 'success', title: m['dashboard.providers.quota.reset_succeeded']() });
     },

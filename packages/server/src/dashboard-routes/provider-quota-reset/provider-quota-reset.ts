@@ -3,6 +3,7 @@ import { Hono } from 'hono';
 import {
   OAuthQuotaCapabilityUnavailableError,
   OAuthQuotaResetError,
+  OAuthQuotaResetInventoryUnknownError,
   OAuthQuotaResetUnavailableError,
   OAuthQuotaResetUnsupportedError,
 } from '../../plugin-quota';
@@ -25,6 +26,13 @@ export const createDashboardProviderQuotaResetRoute = (state: ServerState) =>
       }
       if (error instanceof OAuthQuotaCapabilityUnavailableError) {
         return context.json({ error: error.code }, error.permanent ? 404 : 502);
+      }
+      // The preflight could not read the inventory at all, so nothing is known about the credit. 502
+      // rather than 409: the cached count is unverified, not known-wrong, and the cache is deliberately
+      // left alone so the button survives for a retry instead of being replaced by a reading whose
+      // inventory the same failing endpoint would omit.
+      if (error instanceof OAuthQuotaResetInventoryUnknownError) {
+        return context.json({ error: error.code }, 502);
       }
       // The inventory the client rendered its button from is already spent or gone. 409 rather than
       // 502 so the dashboard can say so instead of reporting an upstream failure. The reset preflight

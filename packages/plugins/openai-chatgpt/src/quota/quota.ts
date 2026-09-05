@@ -58,6 +58,11 @@ async function readUsage(
   return payload;
 }
 
+/**
+ * `undefined` means the inventory could not be read, which the framework refuses a redemption against
+ * as retryable — distinct from the `{ availableCount: 0 }` below, which asserts the credits are spent.
+ * That is why every unreadable case here returns `undefined` rather than a zero count.
+ */
 async function readResetCredits(
   fetcher: RuntimeFetch,
   headers: Record<string, string>,
