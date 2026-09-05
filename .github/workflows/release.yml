@@ -81,27 +81,40 @@ jobs:
           # runs on OIDC alone.
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          # Where release.ts drops the platform tarball sha256s for the Homebrew tap.
+          # Only written on the publish path.
+          HOMEBREW_CHECKSUMS_PATH: ${{ runner.temp }}/homebrew-checksums.json
 
-      # homebrew-tap listens for repository_dispatch aio-proxy-release and opens a
-      # formula update PR. GITHUB_TOKEN cannot dispatch into another repo, so this
-      # uses HOMEBREW_TAP_TOKEN (a PAT with access to aio-proxy/homebrew-tap).
+      # homebrew-tap listens for repository_dispatch aio-proxy-release and commits a
+      # formula update. GITHUB_TOKEN cannot dispatch into another repo, so this uses
+      # HOMEBREW_TAP_TOKEN (a PAT with access to aio-proxy/homebrew-tap).
+      #
+      # The version and the per-platform sha256s both come from the checksum file
+      # release.ts wrote, NOT from `gh release view` and NOT from the tap
+      # re-downloading the tarballs. That keeps the formula update independent of
+      # npm's CDN, whose tarball reads lag publish by minutes (see release.ts).
+      # `published` gates this the same way it gates the docker job: a push to main
+      # with changesets pending only refreshes the Version PR, and dispatching then
+      # would rerun the tap against the previous release for nothing.
       - name: Notify Homebrew tap
+        if: steps.changesets.outputs.published == 'true'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          CHECKSUMS_PATH: ${{ runner.temp }}/homebrew-checksums.json
         run: |
           set -euo pipefail
           if [ -z "${HOMEBREW_TAP_TOKEN}" ]; then
             echo 'HOMEBREW_TAP_TOKEN secret is not configured' >&2
             exit 1
           fi
-          version="$(gh release view --json tagName --jq '.tagName')"
-          version="${version#v}"
-          GH_TOKEN="${HOMEBREW_TAP_TOKEN}" gh api --method POST \
-            repos/aio-proxy/homebrew-tap/dispatches \
-            --input - <<EOF
-          {"event_type":"aio-proxy-release","client_payload":{"version":"${version}"}}
-          EOF
+          if [ ! -s "${CHECKSUMS_PATH}" ]; then
+            echo "release.ts wrote no checksums to ${CHECKSUMS_PATH}" >&2
+            exit 1
+          fi
+          # client_payload caps top-level properties at 10; version + checksums = 2.
+          jq -c '{event_type: "aio-proxy-release", client_payload: .}' "${CHECKSUMS_PATH}" \
+            | GH_TOKEN="${HOMEBREW_TAP_TOKEN}" gh api --method POST \
+              repos/aio-proxy/homebrew-tap/dispatches --input -
 
   docker:
     needs: release
