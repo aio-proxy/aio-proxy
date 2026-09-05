@@ -1,4 +1,4 @@
-import { expect, test } from 'bun:test';
+import { expect, spyOn, test } from 'bun:test';
 
 import { createTraceStore } from '../index';
 import { openTestDb } from '../test-support';
@@ -484,6 +484,31 @@ test('totals Provider input plus output tokens in the selected window with exact
     expect(rows.find((row) => row.providerId === 'unused')?.totalTokens).toBe('0');
     expect(rows.find((row) => row.providerId === 'large')?.totalTokens).toBe('9007199254741001');
   });
+});
+
+test('bounds the polled Provider token query by completion time in the query plan', () => {
+  const handle = openTestDb();
+  const queries = spyOn(handle.sqlite, 'query');
+  try {
+    const store = createTraceStore(handle.db);
+    seedTrace(store, {
+      id: 1,
+      attempts: [{ providerId: 'provider', durationMs: 100 }],
+      usage: { inputTokens: 100, outputTokens: 25 },
+    });
+    expect(store.overviewDashboardDiagnostics({ range: '24h', now: NOW }).providerHealth?.[0]?.totalTokens).toBe('125');
+    const tokenQuery = queries.mock.calls.find(([statement]) => statement.includes('as inputTokens'))?.[0];
+    queries.mockRestore();
+    if (tokenQuery === undefined) throw new Error('Provider token query was not executed');
+
+    const plan = handle.sqlite
+      .query<{ detail: string }, [number, number]>(`EXPLAIN QUERY PLAN ${tokenQuery}`)
+      .all(NOW.getTime() - 24 * 60 * 60 * 1_000, NOW.getTime());
+    expect(plan.map(({ detail }) => detail).join('\n')).toMatch(/SEARCH trace_span.*ended_at>\? AND ended_at<\?/u);
+  } finally {
+    queries.mockRestore();
+    handle.close();
+  }
 });
 
 test('keeps rolling token activity after trace pruning', () => {

@@ -75,6 +75,8 @@ export const traceSpan = sqliteTable(
     }).onDelete('cascade'),
     uniqueIndex('trace_span_one_root_idx').on(table.traceId).where(sql.raw('parent_span_id IS NULL')),
     index('trace_span_root_started_idx').on(table.parentSpanId, table.startedAt),
+    // Keep the parent equality so SQLite prefers this range lookup over the Provider index.
+    index('trace_span_root_ended_idx').on(table.parentSpanId, table.endedAt).where(sql.raw('parent_span_id IS NULL')),
     index('trace_span_root_status_started_idx').on(table.parentSpanId, table.statusCode, table.startedAt),
     index('trace_span_root_provider_started_idx').on(table.parentSpanId, table.finalProviderId, table.startedAt),
     index('trace_span_root_model_started_idx').on(
