@@ -10,7 +10,9 @@
  * TODO(oven-sh/bun): drop this file, its call in build-binary.ts, and the
  * macOS-only release job once darwin-x64 compile output passes `codesign -v`
  * unmodified. Re-check with:
- *   bun build --compile --target=bun-darwin-x64 --outfile=/tmp/p x.ts && codesign -v /tmp/p
+ *   echo 'console.log(1)' > /tmp/p.ts &&
+ *     bun build --compile --target=bun-darwin-x64 --outfile=/tmp/p /tmp/p.ts &&
+ *     codesign -v /tmp/p
  *
  * No-op for non-darwin compile targets. Darwin targets fail closed if no signer
  * is available so Linux CI cannot ship an unsigned macOS binary.
