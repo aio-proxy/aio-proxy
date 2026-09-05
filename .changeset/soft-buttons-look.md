@@ -1,4 +1,5 @@
 ---
+'@aio-proxy/cli': patch
 'aio-proxy': patch
 ---
 
