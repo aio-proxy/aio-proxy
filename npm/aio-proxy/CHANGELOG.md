@@ -1,5 +1,11 @@
 # aio-proxy
 
+## 0.18.1
+
+### Patch Changes
+
+- [#277](https://github.com/aio-proxy/aio-proxy/pull/277) [`e2d8a23`](https://github.com/aio-proxy/aio-proxy/commit/e2d8a2381cb6c9f32dac2c26d2dd476934d2a71c) Thanks [@baranwang](https://github.com/baranwang)! - Surface the newest ChatGPT (Codex) models again. The pinned `codex-tui` client version was stale, and the upstream model catalog gates each model on its `minimal_client_version`, so the `gpt-5.6` family and `gpt-6-astra` were silently missing from ChatGPT OAuth Providers.
+
 ## 0.18.0
 
 ### Minor Changes
