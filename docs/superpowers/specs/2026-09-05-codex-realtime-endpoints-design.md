@@ -103,11 +103,13 @@ New `packages/server/src/routes/realtime/`:
 Tests are colocated. Files are split further only when a responsibility earns one.
 
 Changes to existing files: `packages/plugin-sdk/src/runtime.ts` (the capability type),
+`packages/server/src/runtime.ts` (`RuntimeProviderBase` gains the pin fields and `realtime`),
 `packages/server/src/plugin-runtime/capabilities.ts` (materialize `realtime`),
+`packages/server/src/plugin-runtime/materialize.ts` (stamp the pin fields, pass the effective proxy),
 `packages/server/src/server/api-key-auth/api-key-auth.ts` and `agent-auth/agent-auth.ts` (set the
 caller principal on the context), `packages/server/src/server-log.ts` (four log types),
 `packages/server/src/server/server.ts` (mount the routes, re-export `websocket`),
-`packages/cli/src/run/run.ts` (pass `websocket` to `Bun.serve`), and
+`packages/cli/src/run/run.ts` (pass the websocket handler to `Bun.serve`), and
 `packages/plugins/openai-chatgpt/src/runtime/runtime.ts` (the realtime transport and the
 `rewriteCodexUrl` corrections).
 
@@ -145,10 +147,11 @@ provider already carries `raw` and `model`.
 `packages/server/src/plugin-runtime/capabilities.ts` builds its return value field by field — it
 copies `raw`, `providerTools`, `tokenCount`, and the catalog-derived transports, and every other
 field of `result` is discarded. Without an explicit copy step, `provider.realtime` is `undefined`
-for every provider and the selector always finds zero candidates. `createRuntimeProvider` must
-validate `result.realtime` (an object with a `models` array and function `fetch`/`dial`, rejected
-like `PluginRawResolverError` otherwise) and attach it to `base`, so it reaches all four return
-branches.
+for every provider and the selector always finds zero candidates. So `createRuntimeProvider` must
+attach `result.realtime` to `base`, reaching all four return branches. The capability is optional and
+almost every plugin will omit it, so **absent means omit the field, not an error**; only a *present*
+`result.realtime` that is not an object with a `models` array and function `fetch`/`dial` is rejected,
+the same way `PluginRawResolverError` rejects a malformed `raw`.
 
 `realtime.fetch` and `dial` are a **separate transport from the plugin's `dynamicFetch`**. That
 fetch wraps `createOpenAIStreamFetch('openai-response', …)`, which applies Responses-protocol
@@ -238,15 +241,17 @@ realtime dispatch in the attempt loop, and a decision on whether realtime models
    cap is `413`. Accepted content types: `application/sdp`, `text/plain`, `application/json`,
    `multipart/form-data`; anything else is `415`.
 3. Normalize the body to the upstream form, mirroring the reference's `prepareCallRequest`:
-   - `multipart/form-data` → JSON `{ sdp, session? }`. The `sdp` part is required (absent is `400`);
-     a `session` part must be valid JSON (`400` otherwise) and supplies the requested model.
+   - `multipart/form-data` → JSON `{ sdp, session? }`. The `sdp` part is required and a `session`
+     part must be valid JSON; either failure is `400` `realtime_invalid_offer` — the call ID is not
+     at fault here, so this does not reuse `invalid_call_id`. `session` supplies the requested model.
      Content type becomes `application/json`.
    - `application/sdp` and `text/plain` → forwarded verbatim with their content type.
    - `application/json` → forwarded verbatim; the requested model is read from `model`, falling back
      to `session.model`.
    - An absent or empty model is `gpt-live-1-codex`.
 4. Compute the normalized model for selection.
-5. Select ordered candidates. No eligible candidate is `503` `realtime_upstream_unavailable`.
+5. Select ordered candidates. No eligible candidate is `503` `realtime_upstream_unavailable`. Drop
+   expired records and check store capacity here, before any upstream attempt; still full is `503`.
 6. Attempt candidates in order. Each attempt builds a **fresh `Request`** from the buffered body — a
    fetch body is single-use and cannot be replayed. The request carries the inbound URL (the plugin
    rewrites it to the upstream endpoint), the normalized `Content-Type`, and `Accept`; it does not
@@ -280,11 +285,17 @@ inbound style, caller owner, creation time, and current attachment.
 
 Pinning `providerId` alone is insufficient: a re-login rebuilds the runtime under the same Provider
 ID, so a call created under account A could later attach under account B. The record therefore also
-pins `accountId` and `runtimeRevision` — the field `materialize.ts` already feeds into
-`runtimeIdentity` and which every credential write bumps, so a re-login moves it. A pin is valid
-when all three still match the live runtime. Token refresh alone does not change `runtimeRevision`
-and stays valid; re-login, removal, disabling, and config reload invalidate the pin, and the call
-answers `503`.
+pins `accountId` and `runtimeRevision`. **Neither is on the live provider today.**
+`RuntimeProviderBase` in `packages/server/src/runtime.ts` carries `id`, `kind`, `enabled`,
+`priority`, `weight`, `models`, `alias`, `upstreamMetadata`, `plugin`, `capability`, `hasApiKey`, and
+`tokenCount` — and `createRuntimeProvider` never receives the account at all, so it could not stamp
+them even if the type allowed it. `materialize.ts` does hold the `StoredAccount`, which carries both
+`fingerprint` and `runtimeRevision`, so the minimal fix is for `materialize.ts` to stamp them onto
+the instance after `createRuntimeProvider` returns. `runtimeRevision` is the field `materialize.ts`
+already feeds into `runtimeIdentity` and which every credential write bumps, so a re-login moves it.
+A pin is valid when all three still match the live runtime. Token refresh alone does not change
+`runtimeRevision` and stays valid; re-login, removal, disabling, and config reload invalidate the
+pin, and the call answers `503`.
 
 **Caller ownership.** `/v1/*` authentication establishes that a caller may use the proxy, not that
 it owns a given call. Sideband and hangup verify the caller matches the creator; a mismatch is
@@ -294,7 +305,9 @@ The owner must be recorded at create time, because `stripCallerCredentials` dele
 `x-api-key`, and `x-goog-api-key` from the request before the route runs — there is nothing left to
 compare later. The owner is a tagged principal:
 
-- an agent token → `{ kind: 'agent', id: <grant id> }`, read from `context.get('agentGrant')`
+- an agent token → `{ kind: 'agent', id: <grant.installationId> }`, read from `context.get('agentGrant')`.
+  `AgentAccessGrant` has no `id` field; of what it does carry, `tokenHash` rotates on every refresh
+  and would 403 the same client mid-call, so `installationId` is the stable identity.
 - a matching configured static key → `{ kind: 'key', id: <stable digest of the matched key> }`
 - no configured keys (`authenticateStaticOrAnonymous` passes everything through) →
   `{ kind: 'anonymous' }`
@@ -315,14 +328,33 @@ it does not today.
    failure, and downstream disconnect during dial.
 
 Reservations carry an attachment token. A superseded socket's late `close` callback must not
-release a newer attachment. Hangup stays available while a sideband attachment is live.
+release a newer attachment. Hangup stays available while a sideband attachment is live; a 2xx hangup closes that
+socket with `1000` and deletes the record.
 
 Expiry is checked on every lookup, not only swept on create — otherwise a record stays usable
 indefinitely when no further creates happen. TTL is **1 hour** from creation, matching the
 reference's `sessionLifetime`; a reserved attachment does not expire while it is live. Expiry
 removes routing for future control requests and does not attempt to tear down media. Capacity is
-capped at **1024** records; a create that would exceed it first drops expired records, and if still
-full answers `503`. Cleanup also runs on hangup and on shutdown.
+capped at **1024** records. The capacity check runs **before the first upstream attempt**, not at
+step 8: checking it after a create has already succeeded upstream would answer `503` while leaving an
+allocated upstream call the proxy can no longer route. A create first drops expired records, and if
+still full answers `503` without dialing.
+
+**Record lifecycle.** Every terminal transition is specified:
+
+| Event | Record | Live sideband |
+| --- | --- | --- |
+| create succeeds | inserted, unattached | — |
+| create fails at every attempt | never inserted | — |
+| sideband attach fails (dial, upgrade, or downstream gone) | kept, reservation released | — |
+| sideband closes cleanly or abnormally | **deleted** | closed per the mapping above |
+| hangup answers 2xx | **deleted** | closed with `1000` |
+| hangup answers non-2xx | kept | untouched |
+| TTL reached with no live attachment | deleted on next lookup or sweep | — |
+| shutdown | store dropped | closed with `1001` |
+
+A sideband close deletes the record because the call is over; a *failed* attach does not, so the
+client may retry. Cleanup also runs on hangup and on shutdown.
 
 ### Sideband
 
@@ -355,18 +387,23 @@ applies per direction to in-flight data behind a slow peer; the dial deadline is
 closes the connection with `1011` rather than growing a queue.
 
 Teardown is normalized and idempotent — one function, safe to call from either side's `close`, from
-a dial rejection, and from shutdown. "Propagate code and reason" is not a valid blanket rule: `1005`
-and `1006` are receive-only and must never be sent, reasons are capped at 123 UTF-8 bytes, and codes
-outside `1000` and `3000..4999` are rejected. The mapping:
+a dial rejection, and from shutdown. "Propagate code and reason" is not a valid blanket rule.
+Measured on this repo's Bun, `close(code)` accepts `1000..1003`, `1007..1014`, and `3000..4999`, and
+throws `InvalidAccessError` for everything else — including the receive-only `1005` and `1006`, plus
+`1004`, `< 1000`, `1015..2999`, and `>= 5000`. A reason over 123 UTF-8 bytes throws `SyntaxError`.
+So the normalizer passes a code through only when it is in the sendable set, and truncates every
+reason to 123 UTF-8 bytes. The mapping:
 
 | Origin | Sent to the other side |
 | --- | --- |
 | clean `1000` / `1001` | same code, truncated reason |
-| `1005`, `1006`, any code `< 1000` or in `1012..2999` | `1011`, no reason |
+| `1002`, `1003`, `1007..1014` | same code, truncated reason |
 | `3000..4999` | same code, truncated reason |
+| `1004`, `1005`, `1006`, any code `< 1000`, `1015..2999`, or `>= 5000` | `1011`, no reason |
 | dial rejected after downstream upgrade (cannot happen by design; defensive) | `1011` |
 | relay buffer overflow or internal error | `1011` |
 | proxy shutdown | `1001` |
+| hangup answered 2xx while a sideband was live | `1000` |
 
 Teardown also covers an upstream that finishes connecting after the downstream has already gone
 away: close it immediately and release the reservation.
@@ -384,8 +421,11 @@ through `c.env`, so a wrapper that forwards only the request would break upgrade
 **Idle timeout.** `Bun.serve`'s existing `idleTimeout: 255` governs HTTP connections and does not
 carry over to an upgraded socket: the `websocket` handler has its own `idleTimeout`, defaulting to
 **120 s**. A sideband channel that stays quiet longer than that is dropped with no error the client
-can attribute. The exported handler therefore sets `idleTimeout` explicitly — 255, the same ceiling
-as HTTP — and leaves `sendPings` at its default `true` so keepalive pings reset it.
+can attribute. Hono's exported `websocket` is a plain object literal of `{ open, close, message }`
+with no timeout field, and it is a module singleton shared by every importer, so mutating it would be
+a process-wide side effect. `run.ts` therefore spreads it at the call site —
+`websocket: { ...websocket, idleTimeout: 255 }`, the same ceiling as HTTP — and leaves `sendPings` at
+its default `true` so keepalive pings reset it.
 
 Three adapter constraints, verified against the resolved Hono version:
 
@@ -402,7 +442,8 @@ Every response uses `{"error":{"message","type","param":null,"code"}}`. One stat
 
 | Status | `type` | `code` | Raised when |
 | --- | --- | --- | --- |
-| 400 | `invalid_request_error` | `invalid_call_id` | `call_id` fails the pattern, or a required `sdp` part is missing |
+| 400 | `invalid_request_error` | `invalid_call_id` | `call_id` fails the `^[A-Za-z0-9_-]{1,128}$` pattern |
+| 400 | `invalid_request_error` | `realtime_invalid_offer` | a multipart create is missing its `sdp` part, or its `session` part is not valid JSON |
 | 403 | `invalid_request_error` | `realtime_call_scope_mismatch` | caller principal differs from the creator |
 | 404 | `invalid_request_error` | `realtime_call_not_found` | no record, or the record expired |
 | 409 | `invalid_request_error` | `realtime_call_busy` | a sideband attachment is already reserved |
@@ -438,23 +479,27 @@ upgrade path works, because it never goes through `server.upgrade`.
 
 **Call store.** Reserve/release across each failure path: plain GET then a valid upgrade; failed
 dial then a successful retry; concurrent attachments yielding `409`; a superseded socket's late
-close not releasing a newer attachment; hangup during an active attachment; expiry observed on
-lookup with no intervening create; a live attachment not expiring; capacity exhaustion answering
-`503` after expired records are dropped.
+close not releasing a newer attachment; hangup during an active attachment closing it with `1000` and
+deleting the record; a sideband close deleting the record while a failed attach keeps it; expiry
+observed on lookup with no intervening create; a live attachment not expiring; capacity exhaustion
+answering `503` **before** any upstream dial, after expired records are dropped.
 
 **Relay lifecycle.** Upstream greeting arriving before the downstream is ready; downstream
 disconnect mid-dial; upstream handshake rejection mapped pre-upgrade; abnormal close normalized to
-`1011`; a `4000..4999` code passed through; an over-long reason truncated; slow peer and buffer
-overflow; binary frames preserved at exact byte length when the source is a view into a larger
-buffer; a socket quiet past 120 s staying open.
+`1011`; a `4000..4999` code passed through; a `1004`/`1005`/`1006` origin normalized to `1011` rather
+than passed through and throwing; an over-long reason truncated; slow peer and buffer overflow;
+binary frames preserved at exact byte length when the source is a view into a larger buffer; a socket
+quiet past 120 s staying open.
 
 **Routing identity.** Sideband dials the creating provider even when another has higher priority;
 a bumped `runtimeRevision` under the same Provider ID invalidates the pin; token refresh alone does
 not; provider removal yields `503` `codex_auth_unavailable`; a different agent grant attaching or
 hanging up gets `403`; anonymous mode does not `403` its only caller.
 
-**Plugin transport.** `createRuntimeProvider` materializes `realtime` onto the runtime instance, and
-a malformed `result.realtime` is rejected; each create alias reaches the exact upstream host, path,
+**Plugin transport.** `createRuntimeProvider` materializes `realtime` onto the runtime instance in
+every return branch, a present-but-malformed `result.realtime` is rejected while an absent one is
+simply omitted, and `materialize.ts` stamps `accountId` and `runtimeRevision` onto the instance; each
+create alias reaches the exact upstream host, path,
 and query, including `intent` and `architecture` surviving an inbound request with no query; hangup
 targets `api.openai.com`; realtime paths match exactly rather than by suffix; signaling rewrites
 `session.model` while direct preserves the requested model; an unmapped realtime path fails closed;
@@ -463,13 +508,13 @@ proxy applies to both `fetch` and `dial`, asserted by a local proxy observing th
 credentials never reach upstream.
 
 **Signaling and state.** Multipart normalized to `{ sdp, session }` with the model taken from
-`session`; multipart missing `sdp` is `400`; an unaccepted content type is `415`; a body over 16 MiB
-is `413`; missing or unparseable `Location`; 2xx with an empty body; a JSON-wrapped SDP answer
-returned verbatim; an upstream `400` returned without retrying the next provider; a `5xx` retried;
-attempts capped at 2; body replayed correctly on fallback to a second provider; caller abort stops
-the loop; `Location` rewritten per inbound style; selector skips disabled, non-realtime,
-zero-weight, and excluded candidates, with exclusion matching on both the requested and normalized
-model id.
+`session`; multipart missing `sdp` is `400` `realtime_invalid_offer`; an unaccepted content type is
+`415`; a body over 16 MiB is `413`; missing or unparseable `Location`; 2xx with an empty body; a
+JSON-wrapped SDP answer returned verbatim; an upstream `400` returned without retrying the next
+provider; a `5xx` retried; attempts capped at 2; body replayed correctly on fallback to a second
+provider; caller abort stops the loop; `Location` rewritten per inbound style; selector skips
+disabled, non-realtime, zero-weight, and excluded candidates, with exclusion matching on both the
+requested and normalized model id.
 
 ## Packaging
 
