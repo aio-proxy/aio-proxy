@@ -124,9 +124,50 @@ export type ModelCatalog = {
   readonly extra?: JsonValue;
 };
 
+export type RealtimeStyle = 'live' | 'realtime-calls' | 'realtime-query' | 'realtime-direct';
+
+export type RealtimeDialInput = {
+  readonly style: RealtimeStyle;
+  readonly callId?: string;
+  readonly model?: string;
+  /** Inbound headers the plugin may forward selectively. Caller credentials are
+   *  already stripped by the auth middleware; the plugin adds its own upstream
+   *  auth and never forwards an inbound `authorization`. */
+  readonly headers: Headers;
+  readonly signal: AbortSignal;
+};
+
+export type RealtimeDialErrorKind = 'rejected' | 'unreachable' | 'aborted' | 'timeout';
+
+/** A client `WebSocket` exposes no upstream HTTP status for a non-101 response,
+ *  so a failed dial is only ever discriminable to these four kinds. */
+export class RealtimeDialError extends Error {
+  override readonly name = 'RealtimeDialError';
+
+  constructor(
+    message: string,
+    readonly options: { readonly kind: RealtimeDialErrorKind },
+  ) {
+    super(message);
+  }
+
+  get kind(): RealtimeDialErrorKind {
+    return this.options.kind;
+  }
+}
+
+export type RealtimeTransport = {
+  readonly models: readonly string[];
+  readonly fetch: (request: Request) => Promise<Response>;
+  /** Resolves only once the socket is OPEN. Rejects with a `RealtimeDialError`.
+   *  Aborting `signal` abandons a pending dial and closes any socket that opens. */
+  readonly dial: (input: RealtimeDialInput) => Promise<WebSocket>;
+};
+
 export type OAuthRuntimeResult = {
   readonly provider: ProviderV4;
   readonly raw?: RawResolver;
   readonly tokenCount?: TokenCountCapability;
   readonly providerTools?: ProviderToolCapability;
+  readonly realtime?: RealtimeTransport;
 };
