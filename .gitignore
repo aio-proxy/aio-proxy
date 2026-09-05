@@ -3,7 +3,9 @@ dist
 .DS_Store
 .turbo/
 packages/*/.turbo/
-.aio-proxy-dev/
+# No trailing slash: in a git worktree this is a symlink to the parent
+# checkout's dev directory, and a directory-only pattern would not match it.
+.aio-proxy-dev
 .omo/
 bun-debug.log
 *.tsbuildinfo
