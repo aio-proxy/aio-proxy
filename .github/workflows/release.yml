@@ -82,40 +82,6 @@ jobs:
           # runs on OIDC alone.
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          # Where release.ts drops the platform tarball sha256s for the Homebrew tap.
-          # Only written on the publish path.
-          HOMEBREW_CHECKSUMS_PATH: ${{ runner.temp }}/homebrew-checksums.json
-
-      # homebrew-tap listens for repository_dispatch aio-proxy-release and commits a
-      # formula update. GITHUB_TOKEN cannot dispatch into another repo, so this uses
-      # HOMEBREW_TAP_TOKEN (a PAT with access to aio-proxy/homebrew-tap).
-      #
-      # The version and the per-platform sha256s both come from the checksum file
-      # release.ts wrote, NOT from `gh release view` and NOT from the tap
-      # re-downloading the tarballs. That keeps the formula update independent of
-      # npm's CDN, whose tarball reads lag publish by minutes (see release.ts).
-      # `published` gates this the same way it gates the docker job: a push to main
-      # with changesets pending only refreshes the Version PR, and dispatching then
-      # would rerun the tap against the previous release for nothing.
-      - name: Notify Homebrew tap
-        if: steps.changesets.outputs.published == 'true'
-        env:
-          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-          CHECKSUMS_PATH: ${{ runner.temp }}/homebrew-checksums.json
-        run: |
-          set -euo pipefail
-          if [ -z "${HOMEBREW_TAP_TOKEN}" ]; then
-            echo 'HOMEBREW_TAP_TOKEN secret is not configured' >&2
-            exit 1
-          fi
-          if [ ! -s "${CHECKSUMS_PATH}" ]; then
-            echo "release.ts wrote no checksums to ${CHECKSUMS_PATH}" >&2
-            exit 1
-          fi
-          # client_payload caps top-level properties at 10; version + checksums = 2.
-          jq -c '{event_type: "aio-proxy-release", client_payload: .}' "${CHECKSUMS_PATH}" \
-            | GH_TOKEN="${HOMEBREW_TAP_TOKEN}" gh api --method POST \
-              repos/aio-proxy/homebrew-tap/dispatches --input -
 
   docker:
     needs: release
@@ -154,3 +120,41 @@ jobs:
           push: true
           tags: ${{ steps.docker-meta.outputs.tags }}
           labels: ${{ steps.docker-meta.outputs.labels }}
+
+  # homebrew-tap listens for repository_dispatch aio-proxy-release and commits a
+  # formula update. GITHUB_TOKEN cannot dispatch into another repo, so this uses
+  # HOMEBREW_TAP_TOKEN (a PAT with access to aio-proxy/homebrew-tap).
+  #
+  # Its own job, not a step of `release`: the formula pins a sha256 per platform
+  # tarball and npm publishes no sha256 (only sha1 + sha512), so these have to be
+  # hashed from a download — and npm's tarball reads lag publish by minutes. That
+  # wait must not sit on the publish script's critical path, where a throw skips
+  # the git tag and GitHub Release; v0.19.0 went to npm untagged and unreleased
+  # exactly that way. Parallel with `docker` rather than after it: both only need
+  # a successful publish, and chaining them would let a Docker failure silently
+  # cost the tap its update.
+  homebrew:
+    needs: release
+    if: needs.release.outputs.published == 'true'
+    runs-on: ubuntu-latest
+    # The script's own budget is a 15-minute CDN wait, shared across the packages
+    # rather than per package, plus the downloads. Keep this above that so the
+    # script's error (which names the package and the HTTP status) is what fails
+    # the job, not an opaque timeout.
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      # No `bun install`: the script only uses Bun built-ins, and installing the
+      # workspace here would cost minutes for nothing.
+      - name: Wait for npm, hash the tarballs, notify the tap
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          # Via env rather than interpolated into `run`, so the value can never be
+          # parsed as shell. The script validates its shape too.
+          VERSION: ${{ fromJSON(needs.release.outputs['published-packages'])[0].version }}
+        run: bun run scripts/homebrew-notify.ts "$VERSION"
