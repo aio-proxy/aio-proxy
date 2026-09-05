@@ -3,6 +3,7 @@ import { afterEach, expect, test } from 'bun:test';
 import type { CredentialPort, RuntimeRequestInit } from '@aio-proxy/plugin-sdk';
 
 import { CODEX_MODELS_ENDPOINT, discoverOpenAIChatGPTModels } from './catalog';
+import { CHATGPT_USER_AGENT, CODEX_CLIENT_VERSION } from './codex-client';
 import type { ChatGPTCredential } from './schema';
 
 const originalFetch = globalThis.fetch;
@@ -52,13 +53,11 @@ test('queries the account Codex models endpoint with pinned client version and C
   if (call === undefined) throw new Error('missing catalog fetch');
   const url = new URL(call.url);
   expect(`${url.origin}${url.pathname}`).toBe(CODEX_MODELS_ENDPOINT);
-  expect(url.searchParams.get('client_version')).toBe('0.135.0');
+  expect(url.searchParams.get('client_version')).toBe(CODEX_CLIENT_VERSION);
   expect(call.headers.get('authorization')).toBe('Bearer access-token');
   expect(call.headers.get('ChatGPT-Account-Id')).toBe('acct-123');
   expect(call.headers.get('Originator')).toBe('codex-tui');
-  expect(call.headers.get('User-Agent')).toBe(
-    'codex-tui/0.135.0 (Mac OS 26.5.0; arm64) iTerm.app/3.6.10 (codex-tui; 0.135.0)',
-  );
+  expect(call.headers.get('User-Agent')).toBe(CHATGPT_USER_AGENT);
   expect(call.traffic).toBe('control');
 });
 

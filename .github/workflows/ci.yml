@@ -25,7 +25,10 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-bun-
 
-      - run: bun install --frozen-lockfile
+      # --prefer-offline: the actions/cache step above restores ~/.bun/install/cache,
+      # so skip revalidating cached manifests. Not --offline, which hard-fails on a
+      # cache miss (guaranteed whenever bun.lock changes the cache key).
+      - run: bun install --frozen-lockfile --prefer-offline
       - run: bun run check
       - run: test -f packages/core/src/db/migrations/meta/_journal.json
       - run: bun run --filter @aio-proxy/core build:migrations

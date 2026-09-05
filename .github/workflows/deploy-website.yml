@@ -32,7 +32,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-bun-
 
-      - run: bun install --frozen-lockfile
+      - run: bun install --frozen-lockfile --prefer-offline
       - run: bun run --filter @aio-proxy/website build
 
       - uses: actions/checkout@v7

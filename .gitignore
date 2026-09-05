@@ -3,8 +3,8 @@ dist
 .DS_Store
 .turbo/
 packages/*/.turbo/
-# No trailing slash: a worktree gets this as a symlink to the main checkout's dev state, and a
-# directory-only pattern would leave that symlink committable.
+# No trailing slash: in a git worktree this is a symlink to the parent
+# checkout's dev directory, and a directory-only pattern would not match it.
 .aio-proxy-dev
 .omo/
 bun-debug.log

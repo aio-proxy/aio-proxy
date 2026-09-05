@@ -5,7 +5,7 @@ Contributions to AIO Proxy are welcome, including bug reports, documentation imp
 ## Requirements
 
 - Git
-- Bun 1.4.0 or later.
+- Bun 1.4.2 or later.
 
 ## Set up the development environment
 
