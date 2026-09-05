@@ -705,7 +705,7 @@
         "default_route": "預設路由",
         "weight_share": "權重占比 {value}%",
         "default_parked": "預設不分流",
-        "stat_throughput": "吞吐量",
+        "stat_total_tokens": "總 Token",
         "stat_success_rate": "成功率",
         "stat_p95": "P95 耗時",
         "models_count": "{count} 模型",

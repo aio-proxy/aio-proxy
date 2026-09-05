@@ -6,7 +6,7 @@ import { queryKeys } from '@/lib/query-keys';
 export type ProviderHealth = {
   readonly successRate: number;
   readonly p95LatencyMs: number;
-  readonly outputTokensPerSecond: number | null;
+  readonly totalTokens: bigint;
 };
 
 class DashboardProviderHealthRequestError extends Error {
@@ -26,7 +26,7 @@ export const getProviderHealth = async (): Promise<ReadonlyMap<string, ProviderH
       {
         successRate: entry.successRate,
         p95LatencyMs: entry.p95LatencyMs,
-        outputTokensPerSecond: entry.outputTokensPerSecond,
+        totalTokens: BigInt(entry.totalTokens),
       },
     ]),
   );

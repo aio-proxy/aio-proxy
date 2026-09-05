@@ -99,7 +99,7 @@ test('keeps unknown usage and health distinct from zero requests', () => {
   expect(screen.getByTestId('provider-stat-requests')).toHaveTextContent('N/A');
   expect(screen.getByTestId('provider-stat-success-rate')).toHaveTextContent('—');
   expect(screen.getByTestId('provider-stat-p95')).toHaveTextContent('—');
-  expect(screen.getByTestId('provider-stat-throughput')).toHaveTextContent('—');
+  expect(screen.getByTestId('provider-stat-tokens')).toHaveTextContent('—');
 });
 
 test('groups request volume with health and shows the count only once', () => {
@@ -108,7 +108,7 @@ test('groups request volume with health and shows the count only once', () => {
       {...baseProps}
       provider={providerStub({ id: 'p' })}
       usage={{ requestCount: 1200n }}
-      health={{ successRate: 0.985, p95LatencyMs: 20_090, outputTokensPerSecond: 42.56 }}
+      health={{ successRate: 0.985, p95LatencyMs: 20_090, totalTokens: 1_250_000n }}
     />,
   );
 
@@ -116,21 +116,18 @@ test('groups request volume with health and shows the count only once', () => {
   expect(screen.getByTestId('provider-row-p').textContent?.match(/1\.2K/gu)).toHaveLength(1);
   expect(screen.getByTestId('provider-stat-success-rate')).toHaveTextContent('98.5%');
   expect(screen.getByTestId('provider-stat-p95')).toHaveTextContent('20.09 s');
-  expect(screen.getByTestId('provider-stat-throughput')).toHaveTextContent('42.6 tok/s');
+  expect(screen.getByTestId('provider-stat-tokens')).toHaveTextContent('1.3M');
 });
 
-test.each([
-  [null, '—'],
-  [0, '0 tok/s'],
-])('distinguishes throughput %s from unavailable samples', (outputTokensPerSecond, expected) => {
+test('shows zero recorded tokens when the Provider has no token usage', () => {
   renderCard(
     <ProviderCard
       {...baseProps}
       provider={providerStub({ id: 'p' })}
-      health={{ successRate: 1, p95LatencyMs: 100, outputTokensPerSecond }}
+      health={{ successRate: 1, p95LatencyMs: 100, totalTokens: 0n }}
     />,
   );
-  expect(screen.getByTestId('provider-stat-throughput')).toHaveTextContent(expected);
+  expect(screen.getByTestId('provider-stat-tokens')).toHaveTextContent('0');
 });
 
 test('pending request volume stays pending even if an earlier value is available', () => {

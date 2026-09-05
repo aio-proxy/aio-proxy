@@ -403,7 +403,7 @@ test('scopes Provider health and top model costs to the selected range', () => {
 
     const recent = store.overviewDashboardDiagnostics({ range: '24h', now: NOW });
     expect(recent.providerHealth).toEqual([
-      { providerId: 'recent-provider', successRate: 1, p95LatencyMs: 100, outputTokensPerSecond: null },
+      { providerId: 'recent-provider', successRate: 1, p95LatencyMs: 100, totalTokens: '0' },
     ]);
     expect(recent.topModelCosts).toEqual([{ modelId: 'recent-model', estimatedCostNanoUsd: '2000000000' }]);
 
@@ -446,23 +446,24 @@ test('derives Provider health from failed and successful attempt child spans', (
     }
 
     expect(store.overviewDashboardDiagnostics({ range: '24h', now: NOW }).providerHealth).toEqual([
-      { providerId: 'a', successRate: 0, p95LatencyMs: 300, outputTokensPerSecond: null },
-      { providerId: 'b', successRate: 1, p95LatencyMs: 900, outputTokensPerSecond: null },
-      { providerId: 'c', successRate: 1, p95LatencyMs: 19, outputTokensPerSecond: null },
+      { providerId: 'a', successRate: 0, p95LatencyMs: 300, totalTokens: '0' },
+      { providerId: 'b', successRate: 1, p95LatencyMs: 900, totalTokens: '0' },
+      { providerId: 'c', successRate: 1, p95LatencyMs: 19, totalTokens: '0' },
     ]);
   });
 });
 
-test('weights Provider throughput by successful request duration and excludes missing or invalid samples', () => {
+test('totals Provider input plus output tokens in the selected window with exact integer arithmetic', () => {
   withStore((store) => {
     const samples: readonly Partial<TraceSeed>[] = [
-      { durationMs: 1_000, usage: { outputTokens: 100 } },
-      { durationMs: 9_000, usage: { outputTokens: 300 } },
-      { durationMs: 100_000 },
-      { durationMs: 0, usage: { outputTokens: 10_000 } },
-      { terminationReason: 'failure', durationMs: 100_000 },
-      { terminationReason: 'cancelled', durationMs: 100_000 },
-      { endedAt: new Date(NOW.getTime() - 25 * 60 * 60 * 1_000), usage: { outputTokens: 10_000 } },
+      { usage: { inputTokens: 100, outputTokens: 25, totalTokens: 999 } },
+      { durationMs: 0, usage: { inputTokens: 300, outputTokens: 75 } },
+      { usage: { inputTokens: 100 } },
+      { usage: { outputTokens: 50 } },
+      { usage: { totalTokens: 999 } },
+      { terminationReason: 'failure' },
+      { terminationReason: 'cancelled' },
+      { endedAt: new Date(NOW.getTime() - 25 * 60 * 60 * 1_000), usage: { inputTokens: 10_000, outputTokens: 10_000 } },
     ];
     samples.forEach((sample, index) => {
       seedTrace(store, {
@@ -471,20 +472,17 @@ test('weights Provider throughput by successful request duration and excludes mi
         ...sample,
       });
     });
-    seedTrace(store, {
-      id: 20,
-      attempts: [{ providerId: 'unknown', durationMs: 100 }],
-    });
+    seedTrace(store, { id: 20, attempts: [{ providerId: 'unused', durationMs: 100 }] });
     seedTrace(store, {
       id: 21,
-      attempts: [{ providerId: 'zero', durationMs: 100 }],
-      usage: { outputTokens: 0 },
+      attempts: [{ providerId: 'large', durationMs: 100 }],
+      usage: { inputTokens: Number.MAX_SAFE_INTEGER, outputTokens: 10 },
     });
 
     const rows = store.overviewDashboardDiagnostics({ range: '24h', now: NOW }).providerHealth!;
-    expect(rows.find((row) => row.providerId === 'measured')?.outputTokensPerSecond).toBe(40);
-    expect(rows.find((row) => row.providerId === 'unknown')?.outputTokensPerSecond).toBeNull();
-    expect(rows.find((row) => row.providerId === 'zero')?.outputTokensPerSecond).toBe(0);
+    expect(rows.find((row) => row.providerId === 'measured')?.totalTokens).toBe('650');
+    expect(rows.find((row) => row.providerId === 'unused')?.totalTokens).toBe('0');
+    expect(rows.find((row) => row.providerId === 'large')?.totalTokens).toBe('9007199254741001');
   });
 });
 

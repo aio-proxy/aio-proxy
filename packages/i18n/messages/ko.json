@@ -705,7 +705,7 @@
         "default_route": "기본 라우팅",
         "weight_share": "가중치 비율 {value}%",
         "default_parked": "기본 분배 제외",
-        "stat_throughput": "처리량",
+        "stat_total_tokens": "총 토큰",
         "stat_success_rate": "성공률",
         "stat_p95": "P95 응답 시간",
         "models_count": "{count} 모델",

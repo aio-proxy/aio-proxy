@@ -705,7 +705,7 @@
         "default_route": "Default routing",
         "weight_share": "Weight share {value}%",
         "default_parked": "Not selected by default",
-        "stat_throughput": "Throughput",
+        "stat_total_tokens": "Total tokens",
         "stat_success_rate": "Success rate",
         "stat_p95": "P95 latency",
         "models_count": "{count} models",

@@ -1,4 +1,4 @@
-import { getLocale, m } from '@aio-proxy/i18n';
+import { m } from '@aio-proxy/i18n';
 import type React from 'react';
 
 import { formatCompactTokenCount } from '@/components/token-count';
@@ -39,13 +39,9 @@ export const ProviderCardStats: React.FC<ProviderCardStatsProps> = ({ health, us
         value={health === undefined ? '—' : formatDuration(health.p95LatencyMs)}
       />
       <ProviderCardStat
-        testId="provider-stat-throughput"
-        label={m['dashboard.providers.card.stat_throughput']()}
-        value={
-          health?.outputTokensPerSecond == null
-            ? '—'
-            : `${new Intl.NumberFormat(getLocale(), { maximumFractionDigits: 1 }).format(health.outputTokensPerSecond)} tok/s`
-        }
+        testId="provider-stat-tokens"
+        label={m['dashboard.providers.card.stat_total_tokens']()}
+        value={health === undefined ? '—' : formatCompactTokenCount(health.totalTokens)}
       />
     </div>
   </div>
