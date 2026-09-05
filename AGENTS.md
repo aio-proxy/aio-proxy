@@ -151,7 +151,7 @@ Example for an inbound OpenAI Responses request matching three providers:
 
 - `packages/core/src/protocol/` owns one stateless adapter per inbound protocol.
 - Adapters are created with `defineProtocolAdapter()` and contain only parse, model/variant extraction, raw request rewriting, model invocation conversion, egress, protocol-shaped errors, and allowlisted request diagnostics.
-- `packages/server/src/routes/pipeline.ts` is the only candidate loop. Route files must not implement provider-kind branching, fallback, usage capture, request recording, or stream preflight.
+- `packages/server/src/routes/pipeline.ts` is the only generation candidate loop. Route files must not implement provider-kind branching, fallback, usage capture, request recording, or stream preflight. A non-generation transport that carries no model-message conversion and no usage capture (realtime signaling) may own its own selection loop, but only when a design spec documents it as an explicit exception.
 - Runtime providers expose `raw` and/or `model` capabilities. Dispatch uses capabilities, not provider kind.
 - Same-protocol raw capability wins. All other supported calls use the materialized model capability.
 - Adding an inbound protocol requires one core adapter, one thin route registration, adapter tests, and dispatch-matrix coverage.
