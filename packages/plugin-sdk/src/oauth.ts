@@ -146,6 +146,17 @@ export type OAuthQuotaResetCredits = {
 
 export type OAuthQuotaSnapshot = {
   readonly items: readonly OAuthQuotaItem[];
+  /**
+   * Redeemable grants that reset a window early. Report this only alongside a `reset` implementation:
+   * a non-zero `availableCount` is what the dashboard offers redemption from, so an inventory without
+   * one advertises an action the plugin cannot perform. The framework drops the inventory from a
+   * snapshot whose adapter has no `reset`, rather than surfacing a control that could only fail.
+   *
+   * Absence and zero are distinct answers for a `reset`-capable adapter. Report
+   * `{ availableCount: 0 }` for an inventory read as empty; omit the field only when the inventory
+   * could not be read at all. The framework refuses a redemption against an omitted inventory as a
+   * retryable failure rather than telling the user their credit is spent.
+   */
   readonly resetCredits?: OAuthQuotaResetCredits;
   /** Human-readable subscription tier for this account, when the upstream exposes one. */
   readonly plan?: LocalizedText;
@@ -153,6 +164,11 @@ export type OAuthQuotaSnapshot = {
 
 export type OAuthQuotaCapability<AccountOptions, Credential> = {
   readonly read: (context: AccountContext<Credential, AccountOptions>) => Promise<OAuthQuotaSnapshot>;
+  /**
+   * Redeems one reset credit. The framework serializes resets per Provider and only calls this after a
+   * fresh `read` reported an available credit, so an implementation must treat every call as a new
+   * intentional redemption rather than a retry of the last one.
+   */
   readonly reset?: (context: AccountContext<Credential, AccountOptions>) => Promise<void>;
 };
 

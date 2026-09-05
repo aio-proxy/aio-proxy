@@ -120,6 +120,29 @@ test('reports reset credits when the inventory endpoint answers', async () => {
   });
 });
 
+// A spent or expired grant still ships in `credits[]`, and each listed entry renders as an upcoming
+// expiry, so only redeemable ones may survive. `available_count` stays the count authority.
+test('lists only redeemable reset credits', async () => {
+  const snapshot = await readOpenAIChatGPTQuota(
+    context(),
+    usageResponder(usagePayload, {
+      body: {
+        available_count: 1,
+        credits: [
+          { id: 'spent', status: 'redeemed', reset_type: 'codex_rate_limits', expires_at: '2026-02-01T00:00:00Z' },
+          { id: 'other-product', status: 'available', reset_type: 'sora_credits', expires_at: '2026-02-01T00:00:00Z' },
+          { id: 'usable', status: 'available', reset_type: 'codex_rate_limits', expires_at: '2026-04-01T00:00:00Z' },
+        ],
+      },
+    }),
+  );
+
+  expect(snapshot.resetCredits).toEqual({
+    availableCount: 1,
+    items: [{ id: 'usable', expiresAt: Date.parse('2026-04-01T00:00:00Z') }],
+  });
+});
+
 // The inventory is enrichment: the ring must still render when only the usage read succeeds.
 test('keeps the snapshot when the reset-credit inventory fails', async () => {
   const snapshot = await readOpenAIChatGPTQuota(context(), usageResponder(usagePayload));

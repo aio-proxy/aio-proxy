@@ -11,6 +11,7 @@ import {
   PLUGIN,
   PROVIDER_ID,
   type QuotaFixtureOptions,
+  quotaSignal,
 } from './test-support';
 
 afterEach(cleanupQuotaFixtures);
@@ -196,6 +197,26 @@ test.each(unavailableCases)(
     expect(fixture.logs).toHaveLength(0);
   },
 );
+
+test('drops a reset inventory the adapter cannot redeem instead of advertising a dead control', async () => {
+  // `reset` is optional, so an adapter can report credits it has no way to spend. Every consumer reads
+  // a non-zero count as an offer to redeem, and that redemption is a permanent failure.
+  const readOnly = createQuotaFixture({
+    read: async () => ({ items: [], resetCredits: { availableCount: 3 }, plan: 'Pro' }),
+  });
+  const redeemable = createQuotaFixture({
+    read: async () => ({ items: [], resetCredits: { availableCount: 3 } }),
+    reset: async () => {},
+  });
+
+  const stripped = await createOAuthQuotaReader(readOnly.dependencies).read(PROVIDER_ID, quotaSignal());
+  const kept = await createOAuthQuotaReader(redeemable.dependencies).read(PROVIDER_ID, quotaSignal());
+
+  expect(stripped).not.toHaveProperty('resetCredits');
+  // Only the unspendable inventory is dropped; the rest of the reading still reaches the dashboard.
+  expect(stripped.plan).toBe('Pro');
+  expect(kept.resetCredits).toEqual({ availableCount: 3 });
+});
 
 test('holds the old snapshot lease through plugin settlement and ignores a concurrent swap', async () => {
   const started = Promise.withResolvers<void>();

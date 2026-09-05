@@ -11,10 +11,8 @@ import { isPlainObject } from 'es-toolkit/predicate';
 
 import { CHATGPT_USER_AGENT, currentCredential } from '../runtime/index';
 import type { ChatGPTCredential } from '../schema';
+import { RESET_CREDITS_URL, USAGE_URL } from './endpoints';
 
-const CHATGPT_BACKEND_BASE_URL = 'https://chatgpt.com/backend-api' as const;
-const USAGE_URL = `${CHATGPT_BACKEND_BASE_URL}/wham/usage` as const;
-const RESET_CREDITS_URL = `${CHATGPT_BACKEND_BASE_URL}/wham/rate-limit-reset-credits` as const;
 // The reset-credit inventory is enrichment, so a slow endpoint must not hold up the usage read.
 const RESET_CREDITS_TIMEOUT_MS = 4_000;
 
@@ -60,6 +58,11 @@ async function readUsage(
   return payload;
 }
 
+/**
+ * `undefined` means the inventory could not be read, which the framework refuses a redemption against
+ * as retryable — distinct from the `{ availableCount: 0 }` below, which asserts the credits are spent.
+ * That is why every unreadable case here returns `undefined` rather than a zero count.
+ */
 async function readResetCredits(
   fetcher: RuntimeFetch,
   headers: Record<string, string>,
@@ -80,6 +83,7 @@ async function readResetCredits(
     const seen = new Set<string>();
     const items = (Array.isArray(rawCredits) ? rawCredits : []).flatMap((entry): OAuthQuotaResetCredit[] => {
       if (!isPlainObject(entry)) return [];
+      if (!redeemable(entry)) return [];
       const id = Reflect.get(entry, 'id');
       if (typeof id !== 'string' || id.trim() === '' || seen.has(id)) return [];
       seen.add(id);
@@ -90,6 +94,19 @@ async function readResetCredits(
   } catch {
     return undefined;
   }
+}
+
+/**
+ * `available_count` is already the redeemable total, but `credits[]` also carries spent and expired
+ * grants, and every listed entry is rendered as an upcoming expiry. Absent fields pass: the count is
+ * the authority here, so an unannounced payload change must not empty the list it agrees with.
+ */
+function redeemable(entry: Readonly<Record<string, unknown>>): boolean {
+  const status = nonEmpty(Reflect.get(entry, 'status'));
+  const resetType = nonEmpty(Reflect.get(entry, 'reset_type'));
+  return (
+    (status === undefined || status === 'available') && (resetType === undefined || resetType === 'codex_rate_limits')
+  );
 }
 
 /** `rate_limit.primary_window` / `secondary_window`: the session and weekly lanes. */

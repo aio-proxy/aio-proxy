@@ -3,6 +3,7 @@ import { afterEach, expect, test } from 'bun:test';
 import {
   OAuthQuotaReadError,
   OAuthQuotaResetError,
+  OAuthQuotaResetInventoryUnknownError,
   OAuthQuotaResetUnavailableError,
   OAuthQuotaResetUnsupportedError,
 } from './errors';
@@ -34,11 +35,11 @@ test('rejects an adapter without quota.reset before any preflight read', async (
   expect(fixture.resetCalls()).toBe(0);
 });
 
-test.each([
-  ['missing reset credits', { items: [] }],
-  ['zero reset credits', { items: [], resetCredits: { availableCount: 0 } }],
-] as const)('rejects %s without mutation', async (_name, snapshot) => {
-  const fixture = createQuotaFixture({ read: async () => snapshot, reset: async () => {} });
+test('rejects a spent inventory without mutation', async () => {
+  const fixture = createQuotaFixture({
+    read: async () => ({ items: [], resetCredits: { availableCount: 0 } }),
+    reset: async () => {},
+  });
 
   const error = await capturedQuotaError(
     createOAuthQuotaResetter(fixture.dependencies).reset(PROVIDER_ID, quotaSignal()),
@@ -46,6 +47,23 @@ test.each([
 
   expect(error).toBeInstanceOf(OAuthQuotaResetUnavailableError);
   expect(error).toMatchObject({ code: 'OAUTH_QUOTA_RESET_UNAVAILABLE' });
+  expect(fixture.readCalls()).toBe(1);
+  expect(fixture.resetCalls()).toBe(0);
+});
+
+// A `reset`-capable adapter reports `{ availableCount: 0 }` for an inventory it read as empty, so an
+// absent one means it could not read the inventory at all. Reporting that as "your credit is spent"
+// would be a lie about a timeout, and it would stop the dashboard offering a redemption that is fine.
+test('separates an unreadable inventory from a spent one without mutation', async () => {
+  const fixture = createQuotaFixture({ read: async () => ({ items: [] }), reset: async () => {} });
+
+  const error = await capturedQuotaError(
+    createOAuthQuotaResetter(fixture.dependencies).reset(PROVIDER_ID, quotaSignal()),
+  );
+
+  expect(error).toBeInstanceOf(OAuthQuotaResetInventoryUnknownError);
+  expect(error).not.toBeInstanceOf(OAuthQuotaResetUnavailableError);
+  expect(error).toMatchObject({ code: 'OAUTH_QUOTA_RESET_INVENTORY_UNKNOWN' });
   expect(fixture.readCalls()).toBe(1);
   expect(fixture.resetCalls()).toBe(0);
 });

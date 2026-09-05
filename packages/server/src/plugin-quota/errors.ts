@@ -41,6 +41,22 @@ export class OAuthQuotaResetUnavailableError extends Error {
   }
 }
 
+/**
+ * The preflight could not learn how many credits remain: a `reset`-capable adapter reports
+ * `{ availableCount: 0 }` for an inventory it knows is empty and omits `resetCredits` only when the
+ * upstream inventory was unreadable. Distinct from `OAuthQuotaResetUnavailableError` because that one
+ * asserts the credit is gone — telling a user that on a timed-out inventory request is a lie, and it
+ * is retryable rather than a reason to stop offering redemption.
+ */
+export class OAuthQuotaResetInventoryUnknownError extends Error {
+  readonly code = 'OAUTH_QUOTA_RESET_INVENTORY_UNKNOWN';
+
+  constructor() {
+    super('OAuth quota reset inventory is unknown');
+    this.name = 'OAuthQuotaResetInventoryUnknownError';
+  }
+}
+
 export class OAuthQuotaResetError extends Error {
   readonly code = 'OAUTH_QUOTA_RESET_FAILED';
 

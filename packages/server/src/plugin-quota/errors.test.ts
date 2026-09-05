@@ -1,10 +1,20 @@
 import { expect, test } from 'bun:test';
 
-import { OAuthQuotaResetError, OAuthQuotaResetUnavailableError, OAuthQuotaResetUnsupportedError } from './errors';
+import {
+  OAuthQuotaResetError,
+  OAuthQuotaResetInventoryUnknownError,
+  OAuthQuotaResetUnavailableError,
+  OAuthQuotaResetUnsupportedError,
+} from './errors';
 
 test.each([
   [OAuthQuotaResetUnsupportedError, 'OAuth quota reset is unsupported', 'OAUTH_QUOTA_RESET_UNSUPPORTED'],
   [OAuthQuotaResetUnavailableError, 'OAuth quota reset is unavailable', 'OAUTH_QUOTA_RESET_UNAVAILABLE'],
+  [
+    OAuthQuotaResetInventoryUnknownError,
+    'OAuth quota reset inventory is unknown',
+    'OAUTH_QUOTA_RESET_INVENTORY_UNKNOWN',
+  ],
   [OAuthQuotaResetError, 'OAuth quota reset failed', 'OAUTH_QUOTA_RESET_FAILED'],
 ] as const)('defines the stable %s contract before reset behavior', (ErrorType, message, code) => {
   const error = new ErrorType();
