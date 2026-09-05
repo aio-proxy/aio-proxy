@@ -2,6 +2,8 @@ import { timingSafeEqual } from 'node:crypto';
 
 import type { Context, MiddlewareHandler } from 'hono';
 
+import { type CallerPrincipalEnv, staticKeyCallerPrincipal } from '../../caller-principal';
+
 type ApiKeyEntry = { readonly key: string };
 
 export const requireApiKey =
@@ -10,7 +12,7 @@ export const requireApiKey =
     authenticateStaticOrAnonymous(context, next, apiKeys());
 
 export async function authenticateStaticOrAnonymous(
-  context: Context,
+  context: Context<CallerPrincipalEnv>,
   next: () => Promise<void>,
   configuredKeys: readonly ApiKeyEntry[],
 ): Promise<Response | void> {
@@ -26,10 +28,15 @@ export async function authenticateStaticOrAnonymous(
     context.req.query('key'),
     context.req.query('auth_token'),
   ];
-  if (!candidates.some((candidate) => candidate !== undefined && matchesConfiguredKey(candidate, configuredKeys))) {
-    return authenticationError(context);
+  let matched: ApiKeyEntry | undefined;
+  for (const candidate of candidates) {
+    if (candidate === undefined) continue;
+    matched = matchedConfiguredKey(candidate, configuredKeys);
+    if (matched !== undefined) break;
   }
+  if (matched === undefined) return authenticationError(context);
 
+  context.set('callerPrincipal', staticKeyCallerPrincipal(matched.key));
   stripCallerCredentials(context);
   await next();
 }
@@ -56,9 +63,9 @@ function withoutCallerQuery(request: Request): Request {
   return new Request(url, request);
 }
 
-function matchesConfiguredKey(candidate: string, configuredKeys: readonly ApiKeyEntry[]): boolean {
+function matchedConfiguredKey(candidate: string, configuredKeys: readonly ApiKeyEntry[]): ApiKeyEntry | undefined {
   const candidateBytes = Buffer.from(candidate);
-  return configuredKeys.some(({ key }) => {
+  return configuredKeys.find(({ key }) => {
     const keyBytes = Buffer.from(key);
     return keyBytes.byteLength === candidateBytes.byteLength && timingSafeEqual(keyBytes, candidateBytes);
   });

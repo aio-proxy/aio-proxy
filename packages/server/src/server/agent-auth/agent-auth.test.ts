@@ -3,6 +3,7 @@ import { expect, test } from 'bun:test';
 import type { AgentAccessAuthentication } from '@aio-proxy/core';
 import { Hono } from 'hono';
 
+import { agentCallerPrincipal, callerPrincipal, staticKeyCallerPrincipal } from '../../caller-principal';
 import { requireModelAuthentication, type AgentEnv } from './agent-auth';
 
 const VALID_GRANT = {
@@ -32,6 +33,7 @@ function authenticatedApp(input: {
       xGoogApiKey: context.req.header('x-goog-api-key') ?? null,
       search: new URL(context.req.url).search,
       target: context.get('agentGrant')?.target ?? null,
+      principal: callerPrincipal(context),
     }),
   );
   return app;
@@ -94,4 +96,28 @@ test('static credentials and credential query fields are stripped before dispatc
     search: '?keep=yes',
     target: null,
   });
+});
+
+test('an authenticated Agent caller is identified by its installation', async () => {
+  const app = authenticatedApp({ apiKeys: [], authenticateAgent: () => ({ status: 'valid', grant: VALID_GRANT }) });
+  const response = await app.request('/probe', { headers: { authorization: 'Bearer aio_agent_at_v1_valid' } });
+
+  expect(await response.json()).toMatchObject({ principal: agentCallerPrincipal(VALID_GRANT.installationId) });
+});
+
+test('a matched static key caller is identified by that key, not by another configured key', async () => {
+  const app = authenticatedApp({
+    apiKeys: [{ key: 'first' }, { key: 'second' }],
+    authenticateAgent: () => ({ status: 'invalid' }),
+  });
+  const response = await app.request('/probe', { headers: { 'x-api-key': 'second' } });
+
+  expect(await response.json()).toMatchObject({ principal: staticKeyCallerPrincipal('second') });
+});
+
+test('an unlocked proxy identifies every caller as the single anonymous principal', async () => {
+  const app = authenticatedApp({ apiKeys: [], authenticateAgent: () => ({ status: 'invalid' }) });
+  const response = await app.request('/probe');
+
+  expect(await response.json()).toMatchObject({ principal: { kind: 'anonymous' } });
 });

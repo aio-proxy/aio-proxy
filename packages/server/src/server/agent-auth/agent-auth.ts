@@ -2,6 +2,7 @@ import type { AgentAccessAuthentication, AgentAccessGrant } from '@aio-proxy/cor
 import { AGENT_ACCESS_TOKEN_PREFIX, hasReservedAgentTokenPrefix } from '@aio-proxy/types';
 import type { MiddlewareHandler } from 'hono';
 
+import { agentCallerPrincipal, type CallerPrincipal } from '../../caller-principal';
 import {
   authenticateStaticOrAnonymous,
   authenticationError,
@@ -12,6 +13,7 @@ import {
 export type AgentEnv = {
   Variables: {
     agentGrant?: AgentAccessGrant;
+    callerPrincipal?: CallerPrincipal;
   };
 };
 
@@ -29,6 +31,7 @@ export const requireModelAuthentication =
       const result = deps.authenticateAgent(bearer);
       if (result.status !== 'valid') return authenticationError(context);
       context.set('agentGrant', result.grant);
+      context.set('callerPrincipal', agentCallerPrincipal(result.grant.installationId));
       stripCallerCredentials(context);
       await next();
       return;
