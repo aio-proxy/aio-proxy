@@ -12,6 +12,7 @@ import { createDashboardOverviewRoute } from './overview';
 import { createDashboardPluginRoutes } from './plugins';
 import { createDashboardProviderCredentialRefreshRoute } from './provider-credential-refresh';
 import { createDashboardProviderDraftRoutes } from './provider-draft';
+import { createDashboardProviderQuotaResetRoute } from './provider-quota-reset';
 import { createDashboardProviderReadRoutes } from './provider-routes';
 import { redactSecrets } from './provider-secrets';
 import { createDashboardProviderWriteRoutes } from './provider-write-routes';
@@ -50,6 +51,7 @@ export const createDashboardRoutes = (state: ServerState, auth: DashboardAuthent
     .route('/', createDashboardProviderDraftRoutes(state))
     .route('/', createDashboardProviderWriteRoutes(state))
     .route('/', createDashboardProviderCredentialRefreshRoute(state))
+    .route('/', createDashboardProviderQuotaResetRoute(state))
     .route('/', createDashboardRoutingRoutes(state))
     .get('/usage', usageOverviewValidator, (context) => {
       const query = context.req.valid('query');

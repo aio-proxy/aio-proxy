@@ -146,6 +146,11 @@ export type OAuthQuotaResetCredits = {
 
 export type OAuthQuotaSnapshot = {
   readonly items: readonly OAuthQuotaItem[];
+  /**
+   * Redeemable grants that reset a window early. Report this only alongside a `reset` implementation:
+   * a non-zero `availableCount` is what the dashboard offers redemption from, so an inventory without
+   * one advertises an action the plugin cannot perform.
+   */
   readonly resetCredits?: OAuthQuotaResetCredits;
   /** Human-readable subscription tier for this account, when the upstream exposes one. */
   readonly plan?: LocalizedText;
@@ -153,6 +158,11 @@ export type OAuthQuotaSnapshot = {
 
 export type OAuthQuotaCapability<AccountOptions, Credential> = {
   readonly read: (context: AccountContext<Credential, AccountOptions>) => Promise<OAuthQuotaSnapshot>;
+  /**
+   * Redeems one reset credit. The framework serializes resets per Provider and only calls this after a
+   * fresh `read` reported an available credit, so an implementation must treat every call as a new
+   * intentional redemption rather than a retry of the last one.
+   */
   readonly reset?: (context: AccountContext<Credential, AccountOptions>) => Promise<void>;
 };
 

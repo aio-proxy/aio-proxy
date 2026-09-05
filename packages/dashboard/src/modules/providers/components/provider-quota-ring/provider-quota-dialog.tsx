@@ -20,6 +20,7 @@ import { applicableQuotaItems } from '../../lib/quota-view';
 import type { ProviderQuotaResult } from '../../services/provider-quota-service';
 import { ProviderAvatar } from '../provider-avatar';
 import { ProviderQuotaItem } from './provider-quota-item';
+import { ProviderQuotaResetButton } from './provider-quota-reset-button';
 
 interface ProviderQuotaDialogProps {
   readonly provider: DashboardProviderSummary;
@@ -104,9 +105,19 @@ export const ProviderQuotaDialog: React.FC<ProviderQuotaDialogProps> = ({
               </ul>
             )}
             {result.snapshot.resetCredits === undefined ? null : (
-              <p className="text-xs text-muted-foreground">
-                {m['dashboard.providers.quota.reset_credits']({ count: result.snapshot.resetCredits.availableCount })}
-              </p>
+              <div className="flex flex-wrap items-center gap-3">
+                <p className="text-xs text-muted-foreground">
+                  {m['dashboard.providers.quota.reset_credits']({ count: result.snapshot.resetCredits.availableCount })}
+                </p>
+                {/* Reporting an inventory obliges the plugin to implement redemption, so the count is
+                    the whole gate: nothing to spend means no control rather than one that always fails. */}
+                {result.snapshot.resetCredits.availableCount > 0 ? (
+                  <ProviderQuotaResetButton
+                    providerId={provider.id}
+                    availableCount={result.snapshot.resetCredits.availableCount}
+                  />
+                ) : null}
+              </div>
             )}
           </>
         )}

@@ -16,7 +16,7 @@ import {
   refreshAccessToken,
 } from '../oauth-flow';
 import { generatePKCE, generateState } from '../pkce';
-import { readOpenAIChatGPTQuota } from '../quota/index';
+import { readOpenAIChatGPTQuota, resetOpenAIChatGPTQuota } from '../quota/index';
 import { createOpenAIChatGPTRuntime } from '../runtime/index';
 import type { ChatGPTCredential } from '../schema';
 
@@ -155,7 +155,10 @@ export function createOpenAIChatGPTPlugin(
       };
     },
     createRuntime: createOpenAIChatGPTRuntime,
-    quota: { read: (context) => readOpenAIChatGPTQuota(context) },
+    quota: {
+      read: (context) => readOpenAIChatGPTQuota(context),
+      reset: (context) => resetOpenAIChatGPTQuota(context),
+    },
   };
 
   return definePlugin(
