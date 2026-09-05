@@ -137,9 +137,9 @@ test('a manual refresh rediscovers an unexpired catalog and persists it before a
     const response = await refresh(fixture.routes, 'person');
 
     expect(response.status).toBe(200);
-    // No catalog in the body: the rebuild is already awaited, so the client reads the new list back
-    // through its own edit-view query.
-    expect(await response.json()).toEqual({ ok: true });
+    // The rebuild is already awaited, so the committed list can be answered inline and the client
+    // needs no follow-up read.
+    expect(await response.json()).toEqual({ models: ['model-1', 'model-2'] });
     expect(fixture.storedModelIds()).toEqual(['model-1', 'model-2']);
   } finally {
     fixture.cleanup();

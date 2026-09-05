@@ -96,7 +96,7 @@ beforeEach(() => {
   mocks.fetchCatalog.mockReset();
   mocks.fetchEditView.mockReset();
   mocks.refreshCatalog.mockReset();
-  mocks.refreshCatalog.mockResolvedValue(undefined);
+  mocks.refreshCatalog.mockResolvedValue([]);
   queryClient.clear();
 });
 
@@ -428,20 +428,10 @@ describe('ModelsSection', () => {
     expect(screen.queryByTestId('provider-alias-card')).toBeNull();
   });
 
-  // The edit view only reads the persisted catalog, so without the forced refresh landing first the
-  // button re-renders the same rows for as long as the catalog policy's TTL has not expired.
-  test('oauth providers force a catalog refresh before reading the edit-view catalog back', async () => {
-    const calls: string[] = [];
-    mocks.refreshCatalog.mockImplementation(async () => {
-      calls.push('refresh');
-    });
-    mocks.fetchEditView.mockImplementation(async () => {
-      calls.push('read');
-      return {
-        provider: { id: 'oauth-provider', kind: 'oauth' },
-        oauth: { accountLabel: 'acct', publicValues: {}, form: [], models: ['fresh-a'] },
-      };
-    });
+  // The edit view only reads the persisted catalog, so without the forced refresh the button
+  // re-renders the same rows for as long as the catalog policy's TTL has not expired.
+  test('oauth providers render the models the forced refresh committed, not the seed', async () => {
+    mocks.refreshCatalog.mockResolvedValue(['fresh-a']);
     renderSection({
       kind: ProviderKind.OAuth,
       initial: { kind: ProviderKind.OAuth, id: 'oauth-provider', models: [] },
@@ -457,11 +447,12 @@ describe('ModelsSection', () => {
     await waitFor(() => expect(screen.getByTestId('model-row-fresh-a')).toBeInTheDocument());
     expect(screen.queryByTestId('model-row-seeded-c')).toBeNull();
     expect(mocks.refreshCatalog).toHaveBeenCalledWith('oauth-provider');
-    expect(calls).toEqual(['refresh', 'read']);
+    // The refresh answers with the list it committed, so the editor needs no follow-up read.
+    expect(mocks.fetchEditView).not.toHaveBeenCalled();
     expect(mocks.fetchCatalog).not.toHaveBeenCalled();
   });
 
-  test('a failed oauth refresh toasts the error code and does not read the stale catalog back', async () => {
+  test('a failed oauth refresh toasts the error code and keeps the models it could not replace', async () => {
     mocks.refreshCatalog.mockRejectedValue(new Error('upstream refused'));
     renderSection({
       kind: ProviderKind.OAuth,
@@ -479,7 +470,6 @@ describe('ModelsSection', () => {
     );
     // The seed survives: a failed refresh must not blank the list it could not replace.
     expect(screen.getByTestId('model-row-seeded-c')).toBeInTheDocument();
-    expect(mocks.fetchEditView).not.toHaveBeenCalled();
   });
 
   test('the catalog button keeps its label while pending and names a reload after success', async () => {

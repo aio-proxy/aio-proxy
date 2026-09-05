@@ -28,7 +28,6 @@ import { applicablePluginAliases } from '../../../lib/plugin-alias-suggestions';
 import { removeModelFromAliases } from '../../../lib/remove-model-from-aliases';
 import type { SectionSummary } from '../../../lib/section-status';
 import { refreshProviderCatalog } from '../../../services/provider-catalog-refresh-service';
-import { fetchProviderEditView } from '../../../services/providers-service';
 import { SectionShell } from '../section-shell';
 import { ModelAliases } from './model-aliases';
 import { ModelRowItem } from './model-row-item';
@@ -64,12 +63,10 @@ export const ModelsSection: React.FC<ModelsSectionProps> = ({
   const oauthCatalogMutation = useMutation({
     mutationFn: async (): Promise<CatalogOutcome> => {
       if (persistedProviderId === undefined) return { ok: false, code: 'catalog_unavailable' };
-      // Refresh first: the edit view only reads the persisted catalog, so without this the button
-      // would re-render the same rows whenever the catalog policy's TTL had not expired yet.
-      await refreshProviderCatalog(persistedProviderId);
-      const data = await fetchProviderEditView(persistedProviderId);
-      if (!data || 'error' in data || data.oauth === undefined) return { ok: false, code: 'catalog_unavailable' };
-      return { ok: true, models: data.oauth.models };
+      // The edit view only reads the persisted catalog, so on its own the button would re-render the
+      // same rows whenever the catalog policy's TTL had not expired yet. This forces the rediscovery
+      // and answers with what it committed, so no follow-up read is needed.
+      return { ok: true, models: await refreshProviderCatalog(persistedProviderId) };
     },
     onSettled: () => {
       if (persistedProviderId !== undefined) {

@@ -10,10 +10,13 @@ class DashboardProviderCatalogRefreshError extends Error {
 }
 
 /**
- * The success body is a bare acknowledgement, so nothing is read from it: the server already awaited
- * the snapshot rebuild, so the caller reads the new model list through its own edit-view query.
+ * Rediscovers the Provider's catalog upstream and returns the model list the refresh committed. The
+ * server awaits its own snapshot rebuild before answering, so this list is already routable and the
+ * caller needs no follow-up read.
  */
-export const refreshProviderCatalog = async (id: string): Promise<void> => {
+export const refreshProviderCatalog = async (id: string): Promise<readonly string[]> => {
   const response = await catalogRefreshEndpoint({ param: { id } });
   if (!response.ok) throw new DashboardProviderCatalogRefreshError(response.status);
+  const { models } = await response.json();
+  return models;
 };

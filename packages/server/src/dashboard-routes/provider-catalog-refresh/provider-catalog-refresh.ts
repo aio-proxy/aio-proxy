@@ -16,7 +16,8 @@ export const createDashboardProviderCatalogRefreshRoute = (state: ServerState) =
     // preparation failed (broken credential, missing plugin, invalid account options). That is a
     // retryable runtime state, not a permanent 404, so it answers the same as a failed discovery.
     if (outcome !== 'refreshed') return context.json({ error: 'CATALOG_UNAVAILABLE' }, 502);
-    // No catalog in the body: the refresh already awaited the snapshot rebuild, so the client's own
-    // edit-view refetch reads the new model list.
-    return context.json({ ok: true });
+    // The refresh already awaited the snapshot rebuild, so the new list is readable here. Answering
+    // with it saves the client a second round trip whose only job would be to read what this call
+    // just committed.
+    return context.json({ models: state.oauthProviderEditView(id)?.models ?? [] });
   });
