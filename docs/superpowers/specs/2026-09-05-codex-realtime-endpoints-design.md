@@ -132,9 +132,10 @@ export type RealtimeDialInput = {
 export type RealtimeTransport = {
   readonly models: readonly string[];
   readonly fetch: (request: Request) => Promise<Response>;
-  /** Resolves only once the socket is OPEN. Rejects on handshake failure,
-   *  exposing the upstream status and body when there is one. Aborting
-   *  `signal` abandons a pending dial and closes any socket that opens. */
+  /** Resolves only once the socket is OPEN. Rejects with a `RealtimeDialError`
+   *  carrying `kind: 'rejected' | 'unreachable' | 'aborted' | 'timeout'`; the
+   *  upstream HTTP status is not recoverable (see below). Aborting `signal`
+   *  abandons a pending dial and closes any socket that opens. */
   readonly dial: (input: RealtimeDialInput) => Promise<WebSocket>;
 };
 ```
@@ -372,8 +373,21 @@ an upstream dial: the 101, the greeting, and a relayed frame all land. This is w
 
 Pre-upgrade answers: malformed call ID `400`; missing record `404`; already attached `409`;
 provider or account unavailable `503`; non-upgrade request `426` with `Upgrade: websocket`;
-upstream handshake rejection surfaces the upstream status, mapping 404/501 to `501`
-`not_supported_error`.
+upstream handshake rejection `502` `realtime_dial_failed`.
+
+**The upstream handshake status is not observable.** Measured on this repo's Bun (`1.4.2`), a client
+`WebSocket` exposes nothing about a non-101 response: `401`, `404`, `429`, `500`, and `501` all
+produce the identical `close` event — code `1002`, reason `"Expected 101 status code"`,
+`wasClean: false` — with an `error` event whose only own property is `isTrusted`, and no `response`,
+`status`, or body anywhere on the socket or its prototype. A refused or unreachable connect is
+distinguishable (`1006`, `"Failed to connect"`), and an abort or the 10 s deadline is known locally,
+so `dial` rejects with four discriminable kinds and nothing finer. `fetch` with manual upgrade
+headers *does* return the real status, but recovering it that way costs a second round trip on an
+already-failing path and races transient upstream state, so this design does not do it. Consequently
+the earlier "map an upstream 404/501 to `501` `not_supported_error`" is unimplementable: only the
+statically-known unsupported endpoint set answers `501`. A rejected dial is `502`
+`realtime_dial_failed`; `unreachable` and `timeout` are `503` `realtime_upstream_unavailable`; an
+abort closes without a response.
 
 A `GET /v1/realtime` with no `call_id` is a direct connection. A **malformed** `call_id` is an
 error, never a silent fall-through to direct.
@@ -477,9 +491,10 @@ Every response uses `{"error":{"message","type","param":null,"code"}}`. One stat
 | 413 | `invalid_request_error` | `realtime_body_too_large` | create body exceeds 16 MiB |
 | 415 | `invalid_request_error` | `realtime_unsupported_media_type` | create content type is not one of the four accepted |
 | 426 | `invalid_request_error` | `websocket_upgrade_required` | sideband path reached without an upgrade request |
-| 501 | `not_supported_error` | `realtime_capability_not_supported` | an endpoint in the unsupported set, or an upstream 404/501 on dial |
+| 501 | `not_supported_error` | `realtime_capability_not_supported` | an endpoint in the unsupported set |
+| 502 | `api_error` | `realtime_dial_failed` | the upstream answered the sideband handshake with a non-101 status |
 | 503 | `api_error` | `codex_auth_unavailable` | the pinned provider/account is gone, disabled, or its credential is unusable |
-| 503 | `api_error` | `realtime_upstream_unavailable` | no eligible candidate, capacity exhausted, or every attempt failed |
+| 503 | `api_error` | `realtime_upstream_unavailable` | no eligible candidate, capacity exhausted, every create attempt failed, or a sideband dial was unreachable or timed out |
 
 The two `503`s are distinct by origin: `codex_auth_unavailable` means *this call's* pin no longer
 resolves, `realtime_upstream_unavailable` means the proxy could not reach any upstream at all. A
@@ -512,7 +527,8 @@ observed on lookup with no intervening create; a live attachment not expiring; c
 answering `503` **before** any upstream dial, after expired records are dropped.
 
 **Relay lifecycle.** Upstream greeting arriving before the downstream is ready; downstream
-disconnect mid-dial; upstream handshake rejection mapped pre-upgrade; abnormal close normalized to
+disconnect mid-dial; upstream handshake rejection mapped pre-upgrade to `502` `realtime_dial_failed`
+and an unreachable dial to `503`; abnormal close normalized to
 `1011`; a `4000..4999` code passed through; a `1004`/`1005`/`1006` origin normalized to `1011` rather
 than passed through and throwing on the upstream client; an over-long reason truncated; slow peer and
 buffer overflow; binary frames preserved at exact byte length under all four framings that could
