@@ -129,11 +129,13 @@ async function createEditViewFixture(options: FixtureOptions = {}) {
   };
 }
 
+// The refresh rides on a POST to the same path: the server's CSRF guard covers mutation methods only,
+// so a side-effecting GET would be reachable cross-origin.
 const editView = (
   routes: Awaited<ReturnType<typeof createEditViewFixture>>['routes'],
   id: string,
   refreshCatalog = false,
-) => routes.request(`/providers/${id}/edit-view${refreshCatalog ? '?refreshCatalog=true' : ''}`);
+) => routes.request(`/providers/${id}/edit-view`, refreshCatalog ? { method: 'POST' } : undefined);
 
 test('an ordinary edit-view read never touches upstream', async () => {
   const fixture = await createEditViewFixture();
@@ -143,7 +145,7 @@ test('an ordinary edit-view read never touches upstream', async () => {
     expect(response.status).toBe(200);
     const body = (await response.json()) as { oauth: { models: string[] } };
     expect(body.oauth.models).toEqual(['model-1']);
-    // The whole point of gating on `refreshCatalog`: opening the editor, saving, and every
+    // The whole point of keeping the refresh on its own verb: opening the editor, saving, and every
     // invalidation hit this route, and none of them may provoke an upstream discovery.
     expect(fixture.discoveries()).toBe(0);
     expect(body).not.toHaveProperty('catalogRefreshed');
@@ -152,7 +154,7 @@ test('an ordinary edit-view read never touches upstream', async () => {
   }
 });
 
-test('refreshCatalog rediscovers an unexpired catalog and answers with the new models', async () => {
+test('the refreshing POST rediscovers an unexpired catalog and answers with the new models', async () => {
   const fixture = await createEditViewFixture();
   try {
     const response = await editView(fixture.routes, 'person', true);
@@ -201,7 +203,7 @@ test('a failed discovery still answers the view, flagged, with the previous cata
   }
 });
 
-test('refreshCatalog on a non-OAuth Provider is ignored rather than discovering anything', async () => {
+test('a refresh POST for a non-OAuth Provider is ignored rather than discovering anything', async () => {
   const fixture = await createEditViewFixture();
   try {
     const response = await editView(fixture.routes, 'plain', true);
