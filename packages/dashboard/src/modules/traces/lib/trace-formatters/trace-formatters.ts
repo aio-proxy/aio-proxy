@@ -1,4 +1,3 @@
-import { m } from '@aio-proxy/i18n';
 import type { UsageRow } from '@aio-proxy/types';
 
 import { createUsageValueFormatter } from '@/lib/nano-usd';
@@ -13,13 +12,6 @@ export const displayTotalTokens = (usage: UsageRow | undefined) =>
 
 export const formatTraceCost = (cost: number | undefined, locale = navigator.language) =>
   cost === undefined ? TRACE_PLACEHOLDER : createUsageValueFormatter('cost', locale)(cost);
-
-export const formatTraceDuration = (milliseconds: number, locale = navigator.language) =>
-  milliseconds < 1_000
-    ? m['dashboard.traces.duration_ms']({ value: new Intl.NumberFormat(locale).format(milliseconds) })
-    : m['dashboard.traces.duration_s']({
-        value: new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(milliseconds / 1_000),
-      });
 
 export const formatTraceResultDetails = (input: {
   readonly httpStatus?: number | undefined;

@@ -19,7 +19,9 @@ rs.mock('../../hooks/use-provider-mutations', () => ({
 rs.mock('../provider-quota-ring', () => ({ ProviderQuotaRing: () => <span data-testid="quota-ring" /> }));
 
 const baseProps = {
+  routing: undefined,
   health: undefined,
+  totalTokens: undefined,
   usage: undefined,
   usagePending: false,
   pluginLabel: undefined,
@@ -43,12 +45,19 @@ test('shows the display name and keeps the Provider ID to the hover title', () =
 });
 
 test('the card body is one link and never a nested-interactive button', () => {
-  renderCard(<ProviderCard {...baseProps} provider={providerStub({ id: 'p', name: 'P' })} />);
+  renderCard(
+    <ProviderCard
+      {...baseProps}
+      provider={providerStub({ id: 'p', name: 'P' })}
+      routing={{ tier: 1, share: 100, parked: false }}
+    />,
+  );
 
   const card = screen.getByTestId('provider-row-p');
   expect(card).not.toHaveAttribute('role', 'button');
   expect(card.querySelectorAll('a')).toHaveLength(1);
   expect(screen.getByTestId('provider-link-p')).toBeInTheDocument();
+  expect(card).toContainElement(screen.getByTestId('provider-card-routing'));
 });
 
 test('an API Provider with one protocol names it on line 2 and stacks its icon on line 1', () => {
@@ -85,28 +94,51 @@ test('several protocols collapse to one word so line 2 never wraps', () => {
   expect(detail).not.toHaveTextContent('Anthropic');
 });
 
-test('renders priority, weight, and health stats with dashes when unavailable', () => {
+test('keeps unknown usage and health distinct from zero requests', () => {
   renderCard(<ProviderCard {...baseProps} provider={providerStub({ id: 'p', priority: 5, weight: 3 })} />);
 
-  expect(screen.getByTestId('provider-stat-priority')).toHaveTextContent('5');
-  expect(screen.getByTestId('provider-stat-weight')).toHaveTextContent('3');
+  expect(screen.getByTestId('provider-stat-requests')).toHaveTextContent('N/A');
   expect(screen.getByTestId('provider-stat-success-rate')).toHaveTextContent('—');
   expect(screen.getByTestId('provider-stat-p95')).toHaveTextContent('—');
+  expect(screen.getByTestId('provider-stat-tokens')).toHaveTextContent('—');
 });
 
-test('defaults priority to 0 and weight to 1 and formats health', () => {
+test('groups request volume with health and shows the count only once', () => {
   renderCard(
     <ProviderCard
       {...baseProps}
       provider={providerStub({ id: 'p' })}
-      health={{ successRate: 0.985, p95LatencyMs: 1234 }}
+      usage={{ requestCount: 1200n }}
+      health={{ successRate: 0.985, p95LatencyMs: 20_090, totalTokens: 1_250_000n }}
+      totalTokens={1_250_000n}
     />,
   );
 
-  expect(screen.getByTestId('provider-stat-priority')).toHaveTextContent('0');
-  expect(screen.getByTestId('provider-stat-weight')).toHaveTextContent('1');
+  expect(screen.getByTestId('provider-stat-requests')).toHaveTextContent('1.2K');
+  expect(screen.getByTestId('provider-row-p').textContent?.match(/1\.2K/gu)).toHaveLength(1);
   expect(screen.getByTestId('provider-stat-success-rate')).toHaveTextContent('98.5%');
-  expect(screen.getByTestId('provider-stat-p95')).toHaveTextContent('1234');
+  expect(screen.getByTestId('provider-stat-p95')).toHaveTextContent('20.09 sec');
+  expect(screen.getByTestId('provider-stat-tokens')).toHaveTextContent('1.3M');
+});
+
+test('shows zero recorded tokens when the Provider has no token usage', () => {
+  renderCard(
+    <ProviderCard
+      {...baseProps}
+      provider={providerStub({ id: 'p' })}
+      health={{ successRate: 1, p95LatencyMs: 100, totalTokens: 0n }}
+      totalTokens={0n}
+    />,
+  );
+  expect(screen.getByTestId('provider-stat-tokens')).toHaveTextContent('0');
+});
+
+test('pending request volume stays pending even if an earlier value is available', () => {
+  renderCard(
+    <ProviderCard {...baseProps} provider={providerStub({ id: 'p' })} usage={{ requestCount: 1200n }} usagePending />,
+  );
+  expect(screen.getByTestId('provider-stat-requests')).toHaveTextContent('…');
+  expect(screen.queryByText('1.2K')).toBeNull();
 });
 
 test('an unavailable Provider shows its diagnostic prominently', () => {
@@ -169,16 +201,14 @@ test('an invalid Provider offers deletion and nothing else', () => {
   expect(screen.getByTestId('provider-card-delete')).toBeInTheDocument();
 });
 
-test('a disabled Provider is tinted rather than faded, and stays interactive', () => {
+test('a disabled Provider can still be opened and enabled', () => {
   renderCard(
     <ProviderCard {...baseProps} provider={providerStub({ id: 'p', kind: ProviderKind.Api, enabled: false })} />,
   );
 
-  const card = screen.getByTestId('provider-row-p');
-  expect(card.className).toContain('bg-muted/40');
-  // Fading the whole card would take its body text below the contrast floor.
-  expect(card.className).not.toContain('opacity-');
-  expect(screen.getByRole('switch')).toBeInTheDocument();
+  expect(screen.getByTestId('provider-link-p')).toBeInTheDocument();
+  expect(screen.getByRole('switch')).not.toBeChecked();
+  expect(screen.getByRole('switch')).toBeEnabled();
 });
 
 test('an invalid Provider still shows why its configuration could not be parsed', () => {

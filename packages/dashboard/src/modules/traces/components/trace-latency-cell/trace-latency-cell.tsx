@@ -1,8 +1,9 @@
 import { m } from '@aio-proxy/i18n';
 import { Zap } from 'lucide-react';
 
+import { formatDuration } from '@/lib/format-duration';
+
 import { TRACE_PLACEHOLDER, TRACE_TTFT_LABEL } from '../../lib/trace-display-constants';
-import { formatTraceDuration } from '../../lib/trace-formatters';
 import { firstResponseTimeGrade, latencyDotClassName, responseTimeGrade } from '../../lib/trace-latency-grade';
 
 interface TraceLatencyCellProps {
@@ -27,7 +28,7 @@ export const TraceLatencyCell: React.FC<TraceLatencyCellProps> = ({
       data-latency-dot
     />
     <span className="inline-flex items-center gap-1.5">
-      {formatTraceDuration(durationMs)}
+      {formatDuration(durationMs)}
       {fast ? (
         <Zap aria-label={m['dashboard.traces.fast_latency']()} className="size-3 text-primary" data-fast-marker />
       ) : null}
@@ -40,7 +41,7 @@ export const TraceLatencyCell: React.FC<TraceLatencyCellProps> = ({
           <span aria-hidden="true" className={latencyDotClassName(firstResponseTimeGrade(ttftMs))} data-latency-dot />
         )}
         <span className="text-xs text-muted-foreground">
-          {TRACE_TTFT_LABEL} {ttftMs === undefined ? TRACE_PLACEHOLDER : formatTraceDuration(ttftMs)}
+          {TRACE_TTFT_LABEL} {ttftMs === undefined ? TRACE_PLACEHOLDER : formatDuration(ttftMs)}
         </span>
       </>
     ) : null}

@@ -1,4 +1,4 @@
-import { expect, test } from 'bun:test';
+import { expect, spyOn, test } from 'bun:test';
 
 import { createTraceStore } from '../index';
 import { openTestDb } from '../test-support';
@@ -18,12 +18,14 @@ type AttemptSeed = {
 type TraceSeed = {
   readonly id: number;
   readonly endedAt?: Date;
+  readonly durationMs?: number;
   readonly modelId?: string;
   readonly requestedModelId?: string;
   readonly attempts: readonly AttemptSeed[];
   readonly terminationReason?: 'failure' | 'cancelled';
   readonly usage?: {
     readonly inputTokens?: number;
+    readonly outputTokens?: number;
     readonly totalTokens?: number;
     readonly cacheReadTokens?: number;
     readonly cacheWriteTokens?: number;
@@ -35,7 +37,7 @@ function seedTrace(store: TraceStore, seed: TraceSeed): void {
   const traceId = seed.id.toString(16).padStart(32, '0');
   const spanId = seed.id.toString(16).padStart(16, '0');
   const endedAt = seed.endedAt ?? NOW;
-  const startedAt = new Date(endedAt.getTime() - 1_000);
+  const startedAt = new Date(endedAt.getTime() - (seed.durationMs ?? 1_000));
   const finalAttempt = seed.attempts.findLast(({ outcome }) => outcome !== 'failure');
   const finalProviderId = finalAttempt?.providerId;
   const finalModelId = seed.modelId ?? 'model';
@@ -400,7 +402,9 @@ test('scopes Provider health and top model costs to the selected range', () => {
     });
 
     const recent = store.overviewDashboardDiagnostics({ range: '24h', now: NOW });
-    expect(recent.providerHealth).toEqual([{ providerId: 'recent-provider', successRate: 1, p95LatencyMs: 100 }]);
+    expect(recent.providerHealth).toEqual([
+      { providerId: 'recent-provider', successRate: 1, p95LatencyMs: 100, totalTokens: '0' },
+    ]);
     expect(recent.topModelCosts).toEqual([{ modelId: 'recent-model', estimatedCostNanoUsd: '2000000000' }]);
 
     const quarter = store.overviewDashboardDiagnostics({ range: '90d', now: NOW });
@@ -442,11 +446,69 @@ test('derives Provider health from failed and successful attempt child spans', (
     }
 
     expect(store.overviewDashboardDiagnostics({ range: '24h', now: NOW }).providerHealth).toEqual([
-      { providerId: 'a', successRate: 0, p95LatencyMs: 300 },
-      { providerId: 'b', successRate: 1, p95LatencyMs: 900 },
-      { providerId: 'c', successRate: 1, p95LatencyMs: 19 },
+      { providerId: 'a', successRate: 0, p95LatencyMs: 300, totalTokens: '0' },
+      { providerId: 'b', successRate: 1, p95LatencyMs: 900, totalTokens: '0' },
+      { providerId: 'c', successRate: 1, p95LatencyMs: 19, totalTokens: '0' },
     ]);
   });
+});
+
+test('totals Provider input plus output tokens in the selected window with exact integer arithmetic', () => {
+  withStore((store) => {
+    const samples: readonly Partial<TraceSeed>[] = [
+      { usage: { inputTokens: 100, outputTokens: 25, totalTokens: 999 } },
+      { durationMs: 0, usage: { inputTokens: 300, outputTokens: 75 } },
+      { usage: { inputTokens: 100 } },
+      { usage: { outputTokens: 50 } },
+      { usage: { totalTokens: 999 } },
+      { terminationReason: 'failure' },
+      { terminationReason: 'cancelled' },
+      { endedAt: new Date(NOW.getTime() - 25 * 60 * 60 * 1_000), usage: { inputTokens: 10_000, outputTokens: 10_000 } },
+    ];
+    samples.forEach((sample, index) => {
+      seedTrace(store, {
+        id: index + 1,
+        attempts: [{ providerId: 'measured', durationMs: 100 }],
+        ...sample,
+      });
+    });
+    seedTrace(store, { id: 20, attempts: [{ providerId: 'unused', durationMs: 100 }] });
+    seedTrace(store, {
+      id: 21,
+      attempts: [{ providerId: 'large', durationMs: 100 }],
+      usage: { inputTokens: Number.MAX_SAFE_INTEGER, outputTokens: 10 },
+    });
+
+    const rows = store.overviewDashboardDiagnostics({ range: '24h', now: NOW }).providerHealth!;
+    expect(rows.find((row) => row.providerId === 'measured')?.totalTokens).toBe('650');
+    expect(rows.find((row) => row.providerId === 'unused')?.totalTokens).toBe('0');
+    expect(rows.find((row) => row.providerId === 'large')?.totalTokens).toBe('9007199254741001');
+  });
+});
+
+test('bounds the polled Provider token query by completion time in the query plan', () => {
+  const handle = openTestDb();
+  const queries = spyOn(handle.sqlite, 'query');
+  try {
+    const store = createTraceStore(handle.db);
+    seedTrace(store, {
+      id: 1,
+      attempts: [{ providerId: 'provider', durationMs: 100 }],
+      usage: { inputTokens: 100, outputTokens: 25 },
+    });
+    expect(store.overviewDashboardDiagnostics({ range: '24h', now: NOW }).providerHealth?.[0]?.totalTokens).toBe('125');
+    const tokenQuery = queries.mock.calls.find(([statement]) => statement.includes('as inputTokens'))?.[0];
+    queries.mockRestore();
+    if (tokenQuery === undefined) throw new Error('Provider token query was not executed');
+
+    const plan = handle.sqlite
+      .query<{ detail: string }, [number, number]>(`EXPLAIN QUERY PLAN ${tokenQuery}`)
+      .all(NOW.getTime() - 24 * 60 * 60 * 1_000, NOW.getTime());
+    expect(plan.map(({ detail }) => detail).join('\n')).toMatch(/SEARCH trace_span.*ended_at>\? AND ended_at<\?/u);
+  } finally {
+    queries.mockRestore();
+    handle.close();
+  }
 });
 
 test('keeps rolling token activity after trace pruning', () => {

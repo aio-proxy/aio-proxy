@@ -3,8 +3,10 @@ import type { DashboardTraceSpan } from '@aio-proxy/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@aio-proxy/ui/components/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@aio-proxy/ui/components/tabs';
 
+import { formatDuration } from '@/lib/format-duration';
+
 import { TRACE_PLACEHOLDER } from '../../lib/trace-display-constants';
-import { formatTraceDuration, formatTraceResultDetails } from '../../lib/trace-formatters';
+import { formatTraceResultDetails } from '../../lib/trace-formatters';
 import { TraceStatus } from '../trace-status';
 
 interface SpanDetailPanelProps {
@@ -42,7 +44,7 @@ export const SpanDetailPanel: React.FC<SpanDetailPanelProps> = ({ span }) => {
                     m['dashboard.traces.ended_at'](),
                     span.endedAt === null ? undefined : new Date(span.endedAt).toLocaleString(),
                   ],
-                  [m['dashboard.traces.duration'](), formatTraceDuration(span.durationMs)],
+                  [m['dashboard.traces.duration'](), formatDuration(span.durationMs)],
                   [m['dashboard.traces.result_details'](), resultDetails],
                 ].map(([label, value]) => (
                   <div className="contents" key={label as string}>

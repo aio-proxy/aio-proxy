@@ -1,0 +1,1 @@
+CREATE INDEX `trace_span_root_ended_idx` ON `trace_span` (`parent_span_id`,`ended_at`) WHERE parent_span_id IS NULL;

@@ -16,11 +16,14 @@ import { DiagnosticDetails } from '../diagnostic-details';
 import { ProviderQuotaRing } from '../provider-quota-ring';
 import { ProviderCardFooter } from './provider-card-footer';
 import { ProviderCardIdentity } from './provider-card-identity';
+import { ProviderCardRouting, type ProviderCardRoutingProps } from './provider-card-routing';
 import { ProviderCardStats } from './provider-card-stats';
 
 interface ProviderCardProps {
   readonly provider: DashboardProviderSummary;
+  readonly routing: ProviderCardRoutingProps | undefined;
   readonly health: ProviderHealth | undefined;
+  readonly totalTokens: bigint | undefined;
   readonly usage: ProviderUsage | undefined;
   readonly usagePending: boolean;
   readonly pluginLabel: string | undefined;
@@ -31,7 +34,9 @@ interface ProviderCardProps {
 
 export const ProviderCard: React.FC<ProviderCardProps> = ({
   provider,
+  routing,
   health,
+  totalTokens,
   usage,
   usagePending,
   pluginLabel,
@@ -46,101 +51,99 @@ export const ProviderCard: React.FC<ProviderCardProps> = ({
   const plan = provider.hasQuota ? quotaQuery.data?.snapshot.plan : undefined;
 
   return (
-    <Card
-      size="sm"
+    <div
       id={`provider-row-${provider.id}`}
       data-testid={`provider-row-${provider.id}`}
       // A card with no identity link (an unparseable Provider) is the deep-link focus fallback, so
       // it has to be programmatically focusable without entering the tab order.
       {...(editable ? {} : { tabIndex: -1 })}
       data-focused={focused ? 'true' : undefined}
-      className={cn(
-        // `relative` anchors the identity link's full-card overlay; `overflow-visible` keeps the
-        // focus ring from being clipped by the Card's own `overflow-hidden`. Slot spacing is the
-        // Card's own `gap-(--card-spacing)`, which also matches its vertical padding.
-        'relative overflow-visible transition-shadow',
-        editable && 'focus-within:ring-2 focus-within:ring-ring/40 hover:shadow-md',
-        provider.state.status === 'unavailable' && 'border border-destructive/60',
-        // A tint rather than `opacity`: dimming the whole card would take its body text below the
-        // contrast floor. The icons already grayscale and the switch already reads as off.
-        provider.enabled === false && 'bg-muted/40',
-        provider.kind === 'invalid' && 'border border-dashed border-destructive',
-        focused && 'bg-accent ring-2 ring-ring/40',
-      )}
+      className="relative isolate flex min-w-0 flex-col"
     >
-      {/* `CardHeader` is a grid that switches to `[1fr_auto]` as soon as it contains a
-          `CardAction`, which is exactly the identity-plus-quota split. */}
-      <CardHeader>
-        <ProviderCardIdentity
-          provider={provider}
-          pluginLabel={pluginLabel}
-          pluginIcon={pluginIcon}
-          plan={plan === undefined ? undefined : resolveDashboardText(plan)}
-          planPending={provider.hasQuota && quotaQuery.isPending}
-          editable={editable}
-        />
-        {provider.hasQuota ? (
-          <CardAction className={cn('relative z-10', provider.enabled === false && 'grayscale')}>
-            <ProviderQuotaRing provider={provider} pluginLabel={pluginLabel} pluginIcon={pluginIcon} />
-          </CardAction>
-        ) : null}
-      </CardHeader>
-
-      <CardContent className="space-y-3">
-        {provider.kind === 'invalid' ? (
-          <div className="space-y-2" data-testid="provider-card-invalid">
-            <p className="text-sm text-destructive">{m['dashboard.providers.card.invalid_hint']()}</p>
-            <code className="block rounded-md bg-destructive/10 p-2 text-xs whitespace-normal">{provider.id}</code>
-            {provider.state.status === 'unavailable' ? (
-              // The parse failure's own reason. Without it the card says only "invalid" and the
-              // Provider cannot be edited, so there would be nowhere left to learn what broke.
-              <div
-                className="rounded-md border border-destructive/40 bg-destructive/10 p-2"
-                data-testid="provider-card-diagnostic"
-              >
-                <DiagnosticDetails diagnostic={provider.state.diagnostic} />
-              </div>
-            ) : null}
-            <div className="relative z-10 flex justify-end">
-              <Button
-                type="button"
-                size="xs"
-                variant="ghost"
-                data-testid="provider-card-delete"
-                onClick={() => onDelete(provider)}
-              >
-                {m['dashboard.providers.actions.delete']()}
-              </Button>
-            </div>
-          </div>
-        ) : (
-          <>
-            {provider.state.status === 'unavailable' ? (
-              // Deliberately not elevated: raising noninteractive text above the identity link's
-              // full-card `::after` overlay would punch a dead hole in the card's click target.
-              <div
-                className="rounded-md border border-destructive/40 bg-destructive/10 p-2"
-                data-testid="provider-card-diagnostic"
-              >
-                <DiagnosticDetails diagnostic={provider.state.diagnostic} />
-              </div>
-            ) : null}
-            <ProviderCardStats provider={provider} health={health} />
-          </>
+      <Card
+        size="sm"
+        className={cn(
+          // Keep the main surface unpositioned so the identity link's overlay anchors to the wrapper
+          // and also covers the routing layer. As a flex item, z-10 still places this surface in front.
+          'z-10 flex-1 overflow-visible transition-shadow',
+          editable && 'focus-within:ring-2 focus-within:ring-ring/40 hover:shadow-md',
+          provider.state.status === 'unavailable' && 'border border-destructive/60',
+          // Mix onto an opaque card surface so the overlapping routing layer cannot show through.
+          // Tint only the background to keep disabled text readable.
+          provider.enabled === false && 'bg-[color-mix(in_oklab,var(--muted)_40%,var(--card))]',
+          provider.kind === 'invalid' && 'border border-dashed border-destructive',
+          focused && 'bg-accent ring-2 ring-ring/40',
         )}
-      </CardContent>
+      >
+        {/* `CardHeader` is a grid that switches to `[1fr_auto]` as soon as it contains a
+          `CardAction`, which is exactly the identity-plus-quota split. */}
+        <CardHeader>
+          <ProviderCardIdentity
+            provider={provider}
+            pluginLabel={pluginLabel}
+            pluginIcon={pluginIcon}
+            plan={plan === undefined ? undefined : resolveDashboardText(plan)}
+            planPending={provider.hasQuota && quotaQuery.isPending}
+            editable={editable}
+          />
+          {provider.hasQuota ? (
+            <CardAction className={cn('relative z-10', provider.enabled === false && 'grayscale')}>
+              <ProviderQuotaRing provider={provider} pluginLabel={pluginLabel} pluginIcon={pluginIcon} />
+            </CardAction>
+          ) : null}
+        </CardHeader>
 
-      {/* `CardFooter` is a sibling of `CardContent`, not a child: each Card slot supplies its own
+        <CardContent className="space-y-3">
+          {provider.kind === 'invalid' ? (
+            <div className="space-y-2" data-testid="provider-card-invalid">
+              <p className="text-sm text-destructive">{m['dashboard.providers.card.invalid_hint']()}</p>
+              <code className="block rounded-md bg-destructive/10 p-2 text-xs whitespace-normal">{provider.id}</code>
+              {provider.state.status === 'unavailable' ? (
+                // The parse failure's own reason. Without it the card says only "invalid" and the
+                // Provider cannot be edited, so there would be nowhere left to learn what broke.
+                <div
+                  className="rounded-md border border-destructive/40 bg-destructive/10 p-2"
+                  data-testid="provider-card-diagnostic"
+                >
+                  <DiagnosticDetails diagnostic={provider.state.diagnostic} />
+                </div>
+              ) : null}
+              <div className="relative z-10 flex justify-end">
+                <Button
+                  type="button"
+                  size="xs"
+                  variant="ghost"
+                  data-testid="provider-card-delete"
+                  onClick={() => onDelete(provider)}
+                >
+                  {m['dashboard.providers.actions.delete']()}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <>
+              {provider.state.status === 'unavailable' ? (
+                // Deliberately not elevated: raising noninteractive text above the identity link's
+                // full-card `::after` overlay would punch a dead hole in the card's click target.
+                <div
+                  className="rounded-md border border-destructive/40 bg-destructive/10 p-2"
+                  data-testid="provider-card-diagnostic"
+                >
+                  <DiagnosticDetails diagnostic={provider.state.diagnostic} />
+                </div>
+              ) : null}
+              <ProviderCardStats health={health} totalTokens={totalTokens} usage={usage} usagePending={usagePending} />
+            </>
+          )}
+        </CardContent>
+
+        {/* `CardFooter` is a sibling of `CardContent`, not a child: each Card slot supplies its own
           horizontal padding, and the Card's own `gap` is what separates them. */}
-      {provider.kind === 'invalid' ? null : (
-        <ProviderCardFooter
-          provider={provider}
-          usage={usage}
-          usagePending={usagePending}
-          editable={editable}
-          onDelete={onDelete}
-        />
-      )}
-    </Card>
+        {provider.kind === 'invalid' ? null : (
+          <ProviderCardFooter provider={provider} editable={editable} onDelete={onDelete} />
+        )}
+      </Card>
+      {provider.kind === 'invalid' || routing === undefined ? null : <ProviderCardRouting {...routing} />}
+    </div>
   );
 };

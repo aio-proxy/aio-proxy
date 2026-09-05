@@ -1,11 +1,15 @@
+import { m } from '@aio-proxy/i18n';
 import { ProviderKind } from '@aio-proxy/types';
 import { afterEach, expect, rs, test } from '@rstest/core';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+
+import { queryKeys } from '@/lib/query-keys';
 
 import { providerStub } from '../../lib/provider-fixtures';
 import { ProviderCardGrid } from './provider-card-grid';
 
 const routingMocks = rs.hoisted(() => ({ mutate: rs.fn() }));
+const healthMocks = rs.hoisted(() => ({ unavailable: false }));
 
 // `Link` survives because ProviderMoreMenu and the card identity both render one; `useNavigate` does
 // not, because no component in the grid navigates programmatically any more.
@@ -28,7 +32,8 @@ rs.mock('../provider-quota-ring', () => ({ ProviderQuotaRing: () => null }));
 rs.mock('@tanstack/react-query', () => ({
   queryOptions: <T,>(options: T) => options,
   useQuery: (options: { queryKey: readonly unknown[] }) =>
-    options.queryKey[2] === 'quota'
+    options.queryKey[2] === 'quota' ||
+    (healthMocks.unavailable && JSON.stringify(options.queryKey) === JSON.stringify(queryKeys.providerHealth))
       ? { data: undefined, isPending: false, isError: true }
       : { data: new Map(), isPending: false, isError: false },
 }));
@@ -40,6 +45,7 @@ const providers = [
 
 afterEach(() => {
   routingMocks.mutate.mockReset();
+  healthMocks.unavailable = false;
   Reflect.deleteProperty(document, 'getAnimations');
 });
 
@@ -71,6 +77,66 @@ test('the search box is a labelled field that narrows the grid and reports an em
 
   fireEvent.change(search, { target: { value: 'nothing' } });
   expect(screen.getByTestId('providers-no-matches')).toBeInTheDocument();
+});
+
+test('card tier and weight share match management and stay stable when peers are filtered out', () => {
+  const allProviders = [
+    providerStub({ id: 'primary', priority: 9 }),
+    providerStub({ id: 'alpha', name: 'Alpha', priority: 1, weight: 3 }),
+    providerStub({ id: 'beta', priority: 1, weight: 7, enabled: false }),
+    providerStub({ id: 'broken', kind: 'invalid', priority: 99 }),
+  ];
+  const { rerender } = render(<ProviderCardGrid providers={allProviders} routingRevision="revision" />);
+  const alpha = within(screen.getByTestId('provider-row-alpha'));
+  expect(alpha.getByTestId('provider-card-route-tier')).toHaveTextContent(
+    m['dashboard.providers.routing.tier']({ tier: 2 }),
+  );
+  expect(alpha.getByTestId('provider-card-route-share')).toHaveTextContent('30%');
+  expect(within(screen.getByTestId('provider-row-broken')).queryByTestId('provider-card-routing')).toBeNull();
+
+  fireEvent.click(screen.getByTestId('provider-filter-enablement-enabled'));
+  fireEvent.change(screen.getByTestId('provider-search'), { target: { value: 'Alpha' } });
+  expect(screen.getAllByTestId(/^provider-row-/u)).toHaveLength(1);
+  expect(alpha.getByTestId('provider-card-route-tier')).toHaveTextContent(
+    m['dashboard.providers.routing.tier']({ tier: 2 }),
+  );
+  expect(alpha.getByTestId('provider-card-route-share')).toHaveTextContent('30%');
+
+  rerender(<ProviderCardGrid providers={allProviders} routingRevision="revision" routingEditing />);
+  expect(screen.getByTestId('provider-share-alpha')).toHaveTextContent('30%');
+});
+
+test('a single tier stays numbered and distinguishes zero weight from a rounded zero share', () => {
+  const allProviders = [
+    providerStub({ id: 'normal', weight: 10000 }),
+    providerStub({ id: 'tiny', weight: 1 }),
+    providerStub({ id: 'parked', weight: 0 }),
+  ];
+  const { rerender } = render(<ProviderCardGrid providers={allProviders} routingRevision="revision" />);
+  expect(screen.getAllByTestId('provider-card-route-tier')).toHaveLength(3);
+  for (const tier of screen.getAllByTestId('provider-card-route-tier')) {
+    expect(tier).toHaveTextContent(m['dashboard.providers.routing.tier']({ tier: 1 }));
+  }
+  expect(within(screen.getByTestId('provider-row-normal')).getByTestId('provider-card-route-share')).toHaveTextContent(
+    '100%',
+  );
+  expect(within(screen.getByTestId('provider-row-tiny')).getByTestId('provider-card-route-share')).toHaveTextContent(
+    '0%',
+  );
+  const parkedLabel = m['dashboard.providers.card.default_parked']();
+  expect(within(screen.getByTestId('provider-row-parked')).getByTestId('provider-card-route-share')).toHaveTextContent(
+    parkedLabel,
+  );
+
+  rerender(
+    <ProviderCardGrid
+      providers={allProviders.map((provider) => ({ ...provider, weight: 0 }))}
+      routingRevision="revision"
+    />,
+  );
+  for (const share of screen.getAllByTestId('provider-card-route-share')) {
+    expect(share).toHaveTextContent(parkedLabel);
+  }
 });
 
 test('a chip filters by enablement and reports its pressed state', () => {
@@ -122,15 +188,27 @@ const nextFrames = () =>
     requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
   });
 
-test('a Provider the usage response omits counts as zero requests, not as unknown', () => {
+test('successful empty responses show zero requests and tokens without inventing health stats', () => {
   // The usage query above resolves to an empty map, which is exactly what the route returns once no
   // Provider saw traffic in the window. Rendering `N/A` there would read as "we could not tell",
   // when the server told us plainly: nobody called it.
   render(<ProviderCardGrid providers={providers} routingRevision="revision" />);
 
   const card = screen.getByTestId('provider-row-alpha');
-  expect(card.textContent).toMatch(/0\s*(次|件|회)?\s*\/ 24h/u);
+  expect(within(card).getByTestId('provider-stat-requests')).toHaveTextContent('0');
+  expect(within(card).getByTestId('provider-stat-tokens')).toHaveTextContent('0');
+  expect(within(card).getByTestId('provider-stat-success-rate')).toHaveTextContent('—');
+  expect(within(card).getByTestId('provider-stat-p95')).toHaveTextContent('—');
   expect(card.textContent).not.toContain('N/A');
+});
+
+test('unavailable diagnostics keep tokens unknown even if the usage response confirms zero requests', () => {
+  healthMocks.unavailable = true;
+  render(<ProviderCardGrid providers={providers} routingRevision="revision" />);
+
+  const card = within(screen.getByTestId('provider-row-alpha'));
+  expect(card.getByTestId('provider-stat-requests')).toHaveTextContent('0');
+  expect(card.getByTestId('provider-stat-tokens')).toHaveTextContent('—');
 });
 
 test('deep-link focus lands once the target Provider arrives on a later render', async () => {

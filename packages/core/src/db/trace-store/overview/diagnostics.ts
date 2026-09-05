@@ -44,6 +44,21 @@ function providerHealth(
       group by provider_id order by provider_id`,
     [range.start.getTime(), range.end.getTime()],
   );
+  const tokenTotals = new Map<string, bigint>();
+  // Count input + output explicitly; upstream total_tokens can include other accounting.
+  // Sum as bigint so large windows cannot overflow SQLite integers or lose JS precision.
+  for (const row of iterate<{ providerId: string; inputTokens: string; outputTokens: string }>(
+    db,
+    `select final_provider_id as providerId,
+      cast(coalesce(input_tokens, 0) as text) as inputTokens,
+      cast(coalesce(output_tokens, 0) as text) as outputTokens
+    from trace_span where parent_span_id is null and final_provider_id is not null
+      and ended_at >= ? and ended_at <= ?`,
+    [range.start.getTime(), range.end.getTime()],
+  )) {
+    const tokens = parseSqliteInteger(row.inputTokens) + parseSqliteInteger(row.outputTokens);
+    tokenTotals.set(row.providerId, (tokenTotals.get(row.providerId) ?? 0n) + tokens);
+  }
   return rows.map((row) => {
     const durations = (JSON.parse(row.durations) as number[]).sort((left, right) => left - right);
     const successes = parseSqliteInteger(row.successCount);
@@ -52,6 +67,7 @@ function providerHealth(
       providerId: row.providerId,
       successRate: Number(successes) / Number(attempts),
       p95LatencyMs: durations[Math.ceil(durations.length * 0.95) - 1]!,
+      totalTokens: (tokenTotals.get(row.providerId) ?? 0n).toString(),
     };
   });
 }

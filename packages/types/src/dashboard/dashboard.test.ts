@@ -55,7 +55,7 @@ const overviewInput = {
 } as const;
 
 const diagnosticsInput = {
-  providerHealth: [{ providerId: 'openai-main', successRate: 1, p95LatencyMs: 42 }],
+  providerHealth: [{ providerId: 'openai-main', successRate: 1, p95LatencyMs: 42, totalTokens: '0' }],
   topModelCosts: [{ modelId: 'gpt-4.1', estimatedCostNanoUsd: '4' }],
 } as const;
 
