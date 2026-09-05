@@ -1,5 +1,22 @@
 # @aio-proxy/core
 
+## 0.19.0
+
+### Patch Changes
+
+- Updated dependencies [[`2e76766`](https://github.com/aio-proxy/aio-proxy/commit/2e7676669a60d42af8d545e8d1614a295fabfae6)]:
+  - @aio-proxy/i18n@0.19.0
+  - @aio-proxy/logger@0.19.0
+  - @aio-proxy/plugin-cursor@0.19.0
+  - @aio-proxy/plugin-github-copilot@0.19.0
+  - @aio-proxy/plugin-google-antigravity@0.19.0
+  - @aio-proxy/plugin-kimi-code@0.19.0
+  - @aio-proxy/plugin-openai-chatgpt@0.19.0
+  - @aio-proxy/plugin-sdk@0.19.0
+  - @aio-proxy/plugin-xai-grok@0.19.0
+  - @aio-proxy/shared@0.19.0
+  - @aio-proxy/types@0.19.0
+
 ## 0.18.1
 
 ### Patch Changes

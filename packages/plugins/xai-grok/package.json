@@ -1,6 +1,6 @@
 {
   "name": "@aio-proxy/plugin-xai-grok",
-  "version": "0.18.1",
+  "version": "0.19.0",
   "private": true,
   "files": [
     "dist"
