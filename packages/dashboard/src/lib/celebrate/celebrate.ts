@@ -1,12 +1,30 @@
 import confetti from 'canvas-confetti';
 
+/** Viewport-relative, in the 0..1 space `canvas-confetti` fires from. */
+export interface CelebrationOrigin {
+  readonly x: number;
+  readonly y: number;
+}
+
 /**
- * A burst from the control that was activated, rather than from the middle of the page. What earns one
- * here happens inside a modal, so a celebration anywhere else reads as belonging to something other than
- * the click that caused it. Falls back to the viewport centre when the control is already gone.
+ * Where a control sits, resolved while it is still on screen. Deliberately not the element: the control
+ * that earns a celebration is usually unmounted by the outcome that earns it, and a detached node
+ * measures as a zero rect at the viewport corner — a burst nowhere near the click.
  */
-export const celebrate = (origin?: Element | null) => {
-  const rect = origin?.getBoundingClientRect();
+export const celebrationOriginOf = (control: Element): CelebrationOrigin => {
+  const rect = control.getBoundingClientRect();
+  return {
+    x: (rect.left + rect.width / 2) / window.innerWidth,
+    y: (rect.top + rect.height / 2) / window.innerHeight,
+  };
+};
+
+/**
+ * A burst from the point the user acted on, rather than from the middle of the page. What earns one
+ * here happens inside a modal, so a celebration anywhere else reads as belonging to something other
+ * than the click that caused it.
+ */
+export const celebrate = (origin: CelebrationOrigin) => {
   void confetti({
     particleCount: 80,
     spread: 70,
@@ -17,12 +35,6 @@ export const celebrate = (origin?: Element | null) => {
     // Decoration on top of feedback that already reads on its own, so the whole effect is dropped rather
     // than degraded when motion is unwelcome.
     disableForReducedMotion: true,
-    origin:
-      rect === undefined
-        ? { x: 0.5, y: 0.5 }
-        : {
-            x: (rect.left + rect.width / 2) / window.innerWidth,
-            y: (rect.top + rect.height / 2) / window.innerHeight,
-          },
+    origin,
   });
 };

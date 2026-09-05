@@ -9,6 +9,10 @@ import { useProviderQuotaReset } from './use-provider-quota-reset';
 
 const mocks = rs.hoisted(() => ({ resetProviderQuota: rs.fn(), toastAdd: rs.fn(), celebrate: rs.fn() }));
 
+// Where the caller measured the control it pressed. Resolved by `celebrationOriginOf` in production;
+// what matters to this hook is only that it arrives with the mutation rather than being read at success.
+const ORIGIN = { x: 0.25, y: 0.525 };
+
 rs.mock('@/lib/celebrate', () => ({ celebrate: mocks.celebrate }));
 
 rs.mock('../../services/provider-quota-reset-service', () => ({
@@ -65,7 +69,7 @@ test('stays pending until the post-reset reading replaces the stale count', asyn
   );
 
   await waitFor(() => expect(result.current.quota.isSuccess).toBe(true));
-  act(() => result.current.reset.mutate());
+  act(() => result.current.reset.mutate(ORIGIN));
   await waitFor(() => expect(reads).toBe(2));
 
   // The redemption itself has settled and the refetch is in flight. Were the invalidation discarded,
@@ -91,7 +95,7 @@ test('a redemption stays pending across a popup that closed and reopened', async
   mocks.resetProviderQuota.mockReturnValue(request.promise);
 
   const first = renderHook(() => useProviderQuotaReset('openai.main'), { wrapper });
-  act(() => first.result.current.mutate());
+  act(() => first.result.current.mutate(ORIGIN));
   await waitFor(() => expect(first.result.current.isPending).toBe(true));
 
   // Closing the popup unmounts this observer; reopening mounts a brand new one.
@@ -107,19 +111,17 @@ test('a redemption stays pending across a popup that closed and reopened', async
 
 /**
  * The corner toast was the only report a redemption gave, and it is easy to miss behind the modal the
- * button lives in. Fired from the control the user activated so the burst lands where they were looking,
- * and only on success — a failed redemption spent nothing and must not be congratulated.
+ * button lives in. Fired from the point the caller measured on the control the user pressed — supplied
+ * at call time, because that control is unmounted by the very click that starts the redemption.
  */
-test('a successful redemption is celebrated from the control that started it', async () => {
+test('a successful redemption is celebrated from the point the caller measured', async () => {
   const wrapper = setup();
   mocks.resetProviderQuota.mockResolvedValue(undefined);
-  const control = document.createElement('button');
-  const originRef = { current: control };
 
-  const { result } = renderHook(() => useProviderQuotaReset('openai.main', originRef), { wrapper });
-  act(() => result.current.mutate());
+  const { result } = renderHook(() => useProviderQuotaReset('openai.main'), { wrapper });
+  act(() => result.current.mutate({ x: 0.25, y: 0.525 }));
 
-  await waitFor(() => expect(mocks.celebrate).toHaveBeenCalledWith(control));
+  await waitFor(() => expect(mocks.celebrate).toHaveBeenCalledWith({ x: 0.25, y: 0.525 }));
 });
 
 test('a failed redemption is not celebrated', async () => {
@@ -127,7 +129,7 @@ test('a failed redemption is not celebrated', async () => {
   mocks.resetProviderQuota.mockRejectedValue(new Error('OAUTH_QUOTA_RESET_FAILED'));
 
   const { result } = renderHook(() => useProviderQuotaReset('openai.main'), { wrapper });
-  act(() => result.current.mutate());
+  act(() => result.current.mutate({ x: 0.25, y: 0.525 }));
 
   await waitFor(() => expect(result.current.isError).toBe(true));
   expect(mocks.celebrate).not.toHaveBeenCalled();
@@ -154,7 +156,7 @@ test('a failed redemption still refetches the reading the button was rendered fr
   await waitFor(() => expect(result.current.quota.isSuccess).toBe(true));
   expect(reads).toBe(1);
 
-  act(() => result.current.reset.mutate());
+  act(() => result.current.reset.mutate(ORIGIN));
 
   await waitFor(() => expect(result.current.reset.isError).toBe(true));
   await waitFor(() => expect(reads).toBe(2));

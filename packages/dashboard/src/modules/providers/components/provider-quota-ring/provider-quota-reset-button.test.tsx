@@ -8,7 +8,7 @@ import { ProviderQuotaResetButton } from './provider-quota-reset-button';
 import { ProviderQuotaRing } from './provider-quota-ring';
 
 const queryMocks = { data: undefined as unknown };
-const resetMock = { calls: 0, pending: false };
+const resetMock = { calls: 0, pending: false, lastOrigin: undefined as unknown };
 
 rs.mock('@tanstack/react-query', () => ({
   queryOptions: <T,>(options: T) => options,
@@ -19,8 +19,9 @@ rs.mock('../../hooks/use-provider-quota-refresh', () => ({
 }));
 rs.mock('../../hooks/use-provider-quota-reset', () => ({
   useProviderQuotaReset: () => ({
-    mutate: () => {
+    mutate: (origin: unknown) => {
       resetMock.calls += 1;
+      resetMock.lastOrigin = origin;
     },
     isPending: resetMock.pending,
   }),
@@ -237,6 +238,37 @@ test('an inventory emptied elsewhere retracts an open confirmation', () => {
   view.rerender(<QuotaDialog result={snapshotWith({ availableCount: 1 })} />);
   expect(screen.queryByTestId('provider-quota-reset-confirm-inline')).not.toBeInTheDocument();
   expect(screen.getByTestId('provider-quota-reset')).toBeInTheDocument();
+});
+
+/**
+ * The celebration has to fire from the control the user pressed, and that control is unmounted by the
+ * very click that starts the redemption — by the time the request succeeds there is nothing left to
+ * measure, and a detached node reports a zero rect in the viewport corner. So the point travels with the
+ * mutation, measured here while the button is still on screen. The stub below only answers for a node
+ * still in the document, which is what makes a deferred measurement fail this.
+ */
+test('confirming hands the redemption the point the pressed button occupied', () => {
+  resetMock.pending = false;
+  const measure = Element.prototype.getBoundingClientRect;
+  Element.prototype.getBoundingClientRect = function (this: Element) {
+    return (
+      document.contains(this)
+        ? { left: 200, top: 400, width: 100, height: 40 }
+        : { left: 0, top: 0, width: 0, height: 0 }
+    ) as DOMRect;
+  };
+  Object.defineProperty(window, 'innerWidth', { value: 1000, configurable: true });
+  Object.defineProperty(window, 'innerHeight', { value: 800, configurable: true });
+
+  try {
+    render(<ProviderQuotaResetButton providerId="codex" availableCount={2} />);
+    fireEvent.click(screen.getByTestId('provider-quota-reset'));
+    fireEvent.click(screen.getByTestId('provider-quota-reset-confirm'));
+  } finally {
+    Element.prototype.getBoundingClientRect = measure;
+  }
+
+  expect(resetMock.lastOrigin).toEqual({ x: 0.25, y: 0.525 });
 });
 
 // The count is the whole gate: a control that could only ever fail is worse than no control.
