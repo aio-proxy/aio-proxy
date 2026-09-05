@@ -53,7 +53,7 @@ jobs:
           node-version: '26' # bundles npm 11.17+, which supports OIDC trusted publishing
           registry-url: 'https://registry.npmjs.org'
 
-      - run: bun install --frozen-lockfile
+      - run: bun install --frozen-lockfile --prefer-offline
 
       # v3-next line (CLI v3). Pinned to the built release tag's commit — `main`
       # does not commit dist/, so a branch/main SHA would not run. Bump this pin
