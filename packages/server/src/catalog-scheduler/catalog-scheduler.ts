@@ -6,7 +6,7 @@ import {
 } from '@aio-proxy/core';
 import { CATALOG_DISCOVERY_TIMEOUT_MS, type ModelCatalog } from '@aio-proxy/plugin-sdk';
 
-import type { CatalogJobDescriptor } from './plugin-runtime';
+import type { CatalogJobDescriptor } from '../plugin-runtime';
 
 export { CATALOG_DISCOVERY_TIMEOUT_MS };
 export const CATALOG_RETRY_MS = 5 * 60_000;
@@ -218,9 +218,11 @@ export class CatalogScheduler {
       await this.#options.rebuild('catalog');
     } catch {
       this.#scheduleRebuildRetry(active);
+      // The catalog is committed, but generation still routes through the previous snapshot until the
+      // retry lands. Acknowledging that as a refresh would let the editor show models the proxy would
+      // reject, so the caller is told the refresh did not complete.
+      return 'failed';
     }
-    // The catalog is committed either way: a failed rebuild leaves the previous snapshot serving and
-    // retries on its own, which is not a failure of the discovery the caller asked for.
     return 'refreshed';
   }
 }

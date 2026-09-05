@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 
+import type { CatalogJobDescriptor } from '../plugin-runtime';
 import { CatalogScheduler } from './catalog-scheduler';
-import type { CatalogJobDescriptor } from './plugin-runtime';
 
 const emptyCatalog = () => ({
   language: [],
@@ -171,6 +171,32 @@ test('a failed refreshNow records the catalog diagnostic and arms the retry', as
   // The retry the failure armed fires on its own, without another click.
   await Bun.sleep(20);
   expect(discoveries).toBeGreaterThanOrEqual(2);
+  scheduler.close();
+});
+
+test('a refresh whose snapshot rebuild fails reports failure rather than acknowledging', async () => {
+  let written: unknown;
+  const scheduler = new CatalogScheduler({
+    repository: {
+      ...repository,
+      compareAndSwapCatalog(input: { readonly catalog: unknown }) {
+        written = input.catalog;
+        return { ok: true, revision: 2 };
+      },
+    } as never,
+    diagnostics,
+    now: () => 10_000,
+    rebuildRetryMs: 60_000,
+    rebuild: async () => {
+      throw new Error('rebuild refused');
+    },
+  });
+  scheduler.replaceJobs([job({ discover: async () => emptyCatalog() })]);
+
+  // The catalog is committed, but generation still serves the previous snapshot, so the caller must
+  // not be told the models it can now see are routable.
+  expect(await scheduler.refreshNow('person')).toBe('failed');
+  expect(written).toEqual(emptyCatalog());
   scheduler.close();
 });
 
