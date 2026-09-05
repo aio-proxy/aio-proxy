@@ -84,9 +84,9 @@ test('an in-flight redemption reports itself where the button was', () => {
 
 /**
  * Confirming unmounts the button the keyboard user activated, so without an explicit hand-off focus sits
- * on the document body for the seconds the request and its refetch take, and the returning trigger comes
- * back unfocused. React does not reuse the node across either swap — hence the focusable disabled control
- * and the effect that moves focus on each mount.
+ * on the document body for the seconds the request and its refetch take. The trigger and the progress
+ * control share one `slotRef` position, so a single hand-off has to carry the whole wait and survive the
+ * return — hence the focusable disabled control rather than an inert span.
  */
 test('focus follows the redemption from the confirmation through progress back to the trigger', () => {
   resetMock.pending = false;
@@ -127,6 +127,21 @@ test('a redemption started elsewhere does not steal focus', () => {
   expect(outside).toHaveFocus();
 
   outside.remove();
+});
+
+/**
+ * Cancelling unmounts the auto-focused Cancel button, so the trigger has to be handed focus back the way
+ * the `AlertDialog` this replaced used to return it. Nothing about the redemption is involved, which is
+ * why the hand-off cannot be keyed on the mutation.
+ */
+test('cancelling returns focus to the trigger', () => {
+  resetMock.pending = false;
+
+  render(<ProviderQuotaResetButton providerId="codex" availableCount={2} />);
+  fireEvent.click(screen.getByTestId('provider-quota-reset'));
+  fireEvent.click(screen.getByTestId('provider-quota-reset-cancel'));
+
+  expect(screen.getByTestId('provider-quota-reset')).toHaveFocus();
 });
 
 /**

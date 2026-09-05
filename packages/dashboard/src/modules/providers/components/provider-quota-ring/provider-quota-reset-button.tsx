@@ -22,23 +22,24 @@ interface ProviderQuotaResetButtonProps {
 export const ProviderQuotaResetButton: React.FC<ProviderQuotaResetButtonProps> = ({ providerId, availableCount }) => {
   const [confirming, setConfirming] = useState(false);
   const descriptionId = useId();
-  // Set when this component is the one that started the redemption, and cleared once focus has been
-  // handed back to the returning trigger. Confirming unmounts the button the keyboard user activated, so
-  // without this focus would sit on the document body for the seconds the request and its refetch take.
-  // Gating on it matters: a remount while somebody else's redemption is still in flight — reopening the
-  // popup — must not yank focus out of wherever the user actually is. A ref rather than state because
-  // nothing renders from it; the effect below is the only reader.
-  const claimedRef = useRef(false);
+  // Set when leaving the confirmation, cleared once focus has been handed back. Confirming replaces the
+  // trigger with a `div`, so React cannot reuse the node and the control the keyboard user activated is
+  // unmounted — whether they confirm or cancel, focus would otherwise drop to the document body. The
+  // trigger and the progress control are the same `<Button ref={slotRef}>` position, so React does reuse
+  // that node across the in-flight swap and one hand-off carries the whole wait.
+  //
+  // A ref rather than state because nothing renders from it; the effect below is the only reader. Gating
+  // on it is what keeps a remount during somebody else's in-flight redemption — the popup being
+  // reopened — from yanking focus out of wherever the user actually is.
+  const owesFocusRef = useRef(false);
   const slotRef = useRef<HTMLButtonElement | null>(null);
   const reset = useProviderQuotaReset(providerId);
 
   useEffect(() => {
-    if (!claimedRef.current) return;
-    // React does not reuse the node across the swap, so focus has to be moved on each mount: onto the
-    // progress control when the request starts, then back onto the trigger when it settles.
+    if (!owesFocusRef.current) return;
+    owesFocusRef.current = false;
     slotRef.current?.focus();
-    if (!reset.isPending) claimedRef.current = false;
-  }, [confirming, reset.isPending]);
+  }, [confirming]);
 
   // In flight wins over the confirmation: the request is already irrevocable, so re-offering the choice
   // would be a lie, and the same slot has to carry the progress the user is waiting on.
@@ -86,8 +87,12 @@ export const ProviderQuotaResetButton: React.FC<ProviderQuotaResetButtonProps> =
             size="sm"
             variant="ghost"
             autoFocus
+            data-testid="provider-quota-reset-cancel"
             aria-describedby={descriptionId}
-            onClick={() => setConfirming(false)}
+            onClick={() => {
+              owesFocusRef.current = true;
+              setConfirming(false);
+            }}
           >
             {m['dashboard.providers.quota.reset_confirm_cancel']()}
           </Button>
@@ -97,7 +102,7 @@ export const ProviderQuotaResetButton: React.FC<ProviderQuotaResetButtonProps> =
             data-testid="provider-quota-reset-confirm"
             aria-describedby={descriptionId}
             onClick={() => {
-              claimedRef.current = true;
+              owesFocusRef.current = true;
               reset.mutate();
               setConfirming(false);
             }}

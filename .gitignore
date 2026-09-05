@@ -3,7 +3,9 @@ dist
 .DS_Store
 .turbo/
 packages/*/.turbo/
-.aio-proxy-dev/
+# No trailing slash: a worktree gets this as a symlink to the main checkout's dev state, and a
+# directory-only pattern would leave that symlink committable.
+.aio-proxy-dev
 .omo/
 bun-debug.log
 *.tsbuildinfo
