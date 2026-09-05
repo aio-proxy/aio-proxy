@@ -46,7 +46,7 @@ export const ProviderQuotaResetButton: React.FC<ProviderQuotaResetButtonProps> =
   // redemption is in flight must not pull focus out of wherever the user actually is.
   const heldFocusRef = useRef(false);
 
-  const reset = useProviderQuotaReset(providerId);
+  const reset = useProviderQuotaReset(providerId, slotRef);
   // In flight outranks the count: the request is already irrevocable, so the progress has to stay on
   // screen even after the refetch it triggers publishes a zero count. A confirmation does not get the
   // same treatment — nothing has been spent yet, and Refresh stays reachable while the prompt is open,

@@ -7,7 +7,9 @@ import { queryKeys } from '@/lib/query-keys';
 
 import { useProviderQuotaReset } from './use-provider-quota-reset';
 
-const mocks = rs.hoisted(() => ({ resetProviderQuota: rs.fn(), toastAdd: rs.fn() }));
+const mocks = rs.hoisted(() => ({ resetProviderQuota: rs.fn(), toastAdd: rs.fn(), celebrate: rs.fn() }));
+
+rs.mock('@/lib/celebrate', () => ({ celebrate: mocks.celebrate }));
 
 rs.mock('../../services/provider-quota-reset-service', () => ({
   resetProviderQuota: mocks.resetProviderQuota,
@@ -32,6 +34,7 @@ rs.mock('@aio-proxy/i18n', () => ({
 const setup = () => {
   mocks.resetProviderQuota.mockReset();
   mocks.toastAdd.mockReset();
+  mocks.celebrate.mockReset();
   const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
   return ({ children }: { readonly children: ReactNode }) =>
     createElement(QueryClientProvider, { client: queryClient }, children);
@@ -100,6 +103,34 @@ test('a redemption stays pending across a popup that closed and reopened', async
   request.resolve(undefined);
   await waitFor(() => expect(reopened.result.current.isPending).toBe(false));
   expect(mocks.resetProviderQuota).toHaveBeenCalledTimes(1);
+});
+
+/**
+ * The corner toast was the only report a redemption gave, and it is easy to miss behind the modal the
+ * button lives in. Fired from the control the user activated so the burst lands where they were looking,
+ * and only on success — a failed redemption spent nothing and must not be congratulated.
+ */
+test('a successful redemption is celebrated from the control that started it', async () => {
+  const wrapper = setup();
+  mocks.resetProviderQuota.mockResolvedValue(undefined);
+  const control = document.createElement('button');
+  const originRef = { current: control };
+
+  const { result } = renderHook(() => useProviderQuotaReset('openai.main', originRef), { wrapper });
+  act(() => result.current.mutate());
+
+  await waitFor(() => expect(mocks.celebrate).toHaveBeenCalledWith(control));
+});
+
+test('a failed redemption is not celebrated', async () => {
+  const wrapper = setup();
+  mocks.resetProviderQuota.mockRejectedValue(new Error('OAUTH_QUOTA_RESET_FAILED'));
+
+  const { result } = renderHook(() => useProviderQuotaReset('openai.main'), { wrapper });
+  act(() => result.current.mutate());
+
+  await waitFor(() => expect(result.current.isError).toBe(true));
+  expect(mocks.celebrate).not.toHaveBeenCalled();
 });
 
 test('a failed redemption still refetches the reading the button was rendered from', async () => {

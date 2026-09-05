@@ -9,4 +9,4 @@ Make a quota reset redemption legible while it happens. The redeem button lives 
 
 A redemption can no longer be spent twice. Closing the quota popup and reopening it before the request settled used to present the confirmation again over the stale count, and confirming spent a second credit; the wait is now read from the pending redemption itself, which outlives the popup. An open confirmation is also retracted when a refresh finds the inventory emptied elsewhere, rather than offering a credit that no longer exists.
 
-Toasts now render above dialogs and sheets instead of being dimmed and blurred by their backdrop, so the confirmation a modal action gives is actually legible.
+Toasts now render above dialogs and sheets instead of being dimmed and blurred by their backdrop, so the confirmation a modal action gives is actually legible. A successful redemption also sets off a burst of confetti from the button that was pressed, because a corner toast behind a modal was too easy to miss for the one irreversible action in the popup. It is skipped for anyone whose system asks for reduced motion.
