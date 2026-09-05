@@ -24,7 +24,7 @@
     "@aio-proxy/server": "workspace:*",
     "@aio-proxy/shared": "workspace:*",
     "@aio-proxy/types": "workspace:*",
-    "@inquirer/prompts": "^8.5.2",
+    "@inquirer/prompts": "^8.7.1",
     "commander": "15",
     "es-toolkit": "catalog:",
     "zod": "catalog:"

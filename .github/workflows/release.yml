@@ -60,7 +60,7 @@ jobs:
       # (and the @changesets/* devDependencies) together when upgrading.
       - name: Changesets — maintain Version PR or publish
         id: changesets
-        uses: changesets/action@c47fa68bd43bb8ae0bae7e558622593deebf5955 # v2.0.0-next.3
+        uses: changesets/action@8488615a623b1b9c987934bb89eae8af6a946ac1 # v2.1.1
         with:
           # This action uses kebab-case inputs and HARD-FAILS if given any legacy
           # name (publish/version/commit/title/setupGitUser/createGithubReleases/…).
