@@ -103,12 +103,10 @@ export function createGitHubCopilotPlugin(
         baseURL: zod.url(),
         enterpriseURL: zod.string().optional(),
       })
-      .transform(
-        ({ enterpriseURL, ...credential }): GitHubCopilotCredential => ({
-          ...credential,
-          ...(enterpriseURL === undefined ? {} : { enterpriseURL }),
-        }),
-      ),
+      .transform(({ enterpriseURL, ...credential }): GitHubCopilotCredential => ({
+        ...credential,
+        ...(enterpriseURL === undefined ? {} : { enterpriseURL }),
+      })),
     login: async (context, options) => {
       const parsed = await accountOptions.schema.parseAsync(options);
       return await loginToGitHubCopilot(context, parsed, {

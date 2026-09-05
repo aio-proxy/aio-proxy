@@ -67,7 +67,7 @@ export function allocateCallOccurrences(
   return [...groups.values()]
     .flatMap(allocateGroup)
     .sort((left, right) => left.occurrenceOrder - right.occurrenceOrder)
-    .map(({ id: _, occurrenceOrder: __, signature: ___, ...match }) => match);
+    .map(({ id: _id, occurrenceOrder: _occurrenceOrder, signature: _signature, ...match }) => match);
 }
 type OrderedMatchedCall = Occurrence & { readonly candidateIndex: number };
 

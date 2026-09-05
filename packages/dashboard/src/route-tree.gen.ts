@@ -10,15 +10,15 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as TracesIndexRouteImport } from './routes/traces/index'
-import { Route as SettingsIndexRouteImport } from './routes/settings/index'
-import { Route as RoutingIndexRouteImport } from './routes/routing/index'
-import { Route as ProvidersIndexRouteImport } from './routes/providers/index'
-import { Route as PluginsIndexRouteImport } from './routes/plugins/index'
-import { Route as TracesTraceIdRouteImport } from './routes/traces/$traceId'
-import { Route as ProvidersNewRouteImport } from './routes/providers/new'
-import { Route as OauthCompleteRouteImport } from './routes/oauth/complete'
 import { Route as AgentsAuthorizeRouteImport } from './routes/agents/authorize'
+import { Route as OauthCompleteRouteImport } from './routes/oauth/complete'
+import { Route as PluginsIndexRouteImport } from './routes/plugins/index'
+import { Route as ProvidersIndexRouteImport } from './routes/providers/index'
+import { Route as ProvidersNewRouteImport } from './routes/providers/new'
+import { Route as RoutingIndexRouteImport } from './routes/routing/index'
+import { Route as SettingsIndexRouteImport } from './routes/settings/index'
+import { Route as TracesIndexRouteImport } from './routes/traces/index'
+import { Route as TracesTraceIdRouteImport } from './routes/traces/$traceId'
 import { Route as ProvidersIdEditRouteImport } from './routes/providers/$id.edit'
 
 const IndexRoute = IndexRouteImport.update({
@@ -26,39 +26,9 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const TracesIndexRoute = TracesIndexRouteImport.update({
-  id: '/traces/',
-  path: '/traces/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SettingsIndexRoute = SettingsIndexRouteImport.update({
-  id: '/settings/',
-  path: '/settings/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const RoutingIndexRoute = RoutingIndexRouteImport.update({
-  id: '/routing/',
-  path: '/routing/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ProvidersIndexRoute = ProvidersIndexRouteImport.update({
-  id: '/providers/',
-  path: '/providers/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const PluginsIndexRoute = PluginsIndexRouteImport.update({
-  id: '/plugins/',
-  path: '/plugins/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const TracesTraceIdRoute = TracesTraceIdRouteImport.update({
-  id: '/traces/$traceId',
-  path: '/traces/$traceId',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ProvidersNewRoute = ProvidersNewRouteImport.update({
-  id: '/providers/new',
-  path: '/providers/new',
+const AgentsAuthorizeRoute = AgentsAuthorizeRouteImport.update({
+  id: '/agents/authorize',
+  path: '/agents/authorize',
   getParentRoute: () => rootRouteImport,
 } as any)
 const OauthCompleteRoute = OauthCompleteRouteImport.update({
@@ -66,9 +36,39 @@ const OauthCompleteRoute = OauthCompleteRouteImport.update({
   path: '/oauth/complete',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AgentsAuthorizeRoute = AgentsAuthorizeRouteImport.update({
-  id: '/agents/authorize',
-  path: '/agents/authorize',
+const PluginsIndexRoute = PluginsIndexRouteImport.update({
+  id: '/plugins/',
+  path: '/plugins/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ProvidersIndexRoute = ProvidersIndexRouteImport.update({
+  id: '/providers/',
+  path: '/providers/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ProvidersNewRoute = ProvidersNewRouteImport.update({
+  id: '/providers/new',
+  path: '/providers/new',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RoutingIndexRoute = RoutingIndexRouteImport.update({
+  id: '/routing/',
+  path: '/routing/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsIndexRoute = SettingsIndexRouteImport.update({
+  id: '/settings/',
+  path: '/settings/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TracesIndexRoute = TracesIndexRouteImport.update({
+  id: '/traces/',
+  path: '/traces/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TracesTraceIdRoute = TracesTraceIdRouteImport.update({
+  id: '/traces/$traceId',
+  path: '/traces/$traceId',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ProvidersIdEditRoute = ProvidersIdEditRouteImport.update({
@@ -182,53 +182,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/traces/': {
-      id: '/traces/'
-      path: '/traces'
-      fullPath: '/traces/'
-      preLoaderRoute: typeof TracesIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/settings/': {
-      id: '/settings/'
-      path: '/settings'
-      fullPath: '/settings/'
-      preLoaderRoute: typeof SettingsIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/routing/': {
-      id: '/routing/'
-      path: '/routing'
-      fullPath: '/routing/'
-      preLoaderRoute: typeof RoutingIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/providers/': {
-      id: '/providers/'
-      path: '/providers'
-      fullPath: '/providers/'
-      preLoaderRoute: typeof ProvidersIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/plugins/': {
-      id: '/plugins/'
-      path: '/plugins'
-      fullPath: '/plugins/'
-      preLoaderRoute: typeof PluginsIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/traces/$traceId': {
-      id: '/traces/$traceId'
-      path: '/traces/$traceId'
-      fullPath: '/traces/$traceId'
-      preLoaderRoute: typeof TracesTraceIdRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/providers/new': {
-      id: '/providers/new'
-      path: '/providers/new'
-      fullPath: '/providers/new'
-      preLoaderRoute: typeof ProvidersNewRouteImport
+    '/agents/authorize': {
+      id: '/agents/authorize'
+      path: '/agents/authorize'
+      fullPath: '/agents/authorize'
+      preLoaderRoute: typeof AgentsAuthorizeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/oauth/complete': {
@@ -238,11 +196,53 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OauthCompleteRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/agents/authorize': {
-      id: '/agents/authorize'
-      path: '/agents/authorize'
-      fullPath: '/agents/authorize'
-      preLoaderRoute: typeof AgentsAuthorizeRouteImport
+    '/plugins/': {
+      id: '/plugins/'
+      path: '/plugins'
+      fullPath: '/plugins/'
+      preLoaderRoute: typeof PluginsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/providers/': {
+      id: '/providers/'
+      path: '/providers'
+      fullPath: '/providers/'
+      preLoaderRoute: typeof ProvidersIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/providers/new': {
+      id: '/providers/new'
+      path: '/providers/new'
+      fullPath: '/providers/new'
+      preLoaderRoute: typeof ProvidersNewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/routing/': {
+      id: '/routing/'
+      path: '/routing'
+      fullPath: '/routing/'
+      preLoaderRoute: typeof RoutingIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings/': {
+      id: '/settings/'
+      path: '/settings'
+      fullPath: '/settings/'
+      preLoaderRoute: typeof SettingsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/traces/': {
+      id: '/traces/'
+      path: '/traces'
+      fullPath: '/traces/'
+      preLoaderRoute: typeof TracesIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/traces/$traceId': {
+      id: '/traces/$traceId'
+      path: '/traces/$traceId'
+      fullPath: '/traces/$traceId'
+      preLoaderRoute: typeof TracesTraceIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/providers/$id/edit': {

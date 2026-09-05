@@ -1,5 +1,6 @@
 import { queryOptions } from '@tanstack/react-query';
 
+import type { DashboardClientResponse } from '@/lib/dashboard-client';
 import { createDashboardClient } from '@/lib/dashboard-client';
 import { queryKeys } from '@/lib/query-keys';
 
@@ -15,7 +16,7 @@ export class ProviderPackageRequestError extends Error {
   }
 }
 
-export const throwRequestError = async (response: Response): Promise<never> => {
+export const throwRequestError = async (response: DashboardClientResponse): Promise<never> => {
   let payload: unknown;
   try {
     payload = await response.json();
