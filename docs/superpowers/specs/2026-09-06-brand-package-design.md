@@ -87,6 +87,9 @@ Path data is copied verbatim in both cases.
   "scripts": {
     "build:assets": "bun scripts/build-assets.ts"
   },
+  "dependencies": {
+    "cn": "catalog:"
+  },
   "peerDependencies": {
     "react": "^19.2.8"
   }
@@ -184,9 +187,18 @@ Two removals from the current implementation:
   longer depends on whether Lexend has loaded. This is the substantive win of the replacement.
 - The `children` passthrough. Neither consumer uses it.
 
-The component composes `className` by string concatenation rather than importing `cn` from
-`packages/ui`. There is one default value to merge; a cross-package dependency for that is not
-worth the coupling.
+The component merges `className` with `cn` from the `cn` package (the same tailwind-merge
+implementation `packages/ui` re-exports from `src/lib/utils.ts`), depending on it directly rather
+than importing through `@aio-proxy/ui`.
+
+Plain string concatenation would be wrong here. The default class list contains `text-lg`, and
+`login-page.tsx:41` renders `<AioProxyBrand className="text-2xl" />`; concatenation emits both
+classes and lets CSS source order pick the winner, whereas `cn` resolves the conflict:
+
+```
+cn('h-[1.333em] w-auto shrink-0 text-lg text-foreground', 'text-2xl')
+  -> 'h-[1.333em] w-auto shrink-0 text-foreground text-2xl'
+```
 
 ## Consumers
 
@@ -270,6 +282,9 @@ READMEs are not published to npm (`npm/aio-proxy/package.json` ships only `bin` 
 - `oxc.ts` `ignorePatterns`: add `packages/brand/src/logo-geometry.ts`, alongside the existing
   `route-tree.gen.ts` and `migrations.manifest.ts` entries.
 - Root `tsconfig.json` `references`: add `./packages/brand`.
+- Root `package.json` `workspaces.catalog`: add `"cn": "^0.2.5"`, and change
+  `packages/ui/package.json` to `"cn": "catalog:"`. `CLAUDE.md` requires catalog management once a
+  dependency has two or more workspace consumers, which adding the brand package makes true.
 - Root `package.json` `workspaces.packages` already covers `packages/*`; no change needed.
 
 ## Changesets
