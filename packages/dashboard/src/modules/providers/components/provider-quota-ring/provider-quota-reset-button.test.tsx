@@ -1,7 +1,9 @@
 import { expect, rs, test } from '@rstest/core';
 import { fireEvent, render, screen } from '@testing-library/react';
+import type React from 'react';
 
 import { providerStub } from '../../lib/provider-fixtures';
+import { ProviderQuotaDialog } from './provider-quota-dialog';
 import { ProviderQuotaResetButton } from './provider-quota-reset-button';
 import { ProviderQuotaRing } from './provider-quota-ring';
 
@@ -36,6 +38,22 @@ const openDialog = () => {
   render(<ProviderQuotaRing provider={provider} />);
   fireEvent.click(screen.getByTestId('provider-quota-ring'));
 };
+
+// The popup rendered directly, so a rerender can publish a new count into the subtree the way the
+// post-redemption refetch does. Going through `ProviderQuotaRing` would not: its snapshot comes from the
+// mocked `useQuery`, which a rerender does not re-read.
+const QuotaDialog: React.FC<{ readonly result: ReturnType<typeof snapshotWith> }> = ({ result }) => (
+  <ProviderQuotaDialog
+    provider={provider}
+    pluginLabel={undefined}
+    pluginIcon={undefined}
+    open
+    onOpenChange={() => {}}
+    result={result as never}
+    onRefresh={() => {}}
+    refreshing={false}
+  />
+);
 
 // Redemption is irreversible and spends a scarce grant, so the button must not act on the first click.
 test('redeeming asks for confirmation before spending the credit', () => {
@@ -160,6 +178,37 @@ test('the confirmation describes its consequence to whichever control is focused
 
   expect(document.activeElement).toHaveAccessibleDescription(consequence);
   expect(screen.getByTestId('provider-quota-reset-confirm')).toHaveAccessibleDescription(consequence);
+});
+
+/**
+ * The redemption outlives the count it was started from: the invalidation it returns publishes
+ * `availableCount: 0` while the request is still in flight. A caller-side `availableCount > 0` gate
+ * therefore unmounted the spinner mid-request and dropped focus to the page — the dead click this whole
+ * control exists to remove. Driven through the popup because that is where the count arrives.
+ */
+test('spending the last credit keeps the progress visible until the request settles', () => {
+  resetMock.pending = false;
+
+  const view = render(<QuotaDialog result={snapshotWith({ availableCount: 1 })} />);
+  fireEvent.click(screen.getByTestId('provider-quota-reset'));
+  fireEvent.click(screen.getByTestId('provider-quota-reset-confirm'));
+
+  // What the post-redemption refetch publishes while the mutation is still pending.
+  resetMock.pending = true;
+  view.rerender(<QuotaDialog result={snapshotWith({ availableCount: 0 })} />);
+
+  const pending = screen.getByTestId('provider-quota-reset-pending');
+  expect(pending).toBeInTheDocument();
+  expect(pending).toHaveFocus();
+
+  resetMock.pending = false;
+  view.rerender(<QuotaDialog result={snapshotWith({ availableCount: 0 })} />);
+
+  // Nothing left to spend, so no control — but focus must land somewhere inside the popup rather than
+  // on the document body, which would strand a keyboard user outside the frame they are still reading.
+  expect(screen.queryByTestId('provider-quota-reset-pending')).not.toBeInTheDocument();
+  expect(screen.queryByTestId('provider-quota-reset')).not.toBeInTheDocument();
+  expect(screen.getByTestId('provider-quota-dialog')).toHaveFocus();
 });
 
 // The count is the whole gate: a control that could only ever fail is worse than no control.
