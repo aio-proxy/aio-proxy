@@ -17,8 +17,10 @@ describe('GET /v1/models client_version routing', () => {
   let tmpAioHome: string;
   let originalAioHome: string | undefined;
   let lockedHome: string;
+  let codexHome: string;
   let app: Awaited<ReturnType<typeof createBaseServer>>;
   let lockedApp: Awaited<ReturnType<typeof createBaseServer>>;
+  let codexApp: Awaited<ReturnType<typeof createBaseServer>>;
   let opencode: IssuedAgentCredential;
   let pi: IssuedAgentCredential;
   let omp: IssuedAgentCredential;
@@ -78,17 +80,31 @@ describe('GET /v1/models client_version routing', () => {
       dbHome: lockedHome,
       __test: { agentIdentity: identity },
     });
+    // The Codex catalog only lists text-output models. This config's models have
+    // no models.dev entry, so router metadata is what makes them eligible.
+    codexHome = mkdtempSync(join(tmpdir(), 'aio-proxy-codex-models-'));
+    const textOutput = { metadata: { capabilities: { modalities: { output: ['text'] } } } };
+    codexApp = await createBaseServer({
+      config: {
+        ...config,
+        router: { models: { 'gpt-alias': textOutput, compatible: textOutput, 'compatible-test': textOutput } },
+      },
+      dbHome: codexHome,
+      __test: { agentIdentity: identity },
+    });
   });
 
   afterEach(() => {
     app?.close();
     lockedApp?.close();
+    codexApp?.close();
     closeIdentity();
     closeIdentity = () => {};
     if (originalAioHome === undefined) delete process.env.AIO_PROXY_HOME;
     else process.env.AIO_PROXY_HOME = originalAioHome;
     rmSync(dir, { recursive: true, force: true });
     rmSync(lockedHome, { recursive: true, force: true });
+    rmSync(codexHome, { recursive: true, force: true });
     rmSync(tmpAioHome, { recursive: true, force: true });
   });
 
@@ -167,7 +183,7 @@ describe('GET /v1/models client_version routing', () => {
   });
 
   test('client_version query returns codex catalog', async () => {
-    const response = await app.request('/v1/models?client_version=0.146.0', undefined, loopbackServer);
+    const response = await codexApp.request('/v1/models?client_version=0.146.0', undefined, loopbackServer);
     const body = await response.json();
 
     expect(response.status).toBe(200);
@@ -178,6 +194,17 @@ describe('GET /v1/models client_version routing', () => {
       expect(typeof model.base_instructions).toBe('string');
     }
     expect(body.object).toBeUndefined();
+  });
+
+  test('client_version query hides models with no text output modality', async () => {
+    // An image or video generator listed in the Codex picker is unselectable in
+    // practice: codex calls whatever it lists as a text chat model. The base
+    // config declares no output modality for any model, so nothing is eligible.
+    const response = await app.request('/v1/models?client_version=0.146.0', undefined, loopbackServer);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.models).toEqual([]);
   });
 
   test('no client_version query returns openai list catalog', async () => {
