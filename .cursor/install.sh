@@ -3,8 +3,10 @@
 # Runs after the repository is checked out; safe to run repeatedly.
 set -euo pipefail
 
-# Pin Bun to the version the repo requires (see package.json `packageManager`/`engines`).
-BUN_VERSION="1.3.14"
+# Pin Bun to the version the repo requires. Keep in sync with .bun-version and
+# package.json `packageManager`/`engines` — a drift here silently bootstraps
+# Cloud Agent sessions on a Bun that violates the repo's engines floor.
+BUN_VERSION="1.4.2"
 export BUN_INSTALL="${BUN_INSTALL:-$HOME/.bun}"
 export PATH="$BUN_INSTALL/bin:$PATH"
 
