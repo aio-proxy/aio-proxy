@@ -42,6 +42,10 @@ const DELAY_MS = 15_000;
 export const tarballUrl = (pkg: string, version: string) =>
   `https://registry.npmjs.org/@aio-proxy/${pkg}/-/${pkg}-${version}.tgz`;
 
+// A `string` is how a failed attempt travels back through `.catch()`, so that a
+// success (`Uint8Array`) and a failure stay distinguishable without a throw.
+const describeFailure = (error: unknown) => (error instanceof Error ? error.message : String(error));
+
 /**
  * Wait for every platform tarball to be fetchable, then hash the served bytes.
  *
@@ -77,23 +81,31 @@ export async function buildHomebrewChecksums({
 
     for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
       // A network error is the same kind of transient as a 404 here (one release
-      // died on a bare ECONNRESET), so fold it into the same retry.
-      const response = await fetchTarball(url).catch((error: unknown) => String(error));
-      if (typeof response !== 'string' && response.ok) {
-        const bytes = new Uint8Array(await response.arrayBuffer());
-        const sha256 = new Bun.CryptoHasher('sha256').update(bytes).digest('hex');
+      // died on a bare ECONNRESET), so fold it into the same retry. The body read
+      // is inside the boundary too: a connection that resets mid-tarball answers
+      // with successful headers and only fails once the stream is drained, which
+      // is the same transient arriving a few hundred milliseconds later.
+      const outcome = await readTarball(url).catch(describeFailure);
+      if (typeof outcome !== 'string') {
+        const sha256 = new Bun.CryptoHasher('sha256').update(outcome).digest('hex');
         log(`${pkg}: ${sha256}`);
         return sha256;
       }
 
-      const reason = typeof response === 'string' ? response : `HTTP ${response.status}`;
       if (attempt === ATTEMPTS) {
-        throw new Error(`${url} is still unavailable after ${ATTEMPTS} attempts: ${reason}`);
+        throw new Error(`${url} is still unavailable after ${ATTEMPTS} attempts: ${outcome}`);
       }
-      log(`${pkg}: ${reason} (attempt ${attempt}/${ATTEMPTS}); retrying in ${DELAY_MS / 1000}s`);
+      log(`${pkg}: ${outcome} (attempt ${attempt}/${ATTEMPTS}); retrying in ${DELAY_MS / 1000}s`);
       await wait(DELAY_MS);
     }
 
     throw new Error(`unreachable: ${pkg} exhausted its attempts without resolving`);
+  }
+
+  /** Throws on a non-2xx, a failed connection, or a body that dies mid-stream. */
+  async function readTarball(url: string): Promise<Uint8Array> {
+    const response = await fetchTarball(url);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return new Uint8Array(await response.arrayBuffer());
   }
 }

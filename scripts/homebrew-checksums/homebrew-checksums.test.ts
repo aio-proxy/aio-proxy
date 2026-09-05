@@ -103,6 +103,33 @@ describe('buildHomebrewChecksums', () => {
     expect(payload.checksums['cli-darwin-arm64']).toBe(sha256For('cli-darwin-arm64'));
   });
 
+  // A connection that dies mid-tarball answers with successful headers and only
+  // fails once the body is drained — the same transient, a few hundred
+  // milliseconds later. It must not escape the retry just because it arrived after
+  // the Response resolved.
+  test('retries a body that fails mid-stream', async () => {
+    let attempts = 0;
+    const payload = await build({
+      packages: ['cli-darwin-arm64'],
+      fetchTarball: (url) => {
+        attempts++;
+        if (attempts === 1) {
+          return Promise.resolve(
+            new Response(
+              new ReadableStream({
+                start: (controller) => controller.error(new Error('ECONNRESET mid-body')),
+              }),
+            ),
+          );
+        }
+        return Promise.resolve(new Response(bytesFor(packageOf(url))));
+      },
+    });
+
+    expect(attempts).toBe(2);
+    expect(payload.checksums['cli-darwin-arm64']).toBe(sha256For('cli-darwin-arm64'));
+  });
+
   test('gives up with the URL and reason once the retries are exhausted', async () => {
     const promise = build({
       packages: ['cli-darwin-arm64'],
