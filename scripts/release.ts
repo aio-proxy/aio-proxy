@@ -41,6 +41,8 @@ import { join } from 'node:path';
 
 import { $ } from 'bun';
 
+import { buildHomebrewChecksums } from './homebrew-checksums';
+
 const DRY_RUN = process.argv.includes('--dry-run');
 
 type PackageJson = {
@@ -206,6 +208,22 @@ for (const { json } of publishable) {
 }
 
 console.log(`\nReleased v${version}`);
+
+// --- hand the Homebrew tap the checksums of the tarballs we just published -----
+// See scripts/homebrew-checksums for why the tap cannot just re-download them.
+const checksumPath = process.env['HOMEBREW_CHECKSUMS_PATH'];
+if (checksumPath) {
+  const payload = await buildHomebrewChecksums({
+    tarballs,
+    platformProvided,
+    version,
+    readBytes: (path) => Bun.file(path).bytes(),
+    registryIntegrity: async (name, ver) =>
+      (await $`npm view ${`${name}@${ver}`} dist.integrity`.nothrow().quiet()).text().trim(),
+  });
+  await Bun.write(checksumPath, JSON.stringify(payload));
+  console.log(`\nWrote ${Object.keys(payload.checksums).length} Homebrew checksum(s) to ${checksumPath}`);
+}
 
 // --- one lockstep tag + GitHub Release for the whole release --------------------
 // Every package shares one version (`fixed`), so this repo cuts a single

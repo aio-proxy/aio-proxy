@@ -60,7 +60,7 @@
     "lint:types": "oxlint --type-aware --type-check --ignore-pattern='**/*.test.ts' --ignore-pattern='**/*.test.tsx' --ignore-pattern='**/__tests__/**' --ignore-pattern='**/*test-support.ts' --ignore-pattern='**/test-support/**' --ignore-pattern='**/*.smoke.ts' .",
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
-    "test:unit": "bun test ./install.test.ts && turbo run test:unit --filter=!@aio-proxy/website",
+    "test:unit": "bun test ./install.test.ts ./scripts && turbo run test:unit --filter=!@aio-proxy/website",
     "test:artifact": "turbo run test:artifact --filter=!@aio-proxy/website",
     "test:e2e:api": "turbo run e2e --filter=@aio-proxy/server --filter=@aio-proxy/cli",
     "test": "turbo run test test:artifact --filter=!@aio-proxy/website",
