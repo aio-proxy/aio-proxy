@@ -107,9 +107,11 @@ by relative path.
 | `aio-proxy-mark-favicon.svg` | mark source | `#0c0c09`, `#fbfbf9` under `@media (prefers-color-scheme: dark)` |
 | `logo-geometry.ts` | both sources | n/a |
 
-After writing `logo-geometry.ts`, the script runs `oxfmt` on it. Without this, the pre-commit
-`oxfmt` hook reformats the file and the next clean-tree assertion fails on a file nothing
-semantically changed.
+`logo-geometry.ts` is listed in `oxc.ts` `ignorePatterns`, so neither oxfmt nor oxlint touches it.
+The generator therefore does not shell out to a formatter; it emits its own final formatting, and
+that output must be byte-stable across runs for the clean-tree assertion to mean anything.
+Running `oxfmt` on the file would in fact exit 2 (`Expected at least one target file. All matched
+files may have been excluded by ignore rules.`).
 
 ### Colors
 
