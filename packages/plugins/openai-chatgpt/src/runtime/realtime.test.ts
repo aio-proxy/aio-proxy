@@ -259,6 +259,51 @@ test('a credential Bun rejects as a header value never reaches the dial error me
   expect(error.message).toBe('sideband socket could not be created (TypeError)');
 });
 
+test('a credential Bun rejects as a header value never reaches the fetch error message', async () => {
+  const token = 'sk-SUPER-SECRET-TOKEN';
+  // Bun's real `Headers.set` validates the value and echoes it verbatim, and it
+  // throws while building the upstream headers — before `fetch` is ever called, so
+  // the stub below is never reached.
+  const calls: string[] = [];
+  const realtime = createOpenAIChatGPTRealtime(
+    staticCredentialPort(credential({ accessToken: `${token}\nX-Injected: 1` })),
+    { fetch: captureFetch(calls), proxy: null },
+  );
+
+  const error = await realtime
+    .fetch(new Request('http://127.0.0.1:8787/v1/live', { method: 'POST', body: 'v=0' }))
+    .catch((cause: unknown) => cause);
+
+  expect(error).toBeInstanceOf(Error);
+  expect((error as Error).message).not.toContain(token);
+  expect((error as Error).message).toBe('Codex credential is not a valid header value');
+  expect(calls).toEqual([]);
+});
+
+test('a credential read that fails still rejects dial with a RealtimeDialError carrying no cause text', async () => {
+  const secret = 'REFRESH_FAILED_SENTINEL';
+  const realtime = createOpenAIChatGPTRealtime(
+    {
+      read: async () => {
+        throw new Error(secret);
+      },
+      refresh: async () => {
+        throw new Error(secret);
+      },
+    },
+    { fetch: captureFetch([]), proxy: null, createWebSocket: () => openSocketStub() },
+  );
+
+  const error = await realtime_dialError(realtime, {
+    callId: 'call_abc',
+    headers: new Headers(),
+    signal: new AbortController().signal,
+  });
+
+  expect(error.kind).toBe('unreachable');
+  expect(error.message).not.toContain(secret);
+});
+
 /** Drains microtasks until `done()` or a bounded number of turns. Fake timers make
  *  wall-clock waiting impossible, so settlement is observed by yielding. */
 async function until(done: () => boolean): Promise<void> {

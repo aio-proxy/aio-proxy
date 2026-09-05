@@ -102,8 +102,16 @@ function realtimeHeaders(inbound: Headers, credential: ChatGPTCredential): Heade
   const accept = inbound.get('accept');
   if (contentType !== null) headers.set('content-type', contentType);
   if (accept !== null) headers.set('accept', accept);
-  headers.set('authorization', `Bearer ${credential.accessToken}`);
-  headers.set('ChatGPT-Account-Id', credential.accountId);
+  try {
+    headers.set('authorization', `Bearer ${credential.accessToken}`);
+    headers.set('ChatGPT-Account-Id', credential.accountId);
+  } catch {
+    // A stored credential can carry an embedded CR, LF, or NUL that `.trim()` does
+    // not strip, and `Headers.set` rejects it by echoing the offending value
+    // verbatim, so nothing from the cause may reach this message. `realtimeFetch`
+    // surfaces its own failures as plain `Error`s; this is not a dial failure.
+    throw new Error('Codex credential is not a valid header value');
+  }
   headers.set('Originator', 'codex-tui');
   headers.set('User-Agent', CHATGPT_USER_AGENT);
   headers.set('session-id', crypto.randomUUID());
@@ -112,7 +120,7 @@ function realtimeHeaders(inbound: Headers, credential: ChatGPTCredential): Heade
 
 function sidebandUrl(input: RealtimeDialInput): string {
   const style: RealtimeStyle = input.style;
-  // Encoded even though the route validates `call_id` against
+  // Encoded even though the route will validate `call_id` against
   // `^[A-Za-z0-9_-]{1,128}$`: the plugin owns these URLs and must not let a caller
   // rewrite the target path with a traversal segment.
   const callId = encodeURIComponent(input.callId ?? '');
@@ -132,7 +140,15 @@ async function realtimeDial(
   options: RealtimeTransportOptions,
 ): Promise<WebSocket> {
   if (input.signal.aborted) throw new RealtimeDialError('dial aborted before connecting', { kind: 'aborted' });
-  const credential = await currentCredential(credentials, options.fetch);
+  let credential: ChatGPTCredential;
+  try {
+    credential = await currentCredential(credentials, options.fetch);
+  } catch {
+    // A refresh failure carries provider text that may quote the credential, and
+    // `RealtimeDialError` has no `cause` channel to keep it out of `message`, so
+    // nothing from the cause is carried over. `dial` promises only this error type.
+    throw new RealtimeDialError('Codex credential unavailable for the sideband dial', { kind: 'unreachable' });
+  }
   const create = options.createWebSocket ?? defaultWebSocketFactory;
   const init = {
     ...(options.proxy === null ? {} : { proxy: options.proxy }),
