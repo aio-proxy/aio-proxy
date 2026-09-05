@@ -2,7 +2,7 @@ import { timingSafeEqual } from 'node:crypto';
 
 import type { Context, MiddlewareHandler } from 'hono';
 
-import { type CallerPrincipalEnv, staticKeyCallerPrincipal } from '../../caller-principal';
+import { ANONYMOUS_CALLER, type CallerPrincipalEnv, staticKeyCallerPrincipal } from '../../caller-principal';
 
 type ApiKeyEntry = { readonly key: string };
 
@@ -17,6 +17,11 @@ export async function authenticateStaticOrAnonymous(
   configuredKeys: readonly ApiKeyEntry[],
 ): Promise<Response | void> {
   if (configuredKeys.length === 0) {
+    // Stamped rather than left to `callerPrincipal()`'s fallback so an absent context
+    // variable means only that no auth middleware ran: Hono's `app.use` covers just the
+    // routes registered after it, and a route registered ahead of it would otherwise read
+    // as this same anonymous principal on a key-protected proxy.
+    context.set('callerPrincipal', ANONYMOUS_CALLER);
     await next();
     return;
   }
@@ -31,8 +36,14 @@ export async function authenticateStaticOrAnonymous(
   let matched: ApiKeyEntry | undefined;
   for (const candidate of candidates) {
     if (candidate === undefined) continue;
-    matched = matchedConfiguredKey(candidate, configuredKeys);
-    if (matched !== undefined) break;
+    const entry = matchedConfiguredKey(candidate, configuredKeys);
+    // Written only on a real match: an outer variable assigned before the check would
+    // survive the loop as a stale entry and derive the principal from a key that never
+    // matched, while the request is still admitted.
+    if (entry !== undefined) {
+      matched = entry;
+      break;
+    }
   }
   if (matched === undefined) return authenticationError(context);
 
