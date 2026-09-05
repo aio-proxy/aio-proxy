@@ -41,6 +41,8 @@ import { join } from 'node:path';
 
 import { $ } from 'bun';
 
+import { buildHomebrewChecksums } from './homebrew-checksums';
+
 const DRY_RUN = process.argv.includes('--dry-run');
 
 type PackageJson = {
@@ -208,35 +210,19 @@ for (const { json } of publishable) {
 console.log(`\nReleased v${version}`);
 
 // --- hand the Homebrew tap the checksums of the tarballs we just published -----
-// The tap's formula pins a sha256 per platform tarball. Recomputing those by
-// downloading from the registry races npm's CDN: the packument is consistent the
-// moment publish returns, but a tarball can 404 for several minutes afterwards —
-// per package, not per release — which is what made the tap's formula job fail
-// and need manual reruns. These are the exact bytes `npm publish` just uploaded,
-// so hash them here and let the tap skip the download entirely.
-//
-// Guard against the tarball on disk not being what the registry serves (a resumed
-// release that skipped publish above, or a pack that silently differs): npm's
-// `dist.integrity` is the sha512 of the stored bytes and lives in the packument,
-// which is immediately consistent, so checking it costs nothing and does not
-// reintroduce the CDN race.
+// See scripts/homebrew-checksums for why the tap cannot just re-download them.
 const checksumPath = process.env['HOMEBREW_CHECKSUMS_PATH'];
 if (checksumPath) {
-  const checksums: Record<string, string> = {};
-  for (const [name, tgz] of tarballs) {
-    if (!platformProvided.has(name)) continue;
-    const bytes = await Bun.file(tgz).bytes();
-    const integrity = `sha512-${new Bun.CryptoHasher('sha512').update(bytes).digest('base64')}`;
-    const advertised = (await $`npm view ${`${name}@${version}`} dist.integrity`.nothrow().quiet()).text().trim();
-    if (advertised !== integrity) {
-      throw new Error(
-        `${name}@${version}: local tarball integrity ${integrity} does not match the registry's ${advertised || '(none)'}`,
-      );
-    }
-    checksums[name.replace(/^@aio-proxy\//, '')] = new Bun.CryptoHasher('sha256').update(bytes).digest('hex');
-  }
-  await Bun.write(checksumPath, JSON.stringify({ version, checksums }));
-  console.log(`\nWrote ${Object.keys(checksums).length} Homebrew checksum(s) to ${checksumPath}`);
+  const payload = await buildHomebrewChecksums({
+    tarballs,
+    platformProvided,
+    version,
+    readBytes: (path) => Bun.file(path).bytes(),
+    registryIntegrity: async (name, ver) =>
+      (await $`npm view ${`${name}@${ver}`} dist.integrity`.nothrow().quiet()).text().trim(),
+  });
+  await Bun.write(checksumPath, JSON.stringify(payload));
+  console.log(`\nWrote ${Object.keys(payload.checksums).length} Homebrew checksum(s) to ${checksumPath}`);
 }
 
 // --- one lockstep tag + GitHub Release for the whole release --------------------
