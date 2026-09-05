@@ -185,15 +185,16 @@ Provider and global proxy configuration is applied today by wrapping *fetch* wit
 option (`createProxyFetch`). A plugin-constructed `new WebSocket(...)` inherits nothing from that
 wrapper, so sideband would connect directly while signaling went through the configured proxy.
 
-`bun-types@1.3.14` declares `WebSocketOptions` as the intersection of `WebSocketOptionsProtocolsOrProtocol`,
+`bun-types` declares `WebSocketOptions` as the intersection of `WebSocketOptionsProtocolsOrProtocol`,
 `WebSocketOptionsTLS`, `WebSocketOptionsHeaders`, `WebSocketOptionsProxy`, and
 `WebSocketOptionsCompression`, so `new WebSocket(url, { proxy })` is supported — `proxy` accepts a
-URL string or `{ url, headers }`. The plugin runtime therefore receives the effective proxy at
-construction — the same value `createProxyFetch` is given, resolved by `materialize.ts` as
-`options.effectiveProxy ?? (config.proxy === false ? null : config.proxy ?? null)` — and `dial`
-passes it to the constructor. Threading it through `RealtimeDialInput` instead would put host
-transport configuration in a per-request field; the proxy is provider configuration, so it belongs
-on the runtime.
+URL string or `{ url, headers }`. Confirmed at runtime on Bun `1.4.2`, not merely in the types: a
+dial through a local proxy issues `CONNECT host:port` and relays frames. The plugin runtime therefore
+receives the effective proxy at construction — the same value `createProxyFetch` is given, resolved by
+`materialize.ts` as `options.effectiveProxy ?? (config.proxy === false ? null : config.proxy ?? null)`
+— and `dial` passes it to the constructor. Threading it through `RealtimeDialInput` instead would put
+host transport configuration in a per-request field; the proxy is provider configuration, so it
+belongs on the runtime.
 
 Because a silently ignored `proxy` would reintroduce exactly the leak this section exists to
 prevent, one integration test dials through a local proxy and asserts the proxy saw the CONNECT. If
@@ -362,6 +363,13 @@ The upstream dial completes **before** the downstream upgrade is committed. This
 makes structured HTTP errors possible at all: after a 101 there is no way to answer `401`, `501`,
 or `503`. Pre-upgrade failures answer as ordinary HTTP.
 
+This ordering depends on `server.upgrade()` still working after an `await`, which Bun 1.4.1 fixed in
+two ways — before it, an upgrade after an await closed `Connection: close` and HTTP/1.0 sockets while
+leaking the WebSocket, and `server.upgrade()` / `ws.close()` ran queued microtasks mid-handler.
+Verified end-to-end on Bun `1.4.2` through Hono's `upgradeWebSocket` with an async handler that awaits
+an upstream dial: the 101, the greeting, and a relayed frame all land. This is why `engines.bun` is
+`>=1.4.2`; the design would be unsound on 1.4.0.
+
 Pre-upgrade answers: malformed call ID `400`; missing record `404`; already attached `409`;
 provider or account unavailable `503`; non-upgrade request `426` with `Upgrade: websocket`;
 upstream handshake rejection surfaces the upstream status, mapping 404/501 to `501`
@@ -377,22 +385,40 @@ sideband. Implementation verifies the real client requests none; if it does, the
 move off the Hono helper to a direct `server.upgrade` call.
 
 **Relay.** Forward text as text and binary as binary, preserving message order and **exact byte
-length**. The hazard is on the *receive* side, not only the send side: Hono's Bun adapter normalizes
-every non-string frame with `message.buffer`, handing the whole backing `ArrayBuffer` to the
-listener. Forwarding that value verbatim can send more bytes than the frame contained. Copy
-`byteOffset .. byteOffset + byteLength` from the view before forwarding, in both directions.
+length**. Hono's Bun adapter normalizes every non-string frame with `message.buffer`, discarding the
+view's `byteOffset`/`byteLength` — so if Bun ever handed the handler a view into a shared read
+buffer, the relay would forward more bytes than the frame contained, and a copy on receive would be
+the only fix. Measured on this repo's Bun (`1.4.2`), it does not: every server-side binary message
+arrives as an exclusive `Buffer` with `byteOffset === 0` and `buffer.byteLength === byteLength`, and
+the backing memory is neither reused nor mutated after the handler returns. Verified across four
+paths that could plausibly share a scratch buffer — one frame per read, 40 small frames packed into a
+single TCP write, `permessage-deflate` decompression, and an 8-fragment continuation reassembly.
 
-Bounds: the pre-open buffer holds at most **64 frames or 1 MiB**, whichever comes first; the same cap
-applies per direction to in-flight data behind a slow peer; the dial deadline is **10 s**. Overflow
-closes the connection with `1011` rather than growing a queue.
+Forward `message.buffer` as-is; do **not** copy. The frame-length invariant is load-bearing but
+belongs to Bun, not to us, so the relay test asserts exact byte length on the wire under all four of
+those framings — a future Bun that switches to a shared receive buffer fails that test loudly
+instead of silently truncating or over-sending SDP/ICE traffic.
+
+Bounds: the pre-open buffer holds at most **64 frames or 1 MiB**, whichever comes first; the dial
+deadline is **10 s**. For in-flight data behind a slow peer, read real backpressure from Bun rather
+than estimating: `WSContext.raw` is the live `ServerWebSocket`, whose `getBufferedAmount()` reports
+queued bytes, and the upstream client `WebSocket` exposes `bufferedAmount` (correct since Bun 1.4.1;
+it previously always read `0`). Overflow past **1 MiB** queued in either direction closes the
+connection with `1011` rather than growing a queue.
 
 Teardown is normalized and idempotent — one function, safe to call from either side's `close`, from
 a dial rejection, and from shutdown. "Propagate code and reason" is not a valid blanket rule.
-Measured on this repo's Bun, `close(code)` accepts `1000..1003`, `1007..1014`, and `3000..4999`, and
-throws `InvalidAccessError` for everything else — including the receive-only `1005` and `1006`, plus
-`1004`, `< 1000`, `1015..2999`, and `>= 5000`. A reason over 123 UTF-8 bytes throws `SyntaxError`.
-So the normalizer passes a code through only when it is in the sendable set, and truncates every
-reason to 123 UTF-8 bytes. The mapping:
+
+The constraint is asymmetric, and measured on this repo's Bun (`1.4.2`) it lives entirely on the
+*client* side. `ServerWebSocket.close(code)` — what the relay calls to close the downstream — accepts
+everything tried, including `1005`, `1006`, and `5000`. The upstream `WebSocket.close(code)` accepts
+only `1000..1003`, `1007..1014`, and `3000..4999`, and throws `InvalidAccessError` for everything
+else: `1004`, the receive-only `1005` and `1006`, `< 1000`, `1015..2999`, and `>= 5000`. A reason over
+123 UTF-8 bytes throws `SyntaxError` on both sides.
+
+Normalizing to the narrower client-side set in both directions keeps one code path and one table.
+The normalizer passes a code through only when it is in that set, and truncates every reason to 123
+UTF-8 bytes. The mapping:
 
 | Origin | Sent to the other side |
 | --- | --- |
@@ -434,7 +460,8 @@ Three adapter constraints, verified against the resolved Hono version:
 - Lifecycle callbacks are not awaited, so an async `onOpen` must handle its own rejection.
 - `WSContext.send` discards Bun's backpressure result and exposes no `drain`, and a retained
   `WSContext` holds a `readyState` snapshot — a context captured at open is not a live liveness
-  check.
+  check. `WSContext.raw` is the underlying `ServerWebSocket`, so `raw.getBufferedAmount()` and
+  `raw.send()`'s return value recover the backpressure signal the wrapper drops.
 
 ## Errors
 
@@ -487,9 +514,10 @@ answering `503` **before** any upstream dial, after expired records are dropped.
 **Relay lifecycle.** Upstream greeting arriving before the downstream is ready; downstream
 disconnect mid-dial; upstream handshake rejection mapped pre-upgrade; abnormal close normalized to
 `1011`; a `4000..4999` code passed through; a `1004`/`1005`/`1006` origin normalized to `1011` rather
-than passed through and throwing; an over-long reason truncated; slow peer and buffer overflow;
-binary frames preserved at exact byte length when the source is a view into a larger buffer; a socket
-quiet past 120 s staying open.
+than passed through and throwing on the upstream client; an over-long reason truncated; slow peer and
+buffer overflow; binary frames preserved at exact byte length under all four framings that could
+share a receive buffer — one frame per read, many frames in one TCP write, `permessage-deflate`, and
+fragmented continuation; a socket quiet past 120 s staying open.
 
 **Routing identity.** Sideband dials the creating provider even when another has higher priority;
 a bumped `runtimeRevision` under the same Provider ID invalidates the pin; token refresh alone does
