@@ -208,6 +208,9 @@ export const ProviderCardGrid: React.FC<ProviderCardGridProps> = ({
                 provider={provider}
                 routing={routingByProvider.get(provider.id)}
                 health={healthQuery.data?.get(provider.id)}
+                totalTokens={
+                  healthQuery.data === undefined ? undefined : (healthQuery.data.get(provider.id)?.totalTokens ?? 0n)
+                }
                 usage={
                   usageQuery.data === undefined ? undefined : (usageQuery.data.get(provider.id) ?? zeroProviderUsage)
                 }

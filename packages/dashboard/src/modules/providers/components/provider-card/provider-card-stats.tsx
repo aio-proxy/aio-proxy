@@ -10,6 +10,7 @@ import { ProviderCardStat } from './provider-card-stat';
 
 interface ProviderCardStatsProps {
   readonly health: ProviderHealth | undefined;
+  readonly totalTokens: bigint | undefined;
   readonly usage: ProviderUsage | undefined;
   readonly usagePending: boolean;
 }
@@ -19,7 +20,7 @@ const requestCountLabel = (usage: ProviderUsage | undefined, usagePending: boole
   return usage === undefined ? 'N/A' : formatCompactTokenCount(usage.requestCount);
 };
 
-export const ProviderCardStats: React.FC<ProviderCardStatsProps> = ({ health, usage, usagePending }) => (
+export const ProviderCardStats: React.FC<ProviderCardStatsProps> = ({ health, totalTokens, usage, usagePending }) => (
   <div className="@container space-y-2">
     <p className="text-xs text-muted-foreground">{m['dashboard.usage.range_24h']()}</p>
     <div className="grid grid-cols-2 gap-2 @sm:grid-cols-4">
@@ -41,7 +42,7 @@ export const ProviderCardStats: React.FC<ProviderCardStatsProps> = ({ health, us
       <ProviderCardStat
         testId="provider-stat-tokens"
         label={m['dashboard.providers.card.stat_total_tokens']()}
-        value={health === undefined ? '—' : formatCompactTokenCount(health.totalTokens)}
+        value={totalTokens === undefined ? '—' : formatCompactTokenCount(totalTokens)}
       />
     </div>
   </div>

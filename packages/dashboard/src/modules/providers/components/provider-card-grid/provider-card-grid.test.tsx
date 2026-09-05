@@ -3,10 +3,13 @@ import { ProviderKind } from '@aio-proxy/types';
 import { afterEach, expect, rs, test } from '@rstest/core';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 
+import { queryKeys } from '@/lib/query-keys';
+
 import { providerStub } from '../../lib/provider-fixtures';
 import { ProviderCardGrid } from './provider-card-grid';
 
 const routingMocks = rs.hoisted(() => ({ mutate: rs.fn() }));
+const healthMocks = rs.hoisted(() => ({ unavailable: false }));
 
 // `Link` survives because ProviderMoreMenu and the card identity both render one; `useNavigate` does
 // not, because no component in the grid navigates programmatically any more.
@@ -29,7 +32,8 @@ rs.mock('../provider-quota-ring', () => ({ ProviderQuotaRing: () => null }));
 rs.mock('@tanstack/react-query', () => ({
   queryOptions: <T,>(options: T) => options,
   useQuery: (options: { queryKey: readonly unknown[] }) =>
-    options.queryKey[2] === 'quota'
+    options.queryKey[2] === 'quota' ||
+    (healthMocks.unavailable && JSON.stringify(options.queryKey) === JSON.stringify(queryKeys.providerHealth))
       ? { data: undefined, isPending: false, isError: true }
       : { data: new Map(), isPending: false, isError: false },
 }));
@@ -41,6 +45,7 @@ const providers = [
 
 afterEach(() => {
   routingMocks.mutate.mockReset();
+  healthMocks.unavailable = false;
   Reflect.deleteProperty(document, 'getAnimations');
 });
 
@@ -183,7 +188,7 @@ const nextFrames = () =>
     requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
   });
 
-test('a Provider the usage response omits counts as zero requests, not as unknown', () => {
+test('successful empty responses show zero requests and tokens without inventing health stats', () => {
   // The usage query above resolves to an empty map, which is exactly what the route returns once no
   // Provider saw traffic in the window. Rendering `N/A` there would read as "we could not tell",
   // when the server told us plainly: nobody called it.
@@ -191,7 +196,19 @@ test('a Provider the usage response omits counts as zero requests, not as unknow
 
   const card = screen.getByTestId('provider-row-alpha');
   expect(within(card).getByTestId('provider-stat-requests')).toHaveTextContent('0');
+  expect(within(card).getByTestId('provider-stat-tokens')).toHaveTextContent('0');
+  expect(within(card).getByTestId('provider-stat-success-rate')).toHaveTextContent('—');
+  expect(within(card).getByTestId('provider-stat-p95')).toHaveTextContent('—');
   expect(card.textContent).not.toContain('N/A');
+});
+
+test('unavailable diagnostics keep tokens unknown even if the usage response confirms zero requests', () => {
+  healthMocks.unavailable = true;
+  render(<ProviderCardGrid providers={providers} routingRevision="revision" />);
+
+  const card = within(screen.getByTestId('provider-row-alpha'));
+  expect(card.getByTestId('provider-stat-requests')).toHaveTextContent('0');
+  expect(card.getByTestId('provider-stat-tokens')).toHaveTextContent('—');
 });
 
 test('deep-link focus lands once the target Provider arrives on a later render', async () => {

@@ -21,6 +21,7 @@ rs.mock('../provider-quota-ring', () => ({ ProviderQuotaRing: () => <span data-t
 const baseProps = {
   routing: undefined,
   health: undefined,
+  totalTokens: undefined,
   usage: undefined,
   usagePending: false,
   pluginLabel: undefined,
@@ -109,13 +110,14 @@ test('groups request volume with health and shows the count only once', () => {
       provider={providerStub({ id: 'p' })}
       usage={{ requestCount: 1200n }}
       health={{ successRate: 0.985, p95LatencyMs: 20_090, totalTokens: 1_250_000n }}
+      totalTokens={1_250_000n}
     />,
   );
 
   expect(screen.getByTestId('provider-stat-requests')).toHaveTextContent('1.2K');
   expect(screen.getByTestId('provider-row-p').textContent?.match(/1\.2K/gu)).toHaveLength(1);
   expect(screen.getByTestId('provider-stat-success-rate')).toHaveTextContent('98.5%');
-  expect(screen.getByTestId('provider-stat-p95')).toHaveTextContent('20.09 s');
+  expect(screen.getByTestId('provider-stat-p95')).toHaveTextContent('20.09 sec');
   expect(screen.getByTestId('provider-stat-tokens')).toHaveTextContent('1.3M');
 });
 
@@ -125,6 +127,7 @@ test('shows zero recorded tokens when the Provider has no token usage', () => {
       {...baseProps}
       provider={providerStub({ id: 'p' })}
       health={{ successRate: 1, p95LatencyMs: 100, totalTokens: 0n }}
+      totalTokens={0n}
     />,
   );
   expect(screen.getByTestId('provider-stat-tokens')).toHaveTextContent('0');

@@ -23,6 +23,7 @@ interface ProviderCardProps {
   readonly provider: DashboardProviderSummary;
   readonly routing: ProviderCardRoutingProps | undefined;
   readonly health: ProviderHealth | undefined;
+  readonly totalTokens: bigint | undefined;
   readonly usage: ProviderUsage | undefined;
   readonly usagePending: boolean;
   readonly pluginLabel: string | undefined;
@@ -35,6 +36,7 @@ export const ProviderCard: React.FC<ProviderCardProps> = ({
   provider,
   routing,
   health,
+  totalTokens,
   usage,
   usagePending,
   pluginLabel,
@@ -130,7 +132,7 @@ export const ProviderCard: React.FC<ProviderCardProps> = ({
                   <DiagnosticDetails diagnostic={provider.state.diagnostic} />
                 </div>
               ) : null}
-              <ProviderCardStats health={health} usage={usage} usagePending={usagePending} />
+              <ProviderCardStats health={health} totalTokens={totalTokens} usage={usage} usagePending={usagePending} />
             </>
           )}
         </CardContent>
