@@ -27,7 +27,7 @@ import { exposedModels, oauthEditorExposedModels } from '../../../lib/exposed-mo
 import { applicablePluginAliases } from '../../../lib/plugin-alias-suggestions';
 import { removeModelFromAliases } from '../../../lib/remove-model-from-aliases';
 import type { SectionSummary } from '../../../lib/section-status';
-import { refreshProviderCatalog } from '../../../services/provider-catalog-refresh-service';
+import { fetchProviderEditView } from '../../../services/providers-service';
 import { SectionShell } from '../section-shell';
 import { ModelAliases } from './model-aliases';
 import { ModelRowItem } from './model-row-item';
@@ -63,10 +63,15 @@ export const ModelsSection: React.FC<ModelsSectionProps> = ({
   const oauthCatalogMutation = useMutation({
     mutationFn: async (): Promise<CatalogOutcome> => {
       if (persistedProviderId === undefined) return { ok: false, code: 'catalog_unavailable' };
-      // The edit view only reads the persisted catalog, so on its own the button would re-render the
-      // same rows whenever the catalog policy's TTL had not expired yet. This forces the rediscovery
-      // and answers with what it committed, so no follow-up read is needed.
-      return { ok: true, models: await refreshProviderCatalog(persistedProviderId) };
+      // `refreshCatalog` is what makes this a reload rather than a redraw: the view can only report
+      // the stored catalog, so without it the button would return the same rows for as long as the
+      // catalog policy's TTL had not expired.
+      const data = await fetchProviderEditView(persistedProviderId, { refreshCatalog: true });
+      if (!data || 'error' in data || data.oauth === undefined) return { ok: false, code: 'catalog_unavailable' };
+      // The read succeeded but the rediscovery behind it did not, so the models below are the stale
+      // ones. Reporting success here is what made the old button look like it had worked.
+      if (data.catalogRefreshed !== true) return { ok: false, code: 'catalog_unavailable' };
+      return { ok: true, models: data.oauth.models };
     },
     onSettled: () => {
       if (persistedProviderId !== undefined) {

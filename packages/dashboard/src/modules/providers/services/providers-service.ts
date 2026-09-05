@@ -20,9 +20,16 @@ export const providersQueryOptions = () =>
     },
   });
 
-export const fetchProviderEditView = async (id: string) => {
+/**
+ * Reads the editor's view of one Provider. `refreshCatalog` opts an OAuth Provider into an upstream
+ * catalog rediscovery before the read, which is what the editor's reload button needs: without it the
+ * view can only report the stored catalog, so it would redraw the same rows until the plugin's TTL
+ * expired. Leave it off everywhere else — an ordinary open or invalidation must not hit upstream.
+ */
+export const fetchProviderEditView = async (id: string, options: { readonly refreshCatalog?: boolean } = {}) => {
   const response = await dashboardClient.dashboard.api.providers[':id']['edit-view'].$get({
     param: { id },
+    query: { refreshCatalog: options.refreshCatalog === true ? 'true' : 'false' },
   });
   return response.json();
 };

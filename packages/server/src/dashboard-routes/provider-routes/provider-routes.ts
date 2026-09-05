@@ -18,6 +18,12 @@ const quotaRefreshValidator = validator('json', (raw): { readonly refresh: boole
   refresh: isPlainObject(raw) && raw['refresh'] === true,
 }));
 
+// Same shape as `probe` above: a read that opts into live upstream work on request only. Here it is
+// the rediscovery the editor's reload button needs.
+const editViewRefreshValidator = validator('query', (raw): { readonly refreshCatalog: boolean } => ({
+  refreshCatalog: raw['refreshCatalog'] === 'true',
+}));
+
 export const createDashboardProviderReadRoutes = (state: ServerState) =>
   new Hono()
     .get('/providers', async (context) => {
@@ -36,7 +42,7 @@ export const createDashboardProviderReadRoutes = (state: ServerState) =>
     .get('/providers/package-status', providerPackageQueryValidator, async (context) =>
       context.json(await providerPackageStatus(context.req.valid('query').npm)),
     )
-    .get('/providers/:id/edit-view', async (context) => {
+    .get('/providers/:id/edit-view', editViewRefreshValidator, async (context) => {
       const id = context.req.param('id');
       // Real values on purpose: the editor round-trips this entry straight back
       // through the mutation endpoint, and every masked field it had to restore
@@ -45,12 +51,24 @@ export const createDashboardProviderReadRoutes = (state: ServerState) =>
       if (provider === undefined) {
         return context.json({ error: 'provider not found' }, 404);
       }
+      // The stored catalog is all this view can read, so the editor's reload button asks for the
+      // rediscovery here rather than redrawing the same rows until the plugin's TTL expires. Only on
+      // request: an ordinary open, save, or invalidation must never hit upstream.
+      const refreshed =
+        provider.kind === 'oauth' && context.req.valid('query').refreshCatalog
+          ? await state.refreshProviderCatalog(id)
+          : undefined;
       const oauth = provider.kind === 'oauth' ? state.oauthProviderEditView(id) : undefined;
       const routing = await state.modelRouting.providerNumberViews(id);
       return context.json({
         provider,
         ...(oauth === undefined ? {} : { oauth }),
         ...(routing === undefined ? {} : { routing }),
+        // A boolean, not the scheduler's outcome: `'failed'` (discovery refused) and `'unknown'` (no
+        // catalog job, i.e. account preparation failed) are both "the models below are still the old
+        // ones", and the editor can only say that one thing. The view itself stays valid either way,
+        // so this rides along instead of failing the whole read.
+        ...(refreshed === undefined ? {} : { catalogRefreshed: refreshed === 'refreshed' }),
       });
     })
     .query('/providers/:id/quota', quotaRefreshValidator, async (context) => {

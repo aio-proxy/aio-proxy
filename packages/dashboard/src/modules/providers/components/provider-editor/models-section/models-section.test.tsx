@@ -15,16 +15,13 @@ import type { ProviderAlias } from '../../../lib/alias-editor';
 import { PROVIDER_MODELS_PLACEHOLDER } from '../../../lib/constants';
 import { ModelsSection } from './models-section';
 
-const mocks = rs.hoisted(() => ({ fetchCatalog: rs.fn(), fetchEditView: rs.fn(), refreshCatalog: rs.fn() }));
+const mocks = rs.hoisted(() => ({ fetchCatalog: rs.fn(), fetchEditView: rs.fn() }));
 
 // Only the service boundary is mocked. `@tanstack/react-query` stays real: a stubbed `useMutation`
 // whose `mutate` never resolves makes every catalog assertion pass regardless of the button.
 rs.mock('../../../services/provider-draft', () => ({
   fetchProviderDraftCatalog: mocks.fetchCatalog,
   testProviderDraftModel: rs.fn(),
-}));
-rs.mock('../../../services/provider-catalog-refresh-service', () => ({
-  refreshProviderCatalog: mocks.refreshCatalog,
 }));
 rs.mock('../../../services/providers-service', () => ({
   fetchProviderEditView: mocks.fetchEditView,
@@ -92,11 +89,17 @@ const apiInitial = (models: readonly string[]) => ({
   models,
 });
 
+// The shape `edit-view` answers with for an OAuth Provider. `catalogRefreshed` reports whether the
+// rediscovery the request asked for actually landed; the models are the stored ones either way.
+const editViewPayload = (models: readonly string[], catalogRefreshed: boolean) => ({
+  provider: { id: 'oauth-provider', kind: ProviderKind.OAuth },
+  oauth: { accountLabel: 'person@example.com', publicValues: {}, form: [], models },
+  catalogRefreshed,
+});
+
 beforeEach(() => {
   mocks.fetchCatalog.mockReset();
   mocks.fetchEditView.mockReset();
-  mocks.refreshCatalog.mockReset();
-  mocks.refreshCatalog.mockResolvedValue([]);
   queryClient.clear();
 });
 
@@ -428,10 +431,10 @@ describe('ModelsSection', () => {
     expect(screen.queryByTestId('provider-alias-card')).toBeNull();
   });
 
-  // The edit view only reads the persisted catalog, so without the forced refresh the button
+  // The edit view only reads the persisted catalog, so without `refreshCatalog` the button
   // re-renders the same rows for as long as the catalog policy's TTL has not expired.
   test('oauth providers render the models the forced refresh committed, not the seed', async () => {
-    mocks.refreshCatalog.mockResolvedValue(['fresh-a']);
+    mocks.fetchEditView.mockResolvedValue(editViewPayload(['fresh-a'], true));
     renderSection({
       kind: ProviderKind.OAuth,
       initial: { kind: ProviderKind.OAuth, id: 'oauth-provider', models: [] },
@@ -446,14 +449,14 @@ describe('ModelsSection', () => {
 
     await waitFor(() => expect(screen.getByTestId('model-row-fresh-a')).toBeInTheDocument());
     expect(screen.queryByTestId('model-row-seeded-c')).toBeNull();
-    expect(mocks.refreshCatalog).toHaveBeenCalledWith('oauth-provider');
-    // The refresh answers with the list it committed, so the editor needs no follow-up read.
-    expect(mocks.fetchEditView).not.toHaveBeenCalled();
+    // The flag is the whole point: the same route without it is a pure read of the stored catalog.
+    expect(mocks.fetchEditView).toHaveBeenCalledWith('oauth-provider', { refreshCatalog: true });
     expect(mocks.fetchCatalog).not.toHaveBeenCalled();
   });
 
   test('a failed oauth refresh toasts the error code and keeps the models it could not replace', async () => {
-    mocks.refreshCatalog.mockRejectedValue(new Error('upstream refused'));
+    // The read succeeds — only the rediscovery behind it failed, so the models in the body are stale.
+    mocks.fetchEditView.mockResolvedValue(editViewPayload(['seeded-c'], false));
     renderSection({
       kind: ProviderKind.OAuth,
       initial: { kind: ProviderKind.OAuth, id: 'oauth-provider', models: [] },
