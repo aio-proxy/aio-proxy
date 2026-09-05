@@ -89,9 +89,9 @@
     "typescript": "^7.0.2"
   },
   "engines": {
-    "bun": ">=1.4.0"
+    "bun": ">=1.4.2"
   },
-  "packageManager": "bun@1.4.0",
+  "packageManager": "bun@1.4.2",
   "patchedDependencies": {
     "@rspress/core@2.0.19": "patches/@rspress%2Fcore@2.0.19.patch"
   }
