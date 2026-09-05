@@ -202,24 +202,42 @@ that directory's `AGENTS.md`.
 ### Favicon distribution
 
 Both `packages/dashboard/public/favicon.svg` and `website/docs/public/favicon.svg` are deleted.
-Each build copies the generated favicon from the brand package instead.
+Each build points at the generated favicon in the brand package instead.
+
+Neither surface currently configures a favicon: rsbuild auto-detects `public/favicon.svg` and
+injects `<link rel="icon">` on its own. Deleting the file therefore removes the tag, so each
+surface must now name the file explicitly. `output.copy` is the wrong primitive here — it would
+place the asset in `dist` but emit no `<link>` tag. The correct option is `html.favicon`, which
+both copies the file and injects the tag, and which accepts an absolute filesystem path.
 
 `packages/dashboard/rsbuild.config.ts`:
 
 ```ts
+import { fileURLToPath } from 'node:url';
+
 const favicon = fileURLToPath(import.meta.resolve('@aio-proxy/brand/assets/aio-proxy-mark-favicon.svg'));
 
-output: {
-  assetPrefix: '/dashboard/',
-  copy: [{ from: favicon, to: 'favicon.svg' }],
-}
+// ...
+html: {
+  title: 'AIO Proxy Dashboard',
+  favicon,
+},
 ```
 
-`import.meta.resolve` rather than `require.resolve`: both config files are ESM under
-`"type": "module"`, where `require` is not defined.
+`import.meta.resolve` rather than `require.resolve`: the config is ESM under `"type": "module"`,
+where `require` is not defined.
 
-`website/rspress.config.ts` uses the same `output.copy` inside `builderConfig`. `icon: '/favicon.svg'`
-stays as-is, since the copy lands at the same served path.
+`website/rspress.config.ts` keeps its top-level `icon` field, changing the value from
+`'/favicon.svg'` to the resolved `file://` URL. Rspress normalizes `icon` into rsbuild's
+`html.favicon`, converting a `file://` URL via `fileURLToPath` and otherwise treating an absolute
+path as relative to `docs/public` — so the URL form is required for a path outside the doc root
+(`@rspress/core/dist/node/initRsbuild.js:49-55`):
+
+```ts
+icon: import.meta.resolve('@aio-proxy/brand/assets/aio-proxy-mark-favicon.svg'),
+```
+
+`import.meta.resolve` returns a `file://` URL string, which is exactly the form rspress handles.
 
 ## READMEs
 
@@ -262,9 +280,12 @@ a Release note reading "restructured logo assets" would be noise.
 
 - **jsDelivr plus camo double-caching.** A logo change may take up to 7 days to appear in the
   READMEs. Acceptable for artwork; if urgent, purge via jsDelivr's cache endpoint.
-- **`output.copy` at two build sites.** If a third surface later needs the favicon, it must add
-  its own copy rule. The alternative — committing copies into each `public/` — was rejected
-  because it reintroduces exactly the duplication this change removes.
+- **`html.favicon` at two build sites.** If a third surface later needs the favicon, it must add
+  its own config. The alternative — committing copies into each `public/` — was rejected because
+  it reintroduces exactly the duplication this change removes.
+- **Favicon regression is silent.** Both surfaces lose rsbuild's public-directory auto-detection,
+  and a wrong path yields a missing `<link rel="icon">` rather than a build error. Each build must
+  be run once and its emitted HTML checked for the tag.
 
 ## Out of Scope
 
