@@ -30,6 +30,11 @@ export const ProviderCardStats: React.FC<ProviderCardStatsProps> = ({ health, to
         value={requestCountLabel(usage, usagePending)}
       />
       <ProviderCardStat
+        testId="provider-stat-tokens"
+        label={m['dashboard.providers.card.stat_throughput']()}
+        value={totalTokens === undefined ? '—' : formatCompactTokenCount(totalTokens)}
+      />
+      <ProviderCardStat
         testId="provider-stat-success-rate"
         label={m['dashboard.providers.card.stat_success_rate']()}
         value={health === undefined ? '—' : `${(health.successRate * 100).toFixed(1)}%`}
@@ -38,11 +43,6 @@ export const ProviderCardStats: React.FC<ProviderCardStatsProps> = ({ health, to
         testId="provider-stat-p95"
         label={m['dashboard.providers.card.stat_p95']()}
         value={health === undefined ? '—' : formatDuration(health.p95LatencyMs)}
-      />
-      <ProviderCardStat
-        testId="provider-stat-tokens"
-        label={m['dashboard.providers.card.stat_total_tokens']()}
-        value={totalTokens === undefined ? '—' : formatCompactTokenCount(totalTokens)}
       />
     </div>
   </div>
