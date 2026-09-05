@@ -6,12 +6,13 @@ name: Release
 # Cutting a release therefore = merging the Version PR. See .changeset/config.json
 # and scripts/release.ts.
 #
-# TODO(oven-sh/bun#39764): after Bun's compile-on-darwin signature is accepted
-# on macOS 27, this job can return to ubuntu-latest (cross-compile, no resign).
-# Until then release runs on macOS so `bun build --compile` + `codesign` happen
-# on the same machine. Compile only runs on the publish path inside
-# scripts/release.ts. The Linux Docker image stays on Ubuntu — GitHub macOS
-# runners do not ship Docker.
+# This job runs on macOS because `bun build --compile --target=bun-darwin-x64`
+# still emits a signature macOS 27 rejects (as of Bun 1.4.2), so compile and
+# `codesign` must happen on the same machine. See
+# packages/cli/scripts/resign-standalone-binary.ts for the current per-arch
+# state and the condition for returning this job to ubuntu-latest.
+# Compile only runs on the publish path inside scripts/release.ts. The Linux
+# Docker image stays on Ubuntu — GitHub macOS runners do not ship Docker.
 on:
   push:
     branches: [main]

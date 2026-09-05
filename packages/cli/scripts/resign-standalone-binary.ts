@@ -1,12 +1,19 @@
 /**
- * TODO(oven-sh/bun#39764): drop this file (and the macOS-only release job) once
- * `bun build --compile` artifacts are accepted on macOS 27 without a re-sign.
+ * Bun's `bun build --compile` writes a linker-signed Mach-O whose
+ * LC_CODE_SIGNATURE macOS 27 rejects: the process is SIGKILL'd (exit 137)
+ * before user code runs. Replacing the signature with an ad-hoc one makes the
+ * binary runnable.
  *
- * Bun 1.4 writes a linker-signed Mach-O whose LC_CODE_SIGNATURE macOS 27
- * rejects: the process is SIGKILL'd (exit 137) before user code runs.
- * Replacing the signature with an ad-hoc one makes the binary runnable. No-op
- * for non-darwin compile targets. Darwin targets fail closed if no signer is
- * available so Linux CI cannot ship an unsigned macOS binary.
+ * oven-sh/bun#39764 is closed and oven-sh/bun#39837 fixed the darwin-arm64
+ * signer in Bun 1.4.1 — but as of Bun 1.4.2 `bun-darwin-x64` output still fails
+ * `codesign -v`. build-binary.ts publishes both darwin arches, so this stays.
+ * TODO(oven-sh/bun): drop this file, its call in build-binary.ts, and the
+ * macOS-only release job once darwin-x64 compile output passes `codesign -v`
+ * unmodified. Re-check with:
+ *   bun build --compile --target=bun-darwin-x64 --outfile=/tmp/p x.ts && codesign -v /tmp/p
+ *
+ * No-op for non-darwin compile targets. Darwin targets fail closed if no signer
+ * is available so Linux CI cannot ship an unsigned macOS binary.
  */
 export function resignStandaloneBinary(outfile: string, compileTarget?: string): void {
   const darwin = compileTarget === undefined ? process.platform === 'darwin' : compileTarget.startsWith('bun-darwin-');
