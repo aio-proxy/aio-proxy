@@ -12,6 +12,7 @@ import type {
   ProviderToolCapability,
   RawResolver,
   RawTransportOptions,
+  RealtimeTransport,
   TokenCountCapability,
 } from '@aio-proxy/plugin-sdk';
 import { isRecord } from '@aio-proxy/shared';
@@ -120,6 +121,16 @@ export function withRoutingConfig(
   };
 }
 
+export type RuntimeAccountPin = { readonly accountId: string; readonly runtimeRevision: number };
+
+/** `createRuntimeProvider` never sees the stored account, so the pin is stamped
+ *  by the caller that does. `withRoutingConfig` spreads the previous provider,
+ *  so a cache-reused instance keeps it — it is re-stamped anyway to keep the
+ *  invariant local to one function. */
+export function withAccountPin(provider: RuntimeProviderInstance, pin: RuntimeAccountPin): RuntimeProviderInstance {
+  return { ...provider, accountId: pin.accountId, runtimeRevision: pin.runtimeRevision };
+}
+
 export function createRuntimeProvider(
   config: OAuthProvider,
   result: unknown,
@@ -143,6 +154,7 @@ export function createRuntimeProvider(
   const providerTools = providerToolCapability(Reflect.get(result, 'providerTools'));
   const supportedProviderTools = new Set(providerTools?.supported);
   const tokenCount = tokenCountCapability(Reflect.get(result, 'tokenCount'));
+  const realtime = realtimeCapability(Reflect.get(result, 'realtime'));
   const { models, alias } = oauthRouting(config, catalog, defaults);
   const { capabilityIndex, upstreamMetadata } = routingCapabilities(alias, catalog, models);
   const image =
@@ -161,6 +173,7 @@ export function createRuntimeProvider(
     plugin: config.plugin,
     capability: config.capability,
     ...(tokenCount === undefined ? {} : { tokenCount }),
+    ...(realtime === undefined ? {} : { realtime }),
   };
   if (catalog.language.length > 0) {
     return {
@@ -252,6 +265,23 @@ function tokenCountCapability(value: unknown): TokenCountCapability | undefined 
   const countTokens = Reflect.get(value, 'countTokens');
   if (typeof countTokens !== 'function') throw new Error('Invalid token count capability');
   return { countTokens: (input) => countTokens.call(value, input) };
+}
+
+function realtimeCapability(value: unknown): RealtimeTransport | undefined {
+  if (value === undefined) return undefined;
+  if (!isRecord(value)) throw new Error('Invalid realtime capability');
+  const models = Reflect.get(value, 'models');
+  const fetch = Reflect.get(value, 'fetch');
+  const dial = Reflect.get(value, 'dial');
+  if (!Array.isArray(models) || !models.every((model) => typeof model === 'string')) {
+    throw new Error('Invalid realtime capability');
+  }
+  if (typeof fetch !== 'function' || typeof dial !== 'function') throw new Error('Invalid realtime capability');
+  return {
+    models,
+    fetch: (request) => fetch.call(value, request),
+    dial: (input) => dial.call(value, input),
+  };
 }
 
 const providerToolTypes: ReadonlySet<ProviderExecutedTool['type']> = new Set(['web-search']);
