@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 
 import type { CredentialPort } from '@aio-proxy/plugin-sdk';
 
-import { createOpenAIChatGPTDynamicFetch, createOpenAIChatGPTRuntime, currentCredential } from '.';
+import { CHATGPT_USER_AGENT, createOpenAIChatGPTDynamicFetch, createOpenAIChatGPTRuntime, currentCredential } from '.';
 import type { ChatGPTCredential } from '../schema';
 
 type FetchCall = {
@@ -118,9 +118,7 @@ describe('OpenAI ChatGPT runtime', () => {
     expect(first.headers.get('authorization')).toBe('Bearer runtime-token');
     expect(first.headers.get('ChatGPT-Account-Id')).toBe('acct-123');
     expect(first.headers.get('Originator')).toBe('codex-tui');
-    expect(first.headers.get('User-Agent')).toBe(
-      'codex-tui/0.135.0 (Mac OS 26.5.0; arm64) iTerm.app/3.6.10 (codex-tui; 0.135.0)',
-    );
+    expect(first.headers.get('User-Agent')).toBe(CHATGPT_USER_AGENT);
     expect(first.headers.get('session-id')).toBeString();
     expect(first.headers.get('host')).toBeNull();
     expect(first.headers.get('x-keep')).toBe('1');
