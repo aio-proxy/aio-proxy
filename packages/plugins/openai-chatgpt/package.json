@@ -1,6 +1,6 @@
 {
   "name": "@aio-proxy/plugin-openai-chatgpt",
-  "version": "0.19.1",
+  "version": "0.19.2",
   "private": true,
   "files": [
     "dist"

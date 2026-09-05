@@ -1,5 +1,27 @@
 # @aio-proxy/cli
 
+## 0.19.2
+
+### Patch Changes
+
+- [#289](https://github.com/aio-proxy/aio-proxy/pull/289) [`dd0e007`](https://github.com/aio-proxy/aio-proxy/commit/dd0e007bcf4832ebeb1b54862fb0cbfc1dfda76a) Thanks [@baranwang](https://github.com/baranwang)! - Serve the config JSON Schema from `@aio-proxy/types` instead of duplicating it in the launcher package.
+
+  `@aio-proxy/types` is a published package and already exports the generated schema, so the `aio-proxy` launcher no longer copies it in at pack time. A bootstrapped `config.jsonc` now gets `"$schema": "https://unpkg.com/@aio-proxy/types/config.schema.json"` — unpinned, because nothing rewrites that line after bootstrap and a pinned version would go stale as the schema grows.
+
+  Existing configs keep working: they point at a released version whose tarball still carries the old copy. Update the line to the new URL to keep editor completion and validation current on future releases.
+
+- Updated dependencies [[`83c67f1`](https://github.com/aio-proxy/aio-proxy/commit/83c67f1cf670752e14ebf66bc95ab0799923b48e)]:
+  - @aio-proxy/server@0.19.2
+  - @aio-proxy/dashboard@0.19.2
+  - @aio-proxy/core@0.19.2
+  - @aio-proxy/opencode-provider@0.19.2
+  - @aio-proxy/pi-provider@0.19.2
+  - @aio-proxy/i18n@0.19.2
+  - @aio-proxy/logger@0.19.2
+  - @aio-proxy/plugin-sdk@0.19.2
+  - @aio-proxy/shared@0.19.2
+  - @aio-proxy/types@0.19.2
+
 ## 0.19.1
 
 ### Patch Changes

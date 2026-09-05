@@ -1,5 +1,23 @@
 # @aio-proxy/server
 
+## 0.19.2
+
+### Patch Changes
+
+- [#287](https://github.com/aio-proxy/aio-proxy/pull/287) [`83c67f1`](https://github.com/aio-proxy/aio-proxy/commit/83c67f1cf670752e14ebf66bc95ab0799923b48e) Thanks [@baranwang](https://github.com/baranwang)! - Hide non-text models from the Codex model picker
+
+  The Codex client catalog (`/v1/models?client_version=...`) listed every routable model, including image and video generators such as `gpt-image-2` and the `grok-imagine-*` family. Codex calls whatever it lists as a text chat model, so those rows were unselectable in practice.
+
+  The catalog now only lists models whose resolved `capabilities.modalities.output` includes `text`. Models whose output modality no metadata layer declares are hidden too — declare it under `router.models.<slug>.metadata.capabilities.modalities.output` (or `metadata.extend`) to bring one back.
+
+- Updated dependencies []:
+  - @aio-proxy/core@0.19.2
+  - @aio-proxy/i18n@0.19.2
+  - @aio-proxy/logger@0.19.2
+  - @aio-proxy/plugin-sdk@0.19.2
+  - @aio-proxy/shared@0.19.2
+  - @aio-proxy/types@0.19.2
+
 ## 0.19.1
 
 ### Patch Changes
