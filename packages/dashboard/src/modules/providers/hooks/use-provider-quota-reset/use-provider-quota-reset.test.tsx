@@ -76,6 +76,32 @@ test('stays pending until the post-reset reading replaces the stale count', asyn
   expect(mocks.toastAdd).toHaveBeenCalledWith({ type: 'success', title: 'Reset credit redeemed' });
 });
 
+/**
+ * The only caller lives inside the quota popup, so closing it unmounts the observer while the request is
+ * still running. A remounted `useMutation` reports idle, and against the cached nonzero count that
+ * re-offers the confirmation — the server's FIFO would then spend a second credit. The pending state has
+ * to come from the mutation cache, which outlives the popup.
+ */
+test('a redemption stays pending across a popup that closed and reopened', async () => {
+  const wrapper = setup();
+  const request = Promise.withResolvers<undefined>();
+  mocks.resetProviderQuota.mockReturnValue(request.promise);
+
+  const first = renderHook(() => useProviderQuotaReset('openai.main'), { wrapper });
+  act(() => first.result.current.mutate());
+  await waitFor(() => expect(first.result.current.isPending).toBe(true));
+
+  // Closing the popup unmounts this observer; reopening mounts a brand new one.
+  first.unmount();
+  const reopened = renderHook(() => useProviderQuotaReset('openai.main'), { wrapper });
+
+  expect(reopened.result.current.isPending).toBe(true);
+
+  request.resolve(undefined);
+  await waitFor(() => expect(reopened.result.current.isPending).toBe(false));
+  expect(mocks.resetProviderQuota).toHaveBeenCalledTimes(1);
+});
+
 test('a failed redemption still refetches the reading the button was rendered from', async () => {
   const wrapper = setup();
   mocks.resetProviderQuota.mockRejectedValue(new Error('OAUTH_QUOTA_RESET_FAILED'));

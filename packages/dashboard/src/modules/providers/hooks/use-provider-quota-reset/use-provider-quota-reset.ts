@@ -1,6 +1,6 @@
 import { m } from '@aio-proxy/i18n';
 import { toast } from '@aio-proxy/ui/components/toast';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useIsMutating, useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { queryKeys } from '@/lib/query-keys';
 
@@ -17,7 +17,10 @@ import {
  */
 export const useProviderQuotaReset = (id: string) => {
   const client = useQueryClient();
-  return useMutation({
+  // Keyed so the pending state can be read from the mutation cache below.
+  const mutationKey = queryKeys.providerQuotaReset(id);
+  const mutation = useMutation({
+    mutationKey,
     mutationFn: () => resetProviderQuota(id),
     // Returned, not discarded: react-query holds the mutation pending until this settles, which keeps
     // the button disabled across the refetch. Discarding it ends the pending state while the pre-reset
@@ -38,4 +41,14 @@ export const useProviderQuotaReset = (id: string) => {
       });
     },
   });
+
+  return {
+    ...mutation,
+    // Overridden with the cache's answer rather than this observer's: the only caller lives inside the
+    // quota popup, and closing it unmounts the observer. A fresh one reports idle even though the request
+    // is still running, which — against the cached nonzero count — offers a second confirmation and
+    // spends a second credit through the server's FIFO. The mutation outlives the popup; the observer
+    // does not, so the cache is the only honest source.
+    isPending: useIsMutating({ mutationKey }) > 0,
+  };
 };

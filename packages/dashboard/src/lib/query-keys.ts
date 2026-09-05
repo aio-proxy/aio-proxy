@@ -26,6 +26,9 @@ export const queryKeys = {
   providerPackageStatus: (packageName: string) => ['providers', 'package-status', packageName],
   providerProbe: (id: string) => ['providers', id, 'probe'],
   providerQuota: (id: string) => ['providers', id, 'quota'],
+  // A mutation key, not a query key: the redeem button reads its own pending state back out of the
+  // mutation cache, because the popup it lives in unmounts the observer while the request runs.
+  providerQuotaReset: (id: string) => ['providers', id, 'quota', 'reset'],
   providerUsage: ['dashboard', 'providers', 'usage'],
   providers: ['providers'],
   release: ['release'],

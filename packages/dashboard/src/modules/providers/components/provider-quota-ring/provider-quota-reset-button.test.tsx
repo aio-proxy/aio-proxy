@@ -211,6 +211,34 @@ test('spending the last credit keeps the progress visible until the request sett
   expect(screen.getByTestId('provider-quota-dialog')).toHaveFocus();
 });
 
+/**
+ * The confirmation is not a claim on the credit — nothing is spent until Use credit is pressed, and
+ * Refresh stays reachable while the prompt is open. If another session spends the last credit meanwhile,
+ * an open prompt would describe one of zero credits and submit straight into the server's zero-inventory
+ * preflight, so the refreshed count retracts the offer.
+ */
+test('an inventory emptied elsewhere retracts an open confirmation', () => {
+  resetMock.pending = false;
+  const before = resetMock.calls;
+
+  const view = render(<QuotaDialog result={snapshotWith({ availableCount: 1 })} />);
+  fireEvent.click(screen.getByTestId('provider-quota-reset'));
+  expect(screen.getByTestId('provider-quota-reset-confirm-inline')).toBeInTheDocument();
+
+  // What a Refresh finds after somebody else redeemed the last credit.
+  view.rerender(<QuotaDialog result={snapshotWith({ availableCount: 0 })} />);
+
+  expect(screen.queryByTestId('provider-quota-reset-confirm-inline')).not.toBeInTheDocument();
+  expect(screen.queryByTestId('provider-quota-reset-confirm')).not.toBeInTheDocument();
+  expect(resetMock.calls).toBe(before);
+
+  // Retracted, not merely hidden: a credit granted later must not spring the prompt back open on a
+  // decision the user never made twice.
+  view.rerender(<QuotaDialog result={snapshotWith({ availableCount: 1 })} />);
+  expect(screen.queryByTestId('provider-quota-reset-confirm-inline')).not.toBeInTheDocument();
+  expect(screen.getByTestId('provider-quota-reset')).toBeInTheDocument();
+});
+
 // The count is the whole gate: a control that could only ever fail is worse than no control.
 test('an exhausted inventory reports the count without offering redemption', () => {
   queryMocks.data = snapshotWith({ availableCount: 0 });

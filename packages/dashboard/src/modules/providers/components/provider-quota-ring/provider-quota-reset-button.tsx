@@ -47,9 +47,17 @@ export const ProviderQuotaResetButton: React.FC<ProviderQuotaResetButtonProps> =
   const heldFocusRef = useRef(false);
 
   const reset = useProviderQuotaReset(providerId);
-  // In flight or mid-confirmation outranks the count: the request is already irrevocable, and the
-  // decision is being made against a reading the refetch may have already replaced.
-  const offersRedemption = availableCount > 0 || confirming || reset.isPending;
+  // In flight outranks the count: the request is already irrevocable, so the progress has to stay on
+  // screen even after the refetch it triggers publishes a zero count. A confirmation does not get the
+  // same treatment — nothing has been spent yet, and Refresh stays reachable while the prompt is open,
+  // so a count that reached zero elsewhere must retract the offer rather than let it submit into the
+  // server's zero-inventory preflight.
+  const offersRedemption = availableCount > 0 || reset.isPending;
+
+  // Not merely hidden: a later refresh that finds a new credit would otherwise spring the prompt back
+  // open on a decision the user never made twice. Adjusted during render rather than in an effect so
+  // the retracted prompt is never committed — React re-runs this component before touching the DOM.
+  if (confirming && availableCount === 0) setConfirming(false);
 
   // Deliberately unkeyed: it has to observe the render that dropped the focused node, whichever one
   // that was. Reads refs only here, never during render.
