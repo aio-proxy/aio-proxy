@@ -1,15 +1,20 @@
 // sha256 of each platform tarball, for the Homebrew tap's formula.
 //
-// The tap pins a sha256 per platform tarball. Recomputing those by downloading
-// from the registry races npm's CDN: the packument is consistent the moment
-// `npm publish` returns, but a tarball can 404 for several minutes afterwards —
-// per package, not per release — which is what made the tap's formula job fail
-// and need manual reruns. These are the exact bytes `npm publish` just uploaded,
-// so hashing them here lets the tap skip the download entirely.
+// The tap pins a sha256 per platform tarball, and npm publishes no sha256 of its
+// own — the packument carries only sha1 (`dist.shasum`) and sha512
+// (`dist.integrity`) — so somebody has to download the tarball and hash it.
 //
-// Split out of release.ts (which runs top-to-bottom on import) so the handoff is
-// reachable from a test: it publishes packages but gates the Homebrew update, so
-// a mistake here is invisible until a release is already half-done.
+// Doing that inside the tap made its formula job fail on most releases: npm's
+// packument is consistent the moment `npm publish` returns, but tarball reads lag
+// the CDN by minutes, per package rather than per release. Doing it inside
+// scripts/release.ts instead (hashing the bytes it had just uploaded) removed the
+// download but put a network call on the publish script's critical path, where a
+// throw skips the git tag and GitHub Release — which is exactly how v0.19.0
+// shipped to npm with no tag and no Release.
+//
+// So it lives here, in a job that runs after everything a failure could damage.
+// It waits for the CDN, hashes what the CDN actually serves — the same bytes
+// `brew install` will fetch — and only then dispatches to the tap.
 
 export type ChecksumPayload = {
   version: string;
@@ -17,54 +22,68 @@ export type ChecksumPayload = {
 };
 
 type BuildOptions = {
-  /** Package name -> tarball path on disk, for every packed package. */
-  tarballs: ReadonlyMap<string, string>;
-  /** Names of the platform-binary packages the tap's formula pins. */
-  platformProvided: ReadonlySet<string>;
+  /** Unscoped platform-binary package names, e.g. `cli-darwin-arm64`. */
+  packages: readonly string[];
   version: string;
-  /** Reads the tarball's bytes. */
-  readBytes: (path: string) => Promise<Uint8Array>;
-  /** Resolves the registry's `dist.integrity` for `<name>@<version>`, or '' when absent. */
-  registryIntegrity: (name: string, version: string) => Promise<string>;
+  /** Fetches a tarball URL. Injected so tests do not hit the registry. */
+  fetchTarball?: (url: string) => Promise<Response>;
+  /** Delays between polls. Injected so tests do not actually wait. */
+  wait?: (ms: number) => Promise<void>;
+  log?: (message: string) => void;
 };
 
+// 15 minutes per package; the worst lag observed on the tap's runs was under 10.
+const ATTEMPTS = 60;
+const DELAY_MS = 15_000;
+
+export const tarballUrl = (pkg: string, version: string) =>
+  `https://registry.npmjs.org/@aio-proxy/${pkg}/-/${pkg}-${version}.tgz`;
+
 /**
- * Hash the platform tarballs for the tap, verifying each against the registry first.
+ * Wait for every platform tarball to be fetchable, then hash the served bytes.
  *
- * The bytes on disk are not automatically what the registry serves — a resumed
- * release skips publish for versions already up, and a pack could silently
- * differ. npm's `dist.integrity` is the sha512 of the stored bytes and lives in
- * the packument, which is immediately consistent, so checking it costs nothing
- * and does not reintroduce the CDN race this whole handoff exists to avoid.
+ * Hashing what the CDN serves (rather than a local pack) is what makes the
+ * payload trustworthy without a second cross-check: it is byte-for-byte what
+ * `brew install` downloads and verifies against.
  */
 export async function buildHomebrewChecksums({
-  tarballs,
-  platformProvided,
+  packages,
   version,
-  readBytes,
-  registryIntegrity,
+  fetchTarball = fetch,
+  wait = Bun.sleep,
+  log = console.log,
 }: BuildOptions): Promise<ChecksumPayload> {
-  const checksums: Record<string, string> = {};
-
-  for (const [name, tgz] of tarballs) {
-    if (!platformProvided.has(name)) continue;
-
-    const bytes = await readBytes(tgz);
-    const integrity = `sha512-${new Bun.CryptoHasher('sha512').update(bytes).digest('base64')}`;
-    const advertised = await registryIntegrity(name, version);
-    if (advertised !== integrity) {
-      throw new Error(
-        `${name}@${version}: local tarball integrity ${integrity} does not match the registry's ${advertised || '(none)'}`,
-      );
-    }
-
-    checksums[name.replace(/^@aio-proxy\//, '')] = new Bun.CryptoHasher('sha256').update(bytes).digest('hex');
+  // An empty payload would let the tap regenerate a formula with no bottles, so
+  // fail before spending 15 minutes discovering there was nothing to wait for.
+  if (packages.length === 0) {
+    throw new Error('No platform packages given; the Homebrew tap would have nothing to pin');
   }
 
-  // An empty payload would let the tap dispatch a release it cannot build a
-  // formula for, so fail here instead — on the release that caused it.
-  if (Object.keys(checksums).length === 0) {
-    throw new Error('No platform tarballs were packed; the Homebrew tap would have nothing to pin');
+  const checksums: Record<string, string> = {};
+
+  for (const pkg of packages) {
+    const url = tarballUrl(pkg, version);
+    let bytes: Uint8Array | undefined;
+
+    for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
+      // A network error is the same kind of transient as a 404 here (one release
+      // died on a bare ECONNRESET), so fold it into the same retry.
+      const response = await fetchTarball(url).catch((error: unknown) => String(error));
+      if (typeof response !== 'string' && response.ok) {
+        bytes = new Uint8Array(await response.arrayBuffer());
+        break;
+      }
+
+      const reason = typeof response === 'string' ? response : `HTTP ${response.status}`;
+      if (attempt === ATTEMPTS) {
+        throw new Error(`${url} is still unavailable after ${ATTEMPTS} attempts: ${reason}`);
+      }
+      log(`${pkg}: ${reason} (attempt ${attempt}/${ATTEMPTS}); retrying in ${DELAY_MS / 1000}s`);
+      await wait(DELAY_MS);
+    }
+
+    checksums[pkg] = new Bun.CryptoHasher('sha256').update(bytes!).digest('hex');
+    log(`${pkg}: ${checksums[pkg]}`);
   }
 
   return { version, checksums };
