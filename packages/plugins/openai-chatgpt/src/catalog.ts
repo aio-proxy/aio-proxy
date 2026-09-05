@@ -58,13 +58,11 @@ export async function discoverOpenAIChatGPTModels(
   return pipe(
     models,
     sortBy([(model) => model.priority]),
-    map(
-      (model): ModelDescriptor => ({
-        id: model.slug,
-        displayName: model.display_name,
-        extra: { protocol: 'openai-response' },
-      }),
-    ),
+    map((model): ModelDescriptor => ({
+      id: model.slug,
+      displayName: model.display_name,
+      extra: { protocol: 'openai-response' },
+    })),
   );
 }
 
