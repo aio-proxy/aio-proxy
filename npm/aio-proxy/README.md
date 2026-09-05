@@ -77,7 +77,7 @@ The following example routes `gpt-5` to the OpenAI Responses API:
 
 ```jsonc
 {
-  "$schema": "https://cdn.jsdelivr.net/npm/aio-proxy@latest/config.schema.json",
+  "$schema": "https://unpkg.com/@aio-proxy/types/config.schema.json",
   "providers": {
     "openai": {
       "kind": "api",
@@ -143,7 +143,7 @@ Metadata is resolved per field in this order: the selected Provider's router ove
 
 ```jsonc
 {
-  "$schema": "https://cdn.jsdelivr.net/npm/aio-proxy@latest/config.schema.json",
+  "$schema": "https://unpkg.com/@aio-proxy/types/config.schema.json",
   "router": {
     // When several Providers expose the same public model, reconcile its context window:
     // "min" (default, safe) reports the smallest; "max" reports the largest.
