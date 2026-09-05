@@ -1,5 +1,14 @@
 # @aio-proxy/plugin-sdk
 
+## 0.18.0
+
+### Patch Changes
+
+- [#274](https://github.com/aio-proxy/aio-proxy/pull/274) [`1cf2838`](https://github.com/aio-proxy/aio-proxy/commit/1cf2838bb8cec1ed8e3354646b1b39d2695d3664) Thanks [@baranwang](https://github.com/baranwang)! - plugin-sdk: document and enforce the OAuth quota reset contract — report `resetCredits` only alongside a `reset` implementation, and treat every `reset` call as a new intentional redemption rather than a retry of the last one. A snapshot from an adapter with no `reset` now has its inventory dropped, so a plugin written against the older read-only contract cannot advertise a redemption it would refuse. Absence and zero are also distinct answers now: `{ availableCount: 0 }` reports an inventory read as empty, while omitting the field reports one that could not be read, and a redemption against the latter fails as retryable instead of telling the user their credit is spent.
+- Updated dependencies [[`9608e07`](https://github.com/aio-proxy/aio-proxy/commit/9608e070b5faf585cf591fa007e190e7493362c3)]:
+  - @aio-proxy/types@0.18.0
+  - @aio-proxy/shared@0.18.0
+
 ## 0.17.0
 
 ### Minor Changes

@@ -1,5 +1,13 @@
 # @aio-proxy/plugin-cursor
 
+## 0.18.0
+
+### Patch Changes
+
+- Updated dependencies [[`9608e07`](https://github.com/aio-proxy/aio-proxy/commit/9608e070b5faf585cf591fa007e190e7493362c3), [`1cf2838`](https://github.com/aio-proxy/aio-proxy/commit/1cf2838bb8cec1ed8e3354646b1b39d2695d3664)]:
+  - @aio-proxy/types@0.18.0
+  - @aio-proxy/plugin-sdk@0.18.0
+
 ## 0.17.0
 
 ### Minor Changes
