@@ -84,6 +84,17 @@ test('closeAttachment tears down a live socket with the given code and reports w
   expect(store.closeAttachment('call_missing', 1000)).toBe(false);
 });
 
+test('remove drops the record so a later lookup and reserve both miss', () => {
+  const store = createRealtimeCallStore();
+  store.insert(record());
+
+  store.remove('call_abc');
+
+  expect(store.lookup('call_abc')).toBeUndefined();
+  expect(store.reserve('call_abc')).toBeUndefined();
+  expect(store.size()).toBe(0);
+});
+
 function record(overrides: Partial<RealtimeCallRecord> = {}): RealtimeCallRecord {
   return {
     callId: 'call_abc',
