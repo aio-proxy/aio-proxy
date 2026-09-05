@@ -2,7 +2,7 @@ import { m } from '@aio-proxy/i18n';
 import { Button } from '@aio-proxy/ui/components/button';
 import { Loader2, TicketCheck } from 'lucide-react';
 import type React from 'react';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 
 import { useProviderQuotaReset } from '../../hooks/use-provider-quota-reset';
 
@@ -21,6 +21,7 @@ interface ProviderQuotaResetButtonProps {
  */
 export const ProviderQuotaResetButton: React.FC<ProviderQuotaResetButtonProps> = ({ providerId, availableCount }) => {
   const [confirming, setConfirming] = useState(false);
+  const descriptionId = useId();
   const reset = useProviderQuotaReset(providerId);
 
   // In flight wins over the confirmation: the request is already irrevocable, so re-offering the choice
@@ -46,18 +47,32 @@ export const ProviderQuotaResetButton: React.FC<ProviderQuotaResetButtonProps> =
         data-testid="provider-quota-reset-confirm-inline"
         className="order-last w-full space-y-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-2"
       >
-        <p className="text-xs">{m['dashboard.providers.quota.reset_confirm_description']({ count: availableCount })}</p>
+        <p id={descriptionId} className="text-xs">
+          {m['dashboard.providers.quota.reset_confirm_description']({ count: availableCount })}
+        </p>
         <div className="flex flex-wrap justify-end gap-2">
           {/* The trigger is unmounted to make room for this, so a keyboard user's focus would otherwise
               fall back to the modal itself and lose the prompt. Cancel rather than the action: the
-              redemption is irreversible, so a stray Return must not spend the credit. */}
-          <Button type="button" size="sm" variant="ghost" autoFocus onClick={() => setConfirming(false)}>
+              redemption is irreversible, so a stray Return must not spend the credit.
+
+              Both buttons are described by the paragraph. Without an enclosing dialog nothing would
+              announce the count and the irreversibility on its own, so the consequence has to travel
+              with whichever control is focused — the way `AlertDialogDescription` used to supply it. */}
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            autoFocus
+            aria-describedby={descriptionId}
+            onClick={() => setConfirming(false)}
+          >
             {m['dashboard.providers.quota.reset_confirm_cancel']()}
           </Button>
           <Button
             type="button"
             size="sm"
             data-testid="provider-quota-reset-confirm"
+            aria-describedby={descriptionId}
             onClick={() => {
               reset.mutate();
               setConfirming(false);

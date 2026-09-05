@@ -81,6 +81,24 @@ test('an in-flight redemption reports itself where the button was', () => {
   expect(screen.queryByTestId('provider-quota-reset-confirm')).not.toBeInTheDocument();
 });
 
+/**
+ * Without an enclosing dialog nothing announces the prompt on its own, and focus lands on Cancel the
+ * moment the trigger unmounts. A screen reader must still get the count and the irreversibility from
+ * whichever control is focused, the way `AlertDialogDescription` used to supply it.
+ */
+test('the confirmation describes its consequence to whichever control is focused', () => {
+  queryMocks.data = snapshotWith({ availableCount: 2 });
+  resetMock.pending = false;
+
+  openDialog();
+  fireEvent.click(screen.getByTestId('provider-quota-reset'));
+
+  const consequence = /2/;
+
+  expect(document.activeElement).toHaveAccessibleDescription(consequence);
+  expect(screen.getByTestId('provider-quota-reset-confirm')).toHaveAccessibleDescription(consequence);
+});
+
 // The count is the whole gate: a control that could only ever fail is worse than no control.
 test('an exhausted inventory reports the count without offering redemption', () => {
   queryMocks.data = snapshotWith({ availableCount: 0 });
