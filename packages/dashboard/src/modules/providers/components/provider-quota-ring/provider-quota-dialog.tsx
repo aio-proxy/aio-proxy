@@ -109,8 +109,9 @@ export const ProviderQuotaDialog: React.FC<ProviderQuotaDialogProps> = ({
                 <p className="text-xs text-muted-foreground">
                   {m['dashboard.providers.quota.reset_credits']({ count: result.snapshot.resetCredits.availableCount })}
                 </p>
-                {/* Reporting an inventory obliges the plugin to implement redemption, so the count is
-                    the whole gate: nothing to spend means no control rather than one that always fails. */}
+                {/* The count is the whole gate: the server strips the inventory from a snapshot whose
+                    plugin cannot redeem it, so a reported credit is always spendable, and nothing left
+                    to spend means no control rather than one that always fails. */}
                 {result.snapshot.resetCredits.availableCount > 0 ? (
                   <ProviderQuotaResetButton
                     providerId={provider.id}

@@ -149,7 +149,8 @@ export type OAuthQuotaSnapshot = {
   /**
    * Redeemable grants that reset a window early. Report this only alongside a `reset` implementation:
    * a non-zero `availableCount` is what the dashboard offers redemption from, so an inventory without
-   * one advertises an action the plugin cannot perform.
+   * one advertises an action the plugin cannot perform. The framework drops the inventory from a
+   * snapshot whose adapter has no `reset`, rather than surfacing a control that could only fail.
    */
   readonly resetCredits?: OAuthQuotaResetCredits;
   /** Human-readable subscription tier for this account, when the upstream exposes one. */
