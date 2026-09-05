@@ -88,7 +88,8 @@ function catalogUnavailableMaterialization(
       providerId: config.id,
       retryable: true,
     });
-  if (!config.enabled) return { summary: persistedSummary(undefined, null), state: diagnosticState(diagnostic) };
+  // The job is emitted even when the Provider is disabled: the scheduler will not arm a timer for
+  // one, but a manual catalog refresh has to be able to reach it.
   const credentials = createCredentials();
   return {
     summary: persistedSummary(undefined, null),
@@ -237,6 +238,7 @@ export async function materializePluginProvider(
     accountRuntimeRevision: account.runtimeRevision,
     policy: adapter.catalog.policy,
     stored: storedCatalog,
+    enabled: config.enabled,
     ...(unavailable === undefined ? {} : { unavailableOccurredAt: Date.parse(unavailable.occurredAt) }),
     discover: (signal) =>
       adapter.catalog.discover({
@@ -270,6 +272,10 @@ export async function materializePluginProvider(
     catalog: catalogFreshness(adapter.catalog.policy, storedCatalog, unavailable),
     ...(unavailable === undefined ? {} : { diagnostic: unavailable }),
   } as const;
+  const credentials = options.previous?.identity === identity ? options.previous.credentials : createCredentials();
+  // The job is emitted even when the Provider is disabled: the scheduler will not arm a timer for
+  // one, but a manual catalog refresh has to be able to reach it.
+  const catalogJob = catalogJobFor(credentials);
   if (!config.enabled) {
     const cacheEntry =
       options.previous?.identity === identity
@@ -281,11 +287,10 @@ export async function materializePluginProvider(
     return {
       summary: persistedSummary(undefined, storedCatalog),
       state,
+      catalogJob,
       ...(cacheEntry === undefined ? {} : { cacheEntry }),
     };
   }
-  const credentials = options.previous?.identity === identity ? options.previous.credentials : createCredentials();
-  const catalogJob = catalogJobFor(credentials);
   if (options.previous?.identity === identity) {
     const provider = withRoutingConfig(options.previous.provider, config, storedCatalog.catalog, defaults);
     const cacheEntry = { ...options.previous, provider };

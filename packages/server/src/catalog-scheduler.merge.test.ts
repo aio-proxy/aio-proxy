@@ -31,6 +31,7 @@ function job(overrides: Partial<CatalogJobDescriptor> & Pick<CatalogJobDescripto
     accountRuntimeRevision: 1,
     policy: { kind: 'static' },
     stored: null,
+    enabled: true,
     ...overrides,
   };
 }

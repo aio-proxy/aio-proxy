@@ -11,11 +11,17 @@ import type { CatalogJobDescriptor } from './plugin-runtime';
 export { CATALOG_DISCOVERY_TIMEOUT_MS };
 export const CATALOG_RETRY_MS = 5 * 60_000;
 
+/** `'unknown'` is `refreshNow` only: no job for that Provider ID, so nothing was attempted. */
+export type CatalogRunOutcome = 'refreshed' | 'failed';
+export type CatalogRefreshOutcome = CatalogRunOutcome | 'unknown';
+
 type ActiveJob = {
   readonly descriptor: CatalogJobDescriptor;
   readonly generation: number;
   timer: ReturnType<typeof setTimeout> | undefined;
   controller: AbortController | undefined;
+  /** The single flight a manual refresh joins instead of issuing a second upstream discovery. */
+  inFlight: Promise<CatalogRunOutcome> | undefined;
 };
 
 export type CatalogSchedulerOptions = {
@@ -30,6 +36,9 @@ export type CatalogSchedulerOptions = {
 };
 
 function dueAt(job: CatalogJobDescriptor, now: number, retryMs: number): number | undefined {
+  // A disabled Provider still gets a job entry so `refreshNow` can reach it, but nothing routes
+  // through it, so it is never rediscovered on a timer.
+  if (!job.enabled) return undefined;
   if (job.policy.kind === 'static' && job.stored !== null) return undefined;
   const catalogDue =
     job.policy.kind === 'static' || job.stored === null || job.stored.revision === 0
@@ -60,7 +69,13 @@ export class CatalogScheduler {
     this.#jobs.clear();
     const now = (this.#options.now ?? Date.now)();
     for (const descriptor of descriptors) {
-      const active: ActiveJob = { descriptor, generation: this.#generation, timer: undefined, controller: undefined };
+      const active: ActiveJob = {
+        descriptor,
+        generation: this.#generation,
+        timer: undefined,
+        controller: undefined,
+        inFlight: undefined,
+      };
       this.#jobs.set(descriptor.providerId, active);
       const due = dueAt(descriptor, now, this.#options.catalogRetryMs ?? CATALOG_RETRY_MS);
       if (due === undefined) continue;
@@ -77,6 +92,33 @@ export class CatalogScheduler {
       active.controller?.abort(new DOMException('Catalog scheduler closed', 'AbortError'));
     }
     this.#jobs.clear();
+  }
+
+  /**
+   * Rediscovers one Provider's catalog now, ignoring the TTL: the TTL only ever lived in `dueAt`, so
+   * running the job directly *is* the forced refresh. Awaited to completion — including the snapshot
+   * rebuild — so a caller can acknowledge success only once the new catalog is readable.
+   *
+   * Takes no `AbortSignal`: the flight is shared, and the dashboard tab that started it navigating
+   * away must not cancel a refresh other callers are awaiting. `#run` already caps itself at
+   * `CATALOG_DISCOVERY_TIMEOUT_MS`.
+   */
+  async refreshNow(providerId: string): Promise<CatalogRefreshOutcome> {
+    if (this.#closed) return 'unknown';
+    const active = this.#jobs.get(providerId);
+    // No job means account preparation failed for this Provider (bad credential, missing plugin,
+    // invalid account options) or it is not an OAuth Provider at all. Nothing to run.
+    if (active === undefined) return 'unknown';
+    // Joins whatever is already in the air, whether a timer fired it or a previous click did: a
+    // second concurrent discovery would hit upstream twice for one intended refresh.
+    const inFlight = active.inFlight;
+    if (inFlight !== undefined) return await inFlight;
+    if (active.timer !== undefined) {
+      clearTimeout(active.timer);
+      active.timer = undefined;
+    }
+    // `#run` reschedules on its own — success rebuilds and lands new jobs, failure arms the retry.
+    return await this.#run(active);
   }
 
   #current(active: ActiveJob): boolean {
@@ -105,8 +147,16 @@ export class CatalogScheduler {
     }
   }
 
-  async #run(active: ActiveJob): Promise<void> {
-    if (!this.#current(active)) return;
+  #run(active: ActiveJob): Promise<CatalogRunOutcome> {
+    const flight = this.#runOnce(active).finally(() => {
+      if (active.inFlight === flight) active.inFlight = undefined;
+    });
+    active.inFlight = flight;
+    return flight;
+  }
+
+  async #runOnce(active: ActiveJob): Promise<CatalogRunOutcome> {
+    if (!this.#current(active)) return 'failed';
     active.timer = undefined;
     const startedAt = (this.#options.now ?? Date.now)();
     const controller = new AbortController();
@@ -127,7 +177,7 @@ export class CatalogScheduler {
     let swapped: { readonly ok: false } | { readonly ok: true; readonly revision: number } | undefined;
     try {
       catalog = validateModelCatalog(await Promise.race([discovery, aborted]));
-      if (!this.#current(active) || controller.signal.aborted) return;
+      if (!this.#current(active) || controller.signal.aborted) return 'failed';
       swapped = this.#options.repository.compareAndSwapCatalog({
         providerId: active.descriptor.providerId,
         catalog,
@@ -138,7 +188,7 @@ export class CatalogScheduler {
         accountRuntimeRevision: active.descriptor.accountRuntimeRevision,
       });
     } catch (error) {
-      if (!this.#current(active) || (controller.signal.aborted && this.#closed)) return;
+      if (!this.#current(active) || (controller.signal.aborted && this.#closed)) return 'failed';
       const wrote = this.#options.repository.writeCatalogUnavailableIfCurrent({
         providerId: active.descriptor.providerId,
         plugin: active.descriptor.plugin,
@@ -149,25 +199,28 @@ export class CatalogScheduler {
           retryable: true,
         }),
       });
-      if (!this.#current(active)) return;
+      if (!this.#current(active)) return 'failed';
       if (wrote) await this.#options.rebuild('catalog').catch(() => {});
       this.#scheduleCatalogRetry(active);
       void error;
-      return;
+      return 'failed';
     } finally {
       clearTimeout(deadline);
       controller.signal.removeEventListener('abort', onAbort);
       if (active.controller === controller) active.controller = undefined;
     }
-    if (!this.#current(active)) return;
+    if (!this.#current(active)) return 'failed';
     if (swapped?.ok !== true || catalog === undefined) {
       this.#scheduleCatalogRetry(active);
-      return;
+      return 'failed';
     }
     try {
       await this.#options.rebuild('catalog');
     } catch {
       this.#scheduleRebuildRetry(active);
     }
+    // The catalog is committed either way: a failed rebuild leaves the previous snapshot serving and
+    // retries on its own, which is not a failure of the discovery the caller asked for.
+    return 'refreshed';
   }
 }

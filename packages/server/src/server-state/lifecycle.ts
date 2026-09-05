@@ -201,6 +201,7 @@ export function assembleServerState(runtime: ServerRuntime, parts: ServerStatePa
     currentConfig: () => (manager.current() as Snapshot).config,
     oauthQuota: parts.oauthQuota,
     oauthCredentialRefresh: parts.oauthCredentialRefresh,
+    refreshProviderCatalog: (providerId) => runtime.scheduler.refreshNow(providerId),
     quotaCache: parts.quotaCache,
     warmProviderQuota: (providerId) => parts.quotaCache.warm(providerId),
     reload: parts.reload,

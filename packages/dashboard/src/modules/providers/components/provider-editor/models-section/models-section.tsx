@@ -27,6 +27,7 @@ import { exposedModels, oauthEditorExposedModels } from '../../../lib/exposed-mo
 import { applicablePluginAliases } from '../../../lib/plugin-alias-suggestions';
 import { removeModelFromAliases } from '../../../lib/remove-model-from-aliases';
 import type { SectionSummary } from '../../../lib/section-status';
+import { refreshProviderCatalog } from '../../../services/provider-catalog-refresh-service';
 import { fetchProviderEditView } from '../../../services/providers-service';
 import { SectionShell } from '../section-shell';
 import { ModelAliases } from './model-aliases';
@@ -63,14 +64,22 @@ export const ModelsSection: React.FC<ModelsSectionProps> = ({
   const oauthCatalogMutation = useMutation({
     mutationFn: async (): Promise<CatalogOutcome> => {
       if (persistedProviderId === undefined) return { ok: false, code: 'catalog_unavailable' };
+      // Refresh first: the edit view only reads the persisted catalog, so without this the button
+      // would re-render the same rows whenever the catalog policy's TTL had not expired yet.
+      await refreshProviderCatalog(persistedProviderId);
       const data = await fetchProviderEditView(persistedProviderId);
       if (!data || 'error' in data || data.oauth === undefined) return { ok: false, code: 'catalog_unavailable' };
       return { ok: true, models: data.oauth.models };
     },
-    onSuccess: (result) => {
+    onSettled: () => {
       if (persistedProviderId !== undefined) {
         void queryClient.invalidateQueries({ queryKey: queryKeys.providerEditView(persistedProviderId) });
       }
+      // A refresh moves the Provider's catalog freshness and last-success timestamp on success, and
+      // may add a catalog diagnostic on failure. Either way the list card is stale.
+      void queryClient.invalidateQueries({ queryKey: queryKeys.providers });
+    },
+    onSuccess: (result) => {
       if (result.ok) return;
       toast.add({ type: 'error', title: m['dashboard.providers.form.catalog_failed']({ code: result.code }) });
     },

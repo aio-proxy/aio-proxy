@@ -46,6 +46,7 @@ test('scheduler leaves enough host budget for daily timeout and sandbox discover
       accountRuntimeRevision: 1,
       policy: { kind: 'static' },
       stored: null,
+      enabled: true,
       discover: async (signal) =>
         await discoverAntigravityCatalog(discoveryContext(signal), {
           fetch: async (input, init) => {

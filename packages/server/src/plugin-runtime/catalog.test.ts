@@ -222,7 +222,7 @@ test('reused OAuth runtime refreshes priority and weight from the current config
   expect(reused.provider).not.toBe(first.provider);
 });
 
-test('an initially disabled provider validates state without creating runtime or catalog work', async () => {
+test('an initially disabled provider validates state without creating a runtime or arming its catalog', async () => {
   const fixture = runtimeFixture({ kind: 'ttl', ttlMs: 1 });
 
   const result = await materializePluginProvider({
@@ -243,7 +243,9 @@ test('an initially disabled provider validates state without creating runtime or
 
   expect(fixture.createCalls()).toBe(0);
   expect(result.provider).toBeUndefined();
-  expect(result.catalogJob).toBeUndefined();
+  // The job exists so a manual catalog refresh can reach a disabled Provider, but it carries
+  // `enabled: false`, which is what keeps the scheduler from ever arming a timer for it.
+  expect(result.catalogJob).toMatchObject({ providerId: 'person', enabled: false });
   expect(result.state).toMatchObject({ status: 'ready', catalog: 'stale' });
   expect(result.summary).toMatchObject({ weight: 6 });
   expect(result.summary).not.toHaveProperty('protocol');
