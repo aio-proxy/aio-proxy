@@ -12,15 +12,8 @@
     "aiop": "bin/aiop.js"
   },
   "files": [
-    "bin",
-    "config.schema.json"
+    "bin"
   ],
-  "exports": {
-    "./config.schema.json": "./config.schema.json"
-  },
-  "scripts": {
-    "prepack": "cd ../.. && bun run --filter @aio-proxy/types build && cp packages/types/dist/config.schema.json npm/aio-proxy/config.schema.json"
-  },
   "optionalDependencies": {
     "@aio-proxy/cli-darwin-arm64": "workspace:*",
     "@aio-proxy/cli-darwin-x64": "workspace:*",

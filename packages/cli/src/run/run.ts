@@ -15,7 +15,15 @@ import { openBrowser } from '../open-browser';
 import { loadServiceEnv } from '../service-env';
 
 const VERSION = packageJson.version;
-const CONFIG_SCHEMA_URL = `https://cdn.jsdelivr.net/npm/aio-proxy@${VERSION}/config.schema.json`;
+// The schema ships with @aio-proxy/types (its Rslib build emits it), not the
+// launcher. unpkg (unlike jsdelivr) resolves the package's `exports` map, so the
+// bare path works without `dist/`. Deliberately unpinned: nothing rewrites this
+// line after bootstrap — `upgrade` can't, because a config transaction
+// re-serializes via JSON.stringify and would strip the user's comments — so a
+// pinned version would rot and red-underline valid config forever. Tracking
+// `latest` can instead surface a field the installed binary predates, which
+// fails at parse time with a clear message.
+const CONFIG_SCHEMA_URL = 'https://unpkg.com/@aio-proxy/types/config.schema.json';
 
 export const MAX_REQUEST_BODY_SIZE = EDITS_MULTIPART_ENCODED_LIMIT;
 

@@ -77,7 +77,7 @@ aio-proxy config edit
 
 ```jsonc
 {
-  "$schema": "https://cdn.jsdelivr.net/npm/aio-proxy@latest/config.schema.json",
+  "$schema": "https://unpkg.com/@aio-proxy/types/config.schema.json",
   "providers": {
     "openai": {
       "kind": "api",
@@ -143,7 +143,7 @@ aio-proxy reload
 
 ```jsonc
 {
-  "$schema": "https://cdn.jsdelivr.net/npm/aio-proxy@latest/config.schema.json",
+  "$schema": "https://unpkg.com/@aio-proxy/types/config.schema.json",
   "router": {
     "modelContextAggregation": "min",
     "models": {
