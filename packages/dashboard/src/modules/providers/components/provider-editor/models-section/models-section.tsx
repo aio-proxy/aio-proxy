@@ -73,13 +73,18 @@ export const ModelsSection: React.FC<ModelsSectionProps> = ({
       if (data.catalogRefreshed !== true) return { ok: false, code: 'catalog_unavailable' };
       return { ok: true, models: data.oauth.models };
     },
-    onSettled: () => {
-      if (persistedProviderId !== undefined) {
+    onSettled: (result) => {
+      // Only a completed refresh may refetch the edit view. That read takes its models straight from
+      // the stored catalog, and a refresh reported as failed can still have committed one — discovery
+      // succeeded, the snapshot rebuild did not — so refetching would swap the rows under the error
+      // toast for IDs generation still rejects until the rebuild retry lands.
+      if (result?.ok === true && persistedProviderId !== undefined) {
         void queryClient.invalidateQueries({ queryKey: queryKeys.providerEditView(persistedProviderId) });
       }
       // A refresh moves the Provider's catalog freshness and last-success timestamp on success, and
-      // may add a catalog diagnostic on failure. Either way the list card is stale.
-      void queryClient.invalidateQueries({ queryKey: queryKeys.providers });
+      // may add a catalog diagnostic on failure. Either way the list card is stale. `exact` because
+      // `['providers']` is a prefix of the edit-view key, and the failure path must not reach it.
+      void queryClient.invalidateQueries({ queryKey: queryKeys.providers, exact: true });
     },
     onSuccess: (result) => {
       if (result.ok) return;

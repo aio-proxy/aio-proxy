@@ -2,7 +2,7 @@ import { m } from '@aio-proxy/i18n';
 import { ProviderKind, ProviderProtocol } from '@aio-proxy/types';
 import { Toaster } from '@aio-proxy/ui/components/toast';
 import { beforeEach, describe, expect, rs, test } from '@rstest/core';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { ReactNode } from 'react';
 
@@ -13,9 +13,10 @@ import {
 } from '../../../hooks/use-provider-editor-form';
 import type { ProviderAlias } from '../../../lib/alias-editor';
 import { PROVIDER_MODELS_PLACEHOLDER } from '../../../lib/constants';
+import { providerEditViewQueryOptions } from '../../../services/providers-service';
 import { ModelsSection } from './models-section';
 
-const mocks = rs.hoisted(() => ({ fetchCatalog: rs.fn(), fetchEditView: rs.fn() }));
+const mocks = rs.hoisted(() => ({ fetchCatalog: rs.fn(), fetchEditView: rs.fn(), fetchProviders: rs.fn() }));
 
 // Only the service boundary is mocked. `@tanstack/react-query` stays real: a stubbed `useMutation`
 // whose `mutate` never resolves makes every catalog assertion pass regardless of the button.
@@ -51,17 +52,38 @@ interface HarnessProps {
   readonly candidates?: readonly string[] | undefined;
   readonly pluginAliases?: ProviderAlias | undefined;
   readonly persistedProviderId?: string | undefined;
+  /**
+   * Mounts the two queries the real editor page has open while this section is visible: the Provider's
+   * edit view and the Provider list. Both matter because an invalidation only refetches a key something
+   * is observing — an unobserved cache entry stays quiet and would let a wrong invalidation pass.
+   */
+  readonly observeQueries?: boolean;
 }
 
-const Harness: React.FC<HarnessProps> = ({ kind, initial, candidates, pluginAliases, persistedProviderId }) => {
+const Harness: React.FC<HarnessProps> = ({
+  kind,
+  initial,
+  candidates,
+  pluginAliases,
+  persistedProviderId,
+  observeQueries,
+}) => {
   const form = useProviderEditorForm({ kind, initial });
   section = form;
+  const observing = observeQueries === true && persistedProviderId !== undefined;
+  const editView = useQuery({
+    ...providerEditViewQueryOptions(persistedProviderId ?? 'unobserved'),
+    enabled: observing,
+  });
+  useQuery({ queryKey: ['providers'], queryFn: mocks.fetchProviders, enabled: observing });
+  // The page feeds the edit view's models down as candidates, so a refetch here is visible as rows.
+  const observed = (editView.data as { oauth?: { models?: readonly string[] } } | undefined)?.oauth?.models;
   return (
     <ModelsSection
       form={form}
       kind={kind}
       persistedProviderId={persistedProviderId}
-      candidates={candidates}
+      candidates={observed ?? candidates}
       pluginAliases={pluginAliases}
       summary={{ status: 'ok', hint: '' }}
     />
@@ -90,16 +112,23 @@ const apiInitial = (models: readonly string[]) => ({
 });
 
 // The shape `edit-view` answers with for an OAuth Provider. `catalogRefreshed` reports whether the
-// rediscovery the request asked for actually landed; the models are the stored ones either way.
-const editViewPayload = (models: readonly string[], catalogRefreshed: boolean) => ({
+// rediscovery the request asked for actually landed; the models are the stored ones either way. A plain
+// read never asked for one, so it omits the flag, as the route does.
+const editViewPayload = (models: readonly string[], catalogRefreshed?: boolean) => ({
   provider: { id: 'oauth-provider', kind: ProviderKind.OAuth },
   oauth: { accountLabel: 'person@example.com', publicValues: {}, form: [], models },
-  catalogRefreshed,
+  ...(catalogRefreshed === undefined ? {} : { catalogRefreshed }),
 });
+
+// Calls that carried no `refreshCatalog` flag: the plain reads, i.e. the mount plus every refetch an
+// invalidation provoked.
+const editViewReads = () => mocks.fetchEditView.mock.calls.filter(([, options]) => options === undefined).length;
 
 beforeEach(() => {
   mocks.fetchCatalog.mockReset();
   mocks.fetchEditView.mockReset();
+  mocks.fetchProviders.mockReset();
+  mocks.fetchProviders.mockResolvedValue([]);
   queryClient.clear();
 });
 
@@ -473,6 +502,47 @@ describe('ModelsSection', () => {
     );
     // The seed survives: a failed refresh must not blank the list it could not replace.
     expect(screen.getByTestId('model-row-seeded-c')).toBeInTheDocument();
+  });
+
+  // `queryKeys.providers` (`['providers']`) is a prefix of the edit-view key, so invalidating the list
+  // without `exact` refetches the edit view as well. That is unsafe on the failure path: a refresh
+  // reported as failed can still have committed a catalog whose snapshot rebuild did not land, and the
+  // edit view reads its models straight from the stored catalog — so the rows would quietly become IDs
+  // generation still rejects, underneath an error toast saying nothing had changed.
+  test('a failed refresh refetches the provider list but not the models it cannot trust', async () => {
+    mocks.fetchEditView.mockResolvedValue(editViewPayload(['seeded-c'], false));
+    renderSection({
+      kind: ProviderKind.OAuth,
+      initial: { kind: ProviderKind.OAuth, id: 'oauth-provider', models: [] },
+      persistedProviderId: 'oauth-provider',
+      observeQueries: true,
+    });
+
+    await waitFor(() => expect(screen.getByTestId('model-row-seeded-c')).toBeInTheDocument());
+    expect(editViewReads()).toBe(1);
+    const listReads = mocks.fetchProviders.mock.calls.length;
+
+    fireEvent.click(screen.getByTestId('models-catalog-load'));
+
+    // The list card still has to be reread: a failed refresh can add a catalog diagnostic to it.
+    await waitFor(() => expect(mocks.fetchProviders.mock.calls.length).toBeGreaterThan(listReads));
+    expect(editViewReads()).toBe(1);
+  });
+
+  test('a successful refresh does refetch the edit view, so a rebuilt catalog reaches the page', async () => {
+    mocks.fetchEditView.mockResolvedValue(editViewPayload(['fresh-a'], true));
+    renderSection({
+      kind: ProviderKind.OAuth,
+      initial: { kind: ProviderKind.OAuth, id: 'oauth-provider', models: [] },
+      persistedProviderId: 'oauth-provider',
+      observeQueries: true,
+    });
+
+    await waitFor(() => expect(editViewReads()).toBe(1));
+
+    fireEvent.click(screen.getByTestId('models-catalog-load'));
+
+    await waitFor(() => expect(editViewReads()).toBe(2));
   });
 
   test('the catalog button keeps its label while pending and names a reload after success', async () => {
