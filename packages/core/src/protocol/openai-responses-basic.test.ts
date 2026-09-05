@@ -380,6 +380,32 @@ describe('openAIResponsesAdapter', () => {
 
     expect(await forwarded.json()).toMatchObject({ model: 'upstream', reasoning: { effort: 'high' } });
   });
+
+  test('strips a proxy-minted reasoning id from the raw body so the upstream does not look it up', async () => {
+    const body = JSON.stringify({
+      model: 'same',
+      input: [
+        { type: 'reasoning', id: 'rs_resp_ab454c48-a211-44b7-b0af-15e95f510490_0', summary: [] },
+        { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'hi' }] },
+      ],
+    });
+    const raw = new Request('https://proxy.test/v1/responses', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body,
+    });
+    const parsed = await openAIResponsesAdapter.parse(raw, {});
+
+    const forwarded = await openAIResponsesAdapter.rawRequest(raw, parsed, 'same', new Set(), {});
+
+    expect(await forwarded.json()).toEqual({
+      model: 'same',
+      input: [
+        { type: 'reasoning', summary: [] },
+        { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'hi' }] },
+      ],
+    });
+  });
 });
 
 async function customInvocation() {

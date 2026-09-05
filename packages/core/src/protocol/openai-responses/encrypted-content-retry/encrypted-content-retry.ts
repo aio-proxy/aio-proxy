@@ -175,7 +175,7 @@ export function rewriteOpenAIResponsesEncryptedContent(bodyText: string): string
   const withPlaintext = rewritePlaintextSlots(parsed['input']);
   if (withPlaintext !== undefined) return JSON.stringify({ ...parsed, input: withPlaintext });
 
-  const withBlobs = rewriteOpaqueBlobs(parsed['input']);
+  const withBlobs = rewriteOpaqueBlobs(parsed['input'], parsed['store']);
   if (withBlobs !== undefined) return JSON.stringify({ ...parsed, input: withBlobs });
   return undefined;
 }
@@ -237,14 +237,20 @@ function rewriteParts(parts: readonly unknown[]): unknown[] | undefined {
   return changed ? next : undefined;
 }
 
-function rewriteOpaqueBlobs(input: readonly unknown[]): unknown[] | undefined {
+function rewriteOpaqueBlobs(input: readonly unknown[], store: unknown): unknown[] | undefined {
   let changed = false;
   const next = input.map((item) => {
     if (!isPlainObject(item) || typeof item['type'] !== 'string' || !OPAQUE_ITEM_TYPES.has(item['type'])) return item;
     if (!Object.hasOwn(item, 'encrypted_content')) return item;
     changed = true;
     const { encrypted_content: _encrypted, ...rest } = item;
-    return rest;
+    // Dropping the blob leaves a reasoning item that can only replay by `id`,
+    // and with `store: false` that id was never persisted upstream, so the
+    // replay would trade invalid_encrypted_content for a 404 "Item with id …
+    // not found". See stripOrphanReasoningIds for the same rule on first send.
+    if (rest['type'] !== 'reasoning' || store === true) return rest;
+    const { id: _id, ...withoutId } = rest;
+    return withoutId;
   });
   return changed ? next : undefined;
 }

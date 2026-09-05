@@ -301,9 +301,27 @@ test('leaves ciphertext parts untouched and falls through to the blob strip', ()
         recipient: '/root/w',
         content: [{ type: 'encrypted_content', encrypted_content: CIPHER }],
       },
-      { type: 'reasoning', id: 'rs_1', summary: [{ type: 'summary_text', text: 'think' }] },
+      { type: 'reasoning', summary: [{ type: 'summary_text', text: 'think' }] },
     ],
   });
+});
+
+test('drops the reasoning id along with an unusable blob so the replay is not a store lookup', () => {
+  const body = JSON.stringify({
+    store: false,
+    input: [{ type: 'reasoning', id: 'rs_1', encrypted_content: CIPHER, summary: [] }],
+  });
+  expect(JSON.parse(rewriteOpenAIResponsesEncryptedContent(body)!).input).toEqual([{ type: 'reasoning', summary: [] }]);
+});
+
+test('keeps the reasoning id when the caller opted into store', () => {
+  const body = JSON.stringify({
+    store: true,
+    input: [{ type: 'reasoning', id: 'rs_1', encrypted_content: CIPHER, summary: [] }],
+  });
+  expect(JSON.parse(rewriteOpenAIResponsesEncryptedContent(body)!).input).toEqual([
+    { type: 'reasoning', id: 'rs_1', summary: [] },
+  ]);
 });
 
 test('strips reasoning and compaction blobs only when no plaintext slot changed', () => {

@@ -14,6 +14,7 @@ import { warnOpenAIResponsesDegradation } from '../transform/openai-responses/to
 import { defineProtocolAdapter } from './adapter';
 import { openAIResponsesErrors } from './errors';
 import { openAIResponsesRawRetry } from './openai-responses/encrypted-content-retry';
+import { stripOrphanReasoningIds } from './openai-responses/orphan-reasoning-id';
 import { clampSdkReasoning, normalizeEffort, reasoningSetting } from './reasoning-effort/index';
 import { readJsonRequest, readRequestText } from './request';
 import type { SessionCandidate } from './session';
@@ -254,9 +255,10 @@ async function rewriteOpenAIResponsesRequest(
   const headers = new Headers(raw.headers);
   headers.delete('content-encoding');
   headers.delete('content-length');
+  const sanitizedInput = stripOrphanReasoningIds(body['input'], body['store']);
   // Any of these force a re-serialization: a model rewrite, a stripped
-  // `background` field, or a clamped effort. Only when none apply can we
-  // forward the untouched original bytes.
+  // `background` field, a clamped effort, or a stripped orphan reasoning id.
+  // Only when none apply can we forward the untouched original bytes.
   const modelUnchanged = body['model'] === resolvedModel;
   const backgroundStripped = _background !== undefined;
   const effortUnchanged =
@@ -265,12 +267,13 @@ async function rewriteOpenAIResponsesRequest(
       reasoning !== null &&
       (nextReasoning as { effort?: unknown }).effort === (reasoning as { effort?: unknown }).effort);
   const forwardedBody =
-    modelUnchanged && !backgroundStripped && effortUnchanged
+    modelUnchanged && !backgroundStripped && effortUnchanged && sanitizedInput === undefined
       ? bodyText
       : JSON.stringify({
           ...body,
           model: resolvedModel,
           ...(nextReasoning === undefined ? {} : { reasoning: nextReasoning }),
+          ...(sanitizedInput === undefined ? {} : { input: sanitizedInput }),
         });
   return new Request(raw, {
     method: raw.method,
