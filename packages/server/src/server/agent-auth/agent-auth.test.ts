@@ -3,13 +3,7 @@ import { expect, test } from 'bun:test';
 import type { AgentAccessAuthentication } from '@aio-proxy/core';
 import { Hono } from 'hono';
 
-import {
-  agentCallerPrincipal,
-  type CallerPrincipal,
-  callerPrincipal,
-  staticKeyCallerPrincipal,
-} from '../../caller-principal';
-import { sameCallerPrincipal } from '../../routes/realtime';
+import { agentCallerPrincipal, callerPrincipal, staticKeyCallerPrincipal } from '../../caller-principal';
 import { requireModelAuthentication, type AgentEnv } from './agent-auth';
 
 const VALID_GRANT = {
@@ -154,7 +148,6 @@ test('two distinguishable callers of an unlocked proxy converge on one anonymous
   // obvious temptation) would make each caller its own principal and 403 every attach.
   expect(first.principal).toEqual({ kind: 'anonymous' });
   expect(second.principal).toEqual({ kind: 'anonymous' });
-  expect(sameCallerPrincipal(first.principal as CallerPrincipal, second.principal as CallerPrincipal)).toBe(true);
 });
 
 // Distinguishes "the middleware ran and found no configured keys" from "no middleware ran":

@@ -19,6 +19,19 @@ test('a static key principal is not a bare digest an offline attacker could repr
   expect(staticKeyCallerPrincipal('1234').id).not.toBe(bare);
 });
 
+// The keying material must be a per-process secret, not a constant the attacker can read out
+// of the source: a source-code (or env-derived) salt restores the offline verifier the test
+// above forbids, and that test cannot see the difference because it only knows the *unkeyed*
+// digest. Loading a second, independent instance of the module is the only way to observe
+// where the secret comes from — the query string defeats the module cache, so `?instance=2`
+// re-runs the module body and mints its own `randomBytes(32)`.
+test('the static key keying material is minted per process, not baked into the source', async () => {
+  const otherProcess = (await import('./caller-principal.ts?instance=2')) as typeof import('./caller-principal.ts');
+
+  expect(otherProcess.staticKeyCallerPrincipal).not.toBe(staticKeyCallerPrincipal);
+  expect(otherProcess.staticKeyCallerPrincipal('1234').id).not.toBe(staticKeyCallerPrincipal('1234').id);
+});
+
 test('the same key yields the same principal and different keys do not collide', () => {
   expect(sameCallerPrincipal(staticKeyCallerPrincipal('key-a'), staticKeyCallerPrincipal('key-a'))).toBe(true);
   expect(sameCallerPrincipal(staticKeyCallerPrincipal('key-a'), staticKeyCallerPrincipal('key-b'))).toBe(false);
