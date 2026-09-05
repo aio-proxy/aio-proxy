@@ -53,6 +53,8 @@ export const decodeOverview = (wire: DashboardOverviewWireResponse) => ({
 
 export const decodeOverviewDiagnostics = (wire: DashboardOverviewDiagnosticsWireResponse) => ({
   ...wire,
+  providerHealth:
+    wire.providerHealth?.map((provider) => ({ ...provider, totalTokens: BigInt(provider.totalTokens) })) ?? null,
   topModelCosts: wire.topModelCosts.map((model) => ({
     ...model,
     estimatedCostNanoUsd: BigInt(model.estimatedCostNanoUsd),

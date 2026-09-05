@@ -147,6 +147,7 @@ export const DashboardOverviewDiagnosticsResponseSchema = z.object({
         providerId: IdSchema,
         successRate: NonNegativeFiniteNumberSchema.max(1),
         p95LatencyMs: NonNegativeFiniteNumberSchema,
+        totalTokens: NonNegativeIntegerStringSchema,
       }),
     )
     .nullable(),

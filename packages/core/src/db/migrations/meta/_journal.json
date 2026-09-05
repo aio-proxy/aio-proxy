@@ -50,6 +50,13 @@
       "when": 1787258060254,
       "tag": "0006_furry_mastermind",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1788589092089,
+      "tag": "0007_confused_puck",
+      "breakpoints": true
     }
   ]
 }

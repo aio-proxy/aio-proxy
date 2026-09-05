@@ -1,5 +1,23 @@
 # aio-proxy
 
+## 0.18.0
+
+### Minor Changes
+
+- [#274](https://github.com/aio-proxy/aio-proxy/pull/274) [`1cf2838`](https://github.com/aio-proxy/aio-proxy/commit/1cf2838bb8cec1ed8e3354646b1b39d2695d3664) Thanks [@baranwang](https://github.com/baranwang)! - Redeem ChatGPT rate-limit reset credits from the Dashboard. The OpenAI ChatGPT plugin now implements the OAuth quota `reset` capability, the quota popup turns an available credit count into a confirmed redeem button, and the reading is invalidated afterwards so the spent credit disappears immediately — including when the redemption is refused because the credit was already spent elsewhere, so the button cannot be re-offered for the rest of the cooldown. The button stays disabled until that post-reset reading lands, so a second redemption cannot be confirmed against the stale count. Only credits the upstream reports as available Codex rate-limit grants are counted.
+
+### Patch Changes
+
+- [#273](https://github.com/aio-proxy/aio-proxy/pull/273) [`9608e07`](https://github.com/aio-proxy/aio-proxy/commit/9608e070b5faf585cf591fa007e190e7493362c3) Thanks [@baranwang](https://github.com/baranwang)! - Keep dragged tier headers visible while Provider and model routing tier contents smoothly collapse and expand.
+
+- [#273](https://github.com/aio-proxy/aio-proxy/pull/273) [`9608e07`](https://github.com/aio-proxy/aio-proxy/commit/9608e070b5faf585cf591fa007e190e7493362c3) Thanks [@baranwang](https://github.com/baranwang)! - Show default routing tiers and same-tier weight percentages in an inset layer beneath each Provider card, including the tier number when there is only one tier. Keep the last 24 hours of requests, throughput (total input plus output tokens), success rate, and P95 latency together in the main card, with throughput immediately after requests. Share localized compact duration formatting across Provider cards, overview health, and traces, automatically switching between milliseconds, seconds, minutes, hours, and days, including when rounding reaches the next unit.
+
+  Count input plus output tokens over the last 24 hours with exact integer arithmetic, independently of request duration or upstream-reported total token accounting. Show zero tokens for Providers without traffic after diagnostics load successfully, while leaving unavailable success rate and latency metrics blank.
+
+  Index root spans by completion time so polled token totals only scan the selected time window, and decode Provider token totals as bigint in overview diagnostics to preserve exact values.
+
+- [#274](https://github.com/aio-proxy/aio-proxy/pull/274) [`1cf2838`](https://github.com/aio-proxy/aio-proxy/commit/1cf2838bb8cec1ed8e3354646b1b39d2695d3664) Thanks [@baranwang](https://github.com/baranwang)! - plugin-sdk: document and enforce the OAuth quota reset contract — report `resetCredits` only alongside a `reset` implementation, and treat every `reset` call as a new intentional redemption rather than a retry of the last one. A snapshot from an adapter with no `reset` now has its inventory dropped, so a plugin written against the older read-only contract cannot advertise a redemption it would refuse. Absence and zero are also distinct answers now: `{ availableCount: 0 }` reports an inventory read as empty, while omitting the field reports one that could not be read, and a redemption against the latter fails as retryable instead of telling the user their credit is spent.
+
 ## 0.17.0
 
 ### Minor Changes

@@ -48,7 +48,7 @@ const wireOverview = {
 };
 
 const wireDiagnostics = {
-  providerHealth: [{ providerId: 'first', successRate: 1, p95LatencyMs: 25 }],
+  providerHealth: [{ providerId: 'first', successRate: 1, p95LatencyMs: 25, totalTokens: '9007199254740993' }],
   topModelCosts: [{ modelId: 'model-a', estimatedCostNanoUsd: '600' }],
 };
 
@@ -76,10 +76,18 @@ describe('overview service', () => {
     expect(overview.modelTrendByMetric.tokens.buckets[0]?.values).toEqual({ a: 2n });
     expect(overview.modelTrendByMetric.cost.buckets[0]?.values).toEqual({ a: 3n });
     expect(diagnostics.topModelCosts[0]?.estimatedCostNanoUsd).toBe(600n);
+    expect(diagnostics.providerHealth).toEqual([
+      { providerId: 'first', successRate: 1, p95LatencyMs: 25, totalTokens: 9007199254740993n },
+    ]);
     expect(activity.items[0]).toMatchObject({
       totalTokens: 7n,
       models: [{ modelId: 'model-a', totalTokens: 7n }],
     });
+  });
+
+  test('preserves the difference between unavailable and empty Provider health', () => {
+    expect(decodeOverviewDiagnostics({ ...wireDiagnostics, providerHealth: null }).providerHealth).toBeNull();
+    expect(decodeOverviewDiagnostics({ ...wireDiagnostics, providerHealth: [] }).providerHealth).toEqual([]);
   });
 
   test('polls only successful 24h range data while diagnostics follow the range and activity stays independent', () => {

@@ -6,14 +6,10 @@ import type { ReactNode } from 'react';
 
 import { ProtocolLabel } from '@/components/protocol-label';
 import { TokenCount } from '@/components/token-count';
+import { formatDuration } from '@/lib/format-duration';
 
 import { TRACE_PLACEHOLDER } from '../lib/trace-display-constants';
-import {
-  displayTotalTokens,
-  formatTraceCost,
-  formatTraceDuration,
-  formatTraceResultDetails,
-} from '../lib/trace-formatters';
+import { displayTotalTokens, formatTraceCost, formatTraceResultDetails } from '../lib/trace-formatters';
 import { TraceStatus } from './trace-status';
 
 interface TraceSummaryProps {
@@ -73,7 +69,7 @@ export const TraceSummary: React.FC<TraceSummaryProps> = ({ trace, onSessionSele
           m['dashboard.traces.ended_at'](),
           trace.endedAt === null ? undefined : new Date(trace.endedAt).toLocaleString(),
         ],
-        [m['dashboard.traces.duration'](), formatTraceDuration(trace.durationMs)],
+        [m['dashboard.traces.duration'](), formatDuration(trace.durationMs)],
       ],
     ],
     [

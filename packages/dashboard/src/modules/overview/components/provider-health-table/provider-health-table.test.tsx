@@ -4,8 +4,8 @@ import { render, screen, within } from '@testing-library/react';
 import { ProviderHealthTable } from './provider-health-table';
 
 const rows = [
-  { providerId: 'provider-a', successRate: 0.98, p95LatencyMs: 420 },
-  { providerId: 'provider-b', successRate: 0.75, p95LatencyMs: 980 },
+  { providerId: 'provider-a', successRate: 0.98, p95LatencyMs: 420, totalTokens: 0n },
+  { providerId: 'provider-b', successRate: 0.75, p95LatencyMs: 980, totalTokens: 0n },
 ];
 
 test('renders Provider health rows with client table controls', () => {
