@@ -58,6 +58,7 @@ async function createQuotaResetFixture(options: FixtureOptions = {}) {
   repository.completeAccountOperation(pending.operationId);
   let resetCalls = 0;
   let reads = 0;
+  let spentElsewhere = 0;
   const descriptor = definePlugin((api) => {
     api.oauth.register({
       id: 'default',
@@ -83,7 +84,7 @@ async function createQuotaResetFixture(options: FixtureOptions = {}) {
           reads += 1;
           // Redemption spends the credit, so a post-reset read must not still offer one: the route's
           // cache invalidation is only observable through a second read reporting the new inventory.
-          const remaining = Math.max(credits - resetCalls, 0);
+          const remaining = Math.max(credits - resetCalls - spentElsewhere, 0);
           return { items: [], resetCredits: { availableCount: remaining } };
         },
         ...(resettable
@@ -120,6 +121,10 @@ async function createQuotaResetFixture(options: FixtureOptions = {}) {
     routes,
     resetCalls: () => resetCalls,
     reads: () => reads,
+    /** Spends a credit the way a concurrent consumer would: invisibly to any already-cached snapshot. */
+    spendElsewhere: () => {
+      spentElsewhere += 1;
+    },
     readQuota: (id: string) =>
       routes.request(`/providers/${id}/quota`, {
         method: 'QUERY',
@@ -199,6 +204,25 @@ test('an exhausted inventory answers 409 without redeeming', async () => {
   }
 });
 
+test('a 409 drops the cached snapshot that offered the spent credit', async () => {
+  const fixture = await createQuotaResetFixture();
+  try {
+    // The dialog's read seeds a snapshot offering one credit, then someone else spends it. The cached
+    // reading is now a lie the client cannot see through on its own.
+    expect((await fixture.readQuota('person')).status).toBe(200);
+    fixture.spendElsewhere();
+
+    expect((await reset(fixture.routes, 'person')).status).toBe(409);
+
+    // The refusal came from an upstream preflight read, so the cached count is known-wrong. Without
+    // invalidating it here, this refetch stays inside the cooldown and re-offers the same dead button.
+    const after = await fixture.readQuota('person');
+    expect(await after.json()).toMatchObject({ snapshot: { resetCredits: { availableCount: 0 } } });
+  } finally {
+    fixture.cleanup();
+  }
+});
+
 test('a transient account preparation failure answers 502 without naming the cause', async () => {
   const fixture = await createQuotaResetFixture({ brokenOptions: true });
   try {
@@ -211,13 +235,20 @@ test('a transient account preparation failure answers 502 without naming the cau
   }
 });
 
-test('a failed upstream redemption answers 502', async () => {
+test('a failed upstream redemption answers 502 and stops trusting the cached snapshot', async () => {
   const fixture = await createQuotaResetFixture({ fail: true });
   try {
+    expect((await fixture.readQuota('person')).status).toBe(200);
+    const seeded = fixture.reads();
+
     const response = await reset(fixture.routes, 'person');
 
     expect(response.status).toBe(502);
     expect(await response.json()).toEqual({ error: 'OAUTH_QUOTA_RESET_FAILED' });
+    // Whether the credit was spent before the failure is unknowable from here, so the cached reading
+    // must not survive: the next read goes upstream instead of replaying a pre-attempt count.
+    await fixture.readQuota('person');
+    expect(fixture.reads()).toBeGreaterThan(seeded + 1);
   } finally {
     fixture.cleanup();
   }

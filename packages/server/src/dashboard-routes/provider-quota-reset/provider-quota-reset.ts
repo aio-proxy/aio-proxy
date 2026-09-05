@@ -27,11 +27,18 @@ export const createDashboardProviderQuotaResetRoute = (state: ServerState) =>
         return context.json({ error: error.code }, error.permanent ? 404 : 502);
       }
       // The inventory the client rendered its button from is already spent or gone. 409 rather than
-      // 502 so the dashboard can say so instead of reporting an upstream failure.
+      // 502 so the dashboard can say so instead of reporting an upstream failure. The reset preflight
+      // read upstream to learn that, which contradicts the cached snapshot the button came from: drop
+      // it before answering, or the refetch after this 409 serves the same stale count for the rest of
+      // the cooldown and offers the button again.
       if (error instanceof OAuthQuotaResetUnavailableError) {
+        state.quotaCache.invalidate(id);
         return context.json({ error: error.code }, 409);
       }
+      // The redemption reached upstream and failed there, so whether the credit was spent is unknown
+      // and the cached reading can no longer be trusted either.
       if (error instanceof OAuthQuotaResetError) {
+        state.quotaCache.invalidate(id);
         return context.json({ error: error.code }, 502);
       }
       throw error;
