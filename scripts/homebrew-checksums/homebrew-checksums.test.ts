@@ -34,6 +34,35 @@ describe('buildHomebrewChecksums', () => {
     });
   });
 
+  // The CDN propagates the packages at the same time, so a slow one must not
+  // serialize the others — that is the difference between a ~15 and a ~60 minute
+  // worst case. Assert overlap rather than wall-clock: a slow package must not
+  // have to finish before a later one is even requested.
+  test('waits on every package concurrently', async () => {
+    const started: string[] = [];
+    let release!: () => void;
+    const blocked = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    const promise = build({
+      fetchTarball: async (url) => {
+        const pkg = packageOf(url);
+        started.push(pkg);
+        // Hold the first package open until every package has been requested.
+        if (pkg === PACKAGES[0]) await blocked;
+        return new Response(bytesFor(pkg));
+      },
+    });
+
+    // Nothing awaited the blocked package yet, so if this resolves, the later
+    // package was requested while the first was still in flight.
+    while (started.length < PACKAGES.length) await Bun.sleep(0);
+    release();
+
+    expect(await promise).toHaveProperty(['checksums', PACKAGES[1]!], sha256For(PACKAGES[1]!));
+  });
+
   test('requests the registry URL Homebrew will fetch', () => {
     expect(tarballUrl('cli-darwin-arm64', VERSION)).toBe(
       'https://registry.npmjs.org/@aio-proxy/cli-darwin-arm64/-/cli-darwin-arm64-9.8.7.tgz',

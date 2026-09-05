@@ -137,7 +137,11 @@ jobs:
     needs: release
     if: needs.release.outputs.published == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 75 # 4 packages x a 15-minute CDN wait, plus the downloads
+    # The script's own budget is a 15-minute CDN wait, shared across the packages
+    # rather than per package, plus the downloads. Keep this above that so the
+    # script's error (which names the package and the HTTP status) is what fails
+    # the job, not an opaque timeout.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
 
