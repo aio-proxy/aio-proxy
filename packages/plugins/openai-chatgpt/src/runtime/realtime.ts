@@ -112,10 +112,14 @@ function realtimeHeaders(inbound: Headers, credential: ChatGPTCredential): Heade
 
 function sidebandUrl(input: RealtimeDialInput): string {
   const style: RealtimeStyle = input.style;
-  if (style === 'live') return `${OPENAI_REALTIME_WS_BASE}/live/${input.callId ?? ''}`;
-  if (style === 'realtime-calls') return `${OPENAI_REALTIME_WS_BASE}/realtime/calls/${input.callId ?? ''}`;
+  // Encoded even though the route validates `call_id` against
+  // `^[A-Za-z0-9_-]{1,128}$`: the plugin owns these URLs and must not let a caller
+  // rewrite the target path with a traversal segment.
+  const callId = encodeURIComponent(input.callId ?? '');
+  if (style === 'live') return `${OPENAI_REALTIME_WS_BASE}/live/${callId}`;
+  if (style === 'realtime-calls') return `${OPENAI_REALTIME_WS_BASE}/realtime/calls/${callId}`;
   if (style === 'realtime-query') {
-    return `${OPENAI_REALTIME_WS_BASE}/realtime?intent=quicksilver&call_id=${encodeURIComponent(input.callId ?? '')}`;
+    return `${OPENAI_REALTIME_WS_BASE}/realtime?intent=quicksilver&call_id=${callId}`;
   }
   // `realtime-direct` sends the originally requested model, not the normalized
   // one: substituting `gpt-live-1-codex` here would diverge from the reference.
@@ -145,9 +149,12 @@ async function realtimeDial(
     socket = create(sidebandUrl(input), init);
   } catch (cause) {
     // Bun's `WebSocket` constructor throws synchronously — `SyntaxError: Invalid
-    // proxy URL` for a schemeless configured proxy. `dial` promises only
-    // `RealtimeDialError`, so that escape has to be converted here.
-    throw new RealtimeDialError(`sideband socket could not be created: ${String(cause)}`, { kind: 'unreachable' });
+    // proxy URL` for a schemeless configured proxy, `TypeError` for a header value
+    // Bun rejects. That `TypeError` echoes the offending value verbatim, and `init`
+    // carries the Bearer token, so only the error's name may cross this boundary.
+    // `dial` promises only `RealtimeDialError`, so the escape is converted here.
+    const causeName = cause instanceof Error ? cause.name : 'Error';
+    throw new RealtimeDialError(`sideband socket could not be created (${causeName})`, { kind: 'unreachable' });
   }
 
   return await new Promise<WebSocket>((resolve, reject) => {

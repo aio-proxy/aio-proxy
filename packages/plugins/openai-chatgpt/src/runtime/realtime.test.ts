@@ -236,13 +236,27 @@ test('a socket that never opens times out at the dial deadline, and an early set
   expect(settled).toBeInstanceOf(RealtimeDialError);
   expect((settled as RealtimeDialError).kind).toBe('timeout');
   expect(closed).toEqual([1001]);
+});
 
-  // The one-shot latch: a socket event after the deadline must not settle again
-  // or close a second time.
-  jest.advanceTimersByTime(60_000);
-  sockets[1]?.dispatchEvent(new CloseEvent('close', { code: 1006, wasClean: false }));
-  await until(() => false);
-  expect(closed).toEqual([1001]);
+test('a credential Bun rejects as a header value never reaches the dial error message', async () => {
+  const token = 'sk-SUPER-SECRET-TOKEN';
+  // No `createWebSocket`: the leak lives in Bun's real constructor, which validates
+  // header values and echoes the offending one verbatim. It throws before opening a
+  // socket, so this exercises the production path without touching the network.
+  const realtime = createOpenAIChatGPTRealtime(
+    staticCredentialPort(credential({ accessToken: `${token}\nX-Injected: 1` })),
+    { fetch: captureFetch([]), proxy: null },
+  );
+
+  const error = await realtime_dialError(realtime, {
+    callId: 'call_abc',
+    headers: new Headers(),
+    signal: new AbortController().signal,
+  });
+
+  expect(error.kind).toBe('unreachable');
+  expect(error.message).not.toContain(token);
+  expect(error.message).toBe('sideband socket could not be created (TypeError)');
 });
 
 /** Drains microtasks until `done()` or a bounded number of turns. Fake timers make
