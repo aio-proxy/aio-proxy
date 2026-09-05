@@ -5,6 +5,7 @@ import type {
 } from '@aio-proxy/types';
 import { queryOptions } from '@tanstack/react-query';
 
+import type { DashboardClientResponse } from '@/lib/dashboard-client';
 import { createDashboardClient } from '@/lib/dashboard-client';
 import { queryKeys } from '@/lib/query-keys';
 
@@ -47,7 +48,7 @@ export const oauthSessionQueryOptions = (id: string) =>
     },
   });
 
-const oauthRequestError = async (response: Response, fallback: string): Promise<never> => {
+const oauthRequestError = async (response: DashboardClientResponse, fallback: string): Promise<never> => {
   const body = (await response.json().catch(() => undefined)) as { readonly error?: unknown } | undefined;
   const detail = typeof body?.error === 'string' && body.error.trim() !== '' ? body.error : undefined;
   throw new Error(detail ?? `${fallback}: ${response.status}`);

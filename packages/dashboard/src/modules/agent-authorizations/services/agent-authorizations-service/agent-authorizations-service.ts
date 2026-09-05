@@ -1,5 +1,6 @@
 import type { AgentAuthorizationDetails } from '@aio-proxy/types';
 
+import type { DashboardClientResponse } from '@/lib/dashboard-client';
 import { dashboardClient } from '@/lib/dashboard-client';
 
 export class AgentAuthorizationRequestError extends Error {
@@ -11,7 +12,7 @@ export class AgentAuthorizationRequestError extends Error {
   }
 }
 
-const requireOk = async <T>(response: Response): Promise<T> => {
+const requireOk = async <T>(response: DashboardClientResponse): Promise<T> => {
   const body = (await response.json().catch(() => ({}))) as { readonly error?: unknown };
   if (!response.ok)
     throw new AgentAuthorizationRequestError(
