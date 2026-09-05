@@ -7,7 +7,13 @@ import { queryKeys } from '@/lib/query-keys';
 
 import { useProviderQuotaReset } from './use-provider-quota-reset';
 
-const mocks = rs.hoisted(() => ({ resetProviderQuota: rs.fn(), toastAdd: rs.fn() }));
+const mocks = rs.hoisted(() => ({ resetProviderQuota: rs.fn(), toastAdd: rs.fn(), celebrate: rs.fn() }));
+
+// Where the caller measured the control it pressed. Resolved by `celebrationOriginOf` in production;
+// what matters to this hook is only that it arrives with the mutation rather than being read at success.
+const ORIGIN = { x: 0.25, y: 0.525 };
+
+rs.mock('@/lib/celebrate', () => ({ celebrate: mocks.celebrate }));
 
 rs.mock('../../services/provider-quota-reset-service', () => ({
   resetProviderQuota: mocks.resetProviderQuota,
@@ -32,6 +38,7 @@ rs.mock('@aio-proxy/i18n', () => ({
 const setup = () => {
   mocks.resetProviderQuota.mockReset();
   mocks.toastAdd.mockReset();
+  mocks.celebrate.mockReset();
   const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
   return ({ children }: { readonly children: ReactNode }) =>
     createElement(QueryClientProvider, { client: queryClient }, children);
@@ -62,7 +69,7 @@ test('stays pending until the post-reset reading replaces the stale count', asyn
   );
 
   await waitFor(() => expect(result.current.quota.isSuccess).toBe(true));
-  act(() => result.current.reset.mutate());
+  act(() => result.current.reset.mutate(ORIGIN));
   await waitFor(() => expect(reads).toBe(2));
 
   // The redemption itself has settled and the refetch is in flight. Were the invalidation discarded,
@@ -74,6 +81,58 @@ test('stays pending until the post-reset reading replaces the stale count', asyn
   await waitFor(() => expect(result.current.reset.isPending).toBe(false));
   expect(result.current.quota.data).toEqual({ resetCredits: { availableCount: 1 } });
   expect(mocks.toastAdd).toHaveBeenCalledWith({ type: 'success', title: 'Reset credit redeemed' });
+});
+
+/**
+ * The only caller lives inside the quota popup, so closing it unmounts the observer while the request is
+ * still running. A remounted `useMutation` reports idle, and against the cached nonzero count that
+ * re-offers the confirmation — the server's FIFO would then spend a second credit. The pending state has
+ * to come from the mutation cache, which outlives the popup.
+ */
+test('a redemption stays pending across a popup that closed and reopened', async () => {
+  const wrapper = setup();
+  const request = Promise.withResolvers<undefined>();
+  mocks.resetProviderQuota.mockReturnValue(request.promise);
+
+  const first = renderHook(() => useProviderQuotaReset('openai.main'), { wrapper });
+  act(() => first.result.current.mutate(ORIGIN));
+  await waitFor(() => expect(first.result.current.isPending).toBe(true));
+
+  // Closing the popup unmounts this observer; reopening mounts a brand new one.
+  first.unmount();
+  const reopened = renderHook(() => useProviderQuotaReset('openai.main'), { wrapper });
+
+  expect(reopened.result.current.isPending).toBe(true);
+
+  request.resolve(undefined);
+  await waitFor(() => expect(reopened.result.current.isPending).toBe(false));
+  expect(mocks.resetProviderQuota).toHaveBeenCalledTimes(1);
+});
+
+/**
+ * The corner toast was the only report a redemption gave, and it is easy to miss behind the modal the
+ * button lives in. Fired from the point the caller measured on the control the user pressed — supplied
+ * at call time, because that control is unmounted by the very click that starts the redemption.
+ */
+test('a successful redemption is celebrated from the point the caller measured', async () => {
+  const wrapper = setup();
+  mocks.resetProviderQuota.mockResolvedValue(undefined);
+
+  const { result } = renderHook(() => useProviderQuotaReset('openai.main'), { wrapper });
+  act(() => result.current.mutate({ x: 0.25, y: 0.525 }));
+
+  await waitFor(() => expect(mocks.celebrate).toHaveBeenCalledWith({ x: 0.25, y: 0.525 }));
+});
+
+test('a failed redemption is not celebrated', async () => {
+  const wrapper = setup();
+  mocks.resetProviderQuota.mockRejectedValue(new Error('OAUTH_QUOTA_RESET_FAILED'));
+
+  const { result } = renderHook(() => useProviderQuotaReset('openai.main'), { wrapper });
+  act(() => result.current.mutate({ x: 0.25, y: 0.525 }));
+
+  await waitFor(() => expect(result.current.isError).toBe(true));
+  expect(mocks.celebrate).not.toHaveBeenCalled();
 });
 
 test('a failed redemption still refetches the reading the button was rendered from', async () => {
@@ -97,7 +156,7 @@ test('a failed redemption still refetches the reading the button was rendered fr
   await waitFor(() => expect(result.current.quota.isSuccess).toBe(true));
   expect(reads).toBe(1);
 
-  act(() => result.current.reset.mutate());
+  act(() => result.current.reset.mutate(ORIGIN));
 
   await waitFor(() => expect(result.current.reset.isError).toBe(true));
   await waitFor(() => expect(reads).toBe(2));

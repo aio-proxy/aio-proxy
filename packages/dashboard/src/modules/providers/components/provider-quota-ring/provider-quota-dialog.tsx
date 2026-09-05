@@ -109,15 +109,13 @@ export const ProviderQuotaDialog: React.FC<ProviderQuotaDialogProps> = ({
                 <p className="text-xs text-muted-foreground">
                   {m['dashboard.providers.quota.reset_credits']({ count: result.snapshot.resetCredits.availableCount })}
                 </p>
-                {/* The count is the whole gate: the server strips the inventory from a snapshot whose
-                    plugin cannot redeem it, so a reported credit is always spendable, and nothing left
-                    to spend means no control rather than one that always fails. */}
-                {result.snapshot.resetCredits.availableCount > 0 ? (
-                  <ProviderQuotaResetButton
-                    providerId={provider.id}
-                    availableCount={result.snapshot.resetCredits.availableCount}
-                  />
-                ) : null}
+                {/* Rendered unconditionally: the button withholds itself when there is nothing to
+                    redeem. Gating it here would unmount it the moment the post-redemption refetch
+                    publishes a zero count, which happens while the request is still in flight. */}
+                <ProviderQuotaResetButton
+                  providerId={provider.id}
+                  availableCount={result.snapshot.resetCredits.availableCount}
+                />
               </div>
             )}
           </>

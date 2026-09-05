@@ -19,8 +19,10 @@ function ToastViewport({ className, ...props }: ToastPrimitive.Viewport.Props) {
   return (
     <ToastPrimitive.Viewport
       data-slot="toast-viewport"
+      // Above the `z-50` dialog/sheet layer: a toast is the only feedback some modal actions give, and
+      // at the same z-index the modal backdrop — portalled after the viewport — dims and blurs it.
       className={cn(
-        'pointer-events-none fixed inset-x-4 bottom-4 z-50 mx-auto w-auto max-w-sm outline-none sm:right-4 sm:left-auto sm:mx-0 sm:w-full',
+        'pointer-events-none fixed inset-x-4 bottom-4 z-100 mx-auto w-auto max-w-sm outline-none sm:right-4 sm:left-auto sm:mx-0 sm:w-full',
         className,
       )}
       {...props}
