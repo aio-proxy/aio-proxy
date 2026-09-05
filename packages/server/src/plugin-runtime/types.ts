@@ -40,6 +40,11 @@ export type CatalogJobDescriptor = {
   readonly discover: (signal: AbortSignal) => Promise<ModelCatalog>;
   readonly stored: StoredCatalog | null;
   readonly unavailableOccurredAt?: number;
+  /**
+   * A disabled Provider still carries a job so a manual refresh can reach it, but the scheduler
+   * never arms a timer for one: nothing routes through it, so nothing needs a fresh catalog.
+   */
+  readonly enabled: boolean;
 };
 
 export type PluginRuntimeCacheEntry = {

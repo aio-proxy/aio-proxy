@@ -80,6 +80,33 @@ describe('dashboard DNS-rebinding guard', () => {
     expect(res.status).toBe(403);
   });
 
+  // The edit-view refresh triggers authenticated upstream discovery plus catalog and snapshot writes.
+  // That is why it rides on POST rather than a flag on the GET: the Origin/CSRF guard runs on mutation
+  // methods only, so as a side-effecting read it would have been reachable from any page the user
+  // visited, with nothing but a guessed Provider ID needed.
+  test('the edit-view refresh is refused without a loopback Origin', async () => {
+    const app = await createServer();
+    const res = await app.request(
+      '/dashboard/api/providers/upstream/edit-view',
+      { method: 'POST', headers: { host: '127.0.0.1:9317' } },
+      loopbackServer,
+    );
+    expect(res.status).toBe(403);
+  });
+
+  test('the edit-view refresh is refused from a cross-site Origin', async () => {
+    const app = await createServer();
+    const res = await app.request(
+      '/dashboard/api/providers/upstream/edit-view',
+      {
+        method: 'POST',
+        headers: { host: '127.0.0.1:9317', origin: 'https://evil.example', 'sec-fetch-site': 'cross-site' },
+      },
+      loopbackServer,
+    );
+    expect(res.status).toBe(403);
+  });
+
   test('GET /admin refuses a foreign Host', async () => {
     const app = await createServer();
     const res = await app.request(

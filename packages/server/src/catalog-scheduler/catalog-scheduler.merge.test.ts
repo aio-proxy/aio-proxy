@@ -2,8 +2,8 @@ import { expect, test } from 'bun:test';
 
 import type { ModelCatalog } from '@aio-proxy/plugin-sdk';
 
+import type { CatalogJobDescriptor } from '../plugin-runtime';
 import { CatalogScheduler } from './catalog-scheduler';
-import type { CatalogJobDescriptor } from './plugin-runtime';
 
 const languageCatalog = (...ids: string[]): ModelCatalog => ({
   language: ids.map((id) => ({ id })),
@@ -31,6 +31,7 @@ function job(overrides: Partial<CatalogJobDescriptor> & Pick<CatalogJobDescripto
     accountRuntimeRevision: 1,
     policy: { kind: 'static' },
     stored: null,
+    enabled: true,
     ...overrides,
   };
 }

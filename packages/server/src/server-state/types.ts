@@ -17,6 +17,7 @@ import type {
   DashboardProviderSummary,
 } from '@aio-proxy/types';
 
+import type { CatalogRefreshOutcome } from '../catalog-scheduler';
 import type { ConfigStore } from '../config-store';
 import type { OAuthCredentialRefreshOperations } from '../credential-refresh';
 import type { DashboardEventHub, DashboardEventLimits } from '../dashboard-events';
@@ -88,6 +89,8 @@ export type ServerState = ProviderRouteSource & {
   readonly modelRouting: ModelRoutingControlPlane;
   readonly oauthQuota: OAuthQuotaOperations;
   readonly oauthCredentialRefresh: OAuthCredentialRefreshOperations;
+  /** Rediscovers one OAuth Provider's model catalog now, ignoring the catalog policy's TTL. */
+  readonly refreshProviderCatalog: (providerId: string) => Promise<CatalogRefreshOutcome>;
   readonly quotaCache: OAuthQuotaCache;
   readonly pluginControlPlane: PluginControlPlane;
   readonly oauthCapabilities: () => readonly DashboardOAuthCapability[];

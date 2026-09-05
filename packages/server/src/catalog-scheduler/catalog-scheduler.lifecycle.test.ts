@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 
-import { CatalogScheduler } from '../../src/catalog-scheduler';
-import type { CatalogJobDescriptor } from '../../src/plugin-runtime';
+import type { CatalogJobDescriptor } from '../plugin-runtime';
+import { CatalogScheduler } from './catalog-scheduler';
 
 const repository = {
   compareAndSwapCatalog() {
@@ -27,6 +27,7 @@ function job(overrides: Partial<CatalogJobDescriptor> & Pick<CatalogJobDescripto
     accountRuntimeRevision: 1,
     policy: { kind: 'static' },
     stored: null,
+    enabled: true,
     ...overrides,
   };
 }

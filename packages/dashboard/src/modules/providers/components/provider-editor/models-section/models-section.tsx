@@ -63,14 +63,30 @@ export const ModelsSection: React.FC<ModelsSectionProps> = ({
   const oauthCatalogMutation = useMutation({
     mutationFn: async (): Promise<CatalogOutcome> => {
       if (persistedProviderId === undefined) return { ok: false, code: 'catalog_unavailable' };
-      const data = await fetchProviderEditView(persistedProviderId);
+      // `refreshCatalog` is what makes this a reload rather than a redraw: the view can only report
+      // the stored catalog, so without it the button would return the same rows for as long as the
+      // catalog policy's TTL had not expired.
+      const data = await fetchProviderEditView(persistedProviderId, { refreshCatalog: true });
       if (!data || 'error' in data || data.oauth === undefined) return { ok: false, code: 'catalog_unavailable' };
+      // The read succeeded but the rediscovery behind it did not, so the models below are the stale
+      // ones. Reporting success here is what made the old button look like it had worked.
+      if (data.catalogRefreshed !== true) return { ok: false, code: 'catalog_unavailable' };
       return { ok: true, models: data.oauth.models };
     },
-    onSuccess: (result) => {
-      if (persistedProviderId !== undefined) {
+    onSettled: (result) => {
+      // Only a completed refresh may refetch the edit view. That read takes its models straight from
+      // the stored catalog, and a refresh reported as failed can still have committed one — discovery
+      // succeeded, the snapshot rebuild did not — so refetching would swap the rows under the error
+      // toast for IDs generation still rejects until the rebuild retry lands.
+      if (result?.ok === true && persistedProviderId !== undefined) {
         void queryClient.invalidateQueries({ queryKey: queryKeys.providerEditView(persistedProviderId) });
       }
+      // A refresh moves the Provider's catalog freshness and last-success timestamp on success, and
+      // may add a catalog diagnostic on failure. Either way the list card is stale. `exact` because
+      // `['providers']` is a prefix of the edit-view key, and the failure path must not reach it.
+      void queryClient.invalidateQueries({ queryKey: queryKeys.providers, exact: true });
+    },
+    onSuccess: (result) => {
       if (result.ok) return;
       toast.add({ type: 'error', title: m['dashboard.providers.form.catalog_failed']({ code: result.code }) });
     },
