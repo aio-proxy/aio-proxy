@@ -229,3 +229,35 @@ test('a disabled Provider is never rediscovered on a timer but stays manually re
   expect(discoveries).toBe(1);
   scheduler.close();
 });
+
+test('a failed manual refresh of a disabled Provider stays manual instead of arming the retry', async () => {
+  let discoveries = 0;
+  const scheduler = new CatalogScheduler({
+    repository: {
+      ...repository,
+      writeCatalogUnavailableIfCurrent: () => true,
+    } as never,
+    diagnostics,
+    now: () => 10_000,
+    catalogRetryMs: 5,
+    rebuild: async () => {},
+  });
+  scheduler.replaceJobs([
+    job({
+      enabled: false,
+      discover: async () => {
+        discoveries++;
+        throw new Error('upstream refused');
+      },
+    }),
+  ]);
+
+  expect(await scheduler.refreshNow('person')).toBe('failed');
+  expect(discoveries).toBe(1);
+
+  // The failure path must not smuggle a disabled Provider back onto a timer: an enabled one would be
+  // rediscovering by now.
+  await Bun.sleep(20);
+  expect(discoveries).toBe(1);
+  scheduler.close();
+});

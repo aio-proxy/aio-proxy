@@ -127,10 +127,16 @@ export class CatalogScheduler {
 
   #scheduleCatalogRetry(active: ActiveJob): void {
     if (!this.#current(active)) return;
+    // Same rule as `dueAt`: a disabled Provider is only ever rediscovered when someone asks. A failed
+    // manual refresh must not leave a timer behind that keeps hitting upstream on its own.
+    if (!active.descriptor.enabled) return;
     active.timer = setTimeout(() => void this.#run(active), this.#options.catalogRetryMs ?? CATALOG_RETRY_MS);
     active.timer.unref?.();
   }
 
+  // No `enabled` guard here, unlike the catalog retry: this only redoes the local snapshot rebuild for
+  // a catalog already committed to the database. It never reaches upstream, and leaving the snapshot
+  // permanently behind the stored catalog would be worse than retrying it.
   #scheduleRebuildRetry(active: ActiveJob): void {
     if (!this.#current(active)) return;
     active.timer = setTimeout(() => void this.#retryRebuild(active), this.#options.rebuildRetryMs ?? CATALOG_RETRY_MS);
