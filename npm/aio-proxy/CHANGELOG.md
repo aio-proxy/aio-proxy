@@ -1,5 +1,32 @@
 # aio-proxy
 
+## 0.19.2
+
+### Patch Changes
+
+- [#287](https://github.com/aio-proxy/aio-proxy/pull/287) [`83c67f1`](https://github.com/aio-proxy/aio-proxy/commit/83c67f1cf670752e14ebf66bc95ab0799923b48e) Thanks [@baranwang](https://github.com/baranwang)! - Hide non-text models from the Codex model picker
+
+  The Codex client catalog (`/v1/models?client_version=...`) listed every routable model, including image and video generators such as `gpt-image-2` and the `grok-imagine-*` family. Codex calls whatever it lists as a text chat model, so those rows were unselectable in practice.
+
+  The catalog now only lists models whose resolved `capabilities.modalities.output` includes `text`. Models whose output modality no metadata layer declares are hidden too — declare it under `router.models.<slug>.metadata.capabilities.modalities.output` (or `metadata.extend`) to bring one back.
+
+- [#289](https://github.com/aio-proxy/aio-proxy/pull/289) [`dd0e007`](https://github.com/aio-proxy/aio-proxy/commit/dd0e007bcf4832ebeb1b54862fb0cbfc1dfda76a) Thanks [@baranwang](https://github.com/baranwang)! - Serve the config JSON Schema from `@aio-proxy/types` instead of duplicating it in the launcher package.
+
+  `@aio-proxy/types` is a published package and already exports the generated schema, so the `aio-proxy` launcher no longer copies it in at pack time. A bootstrapped `config.jsonc` now gets `"$schema": "https://unpkg.com/@aio-proxy/types/config.schema.json"` — unpinned, because nothing rewrites that line after bootstrap and a pinned version would go stale as the schema grows.
+
+  Existing configs keep working: they point at a released version whose tarball still carries the old copy. Update the line to the new URL to keep editor completion and validation current on future releases.
+
+- [#286](https://github.com/aio-proxy/aio-proxy/pull/286) [`981e765`](https://github.com/aio-proxy/aio-proxy/commit/981e765965a881af845aff413db711f779ff2ffb) Thanks [@baranwang](https://github.com/baranwang)! - Drop reasoning item ids the ChatGPT Codex backend never persisted.
+
+  A turn served through the AI SDK model path leaves the proxy's own synthetic
+  "rs_..." id on the reasoning item, and the client replays that id in the next
+  turn's input. This runtime forces store: false, so the upstream never persisted
+  it and the lookup failed with "Item with id 'rs_...' not found. Items are not
+  persisted when store is set to false." Reasoning items that carry no
+  encrypted_content now forward without the id and are re-sent as new content;
+  the summary is kept. The invalid_encrypted_content retry replays through the
+  same rewrite, so an item that just lost its unusable blob also loses the id.
+
 ## 0.19.1
 
 ### Patch Changes
