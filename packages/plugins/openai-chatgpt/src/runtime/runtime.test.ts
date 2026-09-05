@@ -128,6 +128,17 @@ describe('OpenAI ChatGPT runtime', () => {
     expect(first.signal).toBe(controller.signal);
     expect(requiredCall(calls, 1).headers.get('session-id')).not.toBe(first.headers.get('session-id'));
   });
+
+  test('an endpoint-owned query parameter is not erased by an inbound request without one', async () => {
+    const calls: FetchCall[] = [];
+    const dynamicFetch = createOpenAIChatGPTDynamicFetch(staticCredentialPort(credential()), captureFetch(calls));
+
+    await dynamicFetch('https://api.openai.com/v1/responses/compact', { method: 'POST', body: '{}' });
+    await dynamicFetch('https://api.openai.com/v1/responses/compact?trace=1', { method: 'POST', body: '{}' });
+
+    expect(requiredCall(calls, 0).url).toBe('https://chatgpt.com/backend-api/codex/responses/compact');
+    expect(requiredCall(calls, 1).url).toBe('https://chatgpt.com/backend-api/codex/responses/compact?trace=1');
+  });
 });
 
 test('refresh metadata uses stored email when rotated tokens omit one', async () => {
