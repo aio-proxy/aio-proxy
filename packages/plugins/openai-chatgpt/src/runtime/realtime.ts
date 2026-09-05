@@ -130,7 +130,7 @@ async function realtimeDial(
   if (input.signal.aborted) throw new RealtimeDialError('dial aborted before connecting', { kind: 'aborted' });
   const credential = await currentCredential(credentials, options.fetch);
   const create = options.createWebSocket ?? defaultWebSocketFactory;
-  const socket = create(sidebandUrl(input), {
+  const init = {
     ...(options.proxy === null ? {} : { proxy: options.proxy }),
     headers: {
       authorization: `Bearer ${credential.accessToken}`,
@@ -139,7 +139,16 @@ async function realtimeDial(
       'User-Agent': CHATGPT_USER_AGENT,
       'session-id': crypto.randomUUID(),
     },
-  });
+  };
+  let socket: WebSocket;
+  try {
+    socket = create(sidebandUrl(input), init);
+  } catch (cause) {
+    // Bun's `WebSocket` constructor throws synchronously — `SyntaxError: Invalid
+    // proxy URL` for a schemeless configured proxy. `dial` promises only
+    // `RealtimeDialError`, so that escape has to be converted here.
+    throw new RealtimeDialError(`sideband socket could not be created: ${String(cause)}`, { kind: 'unreachable' });
+  }
 
   return await new Promise<WebSocket>((resolve, reject) => {
     let settled = false;

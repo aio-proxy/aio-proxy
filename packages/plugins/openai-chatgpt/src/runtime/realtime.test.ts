@@ -1,4 +1,4 @@
-import { expect, test } from 'bun:test';
+import { afterEach, expect, jest, test } from 'bun:test';
 
 import {
   type CredentialPort,
@@ -10,6 +10,10 @@ import {
 import { CHATGPT_USER_AGENT } from '../codex-client';
 import type { ChatGPTCredential } from '../schema';
 import { createOpenAIChatGPTRealtime, realtimeEndpointFor } from './realtime';
+
+afterEach(() => {
+  jest.useRealTimers();
+});
 
 test('every accepted realtime fetch path maps to an exact upstream endpoint', () => {
   expect(realtimeEndpointFor('/v1/live')).toBe(
@@ -191,6 +195,61 @@ test('an aborted dial rejects with kind "aborted" and closes a socket that opens
   expect((error as RealtimeDialError).kind).toBe('aborted');
   expect(closed).toEqual([1001]);
 });
+
+test('a socket that never opens times out at the dial deadline, and an early settle disarms it', async () => {
+  const closed: number[] = [];
+  const sockets: WebSocket[] = [];
+  const realtime = createOpenAIChatGPTRealtime(staticCredentialPort(credential()), {
+    fetch: captureFetch([]),
+    proxy: null,
+    createWebSocket: () => {
+      const socket = socketStub();
+      socket.close = (code?: number) => closed.push(code ?? 1000);
+      sockets.push(socket);
+      return socket;
+    },
+  });
+  const base = { style: 'realtime-calls', callId: 'call_abc', headers: new Headers() } as const;
+
+  jest.useFakeTimers();
+
+  // A dial that settles before the deadline must leave no timer armed.
+  const early = realtime.dial({ ...base, signal: new AbortController().signal });
+  // The credential read runs before the socket exists, so the deadline timer is
+  // only armed once those microtasks drain.
+  await until(() => jest.getTimerCount() === 1);
+  sockets[0]?.dispatchEvent(new CloseEvent('close', { code: 1002, wasClean: false }));
+  await expect(early).rejects.toBeInstanceOf(RealtimeDialError);
+  expect(jest.getTimerCount()).toBe(0);
+
+  const pending = realtime.dial({ ...base, signal: new AbortController().signal });
+  let settled: unknown;
+  void pending.catch((cause: unknown) => {
+    settled = cause;
+  });
+  await until(() => jest.getTimerCount() === 1);
+  expect(closed).toEqual([]);
+
+  jest.advanceTimersByTime(10_000);
+  await until(() => settled !== undefined);
+
+  expect(settled).toBeInstanceOf(RealtimeDialError);
+  expect((settled as RealtimeDialError).kind).toBe('timeout');
+  expect(closed).toEqual([1001]);
+
+  // The one-shot latch: a socket event after the deadline must not settle again
+  // or close a second time.
+  jest.advanceTimersByTime(60_000);
+  sockets[1]?.dispatchEvent(new CloseEvent('close', { code: 1006, wasClean: false }));
+  await until(() => false);
+  expect(closed).toEqual([1001]);
+});
+
+/** Drains microtasks until `done()` or a bounded number of turns. Fake timers make
+ *  wall-clock waiting impossible, so settlement is observed by yielding. */
+async function until(done: () => boolean): Promise<void> {
+  for (let index = 0; index < 50 && !done(); index++) await Promise.resolve();
+}
 
 async function realtime_dialError(
   realtime: RealtimeTransport,

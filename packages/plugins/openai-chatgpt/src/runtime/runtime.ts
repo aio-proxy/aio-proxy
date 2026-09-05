@@ -38,7 +38,7 @@ export async function createOpenAIChatGPTRuntime(
       imageModel: (modelId) => openAI.imageModel(modelId),
     },
     realtime: createOpenAIChatGPTRealtime(context.credentials, {
-      fetch: context.fetch ?? globalThis.fetch,
+      fetch: context.fetch,
       proxy: context.proxy ?? null,
     }),
     // Defensive: image dispatch resolves with `capability` absent, so this guard
