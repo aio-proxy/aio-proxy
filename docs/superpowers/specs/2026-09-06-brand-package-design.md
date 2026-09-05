@@ -286,6 +286,16 @@ READMEs are not published to npm (`npm/aio-proxy/package.json` ships only `bin` 
   `packages/ui/package.json` to `"cn": "catalog:"`. `CLAUDE.md` requires catalog management once a
   dependency has two or more workspace consumers, which adding the brand package makes true.
 - Root `package.json` `workspaces.packages` already covers `packages/*`; no change needed.
+- `packages/ui/src/styles.css`: add `@source "../../brand/src";` next to the existing
+  `@source "./components";`.
+
+The `@source` line is not optional. Tailwind v4 scans only what the CSS entry declares, and
+`packages/ui/src/styles.css` — which both the dashboard and the website import — declares
+`./components`. Moving the component to `packages/brand/src` therefore takes its classes out of
+scope, and the failure is silent: both builds still succeed, but the utilities the component names
+are absent from the emitted CSS and the logo renders unstyled. Verified by building the dashboard
+with a probe class in `packages/brand/src`: absent before the `@source` line, present after, and
+the same holds for the website.
 
 ## Changesets
 
@@ -302,7 +312,13 @@ a Release note reading "restructured logo assets" would be noise.
   it reintroduces exactly the duplication this change removes.
 - **Favicon regression is silent.** Both surfaces lose rsbuild's public-directory auto-detection,
   and a wrong path yields a missing `<link rel="icon">` rather than a build error. Each build must
-  be run once and its emitted HTML checked for the tag.
+  be run once and its emitted HTML checked for the tag. The current baseline, measured before the
+  change: `packages/dashboard/dist/index.html` carries
+  `<link rel="icon" href="/dashboard/favicon.svg" type="image/svg+xml">` and `website/dist/index.html`
+  carries `<link rel="icon" href="/favicon.svg" type="image/svg+xml">`.
+- **Tailwind `@source` regression is also silent.** Same shape as the favicon: the build succeeds
+  and the tag-equivalent — the utility class — simply never reaches the CSS. Verify by grepping the
+  emitted stylesheet for a class only the brand component uses.
 
 ## Out of Scope
 
