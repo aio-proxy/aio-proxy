@@ -2,7 +2,7 @@ import { m } from '@aio-proxy/i18n';
 import { Button } from '@aio-proxy/ui/components/button';
 import { Loader2, TicketCheck } from 'lucide-react';
 import type React from 'react';
-import { useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 
 import { useProviderQuotaReset } from '../../hooks/use-provider-quota-reset';
 
@@ -22,20 +22,43 @@ interface ProviderQuotaResetButtonProps {
 export const ProviderQuotaResetButton: React.FC<ProviderQuotaResetButtonProps> = ({ providerId, availableCount }) => {
   const [confirming, setConfirming] = useState(false);
   const descriptionId = useId();
+  // Set when this component is the one that started the redemption, and cleared once focus has been
+  // handed back to the returning trigger. Confirming unmounts the button the keyboard user activated, so
+  // without this focus would sit on the document body for the seconds the request and its refetch take.
+  // Gating on it matters: a remount while somebody else's redemption is still in flight — reopening the
+  // popup — must not yank focus out of wherever the user actually is. A ref rather than state because
+  // nothing renders from it; the effect below is the only reader.
+  const claimedRef = useRef(false);
+  const slotRef = useRef<HTMLButtonElement | null>(null);
   const reset = useProviderQuotaReset(providerId);
+
+  useEffect(() => {
+    if (!claimedRef.current) return;
+    // React does not reuse the node across the swap, so focus has to be moved on each mount: onto the
+    // progress control when the request starts, then back onto the trigger when it settles.
+    slotRef.current?.focus();
+    if (!reset.isPending) claimedRef.current = false;
+  }, [confirming, reset.isPending]);
 
   // In flight wins over the confirmation: the request is already irrevocable, so re-offering the choice
   // would be a lie, and the same slot has to carry the progress the user is waiting on.
   if (reset.isPending) {
     return (
-      <span
-        role="status"
+      // A focusable disabled button rather than a plain span: focus is parked here for the whole wait, and
+      // only a control that stays in the tab order can hold it. `disabled` alone reads as inert, which is
+      // what the spinner and its label are here to contradict.
+      <Button
+        ref={slotRef}
+        type="button"
+        size="sm"
+        variant="outline"
+        disabled
+        focusableWhenDisabled
         data-testid="provider-quota-reset-pending"
-        className="inline-flex items-center gap-1.5 text-xs text-muted-foreground"
       >
-        <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
+        <Loader2 data-icon="inline-start" className="animate-spin" />
         {m['dashboard.providers.quota.reset_pending']()}
-      </span>
+      </Button>
     );
   }
 
@@ -74,6 +97,7 @@ export const ProviderQuotaResetButton: React.FC<ProviderQuotaResetButtonProps> =
             data-testid="provider-quota-reset-confirm"
             aria-describedby={descriptionId}
             onClick={() => {
+              claimedRef.current = true;
               reset.mutate();
               setConfirming(false);
             }}
@@ -87,6 +111,7 @@ export const ProviderQuotaResetButton: React.FC<ProviderQuotaResetButtonProps> =
 
   return (
     <Button
+      ref={slotRef}
       type="button"
       size="sm"
       variant="outline"

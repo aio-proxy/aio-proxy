@@ -2,6 +2,7 @@ import { expect, rs, test } from '@rstest/core';
 import { fireEvent, render, screen } from '@testing-library/react';
 
 import { providerStub } from '../../lib/provider-fixtures';
+import { ProviderQuotaResetButton } from './provider-quota-reset-button';
 import { ProviderQuotaRing } from './provider-quota-ring';
 
 const queryMocks = { data: undefined as unknown };
@@ -79,6 +80,53 @@ test('an in-flight redemption reports itself where the button was', () => {
   expect(screen.getByTestId('provider-quota-reset-pending')).toBeInTheDocument();
   expect(screen.queryByTestId('provider-quota-reset')).not.toBeInTheDocument();
   expect(screen.queryByTestId('provider-quota-reset-confirm')).not.toBeInTheDocument();
+});
+
+/**
+ * Confirming unmounts the button the keyboard user activated, so without an explicit hand-off focus sits
+ * on the document body for the seconds the request and its refetch take, and the returning trigger comes
+ * back unfocused. React does not reuse the node across either swap — hence the focusable disabled control
+ * and the effect that moves focus on each mount.
+ */
+test('focus follows the redemption from the confirmation through progress back to the trigger', () => {
+  resetMock.pending = false;
+
+  const view = render(<ProviderQuotaResetButton providerId="codex" availableCount={2} />);
+  fireEvent.click(screen.getByTestId('provider-quota-reset'));
+  fireEvent.click(screen.getByTestId('provider-quota-reset-confirm'));
+
+  resetMock.pending = true;
+  view.rerender(<ProviderQuotaResetButton providerId="codex" availableCount={2} />);
+
+  const pending = screen.getByTestId('provider-quota-reset-pending');
+  // Base UI keeps a `focusableWhenDisabled` button in the tab order, so it reports `aria-disabled`
+  // rather than the native attribute that would make it unfocusable.
+  expect(pending).toHaveAttribute('aria-disabled', 'true');
+  expect(pending).toHaveFocus();
+
+  resetMock.pending = false;
+  view.rerender(<ProviderQuotaResetButton providerId="codex" availableCount={2} />);
+
+  expect(screen.getByTestId('provider-quota-reset')).toHaveFocus();
+});
+
+/**
+ * The hand-off is scoped to the redemption this component started. A popup reopened while somebody
+ * else's redemption is still in flight must not steal focus from wherever the user actually is.
+ */
+test('a redemption started elsewhere does not steal focus', () => {
+  resetMock.pending = true;
+
+  const outside = document.createElement('button');
+  document.body.append(outside);
+  outside.focus();
+
+  render(<ProviderQuotaResetButton providerId="codex" availableCount={2} />);
+
+  expect(screen.getByTestId('provider-quota-reset-pending')).toBeInTheDocument();
+  expect(outside).toHaveFocus();
+
+  outside.remove();
 });
 
 /**
