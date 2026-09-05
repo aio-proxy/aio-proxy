@@ -1,5 +1,14 @@
 # @aio-proxy/plugin-sdk
 
+## 0.19.1
+
+### Patch Changes
+
+- [#284](https://github.com/aio-proxy/aio-proxy/pull/284) [`80f8b9d`](https://github.com/aio-proxy/aio-proxy/commit/80f8b9d10eef15214fc3f55342ccf097fc00b6ef) Thanks [@baranwang](https://github.com/baranwang)! - Refresh dependencies across the workspace, including `eventsource-parser` 4 for SSE parsing, `hono` 4.13.7 for the proxy and Dashboard routes, and `jose` 6.2.12 for token handling. Behavior is unchanged.
+- Updated dependencies []:
+  - @aio-proxy/shared@0.19.1
+  - @aio-proxy/types@0.19.1
+
 ## 0.19.0
 
 ### Patch Changes
