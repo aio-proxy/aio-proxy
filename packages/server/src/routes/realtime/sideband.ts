@@ -308,13 +308,19 @@ function createRelay(source: RealtimeRouteSource, input: RelayInput): Relay {
           teardown(INTERNAL_CLOSE_CODE, undefined, 'downstream');
           return;
         }
-        if (upstream.bufferedAmount > BACKPRESSURE_LIMIT) {
-          teardown(INTERNAL_CLOSE_CODE, undefined, 'downstream');
-          return;
-        }
         try {
           upstream.send(data);
         } catch {
+          teardown(INTERNAL_CLOSE_CODE, undefined, 'downstream');
+          return;
+        }
+        // Measured after the send, never before: the client `WebSocket.send()` returns
+        // `undefined` on Bun 1.4.2, so the frame just handed over is only observable in
+        // `bufferedAmount`. A check ahead of the send reads a queue that does not yet
+        // include this frame, so one frame larger than the ceiling passes it and — with
+        // no later frame to re-check — leaves the relay open around an unbounded queue.
+        // Measured: an 8 MiB frame takes `bufferedAmount` from 0 to ~8 MB in one call.
+        if (upstream.bufferedAmount > BACKPRESSURE_LIMIT) {
           teardown(INTERNAL_CLOSE_CODE, undefined, 'downstream');
         }
       },
@@ -327,18 +333,23 @@ function createRelay(source: RealtimeRouteSource, input: RelayInput): Relay {
 
 /** `WSContext.send` discards Bun's backpressure result and exposes no `drain`, so
  *  the real queued byte count comes from the underlying `ServerWebSocket`. The origin
- *  is `proxy`: neither peer misbehaved, the proxy's own ceiling tripped. */
+ *  is `proxy`: neither peer misbehaved, the proxy's own ceiling tripped.
+ *
+ *  Read after the send for the same reason as the upstream leg: before it, the queue
+ *  does not yet include the frame being handed over, so a single frame larger than the
+ *  ceiling clears the check and nothing re-reads the queue unless another frame
+ *  arrives. `raw.send()`'s own return value is not used as the gate because it only
+ *  reports *that* backpressure was applied (`-1` measured on Bun 1.4.2), not how many
+ *  bytes are queued, and the advertised ceiling is a byte count. */
 function sendDownstream(ws: WSContext, data: string | ArrayBuffer, teardown: Teardown): void {
   const raw = ws.raw as { getBufferedAmount?: () => number } | undefined;
-  if ((raw?.getBufferedAmount?.() ?? 0) > BACKPRESSURE_LIMIT) {
-    teardown(INTERNAL_CLOSE_CODE);
-    return;
-  }
   try {
     ws.send(data);
   } catch {
     teardown(INTERNAL_CLOSE_CODE);
+    return;
   }
+  if ((raw?.getBufferedAmount?.() ?? 0) > BACKPRESSURE_LIMIT) teardown(INTERNAL_CLOSE_CODE);
 }
 
 function closeQuietly(socket: WebSocket, code: number, reason?: string): void {

@@ -154,8 +154,52 @@ test('a 2xx hangup by the owner closes the live sideband', async () => {
   expect(harness.store.lookup('call_abc')).toBeUndefined();
 });
 
-// A direct connection carries no call record, so nothing pins its provider and selection is
-// the ordinary candidate order — keyed, like every other realtime selection, on the
+// The advertised ceiling is 1 MiB queued in either direction -> close 1011, and both legs
+// checked the queue only BEFORE handing the frame over. Measured on Bun 1.4.2: the client
+// `WebSocket.send()` returns `undefined` and `ServerWebSocket.send()` returns `-1`, so neither
+// return value carries a byte count — the frame just sent is visible only in the queue read
+// afterwards. A pre-send read therefore sees a queue that excludes this frame, so one frame
+// larger than the whole ceiling clears the check; with no later frame to re-read the queue, the
+// relay stayed open around an unbounded queue and the ceiling was never enforced at all.
+//
+// Driven with a single 8 MiB frame and no follow-up frame, which is the shape that bypassed it:
+// a test that sent a second frame would be satisfied by the old pre-send check too. The origin is
+// SILENT, and that is load-bearing: with the echoing origin this test still passed with the
+// upstream check restored to pre-send-only, because the echo arrived as a second frame and
+// tripped the *downstream* ceiling instead. A silent origin neither greets nor answers, so the
+// upstream leg's own post-send check is the only thing that can close this relay.
+test('a single downstream frame past the ceiling closes the relay with 1011 without a follow-up frame', async () => {
+  const harness = await createHarness({ originSilent: true });
+  await harness.create('key-owner');
+  const attached = await harness.attach('key-owner');
+
+  // Deliberately the only frame in the whole test. Without the post-send check nothing ever
+  // re-reads the queue, so the relay stays open and this resolves as the timeout marker.
+  attached.socket.send('x'.repeat(8 * 1024 * 1024));
+
+  expect(await closedWithin(attached)).toMatchObject({ code: 1011 });
+});
+
+// The other direction, which has its own send path (`sendDownstream`, reading
+// `raw.getBufferedAmount()`) and so cannot be covered by the upstream-leg test above. The frame
+// itself is still handed to the downstream — the ceiling bounds the queue, it does not drop the
+// frame that crossed it — so this asserts the close, not the absence of the frame. `1011`
+// because the overflow is the proxy's own ceiling tripping, not either peer misbehaving.
+test('a single upstream frame past the ceiling closes the downstream with 1011', async () => {
+  const harness = await createHarness({ originGreetingBytes: 8 * 1024 * 1024 });
+  await harness.create('key-owner');
+  const attached = await harness.attach('key-owner');
+
+  // The greeting is the only upstream frame, so nothing re-reads the queue after it.
+  expect(await closedWithin(attached)).toMatchObject({ code: 1011 });
+});
+
+/** Bounds the wait so a relay that never closes fails on this marker rather than hanging the
+ *  suite — which is exactly what the pre-send-only check did in both directions. */
+function closedWithin(attached: Attached, ms = 2_000): Promise<unknown> {
+  return Promise.race([attached.closed(), Bun.sleep(ms).then(() => ({ stillOpen: true }))]);
+}
+
 // NORMALIZED model. Hard-coding `gpt-live-1-codex` as that key sent a caller-chosen id no
 // Codex provider advertises to whichever provider serves Codex, skipping the provider that
 // does advertise it. The two providers advertise disjoint model sets, so the id decides.
@@ -273,11 +317,16 @@ type Attached = {
   readonly closed: () => Promise<{ code: number; reason: string }>;
 };
 
-async function createHarness(options: { logs?: ServerLog[]; originClosesOnOpen?: boolean }): Promise<Harness> {
+async function createHarness(options: {
+  logs?: ServerLog[];
+  originClosesOnOpen?: boolean;
+  originGreetingBytes?: number;
+  originSilent?: boolean;
+}): Promise<Harness> {
   const logs = options.logs ?? [];
   const store = createRealtimeCallStore();
   const closesOnOpen = options.originClosesOnOpen ?? false;
-  const origin = await startOrigin(closesOnOpen);
+  const origin = await startOrigin(closesOnOpen, options.originGreetingBytes, options.originSilent);
   let dials = 0;
   const source = sourceWith(store, logs, origin, closesOnOpen, () => {
     dials += 1;
@@ -379,7 +428,7 @@ type Origin = {
  *  `closesOnOpen` models an upstream that accepts the handshake and drops the socket
  *  at once — the only shape a client `WebSocket` cannot distinguish from a healthy one
  *  at dial time. */
-async function startOrigin(closesOnOpen: boolean): Promise<Origin> {
+async function startOrigin(closesOnOpen: boolean, greetingBytes?: number, silent = false): Promise<Origin> {
   let last: { close: (code: number, reason: string) => void } | undefined;
   const server = Bun.serve({
     port: 0,
@@ -394,12 +443,16 @@ async function startOrigin(closesOnOpen: boolean): Promise<Origin> {
           ws.close(4009, 'origin gone');
           return;
         }
+        if (silent) return;
         // Speaks the instant it opens. That is the window the deleted pre-open buffer
         // claimed to protect, and it is why the relay binds its upstream `message`
         // listener before the upgrade rather than inside `onOpen`.
-        ws.send('origin greeting');
+        ws.send(greetingBytes === undefined ? 'origin greeting' : 'g'.repeat(greetingBytes));
       },
       message(ws, message) {
+        // A silent origin never answers, so the downstream leg's ceiling cannot fire and
+        // the upstream leg's check is the only thing that can close the relay.
+        if (silent) return;
         ws.send(`origin saw: ${String(message)}`);
       },
     },

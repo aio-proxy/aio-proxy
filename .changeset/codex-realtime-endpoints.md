@@ -27,5 +27,9 @@ for both provider priority and provider weight, matching ordinary routing. A dir
 `GET /v1/realtime?model=<id>` selects providers by the model that connection will actually send
 upstream, so a provider advertising only the Codex model is no longer handed an unrelated model id.
 
+The sideband relay's 1 MiB backpressure ceiling is now enforced in both directions after each frame
+is queued rather than before, so a single frame larger than the ceiling closes the relay with `1011`
+instead of leaving it open around an unbounded send queue until some later frame happens to arrive.
+
 `@aio-proxy/server` now also exports Bun's `websocket` handler; an embedder that constructs its own
 `Bun.serve` must pass it as the `websocket` option or every realtime sideband upgrade fails.
