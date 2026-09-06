@@ -318,9 +318,20 @@ the same holds for the website.
 
 ## Changesets
 
-None. Per `CLAUDE.md`, a changeset must target `aio-proxy` or `@aio-proxy/plugin-sdk` to reach a
-published Release. This change is internal refactoring with no user-visible behavior difference —
-a Release note reading "restructured logo assets" would be noise.
+One patch changeset targeting `aio-proxy` alongside `@aio-proxy/brand`, `@aio-proxy/dashboard`,
+and `@aio-proxy/ui`.
+
+An earlier revision of this spec said "none," on the premise that this is internal refactoring with
+no user-visible difference. That premise is false, and a PR review caught it. Two things users can
+see do change: the dashboard wordmark stops rendering "Proxy" as a webfont-dependent `<text>`
+element and becomes vector geometry, widening the viewBox from `0 0 1800 480` to `0 0 1920 480`;
+and the favicon's dark-mode ink moves from pure white (`oklch(1 0 0)`) to the theme's off-white
+`#fbfbf9`. The dark ink is unchanged — `oklch(15.3% .006 107.1)` converts to exactly `#0c0c09`.
+
+The moved files and the generator are internal, but "the change is mostly plumbing" does not make
+its visible edges invisible. Judge a changeset on what a user would notice, not on what fraction of
+the diff they would notice.
+
 
 ## Risks
 
