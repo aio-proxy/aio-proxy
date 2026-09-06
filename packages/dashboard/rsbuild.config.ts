@@ -1,3 +1,5 @@
+import { fileURLToPath } from 'node:url';
+
 import { defineConfig } from '@rsbuild/core';
 import { pluginReact } from '@rsbuild/plugin-react';
 import { pluginSvgr } from '@rsbuild/plugin-svgr';
@@ -5,6 +7,8 @@ import { pluginTailwindcss } from '@rsbuild/plugin-tailwindcss';
 import { tanstackRouter } from '@tanstack/router-plugin/rspack';
 
 const apiUrl = `http://127.0.0.1:${process.env.AIO_PROXY_PORT ?? '9317'}`;
+
+const favicon = fileURLToPath(import.meta.resolve('@aio-proxy/brand/assets/aio-proxy-mark-favicon.svg'));
 
 // Docs: https://rsbuild.rs/config/
 export default defineConfig({
@@ -31,6 +35,7 @@ export default defineConfig({
   },
   html: {
     title: 'AIO Proxy Dashboard',
+    favicon,
   },
   server: {
     base: '/dashboard/',

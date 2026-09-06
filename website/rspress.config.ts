@@ -6,7 +6,7 @@ export default defineConfig({
   root: 'docs',
   outDir: 'dist',
   title: 'AIO Proxy',
-  icon: '/favicon.svg',
+  icon: import.meta.resolve('@aio-proxy/brand/assets/aio-proxy-mark-favicon.svg'),
   description: 'Connect and manage multiple model providers through one API endpoint.',
   lang: 'en',
   locales: [
