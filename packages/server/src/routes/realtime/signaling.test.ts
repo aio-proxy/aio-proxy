@@ -494,12 +494,69 @@ test('a successful create forwards only content-type plus the rewritten Location
   expect(response.headers.get('x-upstream-debug')).toBeNull();
 });
 
+// Releasing an unread upstream body is cleanup, never the outcome. `cancel()` can reject —
+// a plugin's `realtime.fetch` may answer over a hand-built stream whose `cancel` algorithm
+// throws, and a body already errored by a transport reset rejects too — and awaiting that bare
+// let the rejection escape the candidate loop as Hono's untyped 500 in place of the fallback.
+test('an upstream body whose cancel rejects does not escape the candidate loop', async () => {
+  const attempted: string[] = [];
+  const retryable = sourceWith([
+    realtimeProvider({
+      id: 'a',
+      priority: 10,
+      answer: () => {
+        attempted.push('a');
+        return uncancellableResponse(502);
+      },
+    }),
+    realtimeProvider({
+      id: 'b',
+      answer: () => {
+        attempted.push('b');
+        return sdpAnswer('call_abc')();
+      },
+    }),
+  ]);
+
+  const failedOver = await post(retryable, 'live', 'v=0\r\n', 'application/sdp');
+
+  expect(attempted).toEqual(['a', 'b']);
+  expect(failedOver.status).toBe(201);
+  expect(failedOver.headers.get('location')).toBe('/v1/live/call_abc');
+
+  // The 4xx site is the same cleanup one branch over: the caller must still get the reshaped
+  // rejection rather than a 500 that says nothing about what the upstream refused.
+  const rejected = sourceWith([realtimeProvider({ id: 'a', answer: () => uncancellableResponse(400) })]);
+
+  const reshaped = await post(rejected, 'live', 'v=0\r\n', 'application/sdp');
+
+  expect(reshaped.status).toBe(400);
+  expect(((await reshaped.json()) as { error: { code: string } }).error.code).toBe('upstream_rejected');
+});
+
 function sdpAnswer(callId: string): () => Response {
   return () =>
     new Response('v=0\r\na=answer\r\n', {
       status: 201,
       headers: { 'content-type': 'application/sdp', location: `https://api.openai.com/v1/realtime/calls/${callId}` },
     });
+}
+
+/** A response over a stream whose `cancel` algorithm throws, which is what makes
+ *  `response.body.cancel()` reject. Verified on Bun 1.4.2: the rejection carries the thrown
+ *  error, so a bare `await` propagates it. */
+function uncancellableResponse(status: number): Response {
+  return new Response(
+    new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('upstream detail'));
+      },
+      cancel() {
+        throw new Error('cancel algorithm failed');
+      },
+    }),
+    { status, headers: { 'content-type': 'text/plain' } },
+  );
 }
 
 async function post(

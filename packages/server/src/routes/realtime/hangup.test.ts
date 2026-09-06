@@ -134,6 +134,53 @@ test('a non-2xx hangup is reshaped into the realtime envelope and keeps the reco
   expect(store.lookup('call_abc')).toBeDefined();
 });
 
+// Both hangup outcomes discard the upstream body, and `cancel()` can reject: a plugin's
+// `realtime.fetch` may answer over a hand-built stream whose `cancel` algorithm throws.
+// Awaiting that bare turned a completed teardown into Hono's untyped 500 — for the 2xx, after
+// the record was already deleted, so the caller was told the hangup failed when it had not.
+test('a hangup whose upstream body cannot be cancelled still answers, on both outcomes', async () => {
+  const closed = createRealtimeCallStore();
+  const closingApp = hangupApp(closed, [], () => uncancellableResponse(200));
+  await create(closingApp, 'key-owner');
+
+  const success = await closingApp.request('/v1/realtime/calls/call_abc/hangup', {
+    method: 'POST',
+    headers: { 'x-test-principal': 'key-owner' },
+  });
+
+  expect(success.status).toBe(204);
+  expect(closed.lookup('call_abc')).toBeUndefined();
+
+  const kept = createRealtimeCallStore();
+  const failingApp = hangupApp(kept, [], () => uncancellableResponse(404));
+  await create(failingApp, 'key-owner');
+
+  const failure = await failingApp.request('/v1/realtime/calls/call_abc/hangup', {
+    method: 'POST',
+    headers: { 'x-test-principal': 'key-owner' },
+  });
+
+  expect(failure.status).toBe(404);
+  expect(((await failure.json()) as { error: { code: string } }).error.code).toBe('upstream_rejected');
+  expect(kept.lookup('call_abc')).toBeDefined();
+});
+
+/** A response over a stream whose `cancel` algorithm throws, which is what makes
+ *  `response.body.cancel()` reject. */
+function uncancellableResponse(status: number): Response {
+  return new Response(
+    new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('upstream detail'));
+      },
+      cancel() {
+        throw new Error('cancel algorithm failed');
+      },
+    }),
+    { status, headers: { 'content-type': 'text/plain' } },
+  );
+}
+
 function hangupApp(store: RealtimeCallStore, logs: ServerLog[] = [], hangupAnswer?: () => Response) {
   const source = sourceWith(store, logs, hangupAnswer);
   return (

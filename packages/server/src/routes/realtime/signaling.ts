@@ -15,7 +15,7 @@ import {
 import { normalizeRealtimeModel } from './model';
 import { type RealtimeCandidate, selectRealtimeCandidates } from './provider-select';
 import type { RealtimeRouteSource } from './source';
-import { allowlistedUpstreamHeaders } from './upstream-response';
+import { allowlistedUpstreamHeaders, cancelUpstreamBody } from './upstream-response';
 
 export const MAX_CREATE_ATTEMPTS = 2;
 
@@ -114,7 +114,7 @@ async function attemptCandidates(
     // not be forwarded, so it is an availability failure of this attempt and falls through
     // to the next candidate exactly as a 5xx does.
     if (response.status >= 400 && response.status < 500 && response.status !== 401 && response.status !== 429) {
-      await response.body?.cancel();
+      await cancelUpstreamBody(response);
       const filtered = realtimeUpstreamRejected(response.status);
       logFailure(
         source,
@@ -125,7 +125,7 @@ async function attemptCandidates(
       );
       return filtered;
     }
-    await response.body?.cancel();
+    await cancelUpstreamBody(response);
   }
   return failed(
     source,

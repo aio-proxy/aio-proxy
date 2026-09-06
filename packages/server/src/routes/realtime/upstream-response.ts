@@ -24,6 +24,22 @@ export function allowlistedUpstreamHeaders(response: Response): Headers {
   return headers;
 }
 
+/** Releases an upstream response body whose bytes are never read, best-effort.
+ *
+ *  `cancel()` can reject: a plugin's `realtime.fetch` may return a `Response` over a
+ *  hand-built `ReadableStream` whose `cancel` algorithm throws, and a body already errored by a
+ *  transport reset rejects too. Awaiting that bare let the rejection escape the create's
+ *  candidate loop and the hangup's handler as an unshaped 500 — for the create, in place of
+ *  trying the next provider; for the hangup, after the record was already removed. Releasing a
+ *  body is cleanup, never the outcome, so nothing here can decide either.
+ *
+ *  The sibling of `create-body.ts`'s `cancelRequestBody`, one direction over. */
+export async function cancelUpstreamBody(response: Response): Promise<void> {
+  try {
+    await response.body?.cancel();
+  } catch {}
+}
+
 /** The upstream's own body is discarded rather than relayed: one was observed echoing the
  *  caller's SDP offer back inside an error string. The accepted cost is the loss of the
  *  upstream's diagnostic detail (2026-09-06 ruling).
