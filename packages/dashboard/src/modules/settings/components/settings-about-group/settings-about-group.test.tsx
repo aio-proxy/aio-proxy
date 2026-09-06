@@ -149,6 +149,21 @@ test('shows the unmanaged hint only when the process is not a managed service', 
   expect(screen.queryByText(unmanagedHint)).toBeNull();
 });
 
+test('apply up_to_date clears a stale outdated Check so Update now is not stuck enabled', async () => {
+  prepare();
+  mocks.check.mockResolvedValue({ current: '1.4.2', latest: '1.10.0', outdated: true });
+  mocks.apply.mockResolvedValue({ ok: true, status: 'up_to_date' });
+  await renderGroup();
+
+  clickCheck();
+  const update = screen.getByRole('button', { name: updateNowName });
+  await waitFor(() => expect(update).toBeEnabled());
+
+  fireEvent.click(update);
+  await waitFor(() => expect(mocks.apply).toHaveBeenCalledTimes(1));
+  await waitFor(() => expect(update).toBeDisabled());
+});
+
 test('enables Update now after an outdated check and posts apply', async () => {
   prepare();
   mocks.check.mockResolvedValue({ current: '1.4.2', latest: '1.10.0', outdated: true });

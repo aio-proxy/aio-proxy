@@ -13,12 +13,20 @@ const POLL_TIMEOUT_MS = 120_000;
 
 interface SettingsUpdateNowButtonProps {
   readonly outdated: boolean;
+  readonly onUpToDate?: () => void;
 }
 
 const errorCode = (error: unknown) => (error instanceof Error ? error.message : '');
 
-export const SettingsUpdateNowButton: React.FC<SettingsUpdateNowButtonProps> = ({ outdated }) => {
+export const SettingsUpdateNowButton: React.FC<SettingsUpdateNowButtonProps> = ({ outdated, onUpToDate }) => {
   const release = useReleaseQuery();
+  const [dismissedAsCurrent, setDismissedAsCurrent] = useState(false);
+  const [seenOutdated, setSeenOutdated] = useState(outdated);
+  if (outdated !== seenOutdated) {
+    setSeenOutdated(outdated);
+    if (outdated) setDismissedAsCurrent(false);
+  }
+  const releaseAvailable = outdated && !dismissedAsCurrent;
   const [baselineCurrent, setBaselineCurrent] = useState(release.data?.current);
   if (baselineCurrent === undefined && release.data?.current !== undefined) {
     setBaselineCurrent(release.data.current);
@@ -86,6 +94,11 @@ export const SettingsUpdateNowButton: React.FC<SettingsUpdateNowButtonProps> = (
   const apply = useMutation({
     mutationFn: applyReleaseMutationFn,
     onSuccess: (result) => {
+      if (result.status === 'up_to_date') {
+        setDismissedAsCurrent(true);
+        onUpToDate?.();
+        return;
+      }
       if (result.status === 'started') beginPoll();
     },
     onError: (error) => {
@@ -126,7 +139,7 @@ export const SettingsUpdateNowButton: React.FC<SettingsUpdateNowButtonProps> = (
       <Button
         variant="ghost"
         size="sm"
-        disabled={!outdated || inProgress || restartRequired}
+        disabled={!releaseAvailable || inProgress || restartRequired}
         onClick={() => apply.mutate()}
       >
         {inProgress ? m['dashboard.settings.version_updating']() : m['dashboard.settings.version_update']()}

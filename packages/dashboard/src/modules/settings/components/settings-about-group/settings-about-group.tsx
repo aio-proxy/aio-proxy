@@ -56,7 +56,7 @@ export const SettingsAboutGroup: React.FC = () => {
               <Button variant="ghost" size="sm" disabled={check.isPending} onClick={() => check.mutate()}>
                 {m['dashboard.settings.version_check']()}
               </Button>
-              <SettingsUpdateNowButton outdated={check.data?.outdated === true} />
+              <SettingsUpdateNowButton outdated={check.data?.outdated === true} onUpToDate={() => check.reset()} />
               <SettingsExternalLink
                 href={current === undefined ? REPOSITORY_URL : `${REPOSITORY_URL}/releases/tag/v${current}`}
                 label={m['dashboard.settings.version']()}
