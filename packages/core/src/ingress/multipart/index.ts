@@ -1,4 +1,4 @@
-export { multipartFieldNumber } from './field-coercion';
+export { multipartFieldBoolean, multipartFieldNumber } from './field-coercion';
 export { MULTIPART_ENCODED_LIMIT } from './multipart-limits';
 export {
   acquireMultipartSlot,
