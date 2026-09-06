@@ -1,8 +1,9 @@
 import { m } from '@aio-proxy/i18n';
-import type { DashboardOAuthSession } from '@aio-proxy/types';
+import type { DashboardOAuthProviderEdit, DashboardOAuthSession } from '@aio-proxy/types';
 import { toast } from '@aio-proxy/ui/components/toast';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
+import { isPlainObject } from 'es-toolkit/predicate';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { queryKeys } from '@/lib/query-keys';
@@ -17,12 +18,18 @@ import {
 } from '../../services/oauth-service';
 import { providerEditViewQueryOptions } from '../../services/providers-service';
 
+const oauthFromEditView = (data: unknown): DashboardOAuthProviderEdit | undefined => {
+  if (!isPlainObject(data) || 'error' in data) return undefined;
+  const oauth = data['oauth'];
+  return isPlainObject(oauth) ? (oauth as DashboardOAuthProviderEdit) : undefined;
+};
+
 export const useOAuthEditorSession = (
   mode: ProviderFormMode,
   sessionId: string | undefined,
   onSessionIdChange: (sessionId: string | undefined) => void,
   providerId: string | undefined,
-  onSessionSucceeded?: () => void,
+  onSessionSucceeded?: (oauth?: DashboardOAuthProviderEdit) => void,
 ) => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -58,10 +65,6 @@ export const useOAuthEditorSession = (
   });
   const sessionQuery = useQuery(oauthSessionQueryOptions(sessionId ?? ''));
   const persistedId = authorizedProviderId ?? providerId;
-  const editViewQuery = useQuery({
-    ...providerEditViewQueryOptions(persistedId ?? ''),
-    enabled: persistedId !== undefined && persistedId !== '',
-  });
   const session: DashboardOAuthSession | undefined =
     sessionQuery.data?.session ??
     (sessionId !== undefined && sessionQuery.isError
@@ -85,16 +88,20 @@ export const useOAuthEditorSession = (
     if (session?.status === 'failed' || session?.status === 'cancelled') {
       closeUnclaimedPopup();
     }
-    if (session?.status === 'succeeded' && handledSuccess.current !== session.id) {
+    if (
+      session?.status === 'succeeded' &&
+      handledSuccess.current !== session.id &&
+      mode === ProviderFormMode.Edit &&
+      providerId !== undefined &&
+      session.providerId !== providerId
+    ) {
+      handledSuccess.current = session.id;
+      void navigate({ search: {}, replace: true });
+    } else if (session?.status === 'succeeded' && handledSuccess.current !== session.id) {
       handledSuccess.current = session.id;
       setAuthorizedProviderId(session.providerId);
       setSessionWarning(session.warning);
       void queryClient.invalidateQueries({ queryKey: queryKeys.providers });
-      void (async () => {
-        await editViewQuery.refetch();
-        await queryClient.invalidateQueries({ queryKey: queryKeys.providerEditView(session.providerId) });
-        onSessionSucceeded?.();
-      })();
       if (mode === ProviderFormMode.Create) {
         void navigate({
           to: '/providers/$id/edit',
@@ -102,9 +109,25 @@ export const useOAuthEditorSession = (
           search: { session: session.id },
           replace: true,
         });
+        return;
       }
+      void (async () => {
+        let next: DashboardOAuthProviderEdit | undefined;
+        try {
+          await queryClient.invalidateQueries({ queryKey: queryKeys.providerEditView(session.providerId) });
+          next = oauthFromEditView(
+            await queryClient.fetchQuery({
+              ...providerEditViewQueryOptions(session.providerId),
+              staleTime: 0,
+            }),
+          );
+        } catch {
+          next = undefined;
+        }
+        onSessionSucceeded?.(next);
+      })();
     }
-  }, [closeUnclaimedPopup, editViewQuery, mode, navigate, onSessionSucceeded, queryClient, session]);
+  }, [closeUnclaimedPopup, mode, navigate, onSessionSucceeded, providerId, queryClient, session]);
 
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {

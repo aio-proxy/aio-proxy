@@ -38,7 +38,7 @@ import { oauthAccountSubmission } from '../../lib/oauth-account-submission';
 import { capabilityKey } from '../../lib/oauth-capability-key';
 import { oauthProviderEditAction } from '../../lib/oauth-provider-edit';
 import { normalizeProviderFormValue, type ProviderFormShape } from '../../lib/provider-form-value';
-import { blockingSections, sectionStatuses, type SectionStatusInput } from '../../lib/section-status';
+import { blockingSections, sectionOrder, sectionStatuses, type SectionStatusInput } from '../../lib/section-status';
 import { oauthCapabilitiesQueryOptions } from '../../services/oauth-service';
 import { useOAuthEditorSession } from './use-oauth-editor-session';
 
@@ -286,6 +286,46 @@ const editorSectionInput = (
   optionsValid: extras.optionsValid,
 });
 
+const nameAfterOAuthSuccess = (
+  form: ReturnType<typeof useProviderEditorForm>,
+  oauth: DashboardOAuthProviderEdit | undefined,
+): string => {
+  const currentName = form.state.values.name?.trim() ?? '';
+  if (currentName !== '') return currentName;
+  return oauth?.accountLabel.trim() ?? '';
+};
+
+const resetEditorAfterOAuthSuccess = (
+  form: ReturnType<typeof useProviderEditorForm>,
+  initial: ProviderEditorInitial | undefined,
+  kind: ProviderKind,
+  oauth: DashboardOAuthProviderEdit | undefined,
+) => {
+  const name = nameAfterOAuthSuccess(form, oauth);
+  if (initial === undefined) {
+    if (name !== '') form.setFieldValue('name', name);
+    return;
+  }
+  form.reset({
+    ...initial,
+    kind,
+    ...(name !== '' ? { name } : {}),
+    alias:
+      initial.alias === undefined
+        ? undefined
+        : kind === 'oauth'
+          ? toOAuthAliasRows(initial.alias)
+          : toAliasRows(initial.alias as ProviderAlias),
+    ...(kind === 'oauth'
+      ? {
+          excludedModels: 'excludedModels' in initial ? (initial.excludedModels ?? []) : [],
+          pluginAliasInherit: !isOAuthInheritOff(initial.alias),
+        }
+      : {}),
+  } as ProviderEditorShape);
+  if (name !== '') form.setFieldValue('name', name);
+};
+
 export const useProviderEditorPage = ({
   mode,
   kind,
@@ -312,29 +352,15 @@ export const useProviderEditorPage = ({
         }
       : undefined,
   );
-  const onSessionSucceeded = useCallback(() => {
-    accountForm.setFieldValue('secrets', {});
-    accountForm.setFieldValue('clearSecrets', []);
-    if (oauth !== undefined) accountForm.setFieldValue('publicValues', oauth.publicValues);
-    if (initial !== undefined) {
-      form.reset({
-        ...initial,
-        kind,
-        alias:
-          initial.alias === undefined
-            ? undefined
-            : kind === 'oauth'
-              ? toOAuthAliasRows(initial.alias)
-              : toAliasRows(initial.alias as ProviderAlias),
-        ...(kind === 'oauth'
-          ? {
-              excludedModels: 'excludedModels' in initial ? (initial.excludedModels ?? []) : [],
-              pluginAliasInherit: !isOAuthInheritOff(initial.alias),
-            }
-          : {}),
-      } as ProviderEditorShape);
-    }
-  }, [accountForm, form, initial, kind, oauth]);
+  const onSessionSucceeded = useCallback(
+    (refreshed?: DashboardOAuthProviderEdit) => {
+      accountForm.setFieldValue('secrets', {});
+      accountForm.setFieldValue('clearSecrets', []);
+      if (refreshed !== undefined) accountForm.setFieldValue('publicValues', refreshed.publicValues);
+      resetEditorAfterOAuthSuccess(form, initial, kind, refreshed);
+    },
+    [accountForm, form, initial, kind],
+  );
   const {
     openPopup,
     closeUnclaimedPopup,
@@ -379,7 +405,7 @@ export const useProviderEditorPage = ({
     }),
   );
 
-  const saveBlocked = blockingSections(summaries).length > 0;
+  const saveBlocked = blockingSections(summaries, sectionOrder(kind)).length > 0;
   const handleKindChange = (next: ProviderKind) => {
     onKindChange?.(next);
     setOptionsValid(next !== 'ai-sdk');

@@ -1,4 +1,5 @@
 import { m } from '@aio-proxy/i18n';
+import { ProviderKind } from '@aio-proxy/types';
 import { expect, rs, test } from '@rstest/core';
 import { fireEvent, render, screen } from '@testing-library/react';
 
@@ -24,7 +25,7 @@ const PILLS = [
 // word back in the pill reds on the exact-name lookup. The fixture spans all three statuses, so the
 // dot's class is asserted per status — presence alone still passed when every dot shared one colour.
 test('every section is a pill labelled by its title alone, with a dot in its own status colour', () => {
-  render(<SectionNav summaries={summaries} activeId="identity" />);
+  render(<SectionNav summaries={summaries} activeId="identity" kind={ProviderKind.Api} />);
 
   for (const [id, label] of PILLS) {
     const pill = screen.getByRole('link', { name: label });
@@ -38,7 +39,7 @@ test('every section is a pill labelled by its title alone, with a dot in its own
 // and no per-section status at all. jsdom applies no media queries, so the class list is the only
 // thing that can see that mutant come back.
 test('the pill strip is never hidden at a breakpoint', () => {
-  render(<SectionNav summaries={summaries} activeId="identity" />);
+  render(<SectionNav summaries={summaries} activeId="identity" kind={ProviderKind.Api} />);
 
   const nav = screen.getByRole('navigation');
   expect(nav.className).not.toMatch(/(?:^|\s)hidden(?:\s|$)/u);
@@ -49,7 +50,7 @@ test('the pill strip is never hidden at a breakpoint', () => {
 // `'true'`, not `'location'`: the pills point at sections of the page the user is already on, so the
 // active one is the current item of a set, not a link to the current page.
 test('only the active section pill is marked current', () => {
-  render(<SectionNav summaries={summaries} activeId="models" />);
+  render(<SectionNav summaries={summaries} activeId="models" kind={ProviderKind.Api} />);
 
   expect(screen.getByRole('link', { name: m['dashboard.providers.editor.section_models']() })).toHaveAttribute(
     'aria-current',
@@ -63,7 +64,7 @@ test('only the active section pill is marked current', () => {
 // The strip is a list of sections, not the page: `edit_title` ("Edit Provider") named it after the
 // route and was plainly false on the create route, where the same nav renders.
 test('the strip is labelled as a section list, not as the edit page', () => {
-  render(<SectionNav summaries={summaries} activeId="identity" />);
+  render(<SectionNav summaries={summaries} activeId="identity" kind={ProviderKind.Api} />);
 
   const nav = screen.getByRole('navigation');
   expect(nav).toHaveAttribute('aria-label', m['dashboard.providers.editor.section_nav_label']());
@@ -79,7 +80,7 @@ test('activating a pill scrolls to the section AND moves focus into it', () => {
   const scrollIntoView = rs.fn();
   render(
     <>
-      <SectionNav summaries={summaries} activeId="identity" />
+      <SectionNav summaries={summaries} activeId="identity" kind={ProviderKind.Api} />
       {/* Stands in for SectionShell's rendered `<section>`; its own test pins the tabIndex. */}
       <section id="models" tabIndex={-1} />
     </>,
@@ -99,7 +100,7 @@ test('activating a pill scrolls to the section AND moves focus into it', () => {
 // The pills set `outline-none`, so without the ring a keyboard user tabbing the strip sees nothing at
 // all. The prototype pairs the two; keeping only the first half is the mutant this kills.
 test('a pill that suppresses the native outline supplies a focus-visible ring', () => {
-  render(<SectionNav summaries={summaries} activeId="identity" />);
+  render(<SectionNav summaries={summaries} activeId="identity" kind={ProviderKind.Api} />);
 
   const pill = screen.getByRole('link', { name: m['dashboard.providers.editor.section_identity']() });
   expect(pill.className).toContain('outline-none');
@@ -109,9 +110,20 @@ test('a pill that suppresses the native outline supplies a focus-visible ring', 
 // One registry (`lib/section-status`) or five copies: the nav used to re-declare its own order and
 // label map, so a sixth SectionId compiled fine here and rendered five tabs.
 test('the strip renders exactly the shared section registry, in its order', () => {
-  render(<SectionNav summaries={summaries} activeId="identity" />);
+  render(<SectionNav summaries={summaries} activeId="identity" kind={ProviderKind.Api} />);
 
   const labels = screen.getAllByRole('link').map((pill) => pill.textContent);
   expect(labels).toEqual(PILLS.map(([, label]) => label));
   expect(SECTION_ORDER).toEqual(PILLS.map(([id]) => id));
+});
+
+test('oauth rail starts with Connection, then Identity', () => {
+  render(<SectionNav summaries={summaries} activeId="connection" kind={ProviderKind.OAuth} />);
+
+  expect(screen.getAllByRole('link').map((pill) => pill.textContent)).toEqual([
+    m['dashboard.providers.editor.section_connection'](),
+    m['dashboard.providers.editor.section_identity'](),
+    m['dashboard.providers.editor.section_models'](),
+    m['dashboard.providers.editor.section_advanced'](),
+  ]);
 });
