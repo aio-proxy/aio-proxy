@@ -1125,6 +1125,50 @@ test('classifies 429 as retryable and inactive subscription as permanent', async
   ).rejects.toMatchObject({ name: 'MuseCodeQuotaError', retryable: false });
 });
 
+test('classifies timeout and 5xx as retryable quota failures', async () => {
+  await expect(
+    readMuseCodeQuota(context(), {
+      fetch: async () => {
+        throw Object.assign(new Error('The operation timed out.'), { name: 'TimeoutError' });
+      },
+    }),
+  ).rejects.toMatchObject({ name: 'MuseCodeQuotaError', retryable: true });
+  await expect(
+    readMuseCodeQuota(context(), { fetch: async () => new Response(null, { status: 503 }) }),
+  ).rejects.toMatchObject({ name: 'MuseCodeQuotaError', retryable: true, status: 503 });
+  await expect(
+    readMuseCodeQuota(context(), { fetch: async () => new Response('not-json', { status: 200 }) }),
+  ).rejects.toMatchObject({ name: 'MuseCodeQuotaError', retryable: false });
+});
+
+test('treats nonpositive window_duration_mins as a rolling window', async () => {
+  const zero = await readMuseCodeQuota(context(), {
+    fetch: async () =>
+      Response.json({
+        is_subs_active: true,
+        subs_usage: { window: { used_percent: 25, window_duration_mins: 0 } },
+      }),
+  });
+  expect(zero.items).toEqual([
+    {
+      id: 'window',
+      displayName: { default: 'Rolling window', 'zh-Hans': '滚动窗口' },
+      remainingRatio: 0.75,
+    },
+  ]);
+  const negative = await readMuseCodeQuota(context(), {
+    fetch: async () =>
+      Response.json({
+        is_subs_active: true,
+        subs_usage: { window: { used_percent: 25, window_duration_mins: -60 } },
+      }),
+  });
+  expect(negative.items[0]).toMatchObject({
+    id: 'window',
+    displayName: { default: 'Rolling window', 'zh-Hans': '滚动窗口' },
+  });
+});
+
 function context() {
   const port: CredentialPort<MuseCodeCredential> = {
     read: async () => ({ revision: 1, value: credential }),
@@ -1146,13 +1190,13 @@ Expected: FAIL because `./quota` does not exist.
 
 - [ ] **Step 3: Implement quota mapping**
 
-`readMuseCodeQuota` calls `currentMuseCodeCredential` then `requestMuseCodeKey(oauthAccessToken, { onboard: false / omitted })` with `JSON.stringify({})`. Ignore `api_key` in the response. Throw `MuseCodeQuotaError` `{ retryable: false }` when `is_subs_active === false` or when neither window produces an item (`subs_usage` missing or both percents invalid). Map `MuseCodeHttpError` 429 to `{ retryable: true, status: 429 }`. A window is valid only when `used_percent` is a finite number `>= 0`; negative and non-finite values produce no item. Then `remainingRatio = 1 - Math.min(percent, 100) / 100`. Parse `resets_at` as ISO or unix seconds/ms. `plan` from `subs_tier_name` then `subs_tier_id`. Do not register reset. Do not write credentials. Add tests for both-windows-invalid and negative `used_percent`.
+`readMuseCodeQuota` calls `currentMuseCodeCredential` then `requestMuseCodeKey(oauthAccessToken, { onboard: false / omitted })` with `JSON.stringify({})`. Ignore `api_key` in the response. Throw `MuseCodeQuotaError` `{ retryable: false }` when `is_subs_active === false` or when neither window produces an item (`subs_usage` missing or both percents invalid). Map every `MuseCodeHttpError` onto `MuseCodeQuotaError` with the same `retryable` and `status` (408 / 429 / 5xx stay retryable). Map timeout and genuine network failures to `{ retryable: true }`. Map invalid JSON to `{ retryable: false }`. Rethrow `AbortError` / `signal.reason` from the caller cancel; do not classify cancel as a quota miss. A window is valid only when `used_percent` is a finite number `>= 0`; negative and non-finite values produce no item. Then `remainingRatio = 1 - Math.min(percent, 100) / 100`. Parse `resets_at` as ISO or unix seconds/ms. `plan` from `subs_tier_name` then `subs_tier_id`. Do not register reset. Do not write credentials.
 
-Window display names:
+Window display names and ids (`window_duration_mins` must be a finite **positive** number before formatting):
 
-- finite `window_duration_mins` divisible by 60 → `{default: "${hours} hour(s)", 'zh-Hans': "${hours} 小时"}` (singular hour when `hours === 1`)
-- other finite minutes → `{default: "${minutes} minute(s)", 'zh-Hans': "${minutes} 分钟"}`
-- missing duration → `{default: 'Rolling window', 'zh-Hans': '滚动窗口'}`, id `window`
+- `minutes > 0` and divisible by 60 → id `${Math.round(minutes)}m`, `{default: "${hours} hour(s)", 'zh-Hans': "${hours} 小时"}` (singular hour when `hours === 1`)
+- other `minutes > 0` → id `${Math.round(minutes)}m`, `{default: "${minutes} minute(s)", 'zh-Hans': "${minutes} 分钟"}`
+- missing, zero, or negative duration → id `window`, `{default: 'Rolling window', 'zh-Hans': '滚动窗口'}`
 
 - [ ] **Step 4: Verify GREEN**
 
