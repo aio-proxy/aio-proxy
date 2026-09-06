@@ -1,3 +1,5 @@
+import { ProviderProtocol } from '@aio-proxy/types';
+
 import {
   createPassthroughSseUsageObserver,
   extractPassthroughObservation,
@@ -36,16 +38,21 @@ export function createObservationSource(
     };
   }
   const jsonCapture = createJsonCapture();
-  const usageScan = createJsonUsageScan();
+  // The oversize-body usage scan is a byte scan with no JSON-document validity
+  // check, so on a binary body (an /v1/audio/speech mp3 over the size cap) an
+  // incidental `"usage":{...}` byte run would become a billed token row. Audio
+  // JSON responses (transcriptions) are small and always land under the cap, so
+  // skipping the scan for this protocol costs no real billing.
+  const usageScan = protocol === ProviderProtocol.OpenAIAudio ? undefined : createJsonUsageScan();
   return {
     feed: (chunk) => {
       jsonCapture.push(chunk);
-      usageScan.push(chunk);
+      usageScan?.push(chunk);
     },
     final: () => {
-      usageScan.finish();
+      usageScan?.finish();
       if (jsonCapture.captured()) return extractPassthroughObservation(protocol, jsonCapture.text());
-      const snippet = usageScan.text();
+      const snippet = usageScan?.text();
       return snippet === undefined ? {} : extractPassthroughObservation(protocol, snippet);
     },
   };

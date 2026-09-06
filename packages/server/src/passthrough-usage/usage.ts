@@ -1,6 +1,7 @@
 import { ProviderProtocol } from '@aio-proxy/types';
 import { isPlainObject } from 'es-toolkit/predicate';
 
+import { openAIAudioUsage } from './openai-audio';
 import {
   anthropicTotalTokens,
   assertNever,
@@ -27,7 +28,7 @@ export function usageFromJson(protocol: ProviderProtocol, value: unknown): Usage
     case ProviderProtocol.OpenAIImage:
       return openAIImageUsage(value);
     case ProviderProtocol.OpenAIAudio:
-      return { kind: 'absent' };
+      return openAIAudioUsage(value);
     default:
       return assertNever(protocol);
   }

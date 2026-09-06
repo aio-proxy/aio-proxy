@@ -53,3 +53,55 @@ describe('body-less success billing', () => {
     expect(completion.usage).toBeUndefined();
   });
 });
+
+// /v1/audio/speech returns binary audio. Above MAX_PASSTHROUGH_JSON_BYTES the
+// oversize-body fallback scans raw bytes for a top-level `usage` object without
+// validating that the body is JSON at all, so an incidental byte run inside an
+// mp3 could otherwise be billed as real upstream token usage.
+describe('binary audio bodies never fabricate usage', () => {
+  test('an oversize speech body containing usage-shaped bytes bills nothing', async () => {
+    const body = new Uint8Array(2 * 1024 * 1024);
+    body.fill(0xfb);
+    // The scan only tracks keys at depth 1, so an opening brace has to precede
+    // the usage-shaped run for it to be captured — `{` is byte 0x7b, which occurs
+    // constantly in real audio frame data.
+    body[0] = 0x7b;
+    body.set(new TextEncoder().encode('"usage":{"input_tokens":999}'), 4096);
+
+    const captured = passthroughCapture(
+      {
+        response: new Response(body, { status: 200, headers: { 'content-type': 'audio/mpeg' } }),
+        protocol: ProviderProtocol.OpenAIAudio,
+        providerId: 'provider',
+        modelId: 'tts-1',
+      },
+      undefined,
+    );
+    await captured.value.arrayBuffer();
+
+    const completion = await captured.completion;
+    expect(completion.outcome).toBe('success');
+    if (completion.outcome !== 'success') throw new Error('expected success');
+    expect(completion.usage).toBeUndefined();
+  });
+
+  test('a transcription JSON body under the cap still bills its reported tokens', async () => {
+    const captured = passthroughCapture(
+      {
+        response: new Response(
+          JSON.stringify({ text: 'hi', usage: { type: 'tokens', input_tokens: 12, output_tokens: 3 } }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+        protocol: ProviderProtocol.OpenAIAudio,
+        providerId: 'provider',
+        modelId: 'whisper-1',
+      },
+      undefined,
+    );
+    await captured.value.arrayBuffer();
+
+    const completion = await captured.completion;
+    if (completion.outcome !== 'success') throw new Error('expected success');
+    expect(completion.usage).toMatchObject({ inputTokens: 12, outputTokens: 3 });
+  });
+});
