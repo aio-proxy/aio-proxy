@@ -36,5 +36,18 @@ query parameter is no longer forwarded to the realtime upstream. The realtime cr
 requests are built from a sanitized inbound URL, so both parameters are removed even on the
 anonymous authentication path, which does not rewrite the request.
 
+A direct `GET /v1/realtime` now fails over: a refused, unreachable, or timed-out dial falls
+through to the next eligible provider in provider priority order, capped at two attempts like the
+create's, and an exhausted list reports the final attempt's own failure. A sideband attach
+remains pinned to the account that created the call, which by design has nothing to fail over
+into. The provider snapshot lease is also held until the dial settles rather than released after
+provider selection, so removing an account cannot delete the credential row a dial is about to
+read; it is still released before the relay begins, so a live sideband never blocks a reload.
+
+The realtime sideband dial's 10-second deadline now covers the credential read as well as the
+socket handshake. It previously started only after the credential was in hand, so a dial waiting
+on another process's token refresh could stay pending for that wait's own 60-second bound before
+its advertised deadline began. The total remains 10 seconds for the whole dial.
+
 `@aio-proxy/server` now also exports Bun's `websocket` handler; an embedder that constructs its own
 `Bun.serve` must pass it as the `websocket` option or every realtime sideband upgrade fails.
