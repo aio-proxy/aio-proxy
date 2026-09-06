@@ -39,6 +39,7 @@ Do not implement until that spec is `已确认，进入实现`.
 - Every non-trivial behavior is RED → verify failure → minimal GREEN → verify pass.
 - Author the changeset with `bun changeset`. Select `@aio-proxy/plugin-anthropic-claude`, `@aio-proxy/core`, and `aio-proxy`, all `minor`. Commit the generated `.changeset/*.md`. Do not hand-write a fixed filename. Do not run `changeset version` / `publish`.
 - Shared host files (`builtins.ts`, changeset `fixed`, CLI built-in lists) land in the last task. OpenRouter/Muse PRs may touch the same files — rebase, do not invent a shared scaffolding PR.
+- When `packages/plugins/anthropic-claude/package.json` is first added, run `bun install --lockfile-only` and stage `bun.lock` in that same commit. Do not postpone the workspace lockfile entry until host registration.
 
 ---
 
@@ -61,6 +62,7 @@ Do not implement until that spec is `已确认，进入实现`.
 - `packages/plugins/anthropic-claude/src/runtime/index.ts`, `runtime/runtime.ts`, `runtime/runtime.test.ts`: `@ai-sdk/anthropic` ProviderV4 + dynamic fetch.
 - `packages/plugins/anthropic-claude/src/plugin/index.ts`, `plugin/plugin.ts`, `plugin/plugin.test.ts`: adapter, presentation, CPA `claude` import.
 - `packages/plugins/anthropic-claude/src/index.ts`: version, factory, default descriptor.
+- `bun.lock`: workspace entry when the package is first added (Task 1); core dependency when the plugin is registered (last task).
 - Host (last task only): `packages/core/src/plugins/builtins.ts`, `builtins.test.ts`, `packages/core/package.json`, `.changeset/config.json`, CLI built-in lists, one changeset.
 
 Private modules under `src/oauth/` and `src/runtime/` are not exported from higher-level barrels except through `oauth/index.ts` / `runtime/index.ts` as the plan’s public plugin surfaces.
@@ -339,15 +341,18 @@ export * from './oauth';
 export * from './constants';
 ```
 
-- [ ] **Step 4: Run the test to verify it passes**
+- [ ] **Step 4: Run the test to verify it passes and refresh the lockfile**
 
 Run: `bun test --preload=packages/plugins/anthropic-claude/test/setup.ts packages/plugins/anthropic-claude/src/oauth/oauth.test.ts`
 Expected: PASS (2 tests).
 
+Run: `bun install --lockfile-only`
+Expected: `bun.lock` lists `@aio-proxy/plugin-anthropic-claude` with workspace / catalog dependencies only.
+
 - [ ] **Step 5: Commit**
 
 ```bash
-git add packages/plugins/anthropic-claude
+git add packages/plugins/anthropic-claude bun.lock
 git commit -m "feat(anthropic-claude): add credential schema and account fingerprint"
 ```
 

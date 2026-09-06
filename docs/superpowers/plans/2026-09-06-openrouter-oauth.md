@@ -26,6 +26,7 @@ Do not implement until that spec is `已确认，进入实现`.
 - Every non-trivial behavior is RED → verify failure → minimal GREEN → verify pass.
 - Merge order: Claude first (no host parse), then this PR, then Muse. Last task **inserts** `@aio-proxy/plugin-openrouter` at the current sorted index. Do not paste a six-plugin snapshot over siblings. Do not backfill the missing `@aio-proxy/plugin-xai-grok` entries in `capability.resolution.test.ts` / `binary-build.test.ts`.
 - Host parse is gated by the **opened authorize URL**: `stateRequired = new URL(authorizationUrl).searchParams.has('state')`. Missing state is accepted only when `stateRequired === false`. Do not relax state globally. Put the pure function in `@aio-proxy/shared`.
+- When `packages/plugins/openrouter/package.json` is first added, run `bun install --lockfile-only` and stage `bun.lock` in that same commit. Do not postpone the workspace lockfile entry until host registration.
 
 ---
 
@@ -82,7 +83,7 @@ Do not implement until that spec is `已确认，进入实现`.
 - `packages/cli/src/plugin-commands/plugin/add.test.ts` — built-in package list (Task 7).
 - `packages/cli/src/plugin-commands/provider-login/capability.resolution.test.ts` — exact-package list (Task 7).
 - `packages/cli/__tests__/binary-build.test.ts` — `plugin list` assertion (Task 7).
-- `bun.lock` — workspace link (Task 7).
+- `bun.lock` — workspace entry when the package is first added (Task 2); core dependency when the plugin is registered (Task 7).
 
 ---
 
@@ -799,16 +800,20 @@ export { loginOpenRouter, openRouterLoginResult, type OpenRouterOAuthOptions } f
 
 Fix the login test so it records `init` instead of reading `aioProxy` off `Request`.
 
-- [ ] **Step 4: Run the tests and confirm they pass**
+- [ ] **Step 4: Run the tests and refresh the lockfile**
 
 Run: `bun test packages/plugins/openrouter/src/pkce packages/plugins/openrouter/src/oauth`
 
 Expected: PASS.
 
+Run: `bun install --lockfile-only`
+
+Expected: `bun.lock` lists `@aio-proxy/plugin-openrouter` with workspace / catalog dependencies only.
+
 - [ ] **Step 5: Commit**
 
 ```bash
-git add packages/plugins/openrouter
+git add packages/plugins/openrouter bun.lock
 git commit -m "feat(openrouter): add pkce login that mints a durable api key"
 ```
 
