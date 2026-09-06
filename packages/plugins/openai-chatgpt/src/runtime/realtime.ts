@@ -138,18 +138,52 @@ function sidebandUrl(input: RealtimeDialInput, base: string): string {
   return `${base}/realtime?model=${encodeURIComponent(input.model ?? 'gpt-realtime')}`;
 }
 
+type DialDeadline = {
+  /** Registers the current phase's expiry handler, replacing the previous phase's, and runs
+   *  it at once when the deadline has already passed. */
+  readonly onExpire: (handler: () => void) => void;
+  readonly clear: () => void;
+};
+
+/** ONE timer for the whole dial, armed before the credential read rather than after it.
+ *  `DIAL_DEADLINE_MS` is advertised as the bound on the dial, and the credential read is part
+ *  of it: `createCredentialPort.refresh` waits up to 60 s for another process's refresh lease,
+ *  so a deadline armed only around the socket left the advertised 10 s starting after a wait
+ *  that could already have run to 60. A single timer whose handler is re-registered as the
+ *  dial moves from the credential race to the socket wait bounds whichever phase is current
+ *  and keeps the total at 10 s rather than 10 s per phase. */
+function armDialDeadline(): DialDeadline {
+  let expired = false;
+  let handler: (() => void) | undefined;
+  const timer = setTimeout(() => {
+    expired = true;
+    handler?.();
+  }, DIAL_DEADLINE_MS);
+  return {
+    onExpire: (next) => {
+      handler = next;
+      // The deadline can fall between the credential resolving and the socket promise being
+      // constructed, where the handler registered above belongs to a race that has already
+      // settled and rejecting it is a no-op. Without this the dial would then wait forever.
+      if (expired) next();
+    },
+    clear: () => clearTimeout(timer),
+  };
+}
+
 /** The credential read is the only await before the socket exists, and it is unbounded from
  *  this side: `createCredentialPort.refresh` waits up to 60 s for another process's refresh
- *  lease and its `exchange` signal is the lease's, not the caller's. So the dial's own abort
- *  and its 10 s deadline — both armed after this resolves — cover none of that window. A
- *  caller that hung up mid-wait would still have a socket opened and a credential minted for
- *  it. Raced here rather than by threading the signal into `currentCredential`: a refresh in
- *  flight is shared work whose result other requests want, so it is left running and only
- *  this dial stops waiting. */
+ *  lease and its `exchange` signal is the lease's, not the caller's. So neither the caller's
+ *  abort nor the dial deadline would cover that window if both were armed around the socket
+ *  alone; a caller that hung up mid-wait would still have a socket opened and a credential
+ *  minted for it. Raced here rather than by threading the signal into `currentCredential`: a
+ *  refresh in flight is shared work whose result other requests want, so it is left running
+ *  and only this dial stops waiting. */
 async function credentialForDial(
   credentials: CredentialPort<ChatGPTCredential>,
   options: RealtimeTransportOptions,
   signal: AbortSignal,
+  deadline: DialDeadline,
 ): Promise<ChatGPTCredential> {
   let onAbort: (() => void) | undefined;
   try {
@@ -158,6 +192,7 @@ async function credentialForDial(
       new Promise<never>((_resolve, reject) => {
         onAbort = () => reject(new RealtimeDialError('dial aborted', { kind: 'aborted' }));
         signal.addEventListener('abort', onAbort, { once: true });
+        deadline.onExpire(() => reject(new RealtimeDialError('dial deadline exceeded', { kind: 'timeout' })));
       }),
     ]);
   } catch (error) {
@@ -180,7 +215,24 @@ async function realtimeDial(
   options: RealtimeTransportOptions,
 ): Promise<WebSocket> {
   if (input.signal.aborted) throw new RealtimeDialError('dial aborted before connecting', { kind: 'aborted' });
-  const credential = await credentialForDial(credentials, options, input.signal);
+  // Armed before the credential read so the advertised bound covers the whole dial. The
+  // `finally` is the only release: a dial that resolves a socket must not leave a timer that
+  // would later close it.
+  const deadline = armDialDeadline();
+  try {
+    return await dialWithDeadline(input, credentials, options, deadline);
+  } finally {
+    deadline.clear();
+  }
+}
+
+async function dialWithDeadline(
+  input: RealtimeDialInput,
+  credentials: CredentialPort<ChatGPTCredential>,
+  options: RealtimeTransportOptions,
+  deadline: DialDeadline,
+): Promise<WebSocket> {
+  const credential = await credentialForDial(credentials, options, input.signal, deadline);
   const create = options.createWebSocket ?? defaultWebSocketFactory;
   const init = {
     ...(options.proxy === null ? {} : { proxy: options.proxy }),
@@ -210,7 +262,7 @@ async function realtimeDial(
     const finish = (outcome: () => void): void => {
       if (settled) return;
       settled = true;
-      clearTimeout(timer);
+      deadline.clear();
       input.signal.removeEventListener('abort', onAbort);
       socket.removeEventListener('open', onOpen);
       socket.removeEventListener('close', onClose);
@@ -239,15 +291,14 @@ async function realtimeDial(
       // Waiting for `close` keeps the `rejected`/`unreachable` split intact.
     };
     const onAbort = (): void => abandon(new RealtimeDialError('dial aborted', { kind: 'aborted' }));
-    const timer = setTimeout(
-      () => abandon(new RealtimeDialError('dial deadline exceeded', { kind: 'timeout' })),
-      DIAL_DEADLINE_MS,
-    );
 
     socket.addEventListener('open', onOpen);
     socket.addEventListener('close', onClose);
     socket.addEventListener('error', onError);
     input.signal.addEventListener('abort', onAbort, { once: true });
+    // Whatever remains of the one dial deadline now bounds the socket wait; a credential read
+    // that consumed nine of the ten seconds leaves one, not ten.
+    deadline.onExpire(() => abandon(new RealtimeDialError('dial deadline exceeded', { kind: 'timeout' })));
     // The signal can abort while the credential await above is in flight, and
     // `addEventListener` never fires for an already-aborted signal. Re-check here
     // so a late abort still abandons the socket instead of hanging to the deadline.

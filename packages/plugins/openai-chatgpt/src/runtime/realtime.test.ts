@@ -319,9 +319,10 @@ test('a socket that never opens times out at the dial deadline, and an early set
 
   // A dial that settles before the deadline must leave no timer armed.
   const early = realtime.dial({ ...base, signal: new AbortController().signal });
-  // The credential read runs before the socket exists, so the deadline timer is
-  // only armed once those microtasks drain.
-  await until(() => jest.getTimerCount() === 1);
+  // Waited on the socket rather than on `getTimerCount()`: the one deadline is armed BEFORE
+  // the credential read, so the timer count reaches 1 while `sockets` is still empty and a
+  // wait on the count would dispatch the close event into nothing.
+  await until(() => sockets.length === 1);
   sockets[0]?.dispatchEvent(new CloseEvent('close', { code: 1002, wasClean: false }));
   await expect(early).rejects.toBeInstanceOf(RealtimeDialError);
   expect(jest.getTimerCount()).toBe(0);
@@ -331,8 +332,11 @@ test('a socket that never opens times out at the dial deadline, and an early set
   void pending.catch((cause: unknown) => {
     settled = cause;
   });
-  await until(() => jest.getTimerCount() === 1);
+  await until(() => sockets.length === 2);
   expect(closed).toEqual([]);
+  // Exactly one timer for the whole dial: a per-phase deadline would show two here, and the
+  // total bound would then be 20 s rather than the advertised 10.
+  expect(jest.getTimerCount()).toBe(1);
 
   jest.advanceTimersByTime(10_000);
   await until(() => settled !== undefined);
@@ -340,6 +344,66 @@ test('a socket that never opens times out at the dial deadline, and an early set
   expect(settled).toBeInstanceOf(RealtimeDialError);
   expect((settled as RealtimeDialError).kind).toBe('timeout');
   expect(closed).toEqual([1001]);
+});
+
+// The 10 s deadline is advertised as the bound on the dial, and the credential read is inside
+// it: `createCredentialPort.refresh` waits up to 60 s for another process's refresh lease, so a
+// timer armed only around the socket left a non-aborted dial pending for that whole wait before
+// its own bound even began. Asserted by holding the credential read open and advancing the
+// clock: nothing else can settle this dial.
+test('the dial deadline bounds a credential read that never resolves, before any socket exists', async () => {
+  const created: string[] = [];
+  let readCalls = 0;
+  let releaseRead!: () => void;
+  const readGate = new Promise<void>((resolve) => {
+    releaseRead = resolve;
+  });
+  const realtime = createOpenAIChatGPTRealtime(
+    {
+      read: async () => {
+        readCalls += 1;
+        await readGate;
+        return { revision: 1, value: credential() };
+      },
+      refresh: async () => {
+        throw new Error('valid credentials must not refresh');
+      },
+    },
+    {
+      fetch: captureFetch([]),
+      proxy: null,
+      createWebSocket: (url) => {
+        created.push(url);
+        return openSocketStub();
+      },
+    },
+  );
+
+  jest.useFakeTimers();
+  const pending = realtime.dial({
+    style: 'realtime-calls',
+    callId: 'call_abc',
+    // Not aborted: the abort path is already covered, and a deadline that only fires on abort
+    // would pass that test while leaving this one pending.
+    signal: new AbortController().signal,
+    headers: new Headers(),
+  });
+  let settled: unknown;
+  void pending.catch((cause: unknown) => {
+    settled = cause;
+  });
+  await until(() => readCalls === 1);
+
+  jest.advanceTimersByTime(10_000);
+  await until(() => settled !== undefined);
+  // Released after the assertion window, so the read resolving cannot be what settled the dial.
+  releaseRead();
+  await readGate;
+  await pending.catch(() => {});
+
+  expect(settled).toBeInstanceOf(RealtimeDialError);
+  expect((settled as RealtimeDialError).kind).toBe('timeout');
+  expect(created).toEqual([]);
 });
 
 test('a credential Bun rejects as a header value never reaches the dial error message', async () => {
