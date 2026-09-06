@@ -16,14 +16,24 @@ export type MultipartLimits = {
   readonly perFile: number;
   readonly aggregate: number;
   readonly nonFile: number;
-  /** Cap on repeatable file parts. Singleton file fields are bounded at one each and excluded. */
+  /**
+   * Cap on repeatable file parts, shared across every repeatable file field
+   * rather than counted per field: two repeatable fields draw from one budget,
+   * so `maxFiles: 16` means 16 parts in total, not 16 each. Singleton file
+   * fields are bounded at one each by `singletonFileFields` and excluded here.
+   */
   readonly maxFiles: number;
 };
 
 export type MultipartStreamSpec = {
   /** Form field names whose parts are read as files rather than decoded as text. */
   readonly fileFields: ReadonlySet<string>;
-  /** File fields that may appear at most once (OpenAI `mask`, audio `file`). */
+  /**
+   * File fields that may appear at most once (OpenAI `mask`, audio `file`).
+   * Must be a subset of `fileFields`: `startPart` consults `fileFields` first, so
+   * a name listed only here is decoded as text and charged to the `nonFile`
+   * budget instead of being read as an upload.
+   */
   readonly singletonFileFields?: ReadonlySet<string>;
   readonly limits: MultipartLimits;
   readonly syntaxError: () => Error;
@@ -32,6 +42,11 @@ export type MultipartStreamSpec = {
 export type ParsedMultipart = {
   readonly fields: Record<string, string>;
   readonly uploads: readonly MultipartUpload[];
+  /**
+   * Last upload seen per normalized field name — for a repeatable field like
+   * `image[]` this is the final part, not the first. Callers wanting every
+   * upload of a field must filter `uploads` by `fieldName`.
+   */
   readonly namedUploads: Readonly<Record<string, MultipartUpload>>;
 };
 
@@ -49,7 +64,9 @@ type OpenPart = {
 
 export function multipartBoundary(contentType: string): string | undefined {
   const match = /(?:^|;\s*)boundary=(?:"([^"]+)"|([^;]+))/iu.exec(contentType);
-  const value = (match?.[1] ?? match?.[2])?.trim();
+  // Only the unquoted branch is trimmed. RFC 2046 lets a quoted boundary carry
+  // leading/trailing spaces, and the body's delimiter then contains them too.
+  const value = match?.[1] ?? match?.[2]?.trim();
   return value === undefined || value.length === 0 ? undefined : value;
 }
 

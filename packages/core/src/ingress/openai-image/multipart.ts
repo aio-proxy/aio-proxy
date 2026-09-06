@@ -5,7 +5,6 @@ import {
   type MultipartSpool,
   type MultipartStreamSpec,
   parseMultipartStream,
-  releaseMultipartSlot,
   retainMultipartSpool,
   spoolMultipartBody,
 } from '../multipart';
@@ -23,7 +22,7 @@ const MULTIPART_DECODE_LIMITS = Object.freeze({
   decoded: EDITS_MULTIPART_ENCODED_LIMIT,
 }) satisfies RequestBodyLimits;
 
-export const EDITS_MULTIPART_SPEC: MultipartStreamSpec = {
+const EDITS_MULTIPART_SPEC: MultipartStreamSpec = {
   fileFields: new Set(['image', 'mask']),
   singletonFileFields: new Set(['mask']),
   limits: {
@@ -43,7 +42,6 @@ export {
   EDITS_MULTIPART_AGGREGATE_LIMIT,
   EDITS_MULTIPART_ENCODED_LIMIT,
   EDITS_MULTIPART_MAX_IMAGES,
-  EDITS_MULTIPART_MAX_MASKS,
   EDITS_MULTIPART_NON_FILE_LIMIT,
   EDITS_MULTIPART_PER_FILE_LIMIT,
 } from './multipart-counters';
@@ -67,10 +65,10 @@ export async function parseOpenAIImageEditsMultipart(
   const boundary = multipartBoundary(raw.headers.get('content-type') ?? '');
   if (boundary === undefined) throw new SyntaxError('Invalid OpenAI Images multipart request');
   const idleTimeoutMs = options?.idleTimeoutMs ?? MULTIPART_IDLE_TIMEOUT_MS;
-  await acquireMultipartSlot(raw.signal);
+  const releaseSlot = await acquireMultipartSlot(raw.signal);
   let spool: MultipartSpool | undefined;
   try {
-    spool = await spoolMultipartBody(raw, idleTimeoutMs, 'aio-proxy-images');
+    spool = await spoolMultipartBody(raw, idleTimeoutMs, 'aio-proxy-images', EDITS_MULTIPART_ENCODED_LIMIT);
     const replay = new Request(raw.url, {
       method: raw.method,
       headers: raw.headers,
@@ -103,7 +101,7 @@ export async function parseOpenAIImageEditsMultipart(
     void raw.body?.cancel(error).catch(() => undefined);
     throw error;
   } finally {
-    releaseMultipartSlot();
+    releaseSlot();
   }
 }
 

@@ -51,7 +51,7 @@ describe('parseMultipartStream', () => {
     ).rejects.toThrow('Request body too large');
   });
 
-  test('rejects more file parts than the spec allows for one field', async () => {
+  test('rejects more file parts than the spec allows in total', async () => {
     const part = 'Content-Disposition: form-data; name="file"; filename="a.mp3"\r\n\r\nA';
     await expect(parseMultipartStream(body('B', [part, part, part]), 'B', SPEC)).rejects.toThrow(
       'Request body too large',
@@ -76,5 +76,18 @@ describe('parseMultipartStream', () => {
 
   test('reads the boundary out of a quoted content-type', () => {
     expect(multipartBoundary('multipart/form-data; boundary="a-b-c"')).toBe('a-b-c');
+  });
+
+  // RFC 2046 lets a quoted boundary carry surrounding spaces, and the body's
+  // delimiter then contains them, so trimming here would fail to find any part.
+  test('keeps whitespace inside a quoted boundary and still parses the body', async () => {
+    const boundary = multipartBoundary('multipart/form-data; boundary=" abc "');
+    expect(boundary).toBe(' abc ');
+    const parsed = await parseMultipartStream(
+      body(boundary!, ['Content-Disposition: form-data; name="model"\r\n\r\nwhisper-1']),
+      boundary!,
+      SPEC,
+    );
+    expect(parsed.fields).toEqual({ model: 'whisper-1' });
   });
 });

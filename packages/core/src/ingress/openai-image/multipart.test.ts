@@ -2,15 +2,30 @@ import { expect, test } from 'bun:test';
 import { stat } from 'node:fs/promises';
 
 import { RequestBodyTooLargeError, UnsupportedContentEncodingError } from '../../protocol/request';
-import { multipartSpoolPath, parseMultipartStream } from '../multipart';
+import { type MultipartStreamSpec, multipartSpoolPath, parseMultipartStream } from '../multipart';
+import { parseOpenAIImageEditsMultipart, releaseMultipartSpool } from './multipart';
 import {
+  EDITS_MULTIPART_AGGREGATE_LIMIT,
   EDITS_MULTIPART_ENCODED_LIMIT,
+  EDITS_MULTIPART_MAX_IMAGES,
   EDITS_MULTIPART_NON_FILE_LIMIT,
-  EDITS_MULTIPART_SPEC,
-  parseOpenAIImageEditsMultipart,
-  releaseMultipartSpool,
-} from './multipart';
+  EDITS_MULTIPART_PER_FILE_LIMIT,
+} from './multipart-counters';
 import { CPA_DEFAULT_IMAGE_MODEL } from './openai-image';
+
+// Mirrors the module-private Images spec. The envelope tests below drive the reader
+// directly because an 851 MB body cannot be pushed through the disk spool in a test.
+const EDITS_SPEC: MultipartStreamSpec = {
+  fileFields: new Set(['image', 'mask']),
+  singletonFileFields: new Set(['mask']),
+  limits: {
+    perFile: EDITS_MULTIPART_PER_FILE_LIMIT - 1,
+    aggregate: EDITS_MULTIPART_AGGREGATE_LIMIT,
+    nonFile: EDITS_MULTIPART_NON_FILE_LIMIT,
+    maxFiles: EDITS_MULTIPART_MAX_IMAGES,
+  },
+  syntaxError: () => new SyntaxError('Invalid OpenAI Images multipart request'),
+};
 
 const PNG_1X1_RGBA = Uint8Array.from(
   Buffer.from(
@@ -152,19 +167,6 @@ test('413s a second mask', async () => {
   await expect(
     parseOpenAIImageEditsMultipart(new Request('https://x/v1/images/edits', { method: 'POST', body: form })),
   ).rejects.toBeInstanceOf(RequestBodyTooLargeError);
-});
-
-// The generic reader treats MultipartLimits as inclusive maxima, so the official
-// exclusive per-file cap has to survive the translation into the Images spec.
-test('the Images spec still admits the official ceilings and nothing past them', () => {
-  expect(EDITS_MULTIPART_SPEC.limits).toEqual({
-    perFile: 49_999_999,
-    aggregate: 849_999_983,
-    nonFile: 1_048_576,
-    maxFiles: 16,
-  });
-  expect(EDITS_MULTIPART_SPEC.singletonFileFields?.has('mask')).toBe(true);
-  expect(EDITS_MULTIPART_SPEC.fileFields.has('image')).toBe(true);
 });
 
 test('rejects multipart edits missing prompt or image', async () => {
@@ -419,9 +421,7 @@ test('413s an encoded epilogue that exceeds the official-max envelope', async ()
       controller.close();
     },
   });
-  await expect(parseMultipartStream(stream, boundary, EDITS_MULTIPART_SPEC)).rejects.toBeInstanceOf(
-    RequestBodyTooLargeError,
-  );
+  await expect(parseMultipartStream(stream, boundary, EDITS_SPEC)).rejects.toBeInstanceOf(RequestBodyTooLargeError);
 });
 
 test('413s a MIME epilogue that exceeds the 1 MiB non-file budget', async () => {
@@ -453,9 +453,7 @@ test('413s a MIME epilogue that exceeds the 1 MiB non-file budget', async () => 
       controller.close();
     },
   });
-  await expect(parseMultipartStream(stream, boundary, EDITS_MULTIPART_SPEC)).rejects.toBeInstanceOf(
-    RequestBodyTooLargeError,
-  );
+  await expect(parseMultipartStream(stream, boundary, EDITS_SPEC)).rejects.toBeInstanceOf(RequestBodyTooLargeError);
 });
 
 test('skips preamble text that contains a non-delimiter boundary prefix', async () => {

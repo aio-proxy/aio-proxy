@@ -6,11 +6,7 @@ import { join } from 'node:path';
 import { finished } from 'node:stream/promises';
 
 import { abortError, RequestBodyTooLargeError, withAbortAndIdle } from '../../protocol/request';
-
-// Process-wide ceiling on a spooled multipart envelope, mirroring the server's
-// max request body size. It bounds disk use before any protocol-specific limit
-// applies, so it is not a per-protocol compatibility knob.
-export const MULTIPART_ENCODED_LIMIT = 851_048_559;
+import { MULTIPART_ENCODED_LIMIT } from './multipart-limits';
 
 export type MultipartSpool = {
   readonly path: string;
@@ -26,6 +22,10 @@ export async function spoolMultipartBody(
   raw: Request,
   idleTimeoutMs: number,
   filePrefix = 'aio-proxy-multipart',
+  // A caller that knows its protocol's envelope is narrower must say so: the spool
+  // writes to /tmp before the reader ever sees a byte, so without this a 25 MB
+  // protocol would still let an 851 MB upload land on disk before the 413.
+  maxBytes = MULTIPART_ENCODED_LIMIT,
 ): Promise<MultipartSpool> {
   const reader = raw.body?.getReader();
   if (reader === undefined) throw syntax();
@@ -37,7 +37,7 @@ export async function spoolMultipartBody(
       const next = await withAbortAndIdle(reader.read(), raw.signal, idleTimeoutMs);
       if (next.done) break;
       total += next.value.byteLength;
-      if (total > MULTIPART_ENCODED_LIMIT) throw new RequestBodyTooLargeError('Request body too large');
+      if (total > maxBytes) throw new RequestBodyTooLargeError('Request body too large');
       if (writer === undefined) {
         const fd = openSync(path, 'wx', 0o600);
         try {
@@ -106,11 +106,18 @@ const MAX_IN_FLIGHT_MULTIPART_PARSES = 2;
 let inFlightMultipartParses = 0;
 const multipartWaiters: Array<() => void> = [];
 
-export async function acquireMultipartSlot(signal?: AbortSignal): Promise<void> {
+/**
+ * Releases the slot its `acquireMultipartSlot` call took. Idempotent: a second
+ * call is a no-op, so a caller cannot drive the in-flight count negative and
+ * silently uncap concurrency for every protocol sharing this budget.
+ */
+export type MultipartSlotRelease = () => void;
+
+export async function acquireMultipartSlot(signal?: AbortSignal): Promise<MultipartSlotRelease> {
   if (signal?.aborted) throw abortError(signal.reason);
   if (inFlightMultipartParses < MAX_IN_FLIGHT_MULTIPART_PARSES) {
     inFlightMultipartParses += 1;
-    return;
+    return slotRelease();
   }
   await new Promise<void>((resolve, reject) => {
     let settled = false;
@@ -132,11 +139,17 @@ export async function acquireMultipartSlot(signal?: AbortSignal): Promise<void> 
     signal?.addEventListener('abort', onAbort, { once: true });
     if (signal?.aborted) onAbort();
   });
+  return slotRelease();
 }
 
-export function releaseMultipartSlot(): void {
-  inFlightMultipartParses -= 1;
-  multipartWaiters.shift()?.();
+function slotRelease(): MultipartSlotRelease {
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    inFlightMultipartParses -= 1;
+    multipartWaiters.shift()?.();
+  };
 }
 
 function createSpool(path: string): MultipartSpool {

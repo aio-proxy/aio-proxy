@@ -1,9 +1,9 @@
+export { MULTIPART_ENCODED_LIMIT } from './multipart-limits';
 export {
   acquireMultipartSlot,
-  MULTIPART_ENCODED_LIMIT,
+  type MultipartSlotRelease,
   type MultipartSpool,
   multipartSpoolPath,
-  releaseMultipartSlot,
   releaseMultipartSpool,
   replaySpooledMultipartRaw,
   retainMultipartSpool,
