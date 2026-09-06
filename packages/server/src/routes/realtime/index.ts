@@ -11,4 +11,4 @@ export { pinnedRealtimeCandidate, selectRealtimeCandidates } from './provider-se
 export type { RealtimeCreateBody } from './create-body';
 export { readRealtimeCreateBody, REALTIME_CREATE_BODY_LIMIT, withUpstreamModel } from './create-body';
 export type { RealtimeCallId } from './errors';
-export { isValidCallId, REALTIME_CALL_ID_PATTERN, realtimeError, rejectedCallId } from './errors';
+export { isValidCallId, REALTIME_CALL_ID_PATTERN, realtimeError } from './errors';

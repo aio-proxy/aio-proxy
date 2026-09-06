@@ -16,21 +16,20 @@ export function isValidCallId(value: string | undefined): value is RealtimeCallI
   return value !== undefined && REALTIME_CALL_ID_PATTERN.test(value);
 }
 
-/** Compile-time guard for the paragraph above. The second parameter is required unless
- *  `T` still accepts every string, so widening `isValidCallId` back to `value is string`
- *  — which makes TypeScript subtract `string` and type the rejecting branch `undefined`
- *  — stops this file compiling. No runtime test can observe a static type, so without
- *  this the unsound signature could return unnoticed. */
-function assertStillAcceptsAnyString<T>(value: T, ..._proof: string extends T ? [] : [never]): T {
-  return value;
-}
-
-/** Returns the id a caller supplied when `isValidCallId` rejected it, for diagnostics
- *  that must not claim a malformed id was absent. */
-export function rejectedCallId(value: string | undefined): string | undefined {
+/** Compile-time guard for the paragraph above. `isValidCallId` narrowing to the brand
+ *  leaves the rejecting branch `string | undefined`, so this assignment is an error and the
+ *  directive is used. Widening the predicate back to `value is string` types the branch
+ *  `undefined`, the assignment becomes legal, and the build fails with
+ *  `TS2578: Unused '@ts-expect-error' directive`. No runtime test can observe a static
+ *  type, so without this the unsound signature could return unnoticed. */
+function assertRejectingBranchKeepsTheString(value: string | undefined): undefined {
   if (isValidCallId(value)) return undefined;
-  return assertStillAcceptsAnyString(value);
+  // @ts-expect-error -- `value` must still be `string | undefined` here, not `undefined`.
+  const stillAString: undefined = value;
+  return stillAString;
 }
+// Referenced only so the guard above is not pruned as an unused declaration.
+void assertRejectingBranchKeepsTheString;
 
 type RealtimeErrorType = 'invalid_request_error' | 'not_supported_error' | 'api_error';
 

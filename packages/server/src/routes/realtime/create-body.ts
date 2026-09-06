@@ -22,6 +22,9 @@ const ACCEPTED = ['application/sdp', 'text/plain', 'application/json', 'multipar
 const MULTIPART = 'multipart/form-data';
 const JSON_TYPE = 'application/json';
 
+/** Returns a terminal `Response` for every rejected client input rather than rejecting.
+ *  The one exception is caller misuse: a `Request` whose body stream is already locked or
+ *  consumed makes `getReader()` throw, which is a server bug, not client input. */
 export async function readRealtimeCreateBody(request: Request): Promise<RealtimeCreateBody | Response> {
   const rawContentType = request.headers.get('content-type') ?? '';
   const contentType = rawContentType.split(';')[0]?.trim().toLowerCase() ?? '';
@@ -35,9 +38,12 @@ export async function readRealtimeCreateBody(request: Request): Promise<Realtime
   // client's requested model to the fallback and silently skip the upstream model
   // rewrite, sending a body selection never agreed to. The cap would also measure
   // compressed bytes, so a 16 MiB archive could decompress far past it. Adding a
-  // decoding path is outside what this endpoint was designed for, and `identity` is
-  // rejected with the rest because permitting it buys nothing.
-  if (request.headers.get('content-encoding') !== null) {
+  // decoding path is outside what this endpoint was designed for.
+  //
+  // `identity` and empty tokens are dropped first, matching `requestContentEncoding` in
+  // `packages/core/src/protocol/request.ts`: they declare plaintext bytes, so every step
+  // below already works and refusing them would 415 a perfectly readable offer.
+  if (hasRealContentEncoding(request.headers.get('content-encoding'))) {
     await cancelRequestBody(request);
     return realtimeUnsupportedMediaType();
   }
@@ -67,6 +73,13 @@ async function cancelRequestBody(request: Request): Promise<void> {
   try {
     await request.body?.cancel();
   } catch {}
+}
+
+function hasRealContentEncoding(header: string | null): boolean {
+  return (header ?? '')
+    .split(',')
+    .map((encoding) => encoding.trim().toLowerCase())
+    .some((encoding) => encoding !== '' && encoding !== 'identity');
 }
 
 /** A create may arrive chunked with no `Content-Length`, so the declared-length check
@@ -138,9 +151,13 @@ async function readMultipart(
     if (session === undefined) return realtimeInvalidOffer('The multipart session part is not valid JSON.');
   }
   const payload = session === undefined ? { sdp } : { sdp, session };
-  const body = new TextEncoder().encode(JSON.stringify(payload));
-  if (body.byteLength > REALTIME_CREATE_BODY_LIMIT) return realtimeBodyTooLarge();
-  return { body, contentType: JSON_TYPE, requestedModel: jsonRequestedModel(payload) };
+  const encoded = encodeJson(payload);
+  // `JSON.stringify` recurses on nesting depth and overflows the stack at depths the parse
+  // above survives, so guarding only the parse leaves a cheap ~100 KB offer able to reject
+  // this function's contract.
+  if (encoded === undefined) return realtimeInvalidOffer('The multipart realtime offer could not be parsed.');
+  if (encoded.byteLength > REALTIME_CREATE_BODY_LIMIT) return realtimeBodyTooLarge();
+  return { body: encoded, contentType: JSON_TYPE, requestedModel: jsonRequestedModel(payload) };
 }
 
 /** Normalization applies to selection; the wire body still needs the upstream model
@@ -148,7 +165,12 @@ async function readMultipart(
  *
  *  A body with no `model` at all keeps none: the reference's `rewriteCallRequestModel`
  *  also only reassigns keys that are already present and returns the body unchanged
- *  otherwise, leaving the upstream free to apply its own default. */
+ *  otherwise, leaving the upstream free to apply its own default.
+ *
+ *  Returning `body` unchanged is the documented no-op, so a payload too deeply nested for
+ *  `JSON.stringify` takes it too rather than throwing into the caller's create loop. The
+ *  original bytes still carry the client's own model, which upstream may reject on its own
+ *  terms — the alternative is a 500 with no shaped error body. */
 export function withUpstreamModel(body: RealtimeCreateBody, normalized: string): RealtimeCreateBody {
   if (body.contentType !== JSON_TYPE) return body;
   const payload = parseJson(new TextDecoder().decode(body.body));
@@ -159,7 +181,19 @@ export function withUpstreamModel(body: RealtimeCreateBody, normalized: string):
     ...(Object.hasOwn(payload, 'model') ? { model: normalized } : {}),
     ...(isPlainObject(session) ? { session: { ...session, model: normalized } } : {}),
   };
-  return { ...body, body: new TextEncoder().encode(JSON.stringify(rewritten)) };
+  const encoded = encodeJson(rewritten);
+  if (encoded === undefined) return body;
+  return { ...body, body: encoded };
+}
+
+/** `JSON.stringify` recurses per nesting level, so a deeply nested payload throws
+ *  `RangeError` here even though `JSON.parse` accepted it. */
+function encodeJson(value: unknown): Uint8Array<ArrayBuffer> | undefined {
+  try {
+    return new TextEncoder().encode(JSON.stringify(value));
+  } catch {
+    return undefined;
+  }
 }
 
 function jsonRequestedModel(payload: unknown): string {

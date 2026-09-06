@@ -105,12 +105,12 @@ test('an absent content type is 415, matching the empty-string spelling', async 
   }
 });
 
-test('a content-encoded offer is 415 rather than misrouted, for any encoding including identity', async () => {
+test('a content-encoded offer is 415 rather than misrouted', async () => {
   const gzipped = Bun.gzipSync(
     new TextEncoder().encode(JSON.stringify({ sdp: 'v=0', model: 'gpt-4o-realtime-preview' })),
   );
 
-  for (const encoding of ['gzip', 'identity', '']) {
+  for (const encoding of ['gzip', 'GZIP', ' br ', 'identity, gzip', 'gzip,identity']) {
     const result = await readRealtimeCreateBody(
       new Request('http://x/v1/live', {
         method: 'POST',
@@ -118,10 +118,26 @@ test('a content-encoded offer is 415 rather than misrouted, for any encoding inc
         headers: { 'content-type': 'application/json', 'content-encoding': encoding },
       }),
     );
-    expect((result as Response).status).toBe(415);
+    expect((result as Response).status, `${encoding} should be refused`).toBe(415);
     expect(((await (result as Response).json()) as { error: { code: string } }).error.code).toBe(
       'realtime_unsupported_media_type',
     );
+  }
+});
+
+test('identity and empty content-encoding mean no encoding, matching core requestContentEncoding', async () => {
+  for (const encoding of ['identity', '', 'IDENTITY', '  identity  ', 'identity, identity', ',']) {
+    const result = await readRealtimeCreateBody(
+      new Request('http://x/v1/live', {
+        method: 'POST',
+        body: JSON.stringify({ sdp: 'v=0', model: 'gpt-4o-realtime-preview' }),
+        headers: { 'content-type': 'application/json', 'content-encoding': encoding },
+      }),
+    );
+    if (result instanceof Response) {
+      throw new Error(`content-encoding ${JSON.stringify(encoding)} should be plaintext, got ${result.status}`);
+    }
+    expect(result.requestedModel).toBe('gpt-4o-realtime-preview');
   }
 });
 
@@ -151,8 +167,7 @@ test('every terminal early return releases the client stream instead of leaving 
 
     const result = await readRealtimeCreateBody(request);
     expect(result).toBeInstanceOf(Response);
-    expect(cancelled).toBe(true);
-    expect(label).toBeTruthy();
+    expect(cancelled, `${label} left the client stream unread`).toBe(true);
   }
 });
 
@@ -311,10 +326,44 @@ test('withUpstreamModel rewrites both model fields for JSON and leaves SDP untou
   expect(untouched.contentType).toBe('application/sdp');
 });
 
-function jsonRequest(body: unknown): Request {
+test('a multipart session too deeply nested to re-serialize is 400, not a rejected promise', async () => {
+  const form = new FormData();
+  form.set('sdp', 'v=0\r\n');
+  form.set('session', deeplyNestedJson());
+
+  const result = await readRealtimeCreateBody(new Request('http://x/v1/live', { method: 'POST', body: form }));
+
+  expect(result).toBeInstanceOf(Response);
+  const response = result as Response;
+  expect(response.status).toBe(400);
+  const body = (await response.json()) as { error: { code: string; message: string } };
+  expect(body.error.code).toBe('realtime_invalid_offer');
+  expect(body.error.message).not.toContain('v=0');
+});
+
+test('withUpstreamModel returns the body unchanged when the payload cannot be re-serialized', async () => {
+  const read = await readRealtimeCreateBody(jsonRequest(undefined, deeplyNestedJson()));
+  if (read instanceof Response) throw new Error(`expected the deep offer to parse, got ${read.status}`);
+  expect(read.requestedModel).toBe('gpt-realtime');
+
+  const rewritten = withUpstreamModel(read, 'gpt-live-1-codex');
+
+  expect(rewritten).toBe(read);
+});
+
+/** Deep enough that `JSON.parse` accepts it but `JSON.stringify` overflows the stack. The
+ *  self-check keeps the test honest if a future engine raises the recursion limit. */
+function deeplyNestedJson(): string {
+  const depth = 50_000;
+  const text = `{"model":"gpt-realtime","deep":${'['.repeat(depth)}1${']'.repeat(depth)}}`;
+  expect(() => JSON.stringify(JSON.parse(text))).toThrow(RangeError);
+  return text;
+}
+
+function jsonRequest(body: unknown, raw?: string): Request {
   return new Request('http://x/v1/live', {
     method: 'POST',
-    body: JSON.stringify(body),
+    body: raw ?? JSON.stringify(body),
     headers: { 'content-type': 'application/json' },
   });
 }
