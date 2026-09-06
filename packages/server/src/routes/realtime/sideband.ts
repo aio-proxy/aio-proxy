@@ -61,19 +61,36 @@ export async function handleRealtimeSideband(
     return new Response(null, { status: 499 });
   }
 
+  // The dial resolves from the upstream's `open`, so an upstream that accepts the
+  // handshake and drops the socket at once resolves it too — and its `close` is
+  // dispatched before `createRelay` can bind a listener for it, leaving nothing to run
+  // `teardown`. Checked here rather than inside the relay because this is the last point
+  // at which the failure can still be a response: after the upgrade the caller would get
+  // a 101 followed by an opaque close, and `teardown` would gain a second pre-open
+  // trigger. Nothing can be dispatched between this check and the binding — both run in
+  // the same synchronous block — so together they cover the whole window.
+  if (dialed.readyState === WebSocket.CLOSING || dialed.readyState === WebSocket.CLOSED) {
+    releaseAttachment(source, prepared);
+    // The plugin maps every non-`1006` dial close to `rejected`; an upstream that hangs
+    // up on its own socket is the same refusal, just observed one step later.
+    return realtimeDialFailed();
+  }
+
+  // Past this point the relay owns the reservation: `teardown` is the only release.
+  const relay = createRelay(source, { ...prepared, style, upstream: dialed });
   try {
     // The direct `(context, events)` overload of `upgradeWebSocket`, which returns
     // the 101 Response and throws when `server.upgrade` refuses. The middleware
     // overload would instead fall through to `next()` and answer 404.
-    return await upgradeWebSocket(context, relayEvents(source, { ...prepared, style, upstream: dialed }));
+    return await upgradeWebSocket(context, relay.events);
   } catch {
-    // `relayEvents(...)` is an argument, so its upstream listeners are already live
-    // when the upgrade refuses. This close therefore does run `teardown` — which is
-    // why `teardown` keys the record deletion and the `sideband_closed` log on
-    // `onOpen` having fired. A refused upgrade must leave the record intact: the call
-    // is still valid and the owner's next attach has to find it.
-    closeQuietly(dialed, INTERNAL_CLOSE_CODE);
-    releaseAttachment(source, prepared);
+    // A refused upgrade must leave the record intact: the call is still valid and the
+    // owner's next attach has to find it. Routed through `teardown` rather than closing
+    // and releasing here so the reservation has exactly one owner — `teardown` closes
+    // the upstream, releases, and keys the record deletion and the `sideband_closed`
+    // log on `onOpen` having fired, which it has not. Its `torndown` latch also makes
+    // the upstream close event this triggers a no-op.
+    relay.teardown(INTERNAL_CLOSE_CODE, undefined, 'proxy');
     return realtimeUpstreamUnavailable();
   }
 }
@@ -172,7 +189,11 @@ type RelayInput = Prepared & { readonly style: RealtimeStyle; readonly upstream:
 
 type Teardown = (code: number, reason?: string, origin?: 'downstream' | 'upstream' | 'proxy') => void;
 
-function relayEvents(source: RealtimeRouteSource, input: RelayInput): WSEvents {
+type Relay = { readonly events: WSEvents; readonly teardown: Teardown };
+
+/** Returns the teardown alongside the events so the caller can run the one teardown
+ *  itself when the upgrade it was built for never happens. */
+function createRelay(source: RealtimeRouteSource, input: RelayInput): Relay {
   const upstream = input.upstream;
   upstream.binaryType = 'arraybuffer';
   let downstream: WSContext | undefined;
@@ -237,45 +258,48 @@ function relayEvents(source: RealtimeRouteSource, input: RelayInput): WSEvents {
   upstream.addEventListener('error', () => {});
 
   return {
-    onOpen(_event: Event, ws: WSContext) {
-      downstream = ws;
-      if (torndown) {
+    teardown,
+    events: {
+      onOpen(_event: Event, ws: WSContext) {
+        downstream = ws;
+        if (torndown) {
+          try {
+            ws.close(INTERNAL_CLOSE_CODE);
+          } catch {}
+          return;
+        }
+        opened = true;
+        logServerEvent(source.logger, {
+          event: 'realtime.sideband_opened',
+          callId: input.callId ?? '',
+          providerId: input.providerId,
+          model: input.model,
+          style: input.style,
+        });
+      },
+      onMessage(event: MessageEvent<WSMessageReceive>) {
+        const data = event.data;
+        // Hono's Bun adapter already normalized a binary frame to `message.buffer`,
+        // an exclusive Buffer on Bun 1.4.2. Forward it as-is: copying would be the
+        // fix only if Bun ever shared a receive buffer, and Task 11's byte-length
+        // test is what would catch that.
+        if (typeof data !== 'string' && !(data instanceof ArrayBuffer)) {
+          teardown(INTERNAL_CLOSE_CODE, undefined, 'downstream');
+          return;
+        }
+        if (upstream.bufferedAmount > BACKPRESSURE_LIMIT) {
+          teardown(INTERNAL_CLOSE_CODE, undefined, 'downstream');
+          return;
+        }
         try {
-          ws.close(INTERNAL_CLOSE_CODE);
-        } catch {}
-        return;
-      }
-      opened = true;
-      logServerEvent(source.logger, {
-        event: 'realtime.sideband_opened',
-        callId: input.callId ?? '',
-        providerId: input.providerId,
-        model: input.model,
-        style: input.style,
-      });
-    },
-    onMessage(event: MessageEvent<WSMessageReceive>) {
-      const data = event.data;
-      // Hono's Bun adapter already normalized a binary frame to `message.buffer`,
-      // an exclusive Buffer on Bun 1.4.2. Forward it as-is: copying would be the
-      // fix only if Bun ever shared a receive buffer, and Task 11's byte-length
-      // test is what would catch that.
-      if (typeof data !== 'string' && !(data instanceof ArrayBuffer)) {
-        teardown(INTERNAL_CLOSE_CODE, undefined, 'downstream');
-        return;
-      }
-      if (upstream.bufferedAmount > BACKPRESSURE_LIMIT) {
-        teardown(INTERNAL_CLOSE_CODE, undefined, 'downstream');
-        return;
-      }
-      try {
-        upstream.send(data);
-      } catch {
-        teardown(INTERNAL_CLOSE_CODE, undefined, 'downstream');
-      }
-    },
-    onClose(event: CloseEvent) {
-      teardown(event.code, event.reason, 'downstream');
+          upstream.send(data);
+        } catch {
+          teardown(INTERNAL_CLOSE_CODE, undefined, 'downstream');
+        }
+      },
+      onClose(event: CloseEvent) {
+        teardown(event.code, event.reason, 'downstream');
+      },
     },
   };
 }

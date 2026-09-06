@@ -76,10 +76,11 @@ test('the key that created the call attaches, relays in both directions, and clo
   );
 });
 
-// `relayEvents(...)` is an argument, so its upstream close listener is live before the
-// upgrade is attempted. A refused upgrade therefore does run `teardown`, and `teardown`
-// must not treat that as the end of the call: the record is still valid and the owner's
-// next attach has to find it.
+// The relay is built before the upgrade is attempted, so a refused upgrade runs the one
+// `teardown` — which must not treat that as the end of the call: the record is still
+// valid and the owner's next attach has to find it. `teardown` is also the only thing
+// that releases the reservation once the relay exists, so a refusal that skipped it
+// would pin the call at 409 forever.
 test('a refused upgrade leaves the call attachable and logs no sideband_closed', async () => {
   const logs: ServerLog[] = [];
   const harness = await createHarness({ logs });
@@ -104,6 +105,37 @@ test('a refused upgrade leaves the call attachable and logs no sideband_closed',
   // after the second attach so the refused socket's own close has had turns to land.
   expect(logs.filter(({ event }) => event === 'realtime.sideband_closed')).toEqual([]);
   attached.socket.close(1000, 'done');
+});
+
+// An upstream that accepts the handshake and drops the socket immediately is a real
+// shape — `close-code.ts` already treats `1006` as the distinguishable "connect failed"
+// case, so everything else, including this one, arrives as an accepted-then-closed
+// socket. The relay binds its upstream `close` listener only after `dial()` returns, so
+// a close dispatched inside that gap is never observed and `teardown` never runs at all.
+// A leaked reservation is unrecoverable: `expired()` exempts an entry with a live
+// attachment, so TTL can never reclaim the slot and the owner's every later attach 409s.
+test('an upstream already closed when the dial returns refuses the attach and frees the reservation', async () => {
+  const logs: ServerLog[] = [];
+  const harness = await createHarness({ logs, originClosesOnOpen: true });
+  await harness.create('key-owner');
+
+  // The downstream never reaches `open`: the handshake is answered with the error
+  // status below instead of a 101.
+  await expect(harness.attach('key-owner')).rejects.toThrow('downstream attach failed');
+
+  expect(harness.store.attachment('call_abc')).toBeUndefined();
+  // A dead sideband socket is a failed attach, not the end of the call, so the record
+  // survives for the owner's retry — same as any other dial failure.
+  expect(harness.store.lookup('call_abc')).toBeDefined();
+  // Nothing opened, so neither half of the sideband log pair may appear.
+  expect(logs.filter(({ event }) => event.startsWith('realtime.sideband_'))).toEqual([]);
+
+  // 502 `realtime_dial_failed` rather than the upgrade-refusal 503 pins the ordering:
+  // the dead-upstream check has to run *before* the upgrade is attempted, because after
+  // it there is no longer a response to fail with.
+  const refused = await harness.attachWithoutUpgradeSupport('key-owner');
+  expect(refused.status).toBe(502);
+  expect(((await refused.json()) as { error: { code: string } }).error.code).toBe('realtime_dial_failed');
 });
 
 // The hangup's own 403 has its own test; this asserts the pair that only a live
@@ -139,12 +171,13 @@ type Attached = {
   readonly closed: () => Promise<{ code: number; reason: string }>;
 };
 
-async function createHarness(options: { logs?: ServerLog[] }): Promise<Harness> {
+async function createHarness(options: { logs?: ServerLog[]; originClosesOnOpen?: boolean }): Promise<Harness> {
   const logs = options.logs ?? [];
   const store = createRealtimeCallStore();
-  const origin = await startOrigin();
+  const closesOnOpen = options.originClosesOnOpen ?? false;
+  const origin = await startOrigin(closesOnOpen);
   let dials = 0;
-  const source = sourceWith(store, logs, origin, () => {
+  const source = sourceWith(store, logs, origin, closesOnOpen, () => {
     dials += 1;
   });
 
@@ -194,8 +227,14 @@ async function createHarness(options: { logs?: ServerLog[] }): Promise<Harness> 
   };
 }
 
+/** Same workaround as `openai-chatgpt`'s `runtime/realtime.ts`: `bun-types` defers the
+ *  global `WebSocket` constructor to `lib.dom`'s two-argument `(url, protocols)` form
+ *  whenever the DOM lib is loaded, so the option object needs the real overload back.
+ *  Bun does honor it at runtime — the 403 test above depends on the header arriving. */
+const BunWebSocket = WebSocket as unknown as new (url: string, options: Bun.WebSocketOptions) => WebSocket;
+
 async function openDownstream(url: string, key: string): Promise<Attached> {
-  const socket = new WebSocket(url, { headers: { 'x-test-principal': key } });
+  const socket = new BunWebSocket(url, { headers: { 'x-test-principal': key } });
   const inbox: string[] = [];
   let deliver: ((value: string) => void) | undefined;
   socket.addEventListener('message', (event: MessageEvent) => {
@@ -234,8 +273,11 @@ type Origin = {
 };
 
 /** The upstream realtime endpoint. A real `Bun.serve` WebSocket rather than a stub, so
- *  the relay's byte path and the close handshake are the production ones. */
-async function startOrigin(): Promise<Origin> {
+ *  the relay's byte path and the close handshake are the production ones.
+ *  `closesOnOpen` models an upstream that accepts the handshake and drops the socket
+ *  at once — the only shape a client `WebSocket` cannot distinguish from a healthy one
+ *  at dial time. */
+async function startOrigin(closesOnOpen: boolean): Promise<Origin> {
   let last: { close: (code: number, reason: string) => void } | undefined;
   const server = Bun.serve({
     port: 0,
@@ -246,6 +288,10 @@ async function startOrigin(): Promise<Origin> {
     websocket: {
       open(ws) {
         last = { close: (code, reason) => ws.close(code, reason) };
+        if (closesOnOpen) {
+          ws.close(4009, 'origin gone');
+          return;
+        }
         // Speaks the instant it opens. That is the window the deleted pre-open buffer
         // claimed to protect, and it is why the relay binds its upstream `message`
         // listener before the upgrade rather than inside `onOpen`.
@@ -272,6 +318,7 @@ function sourceWith(
   store: RealtimeCallStore,
   logs: ServerLog[],
   origin: Origin,
+  closesOnOpen: boolean,
   onDial: () => void,
 ): RealtimeRouteSource {
   const provider = {
@@ -306,6 +353,17 @@ function sourceWith(
           socket.addEventListener('open', () => resolve());
           socket.addEventListener('error', () => reject(new Error('origin dial failed')));
         });
+        // The production dial resolves from its own `open` listener and then unbinds,
+        // so there is a real gap before the relay binds its `close` listener; whether
+        // the upstream's close lands inside it is a race. Awaiting the close here makes
+        // the worst case of that race deterministic instead of timing-dependent — the
+        // dial still honors its contract, returning a socket that did reach `open`.
+        if (closesOnOpen) {
+          await new Promise<void>((resolve) => {
+            if (socket.readyState === WebSocket.CLOSED) resolve();
+            else socket.addEventListener('close', () => resolve());
+          });
+        }
         return socket;
       },
     },
