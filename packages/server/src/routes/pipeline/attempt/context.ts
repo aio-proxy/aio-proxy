@@ -1,5 +1,6 @@
 import type {
   AnyProtocolAdapter,
+  AudioProtocolAdapter,
   EmbeddingProtocolAdapter,
   ImageProtocolAdapter,
   ModelInvocation,
@@ -43,11 +44,12 @@ export type LogAttemptFailure = (
 
 export type PipelineAdapter<TRequest, TContext> =
   | AnyProtocolAdapter<TRequest, TContext>
-  | ImageProtocolAdapter<TRequest, TContext>;
+  | ImageProtocolAdapter<TRequest, TContext>
+  | AudioProtocolAdapter<TRequest, TContext>;
 
 // Invariants shared by every candidate attempt in one request. TAdapter keeps
-// the language, image, and embedding attempt paths from seeing each other's
-// adapter surface while the loop itself stays capability-agnostic.
+// the language, image, audio, and embedding attempt paths from seeing each
+// other's adapter surface while the loop itself stays capability-agnostic.
 export type AttemptLoopContext<
   TRequest,
   TContext,
@@ -93,6 +95,12 @@ export type ImageAttemptLoopContext<TRequest, TContext> = AttemptLoopContext<
   TRequest,
   TContext,
   ImageProtocolAdapter<TRequest, TContext>
+>;
+
+export type AudioAttemptLoopContext<TRequest, TContext> = AttemptLoopContext<
+  TRequest,
+  TContext,
+  AudioProtocolAdapter<TRequest, TContext>
 >;
 
 // Contexts whose adapter carries the language-shaped `rawRequest`/`dimensions`

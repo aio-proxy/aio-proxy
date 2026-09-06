@@ -1,7 +1,6 @@
 import type { AliasDimensions } from '@aio-proxy/types';
 
-import type { LanguageProtocolAdapter, ProtocolRequestDiagnostic, SharedProtocolAdapter } from '../adapter';
-import type { ImageProtocolAdapter } from '../image-adapter';
+import type { ProtocolRequestDiagnostic, SharedProtocolAdapter } from '../adapter';
 import { REQUEST_BODY_LIMITS, type RequestBodyLimits } from '../request';
 
 export type AudioCapability = 'speech' | 'transcription';
@@ -67,12 +66,6 @@ export type AudioProtocolAdapter<TRequest, TContext> = SharedProtocolAdapter<TRe
     audioResponse: (result: AudioResult, request: TRequest, context: AudioEgressContext) => Promise<Response>;
     convertSkipReason?: (request: TRequest, resolvedModelId: string, context: TContext) => string | undefined;
   }>;
-
-/** Every non-embedding inbound adapter the pipeline can dispatch. */
-export type AnyInboundProtocolAdapter<TRequest, TContext> =
-  | LanguageProtocolAdapter<TRequest, TContext>
-  | ImageProtocolAdapter<TRequest, TContext>
-  | AudioProtocolAdapter<TRequest, TContext>;
 
 export type AudioProtocolAdapterDefinition<TRequest, TContext> = Omit<
   AudioProtocolAdapter<TRequest, TContext>,

@@ -19,7 +19,7 @@ export type AttemptTraceMetadata = {
   readonly prioritySource: 'provider' | 'model';
   readonly weightSource: 'provider' | 'model';
   readonly selectionSource: AttemptSelectionSource;
-  readonly transport?: 'raw' | 'ai_sdk' | 'image' | undefined;
+  readonly transport?: 'raw' | 'ai_sdk' | 'image' | 'audio' | undefined;
   readonly sourceProtocol: ProviderProtocol;
   readonly targetProtocol?: ProviderProtocol | undefined;
   readonly selectionReason: 'response_owner' | 'affinity' | 'weight';

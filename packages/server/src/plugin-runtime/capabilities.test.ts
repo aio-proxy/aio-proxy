@@ -769,3 +769,39 @@ test('forwards audio capability and the audio descriptor extra to the plugin raw
     capability: 'transcription',
   });
 });
+
+test('an openai-audio resolve with no capability prefers the audio descriptor over the language one', async () => {
+  // A caller that omits `capability` (a bare protocol probe, or any future
+  // resolve site that has not threaded it) must still get the audio routing hint
+  // for a dual-catalogued id: MODALITY_FALLBACK tries language first, so without
+  // the protocol-based inference `gpt-4o-audio` would hand the plugin its chat
+  // deployment for a /v1/audio request.
+  const observed: Parameters<RawResolver>[0][] = [];
+  const fixture = runtimeFixture(
+    { kind: 'static' },
+    {
+      catalog: {
+        ...catalog,
+        language: [{ id: 'gpt-4o-audio', extra: { deployment: 'chat-eu' } }],
+        speech: [{ id: 'gpt-4o-audio', extra: { deployment: 'tts-eu' } }],
+      },
+      createRuntime: async () =>
+        ({
+          provider: providerV4(),
+          raw(input: Parameters<RawResolver>[0]) {
+            observed.push(input);
+            return { invoke: async () => new Response('ok') };
+          },
+        }) as never,
+    },
+  );
+
+  const result = await materializeFixture(fixture);
+  result.provider?.raw?.resolve({ protocol: ProviderProtocol.OpenAIAudio, modelId: 'gpt-4o-audio' });
+
+  expect(observed[0]).toEqual({
+    protocol: 'openai-audio',
+    modelId: 'gpt-4o-audio',
+    extra: { deployment: 'tts-eu' },
+  });
+});

@@ -1,5 +1,4 @@
 export {
-  type AnyInboundProtocolAdapter,
   type AudioCapability,
   type AudioEgressContext,
   type AudioInvocation,
