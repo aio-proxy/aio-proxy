@@ -1,0 +1,17 @@
+export {
+  type AnyInboundProtocolAdapter,
+  type AudioCapability,
+  type AudioEgressContext,
+  type AudioInvocation,
+  type AudioProtocolAdapter,
+  type AudioProtocolAdapterDefinition,
+  type AudioProviderOptions,
+  type AudioResult,
+  defineAudioProtocolAdapter,
+  isAudioProtocolAdapter,
+  type SpeechInvocation,
+  type SpeechResultData,
+  type TranscriptionInvocation,
+  type TranscriptionResultData,
+  type TranscriptionSegment,
+} from './audio-adapter';

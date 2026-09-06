@@ -1,6 +1,7 @@
 export * from './adapter';
 export * from './anthropic-messages/index';
 export * from './anthropic-thinking';
+export * from './audio-adapter';
 export * from './errors';
 export * from './gemini-embeddings';
 export * from './gemini-generate-content';

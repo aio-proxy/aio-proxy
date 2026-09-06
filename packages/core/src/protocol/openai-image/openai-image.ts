@@ -17,7 +17,13 @@ import {
   type ImageInvocation,
   type ImageTransportResult,
 } from '../image-adapter';
-import { REQUEST_BODY_LIMITS, type RequestBodyLimits, readJsonRequest, readRequestText } from '../request';
+import {
+  REQUEST_BODY_LIMITS,
+  type RequestBodyLimits,
+  readJsonRequest,
+  readRequestText,
+  stripHopHeaders,
+} from '../request';
 import { assertConvertMask, decodeImageBytes } from './mask';
 
 export { CPA_DEFAULT_IMAGE_MODEL, type OpenAIImageRequest } from '../../ingress/openai-image';
@@ -170,16 +176,6 @@ function appendUpload(form: FormData, name: string, upload: OpenAIImageUpload): 
   const type = upload.mediaType === undefined ? {} : { type: upload.mediaType };
   if (upload.filename !== undefined) form.append(name, new File([bytes], upload.filename, type));
   else form.append(name, new Blob([bytes], type));
-}
-
-function stripHopHeaders(source: Headers): Headers {
-  const headers = new Headers(source);
-  headers.delete('content-encoding');
-  headers.delete('content-length');
-  headers.delete('content-md5');
-  headers.delete('digest');
-  headers.delete('content-digest');
-  return headers;
 }
 
 function imageEditsInvocation(request: OpenAIImageRequest): ImageInvocation {
