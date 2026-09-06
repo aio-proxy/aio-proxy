@@ -4,6 +4,8 @@ import type { OpenAIResponsesCompactRequest } from '../../../ingress/openai-resp
 import type { OpenAIResponsesRequest } from '../../../ingress/openai-responses/index';
 import type { RawRetryFrame, RawRetryHook, RawRetryVerdict } from '../../adapter';
 import { readRequestText } from '../../request';
+import { parseErrorPayload, responsesErrorCode, responsesErrorMessage } from '../error-payload';
+import { isToolPairingRejection, repairOpenAIResponsesToolPairing } from '../tool-pairing-retry';
 
 type OpenAIResponsesRawRetryContext = { readonly operation?: 'create' | 'compact' };
 
@@ -80,24 +82,18 @@ export function looksLikeBackendCiphertext(payload: string): boolean {
 // window this feature exists for. Unknown frames also hold; the 1 MiB replay
 // cap, the preflight idle timer, and stream EOF all commit, so nothing hangs.
 export function classifyOpenAIResponsesRawRetry(frame: RawRetryFrame): RawRetryVerdict {
-  const payload = parseJson(frame.data);
+  const payload = parseErrorPayload(frame.data);
   const type = frame.event ?? (typeof payload?.['type'] === 'string' ? payload['type'] : undefined);
   if (type !== undefined && carriesGeneratedOutput(type, payload)) return 'commit';
   if (type === 'error' || type === 'response.failed' || isPlainObject(payload?.['error'])) {
-    return isEncryptedContentRejection(payload) ? 'retry' : 'commit';
+    return isEncryptedContentRejection(payload) || isToolPairingRejection(payload) ? 'retry' : 'commit';
   }
   if (type !== undefined && TERMINAL_EVENTS.has(type)) return 'commit';
   return 'hold';
 }
 
-// Official Responses `event: error` puts `code` on the payload root. ChatGPT
-// raw traffic then goes through createOpenAIStreamFetch, which rewrites that
-// frame to `response.failed` and stores the original object at
-// `response.error` — sometimes wrapping a nested `{ error: { code } }`.
-function responsesErrorCode(payload: Record<string, unknown> | undefined): string | undefined {
-  if (payload === undefined) return undefined;
-  return codeFrom(errorChain(payload)) ?? codeFrom(errorChain(responseEnvelope(payload)));
-}
+// A plain `{ "error": { … } }` 400 body carries no `type`, so it reaches the
+// error branch through the `isPlainObject(payload.error)` test.
 
 // The ChatGPT backend also rejects an unverifiable blob with `code: null` and
 // only the prose naming the item, e.g. `The encrypted content for item rs_… could
@@ -118,66 +114,24 @@ function isEncryptedContentRejection(payload: Record<string, unknown> | undefine
   return message !== undefined && UNVERIFIABLE_BLOB_MESSAGE.test(message.trim());
 }
 
-function responsesErrorMessage(payload: Record<string, unknown> | undefined): string | undefined {
-  if (payload === undefined) return undefined;
-  return messageFrom(errorChain(payload)) ?? messageFrom(errorChain(responseEnvelope(payload)));
-}
-
-function responseEnvelope(payload: Record<string, unknown>): Record<string, unknown> | undefined {
-  return isPlainObject(payload['response']) ? payload['response'] : undefined;
-}
-
-// Both lookups walk this one chain, so a code can never sit on a node whose
-// message was consulted: a depth mismatch would let an explicit non-matching
-// code look absent and hand a rewrite-and-resend to the prose fallback.
-// Iterative and depth-capped because the chain is provider-controlled — a
-// recursive walk over a deeply nested `error` chain (~50k levels fit under the
-// 1 MiB body cap) would throw a RangeError out of `classify` instead of
-// committing and forwarding the provider's response.
-const MAX_ERROR_NESTING = 8;
-
-function errorChain(root: Record<string, unknown> | undefined): readonly Record<string, unknown>[] {
-  if (root === undefined) return [];
-  const chain: Record<string, unknown>[] = [root];
-  for (let node = root['error']; isPlainObject(node) && chain.length < MAX_ERROR_NESTING; node = node['error']) {
-    chain.push(node);
-  }
-  return chain;
-}
-
-// Outermost wins: the envelope names the failure the provider is reporting.
-function codeFrom(chain: readonly Record<string, unknown>[]): string | undefined {
-  for (const node of chain) {
-    const code = stringField(node, 'code');
-    if (code !== undefined) return code;
-  }
-  return undefined;
-}
-
-// Innermost wins: a wrapper repeats or generalizes the message the backend
-// actually issued.
-function messageFrom(chain: readonly Record<string, unknown>[]): string | undefined {
-  for (let index = chain.length - 1; index >= 0; index -= 1) {
-    const message = stringField(chain[index]!, 'message');
-    if (message !== undefined) return message;
-  }
-  return undefined;
-}
-
-function stringField(value: Record<string, unknown>, key: string): string | undefined {
-  return typeof value[key] === 'string' ? value[key] : undefined;
-}
-
 export function rewriteOpenAIResponsesEncryptedContent(bodyText: string): string | undefined {
-  const parsed = parseJson(bodyText);
+  return rewriteInput(bodyText, (input) => rewritePlaintextSlots(input) ?? rewriteOpaqueBlobs(input));
+}
+
+function rewriteInput(bodyText: string, repair: (input: readonly unknown[]) => unknown[] | undefined) {
+  const parsed = parseErrorPayload(bodyText);
   if (parsed === undefined || !Array.isArray(parsed['input'])) return undefined;
+  const input = repair(parsed['input']);
+  return input === undefined ? undefined : JSON.stringify({ ...parsed, input });
+}
 
-  const withPlaintext = rewritePlaintextSlots(parsed['input']);
-  if (withPlaintext !== undefined) return JSON.stringify({ ...parsed, input: withPlaintext });
-
-  const withBlobs = rewriteOpaqueBlobs(parsed['input']);
-  if (withBlobs !== undefined) return JSON.stringify({ ...parsed, input: withBlobs });
-  return undefined;
+// Repairs only what the upstream named. Applying every repair the hook knows
+// would rewrite fields the provider never objected to — the opposite of what a
+// proxy should do to a body it is only relaying.
+function rewriteForRejection(bodyText: string, rejection: RawRetryFrame): string | undefined {
+  const payload = parseErrorPayload(rejection.data);
+  if (isToolPairingRejection(payload)) return rewriteInput(bodyText, repairOpenAIResponsesToolPairing);
+  return rewriteOpenAIResponsesEncryptedContent(bodyText);
 }
 
 export const openAIResponsesRawRetry: RawRetryHook<
@@ -185,11 +139,11 @@ export const openAIResponsesRawRetry: RawRetryHook<
   OpenAIResponsesRawRetryContext
 > = {
   classify: classifyOpenAIResponsesRawRetry,
-  async rewrite(upstream, _request, context) {
+  async rewrite(upstream, _request, context, rejection) {
     // Compact replay is out of scope: its `input` can also be an array, so the
     // rewrite would otherwise fire on an endpoint this feature does not cover.
     if (context.operation === 'compact') return undefined;
-    const body = rewriteOpenAIResponsesEncryptedContent(await readRequestText(upstream.clone()));
+    const body = rewriteForRejection(await readRequestText(upstream.clone()), rejection);
     if (body === undefined) return undefined;
     const headers = new Headers(upstream.headers);
     headers.delete('content-encoding');
@@ -247,13 +201,4 @@ function rewriteOpaqueBlobs(input: readonly unknown[]): unknown[] | undefined {
     return rest;
   });
   return changed ? next : undefined;
-}
-
-function parseJson(text: string): Record<string, unknown> | undefined {
-  try {
-    const value: unknown = JSON.parse(text);
-    return isPlainObject(value) ? value : undefined;
-  } catch {
-    return undefined;
-  }
 }

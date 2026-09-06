@@ -69,9 +69,18 @@ export type RawRetryVerdict = 'hold' | 'commit' | 'retry';
 // Lets one protocol adapter own the judgement for a same-protocol raw retry:
 // which buffered frames are still undecided, and how to rewrite the outbound
 // body. The pipeline owns the replay itself and stays protocol-agnostic.
+// `rewrite` receives the frame that classified as 'retry' so it repairs only
+// what the upstream actually rejected: a hook that handles several rejections
+// would otherwise apply every repair it knows and distort fields nobody
+// complained about.
 export type RawRetryHook<TRequest, TContext> = Readonly<{
   classify: (frame: RawRetryFrame) => RawRetryVerdict;
-  rewrite: (upstream: Request, request: TRequest, context: TContext) => Promise<Request | undefined>;
+  rewrite: (
+    upstream: Request,
+    request: TRequest,
+    context: TContext,
+    rejection: RawRetryFrame,
+  ) => Promise<Request | undefined>;
 }>;
 
 export type SharedProtocolAdapter<TRequest, TContext> = Readonly<{
