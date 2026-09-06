@@ -16,7 +16,7 @@
 - `@aio-proxy/server` must not import `@aio-proxy/cli`. Upgrade execution is an injected `applyUpdate` callback only.
 - `server.autoUpdate` defaults to `false`. Omitted config means off. A Settings write persists the boolean explicitly.
 - Auto-install (scheduler ticks) requires **all** of: toggle on, `isManagedService() === true` (**this process** is the managed daemon — marker or pre-marker fallback; not `isManagedServiceInstalled()` alone), npm `latest` newer than the process version. Manual `POST /release/apply` skips the toggle and managed-process gates.
-- `applyUpdate(version)` installs **that** version and returns `'installed' | 'unchanged'`. It must not look up npm `latest` again. Resolve the target from the launched absolute path (Cellar → stable Homebrew launcher + absolute `brew` command; never `Bun.which`, never spawn bare `brew` on `PATH`). After brew, if the launcher version did not move, return `'unchanged'` and do not restart. Darwin in-job `serviceRestart` must not `unload` the calling job. Interactive `aio-proxy upgrade` PATH lookup stays unchanged.
+- `applyUpdate(version)` installs **that** version and returns `'installed' | 'unchanged'`. It must not look up npm `latest` again. Resolve the target from the launched absolute path (Cellar → `{ command, bin }`; never `Bun.which`, never spawn bare `brew` on `PATH`). After brew, if `bin` version did not move, return `'unchanged'` and do not restart. Darwin in-job helper unloads after detach and does not wait for this PID. Agent post-upgrade uses `bin`. Interactive `aio-proxy upgrade` PATH lookup stays unchanged.
 - Take the single-flight lock **before** `fetchLatest`. A second apply during a pending lookup returns `in_progress` and must not start a second `applyUpdate()`.
 - When `applyUpdate(version)` fulfills `'installed'` and this process is still alive, set `restart_required`. When it fulfills `'unchanged'`, set `idle` (do not tell the operator to restart). When it throws, set `failed`.
 - Follow npm `latest` for every newer version. No major/minor channel split. Interval is the constant `24 * 60 * 60 * 1000` ms. No interval/channel UI.
@@ -46,9 +46,10 @@
 - `packages/cli/src/run/auto-update-hooks.ts` — `createCliAutoUpdateHooks()`, `isManagedAutoUpdateProcess()`, pre-marker unit rewrite.
 - `packages/cli/src/service/unit-templates.ts` — `AIO_PROXY_MANAGED=1` on launchd/systemd units; optional `AIO_PROXY_UPGRADE_METHOD` when known (`brew` / `npm` / `bun` / `pnpm` only).
 - `packages/cli/src/upgrade/detect.ts` — `resolveUpgradeTargetFrom(binPath)` and `resolveStableManagedExec`; Cellar → brew + stable launcher, never binary.
-- `packages/cli/src/upgrade/constants.ts` — package-manager `UpgradeTarget` includes `command`.
+- `packages/cli/src/upgrade/constants.ts` — package-manager `UpgradeTarget` includes `command` and `bin`.
 - `packages/cli/src/upgrade/methods.ts` — exec `target.command`, not the bare `brew` / `npm` / `bun` / `pnpm` name.
-- `packages/cli/src/upgrade/upgrade.ts` — accept pinned `version`, return `'installed' | 'unchanged'`; after brew, verify the launcher version moved.
+- `packages/cli/src/upgrade/agent-post-upgrade-process.ts` — `resolveNewAgentBinary` uses `target.bin`, not `Bun.which`.
+- `packages/cli/src/upgrade/upgrade.ts` — accept pinned `version`, return `'installed' | 'unchanged'`; after brew, verify `target.bin` version moved.
 - `packages/cli/src/service/service.ts` — Darwin in-job restart via detached unload+load.
 - `packages/dashboard/src/modules/settings/components/settings-about-group/` — Switch + Update now.
 - `packages/dashboard/src/modules/settings/services/release-service/` — apply mutation + typed GET.
@@ -493,6 +494,30 @@ test('applyUpdate failure sets failed and releases the lock', async () => {
   expect(await controller.apply()).toEqual({ status: 'started' });
 });
 
+test('stop during a pending fetchLatest does not apply', async () => {
+  let releaseFetch!: (version: string) => void;
+  const fetchLatest = mock(
+    () =>
+      new Promise<string>((resolve) => {
+        releaseFetch = resolve;
+      }),
+  );
+  const applyUpdate = mock(async () => 'installed' as const);
+  const controller = createAutoUpdateController({
+    getEnabled: () => true,
+    isManagedService: () => true,
+    applyUpdate,
+    currentVersion: '1.2.0',
+    fetchLatest,
+  });
+  controller.start();
+  await Promise.resolve();
+  controller.stop();
+  releaseFetch('1.10.0');
+  await Promise.resolve();
+  expect(applyUpdate).not.toHaveBeenCalled();
+});
+
 test('start without applyUpdate does not schedule or fetch', async () => {
   const fetchLatest = mock(async () => '1.10.0');
   const setInterval = mock(() => 1);
@@ -517,12 +542,12 @@ Expected: FAIL — module not found.
 
 - [ ] **Step 3: Implement the controller**
 
-Tick path (used by `start` immediate run, interval, and `notifyCheck`): skip when the lock is held, `!getEnabled()`, or `!isManagedService()`; **then acquire the lock** and set `in_progress`; fetch `AUTO_UPDATE_PACKAGE`; on fetch throw set `failed` + `onError` and release; if `Bun.semver.order(latest, currentVersion) <= 0` set `idle` and release; otherwise start the same fire-and-forget `applyUpdate(latest)` as `apply()`.
+Tick path (used by `start` immediate run, interval, and `notifyCheck`): skip when the lock is held, `!getEnabled()`, or `!isManagedService()`; **then acquire the lock** and set `in_progress`; fetch `AUTO_UPDATE_PACKAGE`; on fetch throw set `failed` + `onError` and release; if `Bun.semver.order(latest, currentVersion) <= 0` set `idle` and release; if `stop()` ran during the lookup, release and return; otherwise start the same fire-and-forget `applyUpdate(latest)` as `apply()`.
 
 `apply()`: `unavailable` when `applyUpdate` is missing; `in_progress` when the lock is held; **acquire the lock and set `in_progress` before `fetchLatest`**; return `check_failed` / `up_to_date` (release on those paths); otherwise invoke `applyUpdate(latest)` without awaiting it in the caller, return `started`. The background promise maps `'installed'` → `restart_required`, `'unchanged'` → `idle`, throw → `failed` + `onError`, then releases the lock. Never set `restart_required` after a no-op.
 
 `start()`: if `applyUpdate` is missing, return. Otherwise run one tick and `setInterval(tick, intervalMs ?? AUTO_UPDATE_INTERVAL_MS)`.
-`stop()`: `clearInterval` once; further ticks are no-ops.
+`stop()`: set a stopped flag, `clearInterval` once; further ticks are no-ops. A lookup already in flight must see the flag and skip `applyUpdate`. An `applyUpdate` already started is not cancelled.
 `notifyCheck()`: void a tick (do not await).
 
 Use `Bun.semver.order` the same way `packages/server/src/dashboard-routes/release/release.ts` does. Do not import CLI.
@@ -687,6 +712,7 @@ git commit -m "feat: expose release apply API and managedService on GET /release
 - Modify: `packages/cli/src/upgrade/constants.ts`
 - Modify: `packages/cli/src/upgrade/detect.ts`
 - Modify: `packages/cli/src/upgrade/methods.ts`
+- Modify: `packages/cli/src/upgrade/agent-post-upgrade-process.ts`
 - Modify: `packages/cli/src/upgrade/upgrade.ts`
 - Modify: `packages/cli/src/upgrade/upgrade.test.ts`
 
@@ -747,20 +773,20 @@ export const createCliAutoUpdateHooks = (deps?: {
 
 Export a `createUpgradeDeps` (or accept a partial override) so the implementation can spread `defaultDeps` and override `resolveTarget` + `isServiceManaged` without `as never`. Interactive `aio-proxy upgrade` keeps the default `resolveUpgradeTarget()` (`Bun.which`) and `isManagedServiceInstalled()` restart gate.
 
-Extend `UpgradeTarget` so non-binary methods carry the resolved manager executable:
+Extend `UpgradeTarget` so non-binary methods carry the manager and the installed launcher:
 
 ```ts
-| { readonly method: Exclude<UpgradeMethod, 'binary'>; readonly command: string }
+| { readonly method: Exclude<UpgradeMethod, 'binary'>; readonly command: string; readonly bin: string }
 | { readonly method: 'binary'; readonly path: string }
 ```
 
-`runPackageManagerUpgrade` must `exec([target.command, ...])`. Do not spawn the bare name `brew`. Task 4 **does** modify `constants.ts` and `methods.ts`. Interactive PATH detection may set `command` to `Bun.which('brew') ?? 'brew'`.
+`runPackageManagerUpgrade` must `exec([target.command, ...])`. Do not spawn the bare name `brew`. `resolveNewAgentBinary` must use `target.bin` (or `target.path` for `binary`), not `Bun.which('aio-proxy')`. Task 4 **does** modify `constants.ts`, `methods.ts`, and `agent-post-upgrade-process.ts`. Interactive PATH detection may set `command` to `Bun.which('brew') ?? 'brew'` and `bin` to the resolved aio-proxy path.
 
 `resolveUpgradeTargetFrom(binPath)` uses the given absolute path instead of `Bun.which`. Rules:
 
-- If `AIO_PROXY_UPGRADE_METHOD` is `brew` / `npm` / `bun` / `pnpm`, honor it and fill `command` from the prefix / `AIO_PROXY_UPGRADE_COMMAND` if present.
-- If `binPath` matches `.../Cellar/aio-proxy/<ver>/bin/aio-proxy`, method is `brew`. Return `{ method: 'brew', command: '{brewPrefix}/bin/brew' }` (`brewPrefix` is the path before `/Cellar/`). **Never** return `{ method: 'binary', path: cellarFile }`.
-- npm / bun / pnpm when the path sits under those prefixes, with their absolute CLI paths when known.
+- If `AIO_PROXY_UPGRADE_METHOD` is `brew` / `npm` / `bun` / `pnpm`, honor it and fill `command` + `bin` from the prefix / unit env if present.
+- If `binPath` matches `.../Cellar/aio-proxy/<ver>/bin/aio-proxy`, method is `brew`. Return `{ method: 'brew', command: '{brewPrefix}/bin/brew', bin: '{brewPrefix}/bin/aio-proxy' }`. **Never** return `{ method: 'binary', path: cellarFile }`.
+- npm / bun / pnpm when the path sits under those prefixes, with their absolute CLI paths and the matching global `aio-proxy` as `bin`.
 - `{ method: 'binary', path }` only for a real curl-style / standalone binary.
 - Missing `brew` **binary file** for a Homebrew target is an error, not a Cellar overwrite. A missing `brew` on `PATH` is fine when `command` is the absolute prefix path. Missing `npm` for an npm prefix is the existing CLI fallback for **npm prefixes only**.
 
@@ -768,7 +794,7 @@ Extend `UpgradeTarget` so non-binary methods carry the resolved manager executab
 
 Pre-marker boot migration (in `run`, before `createServer`): if `isManagedAutoUpdateProcess()` is true, `AIO_PROXY_MANAGED` is unset, and the unit file exists but lacks the marker, call `writeManagedUnit` with `resolveStableManagedExec()` — not `serviceRestart()`.
 
-Darwin `serviceRestart()`: when this process is the launchd job (`XPC_SERVICE_NAME === com.aio-proxy.agent` or `AIO_PROXY_MANAGED=1` on darwin), rewrite the unit, then spawn a detached helper that waits for this PID to exit and runs `launchctl unload -w` + `load -w`. Do **not** call `serviceStop()` / `unload` from inside the job — that kills the callback before `load`. Interactive `aio-proxy service restart` from a TTY keeps today's in-process unload+load. systemd is unchanged.
+Darwin `serviceRestart()`: when this process is the launchd job (`XPC_SERVICE_NAME === com.aio-proxy.agent` or `AIO_PROXY_MANAGED=1` on darwin), rewrite the unit, then spawn a detached helper that initiates `unload -w` + `load -w` after it has detached. The helper must **not** wait for this PID — `serviceRestart` / `runUpgradeCommand` return and the daemon stays up, so a wait-for-PID helper never runs `launchctl`. A short delay after detach is fine; then unload (kills this process) and load. Do **not** call `serviceStop()` / `unload` from inside the job. Interactive `aio-proxy service restart` from a TTY keeps today's in-process unload+load. systemd is unchanged.
 
 Do not pass `--force` or `--check`. Do not use `isManagedServiceInstalled()` alone as the scheduler gate.
 
@@ -851,8 +877,8 @@ test('applyUpdate pins the checked version and upgrades via the launched exec pa
 
 Add `resolveUpgradeTargetFrom` / `resolveStableManagedExec` tests in `upgrade.test.ts` and `service.test.ts`:
 
-- `{prefix}/bin/aio-proxy` → `{ method: 'brew', command: '{prefix}/bin/brew' }`
-- `.../Cellar/aio-proxy/<ver>/bin/aio-proxy` → `{ method: 'brew', command: '{brewPrefix}/bin/brew' }` (not `{ method: 'binary', path: cellarFile }`), even when `brew` is missing from `PATH`
+- `{prefix}/bin/aio-proxy` → `{ method: 'brew', command: '{prefix}/bin/brew', bin: '{prefix}/bin/aio-proxy' }`
+- `.../Cellar/aio-proxy/<ver>/bin/aio-proxy` → `{ method: 'brew', command: '{brewPrefix}/bin/brew', bin: '{brewPrefix}/bin/aio-proxy' }` (not `{ method: 'binary', path: cellarFile }`), even when `brew` is missing from `PATH`
 - standalone `/opt/aio-proxy` → `{ method: 'binary', path }`
 - npm prefix path → `{ method: 'npm', command }`
 - `resolveStableManagedExec(cellarFile)` → `{brewPrefix}/bin/aio-proxy`
@@ -860,7 +886,8 @@ Add `resolveUpgradeTargetFrom` / `resolveStableManagedExec` tests in `upgrade.te
 - `runUpgradeCommand({ version: '1.2.4' })` installs 1.2.4 and does not call `fetchLatest`; a later stub `latest` of `1.2.5` must not change the installed version
 - `runUpgradeCommand({ version: current })` returns `'unchanged'` and does not install
 - brew install whose launcher `--version` stays at `current` returns `'unchanged'` and does not call `restartService`
-- Darwin in-job `serviceRestart` spawns a detached unload+load and does not call `unload` in-process; TTY restart still does
+- Darwin in-job `serviceRestart` spawns a detached helper that unloads without waiting for this PID; TTY restart still unloads in-process
+- `resolveNewAgentBinary` for a brew target uses `target.bin`, not `Bun.which`
 
 Unit template tests already snapshot `AIO_PROXY_HOME` — assert `AIO_PROXY_MANAGED=1` is also present on systemd and launchd output.
 
@@ -877,7 +904,7 @@ Import `createAutoUpdateController` and `fetchLatestNpmVersion`. After `createSe
 
 Log apply failures through the existing server logger when present (`auto_update.failed`); tests may omit `onError`.
 
-`run.ts`: pass `autoUpdate: createCliAutoUpdateHooks()`. On boot, if the pre-marker fallback hits and the unit lacks `AIO_PROXY_MANAGED`, rewrite it with `writeManagedUnit` + `resolveStableManagedExec()` (no restart). Add `AIO_PROXY_MANAGED=1` to both unit templates. Implement `resolveUpgradeTargetFrom` and `resolveStableManagedExec` next to `resolveUpgradeTarget`. Extend `UpgradeTarget` with `command`; change `runPackageManagerUpgrade` to exec it. Extend `runUpgradeCommand` with pinned `version`, brew version verification, and `'installed' | 'unchanged'`. Fix Darwin in-job `serviceRestart`.
+`run.ts`: pass `autoUpdate: createCliAutoUpdateHooks()`. On boot, if the pre-marker fallback hits and the unit lacks `AIO_PROXY_MANAGED`, rewrite it with `writeManagedUnit` + `resolveStableManagedExec()` (no restart). Add `AIO_PROXY_MANAGED=1` to both unit templates. Implement `resolveUpgradeTargetFrom` and `resolveStableManagedExec` next to `resolveUpgradeTarget`. Extend `UpgradeTarget` with `command` + `bin`; change `runPackageManagerUpgrade` to exec `command` and `resolveNewAgentBinary` to use `bin`. Extend `runUpgradeCommand` with pinned `version`, brew version verification, and `'installed' | 'unchanged'`. Fix Darwin in-job `serviceRestart` so the helper unloads after detach and does not wait for this PID.
 
 - [ ] **Step 4: Run the tests**
 
@@ -903,6 +930,7 @@ git add packages/server/src/server/server.ts \
   packages/cli/src/upgrade/constants.ts \
   packages/cli/src/upgrade/detect.ts \
   packages/cli/src/upgrade/methods.ts \
+  packages/cli/src/upgrade/agent-post-upgrade-process.ts \
   packages/cli/src/upgrade/upgrade.ts \
   packages/cli/src/upgrade/upgrade.test.ts
 git commit -m "feat: schedule auto-update from createServer and CLI run"
@@ -1068,12 +1096,12 @@ git commit -m "chore: add changeset for automatic updates"
 | `server.autoUpdate` default false, persisted explicitly | 1 |
 | Settings view/mutation, no restartRequired, `notifyCheck` on true | 1 |
 | Controller tick gates (enabled + this-process-managed + outdated) | 2 |
-| Lock before `fetchLatest`; deferred-lookup single-flight test | 2 |
+| Lock before `fetchLatest`; deferred-lookup single-flight; `stop` during lookup skips apply | 2 |
 | `applyUpdate('installed')` → `restart_required`; `'unchanged'` → `idle` | 2, 5 |
 | Manual apply skips gates, 202-before-install | 2, 3 |
 | GET `/release` `{ current, managedService, update }` | 3 |
 | POST apply HTTP map | 3 |
-| Marker + pre-marker; Cellar never binary; brew `command` + version verify; Darwin in-job restart | 4 |
+| Marker + pre-marker; Cellar never binary; brew `command`/`bin`; helper unloads without waiting; Agent uses `bin` | 4 |
 | `createServer` start/stop + CLI hooks | 4 |
 | About Switch + unmanaged hint + Update now + poll/`restart_required` disables button | 5 |
 | Five-locale copy + changeset targeting `aio-proxy` | 5, 6 |
@@ -1081,4 +1109,4 @@ git commit -m "chore: add changeset for automatic updates"
 
 **Placeholders:** none.
 
-**Type names:** `AutoUpdateController`, `AutoUpdateApplyResult`, `DashboardReleaseViewSchema`, `DashboardReleaseApplyResponseSchema`, `createCliAutoUpdateHooks`, `isManagedAutoUpdateProcess`, `resolveUpgradeTargetFrom`, `resolveStableManagedExec`, `UpgradeTarget.command`, `applyReleaseMutationFn` are used consistently across tasks.
+**Type names:** `AutoUpdateController`, `AutoUpdateApplyResult`, `DashboardReleaseViewSchema`, `DashboardReleaseApplyResponseSchema`, `createCliAutoUpdateHooks`, `isManagedAutoUpdateProcess`, `resolveUpgradeTargetFrom`, `resolveStableManagedExec`, `UpgradeTarget.command`, `UpgradeTarget.bin`, `applyReleaseMutationFn` are used consistently across tasks.

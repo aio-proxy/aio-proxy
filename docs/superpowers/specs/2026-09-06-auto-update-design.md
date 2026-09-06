@@ -114,9 +114,16 @@ PATH returns that versioned file; replacing it and baking it into
 `brew upgrade` deletes the Cellar dir. Detect Cellar paths, map them to
 the stable `{brewPrefix}/bin/aio-proxy` launcher and `{brewPrefix}/bin/brew`,
 and keep method `brew`. The target must carry that absolute `brew`
-command. `UpgradeTarget` for package managers is
-`{ method, command }` — `runPackageManagerUpgrade` execs `command`,
-never the bare name `brew` / `npm` / `bun` / `pnpm` on `PATH`.
+command **and** the stable aio-proxy launcher. `UpgradeTarget` for
+package managers is `{ method, command, bin }` — `command` is the
+manager executable, `bin` is `{brewPrefix}/bin/aio-proxy` (or the
+matching npm/bun/pnpm global binary). `runPackageManagerUpgrade` execs
+`command`, never the bare name `brew` / `npm` / `bun` / `pnpm` on
+`PATH`. `resolveNewAgentBinary` must use `bin` (or `path` for
+`binary`), not `Bun.which('aio-proxy')` — that file throws
+`upgraded aio-proxy is not on PATH` under a managed environment, and
+the existing catch only prints a warning, so Agent integrations stay
+on the old adapter.
 Today's brew branch in `methods.ts` spawns `'brew'`; a managed Apple
 Silicon unit whose `PATH` omits `/opt/homebrew/bin` would still fail
 after the Cellar mapping. Persist `AIO_PROXY_UPGRADE_METHOD` on the unit
@@ -132,10 +139,10 @@ file — that is the failure `resolveExec` already documents. Do not bake
 a Cellar path into `ExecStart`.
 
 Homebrew's `brew upgrade` is unversioned and ignores the pinned npm
-`latest`. After a brew install, read the version from the stable
-launcher. If `Bun.semver.order(actual, current) <= 0`, return
-`'unchanged'` and do **not** restart — otherwise a tap/npm skew reports
-`installed`, restarts onto the same binary, and the startup tick loops.
+`latest`. After a brew install, read the version from `target.bin`.
+If `Bun.semver.order(actual, current) <= 0`, return `'unchanged'` and
+do **not** restart — otherwise a tap/npm skew reports `installed`,
+restarts onto the same binary, and the startup tick loops.
 npm / bun / pnpm already install `@version`; still treat a no-op as
 `'unchanged'`.
 
@@ -144,11 +151,15 @@ this-process probe. Darwin `serviceRestart()` today calls
 `serviceStop()` (`launchctl unload -w`) then `serviceStart()`. Unload
 kills the job that is running the callback, so `load` never runs and
 the agent stays down. When this process is the launchd job: rewrite the
-unit, then spawn a **detached** helper that `unload -w` + `load -w`
-after this PID exits. Do not unload from inside the job. Interactive
-`aio-proxy service restart` from a TTY keeps the current in-process
-unload+load. systemd `systemctl --user restart` is already a replace
-and stays as-is.
+unit, then spawn a **detached** helper that initiates `unload -w` +
+`load -w` after it has detached. The helper must **not** wait for this
+PID to exit: neither `serviceRestart()` nor `runUpgradeCommand()`
+exits the daemon after spawn, so a wait-for-PID helper never runs
+`launchctl`. A short delay after detach is fine so spawn can return;
+then the helper unloads (which kills this process) and loads. Do not
+unload from inside the job. Interactive `aio-proxy service restart`
+from a TTY keeps the current in-process unload+load. systemd
+`systemctl --user restart` is already a replace and stays as-is.
 
 No `--force`, no `--check`, no custom `--registry`. Interactive
 `aio-proxy upgrade` PATH behavior stays unchanged except for the Darwin
@@ -239,7 +250,9 @@ Apply; no-op for Tick). Do not fetch twice and then both call
    stop.
 6. If `Bun.semver.order(latest, currentVersion) <= 0`, set `idle`,
    release, return.
-7. Start `applyUpdate(latest)` without awaiting it in the tick.
+7. If `stop()` ran during the lookup, release and return without
+   `applyUpdate`.
+8. Start `applyUpdate(latest)` without awaiting it in the tick.
 
 **Apply** (Update now):
 
@@ -248,7 +261,9 @@ Apply; no-op for Tick). Do not fetch twice and then both call
 3. Acquire the lock and set `in_progress`.
 4. Fetch latest. On failure set `failed`, release, return `check_failed`.
 5. If not newer, set `idle`, release, return `up_to_date`.
-6. Start `applyUpdate(latest)` **without blocking the HTTP response**,
+6. If `stop()` ran during the lookup, release, return `unavailable`
+   (or treat as idle — do not install).
+7. Start `applyUpdate(latest)` **without blocking the HTTP response**,
    return `started`.
 
 Manual apply does **not** require the toggle or a managed process.
@@ -363,8 +378,9 @@ notifyCheck / start / 24h timer
   -> applyUpdate(latest) -> runUpgradeCommand(pinned version, stable launcher)
   -> install via brew|npm|bun|pnpm|binary (absolute manager command; never Cellar-as-binary)
   -> brew: verify launcher version moved, else 'unchanged' and no restart
-  -> Agent post-upgrade
-  -> serviceRestart() when this process is managed (Darwin: detached unload+load)
+  -> Agent post-upgrade via target.bin (not Bun.which)
+  -> serviceRestart() when this process is managed
+     (Darwin: detached helper unloads; does not wait for this PID)
 
 Update now
   -> POST /dashboard/api/release/apply
@@ -389,9 +405,12 @@ does not.
 - Concurrent apply, including a second request that arrives while
   `fetchLatest` is still pending: 409 `in_progress`.
 - Missing callbacks: 501 `unavailable`; no timer.
-- `close()` always `stop()`s the timer, even if a tick is in flight.
-  In-flight `applyUpdate` is not cancelled (the child/command owns
-  install + restart).
+- `close()` always `stop()`s the timer. `stop()` sets a stopped flag
+  and clears the interval. A tick or apply that is still awaiting
+  `fetchLatest` must re-check that flag before `applyUpdate` and skip
+  the install (embedded `close()` and daemon shutdown must not start a
+  new upgrade). An `applyUpdate` that already started is not cancelled
+  (the child/command owns install + restart).
 - Failed lookup must never render as "up to date" (same rule as today's
   version check).
 
@@ -414,12 +433,15 @@ Minimum coverage:
   a second fetch; `applyUpdate` throw sets `failed` and allows a later
   apply; `applyUpdate('installed')` sets `restart_required`;
   `applyUpdate('unchanged')` returns to `idle`; `stop` prevents further
-  ticks; missing `applyUpdate` never starts a timer.
+  ticks; a deferred `fetchLatest` that resolves after `stop()` does not
+  call `applyUpdate`; missing `applyUpdate` never starts a timer.
 - Pre-marker managed processes are detected via systemd `INVOCATION_ID`
   / launchd job id; a Cellar path never becomes a binary upgrade; brew
   targets carry `{brewPrefix}/bin/brew` and the installer execs that
   path; brew no-op (version did not move) returns `'unchanged'` and does
-  not restart; Darwin in-job restart does not `unload` from the job.
+  not restart; Darwin in-job helper unloads after detach and does not
+  wait for this PID; `resolveNewAgentBinary` uses `target.bin`, not
+  `Bun.which`.
 - Release GET reports `managedService` and `update.status`. POST maps
   the apply results and `check_failed`.
 - About UI: Switch writes `{ autoUpdate: true }`; unmanaged hint visible
