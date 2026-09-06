@@ -33,6 +33,12 @@ describe('OpenAI ChatGPT runtime', () => {
     expect(
       runtime.raw?.({ protocol: 'openai-compatible', modelId: 'gpt-5.5', capability: 'embedding' }),
     ).toBeUndefined();
+    // The ChatGPT backend serves responses and images only: an audio request
+    // must never be passed through to it.
+    for (const capability of ['speech', 'transcription'] as const) {
+      expect(runtime.raw?.({ protocol: 'openai-response', modelId: 'gpt-5.5', capability })).toBeUndefined();
+      expect(runtime.raw?.({ protocol: 'openai-image', modelId: 'gpt-image-2', capability })).toBeUndefined();
+    }
   });
 
   test('routes every concurrent expired request through the host credential refresh port', async () => {
