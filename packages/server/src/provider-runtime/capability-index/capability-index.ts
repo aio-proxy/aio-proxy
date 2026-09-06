@@ -41,7 +41,13 @@ export function buildModelCapabilityIndex(input: CapabilityIndexInput): ModelCap
     if (embeddingIds.has(id)) capabilities.add('embedding');
     if (metadataHasImageOutput(input.upstreamMetadata?.[id])) capabilities.add('image');
     if (catalogOnlyImageOutput(input, id)) capabilities.add('image');
-    if (input.primaryProtocol === ProviderProtocol.OpenAIImage) capabilities.add('image');
+    // Image reads the PRIMARY protocol only, unlike speech/transcription below,
+    // which honour extra endpoints too. An extra /images endpoint does not make
+    // every listed id an image model - per-model metadata decides that, and
+    // `openai-image endpoint on a chat-primary provider ...` pins it. An audio
+    // endpoint carries no comparable per-model signal, so it must grant broadly.
+    if (input.primaryProtocol !== undefined && protocolServes(input.primaryProtocol, 'image'))
+      capabilities.add('image');
     // Catalog image/embedding ids stay out of synthesized language even when
     // OAuth `models` unions them with language catalog ids.
     const imageOnly = imageIds.has(id) && !languageIds.has(id) && !embeddingIds.has(id);
@@ -56,13 +62,21 @@ export function buildModelCapabilityIndex(input: CapabilityIndexInput): ModelCap
 }
 
 /**
- * Which inbound capabilities a wire protocol can serve. `language` is
- * deliberately absent: language is synthesized by `synthesizesLanguage`, which
- * also honours the no-catalog and catalog-membership rules this table cannot
- * see. Only the single-purpose protocols are listed, so a new protocol defaults
- * to granting nothing rather than silently joining the language pool.
+ * The single source of truth for what a wire protocol can serve. Every protocol
+ * must be listed: an absent protocol grants nothing, so adding one to the enum
+ * without a row here makes its providers unroutable rather than silently
+ * dropping them into the language pool.
+ *
+ * `language`/`embedding` rows are necessary but not sufficient - a listed
+ * protocol still has to clear the no-catalog and catalog-membership rules in
+ * `synthesizesLanguage`/`synthesizesEmbedding`, which this table cannot see.
  */
-const PROTOCOL_CAPABILITIES: Partial<Readonly<Record<ProviderProtocol, readonly InboundCapability[]>>> = {
+const PROTOCOL_CAPABILITIES: Readonly<Record<ProviderProtocol, readonly InboundCapability[]>> = {
+  [ProviderProtocol.OpenAIResponse]: ['language', 'embedding'],
+  [ProviderProtocol.OpenAICompatible]: ['language', 'embedding'],
+  [ProviderProtocol.Anthropic]: ['language', 'embedding'],
+  [ProviderProtocol.Gemini]: ['language', 'embedding'],
+  [ProviderProtocol.GeminiInteractions]: ['language', 'embedding'],
   [ProviderProtocol.OpenAIImage]: ['image'],
   // One audio base URL serves /audio/speech and /audio/transcriptions alike and
   // never says which direction a given model runs, so both are granted and the
@@ -70,6 +84,13 @@ const PROTOCOL_CAPABILITIES: Partial<Readonly<Record<ProviderProtocol, readonly 
   // audio-only provider unroutable.
   [ProviderProtocol.OpenAIAudio]: ['speech', 'transcription'],
 };
+
+// The optional chain is load-bearing despite the total Record type: a protocol
+// value can reach here from parsed config or a newly added enum member before
+// the table gains its row, and TypeScript cannot see that gap.
+function protocolServes(protocol: ProviderProtocol, capability: InboundCapability): boolean {
+  return PROTOCOL_CAPABILITIES[protocol]?.includes(capability) === true;
+}
 
 // Every protocol this provider serves, primary plus extra endpoints.
 function protocolCapabilitySet(input: CapabilityIndexInput): ReadonlySet<InboundCapability> {
@@ -80,11 +101,10 @@ function protocolCapabilitySet(input: CapabilityIndexInput): ReadonlySet<Inbound
   return new Set(protocols.flatMap((protocol) => PROTOCOL_CAPABILITIES[protocol] ?? []));
 }
 
-// Protocols with no language surface at all. A provider whose ONLY endpoints are
-// these can never answer a chat request, so its ids must stay out of the
-// synthesized language pool.
+// A provider whose ONLY endpoints lack a chat surface can never answer a chat
+// request, so its ids must stay out of the synthesized language pool.
 function servesLanguage(protocol: ProviderProtocol): boolean {
-  return PROTOCOL_CAPABILITIES[protocol] === undefined;
+  return protocolServes(protocol, 'language');
 }
 
 // models.dev sits beneath upstream metadata: it only speaks for ids whose upstream
@@ -117,7 +137,7 @@ function hasLanguageProtocol(protocols: readonly ProviderProtocol[] | undefined)
 }
 
 function synthesizesEmbedding(input: CapabilityIndexInput): boolean {
-  if (input.primaryProtocol !== undefined && !servesLanguage(input.primaryProtocol)) return false;
+  if (input.primaryProtocol !== undefined && !protocolServes(input.primaryProtocol, 'embedding')) return false;
   return input.catalog === undefined;
 }
 

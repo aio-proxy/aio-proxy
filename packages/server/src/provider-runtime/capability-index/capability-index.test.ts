@@ -22,7 +22,8 @@ import {
 // | modalities.output present and text-only | does not add image; does not remove catalog.image |
 // | primary protocol openai-image and id in finite non-catalog set (models, preserved alias targets, upstream metadata keys) | image |
 // | chat primary (openai-compatible, openai-response, anthropic, gemini) and id in finite non-catalog set | language |
-// | API/ai-sdk finite ids with no catalog and a non-openai-image primary | language |
+// | API/ai-sdk finite ids with no catalog and a chat primary | language + embedding |
+// | primary protocol absent from PROTOCOL_CAPABILITIES | nothing |
 // | V4 imageModel function exists | never |
 
 describe('buildModelCapabilityIndex', () => {
@@ -283,6 +284,31 @@ describe('buildModelCapabilityIndex', () => {
     });
     expect(supportsSpeech(index, 'gpt-5')).toBe(false);
     expect(supportsTranscription(index, 'gpt-5')).toBe(false);
+  });
+
+  test('a protocol absent from the capability table grants nothing at all', () => {
+    // A protocol added to the enum but not to PROTOCOL_CAPABILITIES must leave
+    // its ids unroutable rather than silently joining the language/embedding
+    // pool, where a chat request would be dispatched to an endpoint that cannot
+    // answer it. Expectations are hard-coded rather than read back from the
+    // table so this fails if the table stops being the source of truth.
+    const unregistered = 'openai-video' as ProviderProtocol;
+    expect(buildModelCapabilityIndex({ primaryProtocol: unregistered, models: ['v1'] })).toEqual({});
+    expect(
+      buildModelCapabilityIndex({
+        extraProtocols: [unregistered],
+        models: ['v1'],
+        catalog: { language: [], image: [], embedding: [] },
+      }),
+    ).toEqual({});
+    // Nor may an unregistered extra endpoint revive language on a provider whose
+    // primary protocol serves none.
+    const withImagePrimary = buildModelCapabilityIndex({
+      primaryProtocol: ProviderProtocol.OpenAIImage,
+      extraProtocols: [unregistered],
+      models: ['v1'],
+    });
+    expect([...withImagePrimary['v1']!]).toEqual(['image']);
   });
 });
 
