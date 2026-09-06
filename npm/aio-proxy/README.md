@@ -1,15 +1,18 @@
 <div align="center">
+<h1>
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://fastly.jsdelivr.net/gh/aio-proxy/aio-proxy@main/packages/brand/src/aio-proxy-wordmark-dark.svg">
     <img alt="AIO Proxy" src="https://fastly.jsdelivr.net/gh/aio-proxy/aio-proxy@main/packages/brand/src/aio-proxy-wordmark-light.svg" width="192">
   </picture>
-
-[![Open on npmx.dev](https://npmx.dev/api/registry/badge/version/aio-proxy?color=00776e&name=true)](https://npmx.dev/package/aio-proxy)
-</div>
-
----
+</h1>
+  
+[![Open on npmx.dev](https://npmx.dev/api/registry/badge/version/aio-proxy)](https://npmx.dev/package/aio-proxy)
+[![Open on npmx.dev](https://npmx.dev/api/registry/badge/downloads/aio-proxy)](https://npmx.dev/package/aio-proxy)
+[![License](https://img.shields.io/github/license/aio-proxy/aio-proxy?style=flat&colorA=18181B&colorB=46ecd5)](./https://github.com/aio-proxy/aio-proxy/blob/main/LICENSE)
 
 English | [简体中文](https://github.com/aio-proxy/aio-proxy/blob/main/README.zh-Hans.md)
+
+</div>
 
 Connect and manage multiple model providers through one API endpoint. AIO Proxy provides an extensible plugin system, automatic routing and failover, and observability across usage, cost, and end-to-end request traces.
 
