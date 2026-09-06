@@ -1174,6 +1174,23 @@ test('classifies timeout and 5xx as retryable quota failures', async () => {
   ).rejects.toMatchObject({ name: 'MuseCodeQuotaError', retryable: false });
 });
 
+test('formats every window of at least 60 minutes in hours', async () => {
+  const snapshot = await readMuseCodeQuota(context(), {
+    fetch: async () =>
+      Response.json({
+        is_subs_active: true,
+        subs_usage: { window: { used_percent: 25, window_duration_mins: 90 } },
+      }),
+  });
+  expect(snapshot.items).toEqual([
+    {
+      id: '90m',
+      displayName: { default: '1.5 hours', 'zh-Hans': '1.5 小时' },
+      remainingRatio: 0.75,
+    },
+  ]);
+});
+
 test('treats nonpositive window_duration_mins as a rolling window', async () => {
   const zero = await readMuseCodeQuota(context(), {
     fetch: async () =>
@@ -1213,7 +1230,7 @@ function context() {
 }
 ```
 
-Window labels are locked: `1 hour` / `1 小时` for 60 minutes. Do not use `Nh` / `Nm`. Keep the id `60m` and `remainingRatio` 0.75.
+Window labels are locked: `1 hour` / `1 小时` for 60 minutes; `1.5 hours` / `1.5 小时` for 90 minutes. Do not use `Nh` / `Nm`. Keep the ids `60m` / `90m` and `remainingRatio` 0.75. Branch on `minutes >= 60`, not `minutes % 60 === 0`.
 
 - [ ] **Step 2: Run the quota test and verify RED**
 
@@ -1227,8 +1244,8 @@ Expected: FAIL because `./quota` does not exist.
 
 Window display names and ids (`window_duration_mins` must be a finite **positive** number before formatting):
 
-- `minutes > 0` and divisible by 60 → id `${Math.round(minutes)}m`, `{default: "${hours} hour(s)", 'zh-Hans': "${hours} 小时"}` (singular hour when `hours === 1`)
-- other `minutes > 0` → id `${Math.round(minutes)}m`, `{default: "${minutes} minute(s)", 'zh-Hans': "${minutes} 分钟"}`
+- `minutes >= 60` → id `${Math.round(minutes)}m`, `hours = minutes / 60`, `{default: "${hours} hour(s)", 'zh-Hans': "${hours} 小时"}` (singular hour when `hours === 1`)
+- `0 < minutes < 60` → id `${Math.round(minutes)}m`, `{default: "${minutes} minute(s)", 'zh-Hans': "${minutes} 分钟"}` (singular minute when `minutes === 1`)
 - missing, zero, or negative duration → id `window`, `{default: 'Rolling window', 'zh-Hans': '滚动窗口'}`
 
 Create `packages/plugins/muse-code/src/quota/index.ts`:
