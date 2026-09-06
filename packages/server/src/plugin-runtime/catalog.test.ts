@@ -101,6 +101,24 @@ test('overlapping language and image descriptors merge typed fields, language wi
   });
 });
 
+// An audio-only descriptor's cost is what `candidateConfigPrice` bills against, so
+// skipping the speech and transcription families meant a configured audio fee could
+// never reach `upstreamMetadata` and the request billed nothing.
+test('audio-only descriptors reach upstream metadata with their cost and display name', () => {
+  expect(
+    modelMetadataRecord({
+      ...emptyFamilies,
+      language: [],
+      embedding: [],
+      speech: [{ id: 'tts-1', displayName: 'Speech', modelMetadata: { cost: { input: 15 } } }],
+      transcription: [{ id: 'whisper-1', displayName: 'Transcribe', modelMetadata: { cost: { input: 0.006 } } }],
+    }),
+  ).toEqual({
+    'tts-1': { name: 'Speech', cost: { input: 15 } },
+    'whisper-1': { name: 'Transcribe', cost: { input: 0.006 } },
+  });
+});
+
 test('a migrated catalog with revision 0 is stale even inside the TTL window', () => {
   expect(
     catalogFreshness(

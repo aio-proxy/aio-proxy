@@ -102,11 +102,11 @@ export function catalogFreshness(
 
 export function modelMetadataRecord(catalog: ModelCatalog): Readonly<Record<string, RuntimeModelMetadata>> {
   const record: Record<string, RuntimeModelMetadata> = {};
-  for (const descriptor of [...catalog.embedding, ...catalog.image]) {
+  for (const descriptor of [...catalog.embedding, ...catalog.image, ...catalog.speech, ...catalog.transcription]) {
     const next = descriptorMetadata(descriptor);
     const existing = record[descriptor.id];
     // Cross-modality overlap merges fields; the earlier modality wins conflicts
-    // (embedding before image — this loop's order).
+    // (embedding, then image, then speech, then transcription — this loop's order).
     record[descriptor.id] = existing === undefined ? next : { ...next, ...existing };
   }
   for (const descriptor of catalog.language) {
