@@ -2,6 +2,7 @@ import { decodedRequestStream, type RequestBodyLimits } from '../../protocol/req
 import {
   acquireMultipartSlot,
   multipartBoundary,
+  multipartFieldNumber,
   type MultipartSpool,
   type MultipartStreamSpec,
   parseMultipartStream,
@@ -89,9 +90,13 @@ export async function parseOpenAIImageEditsMultipart(
     const maskUpload = namedUploads['mask'];
     const imageUploads = uploads.filter((upload) => upload !== maskUpload);
     if (imageUploads.length === 0) throw new SyntaxError('Invalid OpenAI Images multipart request');
+    // Retain only after the schema has accepted the request: a rejected parse
+    // unlinks the spool in `catch`, and a WeakMap entry left pointing at the
+    // deleted file would hand raw replay a body that no longer exists.
+    const parsed = parseOpenAIImageGenerations(generationsInputFromFields(fields));
     retainMultipartSpool(raw, spool);
     return {
-      ...parseOpenAIImageGenerations(generationsInputFromFields(fields)),
+      ...parsed,
       uploads: imageUploads,
       ...(maskUpload === undefined ? {} : { maskUpload }),
       formFields: fields,
@@ -116,19 +121,13 @@ function generationsInputFromFields(fields: Record<string, string>): Record<stri
     ...(stream === undefined ? {} : { stream }),
   };
   for (const key of OPTIONAL_NUMBER_FIELDS) {
-    const value = parseOptionalNumber(fields[key]);
+    const value = multipartFieldNumber(fields[key]);
     if (value !== undefined) input[key] = value;
   }
   for (const key of OPTIONAL_STRING_FIELDS) {
     if (fields[key] !== undefined) input[key] = fields[key];
   }
   return input;
-}
-
-function parseOptionalNumber(value: string | undefined): number | undefined {
-  if (value === undefined || value === '') return undefined;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : Number.NaN;
 }
 
 function parseOptionalBoolean(value: string | undefined): boolean | string | undefined {

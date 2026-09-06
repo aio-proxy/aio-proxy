@@ -322,6 +322,18 @@ test('consumes the inbound multipart body into a spool instead of leaving a tee 
   await expect(stat(path!)).rejects.toMatchObject({ code: 'ENOENT' });
 });
 
+// The schema runs after the spool exists, so a rejected field must not leave a
+// retained WeakMap entry pointing at a file the `catch` has already unlinked.
+test('retains no spool when the field schema rejects the request', async () => {
+  const raw = editsMultipartRequest({
+    prompt: 'make it night',
+    image: blobFrom(PNG_1X1_RGBA),
+    n: 'many',
+  });
+  await expect(parseOpenAIImageEditsMultipart(raw)).rejects.toThrow();
+  expect(multipartSpoolPath(raw)).toBeUndefined();
+});
+
 test('keeps preamble line-start context when a false boundary is split before its suffix', async () => {
   const boundary = 'bound';
   const rest = Buffer.concat([
