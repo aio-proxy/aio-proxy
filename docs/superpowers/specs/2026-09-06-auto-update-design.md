@@ -23,7 +23,9 @@ that makes a long-running managed service keep itself current.
   `latest` once at process start and again every 24 hours, then installs
   every newer `latest` version (no major/minor split).
 - Reuse `runUpgradeCommand`. Do not reimplement channel detection, binary
-  replace, Agent post-upgrade, or service restart.
+  replace, or Agent post-upgrade. `serviceRestart()` stays the restart
+  helper, but its Darwin path must be safe when invoked from inside the
+  launchd job (see Architecture).
 - Persist the toggle in the user's config as `server.autoUpdate`.
 
 ## Non-goals
@@ -111,7 +113,13 @@ PATH returns that versioned file; replacing it and baking it into
 `ExecStart` is the failure `resolveExec` already documents — the next
 `brew upgrade` deletes the Cellar dir. Detect Cellar paths, map them to
 the stable `{brewPrefix}/bin/aio-proxy` launcher and `{brewPrefix}/bin/brew`,
-and keep method `brew`. Persist `AIO_PROXY_UPGRADE_METHOD` on the unit
+and keep method `brew`. The target must carry that absolute `brew`
+command. `UpgradeTarget` for package managers is
+`{ method, command }` — `runPackageManagerUpgrade` execs `command`,
+never the bare name `brew` / `npm` / `bun` / `pnpm` on `PATH`.
+Today's brew branch in `methods.ts` spawns `'brew'`; a managed Apple
+Silicon unit whose `PATH` omits `/opt/homebrew/bin` would still fail
+after the Cellar mapping. Persist `AIO_PROXY_UPGRADE_METHOD` on the unit
 when known (`brew` / `npm` / `bun` / `pnpm` only — never persist a
 guessed `binary`). npm/bun/pnpm stay those methods when their prefixes
 match; binary is only for a real curl-style install, never for an
@@ -123,9 +131,29 @@ PATH is empty, so default `resolveExec()` returns the versioned Cellar
 file — that is the failure `resolveExec` already documents. Do not bake
 a Cellar path into `ExecStart`.
 
+Homebrew's `brew upgrade` is unversioned and ignores the pinned npm
+`latest`. After a brew install, read the version from the stable
+launcher. If `Bun.semver.order(actual, current) <= 0`, return
+`'unchanged'` and do **not** restart — otherwise a tap/npm skew reports
+`installed`, restarts onto the same binary, and the startup tick loops.
+npm / bun / pnpm already install `@version`; still treat a no-op as
+`'unchanged'`.
+
 `isServiceManaged` for the post-upgrade restart uses the same
-this-process probe. No `--force`, no `--check`, no custom `--registry`.
-Interactive `aio-proxy upgrade` PATH behavior stays unchanged.
+this-process probe. Darwin `serviceRestart()` today calls
+`serviceStop()` (`launchctl unload -w`) then `serviceStart()`. Unload
+kills the job that is running the callback, so `load` never runs and
+the agent stays down. When this process is the launchd job: rewrite the
+unit, then spawn a **detached** helper that `unload -w` + `load -w`
+after this PID exits. Do not unload from inside the job. Interactive
+`aio-proxy service restart` from a TTY keeps the current in-process
+unload+load. systemd `systemctl --user restart` is already a replace
+and stays as-is.
+
+No `--force`, no `--check`, no custom `--registry`. Interactive
+`aio-proxy upgrade` PATH behavior stays unchanged except for the Darwin
+in-job restart fix (that path is also used when the operator runs
+upgrade inside the managed daemon).
 
 Server owns:
 
@@ -313,8 +341,11 @@ show the unmanaged hint.
 
 **Update now** is enabled whenever the last check reported `outdated`,
 or after the user has checked and a newer version is known. It is
-disabled while `update.status === 'in_progress'` or the apply mutation
-is pending. It does not require the toggle.
+disabled while `update.status === 'in_progress' | 'restart_required'`
+or the apply mutation is pending. `restart_required` keeps the boot
+`current` and the last check `outdated`; leaving the button enabled
+would reinstall the same version on every click. It does not require
+the toggle.
 
 All copy goes through `@aio-proxy/i18n` in all five locales.
 
@@ -330,9 +361,10 @@ Settings Switch
 notifyCheck / start / 24h timer
   -> enabled && this-process-managed && outdated?
   -> applyUpdate(latest) -> runUpgradeCommand(pinned version, stable launcher)
-  -> install via brew|npm|bun|pnpm|binary (never Cellar-as-binary)
+  -> install via brew|npm|bun|pnpm|binary (absolute manager command; never Cellar-as-binary)
+  -> brew: verify launcher version moved, else 'unchanged' and no restart
   -> Agent post-upgrade
-  -> serviceRestart() when this process is managed
+  -> serviceRestart() when this process is managed (Darwin: detached unload+load)
 
 Update now
   -> POST /dashboard/api/release/apply
@@ -384,13 +416,17 @@ Minimum coverage:
   `applyUpdate('unchanged')` returns to `idle`; `stop` prevents further
   ticks; missing `applyUpdate` never starts a timer.
 - Pre-marker managed processes are detected via systemd `INVOCATION_ID`
-  / launchd job id; a Cellar path never becomes a binary upgrade.
+  / launchd job id; a Cellar path never becomes a binary upgrade; brew
+  targets carry `{brewPrefix}/bin/brew` and the installer execs that
+  path; brew no-op (version did not move) returns `'unchanged'` and does
+  not restart; Darwin in-job restart does not `unload` from the job.
 - Release GET reports `managedService` and `update.status`. POST maps
   the apply results and `check_failed`.
 - About UI: Switch writes `{ autoUpdate: true }`; unmanaged hint visible
   when `managedService` is false; Update now posts apply; in-progress
   disables the button; failed apply does not claim up to date;
-  `restart_required` stops polling and shows the restart hint.
+  `restart_required` stops polling, shows the restart hint, and disables
+  Update now.
 
 ## Acceptance
 
