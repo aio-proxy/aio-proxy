@@ -1,4 +1,4 @@
-import { expect, test } from 'bun:test';
+import { expect, mock, test } from 'bun:test';
 import { createHash } from 'node:crypto';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -43,7 +43,11 @@ async function withSettingsFixture(
     readonly routes: Routes;
     readonly state: ServerState;
   }) => Promise<void>,
-  options: { readonly configPath?: boolean; readonly rejectReload?: { value: boolean } } = {},
+  options: {
+    readonly configPath?: boolean;
+    readonly rejectReload?: { value: boolean };
+    readonly notifyCheck?: () => void;
+  } = {},
 ): Promise<void> {
   const directory = mkdtempSync(join(tmpdir(), 'aio-dashboard-settings-'));
   const configPath = join(directory, 'config.json');
@@ -79,7 +83,11 @@ async function withSettingsFixture(
   });
 
   try {
-    await run({ configPath, routes: createDashboardRoutes(state, disabledDashboardAuthentication), state });
+    await run({
+      configPath,
+      routes: createDashboardRoutes(state, disabledDashboardAuthentication, '0.0.0', options.notifyCheck),
+      state,
+    });
   } finally {
     state.close();
     rmSync(directory, { force: true, recursive: true });
@@ -112,6 +120,32 @@ async function putKeys(routes: Routes, apiKeys: unknown): Promise<Response> {
   return put(routes, { apiKeys, apiKeysRevision: await apiKeysRevision(routes) });
 }
 
+test('PUT /settings persists autoUpdate without requiring a restart', async () => {
+  await withSettingsFixture(async ({ routes, configPath }) => {
+    const response = await put(routes, { autoUpdate: true });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      ok: true,
+      restartRequired: false,
+      settings: { autoUpdate: true },
+    });
+    expect(onDisk(configPath).server).toMatchObject({ autoUpdate: true });
+  });
+});
+
+test('PUT /settings autoUpdate true notifies a pending check', async () => {
+  const notifyCheck = mock(() => {});
+  await withSettingsFixture(
+    async ({ routes }) => {
+      await put(routes, { autoUpdate: true });
+      expect(notifyCheck).toHaveBeenCalledTimes(1);
+      await put(routes, { autoUpdate: false });
+      expect(notifyCheck).toHaveBeenCalledTimes(1);
+    },
+    { notifyCheck },
+  );
+});
+
 test('GET /settings returns only the redacted typed settings view', async () => {
   await withSettingsFixture(async ({ routes }) => {
     const response = await routes.request('/settings');
@@ -127,6 +161,7 @@ test('GET /settings returns only the redacted typed settings view', async () => 
       port: 9_317,
       proxy: '****',
       retryAfterCapMs: 30_000,
+      autoUpdate: false,
     });
     expect(text).not.toMatch(
       /password-preserved|user:password|SETTINGS_|root-preserved|sk-from-env|sk-plain-preserved/u,

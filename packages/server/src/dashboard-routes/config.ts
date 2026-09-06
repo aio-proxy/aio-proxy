@@ -35,7 +35,12 @@ const usageOverviewValidator = validator('query', (raw, context) => {
   return parsed.success ? parsed.data : context.json({ error: 'validation failed', details: parsed.error.issues }, 400);
 });
 
-export const createDashboardRoutes = (state: ServerState, auth: DashboardAuthentication, version: string = '0.0.0') =>
+export const createDashboardRoutes = (
+  state: ServerState,
+  auth: DashboardAuthentication,
+  version: string = '0.0.0',
+  notifyCheck?: () => void,
+) =>
   new Hono()
     .get('/config', (context) => context.json(redactSecrets(state.currentConfig())))
     .get('/models-dev/slugs', async (context) => context.json({ slugs: await getCachedModelSlugs() }))
@@ -61,7 +66,7 @@ export const createDashboardRoutes = (state: ServerState, auth: DashboardAuthent
     .route('/overview', createDashboardOverviewRoute(state))
     .route('/plugins', createDashboardPluginRoutes(state))
     .route('/release', createDashboardReleaseRoute(version))
-    .route('/settings', createDashboardSettingsRoute(state))
+    .route('/settings', createDashboardSettingsRoute(state, notifyCheck))
     .route('/traces', createDashboardTraceRoutes(state))
     .route('/events', createDashboardEventsRoute(state, auth))
     .post('/reload', async (context) => {

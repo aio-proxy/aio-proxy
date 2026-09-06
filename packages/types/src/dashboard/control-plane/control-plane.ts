@@ -125,6 +125,7 @@ export const DashboardSettingsViewSchema = z.strictObject({
   hasPassword: z.boolean(),
   apiKeys: z.array(DashboardApiKeyViewSchema),
   apiKeysRevision: DashboardApiKeysRevisionSchema,
+  autoUpdate: required(ServerConfigSchema.shape.autoUpdate),
 });
 
 export const DashboardSettingsMutationSchema = z
@@ -143,6 +144,7 @@ export const DashboardSettingsMutationSchema = z
       })
       .optional(),
     retryAfterCapMs: required(ServerRetrySchema.shape.retryAfterCapMs).optional(),
+    autoUpdate: required(ServerConfigSchema.shape.autoUpdate).optional(),
   })
   // `retain` indexes address one specific authored array, so a key write without the
   // revision it was read against cannot be applied safely, and a revision alone is inert.
