@@ -11,12 +11,25 @@ export type ModelSseStream = ReadableStream<Uint8Array> & { readonly completion:
 
 export type InboundCapability = 'language' | 'image' | 'embedding';
 
-export type ModelInvocationDiagnostic = Readonly<{
-  feature: 'web_search_call';
-  action: 'dropped';
-  reason: 'completed_without_results_or_sources';
-  inputIndex: number;
-}>;
+export type ModelInvocationDiagnostic =
+  | Readonly<{
+      feature: 'web_search_call';
+      action: 'dropped';
+      reason: 'completed_without_results_or_sources';
+      inputIndex: number;
+    }>
+  | Readonly<{
+      feature: 'orphan_tool_call_output';
+      action: 'converted';
+      reason: 'call_id_without_matching_call';
+      inputIndex: number;
+    }>
+  | Readonly<{
+      feature: 'unanswered_tool_call';
+      action: 'converted';
+      reason: 'call_without_matching_output';
+      inputIndex: number;
+    }>;
 
 export type ProtocolErrorMapper = Readonly<{
   requestError: (error: unknown) => Response | undefined;

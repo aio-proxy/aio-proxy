@@ -61,12 +61,15 @@ test('separates adjacent function calls when completed web search evidence is dr
       { type: 'function_call', call_id: 'call_1', name: 'first', arguments: '{}' },
       { type: 'web_search_call', status: 'completed' },
       { type: 'function_call', call_id: 'call_2', name: 'second', arguments: '{}' },
+      { type: 'function_call_output', call_id: 'call_1', output: 'A' },
+      { type: 'function_call_output', call_id: 'call_2', output: 'B' },
     ],
   });
 
   expect(openAIResponsesToModelMessages(request).messages).toMatchObject([
     { role: 'assistant', content: [{ type: 'tool-call', toolCallId: 'call_1' }] },
     { role: 'assistant', content: [{ type: 'tool-call', toolCallId: 'call_2' }] },
+    { role: 'tool', content: [{ toolCallId: 'call_1' }, { toolCallId: 'call_2' }] },
   ]);
 });
 
@@ -219,12 +222,14 @@ test('does not infer a namespace when a top-level custom tool also matches', () 
         ],
       },
       { type: 'custom_tool_call', call_id: 'call_1', name: 'exec', input: 'pwd' },
+      { type: 'custom_tool_call_output', call_id: 'call_1', output: 'done' },
     ],
   });
 
   try {
     expect(openAIResponsesToModelMessages(request).messages).toMatchObject([
       { role: 'assistant', content: [{ type: 'tool-call', toolCallId: 'call_1', toolName: 'exec' }] },
+      { role: 'tool', content: [{ toolCallId: 'call_1' }] },
     ]);
     expect(warn).toHaveBeenCalledWith(
       '[aio-proxy] OpenAI Responses model conversion degraded',
@@ -259,12 +264,14 @@ test('does not infer a namespace when multiple namespaced custom tools match', (
         ],
       },
       { type: 'custom_tool_call', call_id: 'call_1', name: 'exec', input: 'pwd' },
+      { type: 'custom_tool_call_output', call_id: 'call_1', output: 'done' },
     ],
   });
 
   try {
     expect(openAIResponsesToModelMessages(request).messages).toMatchObject([
       { role: 'assistant', content: [{ type: 'tool-call', toolCallId: 'call_1', toolName: 'exec' }] },
+      { role: 'tool', content: [{ toolCallId: 'call_1' }] },
     ]);
     expect(warn).toHaveBeenCalledWith(
       '[aio-proxy] OpenAI Responses model conversion degraded',

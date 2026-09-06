@@ -217,7 +217,10 @@ test('rejects an item reference on the model path', () => {
 test('rejects invalid function arguments', () => {
   const request = parseOpenAIResponses({
     model: 'gpt-5.6-terra',
-    input: [{ type: 'function_call', call_id: 'call_1', name: 'read_file', arguments: '{' }],
+    input: [
+      { type: 'function_call', call_id: 'call_1', name: 'read_file', arguments: '{' },
+      { type: 'function_call_output', call_id: 'call_1', output: 'ok' },
+    ],
   });
 
   expect(() => openAIResponsesToModelMessages(request)).toThrow(new OpenAIResponsesTransformError('input.0.arguments'));
@@ -242,18 +245,215 @@ test('rejects a tool output without a call_id as an unsupported feature', () => 
   }
 });
 
+test('converts a tool output whose call was truncated away into a user note', () => {
+  // Context compaction can drop a function_call while keeping its output (Codex
+  // truncates guardian_history between the two). Neither path can pair it — raw
+  // passthrough gets `400 No tool call found for function call output` upstream.
+  // A proxy must not discard the payload, so it is carried through as a note.
+  const warn = spyOn(console, 'warn').mockImplementation(() => {});
+  const request = parseOpenAIResponses({
+    model: 'gpt-5.6-terra',
+    input: [
+      { type: 'function_call_output', call_id: 'call_gone', output: 'exit code 0' },
+      { role: 'user', content: 'continue' },
+    ],
+  });
+
+  try {
+    const invocation = openAIResponsesToModelMessages(request);
+    expect(invocation.messages[0]).toMatchObject({
+      role: 'user',
+      content: [{ type: 'text', text: '[orphan tool result; call_id=call_gone] exit code 0' }],
+    });
+    expect(invocation.messages[1]).toMatchObject({ role: 'user', content: 'continue' });
+    expect(invocation.diagnostics).toEqual([
+      {
+        feature: 'orphan_tool_call_output',
+        action: 'converted',
+        reason: 'call_id_without_matching_call',
+        inputIndex: 0,
+      },
+    ]);
+  } finally {
+    warn.mockRestore();
+  }
+});
+
+test('keeps image parts of an orphan tool output instead of dropping them', () => {
+  // The note is the only carrier left for this payload, so it must not be
+  // reduced to text — an image in a tool result is content the caller sent.
+  const warn = spyOn(console, 'warn').mockImplementation(() => {});
+  const request = parseOpenAIResponses({
+    model: 'gpt-5.6-terra',
+    input: [
+      {
+        type: 'function_call_output',
+        call_id: 'call_gone',
+        output: [
+          { type: 'output_text', text: 'rendered' },
+          { type: 'input_image', image_url: 'https://example.test/a.png' },
+        ],
+      },
+    ],
+  });
+
+  try {
+    const invocation = openAIResponsesToModelMessages(request);
+    expect(invocation.messages[0]).toMatchObject({
+      role: 'user',
+      content: [
+        { type: 'text', text: '[orphan tool result; call_id=call_gone]' },
+        { type: 'text', text: 'rendered' },
+        { type: 'file' },
+      ],
+    });
+  } finally {
+    warn.mockRestore();
+  }
+});
+
+test('pairs a tool output with its call and does not treat it as an orphan', () => {
+  const request = parseOpenAIResponses({
+    model: 'gpt-5.6-terra',
+    input: [
+      { type: 'function_call', call_id: 'call_1', name: 'read_file', arguments: '{}' },
+      { type: 'function_call_output', call_id: 'call_1', output: 'ok' },
+    ],
+  });
+
+  const invocation = openAIResponsesToModelMessages(request);
+  expect(invocation.messages[1]).toMatchObject({
+    role: 'tool',
+    content: [{ type: 'tool-result', toolCallId: 'call_1', toolName: 'read_file' }],
+  });
+  expect(invocation.diagnostics ?? []).toEqual([]);
+});
+
+test('treats an output preceding its call as an orphan', () => {
+  // Unlike the Codex client, which repairs items in place within the Responses
+  // grammar, this path emits an ordered message sequence: a tool-result before
+  // its tool-call has nothing to attach to. Carrying it as a note keeps the
+  // payload without emitting a message order no provider would accept.
+  const warn = spyOn(console, 'warn').mockImplementation(() => {});
+  const request = parseOpenAIResponses({
+    model: 'gpt-5.6-terra',
+    input: [
+      { type: 'function_call_output', call_id: 'call_1', output: 'stale' },
+      { type: 'function_call', call_id: 'call_1', name: 'read_file', arguments: '{}' },
+    ],
+  });
+
+  try {
+    const invocation = openAIResponsesToModelMessages(request);
+    expect(invocation.messages[0]).toMatchObject({
+      role: 'user',
+      content: [{ type: 'text', text: '[orphan tool result; call_id=call_1] stale' }],
+    });
+    // The call must not count as answered by an output that precedes it, or both
+    // sides would claim to be paired while only one of them emitted a part.
+    expect(invocation.messages[1]).toMatchObject({
+      role: 'assistant',
+      content: [{ type: 'text', text: '[unanswered tool call: read_file({})]' }],
+    });
+  } finally {
+    warn.mockRestore();
+  }
+});
+
+test('narrates a tool call that no output answers instead of emitting a dangling call', () => {
+  // An unanswered call is rejected upstream (`400 No tool output found for
+  // function call …`, and Anthropic refuses a tool_use with no tool_result).
+  // Synthesizing an output would invent a tool return the caller never sent, so
+  // the call is narrated instead — the action survives, the result is not faked.
+  const warn = spyOn(console, 'warn').mockImplementation(() => {});
+  const request = parseOpenAIResponses({
+    model: 'gpt-5.6-terra',
+    input: [
+      { type: 'function_call', call_id: 'call_dropped', name: 'read_file', arguments: '{"path":"a"}' },
+      { role: 'user', content: 'continue' },
+    ],
+  });
+
+  try {
+    const invocation = openAIResponsesToModelMessages(request);
+    expect(invocation.messages[0]).toEqual({
+      role: 'assistant',
+      content: [{ type: 'text', text: '[unanswered tool call: read_file({"path":"a"})]' }],
+    });
+    expect(invocation.messages[1]).toMatchObject({ role: 'user', content: 'continue' });
+    expect(invocation.diagnostics).toEqual([
+      {
+        feature: 'unanswered_tool_call',
+        action: 'converted',
+        reason: 'call_without_matching_output',
+        inputIndex: 0,
+      },
+    ]);
+  } finally {
+    warn.mockRestore();
+  }
+});
+
+test('carries unanswered call arguments verbatim so the text stays byte-stable', () => {
+  // Re-serializing would change key order and spacing between turns, breaking
+  // upstream prefix caching for a conversation that keeps replaying this item.
+  const warn = spyOn(console, 'warn').mockImplementation(() => {});
+  const request = parseOpenAIResponses({
+    model: 'gpt-5.6-terra',
+    input: [{ type: 'function_call', call_id: 'call_1', name: 'run', arguments: '{ "b":2,  "a":1 }' }],
+  });
+
+  try {
+    expect(openAIResponsesToModelMessages(request).messages[0]).toMatchObject({
+      role: 'assistant',
+      content: [{ type: 'text', text: '[unanswered tool call: run({ "b":2,  "a":1 })]' }],
+    });
+  } finally {
+    warn.mockRestore();
+  }
+});
+
+test('narrates only the unanswered call of a parallel batch', () => {
+  const warn = spyOn(console, 'warn').mockImplementation(() => {});
+  const request = parseOpenAIResponses({
+    model: 'gpt-5.6-terra',
+    input: [
+      { type: 'function_call', call_id: 'call_1', name: 'read_file', arguments: '{}' },
+      { type: 'function_call', call_id: 'call_2', name: 'write_file', arguments: '{}' },
+      { type: 'function_call_output', call_id: 'call_1', output: 'ok' },
+    ],
+  });
+
+  try {
+    const invocation = openAIResponsesToModelMessages(request);
+    expect(invocation.messages).toMatchObject([
+      {
+        role: 'assistant',
+        content: [
+          { type: 'tool-call', toolCallId: 'call_1', toolName: 'read_file' },
+          { type: 'text', text: '[unanswered tool call: write_file({})]' },
+        ],
+      },
+      { role: 'tool', content: [{ type: 'tool-result', toolCallId: 'call_1' }] },
+    ]);
+  } finally {
+    warn.mockRestore();
+  }
+});
+
 test('converts empty function arguments to an empty object', () => {
   const request = parseOpenAIResponses({
     model: 'gpt-5.6-terra',
-    input: [{ type: 'function_call', call_id: 'call_1', name: 'get_goal', arguments: '' }],
+    input: [
+      { type: 'function_call', call_id: 'call_1', name: 'get_goal', arguments: '' },
+      { type: 'function_call_output', call_id: 'call_1', output: 'ok' },
+    ],
   });
 
-  expect(openAIResponsesToModelMessages(request).messages).toEqual([
-    {
-      role: 'assistant',
-      content: [{ type: 'tool-call', toolCallId: 'call_1', toolName: 'get_goal', input: {} }],
-    },
-  ]);
+  expect(openAIResponsesToModelMessages(request).messages[0]).toEqual({
+    role: 'assistant',
+    content: [{ type: 'tool-call', toolCallId: 'call_1', toolName: 'get_goal', input: {} }],
+  });
 });
 
 test('groups consecutive parallel calls and outputs', () => {
