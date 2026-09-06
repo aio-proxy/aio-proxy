@@ -170,7 +170,8 @@ test('image-primary probe posts a generations ping through the primary transport
 
   expect(await probeApi(provider, instance)).toBe('OK');
   expect(requested).toBe('https://api.openai.com/v1/images/generations');
-  // 音频探测引入 method 后的护栏：既有协议的方法、body 与 content-type 必须逐字不变。
+  // Guardrail for introducing `method` for audio: the existing protocols' method,
+  // body, and content-type must stay byte-for-byte unchanged.
   expect(method).toBe('POST');
   expect(contentType).toBe('application/json');
   expect(body).toEqual({ model: 'gpt-image-2', n: 1, prompt: 'ping' });
@@ -203,11 +204,13 @@ test('transcription-only audio provider probes GET /v1/models with no body', asy
 
   expect(await probeApi(provider, instance)).toBe('OK');
   expect(method).toBe('GET');
-  // sdk 模式下 '/v1' 前缀被剥掉再拼到 baseURL path 之后，与其他协议的探测路径同规则。
+  // In sdk mode the '/v1' prefix is stripped and re-appended after the baseURL path,
+  // by the same rule as every other protocol's probe path.
   expect(requested).toBe('https://audio.example.com/v1/models');
   expect(body).toBeUndefined();
   expect(contentType).toBeNull();
-  // 探测的意义在于验证凭据，所以 GET 分支也必须注入 api key。
+  // The point of a probe is to verify credentials, so the GET branch must inject the
+  // api key too.
   expect(authorization).toBe('Bearer k');
 });
 
@@ -225,8 +228,9 @@ test('audio provider that rejects the api key probes FAIL', async () => {
     fetch: (async () => new Response('{"error":{}}', { status: 401 })) as typeof globalThis.fetch,
   });
 
-  // 上游若把 /v1/models 设为免鉴权，错误密钥仍会得到 200 而误报 OK；
-  // 这条只保证鉴权确实被执行时红灯不会丢。
+  // If an upstream leaves /v1/models unauthenticated, a wrong key still gets a 200 and
+  // reports a false OK; this only guarantees the red light is not lost when auth is
+  // genuinely enforced.
   expect(await probeApi(provider, instance)).toBe('FAIL');
 });
 
@@ -242,7 +246,8 @@ test('speech audio provider probes the same capability-agnostic endpoint', async
     models: ['tts-1'],
     protocol: ProviderProtocol.OpenAIAudio,
   } as const;
-  // 探测请求不含 model：语音与转写模型共用同一个连通性检查。
+  // The probe request carries no model: speech and transcription models share the one
+  // connectivity check.
   expect(providerProbeRequest(provider, 'tts-1')).toEqual({ method: 'GET', path: '/v1/models' });
   const instance = createApiProvider(provider, {
     fetch: (async (input: string | URL | Request, init?: RequestInit) => {

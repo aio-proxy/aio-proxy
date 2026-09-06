@@ -9,7 +9,7 @@ const openAIResponsesProbeMaxOutputTokens = 16;
 
 export type ProviderProbeRequest = {
   readonly body?: unknown;
-  /** GET 探测既不带 body 也不带 content-type；省略时按 POST 处理。 */
+  /** A GET probe carries neither a body nor a content-type; omitted means POST. */
   readonly method?: 'GET' | 'POST';
   readonly path: string;
 };
@@ -95,8 +95,10 @@ export function providerProbeRequest(
         path: '/v1/images/generations',
       };
     case ProviderProtocol.OpenAIAudio:
-      // 只验证连通性与凭据：配置的模型可能仅支持语音合成或仅支持转写，
-      // 任一方向的能力请求都会被另一类模型拒绝并误报 FAIL。
+      // Verify connectivity and credentials only: a configured model may support
+      // speech synthesis alone or transcription alone, so a capability request in
+      // either direction would be rejected by the other kind of model and report a
+      // false FAIL.
       return { method: 'GET', path: '/v1/models' };
     default:
       return assertNever(primary.protocol);
