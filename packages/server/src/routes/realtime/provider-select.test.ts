@@ -50,6 +50,71 @@ test('a model override replaces the provider weight and can make a candidate ine
   ).toHaveLength(0);
 });
 
+// The routing rule is that an exact-model override replaces the provider default, and the
+// weight half of that was already honored here while the priority half was not. Two ChatGPT
+// accounts were therefore attempted in the wrong failover tier: with at most two create
+// attempts, the tier order decides which account serves the call.
+test('a model override replaces the provider priority and reorders the failover tiers', () => {
+  const snapshot = snapshotOf(
+    [realtimeProvider({ id: 'low', priority: 1 }), realtimeProvider({ id: 'high', priority: 9 })],
+    {
+      'gpt-live-1-codex': { providers: { low: { priority: 50 } } },
+    },
+  );
+
+  const ordered = selectRealtimeCandidates(snapshot, { requested: 'gpt-realtime', normalized: 'gpt-live-1-codex' });
+
+  // Without the override `high` (9) leads; the override lifts `low` to tier 50.
+  expect(ordered.map((candidate) => candidate.provider.id)).toEqual(['low', 'high']);
+  expect(ordered.map((candidate) => candidate.priority)).toEqual([50, 9]);
+});
+
+// A wholesale replacement, not a maximum: an override *below* the authored priority has to
+// demote the provider. A `Math.max(authored, override)` would satisfy the test above.
+test('a model priority override lower than the authored priority demotes the provider', () => {
+  const snapshot = snapshotOf(
+    [realtimeProvider({ id: 'demoted', priority: 9 }), realtimeProvider({ id: 'plain', priority: 5 })],
+    {
+      'gpt-live-1-codex': { providers: { demoted: { priority: 1 } } },
+    },
+  );
+
+  const ordered = selectRealtimeCandidates(snapshot, { requested: 'gpt-realtime', normalized: 'gpt-live-1-codex' });
+
+  expect(ordered.map((candidate) => candidate.provider.id)).toEqual(['plain', 'demoted']);
+});
+
+// A priority override of 0 is a real tier, not an absent value: `??` keeps it while `||`
+// would silently fall back to the authored 9 and leave the provider in the top tier.
+test('a model priority override of zero is honored rather than treated as absent', () => {
+  const snapshot = snapshotOf(
+    [realtimeProvider({ id: 'zeroed', priority: 9 }), realtimeProvider({ id: 'plain', priority: 1 })],
+    {
+      'gpt-live-1-codex': { providers: { zeroed: { priority: 0 } } },
+    },
+  );
+
+  const ordered = selectRealtimeCandidates(snapshot, { requested: 'gpt-realtime', normalized: 'gpt-live-1-codex' });
+
+  expect(ordered.map((candidate) => candidate.provider.id)).toEqual(['plain', 'zeroed']);
+  expect(ordered.map((candidate) => candidate.priority)).toEqual([1, 0]);
+});
+
+// An override keyed on a model this request is not for must not bleed across. Selection
+// matches on the normalized id, so the override for `gpt-realtime` is not this request's.
+test('a priority override for a different model does not affect this selection', () => {
+  const snapshot = snapshotOf(
+    [realtimeProvider({ id: 'low', priority: 1 }), realtimeProvider({ id: 'high', priority: 9 })],
+    {
+      'gpt-realtime': { providers: { low: { priority: 50 } } },
+    },
+  );
+
+  const ordered = selectRealtimeCandidates(snapshot, { requested: 'gpt-realtime', normalized: 'gpt-live-1-codex' });
+
+  expect(ordered.map((candidate) => candidate.provider.id)).toEqual(['high', 'low']);
+});
+
 test('an effective weight above the routing maximum is clamped rather than sorted ahead', () => {
   const snapshot = snapshotOf([
     realtimeProvider({ id: 'clamped', weight: 99_999 }),
@@ -145,7 +210,10 @@ function realtimeProvider(overrides: {
 
 function snapshotOf(
   providers: readonly RuntimeProviderInstance[],
-  models: Record<string, { readonly providers: Record<string, { readonly weight?: number }> }> = {},
+  models: Record<
+    string,
+    { readonly providers: Record<string, { readonly weight?: number; readonly priority?: number }> }
+  > = {},
   configProviders: readonly { readonly id: string; readonly excludedModels?: readonly string[] }[] = [],
 ): ProviderRouteSnapshot {
   return {

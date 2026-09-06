@@ -49,11 +49,11 @@ export function pinnedRealtimeCandidate(
   if (provider.accountId !== pin.accountId || provider.runtimeRevision !== pin.runtimeRevision) return undefined;
   const realtime = provider.realtime;
   if (realtime === undefined) return undefined;
-  // `weight` is reported for `RealtimeCandidate` shape parity only, and has no
-  // consumer here. A pin is session affinity, not traffic allocation: there is no
-  // weight gate, and the model override is deliberately skipped because a pinned
-  // call's provider was already chosen — so this number legitimately differs from
-  // the one `selectRealtimeCandidates` reports for the same provider.
+  // `priority` and `weight` are reported for `RealtimeCandidate` shape parity only, and
+  // have no consumer here. A pin is session affinity, not traffic allocation: there is no
+  // weight gate, no ordering, and the model override is deliberately skipped for both —
+  // a pinned call's provider was already chosen. So these numbers legitimately differ from
+  // the ones `selectRealtimeCandidates` reports for the same provider.
   return {
     provider,
     realtime,
@@ -73,7 +73,7 @@ function eligibleCandidate(
   if (isExcluded(snapshot, provider, models)) return undefined;
   const weight = effectiveWeight(snapshot, provider, models.normalized);
   if (weight <= 0) return undefined;
-  return { provider, realtime, priority: provider.priority ?? DEFAULT_PRIORITY, weight };
+  return { provider, realtime, priority: effectivePriority(snapshot, provider, models.normalized), weight };
 }
 
 // `excludedModels` is authored on the config `OAuthProvider`
@@ -90,6 +90,15 @@ function isExcluded(
   const excluded = configured !== undefined && 'excludedModels' in configured ? configured.excludedModels : undefined;
   if (excluded === undefined || excluded.length === 0) return false;
   return excluded.includes(models.requested) || excluded.includes(models.normalized);
+}
+
+// Same rule as the router (`core/src/router/router.ts:effectiveRouting`) and as
+// `effectiveWeight` below: an exact-model override replaces the authored provider
+// priority wholesale. Not clamped here — `RoutingPrioritySchema` is an integer already
+// clamped to 0..ROUTING_VALUE_MAX at parse time, on both the provider and the override.
+function effectivePriority(snapshot: ProviderRouteSnapshot, provider: RuntimeProviderInstance, model: string): number {
+  const override = snapshot.config?.router.models[model]?.providers[provider.id]?.priority;
+  return override ?? provider.priority ?? DEFAULT_PRIORITY;
 }
 
 // Same rule as the router: authored provider weight defaults to 1, a model
