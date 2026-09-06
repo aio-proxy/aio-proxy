@@ -53,6 +53,27 @@ test('an openai-compatible ai-sdk provider gains no audio transport', () => {
   expect(instance.transcription).toBeUndefined();
 });
 
+// A package-level grant would have attached both directions to each of these and
+// 500d the direction the package does not implement, or attached neither and 501d
+// a request the provider can serve. Both halves of each expectation matter.
+test('an @ai-sdk/groq provider gains transcription only', () => {
+  const instance = attachAudioTransports(languageOnlyInstance(), { config: aiSdkConfig('@ai-sdk/groq') });
+  expect(instance.transcription).toBeDefined();
+  expect(instance.speech).toBeUndefined();
+});
+
+test('an @ai-sdk/google provider gains speech only', () => {
+  const instance = attachAudioTransports(languageOnlyInstance(), { config: aiSdkConfig('@ai-sdk/google') });
+  expect(instance.speech).toBeDefined();
+  expect(instance.transcription).toBeUndefined();
+});
+
+test('an @ai-sdk/xai provider gains both audio transports', () => {
+  const instance = attachAudioTransports(languageOnlyInstance(), { config: aiSdkConfig('@ai-sdk/xai') });
+  expect(instance.speech).toBeDefined();
+  expect(instance.transcription).toBeDefined();
+});
+
 test('an API provider gains no audio transport and keeps its raw passthrough', () => {
   // API providers reach audio through the same-protocol raw path only: an
   // `openai-audio` endpoint always matches raw.resolve, and one without such an

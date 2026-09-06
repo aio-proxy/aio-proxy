@@ -13,14 +13,30 @@ import { ProviderKind } from '@aio-proxy/types';
 import type { RuntimeProviderInstance, SpeechTransport, TranscriptionTransport } from '../../runtime';
 
 /**
- * The AI SDK packages that implement the OPTIONAL `speechModel` and
- * `transcriptionModel` ProviderV4 members. @ai-sdk/openai implements both;
- * @ai-sdk/openai-compatible implements neither, so an openai-compatible provider
- * can only serve audio through same-protocol raw passthrough. Membership is all
- * this gate needs: unlike images, no protocol has to be mapped to a package,
- * because API providers are never bridged to audio (see `attachAudioTransports`).
+ * Which audio directions each bundled AI SDK package implements, as OPTIONAL
+ * ProviderV4 `speechModel` / `transcriptionModel` members. The grant must be
+ * direction-specific, not per-package: attaching a transport the package does not
+ * implement admits the candidate to that direction's pool only to fail inside the
+ * AI SDK on every attempt, while omitting one it does implement 501s a request the
+ * provider could have served.
+ *
+ * Read off the pinned `BUNDLED_PROVIDER_VERSIONS` builds: openai and xai assign
+ * both members, google assigns `speechModel` only, groq assigns
+ * `transcriptionModel` only. anthropic, mistral, openai-compatible, and openrouter
+ * assign neither, so they are absent and can serve audio only through
+ * same-protocol raw passthrough.
+ *
+ * Unlike images, no protocol has to be mapped to a package here, because API
+ * providers are never bridged to audio (see `attachAudioTransports`).
  */
-const AUDIO_BRIDGE_PACKAGES: ReadonlySet<string> = new Set(['@ai-sdk/openai']);
+const AUDIO_BRIDGE_PACKAGES: Readonly<
+  Record<string, { readonly speech: boolean; readonly transcription: boolean } | undefined>
+> = {
+  '@ai-sdk/openai': { speech: true, transcription: true },
+  '@ai-sdk/xai': { speech: true, transcription: true },
+  '@ai-sdk/google': { speech: true, transcription: false },
+  '@ai-sdk/groq': { speech: false, transcription: true },
+};
 
 type LoadProvider = typeof loadAiSdkProvider;
 // The ProviderV4 structural type, reached through core rather than a direct
@@ -52,7 +68,8 @@ export function attachAudioTransports(
 ): RuntimeProviderInstance {
   const { config } = options;
   if (config.kind !== ProviderKind.AiSdk) return instance;
-  if (!AUDIO_BRIDGE_PACKAGES.has(config.packageName)) return instance;
+  const directions = AUDIO_BRIDGE_PACKAGES[config.packageName];
+  if (directions === undefined) return instance;
   const load = () =>
     (options.loadProvider ?? loadAiSdkProvider)(config.packageName, {
       ...config.options,
@@ -60,8 +77,10 @@ export function attachAudioTransports(
     });
   return {
     ...instance,
-    ...(instance.speech === undefined ? { speech: lazySpeechTransport(config.id, load) } : {}),
-    ...(instance.transcription === undefined ? { transcription: lazyTranscriptionTransport(config.id, load) } : {}),
+    ...(directions.speech && instance.speech === undefined ? { speech: lazySpeechTransport(config.id, load) } : {}),
+    ...(directions.transcription && instance.transcription === undefined
+      ? { transcription: lazyTranscriptionTransport(config.id, load) }
+      : {}),
   };
 }
 
