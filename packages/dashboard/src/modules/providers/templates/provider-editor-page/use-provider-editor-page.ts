@@ -290,8 +290,8 @@ const nameAfterOAuthSuccess = (
   form: ReturnType<typeof useProviderEditorForm>,
   oauth: DashboardOAuthProviderEdit | undefined,
 ): string => {
-  const currentName = form.state.values.name;
-  if (typeof currentName === 'string' && currentName.trim() !== '') return currentName;
+  const currentName = form.state.values.name?.trim() ?? '';
+  if (currentName !== '') return currentName;
   return oauth?.accountLabel.trim() ?? '';
 };
 
@@ -354,13 +354,12 @@ export const useProviderEditorPage = ({
   );
   const onSessionSucceeded = useCallback(
     (refreshed?: DashboardOAuthProviderEdit) => {
-      const next = refreshed ?? oauth;
       accountForm.setFieldValue('secrets', {});
       accountForm.setFieldValue('clearSecrets', []);
-      if (next !== undefined) accountForm.setFieldValue('publicValues', next.publicValues);
-      resetEditorAfterOAuthSuccess(form, initial, kind, next);
+      if (refreshed !== undefined) accountForm.setFieldValue('publicValues', refreshed.publicValues);
+      resetEditorAfterOAuthSuccess(form, initial, kind, refreshed);
     },
-    [accountForm, form, initial, kind, oauth],
+    [accountForm, form, initial, kind],
   );
   const {
     openPopup,

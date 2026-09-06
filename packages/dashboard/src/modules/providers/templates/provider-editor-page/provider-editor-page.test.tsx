@@ -619,6 +619,29 @@ test('edit-mode succeeded session with catalog_unavailable shows the rail warnin
   expect(mocks.navigate).not.toHaveBeenCalled();
 });
 
+test('oauth create fills a blank name on the destination editor from the account label', async () => {
+  mocks.session = {
+    id: 'session',
+    status: 'succeeded',
+    providerId: 'p-new',
+  };
+  mocks.fetchQuery.mockResolvedValue({ oauth: { ...oauth, accountLabel: 'New Account' } });
+  renderPage({
+    mode: ProviderFormMode.Edit,
+    kind: ProviderKind.OAuth,
+    providerId: 'p-new',
+    provider: { ...oauthProvider, id: 'p-new' },
+    oauth,
+    initial: { id: 'p-new', enabled: true, models: [] },
+    sessionId: 'session',
+    onSessionIdChange: rs.fn(),
+  });
+
+  await waitFor(() =>
+    expect(within(screen.getByTestId('provider-form-field-name')).getByRole('textbox')).toHaveValue('New Account'),
+  );
+});
+
 test('oauth success prefers a fresh edit-view fetch over a stale cache', async () => {
   mocks.session = {
     id: 'session',
@@ -642,6 +665,42 @@ test('oauth success prefers a fresh edit-view fetch over a stale cache', async (
     expect(within(screen.getByTestId('provider-form-field-name')).getByRole('textbox')).toHaveValue('New Account'),
   );
   expect(mocks.fetchQuery).toHaveBeenCalled();
+});
+
+test('oauth success still clears credential drafts when the label fetch fails', async () => {
+  const configured = {
+    ...oauth,
+    form: [{ type: 'secret', key: 'token', label: 'Token', configured: true } as const],
+  };
+  const props = {
+    mode: ProviderFormMode.Edit,
+    kind: ProviderKind.OAuth,
+    providerId: 'existing',
+    provider: oauthProvider,
+    oauth: configured,
+    initial: { id: 'existing', name: 'Personal', enabled: true, models: [] },
+    onSessionIdChange: rs.fn(),
+  } as const;
+  const view = renderPage(props);
+  const token = screen.getByLabelText('Token');
+  fireEvent.change(token, { target: { value: 'replacement' } });
+  expect(token).toHaveValue('replacement');
+
+  mocks.session = {
+    id: 'session',
+    status: 'succeeded',
+    providerId: 'existing',
+  };
+  mocks.fetchQuery.mockRejectedValue(new Error('edit-view unavailable'));
+  view.rerender(
+    <>
+      <Toaster />
+      <ProviderEditorPage {...props} sessionId="session" />
+    </>,
+  );
+
+  await waitFor(() => expect(screen.getByLabelText('Token')).toHaveValue(''));
+  expect(within(screen.getByTestId('provider-form-field-name')).getByRole('textbox')).toHaveValue('Personal');
 });
 
 test('oauth re-auth on an existing provider stays put and refetches the edit view', async () => {

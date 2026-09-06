@@ -94,26 +94,28 @@ export const useOAuthEditorSession = (
       setSessionWarning(session.warning);
       void queryClient.invalidateQueries({ queryKey: queryKeys.providers });
       void (async () => {
+        let next: DashboardOAuthProviderEdit | undefined;
         try {
           await queryClient.invalidateQueries({ queryKey: queryKeys.providerEditView(session.providerId) });
-          const data = await queryClient.fetchQuery({
-            ...providerEditViewQueryOptions(session.providerId),
-            staleTime: 0,
-          });
-          const next = oauthFromEditView(data);
-          if (next !== undefined) onSessionSucceeded?.(next);
+          next = oauthFromEditView(
+            await queryClient.fetchQuery({
+              ...providerEditViewQueryOptions(session.providerId),
+              staleTime: 0,
+            }),
+          );
         } catch {
-          // Leave the name blank rather than fill a stale cached label.
+          next = undefined;
+        }
+        onSessionSucceeded?.(next);
+        if (mode === ProviderFormMode.Create) {
+          void navigate({
+            to: '/providers/$id/edit',
+            params: { id: session.providerId },
+            search: { session: session.id },
+            replace: true,
+          });
         }
       })();
-      if (mode === ProviderFormMode.Create) {
-        void navigate({
-          to: '/providers/$id/edit',
-          params: { id: session.providerId },
-          search: { session: session.id },
-          replace: true,
-        });
-      }
     }
   }, [closeUnclaimedPopup, mode, navigate, onSessionSucceeded, queryClient, session]);
 
