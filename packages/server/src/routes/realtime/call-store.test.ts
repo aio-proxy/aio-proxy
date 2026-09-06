@@ -95,6 +95,44 @@ test('remove drops the record so a later lookup and reserve both miss', () => {
   expect(store.size()).toBe(0);
 });
 
+test('a teardown registered after the reservation is gone runs immediately instead of being dropped', () => {
+  // Task 9's real ordering is reserve -> await dial() (up to 10s) -> onClose(...).
+  // A shutdown or a hangup landing inside that window used to leave the upstream
+  // socket with no teardown at all, because the store had already forgotten the
+  // reservation the handle's closure still points at.
+  const store = createRealtimeCallStore();
+  store.insert(record());
+  const shutdownHandle = store.reserve('call_abc')!;
+  const shutdownCodes: number[] = [];
+
+  store.close();
+  shutdownHandle.onClose((code) => shutdownCodes.push(code));
+
+  expect(shutdownCodes).toEqual([1001]);
+
+  const live = createRealtimeCallStore();
+  live.insert(record());
+  const hangupHandle = live.reserve('call_abc')!;
+  const hangupCodes: number[] = [];
+
+  expect(live.closeAttachment('call_abc', 1000)).toBe(true);
+  hangupHandle.onClose((code) => hangupCodes.push(code));
+
+  expect(hangupCodes).toEqual([1000]);
+});
+
+test('a teardown registered while the reservation is still held is not run early', () => {
+  const store = createRealtimeCallStore();
+  store.insert(record());
+  const codes: number[] = [];
+
+  store.reserve('call_abc')!.onClose((code) => codes.push(code));
+
+  expect(codes).toEqual([]);
+  expect(store.closeAttachment('call_abc', 1000)).toBe(true);
+  expect(codes).toEqual([1000]);
+});
+
 function record(overrides: Partial<RealtimeCallRecord> = {}): RealtimeCallRecord {
   return {
     callId: 'call_abc',

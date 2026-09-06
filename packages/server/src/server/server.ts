@@ -30,6 +30,7 @@ import { createOpenAICompletionsRoutes } from '../routes/openai-completions';
 import { createOpenAIEmbeddingsRoutes } from '../routes/openai-embeddings';
 import { createOpenAIImagesRoutes } from '../routes/openai-images';
 import { createOpenAIResponsesRoutes } from '../routes/openai-responses';
+import { createRealtimeRoutes, type RealtimeRouteSource } from '../routes/realtime';
 import type { RuntimeProviderInput } from '../runtime';
 import type { ServerLogSink } from '../server-log';
 import { logServerEvent, serverErrorType } from '../server-log';
@@ -248,6 +249,14 @@ export type CreateServerOptions = {
   readonly version?: string;
 };
 
+/** Narrows `ServerState` to what realtime is allowed to see: no usage capture, no
+ *  request recorder, no cooldown store. */
+const realtimeRouteSource = (state: ServerState): RealtimeRouteSource => ({
+  acquireProviderSnapshot: state.acquireProviderSnapshot,
+  logger: state.logger,
+  realtimeCalls: state.realtimeCalls,
+});
+
 const createRoutes = (
   state: ServerState,
   dashboardAssets?: DashboardAssets,
@@ -368,6 +377,10 @@ const createRoutes = (
   const openAIEmbeddingsRoutes = createOpenAIEmbeddingsRoutes(state);
   const openAIResponsesRoutes = createOpenAIResponsesRoutes(state);
   const openAIImagesRoutes = createOpenAIImagesRoutes(state);
+  // Mounted (below) only after `app.use('/v1/*', modelAuthentication)`: a realtime route
+  // registered ahead of that middleware reads every caller as the anonymous principal,
+  // and the create/attach ownership check would then admit anyone.
+  const realtimeRoutes = createRealtimeRoutes(realtimeRouteSource(state));
   const routes = app
     .route('/oauth', agentOAuthRoutes)
     .route('/dashboard/api/agent-authorizations', agentApprovalRoutes)
@@ -379,6 +392,7 @@ const createRoutes = (
     .route('/', openAIEmbeddingsRoutes)
     .route('/', openAIResponsesRoutes)
     .route('/', openAIImagesRoutes)
+    .route('/', realtimeRoutes)
     .route('/dashboard/api/auth', dashboardAuthRoutes)
     .route('/dashboard/api', dashboardRoutes);
 

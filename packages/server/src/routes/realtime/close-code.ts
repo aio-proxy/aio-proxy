@@ -1,5 +1,7 @@
 export const INTERNAL_CLOSE_CODE = 1011;
 export const SHUTDOWN_CLOSE_CODE = 1001;
+/** A deliberate, non-error end of the call: a 2xx hangup. */
+export const NORMAL_CLOSE_CODE = 1000;
 export const MAX_CLOSE_REASON_BYTES = 123;
 
 /** Measured on Bun 1.4.2: `ServerWebSocket.close()` accepts everything, but the

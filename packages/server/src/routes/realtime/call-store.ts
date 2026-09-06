@@ -1,5 +1,7 @@
 import type { RealtimeStyle } from '@aio-proxy/plugin-sdk';
 
+import { NORMAL_CLOSE_CODE, SHUTDOWN_CLOSE_CODE } from './close-code';
+
 export const REALTIME_CALL_CAPACITY = 1024;
 export const REALTIME_CALL_TTL_MS = 3_600_000;
 
@@ -94,6 +96,14 @@ export function createRealtimeCallStore(
         callId,
         token,
         onClose(close) {
+          // The sideband registers its teardown only once `dial()` resolves, up to
+          // 10 s after the reservation. A shutdown or a 2xx hangup landing inside
+          // that window has already cleared this reservation, so merely storing the
+          // callback would leave the upstream socket with nothing to close it.
+          if (entry.attachment !== attachment) {
+            close(closed ? SHUTDOWN_CLOSE_CODE : NORMAL_CLOSE_CODE);
+            return;
+          }
           attachment.close = close;
         },
       };
@@ -151,7 +161,7 @@ export function createRealtimeCallStore(
         entry.attachment = undefined;
         if (close !== undefined) {
           try {
-            close(1001);
+            close(SHUTDOWN_CLOSE_CODE);
           } catch {}
         }
       }
