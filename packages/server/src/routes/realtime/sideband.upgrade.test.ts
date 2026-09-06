@@ -71,6 +71,56 @@ test('a real Bun.serve upgrade relays every framing at exact byte length', async
   }
 });
 
+/** A keyed proxy attached through the supported `?key=` credential form. The auth middleware's
+ *  `stripCallerCredentials` replaces `context.req.raw` with `new Request(strippedUrl, request)`,
+ *  and Bun 1.4.2's `server.upgrade()` refuses any Request other than the original one associated
+ *  with the inbound connection — measured: it returns `false`, so Hono's direct
+ *  `upgradeWebSocket` overload throws and the sideband answered 503 after already dialing the
+ *  upstream. Only a real `Bun.serve` can observe this; `app.request()` never reaches `upgrade`.
+ *
+ *  Run keyed and with `?key=` deliberately: that is the only combination in which the middleware
+ *  rewrites the request at all. `?intent=` is asserted absent from the surviving URL alongside a
+ *  positive control on the harmless parameter, so a fix that simply stopped sanitizing would
+ *  fail the disclosure half. */
+test('a real Bun.serve upgrade survives the query-credential strip on a keyed proxy', async () => {
+  const upstream = Bun.serve({
+    port: 0,
+    fetch: (request, server) => (server.upgrade(request) ? undefined : new Response('no', { status: 400 })),
+    websocket: { open: (ws) => ws.send('greeting'), message: () => {} },
+  });
+
+  const app = await createServer({
+    config: { providers: {}, server: { apiKeys: [{ key: 'caller-secret' }] } },
+    providerInstances: [realtimeProvider(`ws://localhost:${upstream.port}`)],
+  });
+  const proxy = Bun.serve({ port: 0, fetch: app.fetch, websocket: { ...websocket, idleTimeout: 255 } });
+
+  try {
+    const create = await fetch(`http://localhost:${proxy.port}/v1/live?key=caller-secret`, {
+      method: 'POST',
+      body: 'v=0\r\n',
+      headers: { 'content-type': 'application/sdp' },
+    });
+    // The create must succeed, or the attach below would 404 for an unrelated reason and the
+    // upgrade assertion would never run.
+    expect(create.status).toBe(201);
+
+    const client = new WebSocket(`ws://localhost:${proxy.port}/v1/live/call_abc?key=caller-secret&intent=quicksilver`);
+    const outcome = await new Promise<string>((resolve) => {
+      client.addEventListener('message', (event: MessageEvent<string>) => resolve(`open:${event.data}`));
+      client.addEventListener('error', () => resolve('refused'));
+      client.addEventListener('close', (event: CloseEvent) => resolve(`closed:${event.code}`));
+      setTimeout(() => resolve('timeout'), 5_000);
+    });
+
+    expect(outcome).toBe('open:greeting');
+    client.close(1000);
+  } finally {
+    proxy.stop(true);
+    upstream.stop(true);
+  }
+});
+
 function realtimeProvider(base: string): RuntimeProviderInput {
   return {
     id: 'codex',

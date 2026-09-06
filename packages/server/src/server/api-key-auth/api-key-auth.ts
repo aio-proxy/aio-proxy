@@ -96,7 +96,28 @@ export function bearerToken(value: string | undefined): string | undefined {
 
 function withoutCallerQuery(request: Request): Request {
   const stripped = withoutCallerCredentialQuery(request.url);
-  return stripped === request.url ? request : new Request(stripped, request);
+  if (stripped === request.url) return request;
+  const sanitized = new Request(stripped, request);
+  nativeRequests.set(sanitized, request);
+  return sanitized;
+}
+
+/** Maps each sanitized request back to the native one it was copied from. Keyed on the copy
+ *  and weak so nothing outlives the request. */
+const nativeRequests = new WeakMap<Request, Request>();
+
+/** The native inbound `Request` `request` was copied from, or `request` itself when it is
+ *  already native.
+ *
+ *  Only `server.upgrade()` needs this. Measured on Bun 1.4.2: `upgrade()` accepts solely the
+ *  original `Request` object associated with the inbound connection and returns `false` for a
+ *  `new Request(...)` copy of it — which Hono's direct `upgradeWebSocket` overload turns into a
+ *  throw. So a WebSocket route reached through `stripCallerCredentials`, which replaces
+ *  `context.req.raw` with a copy whenever the caller presented `?key=`/`?auth_token=`, cannot
+ *  upgrade at all unless it hands `upgrade()` the original object back. Every other reader must
+ *  keep seeing the sanitized copy, so the swap has to be scoped to the `upgrade()` call. */
+export function nativeUpgradeRequest(request: Request): Request {
+  return nativeRequests.get(request) ?? request;
 }
 
 function matchedConfiguredKey(candidate: string, configuredKeys: readonly ApiKeyEntry[]): ApiKeyEntry | undefined {

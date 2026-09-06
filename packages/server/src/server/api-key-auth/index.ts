@@ -1,1 +1,6 @@
-export { requireApiKey, withoutCallerCredentials, withoutCallerCredentialQuery } from './api-key-auth';
+export {
+  nativeUpgradeRequest,
+  requireApiKey,
+  withoutCallerCredentialQuery,
+  withoutCallerCredentials,
+} from './api-key-auth';

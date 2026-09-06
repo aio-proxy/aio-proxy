@@ -1,11 +1,12 @@
 import { RealtimeDialError, type RealtimeStyle, type RealtimeTransport } from '@aio-proxy/plugin-sdk';
 import type { Context } from 'hono';
 import { upgradeWebSocket } from 'hono/bun';
+import type { WSEvents } from 'hono/ws';
 
 import { callerPrincipal, type CallerPrincipalEnv } from '../../caller-principal';
 import type { ProviderRouteSnapshot } from '../../runtime';
 import { logServerEvent } from '../../server-log';
-import { withoutCallerCredentials } from '../../server/api-key-auth';
+import { nativeUpgradeRequest, withoutCallerCredentials } from '../../server/api-key-auth';
 import { type RealtimeAttachment, sameCallerPrincipal } from './call-store';
 import { INTERNAL_CLOSE_CODE, SHUTDOWN_CLOSE_CODE } from './close-code';
 import {
@@ -78,7 +79,7 @@ export async function handleRealtimeSideband(
     // The direct `(context, events)` overload of `upgradeWebSocket`, which returns
     // the 101 Response and throws when `server.upgrade` refuses. The middleware
     // overload would instead fall through to `next()` and answer 404.
-    return await upgradeWebSocket(context, relay.events);
+    return await upgradeNativeWebSocket(context, relay.events);
   } catch {
     // A refused upgrade must leave the record intact: the call is still valid and the
     // owner's next attach has to find it. Routed through `teardown` rather than closing
@@ -92,6 +93,34 @@ export async function handleRealtimeSideband(
 }
 
 type Dialed = { readonly providerId: string; readonly socket: WebSocket };
+
+/** `upgradeWebSocket`, but handing `server.upgrade()` the native inbound `Request`.
+ *
+ *  Bun 1.4.2's `server.upgrade()` accepts only the original `Request` object associated with
+ *  the inbound connection: measured, a `new Request(strippedUrl, request)` copy of it makes
+ *  `upgrade()` return `false`, which Hono's direct overload turns into a throw. The auth
+ *  middleware makes exactly that copy whenever the caller presented its proxy credential as
+ *  `?key=`/`?auth_token=`, so without this every keyed sideband attach using a supported query
+ *  credential answered 503 after already dialing the upstream.
+ *
+ *  Swapped around the one call and restored in a `finally` rather than reassigned, so every
+ *  other reader — including the route's own `context.req.raw.signal` and `context.req.query` —
+ *  keeps seeing the sanitized request. Hono derives `ws.data.url` from whatever it is handed, so
+ *  during the upgrade that URL carries the query as sent; nothing reads it, and on a keyless
+ *  proxy the middleware never rewrote the request at all, so this is the state that path has
+ *  always been in. What the constraint is about — the upstream request and every log line — is
+ *  built from the sanitized request, which this does not change. */
+async function upgradeNativeWebSocket(context: Context<CallerPrincipalEnv>, events: WSEvents): Promise<Response> {
+  const sanitized = context.req.raw;
+  const native = nativeUpgradeRequest(sanitized);
+  if (native === sanitized) return await upgradeWebSocket(context, events);
+  context.req.raw = native;
+  try {
+    return await upgradeWebSocket(context, events);
+  } finally {
+    context.req.raw = sanitized;
+  }
+}
 
 /** Attempts the prepared candidates in order and returns the first socket that is open, or
  *  the LAST attempt's failure once they are exhausted. A single-candidate direct dial answered

@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 
 import { Hono } from 'hono';
 
-import { requireApiKey } from './api-key-auth';
+import { nativeUpgradeRequest, requireApiKey } from './api-key-auth';
 
 const appWithKeys = () => {
   const app = new Hono();
@@ -102,6 +102,38 @@ test('strips caller query credentials from a POST body request before dispatch',
 
   expect(response.status).toBe(200);
   expect(await response.json()).toEqual({ search: '?alt=sse', body: '{"contents":[]}' });
+});
+
+/** `stripCallerCredentials` must keep doing both things at once: the request the route reads
+ *  carries no credential query, AND the native inbound `Request` stays reachable for
+ *  `server.upgrade()`, which on Bun 1.4.2 refuses any other object. Asserted on object identity
+ *  because that is exactly what `upgrade()` discriminates on — a value-equal copy is refused. */
+test('a sanitized request hides the credential query but still resolves to the native request', async () => {
+  const app = new Hono();
+  app.use(
+    '/*',
+    requireApiKey(() => [{ key: 'caller-secret', label: 'CI' }]),
+  );
+  let seen: { readonly search: string; readonly isNative: boolean; readonly nativeSearch: string } | undefined;
+  app.get('/v1/models', (context) => {
+    const native = nativeUpgradeRequest(context.req.raw);
+    seen = {
+      search: new URL(context.req.raw.url).search,
+      isNative: native === inbound,
+      nativeSearch: new URL(native.url).search,
+    };
+    return context.text('ok');
+  });
+
+  const inbound = new Request('http://localhost/v1/models?key=caller-secret&alt=sse');
+  expect((await app.fetch(inbound)).status).toBe(200);
+
+  // The route sees the credential stripped — H1's property.
+  expect(seen?.search).toBe('?alt=sse');
+  // And the very object the connection was opened with is still reachable — J1's property.
+  // Its own URL is deliberately untouched: `upgrade()` needs the original, not a rewrite.
+  expect(seen?.isNative).toBe(true);
+  expect(seen?.nativeSearch).toBe('?key=caller-secret&alt=sse');
 });
 
 test('leaves model routes open when no caller API keys are configured', async () => {
