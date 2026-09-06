@@ -1098,6 +1098,34 @@ test('exposes a ProviderV4 language surface and no raw resolver', async () => {
   expect(runtime.raw).toBeUndefined();
 });
 
+test('routes doGenerate through the constructed runtime and injected host fetch', async () => {
+  const calls: Request[] = [];
+  const controller = new AbortController();
+  const runtime = await createOpenRouterRuntime({
+    ...runtimeContext(),
+    fetch: async (input, init) => {
+      calls.push(new Request(input, init));
+      return Response.json({
+        id: 'gen-test',
+        object: 'chat.completion',
+        created: 1,
+        model: 'openai/gpt-5.6-luna',
+        choices: [{ index: 0, message: { role: 'assistant', content: 'ok' }, finish_reason: 'stop' }],
+        usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+      });
+    },
+  });
+  await runtime.provider.languageModel('openai/gpt-5.6-luna').doGenerate({
+    prompt: [{ role: 'user', content: [{ type: 'text', text: 'hello' }] }],
+    abortSignal: controller.signal,
+  });
+  expect(calls).toHaveLength(1);
+  expect(calls[0]?.url).toBe('https://openrouter.ai/api/v1/chat/completions');
+  expect(calls[0]?.method).toBe('POST');
+  expect(calls[0]?.headers.get('authorization')).toBe('Bearer sk-or-v1-test-key');
+  expect(JSON.stringify([...(calls[0]?.headers ?? new Headers())])).not.toContain('dynamic-credential');
+});
+
 test('injects the durable Bearer key and preserves the abort signal', async () => {
   const inits: RuntimeRequestInit[] = [];
   const controller = new AbortController();

@@ -1097,6 +1097,18 @@ test('accepts weekly percent and unix-second resets', async () => {
   ]);
 });
 
+test('treats a negative used_percent as an invalid window', async () => {
+  await expect(
+    readMuseCodeQuota(context(), {
+      fetch: async () =>
+        Response.json({
+          is_subs_active: true,
+          subs_usage: { window: { used_percent: -1 } },
+        }),
+    }),
+  ).rejects.toMatchObject({ name: 'MuseCodeQuotaError', retryable: false });
+});
+
 test('classifies 429 as retryable and inactive subscription as permanent', async () => {
   await expect(
     readMuseCodeQuota(context(), { fetch: async () => new Response(null, { status: 429 }) }),
@@ -1134,7 +1146,7 @@ Expected: FAIL because `./quota` does not exist.
 
 - [ ] **Step 3: Implement quota mapping**
 
-`readMuseCodeQuota` calls `currentMuseCodeCredential` then `requestMuseCodeKey(oauthAccessToken, { onboard: false / omitted })` with `JSON.stringify({})`. Ignore `api_key` in the response. Throw `MuseCodeQuotaError` `{ retryable: false }` when `is_subs_active === false` or when neither window produces an item (`subs_usage` missing or both percents invalid). Map `MuseCodeHttpError` 429 to `{ retryable: true, status: 429 }`. Map `used_percent` with `1 - clamp(percent, 0, 100) / 100`. Parse `resets_at` as ISO or unix seconds/ms. `plan` from `subs_tier_name` then `subs_tier_id`. Do not register reset. Do not write credentials. Add a test for the both-windows-invalid case.
+`readMuseCodeQuota` calls `currentMuseCodeCredential` then `requestMuseCodeKey(oauthAccessToken, { onboard: false / omitted })` with `JSON.stringify({})`. Ignore `api_key` in the response. Throw `MuseCodeQuotaError` `{ retryable: false }` when `is_subs_active === false` or when neither window produces an item (`subs_usage` missing or both percents invalid). Map `MuseCodeHttpError` 429 to `{ retryable: true, status: 429 }`. A window is valid only when `used_percent` is a finite number `>= 0`; negative and non-finite values produce no item. Then `remainingRatio = 1 - Math.min(percent, 100) / 100`. Parse `resets_at` as ISO or unix seconds/ms. `plan` from `subs_tier_name` then `subs_tier_id`. Do not register reset. Do not write credentials. Add tests for both-windows-invalid and negative `used_percent`.
 
 Window display names:
 
