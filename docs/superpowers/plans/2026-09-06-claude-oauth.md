@@ -396,11 +396,10 @@ test('generates unique S256 PKCE and unpadded state', async () => {
 });
 ```
 
-Append to `packages/plugins/anthropic-claude/src/oauth/oauth.test.ts`:
+Append to `packages/plugins/anthropic-claude/src/oauth/oauth.test.ts`. Extend the existing `./oauth` import with `buildClaudeAuthorizationUrl`. Add one new import for constants. Do not add a second `from './oauth'` line.
 
 ```ts
 import { CLAUDE_CLIENT_ID, CLAUDE_SCOPE } from './constants';
-import { buildClaudeAuthorizationUrl } from './oauth';
 
 test('builds the claude.ai authorize URL with PKCE and code=true', () => {
   const url = new URL(
@@ -688,14 +687,15 @@ describe('Claude identity', () => {
 });
 ```
 
-Append to `packages/plugins/anthropic-claude/src/oauth/oauth.test.ts`:
+Append to `packages/plugins/anthropic-claude/src/oauth/oauth.test.ts`. Do not redeclare names already imported in Tasks 1–2. Extend the existing `./constants` import with `CLAUDE_LOOPBACK` and `CLAUDE_TOKEN_URL`. Extend the existing `./oauth` import with `ClaudeTokenExchangeError` and `loginClaude`. Add only this new import:
 
 ```ts
 import type { OAuthLoginContext, RuntimeRequestInit } from '@aio-proxy/plugin-sdk';
+```
 
-import { CLAUDE_CLIENT_ID, CLAUDE_LOOPBACK, CLAUDE_TOKEN_URL } from './constants';
-import { ClaudeIdentityMissingError, ClaudeTokenExchangeError, loginClaude } from './oauth';
+Then append the tests:
 
+```ts
 test('exchanges the loopback code as JSON without a beta header', async () => {
   const redirectUri = 'http://localhost:54545/callback';
   const requests: Request[] = [];
