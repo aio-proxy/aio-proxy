@@ -129,7 +129,7 @@ describe('xAI Grok runtime', () => {
     expect(captured?.headers.get('x-keep')).toBe('yes');
     expect(await captured?.json()).toEqual({
       model: 'grok-4.5',
-      reasoning: { effort: 'high' },
+      reasoning: { effort: 'high', summary: 'auto' },
       tools: [
         {
           type: 'function',
