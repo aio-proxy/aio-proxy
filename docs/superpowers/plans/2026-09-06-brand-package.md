@@ -14,7 +14,7 @@
 - Path geometry ships **as authored**. Never retype, reformat, round, or "optimize" a `d` attribute — always copy it programmatically from the file that already holds it.
 - The two brand colors, and no others: `#0c0c09` (dark ink, shown on light backgrounds) and `#fbfbf9` (light ink, shown on dark backgrounds). Generated artifacts use hex, never `oklch()`.
 - Generated wordmark files are named for the color scheme they are **shown in**, not the ink they contain. `-dark` holds light ink and pairs with `media="(prefers-color-scheme: dark)"`.
-- `packages/brand/src/logo-geometry.ts` is listed in `oxc.ts` `ignorePatterns`. Never run `oxfmt` or `oxlint` on it — oxfmt exits 2 on ignored files. The generator emits its own final formatting, which must be byte-stable across runs.
+- `packages/brand/src/logo-geometry.ts` is checked by oxlint and oxfmt like any other source file. The generator emits final formatting that already satisfies `singleQuote` + `printWidth: 120` — verified: oxfmt leaves the file byte-identical. That output must also be byte-stable across runs. Do NOT add the file to `oxc.ts` `ignorePatterns`: an earlier revision of this plan did, on the false premise that oxfmt would wrap the path constants, and the entry's only real effect was to hide a syntactically broken generated file from CI.
 - `build:assets` must NOT be registered in `turbo.json`. A cache hit would skip generation and make the clean-tree assertion vacuous.
 - No changeset. This is internal refactoring with no user-visible behavior change; per `CLAUDE.md` a changeset must target `aio-proxy` or `@aio-proxy/plugin-sdk` to reach a published Release.
 - Nothing in this plan may edit files under `packages/ui/src/components/` other than to **delete** `aio-proxy-logo.tsx`. That directory is shadcn-managed per its `AGENTS.md`.
@@ -41,7 +41,7 @@
 | `packages/brand/src/aio-proxy-logo.tsx` | Hand-authored React component |
 | `packages/brand/src/index.ts` | Exports only |
 
-**Modified:** `oxc.ts`, root `tsconfig.json`, root `package.json`, `packages/ui/package.json`, `packages/ui/src/styles.css`, `packages/dashboard/package.json`, `packages/dashboard/rsbuild.config.ts`, `packages/dashboard/src/components/aio-proxy-brand.tsx`, `website/package.json`, `website/rspress.config.ts`, `website/theme/components/nav-title/index.tsx`, `README.md`, `README.zh-Hans.md`, `.github/workflows/ci.yml`, `lefthook.yml`.
+**Modified:** root `tsconfig.json`, root `package.json`, `packages/ui/package.json`, `packages/ui/src/styles.css`, `packages/dashboard/package.json`, `packages/dashboard/rsbuild.config.ts`, `packages/dashboard/src/components/aio-proxy-brand.tsx`, `website/package.json`, `website/rspress.config.ts`, `website/theme/components/nav-title/index.tsx`, `README.md`, `README.zh-Hans.md`, `.github/workflows/ci.yml`, `lefthook.yml`.
 
 **Deleted:** `packages/ui/src/components/aio-proxy-logo.tsx`, `packages/dashboard/public/favicon.svg`, `website/docs/public/favicon.svg`. (`packages/dashboard/public/logo-light.svg` and `logo-dark.svg` are untracked in the main checkout and absent from this worktree — nothing to delete here.)
 
@@ -60,7 +60,7 @@
 **Files:**
 - Create: `packages/brand/package.json`, `packages/brand/tsconfig.json`, `packages/brand/scripts/build-assets.ts`, `packages/brand/src/aio-proxy-wordmark.svg`, `packages/brand/src/aio-proxy-mark.svg`, `packages/brand/src/index.ts`
 - Generated (by the script, then committed): `packages/brand/src/aio-proxy-wordmark-light.svg`, `aio-proxy-wordmark-dark.svg`, `aio-proxy-mark-favicon.svg`, `logo-geometry.ts`
-- Modify: `oxc.ts`, `tsconfig.json`, `package.json`, `packages/ui/package.json`
+- Modify: `tsconfig.json`, `package.json`, `packages/ui/package.json`
 
 **Interfaces:**
 - Consumes: nothing (first task).
@@ -329,28 +329,17 @@ Create `packages/brand/src/index.ts`. The component lands in Task 2; for now the
 export { MARK_PATH, MARK_VIEW_BOX, WORDMARK_PATH, WORDMARK_VIEW_BOX } from './logo-geometry';
 ```
 
-- [ ] **Step 10: Exempt the generated module from oxlint and oxfmt**
+- [ ] **Step 10: Confirm the generated module needs no lint exemption**
 
-Modify `oxc.ts`. Add the new entry after the existing `route-tree.gen.ts` line:
+Do NOT modify `oxc.ts`. An earlier revision of this plan added `packages/brand/src/logo-geometry.ts` to `ignorePatterns`, justified by the claim that oxfmt would wrap the multi-kilobyte single-line path constants. That claim is false, and the entry actively hurt: with the file ignored, a syntactically broken `logo-geometry.ts` passes CI in full, because `bun run check` and `lint:types` both read this same `ignorePatterns` array, and nothing in the repository runs `tsc -b`. The breakage would surface only when Task 2's component fails at runtime.
 
-```ts
-export const ignorePatterns = [
-  '**/dist/**',
-  '.reference/**',
-  '.worktrees/**',
-  'packages/brand/src/logo-geometry.ts',
-  'packages/core/src/db/migrations.manifest.ts',
-  'packages/dashboard/src/route-tree.gen.ts',
-  'packages/i18n/project.inlang/**',
-  'packages/i18n/src/paraglide/**',
-  'packages/plugins/cursor/src/gen/**',
-  // shadcn-generated primitives are maintained upstream rather than by this repository.
-  'packages/ui/src/components/**',
-  'docs/superpowers/**',
-  // Verbatim upstream codex instructions snapshot imported as text; must not be reformatted.
-  'packages/server/src/server/list-models/codex-client-models/default-instructions.md',
-];
+Verify instead that the generator's output already satisfies the repository's formatting rules:
+
+```bash
+bunx oxfmt --check packages/brand/src/logo-geometry.ts && bunx oxlint packages/brand/src/logo-geometry.ts
 ```
+
+Expected: `All matched files use the correct format.` and no oxlint diagnostics. If oxfmt *does* want to reformat the file, fix the generator's emitted formatting so its output is already canonical — do not add an ignore entry, and do not hand-edit the generated file.
 
 - [ ] **Step 11: Register the TypeScript project reference**
 
@@ -422,12 +411,12 @@ Expected: at least `1`. If it reports `cn not installed`, re-run `bun install`.
 bun run check
 ```
 
-Expected: exit 0. `bun run check` is `oxlint . && oxfmt --check .`. If oxfmt reports `logo-geometry.ts`, the `oxc.ts` entry in Step 10 is wrong — fix it rather than reformatting the generated file.
+Expected: exit 0. `bun run check` is `oxlint . && oxfmt --check .`, and `logo-geometry.ts` is in scope for both. If oxfmt reports it, fix the generator's emitted formatting — do not reformat the generated file by hand, and do not add an ignore entry.
 
 - [ ] **Step 14: Commit**
 
 ```bash
-git add packages/brand oxc.ts tsconfig.json package.json packages/ui/package.json bun.lock
+git add packages/brand tsconfig.json package.json packages/ui/package.json .changeset/config.json bun.lock
 git commit -m "feat(brand): add @aio-proxy/brand package with generated logo assets"
 ```
 

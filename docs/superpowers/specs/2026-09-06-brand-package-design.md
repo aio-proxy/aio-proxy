@@ -110,11 +110,19 @@ by relative path.
 | `aio-proxy-mark-favicon.svg` | mark source | `#0c0c09`, `#fbfbf9` under `@media (prefers-color-scheme: dark)` |
 | `logo-geometry.ts` | both sources | n/a |
 
-`logo-geometry.ts` is listed in `oxc.ts` `ignorePatterns`, so neither oxfmt nor oxlint touches it.
-The generator therefore does not shell out to a formatter; it emits its own final formatting, and
-that output must be byte-stable across runs for the clean-tree assertion to mean anything.
-Running `oxfmt` on the file would in fact exit 2 (`Expected at least one target file. All matched
-files may have been excluded by ignore rules.`).
+`logo-geometry.ts` is linted and format-checked like any other source file. The generator does not
+shell out to a formatter; it emits its own final formatting, which already satisfies the
+repository's `singleQuote` + `printWidth: 120` — verified: `oxfmt --check` passes on the emitted
+file and reformatting it leaves the bytes identical. That output must also be byte-stable across
+runs for the clean-tree assertion to mean anything.
+
+An earlier revision of this design added the file to `oxc.ts` `ignorePatterns`, on the premise that
+oxfmt would wrap the multi-kilobyte single-line path constants. That premise is false, and the
+entry had a real cost: `bun run check` and `lint:types` share the same `ignorePatterns` array and
+nothing in the repository runs `tsc -b`, so an ignored, syntactically broken `logo-geometry.ts`
+would pass CI in full and surface only when the component failed at runtime. Verified by corrupting
+a path constant: oxlint reports it when the file is in scope and is silent when it is ignored. The
+file therefore stays unignored.
 
 ### Colors
 
@@ -279,9 +287,13 @@ READMEs are not published to npm (`npm/aio-proxy/package.json` ships only `bin` 
 
 ## Repository Wiring
 
-- `oxc.ts` `ignorePatterns`: add `packages/brand/src/logo-geometry.ts`, alongside the existing
-  `route-tree.gen.ts` and `migrations.manifest.ts` entries.
-- Root `tsconfig.json` `references`: add `./packages/brand`.
+- `oxc.ts`: no change. `logo-geometry.ts` stays under oxlint and oxfmt — see Generation above for
+  why the ignore entry was removed.
+- Root `tsconfig.json` `references`: add `./packages/brand` and `./packages/brand/scripts`. The
+  scripts project is separate, following `packages/cli/scripts`, so the Bun generator gets
+  `"types": ["bun"]` without widening the package's own `include`.
+- `.changeset/config.json`: add `@aio-proxy/brand` to the `fixed` group. Every other versioned
+  workspace package is in it; outside it, the package would strand at its authored version.
 - Root `package.json` `workspaces.catalog`: add `"cn": "^0.2.5"`, and change
   `packages/ui/package.json` to `"cn": "catalog:"`. `CLAUDE.md` requires catalog management once a
   dependency has two or more workspace consumers, which adding the brand package makes true.
