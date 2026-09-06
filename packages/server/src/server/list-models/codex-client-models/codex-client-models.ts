@@ -102,11 +102,27 @@ function normalizeInstructions(row: Record<string, unknown>, slug: string): Reco
   return patch;
 }
 
+// Every row in this catalog is a codex picker entry, and codex only ever calls a
+// picked model as a text chat model. An image or video generator listed here is
+// unselectable in practice: picking it fails the turn. The Codex ModelInfo shape
+// has no output-modality field to describe one either, so the row cannot even be
+// honest about what it is.
+//
+// Unknown output modality is hidden too. A model the metadata layers say nothing
+// about is exactly the hand-listed api-provider id that image/video models arrive
+// as, and a picker entry that always fails is worse than an absent one: the fix
+// for a missing model is `router.models.<slug>.metadata`, while a broken entry
+// has no user-side fix.
+function servesCodexText(model: ResolvedModel): boolean {
+  return resolveModelCapabilities(model)?.modalities?.output?.includes('text') === true;
+}
+
 export async function codexClientModels(
   state: ServerState,
   options: Options = {},
 ): Promise<{ readonly models: readonly Record<string, unknown>[] }> {
-  const [resolved, upstream] = await Promise.all([resolveEnabledModels(state), readCodexModelsCache(options)]);
+  const [enabled, upstream] = await Promise.all([resolveEnabledModels(state), readCodexModelsCache(options)]);
+  const resolved = enabled.filter(servesCodexText);
   const bySlug = new Map(upstream.map((item) => [item.slug, item]));
   // Prefer gpt-5.5 as the synthesis template (matches CPA's default) so every
   // required Codex ModelInfo field is inherited; else any cached row; else

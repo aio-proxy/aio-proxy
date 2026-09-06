@@ -9,6 +9,7 @@
   "commit": false,
   "fixed": [
     [
+      "@aio-proxy/brand",
       "@aio-proxy/cli",
       "@aio-proxy/cli-darwin-arm64",
       "@aio-proxy/cli-darwin-x64",

@@ -1,5 +1,13 @@
 # @aio-proxy/i18n
 
+## 0.19.2
+
+No changes in this release.
+
+## 0.19.1
+
+No changes in this release.
+
 ## 0.19.0
 
 ### Patch Changes

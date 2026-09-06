@@ -133,6 +133,22 @@ export type RequestFeatureDowngradedLog =
       readonly inputIndex: number;
       readonly providerId: string;
       readonly attemptIndex: number;
+    })
+  | (RequestFeatureDowngradedIdentity & {
+      readonly feature: 'orphan_tool_call_output';
+      readonly action: 'converted';
+      readonly reason: 'call_id_without_matching_call';
+      readonly inputIndex: number;
+      readonly providerId: string;
+      readonly attemptIndex: number;
+    })
+  | (RequestFeatureDowngradedIdentity & {
+      readonly feature: 'unanswered_tool_call';
+      readonly action: 'converted';
+      readonly reason: 'call_without_matching_output';
+      readonly inputIndex: number;
+      readonly providerId: string;
+      readonly attemptIndex: number;
     });
 
 export type TracePersistenceFailedLog = {

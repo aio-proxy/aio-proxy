@@ -36,6 +36,17 @@ async function isDashboardUnavailable(response: Response): Promise<boolean> {
   }
 }
 
+/**
+ * The subset of a response that service error helpers actually read. Hono's `ClientResponse` is not
+ * assignable to the global `Response` (bun-types adds members to it that hono does not model), so
+ * helpers that only inspect status and body must not ask for the full interface.
+ */
+export interface DashboardClientResponse {
+  readonly ok: boolean;
+  readonly status: number;
+  json(): Promise<unknown>;
+}
+
 export const createDashboardClient = (baseUrl = '') => hc<AppType>(baseUrl, { fetch: dashboardFetch });
 
 export const dashboardClient = createDashboardClient('');

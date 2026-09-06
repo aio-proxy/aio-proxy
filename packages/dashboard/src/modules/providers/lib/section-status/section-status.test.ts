@@ -1,7 +1,13 @@
 import { m } from '@aio-proxy/i18n';
 import { expect, test } from '@rstest/core';
 
-import { blockingSections, type SectionStatusInput, type SectionSummary, sectionStatuses } from './section-status';
+import {
+  blockingSections,
+  type SectionStatusInput,
+  type SectionSummary,
+  sectionOrder,
+  sectionStatuses,
+} from './section-status';
 
 const base = {
   kind: 'api' as const,
@@ -250,4 +256,20 @@ test('a stale whitelist names staleness rather than the model count', () => {
   expect(sectionStatuses({ ...base, models: ['gone'], discoveredModels: ['here'] }).models.hint).toBe(
     m['dashboard.providers.editor.hint_models_stale'](),
   );
+});
+
+test('oauth rail order puts Connection before Identity', () => {
+  expect(sectionOrder('oauth')).toEqual(['connection', 'identity', 'models', 'advanced']);
+  expect(sectionOrder('api')).toEqual(['identity', 'connection', 'models', 'advanced']);
+  expect(
+    blockingSections(
+      {
+        identity: summary('todo'),
+        connection: summary('attention'),
+        models: summary('ok'),
+        advanced: summary('ok'),
+      },
+      sectionOrder('oauth'),
+    ),
+  ).toEqual(['connection', 'identity']);
 });

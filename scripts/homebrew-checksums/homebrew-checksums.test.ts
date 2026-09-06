@@ -1,77 +1,150 @@
 import { describe, expect, test } from 'bun:test';
 
-import { buildHomebrewChecksums } from './homebrew-checksums';
+import { buildHomebrewChecksums, tarballUrl } from './homebrew-checksums';
 
-const PLATFORM = '@aio-proxy/cli-darwin-arm64';
-const OTHER_PLATFORM = '@aio-proxy/cli-linux-x64';
+const PACKAGES = ['cli-darwin-arm64', 'cli-linux-x64'];
 const VERSION = '9.8.7';
 
-const bytesFor = (name: string) => new TextEncoder().encode(`tarball-of-${name}`);
-const integrityFor = (name: string) =>
-  `sha512-${new Bun.CryptoHasher('sha512').update(bytesFor(name)).digest('base64')}`;
-const sha256For = (name: string) => new Bun.CryptoHasher('sha256').update(bytesFor(name)).digest('hex');
+const bytesFor = (pkg: string) => new TextEncoder().encode(`tarball-of-${pkg}`);
+const sha256For = (pkg: string) => new Bun.CryptoHasher('sha256').update(bytesFor(pkg)).digest('hex');
+const packageOf = (url: string) => PACKAGES.find((pkg) => url.includes(`/@aio-proxy/${pkg}/`))!;
 
 const build = (overrides: Partial<Parameters<typeof buildHomebrewChecksums>[0]> = {}) =>
   buildHomebrewChecksums({
-    tarballs: new Map([
-      [PLATFORM, `/tmp/${PLATFORM}.tgz`],
-      [OTHER_PLATFORM, `/tmp/${OTHER_PLATFORM}.tgz`],
-    ]),
-    platformProvided: new Set([PLATFORM, OTHER_PLATFORM]),
+    packages: PACKAGES,
     version: VERSION,
-    readBytes: (path) => Promise.resolve(bytesFor(path.replace('/tmp/', '').replace('.tgz', ''))),
-    registryIntegrity: (name) => Promise.resolve(integrityFor(name)),
+    fetchTarball: (url) => Promise.resolve(new Response(bytesFor(packageOf(url)))),
+    wait: () => Promise.resolve(),
+    log: () => {},
     ...overrides,
   });
 
 describe('buildHomebrewChecksums', () => {
-  test('emits an unscoped-name sha256 for every platform tarball', async () => {
+  test('hashes the bytes the registry serves, keyed by unscoped package name', async () => {
     const payload = await build();
 
-    // The tap's formula keys off the unscoped package name.
+    // The tap's formula keys off the unscoped name and pins a sha256 of exactly
+    // the bytes `brew install` will download.
     expect(payload).toEqual({
       version: VERSION,
       checksums: {
-        'cli-darwin-arm64': sha256For(PLATFORM),
-        'cli-linux-x64': sha256For(OTHER_PLATFORM),
+        'cli-darwin-arm64': sha256For('cli-darwin-arm64'),
+        'cli-linux-x64': sha256For('cli-linux-x64'),
       },
     });
   });
 
-  test('ignores packages the tap does not pin', async () => {
-    const payload = await build({
-      tarballs: new Map([
-        [PLATFORM, `/tmp/${PLATFORM}.tgz`],
-        ['aio-proxy', '/tmp/launcher.tgz'],
-        ['@aio-proxy/plugin-sdk', '/tmp/sdk.tgz'],
-      ]),
-      platformProvided: new Set([PLATFORM]),
+  // The CDN propagates the packages at the same time, so a slow one must not
+  // serialize the others — that is the difference between a ~15 and a ~60 minute
+  // worst case. Assert overlap rather than wall-clock: a slow package must not
+  // have to finish before a later one is even requested.
+  test('waits on every package concurrently', async () => {
+    const started: string[] = [];
+    let release!: () => void;
+    const blocked = new Promise<void>((resolve) => {
+      release = resolve;
     });
 
-    expect(Object.keys(payload.checksums)).toEqual(['cli-darwin-arm64']);
-  });
-
-  // A resumed release skips publish for versions already on the registry, so the
-  // tarball on disk is not automatically the one npm serves. Shipping a checksum
-  // for the wrong bytes would make `brew install` fail for every user.
-  test('refuses to ship a checksum when the registry advertises different bytes', async () => {
     const promise = build({
-      registryIntegrity: (name) =>
-        Promise.resolve(name === OTHER_PLATFORM ? integrityFor('something-else') : integrityFor(name)),
+      fetchTarball: async (url) => {
+        const pkg = packageOf(url);
+        started.push(pkg);
+        // Hold the first package open until every package has been requested.
+        if (pkg === PACKAGES[0]) await blocked;
+        return new Response(bytesFor(pkg));
+      },
     });
 
-    await expect(promise).rejects.toThrow(/cli-linux-x64@9\.8\.7: local tarball integrity .* does not match/);
+    // Nothing awaited the blocked package yet, so if this resolves, the later
+    // package was requested while the first was still in flight.
+    while (started.length < PACKAGES.length) await Bun.sleep(0);
+    release();
+
+    expect(await promise).toHaveProperty(['checksums', PACKAGES[1]!], sha256For(PACKAGES[1]!));
   });
 
-  test('refuses to ship a checksum when the registry advertises no integrity at all', async () => {
-    const promise = build({ registryIntegrity: () => Promise.resolve('') });
-
-    await expect(promise).rejects.toThrow(/does not match the registry's \(none\)/);
+  test('requests the registry URL Homebrew will fetch', () => {
+    expect(tarballUrl('cli-darwin-arm64', VERSION)).toBe(
+      'https://registry.npmjs.org/@aio-proxy/cli-darwin-arm64/-/cli-darwin-arm64-9.8.7.tgz',
+    );
   });
 
-  // An empty payload would dispatch a release the tap cannot build a formula for.
-  test('fails when no platform tarball was packed', async () => {
-    const promise = build({ platformProvided: new Set<string>() });
+  // The whole reason this runs in its own job: npm's tarball reads lag publish by
+  // minutes, per package. A 404 must be waited out, not reported as a failure.
+  test('retries a tarball that is not on the CDN yet', async () => {
+    let attempts = 0;
+    const payload = await build({
+      packages: ['cli-darwin-arm64'],
+      fetchTarball: (url) => {
+        attempts++;
+        if (attempts < 3) return Promise.resolve(new Response('', { status: 404 }));
+        return Promise.resolve(new Response(bytesFor(packageOf(url))));
+      },
+    });
+
+    expect(attempts).toBe(3);
+    expect(payload.checksums).toEqual({ 'cli-darwin-arm64': sha256For('cli-darwin-arm64') });
+  });
+
+  // One release died outright on a bare ECONNRESET, so a thrown fetch is the same
+  // kind of transient as a 404 here.
+  test('retries a network error the same way', async () => {
+    let attempts = 0;
+    const payload = await build({
+      packages: ['cli-darwin-arm64'],
+      fetchTarball: (url) => {
+        attempts++;
+        if (attempts === 1) return Promise.reject(new Error('ECONNRESET'));
+        return Promise.resolve(new Response(bytesFor(packageOf(url))));
+      },
+    });
+
+    expect(attempts).toBe(2);
+    expect(payload.checksums['cli-darwin-arm64']).toBe(sha256For('cli-darwin-arm64'));
+  });
+
+  // A connection that dies mid-tarball answers with successful headers and only
+  // fails once the body is drained — the same transient, a few hundred
+  // milliseconds later. It must not escape the retry just because it arrived after
+  // the Response resolved.
+  test('retries a body that fails mid-stream', async () => {
+    let attempts = 0;
+    const payload = await build({
+      packages: ['cli-darwin-arm64'],
+      fetchTarball: (url) => {
+        attempts++;
+        if (attempts === 1) {
+          return Promise.resolve(
+            new Response(
+              new ReadableStream({
+                start: (controller) => controller.error(new Error('ECONNRESET mid-body')),
+              }),
+            ),
+          );
+        }
+        return Promise.resolve(new Response(bytesFor(packageOf(url))));
+      },
+    });
+
+    expect(attempts).toBe(2);
+    expect(payload.checksums['cli-darwin-arm64']).toBe(sha256For('cli-darwin-arm64'));
+  });
+
+  test('gives up with the URL and reason once the retries are exhausted', async () => {
+    const promise = build({
+      packages: ['cli-darwin-arm64'],
+      fetchTarball: () => Promise.resolve(new Response('', { status: 404 })),
+    });
+
+    await expect(promise).rejects.toThrow(/cli-darwin-arm64-9\.8\.7\.tgz is still unavailable.*HTTP 404/s);
+  });
+
+  // An empty payload would regenerate a formula with no bottles at all.
+  test('fails before waiting when there are no platform packages', async () => {
+    const promise = build({
+      packages: [],
+      fetchTarball: () => Promise.reject(new Error('should not have been called')),
+    });
 
     await expect(promise).rejects.toThrow(/nothing to pin/);
   });

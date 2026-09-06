@@ -1,11 +1,19 @@
 import { m } from '@aio-proxy/i18n';
+import type { ProviderKind } from '@aio-proxy/types';
 import { Button } from '@aio-proxy/ui/components/button';
 
 import { jumpToSection } from '../../../lib/jump-to-section';
-import { blockingSections, SECTION_LABEL, type SectionId, type SectionSummary } from '../../../lib/section-status';
+import {
+  blockingSections,
+  SECTION_LABEL,
+  sectionOrder,
+  type SectionId,
+  type SectionSummary,
+} from '../../../lib/section-status';
 
 interface EditorFooterProps {
   readonly summaries: Readonly<Record<SectionId, SectionSummary>>;
+  readonly kind: ProviderKind;
   readonly primaryLabel: string;
   readonly onPrimary: () => void;
   readonly onCancel: () => void;
@@ -14,12 +22,13 @@ interface EditorFooterProps {
 
 export const EditorFooter: React.FC<EditorFooterProps> = ({
   summaries,
+  kind,
   primaryLabel,
   onPrimary,
   onCancel,
   pending,
 }) => {
-  const blocking = blockingSections(summaries);
+  const blocking = blockingSections(summaries, sectionOrder(kind));
   // One list, two lead-ins. Every outstanding section is named *and* gates Save, so the split is purely
   // copy: `missing` narrows to the sections with nothing filled in yet, and only when that is all of
   // them does the sentence promise a missing field. A form held up by an unauthorized account is

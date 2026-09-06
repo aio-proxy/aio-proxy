@@ -481,7 +481,10 @@ test('fails fast on invalid function arguments without trying raw', async () => 
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
       model: REQUESTED_MODEL,
-      input: [{ type: 'function_call', call_id: 'call_1', name: 'read', arguments: '{' }],
+      input: [
+        { type: 'function_call', call_id: 'call_1', name: 'read', arguments: '{' },
+        { type: 'function_call_output', call_id: 'call_1', output: 'done' },
+      ],
     }),
   });
 

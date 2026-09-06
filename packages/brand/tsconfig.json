@@ -1,0 +1,11 @@
+{
+  "extends": "@aio-proxy/infra/tsconfig/base.json",
+  "compilerOptions": {
+    "exactOptionalPropertyTypes": false,
+    "jsx": "react-jsx",
+    "noPropertyAccessFromIndexSignature": false,
+    "noEmit": true,
+    "rootDir": "src"
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx"]
+}

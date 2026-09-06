@@ -38,7 +38,7 @@ test('shows the running version and links it to its release tag, the repo, and t
   expect(links.map((link) => link.getAttribute('href'))).toEqual([
     'https://github.com/aio-proxy/aio-proxy/releases/tag/v1.4.2',
     'https://github.com/aio-proxy/aio-proxy',
-    'https://aio-proxy.github.io',
+    'https://aioproxy.dev',
   ]);
   // Icon-only links still need a name, or they read as "link" and nothing else.
   for (const link of links) {

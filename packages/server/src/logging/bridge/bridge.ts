@@ -31,6 +31,11 @@ type SinkFallbackOptions<Entry> = {
   readonly fallback: (entry: Entry) => void;
 };
 
+// Model-conversion downgrades are emitted per candidate, before a model id is
+// meaningful for the entry; the ambient request context would attach a
+// misleading one.
+const MODEL_SCOPED_DOWNGRADE_FEATURES = new Set(['web_search_call', 'orphan_tool_call_output', 'unanswered_tool_call']);
+
 const contextual = <Entry extends object>(entry: Entry): Entry => {
   const result = {
     ...entry,
@@ -38,7 +43,7 @@ const contextual = <Entry extends object>(entry: Entry): Entry => {
   };
   if (
     Reflect.get(result, 'event') === 'request.feature_downgraded' &&
-    Reflect.get(result, 'feature') === 'web_search_call'
+    MODEL_SCOPED_DOWNGRADE_FEATURES.has(Reflect.get(result, 'feature') as string)
   ) {
     Reflect.deleteProperty(result, 'requestedModelId');
     Reflect.deleteProperty(result, 'modelId');

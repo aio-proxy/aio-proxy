@@ -2,7 +2,7 @@
 
 import { CodeBlockRuntime, Tab, Tabs } from '@rspress/core/theme';
 
-import { BunIcon, HomebrewIcon } from '../icons';
+import { BunIcon, HomebrewIcon, TerminalIcon } from '../icons';
 
 interface CommandTabsProps {
   readonly commands: Partial<Record<CommandId, string>>;
@@ -11,6 +11,7 @@ interface CommandTabsProps {
 const commandIcon = {
   bun: BunIcon,
   brew: HomebrewIcon,
+  curl: TerminalIcon,
 } as const;
 
 type CommandId = keyof typeof commandIcon;

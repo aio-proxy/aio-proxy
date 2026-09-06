@@ -1,5 +1,85 @@
 # @aio-proxy/core
 
+## 0.19.2
+
+### Patch Changes
+
+- [#291](https://github.com/aio-proxy/aio-proxy/pull/291) [`f71a576`](https://github.com/aio-proxy/aio-proxy/commit/f71a5760db5852f2c340e089c3858ae81da7053c) Thanks [@baranwang](https://github.com/baranwang)! - Accept OpenAI Responses requests whose tool calls and outputs lost their pairing
+
+  Context compaction can truncate a conversation between a `function_call` and its
+  `function_call_output`, leaving one side without the other. Codex produces this
+  legitimately, but the model path rejected an unmatched output with a terminal 400
+  that also skipped every remaining provider candidate, and emitted an unmatched
+  call in a shape upstreams refuse.
+
+  Both sides are now carried through instead of failing. An output with no call
+  becomes a user note that preserves its text and images; a call with no output
+  becomes an assistant note naming the tool and its arguments verbatim. Neither
+  fabricates a tool result the caller did not send, and the notes are byte-stable
+  across turns so upstream prefix caching still hits. A `request.feature_downgraded`
+  entry records each conversion.
+
+- [#291](https://github.com/aio-proxy/aio-proxy/pull/291) [`4f3154e`](https://github.com/aio-proxy/aio-proxy/commit/4f3154e79a3f2bf1d5d23081e8dd099cc7841ecd) Thanks [@baranwang](https://github.com/baranwang)! - Recover from tool-pairing 400s on the raw passthrough path
+
+  When the inbound protocol matches the provider's, an OpenAI Responses request is
+  forwarded byte-for-byte and the model path's conversion never runs. A transcript
+  whose `function_call` lost its output — or whose output lost its call — was
+  therefore still rejected upstream with a terminal 400, with no fallback to any
+  remaining candidate.
+
+  Such a rejection is now recovered the same way `invalid_encrypted_content`
+  already was: the request is sent unchanged, and only after the upstream names
+  the pairing failure is it replayed once with the unpaired items narrated as
+  plain messages — an assistant note for a call nobody answered, a user note for
+  an output with no call, never a fabricated tool result. Well-formed requests are
+  byte-identical to before, so upstream prefix caching is untouched.
+
+  The replay is limited to the two rejections a pairing repair can actually fix.
+  `No tool output found for tool call …`, which a strict gateway emits when an
+  assistant message sits inside a call/output batch, is forwarded unretried.
+
+  A narration note is never inserted into a tool batch that is still open — on
+  either path. Substituting one between a paired call and its output would create
+  exactly that interleaving, so the note waits until the batch's last result
+  lands. On the model path the same rule keeps an orphan note from splitting an
+  assistant tool-call turn from its tool results, which OpenAI-compatible and
+  Anthropic providers reject. Items the caller sent keep their positions; only the
+  synthesized notes move.
+
+  Adapters that implement `rawRetry` now receive the frame that classified as
+  `retry` as a fourth argument to `rewrite`, so a hook handling several rejections
+  repairs only what the upstream objected to.
+
+- Updated dependencies [[`4e3f656`](https://github.com/aio-proxy/aio-proxy/commit/4e3f656e4df4d53a171b42ac783e3108ff1468f0), [`981e765`](https://github.com/aio-proxy/aio-proxy/commit/981e765965a881af845aff413db711f779ff2ffb)]:
+  - @aio-proxy/plugin-xai-grok@0.19.2
+  - @aio-proxy/plugin-openai-chatgpt@0.19.2
+  - @aio-proxy/i18n@0.19.2
+  - @aio-proxy/logger@0.19.2
+  - @aio-proxy/plugin-sdk@0.19.2
+  - @aio-proxy/plugin-cursor@0.19.2
+  - @aio-proxy/plugin-github-copilot@0.19.2
+  - @aio-proxy/plugin-google-antigravity@0.19.2
+  - @aio-proxy/plugin-kimi-code@0.19.2
+  - @aio-proxy/shared@0.19.2
+  - @aio-proxy/types@0.19.2
+
+## 0.19.1
+
+### Patch Changes
+
+- Updated dependencies [[`80f8b9d`](https://github.com/aio-proxy/aio-proxy/commit/80f8b9d10eef15214fc3f55342ccf097fc00b6ef)]:
+  - @aio-proxy/plugin-sdk@0.19.1
+  - @aio-proxy/logger@0.19.1
+  - @aio-proxy/plugin-cursor@0.19.1
+  - @aio-proxy/plugin-github-copilot@0.19.1
+  - @aio-proxy/plugin-google-antigravity@0.19.1
+  - @aio-proxy/plugin-kimi-code@0.19.1
+  - @aio-proxy/plugin-openai-chatgpt@0.19.1
+  - @aio-proxy/plugin-xai-grok@0.19.1
+  - @aio-proxy/i18n@0.19.1
+  - @aio-proxy/shared@0.19.1
+  - @aio-proxy/types@0.19.1
+
 ## 0.19.0
 
 ### Patch Changes

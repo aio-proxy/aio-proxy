@@ -25,8 +25,8 @@ export const openAIEmbeddingsAdapter = defineEmbeddingProtocolAdapter<OpenAIEmbe
       throw new EmbeddingConvertUnsupportedError('token-id');
     }
     const providerOptions = embeddingProviderOptions(request);
-    const values = (typeof request.input === 'string' ? [request.input] : request.input).map(
-      (value): EmbeddingValue => (providerOptions === undefined ? { value } : { value, providerOptions }),
+    const values = (typeof request.input === 'string' ? [request.input] : request.input).map((value): EmbeddingValue =>
+      providerOptions === undefined ? { value } : { value, providerOptions },
     );
     return {
       values,

@@ -52,7 +52,7 @@ export const ProviderEditorPage: React.FC<ProviderEditorPageProps> = (props) => 
     title,
     navigate,
   } = useProviderEditorPage(props);
-  const activeId = useActiveSection();
+  const activeId = useActiveSection(kind);
   const locked = mode === ProviderFormMode.Create && kind === ProviderKind.OAuth && !authorized;
   const models = values.kind === 'oauth' ? [] : (values.models ?? []);
   const exposed =
@@ -71,6 +71,72 @@ export const ProviderEditorPage: React.FC<ProviderEditorPageProps> = (props) => 
         ? undefined
         : toAliasRecord(values.alias);
 
+  const identitySection = <IdentitySection form={form} mode={mode} kind={kind} summary={summaries.identity} />;
+  const connectionSection = (
+    <ConnectionSection
+      form={form}
+      accountForm={kind === ProviderKind.OAuth ? accountForm : undefined}
+      mode={mode}
+      kind={kind}
+      hasApiKey={hasApiKey}
+      capabilities={capabilities}
+      oauth={oauth}
+      provider={provider}
+      accountLocked={
+        kind === ProviderKind.OAuth &&
+        (isReauthorizing ||
+          (mode === ProviderFormMode.Create && authorized) ||
+          (session !== undefined &&
+            session.status !== 'failed' &&
+            session.status !== 'cancelled' &&
+            session.status !== 'succeeded'))
+      }
+      onReauthorize={() => save(true)}
+      isReauthorizeBlocked={saveBlocked}
+      isAuthorizationPending={isReauthorizing}
+      onAuthorize={() => save(false)}
+      onOptionsValidityChange={setOptionsValid}
+      summary={summaries.connection}
+      session={
+        props.sessionId !== undefined && session !== undefined && session.status !== 'succeeded' ? session : undefined
+      }
+      isSessionPending={callbackMutation.isPending || cancelMutation.isPending}
+      onSubmitCallback={(callbackUrl) =>
+        session === undefined
+          ? undefined
+          : callbackMutation.mutate({ id: session.id, callbackUrl }, { onSuccess: () => sessionQuery.refetch() })
+      }
+      onClearSession={() => {
+        if (session === undefined) return;
+        if (session.status === 'failed' || session.status === 'cancelled') {
+          onSessionIdChange(undefined);
+          return;
+        }
+        cancelMutation.mutate(session.id);
+      }}
+      onCancelSession={() => {
+        if (session === undefined) return;
+        if (session.status === 'failed' || session.status === 'cancelled') {
+          onSessionIdChange(undefined);
+          save(false);
+          return;
+        }
+        cancelMutation.mutate(session.id);
+      }}
+    />
+  );
+  const sections12 =
+    kind === ProviderKind.OAuth ? (
+      <>
+        {connectionSection}
+        {identitySection}
+      </>
+    ) : (
+      <>
+        {identitySection}
+        {connectionSection}
+      </>
+    );
   const sections34 = (
     <>
       <ModelsSection
@@ -99,7 +165,7 @@ export const ProviderEditorPage: React.FC<ProviderEditorPageProps> = (props) => 
         { label: title },
       ]}
     >
-      <SectionNav summaries={summaries} activeId={activeId} />
+      <SectionNav summaries={summaries} activeId={activeId} kind={kind} />
       {/* One form, so the editor is a form to the platform: labels, autofill and Enter all key off
           it. Submission is suppressed because saving is the footer primary's job — it is outside
           the fields, has to survive a `pending` state, and must not fire on an Enter keypress in a
@@ -110,63 +176,7 @@ export const ProviderEditorPage: React.FC<ProviderEditorPageProps> = (props) => 
             {/* Above Identity and outside the nav: the kind is what decides which fields the sections
                 below even contain, so it is not one of the provider's attributes (D-F11). */}
             <KindCard value={kind} mode={mode} onChange={handleKindChange} />
-            <IdentitySection form={form} mode={mode} kind={kind} summary={summaries.identity} />
-            <ConnectionSection
-              form={form}
-              accountForm={kind === ProviderKind.OAuth ? accountForm : undefined}
-              mode={mode}
-              kind={kind}
-              hasApiKey={hasApiKey}
-              capabilities={capabilities}
-              oauth={oauth}
-              provider={provider}
-              accountLocked={
-                kind === ProviderKind.OAuth &&
-                (isReauthorizing ||
-                  (mode === ProviderFormMode.Create && authorized) ||
-                  (session !== undefined &&
-                    session.status !== 'failed' &&
-                    session.status !== 'cancelled' &&
-                    session.status !== 'succeeded'))
-              }
-              onReauthorize={() => save(true)}
-              isReauthorizeBlocked={saveBlocked}
-              isAuthorizationPending={isReauthorizing}
-              onAuthorize={() => save(false)}
-              onOptionsValidityChange={setOptionsValid}
-              summary={summaries.connection}
-              session={
-                props.sessionId !== undefined && session !== undefined && session.status !== 'succeeded'
-                  ? session
-                  : undefined
-              }
-              isSessionPending={callbackMutation.isPending || cancelMutation.isPending}
-              onSubmitCallback={(callbackUrl) =>
-                session === undefined
-                  ? undefined
-                  : callbackMutation.mutate(
-                      { id: session.id, callbackUrl },
-                      { onSuccess: () => sessionQuery.refetch() },
-                    )
-              }
-              onClearSession={() => {
-                if (session === undefined) return;
-                if (session.status === 'failed' || session.status === 'cancelled') {
-                  onSessionIdChange(undefined);
-                  return;
-                }
-                cancelMutation.mutate(session.id);
-              }}
-              onCancelSession={() => {
-                if (session === undefined) return;
-                if (session.status === 'failed' || session.status === 'cancelled') {
-                  onSessionIdChange(undefined);
-                  save(false);
-                  return;
-                }
-                cancelMutation.mutate(session.id);
-              }}
-            />
+            {sections12}
             {locked ? (
               <>
                 <p className="rounded-lg border bg-muted p-3 text-sm">
@@ -210,6 +220,7 @@ export const ProviderEditorPage: React.FC<ProviderEditorPageProps> = (props) => 
         </div>
         <EditorFooter
           summaries={summaries}
+          kind={kind}
           primaryLabel={primaryLabel}
           onPrimary={() => save(false)}
           onCancel={() => void navigate({ to: '/providers' })}

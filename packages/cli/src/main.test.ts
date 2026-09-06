@@ -186,6 +186,20 @@ describe('cli', () => {
     expect(program.helpInformation()).not.toContain('__agent-post-upgrade');
   });
 
+  test('update is an alias of upgrade and advertises the same flags', () => {
+    const program = buildProgram();
+    const upgrade = program.commands.find((command) => command.name() === 'upgrade');
+    expect(upgrade?.aliases()).toContain('update');
+    expect(program.helpInformation()).toMatch(/upgrade\|update/);
+
+    const result = runCli(['update', '--help']);
+    expect(result.exitCode).toBe(0);
+    const help = result.stdout.toString();
+    expect(help).toContain('--check');
+    expect(help).toContain('--force');
+    expect(help).toContain('--registry');
+  });
+
   test('invokedProgramName treats aiop as the short command', () => {
     expect(invokedProgramName('aiop')).toBe('aiop');
     expect(invokedProgramName('/usr/local/bin/aiop')).toBe('aiop');

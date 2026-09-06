@@ -28,7 +28,7 @@ test('build embeds the ChatGPT OAuth client ID without leaving source plaintext'
 test('clean build resolves the current runtime entry and exposes Responses raw capability', async () => {
   const [{ default: descriptor }, pluginArtifact] = await Promise.all([
     import('./dist/index.js'),
-    Bun.file('./dist/plugin.js').text(),
+    Bun.file('./dist/plugin/plugin.js').text(),
   ]);
   const adapter = await registeredAdapter(descriptor);
   const runtime = await adapter.createRuntime({
@@ -57,7 +57,7 @@ test('clean build resolves the current runtime entry and exposes Responses raw c
     },
   });
 
-  expect(pluginArtifact).toContain('from "./runtime/index.js"');
+  expect(pluginArtifact).toContain('from "../runtime/index.js"');
   expect(runtime.raw?.({ protocol: 'openai-response', modelId: 'gpt-artifact' })).toBeDefined();
   expect(runtime.raw?.({ protocol: 'openai-compatible', modelId: 'gpt-artifact' })).toBeUndefined();
 });

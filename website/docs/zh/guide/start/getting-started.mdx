@@ -14,6 +14,7 @@ import { CommandTabs } from '@rspress/core/theme';
   commands={{
     brew: 'brew install aio-proxy/tap/aio-proxy',
     bun: 'bun add -g aio-proxy',
+    curl: 'curl -fsSL https://aioproxy.dev/install.sh | sh',
   }}
 />
 
@@ -23,7 +24,7 @@ import { CommandTabs } from '@rspress/core/theme';
 aio-proxy run --open
 ```
 
-npm/bun 还会安装短命令 `aiop`。Homebrew 目前仍只有 `aio-proxy`。
+npm/bun 与 curl 安装脚本还会安装短命令 `aiop`。Homebrew 目前仍只有 `aio-proxy`。
 
 首次启动会创建 `~/.aio-proxy/config.jsonc`，并打开 Dashboard。默认地址为：
 
@@ -56,7 +57,7 @@ aio-proxy config edit
 
 ```jsonc title="config.jsonc"
 {
-  "$schema": "https://cdn.jsdelivr.net/npm/aio-proxy@latest/config.schema.json",
+  "$schema": "https://unpkg.com/@aio-proxy/types/config.schema.json",
   "providers": {
     "openai": {
       "kind": "api",

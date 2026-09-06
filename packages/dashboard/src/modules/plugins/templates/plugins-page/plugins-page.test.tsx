@@ -39,6 +39,17 @@ const plugin = (values: Partial<DashboardPluginSummary> = {}): DashboardPluginSu
   ...values,
 });
 
+// Base UI checkboxes activate by dispatching a synthetic click onto their hidden input. Under
+// happy-dom that click also reaches the wrapping <label>, which forwards a second click back to the
+// input, so a keyboard Space (or a click on the checkbox itself) toggles twice and nets out unchanged.
+// Clicking the label is the one gesture that produces exactly one toggle here.
+const toggleCheckbox = (checkbox: HTMLElement) => {
+  const labelId = checkbox.getAttribute('aria-labelledby');
+  const label = labelId === null ? null : document.getElementById(labelId);
+  if (label === null) throw new Error('checkbox is not associated with a label element');
+  fireEvent.click(label);
+};
+
 afterEach(() => {
   mocks.editView = undefined;
   mocks.plugins.data.plugins = [];
@@ -81,8 +92,7 @@ test('keeps Add Plugin in the page header and confirms the exact request after t
 
   const trust = screen.getByRole('checkbox', { name: /trust|信任/u });
   expect(install).toBeDisabled();
-  fireEvent.keyDown(trust, { code: 'Space', key: ' ' });
-  fireEvent.keyUp(trust, { code: 'Space', key: ' ' });
+  toggleCheckbox(trust);
   expect(trust).toBeChecked();
   await waitFor(() => expect(install).toBeEnabled());
   fireEvent.click(install);
@@ -194,8 +204,7 @@ test('loads the safe options edit-view without rendering a stored secret and sub
   fireEvent.change(screen.getByLabelText('Endpoint'), { target: { value: 'https://eu.example.com' } });
   fireEvent.change(screen.getByLabelText('Token'), { target: { value: 'replacement' } });
   const clearLegacy = screen.getByRole('checkbox', { name: /Clear Legacy token|清除 Legacy token/u });
-  fireEvent.keyDown(clearLegacy, { code: 'Space', key: ' ' });
-  fireEvent.keyUp(clearLegacy, { code: 'Space', key: ' ' });
+  toggleCheckbox(clearLegacy);
   expect(clearLegacy).toBeChecked();
   fireEvent.click(screen.getByRole('button', { name: /Save options|保存选项|儲存選項/u }));
 

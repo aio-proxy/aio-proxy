@@ -10,6 +10,7 @@ import { isPlainObject } from 'es-toolkit/predicate';
 import { CHATGPT_USER_AGENT } from '../codex-client';
 import { refreshAccessToken } from '../oauth-flow';
 import type { ChatGPTCredential } from '../schema';
+import { stripOrphanReasoningIds } from './orphan-reasoning-id/index';
 import { createOpenAIChatGPTRealtime, mergeEndpointQuery } from './realtime';
 
 const CHATGPT_CODEX_BASE_URL = 'https://chatgpt.com/backend-api/codex' as const;
@@ -119,12 +120,15 @@ async function rewriteResponsesBody(request: Request, headers: Headers): Promise
   const body = value as Record<string, unknown>;
   headers.delete('content-encoding');
   headers.delete('content-length');
+  const sanitizedInput = stripOrphanReasoningIds(body['input']);
   return JSON.stringify({
     ...body,
     store: false,
     ...(typeof body['input'] === 'string'
       ? { input: [{ role: 'user', content: [{ type: 'input_text', text: body['input'] }] }] }
-      : {}),
+      : sanitizedInput === undefined
+        ? {}
+        : { input: sanitizedInput }),
   });
 }
 

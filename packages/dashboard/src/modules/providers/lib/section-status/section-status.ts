@@ -50,6 +50,12 @@ export const SECTION_LABEL = {
 } as const satisfies Record<SectionId, string>;
 
 export const SECTION_ORDER = Object.keys(SECTION_LABEL) as readonly SectionId[];
+const OAUTH_SECTION_ORDER = ['connection', 'identity', 'models', 'advanced'] as const satisfies readonly SectionId[];
+
+/** Rail/card order. OAuth authorizes first, so Connection sits above Identity. */
+export function sectionOrder(kind: SectionStatusInput['kind']): readonly SectionId[] {
+  return kind === 'oauth' ? OAUTH_SECTION_ORDER : SECTION_ORDER;
+}
 
 export function sectionStatuses(input: SectionStatusInput): Readonly<Record<SectionId, SectionSummary>> {
   // The id is server-assigned for oauth creation, so it can never be a todo there.
@@ -113,6 +119,9 @@ export function sectionStatuses(input: SectionStatusInput): Readonly<Record<Sect
  * the one state that genuinely cannot be persisted yet (an unauthorized oauth draft), so a section
  * that only has advice to give reports `ok` and puts the advice in its hint instead.
  */
-export function blockingSections(summaries: Readonly<Record<SectionId, SectionSummary>>): SectionId[] {
-  return SECTION_ORDER.filter((section) => summaries[section].status !== 'ok');
+export function blockingSections(
+  summaries: Readonly<Record<SectionId, SectionSummary>>,
+  order: readonly SectionId[] = SECTION_ORDER,
+): SectionId[] {
+  return order.filter((section) => summaries[section].status !== 'ok');
 }

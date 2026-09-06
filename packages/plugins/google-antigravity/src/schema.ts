@@ -38,10 +38,8 @@ export const credentialSchema = zod
     tokenType: zod.string().optional(),
     scope: zod.string().optional(),
   })
-  .transform(
-    ({ tokenType, scope, ...credential }): GoogleAntigravityCredential => ({
-      ...credential,
-      ...(tokenType === undefined ? {} : { tokenType }),
-      ...(scope === undefined ? {} : { scope }),
-    }),
-  );
+  .transform(({ tokenType, scope, ...credential }): GoogleAntigravityCredential => ({
+    ...credential,
+    ...(tokenType === undefined ? {} : { tokenType }),
+    ...(scope === undefined ? {} : { scope }),
+  }));

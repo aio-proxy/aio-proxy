@@ -6,6 +6,12 @@
       "runtimeExecutable": "bun",
       "runtimeArgs": ["run", "dev"],
       "port": 22078
+    },
+    {
+      "name": "Website",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": ["run", "--filter", "@aio-proxy/website", "dev"],
+      "port": 3000
     }
   ]
 }

@@ -1,6 +1,18 @@
-# AIO Proxy
+<div align="center">
+<h1>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://fastly.jsdelivr.net/gh/aio-proxy/aio-proxy@main/packages/brand/src/aio-proxy-wordmark-dark.svg">
+    <img alt="AIO Proxy" src="https://fastly.jsdelivr.net/gh/aio-proxy/aio-proxy@main/packages/brand/src/aio-proxy-wordmark-light.svg" width="192">
+  </picture>
+</h1>
+
+[![Version](https://npmx.dev/api/registry/badge/version/aio-proxy)](https://npmx.dev/package/aio-proxy)
+[![Downloads](https://npmx.dev/api/registry/badge/downloads/aio-proxy)](https://npmx.dev/package/aio-proxy)
+[![License](https://img.shields.io/github/license/aio-proxy/aio-proxy?style=flat&colorA=18181B&colorB=46ecd5)](https://github.com/aio-proxy/aio-proxy/blob/main/LICENSE)
 
 English | [简体中文](https://github.com/aio-proxy/aio-proxy/blob/main/README.zh-Hans.md)
+
+</div>
 
 Connect and manage multiple model providers through one API endpoint. AIO Proxy provides an extensible plugin system, automatic routing and failover, and observability across usage, cost, and end-to-end request traces.
 
@@ -53,13 +65,19 @@ brew install aio-proxy/tap/aio-proxy
 bun add -g aio-proxy
 ```
 
+### curl
+
+```bash
+curl -fsSL https://aioproxy.dev/install.sh | sh
+```
+
 ## Quick start
 
 ```bash
 aio-proxy run --open
 ```
 
-npm/bun also installs the short command `aiop`. Homebrew still ships only `aio-proxy`.
+npm/bun and the curl installer also install the short command `aiop`. Homebrew still ships only `aio-proxy`.
 
 - API: `http://127.0.0.1:9317`
 - Dashboard: `http://127.0.0.1:9317/dashboard`
@@ -77,7 +95,7 @@ The following example routes `gpt-5` to the OpenAI Responses API:
 
 ```jsonc
 {
-  "$schema": "https://cdn.jsdelivr.net/npm/aio-proxy@latest/config.schema.json",
+  "$schema": "https://unpkg.com/@aio-proxy/types/config.schema.json",
   "providers": {
     "openai": {
       "kind": "api",
@@ -143,7 +161,7 @@ Metadata is resolved per field in this order: the selected Provider's router ove
 
 ```jsonc
 {
-  "$schema": "https://cdn.jsdelivr.net/npm/aio-proxy@latest/config.schema.json",
+  "$schema": "https://unpkg.com/@aio-proxy/types/config.schema.json",
   "router": {
     // When several Providers expose the same public model, reconcile its context window:
     // "min" (default, safe) reports the smallest; "max" reports the largest.

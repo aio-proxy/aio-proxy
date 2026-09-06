@@ -1,3 +1,4 @@
+import { ProviderKind } from '@aio-proxy/types';
 import { afterEach, expect, test } from '@rstest/core';
 import { act, renderHook } from '@testing-library/react';
 
@@ -32,7 +33,7 @@ afterEach(() => {
  */
 test('keeps the earliest visible section active when a later one arrives in its own batch', () => {
   globalThis.IntersectionObserver = FakeIntersectionObserver as unknown as typeof IntersectionObserver;
-  const { result } = renderHook(() => useActiveSection());
+  const { result } = renderHook(() => useActiveSection(ProviderKind.Api));
   const report = (...entries: readonly IntersectionObserverEntry[]) =>
     act(() => {
       observed.callback?.(entries);
