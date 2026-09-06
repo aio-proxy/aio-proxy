@@ -113,16 +113,21 @@ type AttemptDispatch<TRequest, TContext> =
 // Narrows on the `capability` discriminant directly: the isEmbeddingProtocolAdapter
 // guard cannot eliminate union members here because its type parameters infer as
 // `unknown` against generic TRequest/TContext.
+//
+// Every branch tests positively and audio is the fallthrough. Audio is the one
+// member whose `capability` is a union (`'speech' | 'transcription'`) rather than a
+// single literal, so it is not a discriminant TypeScript can narrow *away* from:
+// excluding both of its values still leaves `AudioProtocolAdapter` in the union.
+// Testing `=== 'language'` narrows to the member that does carry a single literal,
+// which removes audio by elimination.
 function attemptDispatch<TRequest, TContext>(
   ctx: AnyAttemptLoopContext<TRequest, TContext>,
 ): AttemptDispatch<TRequest, TContext> {
   const { adapter } = ctx;
   if (adapter.capability === 'embedding') return { kind: 'embedding', ctx: { ...ctx, adapter } };
   if (adapter.capability === 'image') return { kind: 'image', ctx: { ...ctx, adapter } };
-  if (adapter.capability === 'speech' || adapter.capability === 'transcription') {
-    return { kind: 'audio', ctx: { ...ctx, adapter } };
-  }
-  return { kind: 'language', ctx: { ...ctx, adapter } };
+  if (adapter.capability === 'language') return { kind: 'language', ctx: { ...ctx, adapter } };
+  return { kind: 'audio', ctx: { ...ctx, adapter } };
 }
 
 // Same-protocol raw wins, then the AI SDK model transport, then nothing.
