@@ -7,6 +7,9 @@ import {
   GeminiInteractionsEgressError,
   GeminiInteractionsUnsupportedFeatureError,
   ImageInputUnsupportedError,
+  OpenAIAudioInvalidRequestError,
+  type OpenAIAudioUnsupportedFeature,
+  OpenAIAudioUnsupportedFeatureError,
   OpenAICompletionsUnsupportedFeatureError,
 } from '../error';
 import type { ProtocolErrorMapper } from './adapter';
@@ -15,6 +18,7 @@ import {
   geminiEmbeddingsErrors,
   geminiGenerateContentErrors,
   geminiInteractionsErrors,
+  openAIAudioErrors,
   openAICompletionsErrors,
   openAIEmbeddingsErrors,
   openAIImagesErrors,
@@ -100,6 +104,20 @@ const cases = [
     geminiEmbeddingsErrors,
     { error: { code: 415, message: 'Unsupported Content-Encoding', status: 'INVALID_ARGUMENT' } },
     { error: { code: 400, message: 'Invalid Gemini Embeddings request', status: 'INVALID_ARGUMENT' } },
+  ],
+  [
+    'OpenAI Audio',
+    openAIAudioErrors,
+    {
+      error: {
+        code: 'unsupported_content_encoding',
+        message: 'Unsupported Content-Encoding',
+        type: 'invalid_request_error',
+      },
+    },
+    {
+      error: { code: 'invalid_request', message: 'Invalid OpenAI Audio request', type: 'invalid_request_error' },
+    },
   ],
 ] as const satisfies readonly (readonly [string, ProtocolErrorMapper, unknown, unknown])[];
 
@@ -206,6 +224,17 @@ test.each([
       error: { code: 409, message: 'previous_response_id matches multiple providers', status: 'ABORTED' },
     },
   ],
+  [
+    'OpenAI Audio',
+    openAIAudioErrors,
+    {
+      error: {
+        code: 'previous_response_conflict',
+        message: 'previous_response_id matches multiple providers',
+        type: 'invalid_request_error',
+      },
+    },
+  ],
 ] as const)('maps ambiguous previous responses for %s', async (_name, mapper, expected) => {
   const conflict = (mapper as ProtocolErrorMapper & { previousResponseConflict?: () => Response })
     .previousResponseConflict;
@@ -230,6 +259,74 @@ test('maps Completions unsupported features through modelUnsupported as 501', as
     },
   });
 });
+
+// Each of these features would silently change the shape of an audio response if it
+// slipped past the mapper, so pin the 501 body the client actually receives rather
+// than the set literal that produces it.
+test.each([
+  'stream',
+  'stream_format',
+  'chunking_strategy',
+  'include',
+  'translations',
+  'response_format',
+] as const satisfies readonly OpenAIAudioUnsupportedFeature[])(
+  'maps Audio unsupported feature %s through requestError as 501 unsupported_feature',
+  async (feature) => {
+    const response = openAIAudioErrors.requestError(new OpenAIAudioUnsupportedFeatureError(feature));
+
+    expect(response?.status).toBe(501);
+    expect(await response?.json()).toEqual({
+      error: {
+        code: 'unsupported_feature',
+        message: `OpenAI Audio feature is not supported: ${feature}`,
+        type: 'invalid_request_error',
+      },
+    });
+  },
+);
+
+test('maps an unroutable Audio model to a distinct 501 not_implemented body', async () => {
+  const response = openAIAudioErrors.unsupported('audio');
+
+  expect(response.status).toBe(501);
+  expect(await response.json()).toEqual({
+    error: {
+      code: 'not_implemented',
+      message: 'No configured provider can serve OpenAI Audio for this model',
+      type: 'invalid_request_error',
+    },
+  });
+});
+
+test('maps an unnamed Audio dispatch gap to 501 not_implemented', async () => {
+  const response = openAIAudioErrors.unsupported('timestamp_granularities');
+
+  expect(response.status).toBe(501);
+  expect(await response.json()).toEqual({
+    error: {
+      code: 'not_implemented',
+      message: 'Provider does not support OpenAI Audio transform dispatch',
+      type: 'invalid_request_error',
+    },
+  });
+});
+
+test.each(['file', 'input', 'voice', 'speed'] as const)(
+  'maps an invalid Audio %s parameter to 400 invalid_request',
+  async (param) => {
+    const response = openAIAudioErrors.requestError(new OpenAIAudioInvalidRequestError(param));
+
+    expect(response?.status).toBe(400);
+    expect(await response?.json()).toEqual({
+      error: {
+        code: 'invalid_request',
+        message: `Invalid OpenAI Audio request parameter: ${param}`,
+        type: 'invalid_request_error',
+      },
+    });
+  },
+);
 
 test('maps image compatibility errors into every inbound protocol shape', async () => {
   const error = new ImageInputUnsupportedError('gemini-tool-url', 'messages.2.content.0.output.value.1');
