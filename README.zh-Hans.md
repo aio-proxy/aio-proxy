@@ -1,7 +1,13 @@
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://fastly.jsdelivr.net/gh/aio-proxy/aio-proxy@main/packages/brand/src/aio-proxy-wordmark-dark.svg">
-  <img alt="AIO Proxy" src="https://fastly.jsdelivr.net/gh/aio-proxy/aio-proxy@main/packages/brand/src/aio-proxy-wordmark-light.svg" width="360">
-</picture>
+<div align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://fastly.jsdelivr.net/gh/aio-proxy/aio-proxy@main/packages/brand/src/aio-proxy-wordmark-dark.svg">
+    <img alt="AIO Proxy" src="https://fastly.jsdelivr.net/gh/aio-proxy/aio-proxy@main/packages/brand/src/aio-proxy-wordmark-light.svg" width="192">
+  </picture>
+
+[![Open on npmx.dev](https://npmx.dev/api/registry/badge/version/aio-proxy?color=00776e&name=true)](https://npmx.dev/package/aio-proxy)
+</div>
+
+---
 
 [English](./README.md) | 简体中文
 
