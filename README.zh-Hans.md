@@ -65,13 +65,19 @@ brew install aio-proxy/tap/aio-proxy
 bun add -g aio-proxy
 ```
 
+### curl
+
+```bash
+curl -fsSL https://aio-proxy.github.io/install.sh | sh
+```
+
 ## 快速开始
 
 ```bash
 aio-proxy run --open
 ```
 
-npm/bun 还会安装短命令 `aiop`。Homebrew 目前仍只有 `aio-proxy`。
+npm/bun 与 curl 安装脚本还会安装短命令 `aiop`。Homebrew 目前仍只有 `aio-proxy`。
 
 - API：`http://127.0.0.1:9317`
 - Dashboard：`http://127.0.0.1:9317/dashboard`

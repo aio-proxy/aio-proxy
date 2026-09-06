@@ -4,6 +4,8 @@ on:
   push:
     branches: [main]
     paths:
+      # `website/docs/public/install.sh` is served as https://aio-proxy.github.io/install.sh,
+      # so the curl installer ships through this deploy too.
       - 'website/**'
       # The website renders its nav wordmark and favicon from these packages, so a commit that
       # touches only them still changes the deployed site.

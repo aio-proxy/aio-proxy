@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-REPO="baranwang/aio-proxy"
+REPO="aio-proxy/aio-proxy"
 INSTALL_DIR="${AIO_PROXY_INSTALL_DIR:-$HOME/.local/bin}"
 
 os="$(uname -s)"
