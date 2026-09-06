@@ -5,11 +5,16 @@ import { callerPrincipal, type CallerPrincipalEnv } from '../../caller-principal
 import { isInboundAbort } from '../../route-observation';
 import { logServerEvent } from '../../server-log';
 import { readRealtimeCreateBody, withUpstreamModel } from './create-body';
-import { isValidCallId, realtimeUpstreamUnavailable, REALTIME_CALL_ID_PATTERN } from './errors';
+import {
+  isValidCallId,
+  realtimeUpstreamRejected,
+  realtimeUpstreamUnavailable,
+  REALTIME_CALL_ID_PATTERN,
+} from './errors';
 import { normalizeRealtimeModel } from './model';
 import { type RealtimeCandidate, selectRealtimeCandidates } from './provider-select';
 import type { RealtimeRouteSource } from './source';
-import { allowlistedUpstreamHeaders, realtimeFailureFromUpstream } from './upstream-response';
+import { allowlistedUpstreamHeaders } from './upstream-response';
 
 export const MAX_CREATE_ATTEMPTS = 2;
 
@@ -84,16 +89,19 @@ async function attemptCandidates(
       continue;
     }
 
-    // A 4xx means this offer or credential was rejected; replaying a bad SDP onto
-    // every other provider multiplies the damage. 401/429 are per-credential.
-    if (response.status < 500 && response.status !== 401 && response.status !== 429) {
+    // A 4xx means this offer or credential was rejected, and replaying a bad SDP onto
+    // every other provider multiplies the damage. 401/429 are per-credential. A 3xx is not
+    // a rejection of anything: its only actionable content lived in the `Location` that may
+    // not be forwarded, so it is an availability failure of this attempt and falls through
+    // to the next candidate exactly as a 5xx does.
+    if (response.status >= 400 && response.status < 500 && response.status !== 401 && response.status !== 429) {
       await response.body?.cancel();
-      const filtered = realtimeFailureFromUpstream(response.status);
+      const filtered = realtimeUpstreamRejected(response.status);
       logFailure(
         source,
         { model: input.models.normalized, style: input.style, attemptCount },
         filtered.status,
-        filtered.status === response.status ? 'upstream_rejected' : 'realtime_upstream_unavailable',
+        'upstream_rejected',
         candidate.provider.id,
       );
       return filtered;

@@ -108,14 +108,19 @@ test('a non-401 non-429 4xx stops the loop and is reshaped, dropping every upstr
         priority: 10,
         answer: () => {
           calls += 1;
-          return new Response('rejected offer: v=0 a=candidate:secret-ice 1 udp', {
-            status: 400,
-            headers: {
-              location: 'https://api.openai.com/leak?token=abc',
-              'set-cookie': 'up_session=secret123; Path=/',
-              'x-upstream-debug': 'internal-host-9',
+          // Every string the assertions below look for is in the *body*: a `not.toContain`
+          // against a header-only value would pass however the body were relayed.
+          return new Response(
+            'rejected offer at api.openai.com (cookie up_session=secret123): v=0 a=candidate:secret-ice 1 udp',
+            {
+              status: 400,
+              headers: {
+                location: 'https://api.openai.com/leak?token=abc',
+                'set-cookie': 'up_session=secret123; Path=/',
+                'x-upstream-debug': 'internal-host-9',
+              },
             },
-          });
+          );
         },
       }),
       realtimeProvider({ id: 'b', answer: sdpAnswer('call_abc') }),
@@ -156,8 +161,10 @@ test('a non-401 non-429 4xx stops the loop and is reshaped, dropping every upstr
 });
 
 // A redirect carries its target in the one header that may never be forwarded, so once it
-// is stripped the caller has nothing to act on and the attempt is an availability failure.
-test('an upstream redirect on create becomes 503 and forwards no Location', async () => {
+// is stripped the caller has nothing to act on. That makes it an availability failure of
+// this attempt — not of the create — so the terminal 503 only appears once no candidate
+// is left, exactly as for a 5xx.
+test('an upstream redirect is the last candidate: 503, and no Location reaches the caller or the log', async () => {
   const logs: ServerLog[] = [];
   const source = sourceWith(
     [
@@ -179,17 +186,47 @@ test('an upstream redirect on create becomes 503 and forwards no Location', asyn
   expect(response.status).toBe(503);
   expect(response.headers.get('location')).toBeNull();
   expect(((await response.json()) as { error: { code: string } }).error.code).toBe('realtime_upstream_unavailable');
-  // The log records the 503 the caller saw, not the upstream's 302, and says which code
-  // that 503 carried — the remapping is otherwise invisible in the record.
+  // The log records the 503 the caller saw, not the upstream's 302, and the attempt was
+  // consumed rather than skipped.
   expect(logs).toContainEqual(
     expect.objectContaining({
       event: 'realtime.call_failed',
-      providerId: 'a',
       statusCode: 503,
       errorCode: 'realtime_upstream_unavailable',
+      attemptCount: 1,
     }),
   );
   expect(JSON.stringify(logs)).not.toContain('chatgpt.com');
+});
+
+// The two-provider shape is the point: with one provider a fall-through and a hard stop
+// are indistinguishable, and a redirect from one account must not fail a create a healthy
+// second account would have served.
+test('an upstream redirect consumes its attempt and the next candidate still serves the create', async () => {
+  const attempted: string[] = [];
+  const source = sourceWith([
+    realtimeProvider({
+      id: 'a',
+      priority: 10,
+      answer: () => {
+        attempted.push('a');
+        return new Response('', { status: 302, headers: { location: 'https://chatgpt.com/redir' } });
+      },
+    }),
+    realtimeProvider({
+      id: 'b',
+      answer: () => {
+        attempted.push('b');
+        return sdpAnswer('call_abc')();
+      },
+    }),
+  ]);
+
+  const response = await post(source, 'live', 'v=0\r\n', 'application/sdp');
+
+  expect(response.status).toBe(201);
+  expect(attempted).toEqual(['a', 'b']);
+  expect(response.headers.get('location')).toBe('/v1/live/call_abc');
 });
 
 test('401 and 429 do fall through to the next credential', async () => {

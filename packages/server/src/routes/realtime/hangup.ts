@@ -15,7 +15,7 @@ import {
 } from './errors';
 import { pinnedRealtimeCandidate } from './provider-select';
 import type { RealtimeRouteSource } from './source';
-import { forwardUpstreamSuccess, realtimeFailureFromUpstream } from './upstream-response';
+import { realtimeFailureFromUpstream } from './upstream-response';
 
 export async function handleRealtimeHangup(
   context: Context<CallerPrincipalEnv>,
@@ -60,7 +60,12 @@ export async function handleRealtimeHangup(
   if (response.ok) {
     source.realtimeCalls.closeAttachment(callId, NORMAL_CLOSE_CODE);
     source.realtimeCalls.remove(callId);
-    return forwardUpstreamSuccess(response);
+    await response.body?.cancel();
+    // A hangup reply carries nothing the caller lacks — it already holds the `call_id` it
+    // tore down — while an upstream one was observed echoing the caller's SDP offer back.
+    // 204 is the smallest surface that still says "gone": no headers to filter, no body to
+    // audit. The design spec's record-lifecycle table pins the 2xx *effects*, not a shape.
+    return new Response(null, { status: 204 });
   }
   await response.body?.cancel();
   return realtimeFailureFromUpstream(response.status);

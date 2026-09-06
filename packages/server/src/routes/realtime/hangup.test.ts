@@ -51,19 +51,21 @@ test('the key that created the call hangs it up and the record is deleted', asyn
     headers: { 'x-test-principal': 'key-owner' },
   });
 
-  expect(response.status).toBe(200);
+  expect(response.status).toBe(204);
   expect(store.lookup('call_abc')).toBeUndefined();
 });
 
-// A 200 hangup was observed carrying the upstream's own `Location` (its host) and a
-// `Set-Cookie`. The record teardown must still happen, so this is not just a header check.
-test('a 2xx hangup forwards only content-type, dropping the upstream Location and cookie', async () => {
+// A 200 hangup was observed carrying the upstream's own `Location` (its host), a
+// `Set-Cookie`, and the caller's own offer echoed back in its JSON. Nothing in a hangup
+// reply is information the caller lacks, so the whole upstream response is dropped. The
+// record teardown must still happen, so this is not just a disclosure check.
+test('a 2xx hangup answers an empty 204, discarding the upstream headers and body', async () => {
   const store = createRealtimeCallStore();
   const app = hangupApp(
     store,
     [],
     () =>
-      new Response('{"ok":true}', {
+      new Response('{"ok":true,"echo":"v=0\\r\\na=candidate:secret-ice 1 udp 10.1.2.3 typ host\\r\\n"}', {
         status: 200,
         headers: {
           'content-type': 'application/json',
@@ -80,11 +82,14 @@ test('a 2xx hangup forwards only content-type, dropping the upstream Location an
     headers: { 'x-test-principal': 'key-owner' },
   });
 
-  expect(response.status).toBe(200);
-  expect([...response.headers.keys()].toSorted()).toEqual(['content-type']);
-  expect(response.headers.get('location')).toBeNull();
-  expect(response.headers.get('set-cookie')).toBeNull();
-  expect(await response.text()).toBe('{"ok":true}');
+  expect(response.status).toBe(204);
+  expect([...response.headers.keys()].sort()).toEqual([]);
+  const text = await response.text();
+  expect(text).toBe('');
+  // Live because the fixture body carries each string: relaying it verbatim trips these.
+  expect(text).not.toContain('secret-ice');
+  expect(text).not.toContain('10.1.2.3');
+  expect(text).not.toContain('api.openai.com');
   expect(store.lookup('call_abc')).toBeUndefined();
 });
 
@@ -96,7 +101,7 @@ test('a non-2xx hangup is reshaped into the realtime envelope and keeps the reco
     store,
     [],
     () =>
-      new Response('<html>no such call at internal-host-9</html>', {
+      new Response('<html>no such call at api.openai.com host internal-host-9</html>', {
         status: 404,
         headers: { 'content-type': 'text/html', location: 'https://api.openai.com/gone', 'set-cookie': 'x=y' },
       }),

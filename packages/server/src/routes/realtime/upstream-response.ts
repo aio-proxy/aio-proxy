@@ -9,7 +9,12 @@ const FORWARDED_UPSTREAM_HEADERS = ['content-type'] as const;
 
 /** Builds the caller-facing headers from scratch, so `Location`, `Set-Cookie`,
  *  `set-cookie2`, and every other upstream header are absent by construction rather
- *  than by deletion. The create's 2xx path adds its own rewritten `Location` on top. */
+ *  than by deletion. The create's 2xx path adds its own rewritten `Location` on top.
+ *
+ *  The create's 2xx answer is the only response whose upstream *body* reaches the caller,
+ *  because the SDP answer is the whole point of that reply. Every other path — including a
+ *  successful hangup, whose caller already knows the `call_id` it tore down — discards the
+ *  upstream body, so no SDP fragment or credential the upstream echoed can be relayed. */
 export function allowlistedUpstreamHeaders(response: Response): Headers {
   const headers = new Headers();
   for (const name of FORWARDED_UPSTREAM_HEADERS) {
@@ -17,10 +22,6 @@ export function allowlistedUpstreamHeaders(response: Response): Headers {
     if (value !== null) headers.set(name, value);
   }
   return headers;
-}
-
-export function forwardUpstreamSuccess(response: Response): Response {
-  return new Response(response.body, { status: response.status, headers: allowlistedUpstreamHeaders(response) });
 }
 
 /** The upstream's own body is discarded rather than relayed: one was observed echoing the

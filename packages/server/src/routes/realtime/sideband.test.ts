@@ -148,7 +148,7 @@ test('a 2xx hangup by the owner closes the live sideband', async () => {
 
   const response = await harness.hangup('key-owner');
 
-  expect(response.status).toBe(200);
+  expect(response.status).toBe(204);
   expect((await closed).code).toBe(1000);
   expect(harness.store.lookup('call_abc')).toBeUndefined();
 });
