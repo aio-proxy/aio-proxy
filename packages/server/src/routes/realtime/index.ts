@@ -12,3 +12,11 @@ export type { RealtimeCreateBody } from './create-body';
 export { readRealtimeCreateBody, REALTIME_CREATE_BODY_LIMIT, withUpstreamModel } from './create-body';
 export type { RealtimeCallId } from './errors';
 export { isValidCallId, REALTIME_CALL_ID_PATTERN, realtimeError } from './errors';
+export {
+  INTERNAL_CLOSE_CODE,
+  MAX_CLOSE_REASON_BYTES,
+  normalizeCloseCode,
+  normalizedClose,
+  SHUTDOWN_CLOSE_CODE,
+  truncateCloseReason,
+} from './close-code';
