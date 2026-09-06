@@ -202,6 +202,9 @@ test('converts a speech request through the speech transport and answers with th
   expect(route.recording.attempts.map(({ providerId, transport }) => ({ providerId, transport }))).toEqual([
     { providerId: 'openai', transport: 'audio' },
   ]);
+  // The convert path never spoke the upstream's protocol, so the attempt records
+  // no target protocol — unlike the raw arm, which records `openai-audio`.
+  expect(route.recording.attempts[0]?.targetProtocol).toBeUndefined();
 });
 
 test('converts a transcription request through the transcription transport, not the speech one', async () => {
@@ -304,6 +307,19 @@ test('declines stream_format on the convert path with a fallback-capable 501', a
   expect(failure?.status).toBe(501);
   expect(await failure?.json()).toMatchObject({ error: { code: 'unsupported_feature' } });
   expect(speech).not.toHaveBeenCalled();
+
+  // The traced error code is a distinct value from the body's `error.code`: the
+  // body comes from the protocol error mapper, the trace from the pipeline. Only
+  // the last candidate finalizes the trace, so re-run without a next candidate.
+  const terminal = harness(openAISpeechAdapter, speechRequest({ stream_format: 'sse' }), { operation: 'speech' });
+  const terminalStep = await attemptAudioCandidate(terminal.ctx, slot(provider));
+
+  expect(terminalStep.kind).toBe('return');
+  await settleRecording(terminal.route.recording);
+  expect(terminal.route.recording.attempts.map(({ statusCode, errorCode }) => ({ statusCode, errorCode }))).toEqual([
+    { statusCode: 501, errorCode: 'unsupported_feature' },
+  ]);
+  expect(terminal.route.recording.finals[0]).toMatchObject({ outcome: 'failure', errorCode: 'unsupported_feature' });
 });
 
 test('bills the configured per-request fee on the audio convert path', async () => {

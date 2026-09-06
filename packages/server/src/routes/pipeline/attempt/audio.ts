@@ -23,6 +23,8 @@ export async function attemptAudioCandidate<TRequest, TContext>(
   const provider = candidate.provider;
   // The same predicate the capability filter used, so a bridged provider that
   // legitimately passed the filter is never re-rejected by an index-only check.
+  // `filterCandidatesByCapability` already applied it, so every candidate reaching
+  // here is granted: the two gates below are defense in depth, not live logic.
   const granted = candidateSupportsAudio(candidate, adapter.capability);
   const raw = granted
     ? provider.raw?.resolve({

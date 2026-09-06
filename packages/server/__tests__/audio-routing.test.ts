@@ -116,8 +116,15 @@ describe('OpenAI audio HTTP dispatch matrix', () => {
     const response = await request(SPEECH, [fixture.value], { body: speechBody() });
 
     expect(response.status).toBe(501);
-    expect(await response.json()).toMatchObject({
-      error: { code: 'not_implemented', type: 'invalid_request_error' },
+    // The message is the only discriminator: the language default
+    // (`transform_dispatch`) also answers 501 `not_implemented`, so asserting the
+    // audio-specific wording is what proves the audio sentinel was named.
+    expect(await response.json()).toEqual({
+      error: {
+        code: 'not_implemented',
+        message: 'No configured provider can serve OpenAI Audio for this model',
+        type: 'invalid_request_error',
+      },
     });
     expect(fixture.calls).toEqual({ model: 0, raw: 0, speech: 0, transcription: 0 });
   });
