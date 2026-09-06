@@ -5,10 +5,10 @@
     <img alt="AIO Proxy" src="https://fastly.jsdelivr.net/gh/aio-proxy/aio-proxy@main/packages/brand/src/aio-proxy-wordmark-light.svg" width="192">
   </picture>
 </h1>
-  
-[![Open on npmx.dev](https://npmx.dev/api/registry/badge/version/aio-proxy)](https://npmx.dev/package/aio-proxy)
-[![Open on npmx.dev](https://npmx.dev/api/registry/badge/downloads/aio-proxy)](https://npmx.dev/package/aio-proxy)
-[![License](https://img.shields.io/github/license/aio-proxy/aio-proxy?style=flat&colorA=18181B&colorB=46ecd5)](./https://github.com/aio-proxy/aio-proxy/blob/main/LICENSE)
+
+[![Version](https://npmx.dev/api/registry/badge/version/aio-proxy)](https://npmx.dev/package/aio-proxy)
+[![Downloads](https://npmx.dev/api/registry/badge/downloads/aio-proxy)](https://npmx.dev/package/aio-proxy)
+[![License](https://img.shields.io/github/license/aio-proxy/aio-proxy?style=flat&colorA=18181B&colorB=46ecd5)](https://github.com/aio-proxy/aio-proxy/blob/main/LICENSE)
 
 English | [简体中文](https://github.com/aio-proxy/aio-proxy/blob/main/README.zh-Hans.md)
 
