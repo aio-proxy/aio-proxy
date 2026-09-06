@@ -68,7 +68,7 @@ bun add -g aio-proxy
 ### curl
 
 ```bash
-curl -fsSL https://aio-proxy.github.io/install.sh | sh
+curl -fsSL https://aioproxy.dev/install.sh | sh
 ```
 
 ## Quick start
