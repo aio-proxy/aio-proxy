@@ -281,9 +281,16 @@ an SVG document, where the query is reliable.
 `@main` rather than a pinned tag, so the URL never needs updating. jsDelivr caches mutable refs
 for 7 days; acceptable for artwork that rarely changes.
 
-Dropping the `h1` follows Vite and Tailwind CSS — the wordmark already spells the name. The root
-READMEs are not published to npm (`npm/aio-proxy/package.json` ships only `bin` and
-`config.schema.json`), so registry markdown rendering is not a constraint.
+Dropping the `h1` follows Vite and Tailwind CSS — the wordmark already spells the name.
+
+Registry markdown rendering **is** a constraint. Root `README.md` is a symlink to
+`npm/aio-proxy/README.md`, and npm always includes `README` in the tarball regardless of the
+`files` field — verified with `npm pack --dry-run`, which lists it. That is why the jsDelivr URLs
+are absolute rather than repo-relative: on npmjs.com a relative path would break. If the
+registry's sanitizer drops `<source>`, the `<img>` fallback renders `-light.svg` (dark ink), which
+is correct against npm's light page background. Anything added to these READMEs later must render
+on both GitHub and npmjs.com — no relative image paths, no GitHub-only syntax such as
+`> [!NOTE]`.
 
 ## Repository Wiring
 
