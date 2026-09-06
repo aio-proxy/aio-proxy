@@ -23,13 +23,13 @@ OpenRouter 的 OAuth 与标准 OIDC 不同：没有 client 注册，PKCE S256 �
 - 使用账号 API key 动态发现当前可用模型，映射到 language catalog；仅在可重试失败时使用小型 curated fallback。
 - 用已安装的 `@openrouter/ai-sdk-provider` 调用 OpenAI-compatible language models（以及发现结果里实际出现的 embedding / image）。
 - 用官方 key 探活接口读取只读剩余额度比例；不声明 reset，不实现 refresh。
-- 保持现有 model-first routing、Provider weight 和 candidate fallback 不变。
+- 保持现有 model-first routing、Provider ID、Provider priority、Provider weight 和 candidate fallback 不变。
 
 ## 非目标
 
 - 不提供 `OPENROUTER_API_KEY` 粘贴登录；用户已经可以添加 `api` provider。
 - 不实现 Z.AI、Claude、Muse、Gemini CLI。
-- 不修改 plugin-sdk 类型或新增 AuthorizationPort 方法。唯一允许的宿主改动是 CLI / Dashboard **同一条** callback 解析行为。
+- 不修改 plugin-sdk 类型或新增 AuthorizationPort 方法。唯一允许的宿主改动是 CLI / Dashboard 共用的 callback 解析（纯函数进 `@aio-proxy/shared`，两宿主只做错误映射）。
 - 不发明 native-scheme 回调、固定端口或 `presentAuthorizeUrl` + 插件自建等待循环。
 - 不实现 `refreshCredential`，不写 `expiresAt`。
 - 不实现 CPA importer（未发现稳定的 OpenRouter CPA `type`）。
@@ -47,7 +47,7 @@ OpenRouter 的 OAuth 与标准 OIDC 不同：没有 client 注册，PKCE S256 �
 | OAuth flow         | 非标准 PKCE：authorize `callback_url` + S256；token `POST /api/v1/auth/keys` JSON                                                        |
 | Client 注册        | 无。S256 verifier 是唯一客户端证明                                                                                                       |
 | Loopback           | `hostname: '127.0.0.1'`，`port: 'dynamic'`，`path: '/callback'`，`allowManualCallbackUrl: true`                                          |
-| Host-only state    | 插件生成 `LoopbackRequest.state`，**不**发给 OpenRouter。宿主解析：缺 `state` 且有 `code` 则接受；错 `state` 仍拒绝                      |
+| Host-only state    | 插件生成 `LoopbackRequest.state`，**不**发给 OpenRouter。宿主按**已打开的 authorize URL 是否带 `state` 查询**决定 callback 是否要求 state |
 | Credential         | `{ apiKey: string }`。省略 `refreshCredential` 与 `expiresAt`                                                                            |
 | Fingerprint        | `sha256:` + SHA-256(`key:<apiKey>`)；`suggestedKey = 'openrouter-' + hex.slice(0, 12)`；label 固定 `OpenRouter`                         |
 | 模型发现           | TTL 6 小时；`GET /api/v1/models?output_modalities=text,embeddings,image` Bearer key                                                      |
@@ -76,7 +76,7 @@ OpenRouter 的 OAuth 与标准 OIDC 不同：没有 client 注册，PKCE S256 �
 - quota snapshot validation、API / CLI 展示和通用错误边界；
 - candidate selection、protocol conversion、fallback、请求记录和对外错误。
 
-**唯一宿主改动**：CLI `packages/cli/src/plugin-commands/loopback/callback.ts` 的 `parseCallback` 与 Dashboard `packages/server/src/oauth-login-session/callback.ts` 的 `parseOAuthCallback` 接受「匹配 loopback origin 的 URL 缺少 `state` 但仍带 `code`」。同一函数对非 URL 手工输入提取 `code`（`code=` 查询或单 token）。错 `state`、错 origin 行为不变。`LoopbackRequest` 类型不改。
+**唯一宿主改动**：从已打开的 authorize URL 计算 `stateRequired = url.searchParams.has('state')`。ChatGPT / Antigravity / Claude 的 authorize URL 带 `state`，因此缺 state 的 callback **仍拒绝**（Antigravity 无 PKCE，state 是唯一 CSRF 绑定）。OpenRouter 的 authorize URL 不带 `state`，此时才允许缺 state 的 `code` / `error`。`LoopbackRequest` 类型不改。纯解析放进 `@aio-proxy/shared`，CLI 与 Dashboard 只映射既有错误类型。
 
 route、pipeline 和公共 plugin SDK 不增加 OpenRouter 分支或新抽象。
 
@@ -148,9 +148,9 @@ const { code } = await context.authorization.loopback({
 
 本设计**仍然发送 `callback_url`**，不采用官方「省略 callback_url、只在网页展示 code」的 headless 变体。loopback 是主路径；手工粘贴是备用。
 
-### 宿主解析（必须改，且足够）
+### 宿主解析（必须改，且必须按 authorize URL 门控）
 
-当前实现（两份逻辑相同）：
+当前实现（CLI / Dashboard 各一份）：
 
 ```ts
 if (callback.searchParams.get('state') !== expectedState) throw /* STATE_MISMATCH */;
@@ -158,19 +158,28 @@ if (callback.searchParams.get('state') !== expectedState) throw /* STATE_MISMATC
 
 OpenRouter 浏览器回跳与手工粘贴的 URL 都没有 `state`，`get('state')` 为 `null`，登录在兑换前就会失败。这不是 SDK 缺口，是宿主 parse 过严。
 
-锁定行为（CLI 与 Dashboard 各改同一处比较，不新增 port、不改 `LoopbackRequest`）：
+**禁止**全局「缺 `state` + 有 `code` 就接受」。Antigravity 使用固定端口 `localhost:51121` 且 **没有 PKCE**；ChatGPT / Claude 使用固定知名端口。全局放宽会让本机任意页面用 `?code=` / `?error=access_denied` 完成或中止进行中的登录。
+
+锁定行为（不新增 port、不改 `LoopbackRequest`）：
+
+宿主在 `buildAuthorizationUrl` 之后计算：
+
+```ts
+const stateRequired = new URL(authorizationUrl).searchParams.has('state');
+```
+
+然后把 `{ stateRequired }` 传给解析函数。检查顺序锁定为：URL 或（仅 `stateRequired === false` 时）loose-code → origin 匹配（仅 URL）→ state 门控 → `error` → `code`。`error` **不得**排到 state 门控之前。错 `state` 的 `error=access_denied` 仍不 settle（现有 `callback.automatic.test.ts` 不变量）。
 
 1. **匹配 expected redirect 的 URL**（协议 / hostname / port / pathname，且无 userinfo / hash）：
-   - `state` **缺省**且 `code` 非空 → 接受；
-   - `state` 存在且不等于 expected → 仍 `STATE_MISMATCH`（其它 OAuth 插件的 CSRF 保护不变）；
-   - `error` 查询存在 → `AUTHORIZATION_DENIED`（OpenRouter 拒绝授权时同样没有 state，因此 **先看 error，再要求 code**；缺 state 不得挡住 `error`）；
-   - 无 `code` → `CODE_MISSING`。
-2. **`new URL(raw)` 失败的手工输入**（仅此分支，HTTP handler 的 `incoming.url` 永远是 URL）：
-   - 字符串含 `code=` 时用 `URLSearchParams` 取 `code`；
-   - 否则若 trim 后无空白、无 `://`，整段视为 `code`；
-   - 得到非空 `code` 则接受。错 origin 的完整 URL 仍走第 1 条并 `MISMATCH`。
+   - `stateRequired === true`：缺 state 或 state 不等于 expected → `STATE_MISMATCH`（ChatGPT / Antigravity / Claude）。
+   - `stateRequired === false`：缺 state 则继续；state 存在且不等于 expected → 仍 `STATE_MISMATCH`。
+   - 然后：`error` 查询存在 → `AUTHORIZATION_DENIED`；无 `code` → `CODE_MISSING`；否则接受 `code`。
+2. **`new URL(raw)` 失败的手工输入**（仅手动粘贴；HTTP handler 的 `incoming.url` 永远是 URL）：
+   - `stateRequired === true`：一律 `INVALID`。Claude / ChatGPT / Antigravity 的 v1 手工粘贴仍是完整 callback URL。
+   - `stateRequired === false`：若字符串含 `state=` 且值不等于 expected → `STATE_MISMATCH`；否则从 `code=` 或（trim 后无空白、无 `://` 的）裸 token 取 `code`。
+   - 错 origin 的完整 URL 仍走第 1 条并 `MISMATCH`。
 
-检查顺序锁定为：URL-or-loose-code → origin 匹配（仅 URL）→ 若 state 存在则比对 → error → code。
+实现：在 `@aio-proxy/shared` 新增纯函数 `resolveOAuthLoopbackCallback`，返回 `{ ok: true, code }` 或 `{ ok: false, reason }`。CLI / Dashboard 只把 `reason` 映射到既有错误类。禁止再手写两份规则。现有 loopback `request()` 测试夹具的 authorize URL 必须带上 `state=`，否则会误走 OpenRouter 门控。
 
 `packages/core/src/plugins/account-login/` 不校验 state，无需改动。不引入 native scheme，不绕开 `loopback`。
 
@@ -231,7 +240,7 @@ Accept: application/json
 
 401/403 和合法但 `language` 为空的响应不使用 fallback。
 
-curated fallback 取 2026-09-06 `GET /api/v1/models?sort=most-popular` 的主流 text id（排除 `:free` 变体，避免宣称免费档访问权）：
+curated fallback 是 **2026-09-06** `GET /api/v1/models?sort=most-popular` 的冻结快照（排除 `:free` 变体，避免宣称免费档访问权）。实现 PR 落地前再打一次该 URL；若某 id 已 404 / 改名则替换，之后不得再发明新 id。空 `architecture.output_modalities` 数组与字段缺失同等视为 `['text']`。
 
 | id                          | displayName                      |
 | --------------------------- | -------------------------------- |
@@ -273,7 +282,7 @@ createOpenRouter({
 
 上游非成功 response 原样交给 AI SDK 和现有 candidate loop；插件不增加内部 retry 或跨账号调度。
 
-若 `createOpenRouter` 的 LanguageModelV3 无法直接放进 ProviderV4 槽位，只允许最小类型断言，不得改用另一套请求编解码。不回退到 `@ai-sdk/openai-compatible`，除非该工厂在实现时证明无法构造（当前类型面足够）。
+若 `createOpenRouter` 的 LanguageModelV3 无法直接放进 ProviderV4 槽位，只允许最小类型断言。禁止改用 `@ai-sdk/openai-compatible` 或另一套编解码。
 
 ## Quota
 
@@ -315,7 +324,7 @@ Accept: application/json
 - icon：`'openrouter'`
 - 进度文案：`Waiting for OpenRouter authorization` / `正在等待 OpenRouter 授权`
 
-Icon 依据：Lobe Icons 组件页 `icons.lobehub.com/components/open-router` 与 LobeHub icons 页的 PNG 路径 `.../dark/openrouter.png` 使用 slug `openrouter`。仓库 catalog 钉住 `@lobehub/icons-static-svg@1.93.0`。Dashboard `PluginIcon` 把非 `https`/`data:` 字符串当 Lobe slug。本环境对 unpkg / jsDelivr / GitHub raw 的 `openrouter.svg` 探测返回 HTTP 500，不据此改用 https/data 图标或邻近 slug。
+Icon 锁定 `'openrouter'`。`@lobehub/icons-static-svg@1.93.0` 含 `icons/openrouter.svg`。实现时 `ls` 已安装包确认该文件；缺失则改 `https:`/`data:` URI，不得猜邻近 slug。
 
 同步：
 
@@ -323,15 +332,17 @@ Icon 依据：Lobe Icons 组件页 `icons.lobehub.com/components/open-router` �
 - `.changeset/config.json` `fixed` 组加入 `@aio-proxy/plugin-openrouter`；
 - CLI：`packages/cli/src/plugin-commands/plugin/add.test.ts`、`packages/cli/src/plugin-commands/provider-login/capability.resolution.test.ts`、`packages/cli/__tests__/binary-build.test.ts`。
 
-Changeset：`@aio-proxy/plugin-openrouter` minor + `@aio-proxy/core` minor + `@aio-proxy/cli` minor + `@aio-proxy/server` minor + `aio-proxy` minor（宿主 parse 与插件同批；产品包 bump 与内部包同级）。
+新包 `package.json` version 为 `0.19.2`，与当前 lockstep 对齐。
 
-`packages/plugins/*` 已在 workspace glob 内。Dashboard 不新增文件。
+Changeset：`@aio-proxy/plugin-openrouter` minor + `@aio-proxy/shared` minor + `@aio-proxy/core` minor + `@aio-proxy/cli` minor + `@aio-proxy/server` minor + `aio-proxy` minor（共享 parse 与插件同批；产品包 bump 与内部包同级）。
+
+`packages/plugins/*` 已在 workspace glob 内。Dashboard 不新增文件。实现顺序：先合 Claude（无宿主 parse），再合本 PR，最后 Muse。最后任务只按字母序 **插入** 本包名，不得用六插件快照覆盖已落地的兄弟包；也不要回填 `capability.resolution.test.ts` / `binary-build.test.ts` 里故意缺的 `@aio-proxy/plugin-xai-grok`。
 
 ## 测试策略
 
 实现遵循 test-first，每个行为只保留最小有价值回归测试：
 
-1. 宿主 parse：匹配 URL 缺 `state` 仍收 `code`；错 `state` 仍拒绝；`error` 在无 state 时仍能 deny；非 URL 的 `code=` / 裸 token 可提取；错 origin 仍 mismatch；错误文本不含 secret。
+1. 宿主 parse：authorize URL **无** `state` 时缺 state 可收 `code` / deny `error`；authorize URL **有** `state` 时缺 state 仍拒绝（保留 ChatGPT / Antigravity）；错 `state` 仍拒绝；loose-code 仅 `stateRequired === false`；错 origin 仍 mismatch；错误文本不含 secret。
 2. OAuth：authorize 只有 `callback_url` / `code_challenge` / `S256`、无 `state`；token JSON 含 `code` / `code_verifier` / `S256`；`key` 成为 credential；fingerprint / suggestedKey 稳定；control traffic；取消与缺 `key` 失败。
 3. Catalog：Bearer + `output_modalities`；text / embeddings / image 分桶；默认 `openai-compatible`；retryable fallback；401 / 空 language 不 fallback。
 4. Runtime：ProviderV4、`createOpenRouter` base / strict、dynamic Bearer、abort/body 保留、无 raw。
@@ -345,6 +356,7 @@ Changeset：`@aio-proxy/plugin-openrouter` minor + `@aio-proxy/core` minor + `@a
 - `aio-proxy provider login` 可选择 OpenRouter，打开 `https://openrouter.ai/auth?...`，授权后创建 OAuth Provider ID。
 - 本机 loopback 在 OpenRouter **不回传 state** 时仍能收下 `code` 并兑换 key。
 - SSH / 无头用户粘贴 `http://127.0.0.1:<port>/callback?code=...`（无 state）或裸授权码可以完成登录。
+- ChatGPT / Antigravity / Claude 进行中的 loopback：缺 `state` 的 `code` 或 `error` **不得** settle。
 - 粘贴带错误 `state` 的其它 provider 回调仍被拒绝。
 - 登录可被取消，且不泄漏 code、verifier 或 API key。
 - `/v1/models` 展示该账号从 OpenRouter `/api/v1/models` 动态发现的 language 模型；发现结果含 embeddings / image 时目录对应 bucket 非空。

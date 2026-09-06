@@ -123,7 +123,7 @@ https://claude.ai/oauth/authorize
   &state=<state>
 ```
 
-`code=true` 是 oh-my-pi `authorize-params` 的锁定查询项。`redirect_uri` 必须使用 loopback 返回的 `redirectUri`，不得写死 `http://localhost:54545/callback`：宿主在端口占用时可能改写实际 callback。
+`code=true` 是 oh-my-pi `authorize-params` 的锁定查询项。`redirect_uri` 必须使用 loopback 返回的 `redirectUri`，不得写死字符串。端口必须是 `54545`，禁止 `port: 'dynamic'`：Anthropic 公共 client 只登记该 URI。CLI 在固定端口占用且允许手工粘贴时**不会**改绑其它端口，而是继续使用 `http://localhost:54545/callback` 等用户粘贴。v1 手工粘贴只接受完整 callback URL；不解析 oh-my-pi 的裸 `code[#state]`。OpenRouter 的宿主 parse 门控按 authorize URL 是否带 `state` 决定；本插件 authorize URL **发送** `state`，因此缺 state 的 callback 仍被拒绝。
 
 登录开始时可 `progress` 一次「Waiting for Claude authorization / 正在等待 Claude 授权」。`context.signal` 必须传到后续 token / identity 请求。
 
@@ -154,6 +154,8 @@ code exchange **不**带 `anthropic-beta`。oh-my-pi 写明：Claude Code 只在
 `aioProxy: { traffic: 'control' }` 必须设置。
 
 成功响应必须提供非空 `access_token`、非空 `refresh_token` 和正数 `expires_in`。任一缺失则登录失败，且错误文本不得包含 code、verifier、token 或完整 upstream body。
+
+控制面与推理 fetch 一律 `options.fetch ?? context.fetch ?? globalThis.fetch`（Kimi `plugin.ts` / `runtime.ts` 同款）。禁止直接打 `globalThis.fetch`，否则会绕过宿主代理、录制和 traffic 标记。
 
 `expiresAt` 按锁定公式计算：
 
@@ -194,7 +196,7 @@ User-Agent: claude-code/2.1.246
 anthropic-beta: oauth-2025-04-20
 ```
 
-`claude-opus-4-8` 是 oh-my-pi identity hook 当前使用的 bootstrap 探针模型，不是 catalog fallback 模型。`User-Agent` / SDK 版本取自 2026-09-06 读到的 oh-my-pi Claude Code fingerprint（PR 9801：`2.1.246` / `0.112.1`）。它们是兼容指纹，不是「本插件发布 Claude Code」的声明。
+`claude-opus-4-8` 是 oh-my-pi identity hook 当前使用的 bootstrap 探针模型，不是 catalog fallback 模型。`User-Agent` / SDK 版本取自 2026-09-06 读到的 oh-my-pi Claude Code fingerprint（PR 9801：`2.1.246` / `0.112.1`）。它们是冻结兼容指纹；本仓库 catalog 的 `@anthropic-ai/sdk` 是 `0.111.0`，不要改成该版本。版本漂移另开任务，禁止实现时静默 bump。
 
 bootstrap JSON 读取：
 
@@ -207,7 +209,7 @@ oauth_account.organization_name
 
 只填补缺失字段，不覆盖 token 响应里已经有的值。bootstrap 失败（network、非 2xx、无效 JSON）不得让登录失败：保留已有 token 与已解析字段。
 
-登录只捕获一次 organization。refresh 不得改写已存储的 `organizationId` / `organizationName`。
+登录只捕获一次 organization。refresh 不得改写已存储的 `organizationId` / `organizationName`：token JSON 即使带了不同的 `organization`，以及 bootstrap 即使返回了 org，都丢弃。`refreshClaudeCredential` 始终保留已存 org 字段。
 
 ### Credential 与 fingerprint
 
@@ -316,7 +318,7 @@ anthropic-version: 2023-06-01
 anthropic-beta: oauth-2025-04-20
 ```
 
-`aioProxy: { traffic: 'control' }`。官方默认 `limit` 是 20，必须显式拉满并分页：当 `has_more === true` 且 `last_id` 为非空 string 时，用 `after_id` 继续。最多 10 页；仍 `has_more` 则抛可重试 `ClaudeCatalogError`，避免把截断目录当成完整账号目录。
+`aioProxy: { traffic: 'control' }`。官方默认 `limit` 是 20，必须显式拉满并分页：仅当 `has_more === true` **且** `last_id` 为非空 string 时，用 `after_id` 继续。`has_more` 而无 `last_id` 视为无效 envelope（可重试）。最多 10 页；仍 `has_more` 则抛可重试 `ClaudeCatalogError`，避免把截断目录当成完整账号目录。401 / 403 以及其它 4xx（400 / 404 等）不可重试、不得 fallback。
 
 接受 Anthropic envelope `{ data: [...], has_more, last_id }`。每个可用 entry 必须：
 
@@ -421,7 +423,7 @@ CLI 里枚举 built-in 的测试一并更新：
 
 Dashboard 走现有 built-in catalog，不新增 dashboard 文件。
 
-这些宿主文件也是 OpenRouter / Muse 等并行 PR 的碰撞面。实现时 rebase，不要另开「共享脚手架」PR。
+这些宿主文件也是 OpenRouter / Muse 等并行 PR 的碰撞面。实现顺序：先合本 PR，再 OpenRouter（唯一宿主 parse），最后 Muse。最后任务只按字母序 **插入** 本包名，不得用六插件快照覆盖已落地的兄弟包；也不要回填 `capability.resolution.test.ts` / `binary-build.test.ts` 里故意缺的 `@aio-proxy/plugin-xai-grok`。不要另开「共享脚手架」PR。
 
 ## CPA / omp import
 

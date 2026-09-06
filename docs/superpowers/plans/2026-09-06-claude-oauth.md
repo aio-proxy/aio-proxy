@@ -10,13 +10,23 @@
 
 **Spec:** [docs/superpowers/specs/2026-09-06-claude-oauth-design.md](../specs/2026-09-06-claude-oauth-design.md)
 
+Do not implement until that spec is `已确认，进入实现`.
+
 ## Global Constraints
 
 - Provider ID / Provider priority / Provider weight terminology and behavior stay unchanged.
 - Public client ID is exactly `9d1c250a-e61b-44d9-88ed-5944d1962f5e` (oh-my-pi base64 `OWQxYzI1MGEtZTYxYi00NGQ5LTg4ZWQtNTk0NGQxOTYyZjVl`). Do not use the brief typo `88e4`.
 - Authorize is exactly `https://claude.ai/oauth/authorize`. Token and refresh are exactly `https://api.anthropic.com/v1/oauth/token` JSON. Never `platform.claude.com`.
 - Scopes are exactly `org:create_api_key user:profile user:inference user:sessions:claude_code user:mcp_servers user:file_upload`.
-- Loopback is existing `context.authorization.loopback` with hostname `localhost`, port `54545`, path `/callback`, `allowManualCallbackUrl: true`. No new AuthorizationPort method. No device-code.
+- Loopback is existing `context.authorization.loopback` with hostname `localhost`, port `54545` (never `'dynamic'`), path `/callback`, `allowManualCallbackUrl: true`. No new AuthorizationPort method. No device-code. Manual paste is a full callback URL only. The host does not rebind a busy 54545 to another port.
+- Every plugin `bun test` command includes `--preload=packages/plugins/anthropic-claude/test/setup.ts`. `bun test path/to/file` without that preload throws `ReferenceError` on `__AIO_PROXY_CLAUDE_CLIENT_ID__`.
+- Control-plane and inference fetch is `options.fetch ?? context.fetch ?? globalThis.fetch`. Do not call `globalThis.fetch` directly.
+- Refresh never writes `organizationId` / `organizationName` from token JSON or bootstrap. Always keep the stored org fields.
+- Catalog pages only when `has_more === true` and `last_id` is a non-empty string. Other 4xx are non-retryable. Successful discover overlays curated `displayName` only; it does not merge missing curated ids.
+- CPA import maps `account.email_address` the same way login does.
+- Catalog / runtime tests import constants through `./oauth`, not `./oauth/constants`.
+- New modules with a colocated test use a same-name directory (`oauth/index.ts`, `oauth/oauth.ts`, `oauth/oauth.test.ts`). Task snippets that say `src/oauth.ts` mean that directory.
+- Merge order: this PR first, then OpenRouter, then Muse. Last task inserts the package name; do not paste a six-plugin snapshot or backfill missing xAI list entries.
 - `expiresAt = now + expires_in * 1000 - 5 * 60_000`. `currentClaudeCredential` refreshes when `now() >= expiresAt` (skew is already stored).
 - Fingerprint is `sha256:` + hex of `account:<uuid>` else `email:<normalized>` else `refresh:<token>`. `suggestedKey` is `claude-` + first 12 hex chars. Never put raw tokens in Provider ID, labels, logs, or errors.
 - Catalog `extra` is `{ protocol: 'anthropic' }`. Do not put `protocol` on `modelMetadata`.
@@ -214,7 +224,7 @@ describe('Claude login identity', () => {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `bun test packages/plugins/anthropic-claude/src/oauth.test.ts`
+Run: `bun test --preload=packages/plugins/anthropic-claude/test/setup.ts packages/plugins/anthropic-claude/src/oauth.test.ts`
 Expected: FAIL because `./oauth` / `claudeLoginResult` does not exist.
 
 - [ ] **Step 3: Write the minimal schema, constants, and login-result implementation**
@@ -305,7 +315,7 @@ export function claudeLoginResult(credentials: ClaudeCredential) {
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `bun test packages/plugins/anthropic-claude/src/oauth.test.ts`
+Run: `bun test --preload=packages/plugins/anthropic-claude/test/setup.ts packages/plugins/anthropic-claude/src/oauth.test.ts`
 Expected: PASS (2 tests).
 
 - [ ] **Step 5: Commit**
@@ -382,7 +392,7 @@ test('builds the claude.ai authorize URL with PKCE and code=true', () => {
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
-Run: `bun test packages/plugins/anthropic-claude/src/pkce.test.ts packages/plugins/anthropic-claude/src/oauth.test.ts`
+Run: `bun test --preload=packages/plugins/anthropic-claude/test/setup.ts packages/plugins/anthropic-claude/src/pkce.test.ts packages/plugins/anthropic-claude/src/oauth.test.ts`
 Expected: FAIL because `generatePKCE` / `buildClaudeAuthorizationUrl` are missing.
 
 - [ ] **Step 3: Implement PKCE and the authorize URL builder**
@@ -435,7 +445,7 @@ export function buildClaudeAuthorizationUrl(input: {
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
-Run: `bun test packages/plugins/anthropic-claude/src/pkce.test.ts packages/plugins/anthropic-claude/src/oauth.test.ts`
+Run: `bun test --preload=packages/plugins/anthropic-claude/test/setup.ts packages/plugins/anthropic-claude/src/pkce.test.ts packages/plugins/anthropic-claude/src/oauth.test.ts`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -679,7 +689,7 @@ function loginContext(
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
-Run: `bun test packages/plugins/anthropic-claude/src/oauth/identity.test.ts packages/plugins/anthropic-claude/src/oauth.test.ts`
+Run: `bun test --preload=packages/plugins/anthropic-claude/test/setup.ts packages/plugins/anthropic-claude/src/oauth/identity.test.ts packages/plugins/anthropic-claude/src/oauth.test.ts`
 Expected: FAIL because `loginClaude` / `resolveClaudeIdentity` are missing.
 
 - [ ] **Step 3: Implement identity + login**
@@ -745,7 +755,7 @@ Keep `oauth.ts` under 400 lines. If login + exchange + result exceed that, move 
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
-Run: `bun test packages/plugins/anthropic-claude/src/oauth/identity.test.ts packages/plugins/anthropic-claude/src/oauth.test.ts`
+Run: `bun test --preload=packages/plugins/anthropic-claude/test/setup.ts packages/plugins/anthropic-claude/src/oauth/identity.test.ts packages/plugins/anthropic-claude/src/oauth.test.ts`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -893,7 +903,7 @@ describe('Claude credential refresh', () => {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `bun test packages/plugins/anthropic-claude/src/oauth/credential.test.ts`
+Run: `bun test --preload=packages/plugins/anthropic-claude/test/setup.ts packages/plugins/anthropic-claude/src/oauth/credential.test.ts`
 Expected: FAIL because `./credential` does not exist.
 
 - [ ] **Step 3: Implement refresh**
@@ -910,13 +920,15 @@ Expected: FAIL because `./credential` does not exist.
 - throw `CredentialRefreshError` with the spec’s reason table;
 - rethrow `AbortError`.
 
-`currentClaudeCredential` must `port.read()`, return immediately when `value.expiresAt > now()`, otherwise `port.refresh` and return the snapshot value. Race the caller `signal` the way Kimi `waitForCaller` does.
+`currentClaudeCredential` must `port.read()`, return immediately when `value.expiresAt > now()`, otherwise `port.refresh` and return the snapshot value. If the caller passed `signal`, race it with `port.refresh()` using `Promise.race` + `abort` listener (copy `packages/plugins/kimi-code/src/oauth/credential.ts` `waitForCaller`; paste that helper into `oauth/credential.ts`, do not import across plugins). Put shared option types in `oauth/types.ts` so `credential.ts` does not import `ClaudeOAuthDependencies` from `../oauth`.
+
+`refreshClaudeCredential` must keep stored `organizationId` / `organizationName` even when the token JSON contains a different `organization`. Add a test whose refresh body has `organization: { uuid: 'other', name: 'Other' }` and assert the stored org is unchanged.
 
 Re-export both functions from `src/oauth.ts`.
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `bun test packages/plugins/anthropic-claude/src/oauth/credential.test.ts`
+Run: `bun test --preload=packages/plugins/anthropic-claude/test/setup.ts packages/plugins/anthropic-claude/src/oauth/credential.test.ts`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -1033,18 +1045,18 @@ function staticPort(): CredentialPort<ClaudeCredential> {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `bun test packages/plugins/anthropic-claude/src/catalog.test.ts`
+Run: `bun test --preload=packages/plugins/anthropic-claude/test/setup.ts packages/plugins/anthropic-claude/src/catalog.test.ts`
 Expected: FAIL because `./catalog` does not exist.
 
 - [ ] **Step 3: Implement discovery**
 
-`discoverClaudeModels` must `currentClaudeCredential`, GET `https://api.anthropic.com/v1/models?limit=1000` with Bearer + `anthropic-version: 2023-06-01` + `oauth-2025-04-20` + `aioProxy: { traffic: 'control' }`, follow `after_id` while `has_more` is true (max 10 pages), keep `claude-` ids whose `type` is `'model'` or absent, set `extra: { protocol: 'anthropic' }`, and throw `ClaudeCatalogError` with `retryable: true` for network / 408 / 429 / 5xx / invalid JSON / unfinished pagination, `retryable: false` for 401/403. Re-throw abort. Empty filtered `data` is success.
+`discoverClaudeModels` must `currentClaudeCredential`, GET `https://api.anthropic.com/v1/models?limit=1000` with Bearer + `anthropic-version: 2023-06-01` + `oauth-2025-04-20` + `aioProxy: { traffic: 'control' }` and `options.fetch ?? context.fetch ?? globalThis.fetch`. Follow `after_id` only while `has_more === true` **and** `last_id` is a non-empty string (max 10 pages). `has_more` without `last_id` is invalid envelope (retryable). Keep `claude-` ids whose `type` is `'model'` or absent. `displayName` is official `display_name`, else curated overlay, else omit. Do not merge curated ids that the response omitted. Set `extra: { protocol: 'anthropic' }`. Throw `ClaudeCatalogError` with `retryable: true` for network / 408 / 429 / 5xx / invalid JSON / unfinished pagination, `retryable: false` for 401 / 403 / other 4xx. Re-throw abort. Empty filtered `data` is success.
 
 `initialClaudeCatalogFallback` returns the three curated rows only when `error instanceof ClaudeCatalogError && error.retryable`.
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `bun test packages/plugins/anthropic-claude/src/catalog.test.ts`
+Run: `bun test --preload=packages/plugins/anthropic-claude/test/setup.ts packages/plugins/anthropic-claude/src/catalog.test.ts`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -1149,27 +1161,28 @@ function context(): RuntimeContext<ClaudeCredential, Record<string, never>> {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `bun test packages/plugins/anthropic-claude/src/runtime/runtime.test.ts`
+Run: `bun test --preload=packages/plugins/anthropic-claude/test/setup.ts packages/plugins/anthropic-claude/src/runtime/runtime.test.ts`
 Expected: FAIL because `./runtime` does not exist.
 
 - [ ] **Step 3: Implement runtime**
 
 ```ts
+const fetch = options.fetch ?? context.fetch ?? globalThis.fetch;
 createAnthropic({
   name: 'anthropic-claude-oauth',
   baseURL: 'https://api.anthropic.com/v1',
   authToken: 'dynamic-credential',
-  fetch: createClaudeDynamicFetch(context.credentials, options),
+  fetch: createClaudeDynamicFetch(context.credentials, { ...options, fetch }),
 });
 ```
 
-Dynamic fetch must call `currentClaudeCredential`, strip auth/API-key headers, set Bearer, ensure `anthropic-beta` contains `oauth-2025-04-20` (prepend if AI SDK already set other betas), set `anthropic-version: 2023-06-01` when absent, set the refresh User-Agent when absent, and preserve method/body/signal. Do not set `aioProxy.traffic` to `control`. Return `{ provider: { specificationVersion: 'v4', languageModel, embeddingModel: () => throw, imageModel: () => throw } }` with no `raw`.
+Discover, identity, refresh, and runtime all use that fetch chain. Dynamic fetch must call `currentClaudeCredential`, strip auth/API-key headers, set Bearer, ensure `anthropic-beta` contains `oauth-2025-04-20` (prepend if AI SDK already set other betas), set `anthropic-version: 2023-06-01` when absent, set the refresh User-Agent when absent, and preserve method/body/signal. Do not set `aioProxy.traffic` to `control`. Return `{ provider: { specificationVersion: 'v4', languageModel, embeddingModel: () => throw, imageModel: () => throw } }` with no `raw`. Copy Kimi `plugin.ts` injection so catalog / runtime / refreshCredential receive `context.fetch`.
 
 `src/runtime/index.ts` is export-only: `export * from './runtime';`
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `bun test packages/plugins/anthropic-claude/src/runtime/runtime.test.ts`
+Run: `bun test --preload=packages/plugins/anthropic-claude/test/setup.ts packages/plugins/anthropic-claude/src/runtime/runtime.test.ts`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -1362,7 +1375,7 @@ async function adapterFrom(
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `bun test packages/plugins/anthropic-claude/src/plugin.test.ts`
+Run: `bun test --preload=packages/plugins/anthropic-claude/test/setup.ts packages/plugins/anthropic-claude/src/plugin.test.ts`
 Expected: FAIL because `src/index.ts` / `createAnthropicClaudePlugin` do not exist.
 
 - [ ] **Step 3: Implement the plugin**
@@ -1374,7 +1387,7 @@ Expected: FAIL because `src/index.ts` / `createAnthropicClaudePlugin` do not exi
 - `credentials: credentialSchema`;
 - `icon: 'anthropic'`;
 - `login` parse options then `loginClaude(context, { waiting: presentationText.waitingForAuthorization }, deps)` (inject `context.fetch` when the factory did not);
-- `credentialImports.cpa.types = ['claude']` with a `.loose()` Zod object requiring `type: 'claude'`, `access_token`, `refresh_token`; map `expired` with `Date.parse` (invalid → `0`); map `email`, `account.uuid` / `account_id`, `organization.uuid` / `organization.name`; call `claudeLoginResult`; if account/email still missing and import `context.fetch` exists, run non-fatal `resolveClaudeIdentity` with `phase: 'login'`;
+- `credentialImports.cpa.types = ['claude']` with a `.loose()` Zod object requiring `type: 'claude'`, `access_token`, `refresh_token`; map `expired` with `Date.parse` (invalid → `0`); map `email` and `account.email_address` (same normalize as login), `account.uuid` / `account_id`, `organization.uuid` / `organization.name`; call `claudeLoginResult`; if account/email still missing and import `context.fetch` exists, run non-fatal `resolveClaudeIdentity` with `phase: 'login'`;
 - catalog TTL + `discoverClaudeModels` + `initialClaudeCatalogFallback`;
 - `createRuntime: createClaudeRuntime`;
 - `refreshCredential` always calls `refreshClaudeCredential` (no expiry short-circuit);
@@ -1401,7 +1414,7 @@ English defaults: pluginLabel `Claude Pro/Max`, pluginDescription `Use a Claude 
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `bun test packages/plugins/anthropic-claude/src/plugin.test.ts`
+Run: `bun test --preload=packages/plugins/anthropic-claude/test/setup.ts packages/plugins/anthropic-claude/src/plugin.test.ts`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**

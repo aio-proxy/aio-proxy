@@ -10,6 +10,8 @@
 
 **Spec:** [docs/superpowers/specs/2026-09-06-muse-oauth-design.md](../specs/2026-09-06-muse-oauth-design.md)
 
+Do not implement until that spec is `已确认，进入实现`.
+
 ## Global Constraints
 
 - Package name is exactly `@aio-proxy/plugin-muse-code`; adapter id is exactly `default`; account options are an empty object.
@@ -21,8 +23,14 @@
 - Language models use `@ai-sdk/openai` Responses (`openai.responses(modelId)`). Catalog `extra.protocol` is always `openai-response`.
 - Quota is read-only. Re-read `POST https://api.meta.ai/muse-code/key` with `{}` (no `onboard`). Treat 429 as retryable. Do not persist a key returned from quota.
 - No CPA importer, no `MODEL_API_KEY` paste login, no Z.AI / Claude / OpenRouter, no plugin-sdk changes, no raw capability.
-- Use Provider ID and Provider weight terminology from `AGENTS.md`. Prefer `es-toolkit` (`isPlainObject`) and Bun APIs (`Bun.CryptoHasher`).
-- Handwritten non-test files stay under 500 lines; split by responsibility before 400. Tests are colocated (`foo/index.ts`, `foo/foo.ts`, `foo/foo.test.ts` when a directory is warranted).
+- Use Provider ID, Provider priority, and Provider weight terminology from `AGENTS.md`. Prefer `es-toolkit` (`isPlainObject`) and Bun APIs (`Bun.CryptoHasher`).
+- Handwritten non-test files stay under 500 lines; split by responsibility before 400. New modules with a colocated test use a same-name directory (`oauth/index.ts`, `oauth/oauth.ts`, `oauth/oauth.test.ts`). Task snippets that say `src/oauth.ts` mean that directory.
+- Package version is `0.19.2`, never `0.0.0`.
+- Fetch is `options.fetch ?? context.fetch ?? globalThis.fetch`.
+- Every interactive `login()` sends `{ onboard: true }`. Catalog / runtime / quota never send `onboard`.
+- v1 catalog is Spark language only. Drop `muse-image-`. `imageModel` always throws.
+- Login errors must not include payment URLs, tokens, or upstream bodies. Host maps them to `AUTHORIZATION_FAILED`.
+- Merge order: Claude, then OpenRouter, then this PR. Last task inserts the package name; do not paste a six-plugin snapshot or backfill missing xAI list entries.
 - Every non-trivial behavior follows RED → verify failure → minimal GREEN → verify pass.
 - Commits use `feat(muse-code): ...`. Do not run `changeset version` / `publish`.
 
@@ -80,7 +88,7 @@ Create `packages/plugins/muse-code/package.json`:
 ```json
 {
   "name": "@aio-proxy/plugin-muse-code",
-  "version": "0.0.0",
+  "version": "0.19.2",
   "private": true,
   "type": "module",
   "files": ["dist"],
@@ -472,7 +480,13 @@ describe('Muse Code device login', () => {
         ),
         sleep: async () => {},
       }),
-    ).rejects.toThrow('https://meta.ai/pay');
+    ).rejects.toThrow((error: unknown) => {
+      const message = String(error);
+      expect(message).toMatch(/payment_required/);
+      expect(message).not.toContain('https://meta.ai/pay');
+      expect(message).not.toContain('oauth-access');
+      return true;
+    });
   });
 
   test('classifies denied, expired, timeout, and abort', async () => {
@@ -657,7 +671,7 @@ export async function requestMuseCodeKey(
   });
   const text = await response.text();
   if (!response.ok) {
-    throw new Error(`Muse Code key exchange failed: ${response.status}`);
+    throw new MuseCodeHttpError('Muse Code key exchange failed', [408, 429].includes(response.status) || response.status >= 500, response.status);
   }
   let payload: unknown;
   try {
@@ -673,6 +687,8 @@ export function paymentActionUrl(payload: MuseCodeKeyResponse): string | undefin
   const action = payload.action_url?.trim() || payload.require_payment_action_url?.trim();
   return action === '' ? undefined : action;
 }
+
+Do not put `paymentActionUrl` on thrown errors or `progress()`. Quota maps `MuseCodeHttpError` with `status: 429` to `MuseCodeQuotaError` `{ retryable: true, status: 429 }`.
 ```
 
 Extend `packages/plugins/muse-code/src/oauth.ts` with `loginMuseCode` (keep Task 1 exports). The login function must:
@@ -684,8 +700,10 @@ Extend `packages/plugins/muse-code/src/oauth.ts` with `loginMuseCode` (keep Task
 5. Poll immediately, then handle `authorization_pending`, `slow_down` (+5s or larger response interval), `access_denied`, `expired_token`, retryable HTTP as pending, deadline timeout, and `context.signal`.
 6. Accept a token JSON that has `access_token` even when `expires_in` / `refresh_token` are absent; ignore those fields.
 7. Call `requestMuseCodeKey(accessToken, { onboard: true, fetch, signal })`.
-8. Fail when `is_subs_active === false`, when `api_key` is blank (include payment URL when present), or when both `user_id` and normalized email are missing.
-9. Return `museLoginResult({ oauthAccessToken, apiKey, email, accountId })` with **no** `expiresAt`.
+8. Fail when `is_subs_active === false`, when `api_key` is blank, or when `require_payment === true`. Throw `payment_required` **without** embedding `action_url`. Host login maps every adapter error to `AUTHORIZATION_FAILED`.
+9. Fail when both `user_id` and normalized email are missing on first login. On re-login, if a previously stored `accountId` exists and the payload omits `user_id`, reuse the stored `accountId`.
+10. Return `museLoginResult(...)` only after a non-blank `api_key` and identity exist. Throw before return on any mint failure. The plugin never writes the vault; host persist runs only after `login()` resolves. Omit `expiresAt`.
+11. After a successful device authorization, treat token-poll 408 / 429 / 5xx and retryable network errors as pending (Kimi/xAI). Device-authorization 5xx still fails immediately. Add those tests in Task 2.
 
 Private helpers must not embed tokens or response bodies in thrown errors. Localized instruction append:
 
@@ -740,7 +758,7 @@ const credential: MuseCodeCredential = {
 };
 
 describe('Muse Code catalog', () => {
-  test('lists Spark and Image models with the minted key, not the oauth token', async () => {
+  test('lists Spark language models with the minted key and drops image/voice ids', async () => {
     let request: Request | undefined;
     let traffic: unknown;
     const catalog = await discoverMuseCodeModels(context(), {
@@ -765,9 +783,7 @@ describe('Muse Code catalog', () => {
     expect(catalog.language).toEqual([
       { id: 'muse-spark-1.3', displayName: 'Muse Spark 1.3', extra: { protocol: 'openai-response' } },
     ]);
-    expect(catalog.image).toEqual([
-      { id: 'muse-image-1.0', extra: { protocol: 'openai-response' } },
-    ]);
+    expect(catalog.image).toEqual([]);
     expect(catalog.embedding).toEqual([]);
     expect(catalog.speech).toEqual([]);
     expect(catalog.transcription).toEqual([]);
@@ -814,7 +830,7 @@ Expected: FAIL because `./catalog` does not exist.
 
 - [ ] **Step 3: Implement discovery**
 
-`discoverMuseCodeModels` must `currentMuseCodeCredential`, then `GET https://api.meta.ai/v1/models` with Bearer **apiKey**, `Accept: application/json`, `x-api-version: 1.0.0`, control traffic, and `context.signal`. Classify `muse-spark-` → language and `muse-image-` → image. Overlay curated display names. `MuseCodeCatalogError` carries `retryable` (network / invalid JSON / 408 / 429 / 5xx = true; 401 / 403 = false). `initialMuseCodeCatalogFallback` returns the five Spark rows only when the error is a retryable `MuseCodeCatalogError`, and returns `undefined` for `AbortError` and non-retryable errors.
+`discoverMuseCodeModels` must `currentMuseCodeCredential`, then `GET https://api.meta.ai/v1/models` with Bearer **apiKey**, `Accept: application/json`, `x-api-version: 1.0.0`, control traffic, and `context.signal`. Classify `muse-spark-` → language. Drop `muse-image-` and every other prefix. Overlay curated display names. `MuseCodeCatalogError` carries `retryable` (network / invalid JSON / 408 / 429 / 5xx = true; 401 / 403 = false). `initialMuseCodeCatalogFallback` returns the five Spark rows only when the error is a retryable `MuseCodeCatalogError`, and returns `undefined` for `AbortError` and non-retryable errors.
 
 ```ts
 export const MUSE_CODE_CATALOG_TTL_MS = 6 * 60 * 60_000;
@@ -975,10 +991,8 @@ export async function createMuseCodeRuntime(
     provider: {
       specificationVersion: 'v4',
       languageModel: (modelId) => openai.responses(modelId),
-      embeddingModel: (modelId) =>
-        context.catalog.embedding.length > 0 ? openai.embeddingModel(modelId) : unsupported('embedding'),
-      imageModel: (modelId) =>
-        context.catalog.image.length > 0 ? openai.imageModel(modelId) : unsupported('image'),
+      embeddingModel: () => unsupported('embedding'),
+      imageModel: () => unsupported('image'),
     },
   };
 }
@@ -1094,6 +1108,11 @@ test('classifies 429 as retryable and inactive subscription as permanent', async
       fetch: async () => Response.json({ is_subs_active: false }),
     }),
   ).rejects.toMatchObject({ name: 'MuseCodeQuotaError', retryable: false });
+  await expect(
+    readMuseCodeQuota(context(), {
+      fetch: async () => Response.json({ is_subs_active: true, subs_usage: {} }),
+    }),
+  ).rejects.toMatchObject({ name: 'MuseCodeQuotaError', retryable: false });
 });
 
 function context() {
@@ -1107,7 +1126,7 @@ function context() {
 }
 ```
 
-Adjust the 1-hour localized label if you pick the exact OMP rolling-window wording from the spec (`1 Hour` vs `1 hour`); keep the id `60m` and `remainingRatio` 0.75.
+Window labels are locked: `1 hour` / `1 小时` for 60 minutes. Do not use `Nh` / `Nm`. Keep the id `60m` and `remainingRatio` 0.75.
 
 - [ ] **Step 2: Run the quota test and verify RED**
 
@@ -1117,7 +1136,7 @@ Expected: FAIL because `./quota` does not exist.
 
 - [ ] **Step 3: Implement quota mapping**
 
-`readMuseCodeQuota` calls `currentMuseCodeCredential` then `requestMuseCodeKey(oauthAccessToken, { onboard: false / omitted })`. Ignore `api_key` in the response. Throw `MuseCodeQuotaError` when `is_subs_active === false` or when neither window produces an item. Map `used_percent` with `1 - clamp(percent, 0, 100) / 100`. Parse `resets_at` as ISO or unix seconds/ms. `plan` from `subs_tier_name` then `subs_tier_id`. Do not register reset. Do not write credentials.
+`readMuseCodeQuota` calls `currentMuseCodeCredential` then `requestMuseCodeKey(oauthAccessToken, { onboard: false / omitted })` with `JSON.stringify({})`. Ignore `api_key` in the response. Throw `MuseCodeQuotaError` `{ retryable: false }` when `is_subs_active === false` or when neither window produces an item (`subs_usage` missing or both percents invalid). Map `MuseCodeHttpError` 429 to `{ retryable: true, status: 429 }`. Map `used_percent` with `1 - clamp(percent, 0, 100) / 100`. Parse `resets_at` as ISO or unix seconds/ms. `plan` from `subs_tier_name` then `subs_tier_id`. Do not register reset. Do not write credentials. Add a test for the both-windows-invalid case.
 
 Window display names:
 
@@ -1232,7 +1251,7 @@ Expected: FAIL because `./plugin` / index exports do not exist.
 
 - [ ] **Step 3: Assemble the adapter**
 
-`createMuseCodePlugin` mirrors xAI/Kimi: empty `zod.object({})` account options, `id: 'default'`, injectable presentation + fetch/now/sleep, `login` → `loginMuseCode`, TTL catalog + `initialFallback`, `quota.read` → `readMuseCodeQuota`, `createRuntime` → `createMuseCodeRuntime`. **Do not** set `refreshCredential` or `credentialImports`. Default icon `'meta'`. Verify the installed `@lobehub/icons-static-svg` `icons/` directory contains `meta.svg` before shipping; if this workspace’s `1.93.0` pin lacks it, use the closest real key (`meta-color` then `meta-brand`) and update the test.
+`createMuseCodePlugin` mirrors xAI/Kimi: empty `zod.object({})` account options, `id: 'default'`, injectable presentation + fetch/now/sleep, `login` → `loginMuseCode`, TTL catalog + `initialFallback`, `quota.read` → `readMuseCodeQuota`, `createRuntime` → `createMuseCodeRuntime`. **Do not** set `refreshCredential` or `credentialImports`. Icon is `'meta'`. `@lobehub/icons-static-svg@1.93.0` already has `icons/meta.svg`. Do not fall back to `meta-color` / `meta-brand`.
 
 English defaults:
 

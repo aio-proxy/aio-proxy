@@ -10,6 +10,8 @@
 
 **Spec:** [docs/superpowers/specs/2026-09-06-openrouter-oauth-design.md](../specs/2026-09-06-openrouter-oauth-design.md)
 
+Do not implement until that spec is `已确认，进入实现`.
+
 ## Global Constraints
 
 - Spec: `docs/superpowers/specs/2026-09-06-openrouter-oauth-design.md`. Do not invent a paste-key login, CPA importer, refresh, raw capability, native-scheme port, or plugin-sdk API.
@@ -18,11 +20,12 @@
 - Colocate new tests in a same-name directory (`foo/index.ts`, `foo/foo.ts`, `foo/foo.test.ts`). Do not add files under `_test/`.
 - Handwritten non-test implementation files: hard limit 500 lines; split before adding more at 400.
 - `foo/index.ts` is export-only. Private modules inside `foo/` are not imported from outside `foo/`.
-- Catalog/auth/key probes use `aioProxy: { traffic: 'control' }`. Inference fetch does not.
+- Catalog/auth/key probes use `aioProxy: { traffic: 'control' }`. Inference fetch does not. Discover / runtime / quota fetch is `options.fetch ?? context.fetch ?? globalThis.fetch`.
 - New package starts at version `0.19.2` to match the current lockstep set.
-- Changeset must list `@aio-proxy/plugin-openrouter`, `@aio-proxy/core`, `@aio-proxy/cli`, `@aio-proxy/server`, and `aio-proxy`, all `minor`.
+- Changeset must list `@aio-proxy/plugin-openrouter`, `@aio-proxy/shared`, `@aio-proxy/core`, `@aio-proxy/cli`, `@aio-proxy/server`, and `aio-proxy`, all `minor`.
 - Every non-trivial behavior is RED → verify failure → minimal GREEN → verify pass.
-- Last task registers builtins. Rebase conflict risk: Claude/Muse (and any other new-OAuth) PRs edit the same host files listed in Task 7.
+- Merge order: Claude first (no host parse), then this PR, then Muse. Last task **inserts** `@aio-proxy/plugin-openrouter` at the current sorted index. Do not paste a six-plugin snapshot over siblings. Do not backfill the missing `@aio-proxy/plugin-xai-grok` entries in `capability.resolution.test.ts` / `binary-build.test.ts`.
+- Host parse is gated by the **opened authorize URL**: `stateRequired = new URL(authorizationUrl).searchParams.has('state')`. Missing state is accepted only when `stateRequired === false`. Do not relax state globally. Put the pure function in `@aio-proxy/shared`.
 
 ---
 
@@ -56,6 +59,8 @@
 - `packages/plugins/openrouter/src/plugin/plugin.ts` — `createOpenRouterPlugin`.
 - `packages/plugins/openrouter/src/plugin/plugin.test.ts` — descriptor, empty options, omitted refresh.
 - `.changeset/openrouter-oauth.md` — product + internal minor notes.
+- `packages/shared/src/oauth-loopback-callback.ts` — pure `resolveOAuthLoopbackCallback`.
+- `packages/shared/src/oauth-loopback-callback.test.ts` — shared case table (stateRequired true/false).
 
 **Modify:**
 
@@ -87,10 +92,16 @@
 - Modify: `packages/server/src/oauth-login-session/authorization.test.ts`
 
 **Interfaces:**
-- Consumes: existing `parseCallback(raw, expectedRedirectUri, expectedState)` and `parseOAuthCallback(raw, expectedRedirectUri, expectedState)`.
-- Produces: the same function signatures. New rules: (1) when the callback URL origin/path matches, a missing `state` is OK if `code` is present; a present-but-wrong `state` still throws mismatch; (2) when `new URL(raw)` fails, extract `code` from `code=` or a single token. Check order after a valid URL: origin → state-if-present → `error` → `code`.
+- Consumes: the built authorize URL plus existing `parseCallback` / `parseOAuthCallback` call sites in CLI `run.ts` and Dashboard loopback.
+- Produces: `@aio-proxy/shared` `resolveOAuthLoopbackCallback(raw, expectedRedirectUri, expectedState, { stateRequired })`. Host wrappers keep their error classes. `stateRequired` is `new URL(authorizationUrl).searchParams.has('state')` after `buildAuthorizationUrl`. Signatures of the host wrappers may add that options object; `LoopbackRequest` does not change.
 
-OpenRouter never echoes `state`. Inspected today: both parsers use `searchParams.get('state') !== expectedState`, so `null !== 'uuid'` rejects the real callback. Plugin-sdk `LoopbackRequest.state` stays required. Do not add a field to the SDK.
+Locked order: URL or (only if `stateRequired === false`) loose-code → origin (URL only) → state gate → `error` → `code`. `error` stays after the state gate.
+
+- `stateRequired === true` (ChatGPT / Antigravity / Claude): missing state is still `STATE_MISMATCH` and must **not** settle. Loose-code is `INVALID`.
+- `stateRequired === false` (OpenRouter authorize URL has no `state` query): missing state + `code` accepts; missing state + `error` denies; present-but-wrong state still mismatches.
+- Existing `request()` helper in `packages/cli/src/plugin-commands/loopback/test-support.ts` must put `state=` on the authorize URL so current tests keep the CSRF-required path.
+
+OpenRouter never echoes `state`. Inspected today: both parsers use `searchParams.get('state') !== expectedState`, so `null !== 'uuid'` rejects the real callback. Plugin-sdk `LoopbackRequest.state` stays required. Do not add a field to the SDK. Do **not** implement the old “any missing state + code is OK” rule — that is a CSRF/DoS hole on Antigravity (`localhost:51121`, no PKCE) and a DoS hole on ChatGPT/Claude fixed ports.
 
 - [ ] **Step 1: Write the failing CLI parse / loopback tests**
 
@@ -176,7 +187,32 @@ In `packages/cli/src/plugin-commands/loopback/callback.automatic.test.ts`, add:
   });
 ```
 
+Also add a ChatGPT/Antigravity guard (authorize URL **includes** `state`, missing callback state must not settle):
+
+```ts
+  test('rejects a missing-state callback when the authorize URL sent state', async () => {
+    setInteractive(false);
+    const { deps } = createDeps();
+    let redirectUri = '';
+    const flow = runLoopbackAuthorization(
+      request({
+        authorizationUrl: (input) => {
+          redirectUri = input.redirectUri;
+          return `https://identity.example/authorize?state=expected-state`;
+        },
+      }),
+      deps,
+    );
+    const missing = await fetch(`${redirectUri}?code=stolen`);
+    expect(missing.status).toBe(400);
+    expect((await fetch(`${redirectUri}?code=valid&state=expected-state`)).status).toBe(200);
+    await expect(flow).resolves.toMatchObject({ code: 'valid' });
+  });
+```
+
 Keep the existing test that a **wrong** `state` on `error=access_denied` does not settle the flow.
+
+Update `packages/cli/src/plugin-commands/loopback/test-support.ts` `request()` so the default authorize URL includes `state=expected-state`. Otherwise existing fixtures would silently take the OpenRouter (`stateRequired === false`) path.
 
 - [ ] **Step 2: Run the new CLI tests and confirm they fail**
 
@@ -273,9 +309,22 @@ Run: `bun test packages/server/src/oauth-login-session/callback.test.ts packages
 
 Expected: FAIL on the no-state and raw-code cases (`CALLBACK_STATE_MISMATCH` / `CALLBACK_INVALID`).
 
-- [ ] **Step 5: Implement the parse change in both hosts**
+- [ ] **Step 5: Implement the shared parse helper and both host wrappers**
 
-In `packages/cli/src/plugin-commands/loopback/callback.ts`, replace `parseCallback` with:
+Add `packages/shared/src/oauth-loopback-callback.ts` as a pure function. It must take `{ stateRequired }` and implement the locked order. Do not throw host error classes from `shared`.
+
+Then wrap it in both hosts. In CLI `run.ts` / Dashboard loopback, after `buildAuthorizationUrl`:
+
+```ts
+const stateRequired = new URL(authorizationUrl).searchParams.has('state');
+const { code } = parseCallback(raw, expectedRedirectUri, request.state, { stateRequired });
+```
+
+Loose-code and missing-state acceptance run **only** when `stateRequired === false`.
+
+The following snippet is the OpenRouter (`stateRequired === false`) branch only. The ChatGPT/Antigravity branch must keep today’s “missing state is mismatch” behavior.
+
+In `packages/cli/src/plugin-commands/loopback/callback.ts`, replace `parseCallback` with a wrapper around the shared helper. Reference shape:
 
 ```ts
 function looseAuthorizationCode(raw: string): string | undefined {
@@ -371,7 +420,9 @@ export const parseOAuthCallback = (
 };
 ```
 
-Do not extract a shared package. Duplicating ~15 lines is the smallest host change.
+Do **not** ship those two snippets as-is. They are the `stateRequired === false` branch only. The real implementation is one shared helper plus host wrappers that pass `{ stateRequired }`. Default `stateRequired` for existing unit tests that call `parseCallback` / `parseOAuthCallback` directly without an authorize URL must be `true` (today’s CSRF). OpenRouter loopback / Dashboard tests pass `stateRequired: false` or go through `runLoopbackAuthorization` so the host derives it from the authorize URL.
+
+Dashboard `parseOAuthCallback` tests that accept missing state or raw codes must pass `{ stateRequired: false }`. Add a Dashboard case: authorize-equivalent `{ stateRequired: true }` + missing state + `error=access_denied` does not accept.
 
 - [ ] **Step 6: Run CLI and server loopback tests and confirm they pass**
 
@@ -915,6 +966,8 @@ export const OPENROUTER_CATALOG_TTL_MS = 6 * 60 * 60_000;
 const MODELS_URL = 'https://openrouter.ai/api/v1/models?output_modalities=text,embeddings,image';
 const LANGUAGE_PROTOCOL = { protocol: 'openai-compatible' } as const;
 
+// Frozen 2026-09-06 snapshot. Re-fetch GET /api/v1/models?sort=most-popular
+// before landing; replace 404/renamed ids only. Do not invent later.
 const CURATED = [
   ['openai/gpt-5.6-luna', 'OpenAI: GPT-5.6 Luna'],
   ['google/gemini-3.7-flash', 'Google: Gemini 3.7 Flash'],
@@ -1675,13 +1728,14 @@ Create `.changeset/openrouter-oauth.md`:
 ```md
 ---
 "@aio-proxy/plugin-openrouter": minor
+"@aio-proxy/shared": minor
 "@aio-proxy/core": minor
 "@aio-proxy/cli": minor
 "@aio-proxy/server": minor
 "aio-proxy": minor
 ---
 
-Add a built-in OpenRouter OAuth plugin that signs in with PKCE, mints a durable user-controlled API key, discovers models, and reads remaining key credits. Loopback callbacks that omit `state` now succeed when they still carry a `code`, which OpenRouter requires because it never echoes state.
+Add a built-in OpenRouter OAuth plugin that signs in with PKCE, mints a durable user-controlled API key, discovers models, and reads remaining key credits. Loopback parse now requires callback `state` only when the opened authorize URL sent `state`, so OpenRouter (no state echo) can finish without weakening ChatGPT or Antigravity CSRF.
 ```
 
 Run: `bun install`

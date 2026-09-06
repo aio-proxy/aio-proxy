@@ -24,7 +24,7 @@ aio-proxy 已有 built-in OAuth plugin、`presentDeviceCode` 展示、TTL model 
 - 用铸造出的 key 动态发现账号可用模型；可重试失败时回退到已文档化的 Muse Spark 快照。
 - 通过已安装的 `@ai-sdk/openai` Responses provider 调用 `https://api.meta.ai/v1`。
 - 只读读取订阅 `subs_usage` 窗口，不声明 reset。
-- 保持现有 model-first routing、Provider weight 和 candidate fallback 不变。
+- 保持现有 model-first routing、Provider ID、Provider priority、Provider weight 和 candidate fallback 不变。
 
 ## 非目标
 
@@ -51,12 +51,12 @@ aio-proxy 已有 built-in OAuth plugin、`presentDeviceCode` 展示、TTL model 
 | 账号 token        | Device token 响应视为无 expiry、无可用 refresh_token。Login result **不**写 `expiresAt`                                                       |
 | Key mint          | 登录成功后 `POST https://api.meta.ai/muse-code/key`，`onboard: true`，超时 20s，`aioProxy.traffic = 'control'`                                 |
 | 持久化 credential | `{ oauthAccessToken, apiKey, email?, accountId? }`。之后只读已存 `apiKey`                                                                     |
-| 模型发现          | 铸造 key 请求 `GET https://api.meta.ai/v1/models`，TTL 6 小时                                                                                  |
+| 模型发现          | 铸造 key 请求 `GET https://api.meta.ai/v1/models`，TTL 6 小时。v1 **只**发布 `muse-spark-` language                                              |
 | Catalog fallback  | 仅可重试失败时使用已文档化 Muse Spark 快照                                                                                                    |
 | Catalog protocol  | 一律 `openai-response`                                                                                                                        |
 | 推理 endpoint     | `https://api.meta.ai/v1`，Bearer **apiKey**，`x-api-version: 1.0.0`                                                                            |
 | Model codec       | `@ai-sdk/openai` 的 Responses（`openai.responses(modelId)`）                                                                                   |
-| Runtime           | ProviderV4 model only，无 raw。image/embedding 仅当 catalog 对应数组非空                                                                       |
+| Runtime           | ProviderV4 language only，无 raw。`imageModel` / `embeddingModel` 一律 unsupported。不把 `muse-image-` 放进 catalog                             |
 | Quota             | 无独立 usage URL。`POST /muse-code/key` 且 **不**带 `onboard`，稀疏读取，429 视为可重试失败                                                     |
 
 ## 插件与宿主边界
@@ -91,7 +91,7 @@ route、pipeline 和公共 plugin SDK 不增加 Muse / Meta 分支或新抽象�
 | deviceInstructions         | Enter code                                                                | 输入代码                      |
 | waitingForAuthorization    | Waiting for Muse authorization                                            | 正在等待 Muse 授权            |
 
-icon 锁定为 Lobe key `'meta'`。`@lobehub/icons-static-svg@1.94.0` 含 `icons/meta.svg`；本仓库 catalog 当前钉在 `1.93.0`。实现时读取已安装包的 `icons/` 目录确认 `meta.svg` 存在。若不存在，退回同一目录中最近的真实 key（优先 `meta-color`，再 `meta-brand`）。`validatePluginIcon` 只校验 slug 形态，但 `LobeIconKey` 在 plugin-sdk 构建期按已安装 SVG 生成，错误 key 会在类型检查失败。
+icon 锁定为 Lobe key `'meta'`。已安装的 `@lobehub/icons-static-svg@1.93.0` 含 `icons/meta.svg`。不要回退到 `meta-color` / `meta-brand`。
 
 ## OAuth 登录
 
@@ -165,16 +165,20 @@ x-api-version: 1.0.0
 - `aioProxy: { traffic: 'control' }`
 - `redirect: 'error'`
 - timeout：`AbortSignal.timeout(20_000)` 与 `context.signal` 组合（`AbortSignal.any`）
-- 这是本账号生命周期内唯一一次 `onboard: true`
+- 每次交互式 `login()`（含重新登录）都发 `{ onboard: true }`。catalog / runtime / quota **永不**发 `onboard`。`onboard` 不是「账号一生一次」，而是「只出现在 `adapter.login()`」
 
 响应按 OMP `museCodeKeyResponseSchema` 读取这些可选字段：`api_key`、`user_email`、`user_id`、`is_subs_active`、`subs_tier_id`、`subs_tier_name`、`subs_usage`、`require_payment`、`require_payment_action_url`、`action_url`。
 
 登录失败条件：
 
 - HTTP 非成功、无效 JSON、或无法解析为 object。
-- `is_subs_active === false`。
-- `api_key` 缺失或空白。若 `require_payment === true` 或存在 `action_url` / `require_payment_action_url`，错误文案带上该 URL（只带 URL，不带响应正文）。
+- `is_subs_active === false`。缺失 `is_subs_active` 视为未知：只要有非空 `api_key` 与身份字段就允许。
+- `api_key` 缺失或空白，或 `require_payment === true`。
 - `user_id` 与规范化 email 都缺失（没有稳定账号身份，无法做 fingerprint）。
+
+宿主 `loginWithProtectedAuthorization` 会把 adapter 抛出的任何 Error 替换成不透明的 `AUTHORIZATION_FAILED` / `OAUTH_ADAPTER_LOGIN_FAILED`。因此 **payment URL 到不了用户**。禁止把 `action_url` / `require_payment_action_url`、token 或上游正文放进 `Error.message` 或 `progress()`。单元测试断言稳定 reason（如 `payment_required`），不断言 URL 出现在用户可见文案。用户需自行打开 Muse billing。
+
+`login()` 只在 mint 得到非空 `api_key` 且已有身份后才 `return museLoginResult(...)`。mint 失败必须先 throw。插件不写 vault；宿主只在 `login()` resolve 之后 persist。
 
 ### Credential 与身份
 
@@ -201,6 +205,8 @@ Fingerprint 为不可逆 SHA-256，输出 `sha256:` + 64 位小写 hex（与 xAI
 `suggestedKey = 'muse-' + hex.slice(0, 12)`（hex 不含 `sha256:` 前缀）。  
 `accountLabel`：normalized email，否则 `accountId`，否则 `Muse Code`。  
 secret（oauth token、apiKey）不进入 fingerprint 明文、label、日志或错误。
+
+重新登录时：若上次已存 `accountId`，而本次 payload 省略 `user_id`，复用已存 `accountId`，避免 `ProviderFingerprintMismatchError`。第一次登录仍要求 `user_id` 或 email。
 
 ## Credential 生命周期（无 refresh）
 
@@ -230,11 +236,10 @@ x-api-version: 1.0.0
 
 `aioProxy: { traffic: 'control' }`。Meta 文档确认该 list-models 端点存在，返回 OpenAI-compatible `{ data: [...] }`，按 `created` 新到旧排序。
 
-每个可用 entry 必须有非空 string `id`。分类：
+每个可用 entry 必须有非空 string `id`。分类（大小写敏感）：
 
 - `muse-spark-` 前缀 → `language`，`extra: { protocol: 'openai-response' }`
-- `muse-image-` 前缀 → `image`，同样 `extra.protocol = 'openai-response'`（Meta 文档：Muse Image 也走 Responses）
-- 其他 ID（含 `muse-voice-transcribe-`、Glimmer、未知）丢弃。本插件不实现 speech / transcription runtime。
+- 其他 ID（含 `muse-image-`、`muse-voice-transcribe-`、Glimmer、未知）丢弃。v1 不发布 image：宿主 image 走 Images API / `openai.imageModel`，而 Muse Image 走 Responses，接上去会得到坏 capability。speech / transcription 也不做。
 
 `displayName` 优先使用下方 curated 表，其次是 entry 的非空 `name` / `display_name`。动态结果中的 ID 是账号当前可用模型的权威集合：成功响应里没有的 curated ID **不**并回。合法空 `data` 视为权威空目录，不 fallback。
 
@@ -275,9 +280,9 @@ createOpenAI({
 ProviderV4：
 
 - `languageModel(modelId)` 显式返回 `openai.responses(modelId)`。
-- `imageModel`：仅当 `context.catalog.image.length > 0` 时接到 `openai.imageModel(modelId)`；否则 throw unsupported。
-- `embeddingModel`：仅当 `context.catalog.embedding.length > 0` 时接到 `openai.embeddingModel(modelId)`；当前分类器不会产生 embedding，因此实现上保持该分支但默认 throw。
+- `imageModel` / `embeddingModel` 一律 throw unsupported。v1 catalog 的 image / embedding 数组为空。
 - 不声明 speech、transcription 或 raw。
+- fetch 链：`options.fetch ?? context.fetch ?? globalThis.fetch`。
 
 每次 model fetch 在发送前 `currentMuseCodeCredential()`，去掉 AI SDK placeholder authorization，写入：
 
@@ -331,7 +336,7 @@ remainingRatio = 1 - Math.min(Math.max(used_percent, 0), 100) / 100
 
 | item id  | 条件                                                                 | displayName                                      |
 | -------- | -------------------------------------------------------------------- | ------------------------------------------------ |
-| `window` | `subs_usage.window` 有有效 `used_percent`                            | 有限正数 `window_duration_mins` 时用 `Nh` / `Nm`；否则 Rolling window / 滚动窗口 |
+| `window` | `subs_usage.window` 有有效 `used_percent`                            | 有限正数 `window_duration_mins`：`>= 60` 用 `N hour(s)` / `N 小时`，否则 `N minute(s)` / `N 分钟`；否则 Rolling window / 滚动窗口 |
 | `weekly` | `subs_usage.weekly` 有有效 `used_percent`                            | Weekly quota / 周配额                            |
 
 `window` 的稳定 id：`window_duration_mins` 为有限正数时用 `${Math.round(minutes)}m`，否则 `window`。
@@ -356,11 +361,13 @@ remainingRatio = 1 - Math.min(Math.max(used_percent, 0), 100) / 100
 - `.changeset/config.json` `fixed` 组加入 `@aio-proxy/plugin-muse-code`
 - CLI 内置列表：`packages/cli/src/plugin-commands/plugin/add.test.ts`、`packages/cli/src/plugin-commands/provider-login/capability.resolution.test.ts`、`packages/cli/__tests__/binary-build.test.ts`
 
+新包 `package.json` version 为 `0.19.2`，与当前 lockstep 对齐。禁止 `0.0.0`。
+
 Changeset 同时 target `@aio-proxy/plugin-muse-code`、`@aio-proxy/core`、`aio-proxy`，全部 **minor**。不要只 target 内部包。
 
 Dashboard 通过现有 built-in plugin/catalog 接口自动显示，不新增 dashboard 文件。
 
-实现本任务时，`builtins.ts` / CLI 列表很可能与并行的 Claude / OpenRouter built-in PR 冲突。注册任务必须 rebase 后再改这些枚举，不要假设当前 `main` 的列表是最终列表。
+实现顺序：先合 Claude，再 OpenRouter，最后本 PR。`builtins.ts` / CLI 列表会与那两个 PR 冲突。最后任务只按字母序 **插入** 本包名，不得用六插件快照覆盖已落地的兄弟包；也不要回填故意缺的 `@aio-proxy/plugin-xai-grok`。
 
 ## 测试策略
 
@@ -370,9 +377,9 @@ Dashboard 通过现有 built-in plugin/catalog 接口自动显示，不新增 da
 2. Mint：`onboard: true`、20s timeout 与 signal 组合、`is_subs_active === false`、缺 `api_key` 时带 payment URL、缺身份失败、成功后 persist `apiKey` 且 login result 无 `expiresAt`。
 3. 身份：`account:` 优先于 `email:`、email 规范化、`suggestedKey` 前缀 `muse-`、secret 不进 fingerprint。
 4. `currentMuseCodeCredential`：只 `read()`，永不 `refresh`、永不打 key 端点。
-5. Catalog：Bearer **apiKey** + 版本头、Spark/image 分类、curated overlay、retryable fallback、401/空目录不 fallback、AbortError 不 fallback。
-6. Runtime：ProviderV4 Responses、`https://api.meta.ai/v1/responses`、Bearer apiKey、无 oauth token、无 raw、catalog 无 image 时 image unsupported。
-7. Quota：空 body POST key、忽略返回 `api_key`、window/weekly 比例与 `resetsAt`、429 retryable、inactive 失败、无 reset。
+5. Catalog：Bearer **apiKey** + 版本头、只收 `muse-spark-`、丢弃 `muse-image-`、curated overlay、retryable fallback、401/空目录不 fallback、AbortError 不 fallback。
+6. Runtime：ProviderV4 Responses、`https://api.meta.ai/v1/responses`、Bearer apiKey、无 oauth token、无 raw、`imageModel` 一律 unsupported。
+7. Quota：空 body POST key、忽略返回 `api_key`、window/weekly 比例与 `resetsAt`、两个窗口都无效则失败、429 retryable、inactive 失败、无 reset。
 8. Plugin/built-in：`default` adapter、空 account options、中英文 copy、icon `meta`、无 `refreshCredential`、无 CPA importer、package version、embedded registration。
 
 不为常量数组或实现字面量单独写低价值测试。完成前运行插件 unit + build，以及 `bun run check`；合并前跑 `bun run preflight`。
@@ -381,9 +388,9 @@ Dashboard 通过现有 built-in plugin/catalog 接口自动显示，不新增 da
 
 - `aio-proxy provider login` 可选择 Muse Code，展示 device URL/code，授权且订阅有效后创建 OAuth Provider ID。
 - 登录、轮询和发现可被用户取消，且不泄漏 token / apiKey。
-- 非活跃订阅或缺 `api_key` 时登录失败；若上游给出 payment URL，错误消息包含该 URL。
+- 非活跃订阅或缺 `api_key` 时登录失败。用户只看到宿主 `AUTHORIZATION_FAILED`，看不到 payment URL。
 - vault 中同时有 `oauthAccessToken` 与 `apiKey`；之后 catalog/runtime 不再调用 key 端点。
-- `/v1/models` 展示该账号从 `api.meta.ai/v1/models` 动态发现的 Muse Spark（及若存在的 Muse Image）模型。
+- `/v1/models` 展示该账号从 `api.meta.ai/v1/models` 动态发现的 Muse Spark language 模型。不发布 Muse Image。
 - 官方模型发现暂时失败时，新账号可使用 Spark curated fallback；401/403、Abort 或合法空目录不伪造可用模型。
 - 任一入站协议经现有转换路径调用 Spark 时，实际 HTTP 打到 `https://api.meta.ai/v1/responses`，Authorization 为铸造 key，并带 `x-api-version: 1.0.0`。
 - 现有 quota read 可返回 rolling/weekly 剩余比例与重置时间；不提供 reset。
