@@ -441,6 +441,45 @@ test('narrates only the unanswered call of a parallel batch', () => {
   }
 });
 
+test('keeps a batch together when an unanswered call sits between two answered ones', () => {
+  const warn = spyOn(console, 'warn').mockImplementation(() => {});
+  const request = parseOpenAIResponses({
+    model: 'gpt-5.6-terra',
+    input: [
+      { type: 'function_call', call_id: 'call_1', name: 'read_file', arguments: '{}' },
+      { type: 'function_call', call_id: 'call_2', name: 'write_file', arguments: '{}' },
+      { type: 'function_call', call_id: 'call_3', name: 'list_dir', arguments: '{}' },
+      { type: 'function_call_output', call_id: 'call_1', output: 'ok' },
+      { type: 'function_call_output', call_id: 'call_3', output: 'ok' },
+    ],
+  });
+
+  try {
+    // call_3 must stay in the first assistant message: a second assistant turn
+    // between call_1 and its result is the dangling-call ordering upstreams reject.
+    const invocation = openAIResponsesToModelMessages(request);
+    expect(invocation.messages).toMatchObject([
+      {
+        role: 'assistant',
+        content: [
+          { type: 'tool-call', toolCallId: 'call_1', toolName: 'read_file' },
+          { type: 'text', text: '[unanswered tool call: write_file({})]' },
+          { type: 'tool-call', toolCallId: 'call_3', toolName: 'list_dir' },
+        ],
+      },
+      {
+        role: 'tool',
+        content: [
+          { type: 'tool-result', toolCallId: 'call_1' },
+          { type: 'tool-result', toolCallId: 'call_3' },
+        ],
+      },
+    ]);
+  } finally {
+    warn.mockRestore();
+  }
+});
+
 test('converts empty function arguments to an empty object', () => {
   const request = parseOpenAIResponses({
     model: 'gpt-5.6-terra',

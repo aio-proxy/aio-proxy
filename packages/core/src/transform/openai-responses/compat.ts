@@ -268,7 +268,11 @@ function convertUnansweredToolCall(
   });
   // Not registered in state.calls: a later output for this id is an orphan too,
   // and must take the note path rather than pair with a call that is now text.
-  state.previous = undefined;
+  // `previous` stays 'call' so the rest of a parallel batch keeps appending to
+  // this assistant message; starting a new one would put an assistant turn
+  // between an earlier call and its result, which is the ordering upstreams
+  // reject.
+  state.previous = 'call';
 }
 
 function uniqueToolNamespace(
