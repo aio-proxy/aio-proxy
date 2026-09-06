@@ -1,8 +1,9 @@
 import { m } from '@aio-proxy/i18n';
-import type { DashboardOAuthSession } from '@aio-proxy/types';
+import type { DashboardOAuthProviderEdit, DashboardOAuthSession } from '@aio-proxy/types';
 import { toast } from '@aio-proxy/ui/components/toast';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
+import { isPlainObject } from 'es-toolkit/predicate';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { queryKeys } from '@/lib/query-keys';
@@ -17,12 +18,18 @@ import {
 } from '../../services/oauth-service';
 import { providerEditViewQueryOptions } from '../../services/providers-service';
 
+const oauthFromEditView = (data: unknown): DashboardOAuthProviderEdit | undefined => {
+  if (!isPlainObject(data) || 'error' in data) return undefined;
+  const oauth = data['oauth'];
+  return isPlainObject(oauth) ? (oauth as DashboardOAuthProviderEdit) : undefined;
+};
+
 export const useOAuthEditorSession = (
   mode: ProviderFormMode,
   sessionId: string | undefined,
   onSessionIdChange: (sessionId: string | undefined) => void,
   providerId: string | undefined,
-  onSessionSucceeded?: () => void,
+  onSessionSucceeded?: (oauth?: DashboardOAuthProviderEdit) => void,
 ) => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -91,9 +98,9 @@ export const useOAuthEditorSession = (
       setSessionWarning(session.warning);
       void queryClient.invalidateQueries({ queryKey: queryKeys.providers });
       void (async () => {
-        await editViewQuery.refetch();
+        const result = await editViewQuery.refetch();
         await queryClient.invalidateQueries({ queryKey: queryKeys.providerEditView(session.providerId) });
-        onSessionSucceeded?.();
+        onSessionSucceeded?.(oauthFromEditView(result?.data));
       })();
       if (mode === ProviderFormMode.Create) {
         void navigate({

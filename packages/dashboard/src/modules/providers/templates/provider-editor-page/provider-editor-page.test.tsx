@@ -144,6 +144,7 @@ afterEach(() => {
   mocks.navigate.mockReset();
   mocks.invalidate.mockReset();
   mocks.refetch.mockReset();
+  mocks.refetch.mockImplementation(async () => ({ data: { trusted: true, state: 'bundled' }, error: null }));
   mocks.session = undefined;
   mocks.sessionError = false;
 });
@@ -435,7 +436,6 @@ test('oauth success fills a blank display name from the account label', async ()
     status: 'succeeded',
     providerId: 'existing',
   };
-
   renderPage({
     mode: ProviderFormMode.Edit,
     kind: ProviderKind.OAuth,
@@ -453,25 +453,60 @@ test('oauth success fills a blank display name from the account label', async ()
 });
 
 test('oauth success keeps a display name the user already typed', async () => {
+  const props = {
+    mode: ProviderFormMode.Edit,
+    kind: ProviderKind.OAuth,
+    providerId: 'existing',
+    provider: oauthProvider,
+    oauth,
+    initial: { id: 'existing', enabled: true, models: [] },
+    onSessionIdChange: rs.fn(),
+  } as const;
+  const view = renderPage(props);
+  fillName('Personal');
+  expect(within(screen.getByTestId('provider-form-field-name')).getByRole('textbox')).toHaveValue('Personal');
+
   mocks.session = {
     id: 'session',
     status: 'succeeded',
     providerId: 'existing',
   };
+  view.rerender(
+    <>
+      <Toaster />
+      <ProviderEditorPage {...props} sessionId="session" />
+    </>,
+  );
+
+  await waitFor(() => expect(mocks.refetch).toHaveBeenCalled());
+  expect(within(screen.getByTestId('provider-form-field-name')).getByRole('textbox')).toHaveValue('Personal');
+});
+
+test('oauth success fills from the refreshed account label, not the cached one', async () => {
+  mocks.session = {
+    id: 'session',
+    status: 'succeeded',
+    providerId: 'existing',
+  };
+  mocks.refetch.mockResolvedValue({
+    data: { oauth: { ...oauth, accountLabel: 'New Account' } },
+    error: null,
+  });
 
   renderPage({
     mode: ProviderFormMode.Edit,
     kind: ProviderKind.OAuth,
     providerId: 'existing',
     provider: oauthProvider,
-    oauth,
-    initial: { id: 'existing', name: 'Personal', enabled: true, models: [] },
+    oauth: { ...oauth, accountLabel: 'Old Account' },
+    initial: { id: 'existing', enabled: true, models: [] },
     sessionId: 'session',
     onSessionIdChange: rs.fn(),
   });
 
-  await waitFor(() => expect(mocks.refetch).toHaveBeenCalled());
-  expect(within(screen.getByTestId('provider-form-field-name')).getByRole('textbox')).toHaveValue('Personal');
+  await waitFor(() =>
+    expect(within(screen.getByTestId('provider-form-field-name')).getByRole('textbox')).toHaveValue('New Account'),
+  );
 });
 
 test('oauth create authorizes in place, locks sections 3-5, then unlocks after success', async () => {

@@ -14,7 +14,7 @@ import {
 import { toast } from '@aio-proxy/ui/components/toast';
 import { useQuery } from '@tanstack/react-query';
 import { useSelector } from '@tanstack/react-store';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 
 import { useOAuthProviderForm } from '../../hooks/use-oauth-provider-form';
 import {
@@ -286,15 +286,13 @@ const editorSectionInput = (
   optionsValid: extras.optionsValid,
 });
 
-const fillBlankNameFromLabel = (
+const nameAfterOAuthSuccess = (
   form: ReturnType<typeof useProviderEditorForm>,
   oauth: DashboardOAuthProviderEdit | undefined,
-) => {
-  const label = oauth?.accountLabel.trim() ?? '';
-  if (label === '') return;
-  const currentName = form.getFieldValue('name');
-  if (typeof currentName === 'string' && currentName.trim() !== '') return;
-  form.setFieldValue('name', label);
+): string => {
+  const currentName = form.state.values.name;
+  if (typeof currentName === 'string' && currentName.trim() !== '') return currentName;
+  return oauth?.accountLabel.trim() ?? '';
 };
 
 const resetEditorAfterOAuthSuccess = (
@@ -303,13 +301,15 @@ const resetEditorAfterOAuthSuccess = (
   kind: ProviderKind,
   oauth: DashboardOAuthProviderEdit | undefined,
 ) => {
-  fillBlankNameFromLabel(form, oauth);
-  if (initial === undefined) return;
-  const currentName = form.getFieldValue('name');
+  const name = nameAfterOAuthSuccess(form, oauth);
+  if (initial === undefined) {
+    if (name !== '') form.setFieldValue('name', name);
+    return;
+  }
   form.reset({
     ...initial,
     kind,
-    ...(typeof currentName === 'string' && currentName.trim() !== '' ? { name: currentName } : {}),
+    ...(name !== '' ? { name } : {}),
     alias:
       initial.alias === undefined
         ? undefined
@@ -323,6 +323,7 @@ const resetEditorAfterOAuthSuccess = (
         }
       : {}),
   } as ProviderEditorShape);
+  if (name !== '') form.setFieldValue('name', name);
 };
 
 export const useProviderEditorPage = ({
@@ -351,12 +352,16 @@ export const useProviderEditorPage = ({
         }
       : undefined,
   );
-  const onSessionSucceeded = useCallback(() => {
-    accountForm.setFieldValue('secrets', {});
-    accountForm.setFieldValue('clearSecrets', []);
-    if (oauth !== undefined) accountForm.setFieldValue('publicValues', oauth.publicValues);
-    resetEditorAfterOAuthSuccess(form, initial, kind, oauth);
-  }, [accountForm, form, initial, kind, oauth]);
+  const onSessionSucceeded = useCallback(
+    (refreshed?: DashboardOAuthProviderEdit) => {
+      const next = refreshed ?? oauth;
+      accountForm.setFieldValue('secrets', {});
+      accountForm.setFieldValue('clearSecrets', []);
+      if (next !== undefined) accountForm.setFieldValue('publicValues', next.publicValues);
+      resetEditorAfterOAuthSuccess(form, initial, kind, next);
+    },
+    [accountForm, form, initial, kind, oauth],
+  );
   const {
     openPopup,
     closeUnclaimedPopup,
@@ -384,10 +389,6 @@ export const useProviderEditorPage = ({
   const aliasIssues = aliasEditorIssues(values.alias ?? [], oauthExposed ?? models);
   const authorized =
     mode === ProviderFormMode.Edit || authorizedProviderId !== undefined || session?.status === 'succeeded';
-  useEffect(() => {
-    if (session?.status !== 'succeeded') return;
-    fillBlankNameFromLabel(form, oauth);
-  }, [form, oauth, session?.status]);
   const transforms = values.transforms as ProviderTransforms | undefined;
   const hasApiKey = initial !== undefined && 'apiKey' in initial && (initial.apiKey ?? '') !== '';
   const summaries = sectionStatuses(
