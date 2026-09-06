@@ -45,7 +45,7 @@ that makes a long-running managed service keep itself current.
 | Schedule | Immediate check at start, then every 24 hours |
 | Default | `false` |
 | Versions | All newer npm `latest`, same as `aio-proxy upgrade` |
-| Auto-install | Only when **this process** was launched by the managed unit (`AIO_PROXY_MANAGED=1`) |
+| Auto-install | Only when **this process** is the managed daemon: `AIO_PROXY_MANAGED=1`, or a pre-marker unit via manager-native env (see Architecture) |
 | Manual install | Always allowed when the apply callback exists |
 | Interval UI | None. Constant `24 * 60 * 60 * 1000` ms |
 
@@ -68,7 +68,7 @@ CLI `run` injects two callbacks into `createServer`:
 ```ts
 autoUpdate?: {
   readonly isManagedService: () => boolean;
-  readonly applyUpdate: () => Promise<void>;
+  readonly applyUpdate: (version: string) => Promise<'installed' | 'unchanged'>;
 };
 ```
 
@@ -76,25 +76,56 @@ autoUpdate?: {
 unit, not that a unit file exists on disk. `isManagedServiceInstalled()`
 is the wrong gate: a foreground `aio-proxy run` on a machine that also
 has a unit would auto-install and `serviceRestart()` would bounce or
-start that unit. Service unit templates set `AIO_PROXY_MANAGED=1`
-(alongside `AIO_PROXY_HOME`). The injected callback is
-`process.env.AIO_PROXY_MANAGED === '1'`. Foreground `run` never sets it.
-`service install` and the existing `service restart` unit rewrite pick
-the env up.
+start that unit.
 
-`applyUpdate` calls `runUpgradeCommand` with an explicit upgrade target
-derived from `resolveExec()` / the launched absolute path. It must not
-rely on `Bun.which('aio-proxy')`: launchd/systemd units execute that
-absolute path and do not put the install dir or package managers on
-`PATH`, so the current `resolveUpgradeTarget()` throws
-`cannot locate aio-proxy in PATH`. Channel detection still compares that
-absolute path to brew/npm/bun/pnpm prefixes when those CLIs are
-reachable; if they are not, fall back to the binary method on that path.
-Its `isServiceManaged` restart gate is the same this-process marker, so
-a foreground Update now does not `serviceRestart()` a unit that happens
-to exist. No `--force`, no `--check`, no custom `--registry`. Default
-interactive `aio-proxy upgrade` PATH and unit-file restart behavior stay
-unchanged.
+**Marker (primary):** service unit templates set `AIO_PROXY_MANAGED=1`
+(alongside `AIO_PROXY_HOME`). Foreground `run` never sets it.
+
+**Pre-marker units:** the first upgrade onto this release is performed by
+the *old* binary, whose `serviceRestart()` rewrites the unit with the old
+template (only `AIO_PROXY_HOME`). The new process would then look
+unmanaged and never auto-update. `isManagedService` therefore also
+accepts manager-native evidence when the marker is missing:
+
+- Linux: systemd `INVOCATION_ID` is set **and** our unit file exists.
+- Darwin: `XPC_SERVICE_NAME` (or the launchd job label) equals
+  `com.aio-proxy.agent`.
+
+On `run` boot, if that fallback hits and the unit still lacks the
+marker, rewrite the unit with the new templates (same helper
+`service restart` already uses) so later restarts are marker-native.
+Do not treat a foreground `run` as managed just because a unit file
+exists.
+
+`applyUpdate(version)` installs **that** version. It must not do a
+second npm `latest` lookup that can disagree with the controller and
+return success without installing — `runUpgradeCommand` currently
+returns `void` for both "installed" and "already current". Pin the
+version and return `'installed' | 'unchanged'`.
+
+Target resolution must not use `Bun.which('aio-proxy')` (managed PATH
+is empty). It also must **not** fall back to the binary method on
+`process.execPath` when that path is a Homebrew Cellar binary
+(`.../Cellar/aio-proxy/<ver>/bin/aio-proxy`). `resolveExec()` without
+PATH returns that versioned file; replacing it and baking it into
+`ExecStart` is the failure `resolveExec` already documents — the next
+`brew upgrade` deletes the Cellar dir. Detect Cellar paths, map them to
+the stable `{brewPrefix}/bin/aio-proxy` launcher and `{brewPrefix}/bin/brew`,
+and keep method `brew`. Persist `AIO_PROXY_UPGRADE_METHOD` on the unit
+when known (`brew` / `npm` / `bun` / `pnpm` only — never persist a
+guessed `binary`). npm/bun/pnpm stay those methods when their prefixes
+match; binary is only for a real curl-style install, never for an
+unresolved brew/npm/bun/pnpm tree.
+
+Unit rewrite (`writeManagedUnit`, `serviceRestart`, and the pre-marker
+boot migration) must pass that same stable launcher as `exec`. Managed
+PATH is empty, so default `resolveExec()` returns the versioned Cellar
+file — that is the failure `resolveExec` already documents. Do not bake
+a Cellar path into `ExecStart`.
+
+`isServiceManaged` for the post-upgrade restart uses the same
+this-process probe. No `--force`, no `--check`, no custom `--registry`.
+Interactive `aio-proxy upgrade` PATH behavior stays unchanged.
 
 Server owns:
 
@@ -180,7 +211,7 @@ Apply; no-op for Tick). Do not fetch twice and then both call
    stop.
 6. If `Bun.semver.order(latest, currentVersion) <= 0`, set `idle`,
    release, return.
-7. Start `applyUpdate()` without awaiting it in the tick.
+7. Start `applyUpdate(latest)` without awaiting it in the tick.
 
 **Apply** (Update now):
 
@@ -189,15 +220,19 @@ Apply; no-op for Tick). Do not fetch twice and then both call
 3. Acquire the lock and set `in_progress`.
 4. Fetch latest. On failure set `failed`, release, return `check_failed`.
 5. If not newer, set `idle`, release, return `up_to_date`.
-6. Start `applyUpdate()` **without blocking the HTTP response**, return
-   `started`.
+6. Start `applyUpdate(latest)` **without blocking the HTTP response**,
+   return `started`.
 
 Manual apply does **not** require the toggle or a managed process.
 
-When the background `applyUpdate()` **fulfills**, this process is still
-alive, so the install did not restart it. Set `restart_required` and
-release the lock. That is the foreground `aio-proxy run` / Update now
-outcome: `GET /release` `current` stays the boot version.
+When the background `applyUpdate(latest)` **fulfills** with
+`'installed'` and this process is still alive, set `restart_required`
+and release the lock. That is a real foreground install: `GET /release`
+`current` stays the boot version.
+
+When it fulfills with `'unchanged'` (pinned version not newer than the
+running binary — tag rollback or a no-op), set `idle` and release. Do
+not tell the operator to restart.
 
 When `applyUpdate()` **throws**, set `failed`, release the lock, do not
 crash the daemon.
@@ -294,22 +329,23 @@ Settings Switch
 
 notifyCheck / start / 24h timer
   -> enabled && this-process-managed && outdated?
-  -> applyUpdate() -> runUpgradeCommand(explicit exec path)
-  -> install via brew|npm|bun|pnpm|binary
+  -> applyUpdate(latest) -> runUpgradeCommand(pinned version, stable launcher)
+  -> install via brew|npm|bun|pnpm|binary (never Cellar-as-binary)
   -> Agent post-upgrade
   -> serviceRestart() when this process is managed
 
 Update now
   -> POST /dashboard/api/release/apply
-  -> same applyUpdate() (no enabled/managed gate)
+  -> same applyUpdate(latest) (no enabled/managed gate)
   -> 202 + poll GET /release
   -> reload Dashboard when current changes
   -> stop and show restart hint when status is restart_required
 ```
 
-Foreground `aio-proxy run` (no `AIO_PROXY_MANAGED=1`): ticks never
-install, even if a unit file exists on disk. Update now still installs;
-when `applyUpdate` returns, status becomes `restart_required`.
+Foreground `aio-proxy run` (no marker and no manager-native evidence):
+ticks never install, even if a unit file exists on disk. Update now
+still installs; `'installed'` becomes `restart_required`, `'unchanged'`
+does not.
 
 ## Error handling
 
@@ -344,8 +380,11 @@ Minimum coverage:
   enabled + managed calls it once; lock is taken before `fetchLatest` and
   a second apply during a deferred lookup returns `in_progress` without
   a second fetch; `applyUpdate` throw sets `failed` and allows a later
-  apply; `applyUpdate` fulfill sets `restart_required`; `stop` prevents
-  further ticks; missing `applyUpdate` never starts a timer.
+  apply; `applyUpdate('installed')` sets `restart_required`;
+  `applyUpdate('unchanged')` returns to `idle`; `stop` prevents further
+  ticks; missing `applyUpdate` never starts a timer.
+- Pre-marker managed processes are detected via systemd `INVOCATION_ID`
+  / launchd job id; a Cellar path never becomes a binary upgrade.
 - Release GET reports `managedService` and `update.status`. POST maps
   the apply results and `check_failed`.
 - About UI: Switch writes `{ autoUpdate: true }`; unmanaged hint visible

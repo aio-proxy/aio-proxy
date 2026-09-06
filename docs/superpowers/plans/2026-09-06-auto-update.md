@@ -4,7 +4,7 @@
 
 **Goal:** Add a default-off `server.autoUpdate` Settings toggle and an Update now action so a managed aio-proxy service can install newer npm `latest` versions on startup and every 24 hours by calling the existing `aio-proxy upgrade` path.
 
-**Architecture:** Persist `server.autoUpdate` through the existing Dashboard settings contract. CLI `run` injects `isManagedService` + `applyUpdate` (`runUpgradeCommand`) into `createServer`. Server owns an `AutoUpdateController` (single-flight lock, start/24h/notify ticks, apply) and the release HTTP surface. Server never imports CLI.
+**Architecture:** Persist `server.autoUpdate` through the existing Dashboard settings contract. CLI `run` injects `isManagedService` (marker or pre-marker) + `applyUpdate(version)` (`runUpgradeCommand` pinned) into `createServer`. Server owns an `AutoUpdateController` (single-flight lock, start/24h/notify ticks, apply) and the release HTTP surface. Server never imports CLI.
 
 **Tech Stack:** TypeScript, Zod 4 in `@aio-proxy/types`, Hono typed RPC, Bun test (`packages/types`, `packages/server`, `packages/cli`), rstest + Testing Library (`packages/dashboard`), TanStack Form/Query, Paraglide i18n, Changesets.
 
@@ -15,10 +15,10 @@
 - Domain terms: Provider ID, provider priority, provider weight. Do not write "provider name", "order", or "rank".
 - `@aio-proxy/server` must not import `@aio-proxy/cli`. Upgrade execution is an injected `applyUpdate` callback only.
 - `server.autoUpdate` defaults to `false`. Omitted config means off. A Settings write persists the boolean explicitly.
-- Auto-install (scheduler ticks) requires **all** of: toggle on, `isManagedService() === true` (**this process** launched by the unit, `AIO_PROXY_MANAGED=1` — not `isManagedServiceInstalled()`), npm `latest` newer than the process version. Manual `POST /release/apply` skips the toggle and managed-process gates.
-- `applyUpdate` resolves the upgrade target from `resolveExec()` / the launched absolute path. Do not call the default `resolveUpgradeTarget()` that uses `Bun.which('aio-proxy')`. Interactive `aio-proxy upgrade` PATH behavior stays unchanged.
+- Auto-install (scheduler ticks) requires **all** of: toggle on, `isManagedService() === true` (**this process** is the managed daemon — marker or pre-marker fallback; not `isManagedServiceInstalled()` alone), npm `latest` newer than the process version. Manual `POST /release/apply` skips the toggle and managed-process gates.
+- `applyUpdate(version)` installs **that** version and returns `'installed' | 'unchanged'`. It must not look up npm `latest` again. Resolve the target from the launched absolute path (Cellar → stable Homebrew launcher; never `Bun.which`). Interactive `aio-proxy upgrade` PATH behavior stays unchanged.
 - Take the single-flight lock **before** `fetchLatest`. A second apply during a pending lookup returns `in_progress` and must not start a second `applyUpdate()`.
-- When `applyUpdate()` fulfills, set `restart_required` (process still alive). When it throws, set `failed`. Do not treat a successful foreground install as `idle`.
+- When `applyUpdate(version)` fulfills `'installed'` and this process is still alive, set `restart_required`. When it fulfills `'unchanged'`, set `idle` (do not tell the operator to restart). When it throws, set `failed`.
 - Follow npm `latest` for every newer version. No major/minor channel split. Interval is the constant `24 * 60 * 60 * 1000` ms. No interval/channel UI.
 - Toggling `autoUpdate` never sets `restartRequired`. The controller reads live `state.currentConfig().server.autoUpdate`.
 - Writing `autoUpdate: true` calls `notifyCheck()` once. `close()` must `stop()` the timer.
@@ -42,10 +42,11 @@
 - `packages/server/src/dashboard-routes/release/release.ts` — GET fields + POST apply.
 - `packages/server/src/dashboard-routes/config.ts` — pass controller into settings + release.
 - `packages/server/src/server/server.ts` — create/start/stop controller; `CreateServerOptions.autoUpdate`.
-- `packages/cli/src/run/run.ts` — inject managed-process probe + exec-path `applyUpdate`.
-- `packages/cli/src/run/auto-update-hooks.ts` — `createCliAutoUpdateHooks()`.
-- `packages/cli/src/service/unit-templates.ts` — `AIO_PROXY_MANAGED=1` on launchd/systemd units.
-- `packages/cli/src/upgrade/detect.ts` — `resolveUpgradeTargetFrom(binPath)`.
+- `packages/cli/src/run/run.ts` — inject managed-process probe + pinned-version `applyUpdate`; migrate pre-marker units on boot.
+- `packages/cli/src/run/auto-update-hooks.ts` — `createCliAutoUpdateHooks()`, `isManagedAutoUpdateProcess()`, pre-marker unit rewrite.
+- `packages/cli/src/service/unit-templates.ts` — `AIO_PROXY_MANAGED=1` on launchd/systemd units; optional `AIO_PROXY_UPGRADE_METHOD` when known (`brew` / `npm` / `bun` / `pnpm` only).
+- `packages/cli/src/upgrade/detect.ts` — `resolveUpgradeTargetFrom(binPath)` and `resolveStableManagedExec`; Cellar → brew + stable launcher, never binary.
+- `packages/cli/src/upgrade/upgrade.ts` — accept pinned `version`, return `'installed' | 'unchanged'`.
 - `packages/dashboard/src/modules/settings/components/settings-about-group/` — Switch + Update now.
 - `packages/dashboard/src/modules/settings/services/release-service/` — apply mutation + typed GET.
 - `packages/i18n/messages/*.json` — eight new `dashboard.settings` keys (including `version_restart_required`).
@@ -248,7 +249,7 @@ git commit -m "feat: persist server.autoUpdate on dashboard settings"
 
 **Interfaces:**
 
-- Consumes: `getEnabled`, `isManagedService`, optional `applyUpdate`, `currentVersion`, `fetchLatest(pkg)`, optional `intervalMs` / `setInterval` / `clearInterval` / `onError`.
+- Consumes: `getEnabled`, `isManagedService`, optional `applyUpdate: (version: string) => Promise<'installed' | 'unchanged'>`, `currentVersion`, `fetchLatest(pkg)`, optional `intervalMs` / `setInterval` / `clearInterval` / `onError`.
 - Produces exactly the spec types:
 
 ```ts
@@ -312,7 +313,7 @@ test('start checks immediately and again on each interval tick', async () => {
   const controller = createAutoUpdateController({
     getEnabled: () => true,
     isManagedService: () => true,
-    applyUpdate: async () => {},
+    applyUpdate: async () => 'installed',
     currentVersion: '1.0.0',
     fetchLatest,
     intervalMs: 50,
@@ -331,7 +332,7 @@ test('start checks immediately and again on each interval tick', async () => {
 });
 
 test('tick does not apply when disabled, unmanaged, or up to date', async () => {
-  const applyUpdate = mock(async () => {});
+  const applyUpdate = mock(async () => 'installed' as const);
   const run = async (overrides: { enabled?: boolean; managed?: boolean; latest?: string }) => {
     const controller = createAutoUpdateController({
       getEnabled: () => overrides.enabled ?? true,
@@ -353,7 +354,7 @@ test('tick does not apply when disabled, unmanaged, or up to date', async () => 
 });
 
 test('tick applies once when enabled, managed, and outdated', async () => {
-  const applyUpdate = mock(async () => {});
+  const applyUpdate = mock(async () => 'installed' as const);
   const controller = createAutoUpdateController({
     getEnabled: () => true,
     isManagedService: () => true,
@@ -366,6 +367,7 @@ test('tick applies once when enabled, managed, and outdated', async () => {
   controller.start();
   await Promise.resolve();
   expect(applyUpdate).toHaveBeenCalledTimes(1);
+  expect(applyUpdate).toHaveBeenCalledWith('1.10.0');
   controller.stop();
 });
 
@@ -373,8 +375,8 @@ test('manual apply ignores the toggle and managed gate and is single-flight', as
   let release!: () => void;
   const applyUpdate = mock(
     () =>
-      new Promise<void>((resolve) => {
-        release = resolve;
+      new Promise<'installed'>((resolve) => {
+        release = () => resolve('installed');
       }),
   );
   const controller = createAutoUpdateController({
@@ -404,7 +406,7 @@ test('second apply during a pending fetchLatest is in_progress and does not appl
         releaseFetch = resolve;
       }),
   );
-  const applyUpdate = mock(async () => {});
+  const applyUpdate = mock(async () => 'installed' as const);
   const controller = createAutoUpdateController({
     getEnabled: () => false,
     isManagedService: () => false,
@@ -420,6 +422,24 @@ test('second apply during a pending fetchLatest is in_progress and does not appl
   expect(await first).toEqual({ status: 'started' });
   await Promise.resolve();
   expect(applyUpdate).toHaveBeenCalledTimes(1);
+  expect(applyUpdate).toHaveBeenCalledWith('1.10.0');
+});
+
+test('applyUpdate unchanged returns to idle; installed stays restart_required', async () => {
+  const unchanged = createAutoUpdateController({
+    getEnabled: () => true,
+    isManagedService: () => true,
+    applyUpdate: async (version) => {
+      expect(version).toBe('1.10.0');
+      return 'unchanged';
+    },
+    currentVersion: '1.2.0',
+    fetchLatest: async () => '1.10.0',
+  });
+  expect(await unchanged.apply()).toEqual({ status: 'started' });
+  await Promise.resolve();
+  expect(unchanged.snapshot()).toEqual({ status: 'idle' });
+  expect(await unchanged.apply()).toEqual({ status: 'started' });
 });
 
 test('apply reports up_to_date, unavailable, and check_failed', async () => {
@@ -434,7 +454,7 @@ test('apply reports up_to_date, unavailable, and check_failed', async () => {
   const current = createAutoUpdateController({
     getEnabled: () => true,
     isManagedService: () => true,
-    applyUpdate: async () => {},
+    applyUpdate: async () => 'installed',
     currentVersion: '1.2.0',
     fetchLatest: async () => '1.2.0',
   });
@@ -443,7 +463,7 @@ test('apply reports up_to_date, unavailable, and check_failed', async () => {
   const offline = createAutoUpdateController({
     getEnabled: () => true,
     isManagedService: () => true,
-    applyUpdate: async () => {},
+    applyUpdate: async () => 'installed',
     currentVersion: '1.2.0',
     fetchLatest: async () => {
       throw new Error('offline');
@@ -494,9 +514,9 @@ Expected: FAIL — module not found.
 
 - [ ] **Step 3: Implement the controller**
 
-Tick path (used by `start` immediate run, interval, and `notifyCheck`): skip when the lock is held, `!getEnabled()`, or `!isManagedService()`; **then acquire the lock** and set `in_progress`; fetch `AUTO_UPDATE_PACKAGE`; on fetch throw set `failed` + `onError` and release; if `Bun.semver.order(latest, currentVersion) <= 0` set `idle` and release; otherwise start the same fire-and-forget `applyUpdate` as `apply()`.
+Tick path (used by `start` immediate run, interval, and `notifyCheck`): skip when the lock is held, `!getEnabled()`, or `!isManagedService()`; **then acquire the lock** and set `in_progress`; fetch `AUTO_UPDATE_PACKAGE`; on fetch throw set `failed` + `onError` and release; if `Bun.semver.order(latest, currentVersion) <= 0` set `idle` and release; otherwise start the same fire-and-forget `applyUpdate(latest)` as `apply()`.
 
-`apply()`: `unavailable` when `applyUpdate` is missing; `in_progress` when the lock is held; **acquire the lock and set `in_progress` before `fetchLatest`**; return `check_failed` / `up_to_date` (release on those paths); otherwise invoke `applyUpdate()` without awaiting it in the caller, return `started`. The background promise sets `restart_required` on fulfill or `failed` + `onError` on throw, then releases the lock. Never set `idle` after a successful install.
+`apply()`: `unavailable` when `applyUpdate` is missing; `in_progress` when the lock is held; **acquire the lock and set `in_progress` before `fetchLatest`**; return `check_failed` / `up_to_date` (release on those paths); otherwise invoke `applyUpdate(latest)` without awaiting it in the caller, return `started`. The background promise maps `'installed'` → `restart_required`, `'unchanged'` → `idle`, throw → `failed` + `onError`, then releases the lock. Never set `restart_required` after a no-op.
 
 `start()`: if `applyUpdate` is missing, return. Otherwise run one tick and `setInterval(tick, intervalMs ?? AUTO_UPDATE_INTERVAL_MS)`.
 `stop()`: `clearInterval` once; further ticks are no-ops.
@@ -661,6 +681,7 @@ git commit -m "feat: expose release apply API and managedService on GET /release
 - Modify: `packages/cli/src/service/unit-templates.ts`
 - Modify: `packages/cli/src/service/service.test.ts`
 - Modify: `packages/cli/src/upgrade/detect.ts`
+- Modify: `packages/cli/src/upgrade/upgrade.ts`
 - Modify: `packages/cli/src/upgrade/upgrade.test.ts`
 
 **Interfaces:**
@@ -670,21 +691,32 @@ git commit -m "feat: expose release apply API and managedService on GET /release
 ```ts
 readonly autoUpdate?: {
   readonly isManagedService: () => boolean;
-  readonly applyUpdate: () => Promise<void>;
+  readonly applyUpdate: (version: string) => Promise<'installed' | 'unchanged'>;
 };
 ```
 
 - `createServer` constructs `createAutoUpdateController({ getEnabled: () => state.currentConfig().server.autoUpdate, isManagedService: options.autoUpdate?.isManagedService ?? (() => false), applyUpdate: options.autoUpdate?.applyUpdate, currentVersion: options.version ?? '0.0.0', fetchLatest: fetchLatestNpmVersion, onError })`.
 - `close()` calls `controller.stop()` then `state.close()`.
 - `createRoutes` / `createDashboardRoutes` receive the controller.
-- CLI `run` passes `autoUpdate: createCliAutoUpdateHooks()`.
-- Unit templates add `AIO_PROXY_MANAGED=1` next to `AIO_PROXY_HOME` (systemd `Environment=`, launchd `EnvironmentVariables`). Existing `service restart` already rewrites the unit.
+- CLI `run` passes `autoUpdate: createCliAutoUpdateHooks()` and, on boot, migrates a pre-marker unit (rewrite only — do not `serviceRestart`).
+- Unit templates add `AIO_PROXY_MANAGED=1` next to `AIO_PROXY_HOME` (systemd `Environment=`, launchd `EnvironmentVariables`). When the install method is known at write time, also persist `AIO_PROXY_UPGRADE_METHOD` (`brew` / `npm` / `bun` / `pnpm` only). Existing `service restart` already rewrites the unit from current templates.
 - `createCliAutoUpdateHooks()`:
 
 ```ts
 export const isManagedAutoUpdateProcess = (
   env: NodeJS.ProcessEnv = process.env,
-): boolean => env['AIO_PROXY_MANAGED'] === '1';
+  io?: {
+    readonly platform?: NodeJS.Platform;
+    readonly unitExists?: () => boolean;
+  },
+): boolean => {
+  if (env['AIO_PROXY_MANAGED'] === '1') return true;
+  const os = io?.platform ?? process.platform;
+  const unitExists = io?.unitExists ?? isManagedServiceInstalled;
+  if (os === 'linux') return Boolean(env['INVOCATION_ID']) && unitExists();
+  if (os === 'darwin') return env['XPC_SERVICE_NAME'] === 'com.aio-proxy.agent';
+  return false;
+};
 
 export const createCliAutoUpdateHooks = (deps?: {
   readonly isManagedService?: () => boolean;
@@ -693,22 +725,35 @@ export const createCliAutoUpdateHooks = (deps?: {
   readonly resolveTargetFrom?: typeof resolveUpgradeTargetFrom;
 }) => ({
   isManagedService: deps?.isManagedService ?? isManagedAutoUpdateProcess,
-  applyUpdate: async () => {
+  applyUpdate: async (version: string) => {
     const exec = (deps?.resolveExec ?? resolveExec)();
     const resolveTarget = async () => (deps?.resolveTargetFrom ?? resolveUpgradeTargetFrom)(exec);
-    await (deps?.upgrade ?? runUpgradeCommand)({}, (line) => console.log(line), {
+    return (deps?.upgrade ?? runUpgradeCommand)({ version }, (line) => console.log(line), {
       resolveTarget,
+      fetchLatest: async () => version,
       isServiceManaged: deps?.isManagedService ?? isManagedAutoUpdateProcess,
     });
   },
 });
 ```
 
+`runUpgradeCommand` gains optional `options.version`. When set, skip the registry lookup and install **that** version. Return `'unchanged'` when `Bun.semver.order(version, current) <= 0` (and `--force` is not set); return `'installed'` after a real install. Interactive `aio-proxy upgrade` omits `version`, still fetches `latest`, and ignores the return value.
+
 Export a `createUpgradeDeps` (or accept a partial override) so the implementation can spread `defaultDeps` and override `resolveTarget` + `isServiceManaged` without `as never`. Interactive `aio-proxy upgrade` keeps the default `resolveUpgradeTarget()` (`Bun.which`) and `isManagedServiceInstalled()` restart gate.
 
-`resolveUpgradeTargetFrom(binPath)` is `resolveUpgradeTarget` with the `which` lookup replaced by the given absolute path. Missing package-manager CLIs yield `{ method: 'binary', path: binPath }`.
+`resolveUpgradeTargetFrom(binPath)` uses the given absolute path instead of `Bun.which`. Rules:
 
-Do not pass `--force` or `--check`. Do not use `isManagedServiceInstalled()` as the scheduler gate.
+- If `AIO_PROXY_UPGRADE_METHOD` is `brew` / `npm` / `bun` / `pnpm`, honor it.
+- If `binPath` matches `.../Cellar/aio-proxy/<ver>/bin/aio-proxy`, method is `brew`. Map to `{brewPrefix}/bin/aio-proxy` and `{brewPrefix}/bin/brew` (`brewPrefix` is the path before `/Cellar/`). **Never** return `{ method: 'binary', path: cellarFile }`.
+- npm / bun / pnpm when the path sits under those prefixes.
+- `{ method: 'binary', path }` only for a real curl-style / standalone binary.
+- Missing `brew` for a Homebrew target is an error, not a Cellar overwrite. Missing `npm` for an npm prefix is the existing CLI fallback for **npm prefixes only**.
+
+`resolveStableManagedExec(execPath)` maps a Cellar `execPath` to `{brewPrefix}/bin/aio-proxy`. `resolveExec()` must use it (so `writeManagedUnit` / `serviceRestart` stay safe when managed PATH is empty and `which('aio-proxy')` is null). Do not bake a Cellar path into `ExecStart`.
+
+Pre-marker boot migration (in `run`, before `createServer`): if `isManagedAutoUpdateProcess()` is true, `AIO_PROXY_MANAGED` is unset, and the unit file exists but lacks the marker, call `writeManagedUnit` with `resolveStableManagedExec()` — not `serviceRestart()`.
+
+Do not pass `--force` or `--check`. Do not use `isManagedServiceInstalled()` alone as the scheduler gate.
 
 - [ ] **Step 1: Write the failing lifecycle test**
 
@@ -738,7 +783,7 @@ That test is weak if `stop` is not observable. Prefer injecting nothing and asse
 ```ts
 test('createServer does not apply an update when the service is unmanaged', async () => {
   const home = mkdtempSync(join(tmpdir(), 'aio-proxy-auto-update-unmanaged-'));
-  const applyUpdate = mock(async () => {});
+  const applyUpdate = mock(async () => 'installed' as const);
   const app = await createServer({
     config: { providers: {}, server: { autoUpdate: true } },
     dbHome: home,
@@ -754,28 +799,52 @@ test('createServer does not apply an update when the service is unmanaged', asyn
 Extract `createCliAutoUpdateHooks` and test:
 
 ```ts
-test('isManagedAutoUpdateProcess is only true when the unit marker is set', () => {
+test('isManagedAutoUpdateProcess accepts the marker and pre-marker manager env', () => {
   expect(isManagedAutoUpdateProcess({})).toBe(false);
   expect(isManagedAutoUpdateProcess({ AIO_PROXY_MANAGED: '1' })).toBe(true);
+  expect(
+    isManagedAutoUpdateProcess({ INVOCATION_ID: 'abc' }, { platform: 'linux', unitExists: () => true }),
+  ).toBe(true);
+  expect(
+    isManagedAutoUpdateProcess({ INVOCATION_ID: 'abc' }, { platform: 'linux', unitExists: () => false }),
+  ).toBe(false);
+  expect(
+    isManagedAutoUpdateProcess({ XPC_SERVICE_NAME: 'com.aio-proxy.agent' }, { platform: 'darwin' }),
+  ).toBe(true);
+  expect(
+    isManagedAutoUpdateProcess({ XPC_SERVICE_NAME: 'com.apple.Terminal' }, { platform: 'darwin', unitExists: () => true }),
+  ).toBe(false);
 });
 
-test('applyUpdate upgrades via the launched exec path, not PATH which', async () => {
-  const upgrade = mock(async (_options: unknown, _print: unknown, deps: { resolveTarget: () => Promise<unknown> }) => {
+test('applyUpdate pins the checked version and upgrades via the launched exec path', async () => {
+  const upgrade = mock(async (options: { version?: string }, _print: unknown, deps: { resolveTarget: () => Promise<unknown> }) => {
+    expect(options.version).toBe('1.10.0');
     expect(await deps.resolveTarget()).toEqual({ method: 'binary', path: '/opt/aio-proxy' });
+    return 'installed' as const;
   });
   const hooks = createCliAutoUpdateHooks({
     upgrade: upgrade as never,
     resolveExec: () => '/opt/aio-proxy',
     resolveTargetFrom: async (binPath) => ({ method: 'binary', path: binPath }),
   });
-  await hooks.applyUpdate();
+  expect(await hooks.applyUpdate('1.10.0')).toBe('installed');
   expect(upgrade).toHaveBeenCalledTimes(1);
 });
 ```
 
-Add `resolveUpgradeTargetFrom` tests in `upgrade.test.ts`: given an absolute brew/npm/binary path, the method matches; when package-manager lookups fail, the result is `{ method: 'binary', path }`.
+Add `resolveUpgradeTargetFrom` / `resolveStableManagedExec` tests in `upgrade.test.ts` and `service.test.ts`:
+
+- `{prefix}/bin/aio-proxy` → `{ method: 'brew' }`
+- `.../Cellar/aio-proxy/<ver>/bin/aio-proxy` → `{ method: 'brew' }` (not `{ method: 'binary', path: cellarFile }`), even when `brew` is missing from `PATH`
+- standalone `/opt/aio-proxy` → `{ method: 'binary', path }`
+- npm prefix path → `{ method: 'npm' }`
+- `resolveStableManagedExec(cellarFile)` → `{brewPrefix}/bin/aio-proxy`
+- `runUpgradeCommand({ version: '1.2.4' })` installs 1.2.4 and does not call `fetchLatest`; a later stub `latest` of `1.2.5` must not change the installed version
+- `runUpgradeCommand({ version: current })` returns `'unchanged'` and does not install
 
 Unit template tests already snapshot `AIO_PROXY_HOME` — assert `AIO_PROXY_MANAGED=1` is also present on systemd and launchd output.
+
+Boot-migration test: pre-marker unit + `INVOCATION_ID` / `XPC_SERVICE_NAME` → `writeManagedUnit` is called with the stable launcher; `serviceRestart` is not.
 
 - [ ] **Step 2: Run the tests and confirm they fail**
 
@@ -788,7 +857,7 @@ Import `createAutoUpdateController` and `fetchLatestNpmVersion`. After `createSe
 
 Log apply failures through the existing server logger when present (`auto_update.failed`); tests may omit `onError`.
 
-`run.ts`: pass `autoUpdate: createCliAutoUpdateHooks()`. Add `AIO_PROXY_MANAGED=1` to both unit templates. Implement `resolveUpgradeTargetFrom` next to `resolveUpgradeTarget`.
+`run.ts`: pass `autoUpdate: createCliAutoUpdateHooks()`. On boot, if the pre-marker fallback hits and the unit lacks `AIO_PROXY_MANAGED`, rewrite it with `writeManagedUnit` + `resolveStableManagedExec()` (no restart). Add `AIO_PROXY_MANAGED=1` to both unit templates. Implement `resolveUpgradeTargetFrom` and `resolveStableManagedExec` next to `resolveUpgradeTarget`. Extend `runUpgradeCommand` with pinned `version` and `'installed' | 'unchanged'`.
 
 - [ ] **Step 4: Run the tests**
 
@@ -811,6 +880,7 @@ git add packages/server/src/server/server.ts \
   packages/cli/src/service/unit-templates.ts \
   packages/cli/src/service/service.test.ts \
   packages/cli/src/upgrade/detect.ts \
+  packages/cli/src/upgrade/upgrade.ts \
   packages/cli/src/upgrade/upgrade.test.ts
 git commit -m "feat: schedule auto-update from createServer and CLI run"
 ```
@@ -976,11 +1046,11 @@ git commit -m "chore: add changeset for automatic updates"
 | Settings view/mutation, no restartRequired, `notifyCheck` on true | 1 |
 | Controller tick gates (enabled + this-process-managed + outdated) | 2 |
 | Lock before `fetchLatest`; deferred-lookup single-flight test | 2 |
-| `applyUpdate` fulfill → `restart_required` | 2, 5 |
+| `applyUpdate('installed')` → `restart_required`; `'unchanged'` → `idle` | 2, 5 |
 | Manual apply skips gates, 202-before-install | 2, 3 |
 | GET `/release` `{ current, managedService, update }` | 3 |
 | POST apply HTTP map | 3 |
-| `AIO_PROXY_MANAGED=1` + `resolveUpgradeTargetFrom(exec)` | 4 |
+| Marker + pre-marker detection; Cellar never binary; pinned `version` | 4 |
 | `createServer` start/stop + CLI hooks | 4 |
 | About Switch + unmanaged hint + Update now + poll/`restart_required` | 5 |
 | Five-locale copy + changeset targeting `aio-proxy` | 5, 6 |
@@ -988,4 +1058,4 @@ git commit -m "chore: add changeset for automatic updates"
 
 **Placeholders:** none.
 
-**Type names:** `AutoUpdateController`, `AutoUpdateApplyResult`, `DashboardReleaseViewSchema`, `DashboardReleaseApplyResponseSchema`, `createCliAutoUpdateHooks`, `isManagedAutoUpdateProcess`, `resolveUpgradeTargetFrom`, `applyReleaseMutationFn` are used consistently across tasks.
+**Type names:** `AutoUpdateController`, `AutoUpdateApplyResult`, `DashboardReleaseViewSchema`, `DashboardReleaseApplyResponseSchema`, `createCliAutoUpdateHooks`, `isManagedAutoUpdateProcess`, `resolveUpgradeTargetFrom`, `resolveStableManagedExec`, `applyReleaseMutationFn` are used consistently across tasks.
