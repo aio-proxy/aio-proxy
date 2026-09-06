@@ -643,6 +643,31 @@ test('oauth create fills a blank name on the destination editor from the account
   );
 });
 
+test('oauth success ignores a session that belongs to a different provider', async () => {
+  mocks.session = {
+    id: 'session',
+    status: 'succeeded',
+    providerId: 'other',
+  };
+  mocks.fetchQuery.mockResolvedValue({
+    oauth: { ...oauth, accountLabel: 'Other Account', publicValues: { tenant: 'other' } },
+  });
+  renderPage({
+    mode: ProviderFormMode.Edit,
+    kind: ProviderKind.OAuth,
+    providerId: 'existing',
+    provider: oauthProvider,
+    oauth,
+    initial: { id: 'existing', enabled: true, models: [] },
+    sessionId: 'session',
+    onSessionIdChange: rs.fn(),
+  });
+
+  await waitFor(() => expect(mocks.navigate).toHaveBeenCalledWith({ search: {}, replace: true }));
+  expect(mocks.fetchQuery).not.toHaveBeenCalled();
+  expect(within(screen.getByTestId('provider-form-field-name')).getByRole('textbox')).toHaveValue('');
+});
+
 test('oauth success prefers a fresh edit-view fetch over a stale cache', async () => {
   mocks.session = {
     id: 'session',

@@ -88,7 +88,16 @@ export const useOAuthEditorSession = (
     if (session?.status === 'failed' || session?.status === 'cancelled') {
       closeUnclaimedPopup();
     }
-    if (session?.status === 'succeeded' && handledSuccess.current !== session.id) {
+    if (
+      session?.status === 'succeeded' &&
+      handledSuccess.current !== session.id &&
+      mode === ProviderFormMode.Edit &&
+      providerId !== undefined &&
+      session.providerId !== providerId
+    ) {
+      handledSuccess.current = session.id;
+      void navigate({ search: {}, replace: true });
+    } else if (session?.status === 'succeeded' && handledSuccess.current !== session.id) {
       handledSuccess.current = session.id;
       setAuthorizedProviderId(session.providerId);
       setSessionWarning(session.warning);
@@ -118,7 +127,7 @@ export const useOAuthEditorSession = (
         onSessionSucceeded?.(next);
       })();
     }
-  }, [closeUnclaimedPopup, mode, navigate, onSessionSucceeded, queryClient, session]);
+  }, [closeUnclaimedPopup, mode, navigate, onSessionSucceeded, providerId, queryClient, session]);
 
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
