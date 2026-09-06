@@ -1,5 +1,5 @@
 import type { DashboardReleaseView } from '@aio-proxy/types';
-import { expect, rs, test } from '@rstest/core';
+import { afterEach, expect, rs, test } from '@rstest/core';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { createElement, type ReactNode } from 'react';
 
@@ -41,9 +41,14 @@ const updateUnavailable =
 const restartRequired =
   /Restart aio-proxy to run the installed version|重启 aio-proxy 以运行已安装的版本|重新啟動 aio-proxy 以執行已安裝的版本|インストールしたバージョンを使うには aio-proxy を再起動してください|설치한 버전을 사용하려면 aio-proxy를 다시 시작하세요/u;
 
-const renderButton = async (outdated: boolean) => {
+afterEach(() => {
+  rs.useRealTimers();
+});
+
+const renderButton = async (outdated: boolean, seed?: DashboardReleaseView) => {
   const { QueryClient, QueryClientProvider } = await import('@tanstack/react-query');
   const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false }, queries: { retry: false } } });
+  if (seed !== undefined) queryClient.setQueryData(['release'], seed);
   const wrapper = ({ children }: { readonly children: ReactNode }) =>
     createElement(QueryClientProvider, { client: queryClient }, children);
   return render(createElement(SettingsUpdateNowButton, { outdated }), { wrapper });
@@ -133,4 +138,56 @@ test('shows restart required, stops polling, and does not reload', async () => {
   await new Promise((resolve) => setTimeout(resolve, 50));
   expect(mocks.releaseQueryFn.mock.calls.length).toBe(calls);
   expect(mocks.reloadDashboard).not.toHaveBeenCalled();
+});
+
+test('stops polling and returns to idle after apply started then GET idle', async () => {
+  prepare();
+  let finishPoll: (view: DashboardReleaseView) => void = () => {
+    /* assigned when the poll query runs */
+  };
+  mocks.releaseQueryFn.mockImplementation(
+    () =>
+      new Promise<DashboardReleaseView>((resolve) => {
+        finishPoll = resolve;
+      }),
+  );
+  await renderButton(true, idleRelease);
+
+  fireEvent.click(screen.getByRole('button', { name: updateNowName }));
+
+  await waitFor(() => expect(mocks.apply).toHaveBeenCalledTimes(1));
+  await waitFor(() => expect(screen.getByRole('button', { name: updatingName })).toBeDisabled());
+
+  finishPoll({ current: '1.4.2', managedService: false, update: { status: 'idle' } });
+
+  await waitFor(() => expect(screen.getByRole('button', { name: updateNowName })).toBeEnabled());
+  expect(screen.queryByRole('button', { name: updatingName })).not.toBeInTheDocument();
+  expect(screen.queryByText(updateFailed)).not.toBeInTheDocument();
+  expect(screen.queryByText(restartRequired)).not.toBeInTheDocument();
+
+  const calls = mocks.releaseQueryFn.mock.calls.length;
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  expect(mocks.releaseQueryFn.mock.calls.length).toBe(calls);
+});
+
+test('keeps Updating and disabled after 120s when GET is still in_progress', async () => {
+  rs.useFakeTimers();
+  prepare();
+  mocks.releaseQueryFn.mockResolvedValue({
+    current: '1.4.2',
+    managedService: false,
+    update: { status: 'in_progress' },
+  });
+  await renderButton(true);
+
+  fireEvent.click(screen.getByRole('button', { name: updateNowName }));
+  await rs.advanceTimersByTimeAsync(0);
+  expect(screen.getByRole('button', { name: updatingName })).toBeDisabled();
+
+  await rs.advanceTimersByTimeAsync(120_000);
+
+  expect(screen.getByRole('button', { name: updatingName })).toBeDisabled();
+  const calls = mocks.releaseQueryFn.mock.calls.length;
+  await rs.advanceTimersByTimeAsync(4_000);
+  expect(mocks.releaseQueryFn.mock.calls.length).toBe(calls);
 });

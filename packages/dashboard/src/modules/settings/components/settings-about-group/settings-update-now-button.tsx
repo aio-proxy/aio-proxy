@@ -27,6 +27,7 @@ export const SettingsUpdateNowButton: React.FC<SettingsUpdateNowButtonProps> = (
   const [polling, setPolling] = useState(false);
   const [timedOut, setTimedOut] = useState(false);
   const [applyMessage, setApplyMessage] = useState<'failed' | 'unavailable'>();
+  const [pollStartedUpdatedAt, setPollStartedUpdatedAt] = useState(0);
 
   const updateStatus = release.data?.update.status;
   const pollQuery = useQuery({
@@ -37,6 +38,9 @@ export const SettingsUpdateNowButton: React.FC<SettingsUpdateNowButtonProps> = (
       if (view === undefined) return POLL_INTERVAL_MS;
       if (baselineCurrent !== undefined && view.current !== baselineCurrent) return false;
       if (view.update.status === 'restart_required' || view.update.status === 'failed') return false;
+      if (view.update.status === 'idle' && query.state.dataUpdatedAt > pollStartedUpdatedAt) {
+        return false;
+      }
       return POLL_INTERVAL_MS;
     },
     refetchIntervalInBackground: true,
@@ -45,8 +49,14 @@ export const SettingsUpdateNowButton: React.FC<SettingsUpdateNowButtonProps> = (
   const pollStatus = pollQuery.data?.update.status;
   const versionChanged =
     baselineCurrent !== undefined && pollQuery.data !== undefined && pollQuery.data.current !== baselineCurrent;
+  const freshPollIdle =
+    !pollQuery.isFetching && pollQuery.dataUpdatedAt > pollStartedUpdatedAt && pollStatus === 'idle';
+  if (freshPollIdle && polling) {
+    setPolling(false);
+  }
   const pollTerminal = pollStatus === 'restart_required' || pollStatus === 'failed';
-  const watching = !timedOut && !pollTerminal && !versionChanged && (polling || updateStatus === 'in_progress');
+  const watching =
+    !timedOut && !pollTerminal && !versionChanged && !freshPollIdle && (polling || updateStatus === 'in_progress');
 
   useEffect(() => {
     if (!watching) return;
@@ -62,6 +72,7 @@ export const SettingsUpdateNowButton: React.FC<SettingsUpdateNowButtonProps> = (
     setApplyMessage(undefined);
     setTimedOut(false);
     setPolling(true);
+    setPollStartedUpdatedAt(pollQuery.dataUpdatedAt);
   };
 
   const apply = useMutation({
@@ -79,7 +90,9 @@ export const SettingsUpdateNowButton: React.FC<SettingsUpdateNowButtonProps> = (
     },
   });
 
-  const inProgress = apply.isPending || watching;
+  const lastKnownInProgress =
+    !pollTerminal && !freshPollIdle && (updateStatus === 'in_progress' || pollStatus === 'in_progress');
+  const inProgress = apply.isPending || watching || lastKnownInProgress;
   const restartRequired = updateStatus === 'restart_required' || pollStatus === 'restart_required';
   const failed = applyMessage === 'failed' || updateStatus === 'failed' || pollStatus === 'failed';
   const unavailable = applyMessage === 'unavailable';
