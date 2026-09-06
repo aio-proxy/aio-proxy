@@ -1115,7 +1115,7 @@ git commit -m "chore: add changeset for automatic updates"
 | `server.autoUpdate` default false, persisted explicitly | 1 |
 | Settings view/mutation, no restartRequired, `notifyCheck` on true | 1 |
 | Controller tick gates (enabled + this-process-managed + outdated) | 2 |
-| Lock before `fetchLatest`; deferred-lookup single-flight; `stop` during lookup skips apply | 2 |
+| Lock before `fetchLatest`; deferred-lookup single-flight; `stop` / toggle-off during lookup skips apply | 2 |
 | `applyUpdate('installed')` → `restart_required`; `'unchanged'` → `idle` | 2, 5 |
 | Manual apply skips gates, 202-before-install | 2, 3 |
 | GET `/release` `{ current, managedService, update }` | 3 |
