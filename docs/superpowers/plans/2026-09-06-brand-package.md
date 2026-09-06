@@ -109,7 +109,27 @@ Create `packages/brand/package.json`:
 
 The `version` matches every other workspace package — Changesets uses `fixed` lockstep versioning, so a mismatched version breaks `changeset version`.
 
-- [ ] **Step 2: Create the TypeScript project config**
+- [ ] **Step 2: Move `cn` into the root catalog**
+
+This must happen before the first `bun install`. Step 1 declared `"cn": "catalog:"`, and Bun hard-fails on a `catalog:` specifier with no catalog entry — verified: `error: cn@catalog: is not in the catalog`.
+
+`CLAUDE.md` requires catalog management once a dependency has two or more workspace consumers, which the brand package makes true.
+
+In the root `package.json`, add `"cn": "^0.2.5"` to `workspaces.catalog`, immediately after `class-variance-authority`:
+
+```json
+    "class-variance-authority": "^0.7.1",
+    "cn": "^0.2.5",
+    "@inlang/paraglide-js": "2.22.0",
+```
+
+In `packages/ui/package.json`, change the `cn` dependency from `"^0.2.5"`:
+
+```json
+    "cn": "catalog:",
+```
+
+- [ ] **Step 3: Create the TypeScript project config**
 
 Create `packages/brand/tsconfig.json`. This mirrors `packages/ui/tsconfig.json` — the same `jsx` and `noEmit` settings, because this package also ships `.tsx` consumed directly from source:
 
@@ -127,7 +147,7 @@ Create `packages/brand/tsconfig.json`. This mirrors `packages/ui/tsconfig.json` 
 }
 ```
 
-- [ ] **Step 3: Author the two source SVGs by extracting existing geometry**
+- [ ] **Step 4: Author the two source SVGs by extracting existing geometry**
 
 Do NOT type the path data by hand — it is 2875 and 1023 characters respectively. Extract it programmatically from the files that already hold it.
 
@@ -168,7 +188,7 @@ Expected output: `wrote both sources`. If any assertion fails, stop — the upst
 
 The mark source deliberately drops the favicon's `<style>` block, its `id="a"`, and its `<title>`: the generated favicon re-adds the media query, and the component supplies its own `<title>`.
 
-- [ ] **Step 4: Write the generator**
+- [ ] **Step 5: Write the generator**
 
 Create `packages/brand/scripts/build-assets.ts`:
 
@@ -237,9 +257,9 @@ console.log('Generated 3 SVG artifacts and logo-geometry.ts.');
 
 Note the naming inversion, which is intentional and matches Tailwind CSS, Vite, and tRPC: `-light.svg` holds `DARK_INK` because it is shown on a light background, and `-dark.svg` holds `LIGHT_INK`.
 
-The path data is single-quoted in the generated TypeScript. SVG path syntax contains no single quotes or backslashes, so no escaping is needed — Step 6 asserts this holds.
+The path data is single-quoted in the generated TypeScript. SVG path syntax contains no single quotes or backslashes, so no escaping is needed — Step 7 asserts this holds.
 
-- [ ] **Step 5: Install and run the generator**
+- [ ] **Step 6: Install and run the generator**
 
 ```bash
 bun install
@@ -251,7 +271,7 @@ bun run --filter @aio-proxy/brand build:assets
 
 Expected output: `Generated 3 SVG artifacts and logo-geometry.ts.`
 
-- [ ] **Step 6: Verify the generated artifacts**
+- [ ] **Step 7: Verify the generated artifacts**
 
 ```bash
 python3 - <<'PYEOF'
@@ -285,7 +305,7 @@ PYEOF
 
 Expected output: `all artifact assertions passed`
 
-- [ ] **Step 7: Verify the generator is idempotent**
+- [ ] **Step 8: Verify the generator is idempotent**
 
 The CI drift check in Task 5 is meaningless unless a second run reproduces byte-identical output.
 
@@ -301,7 +321,7 @@ md5 packages/brand/src/logo-geometry.ts && bun run --filter @aio-proxy/brand bui
 
 Expected: the two hashes are identical.
 
-- [ ] **Step 8: Create the package entry point**
+- [ ] **Step 9: Create the package entry point**
 
 Create `packages/brand/src/index.ts`. The component lands in Task 2; for now the geometry is the only export:
 
@@ -309,7 +329,7 @@ Create `packages/brand/src/index.ts`. The component lands in Task 2; for now the
 export { MARK_PATH, MARK_VIEW_BOX, WORDMARK_PATH, WORDMARK_VIEW_BOX } from './logo-geometry';
 ```
 
-- [ ] **Step 9: Exempt the generated module from oxlint and oxfmt**
+- [ ] **Step 10: Exempt the generated module from oxlint and oxfmt**
 
 Modify `oxc.ts`. Add the new entry after the existing `route-tree.gen.ts` line:
 
@@ -332,7 +352,7 @@ export const ignorePatterns = [
 ];
 ```
 
-- [ ] **Step 10: Register the TypeScript project reference**
+- [ ] **Step 11: Register the TypeScript project reference**
 
 Modify the root `tsconfig.json`, adding `./packages/brand` to `references`. Place it first, since the brand package depends on no other workspace package:
 
@@ -380,29 +400,23 @@ Modify the root `tsconfig.json`, adding `./packages/brand` to `references`. Plac
 }
 ```
 
-- [ ] **Step 11: Move `cn` into the root catalog**
+- [ ] **Step 12: Confirm the `cn` catalog move took effect**
 
-`CLAUDE.md` requires catalog management once a dependency has two or more workspace consumers, which the brand package's `"cn": "catalog:"` makes true.
-
-In the root `package.json`, add `"cn": "^0.2.5"` to `workspaces.catalog`, in alphabetical position between `class-variance-authority` and `@inlang/paraglide-js`:
-
-```json
-    "class-variance-authority": "^0.7.1",
-    "cn": "^0.2.5",
-    "@inlang/paraglide-js": "2.22.0",
-```
-
-In `packages/ui/package.json`, change the `cn` dependency:
-
-```json
-    "cn": "catalog:",
-```
-
-- [ ] **Step 12: Reinstall and verify the workspace resolves**
+Step 2 already added `"cn": "^0.2.5"` to the root catalog and switched `packages/ui/package.json` to `"cn": "catalog:"`. Confirm both landed and that `cn` resolves for all three consumers:
 
 ```bash
-bun install
+grep -n '"cn"' package.json packages/ui/package.json packages/brand/package.json
 ```
+
+Expected, exactly three lines: `"cn": "^0.2.5"` in the root, and `"cn": "catalog:"` in each of the two packages.
+
+```bash
+bun pm ls --all 2>/dev/null | grep -c ' cn@' || echo "cn not installed"
+```
+
+Expected: at least `1`. If it reports `cn not installed`, re-run `bun install`.
+
+- [ ] **Step 13: Verify the workspace resolves**
 
 ```bash
 bun run check
@@ -410,7 +424,7 @@ bun run check
 
 Expected: exit 0. `bun run check` is `oxlint . && oxfmt --check .`. If oxfmt reports `logo-geometry.ts`, the `oxc.ts` entry in Step 10 is wrong — fix it rather than reformatting the generated file.
 
-- [ ] **Step 13: Commit**
+- [ ] **Step 14: Commit**
 
 ```bash
 git add packages/brand oxc.ts tsconfig.json package.json packages/ui/package.json bun.lock
