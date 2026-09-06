@@ -13,11 +13,22 @@ const mocks = rs.hoisted(() => ({
 }));
 
 rs.mock('../../hooks/use-release-query', () => ({
-  useReleaseQuery: () => ({ data: { current: '1.4.2' } }),
+  useReleaseQuery: () => ({
+    data: { current: '1.4.2', managedService: false, update: { status: 'idle' } },
+  }),
 }));
 
 rs.mock('../../services/release-service', () => ({
+  applyReleaseMutationFn: rs.fn(),
   checkLatestReleaseMutationFn: rs.fn(),
+  releaseQueryOptions: () => ({
+    queryKey: ['release'],
+    queryFn: rs.fn().mockResolvedValue({
+      current: '1.4.2',
+      managedService: false,
+      update: { status: 'idle' },
+    }),
+  }),
 }));
 
 rs.mock('../../hooks/use-settings-query', () => ({

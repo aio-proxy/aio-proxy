@@ -6,27 +6,34 @@ import { Skeleton } from '@aio-proxy/ui/components/skeleton';
 import { useMutation } from '@tanstack/react-query';
 
 import { useReleaseQuery } from '../../hooks/use-release-query';
+import { useSettingsQuery } from '../../hooks/use-settings-query';
 import { checkLatestReleaseMutationFn } from '../../services/release-service';
+import { SettingsAutoUpdateRow } from './settings-auto-update-row';
 import { SettingsExternalLink } from './settings-external-link';
 import { SettingsRowChevron } from './settings-row-chevron';
+import { SettingsUpdateNowButton } from './settings-update-now-button';
 
 const REPOSITORY_URL = 'https://github.com/aio-proxy/aio-proxy';
 const DOCUMENTATION_URL = 'https://aioproxy.dev';
 
 export const SettingsAboutGroup: React.FC = () => {
   const release = useReleaseQuery();
+  const settings = useSettingsQuery();
   const check = useMutation({ mutationFn: checkLatestReleaseMutationFn });
   const current = release.data?.current;
 
   // A failed lookup must not read as "up to date": an unreachable registry says nothing
-  // about the published version.
+  // about the published version. A failed install is the same — do not replace it with
+  // the last successful "up to date" check.
   const versionDescription = (() => {
     if (current === undefined) return undefined;
     if (check.isError) return m['dashboard.settings.version_check_failed']();
     if (check.data === undefined) return m['dashboard.settings.version_description']({ version: current });
-    return check.data.outdated
-      ? m['dashboard.settings.version_outdated']({ version: check.data.latest })
-      : m['dashboard.settings.version_up_to_date']();
+    if (check.data.outdated) return m['dashboard.settings.version_outdated']({ version: check.data.latest });
+    if (release.data?.update.status === 'failed') {
+      return m['dashboard.settings.version_description']({ version: current });
+    }
+    return m['dashboard.settings.version_up_to_date']();
   })();
 
   return (
@@ -38,7 +45,7 @@ export const SettingsAboutGroup: React.FC = () => {
       </CardHeader>
       <CardContent>
         <ItemGroup>
-          {/* The version row carries its own button, so the row itself cannot be the link —
+          {/* The version row carries its own buttons, so the row itself cannot be the link —
               nesting a button inside an anchor is invalid and swallows one of the two actions. */}
           <Item size="sm">
             <ItemContent>
@@ -49,12 +56,19 @@ export const SettingsAboutGroup: React.FC = () => {
               <Button variant="ghost" size="sm" disabled={check.isPending} onClick={() => check.mutate()}>
                 {m['dashboard.settings.version_check']()}
               </Button>
+              <SettingsUpdateNowButton outdated={check.data?.outdated === true} />
               <SettingsExternalLink
                 href={current === undefined ? REPOSITORY_URL : `${REPOSITORY_URL}/releases/tag/v${current}`}
                 label={m['dashboard.settings.version']()}
               />
             </ItemActions>
           </Item>
+          {settings.data !== undefined && !settings.isLoading && !settings.isError ? (
+            <SettingsAutoUpdateRow
+              autoUpdate={settings.data.autoUpdate}
+              managedService={release.data?.managedService ?? false}
+            />
+          ) : null}
           {/* These rows do nothing but navigate, so the whole row is the anchor and its title
               supplies the accessible name — the chevron is decoration, not a second control. */}
           <Item size="sm" render={<a href={REPOSITORY_URL} target="_blank" rel="noreferrer" />}>
