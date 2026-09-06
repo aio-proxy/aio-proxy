@@ -569,6 +569,7 @@ test('oauth create authorizes in place, locks sections 3-5, then unlocks after s
       replace: true,
     }),
   );
+  expect(mocks.fetchQuery).not.toHaveBeenCalled();
   expect(mocks.navigate).not.toHaveBeenCalledWith(expect.objectContaining({ to: '/providers' }));
   expect(screen.getByText(/model catalog is not available/u)).toBeTruthy();
   expect(saveButton()).toBeEnabled();

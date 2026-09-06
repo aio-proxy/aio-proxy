@@ -93,6 +93,15 @@ export const useOAuthEditorSession = (
       setAuthorizedProviderId(session.providerId);
       setSessionWarning(session.warning);
       void queryClient.invalidateQueries({ queryKey: queryKeys.providers });
+      if (mode === ProviderFormMode.Create) {
+        void navigate({
+          to: '/providers/$id/edit',
+          params: { id: session.providerId },
+          search: { session: session.id },
+          replace: true,
+        });
+        return;
+      }
       void (async () => {
         let next: DashboardOAuthProviderEdit | undefined;
         try {
@@ -107,14 +116,6 @@ export const useOAuthEditorSession = (
           next = undefined;
         }
         onSessionSucceeded?.(next);
-        if (mode === ProviderFormMode.Create) {
-          void navigate({
-            to: '/providers/$id/edit',
-            params: { id: session.providerId },
-            search: { session: session.id },
-            replace: true,
-          });
-        }
       })();
     }
   }, [closeUnclaimedPopup, mode, navigate, onSessionSucceeded, queryClient, session]);
