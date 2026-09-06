@@ -17,7 +17,13 @@ Every task's requirements implicitly include this section. Values are copied ver
 - Call store capacity: **1024** records. TTL: **1 hour** from creation; a reserved (live) attachment does not expire.
 - Create attempts: at most **2**.
 - Sideband dial deadline: **10 s**.
-- Pre-open relay buffer: at most **64 frames or 1 MiB**, whichever comes first.
+- ~~Pre-open relay buffer: at most **64 frames or 1 MiB**, whichever comes first.~~
+  **Withdrawn during Task 9 (ratified 2026-09-06).** Bun 1.4.2 fires `websocket.open`
+  synchronously inside `server.upgrade()`, so the pre-open window is unreachable by
+  construction and both ceilings were dead code. `sideband.ts` keeps the
+  `downstream === undefined` branch as a fail-closed guard, because a `message`
+  listener bound even one macrotask late makes Bun silently discard frames. Task 10
+  must NOT test `PRE_OPEN_FRAME_LIMIT` / `PRE_OPEN_BYTE_LIMIT`; they no longer exist.
 - Backpressure ceiling: overflow past **1 MiB** queued in either direction closes with `1011`.
 - Close reason truncation: **123 UTF-8 bytes**.
 - `websocket.idleTimeout: 255` at the `Bun.serve` call site. The `websocket` handler's own default is **120 s** and `Bun.serve`'s `idleTimeout: 255` does not carry over to an upgraded socket. Never mutate Hono's exported `websocket` singleton — spread it.
@@ -2873,7 +2879,7 @@ git commit -m "feat(server): normalize realtime close codes and add realtime log
 - Produces:
   - `source.ts`: `RealtimeRouteSource = { readonly acquireProviderSnapshot: ProviderRouteSource['acquireProviderSnapshot']; readonly logger: ServerLogSink; readonly realtimeCalls: RealtimeCallStore }`
   - `signaling.ts`: `MAX_CREATE_ATTEMPTS = 2`, `handleRealtimeCreate(context, source, style): Promise<Response>`, `callIdFromLocation(location): string | undefined`, `rewriteLocation(callId, style): string`
-  - `sideband.ts`: `PRE_OPEN_FRAME_LIMIT = 64`, `PRE_OPEN_BYTE_LIMIT = 1_048_576`, `BACKPRESSURE_LIMIT = 1_048_576`, `DIRECT_DEFAULT_MODEL = 'gpt-realtime'`, `handleRealtimeSideband(context, source, style): Promise<Response>`
+  - `sideband.ts`: `BACKPRESSURE_LIMIT = 1_048_576`, `DIRECT_DEFAULT_MODEL = 'gpt-realtime'`, `handleRealtimeSideband(context, source, style): Promise<Response>` (the `PRE_OPEN_*` constants below were withdrawn — see Global Constraints)
   - `hangup.ts`: `handleRealtimeHangup(context, source): Promise<Response>`
   - `realtime.ts`: `createRealtimeRoutes(source: RealtimeRouteSource)`, `UNSUPPORTED_REALTIME_ROUTES`
 
@@ -3416,8 +3422,10 @@ import { CODEX_REALTIME_MODEL } from './model';
 import { pinnedRealtimeCandidate, selectRealtimeCandidates } from './provider-select';
 import type { RealtimeRouteSource } from './source';
 
-export const PRE_OPEN_FRAME_LIMIT = 64;
-export const PRE_OPEN_BYTE_LIMIT = 1_048_576;
+// WITHDRAWN in Task 9 (ratified 2026-09-06): `websocket.open` fires synchronously
+// inside `server.upgrade()`, so these two ceilings were unreachable. Deleted from
+// the shipped `sideband.ts`; the `downstream === undefined` branch below survives
+// as a fail-closed guard only.
 export const BACKPRESSURE_LIMIT = 1_048_576;
 /** What `/v1/realtime` without a `model` query sends upstream. A direct connection
  *  carries no call record, so there is no recorded model to reuse. */
@@ -3590,12 +3598,9 @@ function relayEvents(source: RealtimeRouteSource, input: RelayInput): WSEvents {
   upstream.addEventListener('message', (event: MessageEvent<string | ArrayBuffer>) => {
     const data = event.data;
     if (downstream === undefined) {
-      // Pre-open buffer: 64 frames or 1 MiB, whichever comes first.
-      pendingBytes += typeof data === 'string' ? data.length : data.byteLength;
-      if (pending.length >= PRE_OPEN_FRAME_LIMIT || pendingBytes > PRE_OPEN_BYTE_LIMIT) {
-        teardown(INTERNAL_CLOSE_CODE, undefined, 'upstream');
-        return;
-      }
+      // Fail-closed guard only: Bun fires `open` synchronously inside `upgrade()`,
+      // so this branch is unreachable in practice. The pre-open ceilings that used
+      // to live here were withdrawn — see Global Constraints.
       pending.push(data);
       return;
     }
