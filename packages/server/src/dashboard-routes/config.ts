@@ -4,6 +4,7 @@ import { Hono } from 'hono';
 import { validator } from 'hono/validator';
 import { z } from 'zod';
 
+import type { AutoUpdateController } from '../auto-update';
 import type { DashboardAuthentication } from '../dashboard-auth';
 import type { ServerState } from '../server-state';
 import { createDashboardEventsRoute } from './events';
@@ -39,7 +40,7 @@ export const createDashboardRoutes = (
   state: ServerState,
   auth: DashboardAuthentication,
   version: string = '0.0.0',
-  notifyCheck?: () => void,
+  controller?: AutoUpdateController,
 ) =>
   new Hono()
     .get('/config', (context) => context.json(redactSecrets(state.currentConfig())))
@@ -65,8 +66,11 @@ export const createDashboardRoutes = (
     })
     .route('/overview', createDashboardOverviewRoute(state))
     .route('/plugins', createDashboardPluginRoutes(state))
-    .route('/release', createDashboardReleaseRoute(version))
-    .route('/settings', createDashboardSettingsRoute(state, notifyCheck))
+    .route('/release', createDashboardReleaseRoute(version, undefined, controller))
+    .route(
+      '/settings',
+      createDashboardSettingsRoute(state, () => controller?.notifyCheck()),
+    )
     .route('/traces', createDashboardTraceRoutes(state))
     .route('/events', createDashboardEventsRoute(state, auth))
     .post('/reload', async (context) => {

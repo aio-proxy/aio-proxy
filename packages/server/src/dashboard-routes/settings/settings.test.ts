@@ -8,6 +8,7 @@ import { parseRuntimeConfig, Router } from '@aio-proxy/core';
 
 import { createServerState } from '#server-test-lifecycle';
 
+import type { AutoUpdateController } from '../../auto-update';
 import { disabledDashboardAuthentication } from '../../dashboard-auth/test-support';
 import type { ServerState } from '../../server-state';
 import { createDashboardRoutes } from '../config';
@@ -46,7 +47,7 @@ async function withSettingsFixture(
   options: {
     readonly configPath?: boolean;
     readonly rejectReload?: { value: boolean };
-    readonly notifyCheck?: () => void;
+    readonly controller?: AutoUpdateController;
   } = {},
 ): Promise<void> {
   const directory = mkdtempSync(join(tmpdir(), 'aio-dashboard-settings-'));
@@ -85,7 +86,7 @@ async function withSettingsFixture(
   try {
     await run({
       configPath,
-      routes: createDashboardRoutes(state, disabledDashboardAuthentication, '0.0.0', options.notifyCheck),
+      routes: createDashboardRoutes(state, disabledDashboardAuthentication, '0.0.0', options.controller),
       state,
     });
   } finally {
@@ -142,7 +143,16 @@ test('PUT /settings autoUpdate true notifies a pending check', async () => {
       await put(routes, { autoUpdate: false });
       expect(notifyCheck).toHaveBeenCalledTimes(1);
     },
-    { notifyCheck },
+    {
+      controller: {
+        apply: async () => ({ status: 'unavailable' }),
+        isManagedService: () => false,
+        notifyCheck,
+        snapshot: () => ({ status: 'idle' }),
+        start: () => {},
+        stop: () => {},
+      },
+    },
   );
 });
 

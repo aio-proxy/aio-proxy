@@ -12,7 +12,47 @@ test('reports the running version without touching the registry', async () => {
   const { body, status } = await get('/', () => Promise.reject(new Error('must not be called')));
 
   expect(status).toBe(200);
-  expect(body).toEqual({ current: '1.2.0' });
+  expect(body).toEqual({ current: '1.2.0', managedService: false, update: { status: 'idle' } });
+});
+
+test('POST /apply maps controller results to HTTP statuses', async () => {
+  const table = [
+    [{ status: 'started' as const }, 202, { ok: true, status: 'started' }],
+    [{ status: 'up_to_date' as const }, 200, { ok: true, status: 'up_to_date' }],
+    [{ status: 'in_progress' as const }, 409, { ok: false, error: { code: 'in_progress' } }],
+    [{ status: 'unavailable' as const }, 501, { ok: false, error: { code: 'unavailable' } }],
+    [{ status: 'check_failed' as const }, 502, { ok: false, error: { code: 'check_failed' } }],
+  ] as const;
+  for (const [result, status, body] of table) {
+    const routes = createDashboardReleaseRoute('1.2.0', async () => '1.2.0', {
+      isManagedService: () => true,
+      snapshot: () => ({ status: 'idle' }),
+      apply: async () => result,
+      notifyCheck: () => {},
+      start: () => {},
+      stop: () => {},
+    });
+    const response = await routes.request('/apply', { method: 'POST' });
+    expect(response.status).toBe(status);
+    expect(await response.json()).toEqual(body);
+  }
+});
+
+test('GET / reports managedService from the controller', async () => {
+  const routes = createDashboardReleaseRoute('1.2.0', async () => '1.2.0', {
+    isManagedService: () => true,
+    snapshot: () => ({ status: 'in_progress' }),
+    apply: async () => ({ status: 'in_progress' }),
+    notifyCheck: () => {},
+    start: () => {},
+    stop: () => {},
+  });
+  const response = await routes.request('/');
+  expect(await response.json()).toEqual({
+    current: '1.2.0',
+    managedService: true,
+    update: { status: 'in_progress' },
+  });
 });
 
 test('flags a newer published version as outdated', async () => {

@@ -162,6 +162,18 @@ describe('dashboard settings control-plane contracts', () => {
   });
 });
 
+describe('dashboard release control-plane contracts', () => {
+  test('release view reports managedService and update status', () => {
+    const view = schema('DashboardReleaseViewSchema');
+    expect(view.parse({ current: '1.2.0', managedService: false, update: { status: 'idle' } })).toEqual({
+      current: '1.2.0',
+      managedService: false,
+      update: { status: 'idle' },
+    });
+    expect(view.safeParse({ current: '1.2.0' }).success).toBe(false);
+  });
+});
+
 const pluginForm = [
   { type: 'text', key: 'region', label: 'Region' },
   { type: 'secret', key: 'token', label: 'Token', configured: true },
