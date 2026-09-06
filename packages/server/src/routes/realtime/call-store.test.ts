@@ -167,6 +167,50 @@ test('a teardown registered while the reservation is still held is not run early
   expect(codes).toEqual([1000]);
 });
 
+// The store is keyed on the call ID alone, so a second record under a live ID would hand the
+// FIRST call's owner and provider pin to the second caller. Worse, the first call's attachment
+// is orphaned by the replacement — and the relay's teardown deletes by call ID, so that stale
+// socket's close would delete the REPLACEMENT's record, leaving a live sideband the proxy can no
+// longer route. Both are asserted here because the second is the sharper failure.
+test('insert refuses a call id already held by a live record and leaves the first call intact', () => {
+  const store = createRealtimeCallStore();
+  expect(store.insert(record({ owner: { kind: 'key', id: 'first' } }))).toBe(true);
+  const firstAttachment = store.reserve('call_abc')!;
+
+  expect(store.insert(record({ owner: { kind: 'key', id: 'second' }, providerId: 'other' }))).toBe(false);
+
+  // The live call kept its own owner and provider pin, so the second caller cannot attach to it.
+  expect(store.lookup('call_abc')).toMatchObject({ owner: { kind: 'key', id: 'first' }, providerId: 'codex' });
+  // And the first call's attachment is still the one the store holds, so its teardown can only
+  // ever delete the record it actually belongs to.
+  expect(store.attachment('call_abc')?.token).toBe(firstAttachment.token);
+  expect(store.size()).toBe(1);
+});
+
+// A refused insert must not consume the ID forever: once the first call has expired, the same
+// ID is ordinary free space again. Without this the collision check would turn a transient
+// overlap into a permanently unusable call ID for the life of the process.
+test('insert accepts a call id whose previous record has expired', () => {
+  let clock = 1_000;
+  const store = createRealtimeCallStore({ now: () => clock });
+  expect(store.insert({ ...record(), createdAt: clock })).toBe(true);
+
+  clock += REALTIME_CALL_TTL_MS + 1;
+
+  expect(store.insert({ ...record({ providerId: 'later' }), createdAt: clock })).toBe(true);
+  expect(store.lookup('call_abc')).toMatchObject({ providerId: 'later' });
+});
+
+// `insert` is a no-op after `close()` — a create that still dialed would otherwise answer 201
+// with a Location no attach could resolve — so it must report that, not silently succeed.
+test('insert reports failure once the store is closed', () => {
+  const store = createRealtimeCallStore();
+  store.close();
+
+  expect(store.insert(record())).toBe(false);
+  expect(store.lookup('call_abc')).toBeUndefined();
+});
+
 function record(overrides: Partial<RealtimeCallRecord> = {}): RealtimeCallRecord {
   return {
     callId: 'call_abc',

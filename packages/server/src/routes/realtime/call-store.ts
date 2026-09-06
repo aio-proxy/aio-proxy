@@ -34,7 +34,12 @@ export type RealtimeAttachment = {
 export type RealtimeCapacitySlot = { readonly release: () => void };
 
 export type RealtimeCallStore = {
-  readonly insert: (record: RealtimeCallRecord) => void;
+  /** `false` when the call ID is already held by a live record, or the store is closed —
+   *  in both cases nothing was stored and the caller must not answer the create `201`.
+   *  Never replaces: an overwrite would hand the first call's owner and provider pin to the
+   *  second, and would orphan the first call's attachment, whose later teardown deletes by
+   *  call ID and would therefore delete the *replacement's* record. */
+  readonly insert: (record: RealtimeCallRecord) => boolean;
   readonly lookup: (callId: string) => RealtimeCallRecord | undefined;
   readonly reserve: (callId: string) => RealtimeAttachment | undefined;
   readonly release: (token: number) => void;
@@ -90,8 +95,12 @@ export function createRealtimeCallStore(
 
   return {
     insert(record) {
-      if (closed) return;
+      if (closed) return false;
+      // `live()` rather than `entries.has()`: an expired record is not a collision, and
+      // leaving it in place would make a call ID unusable for the rest of the process.
+      if (live(record.callId) !== undefined) return false;
       entries.set(record.callId, { record, attachment: undefined });
+      return true;
     },
     lookup(callId) {
       return live(callId)?.record;

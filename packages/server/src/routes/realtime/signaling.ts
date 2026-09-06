@@ -147,7 +147,7 @@ function commit(
     readonly answer: ArrayBuffer;
   },
 ): Response {
-  source.realtimeCalls.insert({
+  const stored = source.realtimeCalls.insert({
     callId: input.callId,
     providerId: input.candidate.provider.id,
     accountId: input.candidate.provider.accountId ?? '',
@@ -158,6 +158,24 @@ function commit(
     owner: callerPrincipal(context),
     createdAt: Date.now(),
   });
+  // A call ID already held by a live record cannot be adopted: the store is keyed on the ID
+  // alone, so storing this record would hand the FIRST call's owner and provider pin to this
+  // caller, and would orphan the first call's attachment — whose teardown deletes by call ID
+  // and would then delete this record instead. Answering 503 rather than replacing keeps the
+  // live call's ownership intact; the cost is an orphaned upstream call, the same shape the
+  // design spec already accepts for an ambiguous failed attempt followed by a successful retry
+  // (`:272-274`, "documented, not prevented"). Logged with the provider so it is diagnosable:
+  // a recurring collision means an upstream is reusing call IDs.
+  if (!stored) {
+    logFailure(
+      source,
+      { model: input.models.normalized, style: input.style, attemptCount: input.attemptCount },
+      503,
+      'realtime_upstream_unavailable',
+      input.candidate.provider.id,
+    );
+    return realtimeUpstreamUnavailable();
+  }
   logServerEvent(source.logger, {
     event: 'realtime.call_created',
     callId: input.callId,

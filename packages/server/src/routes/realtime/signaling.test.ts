@@ -582,6 +582,45 @@ test('a padded requested model is still refused by the policy excluding it', asy
   expect(fetched).toEqual(['codex']);
 });
 
+// Two upstreams whose call-ID namespaces overlap mint the same `call_id`. The store is keyed on
+// that ID alone, so committing the second create would give the second caller the FIRST call's
+// owner and provider pin — and orphan the first call's attachment, whose relay teardown deletes by
+// call ID and would then delete the second record. The create must fail instead of replacing a
+// live record. End to end rather than through the store directly, because the reachable
+// consequence is the create's answer and the ownership the first caller keeps.
+test('a create whose call id collides with a live record fails instead of replacing it', async () => {
+  const store = createRealtimeCallStore();
+  const logs: ServerLog[] = [];
+  const source = sourceWith([realtimeProvider({ id: 'codex', answer: sdpAnswer('call_abc') })], store, logs);
+
+  const first = await post(source, 'live', 'v=0\r\n', 'application/sdp');
+  expect(first.status).toBe(201);
+
+  // A different provider ID, so the pin is observably the first call's and not just equal by
+  // coincidence of the fixture.
+  const colliding = sourceWith([realtimeProvider({ id: 'other', answer: sdpAnswer('call_abc') })], store, logs);
+  const second = await post(colliding, 'live', 'v=0\r\n', 'application/sdp');
+
+  expect(second.status).toBe(503);
+  expect(((await second.json()) as { error: { code: string } }).error.code).toBe('realtime_upstream_unavailable');
+  // The live call is untouched: same provider pin, and exactly one record in the store.
+  expect(store.lookup('call_abc')).toMatchObject({ providerId: 'codex' });
+  expect(store.size()).toBe(1);
+  // Diagnosable: a recurring collision means an upstream is reusing call IDs.
+  expect(logs.map((entry) => `${entry.event}/${'errorCode' in entry ? entry.errorCode : ''}`)).toEqual([
+    'realtime.call_created/',
+    'realtime.call_failed/realtime_upstream_unavailable',
+  ]);
+
+  // The control: once the first record is gone the very same colliding create succeeds, so the
+  // 503 above is the collision and not this provider being unroutable.
+  store.remove('call_abc');
+  const retried = await post(colliding, 'live', 'v=0\r\n', 'application/sdp');
+
+  expect(retried.status).toBe(201);
+  expect(store.lookup('call_abc')).toMatchObject({ providerId: 'other' });
+});
+
 const JSON_TYPE = 'application/json';
 
 function sdpAnswer(callId: string): () => Response {
