@@ -65,7 +65,7 @@ export type AudioProtocolAdapter<TRequest, TContext> = SharedProtocolAdapter<TRe
     capability: AudioCapability;
     audioInvocation: (request: TRequest, context: TContext) => AudioInvocation;
     audioResponse: (result: AudioResult, request: TRequest, context: AudioEgressContext) => Promise<Response>;
-    convertSkipReason?: (request: TRequest, resolvedModelId: string) => string | undefined;
+    convertSkipReason?: (request: TRequest, resolvedModelId: string, context: TContext) => string | undefined;
   }>;
 
 /** Every non-embedding inbound adapter the pipeline can dispatch. */

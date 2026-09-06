@@ -168,11 +168,19 @@ export class OpenAIImagesInvalidRequestError extends AioProxyError {
   }
 }
 
+export type OpenAIAudioUnsupportedFeature =
+  | 'stream'
+  | 'stream_format'
+  | 'chunking_strategy'
+  | 'include'
+  | 'translations'
+  | 'response_format';
+
 export class OpenAIAudioUnsupportedFeatureError extends AioProxyError {
   readonly code = 'UNSUPPORTED_OPENAI_AUDIO_FEATURE';
   readonly status = 501;
 
-  constructor(readonly feature: 'stream_format' | 'chunking_strategy' | 'translations' | 'response_format') {
+  constructor(readonly feature: OpenAIAudioUnsupportedFeature) {
     super('OpenAIAudioUnsupportedFeatureError', `OpenAI Audio feature is not supported: ${feature}`);
   }
 }

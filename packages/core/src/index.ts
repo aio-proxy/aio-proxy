@@ -119,6 +119,16 @@ export {
   safeParseGeminiInteractions,
 } from './ingress/gemini-interactions/index';
 export {
+  AUDIO_MULTIPART_ENCODED_LIMIT,
+  AUDIO_MULTIPART_PER_FILE_LIMIT,
+  CPA_DEFAULT_SPEECH_MODEL,
+  CPA_DEFAULT_TRANSCRIPTION_MODEL,
+  type OpenAISpeechRequest,
+  type OpenAITranscriptionRequest,
+  parseOpenAISpeech,
+  parseOpenAITranscriptionMultipart,
+} from './ingress/openai-audio';
+export {
   type OpenAICompletionsRequest,
   OpenAICompletionsRequestSchema,
   parseOpenAICompletions,
