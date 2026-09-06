@@ -500,6 +500,7 @@ git commit -m "feat(anthropic-claude): build PKCE authorize URL with code=true"
 - Create: `packages/plugins/anthropic-claude/src/oauth/identity.ts`
 - Test: `packages/plugins/anthropic-claude/src/oauth/identity.test.ts`
 - Modify: `packages/plugins/anthropic-claude/src/oauth/oauth.ts`
+- Modify: `packages/plugins/anthropic-claude/src/oauth/index.ts`
 - Test: `packages/plugins/anthropic-claude/src/oauth/oauth.test.ts`
 
 **Interfaces:**
@@ -901,6 +902,14 @@ export async function loginClaude(
 
 Keep `oauth.ts` under 400 lines. If login + exchange + result exceed that, move exchange into `src/oauth/token.ts` in this same task (private to `oauth/`).
 
+Append to `src/oauth/index.ts`:
+
+```ts
+export { resolveClaudeIdentity } from './identity';
+```
+
+Do not deep-import `./identity` from outside `oauth/`. Plugin CPA import uses `../oauth`.
+
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `bun test --preload=packages/plugins/anthropic-claude/test/setup.ts packages/plugins/anthropic-claude/src/oauth/identity.test.ts packages/plugins/anthropic-claude/src/oauth/oauth.test.ts`
@@ -909,7 +918,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add packages/plugins/anthropic-claude/src/oauth/oauth.ts packages/plugins/anthropic-claude/src/oauth/oauth.test.ts packages/plugins/anthropic-claude/src/oauth/identity.ts packages/plugins/anthropic-claude/src/oauth/identity.test.ts
+git add packages/plugins/anthropic-claude/src/oauth/oauth.ts packages/plugins/anthropic-claude/src/oauth/oauth.test.ts packages/plugins/anthropic-claude/src/oauth/identity.ts packages/plugins/anthropic-claude/src/oauth/identity.test.ts packages/plugins/anthropic-claude/src/oauth/index.ts
 git commit -m "feat(anthropic-claude): exchange loopback code and resolve account identity"
 ```
 
@@ -1374,7 +1383,7 @@ git commit -m "feat(anthropic-claude): invoke Anthropic models with OAuth bearer
 - Test: `packages/plugins/anthropic-claude/src/plugin/plugin.test.ts`
 
 **Interfaces:**
-- Consumes: `definePlugin`, `OAuthAdapter`, `ConfigSpec` from `@aio-proxy/plugin-sdk`; `loginClaude`, `refreshClaudeCredential`, `claudeLoginResult`, `discoverClaudeModels`, `initialClaudeCatalogFallback`, `createClaudeRuntime`, `credentialSchema`.
+- Consumes: `definePlugin`, `OAuthAdapter`, `ConfigSpec` from `@aio-proxy/plugin-sdk`; `loginClaude`, `refreshClaudeCredential`, `claudeLoginResult`, `resolveClaudeIdentity` from `../oauth`; `discoverClaudeModels`, `initialClaudeCatalogFallback`, `createClaudeRuntime`, `credentialSchema`.
 - Produces: `createAnthropicClaudePlugin(presentation?, dependencies?)`, `englishPresentationText`, `CLAUDE_PLUGIN_VERSION`, default descriptor.
 
 - [ ] **Step 1: Write the failing plugin tests**
