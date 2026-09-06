@@ -178,6 +178,7 @@ test('a non-101 upstream handshake rejects with kind "rejected" and a refused co
 
 test('an aborted dial rejects with kind "aborted" and closes a socket that opens late', async () => {
   const closed: number[] = [];
+  const sockets: WebSocket[] = [];
   const controller = new AbortController();
   const realtime = createOpenAIChatGPTRealtime(staticCredentialPort(credential()), {
     fetch: captureFetch([]),
@@ -185,6 +186,7 @@ test('an aborted dial rejects with kind "aborted" and closes a socket that opens
     createWebSocket: () => {
       const socket = socketStub();
       socket.close = (code?: number) => closed.push(code ?? 1000);
+      sockets.push(socket);
       return socket;
     },
   });
@@ -195,11 +197,107 @@ test('an aborted dial rejects with kind "aborted" and closes a socket that opens
     headers: new Headers(),
     signal: controller.signal,
   });
+  // Aborted once the socket exists, not before: the credential read is awaited first, and an
+  // abort during that wait is the separate case the next test covers — it rejects with nothing
+  // to close, so aborting synchronously here would leave `closed` empty for that reason
+  // instead of proving the socket was closed.
+  await until(() => sockets.length === 1);
   controller.abort();
 
   const error = await pending.catch((cause: unknown) => cause);
   expect((error as RealtimeDialError).kind).toBe('aborted');
   expect(closed).toEqual([1001]);
+});
+
+// The credential read is the only await before the socket exists, and it is unbounded from
+// the dial's side: `createCredentialPort.refresh` waits up to 60 s on another process's
+// refresh lease. The dial's abort listener and its 10 s deadline are both armed after that
+// resolves, so a caller that hung up mid-wait still had a socket opened and a credential
+// minted for it. `refresh` is deliberately left running — it is shared work other requests
+// want — so the assertion is that this dial stopped waiting, not that the refresh was killed.
+test('an abort while the credential read is in flight rejects without opening a socket', async () => {
+  const created: string[] = [];
+  const controller = new AbortController();
+  let readCalls = 0;
+  let releaseRead!: () => void;
+  const readGate = new Promise<void>((resolve) => {
+    releaseRead = resolve;
+  });
+  const realtime = createOpenAIChatGPTRealtime(
+    {
+      read: async () => {
+        readCalls += 1;
+        await readGate;
+        return { revision: 1, value: credential() };
+      },
+      refresh: async () => {
+        throw new Error('valid credentials must not refresh');
+      },
+    },
+    {
+      fetch: captureFetch([]),
+      proxy: null,
+      createWebSocket: (url) => {
+        created.push(url);
+        return openSocketStub();
+      },
+    },
+  );
+
+  const pending = realtime.dial({
+    style: 'realtime-calls',
+    callId: 'call_abc',
+    headers: new Headers(),
+    signal: controller.signal,
+  });
+  await until(() => readCalls === 1);
+  controller.abort();
+  // Bounded rather than awaited directly: a dial that ignores the abort stays pending until
+  // the gate opens, and this has to be an assertion on its own line rather than a test
+  // timeout, which reports as a stalled test instead of as unhonored abort.
+  const error = await Promise.race([pending.catch((cause: unknown) => cause), settledMarker()]);
+  // Released after the race, so the read resolving cannot be what settled the dial. Awaited
+  // so the in-flight read does not outlive the test.
+  releaseRead();
+  await readGate;
+  await pending.catch(() => {});
+
+  expect(error).toBeInstanceOf(RealtimeDialError);
+  expect((error as RealtimeDialError).kind).toBe('aborted');
+  expect(created).toEqual([]);
+});
+
+// Racing the credential read against a signal listener leaks that listener on every dial
+// that resolves normally, and one request signal can serve several dials. Counted on the
+// signal itself: after the dials settle nothing is awaiting them, so a bound listener's only
+// trace is a rejection with no handler — which is exactly the shape that goes unnoticed.
+test('a dial that settles unbinds its abort listener from the caller signal', async () => {
+  const controller = new AbortController();
+  const bound = new Set<unknown>();
+  const signal = instrumentedSignal(controller.signal, bound);
+  const realtime = createOpenAIChatGPTRealtime(staticCredentialPort(credential()), {
+    fetch: captureFetch([]),
+    proxy: null,
+    createWebSocket: () => openSocketStub(),
+  });
+  const base = { style: 'realtime-calls', callId: 'call_abc', headers: new Headers() } as const;
+
+  for (let index = 0; index < 3; index++) await realtime.dial({ ...base, signal });
+  const afterResolved = bound.size;
+  // The rejecting side of the same race has to clean up too. A credential read that throws is
+  // the case that reaches cleanup through `finally` rather than through the success return: a
+  // dial that fails later, at the socket, has already left the race behind.
+  const failing = createOpenAIChatGPTRealtime(
+    {
+      read: () => Promise.reject(new Error('credential unavailable')),
+      refresh: () => Promise.reject(new Error('credential unavailable')),
+    },
+    { fetch: captureFetch([]), proxy: null, createWebSocket: () => openSocketStub() },
+  );
+  await expect(failing.dial({ ...base, signal })).rejects.toBeInstanceOf(RealtimeDialError);
+
+  expect(afterResolved).toBe(0);
+  expect(bound.size).toBe(0);
 });
 
 test('a socket that never opens times out at the dial deadline, and an early settle disarms it', async () => {
@@ -309,6 +407,38 @@ test('a credential read that fails still rejects dial with a RealtimeDialError c
   expect(error.kind).toBe('unreachable');
   expect(error.message).not.toContain(secret);
 });
+
+/** Resolves to a distinguishable sentinel after a bounded number of microtask turns, so a
+ *  dial that never honors an abort loses the race and is reported as a failed assertion on the
+ *  value rather than as a test that timed out. */
+async function settledMarker(): Promise<'the dial never settled'> {
+  for (let index = 0; index < 50; index++) await Promise.resolve();
+  return 'the dial never settled';
+}
+
+/** A pass-through view of a real signal that records which listeners are currently bound, so
+ *  a test can assert cleanup rather than infer it. `dial` reads `aborted` and binds `abort`;
+ *  everything else is delegated so it behaves as the real signal in every other respect. */
+function instrumentedSignal(signal: AbortSignal, bound: Set<unknown>): AbortSignal {
+  return new Proxy(signal, {
+    get(target, property) {
+      if (property === 'addEventListener') {
+        return (type: string, listener: unknown, options?: unknown) => {
+          if (type === 'abort') bound.add(listener);
+          target.addEventListener(type, listener as EventListener, options as AddEventListenerOptions);
+        };
+      }
+      if (property === 'removeEventListener') {
+        return (type: string, listener: unknown, options?: unknown) => {
+          if (type === 'abort') bound.delete(listener);
+          target.removeEventListener(type, listener as EventListener, options as EventListenerOptions);
+        };
+      }
+      const value = Reflect.get(target, property) as unknown;
+      return typeof value === 'function' ? value.bind(target) : value;
+    },
+  });
+}
 
 /** Drains microtasks until `done()` or a bounded number of turns. Fake timers make
  *  wall-clock waiting impossible, so settlement is observed by yielding. */

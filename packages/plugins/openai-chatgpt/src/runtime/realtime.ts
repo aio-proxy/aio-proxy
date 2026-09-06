@@ -138,21 +138,49 @@ function sidebandUrl(input: RealtimeDialInput, base: string): string {
   return `${base}/realtime?model=${encodeURIComponent(input.model ?? 'gpt-realtime')}`;
 }
 
+/** The credential read is the only await before the socket exists, and it is unbounded from
+ *  this side: `createCredentialPort.refresh` waits up to 60 s for another process's refresh
+ *  lease and its `exchange` signal is the lease's, not the caller's. So the dial's own abort
+ *  and its 10 s deadline — both armed after this resolves — cover none of that window. A
+ *  caller that hung up mid-wait would still have a socket opened and a credential minted for
+ *  it. Raced here rather than by threading the signal into `currentCredential`: a refresh in
+ *  flight is shared work whose result other requests want, so it is left running and only
+ *  this dial stops waiting. */
+async function credentialForDial(
+  credentials: CredentialPort<ChatGPTCredential>,
+  options: RealtimeTransportOptions,
+  signal: AbortSignal,
+): Promise<ChatGPTCredential> {
+  let onAbort: (() => void) | undefined;
+  try {
+    return await Promise.race([
+      currentCredential(credentials, options.fetch),
+      new Promise<never>((_resolve, reject) => {
+        onAbort = () => reject(new RealtimeDialError('dial aborted', { kind: 'aborted' }));
+        signal.addEventListener('abort', onAbort, { once: true });
+      }),
+    ]);
+  } catch (error) {
+    // The abort rejection is already the error `dial` promises; only a credential failure
+    // needs converting. A refresh failure carries provider text that may quote the
+    // credential, and `RealtimeDialError` has no `cause` channel to keep it out of
+    // `message`, so nothing from the cause is carried over.
+    if (error instanceof RealtimeDialError) throw error;
+    throw new RealtimeDialError('Codex credential unavailable for the sideband dial', { kind: 'unreachable' });
+  } finally {
+    // Without this the listener outlives every dial that resolved normally, and one
+    // long-lived request signal accumulates one leaked closure per realtime dial.
+    if (onAbort !== undefined) signal.removeEventListener('abort', onAbort);
+  }
+}
+
 async function realtimeDial(
   input: RealtimeDialInput,
   credentials: CredentialPort<ChatGPTCredential>,
   options: RealtimeTransportOptions,
 ): Promise<WebSocket> {
   if (input.signal.aborted) throw new RealtimeDialError('dial aborted before connecting', { kind: 'aborted' });
-  let credential: ChatGPTCredential;
-  try {
-    credential = await currentCredential(credentials, options.fetch);
-  } catch {
-    // A refresh failure carries provider text that may quote the credential, and
-    // `RealtimeDialError` has no `cause` channel to keep it out of `message`, so
-    // nothing from the cause is carried over. `dial` promises only this error type.
-    throw new RealtimeDialError('Codex credential unavailable for the sideband dial', { kind: 'unreachable' });
-  }
+  const credential = await credentialForDial(credentials, options, input.signal);
   const create = options.createWebSocket ?? defaultWebSocketFactory;
   const init = {
     ...(options.proxy === null ? {} : { proxy: options.proxy }),
