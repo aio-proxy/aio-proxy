@@ -1,21 +1,45 @@
-import { withAbortAndIdle } from '../../protocol/request';
-import { EDITS_MULTIPART_ENCODED_LIMIT, assertEditsMultipartCounters, tooLarge } from './multipart-counters';
-import { type OpenAIImageUpload } from './openai-image';
+import { RequestBodyTooLargeError, withAbortAndIdle } from '../../protocol/request';
 
 const TEXT_DECODER = new TextDecoder();
 const TEXT_ENCODER = new TextEncoder();
 const CRLF_CRLF = Buffer.from('\r\n\r\n');
 
-export type ParsedEditsMultipart = {
-  readonly fields: Record<string, string>;
-  readonly uploads: OpenAIImageUpload[];
-  readonly maskUpload?: OpenAIImageUpload;
+export type MultipartUpload = {
+  readonly data: Uint8Array;
+  readonly byteLength: number;
+  readonly fieldName?: string;
+  readonly filename?: string;
+  readonly mediaType?: string;
 };
 
-type PartKind = 'image' | 'mask' | 'field';
+export type MultipartLimits = {
+  readonly perFile: number;
+  readonly aggregate: number;
+  readonly nonFile: number;
+  /** Cap on repeatable file parts. Singleton file fields are bounded at one each and excluded. */
+  readonly maxFiles: number;
+};
+
+export type MultipartStreamSpec = {
+  /** Form field names whose parts are read as files rather than decoded as text. */
+  readonly fileFields: ReadonlySet<string>;
+  /** File fields that may appear at most once (OpenAI `mask`, audio `file`). */
+  readonly singletonFileFields?: ReadonlySet<string>;
+  readonly limits: MultipartLimits;
+  readonly syntaxError: () => Error;
+};
+
+export type ParsedMultipart = {
+  readonly fields: Record<string, string>;
+  readonly uploads: readonly MultipartUpload[];
+  readonly namedUploads: Readonly<Record<string, MultipartUpload>>;
+};
+
+type PartKind = 'file' | 'field';
 
 type OpenPart = {
   readonly kind: PartKind;
+  readonly name?: string;
   readonly fieldName?: string;
   readonly filename?: string;
   readonly mediaType?: string;
@@ -23,28 +47,37 @@ type OpenPart = {
   length: number;
 };
 
+export function multipartBoundary(contentType: string): string | undefined {
+  const match = /(?:^|;\s*)boundary=(?:"([^"]+)"|([^;]+))/iu.exec(contentType);
+  const value = (match?.[1] ?? match?.[2])?.trim();
+  return value === undefined || value.length === 0 ? undefined : value;
+}
+
 export async function parseMultipartStream(
   body: ReadableStream<Uint8Array> | null,
   boundary: string,
+  spec: MultipartStreamSpec,
   signal?: AbortSignal,
   idleTimeoutMs = 600_000,
-): Promise<ParsedEditsMultipart> {
+): Promise<ParsedMultipart> {
   const reader = body?.getReader();
-  if (reader === undefined) throw syntax();
+  if (reader === undefined) throw spec.syntaxError();
 
   const firstBoundary = Buffer.from(TEXT_ENCODER.encode(`--${boundary}`));
   const nextBoundary = Buffer.from(TEXT_ENCODER.encode(`\r\n--${boundary}`));
+  // The widest envelope a spec can legitimately fill: every file byte plus every
+  // framing byte. Anything past it is padding, so it is refused without buffering.
+  const encodedLimit = spec.limits.aggregate + spec.limits.nonFile;
   const window = new ByteWindow();
   let state: 'preamble' | 'afterBoundary' | 'headers' | 'body' | 'done' = 'preamble';
   let encoded = 0;
-  let framing = 0;
+  let nonFileFormBytes = 0;
   let aggregateDecoded = 0;
-  let imageCount = 0;
-  let maskCount = 0;
   let current: OpenPart | undefined;
+  const fileCounts = new Map<string, number>();
   const fields: Record<string, string> = {};
-  const uploads: OpenAIImageUpload[] = [];
-  let maskUpload: OpenAIImageUpload | undefined;
+  const uploads: MultipartUpload[] = [];
+  const namedUploads: Record<string, MultipartUpload> = {};
   const readChunk = () =>
     readEncodedChunk(
       reader,
@@ -53,37 +86,37 @@ export async function parseMultipartStream(
       (total) => {
         encoded = total;
       },
-      signal,
-      idleTimeoutMs,
+      { encodedLimit, syntaxError: spec.syntaxError, signal, idleTimeoutMs },
     );
 
   const addFraming = (bytes: number): void => {
-    framing += bytes;
-    assertEditsMultipartCounters({ nonFileFormBytes: framing });
+    nonFileFormBytes += bytes;
+    if (nonFileFormBytes > spec.limits.nonFile) throw tooLarge();
   };
 
   const appendPartBytes = (part: OpenPart, bytes: Uint8Array): void => {
     if (bytes.byteLength === 0) return;
     part.length += bytes.byteLength;
-    if (part.kind === 'image' || part.kind === 'mask') {
-      assertEditsMultipartCounters({ fileByteLength: part.length });
+    if (part.kind === 'file') {
+      if (part.length > spec.limits.perFile) throw tooLarge();
+      // Copy: window slices alias a buffer the reader keeps growing and dropping.
       part.chunks.push(bytes.slice());
       return;
     }
     addFraming(bytes.byteLength);
-    if (part.fieldName !== undefined) part.chunks.push(bytes.slice());
+    if (part.name !== undefined) part.chunks.push(bytes.slice());
   };
 
   const finishPart = (part: OpenPart): void => {
-    if (part.kind === 'image' || part.kind === 'mask') {
+    if (part.kind === 'file') {
       aggregateDecoded += part.length;
-      assertEditsMultipartCounters({ aggregateDecoded });
+      if (aggregateDecoded > spec.limits.aggregate) throw tooLarge();
       const upload = toUpload(part);
-      if (part.kind === 'image') uploads.push(upload);
-      else maskUpload = upload;
+      uploads.push(upload);
+      if (part.name !== undefined) namedUploads[part.name] = upload;
       return;
     }
-    if (part.fieldName !== undefined) fields[part.fieldName] = TEXT_DECODER.decode(concatChunks(part.chunks));
+    if (part.name !== undefined) fields[part.name] = TEXT_DECODER.decode(concatChunks(part.chunks));
   };
 
   try {
@@ -113,34 +146,24 @@ export async function parseMultipartStream(
           state = 'headers';
           continue;
         }
-        throw syntax();
+        throw spec.syntaxError();
       }
 
       if (state === 'headers') {
         const index = window.indexOf(CRLF_CRLF);
         if (index === -1) {
-          assertEditsMultipartCounters({ nonFileFormBytes: framing + window.byteLength });
+          if (nonFileFormBytes + window.byteLength > spec.limits.nonFile) throw tooLarge();
           await readChunk();
           continue;
         }
         const headerBytes = window.consume(index + 4);
         addFraming(headerBytes.byteLength);
-        current = startPart(
-          TEXT_DECODER.decode(headerBytes.subarray(0, index)),
-          () => {
-            imageCount += 1;
-            assertEditsMultipartCounters({ imageCount });
-          },
-          () => {
-            maskCount += 1;
-            assertEditsMultipartCounters({ maskCount });
-          },
-        );
+        current = startPart(TEXT_DECODER.decode(headerBytes.subarray(0, index)), spec, fileCounts);
         state = 'body';
         continue;
       }
 
-      if (current === undefined) throw syntax();
+      if (current === undefined) throw spec.syntaxError();
       const index = window.indexOf(nextBoundary);
       if (index === -1) {
         const flushed = window.flushExcept(window.delimiterOverlap(nextBoundary));
@@ -165,7 +188,7 @@ export async function parseMultipartStream(
       window.consume(nextBoundary.byteLength);
       state = 'afterBoundary';
     }
-    await drainEncodedRemainder(reader, encoded, addFraming, signal, idleTimeoutMs);
+    await drainEncodedRemainder(reader, encoded, addFraming, { encodedLimit, signal, idleTimeoutMs });
   } catch (error) {
     void reader.cancel(error).catch(() => undefined);
     throw error;
@@ -173,21 +196,26 @@ export async function parseMultipartStream(
     reader.releaseLock();
   }
 
-  return { fields, uploads, ...(maskUpload === undefined ? {} : { maskUpload }) };
+  return { fields, uploads, namedUploads };
 }
+
+type EncodedReadOptions = {
+  readonly encodedLimit: number;
+  readonly signal: AbortSignal | undefined;
+  readonly idleTimeoutMs: number;
+};
 
 async function readEncodedChunk(
   reader: ReadableStreamDefaultReader<Uint8Array>,
   window: ByteWindow,
   encoded: () => number,
   setEncoded: (total: number) => void,
-  signal: AbortSignal | undefined,
-  idleTimeoutMs: number,
+  options: EncodedReadOptions & { readonly syntaxError: () => Error },
 ): Promise<void> {
-  const next = await withAbortAndIdle(reader.read(), signal, idleTimeoutMs);
-  if (next.done) throw syntax();
+  const next = await withAbortAndIdle(reader.read(), options.signal, options.idleTimeoutMs);
+  if (next.done) throw options.syntaxError();
   const total = encoded() + next.value.byteLength;
-  if (total > EDITS_MULTIPART_ENCODED_LIMIT) throw tooLarge();
+  if (total > options.encodedLimit) throw tooLarge();
   setEncoded(total);
   window.append(next.value);
 }
@@ -227,36 +255,44 @@ async function drainEncodedRemainder(
   reader: ReadableStreamDefaultReader<Uint8Array>,
   encoded: number,
   addFraming: (bytes: number) => void,
-  signal: AbortSignal | undefined,
-  idleTimeoutMs: number,
+  options: EncodedReadOptions,
 ): Promise<void> {
   for (;;) {
-    const next = await withAbortAndIdle(reader.read(), signal, idleTimeoutMs);
+    const next = await withAbortAndIdle(reader.read(), options.signal, options.idleTimeoutMs);
     if (next.done) return;
     const total = encoded + next.value.byteLength;
-    if (total > EDITS_MULTIPART_ENCODED_LIMIT) throw tooLarge();
+    if (total > options.encodedLimit) throw tooLarge();
     encoded = total;
     addFraming(next.value.byteLength);
   }
 }
 
-function startPart(headers: string, onImage: () => void, onMask: () => void): OpenPart {
+function startPart(headers: string, spec: MultipartStreamSpec, counts: Map<string, number>): OpenPart {
   const rawName = dispositionToken(headers, 'name');
   const filename = dispositionToken(headers, 'filename');
   const mediaType = contentType(headers);
   const name = normalizeFieldName(rawName);
-  if (name === 'image') {
-    onImage();
-    return { kind: 'image', fieldName: rawName, filename, mediaType, chunks: [], length: 0 };
+  const base = { name, fieldName: rawName, filename, mediaType, chunks: [], length: 0 };
+  if (name === undefined || !spec.fileFields.has(name)) return { ...base, kind: 'field' };
+  const seen = (counts.get(name) ?? 0) + 1;
+  counts.set(name, seen);
+  if (spec.singletonFileFields?.has(name) === true) {
+    if (seen > 1) throw tooLarge();
+  } else if (repeatableFileCount(counts, spec) > spec.limits.maxFiles) {
+    throw tooLarge();
   }
-  if (name === 'mask') {
-    onMask();
-    return { kind: 'mask', fieldName: rawName, filename, mediaType, chunks: [], length: 0 };
-  }
-  return { kind: 'field', fieldName: rawName, filename, mediaType, chunks: [], length: 0 };
+  return { ...base, kind: 'file' };
 }
 
-function toUpload(part: OpenPart): OpenAIImageUpload {
+function repeatableFileCount(counts: Map<string, number>, spec: MultipartStreamSpec): number {
+  let total = 0;
+  for (const [name, count] of counts) {
+    if (spec.singletonFileFields?.has(name) !== true) total += count;
+  }
+  return total;
+}
+
+function toUpload(part: OpenPart): MultipartUpload {
   return {
     data: concatChunks(part.chunks),
     byteLength: part.length,
@@ -264,6 +300,10 @@ function toUpload(part: OpenPart): OpenAIImageUpload {
     ...(part.filename === undefined ? {} : { filename: part.filename }),
     ...(part.mediaType === undefined ? {} : { mediaType: part.mediaType }),
   };
+}
+
+function tooLarge(): RequestBodyTooLargeError {
+  return new RequestBodyTooLargeError('Request body too large');
 }
 
 function concatChunks(chunks: readonly Uint8Array[]): Uint8Array {
@@ -306,10 +346,6 @@ function isLineStart(window: ByteWindow, index: number): boolean {
 
 function isBoundarySuffix(bytes: Uint8Array): boolean {
   return (bytes[0] === 45 && bytes[1] === 45) || (bytes[0] === 13 && bytes[1] === 10);
-}
-
-function syntax(): SyntaxError {
-  return new SyntaxError('Invalid OpenAI Images multipart request');
 }
 
 class ByteWindow {
