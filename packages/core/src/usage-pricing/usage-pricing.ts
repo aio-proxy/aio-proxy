@@ -159,6 +159,7 @@ function toBillableUsage(
       return usage;
     case ProviderProtocol.OpenAICompatible:
     case ProviderProtocol.OpenAIResponse:
+    case ProviderProtocol.OpenAIAudio:
       return inclusiveBillableUsage(usage, price);
     case ProviderProtocol.Gemini:
     case ProviderProtocol.GeminiInteractions: {

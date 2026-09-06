@@ -208,7 +208,11 @@ export {
   createApiProvider,
   resolveApiKey,
 } from './provider/api/index';
-export { bridgeApiProviderToAiSdk, resolveOpenAIResponsesModel } from './provider/api-bridge/index';
+export {
+  bridgeApiProviderToAiSdk,
+  hasLanguageBridgeEndpoint,
+  resolveOpenAIResponsesModel,
+} from './provider/api-bridge/index';
 export { createProviderV4ImageInvoke } from './provider/provider-v4-image';
 export {
   assertConvertSupported,

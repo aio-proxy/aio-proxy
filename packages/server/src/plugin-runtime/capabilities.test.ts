@@ -50,6 +50,7 @@ test('maps every internal provider protocol to the plugin SDK protocol', () => {
     [ProviderProtocol.Gemini]: 'gemini',
     [ProviderProtocol.GeminiInteractions]: 'gemini-interactions',
     [ProviderProtocol.OpenAIImage]: 'openai-image',
+    [ProviderProtocol.OpenAIAudio]: 'openai-audio',
   });
 });
 

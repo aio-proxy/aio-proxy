@@ -4,6 +4,7 @@ import {
   createAiSdkProvider,
   createApiProvider,
   createProxyFetch,
+  hasLanguageBridgeEndpoint,
   modelRoutes,
 } from '@aio-proxy/core';
 import type { AliasConfig, Config, DashboardProviderSummary, ModelMetadata, Provider } from '@aio-proxy/types';
@@ -249,7 +250,7 @@ export function materializeProviders(config: Config, options: MaterializeProvide
         );
         const api = createApi(provider, { fetch: providerFetch });
         const endpoints = apiProviderEndpoints(provider);
-        const hasLanguageEndpoint = endpoints.some((endpoint) => endpoint.protocol !== ProviderProtocol.OpenAIImage);
+        const hasLanguageEndpoint = hasLanguageBridgeEndpoint(endpoints);
         const instance = withRoutingDefaults(
           attachImageTransport(
             materializeRuntimeProvider(api, {

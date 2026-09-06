@@ -81,6 +81,11 @@ export function providerProbeRequest(
         body: { model, n: 1, prompt: 'ping' },
         path: '/v1/images/generations',
       };
+    case ProviderProtocol.OpenAIAudio:
+      return {
+        body: { model, input: 'ping', voice: 'alloy' },
+        path: '/v1/audio/speech',
+      };
     default:
       return assertNever(primary.protocol);
   }

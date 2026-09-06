@@ -10,7 +10,8 @@ export type ProtocolId =
   | 'anthropic'
   | 'gemini'
   | 'gemini-interactions'
-  | 'openai-image';
+  | 'openai-image'
+  | 'openai-audio';
 
 /** Non-deprecated replacement for the AI SDK `CallSettings` type. */
 export type AiSdkCallSettings = LanguageModelCallOptions &

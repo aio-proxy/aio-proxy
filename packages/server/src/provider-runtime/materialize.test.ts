@@ -769,3 +769,22 @@ test('does not materialize configured providers before building an injected snap
     rmSync(dbHome, { force: true, recursive: true });
   }
 });
+
+test('materializes an enabled audio-only API provider without a language transport', () => {
+  const config = ConfigSchema.parse({
+    providers: {
+      audio: {
+        baseURL: 'https://api.openai.com/v1',
+        kind: ProviderKind.Api,
+        models: ['tts-1'],
+        protocol: ProviderProtocol.OpenAIAudio,
+      },
+    },
+  });
+
+  const runtime = materializeProviders(config);
+  const provider = runtime.providers[0];
+
+  expect(provider?.raw).toBeDefined();
+  expect(provider?.model).toBeUndefined();
+});

@@ -67,6 +67,7 @@ const SDK_VERSION_PREFIXES: Record<ProviderProtocol, string> = {
   [ProviderProtocol.Gemini]: '/v1beta',
   [ProviderProtocol.GeminiInteractions]: '/v1beta',
   [ProviderProtocol.OpenAIImage]: '/v1',
+  [ProviderProtocol.OpenAIAudio]: '/v1',
 };
 
 function endpointTransport(

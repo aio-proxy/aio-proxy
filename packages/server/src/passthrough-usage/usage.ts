@@ -26,6 +26,8 @@ export function usageFromJson(protocol: ProviderProtocol, value: unknown): Usage
       return interactionsUsage(value);
     case ProviderProtocol.OpenAIImage:
       return openAIImageUsage(value);
+    case ProviderProtocol.OpenAIAudio:
+      return { kind: 'absent' };
     default:
       return assertNever(protocol);
   }
