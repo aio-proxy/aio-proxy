@@ -32,7 +32,7 @@ that makes a long-running managed service keep itself current.
 - A second setting for interval, channel, or "patch only".
 - Windows, musl, or platforms outside the current published matrix.
 - Auto-install while the process was started with a foreground
-  `aio-proxy run` and no managed unit exists.
+  `aio-proxy run` (even if a unit file exists on the same machine).
 - In-process binary replacement inside `@aio-proxy/server`.
 - Changing brew / npm / bun / pnpm / curl install behavior.
 - Auto-updating plugins, Agent hosts, or anything other than aio-proxy.
@@ -45,7 +45,7 @@ that makes a long-running managed service keep itself current.
 | Schedule | Immediate check at start, then every 24 hours |
 | Default | `false` |
 | Versions | All newer npm `latest`, same as `aio-proxy upgrade` |
-| Auto-install | Only when a managed service unit is installed |
+| Auto-install | Only when **this process** was launched by the managed unit (`AIO_PROXY_MANAGED=1`) |
 | Manual install | Always allowed when the apply callback exists |
 | Interval UI | None. Constant `24 * 60 * 60 * 1000` ms |
 
@@ -72,16 +72,36 @@ autoUpdate?: {
 };
 ```
 
-`isManagedService` is the existing `isManagedServiceInstalled`.
-`applyUpdate` calls `runUpgradeCommand({}, print)` with the default
-printer so service logs still show upgrade progress. No `--force`, no
-`--check`, no custom `--registry`.
+`isManagedService` means **this process** was launched by the managed
+unit, not that a unit file exists on disk. `isManagedServiceInstalled()`
+is the wrong gate: a foreground `aio-proxy run` on a machine that also
+has a unit would auto-install and `serviceRestart()` would bounce or
+start that unit. Service unit templates set `AIO_PROXY_MANAGED=1`
+(alongside `AIO_PROXY_HOME`). The injected callback is
+`process.env.AIO_PROXY_MANAGED === '1'`. Foreground `run` never sets it.
+`service install` and the existing `service restart` unit rewrite pick
+the env up.
+
+`applyUpdate` calls `runUpgradeCommand` with an explicit upgrade target
+derived from `resolveExec()` / the launched absolute path. It must not
+rely on `Bun.which('aio-proxy')`: launchd/systemd units execute that
+absolute path and do not put the install dir or package managers on
+`PATH`, so the current `resolveUpgradeTarget()` throws
+`cannot locate aio-proxy in PATH`. Channel detection still compares that
+absolute path to brew/npm/bun/pnpm prefixes when those CLIs are
+reachable; if they are not, fall back to the binary method on that path.
+Its `isServiceManaged` restart gate is the same this-process marker, so
+a foreground Update now does not `serviceRestart()` a unit that happens
+to exist. No `--force`, no `--check`, no custom `--registry`. Default
+interactive `aio-proxy upgrade` PATH and unit-file restart behavior stay
+unchanged.
 
 Server owns:
 
 - `server.autoUpdate` on the settings read/write contract.
 - An `AutoUpdateController` that schedules checks, holds the single-flight
-  lock, and records `{ status: 'idle' | 'in_progress' | 'failed' }`.
+  lock, and records
+  `{ status: 'idle' | 'in_progress' | 'failed' | 'restart_required' }`.
 - Release routes: `GET /release`, `GET /release/latest`, `POST /release/apply`.
 
 If `autoUpdate` callbacks are omitted (unit tests, non-CLI hosts), the
@@ -114,7 +134,7 @@ Export-only `index.ts`, implementation `auto-update.ts`, colocated test.
 
 ```ts
 type AutoUpdateSnapshot = {
-  readonly status: 'idle' | 'in_progress' | 'failed';
+  readonly status: 'idle' | 'in_progress' | 'failed' | 'restart_required';
 };
 
 type AutoUpdateApplyResult =
@@ -143,28 +163,48 @@ or wait 24 hours.
 
 ### Tick versus Apply
 
+**Tick** (startup, interval, `notifyCheck`) and **Apply** share one lock.
+Acquire it **before** the first awaited operation (`fetchLatest`). A
+second caller that sees the lock returns immediately (`in_progress` for
+Apply; no-op for Tick). Do not fetch twice and then both call
+`applyUpdate()`.
+
 **Tick** (startup, interval, `notifyCheck`):
 
-1. Return if status is `in_progress`.
+1. Return if the lock is held.
 2. Return if `getEnabled()` is false.
-3. Return if `isManagedService()` is false.
-4. Fetch npm `latest` for `aio-proxy`. On failure set `failed` and stop.
-5. Return if `Bun.semver.order(latest, currentVersion) <= 0`.
-6. Call `applyUpdate()` under the lock.
+3. Return if `isManagedService()` is false (this process is not the
+   managed daemon).
+4. Acquire the lock and set `in_progress`.
+5. Fetch npm `latest` for `aio-proxy`. On failure set `failed`, release,
+   stop.
+6. If `Bun.semver.order(latest, currentVersion) <= 0`, set `idle`,
+   release, return.
+7. Start `applyUpdate()` without awaiting it in the tick.
 
 **Apply** (Update now):
 
 1. Return `unavailable` if `applyUpdate` is missing.
 2. Return `in_progress` if the lock is held.
-3. Fetch latest. On failure set `failed` and return `check_failed`.
-4. Return `up_to_date` if not newer.
-5. Set `in_progress`, start `applyUpdate()` **without blocking the HTTP
-   response**, return `started`.
+3. Acquire the lock and set `in_progress`.
+4. Fetch latest. On failure set `failed`, release, return `check_failed`.
+5. If not newer, set `idle`, release, return `up_to_date`.
+6. Start `applyUpdate()` **without blocking the HTTP response**, return
+   `started`.
 
-Manual apply does **not** require the toggle or a managed service.
+Manual apply does **not** require the toggle or a managed process.
 
-`applyUpdate` errors set `failed` and release the lock. They must not
+When the background `applyUpdate()` **fulfills**, this process is still
+alive, so the install did not restart it. Set `restart_required` and
+release the lock. That is the foreground `aio-proxy run` / Update now
+outcome: `GET /release` `current` stays the boot version.
+
+When `applyUpdate()` **throws**, set `failed`, release the lock, do not
 crash the daemon.
+
+When a managed upgrade calls `serviceRestart()`, the process is replaced
+and never observes fulfill. A new process boots at `idle` on the new
+version.
 
 `currentVersion` is the process version at boot (`CreateServerOptions.version`
 / CLI `package.json`). After a successful managed upgrade the process is
@@ -178,7 +218,7 @@ replaced, so a stale in-memory version cannot linger.
 {
   current: string;
   managedService: boolean;
-  update: { status: 'idle' | 'in_progress' | 'failed' };
+  update: { status: 'idle' | 'in_progress' | 'failed' | 'restart_required' };
 }
 ```
 
@@ -225,9 +265,12 @@ Split files (one component per `.tsx`):
 - `settings-auto-update-row.tsx` — Switch via TanStack Form, saves
   `{ autoUpdate }` through `useSettingsMutation`.
 - `settings-update-now-button.tsx` — `POST /release/apply`, then poll
-  `GET /release` until `current` changes, `update.status === 'failed'`,
-  or ~120s elapse. On version change call `reloadDashboard()`. Treat a
-  dropped connection after `started` as in-progress, not as failure.
+  `GET /release` until `current` changes,
+  `update.status === 'failed' | 'restart_required'`, or ~120s elapse.
+  On version change call `reloadDashboard()`. On `restart_required`
+  show `version_restart_required` and stop polling (do not wait for a
+  version change that will never arrive). Treat a dropped connection
+  after `started` as in-progress, not as failure.
 
 When settings have not loaded, hide the Switch; version check still
 renders. When `managedService` is false, keep the Switch enabled and
@@ -250,22 +293,23 @@ Settings Switch
   -> notifyCheck() when true
 
 notifyCheck / start / 24h timer
-  -> enabled && managed && outdated?
-  -> applyUpdate() -> runUpgradeCommand()
+  -> enabled && this-process-managed && outdated?
+  -> applyUpdate() -> runUpgradeCommand(explicit exec path)
   -> install via brew|npm|bun|pnpm|binary
   -> Agent post-upgrade
-  -> serviceRestart() when a unit exists
+  -> serviceRestart() when this process is managed
 
 Update now
   -> POST /dashboard/api/release/apply
   -> same applyUpdate() (no enabled/managed gate)
   -> 202 + poll GET /release
   -> reload Dashboard when current changes
+  -> stop and show restart hint when status is restart_required
 ```
 
-Foreground `aio-proxy run` without a unit: ticks never install. Update
-now still installs; `runUpgradeCommand` prints the existing manual
-restart hint.
+Foreground `aio-proxy run` (no `AIO_PROXY_MANAGED=1`): ticks never
+install, even if a unit file exists on disk. Update now still installs;
+when `applyUpdate` returns, status becomes `restart_required`.
 
 ## Error handling
 
@@ -274,7 +318,8 @@ restart hint.
 - Registry failures on Apply: HTTP 502 `check_failed`.
 - `applyUpdate` throw: set `failed`, release the lock, log a warning
   (`auto_update.failed`). Do not exit the process.
-- Concurrent apply: 409 `in_progress`.
+- Concurrent apply, including a second request that arrives while
+  `fetchLatest` is still pending: 409 `in_progress`.
 - Missing callbacks: 501 `unavailable`; no timer.
 - `close()` always `stop()`s the timer, even if a tick is in flight.
   In-flight `applyUpdate` is not cancelled (the child/command owns
@@ -296,14 +341,17 @@ Minimum coverage:
   calls `notifyCheck`.
 - Controller: start checks once; a later interval tick runs again;
   disabled / unmanaged / up-to-date never call `applyUpdate`; outdated +
-  enabled + managed calls it once; lock rejects a second apply;
-  `applyUpdate` throw sets `failed` and allows a later apply; `stop`
-  prevents further ticks; missing `applyUpdate` never starts a timer.
+  enabled + managed calls it once; lock is taken before `fetchLatest` and
+  a second apply during a deferred lookup returns `in_progress` without
+  a second fetch; `applyUpdate` throw sets `failed` and allows a later
+  apply; `applyUpdate` fulfill sets `restart_required`; `stop` prevents
+  further ticks; missing `applyUpdate` never starts a timer.
 - Release GET reports `managedService` and `update.status`. POST maps
-  the four apply results and `check_failed`.
+  the apply results and `check_failed`.
 - About UI: Switch writes `{ autoUpdate: true }`; unmanaged hint visible
   when `managedService` is false; Update now posts apply; in-progress
-  disables the button; failed apply does not claim up to date.
+  disables the button; failed apply does not claim up to date;
+  `restart_required` stops polling and shows the restart hint.
 
 ## Acceptance
 
@@ -313,8 +361,10 @@ Minimum coverage:
   `latest` when it is newer, then the service comes back on the new
   version.
 - Enabling the toggle on a foreground `run` persists the flag and does
-  not install.
-- Update now installs without the toggle.
+  not install, even when a service unit file exists on the same machine.
+- Update now installs without the toggle. A foreground process that
+  survives the install reports `restart_required` instead of spinning
+  until timeout.
 - `aio-proxy upgrade` behavior and channel detection are unchanged.
 - `bun run preflight` passes.
 
@@ -331,6 +381,7 @@ Add under `dashboard.settings` in `en`, `zh-Hans`, `zh-Hant`, `ja`, `ko`:
 | `version_updating` | Updating… |
 | `version_update_failed` | The update could not be installed. Try again or run aio-proxy upgrade. |
 | `version_update_unavailable` | This process cannot install updates. |
+| `version_restart_required` | Restart aio-proxy to run the installed version. |
 
 Existing `version_check`, `version_outdated`, `version_up_to_date`, and
 `version_check_failed` stay as they are.

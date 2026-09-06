@@ -15,7 +15,10 @@
 - Domain terms: Provider ID, provider priority, provider weight. Do not write "provider name", "order", or "rank".
 - `@aio-proxy/server` must not import `@aio-proxy/cli`. Upgrade execution is an injected `applyUpdate` callback only.
 - `server.autoUpdate` defaults to `false`. Omitted config means off. A Settings write persists the boolean explicitly.
-- Auto-install (scheduler ticks) requires **all** of: toggle on, `isManagedService() === true`, npm `latest` newer than the process version. Manual `POST /release/apply` skips the toggle and managed-service gates.
+- Auto-install (scheduler ticks) requires **all** of: toggle on, `isManagedService() === true` (**this process** launched by the unit, `AIO_PROXY_MANAGED=1` — not `isManagedServiceInstalled()`), npm `latest` newer than the process version. Manual `POST /release/apply` skips the toggle and managed-process gates.
+- `applyUpdate` resolves the upgrade target from `resolveExec()` / the launched absolute path. Do not call the default `resolveUpgradeTarget()` that uses `Bun.which('aio-proxy')`. Interactive `aio-proxy upgrade` PATH behavior stays unchanged.
+- Take the single-flight lock **before** `fetchLatest`. A second apply during a pending lookup returns `in_progress` and must not start a second `applyUpdate()`.
+- When `applyUpdate()` fulfills, set `restart_required` (process still alive). When it throws, set `failed`. Do not treat a successful foreground install as `idle`.
 - Follow npm `latest` for every newer version. No major/minor channel split. Interval is the constant `24 * 60 * 60 * 1000` ms. No interval/channel UI.
 - Toggling `autoUpdate` never sets `restartRequired`. The controller reads live `state.currentConfig().server.autoUpdate`.
 - Writing `autoUpdate: true` calls `notifyCheck()` once. `close()` must `stop()` the timer.
@@ -39,10 +42,13 @@
 - `packages/server/src/dashboard-routes/release/release.ts` — GET fields + POST apply.
 - `packages/server/src/dashboard-routes/config.ts` — pass controller into settings + release.
 - `packages/server/src/server/server.ts` — create/start/stop controller; `CreateServerOptions.autoUpdate`.
-- `packages/cli/src/run/run.ts` — inject `isManagedServiceInstalled` + `runUpgradeCommand`.
+- `packages/cli/src/run/run.ts` — inject managed-process probe + exec-path `applyUpdate`.
+- `packages/cli/src/run/auto-update-hooks.ts` — `createCliAutoUpdateHooks()`.
+- `packages/cli/src/service/unit-templates.ts` — `AIO_PROXY_MANAGED=1` on launchd/systemd units.
+- `packages/cli/src/upgrade/detect.ts` — `resolveUpgradeTargetFrom(binPath)`.
 - `packages/dashboard/src/modules/settings/components/settings-about-group/` — Switch + Update now.
 - `packages/dashboard/src/modules/settings/services/release-service/` — apply mutation + typed GET.
-- `packages/i18n/messages/*.json` — seven new `dashboard.settings` keys.
+- `packages/i18n/messages/*.json` — eight new `dashboard.settings` keys (including `version_restart_required`).
 - `.changeset/auto-update-settings.md` — user-facing note targeting `aio-proxy` and touched packages.
 
 ---
@@ -249,7 +255,9 @@ git commit -m "feat: persist server.autoUpdate on dashboard settings"
 export const AUTO_UPDATE_INTERVAL_MS = 24 * 60 * 60 * 1000;
 export const AUTO_UPDATE_PACKAGE = 'aio-proxy';
 
-export type AutoUpdateSnapshot = { readonly status: 'idle' | 'in_progress' | 'failed' };
+export type AutoUpdateSnapshot = {
+  readonly status: 'idle' | 'in_progress' | 'failed' | 'restart_required';
+};
 
 export type AutoUpdateApplyResult =
   | { readonly status: 'started' }
@@ -385,6 +393,33 @@ test('manual apply ignores the toggle and managed gate and is single-flight', as
   expect(await first).toEqual({ status: 'started' });
   release();
   await Promise.resolve();
+  expect(controller.snapshot()).toEqual({ status: 'restart_required' });
+});
+
+test('second apply during a pending fetchLatest is in_progress and does not apply twice', async () => {
+  let releaseFetch!: (version: string) => void;
+  const fetchLatest = mock(
+    () =>
+      new Promise<string>((resolve) => {
+        releaseFetch = resolve;
+      }),
+  );
+  const applyUpdate = mock(async () => {});
+  const controller = createAutoUpdateController({
+    getEnabled: () => false,
+    isManagedService: () => false,
+    applyUpdate,
+    currentVersion: '1.2.0',
+    fetchLatest,
+  });
+  const first = controller.apply();
+  await Promise.resolve();
+  expect(await controller.apply()).toEqual({ status: 'in_progress' });
+  expect(fetchLatest).toHaveBeenCalledTimes(1);
+  releaseFetch('1.10.0');
+  expect(await first).toEqual({ status: 'started' });
+  await Promise.resolve();
+  expect(applyUpdate).toHaveBeenCalledTimes(1);
 });
 
 test('apply reports up_to_date, unavailable, and check_failed', async () => {
@@ -459,9 +494,9 @@ Expected: FAIL — module not found.
 
 - [ ] **Step 3: Implement the controller**
 
-Tick path (used by `start` immediate run, interval, and `notifyCheck`): skip when `in_progress`, `!getEnabled()`, or `!isManagedService()`; fetch `AUTO_UPDATE_PACKAGE`; on fetch throw set `failed` + `onError`; skip when `Bun.semver.order(latest, currentVersion) <= 0`; otherwise run the same locked `applyUpdate` fire-and-forget as `apply()`.
+Tick path (used by `start` immediate run, interval, and `notifyCheck`): skip when the lock is held, `!getEnabled()`, or `!isManagedService()`; **then acquire the lock** and set `in_progress`; fetch `AUTO_UPDATE_PACKAGE`; on fetch throw set `failed` + `onError` and release; if `Bun.semver.order(latest, currentVersion) <= 0` set `idle` and release; otherwise start the same fire-and-forget `applyUpdate` as `apply()`.
 
-`apply()`: `unavailable` when `applyUpdate` is missing; `in_progress` when the lock is held; fetch latest and return `check_failed` / `up_to_date`; otherwise set `in_progress`, invoke `applyUpdate()` without awaiting it in the caller, return `started`. The background promise sets `idle` on success or `failed` + `onError` on throw, then releases the lock.
+`apply()`: `unavailable` when `applyUpdate` is missing; `in_progress` when the lock is held; **acquire the lock and set `in_progress` before `fetchLatest`**; return `check_failed` / `up_to_date` (release on those paths); otherwise invoke `applyUpdate()` without awaiting it in the caller, return `started`. The background promise sets `restart_required` on fulfill or `failed` + `onError` on throw, then releases the lock. Never set `idle` after a successful install.
 
 `start()`: if `applyUpdate` is missing, return. Otherwise run one tick and `setInterval(tick, intervalMs ?? AUTO_UPDATE_INTERVAL_MS)`.
 `stop()`: `clearInterval` once; further ticks are no-ops.
@@ -502,7 +537,7 @@ git commit -m "feat: add AutoUpdateController for managed upgrade scheduling"
 export const DashboardReleaseViewSchema = z.strictObject({
   current: z.string().min(1),
   managedService: z.boolean(),
-  update: z.strictObject({ status: z.enum(['idle', 'in_progress', 'failed']) }),
+  update: z.strictObject({ status: z.enum(['idle', 'in_progress', 'failed', 'restart_required']) }),
 });
 
 export const DashboardReleaseApplyResponseSchema = z.discriminatedUnion('ok', [
@@ -621,7 +656,12 @@ git commit -m "feat: expose release apply API and managedService on GET /release
 - Modify: `packages/server/src/server/server.ts`
 - Modify: `packages/server/src/server/server-lifecycle.test.ts`
 - Modify: `packages/cli/src/run/run.ts`
-- Create: `packages/cli/src/run/run.auto-update.test.ts` (or extend an existing `run` test file if one already constructs `bootProxyServer` options)
+- Create: `packages/cli/src/run/auto-update-hooks.ts`
+- Create: `packages/cli/src/run/auto-update-hooks.test.ts`
+- Modify: `packages/cli/src/service/unit-templates.ts`
+- Modify: `packages/cli/src/service/service.test.ts`
+- Modify: `packages/cli/src/upgrade/detect.ts`
+- Modify: `packages/cli/src/upgrade/upgrade.test.ts`
 
 **Interfaces:**
 
@@ -637,16 +677,38 @@ readonly autoUpdate?: {
 - `createServer` constructs `createAutoUpdateController({ getEnabled: () => state.currentConfig().server.autoUpdate, isManagedService: options.autoUpdate?.isManagedService ?? (() => false), applyUpdate: options.autoUpdate?.applyUpdate, currentVersion: options.version ?? '0.0.0', fetchLatest: fetchLatestNpmVersion, onError })`.
 - `close()` calls `controller.stop()` then `state.close()`.
 - `createRoutes` / `createDashboardRoutes` receive the controller.
-- CLI `run` passes:
+- CLI `run` passes `autoUpdate: createCliAutoUpdateHooks()`.
+- Unit templates add `AIO_PROXY_MANAGED=1` next to `AIO_PROXY_HOME` (systemd `Environment=`, launchd `EnvironmentVariables`). Existing `service restart` already rewrites the unit.
+- `createCliAutoUpdateHooks()`:
 
 ```ts
-autoUpdate: {
-  isManagedService: isManagedServiceInstalled,
-  applyUpdate: () => runUpgradeCommand({}, (line) => console.log(line)),
-},
+export const isManagedAutoUpdateProcess = (
+  env: NodeJS.ProcessEnv = process.env,
+): boolean => env['AIO_PROXY_MANAGED'] === '1';
+
+export const createCliAutoUpdateHooks = (deps?: {
+  readonly isManagedService?: () => boolean;
+  readonly upgrade?: typeof runUpgradeCommand;
+  readonly resolveExec?: typeof resolveExec;
+  readonly resolveTargetFrom?: typeof resolveUpgradeTargetFrom;
+}) => ({
+  isManagedService: deps?.isManagedService ?? isManagedAutoUpdateProcess,
+  applyUpdate: async () => {
+    const exec = (deps?.resolveExec ?? resolveExec)();
+    const resolveTarget = async () => (deps?.resolveTargetFrom ?? resolveUpgradeTargetFrom)(exec);
+    await (deps?.upgrade ?? runUpgradeCommand)({}, (line) => console.log(line), {
+      resolveTarget,
+      isServiceManaged: deps?.isManagedService ?? isManagedAutoUpdateProcess,
+    });
+  },
+});
 ```
 
-Do not pass `--force` or `--check`.
+Export a `createUpgradeDeps` (or accept a partial override) so the implementation can spread `defaultDeps` and override `resolveTarget` + `isServiceManaged` without `as never`. Interactive `aio-proxy upgrade` keeps the default `resolveUpgradeTarget()` (`Bun.which`) and `isManagedServiceInstalled()` restart gate.
+
+`resolveUpgradeTargetFrom(binPath)` is `resolveUpgradeTarget` with the `which` lookup replaced by the given absolute path. Missing package-manager CLIs yield `{ method: 'binary', path: binPath }`.
+
+Do not pass `--force` or `--check`. Do not use `isManagedServiceInstalled()` as the scheduler gate.
 
 - [ ] **Step 1: Write the failing lifecycle test**
 
@@ -689,21 +751,31 @@ test('createServer does not apply an update when the service is unmanaged', asyn
 });
 ```
 
-Add a CLI test that `bootProxyServer` / `run` forwards the two callbacks. The lightest version spies `createServer` from `bootProxyServer` deps if `run` itself is hard to boot; if `run` tests already exist, extend those. The required assertion is: `createServer` is called with `autoUpdate.isManagedService === isManagedServiceInstalled` and an `applyUpdate` that invokes `runUpgradeCommand`.
-
-If wiring `run` with a full listen is too heavy, extract a tiny helper in `packages/cli/src/run/auto-update-hooks.ts`:
+Extract `createCliAutoUpdateHooks` and test:
 
 ```ts
-export const createCliAutoUpdateHooks = (deps?: {
-  readonly isManagedService?: () => boolean;
-  readonly upgrade?: typeof runUpgradeCommand;
-}) => ({
-  isManagedService: deps?.isManagedService ?? isManagedServiceInstalled,
-  applyUpdate: () => (deps?.upgrade ?? runUpgradeCommand)({}, (line) => console.log(line)),
+test('isManagedAutoUpdateProcess is only true when the unit marker is set', () => {
+  expect(isManagedAutoUpdateProcess({})).toBe(false);
+  expect(isManagedAutoUpdateProcess({ AIO_PROXY_MANAGED: '1' })).toBe(true);
+});
+
+test('applyUpdate upgrades via the launched exec path, not PATH which', async () => {
+  const upgrade = mock(async (_options: unknown, _print: unknown, deps: { resolveTarget: () => Promise<unknown> }) => {
+    expect(await deps.resolveTarget()).toEqual({ method: 'binary', path: '/opt/aio-proxy' });
+  });
+  const hooks = createCliAutoUpdateHooks({
+    upgrade: upgrade as never,
+    resolveExec: () => '/opt/aio-proxy',
+    resolveTargetFrom: async (binPath) => ({ method: 'binary', path: binPath }),
+  });
+  await hooks.applyUpdate();
+  expect(upgrade).toHaveBeenCalledTimes(1);
 });
 ```
 
-Test that helper: `applyUpdate` calls the injected `upgrade` with `{}` and a print function; `isManagedService` delegates.
+Add `resolveUpgradeTargetFrom` tests in `upgrade.test.ts`: given an absolute brew/npm/binary path, the method matches; when package-manager lookups fail, the result is `{ method: 'binary', path }`.
+
+Unit template tests already snapshot `AIO_PROXY_HOME` — assert `AIO_PROXY_MANAGED=1` is also present on systemd and launchd output.
 
 - [ ] **Step 2: Run the tests and confirm they fail**
 
@@ -716,7 +788,7 @@ Import `createAutoUpdateController` and `fetchLatestNpmVersion`. After `createSe
 
 Log apply failures through the existing server logger when present (`auto_update.failed`); tests may omit `onError`.
 
-`run.ts`: import service + upgrade and pass `autoUpdate: createCliAutoUpdateHooks()`.
+`run.ts`: pass `autoUpdate: createCliAutoUpdateHooks()`. Add `AIO_PROXY_MANAGED=1` to both unit templates. Implement `resolveUpgradeTargetFrom` next to `resolveUpgradeTarget`.
 
 - [ ] **Step 4: Run the tests**
 
@@ -735,7 +807,11 @@ Expected: PASS. Existing `boot-proxy-server.test.ts` still passes because it stu
 ```bash
 git add packages/server/src/server/server.ts \
   packages/server/src/server/server-lifecycle.test.ts \
-  packages/cli/src/run
+  packages/cli/src/run \
+  packages/cli/src/service/unit-templates.ts \
+  packages/cli/src/service/service.test.ts \
+  packages/cli/src/upgrade/detect.ts \
+  packages/cli/src/upgrade/upgrade.test.ts
 git commit -m "feat: schedule auto-update from createServer and CLI run"
 ```
 
@@ -778,6 +854,7 @@ Copy (add under `dashboard.settings`; keep existing version keys):
 | `version_updating` | Updating… | 正在更新… | 正在更新… | 更新中… | 업데이트 중… |
 | `version_update_failed` | The update could not be installed. Try again or run aio-proxy upgrade. | 无法安装更新。请重试，或运行 aio-proxy upgrade。 | 無法安裝更新。請重試，或執行 aio-proxy upgrade。 | 更新をインストールできませんでした。再試行するか、aio-proxy upgrade を実行してください。 | 업데이트를 설치할 수 없습니다. 다시 시도하거나 aio-proxy upgrade를 실행하세요. |
 | `version_update_unavailable` | This process cannot install updates. | 当前进程无法安装更新。 | 目前處理程序無法安裝更新。 | このプロセスでは更新をインストールできません。 | 이 프로세스에서는 업데이트를 설치할 수 없습니다. |
+| `version_restart_required` | Restart aio-proxy to run the installed version. | 重启 aio-proxy 以运行已安装的版本。 | 重新啟動 aio-proxy 以執行已安裝的版本。 | インストールしたバージョンを使うには aio-proxy を再起動してください。 | 설치한 버전을 사용하려면 aio-proxy를 다시 시작하세요. |
 
 - [ ] **Step 1: Add i18n keys and compile**
 
@@ -799,6 +876,7 @@ Mock `useSettingsQuery` / `useSettingsMutation` / `useReleaseQuery` / `applyRele
 3. Update now: after a check that returns `outdated: true`, the button is enabled; click calls `applyReleaseMutationFn`.
 4. In-progress: `update.status === 'in_progress'` disables Update now and shows `version_updating`.
 5. Failed apply: `update.status === 'failed'` shows `version_update_failed` and does not show `version_up_to_date`.
+6. Restart required: `update.status === 'restart_required'` shows `version_restart_required`, stops polling, and does not call `reloadDashboard()`.
 
 Update `useReleaseQuery` mocks from `{ current: '1.4.2' }` to `{ current: '1.4.2', managedService: false, update: { status: 'idle' } }` in `settings-about-group.test.tsx` and `settings-page.test.tsx`.
 
@@ -824,7 +902,7 @@ Widen `releaseQueryOptions` to return the full GET JSON (`current`, `managedServ
 
 `SettingsAutoUpdateRow`: `useForm({ defaultValues: { autoUpdate } })`, shadcn `Switch`, `onCheckedChange` → `onSave({ autoUpdate })`. Show `auto_update_description` always and `auto_update_unmanaged_hint` when `managedService` is false.
 
-`SettingsUpdateNowButton`: ghost `Button` like version check. Pending / `in_progress` → `version_updating` + disabled. After `started` or a dropped connection, poll `releaseQueryOptions` every 2s for at most 120s; if `current` changes, `reloadDashboard()`. Failed / `unavailable` use the matching i18n string.
+`SettingsUpdateNowButton`: ghost `Button` like version check. Pending / `in_progress` → `version_updating` + disabled. After `started` or a dropped connection, poll `releaseQueryOptions` every 2s for at most 120s; if `current` changes, `reloadDashboard()`; if `update.status === 'restart_required'`, show `version_restart_required` and stop. Failed / `unavailable` use the matching i18n string.
 
 `SettingsAboutGroup` assembles version row, auto-update row (only when settings query has data), Update now, repo, docs. Hide the Switch while settings are loading or errored; keep version check.
 
@@ -896,15 +974,18 @@ git commit -m "chore: add changeset for automatic updates"
 | --- | --- |
 | `server.autoUpdate` default false, persisted explicitly | 1 |
 | Settings view/mutation, no restartRequired, `notifyCheck` on true | 1 |
-| Controller tick gates (enabled + managed + outdated) | 2 |
-| Manual apply skips gates, single-flight, 202-before-install | 2, 3 |
+| Controller tick gates (enabled + this-process-managed + outdated) | 2 |
+| Lock before `fetchLatest`; deferred-lookup single-flight test | 2 |
+| `applyUpdate` fulfill → `restart_required` | 2, 5 |
+| Manual apply skips gates, 202-before-install | 2, 3 |
 | GET `/release` `{ current, managedService, update }` | 3 |
 | POST apply HTTP map | 3 |
-| `createServer` start/stop + CLI injection of `runUpgradeCommand` | 4 |
-| About Switch + unmanaged hint + Update now + poll/reload | 5 |
+| `AIO_PROXY_MANAGED=1` + `resolveUpgradeTargetFrom(exec)` | 4 |
+| `createServer` start/stop + CLI hooks | 4 |
+| About Switch + unmanaged hint + Update now + poll/`restart_required` | 5 |
 | Five-locale copy + changeset targeting `aio-proxy` | 5, 6 |
 | No OS timers, no channel UI, no server→CLI import | all (non-goals) |
 
 **Placeholders:** none.
 
-**Type names:** `AutoUpdateController`, `AutoUpdateApplyResult`, `DashboardReleaseViewSchema`, `DashboardReleaseApplyResponseSchema`, `createCliAutoUpdateHooks`, `applyReleaseMutationFn` are used consistently across tasks.
+**Type names:** `AutoUpdateController`, `AutoUpdateApplyResult`, `DashboardReleaseViewSchema`, `DashboardReleaseApplyResponseSchema`, `createCliAutoUpdateHooks`, `isManagedAutoUpdateProcess`, `resolveUpgradeTargetFrom`, `applyReleaseMutationFn` are used consistently across tasks.
