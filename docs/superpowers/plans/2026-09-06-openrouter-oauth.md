@@ -234,7 +234,7 @@ Expected: FAIL. The no-state URL cases throw `LoopbackStateMismatchError`. The r
 
 - [ ] **Step 3: Write the failing Dashboard parse tests**
 
-Replace `packages/server/src/oauth-login-session/callback.test.ts` with:
+Replace `packages/server/src/oauth-login-session/callback.test.ts` with the cases below. OpenRouter-specific direct `parseOAuthCallback` calls **must** pass `{ stateRequired: false }`. Omitting the fourth argument keeps today’s CSRF default and must still reject a missing-state URL. Do not change the wrapper default to make these tests pass.
 
 ```ts
 import { expect, test } from 'bun:test';
@@ -262,23 +262,43 @@ test('manual OAuth callback validates redirect and state without exposing the ra
   }
 });
 
+test('defaults to requiring state when the fourth argument is omitted', () => {
+  expect(() => parseOAuthCallback(`${expected}?code=stolen`, expected, 'expected')).toThrow(OAuthCallbackError);
+});
+
 test('accepts a matching callback URL that has a code and no state', () => {
-  expect(parseOAuthCallback(`${expected}?code=openrouter-code`, expected, 'host-only-state')).toEqual({
+  expect(
+    parseOAuthCallback(`${expected}?code=openrouter-code`, expected, 'host-only-state', {
+      stateRequired: false,
+    }),
+  ).toEqual({
     code: 'openrouter-code',
   });
 });
 
 test('accepts a pasted raw authorization code when the input is not a URL', () => {
-  expect(parseOAuthCallback('auth_code_abc123', expected, 'host-only-state')).toEqual({
+  expect(
+    parseOAuthCallback('auth_code_abc123', expected, 'host-only-state', { stateRequired: false }),
+  ).toEqual({
     code: 'auth_code_abc123',
   });
-  expect(parseOAuthCallback('code=auth_code_from_query', expected, 'host-only-state')).toEqual({
+  expect(
+    parseOAuthCallback('code=auth_code_from_query', expected, 'host-only-state', { stateRequired: false }),
+  ).toEqual({
     code: 'auth_code_from_query',
   });
 });
 
 test('rejects a missing-state callback that also has no code', () => {
-  expect(() => parseOAuthCallback(expected, expected, 'host-only-state')).toThrow(OAuthCallbackError);
+  expect(() =>
+    parseOAuthCallback(expected, expected, 'host-only-state', { stateRequired: false }),
+  ).toThrow(OAuthCallbackError);
+});
+
+test('does not accept a missing-state error when state is required', () => {
+  expect(() =>
+    parseOAuthCallback(`${expected}?error=access_denied`, expected, 'expected', { stateRequired: true }),
+  ).toThrow(OAuthCallbackError);
 });
 ```
 
@@ -364,7 +384,7 @@ export function parseCallback(
 }
 ```
 
-In `packages/server/src/oauth-login-session/callback.ts`, the same wrapper maps `reason` onto the existing `OAuthCallbackError` codes (`CALLBACK_INVALID`, `CALLBACK_MISMATCH`, `CALLBACK_STATE_MISMATCH`, `AUTHORIZATION_DENIED`, `CALLBACK_CODE_MISSING`). Default `stateRequired` is `true`. Dashboard missing-state / raw-code tests pass `{ stateRequired: false }`. Add a Dashboard case: `{ stateRequired: true }` + missing state + `error=access_denied` does not accept.
+In `packages/server/src/oauth-login-session/callback.ts`, the same wrapper maps `reason` onto the existing `OAuthCallbackError` codes (`CALLBACK_INVALID`, `CALLBACK_MISMATCH`, `CALLBACK_STATE_MISMATCH`, `AUTHORIZATION_DENIED`, `CALLBACK_CODE_MISSING`). Default `stateRequired` is `true`. Dashboard missing-state / raw-code tests pass `{ stateRequired: false }`. The `{ stateRequired: true }` + missing state + `error=access_denied` case in Step 3 must keep throwing.
 
 Do not copy a “missing state is OK if code is present” parser into either host. The shared helper is the only implementation.
 
