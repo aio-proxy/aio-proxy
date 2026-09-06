@@ -1,10 +1,11 @@
 import { describe, expect, test } from 'bun:test';
 
+import type { SpeechInvocation } from '@aio-proxy/core';
 import { ProviderKind, ProviderProtocol } from '@aio-proxy/types';
 
 import { createServer, createServerTestHome } from '#server-test-lifecycle';
 
-import type { InboundCapability, ModelCapabilityIndex, RawResolveInput, RuntimeProviderInstance } from '../src/runtime';
+import type { InboundCapability, RawResolveInput, RuntimeProviderInstance } from '../src/runtime';
 import { recorded } from './trace-recording.test-support';
 
 const SPEECH_MODEL = 'tts-1';
@@ -13,6 +14,10 @@ const TRANSCRIPTION_MODEL = 'whisper-1';
 const SPEECH = '/v1/audio/speech';
 const TRANSCRIPTIONS = '/v1/audio/transcriptions';
 const TRANSLATIONS = '/v1/audio/translations';
+
+// Distinct from the transcription upload bytes below: a test that reads the raw
+// speech body must not pass by accidentally matching the bytes it uploaded.
+const RAW_SPEECH_BYTES = new Uint8Array([4, 5, 6]);
 
 function speechBody(body: Record<string, unknown> = {}): string {
   return JSON.stringify({ model: SPEECH_MODEL, input: 'hello', voice: 'alloy', ...body });
@@ -31,12 +36,12 @@ function transcriptionForm(options: { readonly file?: false } = {}): FormData {
 
 describe('OpenAI audio HTTP dispatch matrix', () => {
   test('POST /v1/audio/speech raw-passthroughs and names the speech direction and path', async () => {
-    const fixture = audioProvider('azure', { raw: {}, speech: true, language: true });
+    const fixture = audioProvider('azure', { raw: {}, speech: true });
     const response = await request(SPEECH, [fixture.value], { body: speechBody() });
 
     expect(response.status).toBe(200);
     expect(response.headers.get('content-type')).toBe('audio/mpeg');
-    expect(new Uint8Array(await response.arrayBuffer())).toEqual(new Uint8Array([1, 2, 3]));
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(RAW_SPEECH_BYTES);
     expect(fixture.calls).toEqual({ model: 0, raw: 1, speech: 0, transcription: 0 });
     expect(fixture.resolves).toEqual([
       {
@@ -49,7 +54,7 @@ describe('OpenAI audio HTTP dispatch matrix', () => {
   });
 
   test('POST /v1/audio/speech converts through the speech transport, never the language one', async () => {
-    const fixture = audioProvider('sdk', { speech: true, language: true });
+    const fixture = audioProvider('sdk', { speech: true });
     const response = await request(SPEECH, [fixture.value], { body: speechBody({ response_format: 'opus' }) });
 
     expect(response.status).toBe(200);
@@ -59,7 +64,7 @@ describe('OpenAI audio HTTP dispatch matrix', () => {
   });
 
   test('POST /v1/audio/transcriptions reads the multipart upload and converts to json', async () => {
-    const fixture = audioProvider('sdk', { speech: true, transcription: true, language: true });
+    const fixture = audioProvider('sdk', { speech: true, transcription: true });
     const response = await request(TRANSCRIPTIONS, [fixture.value], { form: transcriptionForm() });
 
     expect(response.status).toBe(200);
@@ -102,7 +107,7 @@ describe('OpenAI audio HTTP dispatch matrix', () => {
 
     expect(response.status).toBe(200);
     // The trace finalizes when the response body settles, so read it before the traces.
-    expect(new Uint8Array(await response.arrayBuffer())).toEqual(new Uint8Array([1, 2, 3]));
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(RAW_SPEECH_BYTES);
     expect(broken.calls).toEqual({ model: 0, raw: 1, speech: 0, transcription: 0 });
     expect(healthy.calls).toEqual({ model: 0, raw: 1, speech: 0, transcription: 0 });
     expect(await recordedAttempts(home)).toEqual([
@@ -112,7 +117,7 @@ describe('OpenAI audio HTTP dispatch matrix', () => {
   });
 
   test('a routable model with no audio grant answers 501 not_implemented', async () => {
-    const fixture = audioProvider('sdk', { capabilities: ['language'], language: true });
+    const fixture = audioProvider('sdk', { capabilities: ['language'] });
     const response = await request(SPEECH, [fixture.value], { body: speechBody() });
 
     expect(response.status).toBe(501);
@@ -161,13 +166,12 @@ type AudioProviderOptions = {
   readonly raw?: { readonly status?: number };
   readonly speech?: boolean;
   readonly transcription?: boolean;
-  readonly language?: boolean;
 };
 
 type AudioFixture = {
   readonly calls: AudioCalls;
   readonly resolves: RawResolveInput[];
-  readonly speechInvocations: unknown[];
+  readonly speechInvocations: SpeechInvocation[];
   readonly transcriptionAudio: Uint8Array[];
   readonly value: RuntimeProviderInstance;
 };
@@ -177,11 +181,23 @@ type AudioFixture = {
  * `buildModelCapabilityIndex` only synthesizes speech/transcription from a listed
  * protocol, and `RuntimeProviderInstance` carries no protocol — so a
  * raw-passthrough fixture without one is filtered out before dispatch.
+ *
+ * Two shape choices keep the object cast-free and fully type-checked:
+ *
+ * - `model` is unconditional, which satisfies the "at least one transport"
+ *   constraint for every fixture. It also makes `calls.model === 0` a real
+ *   assertion in all eight tests: audio must never reach the language transport.
+ * - Optional transports are literal keys valued `undefined`, not conditional
+ *   spreads. A spread suppresses excess-property checking, so a misspelled
+ *   `speach:` would type-check and silently degrade the fixture to "no audio
+ *   transport" (`isMaterializedRuntimeProvider` only reads own keys and skips
+ *   `undefined` values, so an unset key and an absent one behave alike, and a
+ *   misspelling surfaces as an unexplained 501 instead of a type error).
  */
 function audioProvider(id: string, options: AudioProviderOptions = {}): AudioFixture {
   const calls: AudioCalls = { model: 0, raw: 0, speech: 0, transcription: 0 };
   const resolves: RawResolveInput[] = [];
-  const speechInvocations: unknown[] = [];
+  const speechInvocations: SpeechInvocation[] = [];
   const transcriptionAudio: Uint8Array[] = [];
   const models = options.models ?? [SPEECH_MODEL, TRANSCRIPTION_MODEL];
   const granted = new Set(options.capabilities ?? (['speech', 'transcription'] as const));
@@ -194,16 +210,17 @@ function audioProvider(id: string, options: AudioProviderOptions = {}): AudioFix
     speechInvocations,
     transcriptionAudio,
     value: {
-      capabilityIndex: capabilityIndex satisfies ModelCapabilityIndex,
+      capabilityIndex,
       enabled: true,
       id,
       kind: ProviderKind.Api,
       models,
-      ...(options.priority === undefined ? {} : { priority: options.priority }),
-      ...(options.raw === undefined
-        ? {}
-        : {
-            raw: {
+      model: { invoke: () => ((calls.model += 1), new ReadableStream()) },
+      priority: options.priority,
+      raw:
+        options.raw === undefined
+          ? undefined
+          : {
               resolve: (input: RawResolveInput) => {
                 resolves.push(input);
                 if (input.protocol !== ProviderProtocol.OpenAIAudio) return undefined;
@@ -212,35 +229,31 @@ function audioProvider(id: string, options: AudioProviderOptions = {}): AudioFix
                 };
               },
             },
-          }),
-      ...(options.speech === true
-        ? {
-            speech: {
-              invoke: async (invocation: unknown) => {
+      speech:
+        options.speech === true
+          ? {
+              invoke: async (invocation) => {
                 calls.speech += 1;
                 speechInvocations.push(invocation);
-                const outputFormat = (invocation as { readonly outputFormat?: string }).outputFormat;
+                const { outputFormat } = invocation;
                 return {
                   audio: new Uint8Array([7, 8, 9]),
                   mediaType: outputFormat === undefined ? 'audio/mpeg' : `audio/${outputFormat}`,
                 };
               },
-            },
-          }
-        : {}),
-      ...(options.transcription === true
-        ? {
-            transcription: {
-              invoke: async (invocation: { readonly audio: Uint8Array }) => {
+            }
+          : undefined,
+      transcription:
+        options.transcription === true
+          ? {
+              invoke: async (invocation) => {
                 calls.transcription += 1;
                 transcriptionAudio.push(invocation.audio);
                 return { text: 'transcribed', segments: [] };
               },
-            },
-          }
-        : {}),
-      ...(options.language === true ? { model: { invoke: () => ((calls.model += 1), new ReadableStream()) } } : {}),
-    } as unknown as RuntimeProviderInstance,
+            }
+          : undefined,
+    } satisfies RuntimeProviderInstance,
   };
 }
 
@@ -250,7 +263,7 @@ function rawAudioResponse(id: string, capability: string | undefined, status: nu
   calls.raw += 1;
   if (status !== 200) return new Response('upstream unavailable', { status });
   return capability === 'speech'
-    ? new Response(new Uint8Array([1, 2, 3]), { headers: { 'content-type': 'audio/mpeg' } })
+    ? new Response(RAW_SPEECH_BYTES, { headers: { 'content-type': 'audio/mpeg' } })
     : Response.json({ text: `raw:${id}` });
 }
 
