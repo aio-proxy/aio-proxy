@@ -55,8 +55,78 @@ test('the key that created the call hangs it up and the record is deleted', asyn
   expect(store.lookup('call_abc')).toBeUndefined();
 });
 
-function hangupApp(store: RealtimeCallStore, logs: ServerLog[] = []) {
-  const source = sourceWith(store, logs);
+// A 200 hangup was observed carrying the upstream's own `Location` (its host) and a
+// `Set-Cookie`. The record teardown must still happen, so this is not just a header check.
+test('a 2xx hangup forwards only content-type, dropping the upstream Location and cookie', async () => {
+  const store = createRealtimeCallStore();
+  const app = hangupApp(
+    store,
+    [],
+    () =>
+      new Response('{"ok":true}', {
+        status: 200,
+        headers: {
+          'content-type': 'application/json',
+          location: 'https://api.openai.com/v1/realtime/calls/call_abc',
+          'set-cookie': 'x=y',
+          'x-upstream-debug': 'internal-host-9',
+        },
+      }),
+  );
+  await create(app, 'key-owner');
+
+  const response = await app.request('/v1/realtime/calls/call_abc/hangup', {
+    method: 'POST',
+    headers: { 'x-test-principal': 'key-owner' },
+  });
+
+  expect(response.status).toBe(200);
+  expect([...response.headers.keys()].toSorted()).toEqual(['content-type']);
+  expect(response.headers.get('location')).toBeNull();
+  expect(response.headers.get('set-cookie')).toBeNull();
+  expect(await response.text()).toBe('{"ok":true}');
+  expect(store.lookup('call_abc')).toBeUndefined();
+});
+
+// The upstream's 404 body is not the proxy's envelope, and its headers are not the
+// proxy's to relay. The record must survive, as it does for any non-2xx.
+test('a non-2xx hangup is reshaped into the realtime envelope and keeps the record', async () => {
+  const store = createRealtimeCallStore();
+  const app = hangupApp(
+    store,
+    [],
+    () =>
+      new Response('<html>no such call at internal-host-9</html>', {
+        status: 404,
+        headers: { 'content-type': 'text/html', location: 'https://api.openai.com/gone', 'set-cookie': 'x=y' },
+      }),
+  );
+  await create(app, 'key-owner');
+
+  const response = await app.request('/v1/realtime/calls/call_abc/hangup', {
+    method: 'POST',
+    headers: { 'x-test-principal': 'key-owner' },
+  });
+
+  expect(response.status).toBe(404);
+  expect(response.headers.get('location')).toBeNull();
+  expect(response.headers.get('set-cookie')).toBeNull();
+  const text = await response.text();
+  expect(text).not.toContain('internal-host-9');
+  expect(text).not.toContain('api.openai.com');
+  expect(JSON.parse(text)).toEqual({
+    error: {
+      message: 'The realtime upstream rejected this request.',
+      type: 'invalid_request_error',
+      param: null,
+      code: 'upstream_rejected',
+    },
+  });
+  expect(store.lookup('call_abc')).toBeDefined();
+});
+
+function hangupApp(store: RealtimeCallStore, logs: ServerLog[] = [], hangupAnswer?: () => Response) {
+  const source = sourceWith(store, logs, hangupAnswer);
   return (
     new Hono<CallerPrincipalEnv>()
       // Stands in for the `/v1/*` auth middleware: the route reads the principal off the
@@ -80,7 +150,7 @@ async function create(app: ReturnType<typeof hangupApp>, key: string): Promise<v
   if (response.status !== 201) throw new Error(`create failed with ${response.status}`);
 }
 
-function sourceWith(store: RealtimeCallStore, logs: ServerLog[]): RealtimeRouteSource {
+function sourceWith(store: RealtimeCallStore, logs: ServerLog[], hangupAnswer?: () => Response): RealtimeRouteSource {
   const provider = {
     id: 'codex',
     kind: ProviderKind.OAuth,
@@ -97,7 +167,7 @@ function sourceWith(store: RealtimeCallStore, logs: ServerLog[]): RealtimeRouteS
       fetch: (request: Request) =>
         Promise.resolve(
           new URL(request.url).pathname.endsWith('/hangup')
-            ? new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
+            ? (hangupAnswer?.() ?? new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } }))
             : new Response('v=0\r\na=answer\r\n', {
                 status: 201,
                 headers: {

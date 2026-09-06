@@ -1,0 +1,35 @@
+import { realtimeUpstreamRejected, realtimeUpstreamUnavailable } from './errors';
+
+/** An allowlist, not a denylist of the three headers the ruling names: the caller needs
+ *  exactly enough to read the body, and anything an upstream adds later — a second
+ *  cookie spelling, a tracing header naming an internal host — is dropped without this
+ *  list being revisited. `retry-after` is deliberately absent: no row of the design
+ *  spec's error table uses it. */
+const FORWARDED_UPSTREAM_HEADERS = ['content-type'] as const;
+
+/** Builds the caller-facing headers from scratch, so `Location`, `Set-Cookie`,
+ *  `set-cookie2`, and every other upstream header are absent by construction rather
+ *  than by deletion. The create's 2xx path adds its own rewritten `Location` on top. */
+export function allowlistedUpstreamHeaders(response: Response): Headers {
+  const headers = new Headers();
+  for (const name of FORWARDED_UPSTREAM_HEADERS) {
+    const value = response.headers.get(name);
+    if (value !== null) headers.set(name, value);
+  }
+  return headers;
+}
+
+export function forwardUpstreamSuccess(response: Response): Response {
+  return new Response(response.body, { status: response.status, headers: allowlistedUpstreamHeaders(response) });
+}
+
+/** The upstream's own body is discarded rather than relayed: one was observed echoing the
+ *  caller's SDP offer back inside an error string. The accepted cost is the loss of the
+ *  upstream's diagnostic detail (2026-09-06 ruling).
+ *
+ *  A `4xx` keeps its status, the only part of the upstream reply a client can act on. A
+ *  `3xx` cannot: its target lived in the `Location` that may not be forwarded, so a
+ *  redirect the proxy will not follow is an availability failure, the same as a `5xx`. */
+export function realtimeFailureFromUpstream(status: number): Response {
+  return status >= 400 && status < 500 ? realtimeUpstreamRejected(status) : realtimeUpstreamUnavailable();
+}

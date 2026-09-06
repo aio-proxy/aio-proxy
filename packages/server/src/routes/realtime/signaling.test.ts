@@ -96,25 +96,100 @@ test('a 5xx falls back to the next provider and replays the buffered body', asyn
   expect(bodies).toEqual(['v=0\r\nfallback\r\n', 'v=0\r\nfallback\r\n']);
 });
 
-test('a non-401 non-429 4xx is returned as the upstream sent it, without a second attempt', async () => {
+// The upstream status survives, but nothing the upstream *said* does: its error body was
+// observed echoing the caller's own SDP offer and its `Location` carries the upstream host.
+test('a non-401 non-429 4xx stops the loop and is reshaped, dropping every upstream header', async () => {
   let calls = 0;
-  const source = sourceWith([
-    realtimeProvider({
-      id: 'a',
-      priority: 10,
-      answer: () => {
-        calls += 1;
-        return new Response('bad offer', { status: 400 });
-      },
-    }),
-    realtimeProvider({ id: 'b', answer: sdpAnswer('call_abc') }),
-  ]);
+  const logs: ServerLog[] = [];
+  const source = sourceWith(
+    [
+      realtimeProvider({
+        id: 'a',
+        priority: 10,
+        answer: () => {
+          calls += 1;
+          return new Response('rejected offer: v=0 a=candidate:secret-ice 1 udp', {
+            status: 400,
+            headers: {
+              location: 'https://api.openai.com/leak?token=abc',
+              'set-cookie': 'up_session=secret123; Path=/',
+              'x-upstream-debug': 'internal-host-9',
+            },
+          });
+        },
+      }),
+      realtimeProvider({ id: 'b', answer: sdpAnswer('call_abc') }),
+    ],
+    undefined,
+    logs,
+  );
 
   const response = await post(source, 'live', 'v=0\r\n', 'application/sdp');
 
   expect(calls).toBe(1);
   expect(response.status).toBe(400);
-  expect(await response.text()).toBe('bad offer');
+  expect(response.headers.get('location')).toBeNull();
+  expect(response.headers.get('set-cookie')).toBeNull();
+  expect(response.headers.get('x-upstream-debug')).toBeNull();
+  const text = await response.text();
+  expect(text).not.toContain('secret-ice');
+  expect(text).not.toContain('secret123');
+  expect(text).not.toContain('api.openai.com');
+  expect(JSON.parse(text)).toEqual({
+    error: {
+      message: 'The realtime upstream rejected this request.',
+      type: 'invalid_request_error',
+      param: null,
+      code: 'upstream_rejected',
+    },
+  });
+  // Discarding the upstream body makes the log the only surviving diagnostic, so it must
+  // still name the rejecting provider and the status the caller was handed.
+  expect(logs).toContainEqual(
+    expect.objectContaining({
+      event: 'realtime.call_failed',
+      providerId: 'a',
+      statusCode: 400,
+      errorCode: 'upstream_rejected',
+    }),
+  );
+});
+
+// A redirect carries its target in the one header that may never be forwarded, so once it
+// is stripped the caller has nothing to act on and the attempt is an availability failure.
+test('an upstream redirect on create becomes 503 and forwards no Location', async () => {
+  const logs: ServerLog[] = [];
+  const source = sourceWith(
+    [
+      realtimeProvider({
+        id: 'a',
+        answer: () =>
+          new Response('', {
+            status: 302,
+            headers: { location: 'https://chatgpt.com/backend-api/codex/realtime/calls/redir?token=abc' },
+          }),
+      }),
+    ],
+    undefined,
+    logs,
+  );
+
+  const response = await post(source, 'live', 'v=0\r\n', 'application/sdp');
+
+  expect(response.status).toBe(503);
+  expect(response.headers.get('location')).toBeNull();
+  expect(((await response.json()) as { error: { code: string } }).error.code).toBe('realtime_upstream_unavailable');
+  // The log records the 503 the caller saw, not the upstream's 302, and says which code
+  // that 503 carried — the remapping is otherwise invisible in the record.
+  expect(logs).toContainEqual(
+    expect.objectContaining({
+      event: 'realtime.call_failed',
+      providerId: 'a',
+      statusCode: 503,
+      errorCode: 'realtime_upstream_unavailable',
+    }),
+  );
+  expect(JSON.stringify(logs)).not.toContain('chatgpt.com');
 });
 
 test('401 and 429 do fall through to the next credential', async () => {
@@ -197,6 +272,34 @@ test('the create logs carry no SDP, no Location, and no credential', async () =>
   expect(serialized).not.toContain('secret-ice-candidate');
   expect(serialized).not.toContain('v=0');
   expect(serialized).not.toContain('api.openai.com');
+});
+
+// `commit` rewrites `Location`, but the rest of the upstream's headers reached the caller
+// untouched until the allowlist. A success carries the same disclosure risk as a failure.
+test('a successful create forwards only content-type plus the rewritten Location', async () => {
+  const source = sourceWith([
+    realtimeProvider({
+      id: 'codex',
+      answer: () =>
+        new Response('v=0\r\na=answer\r\n', {
+          status: 201,
+          headers: {
+            'content-type': 'application/sdp',
+            location: 'https://api.openai.com/v1/realtime/calls/call_abc',
+            'set-cookie': 'up_session=secret123; Path=/',
+            'x-upstream-debug': 'internal-host-9',
+          },
+        }),
+    }),
+  ]);
+
+  const response = await post(source, 'live', 'v=0\r\n', 'application/sdp');
+
+  expect(response.status).toBe(201);
+  expect([...response.headers.keys()].toSorted()).toEqual(['content-type', 'location']);
+  expect(response.headers.get('location')).toBe('/v1/live/call_abc');
+  expect(response.headers.get('set-cookie')).toBeNull();
+  expect(response.headers.get('x-upstream-debug')).toBeNull();
 });
 
 function sdpAnswer(callId: string): () => Response {

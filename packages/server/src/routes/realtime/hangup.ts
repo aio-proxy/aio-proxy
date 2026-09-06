@@ -15,6 +15,7 @@ import {
 } from './errors';
 import { pinnedRealtimeCandidate } from './provider-select';
 import type { RealtimeRouteSource } from './source';
+import { forwardUpstreamSuccess, realtimeFailureFromUpstream } from './upstream-response';
 
 export async function handleRealtimeHangup(
   context: Context<CallerPrincipalEnv>,
@@ -59,8 +60,10 @@ export async function handleRealtimeHangup(
   if (response.ok) {
     source.realtimeCalls.closeAttachment(callId, NORMAL_CLOSE_CODE);
     source.realtimeCalls.remove(callId);
+    return forwardUpstreamSuccess(response);
   }
-  return response;
+  await response.body?.cancel();
+  return realtimeFailureFromUpstream(response.status);
 }
 
 function logScopeMismatch(source: RealtimeRouteSource, providerId: string, model: string, style: string): void {

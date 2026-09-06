@@ -9,6 +9,7 @@ import { isValidCallId, realtimeUpstreamUnavailable, REALTIME_CALL_ID_PATTERN } 
 import { normalizeRealtimeModel } from './model';
 import { type RealtimeCandidate, selectRealtimeCandidates } from './provider-select';
 import type { RealtimeRouteSource } from './source';
+import { allowlistedUpstreamHeaders, realtimeFailureFromUpstream } from './upstream-response';
 
 export const MAX_CREATE_ATTEMPTS = 2;
 
@@ -86,14 +87,16 @@ async function attemptCandidates(
     // A 4xx means this offer or credential was rejected; replaying a bad SDP onto
     // every other provider multiplies the damage. 401/429 are per-credential.
     if (response.status < 500 && response.status !== 401 && response.status !== 429) {
+      await response.body?.cancel();
+      const filtered = realtimeFailureFromUpstream(response.status);
       logFailure(
         source,
         { model: input.models.normalized, style: input.style, attemptCount },
-        response.status,
-        'upstream_rejected',
+        filtered.status,
+        filtered.status === response.status ? 'upstream_rejected' : 'realtime_upstream_unavailable',
         candidate.provider.id,
       );
-      return response;
+      return filtered;
     }
     await response.body?.cancel();
   }
@@ -137,9 +140,9 @@ function commit(
     attemptCount: input.attemptCount,
   });
 
-  const headers = new Headers();
-  const contentType = input.response.headers.get('content-type');
-  if (contentType !== null) headers.set('content-type', contentType);
+  // One allowlist governs the success and the failure path, so a header an upstream adds
+  // later cannot reach the caller through whichever of the two was not revisited.
+  const headers = allowlistedUpstreamHeaders(input.response);
   // The upstream host is never advertised to the caller, and it is never a future
   // connection target: sideband and hangup URLs come from the plugin.
   headers.set('location', rewriteLocation(input.callId, input.style));

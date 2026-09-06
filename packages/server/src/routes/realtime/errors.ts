@@ -125,6 +125,21 @@ export function codexAuthUnavailable(): Response {
   );
 }
 
+/** The one row not in the design spec's table: it prescribes no mapping for an upstream
+ *  failure because it had the create's `4xx` relayed verbatim, which the 2026-09-06 ruling
+ *  reversed. The upstream status survives — it is the only part of the upstream reply a
+ *  client can act on — while the message is the proxy's own, since the upstream's was
+ *  observed echoing the caller's SDP offer back. `code` matches the `upstream_rejected`
+ *  the create log already emits at this site. */
+export function realtimeUpstreamRejected(status: number): Response {
+  return realtimeError(
+    status,
+    'invalid_request_error',
+    'upstream_rejected',
+    'The realtime upstream rejected this request.',
+  );
+}
+
 export function realtimeUpstreamUnavailable(): Response {
   return realtimeError(
     503,
