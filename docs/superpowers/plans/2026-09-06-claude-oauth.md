@@ -188,8 +188,11 @@ describe('Claude login identity', () => {
     expect(result.accountLabel).toBe('person@example.com');
     expect(result.credentials.email).toBe('person@example.com');
     expect(result.expiresAt).toBe(1_700_003_300_000);
-    expect(JSON.stringify(result)).not.toContain('access-secret');
+    expect(result.credentials.accessToken).toBe('access-secret');
+    expect(result.fingerprint).not.toContain('access-secret');
     expect(result.fingerprint).not.toContain('refresh-secret');
+    expect(result.suggestedKey).not.toContain('access-secret');
+    expect(result.accountLabel).not.toContain('access-secret');
   });
 
   test('rejects email-only credentials and keeps fingerprint when email or refresh later appear', () => {

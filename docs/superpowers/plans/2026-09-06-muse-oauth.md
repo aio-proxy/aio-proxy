@@ -21,7 +21,7 @@ Do not implement until that spec is `已确认，进入实现`.
 - Mint with `{ onboard: true }` only once, immediately after a successful device token, with a 20s timeout. Persist `apiKey`. Never remint from catalog, runtime, or `currentMuseCodeCredential`.
 - Inference base is exactly `https://api.meta.ai/v1`. Authorization on `/v1` is Bearer **apiKey**, never the oauth token.
 - Language models use `@ai-sdk/openai` Responses (`openai.responses(modelId)`). Catalog `extra.protocol` is always `openai-response`.
-- Quota is read-only. Re-read `POST https://api.meta.ai/muse-code/key` with `{}` (no `onboard`). Treat 429 as retryable. Do not persist a key returned from quota.
+- Quota is read-only. Re-read `POST https://api.meta.ai/muse-code/key` with `{}` (no `onboard`). Classify network / timeout / 408 / 429 / 5xx as retryable. Do not persist a key returned from quota. Zero or negative `window_duration_mins` is a rolling window, not `0 hours`.
 - No CPA importer, no `MODEL_API_KEY` paste login, no Z.AI / Claude / OpenRouter, no plugin-sdk changes, no raw capability.
 - Use Provider ID, Provider priority, and Provider weight terminology from `AGENTS.md`. Prefer `es-toolkit` (`isPlainObject`) and Bun APIs (`Bun.CryptoHasher`).
 - Handwritten non-test files stay under 500 lines; split by responsibility before 400. New modules with a colocated test use a same-name directory (`oauth/index.ts`, `oauth/oauth.ts`, `oauth/oauth.test.ts`). Task snippets that say `src/oauth.ts` mean that directory.
@@ -457,8 +457,9 @@ describe('Muse Code device login', () => {
       }),
     ).rejects.toThrow('inactive');
 
-    await expect(
-      loginMuseCode(loginContext([]), {
+    let paymentError: unknown;
+    try {
+      await loginMuseCode(loginContext([]), {
         fetch: sequenceFetch(
           [],
           [
@@ -477,14 +478,14 @@ describe('Muse Code device login', () => {
           ],
         ),
         sleep: async () => {},
-      }),
-    ).rejects.toThrow((error: unknown) => {
-      const message = String(error);
-      expect(message).toMatch(/payment_required/);
-      expect(message).not.toContain('https://meta.ai/pay');
-      expect(message).not.toContain('oauth-access');
-      return true;
-    });
+      });
+    } catch (cause) {
+      paymentError = cause;
+    }
+    expect(paymentError).toBeInstanceOf(Error);
+    expect(String(paymentError)).toMatch(/payment_required/);
+    expect(String(paymentError)).not.toContain('https://meta.ai/pay');
+    expect(String(paymentError)).not.toContain('oauth-access');
   });
 
   test('classifies denied, expired, timeout, and abort', async () => {
