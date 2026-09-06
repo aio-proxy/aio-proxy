@@ -239,25 +239,28 @@ router:
 
 ## API
 
-| 协议或用途                | 方法与路径                                          |
-| ------------------------- | --------------------------------------------------- |
-| 健康检查                  | `GET /health`                                       |
-| 模型列表                  | `GET /v1/models`                                    |
-| OpenAI Chat Completions   | `POST /v1/chat/completions`                         |
-| OpenAI Responses          | `POST /v1/responses`                                |
-| OpenAI Completions        | `POST /v1/completions`                              |
-| OpenAI Responses compact  | `POST /v1/responses/compact`                        |
-| Anthropic Messages        | `POST /v1/messages`                                 |
-| Anthropic Token Counting  | `POST /v1/messages/count_tokens`                    |
-| Gemini                    | `POST /v1beta/models/{model}:generateContent`       |
-| Gemini 流式生成           | `POST /v1beta/models/{model}:streamGenerateContent` |
-| Gemini Token Counting     | `POST /v1beta/models/{model}:countTokens`           |
-| Gemini Interactions       | `POST /v1beta/interactions`                         |
-| OpenAI Embeddings         | `POST /v1/embeddings`                               |
-| Gemini embed              | `POST /v1beta/models/{model}:embedContent`          |
-| Gemini batch embed        | `POST /v1beta/models/{model}:batchEmbedContents`    |
-| OpenAI Images generations | `POST /v1/images/generations`                       |
-| OpenAI Images edits       | `POST /v1/images/edits`                             |
+| 协议或用途                  | 方法与路径                                          |
+| --------------------------- | --------------------------------------------------- |
+| 健康检查                    | `GET /health`                                       |
+| 模型列表                    | `GET /v1/models`                                    |
+| OpenAI Chat Completions     | `POST /v1/chat/completions`                         |
+| OpenAI Responses            | `POST /v1/responses`                                |
+| OpenAI Completions          | `POST /v1/completions`                              |
+| OpenAI Responses compact    | `POST /v1/responses/compact`                        |
+| Anthropic Messages          | `POST /v1/messages`                                 |
+| Anthropic Token Counting    | `POST /v1/messages/count_tokens`                    |
+| Gemini                      | `POST /v1beta/models/{model}:generateContent`       |
+| Gemini 流式生成             | `POST /v1beta/models/{model}:streamGenerateContent` |
+| Gemini Token Counting       | `POST /v1beta/models/{model}:countTokens`           |
+| Gemini Interactions         | `POST /v1beta/interactions`                         |
+| OpenAI Embeddings           | `POST /v1/embeddings`                               |
+| Gemini embed                | `POST /v1beta/models/{model}:embedContent`          |
+| Gemini batch embed          | `POST /v1beta/models/{model}:batchEmbedContents`    |
+| OpenAI Images generations   | `POST /v1/images/generations`                       |
+| OpenAI Images edits         | `POST /v1/images/edits`                             |
+| OpenAI Audio speech         | `POST /v1/audio/speech`                             |
+| OpenAI Audio transcriptions | `POST /v1/audio/transcriptions`                     |
+| OpenAI Audio translations   | `POST /v1/audio/translations`                       |
 
 Images 说明：
 
@@ -268,6 +271,15 @@ Images 说明：
 - DALL·E 省略/`null`/`url` 会跳过转换；GPT Image 省略时编码为 `b64_json`；自定义模型省略时的 `b64_json` 是 aio-proxy 扩展。
 - Edits 接受官方上限信封（JSON `357_564_416`，multipart `851_048_559`）。P1 没有更低的默认 DoS 上限；未来更小的上限只能作为显式的部署扩展。
 - 无目录的 Images Provider 需要有限 id 集合（`models` 或保留的别名目标），其中须包含 `gpt-image-2` 才能使用空白 model 的默认值。`router.models` 元数据条目不会创建路由。
+
+Audio 说明：
+
+- 原始透传 Audio 需要 `openai-audio` 端点（或将其设为主协议）。
+- 省略 `model` 时，语音合成默认 `tts-1`，转写/翻译默认 `whisper-1`；因此无目录的 Audio Provider 必须列出这些 id（在 `models` 中或作为保留的别名目标），默认值才能路由。
+- `POST /v1/audio/translations` 仅支持原始透传。转换路径返回 `501 unsupported_feature`，因为 AI SDK 的转写接口没有翻译模式。
+- 转换路径对 `stream_format`、`chunking_strategy`、`include` 和 `stream` 同样返回 `501 unsupported_feature`。
+- `openai-audio` Provider 使用 `GET /v1/models` 探测，因为仅支持语音合成或仅支持转写的模型会拒绝另一方向的能力请求并误报 FAIL。探测通过只说明端点可达且密钥被接受，并不说明所配置的模型支持你将要调用的方向；`401` 仍是 FAIL，而只提供 `/v1/audio/*` 的网关即便可用，在 Dashboard 中也会显示 FAIL。
+- Audio 用量仅在上游上报时记录。时长永远不会换算成 token。
 
 其余官方 Responses 资源操作（`GET /v1/responses/:id`、`DELETE /v1/responses/:id`、`POST /v1/responses/:id/cancel`、`GET /v1/responses/:id/input_items`）返回协议形 501。
 
