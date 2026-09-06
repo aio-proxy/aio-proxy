@@ -241,16 +241,31 @@ function encodeJson(value: unknown): Uint8Array<ArrayBuffer> | undefined {
  *  string becomes the requested model for a create — bounds every log site at once. */
 function jsonRequestedModel(payload: unknown): string | Response {
   if (!isPlainObject(payload)) return CODEX_REALTIME_MODEL;
-  const top = payload['model'];
-  if (typeof top === 'string' && top.length > 0) return boundedModel(top);
+  const top = candidateModel(payload['model']);
+  if (top !== undefined) return boundedModel(top);
   const session = payload['session'];
   if (isPlainObject(session)) {
-    const nested = session['model'];
-    if (typeof nested === 'string' && nested.length > 0) return boundedModel(nested);
+    const nested = candidateModel(session['model']);
+    if (nested !== undefined) return boundedModel(nested);
   }
   return CODEX_REALTIME_MODEL;
 }
 
+/** Trimmed here, at the one point a caller's string becomes *the* requested model for a
+ *  create, so every consumer downstream sees the same value: `normalizeRealtimeModel` trims
+ *  before it maps, so an untrimmed `requested` disagreed with its own normalized form and
+ *  `" gpt-realtime "` slipped past an `excludedModels: ["gpt-realtime"]` on both arms of the
+ *  exclusion check. A whitespace-only value is treated as absent for the same reason the
+ *  empty string is: it names no model, so the `session.model` fallback and then the Codex
+ *  default apply rather than a blank selection key. */
+function candidateModel(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  return trimmed.length === 0 ? undefined : trimmed;
+}
+
+// Measured after the trim: the bound exists to cap what is selected on, sent upstream, and
+// logged, and that is the trimmed value.
 function boundedModel(model: string): string | Response {
   return model.length > MAX_REALTIME_MODEL_LENGTH ? realtimeInvalidModel() : model;
 }

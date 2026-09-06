@@ -123,6 +123,45 @@ test('a JSON offer reads model, then falls back to session.model', async () => {
   expect((absent as { requestedModel: string }).requestedModel).toBe('gpt-live-1-codex');
 });
 
+// `normalizeRealtimeModel` trims before it maps, so an untrimmed requested model disagrees
+// with its own normalized form — and the exclusion check compares `excludedModels` against
+// both. `" gpt-realtime "` matched neither, so a provider excluding `gpt-realtime` stayed
+// eligible for a request the wire body was then rewritten to `gpt-live-1-codex` for.
+// Whitespace-only is treated as naming no model at all, so the `session.model` fallback and
+// then the Codex default apply rather than a blank selection key reaching the selector.
+test('a requested model is trimmed at the boundary, and a blank one names no model', async () => {
+  const padded = await readRealtimeCreateBody(jsonRequest({ sdp: 'v=0', model: ' gpt-realtime ' }));
+  const paddedNested = await readRealtimeCreateBody(jsonRequest({ sdp: 'v=0', session: { model: '\tcustom-live ' } }));
+  const blankFallsBack = await readRealtimeCreateBody(
+    jsonRequest({ sdp: 'v=0', model: '   ', session: { model: 'custom-live-model' } }),
+  );
+  const blankThroughout = await readRealtimeCreateBody(
+    jsonRequest({ sdp: 'v=0', model: '  ', session: { model: '' } }),
+  );
+
+  expect((padded as { requestedModel: string }).requestedModel).toBe('gpt-realtime');
+  expect((paddedNested as { requestedModel: string }).requestedModel).toBe('custom-live');
+  expect((blankFallsBack as { requestedModel: string }).requestedModel).toBe('custom-live-model');
+  expect((blankThroughout as { requestedModel: string }).requestedModel).toBe('gpt-live-1-codex');
+});
+
+// The 128-character bound measures the trimmed id, not the padding: an id that fits once the
+// whitespace is gone is a legitimate id, and rejecting it would 400 a servable request. The
+// over-long half is the control — trimming must not become a way past the bound.
+test('the model length bound is measured after the trim', async () => {
+  const atCapPadded = `   ${'a'.repeat(128)}   `;
+  const overCapPadded = `   ${'a'.repeat(129)}   `;
+
+  const accepted = await readRealtimeCreateBody(jsonRequest({ sdp: 'v=0', model: atCapPadded }));
+  const refused = await readRealtimeCreateBody(jsonRequest({ sdp: 'v=0', model: overCapPadded }));
+
+  expect((accepted as { requestedModel: string }).requestedModel).toBe('a'.repeat(128));
+  expect((refused as Response).status).toBe(400);
+  expect(((await (refused as Response).json()) as { error: { code: string } }).error.code).toBe(
+    'realtime_invalid_model',
+  );
+});
+
 // The requested model is echoed into `realtime.call_failed`, which the log bridge maps to
 // `error`, so an unbounded caller string here is both a disclosure channel and a
 // log-amplification lever. Rejected rather than truncated: truncating could turn an over-long

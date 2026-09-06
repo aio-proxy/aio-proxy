@@ -261,7 +261,12 @@ function prepare(
  *  pinned: selection is the ordinary candidate order, and every candidate in it is
  *  interchangeable, so a failed dial falls through to the next one. */
 function prepareDirect(context: Context<CallerPrincipalEnv>, snapshot: ProviderRouteSnapshot): Prepared | Response {
-  const requested = context.req.query('model');
+  // Trimmed at the boundary, exactly as the create body's `model` is: `normalizeRealtimeModel`
+  // trims before it maps, so an untrimmed value disagrees with its own normalized form and
+  // `?model=%20gpt-realtime%20` slipped past an `excludedModels: ["gpt-realtime"]`. Trimming
+  // once here keeps the exclusion key, the selection key, the dialed model, and both sideband
+  // log fields the same string.
+  const requested = context.req.query('model')?.trim();
   // Bounded for the same reason as the create body's `model`: this string is sent
   // upstream and recorded in both sideband log entries, and only the parse boundary
   // sees it before it fans out.

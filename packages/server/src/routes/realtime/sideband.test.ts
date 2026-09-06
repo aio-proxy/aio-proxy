@@ -247,6 +247,48 @@ test('an empty model query is excluded by the policy for the model it would actu
   expect(dialed).toEqual({});
 });
 
+// The same disagreement one input over: `normalizeRealtimeModel` trims, so a padded `?model=`
+// matched neither arm of the exclusion check and the excluded provider was dialed anyway. The
+// `dialed` assertion is the load-bearing one — a 503 alone cannot tell "excluded" from "no
+// candidate advertises this id", and `dialed` proves no upstream socket was opened.
+test('a padded model query is excluded by the policy naming the trimmed model', async () => {
+  const dialed: { providerId?: string; model?: string } = {};
+  const app = directApp(dialed, [{ id: 'codex', excludedModels: ['gpt-realtime'] }]);
+
+  const response = await app.request('/v1/realtime?model=%20gpt-realtime%20', { headers: { upgrade: 'websocket' } });
+
+  expect(response.status).toBe(503);
+  expect(((await response.json()) as { error: { code: string } }).error.code).toBe('realtime_upstream_unavailable');
+  expect(dialed).toEqual({});
+});
+
+// The control for the test above, and the statement of the behavior change it carries: with no
+// exclusion configured the padded query is served, and what goes UPSTREAM is the trimmed id.
+// `realtime-direct` sends the originally requested model (spec `:223-225`), which is about not
+// substituting `gpt-live-1-codex` — not about preserving the caller's whitespace — and the
+// trimmed form is the only one that agrees with the selection and exclusion keys.
+test('a padded model query dials the trimmed id, not the caller whitespace', async () => {
+  const dialed: { providerId?: string; model?: string } = {};
+  const app = directApp(dialed);
+
+  const response = await app.request('/v1/realtime?model=%20gpt-realtime%20', { headers: { upgrade: 'websocket' } });
+
+  expect(response.status).toBe(502);
+  expect(dialed).toEqual({ providerId: 'codex', model: 'gpt-realtime' });
+});
+
+// A whitespace-only query is the same input as a present-but-empty one, so it resolves to the
+// direct default rather than selecting on blanks and then sending them upstream.
+test('a whitespace-only model query resolves to the direct default', async () => {
+  const dialed: { providerId?: string; model?: string } = {};
+  const app = directApp(dialed);
+
+  const response = await app.request('/v1/realtime?model=%20%20%20', { headers: { upgrade: 'websocket' } });
+
+  expect(response.status).toBe(502);
+  expect(dialed).toEqual({ providerId: 'codex', model: 'gpt-realtime' });
+});
+
 // A direct connection is not pinned to anything, so every eligible candidate is
 // interchangeable — and the design spec's ordering guarantee ("the upstream dial completes
 // before the downstream upgrade is committed") means a second attempt is still an ordinary HTTP

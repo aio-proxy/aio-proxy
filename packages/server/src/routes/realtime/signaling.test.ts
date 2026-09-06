@@ -534,6 +534,56 @@ test('an upstream body whose cancel rejects does not escape the candidate loop',
   expect(((await reshaped.json()) as { error: { code: string } }).error.code).toBe('upstream_rejected');
 });
 
+// `excludedModels` is compared against the requested and the normalized id, and
+// `normalizeRealtimeModel` trims before it maps — so an untrimmed requested value matched
+// neither arm and `" gpt-realtime "` reached the excluded provider, with the wire body already
+// rewritten to `gpt-live-1-codex`. End to end rather than through `selectRealtimeCandidates`
+// directly, because the untrimmed value is what the create hands the selector and the reachable
+// consequence is the upstream fetch: `fetched` is the assertion that the excluded provider was
+// never called at all, not merely that the response status changed.
+test('a padded requested model is still refused by the policy excluding it', async () => {
+  const fetched: string[] = [];
+  const excluding = sourceWith(
+    [
+      realtimeProvider({
+        id: 'codex',
+        answer: () => {
+          fetched.push('codex');
+          return sdpAnswer('call_abc')();
+        },
+      }),
+    ],
+    undefined,
+    [],
+    [{ id: 'codex', excludedModels: ['gpt-realtime'] }],
+  );
+
+  const response = await post(excluding, 'live', JSON.stringify({ sdp: 'v=0', model: ' gpt-realtime ' }), JSON_TYPE);
+
+  expect(response.status).toBe(503);
+  expect(((await response.json()) as { error: { code: string } }).error.code).toBe('realtime_upstream_unavailable');
+  expect(fetched).toEqual([]);
+
+  // The control: with no exclusion configured the very same padded request is served, so the
+  // 503 above is the exclusion and not the padding making the request unroutable.
+  const allowing = sourceWith([
+    realtimeProvider({
+      id: 'codex',
+      answer: () => {
+        fetched.push('codex');
+        return sdpAnswer('call_abc')();
+      },
+    }),
+  ]);
+
+  const served = await post(allowing, 'live', JSON.stringify({ sdp: 'v=0', model: ' gpt-realtime ' }), JSON_TYPE);
+
+  expect(served.status).toBe(201);
+  expect(fetched).toEqual(['codex']);
+});
+
+const JSON_TYPE = 'application/json';
+
 function sdpAnswer(callId: string): () => Response {
   return () =>
     new Response('v=0\r\na=answer\r\n', {
@@ -597,8 +647,12 @@ function sourceWith(
   providers: readonly RuntimeProviderInstance[],
   store = createRealtimeCallStore(),
   logs: ServerLog[] = [],
+  configProviders: readonly { readonly id: string; readonly excludedModels?: readonly string[] }[] = [],
 ): RealtimeRouteSource {
-  const snapshot = { providers, config: { router: { models: {} }, providers: [] } } as unknown as ProviderRouteSnapshot;
+  const snapshot = {
+    providers,
+    config: { router: { models: {} }, providers: configProviders },
+  } as unknown as ProviderRouteSnapshot;
   return {
     acquireProviderSnapshot: () => ({ snapshot, release: () => {} }),
     logger: (entry) => logs.push(entry),
