@@ -278,6 +278,8 @@ createOpenRouter({
 }
 ```
 
+`createOpenRouter()` 不设置 ProviderV3 `embeddingModel`，只设 `textEmbeddingModel`。宿主 `packageExposesEmbeddingModel` 因此对 `kind: ai-sdk` 的 `@openrouter/ai-sdk-provider` 返回 false。OAuth 插件必须把 ProviderV4 `embeddingModel` 接到 `textEmbeddingModel`；2.10.0 的 `OpenRouterEmbeddingModel.doEmbed` POST `/embeddings`。不要因宿主那份 exclude list 从 catalog 去掉 embeddings。Runtime 测试必须 `doEmbed` 一次，断言 `https://openrouter.ai/api/v1/embeddings` 和 durable Bearer。
+
 `compatibility: 'strict'`：请求打的是官方 `https://openrouter.ai/api/v1`，不是第三方兼容代理。不声明 speech / transcription / reranking / raw。
 
 每次 runtime fetch：`credentials.read()` 取当前 key，去掉 AI SDK placeholder `Authorization`，写入 `Authorization: Bearer <apiKey>`。保留 AI SDK 的 `Content-Type`、`Accept`、请求体、abort signal 和其他非 authorization headers。推理流量不标 `control`（默认 model）。不主动写 `Connection`，不伪造 TLS / browser fingerprint。
@@ -336,7 +338,7 @@ Icon 锁定 `'openrouter'`。`@lobehub/icons-static-svg@1.93.0` 含 `icons/openr
 
 新包 `package.json` version 为 `0.19.2`，与当前 lockstep 对齐。
 
-Changeset：`@aio-proxy/plugin-openrouter` minor + `@aio-proxy/shared` minor + `@aio-proxy/core` minor + `@aio-proxy/cli` minor + `@aio-proxy/server` minor + `aio-proxy` minor（共享 parse 与插件同批；产品包 bump 与内部包同级）。
+Changeset：用 `bun changeset` 生成，不要手写固定文件名。`@aio-proxy/plugin-openrouter` minor + `@aio-proxy/shared` minor + `@aio-proxy/core` minor + `@aio-proxy/cli` minor + `@aio-proxy/server` minor + `aio-proxy` minor（共享 parse 与插件同批；产品包 bump 与内部包同级）。不要跑 `changeset version` / `publish`。
 
 `packages/plugins/*` 已在 workspace glob 内。Dashboard 不新增文件。实现顺序：先合 Claude（无宿主 parse），再合本 PR，最后 Muse。最后任务只按字母序 **插入** 本包名，不得用六插件快照覆盖已落地的兄弟包；也不要回填 `capability.resolution.test.ts` / `binary-build.test.ts` 里故意缺的 `@aio-proxy/plugin-xai-grok`。
 
@@ -347,7 +349,7 @@ Changeset：`@aio-proxy/plugin-openrouter` minor + `@aio-proxy/shared` minor + `
 1. 宿主 parse：authorize URL **无** `state` 时缺 state 可收 `code` / deny `error`；authorize URL **有** `state` 时缺 state 仍拒绝（保留 ChatGPT / Antigravity）；错 `state` 仍拒绝；loose-code 仅 `stateRequired === false`；错 origin 仍 mismatch；错误文本不含 secret。
 2. OAuth：authorize 只有 `callback_url` / `code_challenge` / `S256`、无 `state`；token JSON 含 `code` / `code_verifier` / `S256`；`key` 成为 credential；fingerprint / suggestedKey 稳定；control traffic；取消与缺 `key` 失败。
 3. Catalog：Bearer + `output_modalities`；text / embeddings / image 分桶；默认 `openai-compatible`；retryable fallback；401 / 空 language 不 fallback。
-4. Runtime：ProviderV4、`createOpenRouter` base / strict、dynamic Bearer、abort/body 保留、无 raw。
+4. Runtime：ProviderV4、`createOpenRouter` base / strict、dynamic Bearer、abort/body 保留、无 raw。必须经 `createOpenRouterRuntime` 跑 `doGenerate`（`/api/v1/chat/completions`）和 `doEmbed`（`/api/v1/embeddings`），断言 durable Bearer，placeholder `dynamic-credential` 不得泄漏。
 5. Quota：`GET /api/v1/key`、control traffic、`limit`/`limit_remaining` 比例、unlimited 空 items、无 reset。
 6. Plugin / built-in：默认 descriptor、空 account options、中英文 copy、icon、`refreshCredential` 缺省、embedded 注册、CLI 枚举。
 

@@ -22,7 +22,7 @@ Do not implement until that spec is `已确认，进入实现`.
 - `foo/index.ts` is export-only. Private modules inside `foo/` are not imported from outside `foo/`.
 - Catalog/auth/key probes use `aioProxy: { traffic: 'control' }`. Inference fetch does not. Discover / runtime / quota fetch is `options.fetch ?? context.fetch ?? globalThis.fetch`.
 - New package starts at version `0.19.2` to match the current lockstep set.
-- Changeset must list `@aio-proxy/plugin-openrouter`, `@aio-proxy/shared`, `@aio-proxy/core`, `@aio-proxy/cli`, `@aio-proxy/server`, and `aio-proxy`, all `minor`.
+- Author the changeset with `bun changeset`. Select `@aio-proxy/plugin-openrouter`, `@aio-proxy/shared`, `@aio-proxy/core`, `@aio-proxy/cli`, `@aio-proxy/server`, and `aio-proxy`, all `minor`. Commit the generated `.changeset/*.md`. Do not hand-write a fixed filename. Do not run `changeset version` / `publish`.
 - Every non-trivial behavior is RED → verify failure → minimal GREEN → verify pass.
 - Merge order: Claude first (no host parse), then this PR, then Muse. Last task **inserts** `@aio-proxy/plugin-openrouter` at the current sorted index. Do not paste a six-plugin snapshot over siblings. Do not backfill the missing `@aio-proxy/plugin-xai-grok` entries in `capability.resolution.test.ts` / `binary-build.test.ts`.
 - Host parse is gated by the **opened authorize URL**: `stateRequired = new URL(authorizationUrl).searchParams.has('state')`. Missing state is accepted only when `stateRequired === false`. Do not relax state globally. Put the pure function in `@aio-proxy/shared`.
@@ -58,7 +58,7 @@ Do not implement until that spec is `已确认，进入实现`.
 - `packages/plugins/openrouter/src/plugin/index.ts` — export-only.
 - `packages/plugins/openrouter/src/plugin/plugin.ts` — `createOpenRouterPlugin`.
 - `packages/plugins/openrouter/src/plugin/plugin.test.ts` — descriptor, empty options, omitted refresh.
-- `.changeset/openrouter-oauth.md` — product + internal minor notes.
+- `.changeset/<generated-by-bun-changeset>.md` — product + internal minor notes (Task 7).
 - `packages/shared/src/oauth-loopback-callback/index.ts` — export-only.
 - `packages/shared/src/oauth-loopback-callback/oauth-loopback-callback.ts` — pure `resolveOAuthLoopbackCallback`.
 - `packages/shared/src/oauth-loopback-callback/oauth-loopback-callback.test.ts` — shared case table (stateRequired true/false).
@@ -1126,6 +1126,29 @@ test('routes doGenerate through the constructed runtime and injected host fetch'
   expect(JSON.stringify([...(calls[0]?.headers ?? new Headers())])).not.toContain('dynamic-credential');
 });
 
+test('routes doEmbed through the constructed runtime and injected host fetch', async () => {
+  const calls: Request[] = [];
+  const runtime = await createOpenRouterRuntime({
+    ...runtimeContext(),
+    fetch: async (input, init) => {
+      calls.push(new Request(input, init));
+      return Response.json({
+        data: [{ embedding: [0.1, 0.2], index: 0 }],
+        usage: { prompt_tokens: 2, total_tokens: 2 },
+      });
+    },
+  });
+  const result = await runtime.provider.embeddingModel('google/gemini-embed').doEmbed({
+    values: ['hello'],
+  });
+  expect(result.embeddings).toEqual([[0.1, 0.2]]);
+  expect(calls).toHaveLength(1);
+  expect(calls[0]?.url).toBe('https://openrouter.ai/api/v1/embeddings');
+  expect(calls[0]?.method).toBe('POST');
+  expect(calls[0]?.headers.get('authorization')).toBe('Bearer sk-or-v1-test-key');
+  expect(JSON.stringify([...(calls[0]?.headers ?? new Headers())])).not.toContain('dynamic-credential');
+});
+
 test('injects the durable Bearer key and preserves the abort signal', async () => {
   const inits: RuntimeRequestInit[] = [];
   const controller = new AbortController();
@@ -1228,7 +1251,7 @@ export function createOpenRouterDynamicFetch(
 }
 ```
 
-If TypeScript rejects LanguageModelV3 in the ProviderV4 slots, use a single `as ProviderV4['languageModel']` (and the embedding/image equivalents). Do not switch packages.
+`embeddingModel` must call `openrouter.textEmbeddingModel`. `createOpenRouter()` (2.10.0) sets `textEmbeddingModel` / `embedding`, not ProviderV3 `embeddingModel`. Host `packageExposesEmbeddingModel('@openrouter/ai-sdk-provider')` is only for `kind: ai-sdk` config providers; it does not apply to this OAuth wrapper. Keep catalog embeddings. If TypeScript rejects LanguageModelV3 in the ProviderV4 slots, use a single `as ProviderV4['languageModel']` (and the embedding/image equivalents). Do not switch packages.
 
 Create `packages/plugins/openrouter/src/runtime/index.ts`:
 
@@ -1641,7 +1664,7 @@ git commit -m "feat(openrouter): register the oauth adapter descriptor"
 - Modify: `packages/cli/src/plugin-commands/plugin/add.test.ts`
 - Modify: `packages/cli/src/plugin-commands/provider-login/capability.resolution.test.ts`
 - Modify: `packages/cli/__tests__/binary-build.test.ts`
-- Create: `.changeset/openrouter-oauth.md`
+- Create: `.changeset/<generated-by-bun-changeset>.md`
 - Modify: `bun.lock` via `bun install`
 
 **Interfaces:**
@@ -1725,20 +1748,13 @@ In `packages/core/package.json` dependencies, add in alphabetical position:
 
 In `.changeset/config.json` `fixed[0]`, add `"@aio-proxy/plugin-openrouter"` in alphabetical position (after `@aio-proxy/plugin-openai-chatgpt`, before `@aio-proxy/plugin-sdk`).
 
-Create `.changeset/openrouter-oauth.md`:
+Run `bun changeset`. Select **minor** for `@aio-proxy/plugin-openrouter`, `@aio-proxy/shared`, `@aio-proxy/core`, `@aio-proxy/cli`, `@aio-proxy/server`, and `aio-proxy`. Use this note:
 
 ```md
----
-"@aio-proxy/plugin-openrouter": minor
-"@aio-proxy/shared": minor
-"@aio-proxy/core": minor
-"@aio-proxy/cli": minor
-"@aio-proxy/server": minor
-"aio-proxy": minor
----
-
 Add a built-in OpenRouter OAuth plugin that signs in with PKCE, mints a durable user-controlled API key, discovers models, and reads remaining key credits. Loopback parse now requires callback `state` only when the opened authorize URL sent `state`, so OpenRouter (no state echo) can finish without weakening ChatGPT or Antigravity CSRF.
 ```
+
+If the session cannot drive the interactive prompt, run `bunx changeset add --empty` and replace the generated file's frontmatter and body with those same package selections (all `minor`) and note. Commit the generated `.changeset/<adjective>-<noun>-<verb>.md`. Do not invent a filename such as `openrouter-oauth.md`. Do not target only an internal package. Do not run `changeset version` / `publish`.
 
 Run: `bun install`
 
@@ -1778,7 +1794,7 @@ git add \
   packages/core/src/plugins/builtins.test.ts \
   packages/core/package.json \
   .changeset/config.json \
-  .changeset/openrouter-oauth.md \
+  .changeset \
   packages/cli/src/plugin-commands/plugin/add.test.ts \
   packages/cli/src/plugin-commands/provider-login/capability.resolution.test.ts \
   packages/cli/__tests__/binary-build.test.ts \

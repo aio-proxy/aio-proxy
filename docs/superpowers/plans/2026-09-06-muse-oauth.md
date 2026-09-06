@@ -32,7 +32,7 @@ Do not implement until that spec is `已确认，进入实现`.
 - Login errors must not include payment URLs, tokens, or upstream bodies. Host maps them to `AUTHORIZATION_FAILED`.
 - Merge order: Claude, then OpenRouter, then this PR. Last task inserts the package name; do not paste a six-plugin snapshot or backfill missing xAI list entries.
 - Every non-trivial behavior follows RED → verify failure → minimal GREEN → verify pass.
-- Commits use `feat(muse-code): ...`. Do not run `changeset version` / `publish`.
+- Commits use `feat(muse-code): ...`. Author the changeset with `bun changeset`. Do not hand-write a fixed filename. Do not run `changeset version` / `publish`.
 
 ---
 
@@ -1353,7 +1353,7 @@ git commit -m "feat(muse-code): assemble OAuth adapter without refresh"
 - Modify: `packages/cli/src/plugin-commands/plugin/add.test.ts`
 - Modify: `packages/cli/src/plugin-commands/provider-login/capability.resolution.test.ts`
 - Modify: `packages/cli/__tests__/binary-build.test.ts`
-- Create: `.changeset/muse-code-oauth.md`
+- Create: `.changeset/<generated-by-bun-changeset>.md`
 
 **Interfaces:**
 - Consumes: `createMuseCodePlugin`, `MUSE_CODE_PLUGIN_VERSION`.
@@ -1433,19 +1433,13 @@ Add `'@aio-proxy/plugin-muse-code'` to `BUILT_IN_PLUGIN_PACKAGE_NAMES`. In `crea
 },
 ```
 
-Create `.changeset/muse-code-oauth.md` (or `bun changeset` with the same packages):
+Run `bun changeset`. Select **minor** for `@aio-proxy/plugin-muse-code`, `@aio-proxy/core`, and `aio-proxy`. Use this note:
 
 ```md
----
-"@aio-proxy/plugin-muse-code": minor
-"@aio-proxy/core": minor
-"aio-proxy": minor
----
-
 Add a built-in Muse Code OAuth plugin that logs in with a Meta device code, mints a Model API key, and routes Meta models through the OpenAI Responses API.
 ```
 
-Do not target only the plugin package. Do not run `changeset version`.
+If the session cannot drive the interactive prompt, run `bunx changeset add --empty` and replace the generated file's frontmatter and body with those same package selections (all `minor`) and note. Commit the generated `.changeset/<adjective>-<noun>-<verb>.md`. Do not invent a filename such as `muse-code-oauth.md`. Do not target only the plugin package. Do not run `changeset version` / `publish`.
 
 - [ ] **Step 4: Verify GREEN on package tests, build, and check**
 
@@ -1468,7 +1462,7 @@ Final gate before merge: `bun run preflight` (type-aware lint + format check + a
 - [ ] **Step 5: Commit**
 
 ```bash
-git add packages/core/src/plugins/builtins.ts packages/core/src/plugins/builtins.test.ts packages/core/package.json .changeset/config.json .changeset/muse-code-oauth.md packages/cli/src/plugin-commands/plugin/add.test.ts packages/cli/src/plugin-commands/provider-login/capability.resolution.test.ts packages/cli/__tests__/binary-build.test.ts bun.lock
+git add packages/core/src/plugins/builtins.ts packages/core/src/plugins/builtins.test.ts packages/core/package.json .changeset packages/cli/src/plugin-commands/plugin/add.test.ts packages/cli/src/plugin-commands/provider-login/capability.resolution.test.ts packages/cli/__tests__/binary-build.test.ts bun.lock
 git commit -m "feat(muse-code): register built-in OAuth plugin"
 ```
 

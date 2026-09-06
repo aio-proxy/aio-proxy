@@ -37,7 +37,7 @@ Do not implement until that spec is `已确认，进入实现`.
 - Reuse installed catalog deps. Add no new utility dependency.
 - Handwritten non-test files ≤500 lines; split before 400 if a file gains a second responsibility.
 - Every non-trivial behavior is RED → verify failure → minimal GREEN → verify pass.
-- One changeset targeting `@aio-proxy/plugin-anthropic-claude`, `@aio-proxy/core`, and `aio-proxy`, all `minor`.
+- Author the changeset with `bun changeset`. Select `@aio-proxy/plugin-anthropic-claude`, `@aio-proxy/core`, and `aio-proxy`, all `minor`. Commit the generated `.changeset/*.md`. Do not hand-write a fixed filename. Do not run `changeset version` / `publish`.
 - Shared host files (`builtins.ts`, changeset `fixed`, CLI built-in lists) land in the last task. OpenRouter/Muse PRs may touch the same files — rebase, do not invent a shared scaffolding PR.
 
 ---
@@ -1708,7 +1708,7 @@ git commit -m "feat(anthropic-claude): hide OAuth client ID from source and veri
 - Modify: `packages/cli/src/plugin-commands/plugin/add.test.ts`
 - Modify: `packages/cli/src/plugin-commands/provider-login/capability.resolution.test.ts`
 - Modify: `packages/cli/__tests__/binary-build.test.ts`
-- Create: `.changeset/anthropic-claude-oauth.md`
+- Create: `.changeset/<generated-by-bun-changeset>.md`
 
 **Interfaces:**
 - Consumes: `createAnthropicClaudePlugin`, `CLAUDE_PLUGIN_VERSION` from `@aio-proxy/plugin-anthropic-claude`.
@@ -1788,19 +1788,13 @@ Run `bun install` at the repo root so `bun.lock` records the new workspace depen
 
 - [ ] **Step 3: Add the changeset**
 
-Create `.changeset/anthropic-claude-oauth.md`:
+Run `bun changeset`. Select **minor** for `@aio-proxy/plugin-anthropic-claude`, `@aio-proxy/core`, and `aio-proxy`. Use this note:
 
 ```md
----
-'@aio-proxy/plugin-anthropic-claude': minor
-'@aio-proxy/core': minor
-'aio-proxy': minor
----
-
 anthropic-claude: add Claude Pro/Max subscription OAuth login, model discovery, and Anthropic runtime
 ```
 
-Do not target only `@aio-proxy/core`. Do not run `changeset version`.
+If the session cannot drive the interactive prompt, run `bunx changeset add --empty` and replace the generated file's frontmatter and body with those same package selections (all `minor`) and note. Commit the generated `.changeset/<adjective>-<noun>-<verb>.md`. Do not invent a filename such as `anthropic-claude-oauth.md`. Do not target only `@aio-proxy/core`. Do not run `changeset version` / `publish`.
 
 - [ ] **Step 4: Run the host tests to verify they pass**
 
@@ -1817,7 +1811,7 @@ Expected: PASS. `binary-build.test.ts` is an artifact test; run it only if a CLI
 - [ ] **Step 5: Commit**
 
 ```bash
-git add packages/core/src/plugins/builtins.ts packages/core/src/plugins/builtins.test.ts packages/core/package.json bun.lock .changeset/config.json .changeset/anthropic-claude-oauth.md packages/cli/src/plugin-commands/plugin/add.test.ts packages/cli/src/plugin-commands/provider-login/capability.resolution.test.ts packages/cli/__tests__/binary-build.test.ts
+git add packages/core/src/plugins/builtins.ts packages/core/src/plugins/builtins.test.ts packages/core/package.json bun.lock .changeset packages/cli/src/plugin-commands/plugin/add.test.ts packages/cli/src/plugin-commands/provider-login/capability.resolution.test.ts packages/cli/__tests__/binary-build.test.ts
 git commit -m "feat(anthropic-claude): embed Claude Pro/Max OAuth as a built-in plugin"
 ```
 

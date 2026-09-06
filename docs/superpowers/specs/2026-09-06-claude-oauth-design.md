@@ -465,7 +465,7 @@ Dashboard 走现有 built-in catalog，不新增 dashboard 文件。
 
 新包 `package.json` version 为 `0.19.2`，与当前 lockstep 对齐；changeset minor 后整组到 `0.20.0`。
 
-只写 **一个** changeset，同时 target：
+用 `bun changeset` 写 **一个** changeset（不要手写固定文件名），同时 target：
 
 - `@aio-proxy/plugin-anthropic-claude`（minor）
 - `@aio-proxy/core`（minor）

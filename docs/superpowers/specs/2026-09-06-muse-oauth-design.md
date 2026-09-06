@@ -363,7 +363,7 @@ remainingRatio = 1 - Math.min(used_percent, 100) / 100
 
 新包 `package.json` version 为 `0.19.2`，与当前 lockstep 对齐。禁止 `0.0.0`。
 
-Changeset 同时 target `@aio-proxy/plugin-muse-code`、`@aio-proxy/core`、`aio-proxy`，全部 **minor**。不要只 target 内部包。
+Changeset 用 `bun changeset` 生成（不要手写固定文件名），同时 target `@aio-proxy/plugin-muse-code`、`@aio-proxy/core`、`aio-proxy`，全部 **minor**。不要只 target 内部包。不要跑 `changeset version` / `publish`。
 
 Dashboard 通过现有 built-in plugin/catalog 接口自动显示，不新增 dashboard 文件。
 
