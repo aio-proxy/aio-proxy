@@ -1,0 +1,60 @@
+import { describe, expect, test } from 'bun:test';
+
+import {
+  CPA_DEFAULT_SPEECH_MODEL,
+  CPA_DEFAULT_TRANSCRIPTION_MODEL,
+  parseOpenAISpeech,
+  parseOpenAITranscriptionFields,
+} from './openai-audio';
+
+describe('parseOpenAISpeech', () => {
+  test('keeps the client model and records it verbatim', () => {
+    const request = parseOpenAISpeech({ model: 'gpt-4o-mini-tts', input: 'hello', voice: 'alloy' });
+    expect(request.model).toBe('gpt-4o-mini-tts');
+    expect(request.modelDefaulted).toBe(false);
+    expect(request.clientModel).toBe('gpt-4o-mini-tts');
+  });
+
+  test('defaults a missing model to tts-1', () => {
+    const request = parseOpenAISpeech({ input: 'hello', voice: 'alloy' });
+    expect(request.model).toBe(CPA_DEFAULT_SPEECH_MODEL);
+    expect(request.modelDefaulted).toBe(true);
+    expect(request.clientModel).toBeUndefined();
+  });
+
+  test('carries response_format and speed through', () => {
+    const request = parseOpenAISpeech({ input: 'hi', voice: 'nova', response_format: 'opus', speed: 1.25 });
+    expect(request.response_format).toBe('opus');
+    expect(request.speed).toBe(1.25);
+  });
+
+  test('rejects a request without input', () => {
+    expect(() => parseOpenAISpeech({ voice: 'alloy' })).toThrow();
+  });
+
+  test('rejects a request without voice', () => {
+    expect(() => parseOpenAISpeech({ input: 'hi' })).toThrow();
+  });
+});
+
+describe('parseOpenAITranscriptionFields', () => {
+  test('coerces the multipart text encoding of numbers and repeated fields', () => {
+    const parsed = parseOpenAITranscriptionFields({
+      model: 'gpt-4o-transcribe',
+      temperature: '0.2',
+      timestamp_granularities: 'word',
+      language: 'ja',
+    });
+    expect(parsed.model).toBe('gpt-4o-transcribe');
+    expect(parsed.temperature).toBe(0.2);
+    expect(parsed.timestamp_granularities).toEqual(['word']);
+    expect(parsed.language).toBe('ja');
+  });
+
+  test('defaults a blank model to whisper-1 without reporting a client model', () => {
+    const parsed = parseOpenAITranscriptionFields({ model: '  ' });
+    expect(parsed.model).toBe(CPA_DEFAULT_TRANSCRIPTION_MODEL);
+    expect(parsed.modelDefaulted).toBe(true);
+    expect(parsed.clientModel).toBeUndefined();
+  });
+});
