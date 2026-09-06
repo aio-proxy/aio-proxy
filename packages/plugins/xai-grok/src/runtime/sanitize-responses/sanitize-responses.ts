@@ -34,9 +34,6 @@ export function sanitizeXAIGrokResponsesBody(bytes: Uint8Array): Uint8Array {
     const body = asRecord(value);
     if (body === undefined) return bytes;
     for (const field of DROPPED_FIELDS) Reflect.deleteProperty(body, field);
-    const reasoning = asRecord(body['reasoning']);
-    if (reasoning !== undefined) Reflect.deleteProperty(reasoning, 'summary');
-
     const state: ToolCatalogState = { kept: new Set(), removed: new Set() };
     sanitizeToolList(body['tools'], state);
     if (!Array.isArray(body['tools']) || body['tools'].length === 0) Reflect.deleteProperty(body, 'tools');
