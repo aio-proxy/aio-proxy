@@ -1,3 +1,4 @@
+export { multipartFieldNumber } from './field-coercion';
 export { MULTIPART_ENCODED_LIMIT } from './multipart-limits';
 export {
   acquireMultipartSlot,
@@ -12,6 +13,7 @@ export {
 export {
   multipartBoundary,
   type MultipartLimits,
+  type MultipartRawField,
   type MultipartStreamSpec,
   type MultipartUpload,
   type ParsedMultipart,

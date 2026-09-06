@@ -40,6 +40,24 @@ describe('parseMultipartStream', () => {
     expect(parsed.namedUploads['file']?.filename).toBe('a.mp3');
   });
 
+  // Raw passthrough rebuilds the upstream form from `rawFields`, so the bracketed
+  // name and every repeat must survive; `fields` cannot represent either.
+  test('keeps repeated bracketed fields verbatim and in wire order', async () => {
+    const parsed = await parseMultipartStream(
+      body('BOUNDARY', [
+        'Content-Disposition: form-data; name="timestamp_granularities[]"\r\n\r\nword',
+        'Content-Disposition: form-data; name="timestamp_granularities[]"\r\n\r\nsegment',
+      ]),
+      'BOUNDARY',
+      SPEC,
+    );
+    expect(parsed.rawFields).toEqual([
+      { name: 'timestamp_granularities[]', value: 'word' },
+      { name: 'timestamp_granularities[]', value: 'segment' },
+    ]);
+    expect(parsed.fields).toEqual({ timestamp_granularities: 'segment' });
+  });
+
   test('rejects a file part over the per-file limit', async () => {
     const spec: MultipartStreamSpec = { ...SPEC, limits: { ...SPEC.limits, perFile: 4 } };
     await expect(

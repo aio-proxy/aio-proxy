@@ -1,4 +1,5 @@
 import { RequestBodyTooLargeError, withAbortAndIdle } from '../../protocol/request';
+import { ByteWindow } from './byte-window';
 
 const TEXT_DECODER = new TextDecoder();
 const TEXT_ENCODER = new TextEncoder();
@@ -39,8 +40,24 @@ export type MultipartStreamSpec = {
   readonly syntaxError: () => Error;
 };
 
+export type MultipartRawField = {
+  readonly name: string;
+  readonly value: string;
+};
+
 export type ParsedMultipart = {
+  /**
+   * Non-file fields keyed by NORMALIZED name (a trailing `[]` is stripped) and
+   * deduped last-write-wins. This is the map to hand to schema parsing; it cannot
+   * represent repeats and is therefore unsafe for raw-path replay.
+   */
   readonly fields: Record<string, string>;
+  /**
+   * Every non-file part VERBATIM: the field name exactly as the client wrote it
+   * (`timestamp_granularities[]` keeps its brackets), every repeat, in wire order.
+   * Raw-path passthrough must rebuild the upstream form from this, not `fields`.
+   */
+  readonly rawFields: readonly MultipartRawField[];
   readonly uploads: readonly MultipartUpload[];
   /**
    * Last upload seen per normalized field name — for a repeatable field like
@@ -93,6 +110,7 @@ export async function parseMultipartStream(
   let current: OpenPart | undefined;
   const fileCounts = new Map<string, number>();
   const fields: Record<string, string> = {};
+  const rawFields: MultipartRawField[] = [];
   const uploads: MultipartUpload[] = [];
   const namedUploads: Record<string, MultipartUpload> = {};
   const readChunk = () =>
@@ -133,7 +151,12 @@ export async function parseMultipartStream(
       if (part.name !== undefined) namedUploads[part.name] = upload;
       return;
     }
-    if (part.name !== undefined) fields[part.name] = TEXT_DECODER.decode(concatChunks(part.chunks));
+    if (part.name === undefined) return;
+    const value = TEXT_DECODER.decode(concatChunks(part.chunks));
+    fields[part.name] = value;
+    // Recorded separately from `fields` because raw replay needs the bracketed
+    // name and every repeat, both of which the normalized map destroys.
+    if (part.fieldName !== undefined) rawFields.push({ name: part.fieldName, value });
   };
 
   try {
@@ -213,7 +236,7 @@ export async function parseMultipartStream(
     reader.releaseLock();
   }
 
-  return { fields, uploads, namedUploads };
+  return { fields, rawFields, uploads, namedUploads };
 }
 
 type EncodedReadOptions = {
@@ -363,51 +386,4 @@ function isLineStart(window: ByteWindow, index: number): boolean {
 
 function isBoundarySuffix(bytes: Uint8Array): boolean {
   return (bytes[0] === 45 && bytes[1] === 45) || (bytes[0] === 13 && bytes[1] === 10);
-}
-
-class ByteWindow {
-  private buffer = Buffer.alloc(0);
-
-  get byteLength(): number {
-    return this.buffer.byteLength;
-  }
-
-  append(chunk: Uint8Array): void {
-    this.buffer = this.buffer.byteLength === 0 ? Buffer.from(chunk) : Buffer.concat([this.buffer, chunk]);
-  }
-
-  bytes(): Buffer {
-    return this.buffer;
-  }
-
-  indexOf(needle: Uint8Array): number {
-    return this.buffer.indexOf(needle);
-  }
-
-  consume(count: number): Buffer {
-    const taken = this.buffer.subarray(0, count);
-    this.buffer = this.buffer.subarray(count);
-    return taken;
-  }
-
-  flushExcept(keep: number): Buffer | undefined {
-    if (this.buffer.byteLength <= keep) return undefined;
-    return this.consume(this.buffer.byteLength - keep);
-  }
-
-  delimiterOverlap(needle: Uint8Array): number {
-    const max = Math.min(this.buffer.byteLength, Math.max(0, needle.byteLength - 1));
-    for (let keep = max; keep > 0; keep -= 1) {
-      let matched = true;
-      const start = this.buffer.byteLength - keep;
-      for (let offset = 0; offset < keep; offset += 1) {
-        if (this.buffer[start + offset] !== needle[offset]) {
-          matched = false;
-          break;
-        }
-      }
-      if (matched) return keep;
-    }
-    return 0;
-  }
 }
