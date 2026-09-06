@@ -853,3 +853,31 @@ test('materializes an enabled audio-only API provider without a language transpo
   expect(supportsImage(provider!.capabilityIndex, 'tts-1')).toBe(false);
   expect(provider?.raw?.resolve({ protocol: ProviderProtocol.OpenAIAudio, modelId: 'tts-1' })).toBeDefined();
 });
+
+test('gives a configured @ai-sdk/openai provider audio transports and an openai-compatible one none', () => {
+  const config = ConfigSchema.parse({
+    providers: {
+      openai: { kind: ProviderKind.AiSdk, models: ['tts-1'], packageName: '@ai-sdk/openai' },
+      compatible: { kind: ProviderKind.AiSdk, models: ['tts-1'], packageName: '@ai-sdk/openai-compatible' },
+    },
+  });
+
+  const runtime = materializeProviders(config, {
+    createAiSdkProvider: (provider) => ({
+      enabled: provider.enabled,
+      id: provider.id,
+      invoke: () => new ReadableStream(),
+      kind: ProviderKind.AiSdk,
+      models: provider.models,
+    }),
+  });
+  const openai = runtime.providers.find((provider) => provider.id === 'openai');
+  const compatible = runtime.providers.find((provider) => provider.id === 'compatible');
+
+  // The audio convert path can only run when materialization attached a
+  // transport; @ai-sdk/openai-compatible implements neither audio member.
+  expect(openai?.speech).toBeDefined();
+  expect(openai?.transcription).toBeDefined();
+  expect(compatible?.speech).toBeUndefined();
+  expect(compatible?.transcription).toBeUndefined();
+});

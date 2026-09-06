@@ -14,6 +14,7 @@ import { createProviderRequestTransformFetch } from '../../provider-request-tran
 import { createObservedFetch } from '../../request-logging';
 import type { ModelCapabilityIndex, RuntimeProviderInput, RuntimeProviderInstance } from '../../runtime';
 import { buildModelCapabilityIndex } from '../capability-index';
+import { attachAudioTransports } from '../materialize-audio';
 import { attachImageTransport } from '../materialize-image';
 import { probeAiSdk, probeApi, type ProviderProbe } from '../probe';
 import {
@@ -205,11 +206,14 @@ export function materializeProviders(config: Config, options: MaterializeProvide
         );
         const aiSdk = createAiSdk(provider, { fetch: providerFetch });
         const instance = withRoutingDefaults(
-          attachImageTransport(materializeRuntimeProvider(aiSdk, { catalogMetadata: options.catalogMetadata }), {
-            config: provider,
-            fetch: providerFetch,
-            routerModels: config.router.models,
-          }),
+          attachAudioTransports(
+            attachImageTransport(materializeRuntimeProvider(aiSdk, { catalogMetadata: options.catalogMetadata }), {
+              config: provider,
+              fetch: providerFetch,
+              routerModels: config.router.models,
+            }),
+            { config: provider, fetch: providerFetch },
+          ),
           provider,
         );
         probes.set(id, () => probeAiSdk(aiSdk));
