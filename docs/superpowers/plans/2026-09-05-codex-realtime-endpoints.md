@@ -31,7 +31,7 @@ Every task's requirements implicitly include this section. Values are copied ver
 - Call ID pattern: `^[A-Za-z0-9_-]{1,128}$`.
 - Model normalization target: `gpt-live-1-codex`. Direct WebSocket sends the **originally requested** model, defaulting to `gpt-realtime`.
 - Every realtime error response body is `{"error":{"message","type","param":null,"code"}}`. `type` is one of `invalid_request_error`, `not_supported_error`, `api_error`. The core builders in `packages/core/src/protocol/errors.ts` do **not** produce this shape (no `param`, and `openAIUnsupported` emits `type: "unsupported_feature"`) and are private — the realtime module owns its own builder.
-- SDP bodies, `Location` values, and credentials are never logged.
+- SDP bodies, `Location` values, and credentials are never logged, and must not reach a response body. After Task 9 the rule is unqualified: the create's 2xx SDP answer is the only path relaying an upstream body at all, and every other upstream-touching exit filters headers to an allowlist of exactly `content-type` and reshapes the reply into the realtime error envelope.
 - New handwritten non-test implementation files stay under 500 lines; evaluate splitting at 400. `max-lines-per-function` is 160.
 - Colocated tests in same-name directories: `foo/index.ts`, `foo/foo.ts`, `foo/foo.test.ts`.
 - Import `isRecord` from `@aio-proxy/shared` for structural TS contracts in `@aio-proxy/server`; `@aio-proxy/plugin-openai-chatgpt` does **not** depend on `@aio-proxy/shared`, so use `isPlainObject` from `es-toolkit/predicate` there. Never put `isRecord` in `@aio-proxy/plugin-sdk` or `@aio-proxy/types`.
@@ -80,7 +80,7 @@ Every task's requirements implicitly include this section. Values are copied ver
 | `packages/server/src/server-state/lifecycle.ts` | `ServerStateParts.realtimeCalls`; close it in `close()` |
 | `packages/server/src/server/server.ts` | mount the realtime routes; re-export `websocket` |
 | `packages/server/src/server/index.ts`, `packages/server/src/index.ts` | re-export `websocket` |
-| `packages/cli/src/run/run.ts` | `websocket: { ...websocket, idleTimeout: 255 }` |
+| `packages/cli/src/run/run.ts` | exported `proxyServeOptions(app, host, port)` carrying `websocket: { ...websocket, idleTimeout: 255 }` (see Task 11 Step 5) |
 
 `AGENTS.md:154` already carries the architecture exception ("A non-generation transport that carries no model-message conversion and no usage capture (realtime signaling) may own its own selection loop…"). No documentation change is needed. `CLAUDE.md` is a symlink to `AGENTS.md` — never edit it directly.
 
@@ -3998,7 +3998,7 @@ test('a hangup for an unknown call is 404 and a 2xx hangup deletes the record', 
   const first = await app.request('/v1/realtime/calls/call_abc/hangup', { method: 'POST' });
   const second = await app.request('/v1/realtime/calls/call_abc/hangup', { method: 'POST' });
 
-  expect(first.status).toBe(200);
+  expect(first.status).toBe(204);
   expect(second.status).toBe(404);
   expect(((await second.json()) as { error: { code: string } }).error.code).toBe('realtime_call_not_found');
 });
@@ -4263,6 +4263,17 @@ would break every upgrade:
       websocket: { ...websocket, idleTimeout: 255 },
     });
 ```
+
+**Amended during Task 11 (ratified 2026-09-06) — do not restore the in-place literal.** Written
+inline inside `run()` as shown above, no test in the repo can observe any of it: with the whole
+`websocket` key deleted — the state where realtime is dead in production — the CLI suite is
+byte-identical to baseline at 400 pass / 66 files, because `main.test.ts`, `main.dev.test.ts`, and
+`run-lifecycle.test.ts` spawn the real CLI but only poll `/health` over HTTP and never upgrade. The
+options object was therefore extracted into an exported `proxyServeOptions(app, host, port)` factory
+in the same file, which `run()` calls in one line. Scoping stays tight: `packages/cli` is
+`private: true` and `src/run/index.ts` does **not** re-export it, so there is no external contract.
+Collapsing it back into the call site silently deletes the only coverage of the production websocket
+wiring.
 
 - [ ] **Step 6: Verify the CLI still builds and its tests pass**
 

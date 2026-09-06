@@ -60,6 +60,10 @@ export type RealtimeTransportOptions = {
    *  option issues a `CONNECT` — a plugin-constructed socket inherits nothing
    *  from `createProxyFetch`, so the proxy must be passed here explicitly. */
   readonly createWebSocket?: RealtimeWebSocketFactory;
+  /** Seam for tests, defaulting to `OPENAI_REALTIME_WS_BASE`. A proxy assertion has
+   *  to dial a local upstream, and the target the recorded `CONNECT` names is derived
+   *  from this base, so it cannot stay a module constant. */
+  readonly baseUrl?: string;
 };
 
 export function createOpenAIChatGPTRealtime(
@@ -118,20 +122,20 @@ function realtimeHeaders(inbound: Headers, credential: ChatGPTCredential): Heade
   return headers;
 }
 
-function sidebandUrl(input: RealtimeDialInput): string {
+function sidebandUrl(input: RealtimeDialInput, base: string): string {
   const style: RealtimeStyle = input.style;
   // Encoded even though the route will validate `call_id` against
   // `^[A-Za-z0-9_-]{1,128}$`: the plugin owns these URLs and must not let a caller
   // rewrite the target path with a traversal segment.
   const callId = encodeURIComponent(input.callId ?? '');
-  if (style === 'live') return `${OPENAI_REALTIME_WS_BASE}/live/${callId}`;
-  if (style === 'realtime-calls') return `${OPENAI_REALTIME_WS_BASE}/realtime/calls/${callId}`;
+  if (style === 'live') return `${base}/live/${callId}`;
+  if (style === 'realtime-calls') return `${base}/realtime/calls/${callId}`;
   if (style === 'realtime-query') {
-    return `${OPENAI_REALTIME_WS_BASE}/realtime?intent=quicksilver&call_id=${callId}`;
+    return `${base}/realtime?intent=quicksilver&call_id=${callId}`;
   }
   // `realtime-direct` sends the originally requested model, not the normalized
   // one: substituting `gpt-live-1-codex` here would diverge from the reference.
-  return `${OPENAI_REALTIME_WS_BASE}/realtime?model=${encodeURIComponent(input.model ?? 'gpt-realtime')}`;
+  return `${base}/realtime?model=${encodeURIComponent(input.model ?? 'gpt-realtime')}`;
 }
 
 async function realtimeDial(
@@ -162,7 +166,7 @@ async function realtimeDial(
   };
   let socket: WebSocket;
   try {
-    socket = create(sidebandUrl(input), init);
+    socket = create(sidebandUrl(input, options.baseUrl ?? OPENAI_REALTIME_WS_BASE), init);
   } catch (cause) {
     // Bun's `WebSocket` constructor throws synchronously — `SyntaxError: Invalid
     // proxy URL` for a schemeless configured proxy, `TypeError` for a header value

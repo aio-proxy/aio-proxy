@@ -356,7 +356,9 @@ still full answers `503` without dialing.
 | shutdown | store dropped | closed with `1001` |
 
 A sideband close deletes the record because the call is over; a *failed* attach does not, so the
-client may retry. Cleanup also runs on hangup and on shutdown.
+client may retry. Cleanup also runs on hangup and on shutdown. A 2xx hangup answers the caller an
+empty **`204`** — it forwards no upstream header and no upstream body, since the caller already holds
+the `call_id` it tore down (see *Upstream responses*).
 
 ### Sideband
 
@@ -491,14 +493,34 @@ Every response uses `{"error":{"message","type","param":null,"code"}}`. One stat
 | 413 | `invalid_request_error` | `realtime_body_too_large` | create body exceeds 16 MiB |
 | 415 | `invalid_request_error` | `realtime_unsupported_media_type` | create content type is not one of the four accepted |
 | 426 | `invalid_request_error` | `websocket_upgrade_required` | sideband path reached without an upgrade request |
+| 4xx (the upstream's own) | `invalid_request_error` | `upstream_rejected` | the upstream answered a non-retryable `4xx` to a create attempt or to a hangup |
 | 501 | `not_supported_error` | `realtime_capability_not_supported` | an endpoint in the unsupported set |
 | 502 | `api_error` | `realtime_dial_failed` | the upstream answered the sideband handshake with a non-101 status |
 | 503 | `api_error` | `codex_auth_unavailable` | the pinned provider/account is gone, disabled, or its credential is unusable |
 | 503 | `api_error` | `realtime_upstream_unavailable` | no eligible candidate, capacity exhausted, every create attempt failed, or a sideband dial was unreachable or timed out |
 
+A successful hangup answers an empty **`204`**: no upstream header, no upstream body. See *Upstream
+responses* below.
+
 The two `503`s are distinct by origin: `codex_auth_unavailable` means *this call's* pin no longer
-resolves, `realtime_upstream_unavailable` means the proxy could not reach any upstream at all. A
-non-retryable upstream `4xx` on create is returned as the upstream sent it, not remapped.
+resolves, `realtime_upstream_unavailable` means the proxy could not reach any upstream at all.
+
+### Upstream responses
+
+Every response that touches an upstream is rebuilt, never relayed. Upstream headers are filtered to
+an allowlist of exactly `content-type`, so `Location`, `Set-Cookie`, and anything an upstream adds
+later are absent by construction; the create's 2xx adds its own rewritten `Location` on top. The
+create's 2xx SDP answer is the **only** path that relays an upstream body at all — one upstream was
+observed echoing the caller's SDP offer back inside an error string, so every other path cancels the
+upstream body and reshapes the reply into the realtime error envelope. A non-retryable upstream `4xx`
+therefore keeps only its **status**, the one part a client can act on, under `upstream_rejected`; it
+is not returned as the upstream sent it.
+
+A `3xx` carries no actionable content either, because its target lived in the `Location` that may not
+be forwarded. On **create** a `3xx` is an availability failure of that attempt and falls through to
+the next candidate exactly as a `5xx` does, so an exhausted create answers `realtime_upstream_unavailable`.
+On **hangup** a `3xx` is terminal `503 realtime_upstream_unavailable`, because a hangup runs against
+the call's pinned account and has no candidate loop to fail over into.
 
 ## Observability
 
@@ -507,7 +529,11 @@ records for call created, call failed, sideband opened, and sideband closed. `Se
 `packages/server/src/server-log.ts` is a closed union of named log types, so these four are added to
 it — otherwise the calls do not type-check. Fields are the call ID, provider ID, normalized model,
 inbound style, and for closes the normalized close code. **SDP bodies, `Location` values, and
-credentials are never recorded**, matching the existing allowlisted-diagnostics rule. Usage capture
+credentials are never recorded, and must not reach a response body**, matching the existing
+allowlisted-diagnostics rule. A recorded `statusCode` is the **caller-facing** status, not the
+upstream's: a create `4xx` happens to log the upstream's own code, but a create whose attempts were
+exhausted by `3xx`s and a hangup answering `3xx` both log `503`, so an operator correlating against
+upstream logs will not always find the upstream's code. Usage capture
 is deferred; note that standard Realtime does exchange response usage, so "no token metric exists"
 would be wrong as a permanent justification.
 
