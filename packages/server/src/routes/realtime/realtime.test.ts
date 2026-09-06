@@ -1,5 +1,6 @@
 import { afterEach, expect, test } from 'bun:test';
 
+import { RealtimeDialError } from '@aio-proxy/plugin-sdk';
 import { ProviderKind } from '@aio-proxy/types';
 
 import { cleanupServerTestLifecycle, createServer } from '#server-test-lifecycle';
@@ -177,6 +178,51 @@ test('a hangup for an unknown call is 404 and a 2xx hangup deletes the record', 
   expect(((await second.json()) as { error: { code: string } }).error.code).toBe('realtime_call_not_found');
 });
 
+/** `RealtimeDialInput.headers` documents to every plugin that caller credentials are already
+ *  stripped, and the ChatGPT plugin forwards inbound headers selectively on that basis. The
+ *  auth middleware only delivers it on its keyed branch: with `server.apiKeys` empty,
+ *  `authenticateStaticOrAnonymous` admits the request without calling
+ *  `stripCallerCredentials`, so the caller's own `Authorization` was still on the request
+ *  when the sideband handed the headers to `dial`.
+ *
+ *  Run without configured keys deliberately, and only meaningful that way: on a keyed proxy
+ *  the middleware has already deleted these three headers, so the same assertions would hold
+ *  no matter what the sideband did. Asserted through the real app because the fix is a
+ *  property of the composition of the middleware and the route. A header the middleware never
+ *  touches is checked too, otherwise handing `dial` an empty `Headers` would pass. */
+test('a dial on a keyless proxy receives no caller credential, only the harmless headers', async () => {
+  let dialed: Headers | undefined;
+  const app = await createServer({
+    config: { providers: {} },
+    providerInstances: [
+      capturingDialProvider((input) => {
+        dialed = input;
+      }),
+    ],
+    logger: discard,
+  });
+
+  const response = await app.request('/v1/realtime', {
+    headers: {
+      upgrade: 'websocket',
+      connection: 'Upgrade',
+      authorization: `Bearer ${SENTINEL_CREDENTIAL}`,
+      'x-api-key': SENTINEL_CREDENTIAL,
+      'x-goog-api-key': SENTINEL_CREDENTIAL,
+      'openai-beta': 'realtime=v1',
+    },
+  });
+
+  // The fixture rejects the dial, so reaching it at all is what proves the headers were read.
+  expect(response.status).toBe(502);
+  expect(dialed).toBeDefined();
+  for (const header of ['authorization', 'x-api-key', 'x-goog-api-key']) {
+    expect(dialed?.get(header)).toBeNull();
+  }
+  expect([...(dialed?.keys() ?? [])]).toContain('openai-beta');
+  expect([...(dialed?.values() ?? [])].join('\n')).not.toContain(SENTINEL_CREDENTIAL);
+});
+
 /** SDP bodies, `Location` values, and credentials are never logged. Types are the only
  *  compile-time enforcement of that and they are provably insufficient: the excess-property
  *  check that rejects an unknown key does not fire on a pre-built variable nor on a literal
@@ -330,6 +376,22 @@ function upstreamUnavailable(): Response {
     status: 503,
     headers: { 'content-type': 'text/plain', location: `https://${SENTINEL_HOST}/retry` },
   });
+}
+
+/** A realtime provider whose `dial` records the headers it was handed and then rejects, so
+ *  the assertions run on the input the plugin contract is about rather than on a live relay. */
+function capturingDialProvider(capture: (headers: Headers) => void): RuntimeProviderInput {
+  return {
+    ...(realtimeProvider() as unknown as Record<string, unknown>),
+    realtime: {
+      models: ['gpt-live-1-codex'],
+      fetch: () => Promise.reject(new Error('not created in this test')),
+      dial: (input: { readonly headers: Headers }) => {
+        capture(input.headers);
+        return Promise.reject(new RealtimeDialError('refused', { kind: 'rejected' }));
+      },
+    },
+  } as unknown as RuntimeProviderInput;
 }
 
 async function create(app: Awaited<ReturnType<typeof createServer>>, key?: string): Promise<void> {

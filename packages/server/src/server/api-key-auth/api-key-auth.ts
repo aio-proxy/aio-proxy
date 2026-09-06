@@ -53,10 +53,22 @@ export async function authenticateStaticOrAnonymous(
 }
 
 export function stripCallerCredentials(context: Context): void {
-  context.req.raw.headers.delete('authorization');
-  context.req.raw.headers.delete('x-api-key');
-  context.req.raw.headers.delete('x-goog-api-key');
+  for (const header of CALLER_CREDENTIAL_HEADERS) context.req.raw.headers.delete(header);
   context.req.raw = withoutCallerQuery(context.req.raw);
+}
+
+/** The headers a caller may present a proxy credential in. */
+const CALLER_CREDENTIAL_HEADERS = ['authorization', 'x-api-key', 'x-goog-api-key'] as const;
+
+/** A copy of `headers` with every caller credential removed, for the one path that hands
+ *  inbound headers to a plugin. `stripCallerCredentials` cannot stand in for it: it only
+ *  runs on the keyed branch of `authenticateStaticOrAnonymous`, so on a keyless proxy the
+ *  caller's own `Authorization` is still on the request when the route reads it. Copied
+ *  rather than mutated in place so a route keeps its inbound headers for its own use. */
+export function withoutCallerCredentials(headers: Headers): Headers {
+  const copy = new Headers(headers);
+  for (const header of CALLER_CREDENTIAL_HEADERS) copy.delete(header);
+  return copy;
 }
 
 export function bearerToken(value: string | undefined): string | undefined {

@@ -5,6 +5,7 @@ import type { WSContext, WSEvents, WSMessageReceive } from 'hono/ws';
 
 import { callerPrincipal, type CallerPrincipalEnv } from '../../caller-principal';
 import { logServerEvent } from '../../server-log';
+import { withoutCallerCredentials } from '../../server/api-key-auth';
 import { type RealtimeAttachment, sameCallerPrincipal } from './call-store';
 import { INTERNAL_CLOSE_CODE, normalizedClose, SHUTDOWN_CLOSE_CODE } from './close-code';
 import {
@@ -45,7 +46,13 @@ export async function handleRealtimeSideband(
       style,
       ...(prepared.callId === undefined ? {} : { callId: prepared.callId }),
       model: prepared.model,
-      headers: context.req.raw.headers,
+      // `RealtimeDialInput` promises the plugin that caller credentials are already gone,
+      // and a plugin that forwards headers selectively relies on it. The auth middleware
+      // only delivers that on its keyed branch: with no configured key,
+      // `authenticateStaticOrAnonymous` admits the request without stripping, so the
+      // caller's own `Authorization` would reach the plugin here. Stripped at the boundary
+      // that makes the promise, so it holds on both branches.
+      headers: withoutCallerCredentials(context.req.raw.headers),
       signal: context.req.raw.signal,
     });
   } catch (error) {
