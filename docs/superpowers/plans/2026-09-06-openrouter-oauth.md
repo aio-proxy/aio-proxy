@@ -1746,7 +1746,7 @@ These host files are the same ones Claude/Muse (and any other in-flight OAuth pl
 
 - [ ] **Step 1: Write the failing built-in and CLI enumeration updates**
 
-In `packages/core/src/plugins/builtins.test.ts`, insert `'@aio-proxy/plugin-openrouter'` into `expectedBuiltIns` between chatgpt and xai-grok. Update the `builtIn` all-true array length (today `6` trues → `7`). Add `resolveOAuth('@aio-proxy/plugin-openrouter', 'default')` next to the other `toBeDefined()` checks. In the zh-Hans copy test, add:
+In `packages/core/src/plugins/builtins.test.ts`, insert `'@aio-proxy/plugin-openrouter'` into `expectedBuiltIns` between chatgpt and xai-grok. Claude is already registered (merge order), so the rebased `builtIn` all-true array has seven entries; extend it from `7` to `8`. Do not write a six-`true` snapshot. Add `resolveOAuth('@aio-proxy/plugin-openrouter', 'default')` next to the other `toBeDefined()` checks. In the zh-Hans copy test, add:
 
 ```ts
   const openrouter = snapshot.registry.resolveOAuth('@aio-proxy/plugin-openrouter', 'default');

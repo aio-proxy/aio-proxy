@@ -1452,7 +1452,7 @@ git commit -m "feat(muse-code): assemble OAuth adapter without refresh"
 
 - [ ] **Step 1: Write the failing host-list assertions**
 
-In `packages/core/src/plugins/builtins.test.ts`, add `@aio-proxy/plugin-muse-code` to `expectedBuiltIns` in alphabetical order, extend the embedded `builtIn` all-true array length, and add:
+In `packages/core/src/plugins/builtins.test.ts`, add `@aio-proxy/plugin-muse-code` to `expectedBuiltIns` in alphabetical order. Claude and OpenRouter are already registered, so the rebased `builtIn` all-true array has eight entries; extend it from `8` to `9`. Do not write a six- or seven-`true` snapshot. Then add:
 
 ```ts
 expect(snapshot.registry.resolveOAuth('@aio-proxy/plugin-muse-code', 'default')).toBeDefined();
