@@ -1,4 +1,7 @@
-# AIO Proxy
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://fastly.jsdelivr.net/gh/aio-proxy/aio-proxy@main/packages/brand/src/aio-proxy-wordmark-dark.svg">
+  <img alt="AIO Proxy" src="https://fastly.jsdelivr.net/gh/aio-proxy/aio-proxy@main/packages/brand/src/aio-proxy-wordmark-light.svg" width="360">
+</picture>
 
 [English](./README.md) | 简体中文
 
