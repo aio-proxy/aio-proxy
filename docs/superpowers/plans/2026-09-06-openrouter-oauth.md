@@ -1149,6 +1149,29 @@ test('routes doEmbed through the constructed runtime and injected host fetch', a
   expect(JSON.stringify([...(calls[0]?.headers ?? new Headers())])).not.toContain('dynamic-credential');
 });
 
+test('routes image doGenerate through the constructed runtime and injected host fetch', async () => {
+  const calls: Request[] = [];
+  const runtime = await createOpenRouterRuntime({
+    ...runtimeContext(),
+    fetch: async (input, init) => {
+      calls.push(new Request(input, init));
+      return Response.json({
+        data: [{ b64_json: 'Zm9v' }],
+      });
+    },
+  });
+  const result = await runtime.provider.imageModel('black-forest/flux').doGenerate({
+    prompt: 'a cat',
+    n: 1,
+  });
+  expect(result.images).toEqual(['Zm9v']);
+  expect(calls).toHaveLength(1);
+  expect(calls[0]?.url).toBe('https://openrouter.ai/api/v1/images');
+  expect(calls[0]?.method).toBe('POST');
+  expect(calls[0]?.headers.get('authorization')).toBe('Bearer sk-or-v1-test-key');
+  expect(JSON.stringify([...(calls[0]?.headers ?? new Headers())])).not.toContain('dynamic-credential');
+});
+
 test('injects the durable Bearer key and preserves the abort signal', async () => {
   const inits: RuntimeRequestInit[] = [];
   const controller = new AbortController();
@@ -1329,6 +1352,14 @@ test('fails closed on a non-2xx key probe', async () => {
   ).rejects.toThrow(/key/i);
 });
 
+test('rejects a negative spending limit as invalid data', async () => {
+  await expect(
+    readOpenRouterQuota(context(), {
+      fetch: async () => Response.json({ data: { label: 'sk-or-v1-x', limit: -1, limit_remaining: 0 } }),
+    }),
+  ).rejects.toThrow(/invalid data/i);
+});
+
 function context() {
   return {
     credentials: {
@@ -1392,10 +1423,16 @@ export async function readOpenRouterQuota(
   const limit = payload.data.limit;
   const remaining = payload.data.limit_remaining;
   if (limit === null) return { items: [] };
-  if (typeof limit !== 'number' || !Number.isFinite(limit) || typeof remaining !== 'number' || !Number.isFinite(remaining)) {
+  if (
+    typeof limit !== 'number' ||
+    !Number.isFinite(limit) ||
+    limit < 0 ||
+    typeof remaining !== 'number' ||
+    !Number.isFinite(remaining)
+  ) {
     throw new Error('OpenRouter key probe returned invalid data');
   }
-  const remainingRatio = limit <= 0 ? 0 : Math.min(1, Math.max(0, remaining / limit));
+  const remainingRatio = limit === 0 ? 0 : Math.min(1, Math.max(0, remaining / limit));
   return {
     items: [{ id: 'credits', displayName: CREDITS_LABEL, remainingRatio }],
   };

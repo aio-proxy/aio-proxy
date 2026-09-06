@@ -24,7 +24,7 @@ Do not implement until that spec is `已确认，进入实现`.
 - Quota is read-only. Re-read `POST https://api.meta.ai/muse-code/key` with `{}` (no `onboard`). Classify network / timeout / 408 / 429 / 5xx as retryable. Do not persist a key returned from quota. Zero or negative `window_duration_mins` is a rolling window, not `0 hours`.
 - No CPA importer, no `MODEL_API_KEY` paste login, no Z.AI / Claude / OpenRouter, no plugin-sdk changes, no raw capability.
 - Use Provider ID, Provider priority, and Provider weight terminology from `AGENTS.md`. Prefer `es-toolkit` (`isPlainObject`) and Bun APIs (`Bun.CryptoHasher`).
-- Handwritten non-test files stay under 500 lines; split by responsibility before 400. New modules with a colocated test use a same-name directory (`oauth/index.ts`, `oauth/oauth.ts`, `oauth/oauth.test.ts`). Task snippets that say `src/oauth.ts` mean that directory.
+- Handwritten non-test files stay under 500 lines; split by responsibility before 400. New modules with a colocated test use a same-name directory (`oauth/index.ts`, `oauth/oauth.ts`, `oauth/oauth.test.ts`). Task Create / `bun test` / `git add` paths must use that layout. Do not create flat `src/oauth.ts` or `src/catalog.ts` files.
 - Package version is `0.19.2`, never `0.0.0`.
 - Fetch is `options.fetch ?? context.fetch ?? globalThis.fetch`.
 - Every interactive `login()` sends `{ onboard: true }`. Catalog / runtime / quota never send `onboard`.
@@ -71,9 +71,11 @@ Modify host files only where built-in identity is enumerated (last task):
 - Create: `packages/plugins/muse-code/package.json`
 - Create: `packages/plugins/muse-code/tsconfig.json`
 - Create: `packages/plugins/muse-code/rslib.config.ts`
-- Create: `packages/plugins/muse-code/src/schema.ts`
-- Create: `packages/plugins/muse-code/src/oauth.ts`
-- Test: `packages/plugins/muse-code/src/oauth.test.ts`
+- Create: `packages/plugins/muse-code/src/schema/schema.ts`
+- Create: `packages/plugins/muse-code/src/schema/index.ts`
+- Create: `packages/plugins/muse-code/src/oauth/oauth.ts`
+- Create: `packages/plugins/muse-code/src/oauth/index.ts`
+- Test: `packages/plugins/muse-code/src/oauth/oauth.test.ts`
 
 **Interfaces:**
 - Consumes: `zod` from `@aio-proxy/plugin-sdk`.
@@ -139,7 +141,7 @@ import { defineLibraryConfig } from '@aio-proxy/infra/rslib';
 export default defineLibraryConfig();
 ```
 
-Create `packages/plugins/muse-code/src/oauth.test.ts`:
+Create `packages/plugins/muse-code/src/oauth/oauth.test.ts`:
 
 ```ts
 import { describe, expect, test } from 'bun:test';
@@ -147,7 +149,7 @@ import { describe, expect, test } from 'bun:test';
 import type { CredentialPort } from '@aio-proxy/plugin-sdk';
 
 import { currentMuseCodeCredential, museLoginResult } from './oauth';
-import type { MuseCodeCredential } from './schema';
+import type { MuseCodeCredential } from '../schema';
 
 const credential: MuseCodeCredential = {
   oauthAccessToken: 'oauth-secret',
@@ -209,13 +211,13 @@ describe('currentMuseCodeCredential', () => {
 
 - [ ] **Step 2: Run the test and verify RED**
 
-Run: `bun test packages/plugins/muse-code/src/oauth.test.ts`
+Run: `bun test packages/plugins/muse-code/src/oauth/oauth.test.ts`
 
-Expected: FAIL because `./oauth` and `./schema` do not exist.
+Expected: FAIL because `./oauth` and `../schema` do not exist.
 
 - [ ] **Step 3: Implement schema, identity, and read-only current credential**
 
-Create `packages/plugins/muse-code/src/schema.ts`:
+Create `packages/plugins/muse-code/src/schema/schema.ts`:
 
 ```ts
 import { zod } from '@aio-proxy/plugin-sdk';
@@ -230,12 +232,12 @@ export const credentialSchema = zod.object({
 export type MuseCodeCredential = zod.infer<typeof credentialSchema>;
 ```
 
-Create `packages/plugins/muse-code/src/oauth.ts` with only the identity + current-credential surface (login lands in Task 2):
+Create `packages/plugins/muse-code/src/oauth/oauth.ts` with only the identity + current-credential surface (login lands in Task 2):
 
 ```ts
 import type { CredentialPort } from '@aio-proxy/plugin-sdk';
 
-import type { MuseCodeCredential } from './schema';
+import type { MuseCodeCredential } from '../schema';
 
 export type MuseCodeOAuthOptions = {
   readonly fetch?: typeof fetch;
@@ -283,9 +285,22 @@ export async function currentMuseCodeCredential(
 }
 ```
 
+Create `packages/plugins/muse-code/src/schema/index.ts`:
+
+```ts
+export { credentialSchema, type MuseCodeCredential } from './schema';
+```
+
+Create `packages/plugins/muse-code/src/oauth/index.ts`:
+
+```ts
+export { currentMuseCodeCredential, museLoginResult, normalizeMuseEmail } from './oauth';
+export type { MuseCodeOAuthOptions } from './oauth';
+```
+
 - [ ] **Step 4: Verify GREEN and refresh the lockfile**
 
-Run: `bun test packages/plugins/muse-code/src/oauth.test.ts`
+Run: `bun test packages/plugins/muse-code/src/oauth/oauth.test.ts`
 
 Expected: PASS.
 
@@ -307,9 +322,9 @@ git commit -m "feat(muse-code): add plugin package and account identity"
 **Files:**
 - Create: `packages/plugins/muse-code/src/oauth/http.ts`
 - Create: `packages/plugins/muse-code/src/oauth/key.ts`
-- Create: `packages/plugins/muse-code/src/oauth.test-support.ts`
-- Modify: `packages/plugins/muse-code/src/oauth.ts`
-- Test: `packages/plugins/muse-code/src/oauth.login.test.ts`
+- Create: `packages/plugins/muse-code/src/oauth/oauth.test-support.ts`
+- Modify: `packages/plugins/muse-code/src/oauth/oauth.ts`
+- Test: `packages/plugins/muse-code/src/oauth/oauth.login.test.ts`
 
 **Interfaces:**
 - Consumes: `OAuthLoginContext`, `museLoginResult`, `MuseCodeOAuthOptions`.
@@ -317,7 +332,7 @@ git commit -m "feat(muse-code): add plugin package and account identity"
 
 - [ ] **Step 1: Write the failing login + mint tests**
 
-Create `packages/plugins/muse-code/src/oauth.test-support.ts`:
+Create `packages/plugins/muse-code/src/oauth/oauth.test-support.ts`:
 
 ```ts
 import { expect } from 'bun:test';
@@ -359,7 +374,7 @@ export function sequenceFetch(requests: Request[], responses: Response[]): Runti
 }
 ```
 
-Create `packages/plugins/muse-code/src/oauth.login.test.ts`:
+Create `packages/plugins/muse-code/src/oauth/oauth.login.test.ts`:
 
 ```ts
 import { describe, expect, test } from 'bun:test';
@@ -569,7 +584,7 @@ describe('Muse Code device login', () => {
 
 - [ ] **Step 2: Run the login tests and verify RED**
 
-Run: `bun test packages/plugins/muse-code/src/oauth.login.test.ts`
+Run: `bun test packages/plugins/muse-code/src/oauth/oauth.login.test.ts`
 
 Expected: FAIL because `loginMuseCode` is not exported.
 
@@ -690,7 +705,7 @@ export function paymentActionUrl(payload: MuseCodeKeyResponse): string | undefin
 Do not put `paymentActionUrl` on thrown errors or `progress()`. Quota maps `MuseCodeHttpError` with `status: 429` to `MuseCodeQuotaError` `{ retryable: true, status: 429 }`.
 ```
 
-Extend `packages/plugins/muse-code/src/oauth.ts` with `loginMuseCode` (keep Task 1 exports). The login function must:
+Extend `packages/plugins/muse-code/src/oauth/oauth.ts` with `loginMuseCode` (keep Task 1 exports). Re-export `loginMuseCode` from `src/oauth/index.ts`. The login function must:
 
 1. POST form `{ client_id }` to `DEVICE` via `museControlFetch` + `museControlHeaders` + `Content-Type: application/x-www-form-urlencoded`.
 2. Require `device_code`, `user_code`, and `verification_uri` or `verification_uri_complete`.
@@ -717,7 +732,7 @@ function appendCode(text: LocalizedText, code: string): LocalizedText {
 
 - [ ] **Step 4: Verify GREEN**
 
-Run: `bun test packages/plugins/muse-code/src/oauth.test.ts packages/plugins/muse-code/src/oauth.login.test.ts`
+Run: `bun test packages/plugins/muse-code/src/oauth/oauth.test.ts packages/plugins/muse-code/src/oauth/oauth.login.test.ts`
 
 Expected: PASS. No real network. `onboard: true` appears only on the key request in the success test.
 
@@ -733,8 +748,9 @@ git commit -m "feat(muse-code): implement device login and key mint"
 ### Task 3: TTL catalog with Spark snapshot fallback
 
 **Files:**
-- Create: `packages/plugins/muse-code/src/catalog.ts`
-- Test: `packages/plugins/muse-code/src/catalog.test.ts`
+- Create: `packages/plugins/muse-code/src/catalog/catalog.ts`
+- Create: `packages/plugins/muse-code/src/catalog/index.ts`
+- Test: `packages/plugins/muse-code/src/catalog/catalog.test.ts`
 
 **Interfaces:**
 - Consumes: `currentMuseCodeCredential`, `museControlFetch`, `museControlHeaders`.
@@ -742,13 +758,15 @@ git commit -m "feat(muse-code): implement device login and key mint"
 
 - [ ] **Step 1: Write the failing catalog tests**
 
+Create `packages/plugins/muse-code/src/catalog/catalog.test.ts`:
+
 ```ts
 import { describe, expect, test } from 'bun:test';
 
 import type { CredentialPort, RuntimeRequestInit } from '@aio-proxy/plugin-sdk';
 
 import { discoverMuseCodeModels, initialMuseCodeCatalogFallback, MuseCodeCatalogError } from './catalog';
-import type { MuseCodeCredential } from './schema';
+import type { MuseCodeCredential } from '../schema';
 
 const credential: MuseCodeCredential = {
   oauthAccessToken: 'oauth-secret',
@@ -823,7 +841,7 @@ function context() {
 
 - [ ] **Step 2: Run the catalog test and verify RED**
 
-Run: `bun test packages/plugins/muse-code/src/catalog.test.ts`
+Run: `bun test packages/plugins/muse-code/src/catalog/catalog.test.ts`
 
 Expected: FAIL because `./catalog` does not exist.
 
@@ -833,6 +851,17 @@ Expected: FAIL because `./catalog` does not exist.
 
 ```ts
 export const MUSE_CODE_CATALOG_TTL_MS = 6 * 60 * 60_000;
+```
+
+Create `packages/plugins/muse-code/src/catalog/index.ts`:
+
+```ts
+export {
+  discoverMuseCodeModels,
+  initialMuseCodeCatalogFallback,
+  MuseCodeCatalogError,
+  MUSE_CODE_CATALOG_TTL_MS,
+} from './catalog';
 ```
 
 Curated rows (language only, all `extra: { protocol: 'openai-response' }`):
@@ -845,14 +874,14 @@ Curated rows (language only, all `extra: { protocol: 'openai-response' }`):
 
 - [ ] **Step 4: Verify GREEN**
 
-Run: `bun test packages/plugins/muse-code/src/catalog.test.ts packages/plugins/muse-code/src/oauth.test.ts`
+Run: `bun test packages/plugins/muse-code/src/catalog/catalog.test.ts packages/plugins/muse-code/src/oauth/oauth.test.ts`
 
 Expected: PASS. Catalog tests never call `/muse-code/key`.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add packages/plugins/muse-code/src/catalog.ts packages/plugins/muse-code/src/catalog.test.ts
+git add packages/plugins/muse-code/src/catalog
 git commit -m "feat(muse-code): discover Meta models with minted key"
 ```
 
@@ -1019,8 +1048,9 @@ git commit -m "feat(muse-code): route inference through Responses with minted ke
 ### Task 5: Read-only quota from the key endpoint
 
 **Files:**
-- Create: `packages/plugins/muse-code/src/quota.ts`
-- Test: `packages/plugins/muse-code/src/quota.test.ts`
+- Create: `packages/plugins/muse-code/src/quota/quota.ts`
+- Create: `packages/plugins/muse-code/src/quota/index.ts`
+- Test: `packages/plugins/muse-code/src/quota/quota.test.ts`
 
 **Interfaces:**
 - Consumes: `currentMuseCodeCredential`, `requestMuseCodeKey` (onboard omitted).
@@ -1028,13 +1058,15 @@ git commit -m "feat(muse-code): route inference through Responses with minted ke
 
 - [ ] **Step 1: Write the failing quota tests**
 
+Create `packages/plugins/muse-code/src/quota/quota.test.ts`:
+
 ```ts
 import { expect, test } from 'bun:test';
 
 import type { CredentialPort, RuntimeRequestInit } from '@aio-proxy/plugin-sdk';
 
 import { MuseCodeQuotaError, readMuseCodeQuota } from './quota';
-import type { MuseCodeCredential } from './schema';
+import type { MuseCodeCredential } from '../schema';
 
 const credential: MuseCodeCredential = {
   oauthAccessToken: 'oauth-secret',
@@ -1185,7 +1217,7 @@ Window labels are locked: `1 hour` / `1 小时` for 60 minutes. Do not use `Nh` 
 
 - [ ] **Step 2: Run the quota test and verify RED**
 
-Run: `bun test packages/plugins/muse-code/src/quota.test.ts`
+Run: `bun test packages/plugins/muse-code/src/quota/quota.test.ts`
 
 Expected: FAIL because `./quota` does not exist.
 
@@ -1199,16 +1231,22 @@ Window display names and ids (`window_duration_mins` must be a finite **positive
 - other `minutes > 0` → id `${Math.round(minutes)}m`, `{default: "${minutes} minute(s)", 'zh-Hans': "${minutes} 分钟"}`
 - missing, zero, or negative duration → id `window`, `{default: 'Rolling window', 'zh-Hans': '滚动窗口'}`
 
+Create `packages/plugins/muse-code/src/quota/index.ts`:
+
+```ts
+export { MuseCodeQuotaError, readMuseCodeQuota } from './quota';
+```
+
 - [ ] **Step 4: Verify GREEN**
 
-Run: `bun test packages/plugins/muse-code/src/quota.test.ts`
+Run: `bun test packages/plugins/muse-code/src/quota/quota.test.ts`
 
 Expected: PASS. Body is `{}`. Returned `api_key` is unused.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add packages/plugins/muse-code/src/quota.ts packages/plugins/muse-code/src/quota.test.ts
+git add packages/plugins/muse-code/src/quota
 git commit -m "feat(muse-code): read subscription quota without reminting"
 ```
 
@@ -1217,10 +1255,11 @@ git commit -m "feat(muse-code): read subscription quota without reminting"
 ### Task 6: Plugin descriptor without refresh or CPA
 
 **Files:**
-- Create: `packages/plugins/muse-code/src/plugin.ts`
+- Create: `packages/plugins/muse-code/src/plugin/plugin.ts`
+- Create: `packages/plugins/muse-code/src/plugin/index.ts`
 - Create: `packages/plugins/muse-code/src/index.ts`
 - Create: `packages/plugins/muse-code/oauth.smoke.ts`
-- Test: `packages/plugins/muse-code/src/plugin.test.ts`
+- Test: `packages/plugins/muse-code/src/plugin/plugin.test.ts`
 
 **Interfaces:**
 - Consumes: `loginMuseCode`, `discoverMuseCodeModels`, `initialMuseCodeCatalogFallback`, `createMuseCodeRuntime`, `readMuseCodeQuota`, `credentialSchema`.
@@ -1228,14 +1267,16 @@ git commit -m "feat(muse-code): read subscription quota without reminting"
 
 - [ ] **Step 1: Write the failing plugin tests**
 
+Create `packages/plugins/muse-code/src/plugin/plugin.test.ts`:
+
 ```ts
 import { expect, test } from 'bun:test';
 
 import type { OAuthAdapter, PluginDescriptor } from '@aio-proxy/plugin-sdk';
 
-import museCodePlugin, { createMuseCodePlugin, MUSE_CODE_PLUGIN_VERSION } from '.';
-import packageJson from '../package.json' with { type: 'json' };
-import type { MuseCodeCredential } from './schema';
+import museCodePlugin, { createMuseCodePlugin, MUSE_CODE_PLUGIN_VERSION } from '..';
+import packageJson from '../../package.json' with { type: 'json' };
+import type { MuseCodeCredential } from '../schema';
 
 test('exports a versioned Muse Code OAuth descriptor', async () => {
   const adapter = await adapterFrom(museCodePlugin);
@@ -1300,7 +1341,7 @@ test('built artifact exports the Muse Code descriptor', () => {
 
 - [ ] **Step 2: Run the plugin test and verify RED**
 
-Run: `bun test packages/plugins/muse-code/src/plugin.test.ts`
+Run: `bun test packages/plugins/muse-code/src/plugin/plugin.test.ts`
 
 Expected: FAIL because `./plugin` / index exports do not exist.
 
@@ -1318,6 +1359,12 @@ export const englishPresentationText = {
   deviceInstructions: 'Enter code',
   waitingForAuthorization: 'Waiting for Muse authorization',
 };
+```
+
+Create `packages/plugins/muse-code/src/plugin/index.ts`:
+
+```ts
+export { createMuseCodePlugin, englishPresentationText } from './plugin';
 ```
 
 `src/index.ts` exports catalog/oauth/plugin/quota/runtime/schema plus `MUSE_CODE_PLUGIN_VERSION` from `package.json` and `export default createMuseCodePlugin(englishPresentationText)`.

@@ -314,6 +314,7 @@ Accept: application/json
 - 当 `limit` 是有限正数且 `limit_remaining` 是有限数：一个 item `id: "credits"`，`displayName: { default: "Credits", "zh-Hans": "额度" }`，`remainingRatio = clamp(limit_remaining / limit, 0, 1)`；
 - `limit === null`（key 无上限）：成功返回 `items: []`（与 Copilot 无计量座位相同：读成功但无表盘），不抛错、不伪造账号余额比例；
 - `limit === 0`：`remainingRatio = 0`；
+- `limit < 0` 或非有限数：quota read 失败。不要把负数当成已耗尽（`remainingRatio: 0`）；
 - 缺 `data`、非 2xx、非法 JSON：quota read 失败。错误不含 key 或完整 body。
 
 不声明 `quota.reset`，不返回 `resetCredits`。
@@ -349,8 +350,8 @@ Changeset：用 `bun changeset` 生成，不要手写固定文件名。`@aio-pro
 1. 宿主 parse：authorize URL **无** `state` 时缺 state 可收 `code` / deny `error`；authorize URL **有** `state` 时缺 state 仍拒绝（保留 ChatGPT / Antigravity）；错 `state` 仍拒绝；loose-code 仅 `stateRequired === false`；错 origin 仍 mismatch；错误文本不含 secret。
 2. OAuth：authorize 只有 `callback_url` / `code_challenge` / `S256`、无 `state`；token JSON 含 `code` / `code_verifier` / `S256`；`key` 成为 credential；fingerprint / suggestedKey 稳定；control traffic；取消与缺 `key` 失败。
 3. Catalog：Bearer + `output_modalities`；text / embeddings / image 分桶；默认 `openai-compatible`；retryable fallback；401 / 空 language 不 fallback。
-4. Runtime：ProviderV4、`createOpenRouter` base / strict、dynamic Bearer、abort/body 保留、无 raw。必须经 `createOpenRouterRuntime` 跑 `doGenerate`（`/api/v1/chat/completions`）和 `doEmbed`（`/api/v1/embeddings`），断言 durable Bearer，placeholder `dynamic-credential` 不得泄漏。
-5. Quota：`GET /api/v1/key`、control traffic、`limit`/`limit_remaining` 比例、unlimited 空 items、无 reset。
+4. Runtime：ProviderV4、`createOpenRouter` base / strict、dynamic Bearer、abort/body 保留、无 raw。必须经 `createOpenRouterRuntime` 跑 `doGenerate`（`/api/v1/chat/completions`）、`doEmbed`（`/api/v1/embeddings`）和 image `doGenerate`（`/api/v1/images`），断言 durable Bearer，placeholder `dynamic-credential` 不得泄漏。
+5. Quota：`GET /api/v1/key`、control traffic、`limit`/`limit_remaining` 比例、unlimited 空 items、负 `limit` 失败、无 reset。
 6. Plugin / built-in：默认 descriptor、空 account options、中英文 copy、icon、`refreshCredential` 缺省、embedded 注册、CLI 枚举。
 
 完成前运行新 plugin tests、CLI loopback tests、server oauth-login-session tests、core built-in tests，并执行 `bun run check`；发布门禁提到 `bun run preflight`。
