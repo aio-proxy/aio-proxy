@@ -3,6 +3,7 @@ import { dirname } from 'node:path';
 
 import { AtomicConfigFile, configPath, parseRuntimeConfig } from '@aio-proxy/core';
 import { AppError, ConfigWriteError, m, PortOutOfRangeError } from '@aio-proxy/i18n';
+import { websocket, type AppType } from '@aio-proxy/server';
 
 import { EDITS_MULTIPART_ENCODED_LIMIT } from '../../../core/src/ingress/openai-image/multipart-counters';
 import packageJson from '../../package.json' with { type: 'json' };
@@ -18,6 +19,8 @@ const VERSION = packageJson.version;
 const CONFIG_SCHEMA_URL = `https://cdn.jsdelivr.net/npm/aio-proxy@${VERSION}/config.schema.json`;
 
 export const MAX_REQUEST_BODY_SIZE = EDITS_MULTIPART_ENCODED_LIMIT;
+
+type ProxyApp = Pick<AppType, 'fetch'>;
 
 export const DEFAULT_CONFIG = {
   $schema: CONFIG_SCHEMA_URL,
@@ -124,6 +127,25 @@ const assertPortAvailable = (host: string, port: number) => {
   }
 };
 
+/** Exported so the serve options the proxy actually binds with are reachable from a test:
+ *  `run()` itself binds a socket, spawns config watchers, and installs signal handlers, so
+ *  the options object is the only part that can be asserted on directly. */
+export const proxyServeOptions = (app: ProxyApp, host: string, port: number) => ({
+  hostname: host,
+  port,
+  idleTimeout: 255,
+  maxRequestBodySize: MAX_REQUEST_BODY_SIZE,
+  // `app.fetch` is passed by reference so it keeps receiving Bun's second argument:
+  // `upgradeWebSocket` reaches the server through `c.env`, so a wrapper forwarding only
+  // the request would break every realtime upgrade.
+  fetch: app.fetch,
+  // The websocket handler has its OWN idleTimeout, defaulting to 120s, and the
+  // `idleTimeout: 255` above does not carry over to an upgraded socket. Hono's
+  // `websocket` is a shared module singleton, so it is spread rather than mutated.
+  // `sendPings` stays at its default `true` so keepalive resets the idle window.
+  websocket: { ...websocket, idleTimeout: 255 },
+});
+
 export const run = (deps: CliDeps) => async (options: RunOptions) => {
   const resolvedConfigPath = configPath();
   const dashboardUrlFor = (host: string, port: number) => {
@@ -160,13 +182,7 @@ export const run = (deps: CliDeps) => async (options: RunOptions) => {
   // 255s is Bun's maximum idle window.
   let server: ReturnType<typeof Bun.serve>;
   try {
-    server = Bun.serve({
-      hostname: host,
-      port,
-      idleTimeout: 255,
-      maxRequestBodySize: MAX_REQUEST_BODY_SIZE,
-      fetch: app.fetch,
-    });
+    server = Bun.serve(proxyServeOptions(app, host, port));
   } catch (error) {
     try {
       app.close();

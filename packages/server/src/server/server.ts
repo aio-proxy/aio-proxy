@@ -41,6 +41,12 @@ import { requireModelAuthentication, type AgentEnv } from './agent-auth';
 import { authenticationError } from './api-key-auth/api-key-auth';
 import { agentCatalog, codexClientModels, listModels } from './list-models/index';
 
+/** The Bun WebSocket handler the realtime routes' `upgradeWebSocket` needs at the
+ *  `Bun.serve` call site. `createServer` returns `Object.assign(routes, { close })`, so this
+ *  cannot ride on the app object and has to be a module-level export. Hono exports it as a
+ *  module singleton shared by every importer, so a call site must spread it, never mutate it. */
+export { websocket } from 'hono/bun';
+
 export const serverDefaults = {
   host: '127.0.0.1',
   port: 9_317,
