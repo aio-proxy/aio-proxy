@@ -8,6 +8,8 @@ import {
   supportsEmbedding,
   supportsImage,
   supportsLanguage,
+  supportsSpeech,
+  supportsTranscription,
 } from './capability-index';
 
 // Index membership rules:
@@ -232,6 +234,55 @@ describe('buildModelCapabilityIndex', () => {
     expect(supportsImage(index, 'gpt-image-2')).toBe(true);
     expect(supportsImage(index, 'gpt-5')).toBe(false);
     expect(supportsLanguage(index, 'gpt-5')).toBe(true);
+  });
+
+  test('primary openai-audio marks finite non-catalog ids as speech and transcription only', () => {
+    const index = buildModelCapabilityIndex({
+      primaryProtocol: ProviderProtocol.OpenAIAudio,
+      models: ['tts-1', 'whisper-1'],
+      preservedAliasTargets: ['alias-target'],
+    });
+    // An audio endpoint declares no per-model direction, so both are granted and
+    // the upstream rejects the mismatched one. What must never happen is the
+    // audio-only provider becoming a language or embedding candidate.
+    for (const id of ['tts-1', 'whisper-1', 'alias-target']) {
+      expect(supportsSpeech(index, id)).toBe(true);
+      expect(supportsTranscription(index, id)).toBe(true);
+      expect(supportsLanguage(index, id)).toBe(false);
+      expect(supportsEmbedding(index, id)).toBe(false);
+      expect(supportsImage(index, id)).toBe(false);
+    }
+  });
+
+  test('audio-primary with a language extra endpoint keeps finite ids chat-capable', () => {
+    const index = buildModelCapabilityIndex({
+      primaryProtocol: ProviderProtocol.OpenAIAudio,
+      extraProtocols: [ProviderProtocol.OpenAICompatible],
+      models: ['gpt-4o-audio-preview'],
+    });
+    expect(supportsLanguage(index, 'gpt-4o-audio-preview')).toBe(true);
+    expect(supportsSpeech(index, 'gpt-4o-audio-preview')).toBe(true);
+    expect(supportsTranscription(index, 'gpt-4o-audio-preview')).toBe(true);
+  });
+
+  test('chat-primary with an audio extra endpoint grants audio alongside language', () => {
+    const index = buildModelCapabilityIndex({
+      primaryProtocol: ProviderProtocol.OpenAICompatible,
+      extraProtocols: [ProviderProtocol.OpenAIAudio],
+      models: ['gpt-5'],
+    });
+    expect(supportsLanguage(index, 'gpt-5')).toBe(true);
+    expect(supportsSpeech(index, 'gpt-5')).toBe(true);
+    expect(supportsTranscription(index, 'gpt-5')).toBe(true);
+  });
+
+  test('a provider with no audio endpoint never grants speech or transcription', () => {
+    const index = buildModelCapabilityIndex({
+      primaryProtocol: ProviderProtocol.OpenAICompatible,
+      models: ['gpt-5'],
+    });
+    expect(supportsSpeech(index, 'gpt-5')).toBe(false);
+    expect(supportsTranscription(index, 'gpt-5')).toBe(false);
   });
 });
 

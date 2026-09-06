@@ -32,6 +32,7 @@ export function buildModelCapabilityIndex(input: CapabilityIndexInput): ModelCap
   const embeddingIds = new Set((input.catalog?.embedding ?? []).map((descriptor) => descriptor.id));
   const finiteIds = finiteNonCatalogIds(input);
   const ids = new Set<string>([...languageIds, ...imageIds, ...embeddingIds, ...finiteIds]);
+  const protocolServed = protocolCapabilitySet(input);
   const index: Record<string, Set<InboundCapability>> = {};
   for (const id of ids) {
     const capabilities = new Set<InboundCapability>();
@@ -47,9 +48,43 @@ export function buildModelCapabilityIndex(input: CapabilityIndexInput): ModelCap
     const catalogNonLanguage = !languageIds.has(id) && (imageIds.has(id) || embeddingIds.has(id));
     if (finiteIds.has(id) && synthesizesLanguage(input) && !catalogNonLanguage) capabilities.add('language');
     if (finiteIds.has(id) && synthesizesEmbedding(input) && !imageOnly) capabilities.add('embedding');
+    if (finiteIds.has(id) && protocolServed.has('speech')) capabilities.add('speech');
+    if (finiteIds.has(id) && protocolServed.has('transcription')) capabilities.add('transcription');
     if (capabilities.size > 0) index[id] = capabilities;
   }
   return index;
+}
+
+/**
+ * Which inbound capabilities a wire protocol can serve. `language` is
+ * deliberately absent: language is synthesized by `synthesizesLanguage`, which
+ * also honours the no-catalog and catalog-membership rules this table cannot
+ * see. Only the single-purpose protocols are listed, so a new protocol defaults
+ * to granting nothing rather than silently joining the language pool.
+ */
+const PROTOCOL_CAPABILITIES: Partial<Readonly<Record<ProviderProtocol, readonly InboundCapability[]>>> = {
+  [ProviderProtocol.OpenAIImage]: ['image'],
+  // One audio base URL serves /audio/speech and /audio/transcriptions alike and
+  // never says which direction a given model runs, so both are granted and the
+  // upstream rejects the mismatched one. Granting neither would leave an
+  // audio-only provider unroutable.
+  [ProviderProtocol.OpenAIAudio]: ['speech', 'transcription'],
+};
+
+// Every protocol this provider serves, primary plus extra endpoints.
+function protocolCapabilitySet(input: CapabilityIndexInput): ReadonlySet<InboundCapability> {
+  const protocols = [
+    ...(input.primaryProtocol === undefined ? [] : [input.primaryProtocol]),
+    ...(input.extraProtocols ?? []),
+  ];
+  return new Set(protocols.flatMap((protocol) => PROTOCOL_CAPABILITIES[protocol] ?? []));
+}
+
+// Protocols with no language surface at all. A provider whose ONLY endpoints are
+// these can never answer a chat request, so its ids must stay out of the
+// synthesized language pool.
+function servesLanguage(protocol: ProviderProtocol): boolean {
+  return PROTOCOL_CAPABILITIES[protocol] === undefined;
 }
 
 // models.dev sits beneath upstream metadata: it only speaks for ids whose upstream
@@ -71,18 +106,18 @@ function finiteNonCatalogIds(input: CapabilityIndexInput): Set<string> {
 
 function synthesizesLanguage(input: CapabilityIndexInput): boolean {
   if (hasLanguageProtocol(input.extraProtocols)) return true;
-  if (input.primaryProtocol === ProviderProtocol.OpenAIImage) return false;
+  if (input.primaryProtocol !== undefined && !servesLanguage(input.primaryProtocol)) return false;
   return (
     input.primaryProtocol !== undefined || input.catalog === undefined || (input.catalog.language?.length ?? 0) > 0
   );
 }
 
 function hasLanguageProtocol(protocols: readonly ProviderProtocol[] | undefined): boolean {
-  return protocols?.some((protocol) => protocol !== ProviderProtocol.OpenAIImage) === true;
+  return protocols?.some(servesLanguage) === true;
 }
 
 function synthesizesEmbedding(input: CapabilityIndexInput): boolean {
-  if (input.primaryProtocol === ProviderProtocol.OpenAIImage) return false;
+  if (input.primaryProtocol !== undefined && !servesLanguage(input.primaryProtocol)) return false;
   return input.catalog === undefined;
 }
 
@@ -96,6 +131,14 @@ export function supportsImage(index: ModelCapabilityIndex, modelId: string): boo
 
 export function supportsEmbedding(index: ModelCapabilityIndex, modelId: string): boolean {
   return index[modelId]?.has('embedding') === true;
+}
+
+export function supportsSpeech(index: ModelCapabilityIndex, modelId: string): boolean {
+  return index[modelId]?.has('speech') === true;
+}
+
+export function supportsTranscription(index: ModelCapabilityIndex, modelId: string): boolean {
+  return index[modelId]?.has('transcription') === true;
 }
 
 export function metadataHasImageOutput(metadata: ModelMetadata | RuntimeModelMetadata | undefined): boolean {
