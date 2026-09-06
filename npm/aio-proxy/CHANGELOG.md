@@ -1,5 +1,107 @@
 # aio-proxy
 
+## 0.19.2
+
+### Patch Changes
+
+- [#297](https://github.com/aio-proxy/aio-proxy/pull/297) [`ec132d7`](https://github.com/aio-proxy/aio-proxy/commit/ec132d7347491f28ea21445f76bc697a4535b76c) Thanks [@baranwang](https://github.com/baranwang)! - cli: accept `aio-proxy update` as an alias of `aio-proxy upgrade`, including the same flags and shell completion.
+
+- [#296](https://github.com/aio-proxy/aio-proxy/pull/296) [`ad353c0`](https://github.com/aio-proxy/aio-proxy/commit/ad353c005a6458aa30861fb2ed2e183231a20b6f) Thanks [@baranwang](https://github.com/baranwang)! - docs: publish the curl installer at https://aioproxy.dev/install.sh; it installs the prebuilt binary from the published `@aio-proxy/cli-<os>-<arch>` npm package — the same artifact `aio-proxy upgrade` and the Homebrew tap use — and refuses musl-based Linux, which has no published build, instead of installing a glibc binary that cannot start
+
+- [#287](https://github.com/aio-proxy/aio-proxy/pull/287) [`83c67f1`](https://github.com/aio-proxy/aio-proxy/commit/83c67f1cf670752e14ebf66bc95ab0799923b48e) Thanks [@baranwang](https://github.com/baranwang)! - Hide non-text models from the Codex model picker
+
+  The Codex client catalog (`/v1/models?client_version=...`) listed every routable model, including image and video generators such as `gpt-image-2` and the `grok-imagine-*` family. Codex calls whatever it lists as a text chat model, so those rows were unselectable in practice.
+
+  The catalog now only lists models whose resolved `capabilities.modalities.output` includes `text`. Models whose output modality no metadata layer declares are hidden too — declare it under `router.models.<slug>.metadata.capabilities.modalities.output` (or `metadata.extend`) to bring one back.
+
+- [#296](https://github.com/aio-proxy/aio-proxy/pull/296) [`46087fb`](https://github.com/aio-proxy/aio-proxy/commit/46087fb5ab1d28295e9912d8873e2ef574963c2a) Thanks [@baranwang](https://github.com/baranwang)! - dashboard: point the Settings documentation link at https://aioproxy.dev
+
+- [#290](https://github.com/aio-proxy/aio-proxy/pull/290) [`4e3f656`](https://github.com/aio-proxy/aio-proxy/commit/4e3f656e4df4d53a171b42ac783e3108ff1468f0) Thanks [@baranwang](https://github.com/baranwang)! - Keep `reasoning.summary` on Grok CLI `/v1/responses` requests
+
+  cli-chat-proxy now accepts `reasoning.summary`. The xAI plugin still strips
+  `previous_response_id` (Zero Data Retention 404) and the other Codex Desktop
+  fields that HTTP `/v1/responses` rejects, but it no longer deletes `summary`.
+
+- [#292](https://github.com/aio-proxy/aio-proxy/pull/292) [`4f4e324`](https://github.com/aio-proxy/aio-proxy/commit/4f4e324c4625a1d4582d4292b7b9e3e96cbdabb6) Thanks [@baranwang](https://github.com/baranwang)! - On the OAuth provider editor, put Connection above Identity and fill a blank display name from the account label after a successful login.
+
+- [#291](https://github.com/aio-proxy/aio-proxy/pull/291) [`f71a576`](https://github.com/aio-proxy/aio-proxy/commit/f71a5760db5852f2c340e089c3858ae81da7053c) Thanks [@baranwang](https://github.com/baranwang)! - Accept OpenAI Responses requests whose tool calls and outputs lost their pairing
+
+  Context compaction can truncate a conversation between a `function_call` and its
+  `function_call_output`, leaving one side without the other. Codex produces this
+  legitimately, but the model path rejected an unmatched output with a terminal 400
+  that also skipped every remaining provider candidate, and emitted an unmatched
+  call in a shape upstreams refuse.
+
+  Both sides are now carried through instead of failing. An output with no call
+  becomes a user note that preserves its text and images; a call with no output
+  becomes an assistant note naming the tool and its arguments verbatim. Neither
+  fabricates a tool result the caller did not send, and the notes are byte-stable
+  across turns so upstream prefix caching still hits. A `request.feature_downgraded`
+  entry records each conversion.
+
+- [#291](https://github.com/aio-proxy/aio-proxy/pull/291) [`4f3154e`](https://github.com/aio-proxy/aio-proxy/commit/4f3154e79a3f2bf1d5d23081e8dd099cc7841ecd) Thanks [@baranwang](https://github.com/baranwang)! - Recover from tool-pairing 400s on the raw passthrough path
+
+  When the inbound protocol matches the provider's, an OpenAI Responses request is
+  forwarded byte-for-byte and the model path's conversion never runs. A transcript
+  whose `function_call` lost its output — or whose output lost its call — was
+  therefore still rejected upstream with a terminal 400, with no fallback to any
+  remaining candidate.
+
+  Such a rejection is now recovered the same way `invalid_encrypted_content`
+  already was: the request is sent unchanged, and only after the upstream names
+  the pairing failure is it replayed once with the unpaired items narrated as
+  plain messages — an assistant note for a call nobody answered, a user note for
+  an output with no call, never a fabricated tool result. Well-formed requests are
+  byte-identical to before, so upstream prefix caching is untouched.
+
+  The replay is limited to the two rejections a pairing repair can actually fix.
+  `No tool output found for tool call …`, which a strict gateway emits when an
+  assistant message sits inside a call/output batch, is forwarded unretried.
+
+  A narration note is never inserted into a tool batch that is still open — on
+  either path. Substituting one between a paired call and its output would create
+  exactly that interleaving, so the note waits until the batch's last result
+  lands. On the model path the same rule keeps an orphan note from splitting an
+  assistant tool-call turn from its tool results, which OpenAI-compatible and
+  Anthropic providers reject. Items the caller sent keep their positions; only the
+  synthesized notes move.
+
+  Adapters that implement `rawRetry` now receive the frame that classified as
+  `retry` as a fourth argument to `rewrite`, so a hook handling several rejections
+  repairs only what the upstream objected to.
+
+- [#289](https://github.com/aio-proxy/aio-proxy/pull/289) [`dd0e007`](https://github.com/aio-proxy/aio-proxy/commit/dd0e007bcf4832ebeb1b54862fb0cbfc1dfda76a) Thanks [@baranwang](https://github.com/baranwang)! - Serve the config JSON Schema from `@aio-proxy/types` instead of duplicating it in the launcher package.
+
+  `@aio-proxy/types` is a published package and already exports the generated schema, so the `aio-proxy` launcher no longer copies it in at pack time. A bootstrapped `config.jsonc` now gets `"$schema": "https://unpkg.com/@aio-proxy/types/config.schema.json"` — unpinned, because nothing rewrites that line after bootstrap and a pinned version would go stale as the schema grows.
+
+  Existing configs keep working: they point at a released version whose tarball still carries the old copy. Update the line to the new URL to keep editor completion and validation current on future releases.
+
+- [#293](https://github.com/aio-proxy/aio-proxy/pull/293) [`cf45f02`](https://github.com/aio-proxy/aio-proxy/commit/cf45f0222aa85754e64f19dee184228769c97ddd) Thanks [@baranwang](https://github.com/baranwang)! - Render the AIO Proxy wordmark from vector geometry instead of a webfont
+
+  The dashboard logo drew "Proxy" with an SVG `<text>` element styled
+  `font-heading font-semibold`. If that webfont had not loaded when the logo
+  painted, the word fell back to whatever the system resolved, so the wordmark's
+  right half rendered in a different typeface from its left. It is now a single
+  path converted from the same letterforms, so the logo looks identical on first
+  paint and needs no font loading at all. The wordmark is slightly wider as a
+  result (viewBox `0 0 1800 480` to `0 0 1920 480`); it is set in `em` units and
+  still scales to its surrounding text.
+
+  The favicon shipped with both surfaces keeps its shape. Its dark-mode ink moves
+  from pure white to the theme's off-white (`#fbfbf9`), matching the foreground
+  color the rest of the UI already uses; its light-mode ink is unchanged.
+
+- [#286](https://github.com/aio-proxy/aio-proxy/pull/286) [`981e765`](https://github.com/aio-proxy/aio-proxy/commit/981e765965a881af845aff413db711f779ff2ffb) Thanks [@baranwang](https://github.com/baranwang)! - Drop reasoning item ids the ChatGPT Codex backend never persisted.
+
+  A turn served through the AI SDK model path leaves the proxy's own synthetic
+  "rs_..." id on the reasoning item, and the client replays that id in the next
+  turn's input. This runtime forces store: false, so the upstream never persisted
+  it and the lookup failed with "Item with id 'rs_...' not found. Items are not
+  persisted when store is set to false." Reasoning items that carry no
+  encrypted_content now forward without the id and are re-sent as new content;
+  the summary is kept. The invalid_encrypted_content retry replays through the
+  same rewrite, so an item that just lost its unusable blob also loses the id.
+
 ## 0.19.1
 
 ### Patch Changes
