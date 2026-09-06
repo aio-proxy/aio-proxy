@@ -1081,4 +1081,4 @@ git commit -m "chore: add changeset for automatic updates"
 
 **Placeholders:** none.
 
-**Type names:** `AutoUpdateController`, `AutoUpdateApplyResult`, `DashboardReleaseViewSchema`, `DashboardReleaseApplyResponseSchema`, `createCliAutoUpdateHooks`, `isManagedAutoUpdateProcess`, `resolveUpgradeTargetFrom`, `resolveStableManagedExec`, `applyReleaseMutationFn` are used consistently across tasks.
+**Type names:** `AutoUpdateController`, `AutoUpdateApplyResult`, `DashboardReleaseViewSchema`, `DashboardReleaseApplyResponseSchema`, `createCliAutoUpdateHooks`, `isManagedAutoUpdateProcess`, `resolveUpgradeTargetFrom`, `resolveStableManagedExec`, `UpgradeTarget.command`, `applyReleaseMutationFn` are used consistently across tasks.
