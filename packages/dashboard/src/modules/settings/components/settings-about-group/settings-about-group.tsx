@@ -11,7 +11,7 @@ import { SettingsExternalLink } from './settings-external-link';
 import { SettingsRowChevron } from './settings-row-chevron';
 
 const REPOSITORY_URL = 'https://github.com/aio-proxy/aio-proxy';
-const DOCUMENTATION_URL = 'https://aio-proxy.github.io';
+const DOCUMENTATION_URL = 'https://aioproxy.dev';
 
 export const SettingsAboutGroup: React.FC = () => {
   const release = useReleaseQuery();

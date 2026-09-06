@@ -4,6 +4,8 @@ on:
   push:
     branches: [main]
     paths:
+      # `website/docs/public/install.sh` is served as https://aioproxy.dev/install.sh,
+      # so the curl installer ships through this deploy too.
       - 'website/**'
       # The website renders its nav wordmark and favicon from these packages, so a commit that
       # touches only them still changes the deployed site.
@@ -19,9 +21,23 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Deploys this repository's own Pages site, served at the apex of the aioproxy.dev
+  # custom domain (set in Settings -> Pages). The custom domain is what drops the
+  # default `/aio-proxy` project-site path prefix, so `base` stays `/` in
+  # website/rspress.config.ts and the site no longer has to be pushed to
+  # aio-proxy/aio-proxy.github.io to reach a domain root.
+  #
+  # No CNAME file: GitHub ignores one when the publishing source is a workflow.
   deploy:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write # deploy to the Pages environment
+      id-token: write # OIDC token deploy-pages exchanges for the deployment
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - uses: actions/checkout@v7
 
@@ -39,19 +55,11 @@ jobs:
       - run: bun install --frozen-lockfile --prefer-offline
       - run: bun run --filter @aio-proxy/website build
 
-      - uses: actions/checkout@v7
-        with:
-          repository: aio-proxy/aio-proxy.github.io
-          ref: main
-          path: root-site
-          ssh-key: ${{ secrets.ROOT_PAGES_DEPLOY_KEY }}
+      - uses: actions/configure-pages@v6
 
-      - name: Publish website
-        working-directory: root-site
-        run: |
-          rsync -a --delete --exclude=.git ../website/dist/ ./
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add --all
-          git diff --cached --quiet || git commit -m 'docs: deploy website'
-          git push origin HEAD:main
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: website/dist
+
+      - id: deploy
+        uses: actions/deploy-pages@v5
