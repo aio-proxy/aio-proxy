@@ -104,7 +104,11 @@ test('an output preceding its call leaves both sides unpaired', () => {
   ]);
 });
 
-test('repairs in place so a parallel batch keeps its order', () => {
+// The note may not be substituted in place here: call_1 is still awaiting its
+// output, so a `message` item between them is exactly the interleaving
+// isToolPairingRejection refuses to retry — the replay would earn a second 400.
+// The note waits until the batch closes; every caller-sent item keeps its slot.
+test('holds an unanswered-call note until the open batch closes', () => {
   const repaired = repairOpenAIResponsesToolPairing([
     { type: 'function_call', call_id: 'call_1', name: 'a', arguments: '{}' },
     { type: 'function_call', call_id: 'call_2', name: 'b', arguments: '{}' },
@@ -114,10 +118,23 @@ test('repairs in place so a parallel batch keeps its order', () => {
   ]);
   expect(repaired).toMatchObject([
     { type: 'function_call', call_id: 'call_1' },
-    { type: 'message', role: 'assistant' },
     { type: 'function_call', call_id: 'call_3' },
     { type: 'function_call_output', call_id: 'call_1' },
     { type: 'function_call_output', call_id: 'call_3' },
+    { type: 'message', role: 'assistant' },
+  ]);
+});
+
+// Nothing is awaiting, so the note lands where the orphan stood.
+test('emits a note in place when no batch is open', () => {
+  expect(
+    repairOpenAIResponsesToolPairing([
+      { type: 'function_call_output', call_id: 'call_9', output: 'ok' },
+      { type: 'message', role: 'user', content: 'next' },
+    ]),
+  ).toMatchObject([
+    { type: 'message', role: 'user' },
+    { type: 'message', role: 'user', content: 'next' },
   ]);
 });
 

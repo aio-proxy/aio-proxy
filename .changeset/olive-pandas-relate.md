@@ -23,6 +23,14 @@ The replay is limited to the two rejections a pairing repair can actually fix.
 `No tool output found for tool call …`, which a strict gateway emits when an
 assistant message sits inside a call/output batch, is forwarded unretried.
 
+A narration note is never inserted into a tool batch that is still open — on
+either path. Substituting one between a paired call and its output would create
+exactly that interleaving, so the note waits until the batch's last result
+lands. On the model path the same rule keeps an orphan note from splitting an
+assistant tool-call turn from its tool results, which OpenAI-compatible and
+Anthropic providers reject. Items the caller sent keep their positions; only the
+synthesized notes move.
+
 Adapters that implement `rawRetry` now receive the frame that classified as
 `retry` as a fourth argument to `rewrite`, so a hook handling several rejections
 repairs only what the upstream objected to.

@@ -329,6 +329,33 @@ test('pairs a tool output with its call and does not treat it as an orphan', () 
   expect(invocation.diagnostics ?? []).toEqual([]);
 });
 
+// An orphan note pushed between a registered call and its result would emit
+// assistant(tool-call) / user(note) / tool(result). OpenAI-compatible and
+// Anthropic providers require the result to follow the call turn immediately,
+// so the note has to wait for the batch to close.
+test('holds an orphan note until the open tool batch closes', () => {
+  const warn = spyOn(console, 'warn').mockImplementation(() => {});
+  const request = parseOpenAIResponses({
+    model: 'gpt-5.6-terra',
+    input: [
+      { type: 'function_call', call_id: 'call_a', name: 'read_file', arguments: '{}' },
+      { type: 'function_call_output', call_id: 'call_x', output: 'stale' },
+      { type: 'function_call_output', call_id: 'call_a', output: 'ok' },
+    ],
+  });
+
+  try {
+    const invocation = openAIResponsesToModelMessages(request);
+    expect(invocation.messages).toMatchObject([
+      { role: 'assistant', content: [{ type: 'tool-call', toolCallId: 'call_a' }] },
+      { role: 'tool', content: [{ type: 'tool-result', toolCallId: 'call_a' }] },
+      { role: 'user', content: [{ type: 'text', text: '[orphan tool result; call_id=call_x] stale' }] },
+    ]);
+  } finally {
+    warn.mockRestore();
+  }
+});
+
 test('treats an output preceding its call as an orphan', () => {
   // Unlike the Codex client, which repairs items in place within the Responses
   // grammar, this path emits an ordered message sequence: a tool-result before

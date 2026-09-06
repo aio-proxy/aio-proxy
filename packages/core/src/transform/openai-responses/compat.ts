@@ -29,6 +29,11 @@ type ConvertState = {
   readonly diagnostics: ModelInvocationDiagnostic[];
   readonly calls: Map<string, CallIdentity>;
   readonly answered: ReadonlySet<string>;
+  // Registered calls whose result has not been emitted yet. While this is
+  // non-empty a tool batch is open, and nothing may be pushed between the
+  // assistant turn and its tool results.
+  readonly awaiting: Set<string>;
+  readonly deferred: ModelMessage[];
   readonly tools: readonly OpenAIResponsesTransformTool[] | undefined;
   previous: 'call' | 'result' | undefined;
 };
@@ -49,6 +54,8 @@ export function openAIResponsesInputMessages(
     diagnostics: [],
     calls: new Map(),
     answered: answeredCallIds(items),
+    awaiting: new Set(),
+    deferred: [],
     tools,
     previous: undefined,
   };
@@ -99,7 +106,35 @@ export function openAIResponsesInputMessages(
     }
   }
 
-  return { messages: state.messages, diagnostics: state.diagnostics };
+  return { messages: flushDeferred(state), diagnostics: state.diagnostics };
+}
+
+// A synthesized note must never land between a registered call and its result:
+// OpenAI-compatible and Anthropic providers require the tool result to follow
+// the assistant tool-call turn immediately. While a batch is open the note is
+// held and replayed once the last awaited result arrives, preserving the order
+// among held notes. Only notes this converter invents move — an item the caller
+// placed inside the batch keeps its position, because relocating the caller's
+// own turns would be the distortion this conversion exists to avoid.
+function pushMessage(state: ConvertState, message: ModelMessage): void {
+  if (state.awaiting.size > 0) state.deferred.push(message);
+  else state.messages.push(message);
+}
+
+function closeAwaitedCall(state: ConvertState, callId: string): void {
+  state.awaiting.delete(callId);
+  if (state.awaiting.size > 0) return;
+  flushDeferred(state);
+}
+
+function flushDeferred(state: ConvertState): ModelMessage[] {
+  if (state.deferred.length > 0) {
+    state.messages.push(...state.deferred);
+    state.deferred.length = 0;
+    // The held messages closed the batch's turn; nothing may append to it now.
+    state.previous = undefined;
+  }
+  return state.messages;
 }
 
 // Call ids that a later item answers. Only an output positioned *after* its call
@@ -203,6 +238,7 @@ function convertFunctionCall(state: ConvertState, item: FunctionCallItem, index:
           ...(namespace === undefined ? {} : { namespace }),
         } satisfies OpenAIResponsesWireMetadata);
   state.calls.set(item.call_id, { flattenedName, ...(metadata === undefined ? {} : { metadata }) });
+  state.awaiting.add(item.call_id);
   appendAssistantPart(state.messages, state.previous, {
     type: 'tool-call',
     toolCallId: item.call_id,
@@ -230,6 +266,7 @@ function convertCustomToolCall(state: ConvertState, item: CustomToolCallItem, in
     ...(namespace === undefined ? {} : { namespace }),
   } satisfies OpenAIResponsesWireMetadata;
   state.calls.set(item.call_id, { flattenedName, metadata });
+  state.awaiting.add(item.call_id);
   appendAssistantPart(state.messages, state.previous, {
     type: 'tool-call',
     toolCallId: item.call_id,
@@ -330,6 +367,7 @@ function convertToolCallOutput(state: ConvertState, item: ToolCallOutputItem, in
   };
   appendToolResult(state.messages, state.previous, part);
   state.previous = 'result';
+  closeAwaitedCall(state, callId);
 }
 
 // Preserves an orphan tool output as a user note. A proxy must not decide the
@@ -355,7 +393,7 @@ function convertOrphanToolCallOutput(
     typeof item.output === 'string'
       ? [{ type: 'text', text: `${label} ${item.output}` }]
       : [{ type: 'text', text: label }, ...toolOutputParts(item.output, `input.${index}.output`)];
-  state.messages.push({
+  pushMessage(state, {
     role: 'user',
     content: parts,
     providerOptions: wireProviderOptions({
@@ -367,7 +405,9 @@ function convertOrphanToolCallOutput(
       outputKind: typeof item.output === 'string' ? 'string' : 'content',
     }),
   });
-  state.previous = undefined;
+  // Held notes leave `previous` alone: the batch they are waiting on is still
+  // open, and flushDeferred clears it when they land.
+  if (state.awaiting.size === 0) state.previous = undefined;
 }
 
 function appendAssistantPart(messages: ModelMessage[], previous: 'call' | 'result' | undefined, part: AssistantPart) {
