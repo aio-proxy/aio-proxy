@@ -1,4 +1,10 @@
-export type { RealtimeAttachment, RealtimeCallOwner, RealtimeCallRecord, RealtimeCallStore } from './call-store';
+export type {
+  RealtimeAttachment,
+  RealtimeCallOwner,
+  RealtimeCallRecord,
+  RealtimeCallStore,
+  RealtimeShutdownHook,
+} from './call-store';
 export {
   createRealtimeCallStore,
   REALTIME_CALL_CAPACITY,

@@ -3,7 +3,7 @@ import type { WSContext, WSEvents, WSMessageReceive } from 'hono/ws';
 
 import { logServerEvent } from '../../server-log';
 import type { RealtimeAttachment } from './call-store';
-import { INTERNAL_CLOSE_CODE, normalizedClose } from './close-code';
+import { INTERNAL_CLOSE_CODE, normalizedClose, SHUTDOWN_CLOSE_CODE } from './close-code';
 import type { RealtimeRouteSource } from './source';
 
 export const BACKPRESSURE_LIMIT = 1_048_576;
@@ -40,6 +40,9 @@ export function createRelay(source: RealtimeRouteSource, input: RelayInput): Rel
    *  too; the spec's close-code table pins `1000` for a 2xx hangup over a live sideband and
    *  `1001` for shutdown. */
   let teardownCode: number | undefined;
+  /** Releases this relay's shutdown registration. Only a relay with no attachment has one:
+   *  a call-backed relay is already reachable from the store through its reservation. */
+  let releaseShutdownHook: (() => void) | undefined;
 
   // One teardown, safe from either side's close, from shutdown, and from hangup.
   const teardown: Teardown = (code, reason, origin = 'proxy') => {
@@ -58,6 +61,9 @@ export function createRelay(source: RealtimeRouteSource, input: RelayInput): Rel
       downstream?.close(normalized.code, normalized.reason);
     } catch {}
     if (input.attachment !== undefined) source.realtimeCalls.release(input.attachment.token);
+    // Unregistered here rather than only at shutdown, so a long-lived process does not
+    // accumulate one retained closure per finished direct relay.
+    releaseShutdownHook?.();
     // A sideband that never opened is a *failed attach*: the call is still live
     // upstream-side from the caller's point of view, so the record must survive for
     // the owner's next attempt, and no `sideband_closed` may be logged against a
@@ -77,6 +83,18 @@ export function createRelay(source: RealtimeRouteSource, input: RelayInput): Rel
     });
   };
 
+  if (input.attachment === undefined) {
+    // A direct relay owns no call record, so the store's `entries` — the only thing the
+    // server's shutdown walks — cannot reach it. Registered so `app.close()` closes this
+    // socket with `1001` instead of leaving `server.stop(true)` to force-terminate it.
+    const hook = source.realtimeCalls.trackShutdown((code) => teardown(code, undefined, 'proxy'));
+    // `undefined` means shutdown already ran. Torn down at once rather than left live, for the
+    // same reason `RealtimeAttachment.onClose` runs a late-registered teardown immediately: the
+    // registration point is up to a full dial deadline after the request began, and merely
+    // dropping the hook would leave the upstream socket with nothing to close it.
+    if (hook === undefined) teardown(SHUTDOWN_CLOSE_CODE, undefined, 'proxy');
+    else releaseShutdownHook = hook.release;
+  }
   input.attachment?.onClose((code) => teardown(code, undefined, 'proxy'));
 
   upstream.addEventListener('message', (event: MessageEvent<string | ArrayBuffer>) => {

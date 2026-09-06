@@ -121,6 +121,55 @@ test('a real Bun.serve upgrade survives the query-credential strip on a keyed pr
   }
 });
 
+/** The direct `GET /v1/realtime` relay, which carries no `call_id` and therefore no call record.
+ *  `app.close()` reaches realtime sockets only through the call store, so this relay had no
+ *  shutdown hook at all: `shutdownProxyServer` ran `app.close()` first, closed nothing, and
+ *  `server.stop(true)` force-terminated the socket. Asserted on a real `Bun.serve` because the
+ *  close code the client observes is the whole claim, and only a live socket carries one.
+ *
+ *  The call-backed relay is deliberately left to `sideband.test.ts`'s store-level shutdown test:
+ *  what is new here is that a relay with no record is reachable at all. */
+test('a live direct relay is closed with 1001 on app.close(), not force-terminated', async () => {
+  const upstream = Bun.serve({
+    port: 0,
+    fetch: (request, server) => (server.upgrade(request) ? undefined : new Response('no', { status: 400 })),
+    websocket: { open: (ws) => ws.send('greeting'), message: () => {} },
+  });
+
+  const app = await createServer({
+    config: { providers: {} },
+    providerInstances: [realtimeProvider(`ws://localhost:${upstream.port}`)],
+  });
+  const proxy = Bun.serve({ port: 0, fetch: app.fetch, websocket: { ...websocket, idleTimeout: 255 } });
+
+  try {
+    const client = new WebSocket(`ws://localhost:${proxy.port}/v1/realtime?model=gpt-realtime`);
+    const closed = new Promise<number>((resolve) => {
+      client.addEventListener('close', (event: CloseEvent) => resolve(event.code));
+    });
+    // The relay must be genuinely live before shutdown, or `app.close()` would have nothing to
+    // close and a force-terminated socket would report the same code as a correctly closed one —
+    // the assertion below would pass either way. The upstream greeting only crosses once the
+    // upgrade landed and the relay bound its listeners.
+    const greeting = await new Promise<string>((resolve, reject) => {
+      client.addEventListener('message', (event: MessageEvent<string>) => resolve(event.data));
+      client.addEventListener('error', () => reject(new Error('the proxy refused the direct upgrade')));
+      setTimeout(() => reject(new Error('the direct relay never opened')), 5_000);
+    });
+    expect(greeting).toBe('greeting');
+
+    // Application cleanup only. `server.stop(true)` is deliberately NOT run first: Bun 1.4.2
+    // dispatches the upgraded socket's close synchronously inside it with `1006`, which the
+    // relay normalizes to `1011` and latches, so a force stop ahead of this would mask the fix.
+    app.close();
+
+    expect(await closed).toBe(1_001);
+  } finally {
+    proxy.stop(true);
+    upstream.stop(true);
+  }
+});
+
 function realtimeProvider(base: string): RuntimeProviderInput {
   return {
     id: 'codex',

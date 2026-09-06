@@ -33,6 +33,11 @@ export type RealtimeAttachment = {
  *  `release()` is idempotent: a double release must not manufacture capacity. */
 export type RealtimeCapacitySlot = { readonly release: () => void };
 
+/** Keeps a relay that owns no call record reachable from `close()`.
+ *  `release()` is idempotent and must run on teardown: an unreleased hook is a retained
+ *  closure per finished relay. */
+export type RealtimeShutdownHook = { readonly release: () => void };
+
 export type RealtimeCallStore = {
   /** `false` when the call ID is already held by a live record, or the store is closed —
    *  in both cases nothing was stored and the caller must not answer the create `201`.
@@ -54,6 +59,13 @@ export type RealtimeCallStore = {
    *  between the check and `insert`, so concurrent creates would all observe the
    *  same free slot. */
   readonly reserveCapacity: () => RealtimeCapacitySlot | undefined;
+  /** Registers a teardown for a relay that owns no call record, so `close()` reaches it too.
+   *  A direct `GET /v1/realtime` carries no `call_id` and therefore no attachment, and the
+   *  store is the only resource the server's shutdown consults to close realtime sockets —
+   *  without this hook, `server.stop(true)` force-terminated a live direct relay instead of
+   *  closing it with the spec's `1001`. Returns `undefined` once the store is closed, in
+   *  which case the caller must tear its own relay down: shutdown has already run. */
+  readonly trackShutdown: (close: (code: number) => void) => RealtimeShutdownHook | undefined;
   readonly size: () => number;
   readonly close: () => void;
 };
@@ -74,6 +86,10 @@ export function createRealtimeCallStore(
   const capacity = options.capacity ?? REALTIME_CALL_CAPACITY;
   const ttlMs = options.ttlMs ?? REALTIME_CALL_TTL_MS;
   const entries = new Map<string, Entry>();
+  /** Teardowns for relays that own no call record. Keyed by an opaque token rather than by
+   *  call ID because a direct relay has none, and identity-keyed so two concurrent direct
+   *  relays cannot displace each other. */
+  const untracked = new Map<number, (code: number) => void>();
   let nextToken = 1;
   let closed = false;
   /** Slots claimed by creates whose record is not in `entries` yet. */
@@ -180,6 +196,17 @@ export function createRealtimeCallStore(
         },
       };
     },
+    trackShutdown(close) {
+      if (closed) return undefined;
+      const token = nextToken;
+      nextToken += 1;
+      untracked.set(token, close);
+      return {
+        release() {
+          untracked.delete(token);
+        },
+      };
+    },
     size() {
       sweep();
       return entries.size;
@@ -197,6 +224,16 @@ export function createRealtimeCallStore(
         }
       }
       entries.clear();
+      // Snapshotted before the loop: each teardown releases its own hook synchronously,
+      // and clearing afterwards would drop a hook a concurrent relay registered mid-loop —
+      // though `closed` is already true by then, so `trackShutdown` refuses it instead.
+      const hooks = [...untracked.values()];
+      untracked.clear();
+      for (const close of hooks) {
+        try {
+          close(SHUTDOWN_CLOSE_CODE);
+        } catch {}
+      }
     },
   };
 }

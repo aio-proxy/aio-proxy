@@ -57,4 +57,6 @@ its advertised deadline began. The total remains 10 seconds for the whole dial.
 On `SIGINT`/`SIGTERM` the proxy now runs application cleanup before force-closing active
 connections. A live realtime sideband is closed with the `1001` "going away" code, so a client can
 tell a deliberate shutdown from a dropped connection; previously the force stop terminated the
-socket first and the client saw an abnormal closure instead.
+socket first and the client saw an abnormal closure instead. This covers a direct
+`GET /v1/realtime` relay too, which carries no `call_id` and so was not reachable from the call
+store the shutdown walks.

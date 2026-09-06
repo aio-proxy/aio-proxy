@@ -211,6 +211,51 @@ test('insert reports failure once the store is closed', () => {
   expect(store.lookup('call_abc')).toBeUndefined();
 });
 
+// A direct `GET /v1/realtime` has no `call_id`, so it never reaches `entries` — and `entries` is
+// all the server's shutdown walks. Without a registration of its own, a live direct relay was
+// force-terminated by `server.stop(true)` instead of being closed with the spec's `1001`.
+test('close tears down a tracked relay that owns no call record', () => {
+  const store = createRealtimeCallStore();
+  const codes: number[] = [];
+  const hook = store.trackShutdown((code) => codes.push(code));
+
+  store.close();
+  store.close();
+
+  expect(hook).toBeDefined();
+  expect(codes).toEqual([1001]);
+});
+
+// Two concurrent direct relays are ordinary: nothing keys them apart but their registration,
+// so a store that kept only one teardown would leave the other force-closed.
+test('every tracked relay is torn down, and a released one is not', () => {
+  const store = createRealtimeCallStore();
+  const closed: string[] = [];
+  store.trackShutdown(() => closed.push('first'));
+  const second = store.trackShutdown(() => closed.push('second'));
+  const third = store.trackShutdown(() => closed.push('third'));
+
+  // A relay whose own socket ended before shutdown: its teardown already ran, and running it
+  // again from `close()` would be a second teardown for one relay.
+  third!.release();
+  third!.release();
+
+  store.close();
+
+  expect(second).toBeDefined();
+  expect(closed).toEqual(['first', 'second']);
+});
+
+// Registration happens up to a full dial deadline after the request began, so shutdown can land
+// first. Refusing silently would leave the upstream socket with nothing to close it, which is the
+// same hazard `reserve().onClose` already handles for a call-backed attach.
+test('trackShutdown refuses a registration once the store is closed', () => {
+  const store = createRealtimeCallStore();
+  store.close();
+
+  expect(store.trackShutdown(() => {})).toBeUndefined();
+});
+
 function record(overrides: Partial<RealtimeCallRecord> = {}): RealtimeCallRecord {
   return {
     callId: 'call_abc',
