@@ -223,6 +223,13 @@ export {
   hasLanguageBridgeEndpoint,
   resolveOpenAIResponsesModel,
 } from './provider/api-bridge/index';
+export {
+  type AudioInvokeOptions,
+  createProviderV4SpeechInvoke,
+  createProviderV4TranscribeInvoke,
+  providerV4SupportsSpeech,
+  providerV4SupportsTranscription,
+} from './provider/provider-v4-audio';
 export { createProviderV4ImageInvoke } from './provider/provider-v4-image';
 export {
   assertConvertSupported,
