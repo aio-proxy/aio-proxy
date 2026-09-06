@@ -65,10 +65,6 @@ export const useOAuthEditorSession = (
   });
   const sessionQuery = useQuery(oauthSessionQueryOptions(sessionId ?? ''));
   const persistedId = authorizedProviderId ?? providerId;
-  const editViewQuery = useQuery({
-    ...providerEditViewQueryOptions(persistedId ?? ''),
-    enabled: persistedId !== undefined && persistedId !== '',
-  });
   const session: DashboardOAuthSession | undefined =
     sessionQuery.data?.session ??
     (sessionId !== undefined && sessionQuery.isError
@@ -98,9 +94,17 @@ export const useOAuthEditorSession = (
       setSessionWarning(session.warning);
       void queryClient.invalidateQueries({ queryKey: queryKeys.providers });
       void (async () => {
-        const result = await editViewQuery.refetch();
-        await queryClient.invalidateQueries({ queryKey: queryKeys.providerEditView(session.providerId) });
-        onSessionSucceeded?.(oauthFromEditView(result?.data));
+        try {
+          await queryClient.invalidateQueries({ queryKey: queryKeys.providerEditView(session.providerId) });
+          const data = await queryClient.fetchQuery({
+            ...providerEditViewQueryOptions(session.providerId),
+            staleTime: 0,
+          });
+          const next = oauthFromEditView(data);
+          if (next !== undefined) onSessionSucceeded?.(next);
+        } catch {
+          // Leave the name blank rather than fill a stale cached label.
+        }
       })();
       if (mode === ProviderFormMode.Create) {
         void navigate({
@@ -111,7 +115,7 @@ export const useOAuthEditorSession = (
         });
       }
     }
-  }, [closeUnclaimedPopup, editViewQuery, mode, navigate, onSessionSucceeded, queryClient, session]);
+  }, [closeUnclaimedPopup, mode, navigate, onSessionSucceeded, queryClient, session]);
 
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {

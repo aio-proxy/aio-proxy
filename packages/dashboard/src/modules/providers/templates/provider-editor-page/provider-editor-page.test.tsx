@@ -46,7 +46,8 @@ const mocks = rs.hoisted(() => ({
   update: rs.fn(),
   delete: rs.fn(),
   navigate: rs.fn(),
-  invalidate: rs.fn(),
+  invalidate: rs.fn(async () => undefined),
+  fetchQuery: rs.fn(),
   refetch: rs.fn(async () => ({ data: { trusted: true, state: 'bundled' }, error: null })),
   session: undefined as DashboardOAuthSession | undefined,
   sessionError: false,
@@ -66,7 +67,10 @@ rs.mock('@tanstack/react-query', () => ({
       refetch: mocks.refetch,
     };
   },
-  useQueryClient: () => ({ invalidateQueries: mocks.invalidate }),
+  useQueryClient: () => ({
+    invalidateQueries: mocks.invalidate,
+    fetchQuery: mocks.fetchQuery,
+  }),
   useMutation: () => ({ mutate: mocks.start, isPending: false }),
 }));
 
@@ -143,6 +147,8 @@ afterEach(() => {
   mocks.delete.mockReset();
   mocks.navigate.mockReset();
   mocks.invalidate.mockReset();
+  mocks.invalidate.mockResolvedValue(undefined);
+  mocks.fetchQuery.mockReset();
   mocks.refetch.mockReset();
   mocks.refetch.mockImplementation(async () => ({ data: { trusted: true, state: 'bundled' }, error: null }));
   mocks.session = undefined;
@@ -436,6 +442,7 @@ test('oauth success fills a blank display name from the account label', async ()
     status: 'succeeded',
     providerId: 'existing',
   };
+  mocks.fetchQuery.mockResolvedValue({ oauth });
   renderPage({
     mode: ProviderFormMode.Edit,
     kind: ProviderKind.OAuth,
@@ -471,6 +478,7 @@ test('oauth success keeps a display name the user already typed', async () => {
     status: 'succeeded',
     providerId: 'existing',
   };
+  mocks.fetchQuery.mockResolvedValue({ oauth });
   view.rerender(
     <>
       <Toaster />
@@ -478,7 +486,7 @@ test('oauth success keeps a display name the user already typed', async () => {
     </>,
   );
 
-  await waitFor(() => expect(mocks.refetch).toHaveBeenCalled());
+  await waitFor(() => expect(mocks.invalidate).toHaveBeenCalled());
   expect(within(screen.getByTestId('provider-form-field-name')).getByRole('textbox')).toHaveValue('Personal');
 });
 
@@ -488,10 +496,7 @@ test('oauth success fills from the refreshed account label, not the cached one',
     status: 'succeeded',
     providerId: 'existing',
   };
-  mocks.refetch.mockResolvedValue({
-    data: { oauth: { ...oauth, accountLabel: 'New Account' } },
-    error: null,
-  });
+  mocks.fetchQuery.mockResolvedValue({ oauth: { ...oauth, accountLabel: 'New Account' } });
 
   renderPage({
     mode: ProviderFormMode.Edit,
@@ -614,6 +619,31 @@ test('edit-mode succeeded session with catalog_unavailable shows the rail warnin
   expect(mocks.navigate).not.toHaveBeenCalled();
 });
 
+test('oauth success prefers a fresh edit-view fetch over a stale cache', async () => {
+  mocks.session = {
+    id: 'session',
+    status: 'succeeded',
+    providerId: 'existing',
+  };
+  mocks.fetchQuery.mockResolvedValue({ oauth: { ...oauth, accountLabel: 'New Account' } });
+
+  renderPage({
+    mode: ProviderFormMode.Edit,
+    kind: ProviderKind.OAuth,
+    providerId: 'existing',
+    provider: oauthProvider,
+    oauth: { ...oauth, accountLabel: 'Old Account' },
+    initial: { id: 'existing', enabled: true, models: [] },
+    sessionId: 'session',
+    onSessionIdChange: rs.fn(),
+  });
+
+  await waitFor(() =>
+    expect(within(screen.getByTestId('provider-form-field-name')).getByRole('textbox')).toHaveValue('New Account'),
+  );
+  expect(mocks.fetchQuery).toHaveBeenCalled();
+});
+
 test('oauth re-auth on an existing provider stays put and refetches the edit view', async () => {
   mocks.session = {
     id: 'session',
@@ -633,7 +663,7 @@ test('oauth re-auth on an existing provider stays put and refetches the edit vie
     onSessionIdChange: rs.fn(),
   });
 
-  await waitFor(() => expect(mocks.refetch).toHaveBeenCalled());
+  await waitFor(() => expect(mocks.invalidate).toHaveBeenCalled());
   expect(mocks.navigate).not.toHaveBeenCalledWith(expect.objectContaining({ to: '/providers' }));
   expect(mocks.create).not.toHaveBeenCalled();
 });
