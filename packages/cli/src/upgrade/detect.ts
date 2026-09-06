@@ -1,8 +1,8 @@
-import { existsSync, realpathSync } from 'node:fs';
+import { existsSync, readdirSync, realpathSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 
 import type { PackageUpgradeMethod, UpgradeMethod, UpgradeTarget } from './constants';
-import { HOMEBREW_FORMULA, PACKAGE } from './constants';
+import { BINARY_NPM_SCOPE, HOMEBREW_FORMULA, PACKAGE, SUPPORTED_BINARY_TARGETS } from './constants';
 
 const PACKAGE_METHODS = ['brew', 'bun', 'npm', 'pnpm'] as const;
 const NODE_MANAGERS = ['bun', 'npm', 'pnpm'] as const;
@@ -166,13 +166,23 @@ const pathLauncherTarget = (preferred?: NodeManager): UpgradeTarget | undefined 
   return undefined;
 };
 
-const brewTargetFromCellarOrSibling = (binPath: string): UpgradeTarget | undefined => {
+const brewTargetFromCellar = (binPath: string): UpgradeTarget | undefined => {
   const prefix = brewPrefixFromCellar(binPath);
-  if (prefix !== undefined) {
-    const command = join(prefix, 'bin', 'brew');
-    if (!existsSync(command)) throw new Error(`brew binary not found at ${command}`);
-    return { method: 'brew', command, bin: join(prefix, 'bin', PACKAGE) };
-  }
+  if (prefix === undefined) return undefined;
+  const command = join(prefix, 'bin', 'brew');
+  if (!existsSync(command)) throw new Error(`brew binary not found at ${command}`);
+  return { method: 'brew', command, bin: join(prefix, 'bin', PACKAGE) };
+};
+
+const brewTargetFromResolvedCellar = (binPath: string): UpgradeTarget | undefined => {
+  const fromPath = brewTargetFromCellar(binPath);
+  if (fromPath !== undefined) return fromPath;
+  const real = tryRealpath(binPath);
+  if (real === undefined || real === binPath) return undefined;
+  return brewTargetFromCellar(real);
+};
+
+const brewTargetFromSibling = (binPath: string): UpgradeTarget | undefined => {
   const command = siblingCommand(binPath, 'brew');
   return command === undefined ? undefined : { method: 'brew', command, bin: binPath };
 };
@@ -190,7 +200,7 @@ const resolvedNodeManagerCommand = (method: NodeManager, binPath: string): Upgra
 
 const packageManagerTarget = (method: PackageUpgradeMethod, binPath: string): UpgradeTarget => {
   if (method === 'brew') {
-    const brew = brewTargetFromCellarOrSibling(binPath);
+    const brew = brewTargetFromResolvedCellar(binPath) ?? brewTargetFromSibling(binPath);
     if (brew !== undefined) return brew;
     const prefix = basename(dirname(binPath)) === 'bin' ? dirname(dirname(binPath)) : undefined;
     if (prefix !== undefined) {
@@ -205,19 +215,7 @@ const packageManagerTarget = (method: PackageUpgradeMethod, binPath: string): Up
   return resolved;
 };
 
-const detectedPackageTarget = (method: PackageUpgradeMethod, binPath: string): UpgradeTarget => {
-  if (method === 'brew') {
-    const fromPath = brewTargetFromCellarOrSibling(binPath);
-    if (fromPath !== undefined) return fromPath;
-    const real = tryRealpath(binPath);
-    if (real !== undefined && real !== binPath) {
-      const fromReal = brewTargetFromCellarOrSibling(real);
-      if (fromReal !== undefined) return fromReal;
-    }
-    const command = Bun.which('brew');
-    if (command === null) throw new Error(`brew binary not found for ${binPath}`);
-    return { method: 'brew', command, bin: binPath };
-  }
+const detectedPackageTarget = (method: NodeManager, binPath: string): UpgradeTarget => {
   const resolved = resolvedNodeManagerCommand(method, binPath);
   if (resolved !== undefined) return resolved;
   if (method === 'npm') return { method, command: method, bin: binPath };
@@ -230,7 +228,7 @@ export const resolveUpgradeTargetFrom = async (
 ): Promise<UpgradeTarget> => {
   const methodFromEnv = env['AIO_PROXY_UPGRADE_METHOD'];
   if (isPackageMethod(methodFromEnv)) return packageManagerTarget(methodFromEnv, binPath);
-  const brew = brewTargetFromCellarOrSibling(binPath);
+  const brew = brewTargetFromResolvedCellar(binPath);
   if (brew !== undefined) return brew;
   const fromPlatform = platformPackageTarget(binPath);
   if (fromPlatform !== undefined) return fromPlatform;
@@ -251,8 +249,65 @@ export const resolveUpgradeTargetFrom = async (
     runCapture(['pnpm', 'bin', '-g']),
   ]);
   const method = resolveUpgradeMethod(binPath, compactDirs({ brew: brewDir, bun: bunDir, npm: npmDir, pnpm: pnpmDir }));
-  if (method === 'binary') return { method, path: binPath };
+  // Prefix-dir containment is not Homebrew: npm's global prefix is often the
+  // same as Homebrew's. Only a Cellar path (checked above) is brew.
+  if (method === 'binary' || method === 'brew') return { method: 'binary', path: binPath };
   return detectedPackageTarget(method, binPath);
+};
+
+const currentPlatformCliPackage = (): string | undefined => {
+  const key = `${process.platform}-${process.arch}`;
+  if (!(SUPPORTED_BINARY_TARGETS as readonly string[]).includes(key)) return undefined;
+  return `${BINARY_NPM_SCOPE}/cli-${key}`;
+};
+
+const platformCliRelatives = (pkg: string): readonly string[] => [
+  join('node_modules', pkg, 'bin', PACKAGE),
+  join('lib', 'node_modules', pkg, 'bin', PACKAGE),
+  join('lib', 'node_modules', PACKAGE, 'node_modules', pkg, 'bin', PACKAGE),
+  join('install', 'global', 'node_modules', pkg, 'bin', PACKAGE),
+];
+
+const platformCliUnderPnpmGlobal = (dir: string, pkg: string): string | undefined => {
+  const globalDir = join(dir, 'global');
+  if (!existsSync(globalDir)) return undefined;
+  const direct = join(globalDir, 'node_modules', pkg, 'bin', PACKAGE);
+  if (existsSync(direct)) return direct;
+  let entries: string[];
+  try {
+    entries = readdirSync(globalDir);
+  } catch {
+    return undefined;
+  }
+  for (const entry of entries) {
+    const candidate = join(globalDir, entry, 'node_modules', pkg, 'bin', PACKAGE);
+    if (existsSync(candidate)) return candidate;
+  }
+  return undefined;
+};
+
+const findPlatformCliBinaryNear = (startDir: string): string | undefined => {
+  const pkg = currentPlatformCliPackage();
+  if (pkg === undefined) return undefined;
+  let dir = startDir;
+  for (let i = 0; i < 8; i++) {
+    for (const rel of platformCliRelatives(pkg)) {
+      const candidate = join(dir, rel);
+      if (existsSync(candidate)) return candidate;
+    }
+    const fromGlobal = platformCliUnderPnpmGlobal(dir, pkg);
+    if (fromGlobal !== undefined) return fromGlobal;
+    const parent = dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return undefined;
+};
+
+export const resolveManagedRestartExec = (target: UpgradeTarget): string | undefined => {
+  if (target.method === 'brew') return target.bin;
+  if (target.method === 'binary') return resolveStableManagedExec(target.path);
+  return findPlatformCliBinaryNear(dirname(target.bin)) ?? findPlatformCliBinaryNear(dirname(target.command));
 };
 
 export const resolveUpgradeTarget = async (): Promise<UpgradeTarget> => {

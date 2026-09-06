@@ -8,7 +8,7 @@ import { CliExit, EXIT } from '../exit';
 import { isManagedServiceInstalled, serviceRestart } from '../service';
 import { updateViaBinary } from './binary';
 import { NPM_REGISTRY, type UpgradeTarget } from './constants';
-import { resolveUpgradeTarget } from './detect';
+import { resolveManagedRestartExec, resolveUpgradeTarget } from './detect';
 import { interpreterSafePath, runPackageManagerUpgrade } from './methods';
 import type {
   AgentPostUpgradeItemResult,
@@ -192,8 +192,10 @@ export const runUpgradeCommand = async (
   }
   print(m['cli.upgrade.restarting']());
   // After brew, Cellar execPath is gone and managed PATH cannot find the
-  // launcher. Pass the already-resolved stable bin so the unit rewrite does
-  // not call resolveExec(). Do not pass npm/pnpm JS shims as ExecStart.
-  await deps.restartService(target.method === 'brew' ? target.bin : undefined);
+  // launcher. After npm/pnpm/bun, process.execPath may be a pruned versioned
+  // optional-dep binary. Pass a live ExecStart: brew launcher, binary path, or
+  // the native cli-* next to the JS shim. Never pass the shim itself — managed
+  // PATH has no node. Missing native falls back to resolveExec() inside restart.
+  await deps.restartService(resolveManagedRestartExec(target));
   return 'installed';
 };
