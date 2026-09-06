@@ -21,6 +21,8 @@ for (`client_secrets`, `sessions`, `transcription_sessions`, `translations`, `ac
 `refer`) answer `501` with a diagnosable error code instead of `404`. A caller-supplied realtime
 model id longer than 128 characters is refused with `400` `realtime_invalid_model` rather than
 truncated, on both the create body (`model` / `session.model`) and `/v1/realtime`'s `model` query.
+Surrounding whitespace is trimmed off a requested model id before it is measured, selected on, sent
+upstream, and logged, so a padded id cannot disagree with its own normalized form.
 
 Realtime provider selection honors per-model overrides from `router.models[<model>].providers[<id>]`
 for both provider priority and provider weight, matching ordinary routing. A direct
