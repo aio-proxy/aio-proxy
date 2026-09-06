@@ -200,6 +200,64 @@ function closedWithin(attached: Attached, ms = 2_000): Promise<unknown> {
   return Promise.race([attached.closed(), Bun.sleep(ms).then(() => ({ stillOpen: true }))]);
 }
 
+// The reservation is taken before the dial and the relay is built after it, so a 2xx hangup
+// landing in that window clears the reservation while `held.close` is still unregistered. The
+// store then fires the teardown the instant `createRelay` registers it — before `onOpen`, while
+// the upgrade still proceeds — so `onOpen` runs with `torndown` already set. Substituting a
+// literal `1011` there reported a call that ended NORMALLY as an internal error. The spec's
+// close-code table pins `1000` for a 2xx hangup over a live sideband (`:454`), and
+// `closeAttachment` did find the reservation, so this is that row.
+test('a hangup during a pending attach closes the attaching client with 1000, not 1011', async () => {
+  const logs: ServerLog[] = [];
+  // Assigned right after the harness exists and read only once the dial is in flight, which
+  // is strictly later, so the hook never sees the undefined value.
+  let hangUp: (() => Promise<Response>) | undefined;
+  let hangup: Response | undefined;
+  const harness = await createHarness({
+    logs,
+    duringDial: async () => {
+      // Runs once, inside the only dial this test performs.
+      if (hangup !== undefined || hangUp === undefined) return;
+      hangup = await hangUp();
+    },
+  });
+  hangUp = () => harness.hangup('key-owner');
+  await harness.create('key-owner');
+
+  const attached = await harness.attach('key-owner');
+
+  expect(hangup?.status).toBe(204);
+  expect(await closedWithin(attached)).toMatchObject({ code: 1000 });
+  // The teardown ran before `onOpen`, so this was never an opened sideband: neither half of
+  // the log pair may appear, and the record is already gone by the hangup's own doing.
+  expect(logs.filter(({ event }) => event.startsWith('realtime.sideband_'))).toEqual([]);
+  expect(harness.store.lookup('call_abc')).toBeUndefined();
+});
+
+// The same window, the other close code the store can supply: `call-store.ts` passes
+// `SHUTDOWN_CLOSE_CODE` rather than `NORMAL_CLOSE_CODE` when the store is already closed, and the
+// literal `1011` swallowed that too. `1001` is the spec's shutdown row (`:456`). Also the control
+// that distinguishes "the code is retained" from "1000 was hard-coded in its place".
+test('a shutdown during a pending attach closes the attaching client with 1001', async () => {
+  let shutDownStore: (() => void) | undefined;
+  let shutDown = false;
+  const harness = await createHarness({
+    duringDial: () => {
+      if (shutDown || shutDownStore === undefined) return Promise.resolve();
+      shutDown = true;
+      shutDownStore();
+      return Promise.resolve();
+    },
+  });
+  shutDownStore = () => harness.store.close();
+  await harness.create('key-owner');
+
+  const attached = await harness.attach('key-owner');
+
+  expect(shutDown).toBe(true);
+  expect(await closedWithin(attached)).toMatchObject({ code: 1001 });
+});
+
 // NORMALIZED model. Hard-coding `gpt-live-1-codex` as that key sent a caller-chosen id no
 // Codex provider advertises to whichever provider serves Codex, skipping the provider that
 // does advertise it. The two providers advertise disjoint model sets, so the id decides.
@@ -514,15 +572,27 @@ async function createHarness(options: {
   originClosesOnOpen?: boolean;
   originGreetingBytes?: number;
   originSilent?: boolean;
+  /** Awaited inside `dial`, after the upstream socket has opened and before the dial
+   *  resolves. That is the window the reservation already exists in — `prepare` reserves,
+   *  then awaits the dial — so a hook here makes "a hangup or a shutdown landed during a
+   *  pending attach" a fixed ordering rather than a timing race. */
+  duringDial?: () => Promise<void>;
 }): Promise<Harness> {
   const logs = options.logs ?? [];
   const store = createRealtimeCallStore();
   const closesOnOpen = options.originClosesOnOpen ?? false;
   const origin = await startOrigin(closesOnOpen, options.originGreetingBytes, options.originSilent);
   let dials = 0;
-  const source = sourceWith(store, logs, origin, closesOnOpen, () => {
-    dials += 1;
-  });
+  const source = sourceWith(
+    store,
+    logs,
+    origin,
+    closesOnOpen,
+    () => {
+      dials += 1;
+    },
+    options.duringDial,
+  );
 
   const app = new Hono<CallerPrincipalEnv>()
     // Stands in for the `/v1/*` auth middleware: the routes read the principal off the
@@ -667,6 +737,7 @@ function sourceWith(
   origin: Origin,
   closesOnOpen: boolean,
   onDial: () => void,
+  duringDial?: () => Promise<void>,
 ): RealtimeRouteSource {
   const provider = {
     id: 'codex',
@@ -711,6 +782,9 @@ function sourceWith(
             else socket.addEventListener('close', () => resolve());
           });
         }
+        // The reservation is already held here and the relay does not exist yet, so this is
+        // where a concurrent hangup or shutdown lands during a pending attach.
+        if (duringDial !== undefined) await duringDial();
         return socket;
       },
     },

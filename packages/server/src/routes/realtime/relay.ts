@@ -31,6 +31,15 @@ export function createRelay(source: RealtimeRouteSource, input: RelayInput): Rel
   let downstream: WSContext | undefined;
   let opened = false;
   let torndown = false;
+  /** The code `teardown` already normalized, kept for a downstream that opens after it ran.
+   *  The reservation is taken up to a full dial deadline before the relay exists
+   *  (`sideband.ts` reserves, then awaits `dial()`), so a shutdown or a 2xx hangup landing in
+   *  that window tears this relay down with `1001`/`1000` the instant `onClose` is registered —
+   *  before `onOpen`, while the upgrade still proceeds. Substituting `1011` there reported a
+   *  call that ended normally as an internal error and turned a shutdown's `1001` into `1011`
+   *  too; the spec's close-code table pins `1000` for a 2xx hangup over a live sideband and
+   *  `1001` for shutdown. */
+  let teardownCode: number | undefined;
 
   // One teardown, safe from either side's close, from shutdown, and from hangup.
   const teardown: Teardown = (code, reason, origin = 'proxy') => {
@@ -43,6 +52,7 @@ export function createRelay(source: RealtimeRouteSource, input: RelayInput): Rel
     // upstream -> downstream leg it only bounds what the proxy itself emits; see
     // `close-code.ts` for what Bun has already destroyed by the time a reason arrives.
     const normalized = normalizedClose(code, reason);
+    teardownCode = normalized.code;
     closeQuietly(upstream, normalized.code, normalized.reason);
     try {
       downstream?.close(normalized.code, normalized.reason);
@@ -96,7 +106,12 @@ export function createRelay(source: RealtimeRouteSource, input: RelayInput): Rel
         downstream = ws;
         if (torndown) {
           try {
-            ws.close(INTERNAL_CLOSE_CODE);
+            // The already-normalized code, never a fresh `1011`: this branch is reached
+            // whenever teardown ran before the upgrade landed, and the common way that
+            // happens is a hangup or a shutdown during the pending dial. `?? INTERNAL_CLOSE_CODE`
+            // is unreachable — `teardown` assigns before it can set `torndown` — and is the
+            // fail-closed default rather than a non-null assertion.
+            ws.close(teardownCode ?? INTERNAL_CLOSE_CODE);
           } catch {}
           return;
         }
