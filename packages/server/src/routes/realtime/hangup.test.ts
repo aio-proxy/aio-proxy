@@ -65,15 +65,18 @@ test('a 2xx hangup answers an empty 204, discarding the upstream headers and bod
     store,
     [],
     () =>
-      new Response('{"ok":true,"echo":"v=0\\r\\na=candidate:secret-ice 1 udp 10.1.2.3 typ host\\r\\n"}', {
-        status: 200,
-        headers: {
-          'content-type': 'application/json',
-          location: 'https://api.openai.com/v1/realtime/calls/call_abc',
-          'set-cookie': 'x=y',
-          'x-upstream-debug': 'internal-host-9',
+      new Response(
+        '{"ok":true,"self":"https://api.openai.com/v1/realtime/calls/call_abc","echo":"v=0\\r\\na=candidate:secret-ice 1 udp 10.1.2.3 typ host\\r\\n"}',
+        {
+          status: 200,
+          headers: {
+            'content-type': 'application/json',
+            location: 'https://api.openai.com/v1/realtime/calls/call_abc',
+            'set-cookie': 'x=y',
+            'x-upstream-debug': 'internal-host-9',
+          },
         },
-      }),
+      ),
   );
   await create(app, 'key-owner');
 
@@ -86,7 +89,8 @@ test('a 2xx hangup answers an empty 204, discarding the upstream headers and bod
   expect([...response.headers.keys()].sort()).toEqual([]);
   const text = await response.text();
   expect(text).toBe('');
-  // Live because the fixture body carries each string: relaying it verbatim trips these.
+  // Live because the fixture body carries all three strings: relaying it verbatim trips
+  // each one, verified by isolating them individually against a body-forwarding mutation.
   expect(text).not.toContain('secret-ice');
   expect(text).not.toContain('10.1.2.3');
   expect(text).not.toContain('api.openai.com');
