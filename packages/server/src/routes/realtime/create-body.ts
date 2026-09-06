@@ -23,15 +23,34 @@ const MULTIPART = 'multipart/form-data';
 const JSON_TYPE = 'application/json';
 
 export async function readRealtimeCreateBody(request: Request): Promise<RealtimeCreateBody | Response> {
-  const rawContentType = request.headers.get('content-type') ?? 'application/sdp';
+  const rawContentType = request.headers.get('content-type') ?? '';
   const contentType = rawContentType.split(';')[0]?.trim().toLowerCase() ?? '';
-  if (!ACCEPTED.includes(contentType as (typeof ACCEPTED)[number])) return realtimeUnsupportedMediaType();
+  if (!ACCEPTED.includes(contentType as (typeof ACCEPTED)[number])) {
+    await cancelRequestBody(request);
+    return realtimeUnsupportedMediaType();
+  }
+
+  // A `Content-Encoding` create is refused rather than decoded: every downstream step
+  // here reads the buffered bytes as UTF-8 JSON, so an encoded body would lose the
+  // client's requested model to the fallback and silently skip the upstream model
+  // rewrite, sending a body selection never agreed to. The cap would also measure
+  // compressed bytes, so a 16 MiB archive could decompress far past it. Adding a
+  // decoding path is outside what this endpoint was designed for, and `identity` is
+  // rejected with the rest because permitting it buys nothing.
+  if (request.headers.get('content-encoding') !== null) {
+    await cancelRequestBody(request);
+    return realtimeUnsupportedMediaType();
+  }
 
   const declared = Number(request.headers.get('content-length') ?? Number.NaN);
-  if (Number.isFinite(declared) && declared > REALTIME_CREATE_BODY_LIMIT) return realtimeBodyTooLarge();
+  if (Number.isFinite(declared) && declared > REALTIME_CREATE_BODY_LIMIT) {
+    await cancelRequestBody(request);
+    return realtimeBodyTooLarge();
+  }
 
   const bytes = await readCappedBody(request);
   if (bytes === 'too-large') return realtimeBodyTooLarge();
+  if (bytes === 'unreadable') return realtimeInvalidOffer('The realtime offer could not be read.');
 
   if (contentType === MULTIPART) return await readMultipart(bytes, rawContentType);
   if (contentType !== JSON_TYPE) return { body: bytes, contentType, requestedModel: CODEX_REALTIME_MODEL };
@@ -42,34 +61,47 @@ export async function readRealtimeCreateBody(request: Request): Promise<Realtime
   };
 }
 
+/** Mirrors `cancelRequestBody` in `packages/core/src/protocol/request.ts`: every
+ *  terminal path releases the client's stream instead of leaving it unread. */
+async function cancelRequestBody(request: Request): Promise<void> {
+  try {
+    await request.body?.cancel();
+  } catch {}
+}
+
 /** A create may arrive chunked with no `Content-Length`, so the declared-length check
  *  cannot be the only guard. Reading through the stream stops at the cap instead of
  *  materializing an arbitrarily large body first. */
-async function readCappedBody(request: Request): Promise<Uint8Array<ArrayBuffer> | 'too-large'> {
+async function readCappedBody(request: Request): Promise<Uint8Array<ArrayBuffer> | 'too-large' | 'unreadable'> {
   const stream = request.body;
   if (stream === null) return new Uint8Array(0);
 
   const reader = stream.getReader();
   const chunks: Uint8Array[] = [];
   let total = 0;
-  let exceeded = false;
+  let outcome: 'ok' | 'too-large' | 'unreadable' = 'ok';
   try {
     for (;;) {
       const { done, value } = await reader.read();
       if (done) break;
       total += value.byteLength;
       if (total > REALTIME_CREATE_BODY_LIMIT) {
-        exceeded = true;
+        outcome = 'too-large';
         break;
       }
       chunks.push(value);
     }
+  } catch {
+    // The client aborted mid-upload. `readRealtimeCreateBody` promises a terminal
+    // `Response`, so this becomes one rather than a rejection the route would have to
+    // convert into a 500. The reason is discarded: it can quote offer bytes.
+    outcome = 'unreadable';
   } finally {
     reader.releaseLock();
   }
-  if (exceeded) {
-    await stream.cancel().catch(() => {});
-    return 'too-large';
+  if (outcome !== 'ok') {
+    await cancelRequestBody(request);
+    return outcome;
   }
 
   const bytes = new Uint8Array(total);
@@ -112,7 +144,11 @@ async function readMultipart(
 }
 
 /** Normalization applies to selection; the wire body still needs the upstream model
- *  written into it. SDP and text bodies carry no model field, so they pass through. */
+ *  written into it. SDP and text bodies carry no model field, so they pass through.
+ *
+ *  A body with no `model` at all keeps none: the reference's `rewriteCallRequestModel`
+ *  also only reassigns keys that are already present and returns the body unchanged
+ *  otherwise, leaving the upstream free to apply its own default. */
 export function withUpstreamModel(body: RealtimeCreateBody, normalized: string): RealtimeCreateBody {
   if (body.contentType !== JSON_TYPE) return body;
   const payload = parseJson(new TextDecoder().decode(body.body));

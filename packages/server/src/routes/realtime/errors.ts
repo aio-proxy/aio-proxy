@@ -1,7 +1,35 @@
 export const REALTIME_CALL_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/u;
 
-export function isValidCallId(value: string | undefined): value is string {
+declare const validatedCallId: unique symbol;
+
+/** A call ID that has passed `REALTIME_CALL_ID_PATTERN`. Assignable to `string`, so
+ *  callers pass it straight to `RealtimeCallStore.lookup`. */
+export type RealtimeCallId = string & { readonly [validatedCallId]: true };
+
+/** Narrowing to a branded subtype rather than to `string` keeps the *false* branch
+ *  honest: TypeScript subtracts the asserted type from the parameter's declared type,
+ *  so `value is string` on `string | undefined` would leave the rejecting branch typed
+ *  `undefined` while it actually holds an attacker-controlled string such as
+ *  `../secrets`. A brand cannot be subtracted, so the rejecting branch stays
+ *  `string | undefined` and the accepting branch is still usable as a string. */
+export function isValidCallId(value: string | undefined): value is RealtimeCallId {
   return value !== undefined && REALTIME_CALL_ID_PATTERN.test(value);
+}
+
+/** Compile-time guard for the paragraph above. The second parameter is required unless
+ *  `T` still accepts every string, so widening `isValidCallId` back to `value is string`
+ *  — which makes TypeScript subtract `string` and type the rejecting branch `undefined`
+ *  — stops this file compiling. No runtime test can observe a static type, so without
+ *  this the unsound signature could return unnoticed. */
+function assertStillAcceptsAnyString<T>(value: T, ..._proof: string extends T ? [] : [never]): T {
+  return value;
+}
+
+/** Returns the id a caller supplied when `isValidCallId` rejected it, for diagnostics
+ *  that must not claim a malformed id was absent. */
+export function rejectedCallId(value: string | undefined): string | undefined {
+  if (isValidCallId(value)) return undefined;
+  return assertStillAcceptsAnyString(value);
 }
 
 type RealtimeErrorType = 'invalid_request_error' | 'not_supported_error' | 'api_error';

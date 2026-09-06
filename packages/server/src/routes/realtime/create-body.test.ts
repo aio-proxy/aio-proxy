@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 
-import { readRealtimeCreateBody, withUpstreamModel } from './create-body';
+import { readRealtimeCreateBody, REALTIME_CREATE_BODY_LIMIT, withUpstreamModel } from './create-body';
 
 test('a multipart offer becomes JSON and takes its requested model from the session part', async () => {
   const form = new FormData();
@@ -21,11 +21,13 @@ test('a multipart offer becomes JSON and takes its requested model from the sess
 test('a multipart offer missing sdp, or with an unparseable session, is 400 realtime_invalid_offer', async () => {
   const missingSdp = new FormData();
   missingSdp.set('session', '{}');
+  const emptySdp = new FormData();
+  emptySdp.set('sdp', '');
   const badSession = new FormData();
   badSession.set('sdp', 'v=0\r\n');
   badSession.set('session', 'not json');
 
-  for (const form of [missingSdp, badSession]) {
+  for (const form of [missingSdp, emptySdp, badSession]) {
     const result = await readRealtimeCreateBody(new Request('http://x/v1/live', { method: 'POST', body: form }));
     expect(result).toBeInstanceOf(Response);
     const response = result as Response;
@@ -75,6 +77,136 @@ test('an unaccepted content type is 415 and an oversize body is 413', async () =
     }),
   );
   expect((oversize as Response).status).toBe(413);
+});
+
+test('a body of exactly the 16 MiB cap is accepted, so the boundary is inclusive', async () => {
+  const result = await readRealtimeCreateBody(
+    new Request('http://x/v1/live', {
+      method: 'POST',
+      body: 'v'.repeat(REALTIME_CREATE_BODY_LIMIT),
+      headers: { 'content-type': 'application/sdp' },
+    }),
+  );
+  if (result instanceof Response) throw new Error(`expected exactly ${REALTIME_CREATE_BODY_LIMIT} bytes to pass`);
+  expect(result.body.byteLength).toBe(REALTIME_CREATE_BODY_LIMIT);
+});
+
+test('an absent content type is 415, matching the empty-string spelling', async () => {
+  const absent = await readRealtimeCreateBody(new Request('http://x/v1/live', { method: 'POST', body: 'v=0\r\n' }));
+  const empty = await readRealtimeCreateBody(
+    new Request('http://x/v1/live', { method: 'POST', body: 'v=0\r\n', headers: { 'content-type': '' } }),
+  );
+
+  for (const result of [absent, empty]) {
+    expect((result as Response).status).toBe(415);
+    expect(((await (result as Response).json()) as { error: { code: string } }).error.code).toBe(
+      'realtime_unsupported_media_type',
+    );
+  }
+});
+
+test('a content-encoded offer is 415 rather than misrouted, for any encoding including identity', async () => {
+  const gzipped = Bun.gzipSync(
+    new TextEncoder().encode(JSON.stringify({ sdp: 'v=0', model: 'gpt-4o-realtime-preview' })),
+  );
+
+  for (const encoding of ['gzip', 'identity', '']) {
+    const result = await readRealtimeCreateBody(
+      new Request('http://x/v1/live', {
+        method: 'POST',
+        body: gzipped,
+        headers: { 'content-type': 'application/json', 'content-encoding': encoding },
+      }),
+    );
+    expect((result as Response).status).toBe(415);
+    expect(((await (result as Response).json()) as { error: { code: string } }).error.code).toBe(
+      'realtime_unsupported_media_type',
+    );
+  }
+});
+
+test('every terminal early return releases the client stream instead of leaving it unread', async () => {
+  const cases: Array<[string, Record<string, string>]> = [
+    ['unsupported type', { 'content-type': 'application/xml' }],
+    ['content-encoding', { 'content-type': 'application/json', 'content-encoding': 'gzip' }],
+    ['over-declared length', { 'content-type': 'application/sdp', 'content-length': '20000000' }],
+  ];
+
+  for (const [label, headers] of cases) {
+    let cancelled = false;
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        controller.enqueue(new Uint8Array(1024));
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    const request = new Request('http://x/v1/live', {
+      method: 'POST',
+      body: stream,
+      headers,
+      duplex: 'half',
+    } as RequestInit);
+
+    const result = await readRealtimeCreateBody(request);
+    expect(result).toBeInstanceOf(Response);
+    expect(cancelled).toBe(true);
+    expect(label).toBeTruthy();
+  }
+});
+
+test('an overrun body is cancelled rather than drained, so a live producer is not read to completion', async () => {
+  let cancelled = false;
+  let produced = 0;
+  const stream = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      produced += 4 * 1024 * 1024;
+      controller.enqueue(new Uint8Array(4 * 1024 * 1024));
+    },
+    cancel() {
+      cancelled = true;
+    },
+  });
+  const request = new Request('http://x/v1/live', {
+    method: 'POST',
+    body: stream,
+    headers: { 'content-type': 'application/sdp' },
+    duplex: 'half',
+  } as RequestInit);
+
+  const result = await readRealtimeCreateBody(request);
+
+  expect((result as Response).status).toBe(413);
+  expect(cancelled).toBe(true);
+  // A never-ending producer only terminates because the read stopped at the cap.
+  expect(produced).toBeLessThanOrEqual(REALTIME_CREATE_BODY_LIMIT + 4 * 1024 * 1024);
+});
+
+test('a client that dies mid-upload is a 400, not a rejected promise', async () => {
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode('v=0\r\n'));
+    },
+    pull(controller) {
+      controller.error(new Error('client went away'));
+    },
+  });
+  const request = new Request('http://x/v1/live', {
+    method: 'POST',
+    body: stream,
+    headers: { 'content-type': 'application/sdp' },
+    duplex: 'half',
+  } as RequestInit);
+
+  const result = await readRealtimeCreateBody(request);
+
+  expect(result).toBeInstanceOf(Response);
+  const body = (await (result as Response).json()) as { error: { code: string; message: string } };
+  expect((result as Response).status).toBe(400);
+  expect(body.error.code).toBe('realtime_invalid_offer');
+  expect(body.error.message).not.toContain('v=0');
+  expect(body.error.message).not.toContain('client went away');
 });
 
 test('the cap holds for a chunked body that declares no length or under-declares one', async () => {

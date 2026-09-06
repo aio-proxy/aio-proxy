@@ -4,6 +4,7 @@ import {
   codexAuthUnavailable,
   invalidCallId,
   isValidCallId,
+  rejectedCallId,
   realtimeBodyTooLarge,
   realtimeCallBusy,
   realtimeCallNotFound,
@@ -96,4 +97,14 @@ test('the call id pattern rejects path traversal, oversize, and empty ids', () =
   expect(isValidCallId(undefined)).toBe(false);
   expect(isValidCallId('../secrets')).toBe(false);
   expect(isValidCallId('call abc')).toBe(false);
+});
+
+test('a rejected call id is reported as the caller-supplied string, not as absent', () => {
+  // The compile-time counterpart is `assertStillAcceptsAnyString` in errors.ts: asserting
+  // `value is string` would type this branch `undefined` while it holds a traversal
+  // attempt, so a caller logging `id ?? 'absent'` would mislabel the attack.
+  expect(rejectedCallId('../secrets')).toBe('../secrets');
+  expect(rejectedCallId('call abc')).toBe('call abc');
+  expect(rejectedCallId(undefined)).toBeUndefined();
+  expect(rejectedCallId('call_abc-123')).toBeUndefined();
 });
