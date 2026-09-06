@@ -30,15 +30,21 @@ export async function handleRealtimeCreate(
   const upstreamBody = withUpstreamModel(parsed, normalized);
   const models = { requested: parsed.requestedModel, normalized };
   const lease = source.acquireProviderSnapshot();
+  // Claimed rather than merely checked: the create yields on the upstream fetch before
+  // `insert`, so a plain predicate would let concurrent creates all pass the same free
+  // slot and overshoot the advertised bound. Held for the whole attempt loop and dropped
+  // in the `finally` below, which every exit — 4xx, abort, throw, success — runs.
+  const slot = source.realtimeCalls.reserveCapacity();
   try {
     const candidates = selectRealtimeCandidates(lease.snapshot, models).slice(0, MAX_CREATE_ATTEMPTS);
-    // Capacity is checked before the first attempt: a 503 after a successful
+    // Capacity is claimed before the first attempt: a 503 after a successful
     // upstream create would leave an allocated call the proxy cannot route.
-    if (candidates.length === 0 || !source.realtimeCalls.hasCapacity()) {
+    if (candidates.length === 0 || slot === undefined) {
       return failed(source, { model: normalized, style, attemptCount: 0 }, realtimeUpstreamUnavailable());
     }
     return await attemptCandidates(context, source, { candidates, models, style, body: upstreamBody });
   } finally {
+    slot?.release();
     lease.release();
   }
 }
@@ -82,7 +88,16 @@ async function attemptCandidates(
 
     if (response.ok) {
       const callId = callIdFromLocation(response.headers.get('location') ?? undefined);
-      const body = await response.arrayBuffer();
+      let body: ArrayBuffer;
+      try {
+        // Read inside the loop's own `try`: a 2xx whose stream then resets rejects here,
+        // and no answer byte has reached the caller yet, so this is a failed attempt like
+        // any other rather than an exception escaping as a 500.
+        body = await response.arrayBuffer();
+      } catch (error) {
+        if (isInboundAbort(error, signal)) return new Response(null, { status: 499 });
+        continue;
+      }
       if (callId !== undefined && body.byteLength > 0) {
         return commit(context, source, { ...input, callId, candidate, attemptCount, response, answer: body });
       }

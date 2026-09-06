@@ -297,6 +297,161 @@ test('no eligible candidate answers 503 without dialing, and a full store answer
   expect(attempted).toBe(false);
 });
 
+// The capacity check and the `insert` are separated by the upstream fetch, so two creates
+// racing through that window both used to pass one check and both insert, putting the store
+// over its advertised bound.
+test('a second create cannot claim the last slot while the first is still dialing', async () => {
+  const dialed: string[] = [];
+  let releaseFirst: () => void = () => {};
+  const gate = new Promise<void>((resolve) => {
+    releaseFirst = resolve;
+  });
+  const store = createRealtimeCallStore({ capacity: 1 });
+  const source = sourceWith(
+    [
+      realtimeProvider({
+        id: 'codex',
+        answer: async (request) => {
+          const id = new URL(request.url).searchParams.get('probe') ?? '';
+          dialed.push(id);
+          if (id === 'first') await gate;
+          return sdpAnswer(`call_${id}`)();
+        },
+      }),
+    ],
+    store,
+  );
+
+  const app = new Hono().post('/create', (context) => handleRealtimeCreate(context, source, 'live'));
+  const first = app.request('/create?probe=first', {
+    method: 'POST',
+    body: 'v=0\r\n',
+    headers: { 'content-type': 'application/sdp' },
+  });
+  // One turn is enough: the first create is parked on its upstream fetch, holding the slot
+  // with nothing inserted yet.
+  await Promise.resolve();
+  const second = await app.request('/create?probe=second', {
+    method: 'POST',
+    body: 'v=0\r\n',
+    headers: { 'content-type': 'application/sdp' },
+  });
+
+  expect(second.status).toBe(503);
+  // Refused before the fetch, so the second create never allocated an upstream call.
+  expect(dialed).toEqual(['first']);
+
+  releaseFirst();
+  expect((await first).status).toBe(201);
+  expect(store.size()).toBe(1);
+});
+
+// The slot outlives the attempt loop, so a create that forgot to drop it would wedge the
+// store: every later create would see a bound already spent by a finished request.
+test('a finished create leaves no slot behind, so the freed capacity is reusable', async () => {
+  const store = createRealtimeCallStore({ capacity: 1 });
+  let callId = 'call_1';
+  const source = sourceWith([realtimeProvider({ id: 'codex', answer: () => sdpAnswer(callId)() })], store);
+
+  expect((await post(source, 'live', 'v=0\r\n', 'application/sdp')).status).toBe(201);
+  store.remove('call_1');
+  callId = 'call_2';
+
+  expect((await post(source, 'live', 'v=0\r\n', 'application/sdp')).status).toBe(201);
+  expect(store.lookup('call_2')).toBeDefined();
+});
+
+// A 2xx settles the *headers*; the answer arrives afterwards. Reading it outside the
+// candidate loop's own `try` let a mid-body reset escape as a generic 500, even though no
+// answer byte had reached the caller and a second account was standing by.
+test('a 2xx whose answer stream resets mid-body is a failed attempt, not a 500', async () => {
+  const attempted: string[] = [];
+  const source = sourceWith([
+    realtimeProvider({
+      id: 'a',
+      priority: 10,
+      answer: () => {
+        attempted.push('a');
+        return new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.enqueue(new TextEncoder().encode('v=0\r\n'));
+              controller.error(new Error('upstream reset mid-answer'));
+            },
+          }),
+          {
+            status: 201,
+            headers: { 'content-type': 'application/sdp', location: '/v1/realtime/calls/call_partial' },
+          },
+        );
+      },
+    }),
+    realtimeProvider({
+      id: 'b',
+      answer: () => {
+        attempted.push('b');
+        return sdpAnswer('call_abc')();
+      },
+    }),
+  ]);
+
+  const response = await post(source, 'live', 'v=0\r\n', 'application/sdp');
+
+  expect(attempted).toEqual(['a', 'b']);
+  expect(response.status).toBe(201);
+  expect(response.headers.get('location')).toBe('/v1/live/call_abc');
+  expect(await response.text()).toBe('v=0\r\na=answer\r\n');
+});
+
+// With no candidate left, the reset must still surface as the branch's own availability
+// error rather than as Hono's untyped 500: only the former carries the realtime error body.
+test('a reset answer with no candidate left is the realtime 503, not an escaped throw', async () => {
+  const source = sourceWith([
+    realtimeProvider({
+      id: 'a',
+      answer: () =>
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.error(new Error('upstream reset mid-answer'));
+            },
+          }),
+          { status: 201, headers: { 'content-type': 'application/sdp', location: '/v1/live/call_x' } },
+        ),
+    }),
+  ]);
+
+  const response = await post(source, 'live', 'v=0\r\n', 'application/sdp');
+
+  expect(response.status).toBe(503);
+  expect(((await response.json()) as { error: { code: string } }).error.code).toBe('realtime_upstream_unavailable');
+});
+
+// A closed store drops every `insert`, so a create that dialed anyway would hand the caller
+// a 201 whose Location can never be attached. Shutdown has to refuse the create instead.
+test('a create against a closed store answers 503 without dialing upstream', async () => {
+  let attempted = false;
+  const store = createRealtimeCallStore();
+  store.close();
+  const source = sourceWith(
+    [
+      realtimeProvider({
+        id: 'codex',
+        answer: () => {
+          attempted = true;
+          return sdpAnswer('call_abc')();
+        },
+      }),
+    ],
+    store,
+  );
+
+  const response = await post(source, 'live', 'v=0\r\n', 'application/sdp');
+
+  expect(response.status).toBe(503);
+  expect(attempted).toBe(false);
+});
+
 test('the create logs carry no SDP, no Location, and no credential', async () => {
   const logs: ServerLog[] = [];
   const source = sourceWith([realtimeProvider({ id: 'codex', answer: sdpAnswer('call_abc') })], undefined, logs);

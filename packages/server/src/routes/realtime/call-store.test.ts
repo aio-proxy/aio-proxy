@@ -51,11 +51,45 @@ test('capacity counts only unexpired records', () => {
   const store = createRealtimeCallStore({ capacity: 2, now: () => clock });
   store.insert({ ...record({ callId: 'call_1' }), createdAt: clock });
   store.insert({ ...record({ callId: 'call_2' }), createdAt: clock });
-  expect(store.hasCapacity()).toBe(false);
+  expect(store.reserveCapacity()).toBeUndefined();
 
   clock += REALTIME_CALL_TTL_MS + 1;
-  expect(store.hasCapacity()).toBe(true);
+  expect(store.reserveCapacity()).toBeDefined();
   expect(store.size()).toBe(0);
+});
+
+// The create that owns a slot yields on the upstream fetch before it inserts, so a
+// second create running in that window sees a store whose `size()` has not moved yet.
+// Counting only inserted records would hand both of them the last slot and overshoot
+// the bound; the slot must be what is counted.
+test('an unreleased capacity slot occupies the bound before its record is inserted', () => {
+  const store = createRealtimeCallStore({ capacity: 2 });
+  store.insert(record({ callId: 'call_1' }));
+
+  const slot = store.reserveCapacity();
+
+  expect(slot).toBeDefined();
+  // `size()` is still 1 of 2 — the slot is the only thing standing in the way.
+  expect(store.size()).toBe(1);
+  expect(store.reserveCapacity()).toBeUndefined();
+
+  slot!.release();
+  expect(store.reserveCapacity()).toBeDefined();
+});
+
+// Every create path releases through one `finally`, and `commit` may also have inserted
+// the record. A release that decremented twice would let the store exceed its capacity by
+// one slot per double-released create.
+test('releasing a capacity slot twice does not manufacture a second slot', () => {
+  const store = createRealtimeCallStore({ capacity: 1 });
+  const slot = store.reserveCapacity()!;
+
+  slot.release();
+  slot.release();
+  const second = store.reserveCapacity();
+
+  expect(second).toBeDefined();
+  expect(store.reserveCapacity()).toBeUndefined();
 });
 
 test('close runs every live attachment teardown once with 1001 and empties the store', () => {

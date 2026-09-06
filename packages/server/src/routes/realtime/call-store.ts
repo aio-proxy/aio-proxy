@@ -29,6 +29,10 @@ export type RealtimeAttachment = {
   readonly onClose: (close: (code: number) => void) => void;
 };
 
+/** Holds a capacity slot for a create that has not inserted its record yet.
+ *  `release()` is idempotent: a double release must not manufacture capacity. */
+export type RealtimeCapacitySlot = { readonly release: () => void };
+
 export type RealtimeCallStore = {
   readonly insert: (record: RealtimeCallRecord) => void;
   readonly lookup: (callId: string) => RealtimeCallRecord | undefined;
@@ -39,7 +43,12 @@ export type RealtimeCallStore = {
    *  Returns false when there was nothing attached. */
   readonly closeAttachment: (callId: string, code: number) => boolean;
   readonly remove: (callId: string) => void;
-  readonly hasCapacity: () => boolean;
+  /** Drops expired records, then claims a slot for one not-yet-inserted record.
+   *  `undefined` means the store is full or already closed. A mere `hasCapacity()`
+   *  predicate could not hold the bound: the create yields on the upstream fetch
+   *  between the check and `insert`, so concurrent creates would all observe the
+   *  same free slot. */
+  readonly reserveCapacity: () => RealtimeCapacitySlot | undefined;
   readonly size: () => number;
   readonly close: () => void;
 };
@@ -62,6 +71,8 @@ export function createRealtimeCallStore(
   const entries = new Map<string, Entry>();
   let nextToken = 1;
   let closed = false;
+  /** Slots claimed by creates whose record is not in `entries` yet. */
+  let pending = 0;
 
   // A live attachment never expires: the call is in use, and dropping its routing
   // mid-session would 503 a working sideband.
@@ -145,9 +156,20 @@ export function createRealtimeCallStore(
       }
       return true;
     },
-    hasCapacity() {
+    reserveCapacity() {
       sweep();
-      return entries.size < capacity;
+      // Refused after `close()` because `insert` is a no-op from then on: a create that
+      // still dialed would answer 201 with a Location no attach could ever resolve.
+      if (closed || entries.size + pending >= capacity) return undefined;
+      pending += 1;
+      let released = false;
+      return {
+        release() {
+          if (released) return;
+          released = true;
+          pending -= 1;
+        },
+      };
     },
     size() {
       sweep();
