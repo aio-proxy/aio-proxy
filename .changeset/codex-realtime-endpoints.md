@@ -53,3 +53,8 @@ its advertised deadline began. The total remains 10 seconds for the whole dial.
 
 `@aio-proxy/server` now also exports Bun's `websocket` handler; an embedder that constructs its own
 `Bun.serve` must pass it as the `websocket` option or every realtime sideband upgrade fails.
+
+On `SIGINT`/`SIGTERM` the proxy now runs application cleanup before force-closing active
+connections. A live realtime sideband is closed with the `1001` "going away" code, so a client can
+tell a deliberate shutdown from a dropped connection; previously the force stop terminated the
+socket first and the client saw an abnormal closure instead.

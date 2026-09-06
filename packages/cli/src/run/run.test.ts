@@ -3,7 +3,7 @@ import { expect, test } from 'bun:test';
 import { websocket } from '@aio-proxy/server';
 
 import { EDITS_MULTIPART_ENCODED_LIMIT } from '../../../core/src/ingress/openai-image/multipart-counters';
-import { MAX_REQUEST_BODY_SIZE, proxyServeOptions } from './run';
+import { MAX_REQUEST_BODY_SIZE, proxyServeOptions, shutdownProxyServer } from './run';
 
 test('serve maxRequestBodySize matches the edits multipart encoded limit', () => {
   expect(MAX_REQUEST_BODY_SIZE).toBe(EDITS_MULTIPART_ENCODED_LIMIT);
@@ -56,6 +56,93 @@ test('the proxy serve options can complete a real websocket upgrade and relay a 
   } finally {
     server.stop(true);
   }
+});
+
+/** The realtime shutdown contract, measured over a real upgraded socket.
+ *
+ *  Bun 1.4.2 dispatches an upgraded socket's `close` handler **synchronously inside**
+ *  `server.stop(true)`, with code `1006`. `1006` is in the relay's unforwardable set and
+ *  normalizes to `1011`, so with the force stop first the relay tore itself down on `1011` and
+ *  latched, and the store's own shutdown close — the `1001` the design spec pins — never went out.
+ *
+ *  `appClose` here stands in for `app.close()` -> `realtimeCalls.close()`: it closes the live
+ *  socket with `1001`, exactly as the call store's teardown does. The assertion is on the code the
+ *  CLIENT observed on the wire, which is the only place the two orderings are distinguishable.
+ *
+ *  Fails on a marker rather than hanging: the race resolves on whichever of the close event or the
+ *  deadline lands first, and a missing close is reported as `no close observed`. */
+test('proxy shutdown closes a live upgraded socket with 1001, not a force-closed 1006', async () => {
+  let liveSocket: { close: (code?: number, reason?: string) => void } | undefined;
+  const app = {
+    fetch: (request: Request, server?: { upgrade: (request: Request) => boolean }) =>
+      server?.upgrade(request) === true ? undefined : new Response('not upgraded', { status: 400 }),
+    // What `state.close()` does for realtime: close every live relay with the shutdown code.
+    close: () => liveSocket?.close(1_001, 'server shutting down'),
+  };
+
+  const server = Bun.serve({
+    ...proxyServeOptions(app as never, '127.0.0.1', 0),
+    websocket: {
+      open: (ws) => {
+        liveSocket = ws;
+      },
+      message: () => {},
+      close: () => {},
+    },
+  });
+
+  const client = new WebSocket(`ws://127.0.0.1:${server.port}/v1/live/call_abc`);
+  await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('the upgrade never opened')), 5_000);
+    client.addEventListener('open', () => {
+      clearTimeout(timer);
+      resolve();
+    });
+    client.addEventListener('error', () => {
+      clearTimeout(timer);
+      reject(new Error('the upgrade was refused'));
+    });
+  });
+  // Guards the assertion below against passing because nothing was ever attached: with no live
+  // socket, `appClose` is a no-op and BOTH orderings would report the same code.
+  expect(liveSocket).toBeDefined();
+
+  const closed = new Promise<{ code: number; reason: string }>((resolve) => {
+    client.addEventListener('close', (event: CloseEvent) => resolve({ code: event.code, reason: event.reason }));
+    setTimeout(() => resolve({ code: -1, reason: 'no close observed' }), 5_000);
+  });
+
+  shutdownProxyServer(server, app);
+
+  // 1006 is what `server.stop(true)` force-closing the socket looks like on the wire, and it is
+  // what this observed before `app.close()` was moved ahead of the force stop.
+  expect(await closed).toEqual({ code: 1_001, reason: 'server shutting down' });
+});
+
+/** The ordering half of the same contract, asserted without a socket so a failure names the cause
+ *  rather than a close code. `app.close()` must be the first of the two, and `server.stop(true)`
+ *  must still run when it throws — `ServerState.close()` rethrows its first resource-close failure,
+ *  and a process that keeps listening is worse than a lost cleanup error. */
+test('proxy shutdown closes the app before force-stopping, even when the app throws', () => {
+  const order: string[] = [];
+  const server = { stop: () => order.push('server.stop(true)') };
+
+  shutdownProxyServer(server as never, { close: () => order.push('app.close()') });
+
+  expect(order).toEqual(['app.close()', 'server.stop(true)']);
+
+  const afterThrow: string[] = [];
+  const failing = { stop: () => afterThrow.push('server.stop(true)') };
+
+  expect(() =>
+    shutdownProxyServer(failing as never, {
+      close: () => {
+        afterThrow.push('app.close()');
+        throw new Error('resource close failed');
+      },
+    }),
+  ).toThrow('resource close failed');
+  expect(afterThrow).toEqual(['app.close()', 'server.stop(true)']);
 });
 
 /** Bun's `websocket` handler has its own idle window, defaulting to 120s; the top-level

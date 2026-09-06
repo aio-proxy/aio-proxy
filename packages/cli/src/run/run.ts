@@ -154,6 +154,38 @@ export const proxyServeOptions = (app: ProxyApp, host: string, port: number) => 
   websocket: { ...websocket, idleTimeout: 255 },
 });
 
+/** Application cleanup runs BEFORE the force stop, and the order is load-bearing for realtime.
+ *
+ *  Measured on Bun 1.4.2: `server.stop(true)` dispatches each upgraded socket's `close` handler
+ *  **synchronously, inside the `stop()` call**, with code `1006`. So with the force stop first, the
+ *  relay's teardown ran on that `1006` — which is in the unforwardable set and normalizes to
+ *  `1011` — and latched itself; `app.close()`'s `realtimeCalls.close()` then had nothing left to
+ *  close, and the shutdown code the design spec pins (`1001`) was never sent. Running `app.close()`
+ *  first lets the store close every live relay with `1001`, and the close frame still flushes even
+ *  though the force stop follows in the same synchronous block (measured).
+ *
+ *  Safe for non-realtime shutdown, and specifically not a drain: `app.close()` is fully
+ *  synchronous — `ServerState.close()` is a plain loop of synchronous closes — so it cannot hang
+ *  waiting on an in-flight HTTP request. Measured in both orders, an in-flight request behaves
+ *  identically: `stop(true)` aborts its signal and the client's fetch rejects either way, because
+ *  the two calls have always been in one synchronous block and a handler that resumes after them
+ *  already observed closed resources.
+ *
+ *  `server.stop(true)` is in a `finally` so it runs even if `app.close()` throws — which it can,
+ *  since `ServerState.close()` rethrows the first resource-close failure — because a process that
+ *  keeps listening is worse than a lost cleanup error. Exported so the ordering is assertable:
+ *  `run()` itself binds a socket, spawns config watchers, and installs signal handlers. */
+export const shutdownProxyServer = (
+  server: Pick<ReturnType<typeof Bun.serve>, 'stop'>,
+  app: { readonly close: () => void },
+): void => {
+  try {
+    app.close();
+  } finally {
+    server.stop(true);
+  }
+};
+
 export const run = (deps: CliDeps) => async (options: RunOptions) => {
   const resolvedConfigPath = configPath();
   const dashboardUrlFor = (host: string, port: number) => {
@@ -203,14 +235,10 @@ export const run = (deps: CliDeps) => async (options: RunOptions) => {
     if (closing) return;
     closing = true;
     try {
-      server.stop(true);
+      shutdownProxyServer(server, app);
     } finally {
-      try {
-        app.close();
-      } finally {
-        process.off('SIGINT', shutdown);
-        process.off('SIGTERM', shutdown);
-      }
+      process.off('SIGINT', shutdown);
+      process.off('SIGTERM', shutdown);
     }
   };
   process.once('SIGINT', shutdown);
