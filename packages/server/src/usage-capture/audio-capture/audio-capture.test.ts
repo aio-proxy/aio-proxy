@@ -20,3 +20,7 @@ test('bills a configured per-request fee even though a binary audio response rep
   expect(usage).not.toHaveProperty('outputTokens');
   expect(usage).not.toHaveProperty('totalTokens');
 });
+
+test('records nothing when the response reports no usage and no per-request fee is configured', async () => {
+  expect(await captureAudioUsage({ providerId: 'openai', modelId: 'tts-1' })).toBeUndefined();
+});
