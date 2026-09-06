@@ -223,6 +223,48 @@ test('a dial on a keyless proxy receives no caller credential, only the harmless
   expect([...(dialed?.values() ?? [])].join('\n')).not.toContain(SENTINEL_CREDENTIAL);
 });
 
+/** The query analogue of the header test above, and the same asymmetry one channel over.
+ *  `stripCallerCredentials` rewrites the request — removing `?key=` and `?auth_token=` — only on
+ *  the keyed branch, so on a keyless proxy both are still on the inbound URL. Both the create and
+ *  the hangup build their upstream `Request` from that URL, and the ChatGPT plugin's
+ *  `mergeEndpointQuery` copies every inbound parameter onto its own upstream endpoint, so a
+ *  caller presenting a credential in a supported query form disclosed it upstream.
+ *
+ *  Run keyless deliberately, for the same reason: on a keyed proxy the middleware already
+ *  rewrote the URL, so these assertions would hold no matter what the routes did. A parameter
+ *  the middleware never touches is asserted present too, otherwise a route that fetched a
+ *  bare path with no query at all would pass. */
+test('a keyless create and hangup send no caller query credential upstream, only the harmless query', async () => {
+  const urls: string[] = [];
+  const app = await createServer({
+    config: { providers: {} },
+    providerInstances: [urlCapturingProvider(urls)],
+    logger: discard,
+  });
+
+  const query = `key=${SENTINEL_CREDENTIAL}&auth_token=${SENTINEL_CREDENTIAL}&intent=quicksilver`;
+  const created = await app.request(`/v1/live?${query}`, {
+    method: 'POST',
+    body: 'v=0\r\n',
+    headers: { 'content-type': 'application/sdp' },
+  });
+  const hungUp = await app.request(`/v1/realtime/calls/call_abc/hangup?${query}`, { method: 'POST' });
+
+  // Both upstream calls must have happened, or the absence assertions below would hold
+  // because nothing was ever fetched.
+  expect([created.status, hungUp.status]).toEqual([201, 204]);
+  expect(urls).toHaveLength(2);
+  for (const url of urls) {
+    const searchParams = new URL(url).searchParams;
+    expect(searchParams.get('key')).toBeNull();
+    expect(searchParams.get('auth_token')).toBeNull();
+    // The positive control: an unrelated inbound parameter still reaches the plugin, so a
+    // route that discarded the whole query could not pass.
+    expect(searchParams.get('intent')).toBe('quicksilver');
+  }
+  expect(urls.join('\n')).not.toContain(SENTINEL_CREDENTIAL);
+});
+
 /** SDP bodies, `Location` values, and credentials are never logged. Types are the only
  *  compile-time enforcement of that and they are provably insufficient: the excess-property
  *  check that rejects an unknown key does not fire on a pre-built variable nor on a literal
@@ -389,6 +431,22 @@ function capturingDialProvider(capture: (headers: Headers) => void): RuntimeProv
       dial: (input: { readonly headers: Headers }) => {
         capture(input.headers);
         return Promise.reject(new RealtimeDialError('refused', { kind: 'rejected' }));
+      },
+    },
+  } as unknown as RuntimeProviderInput;
+}
+
+/** A realtime provider whose `fetch` records the URL it was handed, so the assertions run on
+ *  what the plugin would rewrite onto its upstream endpoint rather than on a live upstream. */
+function urlCapturingProvider(urls: string[]): RuntimeProviderInput {
+  const base = realtimeProvider() as unknown as { realtime: { fetch: (request: Request) => Promise<Response> } };
+  return {
+    ...(base as unknown as Record<string, unknown>),
+    realtime: {
+      ...base.realtime,
+      fetch: (request: Request) => {
+        urls.push(request.url);
+        return base.realtime.fetch(request);
       },
     },
   } as unknown as RuntimeProviderInput;

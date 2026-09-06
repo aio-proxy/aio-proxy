@@ -4,6 +4,7 @@ import type { Context } from 'hono';
 import { callerPrincipal, type CallerPrincipalEnv } from '../../caller-principal';
 import { isInboundAbort } from '../../route-observation';
 import { logServerEvent } from '../../server-log';
+import { withoutCallerCredentialQuery } from '../../server/api-key-auth';
 import { readRealtimeCreateBody, withUpstreamModel } from './create-body';
 import {
   isValidCallId,
@@ -70,10 +71,13 @@ async function attemptCandidates(
     try {
       // A fetch body is single-use, so each attempt gets a fresh Request built
       // from the buffered bytes. No inbound Host, Content-Length, Connection, or
-      // Accept-Encoding, and the auth middleware already deleted every caller
-      // credential; the plugin adds its own upstream auth.
+      // Accept-Encoding, and no caller credential in either channel: the auth
+      // middleware deletes the credential headers on its keyed branch, and
+      // `withoutCallerCredentialQuery` removes `?key=`/`?auth_token=` here because on a
+      // keyless proxy the middleware never rewrites the URL — the plugin merges inbound
+      // query onto its own upstream endpoint. The plugin adds its own upstream auth.
       response = await candidate.realtime.fetch(
-        new Request(context.req.raw.url, {
+        new Request(withoutCallerCredentialQuery(context.req.raw.url), {
           method: 'POST',
           body: input.body.body,
           headers: { 'content-type': input.body.contentType, accept: '*/*' },

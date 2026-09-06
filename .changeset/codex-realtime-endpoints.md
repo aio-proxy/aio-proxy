@@ -31,5 +31,10 @@ The sideband relay's 1 MiB backpressure ceiling is now enforced in both directio
 is queued rather than before, so a single frame larger than the ceiling closes the relay with `1011`
 instead of leaving it open around an unbounded send queue until some later frame happens to arrive.
 
+On a proxy with no configured API keys, a caller credential presented as a `key` or `auth_token`
+query parameter is no longer forwarded to the realtime upstream. The realtime create and hangup
+requests are built from a sanitized inbound URL, so both parameters are removed even on the
+anonymous authentication path, which does not rewrite the request.
+
 `@aio-proxy/server` now also exports Bun's `websocket` handler; an embedder that constructs its own
 `Bun.serve` must pass it as the `websocket` option or every realtime sideband upgrade fails.

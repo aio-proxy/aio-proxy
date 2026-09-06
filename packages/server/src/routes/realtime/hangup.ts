@@ -3,6 +3,7 @@ import type { Context } from 'hono';
 import { callerPrincipal, type CallerPrincipalEnv } from '../../caller-principal';
 import { isInboundAbort } from '../../route-observation';
 import { logServerEvent } from '../../server-log';
+import { withoutCallerCredentialQuery } from '../../server/api-key-auth';
 import { sameCallerPrincipal } from './call-store';
 import { NORMAL_CLOSE_CODE } from './close-code';
 import {
@@ -43,8 +44,14 @@ export async function handleRealtimeHangup(
       runtimeRevision: record.runtimeRevision,
     });
     if (candidate === undefined) return codexAuthUnavailable();
+    // Same query-credential strip as the create: the plugin merges inbound query onto its
+    // own hangup endpoint, and on a keyless proxy the middleware left `?key=`/`?auth_token=`
+    // on the inbound URL.
     response = await candidate.realtime.fetch(
-      new Request(context.req.raw.url, { method: 'POST', signal: context.req.raw.signal }),
+      new Request(withoutCallerCredentialQuery(context.req.raw.url), {
+        method: 'POST',
+        signal: context.req.raw.signal,
+      }),
     );
   } catch (error) {
     if (isInboundAbort(error, context.req.raw.signal)) return new Response(null, { status: 499 });

@@ -60,6 +60,10 @@ export function stripCallerCredentials(context: Context): void {
 /** The headers a caller may present a proxy credential in. */
 const CALLER_CREDENTIAL_HEADERS = ['authorization', 'x-api-key', 'x-goog-api-key'] as const;
 
+/** The query parameters a caller may present a proxy credential in — the same two the
+ *  candidate list above reads, so a name added there is added here. */
+const CALLER_CREDENTIAL_QUERY_PARAMS = ['key', 'auth_token'] as const;
+
 /** A copy of `headers` with every caller credential removed, for the one path that hands
  *  inbound headers to a plugin. `stripCallerCredentials` cannot stand in for it: it only
  *  runs on the keyed branch of `authenticateStaticOrAnonymous`, so on a keyless proxy the
@@ -71,19 +75,28 @@ export function withoutCallerCredentials(headers: Headers): Headers {
   return copy;
 }
 
+/** `url` with every caller credential query parameter removed, for the paths that build an
+ *  upstream request from the inbound URL. Same asymmetry as `withoutCallerCredentials`, one
+ *  channel over: `stripCallerCredentials` rewrites the request on the keyed branch only, so
+ *  on a keyless proxy `?key=`/`?auth_token=` are still on the inbound URL when a route reads
+ *  it — and a plugin that merges inbound query onto its own upstream endpoint would send them
+ *  on. Returns a string because that is what the `Request` constructor wants at every call
+ *  site, and takes one so no caller has to build a `URL` just to discard it. */
+export function withoutCallerCredentialQuery(url: string): string {
+  const parsed = new URL(url);
+  if (!CALLER_CREDENTIAL_QUERY_PARAMS.some((param) => parsed.searchParams.has(param))) return url;
+  for (const param of CALLER_CREDENTIAL_QUERY_PARAMS) parsed.searchParams.delete(param);
+  return parsed.toString();
+}
+
 export function bearerToken(value: string | undefined): string | undefined {
   const match = /^Bearer\s+(.+)$/iu.exec(value ?? '');
   return match?.[1];
 }
 
 function withoutCallerQuery(request: Request): Request {
-  const url = new URL(request.url);
-  if (!url.searchParams.has('key') && !url.searchParams.has('auth_token')) {
-    return request;
-  }
-  url.searchParams.delete('key');
-  url.searchParams.delete('auth_token');
-  return new Request(url, request);
+  const stripped = withoutCallerCredentialQuery(request.url);
+  return stripped === request.url ? request : new Request(stripped, request);
 }
 
 function matchedConfiguredKey(candidate: string, configuredKeys: readonly ApiKeyEntry[]): ApiKeyEntry | undefined {

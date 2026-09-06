@@ -1,1 +1,1 @@
-export { requireApiKey, withoutCallerCredentials } from './api-key-auth';
+export { requireApiKey, withoutCallerCredentials, withoutCallerCredentialQuery } from './api-key-auth';
