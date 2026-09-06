@@ -13,7 +13,7 @@ import { type AudioInvocation, type AudioResult, defineAudioProtocolAdapter } fr
 import { openAIAudioErrors } from '../errors';
 import { stripHopHeaders } from '../headers';
 import { readJsonRequest, readRequestText, type RequestBodyLimits } from '../request';
-import { renderTranscription } from './transcription-egress';
+import { renderTranscription, RENDERABLE_TRANSCRIPTION_FORMATS } from './transcription-egress';
 
 export type OpenAIAudioOperation = 'speech' | 'transcriptions' | 'translations';
 
@@ -126,9 +126,13 @@ export function audioConvertSkipReason(context: OpenAIAudioContext): string | un
   return context.operation === 'translations' ? 'translations' : undefined;
 }
 
-// The four transcription features `transcribe` cannot express. Raw passthrough
-// forwards them untouched; the convert path must refuse them rather than answer a
-// streaming or logprob-annotated request with a plain single-shot transcript.
+// Five convert-path refusals. Four are transcription features `transcribe` cannot
+// express: raw passthrough forwards them untouched, and the convert path must refuse
+// them rather than answer a streaming or logprob-annotated request with a plain
+// single-shot transcript. The fifth is a different kind — an output format this proxy
+// cannot render. Ingress accepts any `response_format` string, and raw passthrough
+// lets upstream validate it, so without this check a misspelling would quietly get a
+// plain `{ text }` body on the convert path only.
 function assertConvertibleTranscription(request: OpenAITranscriptionRequest): void {
   if (request.stream_format != null) throw new OpenAIAudioUnsupportedFeatureError('stream_format');
   if (request.chunking_strategy != null) throw new OpenAIAudioUnsupportedFeatureError('chunking_strategy');
@@ -137,6 +141,12 @@ function assertConvertibleTranscription(request: OpenAITranscriptionRequest): vo
   // place it appears; a client may spell it with or without the PHP-style `[]`.
   if (request.rawFormFields.some((field) => field.name === 'include' || field.name === 'include[]')) {
     throw new OpenAIAudioUnsupportedFeatureError('include');
+  }
+  // 501 rather than 400: the convert path cannot tell a client misspelling from a
+  // format OpenAI added after this code was written, and either way the honest
+  // statement is that this path cannot render it. Absent and `null` mean `json`.
+  if (request.response_format != null && !RENDERABLE_TRANSCRIPTION_FORMATS.has(request.response_format)) {
+    throw new OpenAIAudioUnsupportedFeatureError('response_format');
   }
 }
 

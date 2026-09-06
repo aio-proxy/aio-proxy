@@ -13,6 +13,7 @@ import {
   GeminiInteractionsUnsupportedFeatureError,
   GeminiInlineDataTooLargeError,
   ImageInputUnsupportedError,
+  OPENAI_AUDIO_UNSUPPORTED_FEATURES,
   OpenAIAudioInvalidRequestError,
   OpenAIAudioUnsupportedFeatureError,
   OpenAICompletionsTransformError,
@@ -175,14 +176,7 @@ const AUDIO_NOT_IMPLEMENTED_MESSAGE = 'No configured provider can serve OpenAI A
 // The transcription features `transcribe` cannot express, plus the port it cannot
 // serve at all. Anything else reaching `unsupported` is a dispatch gap rather than
 // a named client feature, so it answers `not_implemented` instead.
-const AUDIO_UNSUPPORTED_FEATURES = new Set([
-  'stream',
-  'stream_format',
-  'chunking_strategy',
-  'include',
-  'translations',
-  'response_format',
-]);
+const AUDIO_UNSUPPORTED_FEATURES = new Set<string>(OPENAI_AUDIO_UNSUPPORTED_FEATURES);
 
 export const openAIAudioErrors: ProtocolErrorMapper = {
   requestError: (error) => {

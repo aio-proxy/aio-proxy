@@ -161,6 +161,34 @@ describe('openAITranscriptionAdapter', () => {
     await releaseMultipartSpool(raw);
   });
 
+  // Ingress accepts any `response_format` string and raw passthrough lets upstream
+  // validate it, so without a convert-path refusal a misspelling would quietly get a
+  // plain `{ text }` body from this path alone.
+  test('refuses a response_format it cannot render on the convert path', async () => {
+    const raw = transcriptionRequest('whisper-1', [['response_format', 'bogus']]);
+    const request = await openAITranscriptionAdapter.parse(raw, { operation: 'transcriptions' });
+    expect(() => openAITranscriptionAdapter.audioInvocation(request, { operation: 'transcriptions' })).toThrow(
+      'OpenAI Audio feature is not supported: response_format',
+    );
+    await releaseMultipartSpool(raw);
+  });
+
+  test.each([[[['response_format', 'json']] as const], [[] as const]])(
+    'renders the json default for %o on the convert path',
+    async (extra) => {
+      const raw = transcriptionRequest('whisper-1', extra);
+      const request = await openAITranscriptionAdapter.parse(raw, { operation: 'transcriptions' });
+      expect(() => openAITranscriptionAdapter.audioInvocation(request, { operation: 'transcriptions' })).not.toThrow();
+      const response = await openAITranscriptionAdapter.audioResponse(
+        { kind: 'transcription', transcription: { text: 'hello', segments: [] } },
+        request,
+        { modelId: 'whisper-1' },
+      );
+      expect(await response.json()).toEqual({ text: 'hello' });
+      await releaseMultipartSpool(raw);
+    },
+  );
+
   test('renders the requested response format on egress', async () => {
     const raw = transcriptionRequest('whisper-1');
     const request = await openAITranscriptionAdapter.parse(raw, { operation: 'transcriptions' });

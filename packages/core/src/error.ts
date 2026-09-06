@@ -168,13 +168,21 @@ export class OpenAIImagesInvalidRequestError extends AioProxyError {
   }
 }
 
-export type OpenAIAudioUnsupportedFeature =
-  | 'stream'
-  | 'stream_format'
-  | 'chunking_strategy'
-  | 'include'
-  | 'translations'
-  | 'response_format';
+/**
+ * The runtime list is the source of truth and the type is derived from it, so
+ * `protocol/errors.ts` can build its mapping set from this const. Hand-writing both
+ * let a new member reach the mapper as an unnamed `not_implemented` fallthrough.
+ */
+export const OPENAI_AUDIO_UNSUPPORTED_FEATURES = [
+  'stream',
+  'stream_format',
+  'chunking_strategy',
+  'include',
+  'translations',
+  'response_format',
+] as const;
+
+export type OpenAIAudioUnsupportedFeature = (typeof OPENAI_AUDIO_UNSUPPORTED_FEATURES)[number];
 
 export class OpenAIAudioUnsupportedFeatureError extends AioProxyError {
   readonly code = 'UNSUPPORTED_OPENAI_AUDIO_FEATURE';
