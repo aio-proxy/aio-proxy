@@ -176,7 +176,7 @@ test('rejects multipart edits missing prompt or image', async () => {
   await expect(parseOpenAIImageEditsMultipart(editsMultipartRequest({ prompt: 'make it night' }))).rejects.toThrow();
 });
 
-test.each(['yes', '1', '', 'null'] as const)('rejects invalid multipart stream=%s', async (stream) => {
+test.each(['yes', '1', 'null'] as const)('rejects invalid multipart stream=%s', async (stream) => {
   await expect(
     parseOpenAIImageEditsMultipart(
       editsMultipartRequest({
@@ -191,6 +191,10 @@ test.each(['yes', '1', '', 'null'] as const)('rejects invalid multipart stream=%
 test.each([
   ['true', true],
   ['false', false],
+  // The shared coercion trims, so a whitespace-padded literal is a value here. It used
+  // to reach the schema unchanged and 400, which disagreed with the audio port.
+  [' true ', true],
+  [' false ', false],
 ] as const)('parses multipart stream=%s', async (value, expected) => {
   const parsed = await parseOpenAIImageEditsMultipart(
     editsMultipartRequest({
@@ -200,6 +204,19 @@ test.each([
     }),
   );
   expect(parsed.stream).toBe(expected);
+});
+
+// "Empty means absent" is the rule both multipart ports share: a blank part must not
+// become an explicit `false`, and must not 400 either.
+test.each(['', ' '] as const)('treats an empty multipart stream=%p as not sent', async (stream) => {
+  const parsed = await parseOpenAIImageEditsMultipart(
+    editsMultipartRequest({
+      prompt: 'make it night',
+      image: blobFrom(PNG_1X1_RGBA),
+      stream,
+    }),
+  );
+  expect(parsed.stream).toBeUndefined();
 });
 
 test('omits stream when the multipart field is absent', async () => {

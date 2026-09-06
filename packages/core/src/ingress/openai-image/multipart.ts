@@ -2,6 +2,7 @@ import { decodedRequestStream, type RequestBodyLimits } from '../../protocol/req
 import {
   acquireMultipartSlot,
   multipartBoundary,
+  multipartFieldBoolean,
   multipartFieldNumber,
   type MultipartSpool,
   type MultipartStreamSpec,
@@ -113,7 +114,7 @@ export async function parseOpenAIImageEditsMultipart(
 const MULTIPART_IDLE_TIMEOUT_MS = 600_000;
 
 function generationsInputFromFields(fields: Record<string, string>): Record<string, unknown> {
-  const stream = parseOptionalBoolean(fields['stream']);
+  const stream = multipartFieldBoolean(fields['stream']);
   const model = fields['model'];
   const input: Record<string, unknown> = {
     ...(model === undefined ? {} : { model }),
@@ -128,11 +129,4 @@ function generationsInputFromFields(fields: Record<string, string>): Record<stri
     if (fields[key] !== undefined) input[key] = fields[key];
   }
   return input;
-}
-
-function parseOptionalBoolean(value: string | undefined): boolean | string | undefined {
-  if (value === undefined) return undefined;
-  if (value === 'true') return true;
-  if (value === 'false') return false;
-  return value;
 }
