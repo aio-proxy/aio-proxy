@@ -5,4 +5,3 @@ export {
   openAISpeechAdapter,
   openAITranscriptionAdapter,
 } from './openai-audio';
-export { renderTranscription } from './transcription-egress';

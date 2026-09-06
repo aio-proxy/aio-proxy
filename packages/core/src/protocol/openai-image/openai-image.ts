@@ -11,19 +11,14 @@ import {
   type OpenAIImageUpload,
 } from '../../ingress/openai-image';
 import { openAIImagesErrors } from '../errors';
+import { stripHopHeaders } from '../headers';
 import {
   defineImageProtocolAdapter,
   officialImageUsage,
   type ImageInvocation,
   type ImageTransportResult,
 } from '../image-adapter';
-import {
-  REQUEST_BODY_LIMITS,
-  type RequestBodyLimits,
-  readJsonRequest,
-  readRequestText,
-  stripHopHeaders,
-} from '../request';
+import { REQUEST_BODY_LIMITS, type RequestBodyLimits, readJsonRequest, readRequestText } from '../request';
 import { assertConvertMask, decodeImageBytes } from './mask';
 
 export { CPA_DEFAULT_IMAGE_MODEL, type OpenAIImageRequest } from '../../ingress/openai-image';

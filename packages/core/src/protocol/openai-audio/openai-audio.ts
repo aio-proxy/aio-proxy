@@ -11,7 +11,8 @@ import {
 } from '../../ingress/openai-audio';
 import { type AudioInvocation, type AudioResult, defineAudioProtocolAdapter } from '../audio-adapter';
 import { openAIAudioErrors } from '../errors';
-import { readJsonRequest, readRequestText, type RequestBodyLimits, stripHopHeaders } from '../request';
+import { stripHopHeaders } from '../headers';
+import { readJsonRequest, readRequestText, type RequestBodyLimits } from '../request';
 import { renderTranscription } from './transcription-egress';
 
 export type OpenAIAudioOperation = 'speech' | 'transcriptions' | 'translations';

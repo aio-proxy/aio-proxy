@@ -6,6 +6,7 @@ export * from './errors';
 export * from './gemini-embeddings';
 export * from './gemini-generate-content';
 export * from './gemini-interactions';
+export * from './headers';
 export * from './image-adapter';
 export * from './openai-audio';
 export * from './openai-completions';
