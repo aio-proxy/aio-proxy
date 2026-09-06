@@ -422,6 +422,18 @@ test('withUpstreamModel rewrites both model fields for JSON and leaves SDP untou
   expect(untouched.contentType).toBe('application/sdp');
 });
 
+// The nested rewrite is guarded exactly as the top-level one is. An unconditional nested write
+// gave an offer that named no model a `session.model` the caller never sent, denying the upstream
+// its own default — and the case is reachable: `session` carries voice, turn detection, and tool
+// settings that are useful without a model.
+test('a session that names no model does not gain one', async () => {
+  const parsed = (await readRealtimeCreateBody(jsonRequest({ sdp: 'v=0', session: { voice: 'cedar' } }))) as never;
+
+  const rewritten = withUpstreamModel(parsed, 'gpt-live-1-codex');
+
+  expect(JSON.parse(new TextDecoder().decode(rewritten.body))).toEqual({ sdp: 'v=0', session: { voice: 'cedar' } });
+});
+
 test('a multipart session too deeply nested to re-serialize is 400, not a rejected promise', async () => {
   const form = new FormData();
   form.set('sdp', 'v=0\r\n');

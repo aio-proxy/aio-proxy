@@ -213,7 +213,13 @@ export function withUpstreamModel(body: RealtimeCreateBody, normalized: string):
   const rewritten = {
     ...payload,
     ...(Object.hasOwn(payload, 'model') ? { model: normalized } : {}),
-    ...(isPlainObject(session) ? { session: { ...session, model: normalized } } : {}),
+    // Guarded on `session` owning a `model`, exactly as the top-level rewrite is. An
+    // unconditional nested write contradicted the no-op documented above: an offer like
+    // `{ sdp, session: { voice: 'cedar' } }` gained a `session.model` the caller never sent,
+    // denying the upstream its own default.
+    ...(isPlainObject(session) && Object.hasOwn(session, 'model')
+      ? { session: { ...session, model: normalized } }
+      : {}),
   };
   const encoded = encodeJson(rewritten);
   if (encoded === undefined) return body;
