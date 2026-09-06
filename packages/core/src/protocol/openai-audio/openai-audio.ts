@@ -113,6 +113,12 @@ export const openAITranscriptionAdapter = defineAudioProtocolAdapter<OpenAITrans
       transcription: {
         audio: request.upload.data,
         ...(request.upload.mediaType === undefined ? {} : { mediaType: request.upload.mediaType }),
+        ...(request.language == null ? {} : { language: request.language }),
+        ...(request.prompt == null ? {} : { prompt: request.prompt }),
+        ...(request.temperature == null ? {} : { temperature: request.temperature }),
+        ...(request.timestamp_granularities === undefined
+          ? {}
+          : { timestampGranularities: request.timestamp_granularities }),
       },
     };
   },

@@ -56,11 +56,12 @@ function speechProvider(
 function transcriptionProvider(
   result: Record<string, unknown>,
   record?: (call: TranscriptionCall) => void,
+  provider = 'stub',
 ): { transcriptionModel: (modelId: string) => unknown } {
   return {
     transcriptionModel: (modelId) => ({
       specificationVersion: 'v3',
-      provider: 'stub',
+      provider,
       modelId,
       doGenerate: async (options: TranscriptionCall) => {
         record?.(options);
@@ -254,6 +255,51 @@ describe('createProviderV4TranscribeInvoke', () => {
       providerOptions: { openai: { temperature: 0 } },
       abortSignal: controller.signal,
     });
+  });
+
+  test('carries the transcription controls under the provider-derived options key', async () => {
+    const calls: TranscriptionCall[] = [];
+    const invoke = createProviderV4TranscribeInvoke(
+      'stub',
+      // `openai.transcription` is the real @ai-sdk/openai value, and it parses its
+      // options under `openai` — the first segment is what the SDK expects.
+      transcriptionProvider({}, (call) => calls.push(call), 'openai.transcription') as never,
+    );
+
+    await invoke(
+      {
+        audio: WAV_BYTES,
+        language: 'ja',
+        prompt: 'proper nouns',
+        temperature: 0.2,
+        timestampGranularities: ['word', 'segment'],
+      },
+      { modelId: 'whisper-1' },
+    );
+
+    expect(calls[0]?.providerOptions).toEqual({
+      openai: {
+        language: 'ja',
+        prompt: 'proper nouns',
+        temperature: 0.2,
+        timestampGranularities: ['word', 'segment'],
+      },
+    });
+  });
+
+  test('lets caller-supplied provider options win over the derived ones', async () => {
+    const calls: TranscriptionCall[] = [];
+    const invoke = createProviderV4TranscribeInvoke(
+      'stub',
+      transcriptionProvider({}, (call) => calls.push(call), 'groq') as never,
+    );
+
+    await invoke(
+      { audio: WAV_BYTES, language: 'ja', providerOptions: { groq: { language: 'en', foo: 'bar' } } },
+      { modelId: 'whisper-large-v3' },
+    );
+
+    expect(calls[0]?.providerOptions).toEqual({ groq: { language: 'en', foo: 'bar' } });
   });
 
   test('fails with a clear provider error when transcription is unsupported', async () => {

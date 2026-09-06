@@ -78,12 +78,13 @@ export function createProviderV4TranscribeInvoke(
     }
     try {
       const model = provider.transcriptionModel!(options.modelId);
+      const providerOptions = transcriptionProviderOptions(model.provider, invocation);
       const result = await transcribe({
         model: invocation.mediaType === undefined ? model : withMediaType(model, invocation.mediaType),
         audio: invocation.audio,
-        ...(invocation.providerOptions === undefined
+        ...(providerOptions === undefined
           ? {}
-          : { providerOptions: invocation.providerOptions as TranscribeCall['providerOptions'] }),
+          : { providerOptions: providerOptions as TranscribeCall['providerOptions'] }),
         ...(options.signal === undefined ? {} : { abortSignal: options.signal }),
       });
       return {
@@ -98,6 +99,40 @@ export function createProviderV4TranscribeInvoke(
       throw new AiSdkProviderError(providerId, error);
     }
   };
+}
+
+/**
+ * `transcribe()` has no provider-agnostic parameter for `language`, `prompt`,
+ * `temperature`, or `timestampGranularities`: the only channel is `providerOptions`,
+ * keyed by provider name. The protocol layer cannot pick that key — it does not know
+ * which candidate will serve the request — so the key is derived here from the model's
+ * own `provider` string, taking the segment before the first `.`.
+ *
+ * Verified against the installed SDKs: @ai-sdk/openai's transcription model reports
+ * `provider: 'openai.transcription'` but parses its options under `'openai'`, and
+ * @ai-sdk/groq reports `'groq'` and parses under `'groq'`, accepting the same option
+ * names. So the first segment is the options key for both. Values are not validated
+ * here: the SDK's own `parseProviderOptions` does that, and its failure is already
+ * wrapped as `AiSdkProviderError`.
+ */
+function transcriptionProviderOptions(
+  modelProvider: string,
+  invocation: TranscriptionInvocation,
+): Record<string, Record<string, unknown>> | undefined {
+  const derived: Record<string, unknown> = {
+    ...(invocation.language === undefined ? {} : { language: invocation.language }),
+    ...(invocation.prompt === undefined ? {} : { prompt: invocation.prompt }),
+    ...(invocation.temperature === undefined ? {} : { temperature: invocation.temperature }),
+    ...(invocation.timestampGranularities === undefined
+      ? {}
+      : { timestampGranularities: invocation.timestampGranularities }),
+  };
+  const caller = invocation.providerOptions;
+  if (Object.keys(derived).length === 0) return caller === undefined ? undefined : { ...caller };
+  const key = modelProvider.split('.')[0] ?? modelProvider;
+  // Caller-supplied options win: that channel is explicitly authored, so it is the
+  // more specific intent for the same key.
+  return { ...caller, [key]: { ...derived, ...caller?.[key] } };
 }
 
 /**

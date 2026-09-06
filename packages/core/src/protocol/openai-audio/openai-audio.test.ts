@@ -189,6 +189,38 @@ describe('openAITranscriptionAdapter', () => {
     },
   );
 
+  // These four reach upstream only through the invocation: dropping them ran the
+  // transcription on provider defaults, so `language=ja` was silently ignored.
+  test('carries the transcription controls into the invocation', async () => {
+    const raw = transcriptionRequest('whisper-1', [
+      ['language', 'ja'],
+      ['prompt', 'proper nouns'],
+      ['temperature', '0.2'],
+    ]);
+    const request = await openAITranscriptionAdapter.parse(raw, { operation: 'transcriptions' });
+    const invocation = openAITranscriptionAdapter.audioInvocation(request, { operation: 'transcriptions' });
+    expect(invocation.kind).toBe('transcription');
+    expect(invocation).toMatchObject({
+      transcription: {
+        language: 'ja',
+        prompt: 'proper nouns',
+        temperature: 0.2,
+        timestampGranularities: ['word'],
+      },
+    });
+    await releaseMultipartSpool(raw);
+  });
+
+  test('omits an unset transcription control instead of passing undefined', async () => {
+    const raw = transcriptionRequest('whisper-1', [['language', 'ja']]);
+    const request = await openAITranscriptionAdapter.parse(raw, { operation: 'transcriptions' });
+    const invocation = openAITranscriptionAdapter.audioInvocation(request, { operation: 'transcriptions' });
+    if (invocation.kind !== 'transcription') throw new TypeError('expected a transcription invocation');
+    expect(invocation.transcription).not.toHaveProperty('prompt');
+    expect(invocation.transcription).not.toHaveProperty('temperature');
+    await releaseMultipartSpool(raw);
+  });
+
   test('renders the requested response format on egress', async () => {
     const raw = transcriptionRequest('whisper-1');
     const request = await openAITranscriptionAdapter.parse(raw, { operation: 'transcriptions' });

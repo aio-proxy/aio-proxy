@@ -20,6 +20,18 @@ export type SpeechInvocation = {
 export type TranscriptionInvocation = {
   readonly audio: Uint8Array;
   readonly mediaType?: string;
+  /**
+   * The transcription controls OpenAI takes as top-level form fields. They are typed
+   * fields rather than entries in `providerOptions` because the protocol layer does
+   * not know which upstream provider will serve the request — `providerOptions` is
+   * keyed by provider name, so only the transport layer can pick that key. Named with
+   * the AI SDK's own `timestampGranularities` spelling so the translation is a
+   * rename-free pass-through.
+   */
+  readonly language?: string;
+  readonly prompt?: string;
+  readonly temperature?: number;
+  readonly timestampGranularities?: readonly string[];
   readonly providerOptions?: AudioProviderOptions;
 };
 
