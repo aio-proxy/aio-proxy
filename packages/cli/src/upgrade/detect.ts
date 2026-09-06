@@ -5,7 +5,10 @@ import type { PackageUpgradeMethod, UpgradeMethod, UpgradeTarget } from './const
 import { HOMEBREW_FORMULA, PACKAGE } from './constants';
 
 const PACKAGE_METHODS = ['brew', 'bun', 'npm', 'pnpm'] as const;
+const NODE_MANAGERS = ['bun', 'npm', 'pnpm'] as const;
 const CELLAR_PATTERN = /^(.*)\/Cellar\/aio-proxy\/[^/]+\/bin\/aio-proxy$/;
+const PLATFORM_CLI_BIN = /(?:^|[/\\])node_modules[/\\]@aio-proxy[/\\]cli-[^/\\]+[/\\]bin[/\\]aio-proxy$/;
+type NodeManager = (typeof NODE_MANAGERS)[number];
 
 const tryRealpath = (p: string): string | undefined => {
   try {
@@ -92,6 +95,77 @@ const siblingCommand = (binPath: string, name: string): string | undefined => {
   return existsSync(candidate) ? candidate : undefined;
 };
 
+export const isPlatformCliBinary = (binPath: string): boolean => PLATFORM_CLI_BIN.test(binPath);
+
+const managerCommandAt = (dir: string, name: string): string | undefined => {
+  const inBin = join(dir, 'bin', name);
+  if (existsSync(inBin)) return inBin;
+  const direct = join(dir, name);
+  return existsSync(direct) ? direct : undefined;
+};
+
+const launcherBeside = (command: string): string | undefined => {
+  const candidate = join(dirname(command), PACKAGE);
+  return existsSync(candidate) ? candidate : undefined;
+};
+
+const layoutPreferredManager = (binPath: string): NodeManager | undefined => {
+  const normalized = binPath.replaceAll('\\', '/');
+  if (normalized.includes('/.bun/') || normalized.includes('/install/global/')) return 'bun';
+  if (normalized.includes('/.pnpm/') || normalized.includes('/pnpm/')) return 'pnpm';
+  if (normalized.includes('/lib/node_modules/')) return 'npm';
+  return undefined;
+};
+
+const platformPackageTarget = (binPath: string, preferred?: PackageUpgradeMethod): UpgradeTarget | undefined => {
+  if (!isPlatformCliBinary(binPath)) return undefined;
+  const wanted: readonly NodeManager[] =
+    preferred === 'bun' || preferred === 'npm' || preferred === 'pnpm' ? [preferred] : NODE_MANAGERS;
+  let dir = dirname(binPath);
+  for (let i = 0; i < 16; i++) {
+    const parent = dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+    const matches = wanted.flatMap((name) => {
+      const command = managerCommandAt(dir, name);
+      return command === undefined ? [] : [{ name, command }];
+    });
+    if (matches.length === 0) continue;
+    const guessed = layoutPreferredManager(binPath);
+    const chosen = (guessed === undefined ? undefined : matches.find((entry) => entry.name === guessed)) ?? matches[0];
+    if (chosen === undefined) continue;
+    const launcher = launcherBeside(chosen.command);
+    if (launcher === undefined && preferred === undefined) continue;
+    return { method: chosen.name, command: chosen.command, bin: launcher ?? binPath };
+  }
+  return undefined;
+};
+
+const whichOnPath = (name: string): string | undefined => {
+  const pathVar = process.env['PATH'];
+  if (pathVar === undefined || pathVar === '') return undefined;
+  for (const dir of pathVar.split(':')) {
+    if (dir === '') continue;
+    const candidate = join(dir, name);
+    if (existsSync(candidate)) return candidate;
+  }
+  return undefined;
+};
+
+const pathLauncherTarget = (preferred?: NodeManager): UpgradeTarget | undefined => {
+  const onPath = whichOnPath(PACKAGE);
+  if (onPath === undefined || isPlatformCliBinary(onPath)) return undefined;
+  if (preferred !== undefined) {
+    const command = siblingCommand(onPath, preferred);
+    return command === undefined ? undefined : { method: preferred, command, bin: onPath };
+  }
+  for (const name of NODE_MANAGERS) {
+    const command = siblingCommand(onPath, name);
+    if (command !== undefined) return { method: name, command, bin: onPath };
+  }
+  return undefined;
+};
+
 const brewTargetFromCellarOrSibling = (binPath: string): UpgradeTarget | undefined => {
   const prefix = brewPrefixFromCellar(binPath);
   if (prefix !== undefined) {
@@ -101,6 +175,17 @@ const brewTargetFromCellarOrSibling = (binPath: string): UpgradeTarget | undefin
   }
   const command = siblingCommand(binPath, 'brew');
   return command === undefined ? undefined : { method: 'brew', command, bin: binPath };
+};
+
+const resolvedNodeManagerCommand = (method: NodeManager, binPath: string): UpgradeTarget | undefined => {
+  const fromPlatform = platformPackageTarget(binPath, method);
+  if (fromPlatform !== undefined) return fromPlatform;
+  const sibling = siblingCommand(binPath, method);
+  if (sibling !== undefined) return { method, command: sibling, bin: binPath };
+  const fromPath = pathLauncherTarget(method);
+  if (fromPath !== undefined) return fromPath;
+  const which = Bun.which(method);
+  return which === null ? undefined : { method, command: which, bin: binPath };
 };
 
 const packageManagerTarget = (method: PackageUpgradeMethod, binPath: string): UpgradeTarget => {
@@ -115,8 +200,9 @@ const packageManagerTarget = (method: PackageUpgradeMethod, binPath: string): Up
     }
     throw new Error(`brew binary not found for ${binPath}`);
   }
-  const command = siblingCommand(binPath, method) ?? Bun.which(method) ?? method;
-  return { method, command, bin: binPath };
+  const resolved = resolvedNodeManagerCommand(method, binPath);
+  if (resolved === undefined) throw new Error(`${method} binary not found for ${binPath}`);
+  return resolved;
 };
 
 const detectedPackageTarget = (method: PackageUpgradeMethod, binPath: string): UpgradeTarget => {
@@ -132,7 +218,10 @@ const detectedPackageTarget = (method: PackageUpgradeMethod, binPath: string): U
     if (command === null) throw new Error(`brew binary not found for ${binPath}`);
     return { method: 'brew', command, bin: binPath };
   }
-  return packageManagerTarget(method, binPath);
+  const resolved = resolvedNodeManagerCommand(method, binPath);
+  if (resolved !== undefined) return resolved;
+  if (method === 'npm') return { method, command: method, bin: binPath };
+  throw new Error(`${method} binary not found for ${binPath}`);
 };
 
 export const resolveUpgradeTargetFrom = async (
@@ -143,6 +232,12 @@ export const resolveUpgradeTargetFrom = async (
   if (isPackageMethod(methodFromEnv)) return packageManagerTarget(methodFromEnv, binPath);
   const brew = brewTargetFromCellarOrSibling(binPath);
   if (brew !== undefined) return brew;
+  const fromPlatform = platformPackageTarget(binPath);
+  if (fromPlatform !== undefined) return fromPlatform;
+  if (isPlatformCliBinary(binPath)) {
+    const fromPath = pathLauncherTarget();
+    if (fromPath !== undefined) return fromPath;
+  }
   const bun = siblingCommand(binPath, 'bun');
   if (bun !== undefined) return { method: 'bun', command: bun, bin: binPath };
   const npm = siblingCommand(binPath, 'npm');

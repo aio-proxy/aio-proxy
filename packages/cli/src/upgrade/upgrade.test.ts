@@ -492,6 +492,91 @@ test('resolveUpgradeTargetFrom maps an npm prefix path to npm command and bin', 
   });
 });
 
+const writePlatformCliBinary = (prefix: string, manager: 'npm' | 'bun' | 'pnpm'): string => {
+  const native = join(
+    prefix,
+    'lib',
+    'node_modules',
+    'aio-proxy',
+    'node_modules',
+    '@aio-proxy',
+    'cli-linux-x64',
+    'bin',
+    'aio-proxy',
+  );
+  writeExecutable(join(prefix, 'bin', manager), '#!/bin/sh\n');
+  writeExecutable(join(prefix, 'bin', 'aio-proxy'), '#!/bin/sh\n');
+  writeExecutable(native, '#!/bin/sh\n');
+  return native;
+};
+
+const withEmptyManagerPath = async <T>(run: () => Promise<T>): Promise<T> => {
+  const previous = process.env['PATH'];
+  process.env['PATH'] = '/usr/bin:/bin';
+  try {
+    return await run();
+  } finally {
+    if (previous === undefined) delete process.env['PATH'];
+    else process.env['PATH'] = previous;
+  }
+};
+
+test('resolveUpgradeTargetFrom maps a node_modules/@aio-proxy/cli-linux-x64 binary to npm', async () => {
+  const prefix = mkdtempSync(join(tmpdir(), 'aio-npm-cli-pkg-'));
+  const native = writePlatformCliBinary(prefix, 'npm');
+  await withEmptyManagerPath(async () => {
+    expect(await resolveUpgradeTargetFrom(native, {})).toEqual({
+      method: 'npm',
+      command: join(prefix, 'bin', 'npm'),
+      bin: join(prefix, 'bin', 'aio-proxy'),
+    });
+  });
+});
+
+test('resolveUpgradeTargetFrom maps a bun global cli-* binary to bun, not binary', async () => {
+  const bunHome = mkdtempSync(join(tmpdir(), 'aio-bun-home-'));
+  const native = join(bunHome, 'install', 'global', 'node_modules', '@aio-proxy', 'cli-linux-x64', 'bin', 'aio-proxy');
+  writeExecutable(join(bunHome, 'bin', 'bun'), '#!/bin/sh\n');
+  writeExecutable(join(bunHome, 'bin', 'aio-proxy'), '#!/bin/sh\n');
+  writeExecutable(native, '#!/bin/sh\n');
+  await withEmptyManagerPath(async () => {
+    expect(await resolveUpgradeTargetFrom(native, {})).toEqual({
+      method: 'bun',
+      command: join(bunHome, 'bin', 'bun'),
+      bin: join(bunHome, 'bin', 'aio-proxy'),
+    });
+  });
+});
+
+test('resolveUpgradeTargetFrom maps a pnpm global cli-* binary to pnpm, not binary', async () => {
+  const prefix = mkdtempSync(join(tmpdir(), 'aio-pnpm-prefix-'));
+  const native = join(prefix, 'global', '5', 'node_modules', '@aio-proxy', 'cli-linux-x64', 'bin', 'aio-proxy');
+  writeExecutable(join(prefix, 'bin', 'pnpm'), '#!/bin/sh\n');
+  writeExecutable(join(prefix, 'bin', 'aio-proxy'), '#!/bin/sh\n');
+  writeExecutable(native, '#!/bin/sh\n');
+  await withEmptyManagerPath(async () => {
+    expect(await resolveUpgradeTargetFrom(native, {})).toEqual({
+      method: 'pnpm',
+      command: join(prefix, 'bin', 'pnpm'),
+      bin: join(prefix, 'bin', 'aio-proxy'),
+    });
+  });
+});
+
+test('AIO_PROXY_UPGRADE_METHOD=npm reconstructs an absolute command from the cli-* prefix', async () => {
+  const prefix = mkdtempSync(join(tmpdir(), 'aio-npm-env-'));
+  const native = writePlatformCliBinary(prefix, 'npm');
+  await withEmptyManagerPath(async () => {
+    const target = await resolveUpgradeTargetFrom(native, { AIO_PROXY_UPGRADE_METHOD: 'npm' });
+    expect(target).toEqual({
+      method: 'npm',
+      command: join(prefix, 'bin', 'npm'),
+      bin: join(prefix, 'bin', 'aio-proxy'),
+    });
+    expect(target.method === 'npm' && target.command).not.toBe('npm');
+  });
+});
+
 test('runPackageManagerUpgrade for brew execs the absolute command, never the string brew', async () => {
   const calls: string[][] = [];
   const original = Bun.spawn;

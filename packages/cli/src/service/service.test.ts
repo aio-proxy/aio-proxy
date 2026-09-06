@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -197,6 +197,76 @@ test('resolveExec maps a Cellar execPath to the stable Homebrew launcher when PA
       () => true,
     ),
   ).toBe('/opt/homebrew/bin/aio-proxy');
+});
+
+test('writeManagedUnit persists npm when ExecStart is the native cli-* binary and PATH has the shim', async () => {
+  const prefix = join(tmpdir(), `aio-npm-unit-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  const native = join(
+    prefix,
+    'lib',
+    'node_modules',
+    'aio-proxy',
+    'node_modules',
+    '@aio-proxy',
+    'cli-linux-x64',
+    'bin',
+    'aio-proxy',
+  );
+  const shim = join(prefix, 'bin', 'aio-proxy');
+  mkdirSync(join(prefix, 'bin'), { recursive: true });
+  mkdirSync(join(native, '..'), { recursive: true });
+  writeFileSync(join(prefix, 'bin', 'npm'), '#!/bin/sh\n');
+  writeFileSync(shim, '#!/bin/sh\n');
+  writeFileSync(native, '#!/bin/sh\n');
+  chmodSync(join(prefix, 'bin', 'npm'), 0o755);
+  chmodSync(shim, 0o755);
+  chmodSync(native, 0o755);
+
+  const plistPath = join(prefix, 'LaunchAgents', 'com.aio-proxy.agent.plist');
+  const previous = process.env['PATH'];
+  process.env['PATH'] = `${join(prefix, 'bin')}:/usr/bin:/bin`;
+  try {
+    await writeManagedUnit('darwin', native, plistPath);
+  } finally {
+    if (previous === undefined) delete process.env['PATH'];
+    else process.env['PATH'] = previous;
+  }
+
+  const contents = readFileSync(plistPath, 'utf8');
+  expect(contents).toContain('<key>AIO_PROXY_UPGRADE_METHOD</key>');
+  expect(contents).toContain('<string>npm</string>');
+  expect(contents).toContain(`<string>${native}</string>`);
+  expect(contents).not.toContain(`<string>${shim}</string>`);
+});
+
+test('writeManagedUnit persists npm from the PATH shim when the native cli-* prefix has no manager', async () => {
+  const nativeRoot = join(tmpdir(), `aio-native-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  const pathRoot = join(tmpdir(), `aio-path-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  const native = join(nativeRoot, 'node_modules', '@aio-proxy', 'cli-linux-x64', 'bin', 'aio-proxy');
+  const shim = join(pathRoot, 'bin', 'aio-proxy');
+  mkdirSync(join(native, '..'), { recursive: true });
+  mkdirSync(join(pathRoot, 'bin'), { recursive: true });
+  writeFileSync(native, '#!/bin/sh\n');
+  writeFileSync(shim, '#!/bin/sh\n');
+  writeFileSync(join(pathRoot, 'bin', 'npm'), '#!/bin/sh\n');
+  chmodSync(native, 0o755);
+  chmodSync(shim, 0o755);
+  chmodSync(join(pathRoot, 'bin', 'npm'), 0o755);
+
+  const plistPath = join(pathRoot, 'LaunchAgents', 'com.aio-proxy.agent.plist');
+  const previous = process.env['PATH'];
+  process.env['PATH'] = `${join(pathRoot, 'bin')}:/usr/bin:/bin`;
+  try {
+    await writeManagedUnit('darwin', native, plistPath);
+  } finally {
+    if (previous === undefined) delete process.env['PATH'];
+    else process.env['PATH'] = previous;
+  }
+
+  const contents = readFileSync(plistPath, 'utf8');
+  expect(contents).toContain('<key>AIO_PROXY_UPGRADE_METHOD</key>');
+  expect(contents).toContain('<string>npm</string>');
+  expect(contents).toContain(`<string>${native}</string>`);
 });
 
 test('systemd and launchd templates persist AIO_PROXY_UPGRADE_METHOD when known', () => {
