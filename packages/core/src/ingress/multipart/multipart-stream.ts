@@ -156,6 +156,9 @@ export async function parseMultipartStream(
     fields[part.name] = value;
     // Recorded separately from `fields` because raw replay needs the bracketed
     // name and every repeat, both of which the normalized map destroys.
+    // `fieldName` is always set whenever `name` is (it IS the un-normalized `name`),
+    // so this guard is unreachable; it stays only because `name` and `fieldName` are
+    // independent optionals to TypeScript, and dropping it would need a cast instead.
     if (part.fieldName !== undefined) rawFields.push({ name: part.fieldName, value });
   };
 
