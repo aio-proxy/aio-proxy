@@ -22,5 +22,10 @@ for (`client_secrets`, `sessions`, `transcription_sessions`, `translations`, `ac
 model id longer than 128 characters is refused with `400` `realtime_invalid_model` rather than
 truncated, on both the create body (`model` / `session.model`) and `/v1/realtime`'s `model` query.
 
+Realtime provider selection honors per-model overrides from `router.models[<model>].providers[<id>]`
+for both provider priority and provider weight, matching ordinary routing. A direct
+`GET /v1/realtime?model=<id>` selects providers by the model that connection will actually send
+upstream, so a provider advertising only the Codex model is no longer handed an unrelated model id.
+
 `@aio-proxy/server` now also exports Bun's `websocket` handler; an embedder that constructs its own
 `Bun.serve` must pass it as the `websocket` option or every realtime sideband upgrade fails.
