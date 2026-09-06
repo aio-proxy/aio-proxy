@@ -1,5 +1,6 @@
 import { afterEach, expect, test } from 'bun:test';
 
+import { RealtimeDialError } from '@aio-proxy/plugin-sdk';
 import { ProviderKind } from '@aio-proxy/types';
 import { Hono } from 'hono';
 import { websocket } from 'hono/bun';
@@ -152,6 +153,107 @@ test('a 2xx hangup by the owner closes the live sideband', async () => {
   expect((await closed).code).toBe(1000);
   expect(harness.store.lookup('call_abc')).toBeUndefined();
 });
+
+// A direct connection carries no call record, so nothing pins its provider and selection is
+// the ordinary candidate order — keyed, like every other realtime selection, on the
+// NORMALIZED model. Hard-coding `gpt-live-1-codex` as that key sent a caller-chosen id no
+// Codex provider advertises to whichever provider serves Codex, skipping the provider that
+// does advertise it. The two providers advertise disjoint model sets, so the id decides.
+test('a direct connection for a model outside the Codex aliases selects the provider advertising it', async () => {
+  const dialed: { providerId?: string; model?: string } = {};
+  const app = directApp(dialed);
+
+  const response = await app.request('/v1/realtime?model=custom-live-model', {
+    headers: { upgrade: 'websocket' },
+  });
+
+  expect(response.status).toBe(502);
+  expect(dialed).toEqual({ providerId: 'custom', model: 'custom-live-model' });
+});
+
+// The positive control: normalization must still run on this path. Selecting on the requested
+// id verbatim — the tempting shape of the fix above — leaves every Codex alias with no
+// candidate, because a Codex provider advertises only `gpt-live-1-codex`. The alias is also
+// what reaches `dial`: `realtime-direct` sends the ORIGINALLY REQUESTED model upstream, so a
+// fix that normalized the wire model too would show up here as `gpt-live-1-codex`.
+test('a direct connection for a Codex alias selects on the normalized id and dials the alias', async () => {
+  const dialed: { providerId?: string; model?: string } = {};
+  const app = directApp(dialed);
+
+  const response = await app.request('/v1/realtime?model=gpt-realtime-2026-01-01', {
+    headers: { upgrade: 'websocket' },
+  });
+
+  expect(response.status).toBe(502);
+  expect(dialed).toEqual({ providerId: 'codex', model: 'gpt-realtime-2026-01-01' });
+});
+
+// `?model=` present but empty is the one input for which the wire model and the selection
+// inputs were derived from different strings: the dial got `gpt-realtime` while exclusion
+// matching got `''`, so router policy excluding `gpt-realtime` did not stop a socket that
+// then sent `gpt-realtime`. Both are now the same resolved string.
+test('an empty model query is excluded by the policy for the model it would actually send', async () => {
+  const dialed: { providerId?: string; model?: string } = {};
+  const app = directApp(dialed, [{ id: 'codex', excludedModels: ['gpt-realtime'] }]);
+
+  const response = await app.request('/v1/realtime?model=', { headers: { upgrade: 'websocket' } });
+
+  expect(response.status).toBe(503);
+  expect(((await response.json()) as { error: { code: string } }).error.code).toBe('realtime_upstream_unavailable');
+  expect(dialed).toEqual({});
+});
+
+/** Two realtime providers advertising disjoint model sets and a `dial` that records which of
+ *  them was chosen before refusing, so the assertion is on selection rather than on a relay. */
+function directApp(
+  dialed: { providerId?: string; model?: string },
+  configProviders: readonly { readonly id: string; readonly excludedModels?: readonly string[] }[] = [],
+) {
+  const providers = [
+    directProvider('codex', ['gpt-live-1-codex'], dialed),
+    directProvider('custom', ['custom-live-model'], dialed),
+  ];
+  const snapshot = {
+    providers,
+    config: { router: { models: {} }, providers: configProviders },
+  } as unknown as ProviderRouteSnapshot;
+  const source: RealtimeRouteSource = {
+    acquireProviderSnapshot: () => ({ snapshot, release: () => {} }),
+    logger: () => {},
+    realtimeCalls: createRealtimeCallStore(),
+  };
+  return new Hono<CallerPrincipalEnv>().get('/v1/realtime', (context) =>
+    handleRealtimeSideband(context, source, 'realtime-direct'),
+  );
+}
+
+function directProvider(
+  id: string,
+  models: readonly string[],
+  dialed: { providerId?: string; model?: string },
+): RuntimeProviderInstance {
+  return {
+    id,
+    kind: ProviderKind.OAuth,
+    enabled: true,
+    priority: 0,
+    weight: 1,
+    accountId: 'person@example.com',
+    runtimeRevision: 3,
+    capabilityIndex: {},
+    models: [],
+    raw: { resolve: () => undefined },
+    realtime: {
+      models: [...models],
+      fetch: () => Promise.reject(new Error('not created in this test')),
+      dial: (input: { readonly model?: string }) => {
+        dialed.providerId = id;
+        dialed.model = input.model;
+        return Promise.reject(new RealtimeDialError('refused', { kind: 'rejected' }));
+      },
+    },
+  } as unknown as RuntimeProviderInstance;
+}
 
 type Harness = {
   readonly store: RealtimeCallStore;

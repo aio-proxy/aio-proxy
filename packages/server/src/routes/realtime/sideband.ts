@@ -20,7 +20,7 @@ import {
   realtimeUpstreamUnavailable,
   websocketUpgradeRequired,
 } from './errors';
-import { CODEX_REALTIME_MODEL, MAX_REALTIME_MODEL_LENGTH } from './model';
+import { MAX_REALTIME_MODEL_LENGTH, normalizeRealtimeModel } from './model';
 import { pinnedRealtimeCandidate, selectRealtimeCandidates } from './provider-select';
 import type { RealtimeRouteSource } from './source';
 
@@ -175,20 +175,29 @@ function prepareDirect(context: Context<CallerPrincipalEnv>, source: RealtimeRou
   // upstream and recorded in both sideband log entries, and only the parse boundary
   // sees it before it fans out.
   if (requested !== undefined && requested.length > MAX_REALTIME_MODEL_LENGTH) return realtimeInvalidModel();
+  // What this socket will actually send upstream: `realtime-direct` carries the
+  // ORIGINALLY REQUESTED model, defaulting to `gpt-realtime`, because substituting the
+  // Codex model would diverge from Codex. Resolved before selection so the exclusion
+  // check, the selection key, and the dial all reason about one string — with `?model=`
+  // present but empty, deriving them separately made router policy for `gpt-realtime`
+  // miss a socket that then sent `gpt-realtime`.
+  const wire = requested === undefined || requested.length === 0 ? DIRECT_DEFAULT_MODEL : requested;
   const lease = source.acquireProviderSnapshot();
   try {
-    // Selection still matches on the normalized model, but `realtime-direct`
-    // sends the ORIGINALLY REQUESTED model upstream, defaulting to
-    // `gpt-realtime`. Substituting the Codex model would diverge from Codex.
+    // Normalization is the selection key on this path too, exactly as in the create:
+    // every alias Codex uses still maps to `gpt-live-1-codex`, while an id normalization
+    // passes through selects the provider that advertises *that* id. Hard-coding the
+    // Codex model here sent a caller-chosen `custom-live-model` to whichever provider
+    // serves Codex and skipped the one advertising it.
     const [candidate] = selectRealtimeCandidates(lease.snapshot, {
-      requested: requested ?? DIRECT_DEFAULT_MODEL,
-      normalized: CODEX_REALTIME_MODEL,
+      requested: wire,
+      normalized: normalizeRealtimeModel(wire),
     });
     if (candidate === undefined) return realtimeUpstreamUnavailable();
     return {
       callId: undefined,
       providerId: candidate.provider.id,
-      model: requested === undefined || requested.length === 0 ? DIRECT_DEFAULT_MODEL : requested,
+      model: wire,
       realtime: candidate.realtime,
       attachment: undefined,
     };
