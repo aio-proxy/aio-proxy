@@ -21,9 +21,10 @@ export type UpgradeOptions = {
   readonly check?: boolean;
   readonly force?: boolean;
   readonly registry?: string;
+  readonly version?: string;
 };
 
-type UpgradeDeps = AgentUpgradeHandoffDeps & {
+export type UpgradeDeps = AgentUpgradeHandoffDeps & {
   readonly resolveTarget: () => Promise<UpgradeTarget>;
   readonly fetchLatest: (registry: string) => Promise<string>;
   readonly currentVersion: string;
@@ -33,12 +34,26 @@ type UpgradeDeps = AgentUpgradeHandoffDeps & {
   readonly isDaemonRunning: () => Promise<boolean>;
   readonly isServiceManaged: () => boolean;
   readonly restartService: () => Promise<void>;
+  readonly readInstalledVersion: (bin: string) => Promise<string>;
 };
 
 const runInstall = async (target: UpgradeTarget, version: string, options: UpgradeOptions): Promise<void> => {
   const registry = options.registry ?? NPM_REGISTRY;
   if (target.method === 'binary') await updateViaBinary(target.path, version, { registry });
-  else await runPackageManagerUpgrade(target.method, version, { registry, force: options.force === true });
+  else await runPackageManagerUpgrade(target, version, { registry, force: options.force === true });
+};
+
+const readBinVersion = async (bin: string): Promise<string> => {
+  const proc = Bun.spawn([bin, '--version'], { stdout: 'pipe', stderr: 'pipe' });
+  const stdout = (await new Response(proc.stdout).text()).trim();
+  if ((await proc.exited) !== 0) throw new Error(`${bin} --version exited nonzero`);
+  const version = stdout.match(/(\d+\.\d+\.\d+)/)?.[1] ?? stdout;
+  try {
+    Bun.semver.order(version, '0.0.0');
+  } catch {
+    throw new Error(`invalid version from ${bin}: ${stdout}`);
+  }
+  return version;
 };
 
 const probeDaemonRunning = async (): Promise<boolean> => {
@@ -81,7 +96,13 @@ const defaultDeps: UpgradeDeps = {
   isDaemonRunning: probeDaemonRunning,
   isServiceManaged: isManagedServiceInstalled,
   restartService: serviceRestart,
+  readInstalledVersion: readBinVersion,
 };
+
+export const createUpgradeDeps = (overrides: Partial<UpgradeDeps> = {}): UpgradeDeps => ({
+  ...defaultDeps,
+  ...overrides,
+});
 
 const agentItemWarning = (item: Extract<AgentPostUpgradeItemResult, { readonly status: 'warning' }>): string =>
   m['cli.agent.upgrade.warning']({ target: item.target, reason: item.reason });
@@ -93,8 +114,9 @@ const errorReason = (err: unknown): string => (err instanceof Error ? err.messag
 export const runUpgradeCommand = async (
   options: UpgradeOptions = {},
   print: (line: string) => void = console.log,
-  deps: UpgradeDeps = defaultDeps,
-): Promise<void> => {
+  overrides: Partial<UpgradeDeps> = {},
+): Promise<'installed' | 'unchanged'> => {
+  const deps = createUpgradeDeps(overrides);
   const registry = options.registry ?? NPM_REGISTRY;
   // resolveTarget throws when aio-proxy is not on PATH; surface the real reason
   // and an unrecoverable exit code instead of a generic "Unexpected internal error".
@@ -105,10 +127,14 @@ export const runUpgradeCommand = async (
     throw new CliExit(EXIT.unrecoverable, m['cli.upgrade.detect_failed']({ reason: errorReason(err) }));
   }
   let latest: string;
-  try {
-    latest = await deps.fetchLatest(registry);
-  } catch {
-    throw new CliExit(EXIT.transient, m['cli.upgrade.check_failed']());
+  if (options.version !== undefined) {
+    latest = options.version;
+  } else {
+    try {
+      latest = await deps.fetchLatest(registry);
+    } catch {
+      throw new CliExit(EXIT.transient, m['cli.upgrade.check_failed']());
+    }
   }
   const current = deps.currentVersion;
   print(m['cli.upgrade.current_version']({ version: current }));
@@ -116,10 +142,10 @@ export const runUpgradeCommand = async (
   const cmp = Bun.semver.order(latest, current);
   if (cmp <= 0 && options.force !== true) {
     print(m['cli.upgrade.up_to_date']({ version: current }));
-    return;
+    return 'unchanged';
   }
   if (cmp > 0) print(m['cli.upgrade.new_version']({ version: latest }));
-  if (options.check === true) return;
+  if (options.check === true) return 'unchanged';
   if (cmp <= 0 && options.force === true) print(m['cli.upgrade.forcing']({ version: latest }));
 
   print(m['cli.upgrade.via']({ method: target.method }));
@@ -129,6 +155,13 @@ export const runUpgradeCommand = async (
   // rethrow as CliExit so the user sees the actionable reason, not a generic message.
   try {
     await deps.install(target, latest, options);
+    if (target.method === 'brew') {
+      const actual = await deps.readInstalledVersion(target.bin);
+      if (Bun.semver.order(actual, current) <= 0) {
+        print(m['cli.upgrade.up_to_date']({ version: current }));
+        return 'unchanged';
+      }
+    }
   } catch (err) {
     throw new CliExit(EXIT.transient, m['cli.upgrade.install_failed']({ reason: errorReason(err) }));
   }
@@ -144,15 +177,16 @@ export const runUpgradeCommand = async (
     print(agentProtocolWarning(errorReason(err)));
   }
 
-  if (!(await deps.isDaemonRunning())) return;
+  if (!(await deps.isDaemonRunning())) return 'installed';
   // A managed daemon (launchd/systemd) is designed to be bounced, so applying the
   // upgrade means restarting it — no opt-in flag. A manually started (`aio-proxy
   // run`) daemon has no unit, so launchctl/systemctl would error; tell the user to
   // restart it themselves instead of failing the upgrade.
   if (!deps.isServiceManaged()) {
     print(m['cli.upgrade.manual_restart_hint']());
-    return;
+    return 'installed';
   }
   print(m['cli.upgrade.restarting']());
   await deps.restartService();
+  return 'installed';
 };

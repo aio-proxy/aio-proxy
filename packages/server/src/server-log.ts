@@ -17,6 +17,12 @@ export type DashboardAuthUnavailableLog = {
   readonly event: 'dashboard.auth_unavailable';
 };
 
+export type AutoUpdateFailedLog = {
+  readonly error: string;
+  readonly errorType: string;
+  readonly event: 'auto_update.failed';
+};
+
 export type RequestRejectedLog = {
   readonly event: 'request.rejected';
   readonly requestId: string;
@@ -202,6 +208,7 @@ export type RequestBodyTerminalLog = RequestBodyIdentity & {
 };
 
 export type ServerLog =
+  | AutoUpdateFailedLog
   | ConfigOAuthLeftoverModelsLog
   | ConfigReloadLog
   | DashboardAuthUnavailableLog

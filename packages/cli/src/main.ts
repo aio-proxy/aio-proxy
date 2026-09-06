@@ -192,7 +192,9 @@ export const buildProgram = (deps: CliDeps = defaultCliDeps, programName = invok
     .option('--check', m['cli.upgrade.option_check_description']())
     .option('--force', m['cli.upgrade.option_force_description']())
     .option('--registry <url>', m['cli.upgrade.option_registry_description']())
-    .action((options) => runUpgradeCommand(options));
+    .action(async (options) => {
+      await runUpgradeCommand(options);
+    });
 
   const commandDeps = createAgentCommandDeps(deps);
   registerAgentCommands(program, {

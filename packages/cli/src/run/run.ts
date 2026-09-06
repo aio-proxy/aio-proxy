@@ -13,6 +13,7 @@ import { ServeListenError } from '../errors';
 import { CliExit, EXIT } from '../exit';
 import { openBrowser } from '../open-browser';
 import { loadServiceEnv } from '../service-env';
+import { createCliAutoUpdateHooks, migratePreMarkerManagedUnit } from './auto-update-hooks';
 
 const VERSION = packageJson.version;
 // The schema ships with @aio-proxy/types (its Rslib build emits it), not the
@@ -153,6 +154,7 @@ export const run = (deps: CliDeps) => async (options: RunOptions) => {
   const port = flagPort ?? config.server.port;
   const dashboardUrl = dashboardUrlFor(host, port);
   assertPortAvailable(host, port);
+  await migratePreMarkerManagedUnit();
   const dashboardAssets = deps.dashboardAssets();
   const app = await bootProxyServer({
     config: raw,
@@ -161,6 +163,7 @@ export const run = (deps: CliDeps) => async (options: RunOptions) => {
     host,
     port,
     version: VERSION,
+    autoUpdate: createCliAutoUpdateHooks(),
   });
   // LLM responses stream with long quiet gaps (slow upstream TTFB, reasoning
   // pauses). Bun's default 10s idle timeout would close the client connection

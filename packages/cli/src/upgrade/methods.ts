@@ -1,4 +1,6 @@
-import { HOMEBREW_FORMULA, PACKAGE, type UpgradeMethod } from './constants';
+import { dirname } from 'node:path';
+
+import { HOMEBREW_FORMULA, PACKAGE, type UpgradeTarget } from './constants';
 
 export const buildBunInstallArgs = (version: string, registry: string): string[] => [
   'add',
@@ -23,26 +25,35 @@ export const buildHomebrewUpdateArgs = (force: boolean): string[] => [
   HOMEBREW_FORMULA,
 ];
 
+const interpreterSafePath = (command: string): string =>
+  [dirname(command), '/usr/bin', '/bin', process.env['PATH']]
+    .filter((part) => part !== undefined && part !== '')
+    .join(':');
+
 const exec = async (cmd: string[]): Promise<void> => {
-  const proc = Bun.spawn(cmd, { stdout: 'inherit', stderr: 'inherit' });
+  const proc = Bun.spawn(cmd, {
+    stdout: 'inherit',
+    stderr: 'inherit',
+    env: { ...process.env, PATH: interpreterSafePath(cmd[0] ?? '') },
+  });
   const code = await proc.exited;
   if (code !== 0) throw new Error(`${cmd[0]} exited with ${code}`);
 };
 
 export const runPackageManagerUpgrade = async (
-  method: Exclude<UpgradeMethod, 'binary'>,
+  target: Exclude<UpgradeTarget, { readonly method: 'binary' }>,
   version: string,
   opts: { readonly registry: string; readonly force: boolean },
 ): Promise<void> => {
-  switch (method) {
+  switch (target.method) {
     case 'bun':
-      return exec(['bun', ...buildBunInstallArgs(version, opts.registry)]);
+      return exec([target.command, ...buildBunInstallArgs(version, opts.registry)]);
     case 'npm':
-      return exec(['npm', ...buildNpmInstallArgs(version, opts.registry)]);
+      return exec([target.command, ...buildNpmInstallArgs(version, opts.registry)]);
     case 'pnpm':
-      return exec(['pnpm', ...buildPnpmInstallArgs(version, opts.registry)]);
+      return exec([target.command, ...buildPnpmInstallArgs(version, opts.registry)]);
     case 'brew':
-      await exec(['brew', 'update']);
-      return exec(['brew', ...buildHomebrewUpdateArgs(opts.force)]);
+      await exec([target.command, 'update']);
+      return exec([target.command, ...buildHomebrewUpdateArgs(opts.force)]);
   }
 };

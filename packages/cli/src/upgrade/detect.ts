@@ -1,8 +1,11 @@
-import { realpathSync } from 'node:fs';
+import { existsSync, realpathSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 
-import type { UpgradeMethod, UpgradeTarget } from './constants';
+import type { PackageUpgradeMethod, UpgradeMethod, UpgradeTarget } from './constants';
 import { HOMEBREW_FORMULA, PACKAGE } from './constants';
+
+const PACKAGE_METHODS = ['brew', 'bun', 'npm', 'pnpm'] as const;
+const CELLAR_PATTERN = /^(.*)\/Cellar\/aio-proxy\/[^/]+\/bin\/aio-proxy$/;
 
 const tryRealpath = (p: string): string | undefined => {
   try {
@@ -74,15 +77,91 @@ const compactDirs = (entries: {
   ...(entries.pnpm === undefined ? {} : { pnpm: entries.pnpm }),
 });
 
-export const resolveUpgradeTarget = async (): Promise<UpgradeTarget> => {
-  const binPath = Bun.which(PACKAGE);
-  if (binPath === null) throw new Error(`cannot locate ${PACKAGE} in PATH`);
-  const [brew, bun, npm, pnpm] = await Promise.all([
+const isPackageMethod = (value: string | undefined): value is PackageUpgradeMethod =>
+  PACKAGE_METHODS.some((method) => method === value);
+
+const brewPrefixFromCellar = (binPath: string): string | undefined => CELLAR_PATTERN.exec(binPath)?.[1];
+
+export const resolveStableManagedExec = (execPath: string): string => {
+  const prefix = brewPrefixFromCellar(execPath);
+  return prefix === undefined ? execPath : join(prefix, 'bin', PACKAGE);
+};
+
+const siblingCommand = (binPath: string, name: string): string | undefined => {
+  const candidate = join(dirname(binPath), name);
+  return existsSync(candidate) ? candidate : undefined;
+};
+
+const brewTargetFromCellarOrSibling = (binPath: string): UpgradeTarget | undefined => {
+  const prefix = brewPrefixFromCellar(binPath);
+  if (prefix !== undefined) {
+    const command = join(prefix, 'bin', 'brew');
+    if (!existsSync(command)) throw new Error(`brew binary not found at ${command}`);
+    return { method: 'brew', command, bin: join(prefix, 'bin', PACKAGE) };
+  }
+  const command = siblingCommand(binPath, 'brew');
+  return command === undefined ? undefined : { method: 'brew', command, bin: binPath };
+};
+
+const packageManagerTarget = (method: PackageUpgradeMethod, binPath: string): UpgradeTarget => {
+  if (method === 'brew') {
+    const brew = brewTargetFromCellarOrSibling(binPath);
+    if (brew !== undefined) return brew;
+    const prefix = basename(dirname(binPath)) === 'bin' ? dirname(dirname(binPath)) : undefined;
+    if (prefix !== undefined) {
+      const command = join(prefix, 'bin', 'brew');
+      if (!existsSync(command)) throw new Error(`brew binary not found at ${command}`);
+      return { method: 'brew', command, bin: join(prefix, 'bin', PACKAGE) };
+    }
+    throw new Error(`brew binary not found for ${binPath}`);
+  }
+  const command = siblingCommand(binPath, method) ?? Bun.which(method) ?? method;
+  return { method, command, bin: binPath };
+};
+
+const detectedPackageTarget = (method: PackageUpgradeMethod, binPath: string): UpgradeTarget => {
+  if (method === 'brew') {
+    const fromPath = brewTargetFromCellarOrSibling(binPath);
+    if (fromPath !== undefined) return fromPath;
+    const real = tryRealpath(binPath);
+    if (real !== undefined && real !== binPath) {
+      const fromReal = brewTargetFromCellarOrSibling(real);
+      if (fromReal !== undefined) return fromReal;
+    }
+    const command = Bun.which('brew');
+    if (command === null) throw new Error(`brew binary not found for ${binPath}`);
+    return { method: 'brew', command, bin: binPath };
+  }
+  return packageManagerTarget(method, binPath);
+};
+
+export const resolveUpgradeTargetFrom = async (
+  binPath: string,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<UpgradeTarget> => {
+  const methodFromEnv = env['AIO_PROXY_UPGRADE_METHOD'];
+  if (isPackageMethod(methodFromEnv)) return packageManagerTarget(methodFromEnv, binPath);
+  const brew = brewTargetFromCellarOrSibling(binPath);
+  if (brew !== undefined) return brew;
+  const bun = siblingCommand(binPath, 'bun');
+  if (bun !== undefined) return { method: 'bun', command: bun, bin: binPath };
+  const npm = siblingCommand(binPath, 'npm');
+  if (npm !== undefined) return { method: 'npm', command: npm, bin: binPath };
+  const pnpm = siblingCommand(binPath, 'pnpm');
+  if (pnpm !== undefined) return { method: 'pnpm', command: pnpm, bin: binPath };
+  const [brewDir, bunDir, npmDir, pnpmDir] = await Promise.all([
     brewBinDir(),
     runCapture(['bun', 'pm', 'bin', '-g']),
     npmBinDir(),
     runCapture(['pnpm', 'bin', '-g']),
   ]);
-  const method = resolveUpgradeMethod(binPath, compactDirs({ brew, bun, npm, pnpm }));
-  return method === 'binary' ? { method, path: binPath } : { method };
+  const method = resolveUpgradeMethod(binPath, compactDirs({ brew: brewDir, bun: bunDir, npm: npmDir, pnpm: pnpmDir }));
+  if (method === 'binary') return { method, path: binPath };
+  return detectedPackageTarget(method, binPath);
+};
+
+export const resolveUpgradeTarget = async (): Promise<UpgradeTarget> => {
+  const binPath = Bun.which(PACKAGE);
+  if (binPath === null) throw new Error(`cannot locate ${PACKAGE} in PATH`);
+  return resolveUpgradeTargetFrom(binPath);
 };

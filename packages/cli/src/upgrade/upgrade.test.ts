@@ -1,9 +1,9 @@
 import { expect, mock, test } from 'bun:test';
-import { mkdtempSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, symlinkSync, writeFileSync, chmodSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 
-import { isPathInDirectory, resolveUpgradeMethod } from './detect';
+import { isPathInDirectory, resolveUpgradeMethod, resolveUpgradeTargetFrom } from './detect';
 
 test('isPathInDirectory: lexical match', () => {
   expect(isPathInDirectory('/opt/bun/bin/aio-proxy', '/opt/bun/bin')).toBe(true);
@@ -32,7 +32,13 @@ test('resolveUpgradeMethod: priority brew > bun > npm > pnpm', () => {
 });
 
 import { NPM_REGISTRY } from './constants';
-import { buildBunInstallArgs, buildHomebrewUpdateArgs, buildNpmInstallArgs, buildPnpmInstallArgs } from './methods';
+import {
+  buildBunInstallArgs,
+  buildHomebrewUpdateArgs,
+  buildNpmInstallArgs,
+  buildPnpmInstallArgs,
+  runPackageManagerUpgrade,
+} from './methods';
 
 test('buildBunInstallArgs pins registry and version', () => {
   expect(buildBunInstallArgs('1.2.3', NPM_REGISTRY)).toEqual([
@@ -160,8 +166,9 @@ test('fetchLatestVersion throws on non-ok', async () => {
 });
 
 import { CliExit, EXIT } from '../exit';
+import { resolveNewAgentBinary } from './agent-post-upgrade-process';
 import type { AgentPostUpgradePayload } from './post-upgrade-agents';
-import { runUpgradeCommand } from './upgrade';
+import { runUpgradeCommand, type UpgradeDeps } from './upgrade';
 
 const PAYLOAD = {
   format: 1,
@@ -174,9 +181,13 @@ const PAYLOAD = {
   ],
 } as const satisfies AgentPostUpgradePayload;
 
-type UpgradeDeps = NonNullable<Parameters<typeof runUpgradeCommand>[2]>;
+const bunTarget = {
+  method: 'bun' as const,
+  command: '/usr/bin/bun',
+  bin: '/usr/bin/aio-proxy',
+};
 const makeDeps = (overrides: Partial<UpgradeDeps> = {}): UpgradeDeps => ({
-  resolveTarget: async () => ({ method: 'bun' }),
+  resolveTarget: async () => bunTarget,
   fetchLatest: async () => '2.0.0',
   currentVersion: '1.0.0',
   install: async () => {},
@@ -187,6 +198,7 @@ const makeDeps = (overrides: Partial<UpgradeDeps> = {}): UpgradeDeps => ({
   isDaemonRunning: async () => false,
   isServiceManaged: () => true,
   restartService: async () => {},
+  readInstalledVersion: async () => '2.0.0',
   ...overrides,
 });
 
@@ -212,7 +224,7 @@ test('version-check failure throws and installs nothing', async () => {
       makeDeps({
         resolveTarget: async () => {
           installed = true; // resolveTarget runs, but no install should follow a fetch failure
-          return { method: 'bun' };
+          return bunTarget;
         },
         fetchLatest: async () => {
           throw new Error('registry unreachable');
@@ -250,7 +262,7 @@ test('install failure is rethrown as a CliExit carrying the real reason', async 
     {},
     (l) => lines.push(l),
     makeDeps({
-      resolveTarget: async () => ({ method: 'npm' }),
+      resolveTarget: async () => ({ method: 'npm', command: '/usr/bin/npm', bin: '/usr/bin/aio-proxy' }),
       fetchLatest: async () => '2.0.0',
       install: async () => {
         throw new Error('npm exited with 1');
@@ -425,4 +437,182 @@ test('managed service is restarted after post-upgrade finishes', async () => {
     }),
   );
   expect(events).toEqual(['post', 'restart']);
+});
+
+const writeExecutable = (path: string, body: string): void => {
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, body);
+  chmodSync(path, 0o755);
+};
+
+test('resolveUpgradeTargetFrom maps a Homebrew prefix launcher to brew command and bin', async () => {
+  const prefix = mkdtempSync(join(tmpdir(), 'aio-brew-prefix-'));
+  const bin = join(prefix, 'bin', 'aio-proxy');
+  writeExecutable(join(prefix, 'bin', 'brew'), '#!/bin/sh\n');
+  writeExecutable(bin, '#!/bin/sh\n');
+  expect(await resolveUpgradeTargetFrom(bin, {})).toEqual({
+    method: 'brew',
+    command: join(prefix, 'bin', 'brew'),
+    bin,
+  });
+});
+
+test('resolveUpgradeTargetFrom maps a Cellar path to brew, not binary, even when brew is off PATH', async () => {
+  const prefix = mkdtempSync(join(tmpdir(), 'aio-brew-cellar-'));
+  const cellar = join(prefix, 'Cellar', 'aio-proxy', '1.2.3', 'bin', 'aio-proxy');
+  writeExecutable(join(prefix, 'bin', 'brew'), '#!/bin/sh\n');
+  writeExecutable(cellar, '#!/bin/sh\n');
+  const previous = process.env['PATH'];
+  process.env['PATH'] = '/usr/bin:/bin';
+  try {
+    expect(await resolveUpgradeTargetFrom(cellar, {})).toEqual({
+      method: 'brew',
+      command: join(prefix, 'bin', 'brew'),
+      bin: join(prefix, 'bin', 'aio-proxy'),
+    });
+  } finally {
+    if (previous === undefined) delete process.env['PATH'];
+    else process.env['PATH'] = previous;
+  }
+});
+
+test('resolveUpgradeTargetFrom treats a standalone binary as binary', async () => {
+  expect(await resolveUpgradeTargetFrom('/opt/aio-proxy', {})).toEqual({ method: 'binary', path: '/opt/aio-proxy' });
+});
+
+test('resolveUpgradeTargetFrom maps an npm prefix path to npm command and bin', async () => {
+  const prefix = mkdtempSync(join(tmpdir(), 'aio-npm-prefix-'));
+  const bin = join(prefix, 'bin', 'aio-proxy');
+  writeExecutable(join(prefix, 'bin', 'npm'), '#!/bin/sh\n');
+  writeExecutable(bin, '#!/bin/sh\n');
+  expect(await resolveUpgradeTargetFrom(bin, {})).toEqual({
+    method: 'npm',
+    command: join(prefix, 'bin', 'npm'),
+    bin,
+  });
+});
+
+test('runPackageManagerUpgrade for brew execs the absolute command, never the string brew', async () => {
+  const calls: string[][] = [];
+  const original = Bun.spawn;
+  Bun.spawn = ((cmd: string[]) => {
+    calls.push(cmd);
+    return { exited: Promise.resolve(0) };
+  }) as typeof Bun.spawn;
+  try {
+    await runPackageManagerUpgrade(
+      { method: 'brew', command: '/opt/homebrew/bin/brew', bin: '/opt/homebrew/bin/aio-proxy' },
+      '1.2.3',
+      { registry: NPM_REGISTRY, force: false },
+    );
+    expect(calls.length).toBeGreaterThan(0);
+    expect(calls.every((cmd) => cmd[0] !== 'brew')).toBe(true);
+    expect(calls.some((cmd) => cmd[0] === '/opt/homebrew/bin/brew')).toBe(true);
+  } finally {
+    Bun.spawn = original;
+  }
+});
+
+test('runPackageManagerUpgrade for npm sets PATH so the sibling node satisfies env node', async () => {
+  const calls: { readonly cmd: string[]; readonly path?: string }[] = [];
+  const original = Bun.spawn;
+  Bun.spawn = ((cmd: string[], options?: { readonly env?: NodeJS.ProcessEnv }) => {
+    calls.push({ cmd, path: options?.env?.['PATH'] });
+    return { exited: Promise.resolve(0) };
+  }) as typeof Bun.spawn;
+  try {
+    await runPackageManagerUpgrade(
+      { method: 'npm', command: '/usr/local/bin/npm', bin: '/usr/local/bin/aio-proxy' },
+      '1.2.3',
+      { registry: NPM_REGISTRY, force: false },
+    );
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.cmd[0]).toBe('/usr/local/bin/npm');
+    expect(calls[0]?.path).toContain('/usr/local/bin');
+    expect(calls[0]?.path).toContain('/usr/bin');
+    expect(calls[0]?.path).toContain('/bin');
+  } finally {
+    Bun.spawn = original;
+  }
+});
+
+test('runUpgradeCommand pins options.version and does not call fetchLatest', async () => {
+  const fetchLatest = mock(async () => '1.2.5');
+  let installed: string | undefined;
+  const result = await runUpgradeCommand(
+    { version: '1.2.4' },
+    () => {},
+    makeDeps({
+      currentVersion: '1.2.3',
+      fetchLatest,
+      install: async (_target, version) => {
+        installed = version;
+      },
+    }),
+  );
+  expect(fetchLatest).not.toHaveBeenCalled();
+  expect(installed).toBe('1.2.4');
+  expect(result).toBe('installed');
+});
+
+test('runUpgradeCommand with the current version returns unchanged and does not install', async () => {
+  let installed = false;
+  const result = await runUpgradeCommand(
+    { version: '1.0.0' },
+    () => {},
+    makeDeps({
+      currentVersion: '1.0.0',
+      install: async () => {
+        installed = true;
+      },
+    }),
+  );
+  expect(result).toBe('unchanged');
+  expect(installed).toBe(false);
+});
+
+test('brew install whose launcher version stays at current returns unchanged and skips restart', async () => {
+  let restarted = false;
+  const result = await runUpgradeCommand(
+    { version: '2.0.0' },
+    () => {},
+    makeDeps({
+      currentVersion: '1.0.0',
+      resolveTarget: async () => ({
+        method: 'brew',
+        command: '/opt/homebrew/bin/brew',
+        bin: '/opt/homebrew/bin/aio-proxy',
+      }),
+      readInstalledVersion: async () => '1.0.0',
+      isDaemonRunning: async () => true,
+      isServiceManaged: () => true,
+      restartService: async () => {
+        restarted = true;
+      },
+    }),
+  );
+  expect(result).toBe('unchanged');
+  expect(restarted).toBe(false);
+});
+
+test('resolveNewAgentBinary for a brew target uses target.bin, not Bun.which', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'aio-brew-agent-bin-'));
+  const binary = join(root, 'aio-proxy');
+  writeExecutable(
+    binary,
+    `#!/usr/bin/env bun
+if (process.argv[2] === "--version") { console.log("2.0.0"); process.exit(0); }
+process.exit(9);
+`,
+  );
+  const previous = process.env['PATH'];
+  process.env['PATH'] = '/usr/bin:/bin';
+  try {
+    await expect(
+      resolveNewAgentBinary({ method: 'brew', command: '/opt/homebrew/bin/brew', bin: binary }, '2.0.0'),
+    ).resolves.toBe(binary);
+  } finally {
+    if (previous === undefined) delete process.env['PATH'];
+    else process.env['PATH'] = previous;
+  }
 });

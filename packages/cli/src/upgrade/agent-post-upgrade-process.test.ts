@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from 'bun:test';
 import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { delimiter, dirname, join } from 'node:path';
+import { dirname, join } from 'node:path';
 
 import { invokeAgentPostUpgrade, resolveNewAgentBinary } from './agent-post-upgrade-process';
 import type { AgentPostUpgradePayload } from './post-upgrade-agents';
@@ -60,12 +60,14 @@ test('wrong installed version fails before the hidden command can run', async ()
   await expect(resolveNewAgentBinary({ method: 'binary', path: binary }, '2.0.0')).rejects.toThrow('expected 2.0.0');
 });
 
-test('a package-manager upgrade re-resolves aio-proxy from PATH', async () => {
+test('a package-manager upgrade uses target.bin rather than PATH', async () => {
   const binary = await fakeBinary('success');
   const previous = process.env.PATH;
-  process.env.PATH = [dirname(binary), previous].filter((value) => value !== undefined).join(delimiter);
+  process.env.PATH = '/usr/bin:/bin';
   try {
-    await expect(resolveNewAgentBinary({ method: 'bun' }, '2.0.0')).resolves.toBe(binary);
+    await expect(
+      resolveNewAgentBinary({ method: 'bun', command: join(dirname(binary), 'bun'), bin: binary }, '2.0.0'),
+    ).resolves.toBe(binary);
   } finally {
     if (previous === undefined) delete process.env.PATH;
     else process.env.PATH = previous;

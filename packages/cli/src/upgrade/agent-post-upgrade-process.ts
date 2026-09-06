@@ -39,8 +39,7 @@ async function collectChild(
 }
 
 export async function resolveNewAgentBinary(target: UpgradeTarget, installedVersion: string): Promise<string> {
-  const binary = target.method === 'binary' ? target.path : Bun.which('aio-proxy', { PATH: process.env['PATH'] ?? '' });
-  if (binary === null) throw new Error('upgraded aio-proxy is not on PATH');
+  const binary = target.method === 'binary' ? target.path : target.bin;
   const checked = await collectChild(
     Bun.spawn([binary, '--version'], {
       stdin: 'ignore',

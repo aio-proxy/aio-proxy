@@ -13,6 +13,7 @@ export const SUPPORTED_BINARY_TARGETS = ['darwin-arm64', 'darwin-x64', 'linux-ar
 export const BINARY_DOWNLOAD_TIMEOUT_MS = 15 * 60_000;
 
 export type UpgradeMethod = 'brew' | 'bun' | 'npm' | 'pnpm' | 'binary';
+export type PackageUpgradeMethod = Exclude<UpgradeMethod, 'binary'>;
 export type UpgradeTarget =
-  | { readonly method: Exclude<UpgradeMethod, 'binary'> }
+  | { readonly method: PackageUpgradeMethod; readonly command: string; readonly bin: string }
   | { readonly method: 'binary'; readonly path: string };
