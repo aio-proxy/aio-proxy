@@ -23,7 +23,7 @@ Do not implement until that spec is `已确认，进入实现`.
 - Control-plane and inference fetch is `options.fetch ?? context.fetch ?? globalThis.fetch`. Do not call `globalThis.fetch` directly.
 - Refresh never writes `organizationId` / `organizationName` from token JSON or bootstrap. Always keep the stored org fields.
 - Catalog pages only when `has_more === true` and `last_id` is a non-empty string. Other 4xx are non-retryable. Successful discover overlays curated `displayName` only; it does not merge missing curated ids.
-- CPA import maps `account.email_address` the same way login does.
+- CPA import maps `account.email_address` the same way login does, and also accepts flat CPA keys `account_uuid` / `organization_uuid` / `organization_name` when nested fields are absent. Ignore `expired` as a boolean, `claude_device_ids`, and `id_token`.
 - Catalog / runtime tests import constants through `./oauth`, not `./oauth/constants`.
 - New modules with a colocated test use a same-name directory (`oauth/index.ts`, `oauth/oauth.ts`, `oauth/oauth.test.ts`). Task snippets that say `src/oauth.ts` mean that directory.
 - Merge order: this PR first, then OpenRouter, then Muse. Last task inserts the package name; do not paste a six-plugin snapshot or backfill missing xAI list entries.
@@ -1331,6 +1331,48 @@ test('imports CPA claude credentials with the same fingerprint rules', async () 
   expect(invalidExpiry.expiresAt).toBe(0);
 });
 
+test('imports flat CPA claude files using account_uuid aliases', async () => {
+  const adapter = await adapterFrom(createAnthropicClaudePlugin());
+  const importer = adapter.credentialImports?.cpa;
+  if (importer === undefined) throw new Error('CPA importer not registered');
+  const imported = await importer.import(
+    { progress: () => {}, signal: new AbortController().signal },
+    {},
+    {
+      type: 'claude',
+      access_token: 'access-2',
+      refresh_token: 'refresh-2',
+      expired: '2026-08-24T12:00:00Z',
+      email: 'Person@Example.com',
+      account_uuid: 'acct-2',
+      organization_uuid: 'org-2',
+      organization_name: 'Team',
+      claude_device_ids: ['aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'],
+      id_token: 'must-not-persist',
+    },
+  );
+  expect(imported).toEqual(
+    claudeLoginResult({
+      accessToken: 'access-2',
+      refreshToken: 'refresh-2',
+      expiresAt: Date.parse('2026-08-24T12:00:00Z'),
+      email: 'Person@Example.com',
+      accountId: 'acct-2',
+      organizationId: 'org-2',
+      organizationName: 'Team',
+    }),
+  );
+  expect(Object.keys(imported.credentials).toSorted()).toEqual([
+    'accessToken',
+    'accountId',
+    'email',
+    'expiresAt',
+    'organizationId',
+    'organizationName',
+    'refreshToken',
+  ]);
+});
+
 test('refreshCredential exchanges an unexpired credential instead of returning it unchanged', async () => {
   let exchanges = 0;
   const adapter = await adapterFrom(
@@ -1394,7 +1436,7 @@ Expected: FAIL because `src/index.ts` / `createAnthropicClaudePlugin` do not exi
 - `credentials: credentialSchema`;
 - `icon: 'anthropic'`;
 - `login` parse options then `loginClaude(context, { waiting: presentationText.waitingForAuthorization }, deps)` (inject `context.fetch` when the factory did not);
-- `credentialImports.cpa.types = ['claude']` with a `.loose()` Zod object requiring `type: 'claude'`, `access_token`, `refresh_token`; map `expired` with `Date.parse` (invalid → `0`); map `email` and `account.email_address` (same normalize as login), `account.uuid` / `account_id`, `organization.uuid` / `organization.name`; call `claudeLoginResult`; if account/email still missing and import `context.fetch` exists, run non-fatal `resolveClaudeIdentity` with `phase: 'login'`;
+- `credentialImports.cpa.types = ['claude']` with a `.loose()` Zod object requiring `type: 'claude'`, `access_token`, `refresh_token`; map `expired` with `Date.parse` (invalid → `0`); map identity as `email` / `account.email_address` (same normalize as login), then `account.uuid` / `account_id` / `account_uuid`, then `organization.uuid` / `organization_uuid` and `organization.name` / `organization_name` (nested wins); ignore `id_token`, `claude_device_ids`, `last_refresh`; call `claudeLoginResult`; if account/email still missing and import `context.fetch` exists, run non-fatal `resolveClaudeIdentity` with `phase: 'login'`;
 - catalog TTL + `discoverClaudeModels` + `initialClaudeCatalogFallback`;
 - `createRuntime: createClaudeRuntime`;
 - `refreshCredential` always calls `refreshClaudeCredential` (no expiry short-circuit);

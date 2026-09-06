@@ -7,7 +7,7 @@
 
 aio-proxy 已有 built-in OAuth plugin、loopback 授权、credential refresh port、TTL model catalog 和 ProviderV4 model capability，也已有 kind `api` 的 Anthropic API-key Provider。仓库尚未支持用 Claude Pro / Max 订阅 OAuth（而不是 `ANTHROPIC_API_KEY`）登录并调用模型。
 
-本设计跟随 oh-my-pi 的 Anthropic 订阅流，而不是 upstream pi 或 CLIProxyAPI 的 `platform.claude.com` token 路径。后者签发的是 console token，不能用于 `user:inference`。身份字段、refresh 的 `anthropic-beta`、以及会签发 inference token 的 token URL，都以 oh-my-pi `anthropic` auth rule 与 `anthropic-identity` hook 为准。
+本设计跟随 oh-my-pi 的 Anthropic 订阅流。CLIProxyAPI 当前把换票打到 `platform.claude.com`（注释写 Claude Code 2.1.220），但本插件不做 Firefox uTLS，token / refresh 仍用 `https://api.anthropic.com/v1/oauth/token`。身份、refresh 的 `anthropic-beta`、以及会签发 inference token 的 token URL，都以 oh-my-pi `anthropic` auth rule 与 `anthropic-identity` hook 为准。早期「platform = console token、不能 `user:inference`」对 *当前* CPA 不一定成立；对照见文末。
 
 ## 目标
 
@@ -28,6 +28,7 @@ aio-proxy 已有 built-in OAuth plugin、loopback 授权、credential refresh po
 - 不实现 quota reset，也不在 v1 暴露任何 quota capability。
 - 不实现账号池、额度感知调度或 provider-specific cooldown。
 - 不提供 raw passthrough，也不实现 token-count capability。
+- 不伪造 TLS / browser fingerprint（CPA 的 Firefox uTLS），不生成 `claude_device_ids`，不叠加 Claude Code beta 长列表。
 - 不抽取通用 PKCE / loopback 框架，也不修改 ChatGPT、Antigravity 或其他 OAuth 插件行为。
 
 ## 核心决策
@@ -41,7 +42,7 @@ aio-proxy 已有 built-in OAuth plugin、loopback 授权、credential refresh po
 | OAuth flow | PKCE S256 + 现有 `authorization.loopback`；hostname `localhost`，port `54545`，path `/callback`，`allowManualCallbackUrl: true` |
 | OAuth client | 公开 client ID `9d1c250a-e61b-44d9-88ed-5944d1962f5e`（oh-my-pi / CPA 的 base64 `OWQxYzI1MGEtZTYxYi00NGQ5LTg4ZWQtNTk0NGQxOTYyZjVl`）。任务简述里的 `88e4` 与该 base64 不符，以可验证的 base64 为准 |
 | Authorize | `https://claude.ai/oauth/authorize`，query 含 `code=true` |
-| Token + refresh | `https://api.anthropic.com/v1/oauth/token`，JSON body。禁止 `platform.claude.com` |
+| Token + refresh | `https://api.anthropic.com/v1/oauth/token`，JSON body。不跟随 CPA 当前 `platform.claude.com`（见下方对照） |
 | Scopes | 空格分隔：`org:create_api_key user:profile user:inference user:sessions:claude_code user:mcp_servers user:file_upload` |
 | 身份 | token JSON 的 `account` / `organization`；缺失时 GET `https://api.anthropic.com/api/claude_cli/bootstrap`。org 只在登录时写入 |
 | Fingerprint | 不可逆 SHA-256：`account:<uuid>`，否则 `email:<normalized>`，否则 `refresh:<token>`。格式 `sha256:<hex>`。`suggestedKey = 'claude-' + hex.slice(0, 12)` |
@@ -429,22 +430,25 @@ Dashboard 走现有 built-in catalog，不新增 dashboard 文件。
 
 `credentialImports.cpa.types` 锁定为 `['claude']`。宿主按 CPA 文件顶层 `type` 分发；omp 导入映射到同一 `claude` type。
 
-接受的松散 JSON（`.loose()`）：
+接受的松散 JSON（`.loose()`）。字段名同时覆盖 oh-my-pi 嵌套形状和 CPA `ClaudeTokenStorage` 扁平形状（`internal/auth/claude/token.go`）：
 
 ```ts
 {
   type: 'claude',
   access_token: string,      // 必填
   refresh_token: string,     // 必填
-  expired?: unknown,         // 能 Date.parse 的 string 则用该毫秒值；否则 0
+  expired?: unknown,         // CPA 键名 `expired`；能 Date.parse 的 string 则用该毫秒值；否则 0
   email?: string,
   account?: { uuid?: string; email_address?: string },
   account_id?: string,
+  account_uuid?: string,           // CPA 扁平键
   organization?: { uuid?: string; name?: string },
+  organization_uuid?: string,      // CPA 扁平键
+  organization_name?: string,      // CPA 扁平键
 }
 ```
 
-忽略 `id_token`、`base_url` 等未知键。`expired` 是绝对时间戳，**不再**减 5 分钟。
+忽略 `id_token`、`last_refresh`、`claude_device_ids`、`base_url` 等未知键。`expired` 是绝对时间戳，**不再**减 5 分钟。`account_uuid` / `organization_*` 只在对应嵌套字段缺失时填补。
 
 导入后走与登录相同的 `claudeLoginResult()`。若 `accountId` / `email` 仍缺且 import context 提供 `fetch`，用 access token 做一次非致命 identity bootstrap，以便 fingerprint 尽量落到 `account:`。bootstrap 失败仍导入，fingerprint 退到 email 或 refresh token。
 
@@ -501,3 +505,30 @@ Dashboard 走现有 built-in catalog，不新增 dashboard 文件。
 - User-Agent 版本 `0.112.1` / `2.1.246` 来自 2026-09-06 的 oh-my-pi 源码与 PR 9801，不是本仓库对 Claude Code 的持续跟踪；
 - OAuth Bearer 调 `/v1/models` 的精确过滤集（按官方 list 形状 + `claude-` 前缀处理）；
 - 订阅账号是否总能调用 dateless alias（fallback 仍使用文档 current IDs）。
+- CPA `platform.claude.com` 换票在无 uTLS 时是否被 Cloudflare 挡住；本设计不测这条路径。
+
+## 与 CLIProxyAPI 的对照（2026-09-06 `main`）
+
+依据：https://github.com/router-for-me/CLIProxyAPI `main`（2026-09-06）`internal/auth/claude/anthropic_auth.go`、`token.go`、`oauth_server.go`、`identity.go`，以及 `sdk/auth/claude.go`。这是对照，不是改跟。
+
+| 点 | CPA `main` | 本设计 | v1 决策 |
+| --- | --- | --- | --- |
+| Authorize | `claude.ai/oauth/authorize`，`code=true`，PKCE S256，`localhost:54545/callback` | 相同 | 跟随 |
+| Client ID | `9d1c250a-e61b-44d9-88ed-5944d1962f5e` | 相同 | 跟随 |
+| Scope | `user:profile user:inference user:sessions:claude_code user:mcp_servers user:file_upload` | 上述再加 `org:create_api_key`（oh-my-pi） | 保持 omp。CPA 没有 `org:create_api_key` |
+| Token / refresh URL | `https://platform.claude.com/v1/oauth/token`（注释：Claude Code 2.1.220 走这里）。更早曾用 `console.anthropic.com`（Cloudflare managed challenge，#1659）和 `api.anthropic.com`（#1660） | `https://api.anthropic.com/v1/oauth/token` | **不改跟 platform**。理由：本插件不做 uTLS；#1660 证明 `api.anthropic.com` 对非浏览器 POST 返回真实 OAuth 错误而不是挑战页；oh-my-pi 的 inference refresh 也在 api 域。早期「platform = console token、不能 `user:inference`」的说法对 *当前* CPA 不一定成立——CPA 认为 Claude Code 自己就打 platform。v1 仍锁 api 域，避免把 Cloudflare/uTLS 带进仓库 |
+| 换票 body | 结构体字段顺序 `grant_type, code, redirect_uri, client_id, code_verifier, state`；`redirect_uri` 写死 | 同字段；`redirect_uri` 用 loopback 返回值 | 字段跟随。端口占用时 CPA 直接失败（`port already in use`）；我们仍用返回的 `redirectUri`，但 54545 不改绑 |
+| `code#state` | `parseCodeAndState` 按 `#` 切开，fragment 覆盖 state | 宿主 v1 只收完整 callback URL | 不在本插件解析裸 `code#state`。CPA 的 loopback 本身也要求 query `code`+`state` |
+| 换票头 | Axios 指纹：`Accept: application/json, text/plain, */*`，`User-Agent: axios/1.15.2`，`Connection: close`；无 `anthropic-beta` | `Accept/Content-Type: application/json`；无 UA；无 beta | 保持 omp。不抄 axios / Connection |
+| 身份 | 换票后 GET `/api/oauth/profile` + `/api/oauth/claude_cli/roles`（失败只打日志）。profile **覆盖** token 里的 account/org | token 字段优先；缺则 GET `claude_cli/bootstrap`；失败不阻断；org 只在登录写一次 | 保持 omp bootstrap。不调用 CPA 的 profile/roles，也不在 refresh 里用 profile 改 org |
+| Refresh body | `client_id` + `grant_type` + `refresh_token` + **`scope`（整份 ClaudeOAuthScope）** | `client_id` + `grant_type` + `refresh_token` | 不抄 `scope`。omp 的 refresh 带 `oauth-2025-04-20`，CPA refresh **不带** 该 beta |
+| Refresh 头 | 同 axios 指纹 | `anthropic-beta: oauth-2025-04-20` + `User-Agent: anthropic-sdk-typescript/0.112.1 userOAuthProvider` | 保持 omp |
+| `expiresAt` | `now + expires_in`，存 RFC3339，无 5 分钟 skew | 存 `now + expires_in*1000 - 5min` | 保持本仓库 skew |
+| 并发 refresh | 进程内 singleflight + Retry-After 退避 | 宿主 credential port single-flight / CAS | 不在插件里再做一层 |
+| TLS | Firefox uTLS，绕 Cloudflare | 普通 `fetch` | 明确不做 |
+| Device | 登录生成 64-hex `claude_device_ids`，推理时当 Claude Code 设备指纹 | 不生成、不导入进 credential | 忽略 CPA 文件里的该数组 |
+| 推理 | Messages raw + 一长串 Claude Code beta + 可选 CCH 签名 | ProviderV4 `@ai-sdk/anthropic`，只保证 `oauth-2025-04-20` | 保持 v1 最小集 |
+| 存储 / 导入 | `type: "claude"`，扁平 `email` / `account_uuid` / `organization_uuid` / `organization_name` / `expired` | 同一 `type`，同时接受扁平 CPA 键和 omp 嵌套 `account` / `organization` | **补 CPA 扁平键**，否则真实 CPA 文件导不出 org/account |
+| Email | `sdk/auth/claude.go` 在 `tokenStorage.Email == ""` 时登录失败 | 允许缺 email；fingerprint 退到 account 或 refresh | 有意比 CPA 宽松，bootstrap 失败仍能登录 |
+
+Refresh 时 CPA 还会再用 profile **覆盖** email / account / org。本设计 refresh 只换票，不改已存 org。
