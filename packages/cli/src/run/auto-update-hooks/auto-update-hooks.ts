@@ -1,9 +1,9 @@
 import { existsSync, readFileSync } from 'node:fs';
 
-import { managedUnitPath, resolveExec, writeManagedUnit } from '../service/service';
-import { SYSTEMD_UNIT_NAME } from '../service/unit-templates';
-import { resolveStableManagedExec, resolveUpgradeTargetFrom } from '../upgrade/detect';
-import { runUpgradeCommand } from '../upgrade/upgrade';
+import { managedUnitPath, resolveExec, writeManagedUnit } from '../../service/service';
+import { SYSTEMD_UNIT_NAME } from '../../service/unit-templates';
+import { resolveStableManagedExec, resolveUpgradeTargetFrom } from '../../upgrade/detect';
+import { runUpgradeCommand } from '../../upgrade/upgrade';
 
 export type ManagedProcessIo = {
   readonly platform?: NodeJS.Platform;
@@ -100,6 +100,11 @@ export const migratePreMarkerManagedUnit = async (io: MigratePreMarkerIo = {}): 
       return readFileSync(path, 'utf8');
     })();
   if (body === undefined || body.includes('AIO_PROXY_MANAGED')) return;
-  const exec = resolveStableManagedExec((io.resolveExec ?? resolveExec)());
-  await (io.writeManagedUnit ?? writeManagedUnit)(os, exec);
+  try {
+    const exec = resolveStableManagedExec((io.resolveExec ?? resolveExec)());
+    await (io.writeManagedUnit ?? writeManagedUnit)(os, exec);
+  } catch {
+    // Marker rewrite is optional. A permission or daemon-reload failure must
+    // not prevent an otherwise healthy managed process from starting.
+  }
 };

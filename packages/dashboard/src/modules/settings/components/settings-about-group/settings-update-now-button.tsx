@@ -37,8 +37,12 @@ export const SettingsUpdateNowButton: React.FC<SettingsUpdateNowButtonProps> = (
       const view = query.state.data;
       if (view === undefined) return POLL_INTERVAL_MS;
       if (baselineCurrent !== undefined && view.current !== baselineCurrent) return false;
-      if (view.update.status === 'restart_required' || view.update.status === 'failed') return false;
-      if (view.update.status === 'idle' && query.state.dataUpdatedAt > pollStartedUpdatedAt) {
+      if (query.state.dataUpdatedAt <= pollStartedUpdatedAt) return POLL_INTERVAL_MS;
+      if (
+        view.update.status === 'restart_required' ||
+        view.update.status === 'failed' ||
+        view.update.status === 'idle'
+      ) {
         return false;
       }
       return POLL_INTERVAL_MS;
@@ -54,7 +58,11 @@ export const SettingsUpdateNowButton: React.FC<SettingsUpdateNowButtonProps> = (
   if (freshPollIdle && polling) {
     setPolling(false);
   }
-  const pollTerminal = pollStatus === 'restart_required' || pollStatus === 'failed';
+  const pollTerminal =
+    pollQuery.dataUpdatedAt > pollStartedUpdatedAt && (pollStatus === 'restart_required' || pollStatus === 'failed');
+  if (pollTerminal && polling) {
+    setPolling(false);
+  }
   const watching =
     !timedOut && !pollTerminal && !versionChanged && !freshPollIdle && (polling || updateStatus === 'in_progress');
 
@@ -86,7 +94,16 @@ export const SettingsUpdateNowButton: React.FC<SettingsUpdateNowButtonProps> = (
         beginPoll();
         return;
       }
-      setApplyMessage(code === 'unavailable' ? 'unavailable' : 'failed');
+      if (code === 'unavailable') {
+        setApplyMessage('unavailable');
+        return;
+      }
+      if (code === 'check_failed') {
+        setApplyMessage('failed');
+        return;
+      }
+      // Transport / unknown errors are ambiguous: the server may already be applying.
+      beginPoll();
     },
   });
 

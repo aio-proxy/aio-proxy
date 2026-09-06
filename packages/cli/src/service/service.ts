@@ -220,6 +220,7 @@ export type ServiceRestartIo = {
   readonly isTTY?: boolean;
   readonly unitInstalled?: () => boolean;
   readonly unitPath?: string;
+  readonly exec?: string;
   readonly writeManagedUnit?: typeof writeManagedUnit;
   readonly spawn?: typeof Bun.spawn;
   readonly runManager?: (cmd: readonly string[], allowFailure?: boolean) => Promise<number>;
@@ -256,7 +257,10 @@ export async function serviceRestart(io: ServiceRestartIo = {}): Promise<void> {
   // darwin a plain stop/start would then relaunch nothing, so restart must migrate
   // it. Only migrate when a unit exists — restart must not create one (that is
   // install's job), or it would leave a partial, un-enabled unit behind.
-  if (unitInstalled()) await writeUnit(os);
+  if (unitInstalled()) {
+    if (io.exec === undefined) await writeUnit(os);
+    else await writeUnit(os, io.exec);
+  }
   if (os === 'darwin') {
     const plist = io.unitPath ?? launchdPlistPath();
     if (isDarwinLaunchdJob(env, isTTY)) {

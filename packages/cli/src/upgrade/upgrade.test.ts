@@ -656,6 +656,35 @@ test('runUpgradeCommand with the current version returns unchanged and does not 
   expect(installed).toBe(false);
 });
 
+test('brew --force on the current version still installs and restarts', async () => {
+  let installed = false;
+  let restarted: string | undefined;
+  const result = await runUpgradeCommand(
+    { version: '1.0.0', force: true },
+    () => {},
+    makeDeps({
+      currentVersion: '1.0.0',
+      resolveTarget: async () => ({
+        method: 'brew',
+        command: '/opt/homebrew/bin/brew',
+        bin: '/opt/homebrew/bin/aio-proxy',
+      }),
+      readInstalledVersion: async () => '1.0.0',
+      isDaemonRunning: async () => true,
+      isServiceManaged: () => true,
+      install: async () => {
+        installed = true;
+      },
+      restartService: async (exec) => {
+        restarted = exec;
+      },
+    }),
+  );
+  expect(result).toBe('installed');
+  expect(installed).toBe(true);
+  expect(restarted).toBe('/opt/homebrew/bin/aio-proxy');
+});
+
 test('brew install whose launcher version stays at current returns unchanged and skips restart', async () => {
   let restarted = false;
   const result = await runUpgradeCommand(
@@ -680,6 +709,30 @@ test('brew install whose launcher version stays at current returns unchanged and
   expect(restarted).toBe(false);
 });
 
+test('successful brew upgrade restarts with the stable launcher', async () => {
+  let restarted: string | undefined;
+  const result = await runUpgradeCommand(
+    { version: '2.0.0' },
+    () => {},
+    makeDeps({
+      currentVersion: '1.0.0',
+      resolveTarget: async () => ({
+        method: 'brew',
+        command: '/opt/homebrew/bin/brew',
+        bin: '/opt/homebrew/bin/aio-proxy',
+      }),
+      readInstalledVersion: async () => '2.0.0',
+      isDaemonRunning: async () => true,
+      isServiceManaged: () => true,
+      restartService: async (exec) => {
+        restarted = exec;
+      },
+    }),
+  );
+  expect(result).toBe('installed');
+  expect(restarted).toBe('/opt/homebrew/bin/aio-proxy');
+});
+
 test('resolveNewAgentBinary for a brew target uses target.bin, not Bun.which', async () => {
   const root = mkdtempSync(join(tmpdir(), 'aio-brew-agent-bin-'));
   const binary = join(root, 'aio-proxy');
@@ -690,14 +743,7 @@ if (process.argv[2] === "--version") { console.log("2.0.0"); process.exit(0); }
 process.exit(9);
 `,
   );
-  const previous = process.env['PATH'];
-  process.env['PATH'] = '/usr/bin:/bin';
-  try {
-    await expect(
-      resolveNewAgentBinary({ method: 'brew', command: '/opt/homebrew/bin/brew', bin: binary }, '2.0.0'),
-    ).resolves.toBe(binary);
-  } finally {
-    if (previous === undefined) delete process.env['PATH'];
-    else process.env['PATH'] = previous;
-  }
+  await expect(
+    resolveNewAgentBinary({ method: 'brew', command: '/opt/homebrew/bin/brew', bin: binary }, '2.0.0'),
+  ).resolves.toBe(binary);
 });

@@ -183,6 +183,17 @@ test('apply reports up_to_date, unavailable, and check_failed', async () => {
   });
   expect(await offline.apply()).toEqual({ status: 'check_failed' });
   expect(offline.snapshot()).toEqual({ status: 'failed' });
+
+  const malformed = createAutoUpdateController({
+    getEnabled: () => true,
+    isManagedService: () => true,
+    applyUpdate: async () => 'installed',
+    currentVersion: '1.2.0',
+    fetchLatest: async () => 'not-a-version',
+  });
+  expect(await malformed.apply()).toEqual({ status: 'check_failed' });
+  expect(malformed.snapshot()).toEqual({ status: 'failed' });
+  expect(await malformed.apply()).toEqual({ status: 'check_failed' });
 });
 
 test('applyUpdate failure sets failed and releases the lock', async () => {

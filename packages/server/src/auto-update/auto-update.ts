@@ -79,12 +79,12 @@ export function createAutoUpdateController(options: AutoUpdateControllerOptions)
     let latest: string;
     try {
       latest = await options.fetchLatest(AUTO_UPDATE_PACKAGE);
+      if (isUpToDate(latest)) {
+        release('idle');
+        return;
+      }
     } catch (error) {
       failLookup(error);
-      return;
-    }
-    if (isUpToDate(latest)) {
-      release('idle');
       return;
     }
     // Recheck after the awaited lookup: stop() or a toggle-off must not start applyUpdate.
@@ -103,13 +103,13 @@ export function createAutoUpdateController(options: AutoUpdateControllerOptions)
     let latest: string;
     try {
       latest = await options.fetchLatest(AUTO_UPDATE_PACKAGE);
+      if (isUpToDate(latest)) {
+        release('idle');
+        return { status: 'up_to_date' };
+      }
     } catch (error) {
       failLookup(error);
       return { status: 'check_failed' };
-    }
-    if (isUpToDate(latest)) {
-      release('idle');
-      return { status: 'up_to_date' };
     }
     if (stopped) {
       release('idle');

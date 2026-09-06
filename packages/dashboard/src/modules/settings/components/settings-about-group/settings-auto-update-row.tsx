@@ -38,7 +38,14 @@ export const SettingsAutoUpdateRow: React.FC<SettingsAutoUpdateRowProps> = ({ au
               aria-label={m['dashboard.settings.auto_update']()}
               onCheckedChange={(enabled) => {
                 field.handleChange(enabled);
-                mutate({ autoUpdate: enabled });
+                mutate(
+                  { autoUpdate: enabled },
+                  {
+                    onError: () => {
+                      field.handleChange(autoUpdate);
+                    },
+                  },
+                );
               }}
             />
           )}

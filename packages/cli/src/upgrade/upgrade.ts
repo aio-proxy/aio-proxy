@@ -9,7 +9,7 @@ import { isManagedServiceInstalled, serviceRestart } from '../service';
 import { updateViaBinary } from './binary';
 import { NPM_REGISTRY, type UpgradeTarget } from './constants';
 import { resolveUpgradeTarget } from './detect';
-import { runPackageManagerUpgrade } from './methods';
+import { interpreterSafePath, runPackageManagerUpgrade } from './methods';
 import type {
   AgentPostUpgradeItemResult,
   AgentPostUpgradePayload,
@@ -33,7 +33,7 @@ export type UpgradeDeps = AgentUpgradeHandoffDeps & {
   // vs. manual-run hint) are testable without real health probing or launchctl.
   readonly isDaemonRunning: () => Promise<boolean>;
   readonly isServiceManaged: () => boolean;
-  readonly restartService: () => Promise<void>;
+  readonly restartService: (exec?: string) => Promise<void>;
   readonly readInstalledVersion: (bin: string) => Promise<string>;
 };
 
@@ -44,7 +44,11 @@ const runInstall = async (target: UpgradeTarget, version: string, options: Upgra
 };
 
 const readBinVersion = async (bin: string): Promise<string> => {
-  const proc = Bun.spawn([bin, '--version'], { stdout: 'pipe', stderr: 'pipe' });
+  const proc = Bun.spawn([bin, '--version'], {
+    stdout: 'pipe',
+    stderr: 'pipe',
+    env: { ...process.env, PATH: interpreterSafePath(bin) },
+  });
   const stdout = (await new Response(proc.stdout).text()).trim();
   if ((await proc.exited) !== 0) throw new Error(`${bin} --version exited nonzero`);
   const version = stdout.match(/(\d+\.\d+\.\d+)/)?.[1] ?? stdout;
@@ -95,7 +99,7 @@ const defaultDeps: UpgradeDeps = {
     (await import('./agent-post-upgrade-process')).invokeAgentPostUpgrade(binary, payload),
   isDaemonRunning: probeDaemonRunning,
   isServiceManaged: isManagedServiceInstalled,
-  restartService: serviceRestart,
+  restartService: async (exec) => serviceRestart(exec === undefined ? {} : { exec }),
   readInstalledVersion: readBinVersion,
 };
 
@@ -155,7 +159,7 @@ export const runUpgradeCommand = async (
   // rethrow as CliExit so the user sees the actionable reason, not a generic message.
   try {
     await deps.install(target, latest, options);
-    if (target.method === 'brew') {
+    if (target.method === 'brew' && options.force !== true) {
       const actual = await deps.readInstalledVersion(target.bin);
       if (Bun.semver.order(actual, current) <= 0) {
         print(m['cli.upgrade.up_to_date']({ version: current }));
@@ -187,6 +191,9 @@ export const runUpgradeCommand = async (
     return 'installed';
   }
   print(m['cli.upgrade.restarting']());
-  await deps.restartService();
+  // After brew, Cellar execPath is gone and managed PATH cannot find the
+  // launcher. Pass the already-resolved stable bin so the unit rewrite does
+  // not call resolveExec(). Do not pass npm/pnpm JS shims as ExecStart.
+  await deps.restartService(target.method === 'brew' ? target.bin : undefined);
   return 'installed';
 };

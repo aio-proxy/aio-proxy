@@ -285,6 +285,21 @@ test('systemd and launchd templates persist AIO_PROXY_UPGRADE_METHOD when known'
   expect(plist).toContain('<string>npm</string>');
 });
 
+test('serviceRestart rewrites the unit with the provided exec', async () => {
+  const written: { readonly os: string; readonly exec?: string }[] = [];
+  await serviceRestart({
+    platform: 'linux',
+    unitInstalled: () => true,
+    exec: '/opt/homebrew/bin/aio-proxy',
+    writeManagedUnit: async (os, exec) => {
+      written.push({ os, exec });
+      return '/tmp/aio-proxy.service';
+    },
+    runManager: async () => 0,
+  });
+  expect(written).toEqual([{ os: 'linux', exec: '/opt/homebrew/bin/aio-proxy' }]);
+});
+
 test('Darwin in-job serviceRestart spawns a detached helper that unloads without waiting for this PID', async () => {
   const spawned: { readonly cmd: string[]; readonly detached?: boolean }[] = [];
   const manager: string[][] = [];

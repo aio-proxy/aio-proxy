@@ -1,4 +1,5 @@
 import type { UpgradeTarget } from './constants';
+import { interpreterSafePath } from './methods';
 import {
   AgentPostUpgradeItemResultsSchema,
   type AgentPostUpgradeItemResult,
@@ -45,6 +46,7 @@ export async function resolveNewAgentBinary(target: UpgradeTarget, installedVers
       stdin: 'ignore',
       stdout: 'pipe',
       stderr: 'pipe',
+      env: { ...process.env, PATH: interpreterSafePath(binary) },
     }),
     CHILD_TIMEOUT_MS,
   );
@@ -72,6 +74,7 @@ export async function invokeAgentPostUpgrade(
     stdin: 'pipe',
     stdout: 'pipe',
     stderr: 'pipe',
+    env: { ...process.env, PATH: interpreterSafePath(binary) },
   });
   try {
     child.stdin.write(JSON.stringify(payload));

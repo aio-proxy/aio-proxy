@@ -28,7 +28,19 @@ test('saves Automatic updates through the settings mutation', async () => {
 
   fireEvent.click(screen.getByRole('switch', { name: autoUpdateName }));
 
-  expect(mocks.mutate).toHaveBeenCalledWith({ autoUpdate: true });
+  expect(mocks.mutate.mock.calls[0]?.[0]).toEqual({ autoUpdate: true });
+});
+
+test('rolls the switch back when the settings save fails', async () => {
+  mocks.mutate.mockReset();
+  mocks.mutate.mockImplementation(((_input: unknown, options?: { onError?: () => void }) => {
+    options?.onError?.();
+  }) as typeof mocks.mutate);
+  await renderRow(true, false);
+
+  fireEvent.click(screen.getByRole('switch', { name: autoUpdateName }));
+
+  expect(screen.getByRole('switch', { name: autoUpdateName })).toHaveAttribute('aria-checked', 'false');
 });
 
 test('shows the unmanaged hint only when the process is not a managed service', async () => {

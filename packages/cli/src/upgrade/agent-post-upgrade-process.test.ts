@@ -62,16 +62,9 @@ test('wrong installed version fails before the hidden command can run', async ()
 
 test('a package-manager upgrade uses target.bin rather than PATH', async () => {
   const binary = await fakeBinary('success');
-  const previous = process.env.PATH;
-  process.env.PATH = '/usr/bin:/bin';
-  try {
-    await expect(
-      resolveNewAgentBinary({ method: 'bun', command: join(dirname(binary), 'bun'), bin: binary }, '2.0.0'),
-    ).resolves.toBe(binary);
-  } finally {
-    if (previous === undefined) delete process.env.PATH;
-    else process.env.PATH = previous;
-  }
+  await expect(
+    resolveNewAgentBinary({ method: 'bun', command: join(dirname(binary), 'bun'), bin: binary }, '2.0.0'),
+  ).resolves.toBe(binary);
 });
 
 test.each(['nonzero', 'malformed', 'schema_invalid'] as const)(

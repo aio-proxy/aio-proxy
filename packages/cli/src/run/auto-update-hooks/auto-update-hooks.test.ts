@@ -124,6 +124,18 @@ test('pre-marker Linux session invocation does not rewrite when this process is 
   expect(writes).toBe(0);
 });
 
+test('pre-marker rewrite failures do not reject', async () => {
+  await migratePreMarkerManagedUnit({
+    env: { INVOCATION_ID: 'abc' },
+    platform: 'linux',
+    readCgroup: () => linuxManagedCgroup,
+    readUnit: () => '[Service]\nEnvironment="AIO_PROXY_HOME=/tmp"\n',
+    writeManagedUnit: async () => {
+      throw new Error('daemon-reload failed');
+    },
+  });
+});
+
 test('a unit that already has the marker is not rewritten', async () => {
   let writes = 0;
   await migratePreMarkerManagedUnit({

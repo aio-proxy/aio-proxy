@@ -135,7 +135,7 @@ test('saves Automatic updates through the settings mutation', async () => {
 
   fireEvent.click(screen.getByRole('switch', { name: autoUpdateName }));
 
-  expect(mocks.settingsMutate).toHaveBeenCalledWith({ autoUpdate: true });
+  expect(mocks.settingsMutate.mock.calls[0]?.[0]).toEqual({ autoUpdate: true });
 });
 
 test('shows the unmanaged hint only when the process is not a managed service', async () => {

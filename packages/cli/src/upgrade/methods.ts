@@ -25,7 +25,7 @@ export const buildHomebrewUpdateArgs = (force: boolean): string[] => [
   HOMEBREW_FORMULA,
 ];
 
-const interpreterSafePath = (command: string): string =>
+export const interpreterSafePath = (command: string): string =>
   [dirname(command), '/usr/bin', '/bin', process.env['PATH']]
     .filter((part) => part !== undefined && part !== '')
     .join(':');

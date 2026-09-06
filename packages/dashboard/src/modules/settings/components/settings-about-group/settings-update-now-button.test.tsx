@@ -191,3 +191,32 @@ test('keeps Updating and disabled after 120s when GET is still in_progress', asy
   await rs.advanceTimersByTimeAsync(4_000);
   expect(mocks.releaseQueryFn.mock.calls.length).toBe(calls);
 });
+
+test('starts the poll when apply fails with a transport error', async () => {
+  prepare();
+  mocks.apply.mockRejectedValue(new Error('Failed to fetch'));
+  await renderButton(true);
+
+  fireEvent.click(screen.getByRole('button', { name: updateNowName }));
+
+  await waitFor(() => expect(screen.getByRole('button', { name: updatingName })).toBeDisabled());
+  await waitFor(() => expect(mocks.releaseQueryFn).toHaveBeenCalled());
+  expect(screen.queryByText(updateFailed)).not.toBeInTheDocument();
+});
+
+test('retries polling after a previous failed apply', async () => {
+  prepare({ current: '1.4.2', managedService: false, update: { status: 'failed' } });
+  mocks.releaseQueryFn.mockResolvedValue({
+    current: '1.4.2',
+    managedService: false,
+    update: { status: 'in_progress' },
+  });
+  await renderButton(true);
+
+  expect(screen.getByText(updateFailed)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: updateNowName }));
+
+  await waitFor(() => expect(mocks.apply).toHaveBeenCalledTimes(1));
+  await waitFor(() => expect(screen.getByRole('button', { name: updatingName })).toBeDisabled());
+  await waitFor(() => expect(mocks.releaseQueryFn).toHaveBeenCalled());
+});
