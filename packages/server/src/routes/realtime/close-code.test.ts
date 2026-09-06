@@ -30,12 +30,21 @@ test('a reason longer than 123 UTF-8 bytes is truncated on a code-point boundary
   const truncatedAscii = truncateCloseReason(ascii)!;
   expect(new TextEncoder().encode(truncatedAscii).byteLength).toBe(123);
 
-  // 3 bytes each: a naive slice(0, 123) would cut mid-sequence and produce U+FFFD.
+  // 3 bytes each, and 123 % 3 === 0, so 41 characters land exactly on the cap: this is
+  // the one multibyte width where a byte slice and a code-point walk agree.
   const multibyte = '好'.repeat(200);
   const truncatedMultibyte = truncateCloseReason(multibyte)!;
   expect(new TextEncoder().encode(truncatedMultibyte).byteLength).toBeLessThanOrEqual(123);
   expect(truncatedMultibyte).toBe('好'.repeat(41));
   expect(truncatedMultibyte).not.toContain('�');
+
+  // 4 bytes each and 123 % 4 === 3, so a byte slice necessarily cuts mid-sequence
+  // here and yields U+FFFD plus a 123-byte result the client would then reject.
+  const astral = '\u{1F600}'.repeat(50);
+  const truncatedAstral = truncateCloseReason(astral)!;
+  expect(new TextEncoder().encode(truncatedAstral).byteLength).toBe(120);
+  expect(truncatedAstral).toBe('\u{1F600}'.repeat(30));
+  expect(truncatedAstral).not.toContain('�');
 });
 
 test('a short reason and an absent reason are left alone', () => {

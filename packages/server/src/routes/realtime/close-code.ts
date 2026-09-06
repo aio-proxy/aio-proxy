@@ -4,7 +4,10 @@ export const MAX_CLOSE_REASON_BYTES = 123;
 
 /** Measured on Bun 1.4.2: `ServerWebSocket.close()` accepts everything, but the
  *  client `WebSocket.close()` throws `InvalidAccessError` outside these ranges.
- *  Normalizing to the narrower set in both directions keeps one code path. */
+ *  Normalizing to the narrower set in both directions keeps one code path.
+ *  A fractional code is rejected for a different reason: the client accepts it and
+ *  rounds it, so the peer would see a code the origin never sent (`1002.9` -> `1003`,
+ *  and even out-of-range `999.5` -> `1000`). */
 function acceptedByClient(code: number): boolean {
   if (!Number.isInteger(code)) return false;
   if (code >= 1000 && code <= 1003) return true;
@@ -16,8 +19,11 @@ export function normalizeCloseCode(code: number | undefined): number {
   return code !== undefined && acceptedByClient(code) ? code : INTERNAL_CLOSE_CODE;
 }
 
-/** A reason over 123 UTF-8 bytes throws `SyntaxError` on both sides. Truncation
- *  walks code points so a multi-byte sequence is never cut in half. */
+/** Measured on Bun 1.4.2: only the client `WebSocket.close()` throws `SyntaxError`
+ *  over 123 UTF-8 bytes. The server side silently truncates instead, and when the cut
+ *  lands mid-sequence Bun discards the whole frame and sends `1007` "Server sent
+ *  invalid UTF8" in its place. Walking code points is therefore required in both
+ *  directions to keep the origin's code intact. */
 export function truncateCloseReason(reason: string | undefined): string | undefined {
   if (reason === undefined || reason.length === 0) return undefined;
   const encoder = new TextEncoder();
