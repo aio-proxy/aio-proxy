@@ -532,8 +532,10 @@ inbound style, and for closes the normalized close code. **SDP bodies, `Location
 credentials are never recorded, and must not reach a response body**, matching the existing
 allowlisted-diagnostics rule. A recorded `statusCode` is the **caller-facing** status, not the
 upstream's: a create `4xx` happens to log the upstream's own code, but a create whose attempts were
-exhausted by `3xx`s and a hangup answering `3xx` both log `503`, so an operator correlating against
-upstream logs will not always find the upstream's code. Usage capture
+exhausted by `3xx`s logs `503`, so an operator correlating against upstream logs will not always
+find the upstream's code. A hangup emits a record only for the `403` scope mismatch; its other
+failures answer without one, so a hangup rejected upstream is visible to the caller but not to an
+operator reading logs. Usage capture
 is deferred; note that standard Realtime does exchange response usage, so "no token metric exists"
 would be wrong as a permanent justification.
 
