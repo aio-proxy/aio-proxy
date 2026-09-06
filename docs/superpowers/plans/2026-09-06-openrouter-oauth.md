@@ -8,6 +8,8 @@
 
 **Tech Stack:** Bun, TypeScript, `@aio-proxy/plugin-sdk`, `@openrouter/ai-sdk-provider@2.10.0`, Rslib, Bun test, Changesets.
 
+**Spec:** [docs/superpowers/specs/2026-09-06-openrouter-oauth-design.md](../specs/2026-09-06-openrouter-oauth-design.md)
+
 ## Global Constraints
 
 - Spec: `docs/superpowers/specs/2026-09-06-openrouter-oauth-design.md`. Do not invent a paste-key login, CPA importer, refresh, raw capability, native-scheme port, or plugin-sdk API.
