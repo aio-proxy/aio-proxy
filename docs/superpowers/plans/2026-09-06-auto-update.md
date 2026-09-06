@@ -16,7 +16,7 @@
 - `@aio-proxy/server` must not import `@aio-proxy/cli`. Upgrade execution is an injected `applyUpdate` callback only.
 - `server.autoUpdate` defaults to `false`. Omitted config means off. A Settings write persists the boolean explicitly.
 - Auto-install (scheduler ticks) requires **all** of: toggle on, `isManagedService() === true` (**this process** is the managed daemon — marker or pre-marker fallback; not `isManagedServiceInstalled()` alone), npm `latest` newer than the process version. Manual `POST /release/apply` skips the toggle and managed-process gates.
-- `applyUpdate(version)` installs **that** version and returns `'installed' | 'unchanged'`. It must not look up npm `latest` again. Resolve the target from the launched absolute path (Cellar → `{ command, bin }`; never `Bun.which`, never spawn bare `brew` on `PATH`). After brew, if `bin` version did not move, return `'unchanged'` and do not restart. Darwin in-job helper unloads after detach and does not wait for this PID. Agent post-upgrade uses `bin`. Interactive `aio-proxy upgrade` PATH lookup stays unchanged.
+- `applyUpdate(version)` installs **that** version and returns `'installed' | 'unchanged'`. It must not look up npm `latest` again. Resolve the target from the launched absolute path (Cellar → `{ command, bin }`; never `Bun.which`, never spawn bare `brew` on `PATH`). Spawn package managers with an interpreter-safe PATH (`dirname(command)` so npm's `#!/usr/bin/env node` works). After brew, if `bin` version did not move, return `'unchanged'` and do not restart. Darwin in-job helper unloads after detach and does not wait for this PID. Agent post-upgrade uses `bin`. Interactive `aio-proxy upgrade` PATH lookup stays unchanged.
 - Take the single-flight lock **before** `fetchLatest`. A second apply during a pending lookup returns `in_progress` and must not start a second `applyUpdate()`.
 - When `applyUpdate(version)` fulfills `'installed'` and this process is still alive, set `restart_required`. When it fulfills `'unchanged'`, set `idle` (do not tell the operator to restart). When it throws, set `failed`.
 - Follow npm `latest` for every newer version. No major/minor channel split. Interval is the constant `24 * 60 * 60 * 1000` ms. No interval/channel UI.
@@ -27,7 +27,7 @@
 - Colocated tests in same-name directories. Do not add files under `_test/`.
 - Handwritten non-test implementation files stay under 500 lines; evaluate splitting at 400.
 - Prefer `es-toolkit` narrow imports. Use `isPlainObject` from `es-toolkit/predicate` only for authored/parsed data.
-- Every changeset targets `aio-proxy` **plus** every internal package actually touched, at the same bump level (`minor`). Never author a changeset that targets only internal packages.
+- Every changeset targets `aio-proxy` **plus** every internal package actually touched, at the same bump level (`minor`). Never author a changeset that targets only internal packages. Author with `bun changeset` and commit the generated file alongside the change. Do not hand-write a changeset filename or skip the command.
 - `bun run check` plus the affected package tests after each task. `bun run preflight` at the end of Task 6.
 
 ---
@@ -494,6 +494,31 @@ test('applyUpdate failure sets failed and releases the lock', async () => {
   expect(await controller.apply()).toEqual({ status: 'started' });
 });
 
+test('disabling the toggle during a pending fetchLatest does not apply', async () => {
+  let releaseFetch!: (version: string) => void;
+  let enabled = true;
+  const fetchLatest = mock(
+    () =>
+      new Promise<string>((resolve) => {
+        releaseFetch = resolve;
+      }),
+  );
+  const applyUpdate = mock(async () => 'installed' as const);
+  const controller = createAutoUpdateController({
+    getEnabled: () => enabled,
+    isManagedService: () => true,
+    applyUpdate,
+    currentVersion: '1.2.0',
+    fetchLatest,
+  });
+  controller.start();
+  await Promise.resolve();
+  enabled = false;
+  releaseFetch('1.10.0');
+  await Promise.resolve();
+  expect(applyUpdate).not.toHaveBeenCalled();
+});
+
 test('stop during a pending fetchLatest does not apply', async () => {
   let releaseFetch!: (version: string) => void;
   const fetchLatest = mock(
@@ -542,7 +567,7 @@ Expected: FAIL — module not found.
 
 - [ ] **Step 3: Implement the controller**
 
-Tick path (used by `start` immediate run, interval, and `notifyCheck`): skip when the lock is held, `!getEnabled()`, or `!isManagedService()`; **then acquire the lock** and set `in_progress`; fetch `AUTO_UPDATE_PACKAGE`; on fetch throw set `failed` + `onError` and release; if `Bun.semver.order(latest, currentVersion) <= 0` set `idle` and release; if `stop()` ran during the lookup, release and return; otherwise start the same fire-and-forget `applyUpdate(latest)` as `apply()`.
+Tick path (used by `start` immediate run, interval, and `notifyCheck`): skip when the lock is held, `!getEnabled()`, or `!isManagedService()`; **then acquire the lock** and set `in_progress`; fetch `AUTO_UPDATE_PACKAGE`; on fetch throw set `failed` + `onError` and release; if `Bun.semver.order(latest, currentVersion) <= 0` set `idle` and release; if `stop()` ran during the lookup **or `getEnabled()` is now false**, release and return; otherwise start the same fire-and-forget `applyUpdate(latest)` as `apply()`. Manual `apply()` does not re-check the toggle.
 
 `apply()`: `unavailable` when `applyUpdate` is missing; `in_progress` when the lock is held; **acquire the lock and set `in_progress` before `fetchLatest`**; return `check_failed` / `up_to_date` (release on those paths); otherwise invoke `applyUpdate(latest)` without awaiting it in the caller, return `started`. The background promise maps `'installed'` → `restart_required`, `'unchanged'` → `idle`, throw → `failed` + `onError`, then releases the lock. Never set `restart_required` after a no-op.
 
@@ -780,7 +805,7 @@ Extend `UpgradeTarget` so non-binary methods carry the manager and the installed
 | { readonly method: 'binary'; readonly path: string }
 ```
 
-`runPackageManagerUpgrade` must `exec([target.command, ...])`. Do not spawn the bare name `brew`. `resolveNewAgentBinary` must use `target.bin` (or `target.path` for `binary`), not `Bun.which('aio-proxy')`. Task 4 **does** modify `constants.ts`, `methods.ts`, and `agent-post-upgrade-process.ts`. Interactive PATH detection may set `command` to `Bun.which('brew') ?? 'brew'` and `bin` to the resolved aio-proxy path.
+`runPackageManagerUpgrade` must `exec([target.command, ...], { PATH: upgradePath })`. `upgradePath` includes `dirname(command)` (sibling `node` for `#!/usr/bin/env node` npm/pnpm shims — same failure `resolveExec` documents) plus `/usr/bin` and `/bin` for brew. Do not spawn against the managed unit's empty PATH. Do not spawn the bare name `brew`. `resolveNewAgentBinary` must use `target.bin` (or `target.path` for `binary`), not `Bun.which('aio-proxy')`. Task 4 **does** modify `constants.ts`, `methods.ts`, and `agent-post-upgrade-process.ts`. Interactive PATH detection may set `command` to `Bun.which('brew') ?? 'brew'` and `bin` to the resolved aio-proxy path.
 
 `resolveUpgradeTargetFrom(binPath)` uses the given absolute path instead of `Bun.which`. Rules:
 
@@ -883,6 +908,7 @@ Add `resolveUpgradeTargetFrom` / `resolveStableManagedExec` tests in `upgrade.te
 - npm prefix path → `{ method: 'npm', command }`
 - `resolveStableManagedExec(cellarFile)` → `{brewPrefix}/bin/aio-proxy`
 - `runPackageManagerUpgrade` for brew execs the absolute `command`, never the string `'brew'`
+- `runPackageManagerUpgrade` for npm sets PATH so `dirname(command)/node` satisfies `#!/usr/bin/env node` (do not spawn the npm shim with an empty PATH)
 - `runUpgradeCommand({ version: '1.2.4' })` installs 1.2.4 and does not call `fetchLatest`; a later stub `latest` of `1.2.5` must not change the installed version
 - `runUpgradeCommand({ version: current })` returns `'unchanged'` and does not install
 - brew install whose launcher `--version` stays at `current` returns `'unchanged'` and does not call `restartService`
@@ -995,7 +1021,7 @@ Mock `useSettingsQuery` / `useSettingsMutation` / `useReleaseQuery` / `applyRele
 1. Switch save: clicking Automatic updates calls `mutate({ autoUpdate: true })`.
 2. Unmanaged hint: `managedService: false` shows `auto_update_unmanaged_hint`; `true` does not.
 3. Update now: after a check that returns `outdated: true`, the button is enabled; click calls `applyReleaseMutationFn`.
-4. In-progress: `update.status === 'in_progress'` disables Update now and shows `version_updating`.
+4. In-progress: `update.status === 'in_progress'` disables Update now, shows `version_updating`, and **starts the poll** (page loaded mid-update). A 409 `in_progress` apply response starts the same poll.
 5. Failed apply: `update.status === 'failed'` shows `version_update_failed` and does not show `version_up_to_date`.
 6. Restart required: `update.status === 'restart_required'` shows `version_restart_required`, stops polling, does not call `reloadDashboard()`, and **disables** Update now (do not leave it clickable while `outdated` is still true).
 
@@ -1023,7 +1049,7 @@ Widen `releaseQueryOptions` to return the full GET JSON (`current`, `managedServ
 
 `SettingsAutoUpdateRow`: `useForm({ defaultValues: { autoUpdate } })`, shadcn `Switch`, `onCheckedChange` → `onSave({ autoUpdate })`. Show `auto_update_description` always and `auto_update_unmanaged_hint` when `managedService` is false.
 
-`SettingsUpdateNowButton`: ghost `Button` like version check. Pending / `in_progress` → `version_updating` + disabled. `restart_required` → `version_restart_required` + disabled (do not post apply again). After `started` or a dropped connection, poll `releaseQueryOptions` every 2s for at most 120s; if `current` changes, `reloadDashboard()`; if `update.status === 'restart_required'`, show `version_restart_required` and stop. Failed / `unavailable` use the matching i18n string.
+`SettingsUpdateNowButton`: ghost `Button` like version check. Pending / `in_progress` → `version_updating` + disabled. `restart_required` → `version_restart_required` + disabled (do not post apply again). Poll `releaseQueryOptions` every 2s for at most 120s after any of: local `started`, apply 409 `in_progress`, GET `update.status === 'in_progress'`, or a dropped connection after `started`. If `current` changes, `reloadDashboard()`; if `update.status === 'restart_required'`, show `version_restart_required` and stop. Failed / `unavailable` use the matching i18n string.
 
 `SettingsAboutGroup` assembles version row, auto-update row (only when settings query has data), Update now, repo, docs. Hide the Switch while settings are loading or errored; keep version check.
 
@@ -1048,26 +1074,19 @@ git commit -m "feat: add automatic updates toggle and Update now on Settings"
 
 **Files:**
 
-- Create: `.changeset/auto-update-settings.md`
+- Create: the file `bun changeset` generates under `.changeset/` (do not invent the filename or hand-author the frontmatter).
 - Modify nothing else unless preflight exposes a missed fixture.
 
 **Interfaces:**
 
 - Changeset targets, all `minor`: `aio-proxy`, `@aio-proxy/types`, `@aio-proxy/server`, `@aio-proxy/cli`, `@aio-proxy/dashboard`, `@aio-proxy/i18n`.
-- Do not target only internals. Do not run `changeset version`.
+- Do not target only internals. Do not run `changeset version` / `publish`.
 
-- [ ] **Step 1: Author the changeset**
+- [ ] **Step 1: Author the changeset with the repository workflow**
+
+Run `bun changeset` and select those packages at `minor`. Commit the **generated** `.changeset/*.md` in the implementation PR alongside the user-facing change (same PR as Tasks 1–5; do not skip the command and paste a hand-written file). Intended note body:
 
 ```md
----
-'@aio-proxy/types': minor
-'@aio-proxy/server': minor
-'@aio-proxy/cli': minor
-'@aio-proxy/dashboard': minor
-'@aio-proxy/i18n': minor
-'aio-proxy': minor
----
-
 Settings: add an Automatic updates toggle (off by default) and Update now. When enabled, a managed launchd/systemd service checks npm `latest` on startup and every 24 hours and runs the existing `aio-proxy upgrade` path. Foreground `aio-proxy run` persists the flag but does not auto-install.
 ```
 
@@ -1081,7 +1100,7 @@ If a `DashboardSettingsView` fixture or GET `/settings` assertion was missed, fi
 - [ ] **Step 3: Commit**
 
 ```bash
-git add .changeset/auto-update-settings.md
+git add .changeset
 git commit -m "chore: add changeset for automatic updates"
 ```
 
@@ -1104,7 +1123,7 @@ git commit -m "chore: add changeset for automatic updates"
 | Marker + pre-marker; Cellar never binary; brew `command`/`bin`; helper unloads without waiting; Agent uses `bin` | 4 |
 | `createServer` start/stop + CLI hooks | 4 |
 | About Switch + unmanaged hint + Update now + poll/`restart_required` disables button | 5 |
-| Five-locale copy + changeset targeting `aio-proxy` | 5, 6 |
+| Five-locale copy + `bun changeset` targeting `aio-proxy` | 5, 6 |
 | No OS timers, no channel UI, no server→CLI import | all (non-goals) |
 
 **Placeholders:** none.

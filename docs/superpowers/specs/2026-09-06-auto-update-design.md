@@ -119,8 +119,16 @@ package managers is `{ method, command, bin }` — `command` is the
 manager executable, `bin` is `{brewPrefix}/bin/aio-proxy` (or the
 matching npm/bun/pnpm global binary). `runPackageManagerUpgrade` execs
 `command`, never the bare name `brew` / `npm` / `bun` / `pnpm` on
-`PATH`. `resolveNewAgentBinary` must use `bin` (or `path` for
-`binary`), not `Bun.which('aio-proxy')` — that file throws
+`PATH`. An absolute `command` is not enough for npm/pnpm: those
+entry points are `#!/usr/bin/env node` shims — the same failure
+`resolveExec` documents for the npm `aio-proxy` launcher. Spawn with
+an interpreter-safe `PATH` that includes `dirname(command)` (so the
+sibling `node` resolves) plus a minimal Unix path (`/usr/bin`, `/bin`)
+for brew scripts. Do not `Bun.spawn([command])` against the managed
+unit's empty PATH alone.
+
+`resolveNewAgentBinary` must use `bin` (or `path` for `binary`), not
+`Bun.which('aio-proxy')` — that file throws
 `upgraded aio-proxy is not on PATH` under a managed environment, and
 the existing catch only prints a warning, so Agent integrations stay
 on the old adapter.
@@ -250,8 +258,8 @@ Apply; no-op for Tick). Do not fetch twice and then both call
    stop.
 6. If `Bun.semver.order(latest, currentVersion) <= 0`, set `idle`,
    release, return.
-7. If `stop()` ran during the lookup, release and return without
-   `applyUpdate`.
+7. If `stop()` ran during the lookup, or `getEnabled()` is now false,
+   release and return without `applyUpdate`.
 8. Start `applyUpdate(latest)` without awaiting it in the tick.
 
 **Apply** (Update now):
@@ -348,7 +356,11 @@ Split files (one component per `.tsx`):
   On version change call `reloadDashboard()`. On `restart_required`
   show `version_restart_required` and stop polling (do not wait for a
   version change that will never arrive). Treat a dropped connection
-  after `started` as in-progress, not as failure.
+  after `started` as in-progress, not as failure. Start that same poll
+  whenever GET `/release` already shows `in_progress`, or POST `/apply`
+  returns 409 `in_progress` — not only after a local `started`. Otherwise
+  a page that loads mid-update (or a click that loses the race) stays
+  stuck on “Updating…” after the new daemon is up.
 
 When settings have not loaded, hide the Switch; version check still
 renders. When `managedService` is false, keep the Switch enabled and
@@ -433,8 +445,9 @@ Minimum coverage:
   a second fetch; `applyUpdate` throw sets `failed` and allows a later
   apply; `applyUpdate('installed')` sets `restart_required`;
   `applyUpdate('unchanged')` returns to `idle`; `stop` prevents further
-  ticks; a deferred `fetchLatest` that resolves after `stop()` does not
-  call `applyUpdate`; missing `applyUpdate` never starts a timer.
+  ticks; a deferred `fetchLatest` that resolves after `stop()` or after
+  `getEnabled()` becomes false does not call `applyUpdate`; missing
+  `applyUpdate` never starts a timer.
 - Pre-marker managed processes are detected via systemd `INVOCATION_ID`
   / launchd job id; a Cellar path never becomes a binary upgrade; brew
   targets carry `{brewPrefix}/bin/brew` and the installer execs that
@@ -448,7 +461,7 @@ Minimum coverage:
   when `managedService` is false; Update now posts apply; in-progress
   disables the button; failed apply does not claim up to date;
   `restart_required` stops polling, shows the restart hint, and disables
-  Update now.
+  Update now; `in_progress` on load or 409 starts the same poll.
 
 ## Acceptance
 
