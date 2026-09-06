@@ -9,10 +9,33 @@ set -eu
 REGISTRY="${AIO_PROXY_REGISTRY:-https://registry.npmjs.org}"
 INSTALL_DIR="${AIO_PROXY_INSTALL_DIR:-$HOME/.local/bin}"
 
+is_musl() {
+  for loader in /lib/ld-musl-*.so.1; do
+    if [ -e "$loader" ]; then
+      return 0
+    fi
+  done
+  # Some musl images ship no loader under that glob, but ldd still self-identifies.
+  if ldd /bin/sh 2>&1 | grep -qi musl; then
+    return 0
+  fi
+  return 1
+}
+
 os="$(uname -s)"
 case "$os" in
   Darwin) os="darwin" ;;
-  Linux) os="linux" ;;
+  Linux)
+    os="linux"
+    # The published npm packages carry the glibc builds; the musl targets in
+    # packages/cli/scripts/build-binary.ts are Docker-only and never published.
+    # Installing here would leave an executable that cannot start, so refuse.
+    if is_musl; then
+      echo "aio-proxy: musl-based Linux (Alpine and similar) has no prebuilt binary." >&2
+      echo "  Use the Docker image instead: ghcr.io/aio-proxy/aio-proxy" >&2
+      exit 1
+    fi
+    ;;
   *)
     echo "aio-proxy: unsupported OS: $os (supported: macOS, Linux)" >&2
     exit 1
@@ -69,8 +92,7 @@ curl -fSL --progress-bar -o "$tgz" "$url"
 
 # `npm pack` lays the binary out at package/bin/aio-proxy (see
 # packages/cli/scripts/build-binary.ts, which writes npm/cli-*/bin/aio-proxy).
-tar -xzOf "$tgz" package/bin/aio-proxy > "$tmp"
-if [ ! -s "$tmp" ]; then
+if ! tar -xzOf "$tgz" package/bin/aio-proxy > "$tmp" 2> /dev/null || [ ! -s "$tmp" ]; then
   echo "aio-proxy: downloaded package is missing bin/aio-proxy" >&2
   exit 1
 fi
