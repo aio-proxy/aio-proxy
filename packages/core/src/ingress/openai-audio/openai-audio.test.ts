@@ -57,4 +57,31 @@ describe('parseOpenAITranscriptionFields', () => {
     expect(parsed.modelDefaulted).toBe(true);
     expect(parsed.clientModel).toBeUndefined();
   });
+
+  // `Number('')`, `Number(' ')` are 0 and `Number('0x10')` is 16, so an unguarded
+  // coercion would read a field the client left blank as an explicit temperature.
+  test.each(['', ' ', '\t'])('treats an empty temperature part %p as not sent', (temperature) => {
+    expect(parseOpenAITranscriptionFields({ temperature }).temperature).toBeUndefined();
+  });
+
+  test.each(['hot', '0x10', 'Infinity'])('rejects a non-decimal temperature %p', (temperature) => {
+    expect(() => parseOpenAITranscriptionFields({ temperature })).toThrow();
+  });
+
+  // Carried so the convert path can refuse a streaming transcription explicitly.
+  // Detection uses `stream_format`, never this flag.
+  test.each([
+    ['true', true],
+    ['false', false],
+  ] as const)('coerces the multipart stream flag %p', (value, expected) => {
+    expect(parseOpenAITranscriptionFields({ stream: value }).stream).toBe(expected);
+  });
+
+  test.each(['', ' '])('treats an empty stream part %p as not sent', (stream) => {
+    expect(parseOpenAITranscriptionFields({ stream }).stream).toBeUndefined();
+  });
+
+  test('rejects a stream flag that is not a boolean literal', () => {
+    expect(() => parseOpenAITranscriptionFields({ stream: 'yes' })).toThrow();
+  });
 });

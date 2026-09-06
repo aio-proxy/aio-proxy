@@ -1,5 +1,6 @@
 export {
   AUDIO_MULTIPART_ENCODED_LIMIT,
+  AUDIO_MULTIPART_PER_FILE_LIMIT,
   type OpenAITranscriptionRequest,
   parseOpenAITranscriptionMultipart,
 } from './multipart';

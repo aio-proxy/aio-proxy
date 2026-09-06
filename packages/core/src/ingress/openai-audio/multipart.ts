@@ -2,6 +2,7 @@ import { decodedRequestStream, type RequestBodyLimits } from '../../protocol/req
 import {
   acquireMultipartSlot,
   multipartBoundary,
+  type MultipartRawField,
   type MultipartSpool,
   type MultipartStreamSpec,
   type MultipartUpload,
@@ -19,6 +20,15 @@ import { type OpenAITranscriptionFields, parseOpenAITranscriptionFields } from '
 export const AUDIO_MULTIPART_ENCODED_LIMIT = 104_857_600;
 const AUDIO_MULTIPART_NON_FILE_LIMIT = 1_048_576;
 const AUDIO_MULTIPART_IDLE_TIMEOUT_MS = 600_000;
+/**
+ * The widest a single upload may be: the whole envelope minus the non-file budget,
+ * which is the most file bytes that can fit once framing and text fields are paid
+ * for. `MultipartLimits.perFile` is an INCLUSIVE maximum, so a file of exactly this
+ * size is accepted and one byte more is refused — chosen so the audio ports own
+ * their per-file rejection instead of inheriting it from whichever shared layer
+ * happens to be stricter today.
+ */
+export const AUDIO_MULTIPART_PER_FILE_LIMIT = AUDIO_MULTIPART_ENCODED_LIMIT - AUDIO_MULTIPART_NON_FILE_LIMIT;
 
 const MULTIPART_DECODE_LIMITS = Object.freeze({
   encoded: AUDIO_MULTIPART_ENCODED_LIMIT,
@@ -31,10 +41,7 @@ const AUDIO_MULTIPART_SPEC: MultipartStreamSpec = {
   fileFields: new Set(['file']),
   singletonFileFields: new Set(['file']),
   limits: {
-    // No exclusive-cap adjustment here, unlike Images: 100 MiB is our own envelope
-    // ceiling rather than a published per-file maximum, and the encoded envelope
-    // (file bytes plus framing) always trips before a file can reach it.
-    perFile: AUDIO_MULTIPART_ENCODED_LIMIT,
+    perFile: AUDIO_MULTIPART_PER_FILE_LIMIT,
     aggregate: AUDIO_MULTIPART_ENCODED_LIMIT,
     nonFile: AUDIO_MULTIPART_NON_FILE_LIMIT,
     // Total across repeatable file fields. `file` is a singleton, so this budget is
@@ -46,8 +53,17 @@ const AUDIO_MULTIPART_SPEC: MultipartStreamSpec = {
 
 export type OpenAITranscriptionRequest = OpenAITranscriptionFields & {
   readonly upload: MultipartUpload;
-  /** Every field the client sent, verbatim, so the raw path can replay them. */
+  /**
+   * Non-file fields normalized and deduped, matching the shape the schema parsed.
+   * Suitable for reading a single known field; NOT for raw replay.
+   */
   readonly formFields: Readonly<Record<string, string>>;
+  /**
+   * Every non-file field verbatim — raw field name (`timestamp_granularities[]`
+   * keeps its brackets), every repeat, in wire order. Raw-path passthrough must
+   * rebuild the upstream form from this so no client field is dropped or renamed.
+   */
+  readonly rawFormFields: readonly MultipartRawField[];
 };
 
 export async function parseOpenAITranscriptionMultipart(
@@ -71,7 +87,7 @@ export async function parseOpenAITranscriptionMultipart(
       signal: raw.signal,
     });
     const body = await decodedRequestStream(replay, MULTIPART_DECODE_LIMITS, { signal: raw.signal, idleTimeoutMs });
-    const { fields, namedUploads } = await parseMultipartStream(
+    const { fields, rawFields, namedUploads } = await parseMultipartStream(
       body,
       boundary,
       AUDIO_MULTIPART_SPEC,
@@ -79,9 +95,17 @@ export async function parseOpenAITranscriptionMultipart(
       idleTimeoutMs,
     );
     const upload = namedUploads['file'];
-    if (upload === undefined) throw new SyntaxError('Invalid OpenAI Audio multipart request');
+    // A zero-byte `file` is a client mistake worth naming here: forwarding it only
+    // buys an opaque upstream error for a request that can never transcribe.
+    if (upload === undefined || upload.byteLength === 0) {
+      throw new SyntaxError('Invalid OpenAI Audio multipart request');
+    }
+    // Retain only after the schema has accepted the request: a rejected parse
+    // unlinks the spool in `catch`, and a WeakMap entry left pointing at the
+    // deleted file would hand raw replay a body that no longer exists.
+    const parsed = parseOpenAITranscriptionFields(fields);
     retainMultipartSpool(raw, spool);
-    return { ...parseOpenAITranscriptionFields(fields), upload, formFields: fields };
+    return { ...parsed, upload, formFields: fields, rawFormFields: rawFields };
   } catch (error) {
     await spool?.unlink();
     void raw.body?.cancel(error).catch(() => undefined);

@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { multipartFieldNumber } from '../multipart';
+
 /** OpenAI's own default for `POST /v1/audio/speech` when the client omits `model`. */
 export const CPA_DEFAULT_SPEECH_MODEL = 'tts-1';
 /** OpenAI's own default for the transcriptions and translations ports. */
@@ -27,6 +29,10 @@ const OpenAITranscriptionFieldsSchema = z.compile(
     language: nullableString,
     prompt: nullableString,
     temperature: nullableNumber,
+    // Carried only. Transcription streaming is signalled by `stream_format == 'sse'`,
+    // never by this flag; it is here so the convert path can refuse it explicitly
+    // instead of silently answering a streaming request with a single JSON body.
+    stream: z.boolean().nullable().optional(),
     stream_format: nullableString,
     chunking_strategy: nullableString,
     timestamp_granularities: z.array(z.string()).optional(),
@@ -73,8 +79,8 @@ export function parseOpenAITranscriptionFields(fields: Readonly<Record<string, s
   const input: Record<string, unknown> = {
     ...(fields['model'] === undefined ? {} : { model: fields['model'] }),
     // A repeated `timestamp_granularities[]` collapses to its last value in the
-    // reader's flat field map; the raw path replays `formFields`, so only the
-    // shape the model path needs is reconstructed here.
+    // reader's normalized field map. That is enough for the model path; the raw path
+    // rebuilds from `rawFormFields`, which keeps every repeat.
     ...(fields['timestamp_granularities'] === undefined
       ? {}
       : { timestamp_granularities: [fields['timestamp_granularities']] }),
@@ -82,8 +88,10 @@ export function parseOpenAITranscriptionFields(fields: Readonly<Record<string, s
   for (const key of OPTIONAL_STRING_FIELDS) {
     if (fields[key] !== undefined) input[key] = fields[key];
   }
-  const temperature = parseOptionalNumber(fields['temperature']);
+  const temperature = multipartFieldNumber(fields['temperature']);
   if (temperature !== undefined) input['temperature'] = temperature;
+  const stream = parseOptionalBoolean(fields['stream']);
+  if (stream !== undefined) input['stream'] = stream;
   const parsed = OpenAITranscriptionFieldsSchema.parse(input);
   const { model, ...rest } = parsed;
   return { ...rest, ...resolveModel(model, CPA_DEFAULT_TRANSCRIPTION_MODEL) };
@@ -98,10 +106,14 @@ function resolveModel(model: string | null | undefined, fallback: string): Resol
   return { model: trimmed, modelDefaulted: false, clientModel: trimmed };
 }
 
-// An empty multipart value means "not sent"; anything unparseable stays NaN so the
-// schema rejects it rather than silently becoming 0.
-function parseOptionalNumber(value: string | undefined): number | undefined {
-  if (value === undefined || value === '') return undefined;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : Number.NaN;
+// Same "empty means absent" rule as `multipartFieldNumber`. A value that is neither
+// boolean literal is passed through unchanged so the schema reports it instead of
+// coercing it to false.
+function parseOptionalBoolean(value: string | undefined): boolean | string | undefined {
+  if (value === undefined) return undefined;
+  const trimmed = value.trim();
+  if (trimmed === '') return undefined;
+  if (trimmed === 'true') return true;
+  if (trimmed === 'false') return false;
+  return value;
 }
