@@ -2,6 +2,7 @@ export const ignorePatterns = [
   '**/dist/**',
   '.reference/**',
   '.worktrees/**',
+  // Generated logo geometry; oxfmt would wrap its multi-kilobyte single-line path constants.
   'packages/brand/src/logo-geometry.ts',
   'packages/core/src/db/migrations.manifest.ts',
   'packages/dashboard/src/route-tree.gen.ts',

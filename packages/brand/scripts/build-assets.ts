@@ -14,6 +14,10 @@ interface Geometry {
 
 const readGeometry = async (fileName: string): Promise<Geometry> => {
   const svg = await Bun.file(join(SOURCE_DIR, fileName)).text();
+  // Only the first `d` is read, so a multi-path source would be silently truncated.
+  if (svg.match(/<path\b/g)?.length !== 1) {
+    throw new Error(`${fileName} must contain exactly one <path> element`);
+  }
   const viewBox = /viewBox="([^"]*)"/.exec(svg)?.[1];
   const path = /\bd="([^"]*)"/.exec(svg)?.[1];
   if (!viewBox || !path) {
