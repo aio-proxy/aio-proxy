@@ -28,6 +28,7 @@ Do not implement until that spec is `已确认，进入实现`.
 - Package version is `0.19.2`, never `0.0.0`.
 - Fetch is `options.fetch ?? context.fetch ?? globalThis.fetch`.
 - Every interactive `login()` sends `{ onboard: true }`. Catalog / runtime / quota never send `onboard`.
+- Control-plane HTTP and `POST /muse-code/key` live in `src/control/` (`control/http.ts` and `control/key.ts` are private to that directory). Login, catalog, and quota import them from `../control`. Do not put those files under `oauth/`, do not deep-import `control/http` or `control/key`, and do not re-export them from `oauth/index.ts`.
 - v1 catalog is Spark language only. Drop `muse-image-`. `imageModel` always throws.
 - Login errors must not include payment URLs, tokens, or upstream bodies. Host maps them to `AUTHORIZATION_FAILED`.
 - Merge order: Claude, then OpenRouter, then this PR. Last task inserts the package name; do not paste a six-plugin snapshot or backfill missing xAI list entries.
@@ -42,8 +43,7 @@ Create `packages/plugins/muse-code/` with same-name directories (`foo/index.ts`,
 
 - `src/schema/index.ts`, `schema/schema.ts`: persisted `MuseCodeCredential` Zod schema and type.
 - `src/oauth/index.ts`, `oauth/oauth.ts`, `oauth/oauth.test.ts`: device authorization, polling, login, `museLoginResult`, `currentMuseCodeCredential`.
-- `src/oauth/http.ts`: private control-traffic form/JSON helpers and retryable status.
-- `src/oauth/key.ts`: `POST /muse-code/key` mint and usage parse (shared by login and quota).
+- `src/control/index.ts`, `control/http.ts`, `control/key.ts`: control-traffic fetch and `POST /muse-code/key` (used by login, catalog, and quota).
 - `src/catalog/index.ts`, `catalog/catalog.ts`, `catalog/catalog.test.ts`: `GET /v1/models`, Spark-only classification, curated fallback.
 - `src/quota/index.ts`, `quota/quota.ts`, `quota/quota.test.ts`: empty-body key read → `OAuthQuotaSnapshot` (no remint, no reset).
 - `src/runtime/index.ts`, `runtime/runtime.ts`, `runtime/runtime.test.ts`: Responses ProviderV4 and apiKey dynamic fetch.
@@ -320,8 +320,9 @@ git commit -m "feat(muse-code): add plugin package and account identity"
 ### Task 2: Device-code login and one-shot key mint
 
 **Files:**
-- Create: `packages/plugins/muse-code/src/oauth/http.ts`
-- Create: `packages/plugins/muse-code/src/oauth/key.ts`
+- Create: `packages/plugins/muse-code/src/control/http.ts`
+- Create: `packages/plugins/muse-code/src/control/key.ts`
+- Create: `packages/plugins/muse-code/src/control/index.ts`
 - Create: `packages/plugins/muse-code/src/oauth/oauth.test-support.ts`
 - Modify: `packages/plugins/muse-code/src/oauth/oauth.ts`
 - Test: `packages/plugins/muse-code/src/oauth/oauth.login.test.ts`
@@ -590,7 +591,7 @@ Expected: FAIL because `loginMuseCode` is not exported.
 
 - [ ] **Step 3: Implement control HTTP, key mint, and device login**
 
-Create `packages/plugins/muse-code/src/oauth/http.ts`:
+Create `packages/plugins/muse-code/src/control/http.ts`:
 
 ```ts
 import type { RuntimeFetch, RuntimeRequestInit } from '@aio-proxy/plugin-sdk';
@@ -633,7 +634,7 @@ export function isRetryableStatus(status: number): boolean {
 }
 ```
 
-Create `packages/plugins/muse-code/src/oauth/key.ts`:
+Create `packages/plugins/muse-code/src/control/key.ts`:
 
 ```ts
 import { isPlainObject } from 'es-toolkit/predicate';
@@ -705,7 +706,27 @@ export function paymentActionUrl(payload: MuseCodeKeyResponse): string | undefin
 
 Do not put `paymentActionUrl` on thrown errors or `progress()`. Quota maps `MuseCodeHttpError` with `status: 429` to `MuseCodeQuotaError` `{ retryable: true, status: 429 }`.
 
-Extend `packages/plugins/muse-code/src/oauth/oauth.ts` with `loginMuseCode` (keep Task 1 exports). Re-export `loginMuseCode` from `src/oauth/index.ts`. The login function must:
+Create `packages/plugins/muse-code/src/control/index.ts`:
+
+```ts
+export {
+  MuseCodeHttpError,
+  isRetryableStatus,
+  museControlFetch,
+  museControlHeaders,
+  MUSE_API_VERSION,
+} from './http';
+export {
+  MUSE_KEY_TIMEOUT_MS,
+  MUSE_KEY_URL,
+  paymentActionUrl,
+  requestMuseCodeKey,
+  type MuseCodeKeyResponse,
+  type MuseCodeUsageWindow,
+} from './key';
+```
+
+Extend `packages/plugins/muse-code/src/oauth/oauth.ts` with `loginMuseCode` (keep Task 1 exports). Import `museControlFetch`, `museControlHeaders`, and `requestMuseCodeKey` from `../control`. Re-export `loginMuseCode` from `src/oauth/index.ts`. Do not re-export control helpers from `oauth/index.ts`. The login function must:
 
 1. POST form `{ client_id }` to `DEVICE` via `museControlFetch` + `museControlHeaders` + `Content-Type: application/x-www-form-urlencoded`.
 2. Require `device_code`, `user_code`, and `verification_uri` or `verification_uri_complete`.
@@ -753,7 +774,7 @@ git commit -m "feat(muse-code): implement device login and key mint"
 - Test: `packages/plugins/muse-code/src/catalog/catalog.test.ts`
 
 **Interfaces:**
-- Consumes: `currentMuseCodeCredential`, `museControlFetch`, `museControlHeaders`.
+- Consumes: `currentMuseCodeCredential` from `../oauth`; `museControlFetch` and `museControlHeaders` from `../control`.
 - Produces: `MUSE_CODE_CATALOG_TTL_MS`, `discoverMuseCodeModels(context, options?)`, `initialMuseCodeCatalogFallback(error)`.
 
 - [ ] **Step 1: Write the failing catalog tests**
@@ -846,6 +867,8 @@ Run: `bun test packages/plugins/muse-code/src/catalog/catalog.test.ts`
 Expected: FAIL because `./catalog` does not exist.
 
 - [ ] **Step 3: Implement discovery**
+
+`catalog.ts` imports `currentMuseCodeCredential` from `../oauth` and `museControlFetch` / `museControlHeaders` from `../control`. Do not import `../oauth/http` or `../control/http`.
 
 `discoverMuseCodeModels` must `currentMuseCodeCredential`, then `GET https://api.meta.ai/v1/models` with Bearer **apiKey**, `Accept: application/json`, `x-api-version: 1.0.0`, control traffic, and `context.signal`. Classify `muse-spark-` → language. Drop `muse-image-` and every other prefix. Overlay curated display names. `MuseCodeCatalogError` carries `retryable` (network / invalid JSON / 408 / 429 / 5xx = true; 401 / 403 = false). `initialMuseCodeCatalogFallback` returns the five Spark rows only when the error is a retryable `MuseCodeCatalogError`, and returns `undefined` for `AbortError` and non-retryable errors.
 
@@ -1053,7 +1076,7 @@ git commit -m "feat(muse-code): route inference through Responses with minted ke
 - Test: `packages/plugins/muse-code/src/quota/quota.test.ts`
 
 **Interfaces:**
-- Consumes: `currentMuseCodeCredential`, `requestMuseCodeKey` (onboard omitted).
+- Consumes: `currentMuseCodeCredential` from `../oauth`; `requestMuseCodeKey` and `MuseCodeHttpError` from `../control` (onboard omitted).
 - Produces: `readMuseCodeQuota(context, options?)`, `MuseCodeQuotaError`.
 
 - [ ] **Step 1: Write the failing quota tests**
@@ -1240,6 +1263,8 @@ Expected: FAIL because `./quota` does not exist.
 
 - [ ] **Step 3: Implement quota mapping**
 
+`quota.ts` imports `currentMuseCodeCredential` from `../oauth` and `requestMuseCodeKey` / `MuseCodeHttpError` from `../control`. Do not import `../oauth/key` or `../control/key`.
+
 `readMuseCodeQuota` calls `currentMuseCodeCredential` then `requestMuseCodeKey(oauthAccessToken, { onboard: false / omitted })` with `JSON.stringify({})`. Ignore `api_key` in the response. Throw `MuseCodeQuotaError` `{ retryable: false }` when `is_subs_active === false` or when neither window produces an item (`subs_usage` missing or both percents invalid). Map every `MuseCodeHttpError` onto `MuseCodeQuotaError` with the same `retryable` and `status` (408 / 429 / 5xx stay retryable). Map timeout and genuine network failures to `{ retryable: true }`. Map invalid JSON to `{ retryable: false }`. Rethrow `AbortError` / `signal.reason` from the caller cancel; do not classify cancel as a quota miss. A window is valid only when `used_percent` is a finite number `>= 0`; negative and non-finite values produce no item. Then `remainingRatio = 1 - Math.min(percent, 100) / 100`. Parse `resets_at` as ISO or unix seconds/ms. `plan` from `subs_tier_name` then `subs_tier_id`. Do not register reset. Do not write credentials.
 
 Window display names and ids (`window_duration_mins` must be a finite **positive** number before formatting):
@@ -1384,7 +1409,7 @@ Create `packages/plugins/muse-code/src/plugin/index.ts`:
 export { createMuseCodePlugin, englishPresentationText } from './plugin';
 ```
 
-`src/index.ts` exports catalog/oauth/plugin/quota/runtime/schema plus `MUSE_CODE_PLUGIN_VERSION` from `package.json` and `export default createMuseCodePlugin(englishPresentationText)`.
+`src/index.ts` exports catalog/control/oauth/plugin/quota/runtime/schema plus `MUSE_CODE_PLUGIN_VERSION` from `package.json` and `export default createMuseCodePlugin(englishPresentationText)`.
 
 - [ ] **Step 4: Verify GREEN, build, and smoke**
 
