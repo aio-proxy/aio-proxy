@@ -86,7 +86,7 @@ async function realtimeFetch(
   const endpoint = realtimeEndpointFor(inbound.pathname);
   if (endpoint === undefined) throw new Error(`Unmapped realtime path: ${inbound.pathname}`);
   const url = mergeEndpointQuery(endpoint, inbound);
-  const credential = await currentCredential(credentials, options.fetch);
+  const credential = await credentialForFetch(credentials, options, request.signal);
   const headers = realtimeHeaders(request.headers, credential);
   const body = request.method === 'GET' || request.method === 'HEAD' ? undefined : await request.arrayBuffer();
   return await options.fetch(url.toString(), {
@@ -96,6 +96,50 @@ async function realtimeFetch(
     signal: request.signal,
     redirect: 'manual',
   });
+}
+
+/** Races the credential read against the caller's abort, the same shape `credentialForDial`
+ *  uses and for the same reason: `currentCredential` is unbounded from this side —
+ *  `createCredentialPort.refresh` waits up to 60 s for another process's refresh lease and its
+ *  `exchange` carries a 30 s timeout on the lease's own signal, not the caller's — so an inbound
+ *  abort was observed only by `options.fetch`, long after the wait.
+ *
+ *  That wait is not free to the proxy: `handleRealtimeCreate` releases the call-store capacity
+ *  slot and the provider snapshot lease in a `finally` around the whole attempt loop, and this
+ *  await is inside it, so an aborted create held one of 1024 slots and blocked provider reload
+ *  for the credential port's wait rather than for its own request's lifetime.
+ *
+ *  Raced here rather than by threading the signal into `currentCredential`: a refresh in flight
+ *  is shared work whose result other requests want, so it is left running and only this request
+ *  stops waiting. Rejects with an `AbortError`, which is what `isInboundAbort` at both call
+ *  sites already reads as a caller hangup — a bare `Error` would be logged as a transport
+ *  failure and fall through to the next candidate for a caller that is gone. */
+async function credentialForFetch(
+  credentials: CredentialPort<ChatGPTCredential>,
+  options: RealtimeTransportOptions,
+  signal: AbortSignal,
+): Promise<ChatGPTCredential> {
+  if (signal.aborted) throw abortError();
+  let onAbort: (() => void) | undefined;
+  try {
+    return await Promise.race([
+      currentCredential(credentials, options.fetch),
+      new Promise<never>((_resolve, reject) => {
+        onAbort = () => reject(abortError());
+        signal.addEventListener('abort', onAbort, { once: true });
+      }),
+    ]);
+  } finally {
+    // Without this the listener outlives every request that resolved normally, and one
+    // long-lived signal accumulates one leaked closure per realtime fetch.
+    if (onAbort !== undefined) signal.removeEventListener('abort', onAbort);
+  }
+}
+
+/** The shape `fetch` itself rejects with on an aborted signal, so the routes' `isInboundAbort`
+ *  cannot tell this rejection apart from the one it already handles. */
+function abortError(): Error {
+  return new DOMException('The operation was aborted', 'AbortError') as unknown as Error;
 }
 
 /** Caller credentials are already stripped by the auth middleware; this deletes

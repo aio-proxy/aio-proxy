@@ -300,6 +300,94 @@ test('a dial that settles unbinds its abort listener from the caller signal', as
   expect(bound.size).toBe(0);
 });
 
+// The signaling and hangup routes go through `fetch`, not `dial`, and they hold the call-store
+// capacity slot and the provider snapshot lease across it. An abort observed only by
+// `options.fetch` is observed after the credential read, which is unbounded from this side, so
+// the hold outlived the caller by the credential port's own wait.
+test('an abort while the fetch credential read is in flight rejects before any upstream call', async () => {
+  const calls: string[] = [];
+  const controller = new AbortController();
+  let readCalls = 0;
+  let releaseRead!: () => void;
+  const readGate = new Promise<void>((resolve) => {
+    releaseRead = resolve;
+  });
+  const realtime = createOpenAIChatGPTRealtime(
+    {
+      read: async () => {
+        readCalls += 1;
+        await readGate;
+        return { revision: 1, value: credential() };
+      },
+      refresh: async () => {
+        throw new Error('valid credentials must not refresh');
+      },
+    },
+    { fetch: captureFetch(calls), proxy: null },
+  );
+
+  const pending = realtime.fetch(
+    new Request('http://127.0.0.1:8787/v1/live', { method: 'POST', body: 'v=0', signal: controller.signal }),
+  );
+  await until(() => readCalls === 1);
+  controller.abort();
+  // Bounded rather than awaited: a fetch that ignores the abort stays pending until the gate
+  // opens, and that has to surface as a failed assertion on this value rather than as a test
+  // timeout, which reads as a stalled test instead of as an unhonored abort.
+  const error = await Promise.race([pending.catch((cause: unknown) => cause), settledMarker()]);
+  // Released after the race, so the read resolving cannot be what settled the fetch.
+  releaseRead();
+  await readGate;
+  await pending.catch(() => {});
+
+  expect(error).toBeInstanceOf(Error);
+  // The shape both routes' `isInboundAbort` recognizes. A bare `Error` would be logged as a
+  // transport failure and replayed onto the next candidate for a caller that is already gone.
+  expect((error as Error).name).toBe('AbortError');
+  expect(calls).toEqual([]);
+});
+
+test('a fetch that settles unbinds its abort listener from the caller signal', async () => {
+  const controller = new AbortController();
+  const bound = new Set<unknown>();
+  const signal = instrumentedSignal(controller.signal, bound);
+  // Recorded from `input` rather than through `new Request(input, init)`: Bun's `Request`
+  // constructor brand-checks `signal`, so the instrumented view cannot pass through one.
+  const upstream: typeof fetch = async (input) => {
+    void input;
+    return new Response('v=0', { status: 200 });
+  };
+  const realtime = createOpenAIChatGPTRealtime(staticCredentialPort(credential()), {
+    fetch: upstream,
+    proxy: null,
+  });
+
+  for (let index = 0; index < 3; index++) await realtime.fetch(requestWithSignal(signal));
+  const afterResolved = bound.size;
+  // The rejecting side of the same race has to clean up too, and only a failing credential read
+  // reaches cleanup through `finally` rather than through the success return.
+  const failing = createOpenAIChatGPTRealtime(
+    {
+      read: () => Promise.reject(new Error('credential unavailable')),
+      refresh: () => Promise.reject(new Error('credential unavailable')),
+    },
+    { fetch: upstream, proxy: null },
+  );
+  await expect(failing.fetch(requestWithSignal(signal))).rejects.toBeInstanceOf(Error);
+
+  expect(afterResolved).toBe(0);
+  expect(bound.size).toBe(0);
+});
+
+/** A real create request whose `signal` is the given one. Assigned as an own property because
+ *  the `Request` constructor rejects anything that is not a genuine `AbortSignal`, and an
+ *  instrumented view of one is a `Proxy`. */
+function requestWithSignal(signal: AbortSignal): Request {
+  const request = new Request('http://127.0.0.1:8787/v1/live', { method: 'POST', body: 'v=0' });
+  Object.defineProperty(request, 'signal', { get: () => signal });
+  return request;
+}
+
 test('a socket that never opens times out at the dial deadline, and an early settle disarms it', async () => {
   const closed: number[] = [];
   const sockets: WebSocket[] = [];
