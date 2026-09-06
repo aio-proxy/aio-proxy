@@ -247,6 +247,157 @@ test('an empty model query is excluded by the policy for the model it would actu
   expect(dialed).toEqual({});
 });
 
+// A direct connection is not pinned to anything, so every eligible candidate is
+// interchangeable — and the design spec's ordering guarantee ("the upstream dial completes
+// before the downstream upgrade is committed") means a second attempt is still an ordinary HTTP
+// response rather than something after a 101. Dialing only the first candidate therefore
+// answered 502/503 while a healthy provider sat unused, which is not the failover the
+// configured provider priority promises. Provider priority also decides the order here: `slow`
+// is tried first because its priority is higher, not because of its position in the array.
+test('a direct dial refused by the highest-priority provider fails over to the next candidate', async () => {
+  const attempts: string[] = [];
+  const app = failoverApp(attempts, { firstFails: true });
+
+  const response = await app.request('/v1/realtime?model=gpt-realtime', {
+    headers: { upgrade: 'websocket' },
+  });
+
+  // The second provider's dial resolves an open socket, so the failure is the upgrade — this
+  // app has no Bun server behind it — not the dial. 503 here rather than 502: a 502
+  // `realtime_dial_failed` would mean the second candidate was never tried.
+  expect(attempts).toEqual(['slow', 'fast']);
+  expect(response.status).toBe(503);
+});
+
+// The positive control for the test above: with a healthy first candidate nothing else is
+// dialed. A loop that always ran every candidate would open two upstream sockets per request
+// and leak the one it did not use.
+test('a direct dial that succeeds on the first candidate does not dial the rest', async () => {
+  const attempts: string[] = [];
+  const app = failoverApp(attempts, { firstFails: false });
+
+  await app.request('/v1/realtime?model=gpt-realtime', { headers: { upgrade: 'websocket' } });
+
+  expect(attempts).toEqual(['slow']);
+});
+
+// Exhaustion must report the LAST attempt's kind, not a blanket 503: an operator reading a 502
+// `realtime_dial_failed` knows an upstream refused a handshake, while a 503 says nothing was
+// reachable. Both candidates refuse here, so the answer is the refusal.
+test('a direct dial refused by every candidate answers the final attempt failure', async () => {
+  const attempts: string[] = [];
+  const app = failoverApp(attempts, { firstFails: true, secondFails: true });
+
+  const response = await app.request('/v1/realtime?model=gpt-realtime', {
+    headers: { upgrade: 'websocket' },
+  });
+
+  expect(attempts).toEqual(['slow', 'fast']);
+  expect(response.status).toBe(502);
+  expect(((await response.json()) as { error: { code: string } }).error.code).toBe('realtime_dial_failed');
+});
+
+// The lease is what keeps account-removal finalization from deleting the row `dial` is about to
+// read: `canDeleteAccount` returns false only while a live snapshot still holds a reference, and
+// `dial` resolves the credential asynchronously. Releasing it right after extracting the
+// transport left that read racing a drain. Asserted from inside `dial` because that is the only
+// point at which the answer differs — by the time the route returns, both shapes have released.
+test('the provider snapshot lease is still held while the dial is in flight', async () => {
+  let heldDuringDial: number | undefined;
+  let live = 0;
+  const dialed: { providerId?: string; model?: string } = {};
+  const provider = directProvider('codex', ['gpt-live-1-codex'], dialed);
+  (provider as { realtime: { dial: () => Promise<never> } }).realtime.dial = async () => {
+    await Bun.sleep(1);
+    heldDuringDial = live;
+    throw new RealtimeDialError('refused', { kind: 'rejected' });
+  };
+  const snapshot = {
+    providers: [provider],
+    config: { router: { models: {} }, providers: [] },
+  } as unknown as ProviderRouteSnapshot;
+  const source: RealtimeRouteSource = {
+    acquireProviderSnapshot: () => {
+      live += 1;
+      let released = false;
+      return {
+        snapshot,
+        release: () => {
+          if (released) return;
+          released = true;
+          live -= 1;
+        },
+      };
+    },
+    logger: () => {},
+    realtimeCalls: createRealtimeCallStore(),
+  };
+  const app = new Hono<CallerPrincipalEnv>().get('/v1/realtime', (context) =>
+    handleRealtimeSideband(context, source, 'realtime-direct'),
+  );
+
+  const response = await app.request('/v1/realtime?model=gpt-realtime', {
+    headers: { upgrade: 'websocket' },
+  });
+
+  expect(response.status).toBe(502);
+  expect(heldDuringDial).toBe(1);
+  // And released once the dial settled — the relay is long-lived, so a lease held past the dial
+  // would stall every provider reload for the lifetime of the socket.
+  expect(live).toBe(0);
+});
+
+/** Two providers advertising the SAME model, so both are eligible for one direct request and
+ *  the only thing separating them is provider priority. `slow` has the higher priority and is
+ *  placed second in the array on purpose: a loop that read the array rather than the ordered
+ *  candidate list would dial `fast` first and the order assertions would catch it. */
+function failoverApp(attempts: string[], outcomes: { readonly firstFails: boolean; readonly secondFails?: boolean }) {
+  const dial = (id: string, fails: boolean) => async (): Promise<WebSocket> => {
+    attempts.push(id);
+    await Bun.sleep(0);
+    if (fails) throw new RealtimeDialError('refused', { kind: 'rejected' });
+    // `readyState` 1 so the route's post-dial closed-socket check passes and the attempt counts
+    // as a success; the upgrade then fails because `app.request` carries no Bun server.
+    return { readyState: 1, binaryType: '', addEventListener: () => {}, close: () => {} } as unknown as WebSocket;
+  };
+  const providers = [
+    realtimeProviderWith('fast', 1, dial('fast', outcomes.secondFails ?? false)),
+    realtimeProviderWith('slow', 5, dial('slow', outcomes.firstFails)),
+  ];
+  const snapshot = {
+    providers,
+    config: { router: { models: {} }, providers: [] },
+  } as unknown as ProviderRouteSnapshot;
+  const source: RealtimeRouteSource = {
+    acquireProviderSnapshot: () => ({ snapshot, release: () => {} }),
+    logger: () => {},
+    realtimeCalls: createRealtimeCallStore(),
+  };
+  return new Hono<CallerPrincipalEnv>().get('/v1/realtime', (context) =>
+    handleRealtimeSideband(context, source, 'realtime-direct'),
+  );
+}
+
+function realtimeProviderWith(id: string, priority: number, dial: () => Promise<WebSocket>): RuntimeProviderInstance {
+  return {
+    id,
+    kind: ProviderKind.OAuth,
+    enabled: true,
+    priority,
+    weight: 1,
+    accountId: 'person@example.com',
+    runtimeRevision: 3,
+    capabilityIndex: {},
+    models: [],
+    raw: { resolve: () => undefined },
+    realtime: {
+      models: ['gpt-live-1-codex'],
+      fetch: () => Promise.reject(new Error('not created in this test')),
+      dial,
+    },
+  } as unknown as RuntimeProviderInstance;
+}
+
 /** Two realtime providers advertising disjoint model sets and a `dial` that records which of
  *  them was chosen before refusing, so the assertion is on selection rather than on a relay. */
 function directApp(
@@ -270,7 +421,6 @@ function directApp(
     handleRealtimeSideband(context, source, 'realtime-direct'),
   );
 }
-
 function directProvider(
   id: string,
   models: readonly string[],
