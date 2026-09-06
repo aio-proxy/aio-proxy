@@ -28,7 +28,7 @@ Do not implement until that spec is `已确认，进入实现`.
 - Package version is `0.19.2`, never `0.0.0`.
 - Fetch is `options.fetch ?? context.fetch ?? globalThis.fetch`.
 - Every interactive `login()` sends `{ onboard: true }`. Catalog / runtime / quota never send `onboard`.
-- Control-plane HTTP and `POST /muse-code/key` live in `src/control/` (`control/http.ts` and `control/key.ts` are private to that directory). Login, catalog, and quota import them from `../control`. Do not put those files under `oauth/`, do not deep-import `control/http` or `control/key`, and do not re-export them from `oauth/index.ts`.
+- Control-plane HTTP and `POST /muse-code/key` live in `src/control/` (`control/http.ts` and `control/key.ts` are private to that directory). Login, catalog, and quota import them from `../control`. Do not put those files under `oauth/`, do not deep-import `control/http` or `control/key`, and do not re-export `control` from `oauth/index.ts` or `src/index.ts`.
 - v1 catalog is Spark language only. Drop `muse-image-`. `imageModel` always throws.
 - Login errors must not include payment URLs, tokens, or upstream bodies. Host maps them to `AUTHORIZATION_FAILED`.
 - Merge order: Claude, then OpenRouter, then this PR. Last task inserts the package name; do not paste a six-plugin snapshot or backfill missing xAI list entries.
@@ -48,7 +48,7 @@ Create `packages/plugins/muse-code/` with same-name directories (`foo/index.ts`,
 - `src/quota/index.ts`, `quota/quota.ts`, `quota/quota.test.ts`: empty-body key read → `OAuthQuotaSnapshot` (no remint, no reset).
 - `src/runtime/index.ts`, `runtime/runtime.ts`, `runtime/runtime.test.ts`: Responses ProviderV4 and apiKey dynamic fetch.
 - `src/plugin/index.ts`, `plugin/plugin.ts`, `plugin/plugin.test.ts`: OAuth adapter assembly; **omit** `refreshCredential` and `credentialImports`.
-- `src/index.ts`: package exports, version, default descriptor.
+- `src/index.ts`: package exports, version, default descriptor. Does not re-export `control`.
 - Package config: `package.json`, `tsconfig.json`, `rslib.config.ts`, `oauth.smoke.ts`.
 
 Modify host files only where built-in identity is enumerated (last task):
@@ -1409,7 +1409,7 @@ Create `packages/plugins/muse-code/src/plugin/index.ts`:
 export { createMuseCodePlugin, englishPresentationText } from './plugin';
 ```
 
-`src/index.ts` exports catalog/control/oauth/plugin/quota/runtime/schema plus `MUSE_CODE_PLUGIN_VERSION` from `package.json` and `export default createMuseCodePlugin(englishPresentationText)`.
+`src/index.ts` exports catalog/oauth/plugin/quota/runtime/schema plus `MUSE_CODE_PLUGIN_VERSION` from `package.json` and `export default createMuseCodePlugin(englishPresentationText)`. Do not `export * from './control'`. Sibling modules keep importing the internal `../control` facade.
 
 - [ ] **Step 4: Verify GREEN, build, and smoke**
 
