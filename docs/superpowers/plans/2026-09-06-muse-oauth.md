@@ -640,7 +640,7 @@ import { isPlainObject } from 'es-toolkit/predicate';
 
 import type { RuntimeFetch } from '@aio-proxy/plugin-sdk';
 
-import { museControlFetch, museControlHeaders } from './http';
+import { MuseCodeHttpError, museControlFetch, museControlHeaders } from './http';
 
 export const MUSE_KEY_URL = 'https://api.meta.ai/muse-code/key';
 export const MUSE_KEY_TIMEOUT_MS = 20_000;
@@ -701,9 +701,9 @@ export function paymentActionUrl(payload: MuseCodeKeyResponse): string | undefin
   const action = payload.action_url?.trim() || payload.require_payment_action_url?.trim();
   return action === '' ? undefined : action;
 }
+```
 
 Do not put `paymentActionUrl` on thrown errors or `progress()`. Quota maps `MuseCodeHttpError` with `status: 429` to `MuseCodeQuotaError` `{ retryable: true, status: 429 }`.
-```
 
 Extend `packages/plugins/muse-code/src/oauth/oauth.ts` with `loginMuseCode` (keep Task 1 exports). Re-export `loginMuseCode` from `src/oauth/index.ts`. The login function must:
 

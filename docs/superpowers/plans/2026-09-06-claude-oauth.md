@@ -25,8 +25,8 @@ Do not implement until that spec is `已确认，进入实现`.
 - Login identity bootstraps when any of `accountId`, `email`, or `organizationId` is missing. Skip bootstrap only when all three are present. A token that has email or org but omits `account.uuid` still bootstraps. Refresh bootstraps only for missing `accountId` / `email`.
 - Catalog pages only when `has_more === true` and `last_id` is a non-empty string. Other 4xx are non-retryable. Successful discover overlays curated `displayName` only; it does not merge missing curated ids.
 - CPA import maps `account.email_address` the same way login does, and also accepts flat CPA keys `account_uuid` / `organization_uuid` / `organization_name` when nested fields are absent. Ignore `expired` as a boolean, `claude_device_ids`, and `id_token`.
-- Catalog / runtime tests import constants through `./oauth`, not `./oauth/constants`.
-- New modules with a colocated test use a same-name directory (`oauth/index.ts`, `oauth/oauth.ts`, `oauth/oauth.test.ts`). Task snippets that say `src/oauth.ts` mean that directory.
+- Catalog / runtime tests import constants through the public `oauth` barrel (`../oauth`), not `../oauth/constants`.
+- New modules with a colocated test use a same-name directory (`oauth/index.ts`, `oauth/oauth.ts`, `oauth/oauth.test.ts`). Task Create / `bun test` / `git add` paths must use that layout. Do not create flat `src/oauth.ts` or `src/catalog.ts` files.
 - Merge order: this PR first, then OpenRouter, then Muse. Last task inserts the package name; do not paste a six-plugin snapshot or backfill missing xAI list entries.
 - `expiresAt = now + expires_in * 1000 - 5 * 60_000`. `currentClaudeCredential` refreshes when `now() >= expiresAt` (skew is already stored).
 - Fingerprint is `sha256:` + hex of `account:<uuid>` only. If `accountId` is missing after identity resolution, `claudeLoginResult` throws `ClaudeIdentityMissingError` even when email is present. Never fingerprint `email:` or `refresh:<token>`. Email is label-only. `suggestedKey` is `claude-` + first 12 hex chars. Never put raw tokens in Provider ID, labels, logs, or errors.
@@ -63,7 +63,7 @@ Do not implement until that spec is `已确认，进入实现`.
 - `packages/plugins/anthropic-claude/src/index.ts`: version, factory, default descriptor.
 - Host (last task only): `packages/core/src/plugins/builtins.ts`, `builtins.test.ts`, `packages/core/package.json`, `.changeset/config.json`, CLI built-in lists, one changeset.
 
-Private modules under `src/oauth/` and `src/runtime/` are not exported from higher-level barrels except through `oauth.ts` / `runtime/index.ts` as the plan’s public plugin surfaces.
+Private modules under `src/oauth/` and `src/runtime/` are not exported from higher-level barrels except through `oauth/index.ts` / `runtime/index.ts` as the plan’s public plugin surfaces.
 
 ---
 
@@ -74,10 +74,12 @@ Private modules under `src/oauth/` and `src/runtime/` are not exported from high
 - Create: `packages/plugins/anthropic-claude/tsconfig.json`
 - Create: `packages/plugins/anthropic-claude/rslib.config.ts`
 - Create: `packages/plugins/anthropic-claude/test/setup.ts`
-- Create: `packages/plugins/anthropic-claude/src/schema.ts`
+- Create: `packages/plugins/anthropic-claude/src/schema/schema.ts`
+- Create: `packages/plugins/anthropic-claude/src/schema/index.ts`
 - Create: `packages/plugins/anthropic-claude/src/oauth/constants.ts`
-- Create: `packages/plugins/anthropic-claude/src/oauth.ts`
-- Test: `packages/plugins/anthropic-claude/src/oauth.test.ts`
+- Create: `packages/plugins/anthropic-claude/src/oauth/oauth.ts`
+- Create: `packages/plugins/anthropic-claude/src/oauth/index.ts`
+- Test: `packages/plugins/anthropic-claude/src/oauth/oauth.test.ts`
 
 **Interfaces:**
 - Consumes: `zod` from `@aio-proxy/plugin-sdk`.
@@ -163,13 +165,13 @@ Object.assign(globalThis, {
 });
 ```
 
-Create `packages/plugins/anthropic-claude/src/oauth.test.ts`:
+Create `packages/plugins/anthropic-claude/src/oauth/oauth.test.ts`:
 
 ```ts
 import { describe, expect, test } from 'bun:test';
 
 import { ClaudeIdentityMissingError, claudeLoginResult, normalizeClaudeEmail } from './oauth';
-import type { ClaudeCredential } from './schema';
+import type { ClaudeCredential } from '../schema';
 
 describe('Claude login identity', () => {
   test('fingerprints account uuid ahead of email', () => {
@@ -229,12 +231,12 @@ describe('Claude login identity', () => {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `bun test --preload=packages/plugins/anthropic-claude/test/setup.ts packages/plugins/anthropic-claude/src/oauth.test.ts`
+Run: `bun test --preload=packages/plugins/anthropic-claude/test/setup.ts packages/plugins/anthropic-claude/src/oauth/oauth.test.ts`
 Expected: FAIL because `./oauth` / `claudeLoginResult` does not exist.
 
 - [ ] **Step 3: Write the minimal schema, constants, and login-result implementation**
 
-Create `packages/plugins/anthropic-claude/src/schema.ts`:
+Create `packages/plugins/anthropic-claude/src/schema/schema.ts`:
 
 ```ts
 import { zod } from '@aio-proxy/plugin-sdk';
@@ -277,12 +279,10 @@ export const CLAUDE_LOOPBACK = {
 } as const;
 ```
 
-Create `packages/plugins/anthropic-claude/src/oauth.ts`:
+Create `packages/plugins/anthropic-claude/src/oauth/oauth.ts`:
 
 ```ts
-import type { ClaudeCredential } from './schema';
-
-export { CLAUDE_CLIENT_ID } from './oauth/constants';
+import type { ClaudeCredential } from '../schema';
 
 export function normalizeClaudeEmail(value: string | undefined): string | undefined {
   if (typeof value !== 'string') return undefined;
@@ -326,9 +326,22 @@ export function claudeLoginResult(credentials: ClaudeCredential) {
 }
 ```
 
+Create `packages/plugins/anthropic-claude/src/schema/index.ts`:
+
+```ts
+export { credentialSchema, type ClaudeCredential } from './schema';
+```
+
+Create `packages/plugins/anthropic-claude/src/oauth/index.ts`:
+
+```ts
+export * from './oauth';
+export * from './constants';
+```
+
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `bun test --preload=packages/plugins/anthropic-claude/test/setup.ts packages/plugins/anthropic-claude/src/oauth.test.ts`
+Run: `bun test --preload=packages/plugins/anthropic-claude/test/setup.ts packages/plugins/anthropic-claude/src/oauth/oauth.test.ts`
 Expected: PASS (2 tests).
 
 - [ ] **Step 5: Commit**
@@ -343,10 +356,11 @@ git commit -m "feat(anthropic-claude): add credential schema and account fingerp
 ### Task 2: PKCE and authorize URL
 
 **Files:**
-- Create: `packages/plugins/anthropic-claude/src/pkce.ts`
-- Test: `packages/plugins/anthropic-claude/src/pkce.test.ts`
-- Modify: `packages/plugins/anthropic-claude/src/oauth.ts`
-- Test: `packages/plugins/anthropic-claude/src/oauth.test.ts`
+- Create: `packages/plugins/anthropic-claude/src/pkce/pkce.ts`
+- Create: `packages/plugins/anthropic-claude/src/pkce/index.ts`
+- Test: `packages/plugins/anthropic-claude/src/pkce/pkce.test.ts`
+- Modify: `packages/plugins/anthropic-claude/src/oauth/oauth.ts`
+- Test: `packages/plugins/anthropic-claude/src/oauth/oauth.test.ts`
 
 **Interfaces:**
 - Consumes: `CLAUDE_AUTHORIZE_URL`, `CLAUDE_CLIENT_ID`, `CLAUDE_SCOPE` from `oauth/constants.ts`.
@@ -354,7 +368,7 @@ git commit -m "feat(anthropic-claude): add credential schema and account fingerp
 
 - [ ] **Step 1: Write the failing PKCE and authorize-URL tests**
 
-Create `packages/plugins/anthropic-claude/src/pkce.test.ts`:
+Create `packages/plugins/anthropic-claude/src/pkce/pkce.test.ts`:
 
 ```ts
 import { expect, test } from 'bun:test';
@@ -377,10 +391,10 @@ test('generates unique S256 PKCE and unpadded state', async () => {
 });
 ```
 
-Append to `packages/plugins/anthropic-claude/src/oauth.test.ts`:
+Append to `packages/plugins/anthropic-claude/src/oauth/oauth.test.ts`:
 
 ```ts
-import { CLAUDE_CLIENT_ID, CLAUDE_SCOPE } from './oauth/constants';
+import { CLAUDE_CLIENT_ID, CLAUDE_SCOPE } from './constants';
 import { buildClaudeAuthorizationUrl } from './oauth';
 
 test('builds the claude.ai authorize URL with PKCE and code=true', () => {
@@ -405,12 +419,12 @@ test('builds the claude.ai authorize URL with PKCE and code=true', () => {
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
-Run: `bun test --preload=packages/plugins/anthropic-claude/test/setup.ts packages/plugins/anthropic-claude/src/pkce.test.ts packages/plugins/anthropic-claude/src/oauth.test.ts`
+Run: `bun test --preload=packages/plugins/anthropic-claude/test/setup.ts packages/plugins/anthropic-claude/src/pkce/pkce.test.ts packages/plugins/anthropic-claude/src/oauth/oauth.test.ts`
 Expected: FAIL because `generatePKCE` / `buildClaudeAuthorizationUrl` are missing.
 
 - [ ] **Step 3: Implement PKCE and the authorize URL builder**
 
-Create `packages/plugins/anthropic-claude/src/pkce.ts`:
+Create `packages/plugins/anthropic-claude/src/pkce/pkce.ts`:
 
 ```ts
 export type PKCE = {
@@ -433,10 +447,16 @@ function base64url(bytes: Uint8Array): string {
 }
 ```
 
-Add to `packages/plugins/anthropic-claude/src/oauth.ts`:
+Create `packages/plugins/anthropic-claude/src/pkce/index.ts`:
 
 ```ts
-import { CLAUDE_AUTHORIZE_URL, CLAUDE_CLIENT_ID, CLAUDE_SCOPE } from './oauth/constants';
+export { generatePKCE, generateState, type PKCE } from './pkce';
+```
+
+Add to `packages/plugins/anthropic-claude/src/oauth/oauth.ts`:
+
+```ts
+import { CLAUDE_AUTHORIZE_URL, CLAUDE_CLIENT_ID, CLAUDE_SCOPE } from './constants';
 
 export function buildClaudeAuthorizationUrl(input: {
   readonly challenge: string;
@@ -458,13 +478,13 @@ export function buildClaudeAuthorizationUrl(input: {
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
-Run: `bun test --preload=packages/plugins/anthropic-claude/test/setup.ts packages/plugins/anthropic-claude/src/pkce.test.ts packages/plugins/anthropic-claude/src/oauth.test.ts`
+Run: `bun test --preload=packages/plugins/anthropic-claude/test/setup.ts packages/plugins/anthropic-claude/src/pkce/pkce.test.ts packages/plugins/anthropic-claude/src/oauth/oauth.test.ts`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add packages/plugins/anthropic-claude/src/pkce.ts packages/plugins/anthropic-claude/src/pkce.test.ts packages/plugins/anthropic-claude/src/oauth.ts packages/plugins/anthropic-claude/src/oauth.test.ts
+git add packages/plugins/anthropic-claude/src/pkce/pkce.ts packages/plugins/anthropic-claude/src/pkce/pkce.test.ts packages/plugins/anthropic-claude/src/pkce/index.ts packages/plugins/anthropic-claude/src/oauth/oauth.ts packages/plugins/anthropic-claude/src/oauth/oauth.test.ts
 git commit -m "feat(anthropic-claude): build PKCE authorize URL with code=true"
 ```
 
@@ -475,8 +495,8 @@ git commit -m "feat(anthropic-claude): build PKCE authorize URL with code=true"
 **Files:**
 - Create: `packages/plugins/anthropic-claude/src/oauth/identity.ts`
 - Test: `packages/plugins/anthropic-claude/src/oauth/identity.test.ts`
-- Modify: `packages/plugins/anthropic-claude/src/oauth.ts`
-- Test: `packages/plugins/anthropic-claude/src/oauth.test.ts`
+- Modify: `packages/plugins/anthropic-claude/src/oauth/oauth.ts`
+- Test: `packages/plugins/anthropic-claude/src/oauth/oauth.test.ts`
 
 **Interfaces:**
 - Consumes: `LocalizedText`, `OAuthLoginContext`, `RuntimeFetch` from `@aio-proxy/plugin-sdk`; `isPlainObject` from `es-toolkit/predicate`; `generatePKCE`, `generateState`; `claudeLoginResult`; constants.
@@ -663,12 +683,12 @@ describe('Claude identity', () => {
 });
 ```
 
-Append to `packages/plugins/anthropic-claude/src/oauth.test.ts`:
+Append to `packages/plugins/anthropic-claude/src/oauth/oauth.test.ts`:
 
 ```ts
 import type { OAuthLoginContext, RuntimeRequestInit } from '@aio-proxy/plugin-sdk';
 
-import { CLAUDE_CLIENT_ID, CLAUDE_LOOPBACK, CLAUDE_TOKEN_URL } from './oauth/constants';
+import { CLAUDE_CLIENT_ID, CLAUDE_LOOPBACK, CLAUDE_TOKEN_URL } from './constants';
 import { ClaudeIdentityMissingError, ClaudeTokenExchangeError, loginClaude } from './oauth';
 
 test('exchanges the loopback code as JSON without a beta header', async () => {
@@ -805,7 +825,7 @@ function loginContext(
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
-Run: `bun test --preload=packages/plugins/anthropic-claude/test/setup.ts packages/plugins/anthropic-claude/src/oauth/identity.test.ts packages/plugins/anthropic-claude/src/oauth.test.ts`
+Run: `bun test --preload=packages/plugins/anthropic-claude/test/setup.ts packages/plugins/anthropic-claude/src/oauth/identity.test.ts packages/plugins/anthropic-claude/src/oauth/oauth.test.ts`
 Expected: FAIL because `loginClaude` / `resolveClaudeIdentity` are missing.
 
 - [ ] **Step 3: Implement identity + login**
@@ -820,9 +840,13 @@ Create `packages/plugins/anthropic-claude/src/oauth/identity.ts` that:
 - rethrows `AbortError` / `signal.reason` when the caller canceled during bootstrap; do not continue to `claudeLoginResult` after cancel;
 - sets `aioProxy: { traffic: 'control' }` and the spec bootstrap headers.
 
-Extend `oauth.ts` with:
+Extend `oauth/oauth.ts` with:
 
 ```ts
+import { generatePKCE, generateState } from '../pkce';
+import { CLAUDE_LOOPBACK } from './constants';
+import { resolveClaudeIdentity } from './identity';
+
 export type ClaudeOAuthDependencies = {
   readonly fetch?: RuntimeFetch;
   readonly now?: () => number;
@@ -874,13 +898,13 @@ Keep `oauth.ts` under 400 lines. If login + exchange + result exceed that, move 
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
-Run: `bun test --preload=packages/plugins/anthropic-claude/test/setup.ts packages/plugins/anthropic-claude/src/oauth/identity.test.ts packages/plugins/anthropic-claude/src/oauth.test.ts`
+Run: `bun test --preload=packages/plugins/anthropic-claude/test/setup.ts packages/plugins/anthropic-claude/src/oauth/identity.test.ts packages/plugins/anthropic-claude/src/oauth/oauth.test.ts`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add packages/plugins/anthropic-claude/src/oauth.ts packages/plugins/anthropic-claude/src/oauth.test.ts packages/plugins/anthropic-claude/src/oauth/identity.ts packages/plugins/anthropic-claude/src/oauth/identity.test.ts
+git add packages/plugins/anthropic-claude/src/oauth/oauth.ts packages/plugins/anthropic-claude/src/oauth/oauth.test.ts packages/plugins/anthropic-claude/src/oauth/identity.ts packages/plugins/anthropic-claude/src/oauth/identity.test.ts
 git commit -m "feat(anthropic-claude): exchange loopback code and resolve account identity"
 ```
 
@@ -892,7 +916,7 @@ git commit -m "feat(anthropic-claude): exchange loopback code and resolve accoun
 - Create: `packages/plugins/anthropic-claude/src/oauth/credential.ts`
 - Create: `packages/plugins/anthropic-claude/src/oauth/types.ts`
 - Test: `packages/plugins/anthropic-claude/src/oauth/credential.test.ts`
-- Modify: `packages/plugins/anthropic-claude/src/oauth.ts` (re-export)
+- Modify: `packages/plugins/anthropic-claude/src/oauth/index.ts` (re-export)
 
 **Interfaces:**
 - Consumes: `CredentialPort`, `CredentialRefreshError`, `RuntimeFetch` from `@aio-proxy/plugin-sdk`; `resolveClaudeIdentity`; constants.
@@ -1044,7 +1068,13 @@ Expected: FAIL because `./credential` does not exist.
 
 `refreshClaudeCredential` must keep stored `organizationId` / `organizationName` even when the token JSON contains a different `organization`. Add a test whose refresh body has `organization: { uuid: 'other', name: 'Other' }` and assert the stored org is unchanged.
 
-Re-export both functions from `src/oauth.ts`.
+Append to `src/oauth/index.ts`:
+
+```ts
+export { currentClaudeCredential, refreshClaudeCredential } from './credential';
+```
+
+Do not re-export credential helpers from `oauth/oauth.ts`. The barrel already `export *`s `oauth.ts` and `constants.ts`, which is how catalog and runtime import `CLAUDE_OAUTH_BETA`.
 
 - [ ] **Step 4: Run the test to verify it passes**
 
@@ -1054,7 +1084,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add packages/plugins/anthropic-claude/src/oauth/credential.ts packages/plugins/anthropic-claude/src/oauth/credential.test.ts packages/plugins/anthropic-claude/src/oauth/types.ts packages/plugins/anthropic-claude/src/oauth.ts
+git add packages/plugins/anthropic-claude/src/oauth/credential.ts packages/plugins/anthropic-claude/src/oauth/credential.test.ts packages/plugins/anthropic-claude/src/oauth/types.ts packages/plugins/anthropic-claude/src/oauth/index.ts
 git commit -m "feat(anthropic-claude): refresh OAuth tokens with inference-token endpoint"
 ```
 
@@ -1063,8 +1093,9 @@ git commit -m "feat(anthropic-claude): refresh OAuth tokens with inference-token
 ### Task 5: TTL catalog and curated fallback
 
 **Files:**
-- Create: `packages/plugins/anthropic-claude/src/catalog.ts`
-- Test: `packages/plugins/anthropic-claude/src/catalog.test.ts`
+- Create: `packages/plugins/anthropic-claude/src/catalog/catalog.ts`
+- Create: `packages/plugins/anthropic-claude/src/catalog/index.ts`
+- Test: `packages/plugins/anthropic-claude/src/catalog/catalog.test.ts`
 
 **Interfaces:**
 - Consumes: `AccountContext`, `ModelCatalog` from `@aio-proxy/plugin-sdk`; `currentClaudeCredential`; constants.
@@ -1072,15 +1103,15 @@ git commit -m "feat(anthropic-claude): refresh OAuth tokens with inference-token
 
 - [ ] **Step 1: Write the failing catalog tests**
 
-Create `packages/plugins/anthropic-claude/src/catalog.test.ts`:
+Create `packages/plugins/anthropic-claude/src/catalog/catalog.test.ts`:
 
 ```ts
 import { describe, expect, test } from 'bun:test';
 
 import type { CredentialPort, RuntimeRequestInit } from '@aio-proxy/plugin-sdk';
 
-import { CLAUDE_OAUTH_BETA } from './oauth/constants';
-import type { ClaudeCredential } from './schema';
+import { CLAUDE_OAUTH_BETA } from '../oauth';
+import type { ClaudeCredential } from '../schema';
 import { ClaudeCatalogError, discoverClaudeModels, initialClaudeCatalogFallback } from './catalog';
 
 const extra = { protocol: 'anthropic' } as const;
@@ -1165,24 +1196,37 @@ function staticPort(): CredentialPort<ClaudeCredential> {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `bun test --preload=packages/plugins/anthropic-claude/test/setup.ts packages/plugins/anthropic-claude/src/catalog.test.ts`
+Run: `bun test --preload=packages/plugins/anthropic-claude/test/setup.ts packages/plugins/anthropic-claude/src/catalog/catalog.test.ts`
 Expected: FAIL because `./catalog` does not exist.
 
 - [ ] **Step 3: Implement discovery**
+
+`catalog.ts` imports `currentClaudeCredential` and `CLAUDE_OAUTH_BETA` from `../oauth`, and `ClaudeCredential` from `../schema`. Do not import `../oauth/constants`.
 
 `discoverClaudeModels` must `currentClaudeCredential`, GET `https://api.anthropic.com/v1/models?limit=1000` with Bearer + `anthropic-version: 2023-06-01` + `oauth-2025-04-20` + `aioProxy: { traffic: 'control' }` and `options.fetch ?? context.fetch ?? globalThis.fetch`. Follow `after_id` only while `has_more === true` **and** `last_id` is a non-empty string (max 10 pages). `has_more` without `last_id` is invalid envelope (retryable). Keep `claude-` ids whose `type` is `'model'` or absent. `displayName` is official `display_name`, else curated overlay, else omit. Do not merge curated ids that the response omitted. Set `extra: { protocol: 'anthropic' }`. Throw `ClaudeCatalogError` with `retryable: true` for network / 408 / 429 / 5xx / invalid JSON / unfinished pagination, `retryable: false` for 401 / 403 / other 4xx. Re-throw abort. Empty filtered `data` is success.
 
 `initialClaudeCatalogFallback` returns the three curated rows only when `error instanceof ClaudeCatalogError && error.retryable`.
 
+Create `packages/plugins/anthropic-claude/src/catalog/index.ts`:
+
+```ts
+export {
+  CLAUDE_CATALOG_TTL_MS,
+  ClaudeCatalogError,
+  discoverClaudeModels,
+  initialClaudeCatalogFallback,
+} from './catalog';
+```
+
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `bun test --preload=packages/plugins/anthropic-claude/test/setup.ts packages/plugins/anthropic-claude/src/catalog.test.ts`
+Run: `bun test --preload=packages/plugins/anthropic-claude/test/setup.ts packages/plugins/anthropic-claude/src/catalog/catalog.test.ts`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add packages/plugins/anthropic-claude/src/catalog.ts packages/plugins/anthropic-claude/src/catalog.test.ts
+git add packages/plugins/anthropic-claude/src/catalog/catalog.ts packages/plugins/anthropic-claude/src/catalog/catalog.test.ts packages/plugins/anthropic-claude/src/catalog/index.ts
 git commit -m "feat(anthropic-claude): discover Anthropic models with curated fallback"
 ```
 
@@ -1208,7 +1252,7 @@ import { describe, expect, test } from 'bun:test';
 
 import type { CredentialPort, ModelCatalog, RuntimeContext } from '@aio-proxy/plugin-sdk';
 
-import { CLAUDE_OAUTH_BETA } from '../oauth/constants';
+import { CLAUDE_OAUTH_BETA } from '../oauth';
 import type { ClaudeCredential } from '../schema';
 import { createClaudeRuntime } from './runtime';
 
@@ -1296,6 +1340,8 @@ createAnthropic({
 });
 ```
 
+`runtime.ts` imports `currentClaudeCredential` and `CLAUDE_OAUTH_BETA` from `../oauth`. Do not import `../oauth/constants`.
+
 Discover, identity, refresh, and runtime all use that fetch chain. Dynamic fetch must call `currentClaudeCredential`, strip auth/API-key headers, set Bearer, ensure `anthropic-beta` contains `oauth-2025-04-20` (prepend if AI SDK already set other betas), set `anthropic-version: 2023-06-01` when absent, set the refresh User-Agent when absent, and preserve method/body/signal. Do not set `aioProxy.traffic` to `control`. Return `{ provider: { specificationVersion: 'v4', languageModel, embeddingModel: () => throw, imageModel: () => throw } }` with no `raw`. Copy Kimi `plugin.ts` injection so catalog / runtime / refreshCredential receive `context.fetch`.
 
 `src/runtime/index.ts` is export-only: `export * from './runtime';`
@@ -1317,9 +1363,10 @@ git commit -m "feat(anthropic-claude): invoke Anthropic models with OAuth bearer
 ### Task 7: Plugin descriptor and CPA `claude` import
 
 **Files:**
-- Create: `packages/plugins/anthropic-claude/src/plugin.ts`
+- Create: `packages/plugins/anthropic-claude/src/plugin/plugin.ts`
+- Create: `packages/plugins/anthropic-claude/src/plugin/index.ts`
 - Create: `packages/plugins/anthropic-claude/src/index.ts`
-- Test: `packages/plugins/anthropic-claude/src/plugin.test.ts`
+- Test: `packages/plugins/anthropic-claude/src/plugin/plugin.test.ts`
 
 **Interfaces:**
 - Consumes: `definePlugin`, `OAuthAdapter`, `ConfigSpec` from `@aio-proxy/plugin-sdk`; `loginClaude`, `refreshClaudeCredential`, `claudeLoginResult`, `discoverClaudeModels`, `initialClaudeCatalogFallback`, `createClaudeRuntime`, `credentialSchema`.
@@ -1327,18 +1374,18 @@ git commit -m "feat(anthropic-claude): invoke Anthropic models with OAuth bearer
 
 - [ ] **Step 1: Write the failing plugin tests**
 
-Create `packages/plugins/anthropic-claude/src/plugin.test.ts`:
+Create `packages/plugins/anthropic-claude/src/plugin/plugin.test.ts`:
 
 ```ts
 import { expect, test } from 'bun:test';
 
 import type { OAuthAdapter, OAuthLoginContext, PluginDescriptor } from '@aio-proxy/plugin-sdk';
 
-import claudePlugin, { CLAUDE_PLUGIN_VERSION, createAnthropicClaudePlugin } from '.';
-import packageJson from '../package.json' with { type: 'json' };
-import { CLAUDE_CATALOG_TTL_MS } from './catalog';
-import { ClaudeIdentityMissingError, claudeLoginResult } from './oauth';
-import type { ClaudeCredential } from './schema';
+import claudePlugin, { CLAUDE_PLUGIN_VERSION, createAnthropicClaudePlugin } from '..';
+import packageJson from '../../package.json' with { type: 'json' };
+import { CLAUDE_CATALOG_TTL_MS } from '../catalog';
+import { ClaudeIdentityMissingError, claudeLoginResult } from '../oauth';
+import type { ClaudeCredential } from '../schema';
 
 test('exports a versioned default descriptor with empty account options', async () => {
   const adapter = await adapterFrom(claudePlugin);
@@ -1579,7 +1626,7 @@ async function adapterFrom(
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `bun test --preload=packages/plugins/anthropic-claude/test/setup.ts packages/plugins/anthropic-claude/src/plugin.test.ts`
+Run: `bun test --preload=packages/plugins/anthropic-claude/test/setup.ts packages/plugins/anthropic-claude/src/plugin/plugin.test.ts`
 Expected: FAIL because `src/index.ts` / `createAnthropicClaudePlugin` do not exist.
 
 - [ ] **Step 3: Implement the plugin**
@@ -1596,6 +1643,13 @@ Expected: FAIL because `src/index.ts` / `createAnthropicClaudePlugin` do not exi
 - `createRuntime: createClaudeRuntime`;
 - `refreshCredential` always calls `refreshClaudeCredential` (no expiry short-circuit);
 - no `quota`.
+
+Create `packages/plugins/anthropic-claude/src/plugin/index.ts`:
+
+```ts
+export { createAnthropicClaudePlugin, englishPresentationText } from './plugin';
+export type { ClaudePresentationText } from './plugin';
+```
 
 `src/index.ts`:
 
@@ -1618,13 +1672,13 @@ English defaults: pluginLabel `Claude Pro/Max`, pluginDescription `Use a Claude 
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `bun test --preload=packages/plugins/anthropic-claude/test/setup.ts packages/plugins/anthropic-claude/src/plugin.test.ts`
+Run: `bun test --preload=packages/plugins/anthropic-claude/test/setup.ts packages/plugins/anthropic-claude/src/plugin/plugin.test.ts`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add packages/plugins/anthropic-claude/src/plugin.ts packages/plugins/anthropic-claude/src/plugin.test.ts packages/plugins/anthropic-claude/src/index.ts
+git add packages/plugins/anthropic-claude/src/plugin/plugin.ts packages/plugins/anthropic-claude/src/plugin/plugin.test.ts packages/plugins/anthropic-claude/src/plugin/index.ts packages/plugins/anthropic-claude/src/index.ts
 git commit -m "feat(anthropic-claude): register OAuth adapter and CPA claude import"
 ```
 
