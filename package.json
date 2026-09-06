@@ -30,6 +30,7 @@
       "@types/react": "^19.2.18",
       "@types/react-dom": "^19.2.7",
       "class-variance-authority": "^0.7.1",
+      "cn": "^0.2.5",
       "@inlang/paraglide-js": "2.22.0",
       "@lobehub/icons-static-svg": "1.93.0",
       "date-fns": "^4.4.0",

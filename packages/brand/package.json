@@ -1,0 +1,25 @@
+{
+  "name": "@aio-proxy/brand",
+  "version": "0.19.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./assets/*": "./src/*"
+  },
+  "scripts": {
+    "build:assets": "bun scripts/build-assets.ts"
+  },
+  "dependencies": {
+    "cn": "catalog:"
+  },
+  "peerDependencies": {
+    "react": "^19.2.8"
+  },
+  "devDependencies": {
+    "@aio-proxy/infra": "workspace:*",
+    "@types/react": "catalog:",
+    "react": "catalog:",
+    "typescript": "catalog:"
+  }
+}
