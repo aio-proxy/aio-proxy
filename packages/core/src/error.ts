@@ -197,7 +197,10 @@ export class OpenAIAudioInvalidRequestError extends AioProxyError {
   readonly code = 'INVALID_OPENAI_AUDIO_REQUEST';
   readonly status = 400;
 
-  constructor(readonly param: 'file' | 'input' | 'voice' | 'speed') {
+  // `file` is the only reachable parameter: `input` and `voice` are required by the
+  // speech schema, so a missing one is a ZodError already mapped to 400
+  // `invalid_request`, and `speed` is not validated here at all.
+  constructor(readonly param: 'file') {
     super('OpenAIAudioInvalidRequestError', `Invalid OpenAI Audio request parameter: ${param}`);
   }
 }

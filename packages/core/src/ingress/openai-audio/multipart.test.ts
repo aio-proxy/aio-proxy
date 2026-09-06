@@ -3,6 +3,7 @@ import { mkdtemp, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { OpenAIAudioInvalidRequestError } from '../../error';
 import { RequestBodyTooLargeError } from '../../protocol/request';
 import { multipartSpoolPath, releaseMultipartSpool } from '../multipart';
 import {
@@ -112,7 +113,9 @@ describe('parseOpenAITranscriptionMultipart', () => {
 
   test('rejects a body with no file part', async () => {
     const raw = multipartRequest(['Content-Disposition: form-data; name="model"\r\n\r\nwhisper-1']);
-    await expect(parseOpenAITranscriptionMultipart(raw)).rejects.toThrow('Invalid OpenAI Audio multipart request');
+    const error = await parseOpenAITranscriptionMultipart(raw).catch((thrown: unknown) => thrown);
+    expect(error).toBeInstanceOf(OpenAIAudioInvalidRequestError);
+    expect((error as OpenAIAudioInvalidRequestError).param).toBe('file');
   });
 
   // An empty upload can never transcribe, so it is refused here rather than
@@ -121,7 +124,9 @@ describe('parseOpenAITranscriptionMultipart', () => {
     const raw = multipartRequest([
       'Content-Disposition: form-data; name="file"; filename="empty.mp3"\r\nContent-Type: audio/mpeg\r\n\r\n',
     ]);
-    await expect(parseOpenAITranscriptionMultipart(raw)).rejects.toThrow('Invalid OpenAI Audio multipart request');
+    const error = await parseOpenAITranscriptionMultipart(raw).catch((thrown: unknown) => thrown);
+    expect(error).toBeInstanceOf(OpenAIAudioInvalidRequestError);
+    expect((error as OpenAIAudioInvalidRequestError).param).toBe('file');
   });
 
   test('rejects a request that is not multipart', async () => {

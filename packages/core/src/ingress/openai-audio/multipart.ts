@@ -1,3 +1,4 @@
+import { OpenAIAudioInvalidRequestError } from '../../error';
 import { decodedRequestStream, type RequestBodyLimits } from '../../protocol/request';
 import {
   acquireMultipartSlot,
@@ -96,9 +97,11 @@ export async function parseOpenAITranscriptionMultipart(
     );
     const upload = namedUploads['file'];
     // A zero-byte `file` is a client mistake worth naming here: forwarding it only
-    // buys an opaque upstream error for a request that can never transcribe.
+    // buys an opaque upstream error for a request that can never transcribe. Naming
+    // it as `param: 'file'` rather than a generic multipart syntax error tells the
+    // client WHICH parameter is wrong; the envelope itself parsed fine.
     if (upload === undefined || upload.byteLength === 0) {
-      throw new SyntaxError('Invalid OpenAI Audio multipart request');
+      throw new OpenAIAudioInvalidRequestError('file');
     }
     // Retain only after the schema has accepted the request: a rejected parse
     // unlinks the spool in `catch`, and a WeakMap entry left pointing at the

@@ -312,21 +312,18 @@ test('maps an unnamed Audio dispatch gap to 501 not_implemented', async () => {
   });
 });
 
-test.each(['file', 'input', 'voice', 'speed'] as const)(
-  'maps an invalid Audio %s parameter to 400 invalid_request',
-  async (param) => {
-    const response = openAIAudioErrors.requestError(new OpenAIAudioInvalidRequestError(param));
+test('maps an invalid Audio file parameter to 400 invalid_request', async () => {
+  const response = openAIAudioErrors.requestError(new OpenAIAudioInvalidRequestError('file'));
 
-    expect(response?.status).toBe(400);
-    expect(await response?.json()).toEqual({
-      error: {
-        code: 'invalid_request',
-        message: `Invalid OpenAI Audio request parameter: ${param}`,
-        type: 'invalid_request_error',
-      },
-    });
-  },
-);
+  expect(response?.status).toBe(400);
+  expect(await response?.json()).toEqual({
+    error: {
+      code: 'invalid_request',
+      message: 'Invalid OpenAI Audio request parameter: file',
+      type: 'invalid_request_error',
+    },
+  });
+});
 
 test('maps image compatibility errors into every inbound protocol shape', async () => {
   const error = new ImageInputUnsupportedError('gemini-tool-url', 'messages.2.content.0.output.value.1');
