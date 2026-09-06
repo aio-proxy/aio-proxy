@@ -3,6 +3,9 @@
     <source media="(prefers-color-scheme: dark)" srcset="https://fastly.jsdelivr.net/gh/aio-proxy/aio-proxy@main/packages/brand/src/aio-proxy-wordmark-dark.svg">
     <img alt="AIO Proxy" src="https://fastly.jsdelivr.net/gh/aio-proxy/aio-proxy@main/packages/brand/src/aio-proxy-wordmark-light.svg" width="192">
   </picture>
+
+[![Open on npmx.dev](https://npmx.dev/api/registry/badge/version/aio-proxy?color=00776e&name=true)](https://npmx.dev/package/aio-proxy)
+[![Homebrew](https://img.shields.io/badge/dynamic/regex?url=https%3A%2F%2Fraw.githubusercontent.com%2Faio-proxy%2Fhomebrew-tap%2Fmain%2FFormula%2Faio-proxy.rb&search=cli-darwin-arm64-%28.*%3F%29%5C.tgz&replace=v%241&label=homebrew&logo=homebrew&color=00776e)](https://github.com/aio-proxy/homebrew-tap)
 </div>
 
 ---
