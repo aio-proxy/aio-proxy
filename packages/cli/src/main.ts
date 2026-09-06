@@ -187,6 +187,7 @@ export const buildProgram = (deps: CliDeps = defaultCliDeps, programName = invok
 
   program
     .command('upgrade')
+    .alias('update')
     .description(m['cli.upgrade.description']())
     .option('--check', m['cli.upgrade.option_check_description']())
     .option('--force', m['cli.upgrade.option_force_description']())
