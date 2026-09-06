@@ -94,6 +94,9 @@ describe('parseOpenAITranscriptionMultipart', () => {
       { name: 'timestamp_granularities[]', value: 'segment' },
     ]);
     expect(request.formFields['timestamp_granularities']).toBe('segment');
+    // The plural field must carry both repeats onto the parsed request, not just the
+    // last one the normalized map retained: `word` was being dropped on this path.
+    expect(request.timestamp_granularities).toEqual(['word', 'segment']);
     // The body is spooled, not teed, so raw passthrough can replay it later.
     expect(multipartSpoolPath(raw)).toBeDefined();
     await releaseMultipartSpool(raw);

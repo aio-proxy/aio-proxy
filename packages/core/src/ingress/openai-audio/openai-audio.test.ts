@@ -51,6 +51,25 @@ describe('parseOpenAITranscriptionFields', () => {
     expect(parsed.language).toBe('ja');
   });
 
+  // The normalized field map keeps only the last repeat, so building the plural field
+  // from it alone dropped `word` for a client that asked for both granularities.
+  test('keeps every timestamp_granularities repeat in wire order', () => {
+    const parsed = parseOpenAITranscriptionFields({ timestamp_granularities: 'segment' }, [
+      { name: 'timestamp_granularities[]', value: 'word' },
+      { name: 'timestamp_granularities[]', value: 'segment' },
+    ]);
+    expect(parsed.timestamp_granularities).toEqual(['word', 'segment']);
+  });
+
+  // A client may send the field with or without the PHP-style bracket suffix.
+  test('accepts the unbracketed spelling of a repeated granularity', () => {
+    const parsed = parseOpenAITranscriptionFields({ timestamp_granularities: 'segment' }, [
+      { name: 'timestamp_granularities', value: 'word' },
+      { name: 'timestamp_granularities', value: 'segment' },
+    ]);
+    expect(parsed.timestamp_granularities).toEqual(['word', 'segment']);
+  });
+
   test('defaults a blank model to whisper-1 without reporting a client model', () => {
     const parsed = parseOpenAITranscriptionFields({ model: '  ' });
     expect(parsed.model).toBe(CPA_DEFAULT_TRANSCRIPTION_MODEL);

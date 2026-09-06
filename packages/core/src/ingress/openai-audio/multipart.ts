@@ -103,7 +103,7 @@ export async function parseOpenAITranscriptionMultipart(
     // Retain only after the schema has accepted the request: a rejected parse
     // unlinks the spool in `catch`, and a WeakMap entry left pointing at the
     // deleted file would hand raw replay a body that no longer exists.
-    const parsed = parseOpenAITranscriptionFields(fields);
+    const parsed = parseOpenAITranscriptionFields(fields, rawFields);
     retainMultipartSpool(raw, spool);
     return { ...parsed, upload, formFields: fields, rawFormFields: rawFields };
   } catch (error) {

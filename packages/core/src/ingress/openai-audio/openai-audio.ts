@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { multipartFieldNumber } from '../multipart';
+import { multipartFieldBoolean, multipartFieldNumber, type MultipartRawField } from '../multipart';
 
 /** OpenAI's own default for `POST /v1/audio/speech` when the client omits `model`. */
 export const CPA_DEFAULT_SPEECH_MODEL = 'tts-1';
@@ -75,26 +75,42 @@ const OPTIONAL_STRING_FIELDS = [
   'chunking_strategy',
 ] as const satisfies readonly (keyof TranscriptionFields)[];
 
-export function parseOpenAITranscriptionFields(fields: Readonly<Record<string, string>>): OpenAITranscriptionFields {
+export function parseOpenAITranscriptionFields(
+  fields: Readonly<Record<string, string>>,
+  rawFields: readonly MultipartRawField[] = [],
+): OpenAITranscriptionFields {
+  const granularities = timestampGranularities(fields, rawFields);
   const input: Record<string, unknown> = {
     ...(fields['model'] === undefined ? {} : { model: fields['model'] }),
-    // A repeated `timestamp_granularities[]` collapses to its last value in the
-    // reader's normalized field map. That is enough for the model path; the raw path
-    // rebuilds from `rawFormFields`, which keeps every repeat.
-    ...(fields['timestamp_granularities'] === undefined
-      ? {}
-      : { timestamp_granularities: [fields['timestamp_granularities']] }),
+    ...(granularities === undefined ? {} : { timestamp_granularities: granularities }),
   };
   for (const key of OPTIONAL_STRING_FIELDS) {
     if (fields[key] !== undefined) input[key] = fields[key];
   }
   const temperature = multipartFieldNumber(fields['temperature']);
   if (temperature !== undefined) input['temperature'] = temperature;
-  const stream = parseOptionalBoolean(fields['stream']);
+  const stream = multipartFieldBoolean(fields['stream']);
   if (stream !== undefined) input['stream'] = stream;
   const parsed = OpenAITranscriptionFieldsSchema.parse(input);
   const { model, ...rest } = parsed;
   return { ...rest, ...resolveModel(model, CPA_DEFAULT_TRANSCRIPTION_MODEL) };
+}
+
+// `timestamp_granularities` is the one repeatable field on this port, and the reader's
+// normalized map keeps only the last repeat, so `word,segment` would arrive as
+// `segment` alone. The verbatim channel carries every repeat in wire order; a client
+// may spell the name with or without the PHP-style `[]`, and both mean the same field.
+// Falls back to the normalized map so a caller with no raw channel still works.
+function timestampGranularities(
+  fields: Readonly<Record<string, string>>,
+  rawFields: readonly MultipartRawField[],
+): readonly string[] | undefined {
+  const repeats = rawFields
+    .filter((field) => field.name === 'timestamp_granularities' || field.name === 'timestamp_granularities[]')
+    .map((field) => field.value);
+  if (repeats.length > 0) return repeats;
+  const normalized = fields['timestamp_granularities'];
+  return normalized === undefined ? undefined : [normalized];
 }
 
 // A blank or absent model is the documented default, not an error: OpenAI's own
@@ -104,16 +120,4 @@ function resolveModel(model: string | null | undefined, fallback: string): Resol
   const trimmed = model?.trim();
   if (trimmed === undefined || trimmed.length === 0) return { model: fallback, modelDefaulted: true };
   return { model: trimmed, modelDefaulted: false, clientModel: trimmed };
-}
-
-// Same "empty means absent" rule as `multipartFieldNumber`. A value that is neither
-// boolean literal is passed through unchanged so the schema reports it instead of
-// coercing it to false.
-function parseOptionalBoolean(value: string | undefined): boolean | string | undefined {
-  if (value === undefined) return undefined;
-  const trimmed = value.trim();
-  if (trimmed === '') return undefined;
-  if (trimmed === 'true') return true;
-  if (trimmed === 'false') return false;
-  return value;
 }
