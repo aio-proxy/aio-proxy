@@ -22,10 +22,25 @@ export function normalizeCloseCode(code: number | undefined): number {
 }
 
 /** Measured on Bun 1.4.2: only the client `WebSocket.close()` throws `SyntaxError`
- *  over 123 UTF-8 bytes. The server side silently truncates instead, and when the cut
- *  lands mid-sequence Bun discards the whole frame and sends `1007` "Server sent
- *  invalid UTF8" in its place. Walking code points is therefore required in both
- *  directions to keep the origin's code intact. */
+ *  over 123 UTF-8 bytes (`Received 124 bytes.` at exactly 124). The server side neither
+ *  throws nor truncates cleanly — it cuts at byte 123 and, when that cut lands
+ *  mid-sequence, discards the whole frame and sends `1007` "Server sent invalid UTF8"
+ *  in its place.
+ *
+ *  Walking code points therefore buys two different things in the two directions:
+ *
+ *  - downstream -> upstream (the proxy calls the *client* socket's `close()`): the
+ *    guarantee holds. Without truncation the call throws and no close frame is sent
+ *    at all; with it the origin's code and a boundary-safe prefix of its reason cross
+ *    intact (measured: 123 ASCII bytes cross whole, 124 throws).
+ *  - upstream -> downstream (the proxy calls Bun's *server* socket `close()`): this
+ *    only bounds what the proxy itself emits. It cannot recover a code the origin
+ *    already lost, because the origin's own server-side truncation happens before the
+ *    bytes reach the proxy. Measured end-to-end: an origin `close(4002, 50 emoji =
+ *    200 B)` arrives at the proxy already rewritten to `1007` "Server sent invalid
+ *    UTF8", so `realtime.sideband_closed` logs `closeCode: 1007, origin: "upstream"`
+ *    and the origin's `4002` is unrecoverable at this layer. `close(4003, 200 ASCII)`
+ *    arrives as `4003` with 123 bytes, and `close(4001, 30 emoji = 120 B)` arrives whole. */
 export function truncateCloseReason(reason: string | undefined): string | undefined {
   if (reason === undefined || reason.length === 0) return undefined;
   const encoder = new TextEncoder();

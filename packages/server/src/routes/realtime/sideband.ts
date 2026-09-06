@@ -22,8 +22,6 @@ import { CODEX_REALTIME_MODEL } from './model';
 import { pinnedRealtimeCandidate, selectRealtimeCandidates } from './provider-select';
 import type { RealtimeRouteSource } from './source';
 
-export const PRE_OPEN_FRAME_LIMIT = 64;
-export const PRE_OPEN_BYTE_LIMIT = 1_048_576;
 export const BACKPRESSURE_LIMIT = 1_048_576;
 /** What `/v1/realtime` without a `model` query sends upstream. A direct connection
  *  carries no call record, so there is no recorded model to reuse. */
@@ -69,7 +67,11 @@ export async function handleRealtimeSideband(
     // overload would instead fall through to `next()` and answer 404.
     return await upgradeWebSocket(context, relayEvents(source, { ...prepared, style, upstream: dialed }));
   } catch {
-    // The upgrade did not happen, so nothing will ever tear the upstream down.
+    // `relayEvents(...)` is an argument, so its upstream listeners are already live
+    // when the upgrade refuses. This close therefore does run `teardown` — which is
+    // why `teardown` keys the record deletion and the `sideband_closed` log on
+    // `onOpen` having fired. A refused upgrade must leave the record intact: the call
+    // is still valid and the owner's next attach has to find it.
     closeQuietly(dialed, INTERNAL_CLOSE_CODE);
     releaseAttachment(source, prepared);
     return realtimeUpstreamUnavailable();
@@ -173,29 +175,33 @@ type Teardown = (code: number, reason?: string, origin?: 'downstream' | 'upstrea
 function relayEvents(source: RealtimeRouteSource, input: RelayInput): WSEvents {
   const upstream = input.upstream;
   upstream.binaryType = 'arraybuffer';
-  const pending: (string | ArrayBuffer)[] = [];
-  let pendingBytes = 0;
   let downstream: WSContext | undefined;
+  let opened = false;
   let torndown = false;
 
   // One teardown, safe from either side's close, from shutdown, and from hangup.
   const teardown: Teardown = (code, reason, origin = 'proxy') => {
     if (torndown) return;
     torndown = true;
-    // Normalized once and applied to BOTH directions: an over-long reason forwarded
-    // upstream does not throw on the server side, it silently truncates, and a cut
-    // landing mid-sequence makes Bun discard the frame and substitute 1007 — losing
-    // the origin's close code in the process.
+    // Normalized once and applied to BOTH directions. On the downstream -> upstream
+    // leg this is load-bearing: the upstream is a client `WebSocket`, whose `close()`
+    // throws `InvalidAccessError` on a reserved code and `SyntaxError` over 123 UTF-8
+    // bytes, so an unnormalized forward would abort the frame entirely. On the
+    // upstream -> downstream leg it only bounds what the proxy itself emits; see
+    // `close-code.ts` for what Bun has already destroyed by the time a reason arrives.
     const normalized = normalizedClose(code, reason);
     closeQuietly(upstream, normalized.code, normalized.reason);
     try {
       downstream?.close(normalized.code, normalized.reason);
     } catch {}
-    if (input.attachment !== undefined) {
-      source.realtimeCalls.release(input.attachment.token);
-      // A sideband close ends the call; a *failed attach* does not, so only this
-      // path removes the record.
-      if (input.callId !== undefined) source.realtimeCalls.remove(input.callId);
+    if (input.attachment !== undefined) source.realtimeCalls.release(input.attachment.token);
+    // A sideband that never opened is a *failed attach*: the call is still live
+    // upstream-side from the caller's point of view, so the record must survive for
+    // the owner's next attempt, and no `sideband_closed` may be logged against a
+    // sideband that was never opened.
+    if (!opened) return;
+    if (input.attachment !== undefined && input.callId !== undefined) {
+      source.realtimeCalls.remove(input.callId);
     }
     logServerEvent(source.logger, {
       event: 'realtime.sideband_closed',
@@ -211,18 +217,19 @@ function relayEvents(source: RealtimeRouteSource, input: RelayInput): WSEvents {
   input.attachment?.onClose((code) => teardown(code, undefined, 'proxy'));
 
   upstream.addEventListener('message', (event: MessageEvent<string | ArrayBuffer>) => {
-    const data = event.data;
     if (downstream === undefined) {
-      // Pre-open buffer: 64 frames or 1 MiB, whichever comes first.
-      pendingBytes += typeof data === 'string' ? data.length : data.byteLength;
-      if (pending.length >= PRE_OPEN_FRAME_LIMIT || pendingBytes > PRE_OPEN_BYTE_LIMIT) {
-        teardown(INTERNAL_CLOSE_CODE, undefined, 'upstream');
-        return;
-      }
-      pending.push(data);
+      // Unreachable in Bun 1.4.2: `websocket.open` runs synchronously inside
+      // `server.upgrade()`, in the same tick as the dial's resumption, and a
+      // WebSocket event needs an event-loop turn — so there is no window in which
+      // the upstream can speak before `onOpen`. The listener is still bound this
+      // early on purpose: a Bun client `WebSocket` silently discards frames
+      // delivered with no `message` listener, so binding late would trade a loud
+      // failure for lost bytes. If the ordering ever changes, the relay fails
+      // closed instead of dropping a frame.
+      teardown(INTERNAL_CLOSE_CODE, undefined, 'upstream');
       return;
     }
-    sendDownstream(downstream, data, teardown);
+    sendDownstream(downstream, event.data, teardown);
   });
   upstream.addEventListener('close', (event: CloseEvent) => teardown(event.code, event.reason, 'upstream'));
   // Bun always follows `error` with `close`, so the close handler is the single
@@ -238,6 +245,7 @@ function relayEvents(source: RealtimeRouteSource, input: RelayInput): WSEvents {
         } catch {}
         return;
       }
+      opened = true;
       logServerEvent(source.logger, {
         event: 'realtime.sideband_opened',
         callId: input.callId ?? '',
@@ -245,8 +253,6 @@ function relayEvents(source: RealtimeRouteSource, input: RelayInput): WSEvents {
         model: input.model,
         style: input.style,
       });
-      for (const data of pending.splice(0)) sendDownstream(ws, data, teardown);
-      pendingBytes = 0;
     },
     onMessage(event: MessageEvent<WSMessageReceive>) {
       const data = event.data;
