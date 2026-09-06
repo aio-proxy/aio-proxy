@@ -36,6 +36,66 @@ test('a multipart offer missing sdp, or with an unparseable session, is 400 real
   }
 });
 
+test('a file-delivered session part is honored, not silently dropped along with its model', async () => {
+  const form = new FormData();
+  form.set('sdp', 'v=0\r\n');
+  form.set(
+    'session',
+    new Blob([JSON.stringify({ model: 'gpt-4o-realtime-preview', voice: 'cedar' })], { type: 'application/json' }),
+    'session.json',
+  );
+
+  const result = await readRealtimeCreateBody(new Request('http://x/v1/live', { method: 'POST', body: form }));
+  if (result instanceof Response) throw new Error(`expected a normalized body, got ${result.status}`);
+
+  // A dropped session part would 201 with the codex fallback model and lose `voice`.
+  expect(result.requestedModel).toBe('gpt-4o-realtime-preview');
+  expect(JSON.parse(new TextDecoder().decode(result.body))).toEqual({
+    sdp: 'v=0\r\n',
+    session: { model: 'gpt-4o-realtime-preview', voice: 'cedar' },
+  });
+});
+
+test('a file-delivered sdp part is accepted rather than reported as missing', async () => {
+  const form = new FormData();
+  form.set('sdp', new Blob(['v=0\r\no=- 0 0 IN IP4 127.0.0.1\r\n'], { type: 'application/sdp' }), 'offer.sdp');
+
+  const result = await readRealtimeCreateBody(new Request('http://x/v1/live', { method: 'POST', body: form }));
+  if (result instanceof Response) throw new Error(`expected a normalized body, got ${result.status}`);
+
+  expect(JSON.parse(new TextDecoder().decode(result.body))).toEqual({ sdp: 'v=0\r\no=- 0 0 IN IP4 127.0.0.1\r\n' });
+  expect(result.requestedModel).toBe('gpt-live-1-codex');
+});
+
+test('a part whose bytes cannot be read is a 400 that quotes neither the reason nor the filename', async () => {
+  const form = new FormData();
+  form.set('sdp', new Blob(['v=0\r\n']), 'offer.sdp');
+  form.set('session', new Blob(['{}']), 'session.json');
+  const request = new Request('http://x/v1/live', { method: 'POST', body: form });
+
+  const original = Blob.prototype.text;
+  // The only way to reach the `text()` rejection branch: a real detached backing store is
+  // not constructible in-process, and the module must still answer rather than reject.
+  Blob.prototype.text = function (): Promise<string> {
+    return Promise.reject(new Error('backing store gone: /tmp/offer.sdp'));
+  };
+  let result: Awaited<ReturnType<typeof readRealtimeCreateBody>>;
+  try {
+    result = await readRealtimeCreateBody(request);
+  } finally {
+    Blob.prototype.text = original;
+  }
+
+  expect(result).toBeInstanceOf(Response);
+  const response = result as Response;
+  expect(response.status).toBe(400);
+  const body = (await response.json()) as { error: { code: string; message: string } };
+  expect(body.error.code).toBe('realtime_invalid_offer');
+  expect(body.error.message).toBe('The realtime offer could not be read.');
+  expect(body.error.message).not.toContain('offer.sdp');
+  expect(body.error.message).not.toContain('backing store');
+});
+
 test('raw SDP and text/plain offers are forwarded verbatim with the normalized model', async () => {
   const result = await readRealtimeCreateBody(
     new Request('http://x/v1/live', {
@@ -225,10 +285,14 @@ test('a client that dies mid-upload is a 400, not a rejected promise', async () 
 });
 
 test('the cap holds for a chunked body that declares no length or under-declares one', async () => {
-  for (const headers of [
+  // Annotated because TS otherwise infers a union of the two heterogeneous literals, which is
+  // not assignable to `Record<string, string>` — an error only the IDE sees, since both
+  // `tsc -p packages/server` and the root `lint:types` exclude test files.
+  const cases: Array<Record<string, string>> = [
     { 'content-type': 'application/sdp' },
     { 'content-type': 'application/sdp', 'content-length': '3' },
-  ]) {
+  ];
+  for (const headers of cases) {
     const result = await readRealtimeCreateBody(oversizeStreamRequest(headers));
     expect((result as Response).status).toBe(413);
   }
@@ -338,6 +402,9 @@ test('a multipart session too deeply nested to re-serialize is 400, not a reject
   expect(response.status).toBe(400);
   const body = (await response.json()) as { error: { code: string; message: string } };
   expect(body.error.code).toBe('realtime_invalid_offer');
+  // All three multipart 400s share the code, so only the message distinguishes the
+  // `encodeJson` guard under test from the parse branch that precedes it.
+  expect(body.error.message).toBe('The multipart realtime offer could not be parsed.');
   expect(body.error.message).not.toContain('v=0');
 });
 
@@ -352,11 +419,15 @@ test('withUpstreamModel returns the body unchanged when the payload cannot be re
 });
 
 /** Deep enough that `JSON.parse` accepts it but `JSON.stringify` overflows the stack. The
- *  self-check keeps the test honest if a future engine raises the recursion limit. */
+ *  self-check separates the two throws: a future engine that also failed the parse would
+ *  otherwise leave the `encodeJson` guard untested while the assertion still passed. Depth is
+ *  far past the observed 50 000 threshold — parse still succeeds at 5 000 000 — so the headroom
+ *  is orders of magnitude rather than the 2.5x it was. */
 function deeplyNestedJson(): string {
-  const depth = 50_000;
+  const depth = 1_000_000;
   const text = `{"model":"gpt-realtime","deep":${'['.repeat(depth)}1${']'.repeat(depth)}}`;
-  expect(() => JSON.stringify(JSON.parse(text))).toThrow(RangeError);
+  const parsed = JSON.parse(text) as unknown;
+  expect(() => JSON.stringify(parsed)).toThrow(RangeError);
   return text;
 }
 

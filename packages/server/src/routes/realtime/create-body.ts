@@ -22,6 +22,8 @@ const ACCEPTED = ['application/sdp', 'text/plain', 'application/json', 'multipar
 const MULTIPART = 'multipart/form-data';
 const JSON_TYPE = 'application/json';
 
+const UNREADABLE_OFFER = 'The realtime offer could not be read.';
+
 /** Returns a terminal `Response` for every rejected client input rather than rejecting.
  *  The one exception is caller misuse: a `Request` whose body stream is already locked or
  *  consumed makes `getReader()` throw, which is a server bug, not client input. */
@@ -56,7 +58,7 @@ export async function readRealtimeCreateBody(request: Request): Promise<Realtime
 
   const bytes = await readCappedBody(request);
   if (bytes === 'too-large') return realtimeBodyTooLarge();
-  if (bytes === 'unreadable') return realtimeInvalidOffer('The realtime offer could not be read.');
+  if (bytes === 'unreadable') return realtimeInvalidOffer(UNREADABLE_OFFER);
 
   if (contentType === MULTIPART) return await readMultipart(bytes, rawContentType);
   if (contentType !== JSON_TYPE) return { body: bytes, contentType, requestedModel: CODEX_REALTIME_MODEL };
@@ -140,13 +142,15 @@ async function readMultipart(
     return realtimeInvalidOffer('The multipart realtime offer could not be parsed.');
   }
 
-  const sdp = form.get('sdp');
-  if (typeof sdp !== 'string' || sdp.length === 0) {
+  const sdp = await partText(form.get('sdp'));
+  if (sdp === UNREADABLE_PART) return realtimeInvalidOffer(UNREADABLE_OFFER);
+  if (sdp === undefined || sdp.length === 0) {
     return realtimeInvalidOffer('A multipart realtime offer must carry a non-empty sdp part.');
   }
-  const rawSession = form.get('session');
+  const rawSession = await partText(form.get('session'));
+  if (rawSession === UNREADABLE_PART) return realtimeInvalidOffer(UNREADABLE_OFFER);
   let session: unknown;
-  if (typeof rawSession === 'string' && rawSession.length > 0) {
+  if (rawSession !== undefined && rawSession.length > 0) {
     session = parseJson(rawSession);
     if (session === undefined) return realtimeInvalidOffer('The multipart session part is not valid JSON.');
   }
@@ -158,6 +162,31 @@ async function readMultipart(
   if (encoded === undefined) return realtimeInvalidOffer('The multipart realtime offer could not be parsed.');
   if (encoded.byteLength > REALTIME_CREATE_BODY_LIMIT) return realtimeBodyTooLarge();
   return { body: encoded, contentType: JSON_TYPE, requestedModel: jsonRequestedModel(payload) };
+}
+
+/** Distinct from `undefined` (part absent) so an unreadable part cannot be mistaken for a
+ *  missing one and answered with the wrong message. */
+const UNREADABLE_PART = Symbol('unreadable-part');
+
+/** A part appended as a `Blob`/`File`, or one carrying a `filename`, arrives as a `File`
+ *  rather than a string, so a `typeof === 'string'` guard would drop it — silently for
+ *  `session`, which also loses the client's requested model to the fallback. The reference
+ *  dispatches on the part name alone and reads the bytes unconditionally
+ *  (`internal/client/codex/live/live.go`), so both shapes are accepted here too.
+ *
+ *  Part sizes need no cap of their own: the cap already ran on the raw request bytes, and a
+ *  multipart body is at least the sum of its part bodies plus headers and boundaries.
+ *
+ *  `text()` can reject when the blob's backing store is gone, and its reason may quote a
+ *  filesystem path, so the reason is discarded rather than surfaced. */
+async function partText(part: FormDataEntryValue | null): Promise<string | undefined | typeof UNREADABLE_PART> {
+  if (part === null) return undefined;
+  if (typeof part === 'string') return part;
+  try {
+    return await part.text();
+  } catch {
+    return UNREADABLE_PART;
+  }
 }
 
 /** Normalization applies to selection; the wire body still needs the upstream model
