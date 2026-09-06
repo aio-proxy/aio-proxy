@@ -261,42 +261,87 @@ const currentPlatformCliPackage = (): string | undefined => {
   return `${BINARY_NPM_SCOPE}/cli-${key}`;
 };
 
-const platformCliRelatives = (pkg: string): readonly string[] => [
-  join('node_modules', pkg, 'bin', PACKAGE),
-  join('lib', 'node_modules', pkg, 'bin', PACKAGE),
-  join('lib', 'node_modules', PACKAGE, 'node_modules', pkg, 'bin', PACKAGE),
-  join('install', 'global', 'node_modules', pkg, 'bin', PACKAGE),
-];
+const listDir = (dir: string): readonly string[] => {
+  try {
+    return readdirSync(dir);
+  } catch {
+    return [];
+  }
+};
 
-const platformCliUnderPnpmGlobal = (dir: string, pkg: string): string | undefined => {
+const nativeAt = (nodeModules: string, platformPkg: string): string | undefined => {
+  const candidate = join(nodeModules, platformPkg, 'bin', PACKAGE);
+  return existsSync(candidate) ? candidate : undefined;
+};
+
+const nativeFromAioProxyPackage = (aioProxyDir: string, platformPkg: string): string | undefined => {
+  if (!existsSync(aioProxyDir)) return undefined;
+  const nested = nativeAt(join(aioProxyDir, 'node_modules'), platformPkg);
+  if (nested !== undefined) return nested;
+  const real = tryRealpath(aioProxyDir);
+  if (real === undefined || real === aioProxyDir) return undefined;
+  return nativeAt(join(real, 'node_modules'), platformPkg);
+};
+
+const scanPnpmVirtualStore = (nodeModules: string, platformPkg: string): string | undefined => {
+  const store = join(nodeModules, '.pnpm');
+  const marker = `${platformPkg.replace('/', '+')}@`;
+  let best: { readonly version: string; readonly path: string } | undefined;
+  for (const entry of listDir(store)) {
+    if (!entry.startsWith(marker)) continue;
+    const version = entry.slice(marker.length).split('_')[0];
+    if (version === undefined || version === '') continue;
+    try {
+      Bun.semver.order(version, '0.0.0');
+    } catch {
+      continue;
+    }
+    const candidate = nativeAt(join(store, entry, 'node_modules'), platformPkg);
+    if (candidate === undefined) continue;
+    if (best === undefined || Bun.semver.order(version, best.version) > 0) best = { version, path: candidate };
+  }
+  return best?.path;
+};
+
+const nativeInNodeModules = (nodeModules: string, platformPkg: string): string | undefined => {
+  if (!existsSync(nodeModules)) return undefined;
+  const hoisted = nativeAt(nodeModules, platformPkg);
+  if (hoisted !== undefined) return hoisted;
+  const throughPackage = nativeFromAioProxyPackage(join(nodeModules, PACKAGE), platformPkg);
+  if (throughPackage !== undefined) return throughPackage;
+  return scanPnpmVirtualStore(nodeModules, platformPkg);
+};
+
+const nativeUnderPnpmGlobal = (dir: string, platformPkg: string): string | undefined => {
   const globalDir = join(dir, 'global');
   if (!existsSync(globalDir)) return undefined;
-  const direct = join(globalDir, 'node_modules', pkg, 'bin', PACKAGE);
-  if (existsSync(direct)) return direct;
-  let entries: string[];
-  try {
-    entries = readdirSync(globalDir);
-  } catch {
-    return undefined;
-  }
-  for (const entry of entries) {
-    const candidate = join(globalDir, entry, 'node_modules', pkg, 'bin', PACKAGE);
-    if (existsSync(candidate)) return candidate;
+  const fromRoot = nativeInNodeModules(join(globalDir, 'node_modules'), platformPkg);
+  if (fromRoot !== undefined) return fromRoot;
+  for (const entry of listDir(globalDir)) {
+    if (entry === 'store') continue;
+    const entryDir = join(globalDir, entry);
+    const found = nativeInNodeModules(join(entryDir, 'node_modules'), platformPkg);
+    if (found !== undefined) return found;
+    for (const nested of listDir(entryDir)) {
+      if (nested === 'store') continue;
+      const nestedFound = nativeInNodeModules(join(entryDir, nested, 'node_modules'), platformPkg);
+      if (nestedFound !== undefined) return nestedFound;
+    }
   }
   return undefined;
 };
 
 const findPlatformCliBinaryNear = (startDir: string): string | undefined => {
-  const pkg = currentPlatformCliPackage();
-  if (pkg === undefined) return undefined;
+  const platformPkg = currentPlatformCliPackage();
+  if (platformPkg === undefined) return undefined;
   let dir = startDir;
   for (let i = 0; i < 8; i++) {
-    for (const rel of platformCliRelatives(pkg)) {
-      const candidate = join(dir, rel);
-      if (existsSync(candidate)) return candidate;
-    }
-    const fromGlobal = platformCliUnderPnpmGlobal(dir, pkg);
-    if (fromGlobal !== undefined) return fromGlobal;
+    const found =
+      nativeInNodeModules(join(dir, 'node_modules'), platformPkg) ??
+      nativeInNodeModules(join(dir, 'lib', 'node_modules'), platformPkg) ??
+      nativeInNodeModules(join(dir, 'install', 'global', 'node_modules'), platformPkg) ??
+      nativeUnderPnpmGlobal(dir, platformPkg);
+    if (found !== undefined) return found;
     const parent = dirname(dir);
     if (parent === dir) break;
     dir = parent;

@@ -1,5 +1,5 @@
 import { expect, mock, test } from 'bun:test';
-import { mkdtempSync, mkdirSync, symlinkSync, writeFileSync, chmodSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, symlinkSync, unlinkSync, writeFileSync, chmodSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
@@ -640,6 +640,125 @@ test('resolveManagedRestartExec uses the native cli-* binary for pnpm, not the J
       bin: join(prefix, 'bin', 'aio-proxy'),
     }),
   ).toBe(native);
+});
+
+const writePnpmGlobalLayout = (options: {
+  readonly prefix: string;
+  readonly version: string;
+  readonly globalNodeModules: string;
+  readonly nestUnderAioProxy: boolean;
+}): string => {
+  const { prefix, version, globalNodeModules, nestUnderAioProxy } = options;
+  const storeName = `@aio-proxy+cli-linux-x64@${version}`;
+  const native = join(
+    globalNodeModules,
+    '.pnpm',
+    storeName,
+    'node_modules',
+    '@aio-proxy',
+    'cli-linux-x64',
+    'bin',
+    'aio-proxy',
+  );
+  const aioProxyReal = join(globalNodeModules, '.pnpm', `aio-proxy@${version}`, 'node_modules', 'aio-proxy');
+  writeExecutable(native, '#!/bin/sh\n');
+  mkdirSync(aioProxyReal, { recursive: true });
+  writeFileSync(join(aioProxyReal, 'package.json'), JSON.stringify({ name: 'aio-proxy', version }));
+  if (nestUnderAioProxy) {
+    mkdirSync(join(aioProxyReal, 'node_modules', '@aio-proxy'), { recursive: true });
+    symlinkSync(
+      join(globalNodeModules, '.pnpm', storeName, 'node_modules', '@aio-proxy', 'cli-linux-x64'),
+      join(aioProxyReal, 'node_modules', '@aio-proxy', 'cli-linux-x64'),
+    );
+  }
+  mkdirSync(globalNodeModules, { recursive: true });
+  const aioProxyLink = join(globalNodeModules, 'aio-proxy');
+  try {
+    unlinkSync(aioProxyLink);
+  } catch {
+    // first layout write has no existing link
+  }
+  symlinkSync(aioProxyReal, aioProxyLink);
+  writeExecutable(join(prefix, 'bin', 'pnpm'), '#!/bin/sh\n');
+  writeExecutable(join(prefix, 'bin', 'aio-proxy'), '#!/usr/bin/env node\n');
+  return native;
+};
+
+test('resolveManagedRestartExec finds pnpm virtual-store cli-* under global/<n>/node_modules/.pnpm', () => {
+  const prefix = mkdtempSync(join(tmpdir(), 'aio-restart-pnpm-virtual-'));
+  const native = writePnpmGlobalLayout({
+    prefix,
+    version: '2.0.0',
+    globalNodeModules: join(prefix, 'global', '5', 'node_modules'),
+    nestUnderAioProxy: false,
+  });
+  expect(
+    resolveManagedRestartExec({
+      method: 'pnpm',
+      command: join(prefix, 'bin', 'pnpm'),
+      bin: join(prefix, 'bin', 'aio-proxy'),
+    }),
+  ).toBe(native);
+});
+
+test('resolveManagedRestartExec finds pnpm cli-* nested under the installed aio-proxy package', () => {
+  const prefix = mkdtempSync(join(tmpdir(), 'aio-restart-pnpm-nested-'));
+  const nodeModules = join(prefix, 'global', '5', 'node_modules');
+  writePnpmGlobalLayout({
+    prefix,
+    version: '2.0.0',
+    globalNodeModules: nodeModules,
+    nestUnderAioProxy: true,
+  });
+  const nested = join(nodeModules, 'aio-proxy', 'node_modules', '@aio-proxy', 'cli-linux-x64', 'bin', 'aio-proxy');
+  expect(
+    resolveManagedRestartExec({
+      method: 'pnpm',
+      command: join(prefix, 'bin', 'pnpm'),
+      bin: join(prefix, 'bin', 'aio-proxy'),
+    }),
+  ).toBe(nested);
+});
+
+test('resolveManagedRestartExec finds pnpm v11 isolated-install virtual-store cli-*', () => {
+  const prefix = mkdtempSync(join(tmpdir(), 'aio-restart-pnpm-v11-'));
+  const native = writePnpmGlobalLayout({
+    prefix,
+    version: '2.0.0',
+    globalNodeModules: join(prefix, 'global', 'v11', 'abc123', 'node_modules'),
+    nestUnderAioProxy: false,
+  });
+  expect(
+    resolveManagedRestartExec({
+      method: 'pnpm',
+      command: join(prefix, 'bin', 'pnpm'),
+      bin: join(prefix, 'bin', 'aio-proxy'),
+    }),
+  ).toBe(native);
+});
+
+test('resolveManagedRestartExec prefers the cli-* linked from the installed aio-proxy package', () => {
+  const prefix = mkdtempSync(join(tmpdir(), 'aio-restart-pnpm-prefer-'));
+  const nodeModules = join(prefix, 'global', '5', 'node_modules');
+  const stale = writePnpmGlobalLayout({
+    prefix,
+    version: '1.0.0',
+    globalNodeModules: nodeModules,
+    nestUnderAioProxy: false,
+  });
+  writePnpmGlobalLayout({
+    prefix,
+    version: '2.0.0',
+    globalNodeModules: nodeModules,
+    nestUnderAioProxy: true,
+  });
+  const found = resolveManagedRestartExec({
+    method: 'pnpm',
+    command: join(prefix, 'bin', 'pnpm'),
+    bin: join(prefix, 'bin', 'aio-proxy'),
+  });
+  expect(found).toBeDefined();
+  expect(found).not.toBe(stale);
 });
 
 test('resolveManagedRestartExec uses the native cli-* binary for bun, not the JS shim', () => {
