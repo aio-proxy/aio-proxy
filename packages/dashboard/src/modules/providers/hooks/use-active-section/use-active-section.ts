@@ -1,11 +1,13 @@
+import type { ProviderKind } from '@aio-proxy/types';
 import { useEffect, useRef, useState } from 'react';
 
-import { SECTION_ORDER, type SectionId } from '../../lib/section-status';
+import { SECTION_ORDER, sectionOrder, type SectionId } from '../../lib/section-status';
 
 const KNOWN = new Set<string>(SECTION_ORDER);
 
-export function useActiveSection(): SectionId {
-  const [activeId, setActiveId] = useState<SectionId>(SECTION_ORDER[0] ?? 'identity');
+export function useActiveSection(kind: ProviderKind): SectionId {
+  const order = sectionOrder(kind);
+  const [activeId, setActiveId] = useState<SectionId>(order[0] ?? 'identity');
   // An IntersectionObserver callback carries only the sections whose visibility *changed*, so the whole
   // visible set has to be remembered between callbacks. Deciding from one callback's entries alone handed
   // the pill to whichever section changed last: scrolling down past Models fired one entry for Routing
@@ -21,10 +23,10 @@ export function useActiveSection(): SectionId {
           // stopped matching a section that was added to `SECTION_ORDER`, leaving the active pill stale.
           if (KNOWN.has(entry.target.id)) visible.current.set(entry.target.id as SectionId, entry.isIntersecting);
         }
-        // Ranked by the registry rather than `boundingClientRect.top`: a remembered entry's rect is a
+        // Ranked by the kind's rail rather than `boundingClientRect.top`: a remembered entry's rect is a
         // snapshot from the callback that delivered it and is stale by the next scroll. The sections are
-        // rendered in `SECTION_ORDER`, which is what comparing rects was standing in for.
-        const first = SECTION_ORDER.find((id) => visible.current.get(id) === true);
+        // rendered in `sectionOrder(kind)`, which is what comparing rects was standing in for.
+        const first = order.find((id) => visible.current.get(id) === true);
         if (first !== undefined) setActiveId(first);
       },
       // The top inset is the sticky strip the nav sits in (`section-nav.tsx`: a 28px pill row over
@@ -33,12 +35,12 @@ export function useActiveSection(): SectionId {
       // Without any inset the active pill names the section hidden behind the strip.
       { rootMargin: '-48px 0px -55% 0px', threshold: 0 },
     );
-    for (const id of SECTION_ORDER) {
+    for (const id of order) {
       const element = document.getElementById(id);
       if (element) observer.observe(element);
     }
     return () => observer.disconnect();
-  }, []);
+  }, [order]);
 
   return activeId;
 }

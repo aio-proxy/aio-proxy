@@ -1,12 +1,14 @@
 import { m } from '@aio-proxy/i18n';
+import type { ProviderKind } from '@aio-proxy/types';
 
 import { StatusDot } from '../../../components/provider-editor/status-dot';
 import { jumpToSection } from '../../../lib/jump-to-section';
-import { SECTION_LABEL, SECTION_ORDER, type SectionId, type SectionSummary } from '../../../lib/section-status';
+import { SECTION_LABEL, sectionOrder, type SectionId, type SectionSummary } from '../../../lib/section-status';
 
 interface SectionNavProps {
   readonly summaries: Readonly<Record<SectionId, SectionSummary>>;
   readonly activeId: SectionId;
+  readonly kind: ProviderKind;
 }
 
 // A horizontal strip, never breakpoint-gated: the column version vanished under 1024px and took every
@@ -21,10 +23,10 @@ interface SectionNavProps {
 // on the content container below it (`provider-editor-page.tsx:54` and `:60`). We have no separate
 // content container to hang `pt-8` on — the nav lives inside `PageContainer`'s `<main>` — so the lower
 // half is a margin here.
-export const SectionNav: React.FC<SectionNavProps> = ({ summaries, activeId }) => (
+export const SectionNav: React.FC<SectionNavProps> = ({ summaries, activeId, kind }) => (
   <div className="sticky top-0 z-20 -mx-2 mb-2 bg-page-background/90 p-2 backdrop-blur-md">
     <nav aria-label={m['dashboard.providers.editor.section_nav_label']()} className="flex gap-1 overflow-x-auto">
-      {SECTION_ORDER.map((id) => (
+      {sectionOrder(kind).map((id) => (
         <a
           key={id}
           href={`#${id}`}

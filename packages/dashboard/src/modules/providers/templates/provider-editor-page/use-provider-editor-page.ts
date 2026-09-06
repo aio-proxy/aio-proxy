@@ -14,7 +14,7 @@ import {
 import { toast } from '@aio-proxy/ui/components/toast';
 import { useQuery } from '@tanstack/react-query';
 import { useSelector } from '@tanstack/react-store';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import { useOAuthProviderForm } from '../../hooks/use-oauth-provider-form';
 import {
@@ -38,7 +38,7 @@ import { oauthAccountSubmission } from '../../lib/oauth-account-submission';
 import { capabilityKey } from '../../lib/oauth-capability-key';
 import { oauthProviderEditAction } from '../../lib/oauth-provider-edit';
 import { normalizeProviderFormValue, type ProviderFormShape } from '../../lib/provider-form-value';
-import { blockingSections, sectionStatuses, type SectionStatusInput } from '../../lib/section-status';
+import { blockingSections, sectionOrder, sectionStatuses, type SectionStatusInput } from '../../lib/section-status';
 import { oauthCapabilitiesQueryOptions } from '../../services/oauth-service';
 import { useOAuthEditorSession } from './use-oauth-editor-session';
 
@@ -286,6 +286,45 @@ const editorSectionInput = (
   optionsValid: extras.optionsValid,
 });
 
+const fillBlankNameFromLabel = (
+  form: ReturnType<typeof useProviderEditorForm>,
+  oauth: DashboardOAuthProviderEdit | undefined,
+) => {
+  const label = oauth?.accountLabel.trim() ?? '';
+  if (label === '') return;
+  const currentName = form.getFieldValue('name');
+  if (typeof currentName === 'string' && currentName.trim() !== '') return;
+  form.setFieldValue('name', label);
+};
+
+const resetEditorAfterOAuthSuccess = (
+  form: ReturnType<typeof useProviderEditorForm>,
+  initial: ProviderEditorInitial | undefined,
+  kind: ProviderKind,
+  oauth: DashboardOAuthProviderEdit | undefined,
+) => {
+  fillBlankNameFromLabel(form, oauth);
+  if (initial === undefined) return;
+  const currentName = form.getFieldValue('name');
+  form.reset({
+    ...initial,
+    kind,
+    ...(typeof currentName === 'string' && currentName.trim() !== '' ? { name: currentName } : {}),
+    alias:
+      initial.alias === undefined
+        ? undefined
+        : kind === 'oauth'
+          ? toOAuthAliasRows(initial.alias)
+          : toAliasRows(initial.alias as ProviderAlias),
+    ...(kind === 'oauth'
+      ? {
+          excludedModels: 'excludedModels' in initial ? (initial.excludedModels ?? []) : [],
+          pluginAliasInherit: !isOAuthInheritOff(initial.alias),
+        }
+      : {}),
+  } as ProviderEditorShape);
+};
+
 export const useProviderEditorPage = ({
   mode,
   kind,
@@ -316,24 +355,7 @@ export const useProviderEditorPage = ({
     accountForm.setFieldValue('secrets', {});
     accountForm.setFieldValue('clearSecrets', []);
     if (oauth !== undefined) accountForm.setFieldValue('publicValues', oauth.publicValues);
-    if (initial !== undefined) {
-      form.reset({
-        ...initial,
-        kind,
-        alias:
-          initial.alias === undefined
-            ? undefined
-            : kind === 'oauth'
-              ? toOAuthAliasRows(initial.alias)
-              : toAliasRows(initial.alias as ProviderAlias),
-        ...(kind === 'oauth'
-          ? {
-              excludedModels: 'excludedModels' in initial ? (initial.excludedModels ?? []) : [],
-              pluginAliasInherit: !isOAuthInheritOff(initial.alias),
-            }
-          : {}),
-      } as ProviderEditorShape);
-    }
+    resetEditorAfterOAuthSuccess(form, initial, kind, oauth);
   }, [accountForm, form, initial, kind, oauth]);
   const {
     openPopup,
@@ -362,6 +384,10 @@ export const useProviderEditorPage = ({
   const aliasIssues = aliasEditorIssues(values.alias ?? [], oauthExposed ?? models);
   const authorized =
     mode === ProviderFormMode.Edit || authorizedProviderId !== undefined || session?.status === 'succeeded';
+  useEffect(() => {
+    if (session?.status !== 'succeeded') return;
+    fillBlankNameFromLabel(form, oauth);
+  }, [form, oauth, session?.status]);
   const transforms = values.transforms as ProviderTransforms | undefined;
   const hasApiKey = initial !== undefined && 'apiKey' in initial && (initial.apiKey ?? '') !== '';
   const summaries = sectionStatuses(
@@ -379,7 +405,7 @@ export const useProviderEditorPage = ({
     }),
   );
 
-  const saveBlocked = blockingSections(summaries).length > 0;
+  const saveBlocked = blockingSections(summaries, sectionOrder(kind)).length > 0;
   const handleKindChange = (next: ProviderKind) => {
     onKindChange?.(next);
     setOptionsValid(next !== 'ai-sdk');

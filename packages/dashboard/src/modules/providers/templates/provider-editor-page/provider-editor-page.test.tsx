@@ -405,6 +405,75 @@ test('oauth create authorizes from the connection section once a sign-in method 
   );
 });
 
+test('oauth create puts Connection above Identity', async () => {
+  renderPage({
+    mode: ProviderFormMode.Create,
+    kind: ProviderKind.OAuth,
+    initial: { enabled: true },
+    onSessionIdChange: rs.fn(),
+  });
+
+  const connection = screen.getByRole('region', { name: m['dashboard.providers.editor.section_connection']() });
+  const identity = screen.getByRole('region', { name: m['dashboard.providers.editor.section_identity']() });
+  expect(connection.compareDocumentPosition(identity) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  const nav = screen.getByRole('navigation', { name: m['dashboard.providers.editor.section_nav_label']() });
+  expect(
+    within(nav)
+      .getAllByRole('link')
+      .map((pill) => pill.textContent),
+  ).toEqual([
+    m['dashboard.providers.editor.section_connection'](),
+    m['dashboard.providers.editor.section_identity'](),
+    m['dashboard.providers.editor.section_models'](),
+    m['dashboard.providers.editor.section_advanced'](),
+  ]);
+});
+
+test('oauth success fills a blank display name from the account label', async () => {
+  mocks.session = {
+    id: 'session',
+    status: 'succeeded',
+    providerId: 'existing',
+  };
+
+  renderPage({
+    mode: ProviderFormMode.Edit,
+    kind: ProviderKind.OAuth,
+    providerId: 'existing',
+    provider: oauthProvider,
+    oauth,
+    initial: { id: 'existing', enabled: true, models: [] },
+    sessionId: 'session',
+    onSessionIdChange: rs.fn(),
+  });
+
+  await waitFor(() =>
+    expect(within(screen.getByTestId('provider-form-field-name')).getByRole('textbox')).toHaveValue(oauth.accountLabel),
+  );
+});
+
+test('oauth success keeps a display name the user already typed', async () => {
+  mocks.session = {
+    id: 'session',
+    status: 'succeeded',
+    providerId: 'existing',
+  };
+
+  renderPage({
+    mode: ProviderFormMode.Edit,
+    kind: ProviderKind.OAuth,
+    providerId: 'existing',
+    provider: oauthProvider,
+    oauth,
+    initial: { id: 'existing', name: 'Personal', enabled: true, models: [] },
+    sessionId: 'session',
+    onSessionIdChange: rs.fn(),
+  });
+
+  await waitFor(() => expect(mocks.refetch).toHaveBeenCalled());
+  expect(within(screen.getByTestId('provider-form-field-name')).getByRole('textbox')).toHaveValue('Personal');
+});
+
 test('oauth create authorizes in place, locks sections 3-5, then unlocks after success', async () => {
   const onSessionIdChange = rs.fn();
   const props = {
