@@ -1,4 +1,4 @@
-import { AioProxyLogo } from '@aio-proxy/ui/components/aio-proxy-logo';
+import { AioProxyLogo } from '@aio-proxy/brand';
 import { addLeadingSlash, addTrailingSlash, useLang, useSite } from '@rspress/core/runtime';
 import { Link } from '@rspress/core/theme';
 

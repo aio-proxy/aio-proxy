@@ -13,6 +13,10 @@ pre-commit:
     bun-check:
       glob: 'bun.lock'
       run: bun run scripts/bun-lock-check.ts
+    brand-assets:
+      glob: 'packages/brand/src/*.svg'
+      run: bun run --filter @aio-proxy/brand build:assets
+      stage_fixed: true
 
 commit-msg:
   commands:

@@ -33,5 +33,7 @@ jobs:
       - run: test -f packages/core/src/db/migrations/meta/_journal.json
       - run: bun run --filter @aio-proxy/core build:migrations
       - run: test -z "$(git status --short --untracked-files=all -- packages/core/src/db/migrations)"
+      - run: bun run --filter @aio-proxy/brand build:assets
+      - run: test -z "$(git status --short --untracked-files=all -- packages/brand/src)"
       - run: bun run test:unit -- --concurrency=2
       - run: bun run test:e2e:api
