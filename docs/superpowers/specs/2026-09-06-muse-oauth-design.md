@@ -329,7 +329,7 @@ x-api-version: 1.0.0
 从 `subs_usage.window` 与 `subs_usage.weekly` 各最多产生一个 item。`used_percent` 必须是有限且 `>= 0` 的 number，否则该窗口不产生 item。
 
 ```ts
-remainingRatio = 1 - Math.min(Math.max(used_percent, 0), 100) / 100
+remainingRatio = 1 - Math.min(used_percent, 100) / 100
 ```
 
 `resets_at`：string 走 `Date.parse`；number 若 `< 1e12` 视为 Unix 秒并乘 1000，否则视为毫秒。不可解析则省略 `resetsAt`。
