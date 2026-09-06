@@ -55,6 +55,7 @@ Do not implement until that spec is `已确认，进入实现`.
 - `packages/plugins/anthropic-claude/src/oauth/constants.ts`: URLs, scopes, beta, User-Agents, loopback, client-ID symbol.
 - `packages/plugins/anthropic-claude/src/oauth/identity.ts`, `oauth/identity.test.ts`: token-field extract + claude_cli bootstrap. Abort during bootstrap is fatal.
 - `packages/plugins/anthropic-claude/src/oauth/credential.ts`, `oauth/credential.test.ts`: refresh and `currentClaudeCredential`.
+- `packages/plugins/anthropic-claude/src/oauth/types.ts`: shared option types for credential/login fetch (private to `oauth/`).
 - `packages/plugins/anthropic-claude/src/catalog/index.ts`, `catalog/catalog.ts`, `catalog/catalog.test.ts`: TTL discover, pagination, filter, fallback.
 - `packages/plugins/anthropic-claude/src/runtime/index.ts`, `runtime/runtime.ts`, `runtime/runtime.test.ts`: `@ai-sdk/anthropic` ProviderV4 + dynamic fetch.
 - `packages/plugins/anthropic-claude/src/plugin/index.ts`, `plugin/plugin.ts`, `plugin/plugin.test.ts`: adapter, presentation, CPA `claude` import.
@@ -820,6 +821,7 @@ git commit -m "feat(anthropic-claude): exchange loopback code and resolve accoun
 
 **Files:**
 - Create: `packages/plugins/anthropic-claude/src/oauth/credential.ts`
+- Create: `packages/plugins/anthropic-claude/src/oauth/types.ts`
 - Test: `packages/plugins/anthropic-claude/src/oauth/credential.test.ts`
 - Modify: `packages/plugins/anthropic-claude/src/oauth.ts` (re-export)
 
@@ -983,7 +985,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add packages/plugins/anthropic-claude/src/oauth/credential.ts packages/plugins/anthropic-claude/src/oauth/credential.test.ts packages/plugins/anthropic-claude/src/oauth.ts
+git add packages/plugins/anthropic-claude/src/oauth/credential.ts packages/plugins/anthropic-claude/src/oauth/credential.test.ts packages/plugins/anthropic-claude/src/oauth/types.ts packages/plugins/anthropic-claude/src/oauth.ts
 git commit -m "feat(anthropic-claude): refresh OAuth tokens with inference-token endpoint"
 ```
 
