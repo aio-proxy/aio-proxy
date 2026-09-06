@@ -84,10 +84,52 @@ test('router metadata does not grant language or embedding capability', () => {
   ).toEqual([]);
 });
 
+test('speech inbound keeps only speech-capable candidates', () => {
+  // A language-only candidate reaching a speech request is the regression this
+  // guards: the filter's trailing branch is `supportsLanguage`, so a missing
+  // audio branch silently routes /v1/audio/speech into the chat pool.
+  const speech = candidate('tts-1', { 'tts-1': new Set(['speech']) });
+  const language = candidate('gpt-5', { 'gpt-5': new Set(['language']) });
+  expect(filterCandidatesByCapability([speech, language], 'speech', noPolicy)).toEqual([speech]);
+});
+
+test('transcription inbound keeps only transcription-capable candidates', () => {
+  const transcription = candidate('whisper-1', { 'whisper-1': new Set(['transcription']) });
+  const language = candidate('gpt-5', { 'gpt-5': new Set(['language']) });
+  expect(filterCandidatesByCapability([transcription, language], 'transcription', noPolicy)).toEqual([transcription]);
+});
+
+test('an audio capability does not satisfy the opposite audio direction', () => {
+  // A catalog names each audio id's direction, so a TTS-only id must not answer
+  // a transcription request and vice versa.
+  const speech = candidate('tts-1', { 'tts-1': new Set(['speech']) });
+  const transcription = candidate('whisper-1', { 'whisper-1': new Set(['transcription']) });
+  expect(filterCandidatesByCapability([speech], 'transcription', noPolicy)).toEqual([]);
+  expect(filterCandidatesByCapability([transcription], 'speech', noPolicy)).toEqual([]);
+});
+
+test('an attached audio transport grants the capability the index does not know about', () => {
+  // A bridged `@ai-sdk/openai` provider carries the OpenAI Responses target
+  // protocol, so its index grants language and embedding only - yet
+  // attachAudioTransport gave it real speech/transcription transports. The SAME
+  // predicate gates this filter and audio dispatch, so a candidate that passes
+  // here always finds its transport rather than being skipped downstream.
+  const bridged = candidate('gpt-5', { 'gpt-5': new Set(['language']) }, 'weighted_random', {
+    speech: {
+      invoke() {
+        throw new Error('unused');
+      },
+    },
+  });
+  expect(filterCandidatesByCapability([bridged], 'speech', noPolicy)).toEqual([bridged]);
+  expect(filterCandidatesByCapability([bridged], 'transcription', noPolicy)).toEqual([]);
+});
+
 function candidate(
   modelId: string,
   capabilityIndex: ModelCapabilityIndex,
   selectionSource: 'provider_qualified' | 'weighted_random' = 'weighted_random',
+  transports: Partial<Pick<RuntimeProviderInstance, 'speech' | 'transcription'>> = {},
 ) {
   const provider: RuntimeProviderInstance = {
     id: 'provider',
@@ -99,6 +141,7 @@ function candidate(
         throw new Error('unused');
       },
     },
+    ...transports,
   };
   return { provider, modelId, selectionSource };
 }

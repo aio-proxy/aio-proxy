@@ -1,4 +1,4 @@
-import type { InboundCapability, RouterSelectionSource } from '@aio-proxy/core';
+import type { AudioCapability, InboundCapability, RouterSelectionSource } from '@aio-proxy/core';
 import type { RouterModelPolicy } from '@aio-proxy/types';
 
 import {
@@ -6,6 +6,8 @@ import {
   supportsEmbedding,
   supportsImage,
   supportsLanguage,
+  supportsSpeech,
+  supportsTranscription,
 } from '../../../../provider-runtime';
 import type { RuntimeProviderInstance } from '../../../../runtime';
 import { publicSlug } from '../../public-slug';
@@ -25,6 +27,9 @@ export function filterCandidatesByCapability<
       return candidateSupportsImage(candidate, routing.requestedModelId, routing.routerModels);
     }
     if (capability === 'embedding') return supportsEmbedding(candidate.provider.capabilityIndex, candidate.modelId);
+    if (capability === 'speech' || capability === 'transcription') {
+      return candidateSupportsAudio(candidate, capability);
+    }
     return supportsLanguage(candidate.provider.capabilityIndex, candidate.modelId);
   });
 }
@@ -46,4 +51,30 @@ export function candidateSupportsImage(
     supportsImage(candidate.provider.capabilityIndex, candidate.modelId) ||
     metadataHasImageOutput(routerModels?.[publicSlug(requestedModelId, candidate)]?.metadata)
   );
+}
+
+/**
+ * Effective audio support: the upstream-id index OR an attached transport for
+ * that direction. The index alone is too narrow - a bridged `@ai-sdk/openai`
+ * provider reports the OpenAI Responses target protocol, so its index grants
+ * language and embedding while `attachAudioTransport` gave it working speech and
+ * transcription models. The transport is per-provider, so it grants the direction
+ * it implements and never the other one.
+ *
+ * Presence of the transport, not `kind`, is the escape hatch: an API provider
+ * that does not serve `openai-audio` has no raw endpoint to passthrough to, so
+ * admitting it by kind would hand the dispatch loop a candidate it must
+ * immediately skip. The SAME predicate gates this filter and audio dispatch.
+ */
+export function candidateSupportsAudio(
+  candidate: {
+    readonly provider: Pick<RuntimeProviderInstance, 'capabilityIndex' | 'speech' | 'transcription'>;
+    readonly modelId: string;
+  },
+  capability: AudioCapability,
+): boolean {
+  return capability === 'speech'
+    ? supportsSpeech(candidate.provider.capabilityIndex, candidate.modelId) || candidate.provider.speech !== undefined
+    : supportsTranscription(candidate.provider.capabilityIndex, candidate.modelId) ||
+        candidate.provider.transcription !== undefined;
 }
