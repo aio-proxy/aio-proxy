@@ -5,32 +5,25 @@ import {
   createApiProvider,
   createProxyFetch,
   hasLanguageBridgeEndpoint,
-  modelRoutes,
 } from '@aio-proxy/core';
-import type { AliasConfig, Config, DashboardProviderSummary, ModelMetadata, Provider } from '@aio-proxy/types';
-import {
-  aliasTargetModels,
-  apiProviderEndpoints,
-  ProviderKind,
-  ProviderProtocol,
-  resolveOAuthAlias,
-} from '@aio-proxy/types';
+import type { AliasConfig, Config, ModelMetadata } from '@aio-proxy/types';
+import { aliasTargetModels, apiProviderEndpoints, ProviderKind, ProviderProtocol } from '@aio-proxy/types';
 import { uniq } from 'es-toolkit/array';
 
-import { createProviderRequestTransformFetch } from '../provider-request-transform';
-import { createObservedFetch } from '../request-logging';
-import type {
-  EmbeddingTransport,
-  ImageTransport,
-  ModelCapabilityIndex,
-  ModelTransport,
-  RuntimeProviderInput,
-  RuntimeProviderInstance,
-  RuntimeRawCapability,
-} from '../runtime';
-import { buildModelCapabilityIndex } from './capability-index';
-import { attachImageTransport } from './materialize-image';
-import { probeAiSdk, probeApi, type ProviderProbe } from './probe';
+import { createProviderRequestTransformFetch } from '../../provider-request-transform';
+import { createObservedFetch } from '../../request-logging';
+import type { ModelCapabilityIndex, RuntimeProviderInput, RuntimeProviderInstance } from '../../runtime';
+import { buildModelCapabilityIndex } from '../capability-index';
+import { attachImageTransport } from '../materialize-image';
+import { probeAiSdk, probeApi, type ProviderProbe } from '../probe';
+import {
+  providerConfigSummary,
+  type ProviderRuntimeSummary,
+  providerSummary,
+  routingDefaults,
+  withRoutingDefaults,
+} from './provider-summary';
+import { embeddingTransport, isMaterializedRuntimeProvider } from './transport-guards';
 
 export type MaterializeProvidersOptions = {
   readonly bridgeApiProvider?: typeof bridgeApiProviderToAiSdk;
@@ -46,8 +39,6 @@ export type ProviderRuntime = {
   readonly probes: ReadonlyMap<string, ProviderProbe>;
   readonly summaries: readonly ProviderRuntimeSummary[];
 };
-
-export type ProviderRuntimeSummary = Omit<DashboardProviderSummary, 'state'>;
 
 export function materializeRuntimeProvider(
   provider: RuntimeProviderInput,
@@ -134,68 +125,9 @@ export function materializeRuntimeProvider(
     };
   }
 
-  throw new TypeError('Runtime provider must expose a raw, model, image, or embedding capability');
-}
-
-function isMaterializedRuntimeProvider(provider: RuntimeProviderInput): provider is RuntimeProviderInstance {
-  const raw = Object.hasOwn(provider, 'raw') ? (provider as { readonly raw?: unknown }).raw : undefined;
-  const model = Object.hasOwn(provider, 'model') ? (provider as { readonly model?: unknown }).model : undefined;
-  const image = Object.hasOwn(provider, 'image') ? (provider as { readonly image?: unknown }).image : undefined;
-  const embedding = Object.hasOwn(provider, 'embedding')
-    ? (provider as { readonly embedding?: unknown }).embedding
-    : undefined;
-  if (raw !== undefined && !isRuntimeRawCapability(raw)) {
-    throw new TypeError(`Runtime provider ${provider.id} has an invalid raw capability`);
-  }
-  if (model !== undefined && !isModelTransport(model)) {
-    throw new TypeError(`Runtime provider ${provider.id} has an invalid model capability`);
-  }
-  if (image !== undefined && !isImageTransport(image)) {
-    throw new TypeError(`Runtime provider ${provider.id} has an invalid image capability`);
-  }
-  if (embedding !== undefined && !isEmbeddingTransport(embedding)) {
-    throw new TypeError(`Runtime provider ${provider.id} has an invalid embedding capability`);
-  }
-  return raw !== undefined || model !== undefined || image !== undefined || embedding !== undefined;
-}
-
-function isRuntimeRawCapability(value: unknown): value is RuntimeRawCapability {
-  return typeof value === 'object' && value !== null && 'resolve' in value && typeof value.resolve === 'function';
-}
-
-function isModelTransport(value: unknown): value is ModelTransport {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    'invoke' in value &&
-    typeof value.invoke === 'function' &&
-    (!('ensureAvailable' in value) ||
-      value.ensureAvailable === undefined ||
-      typeof value.ensureAvailable === 'function') &&
-    (!('targetProtocol' in value) || value.targetProtocol === undefined || typeof value.targetProtocol === 'function')
+  throw new TypeError(
+    'Runtime provider must expose a raw, model, image, embedding, speech, or transcription capability',
   );
-}
-
-function isImageTransport(value: unknown): value is ImageTransport {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    'invoke' in value &&
-    typeof value.invoke === 'function' &&
-    (!('ensureAvailable' in value) ||
-      value.ensureAvailable === undefined ||
-      typeof value.ensureAvailable === 'function')
-  );
-}
-
-function isEmbeddingTransport(value: unknown): value is EmbeddingTransport {
-  return typeof value === 'object' && value !== null && 'embed' in value && typeof value.embed === 'function';
-}
-
-function embeddingTransport(
-  source: { readonly embed?: EmbeddingTransport['embed'] } | undefined,
-): { readonly embedding: EmbeddingTransport } | Record<never, never> {
-  return source?.embed === undefined ? {} : { embedding: { embed: source.embed } };
 }
 
 function capabilityIndexFromRoutable(provider: {
@@ -236,7 +168,7 @@ export function materializeProviders(config: Config, options: MaterializeProvide
   const providers: RuntimeProviderInstance[] = [];
   const summaries: ProviderRuntimeSummary[] = [];
   for (const provider of config.providers) {
-    const id = providerId(provider);
+    const id = provider.id;
     if (!provider.enabled) {
       summaries.push(providerConfigSummary(provider));
       continue;
@@ -299,114 +231,6 @@ export function materializeProviders(config: Config, options: MaterializeProvide
     providers,
     summaries,
   };
-}
-
-export function providerSummary(
-  provider: RuntimeProviderInstance,
-  name?: string,
-  config?: Provider,
-): ProviderRuntimeSummary {
-  return {
-    id: provider.id,
-    kind: provider.kind,
-    enabled: provider.enabled,
-    passthrough: provider.raw !== undefined,
-    last_status: 'unknown',
-    last_latency: null,
-    protocols: [],
-    // Only OAuth plugin providers can expose a quota capability.
-    hasQuota: false,
-    // Same: only OAuth plugin providers can expose a credential refresh capability.
-    canRefreshCredential: false,
-    // Runtime factories don't carry `name`, so callers pass the config display name through.
-    ...(name === undefined ? {} : { name }),
-    ...(config === undefined ? {} : providerDisplayFields(config)),
-    clientModels: uniq(modelRoutes(provider).map((route) => route.alias)),
-    hasApiKey: provider.kind === ProviderKind.Api ? provider.hasApiKey : undefined,
-  };
-}
-
-export function providerDiff(
-  before: readonly Pick<DashboardProviderSummary, 'id'>[],
-  after: readonly Pick<DashboardProviderSummary, 'id'>[],
-) {
-  const beforeIds = new Set(before.map((provider) => provider.id));
-  const afterIds = new Set(after.map((provider) => provider.id));
-  return {
-    providerIds: {
-      added: after.filter((provider) => !beforeIds.has(provider.id)).map((provider) => provider.id),
-      removed: before.filter((provider) => !afterIds.has(provider.id)).map((provider) => provider.id),
-    },
-  };
-}
-
-function providerId(provider: Provider): string {
-  return provider.id;
-}
-
-function routableConfig(provider: Provider) {
-  if (provider.kind === ProviderKind.OAuth) {
-    const alias = resolveOAuthAlias(provider.alias, undefined);
-    return {
-      id: provider.id,
-      enabled: provider.enabled,
-      ...(Object.keys(alias).length === 0 ? {} : { alias }),
-    };
-  }
-  return {
-    id: provider.id,
-    enabled: provider.enabled,
-    ...(provider.models === undefined || provider.models.length === 0 ? {} : { models: provider.models }),
-    ...(provider.alias === undefined ? {} : { alias: provider.alias }),
-  };
-}
-
-function providerConfigSummary(provider: Provider): ProviderRuntimeSummary {
-  const clientModels = uniq(modelRoutes(routableConfig(provider)).map((route) => route.alias));
-  return {
-    id: provider.id,
-    kind: provider.kind,
-    enabled: provider.enabled,
-    passthrough: provider.kind === ProviderKind.Api,
-    last_status: 'unknown',
-    last_latency: null,
-    hasQuota: false,
-    canRefreshCredential: false,
-    name: provider.name,
-    ...providerDisplayFields(provider),
-    clientModels,
-    hasApiKey: provider.kind === ProviderKind.Api ? provider.apiKey !== undefined : undefined,
-  };
-}
-
-function providerDisplayFields(
-  provider: Provider,
-): Pick<ProviderRuntimeSummary, 'priority' | 'weight' | 'protocols' | 'packageName'> {
-  return {
-    ...routingDefaults(provider),
-    protocols:
-      provider.kind === ProviderKind.Api
-        ? uniq(apiProviderEndpoints(provider).map((endpoint) => endpoint.protocol))
-        : [],
-    ...(provider.kind === ProviderKind.AiSdk ? { packageName: provider.packageName } : {}),
-  };
-}
-
-function routingDefaults(provider: { readonly priority?: number; readonly weight?: number }): {
-  readonly priority?: number;
-  readonly weight?: number;
-} {
-  return {
-    ...(provider.priority === undefined ? {} : { priority: provider.priority }),
-    ...(provider.weight === undefined ? {} : { weight: provider.weight }),
-  };
-}
-
-function withRoutingDefaults(
-  instance: RuntimeProviderInstance,
-  provider: Pick<Provider, 'priority' | 'weight'>,
-): RuntimeProviderInstance {
-  return { ...instance, ...routingDefaults(provider) };
 }
 
 function assertNever(value: never): never {

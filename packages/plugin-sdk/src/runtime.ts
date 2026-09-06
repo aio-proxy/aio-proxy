@@ -84,7 +84,7 @@ export type RawResolver = (input: {
   readonly protocol: ProtocolId;
   readonly modelId: string;
   readonly extra?: JsonValue;
-  readonly capability?: 'language' | 'embedding';
+  readonly capability?: 'language' | 'embedding' | 'speech' | 'transcription';
   // Inbound URL pathname when the pipeline is choosing between raw and model.
   // Absent for capability probes that are not tied to a request.
   readonly requestPath?: string;

@@ -10,10 +10,17 @@ import { ConfigSchema, ProviderKind, ProviderProtocol } from '@aio-proxy/types';
 
 import { createServerState } from '#server-test-lifecycle';
 
-import { withAttemptLogContext, withRequestLogContext } from '../request-logging';
-import type { RuntimeProviderInstance } from '../runtime';
-import { supportsImage, supportsLanguage } from './capability-index';
-import { materializeProviders, materializeRuntimeProvider, providerSummary } from './materialize';
+import { withAttemptLogContext, withRequestLogContext } from '../../request-logging';
+import type { RuntimeProviderInstance } from '../../runtime';
+import {
+  supportsEmbedding,
+  supportsImage,
+  supportsLanguage,
+  supportsSpeech,
+  supportsTranscription,
+} from '../capability-index';
+import { materializeProviders, materializeRuntimeProvider } from './materialize';
+import { providerSummary } from './provider-summary';
 
 const headerSet = (field: string, value: unknown) => ({
   $setField: { field, input: '$request.headers', value },
@@ -42,7 +49,7 @@ function withModelAttempt<T>(
 }
 
 function assertRuntimeProviderRequiresCapability(provider: AiSdkProviderInstance): void {
-  // @ts-expect-error a materialized runtime provider must expose raw, model, image, or embedding
+  // @ts-expect-error a materialized runtime provider must expose at least one transport
   const runtime: RuntimeProviderInstance = provider;
   void runtime;
 }
@@ -539,14 +546,14 @@ test('materializes AI SDK inputs with model capabilities only', () => {
   expect(aiSdkRuntime).not.toHaveProperty('weight');
 });
 
-test('rejects an injected runtime provider without raw, model, image, or embedding capabilities', () => {
+test('rejects an injected runtime provider with no dispatchable capability at all', () => {
   expect(() =>
     materializeRuntimeProvider({
       enabled: true,
       id: 'invalid',
       kind: ProviderKind.OAuth,
     } as never),
-  ).toThrow('must expose a raw, model, image, or embedding capability');
+  ).toThrow('must expose a raw, model, image, embedding, speech, or transcription capability');
 });
 
 test('materializes an API input whose raw placeholder is undefined', async () => {
@@ -770,6 +777,56 @@ test('does not materialize configured providers before building an injected snap
   }
 });
 
+test('accepts an injected runtime provider that exposes only a speech transport', () => {
+  const invoke = async () => ({ audio: new Uint8Array(), mediaType: 'audio/mpeg' });
+
+  const runtime = materializeRuntimeProvider({
+    enabled: true,
+    id: 'tts',
+    kind: ProviderKind.OAuth,
+    speech: { invoke },
+  } as never);
+
+  expect(runtime.speech?.invoke).toBe(invoke);
+  expect(runtime.model).toBeUndefined();
+});
+
+test('accepts an injected runtime provider that exposes only a transcription transport', () => {
+  const invoke = async () => ({ text: '', segments: [] });
+
+  const runtime = materializeRuntimeProvider({
+    enabled: true,
+    id: 'stt',
+    kind: ProviderKind.OAuth,
+    transcription: { invoke },
+  } as never);
+
+  expect(runtime.transcription?.invoke).toBe(invoke);
+  expect(runtime.model).toBeUndefined();
+});
+
+test('rejects an injected runtime provider whose speech transport cannot be invoked', () => {
+  expect(() =>
+    materializeRuntimeProvider({
+      enabled: true,
+      id: 'tts',
+      kind: ProviderKind.OAuth,
+      speech: {},
+    } as never),
+  ).toThrow('Runtime provider tts has an invalid speech capability');
+});
+
+test('rejects an injected runtime provider whose transcription transport cannot be invoked', () => {
+  expect(() =>
+    materializeRuntimeProvider({
+      enabled: true,
+      id: 'stt',
+      kind: ProviderKind.OAuth,
+      transcription: {},
+    } as never),
+  ).toThrow('Runtime provider stt has an invalid transcription capability');
+});
+
 test('materializes an enabled audio-only API provider without a language transport', () => {
   const config = ConfigSchema.parse({
     providers: {
@@ -787,4 +844,12 @@ test('materializes an enabled audio-only API provider without a language transpo
 
   expect(provider?.raw).toBeDefined();
   expect(provider?.model).toBeUndefined();
+  // An audio-only provider must never enter the language or embedding candidate
+  // pool: dispatch reads the capability index, not the provider protocol.
+  expect(supportsSpeech(provider!.capabilityIndex, 'tts-1')).toBe(true);
+  expect(supportsTranscription(provider!.capabilityIndex, 'tts-1')).toBe(true);
+  expect(supportsLanguage(provider!.capabilityIndex, 'tts-1')).toBe(false);
+  expect(supportsEmbedding(provider!.capabilityIndex, 'tts-1')).toBe(false);
+  expect(supportsImage(provider!.capabilityIndex, 'tts-1')).toBe(false);
+  expect(provider?.raw?.resolve({ protocol: ProviderProtocol.OpenAIAudio, modelId: 'tts-1' })).toBeDefined();
 });
