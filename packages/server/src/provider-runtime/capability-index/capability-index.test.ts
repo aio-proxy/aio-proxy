@@ -16,6 +16,9 @@ import {
 // | Source | Adds |
 // | catalog.language id | language |
 // | catalog.image id | image |
+// | catalog.speech id | speech |
+// | catalog.transcription id | transcription |
+// | catalog audio/image/embedding id absent from catalog.language | never language |
 // | same id in both | union |
 // | upstreamMetadata capabilities.modalities.output includes image | image |
 // | catalogMetadata (models.dev) output includes image AND upstream declares no output | image |
@@ -284,6 +287,51 @@ describe('buildModelCapabilityIndex', () => {
     });
     expect(supportsSpeech(index, 'gpt-5')).toBe(false);
     expect(supportsTranscription(index, 'gpt-5')).toBe(false);
+  });
+
+  test('an audio catalog grants speech and transcription per descriptor, with no protocol', () => {
+    // A plugin catalog is the only audio signal an OAuth provider has: it speaks
+    // no configured wire protocol, so without catalog membership its audio models
+    // would be unroutable. Unlike a protocol grant, the catalog knows the
+    // direction of each id, so speech and transcription must NOT be unioned.
+    const index = buildModelCapabilityIndex({
+      catalog: {
+        language: [],
+        image: [],
+        embedding: [],
+        speech: [{ id: 'tts-1' }],
+        transcription: [{ id: 'whisper-1' }],
+        reranking: [],
+      },
+      models: ['tts-1', 'whisper-1'],
+    });
+    expect(supportsSpeech(index, 'tts-1')).toBe(true);
+    expect(supportsTranscription(index, 'tts-1')).toBe(false);
+    expect(supportsTranscription(index, 'whisper-1')).toBe(true);
+    expect(supportsSpeech(index, 'whisper-1')).toBe(false);
+  });
+
+  test('audio catalog ids stay out of the synthesized language and embedding pools', () => {
+    // `models` unions every catalog modality, so without an audio-only exclusion
+    // a TTS id becomes a chat candidate and a chat request is dispatched to a
+    // speech endpoint that cannot answer it.
+    const index = buildModelCapabilityIndex({
+      catalog: {
+        language: [{ id: 'gpt-5' }],
+        image: [],
+        embedding: [],
+        speech: [{ id: 'tts-1' }],
+        transcription: [{ id: 'whisper-1' }],
+        reranking: [],
+      },
+      models: ['gpt-5', 'tts-1', 'whisper-1'],
+    });
+    for (const id of ['tts-1', 'whisper-1']) {
+      expect(supportsLanguage(index, id)).toBe(false);
+      expect(supportsEmbedding(index, id)).toBe(false);
+      expect(supportsImage(index, id)).toBe(false);
+    }
+    expect(supportsLanguage(index, 'gpt-5')).toBe(true);
   });
 
   test('a protocol absent from the capability table grants nothing at all', () => {

@@ -7,6 +7,8 @@ export type CapabilityIndexInput = {
     readonly language?: readonly { readonly id: string }[];
     readonly image?: readonly { readonly id: string }[];
     readonly embedding?: readonly { readonly id: string }[];
+    readonly speech?: readonly { readonly id: string }[];
+    readonly transcription?: readonly { readonly id: string }[];
   };
   readonly models?: readonly string[];
   readonly upstreamMetadata?: Readonly<Record<string, RuntimeModelMetadata | undefined>>;
@@ -30,8 +32,17 @@ export function buildModelCapabilityIndex(input: CapabilityIndexInput): ModelCap
   const languageIds = new Set((input.catalog?.language ?? []).map((descriptor) => descriptor.id));
   const imageIds = new Set((input.catalog?.image ?? []).map((descriptor) => descriptor.id));
   const embeddingIds = new Set((input.catalog?.embedding ?? []).map((descriptor) => descriptor.id));
+  const speechIds = new Set((input.catalog?.speech ?? []).map((descriptor) => descriptor.id));
+  const transcriptionIds = new Set((input.catalog?.transcription ?? []).map((descriptor) => descriptor.id));
   const finiteIds = finiteNonCatalogIds(input);
-  const ids = new Set<string>([...languageIds, ...imageIds, ...embeddingIds, ...finiteIds]);
+  const ids = new Set<string>([
+    ...languageIds,
+    ...imageIds,
+    ...embeddingIds,
+    ...speechIds,
+    ...transcriptionIds,
+    ...finiteIds,
+  ]);
   const protocolServed = protocolCapabilitySet(input);
   const index: Record<string, Set<InboundCapability>> = {};
   for (const id of ids) {
@@ -39,6 +50,10 @@ export function buildModelCapabilityIndex(input: CapabilityIndexInput): ModelCap
     if (languageIds.has(id)) capabilities.add('language');
     if (imageIds.has(id)) capabilities.add('image');
     if (embeddingIds.has(id)) capabilities.add('embedding');
+    // Unlike the protocol grant below, a catalog names each audio id's direction,
+    // so speech and transcription are recorded separately rather than unioned.
+    if (speechIds.has(id)) capabilities.add('speech');
+    if (transcriptionIds.has(id)) capabilities.add('transcription');
     if (metadataHasImageOutput(input.upstreamMetadata?.[id])) capabilities.add('image');
     if (catalogOnlyImageOutput(input, id)) capabilities.add('image');
     // Image reads the PRIMARY protocol only, unlike speech/transcription below,
@@ -48,10 +63,12 @@ export function buildModelCapabilityIndex(input: CapabilityIndexInput): ModelCap
     // endpoint carries no comparable per-model signal, so it must grant broadly.
     if (input.primaryProtocol !== undefined && protocolServes(input.primaryProtocol, 'image'))
       capabilities.add('image');
-    // Catalog image/embedding ids stay out of synthesized language even when
+    // Catalog image/embedding/audio ids stay out of synthesized language even when
     // OAuth `models` unions them with language catalog ids.
     const imageOnly = imageIds.has(id) && !languageIds.has(id) && !embeddingIds.has(id);
-    const catalogNonLanguage = !languageIds.has(id) && (imageIds.has(id) || embeddingIds.has(id));
+    const catalogNonLanguage =
+      !languageIds.has(id) &&
+      (imageIds.has(id) || embeddingIds.has(id) || speechIds.has(id) || transcriptionIds.has(id));
     if (finiteIds.has(id) && synthesizesLanguage(input) && !catalogNonLanguage) capabilities.add('language');
     if (finiteIds.has(id) && synthesizesEmbedding(input) && !imageOnly) capabilities.add('embedding');
     if (finiteIds.has(id) && protocolServed.has('speech')) capabilities.add('speech');
