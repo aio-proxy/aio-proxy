@@ -7,25 +7,38 @@ export type ProviderProbe = () => Promise<DashboardProviderProbe>;
 const probeMaxOutputTokens = 1;
 const openAIResponsesProbeMaxOutputTokens = 16;
 
+export type ProviderProbeRequest = {
+  readonly body?: unknown;
+  /** Defaults to POST; GET probes carry neither body nor content-type. */
+  readonly method?: 'GET' | 'POST';
+  readonly path: string;
+};
+
 export async function probeApi(
   provider: Extract<Provider, { kind: ProviderKind.Api }>,
   instance: ApiProviderInstance,
 ): Promise<DashboardProviderProbe> {
   try {
     const model = providerProbeModel(provider);
+    // A provider with neither models nor alias exposes no route, so it stays FAIL
+    // for every protocol — including openai-audio, whose probe ignores the model.
     if (model === undefined) {
       return 'FAIL';
     }
     const request = providerProbeRequest(provider, model);
-    const response = await instance.passthrough(
-      new Request(new URL(request.path, 'http://probe.internal'), {
-        body: JSON.stringify(request.body),
-        headers: { 'content-type': 'application/json' },
-        method: 'POST',
-        signal: AbortSignal.timeout(10_000),
-      }),
-      { upstreamStream: false },
-    );
+    const signal = AbortSignal.timeout(10_000);
+    const init: RequestInit =
+      request.method === 'GET'
+        ? { method: 'GET', signal }
+        : {
+            body: JSON.stringify(request.body),
+            headers: { 'content-type': 'application/json' },
+            method: 'POST',
+            signal,
+          };
+    const response = await instance.passthrough(new Request(new URL(request.path, 'http://probe.internal'), init), {
+      upstreamStream: false,
+    });
     if (response.body !== null) {
       await response.body.cancel();
     }
@@ -41,7 +54,7 @@ export async function probeApi(
 export function providerProbeRequest(
   provider: Extract<Provider, { kind: ProviderKind.Api }>,
   model: string,
-): { readonly body: unknown; readonly path: string } {
+): ProviderProbeRequest {
   const primary = apiProviderEndpoints(provider)[0];
   switch (primary.protocol) {
     case ProviderProtocol.OpenAICompatible:
@@ -82,10 +95,9 @@ export function providerProbeRequest(
         path: '/v1/images/generations',
       };
     case ProviderProtocol.OpenAIAudio:
-      return {
-        body: { model, input: 'ping', voice: 'alloy' },
-        path: '/v1/audio/speech',
-      };
+      // 只验证连通性与凭据：配置的模型可能仅支持语音合成或仅支持转写，
+      // 任一方向的能力请求都会被另一类模型拒绝并误报 FAIL。
+      return { method: 'GET', path: '/v1/models' };
     default:
       return assertNever(primary.protocol);
   }

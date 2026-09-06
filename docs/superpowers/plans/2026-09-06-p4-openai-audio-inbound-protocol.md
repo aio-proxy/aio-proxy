@@ -256,14 +256,21 @@ and in `bridgeMapping`:
 
 - [ ] **Step 6: Satisfy the server switches and total records**
 
-`packages/server/src/provider-runtime/probe/probe.ts`, before `default:`:
+`packages/server/src/provider-runtime/probe/probe.ts`, before `default:`. The probe
+is capability-agnostic on purpose: a configured audio model may be speech-only or
+transcription-only, so a speech (or transcription) ping would falsely report the
+other kind as FAIL. `GET /v1/models` verifies reachability and credentials only,
+which is all the dashboard's `'OK' | 'FAIL'` light claims. This needs
+`providerProbeRequest` to be able to express a method — add an optional
+`method` (default `POST`) to its return type and have `probeApi` omit the body and
+`content-type` for a `GET`, leaving every other protocol's probe request
+byte-identical:
 
 ```ts
     case ProviderProtocol.OpenAIAudio:
-      return {
-        body: { model, input: 'ping', voice: 'alloy' },
-        path: '/v1/audio/speech',
-      };
+      // 只验证连通性与凭据：配置的模型可能仅支持语音合成或仅支持转写，
+      // 任一方向的能力请求都会被另一类模型拒绝并误报 FAIL。
+      return { method: 'GET', path: '/v1/models' };
 ```
 
 `packages/server/src/plugin-runtime/capabilities.ts`, in `pluginProtocol`, after the `'openai-image'` entry:

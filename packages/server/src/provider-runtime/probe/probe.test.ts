@@ -142,6 +142,9 @@ test('a model test probe waits ten seconds, not one', async () => {
 
 test('image-primary probe posts a generations ping through the primary transport', async () => {
   let requested: string | undefined;
+  let method: string | undefined;
+  let contentType: string | null = null;
+  let body: unknown;
   const provider = {
     apiKey: 'k',
     baseURL: 'https://api.openai.com/v1',
@@ -156,12 +159,77 @@ test('image-primary probe posts a generations ping through the primary transport
     path: '/v1/images/generations',
   });
   const instance = createApiProvider(provider, {
-    fetch: (async (input: string | URL | Request) => {
+    fetch: (async (input: string | URL | Request, init?: RequestInit) => {
       requested = input instanceof Request ? input.url : String(input);
+      method = init?.method;
+      contentType = new Headers(init?.headers).get('content-type');
+      body = JSON.parse(await new Response(init?.body).text());
       return new Response('{}', { status: 200 });
     }) as typeof globalThis.fetch,
   });
 
   expect(await probeApi(provider, instance)).toBe('OK');
   expect(requested).toBe('https://api.openai.com/v1/images/generations');
+  // 音频探测引入 method 后的护栏：既有协议的方法、body 与 content-type 必须逐字不变。
+  expect(method).toBe('POST');
+  expect(contentType).toBe('application/json');
+  expect(body).toEqual({ model: 'gpt-image-2', n: 1, prompt: 'ping' });
+});
+
+test('transcription-only audio provider probes GET /v1/models with no body', async () => {
+  let requested: string | undefined;
+  let method: string | undefined;
+  let contentType: string | null = null;
+  let body: unknown;
+  const provider = {
+    apiKey: 'k',
+    enabled: true,
+    endpoints: [{ protocol: ProviderProtocol.OpenAIAudio, baseURL: 'https://audio.example.com/v1' }],
+    id: 'whisper-gateway',
+    kind: ProviderKind.Api,
+    models: ['whisper-1'],
+  } satisfies Provider;
+  const instance = createApiProvider(provider, {
+    fetch: (async (input: string | URL | Request, init?: RequestInit) => {
+      requested = input instanceof Request ? input.url : String(input);
+      method = init?.method;
+      contentType = new Headers(init?.headers).get('content-type');
+      body = init?.body ?? undefined;
+      return new Response('{"data":[]}', { status: 200 });
+    }) as typeof globalThis.fetch,
+  });
+
+  expect(await probeApi(provider, instance)).toBe('OK');
+  expect(method).toBe('GET');
+  // sdk 模式下 '/v1' 前缀被剥掉再拼到 baseURL path 之后，与其他协议的探测路径同规则。
+  expect(requested).toBe('https://audio.example.com/v1/models');
+  expect(body).toBeUndefined();
+  expect(contentType).toBeNull();
+});
+
+test('speech audio provider probes the same capability-agnostic endpoint', async () => {
+  let requested: string | undefined;
+  let method: string | undefined;
+  const provider = {
+    apiKey: 'k',
+    baseURL: 'https://tts.example.com/v1',
+    enabled: true,
+    id: 'tts',
+    kind: ProviderKind.Api,
+    models: ['tts-1'],
+    protocol: ProviderProtocol.OpenAIAudio,
+  } as const;
+  // 探测请求不含 model：语音与转写模型共用同一个连通性检查。
+  expect(providerProbeRequest(provider, 'tts-1')).toEqual({ method: 'GET', path: '/v1/models' });
+  const instance = createApiProvider(provider, {
+    fetch: (async (input: string | URL | Request, init?: RequestInit) => {
+      requested = input instanceof Request ? input.url : String(input);
+      method = init?.method;
+      return new Response('{"data":[]}', { status: 200 });
+    }) as typeof globalThis.fetch,
+  });
+
+  expect(await probeApi(provider, instance)).toBe('OK');
+  expect(method).toBe('GET');
+  expect(requested).toBe('https://tts.example.com/v1/models');
 });
