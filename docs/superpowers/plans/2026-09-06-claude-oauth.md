@@ -48,23 +48,16 @@ Do not implement until that spec is `已确认，进入实现`.
 - `packages/plugins/anthropic-claude/rslib.config.ts`: `defineLibraryConfig()` plus client-ID define.
 - `packages/plugins/anthropic-claude/test/setup.ts`: injects decoded client ID for unit tests.
 - `packages/plugins/anthropic-claude/oauth.smoke.ts`: artifact check that source stays free of plaintext client ID.
-- `packages/plugins/anthropic-claude/src/schema.ts`: `ClaudeCredential` Zod schema and type.
-- `packages/plugins/anthropic-claude/src/pkce.ts`: S256 PKCE and state.
-- `packages/plugins/anthropic-claude/src/pkce.test.ts`: challenge/state shape.
+- `packages/plugins/anthropic-claude/src/schema/index.ts`, `schema/schema.ts`: `ClaudeCredential` Zod schema and type.
+- `packages/plugins/anthropic-claude/src/pkce/index.ts`, `pkce/pkce.ts`, `pkce/pkce.test.ts`: S256 PKCE and state.
+- `packages/plugins/anthropic-claude/src/oauth/index.ts`: export-only public oauth surface.
+- `packages/plugins/anthropic-claude/src/oauth/oauth.ts`, `oauth/oauth.test.ts`: authorize URL, code exchange, login, `claudeLoginResult`.
 - `packages/plugins/anthropic-claude/src/oauth/constants.ts`: URLs, scopes, beta, User-Agents, loopback, client-ID symbol.
-- `packages/plugins/anthropic-claude/src/oauth/identity.ts`: token-field extract + claude_cli bootstrap.
-- `packages/plugins/anthropic-claude/src/oauth/identity.test.ts`: bootstrap fallback and login-only org.
-- `packages/plugins/anthropic-claude/src/oauth.ts`: authorize URL, code exchange, login, `claudeLoginResult`.
-- `packages/plugins/anthropic-claude/src/oauth.test.ts`: loopback login, JSON exchange, identity, fingerprint.
-- `packages/plugins/anthropic-claude/src/oauth/credential.ts`: refresh and `currentClaudeCredential`.
-- `packages/plugins/anthropic-claude/src/oauth/credential.test.ts`: refresh classification and port window.
-- `packages/plugins/anthropic-claude/src/catalog.ts`: TTL discover, pagination, filter, fallback.
-- `packages/plugins/anthropic-claude/src/catalog.test.ts`: Bearer list, pagination, fallback rules.
-- `packages/plugins/anthropic-claude/src/runtime/runtime.ts`: `@ai-sdk/anthropic` ProviderV4 + dynamic fetch.
-- `packages/plugins/anthropic-claude/src/runtime/index.ts`: export-only.
-- `packages/plugins/anthropic-claude/src/runtime/runtime.test.ts`: model-only, headers, abort/body.
-- `packages/plugins/anthropic-claude/src/plugin.ts`: adapter, presentation, CPA `claude` import.
-- `packages/plugins/anthropic-claude/src/plugin.test.ts`: descriptor, localization, CPA, manual refresh.
+- `packages/plugins/anthropic-claude/src/oauth/identity.ts`, `oauth/identity.test.ts`: token-field extract + claude_cli bootstrap. Abort during bootstrap is fatal.
+- `packages/plugins/anthropic-claude/src/oauth/credential.ts`, `oauth/credential.test.ts`: refresh and `currentClaudeCredential`.
+- `packages/plugins/anthropic-claude/src/catalog/index.ts`, `catalog/catalog.ts`, `catalog/catalog.test.ts`: TTL discover, pagination, filter, fallback.
+- `packages/plugins/anthropic-claude/src/runtime/index.ts`, `runtime/runtime.ts`, `runtime/runtime.test.ts`: `@ai-sdk/anthropic` ProviderV4 + dynamic fetch.
+- `packages/plugins/anthropic-claude/src/plugin/index.ts`, `plugin/plugin.ts`, `plugin/plugin.test.ts`: adapter, presentation, CPA `claude` import.
 - `packages/plugins/anthropic-claude/src/index.ts`: version, factory, default descriptor.
 - Host (last task only): `packages/core/src/plugins/builtins.ts`, `builtins.test.ts`, `packages/core/package.json`, `.changeset/config.json`, CLI built-in lists, one changeset.
 
@@ -572,6 +565,19 @@ describe('Claude identity', () => {
     );
     expect(identity).toEqual({ accountId: 'acct' });
   });
+
+  test('rethrows abort when bootstrap is canceled', async () => {
+    const reason = new DOMException('cancelled', 'AbortError');
+    await expect(
+      resolveClaudeIdentity({ access_token: 'access' }, {
+        fetch: async (_input, init) => {
+          throw reason;
+        },
+        phase: 'login',
+        signal: AbortSignal.abort(reason),
+      }),
+    ).rejects.toBe(reason);
+  });
 });
 ```
 
@@ -700,7 +706,8 @@ Create `packages/plugins/anthropic-claude/src/oauth/identity.ts` that:
 - extracts token `account.uuid` / `account.email_address` / `organization.uuid` / `organization.name`;
 - GETs bootstrap only when login is missing account+email+org, or refresh is missing account or email;
 - on refresh, never returns org fields from bootstrap;
-- swallows bootstrap failures and returns whatever token fields already existed;
+- swallows genuine bootstrap failures (network, non-2xx, invalid JSON) and returns whatever token fields already existed;
+- rethrows `AbortError` / `signal.reason` when the caller canceled during bootstrap; do not continue to `claudeLoginResult` after cancel;
 - sets `aioProxy: { traffic: 'control' }` and the spec bootstrap headers.
 
 Extend `oauth.ts` with:

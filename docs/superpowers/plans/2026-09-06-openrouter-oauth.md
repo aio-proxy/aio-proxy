@@ -324,105 +324,37 @@ Loose-code and missing-state acceptance run **only** when `stateRequired === fal
 
 The following snippet is the OpenRouter (`stateRequired === false`) branch only. The ChatGPT/Antigravity branch must keep today’s “missing state is mismatch” behavior.
 
-In `packages/cli/src/plugin-commands/loopback/callback.ts`, replace `parseCallback` with a wrapper around the shared helper. Reference shape:
+In `packages/cli/src/plugin-commands/loopback/callback.ts`, replace `parseCallback` with a wrapper around the shared helper. Direct unit-test callers that omit the 4th argument default to `stateRequired: true` (today’s CSRF). OpenRouter loopback derives `false` from the authorize URL.
 
 ```ts
-function looseAuthorizationCode(raw: string): string | undefined {
-  const trimmed = raw.trim();
-  if (trimmed === '') return undefined;
-  if (trimmed.includes('code=')) {
-    const code = new URLSearchParams(trimmed.startsWith('?') ? trimmed.slice(1) : trimmed).get('code');
-    return code !== null && code !== '' ? code : undefined;
-  }
-  if (!trimmed.includes('://') && !/\s/u.test(trimmed)) return trimmed;
-  return undefined;
-}
-
 export function parseCallback(
   raw: string,
   expectedRedirectUri: string,
   expectedState: string,
+  options: { readonly stateRequired?: boolean } = {},
 ): { readonly code: string } {
-  let callback: URL;
-  try {
-    callback = new URL(raw);
-  } catch {
-    const code = looseAuthorizationCode(raw);
-    if (code === undefined) throw new LoopbackCallbackInvalidError();
-    return { code };
+  const resolved = resolveOAuthLoopbackCallback(raw, expectedRedirectUri, expectedState, {
+    stateRequired: options.stateRequired ?? true,
+  });
+  if (resolved.ok) return { code: resolved.code };
+  switch (resolved.reason) {
+    case 'invalid':
+      throw new LoopbackCallbackInvalidError();
+    case 'mismatch':
+      throw new LoopbackCallbackMismatchError();
+    case 'state_mismatch':
+      throw new LoopbackStateMismatchError();
+    case 'denied':
+      throw new LoopbackOAuthError();
+    case 'code_missing':
+      throw new LoopbackCodeMissingError();
   }
-  const expected = new URL(expectedRedirectUri);
-  if (
-    callback.protocol !== expected.protocol ||
-    callback.hostname !== expected.hostname ||
-    callback.port !== expected.port ||
-    callback.pathname !== expected.pathname ||
-    callback.username !== '' ||
-    callback.password !== '' ||
-    callback.hash !== ''
-  ) {
-    throw new LoopbackCallbackMismatchError();
-  }
-  const actualState = callback.searchParams.get('state');
-  if (actualState !== null && actualState !== expectedState) throw new LoopbackStateMismatchError();
-  if (callback.searchParams.get('error') !== null) throw new LoopbackOAuthError();
-  const code = callback.searchParams.get('code');
-  if (code === null || code.length === 0) throw new LoopbackCodeMissingError();
-  return { code };
 }
 ```
 
-In `packages/server/src/oauth-login-session/callback.ts`, replace `parseOAuthCallback` with the same rules (`OAuthCallbackError` codes unchanged: `CALLBACK_INVALID`, `CALLBACK_MISMATCH`, `CALLBACK_STATE_MISMATCH`, `AUTHORIZATION_DENIED`, `CALLBACK_CODE_MISSING`):
+In `packages/server/src/oauth-login-session/callback.ts`, the same wrapper maps `reason` onto the existing `OAuthCallbackError` codes (`CALLBACK_INVALID`, `CALLBACK_MISMATCH`, `CALLBACK_STATE_MISMATCH`, `AUTHORIZATION_DENIED`, `CALLBACK_CODE_MISSING`). Default `stateRequired` is `true`. Dashboard missing-state / raw-code tests pass `{ stateRequired: false }`. Add a Dashboard case: `{ stateRequired: true }` + missing state + `error=access_denied` does not accept.
 
-```ts
-function looseAuthorizationCode(raw: string): string | undefined {
-  const trimmed = raw.trim();
-  if (trimmed === '') return undefined;
-  if (trimmed.includes('code=')) {
-    const code = new URLSearchParams(trimmed.startsWith('?') ? trimmed.slice(1) : trimmed).get('code');
-    return code !== null && code !== '' ? code : undefined;
-  }
-  if (!trimmed.includes('://') && !/\s/u.test(trimmed)) return trimmed;
-  return undefined;
-}
-
-export const parseOAuthCallback = (
-  raw: string,
-  expectedRedirectUri: string,
-  expectedState: string,
-): { readonly code: string } => {
-  let callback: URL;
-  try {
-    callback = new URL(raw);
-  } catch {
-    const code = looseAuthorizationCode(raw);
-    if (code === undefined) throw new OAuthCallbackError('CALLBACK_INVALID');
-    return { code };
-  }
-  const expected = new URL(expectedRedirectUri);
-  if (
-    callback.protocol !== expected.protocol ||
-    callback.hostname !== expected.hostname ||
-    callback.port !== expected.port ||
-    callback.pathname !== expected.pathname ||
-    callback.username !== '' ||
-    callback.password !== '' ||
-    callback.hash !== ''
-  ) {
-    throw new OAuthCallbackError('CALLBACK_MISMATCH');
-  }
-  const actualState = callback.searchParams.get('state');
-  if (actualState !== null && actualState !== expectedState) throw new OAuthCallbackError('CALLBACK_STATE_MISMATCH');
-  if (callback.searchParams.get('error') !== null) throw new OAuthCallbackError('AUTHORIZATION_DENIED');
-  const code = callback.searchParams.get('code');
-  if (code === null || code === '') throw new OAuthCallbackError('CALLBACK_CODE_MISSING');
-  return { code };
-};
-```
-
-Do **not** ship those two snippets as-is. They are the `stateRequired === false` branch only. The real implementation is one shared helper plus host wrappers that pass `{ stateRequired }`. Default `stateRequired` for existing unit tests that call `parseCallback` / `parseOAuthCallback` directly without an authorize URL must be `true` (today’s CSRF). OpenRouter loopback / Dashboard tests pass `stateRequired: false` or go through `runLoopbackAuthorization` so the host derives it from the authorize URL.
-
-Dashboard `parseOAuthCallback` tests that accept missing state or raw codes must pass `{ stateRequired: false }`. Add a Dashboard case: authorize-equivalent `{ stateRequired: true }` + missing state + `error=access_denied` does not accept.
+Do not copy a “missing state is OK if code is present” parser into either host. The shared helper is the only implementation.
 
 - [ ] **Step 6: Run CLI and server loopback tests and confirm they pass**
 
@@ -467,7 +399,7 @@ git commit -m "feat(openrouter): accept loopback callbacks that omit OAuth state
 
 **Interfaces:**
 - Consumes: `OAuthLoginContext`, `LoopbackRequest`, `RuntimeFetch` from `@aio-proxy/plugin-sdk`.
-- Produces: `OpenRouterCredential`, `generatePKCE()`, `loginOpenRouter(context, options?)`, `openRouterLoginResult(apiKey)`.
+- Produces: `OpenRouterCredential`, `generatePKCE()`, `loginOpenRouter(context, options?)`, `openRouterLoginResult(credential)`.
 
 - [ ] **Step 1: Create the package shell and failing tests**
 
@@ -536,6 +468,7 @@ import { zod } from '@aio-proxy/plugin-sdk';
 
 export const credentialSchema = zod.object({
   apiKey: zod.string().min(1),
+  userId: zod.string().min(1).optional(),
 });
 
 export type OpenRouterCredential = zod.infer<typeof credentialSchema>;
@@ -622,15 +555,17 @@ describe('OpenRouter OAuth', () => {
       code_verifier: expect.stringMatching(/^[A-Za-z0-9_-]{43}$/u),
       code_challenge_method: 'S256',
     });
-    const digest = new Bun.CryptoHasher('sha256').update('key:sk-or-v1-test-key').digest('hex');
+    const digest = new Bun.CryptoHasher('sha256').update('account:user_example').digest('hex');
     expect(result).toEqual({
       fingerprint: `sha256:${digest}`,
       suggestedKey: `openrouter-${digest.slice(0, 12)}`,
       accountLabel: 'OpenRouter',
-      credentials: { apiKey: 'sk-or-v1-test-key' },
+      credentials: { apiKey: 'sk-or-v1-test-key', userId: 'user_example' },
     });
     expect(result).not.toHaveProperty('expiresAt');
-    expect(Object.keys(result.credentials)).toEqual(['apiKey']);
+    expect(openRouterLoginResult({ apiKey: 'sk-or-v1-other-key', userId: 'user_example' }).fingerprint).toBe(
+      result.fingerprint,
+    );
   });
 
   test('fails closed when the key exchange omits key', async () => {
@@ -659,9 +594,9 @@ describe('OpenRouter OAuth', () => {
     ).rejects.toBe(reason);
   });
 
-  test('builds the same identity for a stored key', () => {
+  test('builds the same identity for a stored key without userId', () => {
     const digest = new Bun.CryptoHasher('sha256').update('key:sk-or-v1-test-key').digest('hex');
-    expect(openRouterLoginResult('sk-or-v1-test-key')).toEqual({
+    expect(openRouterLoginResult({ apiKey: 'sk-or-v1-test-key' })).toEqual({
       fingerprint: `sha256:${digest}`,
       suggestedKey: `openrouter-${digest.slice(0, 12)}`,
       accountLabel: 'OpenRouter',
@@ -742,13 +677,14 @@ export type OpenRouterOAuthOptions = {
   readonly fetch?: RuntimeFetch;
 };
 
-export function openRouterLoginResult(apiKey: string): OAuthLoginResult<OpenRouterCredential> {
-  const digest = new Bun.CryptoHasher('sha256').update(`key:${apiKey}`).digest('hex');
+export function openRouterLoginResult(credential: OpenRouterCredential): OAuthLoginResult<OpenRouterCredential> {
+  const material = credential.userId === undefined ? `key:${credential.apiKey}` : `account:${credential.userId}`;
+  const digest = new Bun.CryptoHasher('sha256').update(material).digest('hex');
   return {
     fingerprint: `sha256:${digest}`,
     suggestedKey: `openrouter-${digest.slice(0, 12)}`,
     accountLabel: 'OpenRouter',
-    credentials: { apiKey },
+    credentials: credential,
   };
 }
 
@@ -771,18 +707,18 @@ export async function loginOpenRouter(
     },
   });
   if (code.trim() === '') throw new Error('OpenRouter authorization code is missing');
-  const apiKey = await exchangeAuthorizationCode(code, pkce.verifier, {
+  const credential = await exchangeAuthorizationCode(code, pkce.verifier, {
     fetch: options.fetch ?? context.fetch ?? globalThis.fetch,
     signal: context.signal,
   });
-  return openRouterLoginResult(apiKey);
+  return openRouterLoginResult(credential);
 }
 
 async function exchangeAuthorizationCode(
   code: string,
   verifier: string,
   options: { readonly fetch: RuntimeFetch; readonly signal: AbortSignal },
-): Promise<string> {
+): Promise<OpenRouterCredential> {
   options.signal.throwIfAborted();
   let response: Response;
   try {
@@ -813,7 +749,8 @@ async function exchangeAuthorizationCode(
   if (!isPlainObject(body) || typeof body.key !== 'string' || body.key.trim() === '') {
     throw new Error('OpenRouter OAuth response carries no key');
   }
-  return body.key.trim();
+  const userId = typeof body.user_id === 'string' && body.user_id.trim() !== '' ? body.user_id.trim() : undefined;
+  return userId === undefined ? { apiKey: body.key.trim() } : { apiKey: body.key.trim(), userId };
 }
 ```
 

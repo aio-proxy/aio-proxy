@@ -48,8 +48,8 @@ OpenRouter 的 OAuth 与标准 OIDC 不同：没有 client 注册，PKCE S256 �
 | Client 注册        | 无。S256 verifier 是唯一客户端证明                                                                                                       |
 | Loopback           | `hostname: '127.0.0.1'`，`port: 'dynamic'`，`path: '/callback'`，`allowManualCallbackUrl: true`                                          |
 | Host-only state    | 插件生成 `LoopbackRequest.state`，**不**发给 OpenRouter。宿主按**已打开的 authorize URL 是否带 `state` 查询**决定 callback 是否要求 state |
-| Credential         | `{ apiKey: string }`。省略 `refreshCredential` 与 `expiresAt`                                                                            |
-| Fingerprint        | `sha256:` + SHA-256(`key:<apiKey>`)；`suggestedKey = 'openrouter-' + hex.slice(0, 12)`；label 固定 `OpenRouter`                         |
+| Credential         | `{ apiKey: string; userId?: string }`。省略 `refreshCredential` 与 `expiresAt`。`userId` 来自 token JSON 的 `user_id`                     |
+| Fingerprint        | 有 `userId` 时 `account:<userId>`，否则 `key:<apiKey>`；`suggestedKey = 'openrouter-' + hex.slice(0, 12)`；label 固定 `OpenRouter`        |
 | 模型发现           | TTL 6 小时；`GET /api/v1/models?output_modalities=text,embeddings,image` Bearer key                                                      |
 | Catalog protocol   | 目录不广告协议时一律 `extra.protocol = 'openai-compatible'`                                                                              |
 | Catalog fallback   | 仅可重试发现失败时使用 8 个已观测的热门 OpenRouter id                                                                                    |
@@ -113,7 +113,7 @@ Content-Type: application/json
 { "code": "<authorization code>", "code_verifier": "<verifier>", "code_challenge_method": "S256" }
 ```
 
-成功 JSON 必须有非空 string `key`，这就是持久 API key。OpenAPI 还可能返回 `user_id`；credential 类型已锁定为只有 `apiKey`，**不持久化 `user_id`**，也不用它做 fingerprint。错误对象只暴露 HTTP status 与稳定 reason，不包含 code、verifier、key 或完整 upstream body。
+成功 JSON 必须有非空 string `key`，这就是持久 API key。OpenAPI 还可能返回 `user_id`。非空 `user_id`（trim）写入 `credentials.userId`，并作为 fingerprint 的稳定账号身份。重新登录会铸造新 key；若仍返回同一 `user_id`，fingerprint 必须不变，否则宿主 `ProviderFingerprintMismatchError` 会拒绝 reconnect。缺 `user_id` 时退回 `key:<apiKey>`（该账号后续换 key 会 mismatch，这是接受的降级）。错误对象只暴露 HTTP status 与稳定 reason，不包含 code、verifier、key 或完整 upstream body。
 
 该请求与后续 catalog / quota 探活一律 `aioProxy: { traffic: 'control' }`。
 
@@ -188,18 +188,20 @@ const stateRequired = new URL(authorizationUrl).searchParams.has('state');
 ```ts
 type OpenRouterCredential = {
   readonly apiKey: string;
+  readonly userId?: string;
 };
 ```
 
 `OAuthLoginResult`：
 
 - `credentials.apiKey`：兑换得到的 key；
-- `fingerprint`：`sha256:` + `Bun.CryptoHasher('sha256').update('key:' + apiKey).digest('hex')`；
+- `credentials.userId`：非空 `user_id`，否则省略；
+- `fingerprint`：`sha256:` + SHA-256(`account:<userId>` 或 `key:<apiKey>`)；
 - `suggestedKey`：`'openrouter-' + hex.slice(0, 12)`；
 - `accountLabel`：`'OpenRouter'`；
 - **省略 `expiresAt`**。
 
-key 不轮换，fingerprint 稳定。不请求 email userinfo：`GET /api/v1/key` 的 `data.label` 是截断 key（如 `sk-or-v1-au7...890`），不是邮箱；token 的 `user_id` 也不是邮箱。禁止把截断 key 或 `user_id` 当作展示 label。
+有 `userId` 时，换新 key 的重新登录 fingerprint 保持不变。不请求 email userinfo：`GET /api/v1/key` 的 `data.label` 是截断 key，不是邮箱。禁止把截断 key 或 `user_id` 当作展示 label。
 
 secret 不进入 fingerprint 明文、label、日志或错误。
 

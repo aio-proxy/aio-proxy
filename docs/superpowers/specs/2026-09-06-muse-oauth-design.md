@@ -206,7 +206,7 @@ Fingerprint 为不可逆 SHA-256，输出 `sha256:` + 64 位小写 hex（与 xAI
 `accountLabel`：normalized email，否则 `accountId`，否则 `Muse Code`。  
 secret（oauth token、apiKey）不进入 fingerprint 明文、label、日志或错误。
 
-重新登录时：若上次已存 `accountId`，而本次 payload 省略 `user_id`，复用已存 `accountId`，避免 `ProviderFingerprintMismatchError`。第一次登录仍要求 `user_id` 或 email。
+`OAuthLoginContext` 没有上次 credential。fingerprint 只由**本次** mint payload 计算。若 Meta 上次给了 `user_id`、这次省略，fingerprint 会变成 `email:`，宿主会 `ProviderFingerprintMismatchError`。v1 不为此改 SDK。每次登录都必须从当前 payload 拿出 `user_id` 或 email。
 
 ## Credential 生命周期（无 refresh）
 

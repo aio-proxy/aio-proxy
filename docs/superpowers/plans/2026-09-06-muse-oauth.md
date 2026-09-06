@@ -38,19 +38,17 @@ Do not implement until that spec is `已确认，进入实现`.
 
 ## File Structure
 
-Create `packages/plugins/muse-code/` with these responsibilities:
+Create `packages/plugins/muse-code/` with same-name directories (`foo/index.ts`, `foo/foo.ts`, `foo/foo.test.ts`):
 
-- `src/schema.ts`: persisted `MuseCodeCredential` Zod schema and type.
+- `src/schema/index.ts`, `schema/schema.ts`: persisted `MuseCodeCredential` Zod schema and type.
+- `src/oauth/index.ts`, `oauth/oauth.ts`, `oauth/oauth.test.ts`: device authorization, polling, login, `museLoginResult`, `currentMuseCodeCredential`.
 - `src/oauth/http.ts`: private control-traffic form/JSON helpers and retryable status.
 - `src/oauth/key.ts`: `POST /muse-code/key` mint and usage parse (shared by login and quota).
-- `src/oauth.ts`: device authorization, polling, login orchestration, `museLoginResult`, `currentMuseCodeCredential`.
-- `src/catalog.ts`: `GET /v1/models`, Spark/image classification, curated fallback.
-- `src/quota.ts`: empty-body key read → `OAuthQuotaSnapshot` (no remint, no reset).
-- `src/runtime/runtime.ts`: Responses ProviderV4 and apiKey dynamic fetch.
-- `src/runtime/index.ts`: runtime barrel only.
-- `src/plugin.ts`: OAuth adapter assembly; **omit** `refreshCredential` and `credentialImports`.
+- `src/catalog/index.ts`, `catalog/catalog.ts`, `catalog/catalog.test.ts`: `GET /v1/models`, Spark-only classification, curated fallback.
+- `src/quota/index.ts`, `quota/quota.ts`, `quota/quota.test.ts`: empty-body key read → `OAuthQuotaSnapshot` (no remint, no reset).
+- `src/runtime/index.ts`, `runtime/runtime.ts`, `runtime/runtime.test.ts`: Responses ProviderV4 and apiKey dynamic fetch.
+- `src/plugin/index.ts`, `plugin/plugin.ts`, `plugin/plugin.test.ts`: OAuth adapter assembly; **omit** `refreshCredential` and `credentialImports`.
 - `src/index.ts`: package exports, version, default descriptor.
-- Colocated `*.test.ts` and `oauth.test-support.ts`.
 - Package config: `package.json`, `tsconfig.json`, `rslib.config.ts`, `oauth.smoke.ts`.
 
 Modify host files only where built-in identity is enumerated (last task):
@@ -701,7 +699,7 @@ Extend `packages/plugins/muse-code/src/oauth.ts` with `loginMuseCode` (keep Task
 6. Accept a token JSON that has `access_token` even when `expires_in` / `refresh_token` are absent; ignore those fields.
 7. Call `requestMuseCodeKey(accessToken, { onboard: true, fetch, signal })`.
 8. Fail when `is_subs_active === false`, when `api_key` is blank, or when `require_payment === true`. Throw `payment_required` **without** embedding `action_url`. Host login maps every adapter error to `AUTHORIZATION_FAILED`.
-9. Fail when both `user_id` and normalized email are missing on first login. On re-login, if a previously stored `accountId` exists and the payload omits `user_id`, reuse the stored `accountId`.
+9. Fail when both `user_id` and normalized email are missing. `login()` cannot see the stored credential (`OAuthLoginContext` has no prior account). Do not invent sticky `accountId` reuse. If a later mint omits `user_id` after a previous `account:` fingerprint, host re-login fails; that is accepted v1.
 10. Return `museLoginResult(...)` only after a non-blank `api_key` and identity exist. Throw before return on any mint failure. The plugin never writes the vault; host persist runs only after `login()` resolves. Omit `expiresAt`.
 11. After a successful device authorization, treat token-poll 408 / 429 / 5xx and retryable network errors as pending (Kimi/xAI). Device-authorization 5xx still fails immediately. Add those tests in Task 2.
 

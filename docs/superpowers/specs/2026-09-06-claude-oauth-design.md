@@ -207,7 +207,7 @@ oauth_account.organization_uuid
 oauth_account.organization_name
 ```
 
-只填补缺失字段，不覆盖 token 响应里已经有的值。bootstrap 失败（network、非 2xx、无效 JSON）不得让登录失败：保留已有 token 与已解析字段。
+只填补缺失字段，不覆盖 token 响应里已经有的值。bootstrap 失败（network、非 2xx、无效 JSON）不得让登录失败：保留已有 token 与已解析字段。`AbortError` / `context.signal.aborted` **必须**原样抛出（`signal.reason`），不得当成非致命 bootstrap 失败而继续 `claudeLoginResult`。手动 `refreshCredential` 同样如此。
 
 登录只捕获一次 organization。refresh 不得改写已存储的 `organizationId` / `organizationName`：token JSON 即使带了不同的 `organization`，以及 bootstrap 即使返回了 org，都丢弃。`refreshClaudeCredential` 始终保留已存 org 字段。
 
