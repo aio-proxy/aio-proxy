@@ -446,7 +446,7 @@ Dashboard 走现有 built-in catalog，不新增 dashboard 文件。
 
 忽略 `id_token`、`last_refresh`、`claude_device_ids`、`base_url` 等未知键。`expired` 是绝对时间戳，**不再**减 5 分钟。`account_uuid` / `organization_*` 只在对应嵌套字段缺失时填补。
 
-导入后走与登录相同的 `claudeLoginResult()`。若 `accountId` 仍缺且 import context 提供 `fetch`，先用 access token 做一次非致命 identity bootstrap，再调用 `claudeLoginResult`。bootstrap 之后仍没有 `accountId` 则该文件导入失败。
+导入后走与登录相同的 `claudeLoginResult()`。若 `accountId` 仍缺，用 `options.fetch ?? context.fetch ?? globalThis.fetch` 做一次非致命 identity bootstrap，再调用 `claudeLoginResult`。CLI 导入路径不传 `ImportOAuthAccountOptions.fetch`，因此 **不得** 把 bootstrap 门控在 `context.fetch` 上。bootstrap 之后仍没有 `accountId` 则该文件导入失败。
 
 ## 测试策略
 

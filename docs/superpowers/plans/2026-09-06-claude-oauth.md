@@ -1377,6 +1377,29 @@ test('imports CPA claude credentials with the same fingerprint rules', async () 
   expect(invalidExpiry.expiresAt).toBe(0);
 });
 
+test('bootstraps a CPA file that omits accountId when import context has no fetch', async () => {
+  const adapter = await adapterFrom(
+    createAnthropicClaudePlugin(undefined, {
+      fetch: async () =>
+        Response.json({
+          oauth_account: {
+            account_uuid: 'boot-acct',
+            account_email: 'boot@example.com',
+          },
+        }),
+    }),
+  );
+  const importer = adapter.credentialImports?.cpa;
+  if (importer === undefined) throw new Error('CPA importer not registered');
+  const imported = await importer.import(
+    { progress: () => {}, signal: new AbortController().signal },
+    {},
+    { type: 'claude', access_token: 'access-1', refresh_token: 'refresh-1' },
+  );
+  expect(imported.credentials.accountId).toBe('boot-acct');
+  expect(imported.credentials.email).toBe('boot@example.com');
+});
+
 test('rejects CPA files that still have no accountId after bootstrap', async () => {
   const adapter = await adapterFrom(
     createAnthropicClaudePlugin(undefined, {
@@ -1499,7 +1522,7 @@ Expected: FAIL because `src/index.ts` / `createAnthropicClaudePlugin` do not exi
 - `credentials: credentialSchema`;
 - `icon: 'anthropic'`;
 - `login` parse options then `loginClaude(context, { waiting: presentationText.waitingForAuthorization }, deps)` (inject `context.fetch` when the factory did not);
-- `credentialImports.cpa.types = ['claude']` with a `.loose()` Zod object requiring `type: 'claude'`, `access_token`, `refresh_token`; map `expired` with `Date.parse` (invalid → `0`); map identity as `email` / `account.email_address` (same normalize as login), then `account.uuid` / `account_id` / `account_uuid`, then `organization.uuid` / `organization_uuid` and `organization.name` / `organization_name` (nested wins); ignore `id_token`, `claude_device_ids`, `last_refresh`; if `accountId` is still missing and import `context.fetch` exists, run non-fatal `resolveClaudeIdentity` with `phase: 'login'` and merge; then call `claudeLoginResult`, which throws `ClaudeIdentityMissingError` when `accountId` is still missing;
+- `credentialImports.cpa.types = ['claude']` with a `.loose()` Zod object requiring `type: 'claude'`, `access_token`, `refresh_token`; map `expired` with `Date.parse` (invalid → `0`); map identity as `email` / `account.email_address` (same normalize as login), then `account.uuid` / `account_id` / `account_uuid`, then `organization.uuid` / `organization_uuid` and `organization.name` / `organization_name` (nested wins); ignore `id_token`, `claude_device_ids`, `last_refresh`; if `accountId` is still missing, run non-fatal `resolveClaudeIdentity` with `phase: 'login'` and `fetch: deps.fetch ?? context.fetch ?? globalThis.fetch` (CLI import omits `context.fetch`); then call `claudeLoginResult`, which throws `ClaudeIdentityMissingError` when `accountId` is still missing;
 - catalog TTL + `discoverClaudeModels` + `initialClaudeCatalogFallback`;
 - `createRuntime: createClaudeRuntime`;
 - `refreshCredential` always calls `refreshClaudeCredential` (no expiry short-circuit);
