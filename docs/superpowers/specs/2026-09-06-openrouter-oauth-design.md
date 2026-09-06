@@ -176,7 +176,7 @@ const stateRequired = new URL(authorizationUrl).searchParams.has('state');
    - 然后：`error` 查询存在 → `AUTHORIZATION_DENIED`；无 `code` → `CODE_MISSING`；否则接受 `code`。
 2. **`new URL(raw)` 失败的手工输入**（仅手动粘贴；HTTP handler 的 `incoming.url` 永远是 URL）：
    - `stateRequired === true`：一律 `INVALID`。Claude / ChatGPT / Antigravity 的 v1 手工粘贴仍是完整 callback URL。
-   - `stateRequired === false`：若字符串含 `state=` 且值不等于 expected → `STATE_MISMATCH`；否则从 `code=` 或（trim 后无空白、无 `://` 的）裸 token 取 `code`。
+   - `stateRequired === false`：把 trim 后的字符串当 query 解析。`state=` 存在且不等于 expected → `STATE_MISMATCH`。然后 `error=` 存在 → `AUTHORIZATION_DENIED`（必须在裸 token 之前）。然后非空 `code=` → 接受该 code。否则若整段无空白、无 `://`，整段作为裸 token。`error=access_denied` 与 `state=<expected>&error=access_denied` 不得当成 code。
    - 错 origin 的完整 URL 仍走第 1 条并 `MISMATCH`。
 
 实现：在 `@aio-proxy/shared` 新增纯函数 `resolveOAuthLoopbackCallback`（same-name 目录 `packages/shared/src/oauth-loopback-callback/`，并由 `packages/shared/src/index.ts` 再导出），返回 `{ ok: true, code }` 或 `{ ok: false, reason }`。CLI `run.ts` 与 Dashboard `authorization.ts` 在 `buildAuthorizationUrl` 之后传入 `{ stateRequired }`，两宿主只把 `reason` 映射到既有错误类。禁止再手写两份规则。现有 loopback `request()` 测试夹具的 authorize URL 必须带上 `state=`，否则会误走 OpenRouter 门控。
@@ -347,7 +347,7 @@ Changeset：用 `bun changeset` 生成，不要手写固定文件名。`@aio-pro
 
 实现遵循 test-first，每个行为只保留最小有价值回归测试：
 
-1. 宿主 parse：authorize URL **无** `state` 时缺 state 可收 `code` / deny `error`；authorize URL **有** `state` 时缺 state 仍拒绝（保留 ChatGPT / Antigravity）；错 `state` 仍拒绝；loose-code 仅 `stateRequired === false`；错 origin 仍 mismatch；错误文本不含 secret。
+1. 宿主 parse：authorize URL **无** `state` 时缺 state 可收 `code` / deny `error`；authorize URL **有** `state` 时缺 state 仍拒绝（保留 ChatGPT / Antigravity）；错 `state` 仍拒绝；loose-code 仅 `stateRequired === false`；loose `error=` 在裸 token 之前 deny；错 origin 仍 mismatch；错误文本不含 secret。
 2. OAuth：authorize 只有 `callback_url` / `code_challenge` / `S256`、无 `state`；token JSON 含 `code` / `code_verifier` / `S256`；`key` 成为 credential；fingerprint / suggestedKey 稳定；control traffic；取消与缺 `key` 失败。
 3. Catalog：Bearer + `output_modalities`；text / embeddings / image 分桶；默认 `openai-compatible`；retryable fallback；401 / 空 language 不 fallback。
 4. Runtime：ProviderV4、`createOpenRouter` base / strict、dynamic Bearer、abort/body 保留、无 raw。必须经 `createOpenRouterRuntime` 跑 `doGenerate`（`/api/v1/chat/completions`）、`doEmbed`（`/api/v1/embeddings`）和 image `doGenerate`（`/api/v1/images`），断言 durable Bearer，placeholder `dynamic-credential` 不得泄漏。

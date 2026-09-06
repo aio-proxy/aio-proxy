@@ -108,7 +108,7 @@ Do not implement until that spec is `已确认，进入实现`.
 - Consumes: the built authorize URL plus existing `parseCallback` / `parseOAuthCallback` call sites in CLI `run.ts` and Dashboard `authorization.ts`.
 - Produces: `@aio-proxy/shared` `resolveOAuthLoopbackCallback(raw, expectedRedirectUri, expectedState, { stateRequired })`, re-exported from `packages/shared/src/index.ts`. Host wrappers keep their error classes. `stateRequired` is `new URL(authorizationUrl).searchParams.has('state')` after `buildAuthorizationUrl`. Signatures of the host wrappers may add that options object; `LoopbackRequest` does not change.
 
-Locked order: URL or (only if `stateRequired === false`) loose-code → origin (URL only) → state gate → `error` → `code`. `error` stays after the state gate.
+Locked order: URL or (only if `stateRequired === false`) loose-code → origin (URL only) → state gate → `error` → `code`. `error` stays after the state gate. On loose input, parse `error=` before the bare-token fallback so `error=access_denied` is `denied`, not a code.
 
 - `stateRequired === true` (ChatGPT / Antigravity / Claude): missing state is still `STATE_MISMATCH` and must **not** settle. Loose-code is `INVALID`.
 - `stateRequired === false` (OpenRouter authorize URL has no `state` query): missing state + `code` accepts; missing state + `error` denies; present-but-wrong state still mismatches.
@@ -118,7 +118,7 @@ OpenRouter never echoes `state`. Inspected today: both parsers use `searchParams
 
 - [ ] **Step 1: Write the failing CLI parse / loopback tests**
 
-In `packages/cli/src/plugin-commands/loopback/callback.test.ts`, add these cases inside the existing `describe('loopback manual callback handling')` (keep the current matching-state success and mismatch table):
+In `packages/cli/src/plugin-commands/loopback/callback.test.ts`, add `LoopbackOAuthError` to the existing `./index` import. Add these cases inside the existing `describe('loopback manual callback handling')` (keep the current matching-state success and mismatch table):
 
 ```ts
   test('accepts a manually pasted loopback URL that has a code and no state', async () => {
@@ -155,6 +155,22 @@ In `packages/cli/src/plugin-commands/loopback/callback.test.ts`, add these cases
         deps,
       ),
     ).resolves.toEqual({ code: 'auth_code_abc123', redirectUri: expect.any(String) });
+  });
+
+  test('rejects a pasted error= query that is not a URL', async () => {
+    setInteractive(true);
+    const { deps } = createDeps({
+      readManualCallbackUrl: async () => 'error=access_denied',
+    });
+    await expect(
+      runLoopbackAuthorization(
+        request({
+          allowManualCallbackUrl: true,
+          authorizationUrl: () => 'https://openrouter.ai/auth',
+        }),
+        deps,
+      ),
+    ).rejects.toBeInstanceOf(LoopbackOAuthError);
   });
 ```
 
@@ -290,6 +306,19 @@ test('accepts a pasted raw authorization code when the input is not a URL', () =
   });
 });
 
+test('rejects a pasted error= query that is not a URL', () => {
+  for (const raw of ['error=access_denied', 'state=host-only-state&error=access_denied']) {
+    try {
+      parseOAuthCallback(raw, expected, 'host-only-state', { stateRequired: false });
+      throw new Error('expected callback rejection');
+    } catch (error) {
+      expect(error).toBeInstanceOf(OAuthCallbackError);
+      expect((error as OAuthCallbackError).code).toBe('AUTHORIZATION_DENIED');
+      expect(String(error)).not.toContain('access_denied');
+    }
+  }
+});
+
 test('rejects a missing-state callback that also has no code', () => {
   expect(() =>
     parseOAuthCallback(expected, expected, 'host-only-state', { stateRequired: false }),
@@ -344,7 +373,7 @@ Expected: FAIL on the no-state and raw-code cases (`CALLBACK_STATE_MISMATCH` / `
 
 - [ ] **Step 5: Implement the shared parse helper and both host wrappers**
 
-Add `packages/shared/src/oauth-loopback-callback/` as a same-name directory (`index.ts` export-only, `oauth-loopback-callback.ts`, colocated test). It must take `{ stateRequired }` and implement the locked order. Do not throw host error classes from `shared`. Re-export `resolveOAuthLoopbackCallback` from `packages/shared/src/index.ts` next to `isRecord`; CLI and server import it from `@aio-proxy/shared`, not from a deep path.
+Add `packages/shared/src/oauth-loopback-callback/` as a same-name directory (`index.ts` export-only, `oauth-loopback-callback.ts`, colocated test). It must take `{ stateRequired }` and implement the locked order. On loose input (`new URL(raw)` fails), parse query keys with `URLSearchParams`, apply the state gate, then `error` → `denied` before any bare-token fallback. Do not throw host error classes from `shared`. Re-export `resolveOAuthLoopbackCallback` from `packages/shared/src/index.ts` next to `isRecord`; CLI and server import it from `@aio-proxy/shared`, not from a deep path.
 
 Then wrap it in both hosts. In CLI `run.ts` and Dashboard `authorization.ts`, after `buildAuthorizationUrl`:
 
