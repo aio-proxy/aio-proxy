@@ -5,6 +5,10 @@ on:
     branches: [main]
     paths:
       - 'website/**'
+      # The website renders its nav wordmark and favicon from these packages, so a commit that
+      # touches only them still changes the deployed site.
+      - 'packages/brand/**'
+      - 'packages/ui/**'
   workflow_dispatch:
 
 permissions:
