@@ -22,6 +22,7 @@ Do not implement until that spec is `已确认，进入实现`.
 - Every plugin `bun test` command includes `--preload=packages/plugins/anthropic-claude/test/setup.ts`. `bun test path/to/file` without that preload throws `ReferenceError` on `__AIO_PROXY_CLAUDE_CLIENT_ID__`.
 - Control-plane and inference fetch is `options.fetch ?? context.fetch ?? globalThis.fetch`. Do not call `globalThis.fetch` directly.
 - Refresh never writes `organizationId` / `organizationName` from token JSON or bootstrap. Always keep the stored org fields.
+- Login identity bootstraps when any of `accountId`, `email`, or `organizationId` is missing. Skip bootstrap only when all three are present. A token that has email or org but omits `account.uuid` still bootstraps. Refresh bootstraps only for missing `accountId` / `email`.
 - Catalog pages only when `has_more === true` and `last_id` is a non-empty string. Other 4xx are non-retryable. Successful discover overlays curated `displayName` only; it does not merge missing curated ids.
 - CPA import maps `account.email_address` the same way login does, and also accepts flat CPA keys `account_uuid` / `organization_uuid` / `organization_name` when nested fields are absent. Ignore `expired` as a boolean, `claude_device_ids`, and `id_token`.
 - Catalog / runtime tests import constants through `./oauth`, not `./oauth/constants`.
@@ -519,6 +520,63 @@ describe('Claude identity', () => {
     });
   });
 
+  test('bootstraps when any login identity field is missing', async () => {
+    const withoutAccount = await resolveClaudeIdentity(
+      {
+        access_token: 'access',
+        account: { email_address: 'Person@Example.com' },
+        organization: { uuid: 'org', name: 'Team' },
+      },
+      {
+        fetch: async () =>
+          Response.json({
+            oauth_account: {
+              account_uuid: 'boot-acct',
+              account_email: 'ignored@example.com',
+              organization_uuid: 'boot-org',
+              organization_name: 'Boot Team',
+            },
+          }),
+        phase: 'login',
+      },
+    );
+    expect(withoutAccount).toEqual({
+      accountId: 'boot-acct',
+      email: 'person@example.com',
+      organizationId: 'org',
+      organizationName: 'Team',
+    });
+
+    let orgCalls = 0;
+    const withoutOrg = await resolveClaudeIdentity(
+      {
+        access_token: 'access',
+        account: { uuid: 'acct', email_address: 'Person@Example.com' },
+      },
+      {
+        fetch: async () => {
+          orgCalls += 1;
+          return Response.json({
+            oauth_account: {
+              account_uuid: 'ignored-acct',
+              account_email: 'ignored@example.com',
+              organization_uuid: 'boot-org',
+              organization_name: 'Boot Team',
+            },
+          });
+        },
+        phase: 'login',
+      },
+    );
+    expect(orgCalls).toBe(1);
+    expect(withoutOrg).toEqual({
+      accountId: 'acct',
+      email: 'person@example.com',
+      organizationId: 'boot-org',
+      organizationName: 'Boot Team',
+    });
+  });
+
   test('bootstraps missing login identity and ignores org on refresh', async () => {
     const requests: Request[] = [];
     const inits: Array<RuntimeRequestInit | undefined> = [];
@@ -575,13 +633,18 @@ describe('Claude identity', () => {
   });
 
   test('keeps token fields when bootstrap fails', async () => {
+    let calls = 0;
     const identity = await resolveClaudeIdentity(
       { access_token: 'access', account: { uuid: 'acct' } },
       {
-        fetch: async () => new Response('nope', { status: 500 }),
+        fetch: async () => {
+          calls += 1;
+          return new Response('nope', { status: 500 });
+        },
         phase: 'login',
       },
     );
+    expect(calls).toBe(1);
     expect(identity).toEqual({ accountId: 'acct' });
   });
 
@@ -691,6 +754,7 @@ test('does not leak the authorization code when exchange fails', async () => {
 });
 
 test('fails login when token and bootstrap omit accountId', async () => {
+  const urls: string[] = [];
   await expect(
     loginClaude(
       loginContext({
@@ -700,6 +764,7 @@ test('fails login when token and bootstrap omit accountId', async () => {
       {
         fetch: async (input) => {
           const url = String(input);
+          urls.push(url);
           if (url.includes('/oauth/token')) {
             return Response.json({
               access_token: 'access-1',
@@ -713,6 +778,7 @@ test('fails login when token and bootstrap omit accountId', async () => {
       },
     ),
   ).rejects.toBeInstanceOf(ClaudeIdentityMissingError);
+  expect(urls.some((url) => url.includes('/api/claude_cli/bootstrap'))).toBe(true);
 });
 
 function loginContext(
@@ -748,7 +814,7 @@ Create `packages/plugins/anthropic-claude/src/oauth/identity.ts` that:
 
 - uses `isPlainObject` from `es-toolkit/predicate` on JSON;
 - extracts token `account.uuid` / `account.email_address` / `organization.uuid` / `organization.name`;
-- GETs bootstrap only when login is missing account+email+org, or refresh is missing account or email;
+- GETs bootstrap when login is missing any of `accountId`, `email`, or `organizationId`. Do not treat “email or org present” as complete. Refresh bootstraps when `accountId` or `email` is missing;
 - on refresh, never returns org fields from bootstrap;
 - swallows genuine bootstrap failures (network, non-2xx, invalid JSON) and returns whatever token fields already existed;
 - rethrows `AbortError` / `signal.reason` when the caller canceled during bootstrap; do not continue to `claudeLoginResult` after cancel;

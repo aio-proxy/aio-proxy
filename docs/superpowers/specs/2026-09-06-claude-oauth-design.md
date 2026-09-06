@@ -455,7 +455,7 @@ Dashboard 走现有 built-in catalog，不新增 dashboard 文件。
 1. Fingerprint / login result：只哈希 `account:<uuid>`；无 `accountId` 则失败（email-only 也失败）；suggestedKey；secret 不出现在 fingerprint 明文。补上 email 或轮换 refresh 不改变 fingerprint。
 2. Authorize URL：固定 host/port/path、PKCE S256、`code=true`、完整 scope、使用宿主 redirect。
 3. Code exchange：JSON body 字段、**不**带 beta、control traffic、缺 refresh/expiry 失败、错误不泄漏 secret。
-4. Identity：token 已含身份则不打 bootstrap；缺失则 bootstrap；bootstrap 失败不阻断登录；refresh 不改写 org。
+4. Identity：token 已含 `accountId` + `email` + `organizationId` 则不打 bootstrap；任一缺失则 bootstrap（有 email/org 但无 `account.uuid` 的部分 token 也要打，且只填补缺失字段）；bootstrap 失败不阻断登录；refresh 不改写 org。
 5. Refresh：省略 refresh token 时保留旧值；5xx retryable；`invalid_grant` non-retryable；`expiresAt` 含 5 分钟 skew；`currentClaudeCredential` 在 `now >= expiresAt` 时刷新；手动 `refreshCredential` 对未过期 credential 仍换票。
 6. Catalog：Bearer `/v1/models`、分页、`claude-` filter、`extra.protocol`、可重试 fallback，以及 401 / 空目录不 fallback。
 7. Runtime：ProviderV4 model-only、官方 base URL、Bearer + `oauth-2025-04-20`、去掉 placeholder / API key 头、保留 abort/body。
