@@ -1,5 +1,24 @@
 # @aio-proxy/plugin-openai-chatgpt
 
+## 0.19.2
+
+### Patch Changes
+
+- [#286](https://github.com/aio-proxy/aio-proxy/pull/286) [`981e765`](https://github.com/aio-proxy/aio-proxy/commit/981e765965a881af845aff413db711f779ff2ffb) Thanks [@baranwang](https://github.com/baranwang)! - Drop reasoning item ids the ChatGPT Codex backend never persisted.
+
+  A turn served through the AI SDK model path leaves the proxy's own synthetic
+  "rs_..." id on the reasoning item, and the client replays that id in the next
+  turn's input. This runtime forces store: false, so the upstream never persisted
+  it and the lookup failed with "Item with id 'rs_...' not found. Items are not
+  persisted when store is set to false." Reasoning items that carry no
+  encrypted_content now forward without the id and are re-sent as new content;
+  the summary is kept. The invalid_encrypted_content retry replays through the
+  same rewrite, so an item that just lost its unusable blob also loses the id.
+
+- Updated dependencies []:
+  - @aio-proxy/plugin-sdk@0.19.2
+  - @aio-proxy/types@0.19.2
+
 ## 0.19.1
 
 ### Patch Changes

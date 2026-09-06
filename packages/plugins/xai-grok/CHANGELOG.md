@@ -1,5 +1,18 @@
 # @aio-proxy/plugin-xai-grok
 
+## 0.19.2
+
+### Patch Changes
+
+- [#290](https://github.com/aio-proxy/aio-proxy/pull/290) [`4e3f656`](https://github.com/aio-proxy/aio-proxy/commit/4e3f656e4df4d53a171b42ac783e3108ff1468f0) Thanks [@baranwang](https://github.com/baranwang)! - Keep `reasoning.summary` on Grok CLI `/v1/responses` requests
+
+  cli-chat-proxy now accepts `reasoning.summary`. The xAI plugin still strips
+  `previous_response_id` (Zero Data Retention 404) and the other Codex Desktop
+  fields that HTTP `/v1/responses` rejects, but it no longer deletes `summary`.
+
+- Updated dependencies []:
+  - @aio-proxy/plugin-sdk@0.19.2
+
 ## 0.19.1
 
 ### Patch Changes

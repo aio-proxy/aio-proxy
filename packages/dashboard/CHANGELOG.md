@@ -1,5 +1,36 @@
 # @aio-proxy/dashboard
 
+## 0.19.2
+
+### Patch Changes
+
+- [#296](https://github.com/aio-proxy/aio-proxy/pull/296) [`46087fb`](https://github.com/aio-proxy/aio-proxy/commit/46087fb5ab1d28295e9912d8873e2ef574963c2a) Thanks [@baranwang](https://github.com/baranwang)! - dashboard: point the Settings documentation link at https://aioproxy.dev
+
+- [#292](https://github.com/aio-proxy/aio-proxy/pull/292) [`4f4e324`](https://github.com/aio-proxy/aio-proxy/commit/4f4e324c4625a1d4582d4292b7b9e3e96cbdabb6) Thanks [@baranwang](https://github.com/baranwang)! - On the OAuth provider editor, put Connection above Identity and fill a blank display name from the account label after a successful login.
+
+- [#293](https://github.com/aio-proxy/aio-proxy/pull/293) [`cf45f02`](https://github.com/aio-proxy/aio-proxy/commit/cf45f0222aa85754e64f19dee184228769c97ddd) Thanks [@baranwang](https://github.com/baranwang)! - Render the AIO Proxy wordmark from vector geometry instead of a webfont
+
+  The dashboard logo drew "Proxy" with an SVG `<text>` element styled
+  `font-heading font-semibold`. If that webfont had not loaded when the logo
+  painted, the word fell back to whatever the system resolved, so the wordmark's
+  right half rendered in a different typeface from its left. It is now a single
+  path converted from the same letterforms, so the logo looks identical on first
+  paint and needs no font loading at all. The wordmark is slightly wider as a
+  result (viewBox `0 0 1800 480` to `0 0 1920 480`); it is set in `em` units and
+  still scales to its surrounding text.
+
+  The favicon shipped with both surfaces keeps its shape. Its dark-mode ink moves
+  from pure white to the theme's off-white (`#fbfbf9`), matching the foreground
+  color the rest of the UI already uses; its light-mode ink is unchanged.
+
+- Updated dependencies [[`83c67f1`](https://github.com/aio-proxy/aio-proxy/commit/83c67f1cf670752e14ebf66bc95ab0799923b48e), [`4f3154e`](https://github.com/aio-proxy/aio-proxy/commit/4f3154e79a3f2bf1d5d23081e8dd099cc7841ecd), [`cf45f02`](https://github.com/aio-proxy/aio-proxy/commit/cf45f0222aa85754e64f19dee184228769c97ddd)]:
+  - @aio-proxy/server@0.19.2
+  - @aio-proxy/brand@0.19.2
+  - @aio-proxy/ui@0.19.2
+  - @aio-proxy/i18n@0.19.2
+  - @aio-proxy/plugin-sdk@0.19.2
+  - @aio-proxy/types@0.19.2
+
 ## 0.19.1
 
 ### Patch Changes
