@@ -28,7 +28,7 @@ Do not implement until that spec is `已确认，进入实现`.
 - New modules with a colocated test use a same-name directory (`oauth/index.ts`, `oauth/oauth.ts`, `oauth/oauth.test.ts`). Task snippets that say `src/oauth.ts` mean that directory.
 - Merge order: this PR first, then OpenRouter, then Muse. Last task inserts the package name; do not paste a six-plugin snapshot or backfill missing xAI list entries.
 - `expiresAt = now + expires_in * 1000 - 5 * 60_000`. `currentClaudeCredential` refreshes when `now() >= expiresAt` (skew is already stored).
-- Fingerprint is `sha256:` + hex of `account:<uuid>` else `email:<normalized>` else `refresh:<token>`. `suggestedKey` is `claude-` + first 12 hex chars. Never put raw tokens in Provider ID, labels, logs, or errors.
+- Fingerprint is `sha256:` + hex of `account:<uuid>` else `email:<normalized>`. If neither is present after identity resolution, `claudeLoginResult` throws `ClaudeIdentityMissingError`. Never fingerprint `refresh:<token>`. `suggestedKey` is `claude-` + first 12 hex chars. Never put raw tokens in Provider ID, labels, logs, or errors.
 - Catalog `extra` is `{ protocol: 'anthropic' }`. Do not put `protocol` on `modelMetadata`.
 - Runtime is ProviderV4 `languageModel` only. No raw, no quota, no API-key mode, no Foundry, no plugin-sdk AuthorizationPort changes.
 - OAuth beta is only `oauth-2025-04-20`. Do not invent extra Claude Code betas.
@@ -79,7 +79,7 @@ Private modules under `src/oauth/` and `src/runtime/` are not exported from high
 
 **Interfaces:**
 - Consumes: `zod` from `@aio-proxy/plugin-sdk`.
-- Produces: `ClaudeCredential`, `credentialSchema`, `CLAUDE_CLIENT_ID`, `claudeLoginResult(credentials: ClaudeCredential)`, `normalizeClaudeEmail(value: string | undefined): string | undefined`.
+- Produces: `ClaudeCredential`, `credentialSchema`, `CLAUDE_CLIENT_ID`, `claudeLoginResult(credentials: ClaudeCredential)`, `ClaudeIdentityMissingError`, `normalizeClaudeEmail(value: string | undefined): string | undefined`.
 
 - [ ] **Step 1: Write package metadata and the failing fingerprint test**
 
@@ -166,11 +166,11 @@ Create `packages/plugins/anthropic-claude/src/oauth.test.ts`:
 ```ts
 import { describe, expect, test } from 'bun:test';
 
-import { claudeLoginResult, normalizeClaudeEmail } from './oauth';
+import { ClaudeIdentityMissingError, claudeLoginResult, normalizeClaudeEmail } from './oauth';
 import type { ClaudeCredential } from './schema';
 
 describe('Claude login identity', () => {
-  test('fingerprints account uuid ahead of email and refresh token', () => {
+  test('fingerprints account uuid ahead of email', () => {
     const credentials: ClaudeCredential = {
       accessToken: 'access-secret',
       refreshToken: 'refresh-secret',
@@ -191,7 +191,7 @@ describe('Claude login identity', () => {
     expect(result.fingerprint).not.toContain('refresh-secret');
   });
 
-  test('falls back from email to refresh token and normalizes empty email', () => {
+  test('fingerprints email when account id is absent and rejects identity-less credentials', () => {
     expect(normalizeClaudeEmail(' Person@Example.com ')).toBe('person@example.com');
     expect(normalizeClaudeEmail('   ')).toBeUndefined();
     const emailed = claudeLoginResult({
@@ -202,15 +202,20 @@ describe('Claude login identity', () => {
     });
     const emailDigest = new Bun.CryptoHasher('sha256').update('email:person@example.com').digest('hex');
     expect(emailed.fingerprint).toBe(`sha256:${emailDigest}`);
-    const refreshOnly = claudeLoginResult({
-      accessToken: 'a',
-      refreshToken: 'refresh-secret',
-      expiresAt: 1,
+    expect(() =>
+      claudeLoginResult({
+        accessToken: 'a',
+        refreshToken: 'refresh-secret',
+        expiresAt: 1,
+      }),
+    ).toThrow(ClaudeIdentityMissingError);
+    const rotated = claudeLoginResult({
+      accessToken: 'b',
+      refreshToken: 'other-refresh',
+      expiresAt: 2,
+      email: 'Person@Example.com',
     });
-    const refreshDigest = new Bun.CryptoHasher('sha256').update('refresh:refresh-secret').digest('hex');
-    expect(refreshOnly.fingerprint).toBe(`sha256:${refreshDigest}`);
-    expect(refreshOnly.accountLabel).toBe('Claude Pro/Max');
-    expect(refreshOnly.suggestedKey).toBe(`claude-${refreshDigest.slice(0, 12)}`);
+    expect(rotated.fingerprint).toBe(emailed.fingerprint);
   });
 });
 ```
@@ -278,11 +283,21 @@ export function normalizeClaudeEmail(value: string | undefined): string | undefi
   return email === '' ? undefined : email;
 }
 
+export class ClaudeIdentityMissingError extends Error {
+  override readonly name = 'ClaudeIdentityMissingError';
+  constructor() {
+    super('Claude login did not return a stable account identity');
+  }
+}
+
 export function claudeLoginResult(credentials: ClaudeCredential) {
   const email = normalizeClaudeEmail(credentials.email);
   const accountId = credentials.accountId?.trim() || undefined;
   const organizationId = credentials.organizationId?.trim() || undefined;
   const organizationName = credentials.organizationName?.trim() || undefined;
+  if (accountId === undefined && email === undefined) {
+    throw new ClaudeIdentityMissingError();
+  }
   const normalized: ClaudeCredential = {
     accessToken: credentials.accessToken,
     refreshToken: credentials.refreshToken,
@@ -292,9 +307,8 @@ export function claudeLoginResult(credentials: ClaudeCredential) {
     ...(organizationId === undefined ? {} : { organizationId }),
     ...(organizationName === undefined ? {} : { organizationName }),
   };
-  let identity = `refresh:${normalized.refreshToken}`;
-  if (normalized.email !== undefined) identity = `email:${normalized.email}`;
-  if (normalized.accountId !== undefined) identity = `account:${normalized.accountId}`;
+  const identity =
+    normalized.accountId === undefined ? `email:${normalized.email}` : `account:${normalized.accountId}`;
   const digest = new Bun.CryptoHasher('sha256').update(identity).digest('hex');
   return {
     fingerprint: `sha256:${digest}`,
@@ -460,7 +474,7 @@ git commit -m "feat(anthropic-claude): build PKCE authorize URL with code=true"
 
 **Interfaces:**
 - Consumes: `LocalizedText`, `OAuthLoginContext`, `RuntimeFetch` from `@aio-proxy/plugin-sdk`; `isPlainObject` from `es-toolkit/predicate`; `generatePKCE`, `generateState`; `claudeLoginResult`; constants.
-- Produces: `loginClaude(context: OAuthLoginContext, presentation: { readonly waiting: LocalizedText }, options?: ClaudeOAuthDependencies)`, `exchangeClaudeAuthorizationCode(...)`, `resolveClaudeIdentity(...)`, `ClaudeTokenExchangeError`, `ClaudeOAuthDependencies`.
+- Produces: `loginClaude(context: OAuthLoginContext, presentation: { readonly waiting: LocalizedText }, options?: ClaudeOAuthDependencies)`, `exchangeClaudeAuthorizationCode(...)`, `resolveClaudeIdentity(...)`, `ClaudeTokenExchangeError`, `ClaudeIdentityMissingError`, `ClaudeOAuthDependencies`.
 
 - [ ] **Step 1: Write the failing login and identity tests**
 
@@ -587,7 +601,7 @@ Append to `packages/plugins/anthropic-claude/src/oauth.test.ts`:
 import type { OAuthLoginContext, RuntimeRequestInit } from '@aio-proxy/plugin-sdk';
 
 import { CLAUDE_CLIENT_ID, CLAUDE_LOOPBACK, CLAUDE_TOKEN_URL } from './oauth/constants';
-import { ClaudeTokenExchangeError, loginClaude } from './oauth';
+import { ClaudeIdentityMissingError, ClaudeTokenExchangeError, loginClaude } from './oauth';
 
 test('exchanges the loopback code as JSON without a beta header', async () => {
   const redirectUri = 'http://localhost:54545/callback';
@@ -669,6 +683,30 @@ test('does not leak the authorization code when exchange fails', async () => {
   expect(error).toBeInstanceOf(ClaudeTokenExchangeError);
   expect(error).toMatchObject({ status: 400 });
   expect(JSON.stringify(error)).not.toContain('secret-code');
+});
+
+test('fails login when token and bootstrap omit account and email', async () => {
+  await expect(
+    loginClaude(
+      loginContext({
+        loopback: async () => ({ code: 'code', redirectUri: 'http://localhost:54545/callback' }),
+      }),
+      { waiting: 'Waiting for Claude authorization' },
+      {
+        fetch: async (input) => {
+          const url = String(input);
+          if (url.includes('/oauth/token')) {
+            return Response.json({
+              access_token: 'access-1',
+              refresh_token: 'refresh-1',
+              expires_in: 3600,
+            });
+          }
+          return new Response('nope', { status: 500 });
+        },
+      },
+    ),
+  ).rejects.toBeInstanceOf(ClaudeIdentityMissingError);
 });
 
 function loginContext(
@@ -755,6 +793,8 @@ export async function loginClaude(
   });
 }
 ```
+
+`claudeLoginResult` throws `ClaudeIdentityMissingError` when the token body and bootstrap still omit both `accountId` and `email`. That failure is fatal for login and import. Do not invent a refresh-token fingerprint.
 
 `exchangeClaudeAuthorizationCode` must POST JSON to `CLAUDE_TOKEN_URL` with keys in this insertion order: `grant_type`, `code`, `redirect_uri`, `client_id`, `code_verifier`, `state`. No `anthropic-beta`. Require non-empty access token, refresh token, and positive `expires_in`. On `!response.ok` throw `ClaudeTokenExchangeError` with status only.
 
@@ -1224,7 +1264,7 @@ import type { OAuthAdapter, OAuthLoginContext, PluginDescriptor } from '@aio-pro
 import claudePlugin, { CLAUDE_PLUGIN_VERSION, createAnthropicClaudePlugin } from '.';
 import packageJson from '../package.json' with { type: 'json' };
 import { CLAUDE_CATALOG_TTL_MS } from './catalog';
-import { claudeLoginResult } from './oauth';
+import { ClaudeIdentityMissingError, claudeLoginResult } from './oauth';
 import type { ClaudeCredential } from './schema';
 
 test('exports a versioned default descriptor with empty account options', async () => {
@@ -1327,8 +1367,26 @@ test('imports CPA claude credentials with the same fingerprint rules', async () 
     access_token: 'access-1',
     refresh_token: 'refresh-1',
     expired: 'invalid',
+    email: 'person@example.com',
   });
   expect(invalidExpiry.expiresAt).toBe(0);
+});
+
+test('rejects CPA files that still have no account or email after bootstrap', async () => {
+  const adapter = await adapterFrom(
+    createAnthropicClaudePlugin(undefined, {
+      fetch: async () => new Response('nope', { status: 500 }),
+    }),
+  );
+  const importer = adapter.credentialImports?.cpa;
+  if (importer === undefined) throw new Error('CPA importer not registered');
+  await expect(
+    importer.import(
+      { progress: () => {}, signal: new AbortController().signal, fetch: async () => new Response('nope', { status: 500 }) },
+      {},
+      { type: 'claude', access_token: 'access-1', refresh_token: 'refresh-1' },
+    ),
+  ).rejects.toBeInstanceOf(ClaudeIdentityMissingError);
 });
 
 test('imports flat CPA claude files using account_uuid aliases', async () => {
@@ -1436,7 +1494,7 @@ Expected: FAIL because `src/index.ts` / `createAnthropicClaudePlugin` do not exi
 - `credentials: credentialSchema`;
 - `icon: 'anthropic'`;
 - `login` parse options then `loginClaude(context, { waiting: presentationText.waitingForAuthorization }, deps)` (inject `context.fetch` when the factory did not);
-- `credentialImports.cpa.types = ['claude']` with a `.loose()` Zod object requiring `type: 'claude'`, `access_token`, `refresh_token`; map `expired` with `Date.parse` (invalid → `0`); map identity as `email` / `account.email_address` (same normalize as login), then `account.uuid` / `account_id` / `account_uuid`, then `organization.uuid` / `organization_uuid` and `organization.name` / `organization_name` (nested wins); ignore `id_token`, `claude_device_ids`, `last_refresh`; call `claudeLoginResult`; if account/email still missing and import `context.fetch` exists, run non-fatal `resolveClaudeIdentity` with `phase: 'login'`;
+- `credentialImports.cpa.types = ['claude']` with a `.loose()` Zod object requiring `type: 'claude'`, `access_token`, `refresh_token`; map `expired` with `Date.parse` (invalid → `0`); map identity as `email` / `account.email_address` (same normalize as login), then `account.uuid` / `account_id` / `account_uuid`, then `organization.uuid` / `organization_uuid` and `organization.name` / `organization_name` (nested wins); ignore `id_token`, `claude_device_ids`, `last_refresh`; if account/email are still missing and import `context.fetch` exists, run non-fatal `resolveClaudeIdentity` with `phase: 'login'` and merge; then call `claudeLoginResult`, which throws `ClaudeIdentityMissingError` when both are still missing;
 - catalog TTL + `discoverClaudeModels` + `initialClaudeCatalogFallback`;
 - `createRuntime: createClaudeRuntime`;
 - `refreshCredential` always calls `refreshClaudeCredential` (no expiry short-circuit);

@@ -59,16 +59,21 @@ Do not implement until that spec is `已确认，进入实现`.
 - `packages/plugins/openrouter/src/plugin/plugin.ts` — `createOpenRouterPlugin`.
 - `packages/plugins/openrouter/src/plugin/plugin.test.ts` — descriptor, empty options, omitted refresh.
 - `.changeset/openrouter-oauth.md` — product + internal minor notes.
-- `packages/shared/src/oauth-loopback-callback.ts` — pure `resolveOAuthLoopbackCallback`.
-- `packages/shared/src/oauth-loopback-callback.test.ts` — shared case table (stateRequired true/false).
+- `packages/shared/src/oauth-loopback-callback/index.ts` — export-only.
+- `packages/shared/src/oauth-loopback-callback/oauth-loopback-callback.ts` — pure `resolveOAuthLoopbackCallback`.
+- `packages/shared/src/oauth-loopback-callback/oauth-loopback-callback.test.ts` — shared case table (stateRequired true/false).
 
 **Modify:**
 
+- `packages/shared/src/index.ts` — re-export `resolveOAuthLoopbackCallback`.
+- `packages/cli/src/plugin-commands/loopback/run.ts` — pass `{ stateRequired }` after `buildAuthorizationUrl`.
+- `packages/cli/src/plugin-commands/loopback/test-support.ts` — default authorize URL includes `state=`.
 - `packages/cli/src/plugin-commands/loopback/callback.ts` — missing-state and loose-code parse.
 - `packages/cli/src/plugin-commands/loopback/callback.test.ts` — manual paste cases.
 - `packages/cli/src/plugin-commands/loopback/callback.automatic.test.ts` — browser callback without state.
 - `packages/server/src/oauth-login-session/callback.ts` — same parse rules.
 - `packages/server/src/oauth-login-session/callback.test.ts` — same parse rules.
+- `packages/server/src/oauth-login-session/authorization.ts` — pass `{ stateRequired }` after building the authorize URL.
 - `packages/server/src/oauth-login-session/authorization.test.ts` — loopback HTTP without state.
 - `packages/core/src/plugins/builtins.ts` — embed the plugin (Task 7).
 - `packages/core/src/plugins/builtins.test.ts` — reserved identity + zh-Hans copy (Task 7).
@@ -84,16 +89,23 @@ Do not implement until that spec is `已确认，进入实现`.
 ### Task 1: Host loopback accepts a missing OAuth state
 
 **Files:**
+- Create: `packages/shared/src/oauth-loopback-callback/index.ts`
+- Create: `packages/shared/src/oauth-loopback-callback/oauth-loopback-callback.ts`
+- Create: `packages/shared/src/oauth-loopback-callback/oauth-loopback-callback.test.ts`
+- Modify: `packages/shared/src/index.ts`
 - Modify: `packages/cli/src/plugin-commands/loopback/callback.ts`
 - Modify: `packages/cli/src/plugin-commands/loopback/callback.test.ts`
 - Modify: `packages/cli/src/plugin-commands/loopback/callback.automatic.test.ts`
+- Modify: `packages/cli/src/plugin-commands/loopback/run.ts`
+- Modify: `packages/cli/src/plugin-commands/loopback/test-support.ts`
 - Modify: `packages/server/src/oauth-login-session/callback.ts`
 - Modify: `packages/server/src/oauth-login-session/callback.test.ts`
+- Modify: `packages/server/src/oauth-login-session/authorization.ts`
 - Modify: `packages/server/src/oauth-login-session/authorization.test.ts`
 
 **Interfaces:**
-- Consumes: the built authorize URL plus existing `parseCallback` / `parseOAuthCallback` call sites in CLI `run.ts` and Dashboard loopback.
-- Produces: `@aio-proxy/shared` `resolveOAuthLoopbackCallback(raw, expectedRedirectUri, expectedState, { stateRequired })`. Host wrappers keep their error classes. `stateRequired` is `new URL(authorizationUrl).searchParams.has('state')` after `buildAuthorizationUrl`. Signatures of the host wrappers may add that options object; `LoopbackRequest` does not change.
+- Consumes: the built authorize URL plus existing `parseCallback` / `parseOAuthCallback` call sites in CLI `run.ts` and Dashboard `authorization.ts`.
+- Produces: `@aio-proxy/shared` `resolveOAuthLoopbackCallback(raw, expectedRedirectUri, expectedState, { stateRequired })`, re-exported from `packages/shared/src/index.ts`. Host wrappers keep their error classes. `stateRequired` is `new URL(authorizationUrl).searchParams.has('state')` after `buildAuthorizationUrl`. Signatures of the host wrappers may add that options object; `LoopbackRequest` does not change.
 
 Locked order: URL or (only if `stateRequired === false`) loose-code → origin (URL only) → state gate → `error` → `code`. `error` stays after the state gate.
 
@@ -311,9 +323,9 @@ Expected: FAIL on the no-state and raw-code cases (`CALLBACK_STATE_MISMATCH` / `
 
 - [ ] **Step 5: Implement the shared parse helper and both host wrappers**
 
-Add `packages/shared/src/oauth-loopback-callback.ts` as a pure function. It must take `{ stateRequired }` and implement the locked order. Do not throw host error classes from `shared`.
+Add `packages/shared/src/oauth-loopback-callback/` as a same-name directory (`index.ts` export-only, `oauth-loopback-callback.ts`, colocated test). It must take `{ stateRequired }` and implement the locked order. Do not throw host error classes from `shared`. Re-export `resolveOAuthLoopbackCallback` from `packages/shared/src/index.ts` next to `isRecord`; CLI and server import it from `@aio-proxy/shared`, not from a deep path.
 
-Then wrap it in both hosts. In CLI `run.ts` / Dashboard loopback, after `buildAuthorizationUrl`:
+Then wrap it in both hosts. In CLI `run.ts` and Dashboard `authorization.ts`, after `buildAuthorizationUrl`:
 
 ```ts
 const stateRequired = new URL(authorizationUrl).searchParams.has('state');
@@ -371,11 +383,16 @@ Expected: PASS, including the original wrong-state and wrong-origin cases.
 
 ```bash
 git add \
+  packages/shared/src/index.ts \
+  packages/shared/src/oauth-loopback-callback \
   packages/cli/src/plugin-commands/loopback/callback.ts \
   packages/cli/src/plugin-commands/loopback/callback.test.ts \
   packages/cli/src/plugin-commands/loopback/callback.automatic.test.ts \
+  packages/cli/src/plugin-commands/loopback/run.ts \
+  packages/cli/src/plugin-commands/loopback/test-support.ts \
   packages/server/src/oauth-login-session/callback.ts \
   packages/server/src/oauth-login-session/callback.test.ts \
+  packages/server/src/oauth-login-session/authorization.ts \
   packages/server/src/oauth-login-session/authorization.test.ts
 git commit -m "feat(openrouter): accept loopback callbacks that omit OAuth state"
 ```

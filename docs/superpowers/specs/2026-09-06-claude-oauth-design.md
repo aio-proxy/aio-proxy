@@ -45,7 +45,7 @@ aio-proxy 已有 built-in OAuth plugin、loopback 授权、credential refresh po
 | Token + refresh | `https://api.anthropic.com/v1/oauth/token`，JSON body。不跟随 CPA 当前 `platform.claude.com`（见下方对照） |
 | Scopes | 空格分隔：`org:create_api_key user:profile user:inference user:sessions:claude_code user:mcp_servers user:file_upload` |
 | 身份 | token JSON 的 `account` / `organization`；缺失时 GET `https://api.anthropic.com/api/claude_cli/bootstrap`。org 只在登录时写入 |
-| Fingerprint | 不可逆 SHA-256：`account:<uuid>`，否则 `email:<normalized>`，否则 `refresh:<token>`。格式 `sha256:<hex>`。`suggestedKey = 'claude-' + hex.slice(0, 12)` |
+| Fingerprint | 不可逆 SHA-256：`account:<uuid>`，否则 `email:<normalized>`。没有 account 且没有 email 则登录/导入失败。格式 `sha256:<hex>`。`suggestedKey = 'claude-' + hex.slice(0, 12)` |
 | CPA import | `types: ['claude']`，credential 形状与登录相同 |
 | 模型发现 | OAuth Bearer GET `https://api.anthropic.com/v1/models`，TTL 6 小时，分页直到 `has_more` 为假 |
 | Catalog fallback | 仅可重试发现失败：`claude-sonnet-5`、`claude-opus-5`、`claude-haiku-4-5` |
@@ -208,7 +208,7 @@ oauth_account.organization_uuid
 oauth_account.organization_name
 ```
 
-只填补缺失字段，不覆盖 token 响应里已经有的值。bootstrap 失败（network、非 2xx、无效 JSON）不得让登录失败：保留已有 token 与已解析字段。`AbortError` / `context.signal.aborted` **必须**原样抛出（`signal.reason`），不得当成非致命 bootstrap 失败而继续 `claudeLoginResult`。手动 `refreshCredential` 同样如此。
+只填补缺失字段，不覆盖 token 响应里已经有的值。bootstrap 失败（network、非 2xx、无效 JSON）本身不抛：保留已有 token 与已解析字段。若此时仍没有 `accountId` 也没有 `email`，`claudeLoginResult` 必须失败，不得用 refresh token 冒充身份。`AbortError` / `context.signal.aborted` **必须**原样抛出（`signal.reason`），不得当成非致命 bootstrap 失败而继续 `claudeLoginResult`。手动 `refreshCredential` 同样如此。
 
 登录只捕获一次 organization。refresh 不得改写已存储的 `organizationId` / `organizationName`：token JSON 即使带了不同的 `organization`，以及 bootstrap 即使返回了 org，都丢弃。`refreshClaudeCredential` 始终保留已存 org 字段。
 
@@ -232,7 +232,8 @@ Zod schema 与该形状一一对应：三个 token 字段必填，四个身份�
 
 1. 存在 `accountId` → `account:<accountId>`（只 trim，不改大小写）
 2. 否则存在规范化 email → `email:<email>`
-3. 否则 → `refresh:<refreshToken>`
+
+没有 `accountId` 且没有 email 时，`claudeLoginResult` 抛 `ClaudeIdentityMissingError`。禁止 `refresh:<token>`：refresh token 会轮换，宿主 `persistOAuthAccount` 在重登 fingerprint 变化时抛 `ProviderFingerprintMismatchError`。仍允许缺 email：只要有 `accountId` 就能登录，这比 CPA「必须有 email」宽松。
 
 输出：
 
@@ -450,13 +451,13 @@ Dashboard 走现有 built-in catalog，不新增 dashboard 文件。
 
 忽略 `id_token`、`last_refresh`、`claude_device_ids`、`base_url` 等未知键。`expired` 是绝对时间戳，**不再**减 5 分钟。`account_uuid` / `organization_*` 只在对应嵌套字段缺失时填补。
 
-导入后走与登录相同的 `claudeLoginResult()`。若 `accountId` / `email` 仍缺且 import context 提供 `fetch`，用 access token 做一次非致命 identity bootstrap，以便 fingerprint 尽量落到 `account:`。bootstrap 失败仍导入，fingerprint 退到 email 或 refresh token。
+导入后走与登录相同的 `claudeLoginResult()`。若 `accountId` / `email` 仍缺且 import context 提供 `fetch`，先用 access token 做一次非致命 identity bootstrap，再调用 `claudeLoginResult`。bootstrap 之后仍没有稳定身份则该文件导入失败，不创建 refresh-token fingerprint。
 
 ## 测试策略
 
 实现遵循 test-first，每个行为只保留最小有价值回归：
 
-1. Fingerprint / login result：account > email > refresh；规范化 email；suggestedKey；secret 不出现在 fingerprint 明文。
+1. Fingerprint / login result：account > email；无身份则失败；规范化 email；suggestedKey；secret 不出现在 fingerprint 明文。重登同一 account/email 保持 fingerprint。
 2. Authorize URL：固定 host/port/path、PKCE S256、`code=true`、完整 scope、使用宿主 redirect。
 3. Code exchange：JSON body 字段、**不**带 beta、control traffic、缺 refresh/expiry 失败、错误不泄漏 secret。
 4. Identity：token 已含身份则不打 bootstrap；缺失则 bootstrap；bootstrap 失败不阻断登录；refresh 不改写 org。
@@ -529,6 +530,6 @@ Dashboard 走现有 built-in catalog，不新增 dashboard 文件。
 | Device | 登录生成 64-hex `claude_device_ids`，推理时当 Claude Code 设备指纹 | 不生成、不导入进 credential | 忽略 CPA 文件里的该数组 |
 | 推理 | Messages raw + 一长串 Claude Code beta + 可选 CCH 签名 | ProviderV4 `@ai-sdk/anthropic`，只保证 `oauth-2025-04-20` | 保持 v1 最小集 |
 | 存储 / 导入 | `type: "claude"`，扁平 `email` / `account_uuid` / `organization_uuid` / `organization_name` / `expired` | 同一 `type`，同时接受扁平 CPA 键和 omp 嵌套 `account` / `organization` | **补 CPA 扁平键**，否则真实 CPA 文件导不出 org/account |
-| Email | `sdk/auth/claude.go` 在 `tokenStorage.Email == ""` 时登录失败 | 允许缺 email；fingerprint 退到 account 或 refresh | 有意比 CPA 宽松，bootstrap 失败仍能登录 |
+| Email | `sdk/auth/claude.go` 在 `tokenStorage.Email == ""` 时登录失败 | 允许缺 email，但必须有 `accountId` 或 email | 仍比 CPA 宽松（account-only 可登录）。不再用 refresh token 做 fingerprint，否则重登会 `ProviderFingerprintMismatchError` |
 
 Refresh 时 CPA 还会再用 profile **覆盖** email / account / org。本设计 refresh 只换票，不改已存 org。

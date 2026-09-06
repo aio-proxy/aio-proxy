@@ -179,7 +179,7 @@ const stateRequired = new URL(authorizationUrl).searchParams.has('state');
    - `stateRequired === false`：若字符串含 `state=` 且值不等于 expected → `STATE_MISMATCH`；否则从 `code=` 或（trim 后无空白、无 `://` 的）裸 token 取 `code`。
    - 错 origin 的完整 URL 仍走第 1 条并 `MISMATCH`。
 
-实现：在 `@aio-proxy/shared` 新增纯函数 `resolveOAuthLoopbackCallback`，返回 `{ ok: true, code }` 或 `{ ok: false, reason }`。CLI / Dashboard 只把 `reason` 映射到既有错误类。禁止再手写两份规则。现有 loopback `request()` 测试夹具的 authorize URL 必须带上 `state=`，否则会误走 OpenRouter 门控。
+实现：在 `@aio-proxy/shared` 新增纯函数 `resolveOAuthLoopbackCallback`（same-name 目录 `packages/shared/src/oauth-loopback-callback/`，并由 `packages/shared/src/index.ts` 再导出），返回 `{ ok: true, code }` 或 `{ ok: false, reason }`。CLI `run.ts` 与 Dashboard `authorization.ts` 在 `buildAuthorizationUrl` 之后传入 `{ stateRequired }`，两宿主只把 `reason` 映射到既有错误类。禁止再手写两份规则。现有 loopback `request()` 测试夹具的 authorize URL 必须带上 `state=`，否则会误走 OpenRouter 门控。
 
 `packages/core/src/plugins/account-login/` 不校验 state，无需改动。不引入 native scheme，不绕开 `loopback`。
 
