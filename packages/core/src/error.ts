@@ -168,6 +168,24 @@ export class OpenAIImagesInvalidRequestError extends AioProxyError {
   }
 }
 
+export class OpenAIAudioUnsupportedFeatureError extends AioProxyError {
+  readonly code = 'UNSUPPORTED_OPENAI_AUDIO_FEATURE';
+  readonly status = 501;
+
+  constructor(readonly feature: 'stream_format' | 'chunking_strategy' | 'translations' | 'response_format') {
+    super('OpenAIAudioUnsupportedFeatureError', `OpenAI Audio feature is not supported: ${feature}`);
+  }
+}
+
+export class OpenAIAudioInvalidRequestError extends AioProxyError {
+  readonly code = 'INVALID_OPENAI_AUDIO_REQUEST';
+  readonly status = 400;
+
+  constructor(readonly param: 'file' | 'input' | 'voice' | 'speed') {
+    super('OpenAIAudioInvalidRequestError', `Invalid OpenAI Audio request parameter: ${param}`);
+  }
+}
+
 export class OpenAICompletionsUnsupportedFeatureError extends AioProxyError {
   readonly code = 'UNSUPPORTED_OPENAI_COMPLETIONS_FEATURE';
   readonly status = 501;

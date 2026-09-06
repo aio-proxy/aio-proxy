@@ -13,6 +13,8 @@ import {
   GeminiInteractionsUnsupportedFeatureError,
   GeminiInlineDataTooLargeError,
   ImageInputUnsupportedError,
+  OpenAIAudioInvalidRequestError,
+  OpenAIAudioUnsupportedFeatureError,
   OpenAICompletionsTransformError,
   OpenAICompletionsUnsupportedFeatureError,
   OpenAIImagesInvalidRequestError,
@@ -167,6 +169,37 @@ function openAIImagesUnsupported(feature: string): Response {
   return IMAGES_UNSUPPORTED_FEATURES.has(feature)
     ? openAIInvalid(501, 'unsupported_feature', `OpenAI Images feature is not supported: ${feature}`)
     : openAIInvalid(501, 'not_implemented', 'Provider does not support OpenAI Images transform dispatch');
+}
+
+const AUDIO_NOT_IMPLEMENTED_MESSAGE = 'No configured provider can serve OpenAI Audio for this model';
+const AUDIO_UNSUPPORTED_FEATURES = new Set(['stream_format', 'chunking_strategy', 'translations', 'response_format']);
+
+export const openAIAudioErrors: ProtocolErrorMapper = {
+  requestError: (error) => {
+    if (error instanceof OpenAIAudioUnsupportedFeatureError) return openAIAudioUnsupported(error.feature);
+    if (error instanceof OpenAIAudioInvalidRequestError) return openAIInvalid(400, 'invalid_request', error.message);
+    if (error instanceof RequestBodyIdleTimeoutError) return openAIInvalid(408, 'request_timeout', error.message);
+    if (error instanceof Error && error.name === 'AbortError') return openAIInvalid(499, 'aborted', error.message);
+    return error instanceof SyntaxError ||
+      error instanceof ZodError ||
+      error instanceof InvalidCompressedRequestBodyError
+      ? openAIInvalid(400, 'invalid_request', withZodDetail('Invalid OpenAI Audio request', error))
+      : undefined;
+  },
+  modelNotFound: (message) => openAIInvalid(404, 'model_not_found', message),
+  previousResponseConflict: () => openAIInvalid(409, 'previous_response_conflict', PREVIOUS_RESPONSE_CONFLICT_MESSAGE),
+  tooLarge: () => openAIInvalid(413, 'request_too_large', 'Request body too large'),
+  unsupportedContentEncoding: () => openAIInvalid(415, 'unsupported_content_encoding', 'Unsupported Content-Encoding'),
+  unsupported: openAIAudioUnsupported,
+  provider: openAIProviderError,
+  rateLimited: openAIRateLimited,
+};
+
+function openAIAudioUnsupported(feature: string): Response {
+  if (feature === 'audio') return openAIInvalid(501, 'not_implemented', AUDIO_NOT_IMPLEMENTED_MESSAGE);
+  return AUDIO_UNSUPPORTED_FEATURES.has(feature)
+    ? openAIInvalid(501, 'unsupported_feature', `OpenAI Audio feature is not supported: ${feature}`)
+    : openAIInvalid(501, 'not_implemented', 'Provider does not support OpenAI Audio transform dispatch');
 }
 
 export const geminiGenerateContentErrors: ProtocolErrorMapper = {
