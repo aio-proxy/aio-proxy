@@ -89,7 +89,11 @@ template (only `AIO_PROXY_HOME`). The new process would then look
 unmanaged and never auto-update. `isManagedService` therefore also
 accepts manager-native evidence when the marker is missing:
 
-- Linux: systemd `INVOCATION_ID` is set **and** our unit file exists.
+- Linux: this process is `aio-proxy.service` — a `/proc/self/cgroup` path
+  segment equals `aio-proxy.service`. Do not treat `INVOCATION_ID` plus a
+  unit file on disk as sufficient (session scopes inherit `INVOCATION_ID`).
+  A missing or unreadable cgroup fails closed. A loose substring is not a
+  match.
 - Darwin: `XPC_SERVICE_NAME` (or the launchd job label) equals
   `com.aio-proxy.agent`.
 
@@ -448,8 +452,8 @@ Minimum coverage:
   ticks; a deferred `fetchLatest` that resolves after `stop()` or after
   `getEnabled()` becomes false does not call `applyUpdate`; missing
   `applyUpdate` never starts a timer.
-- Pre-marker managed processes are detected via systemd `INVOCATION_ID`
-  / launchd job id; a Cellar path never becomes a binary upgrade; brew
+- Pre-marker managed processes are detected via this systemd unit's
+  cgroup (`aio-proxy.service` path segment) / launchd job id; a Cellar path never becomes a binary upgrade; brew
   targets carry `{brewPrefix}/bin/brew` and the installer execs that
   path; brew no-op (version did not move) returns `'unchanged'` and does
   not restart; Darwin in-job helper unloads after detach and does not

@@ -765,12 +765,29 @@ export const isManagedAutoUpdateProcess = (
   io?: {
     readonly platform?: NodeJS.Platform;
     readonly unitExists?: () => boolean;
+    readonly readCgroup?: () => string | undefined;
+    readonly isOurSystemdService?: () => boolean;
   },
 ): boolean => {
   if (env['AIO_PROXY_MANAGED'] === '1') return true;
   const os = io?.platform ?? process.platform;
-  const unitExists = io?.unitExists ?? isManagedServiceInstalled;
-  if (os === 'linux') return Boolean(env['INVOCATION_ID']) && unitExists();
+  if (os === 'linux') {
+    if (io?.isOurSystemdService?.() === true) return true;
+    let cgroup: string | undefined;
+    try {
+      cgroup = (io?.readCgroup ?? (() => readFileSync('/proc/self/cgroup', 'utf8')))();
+    } catch {
+      return false;
+    }
+    return (
+      cgroup !== undefined &&
+      cgroup !== '' &&
+      cgroup.split('\n').some((line) => {
+        const path = line.slice(line.lastIndexOf(':') + 1);
+        return path.split('/').includes('aio-proxy.service');
+      })
+    );
+  }
   if (os === 'darwin') return env['XPC_SERVICE_NAME'] === 'com.aio-proxy.agent';
   return false;
 };
@@ -867,11 +884,17 @@ test('createServer does not apply an update when the service is unmanaged', asyn
 Extract `createCliAutoUpdateHooks` and test:
 
 ```ts
-test('isManagedAutoUpdateProcess accepts the marker and pre-marker manager env', () => {
+test('isManagedAutoUpdateProcess accepts the marker and this-job manager evidence', () => {
   expect(isManagedAutoUpdateProcess({})).toBe(false);
   expect(isManagedAutoUpdateProcess({ AIO_PROXY_MANAGED: '1' })).toBe(true);
   expect(
-    isManagedAutoUpdateProcess({ INVOCATION_ID: 'abc' }, { platform: 'linux', unitExists: () => true }),
+    isManagedAutoUpdateProcess(
+      { INVOCATION_ID: 'abc' },
+      { platform: 'linux', unitExists: () => true, readCgroup: () => '0::/user.slice/session-3.scope' },
+    ),
+  ).toBe(false);
+  expect(
+    isManagedAutoUpdateProcess({}, { platform: 'linux', readCgroup: () => '0::/user.slice/aio-proxy.service' }),
   ).toBe(true);
   expect(
     isManagedAutoUpdateProcess({ INVOCATION_ID: 'abc' }, { platform: 'linux', unitExists: () => false }),
@@ -917,7 +940,7 @@ Add `resolveUpgradeTargetFrom` / `resolveStableManagedExec` tests in `upgrade.te
 
 Unit template tests already snapshot `AIO_PROXY_HOME` — assert `AIO_PROXY_MANAGED=1` is also present on systemd and launchd output.
 
-Boot-migration test: pre-marker unit + `INVOCATION_ID` / `XPC_SERVICE_NAME` → `writeManagedUnit` is called with the stable launcher; `serviceRestart` is not.
+Boot-migration test: pre-marker unit + this-job evidence (`aio-proxy.service` cgroup segment / `XPC_SERVICE_NAME`) → `writeManagedUnit` is called with the stable launcher; `serviceRestart` is not. Linux session `INVOCATION_ID` + unit on disk + a non-service cgroup must not rewrite.
 
 - [ ] **Step 2: Run the tests and confirm they fail**
 

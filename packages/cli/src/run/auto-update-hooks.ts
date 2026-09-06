@@ -1,20 +1,52 @@
 import { existsSync, readFileSync } from 'node:fs';
 
-import { isManagedServiceInstalled, managedUnitPath, resolveExec, writeManagedUnit } from '../service/service';
+import { managedUnitPath, resolveExec, writeManagedUnit } from '../service/service';
+import { SYSTEMD_UNIT_NAME } from '../service/unit-templates';
 import { resolveStableManagedExec, resolveUpgradeTargetFrom } from '../upgrade/detect';
 import { runUpgradeCommand } from '../upgrade/upgrade';
 
-export const isManagedAutoUpdateProcess = (
-  env: NodeJS.ProcessEnv = process.env,
-  io?: {
-    readonly platform?: NodeJS.Platform;
-    readonly unitExists?: () => boolean;
-  },
-): boolean => {
+export type ManagedProcessIo = {
+  readonly platform?: NodeJS.Platform;
+  readonly unitExists?: () => boolean;
+  readonly readCgroup?: () => string | undefined;
+  readonly isOurSystemdService?: () => boolean;
+};
+
+const readSelfCgroup = (): string | undefined => {
+  try {
+    return readFileSync('/proc/self/cgroup', 'utf8');
+  } catch {
+    return undefined;
+  }
+};
+
+const cgroupHasUnitSegment = (cgroup: string, unitName: string): boolean => {
+  for (const line of cgroup.split('\n')) {
+    const pathStart = line.lastIndexOf(':');
+    const path = pathStart === -1 ? line : line.slice(pathStart + 1);
+    for (const segment of path.split('/')) {
+      if (segment === unitName) return true;
+    }
+  }
+  return false;
+};
+
+const isLinuxManagedService = (io?: ManagedProcessIo): boolean => {
+  if (io?.isOurSystemdService?.() === true) return true;
+  let cgroup: string | undefined;
+  try {
+    cgroup = (io?.readCgroup ?? readSelfCgroup)();
+  } catch {
+    return false;
+  }
+  if (cgroup === undefined || cgroup === '') return false;
+  return cgroupHasUnitSegment(cgroup, SYSTEMD_UNIT_NAME);
+};
+
+export const isManagedAutoUpdateProcess = (env: NodeJS.ProcessEnv = process.env, io?: ManagedProcessIo): boolean => {
   if (env['AIO_PROXY_MANAGED'] === '1') return true;
   const os = io?.platform ?? process.platform;
-  const unitExists = io?.unitExists ?? isManagedServiceInstalled;
-  if (os === 'linux') return Boolean(env['INVOCATION_ID']) && unitExists();
+  if (os === 'linux') return isLinuxManagedService(io);
   if (os === 'darwin') return env['XPC_SERVICE_NAME'] === 'com.aio-proxy.agent';
   return false;
 };
@@ -37,10 +69,8 @@ export const createCliAutoUpdateHooks = (deps?: {
   },
 });
 
-export type MigratePreMarkerIo = {
+export type MigratePreMarkerIo = ManagedProcessIo & {
   readonly env?: NodeJS.ProcessEnv;
-  readonly platform?: NodeJS.Platform;
-  readonly unitExists?: () => boolean;
   readonly readUnit?: () => string | undefined;
   readonly writeManagedUnit?: (os: 'darwin' | 'linux', exec: string) => Promise<string>;
   readonly resolveExec?: () => string;
@@ -52,7 +82,16 @@ export const migratePreMarkerManagedUnit = async (io: MigratePreMarkerIo = {}): 
   if (env['AIO_PROXY_MANAGED'] === '1') return;
   const os = io.platform ?? process.platform;
   if (os !== 'darwin' && os !== 'linux') return;
-  if (!isManagedAutoUpdateProcess(env, { platform: os, unitExists: io.unitExists })) return;
+  if (
+    !isManagedAutoUpdateProcess(env, {
+      platform: os,
+      unitExists: io.unitExists,
+      readCgroup: io.readCgroup,
+      isOurSystemdService: io.isOurSystemdService,
+    })
+  ) {
+    return;
+  }
   const body =
     io.readUnit?.() ??
     (() => {
