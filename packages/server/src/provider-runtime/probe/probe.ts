@@ -9,7 +9,7 @@ const openAIResponsesProbeMaxOutputTokens = 16;
 
 export type ProviderProbeRequest = {
   readonly body?: unknown;
-  /** Defaults to POST; GET probes carry neither body nor content-type. */
+  /** GET 探测既不带 body 也不带 content-type；省略时按 POST 处理。 */
   readonly method?: 'GET' | 'POST';
   readonly path: string;
 };

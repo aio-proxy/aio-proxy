@@ -180,6 +180,7 @@ test('transcription-only audio provider probes GET /v1/models with no body', asy
   let requested: string | undefined;
   let method: string | undefined;
   let contentType: string | null = null;
+  let authorization: string | null = null;
   let body: unknown;
   const provider = {
     apiKey: 'k',
@@ -194,6 +195,7 @@ test('transcription-only audio provider probes GET /v1/models with no body', asy
       requested = input instanceof Request ? input.url : String(input);
       method = init?.method;
       contentType = new Headers(init?.headers).get('content-type');
+      authorization = new Headers(init?.headers).get('authorization');
       body = init?.body ?? undefined;
       return new Response('{"data":[]}', { status: 200 });
     }) as typeof globalThis.fetch,
@@ -205,6 +207,27 @@ test('transcription-only audio provider probes GET /v1/models with no body', asy
   expect(requested).toBe('https://audio.example.com/v1/models');
   expect(body).toBeUndefined();
   expect(contentType).toBeNull();
+  // 探测的意义在于验证凭据，所以 GET 分支也必须注入 api key。
+  expect(authorization).toBe('Bearer k');
+});
+
+test('audio provider that rejects the api key probes FAIL', async () => {
+  const provider = {
+    apiKey: 'wrong',
+    baseURL: 'https://audio.example.com/v1',
+    enabled: true,
+    id: 'audio-401',
+    kind: ProviderKind.Api,
+    models: ['whisper-1'],
+    protocol: ProviderProtocol.OpenAIAudio,
+  } as const;
+  const instance = createApiProvider(provider, {
+    fetch: (async () => new Response('{"error":{}}', { status: 401 })) as typeof globalThis.fetch,
+  });
+
+  // 上游若把 /v1/models 设为免鉴权，错误密钥仍会得到 200 而误报 OK；
+  // 这条只保证鉴权确实被执行时红灯不会丢。
+  expect(await probeApi(provider, instance)).toBe('FAIL');
 });
 
 test('speech audio provider probes the same capability-agnostic endpoint', async () => {
