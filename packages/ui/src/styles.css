@@ -6,6 +6,7 @@
 @import './typeset.css';
 
 @source "./components";
+@source "../../brand/src";
 
 @custom-variant dark (&:is(.dark *));
 

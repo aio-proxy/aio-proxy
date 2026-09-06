@@ -1,5 +1,5 @@
+import { AioProxyLogo } from '@aio-proxy/brand';
 import { m } from '@aio-proxy/i18n';
-import { AioProxyLogo } from '@aio-proxy/ui/components/aio-proxy-logo';
 
 interface AioProxyBrandProps {
   readonly className?: string;

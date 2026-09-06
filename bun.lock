@@ -183,6 +183,7 @@
       "name": "@aio-proxy/dashboard",
       "version": "0.19.1",
       "dependencies": {
+        "@aio-proxy/brand": "workspace:*",
         "@aio-proxy/i18n": "workspace:*",
         "@aio-proxy/plugin-sdk": "workspace:*",
         "@aio-proxy/provider-schemas": "0.1.1",
@@ -504,6 +505,7 @@
     "website": {
       "name": "@aio-proxy/website",
       "dependencies": {
+        "@aio-proxy/brand": "workspace:*",
         "@aio-proxy/ui": "workspace:*",
         "@rspress/core": "2.0.19",
         "react": "catalog:",

@@ -15,6 +15,7 @@
     "test:unit": "rstest run"
   },
   "dependencies": {
+    "@aio-proxy/brand": "workspace:*",
     "@aio-proxy/i18n": "workspace:*",
     "@aio-proxy/plugin-sdk": "workspace:*",
     "@aio-proxy/provider-schemas": "0.1.1",
