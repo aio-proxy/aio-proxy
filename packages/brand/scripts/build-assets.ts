@@ -15,13 +15,29 @@ interface Geometry {
 const readGeometry = async (fileName: string): Promise<Geometry> => {
   const svg = await Bun.file(join(SOURCE_DIR, fileName)).text();
   // Only the first `d` is read, so a multi-path source would be silently truncated.
-  if (svg.match(/<path\b/g)?.length !== 1) {
+  const pathTag = /<path\b[^>]*>/g.exec(svg);
+  if (svg.match(/<path\b/g)?.length !== 1 || !pathTag) {
     throw new Error(`${fileName} must contain exactly one <path> element`);
+  }
+  // Only `d` survives into the artifacts. A re-export carrying `fill-rule`, `transform`, or a
+  // `clip-path` would render differently and the clean-tree assertion could not see it, because
+  // it only compares the generator's output against the generator's own previous output.
+  const extra = pathTag[0]
+    .slice('<path'.length, -1)
+    .replace(/\s(?:d|fill)="[^"]*"/g, '')
+    .replace(/\/$/, '')
+    .trim();
+  if (extra) {
+    throw new Error(`${fileName}: <path> carries unsupported attributes (${extra}); only d and fill are used`);
   }
   const viewBox = /viewBox="([^"]*)"/.exec(svg)?.[1];
   const path = /\bd="([^"]*)"/.exec(svg)?.[1];
   if (!viewBox || !path) {
     throw new Error(`${fileName} is missing a viewBox or a path`);
+  }
+  // The path is embedded in a single-quoted TS string literal in logo-geometry.ts.
+  if (/['\\]/.test(path) || /['\\]/.test(viewBox)) {
+    throw new Error(`${fileName}: geometry contains a quote or backslash, which would break logo-geometry.ts`);
   }
   return { viewBox, path };
 };

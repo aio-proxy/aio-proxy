@@ -5,7 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./assets/*": "./src/*"
+    "./assets/*.svg": "./src/*.svg"
   },
   "scripts": {
     "build:assets": "bun scripts/build-assets.ts"

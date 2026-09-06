@@ -8,6 +8,8 @@ import { tanstackRouter } from '@tanstack/router-plugin/rspack';
 
 const apiUrl = `http://127.0.0.1:${process.env.AIO_PROXY_PORT ?? '9317'}`;
 
+// A real path, not a `file://` URL: rsbuild resolves `html.favicon` against the project root
+// unless it is absolute. The website's rspress config needs the opposite.
 const favicon = fileURLToPath(import.meta.resolve('@aio-proxy/brand/assets/aio-proxy-mark-favicon.svg'));
 
 // Docs: https://rsbuild.rs/config/
