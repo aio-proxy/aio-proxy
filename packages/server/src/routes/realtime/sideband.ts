@@ -15,10 +15,11 @@ import {
   realtimeCallNotFound,
   realtimeCallScopeMismatch,
   realtimeDialFailed,
+  realtimeInvalidModel,
   realtimeUpstreamUnavailable,
   websocketUpgradeRequired,
 } from './errors';
-import { CODEX_REALTIME_MODEL } from './model';
+import { CODEX_REALTIME_MODEL, MAX_REALTIME_MODEL_LENGTH } from './model';
 import { pinnedRealtimeCandidate, selectRealtimeCandidates } from './provider-select';
 import type { RealtimeRouteSource } from './source';
 
@@ -163,6 +164,10 @@ function prepare(
  *  pinned: selection is the ordinary candidate order. */
 function prepareDirect(context: Context<CallerPrincipalEnv>, source: RealtimeRouteSource): Prepared | Response {
   const requested = context.req.query('model');
+  // Bounded for the same reason as the create body's `model`: this string is sent
+  // upstream and recorded in both sideband log entries, and only the parse boundary
+  // sees it before it fans out.
+  if (requested !== undefined && requested.length > MAX_REALTIME_MODEL_LENGTH) return realtimeInvalidModel();
   const lease = source.acquireProviderSnapshot();
   try {
     // Selection still matches on the normalized model, but `realtime-direct`

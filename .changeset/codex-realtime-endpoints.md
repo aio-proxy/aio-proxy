@@ -18,7 +18,9 @@ Plugins can now expose an optional `realtime` runtime capability (`models`, `fet
 receive the effective outbound proxy on their `RuntimeContext`, so a sideband dial honors the same
 proxy configuration as ordinary requests. Realtime endpoints the ChatGPT upstream has no equivalent
 for (`client_secrets`, `sessions`, `transcription_sessions`, `translations`, `accept`, `reject`,
-`refer`) answer `501` with a diagnosable error code instead of `404`.
+`refer`) answer `501` with a diagnosable error code instead of `404`. A caller-supplied realtime
+model id longer than 128 characters is refused with `400` `realtime_invalid_model` rather than
+truncated, on both the create body (`model` / `session.model`) and `/v1/realtime`'s `model` query.
 
 `@aio-proxy/server` now also exports Bun's `websocket` handler; an embedder that constructs its own
 `Bun.serve` must pass it as the `websocket` option or every realtime sideband upgrade fails.

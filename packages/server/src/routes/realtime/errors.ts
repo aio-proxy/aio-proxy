@@ -45,6 +45,20 @@ export function realtimeInvalidOffer(message: string): Response {
   return realtimeError(400, 'invalid_request_error', 'realtime_invalid_offer', message);
 }
 
+/** Rejected rather than truncated. A caller-supplied model id is echoed into
+ *  `realtime.call_failed`, which the log bridge maps to `error`, so an unbounded one is
+ *  both a disclosure channel — an SDP offer pasted into `model` — and a log-amplification
+ *  lever. Truncating would bound the volume but could also silently rewrite the id into a
+ *  prefix matching a *different* advertised model, so the request is refused instead. */
+export function realtimeInvalidModel(): Response {
+  return realtimeError(
+    400,
+    'invalid_request_error',
+    'realtime_invalid_model',
+    'The requested realtime model id exceeds 128 characters.',
+  );
+}
+
 export function realtimeCallScopeMismatch(): Response {
   return realtimeError(
     403,
@@ -125,12 +139,11 @@ export function codexAuthUnavailable(): Response {
   );
 }
 
-/** The one row not in the design spec's table: it prescribes no mapping for an upstream
- *  failure because it had the create's `4xx` relayed verbatim, which the 2026-09-06 ruling
- *  reversed. The upstream status survives — it is the only part of the upstream reply a
- *  client can act on — while the message is the proxy's own, since the upstream's was
- *  observed echoing the caller's SDP offer back. `code` matches the `upstream_rejected`
- *  the create log already emits at this site. */
+/** The design spec's table prescribed no mapping for an upstream failure because it had the
+ *  create's `4xx` relayed verbatim, which the 2026-09-06 ruling reversed. The upstream status
+ *  survives — it is the only part of the upstream reply a client can act on — while the message
+ *  is the proxy's own, since the upstream's was observed echoing the caller's SDP offer back.
+ *  `code` matches the `upstream_rejected` the create log already emits at this site. */
 export function realtimeUpstreamRejected(status: number): Response {
   return realtimeError(
     status,

@@ -29,3 +29,12 @@ test('an unrelated model id passes through so a future realtime provider can ser
   expect(normalizeRealtimeModel('gpt-live-1-codex')).toBe('gpt-live-1-codex');
   expect(normalizeRealtimeModel('some-other-live-model')).toBe('some-other-live-model');
 });
+
+// The length bound lives at the two parse boundaries, not here, and it rejects rather than
+// truncates. Pinned because a truncating bound in this function is the tempting fix and it is
+// the wrong one: `some-other-live-model-v2` cut to `some-other-live-model` is a *different*
+// model a provider may advertise, so the call would route somewhere the caller never asked for.
+test('normalization never shortens an id, so it cannot rewrite one model into another', () => {
+  const long = `some-other-live-model-${'x'.repeat(200)}`;
+  expect(normalizeRealtimeModel(long)).toBe(long);
+});

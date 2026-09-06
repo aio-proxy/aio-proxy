@@ -123,6 +123,38 @@ test('a JSON offer reads model, then falls back to session.model', async () => {
   expect((absent as { requestedModel: string }).requestedModel).toBe('gpt-live-1-codex');
 });
 
+// The requested model is echoed into `realtime.call_failed`, which the log bridge maps to
+// `error`, so an unbounded caller string here is both a disclosure channel and a
+// log-amplification lever. Rejected rather than truncated: truncating could turn an over-long
+// id into a prefix that matches a *different* model a provider advertises.
+test('a model id over 128 characters is 400 realtime_invalid_model, in every place one can be supplied', async () => {
+  const overlong = `gpt-${'x'.repeat(200)}`;
+  const form = new FormData();
+  form.set('sdp', 'v=0\r\n');
+  form.set('session', JSON.stringify({ model: overlong }));
+
+  const supplied = [
+    await readRealtimeCreateBody(jsonRequest({ sdp: 'v=0', model: overlong })),
+    await readRealtimeCreateBody(jsonRequest({ sdp: 'v=0', session: { model: overlong } })),
+    await readRealtimeCreateBody(new Request('http://x/v1/live', { method: 'POST', body: form })),
+  ];
+
+  for (const result of supplied) {
+    expect((result as Response).status).toBe(400);
+    expect((await (result as Response).json()).error).toMatchObject({
+      type: 'invalid_request_error',
+      code: 'realtime_invalid_model',
+      param: null,
+    });
+  }
+
+  // The boundary is inclusive, so a legitimate 128-character id is still served rather than
+  // rejected — and the accepted value is the whole id, never a prefix of it.
+  const atCap = `gpt-${'x'.repeat(124)}`;
+  const accepted = await readRealtimeCreateBody(jsonRequest({ sdp: 'v=0', model: atCap }));
+  expect((accepted as { requestedModel: string }).requestedModel).toBe(atCap);
+});
+
 test('an unaccepted content type is 415 and an oversize body is 413', async () => {
   const wrongType = await readRealtimeCreateBody(
     new Request('http://x/v1/live', { method: 'POST', body: 'x', headers: { 'content-type': 'application/xml' } }),

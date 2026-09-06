@@ -88,6 +88,27 @@ test('a malformed call id is 400, never a silent fall-through to a direct connec
   expect(((await response.json()) as { error: { code: string } }).error.code).toBe('invalid_call_id');
 });
 
+// `/v1/realtime` without a `call_id` is the direct route, and its `model` query is sent
+// upstream and recorded in both sideband log entries. It is the second place a caller supplies
+// a model id, so it carries the same 128-character bound as the create body — asserted through
+// the real app because the bound has to sit ahead of selection, not inside the log.
+test('a direct-connection model query over 128 characters is 400, not dialed', async () => {
+  const app = await createServer({
+    config: { providers: {} },
+    providerInstances: [realtimeProvider()],
+    logger: discard,
+  });
+
+  const response = await app.request(`/v1/realtime?model=gpt-${'x'.repeat(200)}`, {
+    headers: { upgrade: 'websocket', connection: 'Upgrade' },
+  });
+
+  // The fixture's `dial` rejects, so a bound that failed to run would surface as the 502 the
+  // malformed-call-id test above relies on rather than as this 400.
+  expect(response.status).toBe(400);
+  expect(((await response.json()) as { error: { code: string } }).error.code).toBe('realtime_invalid_model');
+});
+
 // The two requests of a realtime session carry two independent credentials, and `/v1/*`
 // authentication only proves that a caller may use the proxy. Both the attach and the hangup
 // therefore fall back on the owner recorded at create time.
@@ -168,7 +189,14 @@ test('a hangup for an unknown call is 404 and a 2xx hangup deletes the record', 
  *  `stripCallerCredentials` on the keyed branch, so on a keyless proxy the caller's
  *  `Authorization` header is still readable inside the route. That is the live channel a
  *  credential could leak through, and asserting against it on a keyed server instead would be
- *  an assertion nothing could break. */
+ *  an assertion nothing could break.
+ *
+ *  All three `realtime.call_failed` emit sites are driven, because the guard is a runtime scan
+ *  and a scan only covers the sites the fixture reaches. `realtime_upstream_unavailable` has two
+ *  call sites — the zero-candidate/capacity pre-check and the exhausted-candidate loop tail — and
+ *  neither was reached by a sentinel-carrying request, so an offer smuggled into any of their
+ *  fields was invisible here. The pre-check one is the cheapest reach of all: no upstream call, no
+ *  credential, no successful create. */
 test('no realtime log entry carries the offer, the upstream Location, or the caller credential', async () => {
   const logs: ServerLog[] = [];
   let creates = 0;
@@ -177,7 +205,8 @@ test('no realtime log entry carries the offer, the upstream Location, or the cal
     providerInstances: [
       realtimeProvider(() => {
         creates += 1;
-        return creates === 1 ? upstreamCreated() : upstreamRejected();
+        if (creates === 1) return upstreamCreated();
+        return creates === 2 ? upstreamRejected() : upstreamUnavailable();
       }),
     ],
     logger: (entry) => logs.push(entry),
@@ -185,6 +214,17 @@ test('no realtime log entry carries the offer, the upstream Location, or the cal
 
   const created = await sentinelCreate(app);
   const rejected = await sentinelCreate(app);
+  // The caller's own `model` is the one log field types cannot police: it is a legal
+  // `string` a caller fills in, so only a length bound stops an offer being pasted into it.
+  // Over the bound the create is refused before selection and nothing is logged at all; the
+  // sentinel prefix means an unbounded passthrough would instead reach the log below.
+  const overlongModel = await sentinelModelCreate(app, `${SENTINEL_ICE}${'x'.repeat(200)}`);
+  // A model no provider advertises leaves zero candidates, which is the pre-check
+  // `realtime_upstream_unavailable` site — reached with a sentinel-carrying offer and a
+  // sentinel credential still on the request, so the scan below finally covers it.
+  const noCandidate = await sentinelModelCreate(app, 'unadvertised-live-model');
+  // The loop-tail site of the same error: an advertised model whose only candidate 5xxs.
+  const exhausted = await sentinelModelCreate(app, 'gpt-live-1-codex');
   const hungUp = await app.request('/v1/realtime/calls/call_abc/hangup', {
     method: 'POST',
     headers: { authorization: `Bearer ${SENTINEL_CREDENTIAL}` },
@@ -197,8 +237,18 @@ test('no realtime log entry carries the offer, the upstream Location, or the cal
   expect(logs.map((entry) => `${entry.event}/${'errorCode' in entry ? entry.errorCode : ''}`)).toEqual([
     'realtime.call_created/',
     'realtime.call_failed/upstream_rejected',
+    'realtime.call_failed/realtime_upstream_unavailable',
+    'realtime.call_failed/realtime_upstream_unavailable',
   ]);
-  expect([created.status, rejected.status, hungUp.status]).toEqual([201, 400, 204]);
+  expect([
+    created.status,
+    rejected.status,
+    overlongModel.status,
+    noCandidate.status,
+    exhausted.status,
+    hungUp.status,
+  ]).toEqual([201, 400, 400, 503, 503, 204]);
+  expect(((await overlongModel.json()) as { error: { code: string } }).error.code).toBe('realtime_invalid_model');
 
   const serialized = logs.map((entry) => JSON.stringify(entry)).join('\n');
   for (const sentinel of [SENTINEL_ICE, SENTINEL_HOST, SENTINEL_CREDENTIAL]) {
@@ -242,6 +292,16 @@ function sentinelCreate(app: Awaited<ReturnType<typeof createServer>>): Promise<
   });
 }
 
+/** A JSON create, the only shape that carries a caller-chosen `model`, with the sentinel offer
+ *  in `sdp` and the sentinel credential still on the request. */
+function sentinelModelCreate(app: Awaited<ReturnType<typeof createServer>>, model: string): Promise<Response> {
+  return app.request('/v1/live', {
+    method: 'POST',
+    body: JSON.stringify({ sdp: SENTINEL_OFFER, model }),
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${SENTINEL_CREDENTIAL}` },
+  });
+}
+
 function upstreamCreated(): Response {
   return new Response('v=0\r\na=answer\r\n', {
     status: 201,
@@ -260,6 +320,15 @@ function upstreamRejected(): Response {
       location: `https://${SENTINEL_HOST}/gone`,
       'set-cookie': 'upstream-session=leak',
     },
+  });
+}
+
+/** A 5xx with the sentinels in the places an upstream was observed putting them, so the
+ *  exhausted-candidate log site is reached with something to leak. */
+function upstreamUnavailable(): Response {
+  return new Response(`upstream down: ${SENTINEL_ICE} at https://${SENTINEL_HOST}/calls`, {
+    status: 503,
+    headers: { 'content-type': 'text/plain', location: `https://${SENTINEL_HOST}/retry` },
   });
 }
 

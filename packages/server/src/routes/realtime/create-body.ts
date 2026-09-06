@@ -1,7 +1,12 @@
 import { isPlainObject } from 'es-toolkit/predicate';
 
-import { realtimeBodyTooLarge, realtimeInvalidOffer, realtimeUnsupportedMediaType } from './errors';
-import { CODEX_REALTIME_MODEL } from './model';
+import {
+  realtimeBodyTooLarge,
+  realtimeInvalidModel,
+  realtimeInvalidOffer,
+  realtimeUnsupportedMediaType,
+} from './errors';
+import { CODEX_REALTIME_MODEL, MAX_REALTIME_MODEL_LENGTH } from './model';
 
 /** The reference's `maxBodySize`. The server-wide `MAX_REQUEST_BODY_SIZE` is sized
  *  for image-edit multipart (~851 MB); buffering that for an SDP fallback would be
@@ -62,11 +67,9 @@ export async function readRealtimeCreateBody(request: Request): Promise<Realtime
 
   if (contentType === MULTIPART) return await readMultipart(bytes, rawContentType);
   if (contentType !== JSON_TYPE) return { body: bytes, contentType, requestedModel: CODEX_REALTIME_MODEL };
-  return {
-    body: bytes,
-    contentType,
-    requestedModel: jsonRequestedModel(parseJson(new TextDecoder().decode(bytes))),
-  };
+  const requestedModel = jsonRequestedModel(parseJson(new TextDecoder().decode(bytes)));
+  if (requestedModel instanceof Response) return requestedModel;
+  return { body: bytes, contentType, requestedModel };
 }
 
 /** Mirrors `cancelRequestBody` in `packages/core/src/protocol/request.ts`: every
@@ -161,7 +164,9 @@ async function readMultipart(
   // this function's contract.
   if (encoded === undefined) return realtimeInvalidOffer('The multipart realtime offer could not be parsed.');
   if (encoded.byteLength > REALTIME_CREATE_BODY_LIMIT) return realtimeBodyTooLarge();
-  return { body: encoded, contentType: JSON_TYPE, requestedModel: jsonRequestedModel(payload) };
+  const requestedModel = jsonRequestedModel(payload);
+  if (requestedModel instanceof Response) return requestedModel;
+  return { body: encoded, contentType: JSON_TYPE, requestedModel };
 }
 
 /** Distinct from `undefined` (part absent) so an unreadable part cannot be mistaken for a
@@ -225,16 +230,23 @@ function encodeJson(value: unknown): Uint8Array<ArrayBuffer> | undefined {
   }
 }
 
-function jsonRequestedModel(payload: unknown): string {
+/** Returns a `Response` for an over-long id rather than the id: the value is echoed into
+ *  `realtime.call_failed`, so bounding it here — the single point where a caller's own
+ *  string becomes the requested model for a create — bounds every log site at once. */
+function jsonRequestedModel(payload: unknown): string | Response {
   if (!isPlainObject(payload)) return CODEX_REALTIME_MODEL;
   const top = payload['model'];
-  if (typeof top === 'string' && top.length > 0) return top;
+  if (typeof top === 'string' && top.length > 0) return boundedModel(top);
   const session = payload['session'];
   if (isPlainObject(session)) {
     const nested = session['model'];
-    if (typeof nested === 'string' && nested.length > 0) return nested;
+    if (typeof nested === 'string' && nested.length > 0) return boundedModel(nested);
   }
   return CODEX_REALTIME_MODEL;
+}
+
+function boundedModel(model: string): string | Response {
+  return model.length > MAX_REALTIME_MODEL_LENGTH ? realtimeInvalidModel() : model;
 }
 
 function parseJson(text: string): unknown {

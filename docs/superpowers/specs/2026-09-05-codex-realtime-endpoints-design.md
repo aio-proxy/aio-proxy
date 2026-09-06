@@ -415,8 +415,14 @@ belongs to Bun, not to us, so the relay test asserts exact byte length on the wi
 those framings — a future Bun that switches to a shared receive buffer fails that test loudly
 instead of silently truncating or over-sending SDP/ICE traffic.
 
-Bounds: the pre-open buffer holds at most **64 frames or 1 MiB**, whichever comes first; the dial
-deadline is **10 s**. For in-flight data behind a slow peer, read real backpressure from Bun rather
+Bounds: the dial deadline is **10 s**. There is deliberately **no** pre-open frame buffer and no
+`PRE_OPEN_FRAME_LIMIT` / `PRE_OPEN_BYTE_LIMIT` ceiling — an earlier revision of this section
+specified one at 64 frames or 1 MiB, and it was withdrawn and ratified mid-plan because Bun 1.4.2
+fires `websocket.open` synchronously inside `server.upgrade()`, making the pre-open window
+unreachable. The **1 MiB** figure in the next paragraph is the *backpressure* ceiling, which is a
+different, live mechanism: it is the only 1 MiB ceiling in the relay.
+
+For in-flight data behind a slow peer, read real backpressure from Bun rather
 than estimating: `WSContext.raw` is the live `ServerWebSocket`, whose `getBufferedAmount()` reports
 queued bytes, and the upstream client `WebSocket` exposes `bufferedAmount` (correct since Bun 1.4.1;
 it previously always read `0`). Overflow past **1 MiB** queued in either direction closes the
@@ -487,6 +493,7 @@ Every response uses `{"error":{"message","type","param":null,"code"}}`. One stat
 | --- | --- | --- | --- |
 | 400 | `invalid_request_error` | `invalid_call_id` | `call_id` fails the `^[A-Za-z0-9_-]{1,128}$` pattern |
 | 400 | `invalid_request_error` | `realtime_invalid_offer` | a multipart create is missing its `sdp` part, or its `session` part is not valid JSON |
+| 400 | `invalid_request_error` | `realtime_invalid_model` | a caller-supplied model id (create body `model`/`session.model`, or `/v1/realtime`'s `model` query) is longer than 128 characters |
 | 403 | `invalid_request_error` | `realtime_call_scope_mismatch` | caller principal differs from the creator |
 | 404 | `invalid_request_error` | `realtime_call_not_found` | no record, or the record expired |
 | 409 | `invalid_request_error` | `realtime_call_busy` | a sideband attachment is already reserved |
