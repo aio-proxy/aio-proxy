@@ -37,14 +37,21 @@ test('every unsupported realtime endpoint answers 501 not_supported_error', asyn
   }
 
   // The negative control the loop cannot supply: a wildcard 501 over `/v1/realtime/*` would
-  // satisfy every assertion above while swallowing the endpoints that are supported.
+  // satisfy every assertion above while swallowing the endpoints that are supported. Asserted
+  // as the hangup handler's own `realtime_call_not_found` envelope rather than as `not.toBe(501)`,
+  // which a route deleted from the app would also satisfy through Hono's bare text 404.
   const supported = await app.request('/v1/realtime/calls/call_abc/hangup', { method: 'POST' });
-  expect(supported.status).not.toBe(501);
+  expect(supported.status).toBe(404);
+  expect(((await supported.json()) as { error: { code: string } }).error.code).toBe('realtime_call_not_found');
 });
 
-// The create runs first so the 426 cannot be a disguised 404: the call exists and is owned by
-// this caller, and the only thing missing is the upgrade.
-test('a sideband path reached without an upgrade header answers 426 with Upgrade: websocket', async () => {
+// The 426 is decided before any call-store lookup, so a missing upgrade header cannot be
+// answered as a 404 for one caller and a 426 for another — and a probe cannot learn whether a
+// call id exists by omitting the header. Both store states are driven: `call_abc` was created
+// and is owned by this caller, `call_missing` never existed. Moving the upgrade check to after
+// `prepare()` turns the second request into a 404, which is the regression this pair pins;
+// asserting only the created call would leave that reordering invisible.
+test('a sideband path without an upgrade header answers 426 with Upgrade: websocket, before any call lookup', async () => {
   const app = await createServer({
     config: { providers: {} },
     providerInstances: [realtimeProvider()],
@@ -52,11 +59,14 @@ test('a sideband path reached without an upgrade header answers 426 with Upgrade
   });
   await create(app);
 
-  const response = await app.request('/v1/live/call_abc');
+  const created = await app.request('/v1/live/call_abc');
+  const unknown = await app.request('/v1/live/call_missing');
 
-  expect(response.status).toBe(426);
-  expect(response.headers.get('upgrade')).toBe('websocket');
-  expect(((await response.json()) as { error: { code: string } }).error.code).toBe('websocket_upgrade_required');
+  for (const response of [created, unknown]) {
+    expect(response.status).toBe(426);
+    expect(response.headers.get('upgrade')).toBe('websocket');
+    expect(((await response.json()) as { error: { code: string } }).error.code).toBe('websocket_upgrade_required');
+  }
 });
 
 // `/v1/realtime` is both the sideband-attach and the direct-connection route, so a `call_id`
@@ -181,7 +191,9 @@ test('no realtime log entry carries the offer, the upstream Location, or the cal
   });
 
   // Asserted before the scan: an empty `logs` would make every `not.toContain` below pass for
-  // the one reason that proves nothing. This also pins which log sites the sequence reaches.
+  // the one reason that proves nothing. This also pins which log sites the sequence reaches, so
+  // a new realtime log point makes it fail: extend this expected sequence with the new entry —
+  // do not relax it to a subset match or a length check, which would restore the vacuous pass.
   expect(logs.map((entry) => `${entry.event}/${'errorCode' in entry ? entry.errorCode : ''}`)).toEqual([
     'realtime.call_created/',
     'realtime.call_failed/upstream_rejected',
