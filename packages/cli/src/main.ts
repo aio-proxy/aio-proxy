@@ -19,6 +19,7 @@ import { reloadCommand } from './reload';
 import { run, validatePortArgv } from './run';
 import { serviceInstall, serviceRestart, serviceStart, serviceStatus, serviceStop, serviceUninstall } from './service';
 import { statusCommand } from './status';
+import { printUpdateBanner, shouldPrintUpdateBanner } from './update-notify';
 import { runUpgradeCommand } from './upgrade';
 
 export { readOrBootstrapConfig } from './run';
@@ -71,6 +72,11 @@ export const buildProgram = (deps: CliDeps = defaultCliDeps, programName = invok
     .description(m['cli.root.description']())
     .version(VERSION, '-v, --version', m['cli.version.description']())
     .option('--lang <locale>', m['cli.option.lang_description']());
+
+  program.hook('preAction', (_thisCommand, actionCommand) => {
+    if (!shouldPrintUpdateBanner(actionCommand.name(), process.argv)) return;
+    printUpdateBanner(VERSION);
+  });
 
   program
     .command('run')
@@ -230,7 +236,7 @@ export const buildProgram = (deps: CliDeps = defaultCliDeps, programName = invok
 
 export const main = async (deps: CliDeps = defaultCliDeps) => {
   try {
-    void setLocale(resolveLocaleFromArgv(process.argv));
+    await setLocale(resolveLocaleFromArgv(process.argv));
     validatePortArgv(process.argv);
     await buildProgram(deps).parseAsync(process.argv);
   } catch (err) {

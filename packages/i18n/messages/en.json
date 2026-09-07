@@ -270,6 +270,11 @@
       "manual_restart_hint": "The daemon was started manually; there is no managed service to restart. Restart it yourself to apply the upgrade",
       "restarting": "Restarting the daemon..."
     },
+    "update": {
+      "available": "aio-proxy {version} is available. Run aio-proxy upgrade or open the Dashboard.",
+      "notify_title": "aio-proxy {version} is available",
+      "notify_body": "Open the Dashboard or run aio-proxy upgrade."
+    },
     "agent": {
       "description": "Manage Agent integrations",
       "list": {
@@ -442,6 +447,9 @@
       "plugins": "Plugins",
       "models": "Models",
       "settings": "Settings"
+    },
+    "update": {
+      "available": "Update available"
     },
     "navigation": {
       "back": "Back",

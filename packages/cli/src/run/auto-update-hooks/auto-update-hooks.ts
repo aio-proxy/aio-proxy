@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 
 import { managedUnitPath, resolveExec, writeManagedUnit } from '../../service/service';
 import { SYSTEMD_UNIT_NAME } from '../../service/unit-templates';
+import { notifyUpdateAvailable } from '../../update-notify';
 import { resolveStableManagedExec, resolveUpgradeTargetFrom } from '../../upgrade/detect';
 import { runUpgradeCommand } from '../../upgrade/upgrade';
 
@@ -58,6 +59,7 @@ export const createCliAutoUpdateHooks = (deps?: {
   readonly resolveTargetFrom?: typeof resolveUpgradeTargetFrom;
 }) => ({
   isManagedService: deps?.isManagedService ?? isManagedAutoUpdateProcess,
+  notifyAvailable: (latest: string) => notifyUpdateAvailable(latest),
   applyUpdate: async (version: string) => {
     const exec = (deps?.resolveExec ?? resolveExec)();
     const resolveTarget = async () => (deps?.resolveTargetFrom ?? resolveUpgradeTargetFrom)(exec);

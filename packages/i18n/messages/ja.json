@@ -270,6 +270,11 @@
       "manual_restart_hint": "デーモンは手動で起動されており、再起動するマネージドサービスがありません。アップグレードを適用するには自分で再起動してください",
       "restarting": "デーモンを再起動しています…"
     },
+    "update": {
+      "available": "aio-proxy {version} が利用できます。aio-proxy upgrade を実行するか、ダッシュボードを開いてください。",
+      "notify_title": "aio-proxy {version} が利用できます",
+      "notify_body": "ダッシュボードを開くか、aio-proxy upgrade を実行してください。"
+    },
     "agent": {
       "description": "Agent 連携を管理します",
       "list": {
@@ -442,6 +447,9 @@
       "plugins": "プラグイン",
       "models": "モデル",
       "settings": "設定"
+    },
+    "update": {
+      "available": "更新があります"
     },
     "navigation": {
       "back": "戻る",
