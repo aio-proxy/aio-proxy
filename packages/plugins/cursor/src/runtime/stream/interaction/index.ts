@@ -1,1 +1,10 @@
-export * from './interaction';
+export {
+  commitCursorTools,
+  createCursorStreamAccumulator,
+  cursorCompletedTools,
+  cursorToolState,
+  finalizeCursorStream,
+  mapInteractionUpdate,
+  mapMcpExec,
+  type CursorStreamAccumulator,
+} from './interaction';

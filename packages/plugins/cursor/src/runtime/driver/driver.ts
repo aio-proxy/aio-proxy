@@ -12,7 +12,16 @@ import { CONNECT_END_STREAM_FLAG, frameConnectMessage, parseConnectEndStream } f
 import type { CursorH2Stream, CursorTransport } from '../../wire/transport';
 import { encodeExecResponse, encodeKvResponse, encodeMcpApprovalRejection } from '../client-messages';
 import { encodeInteractionReply } from '../interaction-query';
-import { createCursorStreamAccumulator, finalizeCursorStream, mapInteractionUpdate, mapMcpExec } from '../stream';
+import {
+  commitCursorTools,
+  createCursorStreamAccumulator,
+  cursorCompletedTools,
+  cursorToolState,
+  finalizeCursorStream,
+  mapInteractionUpdate,
+  mapMcpExec,
+  type CursorStreamAccumulator,
+} from '../stream';
 
 export type CursorTurnResult = {
   readonly conversationState: ConversationStateStructure;
@@ -32,7 +41,7 @@ export function runCursorTurn(input: {
   readonly blobStore: Map<string, Uint8Array>;
   readonly heartbeatMs?: number;
 }): { stream: ReadableStream<LanguageModelV4StreamPart>; result: Promise<CursorTurnResult> } {
-  const accumulator = createCursorStreamAccumulator();
+  const accumulator = createCursorStreamAccumulator(input.requestContextTools);
   let conversationState = input.initialConversationState;
   let sawCheckpoint = false;
   let settle!: (result: CursorTurnResult) => void;
@@ -83,7 +92,7 @@ export function runCursorTurn(input: {
             const message = fromBinary(AgentServerMessageSchema, frame.payload).message;
             if (message.case === 'interactionUpdate') {
               for (const part of mapInteractionUpdate(message.value, accumulator)) controller.enqueue(part);
-              if (accumulator.sawTurnEnded && accumulator.tools.size > 0) {
+              if (accumulator.sawTurnEnded && cursorToolState(accumulator).openCount > 0) {
                 throw new Error('Cursor turn ended with incomplete MCP tool call');
               }
             } else if (message.case === 'interactionQuery') {
@@ -105,14 +114,16 @@ export function runCursorTurn(input: {
               conversationState = message.value;
               sawCheckpoint = true;
             }
-            if (accumulator.completedToolCalls.size > 0 && accumulator.tools.size === 0) {
+            const toolParts = commitCursorTools(accumulator);
+            if (toolParts.length > 0) {
+              for (const part of toolParts) controller.enqueue(part);
               for (const part of finalizeCursorStream(accumulator)) controller.enqueue(part);
               h2.end();
               controller.close();
               settle({
                 conversationState,
                 checkpointUsable: false,
-                pendingToolCalls: new Map(accumulator.completedToolCalls),
+                pendingToolCalls: pendingToolCallsOf(accumulator),
                 blobStore: input.blobStore,
               });
               return;
@@ -124,14 +135,16 @@ export function runCursorTurn(input: {
           if (grpcStatus !== undefined && grpcStatus !== '0') {
             throw new Error(`Cursor gRPC status ${grpcStatus}: ${trailers['grpc-message'] ?? ''}`);
           }
-          if (accumulator.tools.size > 0) throw new Error('Cursor stream ended with incomplete MCP tool call');
+          if (cursorToolState(accumulator).openCount > 0) {
+            throw new Error('Cursor stream ended with incomplete MCP tool call');
+          }
           if (!accumulator.sawTurnEnded) throw new Error('Cursor stream ended before turnEnded');
           for (const part of finalizeCursorStream(accumulator)) controller.enqueue(part);
           controller.close();
           settle({
             conversationState,
             checkpointUsable: sawCheckpoint && accumulator.toolCalls === 0,
-            pendingToolCalls: new Map(accumulator.completedToolCalls),
+            pendingToolCalls: pendingToolCallsOf(accumulator),
             blobStore: input.blobStore,
           });
         } catch (error) {
@@ -153,6 +166,10 @@ export function runCursorTurn(input: {
     },
   });
   return { stream, result };
+}
+
+function pendingToolCallsOf(accumulator: CursorStreamAccumulator): Map<string, string> {
+  return new Map(cursorCompletedTools(accumulator).map((call) => [call.outerCallId, call.nestedToolCallId]));
 }
 
 function heartbeatFrame(): Uint8Array {

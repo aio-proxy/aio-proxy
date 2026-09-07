@@ -235,7 +235,13 @@ test('a completed MCP call suspends without waiting for upstream turnEnded', asy
             toolCall: {
               tool: {
                 case: 'mcpToolCall',
-                value: { args: { name: 'search', toolCallId: 'nested-call', args: {} } },
+                value: {
+                  args: {
+                    name: 'search',
+                    toolCallId: 'nested-call',
+                    args: event === 'toolCallCompleted' ? { query: new TextEncoder().encode('"docs"') } : {},
+                  },
+                },
               },
             },
           },
