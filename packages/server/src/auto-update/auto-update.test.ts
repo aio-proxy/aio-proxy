@@ -1,6 +1,9 @@
 import { expect, mock, test } from 'bun:test';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
-import type { UpdateCheckState } from '@aio-proxy/core';
+import { readUpdateCheckState, type UpdateCheckState } from '@aio-proxy/core';
 
 import { AUTO_UPDATE_PACKAGE, createAutoUpdateController } from './auto-update';
 
@@ -67,6 +70,33 @@ test('start checks immediately and again on each interval tick', async () => {
   expect(fetchLatest).toHaveBeenCalledTimes(2);
   controller.stop();
   expect(clock.cleared()).toBe(1);
+});
+
+test('default persist writes the home captured at controller creation', async () => {
+  const original = process.env.AIO_PROXY_HOME;
+  const homeA = mkdtempSync(join(tmpdir(), 'aio-persist-a-'));
+  const homeB = mkdtempSync(join(tmpdir(), 'aio-persist-b-'));
+  try {
+    process.env.AIO_PROXY_HOME = homeA;
+    const controller = createAutoUpdateController({
+      ...base,
+      currentVersion: '1.0.0',
+      fetchLatest: async () => '2.0.0',
+    });
+    process.env.AIO_PROXY_HOME = homeB;
+    expect(await controller.check()).toEqual({ current: '1.0.0', latest: '2.0.0', outdated: true });
+    expect(readUpdateCheckState(join(homeB, 'update-check.json'))).toBeUndefined();
+    expect(readUpdateCheckState(join(homeA, 'update-check.json'))).toEqual({
+      latest: '2.0.0',
+      checkedAt: 1_700_000_000_000,
+      notifiedVersion: '2.0.0',
+    });
+  } finally {
+    rmSync(homeA, { recursive: true, force: true });
+    rmSync(homeB, { recursive: true, force: true });
+    if (original === undefined) delete process.env.AIO_PROXY_HOME;
+    else process.env.AIO_PROXY_HOME = original;
+  }
 });
 
 test('tick persists an outdated latest and never calls applyUpdate', async () => {

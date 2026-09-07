@@ -1,6 +1,7 @@
 import {
   mergeUpdateCheckState,
   readUpdateCheckState,
+  updateCheckPath,
   withUpdateCheckLock,
   writeUpdateCheckState,
   type UpdateCheckState,
@@ -62,11 +63,14 @@ const isOutdated = (latest: string, current: string): boolean => {
 export function createAutoUpdateController(options: AutoUpdateControllerOptions): AutoUpdateController {
   const schedule = options.setInterval ?? setInterval;
   const unschedule = options.clearInterval ?? ((id: unknown) => clearInterval(id as ReturnType<typeof setInterval>));
-  const readState = options.readState ?? readUpdateCheckState;
-  const writeState = options.writeState ?? writeUpdateCheckState;
+  const checkPath = updateCheckPath();
+  const readState = options.readState ?? (() => readUpdateCheckState(checkPath));
+  const writeState = options.writeState ?? ((state) => writeUpdateCheckState(state, checkPath));
   const withLock =
     options.withLock ??
-    (options.writeState === undefined && options.readState === undefined ? withUpdateCheckLock : async (fn) => fn());
+    (options.writeState === undefined && options.readState === undefined
+      ? (fn) => withUpdateCheckLock(fn, checkPath)
+      : async (fn) => fn());
   const now = options.now ?? Date.now;
   let status: AutoUpdateSnapshot['status'] = 'idle';
   let locked = false;

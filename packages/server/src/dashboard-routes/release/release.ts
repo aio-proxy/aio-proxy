@@ -2,6 +2,7 @@ import {
   fetchLatestNpmVersion,
   mergeUpdateCheckState,
   readUpdateCheckState,
+  updateCheckPath,
   withUpdateCheckLock,
   writeUpdateCheckState,
 } from '@aio-proxy/core';
@@ -21,20 +22,22 @@ const APPLY_HTTP = {
   check_failed: 502,
 } as const satisfies Record<AutoUpdateApplyResult['status'], 200 | 202 | 409 | 501 | 502>;
 
-const persistLatest = async (latest: string, fetchStartedAt: number): Promise<void> => {
+const persistLatest = async (latest: string, fetchStartedAt: number, path: string): Promise<void> => {
   await withUpdateCheckLock(async () => {
     await writeUpdateCheckState(
-      mergeUpdateCheckState({ latest, checkedAt: Date.now(), fetchStartedAt }, readUpdateCheckState()),
+      mergeUpdateCheckState({ latest, checkedAt: Date.now(), fetchStartedAt }, readUpdateCheckState(path)),
+      path,
     );
-  });
+  }, path);
 };
 
 export const createDashboardReleaseRoute = (
   version: string,
   fetchLatest: (pkg: string) => Promise<string> = (pkg) => fetchLatestNpmVersion(pkg),
   controller?: AutoUpdateController,
-) =>
-  new Hono()
+) => {
+  const checkPath = updateCheckPath();
+  return new Hono()
     .get('/', (context) => {
       const snap = controller?.snapshot();
       return context.json({
@@ -56,7 +59,7 @@ export const createDashboardReleaseRoute = (
         const fetchStartedAt = Date.now();
         latest = await fetchLatest(PACKAGE);
         Bun.semver.order(latest, version);
-        await persistLatest(latest, fetchStartedAt);
+        await persistLatest(latest, fetchStartedAt, checkPath);
       } catch {
         return context.json({ error: { code: 'check_failed' } } as const, 502);
       }
@@ -70,3 +73,4 @@ export const createDashboardReleaseRoute = (
       }
       return context.json({ ok: false, error: { code: result.status } } as const, status);
     });
+};
