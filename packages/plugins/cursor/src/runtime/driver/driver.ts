@@ -313,8 +313,9 @@ function handleInteractionUpdate(
   update: InteractionUpdate,
 ): void {
   const before = cursorToolState(session.accumulator);
+  noteDecodedFrame(session, false);
   for (const part of mapInteractionUpdate(update, session.accumulator)) enqueuePart(session, controller, part);
-  noteDecodedFrame(session, isInteractionProgress(update, before.progressRevision, session.accumulator));
+  if (isInteractionProgress(update, before.progressRevision, session.accumulator)) session.lifecycle.noteProgress();
   if (
     !session.logged.firstText &&
     update.message.case === 'textDelta' &&
@@ -346,11 +347,10 @@ function handleExecMessage(
     const approval = exec.message.value.smartModeApprovalOnly;
     if (approval) h2.write(encodeMcpApprovalRejection(exec));
     const before = cursorToolState(session.accumulator);
+    noteDecodedFrame(session, false);
     for (const part of mapMcpExec(exec.message.value, session.accumulator)) enqueuePart(session, controller, part);
-    noteDecodedFrame(
-      session,
-      approval || cursorToolState(session.accumulator).progressRevision > before.progressRevision,
-    );
+    if (approval || cursorToolState(session.accumulator).progressRevision > before.progressRevision)
+      session.lifecycle.noteProgress();
     logToolReadyIfIncreased(session, before.readyCount);
     armHandoff(session);
     return;

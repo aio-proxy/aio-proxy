@@ -90,6 +90,11 @@ export function createRunLifecycle(hooks: Hooks) {
       if (progress) lastProgress = now;
       armHealth();
     },
+    noteProgress() {
+      if (terminal) return;
+      lastProgress = Date.now();
+      armHealth();
+    },
     turnEnded() {
       if (terminal || ending) return;
       ending = true;

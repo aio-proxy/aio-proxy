@@ -1057,6 +1057,26 @@ test('a Connect terminal counts as the first decoded frame', async () => {
   expect(settledLog(rows)?.fields.frameCount).toBeGreaterThan(0);
 });
 
+test('an identity conflict counts as a decoded frame', async () => {
+  const { logger, rows } = capturingLogger();
+  const h = runHarness({
+    logger,
+    diagnosticsContext: { requestId: 'req-identity', modelId: 'composer-2', resumeMode: 'fresh' },
+  });
+  h.send(
+    updateFrame({
+      case: 'toolCallStarted',
+      value: {
+        callId: 'outer',
+        toolCall: { tool: { case: 'mcpToolCall', value: { args: { name: '', toolName: '', toolCallId: 'nested' } } } },
+      },
+    }),
+  );
+  await expect(h.result).rejects.toMatchObject({ code: 'cursor_tool_identity_conflict' });
+  expect(rows.some((row) => row.fields.phase === 'first-frame')).toBe(true);
+  expect(settledLog(rows)?.fields.frameCount).toBeGreaterThan(0);
+});
+
 test('an unsupported query counts as a decoded frame', async () => {
   const { logger, rows } = capturingLogger();
   const h = runHarness({
