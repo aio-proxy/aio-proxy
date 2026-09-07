@@ -51,7 +51,7 @@ export const englishPresentationText: ClaudePresentationText = {
   waitingForAuthorization: 'Waiting for Claude authorization',
 };
 
-export function createAnthropicClaudePlugin(
+export function createClaudeCodePlugin(
   presentationText: ClaudePresentationText = englishPresentationText,
   dependencies: ClaudeOAuthDependencies = {},
 ): PluginDescriptor<undefined> {
@@ -130,7 +130,7 @@ export function createAnthropicClaudePlugin(
   return definePlugin((api) => api.oauth.register(adapter), {
     displayName: presentationText.pluginLabel ?? 'Claude Pro/Max',
     description: presentationText.pluginDescription ?? 'Use a Claude Pro or Max account to access models',
-    icon: 'anthropic',
+    icon: 'claude',
   });
 }
 

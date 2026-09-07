@@ -24,7 +24,7 @@ export async function createClaudeRuntime(
 ): Promise<OAuthRuntimeResult> {
   const fetch = options.fetch ?? context.fetch ?? globalThis.fetch;
   const anthropic = createAnthropic({
-    name: 'anthropic-claude-oauth',
+    name: 'claude-code-oauth',
     baseURL: CLAUDE_API_BASE_URL,
     authToken: PLACEHOLDER,
     fetch: createClaudeDynamicFetch(context.credentials, { ...options, fetch }),

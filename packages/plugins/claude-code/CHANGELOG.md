@@ -1,4 +1,4 @@
-# @aio-proxy/plugin-anthropic-claude
+# @aio-proxy/plugin-claude-code
 
 ## 0.20.0
 

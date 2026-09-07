@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 
 import type { OAuthAdapter, OAuthLoginContext, PluginDescriptor } from '@aio-proxy/plugin-sdk';
 
-import claudePlugin, { CLAUDE_PLUGIN_VERSION, createAnthropicClaudePlugin } from '..';
+import claudePlugin, { CLAUDE_CODE_PLUGIN_VERSION, createClaudeCodePlugin } from '..';
 import packageJson from '../../package.json' with { type: 'json' };
 import { CLAUDE_CATALOG_TTL_MS } from '../catalog';
 import { ClaudeIdentityMissingError, claudeLoginResult } from '../oauth';
@@ -11,17 +11,17 @@ import type { ClaudeCredential } from '../schema';
 test('exports a versioned default descriptor with empty account options', async () => {
   const adapter = await adapterFrom(claudePlugin);
   expect(adapter.id).toBe('default');
-  expect(claudePlugin.metadata.icon).toBe('anthropic');
+  expect(claudePlugin.metadata.icon).toBe('claude');
   expect(adapter.account.options.form).toEqual([]);
   await expect(adapter.account.options.schema.parseAsync({})).resolves.toEqual({});
   expect(adapter.catalog.policy).toEqual({ kind: 'ttl', ttlMs: CLAUDE_CATALOG_TTL_MS });
   expect(adapter.quota).toBeUndefined();
-  expect(CLAUDE_PLUGIN_VERSION).toBe(packageJson.version);
+  expect(CLAUDE_CODE_PLUGIN_VERSION).toBe(packageJson.version);
 });
 
 test('uses host loopback and localized adapter copy', async () => {
   const adapter = await adapterFrom(
-    createAnthropicClaudePlugin(
+    createClaudeCodePlugin(
       {
         adapterLabel: { default: 'Login with Claude', 'zh-Hans': '使用 Claude 登录' },
         waitingForAuthorization: { default: 'Waiting locally', 'zh-Hans': '正在本地等待' },
@@ -65,7 +65,7 @@ test('uses host loopback and localized adapter copy', async () => {
 });
 
 test('imports CPA claude credentials with the same fingerprint rules', async () => {
-  const adapter = await adapterFrom(createAnthropicClaudePlugin());
+  const adapter = await adapterFrom(createClaudeCodePlugin());
   const importer = adapter.credentialImports?.cpa;
   if (importer === undefined) throw new Error('CPA importer not registered');
   expect(importer.types).toEqual(['claude']);
@@ -120,7 +120,7 @@ test('imports CPA claude credentials with the same fingerprint rules', async () 
 
 test('bootstraps a CPA file that omits accountId when import context has no fetch', async () => {
   const adapter = await adapterFrom(
-    createAnthropicClaudePlugin(undefined, {
+    createClaudeCodePlugin(undefined, {
       fetch: async () =>
         Response.json({
           oauth_account: {
@@ -143,7 +143,7 @@ test('bootstraps a CPA file that omits accountId when import context has no fetc
 
 test('rejects CPA files that still have no accountId after bootstrap', async () => {
   const adapter = await adapterFrom(
-    createAnthropicClaudePlugin(undefined, {
+    createClaudeCodePlugin(undefined, {
       fetch: async () => new Response('nope', { status: 500 }),
     }),
   );
@@ -163,7 +163,7 @@ test('rejects CPA files that still have no accountId after bootstrap', async () 
 });
 
 test('imports flat CPA claude files using account_uuid aliases', async () => {
-  const adapter = await adapterFrom(createAnthropicClaudePlugin());
+  const adapter = await adapterFrom(createClaudeCodePlugin());
   const importer = adapter.credentialImports?.cpa;
   if (importer === undefined) throw new Error('CPA importer not registered');
   const imported = await importer.import(
@@ -207,7 +207,7 @@ test('imports flat CPA claude files using account_uuid aliases', async () => {
 test('refreshCredential exchanges an unexpired credential instead of returning it unchanged', async () => {
   let exchanges = 0;
   const adapter = await adapterFrom(
-    createAnthropicClaudePlugin(undefined, {
+    createClaudeCodePlugin(undefined, {
       now: () => 1_000,
       fetch: async () => {
         exchanges += 1;

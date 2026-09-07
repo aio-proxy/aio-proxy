@@ -1,5 +1,5 @@
 {
-  "name": "@aio-proxy/plugin-anthropic-claude",
+  "name": "@aio-proxy/plugin-claude-code",
   "version": "0.20.0",
   "private": true,
   "files": [
