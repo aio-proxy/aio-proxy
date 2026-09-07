@@ -1,4 +1,4 @@
-import { RealtimeDialError, type RealtimeStyle, type RealtimeTransport } from '@aio-proxy/plugin-sdk';
+import { isRealtimeDialError, type RealtimeStyle, type RealtimeTransport } from '@aio-proxy/plugin-sdk';
 import type { Context } from 'hono';
 import { upgradeWebSocket } from 'hono/bun';
 import type { WSEvents } from 'hono/ws';
@@ -155,7 +155,7 @@ async function dialCandidates(
         signal,
       });
     } catch (error) {
-      const kind = error instanceof RealtimeDialError ? error.kind : 'rejected';
+      const kind = isRealtimeDialError(error) ? error.kind : 'rejected';
       // The caller hung up: no other provider can serve a request that is gone.
       if (kind === 'aborted') return new Response(null, { status: 499 });
       failure = kind === 'rejected' ? realtimeDialFailed() : realtimeUpstreamUnavailable();

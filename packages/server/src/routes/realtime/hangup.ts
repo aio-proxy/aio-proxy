@@ -63,10 +63,13 @@ export async function handleRealtimeHangup(
   // Hangup stays available while a sideband is live; a 2xx closes it with 1000
   // and deletes the record. A non-2xx leaves both untouched. The order matters:
   // `closeAttachment` looks the record up, so removing first would silently skip
-  // the live socket's teardown.
+  // the live socket's teardown. Both are scoped to the record observed before the
+  // fetch: an unattached record can expire while a slow upstream hangup is in flight,
+  // and a concurrent create may then take the same call ID — closing and deleting by
+  // call ID alone would tear down that replacement, which belongs to another caller.
   if (response.ok) {
-    source.realtimeCalls.closeAttachment(callId, NORMAL_CLOSE_CODE);
-    source.realtimeCalls.remove(callId);
+    source.realtimeCalls.closeAttachment(callId, NORMAL_CLOSE_CODE, record);
+    source.realtimeCalls.remove(callId, record);
     await cancelUpstreamBody(response);
     // A hangup reply carries nothing the caller lacks — it already holds the `call_id` it
     // tore down — while an upstream one was observed echoing the caller's SDP offer back.

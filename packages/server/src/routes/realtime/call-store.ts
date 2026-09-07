@@ -50,9 +50,15 @@ export type RealtimeCallStore = {
   readonly release: (token: number) => void;
   readonly attachment: (callId: string) => RealtimeAttachment | undefined;
   /** Runs a live attachment's teardown with `code` and clears the reservation.
-   *  Returns false when there was nothing attached. */
-  readonly closeAttachment: (callId: string, code: number) => boolean;
-  readonly remove: (callId: string) => void;
+   *  Returns false when there was nothing attached.
+   *  `expected` scopes the close to one record — see `remove`. */
+  readonly closeAttachment: (callId: string, code: number, expected?: RealtimeCallRecord) => boolean;
+  /** `expected` scopes the deletion to the record the caller observed. The hangup route
+   *  awaits an upstream fetch between its `lookup` and this call, and a record with no
+   *  attachment can expire in that window, letting a concurrent create claim the same call
+   *  ID — an unscoped delete would then tear down that replacement, which belongs to another
+   *  caller. Omit it only where the record cannot have been replaced. */
+  readonly remove: (callId: string, expected?: RealtimeCallRecord) => void;
   /** Drops expired records, then claims a slot for one not-yet-inserted record.
    *  `undefined` means the store is full or already closed. A mere `hasCapacity()`
    *  predicate could not hold the bound: the create yields on the upstream fetch
@@ -166,13 +172,17 @@ export function createRealtimeCallStore(
         },
       };
     },
-    remove(callId) {
+    remove(callId, expected) {
+      const entry = entries.get(callId);
+      if (entry === undefined) return;
+      if (expected !== undefined && entry.record !== expected) return;
       entries.delete(callId);
     },
-    closeAttachment(callId, code) {
+    closeAttachment(callId, code, expected) {
       const entry = live(callId);
       const held = entry?.attachment;
       if (entry === undefined || held === undefined) return false;
+      if (expected !== undefined && entry.record !== expected) return false;
       entry.attachment = undefined;
       if (held.close !== undefined) {
         try {

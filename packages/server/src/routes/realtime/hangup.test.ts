@@ -55,6 +55,49 @@ test('the key that created the call hangs it up and the record is deleted', asyn
   expect(store.lookup('call_abc')).toBeUndefined();
 });
 
+// A record with no attachment expires, and `insert` evicts an expired entry, so a create landing
+// while a slow upstream hangup is in flight can legitimately take the same call ID. The hangup's
+// 2xx then arrived holding only that ID: closing and deleting by ID alone tore down the
+// REPLACEMENT — another caller's live call — and answered 204 for a teardown that never happened
+// to the record it was asked about. The record's disappearance is driven with `remove` rather
+// than a fake clock because the create route stamps `createdAt` from the real `Date.now()`; what
+// the route must survive is the record being GONE and re-taken while it awaits the upstream,
+// whichever of expiry, relay teardown, or an earlier hangup got there first.
+test('a slow hangup does not delete a replacement record that took the same call id', async () => {
+  const store = createRealtimeCallStore();
+  let releaseUpstream: (() => void) | undefined;
+  const upstreamParked = new Promise<void>((resolve) => {
+    releaseUpstream = resolve;
+  });
+  const app = hangupApp(store, [], async () => {
+    await upstreamParked;
+    return new Response('{}', { status: 200 });
+  });
+  await create(app, 'key-owner');
+  const original = store.lookup('call_abc');
+
+  const hangup = app.request('/v1/realtime/calls/call_abc/hangup', {
+    method: 'POST',
+    headers: { 'x-test-principal': 'key-owner' },
+  });
+  // Yield so the route is parked on the upstream fetch, holding the record it looked up.
+  await Bun.sleep(1);
+  // The original record goes away and a second caller's create claims the freed call ID.
+  store.remove('call_abc');
+  await create(app, 'key-other');
+  const replacement = store.lookup('call_abc');
+  expect(replacement).toBeDefined();
+  expect(replacement).not.toBe(original);
+  expect(replacement?.owner.id).not.toBe(original?.owner.id);
+
+  releaseUpstream?.();
+  const response = await hangup;
+
+  expect(response.status).toBe(204);
+  // The stranger's call is untouched: still present, still theirs.
+  expect(store.lookup('call_abc')).toBe(replacement!);
+});
+
 // A 200 hangup was observed carrying the upstream's own `Location` (its host), a
 // `Set-Cookie`, and the caller's own offer echoed back in its JSON. Nothing in a hangup
 // reply is information the caller lacks, so the whole upstream response is dropped. The
@@ -181,7 +224,11 @@ function uncancellableResponse(status: number): Response {
   );
 }
 
-function hangupApp(store: RealtimeCallStore, logs: ServerLog[] = [], hangupAnswer?: () => Response) {
+function hangupApp(
+  store: RealtimeCallStore,
+  logs: ServerLog[] = [],
+  hangupAnswer?: () => Response | Promise<Response>,
+) {
   const source = sourceWith(store, logs, hangupAnswer);
   return (
     new Hono<CallerPrincipalEnv>()
@@ -206,7 +253,11 @@ async function create(app: ReturnType<typeof hangupApp>, key: string): Promise<v
   if (response.status !== 201) throw new Error(`create failed with ${response.status}`);
 }
 
-function sourceWith(store: RealtimeCallStore, logs: ServerLog[], hangupAnswer?: () => Response): RealtimeRouteSource {
+function sourceWith(
+  store: RealtimeCallStore,
+  logs: ServerLog[],
+  hangupAnswer?: () => Response | Promise<Response>,
+): RealtimeRouteSource {
   const provider = {
     id: 'codex',
     kind: ProviderKind.OAuth,

@@ -139,10 +139,15 @@ export type RealtimeDialInput = {
 
 export type RealtimeDialErrorKind = 'rejected' | 'unreachable' | 'aborted' | 'timeout';
 
+const REALTIME_DIAL_ERROR_BRAND = Symbol.for('@aio-proxy/plugin-sdk/realtime-dial-error/v1');
+
 /** A client `WebSocket` exposes no upstream HTTP status for a non-101 response,
  *  so a failed dial is only ever discriminable to these four kinds. */
 export class RealtimeDialError extends Error {
   override readonly name = 'RealtimeDialError';
+  /** Registry symbol, so the brand is shared across module instances — see
+   *  `isRealtimeDialError`. */
+  readonly [REALTIME_DIAL_ERROR_BRAND] = true;
 
   constructor(
     message: string,
@@ -154,6 +159,15 @@ export class RealtimeDialError extends Error {
   get kind(): RealtimeDialErrorKind {
     return this.options.kind;
   }
+}
+
+/** A plugin resolved from its own npm cache loads a separate copy of this module, so the
+ *  `RealtimeDialError` it throws is a different constructor and fails a host-side
+ *  `instanceof`. The host would then read every dial failure as `rejected`: a `timeout` or
+ *  `unreachable` becomes a 502 instead of a 503, and an `aborted` dial keeps trying other
+ *  providers instead of answering 499. Brand check rather than constructor identity. */
+export function isRealtimeDialError(value: unknown): value is RealtimeDialError {
+  return value instanceof Error && REALTIME_DIAL_ERROR_BRAND in value;
 }
 
 export type RealtimeTransport = {

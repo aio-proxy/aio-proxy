@@ -498,6 +498,79 @@ function realtimeProviderWith(id: string, priority: number, dial: () => Promise<
   } as unknown as RuntimeProviderInstance;
 }
 
+// A third-party plugin loaded from its own npm cache carries a separate copy of
+// `@aio-proxy/plugin-sdk`, so the `RealtimeDialError` it throws is a different constructor and
+// an `instanceof` here misses it. Every kind then collapsed to `rejected`: a `timeout` answered
+// 502 "the upstream refused the handshake" instead of the 503 that says nothing was reachable.
+test('a dial error from a separate copy of the SDK keeps its kind', async () => {
+  const dialed: { providerId?: string; model?: string } = {};
+  const provider = directProvider('codex', ['gpt-live-1-codex'], dialed);
+  (provider as { realtime: { dial: () => Promise<never> } }).realtime.dial = () =>
+    Promise.reject(foreignDialError('timeout'));
+  const snapshot = {
+    providers: [provider],
+    config: { router: { models: {} }, providers: [] },
+  } as unknown as ProviderRouteSnapshot;
+  const source: RealtimeRouteSource = {
+    acquireProviderSnapshot: () => ({ snapshot, release: () => {} }),
+    logger: () => {},
+    realtimeCalls: createRealtimeCallStore(),
+  };
+  const app = new Hono<CallerPrincipalEnv>().get('/v1/realtime', (context) =>
+    handleRealtimeSideband(context, source, 'realtime-direct'),
+  );
+
+  const response = await app.request('/v1/realtime?model=gpt-realtime', { headers: { upgrade: 'websocket' } });
+
+  expect(response.status).toBe(503);
+  expect(((await response.json()) as { error: { code: string } }).error.code).toBe('realtime_upstream_unavailable');
+});
+
+// The sharper half of the same bug: an `aborted` dial from a foreign copy read as `rejected`
+// kept the loop running, so a caller that hung up mid-dial had a second upstream socket opened
+// on its behalf and got a 502 instead of 499.
+test('an aborted dial from a separate copy of the SDK stops the loop with 499', async () => {
+  const attempts: string[] = [];
+  const providers = [
+    realtimeProviderWith('first', 5, () => {
+      attempts.push('first');
+      return Promise.reject(foreignDialError('aborted'));
+    }),
+    realtimeProviderWith('second', 1, () => {
+      attempts.push('second');
+      return Promise.reject(foreignDialError('rejected'));
+    }),
+  ];
+  const snapshot = {
+    providers,
+    config: { router: { models: {} }, providers: [] },
+  } as unknown as ProviderRouteSnapshot;
+  const source: RealtimeRouteSource = {
+    acquireProviderSnapshot: () => ({ snapshot, release: () => {} }),
+    logger: () => {},
+    realtimeCalls: createRealtimeCallStore(),
+  };
+  const app = new Hono<CallerPrincipalEnv>().get('/v1/realtime', (context) =>
+    handleRealtimeSideband(context, source, 'realtime-direct'),
+  );
+
+  const response = await app.request('/v1/realtime?model=gpt-realtime', { headers: { upgrade: 'websocket' } });
+
+  expect(response.status).toBe(499);
+  expect(attempts).toEqual(['first']);
+});
+
+/** A `RealtimeDialError` as a plugin's own copy of the SDK would build it: same registry brand,
+ *  different constructor. Hand-built rather than imported twice because Bun dedupes a same-path
+ *  import, which would give back the host's own class and test nothing. */
+function foreignDialError(kind: string): Error {
+  return Object.assign(new Error(`dial ${kind}`), {
+    name: 'RealtimeDialError',
+    [Symbol.for('@aio-proxy/plugin-sdk/realtime-dial-error/v1')]: true,
+    kind,
+  });
+}
+
 /** Two realtime providers advertising disjoint model sets and a `dial` that records which of
  *  them was chosen before refusing, so the assertion is on selection rather than on a relay. */
 function directApp(

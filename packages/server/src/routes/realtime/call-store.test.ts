@@ -256,6 +256,33 @@ test('trackShutdown refuses a registration once the store is closed', () => {
   expect(store.trackShutdown(() => {})).toBeUndefined();
 });
 
+// The hangup route awaits an upstream fetch between its `lookup` and its teardown, and an
+// unattached record can vanish in that window and be replaced under the same call ID. Scoping
+// both operations to the observed record is what stops a slow hangup from closing and deleting
+// a stranger's call.
+test('closeAttachment and remove refuse a record that is no longer the one observed', () => {
+  const store = createRealtimeCallStore();
+  const original = record({ owner: { kind: 'key', id: 'first' } });
+  store.insert(original);
+  store.remove('call_abc');
+  const replacement = record({ owner: { kind: 'key', id: 'second' } });
+  store.insert(replacement);
+  const codes: number[] = [];
+  store.reserve('call_abc')!.onClose((code) => codes.push(code));
+
+  expect(store.closeAttachment('call_abc', 1000, original)).toBe(false);
+  store.remove('call_abc', original);
+
+  expect(codes).toEqual([]);
+  expect(store.lookup('call_abc')).toBe(replacement);
+  // And the same two calls scoped to the record that IS current still do their work, so the
+  // guard is not simply refusing everything.
+  expect(store.closeAttachment('call_abc', 1000, replacement)).toBe(true);
+  store.remove('call_abc', replacement);
+  expect(codes).toEqual([1000]);
+  expect(store.lookup('call_abc')).toBeUndefined();
+});
+
 function record(overrides: Partial<RealtimeCallRecord> = {}): RealtimeCallRecord {
   return {
     callId: 'call_abc',
