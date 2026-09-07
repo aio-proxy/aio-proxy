@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 
-import { LoopbackCallbackMismatchError, LoopbackStateMismatchError, runLoopbackAuthorization } from './index';
+import {
+  LoopbackCallbackMismatchError,
+  LoopbackOAuthError,
+  LoopbackStateMismatchError,
+  runLoopbackAuthorization,
+} from './index';
 import { copy, createDeps, expectPortAvailable, request, resetInteractive, setInteractive } from './test-support';
 
 afterEach(resetInteractive);
@@ -101,5 +106,73 @@ describe('loopback manual callback handling', () => {
     expect(printed[0]).toContain('https://identity.example/authorize');
     expect(printed[1]).toBe(copy.openedAuthorizationPage);
     expect(printed[2]).toBe(new ErrorType().message);
+  });
+
+  test('accepts a manually pasted loopback URL that has a code and no state', async () => {
+    setInteractive(true);
+    let redirectUri = '';
+    const { deps } = createDeps({
+      readManualCallbackUrl: async () => `${redirectUri}?code=openrouter-code`,
+    });
+    await expect(
+      runLoopbackAuthorization(
+        request({
+          allowManualCallbackUrl: true,
+          authorizationUrl: (input) => {
+            redirectUri = input.redirectUri;
+            return 'https://openrouter.ai/auth';
+          },
+        }),
+        deps,
+      ),
+    ).resolves.toEqual({ code: 'openrouter-code', redirectUri: expect.any(String) });
+  });
+
+  test('accepts a pasted raw authorization code when the input is not a URL', async () => {
+    setInteractive(true);
+    const { deps } = createDeps({
+      readManualCallbackUrl: async () => 'auth_code_abc123',
+    });
+    await expect(
+      runLoopbackAuthorization(
+        request({
+          allowManualCallbackUrl: true,
+          authorizationUrl: () => 'https://openrouter.ai/auth',
+        }),
+        deps,
+      ),
+    ).resolves.toEqual({ code: 'auth_code_abc123', redirectUri: expect.any(String) });
+  });
+
+  test('rejects a pasted error= query that is not a URL', async () => {
+    setInteractive(true);
+    const { deps } = createDeps({
+      readManualCallbackUrl: async () => 'error=access_denied',
+    });
+    await expect(
+      runLoopbackAuthorization(
+        request({
+          allowManualCallbackUrl: true,
+          authorizationUrl: () => 'https://openrouter.ai/auth',
+        }),
+        deps,
+      ),
+    ).rejects.toBeInstanceOf(LoopbackOAuthError);
+  });
+
+  test('rejects a pasted state+error query that is not a URL', async () => {
+    setInteractive(true);
+    const { deps } = createDeps({
+      readManualCallbackUrl: async () => 'state=expected-state&error=access_denied',
+    });
+    await expect(
+      runLoopbackAuthorization(
+        request({
+          allowManualCallbackUrl: true,
+          authorizationUrl: () => 'https://openrouter.ai/auth',
+        }),
+        deps,
+      ),
+    ).rejects.toBeInstanceOf(LoopbackOAuthError);
   });
 });
