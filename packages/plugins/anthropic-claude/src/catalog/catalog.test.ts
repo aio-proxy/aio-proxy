@@ -55,6 +55,14 @@ describe('Claude model catalog', () => {
     ]);
     expect(initialClaudeCatalogFallback(new ClaudeCatalogError('unauthorized', false, 401))).toBeUndefined();
     expect(initialClaudeCatalogFallback(new DOMException('cancelled', 'AbortError'))).toBeUndefined();
+    const hostTimeout = Object.assign(new Error('OAUTH_CATALOG_DISCOVERY_TIMEOUT'), {
+      name: 'OAuthCatalogDiscoveryTimeoutError',
+    });
+    expect(initialClaudeCatalogFallback(hostTimeout)?.language).toEqual([
+      { id: 'claude-sonnet-5', displayName: 'Claude Sonnet 5', extra },
+      { id: 'claude-opus-5', displayName: 'Claude Opus 5', extra },
+      { id: 'claude-haiku-4-5', displayName: 'Claude Haiku 4.5', extra },
+    ]);
   });
 
   test('treats a successful empty catalog as authoritative', async () => {

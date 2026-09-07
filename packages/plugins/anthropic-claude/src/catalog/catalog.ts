@@ -65,9 +65,14 @@ export async function discoverClaudeModels(
 }
 
 export function initialClaudeCatalogFallback(error: unknown): ModelCatalog | undefined {
-  return error instanceof ClaudeCatalogError && error.retryable
-    ? emptyCatalog(CURATED.map(([id, displayName]) => ({ id, displayName, extra })))
-    : undefined;
+  if (isHostCatalogTimeout(error) || (error instanceof ClaudeCatalogError && error.retryable)) {
+    return emptyCatalog(CURATED.map(([id, displayName]) => ({ id, displayName, extra })));
+  }
+  return undefined;
+}
+
+function isHostCatalogTimeout(error: unknown): boolean {
+  return error instanceof Error && error.name === 'OAuthCatalogDiscoveryTimeoutError';
 }
 
 async function fetchPage(
