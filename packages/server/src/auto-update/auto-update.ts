@@ -112,6 +112,7 @@ export function createAutoUpdateController(options: AutoUpdateControllerOptions)
   };
 
   const persistCheck = async (latest: string, fetchStartedAt: number): Promise<void> => {
+    let notifyLatest: string | undefined;
     await withLock(async () => {
       const next = mergeUpdateCheckState({ latest, checkedAt: now(), fetchStartedAt }, readState() ?? persisted);
       await writeState(next);
@@ -122,12 +123,14 @@ export function createAutoUpdateController(options: AutoUpdateControllerOptions)
       const claimed: UpdateCheckState = { ...next, notifiedVersion: next.latest };
       await writeState(claimed);
       persisted = claimed;
-      try {
-        await options.notifyAvailable?.(claimed.latest);
-      } catch (error) {
-        options.onError?.(error);
-      }
+      notifyLatest = claimed.latest;
     });
+    if (notifyLatest === undefined) return;
+    try {
+      await options.notifyAvailable?.(notifyLatest);
+    } catch (error) {
+      options.onError?.(error);
+    }
   };
 
   const snapshotAsCheck = (): AutoUpdateCheckResult => {

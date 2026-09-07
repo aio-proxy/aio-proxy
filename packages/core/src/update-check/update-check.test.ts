@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -104,6 +104,60 @@ test('withUpdateCheckLock serializes overlapping writers', async () => {
     releaseFirst();
     await Promise.all([first, second]);
     expect(order).toEqual([1, 2, 3]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test(
+  'withUpdateCheckLock does not steal a live-owner lock from mtime',
+  async () => {
+    const dir = home();
+    const path = join(dir, 'update-check.json');
+    const lockPath = `${path}.lock`;
+    try {
+      writeFileSync(lockPath, `${process.pid}\n`);
+      const stale = new Date(Date.now() - 60_000);
+      utimesSync(lockPath, stale, stale);
+      await expect(withUpdateCheckLock(async () => 'held', path)).rejects.toThrow();
+      expect(readFileSync(lockPath, 'utf8')).toBe(`${process.pid}\n`);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  },
+  { timeout: 15_000 },
+);
+
+test(
+  'withUpdateCheckLock steals a lock whose owner pid is dead',
+  async () => {
+    const dir = home();
+    const path = join(dir, 'update-check.json');
+    const lockPath = `${path}.lock`;
+    const child = Bun.spawn(['sleep', '30']);
+    const deadPid = child.pid;
+    child.kill();
+    await child.exited;
+    try {
+      writeFileSync(lockPath, `${deadPid}\n`);
+      await expect(withUpdateCheckLock(async () => 'ok', path)).resolves.toBe('ok');
+      expect(existsSync(lockPath)).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  },
+  { timeout: 15_000 },
+);
+
+test('withUpdateCheckLock does not unlink a lock owned by another pid', async () => {
+  const dir = home();
+  const path = join(dir, 'update-check.json');
+  const lockPath = `${path}.lock`;
+  try {
+    await withUpdateCheckLock(async () => {
+      writeFileSync(lockPath, '999999999\n');
+    }, path);
+    expect(readFileSync(lockPath, 'utf8')).toBe('999999999\n');
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

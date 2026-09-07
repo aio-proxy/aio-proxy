@@ -150,6 +150,30 @@ test('a later successful check records a registry rollback', async () => {
   expect(controller.snapshot()).toEqual({ status: 'idle', latest: '1.9.0', outdated: false });
 });
 
+test('notifyAvailable runs after the persist lock is released', async () => {
+  let held = false;
+  let notifiedWhileHeld = true;
+  const notifyAvailable = mock(() => {
+    notifiedWhileHeld = held;
+  });
+  const controller = createAutoUpdateController({
+    ...base,
+    notifyAvailable,
+    withLock: async (fn) => {
+      held = true;
+      try {
+        return await fn();
+      } finally {
+        held = false;
+      }
+    },
+    ...memoryState(),
+  });
+  expect(await controller.check()).toEqual({ current: '1.2.0', latest: '1.10.0', outdated: true });
+  expect(notifyAvailable).toHaveBeenCalledTimes(1);
+  expect(notifiedWhileHeld).toBe(false);
+});
+
 test('claims notifiedVersion before notifyAvailable runs', async () => {
   const store = memoryState();
   const notifyAvailable = mock(() => {
