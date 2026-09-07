@@ -1,4 +1,22 @@
 import type { ClaudeCredential } from '../schema';
+import { CLAUDE_AUTHORIZE_URL, CLAUDE_CLIENT_ID, CLAUDE_SCOPE } from './constants';
+
+export function buildClaudeAuthorizationUrl(input: {
+  readonly challenge: string;
+  readonly redirectUri: string;
+  readonly state: string;
+}): string {
+  const url = new URL(CLAUDE_AUTHORIZE_URL);
+  url.searchParams.set('client_id', CLAUDE_CLIENT_ID);
+  url.searchParams.set('code', 'true');
+  url.searchParams.set('code_challenge', input.challenge);
+  url.searchParams.set('code_challenge_method', 'S256');
+  url.searchParams.set('redirect_uri', input.redirectUri);
+  url.searchParams.set('response_type', 'code');
+  url.searchParams.set('scope', CLAUDE_SCOPE);
+  url.searchParams.set('state', input.state);
+  return url.toString();
+}
 
 export function normalizeClaudeEmail(value: string | undefined): string | undefined {
   if (typeof value !== 'string') return undefined;
