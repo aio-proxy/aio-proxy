@@ -3,8 +3,9 @@ import { Button } from '@aio-proxy/ui/components/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@aio-proxy/ui/components/card';
 import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemTitle } from '@aio-proxy/ui/components/item';
 import { Skeleton } from '@aio-proxy/ui/components/skeleton';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 
+import { queryKeys } from '@/lib/query-keys';
 import { checkLatestReleaseMutationFn, useReleaseQuery } from '@/lib/release';
 
 import { SettingsExternalLink } from './settings-external-link';
@@ -15,8 +16,14 @@ const REPOSITORY_URL = 'https://github.com/aio-proxy/aio-proxy';
 const DOCUMENTATION_URL = 'https://aioproxy.dev';
 
 export const SettingsAboutGroup: React.FC = () => {
+  const queryClient = useQueryClient();
   const release = useReleaseQuery();
-  const check = useMutation({ mutationFn: checkLatestReleaseMutationFn });
+  const check = useMutation({
+    mutationFn: checkLatestReleaseMutationFn,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.release });
+    },
+  });
   const current = release.data?.current;
   const persistedOutdated = release.data?.outdated === true;
   const checkOutdated = check.data?.outdated;

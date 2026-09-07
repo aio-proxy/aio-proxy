@@ -67,9 +67,10 @@ const upToDate = /latest published version|已是最新发布版本|已是最新
 const renderGroup = async () => {
   const { QueryClient, QueryClientProvider } = await import('@tanstack/react-query');
   const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false }, queries: { retry: false } } });
+  const invalidateQueries = rs.spyOn(queryClient, 'invalidateQueries');
   const wrapper = ({ children }: { readonly children: ReactNode }) =>
     createElement(QueryClientProvider, { client: queryClient }, children);
-  return render(createElement(SettingsAboutGroup), { wrapper });
+  return { invalidateQueries, ...render(createElement(SettingsAboutGroup), { wrapper }) };
 };
 
 const clickCheck = () =>
@@ -111,17 +112,18 @@ test('shows the running version and links it to its release tag, the repo, and t
 test('announces a newer published version after the check', async () => {
   prepare();
   mocks.check.mockResolvedValue({ current: '1.4.2', latest: '1.10.0', outdated: true });
-  await renderGroup();
+  const { invalidateQueries } = await renderGroup();
 
   clickCheck();
 
   await waitFor(() => expect(screen.getByText(/1\.10\.0/u)).toBeInTheDocument());
+  await waitFor(() => expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['release'] }));
 });
 
 test('does not claim the build is current when the registry is unreachable', async () => {
   prepare();
   mocks.check.mockRejectedValue(new Error('check_failed'));
-  await renderGroup();
+  const { invalidateQueries } = await renderGroup();
 
   clickCheck();
 
@@ -132,6 +134,7 @@ test('does not claim the build is current when the registry is unreachable', asy
       ),
     ).toBeInTheDocument(),
   );
+  expect(invalidateQueries).not.toHaveBeenCalled();
   expect(screen.queryByText(upToDate)).toBeNull();
 });
 
