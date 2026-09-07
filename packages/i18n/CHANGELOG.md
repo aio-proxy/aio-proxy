@@ -1,5 +1,17 @@
 # @aio-proxy/i18n
 
+## 0.20.0
+
+### Minor Changes
+
+- [#300](https://github.com/aio-proxy/aio-proxy/pull/300) [`692795c`](https://github.com/aio-proxy/aio-proxy/commit/692795c49f26e93e93af79cb611043a1e82c307a) Thanks [@baranwang](https://github.com/baranwang)! - A running process checks npm `latest` on start, every 24 hours, and when the Dashboard mounts. It persists the result, prompts once per new version (Dashboard sidebar, CLI stderr banner, OS notification), and installs only after Update now or `aio-proxy upgrade`. Leftover `server.autoUpdate` in an existing config is ignored.
+
+- [#308](https://github.com/aio-proxy/aio-proxy/pull/308) [`8b02edd`](https://github.com/aio-proxy/aio-proxy/commit/8b02edd711a54102661c41199a60f10396f7dce3) Thanks [@baranwang](https://github.com/baranwang)! - Subscription quota bars now mark where an even burn would have left the allowance by now, turning
+  red when the window is being spent faster than that and drawing nothing while it tracks even. The
+  marker appears wherever the provider reports how long the window lasts, which the bundled OAuth
+  plugins now do; plugins can opt in through the new optional `OAuthQuotaItem.windowMinutes`. The
+  reading is also spoken by the bar's accessible value text.
+
 ## 0.19.2
 
 No changes in this release.
