@@ -87,7 +87,7 @@ export function createProtocolFixture(rounds: readonly (readonly ConnectFrame[])
         },
         end() {},
         close() {
-          closes[round]++;
+          closes[round] = (closes[round] ?? 0) + 1;
           closed = true;
           trailers.resolve({});
           notify();

@@ -30,9 +30,11 @@ export function mergeMcpObjects(
 }
 
 export function declaresNoArguments(schema: unknown): boolean {
-  if (!isPlainObject(schema) || schema.type !== 'object') return false;
-  if (!isPlainObject(schema.properties) || Object.keys(schema.properties).length !== 0) return false;
-  if (schema.required !== undefined && (!Array.isArray(schema.required) || schema.required.length !== 0)) return false;
+  if (!isPlainObject(schema) || schema['type'] !== 'object') return false;
+  const properties = schema['properties'];
+  if (!isPlainObject(properties) || Object.keys(properties).length !== 0) return false;
+  const required = schema['required'];
+  if (required !== undefined && (!Array.isArray(required) || required.length !== 0)) return false;
   return !['$ref', 'allOf', 'anyOf', 'oneOf', 'not', 'if', 'dependentRequired', 'dependentSchemas'].some(
     (key) => key in schema,
   );

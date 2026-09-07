@@ -27,6 +27,7 @@ import { CursorSessionStore, sessionKey } from '../../store/session-store';
 import type { ConnectFrame } from '../../wire/frame';
 import type { CursorH2Stream, CursorTransport } from '../../wire/transport';
 import { createCursorLanguageModel, type CursorModelRuntime } from './cursor-model';
+import { persistCursorSession } from './persist-session';
 import { createProtocolFixture, protocolServerFrame, protocolUpdateFrame } from './test-support';
 
 const server = (value: Record<string, unknown>): ConnectFrame => {
@@ -786,4 +787,87 @@ test('a result-only second turn reads the actual tool history without a checkpoi
   );
   expect(f.runs[1]?.action?.action.case).toBe('resumeAction');
   expect(f.closes).toEqual([1, 1]);
+});
+
+test('an unparsable tool input still persists pending IDs and remaining structured calls', () => {
+  const sessionStore = new CursorSessionStore();
+  const blobs = new Map<string, Uint8Array>();
+  const conversationState = create(ConversationStateStructureSchema, {
+    rootPromptMessagesJson: [
+      storeCursorBlob(blobs, new TextEncoder().encode(JSON.stringify({ role: 'system', content: 'sys' }))),
+    ],
+  });
+  const warnRows: unknown[] = [];
+  const logger: Logger = {
+    debug: () => {},
+    info: () => {},
+    warn: (message, props) => {
+      warnRows.push([message, props]);
+    },
+    error: () => {},
+    child: () => logger,
+  };
+
+  persistCursorSession({
+    sessionStore,
+    storeKey: logicalStoreKey,
+    prior: undefined,
+    conversationId: 'conv-persist',
+    requestPendingToolCalls: new Map(),
+    conversationState,
+    prompt: [{ role: 'user', content: [{ type: 'text', text: 'search the docs' }] }],
+    turn: {
+      conversationState,
+      checkpointUsable: false,
+      pendingToolCalls: new Map([
+        ['outer-good', 'nested-good'],
+        ['outer-bad', 'nested-bad'],
+      ]),
+      toolCalls: [
+        {
+          outerCallId: 'outer-good',
+          nestedToolCallId: 'nested-good',
+          toolName: 'search',
+          input: '{"query":"docs"}',
+        },
+        {
+          outerCallId: 'outer-bad',
+          nestedToolCallId: 'nested-bad',
+          toolName: 'search',
+          input: '{not-json',
+        },
+      ],
+      assistantText: '',
+      blobStore: blobs,
+    },
+    logger,
+    requestId: 'r1',
+    modelId: 'composer-2',
+  });
+
+  const stored = sessionStore.get(logicalStoreKey);
+  expect(stored).toBeDefined();
+  expect([...stored!.pendingToolCalls]).toEqual([
+    ['outer-good', 'nested-good'],
+    ['outer-bad', 'nested-bad'],
+  ]);
+
+  const state = fromBinary(ConversationStateStructureSchema, stored!.conversationState!);
+  const messages = state.rootPromptMessagesJson.map((id) =>
+    JSON.parse(new TextDecoder().decode(stored!.blobs.get(Buffer.from(id).toString('hex'))!)),
+  );
+  const calls = messages
+    .filter((message: { role?: string }) => message.role === 'assistant')
+    .flatMap((message: { content?: Array<{ type?: string; args?: unknown }> }) => message.content ?? [])
+    .filter((part) => part.type === 'tool-call');
+  expect(calls).toHaveLength(1);
+  expect(calls[0]).toMatchObject({ args: { query: 'docs' } });
+
+  const serialized = JSON.stringify(warnRows);
+  expect(warnRows.length).toBeGreaterThan(0);
+  expect(serialized).toContain('"skippedCount":1');
+  expect(serialized).toContain('"pendingCount":2');
+  expect(serialized).not.toContain('{not-json');
+  expect(serialized).not.toContain('outer-bad');
+  expect(serialized).not.toContain('search the docs');
 });

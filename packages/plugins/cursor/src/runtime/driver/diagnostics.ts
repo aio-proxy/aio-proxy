@@ -40,7 +40,7 @@ export function createRunDiagnostics(
     resumeMode: context.resumeMode,
   };
   const providerId = safeLabel(context.providerId);
-  if (providerId !== undefined) base.providerId = providerId;
+  if (providerId !== undefined) base['providerId'] = providerId;
   return (phase: Phase, fields: Fields = {}, failed = false): void => {
     if (logger === undefined) return;
     const props: Record<string, unknown> = { ...base, phase };

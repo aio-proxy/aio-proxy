@@ -2,13 +2,12 @@ import type {
   LanguageModelV4,
   LanguageModelV4CallOptions,
   LanguageModelV4GenerateResult,
-  LanguageModelV4Prompt,
   LanguageModelV4StreamPart,
   SharedV4Warning,
   SharedV4ProviderOptions,
 } from '@ai-sdk/provider';
 import { type CredentialPort, type Logger, zod } from '@aio-proxy/plugin-sdk';
-import { create, fromBinary, toBinary } from '@bufbuild/protobuf';
+import { fromBinary } from '@bufbuild/protobuf';
 
 import { ConversationStateStructureSchema } from '../../gen/agent_pb';
 import { currentCursorCredential, type CursorOAuthDependencies } from '../../oauth';
@@ -16,9 +15,10 @@ import type { CursorCredential } from '../../schema';
 import { type CursorSessionState, type CursorSessionStore, sessionKey } from '../../store/session-store';
 import type { CursorTransport } from '../../wire/transport';
 import { runCursorTurn } from '../driver';
-import { appendCursorRootHistory, hasMatchingPendingToolResult } from '../history';
+import { hasMatchingPendingToolResult } from '../history';
 import { buildMcpToolDefinitions } from '../mcp-tools';
 import { buildCursorRunRequestBytes, type CursorRunState } from '../run-request';
+import { persistCursorSession } from './persist-session';
 
 export type CursorModelRuntime = {
   readonly transport: CursorTransport;
@@ -69,7 +69,9 @@ function routingContinuity(providerOptions: SharedV4ProviderOptions | undefined)
 }
 
 function logicalRequestId(options: SharedV4ProviderOptions | undefined): string {
-  const parsed = zod.object({ requestId: zod.string().min(1).max(128) }).safeParse(options?.aioProxy?.logicalRequest);
+  const parsed = zod
+    .object({ requestId: zod.string().min(1).max(128) })
+    .safeParse(options?.['aioProxy']?.['logicalRequest']);
   return parsed.success && /^[a-zA-Z0-9_.:-]+$/.test(parsed.data.requestId)
     ? parsed.data.requestId
     : crypto.randomUUID();
@@ -184,54 +186,20 @@ export function createCursorLanguageModel(modelId: string, runtime: CursorModelR
     void result
       .then((turn) => {
         if (storeKey === undefined) return;
-        const nextPendingToolCalls = new Map(pendingToolCalls);
-        for (const [outerCallId, nestedToolCallId] of turn.pendingToolCalls) {
-          nextPendingToolCalls.set(outerCallId, nestedToolCallId);
-        }
-        const active = options.prompt.at(-1);
-        const tail: LanguageModelV4Prompt = [
-          ...(active?.role === 'user' ? [active] : []),
-          {
-            role: 'assistant',
-            content: [
-              ...(turn.assistantText ? [{ type: 'text' as const, text: turn.assistantText }] : []),
-              ...turn.toolCalls.map((call) => ({
-                type: 'tool-call' as const,
-                toolCallId: call.outerCallId,
-                toolName: call.toolName,
-                input: JSON.parse(call.input),
-              })),
-            ],
-          },
-        ];
-        const rootPromptMessagesJson = appendCursorRootHistory({
-          rootPromptMessagesJson: conversationState.rootPromptMessagesJson,
-          prompt: tail,
-          blobStore: turn.blobStore,
-        });
-        const cachedConversationState = create(ConversationStateStructureSchema, {
-          ...turn.conversationState,
-          rootPromptMessagesJson,
-        });
-        const next: CursorSessionState = {
+        persistCursorSession({
+          sessionStore: runtime.sessionStore,
+          storeKey,
+          prior,
           conversationId,
-          conversationState: toBinary(ConversationStateStructureSchema, cachedConversationState),
-          blobs: turn.blobStore,
-          checkpointUsable: turn.checkpointUsable && nextPendingToolCalls.size === 0,
-          ...(routing?.updatesAffinity === true
-            ? {
-                expectedAffinity: {
-                  providerId: routing.routedProviderId,
-                  revision: (routing.observedAffinity?.revision ?? 0) + 1,
-                },
-              }
-            : prior?.expectedAffinity === undefined
-              ? {}
-              : { expectedAffinity: prior.expectedAffinity }),
-          pendingToolCalls: nextPendingToolCalls,
-        };
-        if (runtime.sessionStore.get(storeKey) !== prior) return;
-        runtime.sessionStore.set(storeKey, next);
+          requestPendingToolCalls: pendingToolCalls,
+          conversationState,
+          ...(routing === undefined ? {} : { routing }),
+          prompt: options.prompt,
+          turn,
+          ...(runtime.logger === undefined ? {} : { logger: runtime.logger }),
+          requestId: logicalRequestId(options.providerOptions),
+          modelId,
+        });
       })
       .catch(() => {});
     return {

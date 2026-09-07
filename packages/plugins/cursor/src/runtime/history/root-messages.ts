@@ -98,17 +98,17 @@ function readRootMessage(id: Uint8Array, store: ReadonlyMap<string, Uint8Array>)
 }
 
 function isRootSystemMessage(id: Uint8Array, store: ReadonlyMap<string, Uint8Array>): boolean {
-  return readRootMessage(id, store)?.role === 'system';
+  return readRootMessage(id, store)?.['role'] === 'system';
 }
 
 function collectRootCallIds(ids: readonly Uint8Array[], store: ReadonlyMap<string, Uint8Array>): Set<string> {
   const known = new Set<string>();
   for (const id of ids) {
     const message = readRootMessage(id, store);
-    if (message?.role !== 'assistant' || !Array.isArray(message.content)) continue;
-    for (const part of message.content) {
-      if (isPlainObject(part) && part.type === 'tool-call' && typeof part.toolCallId === 'string') {
-        known.add(part.toolCallId);
+    if (message?.['role'] !== 'assistant' || !Array.isArray(message['content'])) continue;
+    for (const part of message['content']) {
+      if (isPlainObject(part) && part['type'] === 'tool-call' && typeof part['toolCallId'] === 'string') {
+        known.add(part['toolCallId']);
       }
     }
   }
