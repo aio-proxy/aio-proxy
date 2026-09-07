@@ -13,7 +13,7 @@
 ---
 
 Subscription quota bars now mark where an even burn would have left the allowance by now, turning
-red when the window is being spent faster than that and drawing nothing while it tracks even. The
-marker appears wherever the provider reports how long the window lasts, which the bundled OAuth
-plugins now do; plugins can opt in through the new optional `OAuthQuotaItem.windowMinutes`. The
-reading is also spoken by the bar's accessible value text.
+red when the window is being spent faster than that and drawing nothing while it tracks even.
+Hovering the mark explains the reading, which the bar's accessible value text also carries. The
+mark appears wherever the provider reports how long the window lasts, which the bundled OAuth
+plugins now do; plugins can opt in through the new optional `OAuthQuotaItem.windowMinutes`.
