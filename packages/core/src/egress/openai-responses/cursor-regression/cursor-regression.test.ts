@@ -7,7 +7,7 @@ import {
   createProtocolFixture,
   protocolServerFrame,
   protocolUpdateFrame,
-} from '../../../../../plugins/cursor/src/runtime/cursor-model/test-support';
+} from '../../../../../plugins/cursor/src/runtime/protocol-fixture.test-support';
 import type { CursorCredential } from '../../../../../plugins/cursor/src/schema';
 import { CursorSessionStore } from '../../../../../plugins/cursor/src/store/session-store';
 import { jsonSchema, streamAiSdkText, type ModelMessage } from '../../../ai-sdk-bridge';

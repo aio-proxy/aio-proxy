@@ -26,9 +26,9 @@ import { storeCursorBlob } from '../../store/blobs';
 import { CursorSessionStore, sessionKey } from '../../store/session-store';
 import type { ConnectFrame } from '../../wire/frame';
 import type { CursorH2Stream, CursorTransport } from '../../wire/transport';
+import { createProtocolFixture, protocolServerFrame, protocolUpdateFrame } from '../protocol-fixture.test-support';
 import { createCursorLanguageModel, type CursorModelRuntime } from './cursor-model';
 import { persistCursorSession } from './persist-session';
-import { createProtocolFixture, protocolServerFrame, protocolUpdateFrame } from './test-support';
 
 const server = (value: Record<string, unknown>): ConnectFrame => {
   const message = create(AgentServerMessageSchema, { message: value } as never);
