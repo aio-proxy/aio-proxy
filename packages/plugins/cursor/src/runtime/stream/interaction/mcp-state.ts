@@ -149,8 +149,11 @@ export function updateMcp(
     call.outerBound = outer;
     call.outerCallId = outer;
     state.outerAliases.set(outer, key);
+    const announced = state.earlyAnnounce.get(outer);
+    if (announced !== undefined) call.announceOrder = Math.min(call.announceOrder, announced);
     call.buffer = appendMcpSnapshot(call.buffer, state.earlySnapshots.get(outer) ?? '');
     state.earlySnapshots.delete(outer);
+    state.earlyAnnounce.delete(outer);
   }
   if (nested !== undefined) {
     call.nestedToolCallId = nested;
