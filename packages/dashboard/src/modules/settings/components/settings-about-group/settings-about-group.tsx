@@ -6,9 +6,7 @@ import { Skeleton } from '@aio-proxy/ui/components/skeleton';
 import { useMutation } from '@tanstack/react-query';
 
 import { useReleaseQuery } from '../../hooks/use-release-query';
-import { useSettingsQuery } from '../../hooks/use-settings-query';
 import { checkLatestReleaseMutationFn } from '../../services/release-service';
-import { SettingsAutoUpdateRow } from './settings-auto-update-row';
 import { SettingsExternalLink } from './settings-external-link';
 import { SettingsRowChevron } from './settings-row-chevron';
 import { SettingsUpdateNowButton } from './settings-update-now-button';
@@ -18,7 +16,6 @@ const DOCUMENTATION_URL = 'https://aioproxy.dev';
 
 export const SettingsAboutGroup: React.FC = () => {
   const release = useReleaseQuery();
-  const settings = useSettingsQuery();
   const check = useMutation({ mutationFn: checkLatestReleaseMutationFn });
   const current = release.data?.current;
 
@@ -63,12 +60,6 @@ export const SettingsAboutGroup: React.FC = () => {
               />
             </ItemActions>
           </Item>
-          {settings.data !== undefined && !settings.isLoading && !settings.isError ? (
-            <SettingsAutoUpdateRow
-              autoUpdate={settings.data.autoUpdate}
-              managedService={release.data?.managedService ?? false}
-            />
-          ) : null}
           {/* These rows do nothing but navigate, so the whole row is the anchor and its title
               supplies the accessible name — the chevron is decoration, not a second control. */}
           <Item size="sm" render={<a href={REPOSITORY_URL} target="_blank" rel="noreferrer" />}>

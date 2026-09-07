@@ -52,7 +52,6 @@ const settings: DashboardSettingsView = {
   port: 9317,
   proxy: '****',
   retryAfterCapMs: 30_000,
-  autoUpdate: false,
 };
 
 const prepareMocks = (restartRequired?: boolean) => {

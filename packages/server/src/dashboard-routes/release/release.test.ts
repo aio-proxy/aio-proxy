@@ -28,7 +28,6 @@ test('POST /apply maps controller results to HTTP statuses', async () => {
       isManagedService: () => true,
       snapshot: () => ({ status: 'idle' }),
       apply: async () => result,
-      notifyCheck: () => {},
       start: () => {},
       stop: () => {},
     });
@@ -43,7 +42,6 @@ test('GET / reports managedService from the controller', async () => {
     isManagedService: () => true,
     snapshot: () => ({ status: 'in_progress' }),
     apply: async () => ({ status: 'in_progress' }),
-    notifyCheck: () => {},
     start: () => {},
     stop: () => {},
   });

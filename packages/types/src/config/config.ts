@@ -69,10 +69,6 @@ export const ServerConfigSchema = z.object({
   port: z.number().int().min(1).max(65_535).default(9_317).describe('HTTP port for the proxy API server.'),
   apiKeys: z.array(ApiKeySchema).default([]).describe('Caller API keys for the proxy API server.'),
   password: z.string().min(1).optional().describe('Dashboard password or Argon2id PHC hash.'),
-  autoUpdate: z
-    .boolean()
-    .default(false)
-    .describe('When true, a managed service installs newer npm latest versions on start and every 24 hours.'),
   logging: ServerLoggingSchema.prefault({}).optional(),
   retry: ServerRetrySchema.prefault({}),
 });

@@ -11,20 +11,10 @@ const mocks = rs.hoisted(() => ({
   release: rs.fn(),
   releaseQueryFn: rs.fn(),
   reloadDashboard: rs.fn(),
-  settingsMutate: rs.fn(),
-  settingsQuery: rs.fn(),
 }));
 
 rs.mock('../../hooks/use-release-query', () => ({
   useReleaseQuery: () => mocks.release(),
-}));
-
-rs.mock('../../hooks/use-settings-query', () => ({
-  useSettingsQuery: () => mocks.settingsQuery(),
-}));
-
-rs.mock('../../hooks/use-settings-mutation', () => ({
-  useSettingsMutation: () => ({ isPending: false, mutate: mocks.settingsMutate }),
 }));
 
 rs.mock('../../services/release-service', () => ({
@@ -44,9 +34,6 @@ const idleRelease: DashboardReleaseView = {
   update: { status: 'idle' },
 };
 
-const autoUpdateName = /Automatic updates|自动更新|自動更新|자동 업데이트/u;
-const unmanagedHint =
-  /Automatic install runs only under a managed service|自动安装仅在托管服务下生效|自動安裝僅在受管服務下生效|自動インストールはマネージドサービスでのみ実行されます|자동 설치는 관리 서비스에서만 실행됩니다/u;
 const updateNowName = /Update now|立即更新|今すぐ更新|지금 업데이트/u;
 const updatingName = /Updating…|正在更新…|更新中…|업데이트 중…/u;
 const updateFailed =
@@ -74,10 +61,7 @@ const prepare = (release = idleRelease) => {
   mocks.release.mockReset();
   mocks.releaseQueryFn.mockReset();
   mocks.reloadDashboard.mockReset();
-  mocks.settingsMutate.mockReset();
-  mocks.settingsQuery.mockReset();
   mocks.release.mockReturnValue({ data: release });
-  mocks.settingsQuery.mockReturnValue({ data: { autoUpdate: false }, isError: false, isLoading: false });
   mocks.apply.mockResolvedValue({ ok: true, status: 'started' });
   mocks.releaseQueryFn.mockResolvedValue(release);
 };
@@ -127,26 +111,6 @@ test('does not claim the build is current when the registry is unreachable', asy
     ).toBeInTheDocument(),
   );
   expect(screen.queryByText(upToDate)).toBeNull();
-});
-
-test('saves Automatic updates through the settings mutation', async () => {
-  prepare();
-  await renderGroup();
-
-  fireEvent.click(screen.getByRole('switch', { name: autoUpdateName }));
-
-  expect(mocks.settingsMutate.mock.calls[0]?.[0]).toEqual({ autoUpdate: true });
-});
-
-test('shows the unmanaged hint only when the process is not a managed service', async () => {
-  prepare({ ...idleRelease, managedService: false });
-  const unmanaged = await renderGroup();
-  expect(screen.getByText(unmanagedHint)).toBeInTheDocument();
-  unmanaged.unmount();
-
-  prepare({ ...idleRelease, managedService: true });
-  await renderGroup();
-  expect(screen.queryByText(unmanagedHint)).toBeNull();
 });
 
 test('apply up_to_date clears a stale outdated Check so Update now is not stuck enabled', async () => {
@@ -227,12 +191,11 @@ test('shows restart required, disables Update now, and does not reload', async (
   expect(mocks.releaseQueryFn).not.toHaveBeenCalled();
 });
 
-test('hides Automatic updates while settings are loading and keeps version check', async () => {
+test('keeps Check for updates without an Automatic updates switch', async () => {
   prepare();
-  mocks.settingsQuery.mockReturnValue({ data: undefined, isError: false, isLoading: true });
   await renderGroup();
 
-  expect(screen.queryByRole('switch', { name: autoUpdateName })).toBeNull();
+  expect(screen.queryByRole('switch')).toBeNull();
   expect(
     screen.getByRole('button', { name: /Check for updates|检查新版本|檢查新版本|更新を確認|업데이트 확인/u }),
   ).toBeInTheDocument();

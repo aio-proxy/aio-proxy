@@ -67,10 +67,7 @@ export const createDashboardRoutes = (
     .route('/overview', createDashboardOverviewRoute(state))
     .route('/plugins', createDashboardPluginRoutes(state))
     .route('/release', createDashboardReleaseRoute(version, undefined, controller))
-    .route(
-      '/settings',
-      createDashboardSettingsRoute(state, () => controller?.notifyCheck()),
-    )
+    .route('/settings', createDashboardSettingsRoute(state))
     .route('/traces', createDashboardTraceRoutes(state))
     .route('/events', createDashboardEventsRoute(state, auth))
     .post('/reload', async (context) => {

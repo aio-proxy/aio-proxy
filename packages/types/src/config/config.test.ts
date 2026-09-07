@@ -67,12 +67,9 @@ test('keeps unresolved API-key templates valid in the authoring schema', () => {
   expect(ConfigAuthoringSchema.safeParse(input).success).toBe(true);
 });
 
-test('defaults server.autoUpdate to false', () => {
-  expect(ConfigSchema.parse({ server: {}, providers: {} }).server.autoUpdate).toBe(false);
-});
-test('accepts an explicit autoUpdate boolean', () => {
-  expect(ConfigSchema.parse({ server: { autoUpdate: true }, providers: {} }).server.autoUpdate).toBe(true);
-  expect(ConfigSchema.parse({ server: { autoUpdate: false }, providers: {} }).server.autoUpdate).toBe(false);
+test('ignores a leftover server.autoUpdate key', () => {
+  const parsed = ConfigSchema.parse({ server: { autoUpdate: true }, providers: {} });
+  expect('autoUpdate' in parsed.server).toBe(false);
 });
 
 test('defaults server.retry.retryAfterCapMs', () => {

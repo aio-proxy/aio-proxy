@@ -1,4 +1,4 @@
-import { expect, mock, test } from 'bun:test';
+import { expect, test } from 'bun:test';
 import { createHash } from 'node:crypto';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -121,39 +121,14 @@ async function putKeys(routes: Routes, apiKeys: unknown): Promise<Response> {
   return put(routes, { apiKeys, apiKeysRevision: await apiKeysRevision(routes) });
 }
 
-test('PUT /settings persists autoUpdate without requiring a restart', async () => {
+test('PUT /settings leaves a leftover autoUpdate key on disk', async () => {
   await withSettingsFixture(async ({ routes, configPath }) => {
-    const response = await put(routes, { autoUpdate: true });
+    const current = onDisk(configPath);
+    writeFileSync(configPath, JSON.stringify({ ...current, server: { ...current.server, autoUpdate: true } }, null, 2));
+    const response = await put(routes, { retryAfterCapMs: 5_000 });
     expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({
-      ok: true,
-      restartRequired: false,
-      settings: { autoUpdate: true },
-    });
-    expect(onDisk(configPath).server).toMatchObject({ autoUpdate: true });
+    expect(onDisk(configPath).server).toMatchObject({ autoUpdate: true, retry: { retryAfterCapMs: 5_000 } });
   });
-});
-
-test('PUT /settings autoUpdate true notifies a pending check', async () => {
-  const notifyCheck = mock(() => {});
-  await withSettingsFixture(
-    async ({ routes }) => {
-      await put(routes, { autoUpdate: true });
-      expect(notifyCheck).toHaveBeenCalledTimes(1);
-      await put(routes, { autoUpdate: false });
-      expect(notifyCheck).toHaveBeenCalledTimes(1);
-    },
-    {
-      controller: {
-        apply: async () => ({ status: 'unavailable' }),
-        isManagedService: () => false,
-        notifyCheck,
-        snapshot: () => ({ status: 'idle' }),
-        start: () => {},
-        stop: () => {},
-      },
-    },
-  );
 });
 
 test('GET /settings returns only the redacted typed settings view', async () => {
@@ -171,7 +146,6 @@ test('GET /settings returns only the redacted typed settings view', async () => 
       port: 9_317,
       proxy: '****',
       retryAfterCapMs: 30_000,
-      autoUpdate: false,
     });
     expect(text).not.toMatch(
       /password-preserved|user:password|SETTINGS_|root-preserved|sk-from-env|sk-plain-preserved/u,

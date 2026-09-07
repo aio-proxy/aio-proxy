@@ -29,14 +29,14 @@ test('createServer exposes idempotent close and route-assembly failure closes st
   afterFailure.close();
 });
 
-test('createServer does not apply an update when the service is unmanaged', async () => {
+test('createServer never applies an update on start', async () => {
   const home = mkdtempSync(join(tmpdir(), 'aio-proxy-auto-update-unmanaged-'));
   const applyUpdate = mock(async () => 'installed' as const);
   const app = await createServer({
-    config: { providers: {}, server: { autoUpdate: true } },
+    config: { providers: {} },
     dbHome: home,
     version: '1.0.0',
-    autoUpdate: { isManagedService: () => false, applyUpdate },
+    autoUpdate: { isManagedService: () => true, applyUpdate },
   });
   await Promise.resolve();
   expect(applyUpdate).not.toHaveBeenCalled();
@@ -46,7 +46,7 @@ test('createServer does not apply an update when the service is unmanaged', asyn
 test('createServer reports managedService from the injected auto-update hooks', async () => {
   const home = mkdtempSync(join(tmpdir(), 'aio-proxy-auto-update-managed-view-'));
   const app = await createServer({
-    config: { providers: {}, server: { autoUpdate: false } },
+    config: { providers: {} },
     dbHome: home,
     version: '1.0.0',
     autoUpdate: {

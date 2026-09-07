@@ -23,7 +23,6 @@ const settings: DashboardSettingsView = {
   port: 9317,
   proxy: null,
   retryAfterCapMs: 30_000,
-  autoUpdate: false,
 };
 
 test('invalidates Settings and Providers after a proxy update', async () => {

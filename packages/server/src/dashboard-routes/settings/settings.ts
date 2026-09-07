@@ -92,7 +92,6 @@ function settingsView(config: Config, authored: readonly unknown[]): DashboardSe
     port: config.server.port,
     proxy: config.proxy === undefined ? null : '****',
     retryAfterCapMs: config.server.retry.retryAfterCapMs,
-    autoUpdate: config.server.autoUpdate,
   };
 }
 
@@ -140,8 +139,7 @@ async function applySettingsMutation(
     mutation.host !== undefined ||
     mutation.port !== undefined ||
     mutation.logging !== undefined ||
-    mutation.retryAfterCapMs !== undefined ||
-    mutation.autoUpdate !== undefined
+    mutation.retryAfterCapMs !== undefined
   ) {
     const server = section(current['server'], 'server');
     let nextServer = server;
@@ -170,9 +168,6 @@ async function applySettingsMutation(
       if (retry['retryAfterCapMs'] !== mutation.retryAfterCapMs) {
         nextServer = { ...nextServer, retry: { ...retry, retryAfterCapMs: mutation.retryAfterCapMs } };
       }
-    }
-    if (mutation.autoUpdate !== undefined && server['autoUpdate'] !== mutation.autoUpdate) {
-      nextServer = { ...nextServer, autoUpdate: mutation.autoUpdate };
     }
     if (nextServer !== server) next = { ...next, server: nextServer };
   }
@@ -207,7 +202,7 @@ async function applySettingsMutation(
   return { next, restartRequired };
 }
 
-export const createDashboardSettingsRoute = (state: ServerState, notifyCheck?: () => void) =>
+export const createDashboardSettingsRoute = (state: ServerState) =>
   new Hono()
     .get('/', async (context) => context.json(settingsView(state.currentConfig(), await authoredApiKeys(state))))
     .put('/', settingsValidator, async (context) => {
@@ -237,7 +232,6 @@ export const createDashboardSettingsRoute = (state: ServerState, notifyCheck?: (
         }
         throw error;
       }
-      if (mutation.autoUpdate === true) notifyCheck?.();
       return context.json({
         ok: true,
         restartRequired,

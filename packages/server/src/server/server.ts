@@ -448,7 +448,6 @@ export const createServer = async (options: CreateServerOptions): Promise<AppTyp
   const state = await createServerState(stateOptions);
   const logger = options.logger ?? defaultLogger;
   const controller = createAutoUpdateController({
-    getEnabled: () => state.currentConfig().server.autoUpdate,
     isManagedService: options.autoUpdate?.isManagedService ?? (() => false),
     applyUpdate: options.autoUpdate?.applyUpdate,
     currentVersion: options.version ?? '0.0.0',

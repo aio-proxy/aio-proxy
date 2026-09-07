@@ -18,7 +18,6 @@ const settings = {
   hasPassword: true,
   apiKeys: [{ key: '****', label: 'ci' }, { key: '****' }],
   apiKeysRevision: 'sha256:fixture',
-  autoUpdate: false,
 } as const;
 
 describe('dashboard settings control-plane contracts', () => {
@@ -136,15 +135,14 @@ describe('dashboard settings control-plane contracts', () => {
     expect(view.safeParse({ ...settings, proxy: '{{env.HTTPS_PROXY}}' }).success).toBe(false);
   });
 
-  test('exposes autoUpdate on the settings view and accepts a boolean mutation', () => {
+  test('settings view and mutation have no autoUpdate field', () => {
     const view = schema('DashboardSettingsViewSchema');
     const mutation = schema('DashboardSettingsMutationSchema');
 
-    expect(view.parse(settings).autoUpdate).toBe(false);
-    expect(view.safeParse({ ...settings, autoUpdate: 'yes' }).success).toBe(false);
-    expect(mutation.parse({}).autoUpdate).toBeUndefined();
-    expect(mutation.parse({ autoUpdate: true })).toEqual({ autoUpdate: true });
-    expect(mutation.parse({ autoUpdate: false })).toEqual({ autoUpdate: false });
+    expect(view.parse(settings)).not.toHaveProperty('autoUpdate');
+    expect(view.safeParse({ ...settings, autoUpdate: true }).success).toBe(false);
+    expect(mutation.parse({})).not.toHaveProperty('autoUpdate');
+    expect(mutation.safeParse({ autoUpdate: true }).success).toBe(false);
   });
 
   test('reports whether a successful settings write requires restart', () => {

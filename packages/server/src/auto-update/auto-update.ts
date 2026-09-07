@@ -13,7 +13,6 @@ export type AutoUpdateApplyResult =
   | { readonly status: 'check_failed' };
 
 export type AutoUpdateControllerOptions = {
-  readonly getEnabled: () => boolean;
   readonly isManagedService: () => boolean;
   readonly applyUpdate?: (version: string) => Promise<'installed' | 'unchanged'>;
   readonly currentVersion: string;
@@ -28,7 +27,6 @@ export type AutoUpdateController = {
   readonly isManagedService: () => boolean;
   readonly snapshot: () => AutoUpdateSnapshot;
   readonly apply: () => Promise<AutoUpdateApplyResult>;
-  readonly notifyCheck: () => void;
   readonly start: () => void;
   readonly stop: () => void;
 };
@@ -72,27 +70,14 @@ export function createAutoUpdateController(options: AutoUpdateControllerOptions)
 
   const isUpToDate = (latest: string) => Bun.semver.order(latest, options.currentVersion) <= 0;
 
+  // A check must not take the apply lock or install. Only Update now / upgrade install.
   const tick = async () => {
-    if (stopped || locked || !options.getEnabled() || !options.isManagedService()) return;
-    locked = true;
-    status = 'in_progress';
-    let latest: string;
+    if (stopped) return;
     try {
-      latest = await options.fetchLatest(AUTO_UPDATE_PACKAGE);
-      if (isUpToDate(latest)) {
-        release('idle');
-        return;
-      }
+      await options.fetchLatest(AUTO_UPDATE_PACKAGE);
     } catch (error) {
-      failLookup(error);
-      return;
+      options.onError?.(error);
     }
-    // Recheck after the awaited lookup: stop() or a toggle-off must not start applyUpdate.
-    if (stopped || !options.getEnabled()) {
-      release('idle');
-      return;
-    }
-    startApply(latest);
   };
 
   const apply = async (): Promise<AutoUpdateApplyResult> => {
@@ -120,7 +105,6 @@ export function createAutoUpdateController(options: AutoUpdateControllerOptions)
   };
 
   const start = () => {
-    if (!options.applyUpdate) return;
     stopped = false;
     void tick();
     timer = schedule(() => {
@@ -139,9 +123,6 @@ export function createAutoUpdateController(options: AutoUpdateControllerOptions)
     isManagedService: options.isManagedService,
     snapshot,
     apply,
-    notifyCheck: () => {
-      void tick();
-    },
     start,
     stop,
   };
