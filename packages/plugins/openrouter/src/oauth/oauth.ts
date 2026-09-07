@@ -71,14 +71,14 @@ async function exchangeAuthorizationCode(
     if (options.signal.aborted) throw options.signal.reason;
     throw error;
   }
+  if (!response.ok) {
+    throw new Error(`OpenRouter OAuth key exchange failed (HTTP ${response.status})`);
+  }
   let body: unknown;
   try {
     body = await response.json();
   } catch {
     throw new Error('OpenRouter OAuth returned invalid JSON');
-  }
-  if (!response.ok) {
-    throw new Error(`OpenRouter OAuth key exchange failed (HTTP ${response.status})`);
   }
   if (!isPlainObject(body) || typeof body['key'] !== 'string' || body['key'].trim() === '') {
     throw new Error('OpenRouter OAuth response carries no key');

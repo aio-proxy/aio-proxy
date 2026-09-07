@@ -64,6 +64,20 @@ describe('OpenRouter OAuth', () => {
     );
   });
 
+  test('reports HTTP status when the key exchange body is not JSON', async () => {
+    await expect(
+      loginOpenRouter(
+        loginContext({
+          loopback: async () => ({ code: 'auth-code', redirectUri: REDIRECT }),
+        }),
+        {
+          fetch: async () =>
+            new Response('<html>denied</html>', { status: 502, headers: { 'content-type': 'text/html' } }),
+        },
+      ),
+    ).rejects.toThrow(/HTTP 502/);
+  });
+
   test('fails closed when the key exchange omits key', async () => {
     await expect(
       loginOpenRouter(
