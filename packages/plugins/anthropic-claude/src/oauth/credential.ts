@@ -138,7 +138,10 @@ function isPositiveNumber(value: unknown): value is number {
 }
 
 function optionalField<K extends string>(key: K, value: string | undefined): { readonly [P in K]?: string } {
-  return value === undefined ? {} : { [key]: value };
+  if (value === undefined) return {};
+  const field: { [P in K]?: string } = {};
+  field[key] = value;
+  return field;
 }
 
 async function waitForCaller<T>(operation: Promise<T>, signal: AbortSignal | undefined): Promise<T> {

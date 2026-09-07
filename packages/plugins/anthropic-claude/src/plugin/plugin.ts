@@ -160,5 +160,8 @@ function optionalString(value: unknown): string | undefined {
 }
 
 function presentField<K extends string>(key: K, value: string | undefined): { readonly [P in K]?: string } {
-  return value === undefined ? {} : { [key]: value };
+  if (value === undefined) return {};
+  const field: { [P in K]?: string } = {};
+  field[key] = value;
+  return field;
 }

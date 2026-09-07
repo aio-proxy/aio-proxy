@@ -39,7 +39,7 @@ async function bootstrapIdentity(
   options: ClaudeIdentityOptions,
 ): Promise<ClaudeIdentity> {
   if (accessToken === undefined) return {};
-  const fetcher = options.fetch ?? globalThis.fetch;
+  const fetcher: RuntimeFetch = options.fetch ?? globalThis.fetch;
   const url = new URL(CLAUDE_BOOTSTRAP_URL);
   url.searchParams.set('entrypoint', 'cli');
   url.searchParams.set('model', CLAUDE_BOOTSTRAP_MODEL);
