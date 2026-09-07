@@ -21,6 +21,14 @@ export type TranscriptionInvocation = {
   readonly audio: Uint8Array;
   readonly mediaType?: string;
   /**
+   * The upload's own filename, carried so the transport can recover a container
+   * the declared media type does not name. A client that omits `Content-Type` or
+   * sends the generic `application/octet-stream` still uploads `recording.m4a`,
+   * and byte sniffing cannot see MP4's `ftyp` box, so the extension is the only
+   * remaining signal.
+   */
+  readonly filename?: string;
+  /**
    * The transcription controls OpenAI takes as top-level form fields. They are typed
    * fields rather than entries in `providerOptions` because the protocol layer does
    * not know which upstream provider will serve the request — `providerOptions` is

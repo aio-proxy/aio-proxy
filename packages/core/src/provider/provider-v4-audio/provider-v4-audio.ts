@@ -79,7 +79,7 @@ export function createProviderV4TranscribeInvoke(
     try {
       const model = provider.transcriptionModel!(options.modelId);
       const providerOptions = transcriptionProviderOptions(model.provider, invocation);
-      const declared = specificAudioMediaType(invocation.mediaType);
+      const declared = specificAudioMediaType(invocation.mediaType) ?? filenameMediaType(invocation.filename);
       const result = await transcribe({
         model: declared === undefined ? model : withMediaType(model, declared),
         audio: invocation.audio,
@@ -161,6 +161,31 @@ function specificAudioMediaType(mediaType: string | undefined): string | undefin
   const normalized = mediaType.toLowerCase();
   if (SUPPORTED_CONTAINER_MEDIA_TYPES.has(normalized)) return normalized;
   return normalized.startsWith('audio/') && normalized !== 'audio/*' ? normalized : undefined;
+}
+
+/**
+ * The containers byte sniffing cannot recover, keyed by the upload's extension.
+ * MP4/M4A put `ftyp` at offset 4 and WebM's EBML header is not in the SDK's
+ * signature table, so both sniff as nothing and reach upstream labelled
+ * `audio/wav`. Every other format OpenAI accepts (mp3, wav, flac, ogg) has a
+ * magic prefix the SDK already recognizes, so it is not listed: sniffing the
+ * bytes beats trusting a name the client chose.
+ */
+const EXTENSION_MEDIA_TYPES: Readonly<Record<string, string>> = {
+  m4a: 'audio/mp4',
+  mp4: 'audio/mp4',
+  webm: 'audio/webm',
+};
+
+/**
+ * Last resort when the declared type says nothing: a client that omits
+ * `Content-Type` or labels the part `application/octet-stream` still names the
+ * file, and for these containers the extension is the only signal left.
+ */
+function filenameMediaType(filename: string | undefined): string | undefined {
+  if (filename === undefined) return undefined;
+  const dot = filename.lastIndexOf('.');
+  return dot < 0 ? undefined : EXTENSION_MEDIA_TYPES[filename.slice(dot + 1).toLowerCase()];
 }
 
 /**

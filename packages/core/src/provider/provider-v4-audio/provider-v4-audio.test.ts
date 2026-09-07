@@ -272,6 +272,46 @@ describe('createProviderV4TranscribeInvoke', () => {
     expect(calls[0]?.mediaType).toBe(mediaType);
   });
 
+  // A part with no `Content-Type`, or the generic one, still names the file. For
+  // the containers sniffing cannot recover, that name is the only signal left —
+  // without it an `.m4a` reaches OpenAI as `audio.wav` and is rejected.
+  test.each([
+    ['recording.m4a', undefined, 'audio/mp4'],
+    ['recording.M4A', 'application/octet-stream', 'audio/mp4'],
+    ['clip.webm', undefined, 'audio/webm'],
+  ] as const)(
+    'derives the container from the filename %p when the declared type says nothing',
+    async (filename, mediaType, expected) => {
+      const calls: TranscriptionCall[] = [];
+      const invoke = createProviderV4TranscribeInvoke(
+        'stub',
+        transcriptionProvider({}, (call) => calls.push(call)) as never,
+      );
+
+      await invoke(
+        { audio: UNSNIFFABLE_BYTES, filename, ...(mediaType === undefined ? {} : { mediaType }) },
+        { modelId: 'whisper-1' },
+      );
+
+      expect(calls[0]?.mediaType).toBe(expected);
+    },
+  );
+
+  // Every other accepted format has a magic prefix the SDK recognizes, so the
+  // bytes beat a name the client chose — a `.mp3` extension on WAV bytes must
+  // not relabel the upload.
+  test('lets sniffing win over an extension it can already recognize', async () => {
+    const calls: TranscriptionCall[] = [];
+    const invoke = createProviderV4TranscribeInvoke(
+      'stub',
+      transcriptionProvider({}, (call) => calls.push(call)) as never,
+    );
+
+    await invoke({ audio: WAV_BYTES, filename: 'recording.mp3' }, { modelId: 'whisper-1' });
+
+    expect(calls[0]?.mediaType).toBe('audio/wav');
+  });
+
   test('forwards provider options and the abort signal', async () => {
     const calls: TranscriptionCall[] = [];
     const controller = new AbortController();
