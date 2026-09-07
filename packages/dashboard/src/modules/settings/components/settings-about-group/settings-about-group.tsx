@@ -21,24 +21,25 @@ export const SettingsAboutGroup: React.FC = () => {
   const release = useReleaseQuery();
   const check = useMutation({
     mutationFn: checkLatestReleaseMutationFn,
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.release });
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.release });
     },
   });
   const current = release.data?.current;
   const persistedOutdated = release.data?.outdated === true;
-  const checkOutdated = check.data?.outdated;
-  const outdated = checkOutdated ?? persistedOutdated;
-  const latest = check.data?.latest ?? release.data?.latest;
+  const outdated = persistedOutdated;
+  const latest = release.data?.latest;
 
   // A failed lookup must not read as "up to date": an unreachable registry says nothing
   // about the published version. A failed install is the same — do not replace it with
   // the last successful "up to date" check. Mount-time GET /release already carries the
   // last persisted check, so About can show that without waiting for a manual Check.
+  // After Check succeeds, the shared release query is the source of truth so a later
+  // tick cannot be masked by leftover mutation data.
   const versionDescription = (() => {
     if (current === undefined) return undefined;
     if (check.isError) return m['dashboard.settings.version_check_failed']();
-    if (check.data === undefined && !persistedOutdated) {
+    if (latest === undefined && !persistedOutdated) {
       return m['dashboard.settings.version_description']({ version: current });
     }
     if (outdated && latest !== undefined) return m['dashboard.settings.version_outdated']({ version: latest });

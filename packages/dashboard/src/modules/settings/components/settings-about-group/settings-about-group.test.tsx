@@ -63,6 +63,22 @@ const renderGroup = async () => {
   return { invalidateQueries, ...render(createElement(SettingsAboutGroup), { wrapper }) };
 };
 
+const syncReleaseFromCheck = (result: { current: string; latest: string; outdated: boolean }) => {
+  mocks.check.mockImplementation(async () => {
+    const current = mocks.release() as { data?: DashboardReleaseView };
+    mocks.release.mockReturnValue({
+      data: {
+        current: result.current,
+        latest: result.latest,
+        outdated: result.outdated,
+        managedService: current.data?.managedService ?? false,
+        update: current.data?.update ?? { status: 'idle' },
+      },
+    });
+    return result;
+  });
+};
+
 const clickCheck = () =>
   fireEvent.click(
     screen.getByRole('button', { name: /Check for updates|检查新版本|檢查新版本|更新を確認|업데이트 확인/u }),
@@ -101,13 +117,28 @@ test('shows the running version and links it to its release tag, the repo, and t
 
 test('announces a newer published version after the check', async () => {
   prepare();
-  mocks.check.mockResolvedValue({ current: '1.4.2', latest: '1.10.0', outdated: true });
+  syncReleaseFromCheck({ current: '1.4.2', latest: '1.10.0', outdated: true });
   const { invalidateQueries } = await renderGroup();
 
   clickCheck();
 
   await waitFor(() => expect(screen.getByText(/1\.10\.0/u)).toBeInTheDocument());
   await waitFor(() => expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['release'] }));
+});
+
+test('a later shared release refresh replaces a stale current Check', async () => {
+  prepare();
+  syncReleaseFromCheck({ current: '1.4.2', latest: '1.4.2', outdated: false });
+  const view = await renderGroup();
+
+  clickCheck();
+  await waitFor(() => expect(screen.getByText(upToDate)).toBeInTheDocument());
+
+  mocks.release.mockReturnValue({ data: withRelease('idle', { latest: '1.10.0', outdated: true }) });
+  view.rerender(createElement(SettingsAboutGroup));
+
+  await waitFor(() => expect(screen.getByText(/1\.10\.0/u)).toBeInTheDocument());
+  expect(screen.getByRole('button', { name: updateNowName })).toBeEnabled();
 });
 
 test('does not claim the build is current when the registry is unreachable', async () => {
@@ -130,7 +161,7 @@ test('does not claim the build is current when the registry is unreachable', asy
 
 test('apply up_to_date clears a stale outdated Check so Update now is not stuck enabled', async () => {
   prepare();
-  mocks.check.mockResolvedValue({ current: '1.4.2', latest: '1.10.0', outdated: true });
+  syncReleaseFromCheck({ current: '1.4.2', latest: '1.10.0', outdated: true });
   mocks.apply.mockResolvedValue({ ok: true, status: 'up_to_date' });
   await renderGroup();
 
@@ -145,7 +176,7 @@ test('apply up_to_date clears a stale outdated Check so Update now is not stuck 
 
 test('enables Update now after an outdated check and posts apply', async () => {
   prepare();
-  mocks.check.mockResolvedValue({ current: '1.4.2', latest: '1.10.0', outdated: true });
+  syncReleaseFromCheck({ current: '1.4.2', latest: '1.10.0', outdated: true });
   await renderGroup();
 
   const update = screen.getByRole('button', { name: updateNowName });
@@ -176,7 +207,7 @@ test('disables Update now and polls when GET already reports in_progress', async
 
 test('starts the same poll when apply reports in_progress', async () => {
   prepare();
-  mocks.check.mockResolvedValue({ current: '1.4.2', latest: '1.10.0', outdated: true });
+  syncReleaseFromCheck({ current: '1.4.2', latest: '1.10.0', outdated: true });
   mocks.apply.mockRejectedValue(new Error('in_progress'));
   await renderGroup();
 
@@ -191,7 +222,7 @@ test('starts the same poll when apply reports in_progress', async () => {
 
 test('shows a failed update without claiming the build is current', async () => {
   prepare(withRelease('failed'));
-  mocks.check.mockResolvedValue({ current: '1.4.2', latest: '1.4.2', outdated: false });
+  syncReleaseFromCheck({ current: '1.4.2', latest: '1.4.2', outdated: false });
   await renderGroup();
 
   clickCheck();
@@ -202,7 +233,7 @@ test('shows a failed update without claiming the build is current', async () => 
 
 test('shows restart required, disables Update now, and does not reload', async () => {
   prepare(withRelease('restart_required'));
-  mocks.check.mockResolvedValue({ current: '1.4.2', latest: '1.10.0', outdated: true });
+  syncReleaseFromCheck({ current: '1.4.2', latest: '1.10.0', outdated: true });
   await renderGroup();
 
   clickCheck();
