@@ -43,6 +43,8 @@ test('maps window and weekly usage without reminting or persisting api_key', asy
         id: '60m',
         displayName: { default: '1 hour', 'zh-Hans': '1 小时' },
         remainingRatio: 0.75,
+        // Carried through so the dashboard knows where the window started, not just when it ends.
+        windowMinutes: 60,
         resetsAt: Date.parse('2027-01-15T00:00:00Z'),
       },
     ],
@@ -62,6 +64,7 @@ test('accepts weekly percent and unix-second resets', async () => {
       id: 'weekly',
       displayName: { default: 'Weekly quota', 'zh-Hans': '周配额' },
       remainingRatio: 0.9,
+      windowMinutes: 7 * 24 * 60,
       resetsAt: 1_767_972_193_000,
     },
   ]);
@@ -156,11 +159,14 @@ test('formats every window of at least 60 minutes in hours', async () => {
       id: '90m',
       displayName: { default: '1.5 hours', 'zh-Hans': '1.5 小时' },
       remainingRatio: 0.75,
+      windowMinutes: 90,
     },
   ]);
 });
 
-test('treats nonpositive window_duration_mins as a rolling window', async () => {
+// Without a usable duration the window has no known start, so it reports no length either: a
+// guessed one would put the dashboard's even-burn mark somewhere the data does not support.
+test('treats nonpositive window_duration_mins as a rolling window of unknown length', async () => {
   const zero = await readMuseCodeQuota(context(), {
     fetch: async () =>
       Response.json({
@@ -186,6 +192,25 @@ test('treats nonpositive window_duration_mins as a rolling window', async () => 
     id: 'window',
     displayName: { default: 'Rolling window', 'zh-Hans': '滚动窗口' },
   });
+});
+
+// `validateOAuthQuotaSnapshot` rejects a non-positive or unsafe `windowMinutes` and throws away the
+// whole snapshot with it, so a duration that cannot round into that contract reports no length.
+test('keeps a window whose duration rounds outside the reportable range, without its length', async () => {
+  const snapshot = await readMuseCodeQuota(context(), {
+    fetch: async () =>
+      Response.json({
+        is_subs_active: true,
+        subs_usage: { window: { used_percent: 25, window_duration_mins: 0.2 } },
+      }),
+  });
+  expect(snapshot.items).toEqual([
+    {
+      id: '0m',
+      displayName: { default: '0.2 minutes', 'zh-Hans': '0.2 分钟' },
+      remainingRatio: 0.75,
+    },
+  ]);
 });
 
 function context() {

@@ -71,14 +71,17 @@ function usageItem(value: unknown, kind: 'window' | 'weekly'): OAuthQuotaItem | 
       id: 'weekly',
       displayName: WEEKLY_WINDOW,
       remainingRatio,
+      // The name says a week and the upstream reports no duration for this one, so it is the length.
+      windowMinutes: 7 * 24 * 60,
       ...(resets === undefined ? {} : { resetsAt: resets }),
     };
   }
-  const { id, displayName } = windowIdentity(Reflect.get(value, 'window_duration_mins'));
+  const { id, displayName, windowMinutes } = windowIdentity(Reflect.get(value, 'window_duration_mins'));
   return {
     id,
     displayName,
     remainingRatio,
+    ...(windowMinutes === undefined ? {} : { windowMinutes }),
     ...(resets === undefined ? {} : { resetsAt: resets }),
   };
 }
@@ -87,16 +90,33 @@ function usedPercent(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined;
 }
 
-function windowIdentity(minutes: unknown): { readonly id: string; readonly displayName: LocalizedText } {
+/**
+ * The reported duration names the window and also measures it, so it is carried through as
+ * `windowMinutes`: without it the dashboard knows when the window ends but not when it started, and
+ * cannot place the even-burn mark. An unusable duration leaves both the name and the length generic.
+ *
+ * The length is only reported when the rounded value survives as a positive safe integer, which is
+ * what `validateOAuthQuotaSnapshot` accepts. A sub-half-minute or absurdly large duration would
+ * otherwise round to something the validator rejects, and that failure discards the whole snapshot
+ * rather than the one field it cannot use.
+ */
+function windowIdentity(minutes: unknown): {
+  readonly id: string;
+  readonly displayName: LocalizedText;
+  readonly windowMinutes?: number;
+} {
   if (typeof minutes !== 'number' || !Number.isFinite(minutes) || minutes <= 0) {
     return { id: 'window', displayName: ROLLING_WINDOW };
   }
-  const id = `${Math.round(minutes)}m`;
+  const rounded = Math.round(minutes);
+  const length = Number.isSafeInteger(rounded) && rounded > 0 ? { windowMinutes: rounded } : {};
+  const id = `${rounded}m`;
   if (minutes >= 60) {
     const hours = minutes / 60;
     return {
       id,
       displayName: { default: hours === 1 ? `${hours} hour` : `${hours} hours`, 'zh-Hans': `${hours} 小时` },
+      ...length,
     };
   }
   return {
@@ -105,6 +125,7 @@ function windowIdentity(minutes: unknown): { readonly id: string; readonly displ
       default: minutes === 1 ? `${minutes} minute` : `${minutes} minutes`,
       'zh-Hans': `${minutes} 分钟`,
     },
+    ...length,
   };
 }
 
