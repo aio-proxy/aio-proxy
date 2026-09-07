@@ -27,6 +27,7 @@ import { CursorSessionStore, sessionKey } from '../../store/session-store';
 import type { ConnectFrame } from '../../wire/frame';
 import type { CursorH2Stream, CursorTransport } from '../../wire/transport';
 import { createCursorLanguageModel, type CursorModelRuntime } from './cursor-model';
+import { createProtocolFixture, protocolServerFrame, protocolUpdateFrame } from './test-support';
 
 const server = (value: Record<string, unknown>): ConnectFrame => {
   const message = create(AgentServerMessageSchema, { message: value } as never);
@@ -674,4 +675,94 @@ test('concurrent successful turns preserve the first committed checkpoint', asyn
   await new Promise((resolve) => setTimeout(resolve, 0));
 
   expect(sessionStore.get(logicalStoreKey)).toBe(winningState);
+});
+
+test('a result-only second turn reads the actual tool history without a checkpoint', async () => {
+  const f = createProtocolFixture([
+    [
+      protocolUpdateFrame({
+        case: 'toolCallStarted',
+        value: {
+          callId: 'outer|a',
+          toolCall: {
+            tool: {
+              case: 'mcpToolCall',
+              value: {
+                args: { name: 'search', toolName: 'search', toolCallId: 'nested-a', args: {} },
+              },
+            },
+          },
+        },
+      }),
+      protocolServerFrame({
+        case: 'execServerMessage',
+        value: {
+          id: 1,
+          execId: 'exec-a',
+          message: {
+            case: 'mcpArgs',
+            value: {
+              name: 'search',
+              toolName: 'search',
+              toolCallId: 'nested-a',
+              args: { query: new TextEncoder().encode('"docs"') },
+            },
+          },
+        },
+      }),
+    ],
+    [
+      protocolUpdateFrame({ case: 'textDelta', value: { text: 'done' } }),
+      { flags: 2, payload: new TextEncoder().encode('{}') },
+    ],
+  ]);
+  const model = createCursorLanguageModel('composer-2', runtimeWith(f.transport, new CursorSessionStore()));
+  const first = await model.doGenerate({
+    ...callOptions(),
+    prompt: [{ role: 'user', content: [{ type: 'text', text: 'search the docs' }] }],
+    tools: [
+      {
+        type: 'function',
+        name: 'search',
+        inputSchema: {
+          type: 'object',
+          properties: { query: { type: 'string' } },
+          required: ['query'],
+        },
+      },
+    ],
+  });
+  expect(first.content.find((p) => p.type === 'tool-call')).toMatchObject({
+    toolCallId: 'outer|a',
+    input: '{"query":"docs"}',
+  });
+  await model.doGenerate({
+    ...callOptions(),
+    prompt: [
+      {
+        role: 'tool',
+        content: [
+          {
+            type: 'tool-result',
+            toolCallId: 'outer|a',
+            toolName: 'search',
+            output: { type: 'text', value: 'FOUND' },
+          },
+        ],
+      },
+    ],
+  });
+  const root = f.roots[1]!;
+  const contents = root.flatMap((m) => (Array.isArray(m.content) ? m.content : []));
+  const call = contents.find((p) => p.type === 'tool-call')!;
+  const result = contents.find((p) => p.type === 'tool-result')!;
+  expect(call.args).toEqual({ query: 'docs' });
+  expect(result.result).toBe('FOUND');
+  expect(result.toolCallId).toBe(call.toolCallId);
+  expect(call.toolCallId).toMatch(/^[a-zA-Z0-9_-]+$/);
+  expect(root.filter((m) => m.role === 'user' && JSON.stringify(m.content).includes('search the docs'))).toHaveLength(
+    1,
+  );
+  expect(f.runs[1]?.action?.action.case).toBe('resumeAction');
+  expect(f.closes).toEqual([1, 1]);
 });

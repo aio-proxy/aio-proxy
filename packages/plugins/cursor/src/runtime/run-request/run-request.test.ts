@@ -23,26 +23,51 @@ const build = (prompt: LanguageModelV4Prompt) =>
     state: { conversationId: 'conv-files', blobStore: new Map() },
   });
 
-const resumeResults: Array<{ label: string; output: LanguageModelV4ToolResultPart['output']; text: string }> = [
-  { label: 'text', output: { type: 'text', value: 'FOUND' }, text: '[Tool Result]\nFOUND' },
-  { label: 'empty text', output: { type: 'text', value: '' }, text: '[Tool Result]\n(no output)' },
-  { label: 'whitespace text', output: { type: 'text', value: ' \n ' }, text: '[Tool Result]\n(no output)' },
-  { label: 'empty content', output: { type: 'content', value: [] }, text: '[Tool Result]\n(no output)' },
+const resumeResults: Array<{
+  label: string;
+  output: LanguageModelV4ToolResultPart['output'];
+  text: string;
+  result: unknown;
+  isError?: true;
+}> = [
+  { label: 'text', output: { type: 'text', value: 'FOUND' }, text: '[Tool Result]\nFOUND', result: 'FOUND' },
+  {
+    label: 'empty text',
+    output: { type: 'text', value: '' },
+    text: '[Tool Result]\n(no output)',
+    result: '(no output)',
+  },
+  {
+    label: 'whitespace text',
+    output: { type: 'text', value: ' \n ' },
+    text: '[Tool Result]\n(no output)',
+    result: '(no output)',
+  },
+  {
+    label: 'empty content',
+    output: { type: 'content', value: [] },
+    text: '[Tool Result]\n(no output)',
+    result: '(no output)',
+  },
   {
     label: 'execution denied with reason',
     output: { type: 'execution-denied', reason: 'User declined access to the repository.' },
     text: '[Tool Execution Denied]\nUser declined access to the repository.',
+    result: '[Tool Execution Denied]\nUser declined access to the repository.',
+    isError: true,
   },
   {
     label: 'execution denied without reason',
     output: { type: 'execution-denied' },
     text: '[Tool Execution Denied]\nTool execution was denied.',
+    result: '[Tool Execution Denied]\nTool execution was denied.',
+    isError: true,
   },
 ];
 
 test.each(resumeResults.flatMap((result) => [true, false].map((fullHistory) => ({ ...result, fullHistory }))))(
   'a pending tool resume includes $label in the model prompt (full history: $fullHistory)',
-  ({ fullHistory, output, text }) => {
+  ({ fullHistory, output, text, result, isError }) => {
     const blobStore = new Map<string, Uint8Array>();
     const jsonBlob = (value: unknown) => storeCursorBlob(blobStore, new TextEncoder().encode(JSON.stringify(value)));
     const system = { role: 'system', content: 'sys' } as const;
@@ -83,7 +108,19 @@ test.each(resumeResults.flatMap((result) => [true, false].map((fullHistory) => (
     );
 
     expect(history).toContainEqual(user);
-    expect(history).toContainEqual({ role: 'user', content: [{ type: 'text', text }] });
+    if (fullHistory) {
+      const results = history.filter((message) => message.role === 'tool').flatMap((message) => message.content);
+      expect(results.map((part) => part.result)).toEqual([result]);
+      expect(results[0]?.isError).toBe(isError);
+      const calls = history
+        .filter((message) => message.role === 'assistant')
+        .flatMap((message) => message.content)
+        .filter((part) => part.type === 'tool-call');
+      expect(calls.map((call) => call.args)).toEqual([{ query: 'docs' }]);
+      expect(results.map((part) => part.toolCallId)).toEqual(calls.map((call) => call.toolCallId));
+    } else {
+      expect(history).toContainEqual({ role: 'user', content: [{ type: 'text', text }] });
+    }
   },
 );
 

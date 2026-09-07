@@ -2,12 +2,13 @@ import type {
   LanguageModelV4,
   LanguageModelV4CallOptions,
   LanguageModelV4GenerateResult,
+  LanguageModelV4Prompt,
   LanguageModelV4StreamPart,
   SharedV4Warning,
   SharedV4ProviderOptions,
 } from '@ai-sdk/provider';
 import { type CredentialPort, zod } from '@aio-proxy/plugin-sdk';
-import { fromBinary, toBinary } from '@bufbuild/protobuf';
+import { create, fromBinary, toBinary } from '@bufbuild/protobuf';
 
 import { ConversationStateStructureSchema } from '../../gen/agent_pb';
 import { currentCursorCredential, type CursorOAuthDependencies } from '../../oauth';
@@ -15,7 +16,7 @@ import type { CursorCredential } from '../../schema';
 import { type CursorSessionState, type CursorSessionStore, sessionKey } from '../../store/session-store';
 import type { CursorTransport } from '../../wire/transport';
 import { runCursorTurn } from '../driver';
-import { hasMatchingPendingToolResult } from '../history';
+import { appendCursorRootHistory, hasMatchingPendingToolResult } from '../history';
 import { buildMcpToolDefinitions } from '../mcp-tools';
 import { buildCursorRunRequestBytes, type CursorRunState } from '../run-request';
 
@@ -172,9 +173,34 @@ export function createCursorLanguageModel(modelId: string, runtime: CursorModelR
         for (const [outerCallId, nestedToolCallId] of turn.pendingToolCalls) {
           nextPendingToolCalls.set(outerCallId, nestedToolCallId);
         }
+        const active = options.prompt.at(-1);
+        const tail: LanguageModelV4Prompt = [
+          ...(active?.role === 'user' ? [active] : []),
+          {
+            role: 'assistant',
+            content: [
+              ...(turn.assistantText ? [{ type: 'text' as const, text: turn.assistantText }] : []),
+              ...turn.toolCalls.map((call) => ({
+                type: 'tool-call' as const,
+                toolCallId: call.outerCallId,
+                toolName: call.toolName,
+                input: JSON.parse(call.input),
+              })),
+            ],
+          },
+        ];
+        const rootPromptMessagesJson = appendCursorRootHistory({
+          rootPromptMessagesJson: conversationState.rootPromptMessagesJson,
+          prompt: tail,
+          blobStore: turn.blobStore,
+        });
+        const cachedConversationState = create(ConversationStateStructureSchema, {
+          ...turn.conversationState,
+          rootPromptMessagesJson,
+        });
         const next: CursorSessionState = {
           conversationId,
-          conversationState: toBinary(ConversationStateStructureSchema, turn.conversationState),
+          conversationState: toBinary(ConversationStateStructureSchema, cachedConversationState),
           blobs: turn.blobStore,
           checkpointUsable: turn.checkpointUsable && nextPendingToolCalls.size === 0,
           ...(routing?.updatesAffinity === true
