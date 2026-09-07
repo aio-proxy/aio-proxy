@@ -174,7 +174,7 @@ test('stops polling and returns to idle after apply started then GET idle', asyn
   expect(mocks.releaseQueryFn.mock.calls.length).toBe(calls);
 });
 
-test('keeps Updating and disabled after 120s when GET is still in_progress', async () => {
+test('shows failed and re-enables Update now after 120s when GET is still in_progress', async () => {
   rs.useFakeTimers();
   prepare();
   mocks.releaseQueryFn.mockResolvedValue(withRelease('in_progress'));
@@ -186,7 +186,8 @@ test('keeps Updating and disabled after 120s when GET is still in_progress', asy
 
   await rs.advanceTimersByTimeAsync(120_000);
 
-  expect(screen.getByRole('button', { name: updatingName })).toBeDisabled();
+  expect(screen.getByText(updateFailed)).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: updateNowName })).toBeEnabled();
   const calls = mocks.releaseQueryFn.mock.calls.length;
   await rs.advanceTimersByTimeAsync(4_000);
   expect(mocks.releaseQueryFn.mock.calls.length).toBe(calls);
