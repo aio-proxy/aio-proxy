@@ -161,14 +161,32 @@ describe('dashboard settings control-plane contracts', () => {
 });
 
 describe('dashboard release control-plane contracts', () => {
-  test('release view reports managedService and update status', () => {
+  test('release view reports persisted latest and outdated without requiring them', () => {
     const view = schema('DashboardReleaseViewSchema');
-    expect(view.parse({ current: '1.2.0', managedService: false, update: { status: 'idle' } })).toEqual({
+    expect(
+      view.parse({ current: '1.2.0', outdated: false, managedService: false, update: { status: 'idle' } }),
+    ).toEqual({
       current: '1.2.0',
+      outdated: false,
       managedService: false,
       update: { status: 'idle' },
     });
-    expect(view.safeParse({ current: '1.2.0' }).success).toBe(false);
+    expect(
+      view.parse({
+        current: '1.2.0',
+        latest: '1.10.0',
+        outdated: true,
+        managedService: false,
+        update: { status: 'idle' },
+      }),
+    ).toEqual({
+      current: '1.2.0',
+      latest: '1.10.0',
+      outdated: true,
+      managedService: false,
+      update: { status: 'idle' },
+    });
+    expect(view.safeParse({ current: '1.2.0', managedService: false, update: { status: 'idle' } }).success).toBe(false);
   });
 });
 

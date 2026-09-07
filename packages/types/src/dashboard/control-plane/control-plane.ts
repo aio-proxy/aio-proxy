@@ -205,6 +205,8 @@ export const DashboardPluginOptionsMutationSchema = z.strictObject({
 
 export const DashboardReleaseViewSchema = z.strictObject({
   current: z.string().min(1),
+  latest: z.string().min(1).optional(),
+  outdated: z.boolean(),
   managedService: z.boolean(),
   update: z.strictObject({ status: z.enum(['idle', 'in_progress', 'failed', 'restart_required']) }),
 });

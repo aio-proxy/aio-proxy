@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { aioHome, configPath, dbPath, packagesDir, tmpDir } from '.';
+import { aioHome, configPath, dbPath, packagesDir, tmpDir, updateCheckPath } from '.';
 
 const original = process.env.AIO_PROXY_HOME;
 
@@ -23,6 +23,7 @@ describe('paths', () => {
     expect(dbPath()).toBe('/tmp/foo/aio-proxy.db');
     expect(packagesDir()).toBe('/tmp/foo/packages');
     expect(tmpDir()).toBe('/tmp/foo/tmp');
+    expect(updateCheckPath()).toBe('/tmp/foo/update-check.json');
   });
 
   test('absent env falls back to ~/.aio-proxy', () => {
@@ -43,6 +44,7 @@ describe('paths', () => {
     expect(dbPath().endsWith('/aio-proxy.db')).toBe(true);
     expect(packagesDir().endsWith('/packages')).toBe(true);
     expect(tmpDir().endsWith('/tmp')).toBe(true);
+    expect(updateCheckPath().endsWith('/update-check.json')).toBe(true);
   });
 
   test('selects the first existing config file by format priority', () => {

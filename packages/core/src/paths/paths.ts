@@ -32,3 +32,7 @@ export function packagesDir(): string {
 export function tmpDir(): string {
   return join(aioHome(), 'tmp');
 }
+
+export function updateCheckPath(): string {
+  return join(aioHome(), 'update-check.json');
+}

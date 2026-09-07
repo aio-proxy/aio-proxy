@@ -1,4 +1,4 @@
-import { fetchLatestNpmVersion } from '@aio-proxy/core';
+import { fetchLatestNpmVersion, readUpdateCheckState, writeUpdateCheckState } from '@aio-proxy/core';
 import { Hono } from 'hono';
 
 import type { AutoUpdateApplyResult, AutoUpdateController } from '../../auto-update';
@@ -15,29 +15,45 @@ const APPLY_HTTP = {
   check_failed: 502,
 } as const satisfies Record<AutoUpdateApplyResult['status'], 200 | 202 | 409 | 501 | 502>;
 
+const persistLatest = async (latest: string): Promise<void> => {
+  const previous = readUpdateCheckState();
+  await writeUpdateCheckState({
+    latest,
+    checkedAt: Date.now(),
+    ...(previous?.notifiedVersion === undefined ? {} : { notifiedVersion: previous.notifiedVersion }),
+  });
+};
+
 export const createDashboardReleaseRoute = (
   version: string,
   fetchLatest: (pkg: string) => Promise<string> = (pkg) => fetchLatestNpmVersion(pkg),
   controller?: AutoUpdateController,
 ) =>
   new Hono()
-    .get('/', (context) =>
-      context.json({
+    .get('/', (context) => {
+      const snap = controller?.snapshot();
+      return context.json({
         current: version,
+        outdated: snap?.outdated ?? false,
         managedService: controller?.isManagedService() ?? false,
-        update: controller?.snapshot() ?? { status: 'idle' },
-      }),
-    )
-    // Registry lookups are a network hop the Settings page must not pay on load, so the
-    // check is its own endpoint the user triggers. `Bun.semver` lives here rather than in
-    // the browser, which has no semver comparison of its own.
+        update: { status: snap?.status ?? 'idle' },
+        ...(snap?.latest === undefined ? {} : { latest: snap.latest }),
+      });
+    })
     .get('/latest', async (context) => {
+      if (controller !== undefined) {
+        const result = await controller.check();
+        if ('status' in result) return context.json({ error: { code: 'check_failed' } } as const, 502);
+        return context.json(result);
+      }
       let latest: string;
       try {
         latest = await fetchLatest(PACKAGE);
+        Bun.semver.order(latest, version);
       } catch {
         return context.json({ error: { code: 'check_failed' } } as const, 502);
       }
+      await persistLatest(latest);
       return context.json({ current: version, latest, outdated: Bun.semver.order(latest, version) > 0 });
     })
     .post('/apply', async (context) => {

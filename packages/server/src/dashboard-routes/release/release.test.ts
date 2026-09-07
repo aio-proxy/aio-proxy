@@ -1,6 +1,35 @@
-import { expect, test } from 'bun:test';
+import { afterEach, expect, test } from 'bun:test';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
+import type { AutoUpdateController } from '../../auto-update';
 import { createDashboardReleaseRoute } from './release';
+
+const originalHome = process.env.AIO_PROXY_HOME;
+const homes: string[] = [];
+
+afterEach(() => {
+  for (const home of homes.splice(0)) rmSync(home, { recursive: true, force: true });
+  if (originalHome === undefined) delete process.env.AIO_PROXY_HOME;
+  else process.env.AIO_PROXY_HOME = originalHome;
+});
+
+const isolateHome = () => {
+  const home = mkdtempSync(join(tmpdir(), 'aio-release-'));
+  homes.push(home);
+  process.env.AIO_PROXY_HOME = home;
+};
+
+const idleController = (overrides: Partial<AutoUpdateController> = {}): AutoUpdateController => ({
+  isManagedService: () => false,
+  snapshot: () => ({ status: 'idle', outdated: false }),
+  check: async () => ({ status: 'check_failed' }),
+  apply: async () => ({ status: 'unavailable' }),
+  start: () => {},
+  stop: () => {},
+  ...overrides,
+});
 
 const get = async (path: string, latest: () => Promise<string>) => {
   const routes = createDashboardReleaseRoute('1.2.0', latest);
@@ -12,7 +41,28 @@ test('reports the running version without touching the registry', async () => {
   const { body, status } = await get('/', () => Promise.reject(new Error('must not be called')));
 
   expect(status).toBe(200);
-  expect(body).toEqual({ current: '1.2.0', managedService: false, update: { status: 'idle' } });
+  expect(body).toEqual({ current: '1.2.0', outdated: false, managedService: false, update: { status: 'idle' } });
+});
+
+test('GET / exposes persisted latest from the controller snapshot', async () => {
+  const routes = createDashboardReleaseRoute(
+    '1.2.0',
+    async () => {
+      throw new Error('must not be called');
+    },
+    idleController({
+      isManagedService: () => true,
+      snapshot: () => ({ status: 'idle', latest: '1.10.0', outdated: true }),
+    }),
+  );
+  const response = await routes.request('/');
+  expect(await response.json()).toEqual({
+    current: '1.2.0',
+    latest: '1.10.0',
+    outdated: true,
+    managedService: true,
+    update: { status: 'idle' },
+  });
 });
 
 test('POST /apply maps controller results to HTTP statuses', async () => {
@@ -24,43 +74,41 @@ test('POST /apply maps controller results to HTTP statuses', async () => {
     [{ status: 'check_failed' as const }, 502, { ok: false, error: { code: 'check_failed' } }],
   ] as const;
   for (const [result, status, body] of table) {
-    const routes = createDashboardReleaseRoute('1.2.0', async () => '1.2.0', {
-      isManagedService: () => true,
-      snapshot: () => ({ status: 'idle' }),
-      apply: async () => result,
-      start: () => {},
-      stop: () => {},
-    });
+    const routes = createDashboardReleaseRoute(
+      '1.2.0',
+      async () => '1.2.0',
+      idleController({ apply: async () => result }),
+    );
     const response = await routes.request('/apply', { method: 'POST' });
     expect(response.status).toBe(status);
     expect(await response.json()).toEqual(body);
   }
 });
 
-test('GET / reports managedService from the controller', async () => {
-  const routes = createDashboardReleaseRoute('1.2.0', async () => '1.2.0', {
-    isManagedService: () => true,
-    snapshot: () => ({ status: 'in_progress' }),
-    apply: async () => ({ status: 'in_progress' }),
-    start: () => {},
-    stop: () => {},
-  });
-  const response = await routes.request('/');
-  expect(await response.json()).toEqual({
-    current: '1.2.0',
-    managedService: true,
-    update: { status: 'in_progress' },
-  });
+test('GET /latest uses controller.check and persists through it', async () => {
+  const routes = createDashboardReleaseRoute(
+    '1.2.0',
+    async () => {
+      throw new Error('must not fetch when the controller is present');
+    },
+    idleController({
+      check: async () => ({ current: '1.2.0', latest: '1.10.0', outdated: true }),
+    }),
+  );
+  const response = await routes.request('/latest');
+  expect(response.status).toBe(200);
+  expect(await response.json()).toEqual({ current: '1.2.0', latest: '1.10.0', outdated: true });
 });
 
 test('flags a newer published version as outdated', async () => {
+  isolateHome();
   const { body } = await get('/latest', () => Promise.resolve('1.10.0'));
 
-  // String comparison would rank 1.10.0 below 1.2.0 and hide the upgrade.
   expect(body).toEqual({ current: '1.2.0', latest: '1.10.0', outdated: true });
 });
 
 test('does not flag an older or equal published version', async () => {
+  isolateHome();
   expect(await get('/latest', () => Promise.resolve('1.2.0')).then((result) => result.body)).toMatchObject({
     outdated: false,
   });

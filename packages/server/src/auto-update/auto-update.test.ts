@@ -1,5 +1,7 @@
 import { expect, mock, test } from 'bun:test';
 
+import type { UpdateCheckState } from '@aio-proxy/core';
+
 import { AUTO_UPDATE_PACKAGE, createAutoUpdateController } from './auto-update';
 
 const createClock = () => {
@@ -19,12 +21,28 @@ const createClock = () => {
   };
 };
 
+const flush = async () => {
+  for (let i = 0; i < 8; i++) await Promise.resolve();
+};
+
+const memoryState = (initial?: UpdateCheckState) => {
+  let state = initial;
+  return {
+    readState: () => state,
+    writeState: async (next: UpdateCheckState) => {
+      state = next;
+    },
+    get: () => state,
+  };
+};
+
 const base = {
   isManagedService: () => true,
   currentVersion: '1.2.0',
   fetchLatest: async () => '1.10.0',
   setInterval: () => 1,
   clearInterval: () => {},
+  now: () => 1_700_000_000_000,
 } as const;
 
 test('start checks immediately and again on each interval tick', async () => {
@@ -38,28 +56,99 @@ test('start checks immediately and again on each interval tick', async () => {
     intervalMs: 50,
     setInterval: clock.setInterval,
     clearInterval: clock.clearInterval,
+    ...memoryState(),
   });
   controller.start();
-  await Promise.resolve();
+  await flush();
   expect(fetchLatest).toHaveBeenCalledTimes(1);
   expect(fetchLatest).toHaveBeenCalledWith(AUTO_UPDATE_PACKAGE);
   clock.tick();
-  await Promise.resolve();
+  await flush();
   expect(fetchLatest).toHaveBeenCalledTimes(2);
   controller.stop();
   expect(clock.cleared()).toBe(1);
 });
 
-test('tick never calls applyUpdate even when outdated', async () => {
+test('tick persists an outdated latest and never calls applyUpdate', async () => {
   const applyUpdate = mock(async () => 'installed' as const);
+  const store = memoryState();
   const controller = createAutoUpdateController({
     ...base,
     applyUpdate,
+    ...store,
   });
   controller.start();
-  await Promise.resolve();
+  await flush();
   expect(applyUpdate).not.toHaveBeenCalled();
+  expect(store.get()).toEqual({ latest: '1.10.0', checkedAt: 1_700_000_000_000, notifiedVersion: '1.10.0' });
+  expect(controller.snapshot()).toEqual({ status: 'idle', latest: '1.10.0', outdated: true });
   controller.stop();
+});
+
+test('second check of the same latest does not notify again', async () => {
+  const notifyAvailable = mock(() => {});
+  const store = memoryState({ latest: '1.10.0', checkedAt: 1, notifiedVersion: '1.10.0' });
+  const controller = createAutoUpdateController({
+    ...base,
+    notifyAvailable,
+    ...store,
+  });
+  expect(await controller.check()).toEqual({ current: '1.2.0', latest: '1.10.0', outdated: true });
+  expect(notifyAvailable).not.toHaveBeenCalled();
+});
+
+test('a newer latest notifies once', async () => {
+  const notifyAvailable = mock(() => {});
+  const store = memoryState({ latest: '1.5.0', checkedAt: 1, notifiedVersion: '1.5.0' });
+  const controller = createAutoUpdateController({
+    ...base,
+    notifyAvailable,
+    ...store,
+  });
+  expect(await controller.check()).toEqual({ current: '1.2.0', latest: '1.10.0', outdated: true });
+  expect(notifyAvailable).toHaveBeenCalledTimes(1);
+  expect(notifyAvailable).toHaveBeenCalledWith('1.10.0');
+  expect(store.get()?.notifiedVersion).toBe('1.10.0');
+});
+
+test('failed fetch leaves the previous file intact', async () => {
+  const store = memoryState({ latest: '1.5.0', checkedAt: 1, notifiedVersion: '1.5.0' });
+  const controller = createAutoUpdateController({
+    ...base,
+    fetchLatest: async () => {
+      throw new Error('offline');
+    },
+    ...store,
+  });
+  controller.start();
+  await flush();
+  expect(await controller.check()).toEqual({ status: 'check_failed' });
+  expect(store.get()).toEqual({ latest: '1.5.0', checkedAt: 1, notifiedVersion: '1.5.0' });
+  expect(controller.snapshot()).toEqual({ status: 'idle', latest: '1.5.0', outdated: true });
+  controller.stop();
+});
+
+test('check during an in-progress apply does not fetch again', async () => {
+  let release!: () => void;
+  const fetchLatest = mock(
+    () =>
+      new Promise<string>((resolve) => {
+        release = () => resolve('1.10.0');
+      }),
+  );
+  const store = memoryState({ latest: '1.5.0', checkedAt: 1 });
+  const controller = createAutoUpdateController({
+    ...base,
+    applyUpdate: async () => 'installed',
+    fetchLatest,
+    ...store,
+  });
+  const apply = controller.apply();
+  await Promise.resolve();
+  expect(await controller.check()).toEqual({ current: '1.2.0', latest: '1.5.0', outdated: true });
+  expect(fetchLatest).toHaveBeenCalledTimes(1);
+  release();
+  expect(await apply).toEqual({ status: 'started' });
 });
 
 test('manual apply ignores the managed gate and is single-flight', async () => {
@@ -74,15 +163,16 @@ test('manual apply ignores the managed gate and is single-flight', async () => {
     ...base,
     isManagedService: () => false,
     applyUpdate,
+    ...memoryState(),
   });
   const first = controller.apply();
   await Promise.resolve();
   expect(await controller.apply()).toEqual({ status: 'in_progress' });
-  expect(controller.snapshot()).toEqual({ status: 'in_progress' });
+  expect(controller.snapshot()).toMatchObject({ status: 'in_progress' });
   expect(await first).toEqual({ status: 'started' });
   release();
   await Promise.resolve();
-  expect(controller.snapshot()).toEqual({ status: 'restart_required' });
+  expect(controller.snapshot()).toMatchObject({ status: 'restart_required' });
 });
 
 test('second apply during a pending fetchLatest is in_progress and does not apply twice', async () => {
@@ -99,6 +189,7 @@ test('second apply during a pending fetchLatest is in_progress and does not appl
     isManagedService: () => false,
     applyUpdate,
     fetchLatest,
+    ...memoryState(),
   });
   const first = controller.apply();
   await Promise.resolve();
@@ -118,16 +209,18 @@ test('applyUpdate unchanged returns to idle; installed stays restart_required', 
       expect(version).toBe('1.10.0');
       return 'unchanged';
     },
+    ...memoryState(),
   });
   expect(await unchanged.apply()).toEqual({ status: 'started' });
   await Promise.resolve();
-  expect(unchanged.snapshot()).toEqual({ status: 'idle' });
+  expect(unchanged.snapshot()).toMatchObject({ status: 'idle' });
   expect(await unchanged.apply()).toEqual({ status: 'started' });
 });
 
 test('apply reports up_to_date, unavailable, and check_failed', async () => {
   const missing = createAutoUpdateController({
     ...base,
+    ...memoryState(),
   });
   expect(await missing.apply()).toEqual({ status: 'unavailable' });
 
@@ -135,6 +228,7 @@ test('apply reports up_to_date, unavailable, and check_failed', async () => {
     ...base,
     applyUpdate: async () => 'installed',
     fetchLatest: async () => '1.2.0',
+    ...memoryState(),
   });
   expect(await current.apply()).toEqual({ status: 'up_to_date' });
 
@@ -144,17 +238,19 @@ test('apply reports up_to_date, unavailable, and check_failed', async () => {
     fetchLatest: async () => {
       throw new Error('offline');
     },
+    ...memoryState(),
   });
   expect(await offline.apply()).toEqual({ status: 'check_failed' });
-  expect(offline.snapshot()).toEqual({ status: 'failed' });
+  expect(offline.snapshot()).toMatchObject({ status: 'failed' });
 
   const malformed = createAutoUpdateController({
     ...base,
     applyUpdate: async () => 'installed',
     fetchLatest: async () => 'not-a-version',
+    ...memoryState(),
   });
   expect(await malformed.apply()).toEqual({ status: 'check_failed' });
-  expect(malformed.snapshot()).toEqual({ status: 'failed' });
+  expect(malformed.snapshot()).toMatchObject({ status: 'failed' });
   expect(await malformed.apply()).toEqual({ status: 'check_failed' });
 });
 
@@ -165,46 +261,29 @@ test('applyUpdate failure sets failed and releases the lock', async () => {
       throw new Error('install failed');
     },
     onError: mock(() => {}),
+    ...memoryState(),
   });
   expect(await controller.apply()).toEqual({ status: 'started' });
   await Promise.resolve();
-  expect(controller.snapshot()).toEqual({ status: 'failed' });
+  expect(controller.snapshot()).toMatchObject({ status: 'failed' });
   expect(await controller.apply()).toEqual({ status: 'started' });
 });
 
-test('stop during a pending check does not apply', async () => {
-  let releaseFetch!: (version: string) => void;
-  const fetchLatest = mock(
-    () =>
-      new Promise<string>((resolve) => {
-        releaseFetch = resolve;
-      }),
-  );
-  const applyUpdate = mock(async () => 'installed' as const);
-  const controller = createAutoUpdateController({
-    ...base,
-    applyUpdate,
-    fetchLatest,
-  });
-  controller.start();
-  await Promise.resolve();
-  controller.stop();
-  releaseFetch('1.10.0');
-  await Promise.resolve();
-  expect(applyUpdate).not.toHaveBeenCalled();
-});
-
-test('start without applyUpdate still checks', async () => {
+test('start without applyUpdate still checks and persists', async () => {
   const fetchLatest = mock(async () => '1.10.0');
   const setInterval = mock(() => 1);
+  const store = memoryState();
   const controller = createAutoUpdateController({
     ...base,
     currentVersion: '1.0.0',
     fetchLatest,
     setInterval,
+    ...store,
   });
   controller.start();
-  await Promise.resolve();
+  await flush();
   expect(setInterval).toHaveBeenCalledTimes(1);
   expect(fetchLatest).toHaveBeenCalledTimes(1);
+  expect(store.get()?.latest).toBe('1.10.0');
+  expect(await controller.apply()).toEqual({ status: 'unavailable' });
 });

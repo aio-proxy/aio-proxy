@@ -58,6 +58,7 @@ test('createServer reports managedService from the injected auto-update hooks', 
   expect(response.status).toBe(200);
   expect(await response.json()).toEqual({
     current: '1.0.0',
+    outdated: false,
     managedService: true,
     update: { status: 'idle' },
   });

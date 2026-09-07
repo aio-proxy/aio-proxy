@@ -250,6 +250,7 @@ export type CreateServerOptions = {
   readonly autoUpdate?: {
     readonly isManagedService: () => boolean;
     readonly applyUpdate: (version: string) => Promise<'installed' | 'unchanged'>;
+    readonly notifyAvailable?: (latest: string) => void | Promise<void>;
   };
 };
 
@@ -450,6 +451,7 @@ export const createServer = async (options: CreateServerOptions): Promise<AppTyp
   const controller = createAutoUpdateController({
     isManagedService: options.autoUpdate?.isManagedService ?? (() => false),
     applyUpdate: options.autoUpdate?.applyUpdate,
+    notifyAvailable: options.autoUpdate?.notifyAvailable,
     currentVersion: options.version ?? '0.0.0',
     fetchLatest: fetchLatestNpmVersion,
     onError: (error) => {
