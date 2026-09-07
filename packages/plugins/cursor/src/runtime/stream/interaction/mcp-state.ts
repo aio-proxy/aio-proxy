@@ -5,7 +5,14 @@ import type { McpArgs, McpToolDefinition } from '../../../gen/agent_pb';
 import { fromWireName } from '../../../tool-names';
 import type { CursorCompletedToolCall } from '../../mcp-call';
 import { CursorProtocolError } from '../../protocol-error';
-import { appendMcpSnapshot, declaresNoArguments, decodeMcpArgsMap, mergeMcpObjects, parseMcpObject } from './mcp-input';
+import {
+  appendMcpSnapshot,
+  declaresNoArguments,
+  decodeMcpArgsMap,
+  incompleteSnapshotOmitsMappedFields,
+  mergeMcpObjects,
+  parseMcpObject,
+} from './mcp-input';
 
 type McpCall = {
   outerCallId: string;
@@ -213,6 +220,14 @@ function applyMcpEvent(
   const hasBadSnapshot = call.buffer.trim().length > 0 && buffered === undefined;
   const explicitEmpty =
     call.sawExec || buffered !== undefined || (call.sawCompletion && call.allowsEmpty && !hasBadSnapshot);
+  if (
+    hasBadSnapshot &&
+    !call.sawExec &&
+    incompleteSnapshotOmitsMappedFields(call.buffer, mergeMcpObjects(call.completion, call.exec))
+  ) {
+    call.input = undefined;
+    return;
+  }
   if ((!call.sawCompletion && !call.sawExec) || (!hasFinalFields && !explicitEmpty)) {
     call.input = undefined;
     return;

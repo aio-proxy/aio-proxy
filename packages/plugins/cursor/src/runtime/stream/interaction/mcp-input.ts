@@ -7,6 +7,17 @@ export function appendMcpSnapshot(buffer: string, snapshot: string): string {
   return snapshot.startsWith(buffer) ? snapshot : buffer + snapshot;
 }
 
+export function incompleteSnapshotOmitsMappedFields(
+  buffer: string,
+  mapped: Record<string, unknown> | undefined,
+): boolean {
+  const known = mapped ?? {};
+  for (const match of buffer.matchAll(/"((?:\\.|[^"\\])*)"\s*:/g)) {
+    if (!(match[1] in known)) return true;
+  }
+  return false;
+}
+
 export function parseMcpObject(text: string): Record<string, unknown> | undefined {
   try {
     const value: unknown = JSON.parse(text);

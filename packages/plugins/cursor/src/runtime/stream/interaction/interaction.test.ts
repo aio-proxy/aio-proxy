@@ -277,6 +277,28 @@ test('an empty completion waits for later authoritative exec args', () => {
   expect(commitCursorTools(a)).toEqual([]);
 });
 
+test('an incomplete snapshot stays pending when the completion map is only partial', () => {
+  const a = createCursorStreamAccumulator();
+  mapInteractionUpdate(mcpUpdate('partialToolCall', mcp(), '{"query":"docs","content":"par'), a);
+  mapInteractionUpdate(mcpUpdate('toolCallCompleted', mcp({ query: argValue('docs') })), a);
+  expect(cursorToolState(a)).toMatchObject({ openCount: 1, readyCount: 0 });
+  expect(commitCursorTools(a)).toEqual([]);
+  mapMcpExec(mcp({ query: argValue('docs'), content: argValue('partial body') }), a);
+  expect(commitCursorTools(a).find((part) => part.type === 'tool-call')).toMatchObject({
+    input: '{"query":"docs","content":"partial body"}',
+  });
+});
+
+test('a later complete snapshot readies a call that had a partial completion map', () => {
+  const a = createCursorStreamAccumulator();
+  mapInteractionUpdate(mcpUpdate('partialToolCall', mcp(), '{"query":"docs","content":"par'), a);
+  mapInteractionUpdate(mcpUpdate('toolCallCompleted', mcp({ query: argValue('docs') })), a);
+  mapInteractionUpdate(mcpUpdate('partialToolCall', mcp(), '{"query":"docs","content":"partial body"}'), a);
+  expect(commitCursorTools(a).find((part) => part.type === 'tool-call')).toMatchObject({
+    input: '{"query":"docs","content":"partial body"}',
+  });
+});
+
 test.each(['{"query":', '[]', '"scalar"'])(
   'never converts incomplete/invalid input %s to an executable empty object',
   (text) => {
