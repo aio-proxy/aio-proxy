@@ -107,10 +107,10 @@ export function updateMcp(
   const byOuter = outer === undefined ? undefined : state.outerAliases.get(outer);
   const byNested = nested === undefined ? undefined : state.nestedAliases.get(nested);
   const conflict = () => new CursorProtocolError('cursor_tool_identity_conflict', 'Cursor MCP identity conflicts.');
-  let key =
-    byOuter !== undefined && byNested !== undefined && byOuter !== byNested
-      ? mergeCompatibleMcpCalls(state, byOuter, byNested, outer!, nested!, name)
-      : (byOuter ?? byNested);
+  const mergedSplit = byOuter !== undefined && byNested !== undefined && byOuter !== byNested;
+  let key = mergedSplit
+    ? mergeCompatibleMcpCalls(state, byOuter, byNested, outer!, nested!, name)
+    : (byOuter ?? byNested);
   if (key === undefined && args === undefined) {
     if (outer !== undefined && snapshot !== undefined) {
       const previous = state.earlySnapshots.get(outer) ?? '';
@@ -158,7 +158,7 @@ export function updateMcp(
   }
   applyMcpEvent(call, event, args, snapshot);
   if (!call.nestedToolCallId) call.input = undefined;
-  if (before !== JSON.stringify(call)) {
+  if (mergedSplit || before !== JSON.stringify(call)) {
     state.revision++;
     state.progressRevision++;
   }

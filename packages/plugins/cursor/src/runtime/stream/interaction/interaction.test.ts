@@ -411,6 +411,40 @@ test('exec-first aliases upgrade to the observed outer id before commit', () => 
   expect(cursorCompletedTools(a)).toMatchObject([{ outerCallId: 'outer', nestedToolCallId: 'nested' }]);
 });
 
+test('merging awaiting half-bound records counts as MCP progress', () => {
+  const a = createCursorStreamAccumulator();
+  mapInteractionUpdate(
+    mcpUpdate('toolCallStarted', create(McpArgsSchema, { name: 'search', toolName: 'search', args: {} })),
+    a,
+  );
+  mapInteractionUpdate(
+    update({
+      case: 'toolCallStarted',
+      value: {
+        callId: '',
+        toolCall: {
+          tool: {
+            case: 'mcpToolCall',
+            value: {
+              args: create(McpArgsSchema, { name: 'search', toolName: 'search', toolCallId: 'nested', args: {} }),
+            },
+          },
+        },
+      },
+    }),
+    a,
+  );
+  expect(cursorToolState(a)).toMatchObject({ openCount: 2, readyCount: 0 });
+  const before = cursorToolState(a);
+  mapInteractionUpdate(mcpUpdate('toolCallStarted', mcp()), a);
+  expect(cursorToolState(a)).toMatchObject({
+    openCount: 1,
+    readyCount: 0,
+    progressRevision: before.progressRevision + 1,
+    revision: before.revision + 1,
+  });
+});
+
 test('half-bound outer and nested records merge when a later frame carries both ids', () => {
   const a = createCursorStreamAccumulator();
   mapInteractionUpdate(
