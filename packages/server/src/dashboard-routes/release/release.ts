@@ -1,4 +1,9 @@
-import { fetchLatestNpmVersion, readUpdateCheckState, writeUpdateCheckState } from '@aio-proxy/core';
+import {
+  fetchLatestNpmVersion,
+  mergeUpdateCheckState,
+  readUpdateCheckState,
+  writeUpdateCheckState,
+} from '@aio-proxy/core';
 import { Hono } from 'hono';
 
 import type { AutoUpdateApplyResult, AutoUpdateController } from '../../auto-update';
@@ -16,12 +21,7 @@ const APPLY_HTTP = {
 } as const satisfies Record<AutoUpdateApplyResult['status'], 200 | 202 | 409 | 501 | 502>;
 
 const persistLatest = async (latest: string): Promise<void> => {
-  const previous = readUpdateCheckState();
-  await writeUpdateCheckState({
-    latest,
-    checkedAt: Date.now(),
-    ...(previous?.notifiedVersion === undefined ? {} : { notifiedVersion: previous.notifiedVersion }),
-  });
+  await writeUpdateCheckState(mergeUpdateCheckState({ latest, checkedAt: Date.now() }, readUpdateCheckState()));
 };
 
 export const createDashboardReleaseRoute = (

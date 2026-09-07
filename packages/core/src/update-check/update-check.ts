@@ -11,6 +11,27 @@ export type UpdateCheckState = {
   readonly notifiedVersion?: string;
 };
 
+const isNewer = (left: string, right: string): boolean => {
+  try {
+    return Bun.semver.order(left, right) > 0;
+  } catch {
+    return false;
+  }
+};
+
+export const mergeUpdateCheckState = (
+  incoming: { readonly latest: string; readonly checkedAt: number },
+  existing?: UpdateCheckState,
+): UpdateCheckState => {
+  if (existing === undefined) return incoming;
+  if (isNewer(existing.latest, incoming.latest)) return existing;
+  return {
+    latest: incoming.latest,
+    checkedAt: incoming.checkedAt,
+    ...(existing.notifiedVersion === undefined ? {} : { notifiedVersion: existing.notifiedVersion }),
+  };
+};
+
 const isSemver = (value: string): boolean => {
   try {
     Bun.semver.order(value, '0.0.0');

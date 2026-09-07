@@ -181,7 +181,12 @@ export {
 export { type InstalledNpmPackage, listInstalledNpmPackages } from './npm-list';
 export { canonicalizeLoopbackHost } from './network/index';
 export { aioHome, configPath, dbPath, packagesDir, updateCheckPath } from './paths/index';
-export { readUpdateCheckState, writeUpdateCheckState, type UpdateCheckState } from './update-check';
+export {
+  mergeUpdateCheckState,
+  readUpdateCheckState,
+  writeUpdateCheckState,
+  type UpdateCheckState,
+} from './update-check';
 export * from './plugins';
 export * from './protocol';
 export {

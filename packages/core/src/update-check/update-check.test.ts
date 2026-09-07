@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { readUpdateCheckState, writeUpdateCheckState } from './update-check';
+import { mergeUpdateCheckState, readUpdateCheckState, writeUpdateCheckState } from './update-check';
 
 const original = process.env.AIO_PROXY_HOME;
 
@@ -45,4 +45,29 @@ test('missing, unreadable, or invalid files are no check', () => {
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('mergeUpdateCheckState keeps a newer on-disk latest and its notifiedVersion', () => {
+  expect(
+    mergeUpdateCheckState(
+      { latest: '1.10.0', checkedAt: 20 },
+      { latest: '1.11.0', checkedAt: 9, notifiedVersion: '1.11.0' },
+    ),
+  ).toEqual({ latest: '1.11.0', checkedAt: 9, notifiedVersion: '1.11.0' });
+});
+
+test('mergeUpdateCheckState writes the incoming latest and keeps an existing notify marker', () => {
+  expect(
+    mergeUpdateCheckState(
+      { latest: '1.10.0', checkedAt: 20 },
+      { latest: '1.5.0', checkedAt: 1, notifiedVersion: '1.10.0' },
+    ),
+  ).toEqual({ latest: '1.10.0', checkedAt: 20, notifiedVersion: '1.10.0' });
+});
+
+test('mergeUpdateCheckState uses the incoming check when nothing is on disk', () => {
+  expect(mergeUpdateCheckState({ latest: '1.10.0', checkedAt: 20 })).toEqual({
+    latest: '1.10.0',
+    checkedAt: 20,
+  });
 });

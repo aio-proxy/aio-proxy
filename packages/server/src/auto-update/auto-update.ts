@@ -1,4 +1,9 @@
-import { readUpdateCheckState, writeUpdateCheckState, type UpdateCheckState } from '@aio-proxy/core';
+import {
+  mergeUpdateCheckState,
+  readUpdateCheckState,
+  writeUpdateCheckState,
+  type UpdateCheckState,
+} from '@aio-proxy/core';
 
 export const AUTO_UPDATE_INTERVAL_MS = 24 * 60 * 60 * 1000;
 export const AUTO_UPDATE_PACKAGE = 'aio-proxy';
@@ -102,23 +107,19 @@ export function createAutoUpdateController(options: AutoUpdateControllerOptions)
   };
 
   const persistCheck = async (latest: string): Promise<void> => {
-    const previous = persisted;
-    const next: UpdateCheckState = {
-      latest,
-      checkedAt: now(),
-      ...(previous?.notifiedVersion === undefined ? {} : { notifiedVersion: previous.notifiedVersion }),
-    };
+    const next = mergeUpdateCheckState({ latest, checkedAt: now() }, readState() ?? persisted);
     await writeState(next);
-    if (!isOutdated(latest, options.currentVersion) || previous?.notifiedVersion === latest) {
-      persisted = next;
+    const afterWrite = readState() ?? next;
+    if (!isOutdated(afterWrite.latest, options.currentVersion) || afterWrite.notifiedVersion === afterWrite.latest) {
+      persisted = afterWrite;
       return;
     }
     try {
-      await options.notifyAvailable?.(latest);
+      await options.notifyAvailable?.(afterWrite.latest);
     } catch (error) {
       options.onError?.(error);
     }
-    const notified: UpdateCheckState = { ...next, notifiedVersion: latest };
+    const notified: UpdateCheckState = { ...afterWrite, notifiedVersion: afterWrite.latest };
     await writeState(notified);
     persisted = notified;
   };

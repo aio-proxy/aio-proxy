@@ -97,6 +97,39 @@ test('second check of the same latest does not notify again', async () => {
   expect(notifyAvailable).not.toHaveBeenCalled();
 });
 
+test('re-reads on-disk notifiedVersion so a sibling process does not notify twice', async () => {
+  let disk: UpdateCheckState | undefined = { latest: '1.5.0', checkedAt: 1 };
+  const notifyAvailable = mock(() => {});
+  const controller = createAutoUpdateController({
+    ...base,
+    notifyAvailable,
+    readState: () => disk,
+    writeState: async (next) => {
+      disk = next;
+    },
+  });
+  disk = { latest: '1.10.0', checkedAt: 2, notifiedVersion: '1.10.0' };
+  expect(await controller.check()).toEqual({ current: '1.2.0', latest: '1.10.0', outdated: true });
+  expect(notifyAvailable).not.toHaveBeenCalled();
+  expect(disk).toEqual({ latest: '1.10.0', checkedAt: 1_700_000_000_000, notifiedVersion: '1.10.0' });
+});
+
+test('does not replace a newer on-disk latest with a slower stale fetch', async () => {
+  let disk: UpdateCheckState | undefined = { latest: '1.5.0', checkedAt: 1 };
+  const controller = createAutoUpdateController({
+    ...base,
+    fetchLatest: async () => '1.10.0',
+    notifyAvailable: () => {},
+    readState: () => disk,
+    writeState: async (next) => {
+      disk = next;
+    },
+  });
+  disk = { latest: '1.11.0', checkedAt: 9, notifiedVersion: '1.11.0' };
+  expect(await controller.check()).toEqual({ current: '1.2.0', latest: '1.10.0', outdated: true });
+  expect(disk).toEqual({ latest: '1.11.0', checkedAt: 9, notifiedVersion: '1.11.0' });
+});
+
 test('a newer latest notifies once', async () => {
   const notifyAvailable = mock(() => {});
   const store = memoryState({ latest: '1.5.0', checkedAt: 1, notifiedVersion: '1.5.0' });
