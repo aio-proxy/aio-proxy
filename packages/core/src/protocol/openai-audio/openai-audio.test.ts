@@ -162,9 +162,11 @@ describe('openAITranscriptionAdapter', () => {
 
   // Ingress accepts any `response_format` string and raw passthrough lets upstream
   // validate it, so without a convert-path refusal a misspelling would quietly get a
-  // plain `{ text }` body from this path alone.
-  test('refuses a response_format it cannot render on the convert path', async () => {
-    const raw = transcriptionRequest('whisper-1', [['response_format', 'bogus']]);
+  // plain `{ text }` body from this path alone. `srt`/`vtt` are refused for a
+  // stronger reason: they render from segments alone, and a candidate answering the
+  // default JSON format reports none, so they would come back empty.
+  test.each(['bogus', 'srt', 'vtt'] as const)('refuses response_format %s on the convert path', async (format) => {
+    const raw = transcriptionRequest('whisper-1', [['response_format', format]]);
     const request = await openAITranscriptionAdapter.parse(raw, { operation: 'transcriptions' });
     expect(() => openAITranscriptionAdapter.audioInvocation(request, { operation: 'transcriptions' })).toThrow(
       'OpenAI Audio feature is not supported: response_format',

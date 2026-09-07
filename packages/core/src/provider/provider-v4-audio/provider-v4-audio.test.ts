@@ -202,7 +202,7 @@ describe('createProviderV4TranscribeInvoke', () => {
     expect(result.durationInSeconds).toBe(1);
   });
 
-  test('reports no segments as an empty list so srt and vtt egress can render', async () => {
+  test('reports no segments as an empty list so verbose_json egress can render', async () => {
     const invoke = createProviderV4TranscribeInvoke('stub', transcriptionProvider({ segments: undefined }) as never);
 
     const result = await invoke({ audio: WAV_BYTES }, { modelId: 'gpt-4o-transcribe' });
@@ -237,6 +237,24 @@ describe('createProviderV4TranscribeInvoke', () => {
 
     expect(calls[0]?.mediaType).toBe('audio/wav');
   });
+
+  // Plenty of HTTP clients label every multipart upload `application/octet-stream`.
+  // Honouring that would make @ai-sdk/openai name the file `audio.octet-stream`,
+  // which upstream rejects even for a recognizable WAV.
+  test.each(['application/octet-stream', 'binary/octet-stream', ''] as const)(
+    'ignores the generic upload type %p and lets the SDK sniff',
+    async (mediaType) => {
+      const calls: TranscriptionCall[] = [];
+      const invoke = createProviderV4TranscribeInvoke(
+        'stub',
+        transcriptionProvider({}, (call) => calls.push(call)) as never,
+      );
+
+      await invoke({ audio: WAV_BYTES, mediaType }, { modelId: 'whisper-1' });
+
+      expect(calls[0]?.mediaType).toBe('audio/wav');
+    },
+  );
 
   test('forwards provider options and the abort signal', async () => {
     const calls: TranscriptionCall[] = [];

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { renderTranscription } from './transcription-egress';
+import { renderTranscription, RENDERABLE_TRANSCRIPTION_FORMATS } from './transcription-egress';
 
 const RESULT = {
   text: 'hello world',
@@ -39,19 +39,11 @@ describe('renderTranscription', () => {
     expect(await response.text()).toBe('hello world');
   });
 
-  test('writes 1-based cues with comma decimals for srt', async () => {
-    const response = renderTranscription(RESULT, 'srt');
-    expect(response.headers.get('content-type')).toBe('application/x-subrip; charset=utf-8');
-    expect(await response.text()).toBe(
-      '1\n00:00:00,000 --> 00:00:00,500\nhello\n\n2\n00:00:00,500 --> 00:00:01,250\nworld\n',
-    );
-  });
-
-  test('writes a WEBVTT header with dot decimals for vtt', async () => {
-    const response = renderTranscription(RESULT, 'vtt');
-    expect(response.headers.get('content-type')).toBe('text/vtt; charset=utf-8');
-    expect(await response.text()).toBe(
-      'WEBVTT\n\n00:00:00.000 --> 00:00:00.500\nhello\n\n00:00:00.500 --> 00:00:01.250\nworld\n',
-    );
+  // Rendering these locally needs segments, and no upstream format can be demanded
+  // through `transcribe()`, so a segment-less candidate would answer an empty
+  // subtitle body. Keeping them out of the set makes the convert path 501 instead.
+  test.each(['srt', 'vtt'] as const)('does not claim it can render %s', (format) => {
+    expect(RENDERABLE_TRANSCRIPTION_FORMATS.has(format)).toBe(false);
+    expect(() => renderTranscription(RESULT, format)).toThrow(`cannot render response_format: ${format}`);
   });
 });

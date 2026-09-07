@@ -79,8 +79,9 @@ export function createProviderV4TranscribeInvoke(
     try {
       const model = provider.transcriptionModel!(options.modelId);
       const providerOptions = transcriptionProviderOptions(model.provider, invocation);
+      const declared = specificAudioMediaType(invocation.mediaType);
       const result = await transcribe({
-        model: invocation.mediaType === undefined ? model : withMediaType(model, invocation.mediaType),
+        model: declared === undefined ? model : withMediaType(model, declared),
         audio: invocation.audio,
         ...(providerOptions === undefined
           ? {}
@@ -136,12 +137,27 @@ function transcriptionProviderOptions(
 }
 
 /**
+ * A multipart part carries whatever `Content-Type` the client's HTTP library chose,
+ * and a great many of them label every file upload `application/octet-stream`. That
+ * is not information about the audio — overriding the SDK's byte sniffing with it
+ * makes @ai-sdk/openai derive the filename `audio.octet-stream`, which OpenAI
+ * rejects as an unsupported format even for a perfectly ordinary MP3. Only a
+ * specific `audio/*` type is better information than sniffing; anything else falls
+ * through so the SDK looks at the bytes.
+ */
+function specificAudioMediaType(mediaType: string | undefined): string | undefined {
+  if (mediaType === undefined) return undefined;
+  const normalized = mediaType.toLowerCase();
+  return normalized.startsWith('audio/') && normalized !== 'audio/*' ? normalized : undefined;
+}
+
+/**
  * `transcribe()` takes no media type: it re-derives one by sniffing the audio
  * bytes and falls back to `audio/wav`. Its audio `ftyp` signature sits at offset
  * 0 while a real MP4/M4A container puts it at offset 4, so an m4a upload sniffs
  * as nothing and reaches upstream labelled `audio/wav` — and @ai-sdk/openai
  * turns the media type into the upload's filename extension, so OpenAI sees a
- * `.wav` that is not a WAV. The client's own `Content-Type` is better
+ * `.wav` that is not a WAV. A specific `audio/*` type from the client is better
  * information, so override it at the model boundary. Wrapping the model rather
  * than calling `doGenerate` directly keeps `transcribe()`'s retries, warning
  * logging, and empty-transcript guard on both paths.

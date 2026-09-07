@@ -160,6 +160,9 @@ function assertConvertibleTranscription(request: OpenAITranscriptionRequest): vo
   // 501 rather than 400: the convert path cannot tell a client misspelling from a
   // format OpenAI added after this code was written, and either way the honest
   // statement is that this path cannot render it. Absent and `null` mean `json`.
+  // `srt` and `vtt` land here too: they are segment-only renderings and no upstream
+  // format can be demanded through `transcribe()`, so a segment-less candidate would
+  // answer an empty subtitle body. Raw passthrough still serves them.
   if (request.response_format != null && !RENDERABLE_TRANSCRIPTION_FORMATS.has(request.response_format)) {
     throw new OpenAIAudioUnsupportedFeatureError('response_format');
   }
