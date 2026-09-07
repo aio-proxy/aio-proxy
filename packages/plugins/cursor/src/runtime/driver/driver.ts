@@ -163,10 +163,11 @@ function bindRunLifecycle(session: CursorRunSession, controller: StreamControlle
     },
     onFinish: (reason) => finishCursorTurn(session, controller, reason),
     onFailure(error) {
+      const canceled = session.canceled || session.input.signal?.aborted;
       logSettled(
         session,
-        session.canceled ? 'canceled' : error instanceof CursorProtocolError ? error.code : 'transport-error',
-        !session.canceled,
+        canceled ? 'canceled' : error instanceof CursorProtocolError ? error.code : 'transport-error',
+        !canceled,
       );
       safeCall(() => !session.canceled && controller.error(error));
       session.rejectResult(error);

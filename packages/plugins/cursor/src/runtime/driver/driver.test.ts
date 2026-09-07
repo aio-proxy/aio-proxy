@@ -853,3 +853,62 @@ test('a throwing log sink cannot change the successful stream', async () => {
   await expect(h.result).resolves.toBeDefined();
   expect(h.parts.filter((p) => p.type === 'finish')).toHaveLength(1);
 });
+
+function capturingLogger(): { logger: Logger; rows: Array<{ level: string; fields: Record<string, unknown> }> } {
+  const rows: Array<{ level: string; fields: Record<string, unknown> }> = [];
+  const record =
+    (level: string): Logger['debug'] =>
+    (_message, fields) => {
+      rows.push({ level, fields: fields as Record<string, unknown> });
+    };
+  const logger: Logger = {
+    debug: record('debug'),
+    info: record('info'),
+    warn: record('warn'),
+    error: record('error'),
+    child: () => logger,
+  };
+  return { logger, rows };
+}
+
+function settledLog(rows: Array<{ level: string; fields: Record<string, unknown> }>) {
+  return rows.find((row) => row.fields.phase === 'settled');
+}
+
+test('abort signal cancel is logged as canceled at debug', async () => {
+  const { logger, rows } = capturingLogger();
+  const abort = new AbortController();
+  const reason = new Error('client abort');
+  const h = runHarness({
+    logger,
+    signal: abort.signal,
+    diagnosticsContext: { requestId: 'req-abort', modelId: 'composer-2', resumeMode: 'fresh' },
+  });
+  await settleMicrotasks();
+  abort.abort(reason);
+  await expect(h.result).rejects.toBe(reason);
+  await expect(h.drained).rejects.toBe(reason);
+  const settled = settledLog(rows);
+  expect(settled?.level).toBe('debug');
+  expect(settled?.fields).toMatchObject({ phase: 'settled', termination: 'canceled', requestId: 'req-abort' });
+  expect(rows.some((row) => row.level === 'warn')).toBe(false);
+});
+
+test('protocol error is logged as warn with the error code', async () => {
+  const { logger, rows } = capturingLogger();
+  const h = runHarness({
+    logger,
+    diagnosticsContext: { requestId: 'req-proto', modelId: 'composer-2', resumeMode: 'fresh' },
+  });
+  h.send(updateFrame({ case: 'textDelta', value: { text: 'Hi' } }));
+  h.eof();
+  await expect(h.result).rejects.toMatchObject({ code: 'cursor_stream_incomplete' });
+  await expect(h.drained).rejects.toMatchObject({ code: 'cursor_stream_incomplete' });
+  const settled = settledLog(rows);
+  expect(settled?.level).toBe('warn');
+  expect(settled?.fields).toMatchObject({
+    phase: 'settled',
+    termination: 'cursor_stream_incomplete',
+    requestId: 'req-proto',
+  });
+});
