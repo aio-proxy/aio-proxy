@@ -1,10 +1,11 @@
 import { getLocale, m } from '@aio-proxy/i18n';
-import { Progress, ProgressLabel, ProgressMarker, ProgressValue } from '@aio-proxy/ui/components/progress';
+import { Progress, ProgressLabel, ProgressValue } from '@aio-proxy/ui/components/progress';
 import type React from 'react';
 
 import { resolveDashboardText } from '@/lib/localized-text';
 
 import { type ApplicableQuotaItem, quotaPace, remainingPercent } from '../../lib/quota-view';
+import { QuotaPaceMarker } from './quota-pace-marker';
 
 interface ProviderQuotaItemProps {
   readonly item: ApplicableQuotaItem;
@@ -32,23 +33,18 @@ export const ProviderQuotaItem: React.FC<ProviderQuotaItemProps> = ({ item }) =>
       <Progress
         value={tiny ? 0 : percent}
         getAriaValueText={() => (paceLabel === undefined ? remaining : `${remaining} · ${paceLabel}`)}
-        className="gap-x-2 gap-y-1"
-        marker={
-          pace === undefined ? undefined : (
-            // The tick is decoration for the value `getAriaValueText` already spells out; announcing
-            // it again as its own node would read the same fact twice.
-            <ProgressMarker
-              data-testid={`provider-quota-pace-${item.id}`}
-              percent={pace.expectedPercent}
-              className={pace.overspent ? 'bg-destructive' : undefined}
-              title={paceLabel}
-              aria-hidden="true"
-            />
-          )
-        }
+        className="relative gap-x-2 gap-y-1"
       >
         <ProgressLabel className="min-w-0 truncate font-normal">{resolveDashboardText(item.displayName)}</ProgressLabel>
         <ProgressValue>{() => remaining}</ProgressValue>
+        {pace === undefined || paceLabel === undefined ? null : (
+          <QuotaPaceMarker
+            percent={pace.expectedPercent}
+            overspent={pace.overspent}
+            label={paceLabel}
+            testId={`provider-quota-pace-${item.id}`}
+          />
+        )}
       </Progress>
       {item.resetsAt === undefined ? null : (
         <p className="text-xs text-muted-foreground">

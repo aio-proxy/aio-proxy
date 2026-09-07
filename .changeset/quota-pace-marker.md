@@ -3,7 +3,6 @@
 '@aio-proxy/plugin-sdk': minor
 '@aio-proxy/core': minor
 '@aio-proxy/dashboard': minor
-'@aio-proxy/ui': minor
 '@aio-proxy/i18n': minor
 '@aio-proxy/plugin-openai-chatgpt': minor
 '@aio-proxy/plugin-github-copilot': minor
