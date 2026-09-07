@@ -80,7 +80,7 @@ This is the single biggest risk in the feature, and it resolves to "existing acc
 | --- | --- | --- |
 | `GET https://cursor.com/api/usage-summary` | yes, required | The only source of plan percentages, the on-demand cap, and the billing-cycle window. Everything on the ring except Grok Bot comes from this one response. |
 | `POST https://cursor.com/api/dashboard/get-sand-usage-status` | yes, best-effort | Grok Bot's weekly allowance is a genuinely separate window with its own reset; nothing in `usage-summary` reports it. Given its own timeout and swallowed failures. |
-| `GET https://cursor.com/api/auth/me` | **no** | It returns `sub`, `email`, `name`. We already hold `sub` (from the token) and `email` (on the credential and as the account label). A round trip that tells us what we already know is pure latency. |
+| `GET https://cursor.com/api/auth/me` | **no** | Login and credential refresh query this endpoint when the JWT omits `email`. Quota reads do not need a separate profile query; credential refresh persists the account label. |
 | `GET https://cursor.com/api/usage?user=<id>` | **no** | Legacy request-count plans only. CodexBar itself wraps it in `try?` and notes "not all plans have this endpoint". Deliberate ceiling: on a legacy request-based plan the ring reflects `usage-summary` percentages, which on those plans are meaningless or zero. Add this call only if a user reports a permanently full ring. |
 
 `usage-summary` and `get-sand-usage-status` run concurrently under `Promise.all`; the Grok read resolves to `undefined` on any failure, so `Promise.all` never rejects because of it.

@@ -2,7 +2,7 @@ import type { AccountContext, OAuthQuotaSnapshot, RuntimeFetch } from '@aio-prox
 
 import { currentCursorCredential, type CursorOAuthDependencies } from '../oauth/index';
 import type { CursorCredential } from '../schema';
-import { cursorSessionCookie } from './cookie';
+import { cursorSessionCookie } from '../session-cookie';
 import { readGrokBotItem } from './sand';
 import { readUsageSummary, summaryQuota } from './summary';
 

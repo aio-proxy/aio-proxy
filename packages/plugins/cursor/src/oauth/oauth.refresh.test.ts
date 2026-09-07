@@ -100,28 +100,37 @@ test('refresh keeps the current Cursor email when the new token omits one', asyn
   expect(next.email).toBe('stored@example.com');
 });
 
-test('refresh metadata omits accountLabel when no email is available', async () => {
-  const stale = { accessToken: 'a', refreshToken: 'r', expiresAt: 1_000 };
-  const rotated = jwt({ sub: 'u1', exp: 10_000 });
-  let metadata: { accountLabel?: string; expiresAt?: number } | undefined;
-  const port = {
-    read: async () => ({ value: stale, revision: 7 }),
-    refresh: async (
-      expectedRevision: number,
-      exchange: (
-        current: { value: typeof stale; revision: number },
-        signal: AbortSignal,
-      ) => Promise<{ value: { accessToken: string; refreshToken: string; expiresAt: number; email?: string } }>,
-    ) => {
-      expect(expectedRevision).toBe(7);
-      const result = await exchange({ value: stale, revision: 7 }, new AbortController().signal);
-      metadata = Reflect.get(result, 'metadata');
-      return { status: 'updated' as const, snapshot: { value: result.value, revision: 8 } };
-    },
-  };
-  await currentCursorCredential(port, {
-    now: () => 5_000,
-    fetch: async () => okResponse({ accessToken: rotated }),
-  });
-  expect(metadata).toEqual({ expiresAt: 10_000 * 1000 - 5 * 60_000 });
-});
+test.each([undefined, 'profile@example.com'])(
+  'refresh backfills accountLabel only when the profile provides %s',
+  async (email) => {
+    const stale = { accessToken: 'a', refreshToken: 'r', expiresAt: 1_000 };
+    const rotated = jwt({ sub: 'u1', exp: 10_000 });
+    let metadata: { accountLabel?: string; expiresAt?: number } | undefined;
+    const port = {
+      read: async () => ({ value: stale, revision: 7 }),
+      refresh: async (
+        expectedRevision: number,
+        exchange: (
+          current: { value: typeof stale; revision: number },
+          signal: AbortSignal,
+        ) => Promise<{ value: { accessToken: string; refreshToken: string; expiresAt: number; email?: string } }>,
+      ) => {
+        expect(expectedRevision).toBe(7);
+        const result = await exchange({ value: stale, revision: 7 }, new AbortController().signal);
+        metadata = Reflect.get(result, 'metadata');
+        return { status: 'updated' as const, snapshot: { value: result.value, revision: 8 } };
+      },
+    };
+    await currentCursorCredential(port, {
+      now: () => 5_000,
+      fetch: async (input) =>
+        String(input) === 'https://cursor.com/api/auth/me'
+          ? okResponse({ sub: 'u1', email })
+          : okResponse({ accessToken: rotated }),
+    });
+    expect(metadata).toEqual({
+      expiresAt: 10_000 * 1000 - 5 * 60_000,
+      ...(email === undefined ? {} : { accountLabel: email }),
+    });
+  },
+);
