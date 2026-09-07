@@ -48,13 +48,15 @@ const tryUnlinkIf = async (lockPath: string, reclaimEmpty: boolean, skipStarttim
 export const withUpdateCheckLock = async <T>(fn: () => Promise<T>, path: string = updateCheckPath()): Promise<T> => {
   const lockPath = `${path}.lock`;
   mkdirSync(dirname(lockPath), { recursive: true });
+  const starttime = (await processStarttime(process.pid)) ?? undefined;
+  const payload = starttime === undefined ? `${process.pid}\n` : `${process.pid}\n${starttime}\n`;
   const started = Date.now();
   let fd: number | undefined;
   let liveOwnerVerified = false;
   while (fd === undefined) {
     try {
       fd = openSync(lockPath, 'wx');
-      writeSync(fd, `${process.pid}\n`);
+      writeSync(fd, payload);
     } catch (error) {
       if (fd !== undefined) {
         closeSync(fd);
@@ -73,8 +75,6 @@ export const withUpdateCheckLock = async <T>(fn: () => Promise<T>, path: string 
       await Bun.sleep(RETRY_MS);
     }
   }
-  const starttime = (await processStarttime(process.pid)) ?? undefined;
-  if (starttime !== undefined) writeSync(fd, `${process.pid}\n${starttime}\n`, 0);
   try {
     return await fn();
   } finally {

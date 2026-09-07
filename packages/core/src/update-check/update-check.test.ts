@@ -202,6 +202,60 @@ test.serial(
   { timeout: 15_000 },
 );
 
+test.serial(
+  'withUpdateCheckLock publishes pid and starttime together when starttime is available',
+  async () => {
+    const dir = home();
+    const path = join(dir, 'update-check.json');
+    const lockPath = `${path}.lock`;
+    const snapshots: string[] = [];
+    try {
+      let entered!: () => void;
+      const enteredGate = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
+      const hold = withUpdateCheckLock(async () => {
+        entered();
+        await Bun.sleep(50);
+      }, path);
+      const poll = (async () => {
+        const deadline = Date.now() + 2_000;
+        while (Date.now() < deadline) {
+          try {
+            snapshots.push(readFileSync(lockPath, 'utf8'));
+          } catch {
+            // Create and first write have not landed yet.
+          }
+          await Bun.sleep(0);
+        }
+      })();
+      await enteredGate;
+      await hold;
+      await poll;
+      const pidOnly = snapshots.some((raw) => {
+        const lines = raw
+          .split('\n')
+          .map((line) => line.trim())
+          .filter((line) => line !== '');
+        return lines.length === 1 && lines[0] === String(process.pid);
+      });
+      expect(pidOnly).toBe(false);
+      expect(
+        snapshots.some((raw) => {
+          const lines = raw
+            .split('\n')
+            .map((line) => line.trim())
+            .filter((line) => line !== '');
+          return lines[0] === String(process.pid) && lines[1] !== undefined && lines[1] !== '';
+        }),
+      ).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  },
+  { timeout: 15_000 },
+);
+
 test.serial('withUpdateCheckLock does not unlink a lock owned by another pid', async () => {
   const dir = home();
   const path = join(dir, 'update-check.json');
