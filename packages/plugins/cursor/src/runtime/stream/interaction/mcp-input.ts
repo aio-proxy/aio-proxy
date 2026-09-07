@@ -13,7 +13,9 @@ export function incompleteSnapshotOmitsMappedFields(
 ): boolean {
   const known = mapped ?? {};
   for (const match of buffer.matchAll(/"((?:\\.|[^"\\])*)"\s*:/g)) {
-    if (!(match[1] in known)) return true;
+    const key = match[1];
+    if (key === undefined) continue;
+    if (!(key in known)) return true;
   }
   return false;
 }
