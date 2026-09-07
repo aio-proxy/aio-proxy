@@ -124,6 +124,20 @@ test('pre-marker Linux session invocation does not rewrite when this process is 
   expect(writes).toBe(0);
 });
 
+test('pre-marker unit read failures do not reject', async () => {
+  await migratePreMarkerManagedUnit({
+    env: { INVOCATION_ID: 'abc' },
+    platform: 'linux',
+    readCgroup: () => linuxManagedCgroup,
+    readUnit: () => {
+      throw new Error('unreadable');
+    },
+    writeManagedUnit: async () => {
+      throw new Error('must not write');
+    },
+  });
+});
+
 test('pre-marker rewrite failures do not reject', async () => {
   await migratePreMarkerManagedUnit({
     env: { INVOCATION_ID: 'abc' },

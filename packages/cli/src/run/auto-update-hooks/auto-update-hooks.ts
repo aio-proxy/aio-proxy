@@ -94,19 +94,20 @@ export const migratePreMarkerManagedUnit = async (io: MigratePreMarkerIo = {}): 
   ) {
     return;
   }
-  const body =
-    io.readUnit?.() ??
-    (() => {
-      const path = managedUnitPath(os);
-      if (path === undefined || !existsSync(path)) return undefined;
-      return readFileSync(path, 'utf8');
-    })();
-  if (body === undefined || body.includes('AIO_PROXY_MANAGED')) return;
   try {
+    const body =
+      io.readUnit?.() ??
+      (() => {
+        const path = managedUnitPath(os);
+        if (path === undefined || !existsSync(path)) return undefined;
+        return readFileSync(path, 'utf8');
+      })();
+    if (body === undefined || body.includes('AIO_PROXY_MANAGED')) return;
     const exec = resolveStableManagedExec((io.resolveExec ?? resolveExec)());
     await (io.writeManagedUnit ?? writeManagedUnit)(os, exec);
   } catch {
-    // Marker rewrite is optional. A permission or daemon-reload failure must
-    // not prevent an otherwise healthy managed process from starting.
+    // Marker rewrite is optional. An unreadable unit, a disappearing file, or a
+    // permission / daemon-reload failure must not prevent an otherwise healthy
+    // managed process from starting.
   }
 };
