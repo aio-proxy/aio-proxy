@@ -1,38 +1,18 @@
-import { existsSync, readdirSync, realpathSync } from 'node:fs';
-import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
+import { existsSync, readdirSync } from 'node:fs';
+import { basename, dirname, join } from 'node:path';
 
 import type { PackageUpgradeMethod, UpgradeMethod, UpgradeTarget } from './constants';
 import { BINARY_NPM_SCOPE, HOMEBREW_FORMULA, PACKAGE, SUPPORTED_BINARY_TARGETS } from './constants';
+import { packageOwnsLauncher, packageRootsFor } from './package-ownership';
+import { isPathInDirectory, tryRealpath } from './path-in-directory';
+
+export { isPathInDirectory } from './path-in-directory';
 
 const PACKAGE_METHODS = ['brew', 'bun', 'npm', 'pnpm'] as const;
 const NODE_MANAGERS = ['bun', 'npm', 'pnpm'] as const;
 const CELLAR_PATTERN = /^(.*)\/Cellar\/aio-proxy\/[^/]+\/bin\/aio-proxy$/;
 const PLATFORM_CLI_BIN = /(?:^|[/\\])node_modules[/\\]@aio-proxy[/\\]cli-[^/\\]+[/\\]bin[/\\]aio-proxy$/;
 type NodeManager = (typeof NODE_MANAGERS)[number];
-
-const tryRealpath = (p: string): string | undefined => {
-  try {
-    return realpathSync.native(p);
-  } catch {
-    return undefined;
-  }
-};
-
-const isInsideLexical = (filePath: string, dir: string): boolean => {
-  const rel = relative(resolve(dir), resolve(filePath));
-  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel));
-};
-
-export const isPathInDirectory = (filePath: string, dir: string): boolean => {
-  if (isInsideLexical(filePath, dir)) return true;
-  const dirReal = tryRealpath(resolve(dir));
-  if (dirReal === undefined) return false;
-  const fileReal = tryRealpath(resolve(filePath));
-  if (fileReal !== undefined && isInsideLexical(fileReal, dirReal)) return true;
-  const parentReal = tryRealpath(dirname(resolve(filePath)));
-  if (parentReal === undefined) return false;
-  return isInsideLexical(join(parentReal, basename(filePath)), dirReal);
-};
 
 type UpgradeDirs = { readonly brew?: string; readonly bun?: string; readonly npm?: string; readonly pnpm?: string };
 
@@ -122,20 +102,13 @@ const managerPrefixFromBin = (binPath: string): string => {
   return basename(binDir) === 'bin' ? dirname(binDir) : binDir;
 };
 
-const packageDirExists = (root: string): boolean =>
-  existsSync(join(root, 'node_modules', PACKAGE)) || existsSync(join(root, 'lib', 'node_modules', PACKAGE));
-
-// Sibling bun/npm/pnpm is not ownership. A curl/standalone launcher often
-// shares /usr/local/bin with those tools; only a global package layout
-// (or a path that already names the manager) is enough to persist that method.
+// Sibling bun/npm/pnpm is not ownership. A leftover global package directory
+// is not enough either: the launcher must resolve into that package.
 const nodeManagerOwnsLauncher = (binPath: string, name: NodeManager): boolean => {
   if (layoutPreferredManager(binPath) === name) return true;
   const real = tryRealpath(binPath);
   if (real !== undefined && real !== binPath && layoutPreferredManager(real) === name) return true;
-  const prefix = managerPrefixFromBin(binPath);
-  if (name === 'npm') return packageDirExists(prefix);
-  if (name === 'bun') return packageDirExists(join(prefix, 'install', 'global')) || packageDirExists(prefix);
-  return packageDirExists(join(prefix, 'global')) || packageDirExists(prefix);
+  return packageRootsFor(managerPrefixFromBin(binPath), name).some((dir) => packageOwnsLauncher(binPath, dir));
 };
 
 const siblingOwnedTarget = (binPath: string, name: NodeManager): UpgradeTarget | undefined => {

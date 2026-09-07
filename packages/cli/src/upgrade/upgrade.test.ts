@@ -540,13 +540,62 @@ test('resolveUpgradeTargetFrom treats a standalone binary as binary', async () =
   expect(await resolveUpgradeTargetFrom('/opt/aio-proxy', {})).toEqual({ method: 'binary', path: '/opt/aio-proxy' });
 });
 
-test('resolveUpgradeTargetFrom maps an npm prefix path to npm when the global package exists', async () => {
-  const prefix = mkdtempSync(join(tmpdir(), 'aio-npm-prefix-'));
+test('resolveUpgradeTargetFrom does not treat a leftover npm package dir as ownership', async () => {
+  const prefix = mkdtempSync(join(tmpdir(), 'aio-npm-leftover-'));
   const bin = join(prefix, 'bin', 'aio-proxy');
   writeExecutable(join(prefix, 'bin', 'npm'), '#!/bin/sh\n');
   writeExecutable(bin, '#!/bin/sh\n');
   mkdirSync(join(prefix, 'lib', 'node_modules', 'aio-proxy'), { recursive: true });
   writeFileSync(join(prefix, 'lib', 'node_modules', 'aio-proxy', 'package.json'), '{"name":"aio-proxy"}\n');
+  await withEmptyManagerPath(async () => {
+    expect(await resolveUpgradeTargetFrom(bin, {})).toEqual({ method: 'binary', path: bin });
+  });
+});
+
+test('resolveUpgradeTargetFrom maps a prefix/node_modules package shim to npm', async () => {
+  const prefix = mkdtempSync(join(tmpdir(), 'aio-npm-nm-'));
+  const pkg = join(prefix, 'node_modules', 'aio-proxy');
+  const pkgBin = join(pkg, 'bin', 'aio-proxy.js');
+  const bin = join(prefix, 'bin', 'aio-proxy');
+  writeExecutable(join(prefix, 'bin', 'npm'), '#!/bin/sh\n');
+  mkdirSync(join(pkg, 'bin'), { recursive: true });
+  mkdirSync(join(prefix, 'bin'), { recursive: true });
+  writeFileSync(join(pkg, 'package.json'), '{"name":"aio-proxy","bin":{"aio-proxy":"bin/aio-proxy.js"}}\n');
+  writeExecutable(pkgBin, '#!/usr/bin/env node\n');
+  symlinkSync(pkgBin, bin);
+  expect(await resolveUpgradeTargetFrom(bin, {})).toEqual({
+    method: 'npm',
+    command: join(prefix, 'bin', 'npm'),
+    bin,
+  });
+});
+
+test('resolveUpgradeTargetFrom maps npm when package.json bin is the prefix launcher', async () => {
+  const prefix = mkdtempSync(join(tmpdir(), 'aio-npm-binfield-'));
+  const pkg = join(prefix, 'lib', 'node_modules', 'aio-proxy');
+  const bin = join(prefix, 'bin', 'aio-proxy');
+  writeExecutable(join(prefix, 'bin', 'npm'), '#!/bin/sh\n');
+  writeExecutable(bin, '#!/bin/sh\n');
+  mkdirSync(pkg, { recursive: true });
+  writeFileSync(join(pkg, 'package.json'), '{"name":"aio-proxy","bin":{"aio-proxy":"../../../bin/aio-proxy"}}\n');
+  expect(await resolveUpgradeTargetFrom(bin, {})).toEqual({
+    method: 'npm',
+    command: join(prefix, 'bin', 'npm'),
+    bin,
+  });
+});
+
+test('resolveUpgradeTargetFrom maps an npm prefix shim that resolves into the package to npm', async () => {
+  const prefix = mkdtempSync(join(tmpdir(), 'aio-npm-shim-'));
+  const pkg = join(prefix, 'lib', 'node_modules', 'aio-proxy');
+  const pkgBin = join(pkg, 'bin', 'aio-proxy.js');
+  const bin = join(prefix, 'bin', 'aio-proxy');
+  writeExecutable(join(prefix, 'bin', 'npm'), '#!/bin/sh\n');
+  mkdirSync(join(pkg, 'bin'), { recursive: true });
+  mkdirSync(join(prefix, 'bin'), { recursive: true });
+  writeFileSync(join(pkg, 'package.json'), '{"name":"aio-proxy","bin":{"aio-proxy":"bin/aio-proxy.js"}}\n');
+  writeExecutable(pkgBin, '#!/usr/bin/env node\n');
+  symlinkSync(pkgBin, bin);
   expect(await resolveUpgradeTargetFrom(bin, {})).toEqual({
     method: 'npm',
     command: join(prefix, 'bin', 'npm'),

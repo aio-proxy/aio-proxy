@@ -3,4 +3,4 @@
 '@aio-proxy/cli': patch
 ---
 
-Standalone and curl launches that only sit next to `npm` are no longer recorded as npm-owned, so a later Update now does not install a separate npm package.
+Standalone and curl launches that only sit next to `npm`, or next to a leftover global `aio-proxy` package directory, are no longer recorded as npm-owned. The launcher must resolve into that package before a later Update now uses npm.
