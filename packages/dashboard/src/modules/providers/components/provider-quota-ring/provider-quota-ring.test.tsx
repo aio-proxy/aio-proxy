@@ -125,6 +125,66 @@ test('a tiny non-zero remainder never reads as zero in the dialog', () => {
   );
 });
 
+// A 5-hour window one hour in, so an even burn would still show 80% remaining.
+const paced = (remainingRatio: number) => ({
+  sampledAt: 1_700_000_000_000,
+  stale: false,
+  snapshot: {
+    items: [
+      {
+        id: 'five-hour',
+        displayName: 'Five hour',
+        remainingRatio,
+        resetsAt: 1_700_000_000_000 + 4 * 60 * 60 * 1000,
+        windowMinutes: 300,
+      },
+    ],
+  },
+});
+
+const openPacedDialog = (remainingRatio: number) => {
+  queryMocks.data = paced(remainingRatio);
+  render(<ProviderQuotaRing provider={provider} />);
+  fireEvent.click(screen.getByTestId('provider-quota-ring'));
+};
+
+test('a window spent faster than evenly marks the even-burn position in the over-pace colour', () => {
+  openPacedDialog(0.5);
+
+  const marker = screen.getByTestId('provider-quota-pace-five-hour');
+  expect(marker).toHaveStyle({ left: '80%' });
+  expect(marker.className).toContain('bg-destructive');
+  // Colour alone would not reach a screen reader, so the same reading rides on the bar's value text.
+  expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuetext', expect.stringMatching(/80%/u));
+});
+
+test('a window spent slower than evenly marks the same position in the fill colour', () => {
+  openPacedDialog(0.95);
+
+  const marker = screen.getByTestId('provider-quota-pace-five-hour');
+  expect(marker).toHaveStyle({ left: '80%' });
+  expect(marker.className).toContain('bg-primary');
+});
+
+test('a window burning close enough to evenly draws no marker', () => {
+  openPacedDialog(0.8);
+
+  expect(screen.queryByTestId('provider-quota-pace-five-hour')).not.toBeInTheDocument();
+});
+
+test('a window that never reported its length draws no marker', () => {
+  queryMocks.data = {
+    sampledAt: 1,
+    stale: false,
+    snapshot: { items: [{ id: 'weekly', displayName: 'Weekly', remainingRatio: 0.2, resetsAt: 2 }] },
+  };
+
+  render(<ProviderQuotaRing provider={provider} />);
+  fireEvent.click(screen.getByTestId('provider-quota-ring'));
+
+  expect(screen.queryByTestId('provider-quota-pace-weekly')).not.toBeInTheDocument();
+});
+
 test('a stale reading is called out in the dialog', () => {
   queryMocks.data = {
     sampledAt: 1,
