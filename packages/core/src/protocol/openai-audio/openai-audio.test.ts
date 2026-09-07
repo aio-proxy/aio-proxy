@@ -112,6 +112,21 @@ describe('openAITranscriptionAdapter', () => {
     await releaseMultipartSpool(raw);
   });
 
+  // The last repeat is what parsing routed on, so the fast path's equality check
+  // passes; an upstream parser that keeps the FIRST would run `whisper-tiny`
+  // against a request selected and billed as `whisper-1`. Rebuilding is the only
+  // way both ends agree on one model.
+  test('rebuilds rather than replays when the client sent repeated model fields', async () => {
+    const raw = transcriptionRequest('whisper-tiny', [['model', 'whisper-1']]);
+    const request = await openAITranscriptionAdapter.parse(raw, { operation: 'transcriptions' });
+    const upstream = await openAITranscriptionAdapter.rawRequest(raw, request, 'whisper-1', new Set(), {
+      operation: 'transcriptions',
+    });
+    const form = await upstream.formData();
+    expect(form.getAll('model')).toEqual(['whisper-1']);
+    await releaseMultipartSpool(raw);
+  });
+
   test('rebuilds multipart keeping every client field when the model changes', async () => {
     const raw = transcriptionRequest('whisper-1', [['timestamp_granularities[]', 'word']]);
     const request = await openAITranscriptionAdapter.parse(raw, { operation: 'transcriptions' });

@@ -54,14 +54,22 @@ export function candidateSupportsImage(
 }
 
 /**
- * Effective audio support: the upstream-id index OR an attached transport for
- * that direction. The index alone is too narrow - a bridged `@ai-sdk/openai`
- * provider reports the OpenAI Responses target protocol, so its index grants
- * language and embedding while `attachAudioTransport` gave it working speech and
- * transcription models. The transport is per-provider, so it grants the direction
- * it implements and never the other one.
+ * Effective audio support: the upstream-id index when it knows this model's audio
+ * directions, and only otherwise an attached transport for the requested
+ * direction. The index alone is too narrow - a bridged `@ai-sdk/openai` provider
+ * reports the OpenAI Responses target protocol, so its index grants language and
+ * embedding while `attachAudioTransports` gave it working speech and
+ * transcription models.
  *
- * Presence of the transport, not `kind`, is the escape hatch: an API provider
+ * The transport is the escape hatch for exactly that case, and it must not
+ * override an index that DOES speak for the model: a plugin cataloging one TTS
+ * model and one STT model gets both provider-level transports attached, so a
+ * transport-first predicate would admit transcription-only `whisper-1` to a
+ * speech request and hand dispatch a `speechModel('whisper-1')` call the upstream
+ * can only reject. An index entry naming either direction is therefore the
+ * authority for both, and its silence on the requested one is a denial.
+ *
+ * Presence of the transport, not `kind`, is what opens the hatch: an API provider
  * that does not serve `openai-audio` has no raw endpoint to passthrough to, so
  * admitting it by kind would hand the dispatch loop a candidate it must
  * immediately skip. The SAME predicate gates this filter and audio dispatch.
@@ -73,8 +81,11 @@ export function candidateSupportsAudio(
   },
   capability: AudioCapability,
 ): boolean {
-  return capability === 'speech'
-    ? supportsSpeech(candidate.provider.capabilityIndex, candidate.modelId) || candidate.provider.speech !== undefined
-    : supportsTranscription(candidate.provider.capabilityIndex, candidate.modelId) ||
-        candidate.provider.transcription !== undefined;
+  const { capabilityIndex, speech, transcription } = candidate.provider;
+  const indexedSpeech = supportsSpeech(capabilityIndex, candidate.modelId);
+  const indexedTranscription = supportsTranscription(capabilityIndex, candidate.modelId);
+  if (indexedSpeech || indexedTranscription) {
+    return capability === 'speech' ? indexedSpeech : indexedTranscription;
+  }
+  return (capability === 'speech' ? speech : transcription) !== undefined;
 }

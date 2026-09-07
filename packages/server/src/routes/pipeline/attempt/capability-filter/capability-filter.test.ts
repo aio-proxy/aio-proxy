@@ -125,6 +125,32 @@ test('an attached audio transport grants the capability the index does not know 
   expect(filterCandidatesByCapability([bridged], 'transcription', noPolicy)).toEqual([]);
 });
 
+test('a cataloged audio id keeps its direction even when both transports are attached', () => {
+  // A plugin cataloging one TTS model and one STT model gets BOTH provider-level
+  // transports from createRuntimeProvider. A transport-first predicate would then
+  // admit transcription-only `whisper-1` to a speech request, and dispatch would
+  // call `speechModel('whisper-1')` - or raw-route it on the transcription
+  // descriptor. An index that names either direction speaks for both.
+  const bothTransports = {
+    speech: {
+      invoke() {
+        throw new Error('unused');
+      },
+    },
+    transcription: {
+      invoke() {
+        throw new Error('unused');
+      },
+    },
+  };
+  const index: ModelCapabilityIndex = { 'tts-1': new Set(['speech']), 'whisper-1': new Set(['transcription']) };
+  const tts = candidate('tts-1', index, 'weighted_random', bothTransports);
+  const stt = candidate('whisper-1', index, 'weighted_random', bothTransports);
+
+  expect(filterCandidatesByCapability([tts, stt], 'speech', noPolicy)).toEqual([tts]);
+  expect(filterCandidatesByCapability([tts, stt], 'transcription', noPolicy)).toEqual([stt]);
+});
+
 function candidate(
   modelId: string,
   capabilityIndex: ModelCapabilityIndex,

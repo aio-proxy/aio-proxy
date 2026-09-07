@@ -82,8 +82,14 @@ export const openAITranscriptionAdapter = defineAudioProtocolAdapter<OpenAITrans
   model: (request) => request.model,
   async rawRequest(raw, request, resolvedModel) {
     // Nothing to change: replay the spooled bytes so the client's own boundary,
-    // field order, and repeated fields reach upstream untouched.
-    if (!request.modelDefaulted && request.clientModel === resolvedModel) return replaySpooledMultipartRaw(raw);
+    // field order, and repeated fields reach upstream untouched. Repeated `model`
+    // fields are excluded from that: parsing routed on the LAST repeat, and an
+    // upstream parser that keeps the first would then run a different model than
+    // the one selection and accounting named. Rebuilding drops every authored
+    // `model` and appends exactly the resolved one, so both ends agree.
+    if (!request.modelDefaulted && request.clientModel === resolvedModel && !hasRepeatedModelField(request)) {
+      return replaySpooledMultipartRaw(raw);
+    }
     const form = new FormData();
     // The verbatim channel, not the normalized map: `formFields` strips the `[]`
     // suffix and keeps only the last repeat, so rebuilding from it would drop
@@ -130,6 +136,13 @@ export const openAITranscriptionAdapter = defineAudioProtocolAdapter<OpenAITrans
 /** `transcribe` has no translation mode, so translations never take the convert path. */
 export function audioConvertSkipReason(context: OpenAIAudioContext): string | undefined {
   return context.operation === 'translations' ? 'translations' : undefined;
+}
+
+// Which repeat wins is parser-dependent, so a form carrying more than one `model`
+// can never be replayed verbatim without risking a model split between this proxy
+// and upstream.
+function hasRepeatedModelField(request: OpenAITranscriptionRequest): boolean {
+  return request.rawFormFields.filter((field) => field.name === 'model').length > 1;
 }
 
 // Six convert-path refusals. Four are transcription features `transcribe` cannot

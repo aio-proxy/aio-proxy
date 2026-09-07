@@ -68,8 +68,9 @@ type AudioProviderV4 = Parameters<typeof createProviderV4SpeechInvoke>[1];
  *
  * The capability index cannot gate this the way it gates images: a bridged
  * @ai-sdk/openai provider reports the OpenAI Responses target protocol, which
- * grants language and embedding only. `candidateSupportsAudio` reads the attached
- * transport for the same reason.
+ * grants language and embedding only. `candidateSupportsAudio` falls back to the
+ * attached transport for exactly that case — an index that already names either
+ * audio direction for the model stays authoritative.
  */
 export function attachAudioTransports(
   instance: RuntimeProviderInstance,
