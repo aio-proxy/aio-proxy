@@ -5,5 +5,6 @@ export {
   readOrBootstrapConfig,
   run,
   type RunOptions,
+  shutdownProxyServer,
   validatePortArgv,
 } from './run';

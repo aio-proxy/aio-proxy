@@ -2,6 +2,7 @@ import type { AgentAccessAuthentication, AgentAccessGrant } from '@aio-proxy/cor
 import { AGENT_ACCESS_TOKEN_PREFIX, hasReservedAgentTokenPrefix } from '@aio-proxy/types';
 import type { MiddlewareHandler } from 'hono';
 
+import { agentCallerPrincipal, type CallerPrincipalEnv } from '../../caller-principal';
 import {
   authenticateStaticOrAnonymous,
   authenticationError,
@@ -9,8 +10,11 @@ import {
   stripCallerCredentials,
 } from '../api-key-auth/api-key-auth';
 
+// Composed rather than redeclared: an independent `callerPrincipal` declaration would keep
+// typechecking after the variable key is renamed on one side only, while `callerPrincipal()`
+// silently reads a key nothing writes.
 export type AgentEnv = {
-  Variables: {
+  Variables: CallerPrincipalEnv['Variables'] & {
     agentGrant?: AgentAccessGrant;
   };
 };
@@ -29,6 +33,7 @@ export const requireModelAuthentication =
       const result = deps.authenticateAgent(bearer);
       if (result.status !== 'valid') return authenticationError(context);
       context.set('agentGrant', result.grant);
+      context.set('callerPrincipal', agentCallerPrincipal(result.grant.installationId));
       stripCallerCredentials(context);
       await next();
       return;

@@ -5,7 +5,7 @@ import { ProviderKind, ProviderProtocol } from '@aio-proxy/types';
 import { oauthExposedModels } from '@aio-proxy/types';
 
 import { supportsEmbedding, supportsImage } from '../provider-runtime/capability-index';
-import { withRoutingConfig } from './capabilities';
+import { createRuntimeProvider, withAccountPin, withRoutingConfig } from './capabilities';
 import { PluginRawResolverError, PluginRawTransportError, validatePluginProtocolMap } from './index';
 import { catalog, cleanup, diagnostics, materializePluginProvider, runtimeFixture } from './test-support';
 
@@ -623,4 +623,59 @@ test('cached routing still inherits a newly advertised plugin default alias', as
 
   expect(second.cacheEntry?.identity).toBe(first.cacheEntry?.identity);
   expect(second.provider?.alias).toEqual({ fresh: { model: 'fresh', preserve: false } });
+});
+
+const realtimeTransport = {
+  models: ['gpt-live-1-codex'],
+  fetch: () => Promise.resolve(new Response(null, { status: 204 })),
+  dial: () => Promise.reject(new Error('not dialed in this test')),
+};
+
+const noModelsCatalog = { language: [], image: [], embedding: [], speech: [], transcription: [], reranking: [] };
+
+test('materializes the realtime capability on a language-catalog provider', () => {
+  const provider = createRuntimeProvider(
+    providerConfig,
+    { provider: providerV4(), realtime: realtimeTransport },
+    catalog,
+  );
+
+  expect(provider.realtime?.models).toEqual(['gpt-live-1-codex']);
+});
+
+test('materializes the realtime capability on a raw-only provider', () => {
+  const provider = createRuntimeProvider(
+    providerConfig,
+    {
+      provider: providerV4(),
+      raw: () => ({ invoke: () => Promise.resolve(new Response('ok')) }),
+      realtime: realtimeTransport,
+    },
+    noModelsCatalog,
+  );
+
+  expect(provider.realtime?.models).toEqual(['gpt-live-1-codex']);
+});
+
+test('omits an absent realtime capability and rejects a malformed one', () => {
+  const withoutRealtime = createRuntimeProvider(providerConfig, { provider: providerV4() }, catalog);
+  expect('realtime' in withoutRealtime).toBe(false);
+
+  expect(() =>
+    createRuntimeProvider(
+      providerConfig,
+      { provider: providerV4(), realtime: { models: 'gpt-live-1-codex', fetch: () => {}, dial: () => {} } },
+      catalog,
+    ),
+  ).toThrow('Invalid realtime capability');
+});
+
+test('withAccountPin stamps the account identity used to route a later sideband', () => {
+  const provider = withAccountPin(createRuntimeProvider(providerConfig, { provider: providerV4() }, catalog), {
+    accountId: 'person@example.com',
+    runtimeRevision: 7,
+  });
+
+  expect(provider.accountId).toBe('person@example.com');
+  expect(provider.runtimeRevision).toBe(7);
 });

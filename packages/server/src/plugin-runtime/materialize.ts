@@ -8,7 +8,7 @@ import {
   prepareOAuthPluginAccount,
 } from '../plugin-account';
 import type { RuntimeProviderInstance } from '../runtime';
-import { createRuntimeProvider, withRoutingConfig } from './capabilities';
+import { createRuntimeProvider, type RuntimeAccountPin, withAccountPin, withRoutingConfig } from './capabilities';
 import {
   catalogDiagnostic,
   catalogFreshness,
@@ -110,6 +110,7 @@ async function createRuntimeMaterialization(
   persistedSummary: PersistedSummary,
   accountSummary: PreparedOAuthPluginAccount['accountSummary'],
   canRefreshCredential: boolean,
+  runtime: { readonly pin: RuntimeAccountPin; readonly proxy: string | null },
 ): Promise<PluginProviderMaterialization> {
   const { config } = options;
   const fetch = options.runtimeFetch ?? globalThis.fetch;
@@ -121,14 +122,18 @@ async function createRuntimeMaterialization(
           options: accountOptions,
           catalog: storedCatalog.catalog,
           fetch,
+          proxy: runtime.proxy,
         }),
       ),
     );
-    const provider = createRuntimeProvider(
-      config,
-      result,
-      storedCatalog.catalog,
-      pluginDefaultAliases(adapter, storedCatalog.catalog),
+    const provider = withAccountPin(
+      createRuntimeProvider(
+        config,
+        result,
+        storedCatalog.catalog,
+        pluginDefaultAliases(adapter, storedCatalog.catalog),
+      ),
+      runtime.pin,
     );
     const cacheEntry = { identity, provider, credentials, fetch };
     return { provider, summary: persistedSummary(provider, storedCatalog), state, catalogJob, cacheEntry };
@@ -171,6 +176,7 @@ export async function materializePluginProvider(
     );
   }
   const { adapter, account, accountOptions, accountSummary, createCredentials } = prepared;
+  const pin: RuntimeAccountPin = { accountId: account.fingerprint, runtimeRevision: account.runtimeRevision };
   const canRefreshCredential = adapter.refreshCredential !== undefined;
   let proxyIdentity = options.effectiveProxy;
   if (proxyIdentity === undefined) proxyIdentity = config.proxy === false ? null : (config.proxy ?? null);
@@ -276,13 +282,12 @@ export async function materializePluginProvider(
   // The job is emitted even when the Provider is disabled: the scheduler will not arm a timer for
   // one, but a manual catalog refresh has to be able to reach it.
   const catalogJob = catalogJobFor(credentials);
+  const pinnedRouting = (previous: RuntimeProviderInstance) =>
+    withAccountPin(withRoutingConfig(previous, config, storedCatalog.catalog, defaults), pin);
   if (!config.enabled) {
     const cacheEntry =
       options.previous?.identity === identity
-        ? {
-            ...options.previous,
-            provider: withRoutingConfig(options.previous.provider, config, storedCatalog.catalog, defaults),
-          }
+        ? { ...options.previous, provider: pinnedRouting(options.previous.provider) }
         : undefined;
     return {
       summary: persistedSummary(undefined, storedCatalog),
@@ -292,7 +297,7 @@ export async function materializePluginProvider(
     };
   }
   if (options.previous?.identity === identity) {
-    const provider = withRoutingConfig(options.previous.provider, config, storedCatalog.catalog, defaults);
+    const provider = pinnedRouting(options.previous.provider);
     const cacheEntry = { ...options.previous, provider };
     return { provider, summary: persistedSummary(provider, storedCatalog), state, catalogJob, cacheEntry };
   }
@@ -309,5 +314,6 @@ export async function materializePluginProvider(
     persistedSummary,
     accountSummary,
     canRefreshCredential,
+    { pin, proxy: proxyIdentity },
   );
 }

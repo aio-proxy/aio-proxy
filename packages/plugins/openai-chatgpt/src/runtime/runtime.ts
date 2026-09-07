@@ -11,6 +11,7 @@ import { CHATGPT_USER_AGENT } from '../codex-client';
 import { refreshAccessToken } from '../oauth-flow';
 import type { ChatGPTCredential } from '../schema';
 import { stripOrphanReasoningIds } from './orphan-reasoning-id/index';
+import { createOpenAIChatGPTRealtime, mergeEndpointQuery } from './realtime';
 
 const CHATGPT_CODEX_BASE_URL = 'https://chatgpt.com/backend-api/codex' as const;
 const CHATGPT_CODEX_RESPONSES_ENDPOINT = `${CHATGPT_CODEX_BASE_URL}/responses` as const;
@@ -37,6 +38,10 @@ export async function createOpenAIChatGPTRuntime(
       embeddingModel: (modelId) => openAI.embeddingModel(modelId),
       imageModel: (modelId) => openAI.imageModel(modelId),
     },
+    realtime: createOpenAIChatGPTRealtime(context.credentials, {
+      fetch: context.fetch,
+      proxy: context.proxy ?? null,
+    }),
     // Defensive: image dispatch resolves with `capability` absent, so this guard
     // exists to keep an embedding request off the responses/image passthrough
     // rather than to gate image routing.
@@ -156,9 +161,7 @@ function rewriteCodexUrl(input: string): string {
   const target = new URL(input);
   const codexEndpoint = codexEndpointFor(target.pathname);
   if (codexEndpoint === undefined) return target.toString();
-  const endpoint = new URL(codexEndpoint);
-  endpoint.search = target.search;
-  return endpoint.toString();
+  return mergeEndpointQuery(codexEndpoint, target).toString();
 }
 
 // Every inbound path this runtime accepts must map to an explicit upstream

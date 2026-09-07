@@ -39,6 +39,7 @@ import type { SnapshotManager } from '../plugin-snapshot';
 import { createSnapshotManager } from '../plugin-snapshot';
 import { createRequestTraceRecorder } from '../request-tracing';
 import { ProviderCooldownStore } from '../routes/pipeline/provider-cooldown';
+import { createRealtimeCallStore } from '../routes/realtime';
 import { createUsageCapture } from '../usage-capture';
 import type { ServerRuntime } from './lifecycle';
 import {
@@ -209,6 +210,7 @@ async function initializeServerState(
   const usageCapture = createUsageCapture({ logger });
   const logicalSessionStore = new LogicalSessionStore({ repository: traceStore, logger });
   const cooldown = new ProviderCooldownStore();
+  const realtimeCalls = createRealtimeCallStore();
   const requestRecorder = createRequestTraceRecorder({
     store: traceStore,
     logger,
@@ -267,6 +269,7 @@ async function initializeServerState(
     oauthQuota,
     oauthCredentialRefresh,
     quotaCache,
+    realtimeCalls,
     oauthLoginSessions,
     pluginControlPlane,
     providerSummaries,

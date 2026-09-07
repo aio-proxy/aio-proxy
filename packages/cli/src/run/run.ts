@@ -3,6 +3,7 @@ import { dirname } from 'node:path';
 
 import { AtomicConfigFile, configPath, parseRuntimeConfig } from '@aio-proxy/core';
 import { AppError, ConfigWriteError, m, PortOutOfRangeError } from '@aio-proxy/i18n';
+import { websocket, type AppType } from '@aio-proxy/server';
 
 import { EDITS_MULTIPART_ENCODED_LIMIT } from '../../../core/src/ingress/openai-image/multipart-counters';
 import packageJson from '../../package.json' with { type: 'json' };
@@ -26,6 +27,8 @@ const VERSION = packageJson.version;
 const CONFIG_SCHEMA_URL = 'https://unpkg.com/@aio-proxy/types/config.schema.json';
 
 export const MAX_REQUEST_BODY_SIZE = EDITS_MULTIPART_ENCODED_LIMIT;
+
+type ProxyApp = Pick<AppType, 'fetch'>;
 
 export const DEFAULT_CONFIG = {
   $schema: CONFIG_SCHEMA_URL,
@@ -132,6 +135,57 @@ const assertPortAvailable = (host: string, port: number) => {
   }
 };
 
+/** Exported so the serve options the proxy actually binds with are reachable from a test:
+ *  `run()` itself binds a socket, spawns config watchers, and installs signal handlers, so
+ *  the options object is the only part that can be asserted on directly. */
+export const proxyServeOptions = (app: ProxyApp, host: string, port: number) => ({
+  hostname: host,
+  port,
+  idleTimeout: 255,
+  maxRequestBodySize: MAX_REQUEST_BODY_SIZE,
+  // `app.fetch` is passed by reference so it keeps receiving Bun's second argument:
+  // `upgradeWebSocket` reaches the server through `c.env`, so a wrapper forwarding only
+  // the request would break every realtime upgrade.
+  fetch: app.fetch,
+  // The websocket handler has its OWN idleTimeout, defaulting to 120s, and the
+  // `idleTimeout: 255` above does not carry over to an upgraded socket. Hono's
+  // `websocket` is a shared module singleton, so it is spread rather than mutated.
+  // `sendPings` stays at its default `true` so keepalive resets the idle window.
+  websocket: { ...websocket, idleTimeout: 255 },
+});
+
+/** Application cleanup runs BEFORE the force stop, and the order is load-bearing for realtime.
+ *
+ *  Measured on Bun 1.4.2: `server.stop(true)` dispatches each upgraded socket's `close` handler
+ *  **synchronously, inside the `stop()` call**, with code `1006`. So with the force stop first, the
+ *  relay's teardown ran on that `1006` — which is in the unforwardable set and normalizes to
+ *  `1011` — and latched itself; `app.close()`'s `realtimeCalls.close()` then had nothing left to
+ *  close, and the shutdown code the design spec pins (`1001`) was never sent. Running `app.close()`
+ *  first lets the store close every live relay with `1001`, and the close frame still flushes even
+ *  though the force stop follows in the same synchronous block (measured).
+ *
+ *  Safe for non-realtime shutdown, and specifically not a drain: `app.close()` is fully
+ *  synchronous — `ServerState.close()` is a plain loop of synchronous closes — so it cannot hang
+ *  waiting on an in-flight HTTP request. Measured in both orders, an in-flight request behaves
+ *  identically: `stop(true)` aborts its signal and the client's fetch rejects either way, because
+ *  the two calls have always been in one synchronous block and a handler that resumes after them
+ *  already observed closed resources.
+ *
+ *  `server.stop(true)` is in a `finally` so it runs even if `app.close()` throws — which it can,
+ *  since `ServerState.close()` rethrows the first resource-close failure — because a process that
+ *  keeps listening is worse than a lost cleanup error. Exported so the ordering is assertable:
+ *  `run()` itself binds a socket, spawns config watchers, and installs signal handlers. */
+export const shutdownProxyServer = (
+  server: Pick<ReturnType<typeof Bun.serve>, 'stop'>,
+  app: { readonly close: () => void },
+): void => {
+  try {
+    app.close();
+  } finally {
+    server.stop(true);
+  }
+};
+
 export const run = (deps: CliDeps) => async (options: RunOptions) => {
   const resolvedConfigPath = configPath();
   const dashboardUrlFor = (host: string, port: number) => {
@@ -168,13 +222,7 @@ export const run = (deps: CliDeps) => async (options: RunOptions) => {
   // 255s is Bun's maximum idle window.
   let server: ReturnType<typeof Bun.serve>;
   try {
-    server = Bun.serve({
-      hostname: host,
-      port,
-      idleTimeout: 255,
-      maxRequestBodySize: MAX_REQUEST_BODY_SIZE,
-      fetch: app.fetch,
-    });
+    server = Bun.serve(proxyServeOptions(app, host, port));
   } catch (error) {
     try {
       app.close();
@@ -187,14 +235,10 @@ export const run = (deps: CliDeps) => async (options: RunOptions) => {
     if (closing) return;
     closing = true;
     try {
-      server.stop(true);
+      shutdownProxyServer(server, app);
     } finally {
-      try {
-        app.close();
-      } finally {
-        process.off('SIGINT', shutdown);
-        process.off('SIGTERM', shutdown);
-      }
+      process.off('SIGINT', shutdown);
+      process.off('SIGTERM', shutdown);
     }
   };
   process.once('SIGINT', shutdown);
