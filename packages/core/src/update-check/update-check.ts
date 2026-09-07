@@ -11,14 +11,6 @@ export type UpdateCheckState = {
   readonly notifiedVersion?: string;
 };
 
-const isNewer = (left: string, right: string): boolean => {
-  try {
-    return Bun.semver.order(left, right) > 0;
-  } catch {
-    return false;
-  }
-};
-
 export type UpdateCheckIncoming = {
   readonly latest: string;
   readonly checkedAt: number;
@@ -27,12 +19,11 @@ export type UpdateCheckIncoming = {
 
 export const mergeUpdateCheckState = (incoming: UpdateCheckIncoming, existing?: UpdateCheckState): UpdateCheckState => {
   if (existing === undefined) return { latest: incoming.latest, checkedAt: incoming.checkedAt };
-  // A slower overlapping fetch can finish after a newer check. Keep the on-disk
-  // latest only when that record was written after this fetch started.
-  // A later successful check (fetchStartedAt >= existing.checkedAt) is
-  // authoritative, including an npm `latest` rollback.
-  const staleOverlap = existing.checkedAt > incoming.fetchStartedAt && isNewer(existing.latest, incoming.latest);
-  if (staleOverlap) return existing;
+  // A slower overlapping fetch can finish after a later check. Keep the on-disk
+  // record whenever it was written after this fetch started, including when that
+  // later check recorded an npm `latest` rollback. Semver direction is not used:
+  // a stale higher result must not overwrite a later lower authoritative one.
+  if (existing.checkedAt > incoming.fetchStartedAt) return existing;
   return {
     latest: incoming.latest,
     checkedAt: incoming.checkedAt,

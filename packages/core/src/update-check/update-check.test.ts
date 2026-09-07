@@ -57,6 +57,15 @@ test('mergeUpdateCheckState keeps a newer on-disk latest from an overlapping che
   ).toEqual({ latest: '1.11.0', checkedAt: 9, notifiedVersion: '1.11.0' });
 });
 
+test('mergeUpdateCheckState keeps a later overlapping rollback over a stale higher fetch', () => {
+  expect(
+    mergeUpdateCheckState(
+      { latest: '2.0.0', checkedAt: 25, fetchStartedAt: 1 },
+      { latest: '1.9.0', checkedAt: 20, notifiedVersion: '2.0.0' },
+    ),
+  ).toEqual({ latest: '1.9.0', checkedAt: 20, notifiedVersion: '2.0.0' });
+});
+
 test('mergeUpdateCheckState records a later registry rollback', () => {
   expect(
     mergeUpdateCheckState(

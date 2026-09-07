@@ -135,6 +135,29 @@ test('does not replace a newer on-disk latest with a slower stale fetch', async 
   expect(disk).toEqual({ latest: '1.11.0', checkedAt: 9, notifiedVersion: '1.11.0' });
 });
 
+test('does not replace a later overlapping rollback with a slower stale higher fetch', async () => {
+  let t = 5;
+  let disk: UpdateCheckState | undefined = { latest: '1.5.0', checkedAt: 1 };
+  const controller = createAutoUpdateController({
+    ...base,
+    currentVersion: '1.9.0',
+    now: () => t,
+    fetchLatest: async () => {
+      disk = { latest: '1.9.0', checkedAt: 20, notifiedVersion: '2.0.0' };
+      t = 25;
+      return '2.0.0';
+    },
+    notifyAvailable: () => {},
+    readState: () => disk,
+    writeState: async (next) => {
+      disk = next;
+    },
+  });
+  expect(await controller.check()).toEqual({ current: '1.9.0', latest: '2.0.0', outdated: true });
+  expect(disk).toEqual({ latest: '1.9.0', checkedAt: 20, notifiedVersion: '2.0.0' });
+  expect(controller.snapshot()).toEqual({ status: 'idle', latest: '1.9.0', outdated: false });
+});
+
 test('a later successful check records a registry rollback', async () => {
   const store = memoryState({ latest: '2.0.0', checkedAt: 1, notifiedVersion: '2.0.0' });
   const controller = createAutoUpdateController({
