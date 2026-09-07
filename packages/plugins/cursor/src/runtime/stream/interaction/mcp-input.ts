@@ -35,7 +35,11 @@ export function incompleteSnapshotOmitsMappedFields(
     if (!(key.value in known)) return true;
     i = skipJsonWhitespace(text, i + 1);
     if (i >= text.length) return false;
+    const started = text[i];
     const valueEnd = skipJsonValue(text, i);
+    if ((started === '{' || started === '[') && !isPlainObject(known[key.value]) && !Array.isArray(known[key.value])) {
+      return true;
+    }
     if (valueEnd === undefined) return false;
     i = valueEnd;
     expectKey = false;
@@ -71,6 +75,8 @@ export function declaresNoArguments(schema: unknown): boolean {
   if (!isPlainObject(properties) || Object.keys(properties).length !== 0) return false;
   const required = schema['required'];
   if (required !== undefined && (!Array.isArray(required) || required.length !== 0)) return false;
+  const minProperties = schema['minProperties'];
+  if (typeof minProperties === 'number' && minProperties > 0) return false;
   return !['$ref', 'allOf', 'anyOf', 'oneOf', 'not', 'if', 'dependentRequired', 'dependentSchemas'].some(
     (key) => key in schema,
   );

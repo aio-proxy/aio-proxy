@@ -42,6 +42,11 @@ const mcpUpdate = (
 test.each([
   { snapshots: [], finalArgs: { query: argValue('docs') }, want: '{"query":"docs"}' },
   { snapshots: ['{"query":"dr'], finalArgs: { query: argValue('docs') }, want: '{"query":"docs"}' },
+  {
+    snapshots: ['{"filters":{"lang":"ts"'],
+    finalArgs: { filters: argValue({ lang: 'ts' }) },
+    want: '{"filters":{"lang":"ts"}}',
+  },
   { snapshots: ['{"query":"draft"}'], finalArgs: { query: argValue('docs') }, want: '{"query":"docs"}' },
   {
     snapshots: ['{"query":"docs","maxFiles":6}'],
@@ -300,6 +305,18 @@ test.each(['{"query":"docs","cont', '{"query":"docs",'])(
   },
 );
 
+test('a truncated structured snapshot stays pending when the completion map is a degraded string', () => {
+  const a = createCursorStreamAccumulator();
+  mapInteractionUpdate(mcpUpdate('partialToolCall', mcp(), '{"filters":{"lang":"ts"'), a);
+  mapInteractionUpdate(mcpUpdate('toolCallCompleted', mcp({ filters: argValue('degraded') })), a);
+  expect(cursorToolState(a)).toMatchObject({ openCount: 1, readyCount: 0 });
+  expect(commitCursorTools(a)).toEqual([]);
+  mapMcpExec(mcp({ filters: argValue({ lang: 'ts' }) }), a);
+  expect(commitCursorTools(a).find((part) => part.type === 'tool-call')).toMatchObject({
+    input: '{"filters":{"lang":"ts"}}',
+  });
+});
+
 test('a later complete snapshot readies a call that had a partial completion map', () => {
   const a = createCursorStreamAccumulator();
   mapInteractionUpdate(mcpUpdate('partialToolCall', mcp(), '{"query":"docs","content":"par'), a);
@@ -339,6 +356,26 @@ test.each([
   if (execEmpty) mapMcpExec(mcp(), a);
   else mapInteractionUpdate(mcpUpdate('toolCallCompleted', mcp()), a);
   expect(commitCursorTools(a).find((p) => p.type === 'tool-call')).toMatchObject({ input: '{}' });
+});
+
+test('a positive minProperties schema waits for exec instead of handing off empty completion', () => {
+  const a = createCursorStreamAccumulator(
+    buildMcpToolDefinitions([
+      {
+        type: 'function',
+        name: 'search',
+        inputSchema: { type: 'object', properties: {}, minProperties: 1 },
+      },
+    ]),
+  );
+  mapInteractionUpdate(mcpUpdate('toolCallStarted', mcp()), a);
+  mapInteractionUpdate(mcpUpdate('toolCallCompleted', mcp()), a);
+  expect(cursorToolState(a)).toMatchObject({ openCount: 1, readyCount: 0 });
+  expect(commitCursorTools(a)).toEqual([]);
+  mapMcpExec(mcp({ query: argValue('docs') }), a);
+  expect(commitCursorTools(a).find((part) => part.type === 'tool-call')).toMatchObject({
+    input: '{"query":"docs"}',
+  });
 });
 
 test('a later approval-only exec drops a provisional MCP record', () => {
