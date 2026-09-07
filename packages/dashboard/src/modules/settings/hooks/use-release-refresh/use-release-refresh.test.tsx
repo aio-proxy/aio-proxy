@@ -12,7 +12,7 @@ const mocks = rs.hoisted(() => ({
   releaseQueryFn: rs.fn(),
 }));
 
-rs.mock('./release-service', () => ({
+rs.mock('../../services/release-service', () => ({
   checkLatestReleaseMutationFn: mocks.check,
   releaseQueryOptions: () => ({
     queryKey: queryKeys.release,

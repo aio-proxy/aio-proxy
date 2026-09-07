@@ -3,8 +3,8 @@ import { Button } from '@aio-proxy/ui/components/button';
 import { useSidebar } from '@aio-proxy/ui/components/sidebar';
 import { ArrowUpCircle } from 'lucide-react';
 
-import { useApplyRelease } from '@/lib/release/use-apply-release';
-import { useReleaseQuery } from '@/lib/release/use-release-query';
+import { useApplyRelease } from '@/modules/settings/hooks/use-apply-release';
+import { useReleaseQuery } from '@/modules/settings/hooks/use-release-query';
 
 export const SidebarUpdateCard: React.FC = () => {
   const { state } = useSidebar();

@@ -6,7 +6,8 @@ import { Skeleton } from '@aio-proxy/ui/components/skeleton';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { queryKeys } from '@/lib/query-keys';
-import { checkLatestReleaseMutationFn, useReleaseQuery } from '@/lib/release';
+import { useReleaseQuery } from '@/modules/settings/hooks/use-release-query';
+import { checkLatestReleaseMutationFn } from '@/modules/settings/services/release-service';
 
 import { SettingsExternalLink } from './settings-external-link';
 import { SettingsRowChevron } from './settings-row-chevron';

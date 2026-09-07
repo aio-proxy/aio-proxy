@@ -3,7 +3,7 @@ import { useEffect } from 'react';
 
 import { queryKeys } from '@/lib/query-keys';
 
-import { checkLatestReleaseMutationFn, releaseQueryOptions } from './release-service';
+import { checkLatestReleaseMutationFn, releaseQueryOptions } from '../../services/release-service';
 
 export const useReleaseRefresh = () => {
   const queryClient = useQueryClient();

@@ -1,7 +1,7 @@
 import { m } from '@aio-proxy/i18n';
 import { Button } from '@aio-proxy/ui/components/button';
 
-import { useApplyRelease } from '@/lib/release/use-apply-release';
+import { useApplyRelease } from '@/modules/settings/hooks/use-apply-release';
 
 interface SettingsUpdateNowButtonProps {
   readonly outdated: boolean;

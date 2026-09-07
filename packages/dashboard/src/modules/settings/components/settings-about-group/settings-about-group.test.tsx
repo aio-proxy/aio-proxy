@@ -13,21 +13,11 @@ const mocks = rs.hoisted(() => ({
   reloadDashboard: rs.fn(),
 }));
 
-rs.mock('@/lib/release', () => ({
-  applyReleaseMutationFn: mocks.apply,
-  checkLatestReleaseMutationFn: mocks.check,
-  releaseQueryOptions: () => ({
-    queryKey: ['release'],
-    queryFn: mocks.releaseQueryFn,
-  }),
+rs.mock('@/modules/settings/hooks/use-release-query', () => ({
   useReleaseQuery: () => mocks.release(),
 }));
 
-rs.mock('@/lib/release/use-release-query', () => ({
-  useReleaseQuery: () => mocks.release(),
-}));
-
-rs.mock('@/lib/release/release-service', () => ({
+rs.mock('@/modules/settings/services/release-service', () => ({
   applyReleaseMutationFn: mocks.apply,
   checkLatestReleaseMutationFn: mocks.check,
   releaseQueryOptions: () => ({

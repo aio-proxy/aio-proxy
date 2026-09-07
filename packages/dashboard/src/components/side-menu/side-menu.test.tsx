@@ -13,7 +13,7 @@ rs.mock('@tanstack/react-router', () => ({
 
 rs.mock('./sidebar-logout', () => ({ SidebarLogout: () => null }));
 rs.mock('./sidebar-update-card', () => ({ SidebarUpdateCard: () => null }));
-rs.mock('@/lib/release', () => ({
+rs.mock('@/modules/settings/hooks/use-release-refresh', () => ({
   useReleaseRefresh: () => undefined,
 }));
 

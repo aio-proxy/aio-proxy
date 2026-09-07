@@ -17,7 +17,7 @@ import { Blocks, ChartNoAxesCombined, HandPlatter, Settings2, Shuffle, Waypoints
 import type { ComponentProps, ComponentType } from 'react';
 
 import { AioProxyBrand } from '@/components/aio-proxy-brand';
-import { useReleaseRefresh } from '@/lib/release';
+import { useReleaseRefresh } from '@/modules/settings/hooks/use-release-refresh';
 
 import { SidebarLogout } from './sidebar-logout';
 import { SidebarUpdateCard } from './sidebar-update-card';

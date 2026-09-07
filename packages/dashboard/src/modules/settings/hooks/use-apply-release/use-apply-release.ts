@@ -3,8 +3,8 @@ import { useEffect, useState } from 'react';
 
 import { reloadDashboard } from '@/lib/reload-dashboard';
 
-import { applyReleaseMutationFn, releaseQueryOptions } from './release-service';
-import { useReleaseQuery } from './use-release-query';
+import { applyReleaseMutationFn, releaseQueryOptions } from '../../services/release-service';
+import { useReleaseQuery } from '../use-release-query';
 
 const POLL_INTERVAL_MS = 2_000;
 const POLL_TIMEOUT_MS = 120_000;
