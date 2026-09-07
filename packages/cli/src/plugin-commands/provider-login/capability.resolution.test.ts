@@ -13,6 +13,7 @@ describe('provider login capability resolution', () => {
     '@aio-proxy/plugin-google-antigravity',
     '@aio-proxy/plugin-kimi-code',
     '@aio-proxy/plugin-cursor',
+    '@aio-proxy/plugin-openrouter',
     '@aio-proxy/plugin-anthropic-claude',
   ] as const;
 

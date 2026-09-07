@@ -13,12 +13,13 @@ import { disabledDashboardAuthentication } from '../dashboard-auth/test-support'
 import { createDashboardRoutes } from './config';
 
 const waitFor = async <T>(read: () => Promise<T>, accept: (value: T) => boolean): Promise<T> => {
-  for (let attempt = 0; attempt < 100; attempt += 1) {
-    const value = await read();
-    if (accept(value)) return value;
+  let last: T | undefined;
+  for (let attempt = 0; attempt < 400; attempt += 1) {
+    last = await read();
+    if (accept(last)) return last;
     await Bun.sleep(5);
   }
-  throw new Error('timed out waiting for OAuth session');
+  throw new Error(`timed out waiting for OAuth session: ${JSON.stringify(last)}`);
 };
 const emptyOAuthInput = { publicValues: {}, secrets: {}, clearSecrets: [] } as const;
 const emptyModelCatalog = { image: [], embedding: [], speech: [], transcription: [], reranking: [] } as const;

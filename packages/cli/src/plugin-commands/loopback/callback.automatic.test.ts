@@ -77,4 +77,61 @@ describe('loopback automatic callback handling', () => {
     await expect(flow).resolves.toMatchObject({ code: 'valid' });
     await expectPortAvailable(Number(new URL(redirectUri).port));
   });
+
+  test('accepts an automatic callback that has a code and no state', async () => {
+    setInteractive(false);
+    const { deps } = createDeps();
+    let redirectUri = '';
+    const flow = runLoopbackAuthorization(
+      request({
+        authorizationUrl: (input) => {
+          redirectUri = input.redirectUri;
+          return 'https://openrouter.ai/auth';
+        },
+      }),
+      deps,
+    );
+    expect((await fetch(`${redirectUri}?code=openrouter-code`)).status).toBe(200);
+    await expect(flow).resolves.toMatchObject({ code: 'openrouter-code' });
+  });
+
+  test('denies an automatic callback that has error and no state', async () => {
+    setInteractive(false);
+    const { deps } = createDeps();
+    let redirectUri = '';
+    const flow = runLoopbackAuthorization(
+      request({
+        authorizationUrl: (input) => {
+          redirectUri = input.redirectUri;
+          return 'https://openrouter.ai/auth';
+        },
+      }),
+      deps,
+    );
+    const settled = flow.then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect((await fetch(`${redirectUri}?error=access_denied`)).status).toBe(400);
+    expect(await settled).toBeInstanceOf(LoopbackOAuthError);
+  });
+
+  test('rejects a missing-state callback when the authorize URL sent state', async () => {
+    setInteractive(false);
+    const { deps } = createDeps();
+    let redirectUri = '';
+    const flow = runLoopbackAuthorization(
+      request({
+        authorizationUrl: (input) => {
+          redirectUri = input.redirectUri;
+          return `https://identity.example/authorize?state=expected-state`;
+        },
+      }),
+      deps,
+    );
+    const missing = await fetch(`${redirectUri}?code=stolen`);
+    expect(missing.status).toBe(400);
+    expect((await fetch(`${redirectUri}?code=valid&state=expected-state`)).status).toBe(200);
+    await expect(flow).resolves.toMatchObject({ code: 'valid' });
+  });
 });

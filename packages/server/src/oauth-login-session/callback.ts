@@ -1,4 +1,5 @@
 import type { LoopbackRequest } from '@aio-proxy/plugin-sdk';
+import { resolveOAuthLoopbackCallback } from '@aio-proxy/shared';
 
 export class OAuthCallbackError extends Error {
   constructor(readonly code: string) {
@@ -27,28 +28,22 @@ export const parseOAuthCallback = (
   raw: string,
   expectedRedirectUri: string,
   expectedState: string,
+  options: { readonly stateRequired?: boolean } = {},
 ): { readonly code: string } => {
-  let callback: URL;
-  try {
-    callback = new URL(raw);
-  } catch {
-    throw new OAuthCallbackError('CALLBACK_INVALID');
+  const resolved = resolveOAuthLoopbackCallback(raw, expectedRedirectUri, expectedState, {
+    stateRequired: options.stateRequired ?? true,
+  });
+  if (resolved.ok) return { code: resolved.code };
+  switch (resolved.reason) {
+    case 'invalid':
+      throw new OAuthCallbackError('CALLBACK_INVALID');
+    case 'mismatch':
+      throw new OAuthCallbackError('CALLBACK_MISMATCH');
+    case 'state_mismatch':
+      throw new OAuthCallbackError('CALLBACK_STATE_MISMATCH');
+    case 'denied':
+      throw new OAuthCallbackError('AUTHORIZATION_DENIED');
+    case 'code_missing':
+      throw new OAuthCallbackError('CALLBACK_CODE_MISSING');
   }
-  const expected = new URL(expectedRedirectUri);
-  if (
-    callback.protocol !== expected.protocol ||
-    callback.hostname !== expected.hostname ||
-    callback.port !== expected.port ||
-    callback.pathname !== expected.pathname ||
-    callback.username !== '' ||
-    callback.password !== '' ||
-    callback.hash !== ''
-  ) {
-    throw new OAuthCallbackError('CALLBACK_MISMATCH');
-  }
-  if (callback.searchParams.get('state') !== expectedState) throw new OAuthCallbackError('CALLBACK_STATE_MISMATCH');
-  if (callback.searchParams.get('error') !== null) throw new OAuthCallbackError('AUTHORIZATION_DENIED');
-  const code = callback.searchParams.get('code');
-  if (code === null || code === '') throw new OAuthCallbackError('CALLBACK_CODE_MISSING');
-  return { code };
 };

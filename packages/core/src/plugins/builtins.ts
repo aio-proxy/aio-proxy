@@ -4,6 +4,7 @@ import { createGitHubCopilotPlugin, GITHUB_COPILOT_PLUGIN_VERSION } from '@aio-p
 import { createGoogleAntigravityPlugin, GOOGLE_ANTIGRAVITY_PLUGIN_VERSION } from '@aio-proxy/plugin-google-antigravity';
 import { createKimiCodePlugin, KIMI_CODE_PLUGIN_VERSION } from '@aio-proxy/plugin-kimi-code';
 import { createOpenAIChatGPTPlugin, OPENAI_CHATGPT_PLUGIN_VERSION } from '@aio-proxy/plugin-openai-chatgpt';
+import { createOpenRouterPlugin, OPENROUTER_PLUGIN_VERSION } from '@aio-proxy/plugin-openrouter';
 import type { PluginDescriptor } from '@aio-proxy/plugin-sdk';
 import { createXAIGrokPlugin, XAI_GROK_PLUGIN_VERSION } from '@aio-proxy/plugin-xai-grok';
 
@@ -16,6 +17,7 @@ export const BUILT_IN_PLUGIN_PACKAGE_NAMES = [
   '@aio-proxy/plugin-google-antigravity',
   '@aio-proxy/plugin-kimi-code',
   '@aio-proxy/plugin-openai-chatgpt',
+  '@aio-proxy/plugin-openrouter',
   '@aio-proxy/plugin-xai-grok',
 ] as const;
 
@@ -107,6 +109,19 @@ export function createEmbeddedBuiltIns(): readonly BuiltInPluginDefinition[] {
           '使用 ChatGPT Plus 或 Pro 账号访问模型',
         ),
         adapterLabel: localized('Login with ChatGPT (Plus/Pro)', '使用 ChatGPT（Plus/Pro）登录'),
+      }) as unknown as PluginDescriptor<unknown>,
+    },
+    {
+      packageName: '@aio-proxy/plugin-openrouter',
+      version: OPENROUTER_PLUGIN_VERSION,
+      descriptor: createOpenRouterPlugin({
+        pluginLabel: 'OpenRouter',
+        pluginDescription: localized(
+          'Sign in with OpenRouter to mint an API key',
+          '使用 OpenRouter 登录并签发 API key',
+        ),
+        adapterLabel: localized('Login with OpenRouter', '使用 OpenRouter 登录'),
+        waitingForAuthorization: localized('Waiting for OpenRouter authorization', '正在等待 OpenRouter 授权'),
       }) as unknown as PluginDescriptor<unknown>,
     },
     {

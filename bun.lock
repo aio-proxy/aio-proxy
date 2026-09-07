@@ -155,6 +155,7 @@
         "@aio-proxy/plugin-google-antigravity": "workspace:*",
         "@aio-proxy/plugin-kimi-code": "workspace:*",
         "@aio-proxy/plugin-openai-chatgpt": "workspace:*",
+        "@aio-proxy/plugin-openrouter": "workspace:*",
         "@aio-proxy/plugin-sdk": "workspace:*",
         "@aio-proxy/plugin-xai-grok": "workspace:*",
         "@aio-proxy/shared": "workspace:*",
@@ -415,6 +416,21 @@
         "typescript": "catalog:",
       },
     },
+    "packages/plugins/openrouter": {
+      "name": "@aio-proxy/plugin-openrouter",
+      "version": "0.19.2",
+      "dependencies": {
+        "@aio-proxy/plugin-sdk": "workspace:*",
+        "@openrouter/ai-sdk-provider": "catalog:",
+        "es-toolkit": "catalog:",
+      },
+      "devDependencies": {
+        "@aio-proxy/infra": "workspace:*",
+        "@rslib/core": "catalog:",
+        "@types/bun": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
     "packages/plugins/xai-grok": {
       "name": "@aio-proxy/plugin-xai-grok",
       "version": "0.19.2",
@@ -647,6 +663,8 @@
     "@aio-proxy/plugin-kimi-code": ["@aio-proxy/plugin-kimi-code@workspace:packages/plugins/kimi-code"],
 
     "@aio-proxy/plugin-openai-chatgpt": ["@aio-proxy/plugin-openai-chatgpt@workspace:packages/plugins/openai-chatgpt"],
+
+    "@aio-proxy/plugin-openrouter": ["@aio-proxy/plugin-openrouter@workspace:packages/plugins/openrouter"],
 
     "@aio-proxy/plugin-sdk": ["@aio-proxy/plugin-sdk@workspace:packages/plugin-sdk"],
 
