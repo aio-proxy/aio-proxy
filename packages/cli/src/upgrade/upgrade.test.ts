@@ -916,6 +916,72 @@ test('resolveManagedRestartExec prefers the cli-* linked from the installed aio-
   expect(found).not.toBe(stale);
 });
 
+const pointLauncherAtPackage = (prefix: string, packageDir: string): string => {
+  const pkgBin = join(packageDir, 'bin', 'aio-proxy');
+  writeExecutable(pkgBin, '#!/usr/bin/env node\n');
+  const launcher = join(prefix, 'bin', 'aio-proxy');
+  try {
+    unlinkSync(launcher);
+  } catch {
+    // first write has no launcher yet
+  }
+  symlinkSync(pkgBin, launcher);
+  return launcher;
+};
+
+test('resolveManagedRestartExec uses the pnpm group owned by the launcher, not the first group', () => {
+  const prefix = mkdtempSync(join(tmpdir(), 'aio-restart-pnpm-owned-'));
+  const stale = writePnpmGlobalLayout({
+    prefix,
+    version: '1.0.0',
+    globalNodeModules: join(prefix, 'global', 'node_modules'),
+    nestUnderAioProxy: false,
+  });
+  const current = writePnpmGlobalLayout({
+    prefix,
+    version: '2.0.0',
+    globalNodeModules: join(prefix, 'global', '6', 'node_modules'),
+    nestUnderAioProxy: false,
+  });
+  const launcher = pointLauncherAtPackage(prefix, join(prefix, 'global', '6', 'node_modules', 'aio-proxy'));
+  expect(
+    resolveManagedRestartExec({
+      method: 'pnpm',
+      command: join(prefix, 'bin', 'pnpm'),
+      bin: launcher,
+    }),
+  ).toBe(current);
+  expect(stale).not.toBe(current);
+});
+
+test('resolveManagedRestartExec uses the v11 isolated group owned by the launcher', () => {
+  const prefix = mkdtempSync(join(tmpdir(), 'aio-restart-pnpm-v11-owned-'));
+  const stale = writePnpmGlobalLayout({
+    prefix,
+    version: '1.0.0',
+    globalNodeModules: join(prefix, 'global', 'v11', 'node_modules'),
+    nestUnderAioProxy: false,
+  });
+  const current = writePnpmGlobalLayout({
+    prefix,
+    version: '2.0.0',
+    globalNodeModules: join(prefix, 'global', 'v11', 'newhash', 'node_modules'),
+    nestUnderAioProxy: false,
+  });
+  const launcher = pointLauncherAtPackage(
+    prefix,
+    join(prefix, 'global', 'v11', 'newhash', 'node_modules', 'aio-proxy'),
+  );
+  expect(
+    resolveManagedRestartExec({
+      method: 'pnpm',
+      command: join(prefix, 'bin', 'pnpm'),
+      bin: launcher,
+    }),
+  ).toBe(current);
+  expect(stale).not.toBe(current);
+});
+
 test('resolveManagedRestartExec uses the native cli-* binary for bun, not the JS shim', () => {
   const bunHome = mkdtempSync(join(tmpdir(), 'aio-restart-bun-'));
   const native = join(bunHome, 'install', 'global', 'node_modules', '@aio-proxy', 'cli-linux-x64', 'bin', 'aio-proxy');

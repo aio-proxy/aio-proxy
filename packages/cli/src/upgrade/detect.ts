@@ -315,26 +315,34 @@ const nativeInNodeModules = (nodeModules: string, platformPkg: string): string |
   return scanPnpmVirtualStore(nodeModules, platformPkg);
 };
 
-const nativeUnderPnpmGlobal = (dir: string, platformPkg: string): string | undefined => {
+const nativeUnderPnpmGlobal = (dir: string, platformPkg: string, launcherPath: string): string | undefined => {
   const globalDir = join(dir, 'global');
   if (!existsSync(globalDir)) return undefined;
-  const fromRoot = nativeInNodeModules(join(globalDir, 'node_modules'), platformPkg);
+  let fallback: string | undefined;
+  const take = (nodeModules: string): string | undefined => {
+    const found = nativeInNodeModules(nodeModules, platformPkg);
+    if (found === undefined) return undefined;
+    if (packageOwnsLauncher(launcherPath, join(nodeModules, PACKAGE))) return found;
+    fallback ??= found;
+    return undefined;
+  };
+  const fromRoot = take(join(globalDir, 'node_modules'));
   if (fromRoot !== undefined) return fromRoot;
   for (const entry of listDir(globalDir)) {
     if (entry === 'store') continue;
     const entryDir = join(globalDir, entry);
-    const found = nativeInNodeModules(join(entryDir, 'node_modules'), platformPkg);
+    const found = take(join(entryDir, 'node_modules'));
     if (found !== undefined) return found;
     for (const nested of listDir(entryDir)) {
       if (nested === 'store') continue;
-      const nestedFound = nativeInNodeModules(join(entryDir, nested, 'node_modules'), platformPkg);
+      const nestedFound = take(join(entryDir, nested, 'node_modules'));
       if (nestedFound !== undefined) return nestedFound;
     }
   }
-  return undefined;
+  return fallback;
 };
 
-const findPlatformCliBinaryNear = (startDir: string): string | undefined => {
+const findPlatformCliBinaryNear = (startDir: string, launcherPath: string): string | undefined => {
   const platformPkg = currentPlatformCliPackage();
   if (platformPkg === undefined) return undefined;
   let dir = startDir;
@@ -343,7 +351,7 @@ const findPlatformCliBinaryNear = (startDir: string): string | undefined => {
       nativeInNodeModules(join(dir, 'node_modules'), platformPkg) ??
       nativeInNodeModules(join(dir, 'lib', 'node_modules'), platformPkg) ??
       nativeInNodeModules(join(dir, 'install', 'global', 'node_modules'), platformPkg) ??
-      nativeUnderPnpmGlobal(dir, platformPkg);
+      nativeUnderPnpmGlobal(dir, platformPkg, launcherPath);
     if (found !== undefined) return found;
     const parent = dirname(dir);
     if (parent === dir) break;
@@ -355,7 +363,13 @@ const findPlatformCliBinaryNear = (startDir: string): string | undefined => {
 export const resolveManagedRestartExec = (target: UpgradeTarget): string | undefined => {
   if (target.method === 'brew') return target.bin;
   if (target.method === 'binary') return resolveStableManagedExec(target.path);
-  return findPlatformCliBinaryNear(dirname(target.bin)) ?? findPlatformCliBinaryNear(dirname(target.command));
+  const launcher = target.bin;
+  const real = tryRealpath(launcher);
+  return (
+    (real !== undefined && real !== launcher ? findPlatformCliBinaryNear(dirname(real), launcher) : undefined) ??
+    findPlatformCliBinaryNear(dirname(launcher), launcher) ??
+    findPlatformCliBinaryNear(dirname(target.command), launcher)
+  );
 };
 
 export const resolveUpgradeTarget = async (): Promise<UpgradeTarget> => {
