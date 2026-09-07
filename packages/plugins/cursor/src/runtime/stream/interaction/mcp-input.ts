@@ -77,6 +77,10 @@ export function declaresNoArguments(schema: unknown): boolean {
   if (required !== undefined && (!Array.isArray(required) || required.length !== 0)) return false;
   const minProperties = schema['minProperties'];
   if (typeof minProperties === 'number' && minProperties > 0) return false;
+  const additionalProperties = schema['additionalProperties'];
+  if (additionalProperties !== undefined && additionalProperties !== false) return false;
+  const patternProperties = schema['patternProperties'];
+  if (isPlainObject(patternProperties) && Object.keys(patternProperties).length > 0) return false;
   return !['$ref', 'allOf', 'anyOf', 'oneOf', 'not', 'if', 'dependentRequired', 'dependentSchemas'].some(
     (key) => key in schema,
   );

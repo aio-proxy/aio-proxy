@@ -358,25 +358,28 @@ test.each([
   expect(commitCursorTools(a).find((p) => p.type === 'tool-call')).toMatchObject({ input: '{}' });
 });
 
-test('a positive minProperties schema waits for exec instead of handing off empty completion', () => {
-  const a = createCursorStreamAccumulator(
-    buildMcpToolDefinitions([
-      {
-        type: 'function',
-        name: 'search',
-        inputSchema: { type: 'object', properties: {}, minProperties: 1 },
-      },
-    ]),
-  );
-  mapInteractionUpdate(mcpUpdate('toolCallStarted', mcp()), a);
-  mapInteractionUpdate(mcpUpdate('toolCallCompleted', mcp()), a);
-  expect(cursorToolState(a)).toMatchObject({ openCount: 1, readyCount: 0 });
-  expect(commitCursorTools(a)).toEqual([]);
-  mapMcpExec(mcp({ query: argValue('docs') }), a);
-  expect(commitCursorTools(a).find((part) => part.type === 'tool-call')).toMatchObject({
-    input: '{"query":"docs"}',
-  });
-});
+test.each([{ minProperties: 1 }, { additionalProperties: true }, { patternProperties: { '^x': { type: 'string' } } }])(
+  'a dynamic object schema waits for exec instead of handing off empty completion: %j',
+  (extra) => {
+    const a = createCursorStreamAccumulator(
+      buildMcpToolDefinitions([
+        {
+          type: 'function',
+          name: 'search',
+          inputSchema: { type: 'object', properties: {}, ...extra },
+        },
+      ]),
+    );
+    mapInteractionUpdate(mcpUpdate('toolCallStarted', mcp()), a);
+    mapInteractionUpdate(mcpUpdate('toolCallCompleted', mcp()), a);
+    expect(cursorToolState(a)).toMatchObject({ openCount: 1, readyCount: 0 });
+    expect(commitCursorTools(a)).toEqual([]);
+    mapMcpExec(mcp({ query: argValue('docs') }), a);
+    expect(commitCursorTools(a).find((part) => part.type === 'tool-call')).toMatchObject({
+      input: '{"query":"docs"}',
+    });
+  },
+);
 
 test('a later approval-only exec drops a provisional MCP record', () => {
   const a = createCursorStreamAccumulator();
