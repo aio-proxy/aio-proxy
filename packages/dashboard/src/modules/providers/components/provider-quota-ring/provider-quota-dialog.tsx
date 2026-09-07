@@ -100,7 +100,7 @@ export const ProviderQuotaDialog: React.FC<ProviderQuotaDialogProps> = ({
             ) : (
               <ul className="space-y-3">
                 {items.map((item) => (
-                  <ProviderQuotaItem key={item.id} item={item} />
+                  <ProviderQuotaItem key={item.id} item={item} sampledAt={result.sampledAt} />
                 ))}
               </ul>
             )}

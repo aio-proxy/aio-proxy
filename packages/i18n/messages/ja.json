@@ -749,6 +749,8 @@
         "remaining": "残り {percent}%",
         "less_than_one_percent": "残り 1% 未満",
         "no_windows": "このアップストリームは残量を返しません",
+        "pace_on_track": "ペース内: 一定消費なら残り {percent}%",
+        "pace_overspent": "ペース超過: 一定消費なら残り {percent}%",
         "resets_at": "{value} にリセット",
         "reset_credits": "リセット可能回数 {count}",
         "reset": "リセット回数を使う",

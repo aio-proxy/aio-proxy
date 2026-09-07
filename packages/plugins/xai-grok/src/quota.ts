@@ -11,7 +11,9 @@ const SETTINGS_URL = `${XAI_GROK_CLI_BASE_URL}/settings`;
 const SETTINGS_TIMEOUT_MS = 2_000;
 type BillingObject = {
   readonly billing_period_end?: unknown;
+  readonly billing_period_start?: unknown;
   readonly billingPeriodEnd?: unknown;
+  readonly billingPeriodStart?: unknown;
   readonly config?: unknown;
   readonly credit_usage_percent?: unknown;
   readonly creditUsagePercent?: unknown;
@@ -22,6 +24,7 @@ type BillingObject = {
   readonly monthlyLimit?: unknown;
   readonly product_usage?: unknown;
   readonly productUsage?: unknown;
+  readonly start?: unknown;
   readonly used?: unknown;
   readonly val?: unknown;
 };
@@ -87,6 +90,7 @@ function weeklyItems(config: BillingObject): readonly OAuthQuotaItem[] {
   const period = record(config.currentPeriod ?? config.current_period);
   const remainingRatio = remainingFromPercent(config.creditUsagePercent ?? config.credit_usage_percent);
   const resetsAt = timestamp(period?.end);
+  const windowMinutes = spanMinutes(timestamp(period?.start), resetsAt);
   // A unified-billing account reports a period but no credit percentage, and that window can be the
   // only item the account produces. Dropping it here would trip the no-items throw and turn a
   // successful billing read into a failure; whether an unrated window is worth rendering is the
@@ -100,9 +104,17 @@ function weeklyItems(config: BillingObject): readonly OAuthQuotaItem[] {
             displayName: { default: 'Weekly limit', 'zh-Hans': '周额度' },
             ...(remainingRatio === undefined ? {} : { remainingRatio }),
             ...(resetsAt === undefined ? {} : { resetsAt }),
+            ...(windowMinutes === undefined ? {} : { windowMinutes }),
           },
         ];
   return [...weekly, ...productItems(config)];
+}
+
+/** Window length from both ends of a billing period; a non-positive span is not a window. */
+function spanMinutes(start: number | undefined, end: number | undefined): number | undefined {
+  if (start === undefined || end === undefined) return undefined;
+  const minutes = Math.round((end - start) / 60_000);
+  return minutes > 0 ? minutes : undefined;
 }
 
 function monthlyItems(config: BillingObject): readonly OAuthQuotaItem[] {
@@ -113,6 +125,7 @@ function monthlyItems(config: BillingObject): readonly OAuthQuotaItem[] {
       ? undefined
       : 1 - Math.min(Math.max(used, 0), limit) / limit;
   const resetsAt = timestamp(config.billingPeriodEnd ?? config.billing_period_end);
+  const windowMinutes = spanMinutes(timestamp(config.billingPeriodStart ?? config.billing_period_start), resetsAt);
   if (remainingRatio === undefined && resetsAt === undefined) return [];
   return [
     {
@@ -120,6 +133,7 @@ function monthlyItems(config: BillingObject): readonly OAuthQuotaItem[] {
       displayName: { default: 'Monthly credits', 'zh-Hans': '月度额度' },
       ...(remainingRatio === undefined ? {} : { remainingRatio }),
       ...(resetsAt === undefined ? {} : { resetsAt }),
+      ...(windowMinutes === undefined ? {} : { windowMinutes }),
     },
   ];
 }

@@ -69,12 +69,14 @@ test('maps the session, weekly, and model-specific windows', async () => {
         displayName: { default: '5-hour limit', 'zh-Hans': '5 小时额度' },
         remainingRatio: 0.85,
         resetsAt: 1_767_972_193_000,
+        windowMinutes: 300,
       },
       {
         id: 'secondary',
         displayName: { default: 'Weekly limit', 'zh-Hans': '周额度' },
         remainingRatio: 0.95,
         resetsAt: 1_768_972_193_000,
+        windowMinutes: 10_080,
       },
       {
         id: 'codex-spark',
@@ -84,6 +86,7 @@ test('maps the session, weekly, and model-specific windows', async () => {
         },
         remainingRatio: 0.6,
         resetsAt: 1_767_900_000_000,
+        windowMinutes: 300,
       },
       {
         id: 'codex-spark-secondary',
@@ -93,6 +96,7 @@ test('maps the session, weekly, and model-specific windows', async () => {
         },
         remainingRatio: 0.09999999999999998,
         resetsAt: 1_768_900_000_000,
+        windowMinutes: 10_080,
       },
     ],
     plan: 'Free Workspace',

@@ -9,6 +9,7 @@ const validSnapshot = () => ({
       displayName: { default: '5 hour', 'zh-Hans': '5 小时' },
       remainingRatio: 0.25,
       resetsAt: 1_800_000_000_000,
+      windowMinutes: 300,
     },
     { id: 'weekly', displayName: 'Weekly', remainingRatio: 1 },
   ],
@@ -127,6 +128,15 @@ describe('validateOAuthQuotaSnapshot', () => {
   ] as const)('rejects invalid item timestamp %p', (resetsAt, path) => {
     expectInvalid({ items: [{ id: 'time', displayName: 'Time', resetsAt }] }, path);
   });
+
+  // A window length is only meaningful as a positive whole number of minutes: zero would divide the
+  // dashboard's pace math by 0, and a negative or fractional duration cannot place a marker at all.
+  test.each([0, -300, 1.5, Number.NaN, Number.POSITIVE_INFINITY, '300', Number.MAX_SAFE_INTEGER + 1])(
+    'rejects invalid windowMinutes %p',
+    (windowMinutes) => {
+      expectInvalid({ items: [{ id: 'window', displayName: 'Window', windowMinutes }] }, ['items', 0, 'windowMinutes']);
+    },
+  );
 
   test.each([new Date(), Number.MAX_SAFE_INTEGER + 1, 1.5])('rejects invalid credit timestamp %p', (expiresAt) => {
     expectInvalid({ items: [], resetCredits: { availableCount: 1, items: [{ id: 'credit', expiresAt }] } }, [

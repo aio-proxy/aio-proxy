@@ -27,3 +27,41 @@ export const remainingPercent = (ratio: number): number => {
   if (clamped === 0) return 0;
   return Math.max(1, Math.round(clamped * 100));
 };
+
+/** Where a perfectly even burn would have left the window by now, and whether the real one is worse. */
+export type QuotaPace = {
+  /** Remaining percent a steady burn would show, as a track position from 0 to 100. */
+  readonly expectedPercent: number;
+  /** The window is being spent faster than evenly, so it runs dry before it resets. */
+  readonly overspent: boolean;
+};
+
+/**
+ * How far off the even burn a window has to be before the marker is worth drawing. Inside this band
+ * the tick would sit on top of the fill edge and say nothing the bar does not already show.
+ */
+const ON_TRACK_PERCENT = 2;
+
+/**
+ * A steady-burn reference point for one window, or `undefined` when there is nothing worth marking.
+ *
+ * `sampledAt` is when the reading was taken, not the current time, and is required for that reason:
+ * a cached snapshot holds its `remainingRatio` still while the wall clock keeps moving, so an
+ * expectation computed from "now" would drift away from the reading it is compared against.
+ *
+ * Both ends of the window have to be known: `resetsAt` alone says when it ends, and only
+ * `windowMinutes` says when it started. A reset already past at sample time, or one further out than
+ * a whole window, means the reading is stale or the clocks disagree — either way the elapsed fraction
+ * would be fiction, and a confidently-placed wrong marker is worse than no marker.
+ */
+export const quotaPace = (item: ApplicableQuotaItem, sampledAt: number): QuotaPace | undefined => {
+  const { resetsAt, windowMinutes } = item;
+  if (resetsAt === undefined || windowMinutes === undefined || windowMinutes <= 0) return undefined;
+  const durationMs = windowMinutes * 60_000;
+  const remainingMs = resetsAt - sampledAt;
+  if (remainingMs <= 0 || remainingMs > durationMs) return undefined;
+  const expectedPercent = (remainingMs / durationMs) * 100;
+  const margin = item.remainingRatio * 100 - expectedPercent;
+  if (Math.abs(margin) <= ON_TRACK_PERCENT) return undefined;
+  return { expectedPercent, overspent: margin < 0 };
+};

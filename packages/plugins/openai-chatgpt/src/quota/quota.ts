@@ -145,13 +145,23 @@ function windowItem(value: unknown, id: string, prefix: string | undefined): OAu
   const usedPercent = number(Reflect.get(value, 'used_percent'));
   const resetsAt = timestamp(Reflect.get(value, 'reset_at'));
   if (usedPercent === undefined && resetsAt === undefined) return undefined;
-  const label = windowLabel(number(Reflect.get(value, 'limit_window_seconds')), id.endsWith('secondary'));
+  const limitWindowSeconds = number(Reflect.get(value, 'limit_window_seconds'));
+  const label = windowLabel(limitWindowSeconds, id.endsWith('secondary'));
+  const windowMinutes = minutes(limitWindowSeconds);
   return {
     id,
     displayName: prefix === undefined ? label : prefixed(prefix, label),
     ...(usedPercent === undefined ? {} : { remainingRatio: 1 - Math.min(Math.max(usedPercent, 0), 100) / 100 }),
     ...(resetsAt === undefined ? {} : { resetsAt }),
+    ...(windowMinutes === undefined ? {} : { windowMinutes }),
   };
+}
+
+/** The snapshot spells window lengths in whole minutes; a sub-minute window has nothing to pace. */
+function minutes(limitWindowSeconds: number | undefined): number | undefined {
+  if (limitWindowSeconds === undefined || limitWindowSeconds <= 0) return undefined;
+  const value = Math.round(limitWindowSeconds / 60);
+  return value > 0 ? value : undefined;
 }
 
 function windowLabel(limitWindowSeconds: number | undefined, secondaryLane: boolean): LocalizedText {

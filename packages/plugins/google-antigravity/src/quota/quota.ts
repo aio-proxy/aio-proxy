@@ -215,11 +215,16 @@ function bucketItem(
   const label = windowLabel(window, upstreamLabel);
   if (label === undefined) return undefined;
   const resetsAt = timestamp(Reflect.get(value, 'resetTime') ?? Reflect.get(value, 'reset_time'));
+  // Only the two canonical windows have a length we know; an unrecognized one gets no pace marker
+  // rather than a guessed duration.
+  const slug = windowSlug(window);
+  const windowMinutes = slug === '5h' ? 5 * 60 : slug === 'weekly' ? 7 * 24 * 60 : undefined;
   return {
     id,
     displayName: groupLabel === undefined ? label : prefixed(groupLabel, label),
     remainingRatio: Math.min(1, Math.max(0, fraction)),
     ...(resetsAt === undefined ? {} : { resetsAt }),
+    ...(windowMinutes === undefined ? {} : { windowMinutes }),
   };
 }
 
