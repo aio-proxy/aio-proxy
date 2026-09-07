@@ -230,6 +230,24 @@ test('shows a failed update without claiming the build is current', async () => 
   expect(screen.queryByText(upToDate)).toBeNull();
 });
 
+test('hides Check for updates as soon as Update now is pending', async () => {
+  prepare(withRelease('idle', { latest: '1.10.0', outdated: true }));
+  mocks.apply.mockImplementation(
+    () =>
+      new Promise<{ ok: true; status: 'started' }>(() => {
+        /* stay pending so Check and Updating overlap if hideCheck ignores apply.isPending */
+      }),
+  );
+  await renderGroup();
+
+  expect(screen.getByRole('button', { name: checkName })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: updateNowName }));
+
+  await waitFor(() => expect(screen.queryByRole('button', { name: checkName })).not.toBeInTheDocument());
+  expect(screen.getByRole('button', { name: updatingName })).toBeDisabled();
+  expect(mocks.release().data?.update.status).toBe('idle');
+});
+
 test('hides Check for updates and keeps Updating while a restart is pending', async () => {
   prepare(withRelease('restart_required', { latest: '1.10.0', outdated: true }));
   await renderGroup();

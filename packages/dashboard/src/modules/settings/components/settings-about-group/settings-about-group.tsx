@@ -6,6 +6,7 @@ import { Skeleton } from '@aio-proxy/ui/components/skeleton';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { queryKeys } from '@/lib/query-keys';
+import { useApplyRelease } from '@/modules/settings/hooks/use-apply-release';
 import { useReleaseQuery } from '@/modules/settings/hooks/use-release-query';
 import { checkLatestReleaseMutationFn } from '@/modules/settings/services/release-service';
 
@@ -30,8 +31,11 @@ export const SettingsAboutGroup: React.FC = () => {
   const persistedOutdated = release.data?.outdated === true;
   const outdated = persistedOutdated;
   const latest = release.data?.latest;
-  const updateStatus = release.data?.update.status;
-  const hideCheck = updateStatus === 'in_progress' || updateStatus === 'restart_required';
+  const applyRelease = useApplyRelease({
+    outdated,
+    onUpToDate: () => check.reset(),
+  });
+  const hideCheck = applyRelease.inProgress || applyRelease.restartRequired;
 
   // A failed lookup must not read as "up to date": an unreachable registry says nothing
   // about the published version. A failed install is the same — do not replace it with
@@ -72,7 +76,7 @@ export const SettingsAboutGroup: React.FC = () => {
                 {m['dashboard.settings.version_check']()}
               </Button>
             )}
-            <SettingsUpdateNowButton outdated={outdated} onUpToDate={() => check.reset()} />
+            <SettingsUpdateNowButton {...applyRelease} />
             <SettingsExternalLink
               href={current === undefined ? REPOSITORY_URL : `${REPOSITORY_URL}/releases/tag/v${current}`}
               label={m['dashboard.settings.version']()}

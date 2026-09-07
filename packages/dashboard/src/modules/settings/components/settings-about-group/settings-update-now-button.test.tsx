@@ -3,7 +3,12 @@ import { afterEach, expect, rs, test } from '@rstest/core';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { createElement, type ReactNode } from 'react';
 
+import { useApplyRelease } from '@/modules/settings/hooks/use-apply-release';
+
 import { SettingsUpdateNowButton } from './settings-update-now-button';
+
+const UpdateNowHarness = ({ outdated, onUpToDate }: { readonly outdated: boolean; readonly onUpToDate?: () => void }) =>
+  createElement(SettingsUpdateNowButton, useApplyRelease({ outdated, onUpToDate }));
 
 const mocks = rs.hoisted(() => ({
   apply: rs.fn(),
@@ -66,7 +71,7 @@ const renderButton = async (outdated: boolean, seed?: DashboardReleaseView, onUp
     createElement(QueryClientProvider, { client: queryClient }, children);
   return {
     invalidateQueries,
-    ...render(createElement(SettingsUpdateNowButton, { outdated, onUpToDate }), { wrapper }),
+    ...render(createElement(UpdateNowHarness, { outdated, onUpToDate }), { wrapper }),
   };
 };
 

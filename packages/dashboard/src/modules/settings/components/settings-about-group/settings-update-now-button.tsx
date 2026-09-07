@@ -1,18 +1,18 @@
 import { m } from '@aio-proxy/i18n';
 import { Button } from '@aio-proxy/ui/components/button';
 
-import { useApplyRelease } from '@/modules/settings/hooks/use-apply-release';
+import type { useApplyRelease } from '@/modules/settings/hooks/use-apply-release';
 
-interface SettingsUpdateNowButtonProps {
-  readonly outdated: boolean;
-  readonly onUpToDate?: () => void;
-}
+export type SettingsUpdateNowButtonProps = ReturnType<typeof useApplyRelease>;
 
-export const SettingsUpdateNowButton: React.FC<SettingsUpdateNowButtonProps> = ({ outdated, onUpToDate }) => {
-  const { apply, failed, inProgress, releaseAvailable, restartRequired, unavailable } = useApplyRelease({
-    outdated,
-    onUpToDate,
-  });
+export const SettingsUpdateNowButton: React.FC<SettingsUpdateNowButtonProps> = ({
+  apply,
+  failed,
+  inProgress,
+  releaseAvailable,
+  restartRequired,
+  unavailable,
+}) => {
   const status = restartRequired
     ? m['dashboard.settings.version_restart_required']()
     : unavailable
