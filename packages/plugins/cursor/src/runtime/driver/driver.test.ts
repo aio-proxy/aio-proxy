@@ -870,6 +870,15 @@ test('run diagnostics correlate phases without logging request content', async (
       (row[1] as { phase?: unknown }).phase === 'first-text',
   ) as [string, { frameCount?: number }] | undefined;
   expect(firstText?.[1].frameCount).toBeGreaterThan(0);
+  expect(phases.indexOf('connect-end')).toBeGreaterThan(phases.indexOf('first-frame'));
+  const connectEnd = rows.find(
+    (row) =>
+      Array.isArray(row) &&
+      typeof row[1] === 'object' &&
+      row[1] !== null &&
+      (row[1] as { phase?: unknown }).phase === 'connect-end',
+  ) as [string, { frameCount?: number }] | undefined;
+  expect(connectEnd?.[1].frameCount).toBeGreaterThan(0);
   expect(serialized).toContain('settled');
   expect(serialized).not.toContain('SECRET_ACCESS_TOKEN');
   expect(serialized).not.toContain('SECRET_MODEL_TEXT');
@@ -953,6 +962,22 @@ test('abort signal cancel is logged as canceled at debug', async () => {
   expect(settled?.level).toBe('debug');
   expect(settled?.fields).toMatchObject({ phase: 'settled', termination: 'canceled', requestId: 'req-abort' });
   expect(rows.some((row) => row.level === 'warn')).toBe(false);
+});
+
+test('a Connect terminal counts as the first decoded frame', async () => {
+  const { logger, rows } = capturingLogger();
+  const h = runHarness({
+    logger,
+    diagnosticsContext: { requestId: 'req-end', modelId: 'composer-2', resumeMode: 'fresh' },
+  });
+  h.send({ flags: 2, payload: new TextEncoder().encode('{}') });
+  await h.drained;
+  await h.result;
+  const phases = rows.map((row) => row.fields.phase);
+  expect(phases.indexOf('first-frame')).toBeGreaterThanOrEqual(0);
+  expect(phases.indexOf('connect-end')).toBeGreaterThan(phases.indexOf('first-frame'));
+  expect(rows.find((row) => row.fields.phase === 'connect-end')?.fields.frameCount).toBeGreaterThan(0);
+  expect(settledLog(rows)?.fields.frameCount).toBeGreaterThan(0);
 });
 
 test('protocol error is logged as warn with the error code', async () => {

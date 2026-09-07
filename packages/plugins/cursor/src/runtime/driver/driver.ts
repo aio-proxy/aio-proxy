@@ -240,6 +240,7 @@ async function openCursorRun(session: CursorRunSession): Promise<CursorH2Stream 
 function handleConnectEnd(session: CursorRunSession, frame: ConnectFrame): boolean {
   if ((frame.flags & CONNECT_END_STREAM_FLAG) === 0) return false;
   const envelope = parseConnectEndStream(frame.payload);
+  noteDecodedFrame(session, false);
   session.diagnostics('connect-end', session.lifecycle.snapshot());
   if (envelope.error !== undefined) {
     session.lifecycle.fail(
@@ -416,7 +417,6 @@ function startHeartbeat(session: CursorRunSession, h2: CursorH2Stream): void {
 }
 
 function stopHeartbeat(session: CursorRunSession): void {
-  if (session.heartbeat === undefined) return;
   clearInterval(session.heartbeat);
   session.heartbeat = undefined;
 }
