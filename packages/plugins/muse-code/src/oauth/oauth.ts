@@ -6,6 +6,7 @@ import {
   MuseCodeHttpError,
   museControlFetch,
   museControlHeaders,
+  museControlReadText,
   requestMuseCodeKey,
   type MuseCodeKeyResponse,
 } from '../control';
@@ -102,7 +103,7 @@ async function requestDeviceAuthorization(fetcher: RuntimeFetch, signal: AbortSi
     await response.body?.cancel().catch(() => undefined);
     throw new Error('Muse Code device authorization failed');
   }
-  const value = await parseJsonObject(response, 'Muse Code device authorization response is invalid');
+  const value = await parseJsonObject(response, 'Muse Code device authorization response is invalid', signal);
   const deviceCode = optionalString(value, 'device_code');
   const userCode = optionalString(value, 'user_code');
   const verificationUri =
@@ -142,10 +143,7 @@ async function pollDeviceToken(
         context.signal,
       );
     } catch (error) {
-      if (context.signal.aborted) throw context.signal.reason;
-      if (!(error instanceof MuseCodeHttpError) || !error.retryable) throw error;
-      context.progress(input.waiting);
-      await input.sleep(interval * 1_000, context.signal);
+      await retryTokenTransport(error, context, input, interval);
       continue;
     }
     if (isRetryableStatus(response.status)) {
@@ -154,7 +152,13 @@ async function pollDeviceToken(
       await input.sleep(interval * 1_000, context.signal);
       continue;
     }
-    const body = await parseJsonObject(response, 'Muse Code device authorization failed');
+    let body: Record<string, unknown>;
+    try {
+      body = await parseJsonObject(response, 'Muse Code device authorization failed', context.signal);
+    } catch (error) {
+      await retryTokenTransport(error, context, input, interval);
+      continue;
+    }
     const accessToken = optionalString(body, 'access_token');
     if (accessToken !== undefined) return accessToken;
     const error = optionalString(body, 'error');
@@ -202,9 +206,29 @@ async function postDeviceForm(
   });
 }
 
-async function parseJsonObject(response: Response, message: string): Promise<Record<string, unknown>> {
+async function retryTokenTransport(
+  error: unknown,
+  context: OAuthLoginContext,
+  input: {
+    readonly sleep: (milliseconds: number, signal: AbortSignal) => Promise<void>;
+    readonly waiting: LocalizedText;
+  },
+  interval: number,
+): Promise<void> {
+  if (context.signal.aborted) throw context.signal.reason;
+  if (!(error instanceof MuseCodeHttpError) || !error.retryable) throw error;
+  context.progress(input.waiting);
+  await input.sleep(interval * 1_000, context.signal);
+}
+
+async function parseJsonObject(
+  response: Response,
+  message: string,
+  signal: AbortSignal,
+): Promise<Record<string, unknown>> {
+  const text = await museControlReadText(response, signal);
   try {
-    const value: unknown = await response.json();
+    const value: unknown = JSON.parse(text);
     if (isPlainObject(value)) return value;
   } catch {
     // Keep the caller-facing error free of upstream bodies.

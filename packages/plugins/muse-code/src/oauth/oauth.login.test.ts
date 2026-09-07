@@ -278,6 +278,39 @@ describe('Muse Code device login', () => {
     expect(requests.map((request) => request.url)).toEqual([DEVICE, TOKEN, TOKEN, KEY]);
   });
 
+  test('retries a token body-read transport failure then mints', async () => {
+    const requests: Request[] = [];
+    const result = await loginMuseCode(loginContext([]), {
+      fetch: sequenceFetch(requests, [
+        deviceAuthorization(),
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.error(new TypeError('The connection was reset.'));
+            },
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+        Response.json({ access_token: 'oauth-access' }),
+        mintedKey(),
+      ]),
+      now: () => 1_700_000_000_000,
+      sleep: async () => {},
+    });
+    expect(result.credentials.apiKey).toBe('minted-key');
+    expect(requests.map((request) => request.url)).toEqual([DEVICE, TOKEN, TOKEN, KEY]);
+  });
+
+  test('does not retry a completed invalid token JSON body', async () => {
+    await expect(
+      loginMuseCode(loginContext([]), {
+        fetch: sequenceFetch([], [deviceAuthorization(), new Response('not-json', { status: 200 })]),
+        now: () => 1_700_000_000_000,
+        sleep: async () => {},
+      }),
+    ).rejects.toThrow('Muse Code device authorization failed');
+  });
+
   test('retries retryable token network errors then mints', async () => {
     const requests: Request[] = [];
     const responses = [deviceAuthorization(), Response.json({ access_token: 'oauth-access' }), mintedKey()];
