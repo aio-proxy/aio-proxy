@@ -29,6 +29,7 @@ export const createDashboardAuthorization = (options: {
     let server: LoopbackServer | undefined;
     const requestedPort = request.redirect.port === 'dynamic' ? 0 : request.redirect.port;
     let expectedRedirectUri: string;
+    let stateRequired = true;
     let settled = false;
     let resolveResult = (_value: LoopbackResult) => {};
     let rejectResult = (_error: unknown) => {};
@@ -49,7 +50,7 @@ export const createDashboardAuthorization = (options: {
 
     const accept = (raw: string): void => {
       try {
-        const { code } = parseOAuthCallback(raw, expectedRedirectUri, request.state);
+        const { code } = parseOAuthCallback(raw, expectedRedirectUri, request.state, { stateRequired });
         settle({ ok: true, result: { code, redirectUri: expectedRedirectUri } });
       } catch (error) {
         if (error instanceof OAuthCallbackError && error.code === 'AUTHORIZATION_DENIED') {
@@ -86,6 +87,7 @@ export const createDashboardAuthorization = (options: {
       if (port === 0) throw new OAuthCallbackError('CALLBACK_PORT_UNAVAILABLE');
       expectedRedirectUri = loopbackRedirectUri(request, port);
       const authorizationUrl = requireHttpUrl(request.authorizationUrl({ redirectUri: expectedRedirectUri })).href;
+      stateRequired = new URL(authorizationUrl).searchParams.has('state');
       submit = accept;
       options.publish({
         id: options.sessionId,

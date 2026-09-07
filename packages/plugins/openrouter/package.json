@@ -1,0 +1,32 @@
+{
+  "name": "@aio-proxy/plugin-openrouter",
+  "version": "0.19.2",
+  "private": true,
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "rslib",
+    "test": "bun run test:unit",
+    "test:unit": "bun test",
+    "test:artifact": "bun test ./oauth.smoke.ts"
+  },
+  "dependencies": {
+    "@aio-proxy/plugin-sdk": "workspace:*",
+    "@openrouter/ai-sdk-provider": "catalog:",
+    "es-toolkit": "catalog:"
+  },
+  "devDependencies": {
+    "@aio-proxy/infra": "workspace:*",
+    "@rslib/core": "catalog:",
+    "@types/bun": "catalog:",
+    "typescript": "catalog:"
+  }
+}
