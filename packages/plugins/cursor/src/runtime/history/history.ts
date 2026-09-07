@@ -347,6 +347,9 @@ function toolMessageText(message: LanguageModelV4Message): string {
 
 function toolResultText(part: LanguageModelV4ToolResultPart): string {
   const output = part.output;
+  if (output.type === 'execution-denied') {
+    return `[Tool Execution Denied]\n${output.reason?.trim() || 'Tool execution was denied.'}`;
+  }
   const body =
     output.type === 'text' || output.type === 'error-text'
       ? output.value
@@ -356,7 +359,6 @@ function toolResultText(part: LanguageModelV4ToolResultPart): string {
           ? output.value.map((entry) => (entry.type === 'text' ? entry.text : `[${entry.type}]`)).join('\n')
           : '';
   const trimmed = body.trim();
-  if (trimmed.length === 0) return '';
   const prefix = output.type === 'error-text' || output.type === 'error-json' ? '[Tool Error]' : '[Tool Result]';
-  return `${prefix}\n${trimmed}`;
+  return `${prefix}\n${trimmed || '(no output)'}`;
 }

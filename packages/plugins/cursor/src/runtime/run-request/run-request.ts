@@ -98,7 +98,14 @@ export function buildCursorRunRequestBytes(input: {
   const patched = isPendingResume
     ? applyMcpToolResults({ prompt, turns: baseTurns, pendingToolCalls, blobStore })
     : { turns: baseTurns, pendingToolCalls: new Map<string, string>() };
-  const rootPromptMessagesJson = reusableState?.rootPromptMessagesJson ?? promptRootMessages;
+  // Cursor builds the model prompt from these JSON blobs, not the patched
+  // display turns. A resumed tool result must reach this history as well.
+  const rootPromptMessagesJson =
+    isPendingResume && reusableState !== undefined
+      ? promptTurns.length > 0
+        ? promptRootMessages
+        : [...reusableState.rootPromptMessagesJson, ...promptRootMessages.slice(systemPromptIds.length)]
+      : (reusableState?.rootPromptMessagesJson ?? promptRootMessages);
 
   const conversationState = create(ConversationStateStructureSchema, {
     ...baseState,

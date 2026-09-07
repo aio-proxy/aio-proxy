@@ -1,6 +1,7 @@
 import type { LanguageModelV4FinishReason, LanguageModelV4StreamPart, LanguageModelV4Usage } from '@ai-sdk/provider';
 import { fromBinary, toJson } from '@bufbuild/protobuf';
 import { ValueSchema } from '@bufbuild/protobuf/wkt';
+import { isPlainObject } from 'es-toolkit/predicate';
 
 import type { InteractionUpdate, McpArgs } from '../../../gen/agent_pb';
 import { fromWireName } from '../../../tool-names';
@@ -147,7 +148,9 @@ function deltaMcpTool(
   const chunk = snapshot.startsWith(tool.buffer) ? snapshot.slice(tool.buffer.length) : snapshot;
   if (chunk.length === 0) return [];
   tool.buffer += chunk;
-  return [{ type: 'tool-input-delta', id: outerCallId, delta: chunk }];
+  // Completion can supply or correct the arguments. Egresses consume the
+  // argument deltas, so emit the resolved input once instead of a stale prefix.
+  return [];
 }
 
 function completeMcpTool(accumulator: CursorStreamAccumulator, value: unknown): LanguageModelV4StreamPart[] {
@@ -156,14 +159,29 @@ function completeMcpTool(accumulator: CursorStreamAccumulator, value: unknown): 
   if (tool === undefined || outerCallId === undefined) return [];
   const mcp = mcpArgsOf(value);
   const decoded = mcp ? decodeMcpArgsMap(mcp.args) : undefined;
-  const input = decoded !== undefined ? JSON.stringify(decoded) : tool.buffer.length > 0 ? tool.buffer : '{}';
+  const input = resolveMcpInput(tool.buffer, decoded);
   accumulator.tools.delete(outerCallId);
   accumulator.completedToolCalls.set(outerCallId, tool.nestedToolCallId);
   accumulator.toolCalls += 1;
   return [
+    { type: 'tool-input-delta', id: outerCallId, delta: input },
     { type: 'tool-input-end', id: outerCallId },
     { type: 'tool-call', toolCallId: outerCallId, toolName: tool.toolName, input },
   ];
+}
+
+function resolveMcpInput(buffer: string, completion: Record<string, unknown> | undefined): string {
+  if (completion === undefined) return buffer || '{}';
+  const streamed = safeJson(buffer);
+  const merged: Record<string, unknown> = isPlainObject(streamed) ? { ...streamed } : {};
+  for (const [key, value] of Object.entries(completion)) {
+    const previous = merged[key];
+    // Completion maps can omit oversized fields or degrade structured values
+    // to strings. Preserve those streamed values; otherwise completion wins.
+    if (typeof value === 'string' && (isPlainObject(previous) || Array.isArray(previous))) continue;
+    merged[key] = value;
+  }
+  return JSON.stringify(merged);
 }
 
 function mcpArgsOf(

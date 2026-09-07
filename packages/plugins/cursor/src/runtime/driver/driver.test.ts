@@ -314,6 +314,12 @@ test('an mcpArgs exec suspends instead of acknowledging the caller tool', async 
     toolName: 'search',
     input: '{"query":"docs"}',
   });
+  expect(
+    parts
+      .filter((part) => part.type === 'tool-input-delta' && part.id === 'nested-call')
+      .map((part) => (part as { delta: string }).delta)
+      .join(''),
+  ).toBe('{"query":"docs"}');
   expect(parts.at(-1)).toMatchObject({ type: 'finish', finishReason: { unified: 'tool-calls' } });
   expect(writes).toHaveLength(1);
   expect([...turn.pendingToolCalls]).toEqual([['nested-call', 'nested-call']]);

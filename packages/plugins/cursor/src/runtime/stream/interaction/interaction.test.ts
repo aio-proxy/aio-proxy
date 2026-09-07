@@ -10,6 +10,53 @@ const update = (value: Record<string, unknown>) => create(InteractionUpdateSchem
 const argValue = (json: unknown) =>
   toBinary(ValueSchema, create(ValueSchema, { kind: { case: 'stringValue', value: JSON.stringify(json) } }));
 
+test.each([
+  { snapshots: [], finalArgs: { query: argValue('docs') }, want: '{"query":"docs"}' },
+  { snapshots: ['{"query":"dr'], finalArgs: { query: argValue('docs') }, want: '{"query":"docs"}' },
+  { snapshots: ['{"query":"draft"}'], finalArgs: { query: argValue('docs') }, want: '{"query":"docs"}' },
+  {
+    snapshots: ['{"query":"docs","maxFiles":6}'],
+    finalArgs: { maxFiles: argValue(10) },
+    want: '{"query":"docs","maxFiles":10}',
+  },
+  {
+    snapshots: ['{"tasks":[{"query":"docs"}],"options":{"limit":6}}'],
+    finalArgs: { tasks: argValue('[truncated'), options: argValue('{truncated') },
+    want: '{"tasks":[{"query":"docs"}],"options":{"limit":6}}',
+  },
+  { snapshots: ['{"query":', '{"query":"docs"}'], finalArgs: {}, want: '{"query":"docs"}' },
+  { snapshots: [], finalArgs: {}, want: '{}' },
+])('MCP argument stream matches the completed call: %j', ({ snapshots, finalArgs, want }) => {
+  const accumulator = createCursorStreamAccumulator();
+  const mcpUpdate = (event: 'toolCallStarted' | 'toolCallCompleted', args: Record<string, Uint8Array>) =>
+    update({
+      case: event,
+      value: {
+        callId: 'outer',
+        toolCall: {
+          tool: { case: 'mcpToolCall', value: { args: { name: 'search', toolCallId: 'nested', args } } },
+        },
+      },
+    });
+  const parts = [
+    ...mapInteractionUpdate(mcpUpdate('toolCallStarted', {}), accumulator),
+    ...snapshots.flatMap((argsTextDelta) =>
+      mapInteractionUpdate(update({ case: 'partialToolCall', value: { callId: 'outer', argsTextDelta } }), accumulator),
+    ),
+    ...mapInteractionUpdate(mcpUpdate('toolCallCompleted', finalArgs), accumulator),
+  ];
+  const streamedInput = parts
+    .filter((part) => part.type === 'tool-input-delta')
+    .map((part) => (part as { delta: string }).delta)
+    .join('');
+
+  expect(streamedInput).toBe(want);
+  expect(parts.find((part) => part.type === 'tool-call')).toMatchObject({ input: want });
+  expect(parts.findLastIndex((part) => part.type === 'tool-input-delta')).toBeLessThan(
+    parts.findIndex((part) => part.type === 'tool-input-end'),
+  );
+});
+
 test('text deltas stream and finalize as a stop finish', () => {
   const accumulator = createCursorStreamAccumulator();
   const parts = [
