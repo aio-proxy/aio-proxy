@@ -80,8 +80,11 @@ export async function discoverMuseCodeModels(
 }
 
 export function initialMuseCodeCatalogFallback(error: unknown): ModelCatalog | undefined {
-  if (isAbortError(error) || !(error instanceof MuseCodeCatalogError) || !error.retryable) return undefined;
-  return emptyCatalog(CURATED.map(([id, displayName]) => ({ id, displayName, extra: MODEL_METADATA })));
+  if (isAbortError(error)) return undefined;
+  if (isHostCatalogTimeout(error) || (error instanceof MuseCodeCatalogError && error.retryable)) {
+    return emptyCatalog(CURATED.map(([id, displayName]) => ({ id, displayName, extra: MODEL_METADATA })));
+  }
+  return undefined;
 }
 
 function readData(payload: unknown): readonly unknown[] {
@@ -99,6 +102,10 @@ function readDisplayName(value: unknown): string | undefined {
 
 function isAbortError(error: unknown): boolean {
   return error instanceof DOMException && error.name === 'AbortError';
+}
+
+function isHostCatalogTimeout(error: unknown): boolean {
+  return error instanceof Error && error.name === 'OAuthCatalogDiscoveryTimeoutError';
 }
 
 function emptyCatalog(language: ModelCatalog['language']): ModelCatalog {

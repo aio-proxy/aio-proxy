@@ -55,6 +55,12 @@ describe('Muse Code catalog', () => {
     expect(fallback?.language.every((model) => model.extra)).toEqual(true);
     expect(initialMuseCodeCatalogFallback(new MuseCodeCatalogError('unauthorized', false, 401))).toBeUndefined();
     expect(initialMuseCodeCatalogFallback(new DOMException('cancelled', 'AbortError'))).toBeUndefined();
+    const hostTimeout = Object.assign(new Error('OAUTH_CATALOG_DISCOVERY_TIMEOUT'), {
+      name: 'OAuthCatalogDiscoveryTimeoutError',
+    });
+    expect(initialMuseCodeCatalogFallback(hostTimeout)?.language.map((model) => model.id)).toEqual(
+      fallback?.language.map((model) => model.id),
+    );
   });
 
   test('treats a successful empty catalog as authoritative', async () => {
