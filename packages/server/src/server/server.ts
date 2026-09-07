@@ -41,6 +41,7 @@ import { defaultLogger } from '../server-state/logging';
 import type { InternalServerStateOptions, ServerStateTestHooks } from '../server-state/types';
 import { requireModelAuthentication, type AgentEnv } from './agent-auth';
 import { authenticationError } from './api-key-auth/api-key-auth';
+import { createDashboardArtifactRoutes } from './dashboard-artifacts';
 import { agentCatalog, codexClientModels, listModels } from './list-models/index';
 
 /** The Bun WebSocket handler the realtime routes' `upgradeWebSocket` needs at the
@@ -271,28 +272,6 @@ const realtimeRouteSource = (state: ServerState): RealtimeRouteSource => ({
   realtimeCalls: state.realtimeCalls,
 });
 
-/**
- * Serves the built dashboard, falling back to `index.html` so a client-side route survives a reload.
- * A missing `static/` asset stays a real 404: answering it with the shell would hand a script tag an
- * HTML body.
- */
-const dashboardArtifactHandler = (dashboardAssets: DashboardAssets) => async (context: Context) => {
-  const assetKey =
-    context.req.path === '/dashboard' || context.req.path === '/dashboard/'
-      ? 'index.html'
-      : context.req.path.replace(/^\/dashboard\//u, '');
-  const asset = await dashboardAssets(assetKey);
-  if (asset !== null && asset !== undefined) {
-    if (assetKey.startsWith('static/')) {
-      asset.headers.set('cache-control', 'public, max-age=31536000, immutable');
-    }
-    return asset;
-  }
-  if (assetKey.startsWith('static/')) return context.notFound();
-  const index = await dashboardAssets('index.html');
-  return index ?? context.notFound();
-};
-
 const createRoutes = (
   state: ServerState,
   dashboardAssets?: DashboardAssets,
@@ -436,14 +415,7 @@ const createRoutes = (
     .route('/dashboard/api', dashboardRoutes);
 
   if (dashboardAssets !== undefined) {
-    const serveDashboardArtifact = dashboardArtifactHandler(dashboardAssets);
-    routes
-      .get('/dashboard', serveDashboardArtifact)
-      .get('/dashboard/', serveDashboardArtifact)
-      .all('/dashboard/api', (context) => context.notFound())
-      .all('/dashboard/api/*', (context) => context.notFound())
-      .get('/dashboard/*', serveDashboardArtifact)
-      .all('/dashboard/static/*', (context) => context.notFound());
+    routes.route('/dashboard', createDashboardArtifactRoutes(dashboardAssets));
   }
 
   return routes;
