@@ -68,6 +68,7 @@ test('compiled platform package runs outside the workspace and includes its thir
     expect(stdout).toContain('@aio-proxy/plugin-kimi-code');
     expect(stdout).toContain('@aio-proxy/plugin-cursor');
     expect(stdout).toContain('@aio-proxy/plugin-openrouter');
+    expect(stdout).toContain('@aio-proxy/plugin-anthropic-claude');
   } finally {
     rmSync(home, { recursive: true, force: true });
     rmSync(cwd, { recursive: true, force: true });
