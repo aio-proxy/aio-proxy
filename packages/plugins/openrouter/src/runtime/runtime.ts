@@ -19,10 +19,12 @@ export async function createOpenRouterRuntime(
   return {
     provider: {
       specificationVersion: 'v4',
-      languageModel: ((modelId) => openrouter.chat(modelId)) as OAuthRuntimeResult['provider']['languageModel'],
-      embeddingModel: ((modelId) =>
-        openrouter.textEmbeddingModel(modelId)) as OAuthRuntimeResult['provider']['embeddingModel'],
-      imageModel: ((modelId) => openrouter.imageModel(modelId)) as OAuthRuntimeResult['provider']['imageModel'],
+      languageModel: ((modelId: string) =>
+        openrouter.chat(modelId)) as unknown as OAuthRuntimeResult['provider']['languageModel'],
+      embeddingModel: ((modelId: string) =>
+        openrouter.textEmbeddingModel(modelId)) as unknown as OAuthRuntimeResult['provider']['embeddingModel'],
+      imageModel: ((modelId: string) =>
+        openrouter.imageModel(modelId)) as unknown as OAuthRuntimeResult['provider']['imageModel'],
     },
   };
 }
@@ -32,7 +34,7 @@ export function createOpenRouterDynamicFetch(
   options: OpenRouterOAuthOptions & { readonly fetch?: RuntimeFetch } = {},
 ): RuntimeFetch {
   const fetch = options.fetch ?? globalThis.fetch;
-  const dynamicFetch: RuntimeFetch = async (input, init) => {
+  const dynamicFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const { value } = await credentials.read();
     const request = new Request(input, init);
     const headers = new Headers(request.headers);
@@ -47,5 +49,5 @@ export function createOpenRouterDynamicFetch(
       redirect: request.redirect,
     });
   };
-  return dynamicFetch;
+  return Object.assign(dynamicFetch, { preconnect: fetch.preconnect });
 }

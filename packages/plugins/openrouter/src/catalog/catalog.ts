@@ -1,4 +1,4 @@
-import type { AccountContext, ModelCatalog, ModelDescriptor } from '@aio-proxy/plugin-sdk';
+import type { AccountContext, ModelCatalog, ModelDescriptor, RuntimeFetch } from '@aio-proxy/plugin-sdk';
 import { isPlainObject } from 'es-toolkit/predicate';
 
 import type { OpenRouterOAuthOptions } from '../oauth/index';
@@ -38,9 +38,10 @@ export async function discoverOpenRouterModels(
   options: OpenRouterOAuthOptions = {},
 ): Promise<ModelCatalog> {
   const { value } = await context.credentials.read();
+  const fetcher: RuntimeFetch = options.fetch ?? context.fetch ?? globalThis.fetch;
   let response: Response;
   try {
-    response = await (options.fetch ?? context.fetch ?? globalThis.fetch)(MODELS_URL, {
+    response = await fetcher(MODELS_URL, {
       headers: { accept: 'application/json', authorization: `Bearer ${value.apiKey}` },
       signal: context.signal,
       aioProxy: { traffic: 'control' },
@@ -58,7 +59,7 @@ export async function discoverOpenRouterModels(
   } catch {
     throw new OpenRouterCatalogError('OpenRouter model discovery returned invalid JSON', true);
   }
-  if (!isPlainObject(payload) || !Array.isArray(payload.data)) {
+  if (!isPlainObject(payload) || !Array.isArray(payload['data'])) {
     throw new OpenRouterCatalogError('OpenRouter model discovery returned invalid data', true);
   }
 
@@ -66,11 +67,12 @@ export async function discoverOpenRouterModels(
   const embedding: ModelDescriptor[] = [];
   const image: ModelDescriptor[] = [];
   const seen = { language: new Set<string>(), embedding: new Set<string>(), image: new Set<string>() };
-  for (const entry of payload.data) {
-    if (!isPlainObject(entry) || typeof entry.id !== 'string') continue;
-    const id = entry.id.trim();
+  for (const entry of payload['data']) {
+    if (!isPlainObject(entry) || typeof entry['id'] !== 'string') continue;
+    const id = entry['id'].trim();
     if (id === '') continue;
-    const displayName = typeof entry.name === 'string' && entry.name.trim() !== '' ? entry.name.trim() : undefined;
+    const name = entry['name'];
+    const displayName = typeof name === 'string' && name.trim() !== '' ? name.trim() : undefined;
     const descriptor: ModelDescriptor = { id, ...(displayName === undefined ? {} : { displayName }) };
     const outputs = outputModalities(entry);
     if (outputs.includes('text')) pushUnique(language, seen.language, { ...descriptor, extra: LANGUAGE_PROTOCOL });
@@ -91,8 +93,8 @@ export function initialOpenRouterCatalogFallback(error: unknown): ModelCatalog |
 }
 
 function outputModalities(entry: { readonly architecture?: unknown }): readonly string[] {
-  if (!isPlainObject(entry.architecture) || !Array.isArray(entry.architecture.output_modalities)) return ['text'];
-  const outputs = entry.architecture.output_modalities.filter((item): item is string => typeof item === 'string');
+  if (!isPlainObject(entry.architecture) || !Array.isArray(entry.architecture['output_modalities'])) return ['text'];
+  const outputs = entry.architecture['output_modalities'].filter((item): item is string => typeof item === 'string');
   return outputs.length === 0 ? ['text'] : outputs;
 }
 

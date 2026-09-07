@@ -80,9 +80,10 @@ async function exchangeAuthorizationCode(
   if (!response.ok) {
     throw new Error(`OpenRouter OAuth key exchange failed (HTTP ${response.status})`);
   }
-  if (!isPlainObject(body) || typeof body.key !== 'string' || body.key.trim() === '') {
+  if (!isPlainObject(body) || typeof body['key'] !== 'string' || body['key'].trim() === '') {
     throw new Error('OpenRouter OAuth response carries no key');
   }
-  const userId = typeof body.user_id === 'string' && body.user_id.trim() !== '' ? body.user_id.trim() : undefined;
-  return userId === undefined ? { apiKey: body.key.trim() } : { apiKey: body.key.trim(), userId };
+  const userId =
+    typeof body['user_id'] === 'string' && body['user_id'].trim() !== '' ? body['user_id'].trim() : undefined;
+  return userId === undefined ? { apiKey: body['key'].trim() } : { apiKey: body['key'].trim(), userId };
 }
