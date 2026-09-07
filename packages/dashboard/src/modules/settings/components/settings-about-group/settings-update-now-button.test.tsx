@@ -7,7 +7,12 @@ import { useApplyRelease } from '@/modules/settings/hooks/use-apply-release';
 
 import { SettingsUpdateNowButton } from './settings-update-now-button';
 
-const UpdateNowHarness = ({ outdated, onUpToDate }: { readonly outdated: boolean; readonly onUpToDate?: () => void }) =>
+interface UpdateNowHarnessProps {
+  readonly outdated: boolean;
+  readonly onUpToDate?: () => void;
+}
+
+const UpdateNowHarness: React.FC<UpdateNowHarnessProps> = ({ outdated, onUpToDate }) =>
   createElement(SettingsUpdateNowButton, useApplyRelease({ outdated, onUpToDate }));
 
 const mocks = rs.hoisted(() => ({
@@ -148,6 +153,22 @@ test('keeps Updating through restart_required and reloads when current changes',
   expect(screen.getByRole('button', { name: updatingName })).toBeDisabled();
   expect(screen.queryByText(restartRequired)).not.toBeInTheDocument();
   await waitFor(() => expect(mocks.reloadDashboard).toHaveBeenCalledTimes(1));
+});
+
+test('shows restart required after 120s if polls fail after apply started', async () => {
+  rs.useFakeTimers();
+  prepare();
+  mocks.releaseQueryFn.mockRejectedValue(new Error('Failed to fetch'));
+  await renderButton(true);
+
+  fireEvent.click(screen.getByRole('button', { name: updateNowName }));
+  await rs.advanceTimersByTimeAsync(0);
+  expect(screen.getByRole('button', { name: updatingName })).toBeDisabled();
+
+  await rs.advanceTimersByTimeAsync(120_000);
+
+  expect(screen.getByText(restartRequired)).toBeInTheDocument();
+  expect(screen.queryByText(updateFailed)).not.toBeInTheDocument();
 });
 
 test('shows restart required after 120s if the installed version never takes over', async () => {

@@ -67,7 +67,17 @@ export const useApplyRelease = ({ outdated, onUpToDate }: UseApplyReleaseOptions
   if (pollFailed && polling) {
     setPolling(false);
   }
-  const awaitingRestart = restartPending || pollStatus === 'restart_required';
+  // The unmanaged helper exits 100ms after install. A 2s poll often never sees
+  // the brief `restart_required` GET and keeps the last `in_progress` (or idle)
+  // payload after the process is gone. Treat that disconnect as awaiting restart
+  // so timeout asks the user to restart instead of calling the install failed.
+  const disconnectedDuringApply =
+    pollQuery.isError &&
+    !pollFailed &&
+    !freshPollIdle &&
+    !versionChanged &&
+    (polling || updateStatus === 'in_progress' || pollStatus === 'in_progress' || restartPending);
+  const awaitingRestart = restartPending || pollStatus === 'restart_required' || disconnectedDuringApply;
   const watching =
     !timedOut &&
     !pollFailed &&

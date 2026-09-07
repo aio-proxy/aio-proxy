@@ -1,9 +1,14 @@
 import { m } from '@aio-proxy/i18n';
 import { Button } from '@aio-proxy/ui/components/button';
 
-import type { useApplyRelease } from '@/modules/settings/hooks/use-apply-release';
-
-export type SettingsUpdateNowButtonProps = ReturnType<typeof useApplyRelease>;
+interface SettingsUpdateNowButtonProps {
+  readonly apply: () => void;
+  readonly failed: boolean;
+  readonly inProgress: boolean;
+  readonly releaseAvailable: boolean;
+  readonly restartRequired: boolean;
+  readonly unavailable: boolean;
+}
 
 export const SettingsUpdateNowButton: React.FC<SettingsUpdateNowButtonProps> = ({
   apply,
