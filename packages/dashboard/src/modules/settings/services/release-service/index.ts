@@ -1,1 +1,6 @@
-export * from './release-service';
+export {
+  applyReleaseMutationFn,
+  checkLatestReleaseMutationFn,
+  releaseQueryOptions,
+  type ReleaseCheck,
+} from './release-service';

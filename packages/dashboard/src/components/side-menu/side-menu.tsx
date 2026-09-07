@@ -17,8 +17,10 @@ import { Blocks, ChartNoAxesCombined, HandPlatter, Settings2, Shuffle, Waypoints
 import type { ComponentProps, ComponentType } from 'react';
 
 import { AioProxyBrand } from '@/components/aio-proxy-brand';
+import { useReleaseRefresh } from '@/modules/settings/hooks/use-release-refresh';
 
 import { SidebarLogout } from './sidebar-logout';
+import { SidebarUpdateCard } from './sidebar-update-card';
 
 interface SideMenuItem {
   id: string;
@@ -35,6 +37,7 @@ interface SideMenuGroup {
 }
 
 export const SideMenu: React.FC = () => {
+  useReleaseRefresh();
   const groups: readonly SideMenuGroup[] = [
     {
       label: m['dashboard.menus.observability'](),
@@ -131,6 +134,7 @@ export const SideMenu: React.FC = () => {
         ))}
       </SidebarContent>
       <SidebarFooter>
+        <SidebarUpdateCard />
         <SidebarMenu>
           <SidebarLogout />
         </SidebarMenu>

@@ -7,6 +7,7 @@ import { m } from '@aio-proxy/i18n';
 
 import { CliExit, EXIT } from '../exit';
 import { serviceEnvFile } from '../service-env';
+import { isPlatformCliBinary, resolveStableManagedExec, resolveUpgradeTargetFrom } from '../upgrade/detect';
 import { LAUNCHD_LABEL, renderLaunchdPlist, renderSystemdUnit, SYSTEMD_UNIT_NAME } from './unit-templates';
 
 export { renderLaunchdPlist, renderSystemdUnit } from './unit-templates';
@@ -64,10 +65,16 @@ export function resolveExec(
     }
   };
   const onPath = which('aio-proxy');
-  if (onPath !== null && sameBinary(onPath, execPath)) return onPath;
-  if (basename(execPath) === 'aio-proxy' && exists(execPath)) return execPath;
-  if (onPath !== null) return onPath;
-  throw new CliExit(EXIT.unrecoverable, m['cli.service.exec_not_found']());
+  const resolved =
+    onPath !== null && sameBinary(onPath, execPath)
+      ? onPath
+      : basename(execPath) === 'aio-proxy' && exists(execPath)
+        ? execPath
+        : onPath !== null
+          ? onPath
+          : undefined;
+  if (resolved === undefined) throw new CliExit(EXIT.unrecoverable, m['cli.service.exec_not_found']());
+  return resolveStableManagedExec(resolved);
 }
 
 function launchdPlistPath(): string {
@@ -78,6 +85,12 @@ function systemdUnitPath(): string {
   const xdg = process.env['XDG_CONFIG_HOME'];
   const base = xdg === undefined || xdg === '' ? join(homedir(), '.config') : xdg;
   return join(base, 'systemd', 'user', SYSTEMD_UNIT_NAME);
+}
+
+export function managedUnitPath(os: NodeJS.Platform = platform()): string | undefined {
+  if (os === 'darwin') return launchdPlistPath();
+  if (os === 'linux') return systemdUnitPath();
+  return undefined;
 }
 
 // Whether a managed unit file exists for the current platform. `serviceRestart`
@@ -124,8 +137,33 @@ export async function writeManagedUnit(
   target: string = os === 'darwin' ? launchdPlistPath() : systemdUnitPath(),
 ): Promise<string> {
   const cfg = configPath();
-  const body =
-    os === 'darwin' ? renderLaunchdPlist({ exec, configPath: cfg }) : renderSystemdUnit({ exec, configPath: cfg });
+  let upgradeMethod: 'brew' | 'bun' | 'npm' | 'pnpm' | undefined;
+  try {
+    const detected = await resolveUpgradeTargetFrom(exec);
+    if (detected.method !== 'binary') upgradeMethod = detected.method;
+  } catch {}
+  if (upgradeMethod === undefined && isPlatformCliBinary(exec)) {
+    try {
+      // Install-time PATH still has the JS shim in the manager bin dir even when
+      // ExecStart is the native optional-dep binary the shim spawned. Scan PATH
+      // directly: Bun.which can miss a launcher added after process start.
+      const pathVar = process.env['PATH'];
+      if (pathVar !== undefined && pathVar !== '') {
+        for (const dir of pathVar.split(':')) {
+          if (dir === '') continue;
+          const onPath = join(dir, 'aio-proxy');
+          if (onPath === exec || !existsSync(onPath)) continue;
+          const fromPath = await resolveUpgradeTargetFrom(onPath);
+          if (fromPath.method !== 'binary') {
+            upgradeMethod = fromPath.method;
+            break;
+          }
+        }
+      }
+    } catch {}
+  }
+  const unit = { exec, configPath: cfg, ...(upgradeMethod === undefined ? {} : { upgradeMethod }) };
+  const body = os === 'darwin' ? renderLaunchdPlist(unit) : renderSystemdUnit(unit);
   mkdirSync(dirname(target), { recursive: true });
   writeFileSync(target, body, { mode: 0o644 });
   if (os === 'linux') await runManager(['systemctl', '--user', 'daemon-reload']);
@@ -176,21 +214,64 @@ export async function serviceStop(): Promise<void> {
   await runManager(['systemctl', '--user', 'stop', SYSTEMD_UNIT_NAME]);
 }
 
-export async function serviceRestart(): Promise<void> {
-  const os = requirePlatform();
+export type ServiceRestartIo = {
+  readonly platform?: NodeJS.Platform;
+  readonly env?: NodeJS.ProcessEnv;
+  readonly isTTY?: boolean;
+  readonly unitInstalled?: () => boolean;
+  readonly unitPath?: string;
+  readonly exec?: string;
+  readonly writeManagedUnit?: typeof writeManagedUnit;
+  readonly spawn?: typeof Bun.spawn;
+  readonly runManager?: (cmd: readonly string[], allowFailure?: boolean) => Promise<number>;
+};
+
+const isDarwinLaunchdJob = (env: NodeJS.ProcessEnv, isTTY: boolean): boolean =>
+  isTTY !== true && (env['XPC_SERVICE_NAME'] === LAUNCHD_LABEL || env['AIO_PROXY_MANAGED'] === '1');
+
+const spawnDarwinRestartHelper = (plist: string, spawn: typeof Bun.spawn): void => {
+  const quoted = `'${plist.replaceAll("'", `'\\''`)}'`;
+  const script = `sleep 1; /bin/launchctl unload -w ${quoted}; /bin/launchctl load -w ${quoted}`;
+  const child = spawn(['/bin/sh', '-c', script], {
+    stdin: 'ignore',
+    stdout: 'ignore',
+    stderr: 'ignore',
+    detached: true,
+  });
+  child.unref();
+};
+
+export async function serviceRestart(io: ServiceRestartIo = {}): Promise<void> {
+  const os = io.platform ?? requirePlatform();
+  if (os !== 'darwin' && os !== 'linux') {
+    throw new CliExit(EXIT.unrecoverable, m['cli.service.unsupported_platform']({ platform: os }));
+  }
+  const env = io.env ?? process.env;
+  const isTTY = io.isTTY ?? process.stdin.isTTY === true;
+  const unitInstalled = io.unitInstalled ?? isManagedServiceInstalled;
+  const writeUnit = io.writeManagedUnit ?? writeManagedUnit;
+  const run = io.runManager ?? runManager;
   // Rewrite an already-installed unit with a freshly resolved exec first. A unit
   // installed by an earlier release (or before a `brew upgrade` retargeted the
   // launcher symlink) can hold a stale ExecStart pointing at a deleted binary; on
   // darwin a plain stop/start would then relaunch nothing, so restart must migrate
   // it. Only migrate when a unit exists — restart must not create one (that is
   // install's job), or it would leave a partial, un-enabled unit behind.
-  if (isManagedServiceInstalled()) await writeManagedUnit(os);
+  if (unitInstalled()) {
+    if (io.exec === undefined) await writeUnit(os);
+    else await writeUnit(os, io.exec);
+  }
   if (os === 'darwin') {
-    await serviceStop();
-    await serviceStart();
+    const plist = io.unitPath ?? launchdPlistPath();
+    if (isDarwinLaunchdJob(env, isTTY)) {
+      spawnDarwinRestartHelper(plist, io.spawn ?? Bun.spawn);
+      return;
+    }
+    await run(['launchctl', 'unload', '-w', plist]);
+    await run(['launchctl', 'load', '-w', plist]);
     return;
   }
-  await runManager(['systemctl', '--user', 'restart', SYSTEMD_UNIT_NAME]);
+  await run(['systemctl', '--user', 'restart', SYSTEMD_UNIT_NAME]);
 }
 
 export async function serviceStatus(): Promise<void> {

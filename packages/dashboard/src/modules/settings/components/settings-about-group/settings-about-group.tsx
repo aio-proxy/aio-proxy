@@ -3,30 +3,50 @@ import { Button } from '@aio-proxy/ui/components/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@aio-proxy/ui/components/card';
 import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemTitle } from '@aio-proxy/ui/components/item';
 import { Skeleton } from '@aio-proxy/ui/components/skeleton';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 
-import { useReleaseQuery } from '../../hooks/use-release-query';
-import { checkLatestReleaseMutationFn } from '../../services/release-service';
+import { queryKeys } from '@/lib/query-keys';
+import { useReleaseQuery } from '@/modules/settings/hooks/use-release-query';
+import { checkLatestReleaseMutationFn } from '@/modules/settings/services/release-service';
+
 import { SettingsExternalLink } from './settings-external-link';
 import { SettingsRowChevron } from './settings-row-chevron';
+import { SettingsUpdateNowButton } from './settings-update-now-button';
 
 const REPOSITORY_URL = 'https://github.com/aio-proxy/aio-proxy';
 const DOCUMENTATION_URL = 'https://aioproxy.dev';
 
 export const SettingsAboutGroup: React.FC = () => {
+  const queryClient = useQueryClient();
   const release = useReleaseQuery();
-  const check = useMutation({ mutationFn: checkLatestReleaseMutationFn });
+  const check = useMutation({
+    mutationFn: checkLatestReleaseMutationFn,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.release });
+    },
+  });
   const current = release.data?.current;
+  const persistedOutdated = release.data?.outdated === true;
+  const outdated = persistedOutdated;
+  const latest = release.data?.latest;
 
   // A failed lookup must not read as "up to date": an unreachable registry says nothing
-  // about the published version.
+  // about the published version. A failed install is the same — do not replace it with
+  // the last successful "up to date" check. Mount-time GET /release already carries the
+  // last persisted check, so About can show that without waiting for a manual Check.
+  // After Check succeeds, the shared release query is the source of truth so a later
+  // tick cannot be masked by leftover mutation data.
   const versionDescription = (() => {
     if (current === undefined) return undefined;
     if (check.isError) return m['dashboard.settings.version_check_failed']();
-    if (check.data === undefined) return m['dashboard.settings.version_description']({ version: current });
-    return check.data.outdated
-      ? m['dashboard.settings.version_outdated']({ version: check.data.latest })
-      : m['dashboard.settings.version_up_to_date']();
+    if (latest === undefined && !persistedOutdated) {
+      return m['dashboard.settings.version_description']({ version: current });
+    }
+    if (outdated && latest !== undefined) return m['dashboard.settings.version_outdated']({ version: latest });
+    if (release.data?.update.status === 'failed') {
+      return m['dashboard.settings.version_description']({ version: current });
+    }
+    return m['dashboard.settings.version_up_to_date']();
   })();
 
   return (
@@ -38,7 +58,7 @@ export const SettingsAboutGroup: React.FC = () => {
       </CardHeader>
       <CardContent>
         <ItemGroup>
-          {/* The version row carries its own button, so the row itself cannot be the link —
+          {/* The version row carries its own buttons, so the row itself cannot be the link —
               nesting a button inside an anchor is invalid and swallows one of the two actions. */}
           <Item size="sm">
             <ItemContent>
@@ -49,6 +69,7 @@ export const SettingsAboutGroup: React.FC = () => {
               <Button variant="ghost" size="sm" disabled={check.isPending} onClick={() => check.mutate()}>
                 {m['dashboard.settings.version_check']()}
               </Button>
+              <SettingsUpdateNowButton outdated={outdated} onUpToDate={() => check.reset()} />
               <SettingsExternalLink
                 href={current === undefined ? REPOSITORY_URL : `${REPOSITORY_URL}/releases/tag/v${current}`}
                 label={m['dashboard.settings.version']()}

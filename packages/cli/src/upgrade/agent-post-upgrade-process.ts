@@ -1,4 +1,5 @@
 import type { UpgradeTarget } from './constants';
+import { interpreterSafePath } from './methods';
 import {
   AgentPostUpgradeItemResultsSchema,
   type AgentPostUpgradeItemResult,
@@ -39,13 +40,13 @@ async function collectChild(
 }
 
 export async function resolveNewAgentBinary(target: UpgradeTarget, installedVersion: string): Promise<string> {
-  const binary = target.method === 'binary' ? target.path : Bun.which('aio-proxy', { PATH: process.env['PATH'] ?? '' });
-  if (binary === null) throw new Error('upgraded aio-proxy is not on PATH');
+  const binary = target.method === 'binary' ? target.path : target.bin;
   const checked = await collectChild(
     Bun.spawn([binary, '--version'], {
       stdin: 'ignore',
       stdout: 'pipe',
       stderr: 'pipe',
+      env: { ...process.env, PATH: interpreterSafePath(binary) },
     }),
     CHILD_TIMEOUT_MS,
   );
@@ -73,6 +74,7 @@ export async function invokeAgentPostUpgrade(
     stdin: 'pipe',
     stdout: 'pipe',
     stderr: 'pipe',
+    env: { ...process.env, PATH: interpreterSafePath(binary) },
   });
   try {
     child.stdin.write(JSON.stringify(payload));

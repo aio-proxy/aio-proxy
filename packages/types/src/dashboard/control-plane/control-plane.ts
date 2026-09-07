@@ -203,6 +203,24 @@ export const DashboardPluginOptionsMutationSchema = z.strictObject({
   clearSecretKeys: z.array(z.string().min(1)),
 });
 
+export const DashboardReleaseViewSchema = z.strictObject({
+  current: z.string().min(1),
+  latest: z.string().min(1).optional(),
+  outdated: z.boolean(),
+  managedService: z.boolean(),
+  update: z.strictObject({ status: z.enum(['idle', 'in_progress', 'failed', 'restart_required']) }),
+});
+
+export const DashboardReleaseApplyResponseSchema = z.discriminatedUnion('ok', [
+  z.strictObject({ ok: z.literal(true), status: z.enum(['started', 'up_to_date']) }),
+  z.strictObject({
+    ok: z.literal(false),
+    error: z.strictObject({
+      code: z.enum(['in_progress', 'unavailable', 'check_failed']),
+    }),
+  }),
+]);
+
 export type DashboardSettingsView = z.output<typeof DashboardSettingsViewSchema>;
 export type DashboardApiKeyView = z.output<typeof DashboardApiKeyViewSchema>;
 export type DashboardApiKeyMutation = z.output<typeof DashboardApiKeyMutationSchema>;
@@ -213,3 +231,5 @@ export type DashboardPluginSummary = z.output<typeof DashboardPluginSummarySchem
 export type DashboardPluginEditView = z.output<typeof DashboardPluginEditViewSchema>;
 export type DashboardPluginOptionsMutationInput = z.input<typeof DashboardPluginOptionsMutationSchema>;
 export type DashboardPluginOptionsMutation = z.output<typeof DashboardPluginOptionsMutationSchema>;
+export type DashboardReleaseView = z.output<typeof DashboardReleaseViewSchema>;
+export type DashboardReleaseApplyResponse = z.output<typeof DashboardReleaseApplyResponseSchema>;

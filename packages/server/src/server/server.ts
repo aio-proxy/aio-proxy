@@ -1,4 +1,4 @@
-import { canonicalizeLoopbackHost, parseRuntimeConfig } from '@aio-proxy/core';
+import { canonicalizeLoopbackHost, fetchLatestNpmVersion, parseRuntimeConfig } from '@aio-proxy/core';
 import { currentRequestId, withRequestId } from '@aio-proxy/logger';
 import { AgentCatalogQuerySchema } from '@aio-proxy/types';
 import { honoLogger } from '@logtape/hono';
@@ -12,6 +12,7 @@ import {
   createAgentOAuthRoutes,
   createDeviceChallengeStore,
 } from '../agent-authorization';
+import { createAutoUpdateController, type AutoUpdateController } from '../auto-update';
 import { warnLeftoverOAuthModels } from '../config-leftover-oauth-models';
 import type { DashboardAssets } from '../dashboard-assets';
 import {
@@ -254,6 +255,12 @@ export type CreateServerOptions = {
   readonly logger?: ServerLogSink;
   readonly watchConfig?: boolean;
   readonly version?: string;
+  readonly autoUpdate?: {
+    readonly isManagedService: () => boolean;
+    readonly applyUpdate: (version: string) => Promise<'installed' | 'unchanged'>;
+    readonly notifyAvailable?: (latest: string) => void | Promise<void>;
+    readonly fetchLatest?: (pkg: string) => Promise<string>;
+  };
 };
 
 /** Narrows `ServerState` to what realtime is allowed to see: no usage capture, no
@@ -271,6 +278,7 @@ const createRoutes = (
   version: string = '0.0.0',
   loopbackPort: number = serverDefaults.port,
   loopbackHost: string = serverDefaults.host,
+  controller?: AutoUpdateController,
 ) => {
   const app = new Hono();
   app.use((_context, next) => withRequestId(crypto.randomUUID(), next));
@@ -375,7 +383,7 @@ const createRoutes = (
   const agentOAuthRoutes = createAgentOAuthRoutes({ challenges, identity: state.agentIdentity, currentConfig });
   const agentApprovalRoutes = createAgentApprovalRoutes({ challenges, currentConfig });
   const agentAdminRoutes = createAgentAdminRoutes({ identity: state.agentIdentity, currentConfig });
-  const dashboardRoutes = createDashboardRoutes(state, dashboardAuth, version);
+  const dashboardRoutes = createDashboardRoutes(state, dashboardAuth, version, controller);
   const dashboardAuthRoutes = createDashboardAuthRoutes(dashboardAuth);
   const anthropicMessagesRoutes = createAnthropicMessagesRoutes(state);
   const geminiGenerateContentRoutes = createGeminiGenerateContentRoutes(state);
@@ -463,6 +471,21 @@ export const createServer = async (options: CreateServerOptions): Promise<AppTyp
     ...(options.watchConfig === undefined ? {} : { watchConfig: options.watchConfig }),
   };
   const state = await createServerState(stateOptions);
+  const logger = options.logger ?? defaultLogger;
+  const controller = createAutoUpdateController({
+    isManagedService: options.autoUpdate?.isManagedService ?? (() => false),
+    applyUpdate: options.autoUpdate?.applyUpdate,
+    notifyAvailable: options.autoUpdate?.notifyAvailable,
+    currentVersion: options.version ?? '0.0.0',
+    fetchLatest: options.autoUpdate?.fetchLatest ?? fetchLatestNpmVersion,
+    onError: (error) => {
+      logServerEvent(logger, {
+        event: 'auto_update.failed',
+        error: error instanceof Error ? error.message : String(error),
+        errorType: serverErrorType(error),
+      });
+    },
+  });
   try {
     const routes = (options.__test?.createRoutes ?? createRoutes)(
       state,
@@ -471,16 +494,22 @@ export const createServer = async (options: CreateServerOptions): Promise<AppTyp
       options.version,
       options.port ?? state.currentConfig().server.port,
       options.host ?? state.currentConfig().server.host,
+      controller,
     );
+    controller.start();
     let closed = false;
     return Object.assign(routes, {
       close() {
         if (closed) return;
         closed = true;
+        controller.stop();
         state.close();
       },
     });
   } catch (error) {
+    try {
+      controller.stop();
+    } catch {}
     try {
       state.close();
     } catch {}
