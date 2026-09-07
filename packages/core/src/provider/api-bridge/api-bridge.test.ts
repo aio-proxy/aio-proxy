@@ -46,7 +46,24 @@ describe('bridgeApiProviderToAiSdk', () => {
       baseURL: 'https://api.openai.com/v1',
       models: ['gpt-image-2'],
     };
-    expect(() => bridgeApiProviderToAiSdk(provider as never)).toThrow('Unsupported provider protocol: openai-image');
+    expect(() => bridgeApiProviderToAiSdk(provider as never)).toThrow(
+      'Unsupported provider protocol: no language endpoint',
+    );
+  });
+
+  test('does not fall back to an audio endpoint when no language endpoint exists', () => {
+    const provider = {
+      kind: ProviderKind.Api,
+      id: 'media-only',
+      enabled: true,
+      protocol: ProviderProtocol.OpenAIImage,
+      baseURL: 'https://api.openai.com/v1/images',
+      endpoints: [{ protocol: ProviderProtocol.OpenAIAudio, baseURL: 'https://api.openai.com/v1' }],
+      models: ['gpt-image-2'],
+    };
+    expect(() => bridgeApiProviderToAiSdk(provider as never)).toThrow(
+      'Unsupported provider protocol: no language endpoint',
+    );
   });
 
   test('bridges image-primary from a secondary language endpoint', async () => {

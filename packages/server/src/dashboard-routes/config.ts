@@ -4,6 +4,7 @@ import { Hono } from 'hono';
 import { validator } from 'hono/validator';
 import { z } from 'zod';
 
+import type { AutoUpdateController } from '../auto-update';
 import type { DashboardAuthentication } from '../dashboard-auth';
 import type { ServerState } from '../server-state';
 import { createDashboardEventsRoute } from './events';
@@ -35,7 +36,12 @@ const usageOverviewValidator = validator('query', (raw, context) => {
   return parsed.success ? parsed.data : context.json({ error: 'validation failed', details: parsed.error.issues }, 400);
 });
 
-export const createDashboardRoutes = (state: ServerState, auth: DashboardAuthentication, version: string = '0.0.0') =>
+export const createDashboardRoutes = (
+  state: ServerState,
+  auth: DashboardAuthentication,
+  version: string = '0.0.0',
+  controller?: AutoUpdateController,
+) =>
   new Hono()
     .get('/config', (context) => context.json(redactSecrets(state.currentConfig())))
     .get('/models-dev/slugs', async (context) => context.json({ slugs: await getCachedModelSlugs() }))
@@ -60,7 +66,7 @@ export const createDashboardRoutes = (state: ServerState, auth: DashboardAuthent
     })
     .route('/overview', createDashboardOverviewRoute(state))
     .route('/plugins', createDashboardPluginRoutes(state))
-    .route('/release', createDashboardReleaseRoute(version))
+    .route('/release', createDashboardReleaseRoute(version, undefined, controller))
     .route('/settings', createDashboardSettingsRoute(state))
     .route('/traces', createDashboardTraceRoutes(state))
     .route('/events', createDashboardEventsRoute(state, auth))

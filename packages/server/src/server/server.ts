@@ -1,4 +1,4 @@
-import { canonicalizeLoopbackHost, parseRuntimeConfig } from '@aio-proxy/core';
+import { canonicalizeLoopbackHost, fetchLatestNpmVersion, parseRuntimeConfig } from '@aio-proxy/core';
 import { currentRequestId, withRequestId } from '@aio-proxy/logger';
 import { AgentCatalogQuerySchema } from '@aio-proxy/types';
 import { honoLogger } from '@logtape/hono';
@@ -12,6 +12,7 @@ import {
   createAgentOAuthRoutes,
   createDeviceChallengeStore,
 } from '../agent-authorization';
+import { createAutoUpdateController, type AutoUpdateController } from '../auto-update';
 import { warnLeftoverOAuthModels } from '../config-leftover-oauth-models';
 import type { DashboardAssets } from '../dashboard-assets';
 import {
@@ -26,10 +27,12 @@ import { createDashboardRoutes } from '../dashboard-routes/config';
 import { createAnthropicMessagesRoutes } from '../routes/anthropic-messages';
 import { createGeminiGenerateContentRoutes } from '../routes/gemini-generate-content';
 import { createGeminiInteractionsRoutes } from '../routes/gemini-interactions';
+import { createOpenAIAudioRoutes } from '../routes/openai-audio';
 import { createOpenAICompletionsRoutes } from '../routes/openai-completions';
 import { createOpenAIEmbeddingsRoutes } from '../routes/openai-embeddings';
 import { createOpenAIImagesRoutes } from '../routes/openai-images';
 import { createOpenAIResponsesRoutes } from '../routes/openai-responses';
+import { createRealtimeRoutes, type RealtimeRouteSource } from '../routes/realtime';
 import type { RuntimeProviderInput } from '../runtime';
 import type { ServerLogSink } from '../server-log';
 import { logServerEvent, serverErrorType } from '../server-log';
@@ -39,6 +42,12 @@ import type { InternalServerStateOptions, ServerStateTestHooks } from '../server
 import { requireModelAuthentication, type AgentEnv } from './agent-auth';
 import { authenticationError } from './api-key-auth/api-key-auth';
 import { agentCatalog, codexClientModels, listModels } from './list-models/index';
+
+/** The Bun WebSocket handler the realtime routes' `upgradeWebSocket` needs at the
+ *  `Bun.serve` call site. `createServer` returns `Object.assign(routes, { close })`, so this
+ *  cannot ride on the app object and has to be a module-level export. Hono exports it as a
+ *  module singleton shared by every importer, so a call site must spread it, never mutate it. */
+export { websocket } from 'hono/bun';
 
 export const serverDefaults = {
   host: '127.0.0.1',
@@ -246,7 +255,21 @@ export type CreateServerOptions = {
   readonly logger?: ServerLogSink;
   readonly watchConfig?: boolean;
   readonly version?: string;
+  readonly autoUpdate?: {
+    readonly isManagedService: () => boolean;
+    readonly applyUpdate: (version: string) => Promise<'installed' | 'unchanged'>;
+    readonly notifyAvailable?: (latest: string) => void | Promise<void>;
+    readonly fetchLatest?: (pkg: string) => Promise<string>;
+  };
 };
+
+/** Narrows `ServerState` to what realtime is allowed to see: no usage capture, no
+ *  request recorder, no cooldown store. */
+const realtimeRouteSource = (state: ServerState): RealtimeRouteSource => ({
+  acquireProviderSnapshot: state.acquireProviderSnapshot,
+  logger: state.logger,
+  realtimeCalls: state.realtimeCalls,
+});
 
 const createRoutes = (
   state: ServerState,
@@ -255,6 +278,7 @@ const createRoutes = (
   version: string = '0.0.0',
   loopbackPort: number = serverDefaults.port,
   loopbackHost: string = serverDefaults.host,
+  controller?: AutoUpdateController,
 ) => {
   const app = new Hono();
   app.use((_context, next) => withRequestId(crypto.randomUUID(), next));
@@ -359,7 +383,7 @@ const createRoutes = (
   const agentOAuthRoutes = createAgentOAuthRoutes({ challenges, identity: state.agentIdentity, currentConfig });
   const agentApprovalRoutes = createAgentApprovalRoutes({ challenges, currentConfig });
   const agentAdminRoutes = createAgentAdminRoutes({ identity: state.agentIdentity, currentConfig });
-  const dashboardRoutes = createDashboardRoutes(state, dashboardAuth, version);
+  const dashboardRoutes = createDashboardRoutes(state, dashboardAuth, version, controller);
   const dashboardAuthRoutes = createDashboardAuthRoutes(dashboardAuth);
   const anthropicMessagesRoutes = createAnthropicMessagesRoutes(state);
   const geminiGenerateContentRoutes = createGeminiGenerateContentRoutes(state);
@@ -368,6 +392,11 @@ const createRoutes = (
   const openAIEmbeddingsRoutes = createOpenAIEmbeddingsRoutes(state);
   const openAIResponsesRoutes = createOpenAIResponsesRoutes(state);
   const openAIImagesRoutes = createOpenAIImagesRoutes(state);
+  const openAIAudioRoutes = createOpenAIAudioRoutes(state);
+  // Mounted (below) only after `app.use('/v1/*', modelAuthentication)`: a realtime route
+  // registered ahead of that middleware reads every caller as the anonymous principal,
+  // and the create/attach ownership check would then admit anyone.
+  const realtimeRoutes = createRealtimeRoutes(realtimeRouteSource(state));
   const routes = app
     .route('/oauth', agentOAuthRoutes)
     .route('/dashboard/api/agent-authorizations', agentApprovalRoutes)
@@ -379,6 +408,8 @@ const createRoutes = (
     .route('/', openAIEmbeddingsRoutes)
     .route('/', openAIResponsesRoutes)
     .route('/', openAIImagesRoutes)
+    .route('/', openAIAudioRoutes)
+    .route('/', realtimeRoutes)
     .route('/dashboard/api/auth', dashboardAuthRoutes)
     .route('/dashboard/api', dashboardRoutes);
 
@@ -440,6 +471,21 @@ export const createServer = async (options: CreateServerOptions): Promise<AppTyp
     ...(options.watchConfig === undefined ? {} : { watchConfig: options.watchConfig }),
   };
   const state = await createServerState(stateOptions);
+  const logger = options.logger ?? defaultLogger;
+  const controller = createAutoUpdateController({
+    isManagedService: options.autoUpdate?.isManagedService ?? (() => false),
+    applyUpdate: options.autoUpdate?.applyUpdate,
+    notifyAvailable: options.autoUpdate?.notifyAvailable,
+    currentVersion: options.version ?? '0.0.0',
+    fetchLatest: options.autoUpdate?.fetchLatest ?? fetchLatestNpmVersion,
+    onError: (error) => {
+      logServerEvent(logger, {
+        event: 'auto_update.failed',
+        error: error instanceof Error ? error.message : String(error),
+        errorType: serverErrorType(error),
+      });
+    },
+  });
   try {
     const routes = (options.__test?.createRoutes ?? createRoutes)(
       state,
@@ -448,16 +494,22 @@ export const createServer = async (options: CreateServerOptions): Promise<AppTyp
       options.version,
       options.port ?? state.currentConfig().server.port,
       options.host ?? state.currentConfig().server.host,
+      controller,
     );
+    controller.start();
     let closed = false;
     return Object.assign(routes, {
       close() {
         if (closed) return;
         closed = true;
+        controller.stop();
         state.close();
       },
     });
   } catch (error) {
+    try {
+      controller.stop();
+    } catch {}
     try {
       state.close();
     } catch {}

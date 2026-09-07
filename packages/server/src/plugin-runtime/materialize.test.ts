@@ -506,3 +506,44 @@ test('a quota-capable adapter keeps its quota capability across account preparat
   expect(invalidOptionsResult.summary.hasQuota).toBe(true);
   expect(invalidOptionsResult.summary.canRefreshCredential).toBe(true);
 });
+
+test('stamps the account pin and hands the effective proxy to the plugin runtime', async () => {
+  const seen: { proxy?: string | null } = {};
+  const fixture = runtimeFixture(
+    { kind: 'static' },
+    {
+      createRuntime(context: { readonly proxy?: string | null }) {
+        seen.proxy = context.proxy;
+        return {
+          provider: {
+            specificationVersion: 'v4' as const,
+            languageModel() {
+              throw new Error('not called');
+            },
+            imageModel() {
+              throw new Error('not called');
+            },
+            embeddingModel() {
+              throw new Error('not called');
+            },
+          },
+        } as never;
+      },
+    },
+  );
+
+  const result = await materializePluginProvider({
+    config: { id: 'person', kind: ProviderKind.OAuth, enabled: true, plugin: '@example/oauth', capability: 'default' },
+    plugins: fixture.plugins,
+    repository: fixture.repository,
+    diagnostics,
+    logger: () => {},
+    onDiagnosticChanged: () => {},
+    effectiveProxy: 'http://127.0.0.1:8123',
+  });
+
+  const account = fixture.repository.readAccount('person');
+  expect(seen.proxy).toBe('http://127.0.0.1:8123');
+  expect(result.provider?.accountId).toBe('person@example.com');
+  expect(result.provider?.runtimeRevision).toBe(account?.runtimeRevision);
+});

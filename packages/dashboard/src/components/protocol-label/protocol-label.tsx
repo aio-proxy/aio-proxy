@@ -38,12 +38,17 @@ const PROTOCOL_LABELS: Record<
     label: 'OpenAI Image',
     icon: withLobeIcon('openai'),
   },
+  [ProviderProtocol.OpenAIAudio]: {
+    label: 'OpenAI Audio',
+    icon: withLobeIcon('openai'),
+  },
 };
 
 /**
  * Protocol order for pickers. Rendering coverage and picker coverage are different questions:
  * `PROTOCOL_LABELS` must be exhaustive so a card never renders a blank icon, while the pickers offer
- * only the protocols a user may configure or filter by. `openai-image` renders but is not offered.
+ * only the protocols a user may configure or filter by. `openai-image` and `openai-audio` render but are
+ * not offered.
  * OpenAI Compatible leads because it is what most third-party gateways speak.
  */
 export const PROTOCOL_ORDER: readonly ProviderProtocol[] = [

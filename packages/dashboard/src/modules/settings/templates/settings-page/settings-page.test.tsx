@@ -12,12 +12,24 @@ const mocks = rs.hoisted(() => ({
   useSettingsQuery: rs.fn(),
 }));
 
-rs.mock('../../hooks/use-release-query', () => ({
-  useReleaseQuery: () => ({ data: { current: '1.4.2' } }),
+rs.mock('@/modules/settings/hooks/use-release-query', () => ({
+  useReleaseQuery: () => ({
+    data: { current: '1.4.2', outdated: false, managedService: false, update: { status: 'idle' } },
+  }),
 }));
 
-rs.mock('../../services/release-service', () => ({
+rs.mock('@/modules/settings/services/release-service', () => ({
+  applyReleaseMutationFn: rs.fn(),
   checkLatestReleaseMutationFn: rs.fn(),
+  releaseQueryOptions: () => ({
+    queryKey: ['release'],
+    queryFn: rs.fn().mockResolvedValue({
+      current: '1.4.2',
+      outdated: false,
+      managedService: false,
+      update: { status: 'idle' },
+    }),
+  }),
 }));
 
 rs.mock('../../hooks/use-settings-query', () => ({

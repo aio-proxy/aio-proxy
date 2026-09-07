@@ -143,6 +143,7 @@ export type ServerStateParts = Pick<
   | 'pluginControlPlane'
   | 'providerSummaries'
   | 'quotaCache'
+  | 'realtimeCalls'
   | 'reload'
   | 'traceStore'
   | 'requestRecorder'
@@ -174,6 +175,7 @@ export function assembleServerState(runtime: ServerRuntime, parts: ServerStatePa
         () => runtime.scheduler.close(),
         parts.closeRecovery,
         () => parts.oauthLoginSessions.close(),
+        () => parts.realtimeCalls.close(),
         () => events.close(),
         () => dbHandle.close(),
         parts.databaseOwnership.release,
@@ -203,6 +205,7 @@ export function assembleServerState(runtime: ServerRuntime, parts: ServerStatePa
     oauthCredentialRefresh: parts.oauthCredentialRefresh,
     refreshProviderCatalog: (providerId) => runtime.scheduler.refreshNow(providerId),
     quotaCache: parts.quotaCache,
+    realtimeCalls: parts.realtimeCalls,
     warmProviderQuota: (providerId) => parts.quotaCache.warm(providerId),
     reload: parts.reload,
     traceStore: parts.traceStore,

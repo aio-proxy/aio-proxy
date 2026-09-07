@@ -270,6 +270,11 @@
       "manual_restart_hint": "デーモンは手動で起動されており、再起動するマネージドサービスがありません。アップグレードを適用するには自分で再起動してください",
       "restarting": "デーモンを再起動しています…"
     },
+    "update": {
+      "available": "aio-proxy {version} が利用できます。aio-proxy upgrade を実行するか、ダッシュボードを開いてください。",
+      "notify_title": "aio-proxy {version} が利用できます",
+      "notify_body": "ダッシュボードを開くか、aio-proxy upgrade を実行してください。"
+    },
     "agent": {
       "description": "Agent 連携を管理します",
       "list": {
@@ -443,6 +448,9 @@
       "models": "モデル",
       "settings": "設定"
     },
+    "update": {
+      "available": "更新があります"
+    },
     "navigation": {
       "back": "戻る",
       "breadcrumbs": "パンくずリスト"
@@ -520,6 +528,11 @@
       "version_up_to_date": "最新の公開バージョンです。",
       "version_outdated": "バージョン {version} が利用できます。",
       "version_check_failed": "レジストリに接続できませんでした。再試行してください。",
+      "version_update": "今すぐ更新",
+      "version_updating": "更新中…",
+      "version_update_failed": "更新をインストールできませんでした。再試行するか、aio-proxy upgrade を実行してください。",
+      "version_update_unavailable": "このプロセスでは更新をインストールできません。",
+      "version_restart_required": "インストールしたバージョンを使うには aio-proxy を再起動してください。",
       "repository": "ソースコード",
       "repository_description": "GitHub で Issue、リリース、ソースを確認できます。",
       "documentation": "ドキュメント",

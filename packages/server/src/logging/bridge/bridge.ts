@@ -5,9 +5,14 @@ import { currentRequestLogContext } from '../../request-logging';
 import type { ServerLog, ServerLogSink } from '../../server-log';
 
 export const SERVER_LOG_LEVEL = {
+  'auto_update.failed': 'warn',
   'config.oauth_leftover_models': 'warn',
   'config.reload_failed': 'error',
   'dashboard.auth_unavailable': 'error',
+  'realtime.call_created': 'debug',
+  'realtime.call_failed': 'error',
+  'realtime.sideband_closed': 'debug',
+  'realtime.sideband_opened': 'debug',
   'request.body_chunk': 'debug',
   'request.body_terminal': 'debug',
   'request.failed': 'error',

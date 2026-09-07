@@ -11,6 +11,7 @@ import {
   type OpenAIImageUpload,
 } from '../../ingress/openai-image';
 import { openAIImagesErrors } from '../errors';
+import { stripHopHeaders } from '../headers';
 import {
   defineImageProtocolAdapter,
   officialImageUsage,
@@ -170,16 +171,6 @@ function appendUpload(form: FormData, name: string, upload: OpenAIImageUpload): 
   const type = upload.mediaType === undefined ? {} : { type: upload.mediaType };
   if (upload.filename !== undefined) form.append(name, new File([bytes], upload.filename, type));
   else form.append(name, new Blob([bytes], type));
-}
-
-function stripHopHeaders(source: Headers): Headers {
-  const headers = new Headers(source);
-  headers.delete('content-encoding');
-  headers.delete('content-length');
-  headers.delete('content-md5');
-  headers.delete('digest');
-  headers.delete('content-digest');
-  return headers;
 }
 
 function imageEditsInvocation(request: OpenAIImageRequest): ImageInvocation {

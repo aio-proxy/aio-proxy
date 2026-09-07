@@ -73,8 +73,12 @@ export async function createGitHubCopilotRuntime(
   return {
     provider,
     raw(input) {
-      // Language-only catalog: decline embeddings so the candidate can convert.
-      if (input.capability === 'embedding') return undefined;
+      // Language-only catalog: decline embeddings so the candidate can convert,
+      // and audio because the Copilot endpoint serves no /v1/audio. Declining
+      // every non-language capability keeps a capability added later out of a
+      // passthrough that cannot serve it; `undefined` still passes because image
+      // dispatch resolves without naming a capability.
+      if (input.capability !== undefined && input.capability !== 'language') return undefined;
       if (protocolByModelId.get(input.modelId) !== input.protocol) return undefined;
       if (input.requestPath !== undefined && !advertisedRawPath(input.protocol, input.requestPath)) {
         return undefined;

@@ -30,6 +30,9 @@ Releases are driven by Changesets. All workspace packages share one lockstep ver
 - Keep the product package's bump level equal to the internal package's (internal `minor` -> `aio-proxy` `minor`).
 - Use `bun changeset` to author them; commit the generated `.changeset/*.md` alongside the change. Do not run `changeset version`/`publish` by hand — CI owns both.
 - A pending note describes the shipped state, not the state when it was written. When a change reverses, replaces, or drops something an earlier unreleased note announced, grep `.changeset/` for that behavior and correct or delete the stale note in the same commit. Notes are authored per task and released in one batch, so an unrevisited note ships as a Release describing a feature the code does not have.
+- Keep a note short: one paragraph, at most 5 lines of body. It is a release note for users — say what changed for them, and for a fix what was wrong. Leave out implementation detail, file names, and the sequence of attempts.
+- Follow-up work on an unreleased change **rewrites** its existing note; it never appends a paragraph. A bug found and fixed before the feature ships never happened as far as the Release is concerned, so fold the corrected behavior into the original sentences and delete the intermediate story. A note that has grown past 5 lines is the signal to rewrite it.
+- Write a second changeset only when the work is genuinely independent of the first, not to get under the line budget.
 
 ## Domain Language
 
@@ -151,7 +154,7 @@ Example for an inbound OpenAI Responses request matching three providers:
 
 - `packages/core/src/protocol/` owns one stateless adapter per inbound protocol.
 - Adapters are created with `defineProtocolAdapter()` and contain only parse, model/variant extraction, raw request rewriting, model invocation conversion, egress, protocol-shaped errors, and allowlisted request diagnostics.
-- `packages/server/src/routes/pipeline.ts` is the only candidate loop. Route files must not implement provider-kind branching, fallback, usage capture, request recording, or stream preflight.
+- `packages/server/src/routes/pipeline.ts` is the only generation candidate loop. Route files must not implement provider-kind branching, fallback, usage capture, request recording, or stream preflight. A non-generation transport that carries no model-message conversion and no usage capture (realtime signaling) may own its own selection loop, but only when a design spec documents it as an explicit exception.
 - Runtime providers expose `raw` and/or `model` capabilities. Dispatch uses capabilities, not provider kind.
 - Same-protocol raw capability wins. All other supported calls use the materialized model capability.
 - Adding an inbound protocol requires one core adapter, one thin route registration, adapter tests, and dispatch-matrix coverage.

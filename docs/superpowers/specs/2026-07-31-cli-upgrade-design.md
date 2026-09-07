@@ -115,5 +115,5 @@ packages/cli/src/upgrade/
 
 - 不修复 `install.sh` 的 `baranwang` 遗留标识与其 GitHub Release 下载路径（单独的 `install.sh` 修复项）。
 - 不支持 Windows、musl、额外 CPU 变体（与现有分发矩阵一致）。
-- 不引入自动后台升级 / 定时检查；升级只在用户显式执行时发生。
+- 自动后台升级不在本设计内。检查与确认见 `2026-09-07-update-notify-design.md`；本命令仍是唯一安装实现。
 - 不改动 npm / brew / curl 的安装行为本身。

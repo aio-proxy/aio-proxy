@@ -33,6 +33,12 @@ describe('OpenAI ChatGPT runtime', () => {
     expect(
       runtime.raw?.({ protocol: 'openai-compatible', modelId: 'gpt-5.5', capability: 'embedding' }),
     ).toBeUndefined();
+    // The ChatGPT backend serves responses and images only: an audio request
+    // must never be passed through to it.
+    for (const capability of ['speech', 'transcription'] as const) {
+      expect(runtime.raw?.({ protocol: 'openai-response', modelId: 'gpt-5.5', capability })).toBeUndefined();
+      expect(runtime.raw?.({ protocol: 'openai-image', modelId: 'gpt-image-2', capability })).toBeUndefined();
+    }
   });
 
   test('routes every concurrent expired request through the host credential refresh port', async () => {
@@ -127,6 +133,17 @@ describe('OpenAI ChatGPT runtime', () => {
     expect(first.body).toBe(body);
     expect(first.signal).toBe(controller.signal);
     expect(requiredCall(calls, 1).headers.get('session-id')).not.toBe(first.headers.get('session-id'));
+  });
+
+  test('an endpoint-owned query parameter is not erased by an inbound request without one', async () => {
+    const calls: FetchCall[] = [];
+    const dynamicFetch = createOpenAIChatGPTDynamicFetch(staticCredentialPort(credential()), captureFetch(calls));
+
+    await dynamicFetch('https://api.openai.com/v1/responses/compact', { method: 'POST', body: '{}' });
+    await dynamicFetch('https://api.openai.com/v1/responses/compact?trace=1', { method: 'POST', body: '{}' });
+
+    expect(requiredCall(calls, 0).url).toBe('https://chatgpt.com/backend-api/codex/responses/compact');
+    expect(requiredCall(calls, 1).url).toBe('https://chatgpt.com/backend-api/codex/responses/compact?trace=1');
   });
 });
 

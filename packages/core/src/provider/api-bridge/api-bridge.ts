@@ -6,6 +6,22 @@ import type { AiSdkProviderLoadOptions } from '../ai-sdk-loader/index';
 import { type AiSdkProviderFactoryOptions, type AiSdkProviderInstance, createAiSdkProvider } from '../ai-sdk/index';
 import { resolveApiKey } from '../api/index';
 
+// Protocols that expose no language-model surface, so they can never be the
+// endpoint a language bridge is built from.
+const NON_LANGUAGE_PROTOCOLS: ReadonlySet<ProviderProtocol> = new Set([
+  ProviderProtocol.OpenAIImage,
+  ProviderProtocol.OpenAIAudio,
+]);
+
+/**
+ * Whether any endpoint can back a language bridge. Callers that decide whether
+ * to build an `apiBridge` MUST gate on this rather than re-deriving it, since
+ * `bridgeApiProviderToAiSdk` throws when no language endpoint exists.
+ */
+export function hasLanguageBridgeEndpoint(endpoints: readonly NormalizedApiEndpoint[]): boolean {
+  return languageBridgeEndpoint(endpoints) !== undefined;
+}
+
 type BridgeMapping = {
   readonly options: AiSdkProviderLoadOptions;
   readonly packageName: string;
@@ -26,7 +42,7 @@ export function bridgeApiProviderToAiSdk(
 ): AiSdkProviderInstance {
   const language = languageBridgeEndpoint(apiProviderEndpoints(provider));
   if (language === undefined) {
-    throw new Error(`Unsupported provider protocol: ${ProviderProtocol.OpenAIImage}`);
+    throw new Error('Unsupported provider protocol: no language endpoint');
   }
   const providerId = provider.id;
   const mapping = bridgeMapping(provider, language, providerId);
@@ -49,7 +65,7 @@ export function bridgeApiProviderToAiSdk(
 }
 
 function languageBridgeEndpoint(endpoints: readonly NormalizedApiEndpoint[]): NormalizedApiEndpoint | undefined {
-  return endpoints.find((endpoint) => endpoint.protocol !== ProviderProtocol.OpenAIImage);
+  return endpoints.find((endpoint) => !NON_LANGUAGE_PROTOCOLS.has(endpoint.protocol));
 }
 
 function bridgeMapping(provider: ApiProvider, primary: NormalizedApiEndpoint, providerId: string): BridgeMapping {
@@ -78,7 +94,8 @@ function bridgeMapping(provider: ApiProvider, primary: NormalizedApiEndpoint, pr
     case ProviderProtocol.OpenAIResponse:
       return { packageName: '@ai-sdk/openai', options: sharedOptions, resolveModel: resolveOpenAIResponsesModel };
     case ProviderProtocol.OpenAIImage:
-      throw new Error(`Unsupported provider protocol: ${ProviderProtocol.OpenAIImage}`);
+    case ProviderProtocol.OpenAIAudio:
+      throw new Error(`Unsupported provider protocol: ${primary.protocol}`);
     default:
       return assertNever(primary.protocol);
   }

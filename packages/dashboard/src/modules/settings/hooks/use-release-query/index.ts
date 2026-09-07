@@ -1,1 +1,1 @@
-export * from './use-release-query';
+export { useReleaseQuery } from './use-release-query';

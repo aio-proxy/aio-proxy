@@ -2,16 +2,20 @@ import {
   createProviderV4Embed,
   createProviderV4ImageInvoke,
   createProviderV4Invoke,
+  createProviderV4SpeechInvoke,
+  createProviderV4TranscribeInvoke,
   validateProviderV4,
 } from '@aio-proxy/core';
 import type {
   LogicalRequestContext,
   ModelCatalog,
+  ModelDescriptor,
   ProtocolId,
   ProviderExecutedTool,
   ProviderToolCapability,
   RawResolver,
   RawTransportOptions,
+  RealtimeTransport,
   TokenCountCapability,
 } from '@aio-proxy/plugin-sdk';
 import { isRecord } from '@aio-proxy/shared';
@@ -39,29 +43,33 @@ export const pluginProtocol = {
   gemini: 'gemini',
   'gemini-interactions': 'gemini-interactions',
   'openai-image': 'openai-image',
+  'openai-audio': 'openai-audio',
 } as const satisfies Record<ProviderProtocol, ProtocolId>;
 
-export function catalogModelIds(catalog: Pick<ModelCatalog, 'language' | 'image' | 'embedding'>): string[] {
+export function catalogModelIds(
+  catalog: Pick<ModelCatalog, 'language' | 'image' | 'embedding' | 'speech' | 'transcription'>,
+): string[] {
   return uniq([
     ...catalog.language.map(({ id }) => id),
     ...catalog.image.map(({ id }) => id),
     ...catalog.embedding.map(({ id }) => id),
+    ...catalog.speech.map(({ id }) => id),
+    ...catalog.transcription.map(({ id }) => id),
   ]);
 }
 
 function rawCapability(rawResolver: RawResolver | undefined, catalog: ModelCatalog) {
   if (rawResolver === undefined) return undefined;
-  const languageCatalogById = new Map(catalog.language.map((descriptor) => [descriptor.id, descriptor]));
-  const imageCatalogById = new Map(catalog.image.map((descriptor) => [descriptor.id, descriptor]));
-  const embeddingCatalogById = new Map(catalog.embedding.map((descriptor) => [descriptor.id, descriptor]));
+  const catalogsByModality: Readonly<Record<CatalogModality, ReadonlyMap<string, ModelDescriptor>>> = {
+    language: descriptorsById(catalog.language),
+    image: descriptorsById(catalog.image),
+    embedding: descriptorsById(catalog.embedding),
+    speech: descriptorsById(catalog.speech),
+    transcription: descriptorsById(catalog.transcription),
+  };
   return {
     resolve({ protocol, modelId, capability, requestPath }: RawResolveInput) {
-      const descriptor =
-        capability === 'embedding'
-          ? (embeddingCatalogById.get(modelId) ?? languageCatalogById.get(modelId) ?? imageCatalogById.get(modelId))
-          : protocol === ProviderProtocol.OpenAIImage
-            ? (imageCatalogById.get(modelId) ?? languageCatalogById.get(modelId) ?? embeddingCatalogById.get(modelId))
-            : (languageCatalogById.get(modelId) ?? imageCatalogById.get(modelId) ?? embeddingCatalogById.get(modelId));
+      const descriptor = requestDescriptor(catalogsByModality, { modelId, capability, protocol });
       const transport = rawResolver({
         protocol: pluginProtocol[protocol],
         modelId,
@@ -93,6 +101,49 @@ function rawCapability(rawResolver: RawResolver | undefined, catalog: ModelCatal
   };
 }
 
+type CatalogModality = 'language' | 'image' | 'embedding' | 'speech' | 'transcription';
+
+// Fallback order for an id the request's own modality does not list, preserving
+// the order that held when only language/image/embedding existed.
+const MODALITY_FALLBACK: readonly CatalogModality[] = ['language', 'image', 'embedding', 'speech', 'transcription'];
+
+function descriptorsById(descriptors: readonly ModelDescriptor[]): ReadonlyMap<string, ModelDescriptor> {
+  return new Map(descriptors.map((descriptor) => [descriptor.id, descriptor]));
+}
+
+/**
+ * A plugin may catalog one id under several modalities with a different `extra`
+ * per entry, so the modality this request is for is searched first and the rest
+ * only cover a plugin that lists the id once. `capability` names the modality
+ * outright; without it the inbound protocol is the only signal, and
+ * `openai-audio` never says which direction a model runs, so speech is tried
+ * before transcription.
+ */
+function requestDescriptor(
+  catalogs: Readonly<Record<CatalogModality, ReadonlyMap<string, ModelDescriptor>>>,
+  request: {
+    readonly modelId: string;
+    readonly capability: RawResolveInput['capability'];
+    readonly protocol: ProviderProtocol;
+  },
+): ModelDescriptor | undefined {
+  for (const modality of [...preferredModalities(request.capability, request.protocol), ...MODALITY_FALLBACK]) {
+    const descriptor = catalogs[modality].get(request.modelId);
+    if (descriptor !== undefined) return descriptor;
+  }
+  return undefined;
+}
+
+function preferredModalities(
+  capability: RawResolveInput['capability'],
+  protocol: ProviderProtocol,
+): readonly CatalogModality[] {
+  if (capability !== undefined) return [capability];
+  if (protocol === ProviderProtocol.OpenAIImage) return ['image'];
+  if (protocol === ProviderProtocol.OpenAIAudio) return ['speech', 'transcription'];
+  return [];
+}
+
 export function withRoutingConfig(
   provider: RuntimeProviderInstance,
   config: OAuthProvider,
@@ -120,6 +171,16 @@ export function withRoutingConfig(
   };
 }
 
+export type RuntimeAccountPin = { readonly accountId: string; readonly runtimeRevision: number };
+
+/** `createRuntimeProvider` never sees the stored account, so the pin is stamped
+ *  by the caller that does. `withRoutingConfig` spreads the previous provider,
+ *  so a cache-reused instance keeps it — it is re-stamped anyway to keep the
+ *  invariant local to one function. */
+export function withAccountPin(provider: RuntimeProviderInstance, pin: RuntimeAccountPin): RuntimeProviderInstance {
+  return { ...provider, accountId: pin.accountId, runtimeRevision: pin.runtimeRevision };
+}
+
 export function createRuntimeProvider(
   config: OAuthProvider,
   result: unknown,
@@ -143,12 +204,19 @@ export function createRuntimeProvider(
   const providerTools = providerToolCapability(Reflect.get(result, 'providerTools'));
   const supportedProviderTools = new Set(providerTools?.supported);
   const tokenCount = tokenCountCapability(Reflect.get(result, 'tokenCount'));
+  const realtime = realtimeCapability(Reflect.get(result, 'realtime'));
   const { models, alias } = oauthRouting(config, catalog, defaults);
   const { capabilityIndex, upstreamMetadata } = routingCapabilities(alias, catalog, models);
   const image =
     catalog.image.length > 0 ? { invoke: createProviderV4ImageInvoke(config.id, result.provider) } : undefined;
   const embedding =
     catalog.embedding.length > 0 ? { embed: createProviderV4Embed(config.id, result.provider) } : undefined;
+  const speech =
+    catalog.speech.length > 0 ? { invoke: createProviderV4SpeechInvoke(config.id, result.provider) } : undefined;
+  const transcription =
+    catalog.transcription.length > 0
+      ? { invoke: createProviderV4TranscribeInvoke(config.id, result.provider) }
+      : undefined;
   const base = {
     id: config.id,
     kind: ProviderKind.OAuth,
@@ -161,6 +229,7 @@ export function createRuntimeProvider(
     plugin: config.plugin,
     capability: config.capability,
     ...(tokenCount === undefined ? {} : { tokenCount }),
+    ...(realtime === undefined ? {} : { realtime }),
   };
   if (catalog.language.length > 0) {
     return {
@@ -172,6 +241,8 @@ export function createRuntimeProvider(
       // failure.
       image: { invoke: createProviderV4ImageInvoke(config.id, result.provider) },
       ...(embedding === undefined ? {} : { embedding }),
+      ...(speech === undefined ? {} : { speech }),
+      ...(transcription === undefined ? {} : { transcription }),
       model: {
         invoke: createProviderV4Invoke(config.id, result.provider),
         supportsProviderTool: (type) => supportedProviderTools.has(type),
@@ -184,11 +255,30 @@ export function createRuntimeProvider(
       ...base,
       image,
       ...(embedding === undefined ? {} : { embedding }),
+      ...(speech === undefined ? {} : { speech }),
+      ...(transcription === undefined ? {} : { transcription }),
       ...(raw === undefined ? {} : { raw }),
     };
   }
   if (embedding !== undefined) {
-    return { ...base, embedding, ...(raw === undefined ? {} : { raw }) };
+    return {
+      ...base,
+      embedding,
+      ...(speech === undefined ? {} : { speech }),
+      ...(transcription === undefined ? {} : { transcription }),
+      ...(raw === undefined ? {} : { raw }),
+    };
+  }
+  if (speech !== undefined) {
+    return {
+      ...base,
+      speech,
+      ...(transcription === undefined ? {} : { transcription }),
+      ...(raw === undefined ? {} : { raw }),
+    };
+  }
+  if (transcription !== undefined) {
+    return { ...base, transcription, ...(raw === undefined ? {} : { raw }) };
   }
   if (raw !== undefined) {
     return { ...base, raw };
@@ -252,6 +342,23 @@ function tokenCountCapability(value: unknown): TokenCountCapability | undefined 
   const countTokens = Reflect.get(value, 'countTokens');
   if (typeof countTokens !== 'function') throw new Error('Invalid token count capability');
   return { countTokens: (input) => countTokens.call(value, input) };
+}
+
+function realtimeCapability(value: unknown): RealtimeTransport | undefined {
+  if (value === undefined) return undefined;
+  if (!isRecord(value)) throw new Error('Invalid realtime capability');
+  const models = Reflect.get(value, 'models');
+  const fetch = Reflect.get(value, 'fetch');
+  const dial = Reflect.get(value, 'dial');
+  if (!Array.isArray(models) || !models.every((model) => typeof model === 'string')) {
+    throw new Error('Invalid realtime capability');
+  }
+  if (typeof fetch !== 'function' || typeof dial !== 'function') throw new Error('Invalid realtime capability');
+  return {
+    models,
+    fetch: (request) => fetch.call(value, request),
+    dial: (input) => dial.call(value, input),
+  };
 }
 
 const providerToolTypes: ReadonlySet<ProviderExecutedTool['type']> = new Set(['web-search']);

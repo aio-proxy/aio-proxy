@@ -15,8 +15,12 @@ export function createGeminiRawResolver(
 ): RawResolver {
   const { geminiThinkingConfig } = resolveThinkingBinder(catalogOrBinder);
   return ({ protocol, modelId, capability }) => {
-    // Language-only upstream: decline embeddings so the candidate can convert.
-    if (capability === 'embedding') return undefined;
+    // Language-only upstream: decline embeddings so the candidate can convert,
+    // and audio because a generateContent endpoint has no /v1/audio surface at
+    // all. Every non-language capability is declined so a capability added later
+    // is not silently passed through; `undefined` still passes because image
+    // dispatch resolves without naming a capability.
+    if (capability !== undefined && capability !== 'language') return undefined;
     if (protocol !== 'gemini') return undefined;
     return {
       async invoke(request, context) {
