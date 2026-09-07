@@ -61,9 +61,13 @@ const renderButton = async (outdated: boolean, seed?: DashboardReleaseView, onUp
   const { QueryClient, QueryClientProvider } = await import('@tanstack/react-query');
   const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false }, queries: { retry: false } } });
   if (seed !== undefined) queryClient.setQueryData(['release'], seed);
+  const invalidateQueries = rs.spyOn(queryClient, 'invalidateQueries');
   const wrapper = ({ children }: { readonly children: ReactNode }) =>
     createElement(QueryClientProvider, { client: queryClient }, children);
-  return render(createElement(SettingsUpdateNowButton, { outdated, onUpToDate }), { wrapper });
+  return {
+    invalidateQueries,
+    ...render(createElement(SettingsUpdateNowButton, { outdated, onUpToDate }), { wrapper }),
+  };
 };
 
 const prepare = (release = idleRelease) => {
@@ -209,14 +213,14 @@ test('apply up_to_date dismisses Update now and notifies the parent', async () =
   prepare();
   mocks.apply.mockResolvedValue({ ok: true, status: 'up_to_date' });
   const onUpToDate = rs.fn();
-  await renderButton(true, undefined, onUpToDate);
+  const { invalidateQueries } = await renderButton(true, undefined, onUpToDate);
 
   fireEvent.click(screen.getByRole('button', { name: updateNowName }));
 
   await waitFor(() => expect(mocks.apply).toHaveBeenCalledTimes(1));
   await waitFor(() => expect(onUpToDate).toHaveBeenCalledTimes(1));
   expect(screen.getByRole('button', { name: updateNowName })).toBeDisabled();
-  expect(mocks.releaseQueryFn).not.toHaveBeenCalled();
+  expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['release'] });
 });
 
 test('retries polling after a previous failed apply', async () => {

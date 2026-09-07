@@ -178,10 +178,12 @@ export function createAutoUpdateController(options: AutoUpdateControllerOptions)
     if (locked) return { status: 'in_progress' };
     locked = true;
     status = 'in_progress';
+    const fetchStartedAt = now();
     let latest: string;
     try {
       latest = await options.fetchLatest(AUTO_UPDATE_PACKAGE);
       if (Bun.semver.order(latest, options.currentVersion) <= 0) {
+        await persistCheck(latest, fetchStartedAt);
         release('idle');
         return { status: 'up_to_date' };
       }

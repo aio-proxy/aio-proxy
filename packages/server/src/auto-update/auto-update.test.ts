@@ -361,6 +361,20 @@ test('applyUpdate unchanged returns to idle; installed stays restart_required', 
   expect(await unchanged.apply()).toEqual({ status: 'started' });
 });
 
+test('apply up_to_date persists the current latest so later snapshots are not outdated', async () => {
+  const store = memoryState({ latest: '1.10.0', checkedAt: 1, notifiedVersion: '1.10.0' });
+  const controller = createAutoUpdateController({
+    ...base,
+    applyUpdate: async () => 'installed',
+    fetchLatest: async () => '1.2.0',
+    now: () => 20,
+    ...store,
+  });
+  expect(await controller.apply()).toEqual({ status: 'up_to_date' });
+  expect(store.get()).toEqual({ latest: '1.2.0', checkedAt: 20, notifiedVersion: '1.10.0' });
+  expect(controller.snapshot()).toEqual({ status: 'idle', latest: '1.2.0', outdated: false });
+});
+
 test('apply reports up_to_date, unavailable, and check_failed', async () => {
   const missing = createAutoUpdateController({
     ...base,

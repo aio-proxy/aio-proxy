@@ -1,6 +1,7 @@
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 
+import { queryKeys } from '@/lib/query-keys';
 import { reloadDashboard } from '@/lib/reload-dashboard';
 
 import { applyReleaseMutationFn, releaseQueryOptions } from '../../services/release-service';
@@ -17,6 +18,7 @@ export type UseApplyReleaseOptions = {
 const errorCode = (error: unknown) => (error instanceof Error ? error.message : '');
 
 export const useApplyRelease = ({ outdated, onUpToDate }: UseApplyReleaseOptions) => {
+  const queryClient = useQueryClient();
   const release = useReleaseQuery();
   const [dismissedAsCurrent, setDismissedAsCurrent] = useState(false);
   const [seenOutdated, setSeenOutdated] = useState(outdated);
@@ -95,6 +97,7 @@ export const useApplyRelease = ({ outdated, onUpToDate }: UseApplyReleaseOptions
       if (result.status === 'up_to_date') {
         setDismissedAsCurrent(true);
         onUpToDate?.();
+        void queryClient.invalidateQueries({ queryKey: queryKeys.release });
         return;
       }
       if (result.status === 'started') beginPoll();
