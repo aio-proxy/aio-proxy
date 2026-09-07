@@ -12,6 +12,7 @@ const expectedBuiltIns = [
   '@aio-proxy/plugin-google-antigravity',
   '@aio-proxy/plugin-kimi-code',
   '@aio-proxy/plugin-openai-chatgpt',
+  '@aio-proxy/plugin-openrouter',
   '@aio-proxy/plugin-xai-grok',
 ] as const;
 
@@ -43,12 +44,21 @@ test('reserved identities always load embedded descriptors without package looku
 
   expect(BUILT_IN_PLUGIN_PACKAGE_NAMES).toEqual(expectedBuiltIns);
   expect(imported).toEqual([]);
-  expect([...snapshot.plugins.values()].map(({ builtIn }) => builtIn)).toEqual([true, true, true, true, true, true]);
+  expect([...snapshot.plugins.values()].map(({ builtIn }) => builtIn)).toEqual([
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+  ]);
   expect([...snapshot.plugins.values()].map(({ version }) => version)).toEqual(
     createEmbeddedBuiltIns().map(({ version }) => version),
   );
   expect(snapshot.registry.resolveOAuth('@aio-proxy/plugin-google-antigravity', 'default')).toBeDefined();
   expect(snapshot.registry.resolveOAuth('@aio-proxy/plugin-kimi-code', 'default')).toBeDefined();
+  expect(snapshot.registry.resolveOAuth('@aio-proxy/plugin-openrouter', 'default')).toBeDefined();
   expect(snapshot.registry.resolveOAuth('@aio-proxy/plugin-xai-grok', 'default')).toBeDefined();
   expect(snapshot.registry.resolveOAuth('@aio-proxy/plugin-cursor', 'default')).toBeDefined();
 });
@@ -94,6 +104,14 @@ test('embedded adapters retain English and Chinese copy independent of creation 
   expect(resolveLocalizedText(kimiPlugin?.displayName ?? '', 'zh-Hans')).toBe('Kimi Code');
   expect(resolveLocalizedText(kimiPlugin?.description ?? '', 'zh-Hans')).toBe('使用 Kimi Code 账号访问模型');
   expect(resolveLocalizedText(kimi?.displayName ?? '', 'zh-Hans')).toBe('使用 Kimi Code 登录');
+
+  const openrouter = snapshot.registry.resolveOAuth('@aio-proxy/plugin-openrouter', 'default');
+  const openrouterPlugin = snapshot.plugins.get('@aio-proxy/plugin-openrouter');
+  expect(resolveLocalizedText(openrouterPlugin?.displayName ?? '', 'zh-Hans')).toBe('OpenRouter');
+  expect(resolveLocalizedText(openrouterPlugin?.description ?? '', 'zh-Hans')).toBe(
+    '使用 OpenRouter 登录并签发 API key',
+  );
+  expect(resolveLocalizedText(openrouter?.displayName ?? '', 'zh-Hans')).toBe('使用 OpenRouter 登录');
 
   const grok = snapshot.registry.resolveOAuth('@aio-proxy/plugin-xai-grok', 'default');
   const grokPlugin = snapshot.plugins.get('@aio-proxy/plugin-xai-grok');
