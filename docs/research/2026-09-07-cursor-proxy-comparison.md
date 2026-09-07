@@ -171,3 +171,48 @@ OpenCodex 已经在取消/重建架构中处理了我们多项缺口，因此先
 [bridge-replay]: https://github.com/7iook/cursor-bridge/blob/03187f574e2fdf0b2d9f6854e02c88ad2846b0c6/bridge/src/replay.mts#L1-L151
 [c2a-queue]: https://github.com/NGLSG/Cursor2API/blob/d3adc7e59ce5b76f5630ab3df17841fe71ab8964/scripts/cursor-sdk-local-agent-bridge.mjs#L220-L377
 [c2a-events]: https://github.com/NGLSG/Cursor2API/blob/d3adc7e59ce5b76f5630ab3df17841fe71ab8964/worker/openai.ts#L588-L652
+
+## 实施验证
+
+执行时间：2026-09-07（UTC）。工作目录 `/workspace`，分支 `cursor/cursor-oauth-protocol-reliability-6245`。命令未使用 `rtk proxy`。本段记录本次实际结果，不复用调研阶段的 215 个插件测试数字，也不宣称原任务全部长等待都已对应到下列路径。
+
+实施 commit（Task 1–6 已在本分支）：
+
+- `5e4699d7` fix(cursor): reply to interaction queries and approval probes
+- `fa6423ab` fix(cursor): preserve MCP arguments across event ordering
+- `8340c224` fix(cursor): drain MCP tool batches before handoff
+- `f0586410` fix(cursor): settle protocol terminals and bound stalled runs
+- `a3e884db` fix(cursor): preserve structured tool history during resume
+- `5a352050` fix(cursor): add safe run phase diagnostics
+- `e3d7a28e` fix(cursor): classify abort diagnostics as canceled
+
+Task 7 交付提交主题：`test(cursor): cover Responses tool handoff and resume`（含本验证记录、Responses 离线回归与 changeset 重写）。
+
+| 命令                                                                   | 退出状态 | 实际结果                                                                                                  |
+| ---------------------------------------------------------------------- | -------- | --------------------------------------------------------------------------------------------------------- |
+| `bun test packages/core/src/egress/openai-responses/cursor-regression` | 0        | 1 pass / 0 fail，22 expect；`Cursor MCP inputs survive the actual AI SDK and Responses SSE in both turns` |
+| `bun run --cwd packages/plugins/cursor test:unit`                      | 0        | 268 pass / 0 fail，31 files                                                                               |
+| `bun run --cwd packages/core test:unit`                                | 0        | 1824 pass / 0 fail，208 files（含上述回归）。首次在插件 `dist` 缺失时失败；构建依赖后重跑通过             |
+| `bun run check`                                                        | 0        | oxlint 仅既有 dashboard/logger warning；oxfmt 通过                                                        |
+| `bun run preflight`                                                    | 1        | 停在 `lint:types`。未继续 `format:check`（preflight 内）与 `bun run test`                                 |
+
+preflight `lint:types` 实际错误位置：
+
+- `packages/dashboard/src/modules/providers/templates/provider-editor-page/use-oauth-editor-session.ts:99` TS2322；同文件 `:119` TS2589。未修改 dashboard。
+- Cursor 插件既有 TS4111（本任务未改这些文件）：`mcp-input.ts:33-35`、`diagnostics.ts:43`、`root-messages.ts:101-111`、`cursor-model.ts:72`。`@aio-proxy/plugin-cursor` 的 rslib 声明生成因此失败。
+
+R1–R7 对应本次实际通过的正式测试名：
+
+| 调研缺口 | 测试名                                                                                                                                                                                                                                                      |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| R1       | `replies to a hosted search query with its original id`；`unknown queries fail instead of leaving upstream waiting`；`webSearchRequestQuery sends an explicit webSearchRequestResponse approved reply`                                                      |
+| R2       | `consecutive MCP execs are handed off together`；`a late sibling revokes tool handoff until its own args are ready`                                                                                                                                         |
+| R3       | `an empty completion waits for later authoritative exec args`                                                                                                                                                                                               |
+| R4       | `successful Connect END_STREAM finishes before HTTP EOF`；`turnEnded grace closes a held-open text run once`                                                                                                                                                |
+| R5       | `an approval-only wire frame never becomes an executable call`；`an embedded approval-only interaction frame never becomes an executable call`                                                                                                              |
+| R6       | `a snapshot before started survives repeated started and a partial final map`                                                                                                                                                                               |
+| R7       | `root history preserves same-name calls with different arguments and results`；`a full-history continuation preserves the structured MCP checkpoint and applies its result`；`a result-only second turn reads the actual tool history without a checkpoint` |
+
+C9 集成回归：`Cursor MCP inputs survive the actual AI SDK and Responses SSE in both turns`（真实 Cursor mapper → AI SDK `streamAiSdkText` → `writeOpenAIResponsesSSE`；两轮工具参数的 delta/done/final output 一致，两个调用都进入 Responses 输出）。
+
+真实上游 smoke：未执行真实上游 smoke：没有可用测试凭证。环境中无 `CURSOR_ACCESS_TOKEN`。一次离线通过不代表所有模型通过。

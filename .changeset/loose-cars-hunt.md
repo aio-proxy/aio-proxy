@@ -3,4 +3,4 @@
 '@aio-proxy/plugin-cursor': patch
 ---
 
-Fix Cursor OAuth tool calls losing their arguments in API responses and repeated tool calls caused by missing tool results in resumed model context.
+Fix Cursor OAuth requests hanging on interaction or stream completion, losing tool arguments or sibling calls, and repeating tools because resumed context omitted their calls and results. Stalled runs now terminate with clearer diagnostics.
