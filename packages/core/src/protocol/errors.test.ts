@@ -270,6 +270,7 @@ test.each([
   'include',
   'translations',
   'response_format',
+  'timestamp_granularities',
 ] as const satisfies readonly OpenAIAudioUnsupportedFeature[])(
   'maps Audio unsupported feature %s through requestError as 501 unsupported_feature',
   async (feature) => {
@@ -300,7 +301,7 @@ test('maps an unroutable Audio model to a distinct 501 not_implemented body', as
 });
 
 test('maps an unnamed Audio dispatch gap to 501 not_implemented', async () => {
-  const response = openAIAudioErrors.unsupported('timestamp_granularities');
+  const response = openAIAudioErrors.unsupported('speaker_diarization');
 
   expect(response.status).toBe(501);
   expect(await response.json()).toEqual({

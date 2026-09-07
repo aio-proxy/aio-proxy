@@ -180,6 +180,7 @@ export const OPENAI_AUDIO_UNSUPPORTED_FEATURES = [
   'include',
   'translations',
   'response_format',
+  'timestamp_granularities',
 ] as const;
 
 export type OpenAIAudioUnsupportedFeature = (typeof OPENAI_AUDIO_UNSUPPORTED_FEATURES)[number];

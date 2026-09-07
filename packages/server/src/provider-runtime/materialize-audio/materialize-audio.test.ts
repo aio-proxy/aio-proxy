@@ -74,12 +74,42 @@ test('an @ai-sdk/xai provider gains both audio transports', () => {
   expect(instance.transcription).toBeDefined();
 });
 
-test('an API provider gains no audio transport and keeps its raw passthrough', () => {
-  // API providers reach audio through the same-protocol raw path only: an
-  // `openai-audio` endpoint always matches raw.resolve, and one without such an
-  // endpoint has no audio surface to convert against.
+test('an openai-response API provider gains both audio transports from its OpenAI bridge', async () => {
+  // The endpoint is an OpenAI base URL with an accepted key, so @ai-sdk/openai can
+  // reach /audio/speech and /audio/transcriptions from the same metadata that backs
+  // its language bridge. Without this the convert path 501s a servable request.
+  let loaded: { packageName: string; options: Record<string, unknown> } | undefined;
+  const instance = attachAudioTransports(languageOnlyInstance(ProviderKind.Api), {
+    config: apiConfig('openai-response'),
+    loadProvider: async (packageName, options) => {
+      loaded = { packageName, options: options as Record<string, unknown> };
+      return null;
+    },
+  });
+  expect(instance.speech).toBeDefined();
+  expect(instance.transcription).toBeDefined();
+  await expect(
+    instance.transcription?.invoke({ audio: new Uint8Array() }, { modelId: 'tts-1', logicalRequest: {} as never }),
+  ).rejects.toThrow(/cannot build a V4 transcriptionModel/);
+  expect(loaded?.packageName).toBe('@ai-sdk/openai');
+  expect(loaded?.options.baseURL).toBe('https://api.example.com');
+});
+
+test('an openai-audio API provider gains no audio transport and keeps its raw passthrough', () => {
+  // An `openai-audio` endpoint always matches raw.resolve for an inbound audio
+  // request, so raw passthrough wins before dispatch reaches a transport.
   const instance = attachAudioTransports(languageOnlyInstance(ProviderKind.Api), {
     config: apiConfig('openai-audio'),
+  });
+  expect(instance.speech).toBeUndefined();
+  expect(instance.transcription).toBeUndefined();
+});
+
+test('an openai-compatible API provider gains no audio transport', () => {
+  // Its bridge package implements neither member, so a transport could only fail
+  // inside the AI SDK on every attempt.
+  const instance = attachAudioTransports(languageOnlyInstance(ProviderKind.Api), {
+    config: apiConfig('openai-compatible'),
   });
   expect(instance.speech).toBeUndefined();
   expect(instance.transcription).toBeUndefined();

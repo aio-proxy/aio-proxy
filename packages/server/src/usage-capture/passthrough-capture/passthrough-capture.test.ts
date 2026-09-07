@@ -104,4 +104,28 @@ describe('binary audio bodies never fabricate usage', () => {
     if (completion.outcome !== 'success') throw new Error('expected success');
     expect(completion.usage).toMatchObject({ inputTokens: 12, outputTokens: 3 });
   });
+
+  test('an oversize verbose_json transcription still bills its reported tokens', async () => {
+    // The gate is the content type, not the protocol: a long `verbose_json`
+    // transcript over the cap is real JSON carrying a real usage object, so
+    // disabling the scan for the whole audio protocol would silently drop it.
+    const filler = 'word '.repeat(500_000);
+    const captured = passthroughCapture(
+      {
+        response: new Response(
+          JSON.stringify({ text: filler, usage: { type: 'tokens', input_tokens: 40, output_tokens: 900 } }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+        protocol: ProviderProtocol.OpenAIAudio,
+        providerId: 'provider',
+        modelId: 'whisper-1',
+      },
+      undefined,
+    );
+    await captured.value.arrayBuffer();
+
+    const completion = await captured.completion;
+    if (completion.outcome !== 'success') throw new Error('expected success');
+    expect(completion.usage).toMatchObject({ inputTokens: 40, outputTokens: 900 });
+  });
 });

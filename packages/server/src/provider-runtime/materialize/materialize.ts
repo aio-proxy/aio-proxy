@@ -185,12 +185,15 @@ export function materializeProviders(config: Config, options: MaterializeProvide
         const endpoints = apiProviderEndpoints(provider);
         const hasLanguageEndpoint = hasLanguageBridgeEndpoint(endpoints);
         const instance = withRoutingDefaults(
-          attachImageTransport(
-            materializeRuntimeProvider(api, {
-              catalogMetadata: options.catalogMetadata,
-              ...(hasLanguageEndpoint ? { apiBridge: bridgeApiProvider(provider, { fetch: providerFetch }) } : {}),
-            }),
-            { config: provider, fetch: providerFetch, routerModels: config.router.models },
+          attachAudioTransports(
+            attachImageTransport(
+              materializeRuntimeProvider(api, {
+                catalogMetadata: options.catalogMetadata,
+                ...(hasLanguageEndpoint ? { apiBridge: bridgeApiProvider(provider, { fetch: providerFetch }) } : {}),
+              }),
+              { config: provider, fetch: providerFetch, routerModels: config.router.models },
+            ),
+            { config: provider, fetch: providerFetch },
           ),
           provider,
         );

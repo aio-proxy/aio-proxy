@@ -18,7 +18,6 @@ function transcriptionRequest(model?: string, extra: readonly (readonly [string,
   const parts = [
     'Content-Disposition: form-data; name="file"; filename="clip.mp3"\r\nContent-Type: audio/mpeg\r\n\r\nID3AUDIO',
     ...(model === undefined ? [] : [`Content-Disposition: form-data; name="model"\r\n\r\n${model}`]),
-    'Content-Disposition: form-data; name="timestamp_granularities[]"\r\n\r\nword',
     ...extra.map(([name, value]) => `Content-Disposition: form-data; name="${name}"\r\n\r\n${value}`),
   ];
   const text = `${parts.map((part) => `--${boundary}\r\n${part}\r\n`).join('')}--${boundary}--\r\n`;
@@ -103,7 +102,7 @@ describe('openAITranscriptionAdapter', () => {
   });
 
   test('replays the spooled body verbatim when the model is unchanged', async () => {
-    const raw = transcriptionRequest('whisper-1');
+    const raw = transcriptionRequest('whisper-1', [['timestamp_granularities[]', 'word']]);
     const request = await openAITranscriptionAdapter.parse(raw, { operation: 'transcriptions' });
     const upstream = await openAITranscriptionAdapter.rawRequest(raw, request, 'whisper-1', new Set(), {
       operation: 'transcriptions',
@@ -114,7 +113,7 @@ describe('openAITranscriptionAdapter', () => {
   });
 
   test('rebuilds multipart keeping every client field when the model changes', async () => {
-    const raw = transcriptionRequest('whisper-1');
+    const raw = transcriptionRequest('whisper-1', [['timestamp_granularities[]', 'word']]);
     const request = await openAITranscriptionAdapter.parse(raw, { operation: 'transcriptions' });
     const upstream = await openAITranscriptionAdapter.rawRequest(raw, request, 'whisper-large', new Set(), {
       operation: 'transcriptions',
@@ -189,13 +188,26 @@ describe('openAITranscriptionAdapter', () => {
     },
   );
 
-  // These four reach upstream only through the invocation: dropping them ran the
+  // `transcribe()` returns segment timings only, so a forwarded `word` granularity
+  // would be honoured upstream and then dropped on the way back. Raw passthrough
+  // still serves it; only the convert path refuses.
+  test('refuses word timestamp granularity on the convert path', async () => {
+    const raw = transcriptionRequest('whisper-1', [['timestamp_granularities[]', 'word']]);
+    const request = await openAITranscriptionAdapter.parse(raw, { operation: 'transcriptions' });
+    expect(() => openAITranscriptionAdapter.audioInvocation(request, { operation: 'transcriptions' })).toThrow(
+      'OpenAI Audio feature is not supported: timestamp_granularities',
+    );
+    await releaseMultipartSpool(raw);
+  });
+
+  // These reach upstream only through the invocation: dropping them ran the
   // transcription on provider defaults, so `language=ja` was silently ignored.
   test('carries the transcription controls into the invocation', async () => {
     const raw = transcriptionRequest('whisper-1', [
       ['language', 'ja'],
       ['prompt', 'proper nouns'],
       ['temperature', '0.2'],
+      ['timestamp_granularities[]', 'segment'],
     ]);
     const request = await openAITranscriptionAdapter.parse(raw, { operation: 'transcriptions' });
     const invocation = openAITranscriptionAdapter.audioInvocation(request, { operation: 'transcriptions' });
@@ -205,7 +217,7 @@ describe('openAITranscriptionAdapter', () => {
         language: 'ja',
         prompt: 'proper nouns',
         temperature: 0.2,
-        timestampGranularities: ['word'],
+        timestampGranularities: ['segment'],
       },
     });
     await releaseMultipartSpool(raw);

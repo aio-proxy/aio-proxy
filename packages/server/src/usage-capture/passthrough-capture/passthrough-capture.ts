@@ -69,7 +69,8 @@ export function passthroughCapture(
   const terminal = deferred<UsageCompletion>();
   // Non-null: nonStreamingCompletion short-circuits when response.body is null.
   const reader = response.body!.getReader();
-  const isSse = response.headers.get('content-type')?.toLowerCase().includes('text/event-stream') === true;
+  const contentType = response.headers.get('content-type') ?? undefined;
+  const isSse = contentType?.toLowerCase().includes('text/event-stream') === true;
   let firstTokenAt: number | undefined;
   // Trace settlement (usage/timing/outcome) and transport lifecycle (reader +
   // client stream) are tracked separately: a terminal frame settles the trace
@@ -140,15 +141,21 @@ export function passthroughCapture(
       ...ttftProperty(startedAt, firstTokenAt),
     });
   };
-  const source = createObservationSource(isSse, protocol, observation, {
-    onContent: (contentAt) => (firstTokenAt ??= contentAt),
-    // A completed Gemini Interaction can still be cancelled before EOF. Defer
-    // its success completion so its response ID reaches trace persistence only
-    // through the clean-EOF commit path; terminal failures remain prompt.
-    onTerminal: (obs) => {
-      if (protocol !== ProviderProtocol.GeminiInteractions || obs.failed === true) void complete(obs);
+  const source = createObservationSource(
+    isSse,
+    protocol,
+    observation,
+    {
+      onContent: (contentAt) => (firstTokenAt ??= contentAt),
+      // A completed Gemini Interaction can still be cancelled before EOF. Defer
+      // its success completion so its response ID reaches trace persistence only
+      // through the clean-EOF commit path; terminal failures remain prompt.
+      onTerminal: (obs) => {
+        if (protocol !== ProviderProtocol.GeminiInteractions || obs.failed === true) void complete(obs);
+      },
     },
-  });
+    contentType,
+  );
   const returnedBody = createTeeBody({
     reader,
     idle,

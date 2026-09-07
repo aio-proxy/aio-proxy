@@ -132,13 +132,14 @@ export function audioConvertSkipReason(context: OpenAIAudioContext): string | un
   return context.operation === 'translations' ? 'translations' : undefined;
 }
 
-// Five convert-path refusals. Four are transcription features `transcribe` cannot
+// Six convert-path refusals. Four are transcription features `transcribe` cannot
 // express: raw passthrough forwards them untouched, and the convert path must refuse
 // them rather than answer a streaming or logprob-annotated request with a plain
 // single-shot transcript. The fifth is a different kind — an output format this proxy
 // cannot render. Ingress accepts any `response_format` string, and raw passthrough
 // lets upstream validate it, so without this check a misspelling would quietly get a
-// plain `{ text }` body on the convert path only.
+// plain `{ text }` body on the convert path only. The sixth is `word` granularity,
+// refused for the same reason in the response direction rather than the request one.
 function assertConvertibleTranscription(request: OpenAITranscriptionRequest): void {
   if (request.stream_format != null) throw new OpenAIAudioUnsupportedFeatureError('stream_format');
   if (request.chunking_strategy != null) throw new OpenAIAudioUnsupportedFeatureError('chunking_strategy');
@@ -147,6 +148,14 @@ function assertConvertibleTranscription(request: OpenAITranscriptionRequest): vo
   // place it appears; a client may spell it with or without the PHP-style `[]`.
   if (request.rawFormFields.some((field) => field.name === 'include' || field.name === 'include[]')) {
     throw new OpenAIAudioUnsupportedFeatureError('include');
+  }
+  // `transcribe()` reports segment timings only — its result type has no word array
+  // and no provider metadata channel that carries one — so a forwarded `word`
+  // granularity would reach upstream, be honoured, and then be dropped on the way
+  // back, answering with segments the client did not ask for. `segment` alone is
+  // renderable and stays allowed. Raw passthrough still serves word granularity.
+  if (request.timestamp_granularities?.includes('word') === true) {
+    throw new OpenAIAudioUnsupportedFeatureError('timestamp_granularities');
   }
   // 501 rather than 400: the convert path cannot tell a client misspelling from a
   // format OpenAI added after this code was written, and either way the honest

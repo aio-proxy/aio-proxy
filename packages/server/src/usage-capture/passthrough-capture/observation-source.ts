@@ -1,5 +1,3 @@
-import { ProviderProtocol } from '@aio-proxy/types';
-
 import {
   createPassthroughSseUsageObserver,
   extractPassthroughObservation,
@@ -28,6 +26,7 @@ export function createObservationSource(
     readonly onContent: (at: number) => void;
     readonly onTerminal: (observation: PassthroughObservation) => void;
   },
+  contentType?: string,
 ): ObservationSource {
   if (isSse) {
     const observer = createSseUsageObserver(protocol, observation, callbacks);
@@ -38,12 +37,7 @@ export function createObservationSource(
     };
   }
   const jsonCapture = createJsonCapture();
-  // The oversize-body usage scan is a byte scan with no JSON-document validity
-  // check, so on a binary body (an /v1/audio/speech mp3 over the size cap) an
-  // incidental `"usage":{...}` byte run would become a billed token row. Audio
-  // JSON responses (transcriptions) are small and always land under the cap, so
-  // skipping the scan for this protocol costs no real billing.
-  const usageScan = protocol === ProviderProtocol.OpenAIAudio ? undefined : createJsonUsageScan();
+  const usageScan = scannableAsJson(contentType) ? createJsonUsageScan() : undefined;
   return {
     feed: (chunk) => {
       jsonCapture.push(chunk);
@@ -56,6 +50,22 @@ export function createObservationSource(
       return snippet === undefined ? {} : extractPassthroughObservation(protocol, snippet);
     },
   };
+}
+
+/**
+ * The oversize-body usage scan is a byte scan with no JSON-document validity check,
+ * so on a binary body (an `/v1/audio/speech` mp3 over the size cap) an incidental
+ * `"usage":{...}` byte run would become a billed token row. Gate it on the declared
+ * content type rather than on the protocol: a large `verbose_json` transcription is
+ * real JSON carrying a real `usage` object and must keep billing, while any binary
+ * body — audio today, anything else later — must not be scanned at all.
+ *
+ * A missing content type still scans: every protocol reaching here without one
+ * answers JSON, and refusing to scan would silently drop their usage.
+ */
+function scannableAsJson(contentType: string | undefined): boolean {
+  if (contentType === undefined) return true;
+  return contentType.toLowerCase().includes('json');
 }
 
 function finishSseObservation(observer: PassthroughSseUsageObserver, decoder: TextDecoder): PassthroughObservation {
