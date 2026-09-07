@@ -1,6 +1,18 @@
-# AIO Proxy
+<div align="center">
+<h1>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://fastly.jsdelivr.net/gh/aio-proxy/aio-proxy@main/packages/brand/src/aio-proxy-wordmark-dark.svg">
+    <img alt="AIO Proxy" src="https://fastly.jsdelivr.net/gh/aio-proxy/aio-proxy@main/packages/brand/src/aio-proxy-wordmark-light.svg" width="192">
+  </picture>
+</h1>
+
+[![Version](https://npmx.dev/api/registry/badge/version/aio-proxy)](https://npmx.dev/package/aio-proxy)
+[![Downloads](https://npmx.dev/api/registry/badge/downloads/aio-proxy)](https://npmx.dev/package/aio-proxy)
+[![License](https://img.shields.io/github/license/aio-proxy/aio-proxy?style=flat&colorA=18181B&colorB=46ecd5)](https://github.com/aio-proxy/aio-proxy/blob/main/LICENSE)
 
 [English](./README.md) | 简体中文
+
+</div>
 
 用一个 API 入口接入和管理多个模型提供商。AIO Proxy 提供可扩展的插件系统、自动路由与故障回退，以及覆盖用量、费用和请求链路的可观测性。
 
@@ -53,13 +65,19 @@ brew install aio-proxy/tap/aio-proxy
 bun add -g aio-proxy
 ```
 
+### curl
+
+```bash
+curl -fsSL https://aioproxy.dev/install.sh | sh
+```
+
 ## 快速开始
 
 ```bash
 aio-proxy run --open
 ```
 
-npm/bun 还会安装短命令 `aiop`。Homebrew 目前仍只有 `aio-proxy`。
+npm/bun 与 curl 安装脚本还会安装短命令 `aiop`。Homebrew 目前仍只有 `aio-proxy`。
 
 - API：`http://127.0.0.1:9317`
 - Dashboard：`http://127.0.0.1:9317/dashboard`
@@ -77,7 +95,7 @@ aio-proxy config edit
 
 ```jsonc
 {
-  "$schema": "https://cdn.jsdelivr.net/npm/aio-proxy@latest/config.schema.json",
+  "$schema": "https://unpkg.com/@aio-proxy/types/config.schema.json",
   "providers": {
     "openai": {
       "kind": "api",
@@ -143,7 +161,7 @@ aio-proxy reload
 
 ```jsonc
 {
-  "$schema": "https://cdn.jsdelivr.net/npm/aio-proxy@latest/config.schema.json",
+  "$schema": "https://unpkg.com/@aio-proxy/types/config.schema.json",
   "router": {
     "modelContextAggregation": "min",
     "models": {

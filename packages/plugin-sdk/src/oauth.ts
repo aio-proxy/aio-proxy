@@ -206,6 +206,10 @@ export type RuntimeContext<Credential, AccountOptions> = {
   readonly options: AccountOptions;
   readonly catalog: ModelCatalog;
   readonly fetch: RuntimeFetch;
+  /** Effective outbound proxy for this provider, or `null` for a direct connection.
+   *  `fetch` already routes through it; a plugin-constructed `WebSocket` does not,
+   *  so a transport that dials sockets must pass this to the constructor. */
+  readonly proxy?: string | null;
 };
 
 export type OAuthAdapter<AccountOptions = unknown, Credential = unknown> = {

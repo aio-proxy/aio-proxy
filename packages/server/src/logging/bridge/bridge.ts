@@ -8,6 +8,10 @@ export const SERVER_LOG_LEVEL = {
   'config.oauth_leftover_models': 'warn',
   'config.reload_failed': 'error',
   'dashboard.auth_unavailable': 'error',
+  'realtime.call_created': 'debug',
+  'realtime.call_failed': 'error',
+  'realtime.sideband_closed': 'debug',
+  'realtime.sideband_opened': 'debug',
   'request.body_chunk': 'debug',
   'request.body_terminal': 'debug',
   'request.failed': 'error',
@@ -27,6 +31,11 @@ type SinkFallbackOptions<Entry> = {
   readonly fallback: (entry: Entry) => void;
 };
 
+// Model-conversion downgrades are emitted per candidate, before a model id is
+// meaningful for the entry; the ambient request context would attach a
+// misleading one.
+const MODEL_SCOPED_DOWNGRADE_FEATURES = new Set(['web_search_call', 'orphan_tool_call_output', 'unanswered_tool_call']);
+
 const contextual = <Entry extends object>(entry: Entry): Entry => {
   const result = {
     ...entry,
@@ -34,7 +43,7 @@ const contextual = <Entry extends object>(entry: Entry): Entry => {
   };
   if (
     Reflect.get(result, 'event') === 'request.feature_downgraded' &&
-    Reflect.get(result, 'feature') === 'web_search_call'
+    MODEL_SCOPED_DOWNGRADE_FEATURES.has(Reflect.get(result, 'feature') as string)
   ) {
     Reflect.deleteProperty(result, 'requestedModelId');
     Reflect.deleteProperty(result, 'modelId');

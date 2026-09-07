@@ -2,6 +2,12 @@
   "files": [],
   "references": [
     {
+      "path": "./packages/brand"
+    },
+    {
+      "path": "./packages/brand/scripts"
+    },
+    {
       "path": "./packages/infra"
     },
     {

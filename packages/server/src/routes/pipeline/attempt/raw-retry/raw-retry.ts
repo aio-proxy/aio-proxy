@@ -17,7 +17,7 @@ function isAbortFailure(error: unknown): boolean {
 
 export type RawRetryPreflight =
   | { readonly kind: 'commit'; readonly response: Response }
-  | { readonly kind: 'retry'; readonly response: Response };
+  | { readonly kind: 'retry'; readonly response: Response; readonly rejection: RawRetryFrame };
 
 export type RawRetryGuards = {
   readonly signal: AbortSignal;
@@ -70,10 +70,13 @@ export async function preflightRawRetrySse(
   const buffered: Uint8Array[] = [];
   let bufferedBytes = 0;
   let verdict: RawRetryVerdict = 'hold';
+  let rejection: RawRetryFrame | undefined;
   const parser = createParser({
     onEvent(event) {
       if (verdict !== 'hold') return;
-      verdict = classify(event.event === undefined ? { data: event.data } : { event: event.event, data: event.data });
+      const frame = event.event === undefined ? { data: event.data } : { event: event.event, data: event.data };
+      verdict = classify(frame);
+      if (verdict === 'retry') rejection = frame;
     },
   });
   const guard = guardReader(reader, guards);
@@ -94,8 +97,13 @@ export async function preflightRawRetrySse(
         // The cap wins over whatever this chunk classified as. A single
         // provider-controlled chunk can be arbitrarily large and may carry the
         // retryable error itself, so checking `verdict === 'hold'` first would
-        // let an oversized body through the advertised replay bound.
-        if (bufferedBytes > MAX_PREFLIGHT_REPLAY_BYTES) verdict = 'commit';
+        // let an oversized body through the advertised replay bound. The
+        // rejection frame is dropped with it: a replay must not outlive the
+        // verdict that authorized it.
+        if (bufferedBytes > MAX_PREFLIGHT_REPLAY_BYTES) {
+          verdict = 'commit';
+          rejection = undefined;
+        }
       }
     }
   } catch (error) {
@@ -110,14 +118,13 @@ export async function preflightRawRetrySse(
     status: response.status,
     statusText: response.statusText,
   });
-  // `onEvent` assigns `'retry'` through a closure TypeScript does not track, so
-  // after the hold loop the local is narrowed to `'commit' | 'hold'`. Re-widen
-  // through the full verdict union before choosing the preflight kind.
-  return { kind: preflightKind(verdict), response: next };
-}
-
-function preflightKind(verdict: RawRetryVerdict): RawRetryPreflight['kind'] {
-  return verdict === 'retry' ? 'retry' : 'commit';
+  // `onEvent` assigns through a closure TypeScript does not track, so after the
+  // hold loop both locals look narrower than they are. The rejection frame is
+  // set only alongside a 'retry' verdict, so its presence is the decision.
+  const decided: RawRetryFrame | undefined = rejection;
+  return decided === undefined
+    ? { kind: 'commit', response: next }
+    : { kind: 'retry', response: next, rejection: decided };
 }
 
 export async function readBoundedJsonBody(response: Response, guards: RawRetryGuards): Promise<string | undefined> {
@@ -222,7 +229,12 @@ export type RawRetryResolution<TRequest, TContext> = {
   readonly hook:
     | Readonly<{
         classify: (frame: RawRetryFrame) => RawRetryVerdict;
-        rewrite: (upstream: Request, request: TRequest, context: TContext) => Promise<Request | undefined>;
+        rewrite: (
+          upstream: Request,
+          request: TRequest,
+          context: TContext,
+          rejection: RawRetryFrame,
+        ) => Promise<Request | undefined>;
       }>
     | undefined;
   readonly retrySource: Request | undefined;
@@ -246,8 +258,8 @@ export async function resolveRawRetry<TRequest, TContext>(
   // transport would otherwise leave the first SSE reader locked and its upstream
   // connection open and buffering for the whole second call, and a thrown replay
   // would skip cancellation entirely.
-  const replay = async (failed: Response): Promise<Response | undefined> => {
-    const retryRequest = await hook.rewrite(retrySource, input.request, input.context);
+  const replay = async (failed: Response, rejection: RawRetryFrame): Promise<Response | undefined> => {
+    const retryRequest = await hook.rewrite(retrySource, input.request, input.context, rejection);
     if (retryRequest === undefined) return undefined;
     void failed.body?.cancel().catch(() => undefined);
     return await input.invoke(retryRequest);
@@ -255,8 +267,10 @@ export async function resolveRawRetry<TRequest, TContext>(
 
   if (response.status === 400) {
     const bodyText = await readBoundedJsonBody(response, input.guards);
-    if (bodyText === undefined || hook.classify({ data: bodyText }) !== 'retry') return response;
-    return (await replay(response)) ?? response;
+    if (bodyText === undefined) return response;
+    const frame: RawRetryFrame = { data: bodyText };
+    if (hook.classify(frame) !== 'retry') return response;
+    return (await replay(response, frame)) ?? response;
   }
 
   if (!response.ok || !input.streamRequested) return response;
@@ -265,5 +279,5 @@ export async function resolveRawRetry<TRequest, TContext>(
     assumeEventStream: true,
   });
   if (preflight.kind !== 'retry') return preflight.response;
-  return (await replay(preflight.response)) ?? preflight.response;
+  return (await replay(preflight.response, preflight.rejection)) ?? preflight.response;
 }

@@ -108,6 +108,11 @@ const providerMap: ProviderMap = {
 const original = process.env.AIO_PROXY_HOME;
 let home: string;
 
+// The codex picker only lists text-output models, so a fixture with no
+// models.dev entry has to declare its output modality somewhere or it is
+// (correctly) hidden.
+const TEXT_OUTPUT: RouterModelPolicy['metadata'] = { capabilities: { modalities: { output: ['text'] } } };
+
 beforeEach(async () => {
   home = mkdtempSync(join(tmpdir(), 'codex-client-models-'));
   process.env.AIO_PROXY_HOME = home;
@@ -280,7 +285,9 @@ test('falls back to static valid windows when official and models.dev windows ar
   clearModelsCache();
   const invalidRow = { ...upstream, context_window: 400_000, max_context_window: 272_000 };
   const fetchImpl = (async () => Response.json({ models: [invalidRow] })) as unknown as typeof fetch;
-  const { models } = await codexClientModels(fakeState(), { fetchImpl });
+  const { models } = await codexClientModels(fakeState([provider], undefined, { 'gpt-5': { metadata: TEXT_OUTPUT } }), {
+    fetchImpl,
+  });
 
   const entry = models.find((item) => item.id === 'gpt-5') as Record<string, unknown>;
   expect(entry.context_window).toBe(272_000);
@@ -296,7 +303,9 @@ test('an empty models.dev map leaves a valid official Codex pair unchanged', asy
   clearModelsCache();
   const officialRow = { ...upstream, context_window: 272_000, max_context_window: 400_000 };
   const fetchImpl = (async () => Response.json({ models: [officialRow] })) as unknown as typeof fetch;
-  const { models } = await codexClientModels(fakeState(), { fetchImpl });
+  const { models } = await codexClientModels(fakeState([provider], undefined, { 'gpt-5': { metadata: TEXT_OUTPUT } }), {
+    fetchImpl,
+  });
 
   const entry = models.find((item) => item.id === 'gpt-5') as Record<string, unknown>;
   expect(entry.context_window).toBe(272_000);
@@ -327,6 +336,7 @@ test('aggregates candidate windows only after each candidate resolves its own so
   const fetchImpl = (async () => Response.json({ models: [officialRow] })) as unknown as typeof fetch;
   const models = {
     shared: {
+      metadata: TEXT_OUTPUT,
       providers: {
         configured: { limit: { context: 400_000, input: 272_000, output: 128_000 } },
       },
@@ -476,4 +486,56 @@ test('synthesized entries get deterministic priorities past the max template pri
   expect(bySlug.get('zebra')?.priority).toBe(201);
   // Response is ordered by ascending priority.
   expect(models.map((m) => m.slug)).toEqual(['gpt-5', 'apple', 'zebra']);
+});
+
+test('hides models whose output modality is not text, keeping text models that also emit images', async () => {
+  // The codex picker calls whatever it lists as a text chat model, so an image or
+  // video generator listed there is unselectable in practice.
+  const mixed = {
+    id: 'p1',
+    kind: ProviderKind.OAuth,
+    enabled: true,
+    alias: {
+      'gpt-5': { model: 'gpt-5.6-sol', preserve: false },
+      'image-only': { model: 'image-only', preserve: false },
+      'video-only': { model: 'video-only', preserve: false },
+      'text-and-image': { model: 'text-and-image', preserve: false },
+    },
+    model: { invoke: async function* () {} },
+  } as unknown as RuntimeProviderInstance;
+
+  const fetchImpl = (async () => Response.json({ models: [upstream] })) as unknown as typeof fetch;
+  const { models } = await codexClientModels(
+    fakeState([mixed], undefined, {
+      'image-only': { metadata: { capabilities: { modalities: { output: ['image'] } } } },
+      'video-only': { metadata: { capabilities: { modalities: { output: ['video'] } } } },
+      'text-and-image': { metadata: { capabilities: { modalities: { output: ['text', 'image'] } } } },
+    }),
+    { fetchImpl },
+  );
+
+  expect(models.map((m) => m.slug).sort()).toEqual(['gpt-5', 'text-and-image']);
+});
+
+test('hides a model whose output modality no metadata layer declares', async () => {
+  // A hand-listed api-provider id with no models.dev entry is exactly how image
+  // and video models reach this list; a picker row that always fails the turn is
+  // worse than an absent one, and the user can restore it with router metadata.
+  const unknown = {
+    id: 'p1',
+    kind: ProviderKind.Api,
+    enabled: true,
+    alias: { 'third-party-model': { model: 'third-party-model', preserve: false } },
+    model: { invoke: async function* () {} },
+  } as unknown as RuntimeProviderInstance;
+
+  const fetchImpl = (async () => Response.json({ models: [upstream] })) as unknown as typeof fetch;
+  const hidden = await codexClientModels(fakeState([unknown]), { fetchImpl });
+  expect(hidden.models).toEqual([]);
+
+  const restored = await codexClientModels(
+    fakeState([unknown], undefined, { 'third-party-model': { metadata: TEXT_OUTPUT } }),
+    { fetchImpl },
+  );
+  expect(restored.models.map((m) => m.slug)).toEqual(['third-party-model']);
 });

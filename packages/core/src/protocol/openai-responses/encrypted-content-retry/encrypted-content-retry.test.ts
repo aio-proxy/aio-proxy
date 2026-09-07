@@ -12,6 +12,12 @@ const ENCRYPTED_ERROR = JSON.stringify({
   type: 'error',
   error: { type: 'invalid_request_error', code: 'invalid_encrypted_content', message: 'x' },
 });
+const ENCRYPTED_REJECTION = { event: 'error', data: ENCRYPTED_ERROR };
+const PAIRING_REJECTION = {
+  data: JSON.stringify({
+    error: { type: 'invalid_request_error', code: null, message: 'No tool output found for function call call_1.' },
+  }),
+};
 
 test('rejects short or punctuated payloads as ciphertext', () => {
   expect(looksLikeBackendCiphertext('delegated task')).toBe(false);
@@ -347,7 +353,7 @@ test('hook rewrite carries the request forward and preserves the inbound signal'
     }),
     signal: controller.signal,
   });
-  const retried = await openAIResponsesRawRetry.rewrite(source, {} as never, {});
+  const retried = await openAIResponsesRawRetry.rewrite(source, {} as never, {}, ENCRYPTED_REJECTION);
   expect(retried).toBeDefined();
   expect(retried!.headers.get('content-length')).toBeNull();
   expect(retried!.signal.aborted).toBe(false);
@@ -373,5 +379,65 @@ test('hook rewrite refuses the compact operation', async () => {
       ],
     }),
   });
-  expect(await openAIResponsesRawRetry.rewrite(source, {} as never, { operation: 'compact' })).toBeUndefined();
+  expect(
+    await openAIResponsesRawRetry.rewrite(source, {} as never, { operation: 'compact' }, ENCRYPTED_REJECTION),
+  ).toBeUndefined();
+});
+
+test('retries a tool-pairing rejection carried as a plain JSON 400 body', () => {
+  expect(
+    classifyOpenAIResponsesRawRetry({
+      data: JSON.stringify({
+        error: { type: 'invalid_request_error', code: null, message: 'No tool output found for function call call_7.' },
+      }),
+    }),
+  ).toBe('retry');
+});
+
+// A proxy must repair only what the upstream named. A body carrying both a
+// reasoning blob and an unpaired call is the common Codex shape, and each
+// rejection must leave the other concern byte-identical.
+test('hook rewrite repairs only the concern the rejection named', async () => {
+  const body = JSON.stringify({
+    input: [
+      { type: 'reasoning', summary: [], encrypted_content: CIPHER },
+      { type: 'function_call', call_id: 'call_1', name: 'read_file', arguments: '{}' },
+    ],
+  });
+  const source = () =>
+    new Request('https://upstream.test/v1/responses', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body,
+    });
+
+  const pairing = await openAIResponsesRawRetry.rewrite(source(), {} as never, {}, PAIRING_REJECTION);
+  expect(await pairing!.json()).toEqual({
+    input: [
+      { type: 'reasoning', summary: [], encrypted_content: CIPHER },
+      {
+        type: 'message',
+        role: 'assistant',
+        content: [{ type: 'output_text', text: '[unanswered tool call: read_file({})]' }],
+      },
+    ],
+  });
+
+  const encrypted = await openAIResponsesRawRetry.rewrite(source(), {} as never, {}, ENCRYPTED_REJECTION);
+  expect(await encrypted!.json()).toEqual({
+    input: [
+      { type: 'reasoning', summary: [] },
+      { type: 'function_call', call_id: 'call_1', name: 'read_file', arguments: '{}' },
+    ],
+  });
+});
+
+// The exported helper is core's public surface; the combined path must not
+// change what it does on its own.
+test('the encrypted-content export leaves unpaired tool items alone', () => {
+  expect(
+    rewriteOpenAIResponsesEncryptedContent(
+      JSON.stringify({ input: [{ type: 'function_call', call_id: 'call_1', name: 'read_file', arguments: '{}' }] }),
+    ),
+  ).toBeUndefined();
 });

@@ -134,6 +134,17 @@ describe('OpenAI ChatGPT runtime', () => {
     expect(first.signal).toBe(controller.signal);
     expect(requiredCall(calls, 1).headers.get('session-id')).not.toBe(first.headers.get('session-id'));
   });
+
+  test('an endpoint-owned query parameter is not erased by an inbound request without one', async () => {
+    const calls: FetchCall[] = [];
+    const dynamicFetch = createOpenAIChatGPTDynamicFetch(staticCredentialPort(credential()), captureFetch(calls));
+
+    await dynamicFetch('https://api.openai.com/v1/responses/compact', { method: 'POST', body: '{}' });
+    await dynamicFetch('https://api.openai.com/v1/responses/compact?trace=1', { method: 'POST', body: '{}' });
+
+    expect(requiredCall(calls, 0).url).toBe('https://chatgpt.com/backend-api/codex/responses/compact');
+    expect(requiredCall(calls, 1).url).toBe('https://chatgpt.com/backend-api/codex/responses/compact?trace=1');
+  });
 });
 
 test('refresh metadata uses stored email when rotated tokens omit one', async () => {
@@ -182,6 +193,40 @@ test('normalizes Responses requests for the Codex backend', async () => {
   });
   expect(call.headers.get('content-encoding')).toBeNull();
   expect(call.headers.get('content-length')).toBeNull();
+});
+
+// The Codex backend persists nothing, so a reasoning item whose only handle is
+// an id — the shape this proxy's own AI SDK egress mints — answers with
+// "Item with id 'rs_…' not found" on the next turn.
+test('drops a reasoning id the Codex backend never persisted', async () => {
+  const calls: FetchCall[] = [];
+  const dynamicFetch = createOpenAIChatGPTDynamicFetch(staticCredentialPort(credential()), captureFetch(calls));
+
+  await dynamicFetch('https://api.openai.com/v1/responses', {
+    method: 'POST',
+    body: JSON.stringify({
+      model: 'gpt-5.6-luna',
+      input: [
+        {
+          type: 'reasoning',
+          id: 'rs_resp_ab454c48-a211-44b7-b0af-15e95f510490_0',
+          summary: [{ type: 'summary_text', text: 'Checked the weather.' }],
+        },
+        { type: 'reasoning', id: 'rs_2', encrypted_content: 'blob', summary: [] },
+        { role: 'user', content: 'And tomorrow?' },
+      ],
+    }),
+  });
+
+  expect(JSON.parse(requiredCall(calls, 0).body)).toEqual({
+    model: 'gpt-5.6-luna',
+    store: false,
+    input: [
+      { type: 'reasoning', summary: [{ type: 'summary_text', text: 'Checked the weather.' }] },
+      { type: 'reasoning', id: 'rs_2', encrypted_content: 'blob', summary: [] },
+      { role: 'user', content: 'And tomorrow?' },
+    ],
+  });
 });
 
 test('routes compact to the Codex compaction endpoint and forwards its body verbatim', async () => {

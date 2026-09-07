@@ -1,4 +1,5 @@
 import { m } from '@aio-proxy/i18n';
+import { ProviderKind } from '@aio-proxy/types';
 import { expect, rs, test } from '@rstest/core';
 import { fireEvent, render, screen } from '@testing-library/react';
 
@@ -14,6 +15,7 @@ const summaries = (overrides: Partial<Record<SectionId, SectionSummary>> = {}): 
 });
 
 const props = {
+  kind: ProviderKind.Api,
   primaryLabel: 'Save',
   onPrimary: () => {},
   onCancel: () => {},

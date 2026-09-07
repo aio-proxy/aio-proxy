@@ -34,6 +34,16 @@ test('holds lifecycle frames then reports retry', async () => {
   expect(await preflight.response.text()).toBe(created + encryptedError);
 });
 
+// The adapter's rewrite repairs only what the upstream named, so the preflight
+// has to hand back the frame that decided the retry — not just the verdict.
+test('reports the deciding frame alongside the retry verdict', async () => {
+  const preflight = await preflightRawRetrySse(sse(created + encryptedError), classifyOpenAIResponsesRawRetry, live());
+  expect(preflight.kind === 'retry' && preflight.rejection).toMatchObject({
+    event: 'error',
+    data: expect.stringContaining('invalid_encrypted_content'),
+  });
+});
+
 test('still retries when output_item.added precedes the error', async () => {
   const preflight = await preflightRawRetrySse(
     sse(created + itemAdded + encryptedError),

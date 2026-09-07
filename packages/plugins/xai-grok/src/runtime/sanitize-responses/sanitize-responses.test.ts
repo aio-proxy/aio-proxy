@@ -48,7 +48,7 @@ describe('sanitizeXAIGrokResponsesBody', () => {
     );
     expect(cleaned).toEqual({
       model: 'grok-4.6',
-      reasoning: { effort: 'high' },
+      reasoning: { effort: 'high', summary: 'auto' },
       keep: true,
     });
   });

@@ -2,7 +2,7 @@ import type { ModelMessage } from '../../ai-sdk-bridge';
 import { OpenAIResponsesTransformError } from '../../error';
 import type { OpenAIResponsesInputItem } from '../../ingress/openai-responses/index';
 import type { ModelInvocationDiagnostic } from '../../protocol/adapter';
-import { inputMessage, toolOutput } from './input-content';
+import { inputMessage, toolOutput, toolOutputParts } from './input-content';
 import {
   flattenOpenAIResponsesToolName,
   readOpenAIResponsesWireMetadata,
@@ -15,6 +15,8 @@ import type { OpenAIResponsesTransformTool, OpenAIResponsesWireMetadata } from '
 
 type AssistantMessage = Extract<ModelMessage, { role: 'assistant' }>;
 type AssistantPart = Exclude<AssistantMessage['content'], string>[number];
+type UserMessage = Extract<ModelMessage, { role: 'user' }>;
+type UserPart = Exclude<UserMessage['content'], string>[number];
 type ToolMessage = Extract<ModelMessage, { role: 'tool' }>;
 type ToolResultPart = Extract<ToolMessage['content'][number], { type: 'tool-result' }>;
 type CallIdentity = {
@@ -26,6 +28,12 @@ type ConvertState = {
   readonly messages: ModelMessage[];
   readonly diagnostics: ModelInvocationDiagnostic[];
   readonly calls: Map<string, CallIdentity>;
+  readonly answered: ReadonlySet<string>;
+  // Registered calls whose result has not been emitted yet. While this is
+  // non-empty a tool batch is open, and nothing may be pushed between the
+  // assistant turn and its tool results.
+  readonly awaiting: Set<string>;
+  readonly deferred: ModelMessage[];
   readonly tools: readonly OpenAIResponsesTransformTool[] | undefined;
   previous: 'call' | 'result' | undefined;
 };
@@ -41,7 +49,16 @@ export function openAIResponsesInputMessages(
   items: readonly OpenAIResponsesInputItem[],
   tools?: readonly OpenAIResponsesTransformTool[],
 ): { messages: ModelMessage[]; diagnostics: ModelInvocationDiagnostic[] } {
-  const state: ConvertState = { messages: [], diagnostics: [], calls: new Map(), tools, previous: undefined };
+  const state: ConvertState = {
+    messages: [],
+    diagnostics: [],
+    calls: new Map(),
+    answered: answeredCallIds(items),
+    awaiting: new Set(),
+    deferred: [],
+    tools,
+    previous: undefined,
+  };
 
   for (const [index, item] of items.entries()) {
     if (item.type === undefined || item.type === 'message') {
@@ -89,7 +106,53 @@ export function openAIResponsesInputMessages(
     }
   }
 
-  return { messages: state.messages, diagnostics: state.diagnostics };
+  return { messages: flushDeferred(state), diagnostics: state.diagnostics };
+}
+
+// A synthesized note must never land between a registered call and its result:
+// OpenAI-compatible and Anthropic providers require the tool result to follow
+// the assistant tool-call turn immediately. While a batch is open the note is
+// held and replayed once the last awaited result arrives, preserving the order
+// among held notes. Only notes this converter invents move — an item the caller
+// placed inside the batch keeps its position, because relocating the caller's
+// own turns would be the distortion this conversion exists to avoid.
+function pushMessage(state: ConvertState, message: ModelMessage): void {
+  if (state.awaiting.size > 0) state.deferred.push(message);
+  else state.messages.push(message);
+}
+
+function closeAwaitedCall(state: ConvertState, callId: string): void {
+  state.awaiting.delete(callId);
+  if (state.awaiting.size > 0) return;
+  flushDeferred(state);
+}
+
+function flushDeferred(state: ConvertState): ModelMessage[] {
+  if (state.deferred.length > 0) {
+    state.messages.push(...state.deferred);
+    state.deferred.length = 0;
+    // The held messages closed the batch's turn; nothing may append to it now.
+    state.previous = undefined;
+  }
+  return state.messages;
+}
+
+// Call ids that a later item answers. Only an output positioned *after* its call
+// counts, matching the forward-pass rule convertToolCallOutput applies: an output
+// preceding its call is an orphan there, so the call must stay unanswered here
+// rather than both sides claiming to be paired.
+function answeredCallIds(items: readonly OpenAIResponsesInputItem[]): ReadonlySet<string> {
+  const seen = new Set<string>();
+  const answered = new Set<string>();
+  for (const item of items) {
+    if (item.type === 'function_call' || item.type === 'custom_tool_call') {
+      seen.add(item.call_id);
+      continue;
+    }
+    if (item.type !== 'function_call_output' && item.type !== 'custom_tool_call_output') continue;
+    if (item.call_id !== undefined && seen.has(item.call_id)) answered.add(item.call_id);
+  }
+  return answered;
 }
 
 function hasOwnedActionSources(item: Extract<OpenAIResponsesInputItem, { type: 'web_search_call' }>): boolean {
@@ -158,6 +221,9 @@ function convertReasoning(state: ConvertState, item: ReasoningItem, index: numbe
 function convertFunctionCall(state: ConvertState, item: FunctionCallItem, index: number): void {
   const namespace = item.namespace ?? uniqueToolNamespace(state.tools, item.name, 'function', index, item.type);
   const flattenedName = flattenOpenAIResponsesToolName(namespace, item.name);
+  if (!state.answered.has(item.call_id)) {
+    return convertUnansweredToolCall(state, item, index, flattenedName, item.arguments);
+  }
   const metadata =
     namespace === undefined && item.id === undefined && item.status === undefined
       ? undefined
@@ -172,6 +238,7 @@ function convertFunctionCall(state: ConvertState, item: FunctionCallItem, index:
           ...(namespace === undefined ? {} : { namespace }),
         } satisfies OpenAIResponsesWireMetadata);
   state.calls.set(item.call_id, { flattenedName, ...(metadata === undefined ? {} : { metadata }) });
+  state.awaiting.add(item.call_id);
   appendAssistantPart(state.messages, state.previous, {
     type: 'tool-call',
     toolCallId: item.call_id,
@@ -185,6 +252,9 @@ function convertFunctionCall(state: ConvertState, item: FunctionCallItem, index:
 function convertCustomToolCall(state: ConvertState, item: CustomToolCallItem, index: number): void {
   const namespace = item.namespace ?? uniqueToolNamespace(state.tools, item.name, 'custom', index, item.type);
   const flattenedName = flattenOpenAIResponsesToolName(namespace, item.name);
+  if (!state.answered.has(item.call_id)) {
+    return convertUnansweredToolCall(state, item, index, flattenedName, item.input);
+  }
   const metadata = {
     protocol: 'openai-responses',
     inputIndex: index,
@@ -196,6 +266,7 @@ function convertCustomToolCall(state: ConvertState, item: CustomToolCallItem, in
     ...(namespace === undefined ? {} : { namespace }),
   } satisfies OpenAIResponsesWireMetadata;
   state.calls.set(item.call_id, { flattenedName, metadata });
+  state.awaiting.add(item.call_id);
   appendAssistantPart(state.messages, state.previous, {
     type: 'tool-call',
     toolCallId: item.call_id,
@@ -203,6 +274,41 @@ function convertCustomToolCall(state: ConvertState, item: CustomToolCallItem, in
     input: { input: item.input },
     providerOptions: wireToolCallProviderOptions(metadata),
   });
+  state.previous = 'call';
+}
+
+// Narrates a tool call that no output answers, instead of emitting a dangling
+// tool-call part. Providers reject an unanswered call (`400 No tool output found
+// for function call …` upstream; Anthropic refuses a `tool_use` with no
+// `tool_result`), and synthesizing an output — what the Codex client and
+// OmniRoute do — invents a tool return the caller never sent. Narrating keeps
+// the fact that the call happened without fabricating its result. The arguments
+// are carried as the caller wrote them so the text stays byte-stable across
+// turns and keeps upstream prefix caching intact.
+function convertUnansweredToolCall(
+  state: ConvertState,
+  item: FunctionCallItem | CustomToolCallItem,
+  index: number,
+  toolName: string,
+  args: string,
+): void {
+  warnOpenAIResponsesDegradation(`${item.type}.unanswered`, `input.${index}.call_id`, 'converted');
+  state.diagnostics.push({
+    feature: 'unanswered_tool_call',
+    action: 'converted',
+    reason: 'call_without_matching_output',
+    inputIndex: index,
+  });
+  appendAssistantPart(state.messages, state.previous, {
+    type: 'text',
+    text: `[unanswered tool call: ${toolName}(${args})]`,
+  });
+  // Not registered in state.calls: a later output for this id is an orphan too,
+  // and must take the note path rather than pair with a call that is now text.
+  // `previous` stays 'call' so the rest of a parallel batch keeps appending to
+  // this assistant message; starting a new one would put an assistant turn
+  // between an earlier call and its result, which is the ordering upstreams
+  // reject.
   state.previous = 'call';
 }
 
@@ -234,7 +340,12 @@ function convertToolCallOutput(state: ConvertState, item: ToolCallOutputItem, in
   const callId = item.call_id;
   if (callId === undefined) return rejectOpenAIResponsesFeature(`${item.type}.call_id`, `input.${index}.call_id`);
   const call = state.calls.get(callId);
-  if (call === undefined) throw new OpenAIResponsesTransformError(`input.${index}.call_id`);
+  // A call_id with no preceding call is an orphan: context compaction can drop
+  // the call while keeping its output (Codex's guardian_history truncates
+  // between the two). Raw passthrough cannot rescue it either — the Responses
+  // API answers `400 No tool call found for function call output` — so fold the
+  // output into a user note instead of failing the request.
+  if (call === undefined) return convertOrphanToolCallOutput(state, item, index, callId);
   const custom = item.type === 'custom_tool_call_output';
   const metadata = {
     protocol: 'openai-responses',
@@ -256,6 +367,47 @@ function convertToolCallOutput(state: ConvertState, item: ToolCallOutputItem, in
   };
   appendToolResult(state.messages, state.previous, part);
   state.previous = 'result';
+  closeAwaitedCall(state, callId);
+}
+
+// Preserves an orphan tool output as a user note. A proxy must not decide the
+// output is worthless — dropping it (what the Codex client does locally, where
+// it owns the history) would silently rewrite the caller's conversation. Text
+// and images both survive; only the tool-result framing is lost, because no
+// tool-call exists to attach them to.
+function convertOrphanToolCallOutput(
+  state: ConvertState,
+  item: ToolCallOutputItem,
+  index: number,
+  callId: string,
+): void {
+  warnOpenAIResponsesDegradation(`${item.type}.orphan`, `input.${index}.call_id`, 'converted');
+  state.diagnostics.push({
+    feature: 'orphan_tool_call_output',
+    action: 'converted',
+    reason: 'call_id_without_matching_call',
+    inputIndex: index,
+  });
+  const label = `[orphan tool result; call_id=${callId}]`;
+  const parts: UserPart[] =
+    typeof item.output === 'string'
+      ? [{ type: 'text', text: `${label} ${item.output}` }]
+      : [{ type: 'text', text: label }, ...toolOutputParts(item.output, `input.${index}.output`)];
+  pushMessage(state, {
+    role: 'user',
+    content: parts,
+    providerOptions: wireProviderOptions({
+      protocol: 'openai-responses',
+      inputIndex: index,
+      itemType: item.type,
+      ...(item.id === undefined ? {} : { itemId: item.id }),
+      ...(item.status === undefined ? {} : { status: item.status }),
+      outputKind: typeof item.output === 'string' ? 'string' : 'content',
+    }),
+  });
+  // Held notes leave `previous` alone: the batch they are waiting on is still
+  // open, and flushDeferred clears it when they land.
+  if (state.awaiting.size === 0) state.previous = undefined;
 }
 
 function appendAssistantPart(messages: ModelMessage[], previous: 'call' | 'result' | undefined, part: AssistantPart) {

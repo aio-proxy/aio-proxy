@@ -11,12 +11,25 @@ export type ModelSseStream = ReadableStream<Uint8Array> & { readonly completion:
 
 export type InboundCapability = 'language' | 'image' | 'embedding' | 'speech' | 'transcription';
 
-export type ModelInvocationDiagnostic = Readonly<{
-  feature: 'web_search_call';
-  action: 'dropped';
-  reason: 'completed_without_results_or_sources';
-  inputIndex: number;
-}>;
+export type ModelInvocationDiagnostic =
+  | Readonly<{
+      feature: 'web_search_call';
+      action: 'dropped';
+      reason: 'completed_without_results_or_sources';
+      inputIndex: number;
+    }>
+  | Readonly<{
+      feature: 'orphan_tool_call_output';
+      action: 'converted';
+      reason: 'call_id_without_matching_call';
+      inputIndex: number;
+    }>
+  | Readonly<{
+      feature: 'unanswered_tool_call';
+      action: 'converted';
+      reason: 'call_without_matching_output';
+      inputIndex: number;
+    }>;
 
 export type ProtocolErrorMapper = Readonly<{
   requestError: (error: unknown) => Response | undefined;
@@ -56,9 +69,18 @@ export type RawRetryVerdict = 'hold' | 'commit' | 'retry';
 // Lets one protocol adapter own the judgement for a same-protocol raw retry:
 // which buffered frames are still undecided, and how to rewrite the outbound
 // body. The pipeline owns the replay itself and stays protocol-agnostic.
+// `rewrite` receives the frame that classified as 'retry' so it repairs only
+// what the upstream actually rejected: a hook that handles several rejections
+// would otherwise apply every repair it knows and distort fields nobody
+// complained about.
 export type RawRetryHook<TRequest, TContext> = Readonly<{
   classify: (frame: RawRetryFrame) => RawRetryVerdict;
-  rewrite: (upstream: Request, request: TRequest, context: TContext) => Promise<Request | undefined>;
+  rewrite: (
+    upstream: Request,
+    request: TRequest,
+    context: TContext,
+    rejection: RawRetryFrame,
+  ) => Promise<Request | undefined>;
 }>;
 
 export type SharedProtocolAdapter<TRequest, TContext> = Readonly<{

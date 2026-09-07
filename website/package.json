@@ -7,6 +7,7 @@
     "build": "rspress build"
   },
   "dependencies": {
+    "@aio-proxy/brand": "workspace:*",
     "@aio-proxy/ui": "workspace:*",
     "@rspress/core": "2.0.19",
     "react": "catalog:",

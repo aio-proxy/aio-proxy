@@ -133,6 +133,22 @@ export type RequestFeatureDowngradedLog =
       readonly inputIndex: number;
       readonly providerId: string;
       readonly attemptIndex: number;
+    })
+  | (RequestFeatureDowngradedIdentity & {
+      readonly feature: 'orphan_tool_call_output';
+      readonly action: 'converted';
+      readonly reason: 'call_id_without_matching_call';
+      readonly inputIndex: number;
+      readonly providerId: string;
+      readonly attemptIndex: number;
+    })
+  | (RequestFeatureDowngradedIdentity & {
+      readonly feature: 'unanswered_tool_call';
+      readonly action: 'converted';
+      readonly reason: 'call_without_matching_output';
+      readonly inputIndex: number;
+      readonly providerId: string;
+      readonly attemptIndex: number;
     });
 
 export type TracePersistenceFailedLog = {
@@ -185,10 +201,53 @@ export type RequestBodyTerminalLog = RequestBodyIdentity & {
   readonly errorType?: string;
 };
 
+export type RealtimeCallCreatedLog = {
+  readonly event: 'realtime.call_created';
+  readonly callId: string;
+  readonly providerId: string;
+  readonly model: string;
+  readonly style: string;
+  readonly attemptCount: number;
+};
+
+export type RealtimeCallFailedLog = {
+  readonly event: 'realtime.call_failed';
+  readonly providerId?: string;
+  readonly model: string;
+  readonly style: string;
+  readonly attemptCount: number;
+  readonly statusCode: number;
+  readonly errorCode: string;
+};
+
+export type RealtimeSidebandOpenedLog = {
+  readonly event: 'realtime.sideband_opened';
+  readonly callId: string;
+  readonly providerId: string;
+  readonly model: string;
+  readonly style: string;
+};
+
+export type RealtimeSidebandClosedLog = {
+  readonly event: 'realtime.sideband_closed';
+  readonly callId: string;
+  readonly providerId: string;
+  readonly model: string;
+  readonly style: string;
+  /** Already run through `normalizeCloseCode`, so it is always a code the client
+   *  side accepts — never a raw `1006`. */
+  readonly closeCode: number;
+  readonly origin: 'downstream' | 'upstream' | 'proxy';
+};
+
 export type ServerLog =
   | ConfigOAuthLeftoverModelsLog
   | ConfigReloadLog
   | DashboardAuthUnavailableLog
+  | RealtimeCallCreatedLog
+  | RealtimeCallFailedLog
+  | RealtimeSidebandClosedLog
+  | RealtimeSidebandOpenedLog
   | RequestBodyChunkLog
   | RequestBodyTerminalLog
   | RequestFailedLog

@@ -12,7 +12,12 @@ import type {
   TranscriptionInvocation,
   TranscriptionResultData,
 } from '@aio-proxy/core';
-import type { LogicalRequestContext, ProviderExecutedTool, TokenCountCapability } from '@aio-proxy/plugin-sdk';
+import type {
+  LogicalRequestContext,
+  ProviderExecutedTool,
+  RealtimeTransport,
+  TokenCountCapability,
+} from '@aio-proxy/plugin-sdk';
 import type {
   AliasConfig,
   Config,
@@ -119,6 +124,12 @@ type RuntimeProviderBase = {
   readonly capability?: string;
   readonly hasApiKey?: boolean;
   readonly tokenCount?: TokenCountCapability;
+  /** Stable account fingerprint. A realtime call pins it so a re-login under the
+   *  same Provider ID cannot silently move the call to another account. */
+  readonly accountId?: string;
+  /** Bumped by every credential write. Token refresh alone does not move it. */
+  readonly runtimeRevision?: number;
+  readonly realtime?: RealtimeTransport;
 };
 /**
  * Every transport a materialized runtime provider can expose. A provider must

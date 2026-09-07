@@ -125,9 +125,64 @@ export type ModelCatalog = {
   readonly extra?: JsonValue;
 };
 
+export type RealtimeStyle = 'live' | 'realtime-calls' | 'realtime-query' | 'realtime-direct';
+
+export type RealtimeDialInput = {
+  readonly style: RealtimeStyle;
+  readonly callId?: string;
+  readonly model?: string;
+  /** Inbound headers the plugin may forward selectively. Caller credentials are
+   *  already stripped by the auth middleware; the plugin adds its own upstream
+   *  auth and never forwards an inbound `authorization`. */
+  readonly headers: Headers;
+  readonly signal: AbortSignal;
+};
+
+export type RealtimeDialErrorKind = 'rejected' | 'unreachable' | 'aborted' | 'timeout';
+
+const REALTIME_DIAL_ERROR_BRAND = Symbol.for('@aio-proxy/plugin-sdk/realtime-dial-error/v1');
+
+/** A client `WebSocket` exposes no upstream HTTP status for a non-101 response,
+ *  so a failed dial is only ever discriminable to these four kinds. */
+export class RealtimeDialError extends Error {
+  override readonly name = 'RealtimeDialError';
+  /** Registry symbol, so the brand is shared across module instances — see
+   *  `isRealtimeDialError`. */
+  readonly [REALTIME_DIAL_ERROR_BRAND] = true;
+
+  constructor(
+    message: string,
+    readonly options: { readonly kind: RealtimeDialErrorKind },
+  ) {
+    super(message);
+  }
+
+  get kind(): RealtimeDialErrorKind {
+    return this.options.kind;
+  }
+}
+
+/** A plugin resolved from its own npm cache loads a separate copy of this module, so the
+ *  `RealtimeDialError` it throws is a different constructor and fails a host-side
+ *  `instanceof`. The host would then read every dial failure as `rejected`: a `timeout` or
+ *  `unreachable` becomes a 502 instead of a 503, and an `aborted` dial keeps trying other
+ *  providers instead of answering 499. Brand check rather than constructor identity. */
+export function isRealtimeDialError(value: unknown): value is RealtimeDialError {
+  return value instanceof Error && REALTIME_DIAL_ERROR_BRAND in value;
+}
+
+export type RealtimeTransport = {
+  readonly models: readonly string[];
+  readonly fetch: (request: Request) => Promise<Response>;
+  /** Resolves only once the socket is OPEN. Rejects with a `RealtimeDialError`.
+   *  Aborting `signal` abandons a pending dial and closes any socket that opens. */
+  readonly dial: (input: RealtimeDialInput) => Promise<WebSocket>;
+};
+
 export type OAuthRuntimeResult = {
   readonly provider: ProviderV4;
   readonly raw?: RawResolver;
   readonly tokenCount?: TokenCountCapability;
   readonly providerTools?: ProviderToolCapability;
+  readonly realtime?: RealtimeTransport;
 };

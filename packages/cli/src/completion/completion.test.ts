@@ -37,6 +37,16 @@ test('top-level completion includes the public agent command for bash, zsh, and 
   }
 });
 
+test('top-level completion includes upgrade and its update alias', () => {
+  for (const shell of ['bash', 'zsh', 'fish'] as const) {
+    const lines: string[] = [];
+    completionCommand(shell, (line) => lines.push(line));
+    const out = lines.join('\n');
+    expect(out).toContain('upgrade');
+    expect(out).toContain('update');
+  }
+});
+
 test('rejects an inherited Object property as a shell', () => {
   // Regression: `shell in SCRIPTS` walked the prototype chain, so `toString`
   // printed a prototype value and exited 0. An own-property check must reject it.

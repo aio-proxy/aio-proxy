@@ -102,8 +102,10 @@ function textMessageContent(
   });
 }
 
-export function toolOutput(output: string | OpenAIResponsesToolOutputPart[], path: string): ToolResultPart['output'] {
-  if (typeof output === 'string') return { type: 'text', value: output };
+export function toolOutputParts(
+  output: readonly OpenAIResponsesToolOutputPart[],
+  path: string,
+): Array<{ type: 'text'; text: string } | ImageFilePart> {
   const value: Array<{ type: 'text'; text: string } | ImageFilePart> = [];
   for (const [index, part] of output.entries()) {
     if (part.type === 'encrypted_content') {
@@ -122,5 +124,10 @@ export function toolOutput(output: string | OpenAIResponsesToolOutputPart[], pat
     }
     return rejectOpenAIResponsesFeature(part.type, `${path}.${index}.type`);
   }
-  return { type: 'content', value };
+  return value;
+}
+
+export function toolOutput(output: string | OpenAIResponsesToolOutputPart[], path: string): ToolResultPart['output'] {
+  if (typeof output === 'string') return { type: 'text', value: output };
+  return { type: 'content', value: toolOutputParts(output, path) };
 }
